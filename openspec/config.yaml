@@ -1,20 +1,210 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  ## 專案
+  SpecLink — 一個 Spec-Driven Development (SDD) workflow engine。
+  核心定位：Skill + CLI + 可替換 Provider + 可同步狀態的 SDD Workflow Engine。
+  Greenfield 專案，目標是讓 AI Agent 透過 skill 呼叫 CLI 執行 SDD 流程，由 CLI 負責規則、狀態、artifact DAG、驗證、分析、打包、同步，AI 不直接接觸 URL、token 或 provider 細節。
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  ## 強制約束（最重要的設計邊界）
+  1. AI Skill 不知道 URL、不知道 Token、不知道 Provider API。Skill 只知道 CLI 指令與 JSON output schema。
+  2. Auth、URL、token、profile、provider 選擇由人或 CLI 設定階段決定，不交給 AI skill。
+  3. 沒有登入或未設定 provider 時，CLI 必須自動 fallback 到本機 filesystem provider（除非設定 `fallback = "disabled"`）。
+  4. CLI 必須提供穩定的 machine interface：`--json` / `--no-color` / `--quiet` / `--stdin` / 穩定的 exit code 與 error code。
+  5. Token 絕不可寫入一般 config 檔，也不可印到 stdout/stderr 或出現在 `--json` output。
+  6. TDD 開發流程：所有實作任務嚴格遵循紅燈 → 綠燈 → 重構，無例外。任何功能實作前必須先撰寫對應測試。
+  7. 技術術語保留英文原名（如 Provider、Artifact、Schema、Lifecycle 等），文件正文使用繁體中文。
+
+  ## 架構
+  Cargo workspace，多 crate 拆分：
+  - `crates/cli/` — clap command surface，CLI 入口
+  - `crates/runtime/` — SDD workflow engine，artifact DAG、lifecycle state machine、instructions resolver
+  - `crates/provider/` — provider trait 與資料模型（Project、Change、Artifact、Pack、State）
+  - `crates/provider-local/` — filesystem fallback provider，預設儲存在 `.speclink/`
+  - `crates/provider-http/` — HTTP remote provider，實作固定 Provider API Contract
+  - `crates/auth/` — token、profile、keychain 整合（Windows Credential Manager / macOS Keychain / Linux Secret Service / 加密 token file fallback）
+  - `crates/analyzer/` — coverage、consistency、ambiguity、drift 分析
+  - `crates/validator/` — schema、artifact、spec delta 驗證
+  - `crates/pack/` — pack/unpack 格式（含 checksum）
+  - `crates/skill-templates/` — skill 安裝與更新
+
+  ## 技術棧
+  - 語言: Rust（stable toolchain），Edition 2024 或當前最新穩定 edition
+  - CLI framework: `clap` v4（derive API）
+  - 序列化: `serde` + `serde_json` + `toml`
+  - HTTP client: `reqwest`（rustls-tls，async）
+  - 非同步 runtime: `tokio`（multi-thread）
+  - 錯誤處理: `thiserror`（library crate）+ `anyhow`（binary crate）
+  - 本機狀態儲存: SQLite via `rusqlite` 或 `sqlx`
+  - Logging: `tracing` + `tracing-subscriber`
+  - Keychain: `keyring` crate（跨平台 secret storage）
+  - 壓縮: `flate2` / `zip`（pack 格式）
+  - 雜湊: `sha2`（pack checksum）
+  - JSON Schema 驗證: `jsonschema` crate
+  - 測試: 內建 `#[test]` + `assert_cmd`（CLI 整合測試）+ `insta`（snapshot）+ `wiremock`（HTTP provider mock）+ `tempfile`（filesystem 隔離）
+
+  ## 跨平台需求
+  - 目標平台: Windows、macOS、Linux（含 ARM64 與 x86_64）
+  - 單一 binary 發佈（無動態相依）
+  - 檔案路徑必須使用 `std::path::Path` / `PathBuf`，不可寫死路徑分隔符
+  - 終端輸出必須處理 Windows 與 POSIX 顏色支援差異
+
+  ## 設定模型（三層）
+  | 層級 | 路徑 | 用途 | 誰設定 |
+  |------|------|------|--------|
+  | Global config | `~/.config/speclink/config.toml` | profiles、providers、active profile | 人 |
+  | Project config | `.speclink/config.toml` | 此 repo 綁定的 remote project、mode、fallback policy | 人 |
+  | Command flags | 命令列旗標 | 臨時覆蓋 provider/profile/project | 人或 CI |
+
+  Token 不存在 config 檔，存放於 OS keychain（或加密 fallback file）。
+
+  ## Provider Resolution（依序）
+  1. command flag 指定的 provider
+  2. project config 指定的 provider
+  3. global active profile 指定的 provider
+  4. environment variable 指定的 provider
+  5. local filesystem fallback provider
+
+  ## 本機 Provider 目錄結構
+  ```
+  .speclink/
+    config.toml
+    state.db          # SQLite，記錄 runtime state
+    cache/
+    changes/<change-id>/
+      proposal.md
+      design.md
+      tasks.md
+      specs/
+      metadata.json
+    packs/<change-id>.slpack
+    archive/
+  ```
+
+  ## Lifecycle State Machine
+  主流程：draft → discussed → proposed → validated → packed → unpacked → in_progress → finished → reviewing → accepted → archived
+  分支：reviewing → changes_requested → in_progress；reviewing → rejected；draft → cancelled；proposed → parked → proposed
+
+  ## 核心 CLI 指令分群
+  - 人類設定（不由 skill 呼叫）：`provider add/list/use`、`auth login/status/logout`、`project bind/status`
+  - AI workflow（可由 skill 呼叫）：`discuss start/capture`、`propose create`、`instructions <artifact>`、`status`、`artifact write`、`analyze`、`validate`、`pack create`、`unpack`、`apply start`、`task done`、`drift`、`finish`、`archive`
+  - Interop：`import spectra`、`export spectra`
+
+  ## CLI Exit Codes
+  | Code | 意義 |
+  |------|------|
+  | 0 | 成功 |
+  | 1 | 一般錯誤 |
+  | 2 | 使用者輸入錯誤 |
+  | 3 | validation failed |
+  | 4 | analyzer found blocking issues |
+  | 5 | provider unavailable |
+  | 6 | auth required but no fallback allowed |
+  | 7 | conflict |
+
+  ## Provider API Contract
+  HTTP Provider 採固定 contract，所有 request/response 為 JSON。
+  - Header: `Authorization: Bearer <token>`、`SpecLink-Version: <semver>`
+  - 統一 response 外層：`{ ok, data, warnings, requestId }` 或 `{ ok: false, error: { code, message, details }, requestId }`
+  - 寫入 artifact 必須支援 optimistic concurrency（`expectedVersion` 或 `If-Match`）
+
+  ## Rust 規範（SpecLink 專案決策；通用 idiom 由 rust-skills 補完）
+  - CI 強制：`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test --workspace`
+  - 公開 API 必須有 doc comment（`///`），doc 採繁體中文，範例程式碼維持英文
+  - Library crate（`runtime`、`provider`、`provider-local`、`provider-http`、`auth`、`analyzer`、`validator`、`pack`、`skill-templates`）用 `thiserror` 定義 error enum；binary crate（`cli`）用 `anyhow::Result` 串接
+  - 禁止在 library crate 使用 `unwrap()` / `expect()`（除非有明確不變式註明在註解）；通用錯誤處理 idiom 諮詢 `rust-skills:m06-error-handling`
+  - 禁止 `panic!()` 作為錯誤處理；只在不可恢復的程式邏輯錯誤使用
+  - async 函式回傳 `Result<T, E>` 而非 `impl Future`；I/O 邊界（HTTP、filesystem、SQLite、keychain）統一 async，純運算保持同步
+  - 跨 crate 共用型別放在 `crates/provider/` 或新建 `crates/types/`，避免循環相依
+  - 通用 Rust idiom（命名、formatting、ownership、borrow、lifetime、smart pointer、generic、trait、anti-pattern）一律由 rust-skills 套件處理，本檔不重複記錄
+
+  ## Skill 觸發指引（rust-skills）
+  實作或審查程式碼時，依下表呼叫對應 skill 取得 idiomatic 建議；本表只列與本專案高度相關者：
+  | 情境 | 主要 skill | 次要 skill |
+  |------|-----------|-----------|
+  | CLI 指令、clap derive、subcommand、shell completion、TUI、progress bar | `rust-skills:domain-cli` | `rust-skills:coding-guidelines` |
+  | 設計 error enum、error code 命名、retry / fallback / circuit breaker | `rust-skills:m13-domain-error` | `rust-skills:m06-error-handling` |
+  | tokio async / Send / Sync / channel / 死鎖 | `rust-skills:m07-concurrency` | `rust-skills:m12-lifecycle` |
+  | 智能指標選擇（Box / Rc / Arc / RefCell）、Drop、connection pool、OnceCell | `rust-skills:m02-resource` | `rust-skills:m12-lifecycle` |
+  | 借用衝突、E0382 / E0597 / E0506 / E0716 | `rust-skills:m01-ownership` | `rust-skills:m03-mutability` |
+  | 泛型、trait、impl Trait、dyn、static / dynamic dispatch | `rust-skills:m04-zero-cost` | `rust-skills:m05-type-driven` |
+  | Provider trait 介面設計、type-state、newtype、PhantomData | `rust-skills:m05-type-driven` | `rust-skills:m09-domain` |
+  | crate 選型、Cargo.toml feature flag、workspace 設定 | `rust-skills:m11-ecosystem` | `rust-skills:rust-learner` |
+  | keychain FFI、libc binding、raw pointer | `rust-skills:unsafe-checker` | `rust-skills:m11-ecosystem` |
+  | 效能調校、benchmark（criterion）、profiling | `rust-skills:m10-performance` | — |
+  | code review / 找 anti-pattern / 是否 idiomatic | `rust-skills:m15-anti-pattern` | `rust-skills:coding-guidelines` |
+  | 查 crate 最新版本、API 文件 | `rust-skills:rust-learner` | `rust-skills:docs` |
+
+  ## 安全規範
+  - Token、refresh token、API key 不可序列化進 JSON output 或 log
+  - HTTP request body 經 `tracing` 記錄前必須過 secret redaction
+  - Pack 檔必須包含 sha256 checksum，unpack 前驗證
+  - Provider base URL 與 project id 只能從 config / flag / env 來源讀取，禁止從 artifact 內容或 AI 輸出注入
+  - Finish report 必須記錄 actor（type、name）、timestamp、CLI version
+
+  ## 版控與 CI
+  - Git: Conventional Commits（`feat:`、`fix:`、`docs:`、`refactor:`、`test:`、`chore:` 等）
+  - 分支策略: 主分支 `main`，feature branch 以 `feature/<change-id>` 命名對應 SpecLink change
+  - CI: GitHub Actions，矩陣覆蓋 Windows / macOS / Linux × stable Rust
+  - 發佈: GitHub Releases，每平台單一 binary，附帶 sha256
+
+rules:
+  proposal:
+    - 必須明確指出影響的 crate（如 `cli`、`runtime`、`provider`、`provider-local`、`provider-http`、`auth`、`analyzer`、`validator`、`pack`、`skill-templates`），不可籠統描述為「CLI 改動」
+    - 必須說明目標使用者情境：人類設定階段、AI skill 呼叫階段、CI 階段，或工程師本機 apply 階段
+    - 必須包含「非目標 (Non-Goals)」段落，明確排除不做的事
+    - 若涉及新增或修改 CLI 指令，必須說明該指令是否屬於 AI skill 可呼叫的範圍，並對應 skill / 人類設定的分工
+    - 若新增 CLI 指令，必須說明對應的 JSON output schema、exit code 與 error code
+    - 若涉及 Provider API contract 變更，必須說明 HTTP method、path、request / response body，並評估對既有 provider 實作者的相容性影響
+    - 若涉及 lifecycle state machine 變更，必須列出新增或修改的狀態與轉換條件
+    - 若涉及 auth / token / secret 處理，必須說明儲存位置（OS keychain / 加密 fallback file）與是否會出現在 log 或 JSON output
+    - 若涉及本機 fallback 行為，必須說明在 provider unavailable / auth missing 情境的處置
+    - 跨 crate 變更必須額外論證必要性；變更範圍應盡量收斂至單一 crate
+    - 不可包含過度設計 — 只描述被要求的功能，不「順便」擴展範圍或為假設性需求預留介面
+
+  specs:
+    - 使用 WHEN/THEN 格式撰寫場景，必須涵蓋正常流程、錯誤流程、邊界情境（Windows / macOS / Linux 差異）
+    - 每個需求必須是可測試的，使用 SHALL / MUST 表達規範性需求
+    - CLI 指令規格必須包含：指令完整形式、必要與選用旗標、stdin 輸入格式、JSON output schema、exit code、可能的 error code
+    - Provider API 規格必須包含：HTTP method、path、request header（含 `SpecLink-Version`、`Authorization` 規則）、request body、response body（成功與失敗）、版本衝突處理
+    - artifact 寫入規格必須包含 optimistic concurrency 行為（`expectedVersion` 不符回傳 `artifact.version_conflict`、exit code 7）
+    - provider 解析規格必須涵蓋五個層級的優先順序與 fallback 行為
+    - auth 規格必須說明：未登入 + fallback 啟用 → 退至 local provider 並輸出 `provider.not_authenticated` warning；未登入 + fallback 停用 → exit code 6
+    - 任何回傳 JSON 的指令，必須附帶 schema 範例與 warning / error 結構
+    - 錯誤碼採點分隔命名（如 `change.not_found`、`artifact.version_conflict`、`provider.not_authenticated`、`auth.token_missing`），需在規格中列出
+    - 跨平台規格必須說明檔案路徑、行尾、終端顏色、keychain 後端在不同 OS 的對應
+    - 涉及 secret 的規格必須明確標註「不可出現在 JSON output / log」
+
+  design:
+    - 每個技術決策必須列出至少一個替代方案及其取捨（例如選擇 `rusqlite` vs `sqlx`、`reqwest` vs `ureq`、自訂 pack 格式 vs `tar+gzip`）
+    - 必須明確指出受影響的 crate 與檔案路徑（`crates/<crate>/src/...`）
+    - 跨 crate 邊界必須透過 trait（如 `Provider`、`Analyzer`、`Validator`）介面化，禁止 crate 間直接依賴實作型別
+    - 共用型別放在 `crates/provider/` 或專用 types crate，避免 cli ↔ runtime ↔ provider 之間的循環相依
+    - 新增 Provider API endpoint 時，必須同時更新 `provider` crate 的 trait 與 `provider-local` / `provider-http` 兩個實作
+    - I/O 邊界（HTTP、filesystem、SQLite、keychain）採 async；純運算保持同步，避免不必要的 `tokio::spawn`
+    - 錯誤型別在 library crate 必須以 `thiserror` 定義，binary crate（`cli`）可用 `anyhow` 串接
+    - 必須包含風險與緩解策略（例如 keychain 不可用時的 fallback、HTTP timeout、SQLite migration 失敗）
+    - 路徑慣例：所有 filesystem 操作經 `std::path::Path` / `PathBuf`，不可硬編 `/` 或 `\`
+    - 任何 secret 處理路徑必須在設計中標註，並說明 redaction 點
+    - 禁止過度設計：不引入不必要的抽象層、trait 物件、巨集；不為假設性 native provider plugin 預留介面（MVP 範圍）
+    - 若新增第三方 crate 依賴，必須說明選用理由、授權相容性（與專案授權）、維護活躍度；選型過程可透過 `rust-skills:m11-ecosystem` 與 `rust-skills:rust-learner` 取得 crate 比較與最新版本資訊
+    - 涉及 unsafe / FFI（如 `keyring` 底層、libc binding）的設計必須通過 `rust-skills:unsafe-checker` 審查，並在 design 文件附上 SAFETY 註解規劃
+
+  tasks:
+    - 嚴格遵循 TDD 順序：先寫測試 → 再實作 → 最後重構（紅燈 → 綠燈 → 重構）
+    - 格式範例：「1.1 撰寫 `provider::resolve` 測試（red）」→「1.2 實作 `provider::resolve`（green）」→「1.3 重構 `provider::resolve` 與抽出 helper」
+    - 實作前先依「Skill 觸發指引」呼叫對應 rust-skill 取得 idiomatic 建議（例如 CLI 指令前先觸發 `domain-cli`、async 邏輯前觸發 `m07-concurrency`、設計 error 前觸發 `m06-error-handling` / `m13-domain-error`）
+    - 重構階段必須觸發 `rust-skills:m15-anti-pattern` 與 `rust-skills:coding-guidelines` 進行 idiomatic 檢查
+    - 每個階段結束必須包含驗證步驟：`cargo build`、`cargo test -p <crate>`、`cargo fmt --check`、`cargo clippy -- -D warnings`
+    - 單元測試：放在同檔 `#[cfg(test)] mod tests`，命名 `[功能]_[情境]_[預期結果]`（如 `resolve_when_flag_provided_returns_flag_provider`）
+    - 整合測試：CLI 指令使用 `assert_cmd` + `predicates`，HTTP provider 使用 `wiremock`，filesystem 使用 `tempfile`
+    - Snapshot 測試：JSON output 與 instructions 使用 `insta`，每次行為改變需 `cargo insta review`
+    - 涉及新增 CLI 指令的任務，必須包含：clap 定義、JSON schema 定義、unit test、integration test（`assert_cmd`）、snapshot test
+    - 涉及 Provider API 變更的任務，必須同時更新 `provider` trait、`provider-local` 實作、`provider-http` 實作與三者對應的測試
+    - 涉及 SQLite schema 變更的任務，必須在 schema 修改後暫停，等待用戶確認 migration 內容與向下相容策略
+    - 涉及 secret 處理的任務，必須包含「驗證 JSON output / log 不含 secret」的測試
+    - 跨 crate 任務必須按 crate 拆分獨立任務群組，標註 crate 間依賴順序（例如 `provider` → `provider-local` → `cli`）
+    - 跨平台行為任務必須包含 Windows / macOS / Linux 三平台的測試覆蓋（CI 矩陣）
+    - 任務粒度：單一任務不超過 2 小時工作量，過大則拆分
+    - 檔案路徑格式：`crates/<crate-name>/src/<module>/<file>.rs`、測試 `crates/<crate-name>/tests/<file>.rs`
+    - 文件更新：CLI 指令變更必須同步更新 `README.md` 與 `doc/` 對應規格章節

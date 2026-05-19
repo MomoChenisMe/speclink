@@ -1,3 +1,6 @@
 {
-  "includeGitInstructions": false
+  "includeGitInstructions": false,
+  "enabledPlugins": {
+    "rust-skills@rust-skills": true
+  }
 }
