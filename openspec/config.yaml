@@ -144,7 +144,7 @@ context: |
 
   ## 版控與 CI
   - Git: Conventional Commits（`feat:`、`fix:`、`docs:`、`refactor:`、`test:`、`chore:` 等）
-  - 分支策略: 主分支 `main`，feature branch 以 `feature/<change-id>` 命名對應 SpecLink change
+  - 分支策略: 主分支 `main`，允許直接在 `main` 上 commit；如要拆 feature branch 建議以 `feature/<change-id>` 命名對應 SpecLink change，但非強制
   - CI: GitHub Actions，矩陣覆蓋 Windows / macOS / Linux × stable Rust
   - 發佈: GitHub Releases，每平台單一 binary，附帶 sha256
 
