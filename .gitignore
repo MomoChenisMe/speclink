@@ -1,2 +1,15 @@
 .spectra/
 openspec/.vector-search.db*
+
+# Cargo build artifacts
+target/
+**/*.rs.bk
+
+# SpecLink local provider workspace state
+.speclink/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+.DS_Store

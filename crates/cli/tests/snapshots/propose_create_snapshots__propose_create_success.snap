@@ -1,0 +1,16 @@
+---
+source: crates/cli/tests/propose_create_snapshots.rs
+expression: pretty(&stdout)
+---
+{
+  "data": {
+    "artifactPath": ".speclink/changes/demo/proposal.md",
+    "changeId": "demo",
+    "mode": "local",
+    "state": "proposed"
+  },
+  "error": null,
+  "ok": true,
+  "requestId": "req_00000000000000000000000000000000",
+  "warnings": []
+}

@@ -1,0 +1,15 @@
+---
+source: crates/cli/tests/propose_create_snapshots.rs
+expression: pretty(&stdout)
+---
+{
+  "data": null,
+  "error": {
+    "code": "change.already_exists",
+    "details": {},
+    "message": "provider error: change 'demo' already exists"
+  },
+  "ok": false,
+  "requestId": "req_00000000000000000000000000000000",
+  "warnings": []
+}
