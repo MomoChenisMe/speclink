@@ -1,0 +1,2 @@
+# 強制 markdown 檔案以 LF 行尾儲存與 checkout，避免跨平台 `include_str!` 行尾不一致
+*.md text eol=lf

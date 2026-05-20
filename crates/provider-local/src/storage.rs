@@ -306,6 +306,79 @@ pub fn write_spec_atomic(
     Ok(target)
 }
 
+/// 原子更新 tasks.md：寫 `.tmp` → rename。
+///
+/// 對應 spec `Atomic tasks.md update for task done` 的步驟 4-6：
+/// 1. 寫 `<change_dir>/tasks.md.tmp`
+/// 2. rename `tasks.md.tmp` → `tasks.md`
+/// 3. 失敗時清除 `.tmp`，原 `tasks.md` 保持未動
+///
+/// caller 須保證 `<change_dir>` 已存在；本函式不建立目錄。
+pub fn update_tasks_atomic(
+    base: &Path,
+    change_id: &ChangeId,
+    new_content: &str,
+) -> Result<(), LocalProviderError> {
+    let dir = change_dir(base, change_id);
+    let target = dir.join("tasks.md");
+    let tmp = dir.join("tasks.md.tmp");
+    let write_result = (|| -> Result<(), LocalProviderError> {
+        std::fs::write(&tmp, new_content)?;
+        std::fs::rename(&tmp, &target)?;
+        Ok(())
+    })();
+    if write_result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    write_result
+}
+
+/// 從磁碟讀 tasks.md → 套用 mark_task_done → 必要時原子寫回。
+///
+/// 對應 spec `Atomic tasks.md update for task done` 的「idempotent 時略過 .tmp」條款：
+/// 若 `previous_status == Done`，本函式直接回傳，不寫任何檔。
+pub fn mark_task_done_on_disk(
+    base: &Path,
+    change_id: &ChangeId,
+    task_id: &str,
+) -> Result<provider::model::TaskUpdate, LocalProviderError> {
+    let dir = change_dir(base, change_id);
+    if !dir.exists() || !dir.join("metadata.json").is_file() {
+        return Err(LocalProviderError::ChangeNotFound {
+            change_id: change_id.as_str().to_string(),
+        });
+    }
+    let tasks_path = dir.join("tasks.md");
+    if !tasks_path.is_file() {
+        return Err(LocalProviderError::ArtifactMissing {
+            artifact_id: "tasks".to_string(),
+            change_id: change_id.as_str().to_string(),
+        });
+    }
+    let content = std::fs::read_to_string(&tasks_path)?;
+    let result = match runtime::tasks_parser::mark_task_done_in_content(&content, task_id) {
+        Ok(r) => r,
+        Err(runtime::tasks_parser::TasksUpdateError::InvalidId { task_id }) => {
+            return Err(LocalProviderError::TaskInvalidId { task_id });
+        }
+        Err(runtime::tasks_parser::TasksUpdateError::NotFound { task_id }) => {
+            return Err(LocalProviderError::TaskNotFound { task_id });
+        }
+        Err(runtime::tasks_parser::TasksUpdateError::Parse(p)) => {
+            return Err(LocalProviderError::TasksParseError { message: p.message });
+        }
+    };
+    if result.previous_status == provider::model::TaskStatus::Todo {
+        update_tasks_atomic(base, change_id, &result.new_content)?;
+    }
+    Ok(provider::model::TaskUpdate {
+        task_id: task_id.to_string(),
+        previous_status: result.previous_status,
+        current_status: provider::model::TaskStatus::Done,
+        task_description: result.task_description,
+    })
+}
+
 /// 掃描 `<change_dir>/` 並回傳 [`ChangeStatus`]。
 ///
 /// 純讀；不修改 filesystem。實作流程：

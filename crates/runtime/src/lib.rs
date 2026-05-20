@@ -4,6 +4,9 @@
 
 pub mod archive;
 pub mod artifact;
+pub mod instructions;
 pub mod propose;
 pub mod spec_delta;
 pub mod status;
+pub mod task;
+pub mod tasks_parser;

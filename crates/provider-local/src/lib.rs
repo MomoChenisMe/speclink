@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use provider::Provider;
 use provider::error::ProviderError;
 use provider::model::{
-    ArchiveOptions, ArchivedChange, Artifact, ArtifactKind, Change, ChangeId, ChangeStatus,
-    CreatedBy, NewArtifact, NewChange, ProjectId, State,
+    ArchiveOptions, ArchivedChange, Artifact, ArtifactInstructions, ArtifactKind, Change, ChangeId,
+    ChangeStatus, CreatedBy, NewArtifact, NewChange, ProjectId, State, TaskUpdate,
 };
 use std::path::{Path, PathBuf};
 
@@ -93,6 +93,20 @@ impl LocalProvider {
                 capability,
                 message,
             },
+            LocalProviderError::ArtifactMissing {
+                artifact_id,
+                change_id,
+            } => ProviderError::ArtifactMissing {
+                artifact_id,
+                change_id: ChangeId::from(change_id),
+            },
+            LocalProviderError::TaskInvalidId { task_id } => {
+                ProviderError::TaskInvalidId { task_id }
+            }
+            LocalProviderError::TaskNotFound { task_id } => ProviderError::TaskNotFound { task_id },
+            LocalProviderError::TasksParseError { message } => {
+                ProviderError::TasksParseError { message }
+            }
             other => ProviderError::Internal {
                 message: other.to_string(),
             },
@@ -261,5 +275,80 @@ impl Provider for LocalProvider {
                 })?;
         }
         Ok(result)
+    }
+
+    async fn get_artifact_instructions(
+        &self,
+        _project_id: &ProjectId,
+        change_id: &ChangeId,
+        kind: ArtifactKind,
+        capability: Option<&str>,
+    ) -> Result<ArtifactInstructions, ProviderError> {
+        // change id 與 capability 預檢
+        if !crate::storage::is_valid_change_id(change_id.as_str()) {
+            return Err(ProviderError::InvalidChangeId {
+                change_id: change_id.as_str().to_string(),
+            });
+        }
+        match (kind, capability) {
+            (ArtifactKind::Spec, None) => return Err(ProviderError::MissingCapability),
+            (ArtifactKind::Spec, Some(cap)) if !crate::storage::is_valid_capability_name(cap) => {
+                return Err(ProviderError::InvalidCapability {
+                    capability: cap.to_string(),
+                });
+            }
+            (ArtifactKind::Proposal | ArtifactKind::Design | ArtifactKind::Tasks, Some(_)) => {
+                return Err(ProviderError::Internal {
+                    message: "capability must not be set for non-spec artifact".to_string(),
+                });
+            }
+            _ => {}
+        }
+        // change 必須存在（metadata.json 為 source of truth）
+        let dir = crate::storage::change_dir(&self.base_path, change_id);
+        if !dir.exists() || !dir.join("metadata.json").is_file() {
+            return Err(ProviderError::ChangeNotFound {
+                change_id: change_id.clone(),
+            });
+        }
+        // 委派給 runtime 的 compose helper。
+        let cid_str = change_id.as_str().to_string();
+        let cap_owned = capability.map(|s| s.to_string());
+        runtime::instructions::compose_local_instructions(kind, &cid_str, cap_owned.as_deref())
+            .map_err(|e| ProviderError::Internal {
+                message: format!("compose_local_instructions failed: {e}"),
+            })
+    }
+
+    async fn mark_task_done(
+        &self,
+        _project_id: &ProjectId,
+        change_id: &ChangeId,
+        task_id: &str,
+    ) -> Result<TaskUpdate, ProviderError> {
+        // 提早格式校驗：runtime 也會擋，但這裡能避免 spawn_blocking 浪費。
+        if !runtime::tasks_parser::is_valid_task_id(task_id) {
+            return Err(ProviderError::TaskInvalidId {
+                task_id: task_id.to_string(),
+            });
+        }
+        if !crate::storage::is_valid_change_id(change_id.as_str()) {
+            return Err(ProviderError::InvalidChangeId {
+                change_id: change_id.as_str().to_string(),
+            });
+        }
+
+        let base = self.base_path.clone();
+        let cid = change_id.clone();
+        let tid = task_id.to_string();
+
+        tokio::task::spawn_blocking(move || -> Result<TaskUpdate, LocalProviderError> {
+            crate::storage::mark_task_done_on_disk(&base, &cid, &tid)
+        })
+        .await
+        .map_err(|e| ProviderError::Internal {
+            message: format!("background task failed: {e}"),
+        })?
+        .map_err(Self::map_local_err)
     }
 }

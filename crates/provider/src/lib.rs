@@ -13,8 +13,8 @@ pub mod resolution;
 
 use crate::error::ProviderError;
 use crate::model::{
-    ArchiveOptions, ArchivedChange, Artifact, Change, ChangeId, ChangeStatus, NewArtifact,
-    NewChange, ProjectId,
+    ArchiveOptions, ArchivedChange, Artifact, ArtifactInstructions, ArtifactKind, Change, ChangeId,
+    ChangeStatus, NewArtifact, NewChange, ProjectId, TaskUpdate,
 };
 
 /// SpecLink 對外可替換的 storage 抽象。
@@ -79,4 +79,40 @@ pub trait Provider: Send + Sync {
         change_id: &ChangeId,
         options: ArchiveOptions,
     ) -> Result<ArchivedChange, ProviderError>;
+
+    /// 取得指定 artifact kind 的 instructions（template / rules / dependencies / unlocks）。
+    ///
+    /// 本 method side-effect-free：不寫任何檔案。`capability` 僅在 `kind == Spec` 時使用，
+    /// 其他 kind 應傳 `None`；違反時 provider 可回 [`ProviderError::Internal`]
+    /// 或 [`ProviderError::InvalidCapability`]，CLI 層通常先擋。
+    ///
+    /// 失敗條件：
+    /// - change 不存在 → [`ProviderError::ChangeNotFound`]
+    /// - spec kind 缺 capability → [`ProviderError::MissingCapability`]
+    /// - capability 名稱非法 → [`ProviderError::InvalidCapability`]
+    async fn get_artifact_instructions(
+        &self,
+        project_id: &ProjectId,
+        change_id: &ChangeId,
+        kind: ArtifactKind,
+        capability: Option<&str>,
+    ) -> Result<ArtifactInstructions, ProviderError>;
+
+    /// 將 `tasks.md` 中對應 `task_id` 的 checkbox 由 `[ ]` 翻為 `[x]`。
+    ///
+    /// idempotent：已完成的 task 再次呼叫不視為錯誤，`previous_status` 為
+    /// [`crate::model::TaskStatus::Done`]、`current_status` 仍為 [`crate::model::TaskStatus::Done`]。
+    ///
+    /// 失敗條件：
+    /// - task id 格式不符 → [`ProviderError::TaskInvalidId`]
+    /// - task id 在 tasks.md 中找不到 → [`ProviderError::TaskNotFound`]
+    /// - tasks.md 不存在 → [`ProviderError::ArtifactMissing`]
+    /// - tasks.md 解析失敗 → [`ProviderError::TasksParseError`]
+    /// - filesystem 失敗 → [`ProviderError::Internal`]
+    async fn mark_task_done(
+        &self,
+        project_id: &ProjectId,
+        change_id: &ChangeId,
+        task_id: &str,
+    ) -> Result<TaskUpdate, ProviderError>;
 }

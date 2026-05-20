@@ -210,6 +210,25 @@ mod tests {
         ) -> Result<ArchivedChange, ProviderError> {
             unimplemented!()
         }
+
+        async fn get_artifact_instructions(
+            &self,
+            _project_id: &ProjectId,
+            _change_id: &ChangeId,
+            _kind: provider::model::ArtifactKind,
+            _capability: Option<&str>,
+        ) -> Result<provider::model::ArtifactInstructions, ProviderError> {
+            unimplemented!()
+        }
+
+        async fn mark_task_done(
+            &self,
+            _project_id: &ProjectId,
+            _change_id: &ChangeId,
+            _task_id: &str,
+        ) -> Result<provider::model::TaskUpdate, ProviderError> {
+            unimplemented!()
+        }
     }
 
     fn input() -> CreateProposalInput {

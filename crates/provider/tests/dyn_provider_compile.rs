@@ -9,8 +9,9 @@ use async_trait::async_trait;
 use provider::Provider;
 use provider::error::ProviderError;
 use provider::model::{
-    ArchiveOptions, ArchivedChange, Artifact, Change, ChangeId, ChangeStatus, NewArtifact,
-    NewChange, ProjectId, SpecDeltaSummary, State,
+    ArchiveOptions, ArchivedChange, Artifact, ArtifactInstructions, ArtifactKind, Change, ChangeId,
+    ChangeStatus, InstructionRule, NewArtifact, NewChange, ProjectId, RuleLevel, SpecDeltaSummary,
+    State, TaskStatus, TaskUpdate,
 };
 
 /// In-memory mock provider，內含 `Mutex<HashMap>`：以 `Send + Sync` 包裝可變狀態。
@@ -73,6 +74,51 @@ impl Provider for MockProvider {
                 capabilities_synced: Vec::new(),
             },
             dry_run: options.dry_run,
+        })
+    }
+
+    async fn get_artifact_instructions(
+        &self,
+        _project_id: &ProjectId,
+        _change_id: &ChangeId,
+        kind: ArtifactKind,
+        capability: Option<&str>,
+    ) -> Result<ArtifactInstructions, ProviderError> {
+        let artifact_id = match (kind, capability) {
+            (ArtifactKind::Spec, Some(cap)) => format!("spec:{cap}"),
+            (ArtifactKind::Proposal, _) => "proposal".to_string(),
+            (ArtifactKind::Design, _) => "design".to_string(),
+            (ArtifactKind::Tasks, _) => "tasks".to_string(),
+            (ArtifactKind::Spec, None) => return Err(ProviderError::MissingCapability),
+        };
+        Ok(ArtifactInstructions {
+            artifact_id,
+            kind,
+            output_path: ".speclink/changes/demo/<file>".to_string(),
+            dependencies: Vec::new(),
+            unlocks: Vec::new(),
+            instruction: "stub".to_string(),
+            template: "## Heading\n".to_string(),
+            rules: vec![InstructionRule {
+                id: "stub.rule".to_string(),
+                level: RuleLevel::Error,
+                description: "stub".to_string(),
+            }],
+            locale: "Traditional Chinese (繁體中文)".to_string(),
+        })
+    }
+
+    async fn mark_task_done(
+        &self,
+        _project_id: &ProjectId,
+        _change_id: &ChangeId,
+        task_id: &str,
+    ) -> Result<TaskUpdate, ProviderError> {
+        Ok(TaskUpdate {
+            task_id: task_id.to_string(),
+            previous_status: TaskStatus::Todo,
+            current_status: TaskStatus::Done,
+            task_description: "stub".to_string(),
         })
     }
 }

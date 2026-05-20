@@ -291,6 +291,92 @@ pub struct CapabilitySyncResult {
     pub created_main_spec: bool,
 }
 
+/// Artifact instruction 中單一 rule 的層級。
+///
+/// 用於 `## Rules` 區塊中標註 rule 的嚴重程度。CLI 與下游 AI 工具會依此決定是否
+/// 阻擋 artifact 提交（`Error`）或僅作為 informational hint（`Warning` / `Info`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RuleLevel {
+    /// 違反此 rule 視為錯誤。
+    Error,
+    /// 違反此 rule 視為警告。
+    Warning,
+    /// 純粹 informational 提示。
+    Info,
+}
+
+/// 單一 artifact rule。
+///
+/// `id` 為點分隔字串（與 error code 同命名規則），便於 stable 引用。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstructionRule {
+    /// Rule 識別碼，如 `proposal.must_include_why`。
+    pub id: String,
+    /// Rule 層級。
+    pub level: RuleLevel,
+    /// 人類可讀描述。
+    pub description: String,
+}
+
+/// `get_artifact_instructions` 的回傳值。
+///
+/// 對應 spec `` `instructions` JSON output schema ``：CLI `--json` envelope 內 `data` 欄位的型別。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactInstructions {
+    /// Artifact 識別碼：`"proposal"` / `"design"` / `"tasks"` 或 `"spec:<capability>"`。
+    pub artifact_id: String,
+    /// Artifact 種類。
+    pub kind: ArtifactKind,
+    /// 目標檔案相對於 base 的 POSIX 路徑（forward slash）。
+    pub output_path: String,
+    /// 須先完成的相依 artifact id 列表。
+    pub dependencies: Vec<String>,
+    /// 完成此 artifact 後可解鎖的後續 artifact id 列表。
+    pub unlocks: Vec<String>,
+    /// 主敘述段（如何撰寫此 artifact）。
+    pub instruction: String,
+    /// markdown skeleton（artifact 預設 layout）。
+    pub template: String,
+    /// 硬性規則列表；每個 kind SHALL 至少 1 條。
+    pub rules: Vec<InstructionRule>,
+    /// instruction 文字的 locale 識別字串，例如 `"Traditional Chinese (繁體中文)"`。
+    pub locale: String,
+}
+
+/// Task 在 `tasks.md` 中的 checkbox 狀態。
+///
+/// 序列化為小寫 `"todo"` / `"done"` 字串，對應 `--json` envelope 的 `previousStatus` /
+/// `currentStatus` 欄位（spec `` `task done` JSON output schema ``）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskStatus {
+    /// `- [ ]` 尚未完成。
+    Todo,
+    /// `- [x]` 已完成。
+    Done,
+}
+
+/// `mark_task_done` 的回傳值。
+///
+/// 對應 spec `` `task done` JSON output schema `` 的 `data` 欄位：
+/// `previous_status` 為改動前狀態（idempotent 時為 `Done`）、`current_status` 恆為 `Done`、
+/// `task_description` 保留 `[P]` parallel marker 字面值（spec `task done` 的 description preservation scenario）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskUpdate {
+    /// Task id（呼叫者傳入的字串，回 echo）。
+    pub task_id: String,
+    /// 改動前狀態。
+    pub previous_status: TaskStatus,
+    /// 改動後狀態；成功時恆為 [`TaskStatus::Done`]。
+    pub current_status: TaskStatus,
+    /// Task 描述（不含 `- [ ] N.M ` / `- [x] N.M ` 前綴；保留 `[P]` marker）。
+    pub task_description: String,
+}
+
 /// 整個 change 的狀態快照。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -542,6 +628,104 @@ mod tests {
         assert!(v.get("spec_sync").is_none());
         assert!(cs.get("main_spec_path").is_none());
         assert_round_trip(ac);
+    }
+
+    #[test]
+    fn rule_level_serializes_lowercase() {
+        use crate::model::RuleLevel;
+        assert_eq!(
+            serde_json::to_string(&RuleLevel::Error).unwrap(),
+            "\"error\""
+        );
+        assert_eq!(
+            serde_json::to_string(&RuleLevel::Warning).unwrap(),
+            "\"warning\""
+        );
+        assert_eq!(serde_json::to_string(&RuleLevel::Info).unwrap(), "\"info\"");
+    }
+
+    #[test]
+    fn instruction_rule_round_trip() {
+        use crate::model::{InstructionRule, RuleLevel};
+        let r = InstructionRule {
+            id: "proposal.must_include_why".to_string(),
+            level: RuleLevel::Error,
+            description: "Proposal must include Why section".to_string(),
+        };
+        assert_round_trip(r);
+    }
+
+    #[test]
+    fn artifact_instructions_serializes_camelcase() {
+        use crate::model::{ArtifactInstructions, ArtifactKind, InstructionRule, RuleLevel};
+        let ai = ArtifactInstructions {
+            artifact_id: "spec:user-auth".to_string(),
+            kind: ArtifactKind::Spec,
+            output_path: ".speclink/changes/demo/specs/user-auth/spec.md".to_string(),
+            dependencies: vec!["proposal".to_string()],
+            unlocks: vec!["tasks".to_string()],
+            instruction: "Write SHALL/MUST.".to_string(),
+            template: "## ADDED Requirements\n".to_string(),
+            rules: vec![InstructionRule {
+                id: "spec.must_use_shall_must".to_string(),
+                level: RuleLevel::Error,
+                description: "Use SHALL/MUST".to_string(),
+            }],
+            locale: "Traditional Chinese (繁體中文)".to_string(),
+        };
+        let json = serde_json::to_string(&ai).expect("serialize");
+        let v: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        assert_eq!(v["artifactId"], "spec:user-auth");
+        assert_eq!(v["kind"], "spec");
+        assert_eq!(
+            v["outputPath"],
+            ".speclink/changes/demo/specs/user-auth/spec.md"
+        );
+        assert!(v["dependencies"].is_array());
+        assert!(v["unlocks"].is_array());
+        assert_eq!(v["instruction"], "Write SHALL/MUST.");
+        assert!(v["template"].is_string());
+        let rules = v["rules"].as_array().unwrap();
+        assert_eq!(rules[0]["id"], "spec.must_use_shall_must");
+        assert_eq!(rules[0]["level"], "error");
+        assert_eq!(rules[0]["description"], "Use SHALL/MUST");
+        assert_eq!(v["locale"], "Traditional Chinese (繁體中文)");
+        // snake_case 不應出現
+        assert!(v.get("artifact_id").is_none());
+        assert!(v.get("output_path").is_none());
+        assert_round_trip(ai);
+    }
+
+    #[test]
+    fn task_status_serializes_lowercase() {
+        use crate::model::TaskStatus;
+        assert_eq!(
+            serde_json::to_string(&TaskStatus::Todo).unwrap(),
+            "\"todo\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TaskStatus::Done).unwrap(),
+            "\"done\""
+        );
+    }
+
+    #[test]
+    fn task_update_serializes_camelcase() {
+        use crate::model::{TaskStatus, TaskUpdate};
+        let tu = TaskUpdate {
+            task_id: "5.2".to_string(),
+            previous_status: TaskStatus::Todo,
+            current_status: TaskStatus::Done,
+            task_description: "[P] Refactor parser".to_string(),
+        };
+        let json = serde_json::to_string(&tu).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["taskId"], "5.2");
+        assert_eq!(v["previousStatus"], "todo");
+        assert_eq!(v["currentStatus"], "done");
+        assert_eq!(v["taskDescription"], "[P] Refactor parser");
+        assert!(v.get("task_id").is_none());
+        assert_round_trip(tu);
     }
 
     #[test]

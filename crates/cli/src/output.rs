@@ -1,7 +1,8 @@
 //! `--json` envelope、`propose create` / `artifact write` / `status` data schema。
 
 use provider::model::{
-    ArchivedChange, ArtifactKind, ArtifactState, ArtifactStatus, ChangeStatus, State,
+    ArchivedChange, ArtifactInstructions, ArtifactKind, ArtifactState, ArtifactStatus,
+    ChangeStatus, RuleLevel, State, TaskStatus, TaskUpdate,
 };
 use serde::Serialize;
 use uuid::Uuid;
@@ -219,6 +220,107 @@ pub fn archived_change_to_archive_data(ac: ArchivedChange) -> ArchiveData {
                 })
                 .collect(),
         },
+    }
+}
+
+/// `instructions` 成功時的 `data` payload。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstructionsData {
+    /// Artifact 識別碼。
+    pub artifact_id: String,
+    /// Artifact 種類字串。
+    pub kind: String,
+    /// 目標檔案 POSIX 相對路徑。
+    pub output_path: String,
+    /// 須先完成的相依 artifact id。
+    pub dependencies: Vec<String>,
+    /// 完成此 artifact 後可解鎖的後續 artifact id。
+    pub unlocks: Vec<String>,
+    /// 主敘述段。
+    pub instruction: String,
+    /// markdown skeleton。
+    pub template: String,
+    /// 規則列表。
+    pub rules: Vec<InstructionRuleJson>,
+    /// instruction 文字的 locale。
+    pub locale: String,
+}
+
+/// `instructions` data 中單一 rule 的 JSON 表示。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstructionRuleJson {
+    /// Rule 識別碼。
+    pub id: String,
+    /// `"error"` / `"warning"` / `"info"`。
+    pub level: String,
+    /// 人類可讀描述。
+    pub description: String,
+}
+
+/// 把 [`ArtifactInstructions`] 轉為 [`InstructionsData`]。
+pub fn artifact_instructions_to_data(ai: ArtifactInstructions) -> InstructionsData {
+    InstructionsData {
+        artifact_id: ai.artifact_id,
+        kind: artifact_kind_str(ai.kind).to_string(),
+        output_path: ai.output_path,
+        dependencies: ai.dependencies,
+        unlocks: ai.unlocks,
+        instruction: ai.instruction,
+        template: ai.template,
+        rules: ai
+            .rules
+            .into_iter()
+            .map(|r| InstructionRuleJson {
+                id: r.id,
+                level: rule_level_str(r.level).to_string(),
+                description: r.description,
+            })
+            .collect(),
+        locale: ai.locale,
+    }
+}
+
+/// `task done` 成功時的 `data` payload。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskDoneData {
+    /// 目標 change id。
+    pub change_id: String,
+    /// 已標記為完成的 task id（呼叫者輸入，echo）。
+    pub task_id: String,
+    /// 改動前狀態（`"todo"` / `"done"`）。
+    pub previous_status: String,
+    /// 改動後狀態（成功時恆為 `"done"`）。
+    pub current_status: String,
+    /// Task 描述，保留 `[P]` marker，去掉 `- [ ] N.M ` / `- [x] N.M ` 前綴。
+    pub task_description: String,
+}
+
+/// 把 [`TaskUpdate`] 加上 change id 後轉為 [`TaskDoneData`]。
+pub fn task_update_to_data(change_id: &str, update: TaskUpdate) -> TaskDoneData {
+    TaskDoneData {
+        change_id: change_id.to_string(),
+        task_id: update.task_id,
+        previous_status: task_status_str(update.previous_status).to_string(),
+        current_status: task_status_str(update.current_status).to_string(),
+        task_description: update.task_description,
+    }
+}
+
+fn task_status_str(s: TaskStatus) -> &'static str {
+    match s {
+        TaskStatus::Todo => "todo",
+        TaskStatus::Done => "done",
+    }
+}
+
+fn rule_level_str(l: RuleLevel) -> &'static str {
+    match l {
+        RuleLevel::Error => "error",
+        RuleLevel::Warning => "warning",
+        RuleLevel::Info => "info",
     }
 }
 
@@ -606,6 +708,106 @@ mod tests {
         assert_eq!(data.state, "archived");
         assert!(data.dry_run);
         assert_eq!(data.spec_sync.capabilities_synced.len(), 1);
+    }
+
+    #[test]
+    fn instructions_data_serializes_camelcase() {
+        use crate::output::{InstructionRuleJson, InstructionsData};
+        let data = InstructionsData {
+            artifact_id: "spec:user-auth".to_string(),
+            kind: "spec".to_string(),
+            output_path: ".speclink/changes/demo/specs/user-auth/spec.md".to_string(),
+            dependencies: vec!["proposal".to_string()],
+            unlocks: vec!["tasks".to_string()],
+            instruction: "Use SHALL/MUST".to_string(),
+            template: "## ADDED Requirements\n".to_string(),
+            rules: vec![InstructionRuleJson {
+                id: "spec.must_use_shall_must".to_string(),
+                level: "error".to_string(),
+                description: "Use SHALL/MUST".to_string(),
+            }],
+            locale: "Traditional Chinese (繁體中文)".to_string(),
+        };
+        let v = parse(&data);
+        assert_eq!(v["artifactId"], "spec:user-auth");
+        assert_eq!(v["kind"], "spec");
+        assert_eq!(
+            v["outputPath"],
+            ".speclink/changes/demo/specs/user-auth/spec.md"
+        );
+        assert!(v["dependencies"].is_array());
+        assert!(v["unlocks"].is_array());
+        assert_eq!(v["instruction"], "Use SHALL/MUST");
+        assert!(v["template"].is_string());
+        let rules = v["rules"].as_array().unwrap();
+        assert_eq!(rules[0]["id"], "spec.must_use_shall_must");
+        assert_eq!(rules[0]["level"], "error");
+        assert_eq!(rules[0]["description"], "Use SHALL/MUST");
+        assert_eq!(v["locale"], "Traditional Chinese (繁體中文)");
+        assert!(v.get("artifact_id").is_none());
+        assert!(v.get("output_path").is_none());
+    }
+
+    #[test]
+    fn task_done_data_serializes_camelcase() {
+        use crate::output::TaskDoneData;
+        let data = TaskDoneData {
+            change_id: "demo".to_string(),
+            task_id: "1.1".to_string(),
+            previous_status: "todo".to_string(),
+            current_status: "done".to_string(),
+            task_description: "[P] Refactor parser".to_string(),
+        };
+        let v = parse(&data);
+        assert_eq!(v["changeId"], "demo");
+        assert_eq!(v["taskId"], "1.1");
+        assert_eq!(v["previousStatus"], "todo");
+        assert_eq!(v["currentStatus"], "done");
+        assert_eq!(v["taskDescription"], "[P] Refactor parser");
+        assert!(v.get("change_id").is_none());
+    }
+
+    #[test]
+    fn artifact_instructions_to_data_maps_fields() {
+        use crate::output::artifact_instructions_to_data;
+        use provider::model::{ArtifactInstructions, ArtifactKind, InstructionRule, RuleLevel};
+        let ai = ArtifactInstructions {
+            artifact_id: "design".to_string(),
+            kind: ArtifactKind::Design,
+            output_path: ".speclink/changes/demo/design.md".to_string(),
+            dependencies: vec!["proposal".to_string()],
+            unlocks: vec!["tasks".to_string()],
+            instruction: "Write design".to_string(),
+            template: "## Context\n".to_string(),
+            rules: vec![InstructionRule {
+                id: "design.must_include_context".to_string(),
+                level: RuleLevel::Error,
+                description: "Must include Context".to_string(),
+            }],
+            locale: "Traditional Chinese (繁體中文)".to_string(),
+        };
+        let data = artifact_instructions_to_data(ai);
+        assert_eq!(data.artifact_id, "design");
+        assert_eq!(data.kind, "design");
+        assert_eq!(data.rules[0].level, "error");
+    }
+
+    #[test]
+    fn task_update_to_data_maps_fields() {
+        use crate::output::task_update_to_data;
+        use provider::model::{TaskStatus, TaskUpdate};
+        let tu = TaskUpdate {
+            task_id: "5.2".to_string(),
+            previous_status: TaskStatus::Todo,
+            current_status: TaskStatus::Done,
+            task_description: "First".to_string(),
+        };
+        let data = task_update_to_data("demo", tu);
+        assert_eq!(data.change_id, "demo");
+        assert_eq!(data.task_id, "5.2");
+        assert_eq!(data.previous_status, "todo");
+        assert_eq!(data.current_status, "done");
+        assert_eq!(data.task_description, "First");
     }
 
     #[test]

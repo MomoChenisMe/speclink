@@ -90,6 +90,36 @@ pub enum LocalProviderError {
         message: String,
     },
 
+    /// Target artifact 檔案不存在（如對沒寫 tasks.md 的 change 呼叫 `task done`）。
+    #[error("artifact '{artifact_id}' is missing for change '{change_id}'")]
+    ArtifactMissing {
+        /// 缺少的 artifact id（如 `"tasks"`、`"spec:user-auth"`）。
+        artifact_id: String,
+        /// 目標 change id。
+        change_id: String,
+    },
+
+    /// Task id 不符合 `^\d+\.\d+$` 格式。
+    #[error("invalid task id: '{task_id}'")]
+    TaskInvalidId {
+        /// 不合法的 task id 原始字串。
+        task_id: String,
+    },
+
+    /// Task id 在 `tasks.md` 中找不到對應 checkbox。
+    #[error("task '{task_id}' not found")]
+    TaskNotFound {
+        /// 缺少的 task id。
+        task_id: String,
+    },
+
+    /// `tasks.md` 解析失敗（如缺 section heading、出現三層 task id 等）。
+    #[error("tasks.md parse error: {message}")]
+    TasksParseError {
+        /// 解析失敗描述。
+        message: String,
+    },
+
     /// archive 流程步驟 5-7 失敗且 rollback 本身亦失敗的最後手段；
     /// 訊息列出殘留檔案路徑供人工修復。
     #[error(
@@ -125,6 +155,10 @@ impl LocalProviderError {
             LocalProviderError::ChangeNotArchivable { .. } => "archive.change_not_archivable",
             LocalProviderError::SpecDeltaConflict { .. } => "spec.delta_conflict",
             LocalProviderError::SpecDeltaParseError { .. } => "spec.delta_parse_error",
+            LocalProviderError::ArtifactMissing { .. } => "artifact.missing",
+            LocalProviderError::TaskInvalidId { .. } => "task.invalid_id",
+            LocalProviderError::TaskNotFound { .. } => "task.not_found",
+            LocalProviderError::TasksParseError { .. } => "tasks.parse_error",
             LocalProviderError::Io(_)
             | LocalProviderError::Json(_)
             | LocalProviderError::StateDb(_)
@@ -251,6 +285,39 @@ mod tests {
             message: "unknown heading".to_string(),
         };
         assert_eq!(err.error_code(), "spec.delta_parse_error");
+    }
+
+    #[test]
+    fn artifact_missing_code() {
+        let err = LocalProviderError::ArtifactMissing {
+            artifact_id: "tasks".to_string(),
+            change_id: "demo".to_string(),
+        };
+        assert_eq!(err.error_code(), "artifact.missing");
+    }
+
+    #[test]
+    fn task_invalid_id_code() {
+        let err = LocalProviderError::TaskInvalidId {
+            task_id: "1.1.2".to_string(),
+        };
+        assert_eq!(err.error_code(), "task.invalid_id");
+    }
+
+    #[test]
+    fn task_not_found_code() {
+        let err = LocalProviderError::TaskNotFound {
+            task_id: "1.99".to_string(),
+        };
+        assert_eq!(err.error_code(), "task.not_found");
+    }
+
+    #[test]
+    fn tasks_parse_error_code() {
+        let err = LocalProviderError::TasksParseError {
+            message: "missing heading".to_string(),
+        };
+        assert_eq!(err.error_code(), "tasks.parse_error");
     }
 
     #[test]

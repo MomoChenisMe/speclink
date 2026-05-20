@@ -1,0 +1,41 @@
+---
+source: crates/cli/tests/instructions_snapshots.rs
+expression: "pretty(&String::from_utf8(out.stdout).unwrap())"
+---
+{
+  "data": {
+    "artifactId": "design",
+    "dependencies": [
+      "proposal"
+    ],
+    "instruction": "撰寫 `design.md`：說明「HOW」— 怎麼把 proposal 中的 What 落地。讀者是負責實作的 AI agent 或工程師。\n\n思考順序：\n1. `## Context`：繼承自前一個 change 或專案的設計約束（不要重複 proposal 已寫過的）\n2. `## Goals / Non-Goals`：清晰列出本 change 必須達成 vs 明確排除的事項\n3. `## Decisions`：每個重要設計決策一節，包含「理由」與「替代方案」\n4. `## Implementation Contract`：釘住 observable behavior、interface 命名、failure modes、acceptance criteria、scope boundaries\n5. `## Risks / Trade-offs`、`## Migration Plan`、`## Open Questions`\n\n邊界：\n- 不寫具體 task 切割（屬於 `tasks.md`）\n- 不寫單一 requirement 的 normative 字眼（屬於 `specs/<capability>/spec.md`）\n- Implementation Contract 是 task 完成後可驗證的契約，不是實作步驟",
+    "kind": "design",
+    "locale": "Traditional Chinese (繁體中文)",
+    "outputPath": ".speclink/changes/demo/design.md",
+    "rules": [
+      {
+        "description": "Design SHALL 包含 `## Context` heading 說明設計約束來源。",
+        "id": "design.must_include_context",
+        "level": "error"
+      },
+      {
+        "description": "Design SHALL 包含 `## Implementation Contract` heading 釘住 observable behavior 與 acceptance criteria。",
+        "id": "design.must_include_implementation_contract",
+        "level": "error"
+      },
+      {
+        "description": "Design SHOULD 對每個重要決策列出替代方案與拒絕理由。",
+        "id": "design.should_list_alternatives",
+        "level": "warning"
+      }
+    ],
+    "template": "## Context\n\n<!-- 設計約束、繼承自前一 change 的決策 -->\n\n## Goals / Non-Goals\n\n**Goals:**\n\n- <goal 1>\n- <goal 2>\n\n**Non-Goals:**\n\n- <non-goal 1>\n\n## Decisions\n\n### <Decision title>\n\n<!-- 決策描述 -->\n\n**理由**：<理由>\n\n**替代方案**：\n\n- **<alt 1>**：拒絕原因\n- **<alt 2>**：拒絕原因\n\n## Implementation Contract\n\n**Observable behavior**: <可觀察行為>\n\n**Interface (命名)**: <型別/函式/檔案命名>\n\n**Failure modes**: <錯誤對應 exit code / error code 表格>\n\n**Acceptance criteria**: <可驗證條件>\n\n**Scope boundaries**: <in scope / out of scope>\n\n## Risks / Trade-offs\n\n- <風險與緩解>\n\n## Migration Plan\n\n<!-- 對既有資料 / behaviour 的遷移策略；N/A 若純新增 -->\n\n## Open Questions\n\n<!-- 尚未決定的開放問題 -->",
+    "unlocks": [
+      "tasks"
+    ]
+  },
+  "error": null,
+  "ok": true,
+  "requestId": "req_00000000000000000000000000000000",
+  "warnings": []
+}

@@ -118,6 +118,25 @@ mod tests {
                 dry_run: options.dry_run,
             })
         }
+
+        async fn get_artifact_instructions(
+            &self,
+            _project_id: &ProjectId,
+            _change_id: &ChangeId,
+            _kind: provider::model::ArtifactKind,
+            _capability: Option<&str>,
+        ) -> Result<provider::model::ArtifactInstructions, ProviderError> {
+            unimplemented!()
+        }
+
+        async fn mark_task_done(
+            &self,
+            _project_id: &ProjectId,
+            _change_id: &ChangeId,
+            _task_id: &str,
+        ) -> Result<provider::model::TaskUpdate, ProviderError> {
+            unimplemented!()
+        }
     }
 
     fn input(dry_run: bool) -> ArchiveInput {

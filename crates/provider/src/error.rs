@@ -95,6 +95,36 @@ pub enum ProviderError {
         message: String,
     },
 
+    /// 指定 change 存在，但目標 artifact 檔案不存在（例如對沒寫 tasks.md 的 change 呼叫 `task done`）。
+    #[error("artifact '{artifact_id}' is missing for change '{change_id}'")]
+    ArtifactMissing {
+        /// 缺少的 artifact id（`"proposal"` / `"design"` / `"tasks"` / `"spec:<cap>"`）。
+        artifact_id: String,
+        /// 目標 change id。
+        change_id: ChangeId,
+    },
+
+    /// Task id 不符合 `^\d+\.\d+$` 格式。
+    #[error("invalid task id: '{task_id}'")]
+    TaskInvalidId {
+        /// 不合法的 task id 原始字串。
+        task_id: String,
+    },
+
+    /// 目標 task id 在 `tasks.md` 中找不到對應 checkbox。
+    #[error("task '{task_id}' not found")]
+    TaskNotFound {
+        /// 缺少的 task id。
+        task_id: String,
+    },
+
+    /// `tasks.md` 解析失敗（如缺 section heading、出現三層 task id 等）。
+    #[error("tasks.md parse error: {message}")]
+    TasksParseError {
+        /// 解析失敗描述。
+        message: String,
+    },
+
     /// 兜底錯誤；訊息僅供人類閱讀，不會在 JSON envelope `error.details` 中洩漏。
     #[error("internal provider error: {message}")]
     Internal {
@@ -118,6 +148,10 @@ impl ProviderError {
             ProviderError::ChangeNotArchivable { .. } => "archive.change_not_archivable",
             ProviderError::SpecDeltaConflict { .. } => "spec.delta_conflict",
             ProviderError::SpecDeltaParseError { .. } => "spec.delta_parse_error",
+            ProviderError::ArtifactMissing { .. } => "artifact.missing",
+            ProviderError::TaskInvalidId { .. } => "task.invalid_id",
+            ProviderError::TaskNotFound { .. } => "task.not_found",
+            ProviderError::TasksParseError { .. } => "tasks.parse_error",
             ProviderError::Internal { .. } => "internal.error",
         }
     }
@@ -244,5 +278,38 @@ mod tests {
             message: "unknown heading".to_string(),
         };
         assert_eq!(err.error_code(), "spec.delta_parse_error");
+    }
+
+    #[test]
+    fn artifact_missing_code() {
+        let err = ProviderError::ArtifactMissing {
+            artifact_id: "tasks".to_string(),
+            change_id: ChangeId::from("demo"),
+        };
+        assert_eq!(err.error_code(), "artifact.missing");
+    }
+
+    #[test]
+    fn task_invalid_id_code() {
+        let err = ProviderError::TaskInvalidId {
+            task_id: "1.1.2".to_string(),
+        };
+        assert_eq!(err.error_code(), "task.invalid_id");
+    }
+
+    #[test]
+    fn task_not_found_code() {
+        let err = ProviderError::TaskNotFound {
+            task_id: "1.99".to_string(),
+        };
+        assert_eq!(err.error_code(), "task.not_found");
+    }
+
+    #[test]
+    fn tasks_parse_error_code() {
+        let err = ProviderError::TasksParseError {
+            message: "section number mismatch at line 4".to_string(),
+        };
+        assert_eq!(err.error_code(), "tasks.parse_error");
     }
 }

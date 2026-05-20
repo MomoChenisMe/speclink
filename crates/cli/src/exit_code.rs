@@ -84,6 +84,10 @@ fn classify_provider(p: &ProviderError) -> (ExitCode, ErrorCode) {
         ProviderError::SpecDeltaParseError { .. } => {
             (ExitCode(2), ErrorCode("spec.delta_parse_error"))
         }
+        ProviderError::ArtifactMissing { .. } => (ExitCode(1), ErrorCode("artifact.missing")),
+        ProviderError::TaskInvalidId { .. } => (ExitCode(2), ErrorCode("task.invalid_id")),
+        ProviderError::TaskNotFound { .. } => (ExitCode(2), ErrorCode("task.not_found")),
+        ProviderError::TasksParseError { .. } => (ExitCode(1), ErrorCode("tasks.parse_error")),
         ProviderError::Internal { .. } => (ExitCode(1), ErrorCode("internal.error")),
     }
 }
@@ -120,6 +124,10 @@ fn classify_local(l: &LocalProviderError) -> (ExitCode, ErrorCode) {
         LocalProviderError::SpecDeltaParseError { .. } => {
             (ExitCode(2), ErrorCode("spec.delta_parse_error"))
         }
+        LocalProviderError::ArtifactMissing { .. } => (ExitCode(1), ErrorCode("artifact.missing")),
+        LocalProviderError::TaskInvalidId { .. } => (ExitCode(2), ErrorCode("task.invalid_id")),
+        LocalProviderError::TaskNotFound { .. } => (ExitCode(2), ErrorCode("task.not_found")),
+        LocalProviderError::TasksParseError { .. } => (ExitCode(1), ErrorCode("tasks.parse_error")),
         LocalProviderError::Io(_)
         | LocalProviderError::Json(_)
         | LocalProviderError::StateDb(_)
@@ -304,13 +312,99 @@ mod tests {
             "artifact.already_exists",
             "artifact.missing_capability",
             "artifact.invalid_capability",
+            "artifact.missing",
             "archive.change_not_archivable",
             "spec.delta_conflict",
             "spec.delta_parse_error",
+            "task.invalid_id",
+            "task.not_found",
+            "tasks.parse_error",
         ];
         for c in codes {
             assert!(matches_naming(c), "code does not match naming regex: {c}");
         }
+    }
+
+    #[test]
+    fn provider_artifact_missing_maps_to_1() {
+        let err = anyhow::Error::from(ProviderError::ArtifactMissing {
+            artifact_id: "tasks".to_string(),
+            change_id: ChangeId::from("demo"),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(1));
+        assert_eq!(ec.as_str(), "artifact.missing");
+    }
+
+    #[test]
+    fn provider_task_invalid_id_maps_to_2() {
+        let err = anyhow::Error::from(ProviderError::TaskInvalidId {
+            task_id: "1.1.2".to_string(),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(2));
+        assert_eq!(ec.as_str(), "task.invalid_id");
+    }
+
+    #[test]
+    fn provider_task_not_found_maps_to_2() {
+        let err = anyhow::Error::from(ProviderError::TaskNotFound {
+            task_id: "1.99".to_string(),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(2));
+        assert_eq!(ec.as_str(), "task.not_found");
+    }
+
+    #[test]
+    fn provider_tasks_parse_error_maps_to_1() {
+        let err = anyhow::Error::from(ProviderError::TasksParseError {
+            message: "bad heading".to_string(),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(1));
+        assert_eq!(ec.as_str(), "tasks.parse_error");
+    }
+
+    #[test]
+    fn local_artifact_missing_maps_to_1() {
+        let err = anyhow::Error::from(LocalProviderError::ArtifactMissing {
+            artifact_id: "tasks".to_string(),
+            change_id: "demo".to_string(),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(1));
+        assert_eq!(ec.as_str(), "artifact.missing");
+    }
+
+    #[test]
+    fn local_task_invalid_id_maps_to_2() {
+        let err = anyhow::Error::from(LocalProviderError::TaskInvalidId {
+            task_id: "01.1".to_string(),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(2));
+        assert_eq!(ec.as_str(), "task.invalid_id");
+    }
+
+    #[test]
+    fn local_task_not_found_maps_to_2() {
+        let err = anyhow::Error::from(LocalProviderError::TaskNotFound {
+            task_id: "9.99".to_string(),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(2));
+        assert_eq!(ec.as_str(), "task.not_found");
+    }
+
+    #[test]
+    fn local_tasks_parse_error_maps_to_1() {
+        let err = anyhow::Error::from(LocalProviderError::TasksParseError {
+            message: "bad".to_string(),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(1));
+        assert_eq!(ec.as_str(), "tasks.parse_error");
     }
 
     fn matches_naming(c: &str) -> bool {

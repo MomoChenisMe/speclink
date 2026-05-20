@@ -1,0 +1,41 @@
+---
+source: crates/cli/tests/instructions_snapshots.rs
+expression: "pretty(&String::from_utf8(out.stdout).unwrap())"
+---
+{
+  "data": {
+    "artifactId": "spec:user-auth",
+    "dependencies": [
+      "proposal"
+    ],
+    "instruction": "撰寫 `specs/<capability>/spec.md`（delta 形式）：以 SHALL / MUST 等 normative 字眼釘住「change 套用後該 capability 的契約變動」。這是 archive 時會 merge 入主 spec 的 delta。\n\n思考順序：\n1. 決定 delta heading 類型：`## ADDED Requirements` / `## MODIFIED Requirements` / `## REMOVED Requirements` / `## RENAMED Requirements`\n2. 每個 requirement 以 `### Requirement: <Requirement name>` 標題\n3. requirement body 使用 SHALL / MUST / SHOULD / MAY；避免 should / may（小寫含糊）\n4. 為 requirement 加 `#### Scenario:` 區塊描述具體情境（GIVEN/WHEN/THEN）\n5. Spec 一律使用英文撰寫（與 locale 無關），因為 normative 詞彙專有\n\n邊界：\n- 不寫實作步驟（屬於 `design.md` / `tasks.md`）\n- 不引入未在 proposal `Capabilities` 中列出的 capability\n- `MODIFIED` / `REMOVED` / `RENAMED` 中提及的 requirement 必須已存在於主 spec",
+    "kind": "spec",
+    "locale": "Traditional Chinese (繁體中文)",
+    "outputPath": ".speclink/changes/demo/specs/user-auth/spec.md",
+    "rules": [
+      {
+        "description": "Requirement body SHALL 使用 SHALL / MUST 而非小寫的 should / may，以保持 normative 強度。",
+        "id": "spec.must_use_shall_must",
+        "level": "error"
+      },
+      {
+        "description": "Delta heading SHALL 限於 `## ADDED Requirements` / `## MODIFIED Requirements` / `## REMOVED Requirements` / `## RENAMED Requirements` 四種。",
+        "id": "spec.delta_heading_must_be_known",
+        "level": "error"
+      },
+      {
+        "description": "每個 requirement SHOULD 至少包含一個 `#### Scenario:` 區塊以利驗證。",
+        "id": "spec.should_include_scenario",
+        "level": "warning"
+      }
+    ],
+    "template": "## ADDED Requirements\n\n### Requirement: <Requirement name>\n\nThe <subject> SHALL <observable behavior>.\n\n#### Scenario: <Scenario name>\n\n- **GIVEN** <precondition>\n- **WHEN** <action>\n- **THEN** <observable outcome>\n\n## MODIFIED Requirements\n\n### Requirement: <Existing requirement name>\n\n<新的 requirement body — 必須以 normative 字眼描述變動後行為>\n\n#### Scenario: <Scenario name>\n\n- **GIVEN** <precondition>\n- **WHEN** <action>\n- **THEN** <observable outcome>\n\n## REMOVED Requirements\n\n### Requirement: <Existing requirement name>\n\n<被移除的 requirement 名稱列出即可；body 可空白或寫移除理由>\n\n## RENAMED Requirements\n\n- FROM: `<Old requirement name>`\n- TO: `<New requirement name>`",
+    "unlocks": [
+      "tasks"
+    ]
+  },
+  "error": null,
+  "ok": true,
+  "requestId": "req_00000000000000000000000000000000",
+  "warnings": []
+}

@@ -30,6 +30,8 @@ async fn main() -> ExitCode {
         Command::Artifact(ArtifactCommand::Write(cmd)) => commands::artifact::run(cmd).await,
         Command::Status(args) => commands::status::run(args).await,
         Command::Archive(args) => commands::archive::run(args).await,
+        Command::Instructions(cmd) => commands::instructions::run(cmd).await,
+        Command::Task(cmd) => commands::task::run(cmd).await,
     };
     ExitCode::from(exit.as_u8())
 }

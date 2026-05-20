@@ -31,6 +31,71 @@ pub enum Command {
     Status(StatusArgs),
     /// archive 已完成的 change（搬移目錄、套用 spec delta、清理 SQLite）。
     Archive(ArchiveArgs),
+    /// 取得指定 artifact kind 的 instructions（template / rules / dependencies）。
+    #[command(subcommand)]
+    Instructions(InstructionsCommand),
+    /// Task 工作流子命令樹（`task done <id>`）。
+    #[command(subcommand)]
+    Task(TaskCommand),
+}
+
+/// `instructions` 子命令樹（每個 kind 對應一個子命令）。
+#[derive(Debug, Subcommand)]
+pub enum InstructionsCommand {
+    /// `proposal.md` 的 instructions。
+    Proposal(InstructionsArgs),
+    /// `design.md` 的 instructions。
+    Design(InstructionsArgs),
+    /// `tasks.md` 的 instructions。
+    Tasks(InstructionsArgs),
+    /// `specs/<capability>/spec.md` 的 instructions（需 `--capability`）。
+    Spec(InstructionsSpecArgs),
+}
+
+/// `instructions {proposal|design|tasks}` 的參數（不接受 `--capability`）。
+#[derive(Debug, Args)]
+pub struct InstructionsArgs {
+    /// Change 識別碼（kebab-case）。
+    #[arg(long, value_parser = parse_change_id)]
+    pub change: String,
+    /// 共用 machine-interface 旗標；`instructions` 不接受 `--stdin`。
+    #[command(flatten)]
+    pub flags: MachineInterfaceFlags,
+}
+
+/// `instructions spec` 的參數（需 `--capability`）。
+#[derive(Debug, Args)]
+pub struct InstructionsSpecArgs {
+    /// Change 識別碼（kebab-case）。
+    #[arg(long, value_parser = parse_change_id)]
+    pub change: String,
+    /// Capability 名稱（kebab-case）。
+    #[arg(long, value_parser = parse_capability_name)]
+    pub capability: String,
+    /// 共用 machine-interface 旗標。
+    #[command(flatten)]
+    pub flags: MachineInterfaceFlags,
+}
+
+/// `task` 子命令樹。
+#[derive(Debug, Subcommand)]
+pub enum TaskCommand {
+    /// 將 tasks.md 中對應 task id 的 checkbox 標記為完成。
+    Done(TaskDoneArgs),
+}
+
+/// `task done` 的參數。
+#[derive(Debug, Args)]
+pub struct TaskDoneArgs {
+    /// 目標 task id（`N.M` 格式，positional）。clap 不在此層校驗格式 —
+    /// `task.invalid_id` 須由 runtime/provider 拋出，避免被 clap 映射為 `input.invalid`。
+    pub task_id: String,
+    /// Change 識別碼（kebab-case）。
+    #[arg(long, value_parser = parse_change_id)]
+    pub change: String,
+    /// 共用 machine-interface 旗標；`task done` 不接受 `--stdin`。
+    #[command(flatten)]
+    pub flags: MachineInterfaceFlags,
 }
 
 /// `artifact` subcommand 樹。
@@ -464,5 +529,167 @@ mod tests {
     fn parse_archive_missing_change_errors() {
         let err = parse(&["archive"]).expect_err("missing change positional");
         let _ = err;
+    }
+
+    // -- task done (task 7.1) --
+
+    #[test]
+    fn parse_task_done_basic() {
+        let cli = parse(&["task", "done", "1.1", "--change", "demo"]).expect("parse");
+        match cli.command {
+            crate::cli::Command::Task(crate::cli::TaskCommand::Done(args)) => {
+                assert_eq!(args.task_id, "1.1");
+                assert_eq!(args.change, "demo");
+                assert!(!args.flags.json);
+                assert!(!args.flags.stdin);
+            }
+            _ => panic!("expected task done"),
+        }
+    }
+
+    #[test]
+    fn parse_task_done_with_json() {
+        let cli = parse(&["task", "done", "10.3", "--change", "demo", "--json"]).expect("parse");
+        match cli.command {
+            crate::cli::Command::Task(crate::cli::TaskCommand::Done(args)) => {
+                assert_eq!(args.task_id, "10.3");
+                assert!(args.flags.json);
+            }
+            _ => panic!("expected task done"),
+        }
+    }
+
+    #[test]
+    fn parse_task_done_three_level_id_passes_clap() {
+        // clap 不擋三層；runtime 將回 task.invalid_id
+        let cli = parse(&["task", "done", "1.1.2", "--change", "demo"]).expect("clap accepts");
+        match cli.command {
+            crate::cli::Command::Task(crate::cli::TaskCommand::Done(args)) => {
+                assert_eq!(args.task_id, "1.1.2");
+            }
+            _ => panic!("expected task done"),
+        }
+    }
+
+    #[test]
+    fn parse_task_done_stdin_accepted_by_clap() {
+        // clap 接受 --stdin（MachineInterfaceFlags 共用），runtime 將回 input.invalid
+        let cli =
+            parse(&["task", "done", "1.1", "--change", "demo", "--stdin"]).expect("clap accepts");
+        match cli.command {
+            crate::cli::Command::Task(crate::cli::TaskCommand::Done(args)) => {
+                assert!(args.flags.stdin);
+            }
+            _ => panic!("expected task done"),
+        }
+    }
+
+    #[test]
+    fn parse_task_done_missing_task_id_errors() {
+        let err = parse(&["task", "done", "--change", "demo"]).expect_err("missing task id");
+        let _ = err;
+    }
+
+    #[test]
+    fn parse_task_done_invalid_change_id_errors() {
+        let err = parse(&["task", "done", "1.1", "--change", "Add-Feature"])
+            .expect_err("invalid change id");
+        let _ = err;
+    }
+
+    // -- instructions (task 8.1) --
+
+    #[test]
+    fn parse_instructions_proposal() {
+        let cli = parse(&["instructions", "proposal", "--change", "demo"]).expect("parse");
+        match cli.command {
+            crate::cli::Command::Instructions(crate::cli::InstructionsCommand::Proposal(args)) => {
+                assert_eq!(args.change, "demo");
+                assert!(!args.flags.json);
+            }
+            _ => panic!("expected instructions proposal"),
+        }
+    }
+
+    #[test]
+    fn parse_instructions_design_with_json() {
+        let cli = parse(&["instructions", "design", "--change", "demo", "--json"]).expect("parse");
+        match cli.command {
+            crate::cli::Command::Instructions(crate::cli::InstructionsCommand::Design(args)) => {
+                assert_eq!(args.change, "demo");
+                assert!(args.flags.json);
+            }
+            _ => panic!("expected instructions design"),
+        }
+    }
+
+    #[test]
+    fn parse_instructions_tasks() {
+        let cli = parse(&["instructions", "tasks", "--change", "demo"]).expect("parse");
+        match cli.command {
+            crate::cli::Command::Instructions(crate::cli::InstructionsCommand::Tasks(_)) => {}
+            _ => panic!("expected instructions tasks"),
+        }
+    }
+
+    #[test]
+    fn parse_instructions_spec_with_capability() {
+        let cli = parse(&[
+            "instructions",
+            "spec",
+            "--change",
+            "demo",
+            "--capability",
+            "user-auth",
+        ])
+        .expect("parse");
+        match cli.command {
+            crate::cli::Command::Instructions(crate::cli::InstructionsCommand::Spec(args)) => {
+                assert_eq!(args.change, "demo");
+                assert_eq!(args.capability, "user-auth");
+            }
+            _ => panic!("expected instructions spec"),
+        }
+    }
+
+    #[test]
+    fn parse_instructions_missing_change_errors() {
+        let err = parse(&["instructions", "design"]).expect_err("missing --change");
+        let _ = err;
+    }
+
+    #[test]
+    fn parse_instructions_design_with_capability_errors() {
+        // design 子命令未宣告 --capability，clap 將拒絕未知 flag
+        let err = parse(&[
+            "instructions",
+            "design",
+            "--change",
+            "demo",
+            "--capability",
+            "x",
+        ])
+        .expect_err("design rejects --capability");
+        let _ = err;
+    }
+
+    #[test]
+    fn parse_instructions_spec_missing_capability_errors() {
+        let err = parse(&["instructions", "spec", "--change", "demo"])
+            .expect_err("spec needs --capability");
+        let _ = err;
+    }
+
+    #[test]
+    fn parse_instructions_stdin_accepted_by_clap() {
+        // clap 接受 --stdin；runtime 將回 input.invalid
+        let cli = parse(&["instructions", "design", "--change", "demo", "--stdin"])
+            .expect("clap accepts --stdin");
+        match cli.command {
+            crate::cli::Command::Instructions(crate::cli::InstructionsCommand::Design(args)) => {
+                assert!(args.flags.stdin);
+            }
+            _ => panic!("expected instructions design"),
+        }
     }
 }
