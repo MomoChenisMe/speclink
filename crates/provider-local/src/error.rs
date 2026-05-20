@@ -61,6 +61,49 @@ pub enum LocalProviderError {
         capability: String,
     },
 
+    /// Change 處於不可 archive 狀態（已 archived、目標目錄已存在等）。
+    #[error("change cannot be archived: {reason}")]
+    ChangeNotArchivable {
+        /// 人類可讀的原因。
+        reason: String,
+    },
+
+    /// Spec delta 套用衝突。
+    #[error(
+        "spec delta conflict for capability '{capability}': requirement '{requirement}' ({operation})"
+    )]
+    SpecDeltaConflict {
+        /// 觸發衝突的 capability 名稱。
+        capability: String,
+        /// 衝突的 requirement 名稱。
+        requirement: String,
+        /// 觸發衝突的 heading 操作。
+        operation: &'static str,
+    },
+
+    /// Spec delta 格式錯誤。
+    #[error("spec delta parse error for capability '{capability}': {message}")]
+    SpecDeltaParseError {
+        /// 觸發解析錯誤的 capability 名稱。
+        capability: String,
+        /// 解析失敗描述。
+        message: String,
+    },
+
+    /// archive 流程步驟 5-7 失敗且 rollback 本身亦失敗的最後手段；
+    /// 訊息列出殘留檔案路徑供人工修復。
+    #[error(
+        "archive rollback failed; manual recovery required (leftover .tmp: {tmp_files:?}; leftover .bak: {backup_files:?}; cause: {source})"
+    )]
+    RollbackFailed {
+        /// 未能清除的 `.tmp` 檔案 POSIX 路徑列表。
+        tmp_files: Vec<String>,
+        /// 未能還原的 `.bak` 檔案 POSIX 路徑列表。
+        backup_files: Vec<String>,
+        /// 原始觸發失敗的錯誤。
+        source: Box<LocalProviderError>,
+    },
+
     /// 兜底錯誤。
     #[error("local provider error: {message}")]
     Internal {
@@ -79,9 +122,13 @@ impl LocalProviderError {
             LocalProviderError::ArtifactAlreadyExists { .. } => "artifact.already_exists",
             LocalProviderError::MissingCapability => "artifact.missing_capability",
             LocalProviderError::InvalidCapability { .. } => "artifact.invalid_capability",
+            LocalProviderError::ChangeNotArchivable { .. } => "archive.change_not_archivable",
+            LocalProviderError::SpecDeltaConflict { .. } => "spec.delta_conflict",
+            LocalProviderError::SpecDeltaParseError { .. } => "spec.delta_parse_error",
             LocalProviderError::Io(_)
             | LocalProviderError::Json(_)
             | LocalProviderError::StateDb(_)
+            | LocalProviderError::RollbackFailed { .. }
             | LocalProviderError::Internal { .. } => "internal.error",
         }
     }
@@ -176,6 +223,45 @@ mod tests {
     #[test]
     fn io_error_code_is_internal() {
         let err = LocalProviderError::Io(std::io::Error::other("boom"));
+        assert_eq!(err.error_code(), "internal.error");
+    }
+
+    #[test]
+    fn change_not_archivable_code() {
+        let err = LocalProviderError::ChangeNotArchivable {
+            reason: "already archived".to_string(),
+        };
+        assert_eq!(err.error_code(), "archive.change_not_archivable");
+    }
+
+    #[test]
+    fn spec_delta_conflict_code() {
+        let err = LocalProviderError::SpecDeltaConflict {
+            capability: "auth".to_string(),
+            requirement: "User login".to_string(),
+            operation: "ADDED",
+        };
+        assert_eq!(err.error_code(), "spec.delta_conflict");
+    }
+
+    #[test]
+    fn spec_delta_parse_error_code() {
+        let err = LocalProviderError::SpecDeltaParseError {
+            capability: "auth".to_string(),
+            message: "unknown heading".to_string(),
+        };
+        assert_eq!(err.error_code(), "spec.delta_parse_error");
+    }
+
+    #[test]
+    fn rollback_failed_code_is_internal() {
+        let err = LocalProviderError::RollbackFailed {
+            tmp_files: vec![".speclink/specs/auth/spec.md.tmp".to_string()],
+            backup_files: vec![".speclink/specs/auth/spec.md.bak".to_string()],
+            source: Box::new(LocalProviderError::Internal {
+                message: "boom".to_string(),
+            }),
+        };
         assert_eq!(err.error_code(), "internal.error");
     }
 }

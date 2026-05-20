@@ -1,0 +1,15 @@
+---
+source: crates/cli/tests/archive_snapshots.rs
+expression: "pretty(&String::from_utf8(out.stdout).unwrap())"
+---
+{
+  "data": null,
+  "error": {
+    "code": "spec.delta_conflict",
+    "details": {},
+    "message": "provider error: spec delta conflict for capability 'auth': requirement 'User login' (ADDED)"
+  },
+  "ok": false,
+  "requestId": "req_00000000000000000000000000000000",
+  "warnings": []
+}

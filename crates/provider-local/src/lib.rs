@@ -9,11 +9,12 @@ use async_trait::async_trait;
 use provider::Provider;
 use provider::error::ProviderError;
 use provider::model::{
-    Artifact, ArtifactKind, Change, ChangeId, ChangeStatus, CreatedBy, NewArtifact, NewChange,
-    ProjectId, State,
+    ArchiveOptions, ArchivedChange, Artifact, ArtifactKind, Change, ChangeId, ChangeStatus,
+    CreatedBy, NewArtifact, NewChange, ProjectId, State,
 };
 use std::path::{Path, PathBuf};
 
+pub mod archive;
 pub mod error;
 pub mod state_db;
 pub mod storage;
@@ -73,6 +74,25 @@ impl LocalProvider {
             LocalProviderError::InvalidCapability { capability } => {
                 ProviderError::InvalidCapability { capability }
             }
+            LocalProviderError::ChangeNotArchivable { reason } => {
+                ProviderError::ChangeNotArchivable { reason }
+            }
+            LocalProviderError::SpecDeltaConflict {
+                capability,
+                requirement,
+                operation,
+            } => ProviderError::SpecDeltaConflict {
+                capability,
+                requirement,
+                operation,
+            },
+            LocalProviderError::SpecDeltaParseError {
+                capability,
+                message,
+            } => ProviderError::SpecDeltaParseError {
+                capability,
+                message,
+            },
             other => ProviderError::Internal {
                 message: other.to_string(),
             },
@@ -210,5 +230,36 @@ impl Provider for LocalProvider {
                 message: format!("background task failed: {e}"),
             })?
             .map_err(Self::map_local_err)
+    }
+
+    async fn archive_change(
+        &self,
+        _project_id: &ProjectId,
+        change_id: &ChangeId,
+        options: ArchiveOptions,
+    ) -> Result<ArchivedChange, ProviderError> {
+        let base = self.base_path.clone();
+        let cid = change_id.clone();
+
+        // 步驟 1-7 由 spawn_blocking 內的同步邏輯處理；SQLite 步驟 8 在 spawn_blocking 完成
+        // 後執行（StateDb 自帶 async + spawn_blocking）。
+        let result =
+            tokio::task::spawn_blocking(move || crate::archive::run_archive(&base, &cid, options))
+                .await
+                .map_err(|e| ProviderError::Internal {
+                    message: format!("background task failed: {e}"),
+                })?
+                .map_err(Self::map_local_err)?;
+
+        // dry-run 不動 SQLite；正常路徑：DELETE row（idempotent — 找不到不算失敗）。
+        if !options.dry_run {
+            self.state_db
+                .clear_in_progress(change_id)
+                .await
+                .map_err(|e| ProviderError::Internal {
+                    message: format!("state db error: {e}"),
+                })?;
+        }
+        Ok(result)
     }
 }

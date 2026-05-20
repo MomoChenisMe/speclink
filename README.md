@@ -15,8 +15,8 @@ This repository hosts the Cargo workspace with four crates:
 
 Pre-alpha. The local-first AI workflow surface is built up vertically through
 sequential changes under `openspec/changes/`. The CLI currently supports
-`propose create`, multi-kind `artifact write`, and `status` against the local
-provider.
+`propose create`, multi-kind `artifact write`, `status`, and `archive` (with
+spec delta merge) against the local provider.
 
 ## CLI usage
 
@@ -150,6 +150,79 @@ Output:
 `status` is side-effect-free: it never creates or modifies any files under
 `.speclink/`. Spec entries appear after the three fixed-name kinds, sorted
 ascending by capability name.
+
+### Archive a completed change
+
+`archive` 將 active change 移到 `.speclink/changes/archive/YYYY-MM-DD-<id>/`、
+套用 `specs/<capability>/spec.md` 的 delta 至 `.speclink/specs/<capability>/spec.md`、
+更新 metadata 為 `state: "archived"`，並清理 SQLite `in_progress_change` 表。
+
+```sh
+speclink archive add-feature --json
+```
+
+Output:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "changeId": "add-feature",
+    "archivePath": ".speclink/changes/archive/2026-05-19-add-feature",
+    "state": "archived",
+    "archivedAt": "2026-05-19T12:34:56Z",
+    "dryRun": false,
+    "specSync": {
+      "capabilitiesSynced": [
+        {
+          "capability": "user-auth",
+          "mainSpecPath": ".speclink/specs/user-auth/spec.md",
+          "addedCount": 2,
+          "modifiedCount": 0,
+          "removedCount": 0,
+          "renamedCount": 0,
+          "createdMainSpec": true
+        }
+      ]
+    }
+  },
+  "warnings": [],
+  "error": null,
+  "requestId": "req_..."
+}
+```
+
+#### Dry-run preview
+
+`--dry-run` 完成 delta merge 運算後立即回傳，不寫檔、不動 SQLite：
+
+```sh
+speclink archive add-feature --dry-run --json
+```
+
+`data.dryRun` 為 `true`、`data.archivePath` 為「將會寫入」的路徑；`data.specSync`
+反映將會套用的 add / modify / remove / rename 計數。Filesystem 無任何變更。
+
+#### Delta conflict
+
+當 delta 與既有主 spec 衝突（如 ADDED 已存在、MODIFIED 找不到對應 requirement），
+archive 回 exit code `7` 與 `error.code = "spec.delta_conflict"`：
+
+```json
+{
+  "ok": false,
+  "data": null,
+  "warnings": [],
+  "error": {
+    "code": "spec.delta_conflict",
+    "message": "provider error: spec delta conflict for capability 'user-auth': requirement 'User login' (ADDED)",
+    "details": {}
+  },
+  "requestId": "req_..."
+}
+```
+
+Dry-run 同樣會回 exit `7` 並回相同 `error.code` — 不寫檔即可發現衝突。
 
 ## License
 

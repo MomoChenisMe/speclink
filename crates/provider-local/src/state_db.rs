@@ -114,6 +114,26 @@ impl StateDb {
         .await?
     }
 
+    /// 從 `in_progress_change` 移除指定 change id 的 row。
+    ///
+    /// **Idempotent**：找不到對應 row 視為成功（archive 流程的 SQLite 清理步驟可重複執行；
+    /// 對應 spec `Archive rollback safeguards` 的 `Idempotent SQLite cleanup` 場景）。
+    pub async fn clear_in_progress(&self, change_id: &ChangeId) -> Result<(), StateDbError> {
+        let conn = self.conn.clone();
+        let id = change_id.as_str().to_string();
+        tokio::task::spawn_blocking(move || -> Result<(), StateDbError> {
+            let conn = conn.lock().map_err(|_| StateDbError::Internal {
+                message: "mutex poisoned".to_string(),
+            })?;
+            conn.execute(
+                "DELETE FROM in_progress_change WHERE change_id = ?1",
+                rusqlite::params![id],
+            )?;
+            Ok(())
+        })
+        .await?
+    }
+
     /// 讀取當前 `in_progress_change`，未設定時回傳 `None`。
     pub async fn get_in_progress(&self) -> Result<Option<ChangeId>, StateDbError> {
         let conn = self.conn.clone();
@@ -209,6 +229,32 @@ mod tests {
             .expect("get")
             .expect("must have row");
         assert_eq!(current2.as_str(), "change-two");
+    }
+
+    #[tokio::test]
+    async fn clear_in_progress_removes_matching_row() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("state.db");
+        let db = StateDb::open(&path).await.expect("open");
+        db.set_in_progress(&ChangeId::from("demo"))
+            .await
+            .expect("set");
+        db.clear_in_progress(&ChangeId::from("demo"))
+            .await
+            .expect("clear");
+        let current = db.get_in_progress().await.expect("get");
+        assert!(current.is_none(), "in_progress must be empty after clear");
+    }
+
+    #[tokio::test]
+    async fn clear_in_progress_missing_row_is_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("state.db");
+        let db = StateDb::open(&path).await.expect("open");
+        // 表是空的；清理不存在的 row 不應失敗
+        db.clear_in_progress(&ChangeId::from("missing"))
+            .await
+            .expect("clear of absent row must succeed");
     }
 
     #[tokio::test]

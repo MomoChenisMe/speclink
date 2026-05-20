@@ -12,7 +12,10 @@ pub mod model;
 pub mod resolution;
 
 use crate::error::ProviderError;
-use crate::model::{Artifact, Change, ChangeId, ChangeStatus, NewArtifact, NewChange, ProjectId};
+use crate::model::{
+    ArchiveOptions, ArchivedChange, Artifact, Change, ChangeId, ChangeStatus, NewArtifact,
+    NewChange, ProjectId,
+};
 
 /// SpecLink 對外可替換的 storage 抽象。
 ///
@@ -58,4 +61,22 @@ pub trait Provider: Send + Sync {
         project_id: &ProjectId,
         change_id: &ChangeId,
     ) -> Result<ChangeStatus, ProviderError>;
+
+    /// archive 一個 change：套用 spec deltas、搬移目錄、更新 metadata 與 state.db。
+    ///
+    /// Provider 採 best-effort + explicit rollback 流程：詳見 spec `Archive rollback safeguards`。
+    /// 當 `options.dry_run = true` 時，僅計算 delta merge 並返回 summary，不寫檔。
+    ///
+    /// 失敗條件：
+    /// - change 不存在 → [`ProviderError::ChangeNotFound`]
+    /// - 已 archived 或同名目標目錄存在 → [`ProviderError::ChangeNotArchivable`]
+    /// - delta 衝突（ADDED 已存在 / MODIFIED 找不到等） → [`ProviderError::SpecDeltaConflict`]
+    /// - delta 格式錯誤 → [`ProviderError::SpecDeltaParseError`]
+    /// - filesystem / SQLite 失敗 → [`ProviderError::Internal`]
+    async fn archive_change(
+        &self,
+        project_id: &ProjectId,
+        change_id: &ChangeId,
+        options: ArchiveOptions,
+    ) -> Result<ArchivedChange, ProviderError>;
 }

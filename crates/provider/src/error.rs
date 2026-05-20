@@ -66,6 +66,35 @@ pub enum ProviderError {
         capability: String,
     },
 
+    /// Change 處於不可 archive 狀態（已 archived、或目標 archive 目錄已存在）。
+    #[error("change cannot be archived: {reason}")]
+    ChangeNotArchivable {
+        /// 人類可讀的原因。
+        reason: String,
+    },
+
+    /// Spec delta 套用衝突：ADDED 已存在、或 MODIFIED/REMOVED/RENAMED 找不到對應 requirement。
+    #[error(
+        "spec delta conflict for capability '{capability}': requirement '{requirement}' ({operation})"
+    )]
+    SpecDeltaConflict {
+        /// 觸發衝突的 capability 名稱。
+        capability: String,
+        /// 衝突的 requirement 名稱。
+        requirement: String,
+        /// 觸發衝突的 heading 操作（`"ADDED"` / `"MODIFIED"` / `"REMOVED"` / `"RENAMED"`）。
+        operation: &'static str,
+    },
+
+    /// Spec delta 格式錯誤：未知 heading、缺 FROM/TO、heading 重複等。
+    #[error("spec delta parse error for capability '{capability}': {message}")]
+    SpecDeltaParseError {
+        /// 觸發解析錯誤的 capability 名稱。
+        capability: String,
+        /// 解析失敗的人類可讀描述。
+        message: String,
+    },
+
     /// 兜底錯誤；訊息僅供人類閱讀，不會在 JSON envelope `error.details` 中洩漏。
     #[error("internal provider error: {message}")]
     Internal {
@@ -86,6 +115,9 @@ impl ProviderError {
             ProviderError::ArtifactAlreadyExists { .. } => "artifact.already_exists",
             ProviderError::MissingCapability => "artifact.missing_capability",
             ProviderError::InvalidCapability { .. } => "artifact.invalid_capability",
+            ProviderError::ChangeNotArchivable { .. } => "archive.change_not_archivable",
+            ProviderError::SpecDeltaConflict { .. } => "spec.delta_conflict",
+            ProviderError::SpecDeltaParseError { .. } => "spec.delta_parse_error",
             ProviderError::Internal { .. } => "internal.error",
         }
     }
@@ -185,5 +217,32 @@ mod tests {
             capability: "Bad-Name".to_string(),
         };
         assert_eq!(err.error_code(), "artifact.invalid_capability");
+    }
+
+    #[test]
+    fn change_not_archivable_code() {
+        let err = ProviderError::ChangeNotArchivable {
+            reason: "already archived".to_string(),
+        };
+        assert_eq!(err.error_code(), "archive.change_not_archivable");
+    }
+
+    #[test]
+    fn spec_delta_conflict_code() {
+        let err = ProviderError::SpecDeltaConflict {
+            capability: "auth".to_string(),
+            requirement: "User login".to_string(),
+            operation: "ADDED",
+        };
+        assert_eq!(err.error_code(), "spec.delta_conflict");
+    }
+
+    #[test]
+    fn spec_delta_parse_error_code() {
+        let err = ProviderError::SpecDeltaParseError {
+            capability: "auth".to_string(),
+            message: "unknown heading".to_string(),
+        };
+        assert_eq!(err.error_code(), "spec.delta_parse_error");
     }
 }

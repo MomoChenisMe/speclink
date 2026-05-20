@@ -77,6 +77,13 @@ fn classify_provider(p: &ProviderError) -> (ExitCode, ErrorCode) {
         ProviderError::InvalidCapability { .. } => {
             (ExitCode(2), ErrorCode("artifact.invalid_capability"))
         }
+        ProviderError::ChangeNotArchivable { .. } => {
+            (ExitCode(1), ErrorCode("archive.change_not_archivable"))
+        }
+        ProviderError::SpecDeltaConflict { .. } => (ExitCode(7), ErrorCode("spec.delta_conflict")),
+        ProviderError::SpecDeltaParseError { .. } => {
+            (ExitCode(2), ErrorCode("spec.delta_parse_error"))
+        }
         ProviderError::Internal { .. } => (ExitCode(1), ErrorCode("internal.error")),
     }
 }
@@ -104,9 +111,19 @@ fn classify_local(l: &LocalProviderError) -> (ExitCode, ErrorCode) {
         LocalProviderError::InvalidCapability { .. } => {
             (ExitCode(2), ErrorCode("artifact.invalid_capability"))
         }
+        LocalProviderError::ChangeNotArchivable { .. } => {
+            (ExitCode(1), ErrorCode("archive.change_not_archivable"))
+        }
+        LocalProviderError::SpecDeltaConflict { .. } => {
+            (ExitCode(7), ErrorCode("spec.delta_conflict"))
+        }
+        LocalProviderError::SpecDeltaParseError { .. } => {
+            (ExitCode(2), ErrorCode("spec.delta_parse_error"))
+        }
         LocalProviderError::Io(_)
         | LocalProviderError::Json(_)
         | LocalProviderError::StateDb(_)
+        | LocalProviderError::RollbackFailed { .. }
         | LocalProviderError::Internal { .. } => (ExitCode(1), ErrorCode("internal.error")),
     }
 }
@@ -189,6 +206,72 @@ mod tests {
     }
 
     #[test]
+    fn provider_change_not_archivable_maps_to_1() {
+        let err = anyhow::Error::from(ProviderError::ChangeNotArchivable {
+            reason: "already archived".to_string(),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(1));
+        assert_eq!(ec.as_str(), "archive.change_not_archivable");
+    }
+
+    #[test]
+    fn provider_spec_delta_conflict_maps_to_7() {
+        let err = anyhow::Error::from(ProviderError::SpecDeltaConflict {
+            capability: "auth".to_string(),
+            requirement: "User login".to_string(),
+            operation: "ADDED",
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(7));
+        assert_eq!(ec.as_str(), "spec.delta_conflict");
+    }
+
+    #[test]
+    fn provider_spec_delta_parse_error_maps_to_2() {
+        let err = anyhow::Error::from(ProviderError::SpecDeltaParseError {
+            capability: "auth".to_string(),
+            message: "unknown heading".to_string(),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(2));
+        assert_eq!(ec.as_str(), "spec.delta_parse_error");
+    }
+
+    #[test]
+    fn local_change_not_archivable_maps_to_1() {
+        let err = anyhow::Error::from(LocalProviderError::ChangeNotArchivable {
+            reason: "exists".to_string(),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(1));
+        assert_eq!(ec.as_str(), "archive.change_not_archivable");
+    }
+
+    #[test]
+    fn local_spec_delta_conflict_maps_to_7() {
+        let err = anyhow::Error::from(LocalProviderError::SpecDeltaConflict {
+            capability: "auth".to_string(),
+            requirement: "User login".to_string(),
+            operation: "MODIFIED",
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(7));
+        assert_eq!(ec.as_str(), "spec.delta_conflict");
+    }
+
+    #[test]
+    fn local_spec_delta_parse_error_maps_to_2() {
+        let err = anyhow::Error::from(LocalProviderError::SpecDeltaParseError {
+            capability: "auth".to_string(),
+            message: "bad heading".to_string(),
+        });
+        let (code, ec) = classify(&err);
+        assert_eq!(code, ExitCode::from(2));
+        assert_eq!(ec.as_str(), "spec.delta_parse_error");
+    }
+
+    #[test]
     fn fallthrough_internal_error() {
         let err = anyhow::anyhow!("some random failure");
         let (code, ec) = classify(&err);
@@ -221,6 +304,9 @@ mod tests {
             "artifact.already_exists",
             "artifact.missing_capability",
             "artifact.invalid_capability",
+            "archive.change_not_archivable",
+            "spec.delta_conflict",
+            "spec.delta_parse_error",
         ];
         for c in codes {
             assert!(matches_naming(c), "code does not match naming regex: {c}");

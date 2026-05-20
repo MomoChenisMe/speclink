@@ -20,6 +20,7 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+chrono = { workspace = true }
 clap = { workspace = true }
 provider = { path = "../provider" }
 provider-local = { path = "../provider-local" }

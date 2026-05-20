@@ -9,7 +9,8 @@ use async_trait::async_trait;
 use provider::Provider;
 use provider::error::ProviderError;
 use provider::model::{
-    Artifact, Change, ChangeId, ChangeStatus, NewArtifact, NewChange, ProjectId,
+    ArchiveOptions, ArchivedChange, Artifact, Change, ChangeId, ChangeStatus, NewArtifact,
+    NewChange, ProjectId, SpecDeltaSummary, State,
 };
 
 /// In-memory mock provider，內含 `Mutex<HashMap>`：以 `Send + Sync` 包裝可變狀態。
@@ -51,6 +52,28 @@ impl Provider for MockProvider {
         _change_id: &ChangeId,
     ) -> Result<ChangeStatus, ProviderError> {
         unimplemented!("mock — only used to confirm compilation")
+    }
+
+    async fn archive_change(
+        &self,
+        _project_id: &ProjectId,
+        change_id: &ChangeId,
+        options: ArchiveOptions,
+    ) -> Result<ArchivedChange, ProviderError> {
+        Ok(ArchivedChange {
+            change_id: change_id.clone(),
+            archive_path: format!(
+                ".speclink/changes/archive/{}-{}",
+                options.archive_date.format("%Y-%m-%d"),
+                change_id.as_str()
+            ),
+            state: State::Archived,
+            archived_at: "2026-05-19T00:00:00Z".to_string(),
+            spec_sync: SpecDeltaSummary {
+                capabilities_synced: Vec::new(),
+            },
+            dry_run: options.dry_run,
+        })
     }
 }
 

@@ -29,6 +29,8 @@ pub enum Command {
     Artifact(ArtifactCommand),
     /// 觀察 change 進度。
     Status(StatusArgs),
+    /// archive 已完成的 change（搬移目錄、套用 spec delta、清理 SQLite）。
+    Archive(ArchiveArgs),
 }
 
 /// `artifact` subcommand 樹。
@@ -94,6 +96,23 @@ pub struct ArtifactWriteSpecArgs {
     /// 抑制 INFO 等級以下的 stderr 輸出。
     #[arg(long)]
     pub quiet: bool,
+}
+
+/// `archive` 命令的參數。
+///
+/// `change` 為 positional kebab-case id（與 propose / artifact write / status 的 `--change`
+/// 不同）— archive 場景 change 是主角，positional 更符合 Unix 慣例。
+#[derive(Debug, Args)]
+pub struct ArchiveArgs {
+    /// 目標 change 識別碼（kebab-case；positional argument）。
+    #[arg(value_parser = parse_change_id)]
+    pub change: String,
+    /// 預演 archive：完成 spec delta merge 運算後立即返回，不寫檔、不動 SQLite。
+    #[arg(long)]
+    pub dry_run: bool,
+    /// 共用 machine-interface 旗標；`archive` 不接受 `--stdin`，傳入會回 `input.invalid`。
+    #[command(flatten)]
+    pub flags: MachineInterfaceFlags,
 }
 
 /// `status` 命令的參數。
@@ -398,5 +417,52 @@ mod tests {
             }
             _ => panic!("expected status"),
         }
+    }
+
+    #[test]
+    fn parse_archive_positional() {
+        let cli = parse(&["archive", "demo"]).expect("parse archive");
+        match cli.command {
+            Command::Archive(args) => {
+                assert_eq!(args.change, "demo");
+                assert!(!args.dry_run);
+                assert!(!args.flags.json);
+            }
+            _ => panic!("expected archive"),
+        }
+    }
+
+    #[test]
+    fn parse_archive_dry_run_json() {
+        let cli = parse(&["archive", "demo", "--dry-run", "--json"]).expect("parse archive flags");
+        match cli.command {
+            Command::Archive(args) => {
+                assert!(args.dry_run);
+                assert!(args.flags.json);
+            }
+            _ => panic!("expected archive"),
+        }
+    }
+
+    #[test]
+    fn parse_archive_stdin_present_in_flags() {
+        // --stdin clap parse 仍接受（共用 MachineInterfaceFlags），但 archive run 會回 input.invalid
+        let cli = parse(&["archive", "demo", "--stdin"]).expect("clap accepts --stdin on archive");
+        match cli.command {
+            Command::Archive(args) => assert!(args.flags.stdin),
+            _ => panic!("expected archive"),
+        }
+    }
+
+    #[test]
+    fn parse_archive_invalid_change_id_errors() {
+        let err = parse(&["archive", "Add-Feature"]).expect_err("invalid change id");
+        let _ = err;
+    }
+
+    #[test]
+    fn parse_archive_missing_change_errors() {
+        let err = parse(&["archive"]).expect_err("missing change positional");
+        let _ = err;
     }
 }

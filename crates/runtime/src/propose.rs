@@ -106,8 +106,8 @@ mod tests {
     use provider::Provider;
     use provider::error::ProviderError;
     use provider::model::{
-        Artifact, ArtifactKind, Change, ChangeId, ChangeStatus, CreatedBy, NewArtifact, NewChange,
-        ProjectId, State,
+        ArchiveOptions, ArchivedChange, Artifact, ArtifactKind, Change, ChangeId, ChangeStatus,
+        CreatedBy, NewArtifact, NewChange, ProjectId, State,
     };
     use std::sync::Arc;
     use std::sync::Mutex;
@@ -199,6 +199,15 @@ mod tests {
             _project_id: &ProjectId,
             _change_id: &ChangeId,
         ) -> Result<ChangeStatus, ProviderError> {
+            unimplemented!()
+        }
+
+        async fn archive_change(
+            &self,
+            _project_id: &ProjectId,
+            _change_id: &ChangeId,
+            _options: ArchiveOptions,
+        ) -> Result<ArchivedChange, ProviderError> {
             unimplemented!()
         }
     }

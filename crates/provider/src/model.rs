@@ -99,7 +99,9 @@ pub struct Project {
 
 /// Change 在 SpecLink lifecycle 中的狀態。
 ///
-/// 本 change 僅實作 `draft → proposed` 一步；其他狀態保留供後續 change 使用。
+/// `Draft` / `Proposed` 由 `propose create` 階段使用；`Archived` 由 `archive` 指令
+/// 在成功 archive 後寫入 `metadata.json`。其他狀態（in_progress / reviewing 等）保留供
+/// 後續 change 使用。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum State {
@@ -107,6 +109,8 @@ pub enum State {
     Draft,
     /// 已建立 proposal。
     Proposed,
+    /// 已 archive；對應 `archive` 指令成功完成後的 lifecycle 狀態。
+    Archived,
 }
 
 /// 建立者中繼資訊。對應 `metadata.json` 中的 `createdBy` 欄位。
@@ -219,6 +223,72 @@ pub struct ArtifactStatus {
     pub required: bool,
     /// 依賴的其他 artifact id 清單。
     pub dependencies: Vec<String>,
+}
+
+/// `archive_change` 的呼叫選項。
+///
+/// `dry_run = true` 時 provider 完成 delta merge 運算後即返回，不執行 filesystem
+/// 或 SQLite 寫入。`archive_date` 由 caller（CLI 入口）注入；測試可固定日期、CI 可重現。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArchiveOptions {
+    /// 若為 `true`，僅計算 delta merge，不寫檔。
+    pub dry_run: bool,
+    /// archive 目錄前綴日期；caller 傳入 `chrono::Local::now().date_naive()`，
+    /// 格式化為 `%Y-%m-%d`。
+    pub archive_date: chrono::NaiveDate,
+}
+
+/// `Provider::archive_change` 的回傳值。
+///
+/// `archive_path` 為 POSIX 風格相對路徑（相對於 base，跨平台一律 forward slash）；
+/// `archived_at` 為 ISO 8601 UTC 秒精度字串（例如 `2026-05-19T12:34:56Z`）；
+/// `dry_run` 反映 caller 傳入的 [`ArchiveOptions::dry_run`]。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchivedChange {
+    /// 已 archive 的 change 識別碼。
+    pub change_id: ChangeId,
+    /// archive 目錄相對路徑（POSIX）。
+    pub archive_path: String,
+    /// archive 後的 lifecycle 狀態（總是 [`State::Archived`]，或 dry-run 時為「將會寫入」的值）。
+    pub state: State,
+    /// archive 時間，ISO 8601 UTC 秒精度。
+    pub archived_at: String,
+    /// 各 capability 的 delta merge 結果摘要。
+    pub spec_sync: SpecDeltaSummary,
+    /// 是否為 dry-run 呼叫（不寫檔）。
+    pub dry_run: bool,
+}
+
+/// archive 觸發的所有 spec delta merge 結果。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpecDeltaSummary {
+    /// 各 capability 的套用結果，依 capability 字典序排列。
+    pub capabilities_synced: Vec<CapabilitySyncResult>,
+}
+
+/// 單一 capability 的 spec delta 套用結果。
+///
+/// 數字欄位為對應 heading 下 `### Requirement:` 區塊的數量；`created_main_spec`
+/// 區分本次 archive 是否為該 capability 首次寫入主 spec。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CapabilitySyncResult {
+    /// Capability 名稱。
+    pub capability: String,
+    /// 主 spec 檔案 POSIX 相對路徑（`.speclink/specs/CAP/spec.md`；`CAP` 為 capability 名稱）。
+    pub main_spec_path: String,
+    /// `## ADDED Requirements` 下的區塊數量。
+    pub added_count: usize,
+    /// `## MODIFIED Requirements` 下的區塊數量。
+    pub modified_count: usize,
+    /// `## REMOVED Requirements` 下的區塊數量。
+    pub removed_count: usize,
+    /// `## RENAMED Requirements` 下的區塊數量。
+    pub renamed_count: usize,
+    /// 本次 archive 是否為該 capability 首次寫入主 spec（之前不存在 → `true`）。
+    pub created_main_spec: bool,
 }
 
 /// 整個 change 的狀態快照。
@@ -410,6 +480,68 @@ mod tests {
         assert_eq!(arr[2]["id"], "spec:user-auth");
         // Round-trip 保持
         assert_round_trip(status);
+    }
+
+    #[test]
+    fn state_archived_round_trip() {
+        use crate::model::State;
+        assert_round_trip(State::Archived);
+        let json = serde_json::to_string(&State::Archived).unwrap();
+        assert_eq!(json, "\"archived\"");
+        // 反向：lower-case string 還原 enum
+        let back: State = serde_json::from_str("\"archived\"").unwrap();
+        assert_eq!(back, State::Archived);
+    }
+
+    #[test]
+    fn archived_change_serializes_camelcase() {
+        use crate::model::{
+            ArchivedChange, CapabilitySyncResult, ChangeId, SpecDeltaSummary, State,
+        };
+        let ac = ArchivedChange {
+            change_id: ChangeId::from("demo"),
+            archive_path: ".speclink/changes/archive/2026-05-19-demo".to_string(),
+            state: State::Archived,
+            archived_at: "2026-05-19T12:34:56Z".to_string(),
+            spec_sync: SpecDeltaSummary {
+                capabilities_synced: vec![CapabilitySyncResult {
+                    capability: "auth".to_string(),
+                    main_spec_path: ".speclink/specs/auth/spec.md".to_string(),
+                    added_count: 2,
+                    modified_count: 0,
+                    removed_count: 0,
+                    renamed_count: 0,
+                    created_main_spec: true,
+                }],
+            },
+            dry_run: false,
+        };
+        let json = serde_json::to_string(&ac).expect("serialize");
+        let v: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        // 頂層 camelCase
+        assert_eq!(v["changeId"], "demo");
+        assert_eq!(
+            v["archivePath"],
+            ".speclink/changes/archive/2026-05-19-demo"
+        );
+        assert_eq!(v["state"], "archived");
+        assert_eq!(v["archivedAt"], "2026-05-19T12:34:56Z");
+        assert_eq!(v["dryRun"], false);
+        // 巢狀 camelCase
+        assert!(v["specSync"]["capabilitiesSynced"].is_array());
+        let cs = &v["specSync"]["capabilitiesSynced"][0];
+        assert_eq!(cs["capability"], "auth");
+        assert_eq!(cs["mainSpecPath"], ".speclink/specs/auth/spec.md");
+        assert_eq!(cs["addedCount"], 2);
+        assert_eq!(cs["modifiedCount"], 0);
+        assert_eq!(cs["removedCount"], 0);
+        assert_eq!(cs["renamedCount"], 0);
+        assert_eq!(cs["createdMainSpec"], true);
+        // 確認不出現 snake_case
+        assert!(v.get("change_id").is_none());
+        assert!(v.get("spec_sync").is_none());
+        assert!(cs.get("main_spec_path").is_none());
+        assert_round_trip(ac);
     }
 
     #[test]

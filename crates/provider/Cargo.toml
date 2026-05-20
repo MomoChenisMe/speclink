@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+chrono = { workspace = true }
 dirs = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

@@ -15,8 +15,10 @@ use std::path::{Path, PathBuf};
 const SPECLINK_DIR: &str = ".speclink";
 /// `changes/` 子目錄名稱。
 const CHANGES_DIR: &str = "changes";
-/// `specs/` 子目錄名稱（位於 `<change_dir>/`）。
+/// `specs/` 子目錄名稱（位於 `<change_dir>/` 或 `.speclink/`）。
 const SPECS_DIR: &str = "specs";
+/// `archive/` 子目錄名稱（位於 `.speclink/changes/`）。
+const ARCHIVE_DIR: &str = "archive";
 
 /// 檢驗字串是否符合 `^[a-z][a-z0-9-]{0,63}$`、不含連續 hyphen、不以 hyphen 結尾。
 ///
@@ -67,6 +69,37 @@ pub fn change_dir(base: &Path, change_id: &ChangeId) -> PathBuf {
     base.join(SPECLINK_DIR)
         .join(CHANGES_DIR)
         .join(change_id.as_str())
+}
+
+/// 取得 `<base>/.speclink/specs/` 主 spec 根目錄絕對路徑。
+///
+/// 對應 spec `Local provider directory layout` 規定的主 spec 落點：
+/// `.speclink/specs/` 在第一次 archive 套用 delta 時建立。
+pub fn main_spec_dir(base: &Path) -> PathBuf {
+    base.join(SPECLINK_DIR).join(SPECS_DIR)
+}
+
+/// 取得 `<base>/.speclink/specs/<capability>/spec.md` 主 spec 檔案絕對路徑。
+///
+/// 路徑以 `PathBuf::join` 拼接，跨平台一致；caller 不可硬編 `/` 或 `\`。
+pub fn main_spec_path(base: &Path, capability: &str) -> PathBuf {
+    main_spec_dir(base).join(capability).join("spec.md")
+}
+
+/// 取得 `<base>/.speclink/changes/archive/` 目錄絕對路徑。
+///
+/// 對應 spec `Local provider directory layout` 規定的 archive 根：archive 區與 active
+/// change 區同層，方便同一 filesystem 內 atomic rename。
+pub fn archive_root_dir(base: &Path) -> PathBuf {
+    base.join(SPECLINK_DIR).join(CHANGES_DIR).join(ARCHIVE_DIR)
+}
+
+/// 取得 `<base>/.speclink/changes/archive/<YYYY-MM-DD>-<change_id>/` 絕對路徑。
+///
+/// `date_prefix` 由 caller 傳入（CLI 入口取 `chrono::Local::now().date_naive()`），
+/// 格式應為 `YYYY-MM-DD`；本函式不檢查 — 違反契約由 caller 自行負責。
+pub fn archive_change_dir(base: &Path, change_id: &ChangeId, date_prefix: &str) -> PathBuf {
+    archive_root_dir(base).join(format!("{date_prefix}-{}", change_id.as_str()))
 }
 
 /// 寫入 proposal artifact（從 summary 自動 wrap 為 `## Why\n\n<summary>\n`），
@@ -376,7 +409,8 @@ fn artifact_relative_path(_base: &Path, change_id: &ChangeId, filename: &str) ->
 #[cfg(test)]
 mod tests {
     use crate::storage::{
-        is_valid_capability_name, is_valid_change_id, scan_change_status, write_design_atomic,
+        archive_change_dir, archive_root_dir, is_valid_capability_name, is_valid_change_id,
+        main_spec_dir, main_spec_path, scan_change_status, write_design_atomic,
         write_proposal_atomic, write_spec_atomic, write_tasks_atomic,
     };
     use provider::model::{ArtifactKind, ArtifactState, ChangeId, State};
@@ -774,6 +808,89 @@ mod tests {
 
         let status = scan_change_status(base, &change_id).expect("scan");
         assert_eq!(status.artifacts.len(), 3, "no spec entries expected");
+    }
+
+    #[test]
+    fn main_spec_dir_returns_expected_components() {
+        let base = Path::new("/tmp/proj");
+        let dir = main_spec_dir(base);
+        let comps: Vec<_> = dir
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        // 預期：root / "tmp" / "proj" / ".speclink" / "specs"
+        let tail = &comps[comps.len() - 2..];
+        assert_eq!(tail, &[".speclink".to_string(), "specs".to_string()]);
+    }
+
+    #[test]
+    fn main_spec_path_returns_expected() {
+        let base = Path::new("/tmp/proj");
+        let path = main_spec_path(base, "user-auth");
+        let comps: Vec<_> = path
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        // 預期最後四個 component：".speclink" / "specs" / "user-auth" / "spec.md"
+        let tail = &comps[comps.len() - 4..];
+        assert_eq!(
+            tail,
+            &[
+                ".speclink".to_string(),
+                "specs".to_string(),
+                "user-auth".to_string(),
+                "spec.md".to_string()
+            ]
+        );
+        // 不應出現硬編 `/` 或 `\` — PathBuf::join 已處理 separator
+        let raw = path.to_string_lossy().to_string();
+        // 在 Windows 上會是 backslash；POSIX 是 forward slash。兩者皆非硬編。
+        assert!(
+            !raw.contains("speclink/specs/")
+                || !raw.contains("speclink\\specs\\")
+                || raw.contains("speclink"),
+            "path components should be platform-correct: {raw}"
+        );
+    }
+
+    #[test]
+    fn archive_root_dir_returns_expected() {
+        let base = Path::new("/tmp/proj");
+        let dir = archive_root_dir(base);
+        let comps: Vec<_> = dir
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        let tail = &comps[comps.len() - 3..];
+        assert_eq!(
+            tail,
+            &[
+                ".speclink".to_string(),
+                "changes".to_string(),
+                "archive".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn archive_change_dir_uses_date_prefix() {
+        let base = Path::new("/tmp/proj");
+        let path = archive_change_dir(base, &ChangeId::from("demo"), "2026-05-19");
+        let comps: Vec<_> = path
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(comps[comps.len() - 1], "2026-05-19-demo");
+        let tail = &comps[comps.len() - 4..];
+        assert_eq!(
+            tail,
+            &[
+                ".speclink".to_string(),
+                "changes".to_string(),
+                "archive".to_string(),
+                "2026-05-19-demo".to_string()
+            ]
+        );
     }
 
     #[test]

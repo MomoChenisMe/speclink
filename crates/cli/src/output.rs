@@ -1,6 +1,8 @@
 //! `--json` envelope、`propose create` / `artifact write` / `status` data schema。
 
-use provider::model::{ArtifactKind, ArtifactState, ArtifactStatus, ChangeStatus, State};
+use provider::model::{
+    ArchivedChange, ArtifactKind, ArtifactState, ArtifactStatus, ChangeStatus, State,
+};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -147,6 +149,79 @@ pub fn artifact_status_to_json(status: &ArtifactStatus) -> ArtifactStatusJson {
     }
 }
 
+/// `archive` 成功時的 `data` payload。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveData {
+    /// 已 archive 的 change id。
+    pub change_id: String,
+    /// archive 目錄 POSIX 相對路徑（dry-run 時為「將會用的」路徑）。
+    pub archive_path: String,
+    /// archive 後的 lifecycle 狀態字串（成功時為 `"archived"`）。
+    pub state: String,
+    /// archive 時間，ISO 8601 UTC 秒精度字串。
+    pub archived_at: String,
+    /// 是否為 dry-run。
+    pub dry_run: bool,
+    /// 各 capability 的 spec delta 套用摘要。
+    pub spec_sync: SpecSyncSummaryJson,
+}
+
+/// `archive` data 中的 `specSync` 結構。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpecSyncSummaryJson {
+    /// 各 capability 的套用結果，依 capability 字典序。
+    pub capabilities_synced: Vec<CapabilitySyncResultJson>,
+}
+
+/// `archive` data 中單一 capability 的套用結果。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CapabilitySyncResultJson {
+    /// Capability 名稱。
+    pub capability: String,
+    /// 主 spec 檔案 POSIX 相對路徑。
+    pub main_spec_path: String,
+    /// `## ADDED Requirements` 下的區塊數量。
+    pub added_count: usize,
+    /// `## MODIFIED Requirements` 下的區塊數量。
+    pub modified_count: usize,
+    /// `## REMOVED Requirements` 下的區塊數量。
+    pub removed_count: usize,
+    /// `## RENAMED Requirements` 下的區塊數量。
+    pub renamed_count: usize,
+    /// 主 spec 是否為本次 archive 新建。
+    pub created_main_spec: bool,
+}
+
+/// 把 [`ArchivedChange`] 轉為 [`ArchiveData`]。
+pub fn archived_change_to_archive_data(ac: ArchivedChange) -> ArchiveData {
+    ArchiveData {
+        change_id: ac.change_id.as_str().to_string(),
+        archive_path: ac.archive_path,
+        state: state_str(ac.state).to_string(),
+        archived_at: ac.archived_at,
+        dry_run: ac.dry_run,
+        spec_sync: SpecSyncSummaryJson {
+            capabilities_synced: ac
+                .spec_sync
+                .capabilities_synced
+                .into_iter()
+                .map(|c| CapabilitySyncResultJson {
+                    capability: c.capability,
+                    main_spec_path: c.main_spec_path,
+                    added_count: c.added_count,
+                    modified_count: c.modified_count,
+                    removed_count: c.removed_count,
+                    renamed_count: c.renamed_count,
+                    created_main_spec: c.created_main_spec,
+                })
+                .collect(),
+        },
+    }
+}
+
 /// 把 [`ChangeStatus`] 轉為 [`StatusData`]，套用本 change 固定規則。
 pub fn change_status_to_status_data(status: ChangeStatus) -> StatusData {
     let artifacts = status
@@ -181,6 +256,7 @@ fn state_str(s: State) -> &'static str {
     match s {
         State::Draft => "draft",
         State::Proposed => "proposed",
+        State::Archived => "archived",
     }
 }
 
@@ -460,6 +536,76 @@ mod tests {
         assert_eq!(data.artifacts.len(), 2);
         assert_eq!(data.artifacts[0].id, "proposal");
         assert_eq!(data.artifacts[1].id, "spec:auth");
+    }
+
+    #[test]
+    fn archive_data_serializes_camelcase() {
+        use crate::output::{ArchiveData, CapabilitySyncResultJson, SpecSyncSummaryJson};
+        let data = ArchiveData {
+            change_id: "demo".to_string(),
+            archive_path: ".speclink/changes/archive/2026-05-19-demo".to_string(),
+            state: "archived".to_string(),
+            archived_at: "2026-05-19T12:34:56Z".to_string(),
+            dry_run: false,
+            spec_sync: SpecSyncSummaryJson {
+                capabilities_synced: vec![CapabilitySyncResultJson {
+                    capability: "auth".to_string(),
+                    main_spec_path: ".speclink/specs/auth/spec.md".to_string(),
+                    added_count: 2,
+                    modified_count: 0,
+                    removed_count: 0,
+                    renamed_count: 0,
+                    created_main_spec: true,
+                }],
+            },
+        };
+        let v = parse(&data);
+        assert_eq!(v["changeId"], "demo");
+        assert_eq!(
+            v["archivePath"],
+            ".speclink/changes/archive/2026-05-19-demo"
+        );
+        assert_eq!(v["state"], "archived");
+        assert_eq!(v["archivedAt"], "2026-05-19T12:34:56Z");
+        assert_eq!(v["dryRun"], false);
+        let cs = &v["specSync"]["capabilitiesSynced"][0];
+        assert_eq!(cs["capability"], "auth");
+        assert_eq!(cs["mainSpecPath"], ".speclink/specs/auth/spec.md");
+        assert_eq!(cs["addedCount"], 2);
+        assert_eq!(cs["createdMainSpec"], true);
+        assert!(v.get("change_id").is_none());
+        assert!(v.get("spec_sync").is_none());
+        assert!(cs.get("main_spec_path").is_none());
+    }
+
+    #[test]
+    fn archived_change_to_archive_data_state_is_archived() {
+        use crate::output::archived_change_to_archive_data;
+        use provider::model::{
+            ArchivedChange, CapabilitySyncResult, ChangeId, SpecDeltaSummary, State,
+        };
+        let ac = ArchivedChange {
+            change_id: ChangeId::from("demo"),
+            archive_path: ".speclink/changes/archive/2026-05-19-demo".to_string(),
+            state: State::Archived,
+            archived_at: "2026-05-19T12:34:56Z".to_string(),
+            spec_sync: SpecDeltaSummary {
+                capabilities_synced: vec![CapabilitySyncResult {
+                    capability: "auth".to_string(),
+                    main_spec_path: ".speclink/specs/auth/spec.md".to_string(),
+                    added_count: 1,
+                    modified_count: 0,
+                    removed_count: 0,
+                    renamed_count: 0,
+                    created_main_spec: true,
+                }],
+            },
+            dry_run: true,
+        };
+        let data = archived_change_to_archive_data(ac);
+        assert_eq!(data.state, "archived");
+        assert!(data.dry_run);
+        assert_eq!(data.spec_sync.capabilities_synced.len(), 1);
     }
 
     #[test]

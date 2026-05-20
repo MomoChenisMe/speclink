@@ -29,6 +29,7 @@ async fn main() -> ExitCode {
         Command::Propose(ProposeCommand::Create(args)) => commands::propose::run(args).await,
         Command::Artifact(ArtifactCommand::Write(cmd)) => commands::artifact::run(cmd).await,
         Command::Status(args) => commands::status::run(args).await,
+        Command::Archive(args) => commands::archive::run(args).await,
     };
     ExitCode::from(exit.as_u8())
 }
