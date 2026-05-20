@@ -37,6 +37,7 @@ Skill + CLI + 可替換 Provider + 可同步狀態的 SDD Workflow Engine
 3. 不要求遠端服務採用固定產品形態。
 4. 不讓 AI skill 負責登入、設定 URL、選擇 provider 或處理 token。
 5. 不讓每個 skill 直接呼叫遠端 API。
+6. MVP 不優先實作 Spectra 類似的 `documents` / vector search / `spectra-ask` clone；這一塊可保留為 provider optional capability。
 
 ## 核心角色
 
@@ -1131,6 +1132,8 @@ If-Match: artifact-version-3
 8. `task done`、`finish`。
 9. `archive`。
 10. 固定 Provider API Markdown 規格。
+11. 最小版 schema init/fork/validate。
+12. 最小版 demo fixture，用於 onboarding 與 provider smoke test。
 
 暫緩：
 
@@ -1139,6 +1142,8 @@ If-Match: artifact-version-3
 3. 多人即時協作鎖。
 4. 與所有 Git provider 深度整合。
 5. 與 `spectra-cli` 完全相容。
+6. Documents / vector search / `spectra-ask` clone。此能力在 Spectra CLI 中存在，但目前不是新專案主賣點。
+7. Feedback network command。若未來實作，需明確揭露 endpoint、payload 與 opt-in 行為。
 
 ## 核心結論
 
