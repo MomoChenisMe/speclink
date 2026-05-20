@@ -1,7 +1,7 @@
 //! `speclink` 二進位入口。
 
 use clap::Parser;
-use cli::cli::{Cli, Command, ProposeCommand};
+use cli::cli::{ArtifactCommand, Cli, Command, ProposeCommand};
 use cli::commands;
 use std::process::ExitCode;
 
@@ -27,6 +27,8 @@ async fn main() -> ExitCode {
 
     let exit = match parsed.command {
         Command::Propose(ProposeCommand::Create(args)) => commands::propose::run(args).await,
+        Command::Artifact(ArtifactCommand::Write(cmd)) => commands::artifact::run(cmd).await,
+        Command::Status(args) => commands::status::run(args).await,
     };
     ExitCode::from(exit.as_u8())
 }

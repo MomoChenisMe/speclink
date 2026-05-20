@@ -159,6 +159,9 @@ pub enum ArtifactKind {
 }
 
 /// 對 provider 提交的新 artifact 內容。
+///
+/// `capability` 為 spec artifact 專用：當 `kind == Spec` 時必填、其他 kind 必為 `None`。
+/// 雙重校驗由 CLI clap layer 與 runtime defensive check 共同把關。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewArtifact {
@@ -166,6 +169,9 @@ pub struct NewArtifact {
     pub kind: ArtifactKind,
     /// 文字內容（已序列化的 markdown）。
     pub content: String,
+    /// Capability 名稱；僅當 `kind == Spec` 時提供。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability: Option<String>,
 }
 
 /// 已寫入的 artifact。
@@ -178,6 +184,53 @@ pub struct Artifact {
     pub path: String,
     /// 內容雜湊（格式由 provider 自行定義，例如 `sha256:...`）。
     pub content_hash: String,
+}
+
+/// Artifact 在 `get_status` 中的存在性狀態。
+///
+/// 本 change 僅引入 `Missing` 與 `Done` 兩態 — `Ready` / `Blocked` 等 dependency-aware
+/// 狀態屬於後續 instructions capability 的範疇。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ArtifactState {
+    /// 對應檔案不存在。
+    Missing,
+    /// 對應檔案存在。
+    Done,
+}
+
+/// 單一 artifact 在 change 中的狀態描述。
+///
+/// `id` 為 `"proposal"` / `"design"` / `"tasks"` 或 `"spec:CAP"`（`CAP` 為 capability 名稱）；
+/// `path` 為相對於 base 的 POSIX 字串。`required` 與 `dependencies` 由 [`crate::Provider::get_status`]
+/// 實作端決定（本 change 採用固定規則）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactStatus {
+    /// Artifact 識別碼。
+    pub id: String,
+    /// Artifact 種類。
+    pub kind: ArtifactKind,
+    /// 相對於 base 的 POSIX 路徑。
+    pub path: String,
+    /// 存在性狀態。
+    pub status: ArtifactState,
+    /// 是否為必要 artifact。
+    pub required: bool,
+    /// 依賴的其他 artifact id 清單。
+    pub dependencies: Vec<String>,
+}
+
+/// 整個 change 的狀態快照。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeStatus {
+    /// Change 識別碼。
+    pub change_id: ChangeId,
+    /// 當前 lifecycle 狀態（讀自 `metadata.json`）。
+    pub state: State,
+    /// Artifact 列表，按固定順序：proposal → design → tasks → `spec:CAP`（capability 字典序）。
+    pub artifacts: Vec<ArtifactStatus>,
 }
 
 #[cfg(test)]
@@ -265,8 +318,98 @@ mod tests {
         let na = NewArtifact {
             kind: ArtifactKind::Proposal,
             content: "## Why\n\ntest\n".to_string(),
+            capability: None,
         };
         assert_round_trip(na);
+    }
+
+    #[test]
+    fn new_artifact_capability_serialization_omits_none() {
+        use crate::model::{ArtifactKind, NewArtifact};
+        let na = NewArtifact {
+            kind: ArtifactKind::Proposal,
+            content: "## Why\n\ntest\n".to_string(),
+            capability: None,
+        };
+        let json = serde_json::to_string(&na).unwrap();
+        assert!(
+            !json.contains("capability"),
+            "None capability must be skipped: got {json}"
+        );
+    }
+
+    #[test]
+    fn new_artifact_capability_round_trip() {
+        use crate::model::{ArtifactKind, NewArtifact};
+        let na = NewArtifact {
+            kind: ArtifactKind::Spec,
+            content: "spec body\n".to_string(),
+            capability: Some("user-auth".to_string()),
+        };
+        let json = serde_json::to_string(&na).unwrap();
+        assert!(
+            json.contains("\"capability\":\"user-auth\""),
+            "Some capability must serialize: got {json}"
+        );
+        assert_round_trip(na);
+    }
+
+    #[test]
+    fn change_status_serializes_camelcase() {
+        use crate::model::{
+            ArtifactKind, ArtifactState, ArtifactStatus, ChangeId, ChangeStatus, State,
+        };
+        let status = ChangeStatus {
+            change_id: ChangeId::from("demo"),
+            state: State::Proposed,
+            artifacts: vec![
+                ArtifactStatus {
+                    id: "proposal".to_string(),
+                    kind: ArtifactKind::Proposal,
+                    path: ".speclink/changes/demo/proposal.md".to_string(),
+                    status: ArtifactState::Done,
+                    required: true,
+                    dependencies: vec![],
+                },
+                ArtifactStatus {
+                    id: "design".to_string(),
+                    kind: ArtifactKind::Design,
+                    path: ".speclink/changes/demo/design.md".to_string(),
+                    status: ArtifactState::Missing,
+                    required: false,
+                    dependencies: vec!["proposal".to_string()],
+                },
+                ArtifactStatus {
+                    id: "spec:user-auth".to_string(),
+                    kind: ArtifactKind::Spec,
+                    path: ".speclink/changes/demo/specs/user-auth/spec.md".to_string(),
+                    status: ArtifactState::Done,
+                    required: true,
+                    dependencies: vec!["proposal".to_string()],
+                },
+            ],
+        };
+        let json = serde_json::to_string(&status).expect("serialize");
+        let v: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        assert_eq!(v["changeId"], "demo");
+        assert_eq!(v["state"], "proposed");
+        assert!(v["artifacts"].is_array());
+        let arr = v["artifacts"].as_array().unwrap();
+        assert_eq!(arr.len(), 3);
+        // ArtifactStatus 欄位
+        assert_eq!(arr[0]["id"], "proposal");
+        assert_eq!(arr[0]["kind"], "proposal");
+        assert_eq!(arr[0]["path"], ".speclink/changes/demo/proposal.md");
+        assert_eq!(arr[0]["status"], "done");
+        assert_eq!(arr[0]["required"], true);
+        assert!(arr[0]["dependencies"].is_array());
+        assert_eq!(arr[0]["dependencies"].as_array().unwrap().len(), 0);
+        // ArtifactState::Missing 序列化
+        assert_eq!(arr[1]["status"], "missing");
+        // spec id 含冒號
+        assert_eq!(arr[2]["id"], "spec:user-auth");
+        // Round-trip 保持
+        assert_round_trip(status);
     }
 
     #[test]

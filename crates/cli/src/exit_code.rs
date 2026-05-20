@@ -70,6 +70,13 @@ fn classify_provider(p: &ProviderError) -> (ExitCode, ErrorCode) {
         }
         ProviderError::ChangeNotFound { .. } => (ExitCode(1), ErrorCode("change.not_found")),
         ProviderError::InvalidChangeId { .. } => (ExitCode(2), ErrorCode("change.invalid_id")),
+        ProviderError::ArtifactAlreadyExists { .. } => {
+            (ExitCode(1), ErrorCode("artifact.already_exists"))
+        }
+        ProviderError::MissingCapability => (ExitCode(2), ErrorCode("artifact.missing_capability")),
+        ProviderError::InvalidCapability { .. } => {
+            (ExitCode(2), ErrorCode("artifact.invalid_capability"))
+        }
         ProviderError::Internal { .. } => (ExitCode(1), ErrorCode("internal.error")),
     }
 }
@@ -86,6 +93,16 @@ fn classify_local(l: &LocalProviderError) -> (ExitCode, ErrorCode) {
         LocalProviderError::InvalidChangeId { .. } => (ExitCode(2), ErrorCode("change.invalid_id")),
         LocalProviderError::ChangeAlreadyExists { .. } => {
             (ExitCode(1), ErrorCode("change.already_exists"))
+        }
+        LocalProviderError::ChangeNotFound { .. } => (ExitCode(1), ErrorCode("change.not_found")),
+        LocalProviderError::ArtifactAlreadyExists { .. } => {
+            (ExitCode(1), ErrorCode("artifact.already_exists"))
+        }
+        LocalProviderError::MissingCapability => {
+            (ExitCode(2), ErrorCode("artifact.missing_capability"))
+        }
+        LocalProviderError::InvalidCapability { .. } => {
+            (ExitCode(2), ErrorCode("artifact.invalid_capability"))
         }
         LocalProviderError::Io(_)
         | LocalProviderError::Json(_)
@@ -201,6 +218,9 @@ mod tests {
             "change.invalid_id",
             "input.invalid",
             "internal.error",
+            "artifact.already_exists",
+            "artifact.missing_capability",
+            "artifact.invalid_capability",
         ];
         for c in codes {
             assert!(matches_naming(c), "code does not match naming regex: {c}");

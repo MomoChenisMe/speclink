@@ -46,6 +46,26 @@ pub enum ProviderError {
         change_id: String,
     },
 
+    /// Artifact 檔案已存在於目標路徑，本 change 不允許覆寫。
+    #[error("artifact '{kind}' already exists for change '{change_id}'")]
+    ArtifactAlreadyExists {
+        /// Artifact 種類字串（`"design"` / `"tasks"` / `"proposal"` / `"spec:CAP"`；`CAP` 為 capability 名稱）。
+        kind: String,
+        /// 目標 change id。
+        change_id: ChangeId,
+    },
+
+    /// `artifact write spec` 缺 `--capability`。
+    #[error("--capability is required for spec artifacts")]
+    MissingCapability,
+
+    /// Capability 名稱不符合 kebab-case 規則。
+    #[error("invalid capability name: '{capability}'")]
+    InvalidCapability {
+        /// 不合法的 capability 名稱原始字串。
+        capability: String,
+    },
+
     /// 兜底錯誤；訊息僅供人類閱讀，不會在 JSON envelope `error.details` 中洩漏。
     #[error("internal provider error: {message}")]
     Internal {
@@ -63,6 +83,9 @@ impl ProviderError {
             ProviderError::ChangeAlreadyExists { .. } => "change.already_exists",
             ProviderError::ChangeNotFound { .. } => "change.not_found",
             ProviderError::InvalidChangeId { .. } => "change.invalid_id",
+            ProviderError::ArtifactAlreadyExists { .. } => "artifact.already_exists",
+            ProviderError::MissingCapability => "artifact.missing_capability",
+            ProviderError::InvalidCapability { .. } => "artifact.invalid_capability",
             ProviderError::Internal { .. } => "internal.error",
         }
     }
@@ -139,5 +162,28 @@ mod tests {
             message: "boom".to_string(),
         };
         assert_eq!(err.error_code(), "internal.error");
+    }
+
+    #[test]
+    fn artifact_already_exists_code() {
+        let err = ProviderError::ArtifactAlreadyExists {
+            kind: "design".to_string(),
+            change_id: ChangeId::from("demo"),
+        };
+        assert_eq!(err.error_code(), "artifact.already_exists");
+    }
+
+    #[test]
+    fn missing_capability_code() {
+        let err = ProviderError::MissingCapability;
+        assert_eq!(err.error_code(), "artifact.missing_capability");
+    }
+
+    #[test]
+    fn invalid_capability_code() {
+        let err = ProviderError::InvalidCapability {
+            capability: "Bad-Name".to_string(),
+        };
+        assert_eq!(err.error_code(), "artifact.invalid_capability");
     }
 }

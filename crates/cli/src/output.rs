@@ -1,5 +1,6 @@
-//! `--json` envelope 與 `propose create` data schema。
+//! `--json` envelope、`propose create` / `artifact write` / `status` data schema。
 
+use provider::model::{ArtifactKind, ArtifactState, ArtifactStatus, ChangeStatus, State};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -80,6 +81,133 @@ pub struct ProposeCreateData {
     pub mode: String,
 }
 
+/// `artifact write` 成功時的 `data` payload。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactWriteData {
+    /// 已寫入的 change id。
+    pub change_id: String,
+    /// Artifact 識別碼：`"proposal"` / `"design"` / `"tasks"` 或 `"spec:<capability>"`。
+    pub artifact_id: String,
+    /// Artifact 種類字串（`"proposal"` / `"design"` / `"tasks"` / `"spec"`）。
+    pub kind: String,
+    /// 寫入檔案相對於專案根目錄的 POSIX 路徑。
+    pub path: String,
+    /// 解析後的 provider mode（`"local"`）。
+    pub mode: String,
+}
+
+/// `status` 成功時的 `data` payload。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusData {
+    /// 查詢的 change id。
+    pub change_id: String,
+    /// Lifecycle 狀態字串（讀自 `metadata.json`）。
+    pub state: String,
+    /// Artifact 列表，順序固定：proposal、design、tasks、`spec:CAP`（capability 名稱字典序）。
+    pub artifacts: Vec<ArtifactStatusJson>,
+}
+
+/// `status` JSON output 中單一 artifact 的描述。
+///
+/// 對應 spec ``` `status` JSON output schema ``` 的 ArtifactStatus object。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactStatusJson {
+    /// Artifact 識別碼。
+    pub id: String,
+    /// Artifact 種類字串。
+    pub kind: String,
+    /// 相對於 base 的 POSIX 路徑。
+    pub path: String,
+    /// `"missing"` 或 `"done"`。
+    pub status: String,
+    /// 是否為必要 artifact。
+    pub required: bool,
+    /// 依賴的其他 artifact id 列表。
+    pub dependencies: Vec<String>,
+}
+
+/// 把 [`ArtifactStatus`] 轉為 JSON 友善版本，並套用本 change 固定的 Required/Dependency Rules。
+///
+/// **Required Rules**：proposal/spec=true、design/tasks=false。
+///
+/// **Dependency Rules**（單引號避免被解析為 intradoc link）：`proposal=[]`、
+/// `design=['proposal']`、`tasks=['proposal','spec']`、`spec=['proposal']`。
+pub fn artifact_status_to_json(status: &ArtifactStatus) -> ArtifactStatusJson {
+    let (required, dependencies) = required_and_deps(&status.id, status.kind);
+    ArtifactStatusJson {
+        id: status.id.clone(),
+        kind: artifact_kind_str(status.kind).to_string(),
+        path: status.path.clone(),
+        status: artifact_state_str(status.status).to_string(),
+        required,
+        dependencies,
+    }
+}
+
+/// 把 [`ChangeStatus`] 轉為 [`StatusData`]，套用本 change 固定規則。
+pub fn change_status_to_status_data(status: ChangeStatus) -> StatusData {
+    let artifacts = status
+        .artifacts
+        .iter()
+        .map(artifact_status_to_json)
+        .collect();
+    StatusData {
+        change_id: status.change_id.as_str().to_string(),
+        state: state_str(status.state).to_string(),
+        artifacts,
+    }
+}
+
+fn artifact_kind_str(k: ArtifactKind) -> &'static str {
+    match k {
+        ArtifactKind::Proposal => "proposal",
+        ArtifactKind::Design => "design",
+        ArtifactKind::Tasks => "tasks",
+        ArtifactKind::Spec => "spec",
+    }
+}
+
+fn artifact_state_str(s: ArtifactState) -> &'static str {
+    match s {
+        ArtifactState::Missing => "missing",
+        ArtifactState::Done => "done",
+    }
+}
+
+fn state_str(s: State) -> &'static str {
+    match s {
+        State::Draft => "draft",
+        State::Proposed => "proposed",
+    }
+}
+
+fn required_and_deps(id: &str, kind: ArtifactKind) -> (bool, Vec<String>) {
+    match kind {
+        ArtifactKind::Proposal => (true, Vec::new()),
+        ArtifactKind::Design => (false, vec!["proposal".to_string()]),
+        ArtifactKind::Tasks => (false, vec!["proposal".to_string(), "spec".to_string()]),
+        ArtifactKind::Spec => (true, vec!["proposal".to_string()]),
+    }
+    .pipe(|(req, deps)| {
+        // 防呆：spec id 必須以 "spec:" 起頭
+        debug_assert!(
+            kind != ArtifactKind::Spec || id.starts_with("spec:"),
+            "spec artifact must have id starting with 'spec:': {id}"
+        );
+        (req, deps)
+    })
+}
+
+trait Pipe: Sized {
+    fn pipe<U>(self, f: impl FnOnce(Self) -> U) -> U {
+        f(self)
+    }
+}
+impl<T> Pipe for T {}
+
 /// 取得本次 invocation 的 `requestId`。
 ///
 /// 若 `SPECLINK_TEST_REQUEST_ID` 環境變數已設定且非空，則直接使用該值（測試用途）；
@@ -95,7 +223,12 @@ pub fn request_id() -> String {
 #[allow(unsafe_code)]
 mod tests {
     use crate::output::{
-        ENV_TEST_REQUEST_ID, Envelope, ErrorBody, ProposeCreateData, Warning, request_id,
+        ArtifactStatusJson, ArtifactWriteData, ENV_TEST_REQUEST_ID, Envelope, ErrorBody,
+        ProposeCreateData, StatusData, Warning, artifact_status_to_json,
+        change_status_to_status_data, request_id,
+    };
+    use provider::model::{
+        ArtifactKind, ArtifactState, ArtifactStatus, ChangeId, ChangeStatus, State,
     };
     use serde_json::Value;
 
@@ -186,6 +319,147 @@ mod tests {
                 None => std::env::remove_var(key),
             }
         }
+    }
+
+    #[test]
+    fn artifact_write_data_uses_camel_case() {
+        let data = ArtifactWriteData {
+            change_id: "demo".to_string(),
+            artifact_id: "spec:user-auth".to_string(),
+            kind: "spec".to_string(),
+            path: ".speclink/changes/demo/specs/user-auth/spec.md".to_string(),
+            mode: "local".to_string(),
+        };
+        let v = parse(&data);
+        assert_eq!(v["changeId"], "demo");
+        assert_eq!(v["artifactId"], "spec:user-auth");
+        assert_eq!(v["kind"], "spec");
+        assert_eq!(v["path"], ".speclink/changes/demo/specs/user-auth/spec.md");
+        assert_eq!(v["mode"], "local");
+        assert!(v.get("change_id").is_none());
+    }
+
+    #[test]
+    fn status_data_serializes_camelcase() {
+        let data = StatusData {
+            change_id: "demo".to_string(),
+            state: "proposed".to_string(),
+            artifacts: vec![ArtifactStatusJson {
+                id: "proposal".to_string(),
+                kind: "proposal".to_string(),
+                path: ".speclink/changes/demo/proposal.md".to_string(),
+                status: "done".to_string(),
+                required: true,
+                dependencies: vec![],
+            }],
+        };
+        let v = parse(&data);
+        assert_eq!(v["changeId"], "demo");
+        assert_eq!(v["state"], "proposed");
+        assert!(v["artifacts"].is_array());
+        assert_eq!(v["artifacts"][0]["id"], "proposal");
+        assert_eq!(v["artifacts"][0]["status"], "done");
+        assert_eq!(v["artifacts"][0]["required"], true);
+        assert!(v["artifacts"][0]["dependencies"].is_array());
+    }
+
+    #[test]
+    fn artifact_status_to_json_applies_proposal_required() {
+        let s = ArtifactStatus {
+            id: "proposal".to_string(),
+            kind: ArtifactKind::Proposal,
+            path: ".speclink/changes/demo/proposal.md".to_string(),
+            status: ArtifactState::Done,
+            required: false,
+            dependencies: vec![],
+        };
+        let j = artifact_status_to_json(&s);
+        assert!(j.required, "proposal must be required");
+        assert!(j.dependencies.is_empty());
+        assert_eq!(j.status, "done");
+    }
+
+    #[test]
+    fn artifact_status_to_json_applies_design_deps() {
+        let s = ArtifactStatus {
+            id: "design".to_string(),
+            kind: ArtifactKind::Design,
+            path: ".speclink/changes/demo/design.md".to_string(),
+            status: ArtifactState::Missing,
+            required: false,
+            dependencies: vec![],
+        };
+        let j = artifact_status_to_json(&s);
+        assert!(!j.required);
+        assert_eq!(j.dependencies, vec!["proposal".to_string()]);
+        assert_eq!(j.status, "missing");
+    }
+
+    #[test]
+    fn artifact_status_to_json_applies_tasks_deps() {
+        let s = ArtifactStatus {
+            id: "tasks".to_string(),
+            kind: ArtifactKind::Tasks,
+            path: ".speclink/changes/demo/tasks.md".to_string(),
+            status: ArtifactState::Missing,
+            required: false,
+            dependencies: vec![],
+        };
+        let j = artifact_status_to_json(&s);
+        assert!(!j.required);
+        assert_eq!(
+            j.dependencies,
+            vec!["proposal".to_string(), "spec".to_string()]
+        );
+    }
+
+    #[test]
+    fn artifact_status_to_json_applies_spec_required() {
+        let s = ArtifactStatus {
+            id: "spec:user-auth".to_string(),
+            kind: ArtifactKind::Spec,
+            path: ".speclink/changes/demo/specs/user-auth/spec.md".to_string(),
+            status: ArtifactState::Done,
+            required: false,
+            dependencies: vec![],
+        };
+        let j = artifact_status_to_json(&s);
+        assert!(j.required, "spec must be required");
+        assert_eq!(j.dependencies, vec!["proposal".to_string()]);
+        assert_eq!(j.id, "spec:user-auth");
+        assert_eq!(j.kind, "spec");
+    }
+
+    #[test]
+    fn change_status_to_status_data_preserves_order() {
+        let status = ChangeStatus {
+            change_id: ChangeId::from("demo"),
+            state: State::Proposed,
+            artifacts: vec![
+                ArtifactStatus {
+                    id: "proposal".to_string(),
+                    kind: ArtifactKind::Proposal,
+                    path: ".speclink/changes/demo/proposal.md".to_string(),
+                    status: ArtifactState::Done,
+                    required: false,
+                    dependencies: vec![],
+                },
+                ArtifactStatus {
+                    id: "spec:auth".to_string(),
+                    kind: ArtifactKind::Spec,
+                    path: ".speclink/changes/demo/specs/auth/spec.md".to_string(),
+                    status: ArtifactState::Done,
+                    required: false,
+                    dependencies: vec![],
+                },
+            ],
+        };
+        let data = change_status_to_status_data(status);
+        assert_eq!(data.change_id, "demo");
+        assert_eq!(data.state, "proposed");
+        assert_eq!(data.artifacts.len(), 2);
+        assert_eq!(data.artifacts[0].id, "proposal");
+        assert_eq!(data.artifacts[1].id, "spec:auth");
     }
 
     #[test]

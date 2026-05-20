@@ -1,0 +1,55 @@
+---
+source: crates/cli/tests/status_snapshots.rs
+expression: "pretty(&String::from_utf8(out.stdout).unwrap())"
+---
+{
+  "data": {
+    "artifacts": [
+      {
+        "dependencies": [],
+        "id": "proposal",
+        "kind": "proposal",
+        "path": ".speclink/changes/demo/proposal.md",
+        "required": true,
+        "status": "done"
+      },
+      {
+        "dependencies": [
+          "proposal"
+        ],
+        "id": "design",
+        "kind": "design",
+        "path": ".speclink/changes/demo/design.md",
+        "required": false,
+        "status": "done"
+      },
+      {
+        "dependencies": [
+          "proposal",
+          "spec"
+        ],
+        "id": "tasks",
+        "kind": "tasks",
+        "path": ".speclink/changes/demo/tasks.md",
+        "required": false,
+        "status": "missing"
+      },
+      {
+        "dependencies": [
+          "proposal"
+        ],
+        "id": "spec:auth",
+        "kind": "spec",
+        "path": ".speclink/changes/demo/specs/auth/spec.md",
+        "required": true,
+        "status": "done"
+      }
+    ],
+    "changeId": "demo",
+    "state": "proposed"
+  },
+  "error": null,
+  "ok": true,
+  "requestId": "req_00000000000000000000000000000000",
+  "warnings": []
+}

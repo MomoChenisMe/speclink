@@ -12,7 +12,7 @@ pub mod model;
 pub mod resolution;
 
 use crate::error::ProviderError;
-use crate::model::{Artifact, Change, ChangeId, NewArtifact, NewChange, ProjectId};
+use crate::model::{Artifact, Change, ChangeId, ChangeStatus, NewArtifact, NewChange, ProjectId};
 
 /// SpecLink 對外可替換的 storage 抽象。
 ///
@@ -47,4 +47,15 @@ pub trait Provider: Send + Sync {
         project_id: &ProjectId,
         change_id: &ChangeId,
     ) -> Result<Change, ProviderError>;
+
+    /// 讀取 change 的 artifact 狀態快照（純讀；不修改 filesystem 或 state.db）。
+    ///
+    /// 失敗條件：
+    /// - change 不存在 → [`ProviderError::ChangeNotFound`]
+    /// - `metadata.json` 解析失敗或其他 storage 錯誤 → [`ProviderError::Internal`]
+    async fn get_status(
+        &self,
+        project_id: &ProjectId,
+        change_id: &ChangeId,
+    ) -> Result<ChangeStatus, ProviderError>;
 }

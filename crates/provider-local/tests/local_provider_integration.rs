@@ -37,6 +37,7 @@ async fn create_change_then_write_artifact_succeeds() {
             NewArtifact {
                 kind: ArtifactKind::Proposal,
                 content: proposal_content.clone(),
+                capability: None,
             },
         )
         .await
@@ -92,6 +93,7 @@ async fn duplicate_change_id_yields_change_already_exists() {
             NewArtifact {
                 kind: ArtifactKind::Proposal,
                 content: "## Why\n\nfirst\n".to_string(),
+                capability: None,
             },
         )
         .await

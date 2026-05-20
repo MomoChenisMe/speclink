@@ -9,7 +9,8 @@ use async_trait::async_trait;
 use provider::Provider;
 use provider::error::ProviderError;
 use provider::model::{
-    Artifact, ArtifactKind, Change, ChangeId, CreatedBy, NewArtifact, NewChange, ProjectId, State,
+    Artifact, ArtifactKind, Change, ChangeId, ChangeStatus, CreatedBy, NewArtifact, NewChange,
+    ProjectId, State,
 };
 use std::path::{Path, PathBuf};
 
@@ -19,7 +20,10 @@ pub mod storage;
 
 use crate::error::LocalProviderError;
 use crate::state_db::StateDb;
-use crate::storage::{change_dir, is_valid_change_id, write_proposal_content_atomic};
+use crate::storage::{
+    change_dir, is_valid_change_id, to_posix_string, write_design_atomic,
+    write_proposal_content_atomic, write_spec_atomic, write_tasks_atomic,
+};
 
 /// 本地端 provider 實作，將 change 與 artifact 持久化於 `<base>/.speclink/`。
 #[derive(Debug)]
@@ -55,6 +59,19 @@ impl LocalProvider {
                 ProviderError::ChangeAlreadyExists {
                     change_id: ChangeId::from(change_id),
                 }
+            }
+            LocalProviderError::ChangeNotFound { change_id } => ProviderError::ChangeNotFound {
+                change_id: ChangeId::from(change_id),
+            },
+            LocalProviderError::ArtifactAlreadyExists { kind, change_id } => {
+                ProviderError::ArtifactAlreadyExists {
+                    kind,
+                    change_id: ChangeId::from(change_id),
+                }
+            }
+            LocalProviderError::MissingCapability => ProviderError::MissingCapability,
+            LocalProviderError::InvalidCapability { capability } => {
+                ProviderError::InvalidCapability { capability }
             }
             other => ProviderError::Internal {
                 message: other.to_string(),
@@ -101,20 +118,36 @@ impl Provider for LocalProvider {
         change_id: &ChangeId,
         input: NewArtifact,
     ) -> Result<Artifact, ProviderError> {
-        if input.kind != ArtifactKind::Proposal {
-            return Err(ProviderError::Internal {
-                message: format!(
-                    "artifact kind {:?} not supported in this change",
-                    input.kind
-                ),
-            });
-        }
+        let kind = input.kind;
+        let content = input.content;
+        let capability = input.capability.clone();
         let base = self.base_path.clone();
         let cid = change_id.clone();
-        let content = input.content;
+
+        // spec 缺 capability → MissingCapability；非 spec 帶 capability → Internal（CLI 應已先擋）
+        match (kind, capability.as_deref()) {
+            (ArtifactKind::Spec, None) => {
+                return Err(ProviderError::MissingCapability);
+            }
+            (ArtifactKind::Proposal | ArtifactKind::Design | ArtifactKind::Tasks, Some(_)) => {
+                return Err(ProviderError::Internal {
+                    message: "capability must not be set for non-spec artifact".to_string(),
+                });
+            }
+            _ => {}
+        }
+
         let path: PathBuf =
             tokio::task::spawn_blocking(move || -> Result<PathBuf, LocalProviderError> {
-                write_proposal_content_atomic(&base, &cid, &content)
+                match kind {
+                    ArtifactKind::Proposal => write_proposal_content_atomic(&base, &cid, &content),
+                    ArtifactKind::Design => write_design_atomic(&base, &cid, &content),
+                    ArtifactKind::Tasks => write_tasks_atomic(&base, &cid, &content),
+                    ArtifactKind::Spec => {
+                        let cap = capability.ok_or(LocalProviderError::MissingCapability)?;
+                        write_spec_atomic(&base, &cid, &cap, &content)
+                    }
+                }
             })
             .await
             .map_err(|e| ProviderError::Internal {
@@ -122,23 +155,22 @@ impl Provider for LocalProvider {
             })?
             .map_err(Self::map_local_err)?;
 
-        // 更新 state DB（spec 步驟 6-7）。
-        self.state_db
-            .set_in_progress(change_id)
-            .await
-            .map_err(|e| ProviderError::Internal {
-                message: format!("state db error: {e}"),
-            })?;
+        // 僅 proposal 寫入時更新 state DB（標記為 in-progress）。
+        // design / tasks / spec 不更新 metadata.json 或 state.db。
+        if kind == ArtifactKind::Proposal {
+            self.state_db
+                .set_in_progress(change_id)
+                .await
+                .map_err(|e| ProviderError::Internal {
+                    message: format!("state db error: {e}"),
+                })?;
+        }
 
-        // 組合 Artifact 回傳值；path 為相對於 base_path 的 POSIX 字串。
-        let relative = path
-            .strip_prefix(&self.base_path)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .into_owned()
-            .replace('\\', "/");
+        // path 為相對於 base_path 的 POSIX 字串。
+        let relative_path = path.strip_prefix(&self.base_path).unwrap_or(&path);
+        let relative = to_posix_string(relative_path);
         Ok(Artifact {
-            kind: ArtifactKind::Proposal,
+            kind,
             path: relative,
             content_hash: String::new(),
         })
@@ -163,5 +195,20 @@ impl Provider for LocalProvider {
                 message: format!("failed to parse metadata: {e}"),
             })?;
         Ok(change)
+    }
+
+    async fn get_status(
+        &self,
+        _project_id: &ProjectId,
+        change_id: &ChangeId,
+    ) -> Result<ChangeStatus, ProviderError> {
+        let base = self.base_path.clone();
+        let cid = change_id.clone();
+        tokio::task::spawn_blocking(move || crate::storage::scan_change_status(&base, &cid))
+            .await
+            .map_err(|e| ProviderError::Internal {
+                message: format!("background task failed: {e}"),
+            })?
+            .map_err(Self::map_local_err)
     }
 }

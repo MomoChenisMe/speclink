@@ -87,6 +87,7 @@ pub async fn create_proposal(
     let new_artifact = NewArtifact {
         kind: ArtifactKind::Proposal,
         content,
+        capability: None,
     };
     let artifact = provider
         .write_artifact(&input.project_id, &input.change_id, new_artifact)
@@ -105,8 +106,8 @@ mod tests {
     use provider::Provider;
     use provider::error::ProviderError;
     use provider::model::{
-        Artifact, ArtifactKind, Change, ChangeId, CreatedBy, NewArtifact, NewChange, ProjectId,
-        State,
+        Artifact, ArtifactKind, Change, ChangeId, ChangeStatus, CreatedBy, NewArtifact, NewChange,
+        ProjectId, State,
     };
     use std::sync::Arc;
     use std::sync::Mutex;
@@ -190,6 +191,14 @@ mod tests {
             _project_id: &ProjectId,
             _change_id: &ChangeId,
         ) -> Result<Change, ProviderError> {
+            unimplemented!()
+        }
+
+        async fn get_status(
+            &self,
+            _project_id: &ProjectId,
+            _change_id: &ChangeId,
+        ) -> Result<ChangeStatus, ProviderError> {
             unimplemented!()
         }
     }

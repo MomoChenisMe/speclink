@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use provider::Provider;
 use provider::error::ProviderError;
-use provider::model::{Artifact, Change, ChangeId, NewArtifact, NewChange, ProjectId};
+use provider::model::{
+    Artifact, Change, ChangeId, ChangeStatus, NewArtifact, NewChange, ProjectId,
+};
 
 /// In-memory mock provider，內含 `Mutex<HashMap>`：以 `Send + Sync` 包裝可變狀態。
 struct MockProvider {
@@ -40,6 +42,14 @@ impl Provider for MockProvider {
         _project_id: &ProjectId,
         _change_id: &ChangeId,
     ) -> Result<Change, ProviderError> {
+        unimplemented!("mock — only used to confirm compilation")
+    }
+
+    async fn get_status(
+        &self,
+        _project_id: &ProjectId,
+        _change_id: &ChangeId,
+    ) -> Result<ChangeStatus, ProviderError> {
         unimplemented!("mock — only used to confirm compilation")
     }
 }

@@ -34,6 +34,33 @@ pub enum LocalProviderError {
         change_id: String,
     },
 
+    /// 指定 change 找不到 `metadata.json`（即 change 不存在）。
+    #[error("change '{change_id}' not found")]
+    ChangeNotFound {
+        /// 缺少的 change id。
+        change_id: String,
+    },
+
+    /// 目標 artifact 檔案已存在，本 change 不允許覆寫。
+    #[error("artifact '{kind}' already exists for change '{change_id}'")]
+    ArtifactAlreadyExists {
+        /// Artifact 種類字串（`"design"` / `"tasks"` / `"spec:CAP"` 等；`CAP` 為 capability 名稱）。
+        kind: String,
+        /// 目標 change id。
+        change_id: String,
+    },
+
+    /// `artifact write spec` 缺 `--capability`。
+    #[error("--capability is required for spec artifacts")]
+    MissingCapability,
+
+    /// Capability 名稱不符合 kebab-case 規則。
+    #[error("invalid capability name: '{capability}'")]
+    InvalidCapability {
+        /// 不合法的 capability 名稱原始字串。
+        capability: String,
+    },
+
     /// 兜底錯誤。
     #[error("local provider error: {message}")]
     Internal {
@@ -48,6 +75,10 @@ impl LocalProviderError {
         match self {
             LocalProviderError::InvalidChangeId { .. } => "change.invalid_id",
             LocalProviderError::ChangeAlreadyExists { .. } => "change.already_exists",
+            LocalProviderError::ChangeNotFound { .. } => "change.not_found",
+            LocalProviderError::ArtifactAlreadyExists { .. } => "artifact.already_exists",
+            LocalProviderError::MissingCapability => "artifact.missing_capability",
+            LocalProviderError::InvalidCapability { .. } => "artifact.invalid_capability",
             LocalProviderError::Io(_)
             | LocalProviderError::Json(_)
             | LocalProviderError::StateDb(_)
@@ -88,5 +119,63 @@ impl StateDbError {
     /// 對應點分隔 error code。
     pub fn error_code(&self) -> &'static str {
         "internal.error"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::error::LocalProviderError;
+
+    #[test]
+    fn invalid_change_id_code() {
+        let err = LocalProviderError::InvalidChangeId {
+            change_id: "Bad".to_string(),
+        };
+        assert_eq!(err.error_code(), "change.invalid_id");
+    }
+
+    #[test]
+    fn change_already_exists_code() {
+        let err = LocalProviderError::ChangeAlreadyExists {
+            change_id: "demo".to_string(),
+        };
+        assert_eq!(err.error_code(), "change.already_exists");
+    }
+
+    #[test]
+    fn change_not_found_code() {
+        let err = LocalProviderError::ChangeNotFound {
+            change_id: "missing".to_string(),
+        };
+        assert_eq!(err.error_code(), "change.not_found");
+    }
+
+    #[test]
+    fn artifact_already_exists_code() {
+        let err = LocalProviderError::ArtifactAlreadyExists {
+            kind: "design".to_string(),
+            change_id: "demo".to_string(),
+        };
+        assert_eq!(err.error_code(), "artifact.already_exists");
+    }
+
+    #[test]
+    fn missing_capability_code() {
+        let err = LocalProviderError::MissingCapability;
+        assert_eq!(err.error_code(), "artifact.missing_capability");
+    }
+
+    #[test]
+    fn invalid_capability_code() {
+        let err = LocalProviderError::InvalidCapability {
+            capability: "Bad-Name".to_string(),
+        };
+        assert_eq!(err.error_code(), "artifact.invalid_capability");
+    }
+
+    #[test]
+    fn io_error_code_is_internal() {
+        let err = LocalProviderError::Io(std::io::Error::other("boom"));
+        assert_eq!(err.error_code(), "internal.error");
     }
 }
