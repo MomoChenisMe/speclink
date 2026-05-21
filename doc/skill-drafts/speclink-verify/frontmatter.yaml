@@ -1,0 +1,12 @@
+name: speclink-verify
+description: "Verify that an implementation matches change artifacts (specs, tasks, design) — QA review skill"
+context: fork
+disallowedTools: [Edit, Write]
+license: MIT
+compatibility: Requires speclink CLI (Bash binding) or @speclink/client (Tool binding) + your AI tool's file-search facility.
+speclink_version: 0.1.0
+template_hash: sha256:<generated-at-build>
+metadata:
+  author: speclink
+  version: "1.0"
+  generatedBy: SpecLink

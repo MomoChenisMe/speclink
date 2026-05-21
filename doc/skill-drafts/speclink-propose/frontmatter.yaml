@@ -1,0 +1,11 @@
+name: speclink-propose
+description: "Create a SDD change with all required artifacts and transition out of proposing state"
+effort: xhigh
+license: MIT
+compatibility: Requires speclink CLI (Bash binding) or @speclink/client (Tool binding).
+speclink_version: 0.1.0
+template_hash: sha256:<generated-at-build>
+metadata:
+  author: speclink
+  version: "1.0"
+  generatedBy: SpecLink

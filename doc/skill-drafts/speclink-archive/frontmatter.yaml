@@ -1,0 +1,11 @@
+name: speclink-archive
+description: "Archive a completed change with optional commit sub-flow"
+effort: low
+license: MIT
+compatibility: Requires speclink CLI (Bash binding) or @speclink/client (Tool binding).
+speclink_version: 0.1.0
+template_hash: sha256:<generated-at-build>
+metadata:
+  author: speclink
+  version: "1.0"
+  generatedBy: SpecLink
