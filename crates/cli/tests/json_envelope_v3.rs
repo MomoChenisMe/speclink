@@ -215,6 +215,64 @@ fn task_undo_success_envelope_has_full_shape() {
 }
 
 #[test]
+fn state_transitioned_warning_carries_details_object() {
+    // B1 regression：DAG hook 觸發後的 warning 必須帶 details: { from, to, reason }，
+    // 否則 AI / tooling 沒辦法判斷實際轉移方向。
+    let tmp = TempDir::new().expect("tempdir");
+    let working = canonical(tmp.path());
+    git_init(&working);
+    speclink(&working)
+        .args(["--json", "init"])
+        .assert()
+        .success();
+    speclink(&working)
+        .args(["--json", "new", "change", "demo"])
+        .assert()
+        .success();
+    write_stdin(&working, "proposal", "demo", None, b"## Why\n");
+    write_stdin(
+        &working,
+        "spec",
+        "demo",
+        Some("auth"),
+        b"## ADDED Requirements\n",
+    );
+    // 第三 artifact 寫入觸發 DAG hook → state_transitioned warning。
+    let bin = assert_cmd::cargo::cargo_bin("speclink");
+    let mut cmd = Command::new(bin);
+    cmd.current_dir(&working)
+        .args([
+            "--json", "new", "artifact", "tasks", "--change", "demo", "--stdin",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped());
+    let mut child = cmd.spawn().expect("spawn");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(b"- [ ] one\n")
+        .expect("write");
+    let out = child.wait_with_output().expect("wait");
+    assert!(out.status.success());
+
+    let env: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    let warnings = env["warnings"].as_array().expect("warnings array");
+    let transitioned = warnings
+        .iter()
+        .find(|w| w["code"] == "state_transitioned")
+        .expect("must emit state_transitioned warning");
+    let details = &transitioned["details"];
+    assert!(
+        details.is_object(),
+        "state_transitioned MUST carry details object, got: {transitioned}"
+    );
+    assert_eq!(details["from"], "proposing");
+    assert_eq!(details["to"], "ready");
+    assert_eq!(details["reason"], "artifact_dag_complete");
+}
+
+#[test]
 fn error_envelopes_match_shape_for_state_transition_invalid_and_task_index_oor() {
     let tmp = TempDir::new().expect("tempdir");
     let working = canonical(tmp.path());

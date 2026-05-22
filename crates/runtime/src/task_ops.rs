@@ -355,9 +355,10 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), RuntimeError> {
 fn ensure_task_state_allows_done(state: ChangeState) -> Result<(), RuntimeError> {
     match state {
         ChangeState::InProgress | ChangeState::CodeReviewing => Ok(()),
-        other => Err(RuntimeError::StateTransitionInvalid {
-            from: other.as_str().to_string(),
-            to: "task.done".to_string(),
+        other => Err(RuntimeError::TaskOpStateInvalid {
+            op: "task.done".to_string(),
+            current_state: other.as_str().to_string(),
+            allowed: "in_progress, code_reviewing".to_string(),
         }),
     }
 }
@@ -365,9 +366,10 @@ fn ensure_task_state_allows_done(state: ChangeState) -> Result<(), RuntimeError>
 fn ensure_task_state_allows_undo(state: ChangeState) -> Result<(), RuntimeError> {
     match state {
         ChangeState::InProgress | ChangeState::CodeReviewing | ChangeState::Ready => Ok(()),
-        other => Err(RuntimeError::StateTransitionInvalid {
-            from: other.as_str().to_string(),
-            to: "task.undo".to_string(),
+        other => Err(RuntimeError::TaskOpStateInvalid {
+            op: "task.undo".to_string(),
+            current_state: other.as_str().to_string(),
+            allowed: "in_progress, code_reviewing, ready".to_string(),
         }),
     }
 }

@@ -92,6 +92,20 @@ pub enum RuntimeError {
     #[error("state transition `{from} → {to}` is not permitted")]
     StateTransitionInvalid { from: String, to: String },
 
+    /// 對應 `state.transition_invalid`，但是「task / lifecycle operation」在錯誤 state 下被呼叫
+    /// 的特殊變體。避免把 operation 名（`task.done` / `task.undo`）誤塞進 `to` 欄位產生
+    /// 「`proposing → task.done` is not permitted」這種把 op 名洩漏成虛構 state 的訊息。
+    ///
+    /// 對外 error code 與 exit code 與 `StateTransitionInvalid` 完全一致，僅訊息正名。
+    #[error(
+        "operation `{op}` not allowed in state `{current_state}`; requires state in {{{allowed}}}"
+    )]
+    TaskOpStateInvalid {
+        op: String,
+        current_state: String,
+        allowed: String,
+    },
+
     /// 對應 `state.version_conflict`。
     #[error("change.version compare-and-swap failed; current_version={current_version}")]
     StateVersionConflict { current_version: u64 },
@@ -138,7 +152,8 @@ impl RuntimeError {
             RuntimeError::ArtifactNotFound { .. } => codes::ARTIFACT_NOT_FOUND,
             RuntimeError::ArtifactVersionConflict { .. } => codes::ARTIFACT_VERSION_CONFLICT,
             RuntimeError::StateInvalidValue { .. } => codes::STATE_INVALID_VALUE,
-            RuntimeError::StateTransitionInvalid { .. } => codes::STATE_TRANSITION_INVALID,
+            RuntimeError::StateTransitionInvalid { .. }
+            | RuntimeError::TaskOpStateInvalid { .. } => codes::STATE_TRANSITION_INVALID,
             RuntimeError::StateVersionConflict { .. } => codes::STATE_VERSION_CONFLICT,
             RuntimeError::StateDbSchemaInvalid { .. } => codes::STATE_DB_SCHEMA_INVALID,
             RuntimeError::ChangeDagIncomplete { .. } => codes::CHANGE_DAG_INCOMPLETE,
@@ -278,6 +293,28 @@ mod tests {
             }
             .exit_code(),
             7
+        );
+    }
+
+    #[test]
+    fn task_op_state_invalid_maps_to_same_code_and_exit_as_state_transition_invalid() {
+        // B2 regression：新 variant 與 StateTransitionInvalid 共用 envelope 表面契約，
+        // 但訊息正名為「operation X not allowed in state Y」，不再洩漏 op 名到 to 欄位。
+        let e = RuntimeError::TaskOpStateInvalid {
+            op: "task.done".into(),
+            current_state: "proposing".into(),
+            allowed: "in_progress, code_reviewing".into(),
+        };
+        assert_eq!(e.code(), codes::STATE_TRANSITION_INVALID);
+        assert_eq!(e.exit_code(), 7);
+        assert!(!e.retryable());
+        let msg = e.to_string();
+        assert!(msg.contains("operation `task.done`"), "got: {msg}");
+        assert!(msg.contains("state `proposing`"), "got: {msg}");
+        assert!(msg.contains("in_progress, code_reviewing"), "got: {msg}");
+        assert!(
+            !msg.contains("→"),
+            "must not use transition-arrow shape, got: {msg}"
         );
     }
 

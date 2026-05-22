@@ -67,12 +67,14 @@ pub async fn run(
         warnings.push(Warning {
             code: "artifact.capability_ignored".to_string(),
             message: "`--capability` is only meaningful when kind=spec".to_string(),
+            details: None,
         });
     }
     for w in runtime_warnings {
         warnings.push(Warning {
             code: w.code,
             message: w.message,
+            details: w.details,
         });
     }
 

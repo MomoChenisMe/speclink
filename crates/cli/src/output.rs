@@ -37,10 +37,16 @@ pub struct ErrorBody {
 }
 
 /// `warnings` 內單筆。
+///
+/// `details` 為 carrier-specific structured payload，例如 `state_transitioned`
+/// 必須帶 `{ from, to, reason }`，由 runtime 端透過 `RuntimeWarning.details` 傳入。
+/// 不帶 details 的 warning（如 `artifact.capability_ignored`）省略此欄位以維持 envelope 簡潔。
 #[derive(Debug, Serialize, Clone)]
 pub struct Warning {
     pub code: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
 }
 
 /// `error.*` 內容。順序鎖：`code` / `message` / `hint` / `retryable` / `retry_after_ms`。

@@ -197,6 +197,56 @@ fn task_list_returns_no_tasks_file_when_missing() {
     assert_eq!(env["error"]["code"], "task.no_tasks_file");
 }
 
+/// B2 regression：task.done / task.undo 在錯誤 state 下被呼叫時，error message 不可
+/// 把 op 名（`task.done`）當成 state 塞進 transition 字串。code/exit 與 state.transition_invalid
+/// 保持一致；只訊息正名。
+#[test]
+fn task_done_in_ready_state_emits_op_named_message_not_fake_transition() {
+    let tmp = TempDir::new().expect("tempdir");
+    let working = canonical(tmp.path());
+    git_init(&working);
+    // Set up change with tasks.md but DO NOT apply start → state stays `ready`.
+    speclink(&working)
+        .args(["--json", "init"])
+        .assert()
+        .success();
+    speclink(&working)
+        .args(["--json", "new", "change", "demo"])
+        .assert()
+        .success();
+    write_artifact_stdin(&working, "proposal", "demo", None, b"## Why\n");
+    write_artifact_stdin(
+        &working,
+        "spec",
+        "demo",
+        Some("auth"),
+        b"## ADDED Requirements\n",
+    );
+    write_artifact_stdin(&working, "tasks", "demo", None, b"- [ ] one\n");
+
+    let out = speclink(&working)
+        .args(["--json", "task", "done", "1", "--change", "demo"])
+        .output()
+        .expect("done");
+    assert!(!out.status.success());
+    assert_eq!(out.status.code().unwrap_or(-1), 7);
+    let env: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert_eq!(env["error"]["code"], "state.transition_invalid");
+    let msg = env["error"]["message"].as_str().expect("message");
+    assert!(
+        msg.contains("operation `task.done`"),
+        "must name the op explicitly, got: {msg}"
+    );
+    assert!(
+        msg.contains("state `ready`"),
+        "must name the current state explicitly, got: {msg}"
+    );
+    assert!(
+        !msg.contains("→"),
+        "must not use transition-arrow shape (would leak op as fake state), got: {msg}"
+    );
+}
+
 /// Cross-platform atomic rename regression: tasks.md rewrite uses tempfile-then-rename;
 /// on Windows the rename path must avoid sharing violation. This test exercises the
 /// path on whatever platform CI runs (single test SHALL pass on Linux/macOS/Windows).
