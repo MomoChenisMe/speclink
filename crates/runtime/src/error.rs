@@ -1,9 +1,25 @@
 //! Runtime 錯誤型別與 doctor finding code 字串常量。
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use speclink_provider::Etag;
+
+/// Runtime 層回給 caller 的 warning entry。CLI 層會把它包到 JSON envelope 的 `warnings` 陣列。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeWarning {
+    pub code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
+}
 pub use speclink_provider::codes;
+
+/// slice A3 task-layer 專屬 error codes（不屬於 provider 的 ProviderError 範圍）。
+pub mod task_codes {
+    pub const TASK_NO_TASKS_FILE: &str = "task.no_tasks_file";
+    pub const TASK_INDEX_OUT_OF_RANGE: &str = "task.index_out_of_range";
+}
 
 /// Doctor finding codes (reserved by this change; check logic lives in
 /// the future `add-doctor` change).
@@ -68,6 +84,34 @@ pub enum RuntimeError {
         actual: Etag,
     },
 
+    /// 對應 `state.invalid_value`。
+    #[error("change.state column contains illegal value `{value}`")]
+    StateInvalidValue { value: String },
+
+    /// 對應 `state.transition_invalid`。
+    #[error("state transition `{from} → {to}` is not permitted")]
+    StateTransitionInvalid { from: String, to: String },
+
+    /// 對應 `state.version_conflict`。
+    #[error("change.version compare-and-swap failed; current_version={current_version}")]
+    StateVersionConflict { current_version: u64 },
+
+    /// 對應 `state.db.schema_invalid`。
+    #[error("state.db schema version {found} exceeds this binary's supported max {supported}")]
+    StateDbSchemaInvalid { found: u32, supported: u32 },
+
+    /// 對應 `change.dag_incomplete`。
+    #[error("change artifact DAG incomplete; missing: {missing:?}")]
+    ChangeDagIncomplete { missing: Vec<String> },
+
+    /// 對應 `task.no_tasks_file`：對應 change 內 tasks.md 不存在。
+    #[error("tasks.md not found for change `{change}`")]
+    TaskNoTasksFile { change: String },
+
+    /// 對應 `task.index_out_of_range`。
+    #[error("task index {index} out of range (only {total} task lines)")]
+    TaskIndexOutOfRange { index: usize, total: usize },
+
     /// 透過 provider 傳上來的內部錯誤。
     #[error("provider error: {0}")]
     Provider(#[from] speclink_provider::ProviderError),
@@ -93,6 +137,13 @@ impl RuntimeError {
             RuntimeError::ArtifactCapabilityRequired => codes::ARTIFACT_CAPABILITY_REQUIRED,
             RuntimeError::ArtifactNotFound { .. } => codes::ARTIFACT_NOT_FOUND,
             RuntimeError::ArtifactVersionConflict { .. } => codes::ARTIFACT_VERSION_CONFLICT,
+            RuntimeError::StateInvalidValue { .. } => codes::STATE_INVALID_VALUE,
+            RuntimeError::StateTransitionInvalid { .. } => codes::STATE_TRANSITION_INVALID,
+            RuntimeError::StateVersionConflict { .. } => codes::STATE_VERSION_CONFLICT,
+            RuntimeError::StateDbSchemaInvalid { .. } => codes::STATE_DB_SCHEMA_INVALID,
+            RuntimeError::ChangeDagIncomplete { .. } => codes::CHANGE_DAG_INCOMPLETE,
+            RuntimeError::TaskNoTasksFile { .. } => task_codes::TASK_NO_TASKS_FILE,
+            RuntimeError::TaskIndexOutOfRange { .. } => task_codes::TASK_INDEX_OUT_OF_RANGE,
             RuntimeError::Provider(p) => p.code(),
             RuntimeError::Internal(_) => "internal.error",
         }
@@ -100,11 +151,12 @@ impl RuntimeError {
 
     /// 是否屬於使用者可重試的錯誤。
     ///
-    /// 與 `ProviderError::retryable` 對齊：只有 `ArtifactVersionConflict` 為 `true`。
+    /// 與 `ProviderError::retryable` 對齊：CAS 衝突類錯誤 retryable。
     #[must_use]
     pub fn retryable(&self) -> bool {
         match self {
-            RuntimeError::ArtifactVersionConflict { .. } => true,
+            RuntimeError::ArtifactVersionConflict { .. }
+            | RuntimeError::StateVersionConflict { .. } => true,
             RuntimeError::Provider(p) => p.retryable(),
             _ => false,
         }
@@ -121,16 +173,22 @@ impl RuntimeError {
                 || c == codes::CHANGE_INVALID_NAME
                 || c == codes::ARTIFACT_KIND_INVALID
                 || c == codes::ARTIFACT_CAPABILITY_REQUIRED
-                || c == codes::ARTIFACT_NOT_FOUND =>
+                || c == codes::ARTIFACT_NOT_FOUND
+                || c == codes::CHANGE_DAG_INCOMPLETE
+                || c == task_codes::TASK_NO_TASKS_FILE
+                || c == task_codes::TASK_INDEX_OUT_OF_RANGE =>
             {
                 2
             }
             c if c == codes::ALREADY_INITIALIZED
                 || c == codes::CHANGE_DUPLICATE_NAME
-                || c == codes::ARTIFACT_VERSION_CONFLICT =>
+                || c == codes::ARTIFACT_VERSION_CONFLICT
+                || c == codes::STATE_TRANSITION_INVALID
+                || c == codes::STATE_VERSION_CONFLICT =>
             {
                 7
             }
+            // STATE_INVALID_VALUE / STATE_DB_SCHEMA_INVALID / internal.error → 1
             _ => 1,
         }
     }

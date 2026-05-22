@@ -22,6 +22,18 @@
 - 設計開放讓他人建立自己的 frontend（規格縱覽 web app、IDE plugin、自訂 chatbot）
 - 學習 spectra-cli 但不追求功能對齊；不對齊 openspec 配置
 
+## 1.1 Walking skeleton slice naming
+
+Walking skeleton 開發以小切片（slice）依序落地 SpecLink MVP；每片獨立可 ship、不引入未完成 slice 的依賴。slice 命名一旦凍住即不再變動，後續 design / spec / task 全以下列字串對照：
+
+| Slice id | Change name | 涵蓋範圍 |
+|---|---|---|
+| A1 | `add-project-bootstrap` | LocalProvider 骨架 + two-root storage (`.speclink/` + `<git-common-dir>/speclink/`) + `project` 表 + `init/status/link/unlink` + `state.db` v1 migration |
+| A2 | `add-change-and-artifact-io` | `change` 表 + `state.db` v2 migration + artifact filesystem I/O + `new change` / `show change` / `delete change` / `list --changes` / `list --specs --change` / `new artifact` / `artifact read` + sha256-based Etag + atomic rename |
+| A3 | `add-state-machine-and-apply` | 6-state lifecycle + `state.db` v3 migration（`actor_json` / `all_tasks_done` 欄位 + `state_transition` audit 表）+ `apply start` / `apply pause` / `task list` / `task done` / `task undo` 5 個 CLI op + `artifact.write` 後 DAG evaluator hook + `StateMachineStore` trait + `change.version` CAS + walking-skeleton 4-state mode（hard-coded `require_*_review=false`） |
+
+A1 已 archive、A2 已 archive；A3 為本文件當前主題。後續 slice（review / archive / locking / schema / config / ingest 等）皆另行命名，不溯及修改本表。
+
 ## 2. 設計原則
 
 1. **個人專用 + 團隊可擴展** — 命名、lifecycle、skill 數從 SDD 本質設計；個人 RD 走 LocalProvider，團隊走 HttpProvider 對接自家 webapp
@@ -283,6 +295,8 @@ proposing ──► reviewing ──► ready ⇌ in_progress ──► code_rev
 | `in_progress` | 顯式 `apply start` OR `review reject --phase code`（退回） | 所有 task `[x]`（engine auto） OR 顯式 `apply pause` | engine auto（all done → code_reviewing）／`apply pause`（顯式退回 ready） |
 | `code_reviewing` | engine auto（在 `require_code_review: true` 且所有 task `[x]` 時）；或 re-entry（rejection 後 task 又全 done） | reviewer approve（→ archive 可走） OR reviewer reject（→ in_progress） | `review approve --phase code` OR `review reject --phase code` |
 | `archived` | code review approve（若 required）+ `archive` 指令 | （終態） | `/speclink-archive` |
+
+> **Slice 標註**：A3=`add-state-machine-and-apply` 落實本表 6-state transition table + walking-skeleton 4-state mode（review flags 硬編 false，走 `proposing → ready → in_progress` 主路徑）。Review / archive transition 在後續 slice 接通。
 
 **Apply start / pause 語意（雙向 idempotent + ensure-actor）**：
 
@@ -1898,6 +1912,8 @@ speclink task undo <task-id> --change <id> [--json]
 - 對其他 state → `state.transition_invalid`
 
 `task done` 完成最後一個 task 時 engine 在 auto-transition 前驗證 **synthetic feedback task 完整性**（見 §6.2）：所有 `feedback_tasks.status='pending'` 紀錄的 marker 必須仍在 tasks.md 且 `[x]`。否則 `tasks.feedback_task_removed` + 自動 re-append + state 不變。
+
+> **Slice 標註**：A3=`add-state-machine-and-apply` 落實 `apply start` / `apply pause` / `task list` / `task done` / `task undo` 5 個 CLI op。Feedback task 完整性驗證留給 review slice 接通。
 
 ### 16.8 Review
 

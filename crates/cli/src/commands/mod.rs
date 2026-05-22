@@ -2,6 +2,8 @@
 
 #![allow(clippy::doc_markdown)]
 
+pub mod apply_pause;
+pub mod apply_start;
 pub mod artifact_read;
 pub mod delete_change;
 pub mod init;
@@ -12,4 +14,7 @@ pub mod new_artifact;
 pub mod new_change;
 pub mod show_change;
 pub mod status;
+pub mod task_done;
+pub mod task_list;
+pub mod task_undo;
 pub mod unlink;

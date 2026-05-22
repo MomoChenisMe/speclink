@@ -69,7 +69,7 @@ async fn write_new_then_read_returns_bytes_and_sha256_etag() {
         .await
         .expect("read");
     assert_eq!(r.value, body);
-    assert_eq!(r.etag, w.etag);
+    assert_eq!(r.etag, w.0.etag);
     assert_eq!(r.etag, Etag::from_bytes(body));
 }
 
@@ -94,7 +94,7 @@ async fn overwrite_with_matching_etag_succeeds() {
         ArtifactKind::Proposal,
         None,
         b"B1",
-        ExpectedEtag::Some(v0.etag),
+        ExpectedEtag::Some(v0.0.etag),
     )
     .await
     .expect("matching overwrite");
@@ -239,4 +239,136 @@ async fn list_specs_after_writes_sorted() {
         .await
         .expect("list");
     assert_eq!(caps, vec!["rate-limiting", "user-auth"]);
+}
+
+// --- slice A3 DAG evaluator hook tests --------------------------------------
+
+use speclink_provider::{ChangeState, StateMachineStore};
+use speclink_provider_local::LocalStateMachineStore;
+use speclink_runtime::resolve_state_root;
+
+async fn current_state(working: &Path, change: &str) -> ChangeState {
+    let state_root = resolve_state_root(&RealGitProbe, working).expect("state root");
+    let sm = LocalStateMachineStore::new(state_root);
+    sm.get_change_state(change).await.expect("read").state
+}
+
+#[tokio::test]
+async fn hook_noop_when_dag_incomplete() {
+    let (_tmp, working) = fresh_project_with_change("foo").await;
+    let ops = ArtifactOperations::new(RealGitProbe);
+    let (_v, warnings) = ops
+        .write_artifact(
+            &working,
+            "foo",
+            ArtifactKind::Proposal,
+            None,
+            b"## Why\n",
+            ExpectedEtag::None,
+        )
+        .await
+        .expect("write proposal only");
+    assert!(
+        warnings.iter().all(|w| w.code != "state_transitioned"),
+        "incomplete DAG SHALL NOT trigger transition"
+    );
+    assert_eq!(current_state(&working, "foo").await, ChangeState::Proposing);
+}
+
+#[tokio::test]
+async fn hook_transitions_proposing_to_ready_when_dag_complete() {
+    let (_tmp, working) = fresh_project_with_change("foo").await;
+    let ops = ArtifactOperations::new(RealGitProbe);
+    ops.write_artifact(
+        &working,
+        "foo",
+        ArtifactKind::Proposal,
+        None,
+        b"## Why\n",
+        ExpectedEtag::None,
+    )
+    .await
+    .expect("proposal");
+    ops.write_artifact(
+        &working,
+        "foo",
+        ArtifactKind::Spec,
+        Some("auth"),
+        b"## ADDED Requirements\n",
+        ExpectedEtag::None,
+    )
+    .await
+    .expect("spec");
+    let (_v, warnings) = ops
+        .write_artifact(
+            &working,
+            "foo",
+            ArtifactKind::Tasks,
+            None,
+            b"- [ ] task one\n",
+            ExpectedEtag::None,
+        )
+        .await
+        .expect("tasks");
+    assert!(
+        warnings.iter().any(|w| w.code == "state_transitioned"),
+        "DAG complete SHALL trigger state_transitioned warning"
+    );
+    assert_eq!(current_state(&working, "foo").await, ChangeState::Ready);
+}
+
+#[tokio::test]
+async fn hook_noop_for_non_proposing_states() {
+    let (_tmp, working) = fresh_project_with_change("foo").await;
+    let ops = ArtifactOperations::new(RealGitProbe);
+    // Get to ready via DAG completion
+    ops.write_artifact(
+        &working,
+        "foo",
+        ArtifactKind::Proposal,
+        None,
+        b"## Why\n",
+        ExpectedEtag::None,
+    )
+    .await
+    .expect("proposal");
+    ops.write_artifact(
+        &working,
+        "foo",
+        ArtifactKind::Spec,
+        Some("auth"),
+        b"## ADDED Requirements\n",
+        ExpectedEtag::None,
+    )
+    .await
+    .expect("spec");
+    ops.write_artifact(
+        &working,
+        "foo",
+        ArtifactKind::Tasks,
+        None,
+        b"- [ ] t\n",
+        ExpectedEtag::None,
+    )
+    .await
+    .expect("tasks → ready");
+    assert_eq!(current_state(&working, "foo").await, ChangeState::Ready);
+
+    // Now write a design.md; state is `ready`, hook SHALL no-op.
+    let (_v, warnings) = ops
+        .write_artifact(
+            &working,
+            "foo",
+            ArtifactKind::Design,
+            None,
+            b"## Decision\n",
+            ExpectedEtag::None,
+        )
+        .await
+        .expect("design write");
+    assert!(
+        warnings.iter().all(|w| w.code != "state_transitioned"),
+        "non-proposing state SHALL skip transition"
+    );
+    assert_eq!(current_state(&working, "foo").await, ChangeState::Ready);
 }

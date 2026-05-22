@@ -200,6 +200,11 @@ fn map_provider_error_change(err: ProviderError) -> RuntimeError {
         ProviderError::ArtifactVersionConflict { expected, actual } => {
             RuntimeError::ArtifactVersionConflict { expected, actual }
         }
+        e @ (ProviderError::StateInvalidValue { .. }
+        | ProviderError::StateTransitionInvalid { .. }
+        | ProviderError::StateVersionConflict { .. }
+        | ProviderError::StateDbSchemaInvalid { .. }
+        | ProviderError::ChangeDagIncomplete { .. }) => RuntimeError::Provider(e),
         ProviderError::Internal(s) => RuntimeError::Internal(s),
     }
 }

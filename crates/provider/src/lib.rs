@@ -10,8 +10,9 @@ pub mod types;
 
 pub use error::{ProviderError, codes};
 pub use types::{
-    ArtifactKind, ChangeRow, Etag, EtagError, ExpectedEtag, IdError, InitOptions, LinkYaml,
-    ProjectInfo, ProjectStatus, Versioned, validate_kebab_id,
+    Actor, ArtifactKind, ChangeRow, ChangeState, ChangeStateParseError, ChangeStateView, Etag,
+    EtagError, ExpectedEtag, IdError, InitOptions, LinkYaml, ProjectInfo, ProjectStatus,
+    StateTransitionReason, TransitionRequest, Versioned, validate_kebab_id,
 };
 
 /// SpecLink project 的 CRUD 介面。
@@ -39,6 +40,49 @@ pub trait ChangeStore: Send + Sync {
 
     /// 刪除 change row + 目錄。
     async fn delete_change(&self, name: &str) -> Result<(), ProviderError>;
+}
+
+/// State machine 介面（slice A3：6-state lifecycle + actor + all_tasks_done flag）。
+///
+/// 所有寫入 method 透過 `expected_version` 對 `change.version` 做 compare-and-swap；
+/// CAS 失敗回 [`ProviderError::StateVersionConflict`]。實作端 SHALL 在單一 SQLite
+/// transaction 內完成「state row update + state_transition audit insert」，state
+/// transition / actor mutate / `all_tasks_done` flag 皆會 monotonic 增加 `change.version`。
+///
+/// `ChangeStore` trait SHALL NOT 暴露任何 `change.state` / `change.version` setter；
+/// 所有 lifecycle 行為 SHALL 走本 trait。
+#[async_trait::async_trait]
+pub trait StateMachineStore: Send + Sync {
+    /// 讀取 change 的 state machine view（state / version / actor / all_tasks_done）。
+    async fn get_change_state(&self, name: &str) -> Result<ChangeStateView, ProviderError>;
+
+    /// 套用一個 state transition（state 變更 + 同 tx 寫 audit row + 視 request 一併更新 actor）。
+    ///
+    /// `expected_version` 不一致時回 [`ProviderError::StateVersionConflict`]。
+    async fn transition_state(
+        &self,
+        name: &str,
+        expected_version: u64,
+        request: TransitionRequest,
+    ) -> Result<ChangeStateView, ProviderError>;
+
+    /// 只更新 actor 欄位（不改 state、不寫 audit row）。
+    ///
+    /// `Some(actor)` 寫入新 actor；`None` 清空 actor。仍會 monotonic 增加 `change.version`。
+    async fn set_actor(
+        &self,
+        name: &str,
+        expected_version: u64,
+        actor: Option<Actor>,
+    ) -> Result<ChangeStateView, ProviderError>;
+
+    /// 設定 `all_tasks_done` flag；不改 state、不寫 audit row、增加 `change.version`。
+    async fn set_all_tasks_done(
+        &self,
+        name: &str,
+        expected_version: u64,
+        done: bool,
+    ) -> Result<ChangeStateView, ProviderError>;
 }
 
 /// Artifact 讀寫介面。
@@ -199,6 +243,48 @@ working_dir_fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
             .code(),
             codes::ARTIFACT_VERSION_CONFLICT
         );
+
+        // slice A3 new codes
+        assert_eq!(codes::STATE_INVALID_VALUE, "state.invalid_value");
+        assert_eq!(codes::STATE_TRANSITION_INVALID, "state.transition_invalid");
+        assert_eq!(codes::STATE_VERSION_CONFLICT, "state.version_conflict");
+        assert_eq!(codes::STATE_DB_SCHEMA_INVALID, "state.db.schema_invalid");
+        assert_eq!(codes::CHANGE_DAG_INCOMPLETE, "change.dag_incomplete");
+
+        assert_eq!(
+            ProviderError::StateInvalidValue {
+                value: "garbage".into()
+            }
+            .code(),
+            codes::STATE_INVALID_VALUE
+        );
+        assert_eq!(
+            ProviderError::StateTransitionInvalid {
+                from: "proposing".into(),
+                to: "in_progress".into()
+            }
+            .code(),
+            codes::STATE_TRANSITION_INVALID
+        );
+        assert_eq!(
+            ProviderError::StateVersionConflict { current_version: 5 }.code(),
+            codes::STATE_VERSION_CONFLICT
+        );
+        assert_eq!(
+            ProviderError::StateDbSchemaInvalid {
+                found: 3,
+                supported: 2
+            }
+            .code(),
+            codes::STATE_DB_SCHEMA_INVALID
+        );
+        assert_eq!(
+            ProviderError::ChangeDagIncomplete {
+                missing: vec!["proposal.md".into()]
+            }
+            .code(),
+            codes::CHANGE_DAG_INCOMPLETE
+        );
     }
 
     #[test]
@@ -241,6 +327,29 @@ working_dir_fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
             ProviderError::ArtifactVersionConflict {
                 expected: None,
                 actual: Etag::from_bytes(b""),
+            }
+            .retryable()
+        );
+        // slice A3：StateVersionConflict 也 retryable，其餘四個新 variant 不 retryable。
+        assert!(ProviderError::StateVersionConflict { current_version: 1 }.retryable());
+        assert!(!ProviderError::StateInvalidValue { value: "x".into() }.retryable());
+        assert!(
+            !ProviderError::StateTransitionInvalid {
+                from: "proposing".into(),
+                to: "in_progress".into()
+            }
+            .retryable()
+        );
+        assert!(
+            !ProviderError::StateDbSchemaInvalid {
+                found: 3,
+                supported: 2
+            }
+            .retryable()
+        );
+        assert!(
+            !ProviderError::ChangeDagIncomplete {
+                missing: vec!["p".into()]
             }
             .retryable()
         );
@@ -293,6 +402,40 @@ working_dir_fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
             Err(ProviderError::Internal("dummy".into()))
         }
         async fn delete_change(&self, _name: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+    }
+
+    #[allow(dead_code)]
+    struct DummyStateMachineStore;
+
+    #[async_trait::async_trait]
+    impl StateMachineStore for DummyStateMachineStore {
+        async fn get_change_state(&self, _name: &str) -> Result<ChangeStateView, ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+        async fn transition_state(
+            &self,
+            _name: &str,
+            _expected_version: u64,
+            _request: TransitionRequest,
+        ) -> Result<ChangeStateView, ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+        async fn set_actor(
+            &self,
+            _name: &str,
+            _expected_version: u64,
+            _actor: Option<Actor>,
+        ) -> Result<ChangeStateView, ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+        async fn set_all_tasks_done(
+            &self,
+            _name: &str,
+            _expected_version: u64,
+            _done: bool,
+        ) -> Result<ChangeStateView, ProviderError> {
             Err(ProviderError::Internal("dummy".into()))
         }
     }

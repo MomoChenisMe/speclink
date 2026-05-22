@@ -25,7 +25,12 @@ hex.workspace = true
 tokio.workspace = true
 rusqlite.workspace = true
 tempfile.workspace = true
+whoami.workspace = true
+serde_json.workspace = true
+regex-lite.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 rusqlite.workspace = true
+insta.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }

@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
-use speclink_provider::{ChangeRow, ChangeStore, ProviderError};
+use speclink_provider::{ChangeRow, ChangeState, ChangeStore, ProviderError};
 use uuid::Uuid;
 
 use crate::paths::change_dir;
@@ -48,7 +48,7 @@ impl LocalChangeStore {
         let path = self.state_root.join("state.db");
         let db = StateDb::open(&path)
             .map_err(|e| ProviderError::Internal(format!("open state.db: {e}")))?;
-        db.migrate(2)
+        db.migrate(3)
             .map_err(|e| ProviderError::Internal(format!("migrate state.db: {e}")))?;
         Ok(db)
     }
@@ -70,8 +70,11 @@ impl ChangeStore for LocalChangeStore {
 
         let change_id = Uuid::new_v4().to_string();
         let now = now_rfc3339();
+        // 對齊 `state-machine` capability 「Change state SHALL be one of the six
+        // lifecycle values」契約：用 enum 的 stable string instead of bare literal。
+        let initial_state = ChangeState::Proposing.as_str();
 
-        db.insert_change_row(&change_id, name, "proposing", schema_id, &now, &now)
+        db.insert_change_row(&change_id, name, initial_state, schema_id, &now, &now)
             .map_err(|e| ProviderError::Internal(format!("insert change row: {e}")))?;
 
         let dir = change_dir(&self.working_dir, name);
@@ -87,7 +90,7 @@ impl ChangeStore for LocalChangeStore {
         Ok(ChangeRow {
             change_id,
             name: name.to_string(),
-            state: "proposing".to_string(),
+            state: initial_state.to_string(),
             schema_id: schema_id.to_string(),
             version: 1,
             created_at: now.clone(),

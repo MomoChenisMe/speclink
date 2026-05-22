@@ -180,6 +180,167 @@ pub struct ChangeRow {
     pub updated_at: String,
 }
 
+/// Change lifecycle 的 6 個合法 state 值（slice A3 落實 `state-machine` capability）。
+///
+/// 序列化為 dot-separated snake_case 字串以對齊 `state.db.change.state` 欄位的內容。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangeState {
+    /// 新建 change 的初始狀態；artifact DAG 未齊全。
+    Proposing,
+    /// `require_artifact_review=true` 時，DAG 齊全暫停等 reviewer approve。
+    Reviewing,
+    /// `apply` 待開始；可前進至 `in_progress`。
+    Ready,
+    /// `apply.start` 後的工作中狀態。
+    InProgress,
+    /// `require_code_review=true` 時，所有 task done 後等 reviewer approve。
+    CodeReviewing,
+    /// 終態：change archive 後保留 row 但不再 mutate。
+    Archived,
+}
+
+impl ChangeState {
+    /// 列舉全部 6 個合法 variant（順序與 design §6.2 表一致）。
+    #[must_use]
+    pub const fn all() -> [ChangeState; 6] {
+        [
+            ChangeState::Proposing,
+            ChangeState::Reviewing,
+            ChangeState::Ready,
+            ChangeState::InProgress,
+            ChangeState::CodeReviewing,
+            ChangeState::Archived,
+        ]
+    }
+
+    /// 對應的 stable string identifier；與 `Display` / serde 結果一致。
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            ChangeState::Proposing => "proposing",
+            ChangeState::Reviewing => "reviewing",
+            ChangeState::Ready => "ready",
+            ChangeState::InProgress => "in_progress",
+            ChangeState::CodeReviewing => "code_reviewing",
+            ChangeState::Archived => "archived",
+        }
+    }
+}
+
+/// `ChangeState::from_str` 失敗時的錯誤型別。對應 `state.invalid_value` 錯誤路徑。
+#[derive(Debug, Error, PartialEq, Eq)]
+#[error(
+    "invalid change.state value `{value}`: expected one of proposing/reviewing/ready/in_progress/code_reviewing/archived"
+)]
+pub struct ChangeStateParseError {
+    /// 觸發錯誤的原始字串。
+    pub value: String,
+}
+
+impl std::fmt::Display for ChangeState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for ChangeState {
+    type Err = ChangeStateParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "proposing" => Ok(ChangeState::Proposing),
+            "reviewing" => Ok(ChangeState::Reviewing),
+            "ready" => Ok(ChangeState::Ready),
+            "in_progress" => Ok(ChangeState::InProgress),
+            "code_reviewing" => Ok(ChangeState::CodeReviewing),
+            "archived" => Ok(ChangeState::Archived),
+            other => Err(ChangeStateParseError {
+                value: other.to_string(),
+            }),
+        }
+    }
+}
+
+/// `state_transition.reason` 欄位的列舉值；對應 design §6.2 transition table 的觸發來源。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum StateTransitionReason {
+    /// `apply start` 把 `ready` 推進到 `in_progress`。
+    ApplyStart,
+    /// `apply pause` 把 `in_progress` 退回 `ready`。
+    ApplyPause,
+    /// `task done` 完成最後一個 task；walking-skeleton 下設 `all_tasks_done=1`，
+    /// `require_code_review=true` 下推進到 `code_reviewing`。
+    TaskDoneAuto,
+    /// `task undo` 在 `code_reviewing` state 下退回 `in_progress`。
+    TaskUndoRevert,
+    /// `artifact.write` 後 DAG evaluator 把 `proposing` 推進到 `ready` / `reviewing`。
+    ArtifactDagComplete,
+    /// 預留：future review slice 把 `reviewing` 推進到 `ready`。
+    ReviewApprovedArtifact,
+    /// 預留：future review slice 把 `code_reviewing` 退回 `in_progress`。
+    ReviewRejectedCode,
+    /// 預留：future archive slice 把 change 推進到 `archived`。
+    ArchiveRun,
+}
+
+impl StateTransitionReason {
+    /// 對應的 stable string identifier；與 serde 結果一致。
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            StateTransitionReason::ApplyStart => "apply_start",
+            StateTransitionReason::ApplyPause => "apply_pause",
+            StateTransitionReason::TaskDoneAuto => "task_done_auto",
+            StateTransitionReason::TaskUndoRevert => "task_undo_revert",
+            StateTransitionReason::ArtifactDagComplete => "artifact_dag_complete",
+            StateTransitionReason::ReviewApprovedArtifact => "review_approved_artifact",
+            StateTransitionReason::ReviewRejectedCode => "review_rejected_code",
+            StateTransitionReason::ArchiveRun => "archive_run",
+        }
+    }
+}
+
+impl std::fmt::Display for StateTransitionReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// `apply.start` 把 change 綁定到的執行者；對應 `change.actor_json` 欄位 schema。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct Actor {
+    /// AI agent host 識別碼（例如 `claude-code` / `cursor` / `cli`）。
+    pub agent_host: String,
+    /// 作業系統使用者名稱；由 `whoami` 跨平台 lookup 取得。
+    pub os_user: String,
+    /// 主機識別碼；由 cross-platform hostname lookup 取得。
+    pub host_id: String,
+}
+
+/// `StateMachineStore::transition_state` 的輸入請求。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransitionRequest {
+    /// 目標 state（合法 transition 由 runtime 層的 state machine 表決定）。
+    pub to_state: ChangeState,
+    /// 此次 transition 對 actor 的影響：`Some(Some(actor))` 代表寫入新 actor、
+    /// `Some(None)` 代表清空 actor、`None` 代表不動 actor。
+    pub actor: Option<Option<Actor>>,
+    /// Audit log reason code；寫入 `state_transition.reason` 欄位。
+    pub reason: StateTransitionReason,
+}
+
+/// `StateMachineStore` 對外回傳的 change state 快照。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeStateView {
+    pub change_id: String,
+    pub state: ChangeState,
+    pub version: u64,
+    pub actor: Option<Actor>,
+    pub all_tasks_done: bool,
+}
+
 /// kebab-case identifier 驗證錯誤。
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum IdError {
@@ -345,6 +506,160 @@ mod tests {
         validate_kebab_id("a").expect("1-byte valid");
         let max = "a".repeat(64);
         validate_kebab_id(&max).expect("64-byte valid");
+    }
+
+    #[test]
+    fn change_state_all_enumerates_six_variants_in_design_order() {
+        let v = ChangeState::all();
+        assert_eq!(v.len(), 6);
+        assert_eq!(v[0], ChangeState::Proposing);
+        assert_eq!(v[1], ChangeState::Reviewing);
+        assert_eq!(v[2], ChangeState::Ready);
+        assert_eq!(v[3], ChangeState::InProgress);
+        assert_eq!(v[4], ChangeState::CodeReviewing);
+        assert_eq!(v[5], ChangeState::Archived);
+    }
+
+    #[test]
+    fn change_state_display_and_as_str_match_serde_snake_case() {
+        for s in ChangeState::all() {
+            let json = serde_json::to_string(&s).expect("serialize");
+            let stripped = json.trim_matches('"');
+            assert_eq!(s.as_str(), stripped, "as_str vs serde for {s:?}");
+            assert_eq!(format!("{s}"), stripped, "Display vs serde for {s:?}");
+        }
+        // Pin exact strings (spec normative — case-sensitive)
+        assert_eq!(ChangeState::Proposing.as_str(), "proposing");
+        assert_eq!(ChangeState::Reviewing.as_str(), "reviewing");
+        assert_eq!(ChangeState::Ready.as_str(), "ready");
+        assert_eq!(ChangeState::InProgress.as_str(), "in_progress");
+        assert_eq!(ChangeState::CodeReviewing.as_str(), "code_reviewing");
+        assert_eq!(ChangeState::Archived.as_str(), "archived");
+    }
+
+    #[test]
+    fn change_state_from_str_round_trips_all_six() {
+        for s in ChangeState::all() {
+            let parsed: ChangeState = s.as_str().parse().expect("parse");
+            assert_eq!(parsed, s);
+        }
+    }
+
+    #[test]
+    fn change_state_from_str_rejects_illegal_values() {
+        // Case-sensitive: uppercase rejected (per state-machine spec example).
+        assert!("Proposing".parse::<ChangeState>().is_err());
+        // Not in enum.
+        assert!("done".parse::<ChangeState>().is_err());
+        // Empty string.
+        assert!("".parse::<ChangeState>().is_err());
+        let err = "garbage".parse::<ChangeState>().unwrap_err();
+        assert_eq!(err.value, "garbage");
+    }
+
+    #[test]
+    fn change_state_serde_roundtrip_via_json() {
+        for s in ChangeState::all() {
+            let json = serde_json::to_string(&s).expect("serialize");
+            let back: ChangeState = serde_json::from_str(&json).expect("parse");
+            assert_eq!(back, s);
+        }
+    }
+
+    #[test]
+    fn state_transition_reason_serde_uses_snake_case() {
+        let pairs = [
+            (StateTransitionReason::ApplyStart, "apply_start"),
+            (StateTransitionReason::ApplyPause, "apply_pause"),
+            (StateTransitionReason::TaskDoneAuto, "task_done_auto"),
+            (StateTransitionReason::TaskUndoRevert, "task_undo_revert"),
+            (
+                StateTransitionReason::ArtifactDagComplete,
+                "artifact_dag_complete",
+            ),
+            (
+                StateTransitionReason::ReviewApprovedArtifact,
+                "review_approved_artifact",
+            ),
+            (
+                StateTransitionReason::ReviewRejectedCode,
+                "review_rejected_code",
+            ),
+            (StateTransitionReason::ArchiveRun, "archive_run"),
+        ];
+        for (variant, expected) in pairs {
+            let json = serde_json::to_string(&variant).expect("serialize");
+            assert_eq!(json, format!("\"{expected}\""), "serde for {variant:?}");
+            let back: StateTransitionReason = serde_json::from_str(&json).expect("parse");
+            assert_eq!(back, variant);
+            assert_eq!(variant.as_str(), expected);
+            assert_eq!(format!("{variant}"), expected);
+        }
+    }
+
+    #[test]
+    fn actor_serde_round_trips_all_three_fields() {
+        let actor = Actor {
+            agent_host: "claude-code".to_string(),
+            os_user: "alice".to_string(),
+            host_id: "macbook-alice".to_string(),
+        };
+        let json = serde_json::to_string(&actor).expect("serialize");
+        for needle in ["agent_host", "os_user", "host_id"] {
+            assert!(json.contains(needle), "missing {needle} in {json}");
+        }
+        let back: Actor = serde_json::from_str(&json).expect("parse");
+        assert_eq!(back, actor);
+    }
+
+    #[test]
+    fn change_state_view_serde_uses_camel_case() {
+        let view = ChangeStateView {
+            change_id: "cid-1".to_string(),
+            state: ChangeState::InProgress,
+            version: 3,
+            actor: Some(Actor {
+                agent_host: "cli".into(),
+                os_user: "bob".into(),
+                host_id: "linux-box".into(),
+            }),
+            all_tasks_done: false,
+        };
+        let json = serde_json::to_string(&view).expect("serialize");
+        for needle in ["changeId", "version", "allTasksDone", "in_progress"] {
+            assert!(json.contains(needle), "missing {needle} in {json}");
+        }
+        let back: ChangeStateView = serde_json::from_str(&json).expect("parse");
+        assert_eq!(back, view);
+    }
+
+    #[test]
+    fn transition_request_actor_field_has_three_distinct_semantics() {
+        // None → 不動 actor
+        let req = TransitionRequest {
+            to_state: ChangeState::InProgress,
+            actor: None,
+            reason: StateTransitionReason::ApplyStart,
+        };
+        assert!(req.actor.is_none());
+        // Some(Some(actor)) → assign new actor
+        let req = TransitionRequest {
+            to_state: ChangeState::InProgress,
+            actor: Some(Some(Actor {
+                agent_host: "cli".into(),
+                os_user: "alice".into(),
+                host_id: "h".into(),
+            })),
+            reason: StateTransitionReason::ApplyStart,
+        };
+        assert!(matches!(req.actor, Some(Some(_))));
+        // Some(None) → clear actor
+        let req = TransitionRequest {
+            to_state: ChangeState::Ready,
+            actor: Some(None),
+            reason: StateTransitionReason::ApplyPause,
+        };
+        assert!(matches!(req.actor, Some(None)));
     }
 
     #[test]

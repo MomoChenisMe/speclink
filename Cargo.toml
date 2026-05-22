@@ -41,6 +41,8 @@ tempfile = "3"
 assert_cmd = "2"
 predicates = "3"
 insta = { version = "1", features = ["json", "yaml"] }
+whoami = "1"
+regex-lite = "0.1"
 
 [workspace.lints.clippy]
 doc_markdown = "allow"

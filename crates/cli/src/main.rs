@@ -63,6 +63,52 @@ enum Commands {
         #[command(subcommand)]
         sub: ArtifactSub,
     },
+
+    /// Apply lifecycle 動詞：`start` / `pause`。
+    Apply {
+        #[command(subcommand)]
+        sub: ApplySub,
+    },
+
+    /// Task workflow 動詞：`list` / `done` / `undo`。
+    Task {
+        #[command(subcommand)]
+        sub: TaskSub,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ApplySub {
+    /// 把 change 推進到 `in_progress` 並 assign actor（或 reassign）。
+    Start {
+        change: String,
+        /// AI agent host 識別碼；省略則用 `SPECLINK_AGENT_HOST` env 或 fallback `cli`。
+        #[arg(long)]
+        actor: Option<String>,
+    },
+    /// 把 change 從 `in_progress` 退回 `ready` 並清空 actor。
+    Pause { change: String },
+}
+
+#[derive(Subcommand, Debug)]
+enum TaskSub {
+    /// 列舉 tasks.md 內所有 checkbox 行。
+    List {
+        #[arg(long)]
+        change: String,
+    },
+    /// 把 1-based index 對應的 task 標記為 done。task indices are derived from current document order — editing tasks.md between `task list` and `task done` SHALL invalidate previously-seen indices.
+    Done {
+        index: usize,
+        #[arg(long)]
+        change: String,
+    },
+    /// 把 1-based index 對應的 task 標記回 todo。task indices are derived from current document order — editing tasks.md between `task list` and `task undo` SHALL invalidate previously-seen indices.
+    Undo {
+        index: usize,
+        #[arg(long)]
+        change: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -193,6 +239,23 @@ fn main() -> ExitCode {
                     .await
                 }
             },
+            Commands::Apply { sub } => match sub {
+                ApplySub::Start { change, actor } => {
+                    commands::apply_start::run(&working_dir, &change, actor.as_deref()).await
+                }
+                ApplySub::Pause { change } => {
+                    commands::apply_pause::run(&working_dir, &change).await
+                }
+            },
+            Commands::Task { sub } => match sub {
+                TaskSub::List { change } => commands::task_list::run(&working_dir, &change).await,
+                TaskSub::Done { index, change } => {
+                    commands::task_done::run(&working_dir, &change, index).await
+                }
+                TaskSub::Undo { index, change } => {
+                    commands::task_undo::run(&working_dir, &change, index).await
+                }
+            },
         }
     });
 
@@ -282,6 +345,28 @@ fn hint_for(code: &str) -> Option<&'static str> {
         }
         "artifact.version_conflict" => Some(
             "Re-read the artifact, supply its current `--expected-etag`, then retry the write.",
+        ),
+        // slice A3 — state machine + apply / task ops
+        "state.invalid_value" => Some(
+            "change.state column contains a value outside the legal six-state enum; database corruption suspected",
+        ),
+        "state.transition_invalid" => {
+            Some("transition not permitted from current state; see legal transition table")
+        }
+        "state.version_conflict" => {
+            Some("change row was modified by another agent; reread state and retry")
+        }
+        "state.db.schema_invalid" => {
+            Some("state.db schema version is newer than this binary supports; upgrade binary")
+        }
+        "change.dag_incomplete" => Some(
+            "change is missing required artifacts; write proposal.md, tasks.md, and at least one specs/<capability>/spec.md",
+        ),
+        "task.no_tasks_file" => Some(
+            "tasks.md not found for this change; create it first via `speclink new artifact tasks --change <name>`",
+        ),
+        "task.index_out_of_range" => Some(
+            "task index out of range; re-run `speclink task list --change <name>` to see current indices",
         ),
         _ => None,
     }

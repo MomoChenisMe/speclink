@@ -48,7 +48,7 @@ pub async fn run(
     };
 
     let ops = ArtifactOperations::new(RealGitProbe);
-    let v = ops
+    let (v, runtime_warnings) = ops
         .write_artifact(working_dir, change, kind, capability, &bytes, expected)
         .await?;
 
@@ -67,6 +67,12 @@ pub async fn run(
         warnings.push(Warning {
             code: "artifact.capability_ignored".to_string(),
             message: "`--capability` is only meaningful when kind=spec".to_string(),
+        });
+    }
+    for w in runtime_warnings {
+        warnings.push(Warning {
+            code: w.code,
+            message: w.message,
         });
     }
 

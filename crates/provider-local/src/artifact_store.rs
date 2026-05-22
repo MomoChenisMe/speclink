@@ -50,7 +50,7 @@ impl LocalArtifactStore {
         let path = self.state_root.join("state.db");
         let db = StateDb::open(&path)
             .map_err(|e| ProviderError::Internal(format!("open state.db: {e}")))?;
-        db.migrate(2)
+        db.migrate(3)
             .map_err(|e| ProviderError::Internal(format!("migrate state.db: {e}")))?;
         Ok(db)
     }

@@ -42,10 +42,44 @@ All commands accept `--json` and emit a stable envelope (`ok` / `data` /
 ## Status
 
 Pre-alpha. The local-first AI workflow surface is built up vertically through
-sequential changes under `openspec/changes/`. As of slice A
-(`add-change-and-artifact-io`) the CLI supports project bootstrap plus the
-seven change/artifact operations listed below. Future slices add state
-machine, locking, apply, review, archive, discuss, and skill deployment.
+sequential changes under `openspec/changes/`. As of slice A3
+(`add-state-machine-and-apply`) the CLI supports project bootstrap, change /
+artifact I/O, and the 6-state lifecycle (`proposing → reviewing → ready ⇌
+in_progress → code_reviewing → archived`) plus 5 new ops
+(`apply start` / `apply pause` / `task list` / `task done` / `task undo`).
+Future slices add review, archive, locking, schema management, config-rw,
+discuss, and skill deployment.
+
+## Walking skeleton 3 — state machine + apply / task
+
+```bash
+# 寫滿 DAG (proposal + tasks + 至少一份 spec) 後，artifact.write hook 會自動把
+# state 從 proposing 推到 ready（walking-skeleton 4-state mode，review flags
+# 硬編 false）。
+speclink new artifact proposal --change demo --stdin < proposal.md
+speclink new artifact spec --change demo --capability auth --stdin < spec.md
+speclink new artifact tasks --change demo --stdin < tasks.md
+# → warnings 含 { code: "state_transitioned", details: { from: "proposing", to: "ready" } }
+
+# 進 apply：把 change 推進到 in_progress，actor 推導 fallback chain 為
+# --actor flag → SPECLINK_AGENT_HOST env → 預設 "cli"。
+speclink apply start demo --actor claude-code
+
+# 依 1-based 行內順序逐 task 完成；最後一個 task done 後 walking-skeleton 設
+# all_tasks_done=1 並保留 state=in_progress（review slice 上線後改為 code_reviewing）。
+speclink task list --change demo
+speclink task done 1 --change demo
+speclink task done 2 --change demo
+# → { all_tasks_done: true, state: "in_progress", auto_transitioned: false }
+
+# 隨時可 pause 退回 ready 並清空 actor；再次 apply start 為 idempotent 且 reassign actor。
+speclink apply pause demo
+speclink apply start demo --actor cursor
+
+# task indices 依當前 tasks.md 順序決定；在 task done 期間禁止改 tasks.md。
+# undo 把 [x] → [ ]；若 change 在 code_reviewing state，會先 transition 回 in_progress。
+speclink task undo 2 --change demo
+```
 
 ## Walking skeleton 2 — change & artifact
 

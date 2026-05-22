@@ -94,7 +94,7 @@ pub fn error(code: &str, message: &str, hint: Option<&str>, retryable: bool) -> 
 #[must_use]
 pub fn error_code_to_exit(code: &str) -> i32 {
     match code {
-        // exit 2 — user-input errors（bootstrap project.* + slice-A change.*/artifact.*）
+        // exit 2 — user-input errors（bootstrap project.* + slice-A change.*/artifact.* + slice-A3 task.* / change.dag_incomplete）
         "project.requires_git"
         | "project.not_initialized"
         | "project.link_target_not_found"
@@ -102,9 +102,17 @@ pub fn error_code_to_exit(code: &str) -> i32 {
         | "change.invalid_name"
         | "artifact.kind_invalid"
         | "artifact.capability_required"
-        | "artifact.not_found" => 2,
-        // exit 7 — conflicts / already-exists（含 etag mismatch）
-        "project.already_initialized" | "change.duplicate_name" | "artifact.version_conflict" => 7,
+        | "artifact.not_found"
+        | "change.dag_incomplete"
+        | "task.no_tasks_file"
+        | "task.index_out_of_range" => 2,
+        // exit 7 — conflicts / already-exists（含 etag mismatch + slice-A3 state transition / CAS）
+        "project.already_initialized"
+        | "change.duplicate_name"
+        | "artifact.version_conflict"
+        | "state.transition_invalid"
+        | "state.version_conflict" => 7,
+        // exit 1 — fallthrough：state.invalid_value、state.db.schema_invalid、internal.error
         _ => 1,
     }
 }
@@ -180,5 +188,13 @@ mod tests {
         assert_eq!(error_code_to_exit("artifact.capability_required"), 2);
         assert_eq!(error_code_to_exit("artifact.not_found"), 2);
         assert_eq!(error_code_to_exit("artifact.version_conflict"), 7);
+        // slice-A3
+        assert_eq!(error_code_to_exit("state.invalid_value"), 1);
+        assert_eq!(error_code_to_exit("state.transition_invalid"), 7);
+        assert_eq!(error_code_to_exit("state.version_conflict"), 7);
+        assert_eq!(error_code_to_exit("state.db.schema_invalid"), 1);
+        assert_eq!(error_code_to_exit("change.dag_incomplete"), 2);
+        assert_eq!(error_code_to_exit("task.no_tasks_file"), 2);
+        assert_eq!(error_code_to_exit("task.index_out_of_range"), 2);
     }
 }

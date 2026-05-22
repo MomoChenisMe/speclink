@@ -31,6 +31,20 @@ pub mod codes {
     pub const ARTIFACT_NOT_FOUND: &str = "artifact.not_found";
     /// `artifact.write` 並發衝突：覆寫缺 etag、etag 不符、或既檔存在卻被當新建。
     pub const ARTIFACT_VERSION_CONFLICT: &str = "artifact.version_conflict";
+
+    // ----- slice A3 (`add-state-machine-and-apply`) -----
+
+    /// `change.state` 欄位讀到 6 個合法 enum 之外的值；視為資料庫毀損 / 不變式破壞。
+    pub const STATE_INVALID_VALUE: &str = "state.invalid_value";
+    /// 請求的 transition 不在合法 transition table 內。
+    pub const STATE_TRANSITION_INVALID: &str = "state.transition_invalid";
+    /// `change.version` compare-and-swap 失敗：他人已 mutate。
+    pub const STATE_VERSION_CONFLICT: &str = "state.version_conflict";
+    /// state.db `_migrations` 最高 version 超過本 binary 支援的範圍；拒絕讀寫。
+    pub const STATE_DB_SCHEMA_INVALID: &str = "state.db.schema_invalid";
+    /// Change artifact DAG 未齊全（缺 proposal.md / tasks.md / specs/*）；
+    /// 預留給未來 doctor slice manual override，本 slice 不暴露 CLI。
+    pub const CHANGE_DAG_INCOMPLETE: &str = "change.dag_incomplete";
 }
 
 /// Provider 層的錯誤型別。
@@ -86,6 +100,27 @@ pub enum ProviderError {
         actual: Etag,
     },
 
+    /// 對應 `state.invalid_value`。
+    #[error("change.state column contains illegal value `{value}`")]
+    StateInvalidValue { value: String },
+
+    /// 對應 `state.transition_invalid`。
+    #[error("state transition `{from} → {to}` is not permitted")]
+    StateTransitionInvalid { from: String, to: String },
+
+    /// 對應 `state.version_conflict`。`current_version` 是 store 端在 CAS 失敗時
+    /// 觀察到的真實 version；caller 重讀後可重試。
+    #[error("change.version compare-and-swap failed; current_version={current_version}")]
+    StateVersionConflict { current_version: u64 },
+
+    /// 對應 `state.db.schema_invalid`。
+    #[error("state.db schema version {found} exceeds this binary's supported max {supported}")]
+    StateDbSchemaInvalid { found: u32, supported: u32 },
+
+    /// 對應 `change.dag_incomplete`。`missing` 列出缺失的 artifact 路徑（相對 change dir）。
+    #[error("change artifact DAG incomplete; missing: {missing:?}")]
+    ChangeDagIncomplete { missing: Vec<String> },
+
     /// 內部 I/O / SQLite / YAML / 其他底層錯誤；CLI 層映射為通用 exit code 1。
     #[error("provider internal error: {0}")]
     Internal(String),
@@ -107,15 +142,25 @@ impl ProviderError {
             ProviderError::ArtifactCapabilityRequired => codes::ARTIFACT_CAPABILITY_REQUIRED,
             ProviderError::ArtifactNotFound { .. } => codes::ARTIFACT_NOT_FOUND,
             ProviderError::ArtifactVersionConflict { .. } => codes::ARTIFACT_VERSION_CONFLICT,
+            ProviderError::StateInvalidValue { .. } => codes::STATE_INVALID_VALUE,
+            ProviderError::StateTransitionInvalid { .. } => codes::STATE_TRANSITION_INVALID,
+            ProviderError::StateVersionConflict { .. } => codes::STATE_VERSION_CONFLICT,
+            ProviderError::StateDbSchemaInvalid { .. } => codes::STATE_DB_SCHEMA_INVALID,
+            ProviderError::ChangeDagIncomplete { .. } => codes::CHANGE_DAG_INCOMPLETE,
             ProviderError::Internal(_) => "internal.error",
         }
     }
 
     /// 是否屬於使用者可重試的錯誤。
     ///
-    /// 目前只有 `ArtifactVersionConflict` 是 retryable（使用者重讀新 etag 後可重試）。
+    /// `ArtifactVersionConflict` / `StateVersionConflict` 兩個 CAS 衝突 retryable：
+    /// caller 重讀最新 etag / version 後可重試。
     #[must_use]
     pub fn retryable(&self) -> bool {
-        matches!(self, ProviderError::ArtifactVersionConflict { .. })
+        matches!(
+            self,
+            ProviderError::ArtifactVersionConflict { .. }
+                | ProviderError::StateVersionConflict { .. }
+        )
     }
 }
