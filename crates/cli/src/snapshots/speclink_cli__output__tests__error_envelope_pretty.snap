@@ -1,0 +1,15 @@
+---
+source: crates/cli/src/output.rs
+expression: json
+---
+{
+  "ok": false,
+  "error": {
+    "code": "project.requires_git",
+    "message": "not a git repo",
+    "hint": "run `git init` first",
+    "retryable": false,
+    "retry_after_ms": null
+  },
+  "requestId": "00000000-0000-4000-8000-000000000000"
+}

@@ -1,0 +1,15 @@
+---
+source: crates/cli/tests/cli.rs
+expression: json
+---
+{
+  "error": {
+    "code": "project.requires_git",
+    "hint": "Run `git init` first, then re-run `speclink init`.",
+    "message": "not inside a git working tree: fatal: not a git repository (or any of the parent directories): .git",
+    "retry_after_ms": null,
+    "retryable": false
+  },
+  "ok": false,
+  "requestId": "<requestId>"
+}

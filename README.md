@@ -11,13 +11,41 @@ This repository hosts the Cargo workspace with four crates:
 | `provider`       | `Provider` async trait, shared types, config + resolution        |
 | `provider-local` | local filesystem implementation of `Provider` (no remote calls)  |
 
+## Quick start
+
+The `add-project-bootstrap` change ships four CLI subcommands. Run them inside
+a git working tree:
+
+```bash
+cd /path/to/your/project
+git init                         # SpecLink rejects non-git working dirs
+speclink init                    # creates .speclink/ and .git/speclink/
+speclink status --json           # reports project_id, provider, roots, git_head
+speclink link <project_id>       # rebind to an existing project row in state.db
+speclink unlink                  # remove .speclink/link.yaml (keeps state.db)
+```
+
+Layout written by `speclink init`:
+
+```
+<repo>/.speclink/                # artifact root (git-tracked)
+  link.yaml                      # binding metadata (.gitignored)
+  schemas/                       # reserved for future capability changes
+<repo>/.git/speclink/            # state root (not git-tracked, shared across worktrees)
+  state.db                       # SQLite WAL, project rows + _migrations
+  locks/                         # reserved for future capability changes
+```
+
+All commands accept `--json` and emit a stable envelope (`ok` / `data` /
+`warnings` / `requestId`, or `ok: false` / `error` / `requestId`).
+
 ## Status
 
 Pre-alpha. The local-first AI workflow surface is built up vertically through
 sequential changes under `openspec/changes/`. The CLI currently supports
-`propose create`, multi-kind `artifact write`, `status`, `archive` (with
-spec delta merge), `instructions` (per-kind artifact guidance), and
-`task done` (idempotent tasks.md checkbox update) against the local provider.
+project bootstrap (`init`, `status`, `link`, `unlink`) via the local provider.
+Additional change CRUD, artifact write, apply, review, archive, discuss, and
+skill deployment surfaces ship in future changes.
 
 ## CLI usage
 

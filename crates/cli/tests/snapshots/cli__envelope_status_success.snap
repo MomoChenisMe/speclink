@@ -1,0 +1,17 @@
+---
+source: crates/cli/tests/cli.rs
+expression: json
+---
+{
+  "data": {
+    "artifact_root": ".speclink",
+    "git_head": "<git_head>",
+    "project_id": "<project_id>",
+    "provider": "local",
+    "requires_git": true,
+    "state_root": ".git/speclink"
+  },
+  "ok": true,
+  "requestId": "<requestId>",
+  "warnings": []
+}

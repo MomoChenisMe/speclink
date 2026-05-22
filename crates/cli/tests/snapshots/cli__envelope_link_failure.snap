@@ -1,0 +1,15 @@
+---
+source: crates/cli/tests/cli.rs
+expression: json
+---
+{
+  "error": {
+    "code": "project.link_target_not_found",
+    "hint": "Check available project_ids via `speclink status`.",
+    "message": "link target project_id `00000000-0000-0000-0000-000000000000` not found in state.db",
+    "retry_after_ms": null,
+    "retryable": false
+  },
+  "ok": false,
+  "requestId": "<requestId>"
+}
