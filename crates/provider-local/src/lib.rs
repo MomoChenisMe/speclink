@@ -3,6 +3,7 @@
 
 #![allow(clippy::doc_markdown)]
 
+pub mod archive_store;
 pub mod artifact_store;
 pub mod change_store;
 pub mod link_yaml;
@@ -11,6 +12,7 @@ pub mod state_db;
 pub mod state_machine_store;
 pub mod store;
 
+pub use archive_store::LocalArchiveStore;
 pub use artifact_store::LocalArtifactStore;
 pub use change_store::LocalChangeStore;
 pub use state_db::{MIGRATIONS, StateDb, StateDbError};

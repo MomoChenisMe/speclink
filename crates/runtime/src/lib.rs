@@ -5,6 +5,7 @@
 #![allow(clippy::doc_markdown)]
 
 pub mod apply_ops;
+pub mod archive_ops;
 pub mod artifact_ops;
 pub mod bootstrap;
 pub mod change_ops;
@@ -18,10 +19,11 @@ pub mod state_machine;
 pub mod task_ops;
 
 pub use apply_ops::{ApplyOperations, ApplyPauseData, ApplyStartData};
+pub use archive_ops::{ArchiveData, ArchiveOperations, ArchiveOutcome};
 pub use artifact_ops::ArtifactOperations;
 pub use bootstrap::Bootstrap;
 pub use change_ops::{ArtifactRef, ChangeOperations, DEFAULT_SCHEMA_ID, ShowChangeData};
-pub use dev_precheck::precheck_a2_archived;
+pub use dev_precheck::{precheck_a2_archived, precheck_a3_archived};
 pub use error::{RuntimeError, RuntimeWarning, codes, finding_codes, task_codes};
 pub use git::{GitProbe, RealGitProbe};
 pub use ops::Operations;

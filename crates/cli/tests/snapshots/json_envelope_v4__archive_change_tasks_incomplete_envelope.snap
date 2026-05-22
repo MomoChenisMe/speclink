@@ -1,0 +1,15 @@
+---
+source: crates/cli/tests/json_envelope_v4.rs
+expression: env
+---
+{
+  "error": {
+    "code": "change.tasks_incomplete",
+    "hint": "complete all tasks first with `speclink task done <i> --change <id>`",
+    "message": "change `demo` has incomplete tasks; cannot archive",
+    "retry_after_ms": null,
+    "retryable": false
+  },
+  "ok": false,
+  "requestId": "00000000-0000-0000-0000-000000000000"
+}

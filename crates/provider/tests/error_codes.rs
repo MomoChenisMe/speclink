@@ -77,3 +77,53 @@ fn only_state_version_conflict_is_retryable_among_slice_a3_codes() {
         .retryable()
     );
 }
+
+// ----- slice A4 (`add-archive`) -----
+
+#[test]
+fn slice_a4_codes_are_dot_separated_namespace_strings() {
+    assert_eq!(codes::CHANGE_TASKS_INCOMPLETE, "change.tasks_incomplete");
+    assert_eq!(
+        codes::VALIDATION_ARCHIVE_FAILED,
+        "validation.archive_failed"
+    );
+    assert_eq!(codes::ARCHIVE_SPECS_SKIPPED, "archive.specs_skipped");
+}
+
+#[test]
+fn provider_error_variants_map_to_slice_a4_codes() {
+    assert_eq!(
+        ProviderError::ChangeTasksIncomplete {
+            change_id: "demo".into(),
+        }
+        .code(),
+        codes::CHANGE_TASKS_INCOMPLETE
+    );
+    assert_eq!(
+        ProviderError::ValidationArchiveFailed {
+            reason: "stub".into(),
+        }
+        .code(),
+        codes::VALIDATION_ARCHIVE_FAILED
+    );
+}
+
+#[test]
+fn slice_a4_error_variants_are_not_retryable() {
+    // 兩個 A4 error 都是「修正後重試」非「立即重試」，retryable=false。
+    assert!(
+        !ProviderError::ChangeTasksIncomplete {
+            change_id: "demo".into()
+        }
+        .retryable()
+    );
+    assert!(!ProviderError::ValidationArchiveFailed { reason: "x".into() }.retryable());
+}
+
+#[test]
+fn archive_specs_skipped_is_warning_carrier_not_provider_error() {
+    // ARCHIVE_SPECS_SKIPPED 是 warning carrier code、不對應任何 ProviderError variant；
+    // CLI envelope 在 success path 的 warnings array 內帶這個 code、不走 error path。
+    // 此測試僅斷言常量字串本身存在、不期待 ProviderError 表面有對應 variant。
+    let _ = codes::ARCHIVE_SPECS_SKIPPED;
+}

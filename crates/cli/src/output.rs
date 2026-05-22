@@ -100,7 +100,7 @@ pub fn error(code: &str, message: &str, hint: Option<&str>, retryable: bool) -> 
 #[must_use]
 pub fn error_code_to_exit(code: &str) -> i32 {
     match code {
-        // exit 2 — user-input errors（bootstrap project.* + slice-A change.*/artifact.* + slice-A3 task.* / change.dag_incomplete）
+        // exit 2 — user-input errors（bootstrap project.* + slice-A change.*/artifact.* + slice-A3 task.* / change.dag_incomplete + slice-A4 change.tasks_incomplete）
         "project.requires_git"
         | "project.not_initialized"
         | "project.link_target_not_found"
@@ -111,7 +111,10 @@ pub fn error_code_to_exit(code: &str) -> i32 {
         | "artifact.not_found"
         | "change.dag_incomplete"
         | "task.no_tasks_file"
-        | "task.index_out_of_range" => 2,
+        | "task.index_out_of_range"
+        | "change.tasks_incomplete" => 2,
+        // exit 3 — validation failed (reserved for analyze slice)
+        "validation.archive_failed" => 3,
         // exit 7 — conflicts / already-exists（含 etag mismatch + slice-A3 state transition / CAS）
         "project.already_initialized"
         | "change.duplicate_name"
@@ -202,5 +205,8 @@ mod tests {
         assert_eq!(error_code_to_exit("change.dag_incomplete"), 2);
         assert_eq!(error_code_to_exit("task.no_tasks_file"), 2);
         assert_eq!(error_code_to_exit("task.index_out_of_range"), 2);
+        // slice-A4
+        assert_eq!(error_code_to_exit("change.tasks_incomplete"), 2);
+        assert_eq!(error_code_to_exit("validation.archive_failed"), 3);
     }
 }

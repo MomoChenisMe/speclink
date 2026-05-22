@@ -188,6 +188,12 @@ fn map_provider_error_artifact(err: ProviderError) -> RuntimeError {
         | ProviderError::StateVersionConflict { .. }
         | ProviderError::StateDbSchemaInvalid { .. }
         | ProviderError::ChangeDagIncomplete { .. }) => RuntimeError::Provider(e),
+        ProviderError::ChangeTasksIncomplete { change_id } => {
+            RuntimeError::ChangeTasksIncomplete { change_id }
+        }
+        ProviderError::ValidationArchiveFailed { reason } => {
+            RuntimeError::ValidationArchiveFailed { reason }
+        }
         ProviderError::Internal(s) => RuntimeError::Internal(s),
     }
 }

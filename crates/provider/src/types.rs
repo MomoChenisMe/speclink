@@ -280,8 +280,13 @@ pub enum StateTransitionReason {
     ReviewApprovedArtifact,
     /// 預留：future review slice 把 `code_reviewing` 退回 `in_progress`。
     ReviewRejectedCode,
-    /// 預留：future archive slice 把 change 推進到 `archived`。
+    /// `archive.run` 把 `in_progress`（walking-skeleton）或 `code_reviewing`（review slice 後）
+    /// 推進到 `archived`。
     ArchiveRun,
+    /// `archive.run` 在 SQLite commit 後 filesystem rename 失敗時的 best-effort revert：
+    /// 把剛 commit 的 `archived` 退回 `in_progress`、清空 `archived_at`。
+    /// 只由 `LocalArchiveStore::archive_change` 在 rename 失敗 fallback path 寫入。
+    ArchiveRunRevert,
 }
 
 impl StateTransitionReason {
@@ -297,6 +302,7 @@ impl StateTransitionReason {
             StateTransitionReason::ReviewApprovedArtifact => "review_approved_artifact",
             StateTransitionReason::ReviewRejectedCode => "review_rejected_code",
             StateTransitionReason::ArchiveRun => "archive_run",
+            StateTransitionReason::ArchiveRunRevert => "archive_run_revert",
         }
     }
 }
@@ -339,6 +345,53 @@ pub struct ChangeStateView {
     pub version: u64,
     pub actor: Option<Actor>,
     pub all_tasks_done: bool,
+}
+
+/// `ArchiveStore::archive_change` 的輸入請求。
+///
+/// 對應 CLI 表面：`speclink archive <change-id> [--skip-specs] [--yes] [--no-validate] [--json]`。
+/// 本 slice 內 `no_validate` 與 `yes` 為 no-op flag（接受並回傳但不改變 runtime 行為）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArchiveRequest {
+    /// 目標 change 識別碼（即 `change.name`）。
+    pub change_id: String,
+    /// 跳過 spec delta merge、僅 state transition + 目錄搬遷；emergency 用。
+    pub skip_specs: bool,
+    /// CLI 表面相容旗標：本 slice 為 no-op；`add-analyze` slice 之後接 validation。
+    pub no_validate: bool,
+    /// CLI 表面相容旗標：archive 本 slice 不 prompt；旗標僅為對齊 catalogue。
+    pub yes: bool,
+}
+
+/// `archive.run` 對單一 capability 的 spec delta merge 結果。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MergedSpec {
+    /// Capability 識別碼（即 `.speclink/specs/<capability>/` 目錄名）。
+    pub capability: String,
+    /// 寫入後新檔案的 line count。
+    pub lines_added: u64,
+    /// 寫入前目標檔案的 line count；新 capability dir 為 0。
+    pub lines_removed: u64,
+}
+
+/// `ArchiveStore::archive_change` 的輸出結果。
+///
+/// 對應 `archive.run` op 的 JSON envelope `data` 欄位 schema（design.md「JSON envelope shape」）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveResult {
+    /// Archive 完成的 change 識別碼。
+    pub change_id: String,
+    /// 結束狀態；成功 `archive.run` 永遠為 [`ChangeState::Archived`]。
+    pub state: ChangeState,
+    /// 本次 merge 的 capability spec 列表；`--skip-specs` 路徑為空陣列。
+    pub merged_specs: Vec<MergedSpec>,
+    /// UTC ISO-8601 timestamp，對應 `change.archived_at` 欄位。
+    pub archived_at: String,
+    /// Working-tree-relative 路徑指向新 archive 目錄
+    /// （`.speclink/changes/archive/<YYYY-MM-DD>-<change-id>[-N]`）。
+    pub archive_dir: String,
 }
 
 /// kebab-case identifier 驗證錯誤。
@@ -586,6 +639,10 @@ mod tests {
                 "review_rejected_code",
             ),
             (StateTransitionReason::ArchiveRun, "archive_run"),
+            (
+                StateTransitionReason::ArchiveRunRevert,
+                "archive_run_revert",
+            ),
         ];
         for (variant, expected) in pairs {
             let json = serde_json::to_string(&variant).expect("serialize");
@@ -595,6 +652,131 @@ mod tests {
             assert_eq!(variant.as_str(), expected);
             assert_eq!(format!("{variant}"), expected);
         }
+    }
+
+    #[test]
+    fn archive_request_default_flags_are_false() {
+        // ArchiveRequest 預設 flag 全 false：clap derive 預設行為對齊。
+        let req = ArchiveRequest {
+            change_id: "demo".into(),
+            skip_specs: false,
+            no_validate: false,
+            yes: false,
+        };
+        assert_eq!(req.change_id, "demo");
+        assert!(!req.skip_specs);
+        assert!(!req.no_validate);
+        assert!(!req.yes);
+    }
+
+    #[test]
+    fn archive_request_flags_can_be_toggled_independently() {
+        let req = ArchiveRequest {
+            change_id: "demo".into(),
+            skip_specs: true,
+            no_validate: false,
+            yes: true,
+        };
+        assert!(req.skip_specs);
+        assert!(!req.no_validate);
+        assert!(req.yes);
+    }
+
+    #[test]
+    fn archive_result_serde_uses_camel_case() {
+        let result = ArchiveResult {
+            change_id: "demo".into(),
+            state: ChangeState::Archived,
+            merged_specs: vec![MergedSpec {
+                capability: "user-auth".into(),
+                lines_added: 142,
+                lines_removed: 0,
+            }],
+            archived_at: "2026-05-22T18:00:00Z".into(),
+            archive_dir: ".speclink/changes/archive/2026-05-22-demo".into(),
+        };
+        let json = serde_json::to_string(&result).expect("serialize");
+        for needle in [
+            "changeId",
+            "state",
+            "mergedSpecs",
+            "archivedAt",
+            "archiveDir",
+            "archived",
+            "user-auth",
+        ] {
+            assert!(json.contains(needle), "missing {needle} in {json}");
+        }
+        let back: ArchiveResult = serde_json::from_str(&json).expect("parse");
+        assert_eq!(back, result);
+    }
+
+    #[test]
+    fn archive_result_state_is_always_archived() {
+        // archive.run 成功 state 必為 archived；compile-time check 不可能、
+        // 但 runtime serde roundtrip 至少保證序列化形態。
+        let result = ArchiveResult {
+            change_id: "demo".into(),
+            state: ChangeState::Archived,
+            merged_specs: vec![],
+            archived_at: "2026-05-22T18:00:00Z".into(),
+            archive_dir: ".speclink/changes/archive/2026-05-22-demo".into(),
+        };
+        assert_eq!(result.state, ChangeState::Archived);
+    }
+
+    #[test]
+    fn merged_spec_serde_uses_camel_case() {
+        let spec = MergedSpec {
+            capability: "audit-log".into(),
+            lines_added: 87,
+            lines_removed: 64,
+        };
+        let json = serde_json::to_string(&spec).expect("serialize");
+        for needle in ["capability", "linesAdded", "linesRemoved", "audit-log"] {
+            assert!(json.contains(needle), "missing {needle} in {json}");
+        }
+        let back: MergedSpec = serde_json::from_str(&json).expect("parse");
+        assert_eq!(back, spec);
+    }
+
+    #[test]
+    fn merged_spec_lines_removed_zero_for_new_capability() {
+        let spec = MergedSpec {
+            capability: "new-cap".into(),
+            lines_added: 50,
+            lines_removed: 0,
+        };
+        assert_eq!(spec.lines_removed, 0);
+    }
+
+    #[test]
+    fn archive_result_empty_merged_specs_for_skip_specs_path() {
+        let result = ArchiveResult {
+            change_id: "demo".into(),
+            state: ChangeState::Archived,
+            merged_specs: vec![],
+            archived_at: "2026-05-22T18:00:00Z".into(),
+            archive_dir: ".speclink/changes/archive/2026-05-22-demo".into(),
+        };
+        assert!(result.merged_specs.is_empty());
+        let json = serde_json::to_string(&result).expect("serialize");
+        assert!(json.contains("\"mergedSpecs\":[]"), "got: {json}");
+    }
+
+    #[test]
+    fn state_transition_reason_archive_run_revert_is_separate_variant() {
+        // ArchiveRun 與 ArchiveRunRevert 必須是兩個獨立 variant，
+        // 對應「best-effort revert」與正常 archive 在 audit log 上的區分。
+        assert_ne!(
+            StateTransitionReason::ArchiveRun,
+            StateTransitionReason::ArchiveRunRevert
+        );
+        assert_eq!(StateTransitionReason::ArchiveRun.as_str(), "archive_run");
+        assert_eq!(
+            StateTransitionReason::ArchiveRunRevert.as_str(),
+            "archive_run_revert"
+        );
     }
 
     #[test]

@@ -80,6 +80,13 @@ CREATE INDEX idx_state_transition_change_time
     ON state_transition (change_id, transitioned_at DESC);
 ";
 
+/// v4 schema：追加 `change.archived_at` 欄位。對齊 `archive-runner` capability
+/// 「state.db SHALL be upgraded to version 4 with `archived_at` column on the `change` table」
+/// requirement。Non-archived rows 保持 NULL；archive.run 成功時寫入 UTC ISO-8601 timestamp。
+const MIGRATION_V4_SQL: &str = "
+ALTER TABLE change ADD COLUMN archived_at TEXT;
+";
+
 /// 內嵌 migration SQL。
 ///
 /// 索引對照表：
@@ -89,7 +96,13 @@ CREATE INDEX idx_state_transition_change_time
 /// | 0     | 1              | `_migrations`、`project` 表                                                   |
 /// | 1     | 2              | `change` 表                                                                   |
 /// | 2     | 3              | `change.actor_json` / `change.all_tasks_done` + `state_transition` 表 + index |
-pub const MIGRATIONS: &[&str] = &[MIGRATION_V1_SQL, MIGRATION_V2_SQL, MIGRATION_V3_SQL];
+/// | 3     | 4              | `change.archived_at` 欄位                                                     |
+pub const MIGRATIONS: &[&str] = &[
+    MIGRATION_V1_SQL,
+    MIGRATION_V2_SQL,
+    MIGRATION_V3_SQL,
+    MIGRATION_V4_SQL,
+];
 
 /// state.db 的 handle。
 pub struct StateDb {
@@ -495,6 +508,116 @@ impl StateDb {
         }
         tx.commit()?;
         Ok(expected_version + 1)
+    }
+
+    /// CAS 寫入：在單一 SQLite tx 內完成 state transition + audit + `archived_at` 設值
+    /// （v4 schema 之後）。對應 `archive-runner` capability 「Filesystem rename SHALL happen
+    /// after SQLite transaction commit」契約：DB 端 commit atomic、filesystem 端 commit
+    /// 之後做、失敗走 revert path。
+    ///
+    /// 與 [`Self::update_change_state_cas`] 相同，CAS 失敗回 `CasConflict`；
+    /// 不同處在多寫 `change.archived_at` 欄位（archive 寫入 ISO-8601 timestamp；
+    /// revert 寫 None 清空）。`actor_update` 沿用既有語意（archive 通常 Keep；
+    /// revert 也 Keep）。
+    ///
+    /// # Errors
+    /// 同 [`Self::update_change_state_cas`]。
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_change_state_with_archived_at_cas(
+        &self,
+        change_id: &str,
+        expected_version: u64,
+        new_state: &str,
+        actor_update: ActorUpdate<'_>,
+        archived_at: Option<&str>,
+        audit: &StateTransitionRow<'_>,
+        updated_at: &str,
+    ) -> Result<u64, StateDbError> {
+        let tx = self.conn.unchecked_transaction()?;
+        match actor_update {
+            ActorUpdate::Keep => {
+                tx.execute(
+                    "UPDATE change
+                     SET state = ?1, archived_at = ?2, version = version + 1, updated_at = ?3
+                     WHERE change_id = ?4 AND version = ?5",
+                    params![
+                        new_state,
+                        archived_at,
+                        updated_at,
+                        change_id,
+                        expected_version as i64
+                    ],
+                )?;
+            }
+            ActorUpdate::Set(actor_json) => {
+                tx.execute(
+                    "UPDATE change
+                     SET state = ?1, actor_json = ?2, archived_at = ?3,
+                         version = version + 1, updated_at = ?4
+                     WHERE change_id = ?5 AND version = ?6",
+                    params![
+                        new_state,
+                        actor_json,
+                        archived_at,
+                        updated_at,
+                        change_id,
+                        expected_version as i64
+                    ],
+                )?;
+            }
+        }
+        let rows_affected = tx.changes();
+        if rows_affected == 0 {
+            let row: Option<i64> = tx
+                .query_row(
+                    "SELECT version FROM change WHERE change_id = ?1",
+                    params![change_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            drop(tx);
+            return match row {
+                Some(v) => Err(StateDbError::CasConflict {
+                    current_version: v as u64,
+                }),
+                None => Err(StateDbError::ChangeRowNotFound {
+                    change_id: change_id.to_string(),
+                }),
+            };
+        }
+        tx.execute(
+            "INSERT INTO state_transition
+             (transition_id, change_id, from_state, to_state, actor_json, transitioned_at, reason)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                audit.transition_id,
+                change_id,
+                audit.from_state,
+                audit.to_state,
+                audit.actor_json,
+                audit.transitioned_at,
+                audit.reason,
+            ],
+        )?;
+        tx.commit()?;
+        Ok(expected_version + 1)
+    }
+
+    /// 讀取 v4 `change.archived_at` 欄位（給 archive_store + integration test 用）。
+    ///
+    /// # Errors
+    /// 找不到 change row 回 [`StateDbError::ChangeRowNotFound`]。
+    pub fn read_archived_at(&self, change_id: &str) -> Result<Option<String>, StateDbError> {
+        self.conn
+            .query_row(
+                "SELECT archived_at FROM change WHERE change_id = ?1",
+                params![change_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| StateDbError::ChangeRowNotFound {
+                change_id: change_id.to_string(),
+            })
     }
 
     /// CAS 寫入：只更新 `change.all_tasks_done`、bump version；不寫 audit row。
@@ -1265,6 +1388,184 @@ mod tests {
         let err = db
             .cas_set_all_tasks_done("missing-cid", 1, true, "t")
             .expect_err("missing row");
+        assert!(matches!(err, StateDbError::ChangeRowNotFound { .. }));
+    }
+
+    // --- slice A4 archived_at helper tests --------------------------------
+
+    fn open_v4_seeded(tmp: &TempDir) -> StateDb {
+        let db_path = tmp.path().join("state.db");
+        let db = StateDb::open(&db_path).expect("open");
+        db.migrate(4).expect("migrate v4");
+        db.insert_change_row(
+            "cid-1",
+            "demo",
+            "in_progress",
+            "spec-driven",
+            "2026-05-22T10:00:00Z",
+            "2026-05-22T10:00:00Z",
+        )
+        .expect("seed row");
+        db
+    }
+
+    #[test]
+    fn update_change_state_with_archived_at_cas_commits_state_audit_and_archived_at() {
+        let tmp = TempDir::new().expect("tempdir");
+        let db = open_v4_seeded(&tmp);
+        let audit = StateTransitionRow {
+            transition_id: "t-archive-1",
+            from_state: "in_progress",
+            to_state: "archived",
+            actor_json: None,
+            transitioned_at: "2026-05-22T18:00:00Z",
+            reason: "archive_run",
+        };
+        let new_version = db
+            .update_change_state_with_archived_at_cas(
+                "cid-1",
+                1,
+                "archived",
+                ActorUpdate::Keep,
+                Some("2026-05-22T18:00:00Z"),
+                &audit,
+                "2026-05-22T18:00:00Z",
+            )
+            .expect("CAS success");
+        assert_eq!(new_version, 2);
+        let view = db.read_change_state_row("demo").expect("read");
+        assert_eq!(view.state, "archived");
+        assert_eq!(view.version, 2);
+        let archived_at = db.read_archived_at("cid-1").expect("read archived_at");
+        assert_eq!(archived_at.as_deref(), Some("2026-05-22T18:00:00Z"));
+    }
+
+    #[test]
+    fn update_change_state_with_archived_at_cas_supports_revert_clearing_archived_at() {
+        let tmp = TempDir::new().expect("tempdir");
+        let db = open_v4_seeded(&tmp);
+        // First archive
+        let archive_audit = StateTransitionRow {
+            transition_id: "t-archive-1",
+            from_state: "in_progress",
+            to_state: "archived",
+            actor_json: None,
+            transitioned_at: "2026-05-22T18:00:00Z",
+            reason: "archive_run",
+        };
+        db.update_change_state_with_archived_at_cas(
+            "cid-1",
+            1,
+            "archived",
+            ActorUpdate::Keep,
+            Some("2026-05-22T18:00:00Z"),
+            &archive_audit,
+            "2026-05-22T18:00:00Z",
+        )
+        .expect("archive commit");
+        // Now revert: state→in_progress, archived_at=NULL
+        let revert_audit = StateTransitionRow {
+            transition_id: "t-archive-revert-1",
+            from_state: "archived",
+            to_state: "in_progress",
+            actor_json: None,
+            transitioned_at: "2026-05-22T18:00:01Z",
+            reason: "archive_run_revert",
+        };
+        let v = db
+            .update_change_state_with_archived_at_cas(
+                "cid-1",
+                2,
+                "in_progress",
+                ActorUpdate::Keep,
+                None,
+                &revert_audit,
+                "2026-05-22T18:00:01Z",
+            )
+            .expect("revert commit");
+        assert_eq!(v, 3);
+        let view = db.read_change_state_row("demo").expect("read");
+        assert_eq!(view.state, "in_progress");
+        let archived_at = db.read_archived_at("cid-1").expect("read");
+        assert!(
+            archived_at.is_none(),
+            "revert SHALL clear archived_at to NULL"
+        );
+    }
+
+    #[test]
+    fn update_change_state_with_archived_at_cas_returns_cas_conflict_on_version_mismatch() {
+        let tmp = TempDir::new().expect("tempdir");
+        let db = open_v4_seeded(&tmp);
+        let audit = StateTransitionRow {
+            transition_id: "t-x",
+            from_state: "in_progress",
+            to_state: "archived",
+            actor_json: None,
+            transitioned_at: "t",
+            reason: "archive_run",
+        };
+        // expected_version=99 mismatches actual version=1
+        let err = db
+            .update_change_state_with_archived_at_cas(
+                "cid-1",
+                99,
+                "archived",
+                ActorUpdate::Keep,
+                Some("t"),
+                &audit,
+                "t",
+            )
+            .expect_err("CAS mismatch SHALL fail");
+        match err {
+            StateDbError::CasConflict { current_version } => {
+                assert_eq!(current_version, 1);
+            }
+            other => panic!("expected CasConflict, got {other:?}"),
+        }
+        // Verify state unchanged
+        let view = db.read_change_state_row("demo").expect("read");
+        assert_eq!(view.state, "in_progress");
+        assert_eq!(view.version, 1);
+        let archived_at = db.read_archived_at("cid-1").expect("read");
+        assert!(archived_at.is_none());
+    }
+
+    #[test]
+    fn update_change_state_with_archived_at_cas_returns_change_row_not_found_for_missing() {
+        let tmp = TempDir::new().expect("tempdir");
+        let db_path = tmp.path().join("state.db");
+        let db = StateDb::open(&db_path).expect("open");
+        db.migrate(4).expect("v4");
+        let audit = StateTransitionRow {
+            transition_id: "t-x",
+            from_state: "in_progress",
+            to_state: "archived",
+            actor_json: None,
+            transitioned_at: "t",
+            reason: "archive_run",
+        };
+        let err = db
+            .update_change_state_with_archived_at_cas(
+                "missing",
+                1,
+                "archived",
+                ActorUpdate::Keep,
+                Some("t"),
+                &audit,
+                "t",
+            )
+            .expect_err("missing row");
+        assert!(matches!(err, StateDbError::ChangeRowNotFound { .. }));
+    }
+
+    #[test]
+    fn read_archived_at_returns_change_row_not_found_for_missing() {
+        let tmp = TempDir::new().expect("tempdir");
+        let db_path = tmp.path().join("state.db");
+        let db = StateDb::open(&db_path).expect("open");
+        db.migrate(4).expect("v4");
+        let err = db.read_archived_at("missing").expect_err("missing");
         assert!(matches!(err, StateDbError::ChangeRowNotFound { .. }));
     }
 

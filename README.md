@@ -42,12 +42,12 @@ All commands accept `--json` and emit a stable envelope (`ok` / `data` /
 ## Status
 
 Pre-alpha. The local-first AI workflow surface is built up vertically through
-sequential changes under `openspec/changes/`. As of slice A3
-(`add-state-machine-and-apply`) the CLI supports project bootstrap, change /
-artifact I/O, and the 6-state lifecycle (`proposing → reviewing → ready ⇌
-in_progress → code_reviewing → archived`) plus 5 new ops
-(`apply start` / `apply pause` / `task list` / `task done` / `task undo`).
-Future slices add review, archive, locking, schema management, config-rw,
+sequential changes under `openspec/changes/`. As of slice A4 (`add-archive`)
+the CLI supports project bootstrap, change / artifact I/O, the 6-state
+lifecycle (`proposing → reviewing → ready ⇌ in_progress → code_reviewing →
+archived`), apply / task ops, and end-to-end `archive` which closes the
+walking-skeleton 4-state main path (`proposing → ready → in_progress →
+archived`). Future slices add review, locking, schema management, config-rw,
 discuss, and skill deployment.
 
 ## Walking skeleton 3 — state machine + apply / task
@@ -79,6 +79,32 @@ speclink apply start demo --actor cursor
 # task indices 依當前 tasks.md 順序決定；在 task done 期間禁止改 tasks.md。
 # undo 把 [x] → [ ]；若 change 在 code_reviewing state，會先 transition 回 in_progress。
 speclink task undo 2 --change demo
+```
+
+## Walking skeleton 4 — archive（A4 = `add-archive`）
+
+A4 接通 `in_progress + all_tasks_done=1 → archived` transition、把 change 內
+`specs/<capability>/spec.md` delta merge 進 `.speclink/specs/<capability>/spec.md`、
+把 change 目錄搬到 `.speclink/changes/archive/<YYYY-MM-DD>-<id>/`。walking-skeleton
+mode（A3 既有硬編 `require_*_review=false`）下，user 從此可端到端跑完整個 SDD cycle：
+
+```bash
+# 接 A3 happy path 之後（state=in_progress, all_tasks_done=1）：
+speclink archive demo
+# → state.db: state=archived + archived_at=<UTC>
+# → fs: .speclink/changes/demo/ 消失、.speclink/changes/archive/<date>-demo/ 出現
+# → fs: .speclink/specs/<capability>/spec.md 整檔覆蓋寫入
+# → state_transition 表多一筆 reason='archive_run'
+
+# Emergency 路徑：跳過 spec merge（archive.specs_skipped warning carrier）：
+speclink archive demo --skip-specs
+
+# `--no-validate` flag 已 parse 但本 slice no-op（reserved for add-analyze slice）；
+# `--yes` flag 已 parse 但本 slice 不 prompt（reserved for compatibility）。
+
+# Archive 之後對該 change 再呼叫 apply/task 都會回終態 hint 或 reject：
+speclink apply start demo    # exit 0, data.message="Change is archived."
+speclink task done 1 --change demo  # exit 7, state.transition_invalid
 ```
 
 ## Walking skeleton 2 — change & artifact

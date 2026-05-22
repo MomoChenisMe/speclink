@@ -1,0 +1,15 @@
+---
+source: crates/cli/tests/json_envelope_v4.rs
+expression: env
+---
+{
+  "error": {
+    "code": "state.transition_invalid",
+    "hint": "transition not permitted from current state; see legal transition table",
+    "message": "state transition `proposing → archived` is not permitted",
+    "retry_after_ms": null,
+    "retryable": false
+  },
+  "ok": false,
+  "requestId": "00000000-0000-0000-0000-000000000000"
+}

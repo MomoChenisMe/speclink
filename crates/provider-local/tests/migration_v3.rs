@@ -212,6 +212,11 @@ fn v2_binary_refuses_to_open_a_v3_database() {
 }
 
 #[test]
-fn v3_migrations_array_has_exactly_three_entries() {
-    assert_eq!(MIGRATIONS.len(), 3, "MIGRATIONS array SHALL be length 3");
+fn v3_migrations_array_has_at_least_three_entries() {
+    // 原本 A3 期間鎖死 len == 3；A4 起 MIGRATIONS 隨 schema version 增長，改成 >=。
+    // 對應 schema version 的精確 len 檢查由各 slice 自己的 migration_v{N}.rs 維護。
+    assert!(
+        MIGRATIONS.len() >= 3,
+        "MIGRATIONS array SHALL be at least length 3 (A3 baseline)"
+    );
 }

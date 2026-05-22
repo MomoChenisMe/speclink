@@ -125,3 +125,35 @@ fn slice_a3_state_version_conflict_is_retryable() {
     assert!(!RuntimeError::StateInvalidValue { value: "x".into() }.retryable());
     assert!(!RuntimeError::TaskNoTasksFile { change: "d".into() }.retryable());
 }
+
+// ----- slice A4 (`add-archive`) -----
+
+#[test]
+fn slice_a4_change_tasks_incomplete_maps_to_exit_2() {
+    let e = RuntimeError::ChangeTasksIncomplete {
+        change_id: "demo".into(),
+    };
+    assert_eq!(e.code(), codes::CHANGE_TASKS_INCOMPLETE);
+    assert_eq!(e.exit_code(), 2);
+    assert!(!e.retryable());
+}
+
+#[test]
+fn slice_a4_validation_archive_failed_maps_to_exit_3() {
+    let e = RuntimeError::ValidationArchiveFailed {
+        reason: "stub".into(),
+    };
+    assert_eq!(e.code(), codes::VALIDATION_ARCHIVE_FAILED);
+    assert_eq!(e.exit_code(), 3);
+    assert!(!e.retryable());
+}
+
+#[test]
+fn slice_a4_codes_match_declared_namespace() {
+    assert_eq!(codes::CHANGE_TASKS_INCOMPLETE, "change.tasks_incomplete");
+    assert_eq!(
+        codes::VALIDATION_ARCHIVE_FAILED,
+        "validation.archive_failed"
+    );
+    assert_eq!(codes::ARCHIVE_SPECS_SKIPPED, "archive.specs_skipped");
+}

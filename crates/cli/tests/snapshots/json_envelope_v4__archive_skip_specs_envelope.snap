@@ -1,0 +1,26 @@
+---
+source: crates/cli/tests/json_envelope_v4.rs
+expression: env
+---
+{
+  "data": {
+    "archiveDir": ".speclink/changes/archive/2026-05-22-demo",
+    "archivedAt": "2026-05-22T00:00:00Z",
+    "changeId": "demo",
+    "mergedSpecs": [],
+    "state": "archived"
+  },
+  "ok": true,
+  "requestId": "00000000-0000-0000-0000-000000000000",
+  "warnings": [
+    {
+      "code": "archive.specs_skipped",
+      "details": {
+        "capabilities_skipped": [
+          "ua"
+        ]
+      },
+      "message": "Spec delta merge skipped (--skip-specs)."
+    }
+  ]
+}

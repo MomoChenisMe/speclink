@@ -75,6 +75,20 @@ enum Commands {
         #[command(subcommand)]
         sub: TaskSub,
     },
+
+    /// Archive change：spec delta merge + state→archived + change dir 搬入 `.speclink/changes/archive/`。
+    Archive {
+        change_id: String,
+        /// 跳過 spec delta merge、僅 transition state + 搬目錄（emergency 用）。
+        #[arg(long)]
+        skip_specs: bool,
+        /// reserved for future analyze slice; currently no-op
+        #[arg(long)]
+        no_validate: bool,
+        /// accepted for compatibility; archive does not prompt in this slice
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -256,6 +270,14 @@ fn main() -> ExitCode {
                     commands::task_undo::run(&working_dir, &change, index).await
                 }
             },
+            Commands::Archive {
+                change_id,
+                skip_specs,
+                no_validate,
+                yes,
+            } => {
+                commands::archive::run(&working_dir, &change_id, skip_specs, no_validate, yes).await
+            }
         }
     });
 
@@ -368,6 +390,11 @@ fn hint_for(code: &str) -> Option<&'static str> {
         "task.index_out_of_range" => Some(
             "task index out of range; re-run `speclink task list --change <name>` to see current indices",
         ),
+        // slice A4 — archive
+        "change.tasks_incomplete" => {
+            Some("complete all tasks first with `speclink task done <i> --change <id>`")
+        }
+        "validation.archive_failed" => Some("run `speclink validate <id>` first"),
         _ => None,
     }
 }

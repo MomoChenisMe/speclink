@@ -45,6 +45,16 @@ pub mod codes {
     /// Change artifact DAG 未齊全（缺 proposal.md / tasks.md / specs/*）；
     /// 預留給未來 doctor slice manual override，本 slice 不暴露 CLI。
     pub const CHANGE_DAG_INCOMPLETE: &str = "change.dag_incomplete";
+
+    // ----- slice A4 (`add-archive`) -----
+
+    /// `archive.run` 對 `in_progress` 但 `all_tasks_done=0` 的 change 拒絕；
+    /// hint user 先 `task done`。
+    pub const CHANGE_TASKS_INCOMPLETE: &str = "change.tasks_incomplete";
+    /// `archive.run` validation 失敗；A4 預留 — 本 slice no-op、留 `add-analyze` slice 接通。
+    pub const VALIDATION_ARCHIVE_FAILED: &str = "validation.archive_failed";
+    /// `archive.run --skip-specs` 路徑的 warning carrier code；不走 error path。
+    pub const ARCHIVE_SPECS_SKIPPED: &str = "archive.specs_skipped";
 }
 
 /// Provider 層的錯誤型別。
@@ -121,6 +131,15 @@ pub enum ProviderError {
     #[error("change artifact DAG incomplete; missing: {missing:?}")]
     ChangeDagIncomplete { missing: Vec<String> },
 
+    /// 對應 `change.tasks_incomplete`（A4）。`archive.run` 對 `in_progress` 但 tasks 未全完成。
+    #[error("change `{change_id}` has incomplete tasks; cannot archive")]
+    ChangeTasksIncomplete { change_id: String },
+
+    /// 對應 `validation.archive_failed`（A4 reserved）。本 slice 不會 emit；
+    /// 預留給後續 `add-analyze` slice 接通 validation hook。
+    #[error("archive-time validation failed: {reason}")]
+    ValidationArchiveFailed { reason: String },
+
     /// 內部 I/O / SQLite / YAML / 其他底層錯誤；CLI 層映射為通用 exit code 1。
     #[error("provider internal error: {0}")]
     Internal(String),
@@ -147,6 +166,8 @@ impl ProviderError {
             ProviderError::StateVersionConflict { .. } => codes::STATE_VERSION_CONFLICT,
             ProviderError::StateDbSchemaInvalid { .. } => codes::STATE_DB_SCHEMA_INVALID,
             ProviderError::ChangeDagIncomplete { .. } => codes::CHANGE_DAG_INCOMPLETE,
+            ProviderError::ChangeTasksIncomplete { .. } => codes::CHANGE_TASKS_INCOMPLETE,
+            ProviderError::ValidationArchiveFailed { .. } => codes::VALIDATION_ARCHIVE_FAILED,
             ProviderError::Internal(_) => "internal.error",
         }
     }

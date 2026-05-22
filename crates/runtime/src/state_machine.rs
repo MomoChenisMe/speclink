@@ -111,7 +111,7 @@ pub fn legal_transitions() -> &'static [(ChangeState, ChangeState, StateTransiti
             ChangeState::InProgress,
             StateTransitionReason::ReviewRejectedCode,
         ),
-        // code_reviewing / in_progress → archived：future archive slice
+        // code_reviewing / in_progress → archived：archive.run（A4 落實）
         (
             ChangeState::CodeReviewing,
             ChangeState::Archived,
@@ -121,6 +121,15 @@ pub fn legal_transitions() -> &'static [(ChangeState, ChangeState, StateTransiti
             ChangeState::InProgress,
             ChangeState::Archived,
             StateTransitionReason::ArchiveRun,
+        ),
+        // archived → in_progress：archive.run 在 post-commit rename 失敗時的 best-effort revert
+        // 路徑。對應 design 「Filesystem rename SHALL happen after SQLite transaction commit」
+        // 與「best-effort revert」契約。僅由 `LocalArchiveStore::archive_change` 寫入；其他
+        // caller 試圖以此 reason 進來都會被 archive_change 之外的呼叫鏈拒絕。
+        (
+            ChangeState::Archived,
+            ChangeState::InProgress,
+            StateTransitionReason::ArchiveRunRevert,
         ),
     ]
 }
@@ -337,5 +346,81 @@ mod tests {
             !actor.host_id.is_empty(),
             "host_id SHALL fall back to literal"
         );
+    }
+
+    // ----- slice A4 (`add-archive`) transition table coverage -----
+
+    #[test]
+    fn is_legal_transition_accepts_in_progress_to_archived_with_archive_run() {
+        assert!(is_legal_transition(
+            ChangeState::InProgress,
+            ChangeState::Archived,
+            StateTransitionReason::ArchiveRun,
+        ));
+    }
+
+    #[test]
+    fn is_legal_transition_accepts_code_reviewing_to_archived_with_archive_run() {
+        // A4 spec：code_reviewing → archived 在 table 內存在（review slice 後接通），
+        // 但 archive_change 本 slice 的 state guard 仍會拒絕 code_reviewing 進來。
+        assert!(is_legal_transition(
+            ChangeState::CodeReviewing,
+            ChangeState::Archived,
+            StateTransitionReason::ArchiveRun,
+        ));
+    }
+
+    #[test]
+    fn is_legal_transition_rejects_archived_back_with_wrong_reason() {
+        // archived → in_progress 只能由 archive_run_revert 觸發，apply_pause / 任何其他
+        // reason 都應被拒絕。
+        for r in [
+            StateTransitionReason::ApplyStart,
+            StateTransitionReason::ApplyPause,
+            StateTransitionReason::TaskUndoRevert,
+            StateTransitionReason::ArchiveRun,
+        ] {
+            assert!(
+                !is_legal_transition(ChangeState::Archived, ChangeState::InProgress, r,),
+                "archived → in_progress SHALL only allow archive_run_revert, got reason {r:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_legal_transition_accepts_archive_run_revert_path() {
+        assert!(is_legal_transition(
+            ChangeState::Archived,
+            ChangeState::InProgress,
+            StateTransitionReason::ArchiveRunRevert,
+        ));
+    }
+
+    #[test]
+    fn archive_run_is_only_legal_writer_of_archived() {
+        // 任何 reason 不是 ArchiveRun 試圖把 state 寫成 archived 都不在合法表內。
+        for f in [
+            ChangeState::Proposing,
+            ChangeState::Reviewing,
+            ChangeState::Ready,
+            ChangeState::InProgress,
+            ChangeState::CodeReviewing,
+        ] {
+            for r in [
+                StateTransitionReason::ApplyStart,
+                StateTransitionReason::ApplyPause,
+                StateTransitionReason::TaskDoneAuto,
+                StateTransitionReason::TaskUndoRevert,
+                StateTransitionReason::ArtifactDagComplete,
+                StateTransitionReason::ReviewApprovedArtifact,
+                StateTransitionReason::ReviewRejectedCode,
+                StateTransitionReason::ArchiveRunRevert,
+            ] {
+                assert!(
+                    !is_legal_transition(f, ChangeState::Archived, r),
+                    "({f:?}, archived, {r:?}) SHALL NOT be legal"
+                );
+            }
+        }
     }
 }

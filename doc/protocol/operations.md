@@ -3291,14 +3291,14 @@ $ speclink apply start add-dark-mode --json
 
 #### Errors
 
-| Code | 觸發條件 | Retry |
-|---|---|---|
-| `change.not_found` | change_id 不存在 | `no` |
-| `state.transition_invalid` | state 不允許 archive | `no` |
-| `change.tasks_incomplete` | tasks 未全完且未 force | `no` |
-| `change.code_review_pending` | require_code_review=true 但未 code_approved | `no` |
-| `validation.archive_failed` | archive 前 validation 失敗 | `no` |
-| `lock.not_acquired` | lock 取不到 | `backoff` |
+| Code | 觸發條件 | Retry | Status |
+|---|---|---|---|
+| `change.not_found` | change_id 不存在 | `no` | implemented (A4) |
+| `state.transition_invalid` | state 不允許 archive | `no` | implemented (A4) |
+| `change.tasks_incomplete` | tasks 未全完且未 force | `no` | implemented (A4) |
+| `change.code_review_pending` | require_code_review=true 但未 code_approved | `no` | reserved (add-review slice) |
+| `validation.archive_failed` | archive 前 validation 失敗 | `no` | reserved (add-analyze slice) |
+| `lock.not_acquired` | lock 取不到 | `backoff` | reserved (add-locking-and-concurrency slice) |
 
 #### Audit events
 

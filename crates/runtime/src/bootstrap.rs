@@ -103,7 +103,7 @@ impl<G: GitProbe> Bootstrap<G> {
         if !preexisting_state_db {
             let db = StateDb::open(&staging_state_db)
                 .map_err(|e| RuntimeError::Internal(format!("staging state.db open: {e}")))?;
-            db.migrate(3)
+            db.migrate(4)
                 .map_err(|e| RuntimeError::Internal(format!("staging state.db migrate: {e}")))?;
             db.insert_project_row(
                 &project_id,

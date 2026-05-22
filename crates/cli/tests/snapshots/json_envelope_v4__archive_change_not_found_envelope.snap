@@ -1,0 +1,15 @@
+---
+source: crates/cli/tests/json_envelope_v4.rs
+expression: env
+---
+{
+  "error": {
+    "code": "change.not_found",
+    "hint": "Verify the change name via `speclink list --changes`.",
+    "message": "change `ghost` not found in state.db",
+    "retry_after_ms": null,
+    "retryable": false
+  },
+  "ok": false,
+  "requestId": "00000000-0000-0000-0000-000000000000"
+}

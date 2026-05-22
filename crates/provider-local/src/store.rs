@@ -59,7 +59,7 @@ impl LocalProjectStore {
             .map_err(|e| ProviderError::Internal(format!("create state root: {e}")))?;
         let db = StateDb::open(&self.state_db_path())
             .map_err(|e| ProviderError::Internal(format!("open state.db: {e}")))?;
-        db.migrate(3)
+        db.migrate(4)
             .map_err(|e| ProviderError::Internal(format!("migrate state.db: {e}")))?;
         Ok(db)
     }

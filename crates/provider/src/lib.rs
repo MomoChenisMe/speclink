@@ -10,9 +10,10 @@ pub mod types;
 
 pub use error::{ProviderError, codes};
 pub use types::{
-    Actor, ArtifactKind, ChangeRow, ChangeState, ChangeStateParseError, ChangeStateView, Etag,
-    EtagError, ExpectedEtag, IdError, InitOptions, LinkYaml, ProjectInfo, ProjectStatus,
-    StateTransitionReason, TransitionRequest, Versioned, validate_kebab_id,
+    Actor, ArchiveRequest, ArchiveResult, ArtifactKind, ChangeRow, ChangeState,
+    ChangeStateParseError, ChangeStateView, Etag, EtagError, ExpectedEtag, IdError, InitOptions,
+    LinkYaml, MergedSpec, ProjectInfo, ProjectStatus, StateTransitionReason, TransitionRequest,
+    Versioned, validate_kebab_id,
 };
 
 /// SpecLink project 的 CRUD 介面。
@@ -83,6 +84,19 @@ pub trait StateMachineStore: Send + Sync {
         expected_version: u64,
         done: bool,
     ) -> Result<ChangeStateView, ProviderError>;
+}
+
+/// Archive 介面（slice A4：`archive.run` op + spec delta merge + change dir rename）。
+///
+/// 單一 method `archive_change` 完成完整流程：state guard → SQLite tx
+/// （state transition + audit insert + `archived_at` set）→ filesystem rename
+/// → spec delta merge（除非 `skip_specs=true`）→ rename 失敗 best-effort revert。
+/// 對齊 archive-runner spec 「Filesystem rename SHALL happen after SQLite transaction commit」
+/// 與「Spec merge SHALL happen after the directory rename」契約。
+#[async_trait::async_trait]
+pub trait ArchiveStore: Send + Sync {
+    /// 套用 archive.run。請見 [`ArchiveRequest`] / [`ArchiveResult`] 的契約。
+    async fn archive_change(&self, req: ArchiveRequest) -> Result<ArchiveResult, ProviderError>;
 }
 
 /// Artifact 讀寫介面。
@@ -436,6 +450,19 @@ working_dir_fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
             _expected_version: u64,
             _done: bool,
         ) -> Result<ChangeStateView, ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+    }
+
+    #[allow(dead_code)]
+    struct DummyArchiveStore;
+
+    #[async_trait::async_trait]
+    impl ArchiveStore for DummyArchiveStore {
+        async fn archive_change(
+            &self,
+            _req: ArchiveRequest,
+        ) -> Result<ArchiveResult, ProviderError> {
             Err(ProviderError::Internal("dummy".into()))
         }
     }

@@ -31,8 +31,9 @@ Walking skeleton 開發以小切片（slice）依序落地 SpecLink MVP；每片
 | A1 | `add-project-bootstrap` | LocalProvider 骨架 + two-root storage (`.speclink/` + `<git-common-dir>/speclink/`) + `project` 表 + `init/status/link/unlink` + `state.db` v1 migration |
 | A2 | `add-change-and-artifact-io` | `change` 表 + `state.db` v2 migration + artifact filesystem I/O + `new change` / `show change` / `delete change` / `list --changes` / `list --specs --change` / `new artifact` / `artifact read` + sha256-based Etag + atomic rename |
 | A3 | `add-state-machine-and-apply` | 6-state lifecycle + `state.db` v3 migration（`actor_json` / `all_tasks_done` 欄位 + `state_transition` audit 表）+ `apply start` / `apply pause` / `task list` / `task done` / `task undo` 5 個 CLI op + `artifact.write` 後 DAG evaluator hook + `StateMachineStore` trait + `change.version` CAS + walking-skeleton 4-state mode（hard-coded `require_*_review=false`） |
+| A4 | `add-archive` | `state.db` v4 migration（`archived_at` 欄位）+ `archive.run` op + `ArchiveStore` trait + spec delta dumb merge + `.speclink/changes/archive/<YYYY-MM-DD>-<id>/` rename + `in_progress + all_tasks_done=1 → archived` transition + 2 新 error code（`change.tasks_incomplete` / `validation.archive_failed` 後者保留）+ `archive.specs_skipped` warning carrier |
 
-A1 已 archive、A2 已 archive；A3 為本文件當前主題。後續 slice（review / archive / locking / schema / config / ingest 等）皆另行命名，不溯及修改本表。
+A1 已 archive、A2 已 archive、A3 已 archive；A4 為本文件當前主題。後續 slice（review / locking / schema / config / ingest 等）皆另行命名，不溯及修改本表。
 
 ## 2. 設計原則
 

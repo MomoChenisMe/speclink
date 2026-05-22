@@ -202,6 +202,12 @@ fn map_provider_error(err: ProviderError) -> RuntimeError {
         ProviderError::ChangeDagIncomplete { missing } => {
             RuntimeError::ChangeDagIncomplete { missing }
         }
+        ProviderError::ChangeTasksIncomplete { change_id } => {
+            RuntimeError::ChangeTasksIncomplete { change_id }
+        }
+        ProviderError::ValidationArchiveFailed { reason } => {
+            RuntimeError::ValidationArchiveFailed { reason }
+        }
         ProviderError::Internal(s) => RuntimeError::Internal(s),
     }
 }

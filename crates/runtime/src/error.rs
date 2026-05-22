@@ -126,6 +126,15 @@ pub enum RuntimeError {
     #[error("task index {index} out of range (only {total} task lines)")]
     TaskIndexOutOfRange { index: usize, total: usize },
 
+    /// 對應 `change.tasks_incomplete`（A4）：archive.run 對 `in_progress` 但 tasks 未全完成。
+    #[error("change `{change_id}` has incomplete tasks; cannot archive")]
+    ChangeTasksIncomplete { change_id: String },
+
+    /// 對應 `validation.archive_failed`（A4 reserved）：本 slice 不會 emit；
+    /// 預留給後續 `add-analyze` slice 接通 validation hook。
+    #[error("archive-time validation failed: {reason}")]
+    ValidationArchiveFailed { reason: String },
+
     /// 透過 provider 傳上來的內部錯誤。
     #[error("provider error: {0}")]
     Provider(#[from] speclink_provider::ProviderError),
@@ -159,6 +168,8 @@ impl RuntimeError {
             RuntimeError::ChangeDagIncomplete { .. } => codes::CHANGE_DAG_INCOMPLETE,
             RuntimeError::TaskNoTasksFile { .. } => task_codes::TASK_NO_TASKS_FILE,
             RuntimeError::TaskIndexOutOfRange { .. } => task_codes::TASK_INDEX_OUT_OF_RANGE,
+            RuntimeError::ChangeTasksIncomplete { .. } => codes::CHANGE_TASKS_INCOMPLETE,
+            RuntimeError::ValidationArchiveFailed { .. } => codes::VALIDATION_ARCHIVE_FAILED,
             RuntimeError::Provider(p) => p.code(),
             RuntimeError::Internal(_) => "internal.error",
         }
@@ -190,11 +201,13 @@ impl RuntimeError {
                 || c == codes::ARTIFACT_CAPABILITY_REQUIRED
                 || c == codes::ARTIFACT_NOT_FOUND
                 || c == codes::CHANGE_DAG_INCOMPLETE
+                || c == codes::CHANGE_TASKS_INCOMPLETE
                 || c == task_codes::TASK_NO_TASKS_FILE
                 || c == task_codes::TASK_INDEX_OUT_OF_RANGE =>
             {
                 2
             }
+            c if c == codes::VALIDATION_ARCHIVE_FAILED => 3,
             c if c == codes::ALREADY_INITIALIZED
                 || c == codes::CHANGE_DUPLICATE_NAME
                 || c == codes::ARTIFACT_VERSION_CONFLICT
