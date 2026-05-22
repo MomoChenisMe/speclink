@@ -189,7 +189,7 @@ The CLI command `speclink task undo <task-index> --change <id> [--json]` SHALL p
 
 ### Requirement: All five CLI commands SHALL emit JSON envelopes compatible with the bootstrap and A2 contract
 
-Every command added by this slice (`apply start`, `apply pause`, `task list`, `task done`, `task undo`) SHALL emit responses in the standard envelope shape: success `{ ok: true, data, warnings, requestId }` or error `{ ok: false, error: { code, message, hint, retryable, retry_after_ms }, requestId }`. The `data` shape per command SHALL match the requirements above. The `warnings` array SHALL be empty unless a `state_transitioned` warning is appended by the auto-transition path. The `requestId` SHALL be a fresh ULID generated per invocation.
+Every command added by this slice (`apply start`, `apply pause`, `task list`, `task done`, `task undo`) SHALL emit responses in the standard envelope shape: success `{ ok: true, data, warnings, requestId }` or error `{ ok: false, error: { code, message, hint, retryable, retry_after_ms }, requestId }`. The `data` shape per command SHALL match the requirements above. The `warnings` array SHALL be empty unless a `state_transitioned` warning is appended by the auto-transition path. The `requestId` SHALL be a fresh ULID generated per invocation. Each element of the `warnings` array SHALL have shape `{ code: string, message: string, details?: object }`, where `details` is an optional structured payload that SHALL be omitted from the JSON output when the warning has no carrier-specific fields.
 
 #### Scenario: Success envelope shape
 
@@ -205,6 +205,11 @@ Every command added by this slice (`apply start`, `apply pause`, `task list`, `t
 
 - **WHEN** an `apply.start` or `task.done` invocation triggers an auto-transition path that the caller did not explicitly request (e.g. `task.done` completes last task and triggers `task_done_auto`)
 - **THEN** the response `warnings` array SHALL contain an entry `{ "code": "state_transitioned", "message": "Change state advanced to <new_state>", "details": { "from": "<old>", "to": "<new>", "reason": "<reason_code>" } }`
+
+#### Scenario: Warning without carrier details omits the `details` field
+
+- **WHEN** a CLI command appends a warning that has no structured carrier payload (e.g. `artifact.capability_ignored` returned by `new artifact --capability` on a non-spec kind)
+- **THEN** the warning JSON SHALL serialize as exactly `{ "code": "...", "message": "..." }` with no `details` key present in the object
 
 ### Requirement: Task index stability contract SHALL be explicit in the spec and warned to users
 
