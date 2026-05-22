@@ -879,9 +879,11 @@ name = "speclink-provider"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "hex",
  "serde",
  "serde_json",
  "serde_yaml",
+ "sha2",
  "thiserror",
 ]
 

@@ -1,0 +1,16 @@
+---
+source: crates/cli/tests/snapshots.rs
+expression: "serde_json::to_string_pretty(&env).unwrap()"
+---
+{
+  "data": {
+    "capability": null,
+    "content": "hello\n",
+    "etag": "sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+    "kind": "proposal",
+    "path": "changes/foo/proposal.md"
+  },
+  "ok": true,
+  "requestId": "00000000-0000-4000-8000-000000000000",
+  "warnings": []
+}

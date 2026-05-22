@@ -366,3 +366,91 @@ fn state_db_migration_v1_creates_expected_tables() {
         .unwrap();
     assert_eq!(project_count, 1);
 }
+
+// --- improve-human-output-pretty-print integration coverage ----------------
+
+#[test]
+fn human_mode_show_change_avoids_raw_json_chars() {
+    // Seed a project with one change + 3 artifacts so `show change` has
+    // both a nested object and a non-trivial artifacts array to render.
+    let tmp = TempDir::new().unwrap();
+    let w = canonical(tmp.path());
+    git_init(&w);
+    speclink(&w).arg("init").assert().success();
+    speclink(&w)
+        .args(["new", "change", "demo-change"])
+        .assert()
+        .success();
+    let change_dir = w.join(".speclink/changes/demo-change");
+    fs::write(change_dir.join("proposal.md"), b"x").unwrap();
+    fs::write(change_dir.join("design.md"), b"x").unwrap();
+    fs::create_dir_all(change_dir.join("specs/user-auth")).unwrap();
+    fs::write(change_dir.join("specs/user-auth/spec.md"), b"x").unwrap();
+
+    let out = speclink(&w)
+        .args(["show", "change", "demo-change"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let stdout = String::from_utf8(out.stdout).expect("utf-8 stdout");
+
+    // human mode SHALL NOT leak raw JSON syntax for nested objects/arrays.
+    for needle in ["{\"", "\":[", "\"]", "\":{", "\":\""] {
+        assert!(
+            !stdout.contains(needle),
+            "human mode stdout SHALL NOT contain `{needle}`, got:\n{stdout}"
+        );
+    }
+    // Positive shape assertions: nested fields rendered with 2-space indent
+    // and array items rendered with `- ` bullet on +2 indent.
+    assert!(
+        stdout.contains("name: demo-change"),
+        "expected `name: demo-change` line, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("artifacts:"),
+        "expected `artifacts:` header, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("  - "),
+        "expected `  - ` array bullet, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("    kind: proposal"),
+        "expected `    kind: proposal` indented field, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn human_mode_failure_stderr_unchanged() {
+    let tmp = TempDir::new().unwrap();
+    let w = canonical(tmp.path());
+    git_init(&w);
+    speclink(&w).arg("init").assert().success();
+
+    let out = speclink(&w)
+        .args(["show", "change", "ghost"])
+        .assert()
+        .code(2)
+        .get_output()
+        .clone();
+    let stdout = String::from_utf8(out.stdout).expect("utf-8 stdout");
+    let stderr = String::from_utf8(out.stderr).expect("utf-8 stderr");
+
+    assert!(
+        stdout.is_empty(),
+        "human-mode failure stdout SHALL be empty, got:\n{stdout}"
+    );
+    let lines: Vec<&str> = stderr.lines().collect();
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("error[change.not_found]:")),
+        "stderr SHALL contain an `error[change.not_found]:` line, got:\n{stderr}"
+    );
+    assert!(
+        lines.iter().any(|l| l.starts_with("hint:")),
+        "stderr SHALL contain a `hint:` line, got:\n{stderr}"
+    );
+}

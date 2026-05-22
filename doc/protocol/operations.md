@@ -71,12 +71,12 @@
 | 14 | `discuss.patch` | discuss | `discuss patch <id>` | `patch_discussion` | ✓ | idemp.-with-version | discuss-excl. | — |
 | 15 | `discuss.conclude` | discuss | `discuss conclude <id>` | `conclude_discussion` | ✓ | non-idemp. | discuss-excl. | — |
 | 16 | `discuss.delete` | discuss | `discuss delete <id>` | `delete_discussion` | ✓ | non-idemp. | discuss-excl. | ⚠ |
-| 17 | `change.create` | change | `new change <name>` | `new_change` | ✓ | non-idemp. | change-excl. | — |
-| 18 | `change.list` | change | `list --changes` | `list_changes` | ✓ | idemp. | none | — |
-| 19 | `change.show` | change | `show change <id>` | `show_change` | ✓ | idemp. | none | — |
-| 20 | `change.delete` | change | `delete change <id>` | `delete_change` | ✓ | non-idemp. | change-excl. | ⚠ |
-| 21 | `artifact.write` | artifact | `new artifact <kind>` | `write_artifact` | ✓ | idemp.-with-version | change-excl. | — |
-| 22 | `artifact.read` | artifact | `artifact read <kind>` | `read_artifact` | ✓ | idemp. | none | — |
+| 17 | `change.create` | change | `new change <name>` | `new_change` | ✓ (slice-A) | non-idemp. | change-excl. | — |
+| 18 | `change.list` | change | `list --changes` | `list_changes` | ✓ (slice-A) | idemp. | none | — |
+| 19 | `change.show` | change | `show change <id>` | `show_change` | ✓ (slice-A) | idemp. | none | — |
+| 20 | `change.delete` | change | `delete change <id>` | `delete_change` | ✓ (slice-A) | non-idemp. | change-excl. | ⚠ |
+| 21 | `artifact.write` | artifact | `new artifact <kind>` | `write_artifact` | ✓ (slice-A) | idemp.-with-version | change-excl. | — |
+| 22 | `artifact.read` | artifact | `artifact read <kind>` | `read_artifact` | ✓ (slice-A) | idemp. | none | — |
 | 23 | `apply.start` | apply | `apply start <id>` | `apply_start` | ✓ | idemp. | change-excl. | — |
 | 24 | `apply.pause` | apply | `apply pause <id>` | `apply_pause` | ✓ | idemp. | change-excl. | — |
 | 25 | `task.done` | apply | `task done <task-id>` | `task_done` | ✓ | idemp. | change-excl. | — |

@@ -1,0 +1,15 @@
+---
+source: crates/cli/tests/snapshots.rs
+expression: "serde_json::to_string_pretty(&env).unwrap()"
+---
+{
+  "error": {
+    "code": "artifact.version_conflict",
+    "hint": "Re-read the artifact, supply its current `--expected-etag`, then retry the write.",
+    "message": "artifact version conflict (expected=None, actual=sha256:05816a1560db947d6ff798e30909816f400f14230e9a06afac8f8b213127aa21)",
+    "retry_after_ms": null,
+    "retryable": true
+  },
+  "ok": false,
+  "requestId": "00000000-0000-4000-8000-000000000000"
+}

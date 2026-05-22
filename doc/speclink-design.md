@@ -2482,6 +2482,14 @@ Audit event 寫入 state.db 的 `events` table（見 §19.2 `Provider::record_ev
 63. ✅ §16.6 `new artifact --force` → `--overwrite`（rewrite 語意），`--force` 保留給 destructive ops；5 個 skill draft 同步
 64. ✅ Skill drafts task done arg 順序對齊 §16.7（`<task-id> --change <name>`）；apply pause ready 行為改為 idempotent
 
+**Walking skeleton slice-A 出貨（2026-05-22，add-change-and-artifact-io）**：
+
+64a. ✅ `change.create` / `change.list` / `change.show` / `change.delete` — CLI shipped via `speclink new change` / `list --changes` / `show change` / `delete change --confirm-name`
+64b. ✅ `artifact.write` / `artifact.read` — CLI shipped via `speclink new artifact <kind> --stdin` / `artifact read <kind>`，sha256 etag 並發控制完整覆蓋 spec example concurrency matrix 5 列
+64c. ✅ `spec.list-in-change` — CLI shipped via `speclink list --specs --change <name>`，新 op、待補進 §21.5 catalogue
+64d. ✅ state.db v2 migration（新增 `change` 表）；`LocalProjectStore::open_state_db()` 統一 `migrate(2)`；bootstrap staging 同步升 v2
+64e. ✅ `ProviderError` 加 7 個 variant + 7 個 `pub const` error code；`RuntimeError` 同步加 7 個 variant 與 exit code 對照；`output::error_code_to_exit` 兩處對照表保持一致
+
 **SDK（npm package）**：
 
 65. ✅ `@speclink/client` 薄版（spawn CLI subprocess）— **Tier 3 Bundled Provider**（§22.1）

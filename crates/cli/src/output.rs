@@ -88,11 +88,23 @@ pub fn error(code: &str, message: &str, hint: Option<&str>, retryable: bool) -> 
 /// Declared error code → process exit code 對照表。
 ///
 /// 與 spec「SpecLink CLI exit codes follow a fixed mapping」嚴格對齊。
+///
+/// 注意：此處與 `RuntimeError::exit_code()` 兩處對照表並存（bootstrap slice 既有
+/// duplication）；如需更新，兩處務必同步。
 #[must_use]
 pub fn error_code_to_exit(code: &str) -> i32 {
     match code {
-        "project.requires_git" | "project.not_initialized" | "project.link_target_not_found" => 2,
-        "project.already_initialized" => 7,
+        // exit 2 — user-input errors（bootstrap project.* + slice-A change.*/artifact.*）
+        "project.requires_git"
+        | "project.not_initialized"
+        | "project.link_target_not_found"
+        | "change.not_found"
+        | "change.invalid_name"
+        | "artifact.kind_invalid"
+        | "artifact.capability_required"
+        | "artifact.not_found" => 2,
+        // exit 7 — conflicts / already-exists（含 etag mismatch）
+        "project.already_initialized" | "change.duplicate_name" | "artifact.version_conflict" => 7,
         _ => 1,
     }
 }
@@ -154,10 +166,19 @@ mod tests {
 
     #[test]
     fn exit_code_mapping_matches_spec_table() {
+        // bootstrap-slice
         assert_eq!(error_code_to_exit("project.requires_git"), 2);
         assert_eq!(error_code_to_exit("project.not_initialized"), 2);
         assert_eq!(error_code_to_exit("project.link_target_not_found"), 2);
         assert_eq!(error_code_to_exit("project.already_initialized"), 7);
         assert_eq!(error_code_to_exit("internal.error"), 1);
+        // slice-A
+        assert_eq!(error_code_to_exit("change.not_found"), 2);
+        assert_eq!(error_code_to_exit("change.duplicate_name"), 7);
+        assert_eq!(error_code_to_exit("change.invalid_name"), 2);
+        assert_eq!(error_code_to_exit("artifact.kind_invalid"), 2);
+        assert_eq!(error_code_to_exit("artifact.capability_required"), 2);
+        assert_eq!(error_code_to_exit("artifact.not_found"), 2);
+        assert_eq!(error_code_to_exit("artifact.version_conflict"), 7);
     }
 }

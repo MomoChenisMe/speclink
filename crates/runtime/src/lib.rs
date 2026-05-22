@@ -4,14 +4,18 @@
 
 #![allow(clippy::doc_markdown)]
 
+pub mod artifact_ops;
 pub mod bootstrap;
+pub mod change_ops;
 pub mod error;
 pub mod git;
 pub mod gitignore;
 pub mod ops;
 pub mod paths;
 
+pub use artifact_ops::ArtifactOperations;
 pub use bootstrap::Bootstrap;
+pub use change_ops::{ArtifactRef, ChangeOperations, DEFAULT_SCHEMA_ID, ShowChangeData};
 pub use error::{RuntimeError, codes, finding_codes};
 pub use git::{GitProbe, RealGitProbe};
 pub use ops::Operations;

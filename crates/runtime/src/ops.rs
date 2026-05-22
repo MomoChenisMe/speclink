@@ -103,6 +103,17 @@ fn map_provider_error(err: ProviderError) -> RuntimeError {
         ProviderError::LinkTargetNotFound { project_id } => {
             RuntimeError::LinkTargetNotFound { project_id }
         }
+        ProviderError::ChangeNotFound { name } => RuntimeError::ChangeNotFound { name },
+        ProviderError::ChangeDuplicateName { name } => RuntimeError::ChangeDuplicateName { name },
+        ProviderError::ChangeInvalidName { name, reason } => {
+            RuntimeError::ChangeInvalidName { name, reason }
+        }
+        ProviderError::ArtifactKindInvalid { kind } => RuntimeError::ArtifactKindInvalid { kind },
+        ProviderError::ArtifactCapabilityRequired => RuntimeError::ArtifactCapabilityRequired,
+        ProviderError::ArtifactNotFound { path } => RuntimeError::ArtifactNotFound { path },
+        ProviderError::ArtifactVersionConflict { expected, actual } => {
+            RuntimeError::ArtifactVersionConflict { expected, actual }
+        }
         ProviderError::Internal(s) => RuntimeError::Internal(s),
     }
 }

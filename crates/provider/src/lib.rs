@@ -1,8 +1,7 @@
 //! SpecLink Provider trait 與共用型別。
 //!
-//! 本 crate 定義 `ProjectStore` trait 與其輸入輸出型別，供 `speclink-runtime`
-//! 對 trait 編程；具體實作位於 `speclink-provider-local`（與未來的
-//! `speclink-provider-http`）。
+//! 本 crate 定義 `ProjectStore` / `ChangeStore` / `ArtifactStore` trait 與其輸入輸出型別，
+//! 供 `speclink-runtime` 對 trait 編程；具體實作位於 `speclink-provider-local`。
 
 #![allow(clippy::doc_markdown)]
 
@@ -10,31 +9,61 @@ pub mod error;
 pub mod types;
 
 pub use error::{ProviderError, codes};
-pub use types::{InitOptions, LinkYaml, ProjectInfo, ProjectStatus};
+pub use types::{
+    ArtifactKind, ChangeRow, Etag, EtagError, ExpectedEtag, IdError, InitOptions, LinkYaml,
+    ProjectInfo, ProjectStatus, Versioned, validate_kebab_id,
+};
 
 /// SpecLink project 的 CRUD 介面。
-///
-/// 介面包含 6 個 method：`init` / `status` / `link` / `unlink` / `get_link` / `save_link`。
-/// 任何新增 method 必須對應一份新的 capability spec。
 #[async_trait::async_trait]
 pub trait ProjectStore: Send + Sync {
-    /// 在 `opts.working_dir` 建立新的 SpecLink project（artifact root + state root）。
     async fn init(&self, opts: InitOptions) -> Result<ProjectInfo, ProviderError>;
-
-    /// 回報當前 working dir 的 project status。未 init 回 `NotInitialized`。
     async fn status(&self) -> Result<ProjectStatus, ProviderError>;
-
-    /// 將當前 working dir 綁定到 state.db 內既存的 project row。
     async fn link(&self, project_id: &str) -> Result<ProjectInfo, ProviderError>;
-
-    /// 移除 `.speclink/link.yaml`；不刪 state.db 與 `.speclink/schemas/`。
     async fn unlink(&self) -> Result<(), ProviderError>;
-
-    /// 讀取 `.speclink/link.yaml`，未 init 時回 `Ok(None)`。
     async fn get_link(&self) -> Result<Option<LinkYaml>, ProviderError>;
-
-    /// 寫入 `.speclink/link.yaml`（覆寫既有檔）。
     async fn save_link(&self, link: &LinkYaml) -> Result<(), ProviderError>;
+}
+
+/// `change` 表的 CRUD 介面（slice A：4 個 method）。
+#[async_trait::async_trait]
+pub trait ChangeStore: Send + Sync {
+    /// 建立新 change：寫 `change` row + 建立 `.speclink/changes/<name>/` 目錄。
+    async fn create_change(&self, name: &str, schema_id: &str) -> Result<ChangeRow, ProviderError>;
+
+    /// 列舉所有 change（依 `updated_at` desc 排序）。
+    async fn list_changes(&self) -> Result<Vec<ChangeRow>, ProviderError>;
+
+    /// 取得單一 change row；找不到回 [`ProviderError::ChangeNotFound`]。
+    async fn get_change(&self, name: &str) -> Result<ChangeRow, ProviderError>;
+
+    /// 刪除 change row + 目錄。
+    async fn delete_change(&self, name: &str) -> Result<(), ProviderError>;
+}
+
+/// Artifact 讀寫介面。
+#[async_trait::async_trait]
+pub trait ArtifactStore: Send + Sync {
+    /// 讀取 artifact + 即時算出 sha256 Etag。
+    async fn read_artifact(
+        &self,
+        change: &str,
+        kind: ArtifactKind,
+        capability: Option<&str>,
+    ) -> Result<Versioned<Vec<u8>>, ProviderError>;
+
+    /// 寫入 artifact，套用 etag 並發控制；atomic rename。
+    async fn write_artifact(
+        &self,
+        change: &str,
+        kind: ArtifactKind,
+        capability: Option<&str>,
+        bytes: &[u8],
+        expected: ExpectedEtag,
+    ) -> Result<Versioned<()>, ProviderError>;
+
+    /// 列舉某 change 下所有 spec 的 capability id（filesystem-backed）。
+    async fn list_spec_capabilities(&self, change: &str) -> Result<Vec<String>, ProviderError>;
 }
 
 #[cfg(test)]
@@ -57,14 +86,8 @@ working_dir_fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         assert_eq!(parsed.provider, "local");
 
         let serialized = serde_yaml::to_string(&parsed).expect("serialize link.yaml");
-        assert!(
-            serialized.contains("11111111-1111-4111-8111-111111111111"),
-            "expected project_id to survive round-trip, got: {serialized}"
-        );
-        assert!(
-            serialized.contains("version: 1"),
-            "expected version: 1 in serialized YAML, got: {serialized}"
-        );
+        assert!(serialized.contains("11111111-1111-4111-8111-111111111111"));
+        assert!(serialized.contains("version: 1"));
     }
 
     #[test]
@@ -83,15 +106,13 @@ working_dir_fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
             "git_head",
             "requires_git",
         ] {
-            assert!(
-                serialized.contains(needle),
-                "expected field {needle} in serialized ProjectStatus, got: {serialized}"
-            );
+            assert!(serialized.contains(needle));
         }
     }
 
     #[test]
     fn provider_error_codes_match_declared_namespace() {
+        // bootstrap-slice codes
         assert_eq!(codes::REQUIRES_GIT, "project.requires_git");
         assert_eq!(codes::ALREADY_INITIALIZED, "project.already_initialized");
         assert_eq!(codes::NOT_INITIALIZED, "project.not_initialized");
@@ -99,7 +120,22 @@ working_dir_fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
             codes::LINK_TARGET_NOT_FOUND,
             "project.link_target_not_found"
         );
+        // slice-A new codes
+        assert_eq!(codes::CHANGE_NOT_FOUND, "change.not_found");
+        assert_eq!(codes::CHANGE_DUPLICATE_NAME, "change.duplicate_name");
+        assert_eq!(codes::CHANGE_INVALID_NAME, "change.invalid_name");
+        assert_eq!(codes::ARTIFACT_KIND_INVALID, "artifact.kind_invalid");
+        assert_eq!(
+            codes::ARTIFACT_CAPABILITY_REQUIRED,
+            "artifact.capability_required"
+        );
+        assert_eq!(codes::ARTIFACT_NOT_FOUND, "artifact.not_found");
+        assert_eq!(
+            codes::ARTIFACT_VERSION_CONFLICT,
+            "artifact.version_conflict"
+        );
 
+        // bootstrap variants
         assert_eq!(
             ProviderError::RequiresGit {
                 context: "x".into()
@@ -122,15 +158,102 @@ working_dir_fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
             .code(),
             codes::LINK_TARGET_NOT_FOUND
         );
+
+        // slice-A variants
+        assert_eq!(
+            ProviderError::ChangeNotFound { name: "x".into() }.code(),
+            codes::CHANGE_NOT_FOUND
+        );
+        assert_eq!(
+            ProviderError::ChangeDuplicateName { name: "x".into() }.code(),
+            codes::CHANGE_DUPLICATE_NAME
+        );
+        assert_eq!(
+            ProviderError::ChangeInvalidName {
+                name: "x".into(),
+                reason: "y".into()
+            }
+            .code(),
+            codes::CHANGE_INVALID_NAME
+        );
+        assert_eq!(
+            ProviderError::ArtifactKindInvalid {
+                kind: "summary".into()
+            }
+            .code(),
+            codes::ARTIFACT_KIND_INVALID
+        );
+        assert_eq!(
+            ProviderError::ArtifactCapabilityRequired.code(),
+            codes::ARTIFACT_CAPABILITY_REQUIRED
+        );
+        assert_eq!(
+            ProviderError::ArtifactNotFound { path: "p".into() }.code(),
+            codes::ARTIFACT_NOT_FOUND
+        );
+        assert_eq!(
+            ProviderError::ArtifactVersionConflict {
+                expected: None,
+                actual: Etag::from_bytes(b""),
+            }
+            .code(),
+            codes::ARTIFACT_VERSION_CONFLICT
+        );
     }
 
-    /// Trait shape check (compile-time): `DummyStore` must implement every method.
-    /// 如果未來 trait 新增 method，這支 dummy impl 會 build fail，提醒同步更新。
+    #[test]
+    fn provider_error_retryable_only_for_version_conflict() {
+        // bootstrap variants 全部 non-retryable
+        assert!(
+            !ProviderError::RequiresGit {
+                context: "x".into()
+            }
+            .retryable()
+        );
+        assert!(!ProviderError::AlreadyInitialized { path: "p".into() }.retryable());
+        assert!(!ProviderError::NotInitialized { path: "p".into() }.retryable());
+        assert!(
+            !ProviderError::LinkTargetNotFound {
+                project_id: "u".into()
+            }
+            .retryable()
+        );
+
+        // slice-A：只有 ArtifactVersionConflict 可重試
+        assert!(!ProviderError::ChangeNotFound { name: "x".into() }.retryable());
+        assert!(!ProviderError::ChangeDuplicateName { name: "x".into() }.retryable());
+        assert!(
+            !ProviderError::ChangeInvalidName {
+                name: "x".into(),
+                reason: "y".into()
+            }
+            .retryable()
+        );
+        assert!(
+            !ProviderError::ArtifactKindInvalid {
+                kind: "summary".into()
+            }
+            .retryable()
+        );
+        assert!(!ProviderError::ArtifactCapabilityRequired.retryable());
+        assert!(!ProviderError::ArtifactNotFound { path: "p".into() }.retryable());
+        assert!(
+            ProviderError::ArtifactVersionConflict {
+                expected: None,
+                actual: Etag::from_bytes(b""),
+            }
+            .retryable()
+        );
+        assert!(!ProviderError::Internal("x".into()).retryable());
+    }
+
+    /// Trait shape check (compile-time): three dummy types each implementing one trait.
+    /// 若未來 trait 新增 method，dummy 會 build fail，提醒同步更新。
     #[allow(dead_code)]
-    struct DummyStore;
+    struct DummyProjectStore;
 
     #[async_trait::async_trait]
-    impl ProjectStore for DummyStore {
+    impl ProjectStore for DummyProjectStore {
         async fn init(&self, _opts: InitOptions) -> Result<ProjectInfo, ProviderError> {
             Err(ProviderError::Internal("dummy".into()))
         }
@@ -147,6 +270,60 @@ working_dir_fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
             Err(ProviderError::Internal("dummy".into()))
         }
         async fn save_link(&self, _link: &LinkYaml) -> Result<(), ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+    }
+
+    #[allow(dead_code)]
+    struct DummyChangeStore;
+
+    #[async_trait::async_trait]
+    impl ChangeStore for DummyChangeStore {
+        async fn create_change(
+            &self,
+            _name: &str,
+            _schema_id: &str,
+        ) -> Result<ChangeRow, ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+        async fn list_changes(&self) -> Result<Vec<ChangeRow>, ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+        async fn get_change(&self, _name: &str) -> Result<ChangeRow, ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+        async fn delete_change(&self, _name: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+    }
+
+    #[allow(dead_code)]
+    struct DummyArtifactStore;
+
+    #[async_trait::async_trait]
+    impl ArtifactStore for DummyArtifactStore {
+        async fn read_artifact(
+            &self,
+            _change: &str,
+            _kind: ArtifactKind,
+            _capability: Option<&str>,
+        ) -> Result<Versioned<Vec<u8>>, ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+        async fn write_artifact(
+            &self,
+            _change: &str,
+            _kind: ArtifactKind,
+            _capability: Option<&str>,
+            _bytes: &[u8],
+            _expected: ExpectedEtag,
+        ) -> Result<Versioned<()>, ProviderError> {
+            Err(ProviderError::Internal("dummy".into()))
+        }
+        async fn list_spec_capabilities(
+            &self,
+            _change: &str,
+        ) -> Result<Vec<String>, ProviderError> {
             Err(ProviderError::Internal("dummy".into()))
         }
     }

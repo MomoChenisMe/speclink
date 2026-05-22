@@ -1,0 +1,13 @@
+---
+source: crates/cli/tests/snapshots.rs
+expression: "serde_json::to_string_pretty(&env).unwrap()"
+---
+{
+  "data": {
+    "deleted": true,
+    "name": "foo"
+  },
+  "ok": true,
+  "requestId": "00000000-0000-4000-8000-000000000000",
+  "warnings": []
+}

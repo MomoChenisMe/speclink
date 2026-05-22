@@ -42,10 +42,54 @@ All commands accept `--json` and emit a stable envelope (`ok` / `data` /
 ## Status
 
 Pre-alpha. The local-first AI workflow surface is built up vertically through
-sequential changes under `openspec/changes/`. The CLI currently supports
-project bootstrap (`init`, `status`, `link`, `unlink`) via the local provider.
-Additional change CRUD, artifact write, apply, review, archive, discuss, and
-skill deployment surfaces ship in future changes.
+sequential changes under `openspec/changes/`. As of slice A
+(`add-change-and-artifact-io`) the CLI supports project bootstrap plus the
+seven change/artifact operations listed below. Future slices add state
+machine, locking, apply, review, archive, discuss, and skill deployment.
+
+## Walking skeleton 2 — change & artifact
+
+Slice A adds 7 operations on top of the bootstrap surface. They form a
+walking skeleton: build a change, write artifacts into it, read them back.
+
+| Operation | Command |
+| --------- | ------- |
+| `change.create` | `speclink new change <name>` |
+| `change.list` | `speclink list --changes` |
+| `change.show` | `speclink show change <name>` |
+| `change.delete` | `speclink delete change <name> --confirm-name <name>` |
+| `artifact.write` | `speclink new artifact <kind> --change <name> [--capability <id>] [--expected-etag <etag>] --stdin` |
+| `artifact.read` | `speclink artifact read <kind> --change <name> [--capability <id>]` |
+| `spec.list-in-change` | `speclink list --specs --change <name>` |
+
+Artifact `<kind>` is one of `proposal`, `design`, `tasks`, `spec`. `--capability`
+is required for `kind=spec`. Etags are sha256 of file bytes
+(`sha256:<64 lowercase hex>`) and the engine enforces optimistic concurrency:
+new files must omit `--expected-etag`, overwrites must supply the current etag.
+
+End-to-end demo (run inside a fresh git working tree):
+
+```bash
+git init                                                      # bootstrap requires git
+speclink init                                                  # create .speclink/ + .git/speclink/
+speclink --json new change billing-system                      # row inserted; .speclink/changes/billing-system/ scaffolded
+printf '## Why\n\nWe need...\n' | \
+  speclink --json new artifact proposal --change billing-system --stdin
+speclink --json artifact read proposal --change billing-system # echo content + sha256 etag
+speclink --json list --changes                                 # sorted desc by updated_at
+speclink --json show change billing-system                     # row metadata + artifact list
+```
+
+A version-conflict example:
+
+```bash
+ETAG=$(speclink --json artifact read proposal --change billing-system \
+  | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['etag'])")
+printf 'new body\n' | speclink --json new artifact proposal \
+  --change billing-system --expected-etag "$ETAG" --stdin   # OK
+printf 'stale body\n' | speclink --json new artifact proposal \
+  --change billing-system --stdin                            # exit 7, artifact.version_conflict
+```
 
 ## CLI usage
 

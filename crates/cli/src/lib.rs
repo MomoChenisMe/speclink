@@ -5,4 +5,5 @@
 #![allow(clippy::doc_markdown)]
 
 pub mod commands;
+pub mod human;
 pub mod output;

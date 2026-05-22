@@ -1,0 +1,6 @@
+---
+source: crates/cli/src/human.rs
+expression: render_human(&v)
+---
+content: line one
+  line two

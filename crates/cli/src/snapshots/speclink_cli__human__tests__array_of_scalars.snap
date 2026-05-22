@@ -1,0 +1,7 @@
+---
+source: crates/cli/src/human.rs
+expression: render_human(&v)
+---
+capabilities:
+  - rate-limiting
+  - user-auth
