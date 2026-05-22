@@ -925,16 +925,18 @@ Engine 跟 caller 之間有明確 contract：**5 個 input field + 11 個 output
 
 | Lock | 位置 | 用途 | scope |
 |---|---|---|---|
-| Global lock | `.speclink/lock` | init / migration | 全 project |
-| Per-change lock | `.speclink/changes/<id>/.lock` | state mutation | 單一 change |
+| Global lock | `.git/speclink/locks/global.lock` | init / migration | 全 project |
+| Per-change lock | `.git/speclink/locks/changes/<id>.lock` | state mutation | 單一 change |
+
+Storage 在 `.git/speclink/` 內（§13.9）→ 跨 worktree 自動共用、跨 branch 自動共用、不被 git 追蹤。
 
 #### 12.2.2 Lock 階層與取得順序（防 deadlock）
 
 明文寫死兩層 lock 的取得順序：
 
 ```
-Level 1: .speclink/lock                (global)
-Level 2: .speclink/changes/<id>/.lock  (per-change)
+Level 1: .git/speclink/locks/global.lock           (global)
+Level 2: .git/speclink/locks/changes/<id>.lock     (per-change)
 ```
 
 **規則**：任何需要兩層 lock 的操作 **必須先 acquire global、後 acquire per-change**；release 反向（per-change 先 release）。
@@ -944,12 +946,12 @@ MVP 內目前只有 `init` / migration 需要 global lock，操作類只要 per-
 #### 12.2.3 Lock 檔 schema
 
 ```yaml
-# .speclink/lock 或 .speclink/changes/<id>/.lock
+# .git/speclink/locks/global.lock 或 .git/speclink/locks/changes/<id>.lock
 pid: 12345
 host: <hostname>
 acquired_at: 2026-05-21T10:30:00Z
 operation: task.done
-instance_id: <uuid from .speclink/state.db speclink_meta>
+instance_id: <uuid from .git/speclink/state.db speclink_meta>
 ```
 
 - `pid` / `host`：擁有者 process 識別
@@ -975,6 +977,8 @@ Acquire lock 時若檔已存在：
 `speclink doctor` 偵測 stale lock 但 **不自動清**（§16.12.5 already）；接管邏輯只在 acquire 路徑跑。
 
 ### 12.3 SQLite WAL mode
+
+State.db 位於 `.git/speclink/state.db`（§13.9）；WAL / shm 同層（`state.db-wal` / `state.db-shm`）。
 
 ```sql
 PRAGMA journal_mode = WAL;
@@ -1105,7 +1109,7 @@ Server 端 implementation 自定（DB transaction / Redis lock / 自家機制）
 
 ### 12.7 Schema Migration Flow
 
-LocalProvider state.db schema 升級走 forward-only migration（SQLite + `schema_migrations` table）：
+LocalProvider state.db（`.git/speclink/state.db`，§13.9）schema 升級走 forward-only migration（SQLite + `schema_migrations` table）：
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -1119,7 +1123,7 @@ CREATE TABLE schema_migrations (
 **Migration acquire 流程**：
 
 1. CLI 啟動讀 `schema_migrations` 對比 binary embedded migrations
-2. 若需 apply：**先取 `.speclink/lock` global lock（timeout 30s）**
+2. 若需 apply：**先取 `.git/speclink/locks/global.lock` global lock（timeout 30s）**
 3. 取到 lock 後再 check 一次 — 可能其他 process 已 apply 完（double-check）
 4. 對 pending migrations 逐一 apply：每個 migration 一個 SQLite transaction，BEGIN → run SQL → INSERT schema_migrations row → COMMIT
 5. 任一失敗 → ROLLBACK + 不繼續後續 migration + return `migration.failed` 帶 `version` / `error_detail`
@@ -1173,16 +1177,19 @@ HttpProvider operation flow:
 
 ### 13.1 Boundary
 
-`.speclink/` 目錄存在 = 這是 speclink project。
+`.speclink/` 目錄存在 = 這是 speclink project。Storage 拆兩個 root，見 §13.9。
 
 CLI 啟動時：
-1. 從 CWD 開始往上找 `.speclink/`
-2. 找到 → project root = 那層目錄
-3. 讀 `.speclink/link.yaml`（若存在）決定 provider；不存在則預設 LocalProvider
-4. 走 `ProviderRegistry.open(project_id)`（見 §19.2）拿到單 project 的 `Provider` instance，後續操作對該 instance 跑
-5. 找不到 `.speclink/` → error `project.not_initialized`，提示 `speclink init <name>`
 
-跟 `.git/` 同設計。
+1. 從 CWD 開始往上找 `.speclink/` → 取得 **artifacts root**
+2. 找不到 → error `project.not_initialized`，提示 `speclink init <name>`
+3. 讀 `.speclink/link.yaml`（若存在）決定 provider；不存在則預設 LocalProvider
+4. **若 provider = local**：跑 `git rev-parse --git-common-dir` 取得 git common dir → **state root** = `<common-dir>/speclink/`
+    - 失敗（非 git 專案）→ error `project.requires_git`（§13.9.2 / §17.4），提示 `git init` 後重跑
+    - 成功 → state root 確定（worktree / submodule 自動 resolve、見 §13.9.1）
+5. 走 `ProviderRegistry.open(project_id)`（見 §19.2）拿到單 project 的 `Provider` instance，後續操作對該 instance 跑
+
+跟 `.git/` 同設計：artifacts root 在 working tree、state root 在 git dir 內、各自定位。
 
 **Identity 來源依 provider 不同**：
 
@@ -1306,18 +1313,22 @@ LocalProvider 跟 HttpProvider 在此點 **本質不同**：
 | 情境 | LocalProvider 影響 | HttpProvider 影響 |
 |---|---|---|
 | Working dir 改名 / 搬家（單 RD）| 零影響 | 零影響 |
-| 同 RD 換機器（重新 clone） | 拿 git 內規格 + 重建 state.db；歷史 audit 不會跟過去（state.db gitignored） | 拿 link.yaml + 連 server 即可；狀態仍在 server |
+| 同 RD 換機器（重新 clone） | git clone 拿不到 `.git/speclink/state.db`（在 `.git/` 內、不隨 clone）→ 跑 `speclink restore --from-artifacts`（§16.13）從 artifact 重建；historical audit / instance_id lost | 拿 link.yaml + 連 server 即可；狀態仍在 server |
+| **`git checkout <other-branch>`** | state.db 跨 branch 共用（`.git/speclink/` 在 git dir 內、不跟 branch）→ 看得到其他 branch 開的 in_progress changes；但若該 change 的 artifacts 在當前 branch fs 不存在 → op 走 `change.artifact_missing` 一律 reject（§13.9.4 / §17.4） | server 端 state 不變、自然跨 branch 一致 |
+| **`git worktree add`**（同機開新 worktree） | `.git/speclink/` 在 GIT_COMMON_DIR、所有 worktree 自動共用 → state.db / lock / touched 跨 worktree 一致；§12 file lock 自然生效（§13.9.4） | 同上、server 端 single SoT |
 | 手改 `link.yaml#project_id`（Http 模式）| n/a（local 不用 link.yaml） | CLI 下次啟動連到新 project；不做變更偵測 |
-| `.speclink/` 整個刪除 | 失去本機歷史；可從 git tracked 規格重建（但 audit 散失） | 不影響 server 端資料；重新 `speclink link` 即可恢復 |
-| **多 RD 同時 clone + 各自跑 apply** | ⚠️ **不支援**：每份 state.db 互不知；divergence silent | ✓ server 端 lock + state 一致 |
+| `.speclink/` 整個刪除（artifacts root） | 失去 git tracked artifacts；git checkout 還原；`.git/speclink/state.db` 不受影響、但 op 多半走 `change.artifact_missing` | 不影響 server 端資料；重新 `speclink link` 即可恢復 |
+| `.git/speclink/` 整個刪除（state root） | state.db / lock / touched 全失；下次 init 重建（或跑 `speclink restore --from-artifacts`）；instance_id rotate | 不影響（state 在 server） |
+| **多 RD 同時 clone + 各自跑 apply** | ⚠️ **不支援**：每份 `.git/speclink/state.db` 互不知；divergence silent | ✓ server 端 lock + state 一致 |
+| **同 RD 同機多 clone**（非 worktree、各自獨立 git dir）| 跟「多 RD」同類；推薦改用 `git worktree` 共用 `.git/`，state.db 自動共用 | ✓ 各 clone 都連同一 server、state 一致 |
 
-**LocalProvider 是 single-RD-single-machine（含同機 worktrees）的設計**。多 RD 協作場景**請走 HttpProvider** — engine 不能也不應該防 multi-clone divergence，那是 user error。
+**LocalProvider 是 single-RD-single-git-dir 的設計**（同 git dir 下的多 worktree 自動共用 state.db、屬支援場景）。多 RD 協作 / 同 RD 多獨立 clone 場景**請走 HttpProvider 或改用 worktree** — engine 不能也不應該防 multi-clone divergence，那是 user error。
 
 在 HttpProvider 模式下，**provider 才是 source of truth**；working dir 是「我這台機器對應到 provider 哪個 project」的指引、完全 disposable。跟 git 的 `.git/config#remote.origin.url` 同邏輯。
 
 **`instance_id` UUID（給 audit traceability）**：
 
-LocalProvider init 時 engine 在 `state.db` 內生成一個 UUID `instance_id`：
+LocalProvider init 時 engine 在 `.git/speclink/state.db` 內生成一個 UUID `instance_id`：
 
 ```sql
 CREATE TABLE speclink_meta (
@@ -1327,12 +1338,20 @@ CREATE TABLE speclink_meta (
 INSERT INTO speclink_meta (key, value) VALUES ('instance_id', '<uuid>');
 ```
 
-- **永遠不寫進 git 跟 config.yaml**（在 state.db、自然 gitignored）
+- **永遠不寫進 git 跟 config.yaml**（在 state.db、且 state.db 住在 `.git/speclink/` 內、git 自然不追蹤）
 - 每筆 audit event 紀錄含 `actor.instance_id`
 - `speclink doctor` 印出當前 instance_id；如果未來 export/import 跨 clone 合併資料，可追溯 event 來源
 - **不阻止** multi-clone divergence；只提供「事後溯源」能力
 
-`speclink init --force` 會生成新 instance_id；重 clone（新 working dir 第一次跑 `speclink init`）也是新 instance_id。
+**Rotation 行為**：
+
+| 觸發 | 行為 |
+|---|---|
+| `speclink init --force` | 生成新 instance_id；audit log 內舊 instance_id **不 rewrite**、變 historical actor reference |
+| 重 clone 後第一次 `speclink init` | 同上（新 instance_id；舊 ID 已隨舊 `.git/speclink/` lost） |
+| `speclink restore --from-artifacts` | 生成新 instance_id；restore 完寫一筆 `audit.restored` event 紀錄 previous_instance_id（若可從 artifact 推、否則 null） |
+
+`speclink doctor` 顯示當前 instance_id；rotation 不影響 op 正常進行。
 
 ### 13.6.1 LocalProvider init 推薦團隊改 HttpProvider 的提示
 
@@ -1377,62 +1396,219 @@ project_id: <各自的 id>
 | `speclink auth login/logout/status` | ❌ 延後 |
 | `speclink provider add/list/use` | ❌ 延後（user-global alias 機制延後）|
 
+### 13.9 State storage layout
+
+State 拆兩個 root，各司其職：
+
+- **`.speclink/`**（在 working tree）— **shared, git-tracked artifacts**
+- **`.git/speclink/`**（在 git dir 內）— **local-only state；git 不追蹤 `.git/` 自己**
+
+| Path | 內容 | git tracked? | 跨 branch? | 跨 worktree? |
+|---|---|---|---|---|
+| `.speclink/config.yaml` | SDD rules | ✓ tracked | per-branch | per-worktree |
+| `.speclink/changes/<id>/...` | artifacts（proposal / spec / tasks / design / metadata）| ✓ tracked | per-branch | per-worktree |
+| `.speclink/discussions/<id>/discussion.md` | discussions | ✓ tracked | per-branch | per-worktree |
+| `.speclink/schemas/<id>/...` | schema forks | ✓ tracked | per-branch | per-worktree |
+| `.speclink/archive/<date>-<id>/...` | archived changes | ✓ tracked | per-branch | per-worktree |
+| `.speclink/audit/<change-id>.log` | audit log（user 自己決定 track）| optional | per-branch | per-worktree |
+| `.speclink/link.yaml` | provider 連線設定 | gitignored | per-clone | per-clone |
+| `.git/speclink/state.db` | SQLite state | implicit excluded（`.git/` 內）| **✓ shared** | **✓ shared** |
+| `.git/speclink/state.db-wal` / `-shm` | SQLite WAL / shm | implicit excluded | ✓ shared | ✓ shared |
+| `.git/speclink/locks/global.lock` | §12 global advisory lock | implicit excluded | ✓ shared | ✓ shared |
+| `.git/speclink/locks/changes/<id>.lock` | §12 per-change lock | implicit excluded | ✓ shared | ✓ shared |
+| `.git/speclink/touched/<change>.json` | task done 觸碰檔案紀錄 | implicit excluded | ✓ shared | ✓ shared |
+
+#### 13.9.1 Path resolution
+
+CLI / SDK 解析 storage 路徑時走 git 標準 API、**不自己解析 `.git` file**：
+
+```
+let common_dir   = run("git", &["rev-parse", "--git-common-dir"])?;
+let state_root   = common_dir.join("speclink");        // .git/speclink/（worktree 自動 resolve 到主 repo）
+let artifacts_root = find_speclink_dir_upward()?;      // .speclink/（從 cwd 往上找）
+```
+
+`git rev-parse --git-common-dir` 是 git 1.8+ 標準 API，自動處理：
+
+| 場景 | `--git-common-dir` 回傳 | `.git/speclink/` 落點 |
+|---|---|---|
+| 一般 repo | `.git` | `.git/speclink/` |
+| Git worktree（`.git` 是 file）| 主 repo 的 `.git/` | 主 repo 的 `.git/speclink/`（worktree 自然共用）|
+| Submodule（superproject 的 `.git/modules/<name>/`）| `.git/modules/<name>/` | `.git/modules/<name>/speclink/` |
+| Bare repo | git dir 本身 | n/a（bare repo 不該跑 LocalProvider）|
+
+**設計重點**：worktree / submodule / repo rename 全部交給 git 自己處理；SpecLink 不維護獨立 path metadata、不寫死字串。
+
+#### 13.9.2 Non-git project：require_git
+
+`speclink init` 偵測無 `.git/`（`git rev-parse --git-common-dir` 失敗或 cwd 不在 git working tree）→ 拒絕 init：
+
+```
+$ cd /tmp/no-git-project
+$ speclink init billing-system
+✗ Error: project.requires_git
+  SpecLink LocalProvider requires a git repository for state storage.
+  Run `git init` first, then re-run `speclink init`.
+```
+
+**理由**：
+- SpecLink LocalProvider 對 SQLite 的依賴比 spectra cli 強烈很多（feedback_tasks / etag version / instance_id / audit / review history 全在 state.db）；不適合 spectra「部分 op 純檔案、SQLite-依賴 op 默默 fail」的曖昧 policy。
+- 個人 RD workflow 99% 已在 git project 內、強制 git 對使用者不痛。
+- 比起「init 在純資料夾建 `.speclink/state.db`」，落在 git dir 內可享受 worktree / branch / sync 工具不碰到等所有免費 benefit。
+
+**Future**：`speclink init --no-git` fallback 到 `.speclink/state.db` + gitignore 已標 §18.2 [deferred]；現階段不做。
+
+#### 13.9.3 `.gitignore` 寫入
+
+`speclink init` 自動 append `.gitignore`（idempotent；存在則 skip）：
+
+```
+# .gitignore（init 自動 append）
+.speclink/link.yaml
+```
+
+僅一行。其他 local-only 內容（state.db / locks / touched）已在 `.git/speclink/` 內、git 自然不追蹤，**無需** gitignore 條目。
+
+**選 `.gitignore` 而非 `.git/info/exclude`** 的理由：
+- `.gitignore` 跟 commit 走 → team 內其他 RD clone 後自動排除 link.yaml、不會誤 commit 自己的 token。
+- `info/exclude` 是 per-clone local、要求每個 RD 各自 setup、易遺漏。
+- 學 spectra cli 同 pattern（`spectra init` 也寫 `.gitignore`），user mental model 一致。
+
+#### 13.9.4 P0 議題對應
+
+| 議題 | 解決方式 |
+|---|---|
+| **Branch switch** | state.db 跨 branch 共用 = feature、**不是** bug。Branch A 開的 in_progress change 切到 branch B 後 state.db 仍看得到；artifacts mismatch（B branch fs 沒 `changes/<id>/`）走 `change.artifact_missing` op error **一律 reject** + doctor finding `state.artifact_missing` warning 提示 user 切回對應 branch（見 §17.4 / §16.12）。 |
+| **Git worktree** | `.git/speclink/` 在 GIT_COMMON_DIR 內、所有 worktree 自動共用；§12 file lock 自然跨 worktree 生效；**不需任何 worktree-specific 邏輯**（不需 marker file、不需 symlink、不需 `worktree init` 指令）。 |
+| **State.db recovery** | `speclink restore --from-artifacts`（§16.13）從 `.speclink/changes/*/` + `discussions/*/` + `archive/*/` 重建；換筆電 / SSD 損壞 / `migration.checksum_mismatch` 都走同條 path；新 `instance_id` 自動生成（舊變 historical actor reference）。 |
+
+#### 13.9.5 Cross-tool namespace
+
+`.git/<tool-namespace>/` convention 對其他 SDD 工具友善、互不干擾：
+
+| Namespace | 工具 |
+|---|---|
+| `.git/spectra-app/` | spectra cli |
+| `.git/speclink/` | SpecLink |
+
+各 tool 自己 namespace；user 同機並用 spectra + speclink 不衝突。
+
+### 13.10 Migration: LocalProvider → HttpProvider [deferred]
+
+**情境**：個人 RD 用 LocalProvider 6 個月、後來加入團隊要把 state 搬到 team server。
+
+**MVP scope**：未實作；本節僅紀錄方向，作為「LocalProvider 設計不鎖死個人 → 團隊路徑」的設計保證。
+
+**Artifacts migration**（單向、靠 git）：
+
+- `.speclink/changes/` / `discussions/` / `schemas/` / `archive/` 已 git tracked → user `git push` 後 team 端從 git 拉，artifacts 自然到位。
+- 若 team webapp 走 §19.4.1 default mode → webapp server 端從 git 撈 artifact 或 user manual 上傳。
+- 若走 §19.4.2 custom mode → webapp 既有 schema 不變、靠 mapping engine 接。
+
+**State migration（`.git/speclink/state.db` 內容）**：
+
+| state.db 內容 | 搬遷方式 |
+|---|---|
+| Change rows（state, etag）| Server 端從 artifact + audit log 重建（同 `speclink restore` 邏輯）|
+| `feedback_tasks` | Server 端 parse tasks.md HTML marker 重建 |
+| `audit` events | 若 `.speclink/audit/<change-id>.log` git tracked → import；否則 lost |
+| `instance_id` | 不搬遷（by design，§13.6）；server 端紀錄 actor 各自 |
+| Lock state | 不搬遷（runtime 暫態 / 跟新 server 端機制）|
+
+**未來指令**（[deferred]，跟 HttpProvider 一起做）：
+
+```bash
+speclink migrate-to-http --baseUrl <url> --auth <token> [--dry-run] [--json]
+```
+
+預期行為：
+- artifacts 已在 git → git push 即可、不需此指令額外做
+- 從 local state.db 序列化 audit / feedback / review history → 推 server import endpoint
+- 寫 `.speclink/link.yaml` 切換 provider 設定
+- 印 migration report（哪些 state 成功搬、哪些 lost）
+
+**設計約束**：
+- 一次性、不雙寫（不維護 local + remote 同步）
+- 失敗可重跑（idempotent on server 端）
+- Migration 期間 local 進入 read-only mode、防 divergence
+
+**為什麼 MVP 不做**：HttpProvider impl 整體 [deferred]（§18.2）；migration 屬於 HttpProvider 的 user journey 一環、一起延後合理。本節寫成 stub、是為了在設計層級確認「個人 → 團隊路徑可走」、避免 LocalProvider 設計時把 user 鎖死。
+
 ## 14. 檔案結構
+
+**Two-root layout**（§13.9）：`.speclink/` 為 git-tracked artifacts；`.git/speclink/` 為 local-only state。
 
 ```
 專案根/
-  .speclink/
-    link.yaml                  # per-working-dir provider 連線設定（gitignore；LocalProvider 模式可省；僅 CLI 模式用，SDK 不讀此檔）
-    config.yaml                # SDD 規則（僅 LocalProvider 模式存於檔案；HttpProvider 由 server 持有）
-    state.db                   # SQLite（gitignore；LocalProvider 用）
-    state.db-wal               # SQLite WAL（gitignore）
-    state.db-shm               # SQLite shared mem（gitignore）
-    lock                       # global advisory lock（gitignore）
+  .speclink/                            # ── working tree、git-tracked artifacts ──
+    config.yaml                         # tracked — SDD 規則（LocalProvider 模式）
+    link.yaml                           # gitignored — per-clone provider 連線設定
     
     changes/
       <change-id>/
-        proposal.md            # tracked
-        design.md              # tracked（optional）
-        tasks.md               # tracked
+        proposal.md                     # tracked
+        design.md                       # tracked（optional）
+        tasks.md                        # tracked
         specs/<capability>/
-          spec.md              # tracked
-        metadata.json          # tracked
-        .lock                  # per-change lock（gitignore）
+          spec.md                       # tracked
+        metadata.json                   # tracked
     
     discussions/
       <discussion-id>/
-        discussion.md          # tracked
+        discussion.md                   # tracked
     
     schemas/
-      <schema-id>/             # 使用者 fork 的 schema（tracked）
+      <schema-id>/                      # tracked — 使用者 fork 的 schema
         schema.yaml
         templates/
           <artifact-id>.md
     
     archive/
-      <YYYY-MM-DD>-<change-id>/  # archived changes（tracked）
+      <YYYY-MM-DD>-<change-id>/         # tracked — archived changes
         ...
     
-    touched/
-      <change-id>.json         # task done 寫的 touched files（gitignore）
-    
     audit/
-      <change-id>.log          # commit / review approve audit（tracked 由使用者決定）
+      <change-id>.log                   # tracked 由使用者決定 — review / commit audit
+  
+  .git/speclink/                        # ── local-only state（git 自然不追蹤 .git/ 內部） ──
+                                        #    路徑由 `git rev-parse --git-common-dir` 解析；
+                                        #    worktree 自動共用主 repo 的 .git/speclink/
+    state.db                            # SQLite — change rows / etag / feedback_tasks /
+                                        #          audit / review history / instance_id
+    state.db-wal                        # SQLite WAL（§12.3）
+    state.db-shm                        # SQLite shared mem
+    
+    locks/
+      global.lock                       # §12 global advisory lock（init / migration）
+      changes/
+        <change-id>.lock                # §12 per-change advisory lock
+    
+    touched/
+      <change-id>.json                  # task done 寫的 touched files
 ```
+
+**HttpProvider 模式下** `.speclink/config.yaml` 不在本地（由 server 持有，§11.5）；`.speclink/changes/<id>/` 等 artifacts workflow 中也不在本地、archive 後才同步進 git（§13.3）。`.git/speclink/state.db` 在 HttpProvider 模式下用途有限（可能僅存 cache / actor identity），詳見 §19.4 規劃。
 
 ### 14.1 預設 .gitignore
 
+`speclink init` 自動 append `.gitignore`（idempotent；存在則 skip）。**僅一條**：
+
 ```
 .speclink/link.yaml
-.speclink/state.db
-.speclink/state.db-wal
-.speclink/state.db-shm
-.speclink/lock
-.speclink/changes/*/.lock
-.speclink/touched/
 ```
 
-`link.yaml` 入 gitignore 的理由：per-working-dir 連線設定（可能含 endpoint / credential ref）、不同 RD 的 clone 可能連不同 provider、可能含敏感資訊，不該跟著 git push 走。物理上仍住在 `.speclink/` 內，只是 git 不追蹤。
+**為什麼只有一條**：
+
+- `state.db` / `state.db-wal` / `state.db-shm` / `locks/` / `touched/` 全部住在 `.git/speclink/` 內、git 自然不追蹤 `.git/` 自己，**無需** gitignore 條目
+- `.speclink/changes/` / `discussions/` / `schemas/` / `archive/` / `audit/` / `config.yaml` 全部是 tracked artifacts，**不該** ignore
+
+**`link.yaml` 入 gitignore 的理由**：per-clone 連線設定（可能含 endpoint / credential ref）、不同 RD 的 clone 可能連不同 provider、可能含敏感資訊，不該跟著 git push 走。物理上仍住在 `.speclink/` 內，只是 git 不追蹤。
+
+**Non-git 專案**（`speclink init --no-git`，[deferred]、§18.2）下 fallback 行為：
+
+- state.db / locks / touched 改放 `.speclink/state.db`、`.speclink/locks/`、`.speclink/touched/`
+- init 寫入 gitignore 對應條目（即使無 .git/、寫一份備未來 `git init`）
+- 本 MVP 不實作此 fallback；本段僅紀錄方向
 
 ## 15. Crate 拆分
 
@@ -1568,12 +1744,15 @@ speclink show change <change-id>                      ✓
 
 ```bash
 # 新建 project（MVP）
-speclink init <name> [--force] [--json]              # LocalProvider，建 .speclink/{config.yaml, state.db}
+speclink init <name> [--force] [--json]              # LocalProvider，建 .speclink/config.yaml + .git/speclink/state.db
 speclink init <name> --provider http --baseUrl <url> # HttpProvider 新 project [deferred]
 
 # 連到既有 project [deferred — HttpProvider 一起]
 speclink link <provider-url> [--project <id>] [--auto-suffix] [--non-interactive] [--json]
 speclink unlink [--json]                             # 刪 .speclink/link.yaml，不動 provider 端資料
+
+# 從 artifacts 重建 state.db（MVP，§16.13）
+speclink restore [--from-artifacts] [--dry-run] [--overwrite] [--json]
 
 # 診斷（detail 見 §16.12）
 speclink doctor [--json] [--quick] [--fix]
@@ -1581,7 +1760,18 @@ speclink doctor [--json] [--quick] [--fix]
   [--check-mapping] [--live]        # HttpProvider custom mode mapping dry-run
 ```
 
-**MVP scope 明確**：只 `init` 純 LocalProvider + `doctor`。所有帶 `--provider http` / `link` / `unlink` 屬 [deferred]，CLI 偵測到會回 `provider.not_supported` + 訊息「HttpProvider not implemented in this build」。
+**`speclink init` 行為**（LocalProvider）：
+
+1. 偵測 cwd 在 git working tree → 跑 `git rev-parse --git-common-dir`
+    - 失敗 → error `project.requires_git`、訊息「SpecLink LocalProvider requires a git repository. Run `git init` first.」；exit code 對應 `2`（input error，§17.2）
+    - 成功 → state root = `<common-dir>/speclink/`
+2. 若 `.speclink/config.yaml` 已存在 + 無 `--force` → error `project.already_initialized`
+3. 建 `.speclink/`、寫入 `.speclink/config.yaml`（embedded template）
+4. 建 `.git/speclink/`、init SQLite `state.db`（含 `schema_migrations` + `speclink_meta.instance_id`）
+5. Append `.gitignore`（idempotent，僅一條 `.speclink/link.yaml`，§14.1）
+6. 印初始化完成訊息 + HttpProvider 推薦提示（§13.6.1）
+
+**MVP scope 明確**：只 `init` 純 LocalProvider + `restore` + `doctor`。所有帶 `--provider http` / `link` / `unlink` 屬 [deferred]，CLI 偵測到會回 `provider.not_supported` + 訊息「HttpProvider not implemented in this build」。
 
 `speclink link` 沒帶 `--project` 時走互動式 list（CLI 透過 `ProviderRegistry::list_projects()` 拿選項，見 §19.2）— 但若 stdin **非 TTY** 或帶 `--json` / `--non-interactive` flag → 回 `cli.requires_tty` error 並提示「Pass `--project <id>` to skip interactive prompt」。AI Bash binding host **永遠**該帶 `--project` + `--json` 避免 hang。
 
@@ -1795,13 +1985,13 @@ speclink templates [--schema <id>] [--json]                            # 列出 
 | # | Category（`--check` 參數）| 範例 checks |
 |---|---|---|
 | 1 | `cli` | speclink CLI 在 PATH、CLI version vs SDK package version 匹配、embedded schema migrations applied |
-| 2 | `project` | `.speclink/` 存在；`config.yaml` parseable + schema valid；`link.yaml` parseable（若存在）；`state.db` `PRAGMA integrity_check` |
-| 3 | `provider` | LocalProvider: state.db 可開 + WAL mode + advisory lock try-acquire；HttpProvider: baseUrl 可達 + auth 試打 health endpoint（若 server 提供）|
+| 2 | `project` | `.speclink/` 存在；`config.yaml` parseable + schema valid；`link.yaml` parseable（若存在）；**cwd 在 git working tree**（LocalProvider，§13.9.2）；`.git/speclink/state.db` `PRAGMA integrity_check` |
+| 3 | `provider` | LocalProvider: `.git/speclink/state.db` 可開 + WAL mode + advisory lock try-acquire（`.git/speclink/locks/global.lock`）；HttpProvider: baseUrl 可達 + auth 試打 health endpoint（若 server 提供）|
 | 4 | `provider-mapping` | （HttpProvider custom mode）對 catalogue 每個 operation 驗證 mapping shape（template 語法 / `$field` 對應 input / `$.field` 對應 output schema）；缺漏 mapping → error。**預設 dry-run 不打網路**；`--live` 才實際打 server |
 | 5 | `security` | link.yaml 不含明文 secret（§19.5）；link.yaml 不在 git index；baseUrl 是 `https://` / `localhost` / `unix://` 之一 |
 | 6 | `config` | locale 在 allowlist；rules sections 結構合法；roles `extends` 可解析；schema 引用存在 |
 | 7 | `skill` | 每個 installed skill 的 `template_hash` vs binary embedded body（drift 偵測，§20.2）；`speclink_version` vs CLI version；AGENTS.md / CLAUDE.md markers 完整 |
-| 8 | `state` | 所有 in_progress changes 有 `actor` 欄位；`feedback_tasks` table 行 ↔ tasks.md HTML marker 雙向 orphan check（§6.2）；changes table state enum 合法；`speclink_meta.instance_id` 存在 |
+| 8 | `state` | 所有 in_progress changes 有 `actor` 欄位；`feedback_tasks` table 行 ↔ tasks.md HTML marker 雙向 orphan check（§6.2）；changes table state enum 合法；`speclink_meta.instance_id` 存在；**state.db change row ↔ `.speclink/changes/<id>/` filesystem 雙向 cross-check**（artifact missing → `doctor.state.artifact_missing` warning，§13.9.4）|
 | 9 | `artifacts` | （**預設 on、`--quick` 跳過**）對每個 active change 跑 `analyze` + `validate` + `drift`，aggregate 結果 |
 
 `--check` 是 `category` 字面值（如 `--check security --check skill`）。`--check-mapping` 是 `--check provider-mapping` 的別名（沿用 §19.5 已預告的命名）。
@@ -1824,16 +2014,19 @@ speclink templates [--schema <id>] [--json]                            # 列出 
 
 #### 16.12.3 `--fix` Auto-fix Allowlist
 
-MVP 只 auto-fix 三條 — **safe，無破壞性**：
+MVP 只 auto-fix 四條 — **safe，無破壞性**（restore 雖然 substantial、但 idempotent + 不動 artifacts、視為 safe）：
 
 | Finding | Auto-fix 動作 |
 |---|---|
-| `.gitignore` 缺漏 `.speclink/state.db` / `.speclink/state.db-wal` / `.speclink/lock` / `.speclink/touched/` | append 缺漏條目（不重寫既有條目） |
+| `.gitignore` 缺漏 `.speclink/link.yaml`（§14.1 唯一條目） | append `.speclink/link.yaml`（idempotent；不重寫既有條目） |
 | AGENTS.md / CLAUDE.md `SPECLINK:START` markers 缺漏或損壞 | 同 `speclink update` 內部 marker re-inject 邏輯 |
 | `tasks.md` 缺漏對應 `feedback_tasks` 行的 HTML marker（§6.2 `tasks.feedback_task_removed`）| re-append synthetic feedback task 區塊 |
+| `doctor.state.db_missing`（`.git/speclink/state.db` 不存在）| 跑 `speclink restore --from-artifacts`（§16.13）；idempotent；不動 artifacts |
 
 **Non-auto-fix**：
 - 不刪 state.db
+- **不**自動 fix `doctor.state.db_corrupted`（要 user 顯式跑 `restore --overwrite` 確認）
+- **不**自動 fix `doctor.state.artifact_missing`（cross-branch / 過期 state — user 須自己決定切 branch 還是刪 change）
 - 不重置 lock file（即使 process 已死 — 由 user 自己確認）
 - 不改 config.yaml（即使欄位明顯錯）
 - 不動 link.yaml（特別是 secret 移到 env var 這種改動，user 必須自己決定）
@@ -1904,6 +2097,91 @@ MVP 只 auto-fix 三條 — **safe，無破壞性**：
 - **不**做 performance benchmarking
 - **不**自動清理 orphan files / 重置 state — 要 user 顯式跑
 
+### 16.13 State recovery (`restore`)
+
+`.git/speclink/state.db`（§13.9）損壞 / 遺失時，從 git tracked artifacts 重建。
+
+```bash
+speclink restore [--from-artifacts] [--dry-run] [--overwrite] [--json]
+```
+
+| Flag | 行為 |
+|---|---|
+| `--from-artifacts`（預設、MVP 唯一 mode）| 從 `.speclink/changes/*/` + `discussions/*/` + `archive/*/` +（若存在）`.speclink/audit/*.log` 重建 `.git/speclink/state.db` |
+| `--dry-run` | 只印「會做什麼」、不寫 state.db |
+| `--overwrite` | state.db 已存在 + 健康時強制覆寫；無此 flag 時 state.db 存在 → 拒絕（要 user 顯式選擇） |
+| 預設無 flag 時 | state.db 不存在 / SQLite open 失敗 → 自動跑、無需 flag |
+
+**觸發場景**：
+
+| 場景 | 行為 |
+|---|---|
+| 換筆電 / 新 clone（state.db 不存在） | 任何 CLI 指令偵測到 → 提示 user 跑 `speclink restore`（doctor finding `state.db_missing`）|
+| SQLite open 失敗（corruption） | 自動先備份到 `.git/speclink/state.db.bak-<timestamp>`，然後**拒絕**繼續、提示 user 跑 `speclink restore --overwrite`（doctor finding `state.db_corrupted`，**不**自動 fix）|
+| `migration.checksum_mismatch` / `migration.version_too_new`（§12.7）| user 手動跑 restore（migration error 不自動觸發 restore；user 須確認 binary 版本 / state.db 來源）|
+| 個人 RD 想刻意重置 audit history | 跑 `restore --overwrite`（destructive、要二次確認） |
+
+**重建邏輯**（pseudo）：
+
+1. 取得 global lock `.git/speclink/locks/global.lock`（timeout 30s）
+2. 若 state.db 存在但 corrupted → 備份到 `state.db.bak-<timestamp>`
+3. 建立新 state.db、apply 全部 migration（同 §12.7）
+4. 生成新 `instance_id` 寫入 `speclink_meta`
+5. 掃 `.speclink/changes/*/metadata.json` → 重建 change rows（state, etag = v1）
+6. 掃 `.speclink/changes/*/tasks.md` → 解析 `<!-- speclink:feedback id=... -->` HTML marker → 重建 `feedback_tasks` 表
+7. 掃 `.speclink/discussions/*/discussion.md` frontmatter → 重建 discussion rows
+8. 掃 `.speclink/archive/<date>-<id>/` → 重建已 archived change rows（state = archived）
+9. 若 `.speclink/audit/*.log` 存在 → import 為 audit events（`actor.instance_id` 保留舊值、變 historical reference）
+10. 寫一筆 `audit.restored` event（含 `previous_instance_id`：從 audit log 推、無則 null）
+11. 寫 markdown 報告 `.speclink/restore-<timestamp>.md`（內容同 JSON output 但人類可讀）
+12. Release lock；印 JSON envelope
+
+**輸出 envelope**：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "instance_id": "<新 UUID>",
+    "previous_instance_id": "<從 audit log 推、否則 null>",
+    "report_path": ".speclink/restore-2026-05-22T03-15-00Z.md",
+    "restored": {
+      "changes": 6,
+      "discussions": 3,
+      "archived_changes": 12,
+      "feedback_tasks": 2,
+      "audit_events_imported": 47
+    },
+    "lost": {
+      "review_history": "若 audit log 未 tracked",
+      "etag_history": "全部重置為 v1",
+      "feedback_reason_hash": "tasks.md 不含 hash、無法重建"
+    },
+    "inconsistencies": [
+      { "kind": "tasks_done_in_proposing_state", "change": "add-export", "hint": "tasks.md 顯示已勾 [x] 但 state=proposing；建議 user manually verify" }
+    ]
+  }
+}
+```
+
+**規則**：
+
+- **MVP 不支援** `--from-export <file>`（從顯式 backup 還原）；只走 from-artifacts、未來 `speclink export` 進來再加
+- **不修補 `.speclink/` artifacts**（讀-only；restore 是把 artifact 推回 state.db、反向）
+- **Etag 全重置為 v1**：caller 若手上有 stale etag → 下次 write 撞 `state.etag_mismatch`、依 §12.5.4 重讀即可恢復
+- **Lock 必須 acquired**：restore 期間 reject 其他 CLI invocation（global lock 等待 timeout 30s）
+- **Idempotent**：同 artifacts 跑兩次 restore 結果相同（除了 `instance_id` 會 rotate 兩次、各自一個新 UUID）
+- **Audit 寫入**：restore 結束寫 `audit.restored` event（type, timestamp, restored counts, previous_instance_id, inconsistencies count）
+
+**對應 doctor finding**（§16.12 增訂、見 §17.5）：
+
+| Finding code | Default level | Auto-fixable |
+|---|---|---|
+| `doctor.state.db_missing` | error | ✓ 跑 `speclink restore` |
+| `doctor.state.db_corrupted` | error | ✗（auto-fix 危險；要 user 手動確認） |
+| `doctor.state.db_schema_invalid` | error | ✗（指向 migration error） |
+| `doctor.state.artifact_missing` | warning | ✗ |
+
 ## 17. JSON 介面 Contract
 
 ### 17.1 通用結構
@@ -1967,8 +2245,8 @@ MVP 只 auto-fix 三條 — **safe，無破壞性**：
 
 | 領域 | 範例 |
 |---|---|
-| project | `project.not_initialized` / `project.already_initialized` / `project.id_taken` |
-| change | `change.not_found` / `change.locked` / `change.invalid_name` |
+| project | `project.not_initialized` / `project.already_initialized` / `project.id_taken` / `project.requires_git` |
+| change | `change.not_found` / `change.locked` / `change.invalid_name` / `change.artifact_missing` |
 | artifact | `artifact.not_found` / `artifact.validation_failed` / `artifact.already_exists` |
 | state | `state.transition_invalid` / `state.lock_timeout` / `state.etag_mismatch` |
 | lock | `lock.foreign_host`（§12.5.6）/ `lock.stale_takeover`（audit event）|
@@ -2003,10 +2281,12 @@ MVP 只 auto-fix 三條 — **safe，無破壞性**：
 |---|---|---|---|---|---|
 | `project.not_initialized` | 2 | no | `.speclink/` 不存在 | CLI 啟動所有指令 | [MVP] |
 | `project.already_initialized` | 1 | no | `init` 時 `.speclink/` 已存在且未帶 `--force` | `init` | [MVP] |
+| `project.requires_git` | 2 | no | LocalProvider 偵測到 cwd 非 git working tree（`git rev-parse --git-common-dir` 失敗）；hint：「Run `git init` first.」（§13.9.2）| `init` / 任何 CLI 啟動 | [MVP] |
 | `project.id_taken` | 2 | no | slug 撞 server unique constraint | `init` / `link` | [deferred] |
 | `change.not_found` | 2 | no | 指定的 change id 不存在 | 多數 change-targeted 指令 | [MVP] |
 | `change.locked` | 7 | backoff | per-change lock 取不到 | `task done` / `apply start` / `archive` / `review` / `new artifact` 等 | [MVP] |
 | `change.invalid_name` | 2 | no | name 不符 §13.4 slug 規範 | `new change` | [MVP] |
+| `change.artifact_missing` | 1 | no | state.db 有 change row 但 `.speclink/changes/<id>/` 在 fs 不存在（cross-branch / 殘留 / artifacts root 被刪）；hint：「Switch to the branch where this change was created, or run `speclink change delete --force` to remove it from state.」**一律 reject、不 fallback**（§13.9.4） | 多數 change-targeted 指令 | [MVP] |
 | `artifact.not_found` | 2 | no | 指定 artifact 不存在 | `artifact read` / `instructions` | [MVP] |
 | `artifact.already_exists` | 2 | no | `new artifact` 重複建立同 kind | `new artifact` | [MVP] |
 | `artifact.validation_failed` | 3 | no | artifact 結構 / delta 驗證失敗 | `validate` / `new artifact` / `archive`（strict）| [MVP] |
@@ -2057,9 +2337,9 @@ MVP 只 auto-fix 三條 — **safe，無破壞性**：
 | `doctor.cli.version_mismatch` | cli | warning | no | CLI binary version 跟 SDK package version 不一致 |
 | `doctor.cli.not_in_path` | cli | error | no | `speclink` binary 不在 PATH 中 |
 | `doctor.project.not_initialized` | project | error | no | `.speclink/` 不存在 |
+| `doctor.project.requires_git` | project | error | no | LocalProvider 但 cwd 不在 git working tree（§13.9.2）|
 | `doctor.project.config_invalid` | project | error | no | `config.yaml` 結構錯 / 缺必要欄位 |
 | `doctor.project.link_yaml_invalid` | project | error | no | `link.yaml` 結構錯 |
-| `doctor.project.state_db_corrupt` | project | error | no | `PRAGMA integrity_check` 失敗 |
 | `doctor.provider.unreachable` | provider | error | no | LocalProvider 開不開 / HttpProvider 連不上 |
 | `doctor.provider_mapping.shape_mismatch` | provider-mapping | error | no | HttpProvider custom mapping 對 catalogue operation shape 不符 |
 | `doctor.provider_mapping.missing_operation` | provider-mapping | warning | no | mapping 缺漏某個 catalogue operation（runtime 才會觸發）|
@@ -2076,7 +2356,11 @@ MVP 只 auto-fix 三條 — **safe，無破壞性**：
 | `doctor.state.feedback_task_orphan` | state | error | yes | `feedback_tasks` 表 ↔ tasks.md HTML marker 雙向 orphan |
 | `doctor.state.instance_id_missing` | state | error | no | `speclink_meta.instance_id` UUID 缺失 |
 | `doctor.state.invalid_enum` | state | error | no | changes table state 欄位值不在合法 enum 內 |
-| `doctor.gitignore.missing_entry` | project | warning | yes | `.gitignore` 缺漏 `.speclink/state.db` 等條目 |
+| `doctor.state.db_missing` | state | error | yes | `.git/speclink/state.db` 不存在；auto-fix 跑 `speclink restore --from-artifacts`（§16.13）|
+| `doctor.state.db_corrupted` | state | error | no | SQLite open 失敗 / `PRAGMA integrity_check` 失敗；engine 自動備份壞檔到 `.git/speclink/state.db.bak-<timestamp>`，user 須跑 `speclink restore --overwrite` 確認 |
+| `doctor.state.db_schema_invalid` | state | error | no | `schema_migrations` checksum / version 對不上（§12.7）；指向 migration error |
+| `doctor.state.artifact_missing` | state | warning | no | state.db 有 change row 但 `.speclink/changes/<id>/` 在 fs 不存在（§13.9.4）；通常表示 user 切到沒有對應 artifact 的 branch；提示切回對應 branch 或刪 change |
+| `doctor.gitignore.missing_entry` | project | warning | yes | `.gitignore` 缺漏 `.speclink/link.yaml`（§14.1 唯一條目）|
 | `doctor.security.env_leak_risk` | security | warning | no | 當前 process env 含 `*_TOKEN` / `*_KEY` / `*_SECRET` — 子 process 雖會 sanitize、仍提示審查 |
 | `doctor.security.link_yaml.env_var_unresolved` | security | error | no | link.yaml `${VAR}` 對應 env var 不存在 |
 | `doctor.provider_mapping.absolute_url_disallowed` | provider-mapping | error | no | custom mapping `path:` 含 `://` |
@@ -2130,7 +2414,7 @@ Audit event 寫入 state.db 的 `events` table（見 §19.2 `Provider::record_ev
 12. ✅ `ingest` skill 對應 CLI 配套
 13. ✅ Schema fork / validate（binary built-in `spec-driven`，user 可 fork）
 14. ✅ 並發 safety（SQLite WAL + 雙層 lock）
-15. ✅ Doctor 指令 — 9 個檢查類別（cli / project / provider / provider-mapping / security / config / skill / state / artifacts）+ `--quick` / `--check <cat>` / `--fix` flags + 3 條 auto-fix allowlist + diagnostic levels exit code 對齊（§16.12）
+15. ✅ Doctor 指令 — 9 個檢查類別（cli / project / provider / provider-mapping / security / config / skill / state / artifacts）+ `--quick` / `--check <cat>` / `--fix` flags + 4 條 auto-fix allowlist（含 `state.db_missing` → 跑 restore）+ diagnostic levels exit code 對齊（§16.12）
 16. ✅ Skill source 拆 `workflow.md` + `bindings/{bash,tool}.md` 結構（§4.3）
 17. ✅ `speclink init --tools <list>` 部署 Bash binding 版本 SKILL.md
 18. ✅ `speclink describe-tools --format <format>` 印 operation catalogue 各格式
@@ -2222,6 +2506,17 @@ Audit event 寫入 state.db 的 `events` table（見 §19.2 `Provider::record_ev
     - MVP 只 export type 定義；in-process engine 接受 caller-impl `Provider` 屬 [deferred]（見 §22.1 Tier 2 MVP 限制）
     - Tier 2 MVP 實際可行路徑 = HttpProvider custom mode（Tier 2 via HTTP boundary）；in-process impl 等 HttpProvider 完成後再開
 
+**State storage layout（P0，2026-05-22）**：
+
+68. ✅ Two-root layout — `.speclink/` artifacts（git tracked）+ `.git/speclink/` state（git 自然不追蹤 `.git/`）；`git rev-parse --git-common-dir` path resolution；worktree / submodule 自動共用（§13.9）
+69. ✅ `project.requires_git` 強制 git 專案：LocalProvider 偵測非 git → init 拒絕（§13.9.2 / §13.1 / §16.1 / §17.4）；non-git fallback 標 [deferred]
+70. ✅ `.gitignore` 簡化為單行 `.speclink/link.yaml`（§14.1）；`speclink init` 自動 idempotent append
+71. ✅ `speclink restore --from-artifacts` CLI — 從 `.speclink/changes/*/` 重建 state.db、自動備份壞檔、寫 markdown 報告 + JSON envelope；doctor `state.db_missing` auto-fix 對接（§16.13 / §16.12.3）
+72. ✅ `change.artifact_missing` cross-branch detection — state.db change row ↔ filesystem 雙向 cross-check；**op 一律 reject**、不 fallback；doctor `state.artifact_missing` warning（§13.9.4 / §17.4 / §17.5）
+73. ✅ Doctor finding 補 `state.db_missing` / `state.db_corrupted` / `state.db_schema_invalid` / `state.artifact_missing` / `project.requires_git`（§17.5）+ instance_id rotation 行為明文（§13.6）
+74. ✅ Lock 位置改 `.git/speclink/locks/{global.lock, changes/<id>.lock}`（§12.2.1 / §12.2.3）
+75. ✅ Migration LocalProvider → HttpProvider stub（§13.10，標 [deferred]、保證個人 → 團隊路徑可走）
+
 ### 18.2 Deferred
 
 | 能力 | 為什麼延後 |
@@ -2241,6 +2536,13 @@ Audit event 寫入 state.db 的 `events` table（見 §19.2 `Provider::record_ev
 | AI tool 多元支援（cursor / windsurf / cline / …） | MVP 只支援 claude / codex / github-copilot；其他延後 |
 | `speclink completion` | 對 workflow 無必要，純舒適性指令 |
 | Worktree / isolated branch | 對個人 + multi-agent 同機器無實際需求 |
+| `speclink init --no-git` fallback（`.speclink/state.db` + gitignore）| LocalProvider 強制 git 是 MVP 規定（§13.9.2）；non-git fallback 對個人 RD workflow 罕見、未來真有需求再加 |
+| `speclink list --all-projects` cross-project state | 需要 user-global registry 機制；個人 RD MVP 不痛 |
+| `speclink change prune --state proposing --older-than <duration>` | proposing backlog 過期清理；MVP 不痛 |
+| `speclink export <file>` / `speclink import <file>` | state.db 顯式 backup / 跨機器搬遷；MVP 用 `restore --from-artifacts` 已足夠（§16.13）|
+| Schema user-global 共享（`~/.speclink/schemas/`）| 跨 project schema reuse；MVP 每 project 各自 fork 即可 |
+| Worktree-isolated state（`.git/speclink/.worktree-ref` marker）| `.git/speclink/` 透過 git common dir 自動跨 worktree 共用（§13.9.4）；未來若有「想隔離 per-worktree state」反向需求才加 |
+| `speclink migrate-to-http` | 跟 HttpProvider impl 一起延後（§13.10）|
 
 ### 18.3 明確 Non-Goals（不只是 deferred，是不打算做）
 
@@ -2456,9 +2758,14 @@ pub struct WriteDiscussionRequest {
 ### 19.3 LocalProvider（MVP 唯一實作）
 
 - 底層：filesystem + SQLite + WAL + advisory file lock
-- Identity：working dir 內的 `.speclink/`；`project.id` 從 `config.yaml#project.id` 取
+- **Storage layout 兩個 root**（§13.9）：
+  - artifacts root：`.speclink/`（git tracked、跟 working dir 走）
+  - state root：`.git/speclink/`（在 git common dir 內、git 自然不追蹤、跨 worktree / 跨 branch 共用）
+  - Path resolution：`git rev-parse --git-common-dir`（自動處理 worktree / submodule）
+- Identity：working dir 內的 `.speclink/`；`project.id` 從 `.speclink/config.yaml#project.id` 取
 - `link.yaml` 可省略（缺檔 = 預設 local）
-- 並發模型：§12 已詳述
+- **Require git**：非 git 專案 → `project.requires_git` error（§13.9.2 / §17.4）；MVP 不支援 `--no-git` fallback
+- 並發模型：§12 已詳述（lock 路徑 `.git/speclink/locks/`）
 
 ### 19.4 HttpProvider（trait skeleton only, MVP 不實作）
 
