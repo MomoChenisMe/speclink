@@ -33,9 +33,7 @@ fn git_init_with_commit(dir: &Path) {
         .args(["config", "user.name", "Test"])
         .current_dir(dir));
     fs::write(dir.join("README.md"), b"seed\n").unwrap();
-    run(Command::new("git")
-        .args(["add", "."])
-        .current_dir(dir));
+    run(Command::new("git").args(["add", "."]).current_dir(dir));
     run(Command::new("git")
         .args(["commit", "-m", "seed"])
         .current_dir(dir));

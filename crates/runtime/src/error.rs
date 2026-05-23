@@ -180,6 +180,12 @@ pub enum RuntimeError {
     #[error("unknown category `{category}` in --categories")]
     ToolUnknownCategory { category: String },
 
+    /// 對應 `instructions.unknown_kind`（P1-3）：`speclink instructions <kind>` 收到
+    /// 不在 8 個 spec-driven schema 支援 kind 內的字串（含 `discuss`、typo）。
+    /// Hint 由 CLI 層 `hint_for` 提供（static 8-kind list）。
+    #[error("unknown kind `{kind}`")]
+    InstructionsUnknownKind { kind: String },
+
     /// 透過 provider 傳上來的內部錯誤。
     #[error("provider error: {0}")]
     Provider(#[from] speclink_provider::ProviderError),
@@ -223,6 +229,7 @@ impl RuntimeError {
             RuntimeError::ToolFormatNotSupported { .. } => codes::TOOL_FORMAT_NOT_SUPPORTED,
             RuntimeError::ToolUnknownOp { .. } => codes::TOOL_UNKNOWN_OP,
             RuntimeError::ToolUnknownCategory { .. } => codes::TOOL_UNKNOWN_CATEGORY,
+            RuntimeError::InstructionsUnknownKind { .. } => codes::INSTRUCTIONS_UNKNOWN_KIND,
             RuntimeError::Provider(p) => p.code(),
             RuntimeError::Internal(_) => "internal.error",
         }
@@ -262,6 +269,7 @@ impl RuntimeError {
                 || c == codes::TOOL_FORMAT_NOT_SUPPORTED
                 || c == codes::TOOL_UNKNOWN_OP
                 || c == codes::TOOL_UNKNOWN_CATEGORY
+                || c == codes::INSTRUCTIONS_UNKNOWN_KIND
                 || c == task_codes::TASK_NO_TASKS_FILE
                 || c == task_codes::TASK_INDEX_OUT_OF_RANGE =>
             {

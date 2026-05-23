@@ -88,6 +88,13 @@ pub mod codes {
     pub const TOOL_UNKNOWN_OP: &str = "tool.unknown_op";
     /// `tool.describe` `--categories` 含 catalogue 內沒有的 category。
     pub const TOOL_UNKNOWN_CATEGORY: &str = "tool.unknown_category";
+
+    // ----- `add-instructions-get` (P1-3) -----
+
+    /// `instructions.get <kind>` 收到不在 8 個 spec-driven schema 支援 kind 內
+    /// 的字串（含 `discuss`、typo）；對應 spec Requirement「reject unknown kinds
+    /// with `instructions.unknown_kind` and exit 2」。
+    pub const INSTRUCTIONS_UNKNOWN_KIND: &str = "instructions.unknown_kind";
 }
 
 /// Provider 層的錯誤型別。

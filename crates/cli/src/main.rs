@@ -97,6 +97,23 @@ enum Commands {
         yes: bool,
     },
 
+    /// 取得 artifact / workflow phase 的 AI instruction body + template + dependency。
+    Instructions {
+        /// Artifact kind 或 workflow phase kind（`proposal` / `spec` / `design` /
+        /// `tasks` / `apply` / `ingest` / `archive` / `commit`；其他值回
+        /// `instructions.unknown_kind`、exit 2）。
+        kind: String,
+        /// 套用 change context（existence check + schema_id resolution）。
+        #[arg(long)]
+        change: Option<String>,
+        /// (reserved for Phase 2 `add-discuss-ops`, currently ignored)
+        #[arg(long)]
+        role: Option<String>,
+        /// (reserved for Phase 2 `add-discuss-ops`, currently ignored)
+        #[arg(long)]
+        discussion: Option<String>,
+    },
+
     /// Catalogue dump：把 37 個 operation 印成 json / text / copilot-sdk 三種 format。
     #[command(name = "describe-tools")]
     DescribeTools {
@@ -409,6 +426,21 @@ fn main() -> ExitCode {
             } => {
                 commands::archive::run(&working_dir, &change_id, skip_specs, no_validate, yes).await
             }
+            Commands::Instructions {
+                kind,
+                change,
+                role,
+                discussion,
+            } => {
+                commands::instructions::run(
+                    &working_dir,
+                    &kind,
+                    change.as_deref(),
+                    role.as_deref(),
+                    discussion.as_deref(),
+                )
+                .await
+            }
             Commands::DescribeTools {
                 format,
                 filter,
@@ -531,6 +563,9 @@ fn hint_for(code: &str) -> Option<&'static str> {
         "task.no_tasks_file" => Some(
             "tasks.md not found for this change; create it first via `speclink new artifact tasks --change <name>`",
         ),
+        "instructions.unknown_kind" => {
+            Some("Supported kinds: proposal, spec, design, tasks, apply, ingest, archive, commit")
+        }
         "task.index_out_of_range" => Some(
             "task index out of range; re-run `speclink task list --change <name>` to see current indices",
         ),

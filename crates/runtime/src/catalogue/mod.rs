@@ -945,16 +945,16 @@ mod tests {
     fn catalogue_outputs_schema_pointers_all_non_panic_and_object() {
         for op in Catalogue::all() {
             let schema = (op.outputs_schema)();
-            assert!(schema.is_object(), "outputs_schema not object for {}", op.id);
+            assert!(
+                schema.is_object(),
+                "outputs_schema not object for {}",
+                op.id
+            );
             let typ = schema
                 .get("type")
                 .and_then(Value::as_str)
                 .unwrap_or_else(|| panic!("outputs_schema missing string type for {}", op.id));
-            assert_eq!(
-                typ, "object",
-                "outputs_schema type != object for {}",
-                op.id
-            );
+            assert_eq!(typ, "object", "outputs_schema type != object for {}", op.id);
         }
     }
 

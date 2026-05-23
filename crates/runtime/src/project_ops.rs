@@ -159,4 +159,3 @@ fn map_provider_error(err: speclink_provider::ProviderError) -> RuntimeError {
         other => RuntimeError::Internal(format!("project.status: {other}")),
     }
 }
-

@@ -12,9 +12,11 @@ pub mod catalogue;
 pub mod change_ops;
 pub mod config_ops;
 pub mod dev_precheck;
+pub mod embedded;
 pub mod error;
 pub mod git;
 pub mod gitignore;
+pub mod instructions_ops;
 pub mod ops;
 pub mod paths;
 pub mod project_ops;
@@ -31,6 +33,10 @@ pub use config_ops::ConfigOperations;
 pub use dev_precheck::{precheck_a2_archived, precheck_a3_archived};
 pub use error::{RuntimeError, RuntimeWarning, codes, finding_codes, task_codes};
 pub use git::{GitProbe, RealGitProbe};
+pub use instructions_ops::{
+    Dependency as InstructionsDependency, Input as InstructionsInput, InstructionsOperations,
+    Kind as InstructionsKind, Output as InstructionsOutput,
+};
 pub use ops::Operations;
 pub use paths::{
     ARTIFACT_ROOT, STATE_ROOT_NAMESPACE, artifact_root, display_state_root, resolve_state_root,

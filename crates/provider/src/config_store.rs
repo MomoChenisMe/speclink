@@ -7,6 +7,8 @@
 //! `LocalProvider` 為唯一具體實作（位於 `speclink-provider-local`），HttpProvider
 //! 實作預留給未來 slice、不阻擋 A5 完成（spec requirement 註明）。
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::ProviderError;
@@ -30,6 +32,11 @@ pub struct Rules {
 /// `.speclink/config.yaml` 解析後的結構。
 ///
 /// `roles` 為 opaque map（A5 不解析）；roles slice 接通後會替換為強型別。
+///
+/// `context` / `locale` / `instructions` 三個 P1-3 補的 Optional 欄位 — 純
+/// additive 擴充以支援 `instructions.get` 的 11-field envelope hydration（見
+/// `doc/speclink-design.md` §11.7）；皆 `#[serde(default)]`，A5 既有 config
+/// round-trip 行為不變。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
     #[serde(default)]
@@ -37,6 +44,20 @@ pub struct Config {
     /// Roles 子樹；A5 不解析、僅原樣保留以便 write path round-trip。
     #[serde(default = "default_roles")]
     pub roles: serde_yaml::Value,
+    /// 專案 context — 給 AI 看的 project-level 背景 string（design §11.7）。
+    /// `None` = 未設定或 config 缺失；instructions.get envelope 直接 echo。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
+    /// AI 產 artifact body 的語言（如 `Traditional Chinese (繁體中文)`）。
+    /// `None` = AI 沿用對話語言。Spec artifacts 永遠英文（normative SHALL/MUST）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+    /// Per-kind instruction rule arrays — 每個 artifact / phase kind 一條 array
+    /// 約束 AI 產生流程（design §11.7 `rules.<kind>[]` 改名 `instructions.<kind>[]`
+    /// 以避免與 strict `Rules` struct 內 boolean flag 衝突）。
+    /// `HashMap::new()` 等同未設定；對應 kind 缺 key → instructions.get 回 None。
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub instructions: HashMap<String, Vec<String>>,
 }
 
 fn default_roles() -> serde_yaml::Value {
@@ -48,6 +69,9 @@ impl Default for Config {
         Self {
             rules: Rules::default(),
             roles: default_roles(),
+            context: None,
+            locale: None,
+            instructions: HashMap::new(),
         }
     }
 }

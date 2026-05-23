@@ -1,0 +1,58 @@
+id: spec-driven
+name: Spec-Driven Development
+description: |
+  Default SpecLink workflow schema. Each change progresses through four
+  artifacts (proposal, spec, design, tasks) with a static DAG, then
+  enters a workflow phase (apply, ingest, archive, commit).
+
+# Artifact kinds produce a file under the change directory. The runtime
+# returns `template` + `output_path` for these kinds, and `dependencies`
+# names the prerequisite artifacts the AI should read before writing.
+artifacts:
+  - id: proposal
+    output_path: proposal.md
+    dependencies: []
+    description: WHY the change is needed; scope, capabilities, impact.
+  - id: spec
+    output_path: spec.md
+    dependencies:
+      - proposal
+    description: WHAT the system shall do; normative SHALL/MUST + scenarios.
+  - id: design
+    output_path: design.md
+    dependencies:
+      - proposal
+      - spec
+    description: HOW to implement; decisions, contract, scope boundaries.
+  - id: tasks
+    output_path: tasks.md
+    dependencies:
+      - proposal
+      - spec
+      - design
+    description: Implementation checklist; behavior + verification target.
+
+# Workflow phase kinds drive skill workflows; they do not produce an
+# artifact file. The runtime returns `template: null` + `output_path: null`
+# for these kinds.
+phases:
+  - id: apply
+    dependencies:
+      - proposal
+      - spec
+      - tasks
+    description: Implement tasks from a completed change; mark progress as you go.
+  - id: ingest
+    dependencies:
+      - proposal
+      - spec
+      - tasks
+    description: Update an in-progress change from external context; resume apply.
+  - id: archive
+    dependencies:
+      - spec
+      - tasks
+    description: Finalize a completed change; merge spec delta into canonical specs.
+  - id: commit
+    dependencies: []
+    description: Produce a commit envelope for files modified by a change.

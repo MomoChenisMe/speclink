@@ -12,8 +12,8 @@ use std::process::Command;
 use speclink_provider::{Actor, ChangeState, StateMachineStore, TransitionRequest};
 use speclink_provider_local::LocalStateMachineStore;
 use speclink_runtime::{
-    Bootstrap, ChangeOperations, RealGitProbe, RuntimeError,
-    project_ops::project_status, state_machine::resolve_host_id,
+    Bootstrap, ChangeOperations, RealGitProbe, RuntimeError, project_ops::project_status,
+    state_machine::resolve_host_id,
 };
 use tempfile::TempDir;
 
@@ -58,12 +58,11 @@ fn resolve_state_root(working: &Path) -> std::path::PathBuf {
     speclink_runtime::paths::resolve_state_root(&RealGitProbe, working).expect("state root")
 }
 
-
 // ----- 2.1 fresh project（zero rows）-----
 
 #[tokio::test]
 async fn project_status_fresh_project_has_zero_changes_count_and_discussions_count_and_null_current()
-{
+ {
     let (_tmp, working) = fresh_project().await;
     let status = project_status(&working).await.expect("status");
     assert_eq!(status.provider_type, "local");

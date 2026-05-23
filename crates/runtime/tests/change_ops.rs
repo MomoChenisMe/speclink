@@ -330,7 +330,9 @@ async fn show_change_in_progress_all_tasks_done_returns_archive_run() {
 async fn show_change_in_progress_without_tasks_md_returns_bare_task_done() {
     let (_tmp, working) = fresh_project().await;
     let ops = ChangeOperations::new(RealGitProbe);
-    ops.create_change(&working, "notasks").await.expect("create");
+    ops.create_change(&working, "notasks")
+        .await
+        .expect("create");
     transition_to(&working, "notasks", ChangeState::InProgress).await;
     // 不寫 tasks.md
     let data = ops.show_change(&working, "notasks").await.expect("show");

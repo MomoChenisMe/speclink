@@ -257,7 +257,11 @@ fn map_provider_error_change(err: ProviderError) -> RuntimeError {
 ///
 /// 對齊 specs/change-store Requirement「`change.show` response envelope SHALL include
 /// `all_tasks_done` and `next_actions`」表格。
-fn compute_next_actions(state: ChangeState, all_tasks_done: bool, change_dir: &Path) -> Vec<String> {
+fn compute_next_actions(
+    state: ChangeState,
+    all_tasks_done: bool,
+    change_dir: &Path,
+) -> Vec<String> {
     match state {
         ChangeState::Proposing => {
             // 過濾掉已 done 的 artifact kind
@@ -421,11 +425,7 @@ mod tests {
     fn compute_next_actions_in_progress_with_pending_id_suggests_task_done_with_index() {
         // fixture：1 個 done + 1 個 unchecked（label `2.5` — 證明 emit 的是 INDEX 不是 label）。
         let tmp = TempDir::new().unwrap();
-        std::fs::write(
-            tmp.path().join("tasks.md"),
-            "- [x] 1 a\n- [ ] 2.5 next\n",
-        )
-        .unwrap();
+        std::fs::write(tmp.path().join("tasks.md"), "- [x] 1 a\n- [ ] 2.5 next\n").unwrap();
         let actions = compute_next_actions(ChangeState::InProgress, false, tmp.path());
         // 第 2 個 checkbox 行（1-based）= INDEX 2，與 `speclink task done 2` CLI 對齊。
         assert_eq!(actions, vec!["task.done 2".to_string()]);

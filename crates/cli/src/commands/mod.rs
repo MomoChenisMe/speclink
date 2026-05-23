@@ -10,6 +10,7 @@ pub mod config;
 pub mod delete_change;
 pub mod describe_tools;
 pub mod init;
+pub mod instructions;
 pub mod link;
 pub mod list_changes;
 pub mod list_specs;

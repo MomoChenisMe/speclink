@@ -195,7 +195,36 @@ pub fn spec_show() -> Value {
 // ----- instructions / analyze / doctor / tool -----
 
 pub fn instructions_get() -> Value {
-    empty_object_schema()
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["kind"],
+        "additionalProperties": false,
+        "properties": {
+            "kind": {
+                "enum": [
+                    "proposal", "spec", "design", "tasks",
+                    "apply", "ingest", "archive", "discuss", "commit"
+                ],
+                "description": "Artifact kind or skill phase. `discuss` is reserved for Phase 2 `add-discuss-ops`; in MVP P1-3 it is rejected at dispatch with `instructions.unknown_kind`."
+            },
+            "change_id": {
+                "type": ["string", "null"],
+                "default": null,
+                "description": "Optional change context; existence is verified via ChangeStore."
+            },
+            "role": {
+                "type": ["string", "null"],
+                "default": null,
+                "description": "Applies to kind=discuss. Reserved for Phase 2 `add-discuss-ops`; accepted but ignored in P1-3."
+            },
+            "discussion_id": {
+                "type": ["string", "null"],
+                "default": null,
+                "description": "Applies to kind=discuss. Reserved for Phase 2 `add-discuss-ops`; accepted but ignored in P1-3."
+            }
+        }
+    })
 }
 pub fn analyze_run() -> Value {
     empty_object_schema()
@@ -473,7 +502,88 @@ pub fn spec_show_outputs() -> Value {
 // ----- instructions / analyze / doctor / tool outputs -----
 
 pub fn instructions_get_outputs() -> Value {
-    empty_object_outputs_schema()
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["kind", "instruction"],
+        "additionalProperties": false,
+        "properties": {
+            "kind": { "type": "string" },
+            "schema_id": {
+                "type": ["string", "null"],
+                "description": "Active schema id (e.g., `spec-driven`)."
+            },
+            "instruction": {
+                "type": "string",
+                "description": "Schema-specific guidance for this kind (markdown body). Artifact kinds get the artifact production prompt; workflow phase kinds get the skill prompt body."
+            },
+            "template": {
+                "type": ["string", "null"],
+                "description": "Artifact skeleton (markdown). Null for workflow phase kinds (apply/ingest/archive/discuss/commit)."
+            },
+            "context": {
+                "type": ["string", "null"],
+                "description": "Project context from `config.yaml#context`. Constrains AI behavior; SHALL NOT be copied into artifact content."
+            },
+            "rules": {
+                "type": ["array", "null"],
+                "description": "Per-kind instruction rules from `config.yaml#instructions.<kind>[]`. Constrains AI behavior; SHALL NOT be copied into artifact content. `null` = no entry for this kind; `[]` = explicit empty array.",
+                "items": { "type": "string" }
+            },
+            "dependencies": {
+                "type": "array",
+                "description": "Prerequisite artifacts the AI should read first (derived from the schema's artifact DAG).",
+                "items": {
+                    "type": "object",
+                    "required": ["kind"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "kind": { "type": "string", "description": "Dependency artifact kind." },
+                        "capability": {
+                            "type": ["string", "null"],
+                            "description": "Multi-instance spec capability; always null in P1-3 (reserved for Phase 2 `add-spec-canonical-read`)."
+                        },
+                        "path": {
+                            "type": ["string", "null"],
+                            "description": "Relative path to read via `artifact.read`."
+                        }
+                    }
+                }
+            },
+            "output_path": {
+                "type": ["string", "null"],
+                "description": "Artifact write path (relative to `.speclink/changes/<change>/`). Null for workflow phase kinds."
+            },
+            "locale": {
+                "type": ["string", "null"],
+                "description": "Resolved locale from `config.yaml#locale`. Drives AI artifact language. Spec artifacts are always English regardless of locale."
+            },
+            "available_roles": {
+                "type": ["array", "null"],
+                "description": "Reserved for Phase 2 `add-discuss-ops`. Always null in P1-3.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string" },
+                        "description": { "type": "string" },
+                        "builtin": { "type": "boolean" }
+                    }
+                }
+            },
+            "linked_changes_context": {
+                "type": ["array", "null"],
+                "description": "Reserved for Phase 2 `add-discuss-ops`. Always null in P1-3.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "change_id": { "type": "string" },
+                        "state": { "type": "string" },
+                        "artifacts_summary": { "type": "object" }
+                    }
+                }
+            }
+        }
+    })
 }
 pub fn analyze_run_outputs() -> Value {
     empty_object_outputs_schema()
@@ -489,4 +599,126 @@ pub fn doctor_run_outputs() -> Value {
 }
 pub fn tool_describe_outputs() -> Value {
     empty_object_outputs_schema()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ----- P1-3 add-instructions-get: catalogue schema population -----
+
+    #[test]
+    fn instructions_get_inputs_schema_matches_operations_md() {
+        // 對應 spec Requirement「`instructions.get` SHALL load `template` and
+        // `instruction` bodies from an embedded `spec-driven` schema bundle」+
+        // catalogue ↔ operations.md sync。
+        let schema = instructions_get();
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["required"], json!(["kind"]));
+
+        let props = schema["properties"].as_object().expect("properties");
+        // 4 個 input field — 對齊 operations.md §`instructions.get` Inputs。
+        for key in ["kind", "change_id", "role", "discussion_id"] {
+            assert!(props.contains_key(key), "input schema missing key `{key}`");
+        }
+
+        // kind enum 含 operations.md 列的 9 個值（含 discuss，P1-3 runtime 仍 reject 但 contract 包含）
+        let kind_enum = props["kind"]["enum"]
+            .as_array()
+            .expect("kind has enum array");
+        let kinds: Vec<&str> = kind_enum.iter().filter_map(|v| v.as_str()).collect();
+        for expected in [
+            "proposal", "spec", "design", "tasks", "apply", "ingest", "archive", "discuss",
+            "commit",
+        ] {
+            assert!(kinds.contains(&expected), "kind enum missing `{expected}`");
+        }
+
+        // change_id / role / discussion_id 皆為 nullable string
+        for nullable_key in ["change_id", "role", "discussion_id"] {
+            let ty = &props[nullable_key]["type"];
+            assert_eq!(
+                ty,
+                &json!(["string", "null"]),
+                "{nullable_key} should be nullable string"
+            );
+        }
+    }
+
+    #[test]
+    fn instructions_get_outputs_schema_matches_operations_md() {
+        // 對應 spec Requirement「`speclink instructions <kind>` SHALL return an
+        // 11-field envelope」+ catalogue ↔ operations.md sync。
+        let schema = instructions_get_outputs();
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["required"], json!(["kind", "instruction"]));
+
+        let props = schema["properties"].as_object().expect("properties");
+        // 11 個 output field 必須齊全
+        for key in [
+            "kind",
+            "schema_id",
+            "instruction",
+            "template",
+            "context",
+            "rules",
+            "dependencies",
+            "output_path",
+            "locale",
+            "available_roles",
+            "linked_changes_context",
+        ] {
+            assert!(props.contains_key(key), "output schema missing key `{key}`");
+        }
+        assert_eq!(props.len(), 11, "exactly 11 fields in output envelope");
+
+        // rules.items.type = "string"
+        assert_eq!(props["rules"]["items"]["type"], "string");
+
+        // dependencies.items 是 object 含 kind/capability/path
+        let dep_props = props["dependencies"]["items"]["properties"]
+            .as_object()
+            .expect("dependencies.items.properties");
+        for key in ["kind", "capability", "path"] {
+            assert!(
+                dep_props.contains_key(key),
+                "dependencies.items missing `{key}`"
+            );
+        }
+        assert_eq!(
+            props["dependencies"]["items"]["required"],
+            json!(["kind"]),
+            "dependencies.items.required = [kind]"
+        );
+
+        // template / output_path / context / locale 皆 nullable
+        for nullable_key in ["template", "output_path", "context", "locale", "schema_id"] {
+            let ty = &props[nullable_key]["type"];
+            assert_eq!(
+                ty,
+                &json!(["string", "null"]),
+                "{nullable_key} should be nullable string"
+            );
+        }
+
+        // available_roles / linked_changes_context / rules 皆 nullable array
+        for nullable_arr_key in ["available_roles", "linked_changes_context", "rules"] {
+            let ty = &props[nullable_arr_key]["type"];
+            assert_eq!(
+                ty,
+                &json!(["array", "null"]),
+                "{nullable_arr_key} should be nullable array"
+            );
+        }
+    }
+
+    #[test]
+    fn instructions_get_schemas_are_deterministic() {
+        // 對齊 P1-1 既有 `catalogue_schema_is_deterministic` 守則。
+        for _ in 0..3 {
+            assert_eq!(instructions_get(), instructions_get());
+            assert_eq!(instructions_get_outputs(), instructions_get_outputs());
+        }
+    }
 }
