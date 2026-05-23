@@ -330,3 +330,100 @@ fn snapshot_describe_tools_curated_copilot_sdk() {
         serde_json::to_string_pretty(&Value::Array(summary)).unwrap()
     );
 }
+
+// ----- add-project-status：catalogue outputs_schema 對齊 -----
+
+#[test]
+fn describe_tools_filter_project_status_emits_outputs_schema_sibling() {
+    // Requirement: catalogue `project_status` SHALL expose both inputs and outputs schemas
+    // — Scenario: describe-tools json output emits both parameters and outputs_schema for project.status
+    let tmp = TempDir::new().unwrap();
+    let env = run_ok(
+        tmp.path(),
+        &["describe-tools", "--full", "--filter", "project.status"],
+    );
+    let arr = data(&env)["content"].as_array().expect("content array");
+    assert_eq!(arr.len(), 1, "exactly 1 entry for project.status");
+    let entry = arr[0].as_object().expect("entry object");
+
+    // sibling，非 nested
+    assert!(
+        entry.contains_key("parameters"),
+        "parameters key missing at top level"
+    );
+    assert!(
+        entry.contains_key("outputs_schema"),
+        "outputs_schema must be sibling to parameters"
+    );
+
+    // parameters 是 empty inputs schema
+    let params = entry["parameters"].as_object().expect("parameters object");
+    assert_eq!(
+        params.get("additionalProperties"),
+        Some(&Value::Bool(false)),
+        "project.status parameters must be empty / closed"
+    );
+
+    // outputs_schema.required 含六 name
+    let outputs = entry["outputs_schema"].as_object().expect("outputs_schema");
+    let required: Vec<&str> = outputs["required"]
+        .as_array()
+        .expect("required array")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    for name in [
+        "provider_type",
+        "project_id",
+        "working_dir",
+        "changes_count",
+        "discussions_count",
+        "schema_active",
+    ] {
+        assert!(
+            required.contains(&name),
+            "project.status outputs_schema.required missing `{name}`; got {required:?}"
+        );
+    }
+
+    // confused-developer guard：outputs_schema 不在 parameters 內
+    assert!(
+        !params.contains_key("outputs_schema"),
+        "outputs_schema must NOT be nested inside parameters"
+    );
+}
+
+#[test]
+fn describe_tools_copilot_sdk_format_omits_outputs_schema() {
+    // Requirement: catalogue `project_status` SHALL expose both inputs and outputs schemas
+    // — Scenario: describe-tools copilot-sdk format omits outputs_schema
+    let tmp = TempDir::new().unwrap();
+    let env = run_ok(
+        tmp.path(),
+        &[
+            "describe-tools",
+            "--full",
+            "--filter",
+            "project.status",
+            "--format",
+            "copilot-sdk",
+        ],
+    );
+    let arr = data(&env)["content"].as_array().expect("content array");
+    assert_eq!(arr.len(), 1);
+    let entry = arr[0].as_object().expect("entry object");
+
+    assert!(
+        !entry.contains_key("outputs_schema"),
+        "copilot-sdk format must NOT include outputs_schema (AI tool function-call inputs-only)"
+    );
+    // 仍有 name / description / parameters
+    for key in ["name", "description", "parameters"] {
+        assert!(entry.contains_key(key), "copilot-sdk missing key: {key}");
+    }
+    assert_eq!(
+        entry.len(),
+        3,
+        "copilot-sdk must have exactly 3 keys (name, description, parameters)"
+    );
+}

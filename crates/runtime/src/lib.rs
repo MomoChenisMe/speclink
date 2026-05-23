@@ -17,6 +17,7 @@ pub mod git;
 pub mod gitignore;
 pub mod ops;
 pub mod paths;
+pub mod project_ops;
 pub mod state_machine;
 pub mod task_ops;
 pub mod tool_ops;

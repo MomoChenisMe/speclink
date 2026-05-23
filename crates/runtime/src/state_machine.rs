@@ -189,7 +189,12 @@ fn resolve_os_user() -> String {
     }
 }
 
-fn resolve_host_id() -> String {
+/// 取得當前 host 的 hostname identifier；fallback `"unknown"`。
+///
+/// 與 [`resolve_actor`] 寫入 `change.actor_json.host_id` 用同一條 chain；
+/// `project_ops::project_status` 用這個值比對「當前 host owns 該 in_progress change」。
+#[must_use]
+pub fn resolve_host_id() -> String {
     let raw = whoami::fallible::hostname().unwrap_or_default();
     if raw.trim().is_empty() {
         "unknown".to_string()

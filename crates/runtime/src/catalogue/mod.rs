@@ -77,8 +77,14 @@ pub struct Operation {
     pub curated: bool,
     /// 一句話描述（給 `describe-tools --format text` / SDK descriptor 用）。
     pub description: &'static str,
-    /// JSON Schema 函式指標。回傳 `serde_json::Value` 必為 Object 且 `type == "object"`。
+    /// 該 op 的 inputs JSON Schema 函式指標。回傳 `serde_json::Value` 必為 Object
+    /// 且 `type == "object"`。AI tool function-call descriptor 走此欄位。
     pub inputs_schema: fn() -> Value,
+    /// 該 op 的 outputs JSON Schema 函式指標。回傳 `serde_json::Value` 必為 Object。
+    /// 還未實作的 op 使用 `empty_object_outputs_schema()` stub；對應 SDD slice 真做時
+    /// 補完整 schema。`JsonRenderer` 印此欄位；`CopilotSdkRenderer` 不印（AI tool
+    /// function-call convention inputs-only）。
+    pub outputs_schema: fn() -> Value,
 }
 
 /// 37 個 operation 的鏡像 const slice。對齊 `doc/protocol/operations.md` Index 表。
@@ -99,6 +105,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Initialize a SpecLink project inside a git working tree.",
         inputs_schema: schemas::project_init,
+        outputs_schema: schemas::project_init_outputs,
     },
     Operation {
         id: "project.link",
@@ -115,6 +122,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Bind the current working tree to an existing project_id (deferred).",
         inputs_schema: schemas::project_link,
+        outputs_schema: schemas::project_link_outputs,
     },
     Operation {
         id: "project.unlink",
@@ -131,6 +139,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Remove the binding between working tree and project_id (deferred).",
         inputs_schema: schemas::project_unlink,
+        outputs_schema: schemas::project_unlink_outputs,
     },
     Operation {
         id: "project.status",
@@ -147,6 +156,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Show project status including artifact DAG and active changes.",
         inputs_schema: schemas::project_status,
+        outputs_schema: schemas::project_status_outputs,
     },
     // ----- config -----
     Operation {
@@ -164,6 +174,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Read .speclink/config.yaml and return Versioned<Config>.",
         inputs_schema: schemas::config_read,
+        outputs_schema: schemas::config_read_outputs,
     },
     Operation {
         id: "config.write",
@@ -180,6 +191,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Write config.yaml via key/value set or full-file edit with etag CAS.",
         inputs_schema: schemas::config_write,
+        outputs_schema: schemas::config_write_outputs,
     },
     // ----- schema -----
     Operation {
@@ -197,6 +209,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "List available SDD schemas (built-in plus user forks).",
         inputs_schema: schemas::schema_list,
+        outputs_schema: schemas::schema_list_outputs,
     },
     Operation {
         id: "schema.show",
@@ -213,6 +226,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Read a single schema definition by id.",
         inputs_schema: schemas::schema_show,
+        outputs_schema: schemas::schema_show_outputs,
     },
     Operation {
         id: "schema.fork",
@@ -229,6 +243,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Fork a schema into a user-editable copy.",
         inputs_schema: schemas::schema_fork,
+        outputs_schema: schemas::schema_fork_outputs,
     },
     Operation {
         id: "schema.delete",
@@ -245,6 +260,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Delete a user-forked schema (destructive).",
         inputs_schema: schemas::schema_delete,
+        outputs_schema: schemas::schema_delete_outputs,
     },
     // ----- discuss -----
     Operation {
@@ -262,6 +278,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Create a new discussion thread for structured deliberation.",
         inputs_schema: schemas::discuss_new,
+        outputs_schema: schemas::discuss_new_outputs,
     },
     Operation {
         id: "discuss.list",
@@ -278,6 +295,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "List all discussion threads.",
         inputs_schema: schemas::discuss_list,
+        outputs_schema: schemas::discuss_list_outputs,
     },
     Operation {
         id: "discuss.show",
@@ -294,6 +312,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Show a single discussion's full content.",
         inputs_schema: schemas::discuss_show,
+        outputs_schema: schemas::discuss_show_outputs,
     },
     Operation {
         id: "discuss.patch",
@@ -310,6 +329,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Patch one section of a discussion (append round, edit conclusion).",
         inputs_schema: schemas::discuss_patch,
+        outputs_schema: schemas::discuss_patch_outputs,
     },
     Operation {
         id: "discuss.conclude",
@@ -326,6 +346,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Lock a discussion as concluded; freeze its conclusion section.",
         inputs_schema: schemas::discuss_conclude,
+        outputs_schema: schemas::discuss_conclude_outputs,
     },
     Operation {
         id: "discuss.delete",
@@ -342,6 +363,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Delete a discussion thread (destructive).",
         inputs_schema: schemas::discuss_delete,
+        outputs_schema: schemas::discuss_delete_outputs,
     },
     // ----- change -----
     Operation {
@@ -359,6 +381,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Create a new change in proposing state.",
         inputs_schema: schemas::change_create,
+        outputs_schema: schemas::change_create_outputs,
     },
     Operation {
         id: "change.list",
@@ -375,6 +398,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "List all changes regardless of state.",
         inputs_schema: schemas::change_list,
+        outputs_schema: schemas::change_list_outputs,
     },
     Operation {
         id: "change.show",
@@ -391,6 +415,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Show a change's metadata and artifact roster.",
         inputs_schema: schemas::change_show,
+        outputs_schema: schemas::change_show_outputs,
     },
     Operation {
         id: "change.delete",
@@ -407,6 +432,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Delete a change row and its filesystem directory (destructive).",
         inputs_schema: schemas::change_delete,
+        outputs_schema: schemas::change_delete_outputs,
     },
     // ----- artifact -----
     Operation {
@@ -424,6 +450,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Write an artifact (proposal/design/tasks/spec) with etag CAS.",
         inputs_schema: schemas::artifact_write,
+        outputs_schema: schemas::artifact_write_outputs,
     },
     Operation {
         id: "artifact.read",
@@ -440,6 +467,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Read an artifact's content and current etag.",
         inputs_schema: schemas::artifact_read,
+        outputs_schema: schemas::artifact_read_outputs,
     },
     // ----- apply -----
     Operation {
@@ -457,6 +485,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Transition a change to in_progress and assign an actor.",
         inputs_schema: schemas::apply_start,
+        outputs_schema: schemas::apply_start_outputs,
     },
     Operation {
         id: "apply.pause",
@@ -473,6 +502,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Pause an in-progress change back to ready and clear actor.",
         inputs_schema: schemas::apply_pause,
+        outputs_schema: schemas::apply_pause_outputs,
     },
     Operation {
         id: "task.done",
@@ -489,6 +519,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Mark a task as done; auto-transition when all tasks complete.",
         inputs_schema: schemas::task_done,
+        outputs_schema: schemas::task_done_outputs,
     },
     // ----- review -----
     Operation {
@@ -506,6 +537,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Approve a review phase (artifact or code) and advance state.",
         inputs_schema: schemas::review_approve,
+        outputs_schema: schemas::review_approve_outputs,
     },
     Operation {
         id: "review.reject",
@@ -522,6 +554,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Reject a review phase with a reason; add synthetic feedback tasks.",
         inputs_schema: schemas::review_reject,
+        outputs_schema: schemas::review_reject_outputs,
     },
     Operation {
         id: "review.history",
@@ -538,6 +571,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "List all review events for a change in chronological order.",
         inputs_schema: schemas::review_history,
+        outputs_schema: schemas::review_history_outputs,
     },
     // ----- archive -----
     Operation {
@@ -555,6 +589,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Archive a completed change with spec delta merge.",
         inputs_schema: schemas::archive_run,
+        outputs_schema: schemas::archive_run_outputs,
     },
     // ----- spec -----
     Operation {
@@ -572,6 +607,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "List canonical capability specs (post-archive merge targets).",
         inputs_schema: schemas::spec_list,
+        outputs_schema: schemas::spec_list_outputs,
     },
     Operation {
         id: "spec.show",
@@ -588,6 +624,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Read a canonical capability spec by id.",
         inputs_schema: schemas::spec_show,
+        outputs_schema: schemas::spec_show_outputs,
     },
     // ----- instructions / analyze / doctor / tool -----
     Operation {
@@ -611,6 +648,7 @@ const OPERATIONS: &[Operation] = &[
         curated: true,
         description: "Get AI prompt and template for an artifact or workflow step.",
         inputs_schema: schemas::instructions_get,
+        outputs_schema: schemas::instructions_get_outputs,
     },
     Operation {
         id: "analyze.run",
@@ -627,6 +665,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Run cross-artifact analyze (Coverage, Consistency, Ambiguity, Gaps).",
         inputs_schema: schemas::analyze_run,
+        outputs_schema: schemas::analyze_run_outputs,
     },
     Operation {
         id: "validate.run",
@@ -643,6 +682,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Validate a change's artifacts against its schema.",
         inputs_schema: schemas::validate_run,
+        outputs_schema: schemas::validate_run_outputs,
     },
     Operation {
         id: "drift.run",
@@ -659,6 +699,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Detect drift between change artifacts and current codebase state.",
         inputs_schema: schemas::drift_run,
+        outputs_schema: schemas::drift_run_outputs,
     },
     Operation {
         id: "doctor.run",
@@ -675,6 +716,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Run 9 health-check categories with optional auto-fix.",
         inputs_schema: schemas::doctor_run,
+        outputs_schema: schemas::doctor_run_outputs,
     },
     Operation {
         id: "tool.describe",
@@ -691,6 +733,7 @@ const OPERATIONS: &[Operation] = &[
         curated: false,
         description: "Describe the operation catalogue in machine or human format.",
         inputs_schema: schemas::tool_describe,
+        outputs_schema: schemas::tool_describe_outputs,
     },
 ];
 
@@ -894,5 +937,83 @@ mod tests {
         .into_iter()
         .collect();
         assert_eq!(actual, expected);
+    }
+
+    // ----- outputs_schema (B 方案) -----
+
+    #[test]
+    fn catalogue_outputs_schema_pointers_all_non_panic_and_object() {
+        for op in Catalogue::all() {
+            let schema = (op.outputs_schema)();
+            assert!(schema.is_object(), "outputs_schema not object for {}", op.id);
+            let typ = schema
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| panic!("outputs_schema missing string type for {}", op.id));
+            assert_eq!(
+                typ, "object",
+                "outputs_schema type != object for {}",
+                op.id
+            );
+        }
+    }
+
+    #[test]
+    fn catalogue_outputs_schema_is_deterministic() {
+        for op in Catalogue::all() {
+            let a = (op.outputs_schema)();
+            let b = (op.outputs_schema)();
+            assert_eq!(a, b, "outputs_schema not deterministic for {}", op.id);
+        }
+    }
+
+    #[test]
+    fn catalogue_project_status_outputs_required_has_six_names() {
+        let op = Catalogue::get("project.status").expect("project.status in catalogue");
+        let schema = (op.outputs_schema)();
+        let required: HashSet<&str> = schema
+            .get("required")
+            .and_then(Value::as_array)
+            .expect("project.status outputs has required array")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        let expected: HashSet<&str> = [
+            "provider_type",
+            "project_id",
+            "working_dir",
+            "changes_count",
+            "discussions_count",
+            "schema_active",
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(required, expected);
+    }
+
+    #[test]
+    fn catalogue_change_show_outputs_properties_has_all_tasks_done_and_next_actions() {
+        let op = Catalogue::get("change.show").expect("change.show in catalogue");
+        let schema = (op.outputs_schema)();
+        let props = schema
+            .get("properties")
+            .and_then(Value::as_object)
+            .expect("change.show outputs has properties");
+        for required_key in ["change", "artifacts", "all_tasks_done", "next_actions"] {
+            assert!(
+                props.contains_key(required_key),
+                "change.show outputs properties missing key: {}",
+                required_key
+            );
+        }
+        // 型別 sanity
+        assert_eq!(
+            props["all_tasks_done"]["type"], "boolean",
+            "all_tasks_done not boolean"
+        );
+        assert_eq!(
+            props["next_actions"]["type"], "array",
+            "next_actions not array"
+        );
     }
 }

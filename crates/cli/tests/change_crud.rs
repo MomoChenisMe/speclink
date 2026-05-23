@@ -218,6 +218,17 @@ fn show_change_with_artifacts() {
         arts.iter()
             .any(|a| a["kind"] == "spec" && a["capability"] == "user-auth")
     );
+    // add-project-status：envelope.data 含 all_tasks_done (false) + next_actions
+    assert_eq!(env["data"]["all_tasks_done"], false);
+    assert!(env["data"]["next_actions"].is_array());
+    // fresh proposing change with proposal+design (but no tasks.md) → next_actions = ["artifact.write tasks"]
+    let actions: Vec<&str> = env["data"]["next_actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(actions, vec!["artifact.write tasks"]);
 }
 
 #[test]
@@ -235,6 +246,23 @@ fn show_change_empty_has_empty_artifacts_array() {
         .clone();
     let env = parse_json(&out.stdout);
     assert_eq!(env["data"]["artifacts"], serde_json::json!([]));
+    // add-project-status：fresh proposing change，all_tasks_done=false；
+    // 三個 artifact 都不在 → next_actions 三個 hint
+    assert_eq!(env["data"]["all_tasks_done"], false);
+    let actions: Vec<&str> = env["data"]["next_actions"]
+        .as_array()
+        .expect("next_actions")
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(
+        actions,
+        vec![
+            "artifact.write proposal",
+            "artifact.write design",
+            "artifact.write tasks"
+        ]
+    );
 }
 
 #[test]

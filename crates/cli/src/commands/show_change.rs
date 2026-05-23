@@ -32,6 +32,9 @@ pub async fn run(
             "kind": a.kind,
             "capability": a.capability,
         })).collect::<Vec<_>>(),
+        // add-project-status：dogfood UX hints（spec change-store Requirement）
+        "all_tasks_done": show.all_tasks_done,
+        "next_actions": show.next_actions,
     });
     Ok((data, Vec::new()))
 }

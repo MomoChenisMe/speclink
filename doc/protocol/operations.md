@@ -2590,6 +2590,15 @@ $ speclink config set rules.require_code_review false --json
             "code_approved": { "type": "boolean" }
           }
         },
+        "all_tasks_done": {
+          "type": "boolean",
+          "description": "Mirror of change.all_tasks_done column maintained by task_ops (set when last task done)."
+        },
+        "next_actions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "State-driven hint (e.g. [\"task.done 2.1\"], [\"archive.run\"], [\"review.approve\", \"review.reject\"]). See specs/change-store for the full lookup table."
+        },
         "created_at": { "type": "string", "format": "date-time" },
         "updated_at": { "type": "string", "format": "date-time" }
       }

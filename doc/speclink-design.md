@@ -2619,7 +2619,7 @@ Slice 編號接續 64a-75 series。
 | # | Slice 名稱 | Op / 模組 | 為什麼自成一條 |
 |---|---|---|---|
 | **P1-1** | `add-tool-describe-and-catalogue` | `tool.describe` + catalogue source loader | 把 `operations.md` / Rust catalogue registry 變成可程式查詢的 single source。**P1-3 / P1-4 的 prerequisite**。Multi-format renderer（`copilotkit` / `text` / `json`）一次寫完。 |
-| **P1-2** | `add-project-status` | `project.status` | Read-only DAG 看板。獨立模組，可與 P1-1 並行。順便覆蓋 status renderer 的 human-output pretty-print 邊角。 |
+| **P1-2** | `add-project-status` | `project.status` | Read-only DAG 看板。獨立模組，可與 P1-1 並行。順便覆蓋 status renderer 的 human-output pretty-print 邊角。 **(implemented 2026-05-23 — `change.show` envelope 順手擴 `all_tasks_done` + `next_actions`、catalogue Operation struct 加 `outputs_schema` 欄位)** |
 | **P1-3** | `add-instructions-get` | `instructions.get` | Instruction template 引擎，每個 artifact kind / step 一個模板。依賴 P1-1 的 catalogue source 取得 canonical op ID。 |
 | **P1-4** | `add-skill-deploy` | Skill 部署機制 | `init --tools` + workflow / bindings/{bash,tool}.md 拼裝、frontmatter merge、host 路徑解析（`.claude/skills/` / `.agents/skills/` / SDK dir）、idempotent overwrite。依賴 P1-1（bindings 引用 canonical op ID）。**ship 完即可切換 dogfooding**。 |
 | **P1-5** | `add-restore-from-artifacts` | `restore --from-artifacts` | Off-path 災難復原；artifact crawler + state.db 重建器；doctor `state.db_missing` auto-fix 對接。獨立模組，不阻塞 dogfooding 啟動，dogfood 跑起來再補。 |
@@ -2669,11 +2669,12 @@ Dogfood 啟動後、踩到真實缺口時依下列順序補完：
   - 現況：當 user 在 `code_reviewing`（task 全完成 + `require_code_review=true`）跑 `apply pause`，CLI 回 `state.transition_invalid: code_reviewing → ready not permitted`，user 必須先 `task undo` 倒回 `in_progress` 才能 pause
   - 併入 **Phase 2 #2 `add-review-ops`**：解開 walking-skeleton hard-code 同時順手加 `apply pause` 從 `code_reviewing` 的 idempotent path（對齊 §6.2 ensure-actor 慣例 — 回 success envelope + state hint，而非 transition_invalid）
 
-- **`show change` envelope 應含 `all_tasks_done` 與 `next_actions` hints**
-  - 現況：`show change` envelope 只回 `{changeId, state, version, createdAt, updatedAt, name, schemaId}` + `artifacts[]`，缺 `all_tasks_done`；apply skill / dogfood user 需從 `task list` 推算「最後一個 task 是否完成」
-  - 併入 **Phase 1 #2 `add-project-status`**：本來就要碰 status / change query 的 read shape，順手加：
-    - `all_tasks_done: bool`
-    - `next_actions: [string]`（如 `["task.done 3", "apply.pause"]` 或 `["archive.run"]`）對 dogfood UX 有顯著價值
+- ~~**`show change` envelope 應含 `all_tasks_done` 與 `next_actions` hints**~~ ✅ **shipped 2026-05-23 with `add-project-status`** — `change.show` envelope 加 `all_tasks_done: bool`（讀 change 表 column）+ `next_actions: [string]`（state-driven 查表 + in_progress 用 `task_ops::parse_checkbox_lines` 取第一個 pending task 的 1-based INDEX，對齊 `task done <INDEX>` CLI）。同 slice 順手把 catalogue 結構升 outputs_schema 雙向 schema 暴露。
+
+- **2026-05-23 `add-project-status` 歸檔前 dogfood 修正 2 個 anomaly**（趁 slice 沒 archive 一次做對）：
+  - **#1 `current_change` 永不命中**：原設計把 `actor.host_id` 跟 `link.yaml.instance_id` 比對，但前者是 OS hostname、後者是 project UUID，永遠不相等 → dogfood headline UX 失效。修正：`project_ops` 比對端改用 `state_machine::resolve_host_id()`（與 `apply.start` 寫入 `actor.host_id` 同一條 resolution chain）；`resolve_host_id()` 從 private 改 `pub`。
+  - **#2 `next_actions` emit label 而非 INDEX**：原 `compute_next_actions` 自行掃 `- [ ]` 行抽 label（如 `"task.done 2.1"`），但 `speclink task done` CLI 只收 1-based integer INDEX → AI agent 照 hint 跑會 `invalid digit found in string` retry loop。修正：移除自寫 parser、改 reuse `task_ops::parse_checkbox_lines` 取第一個 `!done` 的 `.index`，emit `"task.done <INDEX>"`。
+  - 兩 anomaly 都來自 `~/Documents/GitHub/test-speclink-sdd` e2e 測試。修正後 full dogfood loop (`status → apply.start → current_change appears → next_actions = task.done N → execute → advance → all_tasks_done → archive.run`) 一條龍通過、無 retry loop。
 
 未列入 backlog 的 anomaly（已被既有 spec / phase 覆蓋）：
 - Archive 需 `require_code_review=false` — §18.1 #22 已明寫 walking-skeleton mode hard-code、Phase 2 #2 必然處理

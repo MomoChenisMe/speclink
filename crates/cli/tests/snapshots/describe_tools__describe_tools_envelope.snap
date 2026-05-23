@@ -9,6 +9,12 @@ expression: "serde_json::to_string_pretty(&env).unwrap()"
         "description": "Create a new change in proposing state.",
         "id": "change.create",
         "name": "new_change",
+        "outputs_schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": true,
+          "properties": {},
+          "type": "object"
+        },
         "parameters": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
           "additionalProperties": false,

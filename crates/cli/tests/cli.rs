@@ -120,6 +120,10 @@ fn init_with_force_overwrites_link_yaml() {
 
 #[test]
 fn status_after_init_returns_expected_fields() {
+    // add-project-status slice 後 `speclink status` 印 project.status op envelope
+    // （operations.md §1389：provider_type / project_id / working_dir / current_change /
+    // changes_count / discussions_count / schema_active）；不再印 bootstrap-era
+    // artifact_root / state_root / git_head / requires_git 欄位。
     let tmp = TempDir::new().unwrap();
     let w = canonical(tmp.path());
     git_init_with_commit(&w);
@@ -131,12 +135,13 @@ fn status_after_init_returns_expected_fields() {
     assert!(out.status.success());
     let json = parse_json(&out.stdout);
     assert_eq!(json["ok"], true);
-    assert_eq!(json["data"]["provider"], "local");
-    assert_eq!(json["data"]["artifact_root"], ".speclink");
-    assert_eq!(json["data"]["state_root"], ".git/speclink");
+    assert_eq!(json["data"]["provider_type"], "local");
     assert!(json["data"]["project_id"].is_string());
-    assert!(json["data"]["requires_git"].as_bool().unwrap());
-    assert!(json["data"]["git_head"].is_string());
+    assert!(json["data"]["working_dir"].is_string());
+    assert_eq!(json["data"]["current_change"], serde_json::Value::Null);
+    assert_eq!(json["data"]["changes_count"]["proposing"], 0);
+    assert_eq!(json["data"]["discussions_count"]["active"], 0);
+    assert_eq!(json["data"]["schema_active"], "spec-driven");
 }
 
 #[test]
@@ -286,7 +291,10 @@ fn redact(mut v: serde_json::Value) -> serde_json::Value {
         match v {
             serde_json::Value::Object(map) => {
                 for (k, val) in map.iter_mut() {
-                    if matches!(k.as_str(), "requestId" | "project_id" | "git_head") {
+                    if matches!(
+                        k.as_str(),
+                        "requestId" | "project_id" | "git_head" | "working_dir"
+                    ) {
                         *val = serde_json::Value::String(format!("<{k}>"));
                     } else {
                         walk(val);

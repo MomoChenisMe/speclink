@@ -1,6 +1,6 @@
 ---
-source: crates/cli/tests/cli.rs
-expression: json
+source: crates/cli/tests/status.rs
+expression: env
 ---
 {
   "data": {
