@@ -728,115 +728,91 @@ tests:
 ---
 ### Requirement: Walking-skeleton mode SHALL hard-code both review flags to `false`
 
-In this slice, `require_artifact_review` and `require_code_review` SHALL both be hard-coded to `false` in `crates/runtime/src/state_machine.rs` via a `ReviewPolicy::walking_skeleton()` constructor. The engine SHALL NOT read `.speclink/config.yaml` for these values in this slice. The hard-coding SHALL be replaced by config-driven values in a future slice without changing the transition table.
+The behavior in this requirement SHALL be replaced by config-driven values. The engine SHALL read `require_artifact_review` and `require_code_review` from `Provider::config_store().read_config().value.rules` instead of hard-coding them in `crates/runtime/src/state_machine.rs`. The transition table SHALL remain unchanged.
 
-#### Scenario: Walking-skeleton mode skips reviewing state
+The walking-skeleton **defaults** SHALL continue to be `require_artifact_review=false` and `require_code_review=false`, applied via `ConfigStore::read_defaults()` whenever the live config is missing or malformed (see config-rw capability). The engine SHALL NOT cache the read result across transitions; each DAG evaluator firing and each terminal `task.done` SHALL invoke `read_config()` fresh, so that a `speclink config set` taking effect mid-cycle changes the next evaluator output.
 
-- **WHEN** the DAG evaluator fires on a change in `proposing` state under walking-skeleton mode
-- **THEN** the transition SHALL go directly from `proposing` to `ready`, SHALL NOT enter `reviewing`, and the `state_transition` audit row SHALL show `from_state='proposing'`, `to_state='ready'`, `reason='artifact_dag_complete'`
+When `read_config()` returns a warning of code `config.malformed_using_defaults`, the engine SHALL pass that warning through the JSON envelope of the triggering op (`artifact.write` / `task.done`) so users see the fallback explicitly.
 
-#### Scenario: Walking-skeleton mode skips code_reviewing state
+The previous `ReviewPolicy::walking_skeleton()` constructor SHALL be removed; a new `ReviewPolicy::from_config(&Config)` constructor SHALL replace it and SHALL be the single source of `(require_artifact_review, require_code_review)` tuples consumed by the state machine evaluator.
 
-- **WHEN** `task.done` completes the last task on a change under walking-skeleton mode
+#### Scenario: Default config still skips reviewing state
+
+- **WHEN** the DAG evaluator fires on a change in `proposing` state and `read_config()` returns defaults (config missing or malformed)
+- **THEN** the transition SHALL go directly from `proposing` to `ready`, SHALL NOT enter `reviewing`, the `state_transition` audit row SHALL show `from_state='proposing'`, `to_state='ready'`, `reason='artifact_dag_complete'`, AND the op's JSON envelope `warnings` SHALL contain `config.malformed_using_defaults` when config was malformed (the warning SHALL NOT be emitted when config is simply absent in a fresh project)
+
+#### Scenario: Default config still skips code_reviewing state
+
+- **WHEN** `task.done` completes the last task on a change while `read_config()` returns defaults
 - **THEN** the engine SHALL set `all_tasks_done=1`, SHALL keep `state='in_progress'`, SHALL NOT transition to `code_reviewing`, and the response `data` SHALL include `auto_transitioned: false`, `all_tasks_done: true`, `state: "in_progress"`
 
-<!-- @trace
-source: add-state-machine-and-apply
-updated: 2026-05-22
--->
+#### Scenario: Setting require_artifact_review=true diverts to reviewing
+
+- **GIVEN** the user has run `speclink config set rules.require_artifact_review true`
+- **WHEN** the DAG evaluator fires on a change in `proposing` state with a full artifact set
+- **THEN** the transition SHALL go from `proposing` to `reviewing` (not `ready`), and the `state_transition` audit row SHALL show `to_state='reviewing'`
+
+#### Scenario: Setting require_code_review=true holds in_progress through code_reviewing
+
+- **GIVEN** the user has run `speclink config set rules.require_code_review true`
+- **WHEN** `task.done` completes the last task on a change in `in_progress`
+- **THEN** the engine SHALL transition from `in_progress` to `code_reviewing`, the `state_transition` audit row SHALL show `to_state='code_reviewing'`, and the response `data` SHALL include `auto_transitioned: true`, `all_tasks_done: true`, `state: "code_reviewing"`
+
+#### Scenario: Mid-cycle config flip is reflected on next transition
+
+- **GIVEN** a change in `proposing` state and `read_config()` returning defaults
+- **WHEN** the user runs `speclink config set rules.require_artifact_review true` then immediately writes the final artifact triggering the DAG evaluator
+- **THEN** the evaluator SHALL observe the new config value and transition to `reviewing`, demonstrating that no per-process cache holds the prior value
 
 
 <!-- @trace
-source: add-state-machine-and-apply
-updated: 2026-05-22
+source: add-config-rw
+updated: 2026-05-23
 code:
-  - crates/cli/src/commands/delete_change.rs
-  - crates/cli/src/main.rs
-  - crates/cli/src/commands/new_artifact.rs
-  - crates/provider/src/types.rs
-  - crates/provider-local/src/state_db.rs
-  - crates/runtime/src/apply_ops.rs
-  - crates/provider-local/src/state_machine_store.rs
-  - crates/cli/src/commands/new_change.rs
-  - crates/runtime/src/change_ops.rs
-  - crates/provider/Cargo.toml
-  - crates/cli/src/commands/show_change.rs
-  - crates/cli/src/human.rs
-  - crates/cli/src/snapshots/speclink_cli__human__tests__array_of_objects.snap
-  - crates/runtime/src/bootstrap.rs
-  - crates/runtime/src/dev_precheck.rs
-  - crates/runtime/src/lib.rs
-  - crates/cli/src/commands/list_specs.rs
-  - crates/cli/src/commands/apply_pause.rs
-  - doc/speclink-design.md
-  - crates/cli/src/snapshots/speclink_cli__human__tests__empty_array.snap
-  - crates/provider-local/Cargo.toml
-  - README.md
+  - crates/provider-local/src/archive_store.rs
   - crates/provider-local/src/lib.rs
-  - crates/cli/src/commands/list_changes.rs
-  - crates/cli/src/snapshots/speclink_cli__human__tests__nested_object.snap
-  - doc/protocol/operations.md
-  - crates/cli/src/commands/apply_start.rs
-  - crates/cli/src/snapshots/speclink_cli__human__tests__empty_object.snap
-  - crates/cli/src/commands/task_undo.rs
-  - crates/cli/src/commands/task_done.rs
-  - crates/cli/src/commands/init.rs
-  - crates/provider-local/src/artifact_store.rs
-  - crates/provider-local/src/change_store.rs
-  - crates/cli/src/commands/artifact_read.rs
-  - crates/provider/src/lib.rs
-  - crates/cli/src/lib.rs
-  - crates/runtime/Cargo.toml
-  - crates/cli/src/commands/unlink.rs
-  - crates/cli/src/commands/mod.rs
-  - crates/runtime/src/error.rs
-  - crates/cli/src/snapshots/speclink_cli__human__tests__array_of_scalars.snap
-  - crates/provider-local/src/paths.rs
-  - crates/runtime/src/ops.rs
-  - crates/runtime/src/task_ops.rs
-  - crates/cli/src/output.rs
-  - crates/runtime/src/state_machine.rs
-  - Cargo.toml
-  - crates/cli/src/snapshots/speclink_cli__human__tests__flat_object.snap
+  - crates/provider/Cargo.toml
   - crates/provider/src/error.rs
+  - crates/provider/src/config_store.rs
+  - crates/runtime/src/state_machine.rs
+  - crates/runtime/src/task_ops.rs
+  - doc/protocol/operations.md
+  - crates/cli/src/main.rs
+  - crates/cli/src/commands/task_done.rs
+  - crates/provider-local/src/config_store.rs
+  - crates/provider-local/src/state_db.rs
+  - crates/runtime/src/change_ops.rs
+  - crates/runtime/src/lib.rs
+  - crates/runtime/src/ops.rs
+  - doc/speclink-design.md
+  - crates/runtime/src/bootstrap.rs
+  - crates/runtime/src/apply_ops.rs
+  - crates/provider/src/lib.rs
+  - crates/runtime/src/error.rs
+  - crates/cli/src/commands/config.rs
   - crates/runtime/src/artifact_ops.rs
-  - crates/cli/src/snapshots/speclink_cli__human__tests__string_with_newlines.snap
-  - crates/cli/src/commands/status.rs
-  - crates/cli/src/commands/link.rs
-  - crates/cli/src/commands/task_list.rs
+  - crates/runtime/src/archive_ops.rs
+  - crates/runtime/src/config_ops.rs
+  - crates/cli/src/commands/mod.rs
+  - crates/provider/src/jsonpath.rs
+  - crates/provider-local/src/migrations/v5_config_tables.sql
+  - crates/provider-local/src/artifact_store.rs
   - crates/provider-local/src/store.rs
+  - crates/cli/Cargo.toml
+  - crates/provider/src/types.rs
+  - crates/provider-local/src/change_store.rs
+  - crates/provider-local/src/state_machine_store.rs
 tests:
-  - crates/cli/tests/artifact_io.rs
-  - crates/cli/tests/json_envelope_v3.rs
-  - crates/cli/tests/snapshots/snapshots__show_change_not_found_error.snap
-  - crates/cli/tests/snapshots/snapshots__new_artifact_proposal_hello.snap
-  - crates/cli/tests/cli.rs
   - crates/runtime/tests/task_ops.rs
-  - crates/cli/tests/snapshots/snapshots__list_changes_one.snap
-  - crates/cli/tests/snapshots/snapshots__delete_change_success.snap
-  - crates/cli/tests/task_workflow.rs
-  - crates/cli/tests/snapshots/snapshots__new_artifact_version_conflict_error.snap
-  - crates/runtime/tests/error_mapping.rs
+  - crates/provider-local/tests/migration_v5.rs
+  - crates/cli/tests/init_config_state.rs
+  - crates/provider/tests/config_store_trait.rs
+  - crates/runtime/tests/state_machine_config.rs
+  - crates/provider-local/tests/config_store.rs
   - crates/cli/tests/state_machine_e2e.rs
   - crates/provider/tests/error_codes.rs
-  - crates/cli/tests/human_output_v3.rs
-  - crates/cli/tests/snapshots/snapshots__list_specs_two_caps.snap
-  - crates/cli/tests/snapshots/snapshots__new_change_success.snap
-  - crates/provider-local/tests/state_machine_store.rs
-  - crates/provider/tests/trait_surface.rs
-  - crates/cli/tests/etag_concurrency.rs
-  - crates/runtime/tests/state_machine.rs
-  - crates/runtime/tests/apply_ops.rs
-  - crates/cli/tests/snapshots/snapshots__new_change_duplicate_error.snap
-  - crates/runtime/tests/artifact_ops.rs
-  - crates/runtime/tests/actor_resolution.rs
-  - crates/cli/tests/snapshots.rs
-  - crates/cli/tests/snapshots/snapshots__artifact_read_proposal_hello.snap
-  - crates/runtime/tests/change_ops.rs
-  - crates/cli/tests/apply_lifecycle.rs
-  - crates/cli/tests/snapshots/snapshots__show_change_empty.snap
-  - crates/cli/tests/change_crud.rs
-  - crates/provider-local/tests/migration_v3.rs
+  - crates/provider-local/tests/migration_v4.rs
+  - crates/cli/tests/config_cli.rs
 -->
 
 ---

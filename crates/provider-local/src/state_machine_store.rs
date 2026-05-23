@@ -41,7 +41,7 @@ impl LocalStateMachineStore {
             .map_err(|e| ProviderError::Internal(format!("create state root: {e}")))?;
         let path = self.state_root.join("state.db");
         let db = StateDb::open(&path).map_err(|e| map_state_db_error(e, "open state.db"))?;
-        db.migrate(4)
+        db.migrate(5)
             .map_err(|e| map_state_db_error(e, "migrate state.db"))?;
         Ok(db)
     }

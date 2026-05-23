@@ -55,6 +55,29 @@ pub mod codes {
     pub const VALIDATION_ARCHIVE_FAILED: &str = "validation.archive_failed";
     /// `archive.run --skip-specs` 路徑的 warning carrier code；不走 error path。
     pub const ARCHIVE_SPECS_SKIPPED: &str = "archive.specs_skipped";
+
+    // ----- slice A5 (`add-config-rw`) -----
+
+    /// `.speclink/config.yaml` 不存在；read path 走 fallback、不抛此 error；
+    /// 僅 `config.write` 在檔案真的不存在時抛。
+    pub const CONFIG_NOT_FOUND: &str = "config.not_found";
+    /// `.speclink/config.yaml` YAML 解析失敗 / schema 不符；read path 走 fallback、
+    /// 不抛此 error；write path（`Edit`）內容解析失敗時抛。
+    pub const CONFIG_MALFORMED: &str = "config.malformed";
+    /// `config.write(Set)` 的 `key` JSONPath 不存在於現 config（或包含不支援的
+    /// JSONPath 語法如 wildcard）。
+    pub const CONFIG_KEY_NOT_FOUND: &str = "config.key_not_found";
+    /// `config.write` / `state-machine` 等 CAS 失敗時的 etag 比對未通過。
+    /// 對應 design contract §「失敗模式」`state.etag_mismatch`（exit 7）。
+    pub const STATE_ETAG_MISMATCH: &str = "state.etag_mismatch";
+    /// `speclink config edit` 缺 `--stdin` / `--editor <cmd>` / `$EDITOR` 三條輸入路徑時抛；
+    /// 由 `polish-config-error-messages` 引入，避免 reuse `config.key_not_found` 把 mode hint
+    /// 塞進 key 欄位。
+    pub const CONFIG_EDIT_MODE_REQUIRED: &str = "config.edit_mode_required";
+    /// Warning code：read path 偵測到外部編輯、reconcile 後 emit。
+    pub const CONFIG_EXTERNAL_EDIT_DETECTED: &str = "config.external_edit_detected";
+    /// Warning code：read path 走 fallback 時 emit。
+    pub const CONFIG_MALFORMED_USING_DEFAULTS: &str = "config.malformed_using_defaults";
 }
 
 /// Provider 層的錯誤型別。
@@ -140,6 +163,32 @@ pub enum ProviderError {
     #[error("archive-time validation failed: {reason}")]
     ValidationArchiveFailed { reason: String },
 
+    /// 對應 `config.not_found`（A5）：write path 需要 config.yaml 但檔案不存在。
+    #[error("config.yaml not found at {path}")]
+    ConfigNotFound { path: String },
+
+    /// 對應 `config.malformed`（A5）：write path 接到的 YAML 解析失敗 / type 不符。
+    #[error("config content malformed: {reason}")]
+    ConfigMalformed { reason: String },
+
+    /// 對應 `config.key_not_found`（A5）：`config set` 的 JSONPath 不在已知 key 集合。
+    #[error("config key `{key}` not found")]
+    ConfigKeyNotFound { key: String },
+
+    /// 對應 `state.etag_mismatch`（A5）：config write 的 expected_etag 與 current etag 不符
+    /// （或 internal CAS 偵測到 concurrent writer）。Display SHALL 把 `expected` 走純字串、
+    /// 無值時印 `<none>`，不洩漏 Rust `Some(...)` / `None` Debug wrapper。
+    #[error("config etag mismatch (expected={}, actual={actual})", expected.as_deref().unwrap_or("<none>"))]
+    StateEtagMismatch {
+        expected: Option<String>,
+        actual: String,
+    },
+
+    /// 對應 `config.edit_mode_required`（polish-config-error-messages）：
+    /// `speclink config edit` 三條輸入路徑（`--stdin` / `--editor <cmd>` / `$EDITOR`）皆缺。
+    #[error("`speclink config edit` requires --stdin, --editor <cmd>, or $EDITOR to be set")]
+    ConfigEditModeRequired,
+
     /// 內部 I/O / SQLite / YAML / 其他底層錯誤；CLI 層映射為通用 exit code 1。
     #[error("provider internal error: {0}")]
     Internal(String),
@@ -168,6 +217,11 @@ impl ProviderError {
             ProviderError::ChangeDagIncomplete { .. } => codes::CHANGE_DAG_INCOMPLETE,
             ProviderError::ChangeTasksIncomplete { .. } => codes::CHANGE_TASKS_INCOMPLETE,
             ProviderError::ValidationArchiveFailed { .. } => codes::VALIDATION_ARCHIVE_FAILED,
+            ProviderError::ConfigNotFound { .. } => codes::CONFIG_NOT_FOUND,
+            ProviderError::ConfigMalformed { .. } => codes::CONFIG_MALFORMED,
+            ProviderError::ConfigKeyNotFound { .. } => codes::CONFIG_KEY_NOT_FOUND,
+            ProviderError::StateEtagMismatch { .. } => codes::STATE_ETAG_MISMATCH,
+            ProviderError::ConfigEditModeRequired => codes::CONFIG_EDIT_MODE_REQUIRED,
             ProviderError::Internal(_) => "internal.error",
         }
     }
@@ -182,6 +236,7 @@ impl ProviderError {
             self,
             ProviderError::ArtifactVersionConflict { .. }
                 | ProviderError::StateVersionConflict { .. }
+                | ProviderError::StateEtagMismatch { .. }
         )
     }
 }

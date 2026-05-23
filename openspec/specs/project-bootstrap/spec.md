@@ -675,3 +675,79 @@ tests:
   - crates/runtime/tests/bootstrap.rs
   - crates/runtime/tests/ops.rs
 -->
+
+---
+### Requirement: `speclink init` MUST insert the `config_state` singleton row in the same transaction as the project row
+
+When `speclink init` runs against a state.db that has been migrated to schema version 5, the prepare/commit phase SHALL compute the sha256, byte size, and mtime_ns of the freshly written `.speclink/config.yaml`, then insert `config_state (id=1, content_sha256=<sha>, size_bytes=<size>, mtime_ns=<mtime>, version=1, updated_at=now, written_by=NULL)` in the **same** SQLite transaction that inserts the `project` row. The transaction SHALL be all-or-nothing: if any prepare step (including config_state computation or insert) fails, no row SHALL be left in state.db and no file SHALL remain on disk under `.speclink/`.
+
+This requirement SHALL apply to fresh-init paths only. Legacy v4-to-v5 upgrade paths SHALL rely on the `INSERT OR IGNORE` clause inside the v5 migration step (see config-rw capability) and SHALL NOT re-run the init logic.
+
+The existing requirement "Init MUST commit artifact and state changes only after every prepare step succeeds" continues to govern the wider all-or-nothing semantics; this requirement extends it to cover the new row.
+
+#### Scenario: Fresh init populates config_state row
+
+- **WHEN** a user runs `speclink init` in a fresh git repository with a v5-capable binary
+- **THEN** the command SHALL exit 0, `state.db` SHALL contain exactly one `project` row and exactly one `config_state` row with `id=1`, `version=1`, `content_sha256` matching `sha256(.speclink/config.yaml bytes)`, `size_bytes` matching the file size, and `written_by=NULL`
+
+#### Scenario: Failed init leaves no config_state row
+
+- **GIVEN** a directory where `.speclink/` cannot be created (e.g. read-only filesystem)
+- **WHEN** the user runs `speclink init`
+- **THEN** the command SHALL exit non-zero, no `.speclink/` directory SHALL exist, no `project` row SHALL be present in any state.db that was opened, and no `config_state` row SHALL be present either
+
+#### Scenario: Re-init with --force preserves config_state row alignment
+
+- **GIVEN** an already-initialized project at schema v5 with `config_state.version=N`
+- **WHEN** the user runs `speclink init --force`
+- **THEN** the command SHALL preserve the existing state.db (per the existing `--force` requirement), SHALL recompute the sha256 of the rewritten config.yaml, and SHALL update `config_state` to `content_sha256=<new>`, `size_bytes=<new>`, `mtime_ns=<new>`, `version=version+1`, `updated_at=now` if and only if the new bytes differ from the old sha; if the bytes match, the row SHALL NOT be touched
+
+<!-- @trace
+source: add-config-rw
+updated: 2026-05-23
+code:
+  - crates/provider-local/src/archive_store.rs
+  - crates/provider-local/src/lib.rs
+  - crates/provider/Cargo.toml
+  - crates/provider/src/error.rs
+  - crates/provider/src/config_store.rs
+  - crates/runtime/src/state_machine.rs
+  - crates/runtime/src/task_ops.rs
+  - doc/protocol/operations.md
+  - crates/cli/src/main.rs
+  - crates/cli/src/commands/task_done.rs
+  - crates/provider-local/src/config_store.rs
+  - crates/provider-local/src/state_db.rs
+  - crates/runtime/src/change_ops.rs
+  - crates/runtime/src/lib.rs
+  - crates/runtime/src/ops.rs
+  - doc/speclink-design.md
+  - crates/runtime/src/bootstrap.rs
+  - crates/runtime/src/apply_ops.rs
+  - crates/provider/src/lib.rs
+  - crates/runtime/src/error.rs
+  - crates/cli/src/commands/config.rs
+  - crates/runtime/src/artifact_ops.rs
+  - crates/runtime/src/archive_ops.rs
+  - crates/runtime/src/config_ops.rs
+  - crates/cli/src/commands/mod.rs
+  - crates/provider/src/jsonpath.rs
+  - crates/provider-local/src/migrations/v5_config_tables.sql
+  - crates/provider-local/src/artifact_store.rs
+  - crates/provider-local/src/store.rs
+  - crates/cli/Cargo.toml
+  - crates/provider/src/types.rs
+  - crates/provider-local/src/change_store.rs
+  - crates/provider-local/src/state_machine_store.rs
+tests:
+  - crates/runtime/tests/task_ops.rs
+  - crates/provider-local/tests/migration_v5.rs
+  - crates/cli/tests/init_config_state.rs
+  - crates/provider/tests/config_store_trait.rs
+  - crates/runtime/tests/state_machine_config.rs
+  - crates/provider-local/tests/config_store.rs
+  - crates/cli/tests/state_machine_e2e.rs
+  - crates/provider/tests/error_codes.rs
+  - crates/provider-local/tests/migration_v4.rs
+  - crates/cli/tests/config_cli.rs
+-->

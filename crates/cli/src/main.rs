@@ -76,6 +76,12 @@ enum Commands {
         sub: TaskSub,
     },
 
+    /// Config 動詞：`show` / `set` / `edit`。
+    Config {
+        #[command(subcommand)]
+        sub: ConfigSub,
+    },
+
     /// Archive change：spec delta merge + state→archived + change dir 搬入 `.speclink/changes/archive/`。
     Archive {
         change_id: String,
@@ -175,6 +181,38 @@ struct ListArgs {
 }
 
 #[derive(Subcommand, Debug)]
+enum ConfigSub {
+    /// 讀取 `.speclink/config.yaml`、回傳整份 Config 或 `--key` 指定的 leaf。
+    Show {
+        /// JSONPath subset address；省略時回整份。
+        #[arg(long)]
+        key: Option<String>,
+    },
+    /// 對 `<key>` 套 `<value>` patch（單 key 修改）。
+    Set {
+        /// JSONPath subset address（如 `rules.require_code_review`）。
+        key: String,
+        /// 待寫入的 value 字串；解析順序為 `true/false/null → int → float → string`。
+        value: String,
+        /// 帶 expected etag 走 user CAS；省略走 internal CAS。
+        #[arg(long = "expected-etag")]
+        expected_etag: Option<String>,
+    },
+    /// 用 stdin 或 `$EDITOR` 整檔覆寫 config.yaml。
+    Edit {
+        /// 從 stdin 讀完整 YAML content。
+        #[arg(long)]
+        stdin: bool,
+        /// 指定 editor command（覆蓋 `$EDITOR`）。
+        #[arg(long)]
+        editor: Option<String>,
+        /// 帶 expected etag 走 user CAS；省略走 internal CAS。
+        #[arg(long = "expected-etag")]
+        expected_etag: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum ArtifactSub {
     /// 讀 artifact。
     Read {
@@ -269,6 +307,26 @@ fn main() -> ExitCode {
                 TaskSub::Undo { index, change } => {
                     commands::task_undo::run(&working_dir, &change, index).await
                 }
+            },
+            Commands::Config { sub } => match sub {
+                ConfigSub::Show { key } => commands::config::run_show(&working_dir, key.as_deref()),
+                ConfigSub::Set {
+                    key,
+                    value,
+                    expected_etag,
+                } => {
+                    commands::config::run_set(&working_dir, &key, &value, expected_etag.as_deref())
+                }
+                ConfigSub::Edit {
+                    stdin,
+                    editor,
+                    expected_etag,
+                } => commands::config::run_edit(
+                    &working_dir,
+                    stdin,
+                    editor.as_deref(),
+                    expected_etag.as_deref(),
+                ),
             },
             Commands::Archive {
                 change_id,
@@ -395,6 +453,10 @@ fn hint_for(code: &str) -> Option<&'static str> {
             Some("complete all tasks first with `speclink task done <i> --change <id>`")
         }
         "validation.archive_failed" => Some("run `speclink validate <id>` first"),
+        // polish-config-error-messages — config edit mode required hint.
+        "config.edit_mode_required" => Some(
+            "pipe YAML via `--stdin`, pass `--editor <cmd>`, or set `$EDITOR` so `speclink config edit` can open an editor",
+        ),
         _ => None,
     }
 }

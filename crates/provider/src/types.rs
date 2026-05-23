@@ -69,6 +69,16 @@ impl Etag {
         Self(format!("sha256:{}", hex::encode(digest)))
     }
 
+    /// 從任意 literal 字串建構 Etag。
+    ///
+    /// 主要服務 config etag (`v<version>.<sha256[:12]>` / `v0.malformed-fallback`)
+    /// 這類非 `sha256:` 前綴的格式。Artifact / change-row etag 仍走
+    /// [`Self::from_bytes`]。Caller 自負字串內容正確。
+    #[must_use]
+    pub fn from_literal(s: String) -> Self {
+        Self(s)
+    }
+
     /// 取得內部字串（含 `sha256:` prefix）。
     #[must_use]
     pub fn as_str(&self) -> &str {

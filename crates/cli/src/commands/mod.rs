@@ -6,6 +6,7 @@ pub mod apply_pause;
 pub mod apply_start;
 pub mod archive;
 pub mod artifact_read;
+pub mod config;
 pub mod delete_change;
 pub mod init;
 pub mod link;

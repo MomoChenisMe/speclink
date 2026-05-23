@@ -5,16 +5,36 @@
 
 #![allow(clippy::doc_markdown)]
 
+pub mod config_store;
 pub mod error;
+pub mod jsonpath;
 pub mod types;
 
+pub use config_store::{
+    Config, ConfigStore, ConfigValue, ConfigWarning, Rules, WriteConfigRequest,
+};
 pub use error::{ProviderError, codes};
+pub use jsonpath::{JsonPath, JsonPathParseError, JsonPathSegment};
 pub use types::{
     Actor, ArchiveRequest, ArchiveResult, ArtifactKind, ChangeRow, ChangeState,
     ChangeStateParseError, ChangeStateView, Etag, EtagError, ExpectedEtag, IdError, InitOptions,
     LinkYaml, MergedSpec, ProjectInfo, ProjectStatus, StateTransitionReason, TransitionRequest,
     Versioned, validate_kebab_id,
 };
+
+/// SpecLink Provider 統一入口 trait。
+///
+/// A5 此 trait 只定義 `config_store()` 進入點；既有 `ProjectStore` / `ChangeStore`
+/// / `StateMachineStore` / `ArchiveStore` / `ArtifactStore` 仍為獨立 trait、由
+/// runtime 直接持有，後續 slice 可視需要把它們收進 `Provider` trait 下統一管理。
+///
+/// 對應 `config-rw` capability requirement「The `Provider` trait in
+/// `crates/provider/src/lib.rs` SHALL gain a `fn config_store(&self) -> &dyn ConfigStore`
+/// method」。
+pub trait Provider: Send + Sync {
+    /// 取得 `ConfigStore` 實作。
+    fn config_store(&self) -> &dyn ConfigStore;
+}
 
 /// SpecLink project 的 CRUD 介面。
 #[async_trait::async_trait]

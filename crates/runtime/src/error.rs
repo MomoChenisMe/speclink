@@ -135,6 +135,35 @@ pub enum RuntimeError {
     #[error("archive-time validation failed: {reason}")]
     ValidationArchiveFailed { reason: String },
 
+    /// 對應 `config.not_found`（A5）。
+    #[error("config.yaml not found at {path}")]
+    ConfigNotFound { path: String },
+
+    /// 對應 `config.malformed`（A5）。
+    #[error("config content malformed: {reason}")]
+    ConfigMalformed { reason: String },
+
+    /// 對應 `config.key_not_found`（A5；polish-config-error-messages 加 `hint`）。
+    ///
+    /// `key` SHALL 保留 user 原始輸入字面字串（不可被診斷理由覆蓋）；`hint` 為
+    /// 「: wildcards / filters not supported」之類診斷後綴（無 hint 時為空字串）。
+    /// Display format「`config key `{key}` not found{hint}`」。
+    #[error("config key `{key}` not found{hint}")]
+    ConfigKeyNotFound { key: String, hint: String },
+
+    /// 對應 `state.etag_mismatch`（A5；polish-config-error-messages Display polish）。
+    /// Display SHALL 把 `expected` 走純字串、無值時印 `<none>`。
+    #[error("config etag mismatch (expected={}, actual={actual})", expected.as_deref().unwrap_or("<none>"))]
+    StateEtagMismatch {
+        expected: Option<String>,
+        actual: String,
+    },
+
+    /// 對應 `config.edit_mode_required`（polish-config-error-messages）：CLI `config edit`
+    /// 三條輸入路徑皆缺；envelope `error.message` 含 `--stdin` 與 `$EDITOR` 字面字串。
+    #[error("`speclink config edit` requires --stdin, --editor <cmd>, or $EDITOR to be set")]
+    ConfigEditModeRequired,
+
     /// 透過 provider 傳上來的內部錯誤。
     #[error("provider error: {0}")]
     Provider(#[from] speclink_provider::ProviderError),
@@ -170,6 +199,11 @@ impl RuntimeError {
             RuntimeError::TaskIndexOutOfRange { .. } => task_codes::TASK_INDEX_OUT_OF_RANGE,
             RuntimeError::ChangeTasksIncomplete { .. } => codes::CHANGE_TASKS_INCOMPLETE,
             RuntimeError::ValidationArchiveFailed { .. } => codes::VALIDATION_ARCHIVE_FAILED,
+            RuntimeError::ConfigNotFound { .. } => codes::CONFIG_NOT_FOUND,
+            RuntimeError::ConfigMalformed { .. } => codes::CONFIG_MALFORMED,
+            RuntimeError::ConfigKeyNotFound { .. } => codes::CONFIG_KEY_NOT_FOUND,
+            RuntimeError::StateEtagMismatch { .. } => codes::STATE_ETAG_MISMATCH,
+            RuntimeError::ConfigEditModeRequired => codes::CONFIG_EDIT_MODE_REQUIRED,
             RuntimeError::Provider(p) => p.code(),
             RuntimeError::Internal(_) => "internal.error",
         }
@@ -182,7 +216,8 @@ impl RuntimeError {
     pub fn retryable(&self) -> bool {
         match self {
             RuntimeError::ArtifactVersionConflict { .. }
-            | RuntimeError::StateVersionConflict { .. } => true,
+            | RuntimeError::StateVersionConflict { .. }
+            | RuntimeError::StateEtagMismatch { .. } => true,
             RuntimeError::Provider(p) => p.retryable(),
             _ => false,
         }
@@ -202,17 +237,21 @@ impl RuntimeError {
                 || c == codes::ARTIFACT_NOT_FOUND
                 || c == codes::CHANGE_DAG_INCOMPLETE
                 || c == codes::CHANGE_TASKS_INCOMPLETE
+                || c == codes::CONFIG_NOT_FOUND
+                || c == codes::CONFIG_KEY_NOT_FOUND
+                || c == codes::CONFIG_EDIT_MODE_REQUIRED
                 || c == task_codes::TASK_NO_TASKS_FILE
                 || c == task_codes::TASK_INDEX_OUT_OF_RANGE =>
             {
                 2
             }
-            c if c == codes::VALIDATION_ARCHIVE_FAILED => 3,
+            c if c == codes::VALIDATION_ARCHIVE_FAILED || c == codes::CONFIG_MALFORMED => 3,
             c if c == codes::ALREADY_INITIALIZED
                 || c == codes::CHANGE_DUPLICATE_NAME
                 || c == codes::ARTIFACT_VERSION_CONFLICT
                 || c == codes::STATE_TRANSITION_INVALID
-                || c == codes::STATE_VERSION_CONFLICT =>
+                || c == codes::STATE_VERSION_CONFLICT
+                || c == codes::STATE_ETAG_MISMATCH =>
             {
                 7
             }
@@ -307,6 +346,21 @@ mod tests {
             .exit_code(),
             7
         );
+    }
+
+    #[test]
+    fn config_edit_mode_required_maps_to_exit_2_and_not_retryable() {
+        // polish-config-error-messages slice：新 variant code 字串穩定、exit code 2、
+        // retryable=false。對齊 spec scenario「`config edit` without input mode emits
+        // `config.edit_mode_required`」。
+        let e = RuntimeError::ConfigEditModeRequired;
+        assert_eq!(e.code(), codes::CONFIG_EDIT_MODE_REQUIRED);
+        assert_eq!(e.code(), "config.edit_mode_required");
+        assert_eq!(e.exit_code(), 2);
+        assert!(!e.retryable());
+        let msg = e.to_string();
+        assert!(msg.contains("--stdin"), "message missing --stdin: {msg}");
+        assert!(msg.contains("$EDITOR"), "message missing $EDITOR: {msg}");
     }
 
     #[test]

@@ -26,6 +26,9 @@ pub enum StateDbError {
     /// CAS / read 找不到 change_id。
     #[error("change_id `{change_id}` not found")]
     ChangeRowNotFound { change_id: String },
+    /// `config_state` 表為空（migration 後 row 尚未被任何 caller 種子）。
+    #[error("config_state row (id=1) not found; call seed_config_state() first")]
+    ConfigStateRowNotFound,
 }
 
 impl From<rusqlite::Error> for StateDbError {
@@ -87,6 +90,17 @@ const MIGRATION_V4_SQL: &str = "
 ALTER TABLE change ADD COLUMN archived_at TEXT;
 ";
 
+/// v5 schema：追加 `config_state` singleton 表（id=1 CHECK 約束）與 `config_change`
+/// audit log 表。對齊 `config-rw` capability「state.db SHALL be upgraded to version
+/// 5 with `config_state` and `config_change` tables」requirement、`local-storage-layout`
+/// delta 同名 requirement，以及 design decisions「Config_state singleton 表 via CHECK
+/// 約束」、「Config_change audit 表設計沿 A3 state_transition 範式」。
+///
+/// Singleton row 由 [`StateDb::seed_config_state`] 在 migration 完成後以 INSERT OR
+/// IGNORE 形式種入；migration SQL 不執行 INSERT，因為需要 runtime 計算 config.yaml
+/// 的 sha256 / size / mtime（無法在純 SQL 中讀檔）。
+const MIGRATION_V5_SQL: &str = include_str!("migrations/v5_config_tables.sql");
+
 /// 內嵌 migration SQL。
 ///
 /// 索引對照表：
@@ -97,11 +111,13 @@ ALTER TABLE change ADD COLUMN archived_at TEXT;
 /// | 1     | 2              | `change` 表                                                                   |
 /// | 2     | 3              | `change.actor_json` / `change.all_tasks_done` + `state_transition` 表 + index |
 /// | 3     | 4              | `change.archived_at` 欄位                                                     |
+/// | 4     | 5              | `config_state` singleton 表 + `config_change` audit 表                        |
 pub const MIGRATIONS: &[&str] = &[
     MIGRATION_V1_SQL,
     MIGRATION_V2_SQL,
     MIGRATION_V3_SQL,
     MIGRATION_V4_SQL,
+    MIGRATION_V5_SQL,
 ];
 
 /// state.db 的 handle。
@@ -603,6 +619,72 @@ impl StateDb {
         Ok(expected_version + 1)
     }
 
+    /// v5：在 `config_state` singleton row 不存在時，依 `config_path` 讀檔計算
+    /// sha256 / size / mtime_ns、以 `INSERT OR IGNORE` 種入 id=1 row（version=1、
+    /// written_by=NULL）。若 row 已存在則為 no-op，保持原 sha 不動。
+    ///
+    /// 對齊 `local-storage-layout` delta scenario「v5 migration produces additive
+    /// schema」中「the config_state table SHALL contain exactly one row populated
+    /// by the migration's INSERT OR IGNORE step」。Migration SQL 純建表、不執行
+    /// INSERT；種子步驟由本 helper 與呼叫端（v4→v5 升版、`speclink init`）共同
+    ///觸發。
+    ///
+    /// External-edit 偵測（檔案 sha 與 db row sha 不一致）不在本 helper 範圍 —
+    /// 由 `LocalConfigStore::read_config()` 在後續 slice 落實。
+    ///
+    /// # Errors
+    /// 當 SQLite execute 或檔案讀取（含取得 mtime）失敗時回 [`StateDbError::Sqlite`]。
+    pub fn seed_config_state(&self, config_path: &Path) -> Result<(), StateDbError> {
+        use std::time::UNIX_EPOCH;
+        let bytes = std::fs::read(config_path)
+            .map_err(|e| StateDbError::Sqlite(format!("read config.yaml: {e}")))?;
+        let sha = hex::encode(<sha2::Sha256 as sha2::Digest>::digest(&bytes));
+        let size = bytes.len() as i64;
+        let meta = std::fs::metadata(config_path)
+            .map_err(|e| StateDbError::Sqlite(format!("stat config.yaml: {e}")))?;
+        let mtime_ns: i64 = meta
+            .modified()
+            .ok()
+            .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
+            .map_or(0, |d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX));
+        self.conn.execute(
+            "INSERT OR IGNORE INTO config_state \
+             (id, content_sha256, size_bytes, mtime_ns, version, updated_at, written_by) \
+             VALUES (1, ?1, ?2, ?3, 1, ?4, NULL)",
+            params![sha, size, mtime_ns, now_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    /// 讀取 `config_state` 唯一 row（id=1）。Migration v5 + 初次 `seed_config_state`
+    /// 後 row 必存在；對未種子的 db 回 [`StateDbError::ConfigStateRowNotFound`]，
+    /// 由 caller 視語意處理（LocalConfigStore::read_config 會先呼叫 `seed_config_state`
+    /// 確保 row 存在）。
+    ///
+    /// # Errors
+    /// Row 不存在回 [`StateDbError::ConfigStateRowNotFound`]；SQLite 查詢失敗
+    /// 回 [`StateDbError::Sqlite`]。
+    pub fn read_config_state(&self) -> Result<ConfigStateRow, StateDbError> {
+        self.conn
+            .query_row(
+                "SELECT content_sha256, size_bytes, mtime_ns, version, updated_at, written_by \
+                 FROM config_state WHERE id = 1",
+                [],
+                |r| {
+                    Ok(ConfigStateRow {
+                        content_sha256: r.get::<_, String>(0)?,
+                        size_bytes: r.get::<_, i64>(1)?,
+                        mtime_ns: r.get::<_, i64>(2)?,
+                        version: r.get::<_, i64>(3)?,
+                        updated_at: r.get::<_, String>(4)?,
+                        written_by: r.get::<_, Option<String>>(5)?,
+                    })
+                },
+            )
+            .optional()?
+            .ok_or(StateDbError::ConfigStateRowNotFound)
+    }
+
     /// 讀取 v4 `change.archived_at` 欄位（給 archive_store + integration test 用）。
     ///
     /// # Errors
@@ -661,6 +743,115 @@ impl StateDb {
         tx.commit()?;
         Ok(expected_version + 1)
     }
+
+    /// v5：套 config write 的 CAS UPDATE + audit INSERT，單一 tx 完成。
+    ///
+    /// `expected_version` 用於 CAS（與 `config_state.version` 比對）；不符回
+    /// [`StateDbError::CasConflict`]。Caller 在 commit 前需確保磁碟 atomic write
+    /// 已成功（cf. `LocalConfigStore::write_config`）。
+    ///
+    /// `mode` 必為 `"set"` / `"edit"`、`reason` 永為 `"config_write"`、`keys_changed`
+    /// 為已 JSON-encoded 字串（如 `["rules.require_code_review"]` / `["__edit__"]`）。
+    ///
+    /// # Errors
+    /// CAS 失敗回 [`StateDbError::CasConflict`]；SQLite 失敗回 [`StateDbError::Sqlite`]。
+    pub fn commit_config_write(&self, args: ConfigWriteArgs<'_>) -> Result<i64, StateDbError> {
+        debug_assert!(matches!(args.mode, "set" | "edit"));
+        let tx = self.conn.unchecked_transaction()?;
+        let now = now_rfc3339();
+        tx.execute(
+            "UPDATE config_state \
+             SET content_sha256 = ?1, size_bytes = ?2, mtime_ns = ?3, \
+                 version = version + 1, updated_at = ?4, written_by = ?5 \
+             WHERE id = 1 AND version = ?6",
+            params![
+                args.new_sha,
+                args.new_size,
+                args.new_mtime_ns,
+                now,
+                args.actor_json,
+                args.expected_version
+            ],
+        )?;
+        let rows = tx.changes();
+        if rows == 0 {
+            let actual: i64 = tx
+                .query_row("SELECT version FROM config_state WHERE id = 1", [], |r| {
+                    r.get(0)
+                })
+                .unwrap_or(-1);
+            drop(tx);
+            return Err(StateDbError::CasConflict {
+                current_version: u64::try_from(actual.max(0)).unwrap_or(0),
+            });
+        }
+        tx.execute(
+            "INSERT INTO config_change \
+             (changed_at, mode, keys_changed, etag_before, etag_after, actor_json, reason) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'config_write')",
+            params![
+                now,
+                args.mode,
+                args.keys_changed_json,
+                args.etag_before,
+                args.etag_after,
+                args.actor_json
+            ],
+        )?;
+        tx.commit()?;
+        Ok(args.expected_version + 1)
+    }
+
+    /// v5：reconcile external edit。
+    ///
+    /// 對 `config_state` row 套 CAS（`version=expected_version`）→ UPDATE 為新 sha /
+    /// size / mtime + bump version → INSERT `config_change` row（mode='external_edit'、
+    /// reason='config_external_edit'、`etag_before`/`etag_after` 帶入）→ commit。
+    /// 對應 spec scenario「User vim edit produces warning and audit row」與 design
+    /// decision「External-edit detection algorithm」。
+    ///
+    /// # Errors
+    /// CAS 失敗（concurrent process 已 bump）回 [`StateDbError::CasConflict`]；
+    /// SQLite 失敗回 [`StateDbError::Sqlite`]。
+    pub fn reconcile_external_edit(
+        &self,
+        expected_version: i64,
+        new_sha: &str,
+        new_size: i64,
+        new_mtime_ns: i64,
+        etag_before: &str,
+        etag_after: &str,
+    ) -> Result<i64, StateDbError> {
+        let tx = self.conn.unchecked_transaction()?;
+        let now = now_rfc3339();
+        tx.execute(
+            "UPDATE config_state \
+             SET content_sha256 = ?1, size_bytes = ?2, mtime_ns = ?3, \
+                 version = version + 1, updated_at = ?4, written_by = NULL \
+             WHERE id = 1 AND version = ?5",
+            params![new_sha, new_size, new_mtime_ns, now, expected_version],
+        )?;
+        let rows = tx.changes();
+        if rows == 0 {
+            let actual: i64 = tx
+                .query_row("SELECT version FROM config_state WHERE id = 1", [], |r| {
+                    r.get(0)
+                })
+                .unwrap_or(-1);
+            drop(tx);
+            return Err(StateDbError::CasConflict {
+                current_version: u64::try_from(actual.max(0)).unwrap_or(0),
+            });
+        }
+        tx.execute(
+            "INSERT INTO config_change \
+             (changed_at, mode, keys_changed, etag_before, etag_after, actor_json, reason) \
+             VALUES (?1, 'external_edit', '[\"__external_edit__\"]', ?2, ?3, NULL, 'config_external_edit')",
+            params![now, etag_before, etag_after],
+        )?;
+        tx.commit()?;
+        Ok(expected_version + 1)
+    }
 }
 
 /// `update_change_state_cas` 的 actor 變更語意。
@@ -691,6 +882,38 @@ pub struct ChangeStateRow {
     pub version: u64,
     pub actor_json: Option<String>,
     pub all_tasks_done: bool,
+}
+
+/// `StateDb::commit_config_write` 的輸入打包；避免「too many arguments」並讓
+/// 呼叫端 self-documenting（每個 field 名稱即用途）。
+#[derive(Debug, Clone)]
+pub struct ConfigWriteArgs<'a> {
+    pub expected_version: i64,
+    pub new_sha: &'a str,
+    pub new_size: i64,
+    pub new_mtime_ns: i64,
+    pub mode: &'a str,
+    pub keys_changed_json: &'a str,
+    pub etag_before: &'a str,
+    pub etag_after: &'a str,
+    pub actor_json: Option<&'a str>,
+}
+
+/// v5 `config_state` singleton row 的內部 view。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigStateRow {
+    /// `config.yaml` 內容 sha256 (lowercase hex)。
+    pub content_sha256: String,
+    /// `config.yaml` byte 長度。
+    pub size_bytes: i64,
+    /// `config.yaml` 最近修改時間（UNIX_EPOCH 起算的奈秒）。
+    pub mtime_ns: i64,
+    /// 由 LocalConfigStore 維護的單調遞增 version（每次寫 / external_edit + 1）。
+    pub version: i64,
+    /// 上次更新時間（RFC3339）。
+    pub updated_at: String,
+    /// 上次寫入者；external_edit / fresh-init seed 路徑為 NULL。
+    pub written_by: Option<String>,
 }
 
 fn now_rfc3339() -> String {

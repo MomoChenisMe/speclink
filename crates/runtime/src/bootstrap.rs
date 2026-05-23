@@ -100,10 +100,11 @@ impl<G: GitProbe> Bootstrap<G> {
         // 3a. Stage state.db only when target absent. Worktree case reuses
         // the main repo's state.db verbatim — no staging row to insert.
         let staging_state_db = staging_path.join("state.db");
+        let staging_config = staging_path.join("config.yaml");
         if !preexisting_state_db {
             let db = StateDb::open(&staging_state_db)
                 .map_err(|e| RuntimeError::Internal(format!("staging state.db open: {e}")))?;
-            db.migrate(4)
+            db.migrate(5)
                 .map_err(|e| RuntimeError::Internal(format!("staging state.db migrate: {e}")))?;
             db.insert_project_row(
                 &project_id,
@@ -112,6 +113,13 @@ impl<G: GitProbe> Bootstrap<G> {
                 &created_at,
             )
             .map_err(|e| RuntimeError::Internal(format!("staging insert project row: {e}")))?;
+            // A5：stage default config.yaml + seed `config_state` row。SQLite 預設
+            // auto-commit；project row 與 config_state row 透過 staging+rename pattern
+            // 達到 atomic（commit 階段一次 rename）。
+            fs::write(&staging_config, DEFAULT_CONFIG_YAML)
+                .map_err(|e| RuntimeError::Internal(format!("staging config.yaml: {e}")))?;
+            db.seed_config_state(&staging_config)
+                .map_err(|e| RuntimeError::Internal(format!("staging seed config_state: {e}")))?;
             drop(db);
         }
 
@@ -140,6 +148,7 @@ impl<G: GitProbe> Bootstrap<G> {
             artifact_root: artifact_root.clone(),
             target_schemas: target_schemas.clone(),
             target_link: link_path.clone(),
+            target_config: artifact_root.join("config.yaml"),
             target_state_db: target_state_db.clone(),
             target_locks: state_root.join("locks"),
             preexisting_artifact_root: artifact_root.exists(),
@@ -168,6 +177,13 @@ impl<G: GitProbe> Bootstrap<G> {
                 .map_err(|e| RuntimeError::Internal(format!("rename schemas dir: {e}")))?;
         }
 
+        // 4c'. Commit config.yaml (A5)：fresh init 必 stage、force / worktree reuse 既檔。
+        let target_config = artifact_root.join("config.yaml");
+        if staging_config.exists() && !target_config.exists() {
+            fs::rename(&staging_config, &target_config)
+                .map_err(|e| RuntimeError::Internal(format!("rename config.yaml: {e}")))?;
+        }
+
         // 4d. Append .gitignore (idempotent line policy).
         gitignore::append_if_missing(&working_dir.join(".gitignore"), ".speclink/link.yaml")?;
 
@@ -190,6 +206,14 @@ impl<G: GitProbe> Bootstrap<G> {
     }
 }
 
+/// A5：fresh init 寫入 `.speclink/config.yaml` 的預設內容。
+///
+/// 包含 walking-skeleton 兩個 review flag、roles 預設 null map（roles slice 之後
+/// 才解析）。對齊 spec requirement「Walking-skeleton mode SHALL hard-code both
+/// review flags to `false`」的預設行為。
+const DEFAULT_CONFIG_YAML: &str =
+    "rules:\n  require_artifact_review: false\n  require_code_review: false\nroles: null\n";
+
 fn now_rfc3339() -> String {
     use time::OffsetDateTime;
     use time::format_description::well_known::Rfc3339;
@@ -206,6 +230,7 @@ struct CommitGuard {
     artifact_root: PathBuf,
     target_schemas: PathBuf,
     target_link: PathBuf,
+    target_config: PathBuf,
     target_state_db: PathBuf,
     target_locks: PathBuf,
     preexisting_artifact_root: bool,
@@ -220,8 +245,10 @@ impl Drop for CommitGuard {
         }
         // link.yaml is always created fresh, safe to remove on failure.
         let _ = fs::remove_file(&self.target_link);
-        // schemas dir: only remove if it didn't exist before init started.
+        // config.yaml is A5-fresh on first init；force / worktree reuse keeps it.
+        // 只在 artifact root 不存在前移除 — 對齊 schemas 邏輯。
         if !self.preexisting_artifact_root {
+            let _ = fs::remove_file(&self.target_config);
             let _ = fs::remove_dir_all(&self.target_schemas);
             let _ = fs::remove_dir(&self.artifact_root);
         }

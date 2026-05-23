@@ -125,6 +125,16 @@ fn map_provider_error(err: ProviderError) -> RuntimeError {
         ProviderError::ValidationArchiveFailed { reason } => {
             RuntimeError::ValidationArchiveFailed { reason }
         }
+        ProviderError::ConfigNotFound { path } => RuntimeError::ConfigNotFound { path },
+        ProviderError::ConfigMalformed { reason } => RuntimeError::ConfigMalformed { reason },
+        ProviderError::ConfigKeyNotFound { key } => RuntimeError::ConfigKeyNotFound {
+            key,
+            hint: String::new(),
+        },
+        ProviderError::StateEtagMismatch { expected, actual } => {
+            RuntimeError::StateEtagMismatch { expected, actual }
+        }
+        ProviderError::ConfigEditModeRequired => RuntimeError::ConfigEditModeRequired,
         ProviderError::Internal(s) => RuntimeError::Internal(s),
     }
 }

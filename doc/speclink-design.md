@@ -32,8 +32,9 @@ Walking skeleton 開發以小切片（slice）依序落地 SpecLink MVP；每片
 | A2 | `add-change-and-artifact-io` | `change` 表 + `state.db` v2 migration + artifact filesystem I/O + `new change` / `show change` / `delete change` / `list --changes` / `list --specs --change` / `new artifact` / `artifact read` + sha256-based Etag + atomic rename |
 | A3 | `add-state-machine-and-apply` | 6-state lifecycle + `state.db` v3 migration（`actor_json` / `all_tasks_done` 欄位 + `state_transition` audit 表）+ `apply start` / `apply pause` / `task list` / `task done` / `task undo` 5 個 CLI op + `artifact.write` 後 DAG evaluator hook + `StateMachineStore` trait + `change.version` CAS + walking-skeleton 4-state mode（hard-coded `require_*_review=false`） |
 | A4 | `add-archive` | `state.db` v4 migration（`archived_at` 欄位）+ `archive.run` op + `ArchiveStore` trait + spec delta dumb merge + `.speclink/changes/archive/<YYYY-MM-DD>-<id>/` rename + `in_progress + all_tasks_done=1 → archived` transition + 2 新 error code（`change.tasks_incomplete` / `validation.archive_failed` 後者保留）+ `archive.specs_skipped` warning carrier |
+| A5 | `add-config-rw` | `state.db` v5 migration（`config_state` singleton + `config_change` audit）+ `config.read` / `config.write` 兩個 op + `ConfigStore` trait + A3 review-flag hardcode 改讀 config + walking-skeleton fallback semantics for malformed config + external-edit detection |
 
-A1 已 archive、A2 已 archive、A3 已 archive；A4 為本文件當前主題。後續 slice（review / locking / schema / config / ingest 等）皆另行命名，不溯及修改本表。
+A1–A4 已 archive；A5 為本文件當前主題。後續 slice（review / locking / schema / ingest 等）皆另行命名，不溯及修改本表。
 
 ## 2. 設計原則
 
@@ -684,6 +685,33 @@ artifacts:
 - ArtifactKind 從固定 enum 改為動態 string id（由 schema 定義）
 
 ## 11. Config 結構
+
+### 11.0 A5 落地對照（`add-config-rw`）
+
+A5 slice 把本節結構落實到 LocalProvider 與 state.db v5。對應實作細節：
+
+- **etag 公式**：`v<version>.<sha256[:12]>`；fallback 走 literal `v0.malformed-fallback`。
+  對齊 design decision「Config etag 命名格式對齊 artifact etag」（slice change `add-config-rw/design.md`）。
+- **state.db v5 兩表 schema**：
+  - `config_state`：singleton row（CHECK id=1）、`content_sha256` / `size_bytes` / `mtime_ns` /
+    `version` / `updated_at` / `written_by`。
+  - `config_change` audit log：`change_seq` / `changed_at` / `mode` (`set` / `edit` /
+    `external_edit`) / `keys_changed` (JSON array) / `etag_before` / `etag_after` /
+    `actor_json` / `reason` (`config_write` / `config_external_edit`)。
+- **External-edit reconcile 流程**：read path 偵測檔案 sha 與 `config_state.content_sha256`
+  不一致 → 開 SQLite tx → UPDATE `config_state`（version+1）+ INSERT `config_change`
+  (mode='external_edit') → commit → 回新 etag + envelope warning
+  `config.external_edit_detected`。Read path SHALL NOT raise error。
+- **Walking-skeleton fallback semantics**：config.yaml 缺失 / YAML 解析失敗 → read path
+  回 defaults + etag = `v0.malformed-fallback` + warning `config.malformed_using_defaults`，
+  **不** 寫 audit row、**不** raise error。Write path 對 malformed content 仍抛
+  `config.malformed` (exit 3)。
+- **state.db v5 cache vs YAML SOT 取捨**：config.yaml 為 source of truth、可隨意外部
+  編輯；state.db v5 表為 cache（CAS token + audit log），任何外部編輯由 read path 透過
+  sha 比對偵測並 reconcile。
+
+完整 op 觀察行為見 `doc/protocol/operations.md` `config.read` / `config.write` 兩節
+（兩 op 均標記 `implemented (A5)`）。
 
 ### 11.1 兩個檔的分工
 
@@ -2418,7 +2446,7 @@ Audit event 寫入 state.db 的 `events` table（見 §19.2 `Provider::record_ev
 **Core + CLI**：
 
 1. ✅ Crate workspace（`speclink-core` + `speclink-cli` + `speclink-provider-local`）
-2. ✅ `speclink init` + `.speclink/config.yaml` 讀寫
+2. ✅ `speclink init` + `.speclink/config.yaml` 讀寫 — `config.read` ✅ Implemented (A5)、`config.write` ✅ Implemented (A5)
 3. ✅ `discuss new` / `patch` / `conclude` / `show` + discussion.md 格式
 4. ✅ `new change` + state machine（6 states）
 5. ✅ `instructions <artifact|step>`（含 role-aware discuss）

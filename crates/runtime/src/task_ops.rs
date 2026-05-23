@@ -11,13 +11,13 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 use speclink_provider::{
-    ChangeState, ChangeStateView, ProviderError, StateMachineStore, StateTransitionReason,
-    TransitionRequest,
+    ChangeState, ChangeStateView, ConfigStore, ProviderError, StateMachineStore,
+    StateTransitionReason, TransitionRequest,
 };
-use speclink_provider_local::LocalStateMachineStore;
+use speclink_provider_local::{LocalConfigStore, LocalStateMachineStore};
 use tempfile::NamedTempFile;
 
-use crate::error::RuntimeError;
+use crate::error::{RuntimeError, RuntimeWarning};
 use crate::git::GitProbe;
 use crate::paths::{artifact_root, resolve_state_root};
 use crate::state_machine::{AllTasksDoneOutcome, ReviewPolicy, all_tasks_done_outcome};
@@ -76,6 +76,11 @@ impl<G: GitProbe> TaskOperations<G> {
         Ok(LocalStateMachineStore::new(state_root))
     }
 
+    fn build_config_store(&self, working_dir: &Path) -> Result<LocalConfigStore, RuntimeError> {
+        let state_root = resolve_state_root::<G>(&self.git, working_dir)?;
+        Ok(LocalConfigStore::new(working_dir.to_path_buf(), state_root))
+    }
+
     /// `task list --change <id>`。
     pub fn list(&self, working_dir: &Path, change: &str) -> Result<TaskListData, RuntimeError> {
         let tasks_path = tasks_path(working_dir, change);
@@ -86,12 +91,16 @@ impl<G: GitProbe> TaskOperations<G> {
     }
 
     /// `task done <index> --change <id>`。
+    ///
+    /// 回傳 `(TaskDoneData, Vec<RuntimeWarning>)`。warnings 來源：(1) config read
+    /// 期間 `LocalConfigStore::take_warnings()` 累積的 `config.external_edit_detected`
+    /// / `config.malformed_using_defaults`；(2) 後續 review slice 預留位。
     pub async fn done(
         &self,
         working_dir: &Path,
         change: &str,
         index: usize,
-    ) -> Result<TaskDoneData, RuntimeError> {
+    ) -> Result<(TaskDoneData, Vec<RuntimeWarning>), RuntimeError> {
         let store = self.build_state_store(working_dir)?;
         let view = store
             .get_change_state(change)
@@ -111,13 +120,16 @@ impl<G: GitProbe> TaskOperations<G> {
 
         if target_done {
             // Idempotent no-op: just return current snapshot.
-            return Ok(TaskDoneData {
-                index,
-                done: true,
-                all_tasks_done: view.all_tasks_done,
-                state: view.state,
-                auto_transitioned: false,
-            });
+            return Ok((
+                TaskDoneData {
+                    index,
+                    done: true,
+                    all_tasks_done: view.all_tasks_done,
+                    state: view.state,
+                    auto_transitioned: false,
+                },
+                Vec::new(),
+            ));
         }
 
         // Rewrite line: mark [ ] → [x].
@@ -129,30 +141,44 @@ impl<G: GitProbe> TaskOperations<G> {
         let now_all_done = !updated_tasks.is_empty() && updated_tasks.iter().all(|t| t.done);
 
         if !now_all_done {
-            return Ok(TaskDoneData {
-                index,
-                done: true,
-                all_tasks_done: view.all_tasks_done, // unchanged
-                state: view.state,
-                auto_transitioned: false,
-            });
+            return Ok((
+                TaskDoneData {
+                    index,
+                    done: true,
+                    all_tasks_done: view.all_tasks_done, // unchanged
+                    state: view.state,
+                    auto_transitioned: false,
+                },
+                Vec::new(),
+            ));
         }
 
-        // All tasks complete: apply walking-skeleton auto-trigger contract.
-        let policy = ReviewPolicy::walking_skeleton();
-        match all_tasks_done_outcome(policy) {
+        // All tasks complete: read config + apply policy auto-trigger contract.
+        let cfg_store = self.build_config_store(working_dir)?;
+        let versioned = cfg_store.read_config().map_err(map_provider_error)?;
+        let warnings: Vec<RuntimeWarning> = cfg_store
+            .take_warnings()
+            .into_iter()
+            .map(|w| RuntimeWarning {
+                code: w.code.to_string(),
+                message: w.message,
+                details: None,
+            })
+            .collect();
+        let policy = ReviewPolicy::from_config(&versioned.value);
+        let data = match all_tasks_done_outcome(policy) {
             AllTasksDoneOutcome::SetAllTasksDoneFlagOnly => {
                 let new_view = store
                     .set_all_tasks_done(change, view.version, true)
                     .await
                     .map_err(map_provider_error)?;
-                Ok(TaskDoneData {
+                TaskDoneData {
                     index,
                     done: true,
                     all_tasks_done: new_view.all_tasks_done,
                     state: new_view.state,
                     auto_transitioned: false,
-                })
+                }
             }
             AllTasksDoneOutcome::TransitionToCodeReviewing => {
                 let new_view = store
@@ -167,20 +193,20 @@ impl<G: GitProbe> TaskOperations<G> {
                     )
                     .await
                     .map_err(map_provider_error)?;
-                // Walking-skeleton path won't take this branch; reserved for review slice.
                 let final_view = store
                     .set_all_tasks_done(change, new_view.version, true)
                     .await
                     .map_err(map_provider_error)?;
-                Ok(TaskDoneData {
+                TaskDoneData {
                     index,
                     done: true,
                     all_tasks_done: final_view.all_tasks_done,
                     state: final_view.state,
                     auto_transitioned: true,
-                })
+                }
             }
-        }
+        };
+        Ok((data, warnings))
     }
 
     /// `task undo <index> --change <id>`。

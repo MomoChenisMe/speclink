@@ -622,3 +622,76 @@ tests:
   - crates/runtime/tests/bootstrap.rs
   - crates/runtime/tests/ops.rs
 -->
+
+---
+### Requirement: `state.db` schema MUST be upgraded to version 5 with the `config_state` and `config_change` tables
+
+The state.db migration sequence SHALL include a v5 step that creates two tables (`config_state` singleton row keyed on `id=1`, and `config_change` autoincrement audit table) and inserts a row into `_migrations` with `version=5`. The v5 schema SHALL be additive: the `project`, `change`, and `state_transition` tables defined by earlier migrations SHALL NOT be altered, dropped, or renamed by v5.
+
+The complete column-level schema is normative and is defined in the `config-rw` capability spec under the requirement "state.db SHALL be upgraded to version 5 with `config_state` and `config_change` tables". This requirement in the `local-storage-layout` capability SHALL stand as a sibling pointer ensuring the layout-level contract (which tables exist after a v5 migration) is also captured in the storage spec, paralleling how v3 / v4 migrations were anchored.
+
+Migration v5 SHALL be forward-only; no downgrade SHALL be supported.
+
+When a state.db at schema version 4 is opened by a v5-capable binary, the migration runner SHALL apply v5 atomically: either both tables exist and `_migrations` records `5`, or none of the above changes have been applied.
+
+#### Scenario: v5 migration produces additive schema
+
+- **GIVEN** a state.db at schema version 4 with at least one `project` row, one `change` row, and one `state_transition` row
+- **WHEN** the engine opens the db
+- **THEN** the migration runner SHALL apply v5, the `_migrations` table SHALL contain a row with `version=5`, all pre-existing `project`, `change`, and `state_transition` rows SHALL remain byte-identical, the `config_state` table SHALL exist with exactly one row (`id=1`, populated by the migration's `INSERT OR IGNORE` step), and the `config_change` table SHALL exist (empty)
+
+#### Scenario: Idempotent re-open after v5 migration
+
+- **GIVEN** a state.db that has already had v5 applied
+- **WHEN** the engine re-opens the db
+- **THEN** no migration SHALL re-run, `_migrations` SHALL still contain exactly one row per applied version (1, 2, 3, 4, 5), and the `config_state` row SHALL NOT be re-inserted or modified
+
+<!-- @trace
+source: add-config-rw
+updated: 2026-05-23
+code:
+  - crates/provider-local/src/archive_store.rs
+  - crates/provider-local/src/lib.rs
+  - crates/provider/Cargo.toml
+  - crates/provider/src/error.rs
+  - crates/provider/src/config_store.rs
+  - crates/runtime/src/state_machine.rs
+  - crates/runtime/src/task_ops.rs
+  - doc/protocol/operations.md
+  - crates/cli/src/main.rs
+  - crates/cli/src/commands/task_done.rs
+  - crates/provider-local/src/config_store.rs
+  - crates/provider-local/src/state_db.rs
+  - crates/runtime/src/change_ops.rs
+  - crates/runtime/src/lib.rs
+  - crates/runtime/src/ops.rs
+  - doc/speclink-design.md
+  - crates/runtime/src/bootstrap.rs
+  - crates/runtime/src/apply_ops.rs
+  - crates/provider/src/lib.rs
+  - crates/runtime/src/error.rs
+  - crates/cli/src/commands/config.rs
+  - crates/runtime/src/artifact_ops.rs
+  - crates/runtime/src/archive_ops.rs
+  - crates/runtime/src/config_ops.rs
+  - crates/cli/src/commands/mod.rs
+  - crates/provider/src/jsonpath.rs
+  - crates/provider-local/src/migrations/v5_config_tables.sql
+  - crates/provider-local/src/artifact_store.rs
+  - crates/provider-local/src/store.rs
+  - crates/cli/Cargo.toml
+  - crates/provider/src/types.rs
+  - crates/provider-local/src/change_store.rs
+  - crates/provider-local/src/state_machine_store.rs
+tests:
+  - crates/runtime/tests/task_ops.rs
+  - crates/provider-local/tests/migration_v5.rs
+  - crates/cli/tests/init_config_state.rs
+  - crates/provider/tests/config_store_trait.rs
+  - crates/runtime/tests/state_machine_config.rs
+  - crates/provider-local/tests/config_store.rs
+  - crates/cli/tests/state_machine_e2e.rs
+  - crates/provider/tests/error_codes.rs
+  - crates/provider-local/tests/migration_v4.rs
+  - crates/cli/tests/config_cli.rs
+-->

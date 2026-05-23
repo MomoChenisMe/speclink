@@ -6,6 +6,7 @@
 pub mod archive_store;
 pub mod artifact_store;
 pub mod change_store;
+pub mod config_store;
 pub mod link_yaml;
 pub mod paths;
 pub mod state_db;
@@ -15,6 +16,7 @@ pub mod store;
 pub use archive_store::LocalArchiveStore;
 pub use artifact_store::LocalArtifactStore;
 pub use change_store::LocalChangeStore;
+pub use config_store::LocalConfigStore;
 pub use state_db::{MIGRATIONS, StateDb, StateDbError};
 pub use state_machine_store::LocalStateMachineStore;
 pub use store::LocalProjectStore;

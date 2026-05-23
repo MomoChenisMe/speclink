@@ -1487,6 +1487,7 @@ $ speclink status --json
 |---|---|
 | **Category** | config |
 | **MVP** | ✓ |
+| **Status** | implemented (A5) |
 | **Destructive** | — |
 | **Idempotency** | idempotent (read-only) |
 | **Lock** | none |
@@ -1534,11 +1535,11 @@ $ speclink status --json
 
 #### Errors
 
-| Code | 觸發條件 | Retry |
-|---|---|---|
-| `config.not_found` | config 不存在（罕見、project 初始化必建） | `no` |
-| `config.malformed` | config.yaml 解析失敗 | `no` |
-| `provider.connection_failed` | http provider | `backoff` |
+| Code | 觸發條件 | Retry | Status |
+|---|---|---|---|
+| `config.not_found` | config 不存在（罕見、project 初始化必建） | `no` | implemented (A5) |
+| `config.malformed` | config.yaml 解析失敗 | `no` | implemented (A5) |
+| `provider.connection_failed` | http provider | `backoff` | reserved (http provider slice) |
 
 #### Cross-references
 
@@ -1555,6 +1556,7 @@ $ speclink status --json
 |---|---|
 | **Category** | config |
 | **MVP** | ✓ |
+| **Status** | implemented (A5) |
 | **Destructive** | —（但會改變全團隊 SDD 規則） |
 | **Idempotency** | idempotent-with-version |
 | **Lock** | global-short |
@@ -1630,12 +1632,13 @@ $ speclink status --json
 
 #### Errors
 
-| Code | 觸發條件 | Retry |
-|---|---|---|
-| `config.malformed` | YAML 解析失敗 / schema validation 失敗 | `no` |
-| `config.key_not_found` | mode=set 但 key 路徑無效 | `no` |
-| `state.etag_mismatch` | etag 衝突 | `read-then-retry` |
-| `lock.not_acquired` | lock 取不到 | `backoff` |
+| Code | 觸發條件 | Retry | Status |
+|---|---|---|---|
+| `config.malformed` | YAML 解析失敗 / schema validation 失敗 | `no` | implemented (A5) |
+| `config.key_not_found` | mode=set 但 key 路徑無效 | `no` | implemented (A5) |
+| `config.edit_mode_required` | mode=edit 但 `--stdin` / `--editor <cmd>` / `$EDITOR` 三條輸入路徑皆缺 | `no` | implemented (polish-config-error-messages) |
+| `state.etag_mismatch` | etag 衝突 | `read-then-retry` | implemented (A5) |
+| `lock.not_acquired` | lock 取不到 | `backoff` | reserved (add-locking-and-concurrency slice) |
 
 #### Audit events
 

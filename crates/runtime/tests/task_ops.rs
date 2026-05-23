@@ -140,7 +140,7 @@ async fn task_done_marks_one_checkbox_and_keeps_state_when_not_all_done() {
     )
     .await;
     let ops = TaskOperations::new(RealGitProbe);
-    let data = ops.done(&working, "demo", 1).await.expect("done");
+    let (data, _w) = ops.done(&working, "demo", 1).await.expect("done");
     assert_eq!(data.index, 1);
     assert!(data.done);
     assert!(!data.all_tasks_done);
@@ -175,7 +175,7 @@ async fn task_done_idempotent_on_already_done() {
     )
     .await;
     let ops = TaskOperations::new(RealGitProbe);
-    let data = ops.done(&working, "demo", 1).await.expect("done");
+    let (data, _w) = ops.done(&working, "demo", 1).await.expect("done");
     assert!(data.done);
     assert_eq!(data.state, ChangeState::InProgress);
     let body = fs::read_to_string(
@@ -229,7 +229,7 @@ async fn task_done_last_task_sets_all_tasks_done_under_walking_skeleton() {
     )
     .await;
     let ops = TaskOperations::new(RealGitProbe);
-    let data = ops.done(&working, "demo", 2).await.expect("last");
+    let (data, _w) = ops.done(&working, "demo", 2).await.expect("last");
     assert!(data.all_tasks_done);
     assert_eq!(data.state, ChangeState::InProgress);
     assert!(!data.auto_transitioned);

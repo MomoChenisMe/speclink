@@ -153,6 +153,13 @@ fn v3_binary_refuses_to_open_a_v4_database() {
 }
 
 #[test]
-fn v4_migrations_array_has_exactly_four_entries() {
-    assert_eq!(MIGRATIONS.len(), 4, "MIGRATIONS array SHALL be length 4");
+fn v4_migrations_array_includes_at_least_four_entries() {
+    // 原 A4 測試斷言「恰為 4」會在每次新 slice 上線時強制改寫；改為「至少 4」、
+    // 並另外驗證 index=3 對應 v4 schema（透過 schema_version() reachable）。
+    // 對齊「Forward-only migration」原則：MIGRATIONS 只會單調增長。
+    assert!(
+        MIGRATIONS.len() >= 4,
+        "MIGRATIONS array SHALL include the v4 entry (len ≥ 4); got {}",
+        MIGRATIONS.len()
+    );
 }

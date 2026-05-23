@@ -5,10 +5,10 @@
 use std::path::Path;
 
 use speclink_provider::{
-    ArtifactKind, ArtifactStore, ChangeState, ExpectedEtag, ProviderError, StateMachineStore,
-    StateTransitionReason, TransitionRequest, Versioned,
+    ArtifactKind, ArtifactStore, ChangeState, ConfigStore, ExpectedEtag, ProviderError,
+    StateMachineStore, StateTransitionReason, TransitionRequest, Versioned,
 };
-use speclink_provider_local::{LocalArtifactStore, LocalStateMachineStore};
+use speclink_provider_local::{LocalArtifactStore, LocalConfigStore, LocalStateMachineStore};
 
 use crate::error::{RuntimeError, RuntimeWarning};
 use crate::git::GitProbe;
@@ -40,6 +40,11 @@ impl<G: GitProbe> ArtifactOperations<G> {
     ) -> Result<LocalStateMachineStore, RuntimeError> {
         let state_root = resolve_state_root::<G>(&self.git, working_dir)?;
         Ok(LocalStateMachineStore::new(state_root))
+    }
+
+    fn build_config_store(&self, working_dir: &Path) -> Result<LocalConfigStore, RuntimeError> {
+        let state_root = resolve_state_root::<G>(&self.git, working_dir)?;
+        Ok(LocalConfigStore::new(working_dir.to_path_buf(), state_root))
     }
 
     /// 讀取 artifact。
@@ -81,31 +86,46 @@ impl<G: GitProbe> ArtifactOperations<G> {
         let mut warnings = Vec::new();
         // Best-effort post-write DAG evaluator hook. Failure here SHALL NOT roll back
         // the artifact write — bubble warning if transition succeeds.
-        if let Some(w) = self.dag_evaluator(working_dir, change).await? {
-            warnings.push(w);
-        }
+        let mut dag_warnings = self.dag_evaluator(working_dir, change).await?;
+        warnings.append(&mut dag_warnings);
         Ok((versioned, warnings))
     }
 
-    /// DAG evaluator: 若 change state == `proposing` 且 DAG (proposal.md + tasks.md
-    /// + 至少一份 specs/*) 齊全，呼叫 `transition_state` 推進並回 warning。
+    /// DAG evaluator: 若 change state == `proposing` 且 DAG (proposal.md + tasks.md +
+    ///   至少一份 specs/*) 齊全，依現行 config 推導 review policy、呼叫
+    ///   `transition_state` 推進並回 warning。
+    ///
+    /// 回傳的 warning 陣列順序對齊 A5 design contract「envelope warnings 順序穩定」：
+    /// `config.external_edit_detected` → `config.malformed_using_defaults` →
+    /// `state_transitioned`。
     async fn dag_evaluator(
         &self,
         working_dir: &Path,
         change: &str,
-    ) -> Result<Option<RuntimeWarning>, RuntimeError> {
+    ) -> Result<Vec<RuntimeWarning>, RuntimeError> {
         let sm = self.build_state_store(working_dir)?;
         let view = sm
             .get_change_state(change)
             .await
             .map_err(map_provider_error_artifact)?;
-        if view.state != ChangeState::Proposing {
-            return Ok(None);
+        if view.state != ChangeState::Proposing || !dag_complete(working_dir, change) {
+            return Ok(Vec::new());
         }
-        if !dag_complete(working_dir, change) {
-            return Ok(None);
-        }
-        let policy = ReviewPolicy::walking_skeleton();
+        // 讀 config（fallback path 不 raise）+ pass-through warnings.
+        let cfg_store = self.build_config_store(working_dir)?;
+        let versioned = cfg_store
+            .read_config()
+            .map_err(map_provider_error_artifact)?;
+        let mut warnings: Vec<RuntimeWarning> = cfg_store
+            .take_warnings()
+            .into_iter()
+            .map(|w| RuntimeWarning {
+                code: w.code.to_string(),
+                message: w.message,
+                details: None,
+            })
+            .collect();
+        let policy = ReviewPolicy::from_config(&versioned.value);
         let target = proposing_target(policy);
         let from = view.state;
         let new_view = sm
@@ -120,7 +140,7 @@ impl<G: GitProbe> ArtifactOperations<G> {
             )
             .await
             .map_err(map_provider_error_artifact)?;
-        Ok(Some(RuntimeWarning {
+        warnings.push(RuntimeWarning {
             code: "state_transitioned".to_string(),
             message: format!("Change state advanced to {}", new_view.state.as_str()),
             details: Some(serde_json::json!({
@@ -128,7 +148,8 @@ impl<G: GitProbe> ArtifactOperations<G> {
                 "to": new_view.state.as_str(),
                 "reason": StateTransitionReason::ArtifactDagComplete.as_str(),
             })),
-        }))
+        });
+        Ok(warnings)
     }
 
     /// 列舉某 change 下所有 spec capability id。
@@ -194,6 +215,16 @@ fn map_provider_error_artifact(err: ProviderError) -> RuntimeError {
         ProviderError::ValidationArchiveFailed { reason } => {
             RuntimeError::ValidationArchiveFailed { reason }
         }
+        ProviderError::ConfigNotFound { path } => RuntimeError::ConfigNotFound { path },
+        ProviderError::ConfigMalformed { reason } => RuntimeError::ConfigMalformed { reason },
+        ProviderError::ConfigKeyNotFound { key } => RuntimeError::ConfigKeyNotFound {
+            key,
+            hint: String::new(),
+        },
+        ProviderError::StateEtagMismatch { expected, actual } => {
+            RuntimeError::StateEtagMismatch { expected, actual }
+        }
+        ProviderError::ConfigEditModeRequired => RuntimeError::ConfigEditModeRequired,
         ProviderError::Internal(s) => RuntimeError::Internal(s),
     }
 }

@@ -19,7 +19,15 @@ pub async fn run(
     index: usize,
 ) -> Result<(serde_json::Value, Vec<Warning>), RuntimeError> {
     let ops = TaskOperations::new(RealGitProbe);
-    let data = ops.done(working_dir, change, index).await?;
+    let (data, runtime_warnings) = ops.done(working_dir, change, index).await?;
     let payload = serde_json::to_value(&data).map_err(|e| RuntimeError::Internal(e.to_string()))?;
-    Ok((payload, Vec::new()))
+    let warnings = runtime_warnings
+        .into_iter()
+        .map(|w| Warning {
+            code: w.code,
+            message: w.message,
+            details: w.details,
+        })
+        .collect();
+    Ok((payload, warnings))
 }

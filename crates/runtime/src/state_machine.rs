@@ -6,7 +6,7 @@
 
 #![allow(clippy::doc_markdown)]
 
-use speclink_provider::{Actor, ChangeState, StateTransitionReason};
+use speclink_provider::{Actor, ChangeState, Config, StateTransitionReason};
 
 /// review optionality flag（design §6.3）。walking-skeleton MVP 硬編 false / false。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,13 +20,26 @@ pub struct ReviewPolicy {
 impl ReviewPolicy {
     /// walking-skeleton MVP 政策：兩個 flag 都硬編 false。
     ///
-    /// 對應決策「Walking-skeleton review-flag 預設值：硬編 `false`，不讀 config」。
-    /// 未來 `add-config-rw` slice 接通後改為 `from_config(&config)`，transition table 不變。
+    /// A5（`add-config-rw`）接通後，prod evaluator hook 改用 [`Self::from_config`]
+    /// 讀 `.speclink/config.yaml`；本 const fn 保留給 walking-skeleton fallback /
+    /// 純邏輯測試使用。
     #[must_use]
     pub const fn walking_skeleton() -> Self {
         Self {
             require_artifact_review: false,
             require_code_review: false,
+        }
+    }
+
+    /// 從 `Config` 取出 `rules.require_*_review` 兩 flag、組 `ReviewPolicy`。
+    ///
+    /// 對應 spec requirement「`speclink config set rules.require_artifact_review true` 後
+    /// 下次 DAG 齊全 SHALL transition proposing→reviewing」。
+    #[must_use]
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            require_artifact_review: config.rules.require_artifact_review,
+            require_code_review: config.rules.require_code_review,
         }
     }
 }
