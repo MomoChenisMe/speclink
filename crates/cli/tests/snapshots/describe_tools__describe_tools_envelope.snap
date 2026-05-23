@@ -1,0 +1,40 @@
+---
+source: crates/cli/tests/describe_tools.rs
+expression: "serde_json::to_string_pretty(&env).unwrap()"
+---
+{
+  "data": {
+    "content": [
+      {
+        "description": "Create a new change in proposing state.",
+        "id": "change.create",
+        "name": "new_change",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "description": "Optional one-line summary",
+              "type": "string"
+            },
+            "name": {
+              "description": "Change name (kebab-case, 1-64 bytes)",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "format": "json"
+  },
+  "ok": true,
+  "requestId": "00000000-0000-4000-8000-000000000000",
+  "warnings": []
+}

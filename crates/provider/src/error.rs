@@ -78,6 +78,16 @@ pub mod codes {
     pub const CONFIG_EXTERNAL_EDIT_DETECTED: &str = "config.external_edit_detected";
     /// Warning code：read path 走 fallback 時 emit。
     pub const CONFIG_MALFORMED_USING_DEFAULTS: &str = "config.malformed_using_defaults";
+
+    // ----- `add-tool-describe-and-catalogue` -----
+
+    /// `tool.describe` `--format` 值為合法 enum 但屬 [deferred]（如 `copilotkit` / `openai`
+    /// / `langchain` / `mcp` / `claude`）；MVP 只接 `json` / `text` / `copilot-sdk`。
+    pub const TOOL_FORMAT_NOT_SUPPORTED: &str = "tool.format_not_supported";
+    /// `tool.describe` `--filter` 含 catalogue 內沒有的 operation id。
+    pub const TOOL_UNKNOWN_OP: &str = "tool.unknown_op";
+    /// `tool.describe` `--categories` 含 catalogue 內沒有的 category。
+    pub const TOOL_UNKNOWN_CATEGORY: &str = "tool.unknown_category";
 }
 
 /// Provider 層的錯誤型別。

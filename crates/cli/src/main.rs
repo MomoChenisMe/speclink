@@ -7,10 +7,11 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use speclink_cli::commands;
 use speclink_cli::output::{Envelope, Warning, error, success};
 use speclink_runtime::RuntimeError;
+use speclink_runtime::tool_ops::{DescribeFormat, DescribePhase};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -95,6 +96,78 @@ enum Commands {
         #[arg(long)]
         yes: bool,
     },
+
+    /// Catalogue dump：把 37 個 operation 印成 json / text / copilot-sdk 三種 format。
+    #[command(name = "describe-tools")]
+    DescribeTools {
+        /// Output format. MVP 支援 `json` / `text` / `copilot-sdk`；其餘 5 個 enum 值屬 [deferred]，runtime 回 `tool.format_not_supported`。
+        #[arg(long, value_enum, default_value_t = CliFormat::Json)]
+        format: CliFormat,
+        /// 只輸出指定 operation id（comma-separated 或重複 `--filter`）。
+        #[arg(long, value_delimiter = ',')]
+        filter: Vec<String>,
+        /// 只輸出指定 category（comma-separated 或重複 `--categories`）。
+        #[arg(long, value_delimiter = ',')]
+        categories: Vec<String>,
+        /// 只輸出涉及指定 skill phase 的 op（comma-separated 或重複 `--phases`）。
+        #[arg(long, value_enum, value_delimiter = ',')]
+        phases: Vec<CliPhase>,
+        /// 切換到 37 ops 全集；省略時只回 12 個 curated subset。
+        #[arg(long)]
+        full: bool,
+    },
+}
+
+/// clap-facing format enum；與 `DescribeFormat` 對映。
+#[derive(Copy, Clone, Debug, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+enum CliFormat {
+    Json,
+    Text,
+    CopilotSdk,
+    Copilotkit,
+    Openai,
+    Langchain,
+    Mcp,
+    Claude,
+}
+
+impl From<CliFormat> for DescribeFormat {
+    fn from(v: CliFormat) -> Self {
+        match v {
+            CliFormat::Json => DescribeFormat::Json,
+            CliFormat::Text => DescribeFormat::Text,
+            CliFormat::CopilotSdk => DescribeFormat::CopilotSdk,
+            CliFormat::Copilotkit => DescribeFormat::Copilotkit,
+            CliFormat::Openai => DescribeFormat::Openai,
+            CliFormat::Langchain => DescribeFormat::Langchain,
+            CliFormat::Mcp => DescribeFormat::Mcp,
+            CliFormat::Claude => DescribeFormat::Claude,
+        }
+    }
+}
+
+/// clap-facing phase enum；與 `DescribePhase` 對映。
+#[derive(Copy, Clone, Debug, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+enum CliPhase {
+    Discuss,
+    Propose,
+    Apply,
+    Archive,
+    Ingest,
+}
+
+impl From<CliPhase> for DescribePhase {
+    fn from(v: CliPhase) -> Self {
+        match v {
+            CliPhase::Discuss => DescribePhase::Discuss,
+            CliPhase::Propose => DescribePhase::Propose,
+            CliPhase::Apply => DescribePhase::Apply,
+            CliPhase::Archive => DescribePhase::Archive,
+            CliPhase::Ingest => DescribePhase::Ingest,
+        }
+    }
 }
 
 #[derive(Subcommand, Debug)]
@@ -336,6 +409,19 @@ fn main() -> ExitCode {
             } => {
                 commands::archive::run(&working_dir, &change_id, skip_specs, no_validate, yes).await
             }
+            Commands::DescribeTools {
+                format,
+                filter,
+                categories,
+                phases,
+                full,
+            } => commands::describe_tools::run(
+                format.into(),
+                filter,
+                categories,
+                phases.into_iter().map(Into::into).collect(),
+                full,
+            ),
         }
     });
 
@@ -456,6 +542,16 @@ fn hint_for(code: &str) -> Option<&'static str> {
         // polish-config-error-messages — config edit mode required hint.
         "config.edit_mode_required" => Some(
             "pipe YAML via `--stdin`, pass `--editor <cmd>`, or set `$EDITOR` so `speclink config edit` can open an editor",
+        ),
+        // add-tool-describe-and-catalogue
+        "tool.format_not_supported" => Some(
+            "MVP supports `json`, `text`, `copilot-sdk`; other formats (copilotkit / openai / langchain / mcp / claude) are deferred to a post-MVP slice",
+        ),
+        "tool.unknown_op" => {
+            Some("verify operation ids via `speclink describe-tools --format text --full`")
+        }
+        "tool.unknown_category" => Some(
+            "valid categories: project, config, schema, discuss, change, artifact, apply, review, archive, spec, meta, doctor, tool",
         ),
         _ => None,
     }

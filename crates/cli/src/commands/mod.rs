@@ -8,6 +8,7 @@ pub mod archive;
 pub mod artifact_read;
 pub mod config;
 pub mod delete_change;
+pub mod describe_tools;
 pub mod init;
 pub mod link;
 pub mod list_changes;

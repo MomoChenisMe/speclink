@@ -2606,6 +2606,79 @@ Audit event 寫入 state.db 的 `events` table（見 §19.2 `Provider::record_ev
 5. SaaS 後端、telemetry
 6. 與所有 Git provider 深度整合
 
+### 18.4 Phase 出貨計畫（2026-05-23）
+
+MVP 18.1 的 75 條編號 item 描述 **what** 要做；本節描述 **以什麼順序 ship**。Walking skeleton slice 命名延用既有慣例（`add-<concept>` / 編號 64a-75 series）。
+
+**指導原則**：dogfooding-first。SpecLink 目前由 spectra 管理；§18.3 Non-Goals #1 明說不與 spectra 命名相容，每多 ship 一條 change 都在累積 spectra 依賴假設。Phase 1 完成即切換為 SpecLink 自我 dogfood，Phase 2/3 的真實需求由 dogfood 過程踩出來，避免預先過度規劃。
+
+#### Phase 1 — 最小 dogfooding 閉環（5 條 slice）
+
+Slice 編號接續 64a-75 series。
+
+| # | Slice 名稱 | Op / 模組 | 為什麼自成一條 |
+|---|---|---|---|
+| **P1-1** | `add-tool-describe-and-catalogue` | `tool.describe` + catalogue source loader | 把 `operations.md` / Rust catalogue registry 變成可程式查詢的 single source。**P1-3 / P1-4 的 prerequisite**。Multi-format renderer（`copilotkit` / `text` / `json`）一次寫完。 |
+| **P1-2** | `add-project-status` | `project.status` | Read-only DAG 看板。獨立模組，可與 P1-1 並行。順便覆蓋 status renderer 的 human-output pretty-print 邊角。 |
+| **P1-3** | `add-instructions-get` | `instructions.get` | Instruction template 引擎，每個 artifact kind / step 一個模板。依賴 P1-1 的 catalogue source 取得 canonical op ID。 |
+| **P1-4** | `add-skill-deploy` | Skill 部署機制 | `init --tools` + workflow / bindings/{bash,tool}.md 拼裝、frontmatter merge、host 路徑解析（`.claude/skills/` / `.agents/skills/` / SDK dir）、idempotent overwrite。依賴 P1-1（bindings 引用 canonical op ID）。**ship 完即可切換 dogfooding**。 |
+| **P1-5** | `add-restore-from-artifacts` | `restore --from-artifacts` | Off-path 災難復原；artifact crawler + state.db 重建器；doctor `state.db_missing` auto-fix 對接。獨立模組，不阻塞 dogfooding 啟動，dogfood 跑起來再補。 |
+
+**依賴與順序**：
+
+```
+       P1-1 catalogue + tool.describe ────┐
+                                          ├──► P1-3 instructions.get ──► P1-4 skill deploy ──► 🎯 dogfooding 啟動
+       P1-2 project.status ───────────────┘                                                           │
+                                                                                                      ▼
+                                                                                       P1-5 restore（之後補上）
+```
+
+實作順序：`P1-1 → P1-2 → P1-3 → P1-4 → P1-5`。P1-1 / P1-2 可並行；P1-4 完成的瞬間切換 dogfooding。
+
+#### Phase 2 — 主流程完整（4 個 slice group，15 ops）
+
+Dogfood 啟動後、踩到真實缺口時依下列順序補完：
+
+1. **`add-discuss-ops`** — `discuss.{new, list, show, patch, conclude, delete}`（6 ops）。完整 discuss skill 後端。
+2. **`add-review-ops`** — `review.{approve, reject, history}`（3 ops）+ 解 walking-skeleton 的 `require_artifact_review` / `require_code_review` hard-code（§18.1 #22）。
+3. **`add-schema-ops`** — `schema.{list, show, fork, delete}`（4 ops）。Schema 抽象層 user-facing 入口。
+4. **`add-spec-canonical-read`** — `spec.{list, show}` canonical capability spec read（2 ops）；補 `spec.list-in-change` 之外的整 repo 視角。
+
+#### Phase 3 — QA + 健康度（4 條 slice）
+
+需要 Phase 1/2 ops 都跑起來才測得到：
+
+1. **`add-analyze-run`** — `analyze.run`（結構分析）
+2. **`add-validate-run`** — `validate.run`（schema 驗證）
+3. **`add-drift-run`** — `drift.run`（conclusion-first 報告 + 互動式 next-step；apply Step 3d inline）
+4. **`add-doctor-run`** — `doctor.run`（9 個檢查類別、`--quick` / `--check <cat>` / `--fix` flags、4 條 auto-fix allowlist）
+
+#### 變更管理
+
+- Phase 1 任一 slice 過程中發現新需求 → 用 `/spectra-ingest` 改該 slice 的 spec，不破 phase 邊界
+- Phase 2/3 順序可隨 dogfood 真實痛點調整（例如 doctor 提早、schema 延後），但 Phase 1 順序為強約束（依賴鏈）
+- 任何新 slice 都應對齊 §21 catalogue 命名（canonical ID `<noun>.<verb>`）
+- 所有 phase ship 完 = MVP 18.1 完成 = 進入 Tier 2/3 provider impl + HttpProvider（§18.2 deferred 解禁）
+
+### 18.5 Dogfood feedback backlog（2026-05-23）
+
+從 `test-speclink-sdd` e2e 測試（11/11 capabilities PASS、35+ scenarios）抽出的 rough edge。不阻塞 Phase 1 dogfooding 啟動，併入後續 phase 順手做：
+
+- **`apply pause` 在 `code_reviewing` state 應 idempotent**
+  - 現況：當 user 在 `code_reviewing`（task 全完成 + `require_code_review=true`）跑 `apply pause`，CLI 回 `state.transition_invalid: code_reviewing → ready not permitted`，user 必須先 `task undo` 倒回 `in_progress` 才能 pause
+  - 併入 **Phase 2 #2 `add-review-ops`**：解開 walking-skeleton hard-code 同時順手加 `apply pause` 從 `code_reviewing` 的 idempotent path（對齊 §6.2 ensure-actor 慣例 — 回 success envelope + state hint，而非 transition_invalid）
+
+- **`show change` envelope 應含 `all_tasks_done` 與 `next_actions` hints**
+  - 現況：`show change` envelope 只回 `{changeId, state, version, createdAt, updatedAt, name, schemaId}` + `artifacts[]`，缺 `all_tasks_done`；apply skill / dogfood user 需從 `task list` 推算「最後一個 task 是否完成」
+  - 併入 **Phase 1 #2 `add-project-status`**：本來就要碰 status / change query 的 read shape，順手加：
+    - `all_tasks_done: bool`
+    - `next_actions: [string]`（如 `["task.done 3", "apply.pause"]` 或 `["archive.run"]`）對 dogfood UX 有顯著價值
+
+未列入 backlog 的 anomaly（已被既有 spec / phase 覆蓋）：
+- Archive 需 `require_code_review=false` — §18.1 #22 已明寫 walking-skeleton mode hard-code、Phase 2 #2 必然處理
+- `describe-tools --format text` 在 human mode 多 YAML wrapper、`status` / `list` 等 human-mode 為 YAML 而非 table — 屬 `cli-human-output` spec 明訂行為（pretty-print `serde_json::Value`），非 bug
+
 ## 19. Provider Trait
 
 ### 19.1 抽象軸：兩類 provider

@@ -112,7 +112,10 @@ pub fn error_code_to_exit(code: &str) -> i32 {
         | "change.dag_incomplete"
         | "task.no_tasks_file"
         | "task.index_out_of_range"
-        | "change.tasks_incomplete" => 2,
+        | "change.tasks_incomplete"
+        | "tool.format_not_supported"
+        | "tool.unknown_op"
+        | "tool.unknown_category" => 2,
         // exit 3 — validation failed (reserved for analyze slice)
         "validation.archive_failed" => 3,
         // exit 7 — conflicts / already-exists（含 etag mismatch + slice-A3 state transition / CAS）
@@ -208,5 +211,9 @@ mod tests {
         // slice-A4
         assert_eq!(error_code_to_exit("change.tasks_incomplete"), 2);
         assert_eq!(error_code_to_exit("validation.archive_failed"), 3);
+        // add-tool-describe-and-catalogue
+        assert_eq!(error_code_to_exit("tool.format_not_supported"), 2);
+        assert_eq!(error_code_to_exit("tool.unknown_op"), 2);
+        assert_eq!(error_code_to_exit("tool.unknown_category"), 2);
     }
 }

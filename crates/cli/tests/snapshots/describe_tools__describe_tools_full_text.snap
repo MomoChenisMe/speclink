@@ -1,0 +1,43 @@
+---
+source: crates/cli/tests/describe_tools.rs
+expression: s
+---
+| id | category | cli | tool_binding | description |
+| --- | --- | --- | --- | --- |
+| project.init | project | init <name> | project_init | Initialize a SpecLink project inside a git working tree. |
+| project.link | project | link <url> | project_link | Bind the current working tree to an existing project_id (deferred). |
+| project.unlink | project | unlink | project_unlink | Remove the binding between working tree and project_id (deferred). |
+| project.status | project | status | project_status | Show project status including artifact DAG and active changes. |
+| config.read | config | config show | read_config | Read .speclink/config.yaml and return Versioned<Config>. |
+| config.write | config | config set / config edit | write_config | Write config.yaml via key/value set or full-file edit with etag CAS. |
+| schema.list | schema | schemas | list_schemas | List available SDD schemas (built-in plus user forks). |
+| schema.show | schema | schema show <id> | show_schema | Read a single schema definition by id. |
+| schema.fork | schema | schema fork | fork_schema | Fork a schema into a user-editable copy. |
+| schema.delete | schema | schema delete <id> | delete_schema | Delete a user-forked schema (destructive). |
+| discuss.new | discuss | discuss new "<topic>" | new_discussion | Create a new discussion thread for structured deliberation. |
+| discuss.list | discuss | discuss list | list_discussions | List all discussion threads. |
+| discuss.show | discuss | discuss show <id> | show_discussion | Show a single discussion's full content. |
+| discuss.patch | discuss | discuss patch <id> | patch_discussion | Patch one section of a discussion (append round, edit conclusion). |
+| discuss.conclude | discuss | discuss conclude <id> | conclude_discussion | Lock a discussion as concluded; freeze its conclusion section. |
+| discuss.delete | discuss | discuss delete <id> | delete_discussion | Delete a discussion thread (destructive). |
+| change.create | change | new change <name> | new_change | Create a new change in proposing state. |
+| change.list | change | list --changes | list_changes | List all changes regardless of state. |
+| change.show | change | show change <id> | show_change | Show a change's metadata and artifact roster. |
+| change.delete | change | delete change <id> | delete_change | Delete a change row and its filesystem directory (destructive). |
+| artifact.write | artifact | new artifact <kind> | write_artifact | Write an artifact (proposal/design/tasks/spec) with etag CAS. |
+| artifact.read | artifact | artifact read <kind> | read_artifact | Read an artifact's content and current etag. |
+| apply.start | apply | apply start <id> | apply_start | Transition a change to in_progress and assign an actor. |
+| apply.pause | apply | apply pause <id> | apply_pause | Pause an in-progress change back to ready and clear actor. |
+| task.done | apply | task done <task-id> | task_done | Mark a task as done; auto-transition when all tasks complete. |
+| review.approve | review | review approve | review_approve | Approve a review phase (artifact or code) and advance state. |
+| review.reject | review | review reject | review_reject | Reject a review phase with a reason; add synthetic feedback tasks. |
+| review.history | review | review history | review_history | List all review events for a change in chronological order. |
+| archive.run | archive | archive <id> | archive_change | Archive a completed change with spec delta merge. |
+| spec.list | spec | list --specs | list_specs | List canonical capability specs (post-archive merge targets). |
+| spec.show | spec | show spec <cap> | show_spec | Read a canonical capability spec by id. |
+| instructions.get | meta | instructions <kind> | get_instructions | Get AI prompt and template for an artifact or workflow step. |
+| analyze.run | meta | analyze <id> | analyze_change | Run cross-artifact analyze (Coverage, Consistency, Ambiguity, Gaps). |
+| validate.run | meta | validate <id> | validate_change | Validate a change's artifacts against its schema. |
+| drift.run | meta | drift <id> | drift_change | Detect drift between change artifacts and current codebase state. |
+| doctor.run | doctor | doctor | run_doctor | Run 9 health-check categories with optional auto-fix. |
+| tool.describe | tool | describe-tools | n/a | Describe the operation catalogue in machine or human format. |

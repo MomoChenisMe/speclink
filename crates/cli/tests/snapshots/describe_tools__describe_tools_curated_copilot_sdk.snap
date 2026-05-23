@@ -1,0 +1,54 @@
+---
+source: crates/cli/tests/describe_tools.rs
+expression: "serde_json::to_string_pretty(&Value::Array(summary)).unwrap()"
+---
+[
+  {
+    "description": "Create a new discussion thread for structured deliberation.",
+    "name": "new_discussion"
+  },
+  {
+    "description": "Patch one section of a discussion (append round, edit conclusion).",
+    "name": "patch_discussion"
+  },
+  {
+    "description": "Lock a discussion as concluded; freeze its conclusion section.",
+    "name": "conclude_discussion"
+  },
+  {
+    "description": "Create a new change in proposing state.",
+    "name": "new_change"
+  },
+  {
+    "description": "Write an artifact (proposal/design/tasks/spec) with etag CAS.",
+    "name": "write_artifact"
+  },
+  {
+    "description": "Read an artifact's content and current etag.",
+    "name": "read_artifact"
+  },
+  {
+    "description": "Transition a change to in_progress and assign an actor.",
+    "name": "apply_start"
+  },
+  {
+    "description": "Mark a task as done; auto-transition when all tasks complete.",
+    "name": "task_done"
+  },
+  {
+    "description": "Approve a review phase (artifact or code) and advance state.",
+    "name": "review_approve"
+  },
+  {
+    "description": "Reject a review phase with a reason; add synthetic feedback tasks.",
+    "name": "review_reject"
+  },
+  {
+    "description": "Archive a completed change with spec delta merge.",
+    "name": "archive_change"
+  },
+  {
+    "description": "Get AI prompt and template for an artifact or workflow step.",
+    "name": "get_instructions"
+  }
+]

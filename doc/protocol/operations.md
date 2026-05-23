@@ -4230,8 +4230,9 @@ $ speclink doctor --quick --json
 
 | Code | 觸發條件 | Retry |
 |---|---|---|
-| `tool.format_not_supported` | format 不在 enum | `no` |
-| `tool.unknown_op` | filter 內含未知 op | `no` |
+| `tool.format_not_supported` | format 屬於 enum 但是 [deferred]（`copilotkit` / `openai` / `langchain` / `mcp` / `claude`）；MVP 只接 `json` / `text` / `copilot-sdk` | `no` |
+| `tool.unknown_op` | filter 內含未在 catalogue 的 op id | `no` |
+| `tool.unknown_category` | categories 內含未在 catalogue 的 category | `no` |
 
 #### Examples
 

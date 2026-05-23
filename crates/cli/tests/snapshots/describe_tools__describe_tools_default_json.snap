@@ -1,0 +1,54 @@
+---
+source: crates/cli/tests/describe_tools.rs
+expression: "serde_json::to_string_pretty(&Value::Array(summary)).unwrap()"
+---
+[
+  {
+    "id": "discuss.new",
+    "name": "new_discussion"
+  },
+  {
+    "id": "discuss.patch",
+    "name": "patch_discussion"
+  },
+  {
+    "id": "discuss.conclude",
+    "name": "conclude_discussion"
+  },
+  {
+    "id": "change.create",
+    "name": "new_change"
+  },
+  {
+    "id": "artifact.write",
+    "name": "write_artifact"
+  },
+  {
+    "id": "artifact.read",
+    "name": "read_artifact"
+  },
+  {
+    "id": "apply.start",
+    "name": "apply_start"
+  },
+  {
+    "id": "task.done",
+    "name": "task_done"
+  },
+  {
+    "id": "review.approve",
+    "name": "review_approve"
+  },
+  {
+    "id": "review.reject",
+    "name": "review_reject"
+  },
+  {
+    "id": "archive.run",
+    "name": "archive_change"
+  },
+  {
+    "id": "instructions.get",
+    "name": "get_instructions"
+  }
+]

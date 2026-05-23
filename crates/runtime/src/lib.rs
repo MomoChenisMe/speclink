@@ -8,6 +8,7 @@ pub mod apply_ops;
 pub mod archive_ops;
 pub mod artifact_ops;
 pub mod bootstrap;
+pub mod catalogue;
 pub mod change_ops;
 pub mod config_ops;
 pub mod dev_precheck;
@@ -18,6 +19,7 @@ pub mod ops;
 pub mod paths;
 pub mod state_machine;
 pub mod task_ops;
+pub mod tool_ops;
 
 pub use apply_ops::{ApplyOperations, ApplyPauseData, ApplyStartData};
 pub use archive_ops::{ArchiveData, ArchiveOperations, ArchiveOutcome};

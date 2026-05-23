@@ -445,6 +445,54 @@ Output:
 | task id 在 tasks.md 中找不到 | `task.not_found` | 2 |
 | tasks.md 解析失敗 | `tasks.parse_error` | 1 |
 
+## Walking skeleton 5 — describe-tools（P1 = `add-tool-describe-and-catalogue`）
+
+第一條 Phase 1 dogfooding slice（design.md §18.4）。Catalogue 把 `doc/protocol/operations.md` 的 37 個 operation metadata 固化為 Rust single source of truth，並提供 `speclink describe-tools` 多 format 印出。
+
+### Describe-tools usage
+
+```bash
+# 預設：印 12 個 curated subset（design.md §22.2）為 JSON
+speclink describe-tools --json
+
+# 完整 37 個 op
+speclink describe-tools --full --json
+
+# Markdown 表（human debug）
+speclink describe-tools --format text
+
+# CopilotKit SDK defineTool 形狀
+speclink describe-tools --format copilot-sdk --json
+
+# 過濾：category + filter 取 AND intersection
+speclink describe-tools --full --categories change --filter change.delete --json
+
+# 多 phase（comma-separated）
+speclink describe-tools --full --phases discuss,apply --json
+```
+
+### Format flag
+
+| `--format` | 行為 | 狀態 |
+| --- | --- | --- |
+| `json` (default) | array of `{ id, name, description, parameters }` | MVP ✓ |
+| `text` | Markdown table | MVP ✓ |
+| `copilot-sdk` | array of `{ name, description, parameters }` 對應 `defineTool` | MVP ✓ |
+| `copilotkit` / `openai` / `langchain` / `mcp` / `claude` | clap 接受、runtime 拒絕並回 `tool.format_not_supported` | [deferred] |
+
+### Read-only contract
+
+`describe-tools` 不讀 `.speclink/`、不讀 state.db、不取 lock；任何工作目錄都能跑（無需 `speclink init`）。
+
+### Exit codes
+
+| 觸發條件 | error code | exit code |
+| --- | --- | --- |
+| `--format` 收到 deferred 5 種之一 | `tool.format_not_supported` | 2 |
+| `--filter` 含未知 op id | `tool.unknown_op` | 2 |
+| `--categories` 含未知 category | `tool.unknown_category` | 2 |
+| `--format` 收到 enum 以外值 | clap parser 拒絕 | 2 |
+
 ## License
 
 Dual-licensed under MIT OR Apache-2.0. See `LICENSE` for details.

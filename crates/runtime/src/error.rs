@@ -164,6 +164,22 @@ pub enum RuntimeError {
     #[error("`speclink config edit` requires --stdin, --editor <cmd>, or $EDITOR to be set")]
     ConfigEditModeRequired,
 
+    /// 對應 `tool.format_not_supported`：`describe-tools --format <fmt>` 收到
+    /// 合法 enum 但屬 [deferred] format（`copilotkit` / `openai` / `langchain` /
+    /// `mcp` / `claude`）。
+    #[error(
+        "describe-tools format `{format}` is not supported in MVP (use one of: json, text, copilot-sdk)"
+    )]
+    ToolFormatNotSupported { format: String },
+
+    /// 對應 `tool.unknown_op`：`describe-tools --filter` 含 catalogue 內沒有的 id。
+    #[error("unknown operation id `{id}` in --filter")]
+    ToolUnknownOp { id: String },
+
+    /// 對應 `tool.unknown_category`：`describe-tools --categories` 含未知 category。
+    #[error("unknown category `{category}` in --categories")]
+    ToolUnknownCategory { category: String },
+
     /// 透過 provider 傳上來的內部錯誤。
     #[error("provider error: {0}")]
     Provider(#[from] speclink_provider::ProviderError),
@@ -204,6 +220,9 @@ impl RuntimeError {
             RuntimeError::ConfigKeyNotFound { .. } => codes::CONFIG_KEY_NOT_FOUND,
             RuntimeError::StateEtagMismatch { .. } => codes::STATE_ETAG_MISMATCH,
             RuntimeError::ConfigEditModeRequired => codes::CONFIG_EDIT_MODE_REQUIRED,
+            RuntimeError::ToolFormatNotSupported { .. } => codes::TOOL_FORMAT_NOT_SUPPORTED,
+            RuntimeError::ToolUnknownOp { .. } => codes::TOOL_UNKNOWN_OP,
+            RuntimeError::ToolUnknownCategory { .. } => codes::TOOL_UNKNOWN_CATEGORY,
             RuntimeError::Provider(p) => p.code(),
             RuntimeError::Internal(_) => "internal.error",
         }
@@ -240,6 +259,9 @@ impl RuntimeError {
                 || c == codes::CONFIG_NOT_FOUND
                 || c == codes::CONFIG_KEY_NOT_FOUND
                 || c == codes::CONFIG_EDIT_MODE_REQUIRED
+                || c == codes::TOOL_FORMAT_NOT_SUPPORTED
+                || c == codes::TOOL_UNKNOWN_OP
+                || c == codes::TOOL_UNKNOWN_CATEGORY
                 || c == task_codes::TASK_NO_TASKS_FILE
                 || c == task_codes::TASK_INDEX_OUT_OF_RANGE =>
             {
@@ -383,6 +405,38 @@ mod tests {
             !msg.contains("→"),
             "must not use transition-arrow shape, got: {msg}"
         );
+    }
+
+    #[test]
+    fn runtime_error_tool_format_not_supported_maps_to_exit_2() {
+        let e = RuntimeError::ToolFormatNotSupported {
+            format: "mcp".into(),
+        };
+        assert_eq!(e.code(), codes::TOOL_FORMAT_NOT_SUPPORTED);
+        assert_eq!(e.code(), "tool.format_not_supported");
+        assert_eq!(e.exit_code(), 2);
+        assert!(!e.retryable());
+        assert!(e.to_string().contains("mcp"));
+    }
+
+    #[test]
+    fn runtime_error_tool_unknown_op_maps_to_exit_2() {
+        let e = RuntimeError::ToolUnknownOp {
+            id: "no.such.op".into(),
+        };
+        assert_eq!(e.code(), codes::TOOL_UNKNOWN_OP);
+        assert_eq!(e.exit_code(), 2);
+        assert!(e.to_string().contains("no.such.op"));
+    }
+
+    #[test]
+    fn runtime_error_tool_unknown_category_maps_to_exit_2() {
+        let e = RuntimeError::ToolUnknownCategory {
+            category: "bogus".into(),
+        };
+        assert_eq!(e.code(), codes::TOOL_UNKNOWN_CATEGORY);
+        assert_eq!(e.exit_code(), 2);
+        assert!(e.to_string().contains("bogus"));
     }
 
     #[test]
