@@ -147,20 +147,28 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
         0
     };
 
-    // Structure dimension
-    let structure_status = format!("{}/{} anchors broken", broken.len(), total_anchors);
-    let structure_score = if broken_ratio >= 0.5 {
-        4
-    } else if broken_ratio >= 0.25 {
-        3
-    } else if broken_ratio > 0.0 {
-        2
+    // Structure dimension — falls back to "design absent" when there is no design.md to anchor on.
+    let design_present = util::has_content(&change.dir.join("design.md"));
+    let (structure_status, structure_score) = if !design_present {
+        ("design absent".to_string(), 0)
     } else {
-        0
+        let score = if broken_ratio >= 0.5 {
+            4
+        } else if broken_ratio >= 0.25 {
+            3
+        } else if broken_ratio > 0.0 {
+            2
+        } else {
+            0
+        };
+        (format!("{}/{} anchors broken", broken.len(), total_anchors), score)
     };
 
     // Tasks dimension
-    let tasks_status = if git_has_commits {
+    let tasks_present = util::has_content(&change.dir.join("tasks.md"));
+    let tasks_status = if !tasks_present {
+        "no tasks.md".to_string()
+    } else if git_has_commits {
         "no task collisions".to_string()
     } else {
         "git unavailable".to_string()
@@ -215,8 +223,8 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
 
     let primary_recommendation = match severity.as_str() {
         "heavy" => format!("speclink archive {} --skip-specs", change.name),
-        "medium" => format!("speclink apply {}", change.name),
-        _ => format!("speclink apply {}", change.name),
+        "medium" => format!("/speclink-ingest {}", change.name),
+        _ => format!("/speclink-apply {}", change.name),
     };
 
     DriftReport {

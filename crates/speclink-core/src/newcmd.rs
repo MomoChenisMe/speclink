@@ -13,6 +13,7 @@ pub fn new_change(
     name: &str,
     _description: Option<&str>,
     schema: &str,
+    agent: Option<&str>,
 ) -> Result<PathBuf> {
     if !is_kebab_case(name) {
         bail!("Invalid change name '{name}'. Must be kebab-case (e.g., 'add-feature').");
@@ -25,6 +26,9 @@ pub fn new_change(
     let mut meta = format!("schema: {schema}\ncreated: {created}\n");
     if let Some(id) = util::git_identity(&paths.root) {
         meta.push_str(&format!("created_by: {id}\n"));
+    }
+    if let Some(agent) = agent {
+        meta.push_str(&format!("created_with: {agent}\n"));
     }
     util::write_file(&dir.join(".openspec.yaml"), &meta)?;
     Ok(dir)

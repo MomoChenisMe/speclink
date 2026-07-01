@@ -42,11 +42,14 @@ fn resolve_change(paths: &Paths, name: Option<&str>) -> Result<Change> {
         0 => bail!("No active changes. Create one with: speclink new change <name>"),
         1 => Ok(changes.remove(0)),
         _ => {
+            // Spectra lists the changes by most-recently-modified first.
+            changes.sort_by(|a, b| {
+                let ma = std::fs::metadata(&a.dir).and_then(|m| m.modified()).ok();
+                let mb = std::fs::metadata(&b.dir).and_then(|m| m.modified()).ok();
+                mb.cmp(&ma)
+            });
             let names: Vec<&str> = changes.iter().map(|c| c.name.as_str()).collect();
-            bail!(
-                "Multiple changes found. Use --change to specify one: {}",
-                names.join(", ")
-            )
+            bail!("Multiple changes found. Specify one: {}", names.join(", "))
         }
     }
 }
@@ -269,9 +272,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
         println!();
         println!("--- spec.md ---");
         print!("{content}");
-        if !content.ends_with('\n') {
-            println!();
-        }
+        println!(); // Spectra always emits a trailing newline (an extra blank when content ends with \n)
         return Ok(());
     }
 
@@ -322,6 +323,12 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
             }
         } else if !proposal.ends_with('\n') {
             println!();
+        }
+    } else if !caps.is_empty() {
+        // No proposal, but delta specs exist — still render the section.
+        println!("--- Delta Specs ---");
+        for c in &caps {
+            println!("  {c}/spec.md");
         }
     }
     Ok(())
@@ -641,8 +648,7 @@ fn cmd_new(a: NewArgs) -> Result<()> {
 fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     let paths = require_paths()?;
     let schema = a.schema.unwrap_or_else(|| "spec-driven".to_string());
-    let dir = core::newcmd::new_change(&paths, &a.name, a.description.as_deref(), &schema)?;
-    let _ = a.agent;
+    let dir = core::newcmd::new_change(&paths, &a.name, a.description.as_deref(), &schema, a.agent.as_deref())?;
     println!("✓ Created change: {}", a.name);
     println!("  Path: {}", dir.to_string_lossy());
     println!("  Schema: {schema}");

@@ -56,7 +56,9 @@ Speclink 保留 Spectra 的 21 個共同頂層指令，移除 3 個（依需求�
 | 生命週期 | new change, new artifact×4, task done(json/human), in-progress add, archive | ✅ 全一致 |
 | 正典 spec | archive 後 `openspec/specs/<cap>/spec.md`（含 `@trace`）逐字相同 | ✅ 一致 |
 
-**穩健性**：因 `demo` 每次隨機主題，對照套件連續執行多次仍維持 31/31。另外針對全部 8 個 demo 主題（access-control、audit-trail、batch-export、keyboard-macros、real-time-sync、smart-search、snapshot-restore、theme-engine）逐一測 `analyze` 與 `drift`，**16/16 一致**——涵蓋 4 維分析（Coverage/Consistency/Ambiguity/Gaps，含「WHEN/THEN 已具體則不建議加 Example」的啟發式）與漂移錨點抽取（含停用字表）。
+**穩健性**：因 `demo` 每次隨機主題，對照套件連續執行多次仍維持 31/31。另外針對全部 8 個 demo 主題（access-control、audit-trail、batch-export、keyboard-macros、real-time-sync、smart-search、snapshot-restore、theme-engine）逐一測 `analyze / drift / validate / status / show / show --json`，**48/48 一致**——涵蓋 4 維分析（Coverage/Consistency/Ambiguity/Gaps，含「WHEN/THEN 已具體則不建議加 Example」的啟發式、弱語言偵測、contiguous 覆蓋比對、Skipped 維度）與漂移錨點抽取（含停用字表）。
+
+**錯誤與邊界情境**（經 §9 五輪對抗式審計逐一對齊）：不存在的變更、重複建立、缺 capability、未知 artifact 型別、未知 skill、非數字/越界/0 task id、無 tasks.md、專案外執行、僅 proposal 的變更、blocked 狀態、多能力、locale 未對映碼/大小寫、config.yaml locale、MODIFIED/REMOVED/RENAMED delta、RENAMED-only/空操作 delta、malformed delta、archive `--skip-specs`/`--mark-tasks-complete`、schema/templates 未知 schema、`show --item-type spec|change` 等——錯誤訊息、退出碼與輸出**均與 spectra 對齊**。
 
 ## 5. 技能（skills）比較
 
@@ -124,6 +126,17 @@ Spectra 的 discuss 是唯讀、不留文件的討論。Speclink 讓 discuss 具
 
 **可玩性驗證**：以模擬 DOM/Canvas 的 node harness 載入遊戲並驅動，確認 6 條需求全部成立——發球（含發球中忽略）、翻板按鍵時尖端上抬（y 599→526）、緩衝器計分（單局最高 1800 分）、落袋扣球至 0、Game Over、R 重開歸零、HUD 同步。
 
-## 11. 結論
+## 11. 未來階段：可插拔規格儲存（延伸願景）
 
-Speclink 在**所有共同功能面**與 Spectra 2.3.1 的 CLI 邏輯、流程、輸出結果、技能內容、功能結構與流程邏輯**保持一致**，且以 Rust 原生單一執行檔實作。與 Spectra 的差異全部落在需求指定的取捨：移除 debug/ask/向量搜尋/worktree/park-unpark/parallel_tasks/claude_effort，並強化 discuss 為可記錄、可作為 propose 來源的延續性討論。端到端以 speclink 建出可玩的 HTML 彈珠檯，證明整條 SDD 流程可用。
+本次交付為需求所述的**第一階段**（完整 CLI + discuss 強化 + 端到端示範 + 比較報告）。延伸願景是把「規格驅動引擎」與「文件儲存方式」解耦——讓文件可存為 md／DB／JSON／YAML，或串接 JIRA 等外部系統，進而支援「PO/PM 在客製化系統執行 discuss + propose + ingest + archive，RD/QA 在本地 git 執行 apply + verify」的分工。
+
+Speclink 目前的設計已為此鋪路：
+- **discuss 文件化**（§8）已把討論從「僅存於對話」變為持久化文件，是儲存解耦的第一步。
+- 引擎邏輯（`speclink-core`）與 CLI（`speclink-cli`）分離，`paths` 模組集中管理儲存位置，未來可抽象為 storage trait（本地 fs / DB / REST）而不動 CLI 表面。
+- `instructions` 於呼叫當下即時讀取設定並注入，天然適合「引擎即服務」模式。
+
+此為後續階段工作，不在本次第一階段範圍。
+
+## 12. 結論
+
+Speclink 在**所有共同功能面**與 Spectra 2.3.1 的 CLI 邏輯、流程、輸出結果、技能內容、功能結構與流程邏輯**保持一致**（經 5 輪對抗式審計逐一對齊，殘留僅純 cosmetic 空白差異），且以 Rust 原生 workspace（`speclink-core` + `speclink-cli`）實作、單一執行檔散布（release 約 6.5MB，與 spectra 8.35MB 相當）。與 Spectra 的差異全部落在需求指定的取捨：移除 debug/ask/向量搜尋/worktree/park-unpark/parallel_tasks/claude_effort，並強化 discuss 為可記錄、可作為 propose 來源的延續性討論。端到端以 speclink 完整跑過 discuss→propose→apply→archive，建出可玩的 HTML 彈珠檯（`pinball/index.html`，經模擬 DOM 測試驗證六項需求全數成立），證明整條 SDD 流程可用。
