@@ -112,8 +112,14 @@ Spectra 的 discuss 是唯讀、不留文件的討論。Speclink 讓 discuss 具
 - **第六輪**：Coverage skip 精修（需 proposal +（specs 或 tasks））、`gapNoProposal`、drift 對未完成變更的維度文字（「design absent」/「no tasks.md」）與 light/medium 建議（技能斜線指令）、`new change --agent` 寫 `created_with`、多變更錯誤措辭與 mtime 排序、show 無 proposal 仍顯示 delta specs。**此輪 locale-config 與 multi-cap-lifecycle 兩個面向已 0 發現。**
 - **第七輪**：僅 4 項——archive 的 MODIFIED 若不在 base spec 應跳過（不 materialize）、`gapModifiedNotFound` params 只用 `{name}`、`new artifact` 應先驗型別再驗變更、locale 空白值原樣保留。**此輪 multi-cap-lifecycle 與 browse-schema 亦 0 發現**，locale-config 僅剩空值一項。四項全數修正。
 - **第八輪**：6 項——analyze 空變更（剛 `new change` 後）誤觸 `gapNoProposal`（應 skip Gaps 並省略空的 `Analyzed:` 行）、archive 刪除最後一條需求時 spectra 會留 dangling `---`（本輪一併複製以達 byte-parity）、`config list` 應為 `key = value` 且支援 `--json`、`completion install` 應收 `--verbose`。**locale-config 與 multi-cap-lifecycle 再次 0 發現**。六項全數修正。
+- **第九輪**：補齊兩項功能落差——`instructions` 的 `unlocks`（下游 artifact，即「本 artifact 為其最後一個未滿足依賴」者；JSON + 人類「Unlocks:」區塊）與 `completion generate` 產生**真正的 clap 完成腳本**（原為 stub）；另修多變更措辭依指令而異（analyze/drift 用「Specify one:」、`--change` 指令用「Use --change to specify one:」）、`new artifact` 無 `--change` 時先 auto-detect。**multi-cap-lifecycle 再度 0 發現**。
 
-**收斂軌跡**：每輪真實不一致數為 43 → ~22 → ~22 → 8 → 9 → 8 → 4 → 6，且各探測面向陸續歸零（locale-config、multi-cap-lifecycle、browse-schema 於後段多輪達 0 發現）。**所有真實/語意不一致均已修正並提交**（git 提交序列 `fix(cli): match Spectra help descriptions...` 至 `fix(cli): resolve round-8 audit findings`），並以聚焦自檢逐一驗證輸出與 spectra 逐字相符。每輪修正後回歸：8 個 demo 主題的 analyze/drift/validate/status/show **一致**，完整對照套件 **31/31 一致**，皆無回歸。
+**收斂軌跡**：每輪真實不一致數為 43 → ~22 → ~22 → 8 → 9 → 8 → 4 → 6 → 5，且各探測面向陸續歸零（locale-config、multi-cap-lifecycle、browse-schema 於後段多輪達 0 發現）。**所有真實/語意不一致均已修正並提交**（git 提交序列 `fix(cli): match Spectra help descriptions...` 至 `fix(cli): resolve round-9 audit findings`），並以聚焦自檢逐一驗證輸出與 spectra 逐字相符。每輪修正後回歸：8 個 demo 主題的 analyze/drift/validate/status/show/instructions **一致**（80/80），完整對照套件 **31/31 一致**，皆無回歸。
+
+**已知非程式差異／病態邊界**（如實揭露、不影響正常 SDD 流程）：
+- `config list` 讀取品牌各自的機器層全域設定（`~/.speclink/` vs `~/.spectra/`），內容視使用者先前設定而異；格式（`key = value`）與 `--json` 一致。
+- `completion generate` 因指令集刻意不同（speclink 有 discuss、無 search/park/unpark），產生的腳本指令樹與 spectra 不同，但同為 clap 完成腳本、格式一致、功能完整。
+- 對「存在但空／僅 RENAMED」的病態 delta spec，analyze 的維度 gating（specs 視為 present 與否）在 speclink 採 has-delta-operation 判定，與 spectra 的 has-content 判定在此極端輸入下略有差異；正常含 ADDED/MODIFIED/REMOVED 的 delta spec 兩者一致。
 
 唯一非程式差異：`config list` 讀取品牌各自的機器層全域設定檔（`~/.speclink/` vs spectra 的 `~/.spectra/`），故若使用者先前用 spectra 設過全域鍵，其內容會不同；此為刻意的品牌隔離，格式（`key = value`）與 `--json` 完全一致。
 
