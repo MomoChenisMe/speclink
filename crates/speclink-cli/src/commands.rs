@@ -165,9 +165,16 @@ struct ListChangeJson {
     completed_tasks: usize,
     name: String,
     status: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     summary: String,
     #[serde(rename = "totalTasks")]
     total_tasks: usize,
+}
+
+/// Order changes for `list`. Spectra lists alphabetically by name (both by default and with
+/// `--sort name`).
+fn sort_changes(changes: &mut [Change], _sort: &str) {
+    changes.sort_by(|x, y| x.name.cmp(&y.name));
 }
 
 fn cmd_list(a: ListArgs) -> Result<()> {
@@ -176,9 +183,7 @@ fn cmd_list(a: ListArgs) -> Result<()> {
         return list_specs(&paths, a.json);
     }
     let mut changes = core::model::list_changes(&paths);
-    if a.sort == "name" {
-        changes.sort_by(|x, y| x.name.cmp(&y.name));
-    }
+    sort_changes(&mut changes, &a.sort);
     if a.json {
         let items: Vec<ListChangeJson> = changes
             .iter()
@@ -203,10 +208,16 @@ fn cmd_list(a: ListArgs) -> Result<()> {
     for c in &changes {
         let (complete, total) = task_counts(c);
         let summary = proposal_summary(c);
-        if summary.is_empty() {
-            println!("  • {} [{}/{}]", c.name, complete, total);
+        // Spectra omits the progress marker entirely for changes with zero tasks.
+        let marker = if total > 0 {
+            format!(" [{complete}/{total}]")
         } else {
-            println!("  • {} [{}/{}] — {}", c.name, complete, total, summary);
+            String::new()
+        };
+        if summary.is_empty() {
+            println!("  • {}{marker}", c.name);
+        } else {
+            println!("  • {}{marker} — {summary}", c.name);
         }
     }
     Ok(())
