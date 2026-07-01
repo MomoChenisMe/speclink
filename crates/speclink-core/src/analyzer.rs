@@ -241,7 +241,8 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     let coverage_skipped = !(proposal_present && (specs_present || tasks_present));
     let consistency_skipped = !(design_present && tasks_present);
     let ambiguity_skipped = !specs_present;
-    let gaps_skipped = false;
+    // Gaps runs whenever the change has any artifact at all; skipped for an empty change.
+    let gaps_skipped = !(proposal_present || specs_present || tasks_present || design_present);
 
     let mut coverage: Vec<Finding> = Vec::new();
     let mut consistency: Vec<Finding> = Vec::new();
@@ -340,7 +341,7 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     // --- Gaps ---
     if !gaps_skipped {
         let mut n = 0;
-        if proposal.trim().is_empty() {
+        if specs_present && proposal.trim().is_empty() {
             n += 1;
             gaps.push(make_finding(
                 "GAP", n, "Gaps", Severity::Critical, "change directory",

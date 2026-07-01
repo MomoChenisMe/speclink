@@ -343,7 +343,11 @@ enum ConfigCommands {
     /// Show config file path
     Path,
     /// List all settings
-    List,
+    List {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Get a config value
     Get {
         /// Config key
@@ -390,6 +394,9 @@ enum CompletionCommands {
     Install {
         /// Shell type
         shell: Option<String>,
+        /// Verbose output
+        #[arg(long)]
+        verbose: bool,
     },
     /// Uninstall completion
     Uninstall {
