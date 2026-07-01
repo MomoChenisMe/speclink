@@ -71,6 +71,32 @@ pub fn build_artifact(
         })
         .collect();
 
+    // `unlocks` = downstream artifacts for which THIS artifact is the last unmet dependency:
+    // not yet done, list this artifact in their `requires`, and have every other requirement done.
+    // Empty once this artifact itself is done (it has already unlocked its dependents).
+    let self_done = model::artifact_done(&change.dir, artifact);
+    let unlocks: Vec<String> = if self_done {
+        Vec::new()
+    } else {
+        schema
+            .artifacts
+            .iter()
+            .filter(|y| y.id != artifact.id)
+            .filter(|y| y.requires.iter().any(|r| *r == artifact.id))
+            .filter(|y| !model::artifact_done(&change.dir, y))
+            .filter(|y| {
+                y.requires.iter().all(|d| {
+                    *d == artifact.id
+                        || schema
+                            .artifact(d)
+                            .map(|da| model::artifact_done(&change.dir, da))
+                            .unwrap_or(false)
+                })
+            })
+            .map(|y| y.id.to_string())
+            .collect()
+    };
+
     Some(ArtifactInstructions {
         change_name: change.name.clone(),
         artifact_id: artifact.id.to_string(),
@@ -84,7 +110,7 @@ pub fn build_artifact(
         locale: crate::config::resolve_locale(&app, &wf),
         template: artifact.template.to_string(),
         dependencies,
-        unlocks: Vec::new(),
+        unlocks,
     })
 }
 
