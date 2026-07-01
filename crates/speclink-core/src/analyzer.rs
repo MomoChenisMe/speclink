@@ -176,21 +176,15 @@ fn task_descriptions(tasks: &str) -> Vec<String> {
         .collect()
 }
 
-/// A requirement is "covered" if some task contains all of its significant words (case-insensitive
-/// substring) — matches Spectra's lenient matching (e.g. "CSV Export" ↔ "Implement CSV exporter").
+/// A requirement is "covered" if its name appears as a contiguous (case-insensitive) substring in
+/// some task line — matches Spectra (e.g. "CSV Export" ↔ "Implement CSV exporter", but NOT
+/// "csv-export" or "export_csv"). No identifier-token splitting.
 fn req_covered(name: &str, tasks: &[String]) -> bool {
-    let words: Vec<String> = name
-        .split_whitespace()
-        .map(|w| w.to_lowercase())
-        .filter(|w| w.len() >= 2)
-        .collect();
-    if words.is_empty() {
+    let n = name.trim().to_lowercase();
+    if n.is_empty() {
         return true;
     }
-    tasks.iter().any(|t| {
-        let tl = t.to_lowercase();
-        words.iter().all(|w| tl.contains(w.as_str()))
-    })
+    tasks.iter().any(|t| t.to_lowercase().contains(&n))
 }
 
 /// Weak/vague language patterns found in a spec line, in Spectra's reporting order.
@@ -352,24 +346,43 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
                 "gapNoProposal", [],
             ));
         }
+        // change.dir = <root>/openspec/changes/<name>; canonical = <root>/openspec/specs/<cap>/spec.md
+        let openspec = change.dir.parent().and_then(|p| p.parent());
+        let mut cap_no_main: Vec<String> = Vec::new();
         for (loc, req) in &all_reqs {
-            if req.operation == "MODIFIED" {
-                let cap = loc.split('/').nth(1).unwrap_or("");
-                // change.dir = <root>/openspec/changes/<name>; canonical = <root>/openspec/specs/<cap>/spec.md
-                let canonical = change
-                    .dir
-                    .parent()
-                    .and_then(|p| p.parent())
-                    .map(|openspec| openspec.join("specs").join(cap).join("spec.md"));
-                let exists = canonical.as_ref().map(|p| util::has_content(p)).unwrap_or(false);
-                if !exists {
-                    n += 1;
-                    gaps.push(make_finding(
-                        "GAP", n, "Gaps", Severity::Critical, loc,
-                        &format!("MODIFIED requirement '{}' has no canonical spec", req.name),
-                        "Ensure the capability exists in openspec/specs/ before modifying it",
-                        "gapModifiedNotFound", [("req", req.name.as_str())],
-                    ));
+            if req.operation != "MODIFIED" {
+                continue;
+            }
+            let cap = loc.split('/').nth(1).unwrap_or("");
+            let canonical = openspec.map(|o| o.join("specs").join(cap).join("spec.md"));
+            let canonical_text = canonical
+                .as_ref()
+                .and_then(|p| util::read_opt(p))
+                .filter(|t| !t.trim().is_empty());
+            match canonical_text {
+                None => {
+                    // No canonical spec for this capability — reported once per capability.
+                    if !cap_no_main.contains(&cap.to_string()) {
+                        cap_no_main.push(cap.to_string());
+                        n += 1;
+                        gaps.push(make_finding(
+                            "GAP", n, "Gaps", Severity::Warning, loc,
+                            &format!("MODIFIED requirements reference capability '{cap}' but no main spec found"),
+                            &format!("Check if openspec/specs/{cap}/spec.md exists"),
+                            "gapNoMainSpec", [("spec", cap)],
+                        ));
+                    }
+                }
+                Some(text) => {
+                    if !text.contains(&format!("### Requirement: {}", req.name)) {
+                        n += 1;
+                        gaps.push(make_finding(
+                            "GAP", n, "Gaps", Severity::Warning, loc,
+                            &format!("MODIFIED requirement '{}' not found in main spec", req.name),
+                            &format!("Verify requirement '{}' exists in openspec/specs/{cap}/spec.md", req.name),
+                            "gapModifiedNotFound", [("req", req.name.as_str())],
+                        ));
+                    }
                 }
             }
         }

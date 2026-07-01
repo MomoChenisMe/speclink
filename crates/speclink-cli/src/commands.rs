@@ -304,20 +304,18 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
     }
     println!();
     let proposal = read_opt_str("proposal.md").unwrap_or_default();
+    let caps = core::model::delta_capabilities(&change.dir);
     if !proposal.trim().is_empty() {
         println!("--- Proposal ---");
         print!("{proposal}");
-        if !proposal.ends_with('\n') {
+        if !caps.is_empty() {
+            // The proposal's own trailing newline determines the blank-line count before the header.
+            print!("\n\n--- Delta Specs ---\n");
+            for c in &caps {
+                println!("  {c}/spec.md");
+            }
+        } else if !proposal.ends_with('\n') {
             println!();
-        }
-    }
-    let caps = core::model::delta_capabilities(&change.dir);
-    if !caps.is_empty() {
-        println!();
-        println!();
-        println!("--- Delta Specs ---");
-        for c in caps {
-            println!("  {c}/spec.md");
         }
     }
     Ok(())
@@ -884,15 +882,16 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
                 },
                 None => resolve_change(&paths, None)?,
             };
+            // Check tasks.md existence BEFORE validating the id (matches Spectra's order).
+            let tasks_path = change.dir.join("tasks.md");
+            let text = core::util::read_opt(&tasks_path)
+                .ok_or_else(|| anyhow::anyhow!("tasks.md not found for change '{}'", change.name))?;
             let id: usize = task_id
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid task ID '{task_id}': must be a number"))?;
             if id < 1 {
                 bail!("Task ID must be >= 1");
             }
-            let tasks_path = change.dir.join("tasks.md");
-            let text = core::util::read_opt(&tasks_path)
-                .ok_or_else(|| anyhow::anyhow!("tasks.md not found for change '{}'", change.name))?;
             let total = core::tasks::parse(&text).len();
             let (new_content, desc, already) = core::tasks::mark_done(&text, id)
                 .ok_or_else(|| anyhow::anyhow!("Task {id} not found (total: {total})"))?;

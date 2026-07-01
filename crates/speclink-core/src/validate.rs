@@ -31,7 +31,7 @@ pub fn validate_change(change: &Change, _schema: &Schema, strict: bool) -> Valid
         };
         if model::has_delta_operation(&text) {
             any_operation = true;
-        } else if text.contains("### Requirement:") {
+        } else if model::has_orphan_requirement(&text) {
             errors.push(format!(
                 "{}: Parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)",
                 spec_path.to_string_lossy()
