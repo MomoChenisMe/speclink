@@ -657,6 +657,13 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
 
 fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
     let paths = require_paths()?;
+    // Validate the artifact type BEFORE resolving the change (matches Spectra's order).
+    if !["proposal", "design", "tasks", "spec"].contains(&a.artifact_type.as_str()) {
+        bail!(
+            "Unknown artifact type '{}'. Valid types: proposal, design, tasks, spec",
+            a.artifact_type
+        );
+    }
     // Spectra's new-artifact reports change-not-found WITHOUT a trailing period.
     let change = match a.change.as_deref() {
         Some(name) => core::model::find_change(&paths, name)

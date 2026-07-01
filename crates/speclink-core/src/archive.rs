@@ -282,12 +282,12 @@ fn apply_delta_to_canonical(
                 }
             }
             "MODIFIED" => {
+                // Only apply MODIFIED to an existing requirement; skip if absent (matches Spectra,
+                // which flags it via analyze's gapModifiedNotFound rather than materializing it).
                 if let Some(slot) = blocks.iter_mut().find(|(n, _)| *n == r.name) {
                     slot.1 = make_block(r);
-                } else {
-                    blocks.push((r.name.clone(), make_block(r)));
+                    counts.modified += 1;
                 }
-                counts.modified += 1;
             }
             "REMOVED" => {
                 let before = blocks.len();

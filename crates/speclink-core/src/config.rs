@@ -39,9 +39,10 @@ impl AppConfig {
 /// Matching is case-SENSITIVE. Only `ja`/`tw`/`en` (and no locale) are mapped; any other code is
 /// echoed back verbatim, exactly like Spectra.
 pub fn locale_display(code: Option<&str>) -> String {
-    match code.map(|c| c.trim()) {
+    // No trimming and no case folding: Spectra preserves any unmapped value verbatim (including
+    // empty/whitespace and case-variants like "JA").
+    match code {
         None => "English".to_string(),
-        Some("") => "English".to_string(),
         Some("en") => "English".to_string(),
         Some("ja") => "Japanese (日本語)".to_string(),
         Some("tw") => "Traditional Chinese (繁體中文)".to_string(),
@@ -62,11 +63,9 @@ pub struct WorkflowConfig {
 /// Resolve the effective locale display name: the app-level `.speclink.yaml` locale wins, with the
 /// `openspec/config.yaml` locale as a fallback (matches Spectra).
 pub fn resolve_locale(app: &AppConfig, wf: &WorkflowConfig) -> String {
-    let code = app
-        .locale
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .or_else(|| wf.locale.as_deref().filter(|s| !s.trim().is_empty()));
+    // App-level locale wins when the key is present at all (even if empty); otherwise fall back to
+    // the workflow-level locale. Values are passed through verbatim (see `locale_display`).
+    let code = app.locale.as_deref().or_else(|| wf.locale.as_deref());
     locale_display(code)
 }
 
