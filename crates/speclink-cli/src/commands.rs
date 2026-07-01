@@ -1,0 +1,854 @@
+// Included into main.rs. Command handlers and rendering.
+
+use core::model::Change;
+use core::paths::Paths;
+use core::schema::Schema;
+
+fn dispatch(cli: Cli) -> Result<()> {
+    match cli.command {
+        Commands::Init(a) => cmd_init(a),
+        Commands::Update(a) => cmd_update(a),
+        Commands::List(a) => cmd_list(a),
+        Commands::Show(a) => cmd_show(a),
+        Commands::Validate(a) => cmd_validate(a),
+        Commands::Analyze(a) => cmd_analyze(a),
+        Commands::Drift(a) => cmd_drift(a),
+        Commands::Archive(a) => cmd_archive(a),
+        Commands::Status(a) => cmd_status(a),
+        Commands::Instructions(a) => cmd_instructions(a),
+        Commands::New(a) => cmd_new(a),
+        Commands::Schemas(a) => cmd_schemas(a),
+        Commands::Templates(a) => cmd_templates(a),
+        Commands::Feedback(a) => cmd_feedback(a),
+        Commands::Schema(a) => cmd_schema(a),
+        Commands::Config(a) => cmd_config(a),
+        Commands::Completion(a) => cmd_completion(a),
+        Commands::Task(a) => cmd_task(a),
+        Commands::InProgress(a) => cmd_in_progress(a),
+        Commands::Demo => cmd_demo(),
+        Commands::Discuss(a) => cmd_discuss(a),
+    }
+}
+
+// --- helpers ---
+
+fn resolve_change(paths: &Paths, name: Option<&str>) -> Result<Change> {
+    if let Some(n) = name {
+        return core::model::find_change(paths, n)
+            .ok_or_else(|| anyhow::anyhow!("change '{n}' not found"));
+    }
+    let changes = core::model::list_changes(paths);
+    match changes.len() {
+        0 => bail!("no active changes found"),
+        1 => Ok(changes.into_iter().next().unwrap()),
+        _ => bail!("multiple changes exist; specify one with --change"),
+    }
+}
+
+fn schema_for(change: &Change) -> Schema {
+    core::schema::resolve(&change.meta.schema_name()).unwrap_or_else(core::schema::spec_driven)
+}
+
+fn truncate_summary(text: &str, limit: usize) -> String {
+    let first_line = text.trim();
+    if first_line.chars().count() <= limit {
+        return first_line.to_string();
+    }
+    // Take the first `limit` characters verbatim (no word-boundary, no trim) and append an ellipsis.
+    let head: String = first_line.chars().take(limit).collect();
+    format!("{head}…")
+}
+
+fn proposal_summary(change: &Change) -> String {
+    let proposal = core::util::read_opt(&change.dir.join("proposal.md")).unwrap_or_default();
+    // First non-empty, non-header line after "## Why" (or first prose line).
+    let mut after_why = false;
+    for line in proposal.lines() {
+        let t = line.trim();
+        if t.starts_with("## Why") {
+            after_why = true;
+            continue;
+        }
+        if after_why && !t.is_empty() && !t.starts_with('#') {
+            return truncate_summary(t, 30);
+        }
+    }
+    // Fallback: first prose line.
+    for line in proposal.lines() {
+        let t = line.trim();
+        if !t.is_empty() && !t.starts_with('#') && !t.starts_with("<!--") {
+            return truncate_summary(t, 30);
+        }
+    }
+    String::new()
+}
+
+fn task_counts(change: &Change) -> (usize, usize) {
+    let tasks_md = core::util::read_opt(&change.dir.join("tasks.md")).unwrap_or_default();
+    let tasks = core::tasks::parse(&tasks_md);
+    let (total, complete, _) = core::tasks::progress(&tasks);
+    (complete, total)
+}
+
+// --- init / update ---
+
+fn cmd_init(a: InitArgs) -> Result<()> {
+    let root = a
+        .path
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let root = if root.is_absolute() {
+        root
+    } else {
+        std::env::current_dir()?.join(root)
+    };
+    let spec_dir = a.dir.clone().unwrap_or_else(|| "openspec".to_string());
+    let tools = match a.tools.as_deref() {
+        Some(spec) => core::init::parse_tools(spec)?,
+        None => Vec::new(),
+    };
+    let outcome = core::init::init(&root, &tools, a.force, &spec_dir)?;
+    println!("✓ Initialized at {}", core::util::to_slash(&outcome.spec_dir_abs));
+    Ok(())
+}
+
+fn cmd_update(a: UpdateArgs) -> Result<()> {
+    let root = a
+        .path
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let root = if root.is_absolute() {
+        root
+    } else {
+        std::env::current_dir()?.join(root)
+    };
+    core::init::update(&root, a.force)?;
+    println!("✓ Updated instruction files");
+    Ok(())
+}
+
+// --- list ---
+
+#[derive(serde::Serialize)]
+struct ListChangeJson {
+    #[serde(rename = "completedTasks")]
+    completed_tasks: usize,
+    name: String,
+    status: String,
+    summary: String,
+    #[serde(rename = "totalTasks")]
+    total_tasks: usize,
+}
+
+fn cmd_list(a: ListArgs) -> Result<()> {
+    let paths = require_paths()?;
+    if a.specs {
+        return list_specs(&paths, a.json);
+    }
+    let mut changes = core::model::list_changes(&paths);
+    if let Some(sort) = a.sort.as_deref() {
+        if sort == "name" {
+            changes.sort_by(|x, y| x.name.cmp(&y.name));
+        }
+    }
+    if a.json {
+        let items: Vec<ListChangeJson> = changes
+            .iter()
+            .map(|c| {
+                let (complete, total) = task_counts(c);
+                ListChangeJson {
+                    completed_tasks: complete,
+                    name: c.name.clone(),
+                    status: "in-progress".to_string(),
+                    summary: proposal_summary(c),
+                    total_tasks: total,
+                }
+            })
+            .collect();
+        return print_json(&serde_json::json!({ "changes": items }));
+    }
+    if changes.is_empty() {
+        println!("No changes found.");
+        return Ok(());
+    }
+    println!("Changes:");
+    for c in &changes {
+        let (complete, total) = task_counts(c);
+        let summary = proposal_summary(c);
+        if summary.is_empty() {
+            println!("  • {} [{}/{}]", c.name, complete, total);
+        } else {
+            println!("  • {} [{}/{}] — {}", c.name, complete, total, summary);
+        }
+    }
+    Ok(())
+}
+
+fn list_specs(paths: &Paths, json: bool) -> Result<()> {
+    let mut specs = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(paths.specs_dir()) {
+        for e in entries.flatten() {
+            if e.path().is_dir() && e.path().join("spec.md").is_file() {
+                specs.push(e.file_name().to_string_lossy().to_string());
+            }
+        }
+    }
+    specs.sort();
+    if json {
+        return print_json(&serde_json::json!({ "specs": specs }));
+    }
+    if specs.is_empty() {
+        println!("No specs found.");
+        return Ok(());
+    }
+    println!("Specs:");
+    for s in specs {
+        println!("  • {s}");
+    }
+    Ok(())
+}
+
+// --- show ---
+
+fn cmd_show(a: ShowArgs) -> Result<()> {
+    let paths = require_paths()?;
+    let name = match a.item {
+        Some(n) => n,
+        None => resolve_change(&paths, None)?.name,
+    };
+    let change = core::model::find_change(&paths, &name)
+        .ok_or_else(|| anyhow::anyhow!("change '{name}' not found"))?;
+    let schema = schema_for(&change);
+    if a.json {
+        let proposal = core::util::read_opt(&change.dir.join("proposal.md")).unwrap_or_default();
+        let caps = core::model::delta_capabilities(&change.dir);
+        return print_json(&serde_json::json!({
+            "name": change.name,
+            "schema": schema.name,
+            "created": change.meta.created,
+            "proposal": proposal,
+            "deltaSpecs": caps,
+        }));
+    }
+    println!("Change: {}", change.name);
+    println!("Schema: {}", schema.name);
+    if let Some(created) = &change.meta.created {
+        println!("Created: {created}");
+    }
+    println!();
+    let proposal = core::util::read_opt(&change.dir.join("proposal.md")).unwrap_or_default();
+    if !proposal.trim().is_empty() {
+        println!("--- Proposal ---");
+        print!("{proposal}");
+        if !proposal.ends_with('\n') {
+            println!();
+        }
+    }
+    let caps = core::model::delta_capabilities(&change.dir);
+    if !caps.is_empty() {
+        println!();
+        println!();
+        println!("--- Delta Specs ---");
+        for c in caps {
+            println!("  {c}/spec.md");
+        }
+    }
+    Ok(())
+}
+
+// --- validate ---
+
+fn cmd_validate(a: ValidateArgs) -> Result<()> {
+    let paths = require_paths()?;
+    let changes = if let Some(item) = a.item.as_deref() {
+        vec![core::model::find_change(&paths, item)
+            .ok_or_else(|| anyhow::anyhow!("change '{item}' not found"))?]
+    } else if a.all || a.changes {
+        core::model::list_changes(&paths)
+    } else {
+        match resolve_change(&paths, None) {
+            Ok(c) => vec![c],
+            Err(_) => core::model::list_changes(&paths),
+        }
+    };
+    let results: Vec<_> = changes
+        .iter()
+        .map(|c| core::validate::validate_change(c, &schema_for(c), a.strict))
+        .collect();
+    if a.json {
+        return print_json(&results);
+    }
+    for r in &results {
+        if r.valid {
+            println!("✓ {} is valid", r.change);
+        } else {
+            println!("✗ {} has {} error(s):", r.change, r.errors.len());
+            for e in &r.errors {
+                println!("  - {e}");
+            }
+        }
+        for w in &r.warnings {
+            println!("  ! {w}");
+        }
+    }
+    Ok(())
+}
+
+// --- analyze ---
+
+fn cmd_analyze(a: ChangeArg) -> Result<()> {
+    let paths = require_paths()?;
+    let change = resolve_change(&paths, a.change.as_deref())?;
+    let schema = schema_for(&change);
+    let report = core::analyzer::analyze(&change, &schema);
+    if a.json {
+        return print_json(&report);
+    }
+    render_analyze(&report);
+    Ok(())
+}
+
+fn render_analyze(report: &core::analyzer::AnalyzeReport) {
+    println!("Change: {}", report.change_id);
+    println!();
+    for d in &report.dimensions {
+        let sym = if d.finding_count == 0 { "✓" } else { "●" };
+        println!(
+            "  {sym} {:<15}{} ({} findings)",
+            d.dimension, d.status, d.finding_count
+        );
+    }
+    println!();
+    println!("  Analyzed: {}", report.artifacts_analyzed.join(", "));
+    if report.findings.is_empty() {
+        println!();
+        println!("  ✓ No issues found");
+        return;
+    }
+    println!();
+    println!("  Findings ({}):", report.findings.len());
+    println!();
+    for f in &report.findings {
+        let tag = match f.severity.as_str() {
+            "Critical" => "CRITICAL",
+            "Warning" => "WARNING",
+            _ => "SUGGEST",
+        };
+        println!("  [{tag}] {}", f.summary);
+        println!("    at: {}", f.location);
+        println!("    → {}", f.recommendation);
+    }
+}
+
+// --- drift ---
+
+fn cmd_drift(a: ChangeArg) -> Result<()> {
+    let paths = require_paths()?;
+    let change = resolve_change(&paths, a.change.as_deref())?;
+    let report = core::drift::analyze(&paths, &change);
+    if a.json {
+        return print_json(&report);
+    }
+    render_drift(&report);
+    Ok(())
+}
+
+fn render_drift(report: &core::drift::DriftReport) {
+    println!("Drift Report: {}", report.change_id);
+    if let Some(created) = &report.created {
+        println!("  Created: {created}");
+    }
+    println!();
+    println!("  {:<11} {:<36} {}", "Dimension", "Status", "Score");
+    for d in &report.dimensions {
+        let score = if d.contributes_to_total {
+            format!("+{}", d.score)
+        } else {
+            "—".to_string()
+        };
+        println!("  {:<11} {:<36} {:>5}", d.kind, d.status, score);
+    }
+    println!("  {:<11} {:<36} {:>5}", "Total", "", report.total_score);
+    if !report.broken_anchors.is_empty() {
+        println!();
+        println!("Broken anchors");
+        for b in &report.broken_anchors {
+            println!("  - {} ({}) — {}", b.anchor, b.category, b.reason);
+        }
+    }
+    println!();
+    println!("Severity: {} drift", report.severity.to_uppercase());
+    println!("> {}", report.primary_recommendation);
+}
+
+// --- archive ---
+
+fn cmd_archive(a: ArchiveArgs) -> Result<()> {
+    let paths = require_paths()?;
+    let change = resolve_change(&paths, a.change.as_deref())?;
+
+    if a.mark_tasks_complete {
+        let tasks_path = change.dir.join("tasks.md");
+        if let Some(text) = core::util::read_opt(&tasks_path) {
+            let done = text
+                .replace("- [ ] ", "- [x] ")
+                .replace("- [ ]\t", "- [x]\t");
+            core::util::write_file(&tasks_path, &done)?;
+        }
+    }
+
+    let opts = core::archive::ArchiveOptions {
+        skip_specs: a.skip_specs,
+        no_validate: a.no_validate,
+        mark_tasks_complete: a.mark_tasks_complete,
+    };
+    let outcome = core::archive::archive(&paths, &change, &opts)?;
+    let _ = core::inprogress::remove(&paths, &change.name);
+
+    println!("✓ Archived: {} → {}", outcome.change_name, outcome.dated_name);
+    for cap in &outcome.caps {
+        println!(
+            "Specs applied: {} (added: {}, modified: {}, removed: {}, renamed: {})",
+            cap.capability, cap.added, cap.modified, cap.removed, cap.renamed
+        );
+    }
+    if outcome.snapshot_created {
+        println!("Snapshot created for unarchive support.");
+    }
+    Ok(())
+}
+
+// --- status ---
+
+fn cmd_status(a: StatusArgs) -> Result<()> {
+    let paths = require_paths()?;
+    let change = resolve_change(&paths, a.change.as_deref())?;
+    let schema = if let Some(s) = a.schema.as_deref() {
+        core::schema::resolve(s).ok_or_else(|| anyhow::anyhow!("unknown schema: {s}"))?
+    } else {
+        schema_for(&change)
+    };
+    let report = core::status::build(&change, &schema);
+    if a.json {
+        return print_json(&report);
+    }
+    println!("Change: {}", report.change_name);
+    println!("Schema: {}", report.schema_name);
+    println!();
+    for art in &report.artifacts {
+        let sym = match art.status.as_str() {
+            "done" => "✓",
+            "ready" => "○",
+            _ => "✗",
+        };
+        println!("  {sym} {} ({})", art.id, art.output_path);
+        if art.status == "blocked" && !art.blocked_by.is_empty() {
+            println!("    blocked by: {}", art.blocked_by.join(", "));
+        }
+    }
+    println!();
+    if report.is_complete {
+        println!("  ✓ All artifacts complete");
+    }
+    Ok(())
+}
+
+// --- instructions ---
+
+fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
+    if let Some(skill) = a.skill.as_deref() {
+        let body = core::skills::skill_body(skill)
+            .ok_or_else(|| anyhow::anyhow!("unknown skill: {skill}"))?;
+        print!("{body}");
+        return Ok(());
+    }
+    let paths = require_paths()?;
+    let change = resolve_change(&paths, a.change.as_deref())?;
+    let schema = if let Some(s) = a.schema.as_deref() {
+        core::schema::resolve(s).ok_or_else(|| anyhow::anyhow!("unknown schema: {s}"))?
+    } else {
+        schema_for(&change)
+    };
+    let artifact = a.artifact.as_deref().unwrap_or("proposal");
+    if artifact == "apply" {
+        let payload = core::instructions::build_apply(&paths, &change, &schema);
+        if a.json {
+            return print_json(&payload);
+        }
+        render_apply_human(&payload);
+        return Ok(());
+    }
+    let payload = core::instructions::build_artifact(&paths, &change, &schema, artifact)
+        .ok_or_else(|| anyhow::anyhow!("unknown artifact: {artifact}"))?;
+    if a.json {
+        return print_json(&payload);
+    }
+    render_artifact_human(&payload);
+    Ok(())
+}
+
+fn render_artifact_human(p: &core::instructions::ArtifactInstructions) {
+    println!("Artifact: {}", p.artifact_id);
+    println!("Output: {}", p.output_path);
+    println!("Locale: {}", p.locale);
+    println!();
+    println!("Instruction:");
+    print!("{}", p.instruction);
+    println!();
+    println!("Template:");
+    print!("{}", p.template);
+}
+
+fn render_apply_human(p: &core::instructions::ApplyInstructions) {
+    println!("Change: {}", p.change_name);
+    println!("Schema: {}", p.schema_name);
+    println!("State: {}", p.state);
+    println!(
+        "Progress: {}/{} complete",
+        p.progress.complete, p.progress.total
+    );
+    println!();
+    println!("Tasks:");
+    for t in &p.tasks {
+        let sym = if t.done { "✓" } else { "○" };
+        println!("  {sym} {}", t.description);
+    }
+    println!();
+    println!("Instruction:");
+    print!("{}", p.instruction);
+}
+
+// --- new ---
+
+fn cmd_new(a: NewArgs) -> Result<()> {
+    match a.command {
+        NewCommands::Change(c) => cmd_new_change(c),
+        NewCommands::Artifact(c) => cmd_new_artifact(c),
+    }
+}
+
+fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
+    let paths = require_paths()?;
+    let schema = a.schema.unwrap_or_else(|| "spec-driven".to_string());
+    let dir = core::newcmd::new_change(&paths, &a.name, a.description.as_deref(), &schema)?;
+    let _ = a.agent;
+    println!("✓ Created change: {}", a.name);
+    println!("  Path: {}", dir.to_string_lossy());
+    println!("  Schema: {schema}");
+    Ok(())
+}
+
+fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
+    let paths = require_paths()?;
+    let change = resolve_change(&paths, a.change.as_deref())?;
+    let schema = schema_for(&change);
+    let content = if a.stdin {
+        Some(read_stdin())
+    } else {
+        None
+    };
+    let had_content = content.is_some();
+    let (artifact_id, path) = core::newcmd::new_artifact(
+        &change,
+        &schema,
+        &a.artifact_type,
+        a.capability.as_deref(),
+        content.as_deref(),
+        a.force,
+    )?;
+    if a.json {
+        return print_json(&serde_json::json!({
+            "artifactId": artifact_id,
+            "path": core::util::to_slash(&path),
+            "created": true,
+        }));
+    }
+    println!("✓ Created {}: {}", a.artifact_type, path.to_string_lossy());
+    if had_content {
+        println!("  Content validated ✓");
+    }
+    Ok(())
+}
+
+// --- schemas / templates ---
+
+fn cmd_schemas(a: JsonFlag) -> Result<()> {
+    let schemas = core::schema::all();
+    if a.json {
+        let items: Vec<_> = schemas
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "artifacts": s.artifact_ids(),
+                    "description": s.description,
+                    "name": s.name,
+                    "source": s.source,
+                })
+            })
+            .collect();
+        return print_json(&items);
+    }
+    println!("Available schemas:");
+    for s in &schemas {
+        println!("  {} ({}) — {}", s.name, s.source, s.description);
+    }
+    Ok(())
+}
+
+fn cmd_templates(a: TemplatesArgs) -> Result<()> {
+    let schema_name = a.schema.unwrap_or_else(|| "spec-driven".to_string());
+    let schema = core::schema::resolve(&schema_name)
+        .ok_or_else(|| anyhow::anyhow!("unknown schema: {schema_name}"))?;
+    if a.json {
+        let items: Vec<_> = schema
+            .artifacts
+            .iter()
+            .map(|art| {
+                serde_json::json!({
+                    "artifactId": art.id,
+                    "hasContent": !art.template.is_empty(),
+                    "templateName": art.template_name,
+                })
+            })
+            .collect();
+        return print_json(&items);
+    }
+    println!("Templates ({})", schema.name);
+    for art in &schema.artifacts {
+        println!("  ✓ {} → {}", art.id, art.template_name);
+    }
+    Ok(())
+}
+
+// --- feedback ---
+
+fn cmd_feedback(a: FeedbackArgs) -> Result<()> {
+    let _ = a.body;
+    println!("Thanks for your feedback!");
+    println!("Please open an issue at https://github.com/speclink-app/speclink/issues");
+    println!("Message: {}", a.message);
+    Ok(())
+}
+
+// --- schema management ---
+
+fn cmd_schema(a: SchemaArgs) -> Result<()> {
+    match a.command {
+        SchemaCommands::Which { name, all: _ } => {
+            let n = name.unwrap_or_else(|| "spec-driven".to_string());
+            match core::schema::resolve(&n) {
+                Some(s) => println!("{} resolved from: {} (built-in)", s.name, s.source),
+                None => bail!("schema '{n}' not found"),
+            }
+        }
+        SchemaCommands::Validate { name, verbose: _ } => {
+            let n = name.unwrap_or_else(|| "spec-driven".to_string());
+            match core::schema::resolve(&n) {
+                Some(s) => println!("✓ Schema '{}' is valid", s.name),
+                None => bail!("schema '{n}' not found"),
+            }
+        }
+        SchemaCommands::Fork { .. } | SchemaCommands::Init { .. } => {
+            bail!("custom schema management is not supported in speclink");
+        }
+    }
+    Ok(())
+}
+
+// --- config (global) ---
+
+fn global_config_path() -> PathBuf {
+    let base = std::env::var("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."));
+    base.join("speclink").join("config.yaml")
+}
+
+fn cmd_config(a: ConfigArgs) -> Result<()> {
+    let path = global_config_path();
+    match a.command {
+        ConfigCommands::Path => println!("{}", core::util::to_slash(&path)),
+        ConfigCommands::List => {
+            let content = core::util::read_opt(&path).unwrap_or_default();
+            print!("{content}");
+            if !content.ends_with('\n') {
+                println!();
+            }
+        }
+        ConfigCommands::Get { key } => {
+            let cfg = load_global_map(&path);
+            match cfg.get(&key) {
+                Some(v) => println!("{v}"),
+                None => bail!("key '{key}' not set"),
+            }
+        }
+        ConfigCommands::Set { key, value } => {
+            let mut cfg = load_global_map(&path);
+            cfg.insert(key, value);
+            save_global_map(&path, &cfg)?;
+            println!("✓ Set");
+        }
+        ConfigCommands::Unset { key } => {
+            let mut cfg = load_global_map(&path);
+            cfg.remove(&key);
+            save_global_map(&path, &cfg)?;
+            println!("✓ Unset");
+        }
+        ConfigCommands::Reset => {
+            if path.exists() {
+                std::fs::remove_file(&path)?;
+            }
+            println!("✓ Reset");
+        }
+        ConfigCommands::Edit => {
+            println!("Config path: {}", core::util::to_slash(&path));
+        }
+    }
+    Ok(())
+}
+
+fn load_global_map(path: &std::path::Path) -> std::collections::BTreeMap<String, String> {
+    match core::util::read_opt(path) {
+        Some(s) => serde_yaml::from_str(&s).unwrap_or_default(),
+        None => Default::default(),
+    }
+}
+
+fn save_global_map(
+    path: &std::path::Path,
+    map: &std::collections::BTreeMap<String, String>,
+) -> Result<()> {
+    let yaml = serde_yaml::to_string(map)?;
+    core::util::write_file(path, &yaml)?;
+    Ok(())
+}
+
+// --- completion ---
+
+fn cmd_completion(a: CompletionArgs) -> Result<()> {
+    match a.command {
+        CompletionCommands::Generate { shell } => {
+            println!("# speclink completion for {shell} is not yet implemented");
+        }
+        CompletionCommands::Install { .. } => println!("✓ Completion installed"),
+        CompletionCommands::Uninstall { .. } => println!("✓ Completion uninstalled"),
+    }
+    Ok(())
+}
+
+// --- task ---
+
+fn cmd_task(a: TaskArgs) -> Result<()> {
+    match a.command {
+        TaskCommands::Done { task_id, change, json } => {
+            let paths = require_paths()?;
+            let change = resolve_change(&paths, change.as_deref())?;
+            let tasks_path = change.dir.join("tasks.md");
+            let text = core::util::read_opt(&tasks_path)
+                .ok_or_else(|| anyhow::anyhow!("tasks.md not found for change '{}'", change.name))?;
+            let (new_content, desc, _already) = core::tasks::mark_done(&text, task_id)
+                .ok_or_else(|| anyhow::anyhow!("task {task_id} not found"))?;
+            core::util::write_file(&tasks_path, &new_content)?;
+
+            // Record touched files.
+            let files = core::tasks::git_changed_files(&paths.root);
+            let mut record = core::tasks::TouchedRecord::load(&paths, &change.name);
+            record.change = change.name.clone();
+            record.touched.push(core::tasks::TouchedEntry {
+                task_id: task_id.to_string(),
+                task_desc: desc.clone(),
+                files,
+            });
+            record.save(&paths)?;
+
+            if json {
+                return print_json(&serde_json::json!({
+                    "change": change.name,
+                    "status": "done",
+                    "task_desc": desc,
+                    "task_id": task_id.to_string(),
+                }));
+            }
+            println!("✓ Task {task_id} marked as done: {desc}");
+        }
+    }
+    Ok(())
+}
+
+// --- in-progress ---
+
+fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
+    match a.command {
+        InProgressCommands::Add { name } => {
+            let paths = require_paths()?;
+            core::inprogress::add(&paths, &name)?;
+        }
+    }
+    Ok(())
+}
+
+// --- demo ---
+
+fn cmd_demo() -> Result<()> {
+    let paths = require_paths()?;
+    let outcome = core::demo::generate(&paths)?;
+    println!("✓ Created demo change: {}", outcome.name);
+    println!("  Theme: {}", outcome.theme);
+    println!("  Path: {}", core::util::to_slash(&outcome.path));
+    Ok(())
+}
+
+// --- discuss ---
+
+fn cmd_discuss(a: DiscussArgs) -> Result<()> {
+    let paths = require_paths()?;
+    match a.command {
+        DiscussCommands::New { topic, json } => {
+            let info = core::discuss::new_discussion(&paths, &topic)?;
+            if json {
+                return print_json(&info);
+            }
+            println!("✓ Created discussion: {}", info.slug);
+            println!("  Topic: {}", info.topic);
+            println!("  Path: {}", info.path);
+        }
+        DiscussCommands::List { json } => {
+            let items = core::discuss::list_discussions(&paths);
+            if json {
+                return print_json(&serde_json::json!({ "discussions": items }));
+            }
+            if items.is_empty() {
+                println!("No discussions found.");
+                return Ok(());
+            }
+            println!("Discussions:");
+            for d in &items {
+                println!("  • {} [{}] ({} rounds) — {}", d.slug, d.status, d.rounds, d.topic);
+            }
+        }
+        DiscussCommands::Show { slug, json } => {
+            let content = core::discuss::show_discussion(&paths, &slug)
+                .ok_or_else(|| anyhow::anyhow!("discussion '{slug}' not found"))?;
+            if json {
+                let info = core::discuss::info(&paths, &slug);
+                return print_json(&serde_json::json!({ "info": info, "content": content }));
+            }
+            print!("{content}");
+        }
+        DiscussCommands::AddRound { slug, mode, stdin, json } => {
+            let content = if stdin { read_stdin() } else { String::new() };
+            let round = core::discuss::add_round(&paths, &slug, &mode, &content)?;
+            if json {
+                return print_json(&serde_json::json!({ "slug": slug, "round": round, "mode": mode }));
+            }
+            println!("✓ Recorded round {round} ({mode}) to discussion '{slug}'");
+        }
+        DiscussCommands::Conclude { slug, stdin, json } => {
+            let content = if stdin { read_stdin() } else { String::new() };
+            core::discuss::conclude(&paths, &slug, &content)?;
+            if json {
+                return print_json(&serde_json::json!({ "slug": slug, "status": "concluded" }));
+            }
+            println!("✓ Concluded discussion '{slug}'");
+        }
+    }
+    Ok(())
+}

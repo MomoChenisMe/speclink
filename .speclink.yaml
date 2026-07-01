@@ -1,0 +1,17 @@
+# Speclink application config
+# See: https://github.com/speclink-app/speclink
+
+# OpenSpec directory path (relative to project root)
+# spec_dir: docs/specs
+
+# Language for AI-generated artifacts
+locale: tw
+
+# Workflow toggles
+tdd: true
+audit: true
+
+# AI tools to generate instruction files for
+tools:
+  - claude
+  - codex

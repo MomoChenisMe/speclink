@@ -1,0 +1,193 @@
+//! Build `instructions` payloads (per-artifact and apply mode) with config injection.
+
+use crate::config::{AppConfig, WorkflowConfig};
+use crate::model::{self, Change};
+use crate::paths::Paths;
+use crate::preflight::Preflight;
+use crate::schema::Schema;
+use crate::tasks::{self, Task};
+use serde::Serialize;
+use std::path::Path;
+
+fn join_display(base: &Path, rel: &str) -> String {
+    base.join(rel).to_string_lossy().to_string()
+}
+
+#[derive(Debug, Serialize)]
+pub struct Dependency {
+    pub id: String,
+    pub done: bool,
+    pub path: String,
+    pub description: String,
+}
+
+/// Per-artifact instructions payload (field order matches Spectra).
+#[derive(Debug, Serialize)]
+pub struct ArtifactInstructions {
+    #[serde(rename = "changeName")]
+    pub change_name: String,
+    #[serde(rename = "artifactId")]
+    pub artifact_id: String,
+    #[serde(rename = "schemaName")]
+    pub schema_name: String,
+    #[serde(rename = "changeDir")]
+    pub change_dir: String,
+    #[serde(rename = "outputPath")]
+    pub output_path: String,
+    pub description: String,
+    pub instruction: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rules: Option<Vec<String>>,
+    pub locale: String,
+    pub template: String,
+    pub dependencies: Vec<Dependency>,
+    pub unlocks: Vec<String>,
+}
+
+/// Build per-artifact instructions.
+pub fn build_artifact(
+    paths: &Paths,
+    change: &Change,
+    schema: &Schema,
+    artifact_id: &str,
+) -> Option<ArtifactInstructions> {
+    let artifact = schema.artifact(artifact_id)?;
+    let app = AppConfig::load(&paths.app_config());
+    let wf = WorkflowConfig::load(&paths.workflow_config());
+
+    let dependencies = artifact
+        .requires
+        .iter()
+        .filter_map(|dep_id| {
+            let da = schema.artifact(dep_id)?;
+            Some(Dependency {
+                id: da.id.to_string(),
+                done: model::artifact_done(&change.dir, da),
+                path: da.output_path.to_string(),
+                description: da.description.to_string(),
+            })
+        })
+        .collect();
+
+    Some(ArtifactInstructions {
+        change_name: change.name.clone(),
+        artifact_id: artifact.id.to_string(),
+        schema_name: schema.name.to_string(),
+        change_dir: change.dir.to_string_lossy().to_string(),
+        output_path: artifact.output_path.to_string(),
+        description: artifact.description.to_string(),
+        instruction: artifact.instruction.to_string(),
+        context: wf.context_text(),
+        rules: wf.rules_for(artifact.id),
+        locale: app.locale_display(),
+        template: artifact.template.to_string(),
+        dependencies,
+        unlocks: Vec::new(),
+    })
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContextFiles {
+    pub specs: String,
+    pub proposal: String,
+    pub design: String,
+    pub tasks: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Progress {
+    pub total: usize,
+    pub complete: usize,
+    pub remaining: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TaskJson {
+    pub id: String,
+    pub description: String,
+    pub done: bool,
+    pub parallel: bool,
+}
+
+impl From<&Task> for TaskJson {
+    fn from(t: &Task) -> Self {
+        TaskJson {
+            id: t.id.to_string(),
+            description: t.description.clone(),
+            done: t.done,
+            parallel: t.parallel,
+        }
+    }
+}
+
+/// Apply-mode instructions payload (field order matches Spectra).
+#[derive(Debug, Serialize)]
+pub struct ApplyInstructions {
+    #[serde(rename = "changeName")]
+    pub change_name: String,
+    #[serde(rename = "changeDir")]
+    pub change_dir: String,
+    #[serde(rename = "schemaName")]
+    pub schema_name: String,
+    #[serde(rename = "contextFiles")]
+    pub context_files: ContextFiles,
+    pub progress: Progress,
+    pub tasks: Vec<TaskJson>,
+    pub state: String,
+    pub locale: String,
+    pub instruction: String,
+    pub preflight: Preflight,
+}
+
+/// Compute apply state: blocked | ready | all_done.
+pub fn apply_state(schema: &Schema, change: &Change, tasks: &[Task]) -> String {
+    let tasks_artifact = schema.artifact("tasks");
+    let tasks_done = tasks_artifact
+        .map(|a| model::artifact_done(&change.dir, a))
+        .unwrap_or(false);
+    if !tasks_done || tasks.is_empty() {
+        return "blocked".to_string();
+    }
+    let (total, complete, _) = tasks::progress(tasks);
+    if total > 0 && complete == total {
+        "all_done".to_string()
+    } else {
+        "ready".to_string()
+    }
+}
+
+pub fn build_apply(paths: &Paths, change: &Change, schema: &Schema) -> ApplyInstructions {
+    let app = AppConfig::load(&paths.app_config());
+    let tasks_md = std::fs::read_to_string(change.dir.join("tasks.md")).unwrap_or_default();
+    let parsed = tasks::parse(&tasks_md);
+    let (total, complete, remaining) = tasks::progress(&parsed);
+
+    let context_files = ContextFiles {
+        specs: join_display(&change.dir, "specs/**/*.md"),
+        proposal: join_display(&change.dir, "proposal.md"),
+        design: join_display(&change.dir, "design.md"),
+        tasks: join_display(&change.dir, "tasks.md"),
+    };
+
+    let state = apply_state(schema, change, &parsed);
+    let preflight = Preflight::compute(paths, change);
+
+    ApplyInstructions {
+        change_name: change.name.clone(),
+        change_dir: change.dir.to_string_lossy().to_string(),
+        schema_name: schema.name.to_string(),
+        context_files,
+        progress: Progress {
+            total,
+            complete,
+            remaining,
+        },
+        tasks: parsed.iter().map(TaskJson::from).collect(),
+        state,
+        locale: app.locale_display(),
+        instruction: schema.apply_instruction.to_string(),
+        preflight,
+    }
+}

@@ -2,19 +2,20 @@ schema: spec-driven
 
 # Project context (optional)
 # This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Product: a browser-based pinball game shipped as a single self-contained HTML file.
+  Tech stack: HTML5 Canvas 2D, vanilla JavaScript (inline, no modules bundler), CSS. No build step, no external dependencies, no frameworks.
+  Physics: simple 2D rigid body — gravity, per-frame velocity integration, and collision with walls, flippers and bumpers using restitution.
+  Controls: left/right flippers on ArrowLeft/ArrowRight (also A/L), ball launch on Space.
+  Loop: fixed-timestep update driven by requestAnimationFrame, targeting 60fps.
+  Layout: everything lives in pinball/index.html at the project root.
+  Domain: casual arcade game — score, remaining balls, game over, restart.
 
 # Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - Keep the proposal focused on player-facing behavior, not rendering internals
+    - Always list the physics and input capabilities explicitly
+  tasks:
+    - Each task must name the concrete function or game-loop phase it implements
+    - Include a manual verification step describing what to click or observe in the browser
