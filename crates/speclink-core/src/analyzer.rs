@@ -235,8 +235,9 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     let tasks_present = util::has_content(&change.dir.join("tasks.md"));
     let design_present = util::has_content(&change.dir.join("design.md"));
 
-    // A dimension is skipped when its prerequisite artifacts are missing. Gaps always runs.
-    let coverage_skipped = !(specs_present && tasks_present);
+    // A dimension is skipped when its prerequisite artifacts are missing. Coverage needs tasks
+    // (it checks capability→spec and requirement→task); Gaps always runs.
+    let coverage_skipped = !tasks_present;
     let consistency_skipped = !(design_present && tasks_present);
     let ambiguity_skipped = !specs_present;
     let gaps_skipped = false;
@@ -256,9 +257,9 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
                 coverage.push(make_finding(
                     "COV", n, "Coverage", Severity::Critical,
                     &format!("specs/{cap}/spec.md"),
-                    &format!("Capability '{cap}' has no spec file"),
-                    &format!("Create specs/{cap}/spec.md for capability '{cap}'"),
-                    "covMissingSpec", [("capability", cap.as_str())],
+                    &format!("Capability `{cap}` has no corresponding spec file"),
+                    &format!("Create specs/{cap}/spec.md with requirements"),
+                    "covMissingSpec", [("cap", cap.as_str())],
                 ));
             }
         }

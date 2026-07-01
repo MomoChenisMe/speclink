@@ -253,6 +253,9 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
 
     if show_spec {
         if !is_spec {
+            if item_type == Some("spec") {
+                bail!("Spec '{item}' not found.");
+            }
             bail!("Item '{item}' not found as a change or spec.");
         }
         let content = core::util::read_opt(&spec_md).unwrap_or_default();
@@ -273,6 +276,9 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
     }
 
     let Some(change) = change else {
+        if item_type == Some("change") {
+            bail!("Change '{item}' not found.");
+        }
         bail!("Item '{item}' not found as a change or spec.");
     };
     let schema = schema_for(&change);
@@ -714,8 +720,11 @@ fn cmd_schemas(a: JsonFlag) -> Result<()> {
 
 fn cmd_templates(a: TemplatesArgs) -> Result<()> {
     let schema_name = a.schema.unwrap_or_else(|| "spec-driven".to_string());
-    let schema = core::schema::resolve(&schema_name)
-        .ok_or_else(|| anyhow::anyhow!("unknown schema: {schema_name}"))?;
+    let schema = core::schema::resolve(&schema_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Schema not found: Schema '{schema_name}' not found in project, user, or built-in locations"
+        )
+    })?;
     if a.json {
         let items: Vec<_> = schema
             .artifacts
@@ -753,29 +762,48 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
     match a.command {
         SchemaCommands::Which { name, all: _, json } => {
             let n = name.unwrap_or_else(|| "spec-driven".to_string());
-            let s = core::schema::resolve(&n).ok_or_else(|| anyhow::anyhow!("Schema '{n}' not found."))?;
-            if json {
-                return print_json(&serde_json::json!({
-                    "name": s.name,
-                    "resolved": "built-in",
-                    "sources": [{ "path": "(embedded in binary)", "source": "built-in" }],
-                }));
+            match core::schema::resolve(&n) {
+                Some(s) => {
+                    if json {
+                        return print_json(&serde_json::json!({
+                            "name": s.name,
+                            "resolved": "built-in",
+                            "sources": [{ "path": "(embedded in binary)", "source": "built-in" }],
+                        }));
+                    }
+                    println!("Schema: {}", s.name);
+                    println!("  → (embedded in binary) (built-in)");
+                }
+                None => {
+                    // Unknown schema is informational, not an error (exit 0).
+                    println!("Schema: {n}");
+                    println!("Not found.");
+                }
             }
-            println!("Schema: {}", s.name);
-            println!("  → (embedded in binary) (built-in)");
         }
         SchemaCommands::Validate { name, verbose: _, json } => {
             let n = name.unwrap_or_else(|| "spec-driven".to_string());
-            let s = core::schema::resolve(&n).ok_or_else(|| anyhow::anyhow!("Schema '{n}' not found."))?;
-            let count = s.artifacts.len();
-            if json {
-                return print_json(&serde_json::json!({
-                    "artifactCount": count,
-                    "name": s.name,
-                    "valid": true,
-                }));
+            let s = core::schema::resolve(&n);
+            match s {
+                Some(s) => {
+                    let count = s.artifacts.len();
+                    if json {
+                        return print_json(&serde_json::json!({
+                            "artifactCount": count,
+                            "name": s.name,
+                            "valid": true,
+                        }));
+                    }
+                    println!("✓ Schema '{}' is valid ({count} artifacts)", s.name);
+                }
+                None => {
+                    let detail = format!(
+                        "Schema not found: Schema '{n}' not found in project, user, or built-in locations"
+                    );
+                    println!("Schema '{n}' is invalid: {detail}");
+                    bail!("Schema validation failed: {detail}");
+                }
             }
-            println!("✓ Schema '{}' is valid ({count} artifacts)", s.name);
         }
         SchemaCommands::Fork { .. } | SchemaCommands::Init { .. } => {
             bail!("custom schema management is not supported in speclink");
