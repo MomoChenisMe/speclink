@@ -106,8 +106,10 @@ Spectra 的 discuss 是唯讀、不留文件的討論。Speclink 讓 discuss 具
 
 - **第一輪**：128 檢查，43 項真實不一致。涵蓋 archive 的 MODIFIED/REMOVED 未就地套用、analyze 正典路徑少一層、`show <spec>` 完全失效、多能力 archive 未聚合、locale 未對映碼行為、大量錯誤訊息措辭、`schema which/validate` 缺 `--json`、`list --specs --json` 結構、`instructions apply` blocked 結構等。
 - **第二輪**：殘留 ~22 項，揪出更深的 bug：@trace 路徑掉首字元（`util::git` 對 porcelain 輸出 `.trim()` 誤刪 ` M path` 前導空格致欄位左移）、ADDED 重複既有需求、analyze 不應抑制 REMOVED、`task done` 已完成應報錯、validate「有需求但無操作」應判 error、locale 亦讀 `openspec/config.yaml`、@trace 應排除工具目錄。
-- **第三輪**：殘留 ~22 項但多為更細邊界：`new change` 缺 kebab-case 驗證、`new artifact --json`/`task done --json` 應為 compact 單行且鍵集不同、`instructions` 無參數時預設應取「顯示順序第一個未完成」artifact、instructions 人類輸出應為 `Description:`＋`Dependencies:`、RENAMED-only delta 不應算作 delta spec、多個錯誤訊息措辭與尾端換行。
-- **第四輪**：確認前三輪修正生效、殘留收斂至僅 cosmetic。
+- **第三輪**：殘留多為更細邊界：`new change` 缺 kebab-case 驗證、`new artifact --json`/`task done --json` 應為 compact 單行且鍵集不同、`instructions` 無參數時預設應取「顯示順序第一個未完成」artifact、instructions 人類輸出應為 `Description:`＋`Dependencies:`、多個錯誤訊息措辭與尾端換行。
+- **第四輪**：零操作/malformed delta 邊界：RENAMED-only 與空操作段落不算 delta spec、`new artifact tasks` 全 `[x]` 應拒絕、Coverage 為 contiguous 子字串比對、`gapNoMainSpec`/`gapModifiedNotFound`、`task done` 先檢查 tasks.md、show 空行。
+- **第五輪**：`covMissingSpec`（反引號、`cap` param）、Coverage skip 條件、`schema which/validate` 與 `templates` 對未知 schema 的處理（which 為 exit 0「Not found.」）、`show --item-type` 型別特定錯誤。
+- **第六輪**：Coverage skip 精修（需 proposal +（specs 或 tasks））、`gapNoProposal`、drift 對未完成變更的維度文字（「design absent」/「no tasks.md」）與 light/medium 建議（技能斜線指令）、`new change --agent` 寫 `created_with`、多變更錯誤措辭與 mtime 排序、show 無 proposal 仍顯示 delta specs。**此輪 locale-config 與 multi-cap-lifecycle 兩個面向已 0 發現。**
 
 **所有真實/語意不一致均已修正**（見 git 提交 `fix(cli): match Spectra help descriptions...`、`fix(cli): resolve adversarial-audit findings...`、`fix(cli): resolve round-3 audit findings`、`fix(cli): match sub-subcommand --help...`），並以聚焦自檢逐一驗證輸出與 spectra 逐字相符。每輪修正後回歸：8 個 demo 主題的 analyze/drift/validate/status/show **一致**，完整對照套件 **31/31 一致**，皆無回歸。
 

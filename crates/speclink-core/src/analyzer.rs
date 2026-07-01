@@ -383,7 +383,7 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
                             "GAP", n, "Gaps", Severity::Warning, loc,
                             &format!("MODIFIED requirement '{}' not found in main spec", req.name),
                             &format!("Verify requirement '{}' exists in openspec/specs/{cap}/spec.md", req.name),
-                            "gapModifiedNotFound", [("name", req.name.as_str()), ("spec", cap)],
+                            "gapModifiedNotFound", [("name", req.name.as_str())],
                         ));
                     }
                 }
