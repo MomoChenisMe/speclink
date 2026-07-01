@@ -33,6 +33,15 @@ fn dispatch(cli: Cli) -> Result<()> {
 // --- helpers ---
 
 fn resolve_change(paths: &Paths, name: Option<&str>) -> Result<Change> {
+    resolve_change_worded(paths, name, "Use --change to specify one:")
+}
+
+/// Positional-style resolution (analyze/drift): Spectra says just "Specify one:".
+fn resolve_change_positional(paths: &Paths, name: Option<&str>) -> Result<Change> {
+    resolve_change_worded(paths, name, "Specify one:")
+}
+
+fn resolve_change_worded(paths: &Paths, name: Option<&str>, specify: &str) -> Result<Change> {
     if let Some(n) = name {
         return core::model::find_change(paths, n)
             .ok_or_else(|| anyhow::anyhow!("Change '{n}' not found."));
@@ -49,7 +58,7 @@ fn resolve_change(paths: &Paths, name: Option<&str>) -> Result<Change> {
                 mb.cmp(&ma)
             });
             let names: Vec<&str> = changes.iter().map(|c| c.name.as_str()).collect();
-            bail!("Multiple changes found. Specify one: {}", names.join(", "))
+            bail!("Multiple changes found. {specify} {}", names.join(", "))
         }
     }
 }
@@ -379,7 +388,7 @@ fn cmd_analyze(a: ChangeArg) -> Result<()> {
     if info_if_no_changes(&paths, a.change.as_deref()) {
         return Ok(());
     }
-    let change = resolve_change(&paths, a.change.as_deref())?;
+    let change = resolve_change_positional(&paths, a.change.as_deref())?;
     let schema = schema_for(&change);
     let report = core::analyzer::analyze(&change, &schema);
     if a.json {
@@ -435,7 +444,7 @@ fn cmd_drift(a: ChangeArg) -> Result<()> {
     if info_if_no_changes(&paths, a.change.as_deref()) {
         return Ok(());
     }
-    let change = resolve_change(&paths, a.change.as_deref())?;
+    let change = resolve_change_positional(&paths, a.change.as_deref())?;
     let report = core::drift::analyze(&paths, &change);
     if a.json {
         return print_json(&report);
@@ -608,6 +617,13 @@ fn render_artifact_human(p: &core::instructions::ArtifactInstructions) {
         }
         println!();
     }
+    if !p.unlocks.is_empty() {
+        println!("Unlocks:");
+        for u in &p.unlocks {
+            println!("  - {u}");
+        }
+        println!();
+    }
     println!("Template:");
     print!("{}", p.template);
     println!();
@@ -661,18 +677,31 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
 
 fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
     let paths = require_paths()?;
-    // Validate the artifact type BEFORE resolving the change (matches Spectra's order).
-    if !["proposal", "design", "tasks", "spec"].contains(&a.artifact_type.as_str()) {
-        bail!(
+    let type_ok = ["proposal", "design", "tasks", "spec"].contains(&a.artifact_type.as_str());
+    let type_err = || {
+        anyhow::anyhow!(
             "Unknown artifact type '{}'. Valid types: proposal, design, tasks, spec",
             a.artifact_type
-        );
-    }
-    // Spectra's new-artifact reports change-not-found WITHOUT a trailing period.
+        )
+    };
+    // Spectra's order: with an explicit --change, validate the type before existence; when
+    // auto-detecting, resolve the change first (so "No active changes" wins over a bad type).
+    // Change-not-found is reported WITHOUT a trailing period.
     let change = match a.change.as_deref() {
-        Some(name) => core::model::find_change(&paths, name)
-            .ok_or_else(|| anyhow::anyhow!("Change '{name}' not found"))?,
-        None => resolve_change(&paths, None)?,
+        Some(name) => {
+            if !type_ok {
+                return Err(type_err());
+            }
+            core::model::find_change(&paths, name)
+                .ok_or_else(|| anyhow::anyhow!("Change '{name}' not found"))?
+        }
+        None => {
+            let c = resolve_change(&paths, None)?;
+            if !type_ok {
+                return Err(type_err());
+            }
+            c
+        }
     };
     let schema = schema_for(&change);
     let content = if a.stdin {
@@ -904,8 +933,17 @@ fn save_global_map(
 fn cmd_completion(a: CompletionArgs) -> Result<()> {
     match a.command {
         CompletionCommands::Generate { shell } => {
+            use clap::CommandFactory;
             let shell = shell.unwrap_or_else(|| "bash".to_string());
-            println!("# speclink completion for {shell}");
+            let sh = match shell.as_str() {
+                "zsh" => clap_complete::Shell::Zsh,
+                "fish" => clap_complete::Shell::Fish,
+                "powershell" => clap_complete::Shell::PowerShell,
+                "elvish" => clap_complete::Shell::Elvish,
+                _ => clap_complete::Shell::Bash,
+            };
+            let mut cmd = Cli::command();
+            clap_complete::generate(sh, &mut cmd, "speclink", &mut std::io::stdout());
         }
         CompletionCommands::Install { verbose: _, .. } => println!("✓ Completion installed"),
         CompletionCommands::Uninstall { .. } => println!("✓ Completion uninstalled"),
