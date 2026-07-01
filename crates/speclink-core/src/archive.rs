@@ -272,6 +272,9 @@ fn apply_delta_to_canonical(
     // Merge into an existing canonical spec.
     let existing = util::read_opt(canonical_path).unwrap_or_default();
     let (header, mut blocks) = parse_canonical(&existing);
+    // Spectra splices out a removed requirement's text but leaves its preceding `---`; when the
+    // LAST requirement is removed this leaves a dangling separator, which we reproduce below.
+    let orig_last = blocks.last().map(|(n, _)| n.clone());
     for r in reqs {
         match r.operation.as_str() {
             "ADDED" => {
@@ -314,6 +317,13 @@ fn apply_delta_to_canonical(
     let mut out = header;
     let joined: Vec<String> = blocks.iter().map(|(_, b)| b.trim_end().to_string()).collect();
     out.push_str(&joined.join("\n\n---\n"));
+    // Dangling separator when the original last requirement was removed (matches Spectra).
+    let last_removed = orig_last
+        .map(|n| !blocks.iter().any(|(bn, _)| *bn == n))
+        .unwrap_or(false);
+    if last_removed && !blocks.is_empty() {
+        out.push_str("\n\n---\n");
+    }
     util::write_file(canonical_path, &out)?;
     Ok(counts)
 }

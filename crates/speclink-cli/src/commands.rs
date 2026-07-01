@@ -399,8 +399,12 @@ fn render_analyze(report: &core::analyzer::AnalyzeReport) {
             d.dimension, d.status, d.finding_count
         );
     }
-    println!();
-    println!("  Analyzed: {}", report.artifacts_analyzed.join(", "));
+    // The blank separator is tied to the "Analyzed:" line; an empty change (nothing analyzed)
+    // prints "Missing:" directly after the dimensions, matching Spectra.
+    if !report.artifacts_analyzed.is_empty() {
+        println!();
+        println!("  Analyzed: {}", report.artifacts_analyzed.join(", "));
+    }
     if !report.artifacts_missing.is_empty() {
         println!("  Missing: {}", report.artifacts_missing.join(", "));
     }
@@ -838,11 +842,13 @@ fn cmd_config(a: ConfigArgs) -> Result<()> {
     let path = global_config_path();
     match a.command {
         ConfigCommands::Path => println!("{}", core::util::to_slash(&path)),
-        ConfigCommands::List => {
-            let content = core::util::read_opt(&path).unwrap_or_default();
-            print!("{content}");
-            if !content.ends_with('\n') {
-                println!();
+        ConfigCommands::List { json } => {
+            let cfg = load_global_map(&path);
+            if json {
+                return print_json(&cfg);
+            }
+            for (k, v) in &cfg {
+                println!("{k} = {v}");
             }
         }
         ConfigCommands::Get { key } => {
@@ -901,7 +907,7 @@ fn cmd_completion(a: CompletionArgs) -> Result<()> {
             let shell = shell.unwrap_or_else(|| "bash".to_string());
             println!("# speclink completion for {shell}");
         }
-        CompletionCommands::Install { .. } => println!("✓ Completion installed"),
+        CompletionCommands::Install { verbose: _, .. } => println!("✓ Completion installed"),
         CompletionCommands::Uninstall { .. } => println!("✓ Completion uninstalled"),
     }
     Ok(())

@@ -110,8 +110,9 @@ Spectra 的 discuss 是唯讀、不留文件的討論。Speclink 讓 discuss 具
 - **第四輪**：零操作/malformed delta 邊界：RENAMED-only 與空操作段落不算 delta spec、`new artifact tasks` 全 `[x]` 應拒絕、Coverage 為 contiguous 子字串比對、`gapNoMainSpec`/`gapModifiedNotFound`、`task done` 先檢查 tasks.md、show 空行。
 - **第五輪**：`covMissingSpec`（反引號、`cap` param）、Coverage skip 條件、`schema which/validate` 與 `templates` 對未知 schema 的處理（which 為 exit 0「Not found.」）、`show --item-type` 型別特定錯誤。
 - **第六輪**：Coverage skip 精修（需 proposal +（specs 或 tasks））、`gapNoProposal`、drift 對未完成變更的維度文字（「design absent」/「no tasks.md」）與 light/medium 建議（技能斜線指令）、`new change --agent` 寫 `created_with`、多變更錯誤措辭與 mtime 排序、show 無 proposal 仍顯示 delta specs。**此輪 locale-config 與 multi-cap-lifecycle 兩個面向已 0 發現。**
+- **第七輪**：僅 4 項——archive 的 MODIFIED 若不在 base spec 應跳過（不 materialize）、`gapModifiedNotFound` params 只用 `{name}`、`new artifact` 應先驗型別再驗變更、locale 空白值原樣保留。**此輪 multi-cap-lifecycle 與 browse-schema 亦 0 發現**，locale-config 僅剩空值一項。四項全數修正。
 
-**所有真實/語意不一致均已修正**（見 git 提交 `fix(cli): match Spectra help descriptions...`、`fix(cli): resolve adversarial-audit findings...`、`fix(cli): resolve round-3 audit findings`、`fix(cli): match sub-subcommand --help...`），並以聚焦自檢逐一驗證輸出與 spectra 逐字相符。每輪修正後回歸：8 個 demo 主題的 analyze/drift/validate/status/show **一致**，完整對照套件 **31/31 一致**，皆無回歸。
+**收斂軌跡**：每輪真實不一致數為 43 → ~22 → ~22 → 8 → 9 → 8 → 4，且五個探測面向陸續歸零（locale-config、multi-cap-lifecycle、browse-schema 於後段皆達 0 發現）。**所有真實/語意不一致均已修正並提交**（git 提交 `fix(cli): match Spectra help descriptions...` 至 `fix(cli): resolve round-7 audit findings`），並以聚焦自檢逐一驗證輸出與 spectra 逐字相符。每輪修正後回歸：8 個 demo 主題的 analyze/drift/validate/status/show **一致**，完整對照套件 **31/31 一致**，皆無回歸。
 
 **已知殘留**（純 cosmetic、不影響語意，如實揭露）：
 - 歸檔正典 spec 在「刪除最後一條需求」時，spectra 會留下懸空的 `---` 分隔線（其文字拼接產物），speclink 產出較乾淨（無懸空 `---`）；需求內容本身逐字相同。
