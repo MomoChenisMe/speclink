@@ -237,7 +237,7 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
         spec_texts.push((rel, text));
     }
 
-    let specs_present = spec_files.iter().any(|p| util::has_content(p));
+    let specs_present = spec_texts.iter().any(|(_, t)| model::has_delta_operation(t));
     let tasks_present = util::has_content(&change.dir.join("tasks.md"));
     let design_present = util::has_content(&change.dir.join("design.md"));
 
