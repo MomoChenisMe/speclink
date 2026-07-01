@@ -144,10 +144,8 @@ fn cmd_list(a: ListArgs) -> Result<()> {
         return list_specs(&paths, a.json);
     }
     let mut changes = core::model::list_changes(&paths);
-    if let Some(sort) = a.sort.as_deref() {
-        if sort == "name" {
-            changes.sort_by(|x, y| x.name.cmp(&y.name));
-        }
+    if a.sort == "name" {
+        changes.sort_by(|x, y| x.name.cmp(&y.name));
     }
     if a.json {
         let items: Vec<ListChangeJson> = changes

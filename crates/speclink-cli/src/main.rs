@@ -80,90 +80,122 @@ struct InitArgs {
 
 #[derive(Args)]
 struct UpdateArgs {
+    /// Project path (defaults to current directory)
     path: Option<PathBuf>,
+    /// Overwrite existing files
     #[arg(long)]
     force: bool,
 }
 
 #[derive(Args)]
 struct ListArgs {
+    /// Show only specs
     #[arg(long)]
     specs: bool,
+    /// Show only changes
     #[arg(long)]
     changes: bool,
-    #[arg(long)]
-    sort: Option<String>,
+    /// Sort by: name, modified, created
+    #[arg(long, default_value = "modified")]
+    sort: String,
+    /// Output as JSON
     #[arg(long)]
     json: bool,
 }
 
 #[derive(Args)]
 struct ShowArgs {
+    /// Item to show (change or spec name)
     item: Option<String>,
+    /// Output as JSON
     #[arg(long)]
     json: bool,
-    #[arg(long = "item-type")]
+    /// Item type: change, spec
+    #[arg(long = "item-type", value_name = "type")]
     item_type: Option<String>,
+    /// Show only delta specs
     #[arg(long = "deltas-only")]
     deltas_only: bool,
+    /// Show requirements
     #[arg(short = 'r', long)]
     requirements: bool,
 }
 
 #[derive(Args)]
 struct ValidateArgs {
+    /// Item to validate
     item: Option<String>,
+    /// Validate all items
     #[arg(long)]
     all: bool,
+    /// Validate only changes
     #[arg(long)]
     changes: bool,
+    /// Validate only specs
     #[arg(long)]
     specs: bool,
+    /// Strict mode
     #[arg(long)]
     strict: bool,
+    /// Output as JSON
     #[arg(long)]
     json: bool,
 }
 
 #[derive(Args)]
 struct ChangeArg {
+    /// Change name (auto-detects if only one exists)
     change: Option<String>,
+    /// Output as JSON
     #[arg(long)]
     json: bool,
 }
 
 #[derive(Args)]
 struct ArchiveArgs {
+    /// Change to archive
     change: Option<String>,
+    /// Skip confirmation
     #[arg(short = 'y', long)]
     yes: bool,
+    /// Skip spec updates
     #[arg(long = "skip-specs")]
     skip_specs: bool,
+    /// Skip validation before archiving
     #[arg(long = "no-validate")]
     no_validate: bool,
+    /// Mark all incomplete tasks as complete before archiving
     #[arg(long = "mark-tasks-complete")]
     mark_tasks_complete: bool,
 }
 
 #[derive(Args)]
 struct StatusArgs {
+    /// Change name
     #[arg(long)]
     change: Option<String>,
+    /// Schema name
     #[arg(long)]
     schema: Option<String>,
+    /// Output as JSON
     #[arg(long)]
     json: bool,
 }
 
 #[derive(Args)]
 struct InstructionsArgs {
+    /// Artifact ID or "apply"
     artifact: Option<String>,
+    /// Change name
     #[arg(long)]
     change: Option<String>,
+    /// Schema name
     #[arg(long)]
     schema: Option<String>,
+    /// Output as JSON
     #[arg(long)]
     json: bool,
+    /// Embedded skill name (outputs skill body directly)
     #[arg(long)]
     skill: Option<String>,
 }
@@ -184,47 +216,62 @@ enum NewCommands {
 
 #[derive(Args)]
 struct NewChangeArgs {
+    /// Change name (kebab-case)
     name: String,
+    /// Description
     #[arg(long)]
     description: Option<String>,
+    /// Workflow schema to use
     #[arg(long)]
     schema: Option<String>,
+    /// AI agent that created this change (e.g., claude, codex, gemini)
     #[arg(long)]
     agent: Option<String>,
 }
 
 #[derive(Args)]
 struct NewArtifactArgs {
+    /// Artifact type: proposal, design, tasks, spec
     #[arg(name = "TYPE")]
     artifact_type: String,
+    /// Capability name (required for spec type)
     capability: Option<String>,
+    /// Change name
     #[arg(long)]
     change: Option<String>,
+    /// Read content from stdin instead of using empty template
     #[arg(long)]
     stdin: bool,
+    /// Overwrite existing artifact
     #[arg(long)]
     force: bool,
+    /// Output as JSON
     #[arg(long)]
     json: bool,
 }
 
 #[derive(Args)]
 struct JsonFlag {
+    /// Output as JSON
     #[arg(long)]
     json: bool,
 }
 
 #[derive(Args)]
 struct TemplatesArgs {
+    /// Schema name
     #[arg(long)]
     schema: Option<String>,
+    /// Output as JSON
     #[arg(long)]
     json: bool,
 }
 
 #[derive(Args)]
 struct FeedbackArgs {
+    /// Feedback message
     message: String,
+    /// Detailed body
     #[arg(long)]
     body: Option<String>,
 }
@@ -255,12 +302,19 @@ struct ConfigArgs {
 
 #[derive(Subcommand)]
 enum ConfigCommands {
+    /// Show config file path
     Path,
+    /// List all settings
     List,
+    /// Get a config value
     Get { key: String },
+    /// Set a config value
     Set { key: String, value: String },
+    /// Remove a config key
     Unset { key: String },
+    /// Reset config
     Reset,
+    /// Edit config in $EDITOR
     Edit,
 }
 
@@ -272,8 +326,11 @@ struct CompletionArgs {
 
 #[derive(Subcommand)]
 enum CompletionCommands {
+    /// Generate completion script
     Generate { shell: String },
+    /// Install completion
     Install { shell: Option<String> },
+    /// Uninstall completion
     Uninstall { shell: Option<String> },
 }
 
@@ -287,9 +344,12 @@ struct TaskArgs {
 enum TaskCommands {
     /// Mark a task as done and record touched files
     Done {
+        /// Task ID (1-based sequential index)
         task_id: usize,
+        /// Change name
         #[arg(long)]
         change: Option<String>,
+        /// Output as JSON
         #[arg(long)]
         json: bool,
     },
@@ -304,7 +364,10 @@ struct InProgressArgs {
 #[derive(Subcommand)]
 enum InProgressCommands {
     /// Mark a change as in-progress
-    Add { name: String },
+    Add {
+        /// Change name
+        name: String,
+    },
 }
 
 #[derive(Args)]

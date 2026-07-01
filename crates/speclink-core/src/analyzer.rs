@@ -70,6 +70,8 @@ pub struct AnalyzeReport {
 struct Scenario {
     name: String,
     has_example: bool,
+    /// Whether the WHEN/THEN body already contains concrete values (e.g. numbers).
+    has_concrete: bool,
 }
 struct Requirement {
     name: String,
@@ -97,12 +99,22 @@ fn parse_delta_spec(text: &str) -> Vec<Requirement> {
                 req.scenarios.push(Scenario {
                     name: name.trim().to_string(),
                     has_example: false,
+                    has_concrete: false,
                 });
             }
         } else if t.starts_with("##### Example:") {
             if let Some(req) = reqs.last_mut() {
                 if let Some(sc) = req.scenarios.last_mut() {
                     sc.has_example = true;
+                }
+            }
+        } else if !t.starts_with('#') {
+            // Body line of the current scenario: mark concrete if it contains a digit.
+            if t.chars().any(|c| c.is_ascii_digit()) {
+                if let Some(req) = reqs.last_mut() {
+                    if let Some(sc) = req.scenarios.last_mut() {
+                        sc.has_concrete = true;
+                    }
                 }
             }
         }
@@ -256,7 +268,7 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
             ));
         }
         for sc in &req.scenarios {
-            if !sc.has_example {
+            if !sc.has_example && !sc.has_concrete {
                 amb_n += 1;
                 ambiguity.push(make_finding(
                     "AMB", amb_n, "Ambiguity", Severity::Suggestion,
