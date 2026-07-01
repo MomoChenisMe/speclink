@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speclink Pinball 彈珠檯</title>
+<style>
+  html, body {
+    margin: 0; height: 100%;
+    background: radial-gradient(circle at 50% 20%, #1b2340, #05060c);
+    color: #e8ecff; font-family: "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    user-select: none;
+  }
+  h1 { font-size: 18px; letter-spacing: 2px; margin: 12px 0 6px; color: #8fd0ff; }
+  #hint { font-size: 12px; color: #9aa3c7; margin-bottom: 8px; }
+  canvas { background: #0a0e1c; border: 2px solid #2b3a66; border-radius: 10px; box-shadow: 0 0 40px #14306b66; }
+  b { color: #ffd35c; }
+</style>
+</head>
+<body>
+  <h1>SPECLINK · PINBALL</h1>
+  <div id="hint"><b>Space</b> 發球 · <b>←/→</b> (或 A/L) 翻板 · <b>R</b> 重新開始</div>
+  <canvas id="game" width="440" height="660"></canvas>
+
+<script>
+"use strict";
+(function () {
+  // ---- Tunable constants (physics feel lives here) ----
+  const W = 440, H = 660;
+  const M = 16;                 // outer wall margin
+  const GRAVITY = 1400;         // px/s^2
+  const DT = 1 / 120;           // fixed physics step (s)
+  const SUBSTEPS = 2;           // extra integration steps per frame chunk
+  const WALL_RESTITUTION = 0.78;
+  const BUMPER_RESTITUTION = 1.05;
+  const BUMPER_BOOST = 120;     // extra outward speed on bumper hit
+  const BUMPER_SCORE = 100;
+  const LAUNCH_VX = -60, LAUNCH_VY = -1180;
+  const FLIPPER_IMPULSE = 780;
+  const MAX_SPEED = 2400;
+  const START_BALLS = 3;
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  const cx = W / 2;
+  const laneX = W - 52;              // left edge of the right-hand launch lane
+  const flipperY = H - 96;
+  const pivotSep = 74;               // half-distance between the two flipper pivots
+  const divTop = 232;                // the lane divider stops here, opening into the field
+  const drainY = flipperY + 52;      // below the flipper tips: a ball past this has drained
+
+  // ---- Static geometry: line segments {x1,y1,x2,y2} ----
+  const walls = [
+    { x1: M, y1: M, x2: W - M, y2: M },              // ceiling (full width)
+    { x1: M, y1: M, x2: M, y2: H - M },              // left wall
+    { x1: W - M, y1: M, x2: W - M, y2: H - M },      // right wall (lane outer)
+    { x1: laneX, y1: divTop, x2: laneX, y2: flipperY - 6 }, // lane divider (opens up high)
+    { x1: W - M, y1: divTop - 6, x2: laneX - 46, y2: M + 12 }, // top-right deflector into field
+    // lower-left angled inlane funneling toward the left flipper pivot
+    { x1: M, y1: H - 220, x2: cx - pivotSep, y2: flipperY + 4 },
+    // lower-right angled inlane funneling toward the right flipper pivot
+    { x1: laneX, y1: H - 200, x2: cx + pivotSep, y2: flipperY + 4 },
+  ];
+
+  const bumpers = [
+    { x: cx + 86, y: 158, r: 24, flash: 0 },   // upper-right, on the entry sweep
+    { x: cx - 8, y: 150, r: 24, flash: 0 },    // upper-center, on the entry sweep
+    { x: cx + 82, y: 412, r: 22, flash: 0 },   // lower-center, on the return arc
+  ];
+
+  // ---- Flippers (rotating segments about a pivot) ----
+  const flippers = [
+    { side: "L", px: cx - pivotSep, py: flipperY, len: 72, rest: 0.5, raised: -0.55, angle: 0.5, key: false },
+    { side: "R", px: cx + pivotSep, py: flipperY, len: 72, rest: Math.PI - 0.5, raised: Math.PI + 0.55, angle: Math.PI - 0.5, key: false },
+  ];
+
+  function flipperSegment(f) {
+    return {
+      x1: f.px, y1: f.py,
+      x2: f.px + Math.cos(f.angle) * f.len,
+      y2: f.py + Math.sin(f.angle) * f.len,
+      prevAngle: f.prevAngle != null ? f.prevAngle : f.angle,
+    };
+  }
+
+  // ---- Game state ----
+  const ball = { x: 0, y: 0, vx: 0, vy: 0, r: 9, state: "waiting" };
+  let score = 0, balls = START_BALLS, over = false;
+  const keys = {};
+
+  function serveBall() {
+    ball.x = laneX + (W - M - laneX) / 2;
+    ball.y = flipperY - 40;
+    ball.vx = 0; ball.vy = 0;
+    ball.state = "waiting";
+  }
+  function resetGame() {
+    score = 0; balls = START_BALLS; over = false;
+    serveBall();
+  }
+
+  // ---- Input ----
+  addEventListener("keydown", (e) => {
+    if (e.repeat) return;
+    const k = e.key.toLowerCase();
+    if (k === "arrowleft" || k === "a") flippers[0].key = true;
+    if (k === "arrowright" || k === "l") flippers[1].key = true;
+    if (e.code === "Space") { launch(); e.preventDefault(); }
+    if (k === "r" && over) resetGame();
+  });
+  addEventListener("keyup", (e) => {
+    const k = e.key.toLowerCase();
+    if (k === "arrowleft" || k === "a") flippers[0].key = false;
+    if (k === "arrowright" || k === "l") flippers[1].key = false;
+  });
+
+  function launch() {
+    if (over) return;
+    if (ball.state !== "waiting") return;   // ignore while a ball is in play
+    ball.vx = LAUNCH_VX; ball.vy = LAUNCH_VY;
+    ball.state = "inPlay";
+  }
+
+  // ---- Collision helpers ----
+  function closestOnSeg(px, py, s) {
+    const dx = s.x2 - s.x1, dy = s.y2 - s.y1;
+    const len2 = dx * dx + dy * dy || 1e-6;
+    let t = ((px - s.x1) * dx + (py - s.y1) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    return { x: s.x1 + t * dx, y: s.y1 + t * dy };
+  }
+
+  function collideSegment(s, restitution, impulse) {
+    const c = closestOnSeg(ball.x, ball.y, s);
+    let nx = ball.x - c.x, ny = ball.y - c.y;
+    let dist = Math.hypot(nx, ny);
+    if (dist > ball.r) return false;
+    if (dist < 1e-4) { nx = 0; ny = -1; dist = 1; }
+    nx /= dist; ny /= dist;
+    // push the ball out of the segment
+    ball.x = c.x + nx * ball.r;
+    ball.y = c.y + ny * ball.r;
+    // reflect velocity about the collision normal
+    const vn = ball.vx * nx + ball.vy * ny;
+    if (vn < 0) {
+      ball.vx -= (1 + restitution) * vn * nx;
+      ball.vy -= (1 + restitution) * vn * ny;
+    }
+    if (impulse) { ball.vx += nx * impulse; ball.vy += ny * impulse; }
+    return true;
+  }
+
+  function collideBumper(b) {
+    const dx = ball.x - b.x, dy = ball.y - b.y;
+    let dist = Math.hypot(dx, dy);
+    const min = ball.r + b.r;
+    if (dist > min) return false;
+    if (dist < 1e-4) dist = 1e-4;
+    const nx = dx / dist, ny = dy / dist;
+    ball.x = b.x + nx * min;
+    ball.y = b.y + ny * min;
+    const vn = ball.vx * nx + ball.vy * ny;
+    if (vn < 0) {
+      ball.vx -= (1 + BUMPER_RESTITUTION) * vn * nx;
+      ball.vy -= (1 + BUMPER_RESTITUTION) * vn * ny;
+    }
+    ball.vx += nx * BUMPER_BOOST;
+    ball.vy += ny * BUMPER_BOOST;
+    b.flash = 0.14;
+    score += BUMPER_SCORE;
+    return true;
+  }
+
+  function clampSpeed() {
+    const sp = Math.hypot(ball.vx, ball.vy);
+    if (sp > MAX_SPEED) { ball.vx = ball.vx / sp * MAX_SPEED; ball.vy = ball.vy / sp * MAX_SPEED; }
+  }
+
+  // ---- Update ----
+  function updateFlippers(dt) {
+    for (const f of flippers) {
+      f.prevAngle = f.angle;
+      const target = f.key ? f.raised : f.rest;
+      const rate = 18 * dt;
+      f.angle += (target - f.angle) * Math.min(1, rate * 3);
+    }
+  }
+
+  function step(dt) {
+    if (ball.state === "waiting") { updateFlippers(dt); return; }
+    ball.vy += GRAVITY * dt;
+    clampSpeed();
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
+
+    for (const w of walls) collideSegment(w, WALL_RESTITUTION, 0);
+
+    updateFlippers(dt);
+    for (const f of flippers) {
+      const seg = flipperSegment(f);
+      const raising = f.key && Math.abs(f.angle - f.prevAngle) > 1e-4;
+      collideSegment(seg, 0.5, raising ? FLIPPER_IMPULSE : 0);
+    }
+
+    for (const b of bumpers) {
+      if (b.flash > 0) b.flash -= dt;
+      collideBumper(b);
+    }
+
+    // drain: ball fell past the flippers through the center gap
+    if (ball.y - ball.r > drainY) {
+      balls -= 1;
+      if (balls <= 0) { over = true; ball.state = "dead"; }
+      else serveBall();
+    }
+  }
+
+  // ---- Render ----
+  function drawSeg(s, color, width) {
+    ctx.strokeStyle = color; ctx.lineWidth = width || 3;
+    ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(s.x1, s.y1); ctx.lineTo(s.x2, s.y2); ctx.stroke();
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    // launch lane shading
+    ctx.fillStyle = "#0d152b";
+    ctx.fillRect(laneX, M, W - M - laneX, H - M);
+
+    for (const w of walls) drawSeg(w, "#3b5bbf", 4);
+
+    for (const b of bumpers) {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fillStyle = b.flash > 0 ? "#fff6c2" : "#ff5d73";
+      ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = "#ffd35c"; ctx.stroke();
+    }
+
+    for (const f of flippers) {
+      const seg = flipperSegment(f);
+      drawSeg(seg, "#7fe3ff", 9);
+      ctx.beginPath(); ctx.arc(f.px, f.py, 5, 0, Math.PI * 2);
+      ctx.fillStyle = "#bfefff"; ctx.fill();
+    }
+
+    // ball
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fillStyle = "#f4f7ff"; ctx.fill();
+    ctx.strokeStyle = "#8fbcff"; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // HUD
+    ctx.fillStyle = "#e8ecff";
+    ctx.font = "bold 18px 'Segoe UI', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("SCORE " + score, M + 6, M + 24);
+    ctx.textAlign = "right";
+    ctx.fillText("BALLS " + Math.max(0, balls), laneX - 6, M + 24);
+
+    if (ball.state === "waiting") {
+      ctx.fillStyle = "#9aa3c7"; ctx.font = "13px 'Segoe UI', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("按 Space 發球", (laneX + W - M) / 2, flipperY - 60);
+    }
+
+    if (over) {
+      ctx.fillStyle = "rgba(4,6,14,0.78)";
+      ctx.fillRect(0, H / 2 - 70, W, 140);
+      ctx.fillStyle = "#ffd35c"; ctx.textAlign = "center";
+      ctx.font = "bold 34px 'Segoe UI', sans-serif";
+      ctx.fillText("GAME OVER", cx, H / 2 - 10);
+      ctx.fillStyle = "#e8ecff"; ctx.font = "16px 'Segoe UI', sans-serif";
+      ctx.fillText("最終分數 " + score + " · 按 R 重新開始", cx, H / 2 + 26);
+    }
+  }
+
+  // ---- Main loop (fixed timestep) ----
+  let last = null, acc = 0;
+  function frame(ts) {
+    if (last == null) last = ts;
+    let dt = (ts - last) / 1000; last = ts;
+    if (dt > 0.1) dt = 0.1;           // avoid spiral of death after tab switch
+    acc += dt;
+    while (acc >= DT) {
+      for (let i = 0; i < SUBSTEPS; i++) step(DT / SUBSTEPS);
+      acc -= DT;
+    }
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  resetGame();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
