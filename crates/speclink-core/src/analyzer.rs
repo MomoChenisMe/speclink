@@ -231,13 +231,14 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
         spec_texts.push((rel, text));
     }
 
+    let proposal_present = util::has_content(&change.dir.join("proposal.md"));
     let specs_present = spec_texts.iter().any(|(_, t)| model::has_delta_operation(t));
     let tasks_present = util::has_content(&change.dir.join("tasks.md"));
     let design_present = util::has_content(&change.dir.join("design.md"));
 
-    // A dimension is skipped when its prerequisite artifacts are missing. Coverage needs tasks
-    // (it checks capability→spec and requirement→task); Gaps always runs.
-    let coverage_skipped = !tasks_present;
+    // A dimension is skipped when its prerequisite artifacts are missing. Coverage needs a proposal
+    // plus at least one of specs/tasks to check against; Gaps always runs.
+    let coverage_skipped = !(proposal_present && (specs_present || tasks_present));
     let consistency_skipped = !(design_present && tasks_present);
     let ambiguity_skipped = !specs_present;
     let gaps_skipped = false;
@@ -263,7 +264,8 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
                 ));
             }
         }
-        for (loc, req) in &all_reqs {
+        // covMissingTask only applies when there are tasks to match against.
+        for (loc, req) in all_reqs.iter().filter(|_| tasks_present) {
             if !req_covered(&req.name, &tasks) {
                 n += 1;
                 coverage.push(make_finding(
@@ -341,9 +343,9 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
         if proposal.trim().is_empty() {
             n += 1;
             gaps.push(make_finding(
-                "GAP", n, "Gaps", Severity::Critical, "proposal.md",
-                "Specs exist but no proposal was found",
-                "Create a proposal.md describing why this change is needed",
+                "GAP", n, "Gaps", Severity::Critical, "change directory",
+                "Specs exist but no proposal.md found",
+                "Create proposal.md describing the change purpose",
                 "gapNoProposal", [],
             ));
         }
@@ -381,7 +383,7 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
                             "GAP", n, "Gaps", Severity::Warning, loc,
                             &format!("MODIFIED requirement '{}' not found in main spec", req.name),
                             &format!("Verify requirement '{}' exists in openspec/specs/{cap}/spec.md", req.name),
-                            "gapModifiedNotFound", [("req", req.name.as_str())],
+                            "gapModifiedNotFound", [("name", req.name.as_str()), ("spec", cap)],
                         ));
                     }
                 }
