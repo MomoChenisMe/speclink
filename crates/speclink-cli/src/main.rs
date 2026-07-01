@@ -288,23 +288,23 @@ enum SchemaCommands {
     Which {
         /// Schema name
         name: Option<String>,
-        /// Show all resolution paths
-        #[arg(long)]
-        all: bool,
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Show all resolution paths
+        #[arg(long)]
+        all: bool,
     },
     /// Validate a schema
     Validate {
         /// Schema name
         name: Option<String>,
-        /// Verbose output
-        #[arg(long)]
-        verbose: bool,
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Verbose output
+        #[arg(long)]
+        verbose: bool,
     },
     /// Fork (copy) a schema
     Fork {
@@ -355,10 +355,10 @@ enum ConfigCommands {
         key: String,
         /// Config value
         value: String,
-        /// Treat the value as a string
+        /// Treat value as string
         #[arg(long)]
         string: bool,
-        /// Allow setting unknown keys
+        /// Allow unknown keys
         #[arg(long = "allow-unknown")]
         allow_unknown: bool,
     },
@@ -383,17 +383,17 @@ struct CompletionArgs {
 enum CompletionCommands {
     /// Generate completion script
     Generate {
-        /// Shell (bash, zsh, fish, powershell, elvish)
+        /// Shell type
         shell: Option<String>,
     },
     /// Install completion
     Install {
-        /// Shell (bash, zsh, fish, powershell, elvish)
+        /// Shell type
         shell: Option<String>,
     },
     /// Uninstall completion
     Uninstall {
-        /// Shell (bash, zsh, fish, powershell, elvish)
+        /// Shell type
         shell: Option<String>,
     },
 }
