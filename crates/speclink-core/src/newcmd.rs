@@ -100,20 +100,17 @@ fn validate_artifact_content(artifact_id: &str, rel: &str, body: &str) -> Result
             }
         }
         "tasks" => {
-            let ok = body.lines().any(|l| {
-                let t = l.trim_start();
-                t.starts_with("- [ ] ") || t.starts_with("- [x] ") || t.starts_with("- [X] ")
-            });
+            // Spectra requires at least one INCOMPLETE checkbox.
+            let ok = body
+                .lines()
+                .any(|l| l.trim_start().starts_with("- [ ] "));
             if !ok {
-                bail!("tasks must contain at least one - [ ] checkbox");
+                bail!("Tasks must contain at least one checkbox (- [ ])");
             }
         }
         "specs" => {
-            let has_op = ["## ADDED Requirements", "## MODIFIED Requirements", "## REMOVED Requirements", "## RENAMED Requirements"]
-                .iter()
-                .any(|op| body.contains(op));
-            if !has_op {
-                let _ = rel;
+            let _ = rel;
+            if !model::has_delta_operation(body) {
                 bail!("Delta spec parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)");
             }
         }

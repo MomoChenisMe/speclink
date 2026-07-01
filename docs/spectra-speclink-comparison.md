@@ -11,6 +11,7 @@
   - **help 文字**：20 個共同指令 **18 個逐字一致**，另 2 個差異為刻意移除功能（`--parked`）與工具範例字串。
   - **技能內容**：10 個共同技能中，7 個為純品牌替換後**逐字相同**，其餘為刻意的功能移除與強化。
   - **生成檔案**：`openspec/config.yaml`、`.gitignore`、`.claude/settings.json` **完全相同**；`.speclink.yaml`、`CLAUDE.md`/`AGENTS.md` 為品牌 + 刻意移除段落。
+  - **對抗式邊界審計**：4 輪、每輪 5 個平行代理，共數百項邊界檢查，累計揪出的**所有真實不一致均已修正並回歸驗證**（詳見 §9），殘留僅純 cosmetic。
 - **端到端驗證**：以 speclink 完整跑過 `discuss → propose → apply → archive`，用 HTML + Canvas 建出一個**可玩的彈珠檯遊戲**（`pinball/index.html`），並以模擬 DOM 的測試харness 驗證發球、翻板、緩衝器計分、落袋扣球、Game Over/重開、HUD 皆正常。
 
 ## 2. 方法論
@@ -101,14 +102,16 @@ Spectra 的 discuss 是唯讀、不留文件的討論。Speclink 讓 discuss 具
 
 除了 §3–§7 的正向對照，另以**多輪平行對抗式審計**主動搜尋邊界情境的不一致：每輪派 5 個獨立代理，各鎖定一個面向（delta 操作 MODIFIED/REMOVED/RENAMED、錯誤訊息/空狀態/exit code、locale/config 注入、多能力/生命週期旗標、瀏覽/schema/子指令 help），在乾淨沙箱以相同輸入跑兩個 CLI 並語意比較，只回報**非刻意**的差異。
 
-- **第一輪**：128 檢查，發現 43 項真實不一致。涵蓋 archive 的 MODIFIED/REMOVED 未就地套用、analyze 正典路徑少一層、`show <spec>` 完全失效、多能力 archive 未聚合、locale 未對映碼行為、大量錯誤訊息措辭、`schema which/validate` 缺 `--json`、`list --specs --json` 結構、`instructions apply` blocked 結構等。
-- **第二輪**（首輪修正後）：128 檢查，殘留降至 ~22 項，並揪出首輪未觸及的更深 bug：@trace 路徑掉首字元（`util::git` 對 porcelain 輸出 `.trim()` 誤刪 ` M path` 的前導空格）、ADDED 重複既有需求、analyze 不應抑制 REMOVED 需求、`task done` 已完成應報錯、validate 對「有需求但無操作」的 delta 應判 error、locale 亦讀 `openspec/config.yaml`、@trace 應排除工具目錄。
+- **第一輪**：128 檢查，43 項真實不一致。涵蓋 archive 的 MODIFIED/REMOVED 未就地套用、analyze 正典路徑少一層、`show <spec>` 完全失效、多能力 archive 未聚合、locale 未對映碼行為、大量錯誤訊息措辭、`schema which/validate` 缺 `--json`、`list --specs --json` 結構、`instructions apply` blocked 結構等。
+- **第二輪**：殘留 ~22 項，揪出更深的 bug：@trace 路徑掉首字元（`util::git` 對 porcelain 輸出 `.trim()` 誤刪 ` M path` 前導空格致欄位左移）、ADDED 重複既有需求、analyze 不應抑制 REMOVED、`task done` 已完成應報錯、validate「有需求但無操作」應判 error、locale 亦讀 `openspec/config.yaml`、@trace 應排除工具目錄。
+- **第三輪**：殘留 ~22 項但多為更細邊界：`new change` 缺 kebab-case 驗證、`new artifact --json`/`task done --json` 應為 compact 單行且鍵集不同、`instructions` 無參數時預設應取「顯示順序第一個未完成」artifact、instructions 人類輸出應為 `Description:`＋`Dependencies:`、RENAMED-only delta 不應算作 delta spec、多個錯誤訊息措辭與尾端換行。
+- **第四輪**：確認前三輪修正生效、殘留收斂至僅 cosmetic。
 
-**所有真實不一致均已修正**（見 git 提交 `fix(cli): match Spectra help descriptions...` 與 `fix(cli): resolve adversarial-audit findings...`），並以聚焦自檢逐一驗證輸出與 spectra 逐字相符。修正後回歸：8 個 demo 主題的 analyze/drift/validate/status **32/32 一致**，完整對照套件 **31/31 一致**，皆無回歸。
+**所有真實/語意不一致均已修正**（見 git 提交 `fix(cli): match Spectra help descriptions...`、`fix(cli): resolve adversarial-audit findings...`、`fix(cli): resolve round-3 audit findings`、`fix(cli): match sub-subcommand --help...`），並以聚焦自檢逐一驗證輸出與 spectra 逐字相符。每輪修正後回歸：8 個 demo 主題的 analyze/drift/validate/status/show **一致**，完整對照套件 **31/31 一致**，皆無回歸。
 
-殘留差異僅為 cosmetic 且不影響語意（於報告中如實揭露）：
+**已知殘留**（純 cosmetic、不影響語意，如實揭露）：
 - 歸檔正典 spec 在「刪除最後一條需求」時，spectra 會留下懸空的 `---` 分隔線（其文字拼接產物），speclink 產出較乾淨（無懸空 `---`）；需求內容本身逐字相同。
-- 少數子指令 `--help` 的旗標**排列順序**（如 `--json` 相對位置）與 spectra 略異，描述文字一致。
+- 全域旗標 `--no-color` 在少數子指令 `--help` 中的相對位置受 clap 全域旗標機制限制，可能與 spectra 略異；旗標描述文字一致。
 
 ## 10. 端到端示範：HTML 彈珠檯
 

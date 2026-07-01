@@ -95,16 +95,47 @@ pub fn spec_files(change_dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Whether a delta spec body has an applicable operation. Spectra treats a spec whose only section
-/// is `## RENAMED Requirements` (or has no operation) as NOT a delta spec.
+/// Number of `### Requirement:` declarations under an ADDED/MODIFIED/REMOVED section. A RENAMED
+/// section (FROM:/TO:) and empty operation headers contribute zero — matching Spectra's rule that
+/// a delta spec must contain at least one applied operation.
+pub fn op_requirement_count(text: &str) -> usize {
+    let mut op = "";
+    let mut count = 0;
+    for line in text.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("## ") {
+            if rest.trim_end().ends_with("Requirements") {
+                op = rest.split_whitespace().next().unwrap_or("");
+            }
+        } else if t.starts_with("### Requirement:")
+            && matches!(op, "ADDED" | "MODIFIED" | "REMOVED")
+        {
+            count += 1;
+        }
+    }
+    count
+}
+
+/// A line-start `### Requirement:` that is not under an ADDED/MODIFIED/REMOVED section (a malformed
+/// delta — requirement declared with no operation heading).
+pub fn has_orphan_requirement(text: &str) -> bool {
+    let mut op = "";
+    for line in text.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("## ") {
+            if rest.trim_end().ends_with("Requirements") {
+                op = rest.split_whitespace().next().unwrap_or("");
+            }
+        } else if t.starts_with("### Requirement:") && !matches!(op, "ADDED" | "MODIFIED" | "REMOVED") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether a delta spec body has an applicable operation (ADDED/MODIFIED/REMOVED with a requirement).
 pub fn has_delta_operation(text: &str) -> bool {
-    [
-        "## ADDED Requirements",
-        "## MODIFIED Requirements",
-        "## REMOVED Requirements",
-    ]
-    .iter()
-    .any(|op| text.contains(op))
+    op_requirement_count(text) > 0
 }
 
 /// Capability names present as delta specs (directory names under specs/ whose spec.md contains a
