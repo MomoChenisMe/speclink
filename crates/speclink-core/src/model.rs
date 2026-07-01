@@ -170,25 +170,21 @@ pub fn blocked_by(schema: &Schema, change_dir: &Path, id: &str) -> Vec<String> {
         .collect()
 }
 
-/// Whether all apply-required artifacts (and transitive deps) are done.
+/// Whether EVERY artifact in the schema is done (matches Spectra — an absent optional artifact
+/// such as `design` keeps the change incomplete).
 pub fn is_complete(schema: &Schema, change_dir: &Path) -> bool {
-    let statuses = artifact_statuses(schema, change_dir);
-    let map: std::collections::HashMap<_, _> = statuses.iter().map(|(k, v)| (k.as_str(), *v)).collect();
-    // Transitive closure of apply_requires.
-    let mut needed: Vec<&str> = schema.apply_requires.to_vec();
-    let mut seen = std::collections::HashSet::new();
-    let mut all = Vec::new();
-    while let Some(id) = needed.pop() {
-        if !seen.insert(id) {
-            continue;
-        }
-        all.push(id);
-        if let Some(a) = schema.artifact(id) {
-            for r in a.requires {
-                needed.push(r);
-            }
-        }
-    }
-    all.iter()
-        .all(|id| map.get(id).map(|s| *s == ArtifactStatus::Done).unwrap_or(false))
+    schema
+        .artifacts
+        .iter()
+        .all(|a| artifact_done(change_dir, a))
+}
+
+/// Artifacts in the schema that are not yet done (used for analyze "Missing" reporting).
+pub fn missing_artifacts(schema: &Schema, change_dir: &Path) -> Vec<String> {
+    schema
+        .artifacts
+        .iter()
+        .filter(|a| !artifact_done(change_dir, a))
+        .map(|a| a.id.to_string())
+        .collect()
 }

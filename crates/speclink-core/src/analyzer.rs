@@ -109,7 +109,6 @@ fn parse_delta_spec(text: &str) -> Vec<Requirement> {
                 }
             }
         } else if !t.starts_with('#') {
-            // Body line of the current scenario: mark concrete if it contains a digit.
             if t.chars().any(|c| c.is_ascii_digit()) {
                 if let Some(req) = reqs.last_mut() {
                     if let Some(sc) = req.scenarios.last_mut() {
@@ -126,7 +125,7 @@ fn parse_delta_spec(text: &str) -> Vec<Requirement> {
 fn parse_capabilities(proposal: &str) -> (Vec<String>, Vec<String>) {
     let mut new_caps = Vec::new();
     let mut mod_caps = Vec::new();
-    let mut section = 0; // 0 none, 1 new, 2 modified
+    let mut section = 0;
     for line in proposal.lines() {
         let t = line.trim();
         if t.starts_with("### New Capabilities") {
@@ -152,7 +151,6 @@ fn parse_capabilities(proposal: &str) -> (Vec<String>, Vec<String>) {
 }
 
 fn parse_cap_bullet(line: &str) -> Option<String> {
-    // Matches: - `cap-name`: description
     let rest = line.strip_prefix("- ")?;
     let rest = rest.strip_prefix('`')?;
     let end = rest.find('`')?;
@@ -178,74 +176,119 @@ fn task_descriptions(tasks: &str) -> Vec<String> {
         .collect()
 }
 
+/// A requirement is "covered" if some task contains all of its significant words (case-insensitive
+/// substring) — matches Spectra's lenient matching (e.g. "CSV Export" ↔ "Implement CSV exporter").
+fn req_covered(name: &str, tasks: &[String]) -> bool {
+    let words: Vec<String> = name
+        .split_whitespace()
+        .map(|w| w.to_lowercase())
+        .filter(|w| w.len() >= 2)
+        .collect();
+    if words.is_empty() {
+        return true;
+    }
+    tasks.iter().any(|t| {
+        let tl = t.to_lowercase();
+        words.iter().all(|w| tl.contains(w.as_str()))
+    })
+}
+
+/// Weak/vague language patterns found in a spec line, in Spectra's reporting order.
+fn weak_patterns_in(line: &str) -> Vec<String> {
+    let alpha = ["should", "may", "might", "consider", "possibly"];
+    let literal = ["TBD", "TODO", "???", "TKTK"];
+    let mut out = Vec::new();
+    let words: Vec<String> = line
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .map(|s| s.to_string())
+        .collect();
+    for p in alpha {
+        if words.iter().any(|w| w == p) {
+            out.push(p.to_string());
+        }
+    }
+    for p in literal {
+        if line.contains(p) {
+            out.push(p.to_string());
+        }
+    }
+    out
+}
+
 pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     let proposal = util::read_opt(&change.dir.join("proposal.md")).unwrap_or_default();
     let design = util::read_opt(&change.dir.join("design.md")).unwrap_or_default();
     let tasks_text = util::read_opt(&change.dir.join("tasks.md")).unwrap_or_default();
     let spec_files = model::spec_files(&change.dir);
 
-    let (new_caps, mod_caps) = parse_capabilities(&proposal);
+    let (new_caps, _mod_caps) = parse_capabilities(&proposal);
     let tasks = task_descriptions(&tasks_text);
+
+    // Parse all delta specs, keeping per-file text for line-based checks.
+    let mut all_reqs: Vec<(String, Requirement)> = Vec::new();
+    let mut spec_texts: Vec<(String, String)> = Vec::new();
+    for sp in &spec_files {
+        let rel = sp.strip_prefix(&change.dir).map(util::to_slash).unwrap_or_default();
+        let text = util::read_opt(sp).unwrap_or_default();
+        for req in parse_delta_spec(&text) {
+            all_reqs.push((rel.clone(), req));
+        }
+        spec_texts.push((rel, text));
+    }
+
+    let specs_present = spec_files.iter().any(|p| util::has_content(p));
+    let tasks_present = util::has_content(&change.dir.join("tasks.md"));
+    let design_present = util::has_content(&change.dir.join("design.md"));
+
+    // A dimension is skipped when its prerequisite artifacts are missing. Gaps always runs.
+    let coverage_skipped = !(specs_present && tasks_present);
+    let consistency_skipped = !(design_present && tasks_present);
+    let ambiguity_skipped = !specs_present;
+    let gaps_skipped = false;
 
     let mut coverage: Vec<Finding> = Vec::new();
     let mut consistency: Vec<Finding> = Vec::new();
     let mut ambiguity: Vec<Finding> = Vec::new();
     let mut gaps: Vec<Finding> = Vec::new();
 
-    // --- Coverage: capability without spec file ---
-    let mut cov_n = 0;
-    for cap in &new_caps {
-        let spec = change.dir.join("specs").join(cap).join("spec.md");
-        if !util::has_content(&spec) {
-            cov_n += 1;
-            coverage.push(make_finding(
-                "COV", cov_n, "Coverage", Severity::Critical,
-                &format!("specs/{cap}/spec.md"),
-                &format!("Capability '{cap}' has no spec file"),
-                &format!("Create specs/{cap}/spec.md for capability '{cap}'"),
-                "covMissingSpec", [("capability", cap.as_str())],
-            ));
+    // --- Coverage ---
+    if !coverage_skipped {
+        let mut n = 0;
+        for cap in &new_caps {
+            let spec = change.dir.join("specs").join(cap).join("spec.md");
+            if !util::has_content(&spec) {
+                n += 1;
+                coverage.push(make_finding(
+                    "COV", n, "Coverage", Severity::Critical,
+                    &format!("specs/{cap}/spec.md"),
+                    &format!("Capability '{cap}' has no spec file"),
+                    &format!("Create specs/{cap}/spec.md for capability '{cap}'"),
+                    "covMissingSpec", [("capability", cap.as_str())],
+                ));
+            }
+        }
+        for (loc, req) in &all_reqs {
+            if !req_covered(&req.name, &tasks) {
+                n += 1;
+                coverage.push(make_finding(
+                    "COV", n, "Coverage", Severity::Warning, loc,
+                    &format!("Requirement '{}' has no matching task", req.name),
+                    &format!("Add a task in tasks.md that references '{}'", req.name),
+                    "covMissingTask", [("req", req.name.as_str())],
+                ));
+            }
         }
     }
 
-    // Parse all delta specs.
-    let mut all_reqs: Vec<(String, Requirement)> = Vec::new();
-    for sp in &spec_files {
-        let rel = sp
-            .strip_prefix(&change.dir)
-            .map(util::to_slash)
-            .unwrap_or_default();
-        let text = util::read_opt(sp).unwrap_or_default();
-        for req in parse_delta_spec(&text) {
-            all_reqs.push((rel.clone(), req));
-        }
-    }
-
-    // --- Coverage: requirement without task ---
-    for (loc, req) in &all_reqs {
-        let covered = tasks.iter().any(|t| t.contains(&req.name));
-        if !covered {
-            cov_n += 1;
-            coverage.push(make_finding(
-                "COV", cov_n, "Coverage", Severity::Warning,
-                loc,
-                &format!("Requirement '{}' has no corresponding task", req.name),
-                &format!("Add a task that implements '{}'", req.name),
-                "covMissingTask", [("requirement", req.name.as_str())],
-            ));
-        }
-    }
-
-    // --- Consistency: design heading not referenced in tasks ---
-    let mut con_n = 0;
-    if !design.trim().is_empty() {
+    // --- Consistency ---
+    if !consistency_skipped {
+        let mut n = 0;
         for h in design_headings(&design) {
-            let referenced = tasks.iter().any(|t| t.contains(&h));
-            if !referenced {
-                con_n += 1;
+            if !tasks.iter().any(|t| t.contains(&h)) {
+                n += 1;
                 consistency.push(make_finding(
-                    "CON", con_n, "Consistency", Severity::Warning,
-                    "design.md",
+                    "CON", n, "Consistency", Severity::Warning, "design.md",
                     &format!("Design topic '{h}' is not referenced by any task"),
                     &format!("Add a task covering design decision '{h}'"),
                     "conDesignNotInTasks", [("topic", h.as_str())],
@@ -254,81 +297,97 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
         }
     }
 
-    // --- Ambiguity: no scenario / abstract scenario ---
-    let mut amb_n = 0;
-    for (loc, req) in &all_reqs {
-        if req.scenarios.is_empty() {
-            amb_n += 1;
-            ambiguity.push(make_finding(
-                "AMB", amb_n, "Ambiguity", Severity::Warning,
-                loc,
-                &format!("Requirement '{}' has no scenario", req.name),
-                "Add a #### Scenario: with WHEN/THEN",
-                "ambNoScenario", [("requirement", req.name.as_str())],
+    // --- Ambiguity (order: no-scenario, then abstract-scenario, then weak-language) ---
+    if !ambiguity_skipped {
+        let mut n = 0;
+        for (loc, req) in &all_reqs {
+            if req.scenarios.is_empty() {
+                n += 1;
+                ambiguity.push(make_finding(
+                    "AMB", n, "Ambiguity", Severity::Warning, loc,
+                    &format!("Requirement '{}' has no scenarios", req.name),
+                    &format!("Add #### Scenario: sections with WHEN/THEN for '{}'", req.name),
+                    "ambNoScenario", [("req", req.name.as_str())],
+                ));
+            }
+        }
+        for (loc, req) in &all_reqs {
+            for sc in &req.scenarios {
+                if !sc.has_example && !sc.has_concrete {
+                    n += 1;
+                    ambiguity.push(make_finding(
+                        "AMB", n, "Ambiguity", Severity::Suggestion, loc,
+                        &format!("Scenario '{}' has no concrete examples", sc.name),
+                        "Add ##### Example: with concrete GIVEN/WHEN/THEN data",
+                        "ambAbstractScenario", [("scenario", sc.name.as_str())],
+                    ));
+                }
+            }
+        }
+        for (rel, text) in &spec_texts {
+            for (idx, line) in text.lines().enumerate() {
+                for pat in weak_patterns_in(line) {
+                    n += 1;
+                    let loc = format!("{rel}:{}", idx + 1);
+                    ambiguity.push(make_finding(
+                        "AMB", n, "Ambiguity", Severity::Suggestion, &loc,
+                        &format!("Vague language '{pat}' found"),
+                        &format!("Replace '{pat}' with SHALL/SHALL NOT for clarity"),
+                        "ambWeakLanguage", [("pattern", pat.as_str())],
+                    ));
+                }
+            }
+        }
+    }
+
+    // --- Gaps ---
+    if !gaps_skipped {
+        let mut n = 0;
+        if proposal.trim().is_empty() {
+            n += 1;
+            gaps.push(make_finding(
+                "GAP", n, "Gaps", Severity::Critical, "proposal.md",
+                "Specs exist but no proposal was found",
+                "Create a proposal.md describing why this change is needed",
+                "gapNoProposal", [],
             ));
         }
-        for sc in &req.scenarios {
-            if !sc.has_example && !sc.has_concrete {
-                amb_n += 1;
-                ambiguity.push(make_finding(
-                    "AMB", amb_n, "Ambiguity", Severity::Suggestion,
-                    loc,
-                    &format!("Scenario '{}' has no concrete examples", sc.name),
-                    "Add ##### Example: with concrete GIVEN/WHEN/THEN data",
-                    "ambAbstractScenario", [("scenario", sc.name.as_str())],
-                ));
+        for (loc, req) in &all_reqs {
+            if req.operation == "MODIFIED" {
+                let cap = loc.split('/').nth(1).unwrap_or("");
+                // change.dir = <root>/openspec/changes/<name>; canonical = <root>/openspec/specs/<cap>/spec.md
+                let canonical = change
+                    .dir
+                    .parent()
+                    .and_then(|p| p.parent())
+                    .map(|openspec| openspec.join("specs").join(cap).join("spec.md"));
+                let exists = canonical.as_ref().map(|p| util::has_content(p)).unwrap_or(false);
+                if !exists {
+                    n += 1;
+                    gaps.push(make_finding(
+                        "GAP", n, "Gaps", Severity::Critical, loc,
+                        &format!("MODIFIED requirement '{}' has no canonical spec", req.name),
+                        "Ensure the capability exists in openspec/specs/ before modifying it",
+                        "gapModifiedNotFound", [("req", req.name.as_str())],
+                    ));
+                }
             }
         }
     }
 
-    // --- Gaps: spec but no proposal / modified not found ---
-    let mut gap_n = 0;
-    if !spec_files.is_empty() && proposal.trim().is_empty() {
-        gap_n += 1;
-        gaps.push(make_finding(
-            "GAP", gap_n, "Gaps", Severity::Critical,
-            "proposal.md",
-            "Specs exist but no proposal was found",
-            "Create a proposal.md describing why this change is needed",
-            "gapNoProposal", [],
-        ));
-    }
-    for (loc, req) in &all_reqs {
-        if req.operation == "MODIFIED" {
-            // Modified capability should have a canonical spec.
-            let cap = loc.split('/').nth(1).unwrap_or("");
-            let canonical = change
-                .dir
-                .parent().and_then(|p| p.parent()).and_then(|p| p.parent())
-                .map(|root| root.join("specs").join(cap).join("spec.md"));
-            let exists = canonical.as_ref().map(|p| util::has_content(p)).unwrap_or(false);
-            if !exists {
-                gap_n += 1;
-                gaps.push(make_finding(
-                    "GAP", gap_n, "Gaps", Severity::Critical,
-                    loc,
-                    &format!("MODIFIED requirement '{}' has no canonical spec", req.name),
-                    "Ensure the capability exists in openspec/specs/ before modifying it",
-                    "gapModifiedNotFound", [("requirement", req.name.as_str())],
-                ));
-            }
-        }
-    }
-
-    let _ = mod_caps;
-
-    // Assemble in dimension order: Coverage, Consistency, Ambiguity, Gaps.
-    let dims = [
-        ("Coverage", &coverage),
-        ("Consistency", &consistency),
-        ("Ambiguity", &ambiguity),
-        ("Gaps", &gaps),
+    let dims: [(&str, &Vec<Finding>, bool); 4] = [
+        ("Coverage", &coverage, coverage_skipped),
+        ("Consistency", &consistency, consistency_skipped),
+        ("Ambiguity", &ambiguity, ambiguity_skipped),
+        ("Gaps", &gaps, gaps_skipped),
     ];
     let dimensions = dims
         .iter()
-        .map(|(name, list)| DimensionStatus {
+        .map(|(name, list, skipped)| DimensionStatus {
             dimension: name.to_string(),
-            status: if list.is_empty() {
+            status: if *skipped {
+                "Skipped (insufficient artifacts)".to_string()
+            } else if list.is_empty() {
                 "Clean".to_string()
             } else {
                 format!("{} issue(s) found", list.len())
@@ -343,7 +402,6 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     findings.extend(ambiguity);
     findings.extend(gaps);
 
-    // Artifacts analyzed / missing.
     let mut analyzed = Vec::new();
     let mut missing = Vec::new();
     for a in &schema.artifacts {

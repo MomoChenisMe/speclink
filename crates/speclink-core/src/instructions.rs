@@ -81,19 +81,11 @@ pub fn build_artifact(
         instruction: artifact.instruction.to_string(),
         context: wf.context_text(),
         rules: wf.rules_for(artifact.id),
-        locale: app.locale_display(),
+        locale: crate::config::resolve_locale(&app, &wf),
         template: artifact.template.to_string(),
         dependencies,
         unlocks: Vec::new(),
     })
-}
-
-#[derive(Debug, Serialize)]
-pub struct ContextFiles {
-    pub specs: String,
-    pub proposal: String,
-    pub design: String,
-    pub tasks: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -132,13 +124,16 @@ pub struct ApplyInstructions {
     #[serde(rename = "schemaName")]
     pub schema_name: String,
     #[serde(rename = "contextFiles")]
-    pub context_files: ContextFiles,
+    pub context_files: std::collections::BTreeMap<String, String>,
     pub progress: Progress,
     pub tasks: Vec<TaskJson>,
     pub state: String,
+    #[serde(rename = "missingArtifacts", skip_serializing_if = "Option::is_none")]
+    pub missing_artifacts: Option<Vec<String>>,
     pub locale: String,
     pub instruction: String,
-    pub preflight: Preflight,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preflight: Option<Preflight>,
 }
 
 /// Compute apply state: blocked | ready | all_done.
@@ -160,19 +155,51 @@ pub fn apply_state(schema: &Schema, change: &Change, tasks: &[Task]) -> String {
 
 pub fn build_apply(paths: &Paths, change: &Change, schema: &Schema) -> ApplyInstructions {
     let app = AppConfig::load(&paths.app_config());
+    let wf = WorkflowConfig::load(&paths.workflow_config());
     let tasks_md = std::fs::read_to_string(change.dir.join("tasks.md")).unwrap_or_default();
     let parsed = tasks::parse(&tasks_md);
     let (total, complete, remaining) = tasks::progress(&parsed);
 
-    let context_files = ContextFiles {
-        specs: join_display(&change.dir, "specs/**/*.md"),
-        proposal: join_display(&change.dir, "proposal.md"),
-        design: join_display(&change.dir, "design.md"),
-        tasks: join_display(&change.dir, "tasks.md"),
-    };
+    // contextFiles only includes artifacts that are present (have content).
+    let mut context_files = std::collections::BTreeMap::new();
+    if crate::util::has_content(&change.dir.join("proposal.md")) {
+        context_files.insert("proposal".to_string(), join_display(&change.dir, "proposal.md"));
+    }
+    if model::spec_files(&change.dir).iter().any(|p| crate::util::has_content(p)) {
+        context_files.insert("specs".to_string(), join_display(&change.dir, "specs/**/*.md"));
+    }
+    if crate::util::has_content(&change.dir.join("design.md")) {
+        context_files.insert("design".to_string(), join_display(&change.dir, "design.md"));
+    }
+    if crate::util::has_content(&change.dir.join("tasks.md")) {
+        context_files.insert("tasks".to_string(), join_display(&change.dir, "tasks.md"));
+    }
 
     let state = apply_state(schema, change, &parsed);
-    let preflight = Preflight::compute(paths, change);
+    let blocked = state == "blocked";
+
+    let missing_artifacts = if blocked {
+        Some(
+            schema
+                .apply_requires
+                .iter()
+                .filter(|id| {
+                    schema
+                        .artifact(id)
+                        .map(|a| !model::artifact_done(&change.dir, a))
+                        .unwrap_or(true)
+                })
+                .map(|s| s.to_string())
+                .collect(),
+        )
+    } else {
+        None
+    };
+    let preflight = if blocked {
+        None
+    } else {
+        Some(Preflight::compute(paths, change))
+    };
 
     ApplyInstructions {
         change_name: change.name.clone(),
@@ -186,7 +213,8 @@ pub fn build_apply(paths: &Paths, change: &Change, schema: &Schema) -> ApplyInst
         },
         tasks: parsed.iter().map(TaskJson::from).collect(),
         state,
-        locale: app.locale_display(),
+        missing_artifacts,
+        locale: crate::config::resolve_locale(&app, &wf),
         instruction: schema.apply_instruction.to_string(),
         preflight,
     }

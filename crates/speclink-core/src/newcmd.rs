@@ -16,7 +16,7 @@ pub fn new_change(
 ) -> Result<PathBuf> {
     let dir = paths.change_dir(name);
     if dir.exists() {
-        bail!("change '{name}' already exists");
+        bail!("Change '{name}' already exists.");
     }
     let created = util::today();
     let mut meta = format!("schema: {schema}\ncreated: {created}\n");
@@ -35,11 +35,13 @@ fn resolve_output(kind: &str, capability: Option<&str>) -> Result<(String, Strin
         "tasks" => Ok(("tasks".into(), "tasks.md".into())),
         "spec" => {
             let cap = capability.ok_or_else(|| {
-                anyhow::anyhow!("capability name is required for spec artifacts")
+                anyhow::anyhow!(
+                    "Capability name is required for spec type. Usage: speclink new artifact spec <capability> --change <name>"
+                )
             })?;
             Ok(("specs".into(), format!("specs/{cap}/spec.md")))
         }
-        other => bail!("unknown artifact type: {other}"),
+        other => bail!("Unknown artifact type '{other}'. Valid types: proposal, design, tasks, spec"),
     }
 }
 
@@ -108,7 +110,8 @@ fn validate_artifact_content(artifact_id: &str, rel: &str, body: &str) -> Result
                 .iter()
                 .any(|op| body.contains(op));
             if !has_op {
-                bail!("{rel}: delta spec must contain at least one operation (ADDED/MODIFIED/REMOVED/RENAMED Requirements)");
+                let _ = rel;
+                bail!("Delta spec parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)");
             }
         }
         _ => {}
