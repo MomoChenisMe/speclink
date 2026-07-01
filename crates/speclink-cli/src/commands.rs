@@ -556,7 +556,9 @@ fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
     } else {
         schema_for(&change)
     };
-    let artifact = a.artifact.as_deref().unwrap_or("proposal");
+    let default_artifact = core::status::first_incomplete_artifact(&change, &schema)
+        .unwrap_or_else(|| "proposal".to_string());
+    let artifact = a.artifact.as_deref().unwrap_or(&default_artifact);
     if artifact == "apply" {
         let payload = core::instructions::build_apply(&paths, &change, &schema);
         if a.json {
@@ -577,13 +579,23 @@ fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
 fn render_artifact_human(p: &core::instructions::ArtifactInstructions) {
     println!("Artifact: {}", p.artifact_id);
     println!("Output: {}", p.output_path);
-    println!("Locale: {}", p.locale);
+    println!("Description: {}", p.description);
     println!();
     println!("Instruction:");
-    print!("{}", p.instruction);
+    print!("{}", p.instruction); // ends with a newline
     println!();
+    println!();
+    if !p.dependencies.is_empty() {
+        println!("Dependencies:");
+        for d in &p.dependencies {
+            let sym = if d.done { "✓" } else { "○" };
+            println!("  {sym} {} ({})", d.id, d.path);
+        }
+        println!();
+    }
     println!("Template:");
     print!("{}", p.template);
+    println!();
 }
 
 fn render_apply_human(p: &core::instructions::ApplyInstructions) {
@@ -635,7 +647,12 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
 
 fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
     let paths = require_paths()?;
-    let change = resolve_change(&paths, a.change.as_deref())?;
+    // Spectra's new-artifact reports change-not-found WITHOUT a trailing period.
+    let change = match a.change.as_deref() {
+        Some(name) => core::model::find_change(&paths, name)
+            .ok_or_else(|| anyhow::anyhow!("Change '{name}' not found"))?,
+        None => resolve_change(&paths, None)?,
+    };
     let schema = schema_for(&change);
     let content = if a.stdin {
         Some(read_stdin())
@@ -651,12 +668,19 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
         content.as_deref(),
         a.force,
     )?;
+    let _ = artifact_id;
     if a.json {
-        return print_json(&serde_json::json!({
-            "artifactId": artifact_id,
-            "path": core::util::to_slash(&path),
-            "created": true,
-        }));
+        // Compact single-line JSON, matching Spectra.
+        let v = serde_json::json!({
+            "artifact": a.artifact_type,
+            "change": change.name,
+            "path": path.to_string_lossy(),
+            "status": "created",
+            "validated": had_content,
+            "warnings": [],
+        });
+        println!("{}", serde_json::to_string(&v)?);
+        return Ok(());
     }
     println!("✓ Created {}: {}", a.artifact_type, path.to_string_lossy());
     if had_content {
@@ -850,7 +874,16 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
     match a.command {
         TaskCommands::Done { task_id, change, json } => {
             let paths = require_paths()?;
-            let change = resolve_change(&paths, change.as_deref())?;
+            // `task done` does not require the change to exist — it goes straight to tasks.md
+            // (matching Spectra, which reports "tasks.md not found for change '<name>'").
+            let change = match change.as_deref() {
+                Some(name) => core::model::Change {
+                    name: name.to_string(),
+                    meta: core::model::ChangeMeta::load(&paths.change_dir(name)),
+                    dir: paths.change_dir(name),
+                },
+                None => resolve_change(&paths, None)?,
+            };
             let id: usize = task_id
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid task ID '{task_id}': must be a number"))?;
@@ -880,12 +913,15 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
             record.save(&paths)?;
 
             if json {
-                return print_json(&serde_json::json!({
+                // Compact single-line JSON, matching Spectra.
+                let v = serde_json::json!({
                     "change": change.name,
                     "status": "done",
                     "task_desc": desc,
                     "task_id": task_id.to_string(),
-                }));
+                });
+                println!("{}", serde_json::to_string(&v)?);
+                return Ok(());
             }
             println!("✓ Task {task_id} marked as done: {desc}");
         }

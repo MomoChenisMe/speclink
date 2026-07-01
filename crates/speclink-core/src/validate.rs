@@ -29,7 +29,7 @@ pub fn validate_change(change: &Change, _schema: &Schema, strict: bool) -> Valid
         let Some(text) = util::read_opt(spec_path) else {
             continue;
         };
-        if has_delta_operation(&text) {
+        if model::has_delta_operation(&text) {
             any_operation = true;
         } else if text.contains("### Requirement:") {
             errors.push(format!(
@@ -53,13 +53,3 @@ pub fn validate_change(change: &Change, _schema: &Schema, strict: bool) -> Valid
     }
 }
 
-fn has_delta_operation(text: &str) -> bool {
-    [
-        "## ADDED Requirements",
-        "## MODIFIED Requirements",
-        "## REMOVED Requirements",
-        "## RENAMED Requirements",
-    ]
-    .iter()
-    .any(|op| text.contains(op))
-}

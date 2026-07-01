@@ -97,9 +97,18 @@ Spectra 的 discuss 是唯讀、不留文件的討論。Speclink 讓 discuss 具
 
 此差異即需求所述「discuss 可留下迭代討論文件、並可從中產生 propose」，其餘流程與 Spectra 一致。
 
-## 9. 對抗式邊界審計結果
+## 9. 對抗式邊界審計與修正歷程
 
-（待背景審計 workflow 回報後填入；若發現任何非刻意的真實不一致，將修正並重跑對照。）
+除了 §3–§7 的正向對照，另以**多輪平行對抗式審計**主動搜尋邊界情境的不一致：每輪派 5 個獨立代理，各鎖定一個面向（delta 操作 MODIFIED/REMOVED/RENAMED、錯誤訊息/空狀態/exit code、locale/config 注入、多能力/生命週期旗標、瀏覽/schema/子指令 help），在乾淨沙箱以相同輸入跑兩個 CLI 並語意比較，只回報**非刻意**的差異。
+
+- **第一輪**：128 檢查，發現 43 項真實不一致。涵蓋 archive 的 MODIFIED/REMOVED 未就地套用、analyze 正典路徑少一層、`show <spec>` 完全失效、多能力 archive 未聚合、locale 未對映碼行為、大量錯誤訊息措辭、`schema which/validate` 缺 `--json`、`list --specs --json` 結構、`instructions apply` blocked 結構等。
+- **第二輪**（首輪修正後）：128 檢查，殘留降至 ~22 項，並揪出首輪未觸及的更深 bug：@trace 路徑掉首字元（`util::git` 對 porcelain 輸出 `.trim()` 誤刪 ` M path` 的前導空格）、ADDED 重複既有需求、analyze 不應抑制 REMOVED 需求、`task done` 已完成應報錯、validate 對「有需求但無操作」的 delta 應判 error、locale 亦讀 `openspec/config.yaml`、@trace 應排除工具目錄。
+
+**所有真實不一致均已修正**（見 git 提交 `fix(cli): match Spectra help descriptions...` 與 `fix(cli): resolve adversarial-audit findings...`），並以聚焦自檢逐一驗證輸出與 spectra 逐字相符。修正後回歸：8 個 demo 主題的 analyze/drift/validate/status **32/32 一致**，完整對照套件 **31/31 一致**，皆無回歸。
+
+殘留差異僅為 cosmetic 且不影響語意（於報告中如實揭露）：
+- 歸檔正典 spec 在「刪除最後一條需求」時，spectra 會留下懸空的 `---` 分隔線（其文字拼接產物），speclink 產出較乾淨（無懸空 `---`）；需求內容本身逐字相同。
+- 少數子指令 `--help` 的旗標**排列順序**（如 `--json` 相對位置）與 spectra 略異，描述文字一致。
 
 ## 10. 端到端示範：HTML 彈珠檯
 

@@ -14,6 +14,9 @@ pub fn new_change(
     _description: Option<&str>,
     schema: &str,
 ) -> Result<PathBuf> {
+    if !is_kebab_case(name) {
+        bail!("Invalid change name '{name}'. Must be kebab-case (e.g., 'add-feature').");
+    }
     let dir = paths.change_dir(name);
     if dir.exists() {
         bail!("Change '{name}' already exists.");
@@ -58,7 +61,7 @@ pub fn new_artifact(
     // Join component-by-component so the native path separator is used throughout.
     let out_path = rel.split('/').fold(change.dir.clone(), |p, c| p.join(c));
     if out_path.exists() && !force {
-        bail!("{rel} already exists (use --force to overwrite)");
+        bail!("Artifact already exists: {}. Use --force to overwrite", out_path.to_string_lossy());
     }
 
     let body = match content {
@@ -119,7 +122,16 @@ fn validate_artifact_content(artifact_id: &str, rel: &str, body: &str) -> Result
     Ok(())
 }
 
+/// Whether a change name is valid kebab-case (lowercase alphanumerics with single hyphens).
+fn is_kebab_case(s: &str) -> bool {
+    !s.is_empty()
+        && !s.starts_with('-')
+        && !s.ends_with('-')
+        && !s.contains("--")
+        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
 /// Convenience: find or error for an active change by name.
 pub fn require_change(paths: &Paths, name: &str) -> Result<Change> {
-    model::find_change(paths, name).ok_or_else(|| anyhow::anyhow!("change '{name}' not found"))
+    model::find_change(paths, name).ok_or_else(|| anyhow::anyhow!("Change '{name}' not found."))
 }

@@ -52,6 +52,15 @@ fn display_order(schema: &Schema) -> Vec<&crate::schema::Artifact> {
     arts
 }
 
+/// First not-done artifact in display order (used as the default for `instructions` with no
+/// artifact argument) — matches Spectra returning the next incomplete artifact.
+pub fn first_incomplete_artifact(change: &Change, schema: &Schema) -> Option<String> {
+    display_order(schema)
+        .into_iter()
+        .find(|a| !model::artifact_done(&change.dir, a))
+        .map(|a| a.id.to_string())
+}
+
 pub fn build(change: &Change, schema: &Schema) -> StatusReport {
     let statuses = model::artifact_statuses(schema, &change.dir);
     let mut artifacts = Vec::new();

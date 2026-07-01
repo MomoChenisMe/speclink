@@ -95,7 +95,20 @@ pub fn spec_files(change_dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Capability names present as delta specs (directory names under specs/).
+/// Whether a delta spec body has an applicable operation. Spectra treats a spec whose only section
+/// is `## RENAMED Requirements` (or has no operation) as NOT a delta spec.
+pub fn has_delta_operation(text: &str) -> bool {
+    [
+        "## ADDED Requirements",
+        "## MODIFIED Requirements",
+        "## REMOVED Requirements",
+    ]
+    .iter()
+    .any(|op| text.contains(op))
+}
+
+/// Capability names present as delta specs (directory names under specs/ whose spec.md contains a
+/// real ADDED/MODIFIED/REMOVED operation).
 pub fn delta_capabilities(change_dir: &Path) -> Vec<String> {
     let specs = change_dir.join("specs");
     let mut caps = Vec::new();
@@ -103,7 +116,8 @@ pub fn delta_capabilities(change_dir: &Path) -> Vec<String> {
         for entry in entries.flatten() {
             if entry.path().is_dir() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if entry.path().join("spec.md").is_file() {
+                let spec = entry.path().join("spec.md");
+                if crate::util::read_opt(&spec).map(|t| has_delta_operation(&t)).unwrap_or(false) {
                     caps.push(name);
                 }
             }
