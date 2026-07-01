@@ -1,0 +1,194 @@
+//! Change discovery, metadata, and artifact status.
+
+use crate::paths::Paths;
+use crate::schema::{Artifact, Schema};
+use crate::util;
+use serde::Deserialize;
+use std::path::{Path, PathBuf};
+
+/// `.openspec.yaml` — per-change metadata.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ChangeMeta {
+    pub schema: Option<String>,
+    pub created: Option<String>,
+    pub created_by: Option<String>,
+    #[serde(default)]
+    pub created_with: Option<String>,
+}
+
+impl ChangeMeta {
+    pub fn load(change_dir: &Path) -> ChangeMeta {
+        let p = change_dir.join(".openspec.yaml");
+        match std::fs::read_to_string(&p) {
+            Ok(s) => serde_yaml::from_str(&s).unwrap_or_default(),
+            Err(_) => ChangeMeta::default(),
+        }
+    }
+    pub fn schema_name(&self) -> String {
+        self.schema
+            .clone()
+            .unwrap_or_else(|| "spec-driven".to_string())
+    }
+}
+
+/// A discovered change.
+#[derive(Debug, Clone)]
+pub struct Change {
+    pub name: String,
+    pub dir: PathBuf,
+    pub meta: ChangeMeta,
+}
+
+/// List active changes (directories under changes/, excluding `archive`).
+pub fn list_changes(paths: &Paths) -> Vec<Change> {
+    let mut out = Vec::new();
+    let Ok(entries) = std::fs::read_dir(paths.changes_dir()) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == "archive" {
+            continue;
+        }
+        out.push(Change {
+            name: name.clone(),
+            meta: ChangeMeta::load(&path),
+            dir: path,
+        });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+/// Find an active change by name.
+pub fn find_change(paths: &Paths, name: &str) -> Option<Change> {
+    let dir = paths.change_dir(name);
+    if dir.is_dir() {
+        Some(Change {
+            name: name.to_string(),
+            meta: ChangeMeta::load(&dir),
+            dir,
+        })
+    } else {
+        None
+    }
+}
+
+/// Whether an artifact's output exists and has content.
+pub fn artifact_done(change_dir: &Path, artifact: &Artifact) -> bool {
+    match artifact.id {
+        "specs" => spec_files(change_dir).iter().any(|p| util::has_content(p)),
+        _ => util::has_content(&change_dir.join(artifact.output_path)),
+    }
+}
+
+/// All delta spec files under a change's specs/ directory.
+pub fn spec_files(change_dir: &Path) -> Vec<PathBuf> {
+    let specs = change_dir.join("specs");
+    util::walk_files(&specs)
+        .into_iter()
+        .filter(|p| p.extension().map(|e| e == "md").unwrap_or(false))
+        .collect()
+}
+
+/// Capability names present as delta specs (directory names under specs/).
+pub fn delta_capabilities(change_dir: &Path) -> Vec<String> {
+    let specs = change_dir.join("specs");
+    let mut caps = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&specs) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if entry.path().join("spec.md").is_file() {
+                    caps.push(name);
+                }
+            }
+        }
+    }
+    caps.sort();
+    caps
+}
+
+/// DAG status of a single artifact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArtifactStatus {
+    Done,
+    Ready,
+    Blocked,
+}
+
+impl ArtifactStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ArtifactStatus::Done => "done",
+            ArtifactStatus::Ready => "ready",
+            ArtifactStatus::Blocked => "blocked",
+        }
+    }
+}
+
+/// Compute the status of every artifact in the schema for a change.
+pub fn artifact_statuses(schema: &Schema, change_dir: &Path) -> Vec<(String, ArtifactStatus)> {
+    // First pass: done-ness.
+    let mut done: std::collections::HashMap<&str, bool> = std::collections::HashMap::new();
+    for a in &schema.artifacts {
+        done.insert(a.id, artifact_done(change_dir, a));
+    }
+    // Second pass: ready/blocked based on requires.
+    let mut out = Vec::new();
+    for a in &schema.artifacts {
+        let status = if *done.get(a.id).unwrap_or(&false) {
+            ArtifactStatus::Done
+        } else if a.requires.iter().all(|r| *done.get(r).unwrap_or(&false)) {
+            ArtifactStatus::Ready
+        } else {
+            ArtifactStatus::Blocked
+        };
+        out.push((a.id.to_string(), status));
+    }
+    out
+}
+
+/// Which artifact ids block a given artifact (unmet requires).
+pub fn blocked_by(schema: &Schema, change_dir: &Path, id: &str) -> Vec<String> {
+    let Some(a) = schema.artifact(id) else {
+        return Vec::new();
+    };
+    a.requires
+        .iter()
+        .filter(|r| {
+            schema
+                .artifact(r)
+                .map(|ra| !artifact_done(change_dir, ra))
+                .unwrap_or(false)
+        })
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Whether all apply-required artifacts (and transitive deps) are done.
+pub fn is_complete(schema: &Schema, change_dir: &Path) -> bool {
+    let statuses = artifact_statuses(schema, change_dir);
+    let map: std::collections::HashMap<_, _> = statuses.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    // Transitive closure of apply_requires.
+    let mut needed: Vec<&str> = schema.apply_requires.to_vec();
+    let mut seen = std::collections::HashSet::new();
+    let mut all = Vec::new();
+    while let Some(id) = needed.pop() {
+        if !seen.insert(id) {
+            continue;
+        }
+        all.push(id);
+        if let Some(a) = schema.artifact(id) {
+            for r in a.requires {
+                needed.push(r);
+            }
+        }
+    }
+    all.iter()
+        .all(|id| map.get(id).map(|s| *s == ArtifactStatus::Done).unwrap_or(false))
+}

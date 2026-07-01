@@ -1,0 +1,17 @@
+[package]
+name = "speclink-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "speclink"
+path = "src/main.rs"
+
+[dependencies]
+speclink-core = { path = "../speclink-core" }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+anyhow.workspace = true
+clap.workspace = true
