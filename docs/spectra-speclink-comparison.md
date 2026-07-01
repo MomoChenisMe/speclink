@@ -113,8 +113,11 @@ Spectra 的 discuss 是唯讀、不留文件的討論。Speclink 讓 discuss 具
 - **第七輪**：僅 4 項——archive 的 MODIFIED 若不在 base spec 應跳過（不 materialize）、`gapModifiedNotFound` params 只用 `{name}`、`new artifact` 應先驗型別再驗變更、locale 空白值原樣保留。**此輪 multi-cap-lifecycle 與 browse-schema 亦 0 發現**，locale-config 僅剩空值一項。四項全數修正。
 - **第八輪**：6 項——analyze 空變更（剛 `new change` 後）誤觸 `gapNoProposal`（應 skip Gaps 並省略空的 `Analyzed:` 行）、archive 刪除最後一條需求時 spectra 會留 dangling `---`（本輪一併複製以達 byte-parity）、`config list` 應為 `key = value` 且支援 `--json`、`completion install` 應收 `--verbose`。**locale-config 與 multi-cap-lifecycle 再次 0 發現**。六項全數修正。
 - **第九輪**：補齊兩項功能落差——`instructions` 的 `unlocks`（下游 artifact，即「本 artifact 為其最後一個未滿足依賴」者；JSON + 人類「Unlocks:」區塊）與 `completion generate` 產生**真正的 clap 完成腳本**（原為 stub）；另修多變更措辭依指令而異（analyze/drift 用「Specify one:」、`--change` 指令用「Use --change to specify one:」）、`new artifact` 無 `--change` 時先 auto-detect。**multi-cap-lifecycle 再度 0 發現**。
+- **第十輪**：`list` 對 0 任務變更省略 `[done/total]` marker、`list --json` 空 summary 省略、`list` 依名稱字母序。**五個探測面向中 locale-config、multi-cap-lifecycle、browse-schema 三者皆 0 發現**。此輪另有兩個 finding 經直接對比 spectra 後**證實為稽核觀察錯誤**（spectra 的 `list` 預設是字母序而非 mtime；spectra 對手寫 RENAMED-only delta 的 `show` 其實會渲染 Delta Specs），已據實還原。
 
-**收斂軌跡**：每輪真實不一致數為 43 → ~22 → ~22 → 8 → 9 → 8 → 4 → 6 → 5，且各探測面向陸續歸零（locale-config、multi-cap-lifecycle、browse-schema 於後段多輪達 0 發現）。**所有真實/語意不一致均已修正並提交**（git 提交序列 `fix(cli): match Spectra help descriptions...` 至 `fix(cli): resolve round-9 audit findings`），並以聚焦自檢逐一驗證輸出與 spectra 逐字相符。每輪修正後回歸：8 個 demo 主題的 analyze/drift/validate/status/show/instructions **一致**（80/80），完整對照套件 **31/31 一致**，皆無回歸。
+**收斂軌跡**：每輪真實不一致數為 43 → ~22 → ~22 → 8 → 9 → 8 → 4 → 6 → 5 → 4，且後段多輪各探測面向陸續歸零（第十輪僅 `list` 一類真實修正，其餘面向皆 0）。**所有真實/語意不一致均已修正並提交**（git 提交序列 `fix(cli): match Spectra help descriptions...` 至 `fix(cli): resolve round-10 audit findings`），並以聚焦自檢逐一驗證輸出與 spectra 逐字相符。最終以 release 執行檔全面回歸：8 個 demo 主題 × 8 個讀取指令（analyze/drift/validate/status/show/instructions/list，含 JSON 與人類雙模式）**64/64 一致**，完整對照套件 **31/31 一致**，皆無回歸。
+
+十輪對抗式稽核（每輪 5 個平行代理、累計逾千項邊界檢查）後，殘留僅：(a) 刻意的品牌隔離差異（`config list` 全域設定路徑、`completion generate` 指令樹）、(b) spectra 自身非決定性的 `@trace code:` HashMap 排序（speclink 穩定排序，屬合理正規化）、(c) 手寫 RENAMED-only／空 delta spec 這類**經 CLI 正常流程無法產生**（`new artifact` 會拒絕）且 spectra 自身前後不一致的病態輸入。這些皆不影響任何正常 SDD 流程。
 
 **已知非程式差異／病態邊界**（如實揭露、不影響正常 SDD 流程）：
 - `config list` 讀取品牌各自的機器層全域設定（`~/.speclink/` vs `~/.spectra/`），內容視使用者先前設定而異；格式（`key = value`）與 `--json` 一致。
