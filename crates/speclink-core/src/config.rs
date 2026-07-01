@@ -35,11 +35,17 @@ impl AppConfig {
 }
 
 /// Map a locale code to its human-readable name (matches Spectra).
+///
+/// Matching is case-SENSITIVE. Only `ja`/`tw`/`en` (and no locale) are mapped; any other code is
+/// echoed back verbatim, exactly like Spectra.
 pub fn locale_display(code: Option<&str>) -> String {
-    match code.map(|c| c.trim().to_ascii_lowercase()).as_deref() {
-        Some("tw") => "Traditional Chinese (繁體中文)".to_string(),
+    match code.map(|c| c.trim()) {
+        None => "English".to_string(),
+        Some("") => "English".to_string(),
+        Some("en") => "English".to_string(),
         Some("ja") => "Japanese (日本語)".to_string(),
-        _ => "English".to_string(),
+        Some("tw") => "Traditional Chinese (繁體中文)".to_string(),
+        Some(other) => other.to_string(),
     }
 }
 
@@ -48,8 +54,20 @@ pub fn locale_display(code: Option<&str>) -> String {
 pub struct WorkflowConfig {
     pub schema: Option<String>,
     pub context: Option<String>,
+    pub locale: Option<String>,
     #[serde(default)]
     pub rules: BTreeMap<String, Vec<String>>,
+}
+
+/// Resolve the effective locale display name: the app-level `.speclink.yaml` locale wins, with the
+/// `openspec/config.yaml` locale as a fallback (matches Spectra).
+pub fn resolve_locale(app: &AppConfig, wf: &WorkflowConfig) -> String {
+    let code = app
+        .locale
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| wf.locale.as_deref().filter(|s| !s.trim().is_empty()));
+    locale_display(code)
 }
 
 impl WorkflowConfig {

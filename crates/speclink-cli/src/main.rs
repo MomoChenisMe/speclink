@@ -285,13 +285,51 @@ struct SchemaArgs {
 #[derive(Subcommand)]
 enum SchemaCommands {
     /// Show where a schema is resolved from
-    Which { name: Option<String>, #[arg(long)] all: bool },
+    Which {
+        /// Schema name
+        name: Option<String>,
+        /// Show all resolution paths
+        #[arg(long)]
+        all: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Validate a schema
-    Validate { name: Option<String>, #[arg(long)] verbose: bool },
+    Validate {
+        /// Schema name
+        name: Option<String>,
+        /// Verbose output
+        #[arg(long)]
+        verbose: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Fork (copy) a schema
-    Fork { source: String, name: Option<String>, #[arg(long)] force: bool },
+    Fork {
+        /// Source schema
+        source: String,
+        /// New schema name
+        name: Option<String>,
+        /// Overwrite existing
+        #[arg(long)]
+        force: bool,
+    },
     /// Create a new custom schema
-    Init { name: String, #[arg(long)] artifacts: Option<String>, #[arg(long)] default: bool, #[arg(long)] description: Option<String> },
+    Init {
+        /// Schema name
+        name: String,
+        /// Comma-separated artifact ids
+        #[arg(long)]
+        artifacts: Option<String>,
+        /// Make this the default schema
+        #[arg(long)]
+        default: bool,
+        /// Schema description
+        #[arg(long)]
+        description: Option<String>,
+    },
 }
 
 #[derive(Args)]
@@ -307,11 +345,28 @@ enum ConfigCommands {
     /// List all settings
     List,
     /// Get a config value
-    Get { key: String },
+    Get {
+        /// Config key
+        key: String,
+    },
     /// Set a config value
-    Set { key: String, value: String },
+    Set {
+        /// Config key
+        key: String,
+        /// Config value
+        value: String,
+        /// Treat the value as a string
+        #[arg(long)]
+        string: bool,
+        /// Allow setting unknown keys
+        #[arg(long = "allow-unknown")]
+        allow_unknown: bool,
+    },
     /// Remove a config key
-    Unset { key: String },
+    Unset {
+        /// Config key
+        key: String,
+    },
     /// Reset config
     Reset,
     /// Edit config in $EDITOR
@@ -327,11 +382,20 @@ struct CompletionArgs {
 #[derive(Subcommand)]
 enum CompletionCommands {
     /// Generate completion script
-    Generate { shell: String },
+    Generate {
+        /// Shell (bash, zsh, fish, powershell, elvish)
+        shell: Option<String>,
+    },
     /// Install completion
-    Install { shell: Option<String> },
+    Install {
+        /// Shell (bash, zsh, fish, powershell, elvish)
+        shell: Option<String>,
+    },
     /// Uninstall completion
-    Uninstall { shell: Option<String> },
+    Uninstall {
+        /// Shell (bash, zsh, fish, powershell, elvish)
+        shell: Option<String>,
+    },
 }
 
 #[derive(Args)]
@@ -345,7 +409,7 @@ enum TaskCommands {
     /// Mark a task as done and record touched files
     Done {
         /// Task ID (1-based sequential index)
-        task_id: usize,
+        task_id: String,
         /// Change name
         #[arg(long)]
         change: Option<String>,
@@ -415,7 +479,7 @@ fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
 
 fn require_paths() -> Result<core::paths::Paths> {
     core::paths::Paths::discover_cwd()
-        .ok_or_else(|| anyhow::anyhow!("no speclink project found (run `speclink init` first)"))
+        .ok_or_else(|| anyhow::anyhow!("Not initialized. Run 'speclink init' to initialize."))
 }
 
 include!("commands.rs");

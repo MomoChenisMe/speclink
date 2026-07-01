@@ -96,8 +96,16 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
         );
     }
 
-    let touched = TouchedRecord::load(paths, &change.name);
-    let trace_files = touched.all_files();
+    // The @trace `code:` list is the set of code files changed in the work tree at archive time
+    // (git status, excluding the spec/work dirs), sorted — matching Spectra. When the tree is
+    // clean the list is empty and the @trace block is omitted entirely.
+    let trace_files = {
+        let mut f = crate::tasks::git_changed_files(&paths.root);
+        f.sort();
+        f.dedup();
+        f
+    };
+    let _ = TouchedRecord::load(paths, &change.name); // touched.json remains for the commit skill
 
     let mut caps = Vec::new();
     let mut created_specs: Vec<String> = Vec::new();
@@ -108,26 +116,9 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
             let delta_text = util::read_opt(&delta_path).unwrap_or_default();
             let reqs = parse_delta(&delta_text);
 
-            let mut counts = CapCounts {
-                capability: cap.clone(),
-                added: 0,
-                modified: 0,
-                removed: 0,
-                renamed: 0,
-            };
-            for r in &reqs {
-                match r.operation.as_str() {
-                    "ADDED" => counts.added += 1,
-                    "MODIFIED" => counts.modified += 1,
-                    "REMOVED" => counts.removed += 1,
-                    "RENAMED" => counts.renamed += 1,
-                    _ => {}
-                }
-            }
-
             let canonical_path = paths.specs_dir().join(&cap).join("spec.md");
             let existed = canonical_path.exists();
-            apply_delta_to_canonical(
+            let counts = apply_delta_to_canonical(
                 &canonical_path,
                 &cap,
                 &change.name,
@@ -154,6 +145,19 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
     std::fs::create_dir_all(paths.archive_dir())?;
     std::fs::rename(&change.dir, &archive_target)?;
 
+    // Stamp archived_by / archived_at into the archived change metadata.
+    let meta_path = archive_target.join(".openspec.yaml");
+    if let Some(mut meta) = util::read_opt(&meta_path) {
+        if !meta.ends_with('\n') {
+            meta.push('\n');
+        }
+        if let Some(id) = util::git_identity(&paths.root) {
+            meta.push_str(&format!("archived_by: {id}\n"));
+        }
+        meta.push_str(&format!("archived_at: {date}\n"));
+        util::write_file(&meta_path, &meta)?;
+    }
+
     Ok(ArchiveOutcome {
         change_name: change.name.clone(),
         dated_name,
@@ -163,6 +167,54 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
     })
 }
 
+/// Parse a canonical spec into (header, requirement blocks). `header` is everything up to the
+/// first `### Requirement:` (including the `## Requirements` line); each block is the full text of
+/// a requirement (through its `@trace`), with `---` separators and surrounding blank lines stripped.
+fn parse_canonical(text: &str) -> (String, Vec<(String, String)>) {
+    let marker = "### Requirement:";
+    let split_at = text.find(marker).unwrap_or(text.len());
+    let header = text[..split_at].to_string();
+    let body = &text[split_at..];
+
+    let mut blocks: Vec<(String, String)> = Vec::new();
+    let mut name = String::new();
+    let mut lines: Vec<String> = Vec::new();
+    let flush = |name: &mut String, lines: &mut Vec<String>, blocks: &mut Vec<(String, String)>| {
+        if lines.is_empty() {
+            return;
+        }
+        // Strip trailing `---` separator and blank lines.
+        while matches!(lines.last().map(|s| s.trim()), Some("") | Some("---")) {
+            lines.pop();
+        }
+        blocks.push((std::mem::take(name), lines.join("\n")));
+        lines.clear();
+    };
+    for line in body.lines() {
+        if let Some(rest) = line.strip_prefix(marker) {
+            flush(&mut name, &mut lines, &mut blocks);
+            name = rest.trim().to_string();
+        }
+        lines.push(line.to_string());
+    }
+    flush(&mut name, &mut lines, &mut blocks);
+    (header, blocks)
+}
+
+fn rename_target(block: &str) -> Option<String> {
+    // Support "**TO:** New Name" or "TO: New Name" inside a RENAMED block.
+    for line in block.lines() {
+        let t = line.trim().trim_start_matches("- ").replace("**", "");
+        if let Some(v) = t.strip_prefix("TO:") {
+            let v = v.trim();
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
 fn apply_delta_to_canonical(
     canonical_path: &PathBuf,
     cap: &str,
@@ -170,19 +222,40 @@ fn apply_delta_to_canonical(
     date: &str,
     reqs: &[DeltaReq],
     trace_files: &[String],
-) -> Result<()> {
+) -> Result<CapCounts> {
+    // Spectra omits the @trace block entirely when there are no touched code files.
     let trace = trace_block(change, date, trace_files);
-
-    // Build the requirement sections (ADDED + MODIFIED are written into canonical).
-    let mut blocks: Vec<String> = Vec::new();
-    for r in reqs {
-        if r.operation == "ADDED" || r.operation == "MODIFIED" {
-            // Preserve the delta's raw trailing spacing before the trace block.
-            blocks.push(format!("{}\n\n{}", r.block, trace));
+    let make_block = |r: &DeltaReq| {
+        if trace_files.is_empty() {
+            r.block.clone()
+        } else {
+            format!("{}\n\n{}", r.block, trace)
         }
-    }
+    };
+    let mut counts = CapCounts {
+        capability: cap.to_string(),
+        added: 0,
+        modified: 0,
+        removed: 0,
+        renamed: 0,
+    };
 
     if !canonical_path.exists() {
+        // Fresh canonical: ADDED and MODIFIED both become requirement sections.
+        let mut blocks: Vec<String> = Vec::new();
+        for r in reqs {
+            match r.operation.as_str() {
+                "ADDED" => {
+                    blocks.push(make_block(r));
+                    counts.added += 1;
+                }
+                "MODIFIED" => {
+                    blocks.push(make_block(r));
+                    counts.modified += 1;
+                }
+                _ => {}
+            }
+        }
         let mut out = String::new();
         out.push_str(&format!("# {cap} Specification\n\n"));
         out.push_str("## Purpose\n\n");
@@ -190,17 +263,57 @@ fn apply_delta_to_canonical(
             "TBD - created by archiving change '{change}'. Update Purpose after archive.\n\n"
         ));
         out.push_str("## Requirements\n\n");
-        out.push_str(&blocks.join("\n\n---\n"));
+        let joined: Vec<String> = blocks.iter().map(|b| b.trim_end().to_string()).collect();
+        out.push_str(&joined.join("\n\n---\n"));
         util::write_file(canonical_path, &out)?;
-    } else {
-        // Append ADDED/MODIFIED requirements to the existing canonical spec.
-        let mut existing = util::read_opt(canonical_path).unwrap_or_default();
-        if !existing.ends_with('\n') {
-            existing.push('\n');
-        }
-        existing.push_str("\n---\n");
-        existing.push_str(&blocks.join("\n\n---\n"));
-        util::write_file(canonical_path, &existing)?;
+        return Ok(counts);
     }
-    Ok(())
+
+    // Merge into an existing canonical spec.
+    let existing = util::read_opt(canonical_path).unwrap_or_default();
+    let (header, mut blocks) = parse_canonical(&existing);
+    for r in reqs {
+        match r.operation.as_str() {
+            "ADDED" => {
+                // Skip an ADDED requirement that already exists (no duplicate, not counted).
+                if !blocks.iter().any(|(n, _)| *n == r.name) {
+                    blocks.push((r.name.clone(), make_block(r)));
+                    counts.added += 1;
+                }
+            }
+            "MODIFIED" => {
+                if let Some(slot) = blocks.iter_mut().find(|(n, _)| *n == r.name) {
+                    slot.1 = make_block(r);
+                } else {
+                    blocks.push((r.name.clone(), make_block(r)));
+                }
+                counts.modified += 1;
+            }
+            "REMOVED" => {
+                let before = blocks.len();
+                blocks.retain(|(n, _)| *n != r.name);
+                if blocks.len() != before {
+                    counts.removed += 1;
+                }
+            }
+            "RENAMED" => {
+                if let Some(to) = rename_target(&r.block) {
+                    if let Some(slot) = blocks.iter_mut().find(|(n, _)| *n == r.name) {
+                        slot.1 = slot
+                            .1
+                            .replacen(&format!("### Requirement: {}", r.name), &format!("### Requirement: {to}"), 1);
+                        slot.0 = to;
+                        counts.renamed += 1;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut out = header;
+    let joined: Vec<String> = blocks.iter().map(|(_, b)| b.trim_end().to_string()).collect();
+    out.push_str(&joined.join("\n\n---\n"));
+    util::write_file(canonical_path, &out)?;
+    Ok(counts)
 }

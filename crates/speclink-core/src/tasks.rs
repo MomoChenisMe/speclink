@@ -150,16 +150,19 @@ impl TouchedRecord {
 /// Untracked directories are expanded to individual files (`-uall`). The spec directory and
 /// speclink work directory are excluded, since @trace records *code* changes, not spec artifacts.
 pub fn git_changed_files(root: &Path) -> Vec<String> {
-    let Some(out) = util::git(root, &["status", "--porcelain", "-uall"]) else {
+    // NB: use the RAW (untrimmed) output — porcelain's first column is a significant leading space
+    // for work-tree-modified files (" M path"); trimming it shifts the path by one character.
+    let Some(out) = util::git_raw(root, &["status", "--porcelain", "-uall"]) else {
         return Vec::new();
     };
     let mut files = Vec::new();
-    for line in out.lines() {
+    for raw_line in out.lines() {
+        let line = raw_line.trim_end_matches(['\r', '\n']);
         if line.len() < 4 {
             continue;
         }
-        // Format: "XY <path>" possibly "XY <old> -> <new>"
-        let path_part = line[3..].trim();
+        // Format: "XY <path>" possibly "XY <old> -> <new>"; path always starts at column 3.
+        let path_part = &line[3..];
         let path = if let Some(idx) = path_part.find(" -> ") {
             &path_part[idx + 4..]
         } else {
@@ -169,8 +172,17 @@ pub fn git_changed_files(root: &Path) -> Vec<String> {
         if path.is_empty() || path.ends_with('/') {
             continue; // skip directory entries
         }
-        // Exclude spec artifacts and internal work files from the code trace.
-        if path.starts_with("openspec/") || path.starts_with(".speclink/") || path.starts_with(".git/") {
+        // Exclude spec artifacts, work files, and tool-scaffolding dirs from the code trace
+        // (Spectra records CLAUDE.md / config but not .claude/.agents/.cursor/.gemini or .gitignore).
+        if path.starts_with("openspec/")
+            || path.starts_with(".speclink/")
+            || path.starts_with(".git/")
+            || path.starts_with(".claude/")
+            || path.starts_with(".agents/")
+            || path.starts_with(".cursor/")
+            || path.starts_with(".gemini/")
+            || path == ".gitignore"
+        {
             continue;
         }
         files.push(path);

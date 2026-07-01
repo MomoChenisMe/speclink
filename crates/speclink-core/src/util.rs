@@ -67,6 +67,22 @@ pub fn git(root: &Path, args: &[&str]) -> Option<String> {
     }
 }
 
+/// Run `git -C <root> <args...>`, returning raw (untrimmed) stdout on success. Needed for
+/// `status --porcelain`, whose first column may be a significant leading space.
+pub fn git_raw(root: &Path, args: &[&str]) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .ok()?;
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        None
+    }
+}
+
 /// Whether the directory is inside a git work tree.
 pub fn git_available(root: &Path) -> bool {
     git(root, &["rev-parse", "--is-inside-work-tree"]).as_deref() == Some("true")
