@@ -1138,16 +1138,23 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
             }
             core::util::write_file(&tasks_path, &new_content)?;
 
-            // Record touched files.
-            let files = core::tasks::git_changed_files(&paths.root);
+            // Record touched files: only those not already attributed to an earlier task;
+            // when nothing new is dirty, no entry is appended at all (matches Spectra).
             let mut record = core::tasks::TouchedRecord::load(&paths, &change.name);
             record.change = change.name.clone();
-            record.touched.push(core::tasks::TouchedEntry {
-                task_id: task_id.to_string(),
-                task_desc: desc.clone(),
-                files,
-            });
-            record.save(&paths)?;
+            let seen = record.all_files();
+            let files: Vec<String> = core::tasks::git_changed_files(&paths.root)
+                .into_iter()
+                .filter(|f| !seen.contains(f))
+                .collect();
+            if !files.is_empty() {
+                record.touched.push(core::tasks::TouchedEntry {
+                    task_id: task_id.to_string(),
+                    task_desc: desc.clone(),
+                    files,
+                });
+                record.save(&paths)?;
+            }
 
             if json {
                 // Compact single-line JSON, matching Spectra.
