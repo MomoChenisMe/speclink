@@ -196,12 +196,18 @@ speclink 據此重做儲存層：`in-progress add` 現在寫入 `.git/speclink-a
 
 驗證：DDL 逐字比對相同、app 目錄檔案集合相同、副作用普查 1:1、8 主題與完整對照套件全綠。依賴新增 rusqlite（bundled SQLite，維持單一執行檔、跨平臺）。
 
-## 16. init/update 全工具對齊（cursor、gemini、windsurf、copilot）
+## 16. init/update 行為對齊（工具範圍決定：claude + codex）
 
-針對「init 缺少自動補齊 CLAUDE.md/AGENTS.md 這類功能」的觀察做了逐情境比對，補齊以下缺口（全部經 GT 探測後實作，26 項結構比對 + 18 項行為比對全數通過）：
+針對「init 缺少自動補齊 CLAUDE.md/AGENTS.md 這類功能」的觀察做了逐情境 GT 比對。spectra 實際支援六種工具（claude/codex/cursor/gemini/windsurf/copilot，各有專屬產物形態），比對過程中曾完整實作並通過 26 項結構驗證；**最終依專案決定將支援範圍收斂為 claude + codex**（其餘工具為刻意不支援，`--tools cursor` 會明確報錯「unknown tool: cursor (supported: claude, codex)」——此為與 spectra 的刻意差異之一）。
 
-- **新增工具支援**：`cursor`（`.cursorrules` + `.cursor/commands/speclink-*.md` + `.cursor/skills/`）、`gemini`（`GEMINI.md`（與 CLAUDE.md 逐位元組相同）+ `.gemini/commands/speclink/*.toml` + `.gemini/skills/`）、`windsurf`（`.windsurfrules` + `.windsurf/workflows/` + `.windsurf/skills/`）、`copilot` 與未知工具名（接受、不產檔、回顯於輸出——與 spectra 一致的容忍行為）。非 Claude 工具只產生指令子集（8 個），前綴用 `/speclink:` 冒號形式，PLAN_DIR 各工具不同（cursor `.cursor/plans/`、windsurf `~/.windsurf/plans/`、gemini/codex 無）。command 檔有專屬簡短 description 與分類（audit→Development、commit→Utility、其餘 Workflow）。
+保留下來的行為修正（皆與 spectra 一致）：
+
 - **re-init 防護**：已初始化（openspec 目錄或 .speclink.yaml 存在）時報「Already initialized. Use --force to reinitialize.」。
-- **既有指示檔的補齊**：無標記的既有 CLAUDE.md/AGENTS.md/GEMINI.md → 標記區塊**前置插入**、使用者內容保留（原實作為後附，已修正為與 spectra 相同）；有標記 → 就地更新。
+- **既有指示檔的補齊**：無標記的既有 CLAUDE.md/AGENTS.md → 標記區塊**前置插入**、使用者內容保留（原實作為後附，已修正）；有標記 → 就地更新。
 - **輸出對齊**：init 顯示「✓ Initialized at <路徑參數原樣>\openspec」＋「Generated files for: <工具清單>」；update 顯示「✓ Updated instruction files for: <偵測到的工具>」或「! No AI tool configurations found. …」。
-- **update 偵測規則**：以點目錄存在為準（.claude/.cursor/.windsurf/.gemini，此順序），**codex 不在 update 範圍**（spectra 的實際行為，照抄）；fork/agent/disallowedTools frontmatter 為 Claude 專屬（codex/cursor/gemini/windsurf 的 SKILL.md 不含，修正了原本 codex 多印的問題）。
+- **update 偵測規則**：以點目錄存在為準（.claude），**codex 不在 update 範圍**（spectra 的實際行為，照抄）；fork/agent/disallowedTools frontmatter 為 Claude 專屬（修正了原本 codex 的 SKILL.md 多印的問題）。
+
+## 17. 發佈管線（GitHub Actions）
+
+- `.github/workflows/ci.yml`：push/PR 觸發，於 ubuntu/macos/windows 三平臺建置 release binary 並跑 smoke 流程（init → new change → new artifact → status → validate → list → schemas → update），已在本機逐步演練通過。
+- `.github/workflows/release.yml`：推送 `v*` 標籤觸發，矩陣建置五個目標（Windows x64 MSVC、Linux x64 gnu（ubuntu-22.04 保守 glibc 基線）、Linux arm64、macOS arm64、macOS x64（同機交叉編譯））、打包 zip/tar.gz、產生 SHA256SUMS、以 softprops/action-gh-release 建立 GitHub Release。rusqlite 採 bundled SQLite，各平臺 C 編譯器（MSVC/gcc/clang）皆為 runner 內建，無額外依賴。

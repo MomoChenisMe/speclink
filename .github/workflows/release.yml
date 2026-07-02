@@ -1,0 +1,89 @@
+# Release: push a tag like `v0.1.0` and this builds speclink for Windows / Linux / macOS
+# (x86_64 + arm64 where applicable), packages archives with SHA-256 checksums, and publishes
+# a GitHub Release with the artifacts attached.
+#
+# Usage:
+#   1. Bump `version` in crates/speclink-cli/Cargo.toml (and speclink-core), commit.
+#   2. git tag v0.1.0 && git push origin v0.1.0
+#
+# Note: the `ubuntu-24.04-arm` runner is free for PUBLIC repositories only — remove that
+# matrix entry (or switch to `cross`) if the repo is private.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: ubuntu-22.04            # older glibc baseline for wide compatibility
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest            # Apple Silicon
+            target: aarch64-apple-darwin
+          - os: macos-latest            # Intel (cross-compiled; clang handles the bundled SQLite C)
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          NAME="speclink-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p dist
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            cp "target/${{ matrix.target }}/release/speclink.exe" dist/
+            (cd dist && 7z a "${NAME}.zip" speclink.exe > /dev/null && rm speclink.exe)
+          else
+            cp "target/${{ matrix.target }}/release/speclink" dist/
+            (cd dist && tar czf "${NAME}.tar.gz" speclink && rm speclink)
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
