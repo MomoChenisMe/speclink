@@ -312,7 +312,10 @@ enum SchemaCommands {
         source: String,
         /// New schema name
         name: Option<String>,
-        /// Overwrite existing
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Overwrite if exists
         #[arg(long)]
         force: bool,
     },
@@ -320,15 +323,18 @@ enum SchemaCommands {
     Init {
         /// Schema name
         name: String,
-        /// Comma-separated artifact ids
-        #[arg(long)]
-        artifacts: Option<String>,
-        /// Make this the default schema
-        #[arg(long)]
-        default: bool,
-        /// Schema description
+        /// Description
         #[arg(long)]
         description: Option<String>,
+        /// Artifact IDs (comma-separated)
+        #[arg(long)]
+        artifacts: Option<String>,
+        /// Set as default schema
+        #[arg(long)]
+        default: bool,
+        /// Overwrite if exists
+        #[arg(long)]
+        force: bool,
     },
 }
 

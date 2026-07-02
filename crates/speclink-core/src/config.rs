@@ -50,6 +50,26 @@ pub fn locale_display(code: Option<&str>) -> String {
     }
 }
 
+/// Machine-level speclink directory (global config, user schemas), by OS convention:
+/// Windows `%APPDATA%`, macOS `~/Library/Application Support`, Linux `$XDG_CONFIG_HOME`|`~/.config`.
+pub fn global_config_dir() -> std::path::PathBuf {
+    use std::path::PathBuf;
+    let base = if cfg!(windows) {
+        std::env::var("APPDATA").map(PathBuf::from).ok()
+    } else if cfg!(target_os = "macos") {
+        std::env::var("HOME")
+            .map(|h| PathBuf::from(h).join("Library").join("Application Support"))
+            .ok()
+    } else {
+        std::env::var("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .ok()
+            .filter(|p| p.is_absolute())
+            .or_else(|| std::env::var("HOME").map(|h| PathBuf::from(h).join(".config")).ok())
+    };
+    base.unwrap_or_else(|| PathBuf::from(".")).join("speclink")
+}
+
 /// `openspec/config.yaml` — workflow configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct WorkflowConfig {

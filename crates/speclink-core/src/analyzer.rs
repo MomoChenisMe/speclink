@@ -231,10 +231,11 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
         spec_texts.push((rel, text));
     }
 
-    let proposal_present = util::has_content(&change.dir.join("proposal.md"));
-    let specs_present = spec_texts.iter().any(|(_, t)| model::has_delta_operation(t));
-    let tasks_present = util::has_content(&change.dir.join("tasks.md"));
-    let design_present = util::has_content(&change.dir.join("design.md"));
+    // Artifact presence is EXISTS-based (an empty or op-less file still counts), matching Spectra.
+    let proposal_present = change.dir.join("proposal.md").is_file();
+    let specs_present = !spec_files.is_empty();
+    let tasks_present = change.dir.join("tasks.md").is_file();
+    let design_present = change.dir.join("design.md").is_file();
 
     // A dimension is skipped when its prerequisite artifacts are missing. Coverage needs a proposal
     // plus at least one of specs/tasks to check against; Gaps always runs.
@@ -253,12 +254,13 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     if !coverage_skipped {
         let mut n = 0;
         for cap in &new_caps {
+            // Flagged only when the delta spec FILE is missing; an empty file counts as present.
             let spec = change.dir.join("specs").join(cap).join("spec.md");
-            if !util::has_content(&spec) {
+            if !spec.is_file() {
                 n += 1;
                 coverage.push(make_finding(
                     "COV", n, "Coverage", Severity::Critical,
-                    &format!("specs/{cap}/spec.md"),
+                    "proposal.md → Capabilities",
                     &format!("Capability `{cap}` has no corresponding spec file"),
                     &format!("Create specs/{cap}/spec.md with requirements"),
                     "covMissingSpec", [("cap", cap.as_str())],
@@ -341,7 +343,8 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     // --- Gaps ---
     if !gaps_skipped {
         let mut n = 0;
-        if specs_present && proposal.trim().is_empty() {
+        // Fires only when the proposal FILE is missing (an empty file counts as present).
+        if specs_present && !proposal_present {
             n += 1;
             gaps.push(make_finding(
                 "GAP", n, "Gaps", Severity::Critical, "change directory",
@@ -359,10 +362,12 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
             }
             let cap = loc.split('/').nth(1).unwrap_or("");
             let canonical = openspec.map(|o| o.join("specs").join(cap).join("spec.md"));
+            // Canonical presence is EXISTS-based: an empty canonical spec falls through to the
+            // gapModifiedNotFound branch (the requirement can't be found in it).
             let canonical_text = canonical
                 .as_ref()
-                .and_then(|p| util::read_opt(p))
-                .filter(|t| !t.trim().is_empty());
+                .filter(|p| p.is_file())
+                .map(|p| util::read_opt(p).unwrap_or_default());
             match canonical_text {
                 None => {
                     // No canonical spec for this capability — reported once per capability.
@@ -380,12 +385,18 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
                 Some(text) => {
                     if !text.contains(&format!("### Requirement: {}", req.name)) {
                         n += 1;
-                        gaps.push(make_finding(
+                        // Spectra's summary params are {name}; the recommendation additionally
+                        // carries {spec}.
+                        let mut f = make_finding(
                             "GAP", n, "Gaps", Severity::Warning, loc,
                             &format!("MODIFIED requirement '{}' not found in main spec", req.name),
                             &format!("Verify requirement '{}' exists in openspec/specs/{cap}/spec.md", req.name),
                             "gapModifiedNotFound", [("name", req.name.as_str())],
-                        ));
+                        );
+                        f.recommendation_msg
+                            .params
+                            .insert("spec".to_string(), cap.to_string());
+                        gaps.push(f);
                     }
                 }
             }
@@ -419,13 +430,21 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     findings.extend(ambiguity);
     findings.extend(gaps);
 
+    // Spectra's analyzer is hard-wired to the classic four artifacts regardless of the change's
+    // schema (a custom schema's own artifacts are never listed here).
+    let _ = schema;
     let mut analyzed = Vec::new();
     let mut missing = Vec::new();
-    for a in &schema.artifacts {
-        if model::artifact_done(&change.dir, a) {
-            analyzed.push(a.id.to_string());
+    for (id, present) in [
+        ("proposal", proposal_present),
+        ("specs", specs_present),
+        ("design", design_present),
+        ("tasks", tasks_present),
+    ] {
+        if present {
+            analyzed.push(id.to_string());
         } else {
-            missing.push(a.id.to_string());
+            missing.push(id.to_string());
         }
     }
 

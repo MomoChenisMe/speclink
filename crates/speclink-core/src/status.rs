@@ -46,8 +46,8 @@ pub fn display_order(schema: &Schema) -> Vec<&crate::schema::Artifact> {
     let mut memo = std::collections::HashMap::new();
     let mut arts: Vec<&crate::schema::Artifact> = schema.artifacts.iter().collect();
     arts.sort_by(|a, b| {
-        let (ta, tb) = (tier(schema, a.id, &mut memo), tier(schema, b.id, &mut memo));
-        ta.cmp(&tb).then_with(|| a.id.cmp(b.id))
+        let (ta, tb) = (tier(schema, &a.id, &mut memo), tier(schema, &b.id, &mut memo));
+        ta.cmp(&tb).then_with(|| a.id.cmp(&b.id))
     });
     arts
 }
@@ -67,11 +67,11 @@ pub fn build(change: &Change, schema: &Schema) -> StatusReport {
     for a in display_order(schema) {
         let status = statuses
             .iter()
-            .find(|(id, _)| id == a.id)
+            .find(|(id, _)| *id == a.id)
             .map(|(_, s)| s.as_str())
             .unwrap_or("blocked");
         let blocked_by = if status == "blocked" {
-            model::blocked_by(schema, &change.dir, a.id)
+            model::blocked_by(schema, &change.dir, &a.id)
         } else {
             Vec::new()
         };
@@ -84,7 +84,7 @@ pub fn build(change: &Change, schema: &Schema) -> StatusReport {
     }
     StatusReport {
         change_name: change.name.clone(),
-        schema_name: schema.name.to_string(),
+        schema_name: schema.display_name.clone(),
         is_complete: model::is_complete(schema, &change.dir),
         apply_requires: schema.apply_requires.iter().map(|s| s.to_string()).collect(),
         artifacts,
