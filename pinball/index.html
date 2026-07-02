@@ -70,6 +70,25 @@
     { x: cx + 82, y: 412, r: 22, flash: 0 },   // lower-center, on the return arc
   ];
 
+  // ---- Slingshots: angled kicker faces above the inlanes ----
+  const SLING_RESTITUTION = 1.1;
+  const SLING_IMPULSE = 260;   // px/s outward kick
+  const SLING_SCORE = 75;
+  const slingshots = [
+    { x1: M + 18, y1: H - 252, x2: cx - pivotSep - 26, y2: flipperY - 64, flash: 0 }, // left
+    { x1: 370, y1: H - 252, x2: 284, y2: flipperY - 64, flash: 0 },                   // right (mirror)
+  ];
+
+  // ---- Drop targets: a bank of three in the mid field ----
+  const TARGET_SCORE = 150;
+  const TARGET_BONUS = 2000;   // flat bonus, never multiplied
+  const targets = [
+    { x: 165, y: 300, w: 26, alive: true },
+    { x: 207, y: 300, w: 26, alive: true },
+    { x: 249, y: 300, w: 26, alive: true },
+  ];
+  function targetSeg(t) { return { x1: t.x, y1: t.y, x2: t.x + t.w, y2: t.y }; }
+
   // ---- Flippers (rotating segments about a pivot) ----
   const flippers = [
     { side: "L", px: cx - pivotSep, py: flipperY, len: 72, rest: 0.5, raised: -0.55, angle: 0.5, key: false },
@@ -87,8 +106,43 @@
 
   // ---- Game state ----
   const ball = { x: 0, y: 0, vx: 0, vy: 0, r: 9, state: "waiting" };
-  let score = 0, balls = START_BALLS, over = false;
+  let score = 0, balls = START_BALLS, over = false, paused = false;
   const keys = {};
+
+  // ---- High scores (localStorage top 3; degrades silently if unavailable) ----
+  const HS_KEY = "pinball.highscores";
+  function loadHighScores() {
+    try {
+      const raw = localStorage.getItem(HS_KEY);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr.filter((n) => typeof n === "number").slice(0, 3);
+    } catch (e) { return []; }
+  }
+  function saveHighScore(s) {
+    const arr = loadHighScores();
+    arr.push(s);
+    arr.sort((a, b) => b - a);
+    const top = arr.slice(0, 3);
+    try { localStorage.setItem(HS_KEY, JSON.stringify(top)); } catch (e) {}
+    return top;
+  }
+  let highScores = loadHighScores();
+
+  // ---- Combo (3s window, x1..x5; increment first, then award) ----
+  const COMBO_WINDOW = 3.0;   // seconds (180 frames at 60fps)
+  const COMBO_MAX = 5;
+  let multiplier = 1, comboTimer = 0;
+
+  // Central scoring entry for playfield elements (bumper/slingshot/drop target).
+  function addScore(base) {
+    if (comboTimer > 0) multiplier = Math.min(multiplier + 1, COMBO_MAX);
+    comboTimer = COMBO_WINDOW;
+    const pts = base * multiplier;
+    score += pts;
+    return pts;
+  }
 
   function serveBall() {
     ball.x = laneX + (W - M - laneX) / 2;
@@ -97,17 +151,89 @@
     ball.state = "waiting";
   }
   function resetGame() {
-    score = 0; balls = START_BALLS; over = false;
+    score = 0; balls = START_BALLS; over = false; paused = false;
+    multiplier = 1; comboTimer = 0;
+    tilted = false; nudgeTimes.length = 0;
+    for (const t of targets) t.alive = true;
     serveBall();
+  }
+
+  // ---- Audio (WebAudio synthesized at runtime; no external audio files) ----
+  let audioCtx = null, muted = false;
+  function ensureAudio() {
+    if (audioCtx) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = AC ? new AC() : null;
+    } catch (e) { audioCtx = null; }
+  }
+  function beep(type, f0, f1, dur, delay, vol) {
+    const t = audioCtx.currentTime + (delay || 0);
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f0, t);
+    if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+    g.gain.setValueAtTime(vol || 0.12, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + dur + 0.02);
+  }
+  function playSound(name) {
+    if (muted) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    if (name === "flipper") beep("square", 240, 180, 0.06);
+    else if (name === "bumper") beep("triangle", 660, 660, 0.08);
+    else if (name === "sling") beep("sawtooth", 330, 330, 0.07);
+    else if (name === "drain") beep("sine", 300, 80, 0.4);
+    else if (name === "gameover") {
+      beep("sine", 392, 392, 0.25, 0);
+      beep("sine", 330, 330, 0.25, 0.25);
+      beep("sine", 262, 262, 0.4, 0.5);
+    }
+  }
+
+  // ---- Particles (single array with a hard cap; oldest dropped first) ----
+  const PARTICLE_CAP = 150;
+  const particles = [];
+  function spawnParticles(x, y, color) {
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 90 + Math.random() * 220;
+      const life = 0.35 + Math.random() * 0.25;
+      particles.push({
+        x, y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40,
+        life, maxLife: life,
+        color: color || "#ffd35c",
+      });
+      if (particles.length > PARTICLE_CAP) particles.shift();
+    }
+  }
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= dt;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      p.vy += GRAVITY * 0.5 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
   }
 
   // ---- Input ----
   addEventListener("keydown", (e) => {
     if (e.repeat) return;
+    ensureAudio();
+    if (audioCtx && audioCtx.resume) audioCtx.resume();
     const k = e.key.toLowerCase();
-    if (k === "arrowleft" || k === "a") flippers[0].key = true;
-    if (k === "arrowright" || k === "l") flippers[1].key = true;
+    if (k === "arrowleft" || k === "a") { flippers[0].key = true; if (!tilted) playSound("flipper"); }
+    if (k === "arrowright" || k === "l") { flippers[1].key = true; if (!tilted) playSound("flipper"); }
     if (e.code === "Space") { launch(); e.preventDefault(); }
+    if (k === "m") muted = !muted;
+    if (k === "p" && !over) paused = !paused;
+    if (k === "n") nudge();
     if (k === "r" && over) resetGame();
   });
   addEventListener("keyup", (e) => {
@@ -117,10 +243,26 @@
   });
 
   function launch() {
-    if (over) return;
+    if (over || paused) return;
     if (ball.state !== "waiting") return;   // ignore while a ball is in play
     ball.vx = LAUNCH_VX; ball.vy = LAUNCH_VY;
     ball.state = "inPlay";
+  }
+
+  // ---- Nudge + TILT: small horizontal shove; abuse locks the flippers ----
+  const NUDGE_IMPULSE = 90;                    // px/s
+  const TILT_WINDOW = 3.0;                     // seconds (180 frames at 60fps)
+  const TILT_LIMIT = 3;                        // more than this many nudges in the window tilts
+  const fieldCenterX = (M + laneX) / 2;        // horizontal center of the play field
+  let tilted = false;
+  let gameTime = 0;                            // advances with the simulation, frozen while paused
+  const nudgeTimes = [];
+  function nudge() {
+    if (over || paused || tilted || ball.state !== "inPlay") return;
+    ball.vx += ball.x < fieldCenterX ? NUDGE_IMPULSE : -NUDGE_IMPULSE;
+    nudgeTimes.push(gameTime);
+    while (nudgeTimes.length && gameTime - nudgeTimes[0] > TILT_WINDOW) nudgeTimes.shift();
+    if (nudgeTimes.length > TILT_LIMIT) tilted = true;
   }
 
   // ---- Collision helpers ----
@@ -168,8 +310,10 @@
     }
     ball.vx += nx * BUMPER_BOOST;
     ball.vy += ny * BUMPER_BOOST;
-    b.flash = 0.14;
-    score += BUMPER_SCORE;
+    b.flash = 0.15;
+    addScore(BUMPER_SCORE);
+    playSound("bumper");
+    spawnParticles(b.x + nx * b.r, b.y + ny * b.r, "#ffd35c");
     return true;
   }
 
@@ -182,14 +326,23 @@
   function updateFlippers(dt) {
     for (const f of flippers) {
       f.prevAngle = f.angle;
-      const target = f.key ? f.raised : f.rest;
+      const target = (f.key && !tilted) ? f.raised : f.rest;
       const rate = 18 * dt;
       f.angle += (target - f.angle) * Math.min(1, rate * 3);
     }
   }
 
   function step(dt) {
-    if (ball.state === "waiting") { updateFlippers(dt); return; }
+    if (paused) return;
+    gameTime += dt;
+    if (comboTimer > 0) {
+      comboTimer -= dt;
+      if (comboTimer <= 0) multiplier = 1;
+    }
+    updateParticles(dt);
+    for (const b of bumpers) { if (b.flash > 0) b.flash -= dt; }
+    for (const s of slingshots) { if (s.flash > 0) s.flash -= dt; }
+    if (ball.state !== "inPlay") { updateFlippers(dt); return; }
     ball.vy += GRAVITY * dt;
     clampSpeed();
     ball.x += ball.vx * dt;
@@ -204,15 +357,40 @@
       collideSegment(seg, 0.5, raising ? FLIPPER_IMPULSE : 0);
     }
 
-    for (const b of bumpers) {
-      if (b.flash > 0) b.flash -= dt;
-      collideBumper(b);
+    for (const s of slingshots) {
+      if (collideSegment(s, SLING_RESTITUTION, SLING_IMPULSE)) {
+        s.flash = 0.15;
+        addScore(SLING_SCORE);
+        playSound("sling");
+        spawnParticles(ball.x, ball.y, "#7fe3ff");
+      }
     }
+
+    for (const t of targets) {
+      if (!t.alive) continue;
+      if (collideSegment(targetSeg(t), 0.9, 0)) {
+        t.alive = false;
+        addScore(TARGET_SCORE);
+        spawnParticles(ball.x, ball.y, "#c7ff5c");
+        if (targets.every((x) => !x.alive)) {
+          score += TARGET_BONUS;   // flat, not multiplied
+          for (const x of targets) x.alive = true;
+        }
+      }
+    }
+
+    for (const b of bumpers) collideBumper(b);
 
     // drain: ball fell past the flippers through the center gap
     if (ball.y - ball.r > drainY) {
       balls -= 1;
-      if (balls <= 0) { over = true; ball.state = "dead"; }
+      playSound("drain");
+      tilted = false; nudgeTimes.length = 0;   // tilt lasts only for the current ball
+      if (balls <= 0) {
+        over = true; ball.state = "dead";
+        highScores = saveHighScore(score);
+        playSound("gameover");
+      }
       else serveBall();
     }
   }
@@ -232,6 +410,13 @@
 
     for (const w of walls) drawSeg(w, "#3b5bbf", 4);
 
+    for (const s of slingshots) drawSeg(s, s.flash > 0 ? "#fff6c2" : "#ff9d5c", 6);
+
+    for (const t of targets) {
+      if (!t.alive) continue;
+      drawSeg(targetSeg(t), "#c7ff5c", 8);
+    }
+
     for (const b of bumpers) {
       ctx.beginPath();
       ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
@@ -247,6 +432,14 @@
       ctx.fillStyle = "#bfefff"; ctx.fill();
     }
 
+    // particles
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+
     // ball
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
@@ -260,6 +453,14 @@
     ctx.fillText("SCORE " + score, M + 6, M + 24);
     ctx.textAlign = "right";
     ctx.fillText("BALLS " + Math.max(0, balls), laneX - 6, M + 24);
+    ctx.font = "bold 14px 'Segoe UI', sans-serif";
+    ctx.fillText("COMBO x" + multiplier, laneX - 6, M + 44);
+    if (tilted) {
+      ctx.fillStyle = "#ff5d73";
+      ctx.textAlign = "left";
+      ctx.font = "bold 16px 'Segoe UI', sans-serif";
+      ctx.fillText("TILT", M + 6, M + 48);
+    }
 
     if (ball.state === "waiting") {
       ctx.fillStyle = "#9aa3c7"; ctx.font = "13px 'Segoe UI', sans-serif";
@@ -267,14 +468,28 @@
       ctx.fillText("按 Space 發球", (laneX + W - M) / 2, flipperY - 60);
     }
 
+    if (paused && !over) {
+      ctx.fillStyle = "rgba(4,6,14,0.6)";
+      ctx.fillRect(0, H / 2 - 50, W, 100);
+      ctx.fillStyle = "#8fd0ff"; ctx.textAlign = "center";
+      ctx.font = "bold 34px 'Segoe UI', sans-serif";
+      ctx.fillText("PAUSED", cx, H / 2 + 10);
+    }
+
     if (over) {
-      ctx.fillStyle = "rgba(4,6,14,0.78)";
-      ctx.fillRect(0, H / 2 - 70, W, 140);
+      ctx.fillStyle = "rgba(4,6,14,0.82)";
+      ctx.fillRect(0, H / 2 - 96, W, 236);
       ctx.fillStyle = "#ffd35c"; ctx.textAlign = "center";
       ctx.font = "bold 34px 'Segoe UI', sans-serif";
-      ctx.fillText("GAME OVER", cx, H / 2 - 10);
+      ctx.fillText("GAME OVER", cx, H / 2 - 52);
       ctx.fillStyle = "#e8ecff"; ctx.font = "16px 'Segoe UI', sans-serif";
-      ctx.fillText("最終分數 " + score + " · 按 R 重新開始", cx, H / 2 + 26);
+      ctx.fillText("最終分數 " + score + " · 按 R 重新開始", cx, H / 2 - 20);
+      ctx.fillStyle = "#8fd0ff"; ctx.font = "bold 15px 'Segoe UI', sans-serif";
+      ctx.fillText("HIGH SCORES", cx, H / 2 + 14);
+      ctx.fillStyle = "#e8ecff"; ctx.font = "15px 'Segoe UI', sans-serif";
+      for (let i = 0; i < highScores.length; i++) {
+        ctx.fillText((i + 1) + ".  " + highScores[i], cx, H / 2 + 40 + i * 22);
+      }
     }
   }
 
@@ -285,6 +500,7 @@
     let dt = (ts - last) / 1000; last = ts;
     if (dt > 0.1) dt = 0.1;           // avoid spiral of death after tab switch
     acc += dt;
+    if (paused) acc = 0;               // freeze the simulation, keep rendering
     while (acc >= DT) {
       for (let i = 0; i < SUBSTEPS; i++) step(DT / SUBSTEPS);
       acc -= DT;
@@ -295,6 +511,23 @@
 
   resetGame();
   requestAnimationFrame(frame);
+
+  // ---- Test hook (read/drive access for pinball/tests.js; no gameplay effect) ----
+  if (typeof window !== "undefined") {
+    window.__pinball = {
+      step, render, serveBall, resetGame, launch, playSound, spawnParticles, addScore, nudge,
+      ball, walls, bumpers, flippers, particles, slingshots, targets,
+      get score() { return score; }, set score(v) { score = v; },
+      get balls() { return balls; }, set balls(v) { balls = v; },
+      get over() { return over; }, set over(v) { over = v; },
+      get multiplier() { return multiplier; }, set multiplier(v) { multiplier = v; },
+      get comboTimer() { return comboTimer; }, set comboTimer(v) { comboTimer = v; },
+      get highScores() { return highScores; },
+      get paused() { return paused; },
+      get muted() { return muted; },
+      get tilted() { return tilted; },
+    };
+  }
 })();
 </script>
 </body>
