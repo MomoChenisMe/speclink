@@ -1,15 +1,11 @@
 //! Skill registry, embedded bodies, and rendering (frontmatter + placeholder substitution).
 
-use crate::init::MARKER_VERSION;
-
-/// A tool target for generated skills.
+/// A tool target for generated skills. Speclink deliberately scopes the tool matrix to
+/// claude + codex (Spectra also supports cursor/gemini/windsurf).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
     Claude,
     Codex,
-    Cursor,
-    Gemini,
-    Windsurf,
 }
 
 impl Tool {
@@ -17,9 +13,6 @@ impl Tool {
         match s.trim().to_ascii_lowercase().as_str() {
             "claude" => Some(Tool::Claude),
             "codex" | "agents" => Some(Tool::Codex),
-            "cursor" => Some(Tool::Cursor),
-            "gemini" => Some(Tool::Gemini),
-            "windsurf" => Some(Tool::Windsurf),
             _ => None,
         }
     }
@@ -27,9 +20,6 @@ impl Tool {
         match self {
             Tool::Claude => "claude",
             Tool::Codex => "codex",
-            Tool::Cursor => "cursor",
-            Tool::Gemini => "gemini",
-            Tool::Windsurf => "windsurf",
         }
     }
     /// Directory (relative to project root) that holds generated skill files.
@@ -37,9 +27,6 @@ impl Tool {
         match self {
             Tool::Claude => ".claude/skills",
             Tool::Codex => ".agents/skills",
-            Tool::Cursor => ".cursor/skills",
-            Tool::Gemini => ".gemini/skills",
-            Tool::Windsurf => ".windsurf/skills",
         }
     }
     /// Where the tool keeps plan-mode files ({{PLAN_DIR}}); empty when the tool has none.
@@ -47,18 +34,13 @@ impl Tool {
         match self {
             Tool::Claude => "~/.claude/plans/",
             Tool::Codex => "",
-            Tool::Cursor => ".cursor/plans/",
-            Tool::Gemini => "",
-            Tool::Windsurf => "~/.windsurf/plans/",
         }
     }
-    /// The prefix that `/speclink:` becomes for this tool. Cursor/Gemini/Windsurf keep the
-    /// colon form verbatim (matches Spectra).
+    /// The prefix that `/speclink:` becomes for this tool.
     fn slash_replacement(&self) -> &'static str {
         match self {
             Tool::Claude => "/speclink-",
             Tool::Codex => "$speclink-",
-            Tool::Cursor | Tool::Gemini | Tool::Windsurf => "/speclink:",
         }
     }
 }
@@ -167,93 +149,3 @@ pub fn render_skill_file(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
     fm
 }
 
-fn marker_start() -> String {
-    format!("<!-- SPECLINK:START {MARKER_VERSION} -->")
-}
-const MARKER_END: &str = "<!-- SPECLINK:END -->";
-
-fn wrapped_body(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
-    let body = substitute(skill.body, tool, spec_dir);
-    format!("{}\n\n{}\n\n{MARKER_END}\n", marker_start(), body.trim_end())
-}
-
-/// The command-file description — a few skills use a shorter/different wording than their
-/// SKILL.md description (matches Spectra's command frontmatter).
-fn command_description(skill: &Skill) -> &'static str {
-    match skill.name {
-        "apply" => "Implement tasks from a Speclink change",
-        "ingest" => "Update an existing Speclink change from a plan file or conversation context",
-        "propose" => "Create a complete change proposal with all artifacts in a single workflow",
-        _ => skill.description,
-    }
-}
-
-/// Command category — capitalized first tag (audit → Development, commit → Utility).
-fn command_category(name: &str) -> &'static str {
-    match name {
-        "audit" => "Development",
-        "commit" => "Utility",
-        _ => "Workflow",
-    }
-}
-
-/// Cursor slash-command file (`.cursor/commands/speclink-<name>.md`).
-pub fn render_cursor_command(skill: &Skill, spec_dir: &str) -> String {
-    format!(
-        "---\nname: /speclink-{n}\nid: speclink-{n}\ncategory: {c}\ndescription: {d}\n---\n\n{body}",
-        n = skill.name,
-        c = command_category(skill.name),
-        d = command_description(skill),
-        body = wrapped_body(skill, Tool::Cursor, spec_dir),
-    )
-}
-
-/// Gemini command TOML (`.gemini/commands/speclink/<name>.toml`).
-pub fn render_gemini_toml(skill: &Skill, spec_dir: &str) -> String {
-    format!(
-        "description = \"{d}\"\n\nprompt = \"\"\"\n{body}\"\"\"\n",
-        d = command_description(skill),
-        body = wrapped_body(skill, Tool::Gemini, spec_dir),
-    )
-}
-
-/// The short rules file written to `.cursorrules` / `.windsurfrules` (marker-wrapped).
-pub fn render_rules_file(spec_dir: &str) -> String {
-    let sd = spec_dir.trim_end_matches('/');
-    format!(
-        "{start}\n\n# Speclink Instructions\n\nThis project uses Speclink for Spec-Driven Development(SDD).\n\n## Directory Structure\n\n- **Specs**: `{sd}/specs/` - Current truth, what IS built\n- **Changes**: `{sd}/changes/` - Proposals, what SHOULD change\n- **Archive**: `{sd}/changes/archive/` - Completed changes\n- **Config**: `{sd}/config.yaml` - Project context and rules\n\n## Workflow\n\ndiscuss? → propose → apply ⇄ ingest → archive\n\n{end}\n",
-        start = marker_start(),
-        end = MARKER_END,
-    )
-}
-
-/// Windsurf workflow tags per command skill (matches Spectra's tag sets).
-fn windsurf_tags(name: &str) -> &'static str {
-    match name {
-        "apply" => "[\"workflow\", \"artifacts\"]",
-        "archive" => "[\"workflow\", \"archive\"]",
-        "audit" => "[\"development\", \"security\", \"audit\"]",
-        "commit" => "[\"utility\", \"git\", \"commit\"]",
-        "discuss" => "[\"workflow\", \"discuss\", \"thinking\"]",
-        "drift" => "[\"workflow\", \"drift\", \"diagnose\"]",
-        "ingest" => "[\"workflow\", \"import\", \"plan\", \"claude\"]",
-        "propose" => "[\"workflow\", \"propose\", \"artifacts\"]",
-        _ => "[\"workflow\"]",
-    }
-}
-
-/// Windsurf workflow file (`.windsurf/workflows/speclink-<name>.md`).
-pub fn render_windsurf_workflow(skill: &Skill, spec_dir: &str) -> String {
-    let mut title: Vec<char> = skill.name.chars().collect();
-    if let Some(c) = title.first_mut() {
-        *c = c.to_ascii_uppercase();
-    }
-    let title: String = title.into_iter().collect();
-    format!(
-        "---\nname: Speclink: {title}\ndescription: {d}\ncategory: {c}\ntags: {tags}\n---\n\n{body}",
-        d = command_description(skill),
-        c = command_category(skill.name),
-        tags = windsurf_tags(skill.name),
-        body = wrapped_body(skill, Tool::Windsurf, spec_dir),
-    )
-}

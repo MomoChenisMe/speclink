@@ -152,7 +152,8 @@ fn cmd_init(a: InitArgs) -> Result<()> {
     core::init::init(&root, &tools, a.force, &spec_dir)?;
     println!("✓ Initialized at {display_base}{}{spec_dir}", std::path::MAIN_SEPARATOR);
     if !tools.is_empty() {
-        println!("Generated files for: {}", tools.join(", "));
+        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        println!("Generated files for: {}", names.join(", "));
     }
     Ok(())
 }
