@@ -872,10 +872,24 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
 // --- config (global) ---
 
 fn global_config_path() -> PathBuf {
-    let base = std::env::var("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."));
-    base.join("speclink").join("config.yaml")
+    // Per-OS config-dir convention (mirrors dirs::config_dir): Windows %APPDATA%,
+    // macOS ~/Library/Application Support, Linux $XDG_CONFIG_HOME or ~/.config.
+    let base = if cfg!(windows) {
+        std::env::var("APPDATA").map(PathBuf::from).ok()
+    } else if cfg!(target_os = "macos") {
+        std::env::var("HOME")
+            .map(|h| PathBuf::from(h).join("Library").join("Application Support"))
+            .ok()
+    } else {
+        std::env::var("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .ok()
+            .filter(|p| p.is_absolute())
+            .or_else(|| std::env::var("HOME").map(|h| PathBuf::from(h).join(".config")).ok())
+    };
+    base.unwrap_or_else(|| PathBuf::from("."))
+        .join("speclink")
+        .join("config.yaml")
 }
 
 fn cmd_config(a: ConfigArgs) -> Result<()> {
@@ -941,23 +955,44 @@ fn save_global_map(
 
 // --- completion ---
 
+/// Validated display name for a completion shell. Elvish IS supported, but the error message
+/// only lists the four common shells — replicated from Spectra verbatim.
+fn completion_shell(shell: Option<&str>) -> Result<&'static str> {
+    match shell.unwrap_or("bash") {
+        "bash" => Ok("Bash"),
+        "zsh" => Ok("Zsh"),
+        "fish" => Ok("Fish"),
+        "powershell" => Ok("PowerShell"),
+        "elvish" => Ok("Elvish"),
+        other => bail!("Unsupported shell: {other}. Use bash, zsh, fish, or powershell."),
+    }
+}
+
 fn cmd_completion(a: CompletionArgs) -> Result<()> {
     match a.command {
         CompletionCommands::Generate { shell } => {
             use clap::CommandFactory;
-            let shell = shell.unwrap_or_else(|| "bash".to_string());
-            let sh = match shell.as_str() {
-                "zsh" => clap_complete::Shell::Zsh,
-                "fish" => clap_complete::Shell::Fish,
-                "powershell" => clap_complete::Shell::PowerShell,
-                "elvish" => clap_complete::Shell::Elvish,
+            let sh = match completion_shell(shell.as_deref())? {
+                "Zsh" => clap_complete::Shell::Zsh,
+                "Fish" => clap_complete::Shell::Fish,
+                "PowerShell" => clap_complete::Shell::PowerShell,
+                "Elvish" => clap_complete::Shell::Elvish,
                 _ => clap_complete::Shell::Bash,
             };
             let mut cmd = Cli::command();
             clap_complete::generate(sh, &mut cmd, "speclink", &mut std::io::stdout());
         }
-        CompletionCommands::Install { verbose: _, .. } => println!("✓ Completion installed"),
-        CompletionCommands::Uninstall { .. } => println!("✓ Completion uninstalled"),
+        CompletionCommands::Install { shell, verbose: _ } => {
+            // Spectra does not write to the shell profile; it prints guidance.
+            let name = completion_shell(shell.as_deref())?;
+            println!("Note: Shell completion for {name} — generate and source the output.");
+            println!("Run: speclink completion generate {name} > completion_script");
+            println!("Then source it in your shell profile.");
+        }
+        CompletionCommands::Uninstall { shell } => {
+            let name = completion_shell(shell.as_deref())?;
+            println!("Note: Remove the completion script for {name} from your shell profile.");
+        }
     }
     Ok(())
 }
