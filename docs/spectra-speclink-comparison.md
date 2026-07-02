@@ -195,3 +195,13 @@ Speclink 在**所有共同功能面**與 Spectra 2.3.1 的 CLI 邏輯、流程�
 speclink 據此重做儲存層：`in-progress add` 現在寫入 `.git/speclink-app/speclink.db`，bootstrap DDL 與 spectra **逐位元組相同**（含 sqlite_master 中的縮排；`parked_changes` 表為結構相容而建、功能仍移除），`.migrate.lock` 時機一致，非 git 專案行為一致，archive 不再清除標記（修正了先前的自創行為）。舊 `.speclink/in_progress.json` 會在首次開啟 DB 時自動匯入並刪除（僅實際遷移時寫 `.migrated`，與 spectra 的遷移標記語意一致）。`.speclink/`（touched、snapshots）維持不變——那本來就是 spectra 的檔案式做法。
 
 驗證：DDL 逐字比對相同、app 目錄檔案集合相同、副作用普查 1:1、8 主題與完整對照套件全綠。依賴新增 rusqlite（bundled SQLite，維持單一執行檔、跨平臺）。
+
+## 16. init/update 全工具對齊（cursor、gemini、windsurf、copilot）
+
+針對「init 缺少自動補齊 CLAUDE.md/AGENTS.md 這類功能」的觀察做了逐情境比對，補齊以下缺口（全部經 GT 探測後實作，26 項結構比對 + 18 項行為比對全數通過）：
+
+- **新增工具支援**：`cursor`（`.cursorrules` + `.cursor/commands/speclink-*.md` + `.cursor/skills/`）、`gemini`（`GEMINI.md`（與 CLAUDE.md 逐位元組相同）+ `.gemini/commands/speclink/*.toml` + `.gemini/skills/`）、`windsurf`（`.windsurfrules` + `.windsurf/workflows/` + `.windsurf/skills/`）、`copilot` 與未知工具名（接受、不產檔、回顯於輸出——與 spectra 一致的容忍行為）。非 Claude 工具只產生指令子集（8 個），前綴用 `/speclink:` 冒號形式，PLAN_DIR 各工具不同（cursor `.cursor/plans/`、windsurf `~/.windsurf/plans/`、gemini/codex 無）。command 檔有專屬簡短 description 與分類（audit→Development、commit→Utility、其餘 Workflow）。
+- **re-init 防護**：已初始化（openspec 目錄或 .speclink.yaml 存在）時報「Already initialized. Use --force to reinitialize.」。
+- **既有指示檔的補齊**：無標記的既有 CLAUDE.md/AGENTS.md/GEMINI.md → 標記區塊**前置插入**、使用者內容保留（原實作為後附，已修正為與 spectra 相同）；有標記 → 就地更新。
+- **輸出對齊**：init 顯示「✓ Initialized at <路徑參數原樣>\openspec」＋「Generated files for: <工具清單>」；update 顯示「✓ Updated instruction files for: <偵測到的工具>」或「! No AI tool configurations found. …」。
+- **update 偵測規則**：以點目錄存在為準（.claude/.cursor/.windsurf/.gemini，此順序），**codex 不在 update 範圍**（spectra 的實際行為，照抄）；fork/agent/disallowedTools frontmatter 為 Claude 專屬（codex/cursor/gemini/windsurf 的 SKILL.md 不含，修正了原本 codex 多印的問題）。
