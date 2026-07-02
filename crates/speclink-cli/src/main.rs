@@ -227,6 +227,9 @@ struct NewChangeArgs {
     /// AI agent that created this change (e.g., claude, codex, gemini)
     #[arg(long)]
     agent: Option<String>,
+    /// Link this change to a discussion document (writes from_discussion metadata)
+    #[arg(long = "from-discussion")]
+    from_discussion: Option<String>,
 }
 
 #[derive(Args)]
@@ -466,6 +469,15 @@ enum DiscussCommands {
     AddRound { slug: String, #[arg(long, default_value = "interview")] mode: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
     /// Conclude a discussion (content from stdin)
     Conclude { slug: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
+    /// Promote a discussion into a change scaffold (proposal prefilled from the conclusion)
+    Promote {
+        slug: String,
+        /// Change name (defaults to the discussion slug)
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> ExitCode {

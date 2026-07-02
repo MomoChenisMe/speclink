@@ -557,6 +557,9 @@ fn cmd_archive(a: ArchiveArgs) -> Result<()> {
     if outcome.snapshot_created && !outcome.skipped_specs && !outcome.caps.is_empty() {
         println!("Snapshot created for unarchive support.");
     }
+    if let Some(slug) = &outcome.archived_discussion {
+        println!("Discussion archived: {slug} → discussions/archive/{slug}");
+    }
     Ok(())
 }
 
@@ -717,10 +720,26 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     let schema = a.schema.unwrap_or_else(|| {
         core::config::WorkflowConfig::load(&paths.workflow_config()).schema_name()
     });
-    let dir = core::newcmd::new_change(&paths, &a.name, a.description.as_deref(), &schema, a.agent.as_deref())?;
+    if let Some(slug) = a.from_discussion.as_deref() {
+        if core::discuss::info(&paths, slug).is_none() {
+            bail!("discussion '{slug}' not found — run `speclink discuss new` first");
+        }
+    }
+    let dir = core::newcmd::new_change(
+        &paths,
+        &a.name,
+        a.description.as_deref(),
+        &schema,
+        a.agent.as_deref(),
+        a.from_discussion.as_deref(),
+    )?;
     println!("✓ Created change: {}", a.name);
     println!("  Path: {}", dir.to_string_lossy());
     println!("  Schema: {schema}");
+    if let Some(slug) = a.from_discussion.as_deref() {
+        core::discuss::mark_promoted(&paths, slug, &a.name)?;
+        println!("  From discussion: {slug}");
+    }
     Ok(())
 }
 
@@ -1208,6 +1227,44 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
                 return print_json(&serde_json::json!({ "slug": slug, "status": "concluded" }));
             }
             println!("✓ Concluded discussion '{slug}'");
+        }
+        DiscussCommands::Promote { slug, name, json } => {
+            if core::discuss::info(&paths, &slug).is_none() {
+                bail!("discussion '{slug}' not found — run `speclink discuss new` first");
+            }
+            let change_name = name.unwrap_or_else(|| slug.clone());
+            let schema = core::config::WorkflowConfig::load(&paths.workflow_config()).schema_name();
+            let dir = core::newcmd::new_change(
+                &paths,
+                &change_name,
+                None,
+                &schema,
+                None,
+                Some(&slug),
+            )?;
+            // Prefill the proposal's Why from the discussion conclusion (topic as fallback);
+            // the remaining sections stay as TBD markers for /speclink-propose to complete.
+            let why = core::discuss::conclusion_text(&paths, &slug).unwrap_or_else(|| {
+                core::discuss::info(&paths, &slug)
+                    .map(|i| i.topic)
+                    .unwrap_or_else(|| slug.clone())
+            });
+            let proposal = format!(
+                "## Why\n\n{why}\n\n## What Changes\n\n<!-- TBD: derive from the discussion -->\n\n## Capabilities\n\n### New Capabilities\n\n<!-- TBD -->\n\n## Impact\n\n<!-- TBD -->\n"
+            );
+            core::util::write_file(&dir.join("proposal.md"), &proposal)?;
+            core::discuss::mark_promoted(&paths, &slug, &change_name)?;
+            if json {
+                return print_json(&serde_json::json!({
+                    "change": change_name,
+                    "path": core::util::to_slash(&dir),
+                    "slug": slug,
+                    "status": "promoted",
+                }));
+            }
+            println!("✓ Promoted discussion '{slug}' → change '{change_name}'");
+            println!("  Path: {}", dir.to_string_lossy());
+            println!("  Proposal prefilled from the conclusion — run /speclink-propose to complete the artifacts");
         }
     }
     Ok(())
