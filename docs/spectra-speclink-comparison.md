@@ -304,3 +304,15 @@ round 範本改為 `**Focus** / **Position** / **Ruled out** / **Open**` 四欄�
 驗證：雙流程 9 階段全一致（僅設計內差異：discuss 持久化、from_discussion metadata、co-archival
 輸出行）；canonical specs/快照/歸檔樹逐位元一致；遊戲 QA 28/28；twin harness 8 情境與 parity
 suite 31 項全綠。完整報告見 `docs/sdd-final-report-bomberman.md`。
+
+## 21. drift 強化（刻意差異第二組，Fable 5）
+
+依討論決議「全上」，drift 在保持輸出形狀相容（新增欄位/維度皆為附加）下修正兩個實質失效的維度並補上 SDD 特有檢查：
+
+1. **Environment 修正**：`--since=<created> 00:00:00`（錨定午夜）。spectra 傳純日期，git approxidate 以當下時刻補足 → 當天建立的 change 恆為 0 commits。
+2. **Structure 修正**：anchor 語料排除 change 自身目錄（工作樹 docs 與 HEAD grep 皆以 pathspec 排除）。spectra 的語料含已提交的 design.md 本身 → 提交後 anchor 永遠自我命中、永不告警。
+3. **Tasks 訊號**：填入原本恆空的兩個陣列——`tasks_maybe_resolved`（未勾任務引用的檔案在視窗內被 commit 且存在）與 `tasks_blocked_external`（引用檔案被動過且已消失）。狀態列顯示實際計數；分數維持 0（僅顯示）。
+4. **新 Specs 維度 + `spec_assumptions`**：檢查 delta 的 MODIFIED/REMOVED/RENAMED 目標是否仍存在於 canonical、ADDED 是否撞名（兩者在 archive 時都會**靜默跳過**）。每筆 +4 分（封頂 9），且只要存在就強制建議 `/speclink-ingest`（原 heavy → `archive --skip-specs` 對此情境是錯誤處方）。
+5. **Environment 相關性**：`N commits (M touching this change's files)`——視窗內 commit 檔案與（touched 記錄 ∪ 任務反引號引用）的交集計數。
+
+同步更新：drift skill 的欄位說明與報告模板；cmp.py 與 twin harness 將 drift 標為已知刻意分歧（剝除 Specs 維度／spec_assumptions／相關性後綴、並中性化 spectra 端隨時刻漂移的計數）後其餘結構仍受 parity 監控。驗證：五合一實測場景（同日計數、提交後 broken anchor、maybe-done/blocked、雙 stale assumptions → ingest 建議、相關性計數）、parity suite 31/31、twin harness 8 情境全綠。
