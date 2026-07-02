@@ -461,7 +461,13 @@ enum DiscussCommands {
     /// Create a new discussion document
     New { topic: String, #[arg(long)] json: bool },
     /// List discussions
-    List { #[arg(long)] json: bool },
+    List {
+        /// Show archived discussions instead of live ones
+        #[arg(long)]
+        archived: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Show a discussion document
     Show { slug: String, #[arg(long)] json: bool },
     /// Append a round to a discussion (content from stdin)
@@ -469,6 +475,8 @@ enum DiscussCommands {
     AddRound { slug: String, #[arg(long, default_value = "interview")] mode: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
     /// Conclude a discussion (content from stdin)
     Conclude { slug: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
+    /// Archive a discussion (move to discussions/archive/<created>-<slug>.md)
+    Archive { slug: String, #[arg(long)] json: bool },
     /// Promote a discussion into a change scaffold (proposal prefilled from the conclusion)
     Promote {
         slug: String,

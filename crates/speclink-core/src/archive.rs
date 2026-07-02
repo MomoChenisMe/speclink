@@ -23,8 +23,8 @@ pub struct ArchiveOutcome {
     pub caps: Vec<CapCounts>,
     pub snapshot_created: bool,
     pub skipped_specs: bool,
-    /// Slug of the linked discussion that was archived along with the change, if any.
-    pub archived_discussion: Option<String>,
+    /// The linked discussion archived along with the change, if any: (slug, archived file name).
+    pub archived_discussion: Option<(String, String)>,
 }
 
 #[derive(Debug, Default)]
@@ -186,12 +186,12 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
     }
 
     // A change promoted from a discussion carries its record along into the archive.
-    let archived_discussion = match change.meta.from_discussion.as_deref() {
-        Some(slug) if crate::discuss::archive_discussion(paths, slug).unwrap_or(false) => {
-            Some(slug.to_string())
-        }
-        _ => None,
-    };
+    let archived_discussion = change.meta.from_discussion.as_deref().and_then(|slug| {
+        crate::discuss::archive_discussion(paths, slug)
+            .ok()
+            .flatten()
+            .map(|file| (slug.to_string(), file))
+    });
 
     Ok(ArchiveOutcome {
         change_name: change.name.clone(),
