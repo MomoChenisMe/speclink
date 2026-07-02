@@ -470,6 +470,8 @@ enum DiscussCommands {
     },
     /// Show a discussion document
     Show { slug: String, #[arg(long)] json: bool },
+    /// Set the discussion's Context section (content from stdin)
+    Context { slug: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
     /// Append a round to a discussion (content from stdin)
     #[command(name = "add-round")]
     AddRound { slug: String, #[arg(long, default_value = "interview")] mode: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },

@@ -269,3 +269,19 @@ speclink 專屬功能（spectra 無對應物），依討論決議採「扁平化
 4. **未決問題帳本**：每輪以未決問題收尾、下一輪從中取題；結論必須逐一解決或明示延後（Deferred）。
 
 round 範本改為 `**Focus** / **Position** / **Ruled out** / **Open**` 四欄；conclusion 範本增加 `**Rejected alternatives**` 與 `**Deferred**`。repo 內既有兩筆討論已遷移至新版面。驗證：8 項生命週期功能測試通過、parity suite 31/31。
+
+### 補充：discuss 文件模板化（§19 續）
+
+事實確認：spectra 的 discuss skill 本身即為蘇格拉底式方法（interview 模式＝一次一問、追問到具體、挑戰假設；assumptions 模式＝倒置變體「我列信念、你來反駁」），但**產出是揮發的**——對話結束後除非手動 capture 到 design/proposal，沒有任何紀錄留下。speclink 的 discuss skill 與 spectra 逐字比對確認：**進行規則零改動**（86 行差異全部為 speclink 新增的紀錄段落），差異僅在「多了持久化文件」。
+
+文件本身比照 proposal 模板給固定骨架（`discuss new` 直接產出）：
+
+```
+## Context      ← 一次性框架：起因、模式選擇與原因、相關 changes/specs（discuss context 填入）
+## Rounds       ← ### Round N — <mode> (<date>) 由 add-round 依序插入
+## Conclusion   ← conclude 以內容「取代」佔位註解；再次 conclude 為修訂（永遠單一 section）
+```
+
+- 新增 `speclink discuss context <slug> --stdin`；`conclusion_text` 會剝除 HTML 註解（佔位註解不算內容，promote 的 Why 預填不會拿到註解）。
+- add-round 在骨架文件中插入 `### Round N` 至 Rounds 區段尾端；舊版面（pre-scaffold）文件自動 fallback 為舊式尾端附加，讀取端同時容忍 `## Round`/`### Round` 兩種標題。
+- repo 內既存的 live 討論已遷移至新骨架（歸檔者凍結不動）。

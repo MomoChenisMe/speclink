@@ -112,7 +112,56 @@ fn frontmatter_value(text: &str, key: &str) -> Option<String> {
 }
 
 fn count_rounds(text: &str) -> usize {
-    text.lines().filter(|l| l.starts_with("## Round ")).count()
+    // `### Round ` is the scaffolded layout; `## Round ` tolerates pre-scaffold documents.
+    text.lines()
+        .filter(|l| l.starts_with("### Round ") || l.starts_with("## Round "))
+        .count()
+}
+
+/// Byte range of a level-2 section's body: after the `## <name>` line, up to the next `## `
+/// line or EOF. `None` when the header is absent.
+fn section_body_range(text: &str, name: &str) -> Option<(usize, usize)> {
+    let header = format!("## {name}");
+    let mut offset = 0;
+    let mut start: Option<usize> = None;
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim_end();
+        if let Some(s) = start {
+            if trimmed.starts_with("## ") && !trimmed.starts_with("###") {
+                return Some((s, offset));
+            }
+        } else if trimmed == header {
+            start = Some(offset + line.len());
+        }
+        offset += line.len();
+    }
+    start.map(|s| (s, text.len()))
+}
+
+/// Replace a level-2 section's body, keeping its header. `None` when the section is absent.
+fn replace_section(text: &str, name: &str, body: &str) -> Option<String> {
+    let (s, e) = section_body_range(text, name)?;
+    let tail = &text[e..];
+    let mid = if tail.is_empty() {
+        format!("\n{}\n", body.trim_end())
+    } else {
+        format!("\n{}\n\n", body.trim_end())
+    };
+    Some(format!("{}{}{}", &text[..s], mid, tail))
+}
+
+fn strip_html_comments(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(i) = rest.find("<!--") {
+        out.push_str(&rest[..i]);
+        match rest[i..].find("-->") {
+            Some(j) => rest = &rest[i + j + 3..],
+            None => rest = "",
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn read_info_at(path: &PathBuf, slug: &str, archived: bool) -> Option<DiscussionInfo> {
@@ -154,7 +203,36 @@ pub fn new_discussion(paths: &Paths, topic: &str) -> Result<DiscussionInfo> {
     }
     let created = util::today();
     let content = format!(
-        "---\ntopic: {topic}\nslug: {slug}\nstatus: open\ncreated: {created}\n---\n\n# Discussion: {topic}\n\n<!--\nDocument rules:\n- Rounds are appended by `speclink discuss add-round`; never rewrite an earlier round.\n  A changed position gets a new round that names what changed and why.\n- Each round records: the focus question, the position taken (with evidence),\n  the options ruled out (with why), and the open questions the next round picks up.\n- The conclusion must resolve or explicitly defer every remaining open question.\n-->\n"
+        "---\n\
+         topic: {topic}\n\
+         slug: {slug}\n\
+         status: open\n\
+         created: {created}\n\
+         ---\n\
+         \n\
+         # Discussion: {topic}\n\
+         \n\
+         <!--\n\
+         Document rules:\n\
+         - Rounds are appended by `speclink discuss add-round`; never rewrite an earlier round.\n\
+         \x20 A changed position gets a new round that names what changed and why.\n\
+         - Each round distills one focus question: **Focus** / **Position** / **Ruled out** / **Open**.\n\
+         - The conclusion must resolve or explicitly defer every open question left by the rounds.\n\
+         -->\n\
+         \n\
+         ## Context\n\
+         \n\
+         <!-- What prompted this discussion, the mode chosen (assumptions | interview) and why,\n\
+         and the related changes/specs. Set once via `speclink discuss context <slug> --stdin`. -->\n\
+         \n\
+         ## Rounds\n\
+         \n\
+         <!-- `### Round N — <mode> (<date>)` entries are appended here by the CLI. -->\n\
+         \n\
+         ## Conclusion\n\
+         \n\
+         <!-- Written by `speclink discuss conclude`:\n\
+         **Decision** / **Rationale** / **Rejected alternatives** / **Deferred** / **Capture to** / **Next** -->\n"
     );
     util::write_file(&path, &content)?;
     Ok(DiscussionInfo {
@@ -219,29 +297,53 @@ pub fn info(paths: &Paths, slug: &str) -> Option<DiscussionInfo> {
     read_info_at(&path, slug, archived)
 }
 
+/// Set (or replace) the `## Context` section — the one-time framing written after mode pick.
+pub fn set_context(paths: &Paths, slug: &str, content: &str) -> Result<()> {
+    let (path, text) = load_live(paths, slug)?;
+    match replace_section(&text, "Context", content) {
+        Some(t) => {
+            util::write_file(&path, &t)?;
+            Ok(())
+        }
+        None => bail!(
+            "discussion '{slug}' has no '## Context' section (pre-scaffold layout) — edit the file directly"
+        ),
+    }
+}
+
 /// Append a discussion round. Content is supplied verbatim (from the skill via stdin).
 pub fn add_round(paths: &Paths, slug: &str, mode: &str, content: &str) -> Result<usize> {
     let (path, mut text) = load_live(paths, slug)?;
     let round_no = count_rounds(&text) + 1;
     let date = util::today();
-    if !text.ends_with('\n') {
-        text.push('\n');
+    // Scaffolded layout: insert at the end of the `## Rounds` section. Pre-scaffold
+    // documents fall back to appending a level-2 round at the end.
+    if let Some((_, e)) = section_body_range(&text, "Rounds") {
+        let entry = format!(
+            "### Round {round_no} — {mode} ({date})\n\n{}\n\n",
+            content.trim_end()
+        );
+        text.insert_str(e, &entry);
+    } else {
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&format!(
+            "\n## Round {round_no} — {mode} ({date})\n\n{}\n",
+            content.trim_end()
+        ));
     }
-    text.push_str(&format!(
-        "\n## Round {round_no} — {mode} ({date})\n\n{}\n",
-        content.trim_end()
-    ));
     util::write_file(&path, &text)?;
     Ok(round_no)
 }
 
-/// The text of the `## Conclusion` section, if the discussion has one.
+/// The text of the `## Conclusion` section, if the discussion has one (the scaffold's
+/// placeholder comment does not count as content).
 pub fn conclusion_text(paths: &Paths, slug: &str) -> Option<String> {
     let (path, _) = resolve_path(paths, slug)?;
     let text = util::read_opt(&path)?;
-    let idx = text.find("## Conclusion")?;
-    let body = text[idx..].lines().skip(1).collect::<Vec<_>>().join("\n");
-    let body = body.trim().to_string();
+    let (s, e) = section_body_range(&text, "Conclusion")?;
+    let body = strip_html_comments(&text[s..e]).trim().to_string();
     (!body.is_empty()).then_some(body)
 }
 
@@ -290,15 +392,23 @@ pub fn archive_discussion(paths: &Paths, slug: &str) -> Result<Option<String>> {
     Ok(Some(name))
 }
 
-/// Append a conclusion section and mark the discussion concluded.
+/// Write the conclusion into the `## Conclusion` section (replacing the placeholder — or a
+/// previous conclusion, so a revised conclusion stays a single section) and mark the
+/// discussion concluded.
 pub fn conclude(paths: &Paths, slug: &str, content: &str) -> Result<()> {
     let (path, mut text) = load_live(paths, slug)?;
     // Flip status: open -> concluded in frontmatter.
     text = text.replacen("status: open", "status: concluded", 1);
-    if !text.ends_with('\n') {
-        text.push('\n');
-    }
-    text.push_str(&format!("\n## Conclusion\n\n{}\n", content.trim_end()));
+    text = match replace_section(&text, "Conclusion", content) {
+        Some(t) => t,
+        None => {
+            // Pre-scaffold document: append the section.
+            if !text.ends_with('\n') {
+                text.push('\n');
+            }
+            format!("{text}\n## Conclusion\n\n{}\n", content.trim_end())
+        }
+    };
     util::write_file(&path, &text)?;
     Ok(())
 }

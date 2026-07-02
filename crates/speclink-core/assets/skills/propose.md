@@ -29,7 +29,7 @@ If no argument is provided, the workflow will extract requirements from conversa
      ```
    - If a candidate discussion exists, use the **AskUserQuestion tool** to confirm using it (Option 1: this discussion, Option 2: another source). When confirmed, extract from the discussion document (`discussions/<slug>.md`):
      - `## Conclusion` → **Decision** becomes the requirement description; **Rationale** becomes the proposal Why; **Capture to** routing guides which artifacts to emphasize.
-     - The accumulated `## Round N` sections → context for What Changes, Capabilities, and Impact (the discussion already narrowed options and surfaced trade-offs).
+     - The `## Context` section and the accumulated `### Round N` entries → context for What Changes, Capabilities, and Impact (the rounds' **Ruled out** lines name the alternatives already eliminated — don't re-propose them).
    - If no discussion exists or the user declines → fall through to (c).
 
    c. **Plan file available**:
