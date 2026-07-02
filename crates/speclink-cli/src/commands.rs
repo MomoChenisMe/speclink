@@ -131,21 +131,29 @@ fn task_counts(change: &Change) -> (usize, usize) {
 // --- init / update ---
 
 fn cmd_init(a: InitArgs) -> Result<()> {
-    let root = a
-        .path
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let root = if root.is_absolute() {
-        root
-    } else {
-        std::env::current_dir()?.join(root)
+    // The success line echoes the PATH argument verbatim (Spectra prints ".\openspec" for
+    // `init .`); the absolute path is only used internally.
+    let display_base = match a.path.as_deref() {
+        Some(p) => p.to_string(),
+        None => std::env::current_dir()?.display().to_string(),
+    };
+    let root = match a.path.as_deref() {
+        Some(p) => {
+            let pb = PathBuf::from(p);
+            if pb.is_absolute() { pb } else { std::env::current_dir()?.join(pb) }
+        }
+        None => std::env::current_dir()?,
     };
     let spec_dir = a.dir.clone().unwrap_or_else(|| "openspec".to_string());
     let tools = match a.tools.as_deref() {
         Some(spec) => core::init::parse_tools(spec)?,
         None => Vec::new(),
     };
-    let outcome = core::init::init(&root, &tools, a.force, &spec_dir)?;
-    println!("✓ Initialized at {}", core::util::to_slash(&outcome.spec_dir_abs));
+    core::init::init(&root, &tools, a.force, &spec_dir)?;
+    println!("✓ Initialized at {display_base}{}{spec_dir}", std::path::MAIN_SEPARATOR);
+    if !tools.is_empty() {
+        println!("Generated files for: {}", tools.join(", "));
+    }
     Ok(())
 }
 
@@ -161,8 +169,13 @@ fn cmd_update(a: UpdateArgs) -> Result<()> {
     if !root.join(".speclink.yaml").is_file() && !root.join("openspec").is_dir() {
         bail!("Not initialized. Run 'speclink init' to initialize.");
     }
-    core::init::update(&root, a.force)?;
-    println!("✓ Updated instruction files");
+    let _ = a.force;
+    let updated = core::init::update(&root)?;
+    if updated.is_empty() {
+        println!("! No AI tool configurations found. Use 'speclink init --tools' to set up.");
+    } else {
+        println!("✓ Updated instruction files for: {}", updated.join(", "));
+    }
     Ok(())
 }
 

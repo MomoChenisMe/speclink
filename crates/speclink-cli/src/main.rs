@@ -66,8 +66,8 @@ enum Commands {
 #[derive(Args)]
 struct InitArgs {
     /// Project path (defaults to current directory)
-    path: Option<PathBuf>,
-    /// AI tools to generate files for (e.g., claude, codex)
+    path: Option<String>,
+    /// AI tools to generate files for (e.g., claude, cursor)
     #[arg(long)]
     tools: Option<String>,
     /// Overwrite existing files

@@ -26,7 +26,7 @@ const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # AI tools to generate instruction files for
 # tools:
 #   - claude
-#   - codex
+#   - cursor
 ";
 
 const WORKFLOW_CONFIG_TEMPLATE: &str = "schema: spec-driven
@@ -55,9 +55,10 @@ const GITIGNORE_BLOCK: &str = "# Speclink app data\n.speclink/\n";
 const CLAUDE_SETTINGS: &str = "{\n  \"includeGitInstructions\": false\n}";
 
 fn instructions_body(spec_dir: &str, tool: Tool) -> String {
+    // GEMINI.md is byte-identical to CLAUDE.md (matches Spectra); only codex differs.
     let (title_prefix, plan_line) = match tool {
-        Tool::Claude => ("/speclink-", "- Requirements change mid-work? Plan mode → `ingest` → resume `apply`"),
         Tool::Codex => ("$speclink-", "- Requirements change mid-work? `ingest` → resume `apply`"),
+        _ => ("/speclink-", "- Requirements change mid-work? Plan mode → `ingest` → resume `apply`"),
     };
     format!(
         "<!-- SPECLINK:START {ver} -->\n\n\
@@ -82,7 +83,8 @@ discuss? → propose → apply ⇄ ingest → archive\n\n\
     )
 }
 
-/// Insert or replace the SPECLINK:START..END block in an existing document.
+/// Insert or replace the SPECLINK:START..END block in an existing document. When the document
+/// has no marker yet, the block is PREPENDED above the user's content (matches Spectra).
 fn upsert_marker(existing: Option<String>, block: &str) -> String {
     let start = "<!-- SPECLINK:START";
     let end = "<!-- SPECLINK:END -->";
@@ -94,7 +96,7 @@ fn upsert_marker(existing: Option<String>, block: &str) -> String {
             format!("{before}{}{after}", block.trim_end())
         }
         Some(text) if !text.trim().is_empty() => {
-            format!("{}\n\n{block}", text.trim_end())
+            format!("{}\n{}", block.trim_end(), text)
         }
         _ => block.to_string(),
     }
@@ -104,9 +106,13 @@ pub struct InitOutcome {
     pub spec_dir_abs: PathBuf,
 }
 
-/// Initialize speclink in `root`.
-pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<InitOutcome> {
+/// Initialize speclink in `root`. `tools` are the raw (normalized) `--tools` entries — unknown
+/// names are accepted and simply generate nothing, matching Spectra.
+pub fn init(root: &Path, tools: &[String], force: bool, spec_dir: &str) -> Result<InitOutcome> {
     let spec_root = root.join(spec_dir);
+    if !force && (spec_root.exists() || root.join(".speclink.yaml").is_file()) {
+        bail!("Already initialized. Use --force to reinitialize.");
+    }
 
     // openspec structure
     std::fs::create_dir_all(spec_root.join("specs"))?;
@@ -119,9 +125,11 @@ pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<
     // .gitignore (append block if missing)
     ensure_gitignore(&root.join(".gitignore"))?;
 
-    // Per-tool artifacts
-    for tool in tools {
-        generate_tool(root, *tool, spec_dir, force)?;
+    // Per-tool artifacts (unknown tool names are tolerated no-ops)
+    for t in tools {
+        if let Some(tool) = Tool::parse(t) {
+            generate_tool(root, tool, spec_dir, force)?;
+        }
     }
 
     Ok(InitOutcome {
@@ -129,48 +137,61 @@ pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<
     })
 }
 
-/// Regenerate instruction files and skills (refresh markers).
-pub fn update(root: &Path, force: bool) -> Result<()> {
+/// Regenerate instruction files for the tools whose dot-directories exist, returning the tool
+/// names refreshed. Detection is directory-based and codex is excluded — both matching Spectra
+/// (`update` never regenerates AGENTS.md).
+pub fn update(root: &Path) -> Result<Vec<&'static str>> {
     let app = crate::config::AppConfig::load(&root.join(".speclink.yaml"));
     let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
-    // Detect existing tool dirs.
-    let mut tools = Vec::new();
-    if root.join(".claude").exists() || root.join("CLAUDE.md").exists() {
-        tools.push(Tool::Claude);
+    let candidates = [
+        (".claude", Tool::Claude),
+        (".cursor", Tool::Cursor),
+        (".windsurf", Tool::Windsurf),
+        (".gemini", Tool::Gemini),
+    ];
+    let mut updated = Vec::new();
+    for (dir, tool) in candidates {
+        if root.join(dir).is_dir() {
+            generate_tool(root, tool, &spec_dir, true)?;
+            updated.push(tool.name());
+        }
     }
-    if root.join(".agents").exists() || root.join("AGENTS.md").exists() {
-        tools.push(Tool::Codex);
-    }
-    if tools.is_empty() {
-        tools.push(Tool::Claude);
-    }
-    for tool in tools {
-        generate_tool(root, tool, &spec_dir, force || true)?;
-    }
-    Ok(())
+    Ok(updated)
 }
 
 fn generate_tool(root: &Path, tool: Tool, spec_dir: &str, force: bool) -> Result<()> {
+    // Root instruction file (marker upsert) + tool-specific extras.
     match tool {
         Tool::Claude => {
-            // settings.json
             write_if(&root.join(".claude").join("settings.json"), CLAUDE_SETTINGS, force)?;
-            // CLAUDE.md (upsert marker)
-            let claude_md = root.join("CLAUDE.md");
-            let block = instructions_body(spec_dir, tool);
-            let merged = upsert_marker(util::read_opt(&claude_md), &block);
-            util::write_file(&claude_md, &merged)?;
+            let md = root.join("CLAUDE.md");
+            let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool));
+            util::write_file(&md, &merged)?;
         }
         Tool::Codex => {
-            let agents_md = root.join("AGENTS.md");
-            let block = instructions_body(spec_dir, tool);
-            let merged = upsert_marker(util::read_opt(&agents_md), &block);
-            util::write_file(&agents_md, &merged)?;
+            let md = root.join("AGENTS.md");
+            let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool));
+            util::write_file(&md, &merged)?;
+        }
+        Tool::Gemini => {
+            let md = root.join("GEMINI.md");
+            let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool));
+            util::write_file(&md, &merged)?;
+        }
+        Tool::Cursor => {
+            let rules = root.join(".cursorrules");
+            let merged = upsert_marker(util::read_opt(&rules), &skills::render_rules_file(spec_dir));
+            util::write_file(&rules, &merged)?;
+        }
+        Tool::Windsurf => {
+            let rules = root.join(".windsurfrules");
+            let merged = upsert_marker(util::read_opt(&rules), &skills::render_rules_file(spec_dir));
+            util::write_file(&rules, &merged)?;
         }
     }
-    // Skills
+    // Skills: Claude gets the full registry; every other tool gets the command subset.
     for skill in skills::registry() {
-        if tool == Tool::Codex && !skill.for_codex {
+        if tool != Tool::Claude && !skill.for_codex {
             continue;
         }
         let content = skills::render_skill_file(&skill, tool, spec_dir);
@@ -179,6 +200,37 @@ fn generate_tool(root: &Path, tool: Tool, spec_dir: &str, force: bool) -> Result
             .join(format!("speclink-{}", skill.name))
             .join("SKILL.md");
         write_if(&path, &content, force)?;
+    }
+    // Command files (cursor/gemini/windsurf).
+    for skill in skills::registry() {
+        if !skill.for_codex {
+            continue;
+        }
+        match tool {
+            Tool::Cursor => {
+                let path = root
+                    .join(".cursor")
+                    .join("commands")
+                    .join(format!("speclink-{}.md", skill.name));
+                write_if(&path, &skills::render_cursor_command(&skill, spec_dir), force)?;
+            }
+            Tool::Gemini => {
+                let path = root
+                    .join(".gemini")
+                    .join("commands")
+                    .join("speclink")
+                    .join(format!("{}.toml", skill.name));
+                write_if(&path, &skills::render_gemini_toml(&skill, spec_dir), force)?;
+            }
+            Tool::Windsurf => {
+                let path = root
+                    .join(".windsurf")
+                    .join("workflows")
+                    .join(format!("speclink-{}.md", skill.name));
+                write_if(&path, &skills::render_windsurf_workflow(&skill, spec_dir), force)?;
+            }
+            _ => {}
+        }
     }
     Ok(())
 }
@@ -211,21 +263,14 @@ fn ensure_gitignore(path: &Path) -> Result<()> {
     }
 }
 
-/// Validate a comma-separated `--tools` value into a tool list.
-pub fn parse_tools(spec: &str) -> Result<Vec<Tool>> {
-    let mut out = Vec::new();
+/// Split a comma-separated `--tools` value into normalized names. Unknown names are kept
+/// (echoed in the "Generated files for:" line) but generate nothing, matching Spectra.
+pub fn parse_tools(spec: &str) -> Result<Vec<String>> {
+    let mut out: Vec<String> = Vec::new();
     for part in spec.split(',') {
-        let part = part.trim();
-        if part.is_empty() {
-            continue;
-        }
-        match Tool::parse(part) {
-            Some(t) => {
-                if !out.contains(&t) {
-                    out.push(t);
-                }
-            }
-            None => bail!("unknown tool: {part} (supported: claude, codex)"),
+        let part = part.trim().to_ascii_lowercase();
+        if !part.is_empty() && !out.contains(&part) {
+            out.push(part);
         }
     }
     Ok(out)
