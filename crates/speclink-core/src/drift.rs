@@ -148,7 +148,7 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     };
 
     // Structure dimension — falls back to "design absent" when there is no design.md to anchor on.
-    let design_present = util::has_content(&change.dir.join("design.md"));
+    let design_present = change.dir.join("design.md").is_file();
     let (structure_status, structure_score) = if !design_present {
         ("design absent".to_string(), 0)
     } else {
@@ -165,7 +165,7 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     };
 
     // Tasks dimension
-    let tasks_present = util::has_content(&change.dir.join("tasks.md"));
+    let tasks_present = change.dir.join("tasks.md").is_file();
     let tasks_status = if !tasks_present {
         "no tasks.md".to_string()
     } else if git_has_commits {

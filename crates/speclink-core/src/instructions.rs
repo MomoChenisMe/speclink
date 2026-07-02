@@ -35,7 +35,9 @@ pub struct ArtifactInstructions {
     #[serde(rename = "outputPath")]
     pub output_path: String,
     pub description: String,
-    pub instruction: String,
+    /// Omitted entirely when the (custom) schema has no instruction, matching Spectra.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instruction: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -99,16 +101,23 @@ pub fn build_artifact(
 
     Some(ArtifactInstructions {
         change_name: change.name.clone(),
-        artifact_id: artifact.id.to_string(),
-        schema_name: schema.name.to_string(),
+        artifact_id: artifact.id.clone(),
+        schema_name: schema.display_name.clone(),
         change_dir: change.dir.to_string_lossy().to_string(),
-        output_path: artifact.output_path.to_string(),
-        description: artifact.description.to_string(),
-        instruction: artifact.instruction.to_string(),
+        output_path: artifact.output_path.clone(),
+        description: artifact.description.clone(),
+        instruction: artifact.instruction.clone(),
         context: wf.context_text(),
-        rules: wf.rules_for(artifact.id),
+        rules: wf.rules_for(&artifact.id),
         locale: crate::config::resolve_locale(&app, &wf),
-        template: artifact.template.to_string(),
+        // Spectra fills the payload template by looking the artifact up in the BUILT-IN schema
+        // matching the yaml display name — never from the custom templates/ file (which only
+        // `new artifact` reads). A custom display name therefore yields an empty template.
+        template: if schema.is_builtin() {
+            artifact.template.clone().unwrap_or_default()
+        } else {
+            crate::schema::builtin_template(&schema.display_name, &artifact.id).unwrap_or_default()
+        },
         dependencies,
         unlocks,
     })
@@ -157,7 +166,9 @@ pub struct ApplyInstructions {
     #[serde(rename = "missingArtifacts", skip_serializing_if = "Option::is_none")]
     pub missing_artifacts: Option<Vec<String>>,
     pub locale: String,
-    pub instruction: String,
+    /// Omitted when the (custom) schema defines no apply instruction, matching Spectra.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instruction: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preflight: Option<Preflight>,
 }
@@ -186,18 +197,18 @@ pub fn build_apply(paths: &Paths, change: &Change, schema: &Schema) -> ApplyInst
     let parsed = tasks::parse(&tasks_md);
     let (total, complete, remaining) = tasks::progress(&parsed);
 
-    // contextFiles only includes artifacts that are present (have content).
+    // contextFiles includes artifacts whose files exist (empty files count, matching Spectra).
     let mut context_files = std::collections::BTreeMap::new();
-    if crate::util::has_content(&change.dir.join("proposal.md")) {
+    if change.dir.join("proposal.md").is_file() {
         context_files.insert("proposal".to_string(), join_display(&change.dir, "proposal.md"));
     }
-    if model::spec_files(&change.dir).iter().any(|p| crate::util::has_content(p)) {
+    if !model::spec_files(&change.dir).is_empty() {
         context_files.insert("specs".to_string(), join_display(&change.dir, "specs/**/*.md"));
     }
-    if crate::util::has_content(&change.dir.join("design.md")) {
+    if change.dir.join("design.md").is_file() {
         context_files.insert("design".to_string(), join_display(&change.dir, "design.md"));
     }
-    if crate::util::has_content(&change.dir.join("tasks.md")) {
+    if change.dir.join("tasks.md").is_file() {
         context_files.insert("tasks".to_string(), join_display(&change.dir, "tasks.md"));
     }
 
@@ -230,7 +241,7 @@ pub fn build_apply(paths: &Paths, change: &Change, schema: &Schema) -> ApplyInst
     ApplyInstructions {
         change_name: change.name.clone(),
         change_dir: change.dir.to_string_lossy().to_string(),
-        schema_name: schema.name.to_string(),
+        schema_name: schema.display_name.clone(),
         context_files,
         progress: Progress {
             total,
@@ -241,7 +252,7 @@ pub fn build_apply(paths: &Paths, change: &Change, schema: &Schema) -> ApplyInst
         state,
         missing_artifacts,
         locale: crate::config::resolve_locale(&app, &wf),
-        instruction: schema.apply_instruction.to_string(),
+        instruction: schema.apply_instruction.clone(),
         preflight,
     }
 }

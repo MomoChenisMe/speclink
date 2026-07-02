@@ -1,0 +1,220 @@
+name: spec-driven
+version: 1
+description: Default OpenSpec workflow - proposal → specs → tasks (design optional)
+artifacts:
+- id: proposal
+  generates: proposal.md
+  description: Initial proposal document outlining the change
+  template: proposal.md
+  instruction: |
+    Create the proposal document that establishes WHY this change is needed.
+
+    Sections:
+    - **Why**: 1-2 sentences on the problem or opportunity. What problem does this solve? Why now?
+    - **What Changes**: Bullet list of changes. Be specific about new capabilities, modifications, or removals. Mark breaking changes with **BREAKING**.
+    - **Non-Goals** (optional): Scope exclusions and rejected approaches. If design.md will be created, Non-Goals belong there (in Goals/Non-Goals section) — leave this section empty or omit it. If design.md will be skipped, write Non-Goals here so rejected approaches and scope exclusions are recorded in a persistent artifact.
+    - **Capabilities**: Identify which specs will be created or modified:
+      - **New Capabilities**: List capabilities being introduced. Each becomes a new `specs/<name>/spec.md`. Use kebab-case names (e.g., `user-auth`, `data-export`).
+      - **Modified Capabilities**: List existing capabilities whose REQUIREMENTS are changing. Only include if spec-level behavior changes (not just implementation details). Each needs a delta spec file. Check `openspec/specs/` for existing spec names. Leave empty if no requirement changes.
+    - **Impact**: Affected code, APIs, dependencies, or systems.
+
+    IMPORTANT: The Capabilities section is critical. It creates the contract between
+    proposal and specs phases. Research existing specs before filling this in.
+    Each capability listed here will need a corresponding spec file.
+    The exact capability name becomes the `specs/<name>/` directory name —
+    the analyzer flags any capability without a matching spec file as Critical.
+
+    Keep it concise (1-2 pages). Focus on the "why" not the "how" -
+    implementation details belong in design.md.
+
+    This is the foundation - specs, design, and tasks all build on this.
+  requires: []
+- id: specs
+  generates: specs/**/*.md
+  description: Detailed specifications for the change
+  template: spec.md
+  instruction: |
+    Create specification files that define WHAT the system should do.
+
+    Create one spec file per capability listed in the proposal's Capabilities section.
+    - New capabilities: use the exact kebab-case name from the proposal (specs/<capability>/spec.md).
+    - Modified capabilities: use the existing spec folder name from openspec/specs/<capability>/ when creating the delta spec at specs/<capability>/spec.md.
+
+    Delta operations (use ## headers):
+    - **ADDED Requirements**: New capabilities
+    - **MODIFIED Requirements**: Changed behavior - MUST include full updated content
+    - **REMOVED Requirements**: Deprecated features - MUST include **Reason** and **Migration**
+    - **RENAMED Requirements**: Name changes only - use FROM:/TO: format
+
+    Format requirements:
+    - Each requirement: `### Requirement: <name>` followed by description
+    - Use SHALL/MUST for normative requirements. Forbidden words (analyzer flags these): should, may, might, consider, possibly, TBD, TODO, ???, TKTK — replace with SHALL/SHALL NOT/MUST/MUST NOT.
+    - Each scenario: `#### Scenario: <name>` with WHEN/THEN format
+    - **CRITICAL**: Scenarios MUST use exactly 4 hashtags (`####`). Using 3 hashtags or bullets will fail silently.
+    - Every requirement MUST have at least one scenario.
+
+    MODIFIED requirements workflow:
+    1. Locate the existing requirement in openspec/specs/<capability>/spec.md
+    2. Copy the ENTIRE requirement block (from `### Requirement:` through all scenarios)
+    3. Paste under `## MODIFIED Requirements` and edit to reflect new behavior
+    4. Ensure header text matches exactly (whitespace-insensitive)
+
+    Common pitfall: Using MODIFIED with partial content loses detail at archive time.
+    If adding new concerns without changing existing behavior, use ADDED instead.
+
+    Example:
+    ```
+    ## ADDED Requirements
+
+    ### Requirement: User can export data
+    The system SHALL allow users to export their data in CSV format.
+
+    #### Scenario: Successful export
+    - **WHEN** user clicks "Export" button
+    - **THEN** system downloads a CSV file with all user data
+
+    ## REMOVED Requirements
+
+    ### Requirement: Legacy export
+    **Reason**: Replaced by new export system
+    **Migration**: Use new export endpoint at /api/v2/export
+    ```
+
+    Specs should be testable - each scenario is a potential test case.
+
+    Concrete examples (SBE — Specification by Example):
+
+    Scenarios can include `##### Example: <name>` blocks (5 hashtags) with concrete
+    GIVEN/WHEN/THEN data that illustrates the scenario with real values:
+
+        #### Scenario: sort by relevance
+        - **WHEN** user searches
+        - **THEN** results appear sorted by score
+
+        ##### Example: three items sorted
+        - **GIVEN** items: A(score=0.9), B(score=0.3), C(score=0.7)
+        - **WHEN** user searches for "test"
+        - **THEN** results appear in order: A, C, B
+
+    For multiple test cases, use a table inside the example block:
+
+        ##### Example: boundary cases
+        | Input | Expected | Notes |
+        |-------|----------|-------|
+        | "" | error: empty query | empty string |
+        | "a" | minimum 2 chars warning | too short |
+        | "valid query" | results returned | normal case |
+
+    When to add examples:
+    - The scenario involves computed output (sorting, filtering, scoring, ranking)
+    - The scenario involves state transitions or data transformation
+    - The boundary behavior is non-obvious
+    - A table can replace 3+ separate scenarios
+
+    When to skip examples:
+    - Simple UI navigation flows (click button, see page)
+    - Straightforward CRUD with no computed logic
+    - The WHEN/THEN already contains concrete values
+
+    Examples are optional — the analyzer will suggest adding them for abstract scenarios
+    but will not block specs without examples.
+
+    Spec files MUST always be written in English regardless of project locale settings,
+    because they use normative language (SHALL/MUST/WHEN/THEN).
+  requires:
+  - proposal
+- id: design
+  generates: design.md
+  description: Technical design document with implementation details
+  template: design.md
+  instruction: |
+    Create the design document that explains HOW to implement the change.
+
+    When to include design.md (create only if any apply):
+    - Cross-cutting change (multiple services/modules) or new architectural pattern
+    - New external dependency or significant data model changes
+    - Security, performance, or migration complexity
+    - Ambiguity that benefits from technical decisions before coding
+
+    Sections:
+    - **Context**: Background, current state, constraints, stakeholders
+    - **Goals / Non-Goals**: What this design achieves and explicitly excludes
+    - **Decisions**: Key technical choices with rationale (why X over Y?). Include alternatives considered for each decision.
+    - **Implementation Contract**: For any change that creates or modifies behavior beyond a trivial artifact-only edit, this section is REQUIRED. The contract describes the durable handoff to apply: name the observable behavior, interface or data shape, command output, error or failure mode, acceptance criteria, and explicit scope boundaries (what is in scope, what is out). The contract MUST NOT rely on source line numbers, and MUST NOT use file-path-only references as the sole way to identify required work — file paths are supporting context for behavior, never a substitute for it. Skip this section only when the change is purely artifact / documentation cleanup with no runtime, build, or tooling effect.
+    - **Risks / Trade-offs**: Known limitations, things that could go wrong. Format: [Risk] → Mitigation
+    - **Migration Plan**: Steps to deploy, rollback strategy (if applicable)
+    - **Open Questions**: Outstanding decisions or unknowns to resolve
+
+    Focus on architecture and approach, not line-by-line implementation.
+    Reference the proposal for motivation and specs for requirements.
+
+    Good design docs explain the "why" behind technical decisions.
+
+    Note: The analyzer cross-checks `###` decision headings against tasks.md.
+    Use descriptive heading text that will naturally appear in task descriptions.
+  requires:
+  - proposal
+- id: tasks
+  generates: tasks.md
+  description: Implementation checklist with trackable tasks
+  template: tasks.md
+  instruction: |
+    Create the task list that breaks down the implementation work.
+
+    **IMPORTANT: Follow the template below exactly.** The apply phase parses
+    checkbox format to track progress. Tasks not using `- [ ]` won't be tracked.
+
+    Guidelines:
+    - Group related tasks under ## numbered headings
+    - Each task MUST be a checkbox: `- [ ] X.Y Task description`
+    - Use the instructions JSON `locale` for human-readable task group headings
+      and task descriptions.
+    - Preserve machine-readable syntax and technical tokens exactly: markdown
+      headings, checkbox markers, task numbers, `[P]` markers, file paths,
+      symbol names, commands, API names, and code identifiers MUST NOT be
+      translated or localized.
+    - Tasks should be small enough to complete in one session
+    - Order tasks by dependency (what must be done first?)
+    - **Behavior + verification (REQUIRED for every non-trivial task):**
+      - Each task MUST state the behavior or contract being delivered — what is
+        observably true when the task is complete (user-visible behavior, generated
+        artifact contract, CLI/IPC output, or tool behavior). "Edit file X" is
+        NOT a behavior; it is supporting context for locating the work.
+      - Each task MUST also state how completion is verified — a test name, a
+        CLI invocation, an analyzer check, a manual assertion, or a content
+        review on a generated artifact. A task without a verification target
+        is not a valid task.
+      - File paths MAY appear in a task description, but only as locator
+        context. The task SHALL still state the behavior or contract on top
+        of any file path it mentions.
+      - File-edit-only tasks (e.g. "Update file X to handle Y") are invalid
+        unless they also describe the resulting behavior and how it is
+        verified.
+    - Cross-referencing (analyzer checks these):
+      - Every `### Requirement:` name from specs MUST appear as a case-insensitive substring in at least one task description
+      - If design.md exists, every `###` heading from design.md should be referenced in at least one task description
+
+    Example:
+    ```
+    ## 1. Setup
+
+    - [ ] 1.1 Create new module structure
+    - [ ] 1.2 Add dependencies to package.json
+
+    ## 2. Core Implementation
+
+    - [ ] 2.1 Implement data export function
+    - [ ] 2.2 Add CSV formatting utilities
+    ```
+
+    Reference specs for what needs to be built. If design.md exists, reference it for how to build it.
+    Each task should be verifiable - you know when it's done.
+  requires:
+  - specs
+apply:
+  requires:
+  - tasks
+  tracks: tasks.md
+  instruction: |
+    Read context files, work through pending tasks, mark complete as you go.
+    Pause if you hit blockers or need clarification.

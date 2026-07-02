@@ -74,8 +74,17 @@ fn info_if_no_changes(paths: &Paths, name: Option<&str>) -> bool {
     }
 }
 
-fn schema_for(change: &Change) -> Schema {
-    core::schema::resolve(&change.meta.schema_name()).unwrap_or_else(core::schema::spec_driven)
+/// Resolve a schema by name (project → user → built-in) or fail with Spectra's messages.
+fn resolve_schema(paths: &Paths, name: &str) -> Result<Schema> {
+    match core::schema::resolve_with(Some(paths), name) {
+        Some(Ok(s)) => Ok(s),
+        Some(Err(e)) => bail!("{e}"),
+        None => bail!("{}", core::schema::not_found_msg(name)),
+    }
+}
+
+fn schema_for(paths: &Paths, change: &Change) -> Result<Schema> {
+    resolve_schema(paths, &change.meta.schema_name())
 }
 
 fn truncate_summary(text: &str, limit: usize) -> String {
@@ -302,7 +311,8 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
         }
         bail!("Item '{item}' not found as a change or spec.");
     };
-    let schema = schema_for(&change);
+    // show never resolves the schema — the Schema line echoes the change's metadata name.
+    let schema_name = change.meta.schema_name();
     let read_opt_str = |name: &str| core::util::read_opt(&change.dir.join(name));
 
     if a.json {
@@ -315,7 +325,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
             .collect();
         return print_json(&serde_json::json!({
             "name": change.name,
-            "schema": schema.name,
+            "schema": schema_name,
             "created": change.meta.created,
             "proposal": proposal,
             "design": design,
@@ -325,14 +335,18 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
     }
 
     println!("Change: {}", change.name);
-    println!("Schema: {}", schema.name);
+    println!("Schema: {schema_name}");
     if let Some(created) = &change.meta.created {
         println!("Created: {created}");
     }
-    println!();
-    let proposal = read_opt_str("proposal.md").unwrap_or_default();
+    let proposal = read_opt_str("proposal.md");
     let caps = core::model::delta_capabilities(&change.dir);
-    if !proposal.trim().is_empty() {
+    // The header's trailing blank line prints only when a section follows.
+    if proposal.is_some() || !caps.is_empty() {
+        println!();
+    }
+    // The Proposal section renders whenever the FILE exists (even empty), matching Spectra.
+    if let Some(proposal) = proposal {
         println!("--- Proposal ---");
         print!("{proposal}");
         if !caps.is_empty() {
@@ -369,25 +383,35 @@ fn cmd_validate(a: ValidateArgs) -> Result<()> {
             Err(_) => core::model::list_changes(&paths),
         }
     };
+    // Spectra's validate never resolves the change's schema (an unresolvable one still validates).
+    let schema = core::schema::spec_driven();
     let results: Vec<_> = changes
         .iter()
-        .map(|c| core::validate::validate_change(c, &schema_for(c), a.strict))
+        .map(|c| core::validate::validate_change(c, &schema, a.strict))
         .collect();
+    let any_invalid = results.iter().any(|r| !r.valid);
     if a.json {
-        return print_json(&results);
+        print_json(&results)?;
+        if any_invalid {
+            bail!("Validation failed.");
+        }
+        return Ok(());
     }
     for r in &results {
         if r.valid {
             println!("✓ {} — valid", r.change);
         } else {
-            println!("✗ {} — {} error(s)", r.change, r.errors.len());
+            println!("✗ {} — invalid", r.change);
             for e in &r.errors {
-                println!("  - {e}");
+                println!("  error: {e}");
             }
         }
         for w in &r.warnings {
             println!("  warn: {w}");
         }
+    }
+    if any_invalid {
+        bail!("Validation failed.");
     }
     Ok(())
 }
@@ -400,7 +424,9 @@ fn cmd_analyze(a: ChangeArg) -> Result<()> {
         return Ok(());
     }
     let change = resolve_change_positional(&paths, a.change.as_deref())?;
-    let schema = schema_for(&change);
+    // Spectra's analyzer is schema-agnostic (hard-wired to the classic artifacts) and never
+    // resolves the change's schema.
+    let schema = core::schema::spec_driven();
     let report = core::analyzer::analyze(&change, &schema);
     if a.json {
         return print_json(&report);
@@ -543,9 +569,9 @@ fn cmd_status(a: StatusArgs) -> Result<()> {
     }
     let change = resolve_change(&paths, a.change.as_deref())?;
     let schema = if let Some(s) = a.schema.as_deref() {
-        core::schema::resolve(s).ok_or_else(|| anyhow::anyhow!("unknown schema: {s}"))?
+        resolve_schema(&paths, s)?
     } else {
-        schema_for(&change)
+        schema_for(&paths, &change)?
     };
     let report = core::status::build(&change, &schema);
     if a.json {
@@ -587,9 +613,9 @@ fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
     }
     let change = resolve_change(&paths, a.change.as_deref())?;
     let schema = if let Some(s) = a.schema.as_deref() {
-        core::schema::resolve(s).ok_or_else(|| anyhow::anyhow!("unknown schema: {s}"))?
+        resolve_schema(&paths, s)?
     } else {
-        schema_for(&change)
+        schema_for(&paths, &change)?
     };
     let default_artifact = core::status::first_incomplete_artifact(&change, &schema)
         .unwrap_or_else(|| "proposal".to_string());
@@ -615,29 +641,35 @@ fn render_artifact_human(p: &core::instructions::ArtifactInstructions) {
     println!("Artifact: {}", p.artifact_id);
     println!("Output: {}", p.output_path);
     println!("Description: {}", p.description);
-    println!();
-    println!("Instruction:");
-    print!("{}", p.instruction); // ends with a newline
-    println!();
-    println!();
+    // Each section is preceded by one blank separator and rendered only when non-empty
+    // (a custom schema may have no instruction and an empty template), matching Spectra.
+    if let Some(instr) = &p.instruction {
+        println!();
+        println!("Instruction:");
+        print!("{instr}"); // ends with a newline
+        println!();
+    }
     if !p.dependencies.is_empty() {
+        println!();
         println!("Dependencies:");
         for d in &p.dependencies {
             let sym = if d.done { "✓" } else { "○" };
             println!("  {sym} {} ({})", d.id, d.path);
         }
-        println!();
     }
     if !p.unlocks.is_empty() {
+        println!();
         println!("Unlocks:");
         for u in &p.unlocks {
             println!("  - {u}");
         }
+    }
+    if !p.template.is_empty() {
+        println!();
+        println!("Template:");
+        print!("{}", p.template);
         println!();
     }
-    println!("Template:");
-    print!("{}", p.template);
-    println!();
 }
 
 fn render_apply_human(p: &core::instructions::ApplyInstructions) {
@@ -662,9 +694,11 @@ fn render_apply_human(p: &core::instructions::ApplyInstructions) {
         }
     }
     println!();
-    println!("Instruction:");
-    print!("{}", p.instruction);
-    println!();
+    if let Some(instr) = &p.instruction {
+        println!("Instruction:");
+        print!("{instr}");
+        println!();
+    }
 }
 
 // --- new ---
@@ -678,7 +712,11 @@ fn cmd_new(a: NewArgs) -> Result<()> {
 
 fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     let paths = require_paths()?;
-    let schema = a.schema.unwrap_or_else(|| "spec-driven".to_string());
+    // Default schema comes from openspec/config.yaml; the name is NOT validated here (Spectra
+    // accepts unknown names and lets downstream commands fail on resolution).
+    let schema = a.schema.unwrap_or_else(|| {
+        core::config::WorkflowConfig::load(&paths.workflow_config()).schema_name()
+    });
     let dir = core::newcmd::new_change(&paths, &a.name, a.description.as_deref(), &schema, a.agent.as_deref())?;
     println!("✓ Created change: {}", a.name);
     println!("  Path: {}", dir.to_string_lossy());
@@ -714,7 +752,21 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
             c
         }
     };
-    let schema = schema_for(&change);
+    // Best-effort schema resolution: an unresolvable/broken schema still creates the artifact
+    // (with no template → an empty file), matching Spectra.
+    let schema = match core::schema::resolve_with(Some(&paths), &change.meta.schema_name()) {
+        Some(Ok(s)) => s,
+        _ => core::schema::Schema {
+            name: change.meta.schema_name(),
+            display_name: change.meta.schema_name(),
+            description: None,
+            source: "project".to_string(),
+            artifacts: Vec::new(),
+            apply_requires: Vec::new(),
+            apply_tracks: None,
+            apply_instruction: None,
+        },
+    };
     let content = if a.stdin {
         Some(read_stdin())
     } else {
@@ -753,13 +805,14 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
 // --- schemas / templates ---
 
 fn cmd_schemas(a: JsonFlag) -> Result<()> {
-    let schemas = core::schema::all();
+    let paths = core::paths::Paths::discover_cwd();
+    let schemas = core::schema::list_all(paths.as_ref());
     if a.json {
         let items: Vec<_> = schemas
             .iter()
             .map(|s| {
                 serde_json::json!({
-                    "artifacts": s.artifact_ids(),
+                    "artifacts": s.artifact_ids,
                     "description": s.description,
                     "name": s.name,
                     "source": s.source,
@@ -770,18 +823,22 @@ fn cmd_schemas(a: JsonFlag) -> Result<()> {
     }
     println!("Available schemas:");
     for s in &schemas {
-        println!("  {} ({}) — {}", s.name, s.source, s.description);
+        match &s.description {
+            Some(d) => println!("  {} ({}) — {}", s.name, s.source, d),
+            None => println!("  {} ({})", s.name, s.source),
+        }
     }
     Ok(())
 }
 
 fn cmd_templates(a: TemplatesArgs) -> Result<()> {
+    let paths = core::paths::Paths::discover_cwd();
     let schema_name = a.schema.unwrap_or_else(|| "spec-driven".to_string());
-    let schema = core::schema::resolve(&schema_name).ok_or_else(|| {
-        anyhow::anyhow!(
-            "Schema not found: Schema '{schema_name}' not found in project, user, or built-in locations"
-        )
-    })?;
+    let schema = match core::schema::resolve_with(paths.as_ref(), &schema_name) {
+        Some(Ok(s)) => s,
+        Some(Err(e)) => bail!("{e}"),
+        None => bail!("{}", core::schema::not_found_msg(&schema_name)),
+    };
     if a.json {
         let items: Vec<_> = schema
             .artifacts
@@ -789,7 +846,7 @@ fn cmd_templates(a: TemplatesArgs) -> Result<()> {
             .map(|art| {
                 serde_json::json!({
                     "artifactId": art.id,
-                    "hasContent": !art.template.is_empty(),
+                    "hasContent": art.template.as_deref().map(|t| !t.is_empty()).unwrap_or(false),
                     "templateName": art.template_name,
                 })
             })
@@ -798,7 +855,8 @@ fn cmd_templates(a: TemplatesArgs) -> Result<()> {
     }
     println!("Templates ({})", schema.name);
     for art in &schema.artifacts {
-        println!("  ✓ {} → {}", art.id, art.template_name);
+        let sym = if art.template.as_deref().map(|t| !t.is_empty()).unwrap_or(false) { "✓" } else { "✗" };
+        println!("  {sym} {} → {}", art.id, art.template_name);
     }
     Ok(())
 }
@@ -816,33 +874,49 @@ fn cmd_feedback(a: FeedbackArgs) -> Result<()> {
 // --- schema management ---
 
 fn cmd_schema(a: SchemaArgs) -> Result<()> {
+    let paths = core::paths::Paths::discover_cwd();
     match a.command {
         SchemaCommands::Which { name, all: _, json } => {
             let n = name.unwrap_or_else(|| "spec-driven".to_string());
-            match core::schema::resolve(&n) {
-                Some(s) => {
-                    if json {
-                        return print_json(&serde_json::json!({
-                            "name": s.name,
-                            "resolved": "built-in",
-                            "sources": [{ "path": "(embedded in binary)", "source": "built-in" }],
-                        }));
-                    }
-                    println!("Schema: {}", s.name);
-                    println!("  → (embedded in binary) (built-in)");
-                }
-                None => {
-                    // Unknown schema is informational, not an error (exit 0).
-                    println!("Schema: {n}");
-                    println!("Not found.");
+            let sources = core::schema::sources(paths.as_ref(), &n);
+            if sources.is_empty() {
+                // Unknown schema is informational, not an error (exit 0).
+                println!("Schema: {n}");
+                println!("Not found.");
+                return Ok(());
+            }
+            let display = |s: &core::schema::SchemaSource| match &s.path {
+                Some(p) => (p.to_string_lossy().to_string(), s.source),
+                None => ("(embedded in binary)".to_string(), s.source),
+            };
+            if json {
+                let items: Vec<_> = sources
+                    .iter()
+                    .map(|s| {
+                        let (p, src) = display(s);
+                        serde_json::json!({ "path": p, "source": src })
+                    })
+                    .collect();
+                return print_json(&serde_json::json!({
+                    "name": n,
+                    "resolved": sources[0].source,
+                    "sources": items,
+                }));
+            }
+            println!("Schema: {n}");
+            for (i, s) in sources.iter().enumerate() {
+                let (p, src) = display(s);
+                if i == 0 {
+                    println!("  → {p} ({src})");
+                } else {
+                    println!("    {p} ({src})");
                 }
             }
         }
         SchemaCommands::Validate { name, verbose: _, json } => {
             let n = name.unwrap_or_else(|| "spec-driven".to_string());
-            let s = core::schema::resolve(&n);
-            match s {
-                Some(s) => {
+            match core::schema::resolve_with(paths.as_ref(), &n) {
+                Some(Ok(s)) => {
                     let count = s.artifacts.len();
                     if json {
                         return print_json(&serde_json::json!({
@@ -853,17 +927,34 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
                     }
                     println!("✓ Schema '{}' is valid ({count} artifacts)", s.name);
                 }
+                Some(Err(detail)) => {
+                    println!("Schema '{n}' is invalid: {detail}");
+                    bail!("Schema validation failed: {detail}");
+                }
                 None => {
-                    let detail = format!(
-                        "Schema not found: Schema '{n}' not found in project, user, or built-in locations"
-                    );
+                    let detail = core::schema::not_found_msg(&n);
                     println!("Schema '{n}' is invalid: {detail}");
                     bail!("Schema validation failed: {detail}");
                 }
             }
         }
-        SchemaCommands::Fork { .. } | SchemaCommands::Init { .. } => {
-            bail!("custom schema management is not supported in speclink");
+        SchemaCommands::Fork { source, name, force, json: _ } => {
+            let paths = require_paths()?;
+            let new_name = core::schema::fork(&paths, &source, name.as_deref(), force)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            println!("✓ Forked '{source}' → '{new_name}'");
+        }
+        SchemaCommands::Init { name, description, artifacts, default: _, force } => {
+            let paths = require_paths()?;
+            let dir = core::schema::init_schema(
+                &paths,
+                &name,
+                artifacts.as_deref(),
+                description.as_deref(),
+                force,
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+            println!("✓ Created schema '{name}' at {}", dir.display());
         }
     }
     Ok(())
@@ -872,24 +963,7 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
 // --- config (global) ---
 
 fn global_config_path() -> PathBuf {
-    // Per-OS config-dir convention (mirrors dirs::config_dir): Windows %APPDATA%,
-    // macOS ~/Library/Application Support, Linux $XDG_CONFIG_HOME or ~/.config.
-    let base = if cfg!(windows) {
-        std::env::var("APPDATA").map(PathBuf::from).ok()
-    } else if cfg!(target_os = "macos") {
-        std::env::var("HOME")
-            .map(|h| PathBuf::from(h).join("Library").join("Application Support"))
-            .ok()
-    } else {
-        std::env::var("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .ok()
-            .filter(|p| p.is_absolute())
-            .or_else(|| std::env::var("HOME").map(|h| PathBuf::from(h).join(".config")).ok())
-    };
-    base.unwrap_or_else(|| PathBuf::from("."))
-        .join("speclink")
-        .join("config.yaml")
+    core::config::global_config_dir().join("config.yaml")
 }
 
 fn cmd_config(a: ConfigArgs) -> Result<()> {

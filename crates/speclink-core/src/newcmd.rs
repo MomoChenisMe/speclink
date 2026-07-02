@@ -70,13 +70,12 @@ pub fn new_artifact(
 
     let body = match content {
         Some(c) => c.to_string(),
-        None => {
-            // Empty template from schema.
-            let art = schema
-                .artifact(&artifact_id)
-                .ok_or_else(|| anyhow::anyhow!("no template for {artifact_id}"))?;
-            art.template.to_string()
-        }
+        // Template from the schema; a missing template file (or an artifact the schema doesn't
+        // define) yields an empty file, matching Spectra.
+        None => schema
+            .artifact(&artifact_id)
+            .and_then(|a| a.template.clone())
+            .unwrap_or_default(),
     };
 
     // Validate supplied content structurally (only when content is provided).

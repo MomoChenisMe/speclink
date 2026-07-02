@@ -80,10 +80,12 @@ pub fn find_change(paths: &Paths, name: &str) -> Option<Change> {
 
 /// Whether an artifact's output exists and has content.
 pub fn artifact_done(change_dir: &Path, artifact: &Artifact) -> bool {
-    match artifact.id {
-        "specs" => spec_files(change_dir).iter().any(|p| util::has_content(p)),
-        _ => util::has_content(&change_dir.join(artifact.output_path)),
+    // Done-ness is EXISTS-based — an empty file counts (matches Spectra). A glob-style output
+    // (e.g. "specs/**/*.md") is done when any matching file exists.
+    if artifact.output_path.contains("**") {
+        return !spec_files(change_dir).is_empty();
     }
+    change_dir.join(&artifact.output_path).is_file()
 }
 
 /// All delta spec files under a change's specs/ directory.
@@ -138,19 +140,15 @@ pub fn has_delta_operation(text: &str) -> bool {
     op_requirement_count(text) > 0
 }
 
-/// Capability names present as delta specs (directory names under specs/ whose spec.md contains a
-/// real ADDED/MODIFIED/REMOVED operation).
+/// Capability names present as delta specs — directory names under specs/ whose spec.md FILE
+/// exists (empty or op-less files count, matching Spectra's show/archive listing).
 pub fn delta_capabilities(change_dir: &Path) -> Vec<String> {
     let specs = change_dir.join("specs");
     let mut caps = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&specs) {
         for entry in entries.flatten() {
-            if entry.path().is_dir() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                let spec = entry.path().join("spec.md");
-                if crate::util::read_opt(&spec).map(|t| has_delta_operation(&t)).unwrap_or(false) {
-                    caps.push(name);
-                }
+            if entry.path().is_dir() && entry.path().join("spec.md").is_file() {
+                caps.push(entry.file_name().to_string_lossy().to_string());
             }
         }
     }
@@ -181,19 +179,19 @@ pub fn artifact_statuses(schema: &Schema, change_dir: &Path) -> Vec<(String, Art
     // First pass: done-ness.
     let mut done: std::collections::HashMap<&str, bool> = std::collections::HashMap::new();
     for a in &schema.artifacts {
-        done.insert(a.id, artifact_done(change_dir, a));
+        done.insert(a.id.as_str(), artifact_done(change_dir, a));
     }
     // Second pass: ready/blocked based on requires.
     let mut out = Vec::new();
     for a in &schema.artifacts {
-        let status = if *done.get(a.id).unwrap_or(&false) {
+        let status = if *done.get(a.id.as_str()).unwrap_or(&false) {
             ArtifactStatus::Done
-        } else if a.requires.iter().all(|r| *done.get(r).unwrap_or(&false)) {
+        } else if a.requires.iter().all(|r| *done.get(r.as_str()).unwrap_or(&false)) {
             ArtifactStatus::Ready
         } else {
             ArtifactStatus::Blocked
         };
-        out.push((a.id.to_string(), status));
+        out.push((a.id.clone(), status));
     }
     out
 }
