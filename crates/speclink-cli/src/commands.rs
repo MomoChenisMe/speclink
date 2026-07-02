@@ -571,8 +571,8 @@ fn cmd_archive(a: ArchiveArgs) -> Result<()> {
     if outcome.snapshot_created {
         println!("Snapshot created for unarchive support.");
     }
-    if let Some(slug) = &outcome.archived_discussion {
-        println!("Discussion archived: {slug} → discussions/archive/{slug}");
+    if let Some((slug, file)) = &outcome.archived_discussion {
+        println!("Discussion archived: {slug} → discussions/archive/{file}");
     }
     Ok(())
 }
@@ -1203,16 +1203,22 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             println!("  Topic: {}", info.topic);
             println!("  Path: {}", info.path);
         }
-        DiscussCommands::List { json } => {
-            let items = core::discuss::list_discussions(&paths);
+        DiscussCommands::List { archived, json } => {
+            let items = if archived {
+                core::discuss::list_archived(&paths)
+            } else {
+                core::discuss::list_discussions(&paths)
+            };
             if json {
                 return print_json(&serde_json::json!({ "discussions": items }));
             }
             if items.is_empty() {
-                println!("No discussions found.");
+                let what = if archived { "archived discussions" } else { "discussions" };
+                println!("No {what} found.");
                 return Ok(());
             }
-            println!("Discussions:");
+            let heading = if archived { "Archived discussions:" } else { "Discussions:" };
+            println!("{heading}");
             for d in &items {
                 println!("  • {} [{}] ({} rounds) — {}", d.slug, d.status, d.rounds, d.topic);
             }
@@ -1242,9 +1248,27 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             }
             println!("✓ Concluded discussion '{slug}'");
         }
+        DiscussCommands::Archive { slug, json } => {
+            match core::discuss::archive_discussion(&paths, &slug)? {
+                Some(file) => {
+                    if json {
+                        return print_json(&serde_json::json!({
+                            "slug": slug,
+                            "archived_to": format!("discussions/archive/{file}"),
+                        }));
+                    }
+                    println!("✓ Archived discussion: {slug} → discussions/archive/{file}");
+                }
+                None => bail!("discussion '{slug}' not found"),
+            }
+        }
         DiscussCommands::Promote { slug, name, json } => {
-            if core::discuss::info(&paths, &slug).is_none() {
-                bail!("discussion '{slug}' not found — run `speclink discuss new` first");
+            match core::discuss::info(&paths, &slug) {
+                None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
+                Some(i) if i.archived => {
+                    bail!("discussion '{slug}' is archived — move it out of discussions/archive/ to promote it")
+                }
+                Some(_) => {}
             }
             let change_name = name.unwrap_or_else(|| slug.clone());
             let schema = core::config::WorkflowConfig::load(&paths.workflow_config()).schema_name();

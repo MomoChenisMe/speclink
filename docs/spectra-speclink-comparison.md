@@ -242,3 +242,30 @@ speclink 據此重做儲存層：`in-progress add` 現在寫入 `.git/speclink-a
 
 - 雙沙盒 harness：8 情境（無 commit drift、有 commit＋回溯 created drift、created 缺失 drift、ADDED 歸檔＋.started、MODIFIED-only 歸檔、無 delta 歸檔、零效果 MODIFIED 歸檔、--skip-specs 歸檔）之 stdout、drift JSON、工作目錄樹與逐位元內容、canonical specs 全部一致。
 - 完整 parity suite：31/31 通過。
+
+## 19. discuss 版面重構（方案 A）與文件規則（Fable 5）
+
+speclink 專屬功能（spectra 無對應物），依討論決議採「扁平化 + 補齊生命週期」：
+
+### 版面
+
+- 討論文件：`openspec/discussions/<slug>.md`（原 `<slug>/discussion.md` 的一夾一檔間接層移除）。
+- 歸檔：`openspec/discussions/archive/<created>-<slug>.md` —— 與 `changes/archive/` 相同的日期前綴慣例；slug 因此可重用。同日同 slug 再歸檔時自動加 `-N` 後綴（co-archival 永不因撞名而失敗或靜默略過）。
+
+### 生命週期補齊
+
+- 新增 `speclink discuss archive <slug>`：手動歸檔「討論完決定不做」的討論（原本唯一歸檔路徑是隨 promote 的 change 連帶歸檔）。
+- 新增 `speclink discuss list --archived`；`show`/`info`/`conclusion_text` 自動 fallback 到 archive（取最新版本）。
+- 對已歸檔討論的寫入操作（add-round/conclude/promote）給出明確錯誤（區分「已歸檔」與「不存在」）；promote 的檢查提前到建立 change 之前，避免留下半成品。
+- co-archival 輸出改為實際歸檔檔名：`Discussion archived: <slug> → discussions/archive/<created>-<slug>.md`。
+
+### 文件規則（蘇格拉底式紀錄的結構化）
+
+寫入 skill（討論進行規則原已完備：一次一問、具體選項、不空洞附和、收斂強制）與文件模板註解：
+
+1. **每輪一個焦點**：一輪紀錄只蒸餾一個被檢驗的問題與其結論，不是逐字稿。
+2. **Append-only**：不回改先前輪次；立場改變開新一輪，寫明改變了什麼、為什麼。
+3. **記錄否決與理由**：被淘汰的選項連同淘汰原因入檔——防止未來重新翻案。
+4. **未決問題帳本**：每輪以未決問題收尾、下一輪從中取題；結論必須逐一解決或明示延後（Deferred）。
+
+round 範本改為 `**Focus** / **Position** / **Ruled out** / **Open**` 四欄；conclusion 範本增加 `**Rejected alternatives**` 與 `**Deferred**`。repo 內既有兩筆討論已遷移至新版面。驗證：8 項生命週期功能測試通過、parity suite 31/31。
