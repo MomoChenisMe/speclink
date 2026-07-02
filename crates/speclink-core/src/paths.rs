@@ -80,9 +80,6 @@ impl Paths {
     pub fn snapshots_dir(&self) -> PathBuf {
         self.work_dir().join("snapshots")
     }
-    pub fn in_progress_file(&self) -> PathBuf {
-        self.work_dir().join("in_progress.json")
-    }
     pub fn change_dir(&self, name: &str) -> PathBuf {
         self.changes_dir().join(name)
     }

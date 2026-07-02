@@ -11,3 +11,4 @@ serde_yaml.workspace = true
 chrono.workspace = true
 regex.workspace = true
 anyhow.workspace = true
+rusqlite = { version = "0.40.1", features = ["bundled"] }
