@@ -154,4 +154,20 @@ Speclink 目前的設計已為此鋪路：
 
 ## 12. 結論
 
-Speclink 在**所有共同功能面**與 Spectra 2.3.1 的 CLI 邏輯、流程、輸出結果、技能內容、功能結構與流程邏輯**保持一致**（經 5 輪對抗式審計逐一對齊，殘留僅純 cosmetic 空白差異），且以 Rust 原生 workspace（`speclink-core` + `speclink-cli`）實作、單一執行檔散布（release 約 6.5MB，與 spectra 8.35MB 相當）。與 Spectra 的差異全部落在需求指定的取捨：移除 debug/ask/向量搜尋/worktree/park-unpark/parallel_tasks/claude_effort，並強化 discuss 為可記錄、可作為 propose 來源的延續性討論。端到端以 speclink 完整跑過 discuss→propose→apply→archive，建出可玩的 HTML 彈珠檯（`pinball/index.html`，經模擬 DOM 測試驗證六項需求全數成立），證明整條 SDD 流程可用。
+Speclink 在**所有共同功能面**與 Spectra 2.3.1 的 CLI 邏輯、流程、輸出結果、技能內容、功能結構與流程邏輯**保持一致**（經多輪對抗式審計逐一對齊，殘留僅純 cosmetic 空白差異），且以 Rust 原生 workspace（`speclink-core` + `speclink-cli`）實作、單一執行檔散布（release 約 6.8MB，與 spectra 8.35MB 相當）。與 Spectra 的差異全部落在需求指定的取捨：移除 debug/ask/向量搜尋/worktree/park-unpark/parallel_tasks/claude_effort，並強化 discuss 為可記錄、可作為 propose 來源的延續性討論。端到端以 speclink 完整跑過 discuss→propose→apply→archive，建出可玩的 HTML 彈珠檯（`pinball/index.html`，經模擬 DOM 測試驗證六項需求全數成立），證明整條 SDD 流程可用。
+
+## 13. 二次整體驗證（Fable 5 覆核）
+
+在十輪對抗式審計之後，另以獨立視角對成品做整體覆核，發現並修正了審計遺漏的四項問題（提交 `859f3fe`）：
+
+1. **跨平臺 bug（嚴重）**：`config` 全域設定路徑只讀 Windows 的 `%APPDATA%`，在 macOS/Linux 會 fallback 到當前目錄。已改為各平臺慣例（Windows `%APPDATA%`、macOS `~/Library/Application Support`、Linux `$XDG_CONFIG_HOME` 或 `~/.config`）。程式其餘部分（PathBuf 拼接、`str::lines()` 的 CRLF 容忍、`git` 子程序、`include_str!` 資產）皆為平臺中立，無其他平臺相依碼。
+2. **completion install/uninstall 是假輸出**：原本印「✓ Completion installed」，但 spectra 實際上不寫入 shell profile，而是印三行指引（generate → source）。已照抄 spectra 的指引訊息與 unknown-shell 錯誤（elvish 有支援但錯誤訊息刻意不列，照抄）。十輪審計只比對了 `--help`，未比對實際輸出。
+3. **`unlocks` 排序**：spectra 依顯示順序（拓撲層級+字母序，`["design","specs"]`），speclink 原依 schema 宣告順序。已修正。DAG 全狀態矩陣（5 狀態 × 4 artifact 的 dependencies/unlocks + status）重驗 **25/25 一致**。
+4. **本專案 `openspec/config.yaml` 規則不全**：原僅 proposal/tasks 有 rules，已補 design/specs，四類 artifact 注入皆驗證有效。
+
+另釐清兩個事實：
+
+- **`.spectra` 儲存位置**：spectra 2.3.1 的常規狀態（snapshots、touched）放在**專案根目錄 `.spectra/`**——speclink 的根目錄 `.speclink/` 正確對應此行為。`.git/spectra-app/spectra.db` 是 **park/unpark 功能專用的 SQLite 資料庫**（連 `list --parked` 都會惰性建立），而 park/unpark 是本專案指定移除的功能，故 speclink 無需對應物。
+- **`tdd`/`audit` 的作用機制**：實測 spectra 在 `tdd: true`/`audit: true` 時，`instructions apply` 的 JSON 與文字輸出**完全不變**——這兩個旗標是純技能層協議：apply 技能指示 AI 讀取 `.spectra.yaml`，若為 true 則呼叫 `instructions --skill tdd|audit` 取得紀律指令。speclink 的對應鏈（技能引用 + `--skill tdd|audit` 指令，經品牌正規化後與 spectra 逐字一致）完整可用。
+
+**已知功能缺口（如實揭露）**：spectra 具有 `schema fork` / `schema init`（專案層自訂 workflow schema，存於 `openspec/schemas/<name>/schema.yaml` + `templates/`，`schemas` 列為 `(project)`、`new change --schema` 可用）；speclink 目前對這兩個子指令回報「custom schema management is not supported in speclink」。此功能不在移除清單上，屬審計未覆蓋的缺口，列為下一階段工作（設計建議見 §11 的延伸方向：以 serde_yaml 載入 schema.yaml，解析順序 project → user → built-in，`fork` 即傾印內建 schema 為 YAML）。
