@@ -42,7 +42,7 @@ fn tier(schema: &Schema, id: &str, memo: &mut std::collections::HashMap<String, 
 }
 
 /// Artifacts in status display order (topological, alphabetical tiebreak).
-fn display_order(schema: &Schema) -> Vec<&crate::schema::Artifact> {
+pub fn display_order(schema: &Schema) -> Vec<&crate::schema::Artifact> {
     let mut memo = std::collections::HashMap::new();
     let mut arts: Vec<&crate::schema::Artifact> = schema.artifacts.iter().collect();
     arts.sort_by(|a, b| {

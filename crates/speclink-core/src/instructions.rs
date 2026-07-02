@@ -78,9 +78,9 @@ pub fn build_artifact(
     let unlocks: Vec<String> = if self_done {
         Vec::new()
     } else {
-        schema
-            .artifacts
-            .iter()
+        // Listed in display order (topological tier, alphabetical tiebreak), matching Spectra.
+        crate::status::display_order(schema)
+            .into_iter()
             .filter(|y| y.id != artifact.id)
             .filter(|y| y.requires.iter().any(|r| *r == artifact.id))
             .filter(|y| !model::artifact_done(&change.dir, y))

@@ -16,6 +16,14 @@ rules:
   proposal:
     - Keep the proposal focused on player-facing behavior, not rendering internals
     - Always list the physics and input capabilities explicitly
+  design:
+    - Record physics constants (gravity, restitution, flipper torque) with concrete numeric values and units
+    - State the collision-detection approach per object type (walls, flippers, bumpers) and why
+    - Keep everything inside a single-file constraint — no design may introduce a build step or external asset
+  specs:
+    - Every scenario's WHEN/THEN must use observable game state (score, ball position, lives), never internal variable names
+    - Requirements about input must cover both primary keys (ArrowLeft/ArrowRight/Space) and alternate keys (A/L)
+    - Timing-sensitive behavior must state the expectation in frames or milliseconds at the 60fps baseline
   tasks:
     - Each task must name the concrete function or game-loop phase it implements
     - Include a manual verification step describing what to click or observe in the browser
