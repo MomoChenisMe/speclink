@@ -9,15 +9,16 @@ use serde::Serialize;
 
 const ANCHOR_CAP: usize = 50;
 
-/// Stopwords filtered out of symbol-anchor extraction (common type/keyword names).
-// Spectra filters only a narrow set of std Rust type/trait names (plus a few acronyms) — it does
-// NOT filter ordinary English words (e.g. "The") or serde derives (e.g. "Serialize").
+/// Stopwords filtered out of symbol-anchor extraction (probed against Spectra word by word).
+// Spectra filters Rust type/keyword names and the GWT keywords, but KEEPS ordinary English
+// words ("The", "Also", "Should", …) and — surprisingly — Eq/Ord/PartialEq/PartialOrd.
 const STOPWORDS: &[&str] = &[
     "Context", "State", "Result", "Error", "Option", "Vec", "Rust", "JSON", "CLI", "API",
     "Box", "String", "Self", "Ok", "Err", "Some", "None",
-    // std traits that double as common words.
-    "Display", "Default", "Debug", "Clone", "Copy", "PartialEq", "Eq", "PartialOrd", "Ord",
+    "Display", "Default", "Debug", "Clone", "Copy",
     "From", "Into", "Iterator", "Send", "Sync", "Sized",
+    "Given", "When", "Then",
+    "Struct", "Enum", "Trait", "Type", "Path", "Value", "Item", "Fn",
 ];
 
 #[derive(Debug, Serialize)]
@@ -60,35 +61,54 @@ fn extract_anchors(design: &str) -> Vec<String> {
         }
         seen.insert(w.to_string());
     }
+    // Backticked code spans additionally contribute their LEADING identifier when it is
+    // camelCase (lowercase start, at least one internal uppercase): `pressKey(code)` yields
+    // pressKey, but `dotted.pathToken` and `under_scoreCamel` yield nothing (matches Spectra).
+    let span = Regex::new(r"`([A-Za-z_][A-Za-z0-9_]*)[^`]*`").unwrap();
+    let camel = Regex::new(r"^[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*$").unwrap();
+    for m in span.captures_iter(design) {
+        let ident = &m[1];
+        if camel.is_match(ident) && !STOPWORDS.contains(&ident) {
+            seen.insert(ident.to_string());
+        }
+    }
     seen.into_iter().take(ANCHOR_CAP).collect()
 }
 
-/// Whether a symbol appears anywhere in the project source (excluding spec/work dirs).
-fn symbol_in_repo(paths: &Paths, symbol: &str) -> bool {
-    let code_exts = [
-        "rs", "ts", "tsx", "jsx", "svelte", "js", "py", "go", "java", "c", "cpp", "h", "hpp",
-        "html", "css", "vue", "rb",
-    ];
-    for file in util::walk_files(&paths.root) {
-        let s = util::to_slash(&file);
-        if s.contains("/.git/") || s.contains("/.speclink/") || s.contains("/openspec/") {
-            continue;
-        }
-        let ext_ok = file
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| code_exts.contains(&e))
-            .unwrap_or(false);
-        if !ext_ok {
-            continue;
-        }
-        if let Ok(content) = std::fs::read_to_string(&file) {
-            if content.contains(symbol) {
-                return true;
+/// Work-tree contents of tracked `*.md` / `*.txt` documents (via `git ls-files`).
+fn tracked_doc_contents(paths: &Paths) -> Vec<String> {
+    let Some(list) = util::git(&paths.root, &["ls-files"]) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for line in list.lines() {
+        let f = line.trim();
+        if f.ends_with(".md") || f.ends_with(".txt") {
+            if let Ok(content) = std::fs::read_to_string(paths.root.join(f)) {
+                out.push(content);
             }
         }
     }
-    false
+    out
+}
+
+/// Whether an anchor matches (whole-word, case-sensitive) in the search corpus — mirrors
+/// Spectra: the committed content of ALL tracked files (HEAD) plus the work-tree content of
+/// tracked markdown/text documents. Note this means a committed design.md makes its own
+/// anchors trivially "found"; broken anchors only surface while the design is uncommitted.
+fn symbol_found(paths: &Paths, doc_contents: &[String], symbol: &str) -> bool {
+    // ASCII word boundary, matching `git grep --word-regexp` semantics.
+    let re = Regex::new(&format!(r"(?-u:\b){}(?-u:\b)", regex::escape(symbol)));
+    if let Ok(re) = re {
+        if doc_contents.iter().any(|c| re.is_match(c)) {
+            return true;
+        }
+    }
+    util::git(
+        &paths.root,
+        &["grep", "-q", "--word-regexp", "--fixed-strings", symbol, "HEAD"],
+    )
+    .is_some()
 }
 
 pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
@@ -115,9 +135,10 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     // Spectra's CLI never populates last_commit (it is an app-side field).
     let last_commit: Option<String> = None;
 
+    let doc_contents = tracked_doc_contents(paths);
     let mut broken = Vec::new();
     for a in &anchors {
-        if !symbol_in_repo(paths, a) {
+        if !symbol_found(paths, &doc_contents, a) {
             broken.push(BrokenAnchor {
                 anchor: a.clone(),
                 category: "Symbol".to_string(),

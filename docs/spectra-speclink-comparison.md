@@ -285,3 +285,22 @@ round 範本改為 `**Focus** / **Position** / **Ruled out** / **Open**` 四欄�
 - 新增 `speclink discuss context <slug> --stdin`；`conclusion_text` 會剝除 HTML 註解（佔位註解不算內容，promote 的 Why 預填不會拿到註解）。
 - add-round 在骨架文件中插入 `### Round N` 至 Rounds 區段尾端；舊版面（pre-scaffold）文件自動 fallback 為舊式尾端附加，讀取端同時容忍 `## Round`/`### Round` 兩種標題。
 - repo 內既存的 live 討論已遷移至新骨架（歸檔者凍結不動）。
+
+## 20. 最終雙流程測試（炸彈超人）發現的 parity 缺口（Fable 5）
+
+以全新雙沙盒跑完整 SDD 流程（討論→propose→apply⇄ingest→drift→verify→archive），逐階段位元級
+比對。真實內容（中文 spec、camelCase、多次 task done）觸發 5 個先前 suite 未覆蓋的缺口，皆已修復：
+
+1. **analyzer 具體性判定**：行內含 ASCII 數字「或反引號或雙引號」即 concrete（單引號/全形引號/
+   全形數字/場景名稱不算）。speclink 原僅認數字。
+2. **touched 差量歸因**：`task done` 僅記錄未被先前任務歸因的髒檔；無新檔則不追加任何 entry。
+3. **drift anchor 語料**：HEAD 已提交內容（全部檔案）∪ 已追蹤 md/txt 工作樹內容（`git ls-files`）；
+   全字、區分大小寫。副作用：design.md 提交後 anchor 自我命中 → Structure 恆 0 broken（如實復刻）。
+4. **drift stopwords**：逐詞探測 85 候選定案（過濾 Rust 型別詞＋Given/When/Then＋Struct/Enum/
+   Trait/Type/Path/Value/Item/Fn；保留 The/Eq/Ord/PartialEq/PartialOrd 等）。
+5. **drift 反引號 camelCase 抽取**：span 開頭識別字為 camelCase 時亦為 anchor（`pressKey(code)` ✓、
+   `dotted.pathToken` ✗、`under_scoreCamel` ✗）。
+
+驗證：雙流程 9 階段全一致（僅設計內差異：discuss 持久化、from_discussion metadata、co-archival
+輸出行）；canonical specs/快照/歸檔樹逐位元一致；遊戲 QA 28/28；twin harness 8 情境與 parity
+suite 31 項全綠。完整報告見 `docs/sdd-final-report-bomberman.md`。

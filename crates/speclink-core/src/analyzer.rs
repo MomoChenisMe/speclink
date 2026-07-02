@@ -109,7 +109,9 @@ fn parse_delta_spec(text: &str) -> Vec<Requirement> {
                 }
             }
         } else if !t.starts_with('#') {
-            if t.chars().any(|c| c.is_ascii_digit()) {
+            // Concrete = ASCII digits, backticked code, or a double-quoted string (matches
+            // Spectra; single/fullwidth quotes and non-ASCII digits do NOT count).
+            if t.chars().any(|c| c.is_ascii_digit() || c == '`' || c == '"') {
                 if let Some(req) = reqs.last_mut() {
                     if let Some(sc) = req.scenarios.last_mut() {
                         sc.has_concrete = true;
