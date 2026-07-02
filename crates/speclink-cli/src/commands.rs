@@ -1232,6 +1232,14 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             }
             print!("{content}");
         }
+        DiscussCommands::Context { slug, stdin, json } => {
+            let content = if stdin { read_stdin() } else { String::new() };
+            core::discuss::set_context(&paths, &slug, &content)?;
+            if json {
+                return print_json(&serde_json::json!({ "slug": slug, "context": "set" }));
+            }
+            println!("✓ Set context for discussion '{slug}'");
+        }
         DiscussCommands::AddRound { slug, mode, stdin, json } => {
             let content = if stdin { read_stdin() } else { String::new() };
             let round = core::discuss::add_round(&paths, &slug, &mode, &content)?;

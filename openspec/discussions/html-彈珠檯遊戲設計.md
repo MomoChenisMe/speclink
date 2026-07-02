@@ -7,9 +7,21 @@ created: 2026-07-01
 
 # Discussion: HTML 彈珠檯遊戲設計
 
-<!-- Rounds are appended below as the discussion evolves. -->
+<!--
+Document rules:
+- Rounds are appended by `speclink discuss add-round`; never rewrite an earlier round.
+  A changed position gets a new round that names what changed and why.
+- Each round distills one focus question: **Focus** / **Position** / **Ruled out** / **Open**.
+- The conclusion must resolve or explicitly defer every open question left by the rounds.
+-->
 
-## Round 1 — assumptions (2026-07-01)
+## Context
+
+第一階段測試場景：從零設計一個 HTML 彈珠檯遊戲。掃描程式庫後確認專案內尚無任何遊戲程式碼（只有 speclink 引擎本身），依 openspec/config.yaml 的專案約束（single self-contained HTML file / no build step）採 Assumptions 模式。
+
+## Rounds
+
+### Round 1 — assumptions (2026-07-01)
 
 掃描程式庫：專案內尚無任何遊戲程式碼（只有 speclink 引擎），因此採 Assumptions 模式列出設計假設。
 
@@ -25,7 +37,7 @@ created: 2026-07-01
 
 開放問題：翻板要用固定角度切換還是連續轉動？緩衝器幾顆、加多少分？
 
-## Round 2 — interview (2026-07-01)
+### Round 2 — interview (2026-07-01)
 
 針對開放問題收斂：
 

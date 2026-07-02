@@ -18,6 +18,14 @@ Have a focused discussion about a topic and reach a conclusion.
 
 Unlike an ephemeral chat, **every speclink discussion is persisted to a document** (`{{SPEC_DIR}}discussions/<slug>.md`) so the conversation keeps its thread across turns and sessions, and so a later `/speclink:propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the CLI — never hand-write the file.
 
+The document has a fixed skeleton — like the proposal template, every discussion record has the same shape:
+
+```
+## Context      ← the framing, set once after mode pick (discuss context)
+## Rounds       ← ### Round N entries, appended per exchange (discuss add-round)
+## Conclusion   ← the decision, written at convergence (discuss conclude)
+```
+
 **Document rules** (the record is a Socratic ledger, not a transcript):
 
 1. **One focus per round.** Each recorded round distills exactly one question examined and what it settled — never a dump of everything said.
@@ -36,6 +44,15 @@ Unlike an ephemeral chat, **every speclink discussion is persisted to a document
    speclink discuss new "<topic>"
    ```
    Capture the returned `slug` — every later `add-round`/`conclude` call uses it. Announce briefly: "Recording this discussion as `<slug>`."
+
+**After picking a mode (Step 3)**, fill the Context section once — the framing a future reader (or `propose`) needs before the rounds make sense:
+
+```bash
+speclink discuss context <slug> --stdin <<'CTX_EOF'
+What prompted this discussion, the mode chosen (assumptions | interview) and why,
+and the related changes/specs found by the codebase scout.
+CTX_EOF
+```
 
 **After each round** (each Assumptions list you present, or each interview question-and-answer that moves the topic forward), persist a concise summary so the record shows how the thinking evolved:
 
