@@ -97,17 +97,23 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     let total_anchors = anchors.len();
 
     let git_ok = util::git_available(&paths.root);
-    // Last commit touching the change directory.
-    let last_commit = if git_ok {
+    // Mirrors Spectra's single drift log call verbatim: `git log --since=<created>` with the
+    // created DATE string — including git's approxidate quirk where a bare date fills the
+    // missing time-of-day from the current clock (so same-day changes count ~0 commits).
+    let since_arg = format!("--since={}", change.meta.created.as_deref().unwrap_or(""));
+    let since_log = if git_ok {
         util::git(
             &paths.root,
-            &["log", "-1", "--format=%H"],
+            &["log", &since_arg, "--pretty=format:COMMIT|%H|%at|%s", "--name-only"],
         )
-        .filter(|s| !s.is_empty())
     } else {
         None
     };
-    let git_has_commits = last_commit.is_some();
+    // The log call fails in a repo with no commits — that is what Spectra's
+    // "git unavailable" statuses key off, not `git_available`.
+    let git_has_commits = since_log.is_some();
+    // Spectra's CLI never populates last_commit (it is an app-side field).
+    let last_commit: Option<String> = None;
 
     let mut broken = Vec::new();
     for a in &anchors {
@@ -128,7 +134,9 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     let days = days_old(change.meta.created.as_deref());
 
     // Time dimension
-    let time_status = if git_has_commits {
+    let time_status = if change.meta.created.is_none() {
+        "no created date".to_string()
+    } else if git_has_commits {
         if days > 5 {
             format!("stale ({days}d)")
         } else {
@@ -165,18 +173,27 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     };
 
     // Tasks dimension
+    let tasks_maybe_resolved: Vec<String> = Vec::new();
+    let tasks_blocked_external: Vec<String> = Vec::new();
     let tasks_present = change.dir.join("tasks.md").is_file();
     let tasks_status = if !tasks_present {
         "no tasks.md".to_string()
     } else if git_has_commits {
-        "no task collisions".to_string()
+        format!(
+            "{} blocked, {} maybe-done",
+            tasks_blocked_external.len(),
+            tasks_maybe_resolved.len()
+        )
     } else {
         "git unavailable".to_string()
     };
     let tasks_score = 0;
 
-    // Environment dimension (display only)
-    let commits_since = 0;
+    // Environment dimension (display only): number of commits in the --since window.
+    let commits_since = since_log
+        .as_deref()
+        .map(|o| o.lines().filter(|l| l.starts_with("COMMIT|")).count() as i64)
+        .unwrap_or(0);
     let env_status = format!("{commits_since} commits");
 
     let dimensions = vec![
@@ -233,8 +250,8 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
         last_commit,
         dimensions,
         broken_anchors: broken,
-        tasks_maybe_resolved: Vec::new(),
-        tasks_blocked_external: Vec::new(),
+        tasks_maybe_resolved,
+        tasks_blocked_external,
         commits_since_created: commits_since,
         total_score,
         severity,

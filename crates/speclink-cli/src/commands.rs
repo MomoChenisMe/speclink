@@ -568,7 +568,7 @@ fn cmd_archive(a: ArchiveArgs) -> Result<()> {
             names.join(", ")
         );
     }
-    if outcome.snapshot_created && !outcome.skipped_specs && !outcome.caps.is_empty() {
+    if outcome.snapshot_created {
         println!("Snapshot created for unarchive support.");
     }
     if let Some(slug) = &outcome.archived_discussion {

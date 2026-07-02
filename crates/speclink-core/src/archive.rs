@@ -111,6 +111,8 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
 
     let mut caps = Vec::new();
     let mut created_specs: Vec<String> = Vec::new();
+    let snapshot_dir = paths.snapshots_dir().join(&dated_name);
+    let mut snapshot_created = false;
 
     if !opts.skip_specs {
         for cap in model::delta_capabilities(&change.dir) {
@@ -120,6 +122,17 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
 
             let canonical_path = paths.specs_dir().join(&cap).join("spec.md");
             let existed = canonical_path.exists();
+            if existed {
+                // Back up the pre-apply canonical spec for unarchive support (matches Spectra:
+                // snapshots/<date>-<name>/specs/<cap>/spec.md holds the previous bytes).
+                let backup_path = snapshot_dir.join("specs").join(&cap).join("spec.md");
+                if let Some(parent) = backup_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::copy(&canonical_path, &backup_path)
+                    .map_err(|e| anyhow::anyhow!("Failed to backup spec: {e}"))?;
+                snapshot_created = true;
+            }
             let counts = apply_delta_to_canonical(
                 &canonical_path,
                 &cap,
@@ -129,23 +142,35 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
                 &trace_files,
             )?;
             if !existed {
-                created_specs.push(format!("specs/{cap}/spec.md"));
+                created_specs.push(cap.clone());
             }
             caps.push(counts);
         }
     }
 
-    // Snapshot for unarchive support.
-    let snapshot_dir = paths.snapshots_dir().join(&dated_name);
-    let snapshot = serde_json::json!({ "created_specs": created_specs });
-    util::write_file(
-        &snapshot_dir.join("created_specs.json"),
-        &serde_json::to_string_pretty(&snapshot).unwrap_or_default(),
-    )?;
+    // Snapshot manifest: a bare array of created capability names, written only when a spec
+    // was created (matches Spectra byte-for-byte: `["cap-x"]`, no trailing newline).
+    if !created_specs.is_empty() {
+        util::write_file(
+            &snapshot_dir.join("created_specs.json"),
+            &serde_json::to_string(&created_specs)
+                .map_err(|e| anyhow::anyhow!("Failed to serialize created_specs: {e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to write created_specs.json: {e}"))?;
+        snapshot_created = true;
+    }
 
     // Move change dir into archive.
     std::fs::create_dir_all(paths.archive_dir())?;
     std::fs::rename(&change.dir, &archive_target)?;
+
+    // Clear the app-side "started" marker for this change, if present (matches Spectra).
+    let _ = std::fs::remove_file(
+        paths
+            .work_dir()
+            .join("changes")
+            .join(format!("{}.started", change.name)),
+    );
 
     // Stamp archived_by / archived_at into the archived change metadata.
     let meta_path = archive_target.join(".openspec.yaml");
@@ -172,7 +197,7 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
         change_name: change.name.clone(),
         dated_name,
         caps,
-        snapshot_created: true,
+        snapshot_created,
         skipped_specs: opts.skip_specs,
         archived_discussion,
     })
@@ -276,6 +301,9 @@ fn apply_delta_to_canonical(
         out.push_str("## Requirements\n\n");
         let joined: Vec<String> = blocks.iter().map(|b| b.trim_end().to_string()).collect();
         out.push_str(&joined.join("\n\n---\n"));
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
         util::write_file(canonical_path, &out)?;
         return Ok(counts);
     }
@@ -334,6 +362,9 @@ fn apply_delta_to_canonical(
         .unwrap_or(false);
     if last_removed && !blocks.is_empty() {
         out.push_str("\n\n---\n");
+    }
+    if !out.ends_with('\n') {
+        out.push('\n');
     }
     util::write_file(canonical_path, &out)?;
     Ok(counts)
