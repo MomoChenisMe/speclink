@@ -539,8 +539,8 @@ fn cmd_archive(a: ArchiveArgs) -> Result<()> {
         no_validate: a.no_validate,
         mark_tasks_complete: a.mark_tasks_complete,
     };
+    // Spectra leaves the in-progress marker untouched on archive; so do we.
     let outcome = core::archive::archive(&paths, &change, &opts)?;
-    let _ = core::inprogress::remove(&paths, &change.name);
 
     println!("✓ Archived: {} → {}", outcome.change_name, outcome.dated_name);
     if !outcome.caps.is_empty() {

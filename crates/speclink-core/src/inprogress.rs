@@ -1,51 +1,91 @@
-//! In-progress change markers (file-based; replaces Spectra's SQLite table).
+//! In-progress change markers — stored in `.git/speclink-app/speclink.db` (SQLite), the same
+//! storage approach Spectra uses (`.git/spectra-app/spectra.db`). The database is created lazily
+//! by the first `in-progress add`; Spectra creates the `.git` directory itself when the project
+//! is not a git repository, and so do we.
 
 use crate::paths::Paths;
-use crate::util;
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct InProgress {
-    #[serde(default)]
-    changes: Vec<String>,
+/// Exact bootstrap DDL Spectra's CLI uses (verbatim, including whitespace, so the schema text
+/// stored in sqlite_master matches). `parked_changes` exists for schema compatibility only —
+/// the park feature itself is removed from speclink.
+const BOOTSTRAP_DDL: &str = "CREATE TABLE parked_changes (
+            change_id TEXT PRIMARY KEY,
+            original_modified INTEGER,
+            tasks_total INTEGER DEFAULT 0,
+            tasks_done INTEGER DEFAULT 0,
+            has_proposal INTEGER DEFAULT 0,
+            has_tasks INTEGER DEFAULT 0,
+            created_by TEXT,
+            created_with TEXT
+        );
+CREATE TABLE in_progress_change (
+            change_id TEXT PRIMARY KEY
+        );";
+
+fn app_dir(paths: &Paths) -> PathBuf {
+    paths.root.join(".git").join("speclink-app")
 }
 
-fn load(paths: &Paths) -> InProgress {
-    match util::read_opt(&paths.in_progress_file()) {
-        Some(s) => serde_json::from_str(&s).unwrap_or_default(),
-        None => InProgress::default(),
+/// Open (creating on first use) the app database, mirroring Spectra's bootstrap:
+/// `.migrate.lock` marker + minimal two-table schema + one-time legacy migration.
+fn open_db(paths: &Paths) -> Result<rusqlite::Connection> {
+    let dir = app_dir(paths);
+    std::fs::create_dir_all(&dir)?;
+    let lock = dir.join(".migrate.lock");
+    if !lock.exists() {
+        std::fs::write(&lock, b"")?;
     }
+    let conn = rusqlite::Connection::open(dir.join("speclink.db"))?;
+    let have: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='in_progress_change'",
+        [],
+        |r| r.get(0),
+    )?;
+    if have == 0 {
+        conn.execute_batch(BOOTSTRAP_DDL)?;
+    }
+    migrate_legacy(paths, &conn)?;
+    Ok(conn)
 }
 
-fn save(paths: &Paths, ip: &InProgress) -> Result<()> {
-    let json = serde_json::to_string_pretty(ip)?;
-    util::write_file(&paths.in_progress_file(), &json)?;
+/// One-time import of the legacy `.speclink/in_progress.json` (the pre-SQLite storage), stamped
+/// with a `.migrated` marker like Spectra's migration pass.
+fn migrate_legacy(paths: &Paths, conn: &rusqlite::Connection) -> Result<()> {
+    let done = app_dir(paths).join(".migrated");
+    if done.exists() {
+        return Ok(());
+    }
+    let legacy = paths.work_dir().join("in_progress.json");
+    if let Some(text) = crate::util::read_opt(&legacy) {
+        #[derive(serde::Deserialize, Default)]
+        struct Legacy {
+            #[serde(default)]
+            changes: Vec<String>,
+        }
+        let parsed: Legacy = serde_json::from_str(&text).unwrap_or_default();
+        for name in parsed.changes {
+            conn.execute(
+                "INSERT OR IGNORE INTO in_progress_change (change_id) VALUES (?1)",
+                [&name],
+            )?;
+        }
+        let _ = std::fs::remove_file(&legacy);
+        // The marker is only stamped when a migration actually ran — a fresh project's
+        // app dir holds just .migrate.lock + the db, exactly like Spectra's.
+        std::fs::write(&done, b"")?;
+    }
     Ok(())
 }
 
-/// Mark a change as in-progress (idempotent).
+/// Mark a change as in-progress. Silent and idempotent; the name is not validated against
+/// existing changes and the marker survives archive — all matching Spectra.
 pub fn add(paths: &Paths, name: &str) -> Result<()> {
-    let mut ip = load(paths);
-    if !ip.changes.iter().any(|c| c == name) {
-        ip.changes.push(name.to_string());
-        save(paths, &ip)?;
-    }
-    Ok(())
-}
-
-/// Whether a change is marked in-progress.
-pub fn is_in_progress(paths: &Paths, name: &str) -> bool {
-    load(paths).changes.iter().any(|c| c == name)
-}
-
-/// Remove a change from the in-progress set (used on archive).
-pub fn remove(paths: &Paths, name: &str) -> Result<()> {
-    let mut ip = load(paths);
-    let before = ip.changes.len();
-    ip.changes.retain(|c| c != name);
-    if ip.changes.len() != before {
-        save(paths, &ip)?;
-    }
+    let conn = open_db(paths)?;
+    conn.execute(
+        "INSERT OR IGNORE INTO in_progress_change (change_id) VALUES (?1)",
+        [name],
+    )?;
     Ok(())
 }

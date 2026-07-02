@@ -183,3 +183,15 @@ Speclink 在**所有共同功能面**與 Spectra 2.3.1 的 CLI 邏輯、流程�
 **spec 語言可設定（刻意偏離 spectra）**：spectra 強制 spec 檔一律英文；speclink 改為 `.speclink.yaml`／`openspec/config.yaml` 的 `spec_locale`（未設 → 英文、`auto` → 跟隨 `locale`、任何語言碼 → 該語言），結構性標記（`### Requirement:`、`#### Scenario:`、WHEN/THEN、SHALL/MUST）恆為英文以保工具可解析。與 tdd/audit 相同為技能層協議；specs instruction、propose/ingest 技能與 fork 傾印文字已同步。此為刻意差異，對照工具已將該段文字列入已知正規化。
 
 第二階段回歸：8 主題 × 6 指令 48/48、完整對照套件 31/31、自訂 schema 邊界 128/128。
+
+## 15. 儲存層對齊：`.git/speclink-app/speclink.db`（SQLite）
+
+針對「內部儲存也應與 spectra 同一做法」的要求，對 spectra **全部 22 個指令**做了逐一副作用普查（每個指令執行後快照工作樹與 `.git/`），確定事實如下：
+
+- CLI 建立的 `spectra.db` 只有**兩張表**（`parked_changes` + `in_progress_change`）——先前在使用者專案看到的 14 表資料庫是**桌面 App** 遷移擴充的（archived_cache、documents_fts、worktree 等全是 App/已移除功能專屬，CLI 從不讀寫）。
+- 唯一由 CLI 寫入 DB 的保留功能是 `in-progress add`：惰性建立 `.git/spectra-app/`（**非 git 專案會自行建立 `.git/` 目錄**）、寫入 `.migrate.lock` 與 db、靜默、冪等、不驗證變更存在、多筆共存、**archive 不清除標記**。
+- 其餘指令的副作用與 speclink 完全一致（唯二差異是刻意移除的 ask/debug 技能檔）。
+
+speclink 據此重做儲存層：`in-progress add` 現在寫入 `.git/speclink-app/speclink.db`，bootstrap DDL 與 spectra **逐位元組相同**（含 sqlite_master 中的縮排；`parked_changes` 表為結構相容而建、功能仍移除），`.migrate.lock` 時機一致，非 git 專案行為一致，archive 不再清除標記（修正了先前的自創行為）。舊 `.speclink/in_progress.json` 會在首次開啟 DB 時自動匯入並刪除（僅實際遷移時寫 `.migrated`，與 spectra 的遷移標記語意一致）。`.speclink/`（touched、snapshots）維持不變——那本來就是 spectra 的檔案式做法。
+
+驗證：DDL 逐字比對相同、app 目錄檔案集合相同、副作用普查 1:1、8 主題與完整對照套件全綠。依賴新增 rusqlite（bundled SQLite，維持單一執行檔、跨平臺）。
