@@ -129,6 +129,55 @@ pub fn add_round(paths: &Paths, slug: &str, mode: &str, content: &str) -> Result
     Ok(round_no)
 }
 
+/// The text of the `## Conclusion` section, if the discussion has one.
+pub fn conclusion_text(paths: &Paths, slug: &str) -> Option<String> {
+    let text = util::read_opt(&discussion_path(paths, slug))?;
+    let idx = text.find("## Conclusion")?;
+    let body = text[idx..].lines().skip(1).collect::<Vec<_>>().join("\n");
+    let body = body.trim().to_string();
+    (!body.is_empty()).then_some(body)
+}
+
+/// Mark a discussion as promoted to a change (the discussion side of the bidirectional link).
+pub fn mark_promoted(paths: &Paths, slug: &str, change: &str) -> Result<()> {
+    let path = discussion_path(paths, slug);
+    let mut text = match util::read_opt(&path) {
+        Some(t) => t,
+        None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
+    };
+    for from in ["status: open", "status: concluded"] {
+        if text.contains(from) {
+            text = text.replacen(from, "status: promoted", 1);
+            break;
+        }
+    }
+    if !text.contains("\npromoted_to:") {
+        text = text.replacen(
+            "status: promoted\n",
+            &format!("status: promoted\npromoted_to: {change}\n"),
+            1,
+        );
+    }
+    util::write_file(&path, &text)?;
+    Ok(())
+}
+
+/// Move a discussion into `discussions/archive/<slug>/`. Returns false when it doesn't exist
+/// (or is already archived).
+pub fn archive_discussion(paths: &Paths, slug: &str) -> Result<bool> {
+    let src = paths.discussions_dir().join(slug);
+    if !src.join("discussion.md").is_file() {
+        return Ok(false);
+    }
+    let dst = paths.discussions_dir().join("archive").join(slug);
+    if dst.exists() {
+        bail!("archived discussion '{slug}' already exists");
+    }
+    std::fs::create_dir_all(paths.discussions_dir().join("archive"))?;
+    std::fs::rename(&src, &dst)?;
+    Ok(true)
+}
+
 /// Append a conclusion section and mark the discussion concluded.
 pub fn conclude(paths: &Paths, slug: &str, content: &str) -> Result<()> {
     let path = discussion_path(paths, slug);

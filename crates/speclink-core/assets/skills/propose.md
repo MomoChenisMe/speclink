@@ -85,6 +85,12 @@ If no argument is provided, the workflow will extract requirements from conversa
    speclink new change "<name>" --agent {{TOOL}}
    ```
 
+   When the proposal is sourced from a discussion document (path (b) in step 1), pass the link so the change records its origin and the discussion is marked `promoted` (it will be archived together with the change later):
+
+   ```bash
+   speclink new change "<name>" --agent {{TOOL}} --from-discussion <slug>
+   ```
+
    If a change with that name already exists, suggest continuing the existing change instead of creating a new one.
 
 5. **Write the proposal**

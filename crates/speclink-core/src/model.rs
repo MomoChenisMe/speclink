@@ -14,6 +14,9 @@ pub struct ChangeMeta {
     pub created_by: Option<String>,
     #[serde(default)]
     pub created_with: Option<String>,
+    /// Slug of the discussion this change was promoted from (speclink extension).
+    #[serde(default)]
+    pub from_discussion: Option<String>,
 }
 
 impl ChangeMeta {

@@ -14,6 +14,7 @@ pub fn new_change(
     _description: Option<&str>,
     schema: &str,
     agent: Option<&str>,
+    from_discussion: Option<&str>,
 ) -> Result<PathBuf> {
     if !is_kebab_case(name) {
         bail!("Invalid change name '{name}'. Must be kebab-case (e.g., 'add-feature').");
@@ -29,6 +30,9 @@ pub fn new_change(
     }
     if let Some(agent) = agent {
         meta.push_str(&format!("created_with: {agent}\n"));
+    }
+    if let Some(slug) = from_discussion {
+        meta.push_str(&format!("from_discussion: {slug}\n"));
     }
     util::write_file(&dir.join(".openspec.yaml"), &meta)?;
     Ok(dir)
