@@ -67,6 +67,15 @@ CONCLUSION_EOF
 
 This flips the record's `status` to `concluded`. The step logic below (vocabulary load, codebase scout, mode selection, interface depth check, convergence, conclusion capture) is unchanged — recording sits alongside it.
 
+**Fast path**: when the user wants to go straight from the conclusion to a change without a full propose round, offer:
+
+```bash
+speclink discuss promote <slug>            # change name defaults to the slug
+speclink discuss promote <slug> --name <change-name>
+```
+
+This scaffolds the change, prefills the proposal's Why from the conclusion, links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record), and the discussion is archived automatically when the change is archived. The remaining artifacts are still created via `/speclink-propose`.
+
 ---
 
 ## Before You Speak
