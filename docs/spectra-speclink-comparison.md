@@ -170,4 +170,16 @@ Speclink 在**所有共同功能面**與 Spectra 2.3.1 的 CLI 邏輯、流程�
 - **`.spectra` 儲存位置**：spectra 2.3.1 的常規狀態（snapshots、touched）放在**專案根目錄 `.spectra/`**——speclink 的根目錄 `.speclink/` 正確對應此行為。`.git/spectra-app/spectra.db` 是 **park/unpark 功能專用的 SQLite 資料庫**（連 `list --parked` 都會惰性建立），而 park/unpark 是本專案指定移除的功能，故 speclink 無需對應物。
 - **`tdd`/`audit` 的作用機制**：實測 spectra 在 `tdd: true`/`audit: true` 時，`instructions apply` 的 JSON 與文字輸出**完全不變**——這兩個旗標是純技能層協議：apply 技能指示 AI 讀取 `.spectra.yaml`，若為 true 則呼叫 `instructions --skill tdd|audit` 取得紀律指令。speclink 的對應鏈（技能引用 + `--skill tdd|audit` 指令，經品牌正規化後與 spectra 逐字一致）完整可用。
 
-**已知功能缺口（如實揭露）**：spectra 具有 `schema fork` / `schema init`（專案層自訂 workflow schema，存於 `openspec/schemas/<name>/schema.yaml` + `templates/`，`schemas` 列為 `(project)`、`new change --schema` 可用）；speclink 目前對這兩個子指令回報「custom schema management is not supported in speclink」。此功能不在移除清單上，屬審計未覆蓋的缺口，列為下一階段工作（設計建議見 §11 的延伸方向：以 serde_yaml 載入 schema.yaml，解析順序 project → user → built-in，`fork` 即傾印內建 schema 為 YAML）。
+**已知功能缺口（後續已補齊，見 §14）**：spectra 具有 `schema fork` / `schema init`（專案層自訂 workflow schema）；此缺口在第二階段驗證中被發現並已完整實作。
+
+## 14. 第二階段：schema 客製化、discuss 強化、spec 語言（Fable 5）
+
+**釐清 `.spectra` 儲存位置**：spectra 的常規狀態（snapshots、touched）在專案根目錄 `.spectra/`（惰性建立：只有 `task done` 與 `archive` 會建）；`.git/spectra-app/spectra.db`（SQLite，schema v15）僅存 park、share、worktree、ask 全文索引、archived_cache、in-progress 等——幾乎全是移除的功能。唯一保留功能 in-progress 在 speclink 以 `.speclink/in_progress.json` 檔案等價實現。
+
+**自訂 workflow schema（完整實作，128/128 邊界一致）**：speclink 現在完整支援 spectra/OpenSpec 的 schema 客製化——`openspec/schemas/<name>/schema.yaml` + `templates/`，解析順序 project → user（`<設定目錄>/speclink/schemas`）→ built-in；`schema fork`（對內建來源傾印逐位元組相同的 yaml + 四個 template）、`schema init`（線性 requires 串鏈骨架，逐位元組相同）；循環相依偵測與 serde_yaml 錯誤訊息逐字一致。過程中發現並複製了多個 spectra 深層行為：payload 的 schemaName 用 yaml `name:` 欄位（fork 未改名時仍回報 spec-driven）、payload template 按 display name 查內建表（自訂名 → 空字串）而建檔恆用 `templates/` 檔案、**presence/done-ness 一律以檔案存在判定**（空檔算 done；此規則同時修正了 analyzer/status/show/validate/contextFiles 的多個空檔邊界）、analyzer 寫死古典四產物且不解析 schema、只有 status/instructions 解析 schema（analyze/show/validate/drift/task/archive 不解析）、validate 對「存在但零操作」的 delta 檔判 error 並以 exit 1 收尾。
+
+**discuss 三項強化（speclink 專屬）**：`new change --from-discussion <slug>` 建立雙向連結（change 端 `from_discussion:`、討論端 `status: promoted` + `promoted_to:`）；`discuss promote <slug> [--name]` 一鍵從結論 scaffold change（proposal 的 Why 預填結論）；`archive` 時連動把 promoted 討論搬入 `discussions/archive/<slug>/`。propose/discuss 技能已同步更新。
+
+**spec 語言可設定（刻意偏離 spectra）**：spectra 強制 spec 檔一律英文；speclink 改為 `.speclink.yaml`／`openspec/config.yaml` 的 `spec_locale`（未設 → 英文、`auto` → 跟隨 `locale`、任何語言碼 → 該語言），結構性標記（`### Requirement:`、`#### Scenario:`、WHEN/THEN、SHALL/MUST）恆為英文以保工具可解析。與 tdd/audit 相同為技能層協議；specs instruction、propose/ingest 技能與 fork 傾印文字已同步。此為刻意差異，對照工具已將該段文字列入已知正規化。
+
+第二階段回歸：8 主題 × 6 指令 48/48、完整對照套件 31/31、自訂 schema 邊界 128/128。

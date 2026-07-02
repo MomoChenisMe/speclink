@@ -11,6 +11,10 @@ use std::path::Path;
 pub struct AppConfig {
     pub spec_dir: Option<String>,
     pub locale: Option<String>,
+    /// Language for spec files (specs/*/spec.md). Unset → English; "auto" → follow `locale`;
+    /// any locale code → that language. Consumed by the skills (like `tdd`/`audit`).
+    #[serde(default)]
+    pub spec_locale: Option<String>,
     #[serde(default)]
     pub tdd: bool,
     #[serde(default)]
@@ -76,6 +80,8 @@ pub struct WorkflowConfig {
     pub schema: Option<String>,
     pub context: Option<String>,
     pub locale: Option<String>,
+    #[serde(default)]
+    pub spec_locale: Option<String>,
     #[serde(default)]
     pub rules: BTreeMap<String, Vec<String>>,
 }

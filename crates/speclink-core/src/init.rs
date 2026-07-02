@@ -16,6 +16,9 @@ const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # Language for AI-generated artifacts
 # locale: tw
 
+# Language for spec files (default: English; \"auto\" follows locale)
+# spec_locale: auto
+
 # Workflow toggles
 # tdd: true
 # audit: true

@@ -119,8 +119,12 @@ artifacts:
     Examples are optional — the analyzer will suggest adding them for abstract scenarios
     but will not block specs without examples.
 
-    Spec files MUST always be written in English regardless of project locale settings,
-    because they use normative language (SHALL/MUST/WHEN/THEN).
+    Spec file language: English by default. If the project sets `spec_locale` in `.speclink.yaml`
+    (or `openspec/config.yaml`), write spec prose in that language instead — `spec_locale: auto`
+    follows the project `locale`. Regardless of language, structural markers
+    (`## ADDED/MODIFIED/REMOVED/RENAMED Requirements`, `### Requirement:`, `#### Scenario:`,
+    `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST/SHALL NOT/MUST NOT) MUST stay
+    in English so the analyzer and archive tooling can parse them.
   requires:
   - proposal
 - id: design
