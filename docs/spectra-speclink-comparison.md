@@ -211,3 +211,34 @@ speclink 據此重做儲存層：`in-progress add` 現在寫入 `.git/speclink-a
 
 - `.github/workflows/ci.yml`：push/PR 觸發，於 ubuntu/macos/windows 三平臺建置 release binary 並跑 smoke 流程（init → new change → new artifact → status → validate → list → schemas → update），已在本機逐步演練通過。
 - `.github/workflows/release.yml`：推送 `v*` 標籤觸發，矩陣建置五個目標（Windows x64 MSVC、Linux x64 gnu（ubuntu-22.04 保守 glibc 基線）、Linux arm64、macOS arm64、macOS x64（同機交叉編譯））、打包 zip/tar.gz、產生 SHA256SUMS、以 softprops/action-gh-release 建立 GitHub Release。rusqlite 採 bundled SQLite，各平臺 C 編譯器（MSVC/gcc/clang）皆為 runner 內建，無額外依賴。
+
+## 18. 工作目錄（`.spectra`/`.speclink`）與 drift/archive 副作用對齊（Fable 5）
+
+由「兩個工作資料夾內容不一致」的觀察觸發的深度追查，結論與修正如下。
+
+### 誰寫了什麼（釐清）
+
+| 檔案 | 寫入者 | 時機 | CLI 的角色 |
+|---|---|---|---|
+| `<work>/touched/<change>.json` | CLI `task done` | 工作樹有未提交變更時（乾淨樹不寫） | archive **不**刪；刪除是 archive skill 指示 agent 執行的步驟 |
+| `<work>/snapshots/<date>-<name>/created_specs.json` | CLI `archive` | 僅當本次歸檔**建立**了新 canonical spec | 格式為裸陣列 `["cap-x"]`（capability 名、無尾端換行） |
+| `<work>/snapshots/<date>-<name>/specs/<cap>/spec.md` | CLI `archive` | 僅當 delta 觸及**既有** canonical spec | 逐位元備份套用前的原文（unarchive 用） |
+| `<work>/changes/<name>.started` | **Spectra 桌面 App（app.exe）** | 使用者在 App 中開始實作 change 時（內容為基準 commit SHA） | CLI 任何指令都**不寫**（22 指令沙盒實測）；`archive` 會刪除它（含 `--skip-specs`） |
+| `.git/spectra-app/spectra.db` 的 13 張表 | **桌面 App**（migration 至 schema_version 15） | App 開啟專案時 | CLI 首次觸碰 db 僅建 2 張表（in_progress_change、parked_changes），再次實測確認 |
+
+本專案 repo 中 `.spectra/` 只有 `.started`（App 寫的）、`.speclink/` 只有 snapshots/touched（speclink 流程寫的），差異來源是「誰在此 repo 執行過什麼」，非實作歧異——但追查過程發現以下真缺口。
+
+### 發現並修正的 parity 缺口（先前 parity 沙盒無 commit、無 .started，皆走 fallback 分支而漏測）
+
+1. **drift Environment 維度**：spectra 執行 `git log --since=<created> --pretty=format:COMMIT|%H|%at|%s --name-only` 並計數 COMMIT 記錄。注意 git 對純日期 `--since` 會以「當下時刻」補足缺少的時間欄位（approxidate），因此**當天建立的 change 幾乎永遠顯示 0 commits**——此怪癖照樣復刻。speclink 原本寫死 0。
+2. **drift `last_commit`**：spectra CLI 在所有情境（有 commit、標題引用 change 名、commit 觸及 change 目錄、touched 檔案被改）皆為 `null`（App 端欄位）；speclink 原本回傳未過濾的 HEAD SHA。
+3. **drift Tasks 狀態**：repo 有 commit 時 spectra 顯示 `0 blocked, 0 maybe-done`（無 commit 時 `git unavailable`，兩者以 `git log` 是否成功區分）；speclink 原本印 `no task collisions`。
+4. **drift Time 狀態**：`.openspec.yaml` 無 `created` 時 spectra 顯示 `no created date`。
+5. **archive 快照**：依上表規則重寫（原實作：無條件寫物件格式 `{"created_specs":[路徑]}`、無備份、無 delta 也建快照）。`Snapshot created for unarchive support.` 僅在快照實際建立時輸出（無 delta 的歸檔只印 `✓ Archived:` 一行）。
+6. **archive 清理 `.started`**：新增（含 `--skip-specs` 情境）。
+7. **canonical spec 尾端換行**：spectra 寫出的 canonical spec 以換行結尾；speclink 補齊（新建與合併兩路徑）。
+
+### 驗證
+
+- 雙沙盒 harness：8 情境（無 commit drift、有 commit＋回溯 created drift、created 缺失 drift、ADDED 歸檔＋.started、MODIFIED-only 歸檔、無 delta 歸檔、零效果 MODIFIED 歸檔、--skip-specs 歸檔）之 stdout、drift JSON、工作目錄樹與逐位元內容、canonical specs 全部一致。
+- 完整 parity suite：31/31 通過。
