@@ -34,13 +34,14 @@ pub struct ArchiveOptions {
     pub mark_tasks_complete: bool,
 }
 
-struct DeltaReq {
-    operation: String,
-    name: String,
-    block: String,
+pub(crate) struct DeltaReq {
+    pub(crate) operation: String,
+    pub(crate) name: String,
+    #[allow(dead_code)]
+    pub(crate) block: String,
 }
 
-fn parse_delta(text: &str) -> Vec<DeltaReq> {
+pub(crate) fn parse_delta(text: &str) -> Vec<DeltaReq> {
     let mut reqs = Vec::new();
     let mut operation = String::new();
     let mut cur: Option<(String, String, Vec<String>)> = None; // (op, name, lines)
@@ -206,7 +207,7 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
 /// Parse a canonical spec into (header, requirement blocks). `header` is everything up to the
 /// first `### Requirement:` (including the `## Requirements` line); each block is the full text of
 /// a requirement (through its `@trace`), with `---` separators and surrounding blank lines stripped.
-fn parse_canonical(text: &str) -> (String, Vec<(String, String)>) {
+pub(crate) fn parse_canonical(text: &str) -> (String, Vec<(String, String)>) {
     let marker = "### Requirement:";
     let split_at = text.find(marker).unwrap_or(text.len());
     let header = text[..split_at].to_string();
@@ -301,7 +302,9 @@ fn apply_delta_to_canonical(
         out.push_str("## Requirements\n\n");
         let joined: Vec<String> = blocks.iter().map(|b| b.trim_end().to_string()).collect();
         out.push_str(&joined.join("\n\n---\n"));
-        if !out.ends_with('\n') {
+        // Spectra ends the file with a newline UNLESS the last block ends with an @trace
+        // comment (`-->`), which is written without one.
+        if !out.ends_with('\n') && !out.ends_with("-->") {
             out.push('\n');
         }
         util::write_file(canonical_path, &out)?;
@@ -363,7 +366,8 @@ fn apply_delta_to_canonical(
     if last_removed && !blocks.is_empty() {
         out.push_str("\n\n---\n");
     }
-    if !out.ends_with('\n') {
+    // Same trailing-newline rule as the fresh-canonical path: none after a final `-->`.
+    if !out.ends_with('\n') && !out.ends_with("-->") {
         out.push('\n');
     }
     util::write_file(canonical_path, &out)?;

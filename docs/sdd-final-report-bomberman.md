@@ -96,7 +96,7 @@ archive 快照格式/備份/`.started` 清理——見 comparison 文件 §18。
    留下來的環節；純 CLI/CI 場景沒有理由選 spectra。
 2. **需要桌面 App（GUI、向量搜尋、worktree、分享）才選 spectra**。這些是 speclink 刻意
    不做的範圍。
-3. **給兩個工具鏈的改進方向**（speclink 可作為刻意差異實作，spectra 建議上游回報）：
+3. **給兩個工具鏈的改進方向**（speclink 已於本報告後全數實作為刻意差異——見 comparison §21；spectra 建議上游回報）：
    - drift Environment：`--since` 應傳完整時間戳（`<created> 00:00`），否則當天建立的
      change 永遠 0 commits；
    - drift Structure：anchor 搜尋語料應排除 change 自身的 design.md，否則提交後永不告警；

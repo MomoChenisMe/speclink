@@ -527,6 +527,30 @@ fn render_drift(report: &core::drift::DriftReport) {
             println!("  - {} ({}) — {}", b.anchor, b.category, b.reason);
         }
     }
+    if !report.spec_assumptions.is_empty() {
+        println!();
+        println!("Stale delta assumptions");
+        for a in &report.spec_assumptions {
+            println!(
+                "  - {} '{}' in {} — {}",
+                a.operation, a.requirement, a.capability, a.reason
+            );
+        }
+    }
+    if !report.tasks_maybe_resolved.is_empty() {
+        println!();
+        println!("Tasks maybe already done");
+        for t in &report.tasks_maybe_resolved {
+            println!("  - {t}");
+        }
+    }
+    if !report.tasks_blocked_external.is_empty() {
+        println!();
+        println!("Tasks blocked by external changes");
+        for t in &report.tasks_blocked_external {
+            println!("  - {t}");
+        }
+    }
     println!();
     println!("Severity: {} drift", report.severity.to_uppercase());
     println!("> {}", report.primary_recommendation);
