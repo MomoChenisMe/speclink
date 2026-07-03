@@ -106,10 +106,17 @@ pub fn build_artifact(
     if artifact.id == "specs" {
         if let Some(lang) = crate::config::resolve_spec_locale(&app, &wf) {
             let display = crate::config::locale_display(Some(&lang));
+            let lower = lang.to_ascii_lowercase();
+            let cjk_note = if lower == "tw" || lower.starts_with("zh") {
+                " Vague Chinese wording (應該、可能、也許、或許、大概、考慮、盡量、待定) is \
+flagged by the analyzer just like should/may/TBD — state requirements with SHALL/MUST."
+            } else {
+                ""
+            };
             let note = format!(
                 "This project sets `spec_locale: {lang}` — write spec prose in {display}. \
 Structural markers (`## ADDED/MODIFIED/REMOVED/RENAMED Requirements`, `### Requirement:`, \
-`#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) still stay in English."
+`#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) still stay in English.{cjk_note}"
             );
             match instruction.as_mut() {
                 Some(s) => {
