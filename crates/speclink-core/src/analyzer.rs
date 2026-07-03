@@ -209,6 +209,18 @@ fn weak_patterns_in(line: &str) -> Vec<String> {
             out.push(p.to_string());
         }
     }
+    // CJK weak words (speclink addition — the English list is invisible to Chinese prose).
+    // Substring match, since CJK has no word boundaries. 「不可能」 states impossibility
+    // (a strong claim), so 可能 inside it does not count; 「盡可能」 still flags via 可能.
+    let cjk = ["應該", "也許", "或許", "大概", "考慮", "盡量", "儘量", "待定"];
+    for p in cjk {
+        if line.contains(p) {
+            out.push(p.to_string());
+        }
+    }
+    if line.replace("不可能", "").contains("可能") {
+        out.push("可能".to_string());
+    }
     out
 }
 

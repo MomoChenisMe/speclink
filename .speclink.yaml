@@ -5,14 +5,14 @@
 # spec_dir: docs/specs
 
 # Language for AI-generated artifacts (default: English)
-# locale: tw
+locale: tw
 
 # Language for spec files (default: English; "auto" follows locale)
-# spec_locale: auto
+spec_locale: tw
 
 # Workflow toggles (default: off)
-# tdd: true
-# audit: true
+tdd: true
+audit: true
 
 # AI tools to generate instruction files for
 tools:
