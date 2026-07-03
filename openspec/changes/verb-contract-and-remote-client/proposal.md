@@ -11,7 +11,7 @@
 - **PAT 認證**：新增 `speclink auth login`（貼上 PAT，依 url 存於使用者層級設定目錄）與 `speclink auth status`；環境變數 SPECLINK_TOKEN 供 CI／headless 覆寫；憑證永不寫入 repo 內任何檔案。
 - **動詞契約（規格文件化）**：定義 server 端 REST 契約——change 列舉與讀取、artifact 讀寫、discussion 動詞、claim／done／archive、instructions 計算、政策（workflow-config）side-car 端點、身分查驗；payload 欄位與既有 `--json` 對齊（camelCase）；409 一律附機器可判 reason；artifact 寫入採 version/If-Match 樂觀並行控制；API 版本以 header 協商。
 - **remote 動詞路由**：remote 模式下，既有 CLI 指令改為呼叫契約端點（server 執行引擎），人眼與 `--json` 輸出形狀與 fs 模式一致；任何非 2xx 回應 SHALL 翻譯為語義化訊息與建議動作（401 → 提示 speclink auth login），絕不把裸狀態碼交給使用者或 agent 判讀；斷線／連不上即明確失敗，不做快取 fallback。
-- **repo 身分驗證鏈**：每個動詞自動攜帶連接檔的 repo 名；server 驗證 repo 屬於專案、change 歸屬 repo 相符（claim 原子、搶佔回 409）；跑錯 repo 時 fail loud。
+- **repo 身分驗證鏈**：每個動詞自動攜帶連接檔的 repo 名；server 驗證 repo 屬於專案、change 歸屬 repo 相符（claim 原子、搶佔回 409）；跑錯 repo 時 fail loud。change 歸屬規則為 **v1 一 change 一 repo**（建立時取自當前 repo、列舉依 repo 過濾、跨 repo 需求拆分為多個 change）。另提供 git remote 參考值的輔助警告（fork／鏡像偵測，僅警告、不影響指令結果）。
 - **store 文件讀取動詞**：新增 `speclink artifact cat`（讀取 change 的 artifact 內容）與 `speclink language show`（讀取共用詞彙），兩模式皆可用；技能內容中殘留的直接讀檔指示改為使用這些動詞（單一來源技能因此在兩模式通用）。
 - **指令區塊 remote 變體**：remote 模式下 init 生成的 CLAUDE.md/AGENTS.md marker 內容改用 remote 措辭（「規格與 change 存於團隊系統，一律使用 speclink 動詞，絕不本地讀寫規格檔」），渲染矩陣自此為（工具目標）×（fs｜remote）。
 - 新增團隊模式雙語文件（連接、認證、動詞契約參考、repo 識別、情境升級指引），README 增列連結。
@@ -24,8 +24,8 @@
 
 ### New Capabilities
 
-- `remote-connection`: 連接檔格式與模式解析、remote 初始化與 link/unlink、並存警告、repo 身分攜帶與 fail loud、marker 區塊 remote 變體。
-- `verb-contract`: REST 動詞集與 payload 形狀、政策 side-car 端點、樂觀並行控制、409 reason、API 版本協商、非 2xx 錯誤翻譯紅線、store 文件讀取動詞。
+- `remote-connection`: 連接檔格式與模式解析、remote 初始化與 link/unlink、並存警告、repo 身分攜帶與 fail loud、git remote 參考值輔助警告、marker 區塊 remote 變體。
+- `verb-contract`: REST 動詞集與 payload 形狀、政策 side-car 端點、樂觀並行控制、409 reason、API 版本協商、非 2xx 錯誤翻譯紅線、store 文件讀取動詞、change 的 repo 歸屬規則（一 change 一 repo）。
 - `remote-auth`: PAT 登入與狀態查詢、憑證儲存位置、SPECLINK_TOKEN 覆寫、401 處理。
 
 ### Modified Capabilities

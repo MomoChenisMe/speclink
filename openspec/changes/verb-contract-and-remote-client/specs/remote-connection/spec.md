@@ -37,6 +37,17 @@ remote 模式下每個動詞 SHALL 自動攜帶連接檔的 repo 名；server �
 - **WHEN** 於 repo 欄位為 frontend 的專案執行 speclink claim add-rate-limit，而該 change 歸屬 backend
 - **THEN** exit code 非 0，stderr 訊息同時含 backend 與 frontend 兩個名稱與改正指引
 
+### Requirement: git remote 參考值的輔助警告
+speclink link 與 speclink auth status 執行時，若 server 註冊表提供本 repo 的 git url 參考值且與本地 git remote 不一致，CLI SHALL 於 stderr 輸出一行輔助警告（提示可能在 fork 或鏡像上工作）；此警告 SHALL NOT 影響指令結果與 exit code（僅警告、不強制）。本地非 git 目錄或 server 未提供參考值時 SHALL 靜默略過此檢查。
+
+#### Scenario: fork 上工作僅警告不阻擋
+- **WHEN** 本地 git remote 指向 fork，而 server 註冊表的 git url 參考值為原始 repo，以有效憑證執行 speclink link 某專案 url --repo backend
+- **THEN** 連接檔照常寫入、exit code 為 0，stderr 出現一行 fork／鏡像提示警告
+
+#### Scenario: 無參考值時靜默
+- **WHEN** server 註冊表未提供本 repo 的 git url 參考值，執行 speclink auth status
+- **THEN** 不輸出任何 git remote 相關警告
+
 ### Requirement: 指令區塊的 remote 變體
 remote 模式下 init 生成的 CLAUDE.md／AGENTS.md marker 區塊 SHALL 使用 remote 措辭：指明規格與 change 存於團隊系統、一律使用 speclink 動詞、SHALL NOT 指示本地讀寫規格檔；fs 模式的 marker 內容維持路徑措辭。
 
