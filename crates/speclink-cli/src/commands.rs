@@ -51,12 +51,9 @@ fn resolve_change_worded(paths: &Paths, name: Option<&str>, specify: &str) -> Re
         0 => bail!("No active changes. Create one with: speclink new change <name>"),
         1 => Ok(changes.remove(0)),
         _ => {
-            // Spectra lists the changes by most-recently-modified first.
-            changes.sort_by(|a, b| {
-                let ma = std::fs::metadata(&a.dir).and_then(|m| m.modified()).ok();
-                let mb = std::fs::metadata(&b.dir).and_then(|m| m.modified()).ok();
-                mb.cmp(&ma)
-            });
+            // Spectra lists the candidates by most-recently-modified first (newest file
+            // mtime inside each change, whole seconds, name tiebreak).
+            sort_changes(&mut changes, "modified");
             let names: Vec<&str> = changes.iter().map(|c| c.name.as_str()).collect();
             bail!("Multiple changes found. {specify} {}", names.join(", "))
         }
@@ -207,15 +204,41 @@ struct ListChangeJson {
     total_tasks: usize,
 }
 
-/// Order changes for `list`. Spectra lists alphabetically by name (both by default and with
-/// `--sort name`).
-fn sort_changes(changes: &mut [Change], _sort: &str) {
-    changes.sort_by(|x, y| x.name.cmp(&y.name));
+/// Order changes for listing (probed against Spectra):
+/// - "name": alphabetical.
+/// - "created": changes with a VALID metadata pair (schema AND created both present) come
+///   first, created descending, mtime-then-name tiebreak; invalid-metadata changes follow
+///   in modified order.
+/// - everything else (default "modified", unknown values): newest file mtime inside the
+///   change, whole seconds, newest first, name-ascending ties.
+fn sort_changes(changes: &mut [Change], sort: &str) {
+    let mtime_desc = |x: &Change, y: &Change| {
+        let mx = core::model::newest_mtime_secs(&x.dir);
+        let my = core::model::newest_mtime_secs(&y.dir);
+        my.cmp(&mx).then_with(|| x.name.cmp(&y.name))
+    };
+    match sort {
+        "name" => changes.sort_by(|x, y| x.name.cmp(&y.name)),
+        "created" => changes.sort_by(|x, y| {
+            let valid = |c: &Change| match (&c.meta.schema, &c.meta.created) {
+                (Some(_), Some(created)) => Some(created.clone()),
+                _ => None,
+            };
+            match (valid(x), valid(y)) {
+                (Some(a), Some(b)) => b.cmp(&a).then_with(|| mtime_desc(x, y)),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => mtime_desc(x, y),
+            }
+        }),
+        _ => changes.sort_by(mtime_desc),
+    }
 }
 
 fn cmd_list(a: ListArgs) -> Result<()> {
     let paths = require_paths()?;
-    if a.specs {
+    // --specs alone shows only specs; combined with --changes both sections print.
+    if a.specs && !a.changes {
         return list_specs(&paths, a.json);
     }
     let mut changes = core::model::list_changes(&paths);
@@ -228,16 +251,31 @@ fn cmd_list(a: ListArgs) -> Result<()> {
                 ListChangeJson {
                     completed_tasks: complete,
                     name: c.name.clone(),
-                    status: "in-progress".to_string(),
+                    // "done" only when every task is checked (and there is at least one).
+                    status: if total > 0 && complete == total {
+                        "done".to_string()
+                    } else {
+                        "in-progress".to_string()
+                    },
                     summary: proposal_summary(c),
                     total_tasks: total,
                 }
             })
             .collect();
+        if a.specs {
+            let mut payload = serde_json::Map::new();
+            payload.insert("changes".into(), serde_json::to_value(&items)?);
+            payload.insert("specs".into(), specs_json_items(&paths));
+            return print_json(&serde_json::Value::Object(payload));
+        }
         return print_json(&serde_json::json!({ "changes": items }));
     }
     if changes.is_empty() {
         println!("No active changes.");
+        if a.specs {
+            println!();
+            list_specs(&paths, false)?;
+        }
         return Ok(());
     }
     println!("Changes:");
@@ -256,10 +294,30 @@ fn cmd_list(a: ListArgs) -> Result<()> {
             println!("  • {}{marker} — {summary}", c.name);
         }
     }
+    if a.specs {
+        println!();
+        list_specs(&paths, false)?;
+    }
     Ok(())
 }
 
-fn list_specs(paths: &Paths, json: bool) -> Result<()> {
+fn specs_json_items(paths: &Paths) -> serde_json::Value {
+    let mut specs = canonical_spec_names(paths);
+    specs.sort();
+    serde_json::Value::Array(
+        specs
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "id": s,
+                    "path": paths.specs_dir().join(s).to_string_lossy(),
+                })
+            })
+            .collect(),
+    )
+}
+
+fn canonical_spec_names(paths: &Paths) -> Vec<String> {
     let mut specs = Vec::new();
     if let Ok(entries) = std::fs::read_dir(paths.specs_dir()) {
         for e in entries.flatten() {
@@ -268,21 +326,17 @@ fn list_specs(paths: &Paths, json: bool) -> Result<()> {
             }
         }
     }
+    specs
+}
+
+fn list_specs(paths: &Paths, json: bool) -> Result<()> {
+    let mut specs = canonical_spec_names(paths);
     specs.sort();
     if json {
-        let items: Vec<_> = specs
-            .iter()
-            .map(|s| {
-                serde_json::json!({
-                    "id": s,
-                    "path": paths.specs_dir().join(s).to_string_lossy(),
-                })
-            })
-            .collect();
-        return print_json(&serde_json::json!({ "specs": items }));
+        return print_json(&serde_json::json!({ "specs": specs_json_items(paths) }));
     }
     if specs.is_empty() {
-        println!("No specs found.");
+        println!("No specs.");
         return Ok(());
     }
     println!("Specs:");
@@ -301,6 +355,11 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
         None => bail!("Please specify an item name."),
     };
     let item_type = a.item_type.as_deref();
+    if let Some(t) = item_type {
+        if t != "change" && t != "spec" {
+            bail!("Unknown type: {t}. Use 'change' or 'spec'.");
+        }
+    }
 
     let spec_md = paths.specs_dir().join(&item).join("spec.md");
     let is_spec = spec_md.is_file();
@@ -338,8 +397,13 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
         }
         bail!("Item '{item}' not found as a change or spec.");
     };
-    // show never resolves the schema — the Schema line echoes the change's metadata name.
-    let schema_name = change.meta.schema_name();
+    // show never resolves the schema — the Schema/Created lines echo the metadata verbatim,
+    // and Spectra treats the metadata as one unit: unless BOTH schema and created are
+    // present, neither is reported (missing/partial .openspec.yaml → null).
+    let (schema_name, created) = match (&change.meta.schema, &change.meta.created) {
+        (Some(s), Some(c)) => (Some(s.clone()), Some(c.clone())),
+        _ => (None, None),
+    };
     let read_opt_str = |name: &str| core::util::read_opt(&change.dir.join(name));
 
     if a.json {
@@ -353,7 +417,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
         return print_json(&serde_json::json!({
             "name": change.name,
             "schema": schema_name,
-            "created": change.meta.created,
+            "created": created,
             "proposal": proposal,
             "design": design,
             "tasks": tasks,
@@ -362,8 +426,10 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
     }
 
     println!("Change: {}", change.name);
-    println!("Schema: {schema_name}");
-    if let Some(created) = &change.meta.created {
+    if let Some(schema_name) = &schema_name {
+        println!("Schema: {schema_name}");
+    }
+    if let Some(created) = &created {
         println!("Created: {created}");
     }
     let proposal = read_opt_str("proposal.md");
@@ -382,7 +448,9 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
             for c in &caps {
                 println!("  {c}/spec.md");
             }
-        } else if !proposal.ends_with('\n') {
+        } else {
+            // Spectra always appends a newline after the proposal body (an extra blank
+            // line when the file already ends with one), same as the spec branch above.
             println!();
         }
     } else if !caps.is_empty() {
@@ -399,7 +467,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
 
 fn cmd_validate(a: ValidateArgs) -> Result<()> {
     let paths = require_paths()?;
-    let changes = if let Some(item) = a.item.as_deref() {
+    let mut changes = if let Some(item) = a.item.as_deref() {
         vec![core::model::find_change(&paths, item)
             .ok_or_else(|| anyhow::anyhow!("Change '{item}' not found."))?]
     } else if a.all || a.changes {
@@ -410,6 +478,8 @@ fn cmd_validate(a: ValidateArgs) -> Result<()> {
             Err(_) => core::model::list_changes(&paths),
         }
     };
+    // Multi-change runs are ordered newest-modified first (matches Spectra).
+    sort_changes(&mut changes, "modified");
     // Spectra's validate never resolves the change's schema (an unresolvable one still validates).
     let schema = core::schema::spec_driven();
     let results: Vec<_> = changes
@@ -596,9 +666,12 @@ fn mark_all_tasks_done(change: &core::model::Change, enabled: bool) -> Result<()
     }
     let tasks_path = change.dir.join("tasks.md");
     if let Some(text) = core::util::read_opt(&tasks_path) {
+        // Star-bullet checkboxes are tasks too (matches Spectra).
         let done = text
             .replace("- [ ] ", "- [x] ")
-            .replace("- [ ]\t", "- [x]\t");
+            .replace("- [ ]\t", "- [x]\t")
+            .replace("* [ ] ", "* [x] ")
+            .replace("* [ ]\t", "* [x]\t");
         core::util::write_file(&tasks_path, &done)?;
     }
     Ok(())
@@ -789,8 +862,10 @@ fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
     } else {
         schema_for(&paths, &change)?
     };
+    // No-arg default: the first incomplete artifact, or the apply/status view once every
+    // artifact exists (matches Spectra — not the proposal-creation instructions).
     let default_artifact = core::status::first_incomplete_artifact(&change, &schema)
-        .unwrap_or_else(|| "proposal".to_string());
+        .unwrap_or_else(|| "apply".to_string());
     let artifact = a.artifact.as_deref().unwrap_or(&default_artifact);
     if artifact == "apply" {
         let payload = core::instructions::build_apply(&paths, &change, &schema);
@@ -1159,57 +1234,98 @@ fn cmd_config(a: ConfigArgs) -> Result<()> {
     match a.command {
         ConfigCommands::Path => println!("{}", core::util::to_slash(&path)),
         ConfigCommands::List { json } => {
+            // The stored file keeps insertion order, but list output is sorted by key.
             let cfg = load_global_map(&path);
+            let mut entries: Vec<(String, serde_yaml::Value)> = cfg
+                .into_iter()
+                .map(|(k, v)| (k.as_str().unwrap_or_default().to_string(), v))
+                .collect();
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
             if json {
-                return print_json(&cfg);
+                let mut sorted = serde_yaml::Mapping::new();
+                for (k, v) in entries {
+                    sorted.insert(serde_yaml::Value::String(k), v);
+                }
+                return print_json(&sorted);
             }
-            for (k, v) in &cfg {
-                println!("{k} = {v}");
+            if entries.is_empty() {
+                println!("No configuration set.");
+            }
+            for (k, v) in &entries {
+                println!("{k} = {}", scalar_str(v));
             }
         }
         ConfigCommands::Get { key } => {
             let cfg = load_global_map(&path);
-            match cfg.get(&key) {
-                Some(v) => println!("{v}"),
-                None => bail!("key '{key}' not set"),
+            match cfg.get(serde_yaml::Value::String(key.clone())) {
+                Some(v) => println!("{}", scalar_str(v)),
+                None => bail!("Key '{key}' not found."),
             }
         }
-        ConfigCommands::Set { key, value, string: _, allow_unknown: _ } => {
+        ConfigCommands::Set { key, value, string, allow_unknown: _ } => {
             let mut cfg = load_global_map(&path);
-            cfg.insert(key.clone(), value.clone());
+            // Values parse to native YAML scalars (1 → int, true → bool); --string forces
+            // string storage (matches Spectra).
+            let stored = if string {
+                serde_yaml::Value::String(value.clone())
+            } else {
+                serde_yaml::from_str(&value)
+                    .unwrap_or_else(|_| serde_yaml::Value::String(value.clone()))
+            };
+            cfg.insert(serde_yaml::Value::String(key.clone()), stored);
             save_global_map(&path, &cfg)?;
             println!("✓ {key} = {value}");
         }
         ConfigCommands::Unset { key } => {
             let mut cfg = load_global_map(&path);
-            cfg.remove(&key);
+            cfg.remove(serde_yaml::Value::String(key.clone()));
             save_global_map(&path, &cfg)?;
-            println!("✓ Unset {key}");
+            // Printed whether or not the key existed (matches Spectra).
+            println!("✓ Removed key: {key}");
         }
-        ConfigCommands::Reset => {
+        ConfigCommands::Reset { all: _, yes: _ } => {
             if path.exists() {
                 std::fs::remove_file(&path)?;
             }
-            println!("✓ Reset");
+            println!("✓ Config reset.");
         }
         ConfigCommands::Edit => {
-            println!("Config path: {}", core::util::to_slash(&path));
+            // VISUAL wins over EDITOR; the vi fallback matches Spectra (including the
+            // failure message when no editor can be spawned).
+            let editor = std::env::var("VISUAL")
+                .or_else(|_| std::env::var("EDITOR"))
+                .unwrap_or_else(|_| "vi".to_string());
+            let status = std::process::Command::new(&editor).arg(&path).status();
+            match status {
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    bail!("Failed to open editor '{editor}': program not found")
+                }
+                Err(e) => bail!("Failed to open editor '{editor}': {e}"),
+            }
         }
     }
     Ok(())
 }
 
-fn load_global_map(path: &std::path::Path) -> std::collections::BTreeMap<String, String> {
+/// Bare display form of a YAML scalar (strings unquoted, numbers/bools as literals).
+fn scalar_str(v: &serde_yaml::Value) -> String {
+    match v {
+        serde_yaml::Value::String(s) => s.clone(),
+        other => serde_yaml::to_string(other).unwrap_or_default().trim_end().to_string(),
+    }
+}
+
+// Insertion-ordered mapping (serde_yaml::Mapping) — Spectra preserves the order keys were
+// first set in both the stored YAML and `config list` output.
+fn load_global_map(path: &std::path::Path) -> serde_yaml::Mapping {
     match core::util::read_opt(path) {
         Some(s) => serde_yaml::from_str(&s).unwrap_or_default(),
         None => Default::default(),
     }
 }
 
-fn save_global_map(
-    path: &std::path::Path,
-    map: &std::collections::BTreeMap<String, String>,
-) -> Result<()> {
+fn save_global_map(path: &std::path::Path, map: &serde_yaml::Mapping) -> Result<()> {
     let yaml = serde_yaml::to_string(map)?;
     core::util::write_file(path, &yaml)?;
     Ok(())
@@ -1242,6 +1358,16 @@ fn cmd_completion(a: CompletionArgs) -> Result<()> {
                 _ => clap_complete::Shell::Bash,
             };
             let mut cmd = Cli::command();
+            if sh == clap_complete::Shell::Bash {
+                // Spectra's (older clap_complete) bash script offers positional value
+                // names as completion candidates ("[CHANGE]", "<KEY>"); newer
+                // clap_complete dropped them, so they are re-injected here.
+                let mut buf: Vec<u8> = Vec::new();
+                clap_complete::generate(sh, &mut cmd, "speclink", &mut buf);
+                let script = String::from_utf8_lossy(&buf).to_string();
+                print!("{}", bash_inject_positionals(&script, &cmd));
+                return Ok(());
+            }
             clap_complete::generate(sh, &mut cmd, "speclink", &mut std::io::stdout());
         }
         CompletionCommands::Install { shell, verbose: _ } => {
@@ -1251,12 +1377,92 @@ fn cmd_completion(a: CompletionArgs) -> Result<()> {
             println!("Run: speclink completion generate {name} > completion_script");
             println!("Then source it in your shell profile.");
         }
-        CompletionCommands::Uninstall { shell } => {
+        CompletionCommands::Uninstall { shell, yes: _ } => {
             let name = completion_shell(shell.as_deref())?;
             println!("Note: Remove the completion script for {name} from your shell profile.");
         }
     }
     Ok(())
+}
+
+/// Append positional value-name placeholders (`<KEY>`, `[CHANGE]`) to each `opts="..."`
+/// line of a clap_complete bash script, matching the older clap_complete Spectra ships.
+/// Command paths are recovered from the script's own `parent,child) cmd="label"` arms.
+fn bash_inject_positionals(script: &str, root: &clap::Command) -> String {
+    use std::collections::HashMap;
+    // label -> command path (root label "speclink" -> []).
+    let mut paths: HashMap<String, Vec<String>> = HashMap::new();
+    paths.insert("speclink".to_string(), Vec::new());
+    let lines: Vec<&str> = script.lines().collect();
+    for w in lines.windows(2) {
+        let arm = w[0].trim();
+        let assign = w[1].trim();
+        let (Some(arm), Some(label)) = (
+            arm.strip_suffix(')'),
+            assign.strip_prefix("cmd=\"").and_then(|s| s.strip_suffix('"')),
+        ) else {
+            continue;
+        };
+        if let Some((parent, child)) = arm.split_once(',') {
+            if let Some(parent_path) = paths.get(parent).cloned() {
+                let mut p = parent_path;
+                p.push(child.to_string());
+                paths.insert(label.to_string(), p);
+            }
+        }
+    }
+    let placeholder = |path: &[String]| -> String {
+        let mut c = root;
+        for name in path {
+            match c.get_subcommands().find(|s| s.get_name() == *name) {
+                Some(sub) => c = sub,
+                None => return String::new(),
+            }
+        }
+        if c.has_subcommands() {
+            return String::new();
+        }
+        let mut out = String::new();
+        for a in c.get_positionals() {
+            let name = a
+                .get_value_names()
+                .and_then(|v| v.first().map(|s| s.to_string()))
+                .unwrap_or_else(|| a.get_id().to_string().to_uppercase());
+            if a.is_required_set() {
+                out.push_str(&format!(" <{name}>"));
+            } else {
+                out.push_str(&format!(" [{name}]"));
+            }
+        }
+        out
+    };
+    let mut out = String::new();
+    let mut current_label: Option<String> = None;
+    for line in script.lines() {
+        let t = line.trim();
+        if let Some(l) = t.strip_suffix(')') {
+            if paths.contains_key(l) {
+                current_label = Some(l.to_string());
+            }
+        }
+        if let (Some(label), true) = (&current_label, t.starts_with("opts=\"")) {
+            if let Some(path) = paths.get(label) {
+                let ph = placeholder(path);
+                if !ph.is_empty() {
+                    if let Some(stripped) = line.strip_suffix('"') {
+                        out.push_str(stripped);
+                        out.push_str(&ph);
+                        out.push('"');
+                        out.push('\n');
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 // --- task ---

@@ -135,13 +135,20 @@ pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<
     write_if(&spec_root.join("config.yaml"), WORKFLOW_CONFIG_TEMPLATE, force)?;
 
     // .speclink.yaml — the template plus the actual tool selection, so `update` can sync
-    // (regenerate + prune) against the recorded list later.
-    let config_content = if tools.is_empty() {
+    // (regenerate + prune) against the recorded list later. A non-default --dir is
+    // persisted as an active spec_dir line (matches Spectra) so later commands find it.
+    let mut config_content = if tools.is_empty() {
         APP_CONFIG_TEMPLATE.to_string()
     } else {
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         format!("{APP_CONFIG_TEMPLATE}tools: [{}]\n", names.join(", "))
     };
+    if spec_dir != "openspec" {
+        config_content = config_content.replace(
+            "# spec_dir: docs/specs",
+            &format!("spec_dir: {spec_dir}"),
+        );
+    }
     write_if(&root.join(".speclink.yaml"), &config_content, force)?;
 
     // .gitignore (append block if missing)

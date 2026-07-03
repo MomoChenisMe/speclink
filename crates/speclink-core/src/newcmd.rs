@@ -98,12 +98,12 @@ fn validate_artifact_content(artifact_id: &str, rel: &str, body: &str) -> Result
                 .iter()
                 .any(|h| body.lines().any(|l| l.trim_end() == *h || l.trim_start().starts_with(&format!("{h} "))));
             if !ok {
-                bail!("proposal must contain one of: ## Why, ## Problem, ## Summary");
+                bail!("Proposal must contain a ## Why, ## Problem, or ## Summary section");
             }
         }
         "design" => {
             if !body.contains("## Context") {
-                bail!("design must contain ## Context");
+                bail!("Design must contain a ## Context section");
             }
         }
         "tasks" => {

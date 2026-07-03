@@ -93,10 +93,23 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
     let dated_name = format!("{date}-{}", change.name);
     let archive_target = paths.archive_dir().join(&dated_name);
     if archive_target.exists() {
-        bail!(
-            "an archived change named '{}' already exists; rename before archiving",
-            dated_name
-        );
+        bail!("Archived change '{}' already exists", dated_name);
+    }
+
+    // Single-change archive validates first (matches Spectra): a structurally invalid
+    // change refuses to archive unless --no-validate is passed. The error strings drop
+    // validate's "Parse error: " prefix — that is how Spectra renders them here.
+    if !opts.no_validate {
+        let schema = crate::schema::spec_driven();
+        let result = crate::validate::validate_change(change, &schema, false);
+        if !result.valid {
+            let details: Vec<String> = result
+                .errors
+                .iter()
+                .map(|e| e.replace(": Parse error: ", ": "))
+                .collect();
+            bail!("Validation failed:\n{}", details.join("\n"));
+        }
     }
 
     // The @trace `code:` list is the set of code files changed in the work tree at archive time
@@ -119,6 +132,14 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
         for cap in model::delta_capabilities(&change.dir) {
             let delta_path = change.dir.join("specs").join(&cap).join("spec.md");
             let delta_text = util::read_opt(&delta_path).unwrap_or_default();
+            // Even with --no-validate, Spectra hard-fails at apply time on a delta that
+            // parses to zero operations, leaving the change in place.
+            if delta_path.is_file() && !model::has_delta_operation(&delta_text) {
+                bail!(
+                    "Failed to parse delta spec: Invalid format: Delta spec must contain \
+at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
+                );
+            }
             let reqs = parse_delta(&delta_text);
 
             let canonical_path = paths.specs_dir().join(&cap).join("spec.md");
@@ -238,20 +259,6 @@ pub(crate) fn parse_canonical(text: &str) -> (String, Vec<(String, String)>) {
     (header, blocks)
 }
 
-fn rename_target(block: &str) -> Option<String> {
-    // Support "**TO:** New Name" or "TO: New Name" inside a RENAMED block.
-    for line in block.lines() {
-        let t = line.trim().trim_start_matches("- ").replace("**", "");
-        if let Some(v) = t.strip_prefix("TO:") {
-            let v = v.trim();
-            if !v.is_empty() {
-                return Some(v.to_string());
-            }
-        }
-    }
-    None
-}
-
 /// Strip `<!-- BEFORE: … -->` review-aid comments from a delta block. Deltas may carry a
 /// short previous-value note on MODIFIED requirements (speclink convention); it is for
 /// reviewers of the change and must not survive into the canonical spec.
@@ -295,12 +302,19 @@ fn apply_delta_to_canonical(
 ) -> Result<CapCounts> {
     // Spectra omits the @trace block entirely when there are no touched code files.
     let trace = trace_block(change, date, trace_files);
-    let make_block = |r: &DeltaReq| {
+    let make_block = |r: &DeltaReq, fresh: bool| {
         let body = strip_before_notes(&r.block);
         if trace_files.is_empty() {
             body
-        } else {
+        } else if fresh {
+            // A fresh canonical keeps the delta's own trailing spacing before @trace
+            // (an inter-block blank line therefore yields two blanks — probed).
             format!("{body}\n\n{trace}")
+        } else {
+            // Merging into an existing canonical normalizes the gap by operation
+            // (probed): MODIFIED gets 2 blanks, ADDED 1, regardless of delta spacing.
+            let gap = if r.operation == "MODIFIED" { "\n\n\n" } else { "\n\n" };
+            format!("{}{gap}{trace}", body.trim_end())
         }
     };
     let mut counts = CapCounts {
@@ -317,11 +331,11 @@ fn apply_delta_to_canonical(
         for r in reqs {
             match r.operation.as_str() {
                 "ADDED" => {
-                    blocks.push(make_block(r));
+                    blocks.push(make_block(r, true));
                     counts.added += 1;
                 }
                 "MODIFIED" => {
-                    blocks.push(make_block(r));
+                    blocks.push(make_block(r, true));
                     counts.modified += 1;
                 }
                 _ => {}
@@ -356,7 +370,7 @@ fn apply_delta_to_canonical(
             "ADDED" => {
                 // Skip an ADDED requirement that already exists (no duplicate, not counted).
                 if !blocks.iter().any(|(n, _)| *n == r.name) {
-                    blocks.push((r.name.clone(), make_block(r)));
+                    blocks.push((r.name.clone(), make_block(r, false)));
                     counts.added += 1;
                 }
             }
@@ -364,7 +378,7 @@ fn apply_delta_to_canonical(
                 // Only apply MODIFIED to an existing requirement; skip if absent (matches Spectra,
                 // which flags it via analyze's gapModifiedNotFound rather than materializing it).
                 if let Some(slot) = blocks.iter_mut().find(|(n, _)| *n == r.name) {
-                    slot.1 = make_block(r);
+                    slot.1 = make_block(r, false);
                     counts.modified += 1;
                 }
             }
@@ -375,17 +389,10 @@ fn apply_delta_to_canonical(
                     counts.removed += 1;
                 }
             }
-            "RENAMED" => {
-                if let Some(to) = rename_target(&r.block) {
-                    if let Some(slot) = blocks.iter_mut().find(|(n, _)| *n == r.name) {
-                        slot.1 = slot
-                            .1
-                            .replacen(&format!("### Requirement: {}", r.name), &format!("### Requirement: {to}"), 1);
-                        slot.0 = to;
-                        counts.renamed += 1;
-                    }
-                }
-            }
+            // RENAMED is never applied (probed): Spectra parses the section but performs
+            // no rename in any syntax (header+TO: or FROM:/TO: bullets) and reports
+            // renamed: 0. The schema instruction documents the format, but archive
+            // ignores it — replicated here rather than silently diverging.
             _ => {}
         }
     }
@@ -400,8 +407,10 @@ fn apply_delta_to_canonical(
     if last_removed && !blocks.is_empty() {
         out.push_str("\n\n---\n");
     }
-    // Same trailing-newline rule as the fresh-canonical path: none after a final `-->`.
-    if !out.ends_with('\n') && !out.ends_with("-->") {
+    // Trailing newline (probed): ensured only when no @trace was injected this run —
+    // with injection Spectra leaves the file exactly as joined (no newline even when
+    // the last requirement is not the traced one), and never adds one after `-->`.
+    if trace_files.is_empty() && !out.ends_with('\n') && !out.ends_with("-->") {
         out.push('\n');
     }
     util::write_file(canonical_path, &out)?;

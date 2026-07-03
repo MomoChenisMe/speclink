@@ -91,13 +91,34 @@ pub fn artifact_done(change_dir: &Path, artifact: &Artifact) -> bool {
     change_dir.join(&artifact.output_path).is_file()
 }
 
-/// All delta spec files under a change's specs/ directory.
+/// Delta spec files of a change: exactly `specs/<capability>/spec.md`, one level deep
+/// (matches Spectra — nested or differently-named .md files under specs/ do not count).
 pub fn spec_files(change_dir: &Path) -> Vec<PathBuf> {
     let specs = change_dir.join("specs");
-    util::walk_files(&specs)
+    let mut out = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&specs) {
+        for e in entries.flatten() {
+            let spec = e.path().join("spec.md");
+            if e.path().is_dir() && spec.is_file() {
+                out.push(spec);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Newest file mtime inside a change directory (recursive), truncated to whole seconds —
+/// Spectra's sort key for "most recently modified" ordering everywhere a change list is
+/// ordered (list, validate --all, multi-change candidate lists).
+pub fn newest_mtime_secs(dir: &Path) -> u64 {
+    util::walk_files(dir)
         .into_iter()
-        .filter(|p| p.extension().map(|e| e == "md").unwrap_or(false))
-        .collect()
+        .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok())
+        .filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .max()
+        .unwrap_or(0)
 }
 
 /// Number of `### Requirement:` declarations under an ADDED/MODIFIED/REMOVED section. A RENAMED
