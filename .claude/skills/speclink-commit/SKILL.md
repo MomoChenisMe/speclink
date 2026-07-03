@@ -257,4 +257,3 @@ No dirty files found for this change (no modified artifacts, no tracked source f
 - If the tracking file is missing, warn but don't block — artifact-only commits are valid
 - The "Unrelated Changes" section is informational only — these files are excluded by default
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-

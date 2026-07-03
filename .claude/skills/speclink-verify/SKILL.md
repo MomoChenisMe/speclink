@@ -12,6 +12,14 @@ metadata:
   generatedBy: "Speclink"
 ---
 
+## Claude fork context
+
+This generated Claude Code skill runs with `context: fork`. The rules in this section take precedence over the shared `verify` body below.
+
+When no change name is provided, run `speclink list --json` and consider only active changes with implementation tasks. Auto-select only when exactly one matching active change exists. If there are zero matching active changes or more than one matching active change, return the candidate list or empty-state message and ask the main thread to rerun `/speclink-verify <change-name>`. Do NOT ask an interactive selection question inside the fork.
+
+---
+
 Verify that an implementation matches the change artifacts (specs, tasks, design).
 
 **Input**: Optionally specify a change name after `/speclink-verify` (e.g., `/speclink-verify add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
@@ -180,4 +188,3 @@ Use clear markdown with:
 - Code references in format: `file.ts:123`
 - Specific, actionable recommendations
 - No vague suggestions like "consider reviewing"
-
