@@ -27,18 +27,20 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 
 <!-- SPECTRA:END -->
 
-<!-- SPECLINK:START v1.0.0 -->
+<!-- SPECLINK:START v1.1.0 -->
 
 # Speclink Instructions
 
-This project uses Speclink for Spec-Driven Development(SDD). Specs live in `openspec/specs/`, change proposals in `openspec/changes/`.
+This project uses Speclink for Spec-Driven Development(SDD). Specs live in `openspec/specs/`, change proposals in `openspec/changes/`, discussion records in `openspec/discussions/`.
 
 ## Use `$speclink-*` skills when:
 
-- A discussion needs structure before coding → `$speclink-discuss`
-- User wants to plan, propose, or design a change → `$speclink-propose`
+- Requirements are fuzzy or worth debating → `$speclink-discuss` (recorded as a document; promote turns it into a change)
+- User wants to plan, propose, or design a change → `$speclink-propose` (`--from-discussion <slug>` seeds it from a concluded discussion)
+- Adopting Speclink on an existing codebase → `$speclink-onboard`
 - Tasks are ready to implement → `$speclink-apply`
-- There's an in-progress change to continue → `$speclink-ingest`
+- Resuming a change that sat idle → run `$speclink-drift` first
+- Requirements change mid-work → `$speclink-ingest`
 - Implementation is done → `$speclink-archive`
 - Commit only files related to a specific change → `$speclink-commit`
 
@@ -46,7 +48,9 @@ This project uses Speclink for Spec-Driven Development(SDD). Specs live in `open
 
 discuss? → propose → apply ⇄ ingest → archive
 
-- `discuss` is optional — skip if requirements are clear
+- `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is "don't do it"
+- A promoted discussion is archived automatically with its change
+- Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`
 - Requirements change mid-work? `ingest` → resume `apply`
 
 <!-- SPECLINK:END -->

@@ -173,3 +173,30 @@ Target archive directory already exists.
 - If delta specs exist, always run the sync assessment and show the combined summary before prompting
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
+
+## Bulk archive (speclink-specific)
+
+When several changes are finished, archive them in one pass:
+
+```bash
+speclink archive <name-a> <name-b>     # explicit set
+speclink archive --all                 # every ready change
+```
+
+Semantics (the CLI enforces all three):
+
+1. **Clean work tree required** — the dirty code-file set is the @trace source and would be
+   injected into EVERY archived change's canonical specs. Commit first; the command refuses
+   otherwise and lists the offending files.
+2. **Skip, never silently** — a change is archived only when it is ready: tasks complete
+   (or `--mark-tasks-complete`), validation passes (or `--no-validate`), and no stale delta
+   assumptions (a MODIFIED/REMOVED target another change already rewrote — run
+   `speclink drift <name>` and reconcile via ingest). Skipped changes are reported with the
+   reason and a `Bulk archive: N archived, M skipped` summary.
+3. **Fail-fast** — archives apply in created-date order; on the first hard error the run
+   stops and reports archived / failed / untouched (already-archived changes cannot be
+   rolled back automatically).
+
+Each archived change still gets the full single-archive treatment: delta application with
+@trace, snapshot for unarchive, `.started` cleanup, and its linked discussion archived
+alongside. Delete each change's `.speclink/touched/<name>.json` afterwards as in step above.

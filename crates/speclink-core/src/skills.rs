@@ -68,6 +68,7 @@ const B_COMMIT: &str = include_str!("../assets/skills/commit.md");
 const B_DISCUSS: &str = include_str!("../assets/skills/discuss.md");
 const B_DRIFT: &str = include_str!("../assets/skills/drift.md");
 const B_INGEST: &str = include_str!("../assets/skills/ingest.md");
+const B_ONBOARD: &str = include_str!("../assets/skills/onboard.md");
 const B_PROPOSE: &str = include_str!("../assets/skills/propose.md");
 const B_VERIFY: &str = include_str!("../assets/skills/verify.md");
 const B_SYNC: &str = include_str!("../assets/skills/sync.md");
@@ -85,6 +86,7 @@ pub fn registry() -> Vec<Skill> {
         Skill { name: "discuss", description: "Have a focused discussion that is recorded to a discussion document", fork: false, disallow_edit: true, for_codex: true, body: B_DISCUSS },
         Skill { name: "drift", description: "Detect drift between a Speclink change and the current codebase state", fork: true, disallow_edit: true, for_codex: true, body: B_DRIFT },
         Skill { name: "ingest", description: "Update an existing Speclink change from external context", fork: false, disallow_edit: false, for_codex: true, body: B_INGEST },
+        Skill { name: "onboard", description: "Adopt Speclink on an existing codebase by generating initial specs from current behavior", fork: false, disallow_edit: false, for_codex: true, body: B_ONBOARD },
         Skill { name: "propose", description: "Create a change proposal with all required artifacts", fork: false, disallow_edit: false, for_codex: true, body: B_PROPOSE },
         Skill { name: "verify", description: "Verify implementation matches artifacts", fork: true, disallow_edit: true, for_codex: false, body: B_VERIFY },
     ]

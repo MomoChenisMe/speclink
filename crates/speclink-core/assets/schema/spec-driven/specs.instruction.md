@@ -22,6 +22,9 @@ MODIFIED requirements workflow:
 2. Copy the ENTIRE requirement block (from `### Requirement:` through all scenarios)
 3. Paste under `## MODIFIED Requirements` and edit to reflect new behavior
 4. Ensure header text matches exactly (whitespace-insensitive)
+5. Add a one-line previous-value note right under the requirement header:
+   `<!-- BEFORE: <one-line summary of the old behavior> -->` — reviewers see what changed
+   without opening the canonical spec; archive strips the note automatically.
 
 Common pitfall: Using MODIFIED with partial content loses detail at archive time.
 If adding new concerns without changing existing behavior, use ADDED instead.

@@ -28,7 +28,22 @@ Have a focused discussion about a topic and reach a conclusion.
 
 ## Recording the discussion (speclink)
 
-Unlike an ephemeral chat, **every speclink discussion is persisted to a document** so the conversation keeps its thread across turns and sessions, and so a later `/speclink-propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the CLI — never hand-write the file.
+Unlike an ephemeral chat, **every speclink discussion is persisted to a document** (`openspec/discussions/<slug>.md`) so the conversation keeps its thread across turns and sessions, and so a later `/speclink-propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the CLI — never hand-write the file.
+
+The document has a fixed skeleton — like the proposal template, every discussion record has the same shape:
+
+```
+## Context      ← the framing, set once after mode pick (discuss context)
+## Rounds       ← ### Round N entries, appended per exchange (discuss add-round)
+## Conclusion   ← the decision, written at convergence (discuss conclude)
+```
+
+**Document rules** (the record is a Socratic ledger, not a transcript):
+
+1. **One focus per round.** Each recorded round distills exactly one question examined and what it settled — never a dump of everything said.
+2. **Rounds are append-only.** Never rewrite an earlier round. When a position changes, a new round names what changed and why — the reasoning trail is the point.
+3. **Record what was ruled out, with the reason.** Rejected options are the most valuable part of the record: they stop future readers (and future you) from re-litigating settled ground.
+4. **Keep an open-questions ledger.** Each round ends with the questions still unresolved; the next round picks one of them up. The conclusion must resolve or explicitly defer every remaining one.
 
 **At the start (before Step 0):**
 
@@ -42,24 +57,36 @@ Unlike an ephemeral chat, **every speclink discussion is persisted to a document
    ```
    Capture the returned `slug` — every later `add-round`/`conclude` call uses it. Announce briefly: "Recording this discussion as `<slug>`."
 
+**After picking a mode (Step 3)**, fill the Context section once — the framing a future reader (or `propose`) needs before the rounds make sense:
+
+```bash
+speclink discuss context <slug> --stdin <<'CTX_EOF'
+What prompted this discussion, the mode chosen (assumptions | interview) and why,
+and the related changes/specs found by the codebase scout.
+CTX_EOF
+```
+
 **After each round** (each Assumptions list you present, or each interview question-and-answer that moves the topic forward), persist a concise summary so the record shows how the thinking evolved:
 
 ```bash
 speclink discuss add-round <slug> --mode assumptions --stdin <<'ROUND_EOF'
-- Key points raised this round
-- Assumptions / questions and the evidence files behind them
-- Open questions still to resolve
+**Focus**: the one question this round examined
+**Position**: the answer/direction taken, and the evidence (files, probe results) behind it
+**Ruled out**: options eliminated this round — each with the reason it lost
+**Open**: questions still unresolved, for the next round to pick up
 ROUND_EOF
 ```
 
-Use `--mode assumptions` or `--mode interview` to match the mode you picked in Step 3. Keep each round terse — it is a durable summary, not a transcript. This is the mechanism that keeps a long discussion from drifting off-topic: each round is anchored to the record.
+Use `--mode assumptions` or `--mode interview` to match the mode you picked in Step 3. Omit a line rather than pad it (e.g. no `**Ruled out**` when nothing was eliminated). Keep each round terse — it is a durable summary following the Document rules above, not a transcript. This is the mechanism that keeps a long discussion from drifting off-topic: each round is anchored to the record.
 
 **At convergence**, write the conclusion into the record (see the Convergence and "Capture decisions" sections below):
 
 ```bash
 speclink discuss conclude <slug> --stdin <<'CONCLUSION_EOF'
 **Decision**: ...
-**Rationale**: ...
+**Rationale**: ... (the key trade-off that drove it)
+**Rejected alternatives**: ... (each with why it lost)
+**Deferred**: open questions intentionally left unresolved — or "none"
 **Capture to**: proposal | design | spec | tasks | LANGUAGE.md
 **Next**: /speclink-propose --from-discussion <slug>
 CONCLUSION_EOF
@@ -75,6 +102,14 @@ speclink discuss promote <slug> --name <change-name>
 ```
 
 This scaffolds the change, prefills the proposal's Why from the conclusion, links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record), and the discussion is archived automatically when the change is archived. The remaining artifacts are still created via `/speclink-propose`.
+
+**Lifecycle**: a discussion that concluded without spawning a change (an explicit "don't do this" is a valid outcome) should be closed out with:
+
+```bash
+speclink discuss archive <slug>       # → discussions/archive/<created>-<slug>.md
+```
+
+Archived discussions stay readable — `speclink discuss show <slug>` falls back to the archive, and `speclink discuss list --archived` lists them. The slug becomes free for a future discussion.
 
 ---
 
@@ -290,6 +325,8 @@ Summary format:
 
 **Decision**: [What was decided]
 **Rationale**: [Why — the key trade-off that drove this]
+**Rejected alternatives**: [What lost, and why]
+**Deferred**: [Open questions intentionally left unresolved — or "none"]
 **Capture to**: [Where this should be recorded]
 ```
 

@@ -1,9 +1,6 @@
 ---
 name: speclink-audit
 description: "Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures"
-context: fork
-agent: Explore
-disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
