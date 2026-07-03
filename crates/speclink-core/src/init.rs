@@ -13,13 +13,13 @@ const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # OpenSpec directory path (relative to project root)
 # spec_dir: docs/specs
 
-# Language for AI-generated artifacts
+# Language for AI-generated artifacts (default: English)
 # locale: tw
 
 # Language for spec files (default: English; \"auto\" follows locale)
 # spec_locale: auto
 
-# Workflow toggles
+# Workflow toggles (default: off)
 # tdd: true
 # audit: true
 

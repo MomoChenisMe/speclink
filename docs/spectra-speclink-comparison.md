@@ -353,3 +353,15 @@ codex 變體無 verify 行。既有專案 `speclink update` 即升級（標記�
 不採用：ff（spectra 的 propose 即 ff 式設計）、profiles、stores（另案）、explore（discuss 已覆蓋）。
 驗證：六件套功能實測全過、parity suite 31/31、twin harness 全綠、bomberman 28/28；本 repo 已
 自我升級至 v1.1.0 區塊。
+
+### 補充：spec_locale 動態注入與預設值明確化（§22 續）
+
+- **為什麼 specs 預設英文**：刻意設計（spectra 強制英文；speclink 改為可設定、但預設維持英文以保
+  分析器/歸檔工具的解析安全）。程式碼預設本已符合：`locale` 未設 → "English"、`tdd`/`audit`
+  serde 預設 false、`spec_locale` 未設 → 英文。
+- **動態注入**：`spec_locale` 解析為非英文時，`instructions specs` 的 payload 直接附上一行
+  「This project sets `spec_locale: tw` — write spec prose in Traditional Chinese (繁體中文)…」，
+  agent 不再需要自己去讀 config；未設定時 payload 逐位元不變（parity 零影響）。解析規則：
+  `.speclink.yaml` 優先於 `openspec/config.yaml`；`auto` → 跟隨 locale；en/english/空值 → 英文。
+- **模板註解明示預設**：`(default: English)`、`(default: off)`；本 repo 的 .speclink.yaml 已還原
+  為全預設（locale/tdd/audit 註解化，tools 清單保留）。

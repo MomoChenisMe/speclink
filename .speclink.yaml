@@ -4,15 +4,15 @@
 # OpenSpec directory path (relative to project root)
 # spec_dir: docs/specs
 
-# Language for AI-generated artifacts
-locale: tw
+# Language for AI-generated artifacts (default: English)
+# locale: tw
 
 # Language for spec files (default: English; "auto" follows locale)
 # spec_locale: auto
 
-# Workflow toggles
-tdd: true
-audit: true
+# Workflow toggles (default: off)
+# tdd: true
+# audit: true
 
 # AI tools to generate instruction files for
 tools:
