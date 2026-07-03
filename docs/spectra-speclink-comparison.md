@@ -371,7 +371,7 @@ codex 變體無 verify 行。既有專案 `speclink update` 即升級（標記�
 analyzer 的 `ambWeakLanguage` 新增中文詞條（speclink 專屬——spectra 的英文清單對中文散文失明）：
 `應該、也許、或許、大概、考慮、盡量、儘量、待定`，子字串比對（CJK 無詞界）；特例：「不可能」
 陳述不可能性（強語句）不計入「可能」，「盡可能」仍經「可能」標出。`spec_locale` 為 tw/zh* 時，
-specs 指示的動態注入行additionally附上 CJK 弱詞警示；其他語言與未設定時不附（payload 不變，
+specs 指示的動態注入行額外附上 CJK 弱詞警示；其他語言與未設定時不附（payload 不變，
 parity 零影響——英文內容不含 CJK 詞條，suite 31/31）。
 
 

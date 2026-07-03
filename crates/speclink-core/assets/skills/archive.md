@@ -163,6 +163,16 @@ Target archive directory already exists.
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
 
+## RENAMED is never applied (speclink note)
+
+The delta-spec format documents `## RENAMED Requirements` (FROM:/TO:), but archive does
+NOT execute renames in any syntax — the requirement keeps its old name in the canonical
+spec and the summary reports `renamed: 0` (Spectra behaves identically; replicated
+deliberately). To actually rename a requirement, express it as MODIFIED content under
+the old name plus a follow-up edit, or REMOVED + ADDED under the new name. `speclink
+drift` still checks RENAMED targets in `spec_assumptions`, so a stale target is caught
+before archiving.
+
 ## Bulk archive (speclink-specific)
 
 When several changes are finished, archive them in one pass:
