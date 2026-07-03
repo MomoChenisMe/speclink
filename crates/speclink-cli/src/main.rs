@@ -511,6 +511,15 @@ enum DiscussCommands {
     Conclude { slug: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
     /// Archive a discussion (move to discussions/archive/<created>-<slug>.md)
     Archive { slug: String, #[arg(long)] json: bool },
+    /// Discard a live discussion (delete the file; --force required once rounds exist)
+    Discard {
+        slug: String,
+        /// Delete even when the discussion has recorded rounds
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Promote a discussion into a change scaffold (proposal prefilled from the conclusion)
     Promote {
         slug: String,

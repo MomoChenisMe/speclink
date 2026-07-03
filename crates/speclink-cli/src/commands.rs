@@ -1675,6 +1675,13 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
                 None => bail!("discussion '{slug}' not found"),
             }
         }
+        DiscussCommands::Discard { slug, force, json } => {
+            core::discuss::discard_discussion(&paths, &slug, force)?;
+            if json {
+                return print_json(&serde_json::json!({ "slug": slug, "status": "discarded" }));
+            }
+            println!("{} Discarded discussion: {slug}", color::green("✓"));
+        }
         DiscussCommands::Promote { slug, name, json } => {
             match core::discuss::info(&paths, &slug) {
                 None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),

@@ -12,6 +12,8 @@ Have a focused discussion about a topic and reach a conclusion.
 - An architecture decision: "how to structure the plugin system"
 - A vague idea that needs sharpening: "real-time collaboration"
 
+**Not every topic is a discussion.** If the request is really a question — the user wants to understand how something works or whether something is feasible, and no decision hangs on the answer — answer it directly in the conversation and do not open a discussion record. A discussion exists to settle something; understanding-seeking without a verdict is ask-shaped, not discuss-shaped. When in doubt, start talking without a record: the record is only created at the first substantive round (see below), so nothing is lost by waiting.
+
 ---
 
 ## Recording the discussion (speclink)
@@ -21,7 +23,7 @@ Unlike an ephemeral chat, **every speclink discussion is persisted to a document
 The document has a fixed skeleton — like the proposal template, every discussion record has the same shape:
 
 ```
-## Context      ← the framing, set once after mode pick (discuss context)
+## Context      ← the framing, set once when the record is created (discuss context)
 ## Rounds       ← ### Round N entries, appended per exchange (discuss add-round)
 ## Conclusion   ← the decision, written at convergence (discuss conclude)
 ```
@@ -39,13 +41,18 @@ The document has a fixed skeleton — like the proposal template, every discussi
    ```bash
    speclink discuss list --json
    ```
-2. If one matches the topic and its `status` is `open`, resume it (reuse its `slug`). Otherwise create a new record:
-   ```bash
-   speclink discuss new "<topic>"
-   ```
-   Capture the returned `slug` — every later `add-round`/`conclude` call uses it. Announce briefly: "Recording this discussion as `<slug>`."
+2. If one matches the topic and its `status` is `open`, resume it (reuse its `slug`) — the record already exists; every later `add-round`/`conclude` call uses it.
+3. Otherwise **do not create the record yet.** Announce the slug you intend to use ("This discussion will be recorded as `<slug>` once it has substance.") and proceed — scout, pick a mode, present your first assumptions or question with nothing on disk. A mis-invocation or a topic answered in one exchange leaves no file behind.
 
-**After picking a mode (Step 3)**, fill the Context section once — the framing a future reader (or `propose`) needs before the rounds make sense:
+**Create the record at the first substantive round** — the moment an exchange actually moves the topic (your assumptions list drew confirmations or corrections, an interview answer settled something). Right before recording that first round, run:
+
+```bash
+speclink discuss new "<topic>"
+```
+
+Capture the returned `slug`, write the Context section (below), then `add-round`. From here on the record is live and every exchange is persisted.
+
+**When the record is created**, fill the Context section once — the framing a future reader (or `propose`) needs before the rounds make sense:
 
 ```bash
 speclink discuss context <slug> --stdin <<'CTX_EOF'
@@ -98,6 +105,15 @@ speclink discuss archive <slug>       # → discussions/archive/<created>-<slug>
 ```
 
 Archived discussions stay readable — `speclink discuss show <slug>` falls back to the archive, and `speclink discuss list --archived` lists them. The slug becomes free for a future discussion.
+
+A discussion that turns out not to be needed at all — the user abandons it mid-way, or the topic proved ask-shaped after all — is **discarded**, not archived:
+
+```bash
+speclink discuss discard <slug>            # refuses once rounds exist
+speclink discuss discard <slug> --force    # delete despite recorded rounds
+```
+
+`discard` deletes the live record (archived records are never touched). Once rounds exist it refuses without `--force` — a discussion that examined real trade-offs should keep its reasoning through `conclude` + `archive`, even when the conclusion is "don't do this". Use `discard` freely for records that settled nothing; never leave an abandoned discussion sitting `open`.
 
 ---
 
@@ -344,7 +360,7 @@ When the discussion converges on building something:
 
 ## Guardrails
 
-- **Do record the discussion** — Open a record with `speclink discuss new` at the start, append a round after each exchange, and `conclude` at the end. The document is the durable thread; keep it current.
+- **Do record the discussion** — Announce the intended slug at the start, open the record at the first substantive round (`speclink discuss new`), append a round after each exchange, and `conclude` at the end. The document is the durable thread; keep it current. If the discussion is abandoned instead, `speclink discuss discard` the record — never leave it sitting `open`.
 - **Don't implement** — Never write code or implement features. Creating Speclink artifacts and discussion records is fine, writing application code is not.
 - **Don't leave without a conclusion** — If the user tries to end without a conclusion, summarize where things stand and state what's unresolved.
 - **Don't fake understanding** — If something is unclear, dig deeper.
