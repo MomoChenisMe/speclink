@@ -161,7 +161,56 @@ pub fn has_orphan_requirement(text: &str) -> bool {
 
 /// Whether a delta spec body has an applicable operation (ADDED/MODIFIED/REMOVED with a requirement).
 pub fn has_delta_operation(text: &str) -> bool {
-    op_requirement_count(text) > 0
+    // Speclink divergence #4: a RENAMED section with at least one valid FROM/TO pair
+    // counts as an operation, so a pure-rename delta validates and archives. (Spectra
+    // documents RENAMED but treats rename-only deltas as invalid and never applies
+    // renames at all.)
+    op_requirement_count(text) > 0 || !rename_pairs(text).is_empty()
+}
+
+/// Rename pairs from `## RENAMED Requirements` sections (speclink divergence #4 —
+/// Spectra parses but never applies renames). Both documented syntaxes:
+/// - bullet form: `- FROM: `### Requirement: Old`` / `- TO: `### Requirement: New``
+///   (bold markers and bare names accepted)
+/// - header form: `### Requirement: Old` followed by a `TO: New` line
+pub fn rename_pairs(text: &str) -> Vec<(String, String)> {
+    fn req_name(raw: &str) -> String {
+        let s = raw.trim().trim_matches('`').trim();
+        s.strip_prefix("### Requirement:").map(str::trim).unwrap_or(s).to_string()
+    }
+    let mut out = Vec::new();
+    let mut in_renamed = false;
+    let mut from: Option<String> = None;
+    for line in text.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("## ") {
+            if rest.trim_end().ends_with("Requirements") {
+                in_renamed = rest.split_whitespace().next() == Some("RENAMED");
+                from = None;
+                continue;
+            }
+        }
+        if !in_renamed {
+            continue;
+        }
+        if let Some(name) = t.strip_prefix("### Requirement:") {
+            from = Some(name.trim().to_string());
+            continue;
+        }
+        let norm = t.trim().trim_start_matches("- ").replace("**", "");
+        if let Some(v) = norm.strip_prefix("FROM:") {
+            let v = req_name(v);
+            if !v.is_empty() {
+                from = Some(v);
+            }
+        } else if let Some(v) = norm.strip_prefix("TO:") {
+            let v = req_name(v);
+            if let (Some(f), false) = (from.take(), v.is_empty()) {
+                out.push((f, v));
+            }
+        }
+    }
+    out
 }
 
 /// Capability names present as delta specs — directory names under specs/ whose spec.md FILE

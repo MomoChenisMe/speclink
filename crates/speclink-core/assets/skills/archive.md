@@ -163,15 +163,24 @@ Target archive directory already exists.
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
 
-## RENAMED is never applied (speclink note)
+## RENAMED is actually executed (speclink-specific)
 
-The delta-spec format documents `## RENAMED Requirements` (FROM:/TO:), but archive does
-NOT execute renames in any syntax — the requirement keeps its old name in the canonical
-spec and the summary reports `renamed: 0` (Spectra behaves identically; replicated
-deliberately). To actually rename a requirement, express it as MODIFIED content under
-the old name plus a follow-up edit, or REMOVED + ADDED under the new name. `speclink
-drift` still checks RENAMED targets in `spec_assumptions`, so a stale target is caught
-before archiving.
+Unlike Spectra — which documents `## RENAMED Requirements` but never applies a rename in
+any syntax and always reports `renamed: 0` — speclink executes renames at archive time.
+Both documented forms work:
+
+```markdown
+## RENAMED Requirements
+
+- FROM: `### Requirement: Old Name`
+- TO: `### Requirement: New Name`
+```
+
+or the header form (`### Requirement: Old Name` followed by a `TO: New Name` line). The
+canonical requirement header is rewritten, the summary counts it under `renamed:`, and a
+rename-only delta is a valid change (validates and archives). `speclink drift` checks
+RENAMED targets in `spec_assumptions`, so a stale FROM target routes to ingest before
+archiving instead of silently no-opping.
 
 ## Bulk archive (speclink-specific)
 

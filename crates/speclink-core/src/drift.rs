@@ -198,7 +198,7 @@ pub fn spec_assumptions(paths: &Paths, change: &Change) -> Vec<SpecAssumption> {
                             .to_string(),
                     });
                 }
-                ("MODIFIED" | "REMOVED" | "RENAMED", Some(names)) if !names.contains(&r.name) => {
+                ("MODIFIED" | "REMOVED", Some(names)) if !names.contains(&r.name) => {
                     out.push(SpecAssumption {
                         capability: cap.clone(),
                         operation: r.operation.clone(),
@@ -207,7 +207,7 @@ pub fn spec_assumptions(paths: &Paths, change: &Change) -> Vec<SpecAssumption> {
                             .to_string(),
                     });
                 }
-                ("MODIFIED" | "REMOVED" | "RENAMED", None) => {
+                ("MODIFIED" | "REMOVED", None) => {
                     out.push(SpecAssumption {
                         capability: cap.clone(),
                         operation: r.operation.clone(),
@@ -216,6 +216,27 @@ pub fn spec_assumptions(paths: &Paths, change: &Change) -> Vec<SpecAssumption> {
                     });
                 }
                 _ => {}
+            }
+        }
+        // RENAMED targets come from the shared pair parser (covers both the FROM:/TO:
+        // bullet form — which produces no DeltaReq — and the header form, without
+        // double-reporting the latter).
+        for (from, _to) in crate::model::rename_pairs(&delta_text) {
+            match &canonical_names {
+                Some(names) if names.contains(&from) => {}
+                Some(_) => out.push(SpecAssumption {
+                    capability: cap.clone(),
+                    operation: "RENAMED".to_string(),
+                    requirement: from,
+                    reason: "target requirement no longer exists in the canonical spec"
+                        .to_string(),
+                }),
+                None => out.push(SpecAssumption {
+                    capability: cap.clone(),
+                    operation: "RENAMED".to_string(),
+                    requirement: from,
+                    reason: "canonical spec for this capability does not exist".to_string(),
+                }),
             }
         }
     }
