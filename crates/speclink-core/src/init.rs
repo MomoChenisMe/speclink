@@ -223,6 +223,12 @@ fn prune_tool(root: &Path, tool: Tool) -> Result<bool> {
             }
         }
     }
+    // A deselected tool should leave no footprint: drop the skills dir and its parent
+    // when (and only when) they are now empty — user files keep them alive.
+    let _ = std::fs::remove_dir(&skills_root);
+    if let Some(parent) = skills_root.parent() {
+        let _ = std::fs::remove_dir(parent);
+    }
     let md = root.join(match tool {
         Tool::Claude => "CLAUDE.md",
         Tool::Codex => "AGENTS.md",
