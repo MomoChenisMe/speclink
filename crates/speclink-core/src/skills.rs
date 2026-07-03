@@ -81,7 +81,9 @@ pub fn registry() -> Vec<Skill> {
         Skill { name: "analyze", description: "Analyze artifact consistency for a change", fork: true, disallow_edit: true, for_codex: false, body: B_ANALYZE },
         Skill { name: "apply", description: "Implement or resume tasks from a Speclink change", fork: false, disallow_edit: false, for_codex: true, body: B_APPLY },
         Skill { name: "archive", description: "Archive a completed change", fork: false, disallow_edit: false, for_codex: true, body: B_ARCHIVE },
-        Skill { name: "audit", description: "Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures", fork: true, disallow_edit: true, for_codex: true, body: B_AUDIT },
+        // Not a fork skill (unlike Spectra): the rewritten standalone mode fans out three
+        // parallel audit agents, which the fork's Explore agent cannot spawn.
+        Skill { name: "audit", description: "Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures", fork: false, disallow_edit: true, for_codex: true, body: B_AUDIT },
         Skill { name: "commit", description: "Commit files related to a specific Speclink change", fork: false, disallow_edit: false, for_codex: true, body: B_COMMIT },
         Skill { name: "discuss", description: "Have a focused discussion that is recorded to a discussion document", fork: false, disallow_edit: true, for_codex: true, body: B_DISCUSS },
         Skill { name: "drift", description: "Detect drift between a Speclink change and the current codebase state", fork: true, disallow_edit: true, for_codex: true, body: B_DRIFT },
@@ -125,6 +127,32 @@ pub fn substitute(body: &str, tool: Tool, spec_dir: &str) -> String {
         .replace("/speclink:", tool.slash_replacement())
 }
 
+/// Claude-only fork preamble (matches Spectra): fork auto-select rules that take
+/// precedence over the shared skill body.
+fn fork_context(skill_name: &str) -> Option<String> {
+    let rule = match skill_name {
+        "analyze" | "drift" => format!(
+            "When no change name is provided, run `speclink list --json`. Auto-select only \
+when there is exactly one active change. If there are zero active changes or more than one \
+active change, return the candidate list or empty-state message and ask the main thread to \
+rerun `/speclink-{skill_name} <change-name>`. Do NOT ask an interactive selection question \
+inside the fork."
+        ),
+        "verify" => "When no change name is provided, run `speclink list --json` and \
+consider only active changes with implementation tasks. Auto-select only when exactly one \
+matching active change exists. If there are zero matching active changes or more than one \
+matching active change, return the candidate list or empty-state message and ask the main \
+thread to rerun `/speclink-verify <change-name>`. Do NOT ask an interactive selection \
+question inside the fork."
+            .to_string(),
+        _ => return None,
+    };
+    Some(format!(
+        "## Claude fork context\n\nThis generated Claude Code skill runs with `context: fork`. \
+The rules in this section take precedence over the shared `{skill_name}` body below.\n\n{rule}\n\n---\n\n"
+    ))
+}
+
 /// Render a complete SKILL.md (frontmatter + substituted body) for a tool. The fork/agent and
 /// disallowedTools lines are Claude-only (matches Spectra).
 pub fn render_skill_file(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
@@ -147,7 +175,16 @@ pub fn render_skill_file(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
     fm.push_str("  version: \"1.0\"\n");
     fm.push_str("  generatedBy: \"Speclink\"\n");
     fm.push_str("---\n\n");
+    if tool == Tool::Claude && skill.fork {
+        if let Some(preamble) = fork_context(skill.name) {
+            fm.push_str(&preamble);
+        }
+    }
     fm.push_str(&substitute(skill.body, tool, spec_dir));
+    // Exactly one trailing newline (matches Spectra), regardless of asset file endings.
+    while fm.ends_with("\n\n") {
+        fm.pop();
+    }
     fm
 }
 
