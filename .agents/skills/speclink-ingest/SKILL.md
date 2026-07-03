@@ -235,4 +235,3 @@ Update an existing Speclink change — from a plan file or conversation context.
 - Verify each artifact file exists after writing before proceeding to next
 - **NEVER** skip the artifact workflow to write code directly
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-

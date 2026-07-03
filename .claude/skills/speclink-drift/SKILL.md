@@ -12,6 +12,14 @@ metadata:
   generatedBy: "Speclink"
 ---
 
+## Claude fork context
+
+This generated Claude Code skill runs with `context: fork`. The rules in this section take precedence over the shared `drift` body below.
+
+When no change name is provided, run `speclink list --json`. Auto-select only when there is exactly one active change. If there are zero active changes or more than one active change, return the candidate list or empty-state message and ask the main thread to rerun `/speclink-drift <change-name>`. Do NOT ask an interactive selection question inside the fork.
+
+---
+
 Detect drift between a Speclink change and the current codebase state. Reports time dormancy, broken design anchors, task collisions with external commits, and a single recommended next command.
 
 **Input**: Optionally specify a change name (e.g., `/speclink-drift add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
@@ -34,7 +42,7 @@ Detect drift between a Speclink change and the current codebase state. Reports t
    - `severity`: `"light"` / `"medium"` / `"heavy"`
    - `total_score`: aggregate over Time / Structure / Tasks / Specs (Environment is display-only)
    - `dimensions`: array of `{ kind, status, score, contributes_to_total }`
-   - `broken_anchors`: design.md symbols no longer found in the repo (the change's own directory is excluded from the search, so a committed design does not satisfy its own anchors)
+   - `broken_anchors`: design.md references that no longer resolve. Only code-like tokens anchor (camelCase / snake_case / multi-hump PascalCase, plus backticked expressions); prose capitalized words never do. Backticked file paths (`hr/index.html`) are existence-checked and report as category `File`. The change's own directory is excluded from the symbol search, so a committed design does not satisfy its own anchors.
    - `spec_assumptions`: delta-spec operations whose canonical target has drifted — a MODIFIED/REMOVED/RENAMED requirement that no longer exists, or an ADDED requirement that now already exists. **Archiving would silently skip these**; any entry here routes the recommendation to ingest.
    - `tasks_blocked_external`: pending tasks referencing a file that was touched by commits since `created` and no longer exists
    - `tasks_maybe_resolved`: pending tasks referencing a file that was committed since `created` and exists — the work may already be done
@@ -119,4 +127,3 @@ When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` dat
 - If `speclink drift` returns a non-zero exit code (e.g., older binary without the drift subcommand), report the error and stop
 - Do NOT auto-invoke any follow-up command — recommendations are user-confirmed
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-

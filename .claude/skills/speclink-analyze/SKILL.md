@@ -12,6 +12,14 @@ metadata:
   generatedBy: "Speclink"
 ---
 
+## Claude fork context
+
+This generated Claude Code skill runs with `context: fork`. The rules in this section take precedence over the shared `analyze` body below.
+
+When no change name is provided, run `speclink list --json`. Auto-select only when there is exactly one active change. If there are zero active changes or more than one active change, return the candidate list or empty-state message and ask the main thread to rerun `/speclink-analyze <change-name>`. Do NOT ask an interactive selection question inside the fork.
+
+---
+
 Analyze artifact consistency for a change. Can be invoked directly or triggered automatically when all artifacts are complete.
 
 **Input**: Optionally specify a change name (e.g., `/speclink-analyze add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
@@ -77,4 +85,3 @@ When `speclink status --change "<name>" --json` shows `isComplete: true`, run th
 - Do NOT prompt for change selection if it can be inferred
 - Keep output concise - this runs inline, not as a separate workflow
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-

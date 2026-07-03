@@ -399,4 +399,3 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** reinterpret requirements by ignoring the proposal file
 - **NEVER** invoke `$speclink-apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-
