@@ -62,28 +62,73 @@ pub struct DriftReport {
     pub primary_recommendation: String,
 }
 
-fn extract_anchors(design: &str) -> Vec<String> {
-    let re = Regex::new(r"\b[A-Z][a-zA-Z0-9]+\b").unwrap();
-    let mut seen = std::collections::BTreeSet::new();
-    for m in re.find_iter(design) {
+/// One design anchor: a code-like symbol, or a file-path reference (checked for existence
+/// instead of grepped).
+struct Anchor {
+    name: String,
+    is_path: bool,
+}
+
+/// Whether a token looks like code rather than prose: snake_case / SCREAMING_CASE (any
+/// underscore), camelCase, or multi-hump PascalCase (`DriftReport`). Single capitalized
+/// prose words (`Decisions`), plain acronyms (`CSV`), and heading labels (`D1`) do not.
+fn code_like(token: &str) -> bool {
+    if token.contains('_') && token.chars().any(|c| c.is_ascii_alphanumeric()) {
+        return true;
+    }
+    let camel = Regex::new(r"^[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*$").unwrap();
+    let pascal_multi = Regex::new(r"^(?:[A-Z][a-z0-9]+){2,}$").unwrap();
+    camel.is_match(token) || pascal_multi.is_match(token)
+}
+
+/// Anchor extraction, second deliberate divergence from Spectra here: Spectra's bare
+/// `\b[A-Z]\w+\b` prose scan is silenced in practice by its self-hit corpus; with speclink's
+/// change-dir exclusion it surfaced prose capitalized words (headings, sentence starts) as
+/// broken-anchor noise. Anchors are therefore restricted to code-like tokens anywhere in the
+/// design plus backtick spans, and backticked file paths become existence-checked anchors.
+fn extract_anchors(design: &str) -> Vec<Anchor> {
+    // name -> is_path; BTreeMap keeps the output order stable.
+    let mut seen: std::collections::BTreeMap<String, bool> = std::collections::BTreeMap::new();
+
+    // Code-like identifiers anywhere in the prose (includes backtick span contents).
+    let ident = Regex::new(r"[A-Za-z_][A-Za-z0-9_]*").unwrap();
+    for m in ident.find_iter(design) {
         let w = m.as_str();
-        if STOPWORDS.contains(&w) {
+        if code_like(w) && !STOPWORDS.contains(&w) {
+            seen.entry(w.to_string()).or_insert(false);
+        }
+    }
+
+    // Backtick spans: a whitespace-free span containing '/' is a file-path anchor
+    // (`hr/index.html`, trailing `:42` line refs stripped); otherwise the leading
+    // identifier of a code expression counts when it is code-like (`pressKey(code)`).
+    let span = Regex::new(r"`([^`]+)`").unwrap();
+    let leading = Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*").unwrap();
+    let line_ref = Regex::new(r":\d+$").unwrap();
+    for m in span.captures_iter(design) {
+        let content = m[1].trim();
+        if content.contains('/') && !content.contains(char::is_whitespace) {
+            let path = line_ref
+                .replace(content.trim_start_matches("./"), "")
+                .trim_end_matches('/')
+                .to_string();
+            if !path.is_empty() {
+                seen.insert(path.replace('\\', "/"), true);
+            }
             continue;
         }
-        seen.insert(w.to_string());
-    }
-    // Backticked code spans additionally contribute their LEADING identifier when it is
-    // camelCase (lowercase start, at least one internal uppercase): `pressKey(code)` yields
-    // pressKey, but `dotted.pathToken` and `under_scoreCamel` yield nothing (matches Spectra).
-    let span = Regex::new(r"`([A-Za-z_][A-Za-z0-9_]*)[^`]*`").unwrap();
-    let camel = Regex::new(r"^[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*$").unwrap();
-    for m in span.captures_iter(design) {
-        let ident = &m[1];
-        if camel.is_match(ident) && !STOPWORDS.contains(&ident) {
-            seen.insert(ident.to_string());
+        if let Some(l) = leading.find(content) {
+            let head = l.as_str();
+            if code_like(head) && !STOPWORDS.contains(&head) {
+                seen.entry(head.to_string()).or_insert(false);
+            }
         }
     }
-    seen.into_iter().take(ANCHOR_CAP).collect()
+
+    seen.into_iter()
+        .map(|(name, is_path)| Anchor { name, is_path })
+        .take(ANCHOR_CAP)
+        .collect()
 }
 
 /// Work-tree contents of tracked `*.md` / `*.txt` documents (via `git ls-files`), excluding
@@ -238,11 +283,24 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     let doc_contents = tracked_doc_contents(paths, &exclude_prefix);
     let mut broken = Vec::new();
     for a in &anchors {
-        if !symbol_found(paths, &doc_contents, &exclude_prefix, a) {
-            broken.push(BrokenAnchor {
-                anchor: a.clone(),
-                category: "Symbol".to_string(),
-                reason: "symbol not found in repo".to_string(),
+        let found = if a.is_path {
+            paths.root.join(&a.name).exists()
+        } else {
+            symbol_found(paths, &doc_contents, &exclude_prefix, &a.name)
+        };
+        if !found {
+            broken.push(if a.is_path {
+                BrokenAnchor {
+                    anchor: a.name.clone(),
+                    category: "File".to_string(),
+                    reason: "file not found in repo".to_string(),
+                }
+            } else {
+                BrokenAnchor {
+                    anchor: a.name.clone(),
+                    category: "Symbol".to_string(),
+                    reason: "symbol not found in repo".to_string(),
+                }
             });
         }
     }
