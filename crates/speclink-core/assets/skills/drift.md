@@ -20,7 +20,7 @@ Detect drift between a Speclink change and the current codebase state. Reports t
    - `severity`: `"light"` / `"medium"` / `"heavy"`
    - `total_score`: aggregate over Time / Structure / Tasks / Specs (Environment is display-only)
    - `dimensions`: array of `{ kind, status, score, contributes_to_total }`
-   - `broken_anchors`: design.md symbols no longer found in the repo (the change's own directory is excluded from the search, so a committed design does not satisfy its own anchors)
+   - `broken_anchors`: design.md references that no longer resolve. Only code-like tokens anchor (camelCase / snake_case / multi-hump PascalCase, plus backticked expressions); prose capitalized words never do. Backticked file paths (`hr/index.html`) are existence-checked and report as category `File`. The change's own directory is excluded from the symbol search, so a committed design does not satisfy its own anchors.
    - `spec_assumptions`: delta-spec operations whose canonical target has drifted — a MODIFIED/REMOVED/RENAMED requirement that no longer exists, or an ADDED requirement that now already exists. **Archiving would silently skip these**; any entry here routes the recommendation to ingest.
    - `tasks_blocked_external`: pending tasks referencing a file that was touched by commits since `created` and no longer exists
    - `tasks_maybe_resolved`: pending tasks referencing a file that was committed since `created` and exists — the work may already be done

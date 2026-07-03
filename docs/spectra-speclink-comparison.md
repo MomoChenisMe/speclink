@@ -404,3 +404,23 @@ parity 零影響——英文內容不含 CJK 詞條，suite 31/31）。
 
 另登錄 Spectra 自身缺陷（不複製）：commit skill 示例路徑 `docs/specs/archived/<name>` 與實際
 `openspec/changes/archive/<name>` 不符；preflight `driftedFiles` 為 CLI 死欄位。
+
+
+### §23 續：drift anchor 擷取 v2（散文降噪＋File anchors）
+
+依 `sdd-final-report-hr.md` §7 建議 1 實作。`extract_anchors` 不再掃描散文大寫詞
+（Spectra 的 `[A-Z]\w+` 規則被其 self-hit corpus 掩蓋，speclink 排除 change 目錄後
+噪音浮現）。v2 規則：
+
+- **Symbol anchor**：全文中 code-like token — 含底線（snake_case/SCREAMING_CASE）、
+  camelCase、或多段 PascalCase（`DriftReport`）；單段首大寫散文詞（`Decisions`）、
+  純縮寫（`CSV`）、標題編號（`D1`）一律不收。反引號 span 的 leading identifier 同樣以
+  code-like 判定（原本僅 camelCase）。STOPWORDS 保留。
+- **File anchor（新增類別）**：反引號 span 無空白且含 `/` → 視為路徑（剝除 `./` 前綴、
+  `:N` 行號後綴、尾斜線），以檔案系統存在性檢查，broken 時 category `File`、
+  reason `file not found in repo`。
+- 上限 ANCHOR_CAP=50 與 BTreeMap 排序輸出不變。
+
+成效（同一份 hr-system design.md）：v1 = 17 anchors / 8 broken（全散文誤報，Structure +3）；
+v2 = 8 anchors / 0 broken（+0），fixture 驗證真斷裂（改名符號、缺檔）仍正確報 broken。
+parity suite 31/31、twin harness 全場景維持一致（drift 對照經既有 count 中性化）。
