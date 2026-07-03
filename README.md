@@ -98,7 +98,7 @@ speclink archive <name> -y
 
 ## SDD 工作流
 
-```
+```text
 discuss?  →  propose  →  apply  ⇄  ingest  →  verify?  →  archive
 ```
 
@@ -252,7 +252,7 @@ rules:
 
 ## 專案結構
 
-```
+```text
 專案根/
 ├── .speclink.yaml                     # 應用層設定
 ├── CLAUDE.md / AGENTS.md              # 指令注入區塊（<!-- SPECLINK:START -->）
