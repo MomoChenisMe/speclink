@@ -5,9 +5,25 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+/// Version string with the architecture suffix Spectra appends (e.g. "2.3.1 (x64)").
+const VERSION: &str = {
+    #[cfg(target_arch = "x86_64")]
+    {
+        concat!(env!("CARGO_PKG_VERSION"), " (x64)")
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        concat!(env!("CARGO_PKG_VERSION"), " (arm64)")
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    {
+        env!("CARGO_PKG_VERSION")
+    }
+};
+
 /// Speclink — spec management CLI
 #[derive(Parser)]
-#[command(name = "speclink", version, about = "Speclink — spec management CLI", disable_help_subcommand = false)]
+#[command(name = "speclink", version = VERSION, about = "Speclink — spec management CLI", disable_help_subcommand = false)]
 struct Cli {
     /// Disable colored output
     #[arg(long, global = true)]
@@ -385,7 +401,14 @@ enum ConfigCommands {
         key: String,
     },
     /// Reset config
-    Reset,
+    Reset {
+        /// Reset all settings
+        #[arg(long)]
+        all: bool,
+        /// Skip confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
     /// Edit config in $EDITOR
     Edit,
 }
@@ -415,6 +438,9 @@ enum CompletionCommands {
     Uninstall {
         /// Shell type
         shell: Option<String>,
+        /// Skip confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
     },
 }
 

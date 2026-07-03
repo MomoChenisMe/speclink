@@ -245,26 +245,32 @@ pub fn build_apply(paths: &Paths, change: &Change, schema: &Schema) -> ApplyInst
     let blocked = state == "blocked";
 
     let missing_artifacts = if blocked {
-        Some(
-            schema
-                .apply_requires
-                .iter()
-                .filter(|id| {
-                    schema
-                        .artifact(id)
-                        .map(|a| !model::artifact_done(&change.dir, a))
-                        .unwrap_or(true)
-                })
-                .map(|s| s.to_string())
-                .collect(),
-        )
+        let missing: Vec<String> = schema
+            .apply_requires
+            .iter()
+            .filter(|id| {
+                schema
+                    .artifact(id)
+                    .map(|a| !model::artifact_done(&change.dir, a))
+                    .unwrap_or(true)
+            })
+            .map(|s| s.to_string())
+            .collect();
+        // Blocked by zero checkboxes rather than a missing artifact → the key is
+        // omitted entirely (matches Spectra: no empty missingArtifacts array).
+        if missing.is_empty() {
+            None
+        } else {
+            Some(missing)
+        }
     } else {
         None
     };
-    let preflight = if blocked {
-        None
-    } else {
+    // Preflight only in the ready state — Spectra drops it again once all tasks are done.
+    let preflight = if state == "ready" {
         Some(Preflight::compute(paths, change))
+    } else {
+        None
     };
 
     ApplyInstructions {

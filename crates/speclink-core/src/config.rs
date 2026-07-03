@@ -55,11 +55,15 @@ pub fn locale_display(code: Option<&str>) -> String {
 }
 
 /// Machine-level speclink directory (global config, user schemas), by OS convention:
-/// Windows `%APPDATA%`, macOS `~/Library/Application Support`, Linux `$XDG_CONFIG_HOME`|`~/.config`.
+/// Windows `%USERPROFILE%\AppData\Roaming` (derived from the profile — Spectra ignores a
+/// redirected APPDATA env var, probed), macOS `~/Library/Application Support`,
+/// Linux `$XDG_CONFIG_HOME`|`~/.config`.
 pub fn global_config_dir() -> std::path::PathBuf {
     use std::path::PathBuf;
     let base = if cfg!(windows) {
-        std::env::var("APPDATA").map(PathBuf::from).ok()
+        std::env::var("USERPROFILE")
+            .map(|h| PathBuf::from(h).join("AppData").join("Roaming"))
+            .ok()
     } else if cfg!(target_os = "macos") {
         std::env::var("HOME")
             .map(|h| PathBuf::from(h).join("Library").join("Application Support"))

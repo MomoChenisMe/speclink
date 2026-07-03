@@ -15,20 +15,20 @@ pub struct Task {
     pub parallel: bool,
 }
 
-/// Parse tasks.md into an ordered list of checkbox tasks.
+/// Parse tasks.md into an ordered list of checkbox tasks. Dash and star bullets both
+/// count (matches Spectra: `* [ ]` is a task).
 pub fn parse(tasks_md: &str) -> Vec<Task> {
     let mut out = Vec::new();
     let mut id = 0usize;
     for line in tasks_md.lines() {
         let trimmed = line.trim_start();
-        let (done, rest) = if let Some(r) = trimmed.strip_prefix("- [ ] ") {
-            (false, r)
-        } else if let Some(r) = trimmed.strip_prefix("- [x] ") {
-            (true, r)
-        } else if let Some(r) = trimmed.strip_prefix("- [X] ") {
-            (true, r)
-        } else {
-            continue;
+        let unbulleted = trimmed
+            .strip_prefix("- ")
+            .or_else(|| trimmed.strip_prefix("* "));
+        let (done, rest) = match unbulleted {
+            Some(r) if r.starts_with("[ ] ") => (false, &r[4..]),
+            Some(r) if r.starts_with("[x] ") || r.starts_with("[X] ") => (true, &r[4..]),
+            _ => continue,
         };
         id += 1;
         let (parallel, desc) = match rest.strip_prefix("[P] ") {
@@ -62,22 +62,29 @@ pub fn mark_done(tasks_md: &str, target_id: usize) -> Option<(String, String, bo
     let mut out_lines: Vec<String> = Vec::new();
     for line in tasks_md.lines() {
         let trimmed = line.trim_start();
-        let is_open = trimmed.starts_with("- [ ] ");
-        let is_done = trimmed.starts_with("- [x] ") || trimmed.starts_with("- [X] ");
+        let bullet = if trimmed.starts_with("- ") {
+            '-'
+        } else if trimmed.starts_with("* ") {
+            '*'
+        } else {
+            '\0'
+        };
+        let body = if bullet != '\0' { &trimmed[2..] } else { "" };
+        let is_open = bullet != '\0' && body.starts_with("[ ] ");
+        let is_done = bullet != '\0' && (body.starts_with("[x] ") || body.starts_with("[X] "));
         if is_open || is_done {
             id += 1;
             if id == target_id {
                 found = true;
                 let indent = &line[..line.len() - trimmed.len()];
-                let rest = if is_open {
-                    &trimmed[6..]
-                } else {
+                let rest = &body[4..];
+                if is_done {
                     already = true;
-                    &trimmed[6..]
-                };
+                }
                 let clean = rest.strip_prefix("[P] ").unwrap_or(rest);
                 desc = clean.trim().to_string();
-                out_lines.push(format!("{indent}- [x] {rest}"));
+                // The bullet style is preserved (Spectra rewrites `* [ ]` to `* [x]`).
+                out_lines.push(format!("{indent}{bullet} [x] {rest}"));
                 continue;
             }
         }
@@ -150,6 +157,12 @@ impl TouchedRecord {
 /// Untracked directories are expanded to individual files (`-uall`). The spec directory and
 /// speclink work directory are excluded, since @trace records *code* changes, not spec artifacts.
 pub fn git_changed_files(root: &Path) -> Vec<String> {
+    // Only when the project root is itself the git root (matches Spectra): a project
+    // nested inside an ancestor repo records nothing, instead of walking up and
+    // capturing dirty files from outside the project.
+    if !root.join(".git").exists() {
+        return Vec::new();
+    }
     // NB: use the RAW (untrimmed) output — porcelain's first column is a significant leading space
     // for work-tree-modified files (" M path"); trimming it shifts the path by one character.
     let Some(out) = util::git_raw(root, &["status", "--porcelain", "-uall"]) else {

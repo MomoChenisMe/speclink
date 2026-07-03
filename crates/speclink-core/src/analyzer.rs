@@ -123,24 +123,37 @@ fn parse_delta_spec(text: &str) -> Vec<Requirement> {
     reqs
 }
 
-/// Extract capability names from proposal `### New Capabilities` / `### Modified Capabilities`.
+/// Extract capability names from the proposal (probed against Spectra): a
+/// "Capabilities"-titled section opens extraction — `## Capabilities` (h2) or
+/// `### New/Modified Capabilities` (h3) — and EVERY following line contributes its first
+/// backticked whitespace-free token (any bullet style, numbered lists, plain prose),
+/// continuing through unrelated h3 headings until the next h2. Angle-bracket
+/// placeholders are kept (Spectra flags `<placeholder>` as a missing spec); a backticked
+/// token containing whitespace disqualifies the line with no fallback to later pairs.
 fn parse_capabilities(proposal: &str) -> (Vec<String>, Vec<String>) {
     let mut new_caps = Vec::new();
     let mut mod_caps = Vec::new();
+    // 0 = outside any capabilities section; 1 = new bucket; 2 = modified bucket.
     let mut section = 0;
     for line in proposal.lines() {
         let t = line.trim();
-        if t.starts_with("### New Capabilities") {
-            section = 1;
+        if let Some(h) = t.strip_prefix("### ") {
+            let h = h.trim_start();
+            if h.starts_with("New Capabilities") {
+                section = 1;
+                continue;
+            }
+            if h.starts_with("Modified Capabilities") {
+                section = 2;
+                continue;
+            }
+            // Any other h3 does NOT close the section — extraction keeps going.
+        } else if let Some(h) = t.strip_prefix("## ") {
+            section = if h.trim().starts_with("Capabilities") { 1 } else { 0 };
             continue;
-        } else if t.starts_with("### Modified Capabilities") {
-            section = 2;
-            continue;
-        } else if t.starts_with("## ") || t.starts_with("### ") {
-            section = 0;
         }
         if section != 0 {
-            if let Some(cap) = parse_cap_bullet(t) {
+            if let Some(cap) = first_backtick_token(t) {
                 if section == 1 {
                     new_caps.push(cap);
                 } else {
@@ -152,22 +165,24 @@ fn parse_capabilities(proposal: &str) -> (Vec<String>, Vec<String>) {
     (new_caps, mod_caps)
 }
 
-fn parse_cap_bullet(line: &str) -> Option<String> {
-    let rest = line.strip_prefix("- ")?;
-    let rest = rest.strip_prefix('`')?;
-    let end = rest.find('`')?;
-    let name = &rest[..end];
-    if name.is_empty() || name.starts_with('<') {
+fn first_backtick_token(line: &str) -> Option<String> {
+    let open = line.find('`')?;
+    let rest = &line[open + 1..];
+    let close = rest.find('`')?;
+    let tok = &rest[..close];
+    if tok.is_empty() || tok.contains(char::is_whitespace) {
         None
     } else {
-        Some(name.to_string())
+        Some(tok.to_string())
     }
 }
 
 fn design_headings(design: &str) -> Vec<String> {
+    // Leading whitespace is trimmed before the `### ` check (probed: Spectra recognizes
+    // headings indented by spaces or tabs, beyond CommonMark's 3-space limit).
     design
         .lines()
-        .filter_map(|l| l.strip_prefix("### ").map(|s| s.trim().to_string()))
+        .filter_map(|l| l.trim_start().strip_prefix("### ").map(|s| s.trim().to_string()))
         .collect()
 }
 
@@ -189,39 +204,42 @@ fn req_covered(name: &str, tasks: &[String]) -> bool {
     tasks.iter().any(|t| t.to_lowercase().contains(&n))
 }
 
-/// Weak/vague language patterns found in a spec line, in Spectra's reporting order.
-fn weak_patterns_in(line: &str) -> Vec<String> {
-    let alpha = ["should", "may", "might", "consider", "possibly"];
-    let literal = ["TBD", "TODO", "???", "TKTK"];
-    let mut out = Vec::new();
-    let words: Vec<String> = line
-        .to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
-        .map(|s| s.to_string())
-        .collect();
-    for p in alpha {
-        if words.iter().any(|w| w == p) {
-            out.push(p.to_string());
+/// First weak/vague pattern on a spec line — at most ONE finding per line, taken in
+/// Spectra's fixed check order (should, may, might, consider, possibly, TBD, TODO, ???,
+/// TKTK). All English patterns match as case-insensitive SUBSTRINGS ("shoulder" flags
+/// 'should', "outbdoor" flags 'TBD' — probed), and heading lines ('#'-leading after
+/// trim) are never scanned. The CJK additions (speclink divergence) follow in the same
+/// one-per-line discipline, with the 不可能 exemption (「盡可能」 still flags via 可能).
+fn weak_pattern_in(line: &str) -> Option<String> {
+    if line.trim_start().starts_with('#') {
+        return None;
+    }
+    let lower = line.to_lowercase();
+    for p in ["should", "may", "might", "consider", "possibly"] {
+        if lower.contains(p) {
+            return Some(p.to_string());
         }
     }
-    for p in literal {
-        if line.contains(p) {
-            out.push(p.to_string());
+    for p in ["TBD", "TODO", "???", "TKTK"] {
+        let hit = if p == "???" {
+            line.contains("???")
+        } else {
+            lower.contains(&p.to_lowercase())
+        };
+        if hit {
+            return Some(p.to_string());
         }
     }
-    // CJK weak words (speclink addition — the English list is invisible to Chinese prose).
-    // Substring match, since CJK has no word boundaries. 「不可能」 states impossibility
-    // (a strong claim), so 可能 inside it does not count; 「盡可能」 still flags via 可能.
     let cjk = ["應該", "也許", "或許", "大概", "考慮", "盡量", "儘量", "待定"];
     for p in cjk {
         if line.contains(p) {
-            out.push(p.to_string());
+            return Some(p.to_string());
         }
     }
     if line.replace("不可能", "").contains("可能") {
-        out.push("可能".to_string());
+        return Some("可能".to_string());
     }
-    out
+    None
 }
 
 pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
@@ -230,7 +248,7 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     let tasks_text = util::read_opt(&change.dir.join("tasks.md")).unwrap_or_default();
     let spec_files = model::spec_files(&change.dir);
 
-    let (new_caps, _mod_caps) = parse_capabilities(&proposal);
+    let (new_caps, mod_caps) = parse_capabilities(&proposal);
     let tasks = task_descriptions(&tasks_text);
 
     // Parse all delta specs, keeping per-file text for line-based checks.
@@ -267,7 +285,8 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     // --- Coverage ---
     if !coverage_skipped {
         let mut n = 0;
-        for cap in &new_caps {
+        // covMissingSpec applies to Modified Capabilities too (probed).
+        for cap in new_caps.iter().chain(mod_caps.iter()) {
             // Flagged only when the delta spec FILE is missing; an empty file counts as present.
             let spec = change.dir.join("specs").join(cap).join("spec.md");
             if !spec.is_file() {
@@ -298,10 +317,12 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     // --- Consistency ---
     if !consistency_skipped {
         let mut n = 0;
+        // Matched against the FULL tasks.md text (probed: a prose mention outside any
+        // checkbox suppresses the finding), lowercased on both sides.
+        let tasks_lower = tasks_text.to_lowercase();
         for h in design_headings(&design) {
-            // Lowercased on both sides (matches Spectra), and reported lowercased too.
             let hl = h.to_lowercase();
-            if !tasks.iter().any(|t| t.to_lowercase().contains(&hl)) {
+            if !tasks_lower.contains(&hl) {
                 n += 1;
                 let mut f = make_finding(
                     "CON", n, "Consistency", Severity::Warning, "design.md",
@@ -316,36 +337,37 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
         }
     }
 
-    // --- Ambiguity (order: no-scenario, then abstract-scenario, then weak-language) ---
+    // --- Ambiguity — grouped per FILE (matches Spectra), each file emitting its
+    // no-scenario, then abstract-scenario, then weak-language findings in turn.
     if !ambiguity_skipped {
         let mut n = 0;
-        for (loc, req) in &all_reqs {
-            if req.scenarios.is_empty() {
-                n += 1;
-                ambiguity.push(make_finding(
-                    "AMB", n, "Ambiguity", Severity::Warning, loc,
-                    &format!("Requirement '{}' has no scenarios", req.name),
-                    &format!("Add #### Scenario: sections with WHEN/THEN for '{}'", req.name),
-                    "ambNoScenario", [("req", req.name.as_str())],
-                ));
-            }
-        }
-        for (loc, req) in &all_reqs {
-            for sc in &req.scenarios {
-                if !sc.has_example && !sc.has_concrete {
+        for (rel, text) in &spec_texts {
+            for (loc, req) in all_reqs.iter().filter(|(l, _)| l == rel) {
+                if req.scenarios.is_empty() {
                     n += 1;
                     ambiguity.push(make_finding(
-                        "AMB", n, "Ambiguity", Severity::Suggestion, loc,
-                        &format!("Scenario '{}' has no concrete examples", sc.name),
-                        "Add ##### Example: with concrete GIVEN/WHEN/THEN data",
-                        "ambAbstractScenario", [("scenario", sc.name.as_str())],
+                        "AMB", n, "Ambiguity", Severity::Warning, loc,
+                        &format!("Requirement '{}' has no scenarios", req.name),
+                        &format!("Add #### Scenario: sections with WHEN/THEN for '{}'", req.name),
+                        "ambNoScenario", [("req", req.name.as_str())],
                     ));
                 }
             }
-        }
-        for (rel, text) in &spec_texts {
+            for (loc, req) in all_reqs.iter().filter(|(l, _)| l == rel) {
+                for sc in &req.scenarios {
+                    if !sc.has_example && !sc.has_concrete {
+                        n += 1;
+                        ambiguity.push(make_finding(
+                            "AMB", n, "Ambiguity", Severity::Suggestion, loc,
+                            &format!("Scenario '{}' has no concrete examples", sc.name),
+                            "Add ##### Example: with concrete GIVEN/WHEN/THEN data",
+                            "ambAbstractScenario", [("scenario", sc.name.as_str())],
+                        ));
+                    }
+                }
+            }
             for (idx, line) in text.lines().enumerate() {
-                for pat in weak_patterns_in(line) {
+                if let Some(pat) = weak_pattern_in(line) {
                     n += 1;
                     let loc = format!("{rel}:{}", idx + 1);
                     ambiguity.push(make_finding(

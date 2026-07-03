@@ -424,3 +424,66 @@ parity 零影響——英文內容不含 CJK 詞條，suite 31/31）。
 成效（同一份 hr-system design.md）：v1 = 17 anchors / 8 broken（全散文誤報，Structure +3）；
 v2 = 8 anchors / 0 broken（+0），fixture 驗證真斷裂（改名符號、缺檔）仍正確報 broken。
 parity suite 31/31、twin harness 全場景維持一致（drift 對照經既有 count 中性化）。
+
+
+## 24. Ultracode 獵捕輪（2026-07-03）：55 項共有功能 parity 缺口
+
+7 個 probe agent 平行掃描前幾輪未觸發的指令面，每個差異經獨立對抗性驗證（63 agents），
+55 項確認為真缺口、僅 1 項駁回（spectra-app-only）。全數修復，除以下三項登錄為
+「Spectra 非決定性/自我汙染缺陷，不複製」：
+
+- `config list --json` 鍵序：Spectra 每次執行順序不同（HashMap）；speclink 穩定字母序
+- `@trace` 的 code 檔案清單順序：Spectra hash 亂序（逐次不同）；speclink 排序
+- touched 記錄：Spectra 會把自己的 `.spectra/touched/<change>.json` 當作 touched 檔案
+  記入後續 task；speclink 排除自身工作目錄
+
+修復摘要（全部 probe 驗證後對齊，parity suite 31/31、twin harness 全場景維持一致）：
+
+- **list/show/status**：`--sort` 三語義（name＝字母序；created＝有效 meta 者 created desc
+  優先、其餘 mtime；預設/其他＝change 內最新檔案 mtime 秒級截斷 desc、同秒名稱序——
+  該排序鍵同時用於 validate --all、多 change 候選列表、analyze 自動選擇）；
+  `--changes --specs` 並列輸出；list --json 的 status 在全完成時為 "done"；
+  show 的 Schema/Created 以「schema+created 皆存在」為單位（缺一全 null）；
+  show 的 proposal 末段無條件補一空行；`--item-type` 非法值報錯 exit 1；
+  空 specs 訊息 "No specs."
+- **validate**：同 section 重複 requirement 名（`Duplicate requirement 'X' in ADDED
+  section`）與跨 section 同名（`appears in both A and B sections`）為硬錯誤
+- **new artifact**：proposal/design 的 --stdin 拒絕訊息措辭對齊
+- **config**：值解析為原生 YAML 純量（--string 強制字串）；檔案保插入序、list 顯示排序；
+  `Key 'x' not found.`／`✓ Removed key: x`／`✓ Config reset.`／空 config
+  "No configuration set."；reset 支援 --all/-y；edit 實際開啟 $VISUAL/$EDITOR（vi
+  fallback＋"program not found" 錯誤）；全域目錄改由 USERPROFILE 推導（忽略 APPDATA，
+  與 Spectra 相同）
+- **completion**：uninstall 支援 -y；bash 補全重新注入 positional 佔位符
+  （`[CHANGE]`、`<KEY>`——新版 clap_complete 移除了 Spectra 舊版行為）
+- **init --dir**：非預設目錄持久化為 `spec_dir:` 有效行（原本遺漏導致專案分裂）
+- **--version**：附加架構後綴 "(x64)"
+- **archive**：單一歸檔前先 validate（`Validation failed:
+<path>: Invalid format: …`，
+  無 "Parse error" 前綴）；--no-validate 下零操作 delta 於套用期硬失敗
+  （`Failed to parse delta spec: …`）；RENAMED 一律不套用（Spectra 任何語法都不執行、
+  renamed 恆 0——speclink 原本套用 header+TO: 形式屬未登錄分歧，已移除）；
+  @trace 前空行規則分路：fresh canonical 保留 delta 原始空行＋1 空行，merge 正規化
+  （MODIFIED 2、ADDED 1）；@trace 注入時不補檔尾換行；--mark-tasks-complete 涵蓋
+  `* [ ]` 星號；重複歸檔訊息 `Archived change 'x' already exists`
+- **task/instructions**：`* [ ]` 星號 checkbox 全面納入解析（progress 總數、task done
+  的 1-based ID、改寫保留 bullet 樣式）；touched 僅在專案根即 git 根時記錄（不再爬上
+  層 repo 收整倉 dirty 檔案）；instructions 無參數且 artifacts 全在時回 apply 視圖；
+  blocked 因零 checkbox 時省略 missingArtifacts；all_done 時省略 preflight
+- **analyze**：弱語言改為大小寫不敏感子字串（"shoulder" 命中 should——Spectra 語義）、
+  每行最多一個 finding（固定序 should→may→might→consider→possibly→TBD→TODO→???→TKTK，
+  CJK 清單接續同紀律）、heading 行不掃描；capabilities 擷取改為「Capabilities 標題段
+  內每一行的第一個反引號無空白 token、直到下一個 h2」（angle-bracket placeholder 保留、
+  Modified Capabilities 也檢查 covMissingSpec）；delta spec 檔案僅認
+  `specs/<cap>/spec.md` 一層；多檔 Ambiguity findings 依檔案分組編號；Consistency 對
+  tasks.md 全文比對（散文提及即滿足）且認縮排 heading
+- **demo**：8 主題完整捕獲（access-control/audit-trail/batch-export/keyboard-macros/
+  real-time-sync/smart-search/snapshot-restore/theme-engine）隨機輪換，形容詞/寶可夢
+  名字池各 20 個與 Spectra 一致（前綴 slx-）
+
+**已知缺口（後續專項）**：色彩輸出。Spectra 以 anstream 語義上色（tty 偵測、
+CLICOLOR_FORCE 蓋過 NO_COLOR；bold 標籤、cyan 圓點、dim 次要文字、green ✓、
+yellow ○/●，含空 summary 的空 dim 對等細節）；speclink 目前全指令純文字，--no-color
+形同 no-op。機器可讀面（--json、--no-color）100% parity 不受影響；完整上色需逐指令
+逐狀態測繪，另開專項。cmp.py 的 drift 正規化已更新為雙邊中性化 Structure/anchors
+（anchor v2 刻意分歧）。
