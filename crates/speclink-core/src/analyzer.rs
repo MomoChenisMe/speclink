@@ -299,14 +299,19 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     if !consistency_skipped {
         let mut n = 0;
         for h in design_headings(&design) {
-            if !tasks.iter().any(|t| t.contains(&h)) {
+            // Lowercased on both sides (matches Spectra), and reported lowercased too.
+            let hl = h.to_lowercase();
+            if !tasks.iter().any(|t| t.to_lowercase().contains(&hl)) {
                 n += 1;
-                consistency.push(make_finding(
+                let mut f = make_finding(
                     "CON", n, "Consistency", Severity::Warning, "design.md",
-                    &format!("Design topic '{h}' is not referenced by any task"),
-                    &format!("Add a task covering design decision '{h}'"),
-                    "conDesignNotInTasks", [("topic", h.as_str())],
-                ));
+                    &format!("Design topic '{hl}' not referenced in tasks"),
+                    "Verify tasks cover this design decision",
+                    "conDesignNotInTasks", [("keyword", hl.as_str())],
+                );
+                // Spectra sends this recommendation without params.
+                f.recommendation_msg.params.clear();
+                consistency.push(f);
             }
         }
     }
