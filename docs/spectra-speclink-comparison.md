@@ -487,3 +487,34 @@ yellow ○/●，含空 summary 的空 dim 對等細節）；speclink 目前全�
 形同 no-op。機器可讀面（--json、--no-color）100% parity 不受影響；完整上色需逐指令
 逐狀態測繪，另開專項。cmp.py 的 drift 正規化已更新為雙邊中性化 Structure/anchors
 （anchor v2 刻意分歧）。
+
+
+## 25. RENAMED 執行與色彩輸出（2026-07-03，§24 兩個後續專項落地）
+
+**RENAMED 實際執行（刻意分歧 #4）**：Spectra 文件記載 `## RENAMED Requirements`
+（FROM:/TO:）但任何語法都不執行、`renamed:` 恆 0，且 rename-only delta 被 validate
+拒絕。speclink 改為真正執行：`model::rename_pairs` 同時解析 bullet 形
+（`- FROM: `### Requirement: Old`` / `- TO: …`，容許粗體標記與裸名）與 header 形
+（`### Requirement: Old` + `TO: New` 行）；archive 於 merge 時重寫 canonical
+requirement 標頭並計數；rename-only delta 視為有效操作（`has_delta_operation`）；
+drift 的 `spec_assumptions` 經共用解析檢查 RENAMED 的 FROM 目標（bullet 形不產
+DeltaReq、header 形不重複報）。archive skill 的說明段同步改寫。
+
+**色彩輸出**：新增 `speclink-cli/src/color.rs` —— 一次性判定（`--no-color` >
+CLICOLOR_FORCE（非 "0" 即 force，含空值 —— 與 Spectra 實測一致，且蓋過 NO_COLOR）>
+NO_COLOR / CLICOLOR=0 > stdout tty），helpers 於 plain 模式回傳原字串，全部 plain
+路徑 byte 不變（parity suite 31/31 維持）。palette 依 probe 逐點複刻：
+- ✓ 綠（全部成功訊息、validate valid、status done、analyze 無 findings）；✗ 紅、
+  `error:` 紅、`Missing artifacts:` 紅
+- `warn:`、○、●、`Missing:`、[WARNING] 黃；[CRITICAL] 粗體紅；[SUGGEST] 暗色
+- 標籤粗體（Change/Schema/Created/State/Progress/Tasks:/Artifact/Output/Description/
+  Instruction:/Dependencies:/Unlocks:/Template:/Changes:/Specs:/Findings/Drift Report/
+  Severity/Dimension 表頭/Total）；list 圓點青色；summary/路徑/`--- x ---`/analyze
+  狀態文字/at:/→ 行暗色（空 summary 輸出空的 `[2m[0m` 對，同 Spectra）
+- drift：severity 值 LIGHT 粗體綠／MEDIUM 粗體黃／HEAVY 粗體紅（HEAVY 經 probe 證實），
+  建議指令粗體青；表頭/Total 的粗體跨度含 pad（plain byte 等價已驗證）
+- instructions 的依賴與任務符號維持無色（probed —— 與 status 的彩色符號不同）
+細節注意：analyze 維度行的粗體跨度是 14 寬 pad（第 15 欄分隔空格在外）。
+新增 `color_suite.sh`（16 案例，CLICOLOR_FORCE=1 下 byte 對照，drift 案例剝除已登錄
+內容分歧行）全數通過；speclink 自有輸出（discuss、bulk archive、prune 提示）沿用
+同一 palette。

@@ -149,7 +149,7 @@ fn cmd_init(a: InitArgs) -> Result<()> {
         None => core::init::detect_tools(&root),
     };
     core::init::init(&root, &tools, a.force, &spec_dir)?;
-    println!("✓ Initialized at {display_base}{}{spec_dir}", std::path::MAIN_SEPARATOR);
+    println!("{} Initialized at {display_base}{}{spec_dir}", color::green("✓"), std::path::MAIN_SEPARATOR);
     if !tools.is_empty() {
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         println!("Generated files for: {}", names.join(", "));
@@ -178,7 +178,7 @@ fn cmd_update(a: UpdateArgs) -> Result<()> {
         println!("! No AI tool configurations found. Use 'speclink init --tools' to set up.");
     } else {
         if !outcome.updated.is_empty() {
-            println!("✓ Updated instruction files for: {}", outcome.updated.join(", "));
+            println!("{} Updated instruction files for: {}", color::green("✓"), outcome.updated.join(", "));
         }
         if !outcome.pruned.is_empty() {
             println!(
@@ -278,7 +278,7 @@ fn cmd_list(a: ListArgs) -> Result<()> {
         }
         return Ok(());
     }
-    println!("Changes:");
+    println!("{}", color::bold("Changes:"));
     for c in &changes {
         let (complete, total) = task_counts(c);
         let summary = proposal_summary(c);
@@ -288,11 +288,14 @@ fn cmd_list(a: ListArgs) -> Result<()> {
         } else {
             String::new()
         };
-        if summary.is_empty() {
-            println!("  • {}{marker}", c.name);
+        // The dim wrapper always prints — an empty summary yields Spectra's empty
+        // \x1b[2m\x1b[0m pair in color mode and nothing in plain mode.
+        let suffix = if summary.is_empty() {
+            String::new()
         } else {
-            println!("  • {}{marker} — {summary}", c.name);
-        }
+            format!(" — {summary}")
+        };
+        println!("  {} {}{marker}{}", color::cyan("•"), c.name, color::dim(&suffix));
     }
     if a.specs {
         println!();
@@ -339,9 +342,9 @@ fn list_specs(paths: &Paths, json: bool) -> Result<()> {
         println!("No specs.");
         return Ok(());
     }
-    println!("Specs:");
+    println!("{}", color::bold("Specs:"));
     for s in specs {
-        println!("  • {s}");
+        println!("  {} {s}", color::cyan("•"));
     }
     Ok(())
 }
@@ -383,9 +386,9 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
                 "name": item,
             }));
         }
-        println!("Spec: {item}");
+        println!("{}: {item}", color::bold("Spec"));
         println!();
-        println!("--- spec.md ---");
+        println!("{}", color::dim("--- spec.md ---"));
         print!("{content}");
         println!(); // Spectra always emits a trailing newline (an extra blank when content ends with \n)
         return Ok(());
@@ -425,12 +428,12 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
         }));
     }
 
-    println!("Change: {}", change.name);
+    println!("{}: {}", color::bold("Change"), change.name);
     if let Some(schema_name) = &schema_name {
-        println!("Schema: {schema_name}");
+        println!("{}: {schema_name}", color::bold("Schema"));
     }
     if let Some(created) = &created {
-        println!("Created: {created}");
+        println!("{}: {created}", color::bold("Created"));
     }
     let proposal = read_opt_str("proposal.md");
     let caps = core::model::delta_capabilities(&change.dir);
@@ -440,11 +443,11 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
     }
     // The Proposal section renders whenever the FILE exists (even empty), matching Spectra.
     if let Some(proposal) = proposal {
-        println!("--- Proposal ---");
+        println!("{}", color::dim("--- Proposal ---"));
         print!("{proposal}");
         if !caps.is_empty() {
             // The proposal's own trailing newline determines the blank-line count before the header.
-            print!("\n\n--- Delta Specs ---\n");
+            print!("\n\n{}\n", color::dim("--- Delta Specs ---"));
             for c in &caps {
                 println!("  {c}/spec.md");
             }
@@ -455,7 +458,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
         }
     } else if !caps.is_empty() {
         // No proposal, but delta specs exist — still render the section.
-        println!("--- Delta Specs ---");
+        println!("{}", color::dim("--- Delta Specs ---"));
         for c in &caps {
             println!("  {c}/spec.md");
         }
@@ -496,15 +499,15 @@ fn cmd_validate(a: ValidateArgs) -> Result<()> {
     }
     for r in &results {
         if r.valid {
-            println!("✓ {} — valid", r.change);
+            println!("{} {} — valid", color::green("✓"), r.change);
         } else {
-            println!("✗ {} — invalid", r.change);
+            println!("{} {} — invalid", color::red("✗"), r.change);
             for e in &r.errors {
-                println!("  error: {e}");
+                println!("  {} {e}", color::red("error:"));
             }
         }
         for w in &r.warnings {
-            println!("  warn: {w}");
+            println!("  {} {w}", color::yellow("warn:"));
         }
     }
     if any_invalid {
@@ -533,41 +536,49 @@ fn cmd_analyze(a: ChangeArg) -> Result<()> {
 }
 
 fn render_analyze(report: &core::analyzer::AnalyzeReport) {
-    println!("Change: {}", report.change_id);
+    println!("{}: {}", color::bold("Change"), report.change_id);
     println!();
     for d in &report.dimensions {
-        let sym = if d.finding_count == 0 { "✓" } else { "●" };
+        let sym = if d.finding_count == 0 {
+            color::green("✓")
+        } else {
+            color::yellow("●")
+        };
+        // Spectra's bold span covers a 14-wide padded name; the 15th column separator
+        // space stays outside it (plain bytes are identical to the old {:<15} form).
         println!(
-            "  {sym} {:<15}{} ({} findings)",
-            d.dimension, d.status, d.finding_count
+            "  {sym} {} {} ({} findings)",
+            color::bold(&format!("{:<14}", d.dimension)),
+            color::dim(&d.status),
+            d.finding_count
         );
     }
     // The blank separator is tied to the "Analyzed:" line; an empty change (nothing analyzed)
     // prints "Missing:" directly after the dimensions, matching Spectra.
     if !report.artifacts_analyzed.is_empty() {
         println!();
-        println!("  Analyzed: {}", report.artifacts_analyzed.join(", "));
+        println!("  {} {}", color::dim("Analyzed:"), report.artifacts_analyzed.join(", "));
     }
     if !report.artifacts_missing.is_empty() {
-        println!("  Missing: {}", report.artifacts_missing.join(", "));
+        println!("  {} {}", color::yellow("Missing:"), report.artifacts_missing.join(", "));
     }
     if report.findings.is_empty() {
         println!();
-        println!("  ✓ No issues found");
+        println!("  {} No issues found", color::green("✓"));
         return;
     }
     println!();
-    println!("  Findings ({}):", report.findings.len());
+    println!("  {} ({}):", color::bold("Findings"), report.findings.len());
     println!();
     for f in &report.findings {
         let tag = match f.severity.as_str() {
-            "Critical" => "CRITICAL",
-            "Warning" => "WARNING",
-            _ => "SUGGEST",
+            "Critical" => color::bold_red("CRITICAL"),
+            "Warning" => color::yellow("WARNING"),
+            _ => color::dim("SUGGEST"),
         };
         println!("  [{tag}] {}", f.summary);
-        println!("    at: {}", f.location);
-        println!("    → {}", f.recommendation);
+        println!("    {} {}", color::dim("at:"), color::dim(&f.location));
+        println!("    {} {}", color::dim("→"), color::dim(&f.recommendation));
     }
 }
 
@@ -588,12 +599,19 @@ fn cmd_drift(a: ChangeArg) -> Result<()> {
 }
 
 fn render_drift(report: &core::drift::DriftReport) {
-    println!("Drift Report: {}", report.change_id);
+    println!("{}: {}", color::bold("Drift Report"), report.change_id);
     if let Some(created) = &report.created {
         println!("  Created: {created}");
     }
     println!();
-    println!("  {:<11} {:<36} {}", "Dimension", "Status", "Score");
+    // Bold spans cover 11/35-wide padded cells with the separator spaces outside, plus
+    // a leading-space " Score" cell — plain bytes are identical to the old format.
+    println!(
+        "  {} {} {}",
+        color::bold(&format!("{:<11}", "Dimension")),
+        color::bold(&format!("{:<35}", "Status")),
+        color::bold(" Score")
+    );
     for d in &report.dimensions {
         let score = if d.contributes_to_total {
             format!("+{}", d.score)
@@ -602,7 +620,12 @@ fn render_drift(report: &core::drift::DriftReport) {
         };
         println!("  {:<11} {:<36} {:>5}", d.kind, d.status, score);
     }
-    println!("  {:<11} {:<36} {:>5}", "Total", "", report.total_score);
+    println!(
+        "  {} {} {}",
+        color::bold(&format!("{:<11}", "Total")),
+        " ".repeat(35),
+        color::bold(&format!("{:>6}", report.total_score))
+    );
     if !report.broken_anchors.is_empty() {
         println!();
         println!("Broken anchors");
@@ -635,8 +658,14 @@ fn render_drift(report: &core::drift::DriftReport) {
         }
     }
     println!();
-    println!("Severity: {} drift", report.severity.to_uppercase());
-    println!("> {}", report.primary_recommendation);
+    let sev = report.severity.to_uppercase();
+    let sev_colored = match sev.as_str() {
+        "LIGHT" => color::bold_green(&sev),
+        "MEDIUM" => color::bold_yellow(&sev),
+        _ => color::bold_red(&sev),
+    };
+    println!("{}: {} drift", color::bold("Severity"), sev_colored);
+    println!("> {}", color::bold_cyan(&report.primary_recommendation));
 }
 
 // --- archive ---
@@ -678,7 +707,7 @@ fn mark_all_tasks_done(change: &core::model::Change, enabled: bool) -> Result<()
 }
 
 fn print_archive_outcome(outcome: &core::archive::ArchiveOutcome) {
-    println!("✓ Archived: {} → {}", outcome.change_name, outcome.dated_name);
+    println!("{} Archived: {} → {}", color::green("✓"), outcome.change_name, outcome.dated_name);
     if !outcome.caps.is_empty() {
         let names: Vec<&str> = outcome.caps.iter().map(|c| c.capability.as_str()).collect();
         let added: usize = outcome.caps.iter().map(|c| c.added).sum();
@@ -822,23 +851,27 @@ fn cmd_status(a: StatusArgs) -> Result<()> {
     if a.json {
         return print_json(&report);
     }
-    println!("Change: {}", report.change_name);
-    println!("Schema: {}", report.schema_name);
+    println!("{}: {}", color::bold("Change"), report.change_name);
+    println!("{}: {}", color::bold("Schema"), report.schema_name);
     println!();
     for art in &report.artifacts {
         let sym = match art.status.as_str() {
-            "done" => "✓",
-            "ready" => "○",
-            _ => "✗",
+            "done" => color::green("✓"),
+            "ready" => color::yellow("○"),
+            _ => color::red("✗"),
         };
-        println!("  {sym} {} ({})", art.id, art.output_path);
+        println!(
+            "  {sym} {} ({})",
+            color::bold(&art.id),
+            color::dim(&art.output_path)
+        );
         if art.status == "blocked" && !art.blocked_by.is_empty() {
             println!("    blocked by: {}", art.blocked_by.join(", "));
         }
     }
     println!();
     if report.is_complete {
-        println!("  ✓ All artifacts complete");
+        println!("  {} All artifacts complete", color::green("✓"));
     }
     Ok(())
 }
@@ -885,20 +918,21 @@ fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
 }
 
 fn render_artifact_human(p: &core::instructions::ArtifactInstructions) {
-    println!("Artifact: {}", p.artifact_id);
-    println!("Output: {}", p.output_path);
-    println!("Description: {}", p.description);
+    println!("{}: {}", color::bold("Artifact"), p.artifact_id);
+    println!("{}: {}", color::bold("Output"), p.output_path);
+    println!("{}: {}", color::bold("Description"), p.description);
     // Each section is preceded by one blank separator and rendered only when non-empty
     // (a custom schema may have no instruction and an empty template), matching Spectra.
     if let Some(instr) = &p.instruction {
         println!();
-        println!("Instruction:");
+        println!("{}", color::bold("Instruction:"));
         print!("{instr}"); // ends with a newline
         println!();
     }
     if !p.dependencies.is_empty() {
         println!();
-        println!("Dependencies:");
+        println!("{}", color::bold("Dependencies:"));
+        // Dependency symbols stay plain (probed — unlike status's colored ones).
         for d in &p.dependencies {
             let sym = if d.done { "✓" } else { "○" };
             println!("  {sym} {} ({})", d.id, d.path);
@@ -906,35 +940,38 @@ fn render_artifact_human(p: &core::instructions::ArtifactInstructions) {
     }
     if !p.unlocks.is_empty() {
         println!();
-        println!("Unlocks:");
+        println!("{}", color::bold("Unlocks:"));
         for u in &p.unlocks {
             println!("  - {u}");
         }
     }
     if !p.template.is_empty() {
         println!();
-        println!("Template:");
+        println!("{}", color::bold("Template:"));
         print!("{}", p.template);
         println!();
     }
 }
 
 fn render_apply_human(p: &core::instructions::ApplyInstructions) {
-    println!("Change: {}", p.change_name);
-    println!("Schema: {}", p.schema_name);
-    println!("State: {}", p.state);
+    println!("{}: {}", color::bold("Change"), p.change_name);
+    println!("{}: {}", color::bold("Schema"), p.schema_name);
+    println!("{}: {}", color::bold("State"), p.state);
     println!(
-        "Progress: {}/{} complete",
-        p.progress.complete, p.progress.total
+        "{}: {}/{} complete",
+        color::bold("Progress"),
+        p.progress.complete,
+        p.progress.total
     );
     println!();
     if let Some(missing) = &p.missing_artifacts {
-        println!("Missing artifacts:");
+        println!("{}", color::red("Missing artifacts:"));
         for m in missing {
             println!("  - {m}");
         }
     } else {
-        println!("Tasks:");
+        println!("{}", color::bold("Tasks:"));
+        // Task symbols stay plain here (probed — unlike status's colored ones).
         for t in &p.tasks {
             let sym = if t.done { "✓" } else { "○" };
             println!("  {sym} {}", t.description);
@@ -942,7 +979,7 @@ fn render_apply_human(p: &core::instructions::ApplyInstructions) {
     }
     println!();
     if let Some(instr) = &p.instruction {
-        println!("Instruction:");
+        println!("{}", color::bold("Instruction:"));
         print!("{instr}");
         println!();
     }
@@ -977,7 +1014,7 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
         a.agent.as_deref(),
         a.from_discussion.as_deref(),
     )?;
-    println!("✓ Created change: {}", a.name);
+    println!("{} Created change: {}", color::green("✓"), a.name);
     println!("  Path: {}", dir.to_string_lossy());
     println!("  Schema: {schema}");
     if let Some(slug) = a.from_discussion.as_deref() {
@@ -1058,7 +1095,7 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
         println!("{}", serde_json::to_string(&v)?);
         return Ok(());
     }
-    println!("✓ Created {}: {}", a.artifact_type, path.to_string_lossy());
+    println!("{} Created {}: {}", color::green("✓"), a.artifact_type, path.to_string_lossy());
     if had_content {
         println!("  Content validated ✓");
     }
@@ -1188,7 +1225,7 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
                             "valid": true,
                         }));
                     }
-                    println!("✓ Schema '{}' is valid ({count} artifacts)", s.name);
+                    println!("{} Schema '{}' is valid ({count} artifacts)", color::green("✓"), s.name);
                 }
                 Some(Err(detail)) => {
                     println!("Schema '{n}' is invalid: {detail}");
@@ -1205,7 +1242,7 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
             let paths = require_paths()?;
             let new_name = core::schema::fork(&paths, &source, name.as_deref(), force)
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("✓ Forked '{source}' → '{new_name}'");
+            println!("{} Forked '{source}' → '{new_name}'", color::green("✓"));
         }
         SchemaCommands::Init { name, description, artifacts, default: _, force } => {
             let paths = require_paths()?;
@@ -1217,7 +1254,7 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
                 force,
             )
             .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("✓ Created schema '{name}' at {}", dir.display());
+            println!("{} Created schema '{name}' at {}", color::green("✓"), dir.display());
         }
     }
     Ok(())
@@ -1274,20 +1311,20 @@ fn cmd_config(a: ConfigArgs) -> Result<()> {
             };
             cfg.insert(serde_yaml::Value::String(key.clone()), stored);
             save_global_map(&path, &cfg)?;
-            println!("✓ {key} = {value}");
+            println!("{} {key} = {value}", color::green("✓"));
         }
         ConfigCommands::Unset { key } => {
             let mut cfg = load_global_map(&path);
             cfg.remove(serde_yaml::Value::String(key.clone()));
             save_global_map(&path, &cfg)?;
             // Printed whether or not the key existed (matches Spectra).
-            println!("✓ Removed key: {key}");
+            println!("{} Removed key: {key}", color::green("✓"));
         }
         ConfigCommands::Reset { all: _, yes: _ } => {
             if path.exists() {
                 std::fs::remove_file(&path)?;
             }
-            println!("✓ Config reset.");
+            println!("{} Config reset.", color::green("✓"));
         }
         ConfigCommands::Edit => {
             // VISUAL wins over EDITOR; the vi fallback matches Spectra (including the
@@ -1528,7 +1565,7 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
                 println!("{}", serde_json::to_string(&v)?);
                 return Ok(());
             }
-            println!("✓ Task {task_id} marked as done: {desc}");
+            println!("{} Task {task_id} marked as done: {desc}", color::green("✓"));
         }
     }
     Ok(())
@@ -1551,7 +1588,7 @@ fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
 fn cmd_demo() -> Result<()> {
     let paths = require_paths()?;
     let outcome = core::demo::generate(&paths)?;
-    println!("✓ Created demo change: {}", outcome.name);
+    println!("{} Created demo change: {}", color::green("✓"), outcome.name);
     println!("  Theme: {}", outcome.theme);
     println!("  Path: {}", core::util::to_slash(&outcome.path));
     Ok(())
@@ -1567,7 +1604,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             if json {
                 return print_json(&info);
             }
-            println!("✓ Created discussion: {}", info.slug);
+            println!("{} Created discussion: {}", color::green("✓"), info.slug);
             println!("  Topic: {}", info.topic);
             println!("  Path: {}", info.path);
         }
@@ -1606,7 +1643,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "context": "set" }));
             }
-            println!("✓ Set context for discussion '{slug}'");
+            println!("{} Set context for discussion '{slug}'", color::green("✓"));
         }
         DiscussCommands::AddRound { slug, mode, stdin, json } => {
             let content = if stdin { read_stdin() } else { String::new() };
@@ -1614,7 +1651,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "round": round, "mode": mode }));
             }
-            println!("✓ Recorded round {round} ({mode}) to discussion '{slug}'");
+            println!("{} Recorded round {round} ({mode}) to discussion '{slug}'", color::green("✓"));
         }
         DiscussCommands::Conclude { slug, stdin, json } => {
             let content = if stdin { read_stdin() } else { String::new() };
@@ -1622,7 +1659,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "status": "concluded" }));
             }
-            println!("✓ Concluded discussion '{slug}'");
+            println!("{} Concluded discussion '{slug}'", color::green("✓"));
         }
         DiscussCommands::Archive { slug, json } => {
             match core::discuss::archive_discussion(&paths, &slug)? {
@@ -1633,7 +1670,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
                             "archived_to": format!("discussions/archive/{file}"),
                         }));
                     }
-                    println!("✓ Archived discussion: {slug} → discussions/archive/{file}");
+                    println!("{} Archived discussion: {slug} → discussions/archive/{file}", color::green("✓"));
                 }
                 None => bail!("discussion '{slug}' not found"),
             }
@@ -1676,7 +1713,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
                     "status": "promoted",
                 }));
             }
-            println!("✓ Promoted discussion '{slug}' → change '{change_name}'");
+            println!("{} Promoted discussion '{slug}' → change '{change_name}'", color::green("✓"));
             println!("  Path: {}", dir.to_string_lossy());
             println!("  Proposal prefilled from the conclusion — run /speclink-propose to complete the artifacts");
         }

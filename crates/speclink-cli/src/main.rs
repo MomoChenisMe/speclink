@@ -1,6 +1,8 @@
 use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
 use speclink_core as core;
+
+mod color;
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -522,6 +524,7 @@ enum DiscussCommands {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    color::init(cli.no_color);
     match dispatch(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

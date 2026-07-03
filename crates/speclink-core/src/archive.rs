@@ -141,6 +141,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
                 );
             }
             let reqs = parse_delta(&delta_text);
+            let renames = model::rename_pairs(&delta_text);
 
             let canonical_path = paths.specs_dir().join(&cap).join("spec.md");
             let existed = canonical_path.exists();
@@ -161,6 +162,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
                 &change.name,
                 &date,
                 &reqs,
+                &renames,
                 &trace_files,
             )?;
             if !existed {
@@ -298,6 +300,7 @@ fn apply_delta_to_canonical(
     change: &str,
     date: &str,
     reqs: &[DeltaReq],
+    renames: &[(String, String)],
     trace_files: &[String],
 ) -> Result<CapCounts> {
     // Spectra omits the @trace block entirely when there are no touched code files.
@@ -389,11 +392,23 @@ fn apply_delta_to_canonical(
                     counts.removed += 1;
                 }
             }
-            // RENAMED is never applied (probed): Spectra parses the section but performs
-            // no rename in any syntax (header+TO: or FROM:/TO: bullets) and reports
-            // renamed: 0. The schema instruction documents the format, but archive
-            // ignores it — replicated here rather than silently diverging.
+            // RENAMED DeltaReqs (header form) are handled via `renames` below.
             _ => {}
+        }
+    }
+
+    // Speclink divergence #4: RENAMED is actually executed. Spectra documents the
+    // section (FROM:/TO:) but never applies a rename in any syntax and reports
+    // renamed: 0; speclink renames the canonical requirement header and counts it.
+    for (from, to) in renames {
+        if let Some(slot) = blocks.iter_mut().find(|(n, _)| n == from) {
+            slot.1 = slot.1.replacen(
+                &format!("### Requirement: {from}"),
+                &format!("### Requirement: {to}"),
+                1,
+            );
+            slot.0 = to.clone();
+            counts.renamed += 1;
         }
     }
 
