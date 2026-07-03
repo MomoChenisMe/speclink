@@ -270,8 +270,11 @@ fn strip_before_notes(block: &str) -> String {
                 i += 1;
             }
             i += 1;
-            // … and swallow one following blank line so no double gap is left behind.
-            if i < lines.len() && lines[i].trim().is_empty() {
+            // … and swallow one following blank only when the note sat between blanks
+            // (avoiding a double gap). Right under a requirement header the blank after
+            // the note is the header's own separator; keep it.
+            let prev_blank = out.last().map(|l| l.trim().is_empty()).unwrap_or(false);
+            if prev_blank && i < lines.len() && lines[i].trim().is_empty() {
                 i += 1;
             }
             continue;
