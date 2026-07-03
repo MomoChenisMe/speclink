@@ -409,7 +409,7 @@ parity 零影響——英文內容不含 CJK 詞條，suite 31/31）。
 ### §23 續：drift anchor 擷取 v2（散文降噪＋File anchors）
 
 依 `sdd-final-report-hr.md` §7 建議 1 實作。`extract_anchors` 不再掃描散文大寫詞
-（Spectra 的 `[A-Z]\w+` 規則被其 self-hit corpus 掩蓋，speclink 排除 change 目錄後
+（Spectra 的 `\b[A-Z]\w+\b` 規則被其 self-hit corpus 掩蓋，speclink 排除 change 目錄後
 噪音浮現）。v2 規則：
 
 - **Symbol anchor**：全文中 code-like token — 含底線（snake_case/SCREAMING_CASE）、
