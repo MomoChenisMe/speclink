@@ -373,3 +373,34 @@ analyzer 的 `ambWeakLanguage` 新增中文詞條（speclink 專屬——spectra
 陳述不可能性（強語句）不計入「可能」，「盡可能」仍經「可能」標出。`spec_locale` 為 tw/zh* 時，
 specs 指示的動態注入行additionally附上 CJK 弱詞警示；其他語言與未設定時不附（payload 不變，
 parity 零影響——英文內容不含 CJK 詞條，suite 31/31）。
+
+
+## 23. 人事系統最終實測輪（2026-07-03）發現的缺口與修復
+
+本輪 twin 沙盒全流程實測（見 `sdd-final-report-hr.md`）抓到 4 個 parity 缺口，全數 probe 驗證後修復：
+
+1. **`conDesignNotInTasks`（analyzer.rs）**：Spectra 將 `### ` 級 design heading 全小寫後與 task
+   描述做不分大小寫的 substring 比對；summary 文案 `Design topic '<lowercased>' not referenced in tasks`、
+   `summary_msg.params = {keyword: <lowercased>}`、recommendation 固定 `Verify tasks cover this design
+   decision` 且 `recommendation_msg.params = {}`（make_finding 共用 params，此處需清空）。
+2. **preflight `missingFiles`（preflight.rs）**：掃描起點 = proposal 第一個含 `affected code`
+   （case-insensitive）的行，終點 = 下一個 `## ` 標題（不含起點行）；候選 = 行內反引號 span，
+   過濾條件 = 含 `/` 且不以 `/` 結尾且副檔名（case-sensitive）∈ {md, html, js, ts, tsx, jsx, css,
+   json, yaml, rs, toml, svelte}；保序去重後對 repo root 檢查存在性；序列化為 `{path, referencedIn:
+   "proposal"}`；非空 → `status: "critical"`。`staleness` 於 created 缺漏/解析失敗時整段省略
+   （`Option<Staleness>` + skip_serializing_if）。`driftedFiles`：dirty、backdated created、
+   commit 時序、touched hash 全部無法在 CLI 觸發 → 桌面 app 資料驅動，CLI 恆空即 parity。
+3. **fork-context 段（skills.rs）**：fork 型 skill（analyze/drift/verify）的 SKILL.md 在 frontmatter
+   後插入 `## Claude fork context` 前導段（auto-select 規則，analyze/drift 共用一款文案、verify 一款），
+   僅 Tool::Claude。同時 render 收尾把檔尾正規化為單一換行。`instructions --skill` 輸出不含此段
+   （與 Spectra 相同）。
+4. **audit 改非 fork**：Speclink 的 audit body 是 Two Modes 重寫（standalone 三代理平行分析），
+   fork 的 Explore agent 無 Agent 工具無法 fan-out → `fork: false`，保留 `disallowedTools: [Edit, Write]`。
+   這是繼 discuss/drift 之後第三個「結構性刻意分歧」。
+
+品質修正（speclink 專屬路徑）：BEFORE 註記緊貼 requirement header 時，剝除不再吞掉 header 分隔空行
+（僅當註記夾在兩空行之間才吞一行）；`update` prune 在移除 speclink-* 技能目錄與 marker 檔後，
+順帶刪除已空的 `<tool>/skills/` 與 `<tool>/` 目錄。
+
+另登錄 Spectra 自身缺陷（不複製）：commit skill 示例路徑 `docs/specs/archived/<name>` 與實際
+`openspec/changes/archive/<name>` 不符；preflight `driftedFiles` 為 CLI 死欄位。
