@@ -33,10 +33,10 @@ store-trait-and-fs-adapter 已把引擎與儲存切開（fs 為預設實作）�
    - 正典規格：GET specs、GET specs/{capability}。
    - 身分：GET whoami（回 token 身分與可用 repos）。
    - 替代案：dispatch(argv) 直接轉發整條指令——被否決：server 端需要逐動詞做權限、gate 與原子性治理，粗粒度轉發等於把治理面拱手讓出。
-2. **共通契約規則**：payload 欄位 camelCase 且與既有 `--json` 同名對齊；409 一律附機器可判 reason 欄（version_conflict、ownership_lost、change_busy、repo_mismatch、project_not_empty 等列舉值）；API 版本以請求 header X-Speclink-Api-Version: 1 協商，server 不支援時回明確錯誤；repo 身分以 X-Speclink-Repo header 隨每個請求攜帶；認證 Authorization: Bearer <PAT>。gate 為 per-project 政策：契約只保證「狀態轉移由 server 裁決」，CLI 不假設任何 gate 存在與否。
+2. **共通契約規則**：payload 欄位 camelCase 且與既有 `--json` 同名對齊；409 一律附機器可判 reason 欄（version_conflict、ownership_lost、change_busy、repo_mismatch、project_not_empty 等列舉值）；API 版本以請求 header X-Speclink-Api-Version: 1 協商，server 不支援時回明確錯誤；repo 身分以 X-Speclink-Repo header 隨每個請求攜帶；認證 Authorization: Bearer <PAT>。gate 為 per-project 政策：CLI 不假設任何 gate 存在與否。分層定案（討論第 17 輪）：狀態轉移與 409 reason 的**裁決語意屬契約正典**——docs/verb-contract.md 明定、各 host 不得自行變體，未來由選用的 speclink-team 模組承載參考實作（該模組不在本 change 範圍）；server 實作自由度僅限 gate 政策「設定」（哪些轉移需人工核准）與 repos 註冊表管理。change 歸屬規則：v1 一 change 一 repo——建立時歸屬取自請求的 repo 名（單 repo 專案自動預設）、列舉依 repo 過濾、跨 repo 需求拆分為多個 change；契約不提供跨 repo 歸屬形狀。
 3. **HTTP client 選型**：新 crate speclink-remote 採 ureq（同步、rustls、無 tokio），speclink-cli 依賴之；speclink-core 完全不依賴——維持核心無網路紅線。替代案：reqwest blocking——被否決（拖入 tokio 執行緒池，體積與紅線皆不利）。
 4. **模式解析與路由**：workspace.rs 的專案探索增加連接檔偵測——有 `.speclink.remote.yaml` 即 remote；與 openspec/ 並存時 remote 勝出、stderr 一行警告。speclink-cli 的指令進入點依模式路由：fs 走既有引擎＋fs 實作，remote 走 speclink-remote client；SPECLINK_STORE_URL 可覆寫連接 url（個人/CI）。
-5. **認證與憑證**：auth login 讀取 PAT（互動貼上或 --token-stdin），依 url origin 存入使用者層級設定目錄的 credentials 檔（Unix 權限 0600；Windows 沿使用者目錄 ACL）；SPECLINK_TOKEN 優先於檔案；auth status 呼叫 whoami 顯示身分與 repo 驗證結果。init/link 時若已有可用 token 即以 whoami 驗證 repo∈專案並回報，無 token 則提示執行 speclink auth login（首次動詞時仍會驗證）——對討論第 16 輪流程的精緻化：驗證時點「有憑證即提前、無憑證即延後」，不阻塞離線 init。
+5. **認證與憑證**：auth login 讀取 PAT（互動貼上或 --token-stdin），依 url origin 存入使用者層級設定目錄的 credentials 檔（Unix 權限 0600；Windows 沿使用者目錄 ACL）；SPECLINK_TOKEN 優先於檔案；auth status 呼叫 whoami 顯示身分與 repo 驗證結果。init/link 時若已有可用 token 即以 whoami 驗證 repo∈專案並回報，無 token 則提示執行 speclink auth login（首次動詞時仍會驗證）——對討論第 16 輪流程的精緻化：驗證時點「有憑證即提前、無憑證即延後」，不阻塞離線 init。link 與 auth status 另做 git remote 參考值輔助比對：server 註冊表提供 git url 參考值且與本地 git remote 不一致時，stderr 輸出一行 fork／鏡像提示——僅警告、不影響結果與 exit code；非 git 目錄或無參考值時靜默略過（討論第 15 輪：URL 推斷不可靠，不做強制驗證）。
 6. **錯誤翻譯紅線**：任何非 2xx SHALL 翻譯為單行語義化訊息＋建議動作——401→「執行 speclink auth login」、403（repo_mismatch）→指出 change 歸屬 repo 與當前 repo 名、404→change/專案不存在、409→依 reason 逐值對應動作、連線失敗/5xx→「server 不可用，檢查連接 url」；絕不輸出裸狀態碼給使用者或 agent。
 7. **技能動詞化與 marker 變體**：新增兩個雙模式讀取動詞——speclink artifact cat（fs 讀檔、remote 走 GET artifact）與 speclink language show；技能資產中的直接讀檔指示全數改為動詞（含 discuss 的詞彙載入、propose 的依賴 artifact 閱讀）；marker 區塊渲染增加 store 維度，remote 變體以「文件在團隊系統、一律走 speclink 動詞」取代路徑句。fs 模式 golden 因此刻意更新並記錄。
 
@@ -79,4 +79,4 @@ store-trait-and-fs-adapter 已把引擎與儲存切開（fs 為預設實作）�
 
 ## Open Questions
 
-（無——契約層級、認證方式、repo 識別、錯誤紅線皆由討論記錄第 4、13、15、16 輪定案；未定細節〔repos 註冊表管理動詞、gate 政策形狀〕屬 server 端範疇，由契約文件標注為 server 實作自由度。）
+（無——契約層級、認證方式、repo 識別、錯誤紅線皆由討論記錄第 4、13、15、16 輪定案；引擎與 team-workflow 的分層由第 17 輪定案——狀態轉移與 reason 的裁決語意屬契約正典、speclink-team 選用模組留待 wadpilot server 端開工時另開 change；未定細節〔repos 註冊表管理動詞、gate 政策設定的形狀〕屬 server 端範疇，由契約文件標注為 server 實作自由度。）

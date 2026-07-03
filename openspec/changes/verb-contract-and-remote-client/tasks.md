@@ -1,6 +1,6 @@
 ## 1. 契約文件定稿
 
-- [ ] 1.1 撰寫 `docs/verb-contract.md`（英文正典）與 `docs/verb-contract.zh-TW.md`：全部動詞端點、request/response payload（camelCase 與既有 --json 對齊）、409 reason 列舉值與範例 body、If-Match 樂觀並行、X-Speclink-Api-Version 與 X-Speclink-Repo header、認證方式；逐項對照 wadpilot docs/sdd-research/04-speclink-final-design.md §5.3 的 response 形狀，差異處標注理由；標注 server 實作自由度（gate 政策、repos 註冊表管理）
+- [ ] 1.1 撰寫 `docs/verb-contract.md`（英文正典）與 `docs/verb-contract.zh-TW.md`：全部動詞端點、request/response payload（camelCase 與既有 --json 對齊）、409 reason 列舉值與範例 body、If-Match 樂觀並行、X-Speclink-Api-Version 與 X-Speclink-Repo header、認證方式；逐項對照 wadpilot docs/sdd-research/04-speclink-final-design.md §5.3 的 response 形狀，差異處標注理由；明載 change 的 repo 歸屬規則（v1 一 change 一 repo：建立時取自請求 repo、列舉依 repo 過濾、跨 repo 需求拆分為多個 change）；明定狀態轉移與 409 reason 的裁決語意為契約正典（各 host 不得自行變體，未來由選用的 speclink-team 模組承載參考實作——見討論第 17 輪）；標注 server 實作自由度僅限 gate 政策設定與 repos 註冊表管理
 - [ ] 1.2 驗證：契約文件通過內部審閱清單——每個 CLI remote 動詞都有對應端點、每個 409 reason 都有 CLI 建議動作、無未定義錯誤路徑
 
 ## 2. speclink-remote crate（請求層與認證儲存）
@@ -17,15 +17,15 @@
 
 ## 4. 寫路徑動詞與 repo 驗證鏈
 
-- [ ] 4.1 撰寫測試：寫路徑動詞（speclink new change、speclink new artifact 帶 If-Match、speclink task done、speclink discuss new/context/add-round/conclude、speclink claim、speclink archive）的成功與 409 各 reason 情境；claim 的 repo_mismatch 訊息同時含兩個 repo 名——紅燈
+- [ ] 4.1 撰寫測試：寫路徑動詞（speclink new change、speclink new artifact 帶 If-Match、speclink task done、speclink discuss new/context/add-round/conclude、speclink claim、speclink archive）的成功與 409 各 reason 情境；claim 的 repo_mismatch 訊息同時含兩個 repo 名；change 歸屬情境（new change 歸屬當前 repo、list 依 repo 過濾使他 repo 的 change 不出現）——紅燈
 - [ ] 4.2 實作：寫路徑動詞接上 client（artifact 寫入攜帶讀取時版本；每請求帶 X-Speclink-Repo）——綠燈
-- [ ] 4.3 驗證：整合測試全綠；手動以 mock server 走一輪 list → claim → task done → archive 流程（覆蓋需求：樂觀並行控制與 409 語意、repo 身分攜帶與歸屬防呆）
+- [ ] 4.3 驗證：整合測試全綠；手動以 mock server 走一輪 list → claim → task done → archive 流程（覆蓋需求：樂觀並行控制與 409 語意、repo 身分攜帶與歸屬防呆、change 的 repo 歸屬規則）
 
 ## 5. remote 初始化、link/unlink 與 auth 子指令
 
-- [ ] 5.1 撰寫測試：speclink init --store remote --url --repo（生成 marker/技能/連接檔、不建 openspec/ 樹）、speclink link（有憑證時即時 whoami 驗證 repo∈專案、驗證失敗不寫檔並列可用名單、無憑證時提示 auth login）、speclink unlink（移除連接檔）、speclink auth login/status（含未登入非 0 exit code）——紅燈
-- [ ] 5.2 實作：`crates/speclink-core/src/init.rs` remote 分支（workspace init＋連接檔，跳過 store init）；`crates/speclink-cli/src/commands.rs` 新增 link、unlink、auth login、auth status 子指令——綠燈
-- [ ] 5.3 驗證：cargo test 全綠；於暫存目錄實跑 init --store remote 確認檔案效果與提示訊息（覆蓋需求：remote 初始化與連接指令）
+- [ ] 5.1 撰寫測試：speclink init --store remote --url --repo（生成 marker/技能/連接檔、不建 openspec/ 樹）、speclink link（有憑證時即時 whoami 驗證 repo∈專案、驗證失敗不寫檔並列可用名單、無憑證時提示 auth login）、speclink unlink（移除連接檔）、speclink auth login/status（含未登入非 0 exit code）；link 與 auth status 的 git remote 參考值輔助比對（fork 情境警告一行且結果與 exit code 不受影響、無參考值或非 git 目錄時靜默）——紅燈
+- [ ] 5.2 實作：`crates/speclink-core/src/init.rs` remote 分支（workspace init＋連接檔，跳過 store init）；`crates/speclink-cli/src/commands.rs` 新增 link、unlink、auth login、auth status 子指令，link 與 auth status 加入 git remote 參考值輔助警告（server 提供參考值時比對本地 git remote）——綠燈
+- [ ] 5.3 驗證：cargo test 全綠；於暫存目錄實跑 init --store remote 確認檔案效果與提示訊息（覆蓋需求：remote 初始化與連接指令、git remote 參考值的輔助警告）
 
 ## 6. 文件讀取動詞、技能動詞化與 marker 變體
 

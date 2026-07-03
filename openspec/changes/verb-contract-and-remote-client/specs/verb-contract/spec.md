@@ -33,6 +33,17 @@ artifact 寫入 SHALL 攜帶讀取時取得的版本（If-Match）；版本過�
 - **WHEN** 連接 url 無法連線時執行 speclink list
 - **THEN** exit code 非 0，stderr 訊息指出 server 不可用與檢查連接設定的建議；stdout 無任何資料輸出
 
+### Requirement: change 的 repo 歸屬規則
+每個 change SHALL 恰歸屬一個 repo（v1 一 change 一 repo）：remote 模式下建立 change 時，歸屬 SHALL 取自請求攜帶的 repo 名（單 repo 專案自動預設）；change 列舉 SHALL 依請求的 repo 過濾；跨 repo 的需求 SHALL 以拆分為多個 change 處理（每個各歸屬一個 repo），契約 SHALL NOT 提供跨 repo 歸屬的 change 形狀。此規則與列舉過濾語意 SHALL 明載於 docs/verb-contract.md。
+
+#### Scenario: 建立的 change 歸屬當前 repo
+- **WHEN** 於 repo 欄位為 backend 的專案以 remote 模式執行 speclink new change demo --agent claude
+- **THEN** 建立請求攜帶 backend 身分，後續於同 repo 執行 speclink list --json 的輸出含 demo
+
+#### Scenario: 他 repo 的 change 不出現在清單
+- **WHEN** 於同專案另一個 repo（frontend）的工作目錄執行 speclink list --json
+- **THEN** 歸屬 backend 的 demo 不出現在輸出清單
+
 ### Requirement: store 文件讀取動詞
 CLI SHALL 提供雙模式的文件讀取動詞：speclink artifact cat <artifact> --change <name> 輸出該 artifact 的內容；speclink language show 輸出共用詞彙文件內容（fs 模式讀本地檔、remote 模式經契約端點）；文件不存在時 SHALL 以非 0 exit code 與語義化訊息結束。生成技能資產中的文件閱讀指示 SHALL 使用這些動詞，SHALL NOT 指示直接讀取規格目錄下的檔案路徑。
 
