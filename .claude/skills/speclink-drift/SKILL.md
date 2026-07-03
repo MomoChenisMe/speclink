@@ -32,11 +32,13 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
    The JSON contains:
    - `severity`: `"light"` / `"medium"` / `"heavy"`
-   - `total_score`: aggregate over Time / Structure / Tasks (Environment is display-only)
+   - `total_score`: aggregate over Time / Structure / Tasks / Specs (Environment is display-only)
    - `dimensions`: array of `{ kind, status, score, contributes_to_total }`
-   - `broken_anchors`: design.md references (file paths / symbols / functions / CLI flags) that no longer resolve
-   - `tasks_blocked_external`: pending tasks whose referenced files were modified by commits outside the change dir
-   - `tasks_maybe_resolved`: pending tasks whose verb+target keywords match commit subjects since `created`
+   - `broken_anchors`: design.md symbols no longer found in the repo (the change's own directory is excluded from the search, so a committed design does not satisfy its own anchors)
+   - `spec_assumptions`: delta-spec operations whose canonical target has drifted — a MODIFIED/REMOVED/RENAMED requirement that no longer exists, or an ADDED requirement that now already exists. **Archiving would silently skip these**; any entry here routes the recommendation to ingest.
+   - `tasks_blocked_external`: pending tasks referencing a file that was touched by commits since `created` and no longer exists
+   - `tasks_maybe_resolved`: pending tasks referencing a file that was committed since `created` and exists — the work may already be done
+   - `commits_since_created` and the Environment status: commits since the created date (midnight-anchored), with a count of how many touch files this change references (touched record + task references)
    - `primary_recommendation`: a single copy-pasteable command line
 
 3. **Present the report**
@@ -61,19 +63,23 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
    ### Details
 
-   | Item              | Result                                                 |
-   | ----------------- | ------------------------------------------------------ |
-   | Time              | <status>                                               |
-   | Design references | <broken anchor count or "No broken references">        |
-   | Pending tasks     | <blocked/maybe-resolved count or "No task collisions"> |
-   | Overall           | <light/medium/heavy, total score N>                    |
+   | Item              | Result                                                    |
+   | ----------------- | --------------------------------------------------------- |
+   | Time              | <status>                                                  |
+   | Design references | <broken anchor count or "No broken references">           |
+   | Delta assumptions | <stale assumption count or "All delta targets still hold"> |
+   | Pending tasks     | <blocked/maybe-resolved count or "No task collisions">    |
+   | Environment       | <N commits, M touching this change's files>               |
+   | Overall           | <light/medium/heavy, total score N>                       |
 
    ### Recommendation
 
    Run `<primary_recommendation>`.
    ```
 
-   Keep technical details below the plain-language conclusion. List broken anchors, blocked tasks, and maybe-resolved tasks only when non-empty. Omit empty technical detail sections entirely. Keep the report short enough to skim; the goal is to help the user decide, not to explain the scoring model.
+   Keep technical details below the plain-language conclusion. List broken anchors, stale delta assumptions, blocked tasks, and maybe-resolved tasks only when non-empty. Omit empty technical detail sections entirely. Keep the report short enough to skim; the goal is to help the user decide, not to explain the scoring model.
+
+   **Stale delta assumptions take priority in the conclusion**: they mean another change has already rewritten the canonical requirement this delta targets, and archiving as-is would silently drop or misapply the delta. Say so explicitly and lead with the ingest recommendation.
 
 4. **Apply the recommendation interactively**
 

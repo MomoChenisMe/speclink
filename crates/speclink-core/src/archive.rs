@@ -252,6 +252,36 @@ fn rename_target(block: &str) -> Option<String> {
     None
 }
 
+/// Strip `<!-- BEFORE: … -->` review-aid comments from a delta block. Deltas may carry a
+/// short previous-value note on MODIFIED requirements (speclink convention); it is for
+/// reviewers of the change and must not survive into the canonical spec.
+fn strip_before_notes(block: &str) -> String {
+    if !block.contains("<!-- BEFORE:") {
+        // No note: leave the block byte-identical (its spacing is preserved verbatim).
+        return block.to_string();
+    }
+    let lines: Vec<&str> = block.lines().collect();
+    let mut out: Vec<&str> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        if lines[i].trim_start().starts_with("<!-- BEFORE:") {
+            // Skip to the end of the comment (single- or multi-line) …
+            while i < lines.len() && !lines[i].trim_end().ends_with("-->") {
+                i += 1;
+            }
+            i += 1;
+            // … and swallow one following blank line so no double gap is left behind.
+            if i < lines.len() && lines[i].trim().is_empty() {
+                i += 1;
+            }
+            continue;
+        }
+        out.push(lines[i]);
+        i += 1;
+    }
+    out.join("\n")
+}
+
 fn apply_delta_to_canonical(
     canonical_path: &PathBuf,
     cap: &str,
@@ -263,10 +293,11 @@ fn apply_delta_to_canonical(
     // Spectra omits the @trace block entirely when there are no touched code files.
     let trace = trace_block(change, date, trace_files);
     let make_block = |r: &DeltaReq| {
+        let body = strip_before_notes(&r.block);
         if trace_files.is_empty() {
-            r.block.clone()
+            body
         } else {
-            format!("{}\n\n{}", r.block, trace)
+            format!("{body}\n\n{trace}")
         }
     };
     let mut counts = CapCounts {

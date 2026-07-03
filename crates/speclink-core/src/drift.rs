@@ -128,6 +128,55 @@ fn symbol_found(paths: &Paths, doc_contents: &[String], exclude_prefix: &str, sy
     .is_some()
 }
 
+/// Delta-spec operations whose canonical targets have drifted — a MODIFIED/REMOVED/RENAMED
+/// requirement that no longer exists, or an ADDED requirement that now already exists.
+/// Archive silently skips both cases. Used by drift's Specs dimension and by bulk archive's
+/// readiness check.
+pub fn spec_assumptions(paths: &Paths, change: &Change) -> Vec<SpecAssumption> {
+    let mut out: Vec<SpecAssumption> = Vec::new();
+    for cap in &crate::model::delta_capabilities(&change.dir) {
+        let delta_text =
+            util::read_opt(&change.dir.join("specs").join(cap).join("spec.md")).unwrap_or_default();
+        let reqs = crate::archive::parse_delta(&delta_text);
+        let canonical = util::read_opt(&paths.specs_dir().join(cap).join("spec.md"));
+        let canonical_names: Option<std::collections::BTreeSet<String>> = canonical
+            .as_deref()
+            .map(|t| crate::archive::parse_canonical(t).1.into_iter().map(|(n, _)| n).collect());
+        for r in &reqs {
+            match (r.operation.as_str(), &canonical_names) {
+                ("ADDED", Some(names)) if names.contains(&r.name) => {
+                    out.push(SpecAssumption {
+                        capability: cap.clone(),
+                        operation: r.operation.clone(),
+                        requirement: r.name.clone(),
+                        reason: "already exists in the canonical spec — archive would skip it"
+                            .to_string(),
+                    });
+                }
+                ("MODIFIED" | "REMOVED" | "RENAMED", Some(names)) if !names.contains(&r.name) => {
+                    out.push(SpecAssumption {
+                        capability: cap.clone(),
+                        operation: r.operation.clone(),
+                        requirement: r.name.clone(),
+                        reason: "target requirement no longer exists in the canonical spec"
+                            .to_string(),
+                    });
+                }
+                ("MODIFIED" | "REMOVED" | "RENAMED", None) => {
+                    out.push(SpecAssumption {
+                        capability: cap.clone(),
+                        operation: r.operation.clone(),
+                        requirement: r.name.clone(),
+                        reason: "canonical spec for this capability does not exist".to_string(),
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
 /// Path-like backtick references in a task description (`bomberman/index.html` yes,
 /// `reset(seed)` no). References are read from the checkbox line only.
 fn task_file_refs(desc: &str) -> Vec<String> {
@@ -295,47 +344,7 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     // still exist in the canonical specs, and would an ADDED requirement collide? Archive
     // silently skips both cases — drift is where they must surface.
     let delta_caps = crate::model::delta_capabilities(&change.dir);
-    let mut spec_assumptions: Vec<SpecAssumption> = Vec::new();
-    for cap in &delta_caps {
-        let delta_text =
-            util::read_opt(&change.dir.join("specs").join(cap).join("spec.md")).unwrap_or_default();
-        let reqs = crate::archive::parse_delta(&delta_text);
-        let canonical = util::read_opt(&paths.specs_dir().join(cap).join("spec.md"));
-        let canonical_names: Option<std::collections::BTreeSet<String>> = canonical
-            .as_deref()
-            .map(|t| crate::archive::parse_canonical(t).1.into_iter().map(|(n, _)| n).collect());
-        for r in &reqs {
-            match (r.operation.as_str(), &canonical_names) {
-                ("ADDED", Some(names)) if names.contains(&r.name) => {
-                    spec_assumptions.push(SpecAssumption {
-                        capability: cap.clone(),
-                        operation: r.operation.clone(),
-                        requirement: r.name.clone(),
-                        reason: "already exists in the canonical spec — archive would skip it"
-                            .to_string(),
-                    });
-                }
-                ("MODIFIED" | "REMOVED" | "RENAMED", Some(names)) if !names.contains(&r.name) => {
-                    spec_assumptions.push(SpecAssumption {
-                        capability: cap.clone(),
-                        operation: r.operation.clone(),
-                        requirement: r.name.clone(),
-                        reason: "target requirement no longer exists in the canonical spec"
-                            .to_string(),
-                    });
-                }
-                ("MODIFIED" | "REMOVED" | "RENAMED", None) => {
-                    spec_assumptions.push(SpecAssumption {
-                        capability: cap.clone(),
-                        operation: r.operation.clone(),
-                        requirement: r.name.clone(),
-                        reason: "canonical spec for this capability does not exist".to_string(),
-                    });
-                }
-                _ => {}
-            }
-        }
-    }
+    let spec_assumptions = spec_assumptions(paths, change);
     let specs_status = if delta_caps.is_empty() {
         "no delta specs".to_string()
     } else if spec_assumptions.is_empty() {

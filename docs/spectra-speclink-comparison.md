@@ -316,3 +316,40 @@ suite 31 項全綠。完整報告見 `docs/sdd-final-report-bomberman.md`。
 5. **Environment 相關性**：`N commits (M touching this change's files)`——視窗內 commit 檔案與（touched 記錄 ∪ 任務反引號引用）的交集計數。
 
 同步更新：drift skill 的欄位說明與報告模板；cmp.py 與 twin harness 將 drift 標為已知刻意分歧（剝除 Specs 維度／spec_assumptions／相關性後綴、並中性化 spectra 端隨時刻漂移的計數）後其餘結構仍受 parity 監控。驗證：五合一實測場景（同日計數、提交後 broken anchor、maybe-done/blocked、雙 stale assumptions → ingest 建議、相關性計數）、parity suite 31/31、twin harness 8 情境全綠。
+
+## 22. 指示區塊改版與 OpenSpec 擷取（Fable 5）
+
+### 指示區塊 v1.1.0（CLAUDE.md/AGENTS.md，MARKER bump）
+
+依「哪些技能沒有其他觸發路徑」原則重寫注入區塊：補上 discuss 的持久化語義（記錄/promote/
+「不做也要收尾」/隨行歸檔）、drift 入口（擱置後重啟先跑）、verify（`… ⇄ ingest → verify? → archive`）
+與 onboard；audit/tdd 不列（它們是 `.speclink.yaml` 開關，apply skill 自行讀取——查證確認
+spectra 的 `audit: true` 是 apply 內嵌紀律而非自動執行 audit skill，archive 亦不觸發 verify）。
+codex 變體無 verify 行。既有專案 `speclink update` 即升級（標記內取代、區塊外內容不動）。
+
+### bulk archive（speclink 專屬）
+
+`speclink archive <a> <b> …` 與 `speclink archive --all`。三個強制語義：
+1. **乾淨工作樹**：髒碼檔集合是 @trace 來源，會注入每個歸檔 change 的 canonical——拒絕並列出檔案。
+2. **只跳過、不靜默**：readiness = 任務全勾（或 `--mark-tasks-complete`）＋ validate 過
+  （或 `--no-validate`）＋ 無 stale delta assumptions（drift 檢查重用）；跳過必附原因與總結行。
+3. **fail-fast**：按 created 日期序歸檔，首個硬錯誤即停，三段式報告（已歸檔/失敗/未動）。
+單發路徑逐位元不變（parity 31/31）。
+
+### OpenSpec 擷取（依決議四項）
+
+1. **onboard skill**：brownfield 導入——盤點 codebase → 確認 capability 邊界（必須先確認再寫）→
+   以證據為本直接產生 canonical specs（不經 change）→ `validate --specs --all --strict`。
+   憑證據或標註，不臆造行為。claude/codex 皆生成。
+2. **update = sync**：`.speclink.yaml` 的 `tools:` 清單為準——列出者重生成、未列出者修剪
+   （speclink-* 技能目錄刪除、指示檔僅剝標記區塊、留使用者內容、空檔才刪）；未知工具名警告。
+   無清單時退回 spectra 式目錄偵測（無修剪）。init 現在把實際選擇寫入 `tools:`。
+3. **init 自動偵測**：省略 `--tools` 時依足跡偵測（`.claude/` → claude；`.agents/` 或
+   AGENTS.md → codex），無足跡預設 claude（spectra 省略時什麼都不生成）。
+4. **MODIFIED 附變更前值**：specs 指示 payload 新增第 5 步——requirement 標頭下加單行
+   `<!-- BEFORE: 舊行為摘要 -->`；archive 套用 delta 時自動剝除（僅動含註解的區塊，
+   其餘區塊位元不變）。cmp.py 已登錄為刻意分歧。
+
+不採用：ff（spectra 的 propose 即 ff 式設計）、profiles、stores（另案）、explore（discuss 已覆蓋）。
+驗證：六件套功能實測全過、parity suite 31/31、twin harness 全綠、bomberman 28/28；本 repo 已
+自我升級至 v1.1.0 區塊。

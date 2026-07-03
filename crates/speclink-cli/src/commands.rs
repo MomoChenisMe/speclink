@@ -145,9 +145,11 @@ fn cmd_init(a: InitArgs) -> Result<()> {
         None => std::env::current_dir()?,
     };
     let spec_dir = a.dir.clone().unwrap_or_else(|| "openspec".to_string());
+    // Without --tools, auto-detect installed AI tools by their footprints (falls back to
+    // claude) — deliberate difference from Spectra, which generates nothing when omitted.
     let tools = match a.tools.as_deref() {
         Some(spec) => core::init::parse_tools(spec)?,
-        None => Vec::new(),
+        None => core::init::detect_tools(&root),
     };
     core::init::init(&root, &tools, a.force, &spec_dir)?;
     println!("✓ Initialized at {display_base}{}{spec_dir}", std::path::MAIN_SEPARATOR);
@@ -171,11 +173,22 @@ fn cmd_update(a: UpdateArgs) -> Result<()> {
         bail!("Not initialized. Run 'speclink init' to initialize.");
     }
     let _ = a.force;
-    let updated = core::init::update(&root)?;
-    if updated.is_empty() {
+    let outcome = core::init::update(&root)?;
+    for note in &outcome.notes {
+        println!("! {note}");
+    }
+    if outcome.updated.is_empty() && outcome.pruned.is_empty() {
         println!("! No AI tool configurations found. Use 'speclink init --tools' to set up.");
     } else {
-        println!("✓ Updated instruction files for: {}", updated.join(", "));
+        if !outcome.updated.is_empty() {
+            println!("✓ Updated instruction files for: {}", outcome.updated.join(", "));
+        }
+        if !outcome.pruned.is_empty() {
+            println!(
+                "! Pruned generated files for deselected tool: {}",
+                outcome.pruned.join(", ")
+            );
+        }
     }
     Ok(())
 }
@@ -560,18 +573,12 @@ fn render_drift(report: &core::drift::DriftReport) {
 
 fn cmd_archive(a: ArchiveArgs) -> Result<()> {
     let paths = require_paths()?;
-    let change = resolve_change(&paths, a.change.as_deref())?;
-
-    if a.mark_tasks_complete {
-        let tasks_path = change.dir.join("tasks.md");
-        if let Some(text) = core::util::read_opt(&tasks_path) {
-            let done = text
-                .replace("- [ ] ", "- [x] ")
-                .replace("- [ ]\t", "- [x]\t");
-            core::util::write_file(&tasks_path, &done)?;
-        }
+    if a.all || a.changes.len() > 1 {
+        return cmd_archive_bulk(&paths, &a);
     }
+    let change = resolve_change(&paths, a.changes.first().map(|s| s.as_str()))?;
 
+    mark_all_tasks_done(&change, a.mark_tasks_complete)?;
     let opts = core::archive::ArchiveOptions {
         skip_specs: a.skip_specs,
         no_validate: a.no_validate,
@@ -579,7 +586,25 @@ fn cmd_archive(a: ArchiveArgs) -> Result<()> {
     };
     // Spectra leaves the in-progress marker untouched on archive; so do we.
     let outcome = core::archive::archive(&paths, &change, &opts)?;
+    print_archive_outcome(&outcome);
+    Ok(())
+}
 
+fn mark_all_tasks_done(change: &core::model::Change, enabled: bool) -> Result<()> {
+    if !enabled {
+        return Ok(());
+    }
+    let tasks_path = change.dir.join("tasks.md");
+    if let Some(text) = core::util::read_opt(&tasks_path) {
+        let done = text
+            .replace("- [ ] ", "- [x] ")
+            .replace("- [ ]\t", "- [x]\t");
+        core::util::write_file(&tasks_path, &done)?;
+    }
+    Ok(())
+}
+
+fn print_archive_outcome(outcome: &core::archive::ArchiveOutcome) {
     println!("✓ Archived: {} → {}", outcome.change_name, outcome.dated_name);
     if !outcome.caps.is_empty() {
         let names: Vec<&str> = outcome.caps.iter().map(|c| c.capability.as_str()).collect();
@@ -598,6 +623,112 @@ fn cmd_archive(a: ArchiveArgs) -> Result<()> {
     if let Some((slug, file)) = &outcome.archived_discussion {
         println!("Discussion archived: {slug} → discussions/archive/{file}");
     }
+}
+
+/// Bulk archive (speclink-specific). Semantics: requires a clean code work tree (the dirty
+/// file set is the @trace source and would be injected into EVERY archived change), archives
+/// in created-date order, skips not-ready changes with a reason (never silently), and
+/// fail-fasts on the first actual archive error with a three-part report.
+fn cmd_archive_bulk(paths: &core::paths::Paths, a: &ArchiveArgs) -> Result<()> {
+    let dirty = core::tasks::git_changed_files(&paths.root);
+    if !dirty.is_empty() {
+        bail!(
+            "bulk archive requires a clean work tree — these files would be injected into every change's @trace:\n  {}",
+            dirty.join("\n  ")
+        );
+    }
+
+    let mut changes: Vec<core::model::Change> = if a.all {
+        core::model::list_changes(paths)
+    } else {
+        let mut v = Vec::new();
+        for name in &a.changes {
+            v.push(
+                core::model::find_change(paths, name)
+                    .ok_or_else(|| anyhow::anyhow!("Change '{name}' not found."))?,
+            );
+        }
+        v
+    };
+    if changes.is_empty() {
+        println!("No active changes to archive.");
+        return Ok(());
+    }
+    changes.sort_by(|x, y| {
+        (x.meta.created.as_deref().unwrap_or(""), &x.name)
+            .cmp(&(y.meta.created.as_deref().unwrap_or(""), &y.name))
+    });
+
+    let schema = core::schema::spec_driven();
+    let mut archived: Vec<String> = Vec::new();
+    let mut skipped: Vec<(String, String)> = Vec::new();
+    for (idx, change) in changes.iter().enumerate() {
+        // Readiness: no stale delta assumptions, valid, tasks complete.
+        let stale = core::drift::spec_assumptions(paths, change);
+        if !stale.is_empty() {
+            skipped.push((
+                change.name.clone(),
+                format!(
+                    "{} stale delta assumption(s) — run /speclink-drift {}",
+                    stale.len(),
+                    change.name
+                ),
+            ));
+            continue;
+        }
+        if !a.no_validate {
+            let res = core::validate::validate_change(change, &schema, false);
+            if !res.valid {
+                skipped.push((change.name.clone(), "validation failed".to_string()));
+                continue;
+            }
+        }
+        let tasks = core::tasks::parse(
+            &core::util::read_opt(&change.dir.join("tasks.md")).unwrap_or_default(),
+        );
+        let (total, complete, _) = core::tasks::progress(&tasks);
+        if total > 0 && complete < total && !a.mark_tasks_complete {
+            skipped.push((change.name.clone(), format!("tasks incomplete ({complete}/{total})")));
+            continue;
+        }
+        mark_all_tasks_done(change, a.mark_tasks_complete)?;
+
+        let opts = core::archive::ArchiveOptions {
+            skip_specs: a.skip_specs,
+            no_validate: a.no_validate,
+            mark_tasks_complete: a.mark_tasks_complete,
+        };
+        match core::archive::archive(paths, change, &opts) {
+            Ok(outcome) => {
+                print_archive_outcome(&outcome);
+                archived.push(outcome.change_name);
+            }
+            Err(e) => {
+                // Fail-fast: earlier archives are already applied and cannot be rolled back.
+                println!();
+                println!("Bulk archive aborted at '{}': {e}", change.name);
+                if !archived.is_empty() {
+                    println!("  Archived: {}", archived.join(", "));
+                }
+                let untouched: Vec<&str> =
+                    changes[idx + 1..].iter().map(|c| c.name.as_str()).collect();
+                if !untouched.is_empty() {
+                    println!("  Untouched: {}", untouched.join(", "));
+                }
+                bail!("bulk archive failed at '{}'", change.name);
+            }
+        }
+    }
+
+    println!();
+    for (name, why) in &skipped {
+        println!("! Skipped: {name} — {why}");
+    }
+    println!(
+        "Bulk archive: {} archived, {} skipped",
+        archived.len(),
+        skipped.len()
+    );
     Ok(())
 }
 
