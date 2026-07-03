@@ -99,6 +99,28 @@ pub fn build_artifact(
             .collect()
     };
 
+    // Make the configured spec language bite without the agent having to read the config:
+    // when spec_locale resolves to a non-English language, the specs instruction states it
+    // concretely. Unset (the default) leaves the payload byte-identical.
+    let mut instruction = artifact.instruction.clone();
+    if artifact.id == "specs" {
+        if let Some(lang) = crate::config::resolve_spec_locale(&app, &wf) {
+            let display = crate::config::locale_display(Some(&lang));
+            let note = format!(
+                "This project sets `spec_locale: {lang}` — write spec prose in {display}. \
+Structural markers (`## ADDED/MODIFIED/REMOVED/RENAMED Requirements`, `### Requirement:`, \
+`#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) still stay in English."
+            );
+            match instruction.as_mut() {
+                Some(s) => {
+                    s.push_str("\n\n");
+                    s.push_str(&note);
+                }
+                None => instruction = Some(note),
+            }
+        }
+    }
+
     Some(ArtifactInstructions {
         change_name: change.name.clone(),
         artifact_id: artifact.id.clone(),
@@ -106,7 +128,7 @@ pub fn build_artifact(
         change_dir: change.dir.to_string_lossy().to_string(),
         output_path: artifact.output_path.clone(),
         description: artifact.description.clone(),
-        instruction: artifact.instruction.clone(),
+        instruction,
         context: wf.context_text(),
         rules: wf.rules_for(&artifact.id),
         locale: crate::config::resolve_locale(&app, &wf),

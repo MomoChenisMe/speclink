@@ -95,6 +95,31 @@ pub fn resolve_locale(app: &AppConfig, wf: &WorkflowConfig) -> String {
     locale_display(code)
 }
 
+/// Resolve the effective spec-file language: `.speclink.yaml` wins over `openspec/config.yaml`.
+/// Unset / empty / "en" / "english" → `None` (specs default to English); `"auto"` follows the
+/// project locale (again `None` when that resolves to English).
+pub fn resolve_spec_locale(app: &AppConfig, wf: &WorkflowConfig) -> Option<String> {
+    let code = app
+        .spec_locale
+        .as_deref()
+        .or_else(|| wf.spec_locale.as_deref())?
+        .trim()
+        .to_string();
+    let code = if code.eq_ignore_ascii_case("auto") {
+        app.locale
+            .as_deref()
+            .or_else(|| wf.locale.as_deref())?
+            .trim()
+            .to_string()
+    } else {
+        code
+    };
+    if code.is_empty() || code.eq_ignore_ascii_case("en") || code.eq_ignore_ascii_case("english") {
+        return None;
+    }
+    Some(code)
+}
+
 impl WorkflowConfig {
     pub fn load(path: &Path) -> WorkflowConfig {
         match std::fs::read_to_string(path) {
