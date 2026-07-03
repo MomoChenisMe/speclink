@@ -36,7 +36,7 @@
 - `claude_effort` — 設定移除。
 
 **新增 / 強化**：
-- `discuss` 指令群（見 §4）：`discuss new|list|show|add-round|conclude`。
+- `discuss` 指令群（見 §4）：`discuss new|list|show|context|add-round|conclude|archive|discard|promote`。
 
 ## 3. 設定檔 schema
 
@@ -82,6 +82,7 @@ created: YYYY-MM-DD
 - `speclink discuss show <slug> [--json]` — 顯示內容。
 - `speclink discuss add-round <slug> [--mode M] [--stdin] [--json]` — 追加一輪（內容自 stdin）。
 - `speclink discuss conclude <slug> [--stdin] [--json]` — 追加 `## Conclusion` 並標記 status=concluded。
+- `speclink discuss discard <slug> [--force] [--json]` — 刪除 live 討論（放棄的出口）；已有 rounds 時拒絕，須 `--force`。
 
 **discuss 技能**：與 spectra discuss 相同的步驟邏輯（Step 0 讀 LANGUAGE.md、關鍵字掃原始碼、選 Assumptions/Interview 模式、介面深度檢查、收斂、捕捉結論），**但每一輪都以 `discuss add-round` 持久化到文件**，開場時 `discuss new` 或沿用既有討論，收斂時 `discuss conclude`。
 

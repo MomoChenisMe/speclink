@@ -152,9 +152,12 @@ speclink discuss list                                # 列出討論（--archived
 speclink discuss show hr-system
 speclink discuss promote hr-system                   # 轉成一個 change（proposal 由結論預填）
 speclink discuss archive hr-system                   # 獨立歸檔（未 promote 的討論）
+speclink discuss discard hr-system                   # 丟棄不需要的討論（已有 rounds 時須 --force）
 ```
 
 文件遵循四條規則（骨架中以註解說明）：每輪聚焦一個問題、只追加不改寫、明確記錄被排除的方案、結論必須解決或明確延後每一個未決問題。`promote` 後的討論會在該 change 歸檔時**自動一起歸檔**。
+
+討論文件**不會在開場就建立**：技能會先宣告預計的 slug，直到第一個實質回合（假設清單獲得回饋、或訪談答案確立方向）才執行 `discuss new` 落地。誤觸或一句話就答完的話題不會留下任何檔案；聊到一半發現不需要的討論，用 `discard` 一個命令清掉 — 有實質內容的討論則應走 `conclude` + `archive` 保留推理過程（「決定不做」也是值得留存的結論）。
 
 ---
 

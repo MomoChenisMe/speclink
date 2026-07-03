@@ -392,6 +392,27 @@ pub fn archive_discussion(paths: &Paths, slug: &str) -> Result<Option<String>> {
     Ok(Some(name))
 }
 
+/// Delete a live discussion outright — the exit for a record that turned out not to be
+/// needed. Refuses once rounds exist (unless `force`): a discussion that examined real
+/// trade-offs should keep its reasoning via `conclude` + `archive` instead.
+pub fn discard_discussion(paths: &Paths, slug: &str, force: bool) -> Result<()> {
+    let path = discussion_path(paths, slug);
+    let Some(text) = util::read_opt(&path) else {
+        if find_archived(paths, slug).is_some() {
+            bail!("discussion '{slug}' is archived — archived records are kept, not discarded");
+        }
+        bail!("discussion '{slug}' not found");
+    };
+    let rounds = count_rounds(&text);
+    if rounds > 0 && !force {
+        bail!(
+            "discussion '{slug}' has {rounds} recorded round(s) — `conclude` + `archive` keeps the reasoning; pass --force to delete anyway"
+        );
+    }
+    std::fs::remove_file(&path)?;
+    Ok(())
+}
+
 /// Write the conclusion into the `## Conclusion` section (replacing the placeholder — or a
 /// previous conclusion, so a revised conclusion stays a single section) and mark the
 /// discussion concluded.
