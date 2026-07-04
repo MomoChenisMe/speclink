@@ -384,20 +384,27 @@ Archive a completed change.
 
    **If no tasks file exists:** Proceed without task-related warning.
 
-4. **Assess delta spec sync state**
+4. **Assess delta spec completeness**
 
-   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, proceed without sync prompt.
+   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, skip this step.
 
-   **If delta specs exist:**
-   - Compare each delta spec with its corresponding main spec at `openspec/specs/<capability>/spec.md`
-   - Determine what changes would be applied (adds, modifications, removals, renames)
-   - Show a combined summary before prompting
+   Background: the archive CLI applies deltas mechanically — a MODIFIED requirement **wholesale-replaces** the canonical requirement block with the delta's content, and an ADDED requirement that already exists in the canonical spec is skipped (leaving it without a `@trace` marker). A delta is therefore safe to archive only when every MODIFIED requirement contains the complete final text (including scenarios that should survive unchanged).
 
-   **Prompt options:**
-   - If changes needed: "Sync now (recommended)", "Archive without syncing"
-   - If already synced: "Archive now", "Sync anyway", "Cancel"
+   **For each delta spec, compare against `openspec/specs/<capability>/spec.md`:**
+   - MODIFIED requirements: does the canonical requirement contain scenarios or content the delta omits but that should survive?
+   - ADDED requirements: does the requirement already exist in the canonical spec (e.g., from an earlier mid-flight sync)?
 
-   If user chooses sync, use Task tool (subagent_type: "general-purpose", prompt: "Run `speclink instructions --skill sync` to fetch the sync instructions, then follow them for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
+   **If every delta is already complete final-state and no ADDED requirement pre-exists:** proceed directly to step 5 — no prompt needed.
+
+   **Otherwise**, show a summary of what would be lost or skipped, then use the **AskUserQuestion tool**:
+   - "Normalize delta then archive (recommended)": rewrite the delta spec file(s) in place —
+     - merge the omitted canonical content into each MODIFIED requirement so it reads as the complete final state
+     - convert each pre-existing ADDED requirement to MODIFIED (complete final state) so the CLI re-applies it and injects `@trace`
+     - do NOT edit the main specs — only the delta files change
+   - "Archive as-is": proceed, accepting that omitted canonical content will be lost on merge
+   - "Cancel"
+
+   After normalizing, show a brief diff summary of the rewritten delta files, then continue.
 
 5. **Clean up tracking file**
 
@@ -501,8 +508,8 @@ Target archive directory already exists.
 - Don't block archive on warnings - just inform and confirm
 - Preserve .openspec.yaml when moving to archive (it moves with the directory)
 - Show clear summary of what happened
-- If sync is requested, fetch the instructions via `speclink instructions --skill sync` and follow them (agent-driven)
-- If delta specs exist, always run the sync assessment and show the combined summary before prompting
+- Normalization rewrites delta files only — NEVER edit main specs directly; delta application is the archive CLI's job
+- If delta specs exist, always run the completeness assessment; only prompt when normalization is actually needed
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
 
@@ -907,7 +914,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     **6a-i. Incomplete task handling**
 
-    Read the tasks file at `openspec/changes/<name>/tasks.md`. Count `- [x]` (complete) and `- [ ]` (incomplete) checkboxes.
+    Run `speclink artifact cat tasks --change "<name>"` and count `- [x]` (complete) and `- [ ]` (incomplete) checkboxes in the output.
 
     - If **all tasks are complete**: skip to 6a-ii.
     - If **incomplete tasks exist**:
@@ -918,15 +925,16 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
       If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
 
-    **6a-ii. Delta spec sync check**
+    **6a-ii. Delta spec completeness check**
 
     Check whether delta specs exist at `openspec/changes/<name>/specs/`.
 
     - If **no delta specs exist** (directory is empty or absent): skip to 6a-iii.
-    - If **delta specs exist**:
-      - Use the **AskUserQuestion tool** to ask: "Delta specs found. Sync to main specs before archiving?"
-        - **Yes**: run `speclink instructions --skill sync` to fetch the sync instructions, then follow them for change `<name>` (agent-driven merge of delta specs into main specs) before proceeding
-        - **No**: proceed without syncing
+    - If **delta specs exist**: compare each delta against `openspec/specs/<capability>/spec.md`. The archive CLI wholesale-replaces a MODIFIED requirement with the delta's content and skips an ADDED requirement that already exists in the canonical spec — so a partial delta (one that omits canonical content that should survive) loses that content on archive.
+      - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 6a-iii.
+      - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs are not complete final-state. Normalize before archiving?"
+        - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements, convert pre-existing ADDED requirements to MODIFIED — then proceed. Do NOT edit main specs.
+        - **No**: proceed as-is (omitted canonical content will be lost on merge)
 
       If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
 
@@ -961,7 +969,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     ### Source Files
     (same as before)
 
-    ### Spec Sync Changes (if sync was performed)
+    ### Main Spec Updates (from archive's delta application)
     - M  openspec/specs/<spec-name>/spec.md
     - ...
     ```
@@ -970,7 +978,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 7. **Generate commit message**
 
-   Read the proposal file at `openspec/changes/<name>/proposal.md`. Extract the first sentence from the Why section (or Problem/Summary section if Why is absent).
+   Run `speclink artifact cat proposal --change "<name>"`. Extract the first sentence from the Why section (or Problem/Summary section if Why is absent).
 
    Generate a message in this format:
 
@@ -1188,10 +1196,10 @@ Before asking anything, load the shared vocabulary, then do a quick codebase sco
 
 ### Step 0: Load shared vocabulary
 
-Try to read `openspec/LANGUAGE.md`. This file is the project's canonical vocabulary — terms with `definition`, `avoid`, and `why` notes, plus principles for when legacy terminology may remain.
+Run `speclink language show`. It prints the project's canonical vocabulary — terms with `definition`, `avoid`, and `why` notes, plus principles for when legacy terminology may remain.
 
-- **If the file exists**: scan the canonical terms and their avoided synonyms. Prefer the canonical term when you summarize, capture conclusions, or update artifacts. If you notice a relevant `avoid` synonym in the user's topic or in the artifacts you read, plan to surface that as vocabulary drift in the conclusion.
-- **If the file does not exist**: continue silently with the normal flow. A missing vocabulary file is not an error; do not announce it, do not block, and do not stop to ask the user to create it.
+- **If the command succeeds**: scan the canonical terms and their avoided synonyms. Prefer the canonical term when you summarize, capture conclusions, or update artifacts. If you notice a relevant `avoid` synonym in the user's topic or in the artifacts you read, plan to surface that as vocabulary drift in the conclusion.
+- **If the command fails (no vocabulary document)**: continue silently with the normal flow. A missing vocabulary is not an error; do not announce it, do not block, and do not stop to ask the user to create it.
 
 This step runs before the codebase scout, the assumptions list, the interview questions, and the conclusion capture.
 
@@ -1976,11 +1984,10 @@ If no argument is provided, the workflow will extract requirements from conversa
 3. **Scan existing specs for relevance**
 
    Before creating the change, check if any existing specs overlap:
-   1. Use the **Glob tool** to list all files matching `openspec/specs/*/spec.md`
-   2. Extract directory names as the spec identifier list
-   3. Compare against the user's description to identify related specs (max 5 candidates)
-   4. For each candidate (max 3), read the first 10 lines to retrieve the Purpose section
-   5. If related specs are found, display them as an informational summary
+   1. Run `speclink list --specs --json` to get the spec identifier list
+   2. Compare against the user's description to identify related specs (max 5 candidates)
+   3. For each candidate (max 3), run `speclink show <spec-id>` and read the Purpose section at the top of the output
+   4. If related specs are found, display them as an informational summary
 
    **IMPORTANT**:
    - If related specs are found, display them but do NOT stop or ask for confirmation — continue to the next step
@@ -2151,7 +2158,7 @@ If no argument is provided, the workflow will extract requirements from conversa
      - `outputPath`: Where to write the artifact
      - `dependencies`: Completed artifacts to read for context
      - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `.speclink.yaml` or `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
-   - Read any completed dependency files for context
+   - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` (never open artifact files by path — the documents may live in a remote store)
    - Generate the artifact content using `template` as the structure
    - Apply `context` and `rules` as constraints - but do NOT copy them into the file
    - Write the artifact via CLI (the CLI handles directory creation and format validation):

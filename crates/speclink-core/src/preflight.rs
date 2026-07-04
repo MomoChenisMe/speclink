@@ -5,7 +5,7 @@ use crate::store::Store;
 use crate::workspace::Workspace;
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct Staleness {
     #[serde(rename = "daysOld")]
     pub days_old: i64,
@@ -13,14 +13,14 @@ pub struct Staleness {
     pub is_stale: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct MissingFile {
     pub path: String,
     #[serde(rename = "referencedIn")]
     pub referenced_in: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct Preflight {
     pub status: String,
     #[serde(rename = "missingFiles")]

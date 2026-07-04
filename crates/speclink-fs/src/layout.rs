@@ -29,6 +29,9 @@ impl Layout {
     pub fn workflow_config(&self) -> PathBuf {
         self.spec_dir().join("config.yaml")
     }
+    pub fn language_doc(&self) -> PathBuf {
+        self.spec_dir().join("LANGUAGE.md")
+    }
     pub fn specs_dir(&self) -> PathBuf {
         self.spec_dir().join("specs")
     }

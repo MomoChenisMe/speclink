@@ -129,4 +129,10 @@ pub trait Store {
 
     /// Raw workflow configuration document, or None when absent.
     fn read_workflow_config(&self) -> Option<String>;
+
+    // --- shared vocabulary ---
+
+    /// The project's LANGUAGE document (shared vocabulary), or None when the
+    /// project has none — a missing vocabulary is a normal state, not an error.
+    fn read_language(&self) -> Option<String>;
 }

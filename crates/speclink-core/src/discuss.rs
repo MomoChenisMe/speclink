@@ -11,7 +11,7 @@ use crate::util;
 use anyhow::{bail, Result};
 use serde::Serialize;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct DiscussionInfo {
     pub slug: String,
     pub topic: String,

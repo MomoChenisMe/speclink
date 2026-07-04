@@ -5,17 +5,17 @@ use crate::schema::Schema;
 use crate::store::Store;
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct ArtifactStatusJson {
     pub id: String,
     #[serde(rename = "outputPath")]
     pub output_path: String,
     pub status: String,
-    #[serde(rename = "missingDeps", skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "missingDeps", skip_serializing_if = "Vec::is_empty", default)]
     pub blocked_by: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct StatusReport {
     #[serde(rename = "changeName")]
     pub change_name: String,

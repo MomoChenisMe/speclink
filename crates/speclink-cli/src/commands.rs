@@ -16,6 +16,12 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Analyze(a) => cmd_analyze(a),
         Commands::Drift(a) => cmd_drift(a),
         Commands::Archive(a) => cmd_archive(a),
+        Commands::Claim(a) => cmd_claim(a),
+        Commands::Link(a) => cmd_link(a),
+        Commands::Unlink => cmd_unlink(),
+        Commands::Auth(a) => cmd_auth(a),
+        Commands::Artifact(a) => cmd_artifact(a),
+        Commands::Language(a) => cmd_language(a),
         Commands::Status(a) => cmd_status(a),
         Commands::Instructions(a) => cmd_instructions(a),
         Commands::New(a) => cmd_new(a),
@@ -29,6 +35,79 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::InProgress(a) => cmd_in_progress(a),
         Commands::Demo => cmd_demo(),
         Commands::Discuss(a) => cmd_discuss(a),
+    }
+}
+
+// --- claim ---
+
+/// Claiming is an ownership concept of the remote lifecycle; the local fs
+/// store has no claim state, so fs mode fails loud instead of pretending.
+fn cmd_claim(a: ClaimArgs) -> Result<()> {
+    match remote_ctx()? {
+        Some(ctx) => remote_claim(&ctx, &a.name),
+        None => bail!("claim requires a remote store — this project uses the local fs store"),
+    }
+}
+
+// --- artifact cat / language show (dual-mode document reads) ---
+
+/// Map a `speclink artifact cat` id onto the store's artifact file path
+/// (`specs/<capability>` addresses a delta spec).
+fn artifact_rel_path(artifact: &str) -> Result<String> {
+    match artifact {
+        "proposal" => Ok("proposal.md".to_string()),
+        "design" => Ok("design.md".to_string()),
+        "tasks" => Ok("tasks.md".to_string()),
+        _ => match artifact.strip_prefix("specs/") {
+            Some(cap) if !cap.is_empty() && !cap.contains('/') => {
+                Ok(format!("specs/{cap}/spec.md"))
+            }
+            _ => bail!(
+                "Unknown artifact '{artifact}'. Use proposal, design, tasks, or specs/<capability>"
+            ),
+        },
+    }
+}
+
+fn cmd_artifact(a: ArtifactArgs) -> Result<()> {
+    match a.command {
+        ArtifactCommands::Cat { artifact, change } => {
+            if let Some(ctx) = remote_ctx()? {
+                return remote_artifact_cat(&ctx, &artifact, change.as_deref());
+            }
+            let (_ws, store) = open_project()?;
+            let store: &dyn Store = &store;
+            let change = resolve_change(store, change.as_deref())?;
+            let rel = artifact_rel_path(&artifact)?;
+            match store.read_artifact(&change.name, &rel) {
+                Some(content) => {
+                    print!("{content}");
+                    Ok(())
+                }
+                None => bail!("artifact '{artifact}' not found for change '{}'", change.name),
+            }
+        }
+    }
+}
+
+fn cmd_language(a: LanguageArgs) -> Result<()> {
+    match a.command {
+        LanguageCommands::Show => {
+            if let Some(ctx) = remote_ctx()? {
+                let payload = ctx.client.language()?;
+                print!("{}", v_str(&payload, "content"));
+                return Ok(());
+            }
+            let (_ws, store) = open_project()?;
+            let store: &dyn Store = &store;
+            match store.read_language() {
+                Some(content) => {
+                    print!("{content}");
+                    Ok(())
+                }
+                None => bail!("this project has no LANGUAGE document (shared vocabulary)"),
+            }
+        }
     }
 }
 
@@ -160,6 +239,11 @@ fn cmd_init(a: InitArgs) -> Result<()> {
         }
         None => std::env::current_dir()?,
     };
+    match a.store.as_str() {
+        "fs" => {}
+        "remote" => return cmd_init_remote(&a, &root, &display_base),
+        other => bail!("Unknown store '{other}'. Use 'fs' or 'remote'."),
+    }
     let spec_dir = a.dir.clone().unwrap_or_else(|| "openspec".to_string());
     // Without --tools, auto-detect installed AI tools by their footprints (falls back to
     // claude) — deliberate difference from Spectra, which generates nothing when omitted.
@@ -255,6 +339,9 @@ fn sort_changes(store: &dyn Store, changes: &mut [Change], sort: &str) {
 }
 
 fn cmd_list(a: ListArgs) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_list(&ctx, &a);
+    }
     let (_ws, store) = open_project()?;
     let store: &dyn Store = &store;
     // --specs alone shows only specs; combined with --changes both sections print.
@@ -689,6 +776,9 @@ fn render_drift(report: &core::drift::DriftReport) {
 // --- archive ---
 
 fn cmd_archive(a: ArchiveArgs) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_archive(&ctx, &a);
+    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     if a.all || a.changes.len() > 1 {
@@ -855,6 +945,9 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
 // --- status ---
 
 fn cmd_status(a: StatusArgs) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_status(&ctx, &a);
+    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     if info_if_no_changes(store, a.change.as_deref()) {
@@ -870,6 +963,13 @@ fn cmd_status(a: StatusArgs) -> Result<()> {
     if a.json {
         return print_json(&report);
     }
+    render_status_human(&report);
+    Ok(())
+}
+
+/// Human status rendering — shared by the fs and remote paths so both modes
+/// stay byte-identical.
+fn render_status_human(report: &core::status::StatusReport) {
     println!("{}: {}", color::bold("Change"), report.change_name);
     println!("{}: {}", color::bold("Schema"), report.schema_name);
     println!();
@@ -892,7 +992,6 @@ fn cmd_status(a: StatusArgs) -> Result<()> {
     if report.is_complete {
         println!("  {} All artifacts complete", color::green("✓"));
     }
-    Ok(())
 }
 
 // --- instructions ---
@@ -903,6 +1002,9 @@ fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
             .ok_or_else(|| anyhow::anyhow!("Unknown skill: {skill}"))?;
         print!("{body}");
         return Ok(());
+    }
+    if let Some(ctx) = remote_ctx()? {
+        return remote_instructions(&ctx, &a);
     }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
@@ -1015,6 +1117,9 @@ fn cmd_new(a: NewArgs) -> Result<()> {
 }
 
 fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_new_change(&ctx, &a);
+    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     // Default schema comes from openspec/config.yaml; the name is NOT validated here (Spectra
@@ -1048,6 +1153,9 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
 }
 
 fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_new_artifact(&ctx, &a);
+    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     let type_ok = ["proposal", "design", "tasks", "spec"].contains(&a.artifact_type.as_str());
@@ -1532,6 +1640,9 @@ fn bash_inject_positionals(script: &str, root: &clap::Command) -> String {
 fn cmd_task(a: TaskArgs) -> Result<()> {
     match a.command {
         TaskCommands::Done { task_id, change, json } => {
+            if let Some(ctx) = remote_ctx()? {
+                return remote_task_done(&ctx, &task_id, change.as_deref(), json);
+            }
             let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
             // `task done` does not require the change to exist — it goes straight to tasks.md
@@ -1619,6 +1730,9 @@ fn cmd_demo() -> Result<()> {
 // --- discuss ---
 
 fn cmd_discuss(a: DiscussArgs) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_discuss(&ctx, a);
+    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     match a.command {

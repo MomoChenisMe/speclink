@@ -1,0 +1,16 @@
+[package]
+name = "speclink-remote"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+speclink-core = { path = "../speclink-core" }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+anyhow.workspace = true
+ureq = { version = "2", features = ["json"] }
+
+[dev-dependencies]
+tiny_http = "0.12"
