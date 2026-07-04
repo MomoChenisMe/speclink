@@ -14,7 +14,7 @@ fn join_display(base: &Path, rel: &str) -> String {
     base.join(rel).to_string_lossy().to_string()
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct Dependency {
     pub id: String,
     pub done: bool,
@@ -23,7 +23,7 @@ pub struct Dependency {
 }
 
 /// Per-artifact instructions payload (field order matches Spectra).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct ArtifactInstructions {
     #[serde(rename = "changeName")]
     pub change_name: String,
@@ -90,7 +90,7 @@ pub fn build_artifact(
         crate::status::display_order(schema)
             .into_iter()
             .filter(|y| y.id != artifact.id)
-            .filter(|y| y.requires.iter().any(|r| *r == artifact.id))
+            .filter(|y| y.requires.contains(&artifact.id))
             .filter(|y| !model::artifact_done(store, &change.name, y))
             .filter(|y| {
                 y.requires.iter().all(|d| {
@@ -187,14 +187,14 @@ audit checklist (fetch it with `speclink instructions --skill audit`).",
     })
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct Progress {
     pub total: usize,
     pub complete: usize,
     pub remaining: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct TaskJson {
     pub id: String,
     pub description: String,
@@ -214,7 +214,7 @@ impl From<&Task> for TaskJson {
 }
 
 /// Apply-mode instructions payload (field order matches Spectra).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct ApplyInstructions {
     #[serde(rename = "changeName")]
     pub change_name: String,

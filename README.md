@@ -61,6 +61,8 @@ SDD 把「規格」當成開發的第一手真相：需求先寫成結構化的�
 | 架構說明（引擎—Store—呈現三層、儲存縫線） | [docs/architecture.md](docs/architecture.md) | [docs/architecture.zh-TW.md](docs/architecture.zh-TW.md) |
 | 入門教學（純本地走完一輪 SDD） | [docs/getting-started.md](docs/getting-started.md) | [docs/getting-started.zh-TW.md](docs/getting-started.zh-TW.md) |
 | 設定說明（兩檔一目錄體系、四層解析、工具描述子、遷移指引） | [docs/configuration.md](docs/configuration.md) | [docs/configuration.zh-TW.md](docs/configuration.zh-TW.md) |
+| 團隊模式（連接檔、init/link/auth、repo 識別、錯誤對照、升級指引） | [docs/team-mode.md](docs/team-mode.md) | [docs/team-mode.zh-TW.md](docs/team-mode.zh-TW.md) |
+| 動詞契約（remote store 的 REST 契約正典：端點、payload、409 語意） | [docs/verb-contract.md](docs/verb-contract.md) | [docs/verb-contract.zh-TW.md](docs/verb-contract.zh-TW.md) |
 
 ---
 

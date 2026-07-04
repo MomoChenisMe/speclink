@@ -104,7 +104,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     **6a-i. Incomplete task handling**
 
-    Read the tasks file at `{{SPEC_DIR}}changes/<name>/tasks.md`. Count `- [x]` (complete) and `- [ ]` (incomplete) checkboxes.
+    Run `speclink artifact cat tasks --change "<name>"` and count `- [x]` (complete) and `- [ ]` (incomplete) checkboxes in the output.
 
     - If **all tasks are complete**: skip to 6a-ii.
     - If **incomplete tasks exist**:
@@ -115,15 +115,16 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
       If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
 
-    **6a-ii. Delta spec sync check**
+    **6a-ii. Delta spec completeness check**
 
     Check whether delta specs exist at `{{SPEC_DIR}}changes/<name>/specs/`.
 
     - If **no delta specs exist** (directory is empty or absent): skip to 6a-iii.
-    - If **delta specs exist**:
-      - Use the **AskUserQuestion tool** to ask: "Delta specs found. Sync to main specs before archiving?"
-        - **Yes**: run `speclink instructions --skill sync` to fetch the sync instructions, then follow them for change `<name>` (agent-driven merge of delta specs into main specs) before proceeding
-        - **No**: proceed without syncing
+    - If **delta specs exist**: compare each delta against `{{SPEC_DIR}}specs/<capability>/spec.md`. The archive CLI wholesale-replaces a MODIFIED requirement with the delta's content and skips an ADDED requirement that already exists in the canonical spec — so a partial delta (one that omits canonical content that should survive) loses that content on archive.
+      - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 6a-iii.
+      - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs are not complete final-state. Normalize before archiving?"
+        - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements, convert pre-existing ADDED requirements to MODIFIED — then proceed. Do NOT edit main specs.
+        - **No**: proceed as-is (omitted canonical content will be lost on merge)
 
       If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
 
@@ -158,7 +159,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     ### Source Files
     (same as before)
 
-    ### Spec Sync Changes (if sync was performed)
+    ### Main Spec Updates (from archive's delta application)
     - M  openspec/specs/<spec-name>/spec.md
     - ...
     ```
@@ -167,7 +168,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 7. **Generate commit message**
 
-   Read the proposal file at `{{SPEC_DIR}}changes/<name>/proposal.md`. Extract the first sentence from the Why section (or Problem/Summary section if Why is absent).
+   Run `speclink artifact cat proposal --change "<name>"`. Extract the first sentence from the Why section (or Problem/Summary section if Why is absent).
 
    Generate a message in this format:
 

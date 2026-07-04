@@ -60,21 +60,31 @@ fn snapshot(root: &Path, instructions_file: &str, skills_dir: &str) -> String {
         .join("\n")
 }
 
+/// Line endings are normalized to LF on both sides: the rendered output mixes
+/// the checkout's asset line endings (CRLF under core.autocrlf=true) with the
+/// engine's own `\n` formatting, so a byte-level comparison would depend on
+/// the machine's git config rather than on the content.
+fn normalize_eol(s: &str) -> String {
+    s.replace("\r\n", "\n")
+}
+
 fn assert_matches_golden(name: &str, actual: &str) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("golden")
         .join(name);
+    let actual = normalize_eol(actual);
     if std::env::var("UPDATE_GOLDEN").is_ok() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, actual).unwrap();
+        std::fs::write(&path, &actual).unwrap();
         return;
     }
     let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
         panic!("missing golden {name} — generate it with UPDATE_GOLDEN=1 after reviewing the output")
     });
     assert_eq!(
-        actual, expected,
+        actual,
+        normalize_eol(&expected),
         "rendered output drifted from golden {name} (regenerate deliberately with UPDATE_GOLDEN=1)"
     );
 }
@@ -99,6 +109,57 @@ fn codex_rendering_is_bit_identical_to_golden() {
         "codex.snapshot.md",
         &snapshot(&root.dir, "AGENTS.md", ".agents/skills"),
     );
+}
+
+// --- remote marker variant: (tool target) × (fs | remote) ---
+
+/// The remote marker block must not steer the agent at local spec paths that
+/// don't exist in remote mode; documents are reached through speclink verbs.
+fn assert_remote_marker(content: &str, file: &str) {
+    assert!(
+        content.contains("SPECLINK:START"),
+        "{file} carries the SPECLINK marker block"
+    );
+    assert!(
+        !content.contains("openspec/specs") && !content.contains("openspec/changes"),
+        "{file}: remote marker must not mention local spec paths:\n{content}"
+    );
+    assert!(
+        content.contains("speclink"),
+        "{file}: remote marker keeps the verb guidance"
+    );
+}
+
+#[test]
+fn remote_marker_replaces_paths_with_verb_guidance() {
+    let root = TempRoot::new("remote-marker");
+    init::init_remote(
+        &root.dir,
+        &[Tool::Claude, Tool::Codex],
+        true,
+        "https://team.example.com/api/speclink/v1/projects/foo",
+        Some("backend"),
+    )
+    .unwrap();
+    for file in ["CLAUDE.md", "AGENTS.md"] {
+        let content = std::fs::read_to_string(root.dir.join(file)).expect(file);
+        assert_remote_marker(&content, file);
+    }
+}
+
+#[test]
+fn remote_marker_claude_matches_golden() {
+    let root = TempRoot::new("remote-marker-claude");
+    init::init_remote(
+        &root.dir,
+        &[Tool::Claude],
+        true,
+        "https://team.example.com/api/speclink/v1/projects/foo",
+        Some("backend"),
+    )
+    .unwrap();
+    let content = std::fs::read_to_string(root.dir.join("CLAUDE.md")).unwrap();
+    assert_matches_golden("remote-claude.marker.md", &content);
 }
 
 // --- neutral target: descriptor-generated content ---

@@ -37,7 +37,9 @@ impl Workspace {
                     spec_dir_name,
                 });
             }
-            if dir.join("openspec").is_dir() {
+            // A remote workspace has no openspec/ tree (and may have no
+            // .speclink.yaml) — the connection file alone marks the root.
+            if dir.join("openspec").is_dir() || dir.join(REMOTE_FILE).is_file() {
                 return Some(Workspace {
                     root: dir.to_path_buf(),
                     spec_dir_name: "openspec".to_string(),
@@ -73,4 +75,97 @@ impl Workspace {
     pub fn snapshots_dir(&self) -> PathBuf {
         self.work_dir().join("snapshots")
     }
+
+    /// The remote connection file (`.speclink.remote.yaml`) location.
+    pub fn remote_config(&self) -> PathBuf {
+        self.root.join(REMOTE_FILE)
+    }
+
+    /// Resolve fs-vs-remote mode: the connection file's presence is the mode
+    /// signal. `env_store_url` (SPECLINK_STORE_URL) overrides the connection
+    /// url only — it never flips an fs workspace into remote mode.
+    pub fn resolve_mode_with(
+        &self,
+        env_store_url: Option<String>,
+    ) -> anyhow::Result<ModeResolution> {
+        let remote_file = self.remote_config();
+        if !remote_file.is_file() {
+            return Ok(ModeResolution {
+                mode: StoreMode::Fs,
+                coexists: false,
+            });
+        }
+        let text = crate::util::read_opt(&remote_file)
+            .ok_or_else(|| anyhow::anyhow!("cannot read {REMOTE_FILE}"))?;
+        let mut conn = RemoteConnection::from_text(&text)?;
+        // The env var overrides the url only — an empty value counts as unset,
+        // and it never turns an fs workspace into a remote one.
+        if let Some(url) = env_store_url.filter(|u| !u.trim().is_empty()) {
+            conn.url = url;
+        }
+        Ok(ModeResolution {
+            coexists: self.spec_dir().is_dir(),
+            mode: StoreMode::Remote(conn),
+        })
+    }
+
+    /// [`Workspace::resolve_mode_with`] against the process environment.
+    pub fn resolve_mode(&self) -> anyhow::Result<ModeResolution> {
+        self.resolve_mode_with(std::env::var("SPECLINK_STORE_URL").ok())
+    }
+}
+
+/// File name of the remote connection file — its presence IS the mode signal.
+pub const REMOTE_FILE: &str = ".speclink.remote.yaml";
+
+/// Which storage the CLI talks to for this workspace.
+#[derive(Debug, Clone)]
+pub enum StoreMode {
+    /// Local `openspec/` layout via the fs adapter (the default).
+    Fs,
+    /// Remote verb-contract server described by the connection file.
+    Remote(RemoteConnection),
+}
+
+/// Parsed `.speclink.remote.yaml` — `url` is required (project-scoped),
+/// `repo` is this repo's registered name in the project (optional on
+/// single-repo projects).
+#[derive(Debug, Clone)]
+pub struct RemoteConnection {
+    pub url: String,
+    pub repo: Option<String>,
+}
+
+impl RemoteConnection {
+    /// Parse the connection file text. A missing or empty `url` is a
+    /// semantic error naming the file and the field — never a silent default.
+    pub fn from_text(text: &str) -> anyhow::Result<RemoteConnection> {
+        #[derive(serde::Deserialize)]
+        struct Raw {
+            url: Option<String>,
+            repo: Option<String>,
+        }
+        let raw: Raw = serde_yaml::from_str(text).map_err(|e| {
+            anyhow::anyhow!("invalid {REMOTE_FILE}: {e}")
+        })?;
+        let url = raw
+            .url
+            .filter(|u| !u.trim().is_empty())
+            .ok_or_else(|| {
+                anyhow::anyhow!("invalid {REMOTE_FILE}: missing required `url` field")
+            })?;
+        Ok(RemoteConnection {
+            url: url.trim().to_string(),
+            repo: raw.repo.filter(|r| !r.trim().is_empty()),
+        })
+    }
+}
+
+/// Outcome of mode resolution: the mode plus whether the connection file and
+/// a local spec directory coexist (remote wins; the CLI prints one warning).
+#[derive(Debug)]
+pub struct ModeResolution {
+    pub mode: StoreMode,
+    /// True when `.speclink.remote.yaml` and the local spec dir both exist.
+    pub coexists: bool,
 }

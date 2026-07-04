@@ -374,4 +374,10 @@ impl Store for FsStore {
     fn read_workflow_config(&self) -> Option<String> {
         util::read_opt(&self.layout.workflow_config())
     }
+
+    // --- shared vocabulary ---
+
+    fn read_language(&self) -> Option<String> {
+        util::read_opt(&self.layout.language_doc())
+    }
 }

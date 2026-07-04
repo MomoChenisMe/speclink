@@ -58,7 +58,26 @@ const WORKFLOW_CONFIG_TEMPLATE: &str = "schema: spec-driven
 const GITIGNORE_BLOCK: &str = "# Speclink app data\n.speclink/\n";
 const CLAUDE_SETTINGS: &str = "{\n  \"includeGitInstructions\": false\n}";
 
-fn instructions_body(spec_dir: &str, tool: Tool) -> String {
+/// Where the spec documents live — the second axis of the marker rendering
+/// matrix (tool target) × (fs | remote).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreKind {
+    Fs,
+    Remote,
+}
+
+/// The marker's opening paragraph: fs mode names the local paths; remote mode
+/// must not (they don't exist) — documents are reached through speclink verbs.
+fn store_paragraph(spec_dir: &str, store: StoreKind) -> String {
+    match store {
+        StoreKind::Fs => format!(
+            "This project uses Speclink for Spec-Driven Development(SDD). Specs live in `{spec_dir}/specs/`, change proposals in `{spec_dir}/changes/`, discussion records in `{spec_dir}/discussions/`."
+        ),
+        StoreKind::Remote => "This project uses Speclink for Spec-Driven Development(SDD). Specs, change proposals, and discussion records live in the team system's spec store — always access them through `speclink` verbs; never read or write spec documents as local files.".to_string(),
+    }
+}
+
+fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind) -> String {
     // Codex differs: `$speclink-` prefix, no plan mode, and no verify skill (for_codex=false).
     let (p, plan_line) = match tool {
         Tool::Codex => ("$speclink-", "- Requirements change mid-work? `ingest` → resume `apply`"),
@@ -77,7 +96,7 @@ fn instructions_body(spec_dir: &str, tool: Tool) -> String {
     format!(
         "<!-- SPECLINK:START {ver} -->\n\n\
 # Speclink Instructions\n\n\
-This project uses Speclink for Spec-Driven Development(SDD). Specs live in `{sd}/specs/`, change proposals in `{sd}/changes/`, discussion records in `{sd}/discussions/`.\n\n\
+{store_paragraph}\n\n\
 ## Use `{p}*` skills when:\n\n\
 - Requirements are fuzzy or worth debating → `{p}discuss` (recorded as a document; promote turns it into a change)\n\
 - User wants to plan, propose, or design a change → `{p}propose` (`--from-discussion <slug>` seeds it from a concluded discussion)\n\
@@ -95,7 +114,7 @@ This project uses Speclink for Spec-Driven Development(SDD). Specs live in `{sd}
 {plan_line}\n\n\
 <!-- SPECLINK:END -->\n",
         ver = MARKER_VERSION,
-        sd = spec_dir,
+        store_paragraph = store_paragraph(spec_dir, store),
         p = p,
         done_line = done_line,
         workflow = workflow,
@@ -106,7 +125,7 @@ This project uses Speclink for Spec-Driven Development(SDD). Specs live in `{sd}
 /// Instructions body for a custom tool's marker block — the neutral wording: skills are
 /// referenced by their generated names (`speclink-<verb>`, no slash prefix), there is no
 /// plan-mode line, and an invocation sentence states how verbs are executed.
-fn custom_instructions_body(spec_dir: &str, tool: &CustomTool) -> String {
+fn custom_instructions_body(spec_dir: &str, tool: &CustomTool, store: StoreKind) -> String {
     let invocation_line = match tool.invocation {
         crate::config::Invocation::Cli => {
             "Speclink verbs are shell commands: run `speclink <verb> [arguments]`."
@@ -119,7 +138,7 @@ fn custom_instructions_body(spec_dir: &str, tool: &CustomTool) -> String {
     format!(
         "<!-- SPECLINK:START {ver} -->\n\n\
 # Speclink Instructions\n\n\
-This project uses Speclink for Spec-Driven Development(SDD). Specs live in `{sd}/specs/`, change proposals in `{sd}/changes/`, discussion records in `{sd}/discussions/`.\n\n\
+{store_paragraph}\n\n\
 {invocation_line}\n\n\
 ## Use the `speclink-*` skills when:\n\n\
 - Requirements are fuzzy or worth debating → `speclink-discuss` (recorded as a document; promote turns it into a change)\n\
@@ -138,7 +157,7 @@ discuss? → propose → apply ⇄ ingest → archive\n\n\
 - Requirements change mid-work? `ingest` → resume `apply`\n\n\
 <!-- SPECLINK:END -->\n",
         ver = MARKER_VERSION,
-        sd = spec_dir,
+        store_paragraph = store_paragraph(spec_dir, store),
         invocation_line = invocation_line,
     )
 }
@@ -177,11 +196,39 @@ pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<
     }
 
     store_init(&spec_root, force)?;
-    workspace_init(root, tools, force, spec_dir)?;
+    workspace_init(root, tools, force, spec_dir, StoreKind::Fs)?;
 
     Ok(InitOutcome {
         spec_dir_abs: spec_root,
     })
+}
+
+/// Remote-store initialization: workspace init plus the connection file —
+/// deliberately NO store init (the spec-document tree lives on the server, so
+/// no `openspec/` skeleton and no local workflow-config template).
+pub fn init_remote(
+    root: &Path,
+    tools: &[Tool],
+    force: bool,
+    url: &str,
+    repo: Option<&str>,
+) -> Result<()> {
+    let connection = root.join(crate::workspace::REMOTE_FILE);
+    if !force && (connection.is_file() || root.join(".speclink.yaml").is_file()) {
+        bail!("Already initialized. Use --force to reinitialize.");
+    }
+    workspace_init(root, tools, force, "openspec", StoreKind::Remote)?;
+    write_connection_file(root, url, repo)
+}
+
+/// Write `.speclink.remote.yaml` (url required, repo optional).
+pub fn write_connection_file(root: &Path, url: &str, repo: Option<&str>) -> Result<()> {
+    let mut yaml = format!("url: {url}\n");
+    if let Some(r) = repo {
+        yaml.push_str(&format!("repo: {r}\n"));
+    }
+    util::write_file(&root.join(crate::workspace::REMOTE_FILE), &yaml)?;
+    Ok(())
 }
 
 /// Store init: the spec-document tree (`openspec/` skeleton) and the workflow-config
@@ -194,7 +241,7 @@ fn store_init(spec_root: &Path, force: bool) -> Result<()> {
 
 /// Workspace init: host-side files that stay local no matter where spec documents live —
 /// `.speclink.yaml`, instruction-file markers, skills, settings, `.gitignore`.
-fn workspace_init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<()> {
+fn workspace_init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str, store: StoreKind) -> Result<()> {
     // .speclink.yaml — the template plus the actual tool selection, so `update` can sync
     // (regenerate + prune) against the recorded list later. A non-default --dir is
     // persisted as an active spec_dir line (matches Spectra) so later commands find it.
@@ -217,7 +264,7 @@ fn workspace_init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> R
 
     // Per-tool artifacts
     for tool in tools {
-        generate_tool(root, *tool, spec_dir, force)?;
+        generate_tool(root, *tool, spec_dir, force, store)?;
     }
     Ok(())
 }
@@ -239,6 +286,13 @@ pub struct UpdateOutcome {
 pub fn update(root: &Path) -> Result<UpdateOutcome> {
     let app = crate::config::AppConfig::load(&root.join(".speclink.yaml"));
     let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
+    // The connection file's presence is the mode signal — regenerated markers
+    // keep the wording of the mode the workspace is actually in.
+    let store = if root.join(crate::workspace::REMOTE_FILE).is_file() {
+        StoreKind::Remote
+    } else {
+        StoreKind::Fs
+    };
     let mut out = UpdateOutcome { updated: Vec::new(), pruned: Vec::new(), notes: Vec::new() };
 
     // Sort entries: built-in name strings vs custom descriptors. Descriptors validate
@@ -272,13 +326,13 @@ pub fn update(root: &Path) -> Result<UpdateOutcome> {
         // built-in prune. Custom footprints recorded by an earlier update are still
         // synced below — an emptied tools list must not strand them.
         if root.join(".claude").is_dir() {
-            generate_tool(root, Tool::Claude, &spec_dir, true)?;
+            generate_tool(root, Tool::Claude, &spec_dir, true, store)?;
             out.updated.push(Tool::Claude.name().to_string());
         }
     } else {
         for tool in [Tool::Claude, Tool::Codex] {
             if selected.contains(&tool) {
-                generate_tool(root, tool, &spec_dir, true)?;
+                generate_tool(root, tool, &spec_dir, true, store)?;
                 out.updated.push(tool.name().to_string());
             } else if prune_tool(root, tool)? {
                 out.pruned.push(tool.name().to_string());
@@ -301,7 +355,7 @@ pub fn update(root: &Path) -> Result<UpdateOutcome> {
         }
     }
     for custom in &customs {
-        generate_custom(root, custom, &spec_dir)?;
+        generate_custom(root, custom, &spec_dir, store)?;
         out.updated.push(custom.name.clone());
     }
     save_custom_state(root, &customs)?;
@@ -357,9 +411,9 @@ fn save_custom_state(root: &Path, customs: &[CustomTool]) -> Result<()> {
 
 /// Generate a custom tool's artifacts: skills under `<skills_dir>/speclink-*/SKILL.md`
 /// (the non-Claude command subset) and the SPECLINK marker block in its instructions file.
-fn generate_custom(root: &Path, tool: &CustomTool, spec_dir: &str) -> Result<()> {
+fn generate_custom(root: &Path, tool: &CustomTool, spec_dir: &str, store: StoreKind) -> Result<()> {
     let md = root.join(&tool.instructions_file);
-    let merged = upsert_marker(util::read_opt(&md), &custom_instructions_body(spec_dir, tool));
+    let merged = upsert_marker(util::read_opt(&md), &custom_instructions_body(spec_dir, tool, store));
     util::write_file(&md, &merged)?;
     for skill in skills::registry() {
         if !skill.for_codex {
@@ -462,18 +516,18 @@ pub fn detect_tools(root: &Path) -> Vec<Tool> {
     out
 }
 
-fn generate_tool(root: &Path, tool: Tool, spec_dir: &str, force: bool) -> Result<()> {
+fn generate_tool(root: &Path, tool: Tool, spec_dir: &str, force: bool, store: StoreKind) -> Result<()> {
     // Root instruction file (marker upsert) + tool-specific extras.
     match tool {
         Tool::Claude => {
             write_if(&root.join(".claude").join("settings.json"), CLAUDE_SETTINGS, force)?;
             let md = root.join("CLAUDE.md");
-            let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool));
+            let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool, store));
             util::write_file(&md, &merged)?;
         }
         Tool::Codex => {
             let md = root.join("AGENTS.md");
-            let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool));
+            let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool, store));
             util::write_file(&md, &merged)?;
         }
     }

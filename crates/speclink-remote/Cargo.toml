@@ -1,23 +1,16 @@
 [package]
-name = "speclink-cli"
+name = "speclink-remote"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[[bin]]
-name = "speclink"
-path = "src/main.rs"
-
 [dependencies]
 speclink-core = { path = "../speclink-core" }
-speclink-fs = { path = "../speclink-fs" }
-speclink-remote = { path = "../speclink-remote" }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 anyhow.workspace = true
-clap.workspace = true
-clap_complete = "4"
+ureq = { version = "2", features = ["json"] }
 
 [dev-dependencies]
 tiny_http = "0.12"

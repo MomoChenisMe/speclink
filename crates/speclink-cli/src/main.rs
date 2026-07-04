@@ -52,6 +52,18 @@ enum Commands {
     Drift(ChangeArg),
     /// Archive a completed change
     Archive(ArchiveArgs),
+    /// Claim a change for implementation (remote mode)
+    Claim(ClaimArgs),
+    /// Connect this repo to a remote spec store
+    Link(LinkArgs),
+    /// Remove the remote store connection
+    Unlink,
+    /// Authentication against the remote store
+    Auth(AuthArgs),
+    /// Read store documents (artifact contents)
+    Artifact(ArtifactArgs),
+    /// Shared vocabulary document
+    Language(LanguageArgs),
     /// Show artifact DAG status
     Status(StatusArgs),
     /// Get instructions for an artifact
@@ -94,6 +106,15 @@ struct InitArgs {
     /// Custom openspec directory path (default: openspec)
     #[arg(long)]
     dir: Option<String>,
+    /// Store backend: fs (default) or remote
+    #[arg(long, default_value = "fs")]
+    store: String,
+    /// Remote store connection URL (required with --store remote)
+    #[arg(long)]
+    url: Option<String>,
+    /// This repo's registered name in the remote project
+    #[arg(long)]
+    repo: Option<String>,
 }
 
 #[derive(Args)]
@@ -189,6 +210,69 @@ struct ArchiveArgs {
     /// Mark all incomplete tasks as complete before archiving
     #[arg(long = "mark-tasks-complete")]
     mark_tasks_complete: bool,
+}
+
+#[derive(Args)]
+struct ClaimArgs {
+    /// Change name
+    name: String,
+}
+
+#[derive(Args)]
+struct LinkArgs {
+    /// Project-scoped connection URL
+    url: String,
+    /// This repo's registered name in the remote project
+    #[arg(long)]
+    repo: Option<String>,
+}
+
+#[derive(Args)]
+struct ArtifactArgs {
+    #[command(subcommand)]
+    command: ArtifactCommands,
+}
+
+#[derive(Subcommand)]
+enum ArtifactCommands {
+    /// Print an artifact's content (proposal | design | tasks | specs/<capability>)
+    Cat {
+        /// Artifact id
+        artifact: String,
+        /// Change name
+        #[arg(long)]
+        change: Option<String>,
+    },
+}
+
+#[derive(Args)]
+struct LanguageArgs {
+    #[command(subcommand)]
+    command: LanguageCommands,
+}
+
+#[derive(Subcommand)]
+enum LanguageCommands {
+    /// Print the project's shared vocabulary (LANGUAGE document)
+    Show,
+}
+
+#[derive(Args)]
+struct AuthArgs {
+    #[command(subcommand)]
+    command: AuthCommands,
+}
+
+#[derive(Subcommand)]
+enum AuthCommands {
+    /// Store a personal access token for the connected server
+    Login {
+        /// Read the token from stdin (CI/scripted use)
+        #[arg(long = "token-stdin")]
+        token_stdin: bool,
+    },
+    /// Show the current identity and repo validation result
+    Status,
 }
 
 #[derive(Args)]
@@ -569,3 +653,4 @@ fn open_project() -> Result<(core::workspace::Workspace, speclink_fs::FsStore)> 
 }
 
 include!("commands.rs");
+include!("remote_commands.rs");
