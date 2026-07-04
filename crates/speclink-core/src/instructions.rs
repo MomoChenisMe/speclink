@@ -60,6 +60,10 @@ pub fn build_artifact(
     let artifact = schema.artifact(artifact_id)?;
     let app = AppConfig::load(&ws.app_config());
     let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref());
+    // Policy values come from the four-layer resolution (env > legacy app key >
+    // config.yaml > default) — never from one config file alone.
+    let policy =
+        crate::config::resolve_policy(&crate::config::EnvOverrides::from_env(), &app, &wf);
 
     let dependencies = artifact
         .requires
@@ -106,8 +110,8 @@ pub fn build_artifact(
     // concretely. Unset (the default) leaves the payload byte-identical.
     let mut instruction = artifact.instruction.clone();
     if artifact.id == "specs" {
-        if let Some(lang) = crate::config::resolve_spec_locale(&app, &wf) {
-            let display = crate::config::locale_display(Some(&lang));
+        if let Some(lang) = policy.spec_locale.as_deref() {
+            let display = crate::config::locale_display(Some(lang));
             let lower = lang.to_ascii_lowercase();
             let cjk_note = if lower == "tw" || lower.starts_with("zh") {
                 " Vague Chinese wording (應該、可能、也許、或許、大概、考慮、盡量、待定) is \
@@ -129,6 +133,35 @@ Structural markers (`## ADDED/MODIFIED/REMOVED/RENAMED Requirements`, `### Requi
             }
         }
     }
+    // Same pattern for the workflow toggles: when the RESOLVED policy enables them, the
+    // tasks instruction states the discipline concretely — no new `--json` fields.
+    if artifact.id == "tasks" {
+        let mut notes = Vec::new();
+        if policy.tdd {
+            notes.push(
+                "This project enables TDD — structure implementation tasks in \
+Red-Green-Refactor order: each unit of work starts with a failing-test task, then the \
+implementation task that turns it green (fetch the full discipline with `speclink \
+instructions --skill tdd`).",
+            );
+        }
+        if policy.audit {
+            notes.push(
+                "This project enables the audit discipline — when tasks add APIs, \
+configuration options, or parameter handling, include a step to apply the sharp-edges \
+audit checklist (fetch it with `speclink instructions --skill audit`).",
+            );
+        }
+        for note in notes {
+            match instruction.as_mut() {
+                Some(s) => {
+                    s.push_str("\n\n");
+                    s.push_str(note);
+                }
+                None => instruction = Some(note.to_string()),
+            }
+        }
+    }
 
     Some(ArtifactInstructions {
         change_name: change.name.clone(),
@@ -140,7 +173,7 @@ Structural markers (`## ADDED/MODIFIED/REMOVED/RENAMED Requirements`, `### Requi
         instruction,
         context: wf.context_text(),
         rules: wf.rules_for(&artifact.id),
-        locale: crate::config::resolve_locale(&app, &wf),
+        locale: policy.locale,
         // Spectra fills the payload template by looking the artifact up in the BUILT-IN schema
         // matching the yaml display name — never from the custom templates/ file (which only
         // `new artifact` reads). A custom display name therefore yields an empty template.
@@ -229,6 +262,8 @@ pub fn build_apply(
 ) -> ApplyInstructions {
     let app = AppConfig::load(&ws.app_config());
     let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref());
+    let policy =
+        crate::config::resolve_policy(&crate::config::EnvOverrides::from_env(), &app, &wf);
     let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
     let parsed = tasks::parse(&tasks_md);
     let (total, complete, remaining) = tasks::progress(&parsed);
@@ -293,7 +328,7 @@ pub fn build_apply(
         tasks: parsed.iter().map(TaskJson::from).collect(),
         state,
         missing_artifacts,
-        locale: crate::config::resolve_locale(&app, &wf),
+        locale: policy.locale,
         instruction: schema.apply_instruction.clone(),
         preflight,
     }

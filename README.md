@@ -60,6 +60,7 @@ SDD 把「規格」當成開發的第一手真相：需求先寫成結構化的�
 |---|---|---|
 | 架構說明（引擎—Store—呈現三層、儲存縫線） | [docs/architecture.md](docs/architecture.md) | [docs/architecture.zh-TW.md](docs/architecture.zh-TW.md) |
 | 入門教學（純本地走完一輪 SDD） | [docs/getting-started.md](docs/getting-started.md) | [docs/getting-started.zh-TW.md](docs/getting-started.zh-TW.md) |
+| 設定說明（兩檔一目錄體系、四層解析、工具描述子、遷移指引） | [docs/configuration.md](docs/configuration.md) | [docs/configuration.zh-TW.md](docs/configuration.zh-TW.md) |
 
 ---
 

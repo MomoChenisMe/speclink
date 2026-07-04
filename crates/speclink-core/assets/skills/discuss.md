@@ -96,7 +96,7 @@ speclink discuss promote <slug>            # change name defaults to the slug
 speclink discuss promote <slug> --name <change-name>
 ```
 
-This scaffolds the change, prefills the proposal's Why from the conclusion, links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record), and the discussion is archived automatically when the change is archived. The remaining artifacts are still created via `/speclink:propose`.
+This scaffolds the change, prefills the proposal's Why from the conclusion, and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — promote (or `/speclink:propose --from-discussion`) again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived. The remaining artifacts are still created via `/speclink:propose`.
 
 **Lifecycle**: a discussion that concluded without spawning a change (an explicit "don't do this" is a valid outcome) should be closed out with:
 
