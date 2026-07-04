@@ -1,5 +1,13 @@
 schema: spec-driven
 
+# Language for AI-generated artifacts
+locale: tw
+# Language for spec files ("auto" follows locale)
+spec_locale: tw
+# Workflow policy toggles
+tdd: true
+audit: true
+
 context: |
   ## 專案
 
@@ -58,7 +66,7 @@ rules:
     - 使用 SHALL / SHALL NOT 表達強制行為；結構標記與關鍵字保留英文，散文用 `spec_locale`
     - 指令若同時有人眼與 `--json` 輸出，兩條路徑都要涵蓋，並說明 `--no-color` 下的行為
     - CLI 指令規格須包含：子指令、旗標、stdin 輸入（若有）、成功/失敗的 exit code、輸出去向（stdout vs stderr）
-    - `--json` 規格須包含 payload 結構：欄位名（camelCase）與型別
+    - "`--json` 規格須包含 payload 結構：欄位名（camelCase）與型別"
     - 檔案系統效果須明確：建立/修改哪些檔（proposal.md、delta spec、.openspec.yaml、.speclink/ 的 touched 與 snapshots）
     - 與語言相關的行為須分別敘明 `tw` / `ja` / `en`（或未設定）下的預期，含中文弱語言偵測
     - parity 敏感的行為須標明對 Spectra 2.3.1 的預期：維持位元級一致，或屬刻意分歧（並記載正規化方式）
