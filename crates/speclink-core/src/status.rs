@@ -2,6 +2,7 @@
 
 use crate::model::{self, Change};
 use crate::schema::Schema;
+use crate::store::Store;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -54,15 +55,15 @@ pub fn display_order(schema: &Schema) -> Vec<&crate::schema::Artifact> {
 
 /// First not-done artifact in display order (used as the default for `instructions` with no
 /// artifact argument) — matches Spectra returning the next incomplete artifact.
-pub fn first_incomplete_artifact(change: &Change, schema: &Schema) -> Option<String> {
+pub fn first_incomplete_artifact(store: &dyn Store, change: &Change, schema: &Schema) -> Option<String> {
     display_order(schema)
         .into_iter()
-        .find(|a| !model::artifact_done(&change.dir, a))
+        .find(|a| !model::artifact_done(store, &change.name, a))
         .map(|a| a.id.to_string())
 }
 
-pub fn build(change: &Change, schema: &Schema) -> StatusReport {
-    let statuses = model::artifact_statuses(schema, &change.dir);
+pub fn build(store: &dyn Store, change: &Change, schema: &Schema) -> StatusReport {
+    let statuses = model::artifact_statuses(schema, store, &change.name);
     let mut artifacts = Vec::new();
     for a in display_order(schema) {
         let status = statuses
@@ -71,7 +72,7 @@ pub fn build(change: &Change, schema: &Schema) -> StatusReport {
             .map(|(_, s)| s.as_str())
             .unwrap_or("blocked");
         let blocked_by = if status == "blocked" {
-            model::blocked_by(schema, &change.dir, &a.id)
+            model::blocked_by(schema, store, &change.name, &a.id)
         } else {
             Vec::new()
         };
@@ -85,7 +86,7 @@ pub fn build(change: &Change, schema: &Schema) -> StatusReport {
     StatusReport {
         change_name: change.name.clone(),
         schema_name: schema.display_name.clone(),
-        is_complete: model::is_complete(schema, &change.dir),
+        is_complete: model::is_complete(schema, store, &change.name),
         apply_requires: schema.apply_requires.iter().map(|s| s.to_string()).collect(),
         artifacts,
     }

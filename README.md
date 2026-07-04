@@ -2,7 +2,7 @@
 
 以 Rust 重新實作的 Spec-Driven Development（SDD，規格驅動開發）CLI 引擎。以 [Spectra](https://github.com/kaochenlong/Spectra) 2.3.1 為藍本，與其達到 CLI 行為與輸出的位元級一致（byte-level parity），並在此基礎上做了數項刻意的功能延伸。
 
-- **實作語言**：Rust（workspace：`speclink-core` 引擎 + `speclink-cli` 前端）
+- **實作語言**：Rust（workspace：`speclink-core` 引擎 + `speclink-fs` 預設儲存實作 + `speclink-cli` 前端）
 - **工作流**：`discuss? → propose → apply ⇄ ingest → verify? → archive`
 - **相容對象**：Claude Code（`.claude/skills/`）與 Codex（`.agents/skills/` + `AGENTS.md`）
 
@@ -13,6 +13,7 @@
 ## 目錄
 
 - [這是什麼](#這是什麼)
+- [Documentation](#documentation)
 - [建置](#建置)
 - [快速開始](#快速開始)
 - [SDD 工作流](#sdd-工作流)
@@ -50,6 +51,15 @@ SDD 把「規格」當成開發的第一手真相：需求先寫成結構化的�
 ```
 
 `### Requirement:`、`#### Scenario:`、`- **WHEN**`/`- **THEN**` 與規範關鍵字 `SHALL`/`MUST` 是結構的一部分，永遠保持英文；散文內容的語言可由 `spec_locale` 設定（見[設定檔](#設定檔)）。
+
+---
+
+## Documentation
+
+| 主題 | English | 繁體中文 |
+|---|---|---|
+| 架構說明（引擎—Store—呈現三層、儲存縫線） | [docs/architecture.md](docs/architecture.md) | [docs/architecture.zh-TW.md](docs/architecture.zh-TW.md) |
+| 入門教學（純本地走完一輪 SDD） | [docs/getting-started.md](docs/getting-started.md) | [docs/getting-started.zh-TW.md](docs/getting-started.zh-TW.md) |
 
 ---
 

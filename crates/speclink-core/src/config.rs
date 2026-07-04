@@ -25,10 +25,12 @@ pub struct AppConfig {
 
 impl AppConfig {
     /// Load from a `.speclink.yaml` path. Missing file or parse error → defaults.
+    /// This stays a direct host-side read: `.speclink.yaml` is the bootstrap
+    /// that locates the project before any storage adapter exists.
     pub fn load(path: &Path) -> AppConfig {
-        match std::fs::read_to_string(path) {
-            Ok(s) => serde_yaml::from_str(&s).unwrap_or_default(),
-            Err(_) => AppConfig::default(),
+        match crate::util::read_opt(path) {
+            Some(s) => serde_yaml::from_str(&s).unwrap_or_default(),
+            None => AppConfig::default(),
         }
     }
 
@@ -125,10 +127,13 @@ pub fn resolve_spec_locale(app: &AppConfig, wf: &WorkflowConfig) -> Option<Strin
 }
 
 impl WorkflowConfig {
-    pub fn load(path: &Path) -> WorkflowConfig {
-        match std::fs::read_to_string(path) {
-            Ok(s) => serde_yaml::from_str(&s).unwrap_or_default(),
-            Err(_) => WorkflowConfig::default(),
+    /// Parse the raw workflow-config document (as handed over by the Store).
+    /// A missing document or a parse error yields the defaults — serialization
+    /// format and tolerance are unchanged from the path-based loader.
+    pub fn from_text(text: Option<&str>) -> WorkflowConfig {
+        match text {
+            Some(s) => serde_yaml::from_str(s).unwrap_or_default(),
+            None => WorkflowConfig::default(),
         }
     }
 

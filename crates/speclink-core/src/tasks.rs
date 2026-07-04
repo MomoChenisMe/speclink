@@ -1,7 +1,7 @@
 //! Task list parsing, completion, and touched-file tracking.
 
-use crate::paths::Paths;
 use crate::util;
+use crate::workspace::Workspace;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -118,22 +118,22 @@ pub struct TouchedRecord {
 }
 
 impl TouchedRecord {
-    pub fn load(paths: &Paths, change: &str) -> TouchedRecord {
-        let p = paths.touched_dir().join(format!("{change}.json"));
-        match std::fs::read_to_string(&p) {
-            Ok(s) => serde_json::from_str(&s).unwrap_or(TouchedRecord {
+    pub fn load(ws: &Workspace, change: &str) -> TouchedRecord {
+        let p = ws.touched_dir().join(format!("{change}.json"));
+        match util::read_opt(&p) {
+            Some(s) => serde_json::from_str(&s).unwrap_or(TouchedRecord {
                 change: change.to_string(),
                 touched: Vec::new(),
             }),
-            Err(_) => TouchedRecord {
+            None => TouchedRecord {
                 change: change.to_string(),
                 touched: Vec::new(),
             },
         }
     }
 
-    pub fn save(&self, paths: &Paths) -> std::io::Result<()> {
-        let p = paths.touched_dir().join(format!("{}.json", self.change));
+    pub fn save(&self, ws: &Workspace) -> std::io::Result<()> {
+        let p = ws.touched_dir().join(format!("{}.json", self.change));
         let json = serde_json::to_string_pretty(self).unwrap_or_default();
         util::write_file(&p, &json)
     }

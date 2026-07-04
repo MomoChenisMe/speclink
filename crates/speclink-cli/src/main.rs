@@ -554,9 +554,18 @@ fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
     Ok(())
 }
 
-fn require_paths() -> Result<core::paths::Paths> {
-    core::paths::Paths::discover_cwd()
+/// Discover the host workspace, or fail with the standard not-initialized error.
+fn require_workspace() -> Result<core::workspace::Workspace> {
+    core::workspace::Workspace::discover_cwd()
         .ok_or_else(|| anyhow::anyhow!("Not initialized. Run 'speclink init' to initialize."))
+}
+
+/// The CLI assembly point: discover the workspace and build the filesystem
+/// storage adapter for it. Core flows receive the store as `&dyn Store`.
+fn open_project() -> Result<(core::workspace::Workspace, speclink_fs::FsStore)> {
+    let ws = require_workspace()?;
+    let store = speclink_fs::FsStore::new(&ws.root, &ws.spec_dir_name);
+    Ok((ws, store))
 }
 
 include!("commands.rs");

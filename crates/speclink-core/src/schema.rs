@@ -2,7 +2,7 @@
 //! format Spectra follows (`openspec/schemas/<name>/schema.yaml` + `templates/`).
 //! Resolution order: project → user → built-in.
 
-use crate::paths::Paths;
+use crate::workspace::Workspace;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -204,10 +204,10 @@ pub fn load_dir(dir: &Path, name: &str, source: &str) -> Result<Schema, String> 
 // --- resolution ---
 
 /// Schema search directories in resolution order: project then user.
-pub fn schema_dirs(paths: Option<&Paths>) -> Vec<(PathBuf, &'static str)> {
+pub fn schema_dirs(ws: Option<&Workspace>) -> Vec<(PathBuf, &'static str)> {
     let mut v = Vec::new();
-    if let Some(p) = paths {
-        v.push((p.spec_dir().join("schemas"), "project"));
+    if let Some(w) = ws {
+        v.push((w.spec_dir().join("schemas"), "project"));
     }
     v.push((crate::config::global_config_dir().join("schemas"), "user"));
     v
@@ -220,9 +220,9 @@ pub struct SchemaSource {
 }
 
 /// Every location where `name` exists, in resolution order.
-pub fn sources(paths: Option<&Paths>, name: &str) -> Vec<SchemaSource> {
+pub fn sources(ws: Option<&Workspace>, name: &str) -> Vec<SchemaSource> {
     let mut out = Vec::new();
-    for (dir, src) in schema_dirs(paths) {
+    for (dir, src) in schema_dirs(ws) {
         let y = dir.join(name).join("schema.yaml");
         if y.is_file() {
             out.push(SchemaSource { path: Some(y), source: src });
@@ -235,8 +235,8 @@ pub fn sources(paths: Option<&Paths>, name: &str) -> Vec<SchemaSource> {
 }
 
 /// Resolve a schema: None = not found; Some(Err) = found but invalid (parse error / cycle).
-pub fn resolve_with(paths: Option<&Paths>, name: &str) -> Option<Result<Schema, String>> {
-    for (dir, src) in schema_dirs(paths) {
+pub fn resolve_with(ws: Option<&Workspace>, name: &str) -> Option<Result<Schema, String>> {
+    for (dir, src) in schema_dirs(ws) {
         let d = dir.join(name);
         if d.join("schema.yaml").is_file() {
             return Some(load_dir(&d, name, src));
@@ -271,7 +271,7 @@ pub struct ListedSchema {
 }
 
 /// All schemas: built-in first, then project (alphabetical), then user (alphabetical).
-pub fn list_all(paths: Option<&Paths>) -> Vec<ListedSchema> {
+pub fn list_all(ws: Option<&Workspace>) -> Vec<ListedSchema> {
     let b = spec_driven();
     let mut out = vec![ListedSchema {
         name: b.name.clone(),
@@ -279,7 +279,7 @@ pub fn list_all(paths: Option<&Paths>) -> Vec<ListedSchema> {
         description: b.description.clone(),
         artifact_ids: b.artifact_ids(),
     }];
-    for (dir, src) in schema_dirs(paths) {
+    for (dir, src) in schema_dirs(ws) {
         let mut names: Vec<String> = std::fs::read_dir(&dir)
             .map(|it| {
                 it.flatten()
@@ -304,15 +304,15 @@ pub fn list_all(paths: Option<&Paths>) -> Vec<ListedSchema> {
 // --- fork / init ---
 
 /// Fork (copy) a schema into the project's `openspec/schemas/`. Returns the new name.
-pub fn fork(paths: &Paths, source: &str, name: Option<&str>, force: bool) -> Result<String, String> {
+pub fn fork(ws: &Workspace, source: &str, name: Option<&str>, force: bool) -> Result<String, String> {
     let new_name = name
         .map(|s| s.to_string())
         .unwrap_or_else(|| format!("{source}-custom"));
-    let target = paths.spec_dir().join("schemas").join(&new_name);
+    let target = ws.spec_dir().join("schemas").join(&new_name);
     if target.join("schema.yaml").is_file() && !force {
         return Err(format!("Schema '{new_name}' already exists. Use --force to overwrite."));
     }
-    let srcs = sources(Some(paths), source);
+    let srcs = sources(Some(ws), source);
     let Some(first) = srcs.first() else {
         return Err(not_found_msg(source));
     };
@@ -348,13 +348,13 @@ pub fn fork(paths: &Paths, source: &str, name: Option<&str>, force: bool) -> Res
 
 /// Create a new custom schema skeleton. Returns its directory.
 pub fn init_schema(
-    paths: &Paths,
+    ws: &Workspace,
     name: &str,
     artifacts: Option<&str>,
     description: Option<&str>,
     force: bool,
 ) -> Result<PathBuf, String> {
-    let target = paths.spec_dir().join("schemas").join(name);
+    let target = ws.spec_dir().join("schemas").join(name);
     if target.join("schema.yaml").is_file() && !force {
         return Err(format!("Schema '{name}' already exists. Use --force to overwrite."));
     }

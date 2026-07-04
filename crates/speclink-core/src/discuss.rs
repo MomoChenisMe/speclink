@@ -1,15 +1,15 @@
 //! Discussion documents — speclink's enhancement over Spectra's ephemeral discuss.
 //!
-//! Each discussion is a single append-only document at `openspec/discussions/<slug>.md` so an
-//! iterative conversation accumulates a durable record that `propose` can later consume.
-//! Archived discussions move to `openspec/discussions/archive/<created>-<slug>.md` — date-
-//! prefixed like `changes/archive/`, so a slug can be reused by a later discussion.
+//! Each discussion is a single append-only document (stored by the Store as a
+//! live discussion under its slug) so an iterative conversation accumulates a
+//! durable record that `propose` can later consume. Archived discussions are
+//! renamed by the store with a `<created>-` date prefix — like archived
+//! changes — so a slug can be reused by a later discussion.
 
-use crate::paths::Paths;
+use crate::store::{DiscussionDoc, Store};
 use crate::util;
 use anyhow::{bail, Result};
 use serde::Serialize;
-use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DiscussionInfo {
@@ -20,76 +20,6 @@ pub struct DiscussionInfo {
     pub created: String,
     pub path: String,
     pub archived: bool,
-}
-
-fn discussion_path(paths: &Paths, slug: &str) -> PathBuf {
-    paths.discussions_dir().join(format!("{slug}.md"))
-}
-
-fn archive_dir(paths: &Paths) -> PathBuf {
-    paths.discussions_dir().join("archive")
-}
-
-/// Strip a `YYYY-MM-DD-` prefix from an archived file stem.
-fn strip_date_prefix(name: &str) -> Option<&str> {
-    let b = name.as_bytes();
-    if b.len() > 11
-        && b[..4].iter().all(|c| c.is_ascii_digit())
-        && b[4] == b'-'
-        && b[5..7].iter().all(|c| c.is_ascii_digit())
-        && b[7] == b'-'
-        && b[8..10].iter().all(|c| c.is_ascii_digit())
-        && b[10] == b'-'
-    {
-        Some(&name[11..])
-    } else {
-        None
-    }
-}
-
-/// Whether `s` is a `-N` same-day disambiguation suffix.
-fn is_dup_suffix(s: &str) -> bool {
-    s.strip_prefix('-')
-        .map(|d| !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit()))
-        .unwrap_or(false)
-}
-
-/// Locate an archived discussion by slug (`archive/<YYYY-MM-DD>-<slug>[-N].md`) — return the
-/// newest, ranked by (date prefix, `-N` suffix number; plain name counts as 1).
-fn find_archived(paths: &Paths, slug: &str) -> Option<PathBuf> {
-    let mut candidates: Vec<(String, u64, PathBuf)> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(archive_dir(paths)) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().to_string();
-            let Some(stem) = name.strip_suffix(".md") else { continue };
-            let Some(rest) = strip_date_prefix(stem) else { continue };
-            let seq = if rest == slug {
-                Some(1)
-            } else {
-                rest.strip_prefix(slug)
-                    .filter(|s| is_dup_suffix(s))
-                    .and_then(|s| s[1..].parse::<u64>().ok())
-            };
-            if let Some(seq) = seq {
-                candidates.push((stem[..10].to_string(), seq, path));
-            }
-        }
-    }
-    candidates.sort();
-    candidates.pop().map(|(_, _, p)| p)
-}
-
-/// Resolve a slug to its document: live first, then the archive.
-fn resolve_path(paths: &Paths, slug: &str) -> Option<(PathBuf, bool)> {
-    let live = discussion_path(paths, slug);
-    if live.is_file() {
-        return Some((live, false));
-    }
-    find_archived(paths, slug).map(|p| (p, true))
 }
 
 fn frontmatter_value(text: &str, key: &str) -> Option<String> {
@@ -164,26 +94,24 @@ fn strip_html_comments(s: &str) -> String {
     out
 }
 
-fn read_info_at(path: &PathBuf, slug: &str, archived: bool) -> Option<DiscussionInfo> {
-    let text = util::read_opt(path)?;
-    Some(DiscussionInfo {
-        slug: frontmatter_value(&text, "slug").unwrap_or_else(|| slug.to_string()),
-        topic: frontmatter_value(&text, "topic").unwrap_or_else(|| slug.to_string()),
-        status: frontmatter_value(&text, "status").unwrap_or_else(|| "open".to_string()),
-        rounds: count_rounds(&text),
-        created: frontmatter_value(&text, "created").unwrap_or_default(),
-        path: util::to_slash(path),
-        archived,
-    })
+fn info_from_doc(doc: &DiscussionDoc) -> DiscussionInfo {
+    DiscussionInfo {
+        slug: frontmatter_value(&doc.text, "slug").unwrap_or_else(|| doc.slug.clone()),
+        topic: frontmatter_value(&doc.text, "topic").unwrap_or_else(|| doc.slug.clone()),
+        status: frontmatter_value(&doc.text, "status").unwrap_or_else(|| "open".to_string()),
+        rounds: count_rounds(&doc.text),
+        created: frontmatter_value(&doc.text, "created").unwrap_or_default(),
+        path: util::to_slash(&doc.path),
+        archived: doc.archived,
+    }
 }
 
 /// Load a live discussion for mutation; a helpful error distinguishes "archived" from "missing".
-fn load_live(paths: &Paths, slug: &str) -> Result<(PathBuf, String)> {
-    let path = discussion_path(paths, slug);
-    match util::read_opt(&path) {
-        Some(t) => Ok((path, t)),
+fn load_live(store: &dyn Store, slug: &str) -> Result<String> {
+    match store.read_live_discussion(slug) {
+        Some(t) => Ok(t),
         None => {
-            if find_archived(paths, slug).is_some() {
+            if store.archived_discussion_exists(slug) {
                 bail!("discussion '{slug}' is archived — move it out of discussions/archive/ to continue it");
             }
             bail!("discussion '{slug}' not found — run `speclink discuss new` first")
@@ -192,14 +120,16 @@ fn load_live(paths: &Paths, slug: &str) -> Result<(PathBuf, String)> {
 }
 
 /// Create a new discussion document. Errors if a live one already exists.
-pub fn new_discussion(paths: &Paths, topic: &str) -> Result<DiscussionInfo> {
+pub fn new_discussion(store: &dyn Store, topic: &str) -> Result<DiscussionInfo> {
     let slug = util::slugify(topic);
     if slug.is_empty() {
         bail!("could not derive a slug from topic '{topic}'");
     }
-    let path = discussion_path(paths, &slug);
-    if path.exists() {
-        bail!("discussion '{slug}' already exists at {}", util::to_slash(&path));
+    if store.live_discussion_exists(&slug) {
+        bail!(
+            "discussion '{slug}' already exists at {}",
+            util::to_slash(&store.live_discussion_path(&slug))
+        );
     }
     let created = util::today();
     let content = format!(
@@ -234,7 +164,7 @@ pub fn new_discussion(paths: &Paths, topic: &str) -> Result<DiscussionInfo> {
          <!-- Written by `speclink discuss conclude`:\n\
          **Decision** / **Rationale** / **Rejected alternatives** / **Deferred** / **Capture to** / **Next** -->\n"
     );
-    util::write_file(&path, &content)?;
+    let path = store.write_live_discussion(&slug, &content)?;
     Ok(DiscussionInfo {
         slug,
         topic: topic.to_string(),
@@ -247,62 +177,41 @@ pub fn new_discussion(paths: &Paths, topic: &str) -> Result<DiscussionInfo> {
 }
 
 /// List live discussions (sorted by slug).
-pub fn list_discussions(paths: &Paths) -> Vec<DiscussionInfo> {
-    let mut out = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(paths.discussions_dir()) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().to_string();
-            let Some(slug) = name.strip_suffix(".md") else { continue };
-            if let Some(info) = read_info_at(&path, slug, false) {
-                out.push(info);
-            }
-        }
-    }
+pub fn list_discussions(store: &dyn Store) -> Vec<DiscussionInfo> {
+    let mut out: Vec<DiscussionInfo> = store
+        .list_live_discussions()
+        .iter()
+        .map(info_from_doc)
+        .collect();
     out.sort_by(|a, b| a.slug.cmp(&b.slug));
     out
 }
 
 /// List archived discussions (sorted by archived file name, i.e. by archive date).
-pub fn list_archived(paths: &Paths) -> Vec<DiscussionInfo> {
-    let mut out = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(archive_dir(paths)) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().to_string();
-            let Some(stem) = name.strip_suffix(".md") else { continue };
-            let slug = strip_date_prefix(stem).unwrap_or(stem);
-            if let Some(info) = read_info_at(&path, slug, true) {
-                out.push(info);
-            }
-        }
-    }
+pub fn list_archived(store: &dyn Store) -> Vec<DiscussionInfo> {
+    let mut out: Vec<DiscussionInfo> = store
+        .list_archived_discussions()
+        .iter()
+        .map(info_from_doc)
+        .collect();
     out.sort_by(|a, b| a.path.cmp(&b.path));
     out
 }
 
-pub fn show_discussion(paths: &Paths, slug: &str) -> Option<String> {
-    let (path, _) = resolve_path(paths, slug)?;
-    util::read_opt(&path)
+pub fn show_discussion(store: &dyn Store, slug: &str) -> Option<String> {
+    store.read_discussion(slug).map(|d| d.text)
 }
 
-pub fn info(paths: &Paths, slug: &str) -> Option<DiscussionInfo> {
-    let (path, archived) = resolve_path(paths, slug)?;
-    read_info_at(&path, slug, archived)
+pub fn info(store: &dyn Store, slug: &str) -> Option<DiscussionInfo> {
+    store.read_discussion(slug).map(|d| info_from_doc(&d))
 }
 
 /// Set (or replace) the `## Context` section — the one-time framing written after mode pick.
-pub fn set_context(paths: &Paths, slug: &str, content: &str) -> Result<()> {
-    let (path, text) = load_live(paths, slug)?;
+pub fn set_context(store: &dyn Store, slug: &str, content: &str) -> Result<()> {
+    let text = load_live(store, slug)?;
     match replace_section(&text, "Context", content) {
         Some(t) => {
-            util::write_file(&path, &t)?;
+            store.write_live_discussion(slug, &t)?;
             Ok(())
         }
         None => bail!(
@@ -312,8 +221,8 @@ pub fn set_context(paths: &Paths, slug: &str, content: &str) -> Result<()> {
 }
 
 /// Append a discussion round. Content is supplied verbatim (from the skill via stdin).
-pub fn add_round(paths: &Paths, slug: &str, mode: &str, content: &str) -> Result<usize> {
-    let (path, mut text) = load_live(paths, slug)?;
+pub fn add_round(store: &dyn Store, slug: &str, mode: &str, content: &str) -> Result<usize> {
+    let mut text = load_live(store, slug)?;
     let round_no = count_rounds(&text) + 1;
     let date = util::today();
     // Scaffolded layout: insert at the end of the `## Rounds` section. Pre-scaffold
@@ -333,72 +242,72 @@ pub fn add_round(paths: &Paths, slug: &str, mode: &str, content: &str) -> Result
             content.trim_end()
         ));
     }
-    util::write_file(&path, &text)?;
+    store.write_live_discussion(slug, &text)?;
     Ok(round_no)
 }
 
 /// The text of the `## Conclusion` section, if the discussion has one (the scaffold's
 /// placeholder comment does not count as content).
-pub fn conclusion_text(paths: &Paths, slug: &str) -> Option<String> {
-    let (path, _) = resolve_path(paths, slug)?;
-    let text = util::read_opt(&path)?;
+pub fn conclusion_text(store: &dyn Store, slug: &str) -> Option<String> {
+    let text = store.read_discussion(slug)?.text;
     let (s, e) = section_body_range(&text, "Conclusion")?;
     let body = strip_html_comments(&text[s..e]).trim().to_string();
     (!body.is_empty()).then_some(body)
 }
 
 /// Mark a discussion as promoted to a change (the discussion side of the bidirectional link).
-pub fn mark_promoted(paths: &Paths, slug: &str, change: &str) -> Result<()> {
-    let (path, mut text) = load_live(paths, slug)?;
+/// A discussion can fan out into several changes, so `promoted_to` is a comma-separated
+/// accumulator: repeated promotes append the new change name rather than being dropped.
+pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
+    let mut text = load_live(store, slug)?;
     for from in ["status: open", "status: concluded"] {
         if text.contains(from) {
             text = text.replacen(from, "status: promoted", 1);
             break;
         }
     }
-    if !text.contains("\npromoted_to:") {
-        text = text.replacen(
-            "status: promoted\n",
-            &format!("status: promoted\npromoted_to: {change}\n"),
-            1,
-        );
+    match frontmatter_value(&text, "promoted_to") {
+        Some(existing) => {
+            if !existing.split(',').map(str::trim).any(|c| c == change) {
+                text = text.replacen(
+                    &format!("promoted_to: {existing}"),
+                    &format!("promoted_to: {existing}, {change}"),
+                    1,
+                );
+            }
+        }
+        None => {
+            text = text.replacen(
+                "status: promoted\n",
+                &format!("status: promoted\npromoted_to: {change}\n"),
+                1,
+            );
+        }
     }
-    util::write_file(&path, &text)?;
+    store.write_live_discussion(slug, &text)?;
     Ok(())
 }
 
-/// Move a live discussion to `discussions/archive/<created>-<slug>.md`. Returns the archived
-/// file name, or `None` when no live discussion exists. Same-day name collisions get a `-N`
-/// suffix so co-archival never fails on a reused slug.
-pub fn archive_discussion(paths: &Paths, slug: &str) -> Result<Option<String>> {
-    let src = discussion_path(paths, slug);
-    if !src.is_file() {
+/// Archive a live discussion under its creation date. Returns the archived
+/// file name, or `None` when no live discussion exists. Same-day name
+/// collisions are resolved by the store so co-archival never fails on a
+/// reused slug.
+pub fn archive_discussion(store: &dyn Store, slug: &str) -> Result<Option<String>> {
+    let Some(text) = store.read_live_discussion(slug) else {
         return Ok(None);
-    }
-    let created = util::read_opt(&src)
-        .and_then(|t| frontmatter_value(&t, "created"))
+    };
+    let created = frontmatter_value(&text, "created")
         .filter(|c| !c.is_empty())
         .unwrap_or_else(util::today);
-    let dir = archive_dir(paths);
-    std::fs::create_dir_all(&dir)?;
-    let base = format!("{created}-{slug}");
-    let mut name = format!("{base}.md");
-    let mut n = 2;
-    while dir.join(&name).exists() {
-        name = format!("{base}-{n}.md");
-        n += 1;
-    }
-    std::fs::rename(&src, dir.join(&name))?;
-    Ok(Some(name))
+    store.archive_discussion(slug, &created)
 }
 
 /// Delete a live discussion outright — the exit for a record that turned out not to be
 /// needed. Refuses once rounds exist (unless `force`): a discussion that examined real
 /// trade-offs should keep its reasoning via `conclude` + `archive` instead.
-pub fn discard_discussion(paths: &Paths, slug: &str, force: bool) -> Result<()> {
-    let path = discussion_path(paths, slug);
-    let Some(text) = util::read_opt(&path) else {
-        if find_archived(paths, slug).is_some() {
+pub fn discard_discussion(store: &dyn Store, slug: &str, force: bool) -> Result<()> {
+    let Some(text) = store.read_live_discussion(slug) else {
+        if store.archived_discussion_exists(slug) {
             bail!("discussion '{slug}' is archived — archived records are kept, not discarded");
         }
         bail!("discussion '{slug}' not found");
@@ -409,15 +318,15 @@ pub fn discard_discussion(paths: &Paths, slug: &str, force: bool) -> Result<()> 
             "discussion '{slug}' has {rounds} recorded round(s) — `conclude` + `archive` keeps the reasoning; pass --force to delete anyway"
         );
     }
-    std::fs::remove_file(&path)?;
+    store.delete_live_discussion(slug)?;
     Ok(())
 }
 
 /// Write the conclusion into the `## Conclusion` section (replacing the placeholder — or a
 /// previous conclusion, so a revised conclusion stays a single section) and mark the
 /// discussion concluded.
-pub fn conclude(paths: &Paths, slug: &str, content: &str) -> Result<()> {
-    let (path, mut text) = load_live(paths, slug)?;
+pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<()> {
+    let mut text = load_live(store, slug)?;
     // Flip status: open -> concluded in frontmatter.
     text = text.replacen("status: open", "status: concluded", 1);
     text = match replace_section(&text, "Conclusion", content) {
@@ -430,6 +339,6 @@ pub fn conclude(paths: &Paths, slug: &str, content: &str) -> Result<()> {
             format!("{text}\n## Conclusion\n\n{}\n", content.trim_end())
         }
     };
-    util::write_file(&path, &text)?;
+    store.write_live_discussion(slug, &text)?;
     Ok(())
 }

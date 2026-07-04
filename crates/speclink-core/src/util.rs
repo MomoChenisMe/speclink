@@ -44,6 +44,11 @@ pub fn exists(path: &Path) -> bool {
     path.exists()
 }
 
+/// Remove a file (thin wrapper so flow modules stay free of direct std::fs calls).
+pub fn remove_file(path: &Path) -> std::io::Result<()> {
+    std::fs::remove_file(path)
+}
+
 /// True if a file exists and has non-whitespace content.
 pub fn has_content(path: &Path) -> bool {
     match std::fs::read_to_string(path) {

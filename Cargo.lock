@@ -557,6 +557,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "speclink-core",
+ "speclink-fs",
 ]
 
 [[package]]
@@ -570,6 +571,14 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+]
+
+[[package]]
+name = "speclink-fs"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "speclink-core",
 ]
 
 [[package]]

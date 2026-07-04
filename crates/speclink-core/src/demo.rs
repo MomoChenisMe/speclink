@@ -2,8 +2,9 @@
 //! name/adjective pools mirror Spectra's (probed from 2.3.1; change names use the slx-
 //! prefix instead of spx-).
 
-use crate::paths::Paths;
+use crate::store::Store;
 use crate::util;
+use crate::workspace::Workspace;
 use anyhow::Result;
 use std::path::PathBuf;
 
@@ -83,25 +84,24 @@ pub struct DemoOutcome {
     pub path: PathBuf,
 }
 
-pub fn generate(paths: &Paths) -> Result<DemoOutcome> {
+pub fn generate(ws: &Workspace, store: &dyn Store) -> Result<DemoOutcome> {
     let (theme, proposal, design, tasks, spec) = THEMES[util::pseudo_random(THEMES.len())];
     let word = WORDS[util::pseudo_random(WORDS.len())];
     let mon = POKEMON[util::pseudo_random(POKEMON.len())];
     let name = format!("slx-{word}-{mon}");
-    let dir = paths.change_dir(&name);
 
     let created = util::today();
-    let identity = util::git_identity(&paths.root);
+    let identity = util::git_identity(&ws.root);
     let mut meta = format!("schema: spec-driven\ncreated: {created}\n");
     if let Some(id) = identity {
         meta.push_str(&format!("created_by: {id}\n"));
     }
 
-    util::write_file(&dir.join(".openspec.yaml"), &meta)?;
-    util::write_file(&dir.join("proposal.md"), proposal)?;
-    util::write_file(&dir.join("design.md"), design)?;
-    util::write_file(&dir.join("tasks.md"), tasks)?;
-    util::write_file(&dir.join("specs").join(theme).join("spec.md"), spec)?;
+    let dir = store.create_change(&name, &meta)?;
+    store.write_artifact(&name, "proposal.md", proposal)?;
+    store.write_artifact(&name, "design.md", design)?;
+    store.write_artifact(&name, "tasks.md", tasks)?;
+    store.write_artifact(&name, &format!("specs/{theme}/spec.md"), spec)?;
 
     Ok(DemoOutcome {
         name,

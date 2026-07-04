@@ -1,8 +1,9 @@
 // Included into main.rs. Command handlers and rendering.
 
 use core::model::Change;
-use core::paths::Paths;
 use core::schema::Schema;
+use core::store::Store;
+use core::workspace::Workspace;
 
 fn dispatch(cli: Cli) -> Result<()> {
     match cli.command {
@@ -32,28 +33,28 @@ fn dispatch(cli: Cli) -> Result<()> {
 
 // --- helpers ---
 
-fn resolve_change(paths: &Paths, name: Option<&str>) -> Result<Change> {
-    resolve_change_worded(paths, name, "Use --change to specify one:")
+fn resolve_change(store: &dyn Store, name: Option<&str>) -> Result<Change> {
+    resolve_change_worded(store, name, "Use --change to specify one:")
 }
 
 /// Positional-style resolution (analyze/drift): Spectra says just "Specify one:".
-fn resolve_change_positional(paths: &Paths, name: Option<&str>) -> Result<Change> {
-    resolve_change_worded(paths, name, "Specify one:")
+fn resolve_change_positional(store: &dyn Store, name: Option<&str>) -> Result<Change> {
+    resolve_change_worded(store, name, "Specify one:")
 }
 
-fn resolve_change_worded(paths: &Paths, name: Option<&str>, specify: &str) -> Result<Change> {
+fn resolve_change_worded(store: &dyn Store, name: Option<&str>, specify: &str) -> Result<Change> {
     if let Some(n) = name {
-        return core::model::find_change(paths, n)
+        return core::model::find_change(store, n)
             .ok_or_else(|| anyhow::anyhow!("Change '{n}' not found."));
     }
-    let mut changes = core::model::list_changes(paths);
+    let mut changes = core::model::list_changes(store);
     match changes.len() {
         0 => bail!("No active changes. Create one with: speclink new change <name>"),
         1 => Ok(changes.remove(0)),
         _ => {
             // Spectra lists the candidates by most-recently-modified first (newest file
             // mtime inside each change, whole seconds, name tiebreak).
-            sort_changes(&mut changes, "modified");
+            sort_changes(store, &mut changes, "modified");
             let names: Vec<&str> = changes.iter().map(|c| c.name.as_str()).collect();
             bail!("Multiple changes found. {specify} {}", names.join(", "))
         }
@@ -62,8 +63,8 @@ fn resolve_change_worded(paths: &Paths, name: Option<&str>, specify: &str) -> Re
 
 /// For read/analysis commands: when no change name is given and no changes exist, print the
 /// informational message and signal exit-0 (returns true = handled).
-fn info_if_no_changes(paths: &Paths, name: Option<&str>) -> bool {
-    if name.is_none() && core::model::list_changes(paths).is_empty() {
+fn info_if_no_changes(store: &dyn Store, name: Option<&str>) -> bool {
+    if name.is_none() && core::model::list_changes(store).is_empty() {
         println!("No active changes. Create one with: speclink new change <name>");
         true
     } else {
@@ -72,16 +73,16 @@ fn info_if_no_changes(paths: &Paths, name: Option<&str>) -> bool {
 }
 
 /// Resolve a schema by name (project → user → built-in) or fail with Spectra's messages.
-fn resolve_schema(paths: &Paths, name: &str) -> Result<Schema> {
-    match core::schema::resolve_with(Some(paths), name) {
+fn resolve_schema(ws: &Workspace, name: &str) -> Result<Schema> {
+    match core::schema::resolve_with(Some(ws), name) {
         Some(Ok(s)) => Ok(s),
         Some(Err(e)) => bail!("{e}"),
         None => bail!("{}", core::schema::not_found_msg(name)),
     }
 }
 
-fn schema_for(paths: &Paths, change: &Change) -> Result<Schema> {
-    resolve_schema(paths, &change.meta.schema_name())
+fn schema_for(ws: &Workspace, change: &Change) -> Result<Schema> {
+    resolve_schema(ws, &change.meta.schema_name())
 }
 
 fn truncate_summary(text: &str, limit: usize) -> String {
@@ -94,8 +95,8 @@ fn truncate_summary(text: &str, limit: usize) -> String {
     format!("{head}…")
 }
 
-fn proposal_summary(change: &Change) -> String {
-    let proposal = core::util::read_opt(&change.dir.join("proposal.md")).unwrap_or_default();
+fn proposal_summary(store: &dyn Store, change: &Change) -> String {
+    let proposal = store.read_artifact(&change.name, "proposal.md").unwrap_or_default();
     // First non-empty, non-header line after "## Why" (or first prose line).
     let mut after_why = false;
     for line in proposal.lines() {
@@ -118,8 +119,8 @@ fn proposal_summary(change: &Change) -> String {
     String::new()
 }
 
-fn task_counts(change: &Change) -> (usize, usize) {
-    let tasks_md = core::util::read_opt(&change.dir.join("tasks.md")).unwrap_or_default();
+fn task_counts(store: &dyn Store, change: &Change) -> (usize, usize) {
+    let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
     let tasks = core::tasks::parse(&tasks_md);
     let (total, complete, _) = core::tasks::progress(&tasks);
     (complete, total)
@@ -211,10 +212,10 @@ struct ListChangeJson {
 ///   in modified order.
 /// - everything else (default "modified", unknown values): newest file mtime inside the
 ///   change, whole seconds, newest first, name-ascending ties.
-fn sort_changes(changes: &mut [Change], sort: &str) {
+fn sort_changes(store: &dyn Store, changes: &mut [Change], sort: &str) {
     let mtime_desc = |x: &Change, y: &Change| {
-        let mx = core::model::newest_mtime_secs(&x.dir);
-        let my = core::model::newest_mtime_secs(&y.dir);
+        let mx = store.updated_at_secs(&x.name);
+        let my = store.updated_at_secs(&y.name);
         my.cmp(&mx).then_with(|| x.name.cmp(&y.name))
     };
     match sort {
@@ -236,18 +237,19 @@ fn sort_changes(changes: &mut [Change], sort: &str) {
 }
 
 fn cmd_list(a: ListArgs) -> Result<()> {
-    let paths = require_paths()?;
+    let (_ws, store) = open_project()?;
+    let store: &dyn Store = &store;
     // --specs alone shows only specs; combined with --changes both sections print.
     if a.specs && !a.changes {
-        return list_specs(&paths, a.json);
+        return list_specs(store, a.json);
     }
-    let mut changes = core::model::list_changes(&paths);
-    sort_changes(&mut changes, &a.sort);
+    let mut changes = core::model::list_changes(store);
+    sort_changes(store, &mut changes, &a.sort);
     if a.json {
         let items: Vec<ListChangeJson> = changes
             .iter()
             .map(|c| {
-                let (complete, total) = task_counts(c);
+                let (complete, total) = task_counts(store, c);
                 ListChangeJson {
                     completed_tasks: complete,
                     name: c.name.clone(),
@@ -257,7 +259,7 @@ fn cmd_list(a: ListArgs) -> Result<()> {
                     } else {
                         "in-progress".to_string()
                     },
-                    summary: proposal_summary(c),
+                    summary: proposal_summary(store, c),
                     total_tasks: total,
                 }
             })
@@ -265,7 +267,7 @@ fn cmd_list(a: ListArgs) -> Result<()> {
         if a.specs {
             let mut payload = serde_json::Map::new();
             payload.insert("changes".into(), serde_json::to_value(&items)?);
-            payload.insert("specs".into(), specs_json_items(&paths));
+            payload.insert("specs".into(), specs_json_items(store));
             return print_json(&serde_json::Value::Object(payload));
         }
         return print_json(&serde_json::json!({ "changes": items }));
@@ -274,14 +276,14 @@ fn cmd_list(a: ListArgs) -> Result<()> {
         println!("No active changes.");
         if a.specs {
             println!();
-            list_specs(&paths, false)?;
+            list_specs(store, false)?;
         }
         return Ok(());
     }
     println!("{}", color::bold("Changes:"));
     for c in &changes {
-        let (complete, total) = task_counts(c);
-        let summary = proposal_summary(c);
+        let (complete, total) = task_counts(store, c);
+        let summary = proposal_summary(store, c);
         // Spectra omits the progress marker entirely for changes with zero tasks.
         let marker = if total > 0 {
             format!(" [{complete}/{total}]")
@@ -299,44 +301,38 @@ fn cmd_list(a: ListArgs) -> Result<()> {
     }
     if a.specs {
         println!();
-        list_specs(&paths, false)?;
+        list_specs(store, false)?;
     }
     Ok(())
 }
 
-fn specs_json_items(paths: &Paths) -> serde_json::Value {
-    let mut specs = canonical_spec_names(paths);
+fn specs_json_items(store: &dyn Store) -> serde_json::Value {
+    let mut specs = store.list_canonical_capabilities();
     specs.sort();
     serde_json::Value::Array(
         specs
             .iter()
             .map(|s| {
+                // The listed path is the capability's directory (its spec.md parent).
+                let dir = store
+                    .canonical_spec_path(s)
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_default();
                 serde_json::json!({
                     "id": s,
-                    "path": paths.specs_dir().join(s).to_string_lossy(),
+                    "path": dir.to_string_lossy(),
                 })
             })
             .collect(),
     )
 }
 
-fn canonical_spec_names(paths: &Paths) -> Vec<String> {
-    let mut specs = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(paths.specs_dir()) {
-        for e in entries.flatten() {
-            if e.path().is_dir() && e.path().join("spec.md").is_file() {
-                specs.push(e.file_name().to_string_lossy().to_string());
-            }
-        }
-    }
-    specs
-}
-
-fn list_specs(paths: &Paths, json: bool) -> Result<()> {
-    let mut specs = canonical_spec_names(paths);
+fn list_specs(store: &dyn Store, json: bool) -> Result<()> {
+    let mut specs = store.list_canonical_capabilities();
     specs.sort();
     if json {
-        return print_json(&serde_json::json!({ "specs": specs_json_items(paths) }));
+        return print_json(&serde_json::json!({ "specs": specs_json_items(store) }));
     }
     if specs.is_empty() {
         println!("No specs.");
@@ -352,7 +348,8 @@ fn list_specs(paths: &Paths, json: bool) -> Result<()> {
 // --- show ---
 
 fn cmd_show(a: ShowArgs) -> Result<()> {
-    let paths = require_paths()?;
+    let (_ws, store) = open_project()?;
+    let store: &dyn Store = &store;
     let item = match a.item {
         Some(n) => n,
         None => bail!("Please specify an item name."),
@@ -364,9 +361,8 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
         }
     }
 
-    let spec_md = paths.specs_dir().join(&item).join("spec.md");
-    let is_spec = spec_md.is_file();
-    let change = core::model::find_change(&paths, &item);
+    let is_spec = store.canonical_spec_exists(&item);
+    let change = core::model::find_change(store, &item);
 
     // Decide whether the item is a spec or a change.
     let show_spec = item_type == Some("spec")
@@ -379,7 +375,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
             }
             bail!("Item '{item}' not found as a change or spec.");
         }
-        let content = core::util::read_opt(&spec_md).unwrap_or_default();
+        let content = store.read_canonical_spec(&item).unwrap_or_default();
         if a.json {
             return print_json(&serde_json::json!({
                 "files": [{ "content": content, "name": "spec.md" }],
@@ -407,13 +403,14 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
         (Some(s), Some(c)) => (Some(s.clone()), Some(c.clone())),
         _ => (None, None),
     };
-    let read_opt_str = |name: &str| core::util::read_opt(&change.dir.join(name));
+    let read_opt_str = |name: &str| store.read_artifact(&change.name, name);
 
     if a.json {
         let proposal = read_opt_str("proposal.md");
         let design = read_opt_str("design.md");
         let tasks = read_opt_str("tasks.md");
-        let caps: Vec<String> = core::model::delta_capabilities(&change.dir)
+        let caps: Vec<String> = store
+            .delta_capabilities(&change.name)
             .into_iter()
             .map(|c| format!("{c}/spec.md"))
             .collect();
@@ -436,7 +433,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
         println!("{}: {created}", color::bold("Created"));
     }
     let proposal = read_opt_str("proposal.md");
-    let caps = core::model::delta_capabilities(&change.dir);
+    let caps = store.delta_capabilities(&change.name);
     // The header's trailing blank line prints only when a section follows.
     if proposal.is_some() || !caps.is_empty() {
         println!();
@@ -469,25 +466,26 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
 // --- validate ---
 
 fn cmd_validate(a: ValidateArgs) -> Result<()> {
-    let paths = require_paths()?;
+    let (_ws, store) = open_project()?;
+    let store: &dyn Store = &store;
     let mut changes = if let Some(item) = a.item.as_deref() {
-        vec![core::model::find_change(&paths, item)
+        vec![core::model::find_change(store, item)
             .ok_or_else(|| anyhow::anyhow!("Change '{item}' not found."))?]
     } else if a.all || a.changes {
-        core::model::list_changes(&paths)
+        core::model::list_changes(store)
     } else {
-        match resolve_change(&paths, None) {
+        match resolve_change(store, None) {
             Ok(c) => vec![c],
-            Err(_) => core::model::list_changes(&paths),
+            Err(_) => core::model::list_changes(store),
         }
     };
     // Multi-change runs are ordered newest-modified first (matches Spectra).
-    sort_changes(&mut changes, "modified");
+    sort_changes(store, &mut changes, "modified");
     // Spectra's validate never resolves the change's schema (an unresolvable one still validates).
     let schema = core::schema::spec_driven();
     let results: Vec<_> = changes
         .iter()
-        .map(|c| core::validate::validate_change(c, &schema, a.strict))
+        .map(|c| core::validate::validate_change(store, c, &schema, a.strict))
         .collect();
     let any_invalid = results.iter().any(|r| !r.valid);
     if a.json {
@@ -519,15 +517,16 @@ fn cmd_validate(a: ValidateArgs) -> Result<()> {
 // --- analyze ---
 
 fn cmd_analyze(a: ChangeArg) -> Result<()> {
-    let paths = require_paths()?;
-    if info_if_no_changes(&paths, a.change.as_deref()) {
+    let (_ws, store) = open_project()?;
+    let store: &dyn Store = &store;
+    if info_if_no_changes(store, a.change.as_deref()) {
         return Ok(());
     }
-    let change = resolve_change_positional(&paths, a.change.as_deref())?;
+    let change = resolve_change_positional(store, a.change.as_deref())?;
     // Spectra's analyzer is schema-agnostic (hard-wired to the classic artifacts) and never
     // resolves the change's schema.
     let schema = core::schema::spec_driven();
-    let report = core::analyzer::analyze(&change, &schema);
+    let report = core::analyzer::analyze(store, &change, &schema);
     if a.json {
         return print_json(&report);
     }
@@ -585,12 +584,13 @@ fn render_analyze(report: &core::analyzer::AnalyzeReport) {
 // --- drift ---
 
 fn cmd_drift(a: ChangeArg) -> Result<()> {
-    let paths = require_paths()?;
-    if info_if_no_changes(&paths, a.change.as_deref()) {
+    let (ws, store) = open_project()?;
+    let store: &dyn Store = &store;
+    if info_if_no_changes(store, a.change.as_deref()) {
         return Ok(());
     }
-    let change = resolve_change_positional(&paths, a.change.as_deref())?;
-    let report = core::drift::analyze(&paths, &change);
+    let change = resolve_change_positional(store, a.change.as_deref())?;
+    let report = core::drift::analyze(&ws, store, &change);
     if a.json {
         return print_json(&report);
     }
@@ -671,37 +671,37 @@ fn render_drift(report: &core::drift::DriftReport) {
 // --- archive ---
 
 fn cmd_archive(a: ArchiveArgs) -> Result<()> {
-    let paths = require_paths()?;
+    let (ws, store) = open_project()?;
+    let store: &dyn Store = &store;
     if a.all || a.changes.len() > 1 {
-        return cmd_archive_bulk(&paths, &a);
+        return cmd_archive_bulk(&ws, store, &a);
     }
-    let change = resolve_change(&paths, a.changes.first().map(|s| s.as_str()))?;
+    let change = resolve_change(store, a.changes.first().map(|s| s.as_str()))?;
 
-    mark_all_tasks_done(&change, a.mark_tasks_complete)?;
+    mark_all_tasks_done(store, &change, a.mark_tasks_complete)?;
     let opts = core::archive::ArchiveOptions {
         skip_specs: a.skip_specs,
         no_validate: a.no_validate,
         mark_tasks_complete: a.mark_tasks_complete,
     };
     // Spectra leaves the in-progress marker untouched on archive; so do we.
-    let outcome = core::archive::archive(&paths, &change, &opts)?;
+    let outcome = core::archive::archive(&ws, store, &change, &opts)?;
     print_archive_outcome(&outcome);
     Ok(())
 }
 
-fn mark_all_tasks_done(change: &core::model::Change, enabled: bool) -> Result<()> {
+fn mark_all_tasks_done(store: &dyn Store, change: &core::model::Change, enabled: bool) -> Result<()> {
     if !enabled {
         return Ok(());
     }
-    let tasks_path = change.dir.join("tasks.md");
-    if let Some(text) = core::util::read_opt(&tasks_path) {
+    if let Some(text) = store.read_artifact(&change.name, "tasks.md") {
         // Star-bullet checkboxes are tasks too (matches Spectra).
         let done = text
             .replace("- [ ] ", "- [x] ")
             .replace("- [ ]\t", "- [x]\t")
             .replace("* [ ] ", "* [x] ")
             .replace("* [ ]\t", "* [x]\t");
-        core::util::write_file(&tasks_path, &done)?;
+        store.write_artifact(&change.name, "tasks.md", &done)?;
     }
     Ok(())
 }
@@ -731,8 +731,8 @@ fn print_archive_outcome(outcome: &core::archive::ArchiveOutcome) {
 /// file set is the @trace source and would be injected into EVERY archived change), archives
 /// in created-date order, skips not-ready changes with a reason (never silently), and
 /// fail-fasts on the first actual archive error with a three-part report.
-fn cmd_archive_bulk(paths: &core::paths::Paths, a: &ArchiveArgs) -> Result<()> {
-    let dirty = core::tasks::git_changed_files(&paths.root);
+fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Result<()> {
+    let dirty = core::tasks::git_changed_files(&ws.root);
     if !dirty.is_empty() {
         bail!(
             "bulk archive requires a clean work tree — these files would be injected into every change's @trace:\n  {}",
@@ -741,12 +741,12 @@ fn cmd_archive_bulk(paths: &core::paths::Paths, a: &ArchiveArgs) -> Result<()> {
     }
 
     let mut changes: Vec<core::model::Change> = if a.all {
-        core::model::list_changes(paths)
+        core::model::list_changes(store)
     } else {
         let mut v = Vec::new();
         for name in &a.changes {
             v.push(
-                core::model::find_change(paths, name)
+                core::model::find_change(store, name)
                     .ok_or_else(|| anyhow::anyhow!("Change '{name}' not found."))?,
             );
         }
@@ -766,7 +766,7 @@ fn cmd_archive_bulk(paths: &core::paths::Paths, a: &ArchiveArgs) -> Result<()> {
     let mut skipped: Vec<(String, String)> = Vec::new();
     for (idx, change) in changes.iter().enumerate() {
         // Readiness: no stale delta assumptions, valid, tasks complete.
-        let stale = core::drift::spec_assumptions(paths, change);
+        let stale = core::drift::spec_assumptions(store, change);
         if !stale.is_empty() {
             skipped.push((
                 change.name.clone(),
@@ -779,28 +779,28 @@ fn cmd_archive_bulk(paths: &core::paths::Paths, a: &ArchiveArgs) -> Result<()> {
             continue;
         }
         if !a.no_validate {
-            let res = core::validate::validate_change(change, &schema, false);
+            let res = core::validate::validate_change(store, change, &schema, false);
             if !res.valid {
                 skipped.push((change.name.clone(), "validation failed".to_string()));
                 continue;
             }
         }
         let tasks = core::tasks::parse(
-            &core::util::read_opt(&change.dir.join("tasks.md")).unwrap_or_default(),
+            &store.read_artifact(&change.name, "tasks.md").unwrap_or_default(),
         );
         let (total, complete, _) = core::tasks::progress(&tasks);
         if total > 0 && complete < total && !a.mark_tasks_complete {
             skipped.push((change.name.clone(), format!("tasks incomplete ({complete}/{total})")));
             continue;
         }
-        mark_all_tasks_done(change, a.mark_tasks_complete)?;
+        mark_all_tasks_done(store, change, a.mark_tasks_complete)?;
 
         let opts = core::archive::ArchiveOptions {
             skip_specs: a.skip_specs,
             no_validate: a.no_validate,
             mark_tasks_complete: a.mark_tasks_complete,
         };
-        match core::archive::archive(paths, change, &opts) {
+        match core::archive::archive(ws, store, change, &opts) {
             Ok(outcome) => {
                 print_archive_outcome(&outcome);
                 archived.push(outcome.change_name);
@@ -837,17 +837,18 @@ fn cmd_archive_bulk(paths: &core::paths::Paths, a: &ArchiveArgs) -> Result<()> {
 // --- status ---
 
 fn cmd_status(a: StatusArgs) -> Result<()> {
-    let paths = require_paths()?;
-    if info_if_no_changes(&paths, a.change.as_deref()) {
+    let (ws, store) = open_project()?;
+    let store: &dyn Store = &store;
+    if info_if_no_changes(store, a.change.as_deref()) {
         return Ok(());
     }
-    let change = resolve_change(&paths, a.change.as_deref())?;
+    let change = resolve_change(store, a.change.as_deref())?;
     let schema = if let Some(s) = a.schema.as_deref() {
-        resolve_schema(&paths, s)?
+        resolve_schema(&ws, s)?
     } else {
-        schema_for(&paths, &change)?
+        schema_for(&ws, &change)?
     };
-    let report = core::status::build(&change, &schema);
+    let report = core::status::build(store, &change, &schema);
     if a.json {
         return print_json(&report);
     }
@@ -885,30 +886,31 @@ fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
         print!("{body}");
         return Ok(());
     }
-    let paths = require_paths()?;
-    if info_if_no_changes(&paths, a.change.as_deref()) {
+    let (ws, store) = open_project()?;
+    let store: &dyn Store = &store;
+    if info_if_no_changes(store, a.change.as_deref()) {
         return Ok(());
     }
-    let change = resolve_change(&paths, a.change.as_deref())?;
+    let change = resolve_change(store, a.change.as_deref())?;
     let schema = if let Some(s) = a.schema.as_deref() {
-        resolve_schema(&paths, s)?
+        resolve_schema(&ws, s)?
     } else {
-        schema_for(&paths, &change)?
+        schema_for(&ws, &change)?
     };
     // No-arg default: the first incomplete artifact, or the apply/status view once every
     // artifact exists (matches Spectra — not the proposal-creation instructions).
-    let default_artifact = core::status::first_incomplete_artifact(&change, &schema)
+    let default_artifact = core::status::first_incomplete_artifact(store, &change, &schema)
         .unwrap_or_else(|| "apply".to_string());
     let artifact = a.artifact.as_deref().unwrap_or(&default_artifact);
     if artifact == "apply" {
-        let payload = core::instructions::build_apply(&paths, &change, &schema);
+        let payload = core::instructions::build_apply(&ws, store, &change, &schema);
         if a.json {
             return print_json(&payload);
         }
         render_apply_human(&payload);
         return Ok(());
     }
-    let payload = core::instructions::build_artifact(&paths, &change, &schema, artifact)
+    let payload = core::instructions::build_artifact(&ws, store, &change, &schema, artifact)
         .ok_or_else(|| anyhow::anyhow!("Artifact '{artifact}' not found in schema"))?;
     if a.json {
         return print_json(&payload);
@@ -995,19 +997,22 @@ fn cmd_new(a: NewArgs) -> Result<()> {
 }
 
 fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
-    let paths = require_paths()?;
+    let (ws, store) = open_project()?;
+    let store: &dyn Store = &store;
     // Default schema comes from openspec/config.yaml; the name is NOT validated here (Spectra
     // accepts unknown names and lets downstream commands fail on resolution).
     let schema = a.schema.unwrap_or_else(|| {
-        core::config::WorkflowConfig::load(&paths.workflow_config()).schema_name()
+        core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())
+            .schema_name()
     });
     if let Some(slug) = a.from_discussion.as_deref() {
-        if core::discuss::info(&paths, slug).is_none() {
+        if core::discuss::info(store, slug).is_none() {
             bail!("discussion '{slug}' not found — run `speclink discuss new` first");
         }
     }
     let dir = core::newcmd::new_change(
-        &paths,
+        &ws,
+        store,
         &a.name,
         a.description.as_deref(),
         &schema,
@@ -1018,14 +1023,15 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     println!("  Path: {}", dir.to_string_lossy());
     println!("  Schema: {schema}");
     if let Some(slug) = a.from_discussion.as_deref() {
-        core::discuss::mark_promoted(&paths, slug, &a.name)?;
+        core::discuss::mark_promoted(store, slug, &a.name)?;
         println!("  From discussion: {slug}");
     }
     Ok(())
 }
 
 fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
-    let paths = require_paths()?;
+    let (ws, store) = open_project()?;
+    let store: &dyn Store = &store;
     let type_ok = ["proposal", "design", "tasks", "spec"].contains(&a.artifact_type.as_str());
     let type_err = || {
         anyhow::anyhow!(
@@ -1041,11 +1047,11 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
             if !type_ok {
                 return Err(type_err());
             }
-            core::model::find_change(&paths, name)
+            core::model::find_change(store, name)
                 .ok_or_else(|| anyhow::anyhow!("Change '{name}' not found"))?
         }
         None => {
-            let c = resolve_change(&paths, None)?;
+            let c = resolve_change(store, None)?;
             if !type_ok {
                 return Err(type_err());
             }
@@ -1054,7 +1060,7 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
     };
     // Best-effort schema resolution: an unresolvable/broken schema still creates the artifact
     // (with no template → an empty file), matching Spectra.
-    let schema = match core::schema::resolve_with(Some(&paths), &change.meta.schema_name()) {
+    let schema = match core::schema::resolve_with(Some(&ws), &change.meta.schema_name()) {
         Some(Ok(s)) => s,
         _ => core::schema::Schema {
             name: change.meta.schema_name(),
@@ -1074,6 +1080,7 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
     };
     let had_content = content.is_some();
     let (artifact_id, path) = core::newcmd::new_artifact(
+        store,
         &change,
         &schema,
         &a.artifact_type,
@@ -1105,8 +1112,8 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
 // --- schemas / templates ---
 
 fn cmd_schemas(a: JsonFlag) -> Result<()> {
-    let paths = core::paths::Paths::discover_cwd();
-    let schemas = core::schema::list_all(paths.as_ref());
+    let ws = core::workspace::Workspace::discover_cwd();
+    let schemas = core::schema::list_all(ws.as_ref());
     if a.json {
         let items: Vec<_> = schemas
             .iter()
@@ -1132,9 +1139,9 @@ fn cmd_schemas(a: JsonFlag) -> Result<()> {
 }
 
 fn cmd_templates(a: TemplatesArgs) -> Result<()> {
-    let paths = core::paths::Paths::discover_cwd();
+    let ws = core::workspace::Workspace::discover_cwd();
     let schema_name = a.schema.unwrap_or_else(|| "spec-driven".to_string());
-    let schema = match core::schema::resolve_with(paths.as_ref(), &schema_name) {
+    let schema = match core::schema::resolve_with(ws.as_ref(), &schema_name) {
         Some(Ok(s)) => s,
         Some(Err(e)) => bail!("{e}"),
         None => bail!("{}", core::schema::not_found_msg(&schema_name)),
@@ -1174,11 +1181,11 @@ fn cmd_feedback(a: FeedbackArgs) -> Result<()> {
 // --- schema management ---
 
 fn cmd_schema(a: SchemaArgs) -> Result<()> {
-    let paths = core::paths::Paths::discover_cwd();
+    let ws = core::workspace::Workspace::discover_cwd();
     match a.command {
         SchemaCommands::Which { name, all: _, json } => {
             let n = name.unwrap_or_else(|| "spec-driven".to_string());
-            let sources = core::schema::sources(paths.as_ref(), &n);
+            let sources = core::schema::sources(ws.as_ref(), &n);
             if sources.is_empty() {
                 // Unknown schema is informational, not an error (exit 0).
                 println!("Schema: {n}");
@@ -1215,7 +1222,7 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
         }
         SchemaCommands::Validate { name, verbose: _, json } => {
             let n = name.unwrap_or_else(|| "spec-driven".to_string());
-            match core::schema::resolve_with(paths.as_ref(), &n) {
+            match core::schema::resolve_with(ws.as_ref(), &n) {
                 Some(Ok(s)) => {
                     let count = s.artifacts.len();
                     if json {
@@ -1239,15 +1246,15 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
             }
         }
         SchemaCommands::Fork { source, name, force, json: _ } => {
-            let paths = require_paths()?;
-            let new_name = core::schema::fork(&paths, &source, name.as_deref(), force)
+            let ws = require_workspace()?;
+            let new_name = core::schema::fork(&ws, &source, name.as_deref(), force)
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             println!("{} Forked '{source}' → '{new_name}'", color::green("✓"));
         }
         SchemaCommands::Init { name, description, artifacts, default: _, force } => {
-            let paths = require_paths()?;
+            let ws = require_workspace()?;
             let dir = core::schema::init_schema(
-                &paths,
+                &ws,
                 &name,
                 artifacts.as_deref(),
                 description.as_deref(),
@@ -1507,21 +1514,18 @@ fn bash_inject_positionals(script: &str, root: &clap::Command) -> String {
 fn cmd_task(a: TaskArgs) -> Result<()> {
     match a.command {
         TaskCommands::Done { task_id, change, json } => {
-            let paths = require_paths()?;
+            let (ws, store) = open_project()?;
+            let store: &dyn Store = &store;
             // `task done` does not require the change to exist — it goes straight to tasks.md
             // (matching Spectra, which reports "tasks.md not found for change '<name>'").
-            let change = match change.as_deref() {
-                Some(name) => core::model::Change {
-                    name: name.to_string(),
-                    meta: core::model::ChangeMeta::load(&paths.change_dir(name)),
-                    dir: paths.change_dir(name),
-                },
-                None => resolve_change(&paths, None)?,
+            let change_name = match change.as_deref() {
+                Some(name) => name.to_string(),
+                None => resolve_change(store, None)?.name,
             };
             // Check tasks.md existence BEFORE validating the id (matches Spectra's order).
-            let tasks_path = change.dir.join("tasks.md");
-            let text = core::util::read_opt(&tasks_path)
-                .ok_or_else(|| anyhow::anyhow!("tasks.md not found for change '{}'", change.name))?;
+            let text = store
+                .read_artifact(&change_name, "tasks.md")
+                .ok_or_else(|| anyhow::anyhow!("tasks.md not found for change '{change_name}'"))?;
             let id: usize = task_id
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid task ID '{task_id}': must be a number"))?;
@@ -1534,14 +1538,14 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
             if already {
                 bail!("Task {id} is already done");
             }
-            core::util::write_file(&tasks_path, &new_content)?;
+            store.write_artifact(&change_name, "tasks.md", &new_content)?;
 
             // Record touched files: only those not already attributed to an earlier task;
             // when nothing new is dirty, no entry is appended at all (matches Spectra).
-            let mut record = core::tasks::TouchedRecord::load(&paths, &change.name);
-            record.change = change.name.clone();
+            let mut record = core::tasks::TouchedRecord::load(&ws, &change_name);
+            record.change = change_name.clone();
             let seen = record.all_files();
-            let files: Vec<String> = core::tasks::git_changed_files(&paths.root)
+            let files: Vec<String> = core::tasks::git_changed_files(&ws.root)
                 .into_iter()
                 .filter(|f| !seen.contains(f))
                 .collect();
@@ -1551,13 +1555,13 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
                     task_desc: desc.clone(),
                     files,
                 });
-                record.save(&paths)?;
+                record.save(&ws)?;
             }
 
             if json {
                 // Compact single-line JSON, matching Spectra.
                 let v = serde_json::json!({
-                    "change": change.name,
+                    "change": change_name,
                     "status": "done",
                     "task_desc": desc,
                     "task_id": task_id.to_string(),
@@ -1576,8 +1580,8 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
 fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
     match a.command {
         InProgressCommands::Add { name } => {
-            let paths = require_paths()?;
-            core::inprogress::add(&paths, &name)?;
+            let ws = require_workspace()?;
+            core::inprogress::add(&ws, &name)?;
         }
     }
     Ok(())
@@ -1586,8 +1590,8 @@ fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
 // --- demo ---
 
 fn cmd_demo() -> Result<()> {
-    let paths = require_paths()?;
-    let outcome = core::demo::generate(&paths)?;
+    let (ws, store) = open_project()?;
+    let outcome = core::demo::generate(&ws, &store)?;
     println!("{} Created demo change: {}", color::green("✓"), outcome.name);
     println!("  Theme: {}", outcome.theme);
     println!("  Path: {}", core::util::to_slash(&outcome.path));
@@ -1597,10 +1601,11 @@ fn cmd_demo() -> Result<()> {
 // --- discuss ---
 
 fn cmd_discuss(a: DiscussArgs) -> Result<()> {
-    let paths = require_paths()?;
+    let (ws, store) = open_project()?;
+    let store: &dyn Store = &store;
     match a.command {
         DiscussCommands::New { topic, json } => {
-            let info = core::discuss::new_discussion(&paths, &topic)?;
+            let info = core::discuss::new_discussion(store, &topic)?;
             if json {
                 return print_json(&info);
             }
@@ -1610,9 +1615,9 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
         }
         DiscussCommands::List { archived, json } => {
             let items = if archived {
-                core::discuss::list_archived(&paths)
+                core::discuss::list_archived(store)
             } else {
-                core::discuss::list_discussions(&paths)
+                core::discuss::list_discussions(store)
             };
             if json {
                 return print_json(&serde_json::json!({ "discussions": items }));
@@ -1629,17 +1634,17 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             }
         }
         DiscussCommands::Show { slug, json } => {
-            let content = core::discuss::show_discussion(&paths, &slug)
+            let content = core::discuss::show_discussion(store, &slug)
                 .ok_or_else(|| anyhow::anyhow!("discussion '{slug}' not found"))?;
             if json {
-                let info = core::discuss::info(&paths, &slug);
+                let info = core::discuss::info(store, &slug);
                 return print_json(&serde_json::json!({ "info": info, "content": content }));
             }
             print!("{content}");
         }
         DiscussCommands::Context { slug, stdin, json } => {
             let content = if stdin { read_stdin() } else { String::new() };
-            core::discuss::set_context(&paths, &slug, &content)?;
+            core::discuss::set_context(store, &slug, &content)?;
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "context": "set" }));
             }
@@ -1647,7 +1652,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
         }
         DiscussCommands::AddRound { slug, mode, stdin, json } => {
             let content = if stdin { read_stdin() } else { String::new() };
-            let round = core::discuss::add_round(&paths, &slug, &mode, &content)?;
+            let round = core::discuss::add_round(store, &slug, &mode, &content)?;
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "round": round, "mode": mode }));
             }
@@ -1655,14 +1660,14 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
         }
         DiscussCommands::Conclude { slug, stdin, json } => {
             let content = if stdin { read_stdin() } else { String::new() };
-            core::discuss::conclude(&paths, &slug, &content)?;
+            core::discuss::conclude(store, &slug, &content)?;
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "status": "concluded" }));
             }
             println!("{} Concluded discussion '{slug}'", color::green("✓"));
         }
         DiscussCommands::Archive { slug, json } => {
-            match core::discuss::archive_discussion(&paths, &slug)? {
+            match core::discuss::archive_discussion(store, &slug)? {
                 Some(file) => {
                     if json {
                         return print_json(&serde_json::json!({
@@ -1676,14 +1681,14 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             }
         }
         DiscussCommands::Discard { slug, force, json } => {
-            core::discuss::discard_discussion(&paths, &slug, force)?;
+            core::discuss::discard_discussion(store, &slug, force)?;
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "status": "discarded" }));
             }
             println!("{} Discarded discussion: {slug}", color::green("✓"));
         }
         DiscussCommands::Promote { slug, name, json } => {
-            match core::discuss::info(&paths, &slug) {
+            match core::discuss::info(store, &slug) {
                 None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
                 Some(i) if i.archived => {
                     bail!("discussion '{slug}' is archived — move it out of discussions/archive/ to promote it")
@@ -1691,9 +1696,13 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
                 Some(_) => {}
             }
             let change_name = name.unwrap_or_else(|| slug.clone());
-            let schema = core::config::WorkflowConfig::load(&paths.workflow_config()).schema_name();
+            let schema = core::config::WorkflowConfig::from_text(
+                store.read_workflow_config().as_deref(),
+            )
+            .schema_name();
             let dir = core::newcmd::new_change(
-                &paths,
+                &ws,
+                store,
                 &change_name,
                 None,
                 &schema,
@@ -1702,16 +1711,16 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             )?;
             // Prefill the proposal's Why from the discussion conclusion (topic as fallback);
             // the remaining sections stay as TBD markers for /speclink-propose to complete.
-            let why = core::discuss::conclusion_text(&paths, &slug).unwrap_or_else(|| {
-                core::discuss::info(&paths, &slug)
+            let why = core::discuss::conclusion_text(store, &slug).unwrap_or_else(|| {
+                core::discuss::info(store, &slug)
                     .map(|i| i.topic)
                     .unwrap_or_else(|| slug.clone())
             });
             let proposal = format!(
                 "## Why\n\n{why}\n\n## What Changes\n\n<!-- TBD: derive from the discussion -->\n\n## Capabilities\n\n### New Capabilities\n\n<!-- TBD -->\n\n## Impact\n\n<!-- TBD -->\n"
             );
-            core::util::write_file(&dir.join("proposal.md"), &proposal)?;
-            core::discuss::mark_promoted(&paths, &slug, &change_name)?;
+            store.write_artifact(&change_name, "proposal.md", &proposal)?;
+            core::discuss::mark_promoted(store, &slug, &change_name)?;
             if json {
                 return print_json(&serde_json::json!({
                     "change": change_name,

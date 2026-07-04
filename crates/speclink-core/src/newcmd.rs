@@ -1,15 +1,17 @@
 //! `new change` and `new artifact`.
 
 use crate::model::{self, Change};
-use crate::paths::Paths;
 use crate::schema::Schema;
+use crate::store::Store;
 use crate::util;
+use crate::workspace::Workspace;
 use anyhow::{bail, Result};
 use std::path::PathBuf;
 
-/// Create a new change directory with `.openspec.yaml`.
+/// Create a new change with its metadata document.
 pub fn new_change(
-    paths: &Paths,
+    ws: &Workspace,
+    store: &dyn Store,
     name: &str,
     _description: Option<&str>,
     schema: &str,
@@ -19,13 +21,12 @@ pub fn new_change(
     if !is_kebab_case(name) {
         bail!("Invalid change name '{name}'. Must be kebab-case (e.g., 'add-feature').");
     }
-    let dir = paths.change_dir(name);
-    if dir.exists() {
+    if store.change_exists(name) {
         bail!("Change '{name}' already exists.");
     }
     let created = util::today();
     let mut meta = format!("schema: {schema}\ncreated: {created}\n");
-    if let Some(id) = util::git_identity(&paths.root) {
+    if let Some(id) = util::git_identity(&ws.root) {
         meta.push_str(&format!("created_by: {id}\n"));
     }
     if let Some(agent) = agent {
@@ -34,8 +35,7 @@ pub fn new_change(
     if let Some(slug) = from_discussion {
         meta.push_str(&format!("from_discussion: {slug}\n"));
     }
-    util::write_file(&dir.join(".openspec.yaml"), &meta)?;
-    Ok(dir)
+    store.create_change(name, &meta)
 }
 
 /// Resolve the artifact type token to (artifact_id, relative_output_path).
@@ -58,6 +58,7 @@ fn resolve_output(kind: &str, capability: Option<&str>) -> Result<(String, Strin
 
 /// Create (write) an artifact for a change.
 pub fn new_artifact(
+    store: &dyn Store,
     change: &Change,
     schema: &Schema,
     kind: &str,
@@ -66,9 +67,10 @@ pub fn new_artifact(
     force: bool,
 ) -> Result<(String, PathBuf)> {
     let (artifact_id, rel) = resolve_output(kind, capability)?;
-    // Join component-by-component so the native path separator is used throughout.
-    let out_path = rel.split('/').fold(change.dir.clone(), |p, c| p.join(c));
-    if out_path.exists() && !force {
+    if store.artifact_exists(&change.name, &rel) && !force {
+        // The display path is joined component-by-component so the native
+        // separator is used throughout (matches the created file's path).
+        let out_path = rel.split('/').fold(change.dir.clone(), |p, c| p.join(c));
         bail!("Artifact already exists: {}. Use --force to overwrite", out_path.to_string_lossy());
     }
 
@@ -87,7 +89,7 @@ pub fn new_artifact(
         validate_artifact_content(&artifact_id, &rel, &body)?;
     }
 
-    util::write_file(&out_path, &body)?;
+    let out_path = store.write_artifact(&change.name, &rel, &body)?;
     Ok((artifact_id, out_path))
 }
 
@@ -136,6 +138,6 @@ fn is_kebab_case(s: &str) -> bool {
 }
 
 /// Convenience: find or error for an active change by name.
-pub fn require_change(paths: &Paths, name: &str) -> Result<Change> {
-    model::find_change(paths, name).ok_or_else(|| anyhow::anyhow!("Change '{name}' not found."))
+pub fn require_change(store: &dyn Store, name: &str) -> Result<Change> {
+    model::find_change(store, name).ok_or_else(|| anyhow::anyhow!("Change '{name}' not found."))
 }

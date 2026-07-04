@@ -1,11 +1,11 @@
 //! Archive a completed change: apply deltas to canonical specs, inject @trace, snapshot, move.
 
 use crate::model::{self, Change};
-use crate::paths::Paths;
+use crate::store::Store;
 use crate::tasks::TouchedRecord;
 use crate::util;
+use crate::workspace::Workspace;
 use anyhow::{bail, Result};
-use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct CapCounts {
@@ -88,11 +88,15 @@ fn trace_block(change: &str, date: &str, files: &[String]) -> String {
     s
 }
 
-pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<ArchiveOutcome> {
+pub fn archive(
+    ws: &Workspace,
+    store: &dyn Store,
+    change: &Change,
+    opts: &ArchiveOptions,
+) -> Result<ArchiveOutcome> {
     let date = util::today();
     let dated_name = format!("{date}-{}", change.name);
-    let archive_target = paths.archive_dir().join(&dated_name);
-    if archive_target.exists() {
+    if store.archived_change_exists(&dated_name) {
         bail!("Archived change '{}' already exists", dated_name);
     }
 
@@ -101,7 +105,7 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
     // validate's "Parse error: " prefix — that is how Spectra renders them here.
     if !opts.no_validate {
         let schema = crate::schema::spec_driven();
-        let result = crate::validate::validate_change(change, &schema, false);
+        let result = crate::validate::validate_change(store, change, &schema, false);
         if !result.valid {
             let details: Vec<String> = result
                 .errors
@@ -116,25 +120,27 @@ pub fn archive(paths: &Paths, change: &Change, opts: &ArchiveOptions) -> Result<
     // (git status, excluding the spec/work dirs), sorted — matching Spectra. When the tree is
     // clean the list is empty and the @trace block is omitted entirely.
     let trace_files = {
-        let mut f = crate::tasks::git_changed_files(&paths.root);
+        let mut f = crate::tasks::git_changed_files(&ws.root);
         f.sort();
         f.dedup();
         f
     };
-    let _ = TouchedRecord::load(paths, &change.name); // touched.json remains for the commit skill
+    let _ = TouchedRecord::load(ws, &change.name); // touched.json remains for the commit skill
 
     let mut caps = Vec::new();
     let mut created_specs: Vec<String> = Vec::new();
-    let snapshot_dir = paths.snapshots_dir().join(&dated_name);
+    let snapshot_dir = ws.snapshots_dir().join(&dated_name);
     let mut snapshot_created = false;
 
     if !opts.skip_specs {
-        for cap in model::delta_capabilities(&change.dir) {
-            let delta_path = change.dir.join("specs").join(&cap).join("spec.md");
-            let delta_text = util::read_opt(&delta_path).unwrap_or_default();
+        for cap in store.delta_capabilities(&change.name) {
+            let delta_rel = model::delta_spec_artifact(&cap);
+            let delta_text = store.read_artifact(&change.name, &delta_rel).unwrap_or_default();
             // Even with --no-validate, Spectra hard-fails at apply time on a delta that
             // parses to zero operations, leaving the change in place.
-            if delta_path.is_file() && !model::has_delta_operation(&delta_text) {
+            if store.artifact_exists(&change.name, &delta_rel)
+                && !model::has_delta_operation(&delta_text)
+            {
                 bail!(
                     "Failed to parse delta spec: Invalid format: Delta spec must contain \
 at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
@@ -143,29 +149,28 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
             let reqs = parse_delta(&delta_text);
             let renames = model::rename_pairs(&delta_text);
 
-            let canonical_path = paths.specs_dir().join(&cap).join("spec.md");
-            let existed = canonical_path.exists();
-            if existed {
+            // Read the pre-apply canonical once: it decides fresh-vs-merge, feeds the
+            // merge, and is the snapshot backup content.
+            let existing = store.read_canonical_spec(&cap);
+            if let Some(existing_text) = &existing {
                 // Back up the pre-apply canonical spec for unarchive support (matches Spectra:
                 // snapshots/<date>-<name>/specs/<cap>/spec.md holds the previous bytes).
                 let backup_path = snapshot_dir.join("specs").join(&cap).join("spec.md");
-                if let Some(parent) = backup_path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::copy(&canonical_path, &backup_path)
+                util::write_file(&backup_path, existing_text)
                     .map_err(|e| anyhow::anyhow!("Failed to backup spec: {e}"))?;
                 snapshot_created = true;
             }
             let counts = apply_delta_to_canonical(
-                &canonical_path,
+                store,
                 &cap,
                 &change.name,
                 &date,
                 &reqs,
                 &renames,
                 &trace_files,
+                existing.as_deref(),
             )?;
-            if !existed {
+            if existing.is_none() {
                 created_specs.push(cap.clone());
             }
             caps.push(counts);
@@ -184,34 +189,40 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         snapshot_created = true;
     }
 
-    // Move change dir into archive.
-    std::fs::create_dir_all(paths.archive_dir())?;
-    std::fs::rename(&change.dir, &archive_target)?;
+    // Move change into the archive under its dated name.
+    store.archive_change(&change.name, &dated_name)?;
 
     // Clear the app-side "started" marker for this change, if present (matches Spectra).
-    let _ = std::fs::remove_file(
-        paths
-            .work_dir()
+    let _ = util::remove_file(
+        &ws.work_dir()
             .join("changes")
             .join(format!("{}.started", change.name)),
     );
 
     // Stamp archived_by / archived_at into the archived change metadata.
-    let meta_path = archive_target.join(".openspec.yaml");
-    if let Some(mut meta) = util::read_opt(&meta_path) {
+    if let Some(mut meta) = store.read_archived_meta(&dated_name) {
         if !meta.ends_with('\n') {
             meta.push('\n');
         }
-        if let Some(id) = util::git_identity(&paths.root) {
+        if let Some(id) = util::git_identity(&ws.root) {
             meta.push_str(&format!("archived_by: {id}\n"));
         }
         meta.push_str(&format!("archived_at: {date}\n"));
-        util::write_file(&meta_path, &meta)?;
+        store.write_archived_meta(&dated_name, &meta)?;
     }
 
-    // A change promoted from a discussion carries its record along into the archive.
+    // A change promoted from a discussion carries its record along into the archive — but
+    // only the last one: a discussion can fan out into several changes, and siblings still
+    // in flight need the record to stay live. (This change was already moved above, so it
+    // no longer shows up in list_changes.)
     let archived_discussion = change.meta.from_discussion.as_deref().and_then(|slug| {
-        crate::discuss::archive_discussion(paths, slug)
+        let still_referenced = model::list_changes(store)
+            .iter()
+            .any(|c| c.meta.from_discussion.as_deref() == Some(slug));
+        if still_referenced {
+            return None;
+        }
+        crate::discuss::archive_discussion(store, slug)
             .ok()
             .flatten()
             .map(|file| (slug.to_string(), file))
@@ -294,14 +305,16 @@ fn strip_before_notes(block: &str) -> String {
     out.join("\n")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_delta_to_canonical(
-    canonical_path: &PathBuf,
+    store: &dyn Store,
     cap: &str,
     change: &str,
     date: &str,
     reqs: &[DeltaReq],
     renames: &[(String, String)],
     trace_files: &[String],
+    existing: Option<&str>,
 ) -> Result<CapCounts> {
     // Spectra omits the @trace block entirely when there are no touched code files.
     let trace = trace_block(change, date, trace_files);
@@ -328,7 +341,7 @@ fn apply_delta_to_canonical(
         renamed: 0,
     };
 
-    if !canonical_path.exists() {
+    let Some(existing) = existing else {
         // Fresh canonical: ADDED and MODIFIED both become requirement sections.
         let mut blocks: Vec<String> = Vec::new();
         for r in reqs {
@@ -358,13 +371,12 @@ fn apply_delta_to_canonical(
         if !out.ends_with('\n') && !out.ends_with("-->") {
             out.push('\n');
         }
-        util::write_file(canonical_path, &out)?;
+        store.write_canonical_spec(cap, &out)?;
         return Ok(counts);
-    }
+    };
 
     // Merge into an existing canonical spec.
-    let existing = util::read_opt(canonical_path).unwrap_or_default();
-    let (header, mut blocks) = parse_canonical(&existing);
+    let (header, mut blocks) = parse_canonical(existing);
     // Spectra splices out a removed requirement's text but leaves its preceding `---`; when the
     // LAST requirement is removed this leaves a dangling separator, which we reproduce below.
     let orig_last = blocks.last().map(|(n, _)| n.clone());
@@ -428,6 +440,6 @@ fn apply_delta_to_canonical(
     if trace_files.is_empty() && !out.ends_with('\n') && !out.ends_with("-->") {
         out.push('\n');
     }
-    util::write_file(canonical_path, &out)?;
+    store.write_canonical_spec(cap, &out)?;
     Ok(counts)
 }

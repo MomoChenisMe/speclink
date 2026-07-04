@@ -2,7 +2,7 @@
 
 use crate::model::{self, Change};
 use crate::schema::Schema;
-use crate::util;
+use crate::store::Store;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -14,7 +14,7 @@ pub struct ValidationResult {
 }
 
 /// Validate a change's artifacts structurally.
-pub fn validate_change(change: &Change, _schema: &Schema, strict: bool) -> ValidationResult {
+pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, strict: bool) -> ValidationResult {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
 
@@ -23,9 +23,12 @@ pub fn validate_change(change: &Change, _schema: &Schema, strict: bool) -> Valid
     // to zero applied operations (empty, RENAMED-only, or an operation-less requirement). The
     // informational "No delta specs found" warning fires only when there is not even a capability
     // directory under specs/.
-    let specs = model::spec_files(&change.dir);
-    for spec_path in &specs {
-        let text = util::read_opt(spec_path).unwrap_or_default();
+    let caps = store.delta_capabilities(&change.name);
+    for cap in &caps {
+        let spec_path = change.dir.join("specs").join(cap).join("spec.md");
+        let text = store
+            .read_artifact(&change.name, &model::delta_spec_artifact(cap))
+            .unwrap_or_default();
         if !model::has_delta_operation(&text) {
             errors.push(format!(
                 "{}: Parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)",
@@ -91,10 +94,8 @@ pub fn validate_change(change: &Change, _schema: &Schema, strict: bool) -> Valid
             }
         }
     }
-    let has_cap_dirs = std::fs::read_dir(change.dir.join("specs"))
-        .map(|it| it.flatten().any(|e| e.path().is_dir()))
-        .unwrap_or(false);
-    if specs.is_empty() && !has_cap_dirs {
+    let has_cap_dirs = store.has_capability_dirs(&change.name);
+    if caps.is_empty() && !has_cap_dirs {
         warnings.push("No delta specs found".to_string());
     }
     let _ = strict;
