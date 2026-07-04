@@ -2,7 +2,7 @@
 topic: SDD engine as SDK with pluggable document storage for team scenarios
 slug: sdd-engine-as-sdk-with-pluggable-document-storage-for-team-scenarios
 status: promoted
-promoted_to: store-trait-and-fs-adapter
+promoted_to: store-trait-and-fs-adapter, config-system-rework, verb-contract-and-remote-client, node-sdk
 created: 2026-07-03
 ---
 

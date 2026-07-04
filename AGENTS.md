@@ -27,7 +27,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 
 <!-- SPECTRA:END -->
 
-<!-- SPECLINK:START v1.1.0 -->
+<!-- SPECLINK:START v1.2.0 -->
 
 # Speclink Instructions
 
@@ -49,7 +49,7 @@ This project uses Speclink for Spec-Driven Development(SDD). Specs live in `open
 discuss? → propose → apply ⇄ ingest → archive
 
 - `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is "don't do it"
-- A promoted discussion is archived automatically with its change
+- A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)
 - Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`
 - Requirements change mid-work? `ingest` → resume `apply`
 

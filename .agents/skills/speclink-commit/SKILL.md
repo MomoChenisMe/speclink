@@ -133,7 +133,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     - If **no delta specs exist** (directory is empty or absent): skip to 6a-iii.
     - If **delta specs exist**:
       - Use the **AskUserQuestion tool** to ask: "Delta specs found. Sync to main specs before archiving?"
-        - **Yes**: run `speclink sync <name>` before proceeding
+        - **Yes**: run `speclink instructions --skill sync` to fetch the sync instructions, then follow them for change `<name>` (agent-driven merge of delta specs into main specs) before proceeding
         - **No**: proceed without syncing
 
       If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
@@ -257,3 +257,4 @@ No dirty files found for this change (no modified artifacts, no tracked source f
 - If the tracking file is missing, warn but don't block — artifact-only commits are valid
 - The "Unrelated Changes" section is informational only — these files are excluded by default
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+

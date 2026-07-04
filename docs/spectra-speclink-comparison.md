@@ -69,7 +69,8 @@ Speclink 生成 Claude 版 10 個技能（`analyze, apply, archive, audit, commi
 | 技能 | 差異性質 |
 |---|---|
 | analyze, audit, drift, verify, sync, clarify, tdd | **純品牌替換，逐字相同** |
-| commit | 品牌 + 範例路徑 `docs/specs/`→`openspec/`（一致化） |
+| commit | 品牌 + 範例路徑 `docs/specs/`→`openspec/`（一致化）＋ **修 Spectra bug**：6a-ii 原寫 `spectra sync <name>`（CLI 無此子指令），改為 `instructions --skill sync` 取指示後由 agent 合併 |
+| archive | 品牌 + **修 Spectra bug**：sync 原指向不存在的 `spectra-sync-specs` 技能，改為 `instructions --skill sync` |
 | apply | 刻意手術：移除 park/unpark 選取與 unpark 步驟、移除 parallel_tasks/`[P]` 派工、修正 dormancy 的 `docs/specs/changes`→`openspec/changes` 路徑 bug |
 | ingest | 刻意手術：移除 parked 選取與 `[P]` 保存 |
 | propose | 刻意手術：移除 park 步驟（不再 park）、移除 parallel_tasks；**新增「從 discuss 文件產生提案」來源** |

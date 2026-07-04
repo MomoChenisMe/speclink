@@ -1513,6 +1513,8 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
 3. **Present the report**
 
+   **Report language**: run `speclink instructions apply --change "<name>" --json` and use its `locale` field (e.g., "Traditional Chinese (繁體中文)") — write the report in that language, prose, headings, and table labels included. Keep severity labels (light/medium/heavy), command lines, and code references in English. If the field is absent or the call fails, write in English.
+
    Use a user-readable, conclusion-first format. The first substantive paragraph after the title MUST be a plain-language conclusion that says what to do next before showing score tables, broken anchors, task collisions, or severity labels.
 
    Translate severity into action-oriented meaning:
@@ -1553,7 +1555,7 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
 4. **Apply the recommendation interactively**
 
-   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels while preserving the exact command in each option description. Do NOT auto-invoke `speclink-apply`, `speclink-ingest`, or `speclink archive`; always wait for the user's choice.
+   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels (in the report language) while preserving the exact command in each option description. Do NOT auto-invoke `speclink-apply`, `speclink-ingest`, or `speclink archive`; always wait for the user's choice.
    - **Light** (score 0-3, drift is minor):
      - Recommended label: "Directly start work"
        - Description: run `speclink-apply <name>`
