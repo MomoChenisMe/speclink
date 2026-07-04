@@ -1,0 +1,10 @@
+[package]
+name = "speclink-fs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Default filesystem storage adapter for the speclink engine (openspec/ layout)"
+
+[dependencies]
+speclink-core = { path = "../speclink-core" }
+anyhow = { workspace = true }

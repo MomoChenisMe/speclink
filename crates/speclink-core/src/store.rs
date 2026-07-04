@@ -1,0 +1,132 @@
+//! The storage seam: the engine reads and writes spec documents exclusively
+//! through this interface. Implementations own the physical layout (paths,
+//! directory structure, archive naming, timestamps); the engine speaks in
+//! domain terms: changes, artifacts, delta/canonical specs, discussions, and
+//! the workflow config.
+//!
+//! The trait is synchronous and object-safe on purpose — the engine carries a
+//! `&dyn Store`, and the CLI (or a future SDK host) picks the implementation
+//! at its assembly point. Method inventory strictly mirrors the engine's
+//! current filesystem calls; nothing is added speculatively for future
+//! backends.
+//!
+//! `PathBuf` return values are *display locations* (what payloads and human
+//! output print), not an invitation to do filesystem work on them — all
+//! content access goes through the trait.
+
+use crate::model::Change;
+use anyhow::Result;
+use std::path::PathBuf;
+
+/// A discussion document as stored: raw text plus its identity and location.
+/// Parsing (frontmatter, rounds, sections) is engine logic and stays out of
+/// the storage layer.
+#[derive(Debug, Clone)]
+pub struct DiscussionDoc {
+    /// Slug identity. For archived documents this is derived from the stored
+    /// name with the archive date prefix removed (a `-N` reuse suffix is kept,
+    /// matching the listing behavior the CLI has always had).
+    pub slug: String,
+    pub text: String,
+    /// Display location of the document.
+    pub path: PathBuf,
+    pub archived: bool,
+}
+
+/// Storage interface for spec documents.
+///
+/// Artifact identifiers (`artifact` parameters) are the schema-defined output
+/// paths relative to a change — e.g. `proposal.md`, `specs/<cap>/spec.md`.
+/// They are domain vocabulary (every schema names its artifacts this way),
+/// not storage layout.
+pub trait Store {
+    // --- changes ---
+
+    /// Active changes with parsed metadata, sorted by name. Missing storage
+    /// yields an empty list.
+    fn list_changes(&self) -> Vec<Change>;
+    /// A single active change by name.
+    fn find_change(&self, name: &str) -> Option<Change>;
+    /// Whether an active change exists.
+    fn change_exists(&self, name: &str) -> bool;
+    /// Create a change with the given raw metadata document. Returns the
+    /// change's display location.
+    fn create_change(&self, name: &str, meta_text: &str) -> Result<PathBuf>;
+    /// Last-modified time of a change in whole seconds since the Unix epoch —
+    /// the sort key for "most recently updated" orderings. Missing change → 0.
+    fn updated_at_secs(&self, name: &str) -> u64;
+
+    // --- artifacts ---
+
+    /// Artifact content, or None when it does not exist.
+    fn read_artifact(&self, change: &str, artifact: &str) -> Option<String>;
+    /// Write (create or overwrite) an artifact. Returns its display location.
+    fn write_artifact(&self, change: &str, artifact: &str, content: &str) -> Result<PathBuf>;
+    /// Whether an artifact exists (an empty document counts).
+    fn artifact_exists(&self, change: &str, artifact: &str) -> bool;
+
+    // --- delta specs ---
+
+    /// Capability names that have a delta spec document in the change, sorted.
+    fn delta_capabilities(&self, change: &str) -> Vec<String>;
+    /// Whether the change has any capability container at all, even without a
+    /// spec document inside (drives the "No delta specs found" warning).
+    fn has_capability_dirs(&self, change: &str) -> bool;
+
+    // --- canonical specs ---
+
+    /// Capability names with a canonical spec, unsorted (callers sort).
+    fn list_canonical_capabilities(&self) -> Vec<String>;
+    /// Whether a canonical spec exists for the capability.
+    fn canonical_spec_exists(&self, cap: &str) -> bool;
+    /// Canonical spec content, or None when absent.
+    fn read_canonical_spec(&self, cap: &str) -> Option<String>;
+    /// Write (create or overwrite) a canonical spec.
+    fn write_canonical_spec(&self, cap: &str, content: &str) -> Result<()>;
+    /// Display location of a capability's canonical spec.
+    fn canonical_spec_path(&self, cap: &str) -> PathBuf;
+
+    // --- archive ---
+
+    /// Whether an archived change with this dated name exists.
+    fn archived_change_exists(&self, dated_name: &str) -> bool;
+    /// Move an active change into the archive under its dated name.
+    fn archive_change(&self, name: &str, dated_name: &str) -> Result<()>;
+    /// Raw metadata document of an archived change.
+    fn read_archived_meta(&self, dated_name: &str) -> Option<String>;
+    /// Overwrite the metadata document of an archived change.
+    fn write_archived_meta(&self, dated_name: &str, content: &str) -> Result<()>;
+
+    // --- discussions ---
+
+    /// Whether a live discussion exists for the slug.
+    fn live_discussion_exists(&self, slug: &str) -> bool;
+    /// Whether any archived discussion exists for the slug.
+    fn archived_discussion_exists(&self, slug: &str) -> bool;
+    /// Display location a live discussion has (or would have).
+    fn live_discussion_path(&self, slug: &str) -> PathBuf;
+    /// Live discussion content, or None when absent.
+    fn read_live_discussion(&self, slug: &str) -> Option<String>;
+    /// Write (create or overwrite) a live discussion. Returns its display
+    /// location.
+    fn write_live_discussion(&self, slug: &str, content: &str) -> Result<PathBuf>;
+    /// Delete a live discussion document.
+    fn delete_live_discussion(&self, slug: &str) -> Result<()>;
+    /// Resolve a slug to its document: live first, then the newest archived
+    /// candidate.
+    fn read_discussion(&self, slug: &str) -> Option<DiscussionDoc>;
+    /// All live discussions. Missing storage yields an empty list.
+    fn list_live_discussions(&self) -> Vec<DiscussionDoc>;
+    /// All archived discussions, ordered by stored name (archive date order).
+    fn list_archived_discussions(&self) -> Vec<DiscussionDoc>;
+    /// Move a live discussion into the archive, named by its creation date.
+    /// Returns the stored archive name, or None when no live document exists.
+    /// A name collision (same day, reused slug) must be resolved by the
+    /// implementation, never an error.
+    fn archive_discussion(&self, slug: &str, created: &str) -> Result<Option<String>>;
+
+    // --- workflow config ---
+
+    /// Raw workflow configuration document, or None when absent.
+    fn read_workflow_config(&self) -> Option<String>;
+}

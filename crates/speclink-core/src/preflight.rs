@@ -1,7 +1,8 @@
 //! Preflight checks run before apply.
 
 use crate::model::Change;
-use crate::paths::Paths;
+use crate::store::Store;
+use crate::workspace::Workspace;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -86,7 +87,7 @@ fn proposal_code_refs(proposal: &str) -> Vec<String> {
 }
 
 impl Preflight {
-    pub fn compute(paths: &Paths, change: &Change) -> Preflight {
+    pub fn compute(ws: &Workspace, store: &dyn Store, change: &Change) -> Preflight {
         let staleness = change
             .meta
             .created
@@ -100,11 +101,10 @@ impl Preflight {
                 }
             });
 
-        let proposal =
-            std::fs::read_to_string(change.dir.join("proposal.md")).unwrap_or_default();
+        let proposal = store.read_artifact(&change.name, "proposal.md").unwrap_or_default();
         let missing_files: Vec<MissingFile> = proposal_code_refs(&proposal)
             .into_iter()
-            .filter(|p| !paths.root.join(p).exists())
+            .filter(|p| !ws.root.join(p).exists())
             .map(|p| MissingFile {
                 path: p,
                 referenced_in: "proposal".to_string(),

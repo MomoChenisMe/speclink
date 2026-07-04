@@ -1,9 +1,10 @@
 //! Drift detection between a change and the current codebase.
 
-use crate::model::Change;
-use crate::paths::Paths;
+use crate::model::{self, Change};
 use crate::preflight::days_old;
+use crate::store::Store;
 use crate::util;
+use crate::workspace::Workspace;
 use regex::Regex;
 use serde::Serialize;
 
@@ -133,8 +134,8 @@ fn extract_anchors(design: &str) -> Vec<Anchor> {
 
 /// Work-tree contents of tracked `*.md` / `*.txt` documents (via `git ls-files`), excluding
 /// the change's own directory so a committed design.md cannot self-satisfy its anchors.
-fn tracked_doc_contents(paths: &Paths, exclude_prefix: &str) -> Vec<String> {
-    let Some(list) = util::git(&paths.root, &["ls-files"]) else {
+fn tracked_doc_contents(ws: &Workspace, exclude_prefix: &str) -> Vec<String> {
+    let Some(list) = util::git(&ws.root, &["ls-files"]) else {
         return Vec::new();
     };
     let mut out = Vec::new();
@@ -144,7 +145,7 @@ fn tracked_doc_contents(paths: &Paths, exclude_prefix: &str) -> Vec<String> {
             continue;
         }
         if f.ends_with(".md") || f.ends_with(".txt") {
-            if let Ok(content) = std::fs::read_to_string(paths.root.join(f)) {
+            if let Some(content) = util::read_opt(&ws.root.join(f)) {
                 out.push(content);
             }
         }
@@ -157,7 +158,7 @@ fn tracked_doc_contents(paths: &Paths, exclude_prefix: &str) -> Vec<String> {
 /// documents. Deliberate difference from Spectra: the change's own directory is excluded, so
 /// broken anchors keep working after the design is committed (Spectra's corpus includes the
 /// design itself, making Structure permanently silent post-commit).
-fn symbol_found(paths: &Paths, doc_contents: &[String], exclude_prefix: &str, symbol: &str) -> bool {
+fn symbol_found(ws: &Workspace, doc_contents: &[String], exclude_prefix: &str, symbol: &str) -> bool {
     // ASCII word boundary, matching `git grep --word-regexp` semantics.
     let re = Regex::new(&format!(r"(?-u:\b){}(?-u:\b)", regex::escape(symbol)));
     if let Ok(re) = re {
@@ -167,7 +168,7 @@ fn symbol_found(paths: &Paths, doc_contents: &[String], exclude_prefix: &str, sy
     }
     let exclude = format!(":(exclude){exclude_prefix}");
     util::git(
-        &paths.root,
+        &ws.root,
         &["grep", "-q", "--word-regexp", "--fixed-strings", symbol, "HEAD", "--", &exclude],
     )
     .is_some()
@@ -177,13 +178,14 @@ fn symbol_found(paths: &Paths, doc_contents: &[String], exclude_prefix: &str, sy
 /// requirement that no longer exists, or an ADDED requirement that now already exists.
 /// Archive silently skips both cases. Used by drift's Specs dimension and by bulk archive's
 /// readiness check.
-pub fn spec_assumptions(paths: &Paths, change: &Change) -> Vec<SpecAssumption> {
+pub fn spec_assumptions(store: &dyn Store, change: &Change) -> Vec<SpecAssumption> {
     let mut out: Vec<SpecAssumption> = Vec::new();
-    for cap in &crate::model::delta_capabilities(&change.dir) {
-        let delta_text =
-            util::read_opt(&change.dir.join("specs").join(cap).join("spec.md")).unwrap_or_default();
+    for cap in &store.delta_capabilities(&change.name) {
+        let delta_text = store
+            .read_artifact(&change.name, &model::delta_spec_artifact(cap))
+            .unwrap_or_default();
         let reqs = crate::archive::parse_delta(&delta_text);
-        let canonical = util::read_opt(&paths.specs_dir().join(cap).join("spec.md"));
+        let canonical = store.read_canonical_spec(cap);
         let canonical_names: Option<std::collections::BTreeSet<String>> = canonical
             .as_deref()
             .map(|t| crate::archive::parse_canonical(t).1.into_iter().map(|(n, _)| n).collect());
@@ -269,12 +271,12 @@ fn parse_commit_files(log: &str) -> Vec<Vec<String>> {
     commits
 }
 
-pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
-    let design = util::read_opt(&change.dir.join("design.md")).unwrap_or_default();
+pub fn analyze(ws: &Workspace, store: &dyn Store, change: &Change) -> DriftReport {
+    let design = store.read_artifact(&change.name, "design.md").unwrap_or_default();
     let anchors = extract_anchors(&design);
     let total_anchors = anchors.len();
 
-    let git_ok = util::git_available(&paths.root);
+    let git_ok = util::git_available(&ws.root);
     // Deliberate difference from Spectra: the created DATE is anchored to midnight. Spectra
     // passes the bare date, and git's approxidate fills the missing time-of-day from the
     // current clock — making same-day changes always count 0 commits.
@@ -284,7 +286,7 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     };
     let since_log = if git_ok {
         util::git(
-            &paths.root,
+            &ws.root,
             &["log", &since_arg, "--pretty=format:COMMIT|%H|%at|%s", "--name-only"],
         )
     } else {
@@ -297,17 +299,20 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     // Spectra's CLI never populates last_commit (it is an app-side field).
     let last_commit: Option<String> = None;
 
-    let exclude_prefix = format!(
-        "{}/changes/{}/",
-        paths.spec_dir_name, change.name
-    );
-    let doc_contents = tracked_doc_contents(paths, &exclude_prefix);
+    // The change's storage location relative to the project root, as a git
+    // pathspec prefix (forward-slashed, trailing '/').
+    let exclude_prefix = change
+        .dir
+        .strip_prefix(&ws.root)
+        .map(|rel| format!("{}/", util::to_slash(rel)))
+        .unwrap_or_else(|_| format!("{}/changes/{}/", ws.spec_dir_name, change.name));
+    let doc_contents = tracked_doc_contents(ws, &exclude_prefix);
     let mut broken = Vec::new();
     for a in &anchors {
         let found = if a.is_path {
-            paths.root.join(&a.name).exists()
+            ws.root.join(&a.name).exists()
         } else {
-            symbol_found(paths, &doc_contents, &exclude_prefix, &a.name)
+            symbol_found(ws, &doc_contents, &exclude_prefix, &a.name)
         };
         if !found {
             broken.push(if a.is_path {
@@ -356,7 +361,7 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     };
 
     // Structure dimension — falls back to "design absent" when there is no design.md to anchor on.
-    let design_present = change.dir.join("design.md").is_file();
+    let design_present = store.artifact_exists(&change.name, "design.md");
     let (structure_status, structure_score) = if !design_present {
         ("design absent".to_string(), 0)
     } else {
@@ -377,9 +382,9 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     // in the window and exists; "blocked" when a referenced file was touched and is now gone.
     let mut tasks_maybe_resolved: Vec<String> = Vec::new();
     let mut tasks_blocked_external: Vec<String> = Vec::new();
-    let tasks_present = change.dir.join("tasks.md").is_file();
+    let tasks_present = store.artifact_exists(&change.name, "tasks.md");
     let task_list = crate::tasks::parse(
-        &util::read_opt(&change.dir.join("tasks.md")).unwrap_or_default(),
+        &store.read_artifact(&change.name, "tasks.md").unwrap_or_default(),
     );
     let window_files: std::collections::BTreeSet<&str> = commit_files
         .iter()
@@ -396,12 +401,12 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
         }
         let vanished = refs
             .iter()
-            .any(|r| window_files.contains(r.as_str()) && !paths.root.join(r).exists());
+            .any(|r| window_files.contains(r.as_str()) && !ws.root.join(r).exists());
         if vanished {
             tasks_blocked_external.push(t.description.clone());
         } else if refs
             .iter()
-            .any(|r| window_files.contains(r.as_str()) && paths.root.join(r).is_file())
+            .any(|r| window_files.contains(r.as_str()) && ws.root.join(r).is_file())
         {
             tasks_maybe_resolved.push(t.description.clone());
         }
@@ -422,8 +427,8 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     // Specs dimension (speclink-specific): do the delta's MODIFIED/REMOVED/RENAMED targets
     // still exist in the canonical specs, and would an ADDED requirement collide? Archive
     // silently skips both cases — drift is where they must surface.
-    let delta_caps = crate::model::delta_capabilities(&change.dir);
-    let spec_assumptions = spec_assumptions(paths, change);
+    let delta_caps = store.delta_capabilities(&change.name);
+    let spec_assumptions = spec_assumptions(store, change);
     let specs_status = if delta_caps.is_empty() {
         "no delta specs".to_string()
     } else if spec_assumptions.is_empty() {
@@ -437,7 +442,7 @@ pub fn analyze(paths: &Paths, change: &Change) -> DriftReport {
     // touch files this change cares about (touched record ∪ task references).
     let commits_since = commit_files.len() as i64;
     let mut relevant: std::collections::BTreeSet<String> =
-        crate::tasks::TouchedRecord::load(paths, &change.name)
+        crate::tasks::TouchedRecord::load(ws, &change.name)
             .all_files()
             .into_iter()
             .collect();

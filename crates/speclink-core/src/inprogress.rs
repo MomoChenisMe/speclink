@@ -3,7 +3,7 @@
 //! by the first `in-progress add`; Spectra creates the `.git` directory itself when the project
 //! is not a git repository, and so do we.
 
-use crate::paths::Paths;
+use crate::workspace::Workspace;
 use anyhow::Result;
 use std::path::PathBuf;
 
@@ -24,14 +24,14 @@ CREATE TABLE in_progress_change (
             change_id TEXT PRIMARY KEY
         );";
 
-fn app_dir(paths: &Paths) -> PathBuf {
-    paths.root.join(".git").join("speclink-app")
+fn app_dir(ws: &Workspace) -> PathBuf {
+    ws.root.join(".git").join("speclink-app")
 }
 
 /// Open (creating on first use) the app database, mirroring Spectra's bootstrap:
 /// `.migrate.lock` marker + minimal two-table schema + one-time legacy migration.
-fn open_db(paths: &Paths) -> Result<rusqlite::Connection> {
-    let dir = app_dir(paths);
+fn open_db(ws: &Workspace) -> Result<rusqlite::Connection> {
+    let dir = app_dir(ws);
     std::fs::create_dir_all(&dir)?;
     let lock = dir.join(".migrate.lock");
     if !lock.exists() {
@@ -46,18 +46,18 @@ fn open_db(paths: &Paths) -> Result<rusqlite::Connection> {
     if have == 0 {
         conn.execute_batch(BOOTSTRAP_DDL)?;
     }
-    migrate_legacy(paths, &conn)?;
+    migrate_legacy(ws, &conn)?;
     Ok(conn)
 }
 
 /// One-time import of the legacy `.speclink/in_progress.json` (the pre-SQLite storage), stamped
 /// with a `.migrated` marker like Spectra's migration pass.
-fn migrate_legacy(paths: &Paths, conn: &rusqlite::Connection) -> Result<()> {
-    let done = app_dir(paths).join(".migrated");
+fn migrate_legacy(ws: &Workspace, conn: &rusqlite::Connection) -> Result<()> {
+    let done = app_dir(ws).join(".migrated");
     if done.exists() {
         return Ok(());
     }
-    let legacy = paths.work_dir().join("in_progress.json");
+    let legacy = ws.work_dir().join("in_progress.json");
     if let Some(text) = crate::util::read_opt(&legacy) {
         #[derive(serde::Deserialize, Default)]
         struct Legacy {
@@ -81,8 +81,8 @@ fn migrate_legacy(paths: &Paths, conn: &rusqlite::Connection) -> Result<()> {
 
 /// Mark a change as in-progress. Silent and idempotent; the name is not validated against
 /// existing changes and the marker survives archive — all matching Spectra.
-pub fn add(paths: &Paths, name: &str) -> Result<()> {
-    let conn = open_db(paths)?;
+pub fn add(ws: &Workspace, name: &str) -> Result<()> {
+    let conn = open_db(ws)?;
     conn.execute(
         "INSERT OR IGNORE INTO in_progress_change (change_id) VALUES (?1)",
         [name],

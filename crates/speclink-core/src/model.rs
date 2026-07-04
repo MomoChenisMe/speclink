@@ -1,10 +1,9 @@
 //! Change discovery, metadata, and artifact status.
 
-use crate::paths::Paths;
 use crate::schema::{Artifact, Schema};
-use crate::util;
+use crate::store::Store;
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// `.openspec.yaml` — per-change metadata.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -20,11 +19,12 @@ pub struct ChangeMeta {
 }
 
 impl ChangeMeta {
-    pub fn load(change_dir: &Path) -> ChangeMeta {
-        let p = change_dir.join(".openspec.yaml");
-        match std::fs::read_to_string(&p) {
-            Ok(s) => serde_yaml::from_str(&s).unwrap_or_default(),
-            Err(_) => ChangeMeta::default(),
+    /// Parse a raw metadata document. A missing document or a parse error
+    /// yields the defaults (a corrupt `.openspec.yaml` never breaks listing).
+    pub fn from_text(text: Option<&str>) -> ChangeMeta {
+        match text {
+            Some(s) => serde_yaml::from_str(s).unwrap_or_default(),
+            None => ChangeMeta::default(),
         }
     }
     pub fn schema_name(&self) -> String {
@@ -38,87 +38,35 @@ impl ChangeMeta {
 #[derive(Debug, Clone)]
 pub struct Change {
     pub name: String,
+    /// Display location of the change's documents (rendered in payloads and
+    /// human output; content access goes through the [`Store`]).
     pub dir: PathBuf,
     pub meta: ChangeMeta,
 }
 
-/// List active changes (directories under changes/, excluding `archive`).
-pub fn list_changes(paths: &Paths) -> Vec<Change> {
-    let mut out = Vec::new();
-    let Ok(entries) = std::fs::read_dir(paths.changes_dir()) else {
-        return out;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name == "archive" {
-            continue;
-        }
-        out.push(Change {
-            name: name.clone(),
-            meta: ChangeMeta::load(&path),
-            dir: path,
-        });
-    }
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    out
+/// List active changes, sorted by name.
+pub fn list_changes(store: &dyn Store) -> Vec<Change> {
+    store.list_changes()
 }
 
 /// Find an active change by name.
-pub fn find_change(paths: &Paths, name: &str) -> Option<Change> {
-    let dir = paths.change_dir(name);
-    if dir.is_dir() {
-        Some(Change {
-            name: name.to_string(),
-            meta: ChangeMeta::load(&dir),
-            dir,
-        })
-    } else {
-        None
-    }
+pub fn find_change(store: &dyn Store, name: &str) -> Option<Change> {
+    store.find_change(name)
 }
 
 /// Whether an artifact's output exists and has content.
-pub fn artifact_done(change_dir: &Path, artifact: &Artifact) -> bool {
+pub fn artifact_done(store: &dyn Store, change: &str, artifact: &Artifact) -> bool {
     // Done-ness is EXISTS-based — an empty file counts (matches Spectra). A glob-style output
-    // (e.g. "specs/**/*.md") is done when any matching file exists.
+    // (e.g. "specs/**/*.md") is done when any matching delta spec exists.
     if artifact.output_path.contains("**") {
-        return !spec_files(change_dir).is_empty();
+        return !store.delta_capabilities(change).is_empty();
     }
-    change_dir.join(&artifact.output_path).is_file()
+    store.artifact_exists(change, &artifact.output_path)
 }
 
-/// Delta spec files of a change: exactly `specs/<capability>/spec.md`, one level deep
-/// (matches Spectra — nested or differently-named .md files under specs/ do not count).
-pub fn spec_files(change_dir: &Path) -> Vec<PathBuf> {
-    let specs = change_dir.join("specs");
-    let mut out = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&specs) {
-        for e in entries.flatten() {
-            let spec = e.path().join("spec.md");
-            if e.path().is_dir() && spec.is_file() {
-                out.push(spec);
-            }
-        }
-    }
-    out.sort();
-    out
-}
-
-/// Newest file mtime inside a change directory (recursive), truncated to whole seconds —
-/// Spectra's sort key for "most recently modified" ordering everywhere a change list is
-/// ordered (list, validate --all, multi-change candidate lists).
-pub fn newest_mtime_secs(dir: &Path) -> u64 {
-    util::walk_files(dir)
-        .into_iter()
-        .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok())
-        .filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .max()
-        .unwrap_or(0)
+/// The artifact identifier of a capability's delta spec inside a change.
+pub fn delta_spec_artifact(cap: &str) -> String {
+    format!("specs/{cap}/spec.md")
 }
 
 /// Number of `### Requirement:` declarations under an ADDED/MODIFIED/REMOVED section. A RENAMED
@@ -213,22 +161,6 @@ pub fn rename_pairs(text: &str) -> Vec<(String, String)> {
     out
 }
 
-/// Capability names present as delta specs — directory names under specs/ whose spec.md FILE
-/// exists (empty or op-less files count, matching Spectra's show/archive listing).
-pub fn delta_capabilities(change_dir: &Path) -> Vec<String> {
-    let specs = change_dir.join("specs");
-    let mut caps = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&specs) {
-        for entry in entries.flatten() {
-            if entry.path().is_dir() && entry.path().join("spec.md").is_file() {
-                caps.push(entry.file_name().to_string_lossy().to_string());
-            }
-        }
-    }
-    caps.sort();
-    caps
-}
-
 /// DAG status of a single artifact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArtifactStatus {
@@ -248,11 +180,11 @@ impl ArtifactStatus {
 }
 
 /// Compute the status of every artifact in the schema for a change.
-pub fn artifact_statuses(schema: &Schema, change_dir: &Path) -> Vec<(String, ArtifactStatus)> {
+pub fn artifact_statuses(schema: &Schema, store: &dyn Store, change: &str) -> Vec<(String, ArtifactStatus)> {
     // First pass: done-ness.
     let mut done: std::collections::HashMap<&str, bool> = std::collections::HashMap::new();
     for a in &schema.artifacts {
-        done.insert(a.id.as_str(), artifact_done(change_dir, a));
+        done.insert(a.id.as_str(), artifact_done(store, change, a));
     }
     // Second pass: ready/blocked based on requires.
     let mut out = Vec::new();
@@ -270,7 +202,7 @@ pub fn artifact_statuses(schema: &Schema, change_dir: &Path) -> Vec<(String, Art
 }
 
 /// Which artifact ids block a given artifact (unmet requires).
-pub fn blocked_by(schema: &Schema, change_dir: &Path, id: &str) -> Vec<String> {
+pub fn blocked_by(schema: &Schema, store: &dyn Store, change: &str, id: &str) -> Vec<String> {
     let Some(a) = schema.artifact(id) else {
         return Vec::new();
     };
@@ -279,7 +211,7 @@ pub fn blocked_by(schema: &Schema, change_dir: &Path, id: &str) -> Vec<String> {
         .filter(|r| {
             schema
                 .artifact(r)
-                .map(|ra| !artifact_done(change_dir, ra))
+                .map(|ra| !artifact_done(store, change, ra))
                 .unwrap_or(false)
         })
         .map(|s| s.to_string())
@@ -288,19 +220,19 @@ pub fn blocked_by(schema: &Schema, change_dir: &Path, id: &str) -> Vec<String> {
 
 /// Whether EVERY artifact in the schema is done (matches Spectra — an absent optional artifact
 /// such as `design` keeps the change incomplete).
-pub fn is_complete(schema: &Schema, change_dir: &Path) -> bool {
+pub fn is_complete(schema: &Schema, store: &dyn Store, change: &str) -> bool {
     schema
         .artifacts
         .iter()
-        .all(|a| artifact_done(change_dir, a))
+        .all(|a| artifact_done(store, change, a))
 }
 
 /// Artifacts in the schema that are not yet done (used for analyze "Missing" reporting).
-pub fn missing_artifacts(schema: &Schema, change_dir: &Path) -> Vec<String> {
+pub fn missing_artifacts(schema: &Schema, store: &dyn Store, change: &str) -> Vec<String> {
     schema
         .artifacts
         .iter()
-        .filter(|a| !artifact_done(change_dir, a))
+        .filter(|a| !artifact_done(store, change, a))
         .map(|a| a.id.to_string())
         .collect()
 }

@@ -2,7 +2,7 @@
 
 use crate::model::{self, Change};
 use crate::schema::Schema;
-use crate::util;
+use crate::store::Store;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -242,11 +242,11 @@ fn weak_pattern_in(line: &str) -> Option<String> {
     None
 }
 
-pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
-    let proposal = util::read_opt(&change.dir.join("proposal.md")).unwrap_or_default();
-    let design = util::read_opt(&change.dir.join("design.md")).unwrap_or_default();
-    let tasks_text = util::read_opt(&change.dir.join("tasks.md")).unwrap_or_default();
-    let spec_files = model::spec_files(&change.dir);
+pub fn analyze(store: &dyn Store, change: &Change, schema: &Schema) -> AnalyzeReport {
+    let proposal = store.read_artifact(&change.name, "proposal.md").unwrap_or_default();
+    let design = store.read_artifact(&change.name, "design.md").unwrap_or_default();
+    let tasks_text = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
+    let delta_caps = store.delta_capabilities(&change.name);
 
     let (new_caps, mod_caps) = parse_capabilities(&proposal);
     let tasks = task_descriptions(&tasks_text);
@@ -254,9 +254,9 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     // Parse all delta specs, keeping per-file text for line-based checks.
     let mut all_reqs: Vec<(String, Requirement)> = Vec::new();
     let mut spec_texts: Vec<(String, String)> = Vec::new();
-    for sp in &spec_files {
-        let rel = sp.strip_prefix(&change.dir).map(util::to_slash).unwrap_or_default();
-        let text = util::read_opt(sp).unwrap_or_default();
+    for cap in &delta_caps {
+        let rel = model::delta_spec_artifact(cap);
+        let text = store.read_artifact(&change.name, &rel).unwrap_or_default();
         for req in parse_delta_spec(&text) {
             all_reqs.push((rel.clone(), req));
         }
@@ -264,10 +264,10 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
     }
 
     // Artifact presence is EXISTS-based (an empty or op-less file still counts), matching Spectra.
-    let proposal_present = change.dir.join("proposal.md").is_file();
-    let specs_present = !spec_files.is_empty();
-    let tasks_present = change.dir.join("tasks.md").is_file();
-    let design_present = change.dir.join("design.md").is_file();
+    let proposal_present = store.artifact_exists(&change.name, "proposal.md");
+    let specs_present = !delta_caps.is_empty();
+    let tasks_present = store.artifact_exists(&change.name, "tasks.md");
+    let design_present = store.artifact_exists(&change.name, "design.md");
 
     // A dimension is skipped when its prerequisite artifacts are missing. Coverage needs a proposal
     // plus at least one of specs/tasks to check against; Gaps always runs.
@@ -288,8 +288,7 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
         // covMissingSpec applies to Modified Capabilities too (probed).
         for cap in new_caps.iter().chain(mod_caps.iter()) {
             // Flagged only when the delta spec FILE is missing; an empty file counts as present.
-            let spec = change.dir.join("specs").join(cap).join("spec.md");
-            if !spec.is_file() {
+            if !store.artifact_exists(&change.name, &model::delta_spec_artifact(cap)) {
                 n += 1;
                 coverage.push(make_finding(
                     "COV", n, "Coverage", Severity::Critical,
@@ -394,21 +393,19 @@ pub fn analyze(change: &Change, schema: &Schema) -> AnalyzeReport {
                 "gapNoProposal", [],
             ));
         }
-        // change.dir = <root>/openspec/changes/<name>; canonical = <root>/openspec/specs/<cap>/spec.md
-        let openspec = change.dir.parent().and_then(|p| p.parent());
         let mut cap_no_main: Vec<String> = Vec::new();
         for (loc, req) in &all_reqs {
             if req.operation != "MODIFIED" {
                 continue;
             }
             let cap = loc.split('/').nth(1).unwrap_or("");
-            let canonical = openspec.map(|o| o.join("specs").join(cap).join("spec.md"));
             // Canonical presence is EXISTS-based: an empty canonical spec falls through to the
             // gapModifiedNotFound branch (the requirement can't be found in it).
-            let canonical_text = canonical
-                .as_ref()
-                .filter(|p| p.is_file())
-                .map(|p| util::read_opt(p).unwrap_or_default());
+            let canonical_text = if store.canonical_spec_exists(cap) {
+                Some(store.read_canonical_spec(cap).unwrap_or_default())
+            } else {
+                None
+            };
             match canonical_text {
                 None => {
                     // No canonical spec for this capability — reported once per capability.

@@ -2,10 +2,11 @@
 
 use crate::config::{AppConfig, WorkflowConfig};
 use crate::model::{self, Change};
-use crate::paths::Paths;
 use crate::preflight::Preflight;
 use crate::schema::Schema;
+use crate::store::Store;
 use crate::tasks::{self, Task};
+use crate::workspace::Workspace;
 use serde::Serialize;
 use std::path::Path;
 
@@ -50,14 +51,15 @@ pub struct ArtifactInstructions {
 
 /// Build per-artifact instructions.
 pub fn build_artifact(
-    paths: &Paths,
+    ws: &Workspace,
+    store: &dyn Store,
     change: &Change,
     schema: &Schema,
     artifact_id: &str,
 ) -> Option<ArtifactInstructions> {
     let artifact = schema.artifact(artifact_id)?;
-    let app = AppConfig::load(&paths.app_config());
-    let wf = WorkflowConfig::load(&paths.workflow_config());
+    let app = AppConfig::load(&ws.app_config());
+    let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref());
 
     let dependencies = artifact
         .requires
@@ -66,7 +68,7 @@ pub fn build_artifact(
             let da = schema.artifact(dep_id)?;
             Some(Dependency {
                 id: da.id.to_string(),
-                done: model::artifact_done(&change.dir, da),
+                done: model::artifact_done(store, &change.name, da),
                 path: da.output_path.to_string(),
                 description: da.description.to_string(),
             })
@@ -76,7 +78,7 @@ pub fn build_artifact(
     // `unlocks` = downstream artifacts for which THIS artifact is the last unmet dependency:
     // not yet done, list this artifact in their `requires`, and have every other requirement done.
     // Empty once this artifact itself is done (it has already unlocked its dependents).
-    let self_done = model::artifact_done(&change.dir, artifact);
+    let self_done = model::artifact_done(store, &change.name, artifact);
     let unlocks: Vec<String> = if self_done {
         Vec::new()
     } else {
@@ -85,13 +87,13 @@ pub fn build_artifact(
             .into_iter()
             .filter(|y| y.id != artifact.id)
             .filter(|y| y.requires.iter().any(|r| *r == artifact.id))
-            .filter(|y| !model::artifact_done(&change.dir, y))
+            .filter(|y| !model::artifact_done(store, &change.name, y))
             .filter(|y| {
                 y.requires.iter().all(|d| {
                     *d == artifact.id
                         || schema
                             .artifact(d)
-                            .map(|da| model::artifact_done(&change.dir, da))
+                            .map(|da| model::artifact_done(store, &change.name, da))
                             .unwrap_or(false)
                 })
             })
@@ -203,10 +205,10 @@ pub struct ApplyInstructions {
 }
 
 /// Compute apply state: blocked | ready | all_done.
-pub fn apply_state(schema: &Schema, change: &Change, tasks: &[Task]) -> String {
+pub fn apply_state(schema: &Schema, store: &dyn Store, change: &Change, tasks: &[Task]) -> String {
     let tasks_artifact = schema.artifact("tasks");
     let tasks_done = tasks_artifact
-        .map(|a| model::artifact_done(&change.dir, a))
+        .map(|a| model::artifact_done(store, &change.name, a))
         .unwrap_or(false);
     if !tasks_done || tasks.is_empty() {
         return "blocked".to_string();
@@ -219,29 +221,34 @@ pub fn apply_state(schema: &Schema, change: &Change, tasks: &[Task]) -> String {
     }
 }
 
-pub fn build_apply(paths: &Paths, change: &Change, schema: &Schema) -> ApplyInstructions {
-    let app = AppConfig::load(&paths.app_config());
-    let wf = WorkflowConfig::load(&paths.workflow_config());
-    let tasks_md = std::fs::read_to_string(change.dir.join("tasks.md")).unwrap_or_default();
+pub fn build_apply(
+    ws: &Workspace,
+    store: &dyn Store,
+    change: &Change,
+    schema: &Schema,
+) -> ApplyInstructions {
+    let app = AppConfig::load(&ws.app_config());
+    let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref());
+    let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
     let parsed = tasks::parse(&tasks_md);
     let (total, complete, remaining) = tasks::progress(&parsed);
 
     // contextFiles includes artifacts whose files exist (empty files count, matching Spectra).
     let mut context_files = std::collections::BTreeMap::new();
-    if change.dir.join("proposal.md").is_file() {
+    if store.artifact_exists(&change.name, "proposal.md") {
         context_files.insert("proposal".to_string(), join_display(&change.dir, "proposal.md"));
     }
-    if !model::spec_files(&change.dir).is_empty() {
+    if !store.delta_capabilities(&change.name).is_empty() {
         context_files.insert("specs".to_string(), join_display(&change.dir, "specs/**/*.md"));
     }
-    if change.dir.join("design.md").is_file() {
+    if store.artifact_exists(&change.name, "design.md") {
         context_files.insert("design".to_string(), join_display(&change.dir, "design.md"));
     }
-    if change.dir.join("tasks.md").is_file() {
+    if store.artifact_exists(&change.name, "tasks.md") {
         context_files.insert("tasks".to_string(), join_display(&change.dir, "tasks.md"));
     }
 
-    let state = apply_state(schema, change, &parsed);
+    let state = apply_state(schema, store, change, &parsed);
     let blocked = state == "blocked";
 
     let missing_artifacts = if blocked {
@@ -251,7 +258,7 @@ pub fn build_apply(paths: &Paths, change: &Change, schema: &Schema) -> ApplyInst
             .filter(|id| {
                 schema
                     .artifact(id)
-                    .map(|a| !model::artifact_done(&change.dir, a))
+                    .map(|a| !model::artifact_done(store, &change.name, a))
                     .unwrap_or(true)
             })
             .map(|s| s.to_string())
@@ -268,7 +275,7 @@ pub fn build_apply(paths: &Paths, change: &Change, schema: &Schema) -> ApplyInst
     };
     // Preflight only in the ready state — Spectra drops it again once all tasks are done.
     let preflight = if state == "ready" {
-        Some(Preflight::compute(paths, change))
+        Some(Preflight::compute(ws, store, change))
     } else {
         None
     };
