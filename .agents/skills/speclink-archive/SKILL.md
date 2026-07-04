@@ -52,20 +52,27 @@ Archive a completed change.
 
    **If no tasks file exists:** Proceed without task-related warning.
 
-4. **Assess delta spec sync state**
+4. **Assess delta spec completeness**
 
-   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, proceed without sync prompt.
+   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, skip this step.
 
-   **If delta specs exist:**
-   - Compare each delta spec with its corresponding main spec at `openspec/specs/<capability>/spec.md`
-   - Determine what changes would be applied (adds, modifications, removals, renames)
-   - Show a combined summary before prompting
+   Background: the archive CLI applies deltas mechanically — a MODIFIED requirement **wholesale-replaces** the canonical requirement block with the delta's content, and an ADDED requirement that already exists in the canonical spec is skipped (leaving it without a `@trace` marker). A delta is therefore safe to archive only when every MODIFIED requirement contains the complete final text (including scenarios that should survive unchanged).
 
-   **Prompt options:**
-   - If changes needed: "Sync now (recommended)", "Archive without syncing"
-   - If already synced: "Archive now", "Sync anyway", "Cancel"
+   **For each delta spec, compare against `openspec/specs/<capability>/spec.md`:**
+   - MODIFIED requirements: does the canonical requirement contain scenarios or content the delta omits but that should survive?
+   - ADDED requirements: does the requirement already exist in the canonical spec (e.g., from an earlier mid-flight sync)?
 
-   If user chooses sync, use Task tool (subagent_type: "general-purpose", prompt: "Run `speclink instructions --skill sync` to fetch the sync instructions, then follow them for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
+   **If every delta is already complete final-state and no ADDED requirement pre-exists:** proceed directly to step 5 — no prompt needed.
+
+   **Otherwise**, show a summary of what would be lost or skipped, then use the **AskUserQuestion tool**:
+   - "Normalize delta then archive (recommended)": rewrite the delta spec file(s) in place —
+     - merge the omitted canonical content into each MODIFIED requirement so it reads as the complete final state
+     - convert each pre-existing ADDED requirement to MODIFIED (complete final state) so the CLI re-applies it and injects `@trace`
+     - do NOT edit the main specs — only the delta files change
+   - "Archive as-is": proceed, accepting that omitted canonical content will be lost on merge
+   - "Cancel"
+
+   After normalizing, show a brief diff summary of the rewritten delta files, then continue.
 
 5. **Clean up tracking file**
 
@@ -169,8 +176,8 @@ Target archive directory already exists.
 - Don't block archive on warnings - just inform and confirm
 - Preserve .openspec.yaml when moving to archive (it moves with the directory)
 - Show clear summary of what happened
-- If sync is requested, fetch the instructions via `speclink instructions --skill sync` and follow them (agent-driven)
-- If delta specs exist, always run the sync assessment and show the combined summary before prompting
+- Normalization rewrites delta files only — NEVER edit main specs directly; delta application is the archive CLI's job
+- If delta specs exist, always run the completeness assessment; only prompt when normalization is actually needed
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
 
