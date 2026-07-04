@@ -1,5 +1,16 @@
 //! Skill registry, embedded bodies, and rendering (frontmatter + placeholder substitution).
 
+use crate::config::{CustomTool, Invocation};
+
+/// The three render targets: built-in claude, built-in codex, or a custom descriptor.
+/// Descriptors render the NEUTRAL body: no tool-specific slash prefix, no plan-mode
+/// references, verb wording decided by the descriptor's `invocation`.
+#[derive(Clone, Copy)]
+pub enum RenderTarget<'a> {
+    Builtin(Tool),
+    Custom(&'a CustomTool),
+}
+
 /// A tool target for generated skills. Speclink deliberately scopes the tool matrix to
 /// claude + codex (Spectra also supports cursor/gemini/windsurf).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,6 +162,80 @@ question inside the fork."
         "## Claude fork context\n\nThis generated Claude Code skill runs with `context: fork`. \
 The rules in this section take precedence over the shared `{skill_name}` body below.\n\n{rule}\n\n---\n\n"
     ))
+}
+
+/// Unified skill rendering across the three targets.
+pub fn render_skill_file_for(target: RenderTarget, skill: &Skill, spec_dir: &str) -> String {
+    match target {
+        RenderTarget::Builtin(tool) => render_skill_file(skill, tool, spec_dir),
+        RenderTarget::Custom(custom) => render_skill_file_custom(skill, custom, spec_dir),
+    }
+}
+
+/// Substitute placeholders for the neutral (descriptor) target: `/speclink:apply` reads as
+/// `speclink apply` (no slash prefix), lines referencing plan mode are dropped (descriptors
+/// have no plan directory), and `{{TOOL}}` is the descriptor name.
+pub fn substitute_neutral(body: &str, tool: &CustomTool, spec_dir: &str) -> String {
+    let spec_dir_slash = if spec_dir.ends_with('/') {
+        spec_dir.to_string()
+    } else {
+        format!("{spec_dir}/")
+    };
+    let without_plan_mode: Vec<&str> = body
+        .lines()
+        .filter(|l| !l.to_ascii_lowercase().contains("plan mode"))
+        .collect();
+    without_plan_mode
+        .join("\n")
+        .replace("{{SPEC_DIR}}", &spec_dir_slash)
+        .replace("{{PLAN_DIR}}", "")
+        .replace("{{TOOL}}", &tool.name)
+        .replace("/speclink:", "speclink ")
+        // Some bodies carry literal claude-style skill references; neutrally they are
+        // plain skill names (`speclink-ingest`), never slash commands.
+        .replace("/speclink-", "speclink-")
+}
+
+/// The invocation preamble that tells a custom harness how `speclink <verb>` references in
+/// the body are meant to be executed.
+fn invocation_note(invocation: Invocation) -> &'static str {
+    match invocation {
+        Invocation::Cli => {
+            "## Invocation\n\nThis harness executes speclink verbs as shell commands: \
+run `speclink <verb> [arguments]`.\n\n---\n\n"
+        }
+        Invocation::ToolCall => {
+            "## Invocation\n\nThis harness executes speclink verbs by calling the speclink \
+tool with an argv array (e.g. [\"apply\", \"add-auth\"]). Wherever this document says \
+`speclink <verb> [arguments]`, it means calling the speclink tool with those arguments \
+as argv.\n\n---\n\n"
+        }
+    }
+}
+
+/// Render a SKILL.md for a custom descriptor target: neutral frontmatter (no Claude-only
+/// fork/disallowedTools lines), an invocation preamble, and the neutral body.
+pub fn render_skill_file_custom(skill: &Skill, tool: &CustomTool, spec_dir: &str) -> String {
+    let mut fm = String::from("---\n");
+    fm.push_str(&format!("name: speclink-{}\n", skill.name));
+    fm.push_str(&format!("description: \"{}\"\n", skill.description));
+    fm.push_str("license: MIT\n");
+    fm.push_str("compatibility: Requires speclink CLI.\n");
+    fm.push_str("metadata:\n");
+    fm.push_str("  author: speclink\n");
+    fm.push_str("  version: \"1.0\"\n");
+    fm.push_str("  generatedBy: \"Speclink\"\n");
+    fm.push_str("---\n\n");
+    fm.push_str(invocation_note(tool.invocation));
+    fm.push_str(&substitute_neutral(skill.body, tool, spec_dir));
+    // Exactly one trailing newline, matching the built-in renders.
+    while fm.ends_with("\n\n") {
+        fm.pop();
+    }
+    if !fm.ends_with('\n') {
+        fm.push('\n');
+    }
+    fm
 }
 
 /// Render a complete SKILL.md (frontmatter + substituted body) for a tool. The fork/agent and

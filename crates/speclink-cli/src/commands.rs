@@ -6,6 +6,7 @@ use core::store::Store;
 use core::workspace::Workspace;
 
 fn dispatch(cli: Cli) -> Result<()> {
+    warn_deprecated_policy_keys();
     match cli.command {
         Commands::Init(a) => cmd_init(a),
         Commands::Update(a) => cmd_update(a),
@@ -32,6 +33,23 @@ fn dispatch(cli: Cli) -> Result<()> {
 }
 
 // --- helpers ---
+
+/// Deprecation signal for the legacy policy keys: exactly one fixed-prefix stderr line per
+/// invocation when `.speclink.yaml` still carries keys whose canonical home is
+/// `openspec/config.yaml`. stdout (including `--json`) stays untouched; no keys → no output.
+fn warn_deprecated_policy_keys() {
+    let Some(ws) = Workspace::discover_cwd() else {
+        return;
+    };
+    let keys = core::config::AppConfig::load(&ws.app_config()).deprecated_policy_keys();
+    if keys.is_empty() {
+        return;
+    }
+    eprintln!(
+        "speclink: warning: deprecated policy keys in .speclink.yaml: {} (move them to openspec/config.yaml)",
+        keys.join(", ")
+    );
+}
 
 fn resolve_change(store: &dyn Store, name: Option<&str>) -> Result<Change> {
     resolve_change_worded(store, name, "Use --change to specify one:")
