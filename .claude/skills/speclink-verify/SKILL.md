@@ -56,6 +56,8 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    This returns the change directory and context files. Read all available artifacts from `contextFiles`.
 
+   The payload also carries `locale` — the resolved language for AI output (e.g., "Traditional Chinese (繁體中文)"). Remember it: the verification report is written in this language (see Output Format).
+
 4. **Initialize verification report structure**
 
    Create a report structure with three dimensions:
@@ -183,8 +185,10 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
 Use clear markdown with:
 
+- Write the report in the `locale` language from step 3's payload — prose, headings, and table labels included. Keep severity labels (CRITICAL/WARNING/SUGGESTION), structural spec markers, command lines, and code references in English. If `locale` is absent, write in English.
 - Table for summary scorecard
 - Grouped lists for issues (CRITICAL/WARNING/SUGGESTION)
 - Code references in format: `file.ts:123`
 - Specific, actionable recommendations
 - No vague suggestions like "consider reviewing"
+

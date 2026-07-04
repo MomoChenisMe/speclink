@@ -23,6 +23,8 @@ Analyze artifact consistency for a change. Can be invoked directly or triggered 
 
 3. **Present results**
 
+   **Report language**: run `speclink instructions apply --change "<name>" --json` and use its `locale` field (e.g., "Traditional Chinese (繁體中文)") — write the report in that language, prose, headings, and table labels included. Keep severity labels (Critical/Warning/Suggestion), command lines, and code references in English. If the field is absent or the call fails, write in English.
+
    Format the JSON output as a readable summary:
 
    ```
