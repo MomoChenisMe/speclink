@@ -68,9 +68,11 @@ Speclink 生成 Claude 版 10 個技能（`analyze, apply, archive, audit, commi
 
 | 技能 | 差異性質 |
 |---|---|
-| analyze, audit, drift, verify, sync, clarify, tdd | **純品牌替換，逐字相同** |
-| commit | 品牌 + 範例路徑 `docs/specs/`→`openspec/`（一致化）＋ **修 Spectra bug**：6a-ii 原寫 `spectra sync <name>`（CLI 無此子指令），改為 `instructions --skill sync` 取指示後由 agent 合併 |
-| archive | 品牌 + **修 Spectra bug**：sync 原指向不存在的 `spectra-sync-specs` 技能，改為 `instructions --skill sync` |
+| audit, clarify, tdd | **純品牌替換，逐字相同** |
+| analyze, drift, verify | 品牌 + **報告語言**：報告以解析後 `locale` 撰寫（取自 `instructions apply --json` 的 `locale` 欄位；Spectra 無此指示、一律英文輸出） |
+| sync | 品牌 + **delta 正規化**：合併正典後將 delta 改寫為完整最終狀態（含 ADDED→MODIFIED 轉換），使後續 archive 的程式化重套 idempotent、@trace 不漏注 |
+| commit | 品牌 + 範例路徑 `docs/specs/`→`openspec/`（一致化）＋ 6a-ii 改為 **delta 完整性檢查與正規化**（Spectra 原寫 `spectra sync <name>`——CLI 無此子指令的 bug，一併移除） |
+| archive | 品牌 + sync 提問改為 **delta 完整性檢查與正規化**：partial delta 先正規化（只改 delta 檔）再歸檔，完整則直接歸檔不問（Spectra 原指向不存在的 `spectra-sync-specs` 技能，且 sync 後重套會蓋掉智慧合併結果） |
 | apply | 刻意手術：移除 park/unpark 選取與 unpark 步驟、移除 parallel_tasks/`[P]` 派工、修正 dormancy 的 `docs/specs/changes`→`openspec/changes` 路徑 bug |
 | ingest | 刻意手術：移除 parked 選取與 `[P]` 保存 |
 | propose | 刻意手術：移除 park 步驟（不再 park）、移除 parallel_tasks；**新增「從 discuss 文件產生提案」來源** |

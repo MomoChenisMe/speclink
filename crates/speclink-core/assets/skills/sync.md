@@ -61,11 +61,20 @@ This is an **agent-driven** operation - you will read delta specs and directly e
    - Add Purpose section (can be brief, mark as TBD)
    - Add Requirements section with the ADDED requirements
 
-4. **Show summary**
+4. **Normalize the delta specs**
+
+   After the main specs are updated, rewrite each delta spec file so a later `speclink archive` re-applies it idempotently (the archive CLI wholesale-replaces MODIFIED requirements with the delta's content, and skips ADDED requirements that already exist — which would omit their `@trace` markers):
+
+   - Rewrite each MODIFIED requirement as the complete final state, matching the merged main spec content (excluding any `@trace` comments)
+   - Convert each ADDED requirement to MODIFIED with complete final state (it now exists in the main spec)
+   - Leave REMOVED and RENAMED sections as-is
+
+5. **Show summary**
 
    After applying all changes, summarize:
    - Which capabilities were updated
    - What changes were made (requirements added/modified/removed/renamed)
+   - Confirm the delta specs were normalized to final state (a later archive re-applies them idempotently)
 
 **Delta Spec Format Reference**
 
@@ -123,7 +132,7 @@ Updated main specs:
 - Created new spec file
 - Added requirement: "Another Feature"
 
-Main specs are now updated. The change remains active - archive when implementation is complete.
+Main specs are now updated and delta specs normalized to final state. The change remains active - archive when implementation is complete.
 ```
 
 **Guardrails**

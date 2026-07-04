@@ -80,11 +80,10 @@ If no argument is provided, the workflow will extract requirements from conversa
 3. **Scan existing specs for relevance**
 
    Before creating the change, check if any existing specs overlap:
-   1. Use the **Glob tool** to list all files matching `openspec/specs/*/spec.md`
-   2. Extract directory names as the spec identifier list
-   3. Compare against the user's description to identify related specs (max 5 candidates)
-   4. For each candidate (max 3), read the first 10 lines to retrieve the Purpose section
-   5. If related specs are found, display them as an informational summary
+   1. Run `speclink list --specs --json` to get the spec identifier list
+   2. Compare against the user's description to identify related specs (max 5 candidates)
+   3. For each candidate (max 3), run `speclink show <spec-id>` and read the Purpose section at the top of the output
+   4. If related specs are found, display them as an informational summary
 
    **IMPORTANT**:
    - If related specs are found, display them but do NOT stop or ask for confirmation — continue to the next step
@@ -255,7 +254,7 @@ If no argument is provided, the workflow will extract requirements from conversa
      - `outputPath`: Where to write the artifact
      - `dependencies`: Completed artifacts to read for context
      - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `.speclink.yaml` or `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
-   - Read any completed dependency files for context
+   - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` (never open artifact files by path — the documents may live in a remote store)
    - Generate the artifact content using `template` as the structure
    - Apply `context` and `rules` as constraints - but do NOT copy them into the file
    - Write the artifact via CLI (the CLI handles directory creation and format validation):

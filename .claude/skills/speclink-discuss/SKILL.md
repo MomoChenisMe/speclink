@@ -135,10 +135,10 @@ Before asking anything, load the shared vocabulary, then do a quick codebase sco
 
 ### Step 0: Load shared vocabulary
 
-Try to read `openspec/LANGUAGE.md`. This file is the project's canonical vocabulary — terms with `definition`, `avoid`, and `why` notes, plus principles for when legacy terminology may remain.
+Run `speclink language show`. It prints the project's canonical vocabulary — terms with `definition`, `avoid`, and `why` notes, plus principles for when legacy terminology may remain.
 
-- **If the file exists**: scan the canonical terms and their avoided synonyms. Prefer the canonical term when you summarize, capture conclusions, or update artifacts. If you notice a relevant `avoid` synonym in the user's topic or in the artifacts you read, plan to surface that as vocabulary drift in the conclusion.
-- **If the file does not exist**: continue silently with the normal flow. A missing vocabulary file is not an error; do not announce it, do not block, and do not stop to ask the user to create it.
+- **If the command succeeds**: scan the canonical terms and their avoided synonyms. Prefer the canonical term when you summarize, capture conclusions, or update artifacts. If you notice a relevant `avoid` synonym in the user's topic or in the artifacts you read, plan to surface that as vocabulary drift in the conclusion.
+- **If the command fails (no vocabulary document)**: continue silently with the normal flow. A missing vocabulary is not an error; do not announce it, do not block, and do not stop to ask the user to create it.
 
 This step runs before the codebase scout, the assumptions list, the interview questions, and the conclusion capture.
 
