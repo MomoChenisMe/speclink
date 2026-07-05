@@ -59,7 +59,7 @@ pub fn translate_status(status: u16, body: Option<&serde_json::Value>) -> Remote
     // before consulting the reason table.
     if status >= 500 {
         return RemoteError {
-            message: "server unavailable — check the connection url in .speclink.remote.yaml (or SPECLINK_STORE_URL)".into(),
+            message: "server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)".into(),
             reason,
         };
     }
@@ -77,7 +77,7 @@ pub fn translate_status(status: u16, body: Option<&serde_json::Value>) -> Remote
         Some("repo_unknown") => {
             let available = body_list(body, "availableRepos").join(", ");
             format!(
-                "repo is not registered in this project (available: {available}) — fix `repo:` in .speclink.remote.yaml or re-run `speclink link`"
+                "repo is not registered in this project (available: {available}) — fix `remote.repo` in .speclink.yaml or re-run `speclink link`"
             )
         }
         Some("repo_mismatch") => {
@@ -88,7 +88,7 @@ pub fn translate_status(status: u16, body: Option<&serde_json::Value>) -> Remote
             )
         }
         Some("repo_required") => {
-            "this project has multiple repos — set `repo:` in .speclink.remote.yaml (see `speclink link`)"
+            "this project has multiple repos — set `remote.repo` in .speclink.yaml (see `speclink link`)"
                 .to_string()
         }
         Some("not_found") => {
@@ -179,7 +179,7 @@ pub fn translate_status(status: u16, body: Option<&serde_json::Value>) -> Remote
 /// cache fallback, no retry loop.
 pub fn translate_transport() -> RemoteError {
     RemoteError {
-        message: "server unreachable — check the connection url in .speclink.remote.yaml (or SPECLINK_STORE_URL)".into(),
+        message: "server unreachable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)".into(),
         reason: None,
     }
 }

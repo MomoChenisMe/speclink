@@ -72,11 +72,11 @@ impl TempEnv {
     }
 
     fn with_connection(self, url: &str, repo: Option<&str>) -> TempEnv {
-        let mut yaml = format!("url: {url}\n");
+        let mut yaml = format!("remote:\n  url: {url}\n");
         if let Some(r) = repo {
-            yaml.push_str(&format!("repo: {r}\n"));
+            yaml.push_str(&format!("  repo: {r}\n"));
         }
-        std::fs::write(self.dir.join(".speclink.remote.yaml"), yaml).unwrap();
+        std::fs::write(self.dir.join(".speclink.yaml"), yaml).unwrap();
         self
     }
 
@@ -115,8 +115,13 @@ impl TempEnv {
         child.wait_with_output().expect("wait speclink binary")
     }
 
-    fn connection_file(&self) -> PathBuf {
-        self.dir.join(".speclink.remote.yaml")
+    /// True when `.speclink.yaml` exists and carries a `remote:` section.
+    fn has_remote_section(&self) -> bool {
+        std::fs::read_to_string(self.dir.join(".speclink.yaml"))
+            .ok()
+            .and_then(|t| serde_yaml::from_str::<serde_yaml::Value>(&t).ok())
+            .map(|v| v.get("remote").is_some())
+            .unwrap_or(false)
     }
 
     /// The credentials file inside the fake home, wherever the platform
@@ -189,9 +194,15 @@ fn init_store_remote_scaffolds_workspace_without_spec_tree() {
     );
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
 
-    let conn = std::fs::read_to_string(env.connection_file()).expect("connection file written");
+    let conn =
+        std::fs::read_to_string(env.dir.join(".speclink.yaml")).expect("app config written");
     assert!(conn.contains("https://team.example.com/api/speclink/v1/projects/foo"));
     assert!(conn.contains("repo: backend"));
+    assert!(env.has_remote_section(), "remote section written");
+    assert!(
+        !env.dir.join(".speclink.remote.yaml").exists(),
+        "the legacy connection file is never created"
+    );
     assert!(env.dir.join("CLAUDE.md").is_file(), "marker file generated");
     assert!(
         std::fs::read_to_string(env.dir.join("CLAUDE.md")).unwrap().contains("SPECLINK:START"),
@@ -217,7 +228,7 @@ fn link_with_credentials_validates_the_repo() {
     let env = TempEnv::new("link-ok");
     let out = env.run(&["link", &mock.base, "--repo", "backend"], Some("tok"));
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
-    assert!(env.connection_file().is_file(), "connection file written");
+    assert!(env.has_remote_section(), "remote section written");
     let text = stdout_of(&out);
     assert!(text.contains("backend"), "reports the validated repo: {text}");
 }
@@ -231,7 +242,7 @@ fn link_rejects_a_repo_missing_from_the_registry() {
     let stderr = stderr_of(&out);
     assert!(stderr.contains("backend"), "lists available repos: {stderr}");
     assert!(stderr.contains("frontend"), "lists available repos: {stderr}");
-    assert!(!env.connection_file().exists(), "no connection file on failed validation");
+    assert!(!env.has_remote_section(), "no remote section on failed validation");
 }
 
 #[test]
@@ -242,18 +253,18 @@ fn link_without_credentials_hints_login_and_defers_validation() {
         None,
     );
     assert!(out.status.success(), "offline link must not block: {}", stderr_of(&out));
-    assert!(env.connection_file().is_file(), "connection file still written");
+    assert!(env.has_remote_section(), "remote section still written");
     let text = format!("{}{}", stdout_of(&out), stderr_of(&out));
     assert!(text.contains("speclink auth login"), "hints at login: {text}");
 }
 
 #[test]
-fn unlink_removes_the_connection_file() {
+fn unlink_removes_the_remote_section() {
     let env = TempEnv::new("unlink")
         .with_connection("https://team.example.com/api/speclink/v1/projects/foo", Some("backend"));
     let out = env.run(&["unlink"], None);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
-    assert!(!env.connection_file().exists(), "connection file removed");
+    assert!(!env.has_remote_section(), "remote section removed");
 }
 
 // --- auth login / status ---
@@ -276,7 +287,7 @@ fn auth_login_stores_the_validated_token() {
         .flatten()
         .map(|e| e.file_name().to_string_lossy().to_string())
         .collect();
-    assert_eq!(repo_entries, vec![".speclink.remote.yaml"], "repo untouched by login");
+    assert_eq!(repo_entries, vec![".speclink.yaml"], "repo untouched by login");
 }
 
 #[test]
@@ -318,7 +329,7 @@ fn link_on_a_fork_warns_once_without_failing() {
     env.init_git_with_origin("https://github.com/fork/repo.git");
     let out = env.run(&["link", &mock.base, "--repo", "backend"], Some("tok"));
     assert!(out.status.success(), "warning never blocks: {}", stderr_of(&out));
-    assert!(env.connection_file().is_file(), "connection file still written");
+    assert!(env.has_remote_section(), "remote section still written");
     let stderr = stderr_of(&out);
     let warnings: Vec<&str> = stderr.lines().filter(|l| l.contains("fork")).collect();
     assert_eq!(warnings.len(), 1, "exactly one fork warning line: {stderr}");

@@ -7,6 +7,7 @@ use core::workspace::Workspace;
 
 fn dispatch(cli: Cli) -> Result<()> {
     warn_deprecated_policy_keys();
+    warn_leftover_remote_file();
     match cli.command {
         Commands::Init(a) => cmd_init(a),
         Commands::Update(a) => cmd_update(a),
@@ -127,6 +128,22 @@ fn warn_deprecated_policy_keys() {
     eprintln!(
         "speclink: warning: deprecated policy keys in .speclink.yaml: {} (move them to openspec/config.yaml)",
         keys.join(", ")
+    );
+}
+
+/// Migration signal for the abolished connection file: exactly one fixed-prefix stderr
+/// line per invocation while `.speclink.remote.yaml` lingers in the project root. The
+/// file is never parsed and never affects the store mode — an unmigrated project runs
+/// in fs mode until the fields move. stdout and exit codes stay untouched.
+fn warn_leftover_remote_file() {
+    let Some(ws) = Workspace::discover_cwd() else {
+        return;
+    };
+    if !ws.has_leftover_remote_file() {
+        return;
+    }
+    eprintln!(
+        "speclink: warning: .speclink.remote.yaml is no longer read and does not affect the store mode — move its url/repo into the `remote:` section of .speclink.yaml and delete the old file"
     );
 }
 

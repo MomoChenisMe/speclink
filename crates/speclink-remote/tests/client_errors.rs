@@ -296,8 +296,8 @@ fn err_5xx_translates_to_server_unavailable() {
         err.message
     );
     assert!(
-        err.message.contains(".speclink.remote.yaml"),
-        "message was: {}",
+        err.message.contains("remote.url") && err.message.contains(".speclink.yaml"),
+        "message points at the remote section: {}",
         err.message
     );
     assert!(!err.message.starts_with("500"), "bare status leads: {}", err.message);
@@ -319,8 +319,8 @@ fn err_connection_refused_fails_loud_with_connection_hint() {
         err.message
     );
     assert!(
-        err.message.contains(".speclink.remote.yaml"),
-        "message was: {}",
+        err.message.contains("remote.url") && err.message.contains(".speclink.yaml"),
+        "message points at the remote section: {}",
         err.message
     );
     assert!(err.reason.is_none(), "transport failure has no server reason");

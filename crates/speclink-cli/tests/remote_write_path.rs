@@ -113,8 +113,8 @@ impl TempProject {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
-            dir.join(".speclink.remote.yaml"),
-            format!("url: {url}\nrepo: {repo}\n"),
+            dir.join(".speclink.yaml"),
+            format!("remote:\n  url: {url}\n  repo: {repo}\n"),
         )
         .unwrap();
         TempProject { dir }

@@ -205,9 +205,10 @@ pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<
     })
 }
 
-/// Remote-store initialization: workspace init plus the connection file —
-/// deliberately NO store init (the spec-document tree lives on the server, so
-/// no `openspec/` skeleton and no local workflow-config template).
+/// Remote-store initialization: workspace init plus the `remote:` section in
+/// `.speclink.yaml` — deliberately NO store init (the spec-document tree lives
+/// on the server, so no `openspec/` skeleton and no local workflow-config
+/// template).
 pub fn init_remote(
     root: &Path,
     tools: &[Tool],
@@ -215,22 +216,59 @@ pub fn init_remote(
     url: &str,
     repo: Option<&str>,
 ) -> Result<()> {
-    let connection = root.join(crate::workspace::REMOTE_FILE);
-    if !force && (connection.is_file() || root.join(".speclink.yaml").is_file()) {
+    if !force && root.join(".speclink.yaml").is_file() {
         bail!("Already initialized. Use --force to reinitialize.");
     }
     workspace_init(root, tools, force, "openspec", StoreKind::Remote)?;
-    write_connection_file(root, url, repo)
+    write_remote_section(root, url, repo)
 }
 
-/// Write `.speclink.remote.yaml` (url required, repo optional).
-pub fn write_connection_file(root: &Path, url: &str, repo: Option<&str>) -> Result<()> {
-    let mut yaml = format!("url: {url}\n");
+/// Write or replace the `remote:` section of `.speclink.yaml` via
+/// read–modify–write: other fields keep their values (comments do not survive
+/// re-serialization — a documented limitation). A missing file is created.
+pub fn write_remote_section(root: &Path, url: &str, repo: Option<&str>) -> Result<()> {
+    let path = root.join(".speclink.yaml");
+    let mut doc = load_app_yaml_doc(&path)?;
+    let mut section = serde_yaml::Mapping::new();
+    section.insert("url".into(), url.into());
     if let Some(r) = repo {
-        yaml.push_str(&format!("repo: {r}\n"));
+        section.insert("repo".into(), r.into());
     }
-    util::write_file(&root.join(crate::workspace::REMOTE_FILE), &yaml)?;
+    doc.insert("remote".into(), serde_yaml::Value::Mapping(section));
+    util::write_file(&path, &serde_yaml::to_string(&doc)?)?;
     Ok(())
+}
+
+/// Remove the `remote:` section of `.speclink.yaml`, keeping every other
+/// field. `Ok(true)` when a section was removed; `Ok(false)` when there was
+/// nothing to remove (missing file included).
+pub fn remove_remote_section(root: &Path) -> Result<bool> {
+    let path = root.join(".speclink.yaml");
+    if !path.is_file() {
+        return Ok(false);
+    }
+    let mut doc = load_app_yaml_doc(&path)?;
+    if doc.remove("remote").is_none() {
+        return Ok(false);
+    }
+    util::write_file(&path, &serde_yaml::to_string(&doc)?)?;
+    Ok(true)
+}
+
+/// Load `.speclink.yaml` as a raw mapping for read–modify–write. Unlike
+/// `AppConfig::load` (read-only, defaults on error), a malformed file here is
+/// a loud error — rewriting it would silently destroy the user's content.
+fn load_app_yaml_doc(path: &Path) -> Result<serde_yaml::Mapping> {
+    let Some(text) = util::read_opt(path) else {
+        return Ok(serde_yaml::Mapping::new());
+    };
+    let value: serde_yaml::Value =
+        serde_yaml::from_str(&text).map_err(|e| anyhow::anyhow!("invalid .speclink.yaml: {e}"))?;
+    match value {
+        serde_yaml::Value::Mapping(m) => Ok(m),
+        serde_yaml::Value::Null => Ok(serde_yaml::Mapping::new()),
+        _ => bail!("invalid .speclink.yaml: expected a mapping at the top level"),
+    }
 }
 
 /// Store init: the spec-document tree (`openspec/` skeleton) and the workflow-config
@@ -288,9 +326,9 @@ pub struct UpdateOutcome {
 pub fn update(root: &Path) -> Result<UpdateOutcome> {
     let app = crate::config::AppConfig::load(&root.join(".speclink.yaml"));
     let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
-    // The connection file's presence is the mode signal — regenerated markers
+    // The remote section's presence is the mode signal — regenerated markers
     // keep the wording of the mode the workspace is actually in.
-    let store = if root.join(crate::workspace::REMOTE_FILE).is_file() {
+    let store = if app.remote.is_some() {
         StoreKind::Remote
     } else {
         StoreKind::Fs

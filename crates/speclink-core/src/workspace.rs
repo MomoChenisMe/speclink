@@ -37,8 +37,9 @@ impl Workspace {
                     spec_dir_name,
                 });
             }
-            // A remote workspace has no openspec/ tree (and may have no
-            // .speclink.yaml) — the connection file alone marks the root.
+            // A leftover .speclink.remote.yaml still marks the root so an
+            // unmigrated project reaches the migration warning instead of
+            // failing discovery with "not in a project".
             if dir.join("openspec").is_dir() || dir.join(REMOTE_FILE).is_file() {
                 return Some(Workspace {
                     root: dir.to_path_buf(),
@@ -76,36 +77,54 @@ impl Workspace {
         self.work_dir().join("snapshots")
     }
 
-    /// The remote connection file (`.speclink.remote.yaml`) location.
+    /// The legacy remote connection file (`.speclink.remote.yaml`) location —
+    /// only consulted for leftover detection, never parsed.
     pub fn remote_config(&self) -> PathBuf {
         self.root.join(REMOTE_FILE)
     }
 
-    /// Resolve fs-vs-remote mode: the connection file's presence is the mode
-    /// signal. `env_store_url` (SPECLINK_STORE_URL) overrides the connection
-    /// url only — it never flips an fs workspace into remote mode.
+    /// True when a leftover legacy connection file sits in the project root
+    /// (the structured fact behind the CLI's migration warning).
+    pub fn has_leftover_remote_file(&self) -> bool {
+        self.remote_config().is_file()
+    }
+
+    /// Resolve fs-vs-remote mode: the `remote:` section of `.speclink.yaml` is
+    /// the mode signal. `env_store_url` (SPECLINK_STORE_URL) overrides or
+    /// supplies the section url only — it never flips an fs workspace into
+    /// remote mode. A leftover `.speclink.remote.yaml` is flagged for the
+    /// migration warning but never parsed and never mode-relevant.
     pub fn resolve_mode_with(
         &self,
         env_store_url: Option<String>,
     ) -> anyhow::Result<ModeResolution> {
-        let remote_file = self.remote_config();
-        if !remote_file.is_file() {
+        let leftover_remote_file = self.has_leftover_remote_file();
+        let remote = AppConfig::load(&self.app_config()).remote;
+        let Some(section) = remote else {
             return Ok(ModeResolution {
                 mode: StoreMode::Fs,
                 coexists: false,
+                leftover_remote_file,
             });
-        }
-        let text = crate::util::read_opt(&remote_file)
-            .ok_or_else(|| anyhow::anyhow!("cannot read {REMOTE_FILE}"))?;
-        let mut conn = RemoteConnection::from_text(&text)?;
-        // The env var overrides the url only — an empty value counts as unset,
-        // and it never turns an fs workspace into a remote one.
-        if let Some(url) = env_store_url.filter(|u| !u.trim().is_empty()) {
-            conn.url = url;
-        }
+        };
+        // The env var overrides (or supplies) the url only — an empty value
+        // counts as unset. Both missing is an explicit failure naming both
+        // settings: silently falling back to fs mode would fabricate truth.
+        let url = env_store_url
+            .filter(|u| !u.trim().is_empty())
+            .or_else(|| section.url.clone().filter(|u| !u.trim().is_empty()))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "remote store url is not set: add `remote.url` to .speclink.yaml or set the SPECLINK_STORE_URL environment variable"
+                )
+            })?;
         Ok(ModeResolution {
             coexists: self.spec_dir().is_dir(),
-            mode: StoreMode::Remote(conn),
+            mode: StoreMode::Remote(RemoteConnection {
+                url: url.trim().to_string(),
+                repo: section.repo.filter(|r| !r.trim().is_empty()),
+            }),
+            leftover_remote_file,
         })
     }
 
@@ -115,7 +134,8 @@ impl Workspace {
     }
 }
 
-/// File name of the remote connection file — its presence IS the mode signal.
+/// File name of the LEGACY remote connection file. No longer parsed: its
+/// presence only triggers the one-line migration warning.
 pub const REMOTE_FILE: &str = ".speclink.remote.yaml";
 
 /// Which storage the CLI talks to for this workspace.
@@ -127,45 +147,24 @@ pub enum StoreMode {
     Remote(RemoteConnection),
 }
 
-/// Parsed `.speclink.remote.yaml` — `url` is required (project-scoped),
-/// `repo` is this repo's registered name in the project (optional on
-/// single-repo projects).
+/// Resolved remote connection — `url` is the effective store url after the
+/// env-var override (project-scoped), `repo` is this repo's registered name
+/// in the project (optional on single-repo projects).
 #[derive(Debug, Clone)]
 pub struct RemoteConnection {
     pub url: String,
     pub repo: Option<String>,
 }
 
-impl RemoteConnection {
-    /// Parse the connection file text. A missing or empty `url` is a
-    /// semantic error naming the file and the field — never a silent default.
-    pub fn from_text(text: &str) -> anyhow::Result<RemoteConnection> {
-        #[derive(serde::Deserialize)]
-        struct Raw {
-            url: Option<String>,
-            repo: Option<String>,
-        }
-        let raw: Raw = serde_yaml::from_str(text).map_err(|e| {
-            anyhow::anyhow!("invalid {REMOTE_FILE}: {e}")
-        })?;
-        let url = raw
-            .url
-            .filter(|u| !u.trim().is_empty())
-            .ok_or_else(|| {
-                anyhow::anyhow!("invalid {REMOTE_FILE}: missing required `url` field")
-            })?;
-        Ok(RemoteConnection {
-            url: url.trim().to_string(),
-            repo: raw.repo.filter(|r| !r.trim().is_empty()),
-        })
-    }
-}
-
-/// Outcome of mode resolution: the mode plus whether the connection file and
-/// a local spec directory coexist (remote wins; the CLI prints one warning).
+/// Outcome of mode resolution: the mode plus the facts the CLI turns into
+/// warnings (structured results only — no presentation strings in core).
 #[derive(Debug)]
 pub struct ModeResolution {
     pub mode: StoreMode,
-    /// True when `.speclink.remote.yaml` and the local spec dir both exist.
+    /// True when the `remote:` section and the local spec dir both exist
+    /// (remote wins; the CLI prints one warning).
     pub coexists: bool,
+    /// True when a leftover legacy `.speclink.remote.yaml` sits in the project
+    /// root (never parsed; the CLI prints one migration warning).
+    pub leftover_remote_file: bool,
 }
