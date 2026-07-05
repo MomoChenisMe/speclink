@@ -1,0 +1,13 @@
+[package]
+name = "speclink-desktop-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+speclink-core = { path = "../../../crates/speclink-core" }
+speclink-fs = { path = "../../../crates/speclink-fs" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+regex = { workspace = true }

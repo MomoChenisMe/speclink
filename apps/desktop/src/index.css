@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+/* 共用元件庫在 node_modules（Tailwind 預設不掃），明確納入其 class 來源。 */
+@source "../../../packages/ui/src";
+
+/* shadcn/ui 設計 token（Tailwind v4）。淺色為預設，深色跟隨系統偏好。 */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  /* Speclink 主色：teal 青綠——「link」的連結語意，與 Spectra 紅明確區隔 */
+  --primary: oklch(0.52 0.1 192);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.94 0.035 192);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.62 0.1 192);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.155 0.008 260);
+    --foreground: oklch(0.945 0 0);
+    --card: oklch(0.205 0.008 260);
+    --card-foreground: oklch(0.945 0 0);
+    --primary: oklch(0.74 0.11 192);
+    --primary-foreground: oklch(0.16 0.02 210);
+    --secondary: oklch(0.27 0.008 260);
+    --secondary-foreground: oklch(0.945 0 0);
+    --muted: oklch(0.27 0.008 260);
+    --muted-foreground: oklch(0.7 0 0);
+    --accent: oklch(0.3 0.045 192);
+    --accent-foreground: oklch(0.945 0 0);
+    --destructive: oklch(0.62 0.2 25);
+    --border: oklch(1 0 0 / 12%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.64 0.1 192);
+  }
+}
+
+@theme inline {
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: "Segoe UI", system-ui, -apple-system, "Noto Sans TC", sans-serif;
+}
+
+/* 富文本 markdown 渲染樣式（Spectra 風） */
+.markdown {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--foreground);
+}
+.markdown h1 { font-size: 1.6em; font-weight: 700; margin: 0.8em 0 0.4em; }
+.markdown h2 { font-size: 1.3em; font-weight: 700; margin: 1em 0 0.4em; padding-bottom: 0.2em; border-bottom: 1px solid var(--border); }
+.markdown h3 { font-size: 1.1em; font-weight: 600; margin: 0.9em 0 0.3em; }
+.markdown h4 { font-size: 1em; font-weight: 600; margin: 0.8em 0 0.3em; }
+.markdown p { margin: 0.5em 0; }
+.markdown ul, .markdown ol { margin: 0.5em 0; padding-left: 1.4em; }
+.markdown li { margin: 0.2em 0; }
+.markdown li::marker { color: var(--muted-foreground); }
+.markdown a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+.markdown strong { font-weight: 600; }
+.markdown del { color: var(--muted-foreground); }
+.markdown blockquote {
+  margin: 0.6em 0; padding: 0.2em 0.9em; border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
+}
+.markdown code {
+  font-family: "Cascadia Code", "Consolas", ui-monospace, monospace;
+  font-size: 0.86em; padding: 0.12em 0.4em; border-radius: 5px;
+  background: color-mix(in oklch, var(--primary) 14%, transparent);
+  color: color-mix(in oklch, var(--primary) 88%, var(--foreground));
+}
+.markdown pre {
+  margin: 0.7em 0; padding: 0.9em 1em; border-radius: 8px; overflow-x: auto;
+  background: var(--muted); border: 1px solid var(--border);
+}
+.markdown pre code { background: none; padding: 0; color: var(--foreground); font-size: 0.85em; }
+.markdown table { border-collapse: collapse; margin: 0.7em 0; font-size: 0.92em; display: block; overflow-x: auto; }
+.markdown th, .markdown td { border: 1px solid var(--border); padding: 0.4em 0.7em; text-align: left; }
+.markdown th { background: var(--muted); font-weight: 600; }
+.markdown hr { border: none; border-top: 1px solid var(--border); margin: 1em 0; }
+/* GFM 任務清單 checkbox（Spectra 式：懸掛縮排對齊、完成項刪除線） */
+.markdown li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -1.2em;
+  padding: 0.15em 0 0.15em 1.6em;
+  position: relative;
+}
+.markdown input[type="checkbox"] {
+  accent-color: var(--primary);
+  position: absolute;
+  left: 0;
+  top: 0.42em;
+}
+.markdown li:has(> input[type="checkbox"]:checked) {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+}
+.markdown li:has(> input[type="checkbox"]:checked) code {
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
+}

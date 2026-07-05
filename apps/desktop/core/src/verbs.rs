@@ -1,0 +1,98 @@
+//! 動詞操作：validate / analyze / archive，經內嵌 core 執行。
+//!
+//! 可觀察結果（成功資料、失敗訊息與語意）對應 CLI 對應指令；失敗回傳 `Err` 附訊息，
+//! 不靜默吞掉。park/unpark 不在此——該功能已從 speclink 移除（見 core inprogress.rs）。
+
+use std::path::Path;
+
+use serde_json::Value;
+use speclink_core::store::Store;
+
+use crate::init_core_context;
+
+/// 對應 `speclink validate <change>`：回傳該 change 的 `ValidationResult`（valid/errors/warnings）。
+pub fn validate_at(root: &Path, change: &str) -> Result<Value, String> {
+    let ctx = open(root)?;
+    let store: &dyn Store = &ctx.store;
+    let change = find(store, change)?;
+    // 與 CLI 一致：validate 不解析 change 的 schema，一律用 spec_driven。
+    let schema = speclink_core::schema::spec_driven();
+    let result = speclink_core::validate::validate_change(store, &change, &schema, false);
+    serde_json::to_value(&result).map_err(|e| e.to_string())
+}
+
+/// 對應 `speclink analyze <change> --json`：回傳 `AnalyzeReport`（含 findings 與各維度狀態）。
+pub fn analyze_at(root: &Path, change: &str) -> Result<Value, String> {
+    let ctx = open(root)?;
+    let store: &dyn Store = &ctx.store;
+    let change = find(store, change)?;
+    let schema = speclink_core::schema::spec_driven();
+    let report = speclink_core::analyzer::analyze(store, &change, &schema);
+    serde_json::to_value(&report).map_err(|e| e.to_string())
+}
+
+/// 對應 `speclink archive <change>`：以預設選項歸檔（先驗證）。前置未滿足時回傳 `Err`
+/// 且不標記歸檔（core::archive 在失敗時不搬移 change）。
+pub fn archive_at(root: &Path, change: &str) -> Result<Value, String> {
+    let ctx = open(root)?;
+    let store: &dyn Store = &ctx.store;
+    let change = find(store, change)?;
+    let opts = speclink_core::archive::ArchiveOptions {
+        skip_specs: false,
+        no_validate: false,
+        mark_tasks_complete: false,
+    };
+    let outcome = speclink_core::archive::archive(&ctx.workspace, store, &change, &opts)
+        .map_err(|e| e.to_string())?;
+    // ArchiveOutcome 未實作 Serialize；GUI 需要的結果欄位以 camelCase 手動組出。
+    Ok(serde_json::json!({
+        "changeName": outcome.change_name,
+        "datedName": outcome.dated_name,
+        "snapshotCreated": outcome.snapshot_created,
+        "skippedSpecs": outcome.skipped_specs,
+    }))
+}
+
+fn open(root: &Path) -> Result<crate::ProjectContext, String> {
+    init_core_context(root).ok_or_else(|| format!("not a speclink project: {}", root.display()))
+}
+
+fn find(store: &dyn Store, change: &str) -> Result<speclink_core::model::Change, String> {
+    store
+        .find_change(change)
+        .ok_or_else(|| format!("change not found: {change}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("..")
+    }
+
+    #[test]
+    fn validate_reports_valid_for_a_valid_change() {
+        let v = validate_at(&repo_root(), "desktop-shell-and-browser").expect("validate ok");
+        assert_eq!(v["valid"], true);
+        assert!(v.get("errors").is_some() && v.get("warnings").is_some());
+    }
+
+    #[test]
+    fn validate_unknown_change_errors() {
+        assert!(validate_at(&repo_root(), "no-such-change-xyz").is_err());
+    }
+
+    #[test]
+    fn analyze_returns_report_with_findings_array() {
+        let v = analyze_at(&repo_root(), "desktop-shell-and-browser").expect("analyze ok");
+        assert!(v["findings"].is_array(), "report exposes findings array");
+    }
+
+    #[test]
+    fn archive_unmet_prerequisite_errors_and_does_not_archive() {
+        // 不存在的 change 無法歸檔——安全地驗證失敗語意，不觸碰真實 change 檔案。
+        assert!(archive_at(&repo_root(), "no-such-change-xyz").is_err());
+    }
+}
