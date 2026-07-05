@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/speclink-core", "crates/speclink-fs", "crates/speclink-remote", "crates/speclink-cli"]
+members = ["crates/speclink-core", "crates/speclink-fs", "crates/speclink-remote", "crates/speclink-cli", "crates/speclink-node"]
 
 [workspace.package]
 version = "0.1.0"

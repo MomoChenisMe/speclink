@@ -63,6 +63,7 @@ SDD 把「規格」當成開發的第一手真相：需求先寫成結構化的�
 | 設定說明（兩檔一目錄體系、四層解析、工具描述子、遷移指引） | [docs/configuration.md](docs/configuration.md) | [docs/configuration.zh-TW.md](docs/configuration.zh-TW.md) |
 | 團隊模式（連接檔、init/link/auth、repo 識別、錯誤對照、升級指引） | [docs/team-mode.md](docs/team-mode.md) | [docs/team-mode.zh-TW.md](docs/team-mode.zh-TW.md) |
 | 動詞契約（remote store 的 REST 契約正典：端點、payload、409 語意） | [docs/verb-contract.md](docs/verb-contract.md) | [docs/verb-contract.zh-TW.md](docs/verb-contract.zh-TW.md) |
+| Node SDK（@speclink/engine：createEngine 兩形式、Store 橋接、dispatch 契約、渲染 API、Copilot SDK 整合） | [docs/sdk-node.md](docs/sdk-node.md) | [docs/sdk-node.zh-TW.md](docs/sdk-node.zh-TW.md) |
 
 ---
 

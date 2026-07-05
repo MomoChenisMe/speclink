@@ -1,0 +1,123 @@
+name: Node SDK
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/node-sdk.yml'
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/node-sdk.yml'
+
+defaults:
+  run:
+    working-directory: crates/speclink-node
+
+jobs:
+  build:
+    name: build ${{ matrix.settings.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
+            test: true
+          - host: macos-latest
+            target: x86_64-apple-darwin
+            test: false # macos-latest runners are arm64
+          - host: macos-latest
+            target: aarch64-apple-darwin
+            test: true
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            test: true
+          - host: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            test: false # cross-compiled, not runnable on the x64 host
+    runs-on: ${{ matrix.settings.host }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install aarch64 cross toolchain
+        if: matrix.settings.target == 'aarch64-unknown-linux-gnu'
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build native module (release)
+        run: npm run build:release -- --target ${{ matrix.settings.target }}
+
+      - name: Test against the native-arch build
+        if: matrix.settings.test
+        run: npm test
+
+      - name: Upload platform binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.settings.target }}
+          path: crates/speclink-node/*.node
+          if-no-files-found: error
+
+  package:
+    name: package npm tarballs
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Create platform sub-package directories
+        run: npx napi create-npm-dir -t .
+
+      - name: Download all platform binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: crates/speclink-node/artifacts
+
+      - name: Distribute binaries into sub-packages
+        run: npx napi artifacts
+
+      - name: Pack the main package and every platform sub-package
+        run: |
+          npm pack
+          for dir in npm/*/; do
+            (cd "$dir" && npm pack)
+          done
+          ls -l ./*.tgz npm/*/*.tgz
+
+      - name: Upload npm tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarballs
+          path: |
+            crates/speclink-node/*.tgz
+            crates/speclink-node/npm/*/*.tgz
+          if-no-files-found: error

@@ -182,46 +182,8 @@ fn schema_for(ws: &Workspace, change: &Change) -> Result<Schema> {
     resolve_schema(ws, &change.meta.schema_name())
 }
 
-fn truncate_summary(text: &str, limit: usize) -> String {
-    let first_line = text.trim();
-    if first_line.chars().count() <= limit {
-        return first_line.to_string();
-    }
-    // Take the first `limit` characters verbatim (no word-boundary, no trim) and append an ellipsis.
-    let head: String = first_line.chars().take(limit).collect();
-    format!("{head}…")
-}
-
-fn proposal_summary(store: &dyn Store, change: &Change) -> String {
-    let proposal = store.read_artifact(&change.name, "proposal.md").unwrap_or_default();
-    // First non-empty, non-header line after "## Why" (or first prose line).
-    let mut after_why = false;
-    for line in proposal.lines() {
-        let t = line.trim();
-        if t.starts_with("## Why") {
-            after_why = true;
-            continue;
-        }
-        if after_why && !t.is_empty() && !t.starts_with('#') {
-            return truncate_summary(t, 30);
-        }
-    }
-    // Fallback: first prose line.
-    for line in proposal.lines() {
-        let t = line.trim();
-        if !t.is_empty() && !t.starts_with('#') && !t.starts_with("<!--") {
-            return truncate_summary(t, 30);
-        }
-    }
-    String::new()
-}
-
-fn task_counts(store: &dyn Store, change: &Change) -> (usize, usize) {
-    let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
-    let tasks = core::tasks::parse(&tasks_md);
-    let (total, complete, _) = core::tasks::progress(&tasks);
-    (complete, total)
-}
+// Shared with the Node SDK: the list serialization path lives in core::listing.
+use core::listing::{proposal_summary, sort_changes, specs_json_items, task_counts, ListChangeJson};
 
 // --- init / update ---
 
@@ -295,49 +257,6 @@ fn cmd_update(a: UpdateArgs) -> Result<()> {
 
 // --- list ---
 
-#[derive(serde::Serialize)]
-struct ListChangeJson {
-    #[serde(rename = "completedTasks")]
-    completed_tasks: usize,
-    name: String,
-    status: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    summary: String,
-    #[serde(rename = "totalTasks")]
-    total_tasks: usize,
-}
-
-/// Order changes for listing (probed against Spectra):
-/// - "name": alphabetical.
-/// - "created": changes with a VALID metadata pair (schema AND created both present) come
-///   first, created descending, mtime-then-name tiebreak; invalid-metadata changes follow
-///   in modified order.
-/// - everything else (default "modified", unknown values): newest file mtime inside the
-///   change, whole seconds, newest first, name-ascending ties.
-fn sort_changes(store: &dyn Store, changes: &mut [Change], sort: &str) {
-    let mtime_desc = |x: &Change, y: &Change| {
-        let mx = store.updated_at_secs(&x.name);
-        let my = store.updated_at_secs(&y.name);
-        my.cmp(&mx).then_with(|| x.name.cmp(&y.name))
-    };
-    match sort {
-        "name" => changes.sort_by(|x, y| x.name.cmp(&y.name)),
-        "created" => changes.sort_by(|x, y| {
-            let valid = |c: &Change| match (&c.meta.schema, &c.meta.created) {
-                (Some(_), Some(created)) => Some(created.clone()),
-                _ => None,
-            };
-            match (valid(x), valid(y)) {
-                (Some(a), Some(b)) => b.cmp(&a).then_with(|| mtime_desc(x, y)),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => mtime_desc(x, y),
-            }
-        }),
-        _ => changes.sort_by(mtime_desc),
-    }
-}
-
 fn cmd_list(a: ListArgs) -> Result<()> {
     if let Some(ctx) = remote_ctx()? {
         return remote_list(&ctx, &a);
@@ -351,24 +270,7 @@ fn cmd_list(a: ListArgs) -> Result<()> {
     let mut changes = core::model::list_changes(store);
     sort_changes(store, &mut changes, &a.sort);
     if a.json {
-        let items: Vec<ListChangeJson> = changes
-            .iter()
-            .map(|c| {
-                let (complete, total) = task_counts(store, c);
-                ListChangeJson {
-                    completed_tasks: complete,
-                    name: c.name.clone(),
-                    // "done" only when every task is checked (and there is at least one).
-                    status: if total > 0 && complete == total {
-                        "done".to_string()
-                    } else {
-                        "in-progress".to_string()
-                    },
-                    summary: proposal_summary(store, c),
-                    total_tasks: total,
-                }
-            })
-            .collect();
+        let items: Vec<ListChangeJson> = core::listing::changes_json(store, &changes);
         if a.specs {
             let mut payload = serde_json::Map::new();
             payload.insert("changes".into(), serde_json::to_value(&items)?);
@@ -409,28 +311,6 @@ fn cmd_list(a: ListArgs) -> Result<()> {
         list_specs(store, false)?;
     }
     Ok(())
-}
-
-fn specs_json_items(store: &dyn Store) -> serde_json::Value {
-    let mut specs = store.list_canonical_capabilities();
-    specs.sort();
-    serde_json::Value::Array(
-        specs
-            .iter()
-            .map(|s| {
-                // The listed path is the capability's directory (its spec.md parent).
-                let dir = store
-                    .canonical_spec_path(s)
-                    .parent()
-                    .map(|p| p.to_path_buf())
-                    .unwrap_or_default();
-                serde_json::json!({
-                    "id": s,
-                    "path": dir.to_string_lossy(),
-                })
-            })
-            .collect(),
-    )
 }
 
 fn list_specs(store: &dyn Store, json: bool) -> Result<()> {
