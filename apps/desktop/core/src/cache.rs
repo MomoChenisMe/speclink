@@ -1,0 +1,232 @@
+//! 歸檔清單的 SQLite 衍生快取。
+//!
+//! 快取限縮於歸檔（archived）change 清單——歸檔量隨時間無上限成長，每次全量重解析浪費。
+//! active change／spec 清單不經此快取（見 [`crate::query`]），一律即時經 core 讀取檔案。
+//!
+//! 快取為衍生資料：可刪除後由歸檔目錄重建、帶 schema 版本標記；版本不符時重建。
+//! 檔案系統（`changes/archive/`）恆為真相，快取每次讀取都對照目錄收斂。
+
+use std::path::Path;
+
+use rusqlite::Connection;
+use serde_json::{json, Value};
+use speclink_core::store::Store;
+
+use crate::init_core_context;
+
+/// 快取 schema 版本。改動快取表結構時遞增——舊版本會被丟棄重建。
+const CACHE_VERSION: i64 = 1;
+
+/// 回傳歸檔 change 清單：`{ "archived": [ { datedName, date, name } ] }`，按 datedName 排序。
+/// 非專案回傳 `{ "archived": [] }`。
+pub fn archived_changes_at(root: &Path) -> Value {
+    let Some(ctx) = init_core_context(root) else {
+        return json!({ "archived": [] });
+    };
+    let archive_dir = ctx.workspace.spec_dir().join("changes").join("archive");
+    let mut names = read_archive_dir_names(&archive_dir);
+    names.sort();
+    let db_path = ctx.workspace.work_dir().join("desktop-cache.db");
+    // 快取失敗（如磁碟/鎖問題）時退回直接以目錄資料回應——真相恆為檔案。
+    let items = match reconcile(&db_path, &ctx.store, &names) {
+        Ok(items) => items,
+        Err(_) => names.iter().map(|n| item_for(n)).collect(),
+    };
+    json!({ "archived": items })
+}
+
+/// 列出歸檔目錄下的子目錄名（各為一個 dated_name）。目錄不存在時回傳空。
+fn read_archive_dir_names(archive_dir: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(archive_dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect()
+}
+
+/// 以目前歸檔目錄為準收斂快取，回傳排序後的清單項。
+fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::Result<Vec<Value>> {
+    if let Some(parent) = db_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let conn = Connection::open(db_path)?;
+    ensure_schema(&conn)?;
+
+    // 只為尚未快取的名稱讀 meta——這是快取相對「每次全量重解析」的省力點。
+    for name in names {
+        let cached: bool = conn.query_row(
+            "SELECT 1 FROM archived_changes WHERE dated_name = ?1",
+            [name],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+        if !cached {
+            let meta = store.read_archived_meta(name).unwrap_or_default();
+            conn.execute(
+                "INSERT OR REPLACE INTO archived_changes (dated_name, meta) VALUES (?1, ?2)",
+                rusqlite::params![name, meta],
+            )?;
+        }
+    }
+
+    // 移除已不在歸檔目錄中的殘留列（真相是目錄）。
+    let keep: std::collections::HashSet<&str> = names.iter().map(|s| s.as_str()).collect();
+    let mut stmt = conn.prepare("SELECT dated_name FROM archived_changes")?;
+    let existing: Vec<String> = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .flatten()
+        .collect();
+    drop(stmt);
+    for name in &existing {
+        if !keep.contains(name.as_str()) {
+            conn.execute("DELETE FROM archived_changes WHERE dated_name = ?1", [name])?;
+        }
+    }
+
+    let mut stmt = conn.prepare("SELECT dated_name FROM archived_changes ORDER BY dated_name")?;
+    let items: Vec<Value> = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .flatten()
+        .map(|n| item_for(&n))
+        .collect();
+    Ok(items)
+}
+
+/// 確保快取 schema 存在且版本相符；版本不符或缺失時丟棄重建。
+fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
+    let version: Option<i64> = conn
+        .query_row(
+            "SELECT version FROM schema_version LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .ok();
+    if version != Some(CACHE_VERSION) {
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS archived_changes;
+             DROP TABLE IF EXISTS schema_version;
+             CREATE TABLE schema_version (version INTEGER);
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT);",
+        )?;
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (?1)",
+            [CACHE_VERSION],
+        )?;
+    }
+    Ok(())
+}
+
+/// 由 dated_name（`YYYY-MM-DD-<name>`）廉價拆出顯示欄位，不讀檔。
+fn item_for(dated_name: &str) -> Value {
+    let (date, name) = split_dated_name(dated_name);
+    json!({ "datedName": dated_name, "date": date, "name": name })
+}
+
+/// 拆 `YYYY-MM-DD-<name>`：前 10 字為日期、第 12 字起為名稱；不符格式時 date 空、name 為全名。
+fn split_dated_name(dated: &str) -> (&str, &str) {
+    let bytes = dated.as_bytes();
+    let looks_dated = bytes.len() > 11
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[10] == b'-'
+        && bytes[..10].iter().enumerate().all(|(i, b)| {
+            if i == 4 || i == 7 {
+                *b == b'-'
+            } else {
+                b.is_ascii_digit()
+            }
+        });
+    if looks_dated {
+        (&dated[..10], &dated[11..])
+    } else {
+        ("", dated)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    /// 建立一個含歸檔 change 的暫存 fixture 專案（openspec/ 使 discover 成功）。
+    fn fixture_project(tag: &str, archived: &[&str]) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("speclink-cache-{}-{}", tag, std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let archive = root.join("openspec").join("changes").join("archive");
+        for name in archived {
+            let dir = archive.join(name);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("proposal.md"), "## Why\narchived\n").unwrap();
+        }
+        fs::create_dir_all(root.join("openspec").join("specs")).unwrap();
+        root
+    }
+
+    fn dated_names(v: &Value) -> Vec<String> {
+        v["archived"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["datedName"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn archived_list_matches_archive_dir() {
+        let root = fixture_project("match", &["2026-01-02-beta", "2026-01-01-alpha"]);
+        let got = dated_names(&archived_changes_at(&root));
+        assert_eq!(got, vec!["2026-01-01-alpha", "2026-01-02-beta"]);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rebuilds_when_cache_file_missing() {
+        let root = fixture_project("missing", &["2026-03-03-gamma"]);
+        // 第一次讀建立快取
+        let _ = archived_changes_at(&root);
+        // 刪掉快取檔，仍應由歸檔目錄重建
+        let _ = fs::remove_file(root.join(".speclink").join("desktop-cache.db"));
+        let got = dated_names(&archived_changes_at(&root));
+        assert_eq!(got, vec!["2026-03-03-gamma"]);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rebuilds_on_schema_version_mismatch() {
+        let root = fixture_project("ver", &["2026-04-04-delta"]);
+        let db_dir = root.join(".speclink");
+        fs::create_dir_all(&db_dir).unwrap();
+        // 預先寫入一個版本不符的快取
+        let conn = Connection::open(db_dir.join("desktop-cache.db")).unwrap();
+        conn.execute("CREATE TABLE schema_version (version INTEGER)", []).unwrap();
+        conn.execute("INSERT INTO schema_version (version) VALUES (999)", []).unwrap();
+        drop(conn);
+        let got = dated_names(&archived_changes_at(&root));
+        assert_eq!(got, vec!["2026-04-04-delta"], "stale-version cache is rebuilt");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn active_list_does_not_create_cache_db() {
+        let root = fixture_project("active", &["2026-05-05-epsilon"]);
+        let _ = crate::query::list_changes_at(&root);
+        let _ = crate::query::list_specs_at(&root);
+        assert!(
+            !root.join(".speclink").join("desktop-cache.db").exists(),
+            "active listing must not touch the archived cache"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn non_project_yields_empty_archived() {
+        let root = std::env::temp_dir().join(format!("speclink-cache-none-{}", std::process::id()));
+        let _ = fs::create_dir_all(&root);
+        assert_eq!(archived_changes_at(&root), json!({ "archived": [] }));
+        let _ = fs::remove_dir_all(&root);
+    }
+}

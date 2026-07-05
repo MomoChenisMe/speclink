@@ -7,3 +7,8 @@ openspec/.vector-search.db*
 
 # Speclink app data
 .speclink/
+
+# JS workspace (desktop app + shared UI)
+node_modules/
+apps/desktop/dist/
+apps/desktop/src-tauri/gen/
