@@ -77,7 +77,9 @@ fn store_paragraph(spec_dir: &str, store: StoreKind) -> String {
     }
 }
 
-fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind) -> String {
+/// The SPECLINK marker block for a built-in tool — pub so the SDK's
+/// `instructions.render` shares this exact generation path with `init`/`update`.
+pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind) -> String {
     // Codex differs: `$speclink-` prefix, no plan mode, and no verify skill (for_codex=false).
     let (p, plan_line) = match tool {
         Tool::Codex => ("$speclink-", "- Requirements change mid-work? `ingest` → resume `apply`"),
@@ -125,7 +127,7 @@ fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind) -> String {
 /// Instructions body for a custom tool's marker block — the neutral wording: skills are
 /// referenced by their generated names (`speclink-<verb>`, no slash prefix), there is no
 /// plan-mode line, and an invocation sentence states how verbs are executed.
-fn custom_instructions_body(spec_dir: &str, tool: &CustomTool, store: StoreKind) -> String {
+pub fn custom_instructions_body(spec_dir: &str, tool: &CustomTool, store: StoreKind) -> String {
     let invocation_line = match tool.invocation {
         crate::config::Invocation::Cli => {
             "Speclink verbs are shell commands: run `speclink <verb> [arguments]`."
