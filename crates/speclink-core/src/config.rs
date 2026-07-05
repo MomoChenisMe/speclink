@@ -23,6 +23,30 @@ pub struct AppConfig {
     pub audit: Option<bool>,
     #[serde(default)]
     pub tools: Vec<ToolEntry>,
+    /// Remote connection settings. Presence of the section (even empty) is the
+    /// remote-mode signal — a bare `remote:` key must parse as present, not vanish
+    /// into fs mode, so missing url fails loudly downstream.
+    #[serde(default, deserialize_with = "de_remote_section")]
+    pub remote: Option<RemoteConfig>,
+}
+
+/// `remote:` section of `.speclink.yaml` — connection settings for team mode.
+/// Both fields are optional at the parse layer: url may come from the
+/// SPECLINK_STORE_URL environment variable instead (committed files can omit it).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct RemoteConfig {
+    pub url: Option<String>,
+    pub repo: Option<String>,
+}
+
+/// Map a present-but-null `remote:` key to an empty section (Some) instead of None,
+/// so "section present" stays distinguishable from "key absent" (serde default).
+fn de_remote_section<'de, D>(d: D) -> Result<Option<RemoteConfig>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let v = Option::<RemoteConfig>::deserialize(d)?;
+    Ok(Some(v.unwrap_or_default()))
 }
 
 /// One entry of the `tools:` list — a built-in tool name string (claude, codex) or a
@@ -761,6 +785,53 @@ mod tests {
         };
         let err = d.validate().unwrap_err();
         assert!(err.contains("skills_dir"), "must name the missing field: {err}");
+    }
+
+    // --- remote section: optional connection settings (url / repo) ---
+
+    #[test]
+    fn remote_section_with_url_and_repo_parses_both_fields() {
+        let a = app("remote:\n  url: https://team.example.com/speclink/projects/foo\n  repo: backend\n");
+        let r = a.remote.as_ref().expect("remote section present");
+        assert_eq!(
+            r.url.as_deref(),
+            Some("https://team.example.com/speclink/projects/foo")
+        );
+        assert_eq!(r.repo.as_deref(), Some("backend"));
+    }
+
+    #[test]
+    fn remote_section_with_only_repo_leaves_url_absent() {
+        // Committed files may omit url (supplied at runtime via SPECLINK_STORE_URL).
+        let a = app("remote:\n  repo: backend\n");
+        let r = a.remote.as_ref().expect("remote section present");
+        assert_eq!(r.url, None);
+        assert_eq!(r.repo.as_deref(), Some("backend"));
+    }
+
+    #[test]
+    fn empty_remote_section_is_present_with_absent_fields() {
+        // Both `remote: {}` and a bare `remote:` key mean "section present, fields
+        // empty" — a bare key must not silently read as fs mode (the mode signal is
+        // key presence, and missing url must fail loudly downstream, not vanish here).
+        for yaml in ["remote: {}\n", "remote:\n"] {
+            let a = app(yaml);
+            let r = a
+                .remote
+                .as_ref()
+                .unwrap_or_else(|| panic!("remote section present for {yaml:?}"));
+            assert_eq!(r.url, None);
+            assert_eq!(r.repo, None);
+        }
+    }
+
+    #[test]
+    fn config_without_remote_key_parses_with_section_absent() {
+        // Backward compatibility: existing .speclink.yaml files without a remote key
+        // keep parsing, other fields intact, and the section reads as absent.
+        let a = app("tools:\n  - claude\n  - codex\n");
+        assert!(a.remote.is_none());
+        assert_eq!(a.tools.len(), 2);
     }
 
     // --- existing two-layer resolvers keep their observable behavior ---

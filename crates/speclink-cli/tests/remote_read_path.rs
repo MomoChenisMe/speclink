@@ -73,14 +73,14 @@ impl TempProject {
         TempProject { dir }
     }
 
-    /// A remote-mode project bound to `url`.
+    /// A remote-mode project bound to `url` (remote section in .speclink.yaml).
     fn remote(tag: &str, url: &str, repo: Option<&str>) -> TempProject {
         let p = TempProject::new(tag);
-        let mut yaml = format!("url: {url}\n");
+        let mut yaml = format!("remote:\n  url: {url}\n");
         if let Some(r) = repo {
-            yaml.push_str(&format!("repo: {r}\n"));
+            yaml.push_str(&format!("  repo: {r}\n"));
         }
-        std::fs::write(p.dir.join(".speclink.remote.yaml"), yaml).unwrap();
+        std::fs::write(p.dir.join(".speclink.yaml"), yaml).unwrap();
         p
     }
 
@@ -308,7 +308,7 @@ fn coexisting_spec_dir_warns_once_and_remote_wins() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     let warnings: Vec<&str> = stderr
         .lines()
-        .filter(|l| l.contains(".speclink.remote.yaml") && l.contains("remote mode"))
+        .filter(|l| l.contains(".speclink.yaml") && l.contains("remote mode"))
         .collect();
     assert_eq!(warnings.len(), 1, "exactly one coexistence warning: {stderr}");
 }

@@ -79,8 +79,8 @@ impl TempProject {
     fn remote(tag: &str, url: &str) -> TempProject {
         let p = TempProject::new(tag);
         std::fs::write(
-            p.dir.join(".speclink.remote.yaml"),
-            format!("url: {url}\nrepo: backend\n"),
+            p.dir.join(".speclink.yaml"),
+            format!("remote:\n  url: {url}\n  repo: backend\n"),
         )
         .unwrap();
         p

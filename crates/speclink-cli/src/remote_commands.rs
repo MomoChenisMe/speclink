@@ -26,8 +26,7 @@ fn remote_ctx() -> Result<Option<RemoteCtx>> {
     };
     if resolution.coexists {
         eprintln!(
-            "speclink: warning: {} and {}/ both exist — remote mode takes effect",
-            core::workspace::REMOTE_FILE,
+            "speclink: warning: the remote section in .speclink.yaml and {}/ both exist — remote mode takes effect",
             ws.spec_dir_name
         );
     }
@@ -287,13 +286,13 @@ fn cmd_link(a: LinkArgs) -> Result<()> {
                 ensure_repo_registered(&whoami, repo)?;
                 println!("{} Repo '{repo}' is registered in this project", color::green("✓"));
             }
-            core::init::write_connection_file(&root, &a.url, a.repo.as_deref())?;
+            core::init::write_remote_section(&root, &a.url, a.repo.as_deref())?;
             println!("{} Linked to {}", color::green("✓"), a.url);
             git_reference_warning(&root, a.repo.as_deref(), &whoami);
             Ok(())
         }
         None => {
-            core::init::write_connection_file(&root, &a.url, a.repo.as_deref())?;
+            core::init::write_remote_section(&root, &a.url, a.repo.as_deref())?;
             println!("{} Linked to {}", color::green("✓"), a.url);
             println!("  No credentials yet — run `speclink auth login` to connect");
             Ok(())
@@ -305,12 +304,13 @@ fn cmd_unlink() -> Result<()> {
     let root = core::workspace::Workspace::discover_cwd()
         .map(|ws| ws.root)
         .unwrap_or(std::env::current_dir()?);
-    let file = root.join(core::workspace::REMOTE_FILE);
-    if !file.is_file() {
-        bail!("No remote connection to remove ({} not found)", core::workspace::REMOTE_FILE);
+    if !core::init::remove_remote_section(&root)? {
+        bail!("No remote connection to remove (no `remote:` section in .speclink.yaml)");
     }
-    std::fs::remove_file(&file)?;
-    println!("{} Removed {} — back to the local fs store", color::green("✓"), core::workspace::REMOTE_FILE);
+    println!(
+        "{} Removed the remote section from .speclink.yaml — back to the local fs store",
+        color::green("✓")
+    );
     Ok(())
 }
 
