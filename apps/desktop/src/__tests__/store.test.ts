@@ -27,6 +27,8 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     getSpecDocument: vi.fn().mockResolvedValue("# spec"),
     changeCapabilities: vi.fn().mockResolvedValue(["desktop-app"]),
     runVerb: vi.fn().mockResolvedValue({ valid: true }),
+    getArchivedDocument: vi.fn().mockResolvedValue(null),
+    archivedCapabilities: vi.fn().mockResolvedValue([]),
     ...over,
   };
 }

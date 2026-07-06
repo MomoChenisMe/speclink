@@ -1606,8 +1606,8 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
 fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
     match a.command {
         InProgressCommands::Add { name } => {
-            let ws = require_workspace()?;
-            core::inprogress::add(&ws, &name)?;
+            let (ws, store) = open_project()?;
+            core::inprogress::add(&store, &name, core::util::git_identity(&ws.root).as_deref(), None)?;
         }
     }
     Ok(())

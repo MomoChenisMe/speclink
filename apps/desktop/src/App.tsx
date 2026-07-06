@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { Archive, GitBranch, FileText, StickyNote, Settings, FolderOpen } from "lucide-react";
 import {
   KanbanBoard,
@@ -53,6 +54,14 @@ export function App({ dataSource }: AppProps) {
 
   useEffect(() => {
     void s.refresh();
+    // 檔案監看的宿主層 wiring：外部寫者（CLI、agent、編輯器）改動 openspec/
+    // 後，後端去抖發出 workspace-changed，前端一律整批 refresh。卸載時解除。
+    const unlisten = listen("workspace-changed", () => {
+      void s.refresh();
+    });
+    return () => {
+      void unlisten.then((f) => f());
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useStore]);
 
@@ -117,7 +126,13 @@ export function App({ dataSource }: AppProps) {
               onArchive={s.requestArchive}
             />
           ) : (
-            <ArchivedList archived={s.archived} query={s.query} onQuery={s.setQuery} />
+            <ArchivedList
+              archived={s.archived}
+              query={s.query}
+              onQuery={s.setQuery}
+              loadDocument={(datedName, artifact) => dataSource.getArchivedDocument(datedName, artifact)}
+              loadCapabilities={(datedName) => dataSource.archivedCapabilities(datedName)}
+            />
           )}
         </main>
       </div>
@@ -136,8 +151,8 @@ export function App({ dataSource }: AppProps) {
           await dataSource.setTaskDone(change, ordinal, done);
           await s.refresh();
         }}
-        onMoveTask={async (change, from, to) => {
-          await dataSource.moveTask(change, from, to);
+        onMoveTask={async (change, from, to, before) => {
+          await dataSource.moveTask(change, from, to, before);
           await s.refresh();
         }}
       />

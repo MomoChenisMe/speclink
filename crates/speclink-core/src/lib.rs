@@ -20,6 +20,8 @@ pub mod skills;
 pub mod status;
 pub mod store;
 pub mod tasks;
+#[cfg(test)]
+pub(crate) mod teststore;
 pub mod util;
 pub mod validate;
 pub mod workspace;

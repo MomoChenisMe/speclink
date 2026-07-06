@@ -29,6 +29,52 @@ export function parseTaskDoc(markdown: string | null | undefined): TaskDocItem[]
   return items;
 }
 
+/** 拖放落點解析結果：以第 to 個任務為錨；before=true＝插錨前（組首落點）。 */
+export interface DropTarget {
+  to: number;
+  before?: boolean;
+}
+
+/**
+ * 把 dnd 的 over id 解析為寫回用的落點（design D6）：
+ * - over 為任務 ordinal → `{ to }`（側別留給後端方向推斷）
+ * - over 為群組標題 id（`g-<items 索引>`）→ 標題是「組界槽」，依 active 相對
+ *   標題的位置雙向解析：上方來＝成為該群組組首（組首任務為錨、before=true）；
+ *   下方來＝移到標題之前、成為上一群組末任務（標題前最近任務為錨、before=false）
+ *   ——否則組首任務永遠拖不回上一群組末位。
+ * - 該側無任務可錨定（空群組、檔首）、錨即自己、落點即自己 → null（不觸發寫回）
+ */
+export function resolveDropTarget(
+  items: TaskDocItem[],
+  activeOrdinal: number,
+  overId: number | string,
+): DropTarget | null {
+  if (typeof overId === "number") {
+    return overId === activeOrdinal ? null : { to: overId };
+  }
+  const headingIndex = Number(overId.replace(/^g-/, ""));
+  if (!Number.isInteger(headingIndex) || items[headingIndex]?.kind !== "group") return null;
+  const activeIndex = items.findIndex((it) => it.kind === "task" && it.ordinal === activeOrdinal);
+  if (activeIndex < 0) return null;
+  if (activeIndex < headingIndex) {
+    // 上方來：錨定標題後第一個任務（同群組組首），插其前。
+    for (let i = headingIndex + 1; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "group") return null; // 標題下無任務（空群組）
+      return item.ordinal === activeOrdinal ? null : { to: item.ordinal, before: true };
+    }
+    return null;
+  }
+  // 下方來：錨定標題前最近的任務（上一群組末位），插其後。
+  for (let i = headingIndex - 1; i >= 0; i--) {
+    const item = items[i];
+    if (item.kind === "task") {
+      return item.ordinal === activeOrdinal ? null : { to: item.ordinal, before: false };
+    }
+  }
+  return null; // 標題之前無任務（檔首）
+}
+
 /** 解析 tasks.md 的 checkbox 行（`- [ ]` / `- [x]`）為任務清單。非 checkbox 行忽略。 */
 export function parseTasks(markdown: string | null | undefined): TaskLine[] {
   if (!markdown) return [];

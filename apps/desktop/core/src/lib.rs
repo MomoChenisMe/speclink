@@ -11,6 +11,8 @@ use speclink_fs::FsStore;
 pub mod cache;
 pub mod manage;
 pub mod query;
+#[cfg(test)]
+pub(crate) mod testfixture;
 pub mod verbs;
 
 /// 桌面 app 對單一本地 openspec/ 專案的執行語境：探索到的 workspace ＋ 其 fs store。

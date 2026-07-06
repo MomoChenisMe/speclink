@@ -443,3 +443,56 @@ fn apply_delta_to_canonical(
     store.write_canonical_spec(cap, &out)?;
     Ok(counts)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{archive, ArchiveOptions};
+    use crate::store::Store;
+    use crate::teststore::TestStore;
+    use crate::util;
+    use crate::workspace::Workspace;
+
+    #[test]
+    fn archive_preserves_started_fields_and_stamps_the_archived_station() {
+        // A change carrying all three started_* fields (plus created_*) must
+        // arrive in the archive with every lifecycle station intact —
+        // started_* byte-for-byte, archived_at appended by the stamp. The host
+        // root deliberately does not exist: the skip-specs path touches no
+        // host files (git probes fail soft, no snapshot is written), so the
+        // test needs no filesystem at all.
+        let ws = Workspace {
+            root: std::env::temp_dir().join("speclink-archive-test-ghost-root"),
+            spec_dir_name: "openspec".to_string(),
+        };
+        let meta = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: Base Line <base@example.com>\ncreated_with: claude\nstarted_at: 2026-07-03\nstarted_by: Worker <w@example.com>\nstarted_with: claude\n";
+        let store = TestStore::with_meta("demo", meta);
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 done\n");
+        let change = crate::model::find_change(&store, "demo").unwrap();
+
+        let outcome = archive(
+            &ws,
+            &store,
+            &change,
+            &ArchiveOptions {
+                skip_specs: true,
+                no_validate: true,
+                mark_tasks_complete: false,
+            },
+        )
+        .unwrap();
+
+        let today = util::today();
+        assert_eq!(outcome.dated_name, format!("{today}-demo"));
+        let archived = store.read_archived_meta(&outcome.dated_name).unwrap();
+        assert!(
+            archived.starts_with(meta),
+            "created_* and started_* must survive archive byte-for-byte, got: {archived}"
+        );
+        assert!(archived.contains(&format!("archived_at: {today}\n")));
+        // All three stations coexist on the archived document.
+        for field in ["created:", "started_at:", "started_by:", "started_with:", "archived_at:"] {
+            assert!(archived.contains(field), "missing station field {field}");
+        }
+        assert!(!store.change_exists("demo"), "active change moved into the archive");
+    }
+}

@@ -66,33 +66,45 @@ fn find(store: &dyn Store, change: &str) -> Result<speclink_core::model::Change,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use crate::testfixture::FixtureRoot;
 
-    fn repo_root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("..")
+    fn valid_fixture(tag: &str) -> FixtureRoot {
+        let fx = FixtureRoot::new(tag);
+        fx.add_change("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        fx.write(
+            "openspec/changes/demo/specs/cap-x/spec.md",
+            "## ADDED Requirements\n\n### Requirement: Demo works\n\nIt SHALL work.\n\n#### Scenario: works\n\n- **WHEN** used\n- **THEN** it works\n",
+        );
+        fx
     }
 
     #[test]
     fn validate_reports_valid_for_a_valid_change() {
-        let v = validate_at(&repo_root(), "desktop-shell-and-browser").expect("validate ok");
+        let fx = valid_fixture("v-valid");
+        let v = validate_at(fx.root(), "demo").expect("validate ok");
         assert_eq!(v["valid"], true);
         assert!(v.get("errors").is_some() && v.get("warnings").is_some());
     }
 
     #[test]
     fn validate_unknown_change_errors() {
-        assert!(validate_at(&repo_root(), "no-such-change-xyz").is_err());
+        let fx = valid_fixture("v-unknown");
+        assert!(validate_at(fx.root(), "no-such-change-xyz").is_err());
     }
 
     #[test]
     fn analyze_returns_report_with_findings_array() {
-        let v = analyze_at(&repo_root(), "desktop-shell-and-browser").expect("analyze ok");
+        let fx = valid_fixture("v-analyze");
+        let v = analyze_at(fx.root(), "demo").expect("analyze ok");
         assert!(v["findings"].is_array(), "report exposes findings array");
     }
 
     #[test]
     fn archive_unmet_prerequisite_errors_and_does_not_archive() {
-        // 不存在的 change 無法歸檔——安全地驗證失敗語意，不觸碰真實 change 檔案。
-        assert!(archive_at(&repo_root(), "no-such-change-xyz").is_err());
+        // 不存在的 change 無法歸檔——安全地驗證失敗語意，不觸碰 fixture change 檔案。
+        let fx = valid_fixture("v-archive");
+        assert!(archive_at(fx.root(), "no-such-change-xyz").is_err());
+        let ctx = crate::init_core_context(fx.root()).unwrap();
+        assert!(speclink_core::store::Store::change_exists(&ctx.store, "demo"));
     }
 }

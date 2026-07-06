@@ -1,41 +1,149 @@
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Code2, Copy, FileText, ListChecks, PenTool } from "lucide-react";
 
 import type { ArchivedItem } from "../adapter";
+import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
+import { Markdown } from "./Markdown";
+import { TaskList } from "./TaskList";
 
-/** Spectra 式封存列：日期＋名稱＋複製完整封存名。 */
-export function ArchivedRow({ item }: { item: ArchivedItem }) {
+type Doc = string | null | undefined;
+
+/** 展開列懶載入的文件載入器（dated name 定址；封存目錄為真相）。 */
+export interface ArchivedLoaders {
+  loadDocument: (datedName: string, artifact: string) => Promise<string | null>;
+  loadCapabilities: (datedName: string) => Promise<string[]>;
+}
+
+/** Spectra 式封存列：日期＋名稱＋任務數徽章＋複製；點擊展開唯讀分頁檢視。 */
+export function ArchivedRow({ item, loaders }: { item: ArchivedItem; loaders: ArchivedLoaders }) {
   const [copied, setCopied] = useState(false);
-  const copy = () => {
+  const [expanded, setExpanded] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [proposal, setProposal] = useState<Doc>();
+  const [design, setDesign] = useState<Doc>();
+  const [tasksMd, setTasksMd] = useState<Doc>();
+  const [specDocs, setSpecDocs] = useState<Record<string, string | null>>({});
+
+  const copy = (e: React.MouseEvent) => {
+    e.stopPropagation();
     void navigator.clipboard?.writeText(item.datedName);
     setCopied(true);
     setTimeout(() => setCopied(false), 1200);
   };
+
+  const toggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    // 內容懶載入：首次展開才讀封存文件，收合再展開不重讀。
+    if (next && !loaded) {
+      setLoaded(true);
+      const { loadDocument, loadCapabilities } = loaders;
+      void loadDocument(item.datedName, "proposal.md").then(setProposal);
+      void loadDocument(item.datedName, "design.md").then(setDesign);
+      void loadDocument(item.datedName, "tasks.md").then(setTasksMd);
+      void loadCapabilities(item.datedName).then(async (caps) => {
+        const entries = await Promise.all(
+          caps.map(async (cap) => [cap, await loadDocument(item.datedName, `specs/${cap}/spec.md`)] as const),
+        );
+        setSpecDocs(Object.fromEntries(entries));
+      });
+    }
+  };
+
+  const badge =
+    item.tasksTotal != null && item.tasksDone != null ? `${item.tasksDone}/${item.tasksTotal}` : null;
+  const specCount = Object.keys(specDocs).length;
+
   return (
-    <div className="group flex items-center gap-2.5 rounded-lg border border-border bg-card p-3">
-      <span className="text-xs text-muted-foreground tabular-nums shrink-0">{item.date}</span>
-      <span className="font-medium text-sm truncate flex-1">{item.name}</span>
+    <div className="rounded-lg border border-border bg-card">
       <button
         type="button"
-        aria-label="複製封存名稱"
-        className={`shrink-0 text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-        onClick={copy}
+        className="group flex items-center gap-2.5 w-full p-3 text-left"
+        aria-expanded={expanded}
+        onClick={toggle}
       >
-        {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+        {expanded ? (
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        )}
+        <span className="text-xs text-muted-foreground tabular-nums shrink-0">{item.date}</span>
+        <span className="font-medium text-sm truncate flex-1">{item.name}</span>
+        {badge && (
+          <Badge variant="secondary" className="shrink-0 tabular-nums">
+            {badge}
+          </Badge>
+        )}
+        <span
+          role="button"
+          aria-label="複製封存名稱"
+          className={`shrink-0 text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          onClick={copy}
+        >
+          {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+        </span>
       </button>
+      {expanded && (
+        <div className="px-3 pb-3 border-t border-border pt-3">
+          <Tabs defaultValue="proposal" className="flex flex-col">
+            <TabsList>
+              <TabsTrigger value="proposal">
+                <FileText className="h-3.5 w-3.5" /> 提案
+              </TabsTrigger>
+              <TabsTrigger value="design">
+                <PenTool className="h-3.5 w-3.5" /> 設計
+              </TabsTrigger>
+              <TabsTrigger value="tasks">
+                <ListChecks className="h-3.5 w-3.5" /> 任務
+                {badge && <Badge variant="secondary" className="ml-1">{badge}</Badge>}
+              </TabsTrigger>
+              <TabsTrigger value="specs">
+                <Code2 className="h-3.5 w-3.5" /> 規格{specCount > 0 ? `＋${specCount}` : ""}
+              </TabsTrigger>
+            </TabsList>
+            <div className="pt-3 max-h-[50vh] overflow-y-auto">
+              <TabsContent value="proposal">
+                <Markdown content={proposal ?? null} empty="（無提案文件）" />
+              </TabsContent>
+              <TabsContent value="design">
+                <Markdown content={design ?? null} empty="（此變更無設計文件）" />
+              </TabsContent>
+              <TabsContent value="tasks">
+                {/* 封存檢視唯讀：不接 onToggle/onMove，核取方塊 disabled。 */}
+                <TaskList markdown={tasksMd ?? null} readOnly />
+              </TabsContent>
+              <TabsContent value="specs">
+                {specCount === 0 ? (
+                  <div className="text-muted-foreground text-sm py-6">（此變更無 delta 規格）</div>
+                ) : (
+                  Object.entries(specDocs).map(([cap, doc]) => (
+                    <div key={cap} className="mb-4">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                        {cap}
+                      </div>
+                      <Markdown content={doc} empty="（無內容）" />
+                    </div>
+                  ))
+                )}
+              </TabsContent>
+            </div>
+          </Tabs>
+        </div>
+      )}
     </div>
   );
 }
 
-export interface ArchivedListProps {
+export interface ArchivedListProps extends ArchivedLoaders {
   archived: ArchivedItem[];
   query: string;
   onQuery: (q: string) => void;
 }
 
-/** 已封存獨立頁：搜尋＋列表。 */
-export function ArchivedList({ archived, query, onQuery }: ArchivedListProps) {
+/** 已封存獨立頁：搜尋＋可展開檢視的列表。 */
+export function ArchivedList({ archived, query, onQuery, loadDocument, loadCapabilities }: ArchivedListProps) {
   const q = query.trim().toLowerCase();
   const filtered = archived.filter((a) => a.name.toLowerCase().includes(q));
   return (
@@ -51,7 +159,9 @@ export function ArchivedList({ archived, query, onQuery }: ArchivedListProps) {
         {filtered.length === 0 ? (
           <div className="text-muted-foreground text-sm py-8 text-center">沒有已封存的變更</div>
         ) : (
-          filtered.map((a) => <ArchivedRow key={a.datedName} item={a} />)
+          filtered.map((a) => (
+            <ArchivedRow key={a.datedName} item={a} loaders={{ loadDocument, loadCapabilities }} />
+          ))
         )}
       </div>
     </div>

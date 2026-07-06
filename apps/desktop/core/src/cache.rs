@@ -15,7 +15,8 @@ use speclink_core::store::Store;
 use crate::init_core_context;
 
 /// 快取 schema 版本。改動快取表結構時遞增——舊版本會被丟棄重建。
-const CACHE_VERSION: i64 = 1;
+/// v2：archived_changes 加 tasks_total／tasks_done（清單徽章，首次收斂後零解析）。
+const CACHE_VERSION: i64 = 2;
 
 /// 回傳歸檔 change 清單：`{ "archived": [ { datedName, date, name } ] }`，按 datedName 排序。
 /// 非專案回傳 `{ "archived": [] }`。
@@ -55,7 +56,8 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
     let conn = Connection::open(db_path)?;
     ensure_schema(&conn)?;
 
-    // 只為尚未快取的名稱讀 meta——這是快取相對「每次全量重解析」的省力點。
+    // 只為尚未快取的名稱讀 meta 與解析任務計數——這是快取相對「每次全量重解析」
+    // 的省力點；之後清單讀取零解析。
     for name in names {
         let cached: bool = conn.query_row(
             "SELECT 1 FROM archived_changes WHERE dated_name = ?1",
@@ -65,9 +67,14 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
         .unwrap_or(false);
         if !cached {
             let meta = store.read_archived_meta(name).unwrap_or_default();
+            let counts = store.read_archived_artifact(name, "tasks.md").map(|text| {
+                let tasks = speclink_core::tasks::parse(&text);
+                let (total, complete, _) = speclink_core::tasks::progress(&tasks);
+                (total as i64, complete as i64)
+            });
             conn.execute(
-                "INSERT OR REPLACE INTO archived_changes (dated_name, meta) VALUES (?1, ?2)",
-                rusqlite::params![name, meta],
+                "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![name, meta, counts.map(|c| c.0), counts.map(|c| c.1)],
             )?;
         }
     }
@@ -86,11 +93,27 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
         }
     }
 
-    let mut stmt = conn.prepare("SELECT dated_name FROM archived_changes ORDER BY dated_name")?;
+    let mut stmt = conn.prepare(
+        "SELECT dated_name, tasks_total, tasks_done FROM archived_changes ORDER BY dated_name",
+    )?;
     let items: Vec<Value> = stmt
-        .query_map([], |r| r.get::<_, String>(0))?
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<i64>>(1)?,
+                r.get::<_, Option<i64>>(2)?,
+            ))
+        })?
         .flatten()
-        .map(|n| item_for(&n))
+        .map(|(n, total, done)| {
+            let mut item = item_for(&n);
+            // 無 tasks.md 的封存項徽章欄位缺席（前端據此不顯示徽章）。
+            if let (Some(total), Some(done)) = (total, done) {
+                item["tasksTotal"] = json!(total);
+                item["tasksDone"] = json!(done);
+            }
+            item
+        })
         .collect();
     Ok(items)
 }
@@ -109,7 +132,7 @@ fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
             "DROP TABLE IF EXISTS archived_changes;
              DROP TABLE IF EXISTS schema_version;
              CREATE TABLE schema_version (version INTEGER);
-             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT);",
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER);",
         )?;
         conn.execute(
             "INSERT INTO schema_version (version) VALUES (?1)",
@@ -219,6 +242,80 @@ mod tests {
             !root.join(".speclink").join("desktop-cache.db").exists(),
             "active listing must not touch the archived cache"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn task_counts_converge_once_and_read_zero_parse_afterwards() {
+        let root = fixture_project("counts", &["2026-06-06-zeta"]);
+        let dir = root.join("openspec").join("changes").join("archive").join("2026-06-06-zeta");
+        fs::write(dir.join("tasks.md"), "## 1. G\n\n- [x] 1.1 a\n- [x] 1.2 b\n- [ ] 1.3 c\n").unwrap();
+
+        let v = archived_changes_at(&root);
+        let item = &v["archived"].as_array().unwrap()[0];
+        assert_eq!(item["tasksTotal"], 3, "first read converges counts into the cache: {item}");
+        assert_eq!(item["tasksDone"], 2);
+
+        // 首次收斂後清單讀取零解析：改動檔案不影響已快取的計數
+        //（封存內容本就不再變動，這證明讀取路徑不再碰 tasks.md）。
+        fs::write(dir.join("tasks.md"), "- [ ] only one\n").unwrap();
+        let v2 = archived_changes_at(&root);
+        let item2 = &v2["archived"].as_array().unwrap()[0];
+        assert_eq!(item2["tasksTotal"], 3, "cached counts must be served without re-parsing");
+        assert_eq!(item2["tasksDone"], 2);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn archived_change_without_tasks_md_has_no_badge_fields() {
+        let root = fixture_project("nocounts", &["2026-06-07-eta"]);
+        let v = archived_changes_at(&root);
+        let item = &v["archived"].as_array().unwrap()[0];
+        assert!(item.get("tasksTotal").is_none(), "no tasks.md → badge fields absent: {item}");
+        assert!(item.get("tasksDone").is_none());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn v1_cache_is_dropped_and_rebuilt_with_counts() {
+        let root = fixture_project("v1", &["2026-06-08-theta"]);
+        let dir = root.join("openspec").join("changes").join("archive").join("2026-06-08-theta");
+        fs::write(dir.join("tasks.md"), "- [x] 1.1 done\n").unwrap();
+        // 預寫一個 v1 快取（舊表結構、已含該列）——版本升級須整表重建。
+        let db_dir = root.join(".speclink");
+        fs::create_dir_all(&db_dir).unwrap();
+        let conn = Connection::open(db_dir.join("desktop-cache.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_version (version INTEGER);
+             INSERT INTO schema_version (version) VALUES (1);
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT);
+             INSERT INTO archived_changes (dated_name, meta) VALUES ('2026-06-08-theta', '');",
+        )
+        .unwrap();
+        drop(conn);
+
+        let v = archived_changes_at(&root);
+        let item = &v["archived"].as_array().unwrap()[0];
+        assert_eq!(item["tasksTotal"], 1, "v1 cache must be rebuilt so counts converge: {item}");
+        assert_eq!(item["tasksDone"], 1);
+        let conn = Connection::open(db_dir.join("desktop-cache.db")).unwrap();
+        let version: i64 = conn
+            .query_row("SELECT version FROM schema_version LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 2, "schema version stamped to v2 after rebuild");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn cache_failure_falls_back_to_directory_listing_without_badges() {
+        let root = fixture_project("fallback", &["2026-06-09-iota"]);
+        // 讓快取檔位置變成目錄——Connection::open 失敗，走目錄直讀退回路徑。
+        fs::create_dir_all(root.join(".speclink").join("desktop-cache.db")).unwrap();
+        let v = archived_changes_at(&root);
+        let got = dated_names(&v);
+        assert_eq!(got, vec!["2026-06-09-iota"], "fallback still serves the directory truth");
+        let item = &v["archived"].as_array().unwrap()[0];
+        assert!(item.get("tasksTotal").is_none(), "fallback items carry no badge fields");
         let _ = fs::remove_dir_all(&root);
     }
 

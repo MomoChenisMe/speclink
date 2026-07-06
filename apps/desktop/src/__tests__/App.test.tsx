@@ -1,8 +1,26 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 
 import { App } from "../App";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
+
+// 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發。
+const { workspaceHandlers } = vi.hoisted(() => ({
+  workspaceHandlers: [] as Array<() => void>,
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn((event: string, handler: () => void) => {
+    if (event === "workspace-changed") workspaceHandlers.push(handler);
+    return Promise.resolve(() => {
+      const i = workspaceHandlers.indexOf(handler);
+      if (i >= 0) workspaceHandlers.splice(i, 1);
+    });
+  }),
+}));
+
+beforeEach(() => {
+  workspaceHandlers.length = 0;
+});
 
 const STATUS: StatusReport = {
   changeName: "desktop-shell-and-browser",
@@ -28,6 +46,8 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     setTaskDone: vi.fn().mockResolvedValue(undefined),
     moveTask: vi.fn().mockResolvedValue(undefined),
     runVerb: vi.fn().mockResolvedValue({ valid: true }),
+    getArchivedDocument: vi.fn().mockResolvedValue(null),
+    archivedCapabilities: vi.fn().mockResolvedValue([]),
     ...over,
   };
 }
@@ -60,6 +80,20 @@ describe("App (kanban primary + rich detail)", () => {
     await waitFor(() => screen.getByText("刪除變更？"));
     fireEvent.click(screen.getByRole("button", { name: "刪除" }));
     await waitFor(() => expect(ds.deleteChange).toHaveBeenCalledWith("desktop-shell-and-browser"));
+  });
+
+  it("workspace-changed event triggers a full refresh (external writers reflected)", async () => {
+    const ds = fakeDataSource();
+    render(<App dataSource={ds} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    await waitFor(() => expect(workspaceHandlers.length).toBeGreaterThan(0));
+    const before = (ds.listChanges as Mock).mock.calls.length;
+    // 模擬檔案監看發出的 Tauri 事件（外部 CLI/agent 寫入後）。
+    workspaceHandlers.forEach((h) => h());
+    await waitFor(() =>
+      expect((ds.listChanges as Mock).mock.calls.length).toBeGreaterThan(before)
+    );
+    expect((ds.listArchived as Mock).mock.calls.length).toBeGreaterThan(1);
   });
 
   it("archived entry in the top bar jumps to the archived list", async () => {

@@ -144,6 +144,19 @@ impl Store for FsStore {
         Ok(dir)
     }
 
+    fn read_change_meta(&self, name: &str) -> Option<String> {
+        let dir = self.layout.change_dir(name);
+        if !dir.is_dir() {
+            return None;
+        }
+        util::read_opt(&dir.join(".openspec.yaml"))
+    }
+
+    fn write_change_meta(&self, name: &str, content: &str) -> Result<()> {
+        util::write_file(&self.layout.change_dir(name).join(".openspec.yaml"), content)?;
+        Ok(())
+    }
+
     fn updated_at_secs(&self, name: &str) -> u64 {
         // Newest file mtime inside the change (recursive), truncated to whole
         // seconds — the engine's "most recently modified" sort key.
@@ -244,6 +257,29 @@ impl Store for FsStore {
 
     fn read_archived_meta(&self, dated_name: &str) -> Option<String> {
         util::read_opt(&self.layout.archived_change_dir(dated_name).join(".openspec.yaml"))
+    }
+
+    fn read_archived_artifact(&self, dated_name: &str, artifact: &str) -> Option<String> {
+        let path = self
+            .layout
+            .archived_change_dir(dated_name)
+            .join(artifact.split('/').collect::<std::path::PathBuf>());
+        util::read_opt(&path)
+    }
+
+    fn archived_delta_capabilities(&self, dated_name: &str) -> Vec<String> {
+        // 與 active 的 delta_capabilities 同規則：恰為 specs/<cap>/spec.md 一層。
+        let specs = self.layout.archived_change_dir(dated_name).join("specs");
+        let mut caps = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&specs) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() && entry.path().join("spec.md").is_file() {
+                    caps.push(entry.file_name().to_string_lossy().to_string());
+                }
+            }
+        }
+        caps.sort();
+        caps
     }
 
     fn write_archived_meta(&self, dated_name: &str, content: &str) -> Result<()> {

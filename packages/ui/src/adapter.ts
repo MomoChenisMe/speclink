@@ -3,13 +3,17 @@
 // 桌面 app 注入以 Tauri invoke 為後端的實作；未來 web 端可注入 HTTP 後端。
 // 元件本身不引用任何 Tauri 專屬全域，一律經此介面取資料。
 
-/** 一個 active change 的清單項（對應 core `list --json` 的 camelCase 形狀）。 */
+/** 一個 active change 的清單項（CLI 同形欄位＋桌面疊加的生命週期標記）。 */
 export interface ChangeItem {
   name: string;
   status: string;
   totalTasks: number;
   completedTasks: number;
   summary?: string;
+  /** 開工站標記（in-progress add 蓋章）；null/缺席＝未開工。 */
+  startedAt?: string | null;
+  startedBy?: string | null;
+  startedWith?: string | null;
 }
 
 /** 一個 canonical spec 的清單項。 */
@@ -24,13 +28,18 @@ export interface ChangeMetaInfo {
   createdBy?: string | null;
   createdWith?: string | null;
   fromDiscussion?: string | null;
+  startedAt?: string | null;
+  startedBy?: string | null;
+  startedWith?: string | null;
 }
 
-/** 一個歸檔 change 的清單項。 */
+/** 一個歸檔 change 的清單項。任務計數缺席（無 tasks.md）時不顯示徽章。 */
 export interface ArchivedItem {
   datedName: string;
   date: string;
   name: string;
+  tasksTotal?: number;
+  tasksDone?: number;
 }
 
 /** 可對選定 change 執行的動詞。park/unpark 已從 speclink 移除，不在此列。 */
@@ -72,8 +81,16 @@ export interface SpeclinkDataSource {
   deleteChange(change: string): Promise<void>;
   /** 勾選/取消 tasks.md 的第 ordinal（1-based）個任務。 */
   setTaskDone(change: string, ordinal: number, done: boolean): Promise<void>;
-  /** 把第 from 個任務移到第 to 個位置（皆 1-based）。 */
-  moveTask(change: string, from: number, to: number): Promise<void>;
+  /**
+   * 把第 from 個任務移到以第 to 個任務為錨的位置（皆 1-based）。
+   * before 省略時依方向推斷（向上插錨前、向下插錨後）；true＝明確插錨前
+   * （跨群組標題即成為該群組組首）、false＝明確插錨後。
+   */
+  moveTask(change: string, from: number, to: number, before?: boolean): Promise<void>;
   /** 對選定 change 執行動詞，回傳 core 的結果 payload；失敗時 reject 附訊息。 */
   runVerb(verb: Verb, change: string): Promise<unknown>;
+  /** 讀取一個已封存 change 的 artifact 原文（dated name 定址）。缺件回 null。 */
+  getArchivedDocument(datedName: string, artifact: string): Promise<string | null>;
+  /** 列出一個已封存 change 的 delta capability 名。 */
+  archivedCapabilities(datedName: string): Promise<string[]>;
 }

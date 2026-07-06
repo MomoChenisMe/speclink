@@ -45,12 +45,18 @@ export function createTauriDataSource(): SpeclinkDataSource {
     async setTaskDone(change: string, ordinal: number, done: boolean): Promise<void> {
       await invoke("set_task_done", { change, ordinal, done });
     },
-    async moveTask(change: string, from: number, to: number): Promise<void> {
-      await invoke("move_task", { change, from, to });
+    async moveTask(change: string, from: number, to: number, before?: boolean): Promise<void> {
+      await invoke("move_task", { change, from, to, before: before ?? null });
     },
     async runVerb(verb: Verb, change: string): Promise<unknown> {
       // 動詞 command 與動詞同名（validate/analyze/archive）。
       return await invoke(verb, { change });
+    },
+    async getArchivedDocument(datedName: string, artifact: string): Promise<string | null> {
+      return await invoke<string | null>("archived_document", { datedName, artifact });
+    },
+    async archivedCapabilities(datedName: string): Promise<string[]> {
+      return await invoke<string[]>("archived_capabilities", { datedName });
     },
   };
 }

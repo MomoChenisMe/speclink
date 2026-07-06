@@ -275,6 +275,9 @@ fn change_from_value(v: &serde_json::Value) -> Option<Change> {
             created_by: get("createdBy"),
             created_with: get("createdWith"),
             from_discussion: get("fromDiscussion"),
+            started_at: get("startedAt"),
+            started_by: get("startedBy"),
+            started_with: get("startedWith"),
         },
     })
 }
@@ -337,6 +340,23 @@ impl Store for JsStoreBridge {
         self.call_ok("updatedAtSecs", serde_json::json!([name]))
             .as_u64()
             .unwrap_or(0)
+    }
+
+    // The active-meta raw pair is an OPTIONAL host method (not in
+    // REQUIRED_METHODS — existing JS stores keep validating): a store without
+    // `readChangeMeta` reads as "no metadata"; a real JS failure still aborts
+    // the dispatch like every other store method.
+    fn read_change_meta(&self, name: &str) -> Option<String> {
+        match self.call("readChangeMeta", serde_json::json!([name])) {
+            Ok(v) => opt_string(v),
+            Err(f) if f.code.as_deref() == Some("__missing__") => None,
+            Err(f) => std::panic::panic_any(f),
+        }
+    }
+
+    fn write_change_meta(&self, name: &str, content: &str) -> anyhow::Result<()> {
+        self.call_result("writeChangeMeta", serde_json::json!([name, content]))?;
+        Ok(())
     }
 
     // --- artifacts ---

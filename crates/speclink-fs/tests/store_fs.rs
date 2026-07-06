@@ -117,6 +117,40 @@ fn create_change_writes_meta_and_reports_dir() {
     assert_eq!(c.dir, dir);
 }
 
+// --- active change metadata: raw read/write pair (symmetric with archived) ---
+
+#[test]
+fn change_meta_raw_read_returns_verbatim_text_and_none_for_missing_change() {
+    let root = TempRoot::new("meta-raw-read");
+    let store = root.store();
+    assert!(store.read_change_meta("ghost").is_none());
+
+    let raw = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: Tester <t@example.com>\n";
+    store.create_change("demo", raw).unwrap();
+    assert_eq!(store.read_change_meta("demo").unwrap(), raw);
+}
+
+#[test]
+fn change_meta_raw_write_roundtrip_preserves_existing_and_unknown_fields_verbatim() {
+    let root = TempRoot::new("meta-raw-write");
+    let store = root.store();
+    // Unknown fields must survive a read → append → write cycle byte-for-byte
+    // (the raw pair exists precisely so stamping never re-serializes YAML).
+    let raw = "schema: spec-driven\ncreated: 2026-07-01\ncustom_field: keep me exactly\nfrom_discussion: 桌面即時刷新與封存瀏覽\n";
+    store.create_change("demo", raw).unwrap();
+
+    let mut text = store.read_change_meta("demo").unwrap();
+    text.push_str("started_at: 2026-07-06\n");
+    store.write_change_meta("demo", &text).unwrap();
+
+    let after = store.read_change_meta("demo").unwrap();
+    assert!(
+        after.starts_with(raw),
+        "existing and unknown fields must be preserved verbatim, got: {after}"
+    );
+    assert!(after.ends_with("started_at: 2026-07-06\n"));
+}
+
 #[test]
 fn updated_at_is_newest_mtime_truncated_to_seconds_and_orders_newest_first() {
     let root = TempRoot::new("updated-at");
@@ -262,6 +296,38 @@ fn archive_change_moves_dir_and_meta_is_stampable() {
 
     // Missing archived change: None.
     assert!(store.read_archived_meta("2026-01-01-ghost").is_none());
+}
+
+#[test]
+fn archived_artifact_read_and_capability_listing() {
+    let root = TempRoot::new("archive-artifacts");
+    let store = root.store();
+    store.create_change("demo", "schema: spec-driven\ncreated: 2026-07-04\n").unwrap();
+    store.write_artifact("demo", "proposal.md", "## Why\n\nArchived body.\n").unwrap();
+    store.write_artifact("demo", "tasks.md", "- [x] 1.1 done\n").unwrap();
+    store.write_artifact("demo", "specs/cap-b/spec.md", "## ADDED Requirements\n").unwrap();
+    store.write_artifact("demo", "specs/cap-a/spec.md", "## MODIFIED Requirements\n").unwrap();
+    store.archive_change("demo", "2026-07-04-demo").unwrap();
+
+    // 原文讀取以 dated_name＋output path 定址（read_archived_meta 的對稱擴充）。
+    assert_eq!(
+        store.read_archived_artifact("2026-07-04-demo", "proposal.md").unwrap(),
+        "## Why\n\nArchived body.\n"
+    );
+    assert_eq!(
+        store.read_archived_artifact("2026-07-04-demo", "specs/cap-a/spec.md").unwrap(),
+        "## MODIFIED Requirements\n"
+    );
+    // 缺件 artifact 與不存在的 dated_name 都是 None，不是錯誤。
+    assert!(store.read_archived_artifact("2026-07-04-demo", "design.md").is_none());
+    assert!(store.read_archived_artifact("2026-01-01-ghost", "proposal.md").is_none());
+
+    // 封存 delta capability 列舉（排序），供規格分頁載入。
+    assert_eq!(
+        store.archived_delta_capabilities("2026-07-04-demo"),
+        vec!["cap-a", "cap-b"]
+    );
+    assert!(store.archived_delta_capabilities("2026-01-01-ghost").is_empty());
 }
 
 // --- workflow config ---

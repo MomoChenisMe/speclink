@@ -55,6 +55,13 @@ pub trait Store {
     /// Last-modified time of a change in whole seconds since the Unix epoch —
     /// the sort key for "most recently updated" orderings. Missing change → 0.
     fn updated_at_secs(&self, name: &str) -> u64;
+    /// Raw metadata document of an active change, or None when the change does
+    /// not exist (symmetric with `read_archived_meta`). Stamping flows read the
+    /// raw text, append, and write back — never re-serialize.
+    fn read_change_meta(&self, name: &str) -> Option<String>;
+    /// Overwrite the metadata document of an active change (symmetric with
+    /// `write_archived_meta`).
+    fn write_change_meta(&self, name: &str, content: &str) -> Result<()>;
 
     // --- artifacts ---
 
@@ -96,6 +103,20 @@ pub trait Store {
     fn read_archived_meta(&self, dated_name: &str) -> Option<String>;
     /// Overwrite the metadata document of an archived change.
     fn write_archived_meta(&self, dated_name: &str, content: &str) -> Result<()>;
+    /// Raw artifact content of an archived change, addressed by dated name +
+    /// output path (e.g. `proposal.md`, `specs/<cap>/spec.md`) — the read-only
+    /// counterpart of `read_artifact` for the archive. Default: no archived
+    /// document browsing (backends opt in by overriding).
+    fn read_archived_artifact(&self, dated_name: &str, artifact: &str) -> Option<String> {
+        let _ = (dated_name, artifact);
+        None
+    }
+    /// Capability names with a delta spec inside an archived change, sorted.
+    /// Default: empty (same opt-in rule as `read_archived_artifact`).
+    fn archived_delta_capabilities(&self, dated_name: &str) -> Vec<String> {
+        let _ = dated_name;
+        Vec::new()
+    }
 
     // --- discussions ---
 
