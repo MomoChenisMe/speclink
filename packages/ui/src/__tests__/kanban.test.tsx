@@ -7,8 +7,10 @@ import { parseTasks } from "../tasks";
 import type { ChangeItem, ArtifactStatus } from "../adapter";
 
 const changes: ChangeItem[] = [
-  { name: "proposing-x", status: "in-progress", totalTasks: 0, completedTasks: 0 },
-  { name: "working-y", status: "in-progress", totalTasks: 10, completedTasks: 4 },
+  // 新規則：欄位由生命週期標記驅動——無 started＝提案中（就算任務已就位）、
+  // 有 started＝進行中、全完成＝已就緒。
+  { name: "proposing-x", status: "in-progress", totalTasks: 28, completedTasks: 0 },
+  { name: "working-y", status: "in-progress", totalTasks: 10, completedTasks: 4, startedAt: "2026-07-06" },
   { name: "ready-z", status: "done", totalTasks: 5, completedTasks: 5 },
 ];
 

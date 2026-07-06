@@ -16,6 +16,14 @@ pub struct ChangeMeta {
     /// Slug of the discussion this change was promoted from (speclink extension).
     #[serde(default)]
     pub from_discussion: Option<String>,
+    /// The "started" lifecycle station (stamped by `in-progress add`). Absent
+    /// on pre-migration metadata — such a change simply reads as not started.
+    #[serde(default)]
+    pub started_at: Option<String>,
+    #[serde(default)]
+    pub started_by: Option<String>,
+    #[serde(default)]
+    pub started_with: Option<String>,
 }
 
 impl ChangeMeta {
@@ -235,4 +243,30 @@ pub fn missing_artifacts(schema: &Schema, store: &dyn Store, change: &str) -> Ve
         .filter(|a| !artifact_done(store, change, a))
         .map(|a| a.id.to_string())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ChangeMeta;
+
+    #[test]
+    fn meta_without_started_fields_parses_as_not_started() {
+        // Backward compatibility: pre-migration documents (no started_*) keep
+        // parsing without warnings and read as "not started".
+        let old = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: Base Line <base@example.com>\n";
+        let meta = ChangeMeta::from_text(Some(old));
+        assert_eq!(meta.schema.as_deref(), Some("spec-driven"));
+        assert!(meta.started_at.is_none());
+        assert!(meta.started_by.is_none());
+        assert!(meta.started_with.is_none());
+    }
+
+    #[test]
+    fn meta_with_started_fields_parses_all_three_stations() {
+        let text = "schema: spec-driven\ncreated: 2026-07-01\nstarted_at: 2026-07-03\nstarted_by: Worker <w@example.com>\nstarted_with: claude\n";
+        let meta = ChangeMeta::from_text(Some(text));
+        assert_eq!(meta.started_at.as_deref(), Some("2026-07-03"));
+        assert_eq!(meta.started_by.as_deref(), Some("Worker <w@example.com>"));
+        assert_eq!(meta.started_with.as_deref(), Some("claude"));
+    }
 }

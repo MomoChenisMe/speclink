@@ -138,3 +138,34 @@ pub fn specs_json_items(store: &dyn Store) -> serde_json::Value {
             .collect(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::changes_json;
+    use crate::teststore::TestStore;
+
+    #[test]
+    fn list_json_payload_shape_is_unchanged_by_the_lifecycle_fields() {
+        // Parity pin: the CLI `list --json` item must not gain started_*
+        // fields (the desktop overlays them in its own layer), and a
+        // pre-migration meta (no started_*) must serialize identically.
+        let old_meta = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        old_meta.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
+        old_meta.put_artifact("demo", "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
+
+        let stamped = TestStore::with_meta(
+            "demo",
+            "schema: spec-driven\ncreated: 2026-07-01\nstarted_at: 2026-07-06\nstarted_by: W <w@example.com>\nstarted_with: claude\n",
+        );
+        stamped.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
+        stamped.put_artifact("demo", "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
+
+        let expected = r#"{"completedTasks":1,"name":"demo","status":"in-progress","summary":"Demo.","totalTasks":2}"#;
+        for store in [old_meta, stamped] {
+            let changes = crate::model::list_changes(&store);
+            let items = changes_json(&store, &changes);
+            assert_eq!(items.len(), 1);
+            assert_eq!(serde_json::to_string(&items[0]).unwrap(), expected);
+        }
+    }
+}

@@ -35,8 +35,8 @@ export interface RichDetailDrawerProps {
   onDelete?: (change: string) => void;
   /** 勾選/取消任務並回寫 tasks.md；resolve 後抽屜會重載任務。 */
   onToggleTask?: (change: string, ordinal: number, done: boolean) => Promise<void>;
-  /** 移動任務順序並回寫 tasks.md；resolve 後抽屜會重載任務。 */
-  onMoveTask?: (change: string, from: number, to: number) => Promise<void>;
+  /** 移動任務順序並回寫 tasks.md（before 為可選側別）；resolve 後抽屜會重載任務。 */
+  onMoveTask?: (change: string, from: number, to: number, before?: boolean) => Promise<void>;
 }
 
 type Doc = string | null | undefined;
@@ -124,11 +124,12 @@ export function RichDetailDrawer({
     }
   };
 
-  const handleMove = async (ordinal: number, dir: "up" | "down") => {
+  // 拖放落點一次到位轉發（含側別）；寫回後重讀 tasks.md——重編號後文字已變，檔案為真相。
+  const handleReorder = async (from: number, to: number, before?: boolean) => {
     if (!name || !onMoveTask) return;
     setTaskBusy(true);
     try {
-      await onMoveTask(name, ordinal, dir === "up" ? ordinal - 1 : ordinal + 1);
+      await onMoveTask(name, from, to, before);
       await reloadTasks();
     } finally {
       setTaskBusy(false);
@@ -174,6 +175,12 @@ export function RichDetailDrawer({
             {meta?.createdWith && <span>✳ {meta.createdWith}</span>}
             {rel && <span>{rel}</span>}
             <span>{taskBadge} 任務</span>
+            {meta?.startedAt && (
+              <span className="inline-flex items-center gap-1">
+                ⚒ {meta.startedBy ? `${meta.startedBy} · ` : ""}
+                {meta.startedAt} 開工
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
@@ -229,7 +236,7 @@ export function RichDetailDrawer({
                 markdown={tasksMd ?? null}
                 busy={taskBusy}
                 onToggle={(ordinal, done) => void handleToggle(ordinal, done)}
-                onMove={(ordinal, dir) => void handleMove(ordinal, dir)}
+                onReorder={(from, to, before) => void handleReorder(from, to, before)}
               />
             </TabsContent>
             <TabsContent value="specs">

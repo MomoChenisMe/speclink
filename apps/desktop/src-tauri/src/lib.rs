@@ -3,10 +3,12 @@
 //! 每個 #[tauri::command] 是對 speclink-desktop-core 的單行委派（薄包裝）——
 //! 真正的邏輯與測試在 speclink-desktop-core，此層只做 IPC 接線。
 
+mod watch;
+
 use std::path::PathBuf;
 
 use serde_json::Value;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 /// app 對其 openspec/ 專案根的執行語境。v1 以啟動時的工作目錄為專案根。
 struct AppState {
@@ -59,8 +61,14 @@ fn set_task_done(state: State<AppState>, change: String, ordinal: usize, done: b
 }
 
 #[tauri::command]
-fn move_task(state: State<AppState>, change: String, from: usize, to: usize) -> Result<(), String> {
-    speclink_desktop_core::manage::move_task_at(&state.root, &change, from, to)
+fn move_task(
+    state: State<AppState>,
+    change: String,
+    from: usize,
+    to: usize,
+    before: Option<bool>,
+) -> Result<(), String> {
+    speclink_desktop_core::manage::move_task_at(&state.root, &change, from, to, before)
 }
 
 #[tauri::command]
@@ -83,11 +91,33 @@ fn archived_changes(state: State<AppState>) -> Value {
     speclink_desktop_core::cache::archived_changes_at(&state.root)
 }
 
+#[tauri::command]
+fn archived_document(state: State<AppState>, dated_name: String, artifact: String) -> Option<String> {
+    speclink_desktop_core::query::archived_document_at(&state.root, &dated_name, &artifact)
+}
+
+#[tauri::command]
+fn archived_capabilities(state: State<AppState>, dated_name: String) -> Vec<String> {
+    speclink_desktop_core::query::archived_capabilities_at(&state.root, &dated_name)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     tauri::Builder::default()
         .setup(move |app| {
+            // openspec/ 監看：外部寫者（CLI、agent、編輯器）的變更去抖後以
+            // workspace-changed 事件通知前端整批 refresh。建立失敗只記錄——
+            // app 照常提供其餘功能，僅失去自動刷新（spec：監看不可用時功能照常）。
+            let handle = app.handle().clone();
+            match watch::watch_openspec(&root, std::time::Duration::from_millis(400), move || {
+                let _ = handle.emit("workspace-changed", ());
+            }) {
+                Ok(watcher) => {
+                    app.manage(std::sync::Mutex::new(Some(watcher)));
+                }
+                Err(e) => eprintln!("speclink-desktop: file watching unavailable: {e}"),
+            }
             app.manage(AppState { root });
             Ok(())
         })
@@ -105,7 +135,9 @@ pub fn run() {
             validate,
             analyze,
             archive,
-            archived_changes
+            archived_changes,
+            archived_document,
+            archived_capabilities
         ])
         .run(tauri::generate_context!())
         .expect("error while running Speclink desktop app");

@@ -16,8 +16,6 @@
 //!   store exists.
 //! - `schema.rs` — workflow schema definitions (project/user `schemas/`
 //!   directories); outside the Store method inventory by design decision 1.
-//! - `inprogress.rs` — the `.git/speclink-app/` application database; host
-//!   storage, not spec documents.
 //!
 //! Every other source file must be free of `std::fs`. The allowlist is exact:
 //! an allowlisted file that no longer uses `std::fs` fails the test too, so
@@ -29,7 +27,6 @@ const ALLOWLIST: &[&str] = &[
     "util.rs",
     "init.rs",
     "schema.rs",
-    "inprogress.rs",
 ];
 
 #[test]

@@ -20,6 +20,9 @@ pub fn change_meta_at(root: &Path, change: &str) -> Option<Value> {
         "createdBy": change.meta.created_by,
         "createdWith": change.meta.created_with,
         "fromDiscussion": change.meta.from_discussion,
+        "startedAt": change.meta.started_at,
+        "startedBy": change.meta.started_by,
+        "startedWith": change.meta.started_with,
     }))
 }
 
@@ -52,9 +55,18 @@ pub fn set_task_done_at(root: &Path, change: &str, ordinal: usize, done: bool) -
     })
 }
 
-/// 把第 `from` 個任務移到第 `to` 個位置（皆 1-based、僅計 checkbox 行）。
+/// 把第 `from` 個任務移到以第 `to` 個任務為錨的位置（皆 1-based、僅計 checkbox 行）。
 /// 只搬 checkbox 行本身，群組標題與其他行不動；越界回 `Err`。
-pub fn move_task_at(root: &Path, change: &str, from: usize, to: usize) -> Result<(), String> {
+/// `before`：None＝方向推斷（向上插錨前、向下插錨後——組界時貼齊手勢方向的群組）；
+/// Some(true)＝明確插於錨任務行之前（跨過群組標題即成為錨所屬群組的組首）；
+/// Some(false)＝明確插於錨任務行之後。搬移成功後重算編號前綴（design D2），一次寫回。
+pub fn move_task_at(
+    root: &Path,
+    change: &str,
+    from: usize,
+    to: usize,
+    before: Option<bool>,
+) -> Result<(), String> {
     edit_tasks(root, change, |lines, idx| {
         let n = idx.len();
         if from == 0 || to == 0 || from > n || to > n {
@@ -64,17 +76,56 @@ pub fn move_task_at(root: &Path, change: &str, from: usize, to: usize) -> Result
             return Ok(());
         }
         let moved = lines.remove(idx[from - 1]);
-        // 移除後重算剩餘 checkbox 行位置，決定插入點。
+        // 移除後重算剩餘 checkbox 行位置；錨任務（原第 to 個）在移除後的 0-based 位置。
         let idx2: Vec<usize> = lines
             .iter()
             .enumerate()
             .filter(|(_, l)| is_task_line(l))
             .map(|(i, _)| i)
             .collect();
-        let insert_at = if to - 1 < idx2.len() { idx2[to - 1] } else { idx2.last().map(|i| i + 1).unwrap_or(lines.len()) };
+        let anchor = if to < from { to - 1 } else { to - 2 };
+        // 側別決定貼邊；未指定時以方向推斷（向上插前、向下插後）——否則向下拖到
+        // 群組末位會越過群組邊界、被吞進下一群組（順序相同、群組歸屬錯誤）。
+        let insert_before = before.unwrap_or(to < from);
+        let insert_at = if insert_before {
+            idx2[anchor]
+        } else {
+            idx2[anchor] + 1
+        };
         lines.insert(insert_at, moved);
+        renumber_task_prefixes(lines);
         Ok(())
     })
+}
+
+/// 重算任務編號前綴（design D2）：群組編號取自「## N.」標題自身的數字；
+/// 群組內第 k 個 checkbox 行、文字以「數字.數字＋空白」開頭者，前綴重寫為「N.k」。
+/// 其餘一律逐字元保留——無前綴、子版號（1.2.3）、無數字標題的群組、首個標題前的
+/// 任務、群組標題與非 checkbox 行都不改寫（重編號永不弄丟使用者文字）。
+fn renumber_task_prefixes(lines: &mut [String]) {
+    let prefix_re = regex::Regex::new(r"^(\s*-\s*\[[ xX]\]\s+)(\d+\.\d+)(\s)").unwrap();
+    let mut group: Option<u64> = None;
+    let mut k = 0usize;
+    for line in lines.iter_mut() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("## ") {
+            let rest = rest.trim_start();
+            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            group = if !digits.is_empty() && rest[digits.len()..].starts_with('.') {
+                digits.parse().ok()
+            } else {
+                None
+            };
+            k = 0;
+            continue;
+        }
+        if is_task_line(line) {
+            k += 1;
+            if let Some(g) = group {
+                *line = prefix_re.replace(line, format!("${{1}}{g}.{k}${{3}}")).into_owned();
+            }
+        }
+    }
 }
 
 fn is_task_line(line: &str) -> bool {
@@ -122,10 +173,6 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    fn repo_root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("..")
-    }
-
     /// 建含一個 active change 的暫存 fixture 專案。
     fn fixture_with_change(tag: &str, name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("speclink-manage-{}-{}", tag, std::process::id()));
@@ -142,16 +189,38 @@ mod tests {
     }
 
     #[test]
-    fn change_meta_returns_camel_case_fields() {
-        let meta = change_meta_at(&repo_root(), "desktop-shell-and-browser").expect("meta exists");
-        assert!(meta.get("created").is_some());
-        // createdBy/createdWith 欄位存在（值可為 null），確認 camelCase 命名
-        assert!(meta.get("createdBy").is_some() || meta.get("createdWith").is_some());
+    fn change_meta_returns_camel_case_fields_including_started_station() {
+        let fx = crate::testfixture::FixtureRoot::new("m-meta");
+        fx.add_change(
+            "demo",
+            "schema: spec-driven\ncreated: 2026-07-05\ncreated_by: momo\ncreated_with: claude\nstarted_at: 2026-07-06\nstarted_by: Worker <w@example.com>\nstarted_with: claude\n",
+        );
+        let meta = change_meta_at(fx.root(), "demo").expect("meta exists");
+        assert_eq!(meta["created"], "2026-07-05");
+        assert_eq!(meta["createdBy"], "momo");
+        assert_eq!(meta["createdWith"], "claude");
+        // 抽屜「誰於何時開工」的資料來源：started 站以 camelCase 帶出。
+        assert_eq!(meta["startedAt"], "2026-07-06");
+        assert_eq!(meta["startedBy"], "Worker <w@example.com>");
+        assert_eq!(meta["startedWith"], "claude");
+    }
+
+    #[test]
+    fn change_meta_without_started_fields_yields_nulls() {
+        let fx = crate::testfixture::FixtureRoot::new("m-meta-old");
+        fx.add_change("demo", "schema: spec-driven\ncreated: 2026-07-05\n");
+        let meta = change_meta_at(fx.root(), "demo").expect("meta exists");
+        assert!(meta.get("startedAt").is_some(), "key present");
+        assert!(meta["startedAt"].is_null());
+        assert!(meta["startedBy"].is_null());
+        assert!(meta["startedWith"].is_null());
     }
 
     #[test]
     fn change_meta_unknown_change_is_none() {
-        assert!(change_meta_at(&repo_root(), "no-such-change-xyz").is_none());
+        let fx = crate::testfixture::FixtureRoot::new("m-meta-unknown");
+        fx.add_change("demo", "schema: spec-driven\n");
+        assert!(change_meta_at(fx.root(), "no-such-change-xyz").is_none());
     }
 
     #[test]
@@ -200,16 +269,225 @@ mod tests {
     #[test]
     fn move_task_reorders_checkbox_lines_only() {
         let root = fixture_with_tasks("move");
-        // 把第 3 個任務移到第 1 位
-        move_task_at(&root, "task-change", 3, 1).expect("move up");
+        // 把第 3 個任務移到第 1 位——落入群組 1 並依新順序重編號。
+        move_task_at(&root, "task-change", 3, 1, None).expect("move up");
         let text = read_tasks(&root);
         let tasks: Vec<&str> = text.lines().filter(|l| l.trim_start().starts_with("- [")).collect();
-        assert_eq!(tasks[0], "- [ ] 2.1 third");
-        assert_eq!(tasks[1], "- [ ] 1.1 first");
-        assert_eq!(tasks[2], "- [x] 1.2 second");
+        assert_eq!(tasks[0], "- [ ] 1.1 third");
+        assert_eq!(tasks[1], "- [ ] 1.2 first");
+        assert_eq!(tasks[2], "- [x] 1.3 second");
         // 群組標題數不變
         assert_eq!(text.matches("## ").count(), 2);
-        assert!(move_task_at(&root, "task-change", 0, 1).is_err(), "0 index errors");
+        assert!(move_task_at(&root, "task-change", 0, 1, None).is_err(), "0 index errors");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn fixture_with_tasks_md(tag: &str, tasks: &str) -> PathBuf {
+        let root = fixture_with_change(tag, "task-change");
+        let dir = root.join("openspec").join("changes").join("task-change");
+        fs::write(dir.join("tasks.md"), tasks).unwrap();
+        root
+    }
+
+    fn task_lines(root: &PathBuf) -> Vec<String> {
+        read_tasks(root)
+            .lines()
+            .filter(|l| l.trim_start().starts_with("- ["))
+            .map(|l| l.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn move_within_group_renumbers_prefixes_per_spec_example() {
+        // spec Example「組內移動重編號」：把 1.1 甲拖到末位 → 乙丙甲，前綴重寫 1.1/1.2/1.3。
+        let root = fixture_with_tasks_md(
+            "renum-within",
+            "## 1. 群組\n\n- [ ] 1.1 甲\n- [x] 1.2 乙\n- [ ] 1.3 丙\n",
+        );
+        move_task_at(&root, "task-change", 1, 3, None).expect("move ok");
+        assert_eq!(
+            task_lines(&root),
+            vec!["- [x] 1.1 乙", "- [ ] 1.2 丙", "- [ ] 1.3 甲"],
+            "prefixes must follow the new order"
+        );
+        assert!(read_tasks(&root).contains("## 1. 群組"), "group heading untouched");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn move_across_groups_takes_the_new_groups_numbering() {
+        // 把群組 1 的乙拖到群組 2 的丙之後 → 乙取得新群組編號 2.2，丁後移 2.3。
+        let root = fixture_with_tasks_md(
+            "renum-cross",
+            "## 1. 前段\n\n說明文字原樣保留。\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n\n## 2. 後段\n\n- [ ] 2.1 丙\n- [ ] 2.2 丁\n",
+        );
+        move_task_at(&root, "task-change", 2, 3, None).expect("move ok");
+        assert_eq!(
+            task_lines(&root),
+            vec!["- [ ] 1.1 甲", "- [ ] 2.1 丙", "- [ ] 2.2 乙", "- [ ] 2.3 丁"]
+        );
+        let text = read_tasks(&root);
+        assert!(text.contains("說明文字原樣保留。"), "prose lines byte-identical");
+        assert!(text.contains("## 1. 前段") && text.contains("## 2. 後段"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn tasks_without_numeric_prefix_keep_their_text_verbatim() {
+        let root = fixture_with_tasks_md(
+            "renum-noprefix",
+            "## 1. 群組\n\n- [ ] 1.1 甲\n- [ ] 補充說明不帶編號\n- [ ] 1.2 乙\n",
+        );
+        move_task_at(&root, "task-change", 3, 1, None).expect("move ok");
+        assert_eq!(
+            task_lines(&root),
+            vec!["- [ ] 1.1 乙", "- [ ] 1.2 甲", "- [ ] 補充說明不帶編號"],
+            "unprefixed task text must stay untouched while others renumber"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn groups_without_numeric_heading_are_not_renumbered() {
+        let root = fixture_with_tasks_md(
+            "renum-unnumbered",
+            "## 準備\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n",
+        );
+        move_task_at(&root, "task-change", 1, 2, None).expect("move ok");
+        assert_eq!(
+            task_lines(&root),
+            vec!["- [ ] 1.2 乙", "- [ ] 1.1 甲"],
+            "a heading without a numeric prefix must leave its tasks' numbers alone"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn before_true_crosses_the_heading_and_becomes_group_head() {
+        // spec Example「標題落點成組首」：把 1.2 乙拖到「## 2. 後段」標題上——
+        // 前端解析為（to=組首任務 ordinal, before=true）→ 乙插於丙行之前、
+        // 跨過標題成為群組 2 第一個任務。
+        let root = fixture_with_tasks_md(
+            "side-head",
+            "## 1. 前段\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n\n## 2. 後段\n\n- [ ] 2.1 丙\n- [ ] 2.2 丁\n",
+        );
+        move_task_at(&root, "task-change", 2, 3, Some(true)).expect("move ok");
+        assert_eq!(
+            task_lines(&root),
+            vec!["- [ ] 1.1 甲", "- [ ] 2.1 乙", "- [ ] 2.2 丙", "- [ ] 2.3 丁"],
+            "before=true must insert ahead of the anchor line, across the heading"
+        );
+        let text = read_tasks(&root);
+        let g2 = text.split("## 2. 後段").nth(1).unwrap();
+        assert!(g2.contains("乙"), "乙 must live under group 2: {text}");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn before_false_explicitly_inserts_after_the_anchor() {
+        // 明確側別覆蓋方向推斷：向上移動＋before=false → 落在錨任務之後。
+        let root = fixture_with_tasks_md(
+            "side-after",
+            "## 1. 群組\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n- [ ] 1.3 丙\n",
+        );
+        move_task_at(&root, "task-change", 3, 1, Some(false)).expect("move ok");
+        assert_eq!(
+            task_lines(&root),
+            vec!["- [ ] 1.1 甲", "- [ ] 1.2 丙", "- [ ] 1.3 乙"],
+            "before=false anchors after task 1 even on an upward move"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn side_parameter_keeps_out_of_range_errors_and_none_inference() {
+        let root = fixture_with_tasks_md(
+            "side-oob",
+            "## 1. 前段\n\n- [ ] 1.1 甲\n- [x] 1.2 乙\n- [ ] 1.3 丙\n\n## 2. 後段\n\n- [ ] 2.1 丁\n",
+        );
+        let before_text = read_tasks(&root);
+        assert!(move_task_at(&root, "task-change", 9, 1, Some(true)).is_err());
+        assert!(move_task_at(&root, "task-change", 0, 2, Some(false)).is_err());
+        assert_eq!(read_tasks(&root), before_text, "failed side moves must not rewrite");
+        // None 維持方向推斷：向下拖到群組末位仍留在原群組（既有行為）。
+        move_task_at(&root, "task-change", 1, 3, None).expect("move ok");
+        assert_eq!(
+            task_lines(&root),
+            vec!["- [x] 1.1 乙", "- [ ] 1.2 丙", "- [ ] 1.3 甲", "- [ ] 2.1 丁"]
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn downward_move_to_group_end_stays_in_the_origin_group() {
+        // 真實視窗抓到的邊界缺陷：向下拖到群組末位時，「插在下一個 checkbox 前」
+        // 會把任務吞進下一群組——向下移動必須落在目標 checkbox 之後（留在原群組）。
+        let root = fixture_with_tasks_md(
+            "renum-boundary",
+            "## 1. 前段\n\n- [ ] 1.1 甲\n- [x] 1.2 乙\n- [ ] 1.3 丙\n\n## 2. 後段\n\n- [ ] 2.1 丁\n- [ ] 2.2 戊\n",
+        );
+        move_task_at(&root, "task-change", 1, 3, None).expect("move ok");
+        assert_eq!(
+            task_lines(&root),
+            vec!["- [x] 1.1 乙", "- [ ] 1.2 丙", "- [ ] 1.3 甲", "- [ ] 2.1 丁", "- [ ] 2.2 戊"],
+            "a downward move onto the last task of a group must not leak into the next group"
+        );
+        let text = read_tasks(&root);
+        let g2 = text.split("## 2. 後段").nth(1).unwrap();
+        assert!(!g2.contains("甲"), "甲 must stay under group 1: {text}");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn sub_versioned_prefixes_are_never_mangled() {
+        // sharp-edge：`1.2.3` 的「1.2」後面是「.」不是空白——比對要求前綴後必須
+        // 是空白，否則改寫會把子版號絞成「2.1.3」這種殘骸。
+        let root = fixture_with_tasks_md(
+            "renum-subver",
+            "## 1. 群組\n\n- [ ] 1.1 甲\n- [ ] 1.2.3 子版號文字\n",
+        );
+        move_task_at(&root, "task-change", 2, 1, None).expect("move ok");
+        // 子版號列逐字元保留；甲成為組內第 2 個 checkbox，依「群組編號.組內序」重寫 1.2。
+        assert_eq!(
+            task_lines(&root),
+            vec!["- [ ] 1.2.3 子版號文字", "- [ ] 1.2 甲"],
+            "sub-versioned prefixes must be preserved verbatim"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn overflowing_group_numbers_fail_soft_to_no_renumber() {
+        // sharp-edge：標題數字超出 u64——解析失敗即視為無數字標題，任務保留原文。
+        let root = fixture_with_tasks_md(
+            "renum-overflow",
+            "## 99999999999999999999999. 巨數\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n",
+        );
+        move_task_at(&root, "task-change", 1, 2, None).expect("move ok");
+        assert_eq!(
+            task_lines(&root),
+            vec!["- [ ] 1.2 乙", "- [ ] 1.1 甲"],
+            "unparseable group numbers must not rewrite anything"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn set_task_done_does_not_renumber() {
+        // 勾選不改順序，也不得觸發重編號——就算既有編號是亂的。
+        let root = fixture_with_tasks_md("renum-toggle", "## 1. 群組\n\n- [ ] 1.9 甲\n- [ ] 1.5 乙\n");
+        set_task_done_at(&root, "task-change", 1, true).expect("toggle ok");
+        assert_eq!(task_lines(&root), vec!["- [x] 1.9 甲", "- [ ] 1.5 乙"]);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn out_of_range_move_leaves_the_file_untouched() {
+        let root = fixture_with_tasks_md("renum-oob", "## 1. 群組\n\n- [ ] 1.1 甲\n");
+        let before = read_tasks(&root);
+        assert!(move_task_at(&root, "task-change", 9, 1, None).is_err());
+        assert!(move_task_at(&root, "task-change", 0, 1, None).is_err());
+        assert_eq!(read_tasks(&root), before, "failed moves must not rewrite the file");
         let _ = fs::remove_dir_all(&root);
     }
 

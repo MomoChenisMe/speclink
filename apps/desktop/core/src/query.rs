@@ -19,7 +19,19 @@ pub fn list_changes_at(root: &Path) -> Value {
     let mut changes = speclink_core::model::list_changes(store);
     // GUI 沿用 CLI 的預設排序，使清單順序與 `speclink list --json` 一致。
     speclink_core::listing::sort_changes(store, &mut changes, "modified");
-    let items = speclink_core::listing::changes_json(store, &changes);
+    // 桌面 payload 在 CLI 同形項上疊加生命週期標記欄位（parity 紅線：CLI 的
+    // changes_json 本身不動）。資料取自 list_changes 已解析的 meta，不另讀檔。
+    let items: Vec<Value> = speclink_core::listing::changes_json(store, &changes)
+        .iter()
+        .zip(changes.iter())
+        .map(|(item, c)| {
+            let mut v = serde_json::to_value(item).unwrap_or_else(|_| json!({}));
+            v["startedAt"] = json!(c.meta.started_at);
+            v["startedBy"] = json!(c.meta.started_by);
+            v["startedWith"] = json!(c.meta.started_with);
+            v
+        })
+        .collect();
     json!({ "changes": items })
 }
 
@@ -79,6 +91,27 @@ pub fn change_capabilities_at(root: &Path, change: &str) -> Vec<String> {
     }
 }
 
+/// 讀取一個已封存 change 的 artifact 原文（dated_name 如 `2026-07-04-old`，
+/// artifact 為 output path）。缺件或不存在回 `None`；路徑穿越參數一律拒絕。
+pub fn archived_document_at(root: &Path, dated_name: &str, artifact: &str) -> Option<String> {
+    if !is_safe_path_param(dated_name) || !is_safe_path_param(artifact) {
+        return None;
+    }
+    let ctx = init_core_context(root)?;
+    ctx.store.read_archived_artifact(dated_name, artifact)
+}
+
+/// 列出一個已封存 change 的 delta capability 名（供唯讀規格分頁載入）。
+pub fn archived_capabilities_at(root: &Path, dated_name: &str) -> Vec<String> {
+    if !is_safe_path_param(dated_name) {
+        return Vec::new();
+    }
+    match init_core_context(root) {
+        Some(ctx) => ctx.store.archived_delta_capabilities(dated_name),
+        None => Vec::new(),
+    }
+}
+
 /// 拒絕會逃出目標目錄的路徑參數：`..` 段、絕對路徑、Windows 磁碟前綴。
 pub(crate) fn is_safe_path_param(s: &str) -> bool {
     if s.is_empty() {
@@ -104,13 +137,12 @@ fn resolve_schema(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use crate::testfixture::FixtureRoot;
 
-    fn repo_root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("..")
-    }
+    const OLD_META: &str = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: momo\ncreated_with: claude\n";
+    const STARTED_META: &str = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: momo\ncreated_with: claude\nstarted_at: 2026-07-06\nstarted_by: Worker <w@example.com>\nstarted_with: claude\n";
 
-    fn fresh_non_project_dir() -> PathBuf {
+    fn fresh_non_project_dir() -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("speclink-query-test-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         dir
@@ -118,68 +150,157 @@ mod tests {
 
     #[test]
     fn list_changes_shape_matches_cli_and_includes_active_change() {
-        let v = list_changes_at(&repo_root());
+        let fx = FixtureRoot::new("q-list");
+        fx.add_change("demo", OLD_META);
+        let v = list_changes_at(fx.root());
         let arr = v["changes"].as_array().expect("changes array");
-        assert!(!arr.is_empty(), "repo has active changes");
+        assert_eq!(arr.len(), 1);
         let item = &arr[0];
-        for key in ["name", "status", "totalTasks", "completedTasks"] {
+        for key in ["name", "status", "totalTasks", "completedTasks", "summary"] {
             assert!(item.get(key).is_some(), "change item missing camelCase key {key}");
         }
-        let names: Vec<&str> = arr.iter().filter_map(|c| c["name"].as_str()).collect();
-        assert!(names.contains(&"desktop-shell-and-browser"));
+        assert_eq!(item["name"], "demo");
+        assert_eq!(item["totalTasks"], 2);
+        assert_eq!(item["completedTasks"], 1);
+    }
+
+    #[test]
+    fn list_changes_overlays_lifecycle_marker_fields() {
+        // D2：桌面 payload 在 CLI 同形欄位之上疊加 startedAt/startedBy/startedWith
+        // （camelCase；未開工為 null）。資料來自已解析 meta，CLI 輸出不受影響。
+        let fx = FixtureRoot::new("q-overlay");
+        fx.add_change("not-started", OLD_META);
+        fx.add_change("underway", STARTED_META);
+        let v = list_changes_at(fx.root());
+        let arr = v["changes"].as_array().expect("changes array");
+        assert_eq!(arr.len(), 2);
+        for item in arr {
+            for key in ["startedAt", "startedBy", "startedWith"] {
+                assert!(item.get(key).is_some(), "missing overlay key {key} on {item}");
+            }
+        }
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+        let idle = by_name("not-started");
+        assert!(idle["startedAt"].is_null());
+        assert!(idle["startedBy"].is_null());
+        assert!(idle["startedWith"].is_null());
+        let underway = by_name("underway");
+        assert_eq!(underway["startedAt"], "2026-07-06");
+        assert_eq!(underway["startedBy"], "Worker <w@example.com>");
+        assert_eq!(underway["startedWith"], "claude");
+        // 既有欄位形狀不變。
+        assert_eq!(underway["totalTasks"], 2);
+        assert_eq!(underway["completedTasks"], 1);
     }
 
     #[test]
     fn list_specs_shape_matches_cli() {
-        let v = list_specs_at(&repo_root());
+        let fx = FixtureRoot::new("q-specs");
+        fx.write("openspec/specs/cap-x/spec.md", "# cap-x Specification\n\n## Requirements\n");
+        let v = list_specs_at(fx.root());
         let arr = v["specs"].as_array().expect("specs array");
         let ids: Vec<&str> = arr.iter().filter_map(|s| s["id"].as_str()).collect();
-        assert!(ids.contains(&"verb-contract"), "known canonical spec present");
+        assert!(ids.contains(&"cap-x"), "canonical spec present: {ids:?}");
     }
 
     #[test]
     fn status_shape_matches_cli() {
-        let v = status_at(&repo_root(), "desktop-shell-and-browser").expect("status ok");
+        let fx = FixtureRoot::new("q-status");
+        fx.add_change("demo", OLD_META);
+        let v = status_at(fx.root(), "demo").expect("status ok");
         for key in ["changeName", "schemaName", "isComplete", "applyRequires", "artifacts"] {
             assert!(v.get(key).is_some(), "status missing camelCase key {key}");
         }
-        assert_eq!(v["changeName"], "desktop-shell-and-browser");
+        assert_eq!(v["changeName"], "demo");
     }
 
     #[test]
     fn status_unknown_change_errors() {
-        assert!(status_at(&repo_root(), "no-such-change-xyz").is_err());
+        let fx = FixtureRoot::new("q-status-unknown");
+        fx.add_change("demo", OLD_META);
+        assert!(status_at(fx.root(), "no-such-change-xyz").is_err());
     }
 
     #[test]
     fn document_reads_change_artifact() {
         // artifact 以 output path 定址（與 status 的 outputPath 一致）。
-        let doc = document_at(&repo_root(), "desktop-shell-and-browser", "proposal.md")
-            .expect("proposal exists");
+        let fx = FixtureRoot::new("q-doc");
+        fx.add_change("demo", OLD_META);
+        let doc = document_at(fx.root(), "demo", "proposal.md").expect("proposal exists");
         assert!(doc.contains("## Why"));
     }
 
     #[test]
     fn spec_document_reads_canonical() {
-        let doc = spec_document_at(&repo_root(), "verb-contract").expect("spec exists");
+        let fx = FixtureRoot::new("q-canonical");
+        fx.write("openspec/specs/cap-x/spec.md", "# cap-x Specification\n");
+        let doc = spec_document_at(fx.root(), "cap-x").expect("spec exists");
         assert!(!doc.trim().is_empty());
     }
 
     #[test]
     fn document_rejects_path_traversal() {
-        // 沒有防護時 `../../../Cargo.toml` 會逃出 change 目錄讀到 repo 根的檔案。
+        // 沒有防護時 `../../../secret.txt` 會逃出 change 目錄讀到專案根的檔案。
+        let fx = FixtureRoot::new("q-traversal");
+        fx.add_change("demo", OLD_META);
+        fx.write("secret.txt", "top secret");
         assert!(
-            document_at(&repo_root(), "desktop-shell-and-browser", "../../../Cargo.toml").is_none(),
+            document_at(fx.root(), "demo", "../../../secret.txt").is_none(),
             "traversal in artifact must be rejected"
         );
         assert!(
-            document_at(&repo_root(), "../../..", "Cargo.toml").is_none(),
+            document_at(fx.root(), "../..", "secret.txt").is_none(),
             "traversal in change name must be rejected"
         );
         assert!(
-            spec_document_at(&repo_root(), "../../Cargo").is_none(),
+            spec_document_at(fx.root(), "../../secret").is_none(),
             "traversal in capability must be rejected"
         );
+    }
+
+    #[test]
+    fn archived_document_reads_content_and_lists_capabilities() {
+        let fx = FixtureRoot::new("q-archived");
+        fx.write(
+            "openspec/changes/archive/2026-07-04-old/.openspec.yaml",
+            "schema: spec-driven\ncreated: 2026-07-01\narchived_at: 2026-07-04\n",
+        );
+        fx.write("openspec/changes/archive/2026-07-04-old/proposal.md", "## Why\n\nOld body.\n");
+        fx.write("openspec/changes/archive/2026-07-04-old/tasks.md", "- [x] 1.1 done\n");
+        fx.write(
+            "openspec/changes/archive/2026-07-04-old/specs/cap-x/spec.md",
+            "## ADDED Requirements\n",
+        );
+
+        assert_eq!(
+            archived_document_at(fx.root(), "2026-07-04-old", "proposal.md").unwrap(),
+            "## Why\n\nOld body.\n"
+        );
+        assert_eq!(archived_capabilities_at(fx.root(), "2026-07-04-old"), vec!["cap-x"]);
+        // 缺件文件回 None（前端顯示空狀態，不是錯誤）。
+        assert!(archived_document_at(fx.root(), "2026-07-04-old", "design.md").is_none());
+        assert!(archived_document_at(fx.root(), "2026-01-01-ghost", "proposal.md").is_none());
+    }
+
+    #[test]
+    fn archived_document_rejects_path_traversal() {
+        let fx = FixtureRoot::new("q-archived-traversal");
+        fx.write("openspec/changes/archive/2026-07-04-old/proposal.md", "## Why\n");
+        fx.write("secret.txt", "top secret");
+
+        assert!(
+            archived_document_at(fx.root(), "2026-07-04-old", "../../../../secret.txt").is_none(),
+            "traversal in artifact must be rejected"
+        );
+        assert!(
+            archived_document_at(fx.root(), "../..", "secret.txt").is_none(),
+            "traversal in dated name must be rejected"
+        );
+        assert!(
+            archived_document_at(fx.root(), "2026-07-04-old", "C:\\evil.txt").is_none(),
+            "drive-prefixed artifact must be rejected"
+        );
+        assert!(archived_capabilities_at(fx.root(), "../..").is_empty());
     }
 
     #[test]

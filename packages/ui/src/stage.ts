@@ -13,13 +13,13 @@ export const STAGE_LABEL: Record<Stage, string> = {
 };
 
 /**
- * 由任務進度派生 change 的生命週期階段：
- * - 0 tasks → proposed（尚在建 artifact）
- * - 全部完成 → ready（可歸檔）
- * - 其餘 → in-progress
+ * 由生命週期標記派生 change 的階段（優先序由上而下）：
+ * - 任務全完成（總數 > 0 且完成數 == 總數）→ ready（可歸檔，全完成優先）
+ * - meta 含 started_at → in-progress（誰開工了才算進行中）
+ * - 其餘 → proposed（就算任務已就位——剛 propose 完不再錯置）
  */
 export function changeStage(c: ChangeItem): Stage {
-  if (c.totalTasks === 0) return "proposed";
-  if (c.completedTasks >= c.totalTasks) return "ready";
-  return "in-progress";
+  if (c.totalTasks > 0 && c.completedTasks >= c.totalTasks) return "ready";
+  if (c.startedAt) return "in-progress";
+  return "proposed";
 }

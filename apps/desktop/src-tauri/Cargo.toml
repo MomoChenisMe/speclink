@@ -17,3 +17,4 @@ tauri = { version = "2", features = [] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 speclink-desktop-core = { path = "../core" }
+notify-debouncer-mini = "0.7.0"
