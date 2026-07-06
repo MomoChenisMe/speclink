@@ -10,7 +10,8 @@ use std::path::PathBuf;
 use serde_json::Value;
 use tauri::{Emitter, Manager, State};
 
-/// app 對其 openspec/ 專案根的執行語境。v1 以啟動時的工作目錄為專案根。
+/// app 對其 openspec/ 專案根的執行語境。專案根自啟動時的工作目錄向上探索
+/// （與查詢的 Workspace::discover 同源）；探索不到專案時退回工作目錄本身。
 struct AppState {
     root: PathBuf,
 }
@@ -103,15 +104,23 @@ fn archived_capabilities(state: State<AppState>, dated_name: String) -> Vec<Stri
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    // 監看根解析與專案探索一致：自 cwd 向上探索出實際專案根，監看與查詢共用
+    // 同一根語意——自檔案總管雙擊啟動（cwd 為 exe 所在目錄）時自動刷新仍生效。
+    // 探索不到專案時退回 cwd：app 照常、僅無自動刷新（維持既有降級行為）。
+    let root = speclink_desktop_core::init_core_context(&cwd)
+        .map(|ctx| ctx.workspace.root)
+        .unwrap_or(cwd);
     tauri::Builder::default()
         .setup(move |app| {
-            // openspec/ 監看：外部寫者（CLI、agent、編輯器）的變更去抖後以
+            // spec 目錄監看：外部寫者（CLI、agent、編輯器）的變更去抖後以
             // workspace-changed 事件通知前端整批 refresh。建立失敗只記錄——
             // app 照常提供其餘功能，僅失去自動刷新（spec：監看不可用時功能照常）。
             let handle = app.handle().clone();
-            match watch::watch_openspec(&root, std::time::Duration::from_millis(400), move || {
-                let _ = handle.emit("workspace-changed", ());
+            match watch::resolve_watch_target(&root).and_then(|target| {
+                watch::watch_openspec(&target, std::time::Duration::from_millis(400), move || {
+                    let _ = handle.emit("workspace-changed", ());
+                })
             }) {
                 Ok(watcher) => {
                     app.manage(std::sync::Mutex::new(Some(watcher)));
