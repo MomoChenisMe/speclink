@@ -4,6 +4,7 @@ import type {
   ChangeItem,
   SpecItem,
   ArchivedItem,
+  DiscussionLists,
   StatusReport,
   Verb,
 } from "@speclink/ui";
@@ -57,6 +58,18 @@ export function createTauriDataSource(): SpeclinkDataSource {
     },
     async archivedCapabilities(datedName: string): Promise<string[]> {
       return await invoke<string[]>("archived_capabilities", { datedName });
+    },
+    async listDiscussions(): Promise<DiscussionLists> {
+      return await invoke<DiscussionLists>("list_discussions");
+    },
+    async getDiscussionDocument(slug: string): Promise<string | null> {
+      return await invoke<string | null>("discussion_document", { slug });
+    },
+    async promoteDiscussion(slug: string, name?: string): Promise<{ change: string }> {
+      return await invoke<{ change: string }>("promote_discussion", { slug, name: name ?? null });
+    },
+    async archiveDiscussion(slug: string): Promise<void> {
+      await invoke("archive_discussion", { slug });
     },
   };
 }

@@ -1717,49 +1717,17 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             println!("{} Discarded discussion: {slug}", color::green("✓"));
         }
         DiscussCommands::Promote { slug, name, json } => {
-            match core::discuss::info(store, &slug) {
-                None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
-                Some(i) if i.archived => {
-                    bail!("discussion '{slug}' is archived — move it out of discussions/archive/ to promote it")
-                }
-                Some(_) => {}
-            }
-            let change_name = name.unwrap_or_else(|| slug.clone());
-            let schema = core::config::WorkflowConfig::from_text(
-                store.read_workflow_config().as_deref(),
-            )
-            .schema_name();
-            let dir = core::newcmd::new_change(
-                &ws,
-                store,
-                &change_name,
-                None,
-                &schema,
-                None,
-                Some(&slug),
-            )?;
-            // Prefill the proposal's Why from the discussion conclusion (topic as fallback);
-            // the remaining sections stay as TBD markers for /speclink-propose to complete.
-            let why = core::discuss::conclusion_text(store, &slug).unwrap_or_else(|| {
-                core::discuss::info(store, &slug)
-                    .map(|i| i.topic)
-                    .unwrap_or_else(|| slug.clone())
-            });
-            let proposal = format!(
-                "## Why\n\n{why}\n\n## What Changes\n\n<!-- TBD: derive from the discussion -->\n\n## Capabilities\n\n### New Capabilities\n\n<!-- TBD -->\n\n## Impact\n\n<!-- TBD -->\n"
-            );
-            store.write_artifact(&change_name, "proposal.md", &proposal)?;
-            core::discuss::mark_promoted(store, &slug, &change_name)?;
+            let outcome = core::discuss::promote(&ws, store, &slug, name.as_deref())?;
             if json {
                 return print_json(&serde_json::json!({
-                    "change": change_name,
-                    "path": core::util::to_slash(&dir),
+                    "change": outcome.change,
+                    "path": core::util::to_slash(&outcome.path),
                     "slug": slug,
                     "status": "promoted",
                 }));
             }
-            println!("{} Promoted discussion '{slug}' → change '{change_name}'", color::green("✓"));
-            println!("  Path: {}", dir.to_string_lossy());
+            println!("{} Promoted discussion '{slug}' → change '{}'", color::green("✓"), outcome.change);
+            println!("  Path: {}", outcome.path.to_string_lossy());
             println!("  Proposal prefilled from the conclusion — run /speclink-propose to complete the artifacts");
         }
     }

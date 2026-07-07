@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, Check, Copy } from "lucide-react";
+import { Archive, Check, Copy, MessageSquareText } from "lucide-react";
 
 import type { ChangeItem } from "../adapter";
 import { changeStage } from "../stage";
@@ -35,6 +35,11 @@ export function ChangeCard({ change, onOpen, onArchive, barClass = "bg-primary" 
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
         <span className="font-semibold text-sm leading-tight min-w-0 flex-1">{change.name}</span>
+        {change.fromDiscussion && (
+          <span aria-label="來自討論" title={`來自討論：${change.fromDiscussion}`} className="shrink-0 text-primary/60">
+            <MessageSquareText className="h-3.5 w-3.5" />
+          </span>
+        )}
         <button
           type="button"
           aria-label="複製名稱"

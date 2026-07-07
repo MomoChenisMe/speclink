@@ -29,6 +29,7 @@ pub fn list_changes_at(root: &Path) -> Value {
             v["startedAt"] = json!(c.meta.started_at);
             v["startedBy"] = json!(c.meta.started_by);
             v["startedWith"] = json!(c.meta.started_with);
+            v["fromDiscussion"] = json!(c.meta.from_discussion);
             v
         })
         .collect();
@@ -191,6 +192,23 @@ mod tests {
         // 既有欄位形狀不變。
         assert_eq!(underway["totalTasks"], 2);
         assert_eq!(underway["completedTasks"], 1);
+    }
+
+    #[test]
+    fn list_changes_overlays_from_discussion() {
+        // 同源連結（design D6）：來自討論的 change 於清單項帶 fromDiscussion，
+        // 供卡片徽章與抽屜同源清單派生；非討論而來為 null。
+        let fx = FixtureRoot::new("q-fromdisc");
+        fx.add_change(
+            "cut-a",
+            "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: alpha-search\n",
+        );
+        fx.add_change("plain", OLD_META);
+        let v = list_changes_at(fx.root());
+        let arr = v["changes"].as_array().expect("changes array");
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+        assert_eq!(by_name("cut-a")["fromDiscussion"], "alpha-search");
+        assert!(by_name("plain")["fromDiscussion"].is_null());
     }
 
     #[test]

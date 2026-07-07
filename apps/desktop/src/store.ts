@@ -4,6 +4,8 @@ import type {
   ChangeItem,
   SpecItem,
   ArchivedItem,
+  DiscussionItem,
+  DiscussionLists,
   ListView,
   Verb,
 } from "@speclink/ui";
@@ -15,6 +17,8 @@ export interface AppState {
   changes: ChangeItem[];
   specs: SpecItem[];
   archived: ArchivedItem[];
+  /** 討論兩節（active 進看板第 0 欄、archived 進已封存頁討論節）。 */
+  discussions: DiscussionLists;
   loaded: boolean;
 
   boardView: BoardView;
@@ -24,9 +28,17 @@ export interface AppState {
 
   /** 詳情抽屜當前的 change（null=關閉）。 */
   detailChange: ChangeItem | null;
+  /** 討論抽屜當前的討論（null=關閉）。 */
+  detailDiscussion: DiscussionItem | null;
 
   pendingArchive: string | null;
   pendingDelete: string | null;
+  /** 待確認的轉為變更（討論 slug）。 */
+  pendingPromote: string | null;
+  /** 待確認的討論歸檔（slug）。 */
+  pendingArchiveDiscussion: string | null;
+  /** 最近一次轉為變更失敗的單行錯誤（討論抽屜呈現；null=無）。 */
+  promoteError: string | null;
   verbResult: string | null;
 
   refresh: () => Promise<void>;
@@ -36,12 +48,21 @@ export interface AppState {
   toggleExpand: (name: string) => void;
   openDetail: (name: string) => void;
   closeDetail: () => void;
+  openDiscussion: (slug: string) => void;
+  closeDiscussion: () => void;
   requestArchive: (name: string) => void;
   confirmArchive: () => Promise<void>;
   cancelArchive: () => void;
   requestDelete: (name: string) => void;
   confirmDelete: () => Promise<void>;
   cancelDelete: () => void;
+  requestPromote: (slug: string) => void;
+  /** 確認轉為變更；name 為對話框輸入的變更名（省略時由 slug 衍生）。 */
+  confirmPromote: (name?: string) => Promise<void>;
+  cancelPromote: () => void;
+  requestArchiveDiscussion: (slug: string) => void;
+  confirmArchiveDiscussion: () => Promise<void>;
+  cancelArchiveDiscussion: () => void;
   runVerb: (verb: Verb, change: string) => Promise<void>;
 }
 
@@ -72,27 +93,38 @@ export function createAppStore(
     changes: [],
     specs: [],
     archived: [],
+    discussions: { active: [], archived: [] },
     loaded: false,
     boardView: "board",
     view: "active",
     query: "",
     expandedName: null,
     detailChange: null,
+    detailDiscussion: null,
     pendingArchive: null,
     pendingDelete: null,
+    pendingPromote: null,
+    pendingArchiveDiscussion: null,
+    promoteError: null,
     verbResult: null,
 
     async refresh() {
-      const [changes, specs, archived] = await Promise.all([
+      const [changes, specs, archived, discussions] = await Promise.all([
         dataSource.listChanges(),
         dataSource.listSpecs(),
         dataSource.listArchived(),
+        dataSource.listDiscussions(),
       ]);
-      set({ changes, specs, archived, loaded: true });
+      set({ changes, specs, archived, discussions, loaded: true });
       // 詳情開著時同步其資料（如任務數更新）
       const cur = get().detailChange;
       if (cur) {
         set({ detailChange: changes.find((c) => c.name === cur.name) ?? null });
+      }
+      // 討論抽屜開著時同步（輪數更新、轉出後 promotedTo 增長；封存則關閉）
+      const curD = get().detailDiscussion;
+      if (curD) {
+        set({ detailDiscussion: discussions.active.find((d) => d.slug === curD.slug) ?? null });
       }
     },
 
@@ -119,6 +151,18 @@ export function createAppStore(
 
     closeDetail() {
       set({ detailChange: null });
+    },
+
+    openDiscussion(slug) {
+      const lists = get().discussions;
+      const d =
+        lists.active.find((x) => x.slug === slug) ??
+        lists.archived.find((x) => x.slug === slug);
+      if (d) set({ detailDiscussion: d, promoteError: null });
+    },
+
+    closeDiscussion() {
+      set({ detailDiscussion: null, promoteError: null });
     },
 
     requestArchive(name) {
@@ -154,6 +198,49 @@ export function createAppStore(
 
     cancelDelete() {
       set({ pendingDelete: null });
+    },
+
+    requestPromote(slug) {
+      set({ pendingPromote: slug });
+    },
+
+    async confirmPromote(name) {
+      const slug = get().pendingPromote;
+      set({ pendingPromote: null });
+      if (!slug) return;
+      try {
+        const r = await dataSource.promoteDiscussion(slug, name?.trim() || undefined);
+        set({ promoteError: null, verbResult: `${slug} · 轉為變更 ✓ ${r.change}` });
+      } catch (e) {
+        // 轉為變更失敗：單行錯誤（討論抽屜與頂欄皆呈現），看板不變。
+        set({ promoteError: String(e), verbResult: `${slug} · 轉為變更 ✗ ${String(e)}` });
+      }
+      await get().refresh();
+    },
+
+    cancelPromote() {
+      set({ pendingPromote: null });
+    },
+
+    requestArchiveDiscussion(slug) {
+      set({ pendingArchiveDiscussion: slug });
+    },
+
+    async confirmArchiveDiscussion() {
+      const slug = get().pendingArchiveDiscussion;
+      set({ pendingArchiveDiscussion: null });
+      if (!slug) return;
+      try {
+        await dataSource.archiveDiscussion(slug);
+        set({ verbResult: `${slug} · 討論已封存`, detailDiscussion: null });
+      } catch (e) {
+        set({ verbResult: `${slug} · 討論封存失敗 ✗ ${String(e)}` });
+      }
+      await get().refresh();
+    },
+
+    cancelArchiveDiscussion() {
+      set({ pendingArchiveDiscussion: null });
     },
 
     async runVerb(verb, change) {

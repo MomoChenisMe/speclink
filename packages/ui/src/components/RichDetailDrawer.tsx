@@ -37,6 +37,14 @@ export interface RichDetailDrawerProps {
   onToggleTask?: (change: string, ordinal: number, done: boolean) => Promise<void>;
   /** 移動任務順序並回寫 tasks.md（before 為可選側別）；resolve 後抽屜會重載任務。 */
   onMoveTask?: (change: string, from: number, to: number, before?: boolean) => Promise<void>;
+  /** 來源討論（change.fromDiscussion 解析出的 slug＋topic）；null/缺席＝非討論而來。 */
+  sourceDiscussion?: { slug: string; topic: string } | null;
+  /** 同一討論扇出的同源 change 名（不含此 change 自己）。 */
+  siblingChanges?: string[];
+  /** 點來源討論開討論抽屜。 */
+  onOpenDiscussion?: (slug: string) => void;
+  /** 點同源 change 互跳。 */
+  onOpenSibling?: (name: string) => void;
 }
 
 type Doc = string | null | undefined;
@@ -64,6 +72,10 @@ export function RichDetailDrawer({
   onDelete,
   onToggleTask,
   onMoveTask,
+  sourceDiscussion,
+  siblingChanges,
+  onOpenDiscussion,
+  onOpenSibling,
 }: RichDetailDrawerProps) {
   const [meta, setMeta] = useState<ChangeMetaInfo | null>(null);
   const [proposal, setProposal] = useState<Doc>();
@@ -182,6 +194,34 @@ export function RichDetailDrawer({
               </span>
             )}
           </div>
+          {/* 同源連結：來源討論＋兄弟刀（design D6，fromDiscussion 帶出）。 */}
+          {sourceDiscussion && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+              <span>來自討論：</span>
+              <button
+                type="button"
+                className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/20"
+                onClick={() => onOpenDiscussion?.(sourceDiscussion.slug)}
+              >
+                {sourceDiscussion.topic}
+              </button>
+              {(siblingChanges ?? []).length > 0 && (
+                <>
+                  <span>同源：</span>
+                  {(siblingChanges ?? []).map((sib) => (
+                    <button
+                      key={sib}
+                      type="button"
+                      className="rounded-full bg-muted px-2 py-0.5 font-medium hover:bg-accent"
+                      onClick={() => onOpenSibling?.(sib)}
+                    >
+                      {sib}
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
               <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />

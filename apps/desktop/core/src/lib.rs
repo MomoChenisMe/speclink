@@ -9,6 +9,7 @@ use speclink_core::workspace::Workspace;
 use speclink_fs::FsStore;
 
 pub mod cache;
+pub mod discussions;
 pub mod manage;
 pub mod query;
 #[cfg(test)]

@@ -29,6 +29,10 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     runVerb: vi.fn().mockResolvedValue({ valid: true }),
     getArchivedDocument: vi.fn().mockResolvedValue(null),
     archivedCapabilities: vi.fn().mockResolvedValue([]),
+    listDiscussions: vi.fn().mockResolvedValue({ active: [], archived: [] }),
+    getDiscussionDocument: vi.fn().mockResolvedValue(null),
+    promoteDiscussion: vi.fn().mockResolvedValue({ change: "promoted-change" }),
+    archiveDiscussion: vi.fn().mockResolvedValue(undefined),
     ...over,
   };
 }

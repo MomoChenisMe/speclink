@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 
 import { App } from "../App";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
@@ -48,6 +48,10 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     runVerb: vi.fn().mockResolvedValue({ valid: true }),
     getArchivedDocument: vi.fn().mockResolvedValue(null),
     archivedCapabilities: vi.fn().mockResolvedValue([]),
+    listDiscussions: vi.fn().mockResolvedValue({ active: [], archived: [] }),
+    getDiscussionDocument: vi.fn().mockResolvedValue(null),
+    promoteDiscussion: vi.fn().mockResolvedValue({ change: "promoted-change" }),
+    archiveDiscussion: vi.fn().mockResolvedValue(undefined),
     ...over,
   };
 }
@@ -94,6 +98,75 @@ describe("App (kanban primary + rich detail)", () => {
       expect((ds.listChanges as Mock).mock.calls.length).toBeGreaterThan(before)
     );
     expect((ds.listArchived as Mock).mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("promote flow: 討論卡「轉為變更」→ 確認對話框（使用者語言）→ promoteDiscussion ＋整批 refresh", async () => {
+    const ds = fakeDataSource({
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [
+          { slug: "settled", topic: "Settled topic", status: "concluded", rounds: 2, created: "2026-07-01", promotedTo: [] },
+        ],
+        archived: [],
+      }),
+    });
+    render(<App dataSource={ds} />);
+    await waitFor(() => screen.getByText("Settled topic"));
+    fireEvent.click(screen.getByRole("button", { name: /轉為變更/ }));
+    await waitFor(() => screen.getByText("轉為變更？"));
+    const dialog = screen.getByRole("alertdialog");
+    // 文案說「會發生什麼」，不暴露工程詞（design D4）。
+    expect(dialog.textContent).toContain("提案中");
+    expect(dialog.textContent).toContain("結論");
+    expect(dialog.textContent).not.toMatch(/from_discussion|kebab-case|proposal|meta/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "轉為變更" }));
+    await waitFor(() => expect(ds.promoteDiscussion).toHaveBeenCalledWith("settled", "settled"));
+    await waitFor(() =>
+      expect((ds.listDiscussions as Mock).mock.calls.length).toBeGreaterThan(1),
+    );
+  });
+
+  it("轉為變更確認框可自訂變更名稱（再轉出的入口），說明為使用者語言", async () => {
+    const ds = fakeDataSource({
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [
+          { slug: "settled", topic: "Settled topic", status: "concluded", rounds: 2, created: "2026-07-01", promotedTo: [] },
+        ],
+        archived: [],
+      }),
+    });
+    render(<App dataSource={ds} />);
+    await waitFor(() => screen.getByText("Settled topic"));
+    fireEvent.click(screen.getByRole("button", { name: /轉為變更/ }));
+    await waitFor(() => screen.getByText("轉為變更？"));
+    // 名稱輸入 label「變更名稱」、說明「英文小寫，字間用 -」；預設由 slug 衍生。
+    const input = screen.getByLabelText("變更名稱") as HTMLInputElement;
+    expect(input.value).toBe("settled");
+    expect(screen.getByText(/英文小寫，字間用 -/)).toBeTruthy();
+    fireEvent.change(input, { target: { value: "second-cut" } });
+    const dialog = screen.getByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "轉為變更" }));
+    await waitFor(() => expect(ds.promoteDiscussion).toHaveBeenCalledWith("settled", "second-cut"));
+  });
+
+  it("archive-discussion flow: 討論卡「封存」→ 確認（使用者語言）→ archiveDiscussion called", async () => {
+    const ds = fakeDataSource({
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [
+          { slug: "settled", topic: "Settled topic", status: "concluded", rounds: 2, created: "2026-07-01", promotedTo: [] },
+        ],
+        archived: [],
+      }),
+    });
+    render(<App dataSource={ds} />);
+    await waitFor(() => screen.getByText("Settled topic"));
+    const card = screen.getByText("Settled topic").closest("[data-discussion]") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: /^封存$/ }));
+    await waitFor(() => screen.getByText("封存討論？"));
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog.textContent).toContain("已封存頁");
+    expect(dialog.textContent).not.toContain("discussions/archive");
+    fireEvent.click(within(dialog).getByRole("button", { name: "封存" }));
+    await waitFor(() => expect(ds.archiveDiscussion).toHaveBeenCalledWith("settled"));
   });
 
   it("archived entry in the top bar jumps to the archived list", async () => {

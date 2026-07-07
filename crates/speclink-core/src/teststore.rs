@@ -24,6 +24,10 @@ pub(crate) struct TestStore {
     pub canonical: RefCell<HashMap<String, String>>,
     /// Number of `write_change_meta` calls (idempotence assertions).
     pub meta_writes: RefCell<u32>,
+    /// Live discussion slug → document text.
+    pub discussions: RefCell<HashMap<String, String>>,
+    /// Archived discussion slug → document text (promote must refuse these).
+    pub archived_discussions: RefCell<HashMap<String, String>>,
 }
 
 impl TestStore {
@@ -41,6 +45,16 @@ impl TestStore {
         self.artifacts
             .borrow_mut()
             .insert((change.to_string(), artifact.to_string()), content.to_string());
+    }
+
+    pub fn with_live_discussion(slug: &str, text: &str) -> TestStore {
+        let store = TestStore::default();
+        store.discussions.borrow_mut().insert(slug.to_string(), text.to_string());
+        store
+    }
+
+    pub fn discussion(&self, slug: &str) -> String {
+        self.discussions.borrow().get(slug).cloned().unwrap_or_default()
     }
 }
 
@@ -157,26 +171,42 @@ impl Store for TestStore {
             .insert(dated_name.to_string(), content.to_string());
         Ok(())
     }
-    fn live_discussion_exists(&self, _slug: &str) -> bool {
-        false
+    fn live_discussion_exists(&self, slug: &str) -> bool {
+        self.discussions.borrow().contains_key(slug)
     }
-    fn archived_discussion_exists(&self, _slug: &str) -> bool {
-        false
+    fn archived_discussion_exists(&self, slug: &str) -> bool {
+        self.archived_discussions.borrow().contains_key(slug)
     }
     fn live_discussion_path(&self, slug: &str) -> PathBuf {
         PathBuf::from(format!("discussions/{slug}.md"))
     }
-    fn read_live_discussion(&self, _slug: &str) -> Option<String> {
-        None
+    fn read_live_discussion(&self, slug: &str) -> Option<String> {
+        self.discussions.borrow().get(slug).cloned()
     }
-    fn write_live_discussion(&self, _slug: &str, _content: &str) -> Result<PathBuf> {
-        unreachable!("test flows do not write discussions")
+    fn write_live_discussion(&self, slug: &str, content: &str) -> Result<PathBuf> {
+        self.discussions.borrow_mut().insert(slug.to_string(), content.to_string());
+        Ok(self.live_discussion_path(slug))
     }
     fn delete_live_discussion(&self, _slug: &str) -> Result<()> {
         unreachable!()
     }
-    fn read_discussion(&self, _slug: &str) -> Option<DiscussionDoc> {
-        None
+    fn read_discussion(&self, slug: &str) -> Option<DiscussionDoc> {
+        if let Some(text) = self.discussions.borrow().get(slug) {
+            return Some(DiscussionDoc {
+                slug: slug.to_string(),
+                text: text.clone(),
+                path: self.live_discussion_path(slug),
+                archived: false,
+            });
+        }
+        let archived = self.archived_discussions.borrow();
+        let text = archived.get(slug)?;
+        Some(DiscussionDoc {
+            slug: slug.to_string(),
+            text: text.clone(),
+            path: PathBuf::from(format!("discussions/archive/2026-01-02-{slug}.md")),
+            archived: true,
+        })
     }
     fn list_live_discussions(&self) -> Vec<DiscussionDoc> {
         Vec::new()
