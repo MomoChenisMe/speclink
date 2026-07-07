@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Archive, GitBranch, FileText, StickyNote, Settings, FolderOpen } from "lucide-react";
+import { Archive, GitBranch, FileText, Settings, FolderOpen } from "lucide-react";
 import {
   KanbanBoard,
   ArchivedList,
@@ -75,14 +75,20 @@ function NavItem({
   label,
   active,
   onClick,
+  trailing,
+  ariaLabel,
 }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
   onClick?: () => void;
+  /** 尾隨元素（如計數徽章）；設 ariaLabel 使無障礙名稱不被徽章數字污染。 */
+  trailing?: React.ReactNode;
+  ariaLabel?: string;
 }) {
   return (
     <button
+      aria-label={ariaLabel}
       onClick={onClick}
       className={`flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm transition-colors ${
         active ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -90,6 +96,7 @@ function NavItem({
     >
       {icon}
       {label}
+      {trailing && <span className="ml-auto">{trailing}</span>}
     </button>
   );
 }
@@ -215,21 +222,6 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
             {t("app.currentProject")}
           </span>
         )}
-        {/* 已封存入口（獨立頁） */}
-        <button
-          aria-label={t("app.archived")}
-          className={`flex items-center gap-1.5 text-sm px-2 py-1 rounded-md transition-colors ${
-            s.boardView === "archived"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
-          }`}
-          onClick={() => s.setBoardView(s.boardView === "archived" ? "board" : "archived")}
-        >
-          <Archive className="h-4 w-4" /> {t("app.archived")}
-          <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-muted text-muted-foreground text-[10px] tabular-nums">
-            {s.archived.length}
-          </span>
-        </button>
         <div className="flex-1" />
         {s.verbResult && (
           <span className="text-xs font-mono text-muted-foreground truncate max-w-[40%]">{s.verbResult}</span>
@@ -252,8 +244,19 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
             onClick={() => s.setBoardView("board")}
           />
           <NavItem icon={<FileText className="h-4 w-4" />} label={t("app.navSpecs")} />
-          <NavItem icon={<StickyNote className="h-4 w-4" />} label={t("app.navNotes")} />
-          <div className="flex-1" />
+          {/* 已封存入口（獨立頁）：切頁語意，返回看板改點「變更」。 */}
+          <NavItem
+            icon={<Archive className="h-4 w-4" />}
+            label={t("app.archived")}
+            ariaLabel={t("app.archived")}
+            active={s.boardView === "archived"}
+            onClick={() => s.setBoardView("archived")}
+            trailing={
+              <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-muted text-muted-foreground text-[10px] tabular-nums">
+                {s.archived.length}
+              </span>
+            }
+          />
           <NavItem
             icon={<Settings className="h-4 w-4" />}
             label={t("app.navSettings")}

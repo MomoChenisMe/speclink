@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 
 import { App } from "../App";
+import { APP_MESSAGES } from "../i18n/messages";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 // 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發。
@@ -322,7 +323,7 @@ describe("App (kanban primary + rich detail)", () => {
     expect(localStorage.getItem("speclink.uiLocale")).toBe("zh-TW");
   });
 
-  it("archived entry in the top bar jumps to the archived list", async () => {
+  it("archived entry in the sidebar jumps to the archived list", async () => {
     const ds = fakeDataSource({
       listArchived: vi.fn().mockResolvedValue([
         { datedName: "2026-07-04-old-change", date: "2026-07-04", name: "old-change" },
@@ -363,5 +364,79 @@ describe("board search wiring（看板搜尋接線）", () => {
     await waitFor(() => expect(screen.getByText("已封存的變更")).toBeTruthy());
     const archInput = screen.getByPlaceholderText("搜尋已封存的變更與討論…") as HTMLInputElement;
     expect(archInput.value).toBe("");
+  });
+});
+
+describe("sidebar navigation structure（側欄導覽結構）", () => {
+  it("側欄由上而下依序為變更/規格/已封存/設定，無備忘項，頂欄無已封存鈕", async () => {
+    render(<App dataSource={fakeDataSource()} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const aside = document.querySelector("aside") as HTMLElement;
+    // 已封存項以 aria-label 為無障礙名稱（徽章數字不污染），其餘取文字內容。
+    const labels = within(aside)
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
+    expect(labels).toEqual(["變更", "規格", "已封存", "設定"]);
+    expect(screen.queryByText("備忘")).toBeNull();
+    const header = document.querySelector("header") as HTMLElement;
+    expect(within(header).queryByLabelText("已封存")).toBeNull();
+    expect(within(header).queryByText("已封存")).toBeNull();
+  });
+
+  it("已封存導覽項帶封存數量徽章，無障礙標籤為「已封存」", async () => {
+    const ds = fakeDataSource({
+      listArchived: vi.fn().mockResolvedValue([
+        { datedName: "2026-07-04-old-change", date: "2026-07-04", name: "old-change" },
+        { datedName: "2026-07-05-other-change", date: "2026-07-05", name: "other-change" },
+      ]),
+    });
+    render(<App dataSource={ds} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const aside = document.querySelector("aside") as HTMLElement;
+    const nav = within(aside).getByRole("button", { name: "已封存" });
+    await waitFor(() => expect(nav.textContent).toContain("2"));
+  });
+
+  it("封存清單變動後徽章即時更新（workspace-changed 觸發 refresh）", async () => {
+    const archived: Array<{ datedName: string; date: string; name: string }> = [];
+    const ds = fakeDataSource({
+      listArchived: vi.fn().mockImplementation(() => Promise.resolve([...archived])),
+    });
+    render(<App dataSource={ds} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const aside = document.querySelector("aside") as HTMLElement;
+    const nav = within(aside).getByRole("button", { name: "已封存" });
+    expect(nav.textContent).toContain("0");
+    // 模擬外部終端封存一個變更：檔案監看發 workspace-changed → 整批 refresh。
+    archived.push({ datedName: "2026-07-07-just-archived", date: "2026-07-07", name: "just-archived" });
+    workspaceHandlers.forEach((h) => h());
+    await waitFor(() => expect(nav.textContent).toContain("1"));
+  });
+
+  it("已封存導覽為切頁而非 toggle：再點停留在已封存頁，點變更才返回看板", async () => {
+    render(<App dataSource={fakeDataSource()} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const aside = document.querySelector("aside") as HTMLElement;
+    const archivedNav = within(aside).getByRole("button", { name: "已封存" });
+    fireEvent.click(archivedNav);
+    await waitFor(() => expect(screen.getByText("已封存的變更")).toBeTruthy());
+    // 再點一次：停留（非 toggle 返回看板），現行項維持高亮。
+    fireEvent.click(archivedNav);
+    expect(screen.getByText("已封存的變更")).toBeTruthy();
+    expect(document.querySelector('[data-column="ready"]')).toBeNull();
+    expect(archivedNav.className).toContain("bg-primary");
+    // 點「變更」返回看板：高亮轉移到變更項、已封存項恢復未選取樣式。
+    const changesNav = within(aside).getByRole("button", { name: "變更" });
+    fireEvent.click(changesNav);
+    await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeTruthy());
+    expect(changesNav.className).toContain("bg-primary");
+    expect(archivedNav.className).not.toContain("bg-primary");
+  });
+
+  it("i18n 兩語系鍵集合相等，備忘鍵已自兩語系移除", () => {
+    const zhKeys = Object.keys(APP_MESSAGES["zh-TW"]).sort();
+    const enKeys = Object.keys(APP_MESSAGES.en).sort();
+    expect(zhKeys).toEqual(enKeys);
+    expect(zhKeys).not.toContain("app.navNotes");
   });
 });
