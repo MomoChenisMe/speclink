@@ -21,3 +21,4 @@ clap_complete = "4"
 
 [dev-dependencies]
 tiny_http = "0.12"
+chrono.workspace = true

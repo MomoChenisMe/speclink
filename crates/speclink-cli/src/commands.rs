@@ -1549,39 +1549,28 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
                 None => resolve_change(store, None)?.name,
             };
             // Check tasks.md existence BEFORE validating the id (matches Spectra's order).
-            let text = store
-                .read_artifact(&change_name, "tasks.md")
-                .ok_or_else(|| anyhow::anyhow!("tasks.md not found for change '{change_name}'"))?;
+            if !store.artifact_exists(&change_name, "tasks.md") {
+                bail!("tasks.md not found for change '{change_name}'");
+            }
             let id: usize = task_id
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid task ID '{task_id}': must be a number"))?;
             if id < 1 {
                 bail!("Task ID must be >= 1");
             }
-            let total = core::tasks::parse(&text).len();
-            let (new_content, desc, already) = core::tasks::mark_done(&text, id)
-                .ok_or_else(|| anyhow::anyhow!("Task {id} not found (total: {total})"))?;
-            if already {
+            // 完成語意（勾章、寫回、touched 記錄、首次完成蓋開工章）單點在引擎；
+            // 這裡只剩呈現：already 維持現行錯誤結束（引擎已保證零檔案效果）。
+            let outcome = core::tasks::complete(
+                store,
+                &ws,
+                &change_name,
+                id,
+                core::util::git_identity(&ws.root).as_deref(),
+                None,
+            )?;
+            let desc = outcome.description;
+            if outcome.already {
                 bail!("Task {id} is already done");
-            }
-            store.write_artifact(&change_name, "tasks.md", &new_content)?;
-
-            // Record touched files: only those not already attributed to an earlier task;
-            // when nothing new is dirty, no entry is appended at all (matches Spectra).
-            let mut record = core::tasks::TouchedRecord::load(&ws, &change_name);
-            record.change = change_name.clone();
-            let seen = record.all_files();
-            let files: Vec<String> = core::tasks::git_changed_files(&ws.root)
-                .into_iter()
-                .filter(|f| !seen.contains(f))
-                .collect();
-            if !files.is_empty() {
-                record.touched.push(core::tasks::TouchedEntry {
-                    task_id: task_id.to_string(),
-                    task_desc: desc.clone(),
-                    files,
-                });
-                record.save(&ws)?;
             }
 
             if json {
