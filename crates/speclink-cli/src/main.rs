@@ -575,7 +575,14 @@ struct DiscussArgs {
 #[derive(Subcommand)]
 enum DiscussCommands {
     /// Create a new discussion document
-    New { topic: String, #[arg(long)] json: bool },
+    New {
+        topic: String,
+        /// Override the record slug (ASCII kebab-case); the topic stays verbatim
+        #[arg(long)]
+        slug: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// List discussions
     List {
         /// Show archived discussions instead of live ones

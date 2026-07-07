@@ -651,7 +651,12 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             print!("{}", v_str(&payload, "content"));
             Ok(())
         }
-        DiscussCommands::New { topic, json } => {
+        DiscussCommands::New { topic, slug, json } => {
+            // The remote API has no slug field yet — reject loudly rather than
+            // silently dropping the override.
+            if slug.is_some() {
+                anyhow::bail!("--slug is not supported for remote discussions yet");
+            }
             let resp = ctx.client.new_discussion(&topic)?;
             if json {
                 return print_json(&resp);
