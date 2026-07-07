@@ -2,11 +2,39 @@
 // .speclink.yaml 的 tools 多選與 openspec/config.yaml 的政策欄位表單、
 // UI 語言三選。欄位旁說明文字承接被 Mapping 讀-改-寫移除的範本註解教學角色。
 import { useEffect, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, Checkbox, Input, NativeSelect, cn, useI18n } from "@speclink/ui";
+import { AlertTriangle } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Checkbox,
+  Markdown,
+  NativeSelect,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  cn,
+  useI18n,
+} from "@speclink/ui";
 
 import type { SettingsSnapshot, WorkspaceAdapter } from "../adapter/workspace";
 import type { LocalePreference } from "../i18n/locale";
+
+/** 行↔條目轉換（design D2）：一行一條規則——儲存時逐行修剪頭尾空白、空行滌除，行序即寫入順序。 */
+const entriesToText = (entries: string[]) => entries.join("\n");
+const textToEntries = (text: string) =>
+  text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+
+/** 收合門檻（design D3）：唯讀 markdown 超長截斷——渲染高度無法在 jsdom 量測，以原文規模判定。 */
+const isLongContext = (text: string) => text.split("\n").length > 12 || text.length > 1200;
+
+const TEXTAREA_CLS =
+  "w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
 
 export interface SettingsViewProps {
   workspace: WorkspaceAdapter;
@@ -41,12 +69,16 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
   const [tdd, setTdd] = useState(false);
   const [audit, setAudit] = useState(false);
   const [contextText, setContextText] = useState("");
-  /** 產出規則編輯狀態：schemaArtifacts 固定鍵 → 條目清單（清單順序即寫入順序）。 */
+  /** 產出規則現值：schemaArtifacts 固定鍵 → 條目清單（清單順序即檔案順序）。 */
   const [rules, setRules] = useState<Record<string, string[]>>({});
+  // 專案設定卡（design D1）：卡層級編輯態，兩分頁共享；草稿於進編輯時自現值播種。
+  const [editing, setEditing] = useState(false);
+  const [draftContext, setDraftContext] = useState("");
+  const [draftRules, setDraftRules] = useState<Record<string, string>>({});
+  const [contextExpanded, setContextExpanded] = useState(false);
   const [appMsg, setAppMsg] = useState<string | null>(null);
   const [wfMsg, setWfMsg] = useState<string | null>(null);
-  const [ctxMsg, setCtxMsg] = useState<string | null>(null);
-  const [rulesMsg, setRulesMsg] = useState<string | null>(null);
+  const [projMsg, setProjMsg] = useState<string | null>(null);
 
   useEffect(() => {
     void workspace.readSettings().then((s) => {
@@ -97,43 +129,39 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
     }
   };
 
-  const saveContext = async () => {
-    try {
-      await workspace.writeWorkflowContext(contextText);
-      setCtxMsg(t("settings.saved"));
-    } catch (e) {
-      setCtxMsg(String(e));
-    }
+  const beginEdit = () => {
+    setDraftContext(contextText);
+    setDraftRules(
+      Object.fromEntries(
+        snap!.workflow.schemaArtifacts.map((id) => [id, entriesToText(rules[id] ?? [])]),
+      ),
+    );
+    setProjMsg(null);
+    setEditing(true);
   };
 
-  const saveRules = async () => {
-    // 整份代換 payload：全部固定鍵依 schemaArtifacts 順序送出（空節＝移除鍵）。
-    const payload: Array<[string, string[]]> = snap!.workflow.schemaArtifacts.map((id) => [
+  const cancelEdit = () => setEditing(false);
+
+  const saveProject = async () => {
+    // 整份代換 payload：全部固定鍵依 schemaArtifacts 順序送出（空節＝移除鍵、全空＝移除 rules 鍵）；
+    // 未動分頁寫回等值內容，檔案效果冪等（design 風險緩解）。
+    const nextRules: Array<[string, string[]]> = snap!.workflow.schemaArtifacts.map((id) => [
       id,
-      rules[id] ?? [],
+      textToEntries(draftRules[id] ?? ""),
     ]);
     try {
-      await workspace.writeWorkflowRules(payload);
-      setRulesMsg(t("settings.saved"));
+      await workspace.writeWorkflowContext(draftContext);
+      await workspace.writeWorkflowRules(nextRules);
+      setContextText(draftContext);
+      setRules(Object.fromEntries(nextRules));
+      setContextExpanded(false);
+      setEditing(false);
+      setProjMsg(t("settings.saved"));
     } catch (e) {
-      setRulesMsg(String(e));
+      // 寫入失敗：單行錯誤（指明檔案與階段，來自 desktop-core），維持編輯態不遺失輸入。
+      setProjMsg(String(e));
     }
   };
-
-  const setEntry = (id: string, idx: number, value: string) =>
-    setRules((prev) => ({ ...prev, [id]: prev[id].map((e, i) => (i === idx ? value : e)) }));
-  const addEntry = (id: string) =>
-    setRules((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), ""] }));
-  const removeEntry = (id: string, idx: number) =>
-    setRules((prev) => ({ ...prev, [id]: prev[id].filter((_, i) => i !== idx) }));
-  const moveEntry = (id: string, idx: number, delta: -1 | 1) =>
-    setRules((prev) => {
-      const list = [...prev[id]];
-      const target = idx + delta;
-      if (target < 0 || target >= list.length) return prev;
-      [list[idx], list[target]] = [list[target], list[idx]];
-      return { ...prev, [id]: list };
-    });
 
   const uiLocaleOptions: Array<{ value: LocalePreference; label: string }> = [
     { value: null, label: t("settings.followSystem") },
@@ -141,8 +169,133 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
     { value: "en", label: "English" },
   ];
 
+  const contextCollapsed = !editing && !contextExpanded && isLongContext(contextText);
+  const populatedRuleKeys = snap.workflow.schemaArtifacts.filter((id) => (rules[id] ?? []).length > 0);
+
   return (
     <div className="flex flex-col gap-4 max-w-2xl mx-auto w-full">
+      {/* config.yaml：專案設定卡（spec 需求「設定頁編輯專案說明與產出規則」；design D1–D4）——
+          唯讀優先、卡層級就地編輯；產出規則整份文字編輯（一行一條規則）。 */}
+      <Card data-testid="project-settings-card">
+        <CardHeader className="flex-row items-start justify-between">
+          <div className="flex flex-col gap-0.5">
+            <CardTitle className="text-base">{t("settings.projectCard")}</CardTitle>
+            <span className="font-mono text-xs text-muted-foreground">config.yaml</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {projMsg && <span className="text-xs text-muted-foreground">{projMsg}</span>}
+            {editing ? (
+              <>
+                <button
+                  type="button"
+                  data-testid="project-cancel"
+                  className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                  onClick={cancelEdit}
+                >
+                  {t("app.cancel")}
+                </button>
+                <button
+                  type="button"
+                  data-testid="project-save"
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                  onClick={() => void saveProject()}
+                >
+                  {t("settings.save")}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                data-testid="project-edit"
+                disabled={wfDisabled}
+                className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                onClick={beginEdit}
+              >
+                {t("settings.edit")}
+              </button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="gap-2.5">
+          {snap.workflow.parseError !== null && <ParseErrorBanner message={snap.workflow.parseError} />}
+          <Tabs defaultValue="context">
+            <TabsList>
+              <TabsTrigger value="context">{t("settings.contextLabel")}</TabsTrigger>
+              <TabsTrigger value="rules">{t("settings.rulesLabel")}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="context" className="pt-2.5">
+              {editing ? (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    data-testid="context-input"
+                    value={draftContext}
+                    rows={10}
+                    className={TEXTAREA_CLS}
+                    onChange={(e) => setDraftContext(e.target.value)}
+                  />
+                  <FieldHelp>{t("settings.contextHelp")}</FieldHelp>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <div data-testid="context-readonly" className={cn(contextCollapsed && "max-h-52 overflow-hidden")}>
+                    <Markdown content={contextText || null} empty={t("settings.contextEmpty")} />
+                  </div>
+                  {contextCollapsed && (
+                    <button
+                      type="button"
+                      data-testid="context-show-more"
+                      className="self-start text-xs text-primary hover:underline"
+                      onClick={() => setContextExpanded(true)}
+                    >
+                      {t("settings.showMore")}
+                    </button>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+            <TabsContent value="rules" className="pt-2.5">
+              {editing ? (
+                <div className="flex flex-col gap-3">
+                  {snap.workflow.schemaArtifacts.map((id) => (
+                    <div key={id} className="flex flex-col gap-1">
+                      <label htmlFor={`rules-input-${id}`} className="text-sm font-medium font-mono">
+                        {id}
+                      </label>
+                      <textarea
+                        id={`rules-input-${id}`}
+                        data-testid={`rules-input-${id}`}
+                        value={draftRules[id] ?? ""}
+                        rows={3}
+                        className={TEXTAREA_CLS}
+                        onChange={(e) =>
+                          setDraftRules((prev) => ({ ...prev, [id]: e.target.value }))
+                        }
+                      />
+                    </div>
+                  ))}
+                  <FieldHelp>{t("settings.rulesHelp")}</FieldHelp>
+                </div>
+              ) : populatedRuleKeys.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 m-0">{t("common.noContent")}</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {populatedRuleKeys.map((id) => (
+                    <div key={id} data-testid={`rules-readonly-${id}`} className="flex flex-col gap-1">
+                      <span className="text-sm font-medium font-mono">{id}</span>
+                      <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-sm text-muted-foreground">
+                        {(rules[id] ?? []).map((entry, i) => (
+                          <li key={i}>{entry}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+
       {/* UI 語言（app 本機偏好——與 config.yaml 的 locale 是兩件事） */}
       <Card>
         <CardHeader>
@@ -299,112 +452,6 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
         </CardContent>
       </Card>
 
-      {/* config.yaml：專案說明（context）——spec 需求「設定頁編輯專案說明與產出規則」 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("settings.contextLabel")}</CardTitle>
-        </CardHeader>
-        <CardContent className="gap-2">
-          {snap.workflow.parseError !== null && <ParseErrorBanner message={snap.workflow.parseError} />}
-          <textarea
-            data-testid="context-input"
-            value={contextText}
-            disabled={wfDisabled}
-            rows={6}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            onChange={(e) => setContextText(e.target.value)}
-          />
-          <FieldHelp>{t("settings.contextHelp")}</FieldHelp>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              data-testid="save-context"
-              disabled={wfDisabled}
-              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              onClick={() => void saveContext()}
-            >
-              {t("settings.save")}
-            </button>
-            {ctxMsg && <span className="text-xs text-muted-foreground">{ctxMsg}</span>}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* config.yaml：產出規則（rules）——schema 固定鍵分節、上下移排序（design D2） */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("settings.rulesLabel")}</CardTitle>
-        </CardHeader>
-        <CardContent className="gap-3">
-          {snap.workflow.parseError !== null && <ParseErrorBanner message={snap.workflow.parseError} />}
-          <FieldHelp>{t("settings.rulesHelp")}</FieldHelp>
-          {snap.workflow.schemaArtifacts.map((id) => {
-            const entries = rules[id] ?? [];
-            return (
-              <div key={id} data-testid={`rules-section-${id}`} className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium font-mono">{id}</span>
-                {entries.map((entry, idx) => (
-                  <div key={idx} className="flex items-center gap-1">
-                    <Input
-                      value={entry}
-                      disabled={wfDisabled}
-                      className="flex-1 font-mono text-xs"
-                      onChange={(e) => setEntry(id, idx, e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      aria-label={t("settings.ruleUp")}
-                      disabled={wfDisabled || idx === 0}
-                      className="rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
-                      onClick={() => moveEntry(id, idx, -1)}
-                    >
-                      <ChevronUp className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={t("settings.ruleDown")}
-                      disabled={wfDisabled || idx === entries.length - 1}
-                      className="rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
-                      onClick={() => moveEntry(id, idx, 1)}
-                    >
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={t("settings.ruleDelete")}
-                      disabled={wfDisabled}
-                      className="rounded-md border border-border p-1.5 text-muted-foreground hover:text-destructive disabled:opacity-40"
-                      onClick={() => removeEntry(id, idx)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  disabled={wfDisabled}
-                  className="self-start inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40"
-                  onClick={() => addEntry(id)}
-                >
-                  <Plus className="h-3 w-3" /> {t("settings.addRule")}
-                </button>
-              </div>
-            );
-          })}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              data-testid="save-rules"
-              disabled={wfDisabled}
-              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              onClick={() => void saveRules()}
-            >
-              {t("settings.save")}
-            </button>
-            {rulesMsg && <span className="text-xs text-muted-foreground">{rulesMsg}</span>}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
