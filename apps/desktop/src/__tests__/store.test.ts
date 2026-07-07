@@ -47,6 +47,16 @@ describe("app store (Zustand)", () => {
     expect(store.getState().loaded).toBe(true);
   });
 
+  it("refresh increments the refreshGen generation (initial 0)", async () => {
+    // 刷新世代：內容元件據此重載已載入的文件（design D1）。
+    const store = createAppStore(fakeDataSource());
+    expect(store.getState().refreshGen).toBe(0);
+    await store.getState().refresh();
+    expect(store.getState().refreshGen).toBe(1);
+    await store.getState().refresh();
+    expect(store.getState().refreshGen).toBe(2);
+  });
+
   it("setView, setQuery and toggleExpand update UI state", () => {
     const store = createAppStore(fakeDataSource());
     store.getState().setView("archived");

@@ -18,8 +18,29 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 
+// 兩個抽屜的 pass-through spy：捕捉 props（驗證刷新世代下發）後照常渲染原元件。
+const { drawerSpy } = vi.hoisted(() => ({
+  drawerSpy: { rich: [] as Array<Record<string, unknown>>, disc: [] as Array<Record<string, unknown>> },
+}));
+vi.mock("@speclink/ui", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@speclink/ui")>();
+  return {
+    ...mod,
+    RichDetailDrawer: (props: never) => {
+      drawerSpy.rich.push(props);
+      return <mod.RichDetailDrawer {...(props as object) as Parameters<typeof mod.RichDetailDrawer>[0]} />;
+    },
+    DiscussionDrawer: (props: never) => {
+      drawerSpy.disc.push(props);
+      return <mod.DiscussionDrawer {...(props as object) as Parameters<typeof mod.DiscussionDrawer>[0]} />;
+    },
+  };
+});
+
 beforeEach(() => {
   workspaceHandlers.length = 0;
+  drawerSpy.rich.length = 0;
+  drawerSpy.disc.length = 0;
 });
 
 const STATUS: StatusReport = {
@@ -84,6 +105,21 @@ describe("App (kanban primary + rich detail)", () => {
     await waitFor(() => screen.getByText("刪除變更？"));
     fireEvent.click(screen.getByRole("button", { name: "刪除" }));
     await waitFor(() => expect(ds.deleteChange).toHaveBeenCalledWith("desktop-shell-and-browser"));
+  });
+
+  it("passes an increasing refreshGen generation to both drawers", async () => {
+    // design D1：世代自 store 經 props 下發，內容元件據此重載（重載行為由 packages/ui 測試承載）。
+    render(<App dataSource={fakeDataSource()} />);
+    await waitFor(() => expect(workspaceHandlers.length).toBeGreaterThan(0));
+    await waitFor(() => expect(drawerSpy.rich.length).toBeGreaterThan(0));
+    await waitFor(() => expect(drawerSpy.disc.length).toBeGreaterThan(0));
+    const before = drawerSpy.rich[drawerSpy.rich.length - 1].refreshGen;
+    expect(typeof before).toBe("number");
+    workspaceHandlers.forEach((h) => h());
+    await waitFor(() => {
+      expect(drawerSpy.rich[drawerSpy.rich.length - 1].refreshGen as number).toBeGreaterThan(before as number);
+      expect(drawerSpy.disc[drawerSpy.disc.length - 1].refreshGen as number).toBeGreaterThan(before as number);
+    });
   });
 
   it("workspace-changed event triggers a full refresh (external writers reflected)", async () => {

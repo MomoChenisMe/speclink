@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Archive,
   Check,
@@ -28,14 +28,16 @@ export interface RichDetailDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   change: ChangeItem | null;
+  /** 刷新世代——遞增即重載已載入的文件內容（未傳＝0，行為等同僅開啟時載入）。 */
+  refreshGen?: number;
   loadDocument: (change: string, artifact: string) => Promise<string | null>;
   loadCapabilities: (change: string) => Promise<string[]>;
   loadMeta: (change: string) => Promise<ChangeMetaInfo | null>;
   onRunVerb?: (verb: Verb, change: string) => void;
   onDelete?: (change: string) => void;
-  /** 勾選/取消任務並回寫 tasks.md；resolve 後抽屜會重載任務。 */
+  /** 勾選/取消任務並回寫 tasks.md；重載由宿主 refresh 後的刷新世代遞增驅動（單一資料流）。 */
   onToggleTask?: (change: string, ordinal: number, done: boolean) => Promise<void>;
-  /** 移動任務順序並回寫 tasks.md（before 為可選側別）；resolve 後抽屜會重載任務。 */
+  /** 移動任務順序並回寫 tasks.md（before 為可選側別）；重載由宿主 refresh 後的刷新世代遞增驅動。 */
   onMoveTask?: (change: string, from: number, to: number, before?: boolean) => Promise<void>;
   /** 來源討論（change.fromDiscussion 解析出的 slug＋topic）；null/缺席＝非討論而來。 */
   sourceDiscussion?: { slug: string; topic: string } | null;
@@ -65,6 +67,7 @@ export function RichDetailDrawer({
   open,
   onOpenChange,
   change,
+  refreshGen,
   loadDocument,
   loadCapabilities,
   loadMeta,
@@ -85,28 +88,57 @@ export function RichDetailDrawer({
   const [copied, setCopied] = useState(false);
   const [full, setFull] = useState(false);
   const [taskBusy, setTaskBusy] = useState(false);
+  // 拖曳手勢進行中（按住～放開，TaskList 回報）——與 taskBusy 同為讓路條件。
+  const [dragActive, setDragActive] = useState(false);
 
   const name = change?.name ?? null;
+  const gen = refreshGen ?? 0;
+  // latest-wins：每次載入取遞增序號，回應到達時序號已過期即丟棄（涵蓋世代與換 change 的交錯）。
+  const requestSeq = useRef(0);
+  // 已發起載入的世代——判斷外部世代是否落後需補載。
+  const loadedGen = useRef(-1);
 
+  const loadAll = (g: number, target: string, clear: boolean) => {
+    const seq = ++requestSeq.current;
+    loadedGen.current = g;
+    if (clear) {
+      setMeta(null);
+      setProposal(undefined);
+      setDesign(undefined);
+      setTasksMd(undefined);
+      setSpecDocs({});
+    }
+    const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
+      if (requestSeq.current === seq) apply(v);
+    };
+    void loadMeta(target).then(fresh(setMeta));
+    void loadDocument(target, "proposal.md").then(fresh(setProposal));
+    void loadDocument(target, "design.md").then(fresh(setDesign));
+    void loadDocument(target, "tasks.md").then(fresh(setTasksMd));
+    void loadCapabilities(target).then(async (caps) => {
+      const entries = await Promise.all(
+        caps.map(async (cap) => [cap, await loadDocument(target, `specs/${cap}/spec.md`)] as const),
+      );
+      if (requestSeq.current === seq) setSpecDocs(Object.fromEntries(entries));
+    });
+  };
+
+  // 開啟／換 change：清空後全量載入（載入中狀態屬新內容的正確呈現）。
   useEffect(() => {
     if (!open || !name) return;
-    setMeta(null);
-    setProposal(undefined);
-    setDesign(undefined);
-    setTasksMd(undefined);
-    setSpecDocs({});
-    void loadMeta(name).then(setMeta);
-    void loadDocument(name, "proposal.md").then(setProposal);
-    void loadDocument(name, "design.md").then(setDesign);
-    void loadDocument(name, "tasks.md").then(setTasksMd);
-    void loadCapabilities(name).then(async (caps) => {
-      const entries = await Promise.all(
-        caps.map(async (cap) => [cap, await loadDocument(name, `specs/${cap}/spec.md`)] as const),
-      );
-      setSpecDocs(Object.fromEntries(entries));
-    });
+    loadAll(gen, name, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, name]);
+
+  // 外部世代重載：不清空、回應到達後單次替換（不重置分頁與捲動）。
+  // 互動進行中（拖曳手勢 dragActive、寫回等待 taskBusy）讓路——兩旗標皆為依賴，
+  // 互動結束時本 effect 重跑補載一次。
+  useEffect(() => {
+    if (!open || !name || taskBusy || dragActive) return;
+    if (gen <= loadedGen.current) return;
+    loadAll(gen, name, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, name, gen, taskBusy, dragActive]);
 
   if (!change) return null;
 
@@ -121,28 +153,23 @@ export function RichDetailDrawer({
     setTimeout(() => setCopied(false), 1200);
   };
 
-  const reloadTasks = async () => {
-    if (name) setTasksMd(await loadDocument(name, "tasks.md"));
-  };
-
+  // 勾選／拖放僅轉發寫回；重載統一由宿主 refresh 的世代遞增驅動（design D2 單一資料流）。
+  // busy 旗標讓外部世代在互動中讓路，finally 釋放時世代 effect 補載。
   const handleToggle = async (ordinal: number, done: boolean) => {
     if (!name || !onToggleTask) return;
     setTaskBusy(true);
     try {
       await onToggleTask(name, ordinal, done);
-      await reloadTasks();
     } finally {
       setTaskBusy(false);
     }
   };
 
-  // 拖放落點一次到位轉發（含側別）；寫回後重讀 tasks.md——重編號後文字已變，檔案為真相。
   const handleReorder = async (from: number, to: number, before?: boolean) => {
     if (!name || !onMoveTask) return;
     setTaskBusy(true);
     try {
       await onMoveTask(name, from, to, before);
-      await reloadTasks();
     } finally {
       setTaskBusy(false);
     }
@@ -275,6 +302,7 @@ export function RichDetailDrawer({
               <TaskList
                 markdown={tasksMd ?? null}
                 busy={taskBusy}
+                onDragActiveChange={setDragActive}
                 onToggle={(ordinal, done) => void handleToggle(ordinal, done)}
                 onReorder={(from, to, before) => void handleReorder(from, to, before)}
               />

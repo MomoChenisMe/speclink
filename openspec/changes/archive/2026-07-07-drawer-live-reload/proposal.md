@@ -30,7 +30,8 @@
 - Affected code:
   - Modified: apps/desktop/src/store.ts（refresh 遞增刷新世代）
   - Modified: apps/desktop/src/App.tsx（世代值傳入兩個抽屜）
-  - Modified: packages/ui/src/components/RichDetailDrawer.tsx（內容載入掛世代、meta 隨勾選重載、互動讓路）
+  - Modified: packages/ui/src/components/RichDetailDrawer.tsx（內容載入掛世代、meta 隨勾選重載、互動讓路——含拖曳手勢期間）
+  - Modified: packages/ui/src/components/TaskList.tsx（新增拖曳手勢態回報 onDragActiveChange，供抽屜讓路）
   - Modified: packages/ui/src/components/DiscussionDrawer.tsx（內容載入掛世代）
   - Modified: packages/ui/src/components/ChangeListItem.tsx（移除一次性快取守衛、掛世代）
   - Modified: packages/ui/src/__tests__/richDrawer.test.tsx、apps/desktop/src/__tests__/App.test.tsx、apps/desktop/src/__tests__/store.test.ts（行為測試同步）

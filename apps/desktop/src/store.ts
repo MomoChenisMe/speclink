@@ -20,6 +20,8 @@ export interface AppState {
   /** 討論兩節（active 進看板第 0 欄、archived 進已封存頁討論節）。 */
   discussions: DiscussionLists;
   loaded: boolean;
+  /** 刷新世代——每次整批 refresh 完成後遞增；內容元件據此重載已載入的文件。 */
+  refreshGen: number;
 
   boardView: BoardView;
   view: ListView;
@@ -95,6 +97,7 @@ export function createAppStore(
     archived: [],
     discussions: { active: [], archived: [] },
     loaded: false,
+    refreshGen: 0,
     boardView: "board",
     view: "active",
     query: "",
@@ -126,6 +129,8 @@ export function createAppStore(
       if (curD) {
         set({ detailDiscussion: discussions.active.find((d) => d.slug === curD.slug) ?? null });
       }
+      // 清單就緒後遞增刷新世代——開著的內容檢視據此重載至磁碟現況。
+      set((st) => ({ refreshGen: st.refreshGen + 1 }));
     },
 
     setBoardView(boardView) {

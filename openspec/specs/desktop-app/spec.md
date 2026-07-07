@@ -449,12 +449,27 @@ code:
 ---
 ### Requirement: 外部變更即時反映
 
-桌面 app SHALL 監看目前專案的 openspec/ 目錄樹：app 之外的寫者（CLI、agent、手動編輯器）修改其下任何文件後，看板、詳情抽屜與已封存頁 SHALL 在短時間內（秒級）自動更新呈現，SHALL NOT 要求重啟或任何 app 內操作。app 內操作（勾任務、動詞）後的即時反映 SHALL 維持既有行為。監看不可用時（如檔案系統權限）app SHALL 照常提供其餘功能——僅失去自動刷新，SHALL NOT 崩潰或反覆彈出錯誤。
+桌面 app SHALL 監看目前專案的 openspec/ 目錄樹：app 之外的寫者（CLI、agent、手動編輯器）修改其下任何文件後，看板、詳情抽屜、討論抽屜與已封存頁 SHALL 在短時間內（秒級）自動更新呈現；已開啟檢視中「已載入的內容」——任務清單勾選狀態、proposal／design／specs 文件原文、meta 開工歸屬、討論記錄各分頁——SHALL 重載至磁碟現況，SHALL NOT 要求重啟、重開抽屜或任何 app 內操作。使用者互動進行中（任務勾選寫回、拖曳排序）時外部觸發的內容重載 SHALL 讓路，互動結束後 SHALL 補一次重載至磁碟現況——SHALL NOT 打斷或蓋掉進行中的操作；重載回應交錯時 SHALL 以最新一次為準，較舊回應 SHALL NOT 覆蓋較新內容。app 內操作（勾任務、拖曳、動詞）後 SHALL 重載受影響的已載入內容——含任務清單與 meta。監看不可用時（如檔案系統權限）app SHALL 照常提供其餘功能——僅失去自動刷新，SHALL NOT 崩潰或反覆彈出錯誤。
 
 #### Scenario: 外部勾選任務後看板自動更新
 
 - **WHEN** 桌面 app 執行中，於外部終端執行 speclink task done 勾掉某 change 的一項任務
-- **THEN** 數秒內該 change 的看板卡片任務數與進度條更新，抽屜若開啟亦同步，全程無任何 app 內操作
+- **THEN** 數秒內該 change 的看板卡片任務數與進度條更新；抽屜若開啟，標頭計數與任務清單中該項的核取方塊皆同步至磁碟狀態，全程無任何 app 內操作
+
+#### Scenario: 外部蓋開工章後抽屜出現開工歸屬
+
+- **WHEN** 某 change 的詳情抽屜開啟中，於外部終端執行 speclink in-progress add 該 change
+- **THEN** 數秒內抽屜出現開工者與開工日，無需重開抽屜
+
+#### Scenario: 外部推進討論後抽屜內容更新
+
+- **WHEN** 某討論的抽屜開啟中，於外部終端執行 speclink discuss add-round 該討論
+- **THEN** 數秒內抽屜的回合分頁出現新回合內容，標頭回合數與其一致
+
+#### Scenario: 互動進行中外部重載讓路
+
+- **WHEN** 使用者正在拖曳某 change 的任務（尚未放開），外部寫者同時修改該 change 的文件
+- **THEN** 拖曳互動不被打斷、拖曳視覺不重置；放開完成後數秒內，抽屜內容重載至磁碟現況
 
 #### Scenario: 外部新增與歸檔反映到清單
 
@@ -466,53 +481,23 @@ code:
 - **WHEN** 檔案監看因環境因素無法建立
 - **THEN** app 啟動與所有查詢、操作照常運作，錯誤僅記錄於日誌，畫面無錯誤彈窗堆疊
 
+
 <!-- @trace
-source: desktop-board-parity
-updated: 2026-07-06
+source: drawer-live-reload
+updated: 2026-07-07
 code:
-  - .spectra.yaml
-  - AGENTS.md
-  - CLAUDE.md
-  - Cargo.lock
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/testfixture.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/watch.rs
   - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/App.test.tsx
   - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-core/Cargo.toml
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/tests/no_direct_fs.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-fs/tests/store_fs.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
+  - apps/desktop/src/store.ts
+  - packages/ui/src/__tests__/changeListItem.test.tsx
+  - packages/ui/src/__tests__/discussionDrawer.test.tsx
   - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/stage.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedList.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/ChangeListItem.tsx
+  - packages/ui/src/components/DiscussionDrawer.tsx
   - packages/ui/src/components/RichDetailDrawer.tsx
   - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/stage.ts
-  - packages/ui/src/tasks.ts
 -->
 
 ---

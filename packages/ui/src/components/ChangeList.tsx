@@ -41,6 +41,8 @@ export interface ChangeListProps {
   onQuery: (q: string) => void;
   expandedName: string | null;
   onToggle: (name: string) => void;
+  /** 刷新世代——轉發至展開項，遞增即重載已載入的文件。 */
+  refreshGen?: number;
   loadDocument: (change: string, artifact: string) => Promise<string | null>;
   loadCapabilities: (change: string) => Promise<string[]>;
   onRunVerb?: (verb: Verb, change: string) => void;
@@ -55,6 +57,7 @@ export function ChangeList({
   onQuery,
   expandedName,
   onToggle,
+  refreshGen,
   loadDocument,
   loadCapabilities,
   onRunVerb,
@@ -109,6 +112,7 @@ export function ChangeList({
                 change={c}
                 expanded={expandedName === c.name}
                 onToggle={onToggle}
+                refreshGen={refreshGen}
                 loadDocument={(a) => loadDocument(c.name, a)}
                 loadCapabilities={() => loadCapabilities(c.name)}
                 onRunVerb={onRunVerb}

@@ -32,6 +32,8 @@ export interface TaskListProps {
   onReorder?: (from: number, to: number, before?: boolean) => void;
   /** 寫入進行中時鎖定互動。 */
   busy?: boolean;
+  /** 拖曳手勢期間（按住～放開）回報 true——宿主據此讓外部內容重載讓路。 */
+  onDragActiveChange?: (active: boolean) => void;
   /** 唯讀呈現（封存檢視）：核取方塊 disabled、不渲染拖曳把手。 */
   readOnly?: boolean;
 }
@@ -118,7 +120,7 @@ function SortableTaskRow({
 }
 
 /** 互動任務清單：群組標題＋可勾選 checkbox＋⠿ 把手拖放排序，與 tasks.md 聯動。 */
-export function TaskList({ markdown, onToggle, onReorder, busy, readOnly }: TaskListProps) {
+export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChange, readOnly }: TaskListProps) {
   const items = parseTaskDoc(markdown);
   const [activeOrdinal, setActiveOrdinal] = useState<number | null>(null);
   // PointerSensor distance 8：位移門檻內的按放是點擊，不啟動拖曳（看板同款教訓）。
@@ -162,9 +164,14 @@ export function TaskList({ markdown, onToggle, onReorder, busy, readOnly }: Task
   // 讓位序列＝視覺順序（標題與任務交錯）——標題入列使讓位位移對齊群組邊界。
   const sortableIds = items.map((item, i) => (item.kind === "group" ? `g-${i}` : item.ordinal));
 
-  const handleDragStart = (e: DragStartEvent) => setActiveOrdinal(Number(e.active.id));
+  const handleDragStart = (e: DragStartEvent) => {
+    setActiveOrdinal(Number(e.active.id));
+    onDragActiveChange?.(true);
+  };
   const handleDragEnd = (e: DragEndEvent) => {
     setActiveOrdinal(null);
+    // 放開即結束手勢；同一事件內 onReorder 會使宿主進入寫回 busy，讓路無縫接手。
+    onDragActiveChange?.(false);
     const { active: a, over } = e;
     if (!over) return;
     const target = resolveDropTarget(items, Number(a.id), over.id as number | string);
@@ -178,7 +185,10 @@ export function TaskList({ markdown, onToggle, onReorder, busy, readOnly }: Task
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveOrdinal(null)}
+      onDragCancel={() => {
+        setActiveOrdinal(null);
+        onDragActiveChange?.(false);
+      }}
     >
       <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
         <div className={`flex flex-col ${busy ? "opacity-60 pointer-events-none" : ""}`}>{rows}</div>
