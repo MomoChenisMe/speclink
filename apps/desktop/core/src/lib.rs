@@ -11,7 +11,9 @@ use speclink_fs::FsStore;
 pub mod cache;
 pub mod discussions;
 pub mod manage;
+pub mod project;
 pub mod query;
+pub mod settings;
 #[cfg(test)]
 pub(crate) mod testfixture;
 pub mod verbs;

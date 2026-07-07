@@ -1,5 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
+
+import { I18nProvider, MESSAGES } from "../i18n";
+
+// 既有中文斷言包 I18nProvider locale zh-TW 後照舊斷言（i18n 抽 key 的回歸保護）。
+const zhWrapper = ({ children }: { children: ReactNode }) => (
+  <I18nProvider locale="zh-TW">{children}</I18nProvider>
+);
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: zhWrapper });
+}
 
 import { KanbanBoard } from "../components/KanbanBoard";
 import { DiscussionColumn, discussionChipStage } from "../components/DiscussionColumn";
@@ -137,8 +148,10 @@ describe("discussionChipStage（spec Example「chip 階段派生矩陣」）", (
     ["cut-arch", "已封存"], // 封存清單（dated name 尾碼命中）
     ["cut-gone", "已刪除"], // 兩清單皆無（討論維持已促轉）
   ];
+  // 函式回傳 i18n key；斷言值仍為 spec Example 的 zh-TW 標示（經字典解析）。
   it.each(rows)("%s → %s", (name, label) => {
-    expect(discussionChipStage(name, chipChanges, chipArchived)).toBe(label);
+    const key = discussionChipStage(name, chipChanges, chipArchived);
+    expect(MESSAGES["zh-TW"][key]).toBe(label);
   });
 });
 

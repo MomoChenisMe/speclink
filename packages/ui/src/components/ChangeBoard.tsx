@@ -1,4 +1,5 @@
 import type { ChangeItem, Verb } from "../adapter";
+import { useI18n } from "../i18n";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Card, CardContent, CardHeader } from "./ui/card";
@@ -13,8 +14,9 @@ export interface ChangeBoardProps {
 
 /** 呈現 active change 清單：名稱、任務進度、動詞按鈕。純呈現，資料由 props 注入。 */
 export function ChangeBoard({ changes, onSelect, onRunVerb }: ChangeBoardProps) {
+  const { t } = useI18n();
   if (changes.length === 0) {
-    return <div className="text-muted-foreground p-6 text-center">沒有 active change</div>;
+    return <div className="text-muted-foreground p-6 text-center">{t("board.empty")}</div>;
   }
   return (
     <ul className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5 list-none p-0 m-0">

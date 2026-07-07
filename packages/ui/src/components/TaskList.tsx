@@ -19,6 +19,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 
+import { useI18n } from "../i18n";
 import { parseTaskDoc, resolveDropTarget, type TaskDocItem } from "../tasks";
 
 export interface TaskListProps {
@@ -50,11 +51,12 @@ function TaskRowBody({
   readOnly?: boolean;
   onToggle?: (ordinal: number, done: boolean) => void;
 }) {
+  const { t } = useI18n();
   return (
     <>
       <input
         type="checkbox"
-        aria-label={`任務 ${item.ordinal}`}
+        aria-label={t("tasks.checkbox").replace("{n}", String(item.ordinal))}
         className="mt-1 shrink-0 accent-[var(--primary)]"
         checked={item.done}
         disabled={readOnly}
@@ -94,6 +96,7 @@ function SortableTaskRow({
   item: TaskItem;
   onToggle?: (ordinal: number, done: boolean) => void;
 }) {
+  const { t } = useI18n();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.ordinal,
   });
@@ -107,7 +110,7 @@ function SortableTaskRow({
     >
       <button
         type="button"
-        aria-label={`拖曳任務 ${item.ordinal}`}
+        aria-label={t("tasks.drag").replace("{n}", String(item.ordinal))}
         className="mt-1 shrink-0 cursor-grab touch-none text-muted-foreground/50 hover:text-foreground"
         {...attributes}
         {...listeners}
@@ -121,6 +124,7 @@ function SortableTaskRow({
 
 /** 互動任務清單：群組標題＋可勾選 checkbox＋⠿ 把手拖放排序，與 tasks.md 聯動。 */
 export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChange, readOnly }: TaskListProps) {
+  const { t } = useI18n();
   const items = parseTaskDoc(markdown);
   const [activeOrdinal, setActiveOrdinal] = useState<number | null>(null);
   // PointerSensor distance 8：位移門檻內的按放是點擊，不啟動拖曳（看板同款教訓）。
@@ -130,7 +134,7 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
   );
 
   if (items.length === 0) {
-    return <div className="text-muted-foreground text-sm py-6">（無任務）</div>;
+    return <div className="text-muted-foreground text-sm py-6">{t("tasks.empty")}</div>;
   }
 
   const rows = items.map((item, i) =>

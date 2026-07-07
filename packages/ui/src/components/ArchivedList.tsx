@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, ChevronDown, ChevronRight, Code2, Copy, FileText, ListChecks, PenTool } from "lucide-react";
 
 import type { ArchivedItem, DiscussionItem } from "../adapter";
+import { useI18n } from "../i18n";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -19,6 +20,7 @@ export interface ArchivedLoaders {
 
 /** Spectra 式封存列：日期＋名稱＋任務數徽章＋複製；點擊展開唯讀分頁檢視。 */
 export function ArchivedRow({ item, loaders }: { item: ArchivedItem; loaders: ArchivedLoaders }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -79,7 +81,7 @@ export function ArchivedRow({ item, loaders }: { item: ArchivedItem; loaders: Ar
         )}
         <span
           role="button"
-          aria-label="複製封存名稱"
+          aria-label={t("archived.copyName")}
           className={`shrink-0 text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
           onClick={copy}
         >
@@ -91,25 +93,25 @@ export function ArchivedRow({ item, loaders }: { item: ArchivedItem; loaders: Ar
           <Tabs defaultValue="proposal" className="flex flex-col">
             <TabsList>
               <TabsTrigger value="proposal">
-                <FileText className="h-3.5 w-3.5" /> 提案
+                <FileText className="h-3.5 w-3.5" /> {t("common.tabProposal")}
               </TabsTrigger>
               <TabsTrigger value="design">
-                <PenTool className="h-3.5 w-3.5" /> 設計
+                <PenTool className="h-3.5 w-3.5" /> {t("common.tabDesign")}
               </TabsTrigger>
               <TabsTrigger value="tasks">
-                <ListChecks className="h-3.5 w-3.5" /> 任務
+                <ListChecks className="h-3.5 w-3.5" /> {t("common.tabTasks")}
                 {badge && <Badge variant="secondary" className="ml-1">{badge}</Badge>}
               </TabsTrigger>
               <TabsTrigger value="specs">
-                <Code2 className="h-3.5 w-3.5" /> 規格{specCount > 0 ? `＋${specCount}` : ""}
+                <Code2 className="h-3.5 w-3.5" /> {t("common.tabSpecs")}{specCount > 0 ? `＋${specCount}` : ""}
               </TabsTrigger>
             </TabsList>
             <div className="pt-3 max-h-[50vh] overflow-y-auto">
               <TabsContent value="proposal">
-                <Markdown content={proposal ?? null} empty="（無提案文件）" />
+                <Markdown content={proposal ?? null} empty={t("archived.noProposal")} />
               </TabsContent>
               <TabsContent value="design">
-                <Markdown content={design ?? null} empty="（此變更無設計文件）" />
+                <Markdown content={design ?? null} empty={t("archived.noDesign")} />
               </TabsContent>
               <TabsContent value="tasks">
                 {/* 封存檢視唯讀：不接 onToggle/onMove，核取方塊 disabled。 */}
@@ -117,14 +119,14 @@ export function ArchivedRow({ item, loaders }: { item: ArchivedItem; loaders: Ar
               </TabsContent>
               <TabsContent value="specs">
                 {specCount === 0 ? (
-                  <div className="text-muted-foreground text-sm py-6">（此變更無 delta 規格）</div>
+                  <div className="text-muted-foreground text-sm py-6">{t("archived.noSpecs")}</div>
                 ) : (
                   Object.entries(specDocs).map(([cap, doc]) => (
                     <div key={cap} className="mb-4">
                       <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                         {cap}
                       </div>
-                      <Markdown content={doc} empty="（無內容）" />
+                      <Markdown content={doc} />
                     </div>
                   ))
                 )}
@@ -145,6 +147,7 @@ function ArchivedDiscussionRow({
   item: DiscussionItem;
   loadDocument: (slug: string) => Promise<string | null>;
 }) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [doc, setDoc] = useState<Doc>();
@@ -175,22 +178,24 @@ function ArchivedDiscussionRow({
         )}
         <span className="text-xs text-muted-foreground tabular-nums shrink-0">{item.created}</span>
         <span className="font-medium text-sm truncate flex-1">{item.topic}</span>
-        <span className="text-xs text-muted-foreground tabular-nums shrink-0">{item.rounds} 輪</span>
+        <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+          {t("common.rounds").replace("{n}", String(item.rounds))}
+        </span>
       </button>
       {expanded && (
         <div className="px-3 pb-3 border-t border-border pt-3 max-h-[50vh] overflow-y-auto">
           {sections ? (
             <>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">背景</h3>
-              <Markdown content={sections.context} empty="（無背景）" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 mt-4">討論過程</h3>
-              <Markdown content={sections.rounds} empty="（無討論過程）" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 mt-4">結論</h3>
-              <Markdown content={sections.conclusion} empty="（無結論）" />
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{t("archived.sectionContext")}</h3>
+              <Markdown content={sections.context} empty={t("archived.noContext")} />
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 mt-4">{t("archived.sectionRounds")}</h3>
+              <Markdown content={sections.rounds} empty={t("archived.noRounds")} />
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 mt-4">{t("archived.sectionConclusion")}</h3>
+              <Markdown content={sections.conclusion} empty={t("archived.noConclusion")} />
             </>
           ) : (
             // 區段缺失或格式非預期：整篇單一檢視退回。
-            <Markdown content={doc ?? null} empty="載入中…" />
+            <Markdown content={doc ?? null} empty={t("common.loading")} />
           )}
         </div>
       )}
@@ -218,6 +223,7 @@ export function ArchivedList({
   archivedDiscussions,
   loadDiscussionDocument,
 }: ArchivedListProps) {
+  const { t } = useI18n();
   const q = query.trim().toLowerCase();
   const filtered = archived.filter((a) => a.name.toLowerCase().includes(q));
   const discussions = (archivedDiscussions ?? []).filter(
@@ -226,16 +232,16 @@ export function ArchivedList({
   const showDiscussions = archivedDiscussions !== undefined && loadDiscussionDocument !== undefined;
   return (
     <div className="flex flex-col gap-3 max-w-3xl mx-auto w-full">
-      <Input placeholder="搜尋已封存的變更與討論…" value={query} onChange={(e) => onQuery(e.target.value)} />
+      <Input placeholder={t("archived.searchPlaceholder")} value={query} onChange={(e) => onQuery(e.target.value)} />
       <div className="flex items-center gap-2">
-        <h2 className="text-base font-semibold">已封存的變更</h2>
+        <h2 className="text-base font-semibold">{t("archived.changesHeading")}</h2>
         <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium tabular-nums">
           {filtered.length}
         </span>
       </div>
       <div className="flex flex-col gap-2.5">
         {filtered.length === 0 ? (
-          <div className="text-muted-foreground text-sm py-8 text-center">沒有已封存的變更</div>
+          <div className="text-muted-foreground text-sm py-8 text-center">{t("archived.noChanges")}</div>
         ) : (
           filtered.map((a) => (
             <ArchivedRow key={a.datedName} item={a} loaders={{ loadDocument, loadCapabilities }} />
@@ -245,14 +251,14 @@ export function ArchivedList({
       {showDiscussions && (
         <>
           <div className="flex items-center gap-2 pt-2">
-            <h2 className="text-base font-semibold">已封存的討論</h2>
+            <h2 className="text-base font-semibold">{t("archived.discussionsHeading")}</h2>
             <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium tabular-nums">
               {discussions.length}
             </span>
           </div>
           <div className="flex flex-col gap-2.5">
             {discussions.length === 0 ? (
-              <div className="text-muted-foreground text-sm py-8 text-center">沒有已封存的討論</div>
+              <div className="text-muted-foreground text-sm py-8 text-center">{t("archived.noDiscussions")}</div>
             ) : (
               discussions.map((d) => (
                 <ArchivedDiscussionRow key={d.slug} item={d} loadDocument={loadDiscussionDocument} />

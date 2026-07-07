@@ -12,53 +12,62 @@ use tauri::{Emitter, Manager, State};
 
 /// app 對其 openspec/ 專案根的執行語境。專案根自啟動時的工作目錄向上探索
 /// （與查詢的 Workspace::discover 同源）；探索不到專案時退回工作目錄本身。
+/// root 為執行期可變（開啟專案／點分頁切換）——鎖粒度僅止於讀取路徑，
+/// desktop-core 維持無狀態、逐呼叫收 root（design D1）。
 struct AppState {
-    root: PathBuf,
+    root: std::sync::Mutex<PathBuf>,
+}
+
+impl AppState {
+    /// 鎖內複製當前 root，委派照舊逐呼叫傳路徑。
+    fn root(&self) -> PathBuf {
+        self.root.lock().expect("root lock poisoned").clone()
+    }
 }
 
 #[tauri::command]
 fn list_changes(state: State<AppState>) -> Value {
-    speclink_desktop_core::query::list_changes_at(&state.root)
+    speclink_desktop_core::query::list_changes_at(&state.root())
 }
 
 #[tauri::command]
 fn list_specs(state: State<AppState>) -> Value {
-    speclink_desktop_core::query::list_specs_at(&state.root)
+    speclink_desktop_core::query::list_specs_at(&state.root())
 }
 
 #[tauri::command]
 fn status(state: State<AppState>, change: String) -> Result<Value, String> {
-    speclink_desktop_core::query::status_at(&state.root, &change)
+    speclink_desktop_core::query::status_at(&state.root(), &change)
 }
 
 #[tauri::command]
 fn document(state: State<AppState>, change: String, artifact: String) -> Option<String> {
-    speclink_desktop_core::query::document_at(&state.root, &change, &artifact)
+    speclink_desktop_core::query::document_at(&state.root(), &change, &artifact)
 }
 
 #[tauri::command]
 fn spec_document(state: State<AppState>, capability: String) -> Option<String> {
-    speclink_desktop_core::query::spec_document_at(&state.root, &capability)
+    speclink_desktop_core::query::spec_document_at(&state.root(), &capability)
 }
 
 #[tauri::command]
 fn change_capabilities(state: State<AppState>, change: String) -> Vec<String> {
-    speclink_desktop_core::query::change_capabilities_at(&state.root, &change)
+    speclink_desktop_core::query::change_capabilities_at(&state.root(), &change)
 }
 
 #[tauri::command]
 fn change_meta(state: State<AppState>, change: String) -> Option<Value> {
-    speclink_desktop_core::manage::change_meta_at(&state.root, &change)
+    speclink_desktop_core::manage::change_meta_at(&state.root(), &change)
 }
 
 #[tauri::command]
 fn delete_change(state: State<AppState>, change: String) -> Result<(), String> {
-    speclink_desktop_core::manage::delete_change_at(&state.root, &change)
+    speclink_desktop_core::manage::delete_change_at(&state.root(), &change)
 }
 
 #[tauri::command]
 fn set_task_done(state: State<AppState>, change: String, ordinal: usize, done: bool) -> Result<(), String> {
-    speclink_desktop_core::manage::set_task_done_at(&state.root, &change, ordinal, done)
+    speclink_desktop_core::manage::set_task_done_at(&state.root(), &change, ordinal, done)
 }
 
 #[tauri::command]
@@ -69,57 +78,142 @@ fn move_task(
     to: usize,
     before: Option<bool>,
 ) -> Result<(), String> {
-    speclink_desktop_core::manage::move_task_at(&state.root, &change, from, to, before)
+    speclink_desktop_core::manage::move_task_at(&state.root(), &change, from, to, before)
 }
 
 #[tauri::command]
 fn validate(state: State<AppState>, change: String) -> Result<Value, String> {
-    speclink_desktop_core::verbs::validate_at(&state.root, &change)
+    speclink_desktop_core::verbs::validate_at(&state.root(), &change)
 }
 
 #[tauri::command]
 fn analyze(state: State<AppState>, change: String) -> Result<Value, String> {
-    speclink_desktop_core::verbs::analyze_at(&state.root, &change)
+    speclink_desktop_core::verbs::analyze_at(&state.root(), &change)
 }
 
 #[tauri::command]
 fn archive(state: State<AppState>, change: String) -> Result<Value, String> {
-    speclink_desktop_core::verbs::archive_at(&state.root, &change)
+    speclink_desktop_core::verbs::archive_at(&state.root(), &change)
 }
 
 #[tauri::command]
 fn archived_changes(state: State<AppState>) -> Value {
-    speclink_desktop_core::cache::archived_changes_at(&state.root)
+    speclink_desktop_core::cache::archived_changes_at(&state.root())
 }
 
 #[tauri::command]
 fn archived_document(state: State<AppState>, dated_name: String, artifact: String) -> Option<String> {
-    speclink_desktop_core::query::archived_document_at(&state.root, &dated_name, &artifact)
+    speclink_desktop_core::query::archived_document_at(&state.root(), &dated_name, &artifact)
 }
 
 #[tauri::command]
 fn archived_capabilities(state: State<AppState>, dated_name: String) -> Vec<String> {
-    speclink_desktop_core::query::archived_capabilities_at(&state.root, &dated_name)
+    speclink_desktop_core::query::archived_capabilities_at(&state.root(), &dated_name)
 }
 
 #[tauri::command]
 fn list_discussions(state: State<AppState>) -> Value {
-    speclink_desktop_core::discussions::list_discussions_at(&state.root)
+    speclink_desktop_core::discussions::list_discussions_at(&state.root())
 }
 
 #[tauri::command]
 fn discussion_document(state: State<AppState>, slug: String) -> Option<String> {
-    speclink_desktop_core::discussions::discussion_document_at(&state.root, &slug)
+    speclink_desktop_core::discussions::discussion_document_at(&state.root(), &slug)
 }
 
 #[tauri::command]
 fn promote_discussion(state: State<AppState>, slug: String, name: Option<String>) -> Result<Value, String> {
-    speclink_desktop_core::discussions::promote_discussion_at(&state.root, &slug, name.as_deref())
+    speclink_desktop_core::discussions::promote_discussion_at(&state.root(), &slug, name.as_deref())
 }
 
 #[tauri::command]
 fn archive_discussion(state: State<AppState>, slug: String) -> Result<Value, String> {
-    speclink_desktop_core::discussions::archive_discussion_at(&state.root, &slug)
+    speclink_desktop_core::discussions::archive_discussion_at(&state.root(), &slug)
+}
+
+/// 監看器槽位：切換專案時整顆替換（drop 舊監看即停止）。
+type WatcherState = std::sync::Mutex<Option<watch::WorkspaceWatcher>>;
+
+/// 切換專案 root：更新 AppState 並對新 root 重掛 spec 目錄監看。
+/// 監看重掛失敗僅記錄、不阻斷切換（與啟動時的降級行為一致）。
+fn switch_root(app: &tauri::AppHandle, state: &AppState, new_root: PathBuf) {
+    *state.root.lock().expect("root lock poisoned") = new_root.clone();
+    let emitter = app.clone();
+    let watcher = watch::resolve_watch_target(&new_root).and_then(|target| {
+        watch::watch_openspec(&target, std::time::Duration::from_millis(400), move || {
+            let _ = emitter.emit("workspace-changed", ());
+        })
+    });
+    if let Some(slot) = app.try_state::<WatcherState>() {
+        *slot.lock().expect("watcher lock poisoned") = match watcher {
+            Ok(w) => Some(w),
+            Err(e) => {
+                eprintln!("speclink-desktop: file watching unavailable: {e}");
+                None
+            }
+        };
+    }
+}
+
+#[tauri::command]
+fn open_project(app: tauri::AppHandle, state: State<AppState>, path: String) -> Result<Value, String> {
+    let probe = speclink_desktop_core::project::open_project_at(std::path::Path::new(&path))?;
+    if let speclink_desktop_core::project::ProjectProbe::Project { ref root, .. } = probe {
+        switch_root(&app, &state, PathBuf::from(root));
+    }
+    serde_json::to_value(&probe).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn init_project(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    path: String,
+    tools: Vec<String>,
+) -> Result<Value, String> {
+    let probe = speclink_desktop_core::project::init_project_at(std::path::Path::new(&path), &tools)?;
+    if let speclink_desktop_core::project::ProjectProbe::Project { ref root, .. } = probe {
+        switch_root(&app, &state, PathBuf::from(root));
+    }
+    serde_json::to_value(&probe).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn current_project(state: State<AppState>) -> Value {
+    let root = state.root();
+    serde_json::json!({
+        "root": root.display().to_string(),
+        "name": speclink_desktop_core::project::project_name(&root),
+    })
+}
+
+#[tauri::command]
+fn project_stats(path: String) -> Result<Value, String> {
+    speclink_desktop_core::project::project_stats_at(std::path::Path::new(&path))
+}
+
+#[tauri::command]
+fn read_settings(state: State<AppState>) -> Result<Value, String> {
+    let snapshot = speclink_desktop_core::settings::read_settings_at(&state.root())?;
+    serde_json::to_value(&snapshot).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn write_app_tools(state: State<AppState>, tools: Vec<String>) -> Result<(), String> {
+    speclink_desktop_core::settings::write_tools_at(&state.root(), &tools)
+}
+
+#[tauri::command]
+fn write_workflow_config(
+    state: State<AppState>,
+    locale: Option<String>,
+    spec_locale: Option<String>,
+    tdd: bool,
+    audit: bool,
+) -> Result<(), String> {
+    let fields =
+        speclink_desktop_core::settings::WorkflowPolicyFields { locale, spec_locale, tdd, audit };
+    speclink_desktop_core::settings::write_workflow_fields_at(&state.root(), &fields)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -132,22 +226,27 @@ pub fn run() {
         .map(|ctx| ctx.workspace.root)
         .unwrap_or(cwd);
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             // spec 目錄監看：外部寫者（CLI、agent、編輯器）的變更去抖後以
             // workspace-changed 事件通知前端整批 refresh。建立失敗只記錄——
             // app 照常提供其餘功能，僅失去自動刷新（spec：監看不可用時功能照常）。
             let handle = app.handle().clone();
-            match watch::resolve_watch_target(&root).and_then(|target| {
+            let watcher = watch::resolve_watch_target(&root).and_then(|target| {
                 watch::watch_openspec(&target, std::time::Duration::from_millis(400), move || {
                     let _ = handle.emit("workspace-changed", ());
                 })
-            }) {
-                Ok(watcher) => {
-                    app.manage(std::sync::Mutex::new(Some(watcher)));
+            });
+            // 槽位無論成敗都註冊——切換專案時 switch_root 才有地方重掛。
+            let slot: WatcherState = std::sync::Mutex::new(match watcher {
+                Ok(w) => Some(w),
+                Err(e) => {
+                    eprintln!("speclink-desktop: file watching unavailable: {e}");
+                    None
                 }
-                Err(e) => eprintln!("speclink-desktop: file watching unavailable: {e}"),
-            }
-            app.manage(AppState { root });
+            });
+            app.manage(slot);
+            app.manage(AppState { root: std::sync::Mutex::new(root) });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -170,7 +269,14 @@ pub fn run() {
             list_discussions,
             discussion_document,
             promote_discussion,
-            archive_discussion
+            archive_discussion,
+            open_project,
+            init_project,
+            current_project,
+            project_stats,
+            read_settings,
+            write_app_tools,
+            write_workflow_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running Speclink desktop app");

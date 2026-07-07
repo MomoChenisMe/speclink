@@ -41,7 +41,28 @@ beforeEach(() => {
   workspaceHandlers.length = 0;
   drawerSpy.rich.length = 0;
   drawerSpy.disc.length = 0;
+  // jsdom 的 navigator.language 為 en-US；既有中文斷言以明示偏好 zh-TW 固定 UI 語言。
+  localStorage.setItem("speclink.uiLocale", "zh-TW");
 });
+
+// 空狀態引導頁（spec Scenario「零分頁時顯示空狀態引導頁」）：注入 workspace
+// 且零分頁時取代空看板；含「開啟專案」操作。
+function fakeWorkspace() {
+  return {
+    openProject: vi.fn().mockRejectedValue("not a project"),
+    initProject: vi.fn(),
+    // 預設不可用：enterProject 的 current_project 校正走 catch、以委派值為準。
+    currentProject: vi.fn().mockRejectedValue("current_project unavailable in this fake"),
+    projectStats: vi.fn(),
+    pickFolder: vi.fn().mockResolvedValue(null),
+    readSettings: vi.fn().mockResolvedValue({
+      app: { tools: [], customTools: [], parseError: null },
+      workflow: { locale: null, specLocale: null, tdd: false, audit: false, parseError: null },
+    }),
+    writeAppTools: vi.fn(),
+    writeWorkflowConfig: vi.fn(),
+  };
+}
 
 const STATUS: StatusReport = {
   changeName: "desktop-shell-and-browser",
@@ -203,6 +224,93 @@ describe("App (kanban primary + rich detail)", () => {
     expect(dialog.textContent).not.toContain("discussions/archive");
     fireEvent.click(within(dialog).getByRole("button", { name: "封存" }));
     await waitFor(() => expect(ds.archiveDiscussion).toHaveBeenCalledWith("settled"));
+  });
+
+  it("零分頁（注入 workspace）：顯示空狀態引導頁取代空看板，含開啟專案操作", async () => {
+    const ws = fakeWorkspace();
+    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
+    render(<App dataSource={ds} workspace={ws as never} />);
+    expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
+    // 空狀態頁自帶開啟專案操作（接資料夾選擇器）。
+    const openButtons = screen.getAllByText("開啟專案");
+    fireEvent.click(openButtons[openButtons.length - 1]);
+    await waitFor(() => expect(ws.pickFolder).toHaveBeenCalled());
+  });
+
+  it("分頁列取代頂欄「目前專案」佔位；點分頁切換後 active 標示更新", async () => {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({
+        tabs: [
+          { root: "A", name: "proj-a" },
+          { root: "B", name: "proj-b" },
+        ],
+        activeRoot: "A",
+      }),
+    );
+    const ws = fakeWorkspace();
+    ws.openProject = vi
+      .fn()
+      .mockImplementation((p: string) =>
+        Promise.resolve({ status: "project", root: p, name: p === "A" ? "proj-a" : "proj-b" }),
+      );
+    ws.projectStats = vi.fn().mockResolvedValue({ inProgressChanges: 0 });
+    render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
+    const tabA = (await screen.findByText("proj-a")).closest("[data-tab]") as HTMLElement;
+    expect(tabA.getAttribute("data-active")).toBe("true");
+    // 佔位文字已被分頁列取代。
+    expect(screen.queryByText("目前專案")).toBeNull();
+    fireEvent.click(screen.getByText("proj-b"));
+    await waitFor(() => {
+      const tabB = screen.getByText("proj-b").closest("[data-tab]") as HTMLElement;
+      expect(tabB.getAttribute("data-active")).toBe("true");
+    });
+  });
+
+  it("切換 UI 語言即時全介面生效、持久化於本機且不觸碰 config.yaml（spec 互不影響）", async () => {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({ tabs: [{ root: "A", name: "proj-a" }], activeRoot: "A" }),
+    );
+    const ws = fakeWorkspace();
+    ws.openProject = vi
+      .fn()
+      .mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
+    render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
+    // 開設定頁 → 切 English。
+    fireEvent.click(await screen.findByText("設定"));
+    const group = await screen.findByTestId("ui-locale");
+    fireEvent.click(within(group).getByText("English"));
+    // 即時全介面生效：側欄改為英文。
+    expect(await screen.findByText("Settings")).toBeTruthy();
+    expect(screen.getByText("Changes")).toBeTruthy();
+    // 持久化於 app 本機；config.yaml 未被觸碰。
+    expect(localStorage.getItem("speclink.uiLocale")).toBe("en");
+    expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
+  });
+
+  it("寫入 config locale 不改 UI 語言（spec 互不影響的反向）", async () => {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({ tabs: [{ root: "A", name: "proj-a" }], activeRoot: "A" }),
+    );
+    const ws = fakeWorkspace();
+    ws.openProject = vi
+      .fn()
+      .mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
+    render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
+    fireEvent.click(await screen.findByText("設定"));
+    const locale = (await screen.findByLabelText("locale")) as HTMLSelectElement;
+    fireEvent.change(locale, { target: { value: "ja" } });
+    fireEvent.click(screen.getByTestId("save-workflow"));
+    await waitFor(() =>
+      expect(ws.writeWorkflowConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ locale: "ja" }),
+      ),
+    );
+    // UI 語言不受影響：介面仍為 zh-TW、偏好鍵未被改動。
+    expect(screen.getByText("設定")).toBeTruthy();
+    expect(localStorage.getItem("speclink.uiLocale")).toBe("zh-TW");
   });
 
   it("archived entry in the top bar jumps to the archived list", async () => {

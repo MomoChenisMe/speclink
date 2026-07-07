@@ -30,7 +30,7 @@ discuss? → propose → apply ⇄ ingest → verify? → archive
 
 ## 桌面 app（apps/desktop、packages/ui）
 
-- **GUI 改動必須真實視窗驗證**：jsdom（vitest）測不出 pointer/拖曳互動失效。用 PowerShell 啟動 release exe ＋ Win32 SetCursorPos/mouse_event 實點 ＋ CopyFromScreen 截圖檢視。**操作前先確認使用者沒在使用螢幕**。
+- **GUI 改動必須真實視窗驗證**：jsdom（vitest）測不出 pointer/拖曳互動失效。用 PowerShell 啟動 release exe ＋ Win32 SetCursorPos/mouse_event 實點 ＋ CopyFromScreen 截圖檢視。**操作前先確認使用者沒在使用螢幕**。自動化文字輸入會被中文 IME 攔成注音組字——路徑/文字一律 `Set-Clipboard` ＋ Ctrl+V 貼上、勿用 SendKeys 逐字打；原生檔案對話框以位址列貼路徑導航最穩，且務必截圖確認選中目標後才按確認（誤選過使用者目錄，靠 init 確認框擋下）。
 - dnd-kit 可拖曳元素必須設 `PointerSensor activationConstraint: { distance: 8 }`，否則單純點擊被拖曳監聽吃掉；拖曳視覺用 DragOverlay（否則被欄位 overflow 裁切）。
 - 常用指令：`npm test -w packages/ui`、`npm test -w apps/desktop`、`npm run build -w apps/desktop`（vite → dist）、`cargo build --release -p speclink-desktop`（重建前先關閉執行中的 exe，否則 linker 存取被拒）。
 - 前端體系：Tailwind v4（`@source` 納入 packages/ui）＋ shadcn 原語（原始碼在 packages/ui/src/components/ui/）＋ Zustand（apps/desktop/src/store.ts）；主色 teal（index.css 的 oklch hue 192）。

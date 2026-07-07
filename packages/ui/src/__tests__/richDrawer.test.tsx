@@ -1,5 +1,16 @@
 import { describe, it, expect, vi, type Mock } from "vitest";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
+
+import { I18nProvider } from "../i18n";
+
+// 既有中文斷言包 I18nProvider locale zh-TW 後照舊斷言（i18n 抽 key 的回歸保護）。
+const zhWrapper = ({ children }: { children: ReactNode }) => (
+  <I18nProvider locale="zh-TW">{children}</I18nProvider>
+);
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: zhWrapper });
+}
 
 import { RichDetailDrawer } from "../components/RichDetailDrawer";
 import type { ChangeItem } from "../adapter";

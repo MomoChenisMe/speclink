@@ -16,6 +16,7 @@ import {
 
 import type { ChangeItem, ChangeMetaInfo, Verb } from "../adapter";
 import { specDeltaCounts, sumDeltaCounts } from "../delta";
+import { useI18n } from "../i18n";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -51,15 +52,15 @@ export interface RichDetailDrawerProps {
 
 type Doc = string | null | undefined;
 
-/** 相對時間（天級即可；meta.created 通常是 YYYY-MM-DD）。 */
-function relativeDays(created?: string | null): string | null {
+/** 相對時間（天級即可；meta.created 通常是 YYYY-MM-DD）。t 由呼叫端注入。 */
+function relativeDays(created: string | null | undefined, t: (key: string) => string): string | null {
   if (!created) return null;
-  const t = Date.parse(created);
-  if (Number.isNaN(t)) return created;
-  const days = Math.floor((Date.now() - t) / 86_400_000);
-  if (days <= 0) return "今天";
-  if (days === 1) return "昨天";
-  return `${days} 天前`;
+  const parsed = Date.parse(created);
+  if (Number.isNaN(parsed)) return created;
+  const days = Math.floor((Date.now() - parsed) / 86_400_000);
+  if (days <= 0) return t("rdrawer.today");
+  if (days === 1) return t("rdrawer.yesterday");
+  return t("rdrawer.daysAgo").replace("{n}", String(days));
 }
 
 /** Spectra 級詳情抽屜：metadata、進度、動作列、icon 分頁（提案/設計/互動任務/彩色規格）。 */
@@ -80,6 +81,7 @@ export function RichDetailDrawer({
   onOpenDiscussion,
   onOpenSibling,
 }: RichDetailDrawerProps) {
+  const { t } = useI18n();
   const [meta, setMeta] = useState<ChangeMetaInfo | null>(null);
   const [proposal, setProposal] = useState<Doc>();
   const [design, setDesign] = useState<Doc>();
@@ -145,7 +147,7 @@ export function RichDetailDrawer({
   const pct = change.totalTasks > 0 ? Math.round((change.completedTasks / change.totalTasks) * 100) : 0;
   const taskBadge = `${change.completedTasks}/${change.totalTasks}`;
   const delta = sumDeltaCounts(Object.values(specDocs).map(specDeltaCounts));
-  const rel = relativeDays(meta?.created);
+  const rel = relativeDays(meta?.created, t);
 
   const copyName = () => {
     void navigator.clipboard?.writeText(change.name);
@@ -185,7 +187,7 @@ export function RichDetailDrawer({
             <SheetTitle className="truncate">{change.name}</SheetTitle>
             <button
               type="button"
-              aria-label="複製名稱"
+              aria-label={t("common.copyName")}
               className="text-muted-foreground hover:text-foreground"
               onClick={copyName}
             >
@@ -194,7 +196,7 @@ export function RichDetailDrawer({
             <div className="flex-1" />
             <button
               type="button"
-              aria-label={full ? "還原大小" : "全螢幕"}
+              aria-label={full ? t("rdrawer.restore") : t("rdrawer.fullScreen")}
               className="text-muted-foreground hover:text-foreground"
               onClick={() => setFull((f) => !f)}
             >
@@ -213,18 +215,18 @@ export function RichDetailDrawer({
             )}
             {meta?.createdWith && <span>✳ {meta.createdWith}</span>}
             {rel && <span>{rel}</span>}
-            <span>{taskBadge} 任務</span>
+            <span>{t("common.tasksCount").replace("{n}", taskBadge)}</span>
             {meta?.startedAt && (
               <span className="inline-flex items-center gap-1">
                 ⚒ {meta.startedBy ? `${meta.startedBy} · ` : ""}
-                {meta.startedAt} 開工
+                {t("rdrawer.started").replace("{date}", meta.startedAt)}
               </span>
             )}
           </div>
           {/* 同源連結：來源討論＋兄弟刀（design D6，fromDiscussion 帶出）。 */}
           {sourceDiscussion && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
-              <span>來自討論：</span>
+              <span>{t("rdrawer.fromDiscussion")}</span>
               <button
                 type="button"
                 className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/20"
@@ -234,7 +236,7 @@ export function RichDetailDrawer({
               </button>
               {(siblingChanges ?? []).length > 0 && (
                 <>
-                  <span>同源：</span>
+                  <span>{t("rdrawer.siblings")}</span>
                   {(siblingChanges ?? []).map((sib) => (
                     <button
                       key={sib}
@@ -258,14 +260,14 @@ export function RichDetailDrawer({
           {/* 動作列 */}
           <div className="flex items-center gap-1.5 pt-1">
             <Button variant="outline" size="sm" className="h-7 gap-1" onClick={() => onRunVerb?.("analyze", change.name)}>
-              <Sparkles className="h-3.5 w-3.5" /> 分析
+              <Sparkles className="h-3.5 w-3.5" /> {t("common.analyze")}
             </Button>
             <Button variant="outline" size="sm" className="h-7 gap-1" onClick={() => onRunVerb?.("validate", change.name)}>
-              <ShieldCheck className="h-3.5 w-3.5" /> 驗證
+              <ShieldCheck className="h-3.5 w-3.5" /> {t("common.validate")}
             </Button>
             <div className="flex-1" />
             <Button variant="outline" size="sm" className="h-7 gap-1" onClick={() => onRunVerb?.("archive", change.name)}>
-              <Archive className="h-3.5 w-3.5" /> 封存
+              <Archive className="h-3.5 w-3.5" /> {t("common.archive")}
             </Button>
             <Button
               variant="outline"
@@ -273,7 +275,7 @@ export function RichDetailDrawer({
               className="h-7 gap-1 text-destructive hover:text-destructive"
               onClick={() => onDelete?.(change.name)}
             >
-              <Trash2 className="h-3.5 w-3.5" /> 刪除
+              <Trash2 className="h-3.5 w-3.5" /> {t("rdrawer.delete")}
             </Button>
           </div>
         </SheetHeader>
@@ -281,23 +283,23 @@ export function RichDetailDrawer({
         <Tabs defaultValue="proposal" className="flex-1 min-h-0 flex flex-col">
           <TabsList>
             <TabsTrigger value="proposal">
-              <FileText className="h-3.5 w-3.5" /> 提案
+              <FileText className="h-3.5 w-3.5" /> {t("common.tabProposal")}
             </TabsTrigger>
             <TabsTrigger value="design">
-              <PenTool className="h-3.5 w-3.5" /> 設計
+              <PenTool className="h-3.5 w-3.5" /> {t("common.tabDesign")}
             </TabsTrigger>
             <TabsTrigger value="tasks">
-              <ListChecks className="h-3.5 w-3.5" /> 任務
+              <ListChecks className="h-3.5 w-3.5" /> {t("common.tabTasks")}
               <Badge variant={pct === 100 ? "default" : "secondary"} className="ml-1">{taskBadge}</Badge>
             </TabsTrigger>
             <TabsTrigger value="specs">
-              <Code2 className="h-3.5 w-3.5" /> 規格
+              <Code2 className="h-3.5 w-3.5" /> {t("common.tabSpecs")}
               <span className="ml-1"><DeltaBadges counts={delta} /></span>
             </TabsTrigger>
           </TabsList>
           <div className="flex-1 overflow-y-auto pt-3">
-            <TabsContent value="proposal"><Markdown content={proposal ?? null} empty="載入中…" /></TabsContent>
-            <TabsContent value="design"><Markdown content={design ?? null} empty="（此 change 無設計文件）" /></TabsContent>
+            <TabsContent value="proposal"><Markdown content={proposal ?? null} empty={t("common.loading")} /></TabsContent>
+            <TabsContent value="design"><Markdown content={design ?? null} empty={t("list.noDesignDoc")} /></TabsContent>
             <TabsContent value="tasks">
               <TaskList
                 markdown={tasksMd ?? null}
@@ -309,14 +311,14 @@ export function RichDetailDrawer({
             </TabsContent>
             <TabsContent value="specs">
               {Object.keys(specDocs).length === 0 ? (
-                <div className="text-muted-foreground text-sm py-6">（此 change 無 delta 規格）</div>
+                <div className="text-muted-foreground text-sm py-6">{t("list.noDeltaSpecs")}</div>
               ) : (
                 Object.entries(specDocs).map(([cap, doc]) => (
                   <div key={cap} className="mb-4">
                     <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-2">
                       {cap} <DeltaBadges counts={specDeltaCounts(doc)} />
                     </div>
-                    <Markdown content={doc} empty="載入中…" />
+                    <Markdown content={doc} empty={t("common.loading")} />
                   </div>
                 ))
               )}

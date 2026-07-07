@@ -15,14 +15,59 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   Input,
+  I18nProvider,
+  useI18n,
   type SpeclinkDataSource,
   type Verb,
 } from "@speclink/ui";
 
 import { createAppStore } from "./store";
+import { ProjectTabs } from "./components/ProjectTabs";
+import { SettingsView } from "./views/SettingsView";
+import type { WorkspaceAdapter } from "./adapter/workspace";
+import { APP_MESSAGES } from "./i18n/messages";
+import {
+  readLocalePreference,
+  resolveUiLocale,
+  writeLocalePreference,
+  type LocalePreference,
+} from "./i18n/locale";
+import { setAppT } from "./i18n/runtime";
 
 export interface AppProps {
   dataSource: SpeclinkDataSource;
+  /** workspace 管理操作（開專案／init／設定）；未注入時對應 UI 不啟用。 */
+  workspace?: WorkspaceAdapter;
+}
+
+/** 零分頁空狀態引導頁（spec：取代空看板；說明既有專案與一般目錄初始化兩條路）。 */
+function EmptyState({ onOpen }: { onOpen: () => void }) {
+  const { t } = useI18n();
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 text-center" data-empty-state>
+      <FolderOpen className="h-10 w-10 text-muted-foreground/40" />
+      <h2 className="text-lg font-semibold">{t("app.emptyTitle")}</h2>
+      <p className="text-sm text-muted-foreground max-w-md">{t("app.emptyDesc")}</p>
+      <button
+        className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        onClick={onOpen}
+      >
+        <FolderOpen className="h-4 w-4" /> {t("app.openProject")}
+      </button>
+    </div>
+  );
+}
+
+/** 對話框描述文字內嵌粗體名稱：以 {name} 佔位切分渲染。 */
+function BoldName({ text, name }: { text: string; name: string }) {
+  const [before, after] = text.split("{name}");
+  return (
+    <>
+      {before}
+      <b>{name}</b>
+      {after}
+    </>
+  );
 }
 
 function NavItem({
@@ -49,10 +94,50 @@ function NavItem({
   );
 }
 
-/** 桌面主畫面：生命週期看板（主視圖）＋已封存獨立頁＋Spectra 級詳情抽屜。 */
-export function App({ dataSource }: AppProps) {
-  const useStore = useMemo(() => createAppStore(dataSource), [dataSource]);
+/** 桌面 app 進入點：解析 UI 語言（偏好優先、null 跟隨系統）並掛 I18nProvider。 */
+export function App({ dataSource, workspace }: AppProps) {
+  const [localePref, setLocalePrefState] = useState<LocalePreference>(() => readLocalePreference());
+  // 切換即時生效並持久化（設定頁的 UI 語言三選接這裡）。
+  const setLocalePref = (pref: LocalePreference) => {
+    writeLocalePreference(pref);
+    setLocalePrefState(pref);
+  };
+  const uiLocale = resolveUiLocale(
+    localePref,
+    typeof navigator !== "undefined" ? navigator.language : undefined,
+  );
+  return (
+    <I18nProvider locale={uiLocale} messages={APP_MESSAGES}>
+      <AppInner
+        dataSource={dataSource}
+        workspace={workspace}
+        localePref={localePref}
+        onLocalePrefChange={setLocalePref}
+      />
+    </I18nProvider>
+  );
+}
+
+interface AppInnerProps extends AppProps {
+  /** UI 語言偏好現值（null＝跟隨系統）；設定頁三選用。 */
+  localePref: LocalePreference;
+  onLocalePrefChange: (pref: LocalePreference) => void;
+}
+
+/** 桌面主畫面：生命週期看板（主視圖）＋已封存獨立頁＋設定頁＋Spectra 級詳情抽屜。 */
+function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: AppInnerProps) {
+  const useStore = useMemo(() => createAppStore(dataSource, workspace), [dataSource, workspace]);
   const s = useStore();
+  // 初始化確認框的工具多選（預設勾 claude）；對話框每次開啟重設。
+  const [initTools, setInitTools] = useState<string[]>(["claude"]);
+  useEffect(() => {
+    if (s.pendingInit) setInitTools(["claude"]);
+  }, [s.pendingInit]);
+  const { t } = useI18n();
+  // 同步 store 層（非 React）的 t 橋——store 組使用者可見訊息時取當前語言。
+  useEffect(() => {
+    setAppT(t);
+  }, [t]);
 
   // 轉為變更確認框的變更名草稿：預設由 slug 衍生，可改為第二刀名（再轉出扇出）。
   const [promoteName, setPromoteName] = useState("");
@@ -61,16 +146,35 @@ export function App({ dataSource }: AppProps) {
   }, [s.pendingPromote]);
 
   useEffect(() => {
-    void s.refresh();
+    // 啟動：有 workspace 即還原分頁列（含切回上次活躍專案與背景徽章快照）；
+    // 否則維持既有的整批 refresh。
+    if (workspace) void useStore.getState().restoreTabs();
+    else void useStore.getState().refresh();
     // 檔案監看的宿主層 wiring：外部寫者（CLI、agent、編輯器）改動 openspec/
     // 後，後端去抖發出 workspace-changed，前端一律整批 refresh。卸載時解除。
     const unlisten = listen("workspace-changed", () => {
-      void s.refresh();
+      void useStore.getState().refresh();
     });
     return () => {
       void unlisten.then((f) => f());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useStore]);
+
+  // 鍵盤切換分頁：Ctrl+Tab 循環、Ctrl+1..9 直達（spec「專案分頁列存於 app 本機」）。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey) return;
+      if (e.key === "Tab") {
+        e.preventDefault();
+        void useStore.getState().cycleTab();
+      } else if (e.key >= "1" && e.key <= "9") {
+        e.preventDefault();
+        void useStore.getState().gotoTab(Number(e.key));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [useStore]);
 
   const onRunVerb = (verb: Verb, change: string) => {
@@ -96,12 +200,24 @@ export function App({ dataSource }: AppProps) {
       {/* 頂欄 */}
       <header className="flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
         <span className="font-bold text-sm">Speclink</span>
-        <span className="text-xs text-muted-foreground px-2 py-0.5 rounded border border-border">
-          {/* TODO(desktop-config-multiproject)：專案名／開啟專案＋自動 init */}目前專案
-        </span>
+        {workspace !== undefined ? (
+          // 專案分頁列取代「目前專案」佔位（design D10）：active 分頁即目前專案。
+          <ProjectTabs
+            tabs={s.tabs}
+            activeRoot={s.activeRoot}
+            tabErrors={s.tabErrors}
+            onActivate={(root) => void s.activateTab(root)}
+            onClose={s.closeTab}
+            onOpen={() => void s.openProjectViaDialog()}
+          />
+        ) : (
+          <span className="text-xs text-muted-foreground px-2 py-0.5 rounded border border-border">
+            {t("app.currentProject")}
+          </span>
+        )}
         {/* 已封存入口（獨立頁） */}
         <button
-          aria-label="已封存"
+          aria-label={t("app.archived")}
           className={`flex items-center gap-1.5 text-sm px-2 py-1 rounded-md transition-colors ${
             s.boardView === "archived"
               ? "bg-primary text-primary-foreground"
@@ -109,7 +225,7 @@ export function App({ dataSource }: AppProps) {
           }`}
           onClick={() => s.setBoardView(s.boardView === "archived" ? "board" : "archived")}
         >
-          <Archive className="h-4 w-4" /> 已封存
+          <Archive className="h-4 w-4" /> {t("app.archived")}
           <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-muted text-muted-foreground text-[10px] tabular-nums">
             {s.archived.length}
           </span>
@@ -118,8 +234,11 @@ export function App({ dataSource }: AppProps) {
         {s.verbResult && (
           <span className="text-xs font-mono text-muted-foreground truncate max-w-[40%]">{s.verbResult}</span>
         )}
-        <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted">
-          <FolderOpen className="h-4 w-4" /> 開啟專案
+        <button
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted"
+          onClick={() => void s.openProjectViaDialog()}
+        >
+          <FolderOpen className="h-4 w-4" /> {t("app.openProject")}
         </button>
       </header>
 
@@ -128,19 +247,33 @@ export function App({ dataSource }: AppProps) {
         <aside className="w-[200px] shrink-0 border-r border-border bg-card p-2 flex flex-col gap-1">
           <NavItem
             icon={<GitBranch className="h-4 w-4" />}
-            label="變更"
+            label={t("app.navChanges")}
             active={s.boardView === "board"}
             onClick={() => s.setBoardView("board")}
           />
-          <NavItem icon={<FileText className="h-4 w-4" />} label="規格" />
-          <NavItem icon={<StickyNote className="h-4 w-4" />} label="備忘" />
+          <NavItem icon={<FileText className="h-4 w-4" />} label={t("app.navSpecs")} />
+          <NavItem icon={<StickyNote className="h-4 w-4" />} label={t("app.navNotes")} />
           <div className="flex-1" />
-          <NavItem icon={<Settings className="h-4 w-4" />} label="設定" />
+          <NavItem
+            icon={<Settings className="h-4 w-4" />}
+            label={t("app.navSettings")}
+            active={s.boardView === "settings"}
+            onClick={() => s.setBoardView("settings")}
+          />
         </aside>
 
         {/* 主內容：看板填滿高度（欄內捲動）、封存頁整頁縱向捲動 */}
         <main className={`flex-1 p-5 ${s.boardView === "board" ? "overflow-hidden" : "overflow-y-auto"}`}>
-          {s.boardView === "board" ? (
+          {s.boardView === "settings" && workspace !== undefined ? (
+            <SettingsView
+              workspace={workspace}
+              localePref={localePref}
+              onLocalePrefChange={onLocalePrefChange}
+            />
+          ) : workspace !== undefined && s.tabs.length === 0 ? (
+            // 零分頁（首次使用）：空狀態引導頁取代空看板。
+            <EmptyState onOpen={() => void s.openProjectViaDialog()} />
+          ) : s.boardView === "board" ? (
             <KanbanBoard
               changes={s.changes}
               onOpenChange={s.openDetail}
@@ -214,25 +347,63 @@ export function App({ dataSource }: AppProps) {
       <AlertDialog open={s.pendingPromote !== null} onOpenChange={(o) => !o && s.cancelPromote()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>轉為變更？</AlertDialogTitle>
-            <AlertDialogDescription>
-              會在「提案中」新增一張變更卡，提案內容以本討論的結論開頭；討論會移到「已轉出變更」區。
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t("app.promoteTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("app.promoteDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="promote-name" className="text-xs text-muted-foreground">
-              變更名稱<span className="ml-1 text-muted-foreground/70">（英文小寫，字間用 -）</span>
+              {t("app.changeName")}
+              <span className="ml-1 text-muted-foreground/70">{t("app.changeNameHint")}</span>
             </label>
             <Input
               id="promote-name"
-              aria-label="變更名稱"
+              aria-label={t("app.changeName")}
               value={promoteName}
               onChange={(e) => setPromoteName(e.target.value)}
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelPromote}>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void s.confirmPromote(promoteName)}>轉為變更</AlertDialogAction>
+            <AlertDialogCancel onClick={s.cancelPromote}>{t("app.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void s.confirmPromote(promoteName)}>
+              {t("app.promoteConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 初始化確認（design D3：寫入型確認框——取消靠左持預設焦點、建立靠右拉開距離） */}
+      <AlertDialog open={s.pendingInit !== null} onOpenChange={(o) => !o && s.cancelInit()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("app.initTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              <BoldName text={t("app.initDesc")} name={s.pendingInit ?? ""} />
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-4">
+            {["claude", "codex"].map((tool) => (
+              <label key={tool} className="flex items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-[var(--primary)]"
+                  checked={initTools.includes(tool)}
+                  onChange={(e) =>
+                    setInitTools((prev) =>
+                      e.target.checked ? [...prev, tool] : prev.filter((x) => x !== tool),
+                    )
+                  }
+                />
+                {tool}
+              </label>
+            ))}
+          </div>
+          <AlertDialogFooter className="justify-between sm:justify-between">
+            <AlertDialogCancel autoFocus onClick={s.cancelInit}>
+              {t("app.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => void s.confirmInit(initTools)}>
+              {t("app.initConfirm")}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -244,14 +415,14 @@ export function App({ dataSource }: AppProps) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>封存討論？</AlertDialogTitle>
+            <AlertDialogTitle>{t("app.archiveDiscussionTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              討論 <b>{s.pendingArchiveDiscussion}</b> 會移到已封存頁的討論節，可隨時唯讀檢視。
+              <BoldName text={t("app.archiveDiscussionDesc")} name={s.pendingArchiveDiscussion ?? ""} />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelArchiveDiscussion}>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={s.confirmArchiveDiscussion}>封存</AlertDialogAction>
+            <AlertDialogCancel onClick={s.cancelArchiveDiscussion}>{t("app.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={s.confirmArchiveDiscussion}>{t("app.archiveConfirm")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -260,14 +431,14 @@ export function App({ dataSource }: AppProps) {
       <AlertDialog open={s.pendingArchive !== null} onOpenChange={(o) => !o && s.cancelArchive()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>封存變更？</AlertDialogTitle>
+            <AlertDialogTitle>{t("app.archiveTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              將 <b>{s.pendingArchive}</b> 封存——執行 speclink archive（先驗證，前置未滿足會失敗）。此動作會移動檔案。
+              <BoldName text={t("app.archiveDesc")} name={s.pendingArchive ?? ""} />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelArchive}>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={s.confirmArchive}>封存</AlertDialogAction>
+            <AlertDialogCancel onClick={s.cancelArchive}>{t("app.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={s.confirmArchive}>{t("app.archiveConfirm")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -276,15 +447,15 @@ export function App({ dataSource }: AppProps) {
       <AlertDialog open={s.pendingDelete !== null} onOpenChange={(o) => !o && s.cancelDelete()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>刪除變更？</AlertDialogTitle>
+            <AlertDialogTitle>{t("app.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              將永久刪除 <b>{s.pendingDelete}</b> 的整個目錄（proposal/design/specs/tasks）。此動作無法復原。
+              <BoldName text={t("app.deleteDesc")} name={s.pendingDelete ?? ""} />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelDelete}>取消</AlertDialogCancel>
+            <AlertDialogCancel onClick={s.cancelDelete}>{t("app.cancel")}</AlertDialogCancel>
             <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={s.confirmDelete}>
-              刪除
+              {t("app.deleteConfirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Archive, Check, Copy, MessageSquareText } from "lucide-react";
 
 import type { ChangeItem } from "../adapter";
+import { useI18n } from "../i18n";
 import { changeStage } from "../stage";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
@@ -17,6 +18,7 @@ export interface ChangeCardProps {
 
 /** 看板卡片（極簡）：名稱＋複製鈕＋進度。點卡片開詳情；動作歸詳情抽屜，僅 ready 卡有封存。 */
 export function ChangeCard({ change, onOpen, onArchive, barClass = "bg-primary" }: ChangeCardProps) {
+  const { t } = useI18n();
   const pct =
     change.totalTasks > 0 ? Math.round((change.completedTasks / change.totalTasks) * 100) : 0;
   const stage = changeStage(change);
@@ -36,13 +38,17 @@ export function ChangeCard({ change, onOpen, onArchive, barClass = "bg-primary" 
       <CardHeader className="p-3 flex-row items-start gap-1.5">
         <span className="font-semibold text-sm leading-tight min-w-0 flex-1">{change.name}</span>
         {change.fromDiscussion && (
-          <span aria-label="來自討論" title={`來自討論：${change.fromDiscussion}`} className="shrink-0 text-primary/60">
+          <span
+            aria-label={t("card.fromDiscussion")}
+            title={t("card.fromDiscussionTitle").replace("{name}", change.fromDiscussion)}
+            className="shrink-0 text-primary/60"
+          >
             <MessageSquareText className="h-3.5 w-3.5" />
           </span>
         )}
         <button
           type="button"
-          aria-label="複製名稱"
+          aria-label={t("common.copyName")}
           className={`shrink-0 text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
           onClick={copyName}
         >
@@ -66,7 +72,7 @@ export function ChangeCard({ change, onOpen, onArchive, barClass = "bg-primary" 
               className="h-6 gap-1 px-2 text-xs"
               onClick={() => onArchive?.(change.name)}
             >
-              <Archive className="h-3 w-3" /> 封存
+              <Archive className="h-3 w-3" /> {t("common.archive")}
             </Button>
           </div>
         )}

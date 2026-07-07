@@ -1,7 +1,18 @@
 // spec 需求「已封存變更可展開檢視」：列徽章、展開唯讀分頁、懶載入、
 // 任務核取方塊不可互動、缺件文件顯示空狀態。
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
+
+import { I18nProvider } from "../i18n";
+
+// 既有中文斷言包 I18nProvider locale zh-TW 後照舊斷言（i18n 抽 key 的回歸保護）。
+const zhWrapper = ({ children }: { children: ReactNode }) => (
+  <I18nProvider locale="zh-TW">{children}</I18nProvider>
+);
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: zhWrapper });
+}
 
 import { ArchivedList } from "../components/ArchivedList";
 import type { ArchivedItem } from "../adapter";
