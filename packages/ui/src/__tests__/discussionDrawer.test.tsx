@@ -245,3 +245,26 @@ describe("change 側同源連結", () => {
     expect(onOpenSibling).toHaveBeenCalledWith("cut-b");
   });
 });
+
+describe("DiscussionDrawer 世代重載（spec：外部推進討論後抽屜內容更新）", () => {
+  it("refreshGen 遞增時重載記錄，回合分頁呈現新回合且分頁選擇不重置", async () => {
+    const props = makeProps();
+    const { rerender } = render(<DiscussionDrawer {...(props as never)} refreshGen={0} />);
+    await waitFor(() => screen.getByRole("tab", { name: /討論過程/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /討論過程/ }));
+    await waitFor(() => expect(screen.getByText(/範圍界定/)).toBeTruthy());
+    const calls = () => (props.loadDocument as ReturnType<typeof vi.fn>).mock.calls.length;
+    const c0 = calls();
+    // 外部 speclink discuss add-round 後 watcher 觸發 refresh → 世代遞增。
+    const DOC2 = DOC.replace(
+      "## Conclusion",
+      "### Round 2 — assumptions (2026-07-02)\n\n**Focus**: 第二輪新內容\n\n## Conclusion",
+    );
+    (props.loadDocument as ReturnType<typeof vi.fn>).mockResolvedValue(DOC2);
+    rerender(<DiscussionDrawer {...(props as never)} refreshGen={1} />);
+    await waitFor(() => expect(calls()).toBeGreaterThan(c0));
+    await waitFor(() => expect(screen.getByText(/第二輪新內容/)).toBeTruthy());
+    // 舊回合仍在、分頁停留在討論過程——重載為就地替換，非重開抽屜。
+    expect(screen.getByText(/範圍界定/)).toBeTruthy();
+  });
+});

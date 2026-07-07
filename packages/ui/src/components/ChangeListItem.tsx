@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, GripVertical, Archive } from "lucide-react";
 
 import type { ChangeItem, Verb } from "../adapter";
@@ -12,6 +12,8 @@ export interface ChangeListItemProps {
   change: ChangeItem;
   expanded: boolean;
   onToggle: (name: string) => void;
+  /** 刷新世代——遞增且展開中即重載已載入的文件（未傳＝0，行為等同僅展開時載入）。 */
+  refreshGen?: number;
   /** 讀取此 change 的 artifact（proposal.md/design.md/tasks.md/specs/<cap>/spec.md）。 */
   loadDocument: (artifact: string) => Promise<string | null>;
   loadCapabilities: () => Promise<string[]>;
@@ -24,6 +26,7 @@ export function ChangeListItem({
   change,
   expanded,
   onToggle,
+  refreshGen,
   loadDocument,
   loadCapabilities,
   onRunVerb,
@@ -34,23 +37,44 @@ export function ChangeListItem({
   const [caps, setCaps] = useState<string[]>([]);
   const [specs, setSpecs] = useState<Record<string, string | null>>({});
 
+  const gen = refreshGen ?? 0;
+  // latest-wins：回應帶發起序號，落後即丟棄。
+  const requestSeq = useRef(0);
+  const loadedGen = useRef(-1);
+
+  const loadAll = (g: number) => {
+    const seq = ++requestSeq.current;
+    loadedGen.current = g;
+    const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
+      if (requestSeq.current === seq) apply(v);
+    };
+    void loadDocument("proposal.md").then(fresh(setProposal));
+    void loadDocument("design.md").then(fresh(setDesign));
+    void loadDocument("tasks.md").then(fresh(setTasksMd));
+    void loadCapabilities().then(async (cs) => {
+      if (requestSeq.current !== seq) return;
+      setCaps(cs);
+      const entries = await Promise.all(
+        cs.map(async (cap) => [cap, await loadDocument(`specs/${cap}/spec.md`)] as const),
+      );
+      if (requestSeq.current === seq) setSpecs(Object.fromEntries(entries));
+    });
+  };
+
+  // 展開即抓取——不做一次性快取，收合再展開以檔案現況重讀。
   useEffect(() => {
     if (!expanded) return;
-    if (proposal === undefined) void loadDocument("proposal.md").then(setProposal);
-    if (design === undefined) void loadDocument("design.md").then(setDesign);
-    if (tasksMd === undefined) void loadDocument("tasks.md").then(setTasksMd);
-    if (caps.length === 0) void loadCapabilities().then(setCaps);
+    loadAll(gen);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded]);
 
+  // 展開中外部世代遞增 → 就地重載（不清空、回應到達後替換）。
   useEffect(() => {
-    for (const cap of caps) {
-      if (!(cap in specs)) {
-        void loadDocument(`specs/${cap}/spec.md`).then((c) => setSpecs((s) => ({ ...s, [cap]: c })));
-      }
-    }
+    if (!expanded) return;
+    if (gen <= loadedGen.current) return;
+    loadAll(gen);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caps]);
+  }, [expanded, gen]);
 
   const pct = change.totalTasks > 0 ? Math.round((change.completedTasks / change.totalTasks) * 100) : 0;
   const taskCount = `${change.completedTasks}/${change.totalTasks}`;

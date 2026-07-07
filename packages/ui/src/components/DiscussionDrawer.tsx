@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, FileText, Flag, MessagesSquare, Rocket } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
@@ -44,6 +44,8 @@ export interface DiscussionDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   discussion: DiscussionItem | null;
+  /** 刷新世代——遞增即重載討論記錄內容（未傳＝0，行為等同僅開啟時載入）。 */
+  refreshGen?: number;
   /** 記錄全文載入（slug 定址）。 */
   loadDocument: (slug: string) => Promise<string | null>;
   /** active change 清單（衍生變更分頁現況派生）。 */
@@ -68,6 +70,7 @@ export function DiscussionDrawer({
   open,
   onOpenChange,
   discussion,
+  refreshGen,
   loadDocument,
   changes,
   archivedChanges,
@@ -77,13 +80,34 @@ export function DiscussionDrawer({
 }: DiscussionDrawerProps) {
   const [doc, setDoc] = useState<string | null | undefined>();
   const slug = discussion?.slug ?? null;
+  const gen = refreshGen ?? 0;
+  // latest-wins：回應帶發起序號，落後即丟棄（涵蓋世代與換討論的交錯）。
+  const requestSeq = useRef(0);
+  const loadedGen = useRef(-1);
 
+  const loadRecord = (g: number, target: string, clear: boolean) => {
+    const seq = ++requestSeq.current;
+    loadedGen.current = g;
+    if (clear) setDoc(undefined);
+    void loadDocument(target).then((v) => {
+      if (requestSeq.current === seq) setDoc(v);
+    });
+  };
+
+  // 開啟／換討論：清空後載入。
   useEffect(() => {
     if (!open || !slug) return;
-    setDoc(undefined);
-    void loadDocument(slug).then(setDoc);
+    loadRecord(gen, slug, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, slug]);
+
+  // 外部世代重載（add-round／conclude／轉出後）：不清空、回應到達後就地替換，分頁選擇不重置。
+  useEffect(() => {
+    if (!open || !slug) return;
+    if (gen <= loadedGen.current) return;
+    loadRecord(gen, slug, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, slug, gen]);
 
   if (!discussion) return null;
 

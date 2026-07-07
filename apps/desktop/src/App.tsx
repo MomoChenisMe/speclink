@@ -170,6 +170,7 @@ export function App({ dataSource }: AppProps) {
         open={s.detailChange !== null}
         onOpenChange={(o) => !o && s.closeDetail()}
         change={s.detailChange}
+        refreshGen={s.refreshGen}
         loadDocument={(change, artifact) => dataSource.getDocument(change, artifact)}
         loadCapabilities={(change) => dataSource.changeCapabilities(change)}
         loadMeta={(change) => dataSource.changeMeta(change)}
@@ -197,6 +198,7 @@ export function App({ dataSource }: AppProps) {
         open={s.detailDiscussion !== null}
         onOpenChange={(o) => !o && s.closeDiscussion()}
         discussion={s.detailDiscussion}
+        refreshGen={s.refreshGen}
         loadDocument={(slug) => dataSource.getDiscussionDocument(slug)}
         changes={s.changes}
         archivedChanges={s.archived}
