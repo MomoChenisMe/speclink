@@ -39,3 +39,4 @@ discuss? → propose → apply ⇄ ingest → verify? → archive
 
 - `openspec/config.yaml` 任何 YAML 解析錯誤會使**整份政策靜默退回預設**；rules 條目勿以反引號開頭；桌面設定頁寫入前後須驗證可解析。
 - CLI 輸出是回歸保護對象：重構前先保存 baseline exe 做自我基線雙沙盒對照（scratchpad 基建會消失，勿依賴）。
+- 內嵌技能三處必須同步：`crates/speclink-core/assets`、repo 技能實例（`.claude/skills`、`.agents/skills`）、render golden（`crates/speclink-core/tests/golden`）。動 assets 後在**乾淨樹**上跑 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test render_golden` 再生並審視 diff——對 dirty 樹再生會把未提交狀態烙進 golden，之後 main 就長期紅燈（已發生過一次）。
