@@ -24,6 +24,8 @@ pub(crate) struct TestStore {
     pub canonical: RefCell<HashMap<String, String>>,
     /// Number of `write_change_meta` calls (idempotence assertions).
     pub meta_writes: RefCell<u32>,
+    /// Number of `write_artifact` calls (no-write assertions).
+    pub artifact_writes: RefCell<u32>,
     /// Live discussion slug → document text.
     pub discussions: RefCell<HashMap<String, String>>,
     /// Archived discussion slug → document text (promote must refuse these).
@@ -108,6 +110,7 @@ impl Store for TestStore {
     }
     fn write_artifact(&self, change: &str, artifact: &str, content: &str) -> Result<PathBuf> {
         self.put_artifact(change, artifact, content);
+        *self.artifact_writes.borrow_mut() += 1;
         Ok(PathBuf::from(format!("changes/{change}/{artifact}")))
     }
     fn artifact_exists(&self, change: &str, artifact: &str) -> bool {

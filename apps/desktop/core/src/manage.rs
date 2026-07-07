@@ -42,17 +42,42 @@ pub fn delete_change_at(root: &Path, change: &str) -> Result<(), String> {
 }
 
 /// 勾選/取消 tasks.md 的第 `ordinal`（1-based，僅計 checkbox 行）個任務。
-/// 僅改該行的 `[ ]`/`[x]` 標記；ordinal 越界或無 tasks.md 回 `Err`。
+/// ordinal 越界或無 tasks.md 回 `Err`。
+///
+/// done=true 走引擎的任務完成協作函式——與 CLI `task done` 相同的檔案效果
+/// （勾章、touched 記錄、首次完成蓋開工章；identity 沿 git 身分、agent 缺席）。
+/// 與 CLI 唯一的差異：任務已完成時視為冪等成功（GUI toggle 語意下重複 done=true
+/// 只可能來自競態，不以錯誤打斷使用者），不寫任何檔案。
+/// done=false（取消勾選）維持桌面行編輯，不蓋章、不記 touched。
 pub fn set_task_done_at(root: &Path, change: &str, ordinal: usize, done: bool) -> Result<(), String> {
-    edit_tasks(root, change, |lines, idx| {
-        let line_no = *idx.get(ordinal.checked_sub(1).ok_or("ordinal must be 1-based")?)
-            .ok_or_else(|| format!("task {ordinal} not found"))?;
-        let line = &lines[line_no];
-        let marker = if done { "[x]" } else { "[ ]" };
-        let re = regex::Regex::new(r"^(\s*-\s*)\[[ xX]\]").unwrap();
-        lines[line_no] = re.replace(line, format!("${{1}}{marker}")).into_owned();
-        Ok(())
-    })
+    if done {
+        if !crate::query::is_safe_path_param(change) {
+            return Err(format!("invalid change name: {change}"));
+        }
+        let ctx = init_core_context(root)
+            .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
+        let identity = speclink_core::util::git_identity(&ctx.workspace.root);
+        speclink_core::tasks::complete(
+            &ctx.store,
+            &ctx.workspace,
+            change,
+            ordinal,
+            identity.as_deref(),
+            None,
+        )
+        .map(|_| ()) // already → 冪等成功（引擎保證零檔案效果）
+        .map_err(|e| e.to_string())
+    } else {
+        edit_tasks(root, change, |lines, idx| {
+            let line_no = *idx
+                .get(ordinal.checked_sub(1).ok_or("ordinal must be 1-based")?)
+                .ok_or_else(|| format!("task {ordinal} not found"))?;
+            let line = &lines[line_no];
+            let re = regex::Regex::new(r"^(\s*-\s*)\[[ xX]\]").unwrap();
+            lines[line_no] = re.replace(line, "${1}[ ]").into_owned();
+            Ok(())
+        })
+    }
 }
 
 /// 把第 `from` 個任務移到以第 `to` 個任務為錨的位置（皆 1-based、僅計 checkbox 行）。
@@ -489,6 +514,138 @@ mod tests {
         assert!(move_task_at(&root, "task-change", 0, 1, None).is_err());
         assert_eq!(read_tasks(&root), before, "failed moves must not rewrite the file");
         let _ = fs::remove_dir_all(&root);
+    }
+
+    // --- 完成語意：GUI 勾任務與 CLI 完成語意一致（desktop-app spec）---
+
+    const META_UNSTARTED: &str =
+        "schema: spec-driven\ncreated: 2026-07-05\ncreated_by: momo\ncreated_with: claude\n";
+
+    /// fixture 根轉為 git repo（本地身分固定）；`dirty_rel` 給一個未認領的 dirty 程式檔。
+    fn giterize(root: &Path, dirty_rel: Option<&str>) {
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            assert!(ok, "git {args:?} failed");
+        };
+        git(&["init", "-q"]);
+        git(&["config", "user.name", "Desk Tester"]);
+        git(&["config", "user.email", "desk@example.com"]);
+        if let Some(rel) = dirty_rel {
+            let p = root.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(&p, "dirty\n").unwrap();
+        }
+    }
+
+    fn change_file(fx: &crate::testfixture::FixtureRoot, name: &str, file: &str) -> PathBuf {
+        fx.root().join("openspec").join("changes").join(name).join(file)
+    }
+
+    fn meta_of(fx: &crate::testfixture::FixtureRoot, name: &str) -> String {
+        fs::read_to_string(change_file(fx, name, ".openspec.yaml")).unwrap()
+    }
+
+    fn touched_of(fx: &crate::testfixture::FixtureRoot, name: &str) -> Option<String> {
+        fs::read_to_string(
+            fx.root().join(".speclink").join("touched").join(format!("{name}.json")),
+        )
+        .ok()
+    }
+
+    fn set_readonly(p: &Path, on: bool) {
+        let mut perm = fs::metadata(p).unwrap().permissions();
+        perm.set_readonly(on);
+        fs::set_permissions(p, perm).unwrap();
+    }
+
+    #[test]
+    fn set_task_done_true_stamps_meta_and_records_touched() {
+        let fx = crate::testfixture::FixtureRoot::new("done-stamp");
+        fx.add_change("demo", META_UNSTARTED);
+        giterize(fx.root(), Some("src/main.rs"));
+
+        set_task_done_at(fx.root(), "demo", 1, true).expect("check ok");
+
+        let tasks = fs::read_to_string(change_file(&fx, "demo", "tasks.md")).unwrap();
+        assert!(tasks.contains("- [x] 1.1 First task"), "task must be checked: {tasks}");
+        // 與 CLI task done 相同的檔案效果：meta 蓋開工章（identity 沿 git 身分、agent 缺席）。
+        let meta = meta_of(&fx, "demo");
+        assert!(meta.starts_with(META_UNSTARTED), "existing meta preserved verbatim: {meta}");
+        assert!(
+            meta.contains(&format!("started_at: {}", speclink_core::util::today())),
+            "first completion must stamp started_at: {meta}"
+        );
+        assert!(
+            meta.contains("started_by: Desk Tester <desk@example.com>"),
+            "git identity must be attributed: {meta}"
+        );
+        assert!(!meta.contains("started_with"), "no agent source → started_with absent: {meta}");
+        // touched 記錄與 CLI 同語意：未認領 dirty 檔記於本任務項下。
+        let touched = touched_of(&fx, "demo").expect("touched record written");
+        assert!(touched.contains("src/main.rs"), "dirty file must be recorded: {touched}");
+        assert!(touched.contains("\"task_id\": \"1\""), "entry attributed to task 1: {touched}");
+    }
+
+    #[test]
+    fn set_task_done_true_on_done_task_is_an_idempotent_no_op() {
+        let fx = crate::testfixture::FixtureRoot::new("done-idem");
+        fx.add_change("demo", META_UNSTARTED);
+        // 唯讀 tasks.md：任何寫入企圖都會失敗——冪等成功必須完全不寫檔。
+        let tasks_path = change_file(&fx, "demo", "tasks.md");
+        let before = fs::read_to_string(&tasks_path).unwrap();
+        set_readonly(&tasks_path, true);
+        let r = set_task_done_at(fx.root(), "demo", 2, true);
+        set_readonly(&tasks_path, false);
+        assert!(r.is_ok(), "duplicate done=true must be an idempotent success: {r:?}");
+        assert_eq!(fs::read_to_string(&tasks_path).unwrap(), before);
+        assert_eq!(meta_of(&fx, "demo"), META_UNSTARTED, "no stamp on the no-op path");
+        assert!(touched_of(&fx, "demo").is_none(), "no touched record on the no-op path");
+    }
+
+    #[test]
+    fn uncheck_and_move_never_touch_meta_or_touched_record() {
+        let fx = crate::testfixture::FixtureRoot::new("no-sideeffect");
+        fx.add_change("demo", META_UNSTARTED);
+        // dirty 檔在場更能證明「不記 touched」是行為而非碰巧無料可記。
+        giterize(fx.root(), Some("src/lib.rs"));
+        let touched_before = "{\n  \"change\": \"demo\",\n  \"touched\": []\n}";
+        fx.write(".speclink/touched/demo.json", touched_before);
+
+        set_task_done_at(fx.root(), "demo", 2, false).expect("uncheck ok");
+        move_task_at(fx.root(), "demo", 1, 2, None).expect("move ok");
+
+        assert_eq!(meta_of(&fx, "demo"), META_UNSTARTED, "meta must stay byte-identical");
+        assert_eq!(
+            touched_of(&fx, "demo").as_deref(),
+            Some(touched_before),
+            "touched record must stay byte-identical"
+        );
+    }
+
+    #[test]
+    fn desktop_ordinal_matches_engine_task_id_on_mixed_fixture() {
+        // D3 風險釘死：同一 tasks.md（群組標題＋巢狀縮排＋非 checkbox 行混排），
+        // desktop ordinal N 與引擎 task id N 必指同一任務。
+        let mixed = "## 1. 群組甲\n\n前言說明不列入計數。\n\n- [ ] 1.1 首任務\n  - [ ] 巢狀子任務\n  - 純列表項非 checkbox\n- [ ] 1.2 次任務\n\n## 2. 群組乙\n\n- [ ] 2.1 尾任務\n";
+        for n in 1..=4 {
+            let fx = crate::testfixture::FixtureRoot::new(&format!("align-{n}"));
+            fx.add_change("demo", META_UNSTARTED);
+            fx.write("openspec/changes/demo/tasks.md", mixed);
+            set_task_done_at(fx.root(), "demo", n, true).expect("check ok");
+            let text = fs::read_to_string(change_file(&fx, "demo", "tasks.md")).unwrap();
+            let parsed = speclink_core::tasks::parse(&text);
+            assert_eq!(parsed.len(), 4, "engine must see the same 4 checkboxes");
+            assert!(
+                parsed[n - 1].done,
+                "engine task id {n} must be exactly the task desktop ordinal {n} checked: {text}"
+            );
+            assert_eq!(parsed.iter().filter(|t| t.done).count(), 1);
+        }
     }
 
     #[test]

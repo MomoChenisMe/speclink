@@ -7,10 +7,12 @@ import { parseTasks } from "../tasks";
 import type { ChangeItem, ArtifactStatus } from "../adapter";
 
 const changes: ChangeItem[] = [
-  // 新規則：欄位由生命週期標記驅動——無 started＝提案中（就算任務已就位）、
-  // 有 started＝進行中、全完成＝已就緒。
+  // 欄位由生命週期標記驅動——全完成＝已就緒 ＞ started_at 或任務完成數>0＝進行中
+  // ＞ 其餘＝提案中（剛 propose 完、全未勾、未開工）。
   { name: "proposing-x", status: "in-progress", totalTasks: 28, completedTasks: 0 },
   { name: "working-y", status: "in-progress", totalTasks: 10, completedTasks: 4, startedAt: "2026-07-06" },
+  // 無章有進度（手改 tasks.md / agent 直改 / git pull 等繞道）——派生管顯示。
+  { name: "progressed-w", status: "in-progress", totalTasks: 14, completedTasks: 2 },
   { name: "ready-z", status: "done", totalTasks: 5, completedTasks: 5 },
 ];
 
@@ -26,6 +28,8 @@ describe("KanbanBoard", () => {
     expect(screen.getByText("已就緒")).toBeTruthy();
     expect(within(column("proposed")).getByText("proposing-x")).toBeTruthy();
     expect(within(column("in-progress")).getByText("working-y")).toBeTruthy();
+    // 無 started_at 而有任務進度的卡片列於進行中欄（spec Scenario「無章而有任務進度列於進行中」）。
+    expect(within(column("in-progress")).getByText("progressed-w")).toBeTruthy();
     expect(within(column("ready")).getByText("ready-z")).toBeTruthy();
     // 封存欄不在看板（拖曳時才浮現落點）
     expect(column("archived")).toBeNull();

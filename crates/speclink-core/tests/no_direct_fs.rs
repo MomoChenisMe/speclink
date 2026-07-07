@@ -46,7 +46,12 @@ fn engine_sources_do_not_touch_spec_storage_directly() {
             .expect("utf-8 file name")
             .to_string();
         let text = std::fs::read_to_string(&path).expect("read source file");
-        let uses_fs = text.contains("std::fs");
+        // Unit-test modules are host-side by nature (they scaffold throwaway
+        // temp workspaces) and never ship in the lib; the engine-flow rule
+        // covers production code only, so the scan stops at the conventional
+        // trailing `#[cfg(test)]` module.
+        let prod = text.split("#[cfg(test)]").next().unwrap_or(&text);
+        let uses_fs = prod.contains("std::fs");
         if ALLOWLIST.contains(&name.as_str()) {
             if !uses_fs {
                 stale_allowlist.push(name);

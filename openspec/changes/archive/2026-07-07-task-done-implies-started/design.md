@@ -85,7 +85,7 @@ D1 函式的 identity/agent 參數：本刀 CLI 與桌面皆傳 git 身分＋age
 
 ## Risks / Trade-offs
 
-- [ordinal 與引擎 task id 計數偏差（兩套 checkbox 行判定不一致）] → 以同一 tasks.md fixture 的對齊測試釘死：desktop ordinal N 與引擎 task id N 必指同一任務，含巢狀縮排與非 checkbox 行混排情形。
+- [ordinal 與引擎 task id 計數偏差（兩套 checkbox 行判定不一致）] → 以同一 tasks.md fixture 的對齊測試釘死：desktop ordinal N 與引擎 task id N 必指同一任務，含巢狀縮排與非 checkbox 行混排情形。**已知邊界（verify 實證確認）**：`* [ ]` 星號 bullet 與空描述 checkbox 引擎計入、前端與桌面行編輯不計——手改或匯入含這類行的 tasks.md 時 ordinal 會錯位（speclink 自產文件一律 dash＋有描述，不觸發）。收斂三方 checkbox 判定為單一規則屬後續 change。
 - [雙沙盒檔案樹對照因 meta 蓋章出現差異] → 屬預期行為變更：更新自我基線並在變更記錄註明「task done 新增 meta 檔案效果」。
 - [GUI 勾選當下 git dirty 集合與該任務無關（touched 錯誤歸屬）] → 與 CLI 現行語意一致（僅記未被先前任務認領的檔案）；使用者已裁定接受，不另設過濾。
 - [勾章與蓋章非原子（蓋章失敗留下已勾未蓋狀態）] → D4 派生使顯示不受影響（有進度即進行中）；下次任一完成會再嘗試首章；不引入回滾或鎖（禁過度設計）。
