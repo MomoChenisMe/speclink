@@ -2,6 +2,7 @@
 > **依賴**: ① desktop-shell-and-browser（本刀在其桌面殼上加 agent 面板）。**下游**: agent 選型與 ACP 接線經驗餵給 ④ web-agent-channel。
 > **狀態**: 待完整 propose（本檔為 promote 骨架）。
 > **現況更新（2026-07-05，① 完成後）**: ① 實際交付超出原述——生命週期看板（teal 深淺主題）＋Spectra 級詳情抽屜＋互動任務（勾選/排序回寫 tasks.md）＋封存獨立頁；前端體系定案 shadcn/Tailwind/Zustand（packages/ui 設計系統）。本刀的 agent 對話面板 SHALL 以同一設計系統整合（缺的 shadcn 原語如 ScrollArea/Textarea 屆時補進 packages/ui）；另插隊一刀 desktop-config-multiproject（B 開啟專案+自動 init／C 設定頁／D i18n）將先於本刀。
+> **現況更新（2026-07-06）**: 插隊序再增二刀——desktop-board-parity（即時刷新/封存瀏覽/in-progress 標記遷 change meta/看板標記驅動）與 desktop-discussion-board（討論第 0 欄＋GUI 促轉）皆先於 desktop-config-multiproject 與本刀。對本刀的紅利：agent 在面板內跑 verbs 時，檔案監看自動反映到看板（無需 agent 通道自行通知 UI）；agent 跑 discuss 全流程時討論欄即時可視；in-progress add 寫 meta 的 started_with 可標示 agent 身分。
 
 ## Why
 

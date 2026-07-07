@@ -1,6 +1,7 @@
 > **Roadmap**: 四情境預設 GUI 工具矩陣的第 ⑤ 刀（共 5，序 4→3→2→1）。來源討論 `四情境預設-gui-工具矩陣`。
 > **依賴**: ③ web-server-postgres（在其 web 應用上加角色切面）；④ web-agent-channel（PO 端 agent 操作）。**下游**: 無（本刀收尾情境 1）。
 > **狀態**: 待完整 propose（本檔為 promote 骨架）。
+> **現況更新（2026-07-06，desktop-board-parity／desktop-discussion-board 提案後）**: 情境 1 的核心互動（PO 在系統 discuss/propose）的 UI 已在桌面刀定案並落 packages/ui——討論看板（第 0 欄兩級呈現、討論抽屜四分頁、GUI 促轉/歸檔）與標記驅動的看板欄位（started_* 歸屬含誰在做）皆可直接復用；本刀的增量縮小為「角色權限切面」（誰可促轉/歸檔/勾任務——動詞層的授權點），propose 時以此定範圍。
 
 ## Why
 

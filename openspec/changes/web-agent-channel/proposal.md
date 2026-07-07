@@ -1,6 +1,7 @@
 > **Roadmap**: 四情境預設 GUI 工具矩陣的第 ④ 刀（共 5，序 4→3→2→1）。來源討論 `四情境預設-gui-工具矩陣`。
 > **依賴**: ③ web-server-postgres（在其 web 應用內加 agent 通道）；② desktop-acp-agent 的 agent 選型/接線經驗。**下游**: 無（⑤ 與本刀並列、皆疊在 ③ 之上）。
 > **狀態**: 待完整 propose（本檔為 promote 骨架）。
+> **現況更新（2026-07-06，desktop-board-parity／desktop-discussion-board 提案後）**: (1) in-progress 標記已定為 change meta 欄位（started_by/started_at/started_with）——本刀的 agent 於 server 端跑 apply 時，經同一 verb 路徑寫 meta 即自動反映到所有觀察者的看板（標記含 agent 身分，started_with 可區分執行者）。(2) 討論看板已定案（desktop-discussion-board）：討論欄兩級呈現、GUI 促轉——本刀 agent 在系統內跑 discuss 全流程時，回合推進經 server push 即時可視。
 
 ## Why
 
