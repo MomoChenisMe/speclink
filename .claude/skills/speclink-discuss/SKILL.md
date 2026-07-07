@@ -54,15 +54,15 @@ The document has a fixed skeleton — like the proposal template, every discussi
    speclink discuss list --json
    ```
 2. If one matches the topic and its `status` is `open`, resume it (reuse its `slug`) — the record already exists; every later `add-round`/`conclude` call uses it.
-3. Otherwise **do not create the record yet.** Announce the slug you intend to use ("This discussion will be recorded as `<slug>` once it has substance.") and proceed — scout, pick a mode, present your first assumptions or question with nothing on disk. A mis-invocation or a topic answered in one exchange leaves no file behind.
+3. Otherwise **do not create the record yet.** Derive an English kebab-case slug from the topic (translate when the topic is not English — e.g. 「看板搜尋列」 → `board-search-bar`), announce it ("This discussion will be recorded as `<slug>` once it has substance."), and proceed — scout, pick a mode, present your first assumptions or question with nothing on disk. A mis-invocation or a topic answered in one exchange leaves no file behind.
 
 **Create the record at the first substantive round** — the moment an exchange actually moves the topic (your assumptions list drew confirmations or corrections, an interview answer settled something). Right before recording that first round, run:
 
 ```bash
-speclink discuss new "<topic>"
+speclink discuss new "<topic>" --slug <english-kebab-slug>
 ```
 
-Capture the returned `slug`, write the Context section (below), then `add-round`. From here on the record is live and every exchange is persisted.
+Always pass `--slug` with the English kebab-case slug you derived — the slug names the record file; the topic stays in the user's language verbatim. Without `--slug` the filename falls back to deriving from the topic, so non-English topics produce non-English filenames. Write the Context section (below), then `add-round`. From here on the record is live and every exchange is persisted.
 
 **When the record is created**, fill the Context section once — the framing a future reader (or `propose`) needs before the rounds make sense:
 
@@ -372,7 +372,7 @@ When the discussion converges on building something:
 
 ## Guardrails
 
-- **Do record the discussion** — Announce the intended slug at the start, open the record at the first substantive round (`speclink discuss new`), append a round after each exchange, and `conclude` at the end. The document is the durable thread; keep it current. If the discussion is abandoned instead, `speclink discuss discard` the record — never leave it sitting `open`.
+- **Do record the discussion** — Announce the intended English kebab-case slug at the start, open the record at the first substantive round (`speclink discuss new` with `--slug`), append a round after each exchange, and `conclude` at the end. The document is the durable thread; keep it current. If the discussion is abandoned instead, `speclink discuss discard` the record — never leave it sitting `open`.
 - **Don't implement** — Never write code or implement features. Creating Speclink artifacts and discussion records is fine, writing application code is not.
 - **Don't leave without a conclusion** — If the user tries to end without a conclusion, summarize where things stand and state what's unresolved.
 - **Don't fake understanding** — If something is unclear, dig deeper.
