@@ -31,6 +31,8 @@ export type {
   ChangeItem,
   SpecItem,
   ArchivedItem,
+  DiscussionItem,
+  DiscussionLists,
   Verb,
 } from "./adapter";
 export { ChangeBoard } from "./components/ChangeBoard";
@@ -46,6 +48,17 @@ export { parseTasks, type TaskLine } from "./tasks";
 export type { ArtifactStatus, StatusReport } from "./adapter";
 export { ChangeCard, type ChangeCardProps } from "./components/ChangeCard";
 export { KanbanBoard, type KanbanBoardProps } from "./components/KanbanBoard";
+export {
+  DiscussionColumn,
+  discussionChipStage,
+  type DiscussionColumnProps,
+} from "./components/DiscussionColumn";
+export {
+  DiscussionDrawer,
+  splitDiscussionSections,
+  type DiscussionDrawerProps,
+  type DiscussionSections,
+} from "./components/DiscussionDrawer";
 export { DetailDrawer, type DetailDrawerProps } from "./components/DetailDrawer";
 
 // Spectra 風清單 + 分頁 + 富文本

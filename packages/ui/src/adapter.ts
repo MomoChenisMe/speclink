@@ -14,6 +14,8 @@ export interface ChangeItem {
   startedAt?: string | null;
   startedBy?: string | null;
   startedWith?: string | null;
+  /** 來源討論 slug（由討論轉出的 change）；null/缺席＝非討論而來。 */
+  fromDiscussion?: string | null;
 }
 
 /** 一個 canonical spec 的清單項。 */
@@ -40,6 +42,23 @@ export interface ArchivedItem {
   name: string;
   tasksTotal?: number;
   tasksDone?: number;
+}
+
+/** 一筆討論的清單項（camelCase；status: open | concluded | promoted）。 */
+export interface DiscussionItem {
+  slug: string;
+  topic: string;
+  status: string;
+  rounds: number;
+  created: string;
+  /** 轉出（扇出）的 change 名累積清單；未轉出為空陣列。 */
+  promotedTo: string[];
+}
+
+/** 討論清單兩節：看板討論欄（active）與已封存頁討論節（archived）。 */
+export interface DiscussionLists {
+  active: DiscussionItem[];
+  archived: DiscussionItem[];
 }
 
 /** 可對選定 change 執行的動詞。park/unpark 已從 speclink 移除，不在此列。 */
@@ -93,4 +112,12 @@ export interface SpeclinkDataSource {
   getArchivedDocument(datedName: string, artifact: string): Promise<string | null>;
   /** 列出一個已封存 change 的 delta capability 名。 */
   archivedCapabilities(datedName: string): Promise<string[]>;
+  /** 討論清單（active＋archived）。非 speclink 專案回兩個空清單。 */
+  listDiscussions(): Promise<DiscussionLists>;
+  /** 讀取討論記錄全文（slug 定址；live 優先、封存後備）。無則 null。 */
+  getDiscussionDocument(slug: string): Promise<string | null>;
+  /** 把討論轉為新 change（可選 change 名，省略時由 slug 衍生）。失敗 reject 單行訊息。 */
+  promoteDiscussion(slug: string, name?: string): Promise<{ change: string }>;
+  /** 歸檔一筆 live 討論（UI 需先確認）；失敗 reject 附訊息。 */
+  archiveDiscussion(slug: string): Promise<void>;
 }

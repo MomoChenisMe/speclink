@@ -1,10 +1,11 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Archive, GitBranch, FileText, StickyNote, Settings, FolderOpen } from "lucide-react";
 import {
   KanbanBoard,
   ArchivedList,
   RichDetailDrawer,
+  DiscussionDrawer,
   AlertDialog,
   AlertDialogContent,
   AlertDialogHeader,
@@ -13,6 +14,7 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
+  Input,
   type SpeclinkDataSource,
   type Verb,
 } from "@speclink/ui";
@@ -52,6 +54,12 @@ export function App({ dataSource }: AppProps) {
   const useStore = useMemo(() => createAppStore(dataSource), [dataSource]);
   const s = useStore();
 
+  // 轉為變更確認框的變更名草稿：預設由 slug 衍生，可改為第二刀名（再轉出扇出）。
+  const [promoteName, setPromoteName] = useState("");
+  useEffect(() => {
+    setPromoteName(s.pendingPromote ?? "");
+  }, [s.pendingPromote]);
+
   useEffect(() => {
     void s.refresh();
     // 檔案監看的宿主層 wiring：外部寫者（CLI、agent、編輯器）改動 openspec/
@@ -69,6 +77,19 @@ export function App({ dataSource }: AppProps) {
     if (verb === "archive") s.requestArchive(change);
     else void s.runVerb(verb, change);
   };
+
+  // 同源連結資料（design D6）：來源討論（記錄已不在時以 slug 充當 topic）與
+  // 同一討論扇出的 active 兄弟刀（可互跳的對象）。
+  const fromSlug = s.detailChange?.fromDiscussion ?? null;
+  const allDiscussions = [...s.discussions.active, ...s.discussions.archived];
+  const sourceDiscussion = fromSlug
+    ? { slug: fromSlug, topic: allDiscussions.find((d) => d.slug === fromSlug)?.topic ?? fromSlug }
+    : null;
+  const siblingChanges = fromSlug
+    ? s.changes
+        .filter((c) => c.fromDiscussion === fromSlug && c.name !== s.detailChange?.name)
+        .map((c) => c.name)
+    : [];
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -124,6 +145,11 @@ export function App({ dataSource }: AppProps) {
               changes={s.changes}
               onOpenChange={s.openDetail}
               onArchive={s.requestArchive}
+              discussions={s.discussions}
+              archivedChanges={s.archived}
+              onOpenDiscussion={s.openDiscussion}
+              onPromoteDiscussion={s.requestPromote}
+              onArchiveDiscussion={s.requestArchiveDiscussion}
             />
           ) : (
             <ArchivedList
@@ -132,6 +158,8 @@ export function App({ dataSource }: AppProps) {
               onQuery={s.setQuery}
               loadDocument={(datedName, artifact) => dataSource.getArchivedDocument(datedName, artifact)}
               loadCapabilities={(datedName) => dataSource.archivedCapabilities(datedName)}
+              archivedDiscussions={s.discussions.archived}
+              loadDiscussionDocument={(slug) => dataSource.getDiscussionDocument(slug)}
             />
           )}
         </main>
@@ -155,7 +183,76 @@ export function App({ dataSource }: AppProps) {
           await dataSource.moveTask(change, from, to, before);
           await s.refresh();
         }}
+        sourceDiscussion={sourceDiscussion}
+        siblingChanges={siblingChanges}
+        onOpenDiscussion={(slug) => {
+          s.closeDetail();
+          s.openDiscussion(slug);
+        }}
+        onOpenSibling={s.openDetail}
       />
+
+      {/* 討論抽屜（結論/討論過程/背景/衍生變更） */}
+      <DiscussionDrawer
+        open={s.detailDiscussion !== null}
+        onOpenChange={(o) => !o && s.closeDiscussion()}
+        discussion={s.detailDiscussion}
+        loadDocument={(slug) => dataSource.getDiscussionDocument(slug)}
+        changes={s.changes}
+        archivedChanges={s.archived}
+        onPromote={s.requestPromote}
+        onOpenChangeCard={(name) => {
+          s.closeDiscussion();
+          s.openDetail(name);
+        }}
+        error={s.promoteError}
+      />
+
+      {/* 轉為變更確認（design D4：說「會發生什麼」，不暴露工程詞） */}
+      <AlertDialog open={s.pendingPromote !== null} onOpenChange={(o) => !o && s.cancelPromote()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>轉為變更？</AlertDialogTitle>
+            <AlertDialogDescription>
+              會在「提案中」新增一張變更卡，提案內容以本討論的結論開頭；討論會移到「已轉出變更」區。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="promote-name" className="text-xs text-muted-foreground">
+              變更名稱<span className="ml-1 text-muted-foreground/70">（英文小寫，字間用 -）</span>
+            </label>
+            <Input
+              id="promote-name"
+              aria-label="變更名稱"
+              value={promoteName}
+              onChange={(e) => setPromoteName(e.target.value)}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={s.cancelPromote}>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void s.confirmPromote(promoteName)}>轉為變更</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 討論封存確認 */}
+      <AlertDialog
+        open={s.pendingArchiveDiscussion !== null}
+        onOpenChange={(o) => !o && s.cancelArchiveDiscussion()}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>封存討論？</AlertDialogTitle>
+            <AlertDialogDescription>
+              討論 <b>{s.pendingArchiveDiscussion}</b> 會移到已封存頁的討論節，可隨時唯讀檢視。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={s.cancelArchiveDiscussion}>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={s.confirmArchiveDiscussion}>封存</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* 封存確認 */}
       <AlertDialog open={s.pendingArchive !== null} onOpenChange={(o) => !o && s.cancelArchive()}>

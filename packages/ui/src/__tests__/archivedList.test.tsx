@@ -95,3 +95,99 @@ describe("ArchivedList（封存展開檢視）", () => {
     await waitFor(() => expect(screen.getByText(/無設計文件/)).toBeTruthy());
   });
 });
+
+// spec 需求「已封存頁含討論節」：兩節分列、封存討論唯讀展開、搜尋同時過濾兩節。
+describe("ArchivedList（討論節）", () => {
+  const ARCHIVED_DISCUSSION = {
+    slug: "old-topic",
+    topic: "Old settled topic",
+    status: "promoted",
+    rounds: 2,
+    created: "2026-06-30",
+    promotedTo: ["first-cut"],
+  };
+
+  const RECORD = `---
+topic: Old settled topic
+slug: old-topic
+status: promoted
+created: 2026-06-30
+---
+
+# Discussion: Old settled topic
+
+## Context
+
+封存的脈絡。
+
+## Rounds
+
+### Round 1 — assumptions (2026-06-30)
+
+**Focus**: 定案
+
+## Conclusion
+
+**Decision**: 收工
+`;
+
+  function renderDual(query = "", onQuery: (q: string) => void = () => {}) {
+    const loaders = makeLoaders();
+    const loadDiscussionDocument = vi.fn(async () => RECORD);
+    render(
+      <ArchivedList
+        archived={[FULL]}
+        query={query}
+        onQuery={onQuery}
+        loadDocument={loaders.loadDocument}
+        loadCapabilities={loaders.loadCapabilities}
+        archivedDiscussions={[ARCHIVED_DISCUSSION]}
+        loadDiscussionDocument={loadDiscussionDocument}
+      />,
+    );
+    return { loaders, loadDiscussionDocument };
+  }
+
+  it("變更與討論兩節分列，討論列顯示日期＋topic", () => {
+    renderDual();
+    expect(screen.getByText("已封存的變更")).toBeTruthy();
+    expect(screen.getByText("已封存的討論")).toBeTruthy();
+    expect(screen.getByText("Old settled topic")).toBeTruthy();
+    expect(screen.getByText("2026-06-30")).toBeTruthy();
+  });
+
+  it("封存討論唯讀展開：區段標題為背景/討論過程/結論、無任何寫入動詞", async () => {
+    const { loadDiscussionDocument } = renderDual();
+    expect(loadDiscussionDocument).not.toHaveBeenCalled(); // 懶載入
+    fireEvent.click(screen.getByText("Old settled topic"));
+    await waitFor(() => expect(screen.getByText(/封存的脈絡/)).toBeTruthy());
+    expect(loadDiscussionDocument).toHaveBeenCalledWith("old-topic");
+    // 區段標題用詞（spec 需求「已封存頁含討論節」）。
+    expect(screen.getByText("背景")).toBeTruthy();
+    expect(screen.getByText("討論過程")).toBeTruthy();
+    expect(screen.getByText("結論")).toBeTruthy();
+    expect(screen.queryByText("脈絡")).toBeNull();
+    expect(screen.queryByText("回合")).toBeNull();
+    expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /促轉/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /封存$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /歸檔/ })).toBeNull();
+  });
+
+  it("搜尋同時過濾兩節：命中討論 topic 時變更節無項目、反之亦然", () => {
+    const { unmount } = (() => {
+      renderDual("settled");
+      return { unmount: () => {} };
+    })();
+    // 討論命中、變更被濾掉
+    expect(screen.getByText("Old settled topic")).toBeTruthy();
+    expect(screen.queryByText("desktop-shell-and-browser")).toBeNull();
+    unmount();
+  });
+
+  it("搜尋命中變更名時討論節無項目", () => {
+    renderDual("desktop-shell");
+    expect(screen.getByText("desktop-shell-and-browser")).toBeTruthy();
+    expect(screen.queryByText("Old settled topic")).toBeNull();
+  });
+});

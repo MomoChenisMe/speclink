@@ -102,6 +102,26 @@ fn archived_capabilities(state: State<AppState>, dated_name: String) -> Vec<Stri
     speclink_desktop_core::query::archived_capabilities_at(&state.root, &dated_name)
 }
 
+#[tauri::command]
+fn list_discussions(state: State<AppState>) -> Value {
+    speclink_desktop_core::discussions::list_discussions_at(&state.root)
+}
+
+#[tauri::command]
+fn discussion_document(state: State<AppState>, slug: String) -> Option<String> {
+    speclink_desktop_core::discussions::discussion_document_at(&state.root, &slug)
+}
+
+#[tauri::command]
+fn promote_discussion(state: State<AppState>, slug: String, name: Option<String>) -> Result<Value, String> {
+    speclink_desktop_core::discussions::promote_discussion_at(&state.root, &slug, name.as_deref())
+}
+
+#[tauri::command]
+fn archive_discussion(state: State<AppState>, slug: String) -> Result<Value, String> {
+    speclink_desktop_core::discussions::archive_discussion_at(&state.root, &slug)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -146,7 +166,11 @@ pub fn run() {
             archive,
             archived_changes,
             archived_document,
-            archived_capabilities
+            archived_capabilities,
+            list_discussions,
+            discussion_document,
+            promote_discussion,
+            archive_discussion
         ])
         .run(tauri::generate_context!())
         .expect("error while running Speclink desktop app");

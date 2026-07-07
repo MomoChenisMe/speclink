@@ -8,8 +8,10 @@
 
 use crate::store::{DiscussionDoc, Store};
 use crate::util;
+use crate::workspace::Workspace;
 use anyhow::{bail, Result};
 use serde::Serialize;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct DiscussionInfo {
@@ -288,6 +290,84 @@ pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> 
     Ok(())
 }
 
+/// Outcome of promoting a discussion into a change.
+#[derive(Debug)]
+pub struct PromoteOutcome {
+    pub change: String,
+    pub path: PathBuf,
+}
+
+/// Strip an archive-style `YYYY-MM-DD-` prefix from a candidate change name —
+/// archived names are historical references, not active names to reuse. Kept
+/// only when something remains after the prefix.
+fn strip_date_prefix(name: &str) -> &str {
+    let b = name.as_bytes();
+    let dated = b.len() > 11
+        && b[..4].iter().all(u8::is_ascii_digit)
+        && b[4] == b'-'
+        && b[5..7].iter().all(u8::is_ascii_digit)
+        && b[7] == b'-'
+        && b[8..10].iter().all(u8::is_ascii_digit)
+        && b[10] == b'-';
+    if dated { &name[11..] } else { name }
+}
+
+/// Promote a discussion into a new change (the whole flow, shared by CLI and
+/// desktop): refuse archived records, derive the change name (explicit name or
+/// the slug, minus any archive date prefix), create the change with a
+/// `from_discussion` link, prefill the proposal's Why from the conclusion
+/// (topic as fallback), and mark the discussion promoted. Any failure before a
+/// step leaves the later steps unexecuted, so a name collision never marks the
+/// discussion.
+pub fn promote(
+    ws: &Workspace,
+    store: &dyn Store,
+    slug: &str,
+    name: Option<&str>,
+) -> Result<PromoteOutcome> {
+    match info(store, slug) {
+        None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
+        Some(i) if i.archived => {
+            bail!("discussion '{slug}' is archived — move it out of discussions/archive/ to promote it")
+        }
+        Some(_) => {}
+    }
+    let change_name = strip_date_prefix(name.unwrap_or(slug)).to_string();
+    let schema =
+        crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())
+            .schema_name();
+    let dir = crate::newcmd::new_change(ws, store, &change_name, None, &schema, None, Some(slug))?;
+    // Prefill the proposal's Why from the discussion conclusion (topic as fallback);
+    // the remaining sections stay as TBD markers for /speclink-propose to complete.
+    let why = conclusion_text(store, slug).unwrap_or_else(|| {
+        info(store, slug).map(|i| i.topic).unwrap_or_else(|| slug.to_string())
+    });
+    let proposal = format!(
+        "## Why\n\n{why}\n\n## What Changes\n\n<!-- TBD: derive from the discussion -->\n\n## Capabilities\n\n### New Capabilities\n\n<!-- TBD -->\n\n## Impact\n\n<!-- TBD -->\n"
+    );
+    store.write_artifact(&change_name, "proposal.md", &proposal)?;
+    mark_promoted(store, slug, &change_name)?;
+    Ok(PromoteOutcome { change: change_name, path: dir })
+}
+
+/// The change names a discussion has fanned out into — the frontmatter's
+/// comma-separated `promoted_to` accumulator, live or archived. Kept out of
+/// `DiscussionInfo` so `discuss list --json` stays bit-identical (design D2).
+pub fn promoted_to(store: &dyn Store, slug: &str) -> Vec<String> {
+    let Some(doc) = store.read_discussion(slug) else {
+        return Vec::new();
+    };
+    frontmatter_value(&doc.text, "promoted_to")
+        .map(|v| {
+            v.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Archive a live discussion under its creation date. Returns the archived
 /// file name, or `None` when no live discussion exists. Same-day name
 /// collisions are resolved by the store so co-archival never fails on a
@@ -341,4 +421,224 @@ pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<()> {
     };
     store.write_live_discussion(slug, &text)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::store::Store;
+    use crate::teststore::TestStore;
+    use crate::workspace::Workspace;
+
+    fn ghost_ws() -> Workspace {
+        // Nonexistent root: git probes fail soft (no identity stamped), so the
+        // flow is fully deterministic on any machine.
+        Workspace {
+            root: std::env::temp_dir().join("speclink-discuss-test-ghost-root"),
+            spec_dir_name: "openspec".to_string(),
+        }
+    }
+
+    /// A scaffolded discussion document with a written conclusion.
+    fn concluded_doc(slug: &str, topic: &str, decision: &str) -> String {
+        format!(
+            "---\ntopic: {topic}\nslug: {slug}\nstatus: concluded\ncreated: 2026-01-02\n---\n\n\
+             # Discussion: {topic}\n\n\
+             ## Context\n\nFixture context.\n\n\
+             ## Rounds\n\n### Round 1 — assumptions (2026-01-02)\n\n**Focus**: scope\n\n\
+             ## Conclusion\n\n**Decision**: {decision}\n"
+        )
+    }
+
+    /// A scaffolded discussion whose conclusion is still the placeholder comment.
+    fn open_doc(slug: &str, topic: &str) -> String {
+        format!(
+            "---\ntopic: {topic}\nslug: {slug}\nstatus: open\ncreated: 2026-01-02\n---\n\n\
+             # Discussion: {topic}\n\n\
+             ## Context\n\nFixture context.\n\n\
+             ## Rounds\n\n\
+             ## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n"
+        )
+    }
+
+    // --- promote flow (design D1) ---
+
+    #[test]
+    fn promote_rejects_missing_discussion() {
+        let store = TestStore::default();
+        let err = super::promote(&ghost_ws(), &store, "ghost", None).unwrap_err();
+        assert!(err.to_string().contains("not found"), "err: {err}");
+    }
+
+    #[test]
+    fn promote_rejects_archived_discussion() {
+        let store = TestStore::default();
+        store
+            .archived_discussions
+            .borrow_mut()
+            .insert("old-topic".to_string(), concluded_doc("old-topic", "Old", "done"));
+        let err = super::promote(&ghost_ws(), &store, "old-topic", None).unwrap_err();
+        assert!(err.to_string().contains("archived"), "err: {err}");
+        assert!(!store.change_exists("old-topic"), "no change may be created");
+    }
+
+    #[test]
+    fn promote_derives_change_name_from_slug_by_default() {
+        let store = TestStore::with_live_discussion(
+            "alpha-search",
+            &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
+        );
+        let outcome = super::promote(&ghost_ws(), &store, "alpha-search", None).unwrap();
+        assert_eq!(outcome.change, "alpha-search");
+        assert!(store.change_exists("alpha-search"));
+    }
+
+    #[test]
+    fn promote_uses_explicit_name_when_given() {
+        let store = TestStore::with_live_discussion(
+            "beta-cache",
+            &concluded_doc("beta-cache", "Beta cache", "add cache layer"),
+        );
+        let outcome =
+            super::promote(&ghost_ws(), &store, "beta-cache", Some("cache-layer")).unwrap();
+        assert_eq!(outcome.change, "cache-layer");
+        assert!(store.change_exists("cache-layer"));
+        assert!(!store.change_exists("beta-cache"));
+    }
+
+    #[test]
+    fn promote_strips_archive_date_prefix_from_derived_name() {
+        // Archive-style date prefixes are historical references, not active
+        // change names — derivation normalizes them away (either form).
+        let store = TestStore::with_live_discussion(
+            "2026-07-06-retro",
+            &concluded_doc("2026-07-06-retro", "Retro", "do the retro"),
+        );
+        let outcome = super::promote(&ghost_ws(), &store, "2026-07-06-retro", None).unwrap();
+        assert_eq!(outcome.change, "retro");
+
+        let store2 = TestStore::with_live_discussion(
+            "gamma-x",
+            &concluded_doc("gamma-x", "Gamma x", "ship gamma"),
+        );
+        let outcome2 =
+            super::promote(&ghost_ws(), &store2, "gamma-x", Some("2026-01-02-gamma-cut")).unwrap();
+        assert_eq!(outcome2.change, "gamma-cut");
+    }
+
+    #[test]
+    fn promote_creates_change_with_from_discussion_meta() {
+        let store = TestStore::with_live_discussion(
+            "alpha-search",
+            &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
+        );
+        super::promote(&ghost_ws(), &store, "alpha-search", None).unwrap();
+        let meta = store.meta("alpha-search");
+        assert!(meta.starts_with("schema: spec-driven\ncreated: "), "meta: {meta}");
+        assert!(meta.contains("from_discussion: alpha-search\n"), "meta: {meta}");
+    }
+
+    #[test]
+    fn promote_prefills_proposal_why_from_conclusion() {
+        let store = TestStore::with_live_discussion(
+            "alpha-search",
+            &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
+        );
+        super::promote(&ghost_ws(), &store, "alpha-search", None).unwrap();
+        let proposal = store.read_artifact("alpha-search", "proposal.md").unwrap();
+        assert_eq!(
+            proposal,
+            "## Why\n\n**Decision**: build alpha search\n\n## What Changes\n\n<!-- TBD: derive from the discussion -->\n\n## Capabilities\n\n### New Capabilities\n\n<!-- TBD -->\n\n## Impact\n\n<!-- TBD -->\n"
+        );
+    }
+
+    #[test]
+    fn promote_prefills_topic_when_no_conclusion() {
+        // Placeholder-only conclusion → the topic is the Why fallback.
+        let store =
+            TestStore::with_live_discussion("open-one", &open_doc("open-one", "Open topic"));
+        super::promote(&ghost_ws(), &store, "open-one", None).unwrap();
+        let proposal = store.read_artifact("open-one", "proposal.md").unwrap();
+        assert!(proposal.starts_with("## Why\n\nOpen topic\n"), "proposal: {proposal}");
+    }
+
+    #[test]
+    fn promote_marks_promoted_and_accumulates_on_fan_out() {
+        let store = TestStore::with_live_discussion(
+            "alpha-search",
+            &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
+        );
+        super::promote(&ghost_ws(), &store, "alpha-search", None).unwrap();
+        let text = store.discussion("alpha-search");
+        assert!(text.contains("status: promoted\n"), "text: {text}");
+        assert!(text.contains("promoted_to: alpha-search\n"), "text: {text}");
+
+        // Second cut: promoted_to becomes a comma-separated accumulator.
+        super::promote(&ghost_ws(), &store, "alpha-search", Some("second-cut")).unwrap();
+        let text = store.discussion("alpha-search");
+        assert!(text.contains("promoted_to: alpha-search, second-cut\n"), "text: {text}");
+    }
+
+    #[test]
+    fn promote_fails_when_change_already_exists_and_leaves_discussion_untouched() {
+        let store = TestStore::with_live_discussion(
+            "alpha-search",
+            &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
+        );
+        store.metas.borrow_mut().insert("alpha-search".to_string(), "schema: spec-driven\n".to_string());
+        let before = store.discussion("alpha-search");
+        let err = super::promote(&ghost_ws(), &store, "alpha-search", None).unwrap_err();
+        assert!(err.to_string().contains("already exists"), "err: {err}");
+        assert_eq!(store.discussion("alpha-search"), before, "discussion must not be marked");
+    }
+
+    // --- promoted_to query (design D2) ---
+
+    #[test]
+    fn promoted_to_absent_yields_empty() {
+        let store =
+            TestStore::with_live_discussion("open-one", &open_doc("open-one", "Open topic"));
+        assert!(super::promoted_to(&store, "open-one").is_empty());
+        assert!(super::promoted_to(&store, "no-such-slug").is_empty());
+    }
+
+    #[test]
+    fn promoted_to_single_value() {
+        let mut doc = concluded_doc("alpha-search", "Alpha search", "x");
+        doc = doc.replacen(
+            "status: concluded\n",
+            "status: promoted\npromoted_to: first-cut\n",
+            1,
+        );
+        let store = TestStore::with_live_discussion("alpha-search", &doc);
+        assert_eq!(super::promoted_to(&store, "alpha-search"), vec!["first-cut".to_string()]);
+    }
+
+    #[test]
+    fn promoted_to_comma_accumulated_values() {
+        let mut doc = concluded_doc("alpha-search", "Alpha search", "x");
+        doc = doc.replacen(
+            "status: concluded\n",
+            "status: promoted\npromoted_to: first-cut, second-cut\n",
+            1,
+        );
+        let store = TestStore::with_live_discussion("alpha-search", &doc);
+        assert_eq!(
+            super::promoted_to(&store, "alpha-search"),
+            vec!["first-cut".to_string(), "second-cut".to_string()]
+        );
+    }
+
+    #[test]
+    fn promoted_to_reads_archived_records_too() {
+        // The archived page needs the fan-out list for auto-archived discussions.
+        let mut doc = concluded_doc("done-topic", "Done", "x");
+        doc = doc.replacen(
+            "status: concluded\n",
+            "status: promoted\npromoted_to: only-cut\n",
+            1,
+        );
+        let store = TestStore::default();
+        store.archived_discussions.borrow_mut().insert("done-topic".to_string(), doc);
+        assert_eq!(super::promoted_to(&store, "done-topic"), vec!["only-cut".to_string()]);
+    }
 }

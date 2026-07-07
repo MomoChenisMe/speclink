@@ -12,9 +12,10 @@ import {
 } from "@dnd-kit/core";
 import { Archive, CircleCheckBig, Hammer, Lightbulb, type LucideIcon } from "lucide-react";
 
-import type { ChangeItem } from "../adapter";
+import type { ArchivedItem, ChangeItem, DiscussionLists } from "../adapter";
 import { changeStage, STAGES, STAGE_LABEL, type Stage } from "../stage";
 import { ChangeCard } from "./ChangeCard";
+import { DiscussionColumn } from "./DiscussionColumn";
 
 /** 各階段的視覺主題——單一 teal 色相、以深淺表達生命週期推進，守住主色系。 */
 const STAGE_STYLE: Record<Stage, { icon: LucideIcon; top: string; badge: string; bar: string; iconCls: string }> = {
@@ -46,6 +47,15 @@ export interface KanbanBoardProps {
   onOpenChange?: (name: string) => void;
   /** 封存請求：ready 卡的封存鈕與拖曳落點皆經此觸發（app 端接確認流程）。 */
   onArchive?: (name: string) => void;
+  /** 討論清單；提供時看板擴為四欄，active 進第 0 欄（封存討論不上板）。 */
+  discussions?: DiscussionLists;
+  /** 已封存 change 清單（衍生樹細列的已封存態派生）。 */
+  archivedChanges?: ArchivedItem[];
+  onOpenDiscussion?: (slug: string) => void;
+  /** concluded 討論卡的轉為變更動詞（app 端接確認流程）。 */
+  onPromoteDiscussion?: (slug: string) => void;
+  /** concluded 討論卡的歸檔動詞（app 端接確認流程）。 */
+  onArchiveDiscussion?: (slug: string) => void;
 }
 
 function Column({
@@ -110,8 +120,20 @@ function DraggableCard({ change, barClass, ...rest }: { change: ChangeItem; barC
   );
 }
 
-/** 生命週期看板：提案中／進行中／已就緒 三欄（彩色主題）；拖曳時浮現封存落點。 */
-export function KanbanBoard({ changes, onOpenChange, onArchive }: KanbanBoardProps) {
+/**
+ * 生命週期看板：討論（第 0 欄，傳入 discussions 時）＋提案中／進行中／已就緒
+ * 三欄（彩色主題）；拖曳時浮現封存落點。
+ */
+export function KanbanBoard({
+  changes,
+  onOpenChange,
+  onArchive,
+  discussions,
+  archivedChanges,
+  onOpenDiscussion,
+  onPromoteDiscussion,
+  onArchiveDiscussion,
+}: KanbanBoardProps) {
   const [activeName, setActiveName] = useState<string | null>(null);
   const byStage: Record<Stage, ChangeItem[]> = { proposed: [], "in-progress": [], ready: [] };
   for (const c of changes) byStage[changeStage(c)].push(c);
@@ -134,6 +156,16 @@ export function KanbanBoard({ changes, onOpenChange, onArchive }: KanbanBoardPro
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveName(null)}>
       {/* safe center：寬螢幕置中、內容溢出時回到可捲動的靠左 */}
       <div className="flex gap-3 h-full min-h-0 overflow-x-auto [justify-content:safe_center]">
+        {discussions && (
+          <DiscussionColumn
+            discussions={discussions.active}
+            changes={changes}
+            archived={archivedChanges ?? []}
+            onOpenDiscussion={onOpenDiscussion}
+            onPromote={onPromoteDiscussion}
+            onArchiveDiscussion={onArchiveDiscussion}
+          />
+        )}
         {STAGES.map((stage) => (
           <Column key={stage} stage={stage} count={byStage[stage].length}>
             {byStage[stage].map((c) => (

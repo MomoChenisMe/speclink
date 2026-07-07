@@ -53,7 +53,7 @@ pub fn archive_at(root: &Path, change: &str) -> Result<Value, String> {
     }))
 }
 
-fn open(root: &Path) -> Result<crate::ProjectContext, String> {
+pub(crate) fn open(root: &Path) -> Result<crate::ProjectContext, String> {
     init_core_context(root).ok_or_else(|| format!("not a speclink project: {}", root.display()))
 }
 
