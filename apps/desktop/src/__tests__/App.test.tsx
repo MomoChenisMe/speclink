@@ -57,7 +57,16 @@ function fakeWorkspace() {
     pickFolder: vi.fn().mockResolvedValue(null),
     readSettings: vi.fn().mockResolvedValue({
       app: { tools: [], customTools: [], parseError: null },
-      workflow: { locale: null, specLocale: null, tdd: false, audit: false, parseError: null },
+      workflow: {
+        locale: null,
+        specLocale: null,
+        tdd: false,
+        audit: false,
+        context: null,
+        rules: {},
+        schemaArtifacts: ["proposal", "design", "specs", "tasks"],
+        parseError: null,
+      },
     }),
     writeAppTools: vi.fn(),
     writeWorkflowConfig: vi.fn(),

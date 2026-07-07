@@ -54,6 +54,16 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.save": "儲存",
     "settings.saved": "已儲存 ✓",
     "settings.parseErrorHint": "檔案無法解析，表單已停用——請先手動修復：",
+    "settings.contextLabel": "專案說明",
+    "settings.contextHelp":
+      "寫入 config.yaml 的 context 鍵——專案背景的自由文字，注入每次 artifact 產出指令；清空儲存即移除該鍵。",
+    "settings.rulesLabel": "產出規則",
+    "settings.rulesHelp":
+      "依 artifact 分節的產出約束，清單順序即指令注入順序；儲存會重寫 config.yaml，檔內註解不會保留。",
+    "settings.addRule": "新增條目",
+    "settings.ruleUp": "上移",
+    "settings.ruleDown": "下移",
+    "settings.ruleDelete": "刪除",
     "store.tabInvalid": "已不是 speclink 專案",
     "store.deleted": "已刪除",
     "store.deleteFailed": "刪除失敗",
@@ -114,6 +124,16 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.save": "Save",
     "settings.saved": "Saved ✓",
     "settings.parseErrorHint": "The file cannot be parsed and the form is disabled — fix it manually first:",
+    "settings.contextLabel": "Project context",
+    "settings.contextHelp":
+      "Written to the context key in config.yaml — free-form project background injected into every artifact instruction; save empty to remove the key.",
+    "settings.rulesLabel": "Output rules",
+    "settings.rulesHelp":
+      "Per-artifact output constraints; list order is the instruction injection order. Saving rewrites config.yaml — file comments are not preserved.",
+    "settings.addRule": "Add entry",
+    "settings.ruleUp": "Move up",
+    "settings.ruleDown": "Move down",
+    "settings.ruleDelete": "Delete",
     "store.tabInvalid": "no longer a speclink project",
     "store.deleted": "deleted",
     "store.deleteFailed": "delete failed",
