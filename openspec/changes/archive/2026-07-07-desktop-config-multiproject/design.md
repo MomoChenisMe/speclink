@@ -63,7 +63,7 @@ packages/ui 新增 i18n 模組：I18nProvider（props：locale、可選 messages
 
 ### D8 語言偏好與最近清單存 localStorage
 
-UI 語言偏好：localStorage 單鍵，null 表跟隨系統（navigator.language 以 zh 開頭 → zh-TW，否則 en）；設定頁提供「跟隨系統／zh-TW／en」三選，切換即時生效。專案分頁列（取代原「最近開啟清單」設計，見 D10）：localStorage 存分頁陣列（路徑＋顯示名＋順序）與最後活躍分頁，上限 10，成功開啟去重上移、關閉分頁即自陣列移除——分頁列本身就是持久化的最近專案，不另設最近選單。兩者皆為 app 本機狀態——UI 語言與 config.yaml 的 locale（AI artifacts 產出語言）是兩件事，設定頁需在兩處欄位旁以說明文字區分。
+UI 語言偏好：localStorage 單鍵，null 表跟隨系統（navigator.language 以 zh 開頭 → zh-TW，否則 en）；設定頁提供「跟隨系統／zh-TW／en」三選，切換即時生效。專案分頁列（取代原「最近開啟清單」設計，見 D10）：localStorage 存分頁陣列（路徑＋顯示名＋順序）與最後活躍分頁，上限 10，成功開啟去重並移至既有分頁（設為 active，位置原地保留）、關閉分頁即自陣列移除——分頁列本身就是持久化的最近專案，不另設最近選單。兩者皆為 app 本機狀態——UI 語言與 config.yaml 的 locale（AI artifacts 產出語言）是兩件事，設定頁需在兩處欄位旁以說明文字區分。
 替代方案：語言偏好寫入 .speclink.yaml——UI 語言是「這台機器上這個人」的偏好而非專案屬性，跨專案應一致，否決。
 
 ### D9 設定頁視圖與表單原語擴充

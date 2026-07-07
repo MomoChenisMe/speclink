@@ -1,5 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
+
+import { I18nProvider } from "../i18n";
+
+// 既有中文斷言包 I18nProvider locale zh-TW 後照舊斷言（i18n 抽 key 的回歸保護）。
+const zhWrapper = ({ children }: { children: ReactNode }) => (
+  <I18nProvider locale="zh-TW">{children}</I18nProvider>
+);
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: zhWrapper });
+}
 
 import { KanbanBoard } from "../components/KanbanBoard";
 import { DetailDrawer } from "../components/DetailDrawer";
@@ -56,6 +67,19 @@ describe("KanbanBoard", () => {
     render(<KanbanBoard changes={changes} onOpenChange={onOpenChange} />);
     fireEvent.click(screen.getByText("working-y"));
     expect(onOpenChange).toHaveBeenCalledWith("working-y");
+  });
+
+  it("renders English strings under the en locale", () => {
+    // 5.3：至少一個元件於 en 下渲染英文字串（i18n 生效的正向證明）。
+    rtlRender(
+      <I18nProvider locale="en">
+        <KanbanBoard changes={changes} />
+      </I18nProvider>,
+    );
+    expect(screen.getByText("Proposed")).toBeTruthy();
+    expect(screen.getByText("In progress")).toBeTruthy();
+    expect(screen.getByText("Ready")).toBeTruthy();
+    expect(screen.queryByText("提案中")).toBeNull();
   });
 
   it("card copy button copies the change name without opening the card", () => {

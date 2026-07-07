@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, FileText, Flag, MessagesSquare, Rocket } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
+import { useI18n } from "../i18n";
 import { Button } from "./ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
@@ -78,6 +79,7 @@ export function DiscussionDrawer({
   onOpenChangeCard,
   error,
 }: DiscussionDrawerProps) {
+  const { t } = useI18n();
   const [doc, setDoc] = useState<string | null | undefined>();
   const slug = discussion?.slug ?? null;
   const gen = refreshGen ?? 0;
@@ -113,16 +115,17 @@ export function DiscussionDrawer({
 
   const sections = doc ? splitDiscussionSections(doc) : null;
   const canPromote = discussion.status === "concluded" || discussion.status === "promoted";
-  const promoteLabel = discussion.promotedTo.length > 0 ? "再轉出一個變更" : "轉為變更";
+  const promoteLabel =
+    discussion.promotedTo.length > 0 ? t("ddrawer.promoteAgain") : t("discussion.promote");
 
   const promotePane = (
     <div className="flex h-full flex-col gap-2">
       {discussion.promotedTo.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4">尚未轉出任何變更。</p>
+        <p className="text-sm text-muted-foreground py-4">{t("ddrawer.notPromoted")}</p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {discussion.promotedTo.map((name) => {
-            const stage = discussionChipStage(name, changes, archivedChanges);
+            const stage = t(discussionChipStage(name, changes, archivedChanges));
             const alive = changes.some((c) => c.name === name);
             return (
               <div
@@ -141,7 +144,7 @@ export function DiscussionDrawer({
                     className="h-6 gap-1 px-2 text-xs shrink-0"
                     onClick={() => onOpenChangeCard?.(name)}
                   >
-                    <ArrowUpRight className="h-3 w-3" /> 開啟卡片
+                    <ArrowUpRight className="h-3 w-3" /> {t("ddrawer.openCard")}
                   </Button>
                 )}
               </div>
@@ -171,7 +174,11 @@ export function DiscussionDrawer({
 
   // 生命週期階梯：現站由 status 決定，封存不入階梯（封存後只在已封存頁）。
   const stationIndex = discussion.status === "promoted" ? 2 : discussion.status === "concluded" ? 1 : 0;
-  const stations = ["討論中", "已結論", "轉出變更"];
+  const stations = [
+    t("discussion.statusOpen"),
+    t("discussion.statusConcluded"),
+    t("ddrawer.stationPromoted"),
+  ];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -181,7 +188,7 @@ export function DiscussionDrawer({
             <SheetTitle className="truncate">{discussion.topic}</SheetTitle>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="tabular-nums">{discussion.rounds} 輪</span>
+            <span className="tabular-nums">{t("common.rounds").replace("{n}", String(discussion.rounds))}</span>
             {discussion.created && <span>{discussion.created}</span>}
           </div>
           {/* 生命週期階梯：狀態模型可見，免使用者腦補（design D3）。 */}
@@ -222,22 +229,22 @@ export function DiscussionDrawer({
           >
             <TabsList>
               <TabsTrigger value="conclusion">
-                <Flag className="h-3.5 w-3.5" /> 結論
+                <Flag className="h-3.5 w-3.5" /> {t("ddrawer.tabConclusion")}
               </TabsTrigger>
               <TabsTrigger value="rounds">
-                <MessagesSquare className="h-3.5 w-3.5" /> 討論過程 {discussion.rounds}
+                <MessagesSquare className="h-3.5 w-3.5" /> {t("ddrawer.tabRounds")} {discussion.rounds}
               </TabsTrigger>
               <TabsTrigger value="context">
-                <FileText className="h-3.5 w-3.5" /> 背景
+                <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabContext")}
               </TabsTrigger>
               <TabsTrigger value="promote">
-                <Rocket className="h-3.5 w-3.5" /> 衍生變更
+                <Rocket className="h-3.5 w-3.5" /> {t("ddrawer.tabPromote")}
               </TabsTrigger>
             </TabsList>
             <div className="flex-1 overflow-y-auto pt-3">
-              <TabsContent value="conclusion"><Markdown content={sections.conclusion} empty="（尚無結論）" /></TabsContent>
-              <TabsContent value="rounds"><Markdown content={sections.rounds} empty="（尚無討論過程）" /></TabsContent>
-              <TabsContent value="context"><Markdown content={sections.context} empty="（無背景）" /></TabsContent>
+              <TabsContent value="conclusion"><Markdown content={sections.conclusion} empty={t("ddrawer.noConclusion")} /></TabsContent>
+              <TabsContent value="rounds"><Markdown content={sections.rounds} empty={t("ddrawer.noRounds")} /></TabsContent>
+              <TabsContent value="context"><Markdown content={sections.context} empty={t("ddrawer.noContext")} /></TabsContent>
               <TabsContent value="promote">{promotePane}</TabsContent>
             </div>
           </Tabs>
@@ -245,15 +252,15 @@ export function DiscussionDrawer({
           <Tabs key="fallback" defaultValue="record" className="flex-1 min-h-0 flex flex-col">
             <TabsList>
               <TabsTrigger value="record">
-                <FileText className="h-3.5 w-3.5" /> 記錄
+                <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabRecord")}
               </TabsTrigger>
               <TabsTrigger value="promote">
-                <Rocket className="h-3.5 w-3.5" /> 衍生變更
+                <Rocket className="h-3.5 w-3.5" /> {t("ddrawer.tabPromote")}
               </TabsTrigger>
             </TabsList>
             <div className="flex-1 overflow-y-auto pt-3">
               {/* 區段缺失或格式非預期：整篇以單一檢視退回（不報錯）。 */}
-              <TabsContent value="record"><Markdown content={doc ?? null} empty="載入中…" /></TabsContent>
+              <TabsContent value="record"><Markdown content={doc ?? null} empty={t("common.loading")} /></TabsContent>
               <TabsContent value="promote">{promotePane}</TabsContent>
             </div>
           </Tabs>

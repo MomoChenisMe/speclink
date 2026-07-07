@@ -4,6 +4,9 @@
 
 export const UI_PACKAGE = "@speclink/ui";
 
+// UI 介面 i18n（zh-TW／en；與 config locale 無關）
+export { I18nProvider, useI18n, MESSAGES, type UiLocale, type I18nProviderProps } from "./i18n";
+
 // shadcn/ui 設計系統原語（跨桌面/web 共用）
 export { cn } from "./lib/utils";
 export { Button, buttonVariants, type ButtonProps } from "./components/ui/button";
@@ -43,7 +46,7 @@ export { DocumentViewer } from "./components/DocumentViewer";
 export type { DocumentViewerProps } from "./components/DocumentViewer";
 
 // 看板
-export { changeStage, STAGES, STAGE_LABEL, type Stage } from "./stage";
+export { changeStage, STAGES, type Stage } from "./stage";
 export { parseTasks, type TaskLine } from "./tasks";
 export type { ArtifactStatus, StatusReport } from "./adapter";
 export { ChangeCard, type ChangeCardProps } from "./components/ChangeCard";
@@ -67,6 +70,9 @@ export { ChangeListItem, type ChangeListItemProps } from "./components/ChangeLis
 export { ChangeList, type ChangeListProps, type ListView } from "./components/ChangeList";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 export { Input } from "./components/ui/input";
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./components/ui/tooltip";
+export { NativeSelect, type NativeSelectProps } from "./components/ui/select";
+export { Checkbox, type CheckboxProps } from "./components/ui/checkbox";
 
 // Spectra 級詳情
 export type { ChangeMetaInfo } from "./adapter";

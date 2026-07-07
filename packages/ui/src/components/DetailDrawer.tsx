@@ -1,5 +1,6 @@
 import { CheckCircle2, Circle, CircleDot, Lock } from "lucide-react";
 import type { ArtifactStatus } from "../adapter";
+import { useI18n } from "../i18n";
 import { parseTasks } from "../tasks";
 import {
   Sheet,
@@ -34,15 +35,16 @@ export function DetailDrawer({
   tasksMarkdown,
   doc,
 }: DetailDrawerProps) {
+  const { t } = useI18n();
   const tasks = parseTasks(tasksMarkdown);
-  const doneCount = tasks.filter((t) => t.done).length;
+  const doneCount = tasks.filter((task) => task.done).length;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>{changeName ?? ""}</SheetTitle>
-          <SheetDescription>Artifact 管線與任務</SheetDescription>
+          <SheetDescription>{t("drawer.subtitle")}</SheetDescription>
         </SheetHeader>
 
         <section className="flex flex-col gap-1.5">

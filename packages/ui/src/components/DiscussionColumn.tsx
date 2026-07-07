@@ -2,14 +2,15 @@ import { useState } from "react";
 import { Archive, ArrowUpRight, ChevronDown, ChevronRight, MessageSquareText } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
-import { changeStage, STAGE_LABEL } from "../stage";
+import { useI18n } from "../i18n";
+import { changeStage } from "../stage";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
 
 /**
  * promoted_to 子變更的階段標示（純前端由清單存在性派生）——active 清單命中
  * 依看板欄位規則；封存清單命中為已封存；兩者皆無為已刪除（討論維持已轉出
- * 不回退，歷史事實不回滾）。
+ * 不回退，歷史事實不回滾）。回傳 i18n key，呼叫端以 t() 取顯示字串。
  */
 export function discussionChipStage(
   name: string,
@@ -17,9 +18,9 @@ export function discussionChipStage(
   archived: ArchivedItem[],
 ): string {
   const active = changes.find((c) => c.name === name);
-  if (active) return STAGE_LABEL[changeStage(active)];
-  if (archived.some((a) => a.name === name)) return "已封存";
-  return "已刪除";
+  if (active) return `stage.${changeStage(active)}`;
+  if (archived.some((a) => a.name === name)) return "discussion.chipArchived";
+  return "discussion.chipDeleted";
 }
 
 export interface DiscussionColumnProps {
@@ -36,9 +37,9 @@ export interface DiscussionColumnProps {
   onArchiveDiscussion?: (slug: string) => void;
 }
 
-const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  open: { label: "討論中", cls: "bg-primary/8 text-primary/70" },
-  concluded: { label: "已結論", cls: "bg-primary/12 text-primary" },
+const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
+  open: { labelKey: "discussion.statusOpen", cls: "bg-primary/8 text-primary/70" },
+  concluded: { labelKey: "discussion.statusConcluded", cls: "bg-primary/12 text-primary" },
 };
 
 function DiscussionCard({
@@ -50,6 +51,7 @@ function DiscussionCard({
   DiscussionColumnProps,
   "onOpenDiscussion" | "onPromote" | "onArchiveDiscussion"
 >) {
+  const { t } = useI18n();
   const badge = STATUS_BADGE[d.status] ?? STATUS_BADGE.open;
   return (
     <Card
@@ -60,11 +62,13 @@ function DiscussionCard({
       <CardHeader className="p-3 flex-row items-start gap-1.5">
         <span className="font-semibold text-sm leading-tight min-w-0 flex-1">{d.topic}</span>
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${badge.cls}`}>
-          {badge.label}
+          {t(badge.labelKey)}
         </span>
       </CardHeader>
       <CardContent className="p-3 pt-0 gap-2">
-        <span className="text-xs text-muted-foreground tabular-nums">{d.rounds} 輪</span>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {t("common.rounds").replace("{n}", String(d.rounds))}
+        </span>
         {d.status === "concluded" && (
           <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
             <Button
@@ -73,7 +77,7 @@ function DiscussionCard({
               className="h-6 gap-1 px-2 text-xs"
               onClick={() => onPromote?.(d.slug)}
             >
-              <ArrowUpRight className="h-3 w-3" /> 轉為變更
+              <ArrowUpRight className="h-3 w-3" /> {t("discussion.promote")}
             </Button>
             <Button
               variant="outline"
@@ -81,7 +85,7 @@ function DiscussionCard({
               className="h-6 gap-1 px-2 text-xs"
               onClick={() => onArchiveDiscussion?.(d.slug)}
             >
-              <Archive className="h-3 w-3" /> 封存
+              <Archive className="h-3 w-3" /> {t("common.archive")}
             </Button>
           </div>
         )}
@@ -96,6 +100,7 @@ function PromotedRow({
   archived,
   onOpenDiscussion,
 }: { d: DiscussionItem } & Pick<DiscussionColumnProps, "changes" | "archived" | "onOpenDiscussion">) {
+  const { t } = useI18n();
   // 衍生樹（design D2）：topic 首行為識別錨點（slug 不出現於看板）、
   // 子變更以樹狀前綴逐列列出——父子（討論→衍生變更）關係一眼可讀。
   return (
@@ -114,7 +119,7 @@ function PromotedRow({
             </span>
             <span className="min-w-0 truncate font-medium">{name}</span>
             <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              {discussionChipStage(name, changes, archived)}
+              {t(discussionChipStage(name, changes, archived))}
             </span>
           </span>
         ))}
@@ -136,6 +141,7 @@ export function DiscussionColumn({
   onPromote,
   onArchiveDiscussion,
 }: DiscussionColumnProps) {
+  const { t } = useI18n();
   const full = discussions.filter((d) => d.status !== "promoted");
   const promoted = discussions.filter((d) => d.status === "promoted");
   const [showPromoted, setShowPromoted] = useState(true);
@@ -147,7 +153,7 @@ export function DiscussionColumn({
       <div className="flex items-center gap-1.5 px-1.5 pt-0.5 shrink-0">
         <MessageSquareText className="h-3.5 w-3.5 text-primary/40" />
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          討論
+          {t("discussion.heading")}
         </h2>
         <div className="flex-1" />
         <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-primary/8 text-primary/70">
@@ -156,7 +162,7 @@ export function DiscussionColumn({
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
         {discussions.length === 0 && (
-          <p className="px-1.5 pt-2 text-xs text-muted-foreground">尚無討論</p>
+          <p className="px-1.5 pt-2 text-xs text-muted-foreground">{t("discussion.none")}</p>
         )}
         {full.map((d) => (
           <DiscussionCard
@@ -175,7 +181,7 @@ export function DiscussionColumn({
               onClick={() => setShowPromoted((v) => !v)}
             >
               {showPromoted ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              已轉出變更的討論
+              {t("discussion.promotedGroup")}
               <span className="tabular-nums">({promoted.length})</span>
             </button>
             {showPromoted &&

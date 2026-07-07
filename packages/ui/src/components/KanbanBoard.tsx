@@ -13,7 +13,8 @@ import {
 import { Archive, CircleCheckBig, Hammer, Lightbulb, type LucideIcon } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionLists } from "../adapter";
-import { changeStage, STAGES, STAGE_LABEL, type Stage } from "../stage";
+import { useI18n } from "../i18n";
+import { changeStage, STAGES, type Stage } from "../stage";
 import { ChangeCard } from "./ChangeCard";
 import { DiscussionColumn } from "./DiscussionColumn";
 
@@ -67,6 +68,7 @@ function Column({
   count: number;
   children: React.ReactNode;
 }) {
+  const { t } = useI18n();
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const style = STAGE_STYLE[stage];
   const Icon = style.icon;
@@ -81,7 +83,7 @@ function Column({
       <div className="flex items-center gap-1.5 px-1.5 pt-0.5 shrink-0">
         <Icon className={`h-3.5 w-3.5 ${style.iconCls}`} />
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {STAGE_LABEL[stage]}
+          {t(`stage.${stage}`)}
         </h2>
         <div className="flex-1" />
         <span className={`inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums ${style.badge}`}>
@@ -95,6 +97,7 @@ function Column({
 
 /** 拖曳中才浮現的封存落點。 */
 function ArchiveDropZone() {
+  const { t } = useI18n();
   const { setNodeRef, isOver } = useDroppable({ id: "archived" });
   return (
     <div
@@ -105,7 +108,7 @@ function ArchiveDropZone() {
       }`}
     >
       <Archive className="h-5 w-5" />
-      <span className="text-xs font-medium">拖到此封存</span>
+      <span className="text-xs font-medium">{t("kanban.dropToArchive")}</span>
     </div>
   );
 }

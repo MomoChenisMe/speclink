@@ -431,6 +431,108 @@ impl WorkflowConfig {
     }
 }
 
+/// Target state of the four workflow-policy fields for a settings-page write.
+/// `None` / `false` means "back to default": the key is REMOVED from the document
+/// (preserving unset-means-default semantics) instead of writing an explicit value.
+///
+/// This is the COMPLETE target state, not a patch — a caller that writes without
+/// first loading the current values wipes the fields it left at `Default`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WorkflowPolicyFields {
+    pub locale: Option<String>,
+    pub spec_locale: Option<String>,
+    pub tdd: bool,
+    pub audit: bool,
+}
+
+/// Rewrite the workflow-config document (`openspec/config.yaml`) with the given
+/// policy-field state — a text→text pure function; the caller owns file reads and
+/// writes. Only the four policy keys are replaced; every other key (schema, context,
+/// rules, unknown keys) carries over through a raw-mapping read–modify–write.
+/// Template comments are lost (same trade-off as `init::write_remote_section`).
+/// Unlike `WorkflowConfig::from_text` (silent defaults), malformed input is a loud
+/// error — rewriting an unparseable document would destroy the user's content.
+pub fn update_workflow_config_text(
+    original: &str,
+    fields: &WorkflowPolicyFields,
+) -> anyhow::Result<String> {
+    let mut doc = parse_yaml_mapping(original, "openspec/config.yaml")?;
+    set_or_remove(&mut doc, "locale", fields.locale.as_deref().map(Into::into));
+    set_or_remove(&mut doc, "spec_locale", fields.spec_locale.as_deref().map(Into::into));
+    set_or_remove(&mut doc, "tdd", fields.tdd.then(|| true.into()));
+    set_or_remove(&mut doc, "audit", fields.audit.then(|| true.into()));
+    Ok(serde_yaml::to_string(&doc)?)
+}
+
+/// Rewrite the `.speclink.yaml` tools list with the given built-in tool selection —
+/// a text→text pure function with the same read–modify–write contract as
+/// `update_workflow_config_text`. Walking the original list: custom descriptor
+/// objects and unrecognized entries carry over verbatim in place (their unknown
+/// fields included); built-in entries still selected stay under their original
+/// spelling (deduplicated); deselected built-ins are removed; newly selected
+/// built-ins append at the end under their canonical name. Every other top-level
+/// key (spec_dir, remote, unknown keys) is untouched.
+pub fn update_app_config_tools_text(
+    original: &str,
+    builtins: &[crate::skills::Tool],
+) -> anyhow::Result<String> {
+    use crate::skills::Tool;
+    let mut doc = parse_yaml_mapping(original, ".speclink.yaml")?;
+    let old = match doc.get("tools") {
+        Some(serde_yaml::Value::Sequence(seq)) => seq.clone(),
+        _ => Vec::new(),
+    };
+    let mut seen: Vec<Tool> = Vec::new();
+    let mut new_list = Vec::new();
+    for entry in old {
+        match entry.as_str().and_then(Tool::parse) {
+            Some(t) => {
+                if builtins.contains(&t) && !seen.contains(&t) {
+                    seen.push(t);
+                    new_list.push(entry);
+                }
+            }
+            None => new_list.push(entry),
+        }
+    }
+    for t in builtins {
+        if !seen.contains(t) {
+            seen.push(*t);
+            new_list.push(t.name().into());
+        }
+    }
+    doc.insert("tools".into(), serde_yaml::Value::Sequence(new_list));
+    Ok(serde_yaml::to_string(&doc)?)
+}
+
+/// Parse a config document as a raw top-level mapping for read–modify–write.
+/// Empty or null input (absent file) yields an empty mapping; parse failures and
+/// non-mapping documents are single-line errors naming the file.
+fn parse_yaml_mapping(text: &str, file: &str) -> anyhow::Result<serde_yaml::Mapping> {
+    if text.trim().is_empty() {
+        return Ok(serde_yaml::Mapping::new());
+    }
+    let value: serde_yaml::Value =
+        serde_yaml::from_str(text).map_err(|e| anyhow::anyhow!("invalid {file}: {e}"))?;
+    match value {
+        serde_yaml::Value::Mapping(m) => Ok(m),
+        serde_yaml::Value::Null => Ok(serde_yaml::Mapping::new()),
+        _ => anyhow::bail!("invalid {file}: expected a mapping at the top level"),
+    }
+}
+
+/// Insert (replacing in place, order preserved) or remove a top-level key.
+fn set_or_remove(doc: &mut serde_yaml::Mapping, key: &str, value: Option<serde_yaml::Value>) {
+    match value {
+        Some(v) => {
+            doc.insert(key.into(), v);
+        }
+        None => {
+            doc.remove(key);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -854,5 +956,209 @@ mod tests {
         );
         assert_eq!(resolve_spec_locale(&app("spec_locale: en"), &wf("{}")), None);
         assert_eq!(resolve_spec_locale(&app("{}"), &wf("{}")), None);
+    }
+
+    // --- update_workflow_config_text: settings-page rewrite (text→text) ---
+
+    const WF_DOC: &str = "schema: spec-driven\n\nlocale: tw\ncontext: |\n  line one\n  line two\n\nrules:\n  proposal:\n    - first rule\n    - second rule\n";
+
+    #[test]
+    fn workflow_update_sets_all_policy_fields_and_output_parses() {
+        let fields = WorkflowPolicyFields {
+            locale: Some("ja".into()),
+            spec_locale: Some("auto".into()),
+            tdd: true,
+            audit: true,
+        };
+        let out = update_workflow_config_text(WF_DOC, &fields).expect("rewrite ok");
+        let w = WorkflowConfig::from_text(Some(&out));
+        assert_eq!(w.locale.as_deref(), Some("ja"));
+        assert_eq!(w.spec_locale.as_deref(), Some("auto"));
+        assert_eq!(w.tdd, Some(true));
+        assert_eq!(w.audit, Some(true));
+    }
+
+    #[test]
+    fn workflow_update_preserves_untouched_key_values_verbatim() {
+        // Re-serialization may change YAML styling; the parsed VALUES of every
+        // untouched key (schema, multi-line context, rules) must stay identical
+        // character for character.
+        let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
+        let out = update_workflow_config_text(WF_DOC, &fields).expect("rewrite ok");
+        let (orig, new) = (wf(WF_DOC), wf(&out));
+        assert_eq!(new.schema, orig.schema);
+        assert_eq!(new.context, orig.context);
+        assert_eq!(new.rules, orig.rules);
+    }
+
+    #[test]
+    fn workflow_update_keeps_unknown_keys() {
+        let doc = "schema: spec-driven\nfuture_key: keep me\n";
+        let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default()).expect("rewrite ok");
+        let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+        assert_eq!(m.get("future_key").and_then(|v| v.as_str()), Some("keep me"));
+    }
+
+    #[test]
+    fn workflow_update_default_values_remove_keys() {
+        let doc = "locale: tw\nspec_locale: auto\ntdd: true\naudit: true\nschema: spec-driven\n";
+        let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default()).expect("rewrite ok");
+        let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+        for key in ["locale", "spec_locale", "tdd", "audit"] {
+            assert!(!m.contains_key(key), "key '{key}' must be removed, got: {out}");
+        }
+        assert!(m.contains_key("schema"));
+    }
+
+    #[test]
+    fn workflow_update_bad_yaml_is_a_loud_error() {
+        // Unlike WorkflowConfig::from_text (silent defaults), rewriting a malformed
+        // document must fail loudly — otherwise the GUI would destroy user content.
+        for bad in ["rules: [unclosed", "just a top-level scalar"] {
+            assert!(
+                update_workflow_config_text(bad, &WorkflowPolicyFields::default()).is_err(),
+                "must reject {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn workflow_update_empty_input_creates_fresh_document() {
+        // Absent config.yaml: the caller hands an empty text and gets a fresh
+        // parseable document containing exactly the requested fields.
+        let fields = WorkflowPolicyFields { locale: Some("tw".into()), ..Default::default() };
+        let out = update_workflow_config_text("", &fields).expect("rewrite ok");
+        let w = WorkflowConfig::from_text(Some(&out));
+        assert_eq!(w.locale.as_deref(), Some("tw"));
+    }
+
+    #[test]
+    fn workflow_update_matches_spec_example_table() {
+        // spec「政策欄位寫入效果」Example 表——逐行對應。
+        // 無 tdd 鍵 | tdd 切開啟 | 新增 tdd: true
+        let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
+        let out = update_workflow_config_text("schema: spec-driven\n", &fields).unwrap();
+        assert_eq!(WorkflowConfig::from_text(Some(&out)).tdd, Some(true));
+        // tdd: true | tdd 切關閉 | tdd 鍵被移除（預設即 false）
+        let out = update_workflow_config_text("tdd: true\n", &WorkflowPolicyFields::default()).unwrap();
+        let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+        assert!(!m.contains_key("tdd"), "got: {out}");
+        // locale: tw、含 rules | spec_locale 選 auto | 新增 spec_locale: auto，locale 與 rules 原樣保留
+        let doc = "locale: tw\nrules:\n  proposal:\n    - keep\n";
+        let fields = WorkflowPolicyFields {
+            locale: Some("tw".into()),
+            spec_locale: Some("auto".into()),
+            ..Default::default()
+        };
+        let out = update_workflow_config_text(doc, &fields).unwrap();
+        let w = WorkflowConfig::from_text(Some(&out));
+        assert_eq!(w.spec_locale.as_deref(), Some("auto"));
+        assert_eq!(w.locale.as_deref(), Some("tw"));
+        assert_eq!(w.rules, wf(doc).rules);
+    }
+
+    #[test]
+    fn workflow_update_injected_special_values_round_trip_safely() {
+        // Sharp-edges audit（Scoundrel）：值含換行或 YAML 語法時不得破壞文件
+        // 結構——序列化必須 escape，輸出仍可解析且值逐字元 round-trip。
+        for evil in ["tw\nrules: {}", "a: b", "#comment", "'quoted'", "- item"] {
+            let fields = WorkflowPolicyFields { locale: Some(evil.into()), ..Default::default() };
+            let out = update_workflow_config_text("schema: spec-driven\n", &fields).expect("rewrite ok");
+            let w = WorkflowConfig::from_text(Some(&out));
+            assert_eq!(w.locale.as_deref(), Some(evil), "round-trip for {evil:?}");
+            assert_eq!(w.schema.as_deref(), Some("spec-driven"), "structure intact for {evil:?}");
+        }
+    }
+
+    // --- update_app_config_tools_text: builtin tool selection rewrite ---
+
+    use crate::skills::Tool;
+
+    #[test]
+    fn tools_update_replaces_builtin_selection() {
+        let out = update_app_config_tools_text("tools:\n  - claude\n", &[Tool::Claude, Tool::Codex])
+            .expect("rewrite ok");
+        let a = app(&out);
+        assert_eq!(a.tools.len(), 2);
+        assert!(matches!(&a.tools[0], ToolEntry::Builtin(s) if s == "claude"));
+        assert!(matches!(&a.tools[1], ToolEntry::Builtin(s) if s == "codex"));
+    }
+
+    #[test]
+    fn tools_update_removes_deselected_builtins() {
+        let out = update_app_config_tools_text("tools:\n  - claude\n  - codex\n", &[Tool::Claude])
+            .expect("rewrite ok");
+        let a = app(&out);
+        assert_eq!(a.tools.len(), 1);
+        assert!(matches!(&a.tools[0], ToolEntry::Builtin(s) if s == "claude"));
+    }
+
+    #[test]
+    fn tools_update_preserves_descriptors_and_other_keys() {
+        let doc = concat!(
+            "spec_dir: docs/specs\n",
+            "tools:\n",
+            "  - claude\n",
+            "  - name: wad-harness\n",
+            "    skills_dir: .wad/skills\n",
+            "    instructions_file: WAD.md\n",
+            "    future_field: keep me\n",
+            "remote:\n",
+            "  url: https://team.example.com/x\n",
+            "  repo: backend\n",
+        );
+        let out = update_app_config_tools_text(doc, &[Tool::Codex]).expect("rewrite ok");
+        let a = app(&out);
+        assert_eq!(a.spec_dir.as_deref(), Some("docs/specs"));
+        let r = a.remote.as_ref().expect("remote section kept");
+        assert_eq!(r.url.as_deref(), Some("https://team.example.com/x"));
+        assert_eq!(r.repo.as_deref(), Some("backend"));
+        // claude 落選移除；descriptor 原樣保留（保序）；codex 新入選 append 尾端。
+        assert_eq!(a.tools.len(), 2);
+        match &a.tools[0] {
+            ToolEntry::Descriptor(d) => {
+                assert_eq!(d.name.as_deref(), Some("wad-harness"));
+                assert_eq!(d.skills_dir.as_deref(), Some(".wad/skills"));
+                assert_eq!(d.instructions_file.as_deref(), Some("WAD.md"));
+            }
+            other => panic!("expected descriptor first, got {other:?}"),
+        }
+        assert!(matches!(&a.tools[1], ToolEntry::Builtin(s) if s == "codex"));
+        // 描述子的未知欄位也逐字保留（raw value carry-over）。
+        let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+        let tools = m.get("tools").and_then(|v| v.as_sequence()).expect("tools seq");
+        assert_eq!(
+            tools[0].get("future_field").and_then(|v| v.as_str()),
+            Some("keep me")
+        );
+    }
+
+    #[test]
+    fn tools_update_bad_yaml_is_a_loud_error() {
+        for bad in ["tools: [unclosed", "just a top-level scalar"] {
+            assert!(
+                update_app_config_tools_text(bad, &[Tool::Claude]).is_err(),
+                "must reject {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tools_update_creates_tools_key_when_absent() {
+        for doc in ["", "spec_dir: docs/specs\n"] {
+            let out = update_app_config_tools_text(doc, &[Tool::Claude]).expect("rewrite ok");
+            let a = app(&out);
+            assert_eq!(a.tools.len(), 1, "for input {doc:?}");
+            assert!(matches!(&a.tools[0], ToolEntry::Builtin(s) if s == "claude"));
+        }
+    }
+
+    #[test]
+    fn tools_update_empty_selection_keeps_descriptors_only() {
+        let doc = "tools:\n  - claude\n  - name: wad-harness\n    skills_dir: .wad/skills\n    instructions_file: WAD.md\n";
+        let out = update_app_config_tools_text(doc, &[]).expect("rewrite ok");
+        let a = app(&out);
+        assert_eq!(a.tools.len(), 1);
+        assert!(matches!(&a.tools[0], ToolEntry::Descriptor(_)));
     }
 }

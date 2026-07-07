@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, GripVertical, Archive } from "lucide-react";
 
 import type { ChangeItem, Verb } from "../adapter";
+import { useI18n } from "../i18n";
 import { parseTasks } from "../tasks";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -31,6 +32,7 @@ export function ChangeListItem({
   loadCapabilities,
   onRunVerb,
 }: ChangeListItemProps) {
+  const { t } = useI18n();
   const [proposal, setProposal] = useState<Doc>();
   const [design, setDesign] = useState<Doc>();
   const [tasksMd, setTasksMd] = useState<Doc>();
@@ -102,7 +104,7 @@ export function ChangeListItem({
           </div>
           <span className="text-xs text-muted-foreground tabular-nums w-9 text-right">{pct}%</span>
           <Button variant="outline" size="sm" className="h-7 gap-1" onClick={() => onRunVerb?.("archive", change.name)}>
-            <Archive className="h-3.5 w-3.5" /> 封存
+            <Archive className="h-3.5 w-3.5" /> {t("common.archive")}
           </Button>
         </div>
       </div>
@@ -110,37 +112,37 @@ export function ChangeListItem({
       {expanded && (
         <div className="border-t border-border px-3 pb-3">
           <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-            <Badge variant="secondary">{taskCount} 任務</Badge>
+            <Badge variant="secondary">{t("common.tasksCount").replace("{n}", taskCount)}</Badge>
             <span>·</span>
-            <button className="hover:text-foreground" onClick={() => onRunVerb?.("analyze", change.name)}>分析</button>
-            <button className="hover:text-foreground" onClick={() => onRunVerb?.("validate", change.name)}>驗證</button>
+            <button className="hover:text-foreground" onClick={() => onRunVerb?.("analyze", change.name)}>{t("common.analyze")}</button>
+            <button className="hover:text-foreground" onClick={() => onRunVerb?.("validate", change.name)}>{t("common.validate")}</button>
           </div>
 
           <Tabs defaultValue="proposal">
             <TabsList>
-              <TabsTrigger value="proposal">提案</TabsTrigger>
-              <TabsTrigger value="design">設計</TabsTrigger>
-              <TabsTrigger value="tasks">任務 <span className="text-xs opacity-70">{taskCount}</span></TabsTrigger>
-              <TabsTrigger value="specs">規格 {caps.length > 0 && <span className="text-xs opacity-70">{caps.length}</span>}</TabsTrigger>
+              <TabsTrigger value="proposal">{t("common.tabProposal")}</TabsTrigger>
+              <TabsTrigger value="design">{t("common.tabDesign")}</TabsTrigger>
+              <TabsTrigger value="tasks">{t("common.tabTasks")} <span className="text-xs opacity-70">{taskCount}</span></TabsTrigger>
+              <TabsTrigger value="specs">{t("common.tabSpecs")} {caps.length > 0 && <span className="text-xs opacity-70">{caps.length}</span>}</TabsTrigger>
             </TabsList>
             <div className="pt-3 max-h-[52vh] overflow-y-auto">
               <TabsContent value="proposal">
-                <Markdown content={proposal ?? null} empty="載入中…" />
+                <Markdown content={proposal ?? null} empty={t("common.loading")} />
               </TabsContent>
               <TabsContent value="design">
-                <Markdown content={design ?? null} empty="（此 change 無設計文件）" />
+                <Markdown content={design ?? null} empty={t("list.noDesignDoc")} />
               </TabsContent>
               <TabsContent value="tasks">
-                <Markdown content={tasksMd ?? null} empty="載入中…" />
+                <Markdown content={tasksMd ?? null} empty={t("common.loading")} />
               </TabsContent>
               <TabsContent value="specs">
                 {caps.length === 0 ? (
-                  <div className="text-muted-foreground text-sm py-6">（此 change 無 delta 規格）</div>
+                  <div className="text-muted-foreground text-sm py-6">{t("list.noDeltaSpecs")}</div>
                 ) : (
                   caps.map((cap) => (
                     <div key={cap} className="mb-4">
                       <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{cap}</div>
-                      <Markdown content={specs[cap] ?? null} empty="載入中…" />
+                      <Markdown content={specs[cap] ?? null} empty={t("common.loading")} />
                     </div>
                   ))
                 )}
