@@ -121,9 +121,37 @@ fn load_live(store: &dyn Store, slug: &str) -> Result<String> {
     }
 }
 
+/// Kebab-case gate for the slug override: lowercase ASCII letters/digits in
+/// single-hyphen-separated runs. Deliberately stricter than the topic-derived
+/// fallback (which keeps CJK) — the override exists to produce English names.
+fn is_valid_slug_override(s: &str) -> bool {
+    !s.is_empty()
+        && !s.starts_with('-')
+        && !s.ends_with('-')
+        && !s.contains("--")
+        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
 /// Create a new discussion document. Errors if a live one already exists.
-pub fn new_discussion(store: &dyn Store, topic: &str) -> Result<DiscussionInfo> {
-    let slug = util::slugify(topic);
+/// `slug_override` names the record file directly (validated ASCII kebab-case);
+/// without it the slug falls back to deriving from the topic.
+pub fn new_discussion(
+    store: &dyn Store,
+    topic: &str,
+    slug_override: Option<&str>,
+) -> Result<DiscussionInfo> {
+    let slug = match slug_override {
+        Some(s) => {
+            if !is_valid_slug_override(s) {
+                bail!(
+                    "invalid slug '{s}' — must be ASCII kebab-case: lowercase letters/digits \
+                     separated by single hyphens (e.g. board-search-bar)"
+                );
+            }
+            s.to_string()
+        }
+        None => util::slugify(topic),
+    };
     if slug.is_empty() {
         bail!("could not derive a slug from topic '{topic}'");
     }
@@ -640,5 +668,69 @@ mod tests {
         let store = TestStore::default();
         store.archived_discussions.borrow_mut().insert("done-topic".to_string(), doc);
         assert_eq!(super::promoted_to(&store, "done-topic"), vec!["only-cut".to_string()]);
+    }
+
+    // --- discuss new：slug 覆寫與後備衍生（spec「討論記錄以 --slug 覆寫檔名」「未帶 --slug 時自主題衍生檔名」） ---
+
+    #[test]
+    fn new_discussion_rejects_invalid_slug_override() {
+        // spec「非法值一覽」Example 表：大寫、非 ASCII、底線、空白、首尾連字號、連續連字號、空字串。
+        let store = TestStore::default();
+        for bad in [
+            "Board-Search",
+            "看板搜尋",
+            "board_search",
+            "board search",
+            "-board",
+            "board-",
+            "board--search",
+            "",
+        ] {
+            let err = super::new_discussion(&store, "看板搜尋列", Some(bad)).unwrap_err();
+            assert!(err.to_string().contains("kebab-case"), "slug {bad:?} err: {err}");
+        }
+        assert!(store.list_live_discussions().is_empty(), "invalid slug must not create files");
+    }
+
+    #[test]
+    fn new_discussion_accepts_valid_slug_override_and_keeps_topic() {
+        let store = TestStore::default();
+        let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-2")).unwrap();
+        assert_eq!(info.slug, "board-search-2");
+        assert_eq!(info.topic, "看板搜尋列");
+        let text = store
+            .read_live_discussion("board-search-2")
+            .expect("record stored under override slug");
+        assert!(text.contains("slug: board-search-2\n"), "text: {text}");
+        assert!(text.contains("topic: 看板搜尋列\n"), "text: {text}");
+    }
+
+    #[test]
+    fn new_discussion_slug_override_conflicts_with_existing() {
+        let store = TestStore::with_live_discussion("taken", &open_doc("taken", "Taken"));
+        let before = store.discussion("taken");
+        let err = super::new_discussion(&store, "另一個主題", Some("taken")).unwrap_err();
+        assert!(err.to_string().contains("already exists"), "err: {err}");
+        assert_eq!(store.discussion("taken"), before, "existing record must not be overwritten");
+    }
+
+    #[test]
+    fn new_discussion_fallback_derivation_is_unchanged() {
+        // spec「衍生規則對照」Example 表：後備行為與本變更前逐位元一致。
+        for (topic, want) in [
+            ("Board Search", "board-search"),
+            ("config context 與 rules GUI 編輯", "config-context-與-rules-gui-編輯"),
+            ("看板 搜尋列", "看板-搜尋列"),
+        ] {
+            let store = TestStore::default();
+            let info = super::new_discussion(&store, topic, None).unwrap();
+            assert_eq!(info.slug, want, "topic: {topic}");
+            assert_eq!(info.topic, topic);
+            assert!(store.read_live_discussion(want).is_some(), "file under derived slug");
+        }
+        // 純 ASCII 標點主題衍生為空 → 報錯。
+        let store = TestStore::default();
+        let err = super::new_discussion(&store, "!?!", None).unwrap_err();
+        assert!(err.to_string().contains("could not derive"), "err: {err}");
     }
 }

@@ -1622,8 +1622,8 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     match a.command {
-        DiscussCommands::New { topic, json } => {
-            let info = core::discuss::new_discussion(store, &topic)?;
+        DiscussCommands::New { topic, slug, json } => {
+            let info = core::discuss::new_discussion(store, &topic, slug.as_deref())?;
             if json {
                 return print_json(&info);
             }
