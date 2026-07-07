@@ -13,9 +13,9 @@
 ## 3. 技能三處同步(需求「討論技能指示要求英文 slug」)
 
 - [x] 3.1 落實需求「討論技能指示要求英文 slug」:更新 crates/speclink-core/assets/skills/discuss.md,建立討論記錄的指示改為「從主題衍生英文 kebab-case slug 並以 --slug 傳入;topic 維持使用者語言原文」。驗證:內容審視含該指示且與 spec 需求措辭一致。
-- [ ] 3.2 於乾淨樹(工作區無未提交改動)執行 UPDATE_GOLDEN=1 cargo test -p speclink-core --test render_golden 再生 golden 基準,審視 diff 僅含 --slug 指引相關差異。驗證:再生後 cargo test -p speclink-core --test render_golden 綠燈。
-- [ ] 3.3 同步 repo 技能實例 .claude/skills/speclink-discuss/SKILL.md 與 .agents/skills/speclink-discuss/SKILL.md 的建檔指示,與 3.1 的內嵌資產語意一致。驗證:兩檔皆含「衍生英文 kebab-case slug 並以 --slug 傳入」指示。
+- [x] 3.2 於乾淨樹(工作區無未提交改動)執行 UPDATE_GOLDEN=1 cargo test -p speclink-core --test render_golden 再生 golden 基準,審視 diff 僅含 --slug 指引相關差異。驗證:再生後 cargo test -p speclink-core --test render_golden 綠燈。
+- [x] 3.3 同步 repo 技能實例 .claude/skills/speclink-discuss/SKILL.md 與 .agents/skills/speclink-discuss/SKILL.md 的建檔指示,與 3.1 的內嵌資產語意一致。驗證:兩檔皆含「衍生英文 kebab-case slug 並以 --slug 傳入」指示。
 
 ## 4. 回歸收尾
 
-- [ ] 4.1 全工作區測試與回歸確認:cargo test 全綠;speclink discuss new 未帶 --slug 之行為與本變更前一致(既有討論檔案清單與輸出無差異)。驗證:cargo test 全綠、手動以中文主題各執行一次帶與不帶 --slug 的 discuss new 於臨時工作區並核對檔名與 frontmatter 後清除。
+- [x] 4.1 全工作區測試與回歸確認:cargo test 全綠;speclink discuss new 未帶 --slug 之行為與本變更前一致(既有討論檔案清單與輸出無差異)。驗證:cargo test 全綠、手動以中文主題各執行一次帶與不帶 --slug 的 discuss new 於臨時工作區並核對檔名與 frontmatter 後清除。
