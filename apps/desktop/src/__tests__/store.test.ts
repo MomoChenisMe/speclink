@@ -70,6 +70,25 @@ describe("app store (Zustand)", () => {
     expect(store.getState().expandedName).toBeNull();
   });
 
+  it("boardQuery starts empty and setBoardQuery updates it", () => {
+    // 看板搜尋字串：純 UI 狀態、不入任何 persist 機制（spec「不跨啟動保留」）。
+    const store = createAppStore(fakeDataSource());
+    expect(store.getState().boardQuery).toBe("");
+    store.getState().setBoardQuery("desk");
+    expect(store.getState().boardQuery).toBe("desk");
+  });
+
+  it("boardQuery and the archived-page query are independent", () => {
+    // spec「搜尋字串…與已封存頁獨立」：各自設值互不覆蓋。
+    const store = createAppStore(fakeDataSource());
+    store.getState().setBoardQuery("kanban");
+    store.getState().setQuery("archived");
+    expect(store.getState().boardQuery).toBe("kanban");
+    expect(store.getState().query).toBe("archived");
+    store.getState().setQuery("other");
+    expect(store.getState().boardQuery).toBe("kanban");
+  });
+
   it("archive confirm flow: request sets pending, confirm runs archive and clears", async () => {
     const ds = fakeDataSource();
     const store = createAppStore(ds);

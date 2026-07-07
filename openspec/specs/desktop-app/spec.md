@@ -973,3 +973,55 @@ code:
   - packages/ui/src/__tests__/stage.test.ts
   - packages/ui/src/stage.ts
 -->
+
+---
+### Requirement: 看板搜尋過濾卡片
+
+看板 SHALL 於欄位上方提供搜尋輸入。輸入含非空白內容時，看板 SHALL 僅顯示比對命中的卡片——變更卡以名稱與摘要比對、討論卡以主題與 slug 比對；比對 SHALL 去除頭尾空白、不分大小寫、以子字串命中（與已封存頁的搜尋規則一致）。各欄欄頭計數 SHALL 等於該欄過濾後的卡片數。清空輸入（或輸入僅含空白）SHALL 還原全量呈現。搜尋字串 SHALL NOT 持久化，且 SHALL 與已封存頁的搜尋字串各自獨立。
+
+#### Scenario: 輸入關鍵字即時過濾各欄卡片
+
+- **WHEN** 使用者於看板搜尋輸入鍵入非空白字串
+- **THEN** 各欄僅顯示名稱或摘要（變更卡）、主題或 slug（討論卡）以不分大小寫子字串命中的卡片，且各欄欄頭計數等於該欄過濾後卡片數
+
+##### Example: 比對規則
+
+- **GIVEN** 提案中欄有變更卡 desktop-acp-agent（摘要含「桌面版」）與 web-role-views（摘要含「情境 1」）；討論欄有卡片主題「GUI 勾任務自動蓋開工章」
+
+| 輸入 | 提案中欄顯示（計數） | 討論欄顯示（計數） | Notes |
+| ---- | -------------------- | ------------------ | ----- |
+| desktop | desktop-acp-agent（1） | 無（0） | 名稱子字串命中 |
+| 桌面 | desktop-acp-agent（1） | 無（0） | 摘要命中 |
+| &nbsp;GUI&nbsp; | 無（0） | GUI 勾任務自動蓋開工章（1） | 去頭尾空白、不分大小寫 |
+| （清空） | 兩張全顯（2） | 全顯（1） | 還原全量 |
+
+#### Scenario: 無命中時顯示空欄與零計數
+
+- **WHEN** 使用者輸入無任何卡片命中的字串
+- **THEN** 各欄顯示為空、欄頭計數為 0，欄位結構維持呈現且不顯示錯誤
+
+#### Scenario: 過濾狀態下卡片互動不受影響
+
+- **WHEN** 過濾狀態下使用者點擊卡片、或拖曳已就緒的變更卡至封存落點
+- **THEN** 詳情抽屜正常開啟、封存流程正常觸發，行為與未過濾時一致
+
+#### Scenario: 搜尋字串不跨啟動保留且與已封存頁獨立
+
+- **WHEN** 使用者於看板輸入字串後切至已封存頁，再重啟 app
+- **THEN** 已封存頁的搜尋輸入不含看板字串；重啟後看板為未過濾狀態、搜尋輸入為空
+
+<!-- @trace
+source: desktop-board-search
+updated: 2026-07-07
+code:
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/store.test.ts
+  - apps/desktop/src/store.ts
+  - packages/ui/src/__tests__/kanban.test.tsx
+  - packages/ui/src/components/ArchivedList.tsx
+  - packages/ui/src/components/DiscussionColumn.tsx
+  - packages/ui/src/components/KanbanBoard.tsx
+  - packages/ui/src/i18n.tsx
+  - packages/ui/src/search.ts
+-->

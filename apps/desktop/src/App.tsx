@@ -283,6 +283,8 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
               onOpenDiscussion={s.openDiscussion}
               onPromoteDiscussion={s.requestPromote}
               onArchiveDiscussion={s.requestArchiveDiscussion}
+              query={s.boardQuery}
+              onQuery={s.setBoardQuery}
             />
           ) : (
             <ArchivedList

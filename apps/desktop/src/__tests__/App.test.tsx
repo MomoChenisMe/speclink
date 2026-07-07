@@ -327,3 +327,32 @@ describe("App (kanban primary + rich detail)", () => {
     expect(screen.getByText("2026-07-04")).toBeTruthy();
   });
 });
+
+describe("board search wiring（看板搜尋接線）", () => {
+  it("kanban view renders a search input that filters cards and reflects boardQuery", async () => {
+    render(<App dataSource={fakeDataSource()} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const input = screen.getByPlaceholderText("搜尋看板卡片…") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "zzz-no-match" } });
+    // 受控輸入反映 store.boardQuery 的更新；卡片被過濾。
+    expect(input.value).toBe("zzz-no-match");
+    expect(screen.queryByText("desktop-shell-and-browser")).toBeNull();
+    // 清空還原全量。
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.getByText("desktop-shell-and-browser")).toBeTruthy();
+  });
+
+  it("the archived page search input does not contain the board query (independence)", async () => {
+    // spec「搜尋字串不跨啟動保留且與已封存頁獨立」的獨立性半邊；
+    // 不跨啟動由 store 無 persist 保證（store.test.ts 1.x）。
+    render(<App dataSource={fakeDataSource()} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    fireEvent.change(screen.getByPlaceholderText("搜尋看板卡片…"), {
+      target: { value: "kanban-only" },
+    });
+    fireEvent.click(screen.getByLabelText("已封存"));
+    await waitFor(() => expect(screen.getByText("已封存的變更")).toBeTruthy());
+    const archInput = screen.getByPlaceholderText("搜尋已封存的變更與討論…") as HTMLInputElement;
+    expect(archInput.value).toBe("");
+  });
+});
