@@ -26,6 +26,9 @@ function snapshot(over: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
       specLocale: null,
       tdd: true,
       audit: false,
+      context: null,
+      rules: {},
+      schemaArtifacts: ["proposal", "design", "specs", "tasks"],
       parseError: null,
       ...(over.workflow ?? {}),
     },
@@ -42,6 +45,8 @@ function fakeWorkspace(snap: SettingsSnapshot): WorkspaceAdapter {
     readSettings: vi.fn().mockResolvedValue(snap),
     writeAppTools: vi.fn().mockResolvedValue(undefined),
     writeWorkflowConfig: vi.fn().mockResolvedValue(undefined),
+    writeWorkflowContext: vi.fn().mockResolvedValue(undefined),
+    writeWorkflowRules: vi.fn().mockResolvedValue(undefined),
   } as unknown as WorkspaceAdapter;
 }
 
@@ -135,10 +140,20 @@ describe("SettingsView parseError（spec Scenario「解析失敗的檔案拒絕�
   it("config.yaml 解析失敗：顯示警告、該檔表單與儲存停用；另一檔不受影響", async () => {
     renderView(
       snapshot({
-        workflow: { locale: null, specLocale: null, tdd: false, audit: false, parseError: "invalid yaml at line 3" },
+        workflow: {
+          locale: null,
+          specLocale: null,
+          tdd: false,
+          audit: false,
+          context: null,
+          rules: {},
+          schemaArtifacts: [],
+          parseError: "invalid yaml at line 3",
+        },
       }),
     );
-    expect(await screen.findByText(/invalid yaml at line 3/)).toBeTruthy();
+    // 警告於政策、專案說明、產出規則三張卡各自呈現。
+    expect(await screen.findAllByText(/invalid yaml at line 3/)).toHaveLength(3);
     expect((screen.getByTestId("save-workflow") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText("tdd") as HTMLInputElement).disabled).toBe(true);
     // .speclink.yaml 表單照常可用。
@@ -152,6 +167,122 @@ describe("SettingsView parseError（spec Scenario「解析失敗的檔案拒絕�
     expect(await screen.findByText(/bad tools yaml/)).toBeTruthy();
     expect((screen.getByTestId("save-app") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText("claude") as HTMLInputElement).disabled).toBe(true);
+  });
+});
+
+describe("SettingsView 專案說明與產出規則（spec 需求「設定頁編輯專案說明與產出規則」）", () => {
+  const contentSnap = () =>
+    snapshot({
+      workflow: {
+        locale: "tw",
+        specLocale: null,
+        tdd: true,
+        audit: false,
+        context: "舊的專案說明",
+        rules: { proposal: ["提案必須列出影響的 crates"], tasks: ["先寫失敗測試", "更新文件"] },
+        schemaArtifacts: ["proposal", "design", "specs", "tasks"],
+        parseError: null,
+      },
+    });
+
+  it("專案說明呈現現值，改寫後儲存 → writeWorkflowContext 收到新文字", async () => {
+    const ws = renderView(contentSnap());
+    const input = (await screen.findByTestId("context-input")) as HTMLTextAreaElement;
+    expect(input.value).toBe("舊的專案說明");
+    fireEvent.change(input, { target: { value: "新的專案說明\n跨兩行" } });
+    fireEvent.click(screen.getByTestId("save-context"));
+    await waitFor(() =>
+      expect(ws.writeWorkflowContext).toHaveBeenCalledWith("新的專案說明\n跨兩行"),
+    );
+  });
+
+  it("清空專案說明儲存 → 送出空字串（鍵移除語意在後端）", async () => {
+    const ws = renderView(contentSnap());
+    const input = (await screen.findByTestId("context-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.click(screen.getByTestId("save-context"));
+    await waitFor(() => expect(ws.writeWorkflowContext).toHaveBeenCalledWith(""));
+  });
+
+  it("產出規則恰以 schemaArtifacts 固定鍵分節且無自由鍵輸入", async () => {
+    // spec Scenario「固定鍵分節不可自由輸入」。
+    renderView(contentSnap());
+    for (const id of ["proposal", "design", "specs", "tasks"]) {
+      expect(await screen.findByTestId(`rules-section-${id}`)).toBeTruthy();
+    }
+    // 無第五節、無新增分節鍵的輸入介面。
+    expect(document.querySelectorAll("[data-testid^='rules-section-']")).toHaveLength(4);
+    expect(screen.queryByTestId("add-section")).toBeNull();
+  });
+
+  it("條目上移後儲存 → payload 依新順序（spec Example 條目對調）", async () => {
+    const ws = renderView(contentSnap());
+    const tasks = await screen.findByTestId("rules-section-tasks");
+    // tasks 節依序「先寫失敗測試」「更新文件」——將第二條上移一位。
+    fireEvent.click(within(tasks).getAllByLabelText("上移")[1]);
+    fireEvent.click(screen.getByTestId("save-rules"));
+    await waitFor(() => expect(ws.writeWorkflowRules).toHaveBeenCalled());
+    const payload = (ws.writeWorkflowRules as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload).toEqual([
+      ["proposal", ["提案必須列出影響的 crates"]],
+      ["design", []],
+      ["specs", []],
+      ["tasks", ["更新文件", "先寫失敗測試"]],
+    ]);
+  });
+
+  it("新增與編輯條目後儲存 → payload 含新條目", async () => {
+    const ws = renderView(contentSnap());
+    const design = await screen.findByTestId("rules-section-design");
+    fireEvent.click(within(design).getByText("新增條目"));
+    const inputs = within(design).getAllByRole("textbox");
+    fireEvent.change(inputs[inputs.length - 1], { target: { value: "設計必須列出替代方案" } });
+    fireEvent.click(screen.getByTestId("save-rules"));
+    await waitFor(() => expect(ws.writeWorkflowRules).toHaveBeenCalled());
+    const payload = (ws.writeWorkflowRules as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload).toContainEqual(["design", ["設計必須列出替代方案"]]);
+  });
+
+  it("刪除某節全部條目後儲存 → 該節送空清單（清空觸發鍵移除語意）", async () => {
+    const ws = renderView(contentSnap());
+    const tasks = await screen.findByTestId("rules-section-tasks");
+    fireEvent.click(within(tasks).getAllByLabelText("刪除")[0]);
+    fireEvent.click(within(tasks).getAllByLabelText("刪除")[0]);
+    expect(within(tasks).queryAllByRole("textbox")).toHaveLength(0);
+    fireEvent.click(screen.getByTestId("save-rules"));
+    await waitFor(() => expect(ws.writeWorkflowRules).toHaveBeenCalled());
+    const payload = (ws.writeWorkflowRules as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload).toContainEqual(["tasks", []]);
+  });
+
+  it("config.yaml 解析失敗時兩區段停用且不可儲存", async () => {
+    renderView(
+      snapshot({
+        workflow: {
+          locale: null,
+          specLocale: null,
+          tdd: false,
+          audit: false,
+          context: null,
+          rules: {},
+          schemaArtifacts: [],
+          parseError: "invalid yaml at line 3",
+        },
+      }),
+    );
+    const input = (await screen.findByTestId("context-input")) as HTMLTextAreaElement;
+    expect(input.disabled).toBe(true);
+    expect((screen.getByTestId("save-context") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("save-rules") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("區段名採正典詞且產出規則附註解遺失說明（i18n 字典）", async () => {
+    // design D5：zh-TW 正典詞「專案說明」「產出規則」；en 對應鍵由
+    // messages.test.ts 的 key 集合相等測試保護。
+    renderView(contentSnap());
+    expect(await screen.findByText("專案說明")).toBeTruthy();
+    expect(screen.getByText("產出規則")).toBeTruthy();
+    expect(screen.getByText(/檔內註解不會保留/)).toBeTruthy();
   });
 });
 

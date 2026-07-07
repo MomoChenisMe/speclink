@@ -52,3 +52,15 @@
 - **definition**: 討論記錄的 Context 區段（討論抽屜分頁名）。
 - **avoid**: 脈絡（分頁名中）
 - **why**: 較常用的日常詞。
+
+### 專案說明
+
+- **definition**: `openspec/config.yaml` 的 `context` 欄位——注入 AI 指令的專案自由文字說明（設定頁的編輯區段名）。
+- **avoid**: context（使用者可見文案中）、背景（此概念上）
+- **why**: 「背景」已被討論記錄的 Context 區段佔用，同詞兩義會混淆；對齊 Spectra 用詞。2026-07-07 討論「config-context-與-rules-gui-編輯」定案。
+
+### 產出規則
+
+- **definition**: `openspec/config.yaml` 的 `rules` 欄位——依 artifact 注入產出指令的規則清單（設定頁的編輯區段名）。
+- **avoid**: rules（使用者可見文案中）、規則（單獨使用時）
+- **why**: 「產出」點明規則作用於 artifacts 的產出過程；對齊 Spectra 用詞。2026-07-07 討論「config-context-與-rules-gui-編輯」定案。

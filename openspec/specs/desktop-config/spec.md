@@ -276,7 +276,7 @@ code:
 ---
 ### Requirement: 設定頁圖形化讀寫兩層設定
 
-設定頁 SHALL 以結構化表單呈現並寫入兩層設定：.speclink.yaml 的 tools（內建工具 claude／codex 多選）與 openspec/config.yaml 的 locale、spec_locale（下拉）、tdd、audit（開關）。讀取時未設定的欄位 SHALL 呈現為預設值狀態；寫入時 SHALL 僅代換目標鍵——未觸及的鍵（rules、context、remote、spec_dir、自訂工具描述子等）SHALL 原樣保留；政策欄位設回預設值時 SHALL 移除該鍵而非寫入明值。tools 寫入成功後 app SHALL 同步技能檔（新選工具生成、取消工具清理殘留）。自訂工具描述子 SHALL 於表單原樣呈現為不可編輯項且寫入後保留。
+設定頁 SHALL 以結構化表單呈現並寫入兩層設定：.speclink.yaml 的 tools（內建工具 claude／codex 多選）與 openspec/config.yaml 的 locale、spec_locale（下拉）、tdd、audit（開關），以及 context 與 rules（「專案說明」與「產出規則」區段，行為見需求「設定頁編輯專案說明與產出規則」）。讀取時未設定的欄位 SHALL 呈現為預設值狀態；寫入時 SHALL 僅代換目標鍵——未觸及的鍵（remote、spec_dir、自訂工具描述子等）SHALL 原樣保留；政策欄位設回預設值時 SHALL 移除該鍵而非寫入明值。tools 寫入成功後 app SHALL 同步技能檔（新選工具生成、取消工具清理殘留）。自訂工具描述子 SHALL 於表單原樣呈現為不可編輯項且寫入後保留。
 
 #### Scenario: 寫入政策欄位且未觸及鍵原樣保留
 
@@ -308,68 +308,18 @@ code:
 
 
 <!-- @trace
-source: desktop-config-multiproject
+source: desktop-config-rules-context
 updated: 2026-07-07
 code:
-  - CLAUDE.md
-  - Cargo.lock
-  - apps/desktop/core/Cargo.toml
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/project.rs
+  - .spectra.yaml
   - apps/desktop/core/src/settings.rs
-  - apps/desktop/package.json
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
   - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/locale.test.ts
-  - apps/desktop/src/__tests__/messages.test.ts
-  - apps/desktop/src/__tests__/projectTabs.test.tsx
   - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/workspace.test.ts
   - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/i18n/locale.ts
   - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/i18n/runtime.ts
-  - apps/desktop/src/main.tsx
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/tabs.ts
   - apps/desktop/src/views/SettingsView.tsx
   - crates/speclink-core/src/config.rs
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/changeListItem.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/discussionColumn.test.tsx
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/i18n.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/__tests__/ui.test.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeBoard.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/ChangeListItem.tsx
-  - packages/ui/src/components/DetailDrawer.tsx
-  - packages/ui/src/components/DiscussionColumn.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/DocumentViewer.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/components/ui/checkbox.tsx
-  - packages/ui/src/components/ui/select.tsx
-  - packages/ui/src/components/ui/tooltip.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/stage.ts
 -->
 
 ---
@@ -545,4 +495,69 @@ code:
   - packages/ui/src/i18n.tsx
   - packages/ui/src/index.ts
   - packages/ui/src/stage.ts
+-->
+
+---
+### Requirement: 設定頁編輯專案說明與產出規則
+
+設定頁 SHALL 提供「專案說明」區段（多行文字區，呈現與寫入 config.yaml 的 context）與「產出規則」區段（呈現與寫入 rules）。產出規則 SHALL 以活躍 schema 的 artifact id 為固定鍵分節，SHALL NOT 提供自由鍵輸入；每節為條目清單，SHALL 支援新增、編輯、刪除與排序，清單順序 SHALL 即為寫入檔案的條目順序（亦即指令注入順序）。條目存入前 SHALL 去除頭尾空白，空字串條目 SHALL NOT 寫入。專案說明清空儲存 SHALL 移除 context 鍵；某節清單清空 SHALL 移除該 artifact 鍵；全部節皆空 SHALL 移除 rules 鍵。寫入 SHALL 經與政策欄位相同的雙重解析驗證流程；序列化 SHALL 為以 YAML 保留字元（反引號、at 符號等）開頭的條目自動加引號——寫出檔案 SHALL 可被引擎解析且條目值逐字元還原。config.yaml 解析失敗時，兩區段 SHALL 隨該檔表單一併停用。
+
+#### Scenario: 編輯專案說明並儲存
+
+- **WHEN** 使用者於「專案說明」輸入多行文字並儲存
+- **THEN** 重新讀取 config.yaml 解析出的 context 值與輸入逐字元一致、其餘鍵原樣保留，重開設定頁呈現同一文字
+
+#### Scenario: 以保留字元開頭的規則條目寫入後仍可解析
+
+- **WHEN** 使用者於「產出規則」某節新增以 YAML 保留字元開頭的條目並儲存
+- **THEN** 寫出的 config.yaml 可被引擎解析（必要引號由寫入自動加上）、該條目值逐字元還原，整份工作流政策未退回預設
+
+##### Example: 保留字元條目自動加引號
+
+- **GIVEN** rules 原含 proposal 節一條「提案必須列出影響的 crates」
+- **WHEN** 於 tasks 節新增條目「@完成後執行全部測試」並儲存
+- **THEN** 重讀 config.yaml 可解析，rules 的 tasks 節含值「@完成後執行全部測試」（逐字元一致），proposal 節與 schema 等其餘鍵原樣保留
+
+#### Scenario: 清空即移除鍵
+
+- **WHEN** 使用者清空「專案說明」文字並將某節條目全數刪除後儲存
+- **THEN** 重新讀取 config.yaml 已無 context 鍵與該 artifact 鍵；其餘節原樣保留
+
+##### Example: 鍵移除語意
+
+| 操作前檔案狀態 | 表單操作 | 寫入後檔案效果 |
+| -------------- | -------- | -------------- |
+| context: 舊說明、rules 含 tasks 兩條 | 清空專案說明 | context 鍵被移除，rules.tasks 原樣保留 |
+| rules 含 proposal 與 tasks 兩節 | 刪除 tasks 節全部條目 | rules 僅餘 proposal 節 |
+| rules 僅含 tasks 一節 | 刪除該節全部條目 | rules 鍵整個被移除 |
+
+#### Scenario: 排序即寫入順序
+
+- **WHEN** 使用者以排序操作將某節第二條目移至第一並儲存
+- **THEN** 重新讀取 config.yaml 該節條目順序對調，後續該 artifact 的指令注入依新順序呈現規則
+
+##### Example: 條目對調
+
+- **GIVEN** tasks 節依序含條目「先寫失敗測試」「更新文件」
+- **WHEN** 將「更新文件」上移一位並儲存
+- **THEN** config.yaml 的 tasks 節依序為「更新文件」「先寫失敗測試」
+
+#### Scenario: 固定鍵分節不可自由輸入
+
+- **WHEN** 使用者於使用 spec-driven schema 的專案檢視「產出規則」區段
+- **THEN** 分節恰為 proposal、design、specs、tasks 四節，且介面不提供自由新增分節鍵的輸入
+
+<!-- @trace
+source: desktop-config-rules-context
+updated: 2026-07-07
+code:
+  - .spectra.yaml
+  - apps/desktop/core/src/settings.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/settingsView.test.tsx
+  - apps/desktop/src/adapter/workspace.ts
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/views/SettingsView.tsx
+  - crates/speclink-core/src/config.rs
 -->

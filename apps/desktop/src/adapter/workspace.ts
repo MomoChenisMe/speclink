@@ -22,6 +22,12 @@ export interface SettingsSnapshot {
     specLocale: string | null;
     tdd: boolean;
     audit: boolean;
+    /** 專案說明現值（config.yaml 的 context；null＝未設定）。 */
+    context: string | null;
+    /** 產出規則現值（依 artifact id 分組；條目順序即檔案順序）。 */
+    rules: Record<string, string[]>;
+    /** 活躍 schema 的 artifact id（引擎顯示序）——產出規則分節的固定鍵。 */
+    schemaArtifacts: string[];
     parseError: string | null;
   };
 }
@@ -44,6 +50,10 @@ export interface WorkspaceAdapter {
   readSettings(): Promise<SettingsSnapshot>;
   writeAppTools(tools: string[]): Promise<void>;
   writeWorkflowConfig(fields: WorkflowFields): Promise<void>;
+  /** 寫入專案說明（config.yaml 的 context）；空字串＝清空即移除鍵。rules 不動。 */
+  writeWorkflowContext(context: string): Promise<void>;
+  /** 整份代換產出規則（節序即寫入序；空節移除鍵、全空移除 rules 鍵）。context 不動。 */
+  writeWorkflowRules(rules: Array<[string, string[]]>): Promise<void>;
 }
 
 export function createWorkspaceAdapter(): WorkspaceAdapter {
@@ -65,5 +75,9 @@ export function createWorkspaceAdapter(): WorkspaceAdapter {
         tdd: fields.tdd,
         audit: fields.audit,
       }),
+    writeWorkflowContext: (context) =>
+      invoke("write_workflow_content", { context, rules: null }),
+    writeWorkflowRules: (rules) =>
+      invoke("write_workflow_content", { context: null, rules }),
   };
 }

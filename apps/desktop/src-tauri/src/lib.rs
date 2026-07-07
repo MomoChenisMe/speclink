@@ -216,6 +216,26 @@ fn write_workflow_config(
     speclink_desktop_core::settings::write_workflow_fields_at(&state.root(), &fields)
 }
 
+/// 寫入 config.yaml 的「專案說明」與「產出規則」。`context: None`＝不動、
+/// `Some(文字)`＝設值（空白即移除鍵，core 落實）；`rules: None`＝不動、
+/// `Some(節序清單)`＝整份代換。政策欄位不受本 command 波及。
+#[tauri::command]
+fn write_workflow_content(
+    state: State<AppState>,
+    context: Option<String>,
+    rules: Option<Vec<(String, Vec<String>)>>,
+) -> Result<(), String> {
+    let edit = match context {
+        Some(text) => speclink_desktop_core::settings::ContextEdit::Set(text),
+        None => speclink_desktop_core::settings::ContextEdit::Keep,
+    };
+    speclink_desktop_core::settings::write_workflow_content_at(
+        &state.root(),
+        &edit,
+        rules.as_deref(),
+    )
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -276,7 +296,8 @@ pub fn run() {
             project_stats,
             read_settings,
             write_app_tools,
-            write_workflow_config
+            write_workflow_config,
+            write_workflow_content
         ])
         .run(tauri::generate_context!())
         .expect("error while running Speclink desktop app");

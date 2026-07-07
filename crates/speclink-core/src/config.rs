@@ -445,22 +445,71 @@ pub struct WorkflowPolicyFields {
     pub audit: bool,
 }
 
+/// Context edit for a settings-page write: leave the key untouched, set it to a
+/// value, or remove it (unset-means-default). A distinct three-state enum instead
+/// of `Option<Option<String>>` — the two `None`s would be indistinguishable at a
+/// call site. `Set` with a blank (whitespace-only) value degrades to `Remove`:
+/// "clearing the text area removes the key" is enforced here, in the single
+/// write-path truth, not left to each caller.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ContextEdit {
+    Keep,
+    Set(String),
+    Remove,
+}
+
 /// Rewrite the workflow-config document (`openspec/config.yaml`) with the given
-/// policy-field state — a text→text pure function; the caller owns file reads and
-/// writes. Only the four policy keys are replaced; every other key (schema, context,
-/// rules, unknown keys) carries over through a raw-mapping read–modify–write.
-/// Template comments are lost (same trade-off as `init::write_remote_section`).
-/// Unlike `WorkflowConfig::from_text` (silent defaults), malformed input is a loud
-/// error — rewriting an unparseable document would destroy the user's content.
+/// change set — a text→text pure function; the caller owns file reads and writes.
+///
+/// - `fields` is the COMPLETE target state of the four policy keys (see
+///   [`WorkflowPolicyFields`]).
+/// - `context` is a three-state edit; see [`ContextEdit`].
+/// - `rules` is `None` to leave the key untouched, or `Some` for a wholesale
+///   replacement: sections in slice order, entries trimmed with blank entries
+///   dropped, an emptied section drops its artifact key, and an all-empty map
+///   drops the `rules` key itself. Entries starting with YAML-reserved characters
+///   (backtick, `@`, `*`, …) are quoted by serialization and round-trip verbatim.
+///
+/// Every other key (schema, remote, spec_dir, unknown keys) carries over through
+/// a raw-mapping read–modify–write. Template comments are lost (same trade-off as
+/// `init::write_remote_section`). Unlike `WorkflowConfig::from_text` (silent
+/// defaults), malformed input is a loud error — rewriting an unparseable document
+/// would destroy the user's content.
 pub fn update_workflow_config_text(
     original: &str,
     fields: &WorkflowPolicyFields,
+    context: &ContextEdit,
+    rules: Option<&[(String, Vec<String>)]>,
 ) -> anyhow::Result<String> {
     let mut doc = parse_yaml_mapping(original, "openspec/config.yaml")?;
     set_or_remove(&mut doc, "locale", fields.locale.as_deref().map(Into::into));
     set_or_remove(&mut doc, "spec_locale", fields.spec_locale.as_deref().map(Into::into));
     set_or_remove(&mut doc, "tdd", fields.tdd.then(|| true.into()));
     set_or_remove(&mut doc, "audit", fields.audit.then(|| true.into()));
+    match context {
+        ContextEdit::Keep => {}
+        ContextEdit::Set(text) if !text.trim().is_empty() => {
+            set_or_remove(&mut doc, "context", Some(text.as_str().into()));
+        }
+        // Set(blank) 與 Remove 同義：清空即移除鍵。
+        ContextEdit::Set(_) | ContextEdit::Remove => set_or_remove(&mut doc, "context", None),
+    }
+    if let Some(sections) = rules {
+        let mut map = serde_yaml::Mapping::new();
+        for (artifact, entries) in sections {
+            let cleaned: Vec<serde_yaml::Value> = entries
+                .iter()
+                .map(|e| e.trim())
+                .filter(|e| !e.is_empty())
+                .map(Into::into)
+                .collect();
+            if !cleaned.is_empty() {
+                map.insert(artifact.as_str().into(), serde_yaml::Value::Sequence(cleaned));
+            }
+        }
+        let value = (!map.is_empty()).then(|| serde_yaml::Value::Mapping(map));
+        set_or_remove(&mut doc, "rules", value);
+    }
     Ok(serde_yaml::to_string(&doc)?)
 }
 
@@ -970,7 +1019,7 @@ mod tests {
             tdd: true,
             audit: true,
         };
-        let out = update_workflow_config_text(WF_DOC, &fields).expect("rewrite ok");
+        let out = update_workflow_config_text(WF_DOC, &fields, &ContextEdit::Keep, None).expect("rewrite ok");
         let w = WorkflowConfig::from_text(Some(&out));
         assert_eq!(w.locale.as_deref(), Some("ja"));
         assert_eq!(w.spec_locale.as_deref(), Some("auto"));
@@ -984,7 +1033,7 @@ mod tests {
         // untouched key (schema, multi-line context, rules) must stay identical
         // character for character.
         let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
-        let out = update_workflow_config_text(WF_DOC, &fields).expect("rewrite ok");
+        let out = update_workflow_config_text(WF_DOC, &fields, &ContextEdit::Keep, None).expect("rewrite ok");
         let (orig, new) = (wf(WF_DOC), wf(&out));
         assert_eq!(new.schema, orig.schema);
         assert_eq!(new.context, orig.context);
@@ -994,7 +1043,7 @@ mod tests {
     #[test]
     fn workflow_update_keeps_unknown_keys() {
         let doc = "schema: spec-driven\nfuture_key: keep me\n";
-        let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default()).expect("rewrite ok");
+        let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None).expect("rewrite ok");
         let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
         assert_eq!(m.get("future_key").and_then(|v| v.as_str()), Some("keep me"));
     }
@@ -1002,7 +1051,7 @@ mod tests {
     #[test]
     fn workflow_update_default_values_remove_keys() {
         let doc = "locale: tw\nspec_locale: auto\ntdd: true\naudit: true\nschema: spec-driven\n";
-        let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default()).expect("rewrite ok");
+        let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None).expect("rewrite ok");
         let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
         for key in ["locale", "spec_locale", "tdd", "audit"] {
             assert!(!m.contains_key(key), "key '{key}' must be removed, got: {out}");
@@ -1016,7 +1065,7 @@ mod tests {
         // document must fail loudly — otherwise the GUI would destroy user content.
         for bad in ["rules: [unclosed", "just a top-level scalar"] {
             assert!(
-                update_workflow_config_text(bad, &WorkflowPolicyFields::default()).is_err(),
+                update_workflow_config_text(bad, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None).is_err(),
                 "must reject {bad:?}"
             );
         }
@@ -1027,7 +1076,7 @@ mod tests {
         // Absent config.yaml: the caller hands an empty text and gets a fresh
         // parseable document containing exactly the requested fields.
         let fields = WorkflowPolicyFields { locale: Some("tw".into()), ..Default::default() };
-        let out = update_workflow_config_text("", &fields).expect("rewrite ok");
+        let out = update_workflow_config_text("", &fields, &ContextEdit::Keep, None).expect("rewrite ok");
         let w = WorkflowConfig::from_text(Some(&out));
         assert_eq!(w.locale.as_deref(), Some("tw"));
     }
@@ -1037,10 +1086,10 @@ mod tests {
         // spec「政策欄位寫入效果」Example 表——逐行對應。
         // 無 tdd 鍵 | tdd 切開啟 | 新增 tdd: true
         let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
-        let out = update_workflow_config_text("schema: spec-driven\n", &fields).unwrap();
+        let out = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None).unwrap();
         assert_eq!(WorkflowConfig::from_text(Some(&out)).tdd, Some(true));
         // tdd: true | tdd 切關閉 | tdd 鍵被移除（預設即 false）
-        let out = update_workflow_config_text("tdd: true\n", &WorkflowPolicyFields::default()).unwrap();
+        let out = update_workflow_config_text("tdd: true\n", &WorkflowPolicyFields::default(), &ContextEdit::Keep, None).unwrap();
         let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
         assert!(!m.contains_key("tdd"), "got: {out}");
         // locale: tw、含 rules | spec_locale 選 auto | 新增 spec_locale: auto，locale 與 rules 原樣保留
@@ -1050,7 +1099,7 @@ mod tests {
             spec_locale: Some("auto".into()),
             ..Default::default()
         };
-        let out = update_workflow_config_text(doc, &fields).unwrap();
+        let out = update_workflow_config_text(doc, &fields, &ContextEdit::Keep, None).unwrap();
         let w = WorkflowConfig::from_text(Some(&out));
         assert_eq!(w.spec_locale.as_deref(), Some("auto"));
         assert_eq!(w.locale.as_deref(), Some("tw"));
@@ -1063,10 +1112,197 @@ mod tests {
         // 結構——序列化必須 escape，輸出仍可解析且值逐字元 round-trip。
         for evil in ["tw\nrules: {}", "a: b", "#comment", "'quoted'", "- item"] {
             let fields = WorkflowPolicyFields { locale: Some(evil.into()), ..Default::default() };
-            let out = update_workflow_config_text("schema: spec-driven\n", &fields).expect("rewrite ok");
+            let out = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None).expect("rewrite ok");
             let w = WorkflowConfig::from_text(Some(&out));
             assert_eq!(w.locale.as_deref(), Some(evil), "round-trip for {evil:?}");
             assert_eq!(w.schema.as_deref(), Some("spec-driven"), "structure intact for {evil:?}");
+        }
+    }
+
+    // --- update_workflow_config_text: context 三態與 rules 整份代換（desktop-config-rules-context） ---
+
+    /// 政策欄位與 context/rules 皆不動的呼叫縮寫（多數測試只關心其中一個變更集）。
+    fn rewrite(
+        doc: &str,
+        context: &ContextEdit,
+        rules: Option<&[(String, Vec<String>)]>,
+    ) -> anyhow::Result<String> {
+        update_workflow_config_text(doc, &wf_fields_of(doc), context, rules)
+    }
+
+    /// 從原文讀出政策欄位現值（「完整目標狀態」契約：不想動政策就得先讀再回填）。
+    fn wf_fields_of(doc: &str) -> WorkflowPolicyFields {
+        let w = wf(doc);
+        WorkflowPolicyFields {
+            locale: w.locale.clone(),
+            spec_locale: w.spec_locale.clone(),
+            tdd: w.tdd.unwrap_or(false),
+            audit: w.audit.unwrap_or(false),
+        }
+    }
+
+    fn section(pairs: &[(&str, &[&str])]) -> Vec<(String, Vec<String>)> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.iter().map(|s| s.to_string()).collect()))
+            .collect()
+    }
+
+    #[test]
+    fn workflow_update_context_set_round_trips_value_verbatim() {
+        // spec Scenario 編輯專案說明並儲存：值逐字元一致、其餘鍵原樣保留。
+        let text = "第一行說明\n\n第二行：含冒號: 與 # 井號\n";
+        let out = rewrite(WF_DOC, &ContextEdit::Set(text.into()), None).expect("rewrite ok");
+        let w = WorkflowConfig::from_text(Some(&out));
+        assert_eq!(w.context.as_deref(), Some(text));
+        assert_eq!(w.schema, wf(WF_DOC).schema);
+        assert_eq!(w.rules, wf(WF_DOC).rules);
+        assert_eq!(w.locale, wf(WF_DOC).locale);
+    }
+
+    #[test]
+    fn workflow_update_context_three_states() {
+        // 三態：Keep 不動、Set 設值、Remove 移除鍵。
+        let out = rewrite(WF_DOC, &ContextEdit::Keep, None).expect("rewrite ok");
+        assert_eq!(wf(&out).context, wf(WF_DOC).context, "Keep must not touch context");
+        let out = rewrite(WF_DOC, &ContextEdit::Remove, None).expect("rewrite ok");
+        let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+        assert!(!m.contains_key("context"), "Remove must delete the key, got: {out}");
+        let out = rewrite("schema: spec-driven\n", &ContextEdit::Set("新說明".into()), None).unwrap();
+        assert_eq!(wf(&out).context.as_deref(), Some("新說明"));
+    }
+
+    #[test]
+    fn workflow_update_context_blank_set_removes_key() {
+        // 清空即移除鍵的語意在 core 落實：Set 空白字串視同 Remove（zero-value 安全）。
+        for blank in ["", "   ", "\n\n"] {
+            let out = rewrite(WF_DOC, &ContextEdit::Set(blank.into()), None).expect("rewrite ok");
+            let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+            assert!(!m.contains_key("context"), "blank {blank:?} must remove the key");
+        }
+    }
+
+    #[test]
+    fn workflow_update_rules_replace_preserves_entry_order() {
+        // spec Example 條目對調：tasks 節「先寫失敗測試」「更新文件」→ 上移後順序對調。
+        let doc = "schema: spec-driven\nrules:\n  tasks:\n    - 先寫失敗測試\n    - 更新文件\n";
+        let rules = section(&[("tasks", &["更新文件", "先寫失敗測試"])]);
+        let out = rewrite(doc, &ContextEdit::Keep, Some(&rules)).expect("rewrite ok");
+        let w = WorkflowConfig::from_text(Some(&out));
+        assert_eq!(
+            w.rules.get("tasks").map(Vec::as_slice),
+            Some(["更新文件".to_string(), "先寫失敗測試".to_string()].as_slice())
+        );
+        assert_eq!(w.schema.as_deref(), Some("spec-driven"));
+    }
+
+    #[test]
+    fn workflow_update_rules_key_removal_matches_spec_example_table() {
+        // spec Example 鍵移除語意——逐行對應。
+        // context: 舊說明、rules 含 tasks 兩條 | 清空專案說明 | context 移除，rules.tasks 原樣保留
+        let doc = "context: 舊說明\nrules:\n  tasks:\n    - a\n    - b\n";
+        let out = rewrite(doc, &ContextEdit::Remove, None).expect("rewrite ok");
+        let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+        assert!(!m.contains_key("context"));
+        assert_eq!(wf(&out).rules, wf(doc).rules);
+        // rules 含 proposal 與 tasks 兩節 | 刪除 tasks 節全部條目 | rules 僅餘 proposal 節
+        let doc = "rules:\n  proposal:\n    - p1\n  tasks:\n    - t1\n";
+        let rules = section(&[("proposal", &["p1"]), ("tasks", &[])]);
+        let out = rewrite(doc, &ContextEdit::Keep, Some(&rules)).expect("rewrite ok");
+        let w = WorkflowConfig::from_text(Some(&out));
+        assert_eq!(w.rules.get("proposal").map(Vec::as_slice), Some(["p1".to_string()].as_slice()));
+        assert!(!w.rules.contains_key("tasks"), "empty section must drop its key");
+        // rules 僅含 tasks 一節 | 刪除該節全部條目 | rules 鍵整個被移除
+        let doc = "schema: spec-driven\nrules:\n  tasks:\n    - t1\n";
+        let rules = section(&[("tasks", &[])]);
+        let out = rewrite(doc, &ContextEdit::Keep, Some(&rules)).expect("rewrite ok");
+        let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+        assert!(!m.contains_key("rules"), "all-empty rules must remove the key, got: {out}");
+        assert!(m.contains_key("schema"));
+    }
+
+    #[test]
+    fn workflow_update_rules_entries_trimmed_and_blank_dropped() {
+        // 條目存入前 trim、空字串條目滌除；滌除後空節一併移除。
+        let rules = section(&[("tasks", &["  先寫失敗測試  ", "   ", ""]), ("design", &["  ", ""])]);
+        let out = rewrite("{}", &ContextEdit::Keep, Some(&rules)).expect("rewrite ok");
+        let w = WorkflowConfig::from_text(Some(&out));
+        assert_eq!(
+            w.rules.get("tasks").map(Vec::as_slice),
+            Some(["先寫失敗測試".to_string()].as_slice())
+        );
+        assert!(!w.rules.contains_key("design"), "all-blank section must drop its key");
+    }
+
+    #[test]
+    fn workflow_update_rules_reserved_char_entries_round_trip() {
+        // spec Example 保留字元條目自動加引號：GIVEN proposal 節一條，WHEN tasks 節新增
+        // 「@完成後執行全部測試」，THEN 可解析、值逐字元還原、proposal 與 schema 保留。
+        let doc = "schema: spec-driven\nrules:\n  proposal:\n    - 提案必須列出影響的 crates\n";
+        let rules = section(&[
+            ("proposal", &["提案必須列出影響的 crates"]),
+            ("tasks", &["@完成後執行全部測試"]),
+        ]);
+        let out = rewrite(doc, &ContextEdit::Keep, Some(&rules)).expect("rewrite ok");
+        let w = WorkflowConfig::from_text(Some(&out));
+        assert_eq!(
+            w.rules.get("tasks").map(Vec::as_slice),
+            Some(["@完成後執行全部測試".to_string()].as_slice())
+        );
+        assert_eq!(
+            w.rules.get("proposal").map(Vec::as_slice),
+            Some(["提案必須列出影響的 crates".to_string()].as_slice())
+        );
+        assert_eq!(w.schema.as_deref(), Some("spec-driven"));
+        // 反引號開頭（既知炸檔地雷）與其他 YAML 保留起始字元亦須 round-trip。
+        for evil in ["`cargo test` 全綠", "@標註開頭", "*星號開頭", "&錨點開頭"] {
+            let rules = section(&[("tasks", &[evil])]);
+            let out = rewrite("{}", &ContextEdit::Keep, Some(&rules)).expect("rewrite ok");
+            let w = WorkflowConfig::from_text(Some(&out));
+            assert_eq!(
+                w.rules.get("tasks").map(Vec::as_slice),
+                Some([evil.to_string()].as_slice()),
+                "round-trip for {evil:?}"
+            );
+            assert!(!w.rules.is_empty(), "document must stay parseable for {evil:?}");
+        }
+    }
+
+    #[test]
+    fn workflow_update_rules_none_leaves_rules_untouched() {
+        // rules: None＝不動——政策欄位寫入路徑不得波及 rules。
+        let out = rewrite(WF_DOC, &ContextEdit::Keep, None).expect("rewrite ok");
+        assert_eq!(wf(&out).rules, wf(WF_DOC).rules);
+    }
+
+    #[test]
+    fn workflow_update_content_edit_preserves_reserved_keys_verbatim() {
+        // MODIFIED 需求保留名單：remote、spec_dir、未知鍵於 context/rules 寫入時逐值保留。
+        let doc = "spec_dir: docs/specs\nremote:\n  url: https://example.com\n  repo: main\nfuture_key: keep me\ncontext: old\n";
+        let rules = section(&[("tasks", &["新規則"])]);
+        let out = rewrite(doc, &ContextEdit::Set("新說明".into()), Some(&rules)).expect("rewrite ok");
+        let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+        let orig: serde_yaml::Mapping = serde_yaml::from_str(doc).expect("mapping");
+        for key in ["spec_dir", "remote", "future_key"] {
+            assert_eq!(m.get(key), orig.get(key), "key '{key}' must carry over");
+        }
+        assert_eq!(wf(&out).context.as_deref(), Some("新說明"));
+    }
+
+    #[test]
+    fn workflow_update_content_edit_bad_yaml_is_a_loud_error() {
+        // 不經 rewrite helper——壞 YAML 連現值都讀不出，直接以 default 政策呼叫。
+        for bad in ["rules: [unclosed", "just a top-level scalar"] {
+            assert!(
+                update_workflow_config_text(
+                    bad,
+                    &WorkflowPolicyFields::default(),
+                    &ContextEdit::Set("x".into()),
+                    None,
+                )
+                .is_err(),
+                "must reject {bad:?}"
+            );
         }
     }
 
