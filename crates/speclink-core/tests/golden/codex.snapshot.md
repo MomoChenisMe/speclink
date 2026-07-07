@@ -328,7 +328,6 @@ This skill supports the "actions on a change" model:
 - **Can be invoked anytime**: Before all artifacts are done (if tasks exist), after partial implementation, interleaved with other actions
 - **Allows artifact updates**: If implementation reveals design issues, suggest updating artifacts - not phase-locked, work fluidly
 
-
 === .agents/skills/speclink-archive/SKILL.md ===
 ---
 name: speclink-archive
@@ -794,7 +793,6 @@ permissions = Set[Permission::READ, Permission::WRITE]
 | "Nobody would do that"                | Devs under pressure do everything          | Assume maximum developer chaos                         |
 | "It's just a config option"           | Config is code; wrong config ships to prod | Validate config, reject dangerous combinations         |
 | "Backwards compatibility"             | Insecure defaults can't be grandfathered   | Deprecate loudly, force migration                      |
-
 
 === .agents/skills/speclink-commit/SKILL.md ===
 ---
@@ -1805,7 +1803,6 @@ Update an existing Speclink change — from a plan file or conversation context.
 - Verify each artifact file exists after writing before proceeding to next
 - **NEVER** skip the artifact workflow to write code directly
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-
 
 === .agents/skills/speclink-onboard/SKILL.md ===
 ---
