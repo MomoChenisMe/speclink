@@ -37,6 +37,8 @@ export interface AppState {
   boardView: BoardView;
   view: ListView;
   query: string;
+  /** 看板搜尋字串——與已封存頁的 query 各自獨立；不持久化、不跨啟動保留（spec）。 */
+  boardQuery: string;
   expandedName: string | null;
 
   /** 詳情抽屜當前的 change（null=關閉）。 */
@@ -58,6 +60,7 @@ export interface AppState {
   setBoardView: (v: BoardView) => void;
   setView: (v: ListView) => void;
   setQuery: (q: string) => void;
+  setBoardQuery: (q: string) => void;
   toggleExpand: (name: string) => void;
   openDetail: (name: string) => void;
   closeDetail: () => void;
@@ -160,6 +163,7 @@ export function createAppStore(
     boardView: "board",
     view: "active",
     query: "",
+    boardQuery: "",
     expandedName: null,
     detailChange: null,
     detailDiscussion: null,
@@ -212,6 +216,10 @@ export function createAppStore(
 
     setQuery(query) {
       set({ query });
+    },
+
+    setBoardQuery(boardQuery) {
+      set({ boardQuery });
     },
 
     toggleExpand(name) {

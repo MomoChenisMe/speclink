@@ -3,6 +3,7 @@ import { Check, ChevronDown, ChevronRight, Code2, Copy, FileText, ListChecks, Pe
 
 import type { ArchivedItem, DiscussionItem } from "../adapter";
 import { useI18n } from "../i18n";
+import { matchesQuery } from "../search";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -224,11 +225,9 @@ export function ArchivedList({
   loadDiscussionDocument,
 }: ArchivedListProps) {
   const { t } = useI18n();
-  const q = query.trim().toLowerCase();
-  const filtered = archived.filter((a) => a.name.toLowerCase().includes(q));
-  const discussions = (archivedDiscussions ?? []).filter(
-    (d) => d.topic.toLowerCase().includes(q) || d.slug.toLowerCase().includes(q),
-  );
+  // 比對規則共用 matchesQuery（與看板一致的單一真相）。
+  const filtered = archived.filter((a) => matchesQuery(query, a.name));
+  const discussions = (archivedDiscussions ?? []).filter((d) => matchesQuery(query, d.topic, d.slug));
   const showDiscussions = archivedDiscussions !== undefined && loadDiscussionDocument !== undefined;
   return (
     <div className="flex flex-col gap-3 max-w-3xl mx-auto w-full">

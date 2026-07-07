@@ -156,7 +156,10 @@ export function DiscussionColumn({
           {t("discussion.heading")}
         </h2>
         <div className="flex-1" />
-        <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-primary/8 text-primary/70">
+        <span
+          data-testid="column-count"
+          className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-primary/8 text-primary/70"
+        >
           {discussions.length}
         </span>
       </div>

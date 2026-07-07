@@ -15,7 +15,7 @@ function render(ui: ReactElement) {
 import { KanbanBoard } from "../components/KanbanBoard";
 import { DetailDrawer } from "../components/DetailDrawer";
 import { parseTasks } from "../tasks";
-import type { ChangeItem, ArtifactStatus } from "../adapter";
+import type { ChangeItem, ArtifactStatus, DiscussionLists } from "../adapter";
 
 const changes: ChangeItem[] = [
   // 欄位由生命週期標記驅動——全完成＝已就緒 ＞ started_at 或任務完成數>0＝進行中
@@ -91,6 +91,110 @@ describe("KanbanBoard", () => {
     fireEvent.click(within(card).getByLabelText("複製名稱"));
     expect(writeText).toHaveBeenCalledWith("working-y");
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("KanbanBoard search（看板搜尋過濾卡片）", () => {
+  // GIVEN 對齊 delta spec 的 Example 表：提案中欄兩張變更卡＋討論欄一張卡。
+  const searchChanges: ChangeItem[] = [
+    { name: "desktop-acp-agent", status: "in-progress", totalTasks: 8, completedTasks: 0, summary: "桌面版 ACP 代理" },
+    { name: "web-role-views", status: "in-progress", totalTasks: 6, completedTasks: 0, summary: "情境 1 的角色檢視" },
+  ];
+  const searchDiscussions: DiscussionLists = {
+    active: [
+      { slug: "gui-auto-stamp", topic: "GUI 勾任務自動蓋開工章", status: "open", rounds: 2, created: "2026-07-06", promotedTo: [] },
+    ],
+    archived: [],
+  };
+
+  function renderBoard(query: string, onQuery = vi.fn()) {
+    render(
+      <KanbanBoard
+        changes={searchChanges}
+        discussions={searchDiscussions}
+        query={query}
+        onQuery={onQuery}
+      />,
+    );
+    return onQuery;
+  }
+
+  function count(id: string): string {
+    return within(column(id)).getByTestId("column-count").textContent ?? "";
+  }
+
+  it("renders a search input above the columns when query/onQuery are provided", () => {
+    const onQuery = renderBoard("");
+    const input = screen.getByPlaceholderText("搜尋看板卡片…");
+    fireEvent.change(input, { target: { value: "desk" } });
+    expect(onQuery).toHaveBeenCalledWith("desk");
+  });
+
+  it("renders the English search placeholder under the en locale", () => {
+    // 同類搜尋輸入（已封存頁、清單）皆已 i18n 化——看板不落單（verify SUGGESTION）。
+    rtlRender(
+      <I18nProvider locale="en">
+        <KanbanBoard changes={searchChanges} discussions={searchDiscussions} query="" onQuery={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(screen.getByPlaceholderText("Search board cards…")).toBeTruthy();
+  });
+
+  it("does not render a search input when query is not provided", () => {
+    render(<KanbanBoard changes={searchChanges} discussions={searchDiscussions} />);
+    expect(screen.queryByPlaceholderText("搜尋看板卡片…")).toBeNull();
+  });
+
+  // spec Example 表逐行參數化：輸入 → 提案中欄顯示（計數）／討論欄顯示（計數）。
+  it.each([
+    ["desktop", ["desktop-acp-agent"], "1", [], "0"], // 名稱子字串命中
+    ["桌面", ["desktop-acp-agent"], "1", [], "0"], // 摘要命中
+    [" GUI ", [], "0", ["GUI 勾任務自動蓋開工章"], "1"], // 去頭尾空白、不分大小寫
+    ["", ["desktop-acp-agent", "web-role-views"], "2", ["GUI 勾任務自動蓋開工章"], "1"], // 清空還原全量
+  ])(
+    "query %j filters proposed column and discussion column per the spec example table",
+    (query, proposedShown, proposedCount, discussionShown, discussionCount) => {
+      renderBoard(query);
+      for (const name of proposedShown) {
+        expect(within(column("proposed")).getByText(name)).toBeTruthy();
+      }
+      expect(column("proposed").querySelectorAll("[data-change]")).toHaveLength(proposedShown.length);
+      expect(count("proposed")).toBe(proposedCount);
+      for (const topic of discussionShown) {
+        expect(within(column("discussions")).getByText(topic)).toBeTruthy();
+      }
+      expect(column("discussions").querySelectorAll("[data-discussion]")).toHaveLength(discussionShown.length);
+      expect(count("discussions")).toBe(discussionCount);
+    },
+  );
+
+  it("matches case-insensitively and against the discussion slug", () => {
+    // 需求文字：不分大小寫；討論卡以主題「與 slug」比對。
+    renderBoard("gui");
+    expect(within(column("discussions")).getByText("GUI 勾任務自動蓋開工章")).toBeTruthy();
+    expect(count("discussions")).toBe("1");
+  });
+
+  it("matches against the discussion slug", () => {
+    renderBoard("auto-stamp");
+    expect(within(column("discussions")).getByText("GUI 勾任務自動蓋開工章")).toBeTruthy();
+    expect(count("discussions")).toBe("1");
+    expect(count("proposed")).toBe("0");
+  });
+
+  it("whitespace-only query shows everything (treated as empty)", () => {
+    renderBoard("   ");
+    expect(count("proposed")).toBe("2");
+    expect(count("discussions")).toBe("1");
+  });
+
+  it("no match leaves empty columns with zero counts but keeps the column structure", () => {
+    renderBoard("zzz-no-match");
+    for (const id of ["discussions", "proposed", "in-progress", "ready"]) {
+      expect(column(id)).toBeTruthy();
+      expect(count(id)).toBe("0");
+      expect(column(id).querySelectorAll("[data-change], [data-discussion]")).toHaveLength(0);
+    }
   });
 });
 

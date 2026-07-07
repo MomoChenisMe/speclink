@@ -14,9 +14,11 @@ import { Archive, CircleCheckBig, Hammer, Lightbulb, type LucideIcon } from "luc
 
 import type { ArchivedItem, ChangeItem, DiscussionLists } from "../adapter";
 import { useI18n } from "../i18n";
+import { matchesQuery } from "../search";
 import { changeStage, STAGES, type Stage } from "../stage";
 import { ChangeCard } from "./ChangeCard";
 import { DiscussionColumn } from "./DiscussionColumn";
+import { Input } from "./ui/input";
 
 /** 各階段的視覺主題——單一 teal 色相、以深淺表達生命週期推進，守住主色系。 */
 const STAGE_STYLE: Record<Stage, { icon: LucideIcon; top: string; badge: string; bar: string; iconCls: string }> = {
@@ -57,6 +59,9 @@ export interface KanbanBoardProps {
   onPromoteDiscussion?: (slug: string) => void;
   /** concluded 討論卡的歸檔動詞（app 端接確認流程）。 */
   onArchiveDiscussion?: (slug: string) => void;
+  /** 看板搜尋字串（選配，與 onQuery 成對提供時渲染搜尋輸入並過濾卡片）。 */
+  query?: string;
+  onQuery?: (q: string) => void;
 }
 
 function Column({
@@ -86,7 +91,10 @@ function Column({
           {t(`stage.${stage}`)}
         </h2>
         <div className="flex-1" />
-        <span className={`inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums ${style.badge}`}>
+        <span
+          data-testid="column-count"
+          className={`inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums ${style.badge}`}
+        >
           {count}
         </span>
       </div>
@@ -136,10 +144,20 @@ export function KanbanBoard({
   onOpenDiscussion,
   onPromoteDiscussion,
   onArchiveDiscussion,
+  query,
+  onQuery,
 }: KanbanBoardProps) {
   const [activeName, setActiveName] = useState<string | null>(null);
+  const { t } = useI18n();
+  // 搜尋過濾（spec「看板搜尋過濾卡片」）：變更卡以名稱與摘要、討論卡以主題與
+  // slug 比對；比對規則共用 matchesQuery（與已封存頁一致）。空（或僅空白）即全量。
+  const showSearch = query !== undefined && onQuery !== undefined;
+  const visibleChanges = changes.filter((c) => matchesQuery(query ?? "", c.name, c.summary));
+  const visibleDiscussions = discussions?.active.filter((d) =>
+    matchesQuery(query ?? "", d.topic, d.slug),
+  );
   const byStage: Record<Stage, ChangeItem[]> = { proposed: [], "in-progress": [], ready: [] };
-  for (const c of changes) byStage[changeStage(c)].push(c);
+  for (const c of visibleChanges) byStage[changeStage(c)].push(c);
   const dragging = activeName !== null;
   const activeChange = activeName ? changes.find((c) => c.name === activeName) ?? null : null;
 
@@ -157,11 +175,20 @@ export function KanbanBoard({
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveName(null)}>
+      <div className="flex h-full min-h-0 flex-col gap-3">
+      {showSearch && (
+        <Input
+          placeholder={t("kanban.searchPlaceholder")}
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+          className="mx-auto w-full max-w-md shrink-0"
+        />
+      )}
       {/* safe center：寬螢幕置中、內容溢出時回到可捲動的靠左 */}
-      <div className="flex gap-3 h-full min-h-0 overflow-x-auto [justify-content:safe_center]">
+      <div className="flex gap-3 flex-1 min-h-0 overflow-x-auto [justify-content:safe_center]">
         {discussions && (
           <DiscussionColumn
-            discussions={discussions.active}
+            discussions={visibleDiscussions ?? []}
             changes={changes}
             archived={archivedChanges ?? []}
             onOpenDiscussion={onOpenDiscussion}
@@ -183,6 +210,7 @@ export function KanbanBoard({
           </Column>
         ))}
         {dragging && <ArchiveDropZone />}
+      </div>
       </div>
       {/* 拖曳浮動複本：渲染在最上層，不受欄位 overflow 裁切 */}
       <DragOverlay dropAnimation={null}>
