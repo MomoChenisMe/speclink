@@ -21,6 +21,8 @@ import { CheckCheck, GripVertical, LocateFixed, RotateCcw } from "lucide-react";
 
 import { useI18n } from "../i18n";
 import { parseTaskDoc, resolveDropTarget, type TaskDocItem } from "../tasks";
+import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 
 export interface TaskListProps {
   markdown: string | null;
@@ -56,13 +58,12 @@ function TaskRowBody({
   const { t } = useI18n();
   return (
     <>
-      <input
-        type="checkbox"
+      <Checkbox
         aria-label={t("tasks.checkbox").replace("{n}", String(item.ordinal))}
-        className="mt-1 shrink-0 accent-[var(--primary)]"
+        className="mt-1"
         checked={item.done}
         disabled={readOnly}
-        onChange={(e) => onToggle?.(item.ordinal, e.target.checked)}
+        onCheckedChange={(v) => onToggle?.(item.ordinal, v === true)}
       />
       <span
         className={`flex-1 text-base leading-relaxed ${
@@ -120,15 +121,17 @@ function SortableTaskRow({
         isDragging ? "opacity-40" : ""
       } ${highlight ? "bg-accent ring-1 ring-primary/40" : ""}`}
     >
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon"
         aria-label={t("tasks.drag").replace("{n}", String(item.ordinal))}
-        className="mt-1 shrink-0 cursor-grab touch-none text-muted-foreground/50 hover:text-foreground"
+        className="mt-1 h-4 w-4 shrink-0 cursor-grab touch-none text-muted-foreground/50 hover:text-foreground"
         {...attributes}
         {...listeners}
       >
         <GripVertical className="h-3.5 w-3.5" />
-      </button>
+      </Button>
       <TaskRowBody item={item} onToggle={onToggle} />
     </div>
   );
@@ -223,8 +226,8 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
     return <div className="flex flex-col">{rows}</div>;
   }
 
-  const toolbarBtn =
-    "flex items-center gap-1.5 rounded px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
+  // 工具列鍵共通樣式（design D3：ghost＋sm 變體，補齊近似現狀的字級與字色）。
+  const toolbarBtn = "gap-1.5 px-2 text-sm font-normal text-muted-foreground hover:text-foreground";
   const active = activeOrdinal != null ? taskItems.find((t) => t.ordinal === activeOrdinal) : null;
   // 讓位序列＝視覺順序（標題與任務交錯）——標題入列使讓位位移對齊群組邊界。
   const sortableIds = items.map((item, i) => (item.kind === "group" ? `g-${i}` : item.ordinal));
@@ -249,16 +252,20 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
       {/* 批次操作工具列（spec「任務分頁提供批次操作工具列」）：全部已完成／下一個
           未完成（n）／重置任務；全完成時前兩鍵不可用，批次寫回期間整列 disabled。 */}
       <div className="mb-2 flex items-center gap-1 rounded-md border border-border px-2 py-1.5">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           className={toolbarBtn}
           disabled={allDone || busy}
           onClick={() => onSetAll?.(true)}
         >
           <CheckCheck className="h-3.5 w-3.5" /> {t("tasks.completeAll")}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           className={toolbarBtn}
           disabled={allDone || busy}
           onClick={locateNext}
@@ -267,16 +274,18 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
           <kbd className="rounded border border-border bg-muted px-1 text-[10px] text-muted-foreground">
             n
           </kbd>
-        </button>
+        </Button>
         <div className="flex-1" />
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           className={toolbarBtn}
           disabled={busy}
           onClick={() => onSetAll?.(false)}
         >
           <RotateCcw className="h-3.5 w-3.5" /> {t("tasks.resetAll")}
-        </button>
+        </Button>
       </div>
     <DndContext
       sensors={sensors}
@@ -295,7 +304,7 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
       <DragOverlay>
         {active ? (
           <div className="flex items-start gap-2 py-1 pl-1 rounded-md border border-border bg-card shadow-lg">
-            <span className="mt-1 shrink-0 text-muted-foreground/50">
+            <span className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground/50">
               <GripVertical className="h-3.5 w-3.5" />
             </span>
             <TaskRowBody item={active} />

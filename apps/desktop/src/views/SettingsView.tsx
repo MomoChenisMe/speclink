@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import {
+  Button,
   Card,
   CardContent,
   CardHeader,
@@ -17,6 +18,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  Textarea,
   cn,
   useI18n,
 } from "@speclink/ui";
@@ -34,9 +36,6 @@ const textToEntries = (text: string) =>
 
 /** 收合門檻（design D3）：唯讀 markdown 超長截斷——渲染高度無法在 jsdom 量測，以原文規模判定。 */
 const isLongContext = (text: string) => text.split("\n").length > 12 || text.length > 1200;
-
-const TEXTAREA_CLS =
-  "w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
 
 export interface SettingsViewProps {
   workspace: WorkspaceAdapter;
@@ -98,33 +97,38 @@ function CardEditControls({
       {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
       {editing ? (
         <>
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             data-testid={`${testPrefix}-cancel`}
-            className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="text-sm font-normal text-muted-foreground hover:text-foreground"
             onClick={onCancel}
           >
             {t("app.cancel")}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
             data-testid={`${testPrefix}-save`}
-            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            className="text-sm"
             onClick={onSave}
           >
             {t("settings.save")}
-          </button>
+          </Button>
         </>
       ) : (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           data-testid={`${testPrefix}-edit`}
           disabled={disabled}
-          className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+          className="text-sm font-normal text-muted-foreground hover:text-foreground"
           onClick={onEdit}
         >
           {t("settings.edit")}
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -297,11 +301,11 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
             <CardContent className="gap-2.5">
               {ctxEditing ? (
                 <div className="flex flex-col gap-2">
-                  <textarea
+                  <Textarea
                     data-testid="context-input"
                     value={draftContext}
                     rows={10}
-                    className={TEXTAREA_CLS}
+                    className="font-mono"
                     onChange={(e) => setDraftContext(e.target.value)}
                   />
                   <FieldHelp>{t("settings.contextHelp")}</FieldHelp>
@@ -312,14 +316,15 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
                     <Markdown content={contextText || null} empty={t("settings.contextEmpty")} />
                   </div>
                   {contextCollapsed && (
-                    <button
+                    <Button
                       type="button"
+                      variant="link"
                       data-testid="context-show-more"
-                      className="self-start text-xs text-primary hover:underline"
+                      className="h-auto self-start p-0 text-xs font-normal"
                       onClick={() => setContextExpanded(true)}
                     >
                       {t("settings.showMore")}
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}
@@ -348,12 +353,12 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
                       <label htmlFor={`rules-input-${id}`} className="text-sm font-medium font-mono">
                         {id}
                       </label>
-                      <textarea
+                      <Textarea
                         id={`rules-input-${id}`}
                         data-testid={`rules-input-${id}`}
                         value={draftRules[id] ?? ""}
                         rows={3}
-                        className={TEXTAREA_CLS}
+                        className="font-mono"
                         onChange={(e) =>
                           setDraftRules((prev) => ({ ...prev, [id]: e.target.value }))
                         }
@@ -425,7 +430,7 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
                     id="cfg-tdd"
                     checked={tdd}
                     disabled={wfDisabled}
-                    onChange={(e) => setTdd(e.target.checked)}
+                    onCheckedChange={(v) => setTdd(v === true)}
                   />
                 </div>
                 <span />
@@ -437,22 +442,23 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
                     id="cfg-audit"
                     checked={audit}
                     disabled={wfDisabled}
-                    onChange={(e) => setAudit(e.target.checked)}
+                    onCheckedChange={(v) => setAudit(v === true)}
                   />
                 </div>
                 <span />
                 <FieldHelp>{t("settings.auditHelp")}</FieldHelp>
               </div>
               <div className="flex items-center gap-2">
-                <button
+                <Button
                   type="button"
+                  size="sm"
                   data-testid="save-workflow"
                   disabled={wfDisabled}
-                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  className="text-sm"
                   onClick={() => void saveWorkflow()}
                 >
                   {t("settings.save")}
-                </button>
+                </Button>
                 {wfMsg && <span className="text-xs text-muted-foreground">{wfMsg}</span>}
               </div>
             </CardContent>
@@ -476,7 +482,7 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
                         id={`tool-${tool}`}
                         checked={tools.includes(tool)}
                         disabled={appDisabled}
-                        onChange={(e) => toggleTool(tool, e.target.checked)}
+                        onCheckedChange={(v) => toggleTool(tool, v === true)}
                       />
                       {tool}
                     </label>
@@ -497,15 +503,16 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
                 </div>
               )}
               <div className="flex items-center gap-2">
-                <button
+                <Button
                   type="button"
+                  size="sm"
                   data-testid="save-app"
                   disabled={appDisabled}
-                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  className="text-sm"
                   onClick={() => void saveApp()}
                 >
                   {t("settings.save")}
-                </button>
+                </Button>
                 {appMsg && <span className="text-xs text-muted-foreground">{appMsg}</span>}
               </div>
             </CardContent>
@@ -522,19 +529,21 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
             <CardContent className="gap-2">
               <div className="flex gap-1.5" data-testid="ui-locale">
                 {uiLocaleOptions.map((opt) => (
-                  <button
+                  <Button
                     key={String(opt.value)}
                     type="button"
+                    variant="outline"
+                    size="sm"
                     className={cn(
-                      "rounded-md border px-3 py-1.5 text-sm transition-colors",
+                      "text-sm font-normal",
                       localePref === opt.value
-                        ? "border-primary bg-primary/8 font-medium text-primary"
-                        : "border-border text-muted-foreground hover:text-foreground hover:bg-muted",
+                        ? "border-primary bg-primary/8 font-medium text-primary hover:bg-primary/8 hover:text-primary"
+                        : "text-muted-foreground hover:text-foreground",
                     )}
                     onClick={() => onLocalePrefChange(opt.value)}
                   >
                     {opt.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <FieldHelp>{t("settings.uiLocaleHelp")}</FieldHelp>

@@ -170,6 +170,9 @@ export function RichDetailDrawer({
   const handleToggle = async (ordinal: number, done: boolean) => {
     if (!name || !onToggleTask) return;
     setTaskError(null);
+    // 作廢在途載入（design D4）：更早發起、較晚到達的舊回應不得覆蓋樂觀狀態；
+    // 寫回後的磁碟現況仍由宿主 refresh 的世代遞增補載收斂。
+    requestSeq.current += 1;
     let snapshot: Doc;
     setTasksMd((cur) => {
       snapshot = cur;
@@ -216,23 +219,27 @@ export function RichDetailDrawer({
         <SheetHeader>
           <div className="flex items-center gap-2 pr-14">
             <SheetTitle className="truncate">{change.name}</SheetTitle>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               aria-label={t("common.copyName")}
-              className="text-muted-foreground hover:text-foreground"
+              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
               onClick={copyName}
             >
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            </button>
+            </Button>
             <div className="flex-1" />
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               aria-label={full ? t("rdrawer.restore") : t("rdrawer.fullScreen")}
-              className="text-muted-foreground hover:text-foreground"
+              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
               onClick={() => setFull((f) => !f)}
             >
               {full ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            </button>
+            </Button>
           </div>
           {/* metadata 列 */}
           <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
@@ -258,25 +265,29 @@ export function RichDetailDrawer({
           {sourceDiscussion && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
               <span>{t("rdrawer.fromDiscussion")}</span>
-              <button
+              <Button
                 type="button"
-                className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/20"
+                variant="ghost"
+                size="sm"
+                className="h-auto rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/20 hover:text-primary"
                 onClick={() => onOpenDiscussion?.(sourceDiscussion.slug)}
               >
                 {sourceDiscussion.topic}
-              </button>
+              </Button>
               {(siblingChanges ?? []).length > 0 && (
                 <>
                   <span>{t("rdrawer.siblings")}</span>
                   {(siblingChanges ?? []).map((sib) => (
-                    <button
+                    <Button
                       key={sib}
                       type="button"
-                      className="rounded-full bg-muted px-2 py-0.5 font-medium hover:bg-accent"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto rounded-full bg-muted px-2 py-0.5 font-medium hover:bg-accent"
                       onClick={() => onOpenSibling?.(sib)}
                     >
                       {sib}
-                    </button>
+                    </Button>
                   ))}
                 </>
               )}

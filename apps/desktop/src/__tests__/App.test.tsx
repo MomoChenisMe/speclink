@@ -249,6 +249,32 @@ describe("App (kanban primary + rich detail)", () => {
     await waitFor(() => expect(ws.pickFolder).toHaveBeenCalled());
   });
 
+  // spec「表單控制項與按鈕以主題化元件呈現」Scenario「初始化對話框工具多選主題化」
+  it("初始化對話框的工具多選為主題化 checkbox：預設勾 claude、可獨立切換", async () => {
+    const ws = fakeWorkspace();
+    ws.pickFolder = vi.fn().mockResolvedValue("D:/newproj");
+    ws.openProject = vi.fn().mockResolvedValue({ status: "uninitialized", dir: "D:/newproj" });
+    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
+    render(<App dataSource={ds} workspace={ws as never} />);
+    const openButtons = await screen.findAllByText("開啟專案");
+    fireEvent.click(openButtons[openButtons.length - 1]);
+    const dialog = await screen.findByRole("alertdialog");
+    const claude = within(dialog).getByRole("checkbox", { name: "claude" });
+    const codex = within(dialog).getByRole("checkbox", { name: "codex" });
+    // 主題化原語（button 元素）而非原生 input。
+    expect(claude.tagName).not.toBe("INPUT");
+    // 預設勾選狀態與替換前相同：claude 勾、codex 未勾。
+    expect(claude.getAttribute("aria-checked")).toBe("true");
+    expect(codex.getAttribute("aria-checked")).toBe("false");
+    // 可獨立切換：勾 codex 不影響 claude；取消 claude 不影響 codex。
+    fireEvent.click(codex);
+    expect(codex.getAttribute("aria-checked")).toBe("true");
+    expect(claude.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(claude);
+    expect(claude.getAttribute("aria-checked")).toBe("false");
+    expect(codex.getAttribute("aria-checked")).toBe("true");
+  });
+
   it("分頁列取代頂欄「目前專案」佔位；點分頁切換後 active 標示更新", async () => {
     localStorage.setItem(
       "speclink.projectTabs",

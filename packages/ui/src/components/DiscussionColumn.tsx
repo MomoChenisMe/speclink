@@ -141,10 +141,11 @@ function PromotedRow({
   // 衍生樹（design D2）：topic 首行為識別錨點（slug 不出現於看板）、
   // 子變更以樹狀前綴逐列列出——父子（討論→衍生變更）關係一眼可讀。
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       data-discussion={d.slug}
-      className="w-full rounded-md border border-border/60 bg-background/60 px-2 py-1.5 text-left transition-colors hover:border-primary/60"
+      className="block h-auto w-full whitespace-normal rounded-md border border-border/60 bg-background/60 px-2 py-1.5 text-left font-normal hover:border-primary/60 hover:bg-background/60"
       onClick={() => onOpenDiscussion?.(d.slug)}
     >
       <span className="block truncate text-xs font-semibold leading-tight">{d.topic}</span>
@@ -161,7 +162,7 @@ function PromotedRow({
           </span>
         ))}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -236,15 +237,17 @@ export function DiscussionColumn({
         )}
         {promoted.length > 0 && (
           <div className="mt-auto flex flex-col gap-1 pt-2">
-            <button
+            <Button
               type="button"
-              className="flex items-center gap-1 px-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+              variant="ghost"
+              size="sm"
+              className="h-auto justify-start gap-1 px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground hover:bg-transparent hover:text-foreground"
               onClick={() => setShowPromoted((v) => !v)}
             >
               {showPromoted ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
               {t("discussion.promotedGroup")}
               <span className="tabular-nums">({promoted.length})</span>
-            </button>
+            </Button>
             {showPromoted &&
               promoted.map((d) => (
                 <PromotedRow

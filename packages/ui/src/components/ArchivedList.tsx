@@ -5,6 +5,7 @@ import type { ArchivedItem, DiscussionItem } from "../adapter";
 import { useI18n } from "../i18n";
 import { matchesQuery } from "../search";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Markdown } from "./Markdown";
@@ -62,9 +63,10 @@ export function ArchivedRow({ item, loaders }: { item: ArchivedItem; loaders: Ar
 
   return (
     <div className="rounded-lg border border-border bg-card">
-      <button
+      <Button
         type="button"
-        className="group flex items-center gap-2.5 w-full p-3 text-left"
+        variant="ghost"
+        className="group h-auto w-full justify-start gap-2.5 whitespace-normal rounded-lg p-3 text-left font-normal hover:bg-transparent"
         aria-expanded={expanded}
         onClick={toggle}
       >
@@ -88,7 +90,7 @@ export function ArchivedRow({ item, loaders }: { item: ArchivedItem; loaders: Ar
         >
           {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
         </span>
-      </button>
+      </Button>
       {expanded && (
         <div className="px-3 pb-3 border-t border-border pt-3">
           <Tabs defaultValue="proposal" className="flex flex-col">
@@ -166,9 +168,10 @@ function ArchivedDiscussionRow({
 
   return (
     <div className="rounded-lg border border-border bg-card">
-      <button
+      <Button
         type="button"
-        className="flex items-center gap-2.5 w-full p-3 text-left"
+        variant="ghost"
+        className="h-auto w-full justify-start gap-2.5 whitespace-normal rounded-lg p-3 text-left font-normal hover:bg-transparent"
         aria-expanded={expanded}
         onClick={toggle}
       >
@@ -182,7 +185,7 @@ function ArchivedDiscussionRow({
         <span className="text-xs text-muted-foreground tabular-nums shrink-0">
           {t("common.rounds").replace("{n}", String(item.rounds))}
         </span>
-      </button>
+      </Button>
       {expanded && (
         <div className="px-3 pb-3 border-t border-border pt-3 max-h-[50vh] overflow-y-auto">
           {sections ? (

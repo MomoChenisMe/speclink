@@ -46,14 +46,16 @@ export function ChangeCard({ change, onOpen, onArchive, barClass = "bg-primary" 
             <MessageSquareText className="h-3.5 w-3.5" />
           </span>
         )}
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon"
           aria-label={t("common.copyName")}
-          className={`shrink-0 text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          className={`h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
           onClick={copyName}
         >
           {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
-        </button>
+        </Button>
       </CardHeader>
       <CardContent className="p-3 pt-0 gap-2">
         <div className="flex items-center gap-2">

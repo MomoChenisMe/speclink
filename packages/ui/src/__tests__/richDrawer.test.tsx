@@ -235,6 +235,37 @@ describe("RichDetailDrawer", () => {
       await waitFor(() => expect(latestTL().markdown).toContain("- [ ] 1.1 a"));
     };
 
+    // spec「任務寫回非阻塞且序列化」Scenario「舊載入回應不覆蓋樂觀狀態」（design D4）
+    it("更早發起的舊載入回應到達時不覆蓋樂觀勾選狀態", async () => {
+      const pending: Array<(v: string | null) => void> = [];
+      let hangTasks = false;
+      const loadDocument = vi.fn((_c: string, artifact: string) => {
+        if (artifact === "tasks.md" && hangTasks) {
+          return new Promise<string | null>((r) => pending.push(r));
+        }
+        if (artifact === "tasks.md") return Promise.resolve<string | null>(TASKS_MD);
+        return Promise.resolve<string | null>(
+          artifact.startsWith("specs/") ? SPEC_MD : `# doc for ${artifact}`,
+        );
+      });
+      const props = makeProps({ loadDocument, onToggleTask: vi.fn().mockResolvedValue(undefined) });
+      const { rerender } = render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+      await openTasksTab();
+      // 外部世代重載：tasks.md 載入懸掛（在途回應）。
+      hangTasks = true;
+      rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+      await waitFor(() => expect(pending.length).toBe(1));
+      // 在途期間樂觀勾選任務 1。
+      act(() => latestTL().onToggle!(1, true));
+      await waitFor(() => expect(latestTL().markdown).toContain("- [x] 1.1 a"));
+      // 舊回應（未勾選內容）此刻才到達——不得覆蓋樂觀狀態。
+      await act(async () => {
+        pending[0](TASKS_MD);
+        await new Promise((r) => setTimeout(r, 10));
+      });
+      expect(latestTL().markdown).toContain("- [x] 1.1 a");
+    });
+
     it("optimistically flips the checkbox before the write resolves", async () => {
       const gate = new Promise<void>(() => {}); // 永不 resolve＝寫回進行中
       const props = makeProps({ loadDocument: tasksLoader(), onToggleTask: vi.fn(() => gate) });

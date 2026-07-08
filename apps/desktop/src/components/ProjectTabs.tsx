@@ -3,6 +3,7 @@
 // 進行中變更數（hover tooltip）、失效分頁錯誤態（警示標記＋自分頁移除）。
 import { AlertTriangle, Plus, X } from "lucide-react";
 import {
+  Button,
   cn,
   useI18n,
   Tooltip,
@@ -73,24 +74,28 @@ export function ProjectTabs({ tabs, activeRoot, tabErrors, onActivate, onClose, 
             <span className="truncate max-w-[140px]">{tab.name}</span>
             {!error && <TabBadge badge={tab.badge} root={tab.root} />}
             {error ? (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 aria-label={t("app.removeTab")}
-                className="shrink-0 text-muted-foreground hover:text-foreground"
+                className="h-4 w-4 shrink-0 text-muted-foreground hover:text-foreground"
                 onClick={(e) => {
                   e.stopPropagation();
                   onClose?.(tab.root);
                 }}
               >
                 <X className="h-3 w-3" />
-              </button>
+              </Button>
             ) : (
               // ✕ 僅 active 與 hover 顯示（design D10）。
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 aria-label={t("app.closeTab")}
                 className={cn(
-                  "shrink-0 text-muted-foreground hover:text-foreground transition-opacity",
+                  "h-4 w-4 shrink-0 text-muted-foreground hover:text-foreground transition-opacity",
                   active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
                 )}
                 onClick={(e) => {
@@ -99,19 +104,21 @@ export function ProjectTabs({ tabs, activeRoot, tabErrors, onActivate, onClose, 
                 }}
               >
                 <X className="h-3 w-3" />
-              </button>
+              </Button>
             )}
           </div>
         );
       })}
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon"
         aria-label={t("app.openProject")}
-        className="shrink-0 flex items-center justify-center h-6 w-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted"
         onClick={onOpen}
       >
         <Plus className="h-4 w-4" />
-      </button>
+      </Button>
     </div>
   );
 }

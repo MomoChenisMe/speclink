@@ -91,7 +91,7 @@ describe("ArchivedList（封存展開檢視）", () => {
     await waitFor(() => screen.getByRole("tab", { name: /任務/ }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
     await waitFor(() => expect(screen.getByLabelText("任務 1")).toBeTruthy());
-    const checkbox = screen.getByLabelText("任務 1") as HTMLInputElement;
+    const checkbox = screen.getByRole("checkbox", { name: "任務 1" }) as HTMLButtonElement;
     expect(checkbox.disabled).toBe(true);
     // 唯讀模式不提供排序按鈕
     expect(screen.queryByLabelText("上移任務 1")).toBeNull();
