@@ -3,6 +3,9 @@
 /* 共用元件庫在 node_modules（Tailwind 預設不掃），明確納入其 class 來源。 */
 @source "../../../packages/ui/src";
 
+/* markdown 排版（prose）——基準 16px、段落/列表/表格結構齊備。 */
+@plugin "@tailwindcss/typography";
+
 /* shadcn/ui 設計 token（Tailwind v4）。淺色為預設，深色跟隨系統偏好。 */
 :root {
   --radius: 0.625rem;
@@ -71,45 +74,42 @@
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: "Segoe UI", system-ui, -apple-system, "Noto Sans TC", sans-serif;
+  font-family: "Noto Sans TC Variable", "Noto Sans TC", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
-/* 富文本 markdown 渲染樣式（Spectra 風） */
+/* markdown 排版由 typography 的 prose 接管（基準 16px）；.markdown 為薄覆寫掛鉤。
+   prose 色彩變數映射設計 token——token 已隨系統深色偏好翻轉，毋需 prose-invert。
+   下方覆寫僅保留 Spectra 特調：teal code chip、GFM 任務清單、表格橫向捲動。 */
 .markdown {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--foreground);
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--muted-foreground);
+  --tw-prose-links: var(--primary);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--muted-foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-code: color-mix(in oklch, var(--primary) 88%, var(--foreground));
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: var(--muted);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
 }
-.markdown h1 { font-size: 1.6em; font-weight: 700; margin: 0.8em 0 0.4em; }
-.markdown h2 { font-size: 1.3em; font-weight: 700; margin: 1em 0 0.4em; padding-bottom: 0.2em; border-bottom: 1px solid var(--border); }
-.markdown h3 { font-size: 1.1em; font-weight: 600; margin: 0.9em 0 0.3em; }
-.markdown h4 { font-size: 1em; font-weight: 600; margin: 0.8em 0 0.3em; }
-.markdown p { margin: 0.5em 0; }
-.markdown ul, .markdown ol { margin: 0.5em 0; padding-left: 1.4em; }
-.markdown li { margin: 0.2em 0; }
-.markdown li::marker { color: var(--muted-foreground); }
-.markdown a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
-.markdown strong { font-weight: 600; }
-.markdown del { color: var(--muted-foreground); }
-.markdown blockquote {
-  margin: 0.6em 0; padding: 0.2em 0.9em; border-left: 3px solid var(--border);
-  color: var(--muted-foreground);
-}
-.markdown code {
+/* teal code chip：移除 prose 的反引號偽元素、主色底 */
+.markdown code:not(pre code) {
   font-family: "Cascadia Code", "Consolas", ui-monospace, monospace;
   font-size: 0.86em; padding: 0.12em 0.4em; border-radius: 5px;
   background: color-mix(in oklch, var(--primary) 14%, transparent);
-  color: color-mix(in oklch, var(--primary) 88%, var(--foreground));
 }
-.markdown pre {
-  margin: 0.7em 0; padding: 0.9em 1em; border-radius: 8px; overflow-x: auto;
-  background: var(--muted); border: 1px solid var(--border);
-}
-.markdown pre code { background: none; padding: 0; color: var(--foreground); font-size: 0.85em; }
-.markdown table { border-collapse: collapse; margin: 0.7em 0; font-size: 0.92em; display: block; overflow-x: auto; }
-.markdown th, .markdown td { border: 1px solid var(--border); padding: 0.4em 0.7em; text-align: left; }
-.markdown th { background: var(--muted); font-weight: 600; }
-.markdown hr { border: none; border-top: 1px solid var(--border); margin: 1em 0; }
+.markdown code::before, .markdown code::after { content: none; }
+.markdown pre { border: 1px solid var(--border); }
+.markdown del { color: var(--muted-foreground); }
+/* 表格橫向捲動（prose 不處理 overflow） */
+.markdown table { display: block; overflow-x: auto; }
+.markdown th { background: var(--muted); }
 /* GFM 任務清單 checkbox（Spectra 式：懸掛縮排對齊、完成項刪除線） */
 .markdown li:has(> input[type="checkbox"]) {
   list-style: none;

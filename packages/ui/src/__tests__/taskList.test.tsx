@@ -55,6 +55,13 @@ describe("TaskList", () => {
     expect(screen.queryByLabelText("下移任務 1")).toBeNull();
   });
 
+  it("uses 16px type for task text and group headings", () => {
+    // spec「markdown 內容保留文件結構呈現」：任務分頁文字 16px 與內文對齊。
+    render(<TaskList markdown={MD} />);
+    expect(screen.getByText("1.1 first").className).toContain("text-base");
+    expect(screen.getByText("1. Group A").className).toContain("text-base");
+  });
+
   it("readOnly renders neither handles nor interactive checkboxes", () => {
     render(<TaskList markdown={MD} readOnly />);
     expect(screen.queryByLabelText("拖曳任務 1")).toBeNull();
