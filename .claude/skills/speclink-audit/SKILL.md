@@ -233,4 +233,3 @@ permissions = Set[Permission::READ, Permission::WRITE]
 | "Nobody would do that"                | Devs under pressure do everything          | Assume maximum developer chaos                         |
 | "It's just a config option"           | Config is code; wrong config ships to prod | Validate config, reject dangerous combinations         |
 | "Backwards compatibility"             | Insecure defaults can't be grandfathered   | Deprecate loudly, force migration                      |
-

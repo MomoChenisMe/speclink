@@ -1719,6 +1719,17 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             println!("  Path: {}", outcome.path.to_string_lossy());
             println!("  Proposal prefilled from the conclusion — run /speclink-propose to complete the artifacts");
         }
+        DiscussCommands::Link { slug, change, json } => {
+            core::discuss::link(store, &slug, &change)?;
+            if json {
+                return print_json(&serde_json::json!({
+                    "change": change,
+                    "slug": slug,
+                    "status": "linked",
+                }));
+            }
+            println!("{} Linked discussion '{slug}' → change '{change}'", color::green("✓"));
+        }
     }
     Ok(())
 }

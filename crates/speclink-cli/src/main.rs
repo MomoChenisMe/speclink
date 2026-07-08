@@ -620,6 +620,14 @@ enum DiscussCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Link a discussion to an existing change (forges the from_discussion chain)
+    Link {
+        slug: String,
+        /// Existing change name to link the discussion to
+        change: String,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> ExitCode {

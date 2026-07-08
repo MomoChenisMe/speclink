@@ -721,5 +721,10 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
         DiscussCommands::Discard { .. } => {
             bail!("discuss discard is not available in remote mode — remove discussions in the team system")
         }
+        // The remote verb contract has no link operation yet — the chain is
+        // local change-metadata surgery until the contract grows one.
+        DiscussCommands::Link { .. } => {
+            bail!("discuss link is not available in remote mode yet — link the discussion locally")
+        }
     }
 }
