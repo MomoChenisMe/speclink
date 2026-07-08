@@ -98,6 +98,14 @@ speclink discuss promote <slug> --name <change-name>
 
 This scaffolds the change, prefills the proposal's Why from the conclusion, and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — promote (or `/speclink:propose --from-discussion`) again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived. The remaining artifacts are still created via `/speclink:propose`.
 
+**Conclusion routed to an EXISTING change**: when the conclusion's **Capture to** points at a change already in flight (the decision updates its artifacts instead of spawning a new one), run link first, then hand off to ingest:
+
+```bash
+speclink discuss link <slug> <existing-change>
+```
+
+`link` forges the same bidirectional chain promote does (`from_discussion` in the change metadata, `promoted` status + `promoted_to` in the record) without scaffolding anything, so board grouping, drawer links, and auto-archive all engage — the discussion is archived automatically when the last linked change is archived. Then run `/speclink:ingest <existing-change>` to fold the decision into that change's artifacts. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
+
 **Lifecycle**: a discussion that concluded without spawning a change (an explicit "don't do this" is a valid outcome) should be closed out with:
 
 ```bash

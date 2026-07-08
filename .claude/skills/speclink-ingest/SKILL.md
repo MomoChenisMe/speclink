@@ -48,6 +48,14 @@ Update an existing Speclink change — from a plan file or conversation context.
    - If conversation context is insufficient, use the **AskUserQuestion tool** to get more details
    - Warn: "No plan file found. Using conversation context."
 
+   **Source is a discussion conclusion?** When the update being folded in comes from a concluded discussion record (the discuss skill routed its **Capture to** at this existing change), confirm the lifecycle chain is forged before touching artifacts:
+
+   ```bash
+   speclink discuss link <slug> <change>
+   ```
+
+   `link` is idempotent — a no-op when the discuss step already ran it. Without the link, the discussion never archives with the change it fed.
+
 2. **Parse the plan structure** (skip if using conversation context)
 
    Claude Code plan files typically contain:
@@ -235,4 +243,3 @@ Update an existing Speclink change — from a plan file or conversation context.
 - Verify each artifact file exists after writing before proceeding to next
 - **NEVER** skip the artifact workflow to write code directly
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-
