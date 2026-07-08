@@ -71,6 +71,18 @@ describe("app store (Zustand)", () => {
     expect(store.getState().expandedName).toBeNull();
   });
 
+  it("boardView can switch to the specs page and keeps the specs list state", async () => {
+    // spec「規格頁提供清單、搜尋與展開檢視」：主視圖新增 specs 態
+    // （與看板、已封存、設定並列），切換不動已載入的 specs 清單。
+    const store = createAppStore(fakeDataSource());
+    await store.getState().refresh();
+    store.getState().setBoardView("specs");
+    expect(store.getState().boardView).toBe("specs");
+    expect(store.getState().specs).toHaveLength(1);
+    store.getState().setBoardView("board");
+    expect(store.getState().boardView).toBe("board");
+  });
+
   it("boardQuery starts empty and setBoardQuery updates it", () => {
     // 看板搜尋字串：純 UI 狀態、不入任何 persist 機制（spec「不跨啟動保留」）。
     const store = createAppStore(fakeDataSource());

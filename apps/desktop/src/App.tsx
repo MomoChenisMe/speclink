@@ -4,6 +4,7 @@ import { Archive, GitBranch, FileText, Settings, FolderOpen } from "lucide-react
 import {
   KanbanBoard,
   ArchivedList,
+  SpecList,
   RichDetailDrawer,
   DiscussionDrawer,
   AlertDialog,
@@ -274,7 +275,13 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
             active={s.boardView === "board"}
             onClick={() => s.setBoardView("board")}
           />
-          <NavItem icon={<FileText className="h-4 w-4" />} label={t("app.navSpecs")} />
+          {/* 規格頁入口：切頁語意（與已封存頁同型），返回看板改點「變更」。 */}
+          <NavItem
+            icon={<FileText className="h-4 w-4" />}
+            label={t("app.navSpecs")}
+            active={s.boardView === "specs"}
+            onClick={() => s.setBoardView("specs")}
+          />
           {/* 已封存入口（獨立頁）：切頁語意，返回看板改點「變更」。 */}
           <NavItem
             icon={<Archive className="h-4 w-4" />}
@@ -309,6 +316,12 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
           ) : workspace !== undefined && s.tabs.length === 0 ? (
             // 零分頁（首次使用）：空狀態引導頁取代空看板。
             <EmptyState onOpen={() => void s.openProjectViaDialog()} />
+          ) : s.boardView === "specs" ? (
+            <SpecList
+              specs={s.specs}
+              loadDocument={(capability) => dataSource.getSpecDocument(capability)}
+              refreshGen={s.refreshGen}
+            />
           ) : s.boardView === "board" ? (
             <KanbanBoard
               changes={s.changes}

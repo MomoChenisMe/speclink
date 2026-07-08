@@ -17,6 +17,7 @@ import {
 import type { ChangeItem, ChangeMetaInfo, Verb } from "../adapter";
 import { specDeltaCounts, sumDeltaCounts } from "../delta";
 import { useI18n } from "../i18n";
+import { relativeDays } from "../time";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -54,17 +55,6 @@ export interface RichDetailDrawerProps {
 }
 
 type Doc = string | null | undefined;
-
-/** 相對時間（天級即可；meta.created 通常是 YYYY-MM-DD）。t 由呼叫端注入。 */
-function relativeDays(created: string | null | undefined, t: (key: string) => string): string | null {
-  if (!created) return null;
-  const parsed = Date.parse(created);
-  if (Number.isNaN(parsed)) return created;
-  const days = Math.floor((Date.now() - parsed) / 86_400_000);
-  if (days <= 0) return t("rdrawer.today");
-  if (days === 1) return t("rdrawer.yesterday");
-  return t("rdrawer.daysAgo").replace("{n}", String(days));
-}
 
 /** Spectra 級詳情抽屜：metadata、進度、動作列、icon 分頁（提案/設計/互動任務/彩色規格）。 */
 export function RichDetailDrawer({
