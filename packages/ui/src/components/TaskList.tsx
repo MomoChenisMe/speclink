@@ -63,7 +63,7 @@ function TaskRowBody({
         onChange={(e) => onToggle?.(item.ordinal, e.target.checked)}
       />
       <span
-        className={`flex-1 text-[13px] leading-relaxed ${
+        className={`flex-1 text-base leading-relaxed ${
           item.done ? "text-muted-foreground line-through decoration-muted-foreground/50" : ""
         }`}
       >
@@ -81,7 +81,7 @@ function SortableGroupHeading({ id, text }: { id: string; text: string }) {
     <h4
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className="text-sm font-bold mt-4 mb-1.5 first:mt-0"
+      className="text-base font-bold mt-4 mb-1.5 first:mt-0"
     >
       {text}
     </h4>
@@ -140,7 +140,7 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
   const rows = items.map((item, i) =>
     item.kind === "group" ? (
       readOnly ? (
-        <h4 key={`g-${i}`} className="text-sm font-bold mt-4 mb-1.5 first:mt-0">
+        <h4 key={`g-${i}`} className="text-base font-bold mt-4 mb-1.5 first:mt-0">
           {item.text}
         </h4>
       ) : (

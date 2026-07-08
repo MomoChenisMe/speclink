@@ -15,6 +15,7 @@ function render(ui: ReactElement) {
 import { ChangeBoard } from "../components/ChangeBoard";
 import { DocumentTree } from "../components/DocumentTree";
 import { DocumentViewer } from "../components/DocumentViewer";
+import { Markdown } from "../components/Markdown";
 import type { ChangeItem, SpecItem } from "../adapter";
 
 const changes: ChangeItem[] = [
@@ -45,6 +46,34 @@ describe("DocumentTree", () => {
     expect(screen.getByText("verb-contract")).toBeTruthy();
     fireEvent.click(screen.getByText("web-server-postgres"));
     expect(onSelect).toHaveBeenCalledWith({ kind: "change", id: "web-server-postgres" });
+  });
+});
+
+// spec「markdown 內容保留文件結構呈現」「raw HTML 不以原文呈現」（desktop-reading-experience）
+describe("Markdown", () => {
+  it("renders a single newline as a line break (soft break → <br>)", () => {
+    const { container } = render(<Markdown content={"**Focus**: 甲\n**Position**: 乙"} />);
+    expect(container.querySelector("br")).toBeTruthy();
+  });
+
+  it("does not render HTML comment text", () => {
+    const { container } = render(
+      <Markdown content={"<!-- secret-anchor entries appended by CLI -->\n\n正文段落"} />,
+    );
+    expect(container.textContent).not.toContain("secret-anchor");
+    expect(container.textContent).toContain("正文段落");
+  });
+
+  it("keeps HTML inside code fences verbatim", () => {
+    const { container } = render(<Markdown content={"```\n<div>x</div>\n```"} />);
+    expect(container.textContent).toContain("<div>x</div>");
+  });
+
+  it("renders inside a prose container with the markdown hook class", () => {
+    const { container } = render(<Markdown content={"hello"} />);
+    const root = container.querySelector(".markdown");
+    expect(root).toBeTruthy();
+    expect(root?.className).toContain("prose");
   });
 });
 
