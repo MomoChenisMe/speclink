@@ -103,6 +103,8 @@ export interface SpeclinkDataSource {
   deleteChange(change: string): Promise<void>;
   /** 勾選/取消 tasks.md 的第 ordinal（1-based）個任務。 */
   setTaskDone(change: string, ordinal: number, done: boolean): Promise<void>;
+  /** 批次設定全部任務完成狀態（true＝全部已完成、false＝重置任務），單次寫回。 */
+  setAllTasks(change: string, done: boolean): Promise<void>;
   /**
    * 把第 from 個任務移到以第 to 個任務為錨的位置（皆 1-based）。
    * before 省略時依方向推斷（向上插錨前、向下插錨後）；true＝明確插錨前

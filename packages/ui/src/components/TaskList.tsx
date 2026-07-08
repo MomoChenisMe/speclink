@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { CheckCheck, GripVertical, LocateFixed, RotateCcw } from "lucide-react";
 
 import { useI18n } from "../i18n";
 import { parseTaskDoc, resolveDropTarget, type TaskDocItem } from "../tasks";
@@ -35,8 +35,10 @@ export interface TaskListProps {
   busy?: boolean;
   /** 拖曳手勢期間（按住～放開）回報 true——宿主據此讓外部內容重載讓路。 */
   onDragActiveChange?: (active: boolean) => void;
-  /** 唯讀呈現（封存檢視）：核取方塊 disabled、不渲染拖曳把手。 */
+  /** 唯讀呈現（封存檢視）：核取方塊 disabled、不渲染拖曳把手與工具列。 */
   readOnly?: boolean;
+  /** 批次設定全部任務完成狀態（true＝全部已完成、false＝重置任務）。 */
+  onSetAll?: (done: boolean) => void;
 }
 
 type TaskItem = Extract<TaskDocItem, { kind: "task" }>;
@@ -92,9 +94,15 @@ function SortableGroupHeading({ id, text }: { id: string; text: string }) {
 function SortableTaskRow({
   item,
   onToggle,
+  highlight,
+  rowRef,
 }: {
   item: TaskItem;
   onToggle?: (ordinal: number, done: boolean) => void;
+  /** 「下一個未完成」的短暫高亮標記。 */
+  highlight?: boolean;
+  /** 列元素回報（定位捲動用）。 */
+  rowRef?: (el: HTMLDivElement | null) => void;
 }) {
   const { t } = useI18n();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -102,11 +110,15 @@ function SortableTaskRow({
   });
   return (
     <div
-      ref={setNodeRef}
+      ref={(el) => {
+        setNodeRef(el);
+        rowRef?.(el);
+      }}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`group/task flex items-start gap-2 py-1 pl-1 rounded-md hover:bg-muted/50 ${
+      data-highlight={highlight ? "true" : "false"}
+      className={`group/task flex items-start gap-2 py-1 pl-1 rounded-md transition-colors hover:bg-muted/50 ${
         isDragging ? "opacity-40" : ""
-      }`}
+      } ${highlight ? "bg-accent ring-1 ring-primary/40" : ""}`}
     >
       <button
         type="button"
@@ -122,15 +134,54 @@ function SortableTaskRow({
   );
 }
 
-/** 互動任務清單：群組標題＋可勾選 checkbox＋⠿ 把手拖放排序，與 tasks.md 聯動。 */
-export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChange, readOnly }: TaskListProps) {
+/** 互動任務清單：頂部批次工具列＋群組標題＋可勾選 checkbox＋⠿ 把手拖放排序，
+ * 與 tasks.md 聯動。 */
+export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChange, readOnly, onSetAll }: TaskListProps) {
   const { t } = useI18n();
   const items = parseTaskDoc(markdown);
+  const taskItems = items.filter((i): i is TaskItem => i.kind === "task");
   const [activeOrdinal, setActiveOrdinal] = useState<number | null>(null);
+  // 「下一個未完成」的短暫高亮（ordinal）；列元素表供定位捲動。
+  const [highlightOrdinal, setHighlightOrdinal] = useState<number | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowRefs = useRef(new Map<number, HTMLDivElement>());
   // PointerSensor distance 8：位移門檻內的按放是點擊，不啟動拖曳（看板同款教訓）。
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const allDone = taskItems.length > 0 && taskItems.every((i) => i.done);
+
+  const locateNext = () => {
+    const next = taskItems.find((i) => !i.done);
+    if (!next) return;
+    rowRefs.current.get(next.ordinal)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    setHighlightOrdinal(next.ordinal);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlightOrdinal(null), 1600);
+  };
+
+  // n 快捷鍵（任務分頁掛載中即作用；分頁未啟用時本元件未掛載，自然不搶鍵）。
+  // 輸入元件內打字不觸發；無依賴陣列＝每次渲染重掛，回呼永遠讀到最新解析結果。
+  useEffect(() => {
+    if (readOnly) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "n" || e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      locateNext();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // 高亮計時器卸載清理。
+  useEffect(
+    () => () => {
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    },
+    [],
   );
 
   if (items.length === 0) {
@@ -154,16 +205,26 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
         <TaskRowBody item={item} readOnly onToggle={onToggle} />
       </div>
     ) : (
-      <SortableTaskRow key={`t-${item.ordinal}`} item={item} onToggle={onToggle} />
+      <SortableTaskRow
+        key={`t-${item.ordinal}`}
+        item={item}
+        onToggle={onToggle}
+        highlight={highlightOrdinal === item.ordinal}
+        rowRef={(el) => {
+          if (el) rowRefs.current.set(item.ordinal, el);
+          else rowRefs.current.delete(item.ordinal);
+        }}
+      />
     ),
   );
 
-  // 唯讀（封存檢視）：無把手、無 DndContext。
+  // 唯讀（封存檢視）：無工具列、無把手、無 DndContext。
   if (readOnly) {
     return <div className="flex flex-col">{rows}</div>;
   }
 
-  const taskItems = items.filter((i): i is TaskItem => i.kind === "task");
+  const toolbarBtn =
+    "flex items-center gap-1.5 rounded px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
   const active = activeOrdinal != null ? taskItems.find((t) => t.ordinal === activeOrdinal) : null;
   // 讓位序列＝視覺順序（標題與任務交錯）——標題入列使讓位位移對齊群組邊界。
   const sortableIds = items.map((item, i) => (item.kind === "group" ? `g-${i}` : item.ordinal));
@@ -184,6 +245,39 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
   };
 
   return (
+    <>
+      {/* 批次操作工具列（spec「任務分頁提供批次操作工具列」）：全部已完成／下一個
+          未完成（n）／重置任務；全完成時前兩鍵不可用，批次寫回期間整列 disabled。 */}
+      <div className="mb-2 flex items-center gap-1 rounded-md border border-border px-2 py-1.5">
+        <button
+          type="button"
+          className={toolbarBtn}
+          disabled={allDone || busy}
+          onClick={() => onSetAll?.(true)}
+        >
+          <CheckCheck className="h-3.5 w-3.5" /> {t("tasks.completeAll")}
+        </button>
+        <button
+          type="button"
+          className={toolbarBtn}
+          disabled={allDone || busy}
+          onClick={locateNext}
+        >
+          <LocateFixed className="h-3.5 w-3.5" /> {t("tasks.nextUndone")}
+          <kbd className="rounded border border-border bg-muted px-1 text-[10px] text-muted-foreground">
+            n
+          </kbd>
+        </button>
+        <div className="flex-1" />
+        <button
+          type="button"
+          className={toolbarBtn}
+          disabled={busy}
+          onClick={() => onSetAll?.(false)}
+        >
+          <RotateCcw className="h-3.5 w-3.5" /> {t("tasks.resetAll")}
+        </button>
+      </div>
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
@@ -209,5 +303,6 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
         ) : null}
       </DragOverlay>
     </DndContext>
+    </>
   );
 }
