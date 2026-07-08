@@ -63,7 +63,6 @@ code:
   - crates/speclink-remote/src/lib.rs
   - crates/speclink-remote/tests/auth_store.rs
   - crates/speclink-remote/tests/client_errors.rs
-  - docs/spectra-speclink-comparison.md
   - docs/team-mode.md
   - docs/team-mode.zh-TW.md
   - docs/verb-contract.md
@@ -128,7 +127,6 @@ code:
   - crates/speclink-remote/src/lib.rs
   - crates/speclink-remote/tests/auth_store.rs
   - crates/speclink-remote/tests/client_errors.rs
-  - docs/spectra-speclink-comparison.md
   - docs/team-mode.md
   - docs/team-mode.zh-TW.md
   - docs/verb-contract.md
@@ -193,7 +191,6 @@ code:
   - crates/speclink-remote/src/lib.rs
   - crates/speclink-remote/tests/auth_store.rs
   - crates/speclink-remote/tests/client_errors.rs
-  - docs/spectra-speclink-comparison.md
   - docs/team-mode.md
   - docs/team-mode.zh-TW.md
   - docs/verb-contract.md
@@ -258,7 +255,6 @@ code:
   - crates/speclink-remote/src/lib.rs
   - crates/speclink-remote/tests/auth_store.rs
   - crates/speclink-remote/tests/client_errors.rs
-  - docs/spectra-speclink-comparison.md
   - docs/team-mode.md
   - docs/team-mode.zh-TW.md
   - docs/verb-contract.md
@@ -326,7 +322,6 @@ code:
   - crates/speclink-remote/src/lib.rs
   - crates/speclink-remote/tests/auth_store.rs
   - crates/speclink-remote/tests/client_errors.rs
-  - docs/spectra-speclink-comparison.md
   - docs/team-mode.md
   - docs/team-mode.zh-TW.md
   - docs/verb-contract.md

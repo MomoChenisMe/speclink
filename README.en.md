@@ -356,8 +356,6 @@ Speclink is developed against the Spectra 2.3.1 binary: every difference is firs
 - **color_suite** — 16 ANSI-color comparisons under `CLICOLOR_FORCE=1`
 - **twin harness** — 8 drift scenarios across dual sandboxes
 
-The full feature comparison and the mechanism of each difference are in [docs/spectra-speclink-comparison.md](docs/spectra-speclink-comparison.md); a full end-to-end SDD run report is in [docs/sdd-final-report-hr.md](docs/sdd-final-report-hr.md).
-
 ---
 
 ## Documentation
@@ -378,7 +376,7 @@ The full feature comparison and the mechanism of each difference are in [docs/sp
 
 ### Origin
 
-Speclink grew out of a comparative analysis of Spectra and OpenSpec (see [`Spectra-OpenSpec-SDD-完整功能邏輯分析.md`](Spectra-OpenSpec-SDD-完整功能邏輯分析.md)), aiming to keep the strengths of both, rewrite in Rust, and extend the design further. The first phase (done) was a complete CLI behaviorally identical to Spectra, then the deliberate differences on top.
+Speclink grew out of a comparative analysis of Spectra and OpenSpec, aiming to keep the strengths of both, rewrite in Rust, and extend the design further. The first phase (done) was a complete CLI behaviorally identical to Spectra, then the deliberate differences on top.
 
 ### The spec-driven engine
 

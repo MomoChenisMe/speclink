@@ -51,7 +51,6 @@ code:
   - crates/speclink-core/tests/render_golden.rs
   - docs/configuration.md
   - docs/configuration.zh-TW.md
-  - docs/spectra-speclink-comparison.md
 -->
 
 ---
@@ -92,7 +91,6 @@ code:
   - crates/speclink-core/tests/render_golden.rs
   - docs/configuration.md
   - docs/configuration.zh-TW.md
-  - docs/spectra-speclink-comparison.md
 -->
 
 ---
@@ -132,5 +130,4 @@ code:
   - crates/speclink-core/tests/render_golden.rs
   - docs/configuration.md
   - docs/configuration.zh-TW.md
-  - docs/spectra-speclink-comparison.md
 -->
