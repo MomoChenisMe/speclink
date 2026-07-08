@@ -20,6 +20,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { CheckCheck, GripVertical, LocateFixed, RotateCcw } from "lucide-react";
 
 import { useI18n } from "../i18n";
+import { SUB_LABEL_CLS } from "./SectionedDoc";
 import { parseTaskDoc, resolveDropTarget, type TaskDocItem } from "../tasks";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -84,7 +85,7 @@ function SortableGroupHeading({ id, text }: { id: string; text: string }) {
     <h4
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className="text-base font-bold mt-4 mb-1.5 first:mt-0"
+      className={`${SUB_LABEL_CLS} mt-4 mb-1.5 first:mt-0`}
     >
       {text}
     </h4>
@@ -194,7 +195,7 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
   const rows = items.map((item, i) =>
     item.kind === "group" ? (
       readOnly ? (
-        <h4 key={`g-${i}`} className="text-base font-bold mt-4 mb-1.5 first:mt-0">
+        <h4 key={`g-${i}`} className={`${SUB_LABEL_CLS} mt-4 mb-1.5 first:mt-0`}>
           {item.text}
         </h4>
       ) : (
