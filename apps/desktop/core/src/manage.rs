@@ -3,12 +3,38 @@
 //! delete 是 desktop 層操作（引擎與 CLI 皆無 delete 動詞）——僅作用於 active change
 //! 目錄、經路徑安全檢查、由 UI 以確認對話框把關。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 use speclink_core::store::Store;
 
 use crate::init_core_context;
+
+/// 每專案根一次的 git 身分快取（design D1：identity 每根快取）：完成路徑高頻取用，
+/// 而 GUI 進程 spawn git 在部分環境極慢（防毒掃描，實測單次 ~3 秒）——首次取得後
+/// app 存續期內重用，身分變更需重啟 app 才生效。持鎖跨首次抓取：同根並發首抓只 spawn 一次。
+static IDENTITY_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<PathBuf, Option<String>>>,
+> = std::sync::OnceLock::new();
+
+/// 任務寫回全域鎖（design D3：寫入序列化（全域寫鎖））：寫回 command 移至執行緒池後
+/// 並發成為可能——讀-改-寫不序列化會互相覆蓋（遺失更新）。寫回入口整段持鎖，
+/// 依提交順序落盤；讀取路徑不取鎖維持快路徑。
+static WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// 取得寫回鎖（poisoned 時取回內值——鎖只護順序、無不變量需要放棄）。
+fn write_guard() -> std::sync::MutexGuard<'static, ()> {
+    WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// 取得（並快取）指定根的 git 身分；供 app 啟動／切根時背景預熱與完成路徑取用。
+pub fn cached_git_identity(root: &Path) -> Option<String> {
+    let cache = IDENTITY_CACHE.get_or_init(Default::default);
+    let mut map = cache.lock().unwrap_or_else(|p| p.into_inner());
+    map.entry(root.to_path_buf())
+        .or_insert_with(|| speclink_core::util::git_identity(root))
+        .clone()
+}
 
 /// 回傳 change 的 metadata（camelCase：createdBy/createdWith/created）。無此 change 回 `None`。
 pub fn change_meta_at(root: &Path, change: &str) -> Option<Value> {
@@ -50,13 +76,14 @@ pub fn delete_change_at(root: &Path, change: &str) -> Result<(), String> {
 /// 只可能來自競態，不以錯誤打斷使用者），不寫任何檔案。
 /// done=false（取消勾選）維持桌面行編輯，不蓋章、不記 touched。
 pub fn set_task_done_at(root: &Path, change: &str, ordinal: usize, done: bool) -> Result<(), String> {
+    let _guard = write_guard();
     if done {
         if !crate::query::is_safe_path_param(change) {
             return Err(format!("invalid change name: {change}"));
         }
         let ctx = init_core_context(root)
             .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
-        let identity = speclink_core::util::git_identity(&ctx.workspace.root);
+        let identity = cached_git_identity(&ctx.workspace.root);
         speclink_core::tasks::complete(
             &ctx.store,
             &ctx.workspace,
@@ -86,6 +113,7 @@ pub fn set_task_done_at(root: &Path, change: &str, ordinal: usize, done: bool) -
 /// 首次完成蓋開工章；done=false 純行編輯，無任何側效。
 /// 目標狀態已達成時冪等成功、零檔案效果。
 pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), String> {
+    let _guard = write_guard();
     if !crate::query::is_safe_path_param(change) {
         return Err(format!("invalid change name: {change}"));
     }
@@ -153,7 +181,7 @@ pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), Str
             });
             record.save(&ctx.workspace).map_err(|e| e.to_string())?;
         }
-        let identity = speclink_core::util::git_identity(&ctx.workspace.root);
+        let identity = cached_git_identity(&ctx.workspace.root);
         speclink_core::inprogress::add(&ctx.store, change, identity.as_deref(), None)
             .map_err(|e| e.to_string())?;
     }
@@ -172,6 +200,7 @@ pub fn move_task_at(
     to: usize,
     before: Option<bool>,
 ) -> Result<(), String> {
+    let _guard = write_guard();
     edit_tasks(root, change, |lines, idx| {
         let n = idx.len();
         if from == 0 || to == 0 || from > n || to > n {
@@ -247,6 +276,7 @@ pub fn reorder_card_at(
     prev_id: Option<&str>,
     next_id: Option<&str>,
 ) -> Result<(), String> {
+    let _guard = write_guard();
     if !crate::query::is_safe_path_param(id) {
         return Err(format!("invalid card id: {id}"));
     }
@@ -737,6 +767,65 @@ mod tests {
             fs::create_dir_all(p.parent().unwrap()).unwrap();
             fs::write(&p, "dirty\n").unwrap();
         }
+    }
+
+    // spec「任務寫回非阻塞且序列化」Scenario「並發寫回序列化」（design D3：寫入序列化（全域寫鎖））
+    #[test]
+    fn concurrent_task_writes_serialize_without_lost_updates() {
+        // 讀-改-寫競態窗口極窄，多輪並發提高暴露機率；有鎖後每輪皆確定無遺失。
+        for round in 0..30 {
+            let root = fixture_with_tasks_md(
+                &format!("wlock-{round}"),
+                "## 1. G\n\n- [x] 1.1 a\n- [x] 1.2 b\n",
+            );
+            let r1 = root.clone();
+            let r2 = root.clone();
+            let t1 = std::thread::spawn(move || set_task_done_at(&r1, "task-change", 1, false));
+            let t2 = std::thread::spawn(move || set_task_done_at(&r2, "task-change", 2, false));
+            t1.join().unwrap().expect("uncheck 1 ok");
+            t2.join().unwrap().expect("uncheck 2 ok");
+            let text = read_tasks(&root);
+            assert!(
+                text.contains("- [ ] 1.1 a") && text.contains("- [ ] 1.2 b"),
+                "round {round}: lost update, tasks.md = {text:?}"
+            );
+            let _ = fs::remove_dir_all(&root);
+        }
+    }
+
+    /// 對指定目錄 git init 並設定身分（cached_git_identity 測試用，與 giterize 的固定身分區隔）。
+    fn git_with_identity(root: &Path, name: &str, email: &str) {
+        for args in [
+            vec!["init", "-q"],
+            vec!["config", "user.name", name],
+            vec!["config", "user.email", email],
+        ] {
+            let ok = std::process::Command::new("git")
+                .args(&args)
+                .current_dir(root)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            assert!(ok, "git {args:?} failed");
+        }
+    }
+
+    // spec「任務寫回非阻塞且序列化」Scenario「git 身分快取重用」（design D1）
+    #[test]
+    fn cached_git_identity_is_per_root_and_stable() {
+        let a = crate::testfixture::FixtureRoot::new("idcache-a");
+        let b = crate::testfixture::FixtureRoot::new("idcache-b");
+        git_with_identity(a.root(), "Alice", "alice@example.com");
+        git_with_identity(b.root(), "Bob", "bob@example.com");
+        // 快取按根區分。
+        assert_eq!(cached_git_identity(a.root()).as_deref(), Some("Alice <alice@example.com>"));
+        assert_eq!(cached_git_identity(b.root()).as_deref(), Some("Bob <bob@example.com>"));
+        // 同根重複呼叫回傳快取值——事後改 config 不重抓（app 存續期語意，重啟才更新）。
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.name", "Changed"])
+            .current_dir(a.root())
+            .output();
+        assert_eq!(cached_git_identity(a.root()).as_deref(), Some("Alice <alice@example.com>"));
     }
 
     fn change_file(fx: &crate::testfixture::FixtureRoot, name: &str, file: &str) -> PathBuf {

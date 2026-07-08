@@ -63,14 +63,25 @@ pub fn has_content(path: &Path) -> bool {
     }
 }
 
+/// Build a `git -C <root>` command. On Windows, spawn with CREATE_NO_WINDOW: console
+/// programs launched from a GUI process otherwise flash a console window per spawn.
+/// All callers run short non-interactive commands (config/status) with piped stdio,
+/// which need no console.
+fn git_command(root: &Path) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(root);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 /// Run `git -C <root> <args...>`, returning trimmed stdout on success.
 pub fn git(root: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .output()
-        .ok()?;
+    let output = git_command(root).args(args).output().ok()?;
     if output.status.success() {
         Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
     } else {
@@ -81,12 +92,7 @@ pub fn git(root: &Path, args: &[&str]) -> Option<String> {
 /// Run `git -C <root> <args...>`, returning raw (untrimmed) stdout on success. Needed for
 /// `status --porcelain`, whose first column may be a significant leading space.
 pub fn git_raw(root: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .output()
-        .ok()?;
+    let output = git_command(root).args(args).output().ok()?;
     if output.status.success() {
         Some(String::from_utf8_lossy(&output.stdout).to_string())
     } else {
