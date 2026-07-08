@@ -225,7 +225,15 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
     <div className="flex flex-col h-screen overflow-hidden">
       {/* 頂欄 */}
       <header className="flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
-        <span className="font-bold text-sm">Speclink</span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <img
+            src="./logo-mark.png"
+            alt=""
+            aria-hidden="true"
+            className="h-5 w-5"
+          />
+          <img src="./speclink-wordmark.png" alt="Speclink" className="h-5 w-auto" />
+        </div>
         {workspace !== undefined ? (
           // 專案分頁列取代「目前專案」佔位（design D10）：active 分頁即目前專案。
           <ProjectTabs
