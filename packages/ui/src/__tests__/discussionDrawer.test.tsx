@@ -12,7 +12,8 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
-import { DiscussionDrawer, splitDiscussionSections } from "../components/DiscussionDrawer";
+import { DiscussionDrawer, splitDiscussionSections, splitRounds } from "../components/DiscussionDrawer";
+import { LABEL_CLS } from "../components/SectionedDoc";
 import { ChangeCard } from "../components/ChangeCard";
 import { RichDetailDrawer } from "../components/RichDetailDrawer";
 import type { ChangeItem, ArchivedItem, DiscussionItem } from "../adapter";
@@ -89,6 +90,209 @@ describe("splitDiscussionSections（區段切分）", () => {
   it("非預期格式（缺區段）回 null → 整篇退回", () => {
     expect(splitDiscussionSections("手寫的自由格式記錄，沒有標準區段。")).toBeNull();
     expect(splitDiscussionSections("## Context\n\n只有脈絡。\n")).toBeNull();
+  });
+});
+
+// spec 需求「討論輪以卡片呈現」的輪切分（design D1/D2）。
+const ROUNDS_TEXT = `
+<!-- \`### Round N — <mode> (<date>)\` entries are appended here by the CLI. -->
+
+### Round 1 — assumptions (2026-07-08)
+
+**Focus**: 第一輪焦點
+**Position**: 總綰一句：
+- 列點甲
+- 列點乙
+**Open**: 未解之一
+
+### Round 2 — interview (2026-07-09)
+
+**Focus**: 第二輪焦點
+**Position**: 直答
+**Note**: 這行不是欄位
+**Ruled out**: 淘汰項
+**Open**: 無
+`;
+
+describe("splitRounds（輪切分，design D1 行掃描解析 scaffold）", () => {
+  it("scaffold 記錄解析出輪陣列：輪次、mode、日期、欄位對應", () => {
+    const rounds = splitRounds(ROUNDS_TEXT);
+    expect(rounds).not.toBeNull();
+    expect(rounds!.length).toBe(2);
+    expect(rounds![0].round).toBe(1);
+    expect(rounds![0].mode).toBe("assumptions");
+    expect(rounds![0].date).toBe("2026-07-08");
+    expect(rounds![1].round).toBe(2);
+    expect(rounds![1].mode).toBe("interview");
+    expect(rounds![1].date).toBe("2026-07-09");
+    expect(rounds![0].fields.Focus).toBe("第一輪焦點");
+  });
+
+  it("Position 標籤行後的列點多行歸屬 Position 欄位", () => {
+    const rounds = splitRounds(ROUNDS_TEXT)!;
+    expect(rounds[0].fields.Position).toContain("總綰一句");
+    expect(rounds[0].fields.Position).toContain("- 列點甲");
+    expect(rounds[0].fields.Position).toContain("- 列點乙");
+    expect(rounds[0].fields.Open).toBe("未解之一");
+  });
+
+  it("來源缺 Ruled out 時欄位對應無該鍵", () => {
+    const rounds = splitRounds(ROUNDS_TEXT)!;
+    expect(rounds[0].fields["Ruled out"]).toBeUndefined();
+    expect(rounds[1].fields["Ruled out"]).toBe("淘汰項");
+  });
+
+  it("非四詞白名單的粗體前綴行按內文歸屬當前欄位（design D2）", () => {
+    const rounds = splitRounds(ROUNDS_TEXT)!;
+    expect(Object.keys(rounds[1].fields)).not.toContain("Note");
+    expect(rounds[1].fields.Position).toContain("**Note**: 這行不是欄位");
+  });
+
+  it("任一輪標題不符 scaffold 格式時回 null（整篇退回）", () => {
+    expect(splitRounds("### Round 1 — assumptions\n\n**Focus**: 缺日期括號\n")).toBeNull();
+    expect(
+      splitRounds("### Round 1 — assumptions (2026-07-08)\n\n**Focus**: 好輪\n\n### 附註\n\n手寫段落\n"),
+    ).toBeNull();
+    expect(splitRounds("手寫的自由格式輪記錄，沒有輪標題。")).toBeNull();
+  });
+
+  it("零輪（僅 scaffold 註解與空行）回空陣列", () => {
+    expect(
+      splitRounds("\n<!-- \\`### Round N — <mode> (<date>)\\` entries are appended here by the CLI. -->\n\n"),
+    ).toEqual([]);
+  });
+});
+
+// spec 需求「討論輪以卡片呈現」的渲染面（design D1/D2 輪卡片＋欄位標籤區塊）。
+const CARDS_DOC = `---
+topic: Alpha search
+slug: alpha-search
+status: concluded
+created: 2026-07-01
+---
+
+# Discussion: Alpha search
+
+## Context
+
+框架脈絡內容。
+
+## Rounds
+${ROUNDS_TEXT}
+## Conclusion
+
+**Decision**: 建置 alpha 搜尋
+`;
+
+describe("輪卡片渲染（討論輪以卡片呈現）", () => {
+  async function openRoundsTab(doc: string) {
+    const props = makeProps({ loadDocument: vi.fn(async () => doc) });
+    const result = render(<DiscussionDrawer {...(props as never)} />);
+    await waitFor(() => screen.getByRole("tab", { name: /討論過程/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /討論過程/ }));
+    return result;
+  }
+
+  it("scaffold 記錄逐輪成卡：卡頭含 Round N、mode、日期", async () => {
+    const { baseElement } = await openRoundsTab(CARDS_DOC);
+    await waitFor(() =>
+      expect(baseElement.querySelectorAll("[data-round]").length).toBe(2),
+    );
+    const card1 = baseElement.querySelector('[data-round="1"]') as HTMLElement;
+    expect(within(card1).getByText("Round 1")).toBeTruthy();
+    expect(within(card1).getByText("assumptions")).toBeTruthy();
+    expect(within(card1).getByText("2026-07-08")).toBeTruthy();
+  });
+
+  it("欄位以標籤區塊呈現，「**Focus**:」粗體前綴原文不出現", async () => {
+    const { baseElement } = await openRoundsTab(CARDS_DOC);
+    await waitFor(() => screen.getByText("第一輪焦點"));
+    const card1 = baseElement.querySelector('[data-round="1"]') as HTMLElement;
+    expect(within(card1).getByText("焦點")).toBeTruthy();
+    expect(within(card1).getByText("立場")).toBeTruthy();
+    expect(within(card1).getByText("未解")).toBeTruthy();
+    // 舊行為把 **Focus**: 渲染成粗體 Focus 文字；卡片模式下英文前綴不再出現。
+    expect(screen.queryByText("Focus")).toBeNull();
+    expect(screen.queryByText("Position")).toBeNull();
+  });
+
+  it("缺席欄位不渲染空標籤", async () => {
+    const { baseElement } = await openRoundsTab(CARDS_DOC);
+    await waitFor(() => screen.getByText("第一輪焦點"));
+    const card1 = baseElement.querySelector('[data-round="1"]') as HTMLElement;
+    const card2 = baseElement.querySelector('[data-round="2"]') as HTMLElement;
+    expect(within(card1).queryByText("淘汰")).toBeNull();
+    expect(within(card2).getByText("淘汰")).toBeTruthy();
+  });
+
+  it("非標準輪標題整篇以單一 markdown 檢視退回", async () => {
+    const bad = CARDS_DOC.replace("### Round 2 — interview (2026-07-09)", "### 插入的手寫標題");
+    const { baseElement } = await openRoundsTab(bad);
+    await waitFor(() => screen.getByText("插入的手寫標題"));
+    expect(baseElement.querySelectorAll("[data-round]").length).toBe(0);
+  });
+});
+
+// spec 需求「討論結論以欄位標籤呈現」（design D7 六詞白名單共用欄位解析）。
+function docWithConclusion(conclusion: string): string {
+  return DOC.replace("**Decision**: 建置 alpha 搜尋", conclusion);
+}
+
+const FULL_CONCLUSION = [
+  "**Decision**: 拍板做 A",
+  "**Rationale**: 因為證據充分",
+  "**Rejected alternatives**: B 案——太貴",
+  "**Deferred**: 無",
+  "**Capture to**: proposal",
+  "**Next**: /speclink-propose --from-discussion alpha-search",
+].join("\n");
+
+describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
+  it("scaffold 結論六欄位成標籤區塊，粗體前綴原文不出現", async () => {
+    const props = makeProps({ loadDocument: vi.fn(async () => docWithConclusion(FULL_CONCLUSION)) });
+    render(<DiscussionDrawer {...(props as never)} />);
+    // 結論非空 → 預設分頁即結論。
+    await waitFor(() => expect(screen.getByText("拍板做 A")).toBeTruthy());
+    for (const label of ["決定", "理由", "否決替代案", "擱置", "記錄去向", "下一步"]) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+    expect(screen.queryByText("Decision")).toBeNull();
+    expect(screen.queryByText("Rationale")).toBeNull();
+  });
+
+  it("缺席欄位不渲染空標籤", async () => {
+    const doc = docWithConclusion("**Decision**: 只有決定\n**Rationale**: 與理由");
+    const props = makeProps({ loadDocument: vi.fn(async () => doc) });
+    render(<DiscussionDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("只有決定")).toBeTruthy());
+    expect(screen.getByText("決定")).toBeTruthy();
+    expect(screen.getByText("理由")).toBeTruthy();
+    expect(screen.queryByText("擱置")).toBeNull();
+    expect(screen.queryByText("下一步")).toBeNull();
+  });
+
+  // spec「標籤為大標題且字級大於內文」：輪／結論欄位標籤與章節標籤同一款式常數（design D6）。
+  it("輪與結論欄位標籤為粗體大標題款式（與章節標籤同源）", async () => {
+    const props = makeProps({ loadDocument: vi.fn(async () => docWithConclusion(FULL_CONCLUSION)) });
+    render(<DiscussionDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("決定")).toBeTruthy());
+    const conclusionLabel = screen.getByText("決定");
+    for (const cls of LABEL_CLS.split(" ")) expect(conclusionLabel.className).toContain(cls);
+    expect(conclusionLabel.className).not.toContain("text-xs");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /討論過程/ }));
+    await waitFor(() => expect(screen.getByText("焦點")).toBeTruthy());
+    const roundLabel = screen.getByText("焦點");
+    for (const cls of LABEL_CLS.split(" ")) expect(roundLabel.className).toContain(cls);
+    expect(roundLabel.className).not.toContain("uppercase");
+  });
+
+  it("自由格式結論整篇以單一 markdown 檢視退回", async () => {
+    const props = makeProps({
+      loadDocument: vi.fn(async () => docWithConclusion("就這樣定了，大家都同意這個方向。")),
+    });
+    render(<DiscussionDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText(/就這樣定了/)).toBeTruthy());
+    expect(screen.queryByText("決定")).toBeNull();
   });
 });
 

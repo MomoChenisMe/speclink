@@ -1105,6 +1105,7 @@ The document has a fixed skeleton — like the proposal template, every discussi
 2. **Rounds are append-only.** Never rewrite an earlier round. When a position changes, a new round names what changed and why — the reasoning trail is the point.
 3. **Record what was ruled out, with the reason.** Rejected options are the most valuable part of the record: they stop future readers (and future you) from re-litigating settled ground.
 4. **Keep an open-questions ledger.** Each round ends with the questions still unresolved; the next round picks one of them up. The conclusion must resolve or explicitly defer every remaining one.
+5. **Position bullets over prose.** When a Position exceeds one sentence it SHALL be bulleted — a one-sentence verdict first, then `- ` points one per line. A single-line wall-of-text Position is unreadable in every viewer. Focus / Ruled out / Open stay single-line.
 
 **At the start (before Step 0):**
 
@@ -1137,7 +1138,9 @@ CTX_EOF
 ```bash
 speclink discuss add-round <slug> --mode assumptions --stdin <<'ROUND_EOF'
 **Focus**: the one question this round examined
-**Position**: the answer/direction taken, and the evidence (files, probe results) behind it
+**Position**: one-sentence verdict of the direction taken, expanded as bullets:
+- one point per line — the decision detail and the evidence (files, probe results) behind it
+- keep bulleting until the position is fully stated; never fold it back into one long line
 **Ruled out**: options eliminated this round — each with the reason it lost
 **Open**: questions still unresolved, for the next round to pick up
 ROUND_EOF
