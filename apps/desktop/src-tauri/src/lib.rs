@@ -66,41 +66,69 @@ fn delete_change(state: State<AppState>, change: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn set_task_done(state: State<AppState>, change: String, ordinal: usize, done: bool) -> Result<(), String> {
-    speclink_desktop_core::manage::set_task_done_at(&state.root(), &change, ordinal, done)
+// 寫入型 command 一律 async＋spawn_blocking（design D2）：完成路徑可能秒級
+// （git spawn 在部分環境極慢），非 async command 會佔用主執行緒凍結整窗。
+// 委派移至執行緒池；並發寫回由 desktop-core 的全域寫鎖序列化。
+async fn set_task_done(
+    state: State<'_, AppState>,
+    change: String,
+    ordinal: usize,
+    done: bool,
+) -> Result<(), String> {
+    let root = state.root();
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::manage::set_task_done_at(&root, &change, ordinal, done)
+    })
+    .await
+    .map_err(|e| format!("task write worker failed: {e}"))?
 }
 
 #[tauri::command]
-fn set_all_tasks(state: State<AppState>, change: String, done: bool) -> Result<(), String> {
-    speclink_desktop_core::manage::set_all_tasks_at(&state.root(), &change, done)
+async fn set_all_tasks(state: State<'_, AppState>, change: String, done: bool) -> Result<(), String> {
+    let root = state.root();
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::manage::set_all_tasks_at(&root, &change, done)
+    })
+    .await
+    .map_err(|e| format!("task write worker failed: {e}"))?
 }
 
 #[tauri::command]
-fn move_task(
-    state: State<AppState>,
+async fn move_task(
+    state: State<'_, AppState>,
     change: String,
     from: usize,
     to: usize,
     before: Option<bool>,
 ) -> Result<(), String> {
-    speclink_desktop_core::manage::move_task_at(&state.root(), &change, from, to, before)
+    let root = state.root();
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::manage::move_task_at(&root, &change, from, to, before)
+    })
+    .await
+    .map_err(|e| format!("task write worker failed: {e}"))?
 }
 
 #[tauri::command]
-fn reorder_card(
-    state: State<AppState>,
+async fn reorder_card(
+    state: State<'_, AppState>,
     kind: String,
     id: String,
     prev_id: Option<String>,
     next_id: Option<String>,
 ) -> Result<(), String> {
-    speclink_desktop_core::manage::reorder_card_at(
-        &state.root(),
-        &kind,
-        &id,
-        prev_id.as_deref(),
-        next_id.as_deref(),
-    )
+    let root = state.root();
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::manage::reorder_card_at(
+            &root,
+            &kind,
+            &id,
+            prev_id.as_deref(),
+            next_id.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| format!("task write worker failed: {e}"))?
 }
 
 #[tauri::command]
@@ -156,10 +184,20 @@ fn archive_discussion(state: State<AppState>, slug: String) -> Result<Value, Str
 /// 監看器槽位：切換專案時整顆替換（drop 舊監看即停止）。
 type WatcherState = std::sync::Mutex<Option<watch::WorkspaceWatcher>>;
 
+/// git 身分預熱（design D1）：首抓可能秒級（GUI 進程 spawn git 極慢的環境），
+/// 啟動與切根時背景執行緒先填快取——首次勾選不再付這筆成本。失敗靜默，
+/// 完成路徑的 cached_git_identity 會自行補抓。
+fn prewarm_identity(root: PathBuf) {
+    std::thread::spawn(move || {
+        let _ = speclink_desktop_core::manage::cached_git_identity(&root);
+    });
+}
+
 /// 切換專案 root：更新 AppState 並對新 root 重掛 spec 目錄監看。
 /// 監看重掛失敗僅記錄、不阻斷切換（與啟動時的降級行為一致）。
 fn switch_root(app: &tauri::AppHandle, state: &AppState, new_root: PathBuf) {
     *state.root.lock().expect("root lock poisoned") = new_root.clone();
+    prewarm_identity(new_root.clone());
     let emitter = app.clone();
     let watcher = watch::resolve_watch_target(&new_root).and_then(|target| {
         watch::watch_openspec(&target, std::time::Duration::from_millis(400), move || {
@@ -288,6 +326,7 @@ pub fn run() {
                 }
             });
             app.manage(slot);
+            prewarm_identity(root.clone());
             app.manage(AppState { root: std::sync::Mutex::new(root) });
             Ok(())
         })

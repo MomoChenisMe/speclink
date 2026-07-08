@@ -1274,3 +1274,103 @@ code:
   - packages/ui/src/i18n.tsx
   - packages/ui/src/tasks.ts
 -->
+
+---
+### Requirement: 表單控制項與按鈕以主題化元件呈現
+
+桌面 app 的互動控制項 SHALL 以元件庫的主題化原語呈現：勾選控制項（任務分頁勾選框、初始化對話框的工具多選）SHALL 呈現主題化外觀——未勾選為主題邊框空框、勾選為主色底加勾選圖示，SHALL NOT 呈現作業系統原生控制項外觀；多行文字輸入（設定頁）SHALL 取用設計 token 的邊框、底色與 focus 樣式；動作按鈕 SHALL 統一取用元件庫按鈕變體，鍵盤聚焦時 SHALL 顯示一致的 focus 可視環、disabled 態呈現一致。上述控制項於淺色與深色主題 SHALL 一致取自設計 token。替換 SHALL NOT 改變控制項的行為與無障礙語意：勾選框 SHALL 保留 checkbox 角色、既有標籤與空白鍵切換；按鈕 SHALL 保留既有無障礙名稱、回呼與 disabled 條件；唯讀封存檢視的勾選框 SHALL 維持不可互動。
+
+#### Scenario: 任務勾選框主題化外觀
+
+- **WHEN** 檢視含已完成與未完成任務的任務分頁
+- **THEN** 未完成任務的勾選框為主題邊框空框、已完成為主色底加勾選圖示，非作業系統原生繪製，深淺主題下外觀一致
+
+#### Scenario: 勾選框無障礙語意保留
+
+- **WHEN** 以鍵盤或輔助技術操作任務分頁的勾選框
+- **THEN** 每個勾選框曝露 checkbox 角色與「任務 N」標籤，空白鍵可切換勾選且觸發與滑鼠點擊相同的寫回
+
+#### Scenario: 初始化對話框工具多選主題化
+
+- **WHEN** 開啟初始化確認對話框
+- **THEN** claude 與 codex 選項以主題化勾選框呈現且可獨立勾選，預設勾選狀態與替換前相同
+
+#### Scenario: 設定頁多行輸入主題化
+
+- **WHEN** 於深色主題開啟設定頁的專案說明或產出規則編輯區
+- **THEN** 多行輸入的邊框、底色與 focus 樣式取自設計 token，輸入與儲存行為與替換前相同
+
+#### Scenario: 按鈕 focus 可視環一致
+
+- **WHEN** 以 Tab 鍵依序聚焦任務工具列、詳情抽屜動作列與側欄導覽的按鈕
+- **THEN** 每個按鈕顯示一致的 focus 可視環，無障礙名稱與點擊行為與替換前相同
+
+<!-- @trace
+source: desktop-shadcn-controls
+updated: 2026-07-08
+code:
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/settingsView.test.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/views/SettingsView.tsx
+  - package-lock.json
+  - packages/ui/package.json
+  - packages/ui/src/__tests__/archivedList.test.tsx
+  - packages/ui/src/__tests__/richDrawer.test.tsx
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ArchivedList.tsx
+  - packages/ui/src/components/ChangeCard.tsx
+  - packages/ui/src/components/DiscussionColumn.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/components/TaskList.tsx
+  - packages/ui/src/components/ui/checkbox.tsx
+  - packages/ui/src/components/ui/textarea.tsx
+  - packages/ui/src/index.ts
+-->
+
+---
+### Requirement: 任務寫回非阻塞且序列化
+
+任務寫回（單發勾選、批次設定、拖放排序、看板卡片排序）SHALL 於背景執行緒執行，SHALL NOT 阻塞視窗互動——寫回進行中使用者 SHALL 仍可捲動、點擊與觸發其他操作。同一專案的並發任務寫回 SHALL 依提交順序序列化落盤，SHALL NOT 遺失任何一次更新。完成路徑取得 git 身分 SHALL 每專案根至多 spawn 一次 git 並快取（app 存續期內重用），開工章 started_by 的內容 SHALL 與逐次取得時一致。樂觀更新生效後，更早發起而較晚到達的文件載入回應 SHALL NOT 覆蓋樂觀狀態。寫回過程 spawn 的 git 子進程 SHALL NOT 產生可見的主控台視窗（黑窗閃現）。
+
+#### Scenario: 無主控台視窗閃爍
+
+- **WHEN** 勾選任務觸發完成路徑的 git 呼叫（身分首抓或 touched 記錄）
+- **THEN** 畫面上不出現任何主控台視窗閃現，git 呼叫結果與行為不變
+
+#### Scenario: 慢寫回不凍結介面
+
+- **WHEN** 勾選任務且後端寫回耗時數秒（如環境使 git 呼叫緩慢）
+- **THEN** 視窗全程可操作（捲動、點擊、切換分頁皆有回應），無整窗凍結
+
+#### Scenario: 勾選後立即取消不遺失
+
+- **WHEN** 勾選一任務後在其寫回完成前取消勾選同一任務
+- **THEN** 取消立即反映於畫面，兩次寫回依序落盤，最終 tasks.md 該任務為未勾選
+
+#### Scenario: 並發寫回序列化
+
+- **WHEN** 一筆慢寫回進行中又觸發另一任務的寫回
+- **THEN** 兩筆寫回皆落盤且互不覆蓋，結果與依序執行一致
+
+#### Scenario: git 身分快取重用
+
+- **WHEN** 同一專案內連續勾選多個任務
+- **THEN** git 身分僅首次（或啟動預熱時）取得，後續勾選不再逐次 spawn git，蓋章的 started_by 內容不變
+
+#### Scenario: 舊載入回應不覆蓋樂觀狀態
+
+- **WHEN** 樂觀勾選生效後，一筆更早發起的 tasks.md 載入回應才到達
+- **THEN** 畫面維持樂觀勾選狀態不閃爍，寫回完成後由世代重載收斂至磁碟現況
+
+<!-- @trace
+source: desktop-toggle-freeze
+updated: 2026-07-08
+code:
+  - apps/desktop/core/src/manage.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - crates/speclink-core/src/util.rs
+  - packages/ui/src/__tests__/richDrawer.test.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+-->
