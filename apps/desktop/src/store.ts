@@ -22,8 +22,8 @@ import {
   type ProjectTab,
 } from "./tabs";
 
-/** 主頁面：變更看板（預設）、已封存獨立頁或設定頁。 */
-export type BoardView = "board" | "archived" | "settings";
+/** 主頁面：變更看板（預設）、規格頁、已封存獨立頁或設定頁。 */
+export type BoardView = "board" | "specs" | "archived" | "settings";
 
 export interface AppState {
   changes: ChangeItem[];

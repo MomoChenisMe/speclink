@@ -18,9 +18,11 @@ export interface ChangeItem {
   fromDiscussion?: string | null;
 }
 
-/** 一個 canonical spec 的清單項。 */
+/** 一個 canonical spec 的清單項（CLI 同形欄位＋桌面疊加的呈現層輔助欄位）。 */
 export interface SpecItem {
   id: string;
+  /** spec.md 最後修改日期（檔案系統 mtime 衍生，YYYY-MM-DD）；mtime 不可得時缺席。 */
+  modifiedAt?: string | null;
 }
 
 /** change 的 metadata（.openspec.yaml，camelCase）。 */

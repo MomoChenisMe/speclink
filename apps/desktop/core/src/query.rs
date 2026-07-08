@@ -55,7 +55,24 @@ pub fn list_specs_at(root: &Path) -> Value {
         return json!({ "specs": [] });
     };
     let store: &dyn Store = &ctx.store;
-    json!({ "specs": speclink_core::listing::specs_json_items(store) })
+    // 桌面 payload 在 CLI 同形項上疊加呈現層輔助欄位 modifiedAt（design D2；
+    // parity 紅線：CLI 的 specs_json_items 本身不動）。mtime 不可得時不插 key。
+    let mut specs = speclink_core::listing::specs_json_items(store);
+    if let Value::Array(items) = &mut specs {
+        for item in items {
+            let Some(id) = item["id"].as_str() else { continue };
+            if let Some(date) = modified_date(&store.canonical_spec_path(id)) {
+                item["modifiedAt"] = json!(date);
+            }
+        }
+    }
+    json!({ "specs": specs })
+}
+
+/// 檔案 mtime 衍生的本地日期（YYYY-MM-DD）；metadata 或 mtime 不可得時 `None`。
+pub(crate) fn modified_date(path: &Path) -> Option<String> {
+    let mtime = std::fs::metadata(path).ok()?.modified().ok()?;
+    Some(chrono::DateTime::<chrono::Local>::from(mtime).format("%Y-%m-%d").to_string())
 }
 
 /// 對應 `speclink status --change <name> --json`（`StatusReport` 序列化）。
@@ -271,6 +288,26 @@ mod tests {
         let arr = v["specs"].as_array().expect("specs array");
         let ids: Vec<&str> = arr.iter().filter_map(|s| s["id"].as_str()).collect();
         assert!(ids.contains(&"cap-x"), "canonical spec present: {ids:?}");
+    }
+
+    #[test]
+    fn list_specs_includes_modified_at_from_mtime() {
+        // 呈現層輔助欄位（design D2）：規格清單查詢對每個 spec 帶 modifiedAt——
+        // spec.md 檔案系統 mtime 的本地日期（YYYY-MM-DD）。剛寫入的檔案即今天。
+        let fx = FixtureRoot::new("q-specs-mtime");
+        fx.write("openspec/specs/cap-x/spec.md", "# cap-x Specification\n");
+        let v = list_specs_at(fx.root());
+        let arr = v["specs"].as_array().expect("specs array");
+        let item = arr.iter().find(|s| s["id"] == "cap-x").expect("cap-x listed");
+        assert_eq!(item["modifiedAt"], speclink_core::util::today().as_str());
+    }
+
+    #[test]
+    fn modified_date_is_absent_when_mtime_unavailable() {
+        // mtime 不可得時欄位缺席（衍生為 None、overlay 不插 key，而非塞 null）。
+        let fx = FixtureRoot::new("q-specs-no-mtime");
+        let ghost = fx.root().join("openspec/specs/ghost/spec.md");
+        assert!(modified_date(&ghost).is_none());
     }
 
     #[test]

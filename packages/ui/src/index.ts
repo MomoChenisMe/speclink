@@ -87,3 +87,6 @@ export { parseTaskDoc, type TaskDocItem } from "./tasks";
 export { TaskList, type TaskListProps } from "./components/TaskList";
 export { DeltaBadges } from "./components/DeltaBadges";
 export { ArchivedList, ArchivedRow, type ArchivedListProps } from "./components/ArchivedList";
+
+// 規格頁
+export { SpecList, type SpecListProps } from "./components/SpecList";

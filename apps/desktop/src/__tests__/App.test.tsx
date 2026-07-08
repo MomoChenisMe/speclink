@@ -489,6 +489,41 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(archivedNav.className).not.toContain("bg-primary");
   });
 
+  it("點導覽「規格」進入規格頁：主內容出現規格清單、導覽項 active", async () => {
+    // spec Scenario「進入規格頁顯示卡片清單」：切頁語意（與已封存頁同型），
+    // 主內容渲染 SpecList（正典 spec 卡片＋搜尋列），返回看板點「變更」。
+    render(<App dataSource={fakeDataSource()} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const aside = document.querySelector("aside") as HTMLElement;
+    const specsNav = within(aside).getByRole("button", { name: "規格" });
+    fireEvent.click(specsNav);
+    await waitFor(() => expect(screen.getByText("desktop-app")).toBeTruthy());
+    expect(screen.getByPlaceholderText("搜尋規格…")).toBeTruthy();
+    expect(document.querySelector('[data-column="ready"]')).toBeNull();
+    expect(specsNav.className).toContain("bg-primary");
+    // 點「變更」返回看板。
+    const changesNav = within(aside).getByRole("button", { name: "變更" });
+    fireEvent.click(changesNav);
+    await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeTruthy());
+    expect(specsNav.className).not.toContain("bg-primary");
+  });
+
+  it("規格頁展開卡片經 dataSource.getSpecDocument 載入正典全文", async () => {
+    // 契約：App 注入 store.specs 與 dataSource.getSpecDocument、傳入 refreshGen。
+    const ds = fakeDataSource({
+      getSpecDocument: vi.fn().mockResolvedValue("# desktop-app Specification\n\n正典內文段落。"),
+    });
+    render(<App dataSource={ds} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const aside = document.querySelector("aside") as HTMLElement;
+    fireEvent.click(within(aside).getByRole("button", { name: "規格" }));
+    await waitFor(() => screen.getByText("desktop-app"));
+    expect(ds.getSpecDocument).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("desktop-app"));
+    await waitFor(() => expect(screen.getByText("正典內文段落。")).toBeTruthy());
+    expect(ds.getSpecDocument).toHaveBeenCalledWith("desktop-app");
+  });
+
   it("i18n 兩語系鍵集合相等，備忘鍵已自兩語系移除", () => {
     const zhKeys = Object.keys(APP_MESSAGES["zh-TW"]).sort();
     const enKeys = Object.keys(APP_MESSAGES.en).sort();
