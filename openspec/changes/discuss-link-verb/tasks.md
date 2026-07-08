@@ -13,9 +13,9 @@
 
 - [x] 3.1 落實規格需求「技能指示引導 ingest 型結論先鑄鏈」——修改內嵌技能資產：crates/speclink-core/assets/skills/discuss.md 的 conclude 步驟加入「Capture to 指向既有變更時，先執行 speclink discuss link <slug> <change> 再導向 /speclink-ingest <change>」指引；crates/speclink-core/assets/skills/ingest.md 加入「更新源自討論結論時，確認來源討論已以 speclink discuss link 連結目標變更」提示。驗證：speclink init 於臨時目錄生成的 claude 與 codex 技能檔內容含上述指示文句
 - [x] 3.2 同步 repo 技能實例：.claude/skills/speclink-discuss/SKILL.md、.agents/skills/speclink-discuss/SKILL.md、.claude/skills/speclink-ingest/SKILL.md、.agents/skills/speclink-ingest/SKILL.md 反映與 assets 相同的指示。驗證：逐檔內容審視，指示段與 assets 對應段一致
-- [ ] 3.3 全部改動提交後，於乾淨工作樹執行 UPDATE_GOLDEN=1 cargo test -p speclink-core --test render_golden 再生基準並審視 diff 僅含新指示文字。驗證：不帶 UPDATE_GOLDEN 重跑 cargo test -p speclink-core --test render_golden 全綠
+- [x] 3.3 全部改動提交後，於乾淨工作樹執行 UPDATE_GOLDEN=1 cargo test -p speclink-core --test render_golden 再生基準並審視 diff 僅含新指示文字。驗證：不帶 UPDATE_GOLDEN 重跑 cargo test -p speclink-core --test render_golden 全綠
 
 ## 4. 詞彙修訂與端對端驗證
 
-- [ ] 4.1 修訂 openspec/LANGUAGE.md「已轉出變更」詞條：definition 自「至少轉出過一個變更」放寬為「至少連結一個變更（轉出或併入）」，why 註記 link 動詞為併入路徑。驗證：speclink language show 輸出呈現新定義
-- [ ] 4.2 端對端手動驗證斷鏈已補：於臨時測試 repo 走 discuss new → conclude → speclink discuss link → 對目標變更執行 archive，斷言討論記錄自動移入 openspec/discussions/archive/ 且 speclink discuss list --json 不再列出該討論為 live。驗證：檔案位置與 --json 清單斷言
+- [x] 4.1 修訂 openspec/LANGUAGE.md「已轉出變更」詞條：definition 自「至少轉出過一個變更」放寬為「至少連結一個變更（轉出或併入）」，why 註記 link 動詞為併入路徑。驗證：speclink language show 輸出呈現新定義
+- [x] 4.2 端對端手動驗證斷鏈已補：於臨時測試 repo 走 discuss new → conclude → speclink discuss link → 對目標變更執行 archive，斷言討論記錄自動移入 openspec/discussions/archive/ 且 speclink discuss list --json 不再列出該討論為 live。驗證：檔案位置與 --json 清單斷言
