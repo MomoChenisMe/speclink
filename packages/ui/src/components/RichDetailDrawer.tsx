@@ -24,6 +24,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Markdown } from "./Markdown";
 import { TaskList } from "./TaskList";
 import { DeltaBadges } from "./DeltaBadges";
+import { setTaskMark } from "../tasks";
 
 export interface RichDetailDrawerProps {
   open: boolean;
@@ -40,6 +41,8 @@ export interface RichDetailDrawerProps {
   onToggleTask?: (change: string, ordinal: number, done: boolean) => Promise<void>;
   /** 移動任務順序並回寫 tasks.md（before 為可選側別）；重載由宿主 refresh 後的刷新世代遞增驅動。 */
   onMoveTask?: (change: string, from: number, to: number, before?: boolean) => Promise<void>;
+  /** 批次設定全部任務完成狀態（工具列「全部已完成」／「重置任務」），單次寫回。 */
+  onSetAllTasks?: (change: string, done: boolean) => Promise<void>;
   /** 來源討論（change.fromDiscussion 解析出的 slug＋topic）；null/缺席＝非討論而來。 */
   sourceDiscussion?: { slug: string; topic: string } | null;
   /** 同一討論扇出的同源 change 名（不含此 change 自己）。 */
@@ -76,6 +79,7 @@ export function RichDetailDrawer({
   onDelete,
   onToggleTask,
   onMoveTask,
+  onSetAllTasks,
   sourceDiscussion,
   siblingChanges,
   onOpenDiscussion,
@@ -89,7 +93,12 @@ export function RichDetailDrawer({
   const [specDocs, setSpecDocs] = useState<Record<string, string | null>>({});
   const [copied, setCopied] = useState(false);
   const [full, setFull] = useState(false);
+  // 批次操作／拖放寫回進行中——鎖工具列與清單（design D4 例外）。單發勾選不設此旗標。
   const [taskBusy, setTaskBusy] = useState(false);
+  // 在途單發寫回計數——僅作為世代重載的讓路條件，不鎖清單（勾選樂觀更新）。
+  const [pendingWrites, setPendingWrites] = useState(0);
+  // 最近一次勾選寫回失敗的單行錯誤（null＝無）。
+  const [taskError, setTaskError] = useState<string | null>(null);
   // 拖曳手勢進行中（按住～放開，TaskList 回報）——與 taskBusy 同為讓路條件。
   const [dragActive, setDragActive] = useState(false);
 
@@ -133,14 +142,14 @@ export function RichDetailDrawer({
   }, [open, name]);
 
   // 外部世代重載：不清空、回應到達後單次替換（不重置分頁與捲動）。
-  // 互動進行中（拖曳手勢 dragActive、寫回等待 taskBusy）讓路——兩旗標皆為依賴，
-  // 互動結束時本 effect 重跑補載一次。
+  // 互動進行中（拖曳手勢 dragActive、批次寫回 taskBusy、在途單發寫回 pendingWrites）
+  // 讓路——皆為依賴，互動結束時本 effect 重跑補載一次。
   useEffect(() => {
-    if (!open || !name || taskBusy || dragActive) return;
+    if (!open || !name || taskBusy || dragActive || pendingWrites > 0) return;
     if (gen <= loadedGen.current) return;
     loadAll(gen, name, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, name, gen, taskBusy, dragActive]);
+  }, [open, name, gen, taskBusy, dragActive, pendingWrites]);
 
   if (!change) return null;
 
@@ -155,15 +164,26 @@ export function RichDetailDrawer({
     setTimeout(() => setCopied(false), 1200);
   };
 
-  // 勾選／拖放僅轉發寫回；重載統一由宿主 refresh 的世代遞增驅動（design D2 單一資料流）。
-  // busy 旗標讓外部世代在互動中讓路，finally 釋放時世代 effect 補載。
+  // 勾選走樂觀更新（design D3）：本地先翻轉 tasksMd 立即反映，再發寫回；失敗
+  // 還原快照並顯示單行錯誤。不鎖清單——僅以 pendingWrites 讓世代重載讓路，
+  // 寫回成功後的重載仍統一由宿主 refresh 的世代遞增驅動（單一資料流）。
   const handleToggle = async (ordinal: number, done: boolean) => {
     if (!name || !onToggleTask) return;
-    setTaskBusy(true);
+    setTaskError(null);
+    let snapshot: Doc;
+    setTasksMd((cur) => {
+      snapshot = cur;
+      const next = cur ? setTaskMark(cur, ordinal, done) : null;
+      return next ?? cur;
+    });
+    setPendingWrites((n) => n + 1);
     try {
       await onToggleTask(name, ordinal, done);
+    } catch (e) {
+      setTasksMd(snapshot ?? null);
+      setTaskError(e instanceof Error ? e.message : String(e));
     } finally {
-      setTaskBusy(false);
+      setPendingWrites((n) => n - 1);
     }
   };
 
@@ -172,6 +192,17 @@ export function RichDetailDrawer({
     setTaskBusy(true);
     try {
       await onMoveTask(name, from, to, before);
+    } finally {
+      setTaskBusy(false);
+    }
+  };
+
+  // 批次操作（design D4 例外）：執行期間工具列與清單短暫 disabled，完成後由世代重載收斂。
+  const handleSetAll = async (done: boolean) => {
+    if (!name || !onSetAllTasks) return;
+    setTaskBusy(true);
+    try {
+      await onSetAllTasks(name, done);
     } finally {
       setTaskBusy(false);
     }
@@ -301,12 +332,18 @@ export function RichDetailDrawer({
             <TabsContent value="proposal"><Markdown content={proposal ?? null} empty={t("common.loading")} /></TabsContent>
             <TabsContent value="design"><Markdown content={design ?? null} empty={t("list.noDesignDoc")} /></TabsContent>
             <TabsContent value="tasks">
+              {taskError && (
+                <div className="mb-2 text-sm text-destructive">
+                  {t("tasks.writeFailed").replace("{msg}", taskError)}
+                </div>
+              )}
               <TaskList
                 markdown={tasksMd ?? null}
                 busy={taskBusy}
                 onDragActiveChange={setDragActive}
                 onToggle={(ordinal, done) => void handleToggle(ordinal, done)}
                 onReorder={(from, to, before) => void handleReorder(from, to, before)}
+                onSetAll={(done) => void handleSetAll(done)}
               />
             </TabsContent>
             <TabsContent value="specs">

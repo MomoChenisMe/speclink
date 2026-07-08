@@ -69,6 +69,59 @@ describe("TaskList", () => {
   });
 });
 
+// spec「任務分頁提供批次操作工具列」（desktop-task-interactions）
+describe("TaskList 工具列", () => {
+  it("renders the three batch actions and fires onSetAll", () => {
+    const onSetAll = vi.fn();
+    render(<TaskList markdown={MD} onSetAll={onSetAll} />);
+    fireEvent.click(screen.getByRole("button", { name: "全部已完成" }));
+    expect(onSetAll).toHaveBeenCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "重置任務" }));
+    expect(onSetAll).toHaveBeenCalledWith(false);
+  });
+
+  it("disables 全部已完成 and 下一個未完成 when everything is done", () => {
+    const allDone = "## 1. G\n\n- [x] 1.1 a\n- [x] 1.2 b\n";
+    render(<TaskList markdown={allDone} onSetAll={vi.fn()} />);
+    expect((screen.getByRole("button", { name: "全部已完成" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: /下一個未完成/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "重置任務" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("readOnly hides the toolbar", () => {
+    render(<TaskList markdown={MD} readOnly />);
+    expect(screen.queryByRole("button", { name: "全部已完成" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "重置任務" })).toBeNull();
+  });
+
+  it("下一個未完成 scrolls the first unchecked task into view and highlights it", () => {
+    const scrollSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollSpy;
+    render(<TaskList markdown={MD} onSetAll={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /下一個未完成/ }));
+    expect(scrollSpy).toHaveBeenCalled();
+    // 第一個未完成＝任務 1（1.1 first），其列帶短暫高亮標記。
+    const row = screen.getByText("1.1 first").closest("[data-highlight]");
+    expect(row?.getAttribute("data-highlight")).toBe("true");
+  });
+
+  it("n key triggers the same next-undone locate, but not while typing", () => {
+    const scrollSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollSpy;
+    const { container } = render(
+      <div>
+        <input aria-label="其他輸入框" />
+        <TaskList markdown={MD} onSetAll={vi.fn()} />
+      </div>,
+    );
+    fireEvent.keyDown(window, { key: "n" });
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    // 輸入框打字不觸發定位。
+    fireEvent.keyDown(container.querySelector("input")!, { key: "n" });
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("resolveDropTarget（拖放落點解析，design D6）", () => {
   // items: [g-0(群組1), task1, task2, g-3(群組2), task3, g-5(空群組)]
   const items = parseTaskDoc(

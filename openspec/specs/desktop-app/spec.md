@@ -1161,3 +1161,116 @@ code:
   - packages/ui/src/components/Markdown.tsx
   - packages/ui/src/components/TaskList.tsx
 -->
+
+---
+### Requirement: 任務分頁提供批次操作工具列
+
+變更抽屜的任務分頁 SHALL 於任務清單頂部提供工具列：「全部已完成」SHALL 將該變更全部任務標為完成並以單次檔案寫入回寫 tasks.md；「重置任務」SHALL 將全部任務取消勾選並以單次檔案寫入回寫；「下一個未完成」SHALL 使第一個未完成任務捲入可視範圍並短暫高亮，n 快捷鍵 SHALL 等效。批次完成的開工章語意 SHALL 與逐一勾選一致——未開工變更首次完成任務時蓋開工章；重置 SHALL NOT 蓋開工章、SHALL NOT 記錄 touched。目標狀態已達成時重跑 SHALL 為冪等成功且不改檔。全部任務已完成時「全部已完成」與「下一個未完成」SHALL 呈現不可用；唯讀封存檢視 SHALL NOT 顯示工具列。
+
+#### Scenario: 全部已完成單次寫回
+
+- **WHEN** 對含未完成任務的變更按「全部已完成」
+- **THEN** tasks.md 全部任務標為完成且僅發生單次檔案寫入，抽屜進度顯示 100%
+
+##### Example: 批次完成的進度變化
+
+| 操作前 | 操作 | 操作後 |
+| ------ | ---- | ------ |
+| 3/10 任務完成 | 全部已完成 | 10/10、進度 100% |
+| 10/10 任務完成 | 全部已完成 | 不改檔（冪等）、按鈕不可用 |
+
+#### Scenario: 重置任務不蓋開工章
+
+- **WHEN** 對已有完成任務的變更按「重置任務」
+- **THEN** tasks.md 全部任務取消勾選且僅發生單次檔案寫入，變更 meta 未新增開工章與 touched 記錄
+
+#### Scenario: 批次完成沿用開工章語意
+
+- **WHEN** 對尚未開工的變更按「全部已完成」
+- **THEN** 變更 meta 蓋上開工章（與逐一勾選首次完成任務的行為一致）
+
+#### Scenario: 下一個未完成定位
+
+- **WHEN** 任務清單有多個任務且第一個未完成任務在可視範圍外，按「下一個未完成」或按 n 鍵
+- **THEN** 該任務捲入可視範圍並短暫高亮
+
+#### Scenario: 唯讀封存檢視不顯示工具列
+
+- **WHEN** 於已封存頁展開封存變更的任務檢視
+- **THEN** 不顯示批次操作工具列，checkbox 維持唯讀
+
+<!-- @trace
+source: desktop-task-interactions
+updated: 2026-07-08
+code:
+  - apps/desktop/core/src/manage.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/adapter/tauriDataSource.ts
+  - docs/assets/speclink-logo-concept.png
+  - docs/assets/speclink-logo-horizontal.png
+  - docs/assets/speclink-logo-lockup.png
+  - docs/assets/speclink-logo-mark-redesign.png
+  - docs/assets/speclink-logo-mark.png
+  - docs/assets/speclink-logo-selected-lockup.png
+  - docs/assets/speclink-logo-selected-mark.png
+  - docs/assets/speclink-logo-system-sheet.png
+  - docs/assets/speclink-logo-vertical.png
+  - packages/ui/src/__tests__/richDrawer.test.tsx
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/components/TaskList.tsx
+  - packages/ui/src/i18n.tsx
+  - packages/ui/src/tasks.ts
+-->
+
+---
+### Requirement: 勾選任務即時回饋
+
+任務分頁勾選或取消勾選任一任務時，畫面 SHALL 立即反映新勾選狀態（不等待寫回與重載完成），清單其餘任務 SHALL 保持可互動；寫回失敗時 SHALL 回滾至磁碟現況並顯示單行錯誤。寫回成功後的整批重載 SHALL 沿用既有 refresh 世代機制與互動讓路行為。
+
+#### Scenario: 勾選立即反映
+
+- **WHEN** 勾選一個未完成任務且寫回尚未完成
+- **THEN** 該 checkbox 立即呈現勾選態與完成刪除線，無可感知等待
+
+#### Scenario: 連續勾選不互鎖
+
+- **WHEN** 快速連續勾選多個任務
+- **THEN** 每次勾選皆立即反映，清單全程可互動，最終 tasks.md 與畫面一致
+
+#### Scenario: 寫回失敗回滾
+
+- **WHEN** 勾選任務後寫回失敗（如檔案不可寫）
+- **THEN** 該 checkbox 回復原狀態並顯示單行錯誤訊息，tasks.md 內容不變
+
+<!-- @trace
+source: desktop-task-interactions
+updated: 2026-07-08
+code:
+  - apps/desktop/core/src/manage.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/adapter/tauriDataSource.ts
+  - docs/assets/speclink-logo-concept.png
+  - docs/assets/speclink-logo-horizontal.png
+  - docs/assets/speclink-logo-lockup.png
+  - docs/assets/speclink-logo-mark-redesign.png
+  - docs/assets/speclink-logo-mark.png
+  - docs/assets/speclink-logo-selected-lockup.png
+  - docs/assets/speclink-logo-selected-mark.png
+  - docs/assets/speclink-logo-system-sheet.png
+  - docs/assets/speclink-logo-vertical.png
+  - packages/ui/src/__tests__/richDrawer.test.tsx
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/components/TaskList.tsx
+  - packages/ui/src/i18n.tsx
+  - packages/ui/src/tasks.ts
+-->

@@ -345,6 +345,10 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
           await dataSource.moveTask(change, from, to, before);
           await s.refresh();
         }}
+        onSetAllTasks={async (change, done) => {
+          await dataSource.setAllTasks(change, done);
+          await s.refresh();
+        }}
         sourceDiscussion={sourceDiscussion}
         siblingChanges={siblingChanges}
         onOpenDiscussion={(slug) => {

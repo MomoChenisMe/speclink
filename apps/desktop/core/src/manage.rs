@@ -80,6 +80,86 @@ pub fn set_task_done_at(root: &Path, change: &str, ordinal: usize, done: bool) -
     }
 }
 
+/// 批次設定全部任務的完成狀態（desktop-task-interactions design D1：批次動詞單指令雙用）。
+/// done=true＝全部標完成，done=false＝全部取消勾選；一次讀檔、一次寫回。
+/// 側效沿單發勾選語意：done=true 且有翻轉時 touched 記錄一次（歸於本次首個翻轉的任務）、
+/// 首次完成蓋開工章；done=false 純行編輯，無任何側效。
+/// 目標狀態已達成時冪等成功、零檔案效果。
+pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), String> {
+    if !crate::query::is_safe_path_param(change) {
+        return Err(format!("invalid change name: {change}"));
+    }
+    let ctx = init_core_context(root)
+        .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
+    let text = ctx
+        .store
+        .read_artifact(change, "tasks.md")
+        .ok_or_else(|| format!("tasks.md not found for change: {change}"))?;
+    let had_trailing_newline = text.ends_with('\n');
+    // 逐行鏡射引擎 tasks::parse 的 checkbox 判定——翻轉集合與引擎所見一致
+    // （dash／star 兩種 bullet、[ ]/[x]/[X] 三態）。
+    let mut first_flipped: Option<(usize, String)> = None;
+    let mut ordinal = 0usize;
+    let lines: Vec<String> = text
+        .lines()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            let body = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* "));
+            let Some(body) = body else { return line.to_string() };
+            let cur = if body.starts_with("[ ] ") {
+                false
+            } else if body.starts_with("[x] ") || body.starts_with("[X] ") {
+                true
+            } else {
+                return line.to_string();
+            };
+            ordinal += 1;
+            if cur == done {
+                return line.to_string();
+            }
+            if first_flipped.is_none() {
+                first_flipped = Some((ordinal, body[4..].trim().to_string()));
+            }
+            let indent = &line[..line.len() - trimmed.len()];
+            let bullet = &trimmed[..2];
+            let mark = if done { "[x]" } else { "[ ]" };
+            format!("{indent}{bullet}{mark}{}", &body[3..])
+        })
+        .collect();
+    // 目標狀態已達成→冪等成功、零檔案效果。
+    let Some((first_id, first_desc)) = first_flipped else { return Ok(()) };
+    let mut out = lines.join("\n");
+    if had_trailing_newline {
+        out.push('\n');
+    }
+    ctx.store
+        .write_artifact(change, "tasks.md", &out)
+        .map_err(|e| e.to_string())?;
+    if done {
+        // 側效沿單發完成語意（tasks::complete 同款）：未認領 dirty 檔記一筆
+        // touched（歸於本次首個翻轉任務），首次完成蓋開工章（inprogress::add 冪等）。
+        let mut record = speclink_core::tasks::TouchedRecord::load(&ctx.workspace, change);
+        record.change = change.to_string();
+        let seen = record.all_files();
+        let files: Vec<String> = speclink_core::tasks::git_changed_files(&ctx.workspace.root)
+            .into_iter()
+            .filter(|f| !seen.contains(f))
+            .collect();
+        if !files.is_empty() {
+            record.touched.push(speclink_core::tasks::TouchedEntry {
+                task_id: first_id.to_string(),
+                task_desc: first_desc,
+                files,
+            });
+            record.save(&ctx.workspace).map_err(|e| e.to_string())?;
+        }
+        let identity = speclink_core::util::git_identity(&ctx.workspace.root);
+        speclink_core::inprogress::add(&ctx.store, change, identity.as_deref(), None)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// 把第 `from` 個任務移到以第 `to` 個任務為錨的位置（皆 1-based、僅計 checkbox 行）。
 /// 只搬 checkbox 行本身，群組標題與其他行不動；越界回 `Err`。
 /// `before`：None＝方向推斷（向上插錨前、向下插錨後——組界時貼齊手勢方向的群組）；
@@ -763,6 +843,100 @@ mod tests {
             );
             assert_eq!(parsed.iter().filter(|t| t.done).count(), 1);
         }
+    }
+
+    // --- 批次任務動詞（desktop-task-interactions spec「任務分頁提供批次操作工具列」）---
+
+    #[test]
+    fn set_all_tasks_done_checks_everything_and_stamps_once() {
+        // 全勾單次寫回；開工章語意與逐一勾選一致；touched 僅記一筆（歸於首個翻轉任務）。
+        let fx = crate::testfixture::FixtureRoot::new("all-done");
+        fx.add_change("demo", META_UNSTARTED);
+        giterize(fx.root(), Some("src/main.rs"));
+
+        set_all_tasks_at(fx.root(), "demo", true).expect("batch check ok");
+
+        let tasks = fs::read_to_string(change_file(&fx, "demo", "tasks.md")).unwrap();
+        let parsed = speclink_core::tasks::parse(&tasks);
+        assert_eq!(parsed.len(), 2, "checkbox count unchanged");
+        assert!(parsed.iter().all(|t| t.done), "every task must be checked: {tasks}");
+        assert!(tasks.contains("## 1. Group"), "non-checkbox lines intact");
+        let meta = meta_of(&fx, "demo");
+        assert!(meta.starts_with(META_UNSTARTED), "existing meta preserved verbatim: {meta}");
+        assert!(
+            meta.contains(&format!("started_at: {}", speclink_core::util::today())),
+            "batch first completion must stamp started_at: {meta}"
+        );
+        assert!(
+            meta.contains("started_by: Desk Tester <desk@example.com>"),
+            "git identity must be attributed: {meta}"
+        );
+        let touched = touched_of(&fx, "demo").expect("touched record written");
+        assert!(touched.contains("src/main.rs"), "dirty file recorded: {touched}");
+        assert_eq!(
+            touched.matches("task_id").count(),
+            1,
+            "batch must record exactly one touched entry: {touched}"
+        );
+    }
+
+    #[test]
+    fn set_all_tasks_done_when_already_done_is_a_no_write_no_op() {
+        let fx = crate::testfixture::FixtureRoot::new("all-idem");
+        fx.add_change("demo", META_UNSTARTED);
+        set_all_tasks_at(fx.root(), "demo", true).expect("first batch ok");
+        let tasks_path = change_file(&fx, "demo", "tasks.md");
+        let tasks_before = fs::read_to_string(&tasks_path).unwrap();
+        let meta_before = meta_of(&fx, "demo");
+        // 唯讀鎖檔：冪等路徑必須零寫檔。
+        set_readonly(&tasks_path, true);
+        let r = set_all_tasks_at(fx.root(), "demo", true);
+        set_readonly(&tasks_path, false);
+        assert!(r.is_ok(), "repeat batch done must be idempotent success: {r:?}");
+        assert_eq!(fs::read_to_string(&tasks_path).unwrap(), tasks_before);
+        assert_eq!(meta_of(&fx, "demo"), meta_before, "no re-stamp on the no-op path");
+    }
+
+    #[test]
+    fn set_all_tasks_reset_unchecks_without_stamp_or_touched() {
+        // 重置：全部取消勾選、不蓋開工章、不記 touched（dirty 檔在場更能證明是行為）。
+        let fx = crate::testfixture::FixtureRoot::new("all-reset");
+        fx.add_change("demo", META_UNSTARTED);
+        giterize(fx.root(), Some("src/lib.rs"));
+
+        set_all_tasks_at(fx.root(), "demo", false).expect("batch reset ok");
+
+        let tasks = fs::read_to_string(change_file(&fx, "demo", "tasks.md")).unwrap();
+        assert!(
+            speclink_core::tasks::parse(&tasks).iter().all(|t| !t.done),
+            "every task must be unchecked: {tasks}"
+        );
+        assert_eq!(meta_of(&fx, "demo"), META_UNSTARTED, "reset must not stamp");
+        assert!(touched_of(&fx, "demo").is_none(), "reset must not record touched");
+        // 全未勾再重置：冪等成功、零寫檔（唯讀鎖檔驗證）。
+        let tasks_path = change_file(&fx, "demo", "tasks.md");
+        set_readonly(&tasks_path, true);
+        let r = set_all_tasks_at(fx.root(), "demo", false);
+        set_readonly(&tasks_path, false);
+        assert!(r.is_ok(), "repeat reset must be idempotent success: {r:?}");
+    }
+
+    #[test]
+    fn set_all_tasks_preserves_structure_and_rejects_bad_input() {
+        // 群組標題與行序原樣保留、僅 checkbox 標記翻轉；守衛與單發一致。
+        let root = fixture_with_tasks("all-preserve");
+        set_all_tasks_at(&root, "task-change", true).expect("batch ok");
+        assert_eq!(
+            task_lines(&root),
+            vec!["- [x] 1.1 first", "- [x] 1.2 second", "- [x] 2.1 third"],
+            "only checkbox marks may change"
+        );
+        let text = read_tasks(&root);
+        assert!(text.contains("## 1. Group A") && text.contains("## 2. Group B"));
+        assert!(text.ends_with('\n'), "trailing newline preserved");
+        assert!(set_all_tasks_at(&root, "no-such-xyz", true).is_err(), "unknown change errors");
+        assert!(set_all_tasks_at(&root, "../specs", true).is_err(), "traversal rejected");
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

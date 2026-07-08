@@ -29,6 +29,22 @@ export function parseTaskDoc(markdown: string | null | undefined): TaskDocItem[]
   return items;
 }
 
+/** 就地改寫第 ordinal（1-based，僅計 checkbox 行）個任務的勾選標記——勾選樂觀
+ * 更新用，序數判定與 parseTaskDoc 同一正則對齊。找不到該序數回 null。 */
+export function setTaskMark(markdown: string, ordinal: number, done: boolean): string | null {
+  let n = 0;
+  let hit = false;
+  const lines = markdown.split(/\r?\n/).map((line) => {
+    const m = line.match(/^(\s*-\s*\[)[ xX](\]\s+.*\S\s*)$/);
+    if (!m) return line;
+    n += 1;
+    if (n !== ordinal) return line;
+    hit = true;
+    return `${m[1]}${done ? "x" : " "}${m[2]}`;
+  });
+  return hit ? lines.join("\n") : null;
+}
+
 /** 拖放落點解析結果：以第 to 個任務為錨；before=true＝插錨前（組首落點）。 */
 export interface DropTarget {
   to: number;

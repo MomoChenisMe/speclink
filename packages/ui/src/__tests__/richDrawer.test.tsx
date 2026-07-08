@@ -215,6 +215,68 @@ describe("RichDetailDrawer", () => {
     await waitFor(() => expect(metaCalls()).toBeGreaterThan(m0));
   });
 
+  // spec「勾選任務即時回饋」（desktop-task-interactions）：樂觀更新＋失敗回滾＋不鎖清單。
+  describe("勾選樂觀更新", () => {
+    const TASKS_MD = "## 1. G\n\n- [ ] 1.1 a\n- [ ] 1.2 b\n";
+    const tasksLoader = () =>
+      vi.fn(async (_c: string, artifact: string) => {
+        if (artifact === "tasks.md") return TASKS_MD;
+        return artifact.startsWith("specs/") ? SPEC_MD : `# doc for ${artifact}`;
+      });
+    const latestTL = () =>
+      taskListProps[taskListProps.length - 1] as {
+        markdown?: string | null;
+        busy?: boolean;
+        onToggle?: (o: number, d: boolean) => void;
+      };
+    const openTasksTab = async () => {
+      await waitFor(() => screen.getByRole("tab", { name: /任務/ }));
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
+      await waitFor(() => expect(latestTL().markdown).toContain("- [ ] 1.1 a"));
+    };
+
+    it("optimistically flips the checkbox before the write resolves", async () => {
+      const gate = new Promise<void>(() => {}); // 永不 resolve＝寫回進行中
+      const props = makeProps({ loadDocument: tasksLoader(), onToggleTask: vi.fn(() => gate) });
+      render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+      await openTasksTab();
+      act(() => latestTL().onToggle!(1, true));
+      await waitFor(() => expect(latestTL().markdown).toContain("- [x] 1.1 a"));
+      expect(latestTL().markdown).toContain("- [ ] 1.2 b");
+    });
+
+    it("rolls back and surfaces a one-line error when the write fails", async () => {
+      const props = makeProps({
+        loadDocument: tasksLoader(),
+        onToggleTask: vi.fn().mockRejectedValue(new Error("disk full")),
+      });
+      render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+      await openTasksTab();
+      act(() => latestTL().onToggle!(1, true));
+      await waitFor(() => expect(screen.getByText(/寫回失敗/)).toBeTruthy());
+      expect(screen.getByText(/disk full/)).toBeTruthy();
+      expect(latestTL().markdown).toContain("- [ ] 1.1 a"); // 回滾至磁碟現況
+    });
+
+    it("keeps the list interactive during an in-flight single toggle", async () => {
+      const releases: Array<() => void> = [];
+      const props = makeProps({
+        loadDocument: tasksLoader(),
+        onToggleTask: vi.fn(() => new Promise<void>((r) => releases.push(r))),
+      });
+      render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+      await openTasksTab();
+      act(() => latestTL().onToggle!(1, true));
+      await waitFor(() => expect(latestTL().markdown).toContain("- [x] 1.1 a"));
+      // 單發寫回進行中不鎖清單（busy 僅批次／拖放例外）。
+      expect(latestTL().busy).toBe(false);
+      // 第二勾不被擋、同樣立即反映。
+      act(() => latestTL().onToggle!(2, true));
+      expect(props.onToggleTask as Mock).toHaveBeenCalledTimes(2);
+      await waitFor(() => expect(latestTL().markdown).toContain("- [x] 1.2 b"));
+    });
+  });
+
   it("shows who started the work and when, once the change is started", async () => {
     const props = makeProps({
       loadMeta: vi.fn(async () => ({

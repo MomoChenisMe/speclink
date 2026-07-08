@@ -39,6 +39,16 @@ describe("createTauriDataSource", () => {
     expect(invoke).toHaveBeenCalledWith("validate", { change: "chg" });
   });
 
+  it("setAllTasks invokes set_all_tasks with change and done", async () => {
+    // spec「任務分頁提供批次操作工具列」：全部已完成／重置任務走批次指令單次寫回。
+    invoke.mockResolvedValue(undefined);
+    const ds = createTauriDataSource();
+    await ds.setAllTasks("chg", true);
+    expect(invoke).toHaveBeenCalledWith("set_all_tasks", { change: "chg", done: true });
+    await ds.setAllTasks("chg", false);
+    expect(invoke).toHaveBeenCalledWith("set_all_tasks", { change: "chg", done: false });
+  });
+
   it("reorderCard invokes reorder_card with kind, id and neighbor ids (null = column ends)", async () => {
     // design D5：以鄰居識別碼表達落點；null＝欄頂／欄底。
     invoke.mockResolvedValue(undefined);

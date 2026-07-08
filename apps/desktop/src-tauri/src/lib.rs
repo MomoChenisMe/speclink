@@ -71,6 +71,11 @@ fn set_task_done(state: State<AppState>, change: String, ordinal: usize, done: b
 }
 
 #[tauri::command]
+fn set_all_tasks(state: State<AppState>, change: String, done: bool) -> Result<(), String> {
+    speclink_desktop_core::manage::set_all_tasks_at(&state.root(), &change, done)
+}
+
+#[tauri::command]
 fn move_task(
     state: State<AppState>,
     change: String,
@@ -296,6 +301,7 @@ pub fn run() {
             change_meta,
             delete_change,
             set_task_done,
+            set_all_tasks,
             move_task,
             reorder_card,
             validate,
