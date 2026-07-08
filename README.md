@@ -354,8 +354,6 @@ Speclink 以「對照 Spectra 2.3.1 二進位」的方式開發：任一差異�
 - **color_suite** — 16 項 `CLICOLOR_FORCE=1` 下的 ANSI 色彩對照
 - **twin harness** — 雙沙盒跑 8 個 drift 情境
 
-完整的功能對照與每一項差異的機制說明見 [docs/spectra-speclink-comparison.md](docs/spectra-speclink-comparison.md)；SDD 全流程實測報告見 [docs/sdd-final-report-hr.md](docs/sdd-final-report-hr.md)。
-
 ---
 
 ## 文件
@@ -376,7 +374,7 @@ Speclink 以「對照 Spectra 2.3.1 二進位」的方式開發：任一差異�
 
 ### 緣起
 
-Speclink 源自對 Spectra 與 OpenSpec 的比較分析（見 [`Spectra-OpenSpec-SDD-完整功能邏輯分析.md`](Spectra-OpenSpec-SDD-完整功能邏輯分析.md)），目標是保留兩者的優點、以 Rust 重寫，並延伸更進階的設計。第一階段（已完成）是做出與 Spectra 行為一致的完整 CLI，再疊加上述刻意差異。
+Speclink 源自對 Spectra 與 OpenSpec 的比較分析，目標是保留兩者的優點、以 Rust 重寫，並延伸更進階的設計。第一階段（已完成）是做出與 Spectra 行為一致的完整 CLI，再疊加上述刻意差異。
 
 ### 規格驅動引擎
 
