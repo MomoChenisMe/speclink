@@ -21,9 +21,9 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
-import { Markdown } from "./Markdown";
+import { SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
-import { DeltaBadges } from "./DeltaBadges";
+import { DeltaBadges, DeltaSpecView } from "./DeltaBadges";
 import { setTaskMark } from "../tasks";
 
 export interface RichDetailDrawerProps {
@@ -340,8 +340,8 @@ export function RichDetailDrawer({
             </TabsTrigger>
           </TabsList>
           <div className="flex-1 overflow-y-auto pt-3">
-            <TabsContent value="proposal"><Markdown content={proposal ?? null} empty={t("common.loading")} /></TabsContent>
-            <TabsContent value="design"><Markdown content={design ?? null} empty={t("list.noDesignDoc")} /></TabsContent>
+            <TabsContent value="proposal"><SectionedDoc content={proposal ?? null} empty={t("common.loading")} /></TabsContent>
+            <TabsContent value="design"><SectionedDoc content={design ?? null} empty={t("list.noDesignDoc")} /></TabsContent>
             <TabsContent value="tasks">
               {taskError && (
                 <div className="mb-2 text-sm text-destructive">
@@ -366,7 +366,7 @@ export function RichDetailDrawer({
                     <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-2">
                       {cap} <DeltaBadges counts={specDeltaCounts(doc)} />
                     </div>
-                    <Markdown content={doc} empty={t("common.loading")} />
+                    <DeltaSpecView markdown={doc} empty={t("common.loading")} />
                   </div>
                 ))
               )}

@@ -1,7 +1,7 @@
 // spec 需求「已封存變更可展開檢視」：列徽章、展開唯讀分頁、懶載入、
 // 任務核取方塊不可互動、缺件文件顯示空狀態。
 import { describe, it, expect, vi } from "vitest";
-import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -15,6 +15,7 @@ function render(ui: ReactElement) {
 }
 
 import { ArchivedList } from "../components/ArchivedList";
+import { LABEL_CLS } from "../components/SectionedDoc";
 import type { ArchivedItem } from "../adapter";
 
 const FULL: ArchivedItem = {
@@ -97,6 +98,28 @@ describe("ArchivedList（封存展開檢視）", () => {
     expect(screen.queryByLabelText("上移任務 1")).toBeNull();
   });
 
+  it("已封存提案分頁呈現中文章節標籤（提案與設計章節以中文標籤呈現，與變更抽屜同型）", async () => {
+    renderList([FULL]);
+    fireEvent.click(screen.getByText("desktop-shell-and-browser"));
+    await waitFor(() => expect(screen.getByText("封存的提案內文。")).toBeTruthy());
+    expect(screen.getByText("為什麼")).toBeTruthy();
+    expect(screen.queryByText("Why")).toBeNull();
+  });
+
+  it("已封存規格分頁的 delta 區段以色標呈現（與變更抽屜同型）", async () => {
+    renderList([FULL]);
+    fireEvent.click(screen.getByText("desktop-shell-and-browser"));
+    await waitFor(() => screen.getByRole("tab", { name: /規格/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
+    await waitFor(() =>
+      expect(document.querySelector('[data-delta-section="added"]')).toBeTruthy(),
+    );
+    const added = document.querySelector('[data-delta-section="added"]') as HTMLElement;
+    expect(within(added).getByText("新增")).toBeTruthy();
+    expect(screen.queryByText(/ADDED Requirements/)).toBeNull();
+    expect(screen.getByText(/Requirement: 桌面殼/)).toBeTruthy();
+  });
+
   it("缺件文件的分頁顯示空狀態而非錯誤", async () => {
     renderList([FULL]);
     fireEvent.click(screen.getByText("desktop-shell-and-browser"));
@@ -177,12 +200,36 @@ created: 2026-06-30
     expect(screen.getByText("背景")).toBeTruthy();
     expect(screen.getByText("討論過程")).toBeTruthy();
     expect(screen.getByText("結論")).toBeTruthy();
+    // spec「標籤為大標題且字級大於內文」：區段標題同大標題款式常數（design D6）。
+    for (const cls of LABEL_CLS.split(" ")) expect(screen.getByText("背景").className).toContain(cls);
+    expect(screen.getByText("背景").className).not.toContain("text-xs");
     expect(screen.queryByText("脈絡")).toBeNull();
     expect(screen.queryByText("回合")).toBeNull();
     expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /促轉/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /封存$/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /歸檔/ })).toBeNull();
+  });
+
+  it("封存討論的討論過程以輪卡片呈現（討論輪以卡片呈現，與抽屜同型）", async () => {
+    renderDual();
+    fireEvent.click(screen.getByText("Old settled topic"));
+    await waitFor(() => expect(screen.getByText(/定案/)).toBeTruthy());
+    const card = document.querySelector('[data-round="1"]') as HTMLElement;
+    expect(card).toBeTruthy();
+    expect(within(card).getByText("Round 1")).toBeTruthy();
+    expect(within(card).getByText("assumptions")).toBeTruthy();
+    expect(within(card).getByText("焦點")).toBeTruthy();
+    // 英文粗體前綴原文不再直出。
+    expect(screen.queryByText("Focus")).toBeNull();
+  });
+
+  it("封存討論的結論以欄位標籤呈現（討論結論以欄位標籤呈現，與抽屜同型）", async () => {
+    renderDual();
+    fireEvent.click(screen.getByText("Old settled topic"));
+    await waitFor(() => expect(screen.getByText(/收工/)).toBeTruthy());
+    expect(screen.getByText("決定")).toBeTruthy();
+    expect(screen.queryByText("Decision")).toBeNull();
   });
 
   it("搜尋同時過濾兩節：命中討論 topic 時變更節無項目、反之亦然", () => {

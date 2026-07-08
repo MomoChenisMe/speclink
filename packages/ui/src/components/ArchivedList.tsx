@@ -6,11 +6,13 @@ import { useI18n } from "../i18n";
 import { matchesQuery } from "../search";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { DeltaSpecView } from "./DeltaBadges";
 import { Input } from "./ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Markdown } from "./Markdown";
 import { TaskList } from "./TaskList";
-import { splitDiscussionSections } from "./DiscussionDrawer";
+import { ConclusionView, RoundsView, splitDiscussionSections } from "./DiscussionDrawer";
+import { LABEL_CLS, SectionedDoc } from "./SectionedDoc";
 
 type Doc = string | null | undefined;
 
@@ -111,10 +113,10 @@ export function ArchivedRow({ item, loaders }: { item: ArchivedItem; loaders: Ar
             </TabsList>
             <div className="pt-3 max-h-[50vh] overflow-y-auto">
               <TabsContent value="proposal">
-                <Markdown content={proposal ?? null} empty={t("archived.noProposal")} />
+                <SectionedDoc content={proposal ?? null} empty={t("archived.noProposal")} />
               </TabsContent>
               <TabsContent value="design">
-                <Markdown content={design ?? null} empty={t("archived.noDesign")} />
+                <SectionedDoc content={design ?? null} empty={t("archived.noDesign")} />
               </TabsContent>
               <TabsContent value="tasks">
                 {/* 封存檢視唯讀：不接 onToggle/onMove，核取方塊 disabled。 */}
@@ -129,7 +131,7 @@ export function ArchivedRow({ item, loaders }: { item: ArchivedItem; loaders: Ar
                       <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                         {cap}
                       </div>
-                      <Markdown content={doc} />
+                      <DeltaSpecView markdown={doc} />
                     </div>
                   ))
                 )}
@@ -190,12 +192,12 @@ function ArchivedDiscussionRow({
         <div className="px-3 pb-3 border-t border-border pt-3 max-h-[50vh] overflow-y-auto">
           {sections ? (
             <>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{t("archived.sectionContext")}</h3>
+              <h3 className={`${LABEL_CLS} mb-1`}>{t("archived.sectionContext")}</h3>
               <Markdown content={sections.context} empty={t("archived.noContext")} />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 mt-4">{t("archived.sectionRounds")}</h3>
-              <Markdown content={sections.rounds} empty={t("archived.noRounds")} />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 mt-4">{t("archived.sectionConclusion")}</h3>
-              <Markdown content={sections.conclusion} empty={t("archived.noConclusion")} />
+              <h3 className={`${LABEL_CLS} mb-1 mt-4`}>{t("archived.sectionRounds")}</h3>
+              <RoundsView text={sections.rounds} empty={t("archived.noRounds")} />
+              <h3 className={`${LABEL_CLS} mb-1 mt-4`}>{t("archived.sectionConclusion")}</h3>
+              <ConclusionView text={sections.conclusion} empty={t("archived.noConclusion")} />
             </>
           ) : (
             // 區段缺失或格式非預期：整篇單一檢視退回。

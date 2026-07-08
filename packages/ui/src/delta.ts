@@ -29,6 +29,43 @@ export function specDeltaCounts(markdown: string | null | undefined): DeltaCount
   return counts;
 }
 
+/** delta spec 的一個渲染區段：op 為 delta 種類，null＝非 delta 內文（照常渲染）。 */
+export interface DeltaSection {
+  op: keyof DeltaCounts | null;
+  content: string;
+}
+
+/**
+ * 把 delta spec 切成渲染區段（design D4）：`## <OP> Requirements` 開新 delta 區段
+ * （標題行不入內文，由呼叫端畫色標標頭）；其他 `## ` 標題結束 delta 區段（與
+ * specDeltaCounts 同界線）、自身歸入無種類區段照常渲染。無任何 delta 標題＝整篇單段。
+ */
+export function splitDeltaSections(markdown: string): DeltaSection[] {
+  const sections: DeltaSection[] = [];
+  let op: keyof DeltaCounts | null = null;
+  let buf: string[] = [];
+  const flush = () => {
+    const content = buf.join("\n");
+    if (op !== null || content.trim()) sections.push({ op, content });
+    buf = [];
+  };
+  for (const line of markdown.split(/\r?\n/)) {
+    const m = line.match(SECTION_RE);
+    if (m) {
+      flush();
+      op = m[1].toLowerCase() as keyof DeltaCounts;
+      continue;
+    }
+    if (/^##\s/.test(line) && op !== null) {
+      flush();
+      op = null;
+    }
+    buf.push(line);
+  }
+  flush();
+  return sections.length > 0 ? sections : [{ op: null, content: markdown }];
+}
+
 /** 合併多個 delta spec 的計數。 */
 export function sumDeltaCounts(list: DeltaCounts[]): DeltaCounts {
   return list.reduce(

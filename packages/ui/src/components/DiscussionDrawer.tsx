@@ -7,6 +7,7 @@ import { Button } from "./ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Markdown } from "./Markdown";
+import { LABEL_CLS } from "./SectionedDoc";
 import { discussionChipStage } from "./DiscussionColumn";
 
 /** 討論記錄的三個標準區段。 */
@@ -21,8 +22,8 @@ export interface DiscussionSections {
  * 任一區段缺失（手寫、pre-scaffold 格式）回 `null`——呼叫端整篇以單一檢視退回。
  */
 export function splitDiscussionSections(text: string): DiscussionSections | null {
+  const lines = text.split(/\r?\n/);
   const body = (name: string): string | null => {
-    const lines = text.split(/\r?\n/);
     const start = lines.findIndex((l) => l.trimEnd() === `## ${name}`);
     if (start < 0) return null;
     let end = lines.length;
@@ -39,6 +40,186 @@ export function splitDiscussionSections(text: string): DiscussionSections | null
   const conclusion = body("Conclusion");
   if (context === null || rounds === null || conclusion === null) return null;
   return { context, rounds, conclusion };
+}
+
+/** 輪欄位白名單——scaffold 固定四詞，其餘粗體前綴按內文照排（design D2）。 */
+export type RoundLabel = "Focus" | "Position" | "Ruled out" | "Open";
+const ROUND_LABELS: readonly RoundLabel[] = ["Focus", "Position", "Ruled out", "Open"];
+
+/** 討論的一輪：卡頭（輪次/mode/日期）＋欄位標籤區塊（缺席欄位無該鍵）。 */
+export interface DiscussionRound {
+  round: number;
+  mode: string;
+  date: string;
+  /** 首個欄位標籤前的內文（scaffold 記錄通常為空）。 */
+  lead: string;
+  fields: Partial<Record<RoundLabel, string>>;
+}
+
+/** 欄位切分結果：首個標籤前的內文（lead）＋標籤→內文對應。 */
+interface LabeledFields<L extends string> {
+  lead: string;
+  fields: Partial<Record<L, string>>;
+}
+
+/**
+ * 以標籤白名單切欄位（design D2／D7 共用實作）：行首「**<Label>**:」起新欄位，
+ * 其餘行（含非白名單的粗體前綴行）歸屬當前欄位；首個標籤前的內容歸 lead。
+ */
+function splitLabeledFields<L extends string>(lines: string[], labels: readonly L[]): LabeledFields<L> {
+  const re = new RegExp(`^\\*\\*(${labels.join("|")})\\*\\*:\\s?(.*)$`);
+  const fields: Partial<Record<L, string>> = {};
+  let lead = "";
+  let field: L | null = null;
+  const buf: string[] = [];
+
+  const flush = () => {
+    const content = buf.join("\n").trim();
+    if (field) fields[field] = content;
+    else lead = content;
+    buf.length = 0;
+  };
+
+  for (const line of lines) {
+    const m = re.exec(line);
+    if (m) {
+      flush();
+      field = m[1] as L;
+      buf.push(m[2]);
+      continue;
+    }
+    buf.push(line);
+  }
+  flush();
+  return { lead, fields };
+}
+
+/**
+ * 把 Rounds 區段全文切成輪陣列（design D1 行掃描解析 scaffold）。
+ * 每個 `### ` 標題必須符合「### Round N — <mode> (<date>)」；任一不符、或首輪前
+ * 出現非註解內容即回 `null`——呼叫端整篇以單一 markdown 檢視退回。零輪回空陣列。
+ */
+export function splitRounds(text: string): DiscussionRound[] | null {
+  const heading = /^### Round (\d+) — (.+?) \((.+)\)\s*$/;
+  const rounds: { round: number; mode: string; date: string; body: string[] }[] = [];
+  let current: { body: string[] } | null = null;
+
+  for (const line of text.split(/\r?\n/)) {
+    if (line.startsWith("### ")) {
+      const m = heading.exec(line);
+      if (!m) return null;
+      current = { body: [] };
+      rounds.push({ round: Number(m[1]), mode: m[2], date: m[3], body: current.body });
+      continue;
+    }
+    if (!current) {
+      // 首輪前僅容許空行與 scaffold 註解；其餘內容代表非標準記錄，整篇退回。
+      if (line.trim() === "" || /^<!--.*-->\s*$/.test(line.trim())) continue;
+      return null;
+    }
+    current.body.push(line);
+  }
+  return rounds.map((r) => ({ round: r.round, mode: r.mode, date: r.date, ...splitLabeledFields(r.body, ROUND_LABELS) }));
+}
+
+/** 輪欄位標籤的 i18n key（scaffold 四詞白名單 → 各語系標籤）。 */
+const ROUND_LABEL_KEYS: Record<RoundLabel, string> = {
+  Focus: "rounds.focus",
+  Position: "rounds.position",
+  "Ruled out": "rounds.ruledOut",
+  Open: "rounds.open",
+};
+
+/**
+ * 討論輪卡片檢視（spec「討論輪以卡片呈現」）：scaffold 記錄逐輪成卡——卡頭輪次
+ * 徽章＋mode chip＋日期、卡身欄位標籤區塊；非標準格式整篇單一 markdown 檢視退回。
+ * DiscussionDrawer 討論過程分頁與 ArchivedList 討論檢視共用。
+ */
+export function RoundsView({ text, empty }: { text: string; empty?: string }) {
+  const { t } = useI18n();
+  const rounds = splitRounds(text);
+  if (rounds === null) return <Markdown content={text} empty={empty} />;
+  if (rounds.length === 0) return <Markdown content="" empty={empty} />;
+  return (
+    <div className="flex flex-col gap-3">
+      {rounds.map((r, i) => (
+        <section key={i} data-round={r.round} className="rounded-lg border border-border bg-card p-4">
+          <header className="flex items-center gap-2">
+            <span className="rounded-full bg-primary/12 px-2 py-0.5 text-xs font-semibold text-primary">
+              {t("rounds.roundN").replace("{n}", String(r.round))}
+            </span>
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              {r.mode}
+            </span>
+            <span className="text-xs text-muted-foreground tabular-nums">{r.date}</span>
+          </header>
+          {r.lead && (
+            <div className="mt-3">
+              <Markdown content={r.lead} />
+            </div>
+          )}
+          {ROUND_LABELS.filter((l) => r.fields[l] !== undefined).map((l) => (
+            <div key={l} className="mt-3">
+              <div className={`${LABEL_CLS} mb-1`}>{t(ROUND_LABEL_KEYS[l])}</div>
+              <Markdown content={r.fields[l]!} />
+            </div>
+          ))}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/** 結論欄位白名單——conclude scaffold 固定六詞（design D7）。 */
+type ConclusionLabel =
+  | "Decision"
+  | "Rationale"
+  | "Rejected alternatives"
+  | "Deferred"
+  | "Capture to"
+  | "Next";
+const CONCLUSION_LABELS: readonly ConclusionLabel[] = [
+  "Decision",
+  "Rationale",
+  "Rejected alternatives",
+  "Deferred",
+  "Capture to",
+  "Next",
+];
+const CONCLUSION_LABEL_KEYS: Record<ConclusionLabel, string> = {
+  Decision: "conclusion.decision",
+  Rationale: "conclusion.rationale",
+  "Rejected alternatives": "conclusion.rejected",
+  Deferred: "conclusion.deferred",
+  "Capture to": "conclusion.captureTo",
+  Next: "conclusion.next",
+};
+
+/**
+ * 討論結論欄位檢視（spec「討論結論以欄位標籤呈現」）：conclude scaffold 六欄位
+ * 拆標籤區塊；無任何白名單欄位（手寫自由格式）整篇單一 markdown 檢視退回。
+ * DiscussionDrawer 結論分頁與 ArchivedList 結論區共用。
+ */
+export function ConclusionView({ text, empty }: { text: string; empty?: string }) {
+  const { t } = useI18n();
+  const { lead, fields } = splitLabeledFields(text.split(/\r?\n/), CONCLUSION_LABELS);
+  const present = CONCLUSION_LABELS.filter((l) => fields[l] !== undefined);
+  if (present.length === 0) return <Markdown content={text} empty={empty} />;
+  return (
+    <div>
+      {lead && (
+        <div className="mb-3">
+          <Markdown content={lead} />
+        </div>
+      )}
+      {present.map((l) => (
+        <div key={l} className="mt-4 first:mt-0">
+          <div className={`${LABEL_CLS} mb-1`}>{t(CONCLUSION_LABEL_KEYS[l])}</div>
+          <Markdown content={fields[l]!} />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export interface DiscussionDrawerProps {
@@ -242,8 +423,8 @@ export function DiscussionDrawer({
               </TabsTrigger>
             </TabsList>
             <div className="flex-1 overflow-y-auto pt-3">
-              <TabsContent value="conclusion"><Markdown content={sections.conclusion} empty={t("ddrawer.noConclusion")} /></TabsContent>
-              <TabsContent value="rounds"><Markdown content={sections.rounds} empty={t("ddrawer.noRounds")} /></TabsContent>
+              <TabsContent value="conclusion"><ConclusionView text={sections.conclusion} empty={t("ddrawer.noConclusion")} /></TabsContent>
+              <TabsContent value="rounds"><RoundsView text={sections.rounds} empty={t("ddrawer.noRounds")} /></TabsContent>
               <TabsContent value="context"><Markdown content={sections.context} empty={t("ddrawer.noContext")} /></TabsContent>
               <TabsContent value="promote">{promotePane}</TabsContent>
             </div>

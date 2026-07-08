@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, type Mock } from "vitest";
-import { render as rtlRender, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent, act, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -13,6 +13,7 @@ function render(ui: ReactElement) {
 }
 
 import { RichDetailDrawer } from "../components/RichDetailDrawer";
+import { DELTA_COLORS } from "../components/DeltaBadges";
 import type { ChangeItem } from "../adapter";
 
 // 攔截 TaskList props 以驗證抽屜→拖放回呼的接線（jsdom 無法真拖）。
@@ -50,6 +51,79 @@ function makeProps(over: Record<string, unknown> = {}) {
     ...over,
   };
 }
+
+// spec 需求「規格分頁 delta 區段以色標呈現」的渲染面（design D4 色標區段、配色對齊 DeltaBadges）。
+describe("規格分頁 delta 區段色標", () => {
+  const DELTA_MD =
+    "## ADDED Requirements\n\n### Requirement: a\nb\n\n## MODIFIED Requirements\n\n### Requirement: c\nd\n\n## REMOVED Requirements\n\n### Requirement: e\nf\n\n## RENAMED Requirements\n\n### Requirement: g\nh\n";
+
+  async function openSpecsTab(specMd: string) {
+    const props = makeProps({
+      loadDocument: vi.fn(async (_c: string, artifact: string) =>
+        artifact.startsWith("specs/") ? specMd : `# doc for ${artifact}`,
+      ),
+    });
+    const result = render(<RichDetailDrawer {...(props as never)} />);
+    await waitFor(() => screen.getByRole("tab", { name: /規格/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
+    return result;
+  }
+
+  it("delta 區段呈現色標標頭（配色與 DeltaBadges 同一常數來源），原始標題文字不直出", async () => {
+    const { baseElement } = await openSpecsTab(DELTA_MD);
+    await waitFor(() =>
+      expect(baseElement.querySelector('[data-delta-section="added"]')).toBeTruthy(),
+    );
+    const added = baseElement.querySelector('[data-delta-section="added"]') as HTMLElement;
+    const modified = baseElement.querySelector('[data-delta-section="modified"]') as HTMLElement;
+    expect(within(added).getByText("新增")).toBeTruthy();
+    expect(within(modified).getByText("修改")).toBeTruthy();
+    expect(added.className).toContain(DELTA_COLORS.added);
+    expect(modified.className).toContain(DELTA_COLORS.modified);
+    // spec「標籤為大標題且字級大於內文」：色標標頭同大標題款、保留各色（design D6）。
+    expect(added.className).toContain("text-xl");
+    expect(added.className).toContain("font-bold");
+    expect(added.className).not.toContain("text-xs");
+    // Example「四種 delta 區段的色標對應」其餘兩列：移除紅、更名藍。
+    const removed = baseElement.querySelector('[data-delta-section="removed"]') as HTMLElement;
+    const renamed = baseElement.querySelector('[data-delta-section="renamed"]') as HTMLElement;
+    expect(within(removed).getByText("移除")).toBeTruthy();
+    expect(within(renamed).getByText("更名")).toBeTruthy();
+    expect(removed.className).toContain(DELTA_COLORS.removed);
+    expect(renamed.className).toContain(DELTA_COLORS.renamed);
+    expect(screen.queryByText(/REMOVED Requirements/)).toBeNull();
+    expect(screen.queryByText(/RENAMED Requirements/)).toBeNull();
+    // 原始機器標題不以標題文字直出。
+    expect(screen.queryByText(/ADDED Requirements/)).toBeNull();
+    expect(screen.queryByText(/MODIFIED Requirements/)).toBeNull();
+    // requirement 內文照 prose 排版呈現。
+    expect(screen.getByText(/Requirement: a/)).toBeTruthy();
+    expect(screen.getByText(/Requirement: c/)).toBeTruthy();
+  });
+
+  it("無 delta 標記的規格整篇照常渲染（無色標標頭）", async () => {
+    const { baseElement } = await openSpecsTab("# 正典規格\n\n### Requirement: plain\n本文。\n");
+    await waitFor(() => expect(screen.getByText(/Requirement: plain/)).toBeTruthy());
+    expect(baseElement.querySelector("[data-delta-section]")).toBeNull();
+  });
+});
+
+// spec 需求「提案與設計章節以中文標籤呈現」的接線面（design D3）。
+describe("提案／設計分頁章節標籤", () => {
+  it("提案分頁呈現中文章節標籤，英文模板標題不直出", async () => {
+    const props = makeProps({
+      loadDocument: vi.fn(async (_c: string, artifact: string) =>
+        artifact === "proposal.md" ? "## Why\n\n動機內文。\n\n## What Changes\n\n- 變更項\n" : SPEC_MD,
+      ),
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("動機內文。")).toBeTruthy());
+    expect(screen.getByText("為什麼")).toBeTruthy();
+    expect(screen.getByText("變更內容")).toBeTruthy();
+    expect(screen.queryByText("Why")).toBeNull();
+    expect(screen.queryByText("What Changes")).toBeNull();
+  });
+});
 
 describe("RichDetailDrawer", () => {
   it("renders metadata row (author, agent, task count) and progress", async () => {
