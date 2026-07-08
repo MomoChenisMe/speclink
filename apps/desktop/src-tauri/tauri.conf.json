@@ -10,8 +10,9 @@
     "windows": [
       {
         "title": "Speclink",
-        "width": 1100,
-        "height": 720
+        "width": 1440,
+        "height": 900,
+        "center": true
       }
     ],
     "security": {

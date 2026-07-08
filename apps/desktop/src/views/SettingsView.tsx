@@ -1,6 +1,8 @@
-// 設定頁（spec 需求「設定頁圖形化讀寫兩層設定」；design D5/D8/D9）：
-// .speclink.yaml 的 tools 多選與 openspec/config.yaml 的政策欄位表單、
-// UI 語言三選。欄位旁說明文字承接被 Mapping 讀-改-寫移除的範本註解教學角色。
+// 設定頁（spec 需求「設定頁圖形化讀寫兩層設定」「設定頁編輯專案說明與產出規則」；
+// design D1–D3）：三頁簽組織——config.yaml（專案說明／產出規則／產出政策）、
+// .speclink.yaml（AI 工具）、本機設定（介面語言）。頁簽標籤檔名直出（字面常數，
+// LANGUAGE.md 明文例外）；專案說明與產出規則為獨立卡各持編輯態；解析失敗掛簽級
+// 警示點與簽首橫幅。欄位旁說明文字承接被 Mapping 讀-改-寫移除的範本註解教學角色。
 import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import {
@@ -60,6 +62,74 @@ function ParseErrorBanner({ message }: { message: string }) {
   );
 }
 
+/** 頁簽標籤警示點（design D3）：解析失敗時未切至該簽也可見。 */
+function TabWarningDot() {
+  return (
+    <span
+      data-testid="tab-warning"
+      aria-hidden="true"
+      className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+    />
+  );
+}
+
+/** 卡片右上編輯／取消／儲存按鈕列（兩卡共用的框架片段）。 */
+function CardEditControls({
+  editing,
+  disabled,
+  msg,
+  testPrefix,
+  onEdit,
+  onCancel,
+  onSave,
+}: {
+  editing: boolean;
+  disabled: boolean;
+  msg: string | null;
+  /** data-testid 前綴（context／rules）。 */
+  testPrefix: string;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex items-center gap-2">
+      {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+      {editing ? (
+        <>
+          <button
+            type="button"
+            data-testid={`${testPrefix}-cancel`}
+            className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={onCancel}
+          >
+            {t("app.cancel")}
+          </button>
+          <button
+            type="button"
+            data-testid={`${testPrefix}-save`}
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            onClick={onSave}
+          >
+            {t("settings.save")}
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          data-testid={`${testPrefix}-edit`}
+          disabled={disabled}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+          onClick={onEdit}
+        >
+          {t("settings.edit")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function SettingsView({ workspace, localePref, onLocalePrefChange }: SettingsViewProps) {
   const { t } = useI18n();
   const [snap, setSnap] = useState<SettingsSnapshot | null>(null);
@@ -71,14 +141,17 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
   const [contextText, setContextText] = useState("");
   /** 產出規則現值：schemaArtifacts 固定鍵 → 條目清單（清單順序即檔案順序）。 */
   const [rules, setRules] = useState<Record<string, string[]>>({});
-  // 專案設定卡（design D1）：卡層級編輯態，兩分頁共享；草稿於進編輯時自現值播種。
-  const [editing, setEditing] = useState(false);
+  // 拆卡獨立編輯態（design D2）：專案說明卡與產出規則卡各持 editing 旗標與草稿，
+  // 編輯／取消／儲存互不影響；各卡儲存僅寫對應鍵。
+  const [ctxEditing, setCtxEditing] = useState(false);
   const [draftContext, setDraftContext] = useState("");
+  const [ctxMsg, setCtxMsg] = useState<string | null>(null);
+  const [rulesEditing, setRulesEditing] = useState(false);
   const [draftRules, setDraftRules] = useState<Record<string, string>>({});
+  const [rulesMsg, setRulesMsg] = useState<string | null>(null);
   const [contextExpanded, setContextExpanded] = useState(false);
   const [appMsg, setAppMsg] = useState<string | null>(null);
   const [wfMsg, setWfMsg] = useState<string | null>(null);
-  const [projMsg, setProjMsg] = useState<string | null>(null);
 
   useEffect(() => {
     void workspace.readSettings().then((s) => {
@@ -129,37 +202,50 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
     }
   };
 
-  const beginEdit = () => {
+  const beginCtxEdit = () => {
     setDraftContext(contextText);
-    setDraftRules(
-      Object.fromEntries(
-        snap!.workflow.schemaArtifacts.map((id) => [id, entriesToText(rules[id] ?? [])]),
-      ),
-    );
-    setProjMsg(null);
-    setEditing(true);
+    setCtxMsg(null);
+    setCtxEditing(true);
   };
 
-  const cancelEdit = () => setEditing(false);
+  const saveContext = async () => {
+    // 僅寫 context 鍵（清空＝移除鍵）；產出規則卡對應的 rules 鍵不觸碰。
+    try {
+      await workspace.writeWorkflowContext(draftContext);
+      setContextText(draftContext);
+      setContextExpanded(false);
+      setCtxEditing(false);
+      setCtxMsg(t("settings.saved"));
+    } catch (e) {
+      // 寫入失敗：單行錯誤，維持編輯態不遺失輸入。
+      setCtxMsg(String(e));
+    }
+  };
 
-  const saveProject = async () => {
+  const beginRulesEdit = () => {
+    setDraftRules(
+      Object.fromEntries(
+        snap.workflow.schemaArtifacts.map((id) => [id, entriesToText(rules[id] ?? [])]),
+      ),
+    );
+    setRulesMsg(null);
+    setRulesEditing(true);
+  };
+
+  const saveRules = async () => {
     // 整份代換 payload：全部固定鍵依 schemaArtifacts 順序送出（空節＝移除鍵、全空＝移除 rules 鍵）；
-    // 未動分頁寫回等值內容，檔案效果冪等（design 風險緩解）。
-    const nextRules: Array<[string, string[]]> = snap!.workflow.schemaArtifacts.map((id) => [
+    // 僅寫 rules 鍵，context 逐字元不變（不經寫入路徑）。
+    const nextRules: Array<[string, string[]]> = snap.workflow.schemaArtifacts.map((id) => [
       id,
       textToEntries(draftRules[id] ?? ""),
     ]);
     try {
-      await workspace.writeWorkflowContext(draftContext);
       await workspace.writeWorkflowRules(nextRules);
-      setContextText(draftContext);
       setRules(Object.fromEntries(nextRules));
-      setContextExpanded(false);
-      setEditing(false);
-      setProjMsg(t("settings.saved"));
+      setRulesEditing(false);
+      setRulesMsg(t("settings.saved"));
     } catch (e) {
-      // 寫入失敗：單行錯誤（指明檔案與階段，來自 desktop-core），維持編輯態不遺失輸入。
-      setProjMsg(String(e));
+      setRulesMsg(String(e));
     }
   };
 
@@ -169,62 +255,47 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
     { value: "en", label: "English" },
   ];
 
-  const contextCollapsed = !editing && !contextExpanded && isLongContext(contextText);
+  const contextCollapsed = !ctxEditing && !contextExpanded && isLongContext(contextText);
   const populatedRuleKeys = snap.workflow.schemaArtifacts.filter((id) => (rules[id] ?? []).length > 0);
 
   return (
-    <div className="flex flex-col gap-4 max-w-2xl mx-auto w-full">
-      {/* config.yaml：專案設定卡（spec 需求「設定頁編輯專案說明與產出規則」；design D1–D4）——
-          唯讀優先、卡層級就地編輯；產出規則整份文字編輯（一行一條規則）。 */}
-      <Card data-testid="project-settings-card">
-        <CardHeader className="flex-row items-start justify-between">
-          <div className="flex flex-col gap-0.5">
-            <CardTitle className="text-base">{t("settings.projectCard")}</CardTitle>
-            <span className="font-mono text-xs text-muted-foreground">config.yaml</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {projMsg && <span className="text-xs text-muted-foreground">{projMsg}</span>}
-            {editing ? (
-              <>
-                <button
-                  type="button"
-                  data-testid="project-cancel"
-                  className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-                  onClick={cancelEdit}
-                >
-                  {t("app.cancel")}
-                </button>
-                <button
-                  type="button"
-                  data-testid="project-save"
-                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                  onClick={() => void saveProject()}
-                >
-                  {t("settings.save")}
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                data-testid="project-edit"
-                disabled={wfDisabled}
-                className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                onClick={beginEdit}
-              >
-                {t("settings.edit")}
-              </button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="gap-2.5">
+    <div className="max-w-2xl mx-auto w-full">
+      {/* 三頁簽（design D1）：標籤檔名直出為字面常數（LANGUAGE.md 明文例外）、本機設定經字典。 */}
+      <Tabs defaultValue="config">
+        <TabsList>
+          <TabsTrigger value="config">
+            config.yaml
+            {wfDisabled && <TabWarningDot />}
+          </TabsTrigger>
+          <TabsTrigger value="speclink">
+            .speclink.yaml
+            {appDisabled && <TabWarningDot />}
+          </TabsTrigger>
+          {/* 本機設定簽不掛任何解析錯誤（design D3）。 */}
+          <TabsTrigger value="local">{t("settings.localTabLabel")}</TabsTrigger>
+        </TabsList>
+
+        {/* config.yaml 簽：專案說明／產出規則／產出政策 */}
+        <TabsContent value="config" className="pt-3 flex flex-col gap-4">
+          <span data-testid="file-note-config" className="font-mono text-xs text-muted-foreground">openspec/config.yaml</span>
           {snap.workflow.parseError !== null && <ParseErrorBanner message={snap.workflow.parseError} />}
-          <Tabs defaultValue="context">
-            <TabsList>
-              <TabsTrigger value="context">{t("settings.contextLabel")}</TabsTrigger>
-              <TabsTrigger value="rules">{t("settings.rulesLabel")}</TabsTrigger>
-            </TabsList>
-            <TabsContent value="context" className="pt-2.5">
-              {editing ? (
+
+          {/* 專案說明卡（獨立編輯態） */}
+          <Card data-testid="context-card">
+            <CardHeader className="flex-row items-start justify-between">
+              <CardTitle className="text-base">{t("settings.contextLabel")}</CardTitle>
+              <CardEditControls
+                editing={ctxEditing}
+                disabled={wfDisabled}
+                msg={ctxMsg}
+                testPrefix="context"
+                onEdit={beginCtxEdit}
+                onCancel={() => setCtxEditing(false)}
+                onSave={() => void saveContext()}
+              />
+            </CardHeader>
+            <CardContent className="gap-2.5">
+              {ctxEditing ? (
                 <div className="flex flex-col gap-2">
                   <textarea
                     data-testid="context-input"
@@ -252,9 +323,25 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
                   )}
                 </div>
               )}
-            </TabsContent>
-            <TabsContent value="rules" className="pt-2.5">
-              {editing ? (
+            </CardContent>
+          </Card>
+
+          {/* 產出規則卡（獨立編輯態） */}
+          <Card data-testid="rules-card">
+            <CardHeader className="flex-row items-start justify-between">
+              <CardTitle className="text-base">{t("settings.rulesLabel")}</CardTitle>
+              <CardEditControls
+                editing={rulesEditing}
+                disabled={wfDisabled}
+                msg={rulesMsg}
+                testPrefix="rules"
+                onEdit={beginRulesEdit}
+                onCancel={() => setRulesEditing(false)}
+                onSave={() => void saveRules()}
+              />
+            </CardHeader>
+            <CardContent className="gap-2.5">
+              {rulesEditing ? (
                 <div className="flex flex-col gap-3">
                   {snap.workflow.schemaArtifacts.map((id) => (
                     <div key={id} className="flex flex-col gap-1">
@@ -291,167 +378,170 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
                   ))}
                 </div>
               )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
 
-      {/* UI 語言（app 本機偏好——與 config.yaml 的 locale 是兩件事） */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("settings.uiLocaleLabel")}</CardTitle>
-        </CardHeader>
-        <CardContent className="gap-2">
-          <div className="flex gap-1.5" data-testid="ui-locale">
-            {uiLocaleOptions.map((opt) => (
-              <button
-                key={String(opt.value)}
-                type="button"
-                className={cn(
-                  "rounded-md border px-3 py-1.5 text-sm transition-colors",
-                  localePref === opt.value
-                    ? "border-primary bg-primary/8 font-medium text-primary"
-                    : "border-border text-muted-foreground hover:text-foreground hover:bg-muted",
-                )}
-                onClick={() => onLocalePrefChange(opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <FieldHelp>{t("settings.uiLocaleHelp")}</FieldHelp>
-        </CardContent>
-      </Card>
+          {/* 產出政策卡（原 openspec/config.yaml 卡更名） */}
+          <Card data-testid="policy-card">
+            <CardHeader>
+              <CardTitle className="text-base">{t("settings.policyCard")}</CardTitle>
+            </CardHeader>
+            <CardContent className="gap-2.5">
+              <div className="grid grid-cols-[110px_1fr] items-center gap-x-3 gap-y-1">
+                <label htmlFor="cfg-locale" className="text-sm font-medium">locale</label>
+                <NativeSelect
+                  id="cfg-locale"
+                  value={locale}
+                  disabled={wfDisabled}
+                  onChange={(e) => setLocale(e.target.value)}
+                >
+                  <option value="">{t("settings.localeUnset")}</option>
+                  <option value="tw">tw（繁體中文）</option>
+                  <option value="ja">ja（日本語）</option>
+                  <option value="en">en（English）</option>
+                </NativeSelect>
+                <span />
+                <FieldHelp>{t("settings.localeHelp")}</FieldHelp>
 
-      {/* .speclink.yaml：tools 多選 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-mono">.speclink.yaml</CardTitle>
-        </CardHeader>
-        <CardContent className="gap-2.5">
-          {snap.app.parseError !== null && <ParseErrorBanner message={snap.app.parseError} />}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">{t("settings.toolsLabel")}</span>
-            <div className="flex gap-4">
-              {["claude", "codex"].map((tool) => (
-                <label key={tool} htmlFor={`tool-${tool}`} className="flex items-center gap-1.5 text-sm">
+                <label htmlFor="cfg-spec-locale" className="text-sm font-medium">spec_locale</label>
+                <NativeSelect
+                  id="cfg-spec-locale"
+                  value={specLocale}
+                  disabled={wfDisabled}
+                  onChange={(e) => setSpecLocale(e.target.value)}
+                >
+                  <option value="">{t("settings.localeUnset")}</option>
+                  <option value="auto">auto</option>
+                  <option value="tw">tw（繁體中文）</option>
+                  <option value="ja">ja（日本語）</option>
+                  <option value="en">en（English）</option>
+                </NativeSelect>
+                <span />
+                <FieldHelp>{t("settings.specLocaleHelp")}</FieldHelp>
+
+                <label htmlFor="cfg-tdd" className="text-sm font-medium">tdd</label>
+                <div className="flex items-center">
                   <Checkbox
-                    id={`tool-${tool}`}
-                    checked={tools.includes(tool)}
-                    disabled={appDisabled}
-                    onChange={(e) => toggleTool(tool, e.target.checked)}
+                    id="cfg-tdd"
+                    checked={tdd}
+                    disabled={wfDisabled}
+                    onChange={(e) => setTdd(e.target.checked)}
                   />
-                  {tool}
-                </label>
-              ))}
-            </div>
-            <FieldHelp>{t("settings.toolsHelp")}</FieldHelp>
-          </div>
-          {snap.app.customTools.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-medium">{t("settings.customToolsLabel")}</span>
-              <div className="flex gap-1.5 flex-wrap">
-                {snap.app.customTools.map((name) => (
-                  <span key={name} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                    {name}
-                  </span>
+                </div>
+                <span />
+                <FieldHelp>{t("settings.tddHelp")}</FieldHelp>
+
+                <label htmlFor="cfg-audit" className="text-sm font-medium">audit</label>
+                <div className="flex items-center">
+                  <Checkbox
+                    id="cfg-audit"
+                    checked={audit}
+                    disabled={wfDisabled}
+                    onChange={(e) => setAudit(e.target.checked)}
+                  />
+                </div>
+                <span />
+                <FieldHelp>{t("settings.auditHelp")}</FieldHelp>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="save-workflow"
+                  disabled={wfDisabled}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  onClick={() => void saveWorkflow()}
+                >
+                  {t("settings.save")}
+                </button>
+                {wfMsg && <span className="text-xs text-muted-foreground">{wfMsg}</span>}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* .speclink.yaml 簽：AI 工具 */}
+        <TabsContent value="speclink" className="pt-3 flex flex-col gap-4">
+          <span data-testid="file-note-speclink" className="font-mono text-xs text-muted-foreground">.speclink.yaml</span>
+          {snap.app.parseError !== null && <ParseErrorBanner message={snap.app.parseError} />}
+          <Card data-testid="tools-card">
+            <CardHeader>
+              <CardTitle className="text-base">{t("settings.toolsLabel")}</CardTitle>
+            </CardHeader>
+            <CardContent className="gap-2.5">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex gap-4">
+                  {["claude", "codex"].map((tool) => (
+                    <label key={tool} htmlFor={`tool-${tool}`} className="flex items-center gap-1.5 text-sm">
+                      <Checkbox
+                        id={`tool-${tool}`}
+                        checked={tools.includes(tool)}
+                        disabled={appDisabled}
+                        onChange={(e) => toggleTool(tool, e.target.checked)}
+                      />
+                      {tool}
+                    </label>
+                  ))}
+                </div>
+                <FieldHelp>{t("settings.toolsHelp")}</FieldHelp>
+              </div>
+              {snap.app.customTools.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-medium">{t("settings.customToolsLabel")}</span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {snap.app.customTools.map((name) => (
+                      <span key={name} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="save-app"
+                  disabled={appDisabled}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  onClick={() => void saveApp()}
+                >
+                  {t("settings.save")}
+                </button>
+                {appMsg && <span className="text-xs text-muted-foreground">{appMsg}</span>}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* 本機設定簽：介面語言（app 本機偏好——與 config.yaml 的 locale 是兩件事） */}
+        <TabsContent value="local" className="pt-3 flex flex-col gap-4">
+          <span data-testid="local-note" className="text-xs text-muted-foreground">{t("settings.localTabNote")}</span>
+          <Card data-testid="ui-locale-card">
+            <CardHeader>
+              <CardTitle className="text-base">{t("settings.uiLocaleLabel")}</CardTitle>
+            </CardHeader>
+            <CardContent className="gap-2">
+              <div className="flex gap-1.5" data-testid="ui-locale">
+                {uiLocaleOptions.map((opt) => (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    className={cn(
+                      "rounded-md border px-3 py-1.5 text-sm transition-colors",
+                      localePref === opt.value
+                        ? "border-primary bg-primary/8 font-medium text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground hover:bg-muted",
+                    )}
+                    onClick={() => onLocalePrefChange(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
                 ))}
               </div>
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              data-testid="save-app"
-              disabled={appDisabled}
-              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              onClick={() => void saveApp()}
-            >
-              {t("settings.save")}
-            </button>
-            {appMsg && <span className="text-xs text-muted-foreground">{appMsg}</span>}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* openspec/config.yaml：政策欄位 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-mono">openspec/config.yaml</CardTitle>
-        </CardHeader>
-        <CardContent className="gap-2.5">
-          {snap.workflow.parseError !== null && <ParseErrorBanner message={snap.workflow.parseError} />}
-          <div className="grid grid-cols-[110px_1fr] items-center gap-x-3 gap-y-1">
-            <label htmlFor="cfg-locale" className="text-sm font-medium">locale</label>
-            <NativeSelect
-              id="cfg-locale"
-              value={locale}
-              disabled={wfDisabled}
-              onChange={(e) => setLocale(e.target.value)}
-            >
-              <option value="">{t("settings.localeUnset")}</option>
-              <option value="tw">tw（繁體中文）</option>
-              <option value="ja">ja（日本語）</option>
-              <option value="en">en（English）</option>
-            </NativeSelect>
-            <span />
-            <FieldHelp>{t("settings.localeHelp")}</FieldHelp>
-
-            <label htmlFor="cfg-spec-locale" className="text-sm font-medium">spec_locale</label>
-            <NativeSelect
-              id="cfg-spec-locale"
-              value={specLocale}
-              disabled={wfDisabled}
-              onChange={(e) => setSpecLocale(e.target.value)}
-            >
-              <option value="">{t("settings.localeUnset")}</option>
-              <option value="auto">auto</option>
-              <option value="tw">tw（繁體中文）</option>
-              <option value="ja">ja（日本語）</option>
-              <option value="en">en（English）</option>
-            </NativeSelect>
-            <span />
-            <FieldHelp>{t("settings.specLocaleHelp")}</FieldHelp>
-
-            <label htmlFor="cfg-tdd" className="text-sm font-medium">tdd</label>
-            <div className="flex items-center">
-              <Checkbox
-                id="cfg-tdd"
-                checked={tdd}
-                disabled={wfDisabled}
-                onChange={(e) => setTdd(e.target.checked)}
-              />
-            </div>
-            <span />
-            <FieldHelp>{t("settings.tddHelp")}</FieldHelp>
-
-            <label htmlFor="cfg-audit" className="text-sm font-medium">audit</label>
-            <div className="flex items-center">
-              <Checkbox
-                id="cfg-audit"
-                checked={audit}
-                disabled={wfDisabled}
-                onChange={(e) => setAudit(e.target.checked)}
-              />
-            </div>
-            <span />
-            <FieldHelp>{t("settings.auditHelp")}</FieldHelp>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              data-testid="save-workflow"
-              disabled={wfDisabled}
-              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              onClick={() => void saveWorkflow()}
-            >
-              {t("settings.save")}
-            </button>
-            {wfMsg && <span className="text-xs text-muted-foreground">{wfMsg}</span>}
-          </div>
-        </CardContent>
-      </Card>
-
+              <FieldHelp>{t("settings.uiLocaleHelp")}</FieldHelp>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
