@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   SpeclinkDataSource,
+  CardKind,
   ChangeItem,
   SpecItem,
   ArchivedItem,
@@ -70,6 +71,14 @@ export function createTauriDataSource(): SpeclinkDataSource {
     },
     async archiveDiscussion(slug: string): Promise<void> {
       await invoke("archive_discussion", { slug });
+    },
+    async reorderCard(
+      kind: CardKind,
+      id: string,
+      prevId: string | null,
+      nextId: string | null,
+    ): Promise<void> {
+      await invoke("reorder_card", { kind, id, prevId, nextId });
     },
   };
 }

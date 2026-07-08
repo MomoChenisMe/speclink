@@ -82,6 +82,23 @@ fn move_task(
 }
 
 #[tauri::command]
+fn reorder_card(
+    state: State<AppState>,
+    kind: String,
+    id: String,
+    prev_id: Option<String>,
+    next_id: Option<String>,
+) -> Result<(), String> {
+    speclink_desktop_core::manage::reorder_card_at(
+        &state.root(),
+        &kind,
+        &id,
+        prev_id.as_deref(),
+        next_id.as_deref(),
+    )
+}
+
+#[tauri::command]
 fn validate(state: State<AppState>, change: String) -> Result<Value, String> {
     speclink_desktop_core::verbs::validate_at(&state.root(), &change)
 }
@@ -280,6 +297,7 @@ pub fn run() {
             delete_change,
             set_task_done,
             move_task,
+            reorder_card,
             validate,
             analyze,
             archive,

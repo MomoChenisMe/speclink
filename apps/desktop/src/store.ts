@@ -1,6 +1,7 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type {
   SpeclinkDataSource,
+  CardKind,
   ChangeItem,
   SpecItem,
   ArchivedItem,
@@ -80,6 +81,8 @@ export interface AppState {
   confirmArchiveDiscussion: () => Promise<void>;
   cancelArchiveDiscussion: () => void;
   runVerb: (verb: Verb, change: string) => Promise<void>;
+  /** 看板拖排寫回：把卡片排到兩鄰居之間（null＝欄頂／欄底）；失敗浮上 verbResult。 */
+  reorderCard: (kind: CardKind, id: string, prevId: string | null, nextId: string | null) => Promise<void>;
 
   // --- workspace／專案分頁列（注入 workspace adapter 時生效；design D3/D10/D11） ---
   /** 分頁清單（開啟順序；持久化於 app 本機）。 */
@@ -332,6 +335,16 @@ export function createAppStore(
       } catch (e) {
         // 失敗時呈現 core 的錯誤訊息，不靜默吞掉。
         set({ verbResult: `${change} · ${verb} ✗ ${String(e)}` });
+      }
+      await get().refresh();
+    },
+
+    async reorderCard(kind, id, prevId, nextId) {
+      try {
+        await dataSource.reorderCard(kind, id, prevId, nextId);
+      } catch (e) {
+        // 寫回失敗不留假象（spec）：單行錯誤浮上，refresh 回磁碟現況。
+        set({ verbResult: `${id} · ${appT("store.reorderFailed")} ✗ ${String(e)}` });
       }
       await get().refresh();
     },

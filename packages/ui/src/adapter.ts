@@ -64,6 +64,9 @@ export interface DiscussionLists {
 /** 可對選定 change 執行的動詞。park/unpark 已從 speclink 移除，不在此列。 */
 export type Verb = "validate" | "analyze" | "archive";
 
+/** 看板卡片種類（拖排寫回的目標）：變更卡或討論卡。 */
+export type CardKind = "change" | "discussion";
+
 /** 一個 artifact 的狀態（對應 core status 的 artifacts 項）。 */
 export interface ArtifactStatus {
   id: string;
@@ -120,4 +123,9 @@ export interface SpeclinkDataSource {
   promoteDiscussion(slug: string, name?: string): Promise<{ change: string }>;
   /** 歸檔一筆 live 討論（UI 需先確認）；失敗 reject 附訊息。 */
   archiveDiscussion(slug: string): Promise<void>;
+  /**
+   * 看板欄內拖排寫回（design D5）：把卡片排到 prevId 與 nextId 兩鄰居之間
+   * （null＝欄頂／欄底）。id 為變更名或討論 slug；失敗 reject 附訊息。
+   */
+  reorderCard(kind: CardKind, id: string, prevId: string | null, nextId: string | null): Promise<void>;
 }

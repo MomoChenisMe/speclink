@@ -31,6 +31,7 @@ export {
 
 export type {
   SpeclinkDataSource,
+  CardKind,
   ChangeItem,
   SpecItem,
   ArchivedItem,
@@ -38,6 +39,7 @@ export type {
   DiscussionLists,
   Verb,
 } from "./adapter";
+export { cardDndId, parseCardDndId, resolveCardDrop, type ColumnCards } from "./boardDnd";
 export { ChangeBoard } from "./components/ChangeBoard";
 export type { ChangeBoardProps } from "./components/ChangeBoard";
 export { DocumentTree } from "./components/DocumentTree";

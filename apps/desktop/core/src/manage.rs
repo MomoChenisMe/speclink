@@ -157,6 +157,123 @@ fn is_task_line(line: &str) -> bool {
     regex::Regex::new(r"^\s*-\s*\[[ xX]\]\s").unwrap().is_match(line)
 }
 
+/// 看板拖排寫回（design D3/D5）：以鄰居識別碼表達落點，計中點 rank 寫回被拖卡的
+/// meta（變更）或 frontmatter（討論）。目標欄內有缺 rank 卡時先依當前顯示序整欄
+/// 補章（等距鍵）再套用移動；已消失的鄰居視為開放端（欄頂／欄底），不 panic。
+pub fn reorder_card_at(
+    root: &Path,
+    kind: &str,
+    id: &str,
+    prev_id: Option<&str>,
+    next_id: Option<&str>,
+) -> Result<(), String> {
+    if !crate::query::is_safe_path_param(id) {
+        return Err(format!("invalid card id: {id}"));
+    }
+    for n in [prev_id, next_id].into_iter().flatten() {
+        if !crate::query::is_safe_path_param(n) {
+            return Err(format!("invalid neighbor id: {n}"));
+        }
+    }
+    let ctx = init_core_context(root)
+        .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
+    let store: &dyn Store = &ctx.store;
+    match kind {
+        "change" => reorder_change(store, id, prev_id, next_id),
+        "discussion" => reorder_discussion(store, id, prev_id, next_id),
+        other => Err(format!("invalid card kind: {other}")),
+    }
+}
+
+/// 變更卡的所屬欄（與前端 changeStage 同構）：任務全完成→ready(2)；
+/// 已開工或有完成數→in-progress(1)；其餘→proposed(0)。
+fn change_stage(store: &dyn Store, c: &speclink_core::model::Change) -> u8 {
+    let (complete, total) = speclink_core::listing::task_counts(store, c);
+    if total > 0 && complete >= total {
+        2
+    } else if c.meta.started_at.is_some() || complete > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn reorder_change(
+    store: &dyn Store,
+    id: &str,
+    prev_id: Option<&str>,
+    next_id: Option<&str>,
+) -> Result<(), String> {
+    let all = crate::query::board_sorted_changes(store);
+    let dragged = all
+        .iter()
+        .find(|c| c.name == id)
+        .ok_or_else(|| format!("change not found: {id}"))?;
+    let stage = change_stage(store, dragged);
+    let column: Vec<_> = all.iter().filter(|c| change_stage(store, c) == stage).collect();
+    // 整欄補章（design D3）：欄內有缺 rank 卡 → 依顯示序等距派發，只涵蓋本欄。
+    let ranks: std::collections::HashMap<&str, String> =
+        if column.iter().any(|c| c.meta.board_rank.is_none()) {
+            let keys = crate::rank::spread(column.len());
+            for (c, key) in column.iter().zip(&keys) {
+                speclink_core::model::set_board_rank(store, &c.name, key)
+                    .map_err(|e| e.to_string())?;
+            }
+            column.iter().map(|c| c.name.as_str()).zip(keys).collect()
+        } else {
+            column
+                .iter()
+                .map(|c| (c.name.as_str(), c.meta.board_rank.clone().expect("all ranked")))
+                .collect()
+        };
+    let key = neighbor_midpoint(&ranks, prev_id, next_id);
+    speclink_core::model::set_board_rank(store, id, &key).map_err(|e| e.to_string())
+}
+
+fn reorder_discussion(
+    store: &dyn Store,
+    id: &str,
+    prev_id: Option<&str>,
+    next_id: Option<&str>,
+) -> Result<(), String> {
+    let active = crate::discussions::board_sorted_active(store);
+    if !active.iter().any(|(_, i)| i.slug == id) {
+        return Err(format!("discussion not found: {id}"));
+    }
+    let ranks: std::collections::HashMap<&str, String> =
+        if active.iter().any(|(r, _)| r.is_none()) {
+            let keys = crate::rank::spread(active.len());
+            for ((_, i), key) in active.iter().zip(&keys) {
+                speclink_core::discuss::set_board_rank(store, &i.slug, key)
+                    .map_err(|e| e.to_string())?;
+            }
+            active.iter().map(|(_, i)| i.slug.as_str()).zip(keys).collect()
+        } else {
+            active
+                .iter()
+                .map(|(r, i)| (i.slug.as_str(), r.clone().expect("all ranked")))
+                .collect()
+        };
+    let key = neighbor_midpoint(&ranks, prev_id, next_id);
+    speclink_core::discuss::set_board_rank(store, id, &key).map_err(|e| e.to_string())
+}
+
+/// 以鄰居現值推導新鍵：不在現存集合的鄰居（已封存／刪除的 race）視為開放端；
+/// 現值逆序（stale 落點）時棄上界保底——寧可落位偏移，不產生非法鍵。
+fn neighbor_midpoint(
+    ranks: &std::collections::HashMap<&str, String>,
+    prev_id: Option<&str>,
+    next_id: Option<&str>,
+) -> String {
+    let prev = prev_id.and_then(|p| ranks.get(p)).cloned();
+    let next = next_id.and_then(|n| ranks.get(n)).cloned();
+    let next = match (&prev, &next) {
+        (Some(a), Some(b)) if a >= b => None,
+        _ => next,
+    };
+    crate::rank::midpoint(prev.as_deref(), next.as_deref())
+}
+
 /// 讀 tasks.md → 以（行陣列, checkbox 行索引）呼叫編輯器 → 寫回。
 fn edit_tasks(
     root: &Path,
@@ -657,5 +774,153 @@ mod tests {
         let ctx = crate::init_core_context(&root).unwrap();
         assert!(ctx.store.change_exists("kept-change"));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    // --- 看板拖排寫回（design D3/D5；desktop-card-reorder） ---
+
+    /// 含 board_rank 的 change meta（add_change 的 tasks 固定 1 完成 1 未完成
+    /// → 全卡同屬 in-progress 欄）。
+    fn ranked_meta(rank: &str) -> String {
+        format!("schema: spec-driven\ncreated: 2026-07-01\ncreated_by: momo\nboard_rank: {rank}\n")
+    }
+
+    /// 看板欄內排序後的 change 名（走 list_changes_at 的顯示序）。
+    fn board_names(root: &Path) -> Vec<String> {
+        crate::query::list_changes_at(root)["changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["name"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    fn rank_of(meta: &str) -> Option<String> {
+        speclink_core::model::ChangeMeta::from_text(Some(meta)).board_rank
+    }
+
+    #[test]
+    fn reorder_change_steady_state_writes_only_dragged_meta() {
+        // spec「欄內拖排以中點 rank 單檔寫回」：穩態下只改被拖卡 meta，
+        // 其餘內容逐位元組不變、鄰居檔案不動。
+        let fx = crate::testfixture::FixtureRoot::new("r-steady");
+        fx.add_change("one", &ranked_meta("b"));
+        fx.add_change("two", &ranked_meta("f"));
+        fx.add_change("three", &ranked_meta("t"));
+        let one_before = meta_of(&fx, "one");
+        let two_before = meta_of(&fx, "two");
+
+        reorder_card_at(fx.root(), "change", "three", Some("one"), Some("two"))
+            .expect("steady-state reorder ok");
+
+        assert_eq!(meta_of(&fx, "one"), one_before, "neighbor files must not change");
+        assert_eq!(meta_of(&fx, "two"), two_before, "neighbor files must not change");
+        let three = meta_of(&fx, "three");
+        let new_rank = rank_of(&three).expect("dragged card keeps a rank");
+        assert!(
+            "b" < new_rank.as_str() && new_rank.as_str() < "f",
+            "new rank must be strictly between neighbors: {new_rank}"
+        );
+        // 除 board_rank 行外逐位元組不變（原 rank 行原位代換）。
+        assert_eq!(
+            three.replacen(&format!("board_rank: {new_rank}\n"), "board_rank: t\n", 1),
+            ranked_meta("t"),
+            "only the board_rank line may differ: {three}"
+        );
+        assert_eq!(board_names(fx.root()), ["one", "three", "two"]);
+    }
+
+    #[test]
+    fn reorder_change_stamps_whole_column_when_unranked_present() {
+        // spec「欄內存在缺 rank 卡時整欄補章」：依當前顯示序整欄派發後套用移動，
+        // 不波及他欄。
+        let fx = crate::testfixture::FixtureRoot::new("r-stamp");
+        fx.add_change("a", META_UNSTARTED);
+        fx.add_change("b", META_UNSTARTED);
+        fx.add_change("c", META_UNSTARTED);
+        // 他欄卡（proposed：零完成、未開工）不得被補章。
+        fx.add_change("other-col", META_UNSTARTED);
+        fx.write(
+            "openspec/changes/other-col/tasks.md",
+            "## 1. Group\n\n- [ ] 1.1 First task\n- [ ] 1.2 Second task\n",
+        );
+        let other_before = meta_of(&fx, "other-col");
+
+        // 把 c 拖到欄頂（a 之前）。
+        reorder_card_at(fx.root(), "change", "c", None, Some("a")).expect("stamp reorder ok");
+
+        let (ra, rb, rc) = (
+            rank_of(&meta_of(&fx, "a")).expect("a stamped"),
+            rank_of(&meta_of(&fx, "b")).expect("b stamped"),
+            rank_of(&meta_of(&fx, "c")).expect("c ranked"),
+        );
+        assert!(rc < ra && ra < rb, "order must be c < a < b, got c={rc} a={ra} b={rb}");
+        assert_eq!(meta_of(&fx, "other-col"), other_before, "other column must be untouched");
+        assert_eq!(board_names(fx.root()), ["other-col", "c", "a", "b"], "unranked column first, then ranked");
+        // 補章後 meta 仍以既有欄位開頭（byte 保留）。
+        assert!(meta_of(&fx, "a").starts_with(META_UNSTARTED));
+    }
+
+    #[test]
+    fn reorder_discussion_writes_single_frontmatter_file() {
+        // 討論卡同語意：中點寫回單檔、鄰居不動。
+        let fx = crate::testfixture::FixtureRoot::new("r-disc");
+        let doc = |slug: &str, rank: &str| {
+            format!(
+                "---\ntopic: T {slug}\nslug: {slug}\nstatus: open\nboard_rank: {rank}\ncreated: 2026-07-01\n---\n\n# Discussion: T {slug}\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n<!-- p -->\n"
+            )
+        };
+        fx.write("openspec/discussions/alpha.md", &doc("alpha", "b"));
+        fx.write("openspec/discussions/beta.md", &doc("beta", "n"));
+        fx.write("openspec/discussions/gamma.md", &doc("gamma", "t"));
+        let alpha_before = fs::read_to_string(fx.root().join("openspec/discussions/alpha.md")).unwrap();
+
+        reorder_card_at(fx.root(), "discussion", "gamma", Some("alpha"), Some("beta"))
+            .expect("discussion reorder ok");
+
+        assert_eq!(
+            fs::read_to_string(fx.root().join("openspec/discussions/alpha.md")).unwrap(),
+            alpha_before,
+            "neighbor discussion files must not change"
+        );
+        let gamma = fs::read_to_string(fx.root().join("openspec/discussions/gamma.md")).unwrap();
+        let new_rank = {
+            let line = gamma.lines().find(|l| l.starts_with("board_rank:")).expect("rank line");
+            line.trim_start_matches("board_rank:").trim().to_string()
+        };
+        assert!("b" < new_rank.as_str() && new_rank.as_str() < "n", "b < {new_rank} < n violated");
+        assert_eq!(
+            gamma.replacen(&format!("board_rank: {new_rank}\n"), "board_rank: t\n", 1),
+            doc("gamma", "t"),
+            "only the frontmatter rank line may differ"
+        );
+    }
+
+    #[test]
+    fn reorder_survives_vanished_neighbors_without_corrupting_meta() {
+        // spec「鄰居於寫回前消失」：以現存鄰居重導或落欄頂／欄底，不損壞 meta、不 panic。
+        let fx = crate::testfixture::FixtureRoot::new("r-race");
+        fx.add_change("solo", &ranked_meta("f"));
+        reorder_card_at(fx.root(), "change", "solo", Some("ghost-prev"), Some("ghost-next"))
+            .expect("vanished neighbors must not fail");
+        let meta = meta_of(&fx, "solo");
+        let parsed = speclink_core::model::ChangeMeta::from_text(Some(&meta));
+        assert_eq!(parsed.schema.as_deref(), Some("spec-driven"), "meta must keep parsing");
+        assert!(parsed.board_rank.is_some(), "card keeps a valid rank");
+    }
+
+    #[test]
+    fn reorder_rejects_bad_kind_unsafe_or_missing_ids() {
+        let fx = crate::testfixture::FixtureRoot::new("r-guard");
+        fx.add_change("demo", &ranked_meta("n"));
+        let before = meta_of(&fx, "demo");
+        assert!(reorder_card_at(fx.root(), "bogus", "demo", None, None).is_err(), "kind whitelist");
+        assert!(reorder_card_at(fx.root(), "change", "../evil", None, None).is_err(), "traversal rejected");
+        assert!(reorder_card_at(fx.root(), "change", "ghost", None, None).is_err(), "missing card errors");
+        assert!(
+            reorder_card_at(fx.root(), "change", "demo", Some("../evil"), None).is_err(),
+            "unsafe neighbor ids rejected"
+        );
+        assert!(reorder_card_at(fx.root(), "discussion", "ghost", None, None).is_err(), "missing discussion errors");
+        assert_eq!(meta_of(&fx, "demo"), before, "rejected calls must not write");
     }
 }

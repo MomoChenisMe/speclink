@@ -378,6 +378,56 @@ pub fn promote(
     Ok(PromoteOutcome { change: change_name, path: dir })
 }
 
+/// 討論卡的看板欄內排序鍵（frontmatter 的 `board_rank`）。沿 `promoted_to` 的
+/// 同款模式：獨立讀取函式、不進 `DiscussionInfo`，`discuss list --json` 逐位元不變。
+pub fn board_rank(store: &dyn Store, slug: &str) -> Option<String> {
+    let doc = store.read_discussion(slug)?;
+    frontmatter_value(&doc.text, "board_rank").filter(|v| !v.is_empty())
+}
+
+/// 寫入（或原位更新）一筆 live 討論的看板排序鍵：既有 `board_rank:` 行原位代換，
+/// 否則插入 frontmatter 尾端（closing `---` 前）；其餘內容逐位元組保留。
+/// 非法 rank、封存或不存在的討論皆回明確錯誤（封存記錄不上看板）。
+pub fn set_board_rank(store: &dyn Store, slug: &str, rank: &str) -> Result<()> {
+    if !crate::util::is_valid_board_rank(rank) {
+        bail!("invalid board rank '{rank}' — lowercase ASCII letters only");
+    }
+    let text = load_live(store, slug)?;
+    let line = format!("board_rank: {rank}\n");
+    let mut out = String::with_capacity(text.len() + line.len());
+    let mut state = 0u8; // 0＝等開頭 ---、1＝frontmatter 內、2＝frontmatter 後
+    let mut done = false;
+    for (i, l) in text.split_inclusive('\n').enumerate() {
+        match state {
+            0 => {
+                out.push_str(l);
+                state = if i == 0 && l.trim_end() == "---" { 1 } else { 2 };
+            }
+            1 => {
+                if l.trim_end() == "---" {
+                    if !done {
+                        out.push_str(&line);
+                        done = true;
+                    }
+                    out.push_str(l);
+                    state = 2;
+                } else if !done && l.starts_with("board_rank:") {
+                    out.push_str(&line);
+                    done = true;
+                } else {
+                    out.push_str(l);
+                }
+            }
+            _ => out.push_str(l),
+        }
+    }
+    if !done {
+        bail!("discussion '{slug}' has no frontmatter — cannot set board rank");
+    }
+    store.write_live_discussion(slug, &out)?;
+    Ok(())
+}
+
 /// The change names a discussion has fanned out into — the frontmatter's
 /// comma-separated `promoted_to` accumulator, live or archived. Kept out of
 /// `DiscussionInfo` so `discuss list --json` stays bit-identical (design D2).
@@ -486,6 +536,93 @@ mod tests {
              ## Rounds\n\n\
              ## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n"
         )
+    }
+
+    // --- board_rank（看板排序欄位；desktop-card-reorder） ---
+
+    #[test]
+    fn board_rank_reads_frontmatter_only() {
+        // 讀取限 frontmatter：本文出現「board_rank:」字樣不得誤讀。
+        let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
+        assert!(super::board_rank(&store, "alpha").is_none());
+
+        let with_rank = open_doc("alpha", "Alpha")
+            .replacen("status: open\n", "status: open\nboard_rank: n\n", 1);
+        let store2 = TestStore::with_live_discussion("alpha", &with_rank);
+        assert_eq!(super::board_rank(&store2, "alpha").as_deref(), Some("n"));
+
+        let body_decoy = open_doc("alpha", "Alpha") + "\nboard_rank: fake\n";
+        let store3 = TestStore::with_live_discussion("alpha", &body_decoy);
+        assert!(super::board_rank(&store3, "alpha").is_none());
+    }
+
+    #[test]
+    fn set_board_rank_inserts_into_frontmatter_preserving_rest_verbatim() {
+        // spec「meta 寫入路徑對 board_rank 互不破壞」討論側：插入 frontmatter
+        // 尾端（closing --- 前），其餘內容逐位元組不變。
+        let doc = open_doc("alpha", "Alpha");
+        let store = TestStore::with_live_discussion("alpha", &doc);
+        super::set_board_rank(&store, "alpha", "n").unwrap();
+        let expected = doc.replacen(
+            "created: 2026-01-02\n---\n",
+            "created: 2026-01-02\nboard_rank: n\n---\n",
+            1,
+        );
+        assert_eq!(store.discussion("alpha"), expected);
+    }
+
+    #[test]
+    fn set_board_rank_replaces_existing_frontmatter_line_in_place() {
+        let doc = open_doc("alpha", "Alpha")
+            .replacen("status: open\n", "status: open\nboard_rank: b\n", 1);
+        let store = TestStore::with_live_discussion("alpha", &doc);
+        super::set_board_rank(&store, "alpha", "abn").unwrap();
+        assert_eq!(
+            store.discussion("alpha"),
+            doc.replacen("board_rank: b\n", "board_rank: abn\n", 1)
+        );
+    }
+
+    #[test]
+    fn set_board_rank_rejects_invalid_values_and_non_live_records() {
+        // 值驗證同變更側（僅小寫英文字母）；封存記錄不上看板、不可寫。
+        let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
+        for bad in ["", "N", "a1", "a b", "a\nstatus: forged"] {
+            assert!(
+                super::set_board_rank(&store, "alpha", bad).is_err(),
+                "invalid rank {bad:?} must be rejected"
+            );
+        }
+        assert_eq!(store.discussion("alpha"), open_doc("alpha", "Alpha"), "no write on reject");
+
+        let archived = TestStore::default();
+        archived
+            .archived_discussions
+            .borrow_mut()
+            .insert("old".to_string(), concluded_doc("old", "Old", "done"));
+        assert!(super::set_board_rank(&archived, "old", "n").is_err());
+        assert!(super::set_board_rank(&archived, "ghost", "n").is_err());
+    }
+
+    #[test]
+    fn discussion_info_json_is_unchanged_by_board_rank() {
+        // spec「board_rank 不進 CLI 輸出且既有輸出逐位元不變」討論側：
+        // DiscussionInfo 不攜帶 rank（沿 promoted_to 的獨立讀取模式），
+        // 含 rank 的記錄序列化結果與無 rank 時逐位元一致。
+        let doc = open_doc("alpha", "Alpha");
+        let with_rank = doc.replacen("status: open\n", "status: open\nboard_rank: n\n", 1);
+        let info_of = |text: &str| {
+            serde_json::to_string(&super::info_from_doc(&crate::store::DiscussionDoc {
+                slug: "alpha".to_string(),
+                text: text.to_string(),
+                path: std::path::PathBuf::from("discussions/alpha.md"),
+                archived: false,
+            }))
+            .unwrap()
+        };
+        let ranked_json = info_of(&with_rank);
+        assert_eq!(ranked_json, info_of(&doc), "board_rank must not affect discuss list --json");
+        assert!(!ranked_json.contains("board_rank") && !ranked_json.contains("boardRank"));
     }
 
     // --- promote flow (design D1) ---

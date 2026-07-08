@@ -5,20 +5,25 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  useDraggable,
   useDroppable,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Archive, CircleCheckBig, Hammer, Lightbulb, type LucideIcon } from "lucide-react";
 
-import type { ArchivedItem, ChangeItem, DiscussionLists } from "../adapter";
+import type { ArchivedItem, CardKind, ChangeItem, DiscussionLists } from "../adapter";
+import { cardDndId, parseCardDndId, resolveCardDrop, type ColumnCards } from "../boardDnd";
 import { useI18n } from "../i18n";
 import { matchesQuery } from "../search";
 import { changeStage, STAGES, type Stage } from "../stage";
 import { ChangeCard } from "./ChangeCard";
-import { DiscussionColumn } from "./DiscussionColumn";
+import { DiscussionCard, DiscussionColumn } from "./DiscussionColumn";
 import { Input } from "./ui/input";
+
+/** 移動 8px 才視為拖曳——否則 dnd-kit 會吃掉單純點擊，導致卡片無法開啟詳情。 */
+export const DRAG_ACTIVATION_DISTANCE = 8;
 
 /** 各階段的視覺主題——單一 teal 色相、以深淺表達生命週期推進，守住主色系。 */
 const STAGE_STYLE: Record<Stage, { icon: LucideIcon; top: string; badge: string; bar: string; iconCls: string }> = {
@@ -62,6 +67,13 @@ export interface KanbanBoardProps {
   /** 看板搜尋字串（選配，與 onQuery 成對提供時渲染搜尋輸入並過濾卡片）。 */
   query?: string;
   onQuery?: (q: string) => void;
+  /**
+   * 欄內拖排寫回（design D5/D6）：同欄放開時以 arrayMove 後的前後鄰居回報
+   * （null＝欄頂／欄底）；未提供時卡片不掛 sortable（封存拖放照舊）。
+   */
+  onReorder?: (kind: CardKind, id: string, prevId: string | null, nextId: string | null) => void;
+  /** 拖曳手勢期間（按住～放開）回報 true——宿主據此讓外部刷新讓路（任務列同款）。 */
+  onDragActiveChange?: (active: boolean) => void;
 }
 
 function Column({
@@ -121,11 +133,24 @@ function ArchiveDropZone() {
   );
 }
 
-function DraggableCard({ change, barClass, ...rest }: { change: ChangeItem; barClass: string } & Pick<KanbanBoardProps, "onOpenChange" | "onArchive">) {
+function SortableCard({ change, barClass, ...rest }: { change: ChangeItem; barClass: string } & Pick<KanbanBoardProps, "onOpenChange" | "onArchive">) {
+  const { t } = useI18n();
   // 拖曳時原卡片留在原位變淡；移動的視覺由 DragOverlay 呈現（不受欄位 overflow 裁切）。
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: change.name });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: cardDndId("change", change.name),
+  });
   return (
-    <div ref={setNodeRef} style={isDragging ? { opacity: 0.35 } : undefined} {...attributes} {...listeners}>
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        ...(isDragging ? { opacity: 0.35 } : undefined),
+      }}
+      {...attributes}
+      {...listeners}
+      aria-label={t("kanban.dragCard").replace("{name}", change.name)}
+    >
       <ChangeCard change={change} barClass={barClass} onOpen={rest.onOpenChange} onArchive={rest.onArchive} />
     </div>
   );
@@ -133,7 +158,7 @@ function DraggableCard({ change, barClass, ...rest }: { change: ChangeItem; barC
 
 /**
  * 生命週期看板：討論（第 0 欄，傳入 discussions 時）＋提案中／進行中／已就緒
- * 三欄（彩色主題）；拖曳時浮現封存落點。
+ * 三欄（彩色主題）；欄內拖排（onReorder 提供時）、拖曳時浮現封存落點。
  */
 export function KanbanBoard({
   changes,
@@ -146,8 +171,10 @@ export function KanbanBoard({
   onArchiveDiscussion,
   query,
   onQuery,
+  onReorder,
+  onDragActiveChange,
 }: KanbanBoardProps) {
-  const [activeName, setActiveName] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const { t } = useI18n();
   // 搜尋過濾（spec「看板搜尋過濾卡片」）：變更卡以名稱與摘要、討論卡以主題與
   // slug 比對；比對規則共用 matchesQuery（與已封存頁一致）。空（或僅空白）即全量。
@@ -158,23 +185,60 @@ export function KanbanBoard({
   );
   const byStage: Record<Stage, ChangeItem[]> = { proposed: [], "in-progress": [], ready: [] };
   for (const c of visibleChanges) byStage[changeStage(c)].push(c);
-  const dragging = activeName !== null;
-  const activeChange = activeName ? changes.find((c) => c.name === activeName) ?? null : null;
+  const dragging = activeId !== null;
+  const activeCard = activeId ? parseCardDndId(activeId) : null;
+  const activeChange =
+    activeCard?.kind === "change" ? changes.find((c) => c.name === activeCard.id) ?? null : null;
+  const activeDiscussion =
+    activeCard?.kind === "discussion"
+      ? discussions?.active.find((d) => d.slug === activeCard.id) ?? null
+      : null;
 
-  // 移動 8px 才視為拖曳——否則 dnd-kit 會吃掉單純點擊，導致卡片無法開啟詳情。
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: DRAG_ACTIVATION_DISTANCE } }),
   );
 
-  const handleDragStart = (e: DragStartEvent) => setActiveName(String(e.active.id));
+  // 落點解析輸入：每欄「可見」卡的識別碼（視覺序）——搜尋過濾中拖排沿同一語意
+  //（spec：新鍵介於可見前後鄰居之間）。討論欄只有全卡參與（promoted 收合列不拖）。
+  const columns: ColumnCards[] = [
+    ...(visibleDiscussions
+      ? [{ kind: "discussion" as const, ids: visibleDiscussions.filter((d) => d.status !== "promoted").map((d) => d.slug) }]
+      : []),
+    ...STAGES.map((stage) => ({ kind: "change" as const, ids: byStage[stage].map((c) => c.name) })),
+  ];
+
+  const handleDragStart = (e: DragStartEvent) => {
+    setActiveId(String(e.active.id));
+    onDragActiveChange?.(true);
+  };
 
   const handleDragEnd = (e: DragEndEvent) => {
-    setActiveName(null);
-    if (e.over?.id === "archived" && e.active) onArchive?.(String(e.active.id));
+    setActiveId(null);
+    // 放開即結束手勢；同一事件內 onReorder 使宿主寫回＋refresh，讓路無縫接手。
+    onDragActiveChange?.(false);
+    if (!e.over) return;
+    const over = String(e.over.id);
+    const active = String(e.active.id);
+    if (over === "archived") {
+      const card = parseCardDndId(active);
+      if (card?.kind === "change") onArchive?.(card.id);
+      return;
+    }
+    // 同欄放開才寫回；跨欄、欄容器、原位一律 null → 彈回、零寫入。
+    const drop = resolveCardDrop(columns, active, over);
+    if (drop) onReorder?.(drop.kind, drop.id, drop.prevId, drop.nextId);
   };
 
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveName(null)}>
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => {
+        setActiveId(null);
+        onDragActiveChange?.(false);
+      }}
+    >
       <div className="flex h-full min-h-0 flex-col gap-3">
       {showSearch && (
         <Input
@@ -194,19 +258,25 @@ export function KanbanBoard({
             onOpenDiscussion={onOpenDiscussion}
             onPromote={onPromoteDiscussion}
             onArchiveDiscussion={onArchiveDiscussion}
+            sortable={!!onReorder}
           />
         )}
         {STAGES.map((stage) => (
           <Column key={stage} stage={stage} count={byStage[stage].length}>
-            {byStage[stage].map((c) => (
-              <DraggableCard
-                key={c.name}
-                change={c}
-                barClass={STAGE_STYLE[stage].bar}
-                onOpenChange={onOpenChange}
-                onArchive={onArchive}
-              />
-            ))}
+            <SortableContext
+              items={byStage[stage].map((c) => cardDndId("change", c.name))}
+              strategy={verticalListSortingStrategy}
+            >
+              {byStage[stage].map((c) => (
+                <SortableCard
+                  key={c.name}
+                  change={c}
+                  barClass={STAGE_STYLE[stage].bar}
+                  onOpenChange={onOpenChange}
+                  onArchive={onArchive}
+                />
+              ))}
+            </SortableContext>
           </Column>
         ))}
         {dragging && <ArchiveDropZone />}
@@ -217,6 +287,10 @@ export function KanbanBoard({
         {activeChange ? (
           <div className="shadow-lg rounded-lg rotate-2 cursor-grabbing">
             <ChangeCard change={activeChange} barClass={STAGE_STYLE[changeStage(activeChange)].bar} />
+          </div>
+        ) : activeDiscussion ? (
+          <div className="shadow-lg rounded-lg rotate-2 cursor-grabbing">
+            <DiscussionCard d={activeDiscussion} />
           </div>
         ) : null}
       </DragOverlay>
