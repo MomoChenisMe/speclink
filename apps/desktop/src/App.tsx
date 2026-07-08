@@ -14,6 +14,8 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
+  Button,
+  Checkbox,
   Input,
   I18nProvider,
   useI18n,
@@ -48,12 +50,9 @@ function EmptyState({ onOpen }: { onOpen: () => void }) {
       <FolderOpen className="h-10 w-10 text-muted-foreground/40" />
       <h2 className="text-lg font-semibold">{t("app.emptyTitle")}</h2>
       <p className="text-sm text-muted-foreground max-w-md">{t("app.emptyDesc")}</p>
-      <button
-        className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        onClick={onOpen}
-      >
+      <Button className="gap-1.5" onClick={onOpen}>
         <FolderOpen className="h-4 w-4" /> {t("app.openProject")}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -90,17 +89,20 @@ function NavItem({
   className?: string;
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
       aria-label={ariaLabel}
       onClick={onClick}
-      className={`flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm transition-colors ${
-        active ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+      className={`h-auto w-full justify-start gap-2 px-3 py-2 text-sm font-normal ${
+        active
+          ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground"
       }${className ? ` ${className}` : ""}`}
     >
       {icon}
       {label}
       {trailing && <span className="ml-auto">{trailing}</span>}
-    </button>
+    </Button>
   );
 }
 
@@ -253,12 +255,14 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
         {s.verbResult && (
           <span className="text-xs font-mono text-muted-foreground truncate max-w-[40%]">{s.verbResult}</span>
         )}
-        <button
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted"
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 px-2 text-sm font-normal text-muted-foreground hover:text-foreground"
           onClick={() => void s.openProjectViaDialog()}
         >
           <FolderOpen className="h-4 w-4" /> {t("app.openProject")}
-        </button>
+        </Button>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -423,13 +427,11 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
           <div className="flex gap-4">
             {["claude", "codex"].map((tool) => (
               <label key={tool} className="flex items-center gap-1.5 text-sm">
-                <input
-                  type="checkbox"
-                  className="accent-[var(--primary)]"
+                <Checkbox
                   checked={initTools.includes(tool)}
-                  onChange={(e) =>
+                  onCheckedChange={(v) =>
                     setInitTools((prev) =>
-                      e.target.checked ? [...prev, tool] : prev.filter((x) => x !== tool),
+                      v === true ? [...prev, tool] : prev.filter((x) => x !== tool),
                     )
                   }
                 />

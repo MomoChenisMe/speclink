@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -35,10 +36,10 @@ describe("TaskList", () => {
     const onToggle = vi.fn();
     render(<TaskList markdown={MD} onToggle={onToggle} />);
     expect(screen.getByText("1. Group A")).toBeTruthy();
-    const first = screen.getByLabelText("任務 1") as HTMLInputElement;
-    const second = screen.getByLabelText("任務 2") as HTMLInputElement;
-    expect(first.checked).toBe(false);
-    expect(second.checked).toBe(true);
+    const first = screen.getByRole("checkbox", { name: "任務 1" });
+    const second = screen.getByRole("checkbox", { name: "任務 2" });
+    expect(first.getAttribute("aria-checked")).toBe("false");
+    expect(second.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(first);
     expect(onToggle).toHaveBeenCalledWith(1, true);
     fireEvent.click(second);
@@ -65,7 +66,43 @@ describe("TaskList", () => {
   it("readOnly renders neither handles nor interactive checkboxes", () => {
     render(<TaskList markdown={MD} readOnly />);
     expect(screen.queryByLabelText("拖曳任務 1")).toBeNull();
-    expect((screen.getByLabelText("任務 1") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "任務 1" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+// spec「表單控制項與按鈕以主題化元件呈現」（desktop-shadcn-controls）
+describe("TaskList 勾選框主題化", () => {
+  it("勾選框為 checkbox 角色的非 input 元素，aria-checked 反映完成態", () => {
+    render(<TaskList markdown={MD} onToggle={vi.fn()} />);
+    const first = screen.getByRole("checkbox", { name: "任務 1" });
+    const second = screen.getByRole("checkbox", { name: "任務 2" });
+    expect(first.tagName).not.toBe("INPUT");
+    expect(first.getAttribute("aria-checked")).toBe("false");
+    expect(second.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("空白鍵切換觸發與點擊相同的 onToggle", async () => {
+    const onToggle = vi.fn();
+    render(<TaskList markdown={MD} onToggle={onToggle} />);
+    const first = screen.getByRole("checkbox", { name: "任務 1" });
+    // 主題化原語（button 元素）——原生 input 在此守衛即紅。
+    expect(first.tagName).not.toBe("INPUT");
+    first.focus();
+    await userEvent.keyboard(" ");
+    expect(onToggle).toHaveBeenCalledWith(1, true);
+    fireEvent.click(first);
+    // 點擊與空白鍵走同一回呼、同一參數。
+    expect(onToggle).toHaveBeenNthCalledWith(2, 1, true);
+  });
+
+  it("readOnly 時勾選框不可互動", () => {
+    const onToggle = vi.fn();
+    render(<TaskList markdown={MD} readOnly onToggle={onToggle} />);
+    const first = screen.getByRole("checkbox", { name: "任務 1" });
+    expect(first.tagName).not.toBe("INPUT");
+    expect((first as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(first);
+    expect(onToggle).not.toHaveBeenCalled();
   });
 });
 

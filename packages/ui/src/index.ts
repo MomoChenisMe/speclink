@@ -75,6 +75,7 @@ export { Input } from "./components/ui/input";
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./components/ui/tooltip";
 export { NativeSelect, type NativeSelectProps } from "./components/ui/select";
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox";
+export { Textarea, type TextareaProps } from "./components/ui/textarea";
 
 // Spectra 級詳情
 export type { ChangeMetaInfo } from "./adapter";

@@ -94,11 +94,11 @@ describe("SettingsView 載入", () => {
     expect(locale.value).toBe("tw");
     // 未設定的 spec_locale 呈預設值狀態（空字串＝未設定）。
     expect((screen.getByLabelText("spec_locale") as HTMLSelectElement).value).toBe("");
-    expect((screen.getByLabelText("tdd") as HTMLInputElement).checked).toBe(true);
-    expect((screen.getByLabelText("audit") as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByLabelText("tdd").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByLabelText("audit").getAttribute("aria-checked")).toBe("false");
     switchToTab(".speclink.yaml");
-    expect((screen.getByLabelText("claude") as HTMLInputElement).checked).toBe(true);
-    expect((screen.getByLabelText("codex") as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByLabelText("claude").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByLabelText("codex").getAttribute("aria-checked")).toBe("false");
   });
 
   it("自訂工具描述子呈現為不可編輯項", async () => {
@@ -189,7 +189,7 @@ describe("設定頁三頁簽組織（spec Scenario「三頁簽組織與預設簽
     await screen.findByTestId("context-card");
     switchToTab(".speclink.yaml");
     expect(screen.getByText("AI 工具")).toBeTruthy();
-    expect((screen.getByLabelText("claude") as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByLabelText("claude").getAttribute("aria-checked")).toBe("true");
     const note = screen.getByTestId("file-note-speclink");
     expect(note.textContent).toBe(".speclink.yaml");
     expect(note.className).toContain("font-mono");
@@ -301,6 +301,23 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     expect(within(card).getByTestId("context-save")).toBeTruthy();
     const input = within(card).getByTestId("context-input") as HTMLTextAreaElement;
     expect(input.value).toBe("# 專案簡介\n\n這是一段說明");
+  });
+
+  // spec「表單控制項與按鈕以主題化元件呈現」Scenario「設定頁多行輸入主題化」
+  it("專案說明與產出規則的多行輸入為主題化 Textarea 原語（data-slot 標記＋token 樣式）", async () => {
+    renderView(projectSnap());
+    const ctxCard = await screen.findByTestId("context-card");
+    fireEvent.click(within(ctxCard).getByTestId("context-edit"));
+    const ctxInput = within(ctxCard).getByTestId("context-input");
+    expect(ctxInput.getAttribute("data-slot")).toBe("textarea");
+    expect(ctxInput.className).toContain("border-input");
+    expect(ctxInput.className).toContain("focus-visible:ring");
+    const rulesCard = screen.getByTestId("rules-card");
+    fireEvent.click(within(rulesCard).getByTestId("rules-edit"));
+    const rulesInput = within(rulesCard).getByTestId("rules-input-tasks");
+    expect(rulesInput.getAttribute("data-slot")).toBe("textarea");
+    expect(rulesInput.className).toContain("border-input");
+    expect(rulesInput.className).toContain("focus-visible:ring");
   });
 
   it("一卡編輯中另一卡唯讀可用；各卡取消僅還原本卡且草稿重設", async () => {
