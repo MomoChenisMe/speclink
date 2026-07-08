@@ -14,6 +14,7 @@ function render(ui: ReactElement) {
 }
 
 import { TaskList } from "../components/TaskList";
+import { SUB_LABEL_CLS } from "../components/SectionedDoc";
 import { parseTaskDoc, resolveDropTarget } from "../tasks";
 
 const MD = "## 1. Group A\n\n- [ ] 1.1 first\n- [x] 1.2 second\n\n## 2. Group B\n\n- [ ] 2.1 third\n";
@@ -56,11 +57,22 @@ describe("TaskList", () => {
     expect(screen.queryByLabelText("下移任務 1")).toBeNull();
   });
 
-  it("uses 16px type for task text and group headings", () => {
-    // spec「markdown 內容保留文件結構呈現」：任務分頁文字 16px 與內文對齊。
+  it("uses 16px type for task text", () => {
+    // spec「markdown 內容保留文件結構呈現」：任務文字 16px 與內文對齊。
     render(<TaskList markdown={MD} />);
     expect(screen.getByText("1.1 first").className).toContain("text-base");
-    expect(screen.getByText("1. Group A").className).toContain("text-base");
+  });
+
+  it("群組標題與章節標籤同款式（任務群組標題與章節標籤同款式，design D6 次級款＝Spectra 原尺寸）", () => {
+    render(<TaskList markdown={MD} />);
+    const heading = screen.getByText("1. Group A");
+    // 標籤家族次級款（共用常數 SUB_LABEL_CLS）：粗體、字級同內文基準 16px、小於章節主標題。
+    for (const cls of SUB_LABEL_CLS.split(" ")) expect(heading.className).toContain(cls);
+    for (const stale of ["text-xl", "text-xs", "uppercase", "tracking-wider", "text-muted-foreground"]) {
+      expect(heading.className).not.toContain(stale);
+    }
+    // 標題文字照來源，不翻譯不改寫。
+    expect(heading.textContent).toBe("1. Group A");
   });
 
   it("readOnly renders neither handles nor interactive checkboxes", () => {
