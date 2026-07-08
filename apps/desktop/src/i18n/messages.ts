@@ -37,10 +37,13 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "app.emptyTitle": "開啟一個專案開始",
     "app.emptyDesc":
       "選擇既有的 speclink 專案目錄（或其子目錄），或選擇一般目錄並經確認初始化為新工作區。",
-    "settings.uiLocaleLabel": "UI 介面語言",
+    "settings.uiLocaleLabel": "介面語言",
     "settings.uiLocaleHelp":
-      "只影響這台機器上的介面顯示，存於 app 本機；不寫入任何專案檔案，與下方 config.yaml 的 locale（AI 產出語言）無關。",
+      "只影響這台機器上的介面顯示，存於 app 本機；不寫入任何專案檔案，與 config.yaml 的 locale（AI 產出語言）無關。",
     "settings.followSystem": "跟隨系統",
+    "settings.localTabLabel": "本機設定",
+    "settings.localTabNote": "此簽的內容僅存於此裝置，不寫入版本庫。",
+    "settings.policyCard": "產出政策",
     "settings.toolsLabel": "AI 工具",
     "settings.toolsHelp":
       "為勾選的工具生成技能檔與指令 marker；儲存後自動同步（新選生成、取消清理殘留）。",
@@ -53,7 +56,6 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.save": "儲存",
     "settings.saved": "已儲存 ✓",
     "settings.parseErrorHint": "檔案無法解析，表單已停用——請先手動修復：",
-    "settings.projectCard": "專案設定",
     "settings.edit": "編輯",
     "settings.showMore": "顯示更多",
     "settings.contextEmpty": "尚未設定專案說明——按編輯加入專案背景。",
@@ -109,8 +111,11 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
       "Pick an existing speclink project directory (or a subdirectory), or pick a plain directory and initialize it as a new workspace after confirming.",
     "settings.uiLocaleLabel": "UI language",
     "settings.uiLocaleHelp":
-      "Only affects this machine's interface and is stored locally; it never writes to project files and is unrelated to config.yaml's locale (AI output language) below.",
+      "Only affects this machine's interface and is stored locally; it never writes to project files and is unrelated to config.yaml's locale (AI output language).",
     "settings.followSystem": "Follow system",
+    "settings.localTabLabel": "Local settings",
+    "settings.localTabNote": "Everything on this tab is stored on this device only — never written to the repository.",
+    "settings.policyCard": "Output policy",
     "settings.toolsLabel": "AI tools",
     "settings.toolsHelp":
       "Generates skill files and instruction markers for the checked tools; saving syncs automatically (generate on select, prune on deselect).",
@@ -123,7 +128,6 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.save": "Save",
     "settings.saved": "Saved ✓",
     "settings.parseErrorHint": "The file cannot be parsed and the form is disabled — fix it manually first:",
-    "settings.projectCard": "Project settings",
     "settings.edit": "Edit",
     "settings.showMore": "Show more",
     "settings.contextEmpty": "No project context yet — press Edit to add background.",

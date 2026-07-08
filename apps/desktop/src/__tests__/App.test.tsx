@@ -288,8 +288,9 @@ describe("App (kanban primary + rich detail)", () => {
       .fn()
       .mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
     render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
-    // 開設定頁 → 切 English。
+    // 開設定頁 → 切至本機設定簽（Radix TabsTrigger 以 mousedown 觸發）→ 切 English。
     fireEvent.click(await screen.findByText("設定"));
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "本機設定" }));
     const group = await screen.findByTestId("ui-locale");
     fireEvent.click(within(group).getByText("English"));
     // 即時全介面生效：側欄改為英文。
@@ -382,6 +383,33 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     const header = document.querySelector("header") as HTMLElement;
     expect(within(header).queryByLabelText("已封存")).toBeNull();
     expect(within(header).queryByText("已封存")).toBeNull();
+  });
+
+  it("設定導覽項沉底：為側欄最末子元素、以自動上邊距與頂部三項彈性區隔，切頁與高亮語意不變", async () => {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({ tabs: [{ root: "A", name: "proj-a" }], activeRoot: "A" }),
+    );
+    const ws = fakeWorkspace();
+    ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
+    render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
+    await screen.findByText("desktop-shell-and-browser");
+    const aside = document.querySelector("aside") as HTMLElement;
+    const settingsNav = within(aside).getByRole("button", { name: "設定" });
+    // 頂部三項維持依序；設定為側欄最末子元素。
+    const labels = within(aside)
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
+    expect(labels.slice(0, 3)).toEqual(["變更", "規格", "已封存"]);
+    expect(aside.lastElementChild).toBe(settingsNav);
+    // 彈性區隔：jsdom 無版面計算，以等效自動上邊距 class 斷言（design D5）。
+    expect(settingsNav.className).toContain("mt-auto");
+    // 切頁與高亮語意不變：點設定離開看板並高亮設定項。
+    const changesNav = within(aside).getByRole("button", { name: "變更" });
+    fireEvent.click(settingsNav);
+    await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeNull());
+    expect(settingsNav.className).toContain("bg-primary");
+    expect(changesNav.className).not.toContain("bg-primary");
   });
 
   it("已封存導覽項帶封存數量徽章，無障礙標籤為「已封存」", async () => {

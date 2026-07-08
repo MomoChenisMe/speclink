@@ -77,6 +77,7 @@ function NavItem({
   onClick,
   trailing,
   ariaLabel,
+  className,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -85,6 +86,8 @@ function NavItem({
   /** 尾隨元素（如計數徽章）；設 ariaLabel 使無障礙名稱不被徽章數字污染。 */
   trailing?: React.ReactNode;
   ariaLabel?: string;
+  /** 附加版面 class（如 mt-auto 沉底）；不影響既有樣式與行為。 */
+  className?: string;
 }) {
   return (
     <button
@@ -92,7 +95,7 @@ function NavItem({
       onClick={onClick}
       className={`flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm transition-colors ${
         active ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-      }`}
+      }${className ? ` ${className}` : ""}`}
     >
       {icon}
       {label}
@@ -273,11 +276,13 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
               </span>
             }
           />
+          {/* 設定沉底：自動上邊距推至側欄底部（design D5），切頁與高亮語意不變。 */}
           <NavItem
             icon={<Settings className="h-4 w-4" />}
             label={t("app.navSettings")}
             active={s.boardView === "settings"}
             onClick={() => s.setBoardView("settings")}
+            className="mt-auto"
           />
         </aside>
 
