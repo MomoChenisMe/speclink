@@ -8,6 +8,12 @@ pub fn read_opt(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
 
+/// 看板排序鍵（board_rank）的合法值：非空、僅小寫 ASCII 英文字母。
+/// 邊界驗證擋掉會破壞 meta/frontmatter 解析的值（換行注入、YAML 指示字元）。
+pub(crate) fn is_valid_board_rank(s: &str) -> bool {
+    !s.is_empty() && s.bytes().all(|b| b.is_ascii_lowercase())
+}
+
 /// Write a file, creating parent directories as needed. Content is written verbatim.
 pub fn write_file(path: &Path, content: &str) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {

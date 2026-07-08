@@ -16,9 +16,7 @@ pub fn list_changes_at(root: &Path) -> Value {
         return json!({ "changes": [] });
     };
     let store: &dyn Store = &ctx.store;
-    let mut changes = speclink_core::model::list_changes(store);
-    // GUI 沿用 CLI 的預設排序，使清單順序與 `speclink list --json` 一致。
-    speclink_core::listing::sort_changes(store, &mut changes, "modified");
+    let changes = board_sorted_changes(store);
     // 桌面 payload 在 CLI 同形項上疊加生命週期標記欄位（parity 紅線：CLI 的
     // changes_json 本身不動）。資料取自 list_changes 已解析的 meta，不另讀檔。
     let items: Vec<Value> = speclink_core::listing::changes_json(store, &changes)
@@ -34,6 +32,21 @@ pub fn list_changes_at(root: &Path) -> Value {
         })
         .collect();
     json!({ "changes": items })
+}
+
+/// 看板顯示序的變更清單（design D2）：先取 CLI 預設 modified 序當回退，再以穩定
+/// 排序疊上 board_rank 複合鍵——缺值置頂維持回退序、具值依 rank 升冪、同值以
+/// 名稱決斷。CLI 的 `speclink list --json` 排序不經此路徑，逐位元不變。
+pub(crate) fn board_sorted_changes(store: &dyn Store) -> Vec<speclink_core::model::Change> {
+    let mut changes = speclink_core::model::list_changes(store);
+    speclink_core::listing::sort_changes(store, &mut changes, "modified");
+    changes.sort_by(|x, y| match (&x.meta.board_rank, &y.meta.board_rank) {
+        (None, None) => std::cmp::Ordering::Equal, // 穩定排序保留回退序
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (Some(a), Some(b)) => a.cmp(b).then_with(|| x.name.cmp(&y.name)),
+    });
+    changes
 }
 
 /// 對應 `speclink list --specs --json`：`{ "specs": … }`。非專案回傳 `{ "specs": [] }`。
@@ -209,6 +222,45 @@ mod tests {
         let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
         assert_eq!(by_name("cut-a")["fromDiscussion"], "alpha-search");
         assert!(by_name("plain")["fromDiscussion"].is_null());
+    }
+
+    #[test]
+    fn list_changes_sorts_by_board_rank_with_unranked_on_top() {
+        // spec「看板卡片順序以 board_rank 欄位為真相」＋ design D2：缺值卡置頂
+        // 維持回退序（mtime 平手時名稱升冪），具值卡依 rank 字典序升冪殿後。
+        let fx = FixtureRoot::new("q-rank-sort");
+        fx.add_change("ranked-n", &format!("{OLD_META}board_rank: n\n"));
+        fx.add_change("ranked-b", &format!("{OLD_META}board_rank: b\n"));
+        fx.add_change("unranked-y", OLD_META);
+        fx.add_change("unranked-x", OLD_META);
+        let v = list_changes_at(fx.root());
+        let names: Vec<String> = v["changes"]
+            .as_array()
+            .expect("changes array")
+            .iter()
+            .map(|c| c["name"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            names,
+            ["unranked-x", "unranked-y", "ranked-b", "ranked-n"],
+            "unranked on top (fallback order), ranked ascending by key"
+        );
+    }
+
+    #[test]
+    fn list_changes_breaks_equal_rank_ties_by_name() {
+        // design D2 同值決斷：rank 相同以名稱字典序，跨機器確定。
+        let fx = FixtureRoot::new("q-rank-tie");
+        fx.add_change("beta", &format!("{OLD_META}board_rank: n\n"));
+        fx.add_change("alpha", &format!("{OLD_META}board_rank: n\n"));
+        let v = list_changes_at(fx.root());
+        let names: Vec<String> = v["changes"]
+            .as_array()
+            .expect("changes array")
+            .iter()
+            .map(|c| c["name"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(names, ["alpha", "beta"]);
     }
 
     #[test]

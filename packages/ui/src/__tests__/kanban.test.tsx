@@ -12,8 +12,9 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
-import { KanbanBoard } from "../components/KanbanBoard";
+import { KanbanBoard, DRAG_ACTIVATION_DISTANCE } from "../components/KanbanBoard";
 import { DetailDrawer } from "../components/DetailDrawer";
+import { cardDndId, resolveCardDrop, type ColumnCards } from "../boardDnd";
 import { parseTasks } from "../tasks";
 import type { ChangeItem, ArtifactStatus, DiscussionLists } from "../adapter";
 
@@ -195,6 +196,59 @@ describe("KanbanBoard search（看板搜尋過濾卡片）", () => {
       expect(count(id)).toBe("0");
       expect(column(id).querySelectorAll("[data-change], [data-discussion]")).toHaveLength(0);
     }
+  });
+});
+
+describe("KanbanBoard 拖排（design D6）", () => {
+  // 每欄可見卡的識別碼（視覺序）——resolveCardDrop 的輸入形狀。
+  const cols: ColumnCards[] = [
+    { kind: "discussion", ids: ["d-one", "d-two"] },
+    { kind: "change", ids: ["a", "b", "c"] },
+    { kind: "change", ids: ["x"] },
+  ];
+
+  // dragEnd 落點解析：同欄放開 → 以 arrayMove 後的相鄰卡為 prevId/nextId。
+  it.each([
+    ["c", "a", null, "a"], // 拖到欄頂：prev=null
+    ["a", "b", "b", "c"], // 向下一格：插於 b、c 之間
+    ["a", "c", "c", null], // 拖到欄底：next=null
+  ])(
+    "same-column drop of %s over %s resolves prev=%s next=%s",
+    (active, over, prev, next) => {
+      const r = resolveCardDrop(cols, cardDndId("change", active), cardDndId("change", over));
+      expect(r).toEqual({ kind: "change", id: active, prevId: prev, nextId: next });
+    },
+  );
+
+  it("resolves discussion drops within the discussion column", () => {
+    const r = resolveCardDrop(cols, cardDndId("discussion", "d-two"), cardDndId("discussion", "d-one"));
+    expect(r).toEqual({ kind: "discussion", id: "d-two", prevId: null, nextId: "d-one" });
+  });
+
+  it("cross-column drops resolve to null (snap back, zero writes)", () => {
+    // spec「跨欄拖曳不改變變更階段」：跨欄放開不得產生 reorder 呼叫。
+    expect(resolveCardDrop(cols, cardDndId("change", "a"), cardDndId("change", "x"))).toBeNull();
+    expect(resolveCardDrop(cols, cardDndId("change", "a"), cardDndId("discussion", "d-one"))).toBeNull();
+    expect(resolveCardDrop(cols, cardDndId("discussion", "d-one"), cardDndId("change", "b"))).toBeNull();
+  });
+
+  it("column containers and the archive drop zone resolve to null", () => {
+    // 封存落點走既有 onArchive 路徑、欄容器不成落點——皆不產生 reorder。
+    expect(resolveCardDrop(cols, cardDndId("change", "a"), "archived")).toBeNull();
+    expect(resolveCardDrop(cols, cardDndId("change", "a"), "proposed")).toBeNull();
+    expect(resolveCardDrop(cols, cardDndId("change", "a"), cardDndId("change", "a"))).toBeNull();
+  });
+
+  it("change cards mount as sortables with a localized drag label", () => {
+    render(<KanbanBoard changes={changes} onReorder={vi.fn()} />);
+    const card = screen.getByText("working-y").closest('[aria-roledescription="sortable"]') as HTMLElement;
+    expect(card).toBeTruthy();
+    expect(card.getAttribute("aria-label")).toContain("working-y");
+  });
+
+  it("pins the pointer activation distance at 8 (click-through lesson)", () => {
+    // dnd-kit 可拖曳元素必須設 distance 8，否則單擊被拖曳監聽吃掉（CLAUDE.md）。
+    expect(DRAG_ACTIVATION_DISTANCE).toBe(8);
   });
 });
 

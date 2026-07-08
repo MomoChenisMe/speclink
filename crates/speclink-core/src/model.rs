@@ -24,6 +24,10 @@ pub struct ChangeMeta {
     pub started_by: Option<String>,
     #[serde(default)]
     pub started_with: Option<String>,
+    /// 看板欄內排序鍵（speclink 桌面延伸；desktop-card-reorder）。缺席＝未排序，
+    /// 卡片置欄頂、回退現行排序。ChangeMeta 僅 Deserialize，CLI 輸出不受影響。
+    #[serde(default)]
+    pub board_rank: Option<String>,
 }
 
 impl ChangeMeta {
@@ -55,6 +59,43 @@ pub struct Change {
 /// List active changes, sorted by name.
 pub fn list_changes(store: &dyn Store) -> Vec<Change> {
     store.list_changes()
+}
+
+/// 寫入（或原位更新）一個 change 的看板排序鍵 `board_rank`。
+/// 沿 started_* 的文字手術機制（read → 行代換或 append → write，永不重新序列化），
+/// 其餘欄位逐位元組保留。非法 rank、非單一路徑段名稱、change 不存在皆回明確錯誤。
+pub fn set_board_rank(store: &dyn Store, name: &str, rank: &str) -> anyhow::Result<()> {
+    if !crate::util::is_valid_board_rank(rank) {
+        anyhow::bail!("invalid board rank '{rank}' — lowercase ASCII letters only");
+    }
+    // 同 in-progress add 的防護：名稱必須是單一路徑段，否則可能經 raw 讀寫對
+    // 觸及 changes/ 外的 metadata 文件。
+    if name.contains(['/', '\\', ':']) || name.contains("..") {
+        anyhow::bail!("invalid change name: {name}");
+    }
+    let Some(meta) = store.read_change_meta(name) else {
+        anyhow::bail!("change not found: {name}");
+    };
+    let line = format!("board_rank: {rank}\n");
+    let mut out = String::with_capacity(meta.len() + line.len());
+    let mut replaced = false;
+    for l in meta.split_inclusive('\n') {
+        // 頂層鍵在第 0 欄；縮排行（巢狀值）不會誤中。
+        if !replaced && l.starts_with("board_rank:") {
+            out.push_str(&line);
+            replaced = true;
+        } else {
+            out.push_str(l);
+        }
+    }
+    if !replaced {
+        if !out.ends_with('\n') && !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(&line);
+    }
+    store.write_change_meta(name, &out)?;
+    Ok(())
 }
 
 /// Find an active change by name.
@@ -248,6 +289,86 @@ pub fn missing_artifacts(schema: &Schema, store: &dyn Store, change: &str) -> Ve
 #[cfg(test)]
 mod tests {
     use super::ChangeMeta;
+    use crate::teststore::TestStore;
+
+    #[test]
+    fn meta_parses_board_rank_and_absent_reads_as_none() {
+        // 看板排序欄位（speclink 桌面延伸）：含 board_rank 的 meta 正常解析，
+        // 舊 meta（無此欄位）讀為 None——排序回退現行規則。
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\nboard_rank: n\n"));
+        assert_eq!(meta.board_rank.as_deref(), Some("n"));
+        let old = ChangeMeta::from_text(Some("schema: spec-driven\ncreated: 2026-07-01\n"));
+        assert!(old.board_rank.is_none());
+    }
+
+    const STAMPED_META: &str = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: Base Line <base@example.com>\ncreated_with: claude\nstarted_at: 2026-07-03\nstarted_by: Worker <w@example.com>\nstarted_with: claude\n";
+
+    #[test]
+    fn set_board_rank_appends_and_preserves_existing_fields_verbatim() {
+        // spec「meta 寫入路徑對 board_rank 互不破壞」：寫回除 board_rank 外
+        // 逐位元組保留（沿 started_* 的 read → append → write 機制）。
+        let store = TestStore::with_meta("demo", STAMPED_META);
+        super::set_board_rank(&store, "demo", "n").unwrap();
+        let meta = store.meta("demo");
+        assert!(
+            meta.starts_with(STAMPED_META),
+            "existing fields must be preserved byte-for-byte, got: {meta}"
+        );
+        assert_eq!(&meta[STAMPED_META.len()..], "board_rank: n\n");
+        assert_eq!(
+            ChangeMeta::from_text(Some(&meta)).board_rank.as_deref(),
+            Some("n")
+        );
+    }
+
+    #[test]
+    fn set_board_rank_replaces_existing_line_in_place() {
+        // 更新既有 rank：原行原位代換（欄位順序保留），其餘逐位元組不變。
+        let store = TestStore::with_meta(
+            "demo",
+            "schema: spec-driven\nboard_rank: b\ncreated: 2026-07-01\n",
+        );
+        super::set_board_rank(&store, "demo", "abn").unwrap();
+        assert_eq!(
+            store.meta("demo"),
+            "schema: spec-driven\nboard_rank: abn\ncreated: 2026-07-01\n"
+        );
+    }
+
+    #[test]
+    fn set_board_rank_handles_meta_missing_trailing_newline() {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01");
+        super::set_board_rank(&store, "demo", "n").unwrap();
+        assert_eq!(
+            store.meta("demo"),
+            "schema: spec-driven\ncreated: 2026-07-01\nboard_rank: n\n"
+        );
+    }
+
+    #[test]
+    fn set_board_rank_rejects_invalid_values_without_writing() {
+        // 系統邊界驗證（sharp edge）：rank 僅小寫英文字母——空值、大寫、數字、
+        // 空白與換行注入一律拒絕且零寫入（換行會注入任意 YAML 欄位）。
+        let store = TestStore::with_meta("demo", "schema: spec-driven\n");
+        for bad in ["", "N", "a1", "a b", "a\nstarted_at: forged", "ranké"] {
+            assert!(
+                super::set_board_rank(&store, "demo", bad).is_err(),
+                "invalid rank {bad:?} must be rejected"
+            );
+        }
+        assert_eq!(*store.meta_writes.borrow(), 0, "invalid ranks must not write");
+    }
+
+    #[test]
+    fn set_board_rank_errors_on_missing_change_and_unsafe_names() {
+        // 不存在的 change 回明確錯誤（桌面以單行錯誤呈現，不靜默）；
+        // 非單一路徑段名稱拒絕（沿 in-progress add 的同款防護）。
+        let store = TestStore::with_meta("demo", "schema: spec-driven\n");
+        assert!(super::set_board_rank(&store, "ghost", "n").is_err());
+        assert!(super::set_board_rank(&store, "../evil", "n").is_err());
+        assert!(super::set_board_rank(&store, "a/b", "n").is_err());
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
 
     #[test]
     fn meta_without_started_fields_parses_as_not_started() {

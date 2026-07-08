@@ -70,6 +70,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "store.promoteFailed": "轉為變更 ✗",
     "store.discussionArchived": "討論已封存",
     "store.discussionArchiveFailed": "討論封存失敗",
+    "store.reorderFailed": "排序寫回失敗",
   },
   en: {
     "app.currentProject": "Current project",
@@ -139,5 +140,6 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "store.promoteFailed": "promote ✗",
     "store.discussionArchived": "discussion archived",
     "store.discussionArchiveFailed": "discussion archive failed",
+    "store.reorderFailed": "reorder failed",
   },
 };

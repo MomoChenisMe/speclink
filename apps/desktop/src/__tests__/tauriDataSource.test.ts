@@ -38,4 +38,24 @@ describe("createTauriDataSource", () => {
     await ds.runVerb("validate", "chg");
     expect(invoke).toHaveBeenCalledWith("validate", { change: "chg" });
   });
+
+  it("reorderCard invokes reorder_card with kind, id and neighbor ids (null = column ends)", async () => {
+    // design D5：以鄰居識別碼表達落點；null＝欄頂／欄底。
+    invoke.mockResolvedValue(undefined);
+    const ds = createTauriDataSource();
+    await ds.reorderCard("change", "my-change", "prev-c", null);
+    expect(invoke).toHaveBeenCalledWith("reorder_card", {
+      kind: "change",
+      id: "my-change",
+      prevId: "prev-c",
+      nextId: null,
+    });
+    await ds.reorderCard("discussion", "slug-x", null, "next-s");
+    expect(invoke).toHaveBeenCalledWith("reorder_card", {
+      kind: "discussion",
+      id: "slug-x",
+      prevId: null,
+      nextId: "next-s",
+    });
+  });
 });

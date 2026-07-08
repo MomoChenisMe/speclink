@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Archive, GitBranch, FileText, Settings, FolderOpen } from "lucide-react";
 import {
@@ -152,6 +152,18 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
     setPromoteName(s.pendingPromote ?? "");
   }, [s.pendingPromote]);
 
+  // 看板拖曳手勢讓路（design D6、TaskList 同款）：手勢中暫緩 workspace-changed
+  // 的整批 refresh（避免拖曳中卡片重排打斷手勢），放開後補跑一次。
+  const boardDragActive = useRef(false);
+  const pendingRefresh = useRef(false);
+  const handleBoardDragActive = (active: boolean) => {
+    boardDragActive.current = active;
+    if (!active && pendingRefresh.current) {
+      pendingRefresh.current = false;
+      void useStore.getState().refresh();
+    }
+  };
+
   useEffect(() => {
     // 啟動：有 workspace 即還原分頁列（含切回上次活躍專案與背景徽章快照）；
     // 否則維持既有的整批 refresh。
@@ -160,6 +172,10 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
     // 檔案監看的宿主層 wiring：外部寫者（CLI、agent、編輯器）改動 openspec/
     // 後，後端去抖發出 workspace-changed，前端一律整批 refresh。卸載時解除。
     const unlisten = listen("workspace-changed", () => {
+      if (boardDragActive.current) {
+        pendingRefresh.current = true;
+        return;
+      }
       void useStore.getState().refresh();
     });
     return () => {
@@ -288,6 +304,8 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
               onArchiveDiscussion={s.requestArchiveDiscussion}
               query={s.boardQuery}
               onQuery={s.setBoardQuery}
+              onReorder={(kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)}
+              onDragActiveChange={handleBoardDragActive}
             />
           ) : (
             <ArchivedList

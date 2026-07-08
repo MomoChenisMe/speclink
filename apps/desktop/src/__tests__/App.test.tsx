@@ -104,6 +104,7 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     getDiscussionDocument: vi.fn().mockResolvedValue(null),
     promoteDiscussion: vi.fn().mockResolvedValue({ change: "promoted-change" }),
     archiveDiscussion: vi.fn().mockResolvedValue(undefined),
+    reorderCard: vi.fn().mockResolvedValue(undefined),
     ...over,
   };
 }

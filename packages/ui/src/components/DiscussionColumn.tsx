@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Archive, ArrowUpRight, ChevronDown, ChevronRight, MessageSquareText } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
+import { cardDndId } from "../boardDnd";
 import { useI18n } from "../i18n";
 import { changeStage } from "../stage";
 import { Button } from "./ui/button";
@@ -35,6 +38,11 @@ export interface DiscussionColumnProps {
   onPromote?: (slug: string) => void;
   /** concluded 卡的封存動詞（app 端接確認流程）。 */
   onArchiveDiscussion?: (slug: string) => void;
+  /**
+   * 欄內拖排（design D6）：true 時全卡（open／concluded）掛 sortable——
+   * 需在宿主的 DndContext 內；promoted 收合列是衍生樹檢視，不參與拖排。
+   */
+  sortable?: boolean;
 }
 
 const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
@@ -42,7 +50,7 @@ const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
   concluded: { labelKey: "discussion.statusConcluded", cls: "bg-primary/12 text-primary" },
 };
 
-function DiscussionCard({
+export function DiscussionCard({
   d,
   onOpenDiscussion,
   onPromote,
@@ -94,6 +102,35 @@ function DiscussionCard({
   );
 }
 
+/** 可拖排的全卡包裝：拖曳時原卡留在原位變淡，移動視覺由宿主 DragOverlay 呈現。 */
+function SortableDiscussionCard({
+  d,
+  ...rest
+}: { d: DiscussionItem } & Pick<
+  DiscussionColumnProps,
+  "onOpenDiscussion" | "onPromote" | "onArchiveDiscussion"
+>) {
+  const { t } = useI18n();
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: cardDndId("discussion", d.slug),
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        ...(isDragging ? { opacity: 0.35 } : undefined),
+      }}
+      {...attributes}
+      {...listeners}
+      aria-label={t("kanban.dragCard").replace("{name}", d.topic)}
+    >
+      <DiscussionCard d={d} {...rest} />
+    </div>
+  );
+}
+
 function PromotedRow({
   d,
   changes,
@@ -140,11 +177,31 @@ export function DiscussionColumn({
   onOpenDiscussion,
   onPromote,
   onArchiveDiscussion,
+  sortable,
 }: DiscussionColumnProps) {
   const { t } = useI18n();
   const full = discussions.filter((d) => d.status !== "promoted");
   const promoted = discussions.filter((d) => d.status === "promoted");
   const [showPromoted, setShowPromoted] = useState(true);
+  const fullCards = full.map((d) =>
+    sortable ? (
+      <SortableDiscussionCard
+        key={d.slug}
+        d={d}
+        onOpenDiscussion={onOpenDiscussion}
+        onPromote={onPromote}
+        onArchiveDiscussion={onArchiveDiscussion}
+      />
+    ) : (
+      <DiscussionCard
+        key={d.slug}
+        d={d}
+        onOpenDiscussion={onOpenDiscussion}
+        onPromote={onPromote}
+        onArchiveDiscussion={onArchiveDiscussion}
+      />
+    ),
+  );
   return (
     <div
       data-column="discussions"
@@ -167,15 +224,16 @@ export function DiscussionColumn({
         {discussions.length === 0 && (
           <p className="px-1.5 pt-2 text-xs text-muted-foreground">{t("discussion.none")}</p>
         )}
-        {full.map((d) => (
-          <DiscussionCard
-            key={d.slug}
-            d={d}
-            onOpenDiscussion={onOpenDiscussion}
-            onPromote={onPromote}
-            onArchiveDiscussion={onArchiveDiscussion}
-          />
-        ))}
+        {sortable ? (
+          <SortableContext
+            items={full.map((d) => cardDndId("discussion", d.slug))}
+            strategy={verticalListSortingStrategy}
+          >
+            {fullCards}
+          </SortableContext>
+        ) : (
+          fullCards
+        )}
         {promoted.length > 0 && (
           <div className="mt-auto flex flex-col gap-1 pt-2">
             <button

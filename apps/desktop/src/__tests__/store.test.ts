@@ -33,6 +33,7 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     getDiscussionDocument: vi.fn().mockResolvedValue(null),
     promoteDiscussion: vi.fn().mockResolvedValue({ change: "promoted-change" }),
     archiveDiscussion: vi.fn().mockResolvedValue(undefined),
+    reorderCard: vi.fn().mockResolvedValue(undefined),
     ...over,
   };
 }
@@ -113,6 +114,28 @@ describe("app store (Zustand)", () => {
     const store = createAppStore(ds);
     await store.getState().runVerb("validate", "desktop-shell-and-browser");
     expect(store.getState().verbResult).toContain("validate");
+    expect(ds.listChanges).toHaveBeenCalled();
+  });
+
+  it("reorderCard passes neighbor ids through and refreshes on success", async () => {
+    // design D5：store 動作把 kind/id/prevId/nextId 原樣交給 data source，成功後整批 refresh。
+    const ds = fakeDataSource();
+    const store = createAppStore(ds);
+    await store.getState().reorderCard("discussion", "slug-a", "prev-s", null);
+    expect(ds.reorderCard).toHaveBeenCalledWith("discussion", "slug-a", "prev-s", null);
+    expect(ds.listChanges).toHaveBeenCalled();
+    expect(store.getState().verbResult).toBeNull();
+  });
+
+  it("reorderCard failure surfaces a one-line error and still refreshes", async () => {
+    // spec「寫回失敗不留假象」：錯誤浮上 verbResult、看板刷新回磁碟現況。
+    const ds = fakeDataSource({
+      reorderCard: vi.fn().mockRejectedValue(new Error("file locked")),
+    });
+    const store = createAppStore(ds);
+    await store.getState().reorderCard("change", "chg-a", null, "chg-b");
+    expect(store.getState().verbResult).toContain("chg-a");
+    expect(store.getState().verbResult).toContain("file locked");
     expect(ds.listChanges).toHaveBeenCalled();
   });
 });

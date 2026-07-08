@@ -32,10 +32,28 @@ pub fn list_discussions_at(root: &Path) -> Value {
     };
     let store: &dyn Store = &ctx.store;
     let active: Vec<Value> =
-        discuss::list_discussions(store).iter().map(|i| entry(store, i)).collect();
+        board_sorted_active(store).iter().map(|(_, i)| entry(store, i)).collect();
     let archived: Vec<Value> =
         discuss::list_archived(store).iter().map(|i| entry(store, i)).collect();
     json!({ "active": active, "archived": archived })
+}
+
+/// 看板顯示序的 active 討論清單（design D2）：slug 序當回退，穩定排序疊上
+/// board_rank 複合鍵——缺值置頂維持 slug 序、具值依 rank 升冪、同值以 slug 決斷。
+/// rank 經獨立讀取函式取得（不進 DiscussionInfo），CLI `discuss list --json`
+/// 逐位元不變。
+pub(crate) fn board_sorted_active(store: &dyn Store) -> Vec<(Option<String>, DiscussionInfo)> {
+    let mut ranked: Vec<(Option<String>, DiscussionInfo)> = discuss::list_discussions(store)
+        .into_iter()
+        .map(|i| (discuss::board_rank(store, &i.slug), i))
+        .collect();
+    ranked.sort_by(|(ra, a), (rb, b)| match (ra, rb) {
+        (None, None) => std::cmp::Ordering::Equal, // 穩定排序保留 slug 回退序
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (Some(x), Some(y)) => x.cmp(y).then_with(|| a.slug.cmp(&b.slug)),
+    });
+    ranked
 }
 
 /// 讀取討論記錄全文（slug 定址；live 優先、封存為後備——同 CLI `discuss show`）。
@@ -151,6 +169,45 @@ mod tests {
         assert_eq!(archived[0]["slug"], "old-topic");
         assert_eq!(archived[0]["topic"], "Old topic");
         assert_eq!(archived[0]["promotedTo"], serde_json::json!(["first-cut"]));
+    }
+
+    #[test]
+    fn list_discussions_sorts_active_by_board_rank_with_unranked_on_top() {
+        // spec「看板卡片順序以 board_rank 欄位為真相」討論側＋ design D2：
+        // 缺值卡置頂維持回退序（slug 升冪），具值卡依 rank 升冪；同值以 slug 決斷。
+        let fx = FixtureRoot::new("d-rank-sort");
+        fx.write(
+            "openspec/discussions/delta.md",
+            &discussion_doc("delta", "Delta", "open", "board_rank: b\n", 0, "<!-- placeholder -->"),
+        );
+        fx.write(
+            "openspec/discussions/charlie.md",
+            &discussion_doc("charlie", "Charlie", "open", "board_rank: n\n", 0, "<!-- placeholder -->"),
+        );
+        fx.write(
+            "openspec/discussions/echo.md",
+            &discussion_doc("echo", "Echo", "open", "board_rank: n\n", 0, "<!-- placeholder -->"),
+        );
+        fx.write(
+            "openspec/discussions/beta.md",
+            &discussion_doc("beta", "Beta", "open", "", 0, "<!-- placeholder -->"),
+        );
+        fx.write(
+            "openspec/discussions/alpha.md",
+            &discussion_doc("alpha", "Alpha", "open", "", 0, "<!-- placeholder -->"),
+        );
+        let v = super::list_discussions_at(fx.root());
+        let slugs: Vec<String> = v["active"]
+            .as_array()
+            .expect("active array")
+            .iter()
+            .map(|d| d["slug"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            slugs,
+            ["alpha", "beta", "delta", "charlie", "echo"],
+            "unranked (slug order) on top, then rank asc (delta=b before charlie=n) with slug tiebreak (charlie before echo at n)"
+        );
     }
 
     #[test]

@@ -168,4 +168,28 @@ mod tests {
             assert_eq!(serde_json::to_string(&items[0]).unwrap(), expected);
         }
     }
+
+    #[test]
+    fn list_json_payload_is_unchanged_by_board_rank() {
+        // spec「board_rank 不進 CLI 輸出且既有輸出逐位元不變」：含 board_rank 的
+        // meta 序列化結果與移除該欄位後逐位元一致，且不出現 rank 相關欄位。
+        let ranked = TestStore::with_meta(
+            "demo",
+            "schema: spec-driven\ncreated: 2026-07-01\nboard_rank: n\n",
+        );
+        ranked.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
+        ranked.put_artifact("demo", "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
+
+        let bare = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        bare.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
+        bare.put_artifact("demo", "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
+
+        let json_of = |store: &TestStore| {
+            let changes = crate::model::list_changes(store);
+            serde_json::to_string(&changes_json(store, &changes)).unwrap()
+        };
+        let ranked_json = json_of(&ranked);
+        assert_eq!(ranked_json, json_of(&bare), "board_rank must not affect list --json");
+        assert!(!ranked_json.contains("board_rank") && !ranked_json.contains("boardRank"));
+    }
 }

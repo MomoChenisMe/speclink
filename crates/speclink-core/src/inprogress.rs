@@ -94,6 +94,23 @@ mod tests {
     }
 
     #[test]
+    fn add_preserves_existing_board_rank_verbatim() {
+        // spec「meta 寫入路徑對 board_rank 互不破壞」反向：開工標記作用於
+        // 含 board_rank 的 meta 時原樣保留該欄位，開工欄位如常寫入。
+        let with_rank = "schema: spec-driven\ncreated: 2026-07-01\nboard_rank: n\n";
+        let store = TestStore::with_meta("demo", with_rank);
+        super::add(&store, "demo", None, None).unwrap();
+        let meta = store.meta("demo");
+        assert!(
+            meta.starts_with(with_rank),
+            "board_rank must survive the started stamp byte-for-byte: {meta}"
+        );
+        let parsed = crate::model::ChangeMeta::from_text(Some(&meta));
+        assert_eq!(parsed.board_rank.as_deref(), Some("n"));
+        assert!(parsed.started_at.is_some());
+    }
+
+    #[test]
     fn add_without_identity_or_agent_stamps_only_started_at() {
         // Same mechanism as created_by / created_with: fields the caller cannot
         // attribute are absent, not defaulted.

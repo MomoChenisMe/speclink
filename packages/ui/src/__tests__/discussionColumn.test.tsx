@@ -57,6 +57,35 @@ function column(id: string): HTMLElement | null {
   return document.querySelector(`[data-column="${id}"]`);
 }
 
+describe("DiscussionColumn 拖排（design D6）", () => {
+  it("sortable 開啟時全卡掛 sortable 與拖曳標籤；promoted 收合列不可拖", () => {
+    render(
+      <DiscussionColumn
+        discussions={[openD, concludedD, promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+        sortable
+      />,
+    );
+    const openCard = screen
+      .getByText("Open topic")
+      .closest('[aria-roledescription="sortable"]') as HTMLElement;
+    expect(openCard).toBeTruthy();
+    expect(openCard.getAttribute("aria-label")).toContain("Open topic");
+    // promoted 群組列是衍生樹檢視，不參與拖排。
+    expect(
+      screen.getByText("Fanout topic").closest('[aria-roledescription="sortable"]'),
+    ).toBeNull();
+  });
+
+  it("未開 sortable 時卡片不掛 sortable（既有獨立渲染不受影響）", () => {
+    render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
+    expect(
+      screen.getByText("Open topic").closest('[aria-roledescription="sortable"]'),
+    ).toBeNull();
+  });
+});
+
 describe("DiscussionColumn（兩級呈現）", () => {
   it("open 討論為全卡：topic＋「N 輪」文案，無任何動詞按鈕", () => {
     render(
