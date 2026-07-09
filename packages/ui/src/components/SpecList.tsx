@@ -5,6 +5,7 @@ import type { SpecItem } from "../adapter";
 import { useI18n } from "../i18n";
 import { matchesQuery } from "../search";
 import { relativeDays } from "../time";
+import { parseTraceSources } from "../trace";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Markdown } from "./Markdown";
@@ -60,6 +61,8 @@ function SpecRow({
   }, [refreshGen]);
 
   const rel = relativeDays(item.modifiedAt, t);
+  // 溯源 footer（design D2）：聚合全文所有 @trace 的 source，去重保序；空即不渲染。
+  const traceSources = parseTraceSources(doc);
 
   return (
     <div data-spec={item.id} className="rounded-lg border border-border bg-card">
@@ -92,6 +95,11 @@ function SpecRow({
             content={doc ?? null}
             empty={doc === undefined ? t("common.loading") : t("common.noContent")}
           />
+          {traceSources.length > 0 && (
+            <div className="mt-3 pt-2 border-t border-border/60 text-xs text-muted-foreground">
+              {t("specs.sourceChanges") + traceSources.join(t("specs.sourceSep"))}
+            </div>
+          )}
         </div>
       )}
     </div>

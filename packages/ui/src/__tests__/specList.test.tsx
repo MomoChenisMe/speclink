@@ -144,4 +144,33 @@ describe("SpecList（規格頁清單）", () => {
     await waitFor(() => expect(within(card).getByLabelText("已複製")).toBeTruthy());
     expect(loadDocument).not.toHaveBeenCalled();
   });
+
+  // spec.md 帶 @trace（archive.rs trace_block 格式）的載入器；sources 為各區塊 source
+  // （null＝畸形、略去 source 行）。
+  function traceDoc(sources: Array<string | null>): string {
+    const blocks = sources.map((s) => {
+      const head = s === null ? "" : `source: ${s}\n`;
+      return `<!-- @trace\n${head}updated: 2026-07-09\ncode:\n  - a.rs\n-->`;
+    });
+    return `# spec\n\n全文段落。\n\n${blocks.join("\n\n")}`;
+  }
+
+  it("展開含 source 的 spec：全文下方顯示來源變更 footer（去重保序＋在地標籤）", async () => {
+    const loadDocument = vi.fn(async (_cap: string) =>
+      traceDoc(["alpha-change", "alpha-change", "beta-change"]),
+    );
+    renderList(SPECS, loadDocument);
+    fireEvent.click(screen.getByText("desktop-app"));
+    await waitFor(() => expect(screen.getByText("全文段落。")).toBeTruthy());
+    // footer：在地標籤前置，source 去重且依首次出現保序。
+    expect(screen.getByText("來源變更：alpha-change、beta-change")).toBeTruthy();
+  });
+
+  it("展開 @trace 缺 source 的 spec：footer 缺席", async () => {
+    const loadDocument = vi.fn(async (_cap: string) => traceDoc([null]));
+    renderList(SPECS, loadDocument);
+    fireEvent.click(screen.getByText("desktop-app"));
+    await waitFor(() => expect(screen.getByText("全文段落。")).toBeTruthy());
+    expect(screen.queryByText(/來源變更/)).toBeNull();
+  });
 });

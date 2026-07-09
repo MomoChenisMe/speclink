@@ -138,6 +138,8 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "specs.empty": "此專案尚無正典規格",
     "specs.noResults": "沒有符合的規格",
     "specs.copied": "已複製",
+    "specs.sourceChanges": "來源變更：",
+    "specs.sourceSep": "、",
   },
   en: {
     "common.loading": "Loading…",
@@ -264,6 +266,8 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "specs.empty": "No canonical specs in this project",
     "specs.noResults": "No matching specs",
     "specs.copied": "Copied",
+    "specs.sourceChanges": "Source changes: ",
+    "specs.sourceSep": ", ",
   },
 };
 
