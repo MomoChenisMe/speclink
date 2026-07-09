@@ -732,5 +732,10 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
         DiscussCommands::Link { .. } => {
             bail!("discuss link is not available in remote mode yet — link the discussion locally")
         }
+        // Seal marks the discussion promoted once content lands — same local
+        // change-metadata surgery as link, with no remote contract op yet.
+        DiscussCommands::Seal { .. } => {
+            bail!("discuss seal is not available in remote mode yet — seal the discussion locally")
+        }
     }
 }

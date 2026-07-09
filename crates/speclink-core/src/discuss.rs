@@ -424,19 +424,19 @@ pub fn promote(
 }
 
 /// Link a discussion to an EXISTING change — the ingest-side counterpart of
-/// `promote` (which scaffolds a new change). Forges the same bidirectional
-/// chain: `from_discussion` in the change metadata, promoted status +
-/// `promoted_to` accumulation on the discussion — so board grouping, drawer
-/// links, and archive co-travel all engage through the existing machinery.
+/// `promote` (which scaffolds a new change). Forges ONLY the change-side chain:
+/// `from_discussion` in the change metadata. Marking the discussion promoted is
+/// NOT done here — that reflection is sealed by [`seal`] once ingest has folded
+/// the discussion's content in, so a linked-but-unfilled change never reads as
+/// "已轉出". The discussion record is left byte-identical by this call. Archive
+/// co-travel still engages: it is driven by the change-side `from_discussion`,
+/// not by the discussion's status.
 /// The discussion↔change relationship is many-to-many: a change already born of
 /// one discussion can be re-linked to a later one (an ingest that revisits an
 /// earlier decision), so `from_discussion` is a comma-separated accumulator that
-/// appends rather than rejecting — mirroring the discussion side's `promoted_to`.
-/// Guards run before any write (a rejection leaves both sides byte-identical);
-/// the change side is written first so an interrupted run still auto-archives
-/// (the archive flow is driven by the change-side link). Re-linking the same
-/// pair is an idempotent success: the change side is skipped, the discussion
-/// side rewrites identical content.
+/// appends rather than rejecting. Guards run before any write (a rejection leaves
+/// the change meta byte-identical); re-linking the same pair is an idempotent
+/// success that skips the change-side write.
 pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     match info(store, slug) {
         None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
@@ -467,6 +467,33 @@ pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
             1,
         );
         store.write_change_meta(change, &meta)?;
+    }
+    Ok(())
+}
+
+/// 內容落地後的封印：把討論標記已轉出（status: promoted、promoted_to 累加變更名）。
+/// `link` 只鑄變更側鏈、不再翻狀態——「標記已轉出」的職責移交本動詞，由 ingest 於
+/// artifacts 落地完成時呼叫。前置守衛全數通過方寫入：討論存在且未封存、變更存在、且
+/// 變更 meta 的 from_discussion 清單已含該 slug（鏈須先由 link／promote／new change
+/// 鑄妥）。守衛失敗回可記錄的 Err，兩側檔案逐位元不變。冪等：promoted_to 已含該變更名
+/// 時 `mark_promoted` 改寫等值內容。
+pub fn seal(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
+    match info(store, slug) {
+        None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
+        Some(i) if i.archived => {
+            bail!("discussion '{slug}' is archived — move it out of discussions/archive/ to seal it")
+        }
+        Some(_) => {}
+    }
+    let Some(meta) = store.read_change_meta(change) else {
+        bail!("Change '{change}' not found.");
+    };
+    if !crate::model::ChangeMeta::from_text(Some(&meta))
+        .from_discussions()
+        .iter()
+        .any(|s| s == slug)
+    {
+        bail!("Change '{change}' is not linked to discussion '{slug}' — run `speclink discuss link` first.");
     }
     mark_promoted(store, slug, change)
 }
@@ -1006,12 +1033,11 @@ mod tests {
     // --- link flow（spec「討論以 link 動詞併入既有變更」；design D1–D4） ---
 
     #[test]
-    fn link_writes_change_meta_and_marks_discussion() {
-        // 成功鑄鏈：變更 meta 增寫 from_discussion，討論側標記與 promote 同款。
-        let store = TestStore::with_live_discussion(
-            "alpha-search",
-            &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
-        );
+    fn link_writes_change_meta_and_leaves_discussion_untouched() {
+        // link 只鑄變更側鏈：變更 meta 增寫 from_discussion，討論記錄逐位元不變
+        // （「已轉出」標記移交 seal）。
+        let doc = concluded_doc("alpha-search", "Alpha search", "build alpha search");
+        let store = TestStore::with_live_discussion("alpha-search", &doc);
         store
             .metas
             .borrow_mut()
@@ -1019,20 +1045,18 @@ mod tests {
         super::link(&store, "alpha-search", "existing-cut").unwrap();
         let meta = store.meta("existing-cut");
         assert!(meta.contains("from_discussion: alpha-search\n"), "meta: {meta}");
-        let text = store.discussion("alpha-search");
-        assert!(text.contains("status: promoted\n"), "text: {text}");
-        assert!(text.contains("promoted_to: existing-cut\n"), "text: {text}");
+        assert_eq!(store.discussion("alpha-search"), doc, "討論逐位元不變（link 不再標記 promoted）");
     }
 
     #[test]
-    fn link_accepts_open_discussion() {
-        // 前置條件與 promote 一致：open 討論也可併入（mark_promoted 翻轉 open→promoted）。
-        let store =
-            TestStore::with_live_discussion("open-one", &open_doc("open-one", "Open topic"));
+    fn link_accepts_open_discussion_without_marking() {
+        // 前置條件與 promote 一致：open 討論也可併入；但 link 不翻狀態，討論仍 open。
+        let doc = open_doc("open-one", "Open topic");
+        let store = TestStore::with_live_discussion("open-one", &doc);
         store.metas.borrow_mut().insert("cut".into(), "schema: spec-driven\n".into());
         super::link(&store, "open-one", "cut").unwrap();
-        assert!(store.discussion("open-one").contains("status: promoted\n"));
         assert!(store.meta("cut").contains("from_discussion: open-one\n"));
+        assert_eq!(store.discussion("open-one"), doc, "討論仍 open、逐位元不變");
     }
 
     #[test]
@@ -1088,8 +1112,7 @@ mod tests {
         super::link(&store, "beta-cache", "cut").unwrap();
         let meta = store.meta("cut");
         assert!(meta.contains("from_discussion: other-topic, beta-cache\n"), "meta: {meta}");
-        assert!(store.discussion("beta-cache").contains("status: promoted\n"));
-        assert!(store.discussion("beta-cache").contains("promoted_to: cut\n"));
+        assert_eq!(store.discussion("beta-cache"), doc, "本討論逐位元不變（link 不標記）");
         assert_eq!(store.discussion("other-topic"), other, "prior discussion untouched");
     }
 
@@ -1121,6 +1144,81 @@ mod tests {
         );
     }
 
+    // --- seal flow（spec「內容落地以 seal 動詞標記已轉出」） ---
+
+    #[test]
+    fn seal_marks_promoted_when_chain_forged() {
+        // 鏈已鑄妥（變更 meta 含 from_discussion: slug）→ 討論翻 promoted、累加 promoted_to。
+        let store = TestStore::with_live_discussion(
+            "alpha-search",
+            &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
+        );
+        store.metas.borrow_mut().insert(
+            "existing-cut".into(),
+            "schema: spec-driven\nfrom_discussion: alpha-search\n".into(),
+        );
+        super::seal(&store, "alpha-search", "existing-cut").unwrap();
+        let text = store.discussion("alpha-search");
+        assert!(text.contains("status: promoted\n"), "text: {text}");
+        assert!(text.contains("promoted_to: existing-cut\n"), "text: {text}");
+    }
+
+    #[test]
+    fn seal_rejects_when_chain_not_forged_without_writes() {
+        // 變更存在但 meta 的 from_discussion 未含該 slug → 拒絕、兩側逐位元不變。
+        let doc = concluded_doc("alpha-search", "Alpha search", "x");
+        let store = TestStore::with_live_discussion("alpha-search", &doc);
+        store.metas.borrow_mut().insert("cut".into(), "schema: spec-driven\n".into());
+        let err = super::seal(&store, "alpha-search", "cut").unwrap_err();
+        assert!(err.to_string().contains("not linked"), "err: {err}");
+        assert_eq!(store.discussion("alpha-search"), doc, "discussion untouched");
+        assert_eq!(store.meta("cut"), "schema: spec-driven\n", "change meta untouched");
+    }
+
+    #[test]
+    fn seal_rejects_missing_discussion_and_missing_change() {
+        // 討論不存在。
+        let store = TestStore::default();
+        store.metas.borrow_mut().insert(
+            "cut".into(),
+            "schema: spec-driven\nfrom_discussion: ghost\n".into(),
+        );
+        assert!(super::seal(&store, "ghost", "cut").unwrap_err().to_string().contains("not found"));
+        // 變更不存在（討論存在）。
+        let store2 =
+            TestStore::with_live_discussion("alpha", &concluded_doc("alpha", "Alpha", "x"));
+        assert!(super::seal(&store2, "alpha", "no-such-change").unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn seal_rejects_archived_discussion() {
+        let store = TestStore::default();
+        store
+            .archived_discussions
+            .borrow_mut()
+            .insert("old".into(), concluded_doc("old", "Old", "x"));
+        store.metas.borrow_mut().insert(
+            "cut".into(),
+            "schema: spec-driven\nfrom_discussion: old\n".into(),
+        );
+        assert!(super::seal(&store, "old", "cut").unwrap_err().to_string().contains("archived"));
+    }
+
+    #[test]
+    fn seal_is_idempotent_when_already_promoted() {
+        let store = TestStore::with_live_discussion(
+            "alpha-search",
+            &promoted_concluded("alpha-search", "Alpha search", "x", "existing-cut"),
+        );
+        store.metas.borrow_mut().insert(
+            "existing-cut".into(),
+            "schema: spec-driven\nfrom_discussion: alpha-search\n".into(),
+        );
+        let before = store.discussion("alpha-search");
+        super::seal(&store, "alpha-search", "existing-cut").unwrap();
+        assert_eq!(store.discussion("alpha-search"), before, "重跑不改檔");
+    }
+
     #[test]
     fn link_same_pair_is_idempotent() {
         // spec「同一組合重跑為冪等」：Ok、兩側內容逐位元不變、變更側不再寫。
@@ -1140,19 +1238,22 @@ mod tests {
     }
 
     #[test]
-    fn link_accumulates_promoted_to_on_fan_out() {
-        // spec「已轉出其他變更的討論再併入」：promoted_to 逗號累加、既有值保留。
+    fn seal_accumulates_promoted_to_on_fan_out() {
+        // spec「promoted_to 逗號累加、既有值保留」：已 promoted 的討論再經 seal 併入
+        // 另一變更（fan-out 累加現由 seal 承接，非 link）。
         let doc = concluded_doc("alpha-search", "Alpha search", "x").replacen(
             "status: concluded\n",
             "status: promoted\npromoted_to: first-cut\n",
             1,
         );
         let store = TestStore::with_live_discussion("alpha-search", &doc);
-        store.metas.borrow_mut().insert("second-cut".into(), "schema: spec-driven\n".into());
-        super::link(&store, "alpha-search", "second-cut").unwrap();
+        store.metas.borrow_mut().insert(
+            "second-cut".into(),
+            "schema: spec-driven\nfrom_discussion: alpha-search\n".into(),
+        );
+        super::seal(&store, "alpha-search", "second-cut").unwrap();
         let text = store.discussion("alpha-search");
         assert!(text.contains("promoted_to: first-cut, second-cut\n"), "text: {text}");
-        assert!(store.meta("second-cut").contains("from_discussion: alpha-search\n"));
     }
 
     #[test]

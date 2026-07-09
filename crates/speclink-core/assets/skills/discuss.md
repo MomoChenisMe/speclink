@@ -107,7 +107,7 @@ This scaffolds the change, prefills the proposal's Why from the conclusion, and 
 speclink discuss link <slug> <existing-change>
 ```
 
-`link` forges the same bidirectional chain promote does (`from_discussion` in the change metadata, `promoted` status + `promoted_to` in the record) without scaffolding anything, so board grouping, drawer links, and auto-archive all engage — the discussion is archived automatically when the last linked change is archived. Then run `/speclink:ingest <existing-change>` to fold the decision into that change's artifacts. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
+`link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived. Unlike promote, `link` does NOT mark the discussion 已轉出 (`promoted`): that reflection is sealed by `/speclink:ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `/speclink:ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
 
 **Lifecycle**: a discussion that concluded without spawning a change (an explicit "don't do this" is a valid outcome) should be closed out with:
 
