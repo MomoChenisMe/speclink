@@ -17,7 +17,6 @@ import {
   AlertDialogCancel,
   Button,
   Checkbox,
-  Input,
   I18nProvider,
   useI18n,
   siblingChangesOf,
@@ -152,12 +151,6 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
   useEffect(() => {
     setAppT(t);
   }, [t]);
-
-  // 轉為變更確認框的變更名草稿：預設由 slug 衍生，可改為第二刀名（再轉出扇出）。
-  const [promoteName, setPromoteName] = useState("");
-  useEffect(() => {
-    setPromoteName(s.pendingPromote ?? "");
-  }, [s.pendingPromote]);
 
   // 看板拖曳手勢讓路（design D6、TaskList 同款）：手勢中暫緩 workspace-changed
   // 的整批 refresh（避免拖曳中卡片重排打斷手勢），放開後補跑一次。
@@ -328,7 +321,6 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
               discussions={s.discussions}
               archivedChanges={s.archived}
               onOpenDiscussion={s.openDiscussion}
-              onPromoteDiscussion={s.requestPromote}
               onArchiveDiscussion={s.requestArchiveDiscussion}
               query={s.boardQuery}
               onQuery={s.setBoardQuery}
@@ -359,6 +351,7 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
         loadCapabilities={(change) => dataSource.changeCapabilities(change)}
         loadMeta={(change) => dataSource.changeMeta(change)}
         onRunVerb={onRunVerb}
+        verbResult={s.drawerVerb}
         onDelete={s.requestDelete}
         onToggleTask={async (change, ordinal, done) => {
           await dataSource.setTaskDone(change, ordinal, done);
@@ -390,41 +383,11 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
         loadDocument={(slug) => dataSource.getDiscussionDocument(slug)}
         changes={s.changes}
         archivedChanges={s.archived}
-        onPromote={s.requestPromote}
         onOpenChangeCard={(name) => {
           s.closeDiscussion();
           s.openDetail(name);
         }}
-        error={s.promoteError}
       />
-
-      {/* 轉為變更確認（design D4：說「會發生什麼」，不暴露工程詞） */}
-      <AlertDialog open={s.pendingPromote !== null} onOpenChange={(o) => !o && s.cancelPromote()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.promoteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("app.promoteDesc")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="promote-name" className="text-xs text-muted-foreground">
-              {t("app.changeName")}
-              <span className="ml-1 text-muted-foreground/70">{t("app.changeNameHint")}</span>
-            </label>
-            <Input
-              id="promote-name"
-              aria-label={t("app.changeName")}
-              value={promoteName}
-              onChange={(e) => setPromoteName(e.target.value)}
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelPromote}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void s.confirmPromote(promoteName)}>
-              {t("app.promoteConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* 初始化確認（design D3：寫入型確認框——取消靠左持預設焦點、建立靠右拉開距離） */}
       <AlertDialog open={s.pendingInit !== null} onOpenChange={(o) => !o && s.cancelInit()}>

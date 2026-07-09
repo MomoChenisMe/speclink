@@ -121,11 +121,56 @@ describe("app store (Zustand)", () => {
     expect(ds.runVerb).not.toHaveBeenCalled();
   });
 
-  it("runVerb records a result and refreshes lists", async () => {
+  it("runVerb validate keeps a structured drawer result, not the top bar", async () => {
+    // D1：validate 結果進詳情抽屜（drawerVerb 結構化），頂列 verbResult 保留給全域操作。
     const ds = fakeDataSource();
     const store = createAppStore(ds);
     await store.getState().runVerb("validate", "desktop-shell-and-browser");
-    expect(store.getState().verbResult).toContain("validate");
+    expect(store.getState().drawerVerb).toMatchObject({
+      change: "desktop-shell-and-browser",
+      verb: "validate",
+      validate: { valid: true },
+    });
+    expect(store.getState().verbResult).toBeNull();
+    expect(ds.listChanges).toHaveBeenCalled();
+  });
+
+  it("runVerb analyze keeps the AnalyzeReport in the drawer result", async () => {
+    // D2：analyze 沿用引擎回傳的 AnalyzeReport，保留結構供四維度面板。
+    const report = {
+      change_id: "x",
+      dimensions: [],
+      findings: [
+        { id: "AMB-1", dimension: "Ambiguity", severity: "Suggestion", location: "specs", summary: "s", recommendation: "r" },
+      ],
+      artifacts_analyzed: [],
+      artifacts_missing: [],
+    };
+    const ds = fakeDataSource({ runVerb: vi.fn().mockResolvedValue(report) });
+    const store = createAppStore(ds);
+    await store.getState().runVerb("analyze", "desktop-shell-and-browser");
+    expect(store.getState().drawerVerb).toMatchObject({
+      change: "desktop-shell-and-browser",
+      verb: "analyze",
+      analyze: { findings: [{ dimension: "Ambiguity" }] },
+    });
+    expect(store.getState().verbResult).toBeNull();
+  });
+
+  it("runVerb validate failure surfaces the error in the drawer result", async () => {
+    const ds = fakeDataSource({ runVerb: vi.fn().mockRejectedValue(new Error("parse boom")) });
+    const store = createAppStore(ds);
+    await store.getState().runVerb("validate", "desktop-shell-and-browser");
+    expect(store.getState().drawerVerb).toMatchObject({ change: "desktop-shell-and-browser", verb: "validate" });
+    expect(store.getState().drawerVerb?.error).toContain("parse boom");
+  });
+
+  it("runVerb archive still surfaces in the top-bar verbResult", async () => {
+    const ds = fakeDataSource({ runVerb: vi.fn().mockResolvedValue({ datedName: "2026-07-09-x" }) });
+    const store = createAppStore(ds);
+    await store.getState().runVerb("archive", "desktop-shell-and-browser");
+    expect(store.getState().verbResult).toContain("archive");
+    expect(store.getState().drawerVerb).toBeNull();
     expect(ds.listChanges).toHaveBeenCalled();
   });
 

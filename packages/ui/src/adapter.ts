@@ -68,6 +68,47 @@ export interface DiscussionLists {
 /** 可對選定 change 執行的動詞。park/unpark 已從 speclink 移除，不在此列。 */
 export type Verb = "validate" | "analyze" | "archive";
 
+/** analyze 報告的一條發現項（對應 core AnalyzeReport.findings，snake_case 直出）。 */
+export interface AnalyzeFinding {
+  id: string;
+  dimension: string;
+  severity: string;
+  location: string;
+  summary: string;
+  recommendation: string;
+}
+
+/** analyze 報告的一個維度狀態（Coverage/Consistency/Ambiguity/Gaps 之一）。 */
+export interface AnalyzeDimension {
+  dimension: string;
+  status: string;
+  finding_count: number;
+}
+
+/** `speclink analyze --json` 的報告形狀（桌面 analyze 動詞回傳同形）。 */
+export interface AnalyzeReport {
+  change_id: string;
+  dimensions: AnalyzeDimension[];
+  findings: AnalyzeFinding[];
+  artifacts_analyzed: string[];
+  artifacts_missing: string[];
+}
+
+/**
+ * validate／analyze 於詳情抽屜內呈現的結構化結果（archive 仍走視窗頂列）。
+ * change 供抽屜比對——僅當前開啟的 change 相符時才呈現。
+ */
+export interface VerbDrawerResult {
+  change: string;
+  verb: "validate" | "analyze";
+  /** validate 成功結果（verb==="validate"）。 */
+  validate?: { valid: boolean; errors: string[] };
+  /** analyze 報告（verb==="analyze"）。 */
+  analyze?: AnalyzeReport;
+  /** 執行失敗的單行錯誤（任一動詞）。 */
+  error?: string;
+}
+
 /** 看板卡片種類（拖排寫回的目標）：變更卡或討論卡。 */
 export type CardKind = "change" | "discussion";
 

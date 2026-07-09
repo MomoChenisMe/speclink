@@ -38,6 +38,10 @@ export type {
   DiscussionItem,
   DiscussionLists,
   Verb,
+  AnalyzeFinding,
+  AnalyzeDimension,
+  AnalyzeReport,
+  VerbDrawerResult,
 } from "./adapter";
 export { cardDndId, parseCardDndId, resolveCardDrop, type ColumnCards } from "./boardDnd";
 export { ChangeBoard } from "./components/ChangeBoard";

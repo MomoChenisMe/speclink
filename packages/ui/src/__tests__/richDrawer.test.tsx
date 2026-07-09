@@ -420,3 +420,60 @@ describe("RichDetailDrawer", () => {
     expect(props.onRunVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
   });
 });
+
+// spec 需求「桌面 app 提供動詞操作面」：validate／analyze 結果於抽屜內、動作列近處呈現（D1/D2）。
+describe("抽屜內動詞結果呈現", () => {
+  const region = () => document.querySelector("[data-verb-result]") as HTMLElement | null;
+
+  it("validate 通過於動作列近處呈現通過", () => {
+    const props = makeProps({
+      verbResult: { change: "desktop-shell-and-browser", verb: "validate", validate: { valid: true, errors: [] } },
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    const r = region();
+    expect(r).toBeTruthy();
+    expect(within(r!).getByText(/通過/)).toBeTruthy();
+  });
+
+  it("validate 失敗呈現失敗與首則錯誤", () => {
+    const props = makeProps({
+      verbResult: {
+        change: "desktop-shell-and-browser",
+        verb: "validate",
+        validate: { valid: false, errors: ["tasks.md: missing", "second error"] },
+      },
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    const r = region();
+    expect(within(r!).getByText(/失敗/)).toBeTruthy();
+    expect(within(r!).getByText(/tasks\.md: missing/)).toBeTruthy();
+  });
+
+  it("analyze 於抽屜內呈四維度面板", () => {
+    const report = {
+      change_id: "x",
+      dimensions: [],
+      findings: [
+        { id: "AMB-1", dimension: "Ambiguity", severity: "Suggestion", location: "specs", summary: "缺具體範例的情境", recommendation: "r" },
+      ],
+      artifacts_analyzed: [],
+      artifacts_missing: [],
+    };
+    const props = makeProps({
+      verbResult: { change: "desktop-shell-and-browser", verb: "analyze", analyze: report },
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    const r = region();
+    expect(within(r!).getByText("Coverage")).toBeTruthy();
+    expect(within(r!).getByText("Ambiguity")).toBeTruthy();
+    expect(within(r!).getByText(/缺具體範例的情境/)).toBeTruthy();
+  });
+
+  it("動詞結果屬於別的 change 時不呈現", () => {
+    const props = makeProps({
+      verbResult: { change: "some-other-change", verb: "validate", validate: { valid: true, errors: [] } },
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    expect(region()).toBeNull();
+  });
+});

@@ -14,7 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import type { ChangeItem, ChangeMetaInfo, Verb } from "../adapter";
+import type { ChangeItem, ChangeMetaInfo, Verb, VerbDrawerResult } from "../adapter";
 import { specDeltaCounts, sumDeltaCounts } from "../delta";
 import { useI18n } from "../i18n";
 import { relativeDays } from "../time";
@@ -25,6 +25,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
 import { DeltaBadges, DeltaSpecView } from "./DeltaBadges";
+import { AnalyzePanel } from "./AnalyzePanel";
 import { setTaskMark } from "../tasks";
 
 export interface RichDetailDrawerProps {
@@ -37,6 +38,8 @@ export interface RichDetailDrawerProps {
   loadCapabilities: (change: string) => Promise<string[]>;
   loadMeta: (change: string) => Promise<ChangeMetaInfo | null>;
   onRunVerb?: (verb: Verb, change: string) => void;
+  /** 抽屜內呈現的 validate／analyze 結構化結果（僅當 change 相符時呈現；archive 走頂列）。 */
+  verbResult?: VerbDrawerResult | null;
   onDelete?: (change: string) => void;
   /** 勾選/取消任務並回寫 tasks.md；重載由宿主 refresh 後的刷新世代遞增驅動（單一資料流）。 */
   onToggleTask?: (change: string, ordinal: number, done: boolean) => Promise<void>;
@@ -66,6 +69,7 @@ export function RichDetailDrawer({
   loadCapabilities,
   loadMeta,
   onRunVerb,
+  verbResult,
   onDelete,
   onToggleTask,
   onMoveTask,
@@ -313,6 +317,31 @@ export function RichDetailDrawer({
               <Trash2 className="h-3.5 w-3.5" /> {t("rdrawer.delete")}
             </Button>
           </div>
+          {/* 動詞結果（validate／analyze）於動作列近處呈現——僅當前 change 相符時（D1/D2）。 */}
+          {verbResult && verbResult.change === change.name && (
+            <div data-verb-result className="pt-1">
+              {verbResult.error ? (
+                <div className="text-xs text-destructive">{verbResult.error}</div>
+              ) : verbResult.verb === "analyze" && verbResult.analyze ? (
+                <AnalyzePanel report={verbResult.analyze} />
+              ) : verbResult.verb === "validate" && verbResult.validate ? (
+                verbResult.validate.valid ? (
+                  <div className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+                    <Check className="h-3.5 w-3.5" /> {t("rdrawer.validatePass")}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-xs text-destructive">
+                    <span className="inline-flex items-center gap-1 font-medium">
+                      <ShieldCheck className="h-3.5 w-3.5" /> {t("rdrawer.validateFail")}
+                    </span>
+                    {verbResult.validate.errors[0] && (
+                      <span className="min-w-0 truncate font-mono">{verbResult.validate.errors[0]}</span>
+                    )}
+                  </div>
+                )
+              ) : null}
+            </div>
+          )}
         </SheetHeader>
 
         <Tabs defaultValue="proposal" className="flex-1 min-h-0 flex flex-col">

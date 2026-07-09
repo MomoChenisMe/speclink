@@ -60,9 +60,7 @@ export interface KanbanBoardProps {
   /** 已封存 change 清單（衍生樹細列的已封存態派生）。 */
   archivedChanges?: ArchivedItem[];
   onOpenDiscussion?: (slug: string) => void;
-  /** concluded 討論卡的轉為變更動詞（app 端接確認流程）。 */
-  onPromoteDiscussion?: (slug: string) => void;
-  /** concluded 討論卡的歸檔動詞（app 端接確認流程）。 */
+  /** concluded 討論卡的歸檔動詞（app 端接確認流程）。轉為變更已自 GUI 撤除。 */
   onArchiveDiscussion?: (slug: string) => void;
   /** 看板搜尋字串（選配，與 onQuery 成對提供時渲染搜尋輸入並過濾卡片）。 */
   query?: string;
@@ -167,7 +165,6 @@ export function KanbanBoard({
   discussions,
   archivedChanges,
   onOpenDiscussion,
-  onPromoteDiscussion,
   onArchiveDiscussion,
   query,
   onQuery,
@@ -256,7 +253,6 @@ export function KanbanBoard({
             changes={changes}
             archived={archivedChanges ?? []}
             onOpenDiscussion={onOpenDiscussion}
-            onPromote={onPromoteDiscussion}
             onArchiveDiscussion={onArchiveDiscussion}
             sortable={!!onReorder}
           />
