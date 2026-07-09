@@ -363,6 +363,83 @@ pub fn unlink_discarded(store: &dyn Store, slug: &str, change: &str) -> Result<O
     }
 }
 
+/// Stamp the re-ingest-pending flag on every **active** change in a re-concluded
+/// discussion's `promoted_to`. The conclude-side mirror of [`unlink_discarded`]: a
+/// discussion that was already reflected (its `promoted_to` is non-empty because
+/// `seal` wrote it) and is now re-concluded flags each of its changes as stale
+/// against the new conclusion. Change names that resolve to no active meta —
+/// archived or gone — are skipped (their spec deltas are already in canon; a
+/// re-ingest is impossible). Each active change's `restale_from` comma accumulator
+/// gains this slug (idempotent: already present skips the write). Returns the active
+/// change names carrying the flag, for CLI reporting. `promoted_to` absent/empty, or
+/// resolving entirely to non-active changes, writes no change meta.
+fn stamp_restale(store: &dyn Store, slug: &str, discussion_text: &str) -> Result<Vec<String>> {
+    let Some(promoted) = frontmatter_value(discussion_text, "promoted_to") else {
+        return Ok(Vec::new());
+    };
+    let mut flagged = Vec::new();
+    for change in promoted.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        let Some(mut meta) = store.read_change_meta(change) else {
+            continue; // archived or gone — not an active change, skip
+        };
+        let parsed = crate::model::ChangeMeta::from_text(Some(&meta));
+        let existing = parsed.restale_from.as_deref().map(str::trim).unwrap_or("");
+        if parsed.restale_from().iter().any(|s| s == slug) {
+            // already flagged for this slug — idempotent, skip the change-side write
+        } else if existing.is_empty() {
+            if !meta.ends_with('\n') && !meta.is_empty() {
+                meta.push('\n');
+            }
+            meta.push_str(&format!("restale_from: {slug}\n"));
+            store.write_change_meta(change, &meta)?;
+        } else {
+            meta = meta.replacen(
+                &format!("restale_from: {existing}"),
+                &format!("restale_from: {existing}, {slug}"),
+                1,
+            );
+            store.write_change_meta(change, &meta)?;
+        }
+        flagged.push(change.to_string());
+    }
+    Ok(flagged)
+}
+
+/// Clear one discussion slug from a change's `restale_from` accumulator — the seal-side
+/// inverse of [`stamp_restale`]. When the slug is the sole value the whole line is
+/// dropped; otherwise the remaining slugs are kept. The slug being absent (or no
+/// `restale_from` field at all) is an idempotent no-op that skips the write. Only the
+/// `restale_from` field is touched; every other meta field stays byte-identical.
+fn clear_restale(store: &dyn Store, change: &str, slug: &str) -> Result<()> {
+    let Some(mut meta) = store.read_change_meta(change) else {
+        return Ok(());
+    };
+    // Change meta is bare YAML (no `---` frontmatter fence), so parse via ChangeMeta
+    // like `link`/`stamp_restale` do — `frontmatter_value` only reads discussion docs.
+    let parsed = crate::model::ChangeMeta::from_text(Some(&meta));
+    let existing = match parsed.restale_from.as_deref().map(str::trim) {
+        Some(e) if !e.is_empty() => e.to_string(),
+        _ => return Ok(()), // no restale_from — nothing to clear
+    };
+    let current: Vec<&str> =
+        existing.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+    let remaining: Vec<&str> = current.iter().copied().filter(|s| *s != slug).collect();
+    if remaining.len() == current.len() {
+        return Ok(()); // slug not present — idempotent no-op, no write
+    }
+    if remaining.is_empty() {
+        meta = meta.replacen(&format!("restale_from: {existing}\n"), "", 1);
+    } else {
+        meta = meta.replacen(
+            &format!("restale_from: {existing}"),
+            &format!("restale_from: {}", remaining.join(", ")),
+            1,
+        );
+    }
+    store.write_change_meta(change, &meta)?;
+    Ok(())
+}
+
 /// Outcome of promoting a discussion into a change.
 #[derive(Debug)]
 pub struct PromoteOutcome {
@@ -495,7 +572,11 @@ pub fn seal(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     {
         bail!("Change '{change}' is not linked to discussion '{slug}' — run `speclink discuss link` first.");
     }
-    mark_promoted(store, slug, change)
+    mark_promoted(store, slug, change)?;
+    // Sealing is the honest "content landed" act: clear this discussion's re-ingest flag
+    // from the change (the seal-side inverse of the conclude-time stamp). Per-slug — a
+    // change stale against another discussion keeps that slug pending its own re-seal.
+    clear_restale(store, change, slug)
 }
 
 /// 討論卡的看板欄內排序鍵（frontmatter 的 `board_rank`）。沿 `promoted_to` 的
@@ -603,9 +684,10 @@ pub fn discard_discussion(store: &dyn Store, slug: &str, force: bool) -> Result<
 /// Write the conclusion into the `## Conclusion` section (replacing the placeholder — or a
 /// previous conclusion, so a revised conclusion stays a single section) and mark the
 /// discussion concluded.
-pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<()> {
+pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<Vec<String>> {
     let mut text = load_live(store, slug)?;
-    // Flip status: open -> concluded in frontmatter.
+    // Flip status: open -> concluded in frontmatter. A promoted discussion (status:
+    // promoted) has no "status: open" to match, so a re-conclude preserves promoted.
     text = text.replacen("status: open", "status: concluded", 1);
     text = match replace_section(&text, "Conclusion", content) {
         Some(t) => t,
@@ -618,7 +700,10 @@ pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<()> {
         }
     };
     store.write_live_discussion(slug, &text)?;
-    Ok(())
+    // Re-concluding an already-reflected discussion (promoted_to non-empty) flags each
+    // of its active changes as stale against the new conclusion. Returns the flagged
+    // change names for the CLI to report; empty when nothing was reflected yet.
+    stamp_restale(store, slug, &text)
 }
 
 #[cfg(test)]
@@ -1337,5 +1422,128 @@ mod tests {
         let store = TestStore::default();
         let err = super::new_discussion(&store, "!?!", None).unwrap_err();
         assert!(err.to_string().contains("could not derive"), "err: {err}");
+    }
+
+    // --- restale flag：conclude 蓋章 / seal 清除（reconclude-restale） ---
+
+    /// A promoted discussion (status: promoted, promoted_to set) with a written conclusion.
+    fn promoted_doc(slug: &str, topic: &str, promoted_to: &str, decision: &str) -> String {
+        format!(
+            "---\ntopic: {topic}\nslug: {slug}\nstatus: promoted\npromoted_to: {promoted_to}\ncreated: 2026-01-02\n---\n\n\
+             # Discussion: {topic}\n\n\
+             ## Context\n\nFixture context.\n\n\
+             ## Rounds\n\n### Round 1 — assumptions (2026-01-02)\n\n**Focus**: scope\n\n\
+             ## Conclusion\n\n**Decision**: {decision}\n"
+        )
+    }
+
+    #[test]
+    fn conclude_stamps_restale_on_active_promoted_change() {
+        let store =
+            TestStore::with_live_discussion("alpha", &promoted_doc("alpha", "Alpha", "cut-a", "old"));
+        store.metas.borrow_mut().insert(
+            "cut-a".to_string(),
+            "schema: spec-driven\nfrom_discussion: alpha\n".to_string(),
+        );
+        let flagged = super::conclude(&store, "alpha", "**Decision**: new direction").unwrap();
+        assert_eq!(flagged, vec!["cut-a".to_string()]);
+        assert!(store.meta("cut-a").contains("restale_from: alpha"), "meta: {}", store.meta("cut-a"));
+        // 討論維持 promoted、promoted_to 不變，僅 Conclusion 改寫。
+        let disc = store.discussion("alpha");
+        assert!(disc.contains("status: promoted\n"), "stays promoted: {disc}");
+        assert!(disc.contains("promoted_to: cut-a\n"), "promoted_to intact: {disc}");
+        assert!(disc.contains("**Decision**: new direction"), "conclusion rewritten: {disc}");
+    }
+
+    #[test]
+    fn conclude_restale_skips_archived_change() {
+        // promoted_to 同含 active 與已歸檔變更；僅 active 被蓋。
+        let store = TestStore::with_live_discussion(
+            "alpha",
+            &promoted_doc("alpha", "Alpha", "cut-a, arch-b", "old"),
+        );
+        store.metas.borrow_mut().insert("cut-a".to_string(), "schema: spec-driven\n".to_string());
+        // arch-b 僅存於封存（read_change_meta 回 None）——非 active。
+        store
+            .archived_metas
+            .borrow_mut()
+            .insert("arch-b".to_string(), "schema: spec-driven\n".to_string());
+        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap();
+        assert_eq!(flagged, vec!["cut-a".to_string()], "only active flagged");
+        assert!(store.meta("cut-a").contains("restale_from: alpha"));
+        assert!(!store.change_exists("arch-b"), "archived never active");
+        assert_eq!(
+            store.archived_metas.borrow().get("arch-b").unwrap(),
+            "schema: spec-driven\n",
+            "archived meta untouched"
+        );
+    }
+
+    #[test]
+    fn conclude_promoted_to_empty_stamps_nothing() {
+        // concluded-but-not-promoted：promoted_to 缺席 → 不蓋章。
+        let store =
+            TestStore::with_live_discussion("alpha", &concluded_doc("alpha", "Alpha", "old"));
+        store.metas.borrow_mut().insert("cut-a".to_string(), "schema: spec-driven\n".to_string());
+        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap();
+        assert!(flagged.is_empty());
+        assert_eq!(*store.meta_writes.borrow(), 0, "no change meta written");
+        assert_eq!(store.meta("cut-a"), "schema: spec-driven\n", "change meta untouched");
+    }
+
+    #[test]
+    fn conclude_restale_stamp_is_idempotent() {
+        let store =
+            TestStore::with_live_discussion("alpha", &promoted_doc("alpha", "Alpha", "cut-a", "old"));
+        store.metas.borrow_mut().insert(
+            "cut-a".to_string(),
+            "schema: spec-driven\nrestale_from: alpha\n".to_string(),
+        );
+        let before = store.meta("cut-a");
+        let flagged = super::conclude(&store, "alpha", "**Decision**: newer").unwrap();
+        assert_eq!(flagged, vec!["cut-a".to_string()], "still reported stale");
+        assert_eq!(store.meta("cut-a"), before, "no duplicate accumulation");
+        assert_eq!(*store.meta_writes.borrow(), 0, "idempotent — no change meta write");
+    }
+
+    #[test]
+    fn seal_clears_restale_slug_keeping_others() {
+        let store =
+            TestStore::with_live_discussion("alpha", &concluded_doc("alpha", "Alpha", "done"));
+        store.metas.borrow_mut().insert(
+            "cut-a".to_string(),
+            "schema: spec-driven\nfrom_discussion: alpha\nrestale_from: alpha, beta\n".to_string(),
+        );
+        super::seal(&store, "alpha", "cut-a").unwrap();
+        let meta = store.meta("cut-a");
+        assert!(meta.contains("restale_from: beta\n"), "alpha cleared, beta kept: {meta}");
+        assert!(!meta.contains("restale_from: alpha"), "alpha gone: {meta}");
+        assert!(store.discussion("alpha").contains("status: promoted\n"), "sealed → promoted");
+    }
+
+    #[test]
+    fn seal_clears_restale_line_when_last_slug() {
+        let store =
+            TestStore::with_live_discussion("alpha", &concluded_doc("alpha", "Alpha", "done"));
+        store.metas.borrow_mut().insert(
+            "cut-a".to_string(),
+            "schema: spec-driven\nfrom_discussion: alpha\nrestale_from: alpha\n".to_string(),
+        );
+        super::seal(&store, "alpha", "cut-a").unwrap();
+        let meta = store.meta("cut-a");
+        assert!(!meta.contains("restale_from"), "restale_from line dropped: {meta}");
+        assert!(meta.contains("from_discussion: alpha\n"), "other fields intact: {meta}");
+    }
+
+    #[test]
+    fn seal_restale_clear_is_noop_when_absent() {
+        let store =
+            TestStore::with_live_discussion("alpha", &concluded_doc("alpha", "Alpha", "done"));
+        store.metas.borrow_mut().insert(
+            "cut-a".to_string(),
+            "schema: spec-driven\nfrom_discussion: alpha\n".to_string(),
+        );
+        super::seal(&store, "alpha", "cut-a").unwrap();
+        assert!(!store.meta("cut-a").contains("restale_from"), "no restale_from introduced");
     }
 }

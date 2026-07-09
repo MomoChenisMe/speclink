@@ -8,12 +8,15 @@ import { createTauriDataSource } from "../adapter/tauriDataSource";
 describe("createTauriDataSource", () => {
   beforeEach(() => invoke.mockReset());
 
-  it("listChanges unwraps the { changes } envelope from the list_changes command", async () => {
-    invoke.mockResolvedValueOnce({ changes: [{ name: "a", status: "s", totalTasks: 1, completedTasks: 0 }] });
+  it("listChanges unwraps the { changes } envelope and carries the restaleFrom array", async () => {
+    // restaleFrom（待重新反映徽章資料源）隨清單項透傳至前端，供看板卡片渲染。
+    invoke.mockResolvedValueOnce({
+      changes: [{ name: "a", status: "s", totalTasks: 1, completedTasks: 0, restaleFrom: ["alpha"] }],
+    });
     const ds = createTauriDataSource();
     const changes = await ds.listChanges();
     expect(invoke).toHaveBeenCalledWith("list_changes");
-    expect(changes).toEqual([{ name: "a", status: "s", totalTasks: 1, completedTasks: 0 }]);
+    expect(changes[0].restaleFrom).toEqual(["alpha"]);
   });
 
   it("listSpecs unwraps the { specs } envelope and carries the optional modifiedAt field", async () => {

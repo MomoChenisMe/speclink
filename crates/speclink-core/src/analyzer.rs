@@ -383,6 +383,18 @@ pub fn analyze(store: &dyn Store, change: &Change, schema: &Schema) -> AnalyzeRe
     // --- Gaps ---
     if !gaps_skipped {
         let mut n = 0;
+        // Informational (speclink extension): the change reflected discussion(s) that were
+        // later re-concluded, so it is stale against the new conclusion and needs re-ingest.
+        // Fires only when `restale_from` is non-empty — the common case is byte-identical.
+        for slug in change.meta.restale_from() {
+            n += 1;
+            gaps.push(make_finding(
+                "GAP", n, "Gaps", Severity::Suggestion, "change meta",
+                &format!("Change reflects discussion '{slug}' which was re-concluded — stale, needs re-ingest"),
+                &format!("Run `/speclink-ingest {}` to fold the new conclusion, then seal to clear the flag", change.name),
+                "gapRestale", [("discussion", slug.as_str())],
+            ));
+        }
         // Fires only when the proposal FILE is missing (an empty file counts as present).
         if specs_present && !proposal_present {
             n += 1;

@@ -65,6 +65,8 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    `link` is idempotent (a no-op when the discuss step already ran it) and forges ONLY the change-side chain — it does NOT mark the discussion promoted. Marking it 已轉出 is sealed at the END of this workflow (see the final step), once the artifacts actually carry the discussion's content. Without the link, the discussion never archives with the change it fed.
 
+   **Change flagged stale (`restaleFrom`)?** When `speclink show <change> --json` exposes a non-empty `restaleFrom`, those discussions were re-concluded *after* this change last sealed them — its artifacts are now stale against the newer conclusions (`speclink analyze <change>` surfaces the same as an informational finding, and the desktop board shows a "待重新反映" badge). This is exactly a re-ingest: for each slug in `restaleFrom`, read the discussion's current conclusion (`speclink discuss show <slug> --json`), fold the revised decision into the artifacts, and the seal at the END of this workflow clears that slug from `restaleFrom` — marking the reflection honest again.
+
 2. **Parse the plan structure** (skip if using conversation context)
 
    Claude Code plan files typically contain:
@@ -233,7 +235,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    speclink discuss seal <slug> <change>
    ```
 
-   `seal` flips the discussion to promoted (已轉出) and is idempotent — run it once per linked `from_discussion` slug (from `fromDiscussions` in `speclink show <change> --json`). This is what keeps "已轉出" honest: the discussion is marked reflected only after ingest actually carried its content in, never at link time. Skip this step when no discussion fed the change.
+   `seal` flips the discussion to promoted (已轉出) and is idempotent — run it once per linked `from_discussion` slug (from `fromDiscussions` in `speclink show <change> --json`). This is what keeps "已轉出" honest: the discussion is marked reflected only after ingest actually carried its content in, never at link time. `seal` also clears that slug from the change's `restaleFrom` flag, so a re-ingest (triggered by a re-concluded discussion) closes the loop and the "待重新反映" marker disappears. Skip this step when no discussion fed the change.
 
 10. **Summary and next steps**
 

@@ -93,6 +93,22 @@ describe("KanbanBoard", () => {
     expect(writeText).toHaveBeenCalledWith("working-y");
     expect(onOpenChange).not.toHaveBeenCalled();
   });
+
+  it("shows the restale badge only on cards whose change carries a restaleFrom flag", () => {
+    // 「待重新反映」徽章：restaleFrom 非空的卡片顯示、為空/缺席不顯示；不影響欄位派生。
+    const withFlag: ChangeItem[] = [
+      { name: "stale-a", status: "in-progress", totalTasks: 4, completedTasks: 1, restaleFrom: ["alpha"] },
+      { name: "fresh-b", status: "in-progress", totalTasks: 4, completedTasks: 1 },
+    ];
+    render(<KanbanBoard changes={withFlag} />);
+    const staleCard = screen.getByText("stale-a").closest("[data-change]") as HTMLElement;
+    expect(within(staleCard).getByLabelText("待重新反映")).toBeTruthy();
+    const freshCard = screen.getByText("fresh-b").closest("[data-change]") as HTMLElement;
+    expect(within(freshCard).queryByLabelText("待重新反映")).toBeNull();
+    // 兩張皆在進行中欄——徽章與欄位歸屬正交。
+    expect(within(column("in-progress")).getByText("stale-a")).toBeTruthy();
+    expect(within(column("in-progress")).getByText("fresh-b")).toBeTruthy();
+  });
 });
 
 describe("KanbanBoard search（看板搜尋過濾卡片）", () => {

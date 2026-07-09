@@ -17,6 +17,11 @@ pub struct ListChangeJson {
     pub summary: String,
     #[serde(rename = "totalTasks")]
     pub total_tasks: usize,
+    /// Discussions this change reflected then went stale against — re-concluded after
+    /// seal, pending re-ingest (speclink extension). Omitted when empty so the common-case
+    /// `list --json` output stays byte-identical to the Spectra-parity baseline.
+    #[serde(rename = "restaleFrom", skip_serializing_if = "Vec::is_empty")]
+    pub restale_from: Vec<String>,
 }
 
 /// Order changes for listing (probed against Spectra):
@@ -111,6 +116,7 @@ pub fn changes_json(store: &dyn Store, changes: &[Change]) -> Vec<ListChangeJson
                 },
                 summary: proposal_summary(store, c),
                 total_tasks: total,
+                restale_from: c.meta.restale_from(),
             }
         })
         .collect()
