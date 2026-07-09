@@ -72,7 +72,8 @@ describe("DiscussionColumn 拖排（design D6）", () => {
       .closest('[aria-roledescription="sortable"]') as HTMLElement;
     expect(openCard).toBeTruthy();
     expect(openCard.getAttribute("aria-label")).toContain("Open topic");
-    // promoted 群組列是衍生樹檢視，不參與拖排。
+    // D1：promoted 預設隱藏，開啟 header 開關才見衍生樹列；其列不參與拖排。
+    fireEvent.click(screen.getByRole("button", { name: /顯示已轉出/ }));
     expect(
       screen.getByText("Fanout topic").closest('[aria-roledescription="sortable"]'),
     ).toBeNull();
@@ -142,6 +143,8 @@ describe("DiscussionColumn（兩級呈現）", () => {
         onOpenDiscussion={onOpenDiscussion}
       />,
     );
+    // D1：promoted 預設隱藏，先點 header「顯示已轉出」開關才展開衍生樹。
+    fireEvent.click(screen.getByRole("button", { name: /顯示已轉出/ }));
     // 群組標題換名；細列首行為 topic（slug 不出現於看板）。
     expect(screen.getByText(/已轉出變更的討論/)).toBeTruthy();
     expect(screen.queryByText(/已促轉/)).toBeNull();
@@ -164,6 +167,84 @@ describe("DiscussionColumn（兩級呈現）", () => {
   it("空清單顯示欄空狀態", () => {
     render(<DiscussionColumn discussions={[]} changes={[]} archived={[]} />);
     expect(screen.getByText("尚無討論")).toBeTruthy();
+  });
+});
+
+describe("DiscussionColumn header 顯示已轉出開關（design D1）", () => {
+  it("存在 promoted 時 header 呈帶計數開關、promoted 預設隱藏，點按切換欄底衍生樹", () => {
+    render(
+      <DiscussionColumn
+        discussions={[openD, promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+      />,
+    );
+    // 預設關閉：promoted 細列不佔欄體空間。
+    expect(screen.queryByText("Fanout topic")).toBeNull();
+    // header 開關存在且帶 promoted 計數（一筆 promoted → 1）。
+    const toggle = screen.getByRole("button", { name: /顯示已轉出/ });
+    expect(within(toggle).getByText("1")).toBeTruthy();
+    // 點按 → 欄底群組與衍生樹細列顯示。
+    fireEvent.click(toggle);
+    expect(screen.getByText(/已轉出變更的討論/)).toBeTruthy();
+    expect(screen.getByText("Fanout topic")).toBeTruthy();
+    // 再點 → 收起、零佔位。
+    fireEvent.click(toggle);
+    expect(screen.queryByText("Fanout topic")).toBeNull();
+  });
+
+  it("無 promoted 討論時 header 開關缺席", () => {
+    render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
+    expect(screen.queryByRole("button", { name: /顯示已轉出/ })).toBeNull();
+  });
+});
+
+describe("DiscussionColumn 計數只算 active 與空狀態（design D3）", () => {
+  it("欄計數徽章只計 active（open＋concluded），promoted 不計入", () => {
+    render(
+      <DiscussionColumn
+        discussions={[openD, concludedD, promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+      />,
+    );
+    // active 2（open＋concluded），promoted 1 不計入 → 徽章顯示 2。
+    expect(screen.getByTestId("column-count").textContent).toBe("2");
+  });
+
+  it("無 active 但有 promoted 時欄體不顯「尚無討論」，計數為 0", () => {
+    render(
+      <DiscussionColumn
+        discussions={[promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+      />,
+    );
+    expect(screen.queryByText("尚無討論")).toBeNull();
+    expect(screen.getByTestId("column-count").textContent).toBe("0");
+  });
+});
+
+describe("DiscussionColumn promoted chip 階段配色（design D2）", () => {
+  it("chip 沿看板 STAGE_STYLE 配色：提案中/進行中/已就緒 teal 濃度、已封存中性、已刪除 destructive 加刪除線", () => {
+    // 五態各一子變更：提案中/進行中/已就緒（active 清單）、已封存、已刪除。
+    const d: DiscussionItem = {
+      ...promotedD,
+      promotedTo: ["cut-a", "cut-b", "cut-ready", "cut-arch", "cut-gone"],
+    };
+    render(<DiscussionColumn discussions={[d]} changes={chipChanges} archived={chipArchived} />);
+    fireEvent.click(screen.getByRole("button", { name: /顯示已轉出/ }));
+    const chipCls = (label: string) => screen.getByText(label).className;
+    // 提案中/進行中沿 STAGE_STYLE badge 的 teal 濃度階梯。
+    expect(chipCls("提案中")).toContain("bg-primary/8");
+    expect(chipCls("進行中")).toContain("bg-primary/12");
+    // 已就緒為實心主色（以 text-primary-foreground 辨識，與濃度階梯區隔）。
+    expect(chipCls("已就緒")).toContain("text-primary-foreground");
+    // 已封存中性色。
+    expect(chipCls("已封存")).toContain("bg-muted");
+    // 已刪除 destructive 加刪除線。
+    expect(chipCls("已刪除")).toContain("text-destructive");
+    expect(chipCls("已刪除")).toContain("line-through");
   });
 });
 

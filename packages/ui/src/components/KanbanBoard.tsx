@@ -17,7 +17,7 @@ import type { ArchivedItem, CardKind, ChangeItem, DiscussionLists } from "../ada
 import { cardDndId, parseCardDndId, resolveCardDrop, type ColumnCards } from "../boardDnd";
 import { useI18n } from "../i18n";
 import { matchesQuery } from "../search";
-import { changeStage, STAGES, type Stage } from "../stage";
+import { changeStage, STAGE_BADGE, STAGES, type Stage } from "../stage";
 import { ChangeCard } from "./ChangeCard";
 import { DiscussionCard, DiscussionColumn } from "./DiscussionColumn";
 import { Input } from "./ui/input";
@@ -30,21 +30,21 @@ const STAGE_STYLE: Record<Stage, { icon: LucideIcon; top: string; badge: string;
   proposed: {
     icon: Lightbulb,
     top: "border-t-primary/25",
-    badge: "bg-primary/8 text-primary/70",
+    badge: STAGE_BADGE.proposed,
     bar: "bg-primary/50",
     iconCls: "text-primary/50",
   },
   "in-progress": {
     icon: Hammer,
     top: "border-t-primary/55",
-    badge: "bg-primary/12 text-primary",
+    badge: STAGE_BADGE["in-progress"],
     bar: "bg-primary/75",
     iconCls: "text-primary/75",
   },
   ready: {
     icon: CircleCheckBig,
     top: "border-t-primary",
-    badge: "bg-primary text-primary-foreground",
+    badge: STAGE_BADGE.ready,
     bar: "bg-primary",
     iconCls: "text-primary",
   },

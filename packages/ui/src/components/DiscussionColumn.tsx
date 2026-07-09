@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, ChevronDown, ChevronRight, MessageSquareText } from "lucide-react";
+import { Archive, ArrowUpRight, MessageSquareText } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
 import { cardDndId } from "../boardDnd";
 import { useI18n } from "../i18n";
-import { changeStage } from "../stage";
+import { changeStage, STAGE_BADGE } from "../stage";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
 
@@ -24,6 +24,22 @@ export function discussionChipStage(
   if (active) return `stage.${changeStage(active)}`;
   if (archived.some((a) => a.name === name)) return "discussion.chipArchived";
   return "discussion.chipDeleted";
+}
+
+/**
+ * promoted 子變更 chip 的配色（design D2）——與 discussionChipStage 同分類規則：
+ * active 命中取看板階段的 STAGE_BADGE teal 濃度、封存命中為中性色、皆無為
+ * destructive 加刪除線（已刪除）。與看板欄配色同一來源，不引入新色輪。
+ */
+export function discussionChipClass(
+  name: string,
+  changes: ChangeItem[],
+  archived: ArchivedItem[],
+): string {
+  const active = changes.find((c) => c.name === name);
+  if (active) return STAGE_BADGE[changeStage(active)];
+  if (archived.some((a) => a.name === name)) return "bg-muted text-muted-foreground";
+  return "bg-destructive/15 text-destructive line-through";
 }
 
 export interface DiscussionColumnProps {
@@ -145,7 +161,9 @@ function PromotedRow({
               {i === d.promotedTo.length - 1 ? "└" : "├"}
             </span>
             <span className="min-w-0 truncate font-medium">{name}</span>
-            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            <span
+              className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${discussionChipClass(name, changes, archived)}`}
+            >
               {t(discussionChipStage(name, changes, archived))}
             </span>
           </span>
@@ -171,7 +189,8 @@ export function DiscussionColumn({
   const { t } = useI18n();
   const full = discussions.filter((d) => d.status !== "promoted");
   const promoted = discussions.filter((d) => d.status === "promoted");
-  const [showPromoted, setShowPromoted] = useState(true);
+  // D1：promoted 預設隱藏，由 header「顯示已轉出」開關按需展開（元件內 local，不跨 session）。
+  const [showPromoted, setShowPromoted] = useState(false);
   const fullCards = full.map((d) =>
     sortable ? (
       <SortableDiscussionCard
@@ -200,15 +219,32 @@ export function DiscussionColumn({
           {t("discussion.heading")}
         </h2>
         <div className="flex-1" />
+        {promoted.length > 0 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={t("discussion.showPromoted")}
+            aria-pressed={showPromoted}
+            title={t("discussion.showPromoted")}
+            onClick={() => setShowPromoted((v) => !v)}
+            className={`h-5 gap-0.5 rounded-full px-1.5 py-0 text-[11px] font-semibold tabular-nums ${
+              showPromoted ? "bg-primary/12 text-primary" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <ArrowUpRight className="h-3 w-3" />
+            <span>{promoted.length}</span>
+          </Button>
+        )}
         <span
           data-testid="column-count"
           className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-primary/8 text-primary/70"
         >
-          {discussions.length}
+          {full.length}
         </span>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
-        {discussions.length === 0 && (
+        {full.length === 0 && promoted.length === 0 && (
           <p className="px-1.5 pt-2 text-xs text-muted-foreground">{t("discussion.none")}</p>
         )}
         {sortable ? (
@@ -221,29 +257,20 @@ export function DiscussionColumn({
         ) : (
           fullCards
         )}
-        {promoted.length > 0 && (
+        {showPromoted && promoted.length > 0 && (
           <div className="mt-auto flex flex-col gap-1 pt-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-auto justify-start gap-1 px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground hover:bg-transparent hover:text-foreground"
-              onClick={() => setShowPromoted((v) => !v)}
-            >
-              {showPromoted ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            <span className="px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
               {t("discussion.promotedGroup")}
-              <span className="tabular-nums">({promoted.length})</span>
-            </Button>
-            {showPromoted &&
-              promoted.map((d) => (
-                <PromotedRow
-                  key={d.slug}
-                  d={d}
-                  changes={changes}
-                  archived={archived}
-                  onOpenDiscussion={onOpenDiscussion}
-                />
-              ))}
+            </span>
+            {promoted.map((d) => (
+              <PromotedRow
+                key={d.slug}
+                d={d}
+                changes={changes}
+                archived={archived}
+                onOpenDiscussion={onOpenDiscussion}
+              />
+            ))}
           </div>
         )}
       </div>
