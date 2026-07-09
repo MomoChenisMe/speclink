@@ -6,6 +6,7 @@ import { useI18n } from "../i18n";
 import { changeStage } from "../stage";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 export interface ChangeCardProps {
   change: ChangeItem;
@@ -30,6 +31,7 @@ export function ChangeCard({ change, onOpen, onArchive, barClass = "bg-primary" 
     setTimeout(() => setCopied(false), 1200);
   };
   return (
+    <TooltipProvider>
     <Card
       data-change={change.name}
       className="group cursor-pointer transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md"
@@ -37,26 +39,42 @@ export function ChangeCard({ change, onOpen, onArchive, barClass = "bg-primary" 
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
         <span className="font-semibold text-sm leading-tight min-w-0 flex-1">{change.name}</span>
+        {change.createdBy && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                aria-label={change.createdBy}
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground"
+              >
+                {change.createdBy.charAt(0).toUpperCase()}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{change.createdBy}</TooltipContent>
+          </Tooltip>
+        )}
         {(change.fromDiscussions ?? []).length > 0 && (
-          <span
-            aria-label={t("card.fromDiscussion")}
-            title={t("card.fromDiscussionTitle").replace(
-              "{name}",
-              (change.fromDiscussions ?? []).join(", "),
-            )}
-            className="shrink-0 text-primary/60"
-          >
-            <MessageSquareText className="h-3.5 w-3.5" />
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span aria-label={t("card.fromDiscussion")} className="shrink-0 text-primary/60">
+                <MessageSquareText className="h-3.5 w-3.5" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t("card.fromDiscussionTitle").replace("{name}", (change.fromDiscussions ?? []).join(", "))}
+            </TooltipContent>
+          </Tooltip>
         )}
         {(change.restaleFrom ?? []).length > 0 && (
-          <span
-            aria-label={t("card.restale")}
-            title={t("card.restaleTitle").replace("{name}", (change.restaleFrom ?? []).join(", "))}
-            className="shrink-0 text-amber-500"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span aria-label={t("card.restale")} className="shrink-0 text-amber-500">
+                <RefreshCw className="h-3.5 w-3.5" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t("card.restaleTitle").replace("{name}", (change.restaleFrom ?? []).join(", "))}
+            </TooltipContent>
+          </Tooltip>
         )}
         <Button
           type="button"
@@ -92,5 +110,6 @@ export function ChangeCard({ change, onOpen, onArchive, barClass = "bg-primary" 
         )}
       </CardContent>
     </Card>
+    </TooltipProvider>
   );
 }

@@ -421,7 +421,7 @@ describe("change 側同源連結", () => {
     expect(screen.queryByLabelText("來自討論")).toBeNull();
   });
 
-  it("多來源的 change 卡仍是單一徽章，提示列出全部來源討論", () => {
+  it("多來源的 change 卡仍是單一徽章、以主題化提示取代原生 title（D3）", () => {
     const multi: ChangeItem = {
       name: "cut-a",
       status: "in-progress",
@@ -430,11 +430,10 @@ describe("change 側同源連結", () => {
       fromDiscussions: ["alpha-search", "beta-cache"],
     };
     render(<ChangeCard change={multi} />);
-    const badge = screen.getByLabelText("來自討論");
-    expect(badge).toBeTruthy();
-    // 徽章提示（title）列出全部來源討論——出身討論在前。
-    expect(badge.getAttribute("title")).toContain("alpha-search");
-    expect(badge.getAttribute("title")).toContain("beta-cache");
+    // 單一徽章（不因多來源而增生）。
+    expect(screen.getAllByLabelText("來自討論")).toHaveLength(1);
+    // D3：改用 shadcn Tooltip——徽章不再帶原生 title（提示列出全部來源於 hover 呈現，實窗驗證）。
+    expect(screen.getByLabelText("來自討論").getAttribute("title")).toBeNull();
   });
 
   it("change 抽屜列出全部來源討論與同源清單並可互跳", async () => {

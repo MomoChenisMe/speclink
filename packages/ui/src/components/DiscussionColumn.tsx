@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, ArrowUpRight, MessageSquareText } from "lucide-react";
+import { Archive, ArrowUpRight, Check, Copy, MessageSquareText } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
 import { cardDndId } from "../boardDnd";
@@ -75,22 +75,49 @@ export function DiscussionCard({
 >) {
   const { t } = useI18n();
   const badge = STATUS_BADGE[d.status] ?? STATUS_BADGE.open;
+  const [copied, setCopied] = useState(false);
+  const copySlug = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    void navigator.clipboard?.writeText(d.slug);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
   return (
     <Card
       data-discussion={d.slug}
-      className="cursor-pointer transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md"
+      className="group cursor-pointer transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md"
       onClick={() => onOpenDiscussion?.(d.slug)}
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
-        <span className="font-semibold text-sm leading-tight min-w-0 flex-1">{d.topic}</span>
+        {/* slug（檔名）為標題——CLI 動詞把手，等寬強調；topic 降為卡身描述（LANGUAGE.md 受控例外）。 */}
+        <span className="font-mono font-semibold text-sm leading-tight min-w-0 flex-1 break-all">{d.slug}</span>
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${badge.cls}`}>
           {t(badge.labelKey)}
         </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t("discussion.copySlug")}
+          className={`h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          onClick={copySlug}
+        >
+          {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+        </Button>
       </CardHeader>
       <CardContent className="p-3 pt-0 gap-2">
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {t("common.rounds").replace("{n}", String(d.rounds))}
-        </span>
+        <span className="text-xs leading-snug text-foreground/80">{d.topic}</span>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="tabular-nums">{t("common.rounds").replace("{n}", String(d.rounds))}</span>
+          {d.createdBy && (
+            <span className="inline-flex min-w-0 items-center gap-1">
+              <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
+                {d.createdBy.charAt(0).toUpperCase()}
+              </span>
+              <span className="truncate">{d.createdBy}</span>
+            </span>
+          )}
+        </div>
         {d.status === "concluded" && (
           <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
             <Button

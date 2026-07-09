@@ -109,6 +109,32 @@ describe("KanbanBoard", () => {
     expect(within(column("in-progress")).getByText("stale-a")).toBeTruthy();
     expect(within(column("in-progress")).getByText("fresh-b")).toBeTruthy();
   });
+
+  it("變更卡顯示建立者首字母圓標（有 createdBy）、無則省略（D3）", () => {
+    const withAuthor: ChangeItem[] = [
+      { name: "auth-a", status: "in-progress", totalTasks: 4, completedTasks: 1, createdBy: "Momo Chen <momo@example.com>" },
+      { name: "anon-b", status: "in-progress", totalTasks: 4, completedTasks: 1 },
+    ];
+    render(<KanbanBoard changes={withAuthor} />);
+    const authCard = screen.getByText("auth-a").closest("[data-change]") as HTMLElement;
+    const avatar = within(authCard).getByLabelText("Momo Chen <momo@example.com>");
+    expect(avatar.textContent).toBe("M");
+    const anonCard = screen.getByText("anon-b").closest("[data-change]") as HTMLElement;
+    expect(within(anonCard).queryByLabelText(/@/)).toBeNull();
+  });
+
+  it("關係指示（來自討論／待重新反映）改用主題化提示，不再帶原生 title（D3）", () => {
+    const rel: ChangeItem[] = [
+      { name: "rel-a", status: "in-progress", totalTasks: 4, completedTasks: 1, fromDiscussions: ["alpha"], restaleFrom: ["beta"] },
+    ];
+    render(<KanbanBoard changes={rel} />);
+    const card = screen.getByText("rel-a").closest("[data-change]") as HTMLElement;
+    const from = within(card).getByLabelText("來自討論");
+    const restale = within(card).getByLabelText("待重新反映");
+    // shadcn Tooltip 取代原生 title——指示元件不再帶 title 屬性。
+    expect(from.getAttribute("title")).toBeNull();
+    expect(restale.getAttribute("title")).toBeNull();
+  });
 });
 
 describe("KanbanBoard search（看板搜尋過濾卡片）", () => {

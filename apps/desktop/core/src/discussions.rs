@@ -14,14 +14,19 @@ use crate::query::is_safe_path_param;
 use crate::verbs::open;
 
 fn entry(store: &dyn Store, info: &DiscussionInfo) -> Value {
-    json!({
+    let mut v = json!({
         "slug": info.slug,
         "topic": info.topic,
         "status": info.status,
         "rounds": info.rounds,
         "created": info.created,
         "promotedTo": discuss::promoted_to(store, &info.slug),
-    })
+    });
+    // 建立者（createdBy，camelCase）——缺席時省略該鍵（比照 change 的 fromDiscussions 樣式）。
+    if let Some(cb) = &info.created_by {
+        v["createdBy"] = json!(cb);
+    }
+    v
 }
 
 /// 討論清單：`{ "active": [...], "archived": [...] }`，項含 slug／topic／status／
@@ -169,6 +174,27 @@ mod tests {
         assert_eq!(archived[0]["slug"], "old-topic");
         assert_eq!(archived[0]["topic"], "Old topic");
         assert_eq!(archived[0]["promotedTo"], serde_json::json!(["first-cut"]));
+    }
+
+    #[test]
+    fn list_discussions_exposes_created_by_camel_case_when_present() {
+        let fx = FixtureRoot::new("d-createdby");
+        fx.write(
+            "openspec/discussions/with-author.md",
+            &discussion_doc("with-author", "With author", "open", "created_by: Base Line <base@example.com>\n", 1, "<!-- x -->"),
+        );
+        fx.write(
+            "openspec/discussions/no-author.md",
+            &discussion_doc("no-author", "No author", "open", "", 1, "<!-- x -->"),
+        );
+        let v = super::list_discussions_at(fx.root());
+        let active = v["active"].as_array().expect("active array");
+        let by = |slug: &str| active.iter().find(|d| d["slug"] == slug).unwrap();
+        // 有 created_by → createdBy（camelCase）帶值、snake_case 不外洩。
+        assert_eq!(by("with-author")["createdBy"], "Base Line <base@example.com>");
+        assert!(by("with-author").get("created_by").is_none(), "camelCase only");
+        // 無 created_by → 省略該鍵。
+        assert!(by("no-author").get("createdBy").is_none(), "omit when absent");
     }
 
     #[test]

@@ -1653,7 +1653,8 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
     let store: &dyn Store = &store;
     match a.command {
         DiscussCommands::New { topic, slug, json } => {
-            let info = core::discuss::new_discussion(store, &topic, slug.as_deref())?;
+            let created_by = core::util::git_identity(&ws.root);
+            let info = core::discuss::new_discussion(store, &topic, slug.as_deref(), created_by.as_deref())?;
             if json {
                 return print_json(&info);
             }
