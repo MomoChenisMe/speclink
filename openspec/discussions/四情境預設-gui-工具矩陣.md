@@ -2,7 +2,7 @@
 topic: 四情境預設 GUI 工具矩陣
 slug: 四情境預設-gui-工具矩陣
 status: promoted
-promoted_to: desktop-shell-and-browser, desktop-acp-agent, web-server-postgres, web-agent-channel, web-role-views
+promoted_to: desktop-shell-and-browser, web-server-postgres, web-agent-channel
 created: 2026-07-05
 ---
 
