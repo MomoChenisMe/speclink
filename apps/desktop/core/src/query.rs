@@ -28,6 +28,8 @@ pub fn list_changes_at(root: &Path) -> Value {
             v["startedBy"] = json!(c.meta.started_by);
             v["startedWith"] = json!(c.meta.started_with);
             v["fromDiscussions"] = json!(c.meta.from_discussions());
+            // 「待重新反映」徽章的資料源：恆存在（空陣列＝無旗標），供看板卡片渲染。
+            v["restaleFrom"] = json!(c.meta.restale_from());
             v
         })
         .collect();
@@ -248,6 +250,23 @@ mod tests {
         assert_eq!(by_name("single")["fromDiscussions"], serde_json::json!(["alpha-search"]));
         assert_eq!(by_name("plain")["fromDiscussions"], serde_json::json!([]));
         assert!(by_name("multi").get("fromDiscussion").is_none(), "old single-value key gone");
+    }
+
+    #[test]
+    fn list_changes_overlays_restale_from_as_array() {
+        // 「待重新反映」徽章資料源：restale_from 非空的 change 於清單項帶 restaleFrom 陣列
+        // （依 meta 順序），無旗標為空陣列。
+        let fx = FixtureRoot::new("q-restale");
+        fx.add_change(
+            "stale",
+            "schema: spec-driven\ncreated: 2026-07-01\nrestale_from: alpha, beta\n",
+        );
+        fx.add_change("fresh", OLD_META);
+        let v = list_changes_at(fx.root());
+        let arr = v["changes"].as_array().expect("changes array");
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+        assert_eq!(by_name("stale")["restaleFrom"], serde_json::json!(["alpha", "beta"]));
+        assert_eq!(by_name("fresh")["restaleFrom"], serde_json::json!([]));
     }
 
     #[test]

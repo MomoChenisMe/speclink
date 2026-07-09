@@ -80,6 +80,11 @@ fn remote_list(ctx: &RemoteCtx, a: &ListArgs) -> Result<()> {
                 status: v_str(c, "status"),
                 summary: v_str(c, "summary"),
                 total_tasks: v_usize(c, "totalTasks"),
+                // Mirror the server's field when present; absent yields empty (parity-preserving).
+                restale_from: v_array(c, "restaleFrom")
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect(),
             })
             .collect();
         if a.specs {

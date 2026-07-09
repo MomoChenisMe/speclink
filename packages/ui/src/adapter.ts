@@ -16,6 +16,8 @@ export interface ChangeItem {
   startedWith?: string | null;
   /** 來源討論 slug 清單（由討論轉出／併入的 change，第一個為出身討論）；空/缺席＝非討論而來。 */
   fromDiscussions?: string[];
+  /** 待重新反映的討論 slug 清單：本 change 曾 seal 這些討論、其後被重新結論，內容過期待 re-ingest；空/缺席＝無旗標。 */
+  restaleFrom?: string[];
 }
 
 /** 一個 canonical spec 的清單項（CLI 同形欄位＋桌面疊加的呈現層輔助欄位）。 */

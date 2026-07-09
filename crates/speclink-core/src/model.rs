@@ -16,6 +16,13 @@ pub struct ChangeMeta {
     /// Slug of the discussion this change was promoted from (speclink extension).
     #[serde(default)]
     pub from_discussion: Option<String>,
+    /// Discussions this change reflected (sealed) that were later re-concluded, so the
+    /// change is stale relative to the new conclusion and needs re-ingest (speclink
+    /// extension). Comma-separated slug accumulator: written by `discuss conclude` when
+    /// it re-concludes an already-reflected discussion, cleared per-slug by `discuss
+    /// seal`. Absent reads as empty — nothing pending.
+    #[serde(default)]
+    pub restale_from: Option<String>,
     /// The "started" lifecycle station (stamped by `in-progress add`). Absent
     /// on pre-migration metadata — such a change simply reads as not started.
     #[serde(default)]
@@ -52,6 +59,22 @@ impl ChangeMeta {
     /// absent reads as empty.
     pub fn from_discussions(&self) -> Vec<String> {
         self.from_discussion
+            .as_deref()
+            .map(|v| {
+                v.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The discussions this change reflected then went stale against (re-concluded after
+    /// seal), read from the `restale_from` comma accumulator. Mirrors [`from_discussions`]:
+    /// a single value is the one-element list, absent reads as empty.
+    pub fn restale_from(&self) -> Vec<String> {
+        self.restale_from
             .as_deref()
             .map(|v| {
                 v.split(',')
@@ -431,6 +454,32 @@ mod tests {
         ));
         assert_eq!(
             meta.from_discussions(),
+            vec!["alpha-search".to_string(), "beta-cache".to_string()]
+        );
+    }
+
+    // --- restale_from 讀取（design D3/D6；spec change-lifecycle）---
+
+    #[test]
+    fn restale_from_absent_yields_empty() {
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\ncreated: 2026-07-01\n"));
+        assert!(meta.restale_from().is_empty());
+    }
+
+    #[test]
+    fn restale_from_single_value() {
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\nrestale_from: alpha-search\n"));
+        assert_eq!(meta.restale_from(), vec!["alpha-search".to_string()]);
+    }
+
+    #[test]
+    fn restale_from_comma_accumulated_values() {
+        // spec change-lifecycle Example：逗號多值 trim 後分割。
+        let meta = ChangeMeta::from_text(Some(
+            "schema: spec-driven\nrestale_from: alpha-search, beta-cache\n",
+        ));
+        assert_eq!(
+            meta.restale_from(),
             vec!["alpha-search".to_string(), "beta-cache".to_string()]
         );
     }

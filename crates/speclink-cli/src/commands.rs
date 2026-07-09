@@ -426,6 +426,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
             "tasks": tasks,
             "deltaSpecs": caps,
             "fromDiscussions": change.meta.from_discussions(),
+            "restaleFrom": change.meta.restale_from(),
         }));
     }
 
@@ -1707,11 +1708,24 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
         }
         DiscussCommands::Conclude { slug, stdin, json } => {
             let content = if stdin { read_stdin() } else { String::new() };
-            core::discuss::conclude(store, &slug, &content)?;
+            let flagged = core::discuss::conclude(store, &slug, &content)?;
             if json {
-                return print_json(&serde_json::json!({ "slug": slug, "status": "concluded" }));
+                // Byte-identical to before when nothing was flagged (promoted_to empty);
+                // the array appears only when a re-conclude actually staled changes.
+                let mut payload = serde_json::json!({ "slug": slug, "status": "concluded" });
+                if !flagged.is_empty() {
+                    payload["restaleFlagged"] = serde_json::json!(flagged);
+                }
+                return print_json(&payload);
             }
             println!("{} Concluded discussion '{slug}'", color::green("✓"));
+            if !flagged.is_empty() {
+                println!(
+                    "  Flagged {} change(s) for re-ingest: {}",
+                    flagged.len(),
+                    flagged.join(", ")
+                );
+            }
         }
         DiscussCommands::Archive { slug, json } => {
             match core::discuss::archive_discussion(store, &slug)? {

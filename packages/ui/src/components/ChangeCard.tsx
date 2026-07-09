@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, Check, Copy, MessageSquareText } from "lucide-react";
+import { Archive, Check, Copy, MessageSquareText, RefreshCw } from "lucide-react";
 
 import type { ChangeItem } from "../adapter";
 import { useI18n } from "../i18n";
@@ -47,6 +47,15 @@ export function ChangeCard({ change, onOpen, onArchive, barClass = "bg-primary" 
             className="shrink-0 text-primary/60"
           >
             <MessageSquareText className="h-3.5 w-3.5" />
+          </span>
+        )}
+        {(change.restaleFrom ?? []).length > 0 && (
+          <span
+            aria-label={t("card.restale")}
+            title={t("card.restaleTitle").replace("{name}", (change.restaleFrom ?? []).join(", "))}
+            className="shrink-0 text-amber-500"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
           </span>
         )}
         <Button
