@@ -1687,3 +1687,58 @@ code:
   - packages/ui/src/index.ts
   - packages/ui/src/time.ts
 -->
+
+---
+### Requirement: 變更的來源討論多值呈現
+
+變更連結多份討論時（meta 的 from_discussion 為逗號清單），變更卡 SHALL 維持單一討論徽章、以清單第一個（出身）討論為代表，徽章提示 SHALL 列出全部來源討論；變更詳情抽屜 SHALL 列出全部來源討論並可互跳至各討論的抽屜；同源變更清單 SHALL 以「雙方來源討論集合交集非空」判定收錄。單一來源討論的變更，其徽章、抽屜來源討論與同源變更清單的呈現 SHALL 與本變更前一致。
+
+#### Scenario: 多來源徽章以出身討論為代表
+
+- **WHEN** 看板呈現來源討論清單為兩份（出身在前）的變更卡
+- **THEN** 卡片帶單一討論徽章、代表清單第一份（出身）討論，徽章提示列出全部兩份來源討論
+
+#### Scenario: 詳情抽屜列出全部來源討論
+
+- **WHEN** 開啟該變更的詳情抽屜
+- **THEN** 來源討論區列出全部來源討論，點擊任一項開啟該討論的抽屜
+
+#### Scenario: 同源以來源討論交集判定
+
+- **WHEN** 變更 A 的來源討論清單為 d1, d2、變更 B 的來源討論清單僅含 d2
+- **THEN** A 與 B 互為同源變更，出現在彼此詳情抽屜的同源變更清單
+
+##### Example: 交集判定表
+
+| 變更 A 來源 | 變更 B 來源 | 是否同源 |
+| ----------- | ----------- | -------- |
+| d1, d2      | d2          | 是       |
+| d1          | d1          | 是       |
+| d1, d2      | d3          | 否       |
+| （無）      | d1          | 否       |
+
+#### Scenario: 單一來源呈現不變
+
+- **WHEN** 看板呈現僅一份來源討論的變更卡並開啟其詳情抽屜
+- **THEN** 徽章、抽屜來源討論與同源變更清單的呈現與本變更前一致
+
+<!-- @trace
+source: rediscuss-promoted-change
+updated: 2026-07-09
+code:
+  - apps/desktop/core/src/manage.rs
+  - apps/desktop/core/src/query.rs
+  - apps/desktop/src/App.tsx
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/teststore.rs
+  - packages/ui/src/__tests__/discussionDrawer.test.tsx
+  - packages/ui/src/__tests__/siblings.test.ts
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ChangeCard.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/index.ts
+  - packages/ui/src/siblings.ts
+-->

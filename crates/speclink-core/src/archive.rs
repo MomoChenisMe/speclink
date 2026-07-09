@@ -23,8 +23,10 @@ pub struct ArchiveOutcome {
     pub caps: Vec<CapCounts>,
     pub snapshot_created: bool,
     pub skipped_specs: bool,
-    /// The linked discussion archived along with the change, if any: (slug, archived file name).
-    pub archived_discussion: Option<(String, String)>,
+    /// The linked discussions archived along with the change: (slug, archived file name).
+    /// A change can carry several source discussions (`from_discussion` is a comma
+    /// accumulator), so each is judged independently — empty when none co-travel.
+    pub archived_discussions: Vec<(String, String)>,
 }
 
 #[derive(Debug, Default)]
@@ -211,22 +213,28 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         store.write_archived_meta(&dated_name, &meta)?;
     }
 
-    // A change promoted from a discussion carries its record along into the archive — but
-    // only the last one: a discussion can fan out into several changes, and siblings still
-    // in flight need the record to stay live. (This change was already moved above, so it
-    // no longer shows up in list_changes.)
-    let archived_discussion = change.meta.from_discussion.as_deref().and_then(|slug| {
-        let still_referenced = model::list_changes(store)
-            .iter()
-            .any(|c| c.meta.from_discussion.as_deref() == Some(slug));
-        if still_referenced {
-            return None;
-        }
-        crate::discuss::archive_discussion(store, slug)
-            .ok()
-            .flatten()
-            .map(|file| (slug.to_string(), file))
-    });
+    // A change promoted from (or linked to) a discussion carries its record along into the
+    // archive — but only the last change to reference it: a discussion can fan out into
+    // several changes, and siblings still in flight need the record to stay live. Each source
+    // discussion is judged independently (`from_discussion` is a comma accumulator). (This
+    // change was already moved above, so it no longer shows up in list_changes.)
+    let archived_discussions: Vec<(String, String)> = change
+        .meta
+        .from_discussions()
+        .into_iter()
+        .filter_map(|slug| {
+            let still_referenced = model::list_changes(store)
+                .iter()
+                .any(|c| c.meta.from_discussions().iter().any(|s| *s == slug));
+            if still_referenced {
+                return None;
+            }
+            crate::discuss::archive_discussion(store, &slug)
+                .ok()
+                .flatten()
+                .map(|file| (slug, file))
+        })
+        .collect();
 
     Ok(ArchiveOutcome {
         change_name: change.name.clone(),
@@ -234,7 +242,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         caps,
         snapshot_created,
         skipped_specs: opts.skip_specs,
-        archived_discussion,
+        archived_discussions,
     })
 }
 
@@ -494,5 +502,90 @@ mod tests {
             assert!(archived.contains(field), "missing station field {field}");
         }
         assert!(!store.change_exists("demo"), "active change moved into the archive");
+    }
+
+    // --- 封存共行逐 slug（design D3；spec「多來源討論的變更封存逐一共行」）---
+
+    fn ghost_ws() -> Workspace {
+        Workspace {
+            root: std::env::temp_dir().join("speclink-archive-co-travel-ghost-root"),
+            spec_dir_name: "openspec".to_string(),
+        }
+    }
+
+    fn skip_opts() -> ArchiveOptions {
+        ArchiveOptions { skip_specs: true, no_validate: true, mark_tasks_complete: false }
+    }
+
+    fn discussion_doc(slug: &str) -> String {
+        format!(
+            "---\ntopic: {slug}\nslug: {slug}\nstatus: promoted\npromoted_to: cut\ncreated: 2026-07-01\n---\n\n## Conclusion\n\n**Decision**: x\n"
+        )
+    }
+
+    #[test]
+    fn archive_co_travels_every_unreferenced_source_discussion() {
+        // 兩份來源討論皆無其他在途變更引用 → 兩份皆隨行封存。
+        let store = TestStore::with_meta(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: d1, d2\n",
+        );
+        store.put_artifact("cut", "tasks.md", "- [x] 1.1 done\n");
+        store.discussions.borrow_mut().insert("d1".into(), discussion_doc("d1"));
+        store.discussions.borrow_mut().insert("d2".into(), discussion_doc("d2"));
+        let change = crate::model::find_change(&store, "cut").unwrap();
+
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts()).unwrap();
+
+        let slugs: Vec<&str> =
+            outcome.archived_discussions.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(slugs, vec!["d1", "d2"], "both unreferenced discussions co-archive");
+        assert!(store.archived_discussion_exists("d1"));
+        assert!(store.archived_discussion_exists("d2"));
+    }
+
+    #[test]
+    fn archive_leaves_discussion_still_referenced_by_another_change() {
+        // d2 仍被另一在途變更 cut2 引用 → 僅 d1 隨行，d2 留在途。
+        let store = TestStore::with_meta(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: d1, d2\n",
+        );
+        store.metas.borrow_mut().insert(
+            "cut2".into(),
+            "schema: spec-driven\ncreated: 2026-07-02\nfrom_discussion: d2\n".into(),
+        );
+        store.put_artifact("cut", "tasks.md", "- [x] 1.1 done\n");
+        store.discussions.borrow_mut().insert("d1".into(), discussion_doc("d1"));
+        store.discussions.borrow_mut().insert("d2".into(), discussion_doc("d2"));
+        let change = crate::model::find_change(&store, "cut").unwrap();
+
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts()).unwrap();
+
+        let slugs: Vec<&str> =
+            outcome.archived_discussions.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(slugs, vec!["d1"], "only the unreferenced discussion co-archives");
+        assert!(store.archived_discussion_exists("d1"));
+        assert!(!store.archived_discussion_exists("d2"), "d2 stays live — still referenced");
+        assert!(store.live_discussion_exists("d2"));
+    }
+
+    #[test]
+    fn archive_single_source_discussion_co_travels_as_before() {
+        // 單一來源情境：與變更前一致——恰一份討論隨行封存。
+        let store = TestStore::with_meta(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: only\n",
+        );
+        store.put_artifact("cut", "tasks.md", "- [x] 1.1 done\n");
+        store.discussions.borrow_mut().insert("only".into(), discussion_doc("only"));
+        let change = crate::model::find_change(&store, "cut").unwrap();
+
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts()).unwrap();
+
+        let slugs: Vec<&str> =
+            outcome.archived_discussions.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(slugs, vec!["only"]);
+        assert!(store.archived_discussion_exists("only"));
     }
 }

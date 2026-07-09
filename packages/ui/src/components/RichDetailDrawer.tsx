@@ -44,9 +44,9 @@ export interface RichDetailDrawerProps {
   onMoveTask?: (change: string, from: number, to: number, before?: boolean) => Promise<void>;
   /** 批次設定全部任務完成狀態（工具列「全部已完成」／「重置任務」），單次寫回。 */
   onSetAllTasks?: (change: string, done: boolean) => Promise<void>;
-  /** 來源討論（change.fromDiscussion 解析出的 slug＋topic）；null/缺席＝非討論而來。 */
-  sourceDiscussion?: { slug: string; topic: string } | null;
-  /** 同一討論扇出的同源 change 名（不含此 change 自己）。 */
+  /** 來源討論清單（change.fromDiscussions 解析出的 slug＋topic，出身討論在前）；空/缺席＝非討論而來。 */
+  sourceDiscussions?: { slug: string; topic: string }[];
+  /** 同源 change 名（與此 change 共享至少一份來源討論，不含自己）。 */
   siblingChanges?: string[];
   /** 點來源討論開討論抽屜。 */
   onOpenDiscussion?: (slug: string) => void;
@@ -70,7 +70,7 @@ export function RichDetailDrawer({
   onToggleTask,
   onMoveTask,
   onSetAllTasks,
-  sourceDiscussion,
+  sourceDiscussions,
   siblingChanges,
   onOpenDiscussion,
   onOpenSibling,
@@ -251,19 +251,22 @@ export function RichDetailDrawer({
               </span>
             )}
           </div>
-          {/* 同源連結：來源討論＋兄弟刀（design D6，fromDiscussion 帶出）。 */}
-          {sourceDiscussion && (
+          {/* 同源連結：來源討論（可多份）＋同源刀（fromDiscussions 帶出）。 */}
+          {(sourceDiscussions ?? []).length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
               <span>{t("rdrawer.fromDiscussion")}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-auto rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/20 hover:text-primary"
-                onClick={() => onOpenDiscussion?.(sourceDiscussion.slug)}
-              >
-                {sourceDiscussion.topic}
-              </Button>
+              {(sourceDiscussions ?? []).map((src) => (
+                <Button
+                  key={src.slug}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/20 hover:text-primary"
+                  onClick={() => onOpenDiscussion?.(src.slug)}
+                >
+                  {src.topic}
+                </Button>
+              ))}
               {(siblingChanges ?? []).length > 0 && (
                 <>
                   <span>{t("rdrawer.siblings")}</span>

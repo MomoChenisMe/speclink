@@ -44,6 +44,24 @@ impl ChangeMeta {
             .clone()
             .unwrap_or_else(|| "spec-driven".to_string())
     }
+
+    /// The discussions this change was promoted from or linked to. `from_discussion`
+    /// is a comma-separated accumulator (mirroring the discussion side's `promoted_to`)
+    /// so a change can carry several source discussions — the first entry is its
+    /// originating discussion. A single value is the degenerate one-element list;
+    /// absent reads as empty.
+    pub fn from_discussions(&self) -> Vec<String> {
+        self.from_discussion
+            .as_deref()
+            .map(|v| {
+                v.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
 }
 
 /// A discovered change.
@@ -389,5 +407,31 @@ mod tests {
         assert_eq!(meta.started_at.as_deref(), Some("2026-07-03"));
         assert_eq!(meta.started_by.as_deref(), Some("Worker <w@example.com>"));
         assert_eq!(meta.started_with.as_deref(), Some("claude"));
+    }
+
+    // --- from_discussion 累積器讀取（design D1；M↔N 關係）---
+
+    #[test]
+    fn from_discussions_absent_yields_empty() {
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\ncreated: 2026-07-01\n"));
+        assert!(meta.from_discussions().is_empty());
+    }
+
+    #[test]
+    fn from_discussions_single_value() {
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\nfrom_discussion: alpha-search\n"));
+        assert_eq!(meta.from_discussions(), vec!["alpha-search".to_string()]);
+    }
+
+    #[test]
+    fn from_discussions_comma_accumulated_values() {
+        // 逗號清單依 meta 順序切分、項目前後空白修剪（沿 promoted_to 同款）。
+        let meta = ChangeMeta::from_text(Some(
+            "schema: spec-driven\nfrom_discussion: alpha-search, beta-cache\n",
+        ));
+        assert_eq!(
+            meta.from_discussions(),
+            vec!["alpha-search".to_string(), "beta-cache".to_string()]
+        );
     }
 }

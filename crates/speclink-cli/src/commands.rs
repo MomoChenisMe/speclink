@@ -727,7 +727,7 @@ fn print_archive_outcome(outcome: &core::archive::ArchiveOutcome) {
     if outcome.snapshot_created {
         println!("Snapshot created for unarchive support.");
     }
-    if let Some((slug, file)) = &outcome.archived_discussion {
+    for (slug, file) in &outcome.archived_discussions {
         println!("Discussion archived: {slug} → discussions/archive/{file}");
     }
 }

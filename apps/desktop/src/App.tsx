@@ -20,6 +20,7 @@ import {
   Input,
   I18nProvider,
   useI18n,
+  siblingChangesOf,
   type SpeclinkDataSource,
   type Verb,
 } from "@speclink/ui";
@@ -211,18 +212,15 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
     else void s.runVerb(verb, change);
   };
 
-  // 同源連結資料（design D6）：來源討論（記錄已不在時以 slug 充當 topic）與
-  // 同一討論扇出的 active 兄弟刀（可互跳的對象）。
-  const fromSlug = s.detailChange?.fromDiscussion ?? null;
+  // 同源連結資料：來源討論清單（記錄已不在時以 slug 充當 topic，出身討論在前）與
+  // 同源刀（與此變更共享至少一份來源討論的 active 變更，可互跳）。
+  const fromSlugs = s.detailChange?.fromDiscussions ?? [];
   const allDiscussions = [...s.discussions.active, ...s.discussions.archived];
-  const sourceDiscussion = fromSlug
-    ? { slug: fromSlug, topic: allDiscussions.find((d) => d.slug === fromSlug)?.topic ?? fromSlug }
-    : null;
-  const siblingChanges = fromSlug
-    ? s.changes
-        .filter((c) => c.fromDiscussion === fromSlug && c.name !== s.detailChange?.name)
-        .map((c) => c.name)
-    : [];
+  const sourceDiscussions = fromSlugs.map((slug) => ({
+    slug,
+    topic: allDiscussions.find((d) => d.slug === slug)?.topic ?? slug,
+  }));
+  const siblingChanges = siblingChangesOf(s.changes, fromSlugs, s.detailChange?.name ?? "");
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -374,7 +372,7 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
           await dataSource.setAllTasks(change, done);
           await s.refresh();
         }}
-        sourceDiscussion={sourceDiscussion}
+        sourceDiscussions={sourceDiscussions}
         siblingChanges={siblingChanges}
         onOpenDiscussion={(slug) => {
           s.closeDetail();

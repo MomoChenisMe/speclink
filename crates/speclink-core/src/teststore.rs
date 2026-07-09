@@ -217,8 +217,14 @@ impl Store for TestStore {
     fn list_archived_discussions(&self) -> Vec<DiscussionDoc> {
         Vec::new()
     }
-    fn archive_discussion(&self, _slug: &str, _created: &str) -> Result<Option<String>> {
-        Ok(None)
+    fn archive_discussion(&self, slug: &str, created: &str) -> Result<Option<String>> {
+        // Faithful move: a live record is relocated into the archived map and its
+        // dated filename returned; an absent slug yields None (matches the fs store).
+        let Some(text) = self.discussions.borrow_mut().remove(slug) else {
+            return Ok(None);
+        };
+        self.archived_discussions.borrow_mut().insert(slug.to_string(), text);
+        Ok(Some(format!("{created}-{slug}.md")))
     }
     fn read_workflow_config(&self) -> Option<String> {
         None
