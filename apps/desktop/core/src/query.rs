@@ -27,6 +27,7 @@ pub fn list_changes_at(root: &Path) -> Value {
             v["startedAt"] = json!(c.meta.started_at);
             v["startedBy"] = json!(c.meta.started_by);
             v["startedWith"] = json!(c.meta.started_with);
+            v["createdBy"] = json!(c.meta.created_by);
             v["fromDiscussions"] = json!(c.meta.from_discussions());
             // 「待重新反映」徽章的資料源：恆存在（空陣列＝無旗標），供看板卡片渲染。
             v["restaleFrom"] = json!(c.meta.restale_from());
@@ -221,6 +222,9 @@ mod tests {
         assert_eq!(underway["startedAt"], "2026-07-06");
         assert_eq!(underway["startedBy"], "Worker <w@example.com>");
         assert_eq!(underway["startedWith"], "claude");
+        // createdBy（camelCase）由 meta 蓋章曝露、snake_case 不外洩（審計：邊界無型別混淆）。
+        assert_eq!(underway["createdBy"], "momo");
+        assert!(underway.get("created_by").is_none(), "camelCase only");
         // 既有欄位形狀不變。
         assert_eq!(underway["totalTasks"], 2);
         assert_eq!(underway["completedTasks"], 1);

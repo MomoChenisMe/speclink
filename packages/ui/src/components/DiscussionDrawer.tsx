@@ -347,9 +347,17 @@ export function DiscussionDrawer({
           <div className="flex items-center gap-2 pr-14">
             <SheetTitle className="truncate">{discussion.topic}</SheetTitle>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="tabular-nums">{t("common.rounds").replace("{n}", String(discussion.rounds))}</span>
             {discussion.created && <span>{discussion.created}</span>}
+            {discussion.createdBy && (
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
+                  {discussion.createdBy.charAt(0).toUpperCase()}
+                </span>
+                {discussion.createdBy}
+              </span>
+            )}
           </div>
           {/* 生命週期階梯：狀態模型可見，免使用者腦補（design D3）。 */}
           <div className="flex items-center gap-1.5 text-xs">

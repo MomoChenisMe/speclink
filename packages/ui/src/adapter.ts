@@ -14,6 +14,8 @@ export interface ChangeItem {
   startedAt?: string | null;
   startedBy?: string | null;
   startedWith?: string | null;
+  /** 建立者（"Name <email>"）——卡片首字母圓標頭像的資料源；缺席時省略。 */
+  createdBy?: string | null;
   /** 來源討論 slug 清單（由討論轉出／併入的 change，第一個為出身討論）；空/缺席＝非討論而來。 */
   fromDiscussions?: string[];
   /** 待重新反映的討論 slug 清單：本 change 曾 seal 這些討論、其後被重新結論，內容過期待 re-ingest；空/缺席＝無旗標。 */
@@ -55,6 +57,8 @@ export interface DiscussionItem {
   status: string;
   rounds: number;
   created: string;
+  /** 建立者（"Name <email>"）——discuss new 由 git 身分蓋章；缺席時省略。 */
+  createdBy?: string | null;
   /** 轉出（扇出）的 change 名累積清單；未轉出為空陣列。 */
   promotedTo: string[];
 }

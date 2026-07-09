@@ -20,6 +20,9 @@ pub struct DiscussionInfo {
     pub status: String,
     pub rounds: usize,
     pub created: String,
+    /// 建立者（"Name <email>"），discuss new 由 git 身分蓋章；缺席時省略。
+    #[serde(rename = "createdBy", skip_serializing_if = "Option::is_none", default)]
+    pub created_by: Option<String>,
     pub path: String,
     pub archived: bool,
 }
@@ -103,6 +106,7 @@ fn info_from_doc(doc: &DiscussionDoc) -> DiscussionInfo {
         status: frontmatter_value(&doc.text, "status").unwrap_or_else(|| "open".to_string()),
         rounds: count_rounds(&doc.text),
         created: frontmatter_value(&doc.text, "created").unwrap_or_default(),
+        created_by: frontmatter_value(&doc.text, "created_by"),
         path: util::to_slash(&doc.path),
         archived: doc.archived,
     }
@@ -139,6 +143,7 @@ pub fn new_discussion(
     store: &dyn Store,
     topic: &str,
     slug_override: Option<&str>,
+    created_by: Option<&str>,
 ) -> Result<DiscussionInfo> {
     let slug = match slug_override {
         Some(s) => {
@@ -162,12 +167,17 @@ pub fn new_discussion(
         );
     }
     let created = util::today();
+    // 建立者章（比照 change 的 newcmd）：有 git 身分才蓋，無身分省略該行。
+    let created_by_line = created_by
+        .map(|id| format!("created_by: {id}\n"))
+        .unwrap_or_default();
     let content = format!(
         "---\n\
          topic: {topic}\n\
          slug: {slug}\n\
          status: open\n\
          created: {created}\n\
+         {created_by_line}\
          ---\n\
          \n\
          # Discussion: {topic}\n\
@@ -201,6 +211,7 @@ pub fn new_discussion(
         status: "open".to_string(),
         rounds: 0,
         created,
+        created_by: created_by.map(str::to_string),
         path: util::to_slash(&path),
         archived: false,
     })
@@ -1422,7 +1433,7 @@ mod tests {
             "board--search",
             "",
         ] {
-            let err = super::new_discussion(&store, "看板搜尋列", Some(bad)).unwrap_err();
+            let err = super::new_discussion(&store, "看板搜尋列", Some(bad), None).unwrap_err();
             assert!(err.to_string().contains("kebab-case"), "slug {bad:?} err: {err}");
         }
         assert!(store.list_live_discussions().is_empty(), "invalid slug must not create files");
@@ -1431,7 +1442,7 @@ mod tests {
     #[test]
     fn new_discussion_accepts_valid_slug_override_and_keeps_topic() {
         let store = TestStore::default();
-        let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-2")).unwrap();
+        let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-2"), None).unwrap();
         assert_eq!(info.slug, "board-search-2");
         assert_eq!(info.topic, "看板搜尋列");
         let text = store
@@ -1445,7 +1456,7 @@ mod tests {
     fn new_discussion_slug_override_conflicts_with_existing() {
         let store = TestStore::with_live_discussion("taken", &open_doc("taken", "Taken"));
         let before = store.discussion("taken");
-        let err = super::new_discussion(&store, "另一個主題", Some("taken")).unwrap_err();
+        let err = super::new_discussion(&store, "另一個主題", Some("taken"), None).unwrap_err();
         assert!(err.to_string().contains("already exists"), "err: {err}");
         assert_eq!(store.discussion("taken"), before, "existing record must not be overwritten");
     }
@@ -1459,15 +1470,38 @@ mod tests {
             ("看板 搜尋列", "看板-搜尋列"),
         ] {
             let store = TestStore::default();
-            let info = super::new_discussion(&store, topic, None).unwrap();
+            let info = super::new_discussion(&store, topic, None, None).unwrap();
             assert_eq!(info.slug, want, "topic: {topic}");
             assert_eq!(info.topic, topic);
             assert!(store.read_live_discussion(want).is_some(), "file under derived slug");
         }
         // 純 ASCII 標點主題衍生為空 → 報錯。
         let store = TestStore::default();
-        let err = super::new_discussion(&store, "!?!", None).unwrap_err();
+        let err = super::new_discussion(&store, "!?!", None, None).unwrap_err();
         assert!(err.to_string().contains("could not derive"), "err: {err}");
+    }
+
+    // --- discuss new：蓋建立者章（spec「討論記錄蓋建立者章」） ---
+
+    #[test]
+    fn new_discussion_stamps_created_by_when_identity_present() {
+        let store = TestStore::default();
+        let id = "Base Line <base@example.com>";
+        let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-3"), Some(id)).unwrap();
+        // frontmatter 蓋 created_by、且 DiscussionInfo（→ --json createdBy）帶同值。
+        let text = store.read_live_discussion("board-search-3").expect("record stored");
+        assert!(text.contains(&format!("created_by: {id}\n")), "frontmatter: {text}");
+        assert_eq!(info.created_by.as_deref(), Some(id));
+    }
+
+    #[test]
+    fn new_discussion_omits_created_by_when_identity_absent() {
+        let store = TestStore::default();
+        let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-4"), None).unwrap();
+        // 無身分：frontmatter 不含 created_by、createdBy 缺席。
+        let text = store.read_live_discussion("board-search-4").expect("record stored");
+        assert!(!text.contains("created_by:"), "frontmatter should omit created_by: {text}");
+        assert_eq!(info.created_by, None);
     }
 
     // --- restale flag：conclude 蓋章 / seal 清除（reconclude-restale） ---

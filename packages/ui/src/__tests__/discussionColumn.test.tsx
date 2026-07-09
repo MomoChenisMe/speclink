@@ -24,6 +24,7 @@ const openD: DiscussionItem = {
   status: "open",
   rounds: 3,
   created: "2026-07-01",
+  createdBy: "Momo Chen <momo@example.com>",
   promotedTo: [],
 };
 const concludedD: DiscussionItem = {
@@ -88,15 +89,31 @@ describe("DiscussionColumn 拖排（design D6）", () => {
 });
 
 describe("DiscussionColumn（兩級呈現）", () => {
-  it("open 討論為全卡：topic＋「N 輪」文案，無任何動詞按鈕", () => {
+  it("open 全卡以 slug 為題、topic 為描述、顯示建立者、帶複製鈕、無動詞按鈕", () => {
     render(
       <DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />,
     );
-    const card = screen.getByText("Open topic").closest("[data-discussion]") as HTMLElement;
+    const card = screen.getByText("open-topic").closest("[data-discussion]") as HTMLElement;
     expect(card).toBeTruthy();
+    // D1：slug 為標題、topic 降為卡身描述。
+    expect(within(card).getByText("open-topic")).toBeTruthy();
+    expect(within(card).getByText("Open topic")).toBeTruthy();
+    // 建立者（首字母圓標＋姓名）與輪數。
+    expect(within(card).getByText("Momo Chen <momo@example.com>")).toBeTruthy();
     expect(within(card).getByText(/3 輪/)).toBeTruthy();
-    expect(within(card).queryByText(/回合/)).toBeNull();
-    expect(within(card).queryByRole("button")).toBeNull();
+    // 有複製 slug 鈕，但無動詞（封存／轉為變更）按鈕。
+    expect(within(card).getByRole("button", { name: /複製/ })).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: /封存/ })).toBeNull();
+    expect(within(card).queryByRole("button", { name: /轉為變更/ })).toBeNull();
+  });
+
+  it("點複製鈕把討論 slug 寫入剪貼簿", () => {
+    const writeText = vi.fn();
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
+    const card = screen.getByText("open-topic").closest("[data-discussion]") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: /複製/ }));
+    expect(writeText).toHaveBeenCalledWith("open-topic");
   });
 
   it("concluded 討論為全卡帶「封存」按鈕但無「轉為變更」；舊詞「促轉」「歸檔」不出現", () => {
