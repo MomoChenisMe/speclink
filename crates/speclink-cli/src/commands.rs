@@ -425,6 +425,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
             "design": design,
             "tasks": tasks,
             "deltaSpecs": caps,
+            "fromDiscussions": change.meta.from_discussions(),
         }));
     }
 
@@ -1757,6 +1758,17 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
                 }));
             }
             println!("{} Linked discussion '{slug}' → change '{change}'", color::green("✓"));
+        }
+        DiscussCommands::Seal { slug, change, json } => {
+            core::discuss::seal(store, &slug, &change)?;
+            if json {
+                return print_json(&serde_json::json!({
+                    "change": change,
+                    "slug": slug,
+                    "status": "sealed",
+                }));
+            }
+            println!("{} Sealed discussion '{slug}' → change '{change}' (marked promoted)", color::green("✓"));
         }
     }
     Ok(())

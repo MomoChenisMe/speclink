@@ -1178,7 +1178,7 @@ This scaffolds the change, prefills the proposal's Why from the conclusion, and 
 speclink discuss link <slug> <existing-change>
 ```
 
-`link` forges the same bidirectional chain promote does (`from_discussion` in the change metadata, `promoted` status + `promoted_to` in the record) without scaffolding anything, so board grouping, drawer links, and auto-archive all engage — the discussion is archived automatically when the last linked change is archived. Then run `$speclink-ingest <existing-change>` to fold the decision into that change's artifacts. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
+`link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived. Unlike promote, `link` does NOT mark the discussion 已轉出 (`promoted`): that reflection is sealed by `$speclink-ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `$speclink-ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
 
 **Lifecycle**: a discussion that concluded without spawning a change (an explicit "don't do this" is a valid outcome) should be closed out with:
 
@@ -1627,13 +1627,22 @@ Update an existing Speclink change — from a plan file or conversation context.
    - If conversation context is insufficient, use the **AskUserQuestion tool** to get more details
    - Warn: "No plan file found. Using conversation context."
 
-   **Source is a discussion conclusion?** When the update being folded in comes from a concluded discussion record (the discuss skill routed its **Capture to** at this existing change), confirm the lifecycle chain is forged before touching artifacts:
+   **Source is a discussion conclusion?** When the update being folded in comes from a concluded discussion — the discuss skill routed its **Capture to** at this existing change, or the change already carries a `from_discussion` link — treat that discussion's conclusion as a first-class source, not just the conversation context:
 
-   ```bash
-   speclink discuss link <slug> <change>
-   ```
+   1. Discover the linked discussion(s): `speclink show <change> --json` exposes `fromDiscussions` (the change's `from_discussion` chain).
+   2. Read each linked discussion's conclusion and fold it into the artifacts alongside the conversation/plan context (merge, do not replace what you already have):
 
-   `link` is idempotent — a no-op when the discuss step already ran it. Without the link, the discussion never archives with the change it fed.
+      ```bash
+      speclink discuss show <slug> --json
+      ```
+
+   3. Confirm the lifecycle chain is forged before touching artifacts:
+
+      ```bash
+      speclink discuss link <slug> <change>
+      ```
+
+   `link` is idempotent (a no-op when the discuss step already ran it) and forges ONLY the change-side chain — it does NOT mark the discussion promoted. Marking it 已轉出 is sealed at the END of this workflow (see the final step), once the artifacts actually carry the discussion's content. Without the link, the discussion never archives with the change it fed.
 
 2. **Parse the plan structure** (skip if using conversation context)
 
@@ -1795,7 +1804,17 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    If validation fails, fix errors and re-validate.
 
-9. **Summary and next steps**
+9. **Seal the reflection** (discussion-sourced ingests only)
+
+   If this ingest folded a linked discussion's conclusion into the change, mark the reflection now that the content has landed:
+
+   ```bash
+   speclink discuss seal <slug> <change>
+   ```
+
+   `seal` flips the discussion to promoted (已轉出) and is idempotent — run it once per linked `from_discussion` slug (from `fromDiscussions` in `speclink show <change> --json`). This is what keeps "已轉出" honest: the discussion is marked reflected only after ingest actually carried its content in, never at link time. Skip this step when no discussion fed the change.
+
+10. **Summary and next steps**
 
    Show:
    - Source used: plan file (`<path>`) or conversation context

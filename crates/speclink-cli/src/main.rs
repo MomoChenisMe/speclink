@@ -642,6 +642,14 @@ enum DiscussCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Seal a discussion→change reflection: mark the discussion promoted once content has landed
+    Seal {
+        slug: String,
+        /// Change whose from_discussion already includes this discussion
+        change: String,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> ExitCode {
