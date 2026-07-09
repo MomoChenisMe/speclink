@@ -9,6 +9,7 @@ import { useI18n } from "../i18n";
 import { changeStage, STAGE_BADGE } from "../stage";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * promoted_to 子變更的階段標示（純前端由清單存在性派生）——active 清單命中
@@ -189,8 +190,10 @@ export function DiscussionColumn({
   const { t } = useI18n();
   const full = discussions.filter((d) => d.status !== "promoted");
   const promoted = discussions.filter((d) => d.status === "promoted");
-  // D1：promoted 預設隱藏，由 header「顯示已轉出」開關按需展開（元件內 local，不跨 session）。
+  // D1：開關為互斥檢視切換——關閉＝只顯示討論中（active）、開啟＝只顯示已轉出
+  //（元件內 local，不跨 session）。promoted 歸零時強制回討論中檢視，避免卡在空檢視。
   const [showPromoted, setShowPromoted] = useState(false);
+  const showingPromoted = showPromoted && promoted.length > 0;
   const fullCards = full.map((d) =>
     sortable ? (
       <SortableDiscussionCard
@@ -220,21 +223,27 @@ export function DiscussionColumn({
         </h2>
         <div className="flex-1" />
         {promoted.length > 0 && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label={t("discussion.showPromoted")}
-            aria-pressed={showPromoted}
-            title={t("discussion.showPromoted")}
-            onClick={() => setShowPromoted((v) => !v)}
-            className={`h-5 gap-0.5 rounded-full px-1.5 py-0 text-[11px] font-semibold tabular-nums ${
-              showPromoted ? "bg-primary/12 text-primary" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <ArrowUpRight className="h-3 w-3" />
-            <span>{promoted.length}</span>
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={t("discussion.showPromoted")}
+                  aria-pressed={showingPromoted}
+                  onClick={() => setShowPromoted((v) => !v)}
+                  className={`h-5 gap-0.5 rounded-full px-1.5 py-0 text-[11px] font-semibold tabular-nums ${
+                    showingPromoted ? "bg-primary/12 text-primary" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <ArrowUpRight className="h-3 w-3" />
+                  <span>{promoted.length}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("discussion.showPromoted")}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
         <span
           data-testid="column-count"
@@ -244,22 +253,10 @@ export function DiscussionColumn({
         </span>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
-        {full.length === 0 && promoted.length === 0 && (
-          <p className="px-1.5 pt-2 text-xs text-muted-foreground">{t("discussion.none")}</p>
-        )}
-        {sortable ? (
-          <SortableContext
-            items={full.map((d) => cardDndId("discussion", d.slug))}
-            strategy={verticalListSortingStrategy}
-          >
-            {fullCards}
-          </SortableContext>
-        ) : (
-          fullCards
-        )}
-        {showPromoted && promoted.length > 0 && (
-          <div className="mt-auto flex flex-col gap-1 pt-2">
-            <span className="px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+        {showingPromoted ? (
+          // 已轉出檢視：只顯示 promoted，衍生樹保留、從欄頂由上而下排列。
+          <>
+            <span className="px-1.5 pt-0.5 text-[11px] font-semibold text-muted-foreground">
               {t("discussion.promotedGroup")}
             </span>
             {promoted.map((d) => (
@@ -271,7 +268,24 @@ export function DiscussionColumn({
                 onOpenDiscussion={onOpenDiscussion}
               />
             ))}
-          </div>
+          </>
+        ) : (
+          // 討論中檢視：只顯示 active 全卡（open／concluded）。
+          <>
+            {full.length === 0 && promoted.length === 0 && (
+              <p className="px-1.5 pt-2 text-xs text-muted-foreground">{t("discussion.none")}</p>
+            )}
+            {sortable ? (
+              <SortableContext
+                items={full.map((d) => cardDndId("discussion", d.slug))}
+                strategy={verticalListSortingStrategy}
+              >
+                {fullCards}
+              </SortableContext>
+            ) : (
+              fullCards
+            )}
+          </>
         )}
       </div>
     </div>

@@ -171,7 +171,7 @@ describe("DiscussionColumn（兩級呈現）", () => {
 });
 
 describe("DiscussionColumn header 顯示已轉出開關（design D1）", () => {
-  it("存在 promoted 時 header 呈帶計數開關、promoted 預設隱藏，點按切換欄底衍生樹", () => {
+  it("開關互斥切換：關閉只顯示討論中、開啟只顯示已轉出（衍生樹保留、各從欄頂排列）", () => {
     render(
       <DiscussionColumn
         discussions={[openD, promotedD]}
@@ -179,17 +179,20 @@ describe("DiscussionColumn header 顯示已轉出開關（design D1）", () => {
         archived={chipArchived}
       />,
     );
-    // 預設關閉：promoted 細列不佔欄體空間。
-    expect(screen.queryByText("Fanout topic")).toBeNull();
     // header 開關存在且帶 promoted 計數（一筆 promoted → 1）。
     const toggle = screen.getByRole("button", { name: /顯示已轉出/ });
     expect(within(toggle).getByText("1")).toBeTruthy();
-    // 點按 → 欄底群組與衍生樹細列顯示。
+    // 預設（關閉）：只顯示討論中（open 全卡），已轉出隱藏、零佔位。
+    expect(screen.getByText("Open topic")).toBeTruthy();
+    expect(screen.queryByText("Fanout topic")).toBeNull();
+    // 開啟：只顯示已轉出（群組標題＋衍生樹細列），討論中暫時隱藏。
     fireEvent.click(toggle);
     expect(screen.getByText(/已轉出變更的討論/)).toBeTruthy();
     expect(screen.getByText("Fanout topic")).toBeTruthy();
-    // 再點 → 收起、零佔位。
+    expect(screen.queryByText("Open topic")).toBeNull();
+    // 再點 → 回到只顯示討論中。
     fireEvent.click(toggle);
+    expect(screen.getByText("Open topic")).toBeTruthy();
     expect(screen.queryByText("Fanout topic")).toBeNull();
   });
 
