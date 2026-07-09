@@ -175,9 +175,11 @@ function PromotedRow({
 }
 
 /**
- * 看板第 0 欄「討論」（兩級呈現）：open／concluded 為全尺寸卡（open 唯讀、
- * concluded 帶「封存」動詞——轉為變更已自 GUI 撤除）；promoted 收合於欄底
- * 「已轉出變更的討論」群組——每列為 topic＋衍生變更樹（design D2）。
+ * 看板第 0 欄「討論」（兩級呈現，header 開關互斥切換兩檢視）：
+ * - 討論中檢視（預設）：open／concluded 全尺寸卡（open 唯讀、concluded 帶「封存」
+ *   動詞——轉為變更已自 GUI 撤除）。
+ * - 已轉出檢視（開關開啟）：欄標題換為「已轉出討論」、只顯示 promoted 衍生樹細列
+ *   （每列 topic＋衍生變更樹＋階段 chip，design D2），討論中卡暫時隱藏。
  */
 export function DiscussionColumn({
   discussions,
@@ -219,7 +221,7 @@ export function DiscussionColumn({
       <div className="flex items-center gap-1.5 px-1.5 pt-0.5 shrink-0">
         <MessageSquareText className="h-3.5 w-3.5 text-primary/40" />
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t("discussion.heading")}
+          {showingPromoted ? t("discussion.headingPromoted") : t("discussion.heading")}
         </h2>
         <div className="flex-1" />
         {promoted.length > 0 && (
@@ -249,26 +251,22 @@ export function DiscussionColumn({
           data-testid="column-count"
           className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-primary/8 text-primary/70"
         >
-          {full.length}
+          {showingPromoted ? promoted.length : full.length}
         </span>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
         {showingPromoted ? (
-          // 已轉出檢視：只顯示 promoted，衍生樹保留、從欄頂由上而下排列。
-          <>
-            <span className="px-1.5 pt-0.5 text-[11px] font-semibold text-muted-foreground">
-              {t("discussion.promotedGroup")}
-            </span>
-            {promoted.map((d) => (
-              <PromotedRow
-                key={d.slug}
-                d={d}
-                changes={changes}
-                archived={archived}
-                onOpenDiscussion={onOpenDiscussion}
-              />
-            ))}
-          </>
+          // 已轉出檢視：只顯示 promoted 衍生樹，從欄頂由上而下排列（欄標題已切為
+          // 「已轉出討論」，故內容不再重複群組標籤列）。
+          promoted.map((d) => (
+            <PromotedRow
+              key={d.slug}
+              d={d}
+              changes={changes}
+              archived={archived}
+              onOpenDiscussion={onOpenDiscussion}
+            />
+          ))
         ) : (
           // 討論中檢視：只顯示 active 全卡（open／concluded）。
           <>
