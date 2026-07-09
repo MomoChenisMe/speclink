@@ -143,10 +143,11 @@ describe("DiscussionColumn（兩級呈現）", () => {
         onOpenDiscussion={onOpenDiscussion}
       />,
     );
-    // D1：promoted 預設隱藏，先點 header「顯示已轉出」開關才展開衍生樹。
+    // D1：promoted 預設隱藏，先點 header「顯示已轉出」開關才切到已轉出檢視。
     fireEvent.click(screen.getByRole("button", { name: /顯示已轉出/ }));
-    // 群組標題換名；細列首行為 topic（slug 不出現於看板）。
-    expect(screen.getByText(/已轉出變更的討論/)).toBeTruthy();
+    // 欄標題換為「已轉出討論」（不再於內容顯示群組標籤列）；細列首行為 topic。
+    expect(screen.getByText("已轉出討論")).toBeTruthy();
+    expect(screen.queryByText("已轉出變更的討論")).toBeNull();
     expect(screen.queryByText(/已促轉/)).toBeNull();
     expect(screen.queryByText("fanout")).toBeNull();
     const row = screen.getByText("Fanout topic").closest("[data-discussion]") as HTMLElement;
@@ -185,9 +186,10 @@ describe("DiscussionColumn header 顯示已轉出開關（design D1）", () => {
     // 預設（關閉）：只顯示討論中（open 全卡），已轉出隱藏、零佔位。
     expect(screen.getByText("Open topic")).toBeTruthy();
     expect(screen.queryByText("Fanout topic")).toBeNull();
-    // 開啟：只顯示已轉出（群組標題＋衍生樹細列），討論中暫時隱藏。
+    // 開啟：欄標題換為「已轉出討論」、只顯示已轉出衍生樹，討論中暫時隱藏。
     fireEvent.click(toggle);
-    expect(screen.getByText(/已轉出變更的討論/)).toBeTruthy();
+    expect(screen.getByText("已轉出討論")).toBeTruthy();
+    expect(screen.queryByText("已轉出變更的討論")).toBeNull();
     expect(screen.getByText("Fanout topic")).toBeTruthy();
     expect(screen.queryByText("Open topic")).toBeNull();
     // 再點 → 回到只顯示討論中。
@@ -203,7 +205,7 @@ describe("DiscussionColumn header 顯示已轉出開關（design D1）", () => {
 });
 
 describe("DiscussionColumn 計數只算 active 與空狀態（design D3）", () => {
-  it("欄計數徽章只計 active（open＋concluded），promoted 不計入", () => {
+  it("欄計數徽章隨檢視：討論中檢視顯 active 數、已轉出檢視顯 promoted 數", () => {
     render(
       <DiscussionColumn
         discussions={[openD, concludedD, promotedD]}
@@ -211,8 +213,11 @@ describe("DiscussionColumn 計數只算 active 與空狀態（design D3）", () 
         archived={chipArchived}
       />,
     );
-    // active 2（open＋concluded），promoted 1 不計入 → 徽章顯示 2。
+    // 討論中檢視（預設）：active 2（open＋concluded）。
     expect(screen.getByTestId("column-count").textContent).toBe("2");
+    // 切到已轉出檢視：徽章改顯 promoted 數 1（與標題「已轉出討論」一致）。
+    fireEvent.click(screen.getByRole("button", { name: /顯示已轉出/ }));
+    expect(screen.getByTestId("column-count").textContent).toBe("1");
   });
 
   it("無 active 但有 promoted 時欄體不顯「尚無討論」，計數為 0", () => {
