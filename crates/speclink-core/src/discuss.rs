@@ -236,8 +236,19 @@ pub fn info(store: &dyn Store, slug: &str) -> Option<DiscussionInfo> {
     store.read_discussion(slug).map(|d| info_from_doc(&d))
 }
 
+/// Reject blank content at the write boundary. The CLI turns a forgotten `--stdin` into an
+/// empty string, so guarding here — one place, covering local CLI / remote CLI / desktop —
+/// makes that silent failure a loud error instead of a written-but-empty section.
+fn ensure_content(content: &str) -> Result<()> {
+    if content.trim().is_empty() {
+        bail!("discussion content is empty — pass non-empty content via stdin (did you forget --stdin?)");
+    }
+    Ok(())
+}
+
 /// Set (or replace) the `## Context` section — the one-time framing written after mode pick.
 pub fn set_context(store: &dyn Store, slug: &str, content: &str) -> Result<()> {
+    ensure_content(content)?;
     let text = load_live(store, slug)?;
     match replace_section(&text, "Context", content) {
         Some(t) => {
@@ -252,6 +263,7 @@ pub fn set_context(store: &dyn Store, slug: &str, content: &str) -> Result<()> {
 
 /// Append a discussion round. Content is supplied verbatim (from the skill via stdin).
 pub fn add_round(store: &dyn Store, slug: &str, mode: &str, content: &str) -> Result<usize> {
+    ensure_content(content)?;
     let mut text = load_live(store, slug)?;
     let round_no = count_rounds(&text) + 1;
     let date = util::today();
@@ -685,6 +697,7 @@ pub fn discard_discussion(store: &dyn Store, slug: &str, force: bool) -> Result<
 /// previous conclusion, so a revised conclusion stays a single section) and mark the
 /// discussion concluded.
 pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<Vec<String>> {
+    ensure_content(content)?;
     let mut text = load_live(store, slug)?;
     // Flip status: open -> concluded in frontmatter. A promoted discussion (status:
     // promoted) has no "status: open" to match, so a re-conclude preserves promoted.
@@ -741,6 +754,39 @@ mod tests {
              ## Rounds\n\n\
              ## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n"
         )
+    }
+
+    // --- 空內容 guard（discuss-content-guard；拒絕靜默寫入空區段） ---
+
+    #[test]
+    fn add_round_rejects_empty_content() {
+        let doc = open_doc("alpha", "Alpha");
+        let store = TestStore::with_live_discussion("alpha", &doc);
+        assert!(super::add_round(&store, "alpha", "assumptions", "").is_err());
+        assert!(super::add_round(&store, "alpha", "assumptions", "   \n\t ").is_err());
+        assert_eq!(store.discussion("alpha"), doc, "空內容不得改動記錄");
+    }
+
+    #[test]
+    fn conclude_rejects_empty_content_and_keeps_status() {
+        let doc = open_doc("alpha", "Alpha");
+        let store = TestStore::with_live_discussion("alpha", &doc);
+        assert!(super::conclude(&store, "alpha", "").is_err());
+        assert!(super::conclude(&store, "alpha", "  \n ").is_err());
+        assert_eq!(
+            store.discussion("alpha"),
+            doc,
+            "空 conclude 不得翻狀態或改動記錄"
+        );
+    }
+
+    #[test]
+    fn set_context_rejects_empty_content() {
+        let doc = open_doc("alpha", "Alpha");
+        let store = TestStore::with_live_discussion("alpha", &doc);
+        assert!(super::set_context(&store, "alpha", "").is_err());
+        assert!(super::set_context(&store, "alpha", "   ").is_err());
+        assert_eq!(store.discussion("alpha"), doc, "空內容不得覆寫 Context");
     }
 
     // --- board_rank（看板排序欄位；desktop-card-reorder） ---

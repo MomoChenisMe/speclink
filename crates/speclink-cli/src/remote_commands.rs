@@ -678,7 +678,7 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             Ok(())
         }
         DiscussCommands::Context { slug, stdin, json } => {
-            let content = if stdin { read_stdin() } else { String::new() };
+            let content = read_stdin_content(stdin);
             ctx.client.discussion_context(&slug, &content)?;
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "context": "set" }));
@@ -687,7 +687,7 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             Ok(())
         }
         DiscussCommands::AddRound { slug, mode, stdin, json } => {
-            let content = if stdin { read_stdin() } else { String::new() };
+            let content = read_stdin_content(stdin);
             let resp = ctx.client.discussion_add_round(&slug, &mode, &content)?;
             let round = resp.get("round").and_then(|v| v.as_u64()).unwrap_or(0);
             if json {
@@ -697,7 +697,7 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             Ok(())
         }
         DiscussCommands::Conclude { slug, stdin, json } => {
-            let content = if stdin { read_stdin() } else { String::new() };
+            let content = read_stdin_content(stdin);
             ctx.client.discussion_conclude(&slug, &content)?;
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "status": "concluded" }));
