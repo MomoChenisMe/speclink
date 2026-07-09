@@ -414,22 +414,38 @@ describe("DiscussionDrawer", () => {
 });
 
 describe("change 側同源連結", () => {
-  it("來自討論的 change 卡帶討論徽章；無來源者不帶", () => {
+  it("來自討論的 change 卡帶單一討論徽章；無來源者不帶", () => {
     const withSource: ChangeItem = {
       name: "cut-a",
       status: "in-progress",
       totalTasks: 24,
       completedTasks: 0,
-      fromDiscussion: "alpha-search",
+      fromDiscussions: ["alpha-search"],
     };
     const { unmount } = render(<ChangeCard change={withSource} />);
     expect(screen.getByLabelText("來自討論")).toBeTruthy();
     unmount();
-    render(<ChangeCard change={{ ...withSource, fromDiscussion: undefined }} />);
+    render(<ChangeCard change={{ ...withSource, fromDiscussions: [] }} />);
     expect(screen.queryByLabelText("來自討論")).toBeNull();
   });
 
-  it("change 抽屜顯示「來自討論」與同源清單並可互跳", async () => {
+  it("多來源的 change 卡仍是單一徽章，提示列出全部來源討論", () => {
+    const multi: ChangeItem = {
+      name: "cut-a",
+      status: "in-progress",
+      totalTasks: 24,
+      completedTasks: 0,
+      fromDiscussions: ["alpha-search", "beta-cache"],
+    };
+    render(<ChangeCard change={multi} />);
+    const badge = screen.getByLabelText("來自討論");
+    expect(badge).toBeTruthy();
+    // 徽章提示（title）列出全部來源討論——出身討論在前。
+    expect(badge.getAttribute("title")).toContain("alpha-search");
+    expect(badge.getAttribute("title")).toContain("beta-cache");
+  });
+
+  it("change 抽屜列出全部來源討論與同源清單並可互跳", async () => {
     const onOpenDiscussion = vi.fn();
     const onOpenSibling = vi.fn();
     const change: ChangeItem = {
@@ -437,7 +453,7 @@ describe("change 側同源連結", () => {
       status: "in-progress",
       totalTasks: 24,
       completedTasks: 0,
-      fromDiscussion: "alpha-search",
+      fromDiscussions: ["alpha-search", "beta-cache"],
     };
     render(
       <RichDetailDrawer
@@ -447,15 +463,21 @@ describe("change 側同源連結", () => {
         loadDocument={vi.fn(async () => "# doc")}
         loadCapabilities={vi.fn(async () => [])}
         loadMeta={vi.fn(async () => ({ created: "2026-07-05" }))}
-        sourceDiscussion={{ slug: "alpha-search", topic: "Alpha search" }}
+        sourceDiscussions={[
+          { slug: "alpha-search", topic: "Alpha search" },
+          { slug: "beta-cache", topic: "Beta cache" },
+        ]}
         siblingChanges={["cut-b"]}
         onOpenDiscussion={onOpenDiscussion}
         onOpenSibling={onOpenSibling}
       />,
     );
     await waitFor(() => expect(screen.getByText(/來自討論/)).toBeTruthy());
+    // 兩份來源討論各自可點、互跳到對應討論。
     fireEvent.click(screen.getByRole("button", { name: /Alpha search/ }));
     expect(onOpenDiscussion).toHaveBeenCalledWith("alpha-search");
+    fireEvent.click(screen.getByRole("button", { name: /Beta cache/ }));
+    expect(onOpenDiscussion).toHaveBeenCalledWith("beta-cache");
     fireEvent.click(screen.getByRole("button", { name: /cut-b/ }));
     expect(onOpenSibling).toHaveBeenCalledWith("cut-b");
   });

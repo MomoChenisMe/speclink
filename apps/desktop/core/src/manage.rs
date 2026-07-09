@@ -45,7 +45,7 @@ pub fn change_meta_at(root: &Path, change: &str) -> Option<Value> {
         "created": change.meta.created,
         "createdBy": change.meta.created_by,
         "createdWith": change.meta.created_with,
-        "fromDiscussion": change.meta.from_discussion,
+        "fromDiscussions": change.meta.from_discussions(),
         "startedAt": change.meta.started_at,
         "startedBy": change.meta.started_by,
         "startedWith": change.meta.started_with,
@@ -466,6 +466,23 @@ mod tests {
         assert!(meta["startedAt"].is_null());
         assert!(meta["startedBy"].is_null());
         assert!(meta["startedWith"].is_null());
+    }
+
+    #[test]
+    fn change_meta_exposes_from_discussions_as_array() {
+        // 詳情抽屜「來源討論」的資料源：多值化的 fromDiscussions 陣列（依 meta 順序），
+        // 無來源討論時為空陣列；不再輸出舊單值鍵 fromDiscussion。
+        let fx = crate::testfixture::FixtureRoot::new("m-meta-fromdisc");
+        fx.add_change(
+            "multi",
+            "schema: spec-driven\ncreated: 2026-07-05\nfrom_discussion: alpha-search, beta-cache\n",
+        );
+        fx.add_change("plain", "schema: spec-driven\ncreated: 2026-07-05\n");
+        let m = change_meta_at(fx.root(), "multi").expect("meta exists");
+        assert_eq!(m["fromDiscussions"], json!(["alpha-search", "beta-cache"]));
+        assert!(m.get("fromDiscussion").is_none(), "old single-value key gone");
+        let p = change_meta_at(fx.root(), "plain").expect("meta exists");
+        assert_eq!(p["fromDiscussions"], json!([]));
     }
 
     #[test]

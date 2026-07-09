@@ -14,8 +14,8 @@ export interface ChangeItem {
   startedAt?: string | null;
   startedBy?: string | null;
   startedWith?: string | null;
-  /** 來源討論 slug（由討論轉出的 change）；null/缺席＝非討論而來。 */
-  fromDiscussion?: string | null;
+  /** 來源討論 slug 清單（由討論轉出／併入的 change，第一個為出身討論）；空/缺席＝非討論而來。 */
+  fromDiscussions?: string[];
 }
 
 /** 一個 canonical spec 的清單項（CLI 同形欄位＋桌面疊加的呈現層輔助欄位）。 */
@@ -31,7 +31,7 @@ export interface ChangeMetaInfo {
   created?: string | null;
   createdBy?: string | null;
   createdWith?: string | null;
-  fromDiscussion?: string | null;
+  fromDiscussions?: string[];
   startedAt?: string | null;
   startedBy?: string | null;
   startedWith?: string | null;

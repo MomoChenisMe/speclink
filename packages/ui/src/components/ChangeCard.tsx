@@ -37,10 +37,13 @@ export function ChangeCard({ change, onOpen, onArchive, barClass = "bg-primary" 
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
         <span className="font-semibold text-sm leading-tight min-w-0 flex-1">{change.name}</span>
-        {change.fromDiscussion && (
+        {(change.fromDiscussions ?? []).length > 0 && (
           <span
             aria-label={t("card.fromDiscussion")}
-            title={t("card.fromDiscussionTitle").replace("{name}", change.fromDiscussion)}
+            title={t("card.fromDiscussionTitle").replace(
+              "{name}",
+              (change.fromDiscussions ?? []).join(", "),
+            )}
             className="shrink-0 text-primary/60"
           >
             <MessageSquareText className="h-3.5 w-3.5" />

@@ -383,6 +383,10 @@ pub fn promote(
 /// chain: `from_discussion` in the change metadata, promoted status +
 /// `promoted_to` accumulation on the discussion — so board grouping, drawer
 /// links, and archive co-travel all engage through the existing machinery.
+/// The discussion↔change relationship is many-to-many: a change already born of
+/// one discussion can be re-linked to a later one (an ingest that revisits an
+/// earlier decision), so `from_discussion` is a comma-separated accumulator that
+/// appends rather than rejecting — mirroring the discussion side's `promoted_to`.
 /// Guards run before any write (a rejection leaves both sides byte-identical);
 /// the change side is written first so an interrupted run still auto-archives
 /// (the archive flow is driven by the change-side link). Re-linking the same
@@ -399,16 +403,25 @@ pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     let Some(mut meta) = store.read_change_meta(change) else {
         bail!("Change '{change}' not found.");
     };
-    match crate::model::ChangeMeta::from_text(Some(&meta)).from_discussion.as_deref() {
-        Some(cur) if cur == slug => {} // chain already forged — idempotent, skip the write
-        Some(other) => bail!("Change '{change}' is already linked to discussion '{other}'."),
-        None => {
-            if !meta.ends_with('\n') && !meta.is_empty() {
-                meta.push('\n');
-            }
-            meta.push_str(&format!("from_discussion: {slug}\n"));
-            store.write_change_meta(change, &meta)?;
+    let parsed = crate::model::ChangeMeta::from_text(Some(&meta));
+    let existing = parsed.from_discussion.as_deref().map(str::trim).unwrap_or("");
+    if parsed.from_discussions().iter().any(|s| s == slug) {
+        // chain already forged for this slug — idempotent, skip the change-side write
+    } else if existing.is_empty() {
+        // no source discussion yet — add the line (tolerating a missing trailing newline)
+        if !meta.ends_with('\n') && !meta.is_empty() {
+            meta.push('\n');
         }
+        meta.push_str(&format!("from_discussion: {slug}\n"));
+        store.write_change_meta(change, &meta)?;
+    } else {
+        // already born of another discussion — append this slug to the comma list
+        meta = meta.replacen(
+            &format!("from_discussion: {existing}"),
+            &format!("from_discussion: {existing}, {slug}"),
+            1,
+        );
+        store.write_change_meta(change, &meta)?;
     }
     mark_promoted(store, slug, change)
 }
@@ -909,17 +922,55 @@ mod tests {
     }
 
     #[test]
-    fn link_rejects_change_already_linked_to_other_discussion() {
+    fn link_appends_to_from_discussion_when_change_already_linked() {
+        // spec「出身自討論的變更再併入新討論」：change meta 的 from_discussion 於既有值
+        // 尾端累加本 slug、既有值保留；本討論標 promoted；先前連結的討論記錄逐位元不變。
         let doc = concluded_doc("beta-cache", "Beta cache", "x");
         let store = TestStore::with_live_discussion("beta-cache", &doc);
+        let other = concluded_doc("other-topic", "Other", "y").replacen(
+            "status: concluded\n",
+            "status: promoted\npromoted_to: cut\n",
+            1,
+        );
+        store.discussions.borrow_mut().insert("other-topic".into(), other.clone());
         store
             .metas
             .borrow_mut()
             .insert("cut".into(), "schema: spec-driven\nfrom_discussion: other-topic\n".into());
-        let err = super::link(&store, "beta-cache", "cut").unwrap_err();
-        assert!(err.to_string().contains("other-topic"), "err: {err}");
-        assert_eq!(store.discussion("beta-cache"), doc, "discussion must be untouched");
-        assert_eq!(*store.meta_writes.borrow(), 0);
+        super::link(&store, "beta-cache", "cut").unwrap();
+        let meta = store.meta("cut");
+        assert!(meta.contains("from_discussion: other-topic, beta-cache\n"), "meta: {meta}");
+        assert!(store.discussion("beta-cache").contains("status: promoted\n"));
+        assert!(store.discussion("beta-cache").contains("promoted_to: cut\n"));
+        assert_eq!(store.discussion("other-topic"), other, "prior discussion untouched");
+    }
+
+    #[test]
+    fn link_is_idempotent_when_slug_already_in_from_discussion_list() {
+        // spec「同一組合重跑為冪等」（該討論僅為 from_discussion 清單其中一員）：
+        // change 側不再寫、討論側改寫等值內容。
+        let store = TestStore::with_live_discussion(
+            "beta-cache",
+            &concluded_doc("beta-cache", "Beta cache", "x"),
+        );
+        store.metas.borrow_mut().insert(
+            "cut".into(),
+            "schema: spec-driven\nfrom_discussion: alpha-search, beta-cache\n".into(),
+        );
+        super::link(&store, "beta-cache", "cut").unwrap();
+        let meta_after = store.meta("cut");
+        let writes_after = *store.meta_writes.borrow();
+        super::link(&store, "beta-cache", "cut").unwrap();
+        assert_eq!(store.meta("cut"), meta_after, "meta must be unchanged");
+        assert!(
+            meta_after.contains("from_discussion: alpha-search, beta-cache\n"),
+            "existing list preserved, not appended: {meta_after}"
+        );
+        assert_eq!(
+            *store.meta_writes.borrow(),
+            writes_after,
+            "change side must not rewrite when slug already present"
+        );
     }
 
     #[test]

@@ -27,7 +27,7 @@ pub fn list_changes_at(root: &Path) -> Value {
             v["startedAt"] = json!(c.meta.started_at);
             v["startedBy"] = json!(c.meta.started_by);
             v["startedWith"] = json!(c.meta.started_with);
-            v["fromDiscussion"] = json!(c.meta.from_discussion);
+            v["fromDiscussions"] = json!(c.meta.from_discussions());
             v
         })
         .collect();
@@ -225,20 +225,29 @@ mod tests {
     }
 
     #[test]
-    fn list_changes_overlays_from_discussion() {
-        // 同源連結（design D6）：來自討論的 change 於清單項帶 fromDiscussion，
-        // 供卡片徽章與抽屜同源清單派生；非討論而來為 null。
+    fn list_changes_overlays_from_discussions_as_array() {
+        // 同源連結（多值化）：來自討論的 change 於清單項帶 fromDiscussions 陣列，
+        // 依 meta 順序；多來源全列、單來源一元、非討論而來為空陣列。舊單值鍵 fromDiscussion 不再出現。
         let fx = FixtureRoot::new("q-fromdisc");
         fx.add_change(
-            "cut-a",
+            "multi",
+            "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: alpha-search, beta-cache\n",
+        );
+        fx.add_change(
+            "single",
             "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: alpha-search\n",
         );
         fx.add_change("plain", OLD_META);
         let v = list_changes_at(fx.root());
         let arr = v["changes"].as_array().expect("changes array");
         let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
-        assert_eq!(by_name("cut-a")["fromDiscussion"], "alpha-search");
-        assert!(by_name("plain")["fromDiscussion"].is_null());
+        assert_eq!(
+            by_name("multi")["fromDiscussions"],
+            serde_json::json!(["alpha-search", "beta-cache"])
+        );
+        assert_eq!(by_name("single")["fromDiscussions"], serde_json::json!(["alpha-search"]));
+        assert_eq!(by_name("plain")["fromDiscussions"], serde_json::json!([]));
+        assert!(by_name("multi").get("fromDiscussion").is_none(), "old single-value key gone");
     }
 
     #[test]
