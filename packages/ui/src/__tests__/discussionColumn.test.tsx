@@ -98,23 +98,22 @@ describe("DiscussionColumn（兩級呈現）", () => {
     expect(within(card).queryByRole("button")).toBeNull();
   });
 
-  it("concluded 討論為全卡帶「轉為變更」「封存」按鈕；舊詞「促轉」「歸檔」不出現", () => {
-    const onPromote = vi.fn();
+  it("concluded 討論為全卡帶「封存」按鈕但無「轉為變更」；舊詞「促轉」「歸檔」不出現", () => {
+    // D3：promote 已自 GUI 撤除——concluded 卡僅保留封存動詞，轉為變更改由 CLI／agent。
     const onArchiveDiscussion = vi.fn();
     render(
       <DiscussionColumn
         discussions={[concludedD]}
         changes={[]}
         archived={[]}
-        onPromote={onPromote}
         onArchiveDiscussion={onArchiveDiscussion}
       />,
     );
     const card = screen.getByText("Settled topic").closest("[data-discussion]") as HTMLElement;
-    fireEvent.click(within(card).getByRole("button", { name: /轉為變更/ }));
-    expect(onPromote).toHaveBeenCalledWith("settled");
     fireEvent.click(within(card).getByRole("button", { name: /封存/ }));
     expect(onArchiveDiscussion).toHaveBeenCalledWith("settled");
+    // 轉為變更（promote）已撤除。
+    expect(within(card).queryByRole("button", { name: /轉為變更/ })).toBeNull();
     expect(within(card).queryByRole("button", { name: /促轉/ })).toBeNull();
     expect(within(card).queryByRole("button", { name: /歸檔/ })).toBeNull();
   });

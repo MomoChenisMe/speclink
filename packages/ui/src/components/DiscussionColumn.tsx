@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, ArrowUpRight, ChevronDown, ChevronRight, MessageSquareText } from "lucide-react";
+import { Archive, ChevronDown, ChevronRight, MessageSquareText } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
 import { cardDndId } from "../boardDnd";
@@ -34,9 +34,7 @@ export interface DiscussionColumnProps {
   /** 已封存 change 清單（chips 已封存態派生）。 */
   archived: ArchivedItem[];
   onOpenDiscussion?: (slug: string) => void;
-  /** concluded 卡的轉為變更動詞（app 端接確認流程）。 */
-  onPromote?: (slug: string) => void;
-  /** concluded 卡的封存動詞（app 端接確認流程）。 */
+  /** concluded 卡的封存動詞（app 端接確認流程）。轉為變更（promote）已自 GUI 撤除。 */
   onArchiveDiscussion?: (slug: string) => void;
   /**
    * 欄內拖排（design D6）：true 時全卡（open／concluded）掛 sortable——
@@ -53,11 +51,10 @@ const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
 export function DiscussionCard({
   d,
   onOpenDiscussion,
-  onPromote,
   onArchiveDiscussion,
 }: { d: DiscussionItem } & Pick<
   DiscussionColumnProps,
-  "onOpenDiscussion" | "onPromote" | "onArchiveDiscussion"
+  "onOpenDiscussion" | "onArchiveDiscussion"
 >) {
   const { t } = useI18n();
   const badge = STATUS_BADGE[d.status] ?? STATUS_BADGE.open;
@@ -83,14 +80,6 @@ export function DiscussionCard({
               variant="outline"
               size="sm"
               className="h-6 gap-1 px-2 text-xs"
-              onClick={() => onPromote?.(d.slug)}
-            >
-              <ArrowUpRight className="h-3 w-3" /> {t("discussion.promote")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-6 gap-1 px-2 text-xs"
               onClick={() => onArchiveDiscussion?.(d.slug)}
             >
               <Archive className="h-3 w-3" /> {t("common.archive")}
@@ -108,7 +97,7 @@ function SortableDiscussionCard({
   ...rest
 }: { d: DiscussionItem } & Pick<
   DiscussionColumnProps,
-  "onOpenDiscussion" | "onPromote" | "onArchiveDiscussion"
+  "onOpenDiscussion" | "onArchiveDiscussion"
 >) {
   const { t } = useI18n();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -168,15 +157,14 @@ function PromotedRow({
 
 /**
  * 看板第 0 欄「討論」（兩級呈現）：open／concluded 為全尺寸卡（open 唯讀、
- * concluded 帶「轉為變更」「封存」動詞）；promoted 收合於欄底「已轉出變更
- * 的討論」群組——每列為 topic＋衍生變更樹（design D2）。
+ * concluded 帶「封存」動詞——轉為變更已自 GUI 撤除）；promoted 收合於欄底
+ * 「已轉出變更的討論」群組——每列為 topic＋衍生變更樹（design D2）。
  */
 export function DiscussionColumn({
   discussions,
   changes,
   archived,
   onOpenDiscussion,
-  onPromote,
   onArchiveDiscussion,
   sortable,
 }: DiscussionColumnProps) {
@@ -190,7 +178,6 @@ export function DiscussionColumn({
         key={d.slug}
         d={d}
         onOpenDiscussion={onOpenDiscussion}
-        onPromote={onPromote}
         onArchiveDiscussion={onArchiveDiscussion}
       />
     ) : (
@@ -198,7 +185,6 @@ export function DiscussionColumn({
         key={d.slug}
         d={d}
         onOpenDiscussion={onOpenDiscussion}
-        onPromote={onPromote}
         onArchiveDiscussion={onArchiveDiscussion}
       />
     ),

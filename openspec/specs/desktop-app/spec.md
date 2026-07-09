@@ -135,92 +135,46 @@ code:
 
 ---
 ### Requirement: 桌面 app 提供動詞操作面
-桌面 app SHALL 讓使用者對選定 change 執行 status、validate、analyze、archive，並對專案執行 list、show，全部經內嵌 core 執行。動詞的可觀察結果（成功資料、失敗訊息與失敗語意）SHALL 與對應 CLI 指令一致；失敗時 app SHALL 於 UI 呈現 core 的錯誤訊息，SHALL NOT 靜默吞掉失敗。
 
-#### Scenario: 執行 validate 呈現結果
-- **WHEN** 使用者對一個 change 觸發 validate
-- **THEN** app 呈現與 speclink validate 一致的通過或失敗結果，失敗時顯示其錯誤訊息
+桌面 app SHALL 讓使用者對選定 change 執行 status、validate、analyze、archive，並對專案執行 list、show，全部經內嵌 core 執行。動詞的可觀察結果（成功資料、失敗訊息與失敗語意）SHALL 與對應 CLI 指令一致；失敗時 app SHALL 於 UI 呈現 core 的錯誤訊息，SHALL NOT 靜默吞掉失敗。validate 與 analyze 的結果 SHALL 呈現於該 change 的詳情抽屜內，而非僅視窗頂列狀態列：validate SHALL 於動作列近處以通過或失敗呈現（失敗附首則錯誤訊息）；analyze SHALL 以 Coverage、Consistency、Ambiguity、Gaps 四維度面板呈現，各維度顯示發現數與逐條發現項（嚴重度與訊息對應 speclink analyze 的 --json 輸出）。視窗頂列狀態列 SHALL 保留供看板全域操作（刪除、封存、拖排失敗）之結果訊息。
 
-#### Scenario: 執行 analyze 呈現發現項
-- **WHEN** 使用者對一個 change 觸發 analyze
-- **THEN** app 呈現 analyze 的發現項，其嚴重度與訊息對應 speclink analyze 的 --json 輸出
+#### Scenario: 於抽屜內執行 validate 呈現結果
+
+- **WHEN** 使用者於某 change 的詳情抽屜觸發 validate
+- **THEN** 抽屜內於動作列近處呈現與 speclink validate 一致的通過或失敗結果，失敗時顯示其錯誤訊息
+
+#### Scenario: 於抽屜內執行 analyze 呈現四維度發現項
+
+- **WHEN** 使用者於某 change 的詳情抽屜觸發 analyze
+- **THEN** 抽屜內以 Coverage、Consistency、Ambiguity、Gaps 四維度呈現各維度發現數與逐條發現項，其嚴重度與訊息對應 speclink analyze 的 --json 輸出
 
 #### Scenario: archive 前置未滿足時失敗顯示
+
 - **WHEN** 使用者對尚未滿足歸檔前置的 change 觸發 archive
 - **THEN** app 呈現 core 回報的失敗訊息，不將該 change 標為已歸檔
 
 
 <!-- @trace
-source: desktop-shell-and-browser
-updated: 2026-07-05
+source: desktop-verb-drawer-surface
+updated: 2026-07-09
 code:
-  - CLAUDE.md
-  - Cargo.lock
-  - Cargo.toml
-  - apps/desktop/core/Cargo.toml
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/index.html
-  - apps/desktop/package.json
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/build.rs
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/icons/icon.ico
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/main.rs
-  - apps/desktop/src-tauri/tauri.conf.json
   - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/App.test.tsx
   - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/index.css
-  - apps/desktop/src/main.tsx
+  - apps/desktop/src/i18n/messages.ts
   - apps/desktop/src/store.ts
-  - apps/desktop/tsconfig.json
-  - apps/desktop/vite.config.ts
-  - apps/desktop/vitest.config.ts
-  - package-lock.json
-  - package.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/kanban.test.tsx
+  - packages/ui/src/__tests__/analyzePanel.test.tsx
+  - packages/ui/src/__tests__/discussionColumn.test.tsx
+  - packages/ui/src/__tests__/discussionDrawer.test.tsx
   - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/stage.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/__tests__/ui.test.tsx
   - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeBoard.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/ChangeListItem.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/DetailDrawer.tsx
-  - packages/ui/src/components/DocumentTree.tsx
-  - packages/ui/src/components/DocumentViewer.tsx
+  - packages/ui/src/components/AnalyzePanel.tsx
+  - packages/ui/src/components/DiscussionColumn.tsx
+  - packages/ui/src/components/DiscussionDrawer.tsx
   - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/Markdown.tsx
   - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/components/ui/alert-dialog.tsx
-  - packages/ui/src/components/ui/badge.tsx
-  - packages/ui/src/components/ui/button.tsx
-  - packages/ui/src/components/ui/card.tsx
-  - packages/ui/src/components/ui/input.tsx
-  - packages/ui/src/components/ui/sheet.tsx
-  - packages/ui/src/components/ui/tabs.tsx
-  - packages/ui/src/delta.ts
+  - packages/ui/src/i18n.tsx
   - packages/ui/src/index.ts
-  - packages/ui/src/lib/utils.ts
-  - packages/ui/src/stage.ts
-  - packages/ui/src/tasks.ts
-  - packages/ui/tsconfig.json
-  - packages/ui/vitest.config.ts
 -->
 
 ---
@@ -718,12 +672,12 @@ code:
 ---
 ### Requirement: 討論於看板第 0 欄兩級呈現
 
-看板 SHALL 於最左新增「討論」欄，依討論狀態兩級呈現：status 為 open 或 concluded 的討論 SHALL 為全尺寸卡（顯示 topic、輪數與狀態）——open 卡為唯讀，concluded 卡 SHALL 提供「轉為變更」與「封存」動詞；status 為 promoted 的討論 SHALL 收合於欄底「已轉出變更的討論」群組的細列——細列 SHALL 以討論 topic 為首行（slug SHALL NOT 出現於看板），其下每個 promoted_to 子變更 SHALL 以樹狀前綴（末列 └、其餘 ├）逐列列出名稱與階段標示。子變更的階段 SHALL 由其於清單中的存在性派生：active 清單命中依看板欄位規則、封存清單命中為已封存、兩者皆無 SHALL 標示為已刪除且討論維持已轉出不回退。封存的討論 SHALL NOT 出現於此欄。輪數文案 SHALL 使用「N 輪」。
+看板 SHALL 於最左新增「討論」欄，依討論狀態兩級呈現：status 為 open 或 concluded 的討論 SHALL 為全尺寸卡（顯示 topic、輪數與狀態）——open 卡為唯讀，concluded 卡 SHALL 提供「封存」動詞（「轉為變更」動詞已自 GUI 撤除，轉出改由 CLI 或 agent）；status 為 promoted 的討論 SHALL 收合於欄底「已轉出變更的討論」群組的細列——細列 SHALL 以討論 topic 為首行（slug SHALL NOT 出現於看板），其下每個 promoted_to 子變更 SHALL 以樹狀前綴（末列 └、其餘 ├）逐列列出名稱與階段標示。子變更的階段 SHALL 由其於清單中的存在性派生：active 清單命中依看板欄位規則、封存清單命中為已封存、兩者皆無 SHALL 標示為已刪除且討論維持已轉出不回退。封存的討論 SHALL NOT 出現於此欄。輪數文案 SHALL 使用「N 輪」。
 
 #### Scenario: 進行中與已結論討論的全卡呈現
 
 - **WHEN** openspec/discussions/ 下存在一筆 status: open（3 輪）與一筆 status: concluded 的討論
-- **THEN** 討論欄顯示兩張全卡：open 卡呈現 topic 與「3 輪」且無動詞按鈕，concluded 卡帶「轉為變更」與「封存」按鈕
+- **THEN** 討論欄顯示兩張全卡：open 卡呈現 topic 與「3 輪」且無動詞按鈕，concluded 卡帶「封存」按鈕且無「轉為變更」按鈕
 
 #### Scenario: 已轉出討論收合為衍生樹細列
 
@@ -747,61 +701,47 @@ code:
 
 
 <!-- @trace
-source: desktop-discussion-ui-polish
-updated: 2026-07-06
+source: desktop-verb-drawer-surface
+updated: 2026-07-09
 code:
-  - .spectra.yaml
-  - apps/desktop/core/src/discussions.rs
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
   - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/App.test.tsx
   - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
+  - apps/desktop/src/i18n/messages.ts
   - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/teststore.rs
-  - packages/ui/src/__tests__/archivedList.test.tsx
+  - packages/ui/src/__tests__/analyzePanel.test.tsx
   - packages/ui/src/__tests__/discussionColumn.test.tsx
   - packages/ui/src/__tests__/discussionDrawer.test.tsx
+  - packages/ui/src/__tests__/richDrawer.test.tsx
   - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
+  - packages/ui/src/components/AnalyzePanel.tsx
   - packages/ui/src/components/DiscussionColumn.tsx
   - packages/ui/src/components/DiscussionDrawer.tsx
   - packages/ui/src/components/KanbanBoard.tsx
   - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/i18n.tsx
   - packages/ui/src/index.ts
 -->
 
 ---
 ### Requirement: 討論抽屜檢視與轉出變更
 
-點擊討論卡或細列 SHALL 開啟討論抽屜。抽屜標題下方 SHALL 呈現生命週期階梯「討論中 → 已結論 → 轉出變更」且現站可辨識。分頁 SHALL 依序為：結論、討論過程 N、背景、衍生變更——前三者呈現記錄文件對應區段（區段缺失或格式非預期時 SHALL 整篇以單一檢視退回而非報錯）；記錄切分成功且結論區段非空時 SHALL 預設開啟「結論」分頁，結論為空時預設「背景」。衍生變更分頁 SHALL 列出各子變更現況與跳轉，並於 concluded 與 promoted 狀態提供轉出動詞——尚未轉出時按鈕文字為「轉為變更」、已轉出過為「再轉出一個變更」。轉為變更 SHALL 經確認後建立新變更——其 meta 含 from_discussion、proposal 以討論結論預填——並使新卡現身提案中欄、討論的 promoted_to 累積該名稱；確認框說明 SHALL 以使用者語言描述後果（新增變更卡、提案以結論開頭、討論移入已轉出區），SHALL NOT 出現 from_discussion、kebab-case 等工程詞，名稱輸入說明 SHALL 為「英文小寫，字間用 -」。concluded 卡的封存動詞 SHALL 經確認後將討論移入封存。轉為變更失敗（同名變更已存在、討論已封存等）SHALL 顯示單行錯誤且看板不變。GUI SHALL NOT 提供 conclude、add-round、new、discard——討論的推進與結論撰寫屬 agent 與 CLI。來自討論的變更卡 SHALL 帶討論徽章，其詳情抽屜 SHALL 顯示來源討論與同源變更清單並可互跳。
+點擊討論卡或細列 SHALL 開啟討論抽屜。抽屜標題下方 SHALL 呈現生命週期階梯「討論中 → 已結論 → 轉出變更」且現站可辨識。分頁 SHALL 依序為：結論、討論過程 N、背景、衍生變更——前三者呈現記錄文件對應區段（區段缺失或格式非預期時 SHALL 整篇以單一檢視退回而非報錯）；記錄切分成功且結論區段非空時 SHALL 預設開啟「結論」分頁，結論為空時預設「背景」。衍生變更分頁 SHALL 列出各子變更現況與跳轉，且 SHALL 為唯讀——SHALL NOT 提供「轉為變更」或「再轉出一個變更」動作。concluded 卡的封存動詞 SHALL 經確認後將討論移入封存。GUI SHALL NOT 提供 conclude、add-round、new、discard、轉為變更（promote）——討論的推進、結論撰寫與轉出變更屬 agent 與 CLI。來自討論的變更卡 SHALL 帶討論徽章，其詳情抽屜 SHALL 顯示來源討論與同源變更清單並可互跳。
 
 #### Scenario: 有結論的討論預設開啟結論分頁
 
 - **WHEN** 使用者開啟一筆已結論（結論區段非空）討論的抽屜
 - **THEN** 抽屜顯示分頁 結論／討論過程 N／背景／衍生變更，且預設呈現結論內容；階梯顯示「已結論」為現站
 
-#### Scenario: GUI 轉為變更建立變更
+#### Scenario: 衍生變更分頁唯讀且無轉出動作
 
-- **WHEN** 使用者於已結論討論卡按「轉為變更」並確認
-- **THEN** 新變更出現於提案中欄、其 .openspec.yaml 含 from_discussion、proposal.md 以結論預填；討論改於「已轉出變更的討論」群組以細列呈現且 promoted_to 含新變更名
+- **WHEN** 使用者開啟一筆已結論或已轉出討論的抽屜衍生變更分頁
+- **THEN** 分頁列出各子變更現況與跳轉按鈕，但不呈現「轉為變更」或「再轉出一個變更」按鈕
 
-#### Scenario: 再轉出一個變更（扇出第二刀）
+#### Scenario: GUI 不提供轉出等寫入動詞
 
-- **WHEN** 使用者於已轉出討論的抽屜衍生變更分頁按「再轉出一個變更」、輸入新名稱並確認
-- **THEN** 第二個變更建立並現身提案中欄，細列樹狀子項增加對應一列，promoted_to 累積兩個名稱
-
-#### Scenario: 轉為變更失敗浮出錯誤
-
-- **WHEN** 轉出的變更名與既有 active 變更同名
-- **THEN** 前端顯示單行錯誤訊息，看板與討論記錄皆不變
+- **WHEN** 使用者檢視任一討論抽屜或討論卡
+- **THEN** 介面不提供 conclude、add-round、轉為變更等寫入動作，轉出變更改由 CLI 或 agent 執行
 
 #### Scenario: 同源 change 互跳
 
@@ -810,34 +750,25 @@ code:
 
 
 <!-- @trace
-source: desktop-discussion-ui-polish
-updated: 2026-07-06
+source: desktop-verb-drawer-surface
+updated: 2026-07-09
 code:
-  - .spectra.yaml
-  - apps/desktop/core/src/discussions.rs
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
   - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/App.test.tsx
   - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
+  - apps/desktop/src/i18n/messages.ts
   - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/teststore.rs
-  - packages/ui/src/__tests__/archivedList.test.tsx
+  - packages/ui/src/__tests__/analyzePanel.test.tsx
   - packages/ui/src/__tests__/discussionColumn.test.tsx
   - packages/ui/src/__tests__/discussionDrawer.test.tsx
+  - packages/ui/src/__tests__/richDrawer.test.tsx
   - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
+  - packages/ui/src/components/AnalyzePanel.tsx
   - packages/ui/src/components/DiscussionColumn.tsx
   - packages/ui/src/components/DiscussionDrawer.tsx
   - packages/ui/src/components/KanbanBoard.tsx
   - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/i18n.tsx
   - packages/ui/src/index.ts
 -->
 

@@ -72,7 +72,6 @@ function makeProps(over: Record<string, unknown> = {}) {
     loadDocument: vi.fn(async () => DOC),
     changes,
     archivedChanges,
-    onPromote: vi.fn(),
     onOpenChangeCard: vi.fn(),
     ...over,
   };
@@ -383,33 +382,26 @@ describe("DiscussionDrawer", () => {
     expect(within(rowGone).queryByRole("button", { name: /開啟卡片/ })).toBeNull();
   });
 
-  it("concluded 為「轉為變更」、promoted 為「再轉出一個變更」；open 無轉出按鈕", async () => {
-    const props = makeProps();
-    const { unmount } = render(<DiscussionDrawer {...(props as never)} />);
+  it("衍生變更分頁唯讀：concluded／promoted 皆無「轉為變更／再轉出一個變更」動作（D3）", async () => {
+    // promote 已自 GUI 撤除——衍生變更分頁只列子變更與跳轉，無任何轉出鈕。
+    const { unmount } = render(<DiscussionDrawer {...(makeProps() as never)} />);
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
-    fireEvent.click(screen.getByRole("button", { name: /轉為變更/ }));
-    expect(props.onPromote).toHaveBeenCalledWith("alpha-search");
+    expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /促轉/ })).toBeNull();
     unmount();
 
-    const props2 = makeProps({ discussion: promotedD });
-    const { unmount: unmount2 } = render(<DiscussionDrawer {...(props2 as never)} />);
+    const { unmount: unmount2 } = render(
+      <DiscussionDrawer {...(makeProps({ discussion: promotedD }) as never)} />,
+    );
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
-    fireEvent.click(screen.getByRole("button", { name: /再轉出一個變更/ }));
-    expect(props2.onPromote).toHaveBeenCalledWith("alpha-search");
+    expect(screen.queryByRole("button", { name: /再轉出一個變更/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
     unmount2();
 
     const props3 = makeProps({ discussion: openD, loadDocument: vi.fn(async () => OPEN_DOC) });
     render(<DiscussionDrawer {...(props3 as never)} />);
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
     expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /促轉/ })).toBeNull();
-  });
-
-  it("促轉失敗以單行錯誤呈現", async () => {
-    const props = makeProps({ error: "Change 'alpha-search' already exists." });
-    render(<DiscussionDrawer {...(props as never)} />);
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("already exists");
   });
 });
 

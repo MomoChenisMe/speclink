@@ -234,18 +234,14 @@ export interface DiscussionDrawerProps {
   changes: ChangeItem[];
   /** 已封存 change 清單（衍生變更分頁已封存態派生）。 */
   archivedChanges: ArchivedItem[];
-  /** 轉為變更／再轉出一個變更請求（app 端接確認對話框）。 */
-  onPromote?: (slug: string) => void;
   /** 衍生變更分頁「開啟卡片」跳轉。 */
   onOpenChangeCard?: (name: string) => void;
-  /** 轉為變更失敗的單行錯誤（app 端注入；null＝無錯誤）。 */
-  error?: string | null;
 }
 
 /**
  * 討論抽屜：結論／討論過程／背景／衍生變更四分頁（結論非空時預設開結論），
- * 標題下方生命週期階梯標示現站（design D3）；衍生變更分頁列各子變更現況與
- * 跳轉，底部轉為變更（concluded）／再轉出一個變更（promoted）動詞。
+ * 標題下方生命週期階梯標示現站（design D3）；衍生變更分頁唯讀——列各子變更
+ * 現況與跳轉，無轉出動作（promote 已自 GUI 撤除，轉出改由 CLI／agent）。
  * 記錄格式非預期時整篇單一檢視退回。GUI 不提供 conclude 等寫入。
  */
 export function DiscussionDrawer({
@@ -256,9 +252,7 @@ export function DiscussionDrawer({
   loadDocument,
   changes,
   archivedChanges,
-  onPromote,
   onOpenChangeCard,
-  error,
 }: DiscussionDrawerProps) {
   const { t } = useI18n();
   const [doc, setDoc] = useState<string | null | undefined>();
@@ -295,9 +289,6 @@ export function DiscussionDrawer({
   if (!discussion) return null;
 
   const sections = doc ? splitDiscussionSections(doc) : null;
-  const canPromote = discussion.status === "concluded" || discussion.status === "promoted";
-  const promoteLabel =
-    discussion.promotedTo.length > 0 ? t("ddrawer.promoteAgain") : t("discussion.promote");
 
   const promotePane = (
     <div className="flex h-full flex-col gap-2">
@@ -331,18 +322,6 @@ export function DiscussionDrawer({
               </div>
             );
           })}
-        </div>
-      )}
-      {canPromote && (
-        <div className="pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1"
-            onClick={() => onPromote?.(discussion.slug)}
-          >
-            <Rocket className="h-3.5 w-3.5" /> {promoteLabel}
-          </Button>
         </div>
       )}
     </div>
@@ -393,11 +372,6 @@ export function DiscussionDrawer({
               </span>
             ))}
           </div>
-          {error && (
-            <p role="alert" className="text-xs text-destructive">
-              {error}
-            </p>
-          )}
         </SheetHeader>
 
         {sections ? (

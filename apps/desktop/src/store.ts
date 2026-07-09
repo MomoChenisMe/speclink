@@ -9,6 +9,8 @@ import type {
   DiscussionLists,
   ListView,
   Verb,
+  AnalyzeReport,
+  VerbDrawerResult,
 } from "@speclink/ui";
 
 import { appT } from "./i18n/runtime";
@@ -49,13 +51,12 @@ export interface AppState {
 
   pendingArchive: string | null;
   pendingDelete: string | null;
-  /** 待確認的轉為變更（討論 slug）。 */
-  pendingPromote: string | null;
   /** 待確認的討論歸檔（slug）。 */
   pendingArchiveDiscussion: string | null;
-  /** 最近一次轉為變更失敗的單行錯誤（討論抽屜呈現；null=無）。 */
-  promoteError: string | null;
+  /** 視窗頂列狀態列：看板全域操作（刪除／封存／拖排失敗）之結果；null=無。 */
   verbResult: string | null;
+  /** 詳情抽屜內呈現的 validate／analyze 結構化結果（keyed by change）；null=無。 */
+  drawerVerb: VerbDrawerResult | null;
 
   refresh: () => Promise<void>;
   setBoardView: (v: BoardView) => void;
@@ -73,10 +74,6 @@ export interface AppState {
   requestDelete: (name: string) => void;
   confirmDelete: () => Promise<void>;
   cancelDelete: () => void;
-  requestPromote: (slug: string) => void;
-  /** 確認轉為變更；name 為對話框輸入的變更名（省略時由 slug 衍生）。 */
-  confirmPromote: (name?: string) => Promise<void>;
-  cancelPromote: () => void;
   requestArchiveDiscussion: (slug: string) => void;
   confirmArchiveDiscussion: () => Promise<void>;
   cancelArchiveDiscussion: () => void;
@@ -108,22 +105,6 @@ export interface AppState {
   cycleTab: () => Promise<void>;
   /** Ctrl+1..9：直達第 N 個分頁（1-based；超界不動作）。 */
   gotoTab: (n: number) => Promise<void>;
-}
-
-/** 把動詞回傳的 payload 轉成簡潔的人眼訊息（取代生 JSON）。 */
-function formatVerbResult(verb: Verb, r: unknown): string {
-  const o = (r ?? {}) as Record<string, unknown>;
-  if (verb === "validate") {
-    return o.valid ? "validate ✓ valid" : `validate ✗ ${(o.errors as string[] | undefined)?.[0] ?? "invalid"}`;
-  }
-  if (verb === "analyze") {
-    const n = Array.isArray(o.findings) ? o.findings.length : 0;
-    return `analyze ✓ ${n} finding${n === 1 ? "" : "s"}`;
-  }
-  if (verb === "archive") {
-    return `archive ✓ ${(o.datedName as string) ?? "archived"}`;
-  }
-  return `${verb} ✓`;
 }
 
 /**
@@ -172,10 +153,9 @@ export function createAppStore(
     detailDiscussion: null,
     pendingArchive: null,
     pendingDelete: null,
-    pendingPromote: null,
     pendingArchiveDiscussion: null,
-    promoteError: null,
     verbResult: null,
+    drawerVerb: null,
 
     async refresh() {
       const [changes, specs, archived, discussions] = await Promise.all([
@@ -231,11 +211,12 @@ export function createAppStore(
 
     openDetail(name) {
       const c = get().changes.find((x) => x.name === name);
-      if (c) set({ detailChange: c });
+      // 換 change 清掉上一個 change 的動詞結果（drawerVerb keyed by change）。
+      if (c) set({ detailChange: c, drawerVerb: null });
     },
 
     closeDetail() {
-      set({ detailChange: null });
+      set({ detailChange: null, drawerVerb: null });
     },
 
     openDiscussion(slug) {
@@ -243,11 +224,11 @@ export function createAppStore(
       const d =
         lists.active.find((x) => x.slug === slug) ??
         lists.archived.find((x) => x.slug === slug);
-      if (d) set({ detailDiscussion: d, promoteError: null });
+      if (d) set({ detailDiscussion: d });
     },
 
     closeDiscussion() {
-      set({ detailDiscussion: null, promoteError: null });
+      set({ detailDiscussion: null });
     },
 
     requestArchive(name) {
@@ -285,28 +266,6 @@ export function createAppStore(
       set({ pendingDelete: null });
     },
 
-    requestPromote(slug) {
-      set({ pendingPromote: slug });
-    },
-
-    async confirmPromote(name) {
-      const slug = get().pendingPromote;
-      set({ pendingPromote: null });
-      if (!slug) return;
-      try {
-        const r = await dataSource.promoteDiscussion(slug, name?.trim() || undefined);
-        set({ promoteError: null, verbResult: `${slug} · ${appT("store.promoted")} ${r.change}` });
-      } catch (e) {
-        // 轉為變更失敗：單行錯誤（討論抽屜與頂欄皆呈現），看板不變。
-        set({ promoteError: String(e), verbResult: `${slug} · ${appT("store.promoteFailed")} ${String(e)}` });
-      }
-      await get().refresh();
-    },
-
-    cancelPromote() {
-      set({ pendingPromote: null });
-    },
-
     requestArchiveDiscussion(slug) {
       set({ pendingArchiveDiscussion: slug });
     },
@@ -329,12 +288,30 @@ export function createAppStore(
     },
 
     async runVerb(verb, change) {
+      // archive 屬看板全域操作：結果仍呈於視窗頂列狀態列（D1）。
+      if (verb === "archive") {
+        try {
+          const r = await dataSource.runVerb(verb, change);
+          const o = (r ?? {}) as { datedName?: string };
+          set({ verbResult: `${change} · archive ✓ ${o.datedName ?? "archived"}` });
+        } catch (e) {
+          // 失敗時呈現 core 的錯誤訊息，不靜默吞掉。
+          set({ verbResult: `${change} · ${verb} ✗ ${String(e)}` });
+        }
+        await get().refresh();
+        return;
+      }
+      // validate／analyze：結構化結果進詳情抽屜、不佔頂列（D1/D2）。
       try {
         const r = await dataSource.runVerb(verb, change);
-        set({ verbResult: `${change} · ${formatVerbResult(verb, r)}` });
+        if (verb === "validate") {
+          const o = (r ?? {}) as { valid?: boolean; errors?: string[] };
+          set({ drawerVerb: { change, verb, validate: { valid: !!o.valid, errors: o.errors ?? [] } } });
+        } else {
+          set({ drawerVerb: { change, verb, analyze: r as AnalyzeReport } });
+        }
       } catch (e) {
-        // 失敗時呈現 core 的錯誤訊息，不靜默吞掉。
-        set({ verbResult: `${change} · ${verb} ✗ ${String(e)}` });
+        set({ drawerVerb: { change, verb, error: String(e) } });
       }
       await get().refresh();
     },
