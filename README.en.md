@@ -129,6 +129,8 @@ This is Speclink's main extension over Spectra. Spectra's discuss is a pure skil
 
 Documents follow four rules: one question per round, append-only (no rewriting), explicitly record excluded options, and the conclusion must resolve or explicitly defer every open question. A `promote`d discussion is **co-archived automatically** when its change is archived (one discussion can fan out into several changes). Discussion documents are **not created at the outset**: they land only at the first substantive round, so a mistaken or one-line topic leaves no file; drop a discussion you no longer need with `discard` — a substantive one should `conclude` + `archive` to preserve the reasoning ("decided not to do it" is a conclusion worth keeping).
 
+**Cut and reopen**: to discard a change and start over, use `speclink discard <change>` — it deletes the change and unlinks its source discussions from their `promoted_to`; when that empties a discussion's list, its status reverts to `concluded` (with a conclusion) or `open` (without), so the same discussion can `promote` a follow-up change. A change with started work (`started_at` or checked tasks) needs `--force` to discard.
+
 ---
 
 ## CLI
@@ -191,6 +193,7 @@ Grouped by purpose. Every command supports `--no-color`; most support `--json` f
 | `speclink instructions <artifact\|apply> --change <name> [--json]` | Get the instructions payload for an artifact (or apply mode) |
 | `speclink task done <id> --change <name>` | Mark the Nth task done and record touched files |
 | `speclink archive [name...] [-y] [--all]` | Archive. Multiple names or `--all` for batch; `--skip-specs`, `--no-validate`, `--mark-tasks-complete` |
+| `speclink discard <change> [--force]` | Discard a change. Deletes the change directory and unlinks its source discussions from `promoted_to` (a discussion whose list empties reverts to concluded/open); a change with started work (`started_at` or checked tasks) needs `--force` |
 | `speclink in-progress <...>` | Manage in-progress markers |
 | `speclink discuss <...>` | Document-based discussion (`new`／`context`／`add-round`／`conclude`／`promote`／`archive`／`discard`, see above) |
 

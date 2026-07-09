@@ -359,6 +359,14 @@ impl Store for JsStoreBridge {
         Ok(())
     }
 
+    // Like the change-meta raw pair, `deleteChange` is an OPTIONAL host method
+    // (not in REQUIRED_METHODS — existing JS stores keep validating): a store
+    // without it fails the call only when `discard` actually reaches it.
+    fn delete_change(&self, name: &str) -> anyhow::Result<()> {
+        self.call_result("deleteChange", serde_json::json!([name]))?;
+        Ok(())
+    }
+
     // --- artifacts ---
 
     fn read_artifact(&self, change: &str, artifact: &str) -> Option<String> {

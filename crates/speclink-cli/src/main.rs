@@ -52,6 +52,8 @@ enum Commands {
     Drift(ChangeArg),
     /// Archive a completed change
     Archive(ArchiveArgs),
+    /// Discard a change (delete it; --force required once work has started)
+    Discard(DiscardArgs),
     /// Claim a change for implementation (remote mode)
     Claim(ClaimArgs),
     /// Connect this repo to a remote spec store
@@ -210,6 +212,18 @@ struct ArchiveArgs {
     /// Mark all incomplete tasks as complete before archiving
     #[arg(long = "mark-tasks-complete")]
     mark_tasks_complete: bool,
+}
+
+#[derive(Args)]
+struct DiscardArgs {
+    /// Change to discard
+    change: String,
+    /// Discard even when the change has started work (started_at or checked tasks)
+    #[arg(long)]
+    force: bool,
+    /// Output as JSON
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Args)]

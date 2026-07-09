@@ -30,6 +30,9 @@ pub(crate) struct TestStore {
     pub discussions: RefCell<HashMap<String, String>>,
     /// Archived discussion slug → document text (promote must refuse these).
     pub archived_discussions: RefCell<HashMap<String, String>>,
+    /// When set, `delete_change` fails — lets discard tests exercise the
+    /// "directory removal failed, unlinks not rolled back" path.
+    pub fail_delete_change: RefCell<bool>,
 }
 
 impl TestStore {
@@ -100,6 +103,14 @@ impl Store for TestStore {
     fn write_change_meta(&self, name: &str, content: &str) -> Result<()> {
         self.metas.borrow_mut().insert(name.to_string(), content.to_string());
         *self.meta_writes.borrow_mut() += 1;
+        Ok(())
+    }
+    fn delete_change(&self, name: &str) -> Result<()> {
+        if *self.fail_delete_change.borrow() {
+            anyhow::bail!("simulated delete failure");
+        }
+        self.metas.borrow_mut().remove(name);
+        self.artifacts.borrow_mut().retain(|(c, _), _| c != name);
         Ok(())
     }
     fn read_artifact(&self, change: &str, artifact: &str) -> Option<String> {

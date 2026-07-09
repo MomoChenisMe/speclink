@@ -128,6 +128,8 @@ discuss?  →  propose  →  apply  ⇄  ingest  →  verify?  →  archive
 
 文件遵循四條規則：每輪聚焦一個問題、只追加不改寫、明確記錄被排除的方案、結論必須解決或明確延後每一個未決問題。`promote` 後的討論會在該 change 歸檔時**自動一起歸檔**（一場討論可扇出多個 change）。討論文件**不會在開場就建立**：直到第一個實質回合才落地，誤觸或一句話答完的話題不留檔案；聊到一半發現不需要的用 `discard` 清掉——「決定不做」也是值得 `conclude` + `archive` 保留的結論。
 
+**砍掉另開**：想廢棄一個變更重起爐灶，用 `speclink discard <change>`——它會刪除變更並把來源討論自 `promoted_to` 解鏈；當某討論的清單因此清空，其狀態回退成 `concluded`（有結論）或 `open`（無結論），於是同一場討論可再 `promote` 出後繼變更。動過工的變更（`started_at` 或已勾任務）需 `--force` 才能砍。
+
 ---
 
 ## CLI
@@ -189,6 +191,7 @@ speclink archive <name> -y
 | `speclink instructions <artifact\|apply> --change <name> [--json]` | 取得某 artifact（或 apply 模式）的 instructions payload |
 | `speclink task done <id> --change <name>` | 標記第 N 個任務完成並記錄 touched 檔案 |
 | `speclink archive [name...] [-y] [--all]` | 歸檔。可多個名稱或 `--all` 批次；`--skip-specs`、`--no-validate`、`--mark-tasks-complete` |
+| `speclink discard <change> [--force]` | 廢棄變更。刪除變更目錄並將來源討論自 `promoted_to` 解鏈（清單清空則討論回退 concluded／open）；動過工的變更（`started_at` 或已勾任務）需 `--force` |
 | `speclink in-progress <...>` | 管理進行中標記 |
 | `speclink discuss <...>` | 文件式討論（`new`／`context`／`add-round`／`conclude`／`promote`／`archive`／`discard` 等，見上節） |
 

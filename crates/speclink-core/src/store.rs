@@ -62,6 +62,11 @@ pub trait Store {
     /// Overwrite the metadata document of an active change (symmetric with
     /// `write_archived_meta`).
     fn write_change_meta(&self, name: &str, content: &str) -> Result<()>;
+    /// Delete an active change outright — the storage side of `discard`.
+    /// Removes the change's entire document tree; a removal failure (a locked
+    /// directory, a permissions error) surfaces as an error. The engine guards
+    /// existence before calling, so this is never a "not found" path.
+    fn delete_change(&self, name: &str) -> Result<()>;
 
     // --- artifacts ---
 

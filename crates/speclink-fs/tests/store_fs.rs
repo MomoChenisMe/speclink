@@ -117,6 +117,33 @@ fn create_change_writes_meta_and_reports_dir() {
     assert_eq!(c.dir, dir);
 }
 
+// --- delete change (discard) ---
+
+#[test]
+fn delete_change_removes_the_whole_tree_and_drops_it_from_the_listing() {
+    let root = TempRoot::new("delete-change");
+    let store = root.store();
+    store.create_change("demo", "schema: spec-driven\ncreated: 2026-07-09\n").unwrap();
+    store.write_artifact("demo", "proposal.md", "## Why\n\nx\n").unwrap();
+    store.write_artifact("demo", "tasks.md", "- [ ] 1.1 t\n").unwrap();
+    // Nested subdirectories with several files must be removed wholesale.
+    store.write_artifact("demo", "specs/cap-a/spec.md", "## ADDED Requirements\n").unwrap();
+    store.write_artifact("demo", "specs/cap-b/spec.md", "## ADDED Requirements\n").unwrap();
+    // A sibling change must survive.
+    store.create_change("keep", "schema: spec-driven\n").unwrap();
+
+    assert!(store.change_exists("demo"));
+    store.delete_change("demo").unwrap();
+
+    assert!(!store.change_exists("demo"));
+    assert!(
+        !root.dir.join("openspec/changes/demo".split('/').collect::<PathBuf>()).exists(),
+        "the change directory (and its nested specs/) must be gone"
+    );
+    let names: Vec<String> = store.list_changes().into_iter().map(|c| c.name).collect();
+    assert_eq!(names, vec!["keep"], "only the deleted change leaves the listing");
+}
+
 // --- active change metadata: raw read/write pair (symmetric with archived) ---
 
 #[test]

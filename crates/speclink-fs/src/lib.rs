@@ -157,6 +157,11 @@ impl Store for FsStore {
         Ok(())
     }
 
+    fn delete_change(&self, name: &str) -> Result<()> {
+        std::fs::remove_dir_all(self.layout.change_dir(name))?;
+        Ok(())
+    }
+
     fn updated_at_secs(&self, name: &str) -> u64 {
         // Newest file mtime inside the change (recursive), truncated to whole
         // seconds — the engine's "most recently modified" sort key.
