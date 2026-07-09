@@ -17,6 +17,7 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Analyze(a) => cmd_analyze(a),
         Commands::Drift(a) => cmd_drift(a),
         Commands::Archive(a) => cmd_archive(a),
+        Commands::Discard(a) => cmd_discard(a),
         Commands::Claim(a) => cmd_claim(a),
         Commands::Link(a) => cmd_link(a),
         Commands::Unlink => cmd_unlink(),
@@ -836,6 +837,33 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
         archived.len(),
         skipped.len()
     );
+    Ok(())
+}
+
+// --- discard ---
+
+fn cmd_discard(a: DiscardArgs) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_discard(&ctx, &a);
+    }
+    let (ws, store) = open_project()?;
+    let store: &dyn Store = &store;
+    let outcome = core::discard::discard(&ws, store, &a.change, a.force)?;
+    if a.json {
+        let discussions: Vec<serde_json::Value> = outcome
+            .unlinked_discussions
+            .iter()
+            .map(|(slug, status)| serde_json::json!({ "slug": slug, "status": status }))
+            .collect();
+        return print_json(&serde_json::json!({
+            "change": outcome.change_name,
+            "unlinkedDiscussions": discussions,
+        }));
+    }
+    println!("{} Discarded change: {}", color::green("✓"), outcome.change_name);
+    for (slug, status) in &outcome.unlinked_discussions {
+        println!("  Discussion unlinked: {slug} → {status}");
+    }
     Ok(())
 }
 

@@ -6,6 +6,7 @@ pub mod analyzer;
 pub mod archive;
 pub mod config;
 pub mod demo;
+pub mod discard;
 pub mod discuss;
 pub mod drift;
 pub mod init;

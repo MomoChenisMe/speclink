@@ -599,6 +599,12 @@ fn remote_claim(ctx: &RemoteCtx, name: &str) -> Result<()> {
     Ok(())
 }
 
+// Destructive change removal stays host-governed in remote mode — the local-only
+// verb does not cross the wire (mirrors `discuss discard`'s remote refusal).
+fn remote_discard(_ctx: &RemoteCtx, _a: &DiscardArgs) -> Result<()> {
+    bail!("discard is not available in remote mode — remove changes in the team system")
+}
+
 fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
     if a.all || a.changes.len() > 1 {
         bail!("bulk archive is not supported in remote mode — archive changes one at a time");

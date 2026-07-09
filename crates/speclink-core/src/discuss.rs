@@ -318,6 +318,51 @@ pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> 
     Ok(())
 }
 
+/// The discard-side inverse of [`mark_promoted`]: unlink a discarded change from a
+/// discussion. Removes the change name from the record's `promoted_to` comma
+/// accumulator; when other change names remain the record stays `promoted`, but once
+/// the list empties the `promoted_to` line is dropped and the status reverts — to
+/// `concluded` when the record carries a real conclusion, else `open` (a promote/link
+/// can raise an `open` discussion, so the revert restores its true prior state). The
+/// Context/Rounds/Conclusion sections are never touched — only the frontmatter link
+/// fields change (same layer `mark_promoted` writes). Returns the record's status
+/// after unlinking (`"promoted"` when merely shrunk, else the reverted status), or
+/// `None` when there was nothing to do: no live record for the slug (skipped, not an
+/// error — the record may be archived or gone), or the change was not in the list
+/// (idempotent — re-running discard leaves an already-unlinked record byte-identical).
+pub fn unlink_discarded(store: &dyn Store, slug: &str, change: &str) -> Result<Option<String>> {
+    let Some(mut text) = store.read_live_discussion(slug) else {
+        return Ok(None);
+    };
+    let Some(existing) = frontmatter_value(&text, "promoted_to") else {
+        return Ok(None);
+    };
+    let current: Vec<&str> =
+        existing.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+    let remaining: Vec<&str> = current.iter().copied().filter(|s| *s != change).collect();
+    if remaining.len() == current.len() {
+        // change was never linked here — idempotent no-op, no write
+        return Ok(None);
+    }
+    if remaining.is_empty() {
+        // last link died: drop the promoted_to line and revert the status
+        let reverted = if conclusion_text(store, slug).is_some() { "concluded" } else { "open" };
+        text = text.replacen(&format!("promoted_to: {existing}\n"), "", 1);
+        text = text.replacen("status: promoted", &format!("status: {reverted}"), 1);
+        store.write_live_discussion(slug, &text)?;
+        Ok(Some(reverted.to_string()))
+    } else {
+        // still referenced by other changes: shrink the list, keep promoted
+        text = text.replacen(
+            &format!("promoted_to: {existing}"),
+            &format!("promoted_to: {}", remaining.join(", ")),
+            1,
+        );
+        store.write_live_discussion(slug, &text)?;
+        Ok(Some("promoted".to_string()))
+    }
+}
+
 /// Outcome of promoting a discussion into a change.
 #[derive(Debug)]
 pub struct PromoteOutcome {
@@ -853,6 +898,109 @@ mod tests {
         let store = TestStore::default();
         store.archived_discussions.borrow_mut().insert("done-topic".to_string(), doc);
         assert_eq!(super::promoted_to(&store, "done-topic"), vec!["only-cut".to_string()]);
+    }
+
+    // --- unlink on discard（spec「討論隨變更廢棄解鏈」；design D2） ---
+
+    /// concluded_doc 提升為 promoted，promoted_to 設為指定清單。
+    fn promoted_concluded(slug: &str, topic: &str, decision: &str, to: &str) -> String {
+        concluded_doc(slug, topic, decision).replacen(
+            "status: concluded\n",
+            &format!("status: promoted\npromoted_to: {to}\n"),
+            1,
+        )
+    }
+
+    #[test]
+    fn unlink_reverts_to_concluded_when_last_link_dies() {
+        // spec Example「回退前後的 frontmatter」＋「最後連結死亡回退 concluded」：
+        // 唯一值移除 → promoted_to 行消失、status 回 concluded；Context/Rounds/Conclusion
+        // 逐位元不變（回退後 == 原 concluded 記錄）。
+        let store = TestStore::with_live_discussion(
+            "alpha-search",
+            &promoted_concluded("alpha-search", "Alpha search", "build alpha search", "cut-a"),
+        );
+        let reverted = super::unlink_discarded(&store, "alpha-search", "cut-a").unwrap();
+        assert_eq!(reverted.as_deref(), Some("concluded"));
+        assert_eq!(
+            store.discussion("alpha-search"),
+            concluded_doc("alpha-search", "Alpha search", "build alpha search"),
+            "promoted_to 行消失、status 回 concluded、其餘逐位元不變"
+        );
+    }
+
+    #[test]
+    fn unlink_shrinks_list_and_keeps_promoted_when_others_remain() {
+        // spec「仍有其他變更時維持 promoted」：多值僅縮減、status 維持 promoted。
+        let store = TestStore::with_live_discussion(
+            "alpha-search",
+            &promoted_concluded("alpha-search", "Alpha search", "x", "cut-a, cut-b"),
+        );
+        let reverted = super::unlink_discarded(&store, "alpha-search", "cut-a").unwrap();
+        assert_eq!(reverted.as_deref(), Some("promoted"));
+        assert_eq!(
+            store.discussion("alpha-search"),
+            promoted_concluded("alpha-search", "Alpha search", "x", "cut-b"),
+            "移除 cut-a、保留 cut-b、status 維持 promoted"
+        );
+    }
+
+    #[test]
+    fn unlink_reverts_to_open_when_no_conclusion() {
+        // spec「無結論的討論回退 open」：Conclusion 為空的 open 討論經 link 後廢棄 → 回 open。
+        let raised = open_doc("open-one", "Open topic").replacen(
+            "status: open\n",
+            "status: promoted\npromoted_to: cut\n",
+            1,
+        );
+        let store = TestStore::with_live_discussion("open-one", &raised);
+        let reverted = super::unlink_discarded(&store, "open-one", "cut").unwrap();
+        assert_eq!(reverted.as_deref(), Some("open"));
+        assert_eq!(
+            store.discussion("open-one"),
+            open_doc("open-one", "Open topic"),
+            "promoted_to 行消失、status 回 open、其餘逐位元不變"
+        );
+    }
+
+    #[test]
+    fn unlink_skips_missing_record_without_error() {
+        // spec「缺失記錄跳過」：無 live 記錄（不存在或僅存於 archive）→ Ok(None)、不失敗。
+        let empty = TestStore::default();
+        assert_eq!(super::unlink_discarded(&empty, "ghost", "cut").unwrap(), None);
+
+        let archived = TestStore::default();
+        archived
+            .archived_discussions
+            .borrow_mut()
+            .insert("old".into(), promoted_concluded("old", "Old", "x", "cut"));
+        assert_eq!(super::unlink_discarded(&archived, "old", "cut").unwrap(), None);
+    }
+
+    #[test]
+    fn unlink_is_idempotent_on_already_unlinked_record() {
+        // spec「對已解鏈的討論重跑冪等」：重跑對 promoted_to 已無該名的記錄 → Ok(None)、不改檔。
+        let store = TestStore::with_live_discussion(
+            "alpha-search",
+            &promoted_concluded("alpha-search", "Alpha search", "x", "cut-a"),
+        );
+        super::unlink_discarded(&store, "alpha-search", "cut-a").unwrap();
+        let after_first = store.discussion("alpha-search");
+        let rerun = super::unlink_discarded(&store, "alpha-search", "cut-a").unwrap();
+        assert_eq!(rerun, None, "已解鏈記錄重跑不回報狀態");
+        assert_eq!(store.discussion("alpha-search"), after_first, "重跑不改檔");
+    }
+
+    #[test]
+    fn unlink_ignores_a_change_that_was_never_linked() {
+        // 冪等的另一面：promoted_to 有值但不含目標變更名 → 不動、不失敗、不回報。
+        let store = TestStore::with_live_discussion(
+            "alpha-search",
+            &promoted_concluded("alpha-search", "Alpha search", "x", "cut-a, cut-b"),
+        );
+        let before = store.discussion("alpha-search");
+        assert_eq!(super::unlink_discarded(&store, "alpha-search", "cut-z").unwrap(), None);
+        assert_eq!(store.discussion("alpha-search"), before);
     }
 
     // --- link flow（spec「討論以 link 動詞併入既有變更」；design D1–D4） ---
