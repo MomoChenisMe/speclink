@@ -3,7 +3,7 @@ use clap::{Args, Parser, Subcommand};
 use speclink_core as core;
 
 mod color;
-use std::io::Read;
+use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -668,6 +668,19 @@ fn read_stdin() -> String {
     let mut buf = String::new();
     let _ = std::io::stdin().read_to_string(&mut buf);
     buf
+}
+
+/// Read stdin for a content-taking discuss verb. Reads when the caller passed `--stdin`
+/// OR stdin is piped/redirected (not an interactive terminal) — so a forgotten `--stdin`
+/// with piped content still lands instead of silently becoming empty. An interactive
+/// terminal with no pipe yields an empty string, which the core content guard rejects
+/// with a helpful message. `--stdin` is kept for back-compat but is no longer required.
+fn read_stdin_content(flag: bool) -> String {
+    if flag || !std::io::stdin().is_terminal() {
+        read_stdin()
+    } else {
+        String::new()
+    }
 }
 
 fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {

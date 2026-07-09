@@ -1691,7 +1691,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             print!("{content}");
         }
         DiscussCommands::Context { slug, stdin, json } => {
-            let content = if stdin { read_stdin() } else { String::new() };
+            let content = read_stdin_content(stdin);
             core::discuss::set_context(store, &slug, &content)?;
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "context": "set" }));
@@ -1699,7 +1699,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             println!("{} Set context for discussion '{slug}'", color::green("✓"));
         }
         DiscussCommands::AddRound { slug, mode, stdin, json } => {
-            let content = if stdin { read_stdin() } else { String::new() };
+            let content = read_stdin_content(stdin);
             let round = core::discuss::add_round(store, &slug, &mode, &content)?;
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "round": round, "mode": mode }));
@@ -1707,7 +1707,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             println!("{} Recorded round {round} ({mode}) to discussion '{slug}'", color::green("✓"));
         }
         DiscussCommands::Conclude { slug, stdin, json } => {
-            let content = if stdin { read_stdin() } else { String::new() };
+            let content = read_stdin_content(stdin);
             let flagged = core::discuss::conclude(store, &slug, &content)?;
             if json {
                 // Byte-identical to before when nothing was flagged (promoted_to empty);
