@@ -35,8 +35,8 @@
 
 - Affected specs: 新增 `delivery-baseline`（openspec/specs/delivery-baseline/spec.md 於 archive 時建立）。
 - Affected code:
-  - Modified: crates/speclink-node/package.json、crates/speclink-node/package-lock.json、crates/speclink-node/src/store_bridge.rs（單點豁免，兩行欄位映射）、crates/speclink-node/__test__/helpers.ts（fixture 路徑 realpath 正規化）、crates/speclink-cli/tests/discuss_promote_snapshot.rs（macOS tempdir symlink 正規化）、crates/speclink-core/src/config.rs（僅 #[cfg(test)] 測試模組內的平台條件斷言，詳見 design 決策五）、crates/speclink-core/tests/golden 的兩個 snapshot 檔（main 既有失同步，乾淨樹再生、純空白行）、crates/speclink-fs/tests/store_fs.rs（readdir 順序正規化）、.github/workflows/ci.yml、.github/workflows/node-sdk.yml（可測平台補一步 release CLI build）、package.json、apps/desktop 既有測試檔（act warnings 清零，實際檔案於執行時依測試輸出定位）。
-  - New: 無（root 指令加在既有 package.json 的 scripts，不新增檔案）。
+  - Modified: crates/speclink-node/package.json、crates/speclink-node/package-lock.json、crates/speclink-node/src/store_bridge.rs（單點豁免，兩行欄位映射）、crates/speclink-node/__test__/helpers.ts（fixture 路徑 realpath 正規化）、crates/speclink-cli/tests/discuss_promote_snapshot.rs（macOS tempdir symlink 正規化）、crates/speclink-core/src/config.rs（僅 #[cfg(test)] 測試模組內的平台條件斷言，詳見 design 決策五）、crates/speclink-core/tests/golden 的兩個 snapshot 檔（main 既有失同步，乾淨樹再生、純空白行）、crates/speclink-fs/tests/store_fs.rs（readdir 順序正規化）、apps/desktop/src-tauri/src/watch.rs（僅 cfg(test) 測試模組——watcher 測試 CI 環境免疫化）、.github/workflows/ci.yml、.github/workflows/node-sdk.yml（可測平台補一步 release CLI build）、package.json、apps/desktop 既有測試檔（act warnings 清零，實際檔案於執行時依測試輸出定位）。
+  - New: .gitattributes（全 repo 強制 LF checkout——CI 揭露 golden 因 autocrlf 平台漂移的根除，詳見 design 決策五）。
   - Removed: 無。
 - 影響的 crate：`speclink-core` 與 `speclink-cli` 原始碼零改動（其測試開始在 CI 執行）；`crates/speclink-node` 僅 packaging 層。
 - 不涉及 CLI 子指令、設定欄位（.speclink.yaml／openspec/config.yaml）與技能注入區塊。
