@@ -217,12 +217,12 @@ Context Materializer 完成時需同步調整：
 
 ```mermaid
 flowchart LR
-    G0["G0 交付基線修復"]
-    P1A["Phase 1A<br/>engine-typed-core"]
-    P1B["Phase 1B<br/>TeamStore contract"]
-    P1C["Phase 1C<br/>Host + Binding + Policy"]
-    P1D["Phase 1D<br/>Stable Task + Evidence + Drift"]
-    P1E["Phase 1E<br/>Protocol + Context + Client"]
+    G0["G0 交付基線修復<br/>delivery-baseline-and-node-packaging"]
+    P1A["Phase 1A<br/>engine-typed-core<br/>＋ change-metadata-fail-closed"]
+    P1B["Phase 1B<br/>teamstore-contract-v2"]
+    P1C["Phase 1C<br/>host-runtime-binding-policy"]
+    P1D["Phase 1D<br/>stable-task-and-evidence<br/>＋ drift-client-server-split"]
+    P1E["Phase 1E<br/>protocol-client-context"]
     P2["Phase 2<br/>speclink-server + Store drivers"]
     P3["Phase 3<br/>Desktop Remote Workspace"]
     P4["Phase 4<br/>MCP / Copilot Tools / Ecosystem"]
@@ -230,7 +230,7 @@ flowchart LR
     G0 --> P1A --> P1B --> P1C --> P1D --> P1E --> P2 --> P3 --> P4
 ```
 
-`G0` 是可靠交付的先行 gate，不是產品架構 Phase。正式產品能力仍以平台架構的 Phase 1 到 Phase 4 為準。
+`G0` 是可靠交付的先行 gate，不是產品架構 Phase。它可與 Phase 1A 的純 Rust 段並行，但必須在 Node 遷移與全量回歸（`engine-typed-core` 第 5、6 節）前完成。Phase 1A 與 1D 各含兩把刀，上圖標註即 §4.2 的七把 Phase 1 刀；正式產品能力仍以平台架構的 Phase 1 到 Phase 4 為準。
 
 ### 4.2 刀組與優先級
 
