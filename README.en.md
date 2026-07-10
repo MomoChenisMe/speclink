@@ -24,6 +24,9 @@ with discussions, Desktop, storage abstraction, the Node SDK, and the planned Re
 > TeamStore contract, `speclink-server`, Server Admin UI, and Desktop Remote Workspace are being delivered in phases defined by
 > the [platform architecture blueprint](docs/platform-architecture.zh-TW.md). The old remote REST v1 is no longer the target architecture.
 
+See the [current implementation alignment and refactoring roadmap](docs/implementation-refactor-roadmap.zh-TW.md) for the gap analysis,
+implementation priority, and acceptance gates for each phase.
+
 ## Architecture
 
 Speclink has one Rust implementation of workflow semantics. CLI, Desktop, Server, Node SDK, MCP, and Copilot Tools must all call
