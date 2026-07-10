@@ -384,7 +384,9 @@ describe("DiscussionDrawer", () => {
 
   it("衍生變更分頁唯讀：concluded／promoted 皆無「轉為變更／再轉出一個變更」動作（D3）", async () => {
     // promote 已自 GUI 撤除——衍生變更分頁只列子變更與跳轉，無任何轉出鈕。
+    // 各實例先等初始載入落地（標準格式解析出「背景」分頁），避免 act 警告。
     const { unmount } = render(<DiscussionDrawer {...(makeProps() as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
     expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /促轉/ })).toBeNull();
@@ -393,6 +395,7 @@ describe("DiscussionDrawer", () => {
     const { unmount: unmount2 } = render(
       <DiscussionDrawer {...(makeProps({ discussion: promotedD }) as never)} />,
     );
+    await screen.findByRole("tab", { name: /背景/ });
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
     expect(screen.queryByRole("button", { name: /再轉出一個變更/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
@@ -400,6 +403,7 @@ describe("DiscussionDrawer", () => {
 
     const props3 = makeProps({ discussion: openD, loadDocument: vi.fn(async () => OPEN_DOC) });
     render(<DiscussionDrawer {...(props3 as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
     expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
   });

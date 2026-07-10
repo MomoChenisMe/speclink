@@ -5,5 +5,8 @@
   "workspaces": [
     "packages/ui",
     "apps/desktop"
-  ]
+  ],
+  "scripts": {
+    "test:all": "cargo test --workspace && npm test -w packages/ui && npm test -w apps/desktop && npm --prefix crates/speclink-node ci && npm --prefix crates/speclink-node run build && npm --prefix crates/speclink-node test"
+  }
 }

@@ -286,11 +286,17 @@ fn canonical_spec_roundtrip_listing_and_missing_defaults() {
     );
 
     store.write_canonical_spec("cap-a", "# cap-a\n").unwrap();
-    assert_eq!(store.list_canonical_capabilities(), vec!["cap-a", "cap-x"]);
+    // The trait returns capabilities unsorted (callers sort); readdir order is
+    // filesystem-specific (NTFS sorts, APFS does not), so sort before comparing.
+    let sorted = |mut caps: Vec<String>| {
+        caps.sort();
+        caps
+    };
+    assert_eq!(sorted(store.list_canonical_capabilities()), vec!["cap-a", "cap-x"]);
 
     // A capability directory without spec.md is not listed.
     std::fs::create_dir_all(root.dir.join("openspec/specs/no-spec-here")).unwrap();
-    assert_eq!(store.list_canonical_capabilities(), vec!["cap-a", "cap-x"]);
+    assert_eq!(sorted(store.list_canonical_capabilities()), vec!["cap-a", "cap-x"]);
 }
 
 // --- archive ---

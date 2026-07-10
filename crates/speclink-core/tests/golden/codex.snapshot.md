@@ -1056,7 +1056,6 @@ No dirty files found for this change (no modified artifacts, no tracked source f
 - The "Unrelated Changes" section is informational only — these files are excluded by default
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
-
 === .agents/skills/speclink-discuss/SKILL.md ===
 ---
 name: speclink-discuss
@@ -1452,7 +1451,6 @@ When the discussion converges on building something:
 - **Do explore the codebase** — Ground discussions in reality.
 - **Do be opinionated** — Have a recommendation. The user can disagree.
 
-
 === .agents/skills/speclink-drift/SKILL.md ===
 ---
 name: speclink-drift
@@ -1574,7 +1572,6 @@ When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` dat
 - If `speclink drift` returns a non-zero exit code (e.g., older binary without the drift subcommand), report the error and stop
 - Do NOT auto-invoke any follow-up command — recommendations are user-confirmed
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-
 
 === .agents/skills/speclink-ingest/SKILL.md ===
 ---
@@ -2339,4 +2336,3 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** reinterpret requirements by ignoring the proposal file
 - **NEVER** invoke `$speclink-apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-

@@ -275,9 +275,11 @@ fn change_from_value(v: &serde_json::Value) -> Option<Change> {
             created_by: get("createdBy"),
             created_with: get("createdWith"),
             from_discussion: get("fromDiscussion"),
+            restale_from: get("restaleFrom"),
             started_at: get("startedAt"),
             started_by: get("startedBy"),
             started_with: get("startedWith"),
+            board_rank: get("boardRank"),
         },
     })
 }
