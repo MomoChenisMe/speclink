@@ -1262,6 +1262,10 @@ SSE 與 docker-compose。WebSocket 可作選配。
 
 ## 14. 建議交付順序
 
+目前程式碼與本藍圖的逐項差距、可保留模組、重構刀組及更細的交付 gate，見
+[`implementation-refactor-roadmap.zh-TW.md`](implementation-refactor-roadmap.zh-TW.md)。該文件是本藍圖的
+implementation companion；架構語意與 Phase 邊界仍以本文件為準。
+
 ### Phase 1：Engine 與正確性基礎
 
 1. 穩定 Rust Engine typed commands、typed outcomes、domain events 與唯一 Command Runtime，保留 `dispatch` 相容層。

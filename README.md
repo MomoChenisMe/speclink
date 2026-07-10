@@ -24,6 +24,9 @@ Store abstraction、Node SDK 與後續 Remote Platform 等延伸。
 > `speclink-server`、Server Admin UI 與 Desktop Remote Workspace 仍依[平台架構藍圖](docs/platform-architecture.zh-TW.md)
 > 分階段建置。舊 remote REST v1 不再是目標架構。
 
+目前程式碼與目標架構的差距、重構優先順序及各 Phase 驗收 gate，見
+[現況對齊與重構路線圖](docs/implementation-refactor-roadmap.zh-TW.md)。
+
 ## 核心架構
 
 Speclink 只有一份 Rust 流程語意實作。CLI、Desktop、Server、Node SDK、MCP 與 Copilot Tools 都必須呼叫同一個
