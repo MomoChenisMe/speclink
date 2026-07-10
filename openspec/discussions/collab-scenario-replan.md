@@ -1,7 +1,8 @@
 ---
 topic: 多人協作情境下的 speclink 架構重新規劃（PM/PO 建規格、RD 實作、規格檢視應用）
 slug: collab-scenario-replan
-status: concluded
+status: promoted
+promoted_to: engine-typed-core
 created: 2026-07-10
 ---
 
