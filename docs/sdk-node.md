@@ -1,5 +1,7 @@
 # Node SDK (@speclink/engine)
 
+> **Status:** This document describes the currently implemented Node SDK surface. The target typed Command Runtime, TeamStore contract, Host boundary, and Copilot Tool packaging are defined by [the platform architecture blueprint](platform-architecture.zh-TW.md).
+
 `@speclink/engine` embeds the Speclink engine in a Node.js process: your
 server (or AI-agent host) dispatches speclink verbs in-process, stores spec
 documents in its own database through a `Store` object, and renders the
@@ -156,9 +158,10 @@ await engine.dispatch(
   (`{ stdin }`).
 - **Output**: a Promise resolving to the same structured object the CLI
   prints with `--json` (camelCase field names). Verbs without a `--json` form
-  resolve to `{ output: string }`. Per-verb payload shapes are documented in
-  the [verb contract](verb-contract.md) (its payloads are named after the
-  fs-mode `--json` output, which is exactly what dispatch returns).
+  resolve to `{ output: string }`. The current TypeScript shapes live in
+  [`index.d.ts`](../crates/speclink-node/index.d.ts); the future remote
+  Command/Query payloads are governed by the platform blueprint and its
+  versioned Protocol work.
 - **Errors**: the Promise rejects with an `Error` — `message` is the CLI's
   semantic message (safe to hand straight back to an agent), `code`
   classifies it: `invalid_argv` (bad argv), `not_found` (change/discussion
@@ -268,9 +271,7 @@ no CLI, no child processes, no local `openspec/` tree.
 
 ## See also
 
-- [Verb contract](verb-contract.md) — per-verb payload shapes and the 409
-  reason catalog the `claim` codes come from.
-- [Architecture](architecture.md) — the engine–store–presentation layering
-  this SDK plugs into.
-- [Team mode](team-mode.md) — the CLI-side counterpart (remote store) of a
-  server built with this SDK.
+- [Platform architecture blueprint](platform-architecture.zh-TW.md) — the
+  target typed Runtime, TeamStore, Host, Protocol, Server, and Tool design.
+- [`index.d.ts`](../crates/speclink-node/index.d.ts) — the currently shipped
+  Node API and payload types.
