@@ -100,8 +100,11 @@ mod tests {
             h.fetch_add(1, Ordering::SeqCst);
         })
         .expect("watcher starts on an existing openspec tree");
-        // 監看就緒緩衝（Windows ReadDirectoryChangesW 掛載非同步）。
-        std::thread::sleep(Duration::from_millis(400));
+        // 監看就緒緩衝（Windows ReadDirectoryChangesW 掛載非同步），並讓 Linux 的掛載
+        // 自我通知流完：notify 以 WalkDir 遞迴補掛 watch，父目錄的 OPEN 遮罩把走訪
+        // 本身變成一批事件（FSEvents／RDCW 不報 open，僅 inotify 可見）。
+        std::thread::sleep(Duration::from_millis(600));
+        hits.store(0, Ordering::SeqCst); // 丟棄掛載批次，只計入動作後的通知
 
         // 一波連續寫入（外部 CLI 動詞的典型效果：meta＋tasks）。
         std::fs::write(changes.join("demo").join(".openspec.yaml"), "schema: spec-driven\n").unwrap();
@@ -125,7 +128,9 @@ mod tests {
             h.fetch_add(1, Ordering::SeqCst);
         })
         .expect("watcher starts");
-        std::thread::sleep(Duration::from_millis(400));
+        // 同 coalesce 測試：等掛載自我通知（Linux inotify 的 OPEN 遮罩）流完後歸零。
+        std::thread::sleep(Duration::from_millis(600));
+        hits.store(0, Ordering::SeqCst);
 
         // 快取與專案雜項都在 openspec/ 外——不得觸發。
         std::fs::write(root.0.join(".speclink").join("desktop-cache.db"), "cache").unwrap();
