@@ -1,0 +1,4 @@
+# 全 repo 以 LF checkout：skills 資產與 golden snapshot 的渲染比對是位元級，
+# autocrlf 造成的 CRLF checkout 會讓渲染輸出隨平台漂移（golden 曾因此在
+# Windows／macOS 間乒乓再生）。二進位檔由 text=auto 自動偵測排除。
+* text=auto eol=lf

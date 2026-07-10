@@ -65,10 +65,15 @@ mod tests {
 
     impl TempRoot {
         fn new(tag: &str) -> TempRoot {
-            let dir = std::env::temp_dir().join(format!(
-                "speclink-watch-{tag}-{}",
-                std::process::id()
-            ));
+            // 不用系統 tmpdir：CI 上系統排程（如 systemd-tmpfiles）會遍歷 /tmp，
+            // 而 notify 的 inotify 遮罩含 OPEN/ATTRIB——外部行程 open 監看樹內的
+            // 目錄就會變成事件，讓計數型斷言被環境雜訊擊穿。target/ 無人遍歷。
+            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("..")
+                .join("..")
+                .join("target")
+                .join(format!("speclink-watch-{tag}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(dir.join("openspec").join("changes")).unwrap();
             TempRoot(dir)
@@ -84,6 +89,11 @@ mod tests {
     #[test]
     fn writes_inside_openspec_coalesce_into_a_single_notification() {
         let root = TempRoot::new("coalesce");
+        // demo/ 先於監看存在：Linux inotify 對新目錄要事件後補掛 watch，目錄
+        // 建立與其內容寫入會被拆進不同 debounce 批次，「恰一次」斷言只能建立在
+        // 已被監看的目錄上（macOS FSEvents 無此拆分，先前不可見）。
+        let changes = root.0.join("openspec").join("changes");
+        std::fs::create_dir_all(changes.join("demo")).unwrap();
         let hits = Arc::new(AtomicUsize::new(0));
         let h = Arc::clone(&hits);
         let _watcher = watch_openspec(&root.0.join("openspec"), Duration::from_millis(300), move || {
@@ -93,9 +103,7 @@ mod tests {
         // 監看就緒緩衝（Windows ReadDirectoryChangesW 掛載非同步）。
         std::thread::sleep(Duration::from_millis(400));
 
-        // 一波連續寫入（外部 CLI 動詞的典型效果：meta＋tasks＋新檔）。
-        let changes = root.0.join("openspec").join("changes");
-        std::fs::create_dir_all(changes.join("demo")).unwrap();
+        // 一波連續寫入（外部 CLI 動詞的典型效果：meta＋tasks）。
         std::fs::write(changes.join("demo").join(".openspec.yaml"), "schema: spec-driven\n").unwrap();
         std::fs::write(changes.join("demo").join("tasks.md"), "- [ ] 1.1 t\n").unwrap();
 
