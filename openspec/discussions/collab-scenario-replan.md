@@ -107,18 +107,42 @@ Document rules:
 **Ruled out**: 續留「待補」狀態（三個擋定案項已全閉）。
 **Open**: 端遊三步待使用者拍板——藍圖入版控、本討論 re-conclude 收編藍圖為正式結論、路線圖依 §14 重切並自本討論逐一轉出。
 
+### Round 8 — assumptions (2026-07-10)
+
+**Focus**: 藍圖 v5 複審——最小 server（§4.3 TeamStore 契約、§13.1–13.3）與 Desktop 搭配（§10.4–10.6）、§14 改寫四階段
+**Position**: 新增內容品質高、把「server 怎麼最小、desktop 怎麼搭」回答完整；三個新發現（一個原則級澄清、一個推翻既錄裁定需記錄、一個小缺）；§14 重寫使既有結論的六刀對映過期、需再 re-conclude。
+- server 運行時轉向：官方 speclink-server 改為純 Rust binary——Rust Host Runtime＋Rust Engine＋內建 sqlite/fs/postgres 三 driver（SQLite 預設、單容器 compose）、內嵌 /setup 與 /admin 靜態資源；Node @speclink/host 路徑保留給 Copilot SDK／自訂 Node 系統，「兩者只有 adapter 不同、不維護第二套流程規則」。比 v4 的 Node server 更貼「Rust Engine 唯一實作」，單一 binary＋SQLite 預設＝最強開箱。
+- TeamStore 概念契約落地：beginUnitOfWork／commit(uow, events)／rollback——事件與文件 commit 同一 UoW（P0 commit-event 原子性直接入契約）；typed Result 不以 Option/空集合吞錯；不把 PathBuf 暴露為跨媒介身分；能力等級改三檔（Local/Single-writer、Single-node TeamStore 含 SQLite/Server FS/NAS、Cluster TeamStore）；driver 僅首次 setup 可選、更換須 export/import 明確 cutover；Server FS 啟動探測 atomic rename/locking/fsync/journal，NAS 不過探測即拒 Team mode；官方 Rust binary 不做 runtime plugin（未來另立版本化 out-of-process Store Protocol）。
+- Desktop 搭配：WorkspaceSession（local｜remote spec-only｜remote＋checkout）取代 root-only 分頁——正面解掉程式碼審查的三個 desktop 發現（後端全域單一 root、帶外 Tauri 事件硬接、WorkspaceAdapter 第二契約→WorkspaceSettingsProvider＋WorkspaceEventSource 入 session）；PM 無 checkout 的規格 session 正式化（§2.2 張力解除）；credential 入 OS Keychain、.speclink.yaml 不存 secret；同 server 多 tab 共用 multiplex SSE、失敗退 Polling/ETag；本地 openspec/ 與 remote binding 並存→必須停止並選擇（續本地或正式 migration）、對齊現有 coexists 偵測；離線唯讀 snapshot、不得自動降回 local；§13.2 Admin UI 嚴格限 installation scope（無看板/proposal/apply/drift/verify）——「不自營 web GUI」裁決在規格面保持成立；§13.3 開箱流程 compose up→/setup→Desktop 加 workspace 一條龍。
+- 新發現一（原則級澄清）：@speclink/store-sqlite/fs/postgres 套件與 server 內建 Rust drivers 的關係未言明——若為 TypeScript 重寫，即在 Store 層違反「不維護第二套語意」；應明文為 N-API 包裝同一份 Rust driver（或縮範圍不發布 Node store 套件、自訂 store 僅走 bridge）。
+- 新發現二（推翻既錄裁定、需記錄）：§10.6 設定頁改 scope 分頁（Workflow/Workspace/Application、檔名降為次要說明）推翻 LANGUAGE.md 明文例外「設定檔檔名得直出作設定頁頁簽標籤」（desktop-window-and-settings-polish，2026-07-08 使用者裁定）——遠端 workspace 使檔名心智模型失效、推翻有理，但須記為裁定翻案並於 Phase 3 落地時更新 LANGUAGE.md。
+- 新發現三（小缺、入 deferred）：role 模型（reader/editor/admin 的能力矩陣）於 §10.6、§13.2、Phase 3 三處被引用但未定義。
+- §14 改寫四階段：Phase 1 Engine 與正確性（含明列「移除 PathBuf、隱式 workspace/git identity、fail-open config parsing」——直接對應程式碼審查發現）、Phase 2 官方 Rust server（CLI/API 先行驗證、不等 Desktop）、Phase 3 Desktop WorkspaceSession、Phase 4 Agent 生態（N-API/copilot-tools/MCP/WS/OIDC/Cluster 後置）。既有結論引用舊步序號（步1＋2 等）已失效，六刀對映需依四階段重排。
+**Ruled out**: 維持既有結論不動（引用舊 §14 步序、且官方 server 已由 Node 轉 Rust，結論已過期）。
+**Open**: store 套件關係澄清落文件；結論依四階段 re-conclude；藍圖 v5 增量入版控；role 模型、board_rank 等 deferred 清單維持各刀 design 定案。
+
+### Round 9 — assumptions (2026-07-10)
+
+**Focus**: 藍圖 v6 終審——Agent Host/Skill 分層、Projection 位置、Server 身分/Admin 細化、文件基準收攏，逐項對照現行程式碼
+**Position**: 藍圖已完整、採納為定稿；v6 處理前輪發現一（store 套件關係已落 §4.3）並新增多項高品質設計，遺留兩項皆屬實作期產物、可遞延，不擋定稿。
+- §2.6 五層分責（Human／Agent Host／Skill／Access Adapter／Speclink Host）＋§4.4 skill delivery 對映表——與現況吻合：repo 同時存在 `.claude/skills` 與 `.agents/skills`，`crates/speclink-core/assets`＋render golden 即「單一 semantic contract＋tool-specific renderer」的現行雛形；ExecutionContext 增 `skillContractVersion` 支援版本協商
+- §4.3 定稿：TeamStore 介面（beginUnitOfWork/commit(uow, events)/rollback）＋契約規則（typed Result、去 PathBuf 身分、同 UoW 原子性、capability 宣告、conformance suite）＋官方 driver 唯一 Rust 實作、`@speclink/store-*` 為 N-API facade——與使用者拍板一致
+- §7.2 Projection 位置決策：預設 `<workspaceRoot>/.speclink/context/`，否決 `.git/speclink/`（worktree gitdir 為檔案、rg/IDE 排除 .git、多 worktree 共享 gitdir、spec-only 無 .git——四理由皆確）；「延續現有 work-data 目錄」經查屬實（init.rs GITIGNORE_BLOCK、`.speclink/touched/`）；staging 目錄切換＋manifest digest fail-closed 解掉 Agent 閱讀中被覆寫的問題
+- §13.1–13.4：`/setup` 一次性 bootstrap token、`/admin` 與 `/account` 分離、PAT 自助（hash-only、scopes≤role、CI 用 service account）、Desktop 預設 device flow＋PAT fallback；§15 新增 P0「一般使用者沒有安全 credential 路徑」＋驗收 #8——補上前版 onboarding 只有 Admin 視角的洞
+- 文件基準收攏：刪 architecture/team-mode/verb-contract 舊件、README 重寫（誠實區分已實作 vs 依藍圖分階段）、getting-started/configuration/sdk-node 掛現況橫幅指向藍圖；活引用查核乾淨，僅餘兩處程式碼註解斷鏈（`crates/speclink-node/index.d.ts:156`、`crates/speclink-remote/src/lib.rs:2` 指向已刪 docs/verb-contract.md）
+**Ruled out**: 為 role 矩陣與 LANGUAGE.md 翻案再跑一輪文件補強——兩者皆實作期產物（分別於 Phase 2 design 與 Phase 3 落地時定案），寫入結論 deferred 即可。
+**Open**: 無——轉入結論，依四階段重下刀組。
+
 ## Conclusion
 
-**Decision**: 採納 docs/platform-architecture.zh-TW.md（可組合平台架構藍圖）為多人協作的目標架構與整合基準，取代本討論先前的四刀結論；路線圖依藍圖 §14 重切六刀，皆自本討論轉出、逐一 propose、不留 promote 骨架：
-- 刀 1 engine-typed-core（§14 步 1＋2）：Engine typed commands/outcomes、domain events（dispatch 相容層保留）、Store 能力等級與 revision/CAS/Unit of Work 介面、設定解析 fail-closed（P0 第 9 行）。
-- 刀 2 speclink-host（步 3＋4）：@speclink/host（actor/policy/交易/事件集中）、Command/Query/Context/Event Protocol 固定、@speclink/client、Project/Repo binding 契約（§4.6/§4.7）。
-- 刀 3 context-projection（步 5）：Context Materializer 與 .speclink/context/、remote skills 的 snapshot/read/write 規則、drift 分解接線（§6.5）、VerifyBundle/VerifyEvidence（§6.4）。
-- 刀 4 team-server（步 6）：官方 speclink-server——FS＋PostgreSQL 雙儲存、PAT/身分、Project/Repo registry、binding handshake、SSE＋Polling/ETag、docker-compose。
-- 刀 5 desktop-remote（步 7）：Desktop 接 Local/Remote DataSource、subscribe 面、event capability negotiation、Polling/ETag＋SSE（WebSocket 選配）。
-- 刀 6 agent-adapters（步 8）：Node N-API Engine binary 發布、@speclink/copilot-tools（In-process Tool）、MCP Adapter、多租戶整合指南。
-- 步 9（UI contract 穩定化）隨刀 5/6 收尾不獨立成刀；各刀精確邊界（如 drift/verify 歸刀 3 或再拆）由各自 propose 定。
-**Rationale**: 藍圖經四版迭代閉合全部架構層級缺口：v1 評審定方向、v2 補 P0/P1 與 Project/Repo binding、v3 補 Host 單一實作（Rust Engine 唯一流程語意、N-API 發布、native addon 不可用即 fail closed）與 evidence 上行（VerifyBundle/VerifyEvidence/stale_evidence、touched files 按 stable task ID 保存）、v4 補 drift 五維分解（Specs＝server、四維＝client、共用 merger、unavailable≠clean）、workflow policy 唯一歸屬（EffectiveWorkflowPolicy＋policyRevision）、壞設定 fail-closed（缺檔才允許預設）。三情境以「同一套 Engine、兩條執行路徑、可替換入口/儲存/呈現」統一收斂，勝過為情境各做一套交付物。
-**Rejected alternatives**: 四刀舊結論（藍圖新增 Host/Context Projection/typed commands 三層後不敷承載）；hosted-agent 全流程與 speclink 自營 web GUI／內嵌 agent（維持先前裁決——agent 永遠外部：CLI 技能/MCP/整合者 In-process Tool）；以 TypeScript 重寫流程規則（Rust Engine 為唯一實作、fail closed 不得靜默切換）；本地 Web UI／localhost bridge（§5.3 明確不建議）；SSE 或 WebSocket 作為正確性地基（Query＋ETag 才是恢復路徑，push 為可宣告的加速、單一訂閱單選傳輸）；OpenSpec 式 store registry/workset（無伺服器解耦屬利基、遞延）。
-**Deferred**: 設計期決策由各刀 design.md 定案——stable task ID 於 markdown 的機制；board_rank 與 per-user 呈現狀態在遠端的家；@speclink/store-fs 的不可變 revision 機制（git-backed journal 為候選）；MCP 無 checkout 的 context 策略；projection 唯讀的機制性防護（唯讀屬性＋digest 髒偵測）；封存列舉與 discuss link/seal 入 API 涵蓋；ETag vs 整數 version＋If-Match 用語統一；WorkspaceAdapter 的遠端對應面；tdd/audit 自 .speclink.yaml 遷居 config.yaml 的 deprecated keys 處理。另遞延：本地 stdio MCP、desktop WebSocket client（選配）、server↔git 匯出橋（P1 store push/pull 已定方向）。
-**Capture to**: docs/platform-architecture.zh-TW.md（定案為整合基準）＋ proposal（六刀各自 propose 時自本結論與藍圖取材）
-**Next**: /speclink-propose --from-discussion collab-scenario-replan --name engine-typed-core（其餘五刀輪到再 propose）
+**Decision**: 採納 docs/platform-architecture.zh-TW.md 為唯一目標架構基準（舊 architecture/team-mode/verb-contract 文件移除、README 與操作文件掛現況橫幅），路線圖依藍圖 §14 四階段重切，全部自本討論轉出、逐刀 propose、不留 promote 骨架：
+- Phase 1（Engine 與正確性）四刀，嚴格依序：`engine-typed-core`（typed commands/outcomes/domain events＋唯一 Command Runtime＋dispatch 相容層＋fail-closed config parsing）→ `teamstore-contract`（TeamStore trait／UoW／CAS／revision＋conformance suite＋FsStore 過檢＋去 PathBuf 身分）→ `binding-and-policy`（Project/Repo binding＋SpeclinkExecutionContext＋Workflow Policy 歸屬＋Client Protocol schema 與 fixtures）→ `context-materializer`（Projection manifest／staging／digest／refresh＋remote skill 讀寫規則）
+- Phase 2（官方 Rust server）約兩刀：`server-core`（HTTP/SSE Host adapter＋SQLite 預設 driver＋binding handshake＋Project/Repo registry＋Query/ETag）、`server-identity-admin`（invite／device auth／PAT／setup／admin／migration／backup／audit＋Server FS 與 PostgreSQL driver）
+- Phase 3（Desktop 遠端 Workspace）一至兩刀：`desktop-workspace-session`（WorkspaceSession 重構＋RemoteDataSource＋OS Keychain＋onboarding／offline／CAS UX＋設定頁 scope 改版）
+- Phase 4（Agent 生態）視需求成刀：N-API store facades、copilot-tools、MCP adapter、WebSocket／OIDC／Cluster
+- Phase 2 起的刀界於前一 Phase 收尾時最終化；每刀 propose 時以藍圖對應章節為 design 依據
+**Rationale**: 「單一 Rust 流程語意」是全篇不變式——Phase 1 先固定 Engine 契約與正確性（P0 全數落在此），server／desktop／agent 各刀才能平行安全推進；四階段每階段結束都有可獨立驗證的交付（server 以 CLI/API 驗證、不等 Desktop），避免舊路線圖「多刀互相懸掛」的亂象重演。
+**Rejected alternatives**: 舊六刀對映——引用已改寫的 §14 步序、官方 server 已由 Node 轉 Rust，過期作廢；Node/TS 重寫 store driver——在 Store 層違反單一語意實作，改為 N-API 包同一份 Rust crate；`.git/speclink/` 作 Projection 預設——worktree gitdir 為檔案、搜尋工具排除、共享 gitdir、spec-only 無 .git 四理由否決，僅留非預設部署選項；官方 binary 動態載入 store plugin——Rust plugin ABI 不穩，未來另立版本化 out-of-process Store Protocol；hosted-agent 情境與獨立 web app——已於前輪出局，維持不做。
+**Deferred**: role 能力矩陣（reader/editor/admin × Project/Repo）——`server-identity-admin` 刀 design 定案；§10.6 設定頁 scope 分頁推翻 LANGUAGE.md「設定檔檔名直出頁簽」明文例外（desktop-window-and-settings-polish，2026-07-08 裁定）——Phase 3 落地時記錄翻案並更新 LANGUAGE.md，不得靜默改掉；兩處程式碼註解殘引已刪 docs/verb-contract.md（`crates/speclink-node/index.d.ts:156`、`crates/speclink-remote/src/lib.rs:2`）——Phase 1 動詞面重構時清除；board_rank 遷移等既有 deferred 維持各刀 design 定案。
+**Capture to**: proposal（逐刀 propose，design 以藍圖對應章節為基準）
+**Next**: /speclink-propose --from-discussion collab-scenario-replan --name engine-typed-core

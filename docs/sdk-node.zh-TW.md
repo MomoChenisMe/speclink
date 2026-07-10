@@ -1,5 +1,7 @@
 # Node SDK（@speclink/engine）
 
+> **文件狀態：**本文描述目前已實作的 Node SDK surface。Typed Command Runtime、TeamStore 契約、Host 邊界與 Copilot Tool 封裝的目標設計，以[平台架構藍圖](platform-architecture.zh-TW.md)為準。
+
 `@speclink/engine` 讓你把 Speclink 引擎內嵌進 Node.js 行程：伺服器（或 AI agent 宿主）在行程內 dispatch speclink 動詞、以自家資料庫透過 `Store` 物件儲存規格文件，並為任何 harness 渲染流程知識（skills、instructions 區塊）。
 
 它就是 CLI 隨附的那顆 Rust 引擎——以 [napi-rs](https://napi.rs) 綁定，而非重新實作——所以動詞行為、`--json` payload 形狀、渲染內容從結構上就保證一致。（Rust SDK 即 `speclink-core` crate 本身。）
@@ -113,7 +115,7 @@ await engine.dispatch(
 ```
 
 - **輸入**：字串陣列，與 CLI 動詞詞彙一對一（等同 shell argv 去掉程式名）。不支援互動式輸入——CLI 中讀 stdin 的動詞改由第二參數傳內容（`{ stdin }`）。
-- **輸出**：Promise，解析為與 CLI `--json` 完全一致的結構化物件（camelCase 欄位名）。沒有 `--json` 形式的動詞解析為 `{ output: string }`。逐動詞 payload 形狀見[動詞契約](verb-contract.zh-TW.md)（其 payload 即以 fs 模式 `--json` 輸出命名，dispatch 回傳的正是它）。
+- **輸出**：Promise，解析為與 CLI `--json` 完全一致的結構化物件（camelCase 欄位名）。沒有 `--json` 形式的動詞解析為 `{ output: string }`。目前 TypeScript shape 以 [`index.d.ts`](../crates/speclink-node/index.d.ts) 為準；未來遠端 Command/Query payload 由平台藍圖與版本化 Protocol 工作定義。
 - **錯誤**：Promise 以 `Error` 拒絕——`message` 是 CLI 的語義化訊息（可直接回給 agent），`code` 分類失敗：`invalid_argv`（argv 有誤）、`not_found`（change／討論查找）、`error`（引擎失敗，即 CLI 的 exit-1 類別）、宿主 store 的 409 reason 原樣傳遞（`ownership_lost`……）、`store_error`（無 code 的 store 失敗）、`panic`。
 - **絕不阻塞事件迴圈**：每次 dispatch 都在背景工作執行緒上執行；支援並發 dispatch。
 
@@ -204,6 +206,5 @@ const client = new CopilotClient({
 
 ## 延伸閱讀
 
-- [動詞契約](verb-contract.zh-TW.md)——逐動詞 payload 形狀與 `claim` 的 409 reason 目錄。
-- [架構說明](architecture.zh-TW.md)——本 SDK 所嵌入的引擎—Store—呈現分層。
-- [團隊模式](team-mode.zh-TW.md)——以本 SDK 建置之伺服器的 CLI 側對應（remote store）。
+- [平台架構藍圖](platform-architecture.zh-TW.md)——Typed Runtime、TeamStore、Host、Protocol、Server 與 Tool 的目標設計。
+- [`index.d.ts`](../crates/speclink-node/index.d.ts)——目前發布的 Node API 與 payload types。

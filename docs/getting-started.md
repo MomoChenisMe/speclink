@@ -2,6 +2,8 @@
 
 > 繁體中文版:[getting-started.zh-TW.md](getting-started.zh-TW.md)
 
+> **Status:** This guide covers the currently implemented local-repository workflow. The target local/remote platform architecture and delivery phases are defined by [the platform architecture blueprint](platform-architecture.zh-TW.md).
+
 This walkthrough runs one full spec-driven development (SDD) loop in a purely
 local project: **init → discuss → propose → apply → verify → archive**.
 
@@ -132,5 +134,5 @@ discussion (if this was the last change promoted from it) is co-archived.
 | `.speclink.yaml` | app configuration (host-side) |
 | `.speclink/` | work data (gitignored) |
 
-For how the engine is layered over pluggable storage, see
-[architecture.md](architecture.md).
+For the target Engine, TeamStore, Server, and UI architecture, see the
+[platform architecture blueprint](platform-architecture.zh-TW.md).

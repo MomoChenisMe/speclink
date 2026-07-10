@@ -2,6 +2,8 @@
 
 > English version: [getting-started.md](getting-started.md)
 
+> **文件狀態：**本文描述目前已實作的本地 repo 流程。Local/Remote 平台的目標架構與交付階段，以[平台架構藍圖](platform-architecture.zh-TW.md)為準。
+
 本教學在純本地專案走完一輪完整的規格驅動開發(SDD)循環:**init → discuss → propose → apply → verify → archive**。
 
 Speclink 的設計是由 AI 代理(Claude Code 或 Codex)透過生成的 `/speclink-*` 技能驅動,底下由 `speclink` CLI 擔任引擎。以下每一步同時展示要呼叫的技能與背後運作的 CLI。
@@ -113,4 +115,4 @@ delta 規格合併進正典 `openspec/specs/csv-export/spec.md`,change 目錄移
 | `.speclink.yaml` | 應用設定(宿主側) |
 | `.speclink/` | 工作資料(gitignored) |
 
-想了解引擎如何架在可插拔儲存之上,見 [architecture.zh-TW.md](architecture.zh-TW.md)。
+Engine、TeamStore、Server 與 UI 的目標架構見[平台架構藍圖](platform-architecture.zh-TW.md)。

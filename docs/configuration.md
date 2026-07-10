@@ -1,5 +1,7 @@
 # Configuration
 
+> **Status:** This document describes the currently implemented local-workspace configuration surface. In remote mode, workflow policy is authoritative in the versioned Store and local overrides must not silently replace team policy; see [the platform architecture blueprint](platform-architecture.zh-TW.md#48-workflow-policy-的歸屬).
+
 Speclink's configuration is split across two files and one directory, each with a distinct ownership rule:
 
 | Location | Owns | Travels with |

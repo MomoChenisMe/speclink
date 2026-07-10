@@ -1,5 +1,7 @@
 # 設定說明
 
+> **文件狀態：**本文描述目前已實作的本地 workspace 設定介面。遠端模式的 workflow policy 以具版本的 Store 為正典，本機 override 不得靜默覆寫團隊政策；目標設計見[平台架構藍圖](platform-architecture.zh-TW.md#48-workflow-policy-的歸屬)。
+
 Speclink 的設定分散在兩個檔案與一個目錄，各自有明確的歸屬規則：
 
 | 位置 | 承載 | 跟著誰走 |
