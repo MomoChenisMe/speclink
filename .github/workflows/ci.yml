@@ -19,8 +19,17 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # Tauri crates joined the workspace — Linux builds need the GTK/WebKit stack.
+      - name: Install Tauri system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+
+      # Smoke only needs the CLI; the full workspace compiles once via cargo test below.
       - name: Build (release)
-        run: cargo build --release --locked
+        run: cargo build --release --locked -p speclink-cli
 
       - name: Smoke test (init → new → artifact → status → validate)
         shell: bash
@@ -42,15 +51,20 @@ jobs:
           "$BIN" schemas
           "$BIN" update
 
-      - name: Test (Rust workspace)
-        run: cargo test --workspace --locked
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install npm dependencies (root workspaces)
         run: npm ci
+
+      # tauri::generate_context! embeds frontendDist at compile time — dist must
+      # exist before any cargo build of the desktop crate.
+      - name: Build desktop frontend (vite → dist)
+        run: npm run build -w apps/desktop
+
+      - name: Test (Rust workspace)
+        run: cargo test --workspace --locked
 
       - name: Test (UI)
         run: npm test -w packages/ui

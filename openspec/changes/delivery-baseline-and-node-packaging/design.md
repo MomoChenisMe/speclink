@@ -53,6 +53,8 @@ ci.yml 在既有三 OS 矩陣中保留 build 與 smoke，新增：cargo test --w
 
 apply 期間揭露的一個潛在 CI 紅燈一併處理：engine.spec 的 CLI parity 測試（helpers 的 cliJson）寫死使用 target/debug/speclink，但 Node SDK workflow 只執行 napi release build、從不產生 debug CLI——測試在 CI 必以 ENOENT 失敗（本機不可見，因 cargo test 順手建了 debug binary）。修法：helpers 改為 debug 不存在時退用 release 路徑（測試檔），workflow 對三個可測平台補一步 cargo build --release -p speclink-cli（與 napi release build 共用編譯產物，增量成本低）。這是對「node-sdk.yml 零改動」的單步修正，矩陣與打包結構不變。
 
+首次 push 後 CI 揭露：main 的 ci.yml 自 2026-07-05 desktop（Tauri）crates 加入 Cargo workspace 起即連續紅燈（最後綠燈 74264f2），成因兩個、皆為 CI 環境缺口而非程式碼：（a）ubuntu runner 缺 GTK/WebKit 系統庫，glib-sys 的 build script 失敗；（b）tauri::generate_context! 在編譯期要求 frontendDist（apps/desktop/dist）存在，CI 從不建前端——本機因 dist 殘留而不可見。修法（僅動 ci.yml）：Linux 補裝 Tauri 系統依賴、cargo test 前先以 vite 建 desktop 前端；既有 Build (release) 步驟縮為 -p speclink-cli（smoke 只需 CLI，全 workspace 由 cargo test 的 dev profile 編譯一次，避免 Tauri 雙 profile 重複編譯）。
+
 替代方案與取捨：
 
 - 另開第三個 workflow 專跑測試：多一處觸發條件與快取設定要同步，拒絕。
