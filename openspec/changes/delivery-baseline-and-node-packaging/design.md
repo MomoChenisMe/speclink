@@ -84,7 +84,7 @@ apply 期間揭露：ChangeMeta 在先前變更中新增了 board_rank 與 resta
 - crates/speclink-core/src/config.rs：僅動 #[cfg(test)] 測試模組內一個斷言——驅動字母路徑（C:\）只在 Windows 是絕對路徑，unix 上是合法相對目錄名，該拒絕斷言以 cfg!(windows) 限定。此檔屬 core src，但 cfg(test) 程式碼不編入出貨 binary，核心紅線（CLI 回歸保護）的目的不受影響。
 - crates/speclink-core/tests/golden/（claude.snapshot.md、codex.snapshot.md）：main 既有的 golden 失同步（乾淨 HEAD worktree 驗證同紅），依 CLAUDE.md 既定程序於乾淨樹 UPDATE_GOLDEN=1 再生後審視——漂移為純空白行（10 行空行刪除，無實質內容變化），把再生結果帶回工作樹。
 - crates/speclink-fs/tests/store_fs.rs：canonical capability 列表斷言假設 readdir 回排序結果（NTFS 排序、APFS 不排序）；trait 明文 unsorted (callers sort)，測試改為排序後比對。
-- apps/desktop/src-tauri/src/watch.rs（僅 #[cfg(test)] 測試模組）：CI ubuntu 揭露兩個計數斷言被 Linux 特性擊穿——notify 的 inotify 遮罩含 OPEN/ATTRIB，系統排程遍歷 /tmp 即產生事件（outside 測試誤觸發）；新目錄要事件後補掛 watch，目錄建立與內容寫入拆進不同 debounce 批次（coalesce 測試計到 2）。修法：測試根移至 workspace target/（無外部遍歷）、coalesce 的 demo 目錄先於監看建立。產品 watcher 行為不動。
+- apps/desktop/src-tauri/src/watch.rs（僅 #[cfg(test)] 測試模組）：CI ubuntu 揭露兩個計數斷言在 Linux 恆多一次通知（outside 1≠0、coalesce 2≠1，數字確定性重現）。根因是 notify 的**掛載自我通知**：add_watch 以 WalkDir 遞迴補掛 watch，父目錄的 inotify 遮罩含 OPEN，走訪對子目錄的 opendir 本身即成一批事件——僅 inotify 可見（FSEvents／RDCW 不報 open），且對產品無害（app 啟動多一次初始 refresh）。修法：測試於就緒緩衝後將計數器歸零、只計入動作後的通知；另將測試根移至 workspace target/、coalesce 的 demo 目錄先於監看建立（消除新目錄補掛 watch 的批次拆分）。產品 watcher 行為不動。
 - .gitattributes（新檔）：golden 乒乓漂移的根除——Windows checkout 在 autocrlf 下把 skills 資產轉成 CRLF，渲染管線的換行敏感處理隨之產生結構性差異（多一空行），golden 因此在 Windows／macOS 間反覆再生。全 repo 強制 text=auto eol=lf；git add --renormalize 驗證 index 本已全 LF（零變化），問題純在 checkout 層。
 
 ## Implementation Contract
