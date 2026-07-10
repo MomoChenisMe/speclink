@@ -3,17 +3,15 @@
 // with the same content as the fs fixture, so bridge output can be compared
 // to CLI output field by field.
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 export const repoRoot = join(__dirname, '..', '..', '..')
-export const cliBin = join(
-  repoRoot,
-  'target',
-  'debug',
-  process.platform === 'win32' ? 'speclink.exe' : 'speclink',
-)
+// 本機 cargo test 產 debug CLI；CI 的 Node SDK workflow 只建 release——擇一存在者。
+const binName = process.platform === 'win32' ? 'speclink.exe' : 'speclink'
+const debugBin = join(repoRoot, 'target', 'debug', binName)
+export const cliBin = existsSync(debugBin) ? debugBin : join(repoRoot, 'target', 'release', binName)
 
 /** Run the CLI in the fixture project and parse its --json stdout. */
 export function cliJson(cwd: string, args: string[]): unknown {
@@ -34,7 +32,9 @@ export const SPEC_USER_AUTH =
 
 /** A fixture project with two changes (task progress + proposal summaries) and one spec. */
 export function makeFsFixture(): string {
-  const root = mkdtempSync(join(tmpdir(), 'speclink-node-fixture-'))
+  // realpath: macOS 的 tmpdir 是 /var → /private/var 的 symlink；CLI 以 getcwd 回報
+  // 實體路徑，engine 則沿用傳入字串——不先解析，兩邊的 path 欄位無法逐位元比對。
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'speclink-node-fixture-')))
   const changes = join(root, 'openspec', 'changes')
 
   const alpha = join(changes, 'alpha')

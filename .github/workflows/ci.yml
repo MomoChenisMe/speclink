@@ -41,3 +41,19 @@ jobs:
           "$BIN" list
           "$BIN" schemas
           "$BIN" update
+
+      - name: Test (Rust workspace)
+        run: cargo test --workspace --locked
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install npm dependencies (root workspaces)
+        run: npm ci
+
+      - name: Test (UI)
+        run: npm test -w packages/ui
+
+      - name: Test (Desktop)
+        run: npm test -w apps/desktop

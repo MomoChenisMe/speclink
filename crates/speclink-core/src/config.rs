@@ -914,7 +914,12 @@ mod tests {
         // Lexical dot-dot tricks and absolute paths are escapes too.
         assert!(descriptor("wad-harness", ".wad/../../x", "WAD.md").validate().is_err());
         assert!(descriptor("wad-harness", "/abs/skills", "WAD.md").validate().is_err());
-        assert!(descriptor("wad-harness", "C:\\abs\\skills", "WAD.md").validate().is_err());
+        // A drive-letter path is absolute only on Windows; on unix the same string is a
+        // legal (if odd) relative dir name — the containment check is lexical host-platform
+        // semantics, so the rejection can only be asserted where it actually applies.
+        if cfg!(windows) {
+            assert!(descriptor("wad-harness", "C:\\abs\\skills", "WAD.md").validate().is_err());
+        }
     }
 
     #[test]

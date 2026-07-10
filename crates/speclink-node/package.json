@@ -34,12 +34,5 @@
   "devDependencies": {
     "@napi-rs/cli": "^2.18.4",
     "vitest": "^3.0.0"
-  },
-  "optionalDependencies": {
-    "@speclink/engine-win32-x64-msvc": "0.1.0",
-    "@speclink/engine-darwin-x64": "0.1.0",
-    "@speclink/engine-darwin-arm64": "0.1.0",
-    "@speclink/engine-linux-x64-gnu": "0.1.0",
-    "@speclink/engine-linux-arm64-gnu": "0.1.0"
   }
 }

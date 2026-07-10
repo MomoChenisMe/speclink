@@ -69,6 +69,12 @@ jobs:
       - name: Build native module (release)
         run: npm run build:release -- --target ${{ matrix.settings.target }}
 
+      # engine.spec 的 CLI parity 測試需要 speclink binary；與 napi release build 共用編譯產物。
+      - name: Build the CLI for parity tests (release)
+        if: matrix.settings.test
+        working-directory: .
+        run: cargo build --release -p speclink-cli --locked
+
       - name: Test against the native-arch build
         if: matrix.settings.test
         run: npm test

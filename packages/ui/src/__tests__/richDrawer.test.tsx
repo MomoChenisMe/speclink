@@ -152,7 +152,10 @@ describe("RichDetailDrawer", () => {
     const tasksReads = () =>
       (props.loadDocument as Mock).mock.calls.filter((c) => c[1] === "tasks.md").length;
     const before = tasksReads();
-    await latest.onReorder!(2, 5);
+    // onReorder 直呼繞過事件系統，內部 state 更新須明確包 act。
+    await act(async () => {
+      await latest.onReorder!(2, 5);
+    });
     // 一次到位轉發 from/to（側別未指定）。
     expect((props as { onMoveTask: Mock }).onMoveTask).toHaveBeenCalledWith(
       "desktop-shell-and-browser",
@@ -165,7 +168,9 @@ describe("RichDetailDrawer", () => {
     rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
     await waitFor(() => expect(tasksReads()).toBeGreaterThan(before));
     // 標題落點（design D7 moveTask 側別）：before=true 轉發至第四參數。
-    await latest.onReorder!(1, 3, true);
+    await act(async () => {
+      await latest.onReorder!(1, 3, true);
+    });
     expect((props as { onMoveTask: Mock }).onMoveTask).toHaveBeenCalledWith(
       "desktop-shell-and-browser",
       1,
@@ -213,12 +218,12 @@ describe("RichDetailDrawer", () => {
     const tasksReads = () =>
       (props.loadDocument as Mock).mock.calls.filter((c) => c[1] === "tasks.md").length;
     const before = tasksReads();
-    latest.onToggle!(1, true); // 互動進行中（onToggleTask 未 resolve）
+    act(() => latest.onToggle!(1, true)); // 互動進行中（onToggleTask 未 resolve）
     rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
     await new Promise((r) => setTimeout(r, 25));
     // 讓路：互動未結束前外部世代不觸發重載，不打斷進行中操作。
     expect(tasksReads()).toBe(before);
-    release(); // 互動結束 → 補載一次
+    await act(async () => release()); // 互動結束 → 補載一次
     await waitFor(() => expect(tasksReads()).toBeGreaterThan(before));
   });
 
@@ -278,7 +283,7 @@ describe("RichDetailDrawer", () => {
     const metaCalls = () => (props.loadMeta as Mock).mock.calls.length;
     const t0 = tasksReads();
     const m0 = metaCalls();
-    latest.onToggle!(1, true);
+    act(() => latest.onToggle!(1, true));
     await waitFor(() => expect((props as { onToggleTask: Mock }).onToggleTask).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 25));
     // 獨立局部重讀路徑已移除（design D2 單一資料流）。
@@ -407,6 +412,8 @@ describe("RichDetailDrawer", () => {
   it("fires onDelete when the delete action is clicked", async () => {
     const props = makeProps();
     render(<RichDetailDrawer {...(props as never)} />);
+    // 先等初始 async 載入落地（loadMeta 的 MomoChen 為完成標記），避免 act 警告。
+    await screen.findByText("MomoChen");
     fireEvent.click(screen.getByRole("button", { name: /刪除/ }));
     expect(props.onDelete).toHaveBeenCalledWith("desktop-shell-and-browser");
   });
@@ -414,6 +421,7 @@ describe("RichDetailDrawer", () => {
   it("fires onRunVerb for analyze / archive actions", async () => {
     const props = makeProps();
     render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
     fireEvent.click(screen.getByRole("button", { name: /分析/ }));
     expect(props.onRunVerb).toHaveBeenCalledWith("analyze", "desktop-shell-and-browser");
     fireEvent.click(screen.getByRole("button", { name: /封存/ }));
@@ -425,17 +433,19 @@ describe("RichDetailDrawer", () => {
 describe("抽屜內動詞結果呈現", () => {
   const region = () => document.querySelector("[data-verb-result]") as HTMLElement | null;
 
-  it("validate 通過於動作列近處呈現通過", () => {
+  it("validate 通過於動作列近處呈現通過", async () => {
     const props = makeProps({
       verbResult: { change: "desktop-shell-and-browser", verb: "validate", validate: { valid: true, errors: [] } },
     });
     render(<RichDetailDrawer {...(props as never)} />);
+    // 先等初始 async 載入落地（loadMeta 的 MomoChen 為完成標記），避免 act 警告。
+    await screen.findByText("MomoChen");
     const r = region();
     expect(r).toBeTruthy();
     expect(within(r!).getByText(/通過/)).toBeTruthy();
   });
 
-  it("validate 失敗呈現失敗與首則錯誤", () => {
+  it("validate 失敗呈現失敗與首則錯誤", async () => {
     const props = makeProps({
       verbResult: {
         change: "desktop-shell-and-browser",
@@ -444,12 +454,13 @@ describe("抽屜內動詞結果呈現", () => {
       },
     });
     render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
     const r = region();
     expect(within(r!).getByText(/失敗/)).toBeTruthy();
     expect(within(r!).getByText(/tasks\.md: missing/)).toBeTruthy();
   });
 
-  it("analyze 於抽屜內呈四維度面板", () => {
+  it("analyze 於抽屜內呈四維度面板", async () => {
     const report = {
       change_id: "x",
       dimensions: [],
@@ -463,17 +474,19 @@ describe("抽屜內動詞結果呈現", () => {
       verbResult: { change: "desktop-shell-and-browser", verb: "analyze", analyze: report },
     });
     render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
     const r = region();
     expect(within(r!).getByText("Coverage")).toBeTruthy();
     expect(within(r!).getByText("Ambiguity")).toBeTruthy();
     expect(within(r!).getByText(/缺具體範例的情境/)).toBeTruthy();
   });
 
-  it("動詞結果屬於別的 change 時不呈現", () => {
+  it("動詞結果屬於別的 change 時不呈現", async () => {
     const props = makeProps({
       verbResult: { change: "some-other-change", verb: "validate", validate: { valid: true, errors: [] } },
     });
     render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
     expect(region()).toBeNull();
   });
 });

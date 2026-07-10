@@ -22,6 +22,10 @@ impl TempProject {
         let _ = std::fs::remove_dir_all(&dir);
         let discussions = dir.join("openspec").join("discussions");
         std::fs::create_dir_all(&discussions).unwrap();
+        // macOS 的 temp_dir 在 /var → /private/var symlink 下，CLI 由 getcwd 回報實體
+        // 路徑，期望字串必須同底才能逐位元比對；Windows 的 canonicalize 會加 \\?\ 前綴
+        // 反而與 CLI 輸出不符，故僅在非 Windows 平台解析。
+        let dir = if cfg!(windows) { dir } else { dir.canonicalize().unwrap() };
         for (slug, topic) in slugs {
             let doc = format!(
                 "---\n\

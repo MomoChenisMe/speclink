@@ -118,7 +118,6 @@ When `speclink status --change "<name>" --json` shows `isComplete: true`, run th
 - Keep output concise - this runs inline, not as a separate workflow
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
-
 === .claude/skills/speclink-apply/SKILL.md ===
 ---
 name: speclink-apply
@@ -1149,7 +1148,6 @@ No dirty files found for this change (no modified artifacts, no tracked source f
 - The "Unrelated Changes" section is informational only — these files are excluded by default
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
-
 === .claude/skills/speclink-discuss/SKILL.md ===
 ---
 name: speclink-discuss
@@ -1546,7 +1544,6 @@ When the discussion converges on building something:
 - **Do explore the codebase** — Ground discussions in reality.
 - **Do be opinionated** — Have a recommendation. The user can disagree.
 
-
 === .claude/skills/speclink-drift/SKILL.md ===
 ---
 name: speclink-drift
@@ -1679,7 +1676,6 @@ When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` dat
 - If `speclink drift` returns a non-zero exit code (e.g., older binary without the drift subcommand), report the error and stop
 - Do NOT auto-invoke any follow-up command — recommendations are user-confirmed
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-
 
 === .claude/skills/speclink-ingest/SKILL.md ===
 ---
@@ -2445,7 +2441,6 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** invoke `/speclink-apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
-
 === .claude/skills/speclink-verify/SKILL.md ===
 ---
 name: speclink-verify
@@ -2640,4 +2635,3 @@ Use clear markdown with:
 - Code references in format: `file.ts:123`
 - Specific, actionable recommendations
 - No vague suggestions like "consider reviewing"
-
