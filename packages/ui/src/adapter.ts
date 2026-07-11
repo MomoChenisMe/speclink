@@ -16,6 +16,8 @@ export interface ChangeItem {
   startedWith?: string | null;
   /** 建立者（"Name <email>"）——卡片首字母圓標頭像的資料源；缺席時省略。 */
   createdBy?: string | null;
+  /** 建立日期（.openspec.yaml 的 created，YYYY-MM-DD）——建立時間篩選的資料源；缺席時省略。 */
+  created?: string | null;
   /** 來源討論 slug 清單（由討論轉出／併入的 change，第一個為出身討論）；空/缺席＝非討論而來。 */
   fromDiscussions?: string[];
   /** 待重新反映的討論 slug 清單：本 change 曾 seal 這些討論、其後被重新結論，內容過期待 re-ingest；空/缺席＝無旗標。 */
@@ -99,15 +101,14 @@ export interface AnalyzeReport {
 }
 
 /**
- * validate／analyze 於詳情抽屜內呈現的結構化結果（archive 仍走視窗頂列）。
+ * 「分析」於詳情抽屜內呈現的結構化結果（validate＋analyze 一鍵合併；archive 仍走視窗頂列）。
  * change 供抽屜比對——僅當前開啟的 change 相符時才呈現。
  */
 export interface VerbDrawerResult {
   change: string;
-  verb: "validate" | "analyze";
-  /** validate 成功結果（verb==="validate"）。 */
+  /** 結構驗證結果（speclink validate 同形）。 */
   validate?: { valid: boolean; errors: string[] };
-  /** analyze 報告（verb==="analyze"）。 */
+  /** analyze 報告。 */
   analyze?: AnalyzeReport;
   /** 執行失敗的單行錯誤（任一動詞）。 */
   error?: string;
@@ -115,6 +116,16 @@ export interface VerbDrawerResult {
 
 /** 看板卡片種類（拖排寫回的目標）：變更卡或討論卡。 */
 export type CardKind = "change" | "discussion";
+
+/** workspace 全文查詢的一筆命中（design D6）：卡片識別＋命中 artifact＋snippet。 */
+export interface SearchHit {
+  kind: CardKind;
+  id: string;
+  /** 命中的 artifact 檔名（如 design.md、specs/foo/spec.md、討論記錄檔名）。 */
+  artifact: string;
+  /** 命中前後文裁切（含命中原文；截斷端補 …）。 */
+  snippet: string;
+}
 
 /** 一個 artifact 的狀態（對應 core status 的 artifacts 項）。 */
 export interface ArtifactStatus {
@@ -144,6 +155,11 @@ export interface SpeclinkDataSource {
   getDocument(change: string, artifact: string): Promise<string | null>;
   /** 讀取一個 capability 的正典 spec.md。 */
   getSpecDocument(capability: string): Promise<string | null>;
+  /**
+   * workspace 全文查詢（design D6）：以不分大小寫子字串比對 active 變更的
+   * artifacts 與 active 討論記錄全文，每卡回傳首個命中。空 query 回空陣列。
+   */
+  searchWorkspace(query: string): Promise<SearchHit[]>;
   /** 列出一個 change 的 delta capability 名。 */
   changeCapabilities(change: string): Promise<string[]>;
   /** 取得 change 的 metadata（createdBy/createdWith/created）。無此 change 回 null。 */

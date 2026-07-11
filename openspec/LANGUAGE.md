@@ -9,7 +9,7 @@
 - 一個概念一個詞：同義詞在 avoid 列出，舊文案陸續汰換；歷史 artifacts（已封存的討論／變更）不回改。
 - 工程詞（meta 欄位名、kebab-case、slug 等）不出現在使用者可見文案，只出現在給 agent 的文件。
   - **明文例外**：設定檔檔名（config.yaml、.speclink.yaml）得直出作為設定頁的頁簽標籤——與本原則刻意抵觸，經使用者裁定：開發者工具中檔案即最直觀的心智模型，人話標籤（如「專案設定／整合」）反而多一層對應。僅限頁簽標籤；其他使用者可見文案仍禁工程詞（desktop-window-and-settings-polish，2026-07-08）。
-  - **明文例外**：看板討論（discuss）卡得以 slug（kebab-case 檔名）為卡片標題直出——與本原則刻意抵觸，經使用者裁定：slug 是執行 CLI 動詞（如 `--from-discussion <slug>`）的把手，開發者工具中檔名即最直觀且可複製的識別，與 change 卡以名稱為題對稱；卡身另以 topic 為描述。僅限 discuss 卡標題與其複製鈕；其他使用者可見文案仍禁工程詞（desktop-card-identity，2026-07-09）。
+  - **明文例外**：討論（discuss）的識別錨點得以 slug（kebab-case 檔名）直出——與本原則刻意抵觸，經使用者裁定：slug 是執行 CLI 動詞（如 `--from-discussion <slug>`）的把手，開發者工具中檔名即最直觀且可複製的識別，與 change 卡以名稱為題對稱；topic 一律降為描述／副標。僅限討論識別錨點（討論全卡標題、已轉出細列首行、討論抽屜標題）與其複製鈕；其他使用者可見文案仍禁工程詞（desktop-card-identity，2026-07-09；範圍擴充：desktop-ux-polish，2026-07-11）。
 
 ## 詞彙
 

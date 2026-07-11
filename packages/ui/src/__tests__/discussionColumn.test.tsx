@@ -73,8 +73,8 @@ describe("DiscussionColumn 拖排（design D6）", () => {
       .closest('[aria-roledescription="sortable"]') as HTMLElement;
     expect(openCard).toBeTruthy();
     expect(openCard.getAttribute("aria-label")).toContain("Open topic");
-    // D1：promoted 預設隱藏，開啟 header 開關才見衍生樹列；其列不參與拖排。
-    fireEvent.click(screen.getByRole("button", { name: /顯示已轉出/ }));
+    // D3：promoted 收於欄底收合列，展開後衍生樹細列不參與拖排。
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
     expect(
       screen.getByText("Fanout topic").closest('[aria-roledescription="sortable"]'),
     ).toBeNull();
@@ -150,7 +150,7 @@ describe("DiscussionColumn（兩級呈現）", () => {
     expect(onOpenDiscussion).toHaveBeenCalledWith("open-topic");
   });
 
-  it("promoted 討論收合為衍生樹細列：topic 首行、樹狀子項帶階段、slug 不出現、點列開啟", () => {
+  it("promoted 細列：slug 首行帶複製鈕、topic 次行、樹狀子項帶階段、點列開啟", () => {
     const onOpenDiscussion = vi.fn();
     render(
       <DiscussionColumn
@@ -160,14 +160,14 @@ describe("DiscussionColumn（兩級呈現）", () => {
         onOpenDiscussion={onOpenDiscussion}
       />,
     );
-    // D1：promoted 預設隱藏，先點 header「顯示已轉出」開關才切到已轉出檢視。
-    fireEvent.click(screen.getByRole("button", { name: /顯示已轉出/ }));
-    // 欄標題換為「已轉出討論」（不再於內容顯示群組標籤列）；細列首行為 topic。
-    expect(screen.getByText("已轉出討論")).toBeTruthy();
-    expect(screen.queryByText("已轉出變更的討論")).toBeNull();
+    // D3：promoted 收於欄底收合列，展開後 active 全卡仍同屏可見。
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
+    expect(screen.getByText("Open topic")).toBeTruthy();
     expect(screen.queryByText(/已促轉/)).toBeNull();
-    expect(screen.queryByText("fanout")).toBeNull();
-    const row = screen.getByText("Fanout topic").closest("[data-discussion]") as HTMLElement;
+    // D4：slug（檔名）為細列首行錨點、topic 降為次行描述、帶複製 slug 鈕。
+    const row = screen.getByText("fanout").closest("[data-discussion]") as HTMLElement;
+    expect(within(row).getByText("Fanout topic")).toBeTruthy();
+    expect(within(row).getByRole("button", { name: /複製/ })).toBeTruthy();
     // 樹狀前綴：末列 └、其餘 ├（三個子變更 → 2 個 ├、1 個 └）。
     expect(within(row).getAllByText("├")).toHaveLength(2);
     expect(within(row).getAllByText("└")).toHaveLength(1);
@@ -182,14 +182,50 @@ describe("DiscussionColumn（兩級呈現）", () => {
     expect(onOpenDiscussion).toHaveBeenCalledWith("fanout");
   });
 
+  it("細列複製鈕行內尾隨 slug 文字，非推至列右緣的 flex 兄弟（tasks 4.4）", () => {
+    render(
+      <DiscussionColumn
+        discussions={[promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
+    const row = screen.getByText("fanout").closest("[data-discussion]") as HTMLElement;
+    const slugSpan = screen.getByText("fanout");
+    const copyBtn = within(row).getByRole("button", { name: /複製/ });
+    // 行內尾隨（design D4 複製鈕位置規則）：按鈕是 slug 文字容器的子元素，
+    // 直接跟在最後一個字元後流動。
+    expect(slugSpan.contains(copyBtn)).toBe(true);
+  });
+
+  it("點細列複製鈕把 slug 寫入剪貼簿、不開啟抽屜", () => {
+    const writeText = vi.fn();
+    Object.assign(navigator, { clipboard: { writeText } });
+    const onOpenDiscussion = vi.fn();
+    render(
+      <DiscussionColumn
+        discussions={[promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+        onOpenDiscussion={onOpenDiscussion}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
+    const row = screen.getByText("fanout").closest("[data-discussion]") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /複製/ }));
+    expect(writeText).toHaveBeenCalledWith("fanout");
+    expect(onOpenDiscussion).not.toHaveBeenCalled();
+  });
+
   it("空清單顯示欄空狀態", () => {
     render(<DiscussionColumn discussions={[]} changes={[]} archived={[]} />);
     expect(screen.getByText("尚無討論")).toBeTruthy();
   });
 });
 
-describe("DiscussionColumn header 顯示已轉出開關（design D1）", () => {
-  it("開關互斥切換：關閉只顯示討論中、開啟只顯示已轉出（衍生樹保留、各從欄頂排列）", () => {
+describe("DiscussionColumn 欄底已轉出收合列（design D3）", () => {
+  it("預設收合帶 promoted 計數；點按就地展開且 active 卡維持可見；再點收合", () => {
     render(
       <DiscussionColumn
         discussions={[openD, promotedD]}
@@ -197,32 +233,33 @@ describe("DiscussionColumn header 顯示已轉出開關（design D1）", () => {
         archived={chipArchived}
       />,
     );
-    // header 開關存在且帶 promoted 計數（一筆 promoted → 1）。
-    const toggle = screen.getByRole("button", { name: /顯示已轉出/ });
-    expect(within(toggle).getByText("1")).toBeTruthy();
-    // 預設（關閉）：只顯示討論中（open 全卡），已轉出隱藏、零佔位。
-    expect(screen.getByText("Open topic")).toBeTruthy();
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    expect(bar.textContent).toContain("1");
+    expect(bar.getAttribute("aria-expanded")).toBe("false");
+    // 預設收合：細列不呈現、active 全卡照常。
     expect(screen.queryByText("Fanout topic")).toBeNull();
-    // 開啟：欄標題換為「已轉出討論」、只顯示已轉出衍生樹，討論中暫時隱藏。
-    fireEvent.click(toggle);
-    expect(screen.getByText("已轉出討論")).toBeTruthy();
-    expect(screen.queryByText("已轉出變更的討論")).toBeNull();
-    expect(screen.getByText("Fanout topic")).toBeTruthy();
-    expect(screen.queryByText("Open topic")).toBeNull();
-    // 再點 → 回到只顯示討論中。
-    fireEvent.click(toggle);
     expect(screen.getByText("Open topic")).toBeTruthy();
+    // 展開：細列就地出現、active 全卡仍在（同屏、不互斥）。
+    fireEvent.click(bar);
+    expect(bar.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Fanout topic")).toBeTruthy();
+    expect(screen.getByText("Open topic")).toBeTruthy();
+    // 欄標題不切換。
+    expect(screen.getByText("討論")).toBeTruthy();
+    expect(screen.queryByText("已轉出討論")).toBeNull();
+    // 再點收合。
+    fireEvent.click(bar);
     expect(screen.queryByText("Fanout topic")).toBeNull();
   });
 
-  it("無 promoted 討論時 header 開關缺席", () => {
+  it("無 promoted 討論時欄底收合列缺席", () => {
     render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
-    expect(screen.queryByRole("button", { name: /顯示已轉出/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /已轉出/ })).toBeNull();
   });
 });
 
 describe("DiscussionColumn 計數只算 active 與空狀態（design D3）", () => {
-  it("欄計數徽章隨檢視：討論中檢視顯 active 數、已轉出檢視顯 promoted 數", () => {
+  it("欄計數徽章恆顯 active 數，展開已轉出收合列不改變", () => {
     render(
       <DiscussionColumn
         discussions={[openD, concludedD, promotedD]}
@@ -230,11 +267,10 @@ describe("DiscussionColumn 計數只算 active 與空狀態（design D3）", () 
         archived={chipArchived}
       />,
     );
-    // 討論中檢視（預設）：active 2（open＋concluded）。
+    // active 2（open＋concluded）；promoted 計數呈於收合列、不進欄徽章。
     expect(screen.getByTestId("column-count").textContent).toBe("2");
-    // 切到已轉出檢視：徽章改顯 promoted 數 1（與標題「已轉出討論」一致）。
-    fireEvent.click(screen.getByRole("button", { name: /顯示已轉出/ }));
-    expect(screen.getByTestId("column-count").textContent).toBe("1");
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
+    expect(screen.getByTestId("column-count").textContent).toBe("2");
   });
 
   it("無 active 但有 promoted 時欄體不顯「尚無討論」，計數為 0", () => {
@@ -258,7 +294,7 @@ describe("DiscussionColumn promoted chip 階段配色（design D2）", () => {
       promotedTo: ["cut-a", "cut-b", "cut-ready", "cut-arch", "cut-gone"],
     };
     render(<DiscussionColumn discussions={[d]} changes={chipChanges} archived={chipArchived} />);
-    fireEvent.click(screen.getByRole("button", { name: /顯示已轉出/ }));
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
     const chipCls = (label: string) => screen.getByText(label).className;
     // 提案中/進行中沿 STAGE_STYLE badge 的 teal 濃度階梯。
     expect(chipCls("提案中")).toContain("bg-primary/8");

@@ -324,6 +324,7 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
               onArchiveDiscussion={s.requestArchiveDiscussion}
               query={s.boardQuery}
               onQuery={s.setBoardQuery}
+              fulltextHits={s.searchHits}
               onReorder={(kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)}
               onDragActiveChange={handleBoardDragActive}
             />
@@ -352,6 +353,7 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
         loadMeta={(change) => dataSource.changeMeta(change)}
         onRunVerb={onRunVerb}
         verbResult={s.drawerVerb}
+        onClearVerb={s.clearDrawerVerb}
         onDelete={s.requestDelete}
         onToggleTask={async (change, ordinal, done) => {
           await dataSource.setTaskDone(change, ordinal, done);

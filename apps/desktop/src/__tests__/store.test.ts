@@ -25,6 +25,7 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     moveTask: vi.fn().mockResolvedValue(undefined),
     getDocument: vi.fn().mockResolvedValue("## Why\nhello"),
     getSpecDocument: vi.fn().mockResolvedValue("# spec"),
+    searchWorkspace: vi.fn().mockResolvedValue([]),
     changeCapabilities: vi.fn().mockResolvedValue(["desktop-app"]),
     runVerb: vi.fn().mockResolvedValue({ valid: true }),
     getArchivedDocument: vi.fn().mockResolvedValue(null),
@@ -91,6 +92,38 @@ describe("app store (Zustand)", () => {
     expect(store.getState().boardQuery).toBe("desk");
   });
 
+  it("boardQuery triggers the debounced full-text search (latest wins); clearing resets hits", async () => {
+    // design D6：200ms 去抖、latest-wins；空 query 清命中並取消在途。
+    vi.useFakeTimers();
+    const hits = [{ kind: "change", id: "demo", artifact: "design.md", snippet: "…x…" }];
+    const ds = fakeDataSource({ searchWorkspace: vi.fn().mockResolvedValue(hits) });
+    const store = createAppStore(ds);
+    store.getState().setBoardQuery("d");
+    store.getState().setBoardQuery("di");
+    expect(ds.searchWorkspace).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(ds.searchWorkspace).toHaveBeenCalledTimes(1);
+    expect(ds.searchWorkspace).toHaveBeenCalledWith("di");
+    expect(store.getState().searchHits).toEqual(hits);
+    store.getState().setBoardQuery("");
+    expect(store.getState().searchHits).toEqual([]);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(ds.searchWorkspace).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("full-text search failure falls back to field matching silently", async () => {
+    // spec「全文查詢失敗靜默退回欄位比對」：不彈錯、不阻斷輸入。
+    vi.useFakeTimers();
+    const ds = fakeDataSource({ searchWorkspace: vi.fn().mockRejectedValue(new Error("ipc down")) });
+    const store = createAppStore(ds);
+    store.getState().setBoardQuery("x");
+    await vi.advanceTimersByTimeAsync(200);
+    expect(store.getState().searchHits).toEqual([]);
+    expect(store.getState().verbResult).toBeNull();
+    vi.useRealTimers();
+  });
+
   it("boardQuery and the archived-page query are independent", () => {
     // spec「搜尋字串…與已封存頁獨立」：各自設值互不覆蓋。
     const store = createAppStore(fakeDataSource());
@@ -121,48 +154,57 @@ describe("app store (Zustand)", () => {
     expect(ds.runVerb).not.toHaveBeenCalled();
   });
 
-  it("runVerb validate keeps a structured drawer result, not the top bar", async () => {
-    // D1：validate 結果進詳情抽屜（drawerVerb 結構化），頂列 verbResult 保留給全域操作。
-    const ds = fakeDataSource();
-    const store = createAppStore(ds);
-    await store.getState().runVerb("validate", "desktop-shell-and-browser");
-    expect(store.getState().drawerVerb).toMatchObject({
-      change: "desktop-shell-and-browser",
-      verb: "validate",
-      validate: { valid: true },
-    });
-    expect(store.getState().verbResult).toBeNull();
-    expect(ds.listChanges).toHaveBeenCalled();
-  });
-
-  it("runVerb analyze keeps the AnalyzeReport in the drawer result", async () => {
-    // D2：analyze 沿用引擎回傳的 AnalyzeReport，保留結構供四維度面板。
+  it("runVerb analyze runs validate and analyze together into one drawer result", async () => {
+    // design D1：「分析」單鍵雙動詞——validate＋analyze 合併為單一結構化抽屜結果，
+    // 頂列 verbResult 保留給全域操作。
     const report = {
       change_id: "x",
-      dimensions: [],
+      dimensions: [{ dimension: "Ambiguity", status: "1 issue(s) found", finding_count: 1 }],
       findings: [
         { id: "AMB-1", dimension: "Ambiguity", severity: "Suggestion", location: "specs", summary: "s", recommendation: "r" },
       ],
       artifacts_analyzed: [],
       artifacts_missing: [],
     };
-    const ds = fakeDataSource({ runVerb: vi.fn().mockResolvedValue(report) });
+    const runVerb = vi.fn().mockImplementation((verb: string) =>
+      Promise.resolve(verb === "validate" ? { valid: true, errors: [] } : report),
+    );
+    const ds = fakeDataSource({ runVerb });
     const store = createAppStore(ds);
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
+    expect(runVerb).toHaveBeenCalledWith("validate", "desktop-shell-and-browser");
+    expect(runVerb).toHaveBeenCalledWith("analyze", "desktop-shell-and-browser");
     expect(store.getState().drawerVerb).toMatchObject({
       change: "desktop-shell-and-browser",
-      verb: "analyze",
+      validate: { valid: true },
       analyze: { findings: [{ dimension: "Ambiguity" }] },
     });
     expect(store.getState().verbResult).toBeNull();
+    expect(ds.listChanges).toHaveBeenCalled();
   });
 
-  it("runVerb validate failure surfaces the error in the drawer result", async () => {
+  it("runVerb analyze failure surfaces the error in the drawer result", async () => {
+    // 任一動詞失敗不靜默：error 進抽屜結果呈現 core 訊息。
     const ds = fakeDataSource({ runVerb: vi.fn().mockRejectedValue(new Error("parse boom")) });
     const store = createAppStore(ds);
-    await store.getState().runVerb("validate", "desktop-shell-and-browser");
-    expect(store.getState().drawerVerb).toMatchObject({ change: "desktop-shell-and-browser", verb: "validate" });
+    await store.getState().runVerb("analyze", "desktop-shell-and-browser");
+    expect(store.getState().drawerVerb?.change).toBe("desktop-shell-and-browser");
     expect(store.getState().drawerVerb?.error).toContain("parse boom");
+  });
+
+  it("clearDrawerVerb closes the analysis result; switching change still clears it", async () => {
+    // design D2：分析面板可關閉——clearDrawerVerb 收合；既有「換 change 清空」不回歸。
+    const ds = fakeDataSource();
+    const store = createAppStore(ds);
+    await store.getState().refresh();
+    await store.getState().runVerb("analyze", "desktop-shell-and-browser");
+    expect(store.getState().drawerVerb).not.toBeNull();
+    store.getState().clearDrawerVerb();
+    expect(store.getState().drawerVerb).toBeNull();
+    // 換 change 清空行為保留
+    await store.getState().runVerb("analyze", "desktop-shell-and-browser");
+    store.getState().openDetail("desktop-shell-and-browser");
+    expect(store.getState().drawerVerb).toBeNull();
   });
 
   it("runVerb archive still surfaces in the top-bar verbResult", async () => {

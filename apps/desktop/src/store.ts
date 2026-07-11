@@ -8,6 +8,7 @@ import type {
   DiscussionItem,
   DiscussionLists,
   ListView,
+  SearchHit,
   Verb,
   AnalyzeReport,
   VerbDrawerResult,
@@ -42,6 +43,8 @@ export interface AppState {
   query: string;
   /** 看板搜尋字串——與已封存頁的 query 各自獨立；不持久化、不跨啟動保留（spec）。 */
   boardQuery: string;
+  /** 看板全文查詢命中（design D6）：去抖後由 searchWorkspace 回填；空 query 恆空。 */
+  searchHits: SearchHit[];
   expandedName: string | null;
 
   /** 詳情抽屜當前的 change（null=關閉）。 */
@@ -78,6 +81,8 @@ export interface AppState {
   confirmArchiveDiscussion: () => Promise<void>;
   cancelArchiveDiscussion: () => void;
   runVerb: (verb: Verb, change: string) => Promise<void>;
+  /** 收合詳情抽屜的分析結果（design D2：再按分析或面板關閉鈕）。 */
+  clearDrawerVerb: () => void;
   /** 看板拖排寫回：把卡片排到兩鄰居之間（null＝欄頂／欄底）；失敗浮上 verbResult。 */
   reorderCard: (kind: CardKind, id: string, prevId: string | null, nextId: string | null) => Promise<void>;
 
@@ -116,6 +121,10 @@ export function createAppStore(
   workspace?: WorkspaceAdapter,
 ): UseBoundStore<StoreApi<AppState>> {
   return create<AppState>((set, get) => {
+    // 全文查詢的去抖與 latest-wins 狀態（design D6）——閉包層、不進 store state。
+    let searchSeq = 0;
+    let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
     /** 命中專案的共同尾聲：記分頁（去重）、設 active、清對話框、persist、整批 refresh。
      * 舊 active 分頁的徽章停留在最後一次 refresh 的派生值——即切走時的快照（design D11）。 */
     async function enterProject(root: string, name: string) {
@@ -148,6 +157,7 @@ export function createAppStore(
     view: "active",
     query: "",
     boardQuery: "",
+    searchHits: [],
     expandedName: null,
     detailChange: null,
     detailDiscussion: null,
@@ -203,6 +213,24 @@ export function createAppStore(
 
     setBoardQuery(boardQuery) {
       set({ boardQuery });
+      // 全文查詢（design D6）：200ms 去抖、latest-wins 序號防交錯；空 query 清
+      // 命中並作廢在途；失敗靜默退回欄位比對（spec）——不彈錯、不阻斷輸入。
+      if (searchTimer !== null) clearTimeout(searchTimer);
+      const seq = ++searchSeq;
+      if (!boardQuery.trim()) {
+        set({ searchHits: [] });
+        return;
+      }
+      searchTimer = setTimeout(() => {
+        void dataSource
+          .searchWorkspace(boardQuery)
+          .then((hits) => {
+            if (seq === searchSeq) set({ searchHits: hits });
+          })
+          .catch(() => {
+            if (seq === searchSeq) set({ searchHits: [] });
+          });
+      }, 200);
     },
 
     toggleExpand(name) {
@@ -301,19 +329,29 @@ export function createAppStore(
         await get().refresh();
         return;
       }
-      // validate／analyze：結構化結果進詳情抽屜、不佔頂列（D1/D2）。
+      // 「分析」一鍵雙動詞（design D1）：validate＋analyze 併發執行、合併為
+      // 單一結構化抽屜結果，不佔頂列。任一失敗即整批以 error 呈現、不靜默。
       try {
-        const r = await dataSource.runVerb(verb, change);
-        if (verb === "validate") {
-          const o = (r ?? {}) as { valid?: boolean; errors?: string[] };
-          set({ drawerVerb: { change, verb, validate: { valid: !!o.valid, errors: o.errors ?? [] } } });
-        } else {
-          set({ drawerVerb: { change, verb, analyze: r as AnalyzeReport } });
-        }
+        const [v, a] = await Promise.all([
+          dataSource.runVerb("validate", change),
+          dataSource.runVerb("analyze", change),
+        ]);
+        const o = (v ?? {}) as { valid?: boolean; errors?: string[] };
+        set({
+          drawerVerb: {
+            change,
+            validate: { valid: !!o.valid, errors: o.errors ?? [] },
+            analyze: a as AnalyzeReport,
+          },
+        });
       } catch (e) {
-        set({ drawerVerb: { change, verb, error: String(e) } });
+        set({ drawerVerb: { change, error: String(e) } });
       }
       await get().refresh();
+    },
+
+    clearDrawerVerb() {
+      set({ drawerVerb: null });
     },
 
     async reorderCard(kind, id, prevId, nextId) {

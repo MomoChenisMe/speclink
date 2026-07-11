@@ -37,6 +37,7 @@ export type {
   ArchivedItem,
   DiscussionItem,
   DiscussionLists,
+  SearchHit,
   Verb,
   AnalyzeFinding,
   AnalyzeDimension,

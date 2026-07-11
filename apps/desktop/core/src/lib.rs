@@ -14,6 +14,7 @@ pub mod manage;
 pub mod project;
 pub mod query;
 pub mod rank;
+pub mod search;
 pub mod settings;
 #[cfg(test)]
 pub(crate) mod testfixture;
