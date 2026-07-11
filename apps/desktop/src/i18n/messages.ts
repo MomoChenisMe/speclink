@@ -23,7 +23,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "app.deleteConfirm": "刪除",
     "app.closeTab": "關閉分頁",
     "app.removeTab": "自分頁移除",
-    "app.tabBadgeTooltip": "{n} 個進行中變更",
+    "app.tabBadgeTooltip": "{n} 個待收尾項目（已就緒變更＋已結論討論）",
     "app.initTitle": "初始化 speclink 工作區？",
     "app.initDesc":
       "{name} 還不是 speclink 專案。確認後會在該目錄建立 openspec/ 骨架、.speclink.yaml 與所選 AI 工具的技能檔。",
@@ -87,7 +87,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "app.deleteConfirm": "Delete",
     "app.closeTab": "Close tab",
     "app.removeTab": "Remove tab",
-    "app.tabBadgeTooltip": "{n} in-progress changes",
+    "app.tabBadgeTooltip": "{n} items awaiting wrap-up (ready changes + concluded discussions)",
     "app.initTitle": "Initialize a speclink workspace?",
     "app.initDesc":
       "{name} is not a speclink project yet. Confirming creates the openspec/ skeleton, .speclink.yaml and skill files for the selected AI tools in that directory.",

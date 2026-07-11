@@ -39,7 +39,7 @@ function fakeWorkspace(over: Partial<WorkspaceAdapter> = {}): WorkspaceAdapter {
     initProject: vi.fn().mockResolvedValue({ status: "project", root: "C:\\proj\\fresh", name: "fresh" }),
     // 預設不可用：enterProject 的 current_project 校正走 catch、以委派值為準。
     currentProject: vi.fn().mockRejectedValue("current_project unavailable in this fake"),
-    projectStats: vi.fn().mockResolvedValue({ inProgressChanges: 2 }),
+    projectStats: vi.fn().mockResolvedValue({ pendingWrapUp: 2 }),
     pickFolder: vi.fn().mockResolvedValue(null),
     readSettings: vi.fn(),
     writeAppTools: vi.fn(),
@@ -185,7 +185,7 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
         .mockImplementation((p: string) =>
           Promise.resolve({ status: "project", root: p, name: p.toLowerCase() }),
         ),
-      projectStats: vi.fn().mockResolvedValue({ inProgressChanges: 2 }),
+      projectStats: vi.fn().mockResolvedValue({ pendingWrapUp: 2 }),
     });
     const store = createAppStore(fakeDataSource(), ws);
     await store.getState().restoreTabs();
@@ -198,21 +198,46 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
     expect(s.tabs.find((t) => t.root === "B")?.badge).toBe(2);
   });
 
-  it("active 分頁徽章隨 refresh 由變更清單派生更新", async () => {
-    const store = createAppStore(fakeDataSource(), fakeWorkspace());
+  it("active 分頁徽章隨 refresh 派生待收尾數；全部收尾後歸零（spec「分頁徽章顯示待收尾數」）", async () => {
+    const ds = fakeDataSource();
+    // 契約範例：2 個已就緒變更＋1 份已結論未轉出討論 → 徽章 3。
+    ds.listChanges = vi.fn().mockResolvedValue([
+      { name: "ready-a", status: "in-progress", totalTasks: 5, completedTasks: 5 },
+      { name: "ready-b", status: "in-progress", totalTasks: 3, completedTasks: 3 },
+      { name: "started", status: "in-progress", totalTasks: 10, completedTasks: 2, startedAt: "2026-07-06" },
+    ]);
+    ds.listDiscussions = vi.fn().mockResolvedValue({
+      active: [
+        { slug: "alpha", topic: "a", status: "concluded", rounds: 1, created: "2026-01-02", promotedTo: [] },
+        { slug: "beta", topic: "b", status: "open", rounds: 1, created: "2026-01-02", promotedTo: [] },
+        { slug: "gamma", topic: "c", status: "promoted", rounds: 1, created: "2026-01-02", promotedTo: ["cut"] },
+      ],
+      archived: [],
+    });
+    const store = createAppStore(ds, fakeWorkspace());
     store.setState({ tabs: [{ root: "A", name: "a", badge: null }], activeRoot: "A" });
     await store.getState().refresh();
-    // fakeDataSource：1 個有開工章 → 徽章 1。
-    expect(store.getState().tabs[0].badge).toBe(1);
+    expect(store.getState().tabs[0].badge).toBe(3);
+    // 全部收尾（封存與轉出）後看板刷新 → 徽章歸零。
+    ds.listChanges = vi.fn().mockResolvedValue([
+      { name: "started", status: "in-progress", totalTasks: 10, completedTasks: 2, startedAt: "2026-07-06" },
+    ]);
+    ds.listDiscussions = vi.fn().mockResolvedValue({ active: [], archived: [] });
+    await store.getState().refresh();
+    expect(store.getState().tabs[0].badge).toBe(0);
   });
 
   it("切走時 active 分頁徽章凍結為當下值（背景快照制，design D11）", async () => {
     const ws = fakeWorkspace({
       openProject: vi.fn().mockResolvedValue({ status: "project", root: "B", name: "b" }),
     });
-    const store = createAppStore(fakeDataSource(), ws);
+    const ds = fakeDataSource();
+    ds.listChanges = vi.fn().mockResolvedValue([
+      { name: "ready", status: "in-progress", totalTasks: 5, completedTasks: 5 },
+    ]);
+    const store = createAppStore(ds, ws);
     store.setState({ tabs: [{ root: "A", name: "a", badge: null }], activeRoot: "A" });
-    await store.getState().refresh(); // A 徽章 → 1
+    await store.getState().refresh(); // A 徽章 → 1（1 個已就緒變更）
     await store.getState().activateTab("B");
     const a = store.getState().tabs.find((t) => t.root === "A");
     expect(a?.badge).toBe(1);

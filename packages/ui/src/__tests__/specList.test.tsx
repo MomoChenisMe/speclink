@@ -1,7 +1,8 @@
-// spec 需求「規格頁提供清單、搜尋與展開檢視」：卡片清單（名稱＋相對修改時間）、
-// 名稱子字串搜尋（Example 表為準）、展開懶載入全文、縮合、複製名稱回饋、空狀態。
+// spec 需求「桌面 app 呈現 change 與 spec 的清單與內容」（抽屜語意：點整列開
+// 抽屜、無行內展開）＋「規格與封存卡片收合資訊」（規格卡）：收合資訊欄位、
+// 名稱搜尋（維持現狀）、複製名稱回饋、空狀態。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render as rtlRender, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -16,21 +17,41 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
-// Example 表的三個 spec；modifiedAt 對固定「現在」分別為今天／昨天／3 天前。
+// spec Scenario「規格卡收合資訊」的主角：7 條 Requirement、Purpose 已填寫、溯源自
+// 3 個變更；desktop-config 為缺 Purpose／零溯源的容錯樣本；node-sdk 為佔位樣本。
 const SPECS: SpecItem[] = [
-  { id: "desktop-app", modifiedAt: "2026-07-08" },
-  { id: "desktop-config", modifiedAt: "2026-07-07" },
-  { id: "node-sdk", modifiedAt: "2026-07-05" },
+  {
+    id: "desktop-app",
+    modifiedAt: "2026-07-08",
+    requirementCount: 7,
+    purposeExcerpt: "桌面 app 的行為契約。",
+    purposeTbd: false,
+    traceCount: 3,
+  },
+  {
+    id: "desktop-config",
+    modifiedAt: "2026-07-07",
+    requirementCount: 2,
+    purposeExcerpt: null,
+    purposeTbd: false,
+    traceCount: 0,
+  },
+  {
+    id: "node-sdk",
+    modifiedAt: "2026-07-05",
+    requirementCount: 1,
+    purposeExcerpt: "TBD - created by archiving change 'old'. Update Purpose after archive.",
+    purposeTbd: true,
+    traceCount: 1,
+  },
 ];
 
-function makeLoadDocument() {
-  return vi.fn(async (cap: string) => `# ${cap} Specification\n\n${cap} 的全文內容。`);
+function renderList(specs: SpecItem[] = SPECS, onOpen = vi.fn()) {
+  render(<SpecList specs={specs} onOpen={onOpen} />);
+  return onOpen;
 }
 
-function renderList(specs: SpecItem[] = SPECS, loadDocument = makeLoadDocument()) {
-  const view = render(<SpecList specs={specs} loadDocument={loadDocument} refreshGen={0} />);
-  return { loadDocument, view };
-}
+const card = (id: string) => document.querySelector(`[data-spec="${id}"]`) as HTMLElement;
 
 describe("SpecList（規格頁清單）", () => {
   beforeEach(() => {
@@ -42,18 +63,74 @@ describe("SpecList（規格頁清單）", () => {
     vi.useRealTimers();
   });
 
-  it("清單渲染各卡名稱與相對修改時間；modifiedAt 缺席時該行不渲染", () => {
-    renderList([...SPECS, { id: "bare-cap" }]);
-    expect(screen.getByText("desktop-app")).toBeTruthy();
-    expect(screen.getByText("desktop-config")).toBeTruthy();
-    expect(screen.getByText("node-sdk")).toBeTruthy();
-    expect(screen.getByText("今天")).toBeTruthy();
-    expect(screen.getByText("昨天")).toBeTruthy();
-    expect(screen.getByText("3 天前")).toBeTruthy();
-    // mtime 不可得的卡片存在、但無任何相對時間字樣（spec：該資訊缺席）。
-    const bare = document.querySelector('[data-spec="bare-cap"]') as HTMLElement;
+  it("卡片於收合狀態顯示需求數、溯源變更數、相對時間與 Purpose 摘要一行截斷", () => {
+    renderList();
+    const app = card("desktop-app");
+    // spec Example 值：需求數 7、溯源變更數 3、今天修改。
+    const reqCount = within(app).getByLabelText("7 條需求");
+    expect(reqCount).toBeTruthy();
+    // 計數 meta 統一「裸 icon＋數字」（design D7 增補）：無 pill 底色、帶 icon。
+    expect(reqCount.className).not.toContain("rounded-full");
+    expect(reqCount.className).not.toContain("bg-muted");
+    expect(reqCount.querySelector("svg")).toBeTruthy();
+    const traceCount = within(app).getByLabelText("溯源自 3 個變更");
+    expect(traceCount.className).not.toContain("rounded-full");
+    expect(traceCount.querySelector("svg")).toBeTruthy();
+    expect(within(app).getByText("今天")).toBeTruthy();
+    // Purpose 摘要獨立成描述列、一行截斷。
+    const excerpt = within(app).getByText("桌面 app 的行為契約。");
+    expect(excerpt.className).toContain("truncate");
+    // 容錯樣本：無 Purpose → 描述列缺席；零溯源 → 溯源標記缺席；需求數照常。
+    const config = card("desktop-config");
+    expect(within(config).getByLabelText("2 條需求")).toBeTruthy();
+    expect(within(config).queryByLabelText(/溯源自/)).toBeNull();
+    expect(within(config).getByText("昨天")).toBeTruthy();
+  });
+
+  it("modifiedAt 缺席時相對時間該行不渲染", () => {
+    renderList([{ id: "bare-cap", requirementCount: 0, purposeExcerpt: null, purposeTbd: false, traceCount: 0 }]);
+    const bare = card("bare-cap");
     expect(bare).toBeTruthy();
     expect(within(bare).queryByText(/今天|昨天|天前/)).toBeNull();
+  });
+
+  it("Purpose 佔位時以琥珀警示顯示「Purpose 待補」，不顯示佔位原文", () => {
+    renderList();
+    const sdk = card("node-sdk");
+    const hint = within(sdk).getByText("Purpose 待補");
+    expect(hint.className).toContain("amber");
+    expect(within(sdk).queryByText(/TBD - created by archiving/)).toBeNull();
+  });
+
+  it("點整列觸發 onOpen 開抽屜；無 chevron 與行內展開", () => {
+    const onOpen = renderList();
+    fireEvent.click(screen.getByText("desktop-app"));
+    expect(onOpen).toHaveBeenCalledWith("desktop-app");
+    // 卡片本身不展開內容（載入語意已搬進抽屜）。
+    expect(screen.queryByText("載入中…")).toBeNull();
+    // chevron 與 aria-expanded 全數移除。
+    expect(document.querySelector(".lucide-chevron-right")).toBeNull();
+    expect(document.querySelector(".lucide-chevron-down")).toBeNull();
+    expect(document.querySelector("[aria-expanded]")).toBeNull();
+  });
+
+  it("複製鈕位於標題群組內（標題後緊跟、hover 顯現），點擊寫入剪貼簿且不開抽屜", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const onOpen = renderList();
+    const app = card("desktop-app");
+    // 標題與複製鈕同屬一個標題群組（design D7：標題＋複製鈕成群組、meta 靠右）。
+    const group = app.querySelector("[data-title-group]") as HTMLElement;
+    expect(group).toBeTruthy();
+    expect(within(group).getByText("desktop-app")).toBeTruthy();
+    const copyBtn = within(group).getByLabelText("複製名稱");
+    // hover 顯現：預設透明、group-hover 顯示。
+    expect(copyBtn.className).toContain("opacity-0");
+    expect(copyBtn.className).toContain("group-hover:opacity-100");
+    fireEvent.click(copyBtn);
+    expect(writeText).toHaveBeenCalledWith("desktop-app");
+    await waitFor(() => expect(within(app).getByLabelText("已複製")).toBeTruthy());
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
   it("搜尋以名稱子字串過濾（大小寫不敏感）、無結果顯示空狀態、清空還原", () => {
@@ -83,94 +160,5 @@ describe("SpecList（規格頁清單）", () => {
   it("無 spec 專案顯示空狀態文案", () => {
     renderList([]);
     expect(screen.getByText("此專案尚無正典規格")).toBeTruthy();
-  });
-
-  it("點標題才載入內容：首次展開呈載入態、再點縮合、同 session 重展不重載", async () => {
-    // 可控 promise：先斷言載入態，再放行內容。
-    const resolvers: Array<(s: string | null) => void> = [];
-    const loadDocument = vi.fn(
-      (_cap: string) => new Promise<string | null>((resolve) => resolvers.push(resolve)),
-    );
-    renderList(SPECS, loadDocument);
-    expect(loadDocument).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByText("desktop-app"));
-    expect(loadDocument).toHaveBeenCalledTimes(1);
-    expect(loadDocument).toHaveBeenCalledWith("desktop-app");
-    expect(screen.getByText("載入中…")).toBeTruthy();
-
-    resolvers[0]("# desktop-app Specification\n\n全文內容段落。");
-    await waitFor(() => expect(screen.getByText("全文內容段落。")).toBeTruthy());
-
-    // 再點標題縮合；重展用元件內快取、不重呼叫 loadDocument（design D4）。
-    fireEvent.click(screen.getByText("desktop-app"));
-    expect(screen.queryByText("全文內容段落。")).toBeNull();
-    fireEvent.click(screen.getByText("desktop-app"));
-    expect(screen.getByText("全文內容段落。")).toBeTruthy();
-    expect(loadDocument).toHaveBeenCalledTimes(1);
-  });
-
-  it("展開另一張卡不影響已展開者", async () => {
-    renderList();
-    fireEvent.click(screen.getByText("desktop-app"));
-    await waitFor(() => expect(screen.getByText("desktop-app 的全文內容。")).toBeTruthy());
-    fireEvent.click(screen.getByText("node-sdk"));
-    await waitFor(() => expect(screen.getByText("node-sdk 的全文內容。")).toBeTruthy());
-    expect(screen.getByText("desktop-app 的全文內容。")).toBeTruthy();
-  });
-
-  it("refreshGen 遞增清空快取：已展開卡片重載新內容", async () => {
-    // design D4／契約 5：外部變更後（workspace-changed → refresh）世代遞增，
-    // 已展開內容重載至磁碟現況。
-    let body = "第一版內容。";
-    const loadDocument = vi.fn(async (_cap: string) => `# spec\n\n${body}`);
-    const { view } = renderList(SPECS, loadDocument);
-    fireEvent.click(screen.getByText("desktop-app"));
-    await waitFor(() => expect(screen.getByText("第一版內容。")).toBeTruthy());
-    body = "第二版內容。";
-    view.rerender(<SpecList specs={SPECS} loadDocument={loadDocument} refreshGen={1} />);
-    await waitFor(() => expect(screen.getByText("第二版內容。")).toBeTruthy());
-    expect(loadDocument).toHaveBeenCalledTimes(2);
-  });
-
-  it("複製名稱鈕寫入剪貼簿並顯示回饋，且不觸發展開", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    const { loadDocument } = renderList();
-    const card = document.querySelector('[data-spec="desktop-app"]') as HTMLElement;
-    fireEvent.click(within(card).getByLabelText("複製名稱"));
-    expect(writeText).toHaveBeenCalledWith("desktop-app");
-    // 回饋：控制項切為「已複製」狀態（無障礙標籤可見）。
-    await waitFor(() => expect(within(card).getByLabelText("已複製")).toBeTruthy());
-    expect(loadDocument).not.toHaveBeenCalled();
-  });
-
-  // spec.md 帶 @trace（archive.rs trace_block 格式）的載入器；sources 為各區塊 source
-  // （null＝畸形、略去 source 行）。
-  function traceDoc(sources: Array<string | null>): string {
-    const blocks = sources.map((s) => {
-      const head = s === null ? "" : `source: ${s}\n`;
-      return `<!-- @trace\n${head}updated: 2026-07-09\ncode:\n  - a.rs\n-->`;
-    });
-    return `# spec\n\n全文段落。\n\n${blocks.join("\n\n")}`;
-  }
-
-  it("展開含 source 的 spec：全文下方顯示來源變更 footer（去重保序＋在地標籤）", async () => {
-    const loadDocument = vi.fn(async (_cap: string) =>
-      traceDoc(["alpha-change", "alpha-change", "beta-change"]),
-    );
-    renderList(SPECS, loadDocument);
-    fireEvent.click(screen.getByText("desktop-app"));
-    await waitFor(() => expect(screen.getByText("全文段落。")).toBeTruthy());
-    // footer：在地標籤前置，source 去重且依首次出現保序。
-    expect(screen.getByText("來源變更：alpha-change、beta-change")).toBeTruthy();
-  });
-
-  it("展開 @trace 缺 source 的 spec：footer 缺席", async () => {
-    const loadDocument = vi.fn(async (_cap: string) => traceDoc([null]));
-    renderList(SPECS, loadDocument);
-    fireEvent.click(screen.getByText("desktop-app"));
-    await waitFor(() => expect(screen.getByText("全文段落。")).toBeTruthy());
-    expect(screen.queryByText(/來源變更/)).toBeNull();
   });
 });

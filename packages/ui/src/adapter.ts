@@ -26,11 +26,21 @@ export interface ChangeItem {
   whyExcerpt?: string | null;
 }
 
-/** 一個 canonical spec 的清單項（CLI 同形欄位＋桌面疊加的呈現層輔助欄位）。 */
+/** 一個 canonical spec 的清單項（CLI 同形欄位＋桌面疊加的呈現層輔助欄位）。
+ * 規格卡收合資訊由 Rust 端清單 payload 帶出（spec-archive-drawer design D4）；
+ * 不可讀／缺席檔案容錯為 0／null，前端對缺席欄位同樣以 0／null 容錯。 */
 export interface SpecItem {
   id: string;
   /** spec.md 最後修改日期（檔案系統 mtime 衍生，YYYY-MM-DD）；mtime 不可得時缺席。 */
   modifiedAt?: string | null;
+  /** 正典 spec 的 `### Requirement:` 標題數。 */
+  requirementCount?: number;
+  /** Purpose 區段首個非空行原文；null＝區段缺席或無內容。 */
+  purposeExcerpt?: string | null;
+  /** Purpose 為封存流程產生的佔位文字（前端改顯「Purpose 待補」警示）。 */
+  purposeTbd?: boolean;
+  /** 全文 @trace 標記的 source 去重數（溯源變更數）。 */
+  traceCount?: number;
 }
 
 /** change 的 metadata（.openspec.yaml，camelCase）。 */
@@ -45,13 +55,20 @@ export interface ChangeMetaInfo {
   startedWith?: string | null;
 }
 
-/** 一個歸檔 change 的清單項。任務計數缺席（無 tasks.md）時不顯示徽章。 */
+/** 一個歸檔 change 的清單項。任務計數缺席（無 tasks.md）時不顯示徽章。
+ * 封存卡收合資訊由快取清單 payload 帶出（spec-archive-drawer design D4/D5）。 */
 export interface ArchivedItem {
   datedName: string;
   date: string;
   name: string;
   tasksTotal?: number;
   tasksDone?: number;
+  /** specs/ 下 capability 目錄數（觸及規格數）。 */
+  specCount?: number;
+  /** 建立者（.openspec.yaml 的 created_by）；null/缺席＝不顯示頭像圓點。 */
+  createdBy?: string | null;
+  /** 來源討論 slug 清單；空/缺席＝來源討論標記缺席。 */
+  fromDiscussions?: string[];
 }
 
 /** 一筆討論的清單項（camelCase；status: open | concluded | promoted）。 */

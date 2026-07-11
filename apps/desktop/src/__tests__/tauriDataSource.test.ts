@@ -19,23 +19,55 @@ describe("createTauriDataSource", () => {
     expect(changes[0].restaleFrom).toEqual(["alpha"]);
   });
 
-  it("listSpecs unwraps the { specs } envelope and carries the optional modifiedAt field", async () => {
-    // spec「桌面 app 呈現 change 與 spec 的清單與內容」呈現層輔助欄位（design D2）：
-    // 清單項帶 modifiedAt（YYYY-MM-DD）；mtime 不可得時缺席。
-    invoke.mockResolvedValueOnce({ specs: [{ id: "cap-x", modifiedAt: "2026-07-08" }, { id: "cap-y" }] });
+  it("listSpecs unwraps the { specs } envelope and carries the presentation helper fields", async () => {
+    // spec「桌面 app 呈現 change 與 spec 的清單與內容」呈現層輔助欄位（design D2、
+    // spec-archive-drawer design D4）：modifiedAt 之外，規格卡收合資訊欄位原樣透傳。
+    invoke.mockResolvedValueOnce({
+      specs: [
+        {
+          id: "cap-x",
+          modifiedAt: "2026-07-08",
+          requirementCount: 7,
+          purposeExcerpt: "First line.",
+          purposeTbd: false,
+          traceCount: 3,
+        },
+        { id: "cap-y" },
+      ],
+    });
     const ds = createTauriDataSource();
     const specs = await ds.listSpecs();
     expect(invoke).toHaveBeenCalledWith("list_specs");
     expect(specs[0].modifiedAt).toBe("2026-07-08");
+    expect(specs[0].requirementCount).toBe(7);
+    expect(specs[0].purposeExcerpt).toBe("First line.");
+    expect(specs[0].purposeTbd).toBe(false);
+    expect(specs[0].traceCount).toBe(3);
     expect(specs[1].modifiedAt).toBeUndefined();
   });
 
-  it("listArchived unwraps the { archived } envelope", async () => {
-    invoke.mockResolvedValueOnce({ archived: [{ datedName: "2026-01-01-a", date: "2026-01-01", name: "a" }] });
+  it("listArchived unwraps the { archived } envelope and carries the card info fields", async () => {
+    // 封存卡收合資訊（spec-archive-drawer design D4/D5）：specCount／createdBy／
+    // fromDiscussions 原樣透傳。
+    invoke.mockResolvedValueOnce({
+      archived: [
+        {
+          datedName: "2026-01-01-a",
+          date: "2026-01-01",
+          name: "a",
+          specCount: 2,
+          createdBy: "momo",
+          fromDiscussions: ["alpha-ux"],
+        },
+      ],
+    });
     const ds = createTauriDataSource();
     const archived = await ds.listArchived();
     expect(invoke).toHaveBeenCalledWith("archived_changes");
     expect(archived[0].datedName).toBe("2026-01-01-a");
+    expect(archived[0].specCount).toBe(2);
+    expect(archived[0].createdBy).toBe("momo");
+    expect(archived[0].fromDiscussions).toEqual(["alpha-ux"]);
   });
 
   it("getDocument passes change + artifact to the document command", async () => {

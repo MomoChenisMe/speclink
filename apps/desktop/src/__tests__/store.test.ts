@@ -226,6 +226,27 @@ describe("app store (Zustand)", () => {
     expect(store.getState().verbResult).toBeNull();
   });
 
+  it("detailSpec 開閉 action 比照 detailChange（spec-archive-drawer design D2）", async () => {
+    const store = createAppStore(fakeDataSource());
+    await store.getState().refresh();
+    expect(store.getState().detailSpec).toBeNull();
+    store.getState().openSpec("desktop-app");
+    expect(store.getState().detailSpec).toBe("desktop-app");
+    store.getState().closeSpec();
+    expect(store.getState().detailSpec).toBeNull();
+  });
+
+  it("detailArchived 開閉 action：change 與 discussion 兩型 discriminated target", () => {
+    const store = createAppStore(fakeDataSource());
+    expect(store.getState().detailArchived).toBeNull();
+    store.getState().openArchived({ kind: "change", datedName: "2026-07-04-x" });
+    expect(store.getState().detailArchived).toEqual({ kind: "change", datedName: "2026-07-04-x" });
+    store.getState().openArchived({ kind: "discussion", slug: "old-topic" });
+    expect(store.getState().detailArchived).toEqual({ kind: "discussion", slug: "old-topic" });
+    store.getState().closeArchived();
+    expect(store.getState().detailArchived).toBeNull();
+  });
+
   it("reorderCard failure surfaces a one-line error and still refreshes", async () => {
     // spec「寫回失敗不留假象」：錯誤浮上 verbResult、看板刷新回磁碟現況。
     const ds = fakeDataSource({

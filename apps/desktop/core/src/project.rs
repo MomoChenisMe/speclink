@@ -47,11 +47,11 @@ pub fn project_name(root: &Path) -> String {
         .unwrap_or_else(|| root.display().to_string())
 }
 
-/// 唯讀回報指定專案 root 的進行中變更數（design D11 背景分頁徽章快照）。
-/// 不切換任何狀態。計數與看板欄位派生一致：全完成（總數>0）＝ready 不計；
-/// 有開工章或任務完成數>0 計入；其餘 proposed 不計。
-/// 路徑失效回單行 Err；且探索命中的 root 必須就是 `path` 本身——openspec/
-/// 已刪但目錄還在時，向上探索會誤命中祖先專案，不得回報別人的數字。
+/// 唯讀回報指定專案 root 的待收尾數（spec-archive-drawer design D6 背景分頁徽章快照）。
+/// 不切換任何狀態。待收尾＝等使用者執行動詞的卡片：已就緒（任務全完成，與看板
+/// ready 欄派生一致）變更數＋concluded 未轉出討論數（promoted 已轉出、open 仍在
+/// 推進，皆不計）。路徑失效回單行 Err；且探索命中的 root 必須就是 `path` 本身——
+/// openspec/ 已刪但目錄還在時，向上探索會誤命中祖先專案，不得回報別人的數字。
 pub fn project_stats_at(path: &Path) -> Result<serde_json::Value, String> {
     match open_project_at(path)? {
         ProjectProbe::Project { root, .. } if root == path.display().to_string() => {}
@@ -63,7 +63,7 @@ pub fn project_stats_at(path: &Path) -> Result<serde_json::Value, String> {
         }
     }
     let payload = crate::query::list_changes_at(path);
-    let n = payload["changes"]
+    let ready = payload["changes"]
         .as_array()
         .map(|items| {
             items
@@ -71,14 +71,17 @@ pub fn project_stats_at(path: &Path) -> Result<serde_json::Value, String> {
                 .filter(|c| {
                     let total = c["totalTasks"].as_u64().unwrap_or(0);
                     let done = c["completedTasks"].as_u64().unwrap_or(0);
-                    let started = c["startedAt"].as_str().is_some();
-                    let ready = total > 0 && done >= total;
-                    !ready && (started || done > 0)
+                    total > 0 && done >= total
                 })
                 .count()
         })
         .unwrap_or(0);
-    Ok(serde_json::json!({ "inProgressChanges": n }))
+    let discussions = crate::discussions::list_discussions_at(path);
+    let concluded = discussions["active"]
+        .as_array()
+        .map(|items| items.iter().filter(|d| d["status"] == "concluded").count())
+        .unwrap_or(0);
+    Ok(serde_json::json!({ "pendingWrapUp": ready + concluded }))
 }
 
 /// 對未初始化目錄執行與 `speclink init` 等效的初始化（design D3：消費
@@ -260,35 +263,68 @@ mod tests {
         assert!(init_project_at(fx.root(), &["claude".into()]).is_err());
     }
 
-    // --- project_stats_at：唯讀進行中變更數（design D11 背景分頁徽章快照） ---
+    // --- project_stats_at：唯讀待收尾數（spec-archive-drawer design D6 背景分頁徽章快照） ---
+
+    /// 鷹架版討論記錄（比照 discussions.rs 測試）。
+    fn discussion_doc(slug: &str, topic: &str, status: &str, extra_fm: &str) -> String {
+        format!(
+            "---\ntopic: {topic}\nslug: {slug}\nstatus: {status}\n{extra_fm}created: 2026-01-02\n---\n\n\
+             # Discussion: {topic}\n\n\
+             ## Context\n\nFixture context.\n\n\
+             ## Rounds\n\n\
+             ## Conclusion\n\n**Decision**: something\n"
+        )
+    }
 
     #[test]
-    fn project_stats_counts_in_progress_changes_like_the_kanban() {
-        // 與看板欄位派生一致：全完成＝ready 不計；有開工章或任務完成數>0 計入；
-        // 其餘 proposed 不計。
-        let fx = FixtureRoot::new("stats");
-        fx.add_change("proposed-a", "schema: spec-driven\ncreated: 2026-07-01\n");
-        fx.write(
-            "openspec/changes/proposed-a/tasks.md",
-            "- [ ] 1.1 one\n- [ ] 1.2 two\n",
-        );
+    fn project_stats_reports_pending_wrap_up_count() {
+        // design D6：待收尾數＝已就緒（任務全完成）變更數＋concluded 未轉出討論數；
+        // 進行中／proposed 變更與 promoted／open 討論不計；inProgressChanges 欄位移除
+        //（唯一消費者 store.ts 同變更內改寫）。
+        let fx = FixtureRoot::new("stats-wrapup");
+        fx.add_change("ready-a", "schema: spec-driven\ncreated: 2026-07-01\n");
+        fx.write("openspec/changes/ready-a/tasks.md", "- [x] 1.1 one\n- [x] 1.2 two\n");
+        fx.add_change("ready-b", "schema: spec-driven\ncreated: 2026-07-01\n");
+        fx.write("openspec/changes/ready-b/tasks.md", "- [x] 1.1 one\n");
         fx.add_change(
-            "started-b",
+            "started-c",
             "schema: spec-driven\ncreated: 2026-07-01\nstarted_at: 2026-07-02T00:00:00Z\n",
         );
+        fx.write("openspec/changes/started-c/tasks.md", "- [ ] 1.1 one\n- [ ] 1.2 two\n");
+        fx.add_change("proposed-d", "schema: spec-driven\ncreated: 2026-07-01\n");
+        fx.write("openspec/changes/proposed-d/tasks.md", "- [ ] 1.1 one\n");
         fx.write(
-            "openspec/changes/started-b/tasks.md",
-            "- [ ] 1.1 one\n- [ ] 1.2 two\n",
+            "openspec/discussions/alpha-concluded.md",
+            &discussion_doc("alpha-concluded", "Alpha", "concluded", ""),
         );
-        // progressed-c 用 fixture 預設 tasks（1/2 完成）、無開工章。
-        fx.add_change("progressed-c", "schema: spec-driven\ncreated: 2026-07-01\n");
-        fx.add_change("ready-d", "schema: spec-driven\ncreated: 2026-07-01\n");
         fx.write(
-            "openspec/changes/ready-d/tasks.md",
-            "- [x] 1.1 one\n- [x] 1.2 two\n",
+            "openspec/discussions/beta-open.md",
+            &discussion_doc("beta-open", "Beta", "open", ""),
+        );
+        fx.write(
+            "openspec/discussions/gamma-promoted.md",
+            &discussion_doc("gamma-promoted", "Gamma", "promoted", "promoted_to: cut-a\n"),
         );
         let stats = project_stats_at(fx.root()).expect("stats ok");
-        assert_eq!(stats["inProgressChanges"], 2, "started-b + progressed-c: {stats}");
+        assert_eq!(stats["pendingWrapUp"], 3, "ready-a + ready-b + alpha-concluded: {stats}");
+        assert!(
+            stats.get("inProgressChanges").is_none(),
+            "inProgressChanges removed (design D6): {stats}"
+        );
+    }
+
+    #[test]
+    fn project_stats_pending_wrap_up_is_zero_when_nothing_awaits_the_user() {
+        // 全部收尾後歸零（Implementation Contract）：只剩進行中／proposed 與 open 討論。
+        let fx = FixtureRoot::new("stats-wrapup-zero");
+        fx.add_change("proposed-a", "schema: spec-driven\ncreated: 2026-07-01\n");
+        fx.write("openspec/changes/proposed-a/tasks.md", "- [ ] 1.1 one\n");
+        fx.write(
+            "openspec/discussions/beta-open.md",
+            &discussion_doc("beta-open", "Beta", "open", ""),
+        );
+        let stats = project_stats_at(fx.root()).expect("stats ok");
+        assert_eq!(stats["pendingWrapUp"], 0, "{stats}");
     }
 
     #[test]

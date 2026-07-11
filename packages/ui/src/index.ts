@@ -92,7 +92,9 @@ export { RichDetailDrawer, type RichDetailDrawerProps } from "./components/RichD
 export { parseTaskDoc, type TaskDocItem } from "./tasks";
 export { TaskList, type TaskListProps } from "./components/TaskList";
 export { DeltaBadges } from "./components/DeltaBadges";
-export { ArchivedList, ArchivedRow, type ArchivedListProps } from "./components/ArchivedList";
+export { ArchivedList, type ArchivedListProps } from "./components/ArchivedList";
+export { ArchivedDrawer, type ArchivedDrawerProps, type ArchivedTarget } from "./components/ArchivedDrawer";
 
 // 規格頁
 export { SpecList, type SpecListProps } from "./components/SpecList";
+export { SpecDrawer, type SpecDrawerProps } from "./components/SpecDrawer";

@@ -1,6 +1,7 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type {
   SpeclinkDataSource,
+  ArchivedTarget,
   CardKind,
   ChangeItem,
   SpecItem,
@@ -17,7 +18,7 @@ import type {
 import { appT } from "./i18n/runtime";
 import type { WorkspaceAdapter } from "./adapter/workspace";
 import {
-  inProgressCount,
+  pendingWrapUpCount,
   persistTabs,
   readPersistedTabs,
   removeTab,
@@ -51,6 +52,10 @@ export interface AppState {
   detailChange: ChangeItem | null;
   /** 討論抽屜當前的討論（null=關閉）。 */
   detailDiscussion: DiscussionItem | null;
+  /** 規格抽屜當前的 capability id（null=關閉；spec-archive-drawer design D2）。 */
+  detailSpec: string | null;
+  /** 封存抽屜當前目標（封存變更或封存討論；null=關閉）。 */
+  detailArchived: ArchivedTarget | null;
 
   pendingArchive: string | null;
   pendingDelete: string | null;
@@ -71,6 +76,10 @@ export interface AppState {
   closeDetail: () => void;
   openDiscussion: (slug: string) => void;
   closeDiscussion: () => void;
+  openSpec: (capability: string) => void;
+  closeSpec: () => void;
+  openArchived: (target: ArchivedTarget) => void;
+  closeArchived: () => void;
   requestArchive: (name: string) => void;
   confirmArchive: () => Promise<void>;
   cancelArchive: () => void;
@@ -161,6 +170,8 @@ export function createAppStore(
     expandedName: null,
     detailChange: null,
     detailDiscussion: null,
+    detailSpec: null,
+    detailArchived: null,
     pendingArchive: null,
     pendingDelete: null,
     pendingArchiveDiscussion: null,
@@ -185,13 +196,16 @@ export function createAppStore(
       if (curD) {
         set({ detailDiscussion: discussions.active.find((d) => d.slug === curD.slug) ?? null });
       }
-      // active 分頁徽章＝當前變更清單的進行中數（派生管顯示）；背景分頁不動、
-      // 保留最後已知值（design D11 背景快照制）。
+      // active 分頁徽章＝待收尾數（已就緒變更＋已結論未轉出討論），隨看板刷新
+      // 派生（spec-archive-drawer design D6）；背景分頁不動、保留最後已知值
+      //（design D11 背景快照制）。
       const { activeRoot, tabs } = get();
       if (activeRoot && tabs.some((t) => t.root === activeRoot)) {
         set({
           tabs: tabs.map((t) =>
-            t.root === activeRoot ? { ...t, badge: inProgressCount(changes) } : t,
+            t.root === activeRoot
+              ? { ...t, badge: pendingWrapUpCount(changes, discussions.active) }
+              : t,
           ),
         });
       }
@@ -257,6 +271,22 @@ export function createAppStore(
 
     closeDiscussion() {
       set({ detailDiscussion: null });
+    },
+
+    openSpec(capability) {
+      set({ detailSpec: capability });
+    },
+
+    closeSpec() {
+      set({ detailSpec: null });
+    },
+
+    openArchived(target) {
+      set({ detailArchived: target });
+    },
+
+    closeArchived() {
+      set({ detailArchived: null });
     },
 
     requestArchive(name) {
@@ -477,7 +507,7 @@ export function createAppStore(
               const stats = await workspace.projectStats(t.root);
               set({
                 tabs: get().tabs.map((x) =>
-                  x.root === t.root ? { ...x, badge: stats.inProgressChanges } : x,
+                  x.root === t.root ? { ...x, badge: stats.pendingWrapUp } : x,
                 ),
               });
             } catch (e) {

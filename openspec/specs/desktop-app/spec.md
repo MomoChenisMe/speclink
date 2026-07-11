@@ -94,7 +94,7 @@ code:
 ---
 ### Requirement: 桌面 app 呈現 change 與 spec 的清單與內容
 
-桌面 app SHALL 呈現當前專案的 change 清單（含每個 change 的 proposal 與 tasks 完成度狀態）與 spec 清單，並 SHALL 於使用者選定任一 change 或 spec 時顯示其對應 markdown 文件內容（change 的 proposal/design/tasks、spec 的 spec.md）。清單與狀態資料的欄位與值 SHALL 與對應 CLI `--json` 輸出一致；自檔案系統衍生的呈現層輔助欄位（如 spec 的最後修改時間）不屬此對齊範圍，SHALL NOT 出現在 CLI 輸出對照要求中。
+桌面 app SHALL 呈現當前專案的 change 清單（含每個 change 的 proposal 與 tasks 完成度狀態）與 spec 清單，並 SHALL 於使用者選定任一 change 或 spec 時顯示其對應 markdown 文件內容（change 的 proposal/design/tasks、spec 的 spec.md）。spec 的選定 SHALL 開啟唯讀規格抽屜——呈現正典 spec.md 全文與溯源資訊，寬度與全螢幕切換與變更詳情抽屜一致，開啟期間內容隨外部檔案變更反映；規格清單 SHALL NOT 提供行內展開。清單與狀態資料的欄位與值 SHALL 與對應 CLI `--json` 輸出一致；自檔案系統衍生的呈現層輔助欄位（如 spec 的最後修改時間、需求數、Purpose 摘要、溯源變更數）不屬此對齊範圍，SHALL NOT 出現在 CLI 輸出對照要求中。
 
 #### Scenario: 顯示 change 清單與狀態
 
@@ -106,31 +106,40 @@ code:
 - **WHEN** 使用者在清單中選定一個 change
 - **THEN** app 顯示該 change 的 proposal 內容，並可切換檢視其 design 與 tasks（若存在）
 
-#### Scenario: 選定 spec 顯示其正典內容
+#### Scenario: 選定 spec 以抽屜顯示其正典內容
 
-- **WHEN** 使用者選定一個 spec
-- **THEN** app 顯示該 spec 的正典 spec.md 內容
+- **WHEN** 使用者於規格頁點擊一張規格卡
+- **THEN** 開啟唯讀規格抽屜顯示該 spec 的正典 spec.md 全文與溯源資訊，清單卡片無行內展開，抽屜寬度與變更詳情抽屜一致
 
 
 <!-- @trace
-source: desktop-specs-view
-updated: 2026-07-08
+source: spec-archive-drawer
+updated: 2026-07-11
 code:
-  - Cargo.lock
-  - apps/desktop/core/Cargo.toml
+  - apps/desktop/core/src/cache.rs
+  - apps/desktop/core/src/project.rs
   - apps/desktop/core/src/query.rs
   - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/App.test.tsx
   - apps/desktop/src/__tests__/store.test.ts
+  - apps/desktop/src/__tests__/tabs.test.ts
   - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/__tests__/workspace.test.ts
+  - apps/desktop/src/adapter/workspace.ts
+  - apps/desktop/src/i18n/messages.ts
   - apps/desktop/src/store.ts
+  - apps/desktop/src/tabs.ts
+  - packages/ui/src/__tests__/archivedDrawer.test.tsx
+  - packages/ui/src/__tests__/archivedList.test.tsx
+  - packages/ui/src/__tests__/specDrawer.test.tsx
   - packages/ui/src/__tests__/specList.test.tsx
   - packages/ui/src/adapter.ts
-  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/components/ArchivedDrawer.tsx
+  - packages/ui/src/components/ArchivedList.tsx
+  - packages/ui/src/components/SpecDrawer.tsx
   - packages/ui/src/components/SpecList.tsx
   - packages/ui/src/i18n.tsx
   - packages/ui/src/index.ts
-  - packages/ui/src/time.ts
 -->
 
 ---
@@ -404,75 +413,6 @@ code:
   - packages/ui/src/components/DiscussionDrawer.tsx
   - packages/ui/src/components/RichDetailDrawer.tsx
   - packages/ui/src/components/TaskList.tsx
--->
-
----
-### Requirement: 已封存變更可展開檢視
-
-已封存頁的每列 SHALL 顯示日期、名稱與任務數徽章，且 SHALL 可展開為唯讀檢視——至少含提案、設計、任務、規格分頁，內容來自封存目錄的實體文件。檢視 SHALL 為唯讀：SHALL NOT 提供任務勾選、動詞執行或任何寫入操作。所請求的文件不存在時對應分頁 SHALL 顯示空狀態而非錯誤。
-
-#### Scenario: 展開封存列檢視文件
-
-- **WHEN** 使用者於已封存頁點擊一個含完整 artifacts 的封存列
-- **THEN** 列展開顯示提案／設計／任務／規格分頁，各分頁呈現封存目錄內對應文件的內容，任務分頁的核取方塊不可點擊
-
-#### Scenario: 徽章顯示任務計數
-
-- **WHEN** 已封存頁載入一個 tasks.md 為 48 項全勾的封存變更
-- **THEN** 該列顯示 48/48 徽章；無 tasks.md 的封存變更不顯示徽章
-
-#### Scenario: 缺件文件顯示空狀態
-
-- **WHEN** 使用者展開一個無 design.md 的封存變更並切至設計分頁
-- **THEN** 分頁顯示空狀態文字，無錯誤彈窗，其餘分頁照常可用
-
-<!-- @trace
-source: desktop-board-parity
-updated: 2026-07-06
-code:
-  - .spectra.yaml
-  - AGENTS.md
-  - CLAUDE.md
-  - Cargo.lock
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/testfixture.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/watch.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-core/Cargo.toml
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/tests/no_direct_fs.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-fs/tests/store_fs.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/stage.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/stage.ts
-  - packages/ui/src/tasks.ts
 -->
 
 ---
@@ -773,12 +713,7 @@ code:
 ---
 ### Requirement: 已封存頁含討論節
 
-已封存頁 SHALL 分「變更」與「討論」兩節：變更節維持既有展開列；討論節 SHALL 列出封存討論（日期＋topic）並可展開唯讀檢視記錄內容，SHALL NOT 提供任何寫入動詞。搜尋框 SHALL 同時過濾兩節。隨最後一個子變更歸檔而自動封存的討論、與經 GUI 或 CLI 手動封存的討論 SHALL 一致地出現於此節。展開檢視的區段標題 SHALL 使用「背景」「討論過程」「結論」。
-
-#### Scenario: 封存討論唯讀展開
-
-- **WHEN** 使用者於已封存頁討論節點擊一筆封存討論
-- **THEN** 列展開顯示記錄內容（背景、討論過程、結論），無轉為變更、封存或任何寫入按鈕
+已封存頁 SHALL 分「變更」與「討論」兩節，兩節皆為卡片清單，點擊卡片開啟唯讀抽屜（檢視行為見「已封存項目以抽屜檢視」）；討論節 SHALL 列出封存討論（日期＋topic），SHALL NOT 提供任何寫入動詞。搜尋框 SHALL 同時過濾兩節。隨最後一個子變更歸檔而自動封存的討論、與經 GUI 或 CLI 手動封存的討論 SHALL 一致地出現於此節。抽屜檢視的區段標題 SHALL 使用「背景」「討論過程」「結論」。
 
 #### Scenario: 自動封存的討論現身討論節
 
@@ -787,34 +722,32 @@ code:
 
 
 <!-- @trace
-source: desktop-discussion-ui-polish
-updated: 2026-07-06
+source: spec-archive-drawer
+updated: 2026-07-11
 code:
-  - .spectra.yaml
-  - apps/desktop/core/src/discussions.rs
-  - apps/desktop/core/src/lib.rs
+  - apps/desktop/core/src/cache.rs
+  - apps/desktop/core/src/project.rs
   - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
   - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/App.test.tsx
   - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
+  - apps/desktop/src/__tests__/tabs.test.ts
+  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/__tests__/workspace.test.ts
+  - apps/desktop/src/adapter/workspace.ts
+  - apps/desktop/src/i18n/messages.ts
   - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/teststore.rs
+  - apps/desktop/src/tabs.ts
+  - packages/ui/src/__tests__/archivedDrawer.test.tsx
   - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/discussionColumn.test.tsx
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
+  - packages/ui/src/__tests__/specDrawer.test.tsx
+  - packages/ui/src/__tests__/specList.test.tsx
   - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ArchivedDrawer.tsx
   - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/DiscussionColumn.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/components/SpecDrawer.tsx
+  - packages/ui/src/components/SpecList.tsx
+  - packages/ui/src/i18n.tsx
   - packages/ui/src/index.ts
 -->
 
@@ -1835,4 +1768,114 @@ code:
   - packages/ui/src/adapter.ts
   - packages/ui/src/components/ChangeCard.tsx
   - packages/ui/src/components/DiscussionColumn.tsx
+-->
+
+---
+### Requirement: 已封存項目以抽屜檢視
+
+已封存頁的變更列與討論列 SHALL 以卡片清單呈現，點擊卡片 SHALL 開啟唯讀抽屜，SHALL NOT 提供行內展開。封存變更抽屜 SHALL 至少含提案、設計、任務、規格分頁，內容來自封存目錄的實體文件；任務分頁的核取方塊不可點擊且無批次工具列；有來源討論的封存變更 SHALL 於標題下方顯示可點的來源討論標記，點擊 SHALL 於同一抽屜切換至該討論的唯讀檢視（記錄以 live 優先、封存後備載入），無來源討論時該標記 SHALL 缺席。封存討論抽屜 SHALL 呈現「背景」「討論過程」「結論」區段。兩抽屜 SHALL 為唯讀——SHALL NOT 提供任務勾選、動詞執行或任何寫入操作；寬度與全螢幕切換 SHALL 與變更詳情抽屜一致；開啟期間內容 SHALL 隨外部檔案變更反映。所請求的文件不存在時對應分頁或區段 SHALL 顯示空狀態而非錯誤。
+
+#### Scenario: 點擊封存變更卡開啟四分頁抽屜
+
+- **WHEN** 使用者於已封存頁點擊一個含完整 artifacts 的封存變更卡
+- **THEN** 開啟唯讀抽屜顯示提案／設計／任務／規格分頁，各分頁呈現封存目錄內對應文件的內容，任務分頁的核取方塊不可點擊，清單卡片本身無行內展開
+
+#### Scenario: 點擊封存討論卡開啟唯讀抽屜
+
+- **WHEN** 使用者於已封存頁討論節點擊一筆封存討論卡
+- **THEN** 開啟唯讀抽屜顯示背景、討論過程、結論區段，無轉為變更、封存或任何寫入按鈕
+
+#### Scenario: 缺件文件顯示空狀態
+
+- **WHEN** 使用者開啟一個無 design.md 的封存變更抽屜並切至設計分頁
+- **THEN** 分頁顯示空狀態文字，無錯誤彈窗，其餘分頁照常可用
+
+#### Scenario: 自封存變更抽屜跳轉來源討論
+
+- **WHEN** 使用者開啟一個帶來源討論的封存變更抽屜，點擊標題下方的來源討論標記
+- **THEN** 同一抽屜切換為該討論的唯讀檢視（背景／討論過程／結論），記錄以 live 優先、封存後備載入；無來源討論的封存變更抽屜不顯示此標記
+
+<!-- @trace
+source: spec-archive-drawer
+updated: 2026-07-11
+code:
+  - apps/desktop/core/src/cache.rs
+  - apps/desktop/core/src/project.rs
+  - apps/desktop/core/src/query.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/store.test.ts
+  - apps/desktop/src/__tests__/tabs.test.ts
+  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/__tests__/workspace.test.ts
+  - apps/desktop/src/adapter/workspace.ts
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/store.ts
+  - apps/desktop/src/tabs.ts
+  - packages/ui/src/__tests__/archivedDrawer.test.tsx
+  - packages/ui/src/__tests__/archivedList.test.tsx
+  - packages/ui/src/__tests__/specDrawer.test.tsx
+  - packages/ui/src/__tests__/specList.test.tsx
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ArchivedDrawer.tsx
+  - packages/ui/src/components/ArchivedList.tsx
+  - packages/ui/src/components/SpecDrawer.tsx
+  - packages/ui/src/components/SpecList.tsx
+  - packages/ui/src/i18n.tsx
+  - packages/ui/src/index.ts
+-->
+
+---
+### Requirement: 規格與封存卡片收合資訊
+
+規格卡 SHALL 於標題文字後緊跟複製名稱鈕，並顯示需求數、溯源變更數與相對修改時間；Purpose 摘要 SHALL 取正典 Purpose 區段首個非空行一行截斷顯示，當 Purpose 為封存流程產生的佔位文字時 SHALL 改顯「Purpose 待補」警示樣式而非佔位原文。封存變更卡 SHALL 顯示日期、標題後緊跟複製鈕、任務數徽章（未全完成 SHALL 以警示樣式呈現，與全完成可辨；無 tasks.md 者不顯示徽章）、觸及規格數、建立者標記（hover 顯示全名）與來源討論標記（無來源討論時缺席）。封存討論卡 SHALL 顯示日期、topic、複製 slug 鈕、輪數與衍生變更數。三種卡片的計數 meta（需求數、溯源變更數、觸及規格數、衍生變更數）SHALL 以一致的「icon＋數字」樣式呈現——SHALL NOT 混用 pill 底色或無 icon 的圓圈數字；任務數徽章 SHALL 維持 pill 樣式與配色分級（狀態語意例外）。上述資訊 SHALL 於收合狀態（未開啟任何抽屜）即可見，資料 SHALL 由清單載入一次帶出，SHALL NOT 逐卡讀取文件全文。
+
+#### Scenario: 規格卡收合資訊
+
+- **WHEN** 規格頁載入一份含 7 條 Requirement、Purpose 已填寫、溯源自 3 個變更的規格
+- **THEN** 該卡於收合狀態顯示需求數 7、溯源變更數 3、Purpose 首行摘要與相對修改時間，全程未讀取其他規格全文
+
+#### Scenario: Purpose 佔位顯示待補提示
+
+- **WHEN** 某規格的 Purpose 區段仍為封存流程產生的佔位文字（精確偵測字串由實作與封存產生器以同一單元測試釘住）
+- **THEN** 該規格卡以警示樣式顯示「Purpose 待補」，不顯示佔位原文
+
+#### Scenario: 封存變更卡任務徽章配色分級
+
+- **WHEN** 已封存頁含一筆 20/21 未全完成與一筆 48/48 全完成的封存變更
+- **THEN** 前者任務徽章以警示樣式顯示 20/21，後者以一般樣式顯示 48/48，收合狀態即可一眼區辨
+
+#### Scenario: 封存討論卡顯示衍生變更數與複製 slug
+
+- **WHEN** 已封存頁討論節含一筆轉出 2 個變更的封存討論
+- **THEN** 該卡顯示衍生變更數 2 與複製 slug 鈕，點擊複製鈕將 slug 寫入剪貼簿且不開啟抽屜
+
+<!-- @trace
+source: spec-archive-drawer
+updated: 2026-07-11
+code:
+  - apps/desktop/core/src/cache.rs
+  - apps/desktop/core/src/project.rs
+  - apps/desktop/core/src/query.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/store.test.ts
+  - apps/desktop/src/__tests__/tabs.test.ts
+  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/__tests__/workspace.test.ts
+  - apps/desktop/src/adapter/workspace.ts
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/store.ts
+  - apps/desktop/src/tabs.ts
+  - packages/ui/src/__tests__/archivedDrawer.test.tsx
+  - packages/ui/src/__tests__/archivedList.test.tsx
+  - packages/ui/src/__tests__/specDrawer.test.tsx
+  - packages/ui/src/__tests__/specList.test.tsx
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ArchivedDrawer.tsx
+  - packages/ui/src/components/ArchivedList.tsx
+  - packages/ui/src/components/SpecDrawer.tsx
+  - packages/ui/src/components/SpecList.tsx
+  - packages/ui/src/i18n.tsx
+  - packages/ui/src/index.ts
 -->

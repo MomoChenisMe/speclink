@@ -1,34 +1,19 @@
-import { useEffect, useState } from "react";
-import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { useState } from "react";
+import { Check, Copy, FileText, History } from "lucide-react";
 
 import type { SpecItem } from "../adapter";
 import { useI18n } from "../i18n";
 import { matchesQuery } from "../search";
 import { relativeDays } from "../time";
-import { parseTraceSources } from "../trace";
-import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Markdown } from "./Markdown";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
-type Doc = string | null | undefined;
-
-/** 規格卡：名稱＋相對修改時間（mtime 缺席即不顯示）＋複製名稱；點標題展開
- * 懶載入正典 spec.md 全文（design D4：首次展開才讀、同 session 重展不重載）。 */
-function SpecRow({
-  item,
-  loadDocument,
-  refreshGen,
-}: {
-  item: SpecItem;
-  loadDocument: (capability: string) => Promise<string | null>;
-  refreshGen: number;
-}) {
+/** 規格卡（spec-archive-drawer design D7）：標題＋複製鈕成群組、meta（需求數、
+ * 溯源變更數、相對修改時間）靠右；第二列 Purpose 摘要一行截斷，佔位時改顯
+ * 琥珀「Purpose 待補」警示。點整列開唯讀規格抽屜，無行內展開。 */
+function SpecCard({ item, onOpen }: { item: SpecItem; onOpen: (capability: string) => void }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const [doc, setDoc] = useState<Doc>();
-  // 已載入內容對應的世代；null＝從未載入（或快取已被世代清空）。
-  const [loadedGen, setLoadedGen] = useState<number | null>(null);
 
   const copy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -37,86 +22,86 @@ function SpecRow({
     setTimeout(() => setCopied(false), 1200);
   };
 
-  const toggle = () => {
-    const next = !expanded;
-    setExpanded(next);
-    if (next && loadedGen == null) {
-      setLoadedGen(refreshGen);
-      void loadDocument(item.id).then(setDoc);
-    }
-  };
-
-  // 世代遞增清空快取（design D4）：展開中就地重載（保留舊文避免閃爍）、
-  // 縮合則丟棄內容，下次展開重讀磁碟現況。
-  useEffect(() => {
-    if (loadedGen == null || refreshGen <= loadedGen) return;
-    if (expanded) {
-      setLoadedGen(refreshGen);
-      void loadDocument(item.id).then(setDoc);
-    } else {
-      setLoadedGen(null);
-      setDoc(undefined);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshGen]);
-
   const rel = relativeDays(item.modifiedAt, t);
-  // 溯源 footer（design D2）：聚合全文所有 @trace 的 source，去重保序；空即不渲染。
-  const traceSources = parseTraceSources(doc);
-
+  const reqCount = item.requirementCount ?? 0;
+  const traceCount = item.traceCount ?? 0;
   return (
-    <div data-spec={item.id} className="rounded-lg border border-border bg-card">
-      <Button
-        type="button"
-        variant="ghost"
-        className="group h-auto w-full justify-start gap-2.5 whitespace-normal rounded-lg p-3 text-left font-normal hover:bg-transparent"
-        aria-expanded={expanded}
-        onClick={toggle}
+    <TooltipProvider>
+      <div
+        data-spec={item.id}
+        className="group cursor-pointer rounded-lg border border-border bg-card p-3 transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md"
+        onClick={() => onOpen(item.id)}
       >
-        {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        )}
-        <span className="font-medium text-sm truncate flex-1">{item.id}</span>
-        {rel && <span className="text-xs text-muted-foreground tabular-nums shrink-0">{rel}</span>}
-        <span
-          role="button"
-          aria-label={copied ? t("specs.copied") : t("common.copyName")}
-          className={`shrink-0 text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-          onClick={copy}
-        >
-          {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
-        </span>
-      </Button>
-      {expanded && (
-        <div className="px-3 pb-3 border-t border-border pt-3 max-h-[50vh] overflow-y-auto">
-          <Markdown
-            content={doc ?? null}
-            empty={doc === undefined ? t("common.loading") : t("common.noContent")}
-          />
-          {traceSources.length > 0 && (
-            <div className="mt-3 pt-2 border-t border-border/60 text-xs text-muted-foreground">
-              {t("specs.sourceChanges") + traceSources.join(t("specs.sourceSep"))}
-            </div>
-          )}
+        <div className="flex items-center gap-2.5">
+          {/* 標題＋複製鈕成一個群組吃 flex-1（標題 truncate、複製鈕緊跟 hover 顯現）。 */}
+          <span data-title-group className="flex min-w-0 flex-1 items-center gap-1">
+            <span className="min-w-0 truncate text-sm font-medium">{item.id}</span>
+            <span
+              role="button"
+              aria-label={copied ? t("specs.copied") : t("common.copyName")}
+              className={`shrink-0 text-muted-foreground transition-opacity hover:text-foreground ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+              onClick={copy}
+            >
+              {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+            </span>
+          </span>
+          {/* meta 靠右：需求數徽章、溯源變更數、相對修改時間。 */}
+          <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  aria-label={t("specs.requirementCount").replace("{n}", String(reqCount))}
+                  className="inline-flex items-center gap-1 tabular-nums"
+                >
+                  <FileText className="h-3 w-3" />
+                  {reqCount}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {t("specs.requirementCount").replace("{n}", String(reqCount))}
+              </TooltipContent>
+            </Tooltip>
+            {traceCount > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    aria-label={t("specs.traceCount").replace("{n}", String(traceCount))}
+                    className="inline-flex items-center gap-1 tabular-nums"
+                  >
+                    <History className="h-3 w-3" />
+                    {traceCount}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{t("specs.traceCount").replace("{n}", String(traceCount))}</TooltipContent>
+              </Tooltip>
+            )}
+            {rel && <span className="tabular-nums">{rel}</span>}
+          </span>
         </div>
-      )}
-    </div>
+        {/* 描述列：purposeTbd 以琥珀警示取代摘要，否則 Purpose 首行一行截斷；皆缺席時整列缺席。 */}
+        {item.purposeTbd ? (
+          <div className="mt-1 text-[11px] font-medium text-amber-600 dark:text-amber-500">
+            {t("specs.purposeTbd")}
+          </div>
+        ) : (
+          item.purposeExcerpt && (
+            <div className="mt-1 truncate text-[11px] text-muted-foreground">{item.purposeExcerpt}</div>
+          )
+        )}
+      </div>
+    </TooltipProvider>
   );
 }
 
 export interface SpecListProps {
   specs: SpecItem[];
-  /** 展開懶載入正典 spec.md 全文（capability 定址）。 */
-  loadDocument: (capability: string) => Promise<string | null>;
-  /** 刷新世代——遞增時清空已載入內容快取（外部變更反映）；未傳＝0。 */
-  refreshGen?: number;
+  /** 點卡片開唯讀規格抽屜（capability 定址）。 */
+  onOpen: (capability: string) => void;
 }
 
 /** 規格頁（design D1）：正典 spec 卡片清單＋名稱搜尋（design D3：大小寫不敏感
- * 子字串、純前端即打即濾）＋展開全文；純唯讀，無任何規格寫入動詞。 */
-export function SpecList({ specs, loadDocument, refreshGen = 0 }: SpecListProps) {
+ * 子字串、純前端即打即濾）；點卡片開抽屜檢視全文，無行內展開、無任何規格寫入動詞。 */
+export function SpecList({ specs, onOpen }: SpecListProps) {
   const { t } = useI18n();
   // 搜尋字串留元件內——規格頁無跨視圖保留需求（比對規則共用 matchesQuery）。
   const [query, setQuery] = useState("");
@@ -140,9 +125,7 @@ export function SpecList({ specs, loadDocument, refreshGen = 0 }: SpecListProps)
         ) : filtered.length === 0 ? (
           <div className="text-muted-foreground text-sm py-8 text-center">{t("specs.noResults")}</div>
         ) : (
-          filtered.map((s) => (
-            <SpecRow key={s.id} item={s} loadDocument={loadDocument} refreshGen={refreshGen} />
-          ))
+          filtered.map((s) => <SpecCard key={s.id} item={s} onOpen={onOpen} />)
         )}
       </div>
     </div>
