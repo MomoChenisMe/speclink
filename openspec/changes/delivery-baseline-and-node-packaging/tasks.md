@@ -13,9 +13,9 @@
 ## 3. 主 CI 完整測試（design 決策三：CI 結構——擴充 ci.yml，Node 測試留在 Node SDK workflow）
 
 - [x] 3.1 本機預跑 CI 將執行的內容並全綠：cargo test --workspace、root npm ci、npm test -w packages/ui、npm test -w apps/desktop（此時允許 act 警告存在，僅要求測試通過）——推 CI 前的風險緩解，任何本機紅燈先在此處理或記錄。
-- [ ] 3.2 擴充 .github/workflows/ci.yml 以滿足 spec Requirement「CI 執行完整測試」：三 OS 矩陣保留既有 build 與 smoke 步驟，新增 cargo test --workspace、setup-node、root npm ci、npm test -w packages/ui、npm test -w apps/desktop；所有測試步驟不設 continue-on-error；驗證：push 後 ci.yml 三 OS 全綠。
+- [x] 3.2 擴充 .github/workflows/ci.yml 以滿足 spec Requirement「CI 執行完整測試」：三 OS 矩陣保留既有 build 與 smoke 步驟，新增 cargo test --workspace、setup-node、root npm ci、npm test -w packages/ui、npm test -w apps/desktop；所有測試步驟不設 continue-on-error；驗證：push 後 ci.yml 三 OS 全綠。
 - [x] 3.3 驗證 spec Requirement「Node native 套件全平台交付驗證」恢復成立：node-sdk.yml 五個 build job 全數成功並上傳 binary artifact、三個可原生執行平台（win32-x64、darwin-arm64、linux-x64）vitest 通過、package job 產出主套件與平台子套件 tarballs；含 apply 揭露的 parity CLI 缺失修復——helpers 的 cliBin 改為 debug 不存在時退 release（crates/speclink-node/__test__/helpers.ts），workflow 可測平台補一步 cargo build --release -p speclink-cli（.github/workflows/node-sdk.yml，design 決策三）。
-- [ ] 3.4 處置 CI 揭露的平台性紅燈（如有）：屬測試檔或設定可修者於本組修復並重推至綠；需動產品程式碼者停下記錄並回報（依 proposal Non-Goals 另開 change），不得以 continue-on-error 掩蓋；驗證：最終 ci.yml 三 OS 與 node-sdk.yml 全綠。
+- [x] 3.4 處置 CI 揭露的平台性紅燈（如有）：屬測試檔或設定可修者於本組修復並重推至綠；需動產品程式碼者停下記錄並回報（依 proposal Non-Goals 另開 change），不得以 continue-on-error 掩蓋；驗證：最終 ci.yml 三 OS 與 node-sdk.yml 全綠。
 
 ## 4. 測試輸出 act 警告清零（design 決策四：act(...) 清零——只修測試檔的等待缺失）
 
@@ -25,4 +25,4 @@
 ## 5. 改動面驗收與收尾
 
 - [x] 5.1 改動面全檢：git diff --stat 僅含允許清單——crates/speclink-node/package.json、crates/speclink-node/package-lock.json、crates/speclink-node/src/store_bridge.rs（design 決策五單點豁免）、crates/speclink-node/__test__ 的測試檔、crates/speclink-cli/tests 的測試檔（macOS symlink 正規化）、crates/speclink-core/src/config.rs（僅 #[cfg(test)] 模組內的平台條件斷言）、crates/speclink-core/tests/golden 的 snapshot 檔（乾淨樹再生）、crates/speclink-fs/tests 的測試檔（readdir 順序正規化）、apps/desktop/src-tauri/src/watch.rs（僅 cfg(test) 測試模組）、.gitattributes（新檔，LF checkout）、.github/workflows/ci.yml、package.json、packages/ui 與 apps/desktop 的測試檔；crates/speclink-core 僅允許 config.rs 的 cfg(test) 測試模組行與 tests/golden snapshot，crates/speclink-cli 僅允許 tests 測試檔、src 零改動，crates/speclink-node/src 僅允許 store_bridge.rs 一檔（CLI src 零影響證據，parity／color／twin 對照不需重跑）。
-- [ ] 5.2 對 spec 五條 Requirement 逐一終驗：「Node 套件安裝確定性」（乾淨環境 npm ci exit 0）、「root 單一指令全量驗證」（npm run test:all exit 0）、「CI 執行完整測試」（ci.yml 三 OS 綠）、「Node native 套件全平台交付驗證」（node-sdk.yml 五平台 build ＋ 可執行平台測試綠）、「測試輸出無 React act 警告」（輸出零命中）；全數成立即本 change 可進 verify。
+- [x] 5.2 對 spec 五條 Requirement 逐一終驗：「Node 套件安裝確定性」（乾淨環境 npm ci exit 0）、「root 單一指令全量驗證」（npm run test:all exit 0）、「CI 執行完整測試」（ci.yml 三 OS 綠）、「Node native 套件全平台交付驗證」（node-sdk.yml 五平台 build ＋ 可執行平台測試綠）、「測試輸出無 React act 警告」（輸出零命中）；全數成立即本 change 可進 verify。
