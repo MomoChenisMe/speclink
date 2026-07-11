@@ -100,7 +100,7 @@ apply 期間揭露：ChangeMeta 在先前變更中新增了 board_rank 與 resta
 
 - root package.json 新增 scripts.test:all（既有 workspaces 欄位不動）。
 - crates/speclink-node/package.json 移除 optionalDependencies 區塊；napi.triples、scripts、devDependencies 不動；package-lock.json 與之同步重生。
-- .github/workflows/ci.yml 新增測試步驟；node-sdk.yml 僅在可測平台補一步 release CLI build（決策三）；release.yml 零改動。
+- .github/workflows/ci.yml 新增測試步驟；node-sdk.yml 僅在可測平台補一步 release CLI build（決策三）；release.yml 的發佈行為零改動（例外註記：使用者於收尾時指示的 repo 全域維護——checkout／setup-node action 升 v5 以消除 GitHub 的 Node 20 runtime 棄用警告——以獨立 commit 施行，觸及三個 workflow 檔各一行版本號，不屬本 change 的行為範圍）。
 
 **失敗模式：**
 
