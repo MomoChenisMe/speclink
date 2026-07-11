@@ -44,7 +44,7 @@ export interface WorkspaceAdapter {
   openProject(path: string): Promise<ProjectProbe>;
   initProject(path: string, tools: string[]): Promise<ProjectProbe>;
   currentProject(): Promise<ProjectInfo>;
-  projectStats(path: string): Promise<{ inProgressChanges: number }>;
+  projectStats(path: string): Promise<{ pendingWrapUp: number }>;
   /** 原生資料夾選擇器；取消回 null。 */
   pickFolder(): Promise<string | null>;
   readSettings(): Promise<SettingsSnapshot>;

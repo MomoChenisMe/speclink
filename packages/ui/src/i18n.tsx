@@ -72,6 +72,8 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "archived.noContext": "（無背景）",
     "archived.noRounds": "（無討論過程）",
     "archived.noConclusion": "（無結論）",
+    "archived.specCount": "觸及 {n} 份規格",
+    "archived.promotedCount": "衍生 {n} 個變更",
     "list.searchPlaceholder": "搜尋…",
     "list.viewActive": "進行中",
     "list.viewArchived": "已封存",
@@ -159,6 +161,9 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "specs.copied": "已複製",
     "specs.sourceChanges": "來源變更：",
     "specs.sourceSep": "、",
+    "specs.requirementCount": "{n} 條需求",
+    "specs.traceCount": "溯源自 {n} 個變更",
+    "specs.purposeTbd": "Purpose 待補",
   },
   en: {
     "common.loading": "Loading…",
@@ -219,6 +224,8 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "archived.noContext": "(no context)",
     "archived.noRounds": "(no rounds)",
     "archived.noConclusion": "(no conclusion)",
+    "archived.specCount": "Touches {n} specs",
+    "archived.promotedCount": "{n} promoted changes",
     "list.searchPlaceholder": "Search…",
     "list.viewActive": "Active",
     "list.viewArchived": "Archived",
@@ -306,6 +313,9 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "specs.copied": "Copied",
     "specs.sourceChanges": "Source changes: ",
     "specs.sourceSep": ", ",
+    "specs.requirementCount": "{n} requirements",
+    "specs.traceCount": "Traced from {n} changes",
+    "specs.purposeTbd": "Purpose pending",
   },
 };
 

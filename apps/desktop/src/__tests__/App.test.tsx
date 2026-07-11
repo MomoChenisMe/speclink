@@ -265,7 +265,7 @@ describe("App (kanban primary + rich detail)", () => {
       .mockImplementation((p: string) =>
         Promise.resolve({ status: "project", root: p, name: p === "A" ? "proj-a" : "proj-b" }),
       );
-    ws.projectStats = vi.fn().mockResolvedValue({ inProgressChanges: 0 });
+    ws.projectStats = vi.fn().mockResolvedValue({ pendingWrapUp: 0 });
     render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
     const tabA = (await screen.findByText("proj-a")).closest("[data-tab]") as HTMLElement;
     expect(tabA.getAttribute("data-active")).toBe("true");
@@ -481,8 +481,9 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(specsNav.className).not.toContain("bg-primary");
   });
 
-  it("規格頁展開卡片經 dataSource.getSpecDocument 載入正典全文", async () => {
-    // 契約：App 注入 store.specs 與 dataSource.getSpecDocument、傳入 refreshGen。
+  it("規格頁點卡開唯讀規格抽屜，經 dataSource.getSpecDocument 載入正典全文", async () => {
+    // spec Scenario「選定 spec 以抽屜顯示其正典內容」：App 掛載 SpecDrawer 並接線
+    // store.detailSpec 與 dataSource.getSpecDocument（spec-archive-drawer design D2）。
     const ds = fakeDataSource({
       getSpecDocument: vi.fn().mockResolvedValue("# desktop-app Specification\n\n正典內文段落。"),
     });
@@ -495,6 +496,104 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     fireEvent.click(screen.getByText("desktop-app"));
     await waitFor(() => expect(screen.getByText("正典內文段落。")).toBeTruthy());
     expect(ds.getSpecDocument).toHaveBeenCalledWith("desktop-app");
+    // 內容呈現在抽屜、非行內展開。
+    expect(document.querySelector("[data-spec-drawer]")).toBeTruthy();
+  });
+
+  it("已封存頁點封存變更卡開四分頁唯讀抽屜（spec「已封存項目以抽屜檢視」）", async () => {
+    const ds = fakeDataSource({
+      listArchived: vi.fn().mockResolvedValue([
+        {
+          datedName: "2026-07-04-old",
+          date: "2026-07-04",
+          name: "old",
+          tasksTotal: 2,
+          tasksDone: 2,
+          specCount: 1,
+          createdBy: null,
+          fromDiscussions: [],
+        },
+      ]),
+      getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
+    });
+    render(<App dataSource={ds} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const aside = document.querySelector("aside") as HTMLElement;
+    fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
+    await waitFor(() => screen.getByText("old"));
+    expect(ds.getArchivedDocument).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("old"));
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    expect(document.querySelector("[data-archived-drawer]")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /提案/ })).toBeTruthy();
+    expect(ds.getArchivedDocument).toHaveBeenCalledWith("2026-07-04-old", "proposal.md");
+  });
+
+  it("封存變更抽屜點來源討論 chip，同一抽屜切換為該討論的唯讀檢視", async () => {
+    // spec Scenario「自封存變更抽屜跳轉來源討論」的接線面：fromDiscussions →
+    // chips（topic 解析）→ openArchived({ kind: "discussion" })。
+    const ds = fakeDataSource({
+      listArchived: vi.fn().mockResolvedValue([
+        {
+          datedName: "2026-07-04-old",
+          date: "2026-07-04",
+          name: "old",
+          specCount: 1,
+          createdBy: null,
+          fromDiscussions: ["old-topic"],
+        },
+      ]),
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [],
+        archived: [
+          { slug: "old-topic", topic: "Old topic", status: "promoted", rounds: 1, created: "2026-06-30", promotedTo: ["x"] },
+        ],
+      }),
+      getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
+      getDiscussionDocument: vi
+        .fn()
+        .mockResolvedValue(
+          "---\ntopic: Old topic\nslug: old-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Old topic\n\n## Context\n\n封存背景內文。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n",
+        ),
+    });
+    render(<App dataSource={ds} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const aside = document.querySelector("aside") as HTMLElement;
+    fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
+    await waitFor(() => screen.getByText("old"));
+    fireEvent.click(screen.getByText("old"));
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    // chip 以 topic 顯示（自 discussions 兩節解析）。
+    fireEvent.click(screen.getByRole("button", { name: "Old topic" }));
+    await waitFor(() => expect(screen.getByText("封存背景內文。")).toBeTruthy());
+    expect(ds.getDiscussionDocument).toHaveBeenCalledWith("old-topic");
+    expect(screen.getByText("討論過程")).toBeTruthy();
+  });
+
+  it("已封存頁點封存討論卡開唯讀區段抽屜", async () => {
+    const ds = fakeDataSource({
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [],
+        archived: [
+          { slug: "old-topic", topic: "Old topic", status: "promoted", rounds: 1, created: "2026-06-30", promotedTo: ["x"] },
+        ],
+      }),
+      getDiscussionDocument: vi
+        .fn()
+        .mockResolvedValue(
+          "---\ntopic: Old topic\nslug: old-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Old topic\n\n## Context\n\n封存背景內文。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n",
+        ),
+    });
+    render(<App dataSource={ds} />);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const aside = document.querySelector("aside") as HTMLElement;
+    fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
+    await waitFor(() => screen.getByText("Old topic"));
+    fireEvent.click(screen.getByText("Old topic"));
+    await waitFor(() => expect(screen.getByText("封存背景內文。")).toBeTruthy());
+    expect(document.querySelector("[data-archived-drawer]")).toBeTruthy();
+    expect(ds.getDiscussionDocument).toHaveBeenCalledWith("old-topic");
+    expect(screen.getByText("討論過程")).toBeTruthy();
   });
 
   it("i18n 兩語系鍵集合相等，備忘鍵已自兩語系移除", () => {

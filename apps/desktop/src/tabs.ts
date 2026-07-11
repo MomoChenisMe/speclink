@@ -1,11 +1,11 @@
 // 專案分頁列的純函式面（design D8/D10）：分頁清單操作與 localStorage 持久化
 // （路徑＋顯示名＋順序＋最後活躍）。分頁列即最近開啟清單，不寫入專案目錄。
-import { changeStage, type ChangeItem } from "@speclink/ui";
+import { changeStage, type ChangeItem, type DiscussionItem } from "@speclink/ui";
 
 export interface ProjectTab {
   root: string;
   name: string;
-  /** 進行中變更數；null＝尚未取得（restore 快照前）。 */
+  /** 待收尾數（spec-archive-drawer design D6）；null＝尚未取得（restore 快照前）。 */
   badge: number | null;
 }
 
@@ -61,7 +61,11 @@ export function readPersistedTabs(storage: Storage = localStorage): PersistedTab
   }
 }
 
-/** 徽章派生：進行中變更數，與看板欄位規則同源（changeStage）。 */
-export function inProgressCount(changes: ChangeItem[]): number {
-  return changes.filter((c) => changeStage(c) === "in-progress").length;
+/** 徽章派生：待收尾數＝已就緒變更（changeStage ready，與看板欄位規則同源）＋
+ * 已結論未轉出討論（concluded；promoted 已轉出、open 仍在推進，皆不計）。
+ * 待收尾＝等使用者執行動詞的卡片（spec-archive-drawer design D6）。 */
+export function pendingWrapUpCount(changes: ChangeItem[], discussions: DiscussionItem[]): number {
+  const ready = changes.filter((c) => changeStage(c) === "ready").length;
+  const concluded = discussions.filter((d) => d.status === "concluded").length;
+  return ready + concluded;
 }

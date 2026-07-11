@@ -63,18 +63,73 @@ pub fn list_specs_at(root: &Path) -> Value {
         return json!({ "specs": [] });
     };
     let store: &dyn Store = &ctx.store;
-    // 桌面 payload 在 CLI 同形項上疊加呈現層輔助欄位 modifiedAt（design D2；
-    // parity 紅線：CLI 的 specs_json_items 本身不動）。mtime 不可得時不插 key。
+    // 桌面 payload 在 CLI 同形項上疊加呈現層輔助欄位（design D2、spec-archive-drawer
+    // design D4；parity 紅線：CLI 的 specs_json_items 本身不動）。mtime 不可得時不插
+    // key；規格卡欄位恆存在（不可讀／缺席檔案為 0／null，清單照常回傳）。
     let mut specs = speclink_core::listing::specs_json_items(store);
     if let Value::Array(items) = &mut specs {
         for item in items {
-            let Some(id) = item["id"].as_str() else { continue };
-            if let Some(date) = modified_date(&store.canonical_spec_path(id)) {
+            let Some(id) = item["id"].as_str().map(str::to_string) else { continue };
+            if let Some(date) = modified_date(&store.canonical_spec_path(&id)) {
                 item["modifiedAt"] = json!(date);
             }
+            let doc = store.read_canonical_spec(&id);
+            let purpose = doc.as_deref().and_then(purpose_excerpt);
+            item["requirementCount"] = json!(doc.as_deref().map_or(0, requirement_count));
+            item["purposeTbd"] =
+                json!(purpose.as_deref().is_some_and(|p| p.starts_with(PURPOSE_TBD_PREFIX)));
+            item["purposeExcerpt"] = json!(purpose);
+            item["traceCount"] = json!(doc.as_deref().map_or(0, trace_count));
         }
     }
     json!({ "specs": specs })
+}
+
+/// archive 產生新正典 spec 時的 Purpose 佔位文案前綴（speclink-core archive.rs）；
+/// 偵測一致性由 list_specs_purpose_tbd_flags_archive_placeholder 以真實 archive 釘住。
+const PURPOSE_TBD_PREFIX: &str = "TBD - created by archiving";
+
+/// 正典 spec 的 `### Requirement:` 標題數。
+fn requirement_count(doc: &str) -> usize {
+    doc.lines().filter(|l| l.trim().starts_with("### Requirement:")).count()
+}
+
+/// 正典 spec `## Purpose` 區段首個非空行原文；區段缺席或無內容時 `None`。
+fn purpose_excerpt(doc: &str) -> Option<String> {
+    let mut in_purpose = false;
+    for line in doc.lines() {
+        let trimmed = line.trim();
+        if let Some(heading) = trimmed.strip_prefix("## ") {
+            in_purpose = heading.trim() == "Purpose";
+            continue;
+        }
+        if in_purpose && !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
+/// 全文 `@trace` 註解區塊內 `source:` 值的去重數（同一變更多次溯源計一次）。
+fn trace_count(doc: &str) -> usize {
+    let mut sources = std::collections::HashSet::new();
+    let mut in_trace = false;
+    for line in doc.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("<!-- @trace") {
+            in_trace = true;
+            continue;
+        }
+        if in_trace {
+            if let Some(src) = trimmed.strip_prefix("source:") {
+                sources.insert(src.trim().to_string());
+            }
+            if trimmed.ends_with("-->") {
+                in_trace = false;
+            }
+        }
+    }
+    sources.len()
 }
 
 /// proposal.md 的 `## Why` 區段首個非空行原文（board-card-anatomy design D2）；
@@ -391,6 +446,104 @@ mod tests {
         let arr = v["specs"].as_array().expect("specs array");
         let ids: Vec<&str> = arr.iter().filter_map(|s| s["id"].as_str()).collect();
         assert!(ids.contains(&"cap-x"), "canonical spec present: {ids:?}");
+    }
+
+    #[test]
+    fn list_specs_includes_card_info_fields() {
+        // 規格卡收合資訊資料源（spec-archive-drawer design D4）：requirementCount 為
+        // `### Requirement:` 標題數、purposeExcerpt 為 Purpose 區段首個非空行原文、
+        // traceCount 為全文 @trace 標記的 source 去重數；欄位 camelCase。
+        let fx = FixtureRoot::new("q-spec-card");
+        fx.write(
+            "openspec/specs/cap-x/spec.md",
+            concat!(
+                "# cap-x Specification\n\n",
+                "## Purpose\n\nSearch behavior for the desktop app.\nSecond line ignored.\n\n",
+                "## Requirements\n\n",
+                "### Requirement: Alpha\n\nIt SHALL alpha.\n\n",
+                "<!-- @trace\nsource: change-one\nupdated: 2026-07-01\ncode:\n  - a.rs\n-->\n\n---\n",
+                "### Requirement: Beta\n\nIt SHALL beta.\n\n",
+                "<!-- @trace\nsource: change-two\nupdated: 2026-07-02\ncode:\n  - b.rs\n-->\n\n---\n",
+                "### Requirement: Gamma\n\nIt SHALL gamma.\n\n",
+                "<!-- @trace\nsource: change-one\nupdated: 2026-07-03\ncode:\n  - c.rs\n-->",
+            ),
+        );
+        let v = list_specs_at(fx.root());
+        let arr = v["specs"].as_array().expect("specs array");
+        let item = arr.iter().find(|s| s["id"] == "cap-x").expect("cap-x listed");
+        assert_eq!(item["requirementCount"], 3);
+        assert_eq!(item["purposeExcerpt"], "Search behavior for the desktop app.");
+        assert_eq!(item["purposeTbd"], false);
+        assert_eq!(item["traceCount"], 2, "source 去重：change-one 出現兩次計一次");
+        for key in ["requirement_count", "purpose_excerpt", "purpose_tbd", "trace_count"] {
+            assert!(item.get(key).is_none(), "camelCase only: {key}");
+        }
+    }
+
+    #[test]
+    fn list_specs_purpose_tbd_flags_archive_placeholder() {
+        // 佔位偵測與封存產生器文案的一致性以同一測試釘住（design 風險項）：
+        // 經真實 archive 動詞為新 capability 產生正典 spec，其 Purpose 即佔位文案，
+        // purposeTbd 必為 true。speclink-core 的佔位文案若變動，此測試即紅。
+        let fx = FixtureRoot::new("q-spec-tbd");
+        fx.write(
+            "openspec/changes/demo/.openspec.yaml",
+            "schema: spec-driven\ncreated: 2026-07-01\n",
+        );
+        fx.write(
+            "openspec/changes/demo/proposal.md",
+            "## Why\n\nDemo.\n\n## What Changes\n\n- something\n",
+        );
+        fx.write("openspec/changes/demo/tasks.md", "- [x] 1.1 done\n");
+        fx.write(
+            "openspec/changes/demo/specs/cap-new/spec.md",
+            "## ADDED Requirements\n\n### Requirement: Fresh works\n\nIt SHALL work.\n\n#### Scenario: works\n\n- **WHEN** used\n- **THEN** it works\n",
+        );
+        crate::verbs::archive_at(fx.root(), "demo").expect("archive ok");
+        let v = list_specs_at(fx.root());
+        let arr = v["specs"].as_array().expect("specs array");
+        let item = arr.iter().find(|s| s["id"] == "cap-new").expect("cap-new created by archive");
+        assert_eq!(item["purposeTbd"], true);
+        assert_eq!(item["requirementCount"], 1);
+    }
+
+    #[test]
+    fn spec_card_fields_tolerate_minimal_content() {
+        // 容錯（Implementation Contract 失敗模式）：無 Purpose 區段、無 Requirement、
+        // 無 @trace 的規格計數欄位為 0、excerpt 為 null，清單照常回傳。
+        let fx = FixtureRoot::new("q-spec-card-bare");
+        fx.write("openspec/specs/bare/spec.md", "# bare Specification\n");
+        let v = list_specs_at(fx.root());
+        let arr = v["specs"].as_array().expect("specs array");
+        let item = arr.iter().find(|s| s["id"] == "bare").expect("bare listed");
+        assert_eq!(item["requirementCount"], 0);
+        assert!(item["purposeExcerpt"].is_null());
+        assert_eq!(item["purposeTbd"], false);
+        assert_eq!(item["traceCount"], 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn spec_card_fields_tolerate_unreadable_file() {
+        // 不可讀檔案（列出後權限被拒）：該筆欄位 0／null，清單照常回傳且其他規格不受影響，
+        // 不因單筆壞檔讓整頁失敗。
+        use std::os::unix::fs::PermissionsExt;
+        let fx = FixtureRoot::new("q-spec-card-unreadable");
+        fx.write("openspec/specs/ok/spec.md", "## Purpose\n\nFine.\n\n### Requirement: A\n\nx\n");
+        fx.write("openspec/specs/locked/spec.md", "## Purpose\n\nHidden.\n");
+        let locked = fx.root().join("openspec/specs/locked/spec.md");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let v = list_specs_at(fx.root());
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let arr = v["specs"].as_array().expect("specs array");
+        let bad = arr.iter().find(|s| s["id"] == "locked").expect("locked still listed");
+        assert_eq!(bad["requirementCount"], 0);
+        assert!(bad["purposeExcerpt"].is_null());
+        assert_eq!(bad["purposeTbd"], false);
+        assert_eq!(bad["traceCount"], 0);
+        let good = arr.iter().find(|s| s["id"] == "ok").expect("ok listed");
+        assert_eq!(good["requirementCount"], 1);
+        assert_eq!(good["purposeExcerpt"], "Fine.");
     }
 
     #[test]

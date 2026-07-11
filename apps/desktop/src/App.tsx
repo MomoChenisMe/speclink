@@ -4,7 +4,9 @@ import { Archive, GitBranch, FileText, Settings, FolderOpen } from "lucide-react
 import {
   KanbanBoard,
   ArchivedList,
+  ArchivedDrawer,
   SpecList,
+  SpecDrawer,
   RichDetailDrawer,
   DiscussionDrawer,
   AlertDialog,
@@ -214,6 +216,16 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
     topic: allDiscussions.find((d) => d.slug === slug)?.topic ?? slug,
   }));
   const siblingChanges = siblingChangesOf(s.changes, fromSlugs, s.detailChange?.name ?? "");
+  // 封存變更抽屜的來源討論（design D1 增補）：自封存清單以 datedName 查 fromDiscussions，
+  // topic 同上解析、記錄已不在時退回 slug。
+  const archivedFromSlugs =
+    s.detailArchived?.kind === "change"
+      ? (s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.fromDiscussions ?? [])
+      : [];
+  const archivedSourceDiscussions = archivedFromSlugs.map((slug) => ({
+    slug,
+    topic: allDiscussions.find((d) => d.slug === slug)?.topic ?? slug,
+  }));
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -308,11 +320,7 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
             // 零分頁（首次使用）：空狀態引導頁取代空看板。
             <EmptyState onOpen={() => void s.openProjectViaDialog()} />
           ) : s.boardView === "specs" ? (
-            <SpecList
-              specs={s.specs}
-              loadDocument={(capability) => dataSource.getSpecDocument(capability)}
-              refreshGen={s.refreshGen}
-            />
+            <SpecList specs={s.specs} onOpen={s.openSpec} />
           ) : s.boardView === "board" ? (
             <KanbanBoard
               changes={s.changes}
@@ -333,10 +341,8 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
               archived={s.archived}
               query={s.query}
               onQuery={s.setQuery}
-              loadDocument={(datedName, artifact) => dataSource.getArchivedDocument(datedName, artifact)}
-              loadCapabilities={(datedName) => dataSource.archivedCapabilities(datedName)}
               archivedDiscussions={s.discussions.archived}
-              loadDiscussionDocument={(slug) => dataSource.getDiscussionDocument(slug)}
+              onOpen={s.openArchived}
             />
           )}
         </main>
@@ -374,6 +380,28 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
           s.openDiscussion(slug);
         }}
         onOpenSibling={s.openDetail}
+      />
+
+      {/* 唯讀規格抽屜（spec-archive-drawer design D1/D2） */}
+      <SpecDrawer
+        open={s.detailSpec !== null}
+        onOpenChange={(o) => !o && s.closeSpec()}
+        capability={s.detailSpec}
+        refreshGen={s.refreshGen}
+        loadDocument={(capability) => dataSource.getSpecDocument(capability)}
+      />
+
+      {/* 唯讀封存抽屜（封存變更四分頁／封存討論三區段） */}
+      <ArchivedDrawer
+        open={s.detailArchived !== null}
+        onOpenChange={(o) => !o && s.closeArchived()}
+        target={s.detailArchived}
+        refreshGen={s.refreshGen}
+        loadDocument={(datedName, artifact) => dataSource.getArchivedDocument(datedName, artifact)}
+        loadCapabilities={(datedName) => dataSource.archivedCapabilities(datedName)}
+        loadDiscussionDocument={(slug) => dataSource.getDiscussionDocument(slug)}
+        sourceDiscussions={archivedSourceDiscussions}
+        onOpenDiscussion={(slug) => s.openArchived({ kind: "discussion", slug })}
       />
 
       {/* 討論抽屜（結論/討論過程/背景/衍生變更） */}

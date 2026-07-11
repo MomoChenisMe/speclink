@@ -16,7 +16,8 @@ use crate::init_core_context;
 
 /// 快取 schema 版本。改動快取表結構時遞增——舊版本會被丟棄重建。
 /// v2：archived_changes 加 tasks_total／tasks_done（清單徽章，首次收斂後零解析）。
-const CACHE_VERSION: i64 = 2;
+/// v3：加 spec_count／created_by／from_discussions（封存卡收合資訊，spec-archive-drawer design D5）。
+const CACHE_VERSION: i64 = 3;
 
 /// 回傳歸檔 change 清單：`{ "archived": [ { datedName, date, name } ] }`，按 datedName 排序。
 /// 非專案回傳 `{ "archived": [] }`。
@@ -72,9 +73,21 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 let (total, complete, _) = speclink_core::tasks::progress(&tasks);
                 (total as i64, complete as i64)
             });
+            // 封存卡收合資訊（design D4/D5）：入庫使清單讀取零解析。from_discussions
+            // 以逗號串存放（與 meta 累積器同格式），讀出時同語意拆分。
+            let parsed = speclink_core::model::ChangeMeta::from_text(Some(&meta));
+            let spec_count = store.archived_delta_capabilities(name).len() as i64;
             conn.execute(
-                "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done) VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![name, meta, counts.map(|c| c.0), counts.map(|c| c.1)],
+                "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done, spec_count, created_by, from_discussions) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    name,
+                    meta,
+                    counts.map(|c| c.0),
+                    counts.map(|c| c.1),
+                    spec_count,
+                    parsed.created_by,
+                    parsed.from_discussions().join(","),
+                ],
             )?;
         }
     }
@@ -94,7 +107,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
     }
 
     let mut stmt = conn.prepare(
-        "SELECT dated_name, tasks_total, tasks_done FROM archived_changes ORDER BY dated_name",
+        "SELECT dated_name, tasks_total, tasks_done, spec_count, created_by, from_discussions FROM archived_changes ORDER BY dated_name",
     )?;
     let items: Vec<Value> = stmt
         .query_map([], |r| {
@@ -102,16 +115,27 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<i64>>(1)?,
                 r.get::<_, Option<i64>>(2)?,
+                r.get::<_, Option<i64>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, Option<String>>(5)?,
             ))
         })?
         .flatten()
-        .map(|(n, total, done)| {
+        .map(|(n, total, done, spec_count, created_by, from_discussions)| {
             let mut item = item_for(&n);
             // 無 tasks.md 的封存項徽章欄位缺席（前端據此不顯示徽章）。
             if let (Some(total), Some(done)) = (total, done) {
                 item["tasksTotal"] = json!(total);
                 item["tasksDone"] = json!(done);
             }
+            // 封存卡收合資訊恆存在 key：缺席語意為 0／null／空陣列（design D4）。
+            item["specCount"] = json!(spec_count.unwrap_or(0));
+            item["createdBy"] = json!(created_by);
+            let discussions: Vec<&str> = from_discussions
+                .as_deref()
+                .map(|v| v.split(',').map(str::trim).filter(|s| !s.is_empty()).collect())
+                .unwrap_or_default();
+            item["fromDiscussions"] = json!(discussions);
             item
         })
         .collect();
@@ -132,7 +156,7 @@ fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
             "DROP TABLE IF EXISTS archived_changes;
              DROP TABLE IF EXISTS schema_version;
              CREATE TABLE schema_version (version INTEGER);
-             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER);",
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT);",
         )?;
         conn.execute(
             "INSERT INTO schema_version (version) VALUES (?1)",
@@ -302,7 +326,81 @@ mod tests {
         let version: i64 = conn
             .query_row("SELECT version FROM schema_version LIMIT 1", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 2, "schema version stamped to v2 after rebuild");
+        assert_eq!(version, CACHE_VERSION, "schema version stamped to current after rebuild");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn archived_items_carry_card_info_fields() {
+        // 封存變更卡收合資訊（spec-archive-drawer design D4）：specCount 為 specs/ 下
+        // capability 目錄數、createdBy 取 .openspec.yaml 的 created_by（缺席 null）、
+        // fromDiscussions 為來源討論 slug 陣列（缺席空陣列）；欄位入快取，首次收斂後零解析。
+        let root = fixture_project("cardinfo", &["2026-06-10-kappa", "2026-06-11-lambda"]);
+        let dir = root.join("openspec").join("changes").join("archive").join("2026-06-10-kappa");
+        fs::write(
+            dir.join(".openspec.yaml"),
+            "schema: spec-driven\ncreated: 2026-06-01\ncreated_by: momo\nfrom_discussion: alpha-search, beta-cache\narchived_at: 2026-06-10\n",
+        )
+        .unwrap();
+        fs::create_dir_all(dir.join("specs").join("cap-a")).unwrap();
+        fs::write(dir.join("specs").join("cap-a").join("spec.md"), "## ADDED Requirements\n").unwrap();
+        fs::create_dir_all(dir.join("specs").join("cap-b")).unwrap();
+        fs::write(dir.join("specs").join("cap-b").join("spec.md"), "## ADDED Requirements\n").unwrap();
+
+        let v = archived_changes_at(&root);
+        let arr = v["archived"].as_array().unwrap();
+        let by_name = |n: &str| arr.iter().find(|i| i["datedName"] == n).unwrap().clone();
+        let kappa = by_name("2026-06-10-kappa");
+        assert_eq!(kappa["specCount"], 2, "specs/ 下兩個 capability 目錄: {kappa}");
+        assert_eq!(kappa["createdBy"], "momo");
+        assert_eq!(kappa["fromDiscussions"], json!(["alpha-search", "beta-cache"]));
+        // meta 與 specs 全缺席的封存項：null／空陣列，清單照常回傳。
+        let lambda = by_name("2026-06-11-lambda");
+        assert_eq!(lambda["specCount"], 0);
+        assert!(lambda["createdBy"].is_null());
+        assert_eq!(lambda["fromDiscussions"], json!([]));
+
+        // 首次收斂後零解析：改動 meta 不影響已快取的欄位（封存內容本就不再變動）。
+        fs::write(dir.join(".openspec.yaml"), "created_by: someone-else\n").unwrap();
+        let v2 = archived_changes_at(&root);
+        let item2 = v2["archived"].as_array().unwrap().iter().find(|i| i["datedName"] == "2026-06-10-kappa").unwrap().clone();
+        assert_eq!(item2["createdBy"], "momo", "cached card info served without re-parsing");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn v2_cache_is_dropped_and_rebuilt_with_card_info() {
+        // 版本遞升（spec-archive-drawer design D5）：新欄位入庫使 CACHE_VERSION 2→3，
+        // 舊 v2 快取整表重建、新欄位補齊、版本蓋 3 章。
+        let root = fixture_project("v2", &["2026-06-12-mu"]);
+        let dir = root.join("openspec").join("changes").join("archive").join("2026-06-12-mu");
+        fs::write(dir.join(".openspec.yaml"), "created: 2026-06-01\ncreated_by: momo\n").unwrap();
+        fs::create_dir_all(dir.join("specs").join("cap-a")).unwrap();
+        fs::write(dir.join("specs").join("cap-a").join("spec.md"), "## ADDED Requirements\n").unwrap();
+        fs::write(dir.join("tasks.md"), "- [x] 1.1 done\n").unwrap();
+        // 預寫一個 v2 快取（v2 表結構、已含該列）——版本升級須整表重建。
+        let db_dir = root.join(".speclink");
+        fs::create_dir_all(&db_dir).unwrap();
+        let conn = Connection::open(db_dir.join("desktop-cache.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_version (version INTEGER);
+             INSERT INTO schema_version (version) VALUES (2);
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER);
+             INSERT INTO archived_changes (dated_name, meta, tasks_total, tasks_done) VALUES ('2026-06-12-mu', '', 1, 1);",
+        )
+        .unwrap();
+        drop(conn);
+
+        let v = archived_changes_at(&root);
+        let item = &v["archived"].as_array().unwrap()[0];
+        assert_eq!(item["specCount"], 1, "v2 cache must be rebuilt so card info converges: {item}");
+        assert_eq!(item["createdBy"], "momo");
+        assert_eq!(item["tasksTotal"], 1);
+        let conn = Connection::open(db_dir.join("desktop-cache.db")).unwrap();
+        let version: i64 = conn
+            .query_row("SELECT version FROM schema_version LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 3, "schema version stamped to v3 after rebuild");
         let _ = fs::remove_dir_all(&root);
     }
 
