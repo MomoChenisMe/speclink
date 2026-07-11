@@ -429,64 +429,123 @@ describe("RichDetailDrawer", () => {
   });
 });
 
-// spec 需求「桌面 app 提供動詞操作面」：validate／analyze 結果於抽屜內、動作列近處呈現（D1/D2）。
-describe("抽屜內動詞結果呈現", () => {
+// spec 需求「桌面 app 提供動詞操作面」：「分析」一鍵雙動詞的合併結果於抽屜內、
+// 動作列近處呈現（design D1）；動作列不再提供獨立驗證鈕。
+describe("抽屜內分析結果呈現", () => {
   const region = () => document.querySelector("[data-verb-result]") as HTMLElement | null;
+  const report = {
+    change_id: "x",
+    dimensions: [{ dimension: "Ambiguity", status: "1 issue(s) found", finding_count: 1 }],
+    findings: [
+      { id: "AMB-1", dimension: "Ambiguity", severity: "Suggestion", location: "specs", summary: "缺具體範例的情境", recommendation: "r" },
+    ],
+    artifacts_analyzed: [],
+    artifacts_missing: [],
+  };
 
-  it("validate 通過於動作列近處呈現通過", async () => {
+  it("動作列不提供獨立驗證鈕，僅分析／封存／刪除", async () => {
+    render(<RichDetailDrawer {...(makeProps() as never)} />);
+    await screen.findByText("MomoChen");
+    expect(screen.queryByRole("button", { name: "驗證" })).toBeNull();
+    expect(screen.getByRole("button", { name: /分析/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /封存/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /刪除/ })).toBeTruthy();
+  });
+
+  it("合併結果呈現結構驗證列、繁中維度摘要卡與發現卡", async () => {
     const props = makeProps({
-      verbResult: { change: "desktop-shell-and-browser", verb: "validate", validate: { valid: true, errors: [] } },
+      verbResult: {
+        change: "desktop-shell-and-browser",
+        validate: { valid: true, errors: [] },
+        analyze: report,
+      },
     });
     render(<RichDetailDrawer {...(props as never)} />);
     // 先等初始 async 載入落地（loadMeta 的 MomoChen 為完成標記），避免 act 警告。
     await screen.findByText("MomoChen");
     const r = region();
     expect(r).toBeTruthy();
-    expect(within(r!).getByText(/通過/)).toBeTruthy();
+    expect(within(r!).getByText("結構驗證通過")).toBeTruthy();
+    expect(within(r!).getByText("模糊度")).toBeTruthy();
+    expect(within(r!).getByText(/缺具體範例的情境/)).toBeTruthy();
   });
 
-  it("validate 失敗呈現失敗與首則錯誤", async () => {
+  it("結構驗證失敗於面板逐條呈現錯誤", async () => {
     const props = makeProps({
       verbResult: {
         change: "desktop-shell-and-browser",
-        verb: "validate",
         validate: { valid: false, errors: ["tasks.md: missing", "second error"] },
+        analyze: report,
       },
     });
     render(<RichDetailDrawer {...(props as never)} />);
     await screen.findByText("MomoChen");
     const r = region();
-    expect(within(r!).getByText(/失敗/)).toBeTruthy();
+    expect(within(r!).getByText(/結構驗證 2 個錯誤/)).toBeTruthy();
     expect(within(r!).getByText(/tasks\.md: missing/)).toBeTruthy();
+    expect(within(r!).getByText(/second error/)).toBeTruthy();
   });
 
-  it("analyze 於抽屜內呈四維度面板", async () => {
-    const report = {
-      change_id: "x",
-      dimensions: [],
-      findings: [
-        { id: "AMB-1", dimension: "Ambiguity", severity: "Suggestion", location: "specs", summary: "缺具體範例的情境", recommendation: "r" },
-      ],
-      artifacts_analyzed: [],
-      artifacts_missing: [],
-    };
+  it("執行失敗呈現 core 的單行錯誤", async () => {
     const props = makeProps({
-      verbResult: { change: "desktop-shell-and-browser", verb: "analyze", analyze: report },
+      verbResult: { change: "desktop-shell-and-browser", error: "parse boom" },
     });
     render(<RichDetailDrawer {...(props as never)} />);
     await screen.findByText("MomoChen");
-    const r = region();
-    expect(within(r!).getByText("Coverage")).toBeTruthy();
-    expect(within(r!).getByText("Ambiguity")).toBeTruthy();
-    expect(within(r!).getByText(/缺具體範例的情境/)).toBeTruthy();
+    expect(within(region()!).getByText(/parse boom/)).toBeTruthy();
   });
 
   it("動詞結果屬於別的 change 時不呈現", async () => {
     const props = makeProps({
-      verbResult: { change: "some-other-change", verb: "validate", validate: { valid: true, errors: [] } },
+      verbResult: { change: "some-other-change", validate: { valid: true, errors: [] } },
     });
     render(<RichDetailDrawer {...(props as never)} />);
     await screen.findByText("MomoChen");
     expect(region()).toBeNull();
+  });
+
+  // design D2：分析鈕為切換——結果開啟時再點收合（onClearVerb）、不重跑動詞。
+  it("結果開啟時分析鈕 aria-pressed，再點呼叫 onClearVerb 而非重跑", async () => {
+    const props = makeProps({
+      verbResult: {
+        change: "desktop-shell-and-browser",
+        validate: { valid: true, errors: [] },
+        analyze: report,
+      },
+      onClearVerb: vi.fn(),
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    const btn = screen.getByRole("button", { name: "分析" });
+    expect(btn.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(btn);
+    expect(props.onClearVerb).toHaveBeenCalledTimes(1);
+    expect(props.onRunVerb).not.toHaveBeenCalled();
+  });
+
+  it("結果未開啟時分析鈕 aria-pressed=false，點按執行動詞", async () => {
+    const props = makeProps({ onClearVerb: vi.fn() });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    const btn = screen.getByRole("button", { name: "分析" });
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(btn);
+    expect(props.onRunVerb).toHaveBeenCalledWith("analyze", "desktop-shell-and-browser");
+    expect(props.onClearVerb).not.toHaveBeenCalled();
+  });
+
+  it("面板關閉鈕呼叫 onClearVerb 收合", async () => {
+    const props = makeProps({
+      verbResult: {
+        change: "desktop-shell-and-browser",
+        validate: { valid: true, errors: [] },
+        analyze: report,
+      },
+      onClearVerb: vi.fn(),
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    fireEvent.click(screen.getByRole("button", { name: "關閉分析結果" }));
+    expect(props.onClearVerb).toHaveBeenCalledTimes(1);
   });
 });

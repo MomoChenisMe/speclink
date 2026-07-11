@@ -28,6 +28,7 @@ pub fn list_changes_at(root: &Path) -> Value {
             v["startedBy"] = json!(c.meta.started_by);
             v["startedWith"] = json!(c.meta.started_with);
             v["createdBy"] = json!(c.meta.created_by);
+            v["created"] = json!(c.meta.created);
             v["fromDiscussions"] = json!(c.meta.from_discussions());
             // 「待重新反映」徽章的資料源：恆存在（空陣列＝無旗標），供看板卡片渲染。
             v["restaleFrom"] = json!(c.meta.restale_from());
@@ -228,6 +229,17 @@ mod tests {
         // 既有欄位形狀不變。
         assert_eq!(underway["totalTasks"], 2);
         assert_eq!(underway["completedTasks"], 1);
+    }
+
+    #[test]
+    fn list_changes_overlays_created_date() {
+        // 建立時間篩選的資料源（desktop-ux-polish design D5）：created（YYYY-MM-DD）
+        // 由已解析 meta 曝露；CLI 輸出不經此路徑、逐位元不變。
+        let fx = FixtureRoot::new("q-created");
+        fx.add_change("demo", OLD_META);
+        let v = list_changes_at(fx.root());
+        let arr = v["changes"].as_array().expect("changes array");
+        assert_eq!(arr[0]["created"], "2026-07-01");
     }
 
     #[test]

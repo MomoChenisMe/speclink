@@ -132,3 +132,20 @@ body {
   color: var(--muted-foreground);
   background: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
 }
+
+/* 全域細捲軸（desktop-ux-polish design D5 附帶視覺修正）：WebView 預設捲軸過寬，
+   於窄容器（討論欄的已轉出收合區等）視覺突兀——細軌、透明軌道、muted 圓角滑塊。 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--muted-foreground) 30%, transparent);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--muted-foreground) 45%, transparent);
+}

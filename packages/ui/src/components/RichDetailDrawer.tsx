@@ -9,7 +9,6 @@ import {
   Maximize2,
   Minimize2,
   PenTool,
-  ShieldCheck,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -38,8 +37,10 @@ export interface RichDetailDrawerProps {
   loadCapabilities: (change: string) => Promise<string[]>;
   loadMeta: (change: string) => Promise<ChangeMetaInfo | null>;
   onRunVerb?: (verb: Verb, change: string) => void;
-  /** 抽屜內呈現的 validate／analyze 結構化結果（僅當 change 相符時呈現；archive 走頂列）。 */
+  /** 抽屜內呈現的分析結構化結果（validate＋analyze 合併；僅當 change 相符時呈現；archive 走頂列）。 */
   verbResult?: VerbDrawerResult | null;
+  /** 收合分析結果（design D2：分析鈕再點、面板關閉鈕共用此路徑）。 */
+  onClearVerb?: () => void;
   onDelete?: (change: string) => void;
   /** 勾選/取消任務並回寫 tasks.md；重載由宿主 refresh 後的刷新世代遞增驅動（單一資料流）。 */
   onToggleTask?: (change: string, ordinal: number, done: boolean) => Promise<void>;
@@ -70,6 +71,7 @@ export function RichDetailDrawer({
   loadMeta,
   onRunVerb,
   verbResult,
+  onClearVerb,
   onDelete,
   onToggleTask,
   onMoveTask,
@@ -147,6 +149,8 @@ export function RichDetailDrawer({
 
   if (!change) return null;
 
+  // 分析結果是否對本 change 開啟——分析鈕切換態與面板呈現共用同一判定（design D2）。
+  const verbOpen = !!(verbResult && verbResult.change === change.name);
   const pct = change.totalTasks > 0 ? Math.round((change.completedTasks / change.totalTasks) * 100) : 0;
   const taskBadge = `${change.completedTasks}/${change.totalTasks}`;
   const delta = sumDeltaCounts(Object.values(specDocs).map(specDeltaCounts));
@@ -210,6 +214,18 @@ export function RichDetailDrawer({
       <SheetContent
         className={full ? "w-[96vw] max-w-none" : "w-[max(720px,42vw)] max-w-[95vw]"}
       >
+        {/* 放大鈕與 Sheet 關閉鈕同高同尺寸並排（shadcn ghost icon，帶 hover 回饋），
+            不再一高一低（design D5 附帶視覺修正）。 */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={full ? t("rdrawer.restore") : t("rdrawer.fullScreen")}
+          className="absolute right-11 top-3 h-7 w-7 text-muted-foreground"
+          onClick={() => setFull((f) => !f)}
+        >
+          {full ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </Button>
         <SheetHeader>
           <div className="flex items-center gap-2 pr-14">
             <SheetTitle className="truncate">{change.name}</SheetTitle>
@@ -222,17 +238,6 @@ export function RichDetailDrawer({
               onClick={copyName}
             >
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            </Button>
-            <div className="flex-1" />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={full ? t("rdrawer.restore") : t("rdrawer.fullScreen")}
-              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-              onClick={() => setFull((f) => !f)}
-            >
-              {full ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
           </div>
           {/* metadata 列 */}
@@ -298,11 +303,14 @@ export function RichDetailDrawer({
           </div>
           {/* 動作列 */}
           <div className="flex items-center gap-1.5 pt-1">
-            <Button variant="outline" size="sm" className="h-7 gap-1" onClick={() => onRunVerb?.("analyze", change.name)}>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={verbOpen}
+              className={`h-7 gap-1 ${verbOpen ? "bg-accent" : ""}`}
+              onClick={() => (verbOpen ? onClearVerb?.() : onRunVerb?.("analyze", change.name))}
+            >
               <Sparkles className="h-3.5 w-3.5" /> {t("common.analyze")}
-            </Button>
-            <Button variant="outline" size="sm" className="h-7 gap-1" onClick={() => onRunVerb?.("validate", change.name)}>
-              <ShieldCheck className="h-3.5 w-3.5" /> {t("common.validate")}
             </Button>
             <div className="flex-1" />
             <Button variant="outline" size="sm" className="h-7 gap-1" onClick={() => onRunVerb?.("archive", change.name)}>
@@ -317,29 +325,18 @@ export function RichDetailDrawer({
               <Trash2 className="h-3.5 w-3.5" /> {t("rdrawer.delete")}
             </Button>
           </div>
-          {/* 動詞結果（validate／analyze）於動作列近處呈現——僅當前 change 相符時（D1/D2）。 */}
-          {verbResult && verbResult.change === change.name && (
+          {/* 分析結果（validate＋analyze 合併）於動作列近處呈現——僅當前 change 相符時（design D1）。 */}
+          {verbOpen && verbResult && (
             <div data-verb-result className="pt-1">
               {verbResult.error ? (
                 <div className="text-xs text-destructive">{verbResult.error}</div>
-              ) : verbResult.verb === "analyze" && verbResult.analyze ? (
-                <AnalyzePanel report={verbResult.analyze} />
-              ) : verbResult.verb === "validate" && verbResult.validate ? (
-                verbResult.validate.valid ? (
-                  <div className="inline-flex items-center gap-1 text-xs font-medium text-primary">
-                    <Check className="h-3.5 w-3.5" /> {t("rdrawer.validatePass")}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 text-xs text-destructive">
-                    <span className="inline-flex items-center gap-1 font-medium">
-                      <ShieldCheck className="h-3.5 w-3.5" /> {t("rdrawer.validateFail")}
-                    </span>
-                    {verbResult.validate.errors[0] && (
-                      <span className="min-w-0 truncate font-mono">{verbResult.validate.errors[0]}</span>
-                    )}
-                  </div>
-                )
-              ) : null}
+              ) : (
+                <AnalyzePanel
+                  report={verbResult.analyze}
+                  validate={verbResult.validate}
+                  onClose={onClearVerb}
+                />
+              )}
             </div>
           )}
         </SheetHeader>

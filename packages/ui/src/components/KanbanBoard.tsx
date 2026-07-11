@@ -13,14 +13,28 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { Archive, CircleCheckBig, Hammer, Lightbulb, type LucideIcon } from "lucide-react";
 
-import type { ArchivedItem, CardKind, ChangeItem, DiscussionLists } from "../adapter";
-import { cardDndId, parseCardDndId, resolveCardDrop, type ColumnCards } from "../boardDnd";
+import type { ArchivedItem, CardKind, ChangeItem, DiscussionLists, SearchHit } from "../adapter";
+import {
+  archiveZoneVisible,
+  cardDndId,
+  parseCardDndId,
+  resolveCardDrop,
+  type ColumnCards,
+} from "../boardDnd";
 import { useI18n } from "../i18n";
-import { matchesQuery } from "../search";
+import {
+  EMPTY_FILTERS,
+  matchesFilters,
+  matchesFuzzy,
+  matchesQuery,
+  type BoardFilters,
+} from "../search";
 import { changeStage, STAGE_BADGE, STAGES, type Stage } from "../stage";
+import { BoardSearchBar } from "./BoardSearchBar";
 import { ChangeCard } from "./ChangeCard";
 import { DiscussionCard, DiscussionColumn } from "./DiscussionColumn";
-import { Input } from "./ui/input";
+import { Button } from "./ui/button";
+import { NativeSelect } from "./ui/select";
 
 /** 移動 8px 才視為拖曳——否則 dnd-kit 會吃掉單純點擊，導致卡片無法開啟詳情。 */
 export const DRAG_ACTIVATION_DISTANCE = 8;
@@ -65,6 +79,8 @@ export interface KanbanBoardProps {
   /** 看板搜尋字串（選配，與 onQuery 成對提供時渲染搜尋輸入並過濾卡片）。 */
   query?: string;
   onQuery?: (q: string) => void;
+  /** workspace 全文查詢命中（design D6）：命中卡片併入可見集合並呈 snippet 行。 */
+  fulltextHits?: SearchHit[];
   /**
    * 欄內拖排寫回（design D5/D6）：同欄放開時以 arrayMove 後的前後鄰居回報
    * （null＝欄頂／欄底）；未提供時卡片不掛 sortable（封存拖放照舊）。
@@ -113,7 +129,11 @@ function Column({
   );
 }
 
-/** 拖曳中才浮現的封存落點。 */
+/**
+ * 拖曳變更卡時才浮現的封存落點（design D8）：絕對定位浮層疊於看板右緣上方、
+ * 不參與欄列 flex 佈局——浮現與消失時欄寬零變動。半透明底＋backdrop 讓其
+ * 下方的欄內容仍可辨識。
+ */
 function ArchiveDropZone() {
   const { t } = useI18n();
   const { setNodeRef, isOver } = useDroppable({ id: "archived" });
@@ -121,8 +141,10 @@ function ArchiveDropZone() {
     <div
       ref={setNodeRef}
       data-column="archived"
-      className={`flex h-full w-[140px] shrink-0 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed transition-colors ${
-        isOver ? "border-primary bg-accent/60 text-primary" : "border-border text-muted-foreground"
+      className={`absolute inset-y-2 right-2 z-10 flex w-[120px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed backdrop-blur-sm transition-colors ${
+        isOver
+          ? "border-primary bg-accent/80 text-primary"
+          : "border-border bg-background/80 text-muted-foreground"
       }`}
     >
       <Archive className="h-5 w-5" />
@@ -131,7 +153,16 @@ function ArchiveDropZone() {
   );
 }
 
-function SortableCard({ change, barClass, ...rest }: { change: ChangeItem; barClass: string } & Pick<KanbanBoardProps, "onOpenChange" | "onArchive">) {
+function SortableCard({
+  change,
+  barClass,
+  highlight,
+  hit,
+  ...rest
+}: { change: ChangeItem; barClass: string; highlight?: string; hit?: SearchHit } & Pick<
+  KanbanBoardProps,
+  "onOpenChange" | "onArchive"
+>) {
   const { t } = useI18n();
   // 拖曳時原卡片留在原位變淡；移動的視覺由 DragOverlay 呈現（不受欄位 overflow 裁切）。
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -149,7 +180,14 @@ function SortableCard({ change, barClass, ...rest }: { change: ChangeItem; barCl
       {...listeners}
       aria-label={t("kanban.dragCard").replace("{name}", change.name)}
     >
-      <ChangeCard change={change} barClass={barClass} onOpen={rest.onOpenChange} onArchive={rest.onArchive} />
+      <ChangeCard
+        change={change}
+        barClass={barClass}
+        highlight={highlight}
+        hit={hit}
+        onOpen={rest.onOpenChange}
+        onArchive={rest.onArchive}
+      />
     </div>
   );
 }
@@ -168,6 +206,7 @@ export function KanbanBoard({
   onArchiveDiscussion,
   query,
   onQuery,
+  fulltextHits,
   onReorder,
   onDragActiveChange,
 }: KanbanBoardProps) {
@@ -175,11 +214,42 @@ export function KanbanBoard({
   const { t } = useI18n();
   // 搜尋過濾（spec「看板搜尋過濾卡片」）：變更卡以名稱與摘要、討論卡以主題與
   // slug 比對；比對規則共用 matchesQuery（與已封存頁一致）。空（或僅空白）即全量。
+  // 篩選 chips（design D5）：元件 local、不持久化；與搜尋字串 AND 交集。
   const showSearch = query !== undefined && onQuery !== undefined;
-  const visibleChanges = changes.filter((c) => matchesQuery(query ?? "", c.name, c.summary));
-  const visibleDiscussions = discussions?.active.filter((d) =>
-    matchesQuery(query ?? "", d.topic, d.slug),
+  const [filters, setFilters] = useState<BoardFilters>(EMPTY_FILTERS);
+  // 篩選 chips 的展開狀態（design D5）：預設收合、不持久化；啟用中維度數供開關鈕徽章。
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilterCount = [filters.createdBy, filters.createdWithin, filters.fromDiscussion].filter(
+    (v) => v !== null,
+  ).length;
+  const today = new Date().toISOString().slice(0, 10);
+  // 三層比對任一命中即顯示（spec）：欄位子字串、名稱層 fuzzy（僅名稱／slug，
+  // design D7）、全文命中集合（design D6）——再與篩選 chips 取 AND。
+  const q = query ?? "";
+  const hitByCard = new Map((fulltextHits ?? []).map((h) => [`${h.kind}:${h.id}`, h]));
+  const visibleChanges = changes.filter(
+    (c) =>
+      (matchesQuery(q, c.name, c.summary) ||
+        matchesFuzzy(q, c.name) ||
+        hitByCard.has(`change:${c.name}`)) &&
+      matchesFilters(filters, c, today),
   );
+  const visibleDiscussions = discussions?.active.filter(
+    (d) =>
+      (matchesQuery(q, d.topic, d.slug) ||
+        matchesFuzzy(q, d.slug) ||
+        hitByCard.has(`discussion:${d.slug}`)) &&
+      matchesFilters(filters, d, today),
+  );
+  // chip 選項自現有清單派生：建立者去重、來源討論取 promoted_to 非空者。
+  const creators = Array.from(
+    new Set(
+      [...changes.map((c) => c.createdBy), ...(discussions?.active ?? []).map((d) => d.createdBy)].filter(
+        (x): x is string => !!x,
+      ),
+    ),
+  );
+  const sourceDiscussions = (discussions?.active ?? []).filter((d) => d.promotedTo.length > 0);
   const byStage: Record<Stage, ChangeItem[]> = { proposed: [], "in-progress": [], ready: [] };
   for (const c of visibleChanges) byStage[changeStage(c)].push(c);
   const dragging = activeId !== null;
@@ -238,15 +308,82 @@ export function KanbanBoard({
     >
       <div className="flex h-full min-h-0 flex-col gap-3">
       {showSearch && (
-        <Input
-          placeholder={t("kanban.searchPlaceholder")}
-          value={query}
-          onChange={(e) => onQuery(e.target.value)}
-          className="mx-auto w-full max-w-md shrink-0"
-        />
+        <BoardSearchBar
+          query={query}
+          onQuery={onQuery}
+          hitCount={visibleChanges.length + (visibleDiscussions?.length ?? 0)}
+          filtersOpen={filtersOpen}
+          onToggleFilters={() => setFiltersOpen((v) => !v)}
+          onCloseFilters={() => setFiltersOpen(false)}
+          activeFilterCount={activeFilterCount}
+        >
+          {/* 篩選面板內容（design D5）：三維度選單直欄堆疊，選回「全部」即單獨清除。 */}
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">{t("filter.createdBy")}</span>
+            <NativeSelect
+              aria-label={t("filter.createdBy")}
+              value={filters.createdBy ?? ""}
+              onChange={(e) => setFilters({ ...filters, createdBy: e.target.value || null })}
+            >
+              <option value="">{t("filter.all")}</option>
+              {creators.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">{t("filter.createdWithin")}</span>
+            <NativeSelect
+              aria-label={t("filter.createdWithin")}
+              value={filters.createdWithin ?? ""}
+              onChange={(e) =>
+                setFilters({
+                  ...filters,
+                  createdWithin: (e.target.value || null) as BoardFilters["createdWithin"],
+                })
+              }
+            >
+              <option value="">{t("filter.all")}</option>
+              <option value="7d">{t("filter.range7d")}</option>
+              <option value="30d">{t("filter.range30d")}</option>
+              <option value="earlier">{t("filter.rangeEarlier")}</option>
+            </NativeSelect>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">{t("filter.fromDiscussion")}</span>
+            <NativeSelect
+              aria-label={t("filter.fromDiscussion")}
+              value={filters.fromDiscussion ?? ""}
+              onChange={(e) => setFilters({ ...filters, fromDiscussion: e.target.value || null })}
+            >
+              <option value="">{t("filter.all")}</option>
+              {sourceDiscussions.map((d) => (
+                <option key={d.slug} value={d.slug}>
+                  {d.slug}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          {activeFilterCount > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 justify-center text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setFilters(EMPTY_FILTERS)}
+            >
+              {t("filter.clearAll")}
+            </Button>
+          )}
+        </BoardSearchBar>
       )}
+      {/* relative wrapper 供封存落點浮層錨定於「可視」右緣（design D8）——浮層
+          在捲動容器之外、不進 flex 流，欄寬零變動且不隨水平捲動漂移。 */}
+      <div className="relative flex-1 min-h-0">
       {/* safe center：寬螢幕置中、內容溢出時回到可捲動的靠左 */}
-      <div className="flex gap-3 flex-1 min-h-0 overflow-x-auto [justify-content:safe_center]">
+      <div className="flex h-full min-h-0 gap-3 overflow-x-auto [justify-content:safe_center]">
         {discussions && (
           <DiscussionColumn
             discussions={visibleDiscussions ?? []}
@@ -255,6 +392,8 @@ export function KanbanBoard({
             onOpenDiscussion={onOpenDiscussion}
             onArchiveDiscussion={onArchiveDiscussion}
             sortable={!!onReorder}
+            highlight={q}
+            fulltextHits={fulltextHits}
           />
         )}
         {STAGES.map((stage) => (
@@ -268,6 +407,8 @@ export function KanbanBoard({
                   key={c.name}
                   change={c}
                   barClass={STAGE_STYLE[stage].bar}
+                  highlight={q}
+                  hit={hitByCard.get(`change:${c.name}`)}
                   onOpenChange={onOpenChange}
                   onArchive={onArchive}
                 />
@@ -275,7 +416,9 @@ export function KanbanBoard({
             </SortableContext>
           </Column>
         ))}
-        {dragging && <ArchiveDropZone />}
+      </div>
+      {/* 僅拖曳變更卡時浮現（archiveZoneVisible）：討論卡不可封存、不得造成佈局變動。 */}
+      {dragging && archiveZoneVisible(activeId) && <ArchiveDropZone />}
       </div>
       </div>
       {/* 拖曳浮動複本：渲染在最上層，不受欄位 overflow 裁切 */}

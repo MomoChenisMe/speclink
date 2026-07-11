@@ -14,7 +14,7 @@ function render(ui: ReactElement) {
 
 import { KanbanBoard, DRAG_ACTIVATION_DISTANCE } from "../components/KanbanBoard";
 import { DetailDrawer } from "../components/DetailDrawer";
-import { cardDndId, resolveCardDrop, type ColumnCards } from "../boardDnd";
+import { archiveZoneVisible, cardDndId, resolveCardDrop, type ColumnCards } from "../boardDnd";
 import { parseTasks } from "../tasks";
 import type { ChangeItem, ArtifactStatus, DiscussionLists } from "../adapter";
 
@@ -189,22 +189,24 @@ describe("KanbanBoard search（看板搜尋過濾卡片）", () => {
   });
 
   // spec Example 表逐行參數化：輸入 → 提案中欄顯示（計數）／討論欄顯示（計數）。
+  // 卡片以 data-change／data-discussion 查詢——命中字段經高亮 mark 拆分（design D7），
+  // 完整文字節點斷言不再適用。
   it.each([
     ["desktop", ["desktop-acp-agent"], "1", [], "0"], // 名稱子字串命中
     ["桌面", ["desktop-acp-agent"], "1", [], "0"], // 摘要命中
-    [" GUI ", [], "0", ["GUI 勾任務自動蓋開工章"], "1"], // 去頭尾空白、不分大小寫
-    ["", ["desktop-acp-agent", "web-role-views"], "2", ["GUI 勾任務自動蓋開工章"], "1"], // 清空還原全量
+    [" GUI ", [], "0", ["gui-auto-stamp"], "1"], // 去頭尾空白、不分大小寫
+    ["", ["desktop-acp-agent", "web-role-views"], "2", ["gui-auto-stamp"], "1"], // 清空還原全量
   ])(
     "query %j filters proposed column and discussion column per the spec example table",
     (query, proposedShown, proposedCount, discussionShown, discussionCount) => {
       renderBoard(query);
       for (const name of proposedShown) {
-        expect(within(column("proposed")).getByText(name)).toBeTruthy();
+        expect(column("proposed").querySelector(`[data-change="${name}"]`)).toBeTruthy();
       }
       expect(column("proposed").querySelectorAll("[data-change]")).toHaveLength(proposedShown.length);
       expect(count("proposed")).toBe(proposedCount);
-      for (const topic of discussionShown) {
-        expect(within(column("discussions")).getByText(topic)).toBeTruthy();
+      for (const slug of discussionShown) {
+        expect(column("discussions").querySelector(`[data-discussion="${slug}"]`)).toBeTruthy();
       }
       expect(column("discussions").querySelectorAll("[data-discussion]")).toHaveLength(discussionShown.length);
       expect(count("discussions")).toBe(discussionCount);
@@ -214,7 +216,7 @@ describe("KanbanBoard search（看板搜尋過濾卡片）", () => {
   it("matches case-insensitively and against the discussion slug", () => {
     // 需求文字：不分大小寫；討論卡以主題「與 slug」比對。
     renderBoard("gui");
-    expect(within(column("discussions")).getByText("GUI 勾任務自動蓋開工章")).toBeTruthy();
+    expect(column("discussions").querySelector('[data-discussion="gui-auto-stamp"]')).toBeTruthy();
     expect(count("discussions")).toBe("1");
   });
 
@@ -325,5 +327,69 @@ describe("DetailDrawer", () => {
     expect(screen.getByText("a")).toBeTruthy();
     expect(screen.getByText("b")).toBeTruthy();
     expect(screen.getByText(/1\/2/)).toBeTruthy();
+  });
+});
+
+// spec 需求「看板搜尋過濾卡片」的命中呈現（design D7）：子字串命中高亮、
+// 僅模糊命中不高亮、全文命中卡片呈 snippet 行。
+describe("命中高亮與 snippet（design D7）", () => {
+  const one: ChangeItem[] = [
+    { name: "engine-typed-core", status: "in-progress", totalTasks: 2, completedTasks: 0 },
+  ];
+  const cardEl = () =>
+    document.querySelector('[data-change="engine-typed-core"]') as HTMLElement;
+
+  it("子字串命中於卡名以 mark 高亮命中原文", () => {
+    render(<KanbanBoard changes={one} query="engine" onQuery={() => {}} />);
+    const mark = cardEl().querySelector("mark");
+    expect(mark).toBeTruthy();
+    expect(mark!.textContent).toBe("engine");
+  });
+
+  it("僅模糊命中（無連續子字串）顯示卡片但不高亮", () => {
+    render(<KanbanBoard changes={one} query="etc" onQuery={() => {}} />);
+    expect(cardEl()).toBeTruthy();
+    expect(cardEl().querySelector("mark")).toBeNull();
+  });
+
+  it("全文命中卡片呈 snippet 行：artifact 名＋裁切前後文＋命中高亮", () => {
+    render(
+      <KanbanBoard
+        changes={one}
+        query="dispatch"
+        onQuery={() => {}}
+        fulltextHits={[
+          {
+            kind: "change",
+            id: "engine-typed-core",
+            artifact: "design.md",
+            snippet: "…唯一 dispatch 相容層…",
+          },
+        ]}
+      />,
+    );
+    const card = cardEl();
+    const snippet = card.querySelector("[data-snippet]") as HTMLElement;
+    expect(snippet).toBeTruthy();
+    expect(within(snippet).getByText(/design\.md/)).toBeTruthy();
+    expect(snippet.textContent).toContain("相容層");
+    const mark = snippet.querySelector("mark");
+    expect(mark?.textContent).toBe("dispatch");
+  });
+});
+
+// spec 需求「拖曳封存落點以浮層呈現」的 jsdom 可驗部分（design D8）：浮現條件
+// 純函式＋靜態不渲染；真實拖曳的欄寬零變動與放開行為屬真視窗驗證（tasks 8.2）。
+describe("封存落點浮層（design D8）", () => {
+  it("archiveZoneVisible：變更卡拖曳才浮現、討論卡與無拖曳不浮現", () => {
+    expect(archiveZoneVisible(cardDndId("change", "engine-typed-core"))).toBe(true);
+    expect(archiveZoneVisible(cardDndId("discussion", "collab"))).toBe(false);
+    expect(archiveZoneVisible("archived")).toBe(false);
+    expect(archiveZoneVisible(null)).toBe(false);
+  });
+
+  it("未拖曳時看板不渲染封存落點", () => {
+    render(<KanbanBoard changes={changes} />);
+    expect(document.querySelector('[data-column="archived"]')).toBeNull();
   });
 });

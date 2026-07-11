@@ -92,6 +92,7 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     status: vi.fn().mockResolvedValue(STATUS),
     getDocument: vi.fn().mockResolvedValue("## Why\nhello body"),
     getSpecDocument: vi.fn().mockResolvedValue("# spec"),
+    searchWorkspace: vi.fn().mockResolvedValue([]),
     changeCapabilities: vi.fn().mockResolvedValue(["desktop-app"]),
     changeMeta: vi.fn().mockResolvedValue({ created: "2026-07-05", createdBy: "MomoChen", createdWith: "claude" }),
     deleteChange: vi.fn().mockResolvedValue(undefined),

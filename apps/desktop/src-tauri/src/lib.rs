@@ -51,6 +51,11 @@ fn spec_document(state: State<AppState>, capability: String) -> Option<String> {
 }
 
 #[tauri::command]
+fn search_workspace(state: State<AppState>, query: String) -> Value {
+    speclink_desktop_core::search::search_workspace_at(&state.root(), &query)
+}
+
+#[tauri::command]
 fn change_capabilities(state: State<AppState>, change: String) -> Vec<String> {
     speclink_desktop_core::query::change_capabilities_at(&state.root(), &change)
 }
@@ -336,6 +341,7 @@ pub fn run() {
             status,
             document,
             spec_document,
+            search_workspace,
             change_capabilities,
             change_meta,
             delete_change,

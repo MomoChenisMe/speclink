@@ -22,6 +22,14 @@ export function parseCardDndId(dndId: string): { kind: CardKind; id: string } | 
 }
 
 /**
+ * 封存落點浮層的浮現條件（spec「拖曳封存落點以浮層呈現」）：僅拖曳變更卡時
+ * 浮現——討論卡不可拖曳封存，拖曳它不得造成任何佈局變動。
+ */
+export function archiveZoneVisible(activeDndId: string | null): boolean {
+  return activeDndId !== null && parseCardDndId(activeDndId)?.kind === "change";
+}
+
+/**
  * dragEnd 落點解析：active 與 over 屬**同一欄**的卡片時，回傳 arrayMove 後
  * 的前後鄰居（欄頂／欄底為 null）；跨欄、欄容器、封存落點、原位放開一律
  * 回 null——呼叫端不觸發任何寫回（spec「跨欄拖曳不改變變更階段」）。

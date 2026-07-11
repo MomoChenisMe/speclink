@@ -6,6 +6,7 @@ import type {
   SpecItem,
   ArchivedItem,
   DiscussionLists,
+  SearchHit,
   StatusReport,
   Verb,
 } from "@speclink/ui";
@@ -34,6 +35,10 @@ export function createTauriDataSource(): SpeclinkDataSource {
     },
     async getSpecDocument(capability: string): Promise<string | null> {
       return await invoke<string | null>("spec_document", { capability });
+    },
+    async searchWorkspace(query: string): Promise<SearchHit[]> {
+      const r = await invoke<{ hits: SearchHit[] }>("search_workspace", { query });
+      return r.hits;
     },
     async changeCapabilities(change: string): Promise<string[]> {
       return await invoke<string[]>("change_capabilities", { change });

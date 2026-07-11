@@ -500,3 +500,19 @@ describe("DiscussionDrawer 世代重載（spec：外部推進討論後抽屜內�
     expect(screen.getByText(/範圍界定/)).toBeTruthy();
   });
 });
+
+// spec 需求「討論抽屜檢視與轉出變更」：抽屜標題以 slug 為題（等寬）＋複製鈕、
+// topic 降為副標（design D4，LANGUAGE.md 受控例外擴充）。
+describe("DiscussionDrawer 標題 slug 化（design D4）", () => {
+  it("標題呈 slug（等寬字型）、topic 降為副標、複製鈕寫入剪貼簿", async () => {
+    const writeText = vi.fn();
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(<DiscussionDrawer {...(makeProps() as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    const title = screen.getByText("alpha-search");
+    expect(title.className).toContain("font-mono");
+    expect(screen.getByText("Alpha search")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "複製 slug" }));
+    expect(writeText).toHaveBeenCalledWith("alpha-search");
+  });
+});

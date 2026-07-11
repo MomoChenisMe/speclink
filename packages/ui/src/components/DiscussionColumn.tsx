@@ -1,15 +1,23 @@
 import { useState } from "react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, ArrowUpRight, Check, Copy, MessageSquareText } from "lucide-react";
+import {
+  Archive,
+  ArrowUpRight,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  MessageSquareText,
+} from "lucide-react";
 
-import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
+import type { ArchivedItem, ChangeItem, DiscussionItem, SearchHit } from "../adapter";
 import { cardDndId } from "../boardDnd";
 import { useI18n } from "../i18n";
 import { changeStage, STAGE_BADGE } from "../stage";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { HighlightText } from "./HighlightText";
 
 /**
  * promoted_to 子變更的階段標示（純前端由清單存在性派生）——active 清單命中
@@ -58,6 +66,10 @@ export interface DiscussionColumnProps {
    * 需在宿主的 DndContext 內；promoted 收合列是衍生樹檢視，不參與拖排。
    */
   sortable?: boolean;
+  /** 搜尋字串（design D7）：slug 子字串命中時高亮。 */
+  highlight?: string;
+  /** 全文命中（design D6）：命中的討論卡呈 snippet 行。 */
+  fulltextHits?: SearchHit[];
 }
 
 const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
@@ -69,9 +81,11 @@ export function DiscussionCard({
   d,
   onOpenDiscussion,
   onArchiveDiscussion,
-}: { d: DiscussionItem } & Pick<
+  highlight,
+  hit,
+}: { d: DiscussionItem; hit?: SearchHit } & Pick<
   DiscussionColumnProps,
-  "onOpenDiscussion" | "onArchiveDiscussion"
+  "onOpenDiscussion" | "onArchiveDiscussion" | "highlight"
 >) {
   const { t } = useI18n();
   const badge = STATUS_BADGE[d.status] ?? STATUS_BADGE.open;
@@ -89,24 +103,30 @@ export function DiscussionCard({
       onClick={() => onOpenDiscussion?.(d.slug)}
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
-        {/* slug（檔名）為標題——CLI 動詞把手，等寬強調；topic 降為卡身描述（LANGUAGE.md 受控例外）。 */}
-        <span className="font-mono font-semibold text-sm leading-tight min-w-0 flex-1 break-all">{d.slug}</span>
+        {/* slug（檔名）為標題——CLI 動詞把手，等寬強調；topic 降為卡身描述（LANGUAGE.md
+            受控例外）。複製鈕行內尾隨（design D4 複製鈕位置規則）：緊跟 slug 最後
+            一個字元後流動，不以 flex 推至卡片右緣。 */}
+        <span className="font-mono font-semibold text-sm leading-tight min-w-0 flex-1 break-all">
+          <HighlightText text={d.slug} query={highlight} />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={t("discussion.copySlug")}
+            className={`ml-1 inline-flex h-4 w-4 align-text-bottom text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+            onClick={copySlug}
+          >
+            {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
+          </Button>
+        </span>
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${badge.cls}`}>
           {t(badge.labelKey)}
         </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={t("discussion.copySlug")}
-          className={`h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-          onClick={copySlug}
-        >
-          {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
-        </Button>
       </CardHeader>
       <CardContent className="p-3 pt-0 gap-2">
-        <span className="text-xs leading-snug text-foreground/80">{d.topic}</span>
+        <span className="text-xs leading-snug text-foreground/80">
+          <HighlightText text={d.topic} query={highlight} />
+        </span>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="tabular-nums">{t("common.rounds").replace("{n}", String(d.rounds))}</span>
           {d.createdBy && (
@@ -130,6 +150,19 @@ export function DiscussionCard({
             </Button>
           </div>
         )}
+        {/* 全文命中 snippet 行（design D6/D7）：記錄全文命中時呈前後文＋高亮。 */}
+        {hit && (
+          <div
+            data-snippet
+            className="flex items-start gap-1 border-t border-border/40 pt-1.5 text-[11px] leading-snug text-muted-foreground"
+          >
+            <MessageSquareText className="mt-0.5 h-3 w-3 shrink-0" />
+            <span className="min-w-0">
+              <span className="font-mono">{hit.artifact}</span>{" "}
+              <HighlightText text={hit.snippet} query={highlight} />
+            </span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -139,9 +172,9 @@ export function DiscussionCard({
 function SortableDiscussionCard({
   d,
   ...rest
-}: { d: DiscussionItem } & Pick<
+}: { d: DiscussionItem; hit?: SearchHit } & Pick<
   DiscussionColumnProps,
-  "onOpenDiscussion" | "onArchiveDiscussion"
+  "onOpenDiscussion" | "onArchiveDiscussion" | "highlight"
 >) {
   const { t } = useI18n();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -171,17 +204,43 @@ function PromotedRow({
   onOpenDiscussion,
 }: { d: DiscussionItem } & Pick<DiscussionColumnProps, "changes" | "archived" | "onOpenDiscussion">) {
   const { t } = useI18n();
-  // 衍生樹（design D2）：topic 首行為識別錨點（slug 不出現於看板）、
-  // 子變更以樹狀前綴逐列列出——父子（討論→衍生變更）關係一眼可讀。
+  const [copied, setCopied] = useState(false);
+  const copySlug = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    void navigator.clipboard?.writeText(d.slug);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
+  // 衍生樹細列：slug（檔名）為首行錨點——CLI 動詞把手，帶複製鈕（LANGUAGE.md
+  // 受控例外，desktop-ux-polish 擴充）；topic 降為次行描述；子變更以樹狀前綴
+  // 逐列列出——父子（討論→衍生變更）關係一眼可讀。
   return (
-    <Button
-      type="button"
-      variant="ghost"
+    <div
+      role="button"
+      tabIndex={0}
       data-discussion={d.slug}
-      className="block h-auto w-full whitespace-normal rounded-md border border-border/60 bg-background/60 px-2 py-1.5 text-left font-normal hover:border-primary/60 hover:bg-background/60"
+      className="group cursor-pointer rounded-md border border-border/60 bg-background/60 px-2 py-1.5 text-left transition-colors hover:border-primary/60"
       onClick={() => onOpenDiscussion?.(d.slug)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onOpenDiscussion?.(d.slug);
+      }}
     >
-      <span className="block truncate text-xs font-semibold leading-tight">{d.topic}</span>
+      {/* 複製鈕行內尾隨（design D4 複製鈕位置規則）：break-all 多行 slug 的按鈕
+          直接跟在最後一個字元後流動，不以 flex 推至列右緣。 */}
+      <span className="min-w-0 break-all font-mono text-xs font-semibold leading-tight">
+        {d.slug}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t("discussion.copySlug")}
+          className={`ml-1 inline-flex h-4 w-4 align-text-bottom text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          onClick={copySlug}
+        >
+          {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
+        </Button>
+      </span>
+      <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{d.topic}</span>
       <span className="mt-1 flex flex-col gap-0.5">
         {d.promotedTo.map((name, i) => (
           <span key={name} className="flex items-center gap-1 text-[11px] leading-tight">
@@ -197,16 +256,16 @@ function PromotedRow({
           </span>
         ))}
       </span>
-    </Button>
+    </div>
   );
 }
 
 /**
- * 看板第 0 欄「討論」（兩級呈現，header 開關互斥切換兩檢視）：
- * - 討論中檢視（預設）：open／concluded 全尺寸卡（open 唯讀、concluded 帶「封存」
- *   動詞——轉為變更已自 GUI 撤除）。
- * - 已轉出檢視（開關開啟）：欄標題換為「已轉出討論」、只顯示 promoted 衍生樹細列
- *   （每列 topic＋衍生變更樹＋階段 chip，design D2），討論中卡暫時隱藏。
+ * 看板第 0 欄「討論」（兩級呈現，上下兩區同屏、不互斥切換；design D3）：
+ * - 上區：open／concluded 全尺寸卡（open 唯讀、concluded 帶「封存」動詞——
+ *   轉為變更已自 GUI 撤除）。
+ * - 欄底：「已轉出 N」常駐收合列（有 promoted 時呈現、預設收合、不持久化），
+ *   點按就地展開 promoted 衍生樹細列（slug 首行＋topic＋衍生變更樹＋階段 chip）。
  */
 export function DiscussionColumn({
   discussions,
@@ -215,19 +274,24 @@ export function DiscussionColumn({
   onOpenDiscussion,
   onArchiveDiscussion,
   sortable,
+  highlight,
+  fulltextHits,
 }: DiscussionColumnProps) {
   const { t } = useI18n();
   const full = discussions.filter((d) => d.status !== "promoted");
   const promoted = discussions.filter((d) => d.status === "promoted");
-  // D1：開關為互斥檢視切換——關閉＝只顯示討論中（active）、開啟＝只顯示已轉出
-  //（元件內 local，不跨 session）。promoted 歸零時強制回討論中檢視，避免卡在空檢視。
-  const [showPromoted, setShowPromoted] = useState(false);
-  const showingPromoted = showPromoted && promoted.length > 0;
+  // D3：欄底收合列的展開狀態——元件 local、預設收合、不跨啟動持久化。
+  const [promotedOpen, setPromotedOpen] = useState(false);
+  const hitBySlug = new Map(
+    (fulltextHits ?? []).filter((h) => h.kind === "discussion").map((h) => [h.id, h]),
+  );
   const fullCards = full.map((d) =>
     sortable ? (
       <SortableDiscussionCard
         key={d.slug}
         d={d}
+        highlight={highlight}
+        hit={hitBySlug.get(d.slug)}
         onOpenDiscussion={onOpenDiscussion}
         onArchiveDiscussion={onArchiveDiscussion}
       />
@@ -235,6 +299,8 @@ export function DiscussionColumn({
       <DiscussionCard
         key={d.slug}
         d={d}
+        highlight={highlight}
+        hit={hitBySlug.get(d.slug)}
         onOpenDiscussion={onOpenDiscussion}
         onArchiveDiscussion={onArchiveDiscussion}
       />
@@ -248,71 +314,66 @@ export function DiscussionColumn({
       <div className="flex items-center gap-1.5 px-1.5 pt-0.5 shrink-0">
         <MessageSquareText className="h-3.5 w-3.5 text-primary/40" />
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {showingPromoted ? t("discussion.headingPromoted") : t("discussion.heading")}
+          {t("discussion.heading")}
         </h2>
         <div className="flex-1" />
-        {promoted.length > 0 && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={t("discussion.showPromoted")}
-                  aria-pressed={showingPromoted}
-                  onClick={() => setShowPromoted((v) => !v)}
-                  className={`h-5 gap-0.5 rounded-full px-1.5 py-0 text-[11px] font-semibold tabular-nums ${
-                    showingPromoted ? "bg-primary/12 text-primary" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <ArrowUpRight className="h-3 w-3" />
-                  <span>{promoted.length}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t("discussion.showPromoted")}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
         <span
           data-testid="column-count"
           className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-primary/8 text-primary/70"
         >
-          {showingPromoted ? promoted.length : full.length}
+          {full.length}
         </span>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
-        {showingPromoted ? (
-          // 已轉出檢視：只顯示 promoted 衍生樹，從欄頂由上而下排列（欄標題已切為
-          // 「已轉出討論」，故內容不再重複群組標籤列）。
-          promoted.map((d) => (
-            <PromotedRow
-              key={d.slug}
-              d={d}
-              changes={changes}
-              archived={archived}
-              onOpenDiscussion={onOpenDiscussion}
-            />
-          ))
+        {full.length === 0 && promoted.length === 0 && (
+          <p className="px-1.5 pt-2 text-xs text-muted-foreground">{t("discussion.none")}</p>
+        )}
+        {sortable ? (
+          <SortableContext
+            items={full.map((d) => cardDndId("discussion", d.slug))}
+            strategy={verticalListSortingStrategy}
+          >
+            {fullCards}
+          </SortableContext>
         ) : (
-          // 討論中檢視：只顯示 active 全卡（open／concluded）。
-          <>
-            {full.length === 0 && promoted.length === 0 && (
-              <p className="px-1.5 pt-2 text-xs text-muted-foreground">{t("discussion.none")}</p>
-            )}
-            {sortable ? (
-              <SortableContext
-                items={full.map((d) => cardDndId("discussion", d.slug))}
-                strategy={verticalListSortingStrategy}
-              >
-                {fullCards}
-              </SortableContext>
-            ) : (
-              fullCards
-            )}
-          </>
+          fullCards
         )}
       </div>
+      {promoted.length > 0 && (
+        <div className="shrink-0 flex flex-col gap-1.5 border-t border-border/60 pt-1.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-expanded={promotedOpen}
+            onClick={() => setPromotedOpen((v) => !v)}
+            className="h-6 w-full justify-start gap-1 px-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+          >
+            <ArrowUpRight className="h-3 w-3" />
+            <span className="tabular-nums">
+              {t("discussion.promotedBar").replace("{n}", String(promoted.length))}
+            </span>
+            {promotedOpen ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+          </Button>
+          {promotedOpen && (
+            <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
+              {promoted.map((d) => (
+                <PromotedRow
+                  key={d.slug}
+                  d={d}
+                  changes={changes}
+                  archived={archived}
+                  onOpenDiscussion={onOpenDiscussion}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
