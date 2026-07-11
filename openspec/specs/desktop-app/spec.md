@@ -674,7 +674,7 @@ code:
 
 看板 SHALL 於最左新增「討論」欄，欄內分上下兩區同屏呈現：上區為討論中（active）全卡清單，下區為欄底的「已轉出」常駐收合列；SHALL NOT 以互斥檢視切換兩者。
 
-討論中區 SHALL 顯示 status 為 open 或 concluded 的討論為全尺寸卡——卡 SHALL 以 slug（檔名）為標題、topic 為卡身描述，並顯示輪數、狀態與建立者（createdBy，缺席時省略），且帶複製 slug 鈕；open 卡為唯讀，concluded 卡 SHALL 提供「封存」動詞（「轉為變更」動詞已自 GUI 撤除，轉出改由 CLI 或 agent）。
+討論中區 SHALL 顯示 status 為 open 或 concluded 的討論為全尺寸卡——卡 SHALL 以 slug（檔名）為標題（等寬字型）、topic 為卡身描述；複製 slug 鈕 SHALL 行內尾隨於標題最後一個字元後（版面規則見「看板卡片統一解剖學」）；建立者（createdBy，缺席時省略）SHALL 以頭像圓點呈現且 hover 顯示全名；輪數與建立時間 SHALL 並排於卡底 meta 列，狀態 chip 保留；open 卡為唯讀，concluded 卡 SHALL 提供「封存」動詞（「轉為變更」動詞已自 GUI 撤除，轉出改由 CLI 或 agent）。
 
 當存在至少一筆 promoted 討論時，欄底 SHALL 呈現「已轉出 N」收合列（N 為 promoted 計數，預設收合）；點按 SHALL 就地展開 promoted 細列清單，再點按即收合；展開狀態 SHALL NOT 跨啟動持久化。無任何 promoted 討論時收合列 SHALL 缺席。
 
@@ -684,13 +684,13 @@ slug 為題與複製鈕（討論全卡標題、promoted 細列首行）屬 opens
 
 #### Scenario: 進行中與已結論討論的全卡呈現
 
-- **WHEN** openspec/discussions/ 下存在一筆 status: open（3 輪、frontmatter 含 created_by）與一筆 status: concluded 的討論、無任何 promoted 討論
-- **THEN** 討論欄顯示兩張全卡，各以 slug 為標題、topic 為描述、顯示「3 輪」與建立者、並帶複製 slug 鈕；open 卡無動詞按鈕，concluded 卡帶「封存」按鈕且無「轉為變更」按鈕；欄計數徽章顯示 2，欄底無「已轉出」收合列
+- **WHEN** openspec/discussions/ 下存在一筆 status: open（3 輪、frontmatter 含 created_by 與 created）與一筆 status: concluded 的討論、無任何 promoted 討論
+- **THEN** 討論欄顯示兩張全卡，各以 slug 為標題（等寬字型）、topic 為描述，複製 slug 鈕行內尾隨於標題末字元後，建立者呈頭像圓點且 hover 顯示全名、卡面無全名直出文字，卡底 meta 列並排「3 輪」與建立時間；open 卡無動詞按鈕，concluded 卡帶「封存」按鈕且無「轉為變更」按鈕；欄計數徽章顯示 2，欄底無「已轉出」收合列
 
 #### Scenario: 複製討論 slug
 
 - **WHEN** 點討論全卡或已轉出細列的複製鈕
-- **THEN** 該討論的 slug 寫入剪貼簿並短暫顯示已複製回饋
+- **THEN** 該討論的 slug 寫入剪貼簿並短暫顯示已複製回饋，且不開啟討論抽屜
 
 #### Scenario: 欄底收合列就地展開與收合
 
@@ -726,6 +726,19 @@ slug 為題與複製鈕（討論全卡標題、promoted 細列首行）屬 opens
 
 - **WHEN** 桌面 app 執行中，於外部以 CLI 對某 open 討論 add-round
 - **THEN** 數秒內該討論卡的輪數自動更新，無需任何 app 內操作
+
+
+<!-- @trace
+source: board-card-anatomy
+updated: 2026-07-11
+code:
+  - apps/desktop/core/src/query.rs
+  - packages/ui/src/__tests__/discussionColumn.test.tsx
+  - packages/ui/src/__tests__/kanban.test.tsx
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ChangeCard.tsx
+  - packages/ui/src/components/DiscussionColumn.tsx
+-->
 
 ---
 ### Requirement: 討論抽屜檢視與轉出變更
@@ -1791,3 +1804,35 @@ code:
 
 - **WHEN** 使用者拖曳變更卡至浮層落點放開
 - **THEN** 觸發既有封存確認流程，行為與未改版前一致
+
+---
+### Requirement: 看板卡片統一解剖學
+
+看板全尺寸卡（變更卡與討論卡）SHALL 採統一三列骨架：識別列（標題＋複製鈕＋右端 meta icons）、描述列（一行截斷，無內容時缺席）、meta 列。標題 SHALL 以等寬字型呈現（變更名稱與討論 slug 同為可複製把手）。複製鈕 SHALL 行內尾隨於標題最後一個字元後（標題折行時位於末行文字尾），meta icons 維持靠右；SHALL NOT 將複製鈕推至列右緣。標題 SHALL NOT 截斷——完整顯示並自然折行。變更卡描述列 SHALL 顯示 proposal Why 首句（一行截斷）；proposal 缺席、Why 區段缺席或為空時描述列 SHALL 缺席。描述資料 SHALL 由變更清單 payload 一次帶出，SHALL NOT 逐卡讀取 proposal 全文；該欄位屬呈現層輔助欄位，不屬 CLI --json 對齊範圍。建立者 SHALL 以頭像圓點呈現且 hover 顯示全名，SHALL NOT 於卡面直出全名文字；createdBy 缺席時圓點缺席。狀態 chip SHALL 僅在所在位置無法表達狀態時出現：討論卡（討論欄一欄兩態）帶狀態 chip，變更卡（所在欄即階段）SHALL NOT 帶狀態 chip。
+
+#### Scenario: 變更卡三列骨架
+
+- **WHEN** 看板載入一個 proposal Why 首句非空、createdBy 存在、任務 5/21 的變更
+- **THEN** 變更卡識別列以等寬字型顯示名稱且複製鈕緊跟名稱文字後（hover 顯現、點擊寫入名稱至剪貼簿且不開詳情抽屜）、右端呈建立者圓點；描述列一行截斷顯示 Why 首句；meta 列顯示進度條與 5/21；卡上無狀態 chip
+
+#### Scenario: 變更卡無 Why 內容時描述列缺席
+
+- **WHEN** 某變更無 proposal.md（或 Why 區段為空）
+- **THEN** 該變更卡不顯示描述列，識別列與 meta 列照常呈現，看板不因該筆缺件而報錯
+
+#### Scenario: 長標題折行時複製鈕仍緊跟末字元
+
+- **WHEN** 變更名稱長於卡片可用寬度
+- **THEN** 標題折行完整顯示不截斷，複製鈕緊跟末行最後一個字元後且維持可點，右端 meta icons 不被擠出卡外
+
+<!-- @trace
+source: board-card-anatomy
+updated: 2026-07-11
+code:
+  - apps/desktop/core/src/query.rs
+  - packages/ui/src/__tests__/discussionColumn.test.tsx
+  - packages/ui/src/__tests__/kanban.test.tsx
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ChangeCard.tsx
+  - packages/ui/src/components/DiscussionColumn.tsx
+-->

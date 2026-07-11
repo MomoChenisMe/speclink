@@ -18,7 +18,8 @@ pub fn list_changes_at(root: &Path) -> Value {
     let store: &dyn Store = &ctx.store;
     let changes = board_sorted_changes(store);
     // 桌面 payload 在 CLI 同形項上疊加生命週期標記欄位（parity 紅線：CLI 的
-    // changes_json 本身不動）。資料取自 list_changes 已解析的 meta，不另讀檔。
+    // changes_json 本身不動）。meta 類欄位取自 list_changes 已解析的 meta；
+    // whyExcerpt 例外——另讀各 change 的 proposal.md 首段（描述列資料源）。
     let items: Vec<Value> = speclink_core::listing::changes_json(store, &changes)
         .iter()
         .zip(changes.iter())
@@ -32,6 +33,9 @@ pub fn list_changes_at(root: &Path) -> Value {
             v["fromDiscussions"] = json!(c.meta.from_discussions());
             // 「待重新反映」徽章的資料源：恆存在（空陣列＝無旗標），供看板卡片渲染。
             v["restaleFrom"] = json!(c.meta.restale_from());
+            // 變更卡描述列的資料源：恆存在 key（缺件為 null），前端對 null 隱藏描述列。
+            v["whyExcerpt"] =
+                json!(store.read_artifact(&c.name, "proposal.md").as_deref().and_then(why_excerpt));
             v
         })
         .collect();
@@ -71,6 +75,23 @@ pub fn list_specs_at(root: &Path) -> Value {
         }
     }
     json!({ "specs": specs })
+}
+
+/// proposal.md 的 `## Why` 區段首個非空行原文（board-card-anatomy design D2）；
+/// 區段缺席或區段內無內容時 `None`。
+pub(crate) fn why_excerpt(doc: &str) -> Option<String> {
+    let mut in_why = false;
+    for line in doc.lines() {
+        let trimmed = line.trim();
+        if let Some(heading) = trimmed.strip_prefix("## ") {
+            in_why = heading.trim() == "Why";
+            continue;
+        }
+        if in_why && !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
 }
 
 /// 檔案 mtime 衍生的本地日期（YYYY-MM-DD）；metadata 或 mtime 不可得時 `None`。
@@ -266,6 +287,44 @@ mod tests {
         assert_eq!(by_name("single")["fromDiscussions"], serde_json::json!(["alpha-search"]));
         assert_eq!(by_name("plain")["fromDiscussions"], serde_json::json!([]));
         assert!(by_name("multi").get("fromDiscussion").is_none(), "old single-value key gone");
+    }
+
+    #[test]
+    fn list_changes_overlays_why_excerpt_from_proposal() {
+        // 變更卡描述列資料源（board-card-anatomy design D2）：whyExcerpt 為 proposal.md
+        // `## Why` 區段首個非空行原文（camelCase、恆存在 key）；Why 前有其他區段不影響。
+        let fx = FixtureRoot::new("q-why");
+        fx.add_change("demo", OLD_META);
+        fx.add_change("prefixed", OLD_META);
+        fx.write(
+            "openspec/changes/prefixed/proposal.md",
+            "## Summary\n\nOne liner.\n\n## Why\n\nReal reason here.\nSecond line ignored.\n",
+        );
+        let v = list_changes_at(fx.root());
+        let arr = v["changes"].as_array().expect("changes array");
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+        assert_eq!(by_name("demo")["whyExcerpt"], "Demo change.");
+        assert_eq!(by_name("prefixed")["whyExcerpt"], "Real reason here.");
+        assert!(by_name("demo").get("why_excerpt").is_none(), "camelCase only");
+    }
+
+    #[test]
+    fn why_excerpt_is_null_when_proposal_or_why_missing() {
+        // 缺件容錯（board-card-anatomy design D2）：無 proposal.md、Why 區段缺席或
+        // 區段為空時 whyExcerpt 為 null，清單照常回傳（描述列由前端缺席處理）。
+        let fx = FixtureRoot::new("q-why-missing");
+        fx.write("openspec/changes/no-proposal/.openspec.yaml", OLD_META);
+        fx.write("openspec/changes/no-proposal/tasks.md", "- [ ] 1.1 t\n");
+        fx.add_change("empty-why", OLD_META);
+        fx.write(
+            "openspec/changes/empty-why/proposal.md",
+            "## Why\n\n## What Changes\n\n- something\n",
+        );
+        let v = list_changes_at(fx.root());
+        let arr = v["changes"].as_array().expect("changes array");
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+        assert!(by_name("no-proposal")["whyExcerpt"].is_null(), "no proposal.md → null");
+        assert!(by_name("empty-why")["whyExcerpt"].is_null(), "empty Why section → null");
     }
 
     #[test]
