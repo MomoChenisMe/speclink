@@ -198,3 +198,38 @@ describe("ArchivedDrawer（封存討論 target）", () => {
     expect(screen.queryByText("來自討論：")).toBeNull();
   });
 });
+
+// spec 需求「markdown 文件內容行寬有上限」（design D4）：封存抽屜兩型 target 的
+// 捲動容器內皆存在共用置中容器，分頁內容／討論區段與內文同欄對齊置中。
+describe("ArchivedDrawer（閱讀欄置中）", () => {
+  it("封存變更 target：捲動容器內有置中容器且包住分頁內容（含任務清單）", async () => {
+    render(<ArchivedDrawer {...(makeProps() as never)} />);
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    const col = document.querySelector("[data-reading-column]") as HTMLElement;
+    expect(col).toBeTruthy();
+    expect(col.className).toContain("w-full");
+    expect(col.className).toContain("max-w-[96ch]");
+    expect(col.className).toContain("mx-auto");
+    expect(col.parentElement?.className).toContain("overflow-y-auto");
+    expect(col.textContent).toContain("封存提案內文。");
+    // 任務分頁：唯讀任務清單同欄。
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
+    expect(col.textContent).toContain("open-task");
+  });
+
+  it("封存討論 target：捲動容器內有置中容器且包住三區段", async () => {
+    render(
+      <ArchivedDrawer
+        {...(makeProps({ target: { kind: "discussion", slug: "alpha-search" } }) as never)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("討論背景內文。")).toBeTruthy());
+    const col = document.querySelector("[data-reading-column]") as HTMLElement;
+    expect(col).toBeTruthy();
+    expect(col.className).toContain("max-w-[96ch]");
+    expect(col.className).toContain("mx-auto");
+    expect(col.parentElement?.className).toContain("overflow-y-auto");
+    expect(col.textContent).toContain("討論背景內文。");
+    expect(col.textContent).toContain("就這麼辦");
+  });
+});

@@ -162,3 +162,71 @@ describe("SpecList（規格頁清單）", () => {
     expect(screen.getByText("此專案尚無正典規格")).toBeTruthy();
   });
 });
+
+// spec 需求「清單最新在前與換頁瀏覽」：規格依 modifiedAt 新→舊、缺席者殿後
+// 且依名稱字母升冪；每頁 20 筆換頁、搜尋字串變更回第 1 頁。
+describe("SpecList（最新在前與換頁）", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-08T04:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const bare = (id: string, modifiedAt?: string): SpecItem => ({
+    id,
+    modifiedAt: modifiedAt ?? null,
+    requirementCount: 0,
+    purposeExcerpt: null,
+    purposeTbd: false,
+    traceCount: 0,
+  });
+
+  const cardOrder = () =>
+    Array.from(document.querySelectorAll("[data-spec]")).map((el) => el.getAttribute("data-spec"));
+
+  it("modifiedAt 新→舊排序；缺席者排最後且彼此依名稱字母升冪", () => {
+    // spec Scenario「規格修改時間缺席排最後」Example 值：beta 今天、alpha 3 天前、
+    // zeta 與 delta 無 modifiedAt → 順序 beta、alpha、delta、zeta。傳入順序刻意打亂。
+    renderList([bare("zeta"), bare("alpha", "2026-07-05"), bare("delta"), bare("beta", "2026-07-08")]);
+    expect(cardOrder()).toEqual(["beta", "alpha", "delta", "zeta"]);
+  });
+
+  // s01 最新 … s21 最舊：排序後 s01–s20 落第 1 頁、s21 落第 2 頁。
+  const MANY: SpecItem[] = Array.from({ length: 21 }, (_, i) => {
+    const n = i + 1;
+    const day = String(22 - n).padStart(2, "0");
+    return bare(`s${String(n).padStart(2, "0")}`, `2026-06-${day}`);
+  });
+
+  it("21 筆時第 1 頁僅 20 筆且出現換頁控制列，點下一頁顯示第 21 筆", () => {
+    renderList(MANY);
+    expect(cardOrder()).toHaveLength(20);
+    expect(screen.getByText("s01")).toBeTruthy();
+    expect(screen.queryByText("s21")).toBeNull();
+    expect(screen.getByText("第 1／2 頁")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(screen.getByText("s21")).toBeTruthy();
+    expect(screen.queryByText("s01")).toBeNull();
+    expect(screen.getByText("第 2／2 頁")).toBeTruthy();
+  });
+
+  it("13 筆時無換頁控制列", () => {
+    renderList(MANY.slice(0, 13));
+    expect(cardOrder()).toHaveLength(13);
+    expect(screen.queryByText(/第 \d+／\d+ 頁/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "下一頁" })).toBeNull();
+  });
+
+  it("於第 2 頁修改搜尋字串後回到第 1 頁", () => {
+    renderList(MANY);
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(screen.getByText("第 2／2 頁")).toBeTruthy();
+    // 查詢 "s" 命中全部 21 筆（仍兩頁）——頁碼必須重設回第 1 頁。
+    fireEvent.change(screen.getByPlaceholderText("搜尋規格…"), { target: { value: "s" } });
+    expect(screen.getByText("第 1／2 頁")).toBeTruthy();
+    expect(screen.getByText("s01")).toBeTruthy();
+    expect(screen.queryByText("s21")).toBeNull();
+  });
+});

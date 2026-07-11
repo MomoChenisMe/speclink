@@ -7,7 +7,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { DeltaSpecView } from "./DeltaBadges";
 import { ConclusionView, RoundsView, splitDiscussionSections } from "./DiscussionDrawer";
-import { Markdown } from "./Markdown";
+import { Markdown, READING_COLUMN_CLS } from "./Markdown";
 import { LABEL_CLS, SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
 
@@ -172,6 +172,8 @@ export function ArchivedDrawer({
               </TabsTrigger>
             </TabsList>
             <div className="flex-1 overflow-y-auto pt-3">
+              {/* 共用置中容器包住分頁全部內容——區段標籤、任務清單與內文同欄（design D4）。 */}
+              <div data-reading-column className={READING_COLUMN_CLS}>
               <TabsContent value="proposal">
                 <SectionedDoc content={proposal ?? null} empty={t("archived.noProposal")} />
               </TabsContent>
@@ -196,26 +198,30 @@ export function ArchivedDrawer({
                   ))
                 )}
               </TabsContent>
+              </div>
             </div>
           </Tabs>
         ) : (
           <div className="flex-1 min-h-0 overflow-y-auto">
-            {sections ? (
-              <>
-                <h3 className={`${LABEL_CLS} mb-1`}>{t("archived.sectionContext")}</h3>
-                <Markdown content={sections.context} empty={t("archived.noContext")} />
-                <h3 className={`${LABEL_CLS} mb-1 mt-4`}>{t("archived.sectionRounds")}</h3>
-                <RoundsView text={sections.rounds} empty={t("archived.noRounds")} />
-                <h3 className={`${LABEL_CLS} mb-1 mt-4`}>{t("archived.sectionConclusion")}</h3>
-                <ConclusionView text={sections.conclusion} empty={t("archived.noConclusion")} />
-              </>
-            ) : (
-              // 區段缺失或格式非預期：整篇單一檢視退回；缺件顯示空狀態。
-              <Markdown
-                content={discussionDoc ?? null}
-                empty={discussionDoc === undefined ? t("common.loading") : t("common.noContent")}
-              />
-            )}
+            {/* 共用置中容器——討論三區段與內文同欄（design D4）。 */}
+            <div data-reading-column className={READING_COLUMN_CLS}>
+              {sections ? (
+                <>
+                  <h3 className={`${LABEL_CLS} mb-1`}>{t("archived.sectionContext")}</h3>
+                  <Markdown content={sections.context} empty={t("archived.noContext")} />
+                  <h3 className={`${LABEL_CLS} mb-1 mt-4`}>{t("archived.sectionRounds")}</h3>
+                  <RoundsView text={sections.rounds} empty={t("archived.noRounds")} />
+                  <h3 className={`${LABEL_CLS} mb-1 mt-4`}>{t("archived.sectionConclusion")}</h3>
+                  <ConclusionView text={sections.conclusion} empty={t("archived.noConclusion")} />
+                </>
+              ) : (
+                // 區段缺失或格式非預期：整篇單一檢視退回；缺件顯示空狀態。
+                <Markdown
+                  content={discussionDoc ?? null}
+                  empty={discussionDoc === undefined ? t("common.loading") : t("common.noContent")}
+                />
+              )}
+            </div>
           </div>
         )}
       </SheetContent>

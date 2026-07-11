@@ -78,12 +78,12 @@ describe("Markdown", () => {
   });
 
   // spec「markdown 文件內容行寬有上限」（design D3 文件容器）：
-  // 固定行寬上限（72ch ≈ 36 全形字 @16px），抽屜全螢幕時行寬不隨之增長。
+  // 固定行寬上限（96ch ≈ 48 全形字 @16px），抽屜全螢幕時行寬不隨之增長。
   it("caps content line width instead of stretching full-bleed (markdown 文件內容行寬有上限)", () => {
     const { container } = render(<Markdown content={"hello"} />);
     const root = container.querySelector(".markdown");
     expect(root?.className).not.toContain("max-w-none");
-    expect(root?.className).toContain("max-w-[72ch]");
+    expect(root?.className).toContain("max-w-[96ch]");
   });
 });
 

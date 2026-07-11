@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Code2, Copy, GitFork, MessageSquareText } from "lucide-react";
 
 import type { ArchivedItem, DiscussionItem } from "../adapter";
@@ -6,8 +6,10 @@ import { useI18n } from "../i18n";
 import { matchesQuery } from "../search";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import type { ArchivedTarget } from "./ArchivedDrawer";
+import { ListPager, PAGE_SIZE } from "./ListPager";
 
 /** 標題後緊跟的複製鈕（design D7 卡片版面）：hover 顯現、copied 打勾回饋、
  * 點擊不冒泡（不開抽屜）。 */
@@ -166,46 +168,123 @@ export interface ArchivedListProps {
   onOpen: (target: ArchivedTarget) => void;
 }
 
-/** 已封存獨立頁（design D7 雙節）：兩節皆為卡片清單、點卡開抽屜、無行內展開；
- * 搜尋同時過濾「變更」與「討論」兩節。 */
+/** 子頁籤標籤上的筆數徽章——沿用頁面計數 pill 樣式。 */
+const COUNT_PILL_CLS =
+  "inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium tabular-nums";
+
+/** 已封存獨立頁（design D3 子頁籤）：搜尋框頂置、其下「變更」「討論」兩子頁籤
+ * 各帶過濾後筆數徽章；兩節皆為卡片清單、點卡開抽屜、無行內展開；搜尋同時過濾
+ * 兩節、兩子頁籤頁碼互相獨立（spec「已封存頁含討論節」「清單最新在前與換頁瀏覽」）。
+ * 清單最新在前：封存變更依 datedName 字典序降冪、封存討論依 created 降冪同日
+ * slug 升冪；archivedDiscussions 缺席（向後相容路徑）時子頁籤列缺席。 */
 export function ArchivedList({ archived, query, onQuery, archivedDiscussions, onOpen }: ArchivedListProps) {
   const { t } = useI18n();
+  // 兩子頁籤頁碼互相獨立；以 min(page, pageCount) 鉗制派生，清單縮短不停在越界頁。
+  const [changeRawPage, setChangeRawPage] = useState(1);
+  const [discRawPage, setDiscRawPage] = useState(1);
+  const topRef = useRef<HTMLDivElement>(null);
+
+  // 搜尋字串變更（query 為外部受控 prop）：兩側頁碼皆回第 1 頁。
+  useEffect(() => {
+    setChangeRawPage(1);
+    setDiscRawPage(1);
+  }, [query]);
+
+  // datedName 前綴 YYYY-MM-DD 使字典序＝時間序，降冪即封存日期新→舊（同日由字串降冪涵蓋）。
+  const sortedChanges = useMemo(
+    () => [...archived].sort((a, b) => (a.datedName < b.datedName ? 1 : a.datedName > b.datedName ? -1 : 0)),
+    [archived],
+  );
+  // created 降冪；同日以 slug 字母升冪決勝。
+  const sortedDiscussions = useMemo(
+    () =>
+      [...(archivedDiscussions ?? [])].sort((a, b) => {
+        if (a.created !== b.created) return a.created < b.created ? 1 : -1;
+        return a.slug.localeCompare(b.slug);
+      }),
+    [archivedDiscussions],
+  );
+
   // 比對規則共用 matchesQuery（與看板一致的單一真相）。
-  const filtered = archived.filter((a) => matchesQuery(query, a.name));
-  const discussions = (archivedDiscussions ?? []).filter((d) => matchesQuery(query, d.topic, d.slug));
+  const filtered = sortedChanges.filter((a) => matchesQuery(query, a.name));
+  const discussions = sortedDiscussions.filter((d) => matchesQuery(query, d.topic, d.slug));
   const showDiscussions = archivedDiscussions !== undefined;
+
+  const changePageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const changePage = Math.min(changeRawPage, changePageCount);
+  const changeItems = filtered.slice((changePage - 1) * PAGE_SIZE, changePage * PAGE_SIZE);
+  const discPageCount = Math.max(1, Math.ceil(discussions.length / PAGE_SIZE));
+  const discPage = Math.min(discRawPage, discPageCount);
+  const discItems = discussions.slice((discPage - 1) * PAGE_SIZE, discPage * PAGE_SIZE);
+
+  // jsdom 未實作 scrollIntoView——選擇性呼叫，真實視窗照常捲回清單頂。
+  const scrollTop = () => topRef.current?.scrollIntoView?.({ block: "start" });
+
+  const changesPane = (
+    <>
+      <div className="flex flex-col gap-2.5">
+        {filtered.length === 0 ? (
+          <div className="text-muted-foreground text-sm py-8 text-center">{t("archived.noChanges")}</div>
+        ) : (
+          changeItems.map((a) => <ArchivedCard key={a.datedName} item={a} onOpen={onOpen} />)
+        )}
+      </div>
+      <ListPager
+        page={changePage}
+        pageCount={changePageCount}
+        onPage={(n) => {
+          setChangeRawPage(n);
+          scrollTop();
+        }}
+      />
+    </>
+  );
+
   return (
     <TooltipProvider>
-      <div className="flex flex-col gap-3 max-w-3xl mx-auto w-full">
+      <div ref={topRef} className="flex flex-col gap-3 max-w-3xl mx-auto w-full">
         <Input placeholder={t("archived.searchPlaceholder")} value={query} onChange={(e) => onQuery(e.target.value)} />
-        <div className="flex items-center gap-2">
-          <h2 className="text-base font-semibold">{t("archived.changesHeading")}</h2>
-          <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium tabular-nums">
-            {filtered.length}
-          </span>
-        </div>
-        <div className="flex flex-col gap-2.5">
-          {filtered.length === 0 ? (
-            <div className="text-muted-foreground text-sm py-8 text-center">{t("archived.noChanges")}</div>
-          ) : (
-            filtered.map((a) => <ArchivedCard key={a.datedName} item={a} onOpen={onOpen} />)
-          )}
-        </div>
-        {showDiscussions && (
+        {showDiscussions ? (
+          <Tabs defaultValue="changes" className="flex flex-col gap-3">
+            <TabsList>
+              <TabsTrigger value="changes">
+                {t("archived.changesHeading")}
+                <span className={COUNT_PILL_CLS}>{filtered.length}</span>
+              </TabsTrigger>
+              <TabsTrigger value="discussions">
+                {t("archived.discussionsHeading")}
+                <span className={COUNT_PILL_CLS}>{discussions.length}</span>
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="changes" className="flex flex-col gap-3">
+              {changesPane}
+            </TabsContent>
+            <TabsContent value="discussions" className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2.5">
+                {discussions.length === 0 ? (
+                  <div className="text-muted-foreground text-sm py-8 text-center">{t("archived.noDiscussions")}</div>
+                ) : (
+                  discItems.map((d) => <ArchivedDiscussionCard key={d.slug} item={d} onOpen={onOpen} />)
+                )}
+              </div>
+              <ListPager
+                page={discPage}
+                pageCount={discPageCount}
+                onPage={(n) => {
+                  setDiscRawPage(n);
+                  scrollTop();
+                }}
+              />
+            </TabsContent>
+          </Tabs>
+        ) : (
           <>
-            <div className="flex items-center gap-2 pt-2">
-              <h2 className="text-base font-semibold">{t("archived.discussionsHeading")}</h2>
-              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium tabular-nums">
-                {discussions.length}
-              </span>
+            {/* 向後相容路徑：無討論清單資料，維持原「已封存的變更」標題＋計數。 */}
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold">{t("archived.changesHeading")}</h2>
+              <span className={COUNT_PILL_CLS}>{filtered.length}</span>
             </div>
-            <div className="flex flex-col gap-2.5">
-              {discussions.length === 0 ? (
-                <div className="text-muted-foreground text-sm py-8 text-center">{t("archived.noDiscussions")}</div>
-              ) : (
-                discussions.map((d) => <ArchivedDiscussionCard key={d.slug} item={d} onOpen={onOpen} />)
-              )}
-            </div>
+            {changesPane}
           </>
         )}
       </div>

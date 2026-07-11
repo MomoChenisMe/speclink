@@ -21,6 +21,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
+import { READING_COLUMN_CLS } from "./Markdown";
 import { SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
 import { DeltaBadges, DeltaSpecView } from "./DeltaBadges";
@@ -359,6 +360,8 @@ export function RichDetailDrawer({
             </TabsTrigger>
           </TabsList>
           <div className="flex-1 overflow-y-auto pt-3">
+            {/* 共用置中容器包住分頁全部內容——區段標籤、任務清單與內文同欄（design D4）。 */}
+            <div data-reading-column className={READING_COLUMN_CLS}>
             <TabsContent value="proposal"><SectionedDoc content={proposal ?? null} empty={t("common.loading")} /></TabsContent>
             <TabsContent value="design"><SectionedDoc content={design ?? null} empty={t("list.noDesignDoc")} /></TabsContent>
             <TabsContent value="tasks">
@@ -390,6 +393,7 @@ export function RichDetailDrawer({
                 ))
               )}
             </TabsContent>
+            </div>
           </div>
         </Tabs>
       </SheetContent>

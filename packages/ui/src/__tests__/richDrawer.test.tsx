@@ -549,3 +549,26 @@ describe("抽屜內分析結果呈現", () => {
     expect(props.onClearVerb).toHaveBeenCalledTimes(1);
   });
 });
+
+// spec 需求「markdown 文件內容行寬有上限」（design D4）：抽屜分頁內容的捲動容器
+// 內存在共用置中容器（行寬上限＋水平置中），包住分頁全部內容——SectionedDoc
+// 區段標籤、任務清單與內文同欄對齊置中。
+describe("變更抽屜閱讀欄置中", () => {
+  it("捲動容器內有置中容器（w-full＋max-w-[96ch]＋mx-auto）且包住分頁內容", async () => {
+    const props = makeProps();
+    const { baseElement } = render(<RichDetailDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText(/doc for proposal.md/)).toBeTruthy());
+    const col = baseElement.querySelector("[data-reading-column]") as HTMLElement;
+    expect(col).toBeTruthy();
+    expect(col.className).toContain("w-full");
+    expect(col.className).toContain("max-w-[96ch]");
+    expect(col.className).toContain("mx-auto");
+    // 位於分頁內容的捲動容器內側。
+    expect(col.parentElement?.className).toContain("overflow-y-auto");
+    // 包住分頁全部內容：提案分頁內文在欄內。
+    expect(within(col).getByText(/doc for proposal.md/)).toBeTruthy();
+    // 任務分頁：任務清單同欄（TaskList stub 在欄內）。
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
+    expect(within(col).getByTestId("tasklist-stub")).toBeTruthy();
+  });
+});

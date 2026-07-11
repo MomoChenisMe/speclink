@@ -516,3 +516,23 @@ describe("DiscussionDrawer 標題 slug 化（design D4）", () => {
     expect(writeText).toHaveBeenCalledWith("alpha-search");
   });
 });
+
+// spec 需求「markdown 文件內容行寬有上限」（design D4）：討論抽屜分頁內容的捲動
+// 容器內存在共用置中容器，討論輪卡片與內文同欄對齊置中。
+describe("討論抽屜閱讀欄置中", () => {
+  it("捲動容器內有置中容器（w-full＋max-w-[96ch]＋mx-auto）且輪卡片在欄內", async () => {
+    const { baseElement } = render(<DiscussionDrawer {...(makeProps() as never)} />);
+    await screen.findByRole("tab", { name: /討論過程/ });
+    const col = baseElement.querySelector("[data-reading-column]") as HTMLElement;
+    expect(col).toBeTruthy();
+    expect(col.className).toContain("w-full");
+    expect(col.className).toContain("max-w-[96ch]");
+    expect(col.className).toContain("mx-auto");
+    expect(col.parentElement?.className).toContain("overflow-y-auto");
+    // 結論分頁（預設）內文在欄內。
+    expect(within(col).getByText("建置 alpha 搜尋")).toBeTruthy();
+    // 討論過程分頁：輪卡片同欄。
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /討論過程/ }));
+    expect(col.querySelector("[data-round]")).toBeTruthy();
+  });
+});

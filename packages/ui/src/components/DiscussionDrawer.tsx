@@ -6,7 +6,7 @@ import { useI18n } from "../i18n";
 import { Button } from "./ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
-import { Markdown } from "./Markdown";
+import { Markdown, READING_COLUMN_CLS } from "./Markdown";
 import { LABEL_CLS } from "./SectionedDoc";
 import { discussionChipStage } from "./DiscussionColumn";
 
@@ -425,10 +425,13 @@ export function DiscussionDrawer({
               </TabsTrigger>
             </TabsList>
             <div className="flex-1 overflow-y-auto pt-3">
-              <TabsContent value="conclusion"><ConclusionView text={sections.conclusion} empty={t("ddrawer.noConclusion")} /></TabsContent>
-              <TabsContent value="rounds"><RoundsView text={sections.rounds} empty={t("ddrawer.noRounds")} /></TabsContent>
-              <TabsContent value="context"><Markdown content={sections.context} empty={t("ddrawer.noContext")} /></TabsContent>
-              <TabsContent value="promote">{promotePane}</TabsContent>
+              {/* 共用置中容器包住分頁全部內容——輪卡片與內文同欄（design D4）。 */}
+              <div data-reading-column className={READING_COLUMN_CLS}>
+                <TabsContent value="conclusion"><ConclusionView text={sections.conclusion} empty={t("ddrawer.noConclusion")} /></TabsContent>
+                <TabsContent value="rounds"><RoundsView text={sections.rounds} empty={t("ddrawer.noRounds")} /></TabsContent>
+                <TabsContent value="context"><Markdown content={sections.context} empty={t("ddrawer.noContext")} /></TabsContent>
+                <TabsContent value="promote">{promotePane}</TabsContent>
+              </div>
             </div>
           </Tabs>
         ) : (
@@ -443,8 +446,10 @@ export function DiscussionDrawer({
             </TabsList>
             <div className="flex-1 overflow-y-auto pt-3">
               {/* 區段缺失或格式非預期：整篇以單一檢視退回（不報錯）。 */}
-              <TabsContent value="record"><Markdown content={doc ?? null} empty={t("common.loading")} /></TabsContent>
-              <TabsContent value="promote">{promotePane}</TabsContent>
+              <div data-reading-column className={READING_COLUMN_CLS}>
+                <TabsContent value="record"><Markdown content={doc ?? null} empty={t("common.loading")} /></TabsContent>
+                <TabsContent value="promote">{promotePane}</TabsContent>
+              </div>
             </div>
           </Tabs>
         )}

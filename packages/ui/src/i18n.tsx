@@ -164,6 +164,9 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "specs.requirementCount": "{n} 條需求",
     "specs.traceCount": "溯源自 {n} 個變更",
     "specs.purposeTbd": "Purpose 待補",
+    "pager.prev": "上一頁",
+    "pager.next": "下一頁",
+    "pager.page": "第 {n}／{m} 頁",
   },
   en: {
     "common.loading": "Loading…",
@@ -316,6 +319,9 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "specs.requirementCount": "{n} requirements",
     "specs.traceCount": "Traced from {n} changes",
     "specs.purposeTbd": "Purpose pending",
+    "pager.prev": "Previous",
+    "pager.next": "Next",
+    "pager.page": "Page {n} of {m}",
   },
 };
 

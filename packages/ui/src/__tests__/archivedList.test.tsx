@@ -86,8 +86,9 @@ describe("ArchivedList（封存變更卡）", () => {
       kind: "change",
       datedName: "2026-07-05-desktop-shell-and-browser",
     });
-    // 行內展開移除：點擊後清單內不出現分頁。
-    expect(screen.queryByRole("tab")).toBeNull();
+    // 行內展開移除：點擊後卡片內不出現分頁（頁面級「變更／討論」子頁籤除外）。
+    const clicked = card('[data-archived="2026-07-05-desktop-shell-and-browser"]');
+    expect(within(clicked).queryByRole("tab")).toBeNull();
     expect(document.querySelector(".lucide-chevron-right")).toBeNull();
     expect(document.querySelector(".lucide-chevron-down")).toBeNull();
     expect(document.querySelector("[aria-expanded]")).toBeNull();
@@ -141,9 +142,15 @@ describe("ArchivedList（封存變更卡）", () => {
   });
 });
 
+// 討論卡活在「討論」子頁籤下（design D3）——先切子頁籤（Radix TabsTrigger 以
+// mousedown 觸發）再斷言卡片。
+const toDiscussionsTab = () =>
+  fireEvent.mouseDown(screen.getByRole("tab", { name: /已封存的討論/ }));
+
 describe("ArchivedList（封存討論卡）", () => {
   it("點卡觸發 onOpen（discussion target）；卡顯示日期＋topic＋輪數＋衍生變更數", () => {
     const onOpen = renderList();
+    toDiscussionsTab();
     const disc = card('[data-archived-discussion="old-topic"]');
     expect(disc).toBeTruthy();
     expect(within(disc).getByText("2026-06-30")).toBeTruthy();
@@ -164,6 +171,7 @@ describe("ArchivedList（封存討論卡）", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     const onOpen = renderList();
+    toDiscussionsTab();
     const disc = card('[data-archived-discussion="old-topic"]');
     fireEvent.click(within(disc).getByLabelText("複製 slug"));
     expect(writeText).toHaveBeenCalledWith("old-topic");
@@ -172,22 +180,133 @@ describe("ArchivedList（封存討論卡）", () => {
   });
 });
 
-describe("ArchivedList（兩節與搜尋）", () => {
-  it("變更與討論兩節分列，各有標題與計數", () => {
+// spec 需求「已封存頁含討論節」（子頁籤＋筆數徽章）與「清單最新在前與換頁瀏覽」
+//（datedName／created 降冪、每頁 20 筆、頁碼獨立、搜尋回第 1 頁）。
+describe("ArchivedList（子頁籤、排序與換頁）", () => {
+  const mkChange = (datedName: string): ArchivedItem => ({
+    datedName,
+    date: datedName.slice(0, 10),
+    name: datedName.slice(11),
+    specCount: 0,
+    createdBy: null,
+    fromDiscussions: [],
+  });
+  const mkDisc = (slug: string, created: string, topic = `topic ${slug}`): DiscussionItem => ({
+    slug,
+    topic,
+    status: "promoted",
+    rounds: 1,
+    created,
+    promotedTo: [],
+  });
+  const changeOrder = () =>
+    Array.from(document.querySelectorAll("[data-archived]")).map((el) => el.getAttribute("data-archived"));
+  const discOrder = () =>
+    Array.from(document.querySelectorAll("[data-archived-discussion]")).map((el) =>
+      el.getAttribute("data-archived-discussion"),
+    );
+
+  it("呈現「變更」「討論」兩子頁籤且預設顯示變更；討論卡不在預設頁籤出現", () => {
     renderList();
-    expect(screen.getByText("已封存的變更")).toBeTruthy();
-    expect(screen.getByText("已封存的討論")).toBeTruthy();
-  });
-
-  it("搜尋同時過濾兩節：命中討論 topic 時變更節無項目、反之亦然", () => {
-    renderList([WARN, FULL, BARE], { query: "settled" });
-    expect(screen.getByText("Old settled topic")).toBeTruthy();
-    expect(screen.queryByText("desktop-shell-and-browser")).toBeNull();
-  });
-
-  it("搜尋命中變更名時討論節無項目", () => {
-    renderList([WARN, FULL, BARE], { query: "desktop-shell" });
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs).toHaveLength(2);
+    expect(screen.getByRole("tab", { name: /已封存的變更/ }).getAttribute("data-state")).toBe("active");
     expect(screen.getByText("desktop-shell-and-browser")).toBeTruthy();
     expect(screen.queryByText("Old settled topic")).toBeNull();
+  });
+
+  it("archivedDiscussions 未提供時子頁籤列缺席、僅顯示變更清單", () => {
+    renderList([WARN, FULL, BARE], { archivedDiscussions: undefined });
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.getByText("desktop-shell-and-browser")).toBeTruthy();
+    expect(screen.queryByText("Old settled topic")).toBeNull();
+  });
+
+  it("封存變更依 datedName 字典序降冪（封存日期新→舊）", () => {
+    // spec Scenario「封存變更最新在前」Example 值；傳入順序刻意打亂。
+    renderList([
+      mkChange("2026-07-04-oldest"),
+      mkChange("2026-07-11-newest"),
+      mkChange("2026-07-08-middle"),
+    ]);
+    expect(changeOrder()).toEqual(["2026-07-11-newest", "2026-07-08-middle", "2026-07-04-oldest"]);
+  });
+
+  it("封存討論依 created 降冪、同日以 slug 字母升冪決勝", () => {
+    renderList([WARN], {
+      archivedDiscussions: [
+        mkDisc("beta-flow", "2026-07-10"),
+        mkDisc("zulu-late", "2026-07-12"),
+        mkDisc("alpha-ux", "2026-07-10"),
+      ],
+    });
+    toDiscussionsTab();
+    expect(discOrder()).toEqual(["zulu-late", "alpha-ux", "beta-flow"]);
+  });
+
+  it("搜尋僅命中討論時：「變更」徽章 0＋無結果空狀態、「討論」徽章 3，切換即見命中", () => {
+    renderList([WARN, FULL, BARE], {
+      query: "settled",
+      archivedDiscussions: [
+        mkDisc("t1", "2026-06-30", "First settled topic"),
+        mkDisc("t2", "2026-06-29", "Second settled topic"),
+        mkDisc("t3", "2026-06-28", "Third settled topic"),
+      ],
+    });
+    const changesTab = screen.getByRole("tab", { name: /已封存的變更/ });
+    const discussionsTab = screen.getByRole("tab", { name: /已封存的討論/ });
+    expect(within(changesTab).getByText("0")).toBeTruthy();
+    expect(within(discussionsTab).getByText("3")).toBeTruthy();
+    // 變更子頁籤（預設）顯示無結果空狀態。
+    expect(screen.getByText("沒有已封存的變更")).toBeTruthy();
+    toDiscussionsTab();
+    expect(discOrder()).toHaveLength(3);
+  });
+
+  // c-01 最新 … c-21 最舊；t-01 最新 … t-21 最舊（兩側各兩頁）。
+  const MANY_CHANGES = Array.from({ length: 21 }, (_, i) =>
+    mkChange(`2026-06-${String(22 - (i + 1)).padStart(2, "0")}-c-${String(i + 1).padStart(2, "0")}`),
+  );
+  const MANY_DISCS = Array.from({ length: 21 }, (_, i) =>
+    mkDisc(`t-${String(i + 1).padStart(2, "0")}`, `2026-05-${String(22 - (i + 1)).padStart(2, "0")}`),
+  );
+
+  it("兩子頁籤頁碼互相獨立：變更翻到第 2 頁不影響討論頁碼", () => {
+    renderList(MANY_CHANGES, { archivedDiscussions: MANY_DISCS });
+    // 變更子頁籤第 1 頁 20 筆，翻到第 2 頁。
+    expect(changeOrder()).toHaveLength(20);
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(screen.getByText("第 2／2 頁")).toBeTruthy();
+    expect(screen.getByText("c-21")).toBeTruthy();
+    // 討論子頁籤仍在第 1 頁。
+    toDiscussionsTab();
+    expect(screen.getByText("第 1／2 頁")).toBeTruthy();
+    expect(discOrder()).toHaveLength(20);
+    expect(screen.queryByText(/t-21/)).toBeNull();
+    // 切回變更：其頁碼保持第 2 頁。
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /已封存的變更/ }));
+    expect(screen.getByText("第 2／2 頁")).toBeTruthy();
+  });
+
+  it("搜尋字串變更後兩側頁碼皆回第 1 頁", () => {
+    const onOpen = vi.fn();
+    const props = {
+      archived: MANY_CHANGES,
+      onQuery: () => {},
+      archivedDiscussions: MANY_DISCS,
+      onOpen,
+    };
+    const { rerender } = render(<ArchivedList {...props} query="" />);
+    // 變更翻到第 2 頁 → 切討論翻到第 2 頁。
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    toDiscussionsTab();
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(screen.getByText("第 2／2 頁")).toBeTruthy();
+    // 查詢 "-" 兩側皆命中全部 21 筆（仍兩頁）——頁碼必須重設回第 1 頁。
+    rerender(<ArchivedList {...props} query="-" />);
+    expect(screen.getByText("第 1／2 頁")).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /已封存的變更/ }));
+    expect(screen.getByText("第 1／2 頁")).toBeTruthy();
+    expect(screen.getByText("c-01")).toBeTruthy();
   });
 });
