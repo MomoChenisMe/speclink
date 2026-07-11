@@ -393,3 +393,44 @@ describe("封存落點浮層（design D8）", () => {
     expect(document.querySelector('[data-column="archived"]')).toBeNull();
   });
 });
+
+// spec「看板卡片統一解剖學」的變更卡（board-card-anatomy design D1/D2）：
+// 等寬標題折行不截斷、複製鈕行內尾隨（釘住 desktop-ux-polish 落地的位置不回退）、
+// whyExcerpt 描述列、變更卡無狀態 chip（所在欄即階段）。
+describe("看板卡片統一解剖學（變更卡）", () => {
+  const anatomyChanges: ChangeItem[] = [
+    {
+      name: "with-desc",
+      status: "in-progress",
+      totalTasks: 21,
+      completedTasks: 5,
+      createdBy: "Momo <m@example.com>",
+      whyExcerpt: "看板卡片各自演化、無共用骨架。",
+    },
+    { name: "no-desc", status: "in-progress", totalTasks: 4, completedTasks: 1, whyExcerpt: null },
+  ];
+
+  it("標題等寬字型、折行不截斷、複製鈕為標題容器的行內子元素", () => {
+    render(<KanbanBoard changes={anatomyChanges} />);
+    const title = screen.getByText("with-desc");
+    expect(title.className).toContain("font-mono");
+    expect(title.className).not.toContain("truncate");
+    // 行內尾隨：複製鈕在標題容器內（跟著文字流動），不是被推到右緣的兄弟元素。
+    expect(within(title).getByLabelText("複製名稱")).toBeTruthy();
+  });
+
+  it("whyExcerpt 渲染為一行截斷描述列，null 時整列缺席", () => {
+    render(<KanbanBoard changes={anatomyChanges} />);
+    const withDesc = screen.getByText("with-desc").closest("[data-change]") as HTMLElement;
+    const desc = within(withDesc).getByText("看板卡片各自演化、無共用骨架。");
+    expect(desc.className).toContain("truncate");
+    const noDesc = screen.getByText("no-desc").closest("[data-change]") as HTMLElement;
+    expect(noDesc.querySelector("[data-desc]")).toBeNull();
+  });
+
+  it("變更卡無狀態 chip（所在欄即階段）", () => {
+    render(<KanbanBoard changes={anatomyChanges} />);
+    const card = screen.getByText("with-desc").closest("[data-change]") as HTMLElement;
+    expect(within(card).queryByText(/提案中|進行中|已就緒/)).toBeNull();
+  });
+});

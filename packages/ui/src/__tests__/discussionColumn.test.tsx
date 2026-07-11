@@ -98,8 +98,9 @@ describe("DiscussionColumn（兩級呈現）", () => {
     // D1：slug 為標題、topic 降為卡身描述。
     expect(within(card).getByText("open-topic")).toBeTruthy();
     expect(within(card).getByText("Open topic")).toBeTruthy();
-    // 建立者（首字母圓標＋姓名）與輪數。
-    expect(within(card).getByText("Momo Chen <momo@example.com>")).toBeTruthy();
+    // 建立者僅圓點（anatomy：全名進 tooltip、卡面不直出）與輪數。
+    expect(within(card).getByLabelText("Momo Chen <momo@example.com>")).toBeTruthy();
+    expect(within(card).queryByText("Momo Chen <momo@example.com>")).toBeNull();
     expect(within(card).getByText(/3 輪/)).toBeTruthy();
     // 有複製 slug 鈕，但無動詞（封存／轉為變更）按鈕。
     expect(within(card).getByRole("button", { name: /複製/ })).toBeTruthy();
@@ -107,13 +108,42 @@ describe("DiscussionColumn（兩級呈現）", () => {
     expect(within(card).queryByRole("button", { name: /轉為變更/ })).toBeNull();
   });
 
-  it("點複製鈕把討論 slug 寫入剪貼簿", () => {
-    const writeText = vi.fn();
-    Object.assign(navigator, { clipboard: { writeText } });
+  it("識別列與 meta 列（看板卡片統一解剖學）：複製鈕行內尾隨、圓點 hover 全名、輪數與建立時間並排", () => {
     render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
+    const card = screen.getByText("open-topic").closest("[data-discussion]") as HTMLElement;
+    // 行內尾隨（釘住 desktop-ux-polish 落地的位置）：複製鈕在 slug 標題容器內。
+    const title = within(card).getByText("open-topic");
+    expect(within(title).getByRole("button", { name: /複製/ })).toBeTruthy();
+    // 建立者圓點缺席時不渲染（createdBy 為 undefined 的卡）。
+    // meta 列：輪數與建立時間並排。
+    expect(within(card).getByText(/3 輪/)).toBeTruthy();
+    expect(within(card).getByText("2026-07-01")).toBeTruthy();
+  });
+
+  it("createdBy 缺席時圓點缺席", () => {
+    const anonymous = { ...openD, slug: "anon-topic", createdBy: undefined };
+    render(<DiscussionColumn discussions={[anonymous]} changes={[]} archived={[]} />);
+    const card = screen.getByText("anon-topic").closest("[data-discussion]") as HTMLElement;
+    // 圓點以 createdBy 全文為 aria-label（含 @）；缺席時整顆不渲染。
+    expect(within(card).queryByLabelText(/@/)).toBeNull();
+  });
+
+  it("點複製鈕把討論 slug 寫入剪貼簿且不開討論抽屜", () => {
+    const writeText = vi.fn();
+    const onOpenDiscussion = vi.fn();
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(
+      <DiscussionColumn
+        discussions={[openD]}
+        changes={[]}
+        archived={[]}
+        onOpenDiscussion={onOpenDiscussion}
+      />,
+    );
     const card = screen.getByText("open-topic").closest("[data-discussion]") as HTMLElement;
     fireEvent.click(within(card).getByRole("button", { name: /複製/ }));
     expect(writeText).toHaveBeenCalledWith("open-topic");
+    expect(onOpenDiscussion).not.toHaveBeenCalled();
   });
 
   it("concluded 討論為全卡帶「封存」按鈕但無「轉為變更」；舊詞「促轉」「歸檔」不出現", () => {

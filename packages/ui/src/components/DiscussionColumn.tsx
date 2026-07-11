@@ -18,6 +18,7 @@ import { changeStage, STAGE_BADGE } from "../stage";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { HighlightText } from "./HighlightText";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * promoted_to 子變更的階段標示（純前端由清單存在性派生）——active 清單命中
@@ -122,21 +123,31 @@ export function DiscussionCard({
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${badge.cls}`}>
           {t(badge.labelKey)}
         </span>
+        {/* 建立者圓點（anatomy 識別列右端）：全名進 tooltip、卡面不直出——與變更卡同款。 */}
+        {d.createdBy && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  aria-label={d.createdBy}
+                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground"
+                >
+                  {d.createdBy.charAt(0).toUpperCase()}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{d.createdBy}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </CardHeader>
       <CardContent className="p-3 pt-0 gap-2">
         <span className="text-xs leading-snug text-foreground/80">
           <HighlightText text={d.topic} query={highlight} />
         </span>
+        {/* meta 列（anatomy 三列骨架）：輪數與建立時間並排；建立者圓點已上移識別列。 */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="tabular-nums">{t("common.rounds").replace("{n}", String(d.rounds))}</span>
-          {d.createdBy && (
-            <span className="inline-flex min-w-0 items-center gap-1">
-              <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
-                {d.createdBy.charAt(0).toUpperCase()}
-              </span>
-              <span className="truncate">{d.createdBy}</span>
-            </span>
-          )}
+          <span className="tabular-nums">{d.created}</span>
         </div>
         {d.status === "concluded" && (
           <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>

@@ -22,6 +22,8 @@ export interface ChangeItem {
   fromDiscussions?: string[];
   /** 待重新反映的討論 slug 清單：本 change 曾 seal 這些討論、其後被重新結論，內容過期待 re-ingest；空/缺席＝無旗標。 */
   restaleFrom?: string[];
+  /** proposal Why 首句（呈現層輔助欄位）——變更卡描述列的資料源；null/缺席＝描述列缺席。 */
+  whyExcerpt?: string | null;
 }
 
 /** 一個 canonical spec 的清單項（CLI 同形欄位＋桌面疊加的呈現層輔助欄位）。 */

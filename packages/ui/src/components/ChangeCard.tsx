@@ -52,7 +52,7 @@ export function ChangeCard({
       <CardHeader className="p-3 flex-row items-start gap-1.5">
         {/* 複製鈕行內尾隨（design D4 複製鈕位置規則）：緊跟名稱最後一個字元後
             流動，不以 flex 推至卡片右緣。 */}
-        <span className="font-semibold text-sm leading-tight min-w-0 flex-1">
+        <span className="font-mono font-semibold text-sm leading-tight min-w-0 flex-1">
           <HighlightText text={change.name} query={highlight} />
           <Button
             type="button"
@@ -104,6 +104,12 @@ export function ChangeCard({
         )}
       </CardHeader>
       <CardContent className="p-3 pt-0 gap-2">
+        {/* 描述列（anatomy 三列骨架）：proposal Why 首句一行截斷；null 時整列缺席。 */}
+        {change.whyExcerpt && (
+          <div data-desc className="truncate text-[11px] text-muted-foreground">
+            {change.whyExcerpt}
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
             <div className={`h-full rounded-full transition-all ${barClass}`} style={{ width: `${pct}%` }} />
