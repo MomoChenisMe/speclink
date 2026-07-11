@@ -713,42 +713,45 @@ code:
 ---
 ### Requirement: 已封存頁含討論節
 
-已封存頁 SHALL 分「變更」與「討論」兩節，兩節皆為卡片清單，點擊卡片開啟唯讀抽屜（檢視行為見「已封存項目以抽屜檢視」）；討論節 SHALL 列出封存討論（日期＋topic），SHALL NOT 提供任何寫入動詞。搜尋框 SHALL 同時過濾兩節。隨最後一個子變更歸檔而自動封存的討論、與經 GUI 或 CLI 手動封存的討論 SHALL 一致地出現於此節。抽屜檢視的區段標題 SHALL 使用「背景」「討論過程」「結論」。
+已封存頁 SHALL 以頁內子頁籤呈現「變更」與「討論」兩節，預設顯示「變更」子頁籤；子頁籤標籤 SHALL 各帶該節目前（搜尋過濾後）筆數徽章。兩節皆為卡片清單，點擊卡片開啟唯讀抽屜（檢視行為見「已封存項目以抽屜檢視」）；討論節 SHALL 列出封存討論（日期＋topic），SHALL NOT 提供任何寫入動詞。搜尋框 SHALL 位於子頁籤之上並同時過濾兩節——身處任一子頁籤時，另一子頁籤的徽章 SHALL 反映其命中數。兩子頁籤的換頁頁碼 SHALL 互相獨立。討論清單資料缺席（向後相容路徑）時子頁籤列 SHALL 缺席、僅顯示變更清單。隨最後一個子變更歸檔而自動封存的討論、與經 GUI 或 CLI 手動封存的討論 SHALL 一致地出現於討論節。抽屜檢視的區段標題 SHALL 使用「背景」「討論過程」「結論」。
+
+#### Scenario: 切換子頁籤直達討論清單
+
+- **WHEN** 已封存頁含 40 筆封存變更與 26 筆封存討論，使用者點「討論」子頁籤
+- **THEN** 直接顯示封存討論清單第 1 頁（建立日期最新在前），無需捲過任何變更卡
+
+#### Scenario: 搜尋時兩子頁籤徽章顯示各自命中數
+
+- **WHEN** 使用者於「變更」子頁籤輸入僅命中 3 筆封存討論、0 筆封存變更的搜尋字串
+- **THEN** 「變更」徽章顯示 0 且清單顯示無結果空狀態；「討論」徽章顯示 3，切換後即見該 3 筆
 
 #### Scenario: 自動封存的討論現身討論節
 
 - **WHEN** 某已轉出討論的最後一個子變更被歸檔（觸發引擎的討論自動封存）且看板更新
-- **THEN** 該討論自看板討論欄消失，已封存頁討論節出現該筆，搜尋其 topic 可命中
+- **THEN** 該討論自看板討論欄消失，已封存頁「討論」子頁籤出現該筆，搜尋其 topic 可命中
 
 
 <!-- @trace
-source: spec-archive-drawer
-updated: 2026-07-11
+source: specs-archive-pagination
+updated: 2026-07-12
 code:
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/tabs.ts
   - packages/ui/src/__tests__/archivedDrawer.test.tsx
   - packages/ui/src/__tests__/archivedList.test.tsx
+  - packages/ui/src/__tests__/components.test.tsx
+  - packages/ui/src/__tests__/discussionDrawer.test.tsx
+  - packages/ui/src/__tests__/listPager.test.tsx
+  - packages/ui/src/__tests__/richDrawer.test.tsx
   - packages/ui/src/__tests__/specDrawer.test.tsx
   - packages/ui/src/__tests__/specList.test.tsx
-  - packages/ui/src/adapter.ts
   - packages/ui/src/components/ArchivedDrawer.tsx
   - packages/ui/src/components/ArchivedList.tsx
+  - packages/ui/src/components/DiscussionDrawer.tsx
+  - packages/ui/src/components/ListPager.tsx
+  - packages/ui/src/components/Markdown.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
   - packages/ui/src/components/SpecDrawer.tsx
   - packages/ui/src/components/SpecList.tsx
   - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
 -->
 
 ---
@@ -1327,41 +1330,39 @@ code:
 ---
 ### Requirement: markdown 文件內容行寬有上限
 
-桌面 app 經共用 markdown 渲染呈現的文件內容（變更抽屜的提案／設計／規格分頁、討論抽屜各分頁、已封存檢視）SHALL 有固定行寬上限與一致的容器留白；抽屜寬度改變（含全螢幕）時內文行寬 SHALL NOT 隨之增長；超過行寬的表格 SHALL 於容器內橫向捲動，版面 SHALL NOT 橫向溢出。
+桌面 app 經共用 markdown 渲染呈現的文件內容（變更抽屜的提案／設計／規格分頁、討論抽屜各分頁、規格抽屜、封存抽屜）SHALL 有固定行寬上限；抽屜寬度改變（含全螢幕）時內文行寬 SHALL NOT 隨之增長；容器寬於行寬上限時內容欄 SHALL 水平置中、留白均分兩側。同一抽屜分頁內的區段標籤、討論輪卡片與任務清單 SHALL 與內文同欄對齊。超過行寬的表格 SHALL 於容器內橫向捲動，版面 SHALL NOT 橫向溢出。
 
-#### Scenario: 全螢幕下行寬不增長
+#### Scenario: 全螢幕下行寬不增長且內容欄置中
 
 - **WHEN** 變更抽屜切換至全螢幕（96vw）檢視提案分頁
-- **THEN** 內文行寬維持固定上限，不隨抽屜變寬而增長
+- **THEN** 內文行寬維持固定上限，內容欄水平置中、左右留白均分，區段標籤與內文同欄對齊
 
 #### Scenario: 寬表格於容器內橫捲
 
 - **WHEN** 檢視含超過行寬上限的寬表格的文件
 - **THEN** 表格於容器內橫向捲動，抽屜版面不橫向溢出
 
+
 <!-- @trace
-source: drawer-document-readability
-updated: 2026-07-08
+source: specs-archive-pagination
+updated: 2026-07-12
 code:
-  - crates/speclink-core/assets/skills/discuss.md
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - packages/ui/src/__tests__/archivedDrawer.test.tsx
   - packages/ui/src/__tests__/archivedList.test.tsx
   - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/delta.test.ts
   - packages/ui/src/__tests__/discussionDrawer.test.tsx
+  - packages/ui/src/__tests__/listPager.test.tsx
   - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/__tests__/specDrawer.test.tsx
+  - packages/ui/src/__tests__/specList.test.tsx
+  - packages/ui/src/components/ArchivedDrawer.tsx
   - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
   - packages/ui/src/components/DiscussionDrawer.tsx
+  - packages/ui/src/components/ListPager.tsx
   - packages/ui/src/components/Markdown.tsx
   - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/SectionedDoc.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/delta.ts
+  - packages/ui/src/components/SpecDrawer.tsx
+  - packages/ui/src/components/SpecList.tsx
   - packages/ui/src/i18n.tsx
 -->
 
@@ -1878,4 +1879,57 @@ code:
   - packages/ui/src/components/SpecList.tsx
   - packages/ui/src/i18n.tsx
   - packages/ui/src/index.ts
+-->
+
+---
+### Requirement: 清單最新在前與換頁瀏覽
+
+規格頁與已封存頁的清單 SHALL 以最新在前排序：封存變更依封存日期新→舊（同日由封存目錄名字典序降冪涵蓋）、封存討論依建立日期新→舊（同日以 slug 字母升冪決勝）、規格依最後修改時間新→舊（修改時間不可得者一律排最後、以名稱字母升冪決勝）。上述清單 SHALL 以每頁 20 筆換頁瀏覽：搜尋過濾後超過 20 筆時，清單底部 SHALL 顯示換頁控制列——上一頁鈕、目前頁與總頁數、下一頁鈕；第 1 頁時上一頁鈕 SHALL 不可用、末頁時下一頁鈕 SHALL 不可用；過濾後 20 筆以內換頁控制列 SHALL 缺席。搜尋字串變更 SHALL 使清單回到第 1 頁；換頁後清單 SHALL 捲回頂部；清單縮短使目前頁碼越界時 SHALL 鉗制至末頁而非顯示空頁。排序與換頁 SHALL 僅屬前端呈現，清單載入行為與清單資料欄位 SHALL NOT 因此改變。
+
+#### Scenario: 封存變更最新在前
+
+- **WHEN** 已封存頁含封存於 2026-07-04、2026-07-11、2026-07-08 的三筆封存變更
+- **THEN** 「變更」子頁籤清單依 2026-07-11、2026-07-08、2026-07-04 順序呈現
+
+#### Scenario: 規格修改時間缺席排最後
+
+- **WHEN** 規格頁含修改時間可得的規格 alpha（3 天前）、beta（今天）與修改時間不可得的 zeta、delta
+- **THEN** 清單順序為 beta、alpha、delta、zeta——可得者新→舊在前，不可得者殿後並依名稱字母序排列
+
+#### Scenario: 超過 20 筆顯示換頁控制列
+
+- **WHEN** 已封存頁「變更」子頁籤過濾後有 45 筆
+- **THEN** 清單顯示第 1 頁的 20 筆與底部換頁控制列（上一頁不可用、頁數顯示第 1／3 頁）；點下一頁顯示第 21–40 筆並捲回清單頂部
+
+#### Scenario: 20 筆以內換頁控制列缺席
+
+- **WHEN** 規格頁清單過濾後僅 13 筆
+- **THEN** 全部 13 筆單頁呈現，無換頁控制列
+
+#### Scenario: 搜尋字串變更回到第 1 頁
+
+- **WHEN** 使用者於「變更」子頁籤第 3 頁修改搜尋字串
+- **THEN** 清單回到第 1 頁顯示新過濾結果的最前 20 筆
+
+<!-- @trace
+source: specs-archive-pagination
+updated: 2026-07-12
+code:
+  - packages/ui/src/__tests__/archivedDrawer.test.tsx
+  - packages/ui/src/__tests__/archivedList.test.tsx
+  - packages/ui/src/__tests__/components.test.tsx
+  - packages/ui/src/__tests__/discussionDrawer.test.tsx
+  - packages/ui/src/__tests__/listPager.test.tsx
+  - packages/ui/src/__tests__/richDrawer.test.tsx
+  - packages/ui/src/__tests__/specDrawer.test.tsx
+  - packages/ui/src/__tests__/specList.test.tsx
+  - packages/ui/src/components/ArchivedDrawer.tsx
+  - packages/ui/src/components/ArchivedList.tsx
+  - packages/ui/src/components/DiscussionDrawer.tsx
+  - packages/ui/src/components/ListPager.tsx
+  - packages/ui/src/components/Markdown.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/components/SpecDrawer.tsx
+  - packages/ui/src/components/SpecList.tsx
+  - packages/ui/src/i18n.tsx
 -->

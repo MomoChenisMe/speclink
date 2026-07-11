@@ -149,3 +149,20 @@ describe("SpecDrawer", () => {
     expect(screen.queryByText("清單內文。")).toBeNull();
   });
 });
+
+// spec 需求「markdown 文件內容行寬有上限」（design D4）：規格抽屜捲動容器內存在
+// 共用置中容器，正典內文與溯源 footer 同欄對齊置中。
+describe("SpecDrawer（閱讀欄置中）", () => {
+  it("捲動容器內有置中容器（w-full＋max-w-[96ch]＋mx-auto）且內文與溯源 footer 在欄內", async () => {
+    render(<SpecDrawer {...(makeProps() as never)} />);
+    await waitFor(() => expect(screen.getByText(/來源變更：/)).toBeTruthy());
+    const col = document.querySelector("[data-reading-column]") as HTMLElement;
+    expect(col).toBeTruthy();
+    expect(col.className).toContain("w-full");
+    expect(col.className).toContain("max-w-[96ch]");
+    expect(col.className).toContain("mx-auto");
+    expect(col.parentElement?.className).toContain("overflow-y-auto");
+    expect(col.textContent).toContain("清單內文。");
+    expect(col.textContent).toContain("來源變更：");
+  });
+});

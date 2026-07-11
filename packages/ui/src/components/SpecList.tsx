@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Check, Copy, FileText, History } from "lucide-react";
 
 import type { SpecItem } from "../adapter";
@@ -7,6 +7,7 @@ import { matchesQuery } from "../search";
 import { relativeDays } from "../time";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { ListPager, PAGE_SIZE } from "./ListPager";
 
 /** 規格卡（spec-archive-drawer design D7）：標題＋複製鈕成群組、meta（需求數、
  * 溯源變更數、相對修改時間）靠右；第二列 Purpose 摘要一行截斷，佔位時改顯
@@ -100,20 +101,50 @@ export interface SpecListProps {
 }
 
 /** 規格頁（design D1）：正典 spec 卡片清單＋名稱搜尋（design D3：大小寫不敏感
- * 子字串、純前端即打即濾）；點卡片開抽屜檢視全文，無行內展開、無任何規格寫入動詞。 */
+ * 子字串、純前端即打即濾）；點卡片開抽屜檢視全文，無行內展開、無任何規格寫入動詞。
+ * 清單最新在前（modifiedAt 降冪、缺席殿後、名稱升冪決勝）並依 PAGE_SIZE 換頁
+ *（spec「清單最新在前與換頁瀏覽」）——排序與換頁純屬呈現層。 */
 export function SpecList({ specs, onOpen }: SpecListProps) {
   const { t } = useI18n();
   // 搜尋字串留元件內——規格頁無跨視圖保留需求（比對規則共用 matchesQuery）。
   const [query, setQuery] = useState("");
-  const filtered = specs.filter((s) => matchesQuery(query, s.id));
+  // 頁碼 state 以 min(page, pageCount) 鉗制派生——清單縮短不停在越界頁。
+  const [rawPage, setRawPage] = useState(1);
+  const topRef = useRef<HTMLDivElement>(null);
+
+  const sorted = useMemo(
+    () =>
+      [...specs].sort((a, b) => {
+        // modifiedAt 降冪；缺席者一律殿後；同值（含皆缺席）以名稱字母升冪決勝。
+        if (a.modifiedAt && b.modifiedAt && a.modifiedAt !== b.modifiedAt)
+          return a.modifiedAt < b.modifiedAt ? 1 : -1;
+        if (!!a.modifiedAt !== !!b.modifiedAt) return a.modifiedAt ? -1 : 1;
+        return a.id.localeCompare(b.id);
+      }),
+    [specs],
+  );
+  const filtered = sorted.filter((s) => matchesQuery(query, s.id));
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const page = Math.min(rawPage, pageCount);
+  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const goPage = (next: number) => {
+    setRawPage(next);
+    // jsdom 未實作 scrollIntoView——選擇性呼叫，真實視窗照常捲回清單頂。
+    topRef.current?.scrollIntoView?.({ block: "start" });
+  };
+
   return (
     <div className="flex flex-col gap-3 max-w-3xl mx-auto w-full">
       <Input
         placeholder={t("specs.searchPlaceholder")}
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setRawPage(1);
+        }}
       />
-      <div className="flex items-center gap-2">
+      <div ref={topRef} className="flex items-center gap-2">
         <h2 className="text-base font-semibold">{t("specs.heading")}</h2>
         <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium tabular-nums">
           {filtered.length}
@@ -125,9 +156,10 @@ export function SpecList({ specs, onOpen }: SpecListProps) {
         ) : filtered.length === 0 ? (
           <div className="text-muted-foreground text-sm py-8 text-center">{t("specs.noResults")}</div>
         ) : (
-          filtered.map((s) => <SpecCard key={s.id} item={s} onOpen={onOpen} />)
+          pageItems.map((s) => <SpecCard key={s.id} item={s} onOpen={onOpen} />)
         )}
       </div>
+      <ListPager page={page} pageCount={pageCount} onPage={goPage} />
     </div>
   );
 }
