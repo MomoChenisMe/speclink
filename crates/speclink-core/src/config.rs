@@ -25,13 +25,13 @@ impl std::fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
-/// Fail-closed deserialization shared by both config loaders: an empty or null
-/// document (fresh template, comments only) is valid and yields defaults; any
-/// parse failure on a non-empty document is a `ConfigError` naming `file`.
-fn parse_config<T: Default + serde::de::DeserializeOwned>(
+/// Fail-closed deserialization shared by the config loaders and change
+/// metadata: an empty or null document (fresh template, comments only) is
+/// valid and yields defaults; any parse failure on a non-empty document is an
+/// error carrying the parser's reason.
+pub(crate) fn parse_lenient_or_reason<T: Default + serde::de::DeserializeOwned>(
     text: &str,
-    file: &str,
-) -> Result<T, ConfigError> {
+) -> Result<T, String> {
     if text.trim().is_empty() {
         return Ok(T::default());
     }
@@ -40,9 +40,17 @@ fn parse_config<T: Default + serde::de::DeserializeOwned>(
     if matches!(serde_yaml::from_str::<serde_yaml::Value>(text), Ok(serde_yaml::Value::Null)) {
         return Ok(T::default());
     }
-    serde_yaml::from_str(text).map_err(|e| ConfigError {
+    serde_yaml::from_str(text).map_err(|e| e.to_string())
+}
+
+/// [`parse_lenient_or_reason`] wrapped into a `ConfigError` naming `file`.
+fn parse_config<T: Default + serde::de::DeserializeOwned>(
+    text: &str,
+    file: &str,
+) -> Result<T, ConfigError> {
+    parse_lenient_or_reason(text).map_err(|reason| ConfigError {
         file: file.to_string(),
-        reason: e.to_string(),
+        reason,
     })
 }
 

@@ -400,6 +400,23 @@ mod tests {
     }
 
     #[test]
+    fn list_changes_marks_invalid_card_and_keeps_the_board_open() {
+        // spec「看板照常開啟並標記損壞卡」：壞 metadata 卡帶 metaError 診斷、
+        // 有效卡不帶，看板照常列出全部卡片。
+        let fx = FixtureRoot::new("q-invalid-meta");
+        fx.add_change("good", OLD_META);
+        fx.add_change("broken", ": : :\n\t bad yaml [unclosed\n");
+        let v = list_changes_at(fx.root());
+        let arr = v["changes"].as_array().expect("changes array");
+        assert_eq!(arr.len(), 2, "one corrupt card must not break the board");
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+        let broken = by_name("broken");
+        assert!(broken["metaError"].is_string(), "invalid card carries the diagnostic: {broken}");
+        assert!(!broken["metaError"].as_str().unwrap().is_empty());
+        assert!(by_name("good").get("metaError").is_none(), "valid card carries no diagnostic");
+    }
+
+    #[test]
     fn list_changes_sorts_by_board_rank_with_unranked_on_top() {
         // spec「看板卡片順序以 board_rank 欄位為真相」＋ design D2：缺值卡置頂
         // 維持回退序（mtime 平手時名稱升冪），具值卡依 rank 字典序升冪殿後。

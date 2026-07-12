@@ -24,6 +24,9 @@ export interface ChangeItem {
   restaleFrom?: string[];
   /** proposal Why 首句（呈現層輔助欄位）——變更卡描述列的資料源；null/缺席＝描述列缺席。 */
   whyExcerpt?: string | null;
+  /** `.openspec.yaml` 存在但解析失敗的原因（fail-closed 診斷）——卡片顯示最小
+   * invalid 標記、變更操作由引擎錯誤拒絕；缺席＝metadata 有效或不存在。 */
+  metaError?: string | null;
 }
 
 /** 一個 canonical spec 的清單項（CLI 同形欄位＋桌面疊加的呈現層輔助欄位）。

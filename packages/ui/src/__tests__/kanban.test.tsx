@@ -110,6 +110,23 @@ describe("KanbanBoard", () => {
     expect(within(column("in-progress")).getByText("fresh-b")).toBeTruthy();
   });
 
+  it("shows the invalid-metadata marker only on cards whose change carries metaError", () => {
+    // spec「看板照常開啟並標記損壞卡」：metaError 卡帶最小 invalid 標記
+    // （tooltip 載解析原因），有效卡不帶；兩張卡照常列於看板。
+    const withInvalid: ChangeItem[] = [
+      { name: "broken-a", status: "in-progress", totalTasks: 4, completedTasks: 1, metaError: "invalid type: sequence" },
+      { name: "valid-b", status: "in-progress", totalTasks: 4, completedTasks: 1 },
+    ];
+    render(<KanbanBoard changes={withInvalid} />);
+    const brokenCard = screen.getByText("broken-a").closest("[data-change]") as HTMLElement;
+    const marker = within(brokenCard).getByLabelText("metadata 損壞");
+    expect(marker).toBeTruthy();
+    expect(marker.getAttribute("title")).toBeNull();
+    const validCard = screen.getByText("valid-b").closest("[data-change]") as HTMLElement;
+    expect(within(validCard).queryByLabelText("metadata 損壞")).toBeNull();
+    expect(within(column("in-progress")).getByText("broken-a")).toBeTruthy();
+  });
+
   it("變更卡顯示建立者首字母圓標（有 createdBy）、無則省略（D3）", () => {
     const withAuthor: ChangeItem[] = [
       { name: "auth-a", status: "in-progress", totalTasks: 4, completedTasks: 1, createdBy: "Momo Chen <momo@example.com>" },

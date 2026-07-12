@@ -63,17 +63,28 @@ impl TestStore {
     }
 }
 
+/// Build a Change the way FsStore does: corrupt metadata yields default `meta`
+/// plus the parse reason in `meta_error` (the double must stay faithful).
+fn change_from_meta(name: &str, meta_text: &str) -> Change {
+    let (meta, meta_error) = match ChangeMeta::from_text(Some(meta_text)) {
+        Ok(meta) => (meta, None),
+        Err(reason) => (ChangeMeta::default(), Some(reason)),
+    };
+    Change {
+        name: name.to_string(),
+        dir: PathBuf::from(format!("changes/{name}")),
+        meta,
+        meta_error,
+    }
+}
+
 impl Store for TestStore {
     fn list_changes(&self) -> Vec<Change> {
         let mut out: Vec<Change> = self
             .metas
             .borrow()
             .iter()
-            .map(|(name, meta)| Change {
-                name: name.clone(),
-                dir: PathBuf::from(format!("changes/{name}")),
-                meta: ChangeMeta::from_text(Some(meta)),
-            })
+            .map(|(name, meta)| change_from_meta(name, meta))
             .collect();
         out.sort_by(|a, b| a.name.cmp(&b.name));
         out
@@ -81,11 +92,7 @@ impl Store for TestStore {
     fn find_change(&self, name: &str) -> Option<Change> {
         let metas = self.metas.borrow();
         let meta = metas.get(name)?;
-        Some(Change {
-            name: name.to_string(),
-            dir: PathBuf::from(format!("changes/{name}")),
-            meta: ChangeMeta::from_text(Some(meta)),
-        })
+        Some(change_from_meta(name, meta))
     }
     fn change_exists(&self, name: &str) -> bool {
         self.metas.borrow().contains_key(name)

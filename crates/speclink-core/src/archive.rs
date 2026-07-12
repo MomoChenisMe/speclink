@@ -96,6 +96,10 @@ pub fn archive(
     change: &Change,
     opts: &ArchiveOptions,
 ) -> Result<ArchiveOutcome> {
+    // Fail-closed gate: archiving stamps and moves the metadata document —
+    // refuse a corrupt one before any validation or file effect.
+    crate::model::require_valid_meta(change)?;
+
     let date = util::today();
     let dated_name = format!("{date}-{}", change.name);
     if store.archived_change_exists(&dated_name) {

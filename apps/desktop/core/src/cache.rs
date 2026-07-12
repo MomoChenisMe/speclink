@@ -75,7 +75,9 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
             });
             // 封存卡收合資訊（design D4/D5）：入庫使清單讀取零解析。from_discussions
             // 以逗號串存放（與 meta 累積器同格式），讀出時同語意拆分。
-            let parsed = speclink_core::model::ChangeMeta::from_text(Some(&meta));
+            // 歸檔 metadata 的壞檔語意不在 fail-closed 範圍（僅活躍 change）——
+            // 歷史紀錄照舊寬鬆讀取。
+            let parsed = speclink_core::model::ChangeMeta::from_text(Some(&meta)).unwrap_or_default();
             let spec_count = store.archived_delta_capabilities(name).len() as i64;
             conn.execute(
                 "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done, spec_count, created_by, from_discussions) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",

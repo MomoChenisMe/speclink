@@ -99,19 +99,30 @@ impl std::fmt::Display for Refusal {
 
 impl std::error::Error for Refusal {}
 
-/// Classify a core-flow anyhow error: a [`Refusal`] marker → `refused`,
+/// Classify a core-flow anyhow error: a [`Refusal`] marker → `refused`, a
+/// [`crate::model::MetaError`] (corrupt `.openspec.yaml`) → `invalid_config`,
 /// everything else → `error`. Message text passes through verbatim; the
 /// original error rides along as `source` for host-side refinement.
 fn classify(e: anyhow::Error) -> CommandError {
-    let (code, message) = match e.downcast_ref::<Refusal>() {
-        Some(r) => (ErrorCode::Refused, r.0.clone()),
-        None => (ErrorCode::Error, e.to_string()),
+    let (code, message) = if let Some(r) = e.downcast_ref::<Refusal>() {
+        (ErrorCode::Refused, r.0.clone())
+    } else if let Some(m) = e.downcast_ref::<crate::model::MetaError>() {
+        (ErrorCode::InvalidConfig, m.to_string())
+    } else {
+        (ErrorCode::Error, e.to_string())
     };
     CommandError {
         code,
         message,
         source: Some(e),
     }
+}
+
+/// Command-layer fail-closed gate: a resolved change whose metadata is corrupt
+/// refuses as `invalid_config` before the verb's flow runs (spec「單一 change
+/// 查詢對壞 metadata fail closed」).
+fn guard_meta(change: &Change) -> Result<(), CommandError> {
+    crate::model::require_valid_meta(change).map_err(|e| classify(e.into()))
 }
 
 /// Domain events reported by mutating verbs (design 決策四). Payload = subject
@@ -504,10 +515,17 @@ pub fn execute(
         Command::TaskUndone { task_id, change } => {
             run_task_flip(store, ws, &task_id, change.as_deref(), TaskFlip::Undone)
         }
-        Command::Claim { .. } => Err(CommandError::new(
-            ErrorCode::Error,
-            "claim requires a remote store — this project uses the local fs store",
-        )),
+        Command::Claim { name } => {
+            // Fail-closed gate first: claiming a change whose metadata is
+            // corrupt must name the broken file, not the missing remote store.
+            if let Some(change) = crate::model::find_change(store, &name) {
+                guard_meta(&change)?;
+            }
+            Err(CommandError::new(
+                ErrorCode::Error,
+                "claim requires a remote store — this project uses the local fs store",
+            ))
+        }
         Command::InProgressAdd { name } => run_in_progress_add(store, ws, &name),
         Command::Archive { change, skip_specs, no_validate, mark_tasks_complete } => run_archive(
             store,
@@ -824,6 +842,7 @@ fn run_status(
     schema: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_FLAG)?;
+    guard_meta(&change)?;
     let schema_name = match schema {
         Some(s) => s.to_string(),
         None => change.meta.schema_name(),
@@ -842,6 +861,7 @@ fn run_instructions(
     schema: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_FLAG)?;
+    guard_meta(&change)?;
     let schema = match schema {
         Some(s) => resolve_schema(ws, s)?,
         None => resolve_schema(ws, &change.meta.schema_name())?,
@@ -873,17 +893,24 @@ fn run_validate(
     changes_flag: bool,
     strict: bool,
 ) -> Result<CommandOutcome, CommandError> {
+    // The fail-closed gate covers the single-change target paths only — a
+    // multi-change sweep must not die on one corrupt item (mirrors list).
     let mut changes = if let Some(item) = item {
-        vec![crate::model::find_change(store, item).ok_or_else(|| {
+        let c = crate::model::find_change(store, item).ok_or_else(|| {
             CommandError::new(ErrorCode::NotFound, format!("Change '{item}' not found."))
-        })?]
+        })?;
+        guard_meta(&c)?;
+        vec![c]
     } else if all || changes_flag {
         crate::model::list_changes(store)
     } else {
         // No item: exactly one change validates alone; zero or several fall
         // back to validating everything (matches Spectra).
         match resolve_change(store, None, SPECIFY_FLAG) {
-            Ok(c) => vec![c],
+            Ok(c) => {
+                guard_meta(&c)?;
+                vec![c]
+            }
             Err(_) => crate::model::list_changes(store),
         }
     };
@@ -901,6 +928,7 @@ fn run_validate(
 
 fn run_analyze(store: &dyn Store, change: Option<&str>) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_POSITIONAL)?;
+    guard_meta(&change)?;
     // Spectra's analyzer is schema-agnostic and never resolves the change's schema.
     let schema = crate::schema::spec_driven();
     Ok(CommandOutcome::Analyze(crate::analyzer::analyze(
@@ -914,6 +942,7 @@ fn run_drift(
     change: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_POSITIONAL)?;
+    guard_meta(&change)?;
     let host = host_workspace(ws);
     Ok(CommandOutcome::Drift(crate::drift::analyze(
         &host, store, &change,
@@ -946,6 +975,7 @@ fn run_artifact_cat(
     change: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_FLAG)?;
+    guard_meta(&change)?;
     let rel = artifact_rel_path(artifact)?;
     match store.read_artifact(&change.name, &rel) {
         Some(content) => Ok(CommandOutcome::ArtifactCat(content)),
@@ -1175,6 +1205,9 @@ fn run_archive(
     opts: crate::archive::ArchiveOptions,
 ) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_FLAG)?;
+    // Gate before --mark-tasks-complete's pre-write; the core archive flow
+    // gates again for entry points that call it directly (desktop).
+    guard_meta(&change)?;
     if opts.mark_tasks_complete {
         if let Some(text) = store.read_artifact(&change.name, "tasks.md") {
             // Star-bullet checkboxes are tasks too (matches Spectra).
@@ -1308,6 +1341,196 @@ mod tests {
             other => panic!("expected a validate outcome, got {other:?}"),
         }
         assert!(events.is_empty(), "queries never produce events");
+    }
+
+    // --- 壞 metadata 的查詢群 fail closed 與 list 診斷（spec command-runtime）---
+
+    #[test]
+    fn single_change_queries_on_corrupt_meta_are_invalid_config_with_path_and_reason() {
+        // spec「單一 change 查詢對壞 metadata fail closed」＋「穩定錯誤碼註冊表」
+        // Example 新行：.openspec.yaml 存在但解析失敗 → invalid_config，訊息
+        // 沿 ConfigError 形式指出 workspace 相對路徑與解析原因。
+        let store = TestStore::with_meta("demo", BAD_META);
+        store.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n");
+        let cmds: Vec<(&str, Command)> = vec![
+            ("status", Command::Status { change: Some("demo".to_string()), schema: None }),
+            (
+                "instructions",
+                Command::Instructions { artifact: None, change: Some("demo".to_string()), schema: None },
+            ),
+            (
+                "validate",
+                Command::Validate {
+                    item: Some("demo".to_string()),
+                    all: false,
+                    changes: false,
+                    strict: false,
+                },
+            ),
+            ("analyze", Command::Analyze { change: Some("demo".to_string()) }),
+            ("drift", Command::Drift { change: Some("demo".to_string()) }),
+            (
+                "artifact cat",
+                Command::ArtifactCat { artifact: "tasks".to_string(), change: Some("demo".to_string()) },
+            ),
+        ];
+        for (verb, cmd) in cmds {
+            let err = execute(&store, None, cmd)
+                .expect_err(&format!("{verb} on corrupt meta must refuse"));
+            assert_eq!(
+                err.code,
+                ErrorCode::InvalidConfig,
+                "{verb} must classify invalid_config, got {:?}: {}",
+                err.code,
+                err.message
+            );
+            assert!(
+                err.message.starts_with("invalid openspec/changes/demo/.openspec.yaml: "),
+                "{verb} message must name path then reason: {}",
+                err.message
+            );
+            assert!(
+                err.message.len() > "invalid openspec/changes/demo/.openspec.yaml: ".len(),
+                "{verb} message must carry the parse reason"
+            );
+        }
+    }
+
+    #[test]
+    fn list_on_corrupt_meta_flags_the_item_and_keeps_valid_items_intact() {
+        // spec「list 對壞 metadata 標 invalid 而不失效」：壞檔項目帶診斷，
+        // 有效項目不帶且內容與無壞檔時一致。
+        let store = TestStore::with_meta("good", META);
+        store.metas.borrow_mut().insert("broken".to_string(), BAD_META.to_string());
+        store.put_artifact("good", "tasks.md", "- [x] 1.1 a\n");
+        let (outcome, _) = execute(&store, None, list_cmd()).expect("list must stay available");
+        let CommandOutcome::List(list) = outcome else {
+            panic!("expected a list outcome");
+        };
+        let changes = list.changes.expect("changes section present");
+        assert_eq!(changes.len(), 2, "corrupt meta must not drop the change");
+        let broken = changes.iter().find(|c| c.name == "broken").expect("broken listed");
+        let reason = broken.meta_error.as_deref().expect("corrupt item carries the diagnostic");
+        assert!(!reason.is_empty());
+        let good = changes.iter().find(|c| c.name == "good").expect("good listed");
+        assert!(good.meta_error.is_none(), "valid item carries no diagnostic");
+        assert_eq!((good.completed_tasks, good.total_tasks), (1, 1));
+        assert_eq!(good.status, "done");
+    }
+
+    // --- 壞 change metadata 的生命週期寫入 fail closed（spec change-lifecycle）---
+
+    /// `.openspec.yaml` 存在但 YAML 解析失敗的固定樣本（與 store_fs 測試同款）。
+    const BAD_META: &str = ": : :\n\t bad yaml [unclosed\n";
+
+    #[test]
+    fn task_flip_on_corrupt_meta_refuses_and_leaves_files_untouched() {
+        // spec「task done 因蘊含開工標記而拒絕」：done 與 undone 皆拒，
+        // tasks.md 與 .openspec.yaml 逐位元不變。
+        const TASKS: &str = "- [ ] 1.1 a\n- [x] 1.2 b\n";
+        let store = TestStore::with_meta("demo", BAD_META);
+        store.put_artifact("demo", "tasks.md", TASKS);
+        let err = execute(
+            &store,
+            None,
+            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()) },
+        )
+        .expect_err("task done on corrupt meta must refuse");
+        assert!(
+            err.message.contains("openspec/changes/demo/.openspec.yaml"),
+            "error must name the metadata file: {}",
+            err.message
+        );
+        let err = execute(
+            &store,
+            None,
+            Command::TaskUndone { task_id: "2".to_string(), change: Some("demo".to_string()) },
+        )
+        .expect_err("task undone on corrupt meta must refuse");
+        assert!(err.message.contains("openspec/changes/demo/.openspec.yaml"));
+        assert_eq!(
+            store.artifacts.borrow().get(&("demo".to_string(), "tasks.md".to_string())).unwrap(),
+            TASKS,
+            "tasks.md byte-identical"
+        );
+        assert_eq!(store.meta("demo"), BAD_META, "meta byte-identical");
+        assert_eq!(*store.artifact_writes.borrow(), 0, "no artifact write on refusal");
+        assert_eq!(*store.meta_writes.borrow(), 0, "no meta write on refusal");
+    }
+
+    #[test]
+    fn claim_on_corrupt_meta_refuses_naming_the_file() {
+        let store = TestStore::with_meta("demo", BAD_META);
+        let err = execute(&store, None, Command::Claim { name: "demo".to_string() })
+            .expect_err("claim on corrupt meta must refuse");
+        assert!(
+            err.message.contains("openspec/changes/demo/.openspec.yaml"),
+            "error must name the metadata file: {}",
+            err.message
+        );
+        assert_eq!(store.meta("demo"), BAD_META);
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn archive_on_corrupt_meta_refuses_without_moving_or_merging() {
+        // spec「archive 對壞 metadata 拒絕」：正典未併入、目錄未移動；
+        // --mark-tasks-complete 的前置寫入也不得發生。
+        const TASKS: &str = "- [ ] 1.1 open\n";
+        for mark in [false, true] {
+            let store = TestStore::with_meta("demo", BAD_META);
+            store.put_artifact("demo", "tasks.md", TASKS);
+            let err = execute(
+                &store,
+                None,
+                Command::Archive {
+                    change: Some("demo".to_string()),
+                    skip_specs: false,
+                    no_validate: false,
+                    mark_tasks_complete: mark,
+                },
+            )
+            .expect_err("archive on corrupt meta must refuse");
+            assert!(
+                err.message.contains("openspec/changes/demo/.openspec.yaml"),
+                "error must name the metadata file (mark={mark}): {}",
+                err.message
+            );
+            assert!(store.metas.borrow().contains_key("demo"), "change not moved (mark={mark})");
+            assert!(store.archived_metas.borrow().is_empty(), "archive untouched (mark={mark})");
+            assert!(store.canonical.borrow().is_empty(), "canon untouched (mark={mark})");
+            assert_eq!(
+                store.artifacts.borrow().get(&("demo".to_string(), "tasks.md".to_string())).unwrap(),
+                TASKS,
+                "tasks.md byte-identical (mark={mark})"
+            );
+            assert_eq!(*store.artifact_writes.borrow(), 0, "no write (mark={mark})");
+        }
+    }
+
+    #[test]
+    fn new_artifact_on_corrupt_meta_refuses_without_default_schema_fallback() {
+        // spec：壞 metadata 不得被解讀為預設 schema 而照常產出 artifact。
+        let store = TestStore::with_meta("demo", BAD_META);
+        let err = execute(
+            &store,
+            None,
+            Command::NewArtifact {
+                kind: "design".to_string(),
+                capability: None,
+                change: Some("demo".to_string()),
+                content: None,
+                force: false,
+            },
+        )
+        .expect_err("new artifact on corrupt meta must refuse");
+        assert!(
+            err.message.contains("openspec/changes/demo/.openspec.yaml"),
+            "error must name the metadata file: {}",
+            err.message
+        );
+        assert!(store.artifacts.borrow().is_empty(), "no artifact created via default schema");
+        assert_eq!(*store.artifact_writes.borrow(), 0);
     }
 
     // --- 不存在的主體：not_found，訊息沿用現行 CLI 文字 ---

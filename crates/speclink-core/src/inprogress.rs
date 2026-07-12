@@ -35,7 +35,12 @@ pub fn add(store: &dyn Store, name: &str, identity: Option<&str>, agent: Option<
     let Some(mut meta) = store.read_change_meta(name) else {
         return Ok(false);
     };
-    let parsed = ChangeMeta::from_text(Some(&meta));
+    // Fail-closed gate: a corrupt document must not read as "not started" and
+    // take the stamp append — refuse before any text surgery.
+    let parsed = ChangeMeta::from_text(Some(&meta)).map_err(|reason| crate::model::MetaError {
+        change: name.to_string(),
+        reason,
+    })?;
     if parsed.started_at.is_some() || parsed.started_by.is_some() || parsed.started_with.is_some() {
         return Ok(false);
     }
@@ -92,7 +97,7 @@ mod tests {
             format!("started_at: {today}\nstarted_by: Tester <t@example.com>\nstarted_with: claude\n")
         );
         // The stamped document parses and exposes the started fields.
-        let parsed = crate::model::ChangeMeta::from_text(Some(&meta));
+        let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).expect("stamped meta parses");
         assert_eq!(parsed.started_at.as_deref(), Some(today.as_str()));
         assert_eq!(parsed.started_by.as_deref(), Some("Tester <t@example.com>"));
         assert_eq!(parsed.started_with.as_deref(), Some("claude"));
@@ -110,7 +115,7 @@ mod tests {
             meta.starts_with(with_rank),
             "board_rank must survive the started stamp byte-for-byte: {meta}"
         );
-        let parsed = crate::model::ChangeMeta::from_text(Some(&meta));
+        let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).expect("stamped meta parses");
         assert_eq!(parsed.board_rank.as_deref(), Some("n"));
         assert!(parsed.started_at.is_some());
     }
@@ -171,11 +176,27 @@ mod tests {
             meta.lines().all(|l| !l.starts_with("from_discussion:")),
             "newline in agent must not inject a field line: {meta}"
         );
-        let parsed = crate::model::ChangeMeta::from_text(Some(&meta));
+        let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).expect("stamped meta parses");
         assert_eq!(parsed.started_by.as_deref(), Some("Evil started_with: forged name"));
         assert_eq!(parsed.started_with.as_deref(), Some("agent from_discussion: fake"));
         assert!(parsed.from_discussion.is_none());
         assert_eq!(parsed.schema.as_deref(), Some("spec-driven"), "document must keep parsing");
+    }
+
+    #[test]
+    fn add_refuses_on_corrupt_meta_without_writing() {
+        // spec「壞 metadata 使生命週期寫入 fail closed」：壞檔不得被解讀為
+        // 未開工而疊寫 started_* 行——拒絕、指名檔案，.openspec.yaml 逐位元不變。
+        const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
+        let store = TestStore::with_meta("demo", BAD);
+        let err = super::add(&store, "demo", Some("T <t@example.com>"), Some("claude"))
+            .expect_err("corrupt meta must refuse the stamp");
+        assert!(
+            err.to_string().contains("openspec/changes/demo/.openspec.yaml"),
+            "error must name the metadata file: {err}"
+        );
+        assert_eq!(store.meta("demo"), BAD, "meta byte-identical");
+        assert_eq!(*store.meta_writes.borrow(), 0, "refusal must not write");
     }
 
     #[test]
