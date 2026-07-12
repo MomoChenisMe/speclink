@@ -335,6 +335,62 @@ fn task_done_during_ingest_says_wait() {
     assert!(stderr_of(&out).contains("wait"), "stderr: {}", stderr_of(&out));
 }
 
+// --- task undone ---
+
+#[test]
+fn task_undone_posts_empty_body_and_prints_fs_parity_json() {
+    let mock = mock_server(vec![(
+        "POST",
+        "/changes/demo/tasks/3/undone",
+        200,
+        r#"{"change":"demo","taskId":"3","taskDesc":"1.3 Third","status":"undone","alreadyUndone":false,"tasksVersion":8}"#.into(),
+    )]);
+    let p = TempProject::remote("task-undone", &mock.base, "backend");
+    let out = p.run(&["task", "undone", "3", "--change", "demo", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+
+    // fs parity: byte-identical compact single-line payload (keys and order included).
+    assert_eq!(
+        stdout_of(&out),
+        "{\"change\":\"demo\",\"status\":\"undone\",\"task_desc\":\"1.3 Third\",\"task_id\":\"3\"}\n"
+    );
+
+    let cap = mock.find("POST", "/changes/demo/tasks/3/undone");
+    assert_eq!(cap.header("x-speclink-repo"), Some("backend"));
+    // Unchecking records no touched files — the body is an empty JSON object.
+    let body: serde_json::Value = serde_json::from_str(&cap.body).unwrap();
+    assert_eq!(body, serde_json::json!({}), "request body must be an empty object: {}", cap.body);
+}
+
+#[test]
+fn task_undone_human_output_matches_fs_mode() {
+    let mock = mock_server(vec![(
+        "POST",
+        "/changes/demo/tasks/3/undone",
+        200,
+        r#"{"change":"demo","taskId":"3","taskDesc":"1.3 Third","status":"undone","alreadyUndone":false,"tasksVersion":8}"#.into(),
+    )]);
+    let p = TempProject::remote("task-undone-human", &mock.base, "backend");
+    let out = p.run(&["task", "undone", "3", "--change", "demo"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ Task 3 marked as not done: 1.3 Third\n");
+}
+
+#[test]
+fn task_undone_already_translates_to_already_not_done_error() {
+    let mock = mock_server(vec![(
+        "POST",
+        "/changes/demo/tasks/3/undone",
+        200,
+        r#"{"change":"demo","taskId":"3","taskDesc":"1.3 Third","status":"undone","alreadyUndone":true,"tasksVersion":8}"#.into(),
+    )]);
+    let p = TempProject::remote("task-undone-already", &mock.base, "backend");
+    let out = p.run(&["task", "undone", "3", "--change", "demo"]);
+    assert!(!out.status.success(), "alreadyUndone must exit non-zero");
+    assert_eq!(stderr_of(&out), "Error: Task 3 is already not done\n");
+    assert_eq!(stdout_of(&out), "");
+}
+
 // --- claim: atomicity outcomes and the repo chain ---
 
 #[test]
