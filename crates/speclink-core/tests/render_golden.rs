@@ -111,6 +111,45 @@ fn codex_rendering_is_bit_identical_to_golden() {
     );
 }
 
+// --- commit skill: confirmation gate requires visible plan + message ---
+
+/// Spec requirement commit 確認閘門所見即所簽: the rendered commit skill must
+/// generate the commit message before the user-confirmation step, and its
+/// guardrails must forbid asking for confirmation before the plan and message
+/// have been output as visible text.
+#[test]
+fn commit_skill_confirmation_gate_sees_plan_and_message() {
+    let cases = [
+        ("commit-gate-claude", Tool::Claude, ".claude/skills"),
+        ("commit-gate-codex", Tool::Codex, ".agents/skills"),
+    ];
+    for (tag, tool, skills_dir) in cases {
+        let root = TempRoot::new(tag);
+        init::init(&root.dir, &[tool], true, "openspec").unwrap();
+        let rel = format!("{skills_dir}/speclink-commit/SKILL.md");
+        let content = std::fs::read_to_string(root.dir.join(rel.split('/').collect::<PathBuf>()))
+            .expect(&rel);
+        let generate = content
+            .find("**Generate commit message**")
+            .unwrap_or_else(|| panic!("{rel}: missing generate-commit-message step"));
+        let confirm = content
+            .find("**User confirmation**")
+            .unwrap_or_else(|| panic!("{rel}: missing user-confirmation step"));
+        assert!(
+            generate < confirm,
+            "{rel}: the commit message must be generated before the user-confirmation step"
+        );
+        assert!(
+            content.contains("output as visible message text"),
+            "{rel}: guardrails must require the plan and message to be visible before AskUserQuestion"
+        );
+        assert!(
+            content.contains("must not reference content"),
+            "{rel}: guardrails must forbid referencing content that was never displayed"
+        );
+    }
+}
+
 // --- remote marker variant: (tool target) × (fs | remote) ---
 
 /// The remote marker block must not steer the agent at local spec paths that
