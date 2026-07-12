@@ -308,8 +308,9 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
           />
         </aside>
 
-        {/* 主內容：看板填滿高度（欄內捲動）、封存頁整頁縱向捲動 */}
-        <main className={`flex-1 p-5 ${s.boardView === "board" ? "overflow-hidden" : "overflow-y-auto"}`}>
+        {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
+            制列沉底常駐）；設定頁維持整頁縱向捲動 */}
+        <main className={`flex-1 p-5 ${s.boardView === "settings" ? "overflow-y-auto" : "overflow-hidden"}`}>
           {s.boardView === "settings" && workspace !== undefined ? (
             <SettingsView
               workspace={workspace}

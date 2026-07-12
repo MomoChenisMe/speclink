@@ -606,3 +606,37 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(zhKeys).not.toContain("app.navNotes");
   });
 });
+
+// spec 需求「清單最新在前與換頁瀏覽」（填滿高度增補）：規格頁與已封存頁的內部
+// 捲動容器高度須受視窗約束——main 帶 overflow-hidden 而非整頁捲動；設定頁不受
+// 影響、維持 overflow-y-auto 整頁捲動。
+describe("main content scroll containment（主內容區捲動約束）", () => {
+  it("看板/規格/已封存頁 main 為 overflow-hidden，設定頁維持 overflow-y-auto", async () => {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({ tabs: [{ root: "A", name: "proj-a" }], activeRoot: "A" }),
+    );
+    const ws = fakeWorkspace();
+    ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
+    render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
+    await screen.findByText("desktop-shell-and-browser");
+    const main = () => document.querySelector("main") as HTMLElement;
+    const aside = document.querySelector("aside") as HTMLElement;
+    // 看板（預設）：既有 overflow-hidden。
+    expect(main().className).toContain("overflow-hidden");
+    // 規格頁：改 overflow-hidden，清單於內部容器捲動。
+    fireEvent.click(within(aside).getByRole("button", { name: "規格" }));
+    await waitFor(() => expect(screen.getByText("desktop-app")).toBeTruthy());
+    expect(main().className).toContain("overflow-hidden");
+    expect(main().className).not.toContain("overflow-y-auto");
+    // 已封存頁：同上。
+    fireEvent.click(within(aside).getByRole("button", { name: "已封存" }));
+    await waitFor(() => expect(screen.getByText("已封存的變更")).toBeTruthy());
+    expect(main().className).toContain("overflow-hidden");
+    expect(main().className).not.toContain("overflow-y-auto");
+    // 設定頁：維持整頁捲動。
+    fireEvent.click(within(aside).getByRole("button", { name: "設定" }));
+    await waitFor(() => expect(main().className).toContain("overflow-y-auto"));
+    expect(main().className).not.toContain("overflow-hidden");
+  });
+});

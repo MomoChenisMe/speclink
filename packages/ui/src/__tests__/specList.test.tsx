@@ -230,3 +230,45 @@ describe("SpecList（最新在前與換頁）", () => {
     expect(screen.queryByText("s21")).toBeNull();
   });
 });
+
+// spec 需求「清單最新在前與換頁瀏覽」（填滿高度增補）：版面填滿視窗高度、
+// 卡片清單於內部容器捲動、換頁控制列沉底常駐、換頁後內部捲動容器捲回頂部。
+describe("SpecList（填滿高度版面與換頁控制列沉底）", () => {
+  const bare = (id: string, modifiedAt: string): SpecItem => ({
+    id,
+    modifiedAt,
+    requirementCount: 0,
+    purposeExcerpt: null,
+    purposeTbd: false,
+    traceCount: 0,
+  });
+  // 21 筆（兩頁）使換頁控制列出現。
+  const MANY: SpecItem[] = Array.from({ length: 21 }, (_, i) =>
+    bare(`s${String(i + 1).padStart(2, "0")}`, `2026-06-${String(22 - (i + 1)).padStart(2, "0")}`),
+  );
+  const scrollEl = () => document.querySelector("[data-list-scroll]") as HTMLElement;
+  const renderMany = () => render(<SpecList specs={MANY} onOpen={vi.fn()} />);
+
+  it("根容器為填滿高度 flex 直欄；清單容器內部捲動；換頁控制列在捲動容器外沉底", () => {
+    const { container } = renderMany();
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain("h-full");
+    expect(root.className).toContain("flex-col");
+    const scroll = scrollEl();
+    expect(scroll).toBeTruthy();
+    expect(scroll.className).toContain("overflow-y-auto");
+    expect(scroll.className).toContain("flex-1");
+    expect(scroll.className).toContain("min-h-0");
+    // 換頁控制列是捲動容器的手足（直欄末端），不被清單內容捲走。
+    const nextBtn = screen.getByRole("button", { name: "下一頁" });
+    expect(scroll.contains(nextBtn)).toBe(false);
+    expect(scroll.parentElement!.contains(nextBtn)).toBe(true);
+  });
+
+  it("換頁後內部捲動容器捲回頂部", () => {
+    renderMany();
+    scrollEl().scrollTop = 150;
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(scrollEl().scrollTop).toBe(0);
+  });
+});

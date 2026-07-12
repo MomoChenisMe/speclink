@@ -176,13 +176,18 @@ const COUNT_PILL_CLS =
  * 各帶過濾後筆數徽章；兩節皆為卡片清單、點卡開抽屜、無行內展開；搜尋同時過濾
  * 兩節、兩子頁籤頁碼互相獨立（spec「已封存頁含討論節」「清單最新在前與換頁瀏覽」）。
  * 清單最新在前：封存變更依 datedName 字典序降冪、封存討論依 created 降冪同日
- * slug 升冪；archivedDiscussions 缺席（向後相容路徑）時子頁籤列缺席。 */
+ * slug 升冪；archivedDiscussions 缺席（向後相容路徑）時子頁籤列缺席。
+ * 版面填滿視窗高度：搜尋框與子頁籤列固定頂部、卡片清單於內部容器捲動、
+ * 換頁控制列沉底常駐（不捲動即可換頁）。 */
 export function ArchivedList({ archived, query, onQuery, archivedDiscussions, onOpen }: ArchivedListProps) {
   const { t } = useI18n();
   // 兩子頁籤頁碼互相獨立；以 min(page, pageCount) 鉗制派生，清單縮短不停在越界頁。
   const [changeRawPage, setChangeRawPage] = useState(1);
   const [discRawPage, setDiscRawPage] = useState(1);
-  const topRef = useRef<HTMLDivElement>(null);
+  // 填滿高度版面：卡片清單於內部容器捲動、換頁控制列沉底常駐，兩子頁籤各自
+  // 持有捲動容器 ref 供換頁歸位（spec「清單最新在前與換頁瀏覽」）。
+  const changeScrollRef = useRef<HTMLDivElement>(null);
+  const discScrollRef = useRef<HTMLDivElement>(null);
 
   // 搜尋字串變更（query 為外部受控 prop）：兩側頁碼皆回第 1 頁。
   useEffect(() => {
@@ -217,12 +222,14 @@ export function ArchivedList({ archived, query, onQuery, archivedDiscussions, on
   const discPage = Math.min(discRawPage, discPageCount);
   const discItems = discussions.slice((discPage - 1) * PAGE_SIZE, discPage * PAGE_SIZE);
 
-  // jsdom 未實作 scrollIntoView——選擇性呼叫，真實視窗照常捲回清單頂。
-  const scrollTop = () => topRef.current?.scrollIntoView?.({ block: "start" });
+  // 換頁後內部捲動容器捲回頂部（清單自己捲、頁面不捲）。
+  const resetScroll = (ref: React.RefObject<HTMLDivElement | null>) => {
+    if (ref.current) ref.current.scrollTop = 0;
+  };
 
   const changesPane = (
     <>
-      <div className="flex flex-col gap-2.5">
+      <div ref={changeScrollRef} data-list-scroll className="flex flex-1 min-h-0 flex-col gap-2.5 overflow-y-auto">
         {filtered.length === 0 ? (
           <div className="text-muted-foreground text-sm py-8 text-center">{t("archived.noChanges")}</div>
         ) : (
@@ -234,7 +241,7 @@ export function ArchivedList({ archived, query, onQuery, archivedDiscussions, on
         pageCount={changePageCount}
         onPage={(n) => {
           setChangeRawPage(n);
-          scrollTop();
+          resetScroll(changeScrollRef);
         }}
       />
     </>
@@ -242,10 +249,10 @@ export function ArchivedList({ archived, query, onQuery, archivedDiscussions, on
 
   return (
     <TooltipProvider>
-      <div ref={topRef} className="flex flex-col gap-3 max-w-3xl mx-auto w-full">
+      <div className="flex h-full min-h-0 flex-col gap-3 max-w-3xl mx-auto w-full">
         <Input placeholder={t("archived.searchPlaceholder")} value={query} onChange={(e) => onQuery(e.target.value)} />
         {showDiscussions ? (
-          <Tabs defaultValue="changes" className="flex flex-col gap-3">
+          <Tabs defaultValue="changes" className="flex flex-1 min-h-0 flex-col gap-3">
             <TabsList>
               <TabsTrigger value="changes">
                 {t("archived.changesHeading")}
@@ -256,11 +263,11 @@ export function ArchivedList({ archived, query, onQuery, archivedDiscussions, on
                 <span className={COUNT_PILL_CLS}>{discussions.length}</span>
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="changes" className="flex flex-col gap-3">
+            <TabsContent value="changes" className="flex flex-1 min-h-0 flex-col gap-3">
               {changesPane}
             </TabsContent>
-            <TabsContent value="discussions" className="flex flex-col gap-3">
-              <div className="flex flex-col gap-2.5">
+            <TabsContent value="discussions" className="flex flex-1 min-h-0 flex-col gap-3">
+              <div ref={discScrollRef} data-list-scroll className="flex flex-1 min-h-0 flex-col gap-2.5 overflow-y-auto">
                 {discussions.length === 0 ? (
                   <div className="text-muted-foreground text-sm py-8 text-center">{t("archived.noDiscussions")}</div>
                 ) : (
@@ -272,7 +279,7 @@ export function ArchivedList({ archived, query, onQuery, archivedDiscussions, on
                 pageCount={discPageCount}
                 onPage={(n) => {
                   setDiscRawPage(n);
-                  scrollTop();
+                  resetScroll(discScrollRef);
                 }}
               />
             </TabsContent>

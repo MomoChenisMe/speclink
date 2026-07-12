@@ -310,3 +310,84 @@ describe("ArchivedList（子頁籤、排序與換頁）", () => {
     expect(screen.getByText("c-01")).toBeTruthy();
   });
 });
+
+// spec 需求「清單最新在前與換頁瀏覽」（填滿高度增補）：版面填滿視窗高度、
+// 卡片清單於內部容器捲動、換頁控制列沉底常駐（不捲動即可換頁）、換頁後
+// 內部捲動容器捲回頂部。
+describe("ArchivedList（填滿高度版面與換頁控制列沉底）", () => {
+  const mkChange = (datedName: string): ArchivedItem => ({
+    datedName,
+    date: datedName.slice(0, 10),
+    name: datedName.slice(11),
+    specCount: 0,
+    createdBy: null,
+    fromDiscussions: [],
+  });
+  const mkDisc = (slug: string, created: string): DiscussionItem => ({
+    slug,
+    topic: `topic ${slug}`,
+    status: "promoted",
+    rounds: 1,
+    created,
+    promotedTo: [],
+  });
+  // 兩側各 21 筆（兩頁）使換頁控制列出現。
+  const MANY_CHANGES = Array.from({ length: 21 }, (_, i) =>
+    mkChange(`2026-06-${String(22 - (i + 1)).padStart(2, "0")}-c-${String(i + 1).padStart(2, "0")}`),
+  );
+  const MANY_DISCS = Array.from({ length: 21 }, (_, i) =>
+    mkDisc(`t-${String(i + 1).padStart(2, "0")}`, `2026-05-${String(22 - (i + 1)).padStart(2, "0")}`),
+  );
+  const renderMany = (over: Record<string, unknown> = {}) =>
+    render(
+      <ArchivedList
+        archived={MANY_CHANGES}
+        query=""
+        onQuery={() => {}}
+        archivedDiscussions={MANY_DISCS}
+        onOpen={vi.fn()}
+        {...(over as object)}
+      />,
+    );
+  const scrollEl = () => document.querySelector("[data-list-scroll]") as HTMLElement;
+
+  it("根容器為填滿高度 flex 直欄；清單容器內部捲動；換頁控制列在捲動容器外沉底", () => {
+    const { container } = renderMany();
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain("h-full");
+    expect(root.className).toContain("flex-col");
+    const scroll = scrollEl();
+    expect(scroll).toBeTruthy();
+    expect(scroll.className).toContain("overflow-y-auto");
+    expect(scroll.className).toContain("flex-1");
+    expect(scroll.className).toContain("min-h-0");
+    // 換頁控制列是捲動容器的手足（直欄末端），不被清單內容捲走。
+    const nextBtn = screen.getByRole("button", { name: "下一頁" });
+    expect(scroll.contains(nextBtn)).toBe(false);
+    expect(scroll.parentElement!.contains(nextBtn)).toBe(true);
+  });
+
+  it("換頁後內部捲動容器捲回頂部（兩子頁籤各自歸位）", () => {
+    renderMany();
+    // 變更子頁籤：模擬捲到中段後換頁。
+    scrollEl().scrollTop = 150;
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(scrollEl().scrollTop).toBe(0);
+    // 討論子頁籤：自有捲動容器，同樣換頁歸位。
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /已封存的討論/ }));
+    scrollEl().scrollTop = 150;
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(scrollEl().scrollTop).toBe(0);
+  });
+
+  it("無子頁籤相容路徑（archivedDiscussions 未提供）同樣填滿高度且清單內部捲動", () => {
+    const { container } = renderMany({ archivedDiscussions: undefined });
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain("h-full");
+    const scroll = scrollEl();
+    expect(scroll).toBeTruthy();
+    expect(scroll.className).toContain("overflow-y-auto");
+    const nextBtn = screen.getByRole("button", { name: "下一頁" });
+    expect(scroll.contains(nextBtn)).toBe(false);
+  });
+});
