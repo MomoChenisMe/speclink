@@ -54,7 +54,36 @@ impl From<BridgeFailure> for DispatchError {
     }
 }
 
+impl From<core::command::CommandError> for DispatchError {
+    fn from(e: core::command::CommandError) -> DispatchError {
+        // A store-bridge failure keeps its JS code and method-name prefix —
+        // that taxonomy belongs to the envelope layer, not the command layer.
+        if let Some(f) = e
+            .source
+            .as_ref()
+            .and_then(|s| s.downcast_ref::<BridgeFailure>())
+        {
+            return DispatchError::from(f.clone());
+        }
+        DispatchError::new(e.code.as_str(), e.message)
+    }
+}
+
 type DispatchResult = std::result::Result<serde_json::Value, DispatchError>;
+
+/// Route a typed command through the engine runtime against this backend.
+/// Events are not surfaced through dispatch (yet) — the envelope shape is
+/// frozen; they will ride the outbox once event persistence lands.
+fn run_engine(
+    backend: &Backend,
+    cmd: core::command::Command,
+) -> std::result::Result<core::command::CommandOutcome, DispatchError> {
+    let store = backend.store();
+    let ws = backend.workspace();
+    let (outcome, _events) =
+        core::command::execute(store.as_ref(), ws.as_ref(), cmd).map_err(DispatchError::from)?;
+    Ok(outcome)
+}
 
 /// Storage assembly of an engine instance.
 enum Backend {
@@ -210,49 +239,6 @@ fn parse_argv<'a>(
     Ok(out)
 }
 
-/// Resolve a change like the CLI: explicit name → lookup; otherwise auto-select
-/// the only active change, or fail listing candidates (most recently modified first).
-fn resolve_change(
-    store: &dyn Store,
-    name: Option<&str>,
-    specify: &str,
-) -> std::result::Result<core::model::Change, DispatchError> {
-    if let Some(n) = name {
-        return core::model::find_change(store, n)
-            .ok_or_else(|| DispatchError::new("not_found", format!("Change '{n}' not found.")));
-    }
-    let mut changes = core::model::list_changes(store);
-    match changes.len() {
-        0 => Err(DispatchError::new(
-            "not_found",
-            "No active changes. Create one with: speclink new change <name>",
-        )),
-        1 => Ok(changes.remove(0)),
-        _ => {
-            core::listing::sort_changes(store, &mut changes, "modified");
-            let names: Vec<&str> = changes.iter().map(|c| c.name.as_str()).collect();
-            Err(DispatchError::new(
-                "invalid_argv",
-                format!("Multiple changes found. {specify} {}", names.join(", ")),
-            ))
-        }
-    }
-}
-
-fn resolve_schema(
-    ws: Option<&core::workspace::Workspace>,
-    name: &str,
-) -> std::result::Result<core::schema::Schema, DispatchError> {
-    match core::schema::resolve_with(ws, name) {
-        Some(Ok(s)) => Ok(s),
-        Some(Err(e)) => Err(DispatchError::new("error", e)),
-        None => Err(DispatchError::new(
-            "not_found",
-            core::schema::not_found_msg(name),
-        )),
-    }
-}
-
 fn run_dispatch(backend: &Backend, argv: &[String], stdin: Option<&str>) -> DispatchResult {
     let Some(verb) = argv.first().map(|s| s.as_str()) else {
         return Err(DispatchError::new(
@@ -276,23 +262,29 @@ fn run_dispatch(backend: &Backend, argv: &[String], stdin: Option<&str>) -> Disp
 /// `list [--specs] [--changes] [--sort <key>]` — always the `--json` shape.
 fn verb_list(backend: &Backend, args: &[String]) -> DispatchResult {
     let a = parse_argv(args, &["sort"])?;
-    let store = backend.store();
-    let store: &dyn Store = store.as_ref();
-    let specs = a.flags.contains("specs");
-    let changes_flag = a.flags.contains("changes");
-    if specs && !changes_flag {
-        return Ok(serde_json::json!({ "specs": core::listing::specs_json_items(store) }));
+    let outcome = run_engine(
+        backend,
+        core::command::Command::List {
+            sort: a.options.get("sort").copied().unwrap_or("modified").to_string(),
+            specs: a.flags.contains("specs"),
+            changes: a.flags.contains("changes"),
+        },
+    )?;
+    let core::command::CommandOutcome::List(list) = outcome else {
+        unreachable!("list command yields a list outcome");
+    };
+    let err = |e: serde_json::Error| DispatchError::new("error", format!("{e}"));
+    match (list.changes, list.specs) {
+        (None, Some(specs)) => Ok(serde_json::json!({ "specs": specs })),
+        (Some(items), Some(specs)) => Ok(serde_json::json!({
+            "changes": serde_json::to_value(items).map_err(err)?,
+            "specs": specs,
+        })),
+        (Some(items), None) => Ok(serde_json::json!({
+            "changes": serde_json::to_value(items).map_err(err)?,
+        })),
+        (None, None) => unreachable!("list yields at least one section"),
     }
-    let mut changes = core::model::list_changes(store);
-    core::listing::sort_changes(store, &mut changes, a.options.get("sort").copied().unwrap_or("modified"));
-    let items = core::listing::changes_json(store, &changes);
-    if specs {
-        return Ok(serde_json::json!({
-            "changes": items,
-            "specs": core::listing::specs_json_items(store),
-        }));
-    }
-    Ok(serde_json::json!({ "changes": items }))
 }
 
 /// `new change <name> …` / `new artifact <type> [capability] …` — stdin comes
@@ -310,132 +302,71 @@ fn verb_new(backend: &Backend, args: &[String], stdin: Option<&str>) -> Dispatch
 
 fn verb_new_artifact(backend: &Backend, args: &[String], stdin: Option<&str>) -> DispatchResult {
     let a = parse_argv(args, &["change"])?;
-    let store = backend.store();
-    let store: &dyn Store = store.as_ref();
     let Some(kind) = a.positionals.first().copied() else {
         return Err(DispatchError::new(
             "invalid_argv",
             "new artifact requires a type: proposal, design, tasks, spec",
         ));
     };
-    let capability = a.positionals.get(1).copied();
-    let type_ok = ["proposal", "design", "tasks", "spec"].contains(&kind);
-    let type_err = || {
-        DispatchError::new(
-            "invalid_argv",
-            format!("Unknown artifact type '{kind}'. Valid types: proposal, design, tasks, spec"),
-        )
-    };
-    // CLI parity: with an explicit --change, validate the type before existence;
-    // when auto-detecting, resolve the change first. Change-not-found without
-    // a trailing period, matching the CLI.
-    let change = match a.options.get("change").copied() {
-        Some(name) => {
-            if !type_ok {
-                return Err(type_err());
-            }
-            core::model::find_change(store, name).ok_or_else(|| {
-                DispatchError::new("not_found", format!("Change '{name}' not found"))
-            })?
-        }
-        None => {
-            let c = resolve_change(store, None, "Use --change to specify one:")?;
-            if !type_ok {
-                return Err(type_err());
-            }
-            c
-        }
-    };
-    // Best-effort schema resolution: an unresolvable/broken schema still
-    // creates the artifact (empty template), matching the CLI.
-    let ws = backend.workspace();
-    let schema = match core::schema::resolve_with(ws.as_ref(), &change.meta.schema_name()) {
-        Some(Ok(s)) => s,
-        _ => core::schema::Schema {
-            name: change.meta.schema_name(),
-            display_name: change.meta.schema_name(),
-            description: None,
-            source: "project".to_string(),
-            artifacts: Vec::new(),
-            apply_requires: Vec::new(),
-            apply_tracks: None,
-            apply_instruction: None,
-        },
-    };
     // The CLI's `--stdin` content arrives as dispatch's second parameter.
     let content = if a.flags.contains("stdin") {
-        Some(stdin.unwrap_or_default())
+        Some(stdin.unwrap_or_default().to_string())
     } else {
         None
     };
-    let had_content = content.is_some();
-    let (_artifact_id, path) = core::newcmd::new_artifact(
-        store,
-        &change,
-        &schema,
-        kind,
-        capability,
-        content,
-        a.flags.contains("force"),
+    let outcome = run_engine(
+        backend,
+        core::command::Command::NewArtifact {
+            kind: kind.to_string(),
+            capability: a.positionals.get(1).map(|s| s.to_string()),
+            change: a.options.get("change").map(|s| s.to_string()),
+            content,
+            force: a.flags.contains("force"),
+        },
     )?;
+    let core::command::CommandOutcome::NewArtifact(o) = outcome else {
+        unreachable!("new artifact yields a new-artifact outcome");
+    };
     Ok(serde_json::json!({
         "artifact": kind,
-        "change": change.name,
-        "path": path.to_string_lossy(),
+        "change": o.change,
+        "path": o.path.to_string_lossy(),
         "status": "created",
-        "validated": had_content,
+        "validated": o.had_content,
         "warnings": [],
     }))
 }
 
 fn verb_new_change(backend: &Backend, args: &[String]) -> DispatchResult {
     let a = parse_argv(args, &["description", "schema", "agent", "from-discussion"])?;
-    let store = backend.store();
-    let store: &dyn Store = store.as_ref();
     let Some(name) = a.positionals.first().copied() else {
         return Err(DispatchError::new(
             "invalid_argv",
             "new change requires a name (kebab-case)",
         ));
     };
-    let schema = match a.options.get("schema") {
-        Some(s) => (*s).to_string(),
-        // Fail-closed: an unparseable workflow config rejects the dispatch
-        // (invalid_config) instead of silently running with the default schema.
-        None => core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())
-            .map_err(|e| DispatchError::new("invalid_config", e.to_string()))?
-            .schema_name(),
-    };
-    let from_discussion = a.options.get("from-discussion").copied();
-    if let Some(slug) = from_discussion {
-        if core::discuss::info(store, slug).is_none() {
-            return Err(DispatchError::new(
-                "not_found",
-                format!("discussion '{slug}' not found — run `speclink discuss new` first"),
-            ));
-        }
-    }
-    // A host store has no local workspace; the synthetic one only skips the
-    // git-identity lookup (`created_by`) inside new_change.
-    let ws = backend.workspace().unwrap_or(core::workspace::Workspace {
-        root: PathBuf::new(),
-        spec_dir_name: "openspec".to_string(),
-    });
-    let dir = core::newcmd::new_change(
-        &ws,
-        store,
-        name,
-        a.options.get("description").copied(),
-        &schema,
-        a.options.get("agent").copied(),
-        from_discussion,
+    // Default-schema fail-closed, from_discussion guard, and mark_promoted all
+    // live in the runtime — this layer only shapes the envelope.
+    let outcome = run_engine(
+        backend,
+        core::command::Command::NewChange {
+            name: name.to_string(),
+            description: a.options.get("description").map(|s| s.to_string()),
+            schema: a.options.get("schema").map(|s| s.to_string()),
+            agent: a.options.get("agent").map(|s| s.to_string()),
+            from_discussion: a.options.get("from-discussion").map(|s| s.to_string()),
+        },
     )?;
+    let core::command::CommandOutcome::NewChange(o) = outcome else {
+        unreachable!("new change yields a new-change outcome");
+    };
     let mut output = format!(
-        "✓ Created change: {name}\n  Path: {}\n  Schema: {schema}",
-        dir.to_string_lossy()
+        "✓ Created change: {}\n  Path: {}\n  Schema: {}",
+        o.name,
+        o.dir.to_string_lossy(),
+        o.schema
     );
-    if let Some(slug) = from_discussion {
-        core::discuss::mark_promoted(store, slug, name)?;
+    if let Some(slug) = a.options.get("from-discussion") {
         output.push_str(&format!("\n  From discussion: {slug}"));
     }
     // `new change` has no --json form in the CLI → the {output} shape.
@@ -454,10 +385,14 @@ fn verb_claim(backend: &Backend, args: &[String]) -> DispatchResult {
         ));
     };
     match backend {
-        Backend::Fs { .. } => Err(DispatchError::new(
-            "error",
-            "claim requires a remote store — this project uses the local fs store",
-        )),
+        // The plain-store refusal comes from the runtime's Claim branch (the
+        // frozen text shared with the CLI).
+        Backend::Fs { .. } => {
+            run_engine(backend, core::command::Command::Claim { name: name.to_string() })?;
+            unreachable!("claim on a plain store always refuses");
+        }
+        // Ownership adjudication is a host-store capability — the optional
+        // `claim` bridge method stays at the envelope layer (決策三).
         Backend::Js(bridge) => match bridge.claim(name) {
             Ok(v) => Ok(v),
             Err(f) if f.code.as_deref() == Some("__missing__") => Err(DispatchError::new(
@@ -472,21 +407,25 @@ fn verb_claim(backend: &Backend, args: &[String]) -> DispatchResult {
 /// `status [--change <name>] [--schema <name>]` — the `--json` report.
 fn verb_status(backend: &Backend, args: &[String]) -> DispatchResult {
     let a = parse_argv(args, &["change", "schema"])?;
-    let store = backend.store();
-    let store: &dyn Store = store.as_ref();
-    let ws = backend.workspace();
-    // CLI parity: with no name and no changes at all, status is informational, not an error.
-    if !a.options.contains_key("change") && core::model::list_changes(store).is_empty() {
-        return Ok(serde_json::json!({
-            "output": "No active changes. Create one with: speclink new change <name>"
-        }));
+    // CLI parity: with no name and no changes at all, status is informational,
+    // not an error (envelope-level presentation, same as the CLI's exit-0 line).
+    if !a.options.contains_key("change") {
+        let store = backend.store();
+        if core::model::list_changes(store.as_ref()).is_empty() {
+            return Ok(serde_json::json!({
+                "output": "No active changes. Create one with: speclink new change <name>"
+            }));
+        }
     }
-    let change = resolve_change(store, a.options.get("change").copied(), "Use --change to specify one:")?;
-    let schema_name = match a.options.get("schema") {
-        Some(s) => (*s).to_string(),
-        None => change.meta.schema_name(),
+    let outcome = run_engine(
+        backend,
+        core::command::Command::Status {
+            change: a.options.get("change").map(|s| s.to_string()),
+            schema: a.options.get("schema").map(|s| s.to_string()),
+        },
+    )?;
+    let core::command::CommandOutcome::Status(report) = outcome else {
+        unreachable!("status command yields a status outcome");
     };
-    let schema = resolve_schema(ws.as_ref(), &schema_name)?;
-    let report = core::status::build(store, &change, &schema);
     serde_json::to_value(&report).map_err(|e| DispatchError::new("error", format!("{e}")))
 }
