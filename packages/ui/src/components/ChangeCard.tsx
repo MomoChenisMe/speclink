@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, Check, Copy, FileText, MessageSquareText, RefreshCw } from "lucide-react";
+import { AlertTriangle, Archive, Check, Copy, FileText, MessageSquareText, RefreshCw } from "lucide-react";
 
 import type { ChangeItem, SearchHit } from "../adapter";
 import { useI18n } from "../i18n";
@@ -99,6 +99,20 @@ export function ChangeCard({
             </TooltipTrigger>
             <TooltipContent>
               {t("card.restaleTitle").replace("{name}", (change.restaleFrom ?? []).join(", "))}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {/* 最小 invalid 標記（design 決策四）：metadata 損壞卡照常顯示，
+            操作由引擎錯誤拒絕；tooltip 載解析原因供修復。 */}
+        {change.metaError && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span aria-label={t("card.invalidMeta")} className="shrink-0 text-destructive">
+                <AlertTriangle className="h-3.5 w-3.5" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t("card.invalidMetaTitle").replace("{reason}", change.metaError)}
             </TooltipContent>
           </Tooltip>
         )}

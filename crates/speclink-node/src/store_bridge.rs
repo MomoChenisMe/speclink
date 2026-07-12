@@ -281,6 +281,9 @@ fn change_from_value(v: &serde_json::Value) -> Option<Change> {
             started_with: get("startedWith"),
             board_rank: get("boardRank"),
         },
+        // The host hands structured meta (already parsed on the JS side) — a
+        // corrupt raw document can't reach this constructor.
+        meta_error: None,
     })
 }
 

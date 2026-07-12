@@ -405,7 +405,11 @@ fn stamp_restale(store: &dyn Store, slug: &str, discussion_text: &str) -> Result
         let Some(mut meta) = store.read_change_meta(change) else {
             continue; // archived or gone — not an active change, skip
         };
-        let parsed = crate::model::ChangeMeta::from_text(Some(&meta));
+        // 壞 metadata 卡跳過（沿 archived/gone 的 skip 原則）：不得對壞檔
+        // append，也不得使 conclude 因單一壞檔中止——使用者修檔後重新 conclude。
+        let Ok(parsed) = crate::model::ChangeMeta::from_text(Some(&meta)) else {
+            continue;
+        };
         let existing = parsed.restale_from.as_deref().map(str::trim).unwrap_or("");
         if parsed.restale_from().iter().any(|s| s == slug) {
             // already flagged for this slug — idempotent, skip the change-side write
@@ -439,7 +443,11 @@ fn clear_restale(store: &dyn Store, change: &str, slug: &str) -> Result<()> {
     };
     // Change meta is bare YAML (no `---` frontmatter fence), so parse via ChangeMeta
     // like `link`/`stamp_restale` do — `frontmatter_value` only reads discussion docs.
-    let parsed = crate::model::ChangeMeta::from_text(Some(&meta));
+    // 深度防禦：唯一呼叫者 seal 已對壞 metadata 守門，此處到達即應可解析；
+    // 萬一未來新增未守門的呼叫者，fail closed 而非靜默疊寫。
+    let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
+        crate::model::MetaError { change: change.to_string(), reason }
+    })?;
     let existing = match parsed.restale_from.as_deref().map(str::trim) {
         Some(e) if !e.is_empty() => e.to_string(),
         _ => return Ok(()), // no restale_from — nothing to clear
@@ -548,7 +556,11 @@ pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     let Some(mut meta) = store.read_change_meta(change) else {
         bail!("Change '{change}' not found.");
     };
-    let parsed = crate::model::ChangeMeta::from_text(Some(&meta));
+    // Fail-closed gate: corrupt metadata must not read as "no source
+    // discussion" and take the from_discussion append.
+    let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
+        crate::model::MetaError { change: change.to_string(), reason }
+    })?;
     let existing = parsed.from_discussion.as_deref().map(str::trim).unwrap_or("");
     if parsed.from_discussions().iter().any(|s| s == slug) {
         // chain already forged for this slug — idempotent, skip the change-side write
@@ -588,7 +600,12 @@ pub fn seal(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     let Some(meta) = store.read_change_meta(change) else {
         bail!("Change '{change}' not found.");
     };
-    if !crate::model::ChangeMeta::from_text(Some(&meta))
+    // Fail-closed gate: a corrupt document must report itself, not a missing
+    // from_discussion chain.
+    let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
+        crate::model::MetaError { change: change.to_string(), reason }
+    })?;
+    if !parsed
         .from_discussions()
         .iter()
         .any(|s| s == slug)
@@ -1288,6 +1305,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn link_rejects_corrupt_change_meta_without_writes() {
+        // spec「link 對壞 metadata 拒絕且兩側皆不寫」：壞檔不得被解讀為
+        // 「無 from_discussion 鏈」而追加行——兩側檔案逐位元不變。
+        const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
+        let doc = concluded_doc("alpha-search", "Alpha search", "x");
+        let store = TestStore::with_live_discussion("alpha-search", &doc);
+        store.metas.borrow_mut().insert("broken-cut".into(), BAD.into());
+        let err = super::link(&store, "alpha-search", "broken-cut").unwrap_err();
+        assert!(
+            err.to_string().contains("openspec/changes/broken-cut/.openspec.yaml"),
+            "error must name the metadata file: {err}"
+        );
+        assert_eq!(store.meta("broken-cut"), BAD, "change meta byte-identical");
+        assert_eq!(store.discussion("alpha-search"), doc, "discussion byte-identical");
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
     // --- seal flow（spec「內容落地以 seal 動詞標記已轉出」） ---
 
     #[test]
@@ -1317,6 +1352,28 @@ mod tests {
         assert!(err.to_string().contains("not linked"), "err: {err}");
         assert_eq!(store.discussion("alpha-search"), doc, "discussion untouched");
         assert_eq!(store.meta("cut"), "schema: spec-driven\n", "change meta untouched");
+    }
+
+    #[test]
+    fn seal_rejects_corrupt_change_meta_not_misreporting_the_chain() {
+        // spec「seal 對壞 metadata 拒絕且不誤報鏈缺失」：錯誤指出 metadata
+        // 損壞（而非 from_discussion 不含該 slug）；兩側檔案逐位元不變。
+        const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
+        let doc = concluded_doc("alpha-search", "Alpha search", "x");
+        let store = TestStore::with_live_discussion("alpha-search", &doc);
+        store.metas.borrow_mut().insert("broken-cut".into(), BAD.into());
+        let err = super::seal(&store, "alpha-search", "broken-cut").unwrap_err();
+        assert!(
+            err.to_string().contains("openspec/changes/broken-cut/.openspec.yaml"),
+            "error must name the metadata file: {err}"
+        );
+        assert!(
+            !err.to_string().contains("not linked"),
+            "must not misreport a missing chain: {err}"
+        );
+        assert_eq!(store.meta("broken-cut"), BAD, "change meta byte-identical");
+        assert_eq!(store.discussion("alpha-search"), doc, "discussion byte-identical");
+        assert_eq!(*store.meta_writes.borrow(), 0);
     }
 
     #[test]
@@ -1559,6 +1616,24 @@ mod tests {
             "schema: spec-driven\n",
             "archived meta untouched"
         );
+    }
+
+    #[test]
+    fn conclude_restale_skips_corrupt_meta_change_without_writing() {
+        // fail-closed 掃尾：promoted_to 指向的 change metadata 損壞時跳過該卡
+        // （沿 archived/gone 的 skip 原則——單一壞檔不得使 conclude 中止），
+        // 壞檔逐位元不變、其餘 active change 照常蓋章。
+        const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
+        let store = TestStore::with_live_discussion(
+            "alpha",
+            &promoted_doc("alpha", "Alpha", "cut-a, broken-b", "old"),
+        );
+        store.metas.borrow_mut().insert("cut-a".to_string(), "schema: spec-driven\n".to_string());
+        store.metas.borrow_mut().insert("broken-b".to_string(), BAD.to_string());
+        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap();
+        assert_eq!(flagged, vec!["cut-a".to_string()], "corrupt change is not flagged");
+        assert!(store.meta("cut-a").contains("restale_from: alpha"));
+        assert_eq!(store.meta("broken-b"), BAD, "corrupt meta must not be appended to");
     }
 
     #[test]

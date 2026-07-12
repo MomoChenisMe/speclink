@@ -78,7 +78,7 @@ fn list_changes_excludes_archive_and_sorts_by_name() {
 }
 
 #[test]
-fn change_meta_is_parsed_and_corrupt_yaml_falls_back_to_default() {
+fn change_meta_is_parsed_and_corrupt_yaml_carries_meta_error_with_default_meta() {
     let root = TempRoot::new("meta");
     root.write(
         "openspec/changes/good/.openspec.yaml",
@@ -93,14 +93,23 @@ fn change_meta_is_parsed_and_corrupt_yaml_falls_back_to_default() {
     assert_eq!(good.meta.schema.as_deref(), Some("custom-flow"));
     assert_eq!(good.meta.created.as_deref(), Some("2026-07-01"));
     assert_eq!(good.meta.schema_name(), "custom-flow");
+    assert!(good.meta_error.is_none());
 
+    // 壞檔 fail closed（design 決策一）：meta 以預設值承載讓 list 照常列出，
+    // meta_error 帶解析原因供守門與診斷。
     let broken = store.find_change("broken").unwrap();
     assert!(broken.meta.schema.is_none());
     assert_eq!(broken.meta.schema_name(), "spec-driven");
+    let reason = broken.meta_error.expect("corrupt YAML must carry the parse reason");
+    assert!(!reason.is_empty());
+    let names: Vec<String> = store.list_changes().into_iter().map(|c| c.name).collect();
+    assert_eq!(names, vec!["bare", "broken", "good"], "corrupt meta must not drop the change");
 
+    // 缺檔維持既有預設行為，無診斷。
     let bare = store.find_change("bare").unwrap();
     assert!(bare.meta.created.is_none());
     assert_eq!(bare.meta.schema_name(), "spec-driven");
+    assert!(bare.meta_error.is_none());
 }
 
 #[test]

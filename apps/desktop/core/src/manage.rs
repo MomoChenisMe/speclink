@@ -315,7 +315,13 @@ fn reorder_change(
         .find(|c| c.name == id)
         .ok_or_else(|| format!("change not found: {id}"))?;
     let stage = change_stage(store, dragged);
-    let column: Vec<_> = all.iter().filter(|c| change_stage(store, c) == stage).collect();
+    // 補章排除 invalid 卡（design 決策五）：壞 metadata 卡不列入「缺 rank」
+    // 清單、不觸發寫入（單一壞卡不得癱瘓整欄）；被拖卡本身若損壞，最終寫回
+    // 由 set_board_rank 的解析守門拒絕。
+    let column: Vec<_> = all
+        .iter()
+        .filter(|c| c.meta_error.is_none() && change_stage(store, c) == stage)
+        .collect();
     // 整欄補章（design D3）：欄內有缺 rank 卡 → 依顯示序等距派發，只涵蓋本欄。
     let ranks: std::collections::HashMap<&str, String> =
         if column.iter().any(|c| c.meta.board_rank.is_none()) {
@@ -1085,7 +1091,7 @@ mod tests {
     }
 
     fn rank_of(meta: &str) -> Option<String> {
-        speclink_core::model::ChangeMeta::from_text(Some(meta)).board_rank
+        speclink_core::model::ChangeMeta::from_text(Some(meta)).expect("meta parses").board_rank
     }
 
     #[test]
@@ -1150,6 +1156,48 @@ mod tests {
         assert!(meta_of(&fx, "a").starts_with(META_UNSTARTED));
     }
 
+    /// `.openspec.yaml` 存在但解析失敗的固定樣本（與 core 測試同款）。
+    const BAD_META: &str = ": : :\n\t bad yaml [unclosed\n";
+
+    #[test]
+    fn reorder_backfill_excludes_invalid_card_and_ranks_the_rest() {
+        // spec「補章排除 invalid 卡且不中止」：同欄含缺 rank 有效卡與壞 metadata
+        // 卡，觸發整欄補章——僅有效卡被寫入 board_rank，壞卡逐位元不變，
+        // 其餘補章照常完成（單一壞卡不得癱瘓整欄）。
+        let fx = crate::testfixture::FixtureRoot::new("r-invalid-backfill");
+        fx.add_change("a", META_UNSTARTED);
+        fx.add_change("b", META_UNSTARTED);
+        fx.add_change("broken", BAD_META); // 同欄（相同任務進度）但 metadata 損壞
+
+        reorder_card_at(fx.root(), "change", "b", None, Some("a"))
+            .expect("backfill must not die on the invalid card");
+
+        assert!(rank_of(&meta_of(&fx, "a")).is_some(), "valid card stamped");
+        assert!(rank_of(&meta_of(&fx, "b")).is_some(), "dragged card ranked");
+        assert_eq!(meta_of(&fx, "broken"), BAD_META, "invalid card must not be written");
+        let names = board_names(fx.root());
+        assert!(
+            names.contains(&"broken".to_string()),
+            "board keeps listing the invalid card: {names:?}"
+        );
+    }
+
+    #[test]
+    fn reorder_of_the_invalid_card_itself_is_refused() {
+        // spec「排序寫入對壞 metadata 拒絕」桌面端到端：拖壞卡本身 → 引擎
+        // 錯誤拒絕且檔案逐位元不變。
+        let fx = crate::testfixture::FixtureRoot::new("r-invalid-drag");
+        fx.add_change("a", META_UNSTARTED);
+        fx.add_change("broken", BAD_META);
+        let err = reorder_card_at(fx.root(), "change", "broken", Some("a"), None)
+            .expect_err("dragging the invalid card must be refused");
+        assert!(
+            err.contains("openspec/changes/broken/.openspec.yaml"),
+            "error must name the metadata file: {err}"
+        );
+        assert_eq!(meta_of(&fx, "broken"), BAD_META, "meta byte-identical");
+    }
+
     #[test]
     fn reorder_discussion_writes_single_frontmatter_file() {
         // 討論卡同語意：中點寫回單檔、鄰居不動。
@@ -1193,7 +1241,7 @@ mod tests {
         reorder_card_at(fx.root(), "change", "solo", Some("ghost-prev"), Some("ghost-next"))
             .expect("vanished neighbors must not fail");
         let meta = meta_of(&fx, "solo");
-        let parsed = speclink_core::model::ChangeMeta::from_text(Some(&meta));
+        let parsed = speclink_core::model::ChangeMeta::from_text(Some(&meta)).expect("meta parses");
         assert_eq!(parsed.schema.as_deref(), Some("spec-driven"), "meta must keep parsing");
         assert!(parsed.board_rank.is_some(), "card keeps a valid rank");
     }

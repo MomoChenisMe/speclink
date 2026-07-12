@@ -34,6 +34,11 @@ pub fn discard(
         bail!("Change '{change_name}' not found.");
     };
 
+    // Fail-closed gate before the started-work guard: corrupt metadata must not
+    // read as "not started" and let the delete through — even with --force (the
+    // user repairs the document first, then decides).
+    crate::model::require_valid_meta(&change)?;
+
     if !force && has_started_work(store, &change) {
         // Typed refusal: same frozen text, but the command layer classifies it
         // `refused` (needs --force) instead of a plain error.
@@ -171,6 +176,24 @@ mod tests {
         assert!(discard(&ghost_ws(), &store, "cut", false).is_err());
         assert!(store.change_exists("cut"), "change untouched");
         assert_eq!(store.discussion("d1"), doc, "discussion untouched — no unlink on a rejected discard");
+    }
+
+    #[test]
+    fn corrupt_meta_refuses_discard_with_and_without_force() {
+        // spec「discard 不得把壞 metadata 當未開工」＋「帶 --force 仍拒絕」：
+        // 壞檔今日被讀為未開工而放行刪除——必須改為拒絕且目錄完整保留。
+        const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
+        for force in [false, true] {
+            let store = store_with_tasks(BAD, "- [ ] 1.1 open\n");
+            let err = discard(&ghost_ws(), &store, "cut", force)
+                .expect_err("corrupt meta must refuse discard");
+            assert!(
+                err.to_string().contains("openspec/changes/cut/.openspec.yaml"),
+                "error must name the metadata file (force={force}): {err}"
+            );
+            assert!(store.change_exists("cut"), "change dir preserved (force={force})");
+            assert_eq!(store.meta("cut"), BAD, "meta byte-identical (force={force})");
+        }
     }
 
     #[test]

@@ -22,6 +22,11 @@ pub struct ListChangeJson {
     /// `list --json` output stays byte-identical to the Spectra-parity baseline.
     #[serde(rename = "restaleFrom", skip_serializing_if = "Vec::is_empty")]
     pub restale_from: Vec<String>,
+    /// Parse-failure reason when the change's `.openspec.yaml` is corrupt
+    /// (fail-closed diagnostic). Omitted when valid/absent so every existing
+    /// consumer's payload shape is untouched.
+    #[serde(rename = "metaError", skip_serializing_if = "Option::is_none")]
+    pub meta_error: Option<String>,
 }
 
 /// Order changes for listing (probed against Spectra):
@@ -117,6 +122,7 @@ pub fn changes_json(store: &dyn Store, changes: &[Change]) -> Vec<ListChangeJson
                 summary: proposal_summary(store, c),
                 total_tasks: total,
                 restale_from: c.meta.restale_from(),
+                meta_error: c.meta_error.clone(),
             }
         })
         .collect()

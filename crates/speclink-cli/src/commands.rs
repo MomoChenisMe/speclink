@@ -305,7 +305,14 @@ fn cmd_list(a: ListArgs) -> Result<()> {
         } else {
             format!(" — {}", c.summary)
         };
-        println!("  {} {}{marker}{}", color::cyan("•"), c.name, color::dim(&suffix));
+        // Fail-closed diagnostic (frozen marker text): only corrupt-metadata
+        // lines gain the trailing marker; valid lines stay byte-identical.
+        let invalid = if c.meta_error.is_some() {
+            format!(" {}", color::red("(invalid .openspec.yaml)"))
+        } else {
+            String::new()
+        };
+        println!("  {} {}{marker}{}{invalid}", color::cyan("•"), c.name, color::dim(&suffix));
     }
     if let Some(specs) = &list.specs {
         println!();

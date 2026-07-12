@@ -66,6 +66,9 @@ pub fn new_artifact(
     content: Option<&str>,
     force: bool,
 ) -> Result<(String, PathBuf)> {
+    // Fail-closed gate: corrupt metadata must not be read as the default
+    // schema and produce an artifact from its templates.
+    crate::model::require_valid_meta(change)?;
     let (artifact_id, rel) = resolve_output(kind, capability)?;
     if store.artifact_exists(&change.name, &rel) && !force {
         // The display path is joined component-by-component so the native

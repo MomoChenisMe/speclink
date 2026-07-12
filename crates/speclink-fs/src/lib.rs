@@ -38,9 +38,14 @@ impl FsStore {
 
     fn change_at(&self, name: &str, dir: PathBuf) -> Change {
         let meta_text = util::read_opt(&dir.join(".openspec.yaml"));
+        let (meta, meta_error) = match ChangeMeta::from_text(meta_text.as_deref()) {
+            Ok(meta) => (meta, None),
+            Err(reason) => (ChangeMeta::default(), Some(reason)),
+        };
         Change {
             name: name.to_string(),
-            meta: ChangeMeta::from_text(meta_text.as_deref()),
+            meta,
+            meta_error,
             dir,
         }
     }

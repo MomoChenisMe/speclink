@@ -87,6 +87,7 @@ fn remote_list(ctx: &RemoteCtx, a: &ListArgs) -> Result<()> {
                     .iter()
                     .filter_map(|v| v.as_str().map(str::to_string))
                     .collect(),
+                meta_error: c.get("metaError").and_then(|v| v.as_str()).map(str::to_string),
             })
             .collect();
         if a.specs {

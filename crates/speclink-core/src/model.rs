@@ -38,12 +38,14 @@ pub struct ChangeMeta {
 }
 
 impl ChangeMeta {
-    /// Parse a raw metadata document. A missing document or a parse error
-    /// yields the defaults (a corrupt `.openspec.yaml` never breaks listing).
-    pub fn from_text(text: Option<&str>) -> ChangeMeta {
+    /// Parse a raw metadata document. A missing (or empty/null) document yields
+    /// the defaults; a document that exists but cannot parse → `Err` with the
+    /// parser's reason (fail-closed, never defaults). Store implementations
+    /// carry that reason as [`Change::meta_error`] so listing never breaks.
+    pub fn from_text(text: Option<&str>) -> Result<ChangeMeta, String> {
         match text {
-            Some(s) => serde_yaml::from_str(s).unwrap_or_default(),
-            None => ChangeMeta::default(),
+            Some(s) => crate::config::parse_lenient_or_reason(s),
+            None => Ok(ChangeMeta::default()),
         }
     }
     pub fn schema_name(&self) -> String {
@@ -87,6 +89,58 @@ impl ChangeMeta {
     }
 }
 
+/// A change's `.openspec.yaml` exists but cannot be parsed. Fail-closed
+/// (design 決策二): every flow that reads or writes the change's metadata
+/// semantics refuses with this error instead of proceeding on defaults.
+/// Display mirrors [`crate::config::ConfigError`] (`invalid <path>: <reason>`);
+/// the command layer maps it to `invalid_config`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MetaError {
+    pub change: String,
+    /// Parse-failure reason as reported by the YAML parser.
+    pub reason: String,
+}
+
+impl MetaError {
+    /// Workspace-relative display path of the broken metadata document.
+    pub fn file(&self) -> String {
+        format!("openspec/changes/{}/.openspec.yaml", self.change)
+    }
+}
+
+impl std::fmt::Display for MetaError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid {}: {}", self.file(), self.reason)
+    }
+}
+
+impl std::error::Error for MetaError {}
+
+/// The fail-closed gate shared by every flow that holds a resolved [`Change`]:
+/// corrupt metadata refuses with [`MetaError`], valid or absent metadata passes.
+pub fn require_valid_meta(change: &Change) -> Result<(), MetaError> {
+    match &change.meta_error {
+        Some(reason) => Err(MetaError {
+            change: change.name.clone(),
+            reason: reason.clone(),
+        }),
+        None => Ok(()),
+    }
+}
+
+/// Text-level twin of [`require_valid_meta`] for flows that operate on the raw
+/// metadata document (text surgery paths): existing-but-unparsable text refuses
+/// with [`MetaError`]; missing text keeps its default semantics and passes.
+pub fn check_meta_text(change: &str, text: Option<&str>) -> Result<(), MetaError> {
+    match ChangeMeta::from_text(text) {
+        Ok(_) => Ok(()),
+        Err(reason) => Err(MetaError {
+            change: change.to_string(),
+            reason,
+        }),
+    }
+}
+
 /// A discovered change.
 #[derive(Debug, Clone)]
 pub struct Change {
@@ -95,6 +149,11 @@ pub struct Change {
     /// human output; content access goes through the [`Store`]).
     pub dir: PathBuf,
     pub meta: ChangeMeta,
+    /// Parse-failure reason when `.openspec.yaml` exists but is corrupt — the
+    /// change is listed with default `meta` for display, and every verb that
+    /// needs metadata semantics must refuse (fail-closed). `None` = valid or
+    /// absent metadata.
+    pub meta_error: Option<String>,
 }
 
 /// List active changes, sorted by name.
@@ -117,6 +176,9 @@ pub fn set_board_rank(store: &dyn Store, name: &str, rank: &str) -> anyhow::Resu
     let Some(meta) = store.read_change_meta(name) else {
         anyhow::bail!("change not found: {name}");
     };
+    // Fail-closed gate（design 決策五）：文字手術前先解析——壞檔不得被當
+    // 「缺 rank」疊寫，拒絕並指名檔案。
+    check_meta_text(name, Some(&meta))?;
     let line = format!("board_rank: {rank}\n");
     let mut out = String::with_capacity(meta.len() + line.len());
     let mut replaced = false;
@@ -332,13 +394,42 @@ mod tests {
     use super::ChangeMeta;
     use crate::teststore::TestStore;
 
+    // --- from_text fail-closed（design 決策一：存在但解析失敗回 Err）---
+
+    #[test]
+    fn meta_from_text_bad_yaml_is_an_error_with_the_parse_reason() {
+        // spec「change metadata 損壞的跨入口處置」：存在但 YAML 解析失敗
+        // 不得靜默退回預設——回帶解析原因的錯誤。
+        for bad in [": : :\n", "schema: [unclosed\n", "schema:\n  - a\n - b\n"] {
+            let err = ChangeMeta::from_text(Some(bad))
+                .expect_err("corrupt YAML must fail closed");
+            assert!(!err.is_empty(), "parse reason must not be empty for {bad:?}");
+        }
+    }
+
+    #[test]
+    fn meta_from_text_missing_empty_and_absent_fields_give_defaults() {
+        // 向後相容不變：缺檔（None）、空／純註解文件與欄位缺席仍回預設。
+        let m = ChangeMeta::from_text(None).expect("missing document → defaults");
+        assert!(m.schema.is_none());
+        for text in ["", "   \n", "# comment only\n"] {
+            let m = ChangeMeta::from_text(Some(text))
+                .unwrap_or_else(|e| panic!("{text:?} must give defaults, got: {e}"));
+            assert!(m.schema.is_none());
+            assert_eq!(m.schema_name(), "spec-driven");
+        }
+        let m = ChangeMeta::from_text(Some("created: 2026-07-01\n")).expect("absent fields → defaults");
+        assert!(m.schema.is_none());
+        assert!(m.started_at.is_none());
+    }
+
     #[test]
     fn meta_parses_board_rank_and_absent_reads_as_none() {
         // 看板排序欄位（speclink 桌面延伸）：含 board_rank 的 meta 正常解析，
         // 舊 meta（無此欄位）讀為 None——排序回退現行規則。
-        let meta = ChangeMeta::from_text(Some("schema: spec-driven\nboard_rank: n\n"));
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\nboard_rank: n\n")).expect("meta parses");
         assert_eq!(meta.board_rank.as_deref(), Some("n"));
-        let old = ChangeMeta::from_text(Some("schema: spec-driven\ncreated: 2026-07-01\n"));
+        let old = ChangeMeta::from_text(Some("schema: spec-driven\ncreated: 2026-07-01\n")).expect("meta parses");
         assert!(old.board_rank.is_none());
     }
 
@@ -357,7 +448,7 @@ mod tests {
         );
         assert_eq!(&meta[STAMPED_META.len()..], "board_rank: n\n");
         assert_eq!(
-            ChangeMeta::from_text(Some(&meta)).board_rank.as_deref(),
+            ChangeMeta::from_text(Some(&meta)).expect("meta parses").board_rank.as_deref(),
             Some("n")
         );
     }
@@ -401,6 +492,21 @@ mod tests {
     }
 
     #[test]
+    fn set_board_rank_refuses_on_corrupt_meta_without_writing() {
+        // spec「排序寫入對壞 metadata 拒絕」：文字手術前先解析，壞檔回帶
+        // 檔案位置與原因的錯誤且零寫入。
+        const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
+        let store = TestStore::with_meta("demo", BAD);
+        let err = super::set_board_rank(&store, "demo", "n").unwrap_err();
+        assert!(
+            err.to_string().contains("openspec/changes/demo/.openspec.yaml"),
+            "error must name the metadata file: {err}"
+        );
+        assert_eq!(store.meta("demo"), BAD, "meta byte-identical");
+        assert_eq!(*store.meta_writes.borrow(), 0, "refusal must not write");
+    }
+
+    #[test]
     fn set_board_rank_errors_on_missing_change_and_unsafe_names() {
         // 不存在的 change 回明確錯誤（桌面以單行錯誤呈現，不靜默）；
         // 非單一路徑段名稱拒絕（沿 in-progress add 的同款防護）。
@@ -416,7 +522,7 @@ mod tests {
         // Backward compatibility: pre-migration documents (no started_*) keep
         // parsing without warnings and read as "not started".
         let old = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: Base Line <base@example.com>\n";
-        let meta = ChangeMeta::from_text(Some(old));
+        let meta = ChangeMeta::from_text(Some(old)).expect("meta parses");
         assert_eq!(meta.schema.as_deref(), Some("spec-driven"));
         assert!(meta.started_at.is_none());
         assert!(meta.started_by.is_none());
@@ -426,7 +532,7 @@ mod tests {
     #[test]
     fn meta_with_started_fields_parses_all_three_stations() {
         let text = "schema: spec-driven\ncreated: 2026-07-01\nstarted_at: 2026-07-03\nstarted_by: Worker <w@example.com>\nstarted_with: claude\n";
-        let meta = ChangeMeta::from_text(Some(text));
+        let meta = ChangeMeta::from_text(Some(text)).expect("meta parses");
         assert_eq!(meta.started_at.as_deref(), Some("2026-07-03"));
         assert_eq!(meta.started_by.as_deref(), Some("Worker <w@example.com>"));
         assert_eq!(meta.started_with.as_deref(), Some("claude"));
@@ -436,13 +542,13 @@ mod tests {
 
     #[test]
     fn from_discussions_absent_yields_empty() {
-        let meta = ChangeMeta::from_text(Some("schema: spec-driven\ncreated: 2026-07-01\n"));
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\ncreated: 2026-07-01\n")).expect("meta parses");
         assert!(meta.from_discussions().is_empty());
     }
 
     #[test]
     fn from_discussions_single_value() {
-        let meta = ChangeMeta::from_text(Some("schema: spec-driven\nfrom_discussion: alpha-search\n"));
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\nfrom_discussion: alpha-search\n")).expect("meta parses");
         assert_eq!(meta.from_discussions(), vec!["alpha-search".to_string()]);
     }
 
@@ -451,7 +557,7 @@ mod tests {
         // 逗號清單依 meta 順序切分、項目前後空白修剪（沿 promoted_to 同款）。
         let meta = ChangeMeta::from_text(Some(
             "schema: spec-driven\nfrom_discussion: alpha-search, beta-cache\n",
-        ));
+        )).expect("meta parses");
         assert_eq!(
             meta.from_discussions(),
             vec!["alpha-search".to_string(), "beta-cache".to_string()]
@@ -462,13 +568,13 @@ mod tests {
 
     #[test]
     fn restale_from_absent_yields_empty() {
-        let meta = ChangeMeta::from_text(Some("schema: spec-driven\ncreated: 2026-07-01\n"));
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\ncreated: 2026-07-01\n")).expect("meta parses");
         assert!(meta.restale_from().is_empty());
     }
 
     #[test]
     fn restale_from_single_value() {
-        let meta = ChangeMeta::from_text(Some("schema: spec-driven\nrestale_from: alpha-search\n"));
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\nrestale_from: alpha-search\n")).expect("meta parses");
         assert_eq!(meta.restale_from(), vec!["alpha-search".to_string()]);
     }
 
@@ -477,7 +583,7 @@ mod tests {
         // spec change-lifecycle Example：逗號多值 trim 後分割。
         let meta = ChangeMeta::from_text(Some(
             "schema: spec-driven\nrestale_from: alpha-search, beta-cache\n",
-        ));
+        )).expect("meta parses");
         assert_eq!(
             meta.restale_from(),
             vec!["alpha-search".to_string(), "beta-cache".to_string()]
