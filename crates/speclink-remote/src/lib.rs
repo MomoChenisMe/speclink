@@ -1,5 +1,5 @@
 //! speclink-remote: the thin HTTP client for the Speclink verb contract
-//! (`docs/verb-contract.md`), used by the CLI's remote mode.
+//! (see `docs/platform-architecture.zh-TW.md`), used by the CLI's remote mode.
 //!
 //! Three concerns live here and nowhere else:
 //! - `client`: a single request layer plus the per-verb path mapping.
