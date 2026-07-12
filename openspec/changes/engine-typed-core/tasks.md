@@ -31,5 +31,5 @@
 
 ## 6. 全量回歸與收尾
 
-- [ ] 6.1 baseline exe 全量對照：對樣本 workspace 逐一執行覆蓋表動詞（人眼＋--json），遷移前後 stdout／stderr／exit code 逐位元一致（壞設定檔情境除外，該情境依 spec 斷言新錯誤行為）；parity 31 項／color 16 項／twin 8 情境全綠。
-- [ ] 6.2 清除指向已移除 docs/verb-contract.md 的兩處註解殘引（crates/speclink-node/index.d.ts 的 dispatch 註解、crates/speclink-remote/src/lib.rs 的 crate 註解，改指 docs/platform-architecture.zh-TW.md）；驗證 cargo build --release 全 workspace 通過、git grep 不再命中 docs/verb-contract.md。
+- [x] 6.1 baseline exe 全量對照：對樣本 workspace 逐一執行覆蓋表動詞（人眼＋--json），遷移前後 stdout／stderr／exit code 逐位元一致（壞設定檔情境除外，該情境依 spec 斷言新錯誤行為）；parity 31 項／color 16 項／twin 8 情境全綠。
+- [x] 6.2 清除指向已移除 docs/verb-contract.md 的兩處註解殘引（crates/speclink-node/index.d.ts 的 dispatch 註解、crates/speclink-remote/src/lib.rs 的 crate 註解，改指 docs/platform-architecture.zh-TW.md）；驗證 cargo build --release 全 workspace 通過、git grep 不再命中 docs/verb-contract.md。
