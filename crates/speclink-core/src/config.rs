@@ -4,6 +4,48 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::Path;
 
+/// A config file that EXISTS but cannot be parsed (YAML syntax error or type
+/// mismatch). Fail-closed: loading never falls back to defaults on this error —
+/// only a missing (or empty/null) document yields defaults. Mapped to
+/// `invalid_config` at the command layer. Carries the workspace-relative file
+/// path and the parser's reason so every entry point names the exact file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigError {
+    /// Workspace-relative display path (".speclink.yaml" / "openspec/config.yaml").
+    pub file: String,
+    /// Parse-failure reason as reported by the YAML parser.
+    pub reason: String,
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid {}: {}", self.file, self.reason)
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
+/// Fail-closed deserialization shared by both config loaders: an empty or null
+/// document (fresh template, comments only) is valid and yields defaults; any
+/// parse failure on a non-empty document is a `ConfigError` naming `file`.
+fn parse_config<T: Default + serde::de::DeserializeOwned>(
+    text: &str,
+    file: &str,
+) -> Result<T, ConfigError> {
+    if text.trim().is_empty() {
+        return Ok(T::default());
+    }
+    // A comments-only document parses as Null — that is an absent document, not
+    // a broken one (matches `parse_yaml_mapping`'s Null tolerance).
+    if matches!(serde_yaml::from_str::<serde_yaml::Value>(text), Ok(serde_yaml::Value::Null)) {
+        return Ok(T::default());
+    }
+    serde_yaml::from_str(text).map_err(|e| ConfigError {
+        file: file.to_string(),
+        reason: e.to_string(),
+    })
+}
+
 /// `.speclink.yaml` — application configuration.
 ///
 /// Only the fields speclink supports are modeled; unknown keys are ignored.
@@ -186,13 +228,14 @@ pub fn is_project_relative(raw: &str) -> bool {
 }
 
 impl AppConfig {
-    /// Load from a `.speclink.yaml` path. Missing file or parse error → defaults.
+    /// Load from a `.speclink.yaml` path. Missing file → defaults; a file that
+    /// exists but cannot parse → `ConfigError` (fail-closed, never defaults).
     /// This stays a direct host-side read: `.speclink.yaml` is the bootstrap
     /// that locates the project before any storage adapter exists.
-    pub fn load(path: &Path) -> AppConfig {
+    pub fn load(path: &Path) -> Result<AppConfig, ConfigError> {
         match crate::util::read_opt(path) {
-            Some(s) => serde_yaml::from_str(&s).unwrap_or_default(),
-            None => AppConfig::default(),
+            Some(s) => parse_config(&s, ".speclink.yaml"),
+            None => Ok(AppConfig::default()),
         }
     }
 
@@ -399,12 +442,13 @@ pub fn resolve_spec_locale(app: &AppConfig, wf: &WorkflowConfig) -> Option<Strin
 
 impl WorkflowConfig {
     /// Parse the raw workflow-config document (as handed over by the Store).
-    /// A missing document or a parse error yields the defaults — serialization
-    /// format and tolerance are unchanged from the path-based loader.
-    pub fn from_text(text: Option<&str>) -> WorkflowConfig {
+    /// A missing (or empty/null) document yields the defaults; a document that
+    /// exists but cannot parse → `ConfigError` (fail-closed, never defaults).
+    /// Tolerance for successfully parsing documents is unchanged.
+    pub fn from_text(text: Option<&str>) -> Result<WorkflowConfig, ConfigError> {
         match text {
-            Some(s) => serde_yaml::from_str(s).unwrap_or_default(),
-            None => WorkflowConfig::default(),
+            Some(s) => parse_config(s, "openspec/config.yaml"),
+            None => Ok(WorkflowConfig::default()),
         }
     }
 
@@ -818,7 +862,7 @@ mod tests {
 
     #[test]
     fn workflow_config_without_policy_fields_still_parses() {
-        let w = WorkflowConfig::from_text(Some("schema: spec-driven\nlocale: tw"));
+        let w = WorkflowConfig::from_text(Some("schema: spec-driven\nlocale: tw")).expect("parses");
         assert_eq!(w.tdd, None);
         assert_eq!(w.audit, None);
         assert_eq!(w.locale.as_deref(), Some("tw"));
@@ -832,6 +876,112 @@ mod tests {
         let a = app("tdd: false\naudit: true");
         assert_eq!(a.tdd, Some(false));
         assert_eq!(a.audit, Some(true));
+    }
+
+    // --- fail-closed loading: a present file must parse; only a MISSING file yields defaults ---
+
+    /// Throwaway dir for load() tests, removed on drop.
+    struct TempCfgDir {
+        dir: std::path::PathBuf,
+    }
+
+    impl TempCfgDir {
+        fn new(tag: &str) -> TempCfgDir {
+            let dir = std::env::temp_dir().join(format!(
+                "speclink-core-cfg-{tag}-{}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            TempCfgDir { dir }
+        }
+
+        fn app_yaml(&self, content: &str) -> std::path::PathBuf {
+            let path = self.dir.join(".speclink.yaml");
+            std::fs::write(&path, content).unwrap();
+            path
+        }
+    }
+
+    impl Drop for TempCfgDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    #[test]
+    fn app_config_load_missing_file_gives_defaults() {
+        let t = TempCfgDir::new("missing");
+        let cfg = AppConfig::load(&t.dir.join(".speclink.yaml")).expect("missing file → defaults");
+        assert!(cfg.spec_dir.is_none());
+        assert!(cfg.remote.is_none());
+        assert!(cfg.tools.is_empty());
+    }
+
+    #[test]
+    fn app_config_load_empty_or_comment_only_file_gives_defaults() {
+        // A template-fresh or commented-out file is a NULL document — that is valid
+        // YAML, not a parse failure. Fail-closed must not break it.
+        for content in ["", "\n\n", "# Speclink application config\n# tools:\n"] {
+            let t = TempCfgDir::new("empty");
+            let cfg = AppConfig::load(&t.app_yaml(content))
+                .unwrap_or_else(|e| panic!("{content:?} must give defaults, got: {e}"));
+            assert!(cfg.remote.is_none(), "for {content:?}");
+        }
+    }
+
+    #[test]
+    fn app_config_load_bad_yaml_is_a_config_error() {
+        // P0 fail-closed: a file that EXISTS but cannot parse is an error carrying
+        // the workspace-relative path and the parser's reason — never defaults.
+        for bad in ["remote: [unclosed", ": not yaml : [", "remote: 42", "tools: notalist"] {
+            let t = TempCfgDir::new("bad");
+            let err = AppConfig::load(&t.app_yaml(bad))
+                .expect_err(&format!("{bad:?} must be a config error"));
+            assert_eq!(err.file, ".speclink.yaml", "for {bad:?}");
+            assert!(!err.reason.is_empty(), "reason must not be empty for {bad:?}");
+            let msg = err.to_string();
+            assert!(msg.contains(".speclink.yaml"), "display names the file: {msg}");
+            assert!(msg.contains(&err.reason), "display carries the reason: {msg}");
+        }
+    }
+
+    #[test]
+    fn app_config_load_valid_file_behavior_unchanged() {
+        // Successfully parsing files keep their exact behavior (unknown keys tolerated).
+        let t = TempCfgDir::new("valid");
+        let path = t.app_yaml("spec_dir: docs/specs\nfuture_key: ignored\ntools:\n  - claude\n");
+        let cfg = AppConfig::load(&path).expect("valid file parses");
+        assert_eq!(cfg.spec_dir.as_deref(), Some("docs/specs"));
+        assert_eq!(cfg.tools.len(), 1);
+    }
+
+    #[test]
+    fn workflow_config_from_text_missing_gives_defaults() {
+        let w = WorkflowConfig::from_text(None).expect("missing document → defaults");
+        assert_eq!(w.schema, None);
+        assert_eq!(w.tdd, None);
+    }
+
+    #[test]
+    fn workflow_config_from_text_empty_or_comment_only_gives_defaults() {
+        for text in ["", "\n", "# workflow config\n# tdd: true\n"] {
+            let w = WorkflowConfig::from_text(Some(text))
+                .unwrap_or_else(|e| panic!("{text:?} must give defaults, got: {e}"));
+            assert_eq!(w.tdd, None, "for {text:?}");
+        }
+    }
+
+    #[test]
+    fn workflow_config_from_text_bad_yaml_is_a_config_error() {
+        for bad in ["rules: [unclosed", "tdd: [true]", ": not yaml : ["] {
+            let err = WorkflowConfig::from_text(Some(bad))
+                .expect_err(&format!("{bad:?} must be a config error"));
+            assert_eq!(err.file, "openspec/config.yaml", "for {bad:?}");
+            assert!(!err.reason.is_empty(), "reason must not be empty for {bad:?}");
+            let msg = err.to_string();
+            assert!(msg.contains("openspec/config.yaml"), "display names the file: {msg}");
+        }
     }
 
     // --- tools: dual-form entries (builtin name string | descriptor object) ---
@@ -1025,7 +1175,7 @@ mod tests {
             audit: true,
         };
         let out = update_workflow_config_text(WF_DOC, &fields, &ContextEdit::Keep, None).expect("rewrite ok");
-        let w = WorkflowConfig::from_text(Some(&out));
+        let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
         assert_eq!(w.locale.as_deref(), Some("ja"));
         assert_eq!(w.spec_locale.as_deref(), Some("auto"));
         assert_eq!(w.tdd, Some(true));
@@ -1082,7 +1232,7 @@ mod tests {
         // parseable document containing exactly the requested fields.
         let fields = WorkflowPolicyFields { locale: Some("tw".into()), ..Default::default() };
         let out = update_workflow_config_text("", &fields, &ContextEdit::Keep, None).expect("rewrite ok");
-        let w = WorkflowConfig::from_text(Some(&out));
+        let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
         assert_eq!(w.locale.as_deref(), Some("tw"));
     }
 
@@ -1092,7 +1242,7 @@ mod tests {
         // 無 tdd 鍵 | tdd 切開啟 | 新增 tdd: true
         let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
         let out = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None).unwrap();
-        assert_eq!(WorkflowConfig::from_text(Some(&out)).tdd, Some(true));
+        assert_eq!(WorkflowConfig::from_text(Some(&out)).expect("output parses").tdd, Some(true));
         // tdd: true | tdd 切關閉 | tdd 鍵被移除（預設即 false）
         let out = update_workflow_config_text("tdd: true\n", &WorkflowPolicyFields::default(), &ContextEdit::Keep, None).unwrap();
         let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
@@ -1105,7 +1255,7 @@ mod tests {
             ..Default::default()
         };
         let out = update_workflow_config_text(doc, &fields, &ContextEdit::Keep, None).unwrap();
-        let w = WorkflowConfig::from_text(Some(&out));
+        let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
         assert_eq!(w.spec_locale.as_deref(), Some("auto"));
         assert_eq!(w.locale.as_deref(), Some("tw"));
         assert_eq!(w.rules, wf(doc).rules);
@@ -1118,7 +1268,7 @@ mod tests {
         for evil in ["tw\nrules: {}", "a: b", "#comment", "'quoted'", "- item"] {
             let fields = WorkflowPolicyFields { locale: Some(evil.into()), ..Default::default() };
             let out = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None).expect("rewrite ok");
-            let w = WorkflowConfig::from_text(Some(&out));
+            let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
             assert_eq!(w.locale.as_deref(), Some(evil), "round-trip for {evil:?}");
             assert_eq!(w.schema.as_deref(), Some("spec-driven"), "structure intact for {evil:?}");
         }
@@ -1158,7 +1308,7 @@ mod tests {
         // spec Scenario 編輯專案說明並儲存：值逐字元一致、其餘鍵原樣保留。
         let text = "第一行說明\n\n第二行：含冒號: 與 # 井號\n";
         let out = rewrite(WF_DOC, &ContextEdit::Set(text.into()), None).expect("rewrite ok");
-        let w = WorkflowConfig::from_text(Some(&out));
+        let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
         assert_eq!(w.context.as_deref(), Some(text));
         assert_eq!(w.schema, wf(WF_DOC).schema);
         assert_eq!(w.rules, wf(WF_DOC).rules);
@@ -1193,7 +1343,7 @@ mod tests {
         let doc = "schema: spec-driven\nrules:\n  tasks:\n    - 先寫失敗測試\n    - 更新文件\n";
         let rules = section(&[("tasks", &["更新文件", "先寫失敗測試"])]);
         let out = rewrite(doc, &ContextEdit::Keep, Some(&rules)).expect("rewrite ok");
-        let w = WorkflowConfig::from_text(Some(&out));
+        let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
         assert_eq!(
             w.rules.get("tasks").map(Vec::as_slice),
             Some(["更新文件".to_string(), "先寫失敗測試".to_string()].as_slice())
@@ -1214,7 +1364,7 @@ mod tests {
         let doc = "rules:\n  proposal:\n    - p1\n  tasks:\n    - t1\n";
         let rules = section(&[("proposal", &["p1"]), ("tasks", &[])]);
         let out = rewrite(doc, &ContextEdit::Keep, Some(&rules)).expect("rewrite ok");
-        let w = WorkflowConfig::from_text(Some(&out));
+        let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
         assert_eq!(w.rules.get("proposal").map(Vec::as_slice), Some(["p1".to_string()].as_slice()));
         assert!(!w.rules.contains_key("tasks"), "empty section must drop its key");
         // rules 僅含 tasks 一節 | 刪除該節全部條目 | rules 鍵整個被移除
@@ -1231,7 +1381,7 @@ mod tests {
         // 條目存入前 trim、空字串條目滌除；滌除後空節一併移除。
         let rules = section(&[("tasks", &["  先寫失敗測試  ", "   ", ""]), ("design", &["  ", ""])]);
         let out = rewrite("{}", &ContextEdit::Keep, Some(&rules)).expect("rewrite ok");
-        let w = WorkflowConfig::from_text(Some(&out));
+        let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
         assert_eq!(
             w.rules.get("tasks").map(Vec::as_slice),
             Some(["先寫失敗測試".to_string()].as_slice())
@@ -1249,7 +1399,7 @@ mod tests {
             ("tasks", &["@完成後執行全部測試"]),
         ]);
         let out = rewrite(doc, &ContextEdit::Keep, Some(&rules)).expect("rewrite ok");
-        let w = WorkflowConfig::from_text(Some(&out));
+        let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
         assert_eq!(
             w.rules.get("tasks").map(Vec::as_slice),
             Some(["@完成後執行全部測試".to_string()].as_slice())
@@ -1263,7 +1413,7 @@ mod tests {
         for evil in ["`cargo test` 全綠", "@標註開頭", "*星號開頭", "&錨點開頭"] {
             let rules = section(&[("tasks", &[evil])]);
             let out = rewrite("{}", &ContextEdit::Keep, Some(&rules)).expect("rewrite ok");
-            let w = WorkflowConfig::from_text(Some(&out));
+            let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
             assert_eq!(
                 w.rules.get("tasks").map(Vec::as_slice),
                 Some([evil.to_string()].as_slice()),

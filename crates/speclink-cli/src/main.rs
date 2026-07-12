@@ -700,8 +700,9 @@ fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
 }
 
 /// Discover the host workspace, or fail with the standard not-initialized error.
+/// A `.speclink.yaml` that exists but cannot parse is its own (fail-closed) error.
 fn require_workspace() -> Result<core::workspace::Workspace> {
-    core::workspace::Workspace::discover_cwd()
+    core::workspace::Workspace::discover_cwd()?
         .ok_or_else(|| anyhow::anyhow!("Not initialized. Run 'speclink init' to initialize."))
 }
 

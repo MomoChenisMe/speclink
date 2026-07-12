@@ -36,11 +36,12 @@
 | 分組 | 動詞 | 事件 |
 |---|---|---|
 | 查詢（進 runtime） | list、show、status、instructions、validate、analyze、drift、artifact cat、language show、discuss list／show | 無 |
-| 變更（進 runtime） | new change、new artifact、task done、claim、in-progress add、archive、discard、discuss new／context／add-round／conclude／promote／link／seal／archive／discard | 有 |
+| 變更（進 runtime） | new change、new artifact、task done、task undone、claim、in-progress add、archive、discard、discuss new／context／add-round／conclude／promote／link／seal／archive／discard | 有 |
 | 不進 runtime | init、update（bootstrap＋技能同步）、config（使用者層 AppData 設定檔）、schema 工具、completion、templates、feedback、demo、link／unlink／auth（連線管理）、remote HTTP 攔截（crates/speclink-cli/src/remote_commands.rs） | — |
 
 - 判準：動詞的語意主體是否為 Store 內的規格文件。init／update 是 workspace bootstrap，server 永遠不會暴露它們；硬收進 runtime 只添 API 噪音。
 - 替代方案（全動詞入 runtime）被否決：見上；且 completion／templates 等純本機工具連 Store 都不碰。
+- 時序前提：task undone 動詞由 task-uncheck-cli 變更引入（勾選的反向動詞，同為讀寫 Store 的變更型動詞）。本變更開工前 task-uncheck-cli 須已落地——baseline exe 於其落地後保存，undone 的輸出凍結基準即為其現行 CLI 實作；若屆時未落地，開工前的 drift 檢查會把此列舉標為前提缺口。
 
 ### 決策三：typed error 與穩定錯誤碼註冊表
 
@@ -50,7 +51,7 @@
 
 ### 決策四：domain events 的種類、載荷與發出點
 
-`DomainEvent` 依變更型動詞一一對應：ChangeCreated、ArtifactCreated、TaskCompleted、ChangeClaimed、ChangeMarkedInProgress、ChangeArchived、ChangeDiscarded、DiscussionCreated、DiscussionContextSet、DiscussionRoundAdded、DiscussionConcluded、DiscussionPromoted、DiscussionLinked、DiscussionSealed、DiscussionArchived、DiscussionDiscarded。載荷＝主體識別（change 名／discussion slug）＋該次變更的最小事實（artifact id、task 編號、轉出的 change 名等）＋ occurredAt（UTC）。不含 actor 與 revision（分屬 binding 與 teamstore 刀），事件契約標示 experimental，outbox 落地前不做相容承諾。
+`DomainEvent` 依變更型動詞一一對應：ChangeCreated、ArtifactCreated、TaskCompleted、TaskUncompleted、ChangeClaimed、ChangeMarkedInProgress、ChangeArchived、ChangeDiscarded、DiscussionCreated、DiscussionContextSet、DiscussionRoundAdded、DiscussionConcluded、DiscussionPromoted、DiscussionLinked、DiscussionSealed、DiscussionArchived、DiscussionDiscarded。載荷＝主體識別（change 名／discussion slug）＋該次變更的最小事實（artifact id、task 編號、轉出的 change 名等）＋ occurredAt（UTC）。不含 actor 與 revision（分屬 binding 與 teamstore 刀），事件契約標示 experimental，outbox 落地前不做相容承諾。
 
 - 發出點：execute 在 core 函式成功返回後、由 typed outcome 建構事件——單一發出點、零侵入既有函式簽名。複合動詞發多事件（promote＝DiscussionPromoted＋ChangeCreated）。
 - 替代方案（事件在各 core 模組內部發出）被否決：得改動全部核心函式簽名、且在 UoW 存在前沒有下沉的收益；teamstore-contract 刀把事件搬進 commit 時再下沉。

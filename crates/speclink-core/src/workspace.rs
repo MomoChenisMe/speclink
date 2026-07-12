@@ -23,38 +23,43 @@ pub struct Workspace {
 impl Workspace {
     /// Discover the project root by walking up from `start`.
     ///
-    /// A directory qualifies as root if it contains `.speclink.yaml` or the `openspec` directory.
-    pub fn discover(start: &Path) -> Option<Workspace> {
+    /// A directory qualifies as root if it contains `.speclink.yaml` or the `openspec`
+    /// directory. `Ok(None)` = not in a project; `Err` = the root was found but its
+    /// `.speclink.yaml` cannot be parsed (fail-closed: spec_dir must not silently
+    /// default off a broken file).
+    pub fn discover(start: &Path) -> Result<Option<Workspace>, crate::config::ConfigError> {
         let mut cur = Some(start);
         while let Some(dir) = cur {
             let app_cfg = dir.join(".speclink.yaml");
             if app_cfg.is_file() {
-                let spec_dir_name = AppConfig::load(&app_cfg)
+                let spec_dir_name = AppConfig::load(&app_cfg)?
                     .spec_dir
                     .unwrap_or_else(|| "openspec".to_string());
-                return Some(Workspace {
+                return Ok(Some(Workspace {
                     root: dir.to_path_buf(),
                     spec_dir_name,
-                });
+                }));
             }
             // A leftover .speclink.remote.yaml still marks the root so an
             // unmigrated project reaches the migration warning instead of
             // failing discovery with "not in a project".
             if dir.join("openspec").is_dir() || dir.join(REMOTE_FILE).is_file() {
-                return Some(Workspace {
+                return Ok(Some(Workspace {
                     root: dir.to_path_buf(),
                     spec_dir_name: "openspec".to_string(),
-                });
+                }));
             }
             cur = dir.parent();
         }
-        None
+        Ok(None)
     }
 
     /// Discover from the current working directory.
-    pub fn discover_cwd() -> Option<Workspace> {
-        let cwd = std::env::current_dir().ok()?;
-        Workspace::discover(&cwd)
+    pub fn discover_cwd() -> Result<Option<Workspace>, crate::config::ConfigError> {
+        match std::env::current_dir() {
+            Ok(cwd) => Workspace::discover(&cwd),
+            Err(_) => Ok(None),
+        }
     }
 
     pub fn app_config(&self) -> PathBuf {
@@ -99,7 +104,7 @@ impl Workspace {
         env_store_url: Option<String>,
     ) -> anyhow::Result<ModeResolution> {
         let leftover_remote_file = self.has_leftover_remote_file();
-        let remote = AppConfig::load(&self.app_config()).remote;
+        let remote = AppConfig::load(&self.app_config())?.remote;
         let Some(section) = remote else {
             return Ok(ModeResolution {
                 mode: StoreMode::Fs,

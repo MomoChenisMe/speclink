@@ -119,10 +119,15 @@ fn cmd_language(a: LanguageArgs) -> Result<()> {
 /// invocation when `.speclink.yaml` still carries keys whose canonical home is
 /// `openspec/config.yaml`. stdout (including `--json`) stays untouched; no keys → no output.
 fn warn_deprecated_policy_keys() {
-    let Some(ws) = Workspace::discover_cwd() else {
+    // Warning helpers stay silent on discovery/parse errors — the command's own
+    // path surfaces the fail-closed config error with the proper exit code.
+    let Ok(Some(ws)) = Workspace::discover_cwd() else {
         return;
     };
-    let keys = core::config::AppConfig::load(&ws.app_config()).deprecated_policy_keys();
+    let Ok(app) = core::config::AppConfig::load(&ws.app_config()) else {
+        return;
+    };
+    let keys = app.deprecated_policy_keys();
     if keys.is_empty() {
         return;
     }
@@ -137,7 +142,7 @@ fn warn_deprecated_policy_keys() {
 /// file is never parsed and never affects the store mode — an unmigrated project runs
 /// in fs mode until the fields move. stdout and exit codes stay untouched.
 fn warn_leftover_remote_file() {
-    let Some(ws) = Workspace::discover_cwd() else {
+    let Ok(Some(ws)) = Workspace::discover_cwd() else {
         return;
     };
     if !ws.has_leftover_remote_file() {
@@ -950,14 +955,14 @@ fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
         .unwrap_or_else(|| "apply".to_string());
     let artifact = a.artifact.as_deref().unwrap_or(&default_artifact);
     if artifact == "apply" {
-        let payload = core::instructions::build_apply(&ws, store, &change, &schema);
+        let payload = core::instructions::build_apply(&ws, store, &change, &schema)?;
         if a.json {
             return print_json(&payload);
         }
         render_apply_human(&payload);
         return Ok(());
     }
-    let payload = core::instructions::build_artifact(&ws, store, &change, &schema, artifact)
+    let payload = core::instructions::build_artifact(&ws, store, &change, &schema, artifact)?
         .ok_or_else(|| anyhow::anyhow!("Artifact '{artifact}' not found in schema"))?;
     if a.json {
         return print_json(&payload);
@@ -1051,10 +1056,11 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     let store: &dyn Store = &store;
     // Default schema comes from openspec/config.yaml; the name is NOT validated here (Spectra
     // accepts unknown names and lets downstream commands fail on resolution).
-    let schema = a.schema.unwrap_or_else(|| {
-        core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())
-            .schema_name()
-    });
+    let schema = match a.schema {
+        Some(s) => s,
+        None => core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
+            .schema_name(),
+    };
     if let Some(slug) = a.from_discussion.as_deref() {
         if core::discuss::info(store, slug).is_none() {
             bail!("discussion '{slug}' not found — run `speclink discuss new` first");
@@ -1165,7 +1171,7 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
 // --- schemas / templates ---
 
 fn cmd_schemas(a: JsonFlag) -> Result<()> {
-    let ws = core::workspace::Workspace::discover_cwd();
+    let ws = core::workspace::Workspace::discover_cwd()?;
     let schemas = core::schema::list_all(ws.as_ref());
     if a.json {
         let items: Vec<_> = schemas
@@ -1192,7 +1198,7 @@ fn cmd_schemas(a: JsonFlag) -> Result<()> {
 }
 
 fn cmd_templates(a: TemplatesArgs) -> Result<()> {
-    let ws = core::workspace::Workspace::discover_cwd();
+    let ws = core::workspace::Workspace::discover_cwd()?;
     let schema_name = a.schema.unwrap_or_else(|| "spec-driven".to_string());
     let schema = match core::schema::resolve_with(ws.as_ref(), &schema_name) {
         Some(Ok(s)) => s,
@@ -1234,7 +1240,7 @@ fn cmd_feedback(a: FeedbackArgs) -> Result<()> {
 // --- schema management ---
 
 fn cmd_schema(a: SchemaArgs) -> Result<()> {
-    let ws = core::workspace::Workspace::discover_cwd();
+    let ws = core::workspace::Workspace::discover_cwd()?;
     match a.command {
         SchemaCommands::Which { name, all: _, json } => {
             let n = name.unwrap_or_else(|| "spec-driven".to_string());

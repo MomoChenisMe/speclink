@@ -507,7 +507,7 @@ pub fn promote(
     }
     let change_name = strip_date_prefix(name.unwrap_or(slug)).to_string();
     let schema =
-        crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())
+        crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
             .schema_name();
     let dir = crate::newcmd::new_change(ws, store, &change_name, None, &schema, None, Some(slug))?;
     // Prefill the proposal's Why from the discussion conclusion (topic as fallback);
