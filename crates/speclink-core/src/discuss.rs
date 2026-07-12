@@ -696,9 +696,11 @@ pub fn discard_discussion(store: &dyn Store, slug: &str, force: bool) -> Result<
     };
     let rounds = count_rounds(&text);
     if rounds > 0 && !force {
-        bail!(
+        // Typed refusal: same frozen text, classified `refused` by the command layer.
+        return Err(crate::command::Refusal(format!(
             "discussion '{slug}' has {rounds} recorded round(s) — `conclude` + `archive` keeps the reasoning; pass --force to delete anyway"
-        );
+        ))
+        .into());
     }
     store.delete_live_discussion(slug)?;
     Ok(())

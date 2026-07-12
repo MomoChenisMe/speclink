@@ -13,8 +13,8 @@
 
 ## 3. 變更群與領域事件（design 決策四：domain events 的種類、載荷與發出點）
 
-- [ ] 3.1 撰寫「變更型動詞的領域事件」失敗測試：new change 成功回報恰一筆 change-created（主體＋UTC 時間戳）、重名建立失敗不發事件、promote 回報 discussion-promoted 與 change-created 兩筆、覆蓋表 17 種動詞→事件對應逐一斷言（含 task undone → task-uncompleted）（crates/speclink-core/src/command/ 測試）。紅燈。
-- [ ] 3.2 實作變更群 execute 與事件建構（單一發出點、由 typed outcome 建構；new change、new artifact、task done、task undone、claim、in-progress add、archive、discard、discuss 全系列），3.1 轉綠後重構事件建構樣板；驗證 cargo test -p speclink-core 全綠。
+- [x] 3.1 撰寫「變更型動詞的領域事件」失敗測試：new change 成功回報恰一筆 change-created（主體＋UTC 時間戳）、重名建立失敗不發事件、promote 回報 discussion-promoted 與 change-created 兩筆、覆蓋表 17 種動詞→事件對應逐一斷言（含 task undone → task-uncompleted）（crates/speclink-core/src/command/ 測試）。紅燈。
+- [x] 3.2 實作變更群 execute 與事件建構（單一發出點、由 typed outcome 建構；new change、new artifact、task done、task undone、claim、in-progress add、archive、discard、discuss 全系列），3.1 轉綠後重構事件建構樣板；驗證 cargo test -p speclink-core 全綠。
 
 ## 4. CLI 分群切換（design 決策六：CLI 與 Node 的遷移策略——逐動詞群、輸出凍結）
 

@@ -79,12 +79,81 @@ impl From<ConfigError> for CommandError {
     }
 }
 
-/// Domain events reported by mutating verbs (design 決策四). Experimental
-/// contract: payloads may change incompatibly until event persistence lands.
-/// Variants arrive with the mutating-verb execution (階段 3); queries never
-/// produce events.
+/// Typed refusal carried inside anyhow errors from core guard points (discard's
+/// started-work guard, discuss discard's rounds guard) so the runtime classifies
+/// them `refused` without string matching. Display is the exact frozen CLI text,
+/// so every existing anyhow-printing path is byte-identical.
+#[derive(Debug)]
+pub struct Refusal(pub String);
+
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Refusal {}
+
+/// Classify a core-flow anyhow error: a [`Refusal`] marker → `refused`,
+/// everything else → `error`. Message text passes through verbatim.
+fn classify(e: anyhow::Error) -> CommandError {
+    if let Some(r) = e.downcast_ref::<Refusal>() {
+        return CommandError::new(ErrorCode::Refused, r.0.clone());
+    }
+    CommandError::new(ErrorCode::Error, e.to_string())
+}
+
+/// Domain events reported by mutating verbs (design 決策四). Payload = subject
+/// identity (change name / discussion slug) + the minimal fact of the mutation
+/// + the UTC execution timestamp. No actor and no revision yet (binding and
+/// teamstore knives). Experimental contract: payloads may change incompatibly
+/// until event persistence lands.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DomainEvent {}
+pub enum DomainEvent {
+    ChangeCreated { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    ArtifactCreated { change: String, artifact: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    TaskCompleted { change: String, task_id: usize, occurred_at: chrono::DateTime<chrono::Utc> },
+    TaskUncompleted { change: String, task_id: usize, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// No fs-store success path today — the mapping is contract for the remote store.
+    ChangeClaimed { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    ChangeMarkedInProgress { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    ChangeArchived { change: String, dated_name: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    ChangeDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    DiscussionCreated { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    DiscussionContextSet { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    DiscussionRoundAdded { slug: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
+    DiscussionConcluded { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    DiscussionPromoted { slug: String, change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    DiscussionLinked { slug: String, change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    DiscussionSealed { slug: String, change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    DiscussionArchived { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    DiscussionDiscarded { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
+}
+
+impl DomainEvent {
+    /// The event's stable kind name (the spec coverage table's wire strings).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            DomainEvent::ChangeCreated { .. } => "change-created",
+            DomainEvent::ArtifactCreated { .. } => "artifact-created",
+            DomainEvent::TaskCompleted { .. } => "task-completed",
+            DomainEvent::TaskUncompleted { .. } => "task-uncompleted",
+            DomainEvent::ChangeClaimed { .. } => "change-claimed",
+            DomainEvent::ChangeMarkedInProgress { .. } => "change-marked-in-progress",
+            DomainEvent::ChangeArchived { .. } => "change-archived",
+            DomainEvent::ChangeDiscarded { .. } => "change-discarded",
+            DomainEvent::DiscussionCreated { .. } => "discussion-created",
+            DomainEvent::DiscussionContextSet { .. } => "discussion-context-set",
+            DomainEvent::DiscussionRoundAdded { .. } => "discussion-round-added",
+            DomainEvent::DiscussionConcluded { .. } => "discussion-concluded",
+            DomainEvent::DiscussionPromoted { .. } => "discussion-promoted",
+            DomainEvent::DiscussionLinked { .. } => "discussion-linked",
+            DomainEvent::DiscussionSealed { .. } => "discussion-sealed",
+            DomainEvent::DiscussionArchived { .. } => "discussion-archived",
+            DomainEvent::DiscussionDiscarded { .. } => "discussion-discarded",
+        }
+    }
+}
 
 /// The closed verb set of the command runtime, grouped per the 決策二 coverage
 /// table. Inputs mirror the CLI argv vocabulary one-to-one; rendering concerns
@@ -140,6 +209,71 @@ pub enum Command {
     DiscussList { archived: bool },
     /// `discuss show <slug>`
     DiscussShow { slug: String },
+    // --- 變更群 ---
+    /// `new change <name> [--description] [--schema] [--agent] [--from-discussion]`
+    NewChange {
+        name: String,
+        description: Option<String>,
+        schema: Option<String>,
+        agent: Option<String>,
+        from_discussion: Option<String>,
+    },
+    /// `new artifact <type> [capability] [--change <name>] [--force]`;
+    /// `content` is the CLI's `--stdin` payload.
+    NewArtifact {
+        kind: String,
+        capability: Option<String>,
+        change: Option<String>,
+        content: Option<String>,
+        force: bool,
+    },
+    /// `task done <task_id> [--change <name>]` (`task_id` stays the raw argv
+    /// token — validation and its frozen messages live in the runtime).
+    TaskDone {
+        task_id: String,
+        change: Option<String>,
+    },
+    /// `task undone <task_id> [--change <name>]`
+    TaskUndone {
+        task_id: String,
+        change: Option<String>,
+    },
+    /// `claim <name>` — remote-store only; the plain-store path refuses.
+    Claim { name: String },
+    /// `in-progress add <name>` — silent and idempotent (unknown names included).
+    InProgressAdd { name: String },
+    /// `archive [change] [--skip-specs] [--no-validate] [--mark-tasks-complete]`
+    /// (single change; the CLI's `--all`/bulk loop stays in the entry point).
+    Archive {
+        change: Option<String>,
+        skip_specs: bool,
+        no_validate: bool,
+        mark_tasks_complete: bool,
+    },
+    /// `discard <change> [--force]`
+    Discard { change: String, force: bool },
+    /// `discuss new <topic> [--slug <slug>]`
+    DiscussNew { topic: String, slug: Option<String> },
+    /// `discuss context <slug>` with stdin content
+    DiscussContext { slug: String, content: String },
+    /// `discuss add-round <slug> --mode <mode>` with stdin content
+    DiscussAddRound {
+        slug: String,
+        mode: String,
+        content: String,
+    },
+    /// `discuss conclude <slug>` with stdin content
+    DiscussConclude { slug: String, content: String },
+    /// `discuss promote <slug> [--name <change>]`
+    DiscussPromote { slug: String, name: Option<String> },
+    /// `discuss link <slug> --change <change>`
+    DiscussLink { slug: String, change: String },
+    /// `discuss seal <slug> --change <change>`
+    DiscussSeal { slug: String, change: String },
+    /// `discuss archive <slug>`
+    DiscussArchive { slug: String },
+    /// `discuss discard <slug> [--force]`
+    DiscussDiscard { slug: String, force: bool },
 }
 
 /// `list` outcome: the changes section (sorted per the requested key, absent
@@ -195,6 +329,90 @@ pub struct DiscussShowOutcome {
     pub content: String,
 }
 
+/// `new change` outcome.
+#[derive(Debug)]
+pub struct NewChangeOutcome {
+    pub name: String,
+    pub dir: std::path::PathBuf,
+    /// The schema the change was created with (explicit or config default).
+    pub schema: String,
+}
+
+/// `new artifact` outcome.
+#[derive(Debug)]
+pub struct NewArtifactOutcome {
+    pub artifact: String,
+    pub change: String,
+    pub path: std::path::PathBuf,
+    /// True when caller content was written (vs. the schema template/empty file).
+    pub had_content: bool,
+}
+
+/// `task done` / `task undone` outcome. `task_id_arg` preserves the raw argv
+/// token for rendering (the CLI echoes the input verbatim, e.g. "01");
+/// `task_id` is the parsed index the mutation used. `already` = nothing
+/// changed (zero file effects) — presentation stays with the entry point.
+#[derive(Debug)]
+pub struct TaskFlipOutcome {
+    pub change: String,
+    pub task_id: usize,
+    pub task_id_arg: String,
+    pub description: String,
+    pub already: bool,
+}
+
+/// `in-progress add` outcome: whether this call stamped the marker (false for
+/// the idempotent/unknown-name silent successes — no event then).
+#[derive(Debug)]
+pub struct InProgressOutcome {
+    pub name: String,
+    pub stamped: bool,
+}
+
+/// `discuss context` / `discuss discard` outcome (subject only).
+#[derive(Debug)]
+pub struct DiscussSubjectOutcome {
+    pub slug: String,
+}
+
+/// `discuss add-round` outcome.
+#[derive(Debug)]
+pub struct DiscussRoundOutcome {
+    pub slug: String,
+    pub mode: String,
+    pub round: usize,
+}
+
+/// `discuss conclude` outcome: changes flagged stale by a re-conclude.
+#[derive(Debug)]
+pub struct DiscussConcludeOutcome {
+    pub slug: String,
+    pub restale_flagged: Vec<String>,
+}
+
+/// `discuss promote` outcome.
+#[derive(Debug)]
+pub struct DiscussPromoteOutcome {
+    pub slug: String,
+    pub change: String,
+    pub path: std::path::PathBuf,
+}
+
+/// `discuss link` / `discuss seal` outcome.
+#[derive(Debug)]
+pub struct DiscussBindOutcome {
+    pub slug: String,
+    pub change: String,
+}
+
+/// `discuss archive` outcome.
+#[derive(Debug)]
+pub struct DiscussArchiveOutcome {
+    pub slug: String,
+    /// Dated file name inside discussions/archive/.
+    pub archived_file: String,
+}
+
 /// Typed result of one command execution.
 #[derive(Debug)]
 pub enum CommandOutcome {
@@ -211,6 +429,22 @@ pub enum CommandOutcome {
     Language(String),
     DiscussList(Vec<crate::discuss::DiscussionInfo>),
     DiscussShow(DiscussShowOutcome),
+    NewChange(NewChangeOutcome),
+    NewArtifact(NewArtifactOutcome),
+    TaskDone(TaskFlipOutcome),
+    TaskUndone(TaskFlipOutcome),
+    InProgressAdd(InProgressOutcome),
+    Archive(crate::archive::ArchiveOutcome),
+    Discard(crate::discard::DiscardOutcome),
+    DiscussNew(crate::discuss::DiscussionInfo),
+    DiscussContext(DiscussSubjectOutcome),
+    DiscussAddRound(DiscussRoundOutcome),
+    DiscussConclude(DiscussConcludeOutcome),
+    DiscussPromote(DiscussPromoteOutcome),
+    DiscussLink(DiscussBindOutcome),
+    DiscussSeal(DiscussBindOutcome),
+    DiscussArchive(DiscussArchiveOutcome),
+    DiscussDiscard(DiscussSubjectOutcome),
 }
 
 /// Execute one command against the store. `ws` is the host workspace when the
@@ -247,10 +481,180 @@ pub fn execute(
             crate::discuss::list_discussions(store)
         })),
         Command::DiscussShow { slug } => run_discuss_show(store, &slug),
+        Command::NewChange { name, description, schema, agent, from_discussion } => {
+            run_new_change(store, ws, name, description, schema, agent, from_discussion)
+        }
+        Command::NewArtifact { kind, capability, change, content, force } => {
+            run_new_artifact(store, ws, &kind, capability.as_deref(), change.as_deref(), content.as_deref(), force)
+        }
+        Command::TaskDone { task_id, change } => {
+            run_task_flip(store, ws, &task_id, change.as_deref(), TaskFlip::Done)
+        }
+        Command::TaskUndone { task_id, change } => {
+            run_task_flip(store, ws, &task_id, change.as_deref(), TaskFlip::Undone)
+        }
+        Command::Claim { .. } => Err(CommandError::new(
+            ErrorCode::Error,
+            "claim requires a remote store — this project uses the local fs store",
+        )),
+        Command::InProgressAdd { name } => run_in_progress_add(store, ws, &name),
+        Command::Archive { change, skip_specs, no_validate, mark_tasks_complete } => run_archive(
+            store,
+            ws,
+            change.as_deref(),
+            crate::archive::ArchiveOptions { skip_specs, no_validate, mark_tasks_complete },
+        ),
+        Command::Discard { change, force } => run_discard(store, ws, &change, force),
+        Command::DiscussNew { topic, slug } => run_discuss_new(store, ws, &topic, slug.as_deref()),
+        Command::DiscussContext { slug, content } => {
+            crate::discuss::set_context(store, &slug, &content).map_err(classify)?;
+            Ok(CommandOutcome::DiscussContext(DiscussSubjectOutcome { slug }))
+        }
+        Command::DiscussAddRound { slug, mode, content } => {
+            let round = crate::discuss::add_round(store, &slug, &mode, &content).map_err(classify)?;
+            Ok(CommandOutcome::DiscussAddRound(DiscussRoundOutcome { slug, mode, round }))
+        }
+        Command::DiscussConclude { slug, content } => {
+            let restale_flagged = crate::discuss::conclude(store, &slug, &content).map_err(classify)?;
+            Ok(CommandOutcome::DiscussConclude(DiscussConcludeOutcome { slug, restale_flagged }))
+        }
+        Command::DiscussPromote { slug, name } => {
+            let host = host_workspace(ws);
+            let o = crate::discuss::promote(&host, store, &slug, name.as_deref()).map_err(classify)?;
+            Ok(CommandOutcome::DiscussPromote(DiscussPromoteOutcome {
+                slug,
+                change: o.change,
+                path: o.path,
+            }))
+        }
+        Command::DiscussLink { slug, change } => {
+            crate::discuss::link(store, &slug, &change).map_err(classify)?;
+            Ok(CommandOutcome::DiscussLink(DiscussBindOutcome { slug, change }))
+        }
+        Command::DiscussSeal { slug, change } => {
+            crate::discuss::seal(store, &slug, &change).map_err(classify)?;
+            Ok(CommandOutcome::DiscussSeal(DiscussBindOutcome { slug, change }))
+        }
+        Command::DiscussArchive { slug } => {
+            match crate::discuss::archive_discussion(store, &slug).map_err(classify)? {
+                Some(archived_file) => {
+                    Ok(CommandOutcome::DiscussArchive(DiscussArchiveOutcome { slug, archived_file }))
+                }
+                None => Err(CommandError::new(
+                    ErrorCode::NotFound,
+                    format!("discussion '{slug}' not found"),
+                )),
+            }
+        }
+        Command::DiscussDiscard { slug, force } => {
+            crate::discuss::discard_discussion(store, &slug, force).map_err(classify)?;
+            Ok(CommandOutcome::DiscussDiscard(DiscussSubjectOutcome { slug }))
+        }
     }?;
-    // Queries carry no events; mutating verbs (階段 3) construct theirs from the
-    // typed outcome right here — the single emission point.
-    Ok((outcome, Vec::new()))
+    let events = events_of(&outcome);
+    Ok((outcome, events))
+}
+
+/// The single event-emission point (design 決策四): events derive from the
+/// typed outcome after the core flow succeeded. Queries yield none; outcomes
+/// that report "nothing changed" (already-flipped task, unstamped in-progress)
+/// yield none either — an event states a mutation that actually happened.
+fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
+    let at = chrono::Utc::now();
+    match outcome {
+        CommandOutcome::List(_)
+        | CommandOutcome::Show(_)
+        | CommandOutcome::Status(_)
+        | CommandOutcome::Instructions(_)
+        | CommandOutcome::Validate(_)
+        | CommandOutcome::Analyze(_)
+        | CommandOutcome::Drift(_)
+        | CommandOutcome::ArtifactCat(_)
+        | CommandOutcome::Language(_)
+        | CommandOutcome::DiscussList(_)
+        | CommandOutcome::DiscussShow(_) => Vec::new(),
+        CommandOutcome::NewChange(o) => vec![DomainEvent::ChangeCreated {
+            change: o.name.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::NewArtifact(o) => vec![DomainEvent::ArtifactCreated {
+            change: o.change.clone(),
+            artifact: o.artifact.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::TaskDone(o) if o.already => Vec::new(),
+        CommandOutcome::TaskDone(o) => vec![DomainEvent::TaskCompleted {
+            change: o.change.clone(),
+            task_id: o.task_id,
+            occurred_at: at,
+        }],
+        CommandOutcome::TaskUndone(o) if o.already => Vec::new(),
+        CommandOutcome::TaskUndone(o) => vec![DomainEvent::TaskUncompleted {
+            change: o.change.clone(),
+            task_id: o.task_id,
+            occurred_at: at,
+        }],
+        CommandOutcome::InProgressAdd(o) if !o.stamped => Vec::new(),
+        CommandOutcome::InProgressAdd(o) => vec![DomainEvent::ChangeMarkedInProgress {
+            change: o.name.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::Archive(o) => vec![DomainEvent::ChangeArchived {
+            change: o.change_name.clone(),
+            dated_name: o.dated_name.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::Discard(o) => vec![DomainEvent::ChangeDiscarded {
+            change: o.change_name.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::DiscussNew(info) => vec![DomainEvent::DiscussionCreated {
+            slug: info.slug.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::DiscussContext(o) => vec![DomainEvent::DiscussionContextSet {
+            slug: o.slug.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::DiscussAddRound(o) => vec![DomainEvent::DiscussionRoundAdded {
+            slug: o.slug.clone(),
+            round: o.round,
+            occurred_at: at,
+        }],
+        CommandOutcome::DiscussConclude(o) => vec![DomainEvent::DiscussionConcluded {
+            slug: o.slug.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::DiscussPromote(o) => vec![
+            DomainEvent::DiscussionPromoted {
+                slug: o.slug.clone(),
+                change: o.change.clone(),
+                occurred_at: at,
+            },
+            DomainEvent::ChangeCreated {
+                change: o.change.clone(),
+                occurred_at: at,
+            },
+        ],
+        CommandOutcome::DiscussLink(o) => vec![DomainEvent::DiscussionLinked {
+            slug: o.slug.clone(),
+            change: o.change.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::DiscussSeal(o) => vec![DomainEvent::DiscussionSealed {
+            slug: o.slug.clone(),
+            change: o.change.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::DiscussArchive(o) => vec![DomainEvent::DiscussionArchived {
+            slug: o.slug.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::DiscussDiscard(o) => vec![DomainEvent::DiscussionDiscarded {
+            slug: o.slug.clone(),
+            occurred_at: at,
+        }],
+    }
 }
 
 /// Specify-wording of the multi-change auto-detect error: flag-style verbs.
@@ -561,6 +965,253 @@ fn run_discuss_show(store: &dyn Store, slug: &str) -> Result<CommandOutcome, Com
     }))
 }
 
+fn run_new_change(
+    store: &dyn Store,
+    ws: Option<&Workspace>,
+    name: String,
+    description: Option<String>,
+    schema: Option<String>,
+    agent: Option<String>,
+    from_discussion: Option<String>,
+) -> Result<CommandOutcome, CommandError> {
+    // Default schema comes from openspec/config.yaml; the name is NOT validated
+    // here (downstream commands fail on resolution, matching Spectra).
+    let schema = match schema {
+        Some(s) => s,
+        None => crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
+            .schema_name(),
+    };
+    if let Some(slug) = from_discussion.as_deref() {
+        if crate::discuss::info(store, slug).is_none() {
+            return Err(CommandError::new(
+                ErrorCode::NotFound,
+                format!("discussion '{slug}' not found — run `speclink discuss new` first"),
+            ));
+        }
+    }
+    let host = host_workspace(ws);
+    let dir = crate::newcmd::new_change(
+        &host,
+        store,
+        &name,
+        description.as_deref(),
+        &schema,
+        agent.as_deref(),
+        from_discussion.as_deref(),
+    )
+    .map_err(classify)?;
+    Ok(CommandOutcome::NewChange(NewChangeOutcome { name, dir, schema }))
+}
+
+fn run_new_artifact(
+    store: &dyn Store,
+    ws: Option<&Workspace>,
+    kind: &str,
+    capability: Option<&str>,
+    change: Option<&str>,
+    content: Option<&str>,
+    force: bool,
+) -> Result<CommandOutcome, CommandError> {
+    let type_ok = ["proposal", "design", "tasks", "spec"].contains(&kind);
+    let type_err = || {
+        CommandError::new(
+            ErrorCode::InvalidArgv,
+            format!("Unknown artifact type '{kind}'. Valid types: proposal, design, tasks, spec"),
+        )
+    };
+    // Spectra's order: with an explicit --change, validate the type before
+    // existence; when auto-detecting, resolve the change first (so "No active
+    // changes" wins over a bad type). Change-not-found here has NO trailing period.
+    let change = match change {
+        Some(name) => {
+            if !type_ok {
+                return Err(type_err());
+            }
+            crate::model::find_change(store, name).ok_or_else(|| {
+                CommandError::new(ErrorCode::NotFound, format!("Change '{name}' not found"))
+            })?
+        }
+        None => {
+            let c = resolve_change(store, None, SPECIFY_FLAG)?;
+            if !type_ok {
+                return Err(type_err());
+            }
+            c
+        }
+    };
+    // Best-effort schema resolution: an unresolvable/broken schema still
+    // creates the artifact (no template → empty file), matching Spectra.
+    let schema = match crate::schema::resolve_with(ws, &change.meta.schema_name()) {
+        Some(Ok(s)) => s,
+        _ => Schema {
+            name: change.meta.schema_name(),
+            display_name: change.meta.schema_name(),
+            description: None,
+            source: "project".to_string(),
+            artifacts: Vec::new(),
+            apply_requires: Vec::new(),
+            apply_tracks: None,
+            apply_instruction: None,
+        },
+    };
+    let had_content = content.is_some();
+    let (artifact_id, path) =
+        crate::newcmd::new_artifact(store, &change, &schema, kind, capability, content, force)
+            .map_err(classify)?;
+    Ok(CommandOutcome::NewArtifact(NewArtifactOutcome {
+        artifact: artifact_id,
+        change: change.name,
+        path,
+        had_content,
+    }))
+}
+
+/// Which way a task checkbox flips.
+enum TaskFlip {
+    Done,
+    Undone,
+}
+
+fn run_task_flip(
+    store: &dyn Store,
+    ws: Option<&Workspace>,
+    task_id: &str,
+    change: Option<&str>,
+    flip: TaskFlip,
+) -> Result<CommandOutcome, CommandError> {
+    // `task done`/`task undone` do not require the change to exist — they go
+    // straight to tasks.md, and its existence is checked BEFORE the id
+    // (matching Spectra's order).
+    let change_name = match change {
+        Some(name) => name.to_string(),
+        None => resolve_change(store, None, SPECIFY_FLAG)?.name,
+    };
+    if !store.artifact_exists(&change_name, "tasks.md") {
+        return Err(CommandError::new(
+            ErrorCode::NotFound,
+            format!("tasks.md not found for change '{change_name}'"),
+        ));
+    }
+    let id: usize = task_id.parse().map_err(|_| {
+        CommandError::new(
+            ErrorCode::InvalidArgv,
+            format!("Invalid task ID '{task_id}': must be a number"),
+        )
+    })?;
+    if id < 1 {
+        return Err(CommandError::new(ErrorCode::InvalidArgv, "Task ID must be >= 1"));
+    }
+    let host = host_workspace(ws);
+    let (description, already) = match flip {
+        TaskFlip::Done => {
+            let o = crate::tasks::complete(
+                store,
+                &host,
+                &change_name,
+                id,
+                crate::util::git_identity(&host.root).as_deref(),
+                None,
+            )
+            .map_err(classify)?;
+            (o.description, o.already)
+        }
+        TaskFlip::Undone => {
+            let o = crate::tasks::uncomplete(store, &change_name, id).map_err(classify)?;
+            (o.description, o.already)
+        }
+    };
+    let outcome = TaskFlipOutcome {
+        change: change_name,
+        task_id: id,
+        task_id_arg: task_id.to_string(),
+        description,
+        already,
+    };
+    Ok(match flip {
+        TaskFlip::Done => CommandOutcome::TaskDone(outcome),
+        TaskFlip::Undone => CommandOutcome::TaskUndone(outcome),
+    })
+}
+
+fn run_in_progress_add(
+    store: &dyn Store,
+    ws: Option<&Workspace>,
+    name: &str,
+) -> Result<CommandOutcome, CommandError> {
+    let host = host_workspace(ws);
+    let stamped = crate::inprogress::add(
+        store,
+        name,
+        crate::util::git_identity(&host.root).as_deref(),
+        None,
+    )
+    .map_err(classify)?;
+    Ok(CommandOutcome::InProgressAdd(InProgressOutcome {
+        name: name.to_string(),
+        stamped,
+    }))
+}
+
+fn run_archive(
+    store: &dyn Store,
+    ws: Option<&Workspace>,
+    change: Option<&str>,
+    opts: crate::archive::ArchiveOptions,
+) -> Result<CommandOutcome, CommandError> {
+    let change = resolve_change(store, change, SPECIFY_FLAG)?;
+    if opts.mark_tasks_complete {
+        if let Some(text) = store.read_artifact(&change.name, "tasks.md") {
+            // Star-bullet checkboxes are tasks too (matches Spectra).
+            let done = text
+                .replace("- [ ] ", "- [x] ")
+                .replace("- [ ]\t", "- [x]\t")
+                .replace("* [ ] ", "* [x] ")
+                .replace("* [ ]\t", "* [x]\t");
+            store
+                .write_artifact(&change.name, "tasks.md", &done)
+                .map_err(classify)?;
+        }
+    }
+    let host = host_workspace(ws);
+    // The in-progress marker stays untouched on archive (matches Spectra).
+    let outcome = crate::archive::archive(&host, store, &change, &opts).map_err(classify)?;
+    Ok(CommandOutcome::Archive(outcome))
+}
+
+fn run_discard(
+    store: &dyn Store,
+    ws: Option<&Workspace>,
+    change: &str,
+    force: bool,
+) -> Result<CommandOutcome, CommandError> {
+    if crate::model::find_change(store, change).is_none() {
+        return Err(CommandError::new(
+            ErrorCode::NotFound,
+            format!("Change '{change}' not found."),
+        ));
+    }
+    let host = host_workspace(ws);
+    let outcome = crate::discard::discard(&host, store, change, force).map_err(classify)?;
+    Ok(CommandOutcome::Discard(outcome))
+}
+
+fn run_discuss_new(
+    store: &dyn Store,
+    ws: Option<&Workspace>,
+    topic: &str,
+    slug: Option<&str>,
+) -> Result<CommandOutcome, CommandError> {
+    let host = host_workspace(ws);
+    let info = crate::discuss::new_discussion(
+        store,
+        topic,
+        slug,
+        crate::util::git_identity(&host.root).as_deref(),
+    )
+    .map_err(classify)?;
+    Ok(CommandOutcome::DiscussNew(info))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -717,5 +1368,421 @@ mod tests {
         assert_eq!(ErrorCode::InvalidConfig.as_str(), "invalid_config");
         assert_eq!(ErrorCode::Refused.as_str(), "refused");
         assert_eq!(ErrorCode::Error.as_str(), "error");
+    }
+
+    // === 變更型動詞的領域事件（spec: 變更型動詞的領域事件） ===
+
+    /// Ghost workspace: nonexistent root — git probes fail soft, no snapshot
+    /// or touched-record files are written (same pattern as archive/discard tests).
+    fn ghost_ws() -> Workspace {
+        Workspace {
+            root: std::env::temp_dir().join("speclink-command-test-ghost-root"),
+            spec_dir_name: "openspec".to_string(),
+        }
+    }
+
+    /// Execute expecting success; returns (outcome, events).
+    fn ok(
+        store: &TestStore,
+        cmd: Command,
+    ) -> (CommandOutcome, Vec<DomainEvent>) {
+        let ws = ghost_ws();
+        execute(store, Some(&ws), cmd).expect("command succeeds")
+    }
+
+    fn kinds(events: &[DomainEvent]) -> Vec<&'static str> {
+        events.iter().map(|e| e.kind()).collect()
+    }
+
+    #[test]
+    fn new_change_reports_exactly_one_change_created_event() {
+        // Spec scenario 建立變更回報 change-created.
+        let store = TestStore::default();
+        let (_, events) = ok(
+            &store,
+            Command::NewChange {
+                name: "add-auth".to_string(),
+                description: None,
+                schema: None,
+                agent: None,
+                from_discussion: None,
+            },
+        );
+        assert_eq!(events.len(), 1, "exactly one event");
+        match &events[0] {
+            DomainEvent::ChangeCreated { change, occurred_at } => {
+                assert_eq!(change, "add-auth", "subject is the change name");
+                assert!(
+                    *occurred_at <= chrono::Utc::now(),
+                    "occurredAt is a UTC timestamp of the execution"
+                );
+            }
+            other => panic!("expected change-created, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn failed_new_change_produces_no_events_and_frozen_message() {
+        // Spec scenario 失敗的命令不產生事件 (the Err arm carries no events by type).
+        let store = TestStore::with_meta("demo", META);
+        let err = execute(
+            &store,
+            Some(&ghost_ws()),
+            Command::NewChange {
+                name: "demo".to_string(),
+                description: None,
+                schema: None,
+                agent: None,
+                from_discussion: None,
+            },
+        )
+        .expect_err("duplicate name must fail");
+        assert_eq!(err.code, ErrorCode::Error);
+        assert_eq!(err.message, "Change 'demo' already exists.");
+    }
+
+    #[test]
+    fn new_artifact_reports_artifact_created() {
+        let store = TestStore::with_meta("demo", META);
+        let (_, events) = ok(
+            &store,
+            Command::NewArtifact {
+                kind: "proposal".to_string(),
+                capability: None,
+                change: Some("demo".to_string()),
+                content: Some("## Why\n\nDemo.\n".to_string()),
+                force: false,
+            },
+        );
+        assert_eq!(kinds(&events), ["artifact-created"]);
+        match &events[0] {
+            DomainEvent::ArtifactCreated { change, artifact, .. } => {
+                assert_eq!(change, "demo");
+                assert_eq!(artifact, "proposal");
+            }
+            other => panic!("expected artifact-created, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn task_done_reports_task_completed() {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [ ] 1.1 Do the thing\n");
+        let (_, events) = ok(
+            &store,
+            Command::TaskDone {
+                task_id: "1".to_string(),
+                change: Some("demo".to_string()),
+            },
+        );
+        assert_eq!(kinds(&events), ["task-completed"]);
+        match &events[0] {
+            DomainEvent::TaskCompleted { change, task_id, .. } => {
+                assert_eq!(change, "demo");
+                assert_eq!(*task_id, 1);
+            }
+            other => panic!("expected task-completed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn already_done_task_produces_no_event() {
+        // No state changed → no event; the outcome carries the `already` fact
+        // for the entry point's own presentation (CLI error, GUI idempotence).
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 Done already\n");
+        let (outcome, events) = ok(
+            &store,
+            Command::TaskDone {
+                task_id: "1".to_string(),
+                change: Some("demo".to_string()),
+            },
+        );
+        assert!(events.is_empty(), "no event when nothing changed");
+        match outcome {
+            CommandOutcome::TaskDone(o) => assert!(o.already),
+            other => panic!("expected a task-done outcome, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn task_undone_reports_task_uncompleted() {
+        // 覆蓋表: task undone → task-uncompleted.
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 Do the thing\n");
+        let (_, events) = ok(
+            &store,
+            Command::TaskUndone {
+                task_id: "1".to_string(),
+                change: Some("demo".to_string()),
+            },
+        );
+        assert_eq!(kinds(&events), ["task-uncompleted"]);
+    }
+
+    #[test]
+    fn claim_on_the_fs_store_is_an_error_without_events() {
+        // claim is remote-store-only; the fs path refuses with the frozen text.
+        // Its event mapping (change-claimed) is asserted in the kind table below.
+        let store = TestStore::with_meta("demo", META);
+        let err = execute(
+            &store,
+            Some(&ghost_ws()),
+            Command::Claim { name: "demo".to_string() },
+        )
+        .expect_err("claim must refuse on a plain store");
+        assert_eq!(err.code, ErrorCode::Error);
+        assert_eq!(
+            err.message,
+            "claim requires a remote store — this project uses the local fs store"
+        );
+    }
+
+    #[test]
+    fn in_progress_add_reports_change_marked_in_progress() {
+        let store = TestStore::with_meta("demo", META);
+        let (_, events) = ok(&store, Command::InProgressAdd { name: "demo".to_string() });
+        assert_eq!(kinds(&events), ["change-marked-in-progress"]);
+    }
+
+    #[test]
+    fn archive_reports_change_archived() {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 done\n");
+        let (_, events) = ok(
+            &store,
+            Command::Archive {
+                change: Some("demo".to_string()),
+                skip_specs: false,
+                no_validate: false,
+                mark_tasks_complete: false,
+            },
+        );
+        assert_eq!(kinds(&events), ["change-archived"]);
+        match &events[0] {
+            DomainEvent::ChangeArchived { change, .. } => assert_eq!(change, "demo"),
+            other => panic!("expected change-archived, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn discard_reports_change_discarded() {
+        let store = TestStore::with_meta("demo", META);
+        let (_, events) = ok(
+            &store,
+            Command::Discard { change: "demo".to_string(), force: false },
+        );
+        assert_eq!(kinds(&events), ["change-discarded"]);
+    }
+
+    #[test]
+    fn discard_of_started_change_is_refused_without_force() {
+        // Spec scenario 需 --force 的拒絕: started work refuses without --force,
+        // classified refused, no files deleted, no events.
+        let store = TestStore::with_meta("demo", "schema: spec-driven\nstarted_at: 2026-07-10\n");
+        let err = execute(
+            &store,
+            Some(&ghost_ws()),
+            Command::Discard { change: "demo".to_string(), force: false },
+        )
+        .expect_err("started change must refuse discard");
+        assert_eq!(err.code, ErrorCode::Refused);
+        assert!(store.change_exists("demo"), "nothing deleted on refusal");
+    }
+
+    #[test]
+    fn discuss_verbs_report_their_events() {
+        // 覆蓋表 discuss 全系列（new/context/add-round/conclude/link/seal/
+        // archive）：一條真實生命週期，每步斷言恰一筆對應事件。
+        let store = TestStore::default();
+        let (_, ev) = ok(
+            &store,
+            Command::DiscussNew {
+                topic: "API auth".to_string(),
+                slug: Some("api-auth".to_string()),
+            },
+        );
+        assert_eq!(kinds(&ev), ["discussion-created"]);
+        match &ev[0] {
+            DomainEvent::DiscussionCreated { slug, .. } => assert_eq!(slug, "api-auth"),
+            other => panic!("expected discussion-created, got {other:?}"),
+        }
+
+        let (_, ev) = ok(
+            &store,
+            Command::DiscussContext {
+                slug: "api-auth".to_string(),
+                content: "框架：假設訪談模式。\n".to_string(),
+            },
+        );
+        assert_eq!(kinds(&ev), ["discussion-context-set"]);
+
+        let (_, ev) = ok(
+            &store,
+            Command::DiscussAddRound {
+                slug: "api-auth".to_string(),
+                mode: "assumptions".to_string(),
+                content: "第一輪內容。\n".to_string(),
+            },
+        );
+        assert_eq!(kinds(&ev), ["discussion-round-added"]);
+
+        let (_, ev) = ok(
+            &store,
+            Command::DiscussConclude {
+                slug: "api-auth".to_string(),
+                content: "結論：做。\n".to_string(),
+            },
+        );
+        assert_eq!(kinds(&ev), ["discussion-concluded"]);
+
+        // link + seal need a change to bind to.
+        ok(
+            &store,
+            Command::NewChange {
+                name: "auth-change".to_string(),
+                description: None,
+                schema: None,
+                agent: None,
+                from_discussion: None,
+            },
+        );
+        let (_, ev) = ok(
+            &store,
+            Command::DiscussLink {
+                slug: "api-auth".to_string(),
+                change: "auth-change".to_string(),
+            },
+        );
+        assert_eq!(kinds(&ev), ["discussion-linked"]);
+
+        let (_, ev) = ok(
+            &store,
+            Command::DiscussSeal {
+                slug: "api-auth".to_string(),
+                change: "auth-change".to_string(),
+            },
+        );
+        assert_eq!(kinds(&ev), ["discussion-sealed"]);
+
+        let (_, ev) = ok(&store, Command::DiscussArchive { slug: "api-auth".to_string() });
+        assert_eq!(kinds(&ev), ["discussion-archived"]);
+    }
+
+    #[test]
+    fn discuss_discard_reports_discussion_discarded() {
+        let store = TestStore::with_live_discussion(
+            "scrap-idea",
+            "---\nslug: scrap-idea\nstatus: open\ncreated: 2026-07-10\n---\n\n# Discussion: scrap\n",
+        );
+        let (_, events) = ok(
+            &store,
+            Command::DiscussDiscard { slug: "scrap-idea".to_string(), force: false },
+        );
+        assert_eq!(kinds(&events), ["discussion-discarded"]);
+        assert!(!store.live_discussion_exists("scrap-idea"));
+    }
+
+    #[test]
+    fn promote_reports_promoted_and_change_created() {
+        // Spec scenario 複合動詞回報多筆事件.
+        let store = TestStore::default();
+        ok(
+            &store,
+            Command::DiscussNew {
+                topic: "API auth".to_string(),
+                slug: Some("api-auth".to_string()),
+            },
+        );
+        ok(
+            &store,
+            Command::DiscussConclude {
+                slug: "api-auth".to_string(),
+                content: "結論：轉正。\n".to_string(),
+            },
+        );
+        let (_, events) = ok(
+            &store,
+            Command::DiscussPromote { slug: "api-auth".to_string(), name: None },
+        );
+        assert_eq!(kinds(&events), ["discussion-promoted", "change-created"]);
+        match (&events[0], &events[1]) {
+            (
+                DomainEvent::DiscussionPromoted { slug, change, .. },
+                DomainEvent::ChangeCreated { change: created, .. },
+            ) => {
+                assert_eq!(slug, "api-auth");
+                assert_eq!(change, "api-auth");
+                assert_eq!(created, "api-auth");
+            }
+            other => panic!("expected promoted+created, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn event_kind_table_matches_the_spec_coverage_table() {
+        // spec Example 變更型動詞與事件種類對應——17 列逐一斷言（含 execute 中
+        // 無成功路徑的 change-claimed：對應表本身是契約）。
+        let at = chrono::Utc::now();
+        let s = |v: &str| v.to_string();
+        let table: Vec<(DomainEvent, &str)> = vec![
+            (DomainEvent::ChangeCreated { change: s("c"), occurred_at: at }, "change-created"),
+            (
+                DomainEvent::ArtifactCreated { change: s("c"), artifact: s("proposal"), occurred_at: at },
+                "artifact-created",
+            ),
+            (
+                DomainEvent::TaskCompleted { change: s("c"), task_id: 1, occurred_at: at },
+                "task-completed",
+            ),
+            (
+                DomainEvent::TaskUncompleted { change: s("c"), task_id: 1, occurred_at: at },
+                "task-uncompleted",
+            ),
+            (DomainEvent::ChangeClaimed { change: s("c"), occurred_at: at }, "change-claimed"),
+            (
+                DomainEvent::ChangeMarkedInProgress { change: s("c"), occurred_at: at },
+                "change-marked-in-progress",
+            ),
+            (
+                DomainEvent::ChangeArchived { change: s("c"), dated_name: s("2026-07-12-c"), occurred_at: at },
+                "change-archived",
+            ),
+            (DomainEvent::ChangeDiscarded { change: s("c"), occurred_at: at }, "change-discarded"),
+            (DomainEvent::DiscussionCreated { slug: s("d"), occurred_at: at }, "discussion-created"),
+            (
+                DomainEvent::DiscussionContextSet { slug: s("d"), occurred_at: at },
+                "discussion-context-set",
+            ),
+            (
+                DomainEvent::DiscussionRoundAdded { slug: s("d"), round: 1, occurred_at: at },
+                "discussion-round-added",
+            ),
+            (
+                DomainEvent::DiscussionConcluded { slug: s("d"), occurred_at: at },
+                "discussion-concluded",
+            ),
+            (
+                DomainEvent::DiscussionPromoted { slug: s("d"), change: s("c"), occurred_at: at },
+                "discussion-promoted",
+            ),
+            (
+                DomainEvent::DiscussionLinked { slug: s("d"), change: s("c"), occurred_at: at },
+                "discussion-linked",
+            ),
+            (
+                DomainEvent::DiscussionSealed { slug: s("d"), change: s("c"), occurred_at: at },
+                "discussion-sealed",
+            ),
+            (DomainEvent::DiscussionArchived { slug: s("d"), occurred_at: at }, "discussion-archived"),
+            (
+                DomainEvent::DiscussionDiscarded { slug: s("d"), occurred_at: at },
+                "discussion-discarded",
+            ),
+        ];
+        assert_eq!(table.len(), 17, "the coverage table has 17 mutating verbs");
+        for (event, kind) in &table {
+            assert_eq!(event.kind(), *kind, "for {event:?}");
+        }
     }
 }

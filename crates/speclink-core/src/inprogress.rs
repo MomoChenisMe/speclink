@@ -19,20 +19,25 @@ use anyhow::Result;
 /// re-serialized). Identity and agent attribution follow the created_* rule:
 /// what the caller cannot attribute is absent, not defaulted. A change already
 /// carrying a started_* field keeps its first stamp verbatim.
-pub fn add(store: &dyn Store, name: &str, identity: Option<&str>, agent: Option<&str>) -> Result<()> {
+///
+/// Returns whether THIS call stamped the marker — `false` for the silent
+/// no-op successes (unknown name, already stamped), so the command layer can
+/// tell a mutation from an idempotent pass and only report an event for the
+/// former. Output and exit behavior stay parity-frozen either way.
+pub fn add(store: &dyn Store, name: &str, identity: Option<&str>, agent: Option<&str>) -> Result<bool> {
     // Active change names are single path segments by construction (directory
     // entries); anything else could address a metadata document outside
     // changes/ through the raw write pair. Baseline shape for any unknown
     // name is a silent success with zero file effects — keep it.
     if name.contains(['/', '\\', ':']) || name.contains("..") {
-        return Ok(());
+        return Ok(false);
     }
     let Some(mut meta) = store.read_change_meta(name) else {
-        return Ok(());
+        return Ok(false);
     };
     let parsed = ChangeMeta::from_text(Some(&meta));
     if parsed.started_at.is_some() || parsed.started_by.is_some() || parsed.started_with.is_some() {
-        return Ok(());
+        return Ok(false);
     }
     if !meta.ends_with('\n') && !meta.is_empty() {
         meta.push('\n');
@@ -61,7 +66,7 @@ pub fn add(store: &dyn Store, name: &str, identity: Option<&str>, agent: Option<
         meta.push_str(&format!("started_with: {}\n", clean(agent)));
     }
     store.write_change_meta(name, &meta)?;
-    Ok(())
+    Ok(true)
 }
 
 #[cfg(test)]

@@ -35,10 +35,13 @@ pub fn discard(
     };
 
     if !force && has_started_work(store, &change) {
-        bail!(
+        // Typed refusal: same frozen text, but the command layer classifies it
+        // `refused` (needs --force) instead of a plain error.
+        return Err(crate::command::Refusal(format!(
             "change '{change_name}' has started work (started_at set or tasks checked) — \
              discard refuses to delete it; pass --force to discard anyway"
-        );
+        ))
+        .into());
     }
 
     // Unlink BEFORE deleting the directory: an interrupted run leaves the discussions

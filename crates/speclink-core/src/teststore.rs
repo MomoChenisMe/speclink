@@ -201,8 +201,12 @@ impl Store for TestStore {
         self.discussions.borrow_mut().insert(slug.to_string(), content.to_string());
         Ok(self.live_discussion_path(slug))
     }
-    fn delete_live_discussion(&self, _slug: &str) -> Result<()> {
-        unreachable!()
+    fn delete_live_discussion(&self, slug: &str) -> Result<()> {
+        // Faithful delete (live surface for the command runtime's discuss
+        // discard flow): remove the live record; an absent slug is a no-op,
+        // matching the fs store's idempotent remove.
+        self.discussions.borrow_mut().remove(slug);
+        Ok(())
     }
     fn read_discussion(&self, slug: &str) -> Option<DiscussionDoc> {
         if let Some(text) = self.discussions.borrow().get(slug) {
