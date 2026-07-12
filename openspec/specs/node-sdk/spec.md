@@ -58,6 +58,8 @@ code:
 ### Requirement: dispatch 的輸入輸出契約
 engine.dispatch SHALL 接受 argv 字串陣列（與 CLI 動詞詞彙一對一）與選填第二參數（stdin 內容），回傳 Promise；成功時解析為與 CLI --json 對齊的結構化物件（無 --json 形式的動詞回傳含 output 字串的物件）；失敗時以 Error 拒絕——message 為與 CLI 相同的語義化訊息並附 code 欄位。dispatch SHALL 於背景工作執行，SHALL NOT 阻塞 JS 事件迴圈。
 
+dispatch SHALL 由與 CLI 共用的引擎命令層執行：argv 詞彙、回傳形狀與既有錯誤碼值域維持不變；對相同 workspace 狀態，dispatch 的成功結果與錯誤 SHALL 與 CLI 對應動詞語意一致，錯誤碼 SHALL 出自命令層的封閉註冊表（含 invalid_config 與 refused）。宿主 Store 提供的工作流設定文字存在但無法解析時，讀取政策的 dispatch 呼叫 SHALL 以 Error 拒絕且 code 為 invalid_config，SHALL NOT 以預設政策繼續執行。
+
 #### Scenario: 寫入動詞經 stdin 參數
 - **WHEN** 執行 await engine.dispatch(['new', 'artifact', 'proposal', '--change', 'demo', '--stdin'], { stdin: 內容字串 })
 - **THEN** 宿主 Store 收到該 artifact 的寫入呼叫，dispatch 解析為成功結果
@@ -70,38 +72,9 @@ engine.dispatch SHALL 接受 argv 字串陣列（與 CLI 動詞詞彙一對一�
 - **WHEN** 對同一引擎並發發出多個 dispatch 呼叫（宿主 Store 方法為 async）
 - **THEN** 全部呼叫在有限時間內完成（無互等死結），事件迴圈期間可持續處理其他工作
 
-
-<!-- @trace
-source: node-sdk
-updated: 2026-07-05
-code:
-  - .github/workflows/node-sdk.yml
-  - Cargo.lock
-  - Cargo.toml
-  - README.md
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-node/.gitignore
-  - crates/speclink-node/Cargo.toml
-  - crates/speclink-node/__test__/engine.spec.ts
-  - crates/speclink-node/__test__/helpers.ts
-  - crates/speclink-node/__test__/render.spec.ts
-  - crates/speclink-node/__test__/store-bridge.spec.ts
-  - crates/speclink-node/__test__/stress.spec.ts
-  - crates/speclink-node/__test__/write-path.spec.ts
-  - crates/speclink-node/build.rs
-  - crates/speclink-node/index.d.ts
-  - crates/speclink-node/index.js
-  - crates/speclink-node/package-lock.json
-  - crates/speclink-node/package.json
-  - crates/speclink-node/src/lib.rs
-  - crates/speclink-node/src/render.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - docs/sdk-node.md
-  - docs/sdk-node.zh-TW.md
--->
+#### Scenario: 壞工作流設定經 dispatch 拒絕
+- **WHEN** 宿主 Store 的工作流設定讀取方法回傳無法解析的 YAML 文字，執行 dispatch(['new', 'change', 'demo'])
+- **THEN** Promise 以 Error 拒絕，code 為 invalid_config，message 指出工作流設定無法解析與原因
 
 ---
 ### Requirement: 渲染 API
