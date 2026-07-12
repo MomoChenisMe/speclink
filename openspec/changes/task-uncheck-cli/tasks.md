@@ -23,8 +23,8 @@
 ## 5. apply 技能教學與 golden 同步
 
 - [x] 5.1 apply 技能新增取消勾選指引：在勾選指引旁補「誤勾或實作回退時執行 speclink task undone --change <name> <task-id>，SHALL NOT 直接編輯 tasks.md」，三處同步——crates/speclink-core/assets/skills/apply.md、.claude/skills/speclink-apply/SKILL.md、.agents/skills/speclink-apply/SKILL.md（對照 design「D5 apply 技能教學與內嵌資產三處同步」）。驗證：三檔均含 task undone 指引（內容審視），cargo test -p speclink-core --test skill_verbization 綠燈（無直接讀檔指示）
-- [ ] 5.2 乾淨樹再生 render golden：先以 git status 確認工作樹乾淨（僅含本變更已提交內容），執行 UPDATE_GOLDEN=1 cargo test -p speclink-core --test render_golden 再生快照，審視 diff 僅含 undone 指引相關變更。驗證：cargo test -p speclink-core --test render_golden 綠燈
+- [x] 5.2 乾淨樹再生 render golden：先以 git status 確認工作樹乾淨（僅含本變更已提交內容），執行 UPDATE_GOLDEN=1 cargo test -p speclink-core --test render_golden 再生快照，審視 diff 僅含 undone 指引相關變更。驗證：cargo test -p speclink-core --test render_golden 綠燈
 
 ## 6. 全量驗證
 
-- [ ] 6.1 端到端冒煙與全量測試：cargo test --workspace 全綠；於臨時示範專案執行 speclink task done 1 --change <demo> 後接 speclink task undone 1 --change <demo>，git diff 顯示 tasks.md 回復原狀且 .speclink/ 的 touched 記錄與 meta 開工標記維持 done 當下狀態（取消勾選不回滾側效）。驗證：上述指令 exit code 依序 0、0，diff 內容符合預期
+- [x] 6.1 端到端冒煙與全量測試：cargo test --workspace 全綠；於臨時示範專案執行 speclink task done 1 --change <demo> 後接 speclink task undone 1 --change <demo>，git diff 顯示 tasks.md 回復原狀且 .speclink/ 的 touched 記錄與 meta 開工標記維持 done 當下狀態（取消勾選不回滾側效）。驗證：上述指令 exit code 依序 0、0，diff 內容符合預期
