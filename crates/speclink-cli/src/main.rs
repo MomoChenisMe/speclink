@@ -563,6 +563,17 @@ enum TaskCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Mark a task as not done (pure state flip, no side effects)
+    Undone {
+        /// Task ID (1-based sequential index)
+        task_id: String,
+        /// Change name
+        #[arg(long)]
+        change: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Args)]

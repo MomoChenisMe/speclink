@@ -1616,6 +1616,46 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
             }
             println!("{} Task {task_id} marked as done: {desc}", color::green("✓"));
         }
+        TaskCommands::Undone { task_id, change, json } => {
+            if let Some(ctx) = remote_ctx()? {
+                return remote_task_undone(&ctx, &task_id, change.as_deref(), json);
+            }
+            let (_ws, store) = open_project()?;
+            let store: &dyn Store = &store;
+            let change_name = match change.as_deref() {
+                Some(name) => name.to_string(),
+                None => resolve_change(store, None)?.name,
+            };
+            // Check tasks.md existence BEFORE validating the id (same order as `done`).
+            if !store.artifact_exists(&change_name, "tasks.md") {
+                bail!("tasks.md not found for change '{change_name}'");
+            }
+            let id: usize = task_id
+                .parse()
+                .map_err(|_| anyhow::anyhow!("Invalid task ID '{task_id}': must be a number"))?;
+            if id < 1 {
+                bail!("Task ID must be >= 1");
+            }
+            // 取消勾選語意（純狀態翻轉、零側效）單點在引擎；already 對稱 done 以錯誤結束。
+            let outcome = core::tasks::uncomplete(store, &change_name, id)?;
+            let desc = outcome.description;
+            if outcome.already {
+                bail!("Task {id} is already not done");
+            }
+
+            if json {
+                // Compact single-line JSON, key order symmetric with `done`.
+                let v = serde_json::json!({
+                    "change": change_name,
+                    "status": "undone",
+                    "task_desc": desc,
+                    "task_id": task_id.to_string(),
+                });
+                println!("{}", serde_json::to_string(&v)?);
+                return Ok(());
+            }
+            println!("{} Task {task_id} marked as not done: {desc}", color::green("✓"));
+        }
     }
     Ok(())
 }

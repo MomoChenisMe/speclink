@@ -183,6 +183,19 @@ impl Client {
         self.post(&format!("/changes/{name}/tasks/{task_id}/done"), body)
     }
 
+    /// `POST /changes/{name}/tasks/{taskId}/undone` — unchecking records no
+    /// touched files, so the body is always an empty object.
+    pub fn task_undone(
+        &self,
+        name: &str,
+        task_id: &str,
+    ) -> Result<serde_json::Value, RemoteError> {
+        self.post(
+            &format!("/changes/{name}/tasks/{task_id}/undone"),
+            serde_json::json!({}),
+        )
+    }
+
     /// `POST /changes/{name}/claim`
     pub fn claim(&self, name: &str) -> Result<serde_json::Value, RemoteError> {
         self.post(&format!("/changes/{name}/claim"), serde_json::json!({}))

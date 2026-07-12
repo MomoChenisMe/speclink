@@ -74,15 +74,16 @@ pub fn delete_change_at(root: &Path, change: &str) -> Result<(), String> {
 /// （勾章、touched 記錄、首次完成蓋開工章；identity 沿 git 身分、agent 缺席）。
 /// 與 CLI 唯一的差異：任務已完成時視為冪等成功（GUI toggle 語意下重複 done=true
 /// 只可能來自競態，不以錯誤打斷使用者），不寫任何檔案。
-/// done=false（取消勾選）維持桌面行編輯，不蓋章、不記 touched。
+/// done=false（取消勾選）走引擎的反向動詞 uncomplete——純狀態翻轉，
+/// 不蓋章、不記 touched。
 pub fn set_task_done_at(root: &Path, change: &str, ordinal: usize, done: bool) -> Result<(), String> {
     let _guard = write_guard();
+    if !crate::query::is_safe_path_param(change) {
+        return Err(format!("invalid change name: {change}"));
+    }
+    let ctx = init_core_context(root)
+        .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
     if done {
-        if !crate::query::is_safe_path_param(change) {
-            return Err(format!("invalid change name: {change}"));
-        }
-        let ctx = init_core_context(root)
-            .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
         let identity = cached_git_identity(&ctx.workspace.root);
         speclink_core::tasks::complete(
             &ctx.store,
@@ -95,15 +96,9 @@ pub fn set_task_done_at(root: &Path, change: &str, ordinal: usize, done: bool) -
         .map(|_| ()) // already → 冪等成功（引擎保證零檔案效果）
         .map_err(|e| e.to_string())
     } else {
-        edit_tasks(root, change, |lines, idx| {
-            let line_no = *idx
-                .get(ordinal.checked_sub(1).ok_or("ordinal must be 1-based")?)
-                .ok_or_else(|| format!("task {ordinal} not found"))?;
-            let line = &lines[line_no];
-            let re = regex::Regex::new(r"^(\s*-\s*)\[[ xX]\]").unwrap();
-            lines[line_no] = re.replace(line, "${1}[ ]").into_owned();
-            Ok(())
-        })
+        speclink_core::tasks::uncomplete(&ctx.store, change, ordinal)
+            .map(|_| ()) // already → 冪等成功（引擎保證零檔案效果）
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -532,6 +527,21 @@ mod tests {
         assert!(text.contains("- [ ] 2.1 third"), "untouched line intact");
         assert!(text.contains("## 1. Group A"), "group headings intact");
         assert!(set_task_done_at(&root, "task-change", 99, true).is_err(), "out of range errors");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn uncheck_star_bullet_task_flips_the_line() {
+        // 取消勾選 delegate 引擎後，`* ` bullet 與 `- ` 同樣正確翻轉
+        // （舊桌面 regex 只認 `- `，此案例於 delegate 前紅燈）。
+        let root = fixture_with_tasks_md(
+            "star-uncheck",
+            "## 1. Group\n\n- [x] 1.1 first\n* [x] 1.2 star\n",
+        );
+        set_task_done_at(&root, "task-change", 2, false).expect("uncheck star-bullet task");
+        let text = read_tasks(&root);
+        assert!(text.contains("* [ ] 1.2 star"), "star bullet must flip back to open: {text}");
+        assert!(text.contains("- [x] 1.1 first"), "other line untouched: {text}");
         let _ = fs::remove_dir_all(&root);
     }
 

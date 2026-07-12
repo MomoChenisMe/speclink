@@ -597,6 +597,39 @@ fn remote_task_done(
     Ok(())
 }
 
+fn remote_task_undone(
+    ctx: &RemoteCtx,
+    task_id: &str,
+    change: Option<&str>,
+    json: bool,
+) -> Result<()> {
+    let change = match change {
+        Some(n) => n.to_string(),
+        None => match remote_resolve_change(ctx, None, "Use --change to specify one:")? {
+            Some(n) => n,
+            None => return Ok(()),
+        },
+    };
+    let resp = ctx.client.task_undone(&change, task_id)?;
+    let desc = v_str(&resp, "taskDesc");
+    if resp.get("alreadyUndone").and_then(|v| v.as_bool()).unwrap_or(false) {
+        bail!("Task {task_id} is already not done");
+    }
+    if json {
+        // Compact single-line JSON with the fs-mode keys.
+        let v = serde_json::json!({
+            "change": change,
+            "status": "undone",
+            "task_desc": desc,
+            "task_id": task_id,
+        });
+        println!("{}", serde_json::to_string(&v)?);
+        return Ok(());
+    }
+    println!("{} Task {task_id} marked as not done: {desc}", color::green("✓"));
+    Ok(())
+}
+
 fn remote_claim(ctx: &RemoteCtx, name: &str) -> Result<()> {
     let resp = ctx.client.claim(name)?;
     let _ = resp;

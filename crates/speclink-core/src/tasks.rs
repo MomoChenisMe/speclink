@@ -57,6 +57,13 @@ pub fn progress(tasks: &[Task]) -> (usize, usize, usize) {
 /// Flip the id-th checkbox to done. Returns (new_content, task_description) or None if not found /
 /// already done.
 pub fn mark_done(tasks_md: &str, target_id: usize) -> Option<(String, String, bool)> {
+    flip_task(tasks_md, target_id, true)
+}
+
+/// Flip the id-th checkbox in either direction. Returns (new_content, task_description,
+/// already_in_target_state) or None if not found. Indent, bullet style (Spectra rewrites
+/// `* [ ]` to `* [x]`), and trailing newline are preserved.
+fn flip_task(tasks_md: &str, target_id: usize, to_done: bool) -> Option<(String, String, bool)> {
     let mut id = 0usize;
     let mut already = false;
     let mut desc = String::new();
@@ -80,13 +87,11 @@ pub fn mark_done(tasks_md: &str, target_id: usize) -> Option<(String, String, bo
                 found = true;
                 let indent = &line[..line.len() - trimmed.len()];
                 let rest = &body[4..];
-                if is_done {
-                    already = true;
-                }
+                already = if to_done { is_done } else { is_open };
                 let clean = rest.strip_prefix("[P] ").unwrap_or(rest);
                 desc = clean.trim().to_string();
-                // The bullet style is preserved (Spectra rewrites `* [ ]` to `* [x]`).
-                out_lines.push(format!("{indent}{bullet} [x] {rest}"));
+                let checkbox = if to_done { "[x]" } else { "[ ]" };
+                out_lines.push(format!("{indent}{bullet} {checkbox} {rest}"));
                 continue;
             }
         }
@@ -159,6 +164,43 @@ pub fn complete(
 
     crate::inprogress::add(store, change, identity, agent)?;
     Ok(CompleteOutcome { description: desc, already: false })
+}
+
+/// Outcome of [`uncomplete`]: the task's cleaned description and whether it
+/// was already unchecked (in which case nothing was written).
+#[derive(Debug, Clone)]
+pub struct UncompleteOutcome {
+    pub description: String,
+    pub already: bool,
+}
+
+/// Uncheck a task — the reverse verb shared by every tool path (CLI
+/// `task undone`, desktop checkbox): flip the box back to `[ ]` and write
+/// tasks.md. A pure state flip with zero side effects: touched records and the
+/// work-started stamp are history and stay untouched, which is why the
+/// signature takes no [`Workspace`].
+///
+/// An already-unchecked task is reported through the `already` flag with zero
+/// file effects; presentation (CLI error vs. GUI idempotent success) stays
+/// with the caller.
+pub fn uncomplete(store: &dyn Store, change: &str, task_id: usize) -> Result<UncompleteOutcome> {
+    let text = store
+        .read_artifact(change, "tasks.md")
+        .ok_or_else(|| anyhow::anyhow!("tasks.md not found for change '{change}'"))?;
+    let total = parse(&text).len();
+    let (new_content, desc, already) = mark_undone(&text, task_id)
+        .ok_or_else(|| anyhow::anyhow!("Task {task_id} not found (total: {total})"))?;
+    if already {
+        return Ok(UncompleteOutcome { description: desc, already: true });
+    }
+    store.write_artifact(change, "tasks.md", &new_content)?;
+    Ok(UncompleteOutcome { description: desc, already: false })
+}
+
+/// Flip the id-th checkbox back to open. Returns (new_content, task_description, already_open)
+/// or None if not found.
+fn mark_undone(tasks_md: &str, target_id: usize) -> Option<(String, String, bool)> {
+    flip_task(tasks_md, target_id, false)
 }
 
 // --- Touched-file tracking ---
@@ -418,5 +460,66 @@ mod tests {
         assert_eq!(err.to_string(), "Task 5 not found (total: 2)");
         assert_eq!(*store.artifact_writes.borrow(), 0);
         assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    // Checked tasks in both bullet styles, one indented, one still open.
+    const TASKS_MIXED_DONE: &str =
+        "## 1. Group\n\n- [x] 1.1 first task\n    - [x] 1.2 indented task\n* [X] 1.3 star task\n- [ ] 1.4 open task\n";
+
+    #[test]
+    fn uncomplete_flips_only_target_line_preserving_indent_and_trailing_newline() {
+        let store = store_with(META_UNSTARTED, TASKS_MIXED_DONE);
+        let out = uncomplete(&store, "demo", 2).unwrap();
+        assert!(!out.already);
+        assert_eq!(out.description, "1.2 indented task");
+        assert_eq!(
+            store.read_artifact("demo", "tasks.md").unwrap(),
+            "## 1. Group\n\n- [x] 1.1 first task\n    - [ ] 1.2 indented task\n* [X] 1.3 star task\n- [ ] 1.4 open task\n"
+        );
+        // Pure state flip: tasks.md is the only write, meta stays byte-for-byte.
+        assert_eq!(*store.artifact_writes.borrow(), 1);
+        assert_eq!(*store.meta_writes.borrow(), 0, "uncomplete must not touch meta");
+        assert_eq!(store.meta("demo"), META_UNSTARTED);
+    }
+
+    #[test]
+    fn uncomplete_star_bullet_keeps_style_and_no_trailing_newline() {
+        let tasks_md = "- [x] 1.1 first\n* [X] 1.2 star task";
+        let store = store_with(META_UNSTARTED, tasks_md);
+        let out = uncomplete(&store, "demo", 2).unwrap();
+        assert!(!out.already);
+        assert_eq!(out.description, "1.2 star task");
+        assert_eq!(
+            store.read_artifact("demo", "tasks.md").unwrap(),
+            "- [x] 1.1 first\n* [ ] 1.2 star task",
+            "star bullet style and absent trailing newline must be preserved"
+        );
+    }
+
+    #[test]
+    fn uncomplete_already_open_task_reports_already_without_any_file_effect() {
+        let store = store_with(META_UNSTARTED, TASKS_MIXED_DONE);
+        let out = uncomplete(&store, "demo", 4).unwrap();
+        assert!(out.already);
+        assert_eq!(out.description, "1.4 open task");
+        assert_eq!(store.read_artifact("demo", "tasks.md").unwrap(), TASKS_MIXED_DONE);
+        assert_eq!(*store.artifact_writes.borrow(), 0, "already-open must not rewrite tasks.md");
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn uncomplete_out_of_range_task_id_errors_without_writes() {
+        let store = store_with(META_UNSTARTED, TASKS_MIXED_DONE);
+        let err = uncomplete(&store, "demo", 9).unwrap_err();
+        assert_eq!(err.to_string(), "Task 9 not found (total: 4)");
+        assert_eq!(*store.artifact_writes.borrow(), 0);
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn uncomplete_missing_tasks_md_errors() {
+        let store = TestStore::with_meta("demo", META_UNSTARTED);
+        let err = uncomplete(&store, "demo", 1).unwrap_err();
+        assert_eq!(err.to_string(), "tasks.md not found for change 'demo'");
     }
 }
