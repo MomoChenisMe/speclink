@@ -49,17 +49,20 @@ pub struct ArtifactInstructions {
     pub unlocks: Vec<String>,
 }
 
-/// Build per-artifact instructions.
+/// Build per-artifact instructions. `Ok(None)` = unknown artifact id; `Err` =
+/// a config file exists but cannot be parsed (fail-closed, no default policy).
 pub fn build_artifact(
     ws: &Workspace,
     store: &dyn Store,
     change: &Change,
     schema: &Schema,
     artifact_id: &str,
-) -> Option<ArtifactInstructions> {
-    let artifact = schema.artifact(artifact_id)?;
-    let app = AppConfig::load(&ws.app_config());
-    let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref());
+) -> Result<Option<ArtifactInstructions>, crate::config::ConfigError> {
+    let Some(artifact) = schema.artifact(artifact_id) else {
+        return Ok(None);
+    };
+    let app = AppConfig::load(&ws.app_config())?;
+    let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref())?;
     // Policy values come from the four-layer resolution (env > legacy app key >
     // config.yaml > default) — never from one config file alone.
     let policy =
@@ -163,7 +166,7 @@ audit checklist (fetch it with `speclink instructions --skill audit`).",
         }
     }
 
-    Some(ArtifactInstructions {
+    Ok(Some(ArtifactInstructions {
         change_name: change.name.clone(),
         artifact_id: artifact.id.clone(),
         schema_name: schema.display_name.clone(),
@@ -184,7 +187,7 @@ audit checklist (fetch it with `speclink instructions --skill audit`).",
         },
         dependencies,
         unlocks,
-    })
+    }))
 }
 
 #[derive(Debug, Serialize, serde::Deserialize)]
@@ -259,9 +262,9 @@ pub fn build_apply(
     store: &dyn Store,
     change: &Change,
     schema: &Schema,
-) -> ApplyInstructions {
-    let app = AppConfig::load(&ws.app_config());
-    let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref());
+) -> Result<ApplyInstructions, crate::config::ConfigError> {
+    let app = AppConfig::load(&ws.app_config())?;
+    let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref())?;
     let policy =
         crate::config::resolve_policy(&crate::config::EnvOverrides::from_env(), &app, &wf);
     let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
@@ -315,7 +318,7 @@ pub fn build_apply(
         None
     };
 
-    ApplyInstructions {
+    Ok(ApplyInstructions {
         change_name: change.name.clone(),
         change_dir: change.dir.to_string_lossy().to_string(),
         schema_name: schema.display_name.clone(),
@@ -331,5 +334,5 @@ pub fn build_apply(
         locale: policy.locale,
         instruction: schema.apply_instruction.clone(),
         preflight,
-    }
+    })
 }

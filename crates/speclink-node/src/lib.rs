@@ -398,14 +398,14 @@ fn verb_new_change(backend: &Backend, args: &[String]) -> DispatchResult {
             "new change requires a name (kebab-case)",
         ));
     };
-    let schema = a
-        .options
-        .get("schema")
-        .map(|s| (*s).to_string())
-        .unwrap_or_else(|| {
-            core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())
-                .schema_name()
-        });
+    let schema = match a.options.get("schema") {
+        Some(s) => (*s).to_string(),
+        // Fail-closed: an unparseable workflow config rejects the dispatch
+        // (invalid_config) instead of silently running with the default schema.
+        None => core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())
+            .map_err(|e| DispatchError::new("invalid_config", e.to_string()))?
+            .schema_name(),
+    };
     let from_discussion = a.options.get("from-discussion").copied();
     if let Some(slug) = from_discussion {
         if core::discuss::info(store, slug).is_none() {

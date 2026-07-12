@@ -324,7 +324,7 @@ pub struct UpdateOutcome {
 /// descriptor is an error. Without a recorded list, built-ins fall back to Spectra's
 /// behavior: regenerate the tools whose dot-directories exist (codex excluded).
 pub fn update(root: &Path) -> Result<UpdateOutcome> {
-    let app = crate::config::AppConfig::load(&root.join(".speclink.yaml"));
+    let app = crate::config::AppConfig::load(&root.join(".speclink.yaml"))?;
     let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
     // The remote section's presence is the mode signal — regenerated markers
     // keep the wording of the mode the workspace is actually in.

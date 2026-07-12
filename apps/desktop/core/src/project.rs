@@ -30,13 +30,16 @@ pub fn open_project_at(path: &Path) -> Result<ProjectProbe, String> {
         ));
     }
     match Workspace::discover(path) {
-        Some(ws) => Ok(ProjectProbe::Project {
+        Ok(Some(ws)) => Ok(ProjectProbe::Project {
             name: project_name(&ws.root),
             root: ws.root.display().to_string(),
         }),
-        None => Ok(ProjectProbe::Uninitialized {
+        Ok(None) => Ok(ProjectProbe::Uninitialized {
             dir: path.display().to_string(),
         }),
+        // 壞 .speclink.yaml：fail-closed 為單行 Err——不得誤判為 Uninitialized
+        // （否則前端會對既有專案開初始化確認框）。
+        Err(e) => Err(e.to_string()),
     }
 }
 

@@ -50,72 +50,75 @@ pub struct WorkflowSettings {
 }
 
 /// 讀取設定頁快照。三態各自獨立：檔案缺席＝預設值狀態（無 parse_error）；
-/// 可解析＝實際欄位值；解析失敗＝parse_error 單行訊息（刻意浮出，對比引擎
-/// `WorkflowConfig::from_text`／`AppConfig::load` 的靜默 fallback）。
+/// 可解析＝實際欄位值；解析失敗＝parse_error 單行訊息。載入經引擎下沉後的
+/// typed 函式（`AppConfig::load`／`WorkflowConfig::from_text` 已 fail-closed，
+/// 本層不再自行嚴格解析繞道）。
 pub fn read_settings_at(root: &Path) -> Result<SettingsSnapshot, String> {
-    let ws = discover(root)?;
-    let app = match read_opt(&ws.app_config()) {
-        None => AppSettings { tools: Vec::new(), custom_tools: Vec::new(), parse_error: None },
-        Some(text) => match serde_yaml::from_str::<AppConfig>(&text) {
-            Ok(cfg) => {
-                let mut tools = Vec::new();
-                let mut custom_tools = Vec::new();
-                for entry in &cfg.tools {
-                    match entry {
-                        ToolEntry::Builtin(name) => {
-                            if let Some(t) = Tool::parse(name) {
-                                let canonical = t.name().to_string();
-                                if !tools.contains(&canonical) {
-                                    tools.push(canonical);
+    let (ws, app) = match Workspace::discover(root) {
+        Ok(None) => return Err(format!("not a speclink project: {}", root.display())),
+        Ok(Some(ws)) => {
+            let app = match AppConfig::load(&ws.app_config()) {
+                Ok(cfg) => {
+                    let mut tools = Vec::new();
+                    let mut custom_tools = Vec::new();
+                    for entry in &cfg.tools {
+                        match entry {
+                            ToolEntry::Builtin(name) => {
+                                if let Some(t) = Tool::parse(name) {
+                                    let canonical = t.name().to_string();
+                                    if !tools.contains(&canonical) {
+                                        tools.push(canonical);
+                                    }
                                 }
                             }
+                            ToolEntry::Descriptor(d) => custom_tools
+                                .push(d.name.clone().unwrap_or_else(|| "(unnamed)".to_string())),
                         }
-                        ToolEntry::Descriptor(d) => custom_tools
-                            .push(d.name.clone().unwrap_or_else(|| "(unnamed)".to_string())),
                     }
+                    AppSettings { tools, custom_tools, parse_error: None }
                 }
-                AppSettings { tools, custom_tools, parse_error: None }
-            }
-            Err(e) => AppSettings {
+                Err(e) => AppSettings {
+                    tools: Vec::new(),
+                    custom_tools: Vec::new(),
+                    parse_error: Some(single_line(&e.reason)),
+                },
+            };
+            (ws, app)
+        }
+        // 壞 .speclink.yaml：discover fail-closed。設定頁沿用既有 UI——app 面
+        // 浮出 parse_error（表單停用），workflow 面以預設佈局照常呈現。
+        Err(e) => (
+            Workspace { root: root.to_path_buf(), spec_dir_name: "openspec".to_string() },
+            AppSettings {
                 tools: Vec::new(),
                 custom_tools: Vec::new(),
-                parse_error: Some(single_line(&e.to_string())),
+                parse_error: Some(single_line(&e.reason)),
             },
-        },
+        ),
     };
-    let workflow = match read_opt(&workflow_config_path(&ws)) {
-        None => WorkflowSettings {
+    let workflow = match WorkflowConfig::from_text(read_opt(&workflow_config_path(&ws)).as_deref())
+    {
+        // 缺席與可解析同一 arm：缺檔的 typed 載入即預設值狀態。
+        Ok(cfg) => WorkflowSettings {
+            locale: cfg.locale.clone(),
+            spec_locale: cfg.spec_locale.clone(),
+            tdd: cfg.tdd.unwrap_or(false),
+            audit: cfg.audit.unwrap_or(false),
+            context: cfg.context.clone(),
+            rules: cfg.rules.clone(),
+            schema_artifacts: schema_artifact_ids(&ws, &cfg),
+            parse_error: None,
+        },
+        Err(e) => WorkflowSettings {
             locale: None,
             spec_locale: None,
             tdd: false,
             audit: false,
             context: None,
             rules: Default::default(),
-            schema_artifacts: schema_artifact_ids(&ws, &WorkflowConfig::default()),
-            parse_error: None,
-        },
-        Some(text) => match serde_yaml::from_str::<WorkflowConfig>(&text) {
-            Ok(cfg) => WorkflowSettings {
-                locale: cfg.locale.clone(),
-                spec_locale: cfg.spec_locale.clone(),
-                tdd: cfg.tdd.unwrap_or(false),
-                audit: cfg.audit.unwrap_or(false),
-                context: cfg.context.clone(),
-                rules: cfg.rules.clone(),
-                schema_artifacts: schema_artifact_ids(&ws, &cfg),
-                parse_error: None,
-            },
-            Err(e) => WorkflowSettings {
-                locale: None,
-                spec_locale: None,
-                tdd: false,
-                audit: false,
-                context: None,
-                rules: Default::default(),
-                // 壞檔無從得知活躍 schema——不呈現猜測的分節（表單一併停用）。
-                schema_artifacts: Vec::new(),
-                parse_error: Some(single_line(&e.to_string())),
-            },
+            // 壞檔無從得知活躍 schema——不呈現猜測的分節（表單一併停用）。
+            schema_artifacts: Vec::new(),
+            parse_error: Some(single_line(&e.reason)),
         },
     };
     Ok(SettingsSnapshot { app, workflow })
@@ -179,13 +182,10 @@ pub fn write_workflow_content_at(
     let file = format!("{}/config.yaml", ws.spec_dir_name);
     let path = workflow_config_path(&ws);
     let original = read_opt(&path).unwrap_or_default();
-    let current: WorkflowConfig = if original.trim().is_empty() {
-        WorkflowConfig::default()
-    } else {
-        serde_yaml::from_str(&original).map_err(|e| {
-            format!("{file}: pre-write verification failed: {}", single_line(&e.to_string()))
-        })?
-    };
+    // typed 載入即帶「空文件→預設、壞檔→Err」語意（引擎 fail-closed 下沉）。
+    let current = WorkflowConfig::from_text(Some(original.as_str())).map_err(|e| {
+        format!("{file}: pre-write verification failed: {}", single_line(&e.reason))
+    })?;
     let fields = WorkflowPolicyFields {
         locale: current.locale.clone(),
         spec_locale: current.spec_locale.clone(),
@@ -318,7 +318,9 @@ fn verify_app_text(text: &str, selected: &[Tool], file: &str, stage: &str) -> Re
 }
 
 fn discover(root: &Path) -> Result<Workspace, String> {
-    Workspace::discover(root).ok_or_else(|| format!("not a speclink project: {}", root.display()))
+    Workspace::discover(root)
+        .map_err(|e| single_line(&e.to_string()))?
+        .ok_or_else(|| format!("not a speclink project: {}", root.display()))
 }
 
 fn workflow_config_path(ws: &Workspace) -> PathBuf {

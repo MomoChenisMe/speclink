@@ -1,9 +1,9 @@
 ## 1. 設定解析 fail-closed（design 決策五：設定解析 fail-closed——存在即必須可解析）
 
-- [ ] 1.1 撰寫設定載入 fail-closed 的失敗測試：`.speclink.yaml` 與 openspec/config.yaml「存在但壞 YAML」時載入回帶 workspace 相對路徑與解析原因的錯誤、「缺檔」時回預設（crates/speclink-core/src/config.rs 的 #[cfg(test)]；含 remote 區段與模式解析的 fail-closed 案例——壞 `.speclink.yaml` 不得解析為 fs 模式，crates/speclink-core/tests/mode_resolution.rs）。以 cargo test -p speclink-core 觀察紅燈。
-- [ ] 1.2 實作 typed 設定載入並於 core 內傳播（crates/speclink-core/src/config.rs、crates/speclink-core/src/workspace.rs 的 spec_dir 解析與 resolve_mode、crates/speclink-core/src/instructions.rs、crates/speclink-core/src/init.rs、crates/speclink-core/src/discuss.rs），1.1 測試轉綠：壞檔一律錯誤、缺檔一律預設、成功解析的檔案行為不變。
-- [ ] 1.3 撰寫並轉綠 CLI 整合測試，覆蓋「工作流政策的正典歸屬與四層解析順序」的新場景：壞 openspec/config.yaml → speclink instructions tasks 以非零 exit code 失敗且 stderr 指出檔案與原因、SPECLINK_TDD 環境變數不得繞過壞檔、缺檔仍走預設 exit 0；壞 `.speclink.yaml` → speclink list 非零 exit 且不讀 openspec/ 也不發遠端請求（crates/speclink-cli/tests/，沿用既有整合測試佈局）。
-- [ ] 1.4 跟進其餘呼叫點並收尾本階段：crates/speclink-cli/src/commands.rs 的 deprecated-keys 讀取、crates/speclink-node/src/lib.rs 的工作流設定讀取、apps/desktop/core/src/settings.rs 改呼叫下沉後的 typed 載入（移除自行嚴格解析的繞道，錯誤顯示路徑沿用既有 UI）。驗證：cargo test -p speclink-core（本機 Windows 加 --lib）與 cargo test -p speclink-cli 全綠。
+- [x] 1.1 撰寫設定載入 fail-closed 的失敗測試：`.speclink.yaml` 與 openspec/config.yaml「存在但壞 YAML」時載入回帶 workspace 相對路徑與解析原因的錯誤、「缺檔」時回預設（crates/speclink-core/src/config.rs 的 #[cfg(test)]；含 remote 區段與模式解析的 fail-closed 案例——壞 `.speclink.yaml` 不得解析為 fs 模式，crates/speclink-core/tests/mode_resolution.rs）。以 cargo test -p speclink-core 觀察紅燈。
+- [x] 1.2 實作 typed 設定載入並於 core 內傳播（crates/speclink-core/src/config.rs、crates/speclink-core/src/workspace.rs 的 spec_dir 解析與 resolve_mode、crates/speclink-core/src/instructions.rs、crates/speclink-core/src/init.rs、crates/speclink-core/src/discuss.rs），1.1 測試轉綠：壞檔一律錯誤、缺檔一律預設、成功解析的檔案行為不變。
+- [x] 1.3 撰寫並轉綠 CLI 整合測試，覆蓋「工作流政策的正典歸屬與四層解析順序」的新場景：壞 openspec/config.yaml → speclink instructions tasks 以非零 exit code 失敗且 stderr 指出檔案與原因、SPECLINK_TDD 環境變數不得繞過壞檔、缺檔仍走預設 exit 0；壞 `.speclink.yaml` → speclink list 非零 exit 且不讀 openspec/ 也不發遠端請求（crates/speclink-cli/tests/，沿用既有整合測試佈局）。
+- [x] 1.4 跟進其餘呼叫點並收尾本階段：crates/speclink-cli/src/commands.rs 的 deprecated-keys 讀取、crates/speclink-node/src/lib.rs 的工作流設定讀取、apps/desktop/core/src/settings.rs 改呼叫下沉後的 typed 載入（移除自行嚴格解析的繞道，錯誤顯示路徑沿用既有 UI）。驗證：cargo test -p speclink-core（本機 Windows 加 --lib）與 cargo test -p speclink-cli 全綠。
 
 ## 2. command 模組型別與查詢群（design 決策一：runtime 落在 speclink-core 的 command 模組；決策二：動詞覆蓋判準——讀寫 Store 的領域動詞才進 runtime）
 
@@ -13,8 +13,8 @@
 
 ## 3. 變更群與領域事件（design 決策四：domain events 的種類、載荷與發出點）
 
-- [ ] 3.1 撰寫「變更型動詞的領域事件」失敗測試：new change 成功回報恰一筆 change-created（主體＋UTC 時間戳）、重名建立失敗不發事件、promote 回報 discussion-promoted 與 change-created 兩筆、覆蓋表 16 種動詞→事件對應逐一斷言（crates/speclink-core/src/command/ 測試）。紅燈。
-- [ ] 3.2 實作變更群 execute 與事件建構（單一發出點、由 typed outcome 建構；new change、new artifact、task done、claim、in-progress add、archive、discard、discuss 全系列），3.1 轉綠後重構事件建構樣板；驗證 cargo test -p speclink-core 全綠。
+- [ ] 3.1 撰寫「變更型動詞的領域事件」失敗測試：new change 成功回報恰一筆 change-created（主體＋UTC 時間戳）、重名建立失敗不發事件、promote 回報 discussion-promoted 與 change-created 兩筆、覆蓋表 17 種動詞→事件對應逐一斷言（含 task undone → task-uncompleted）（crates/speclink-core/src/command/ 測試）。紅燈。
+- [ ] 3.2 實作變更群 execute 與事件建構（單一發出點、由 typed outcome 建構；new change、new artifact、task done、task undone、claim、in-progress add、archive、discard、discuss 全系列），3.1 轉綠後重構事件建構樣板；驗證 cargo test -p speclink-core 全綠。
 
 ## 4. CLI 分群切換（design 決策六：CLI 與 Node 的遷移策略——逐動詞群、輸出凍結）
 

@@ -42,7 +42,9 @@ impl TempProject {
     }
 
     fn workspace(&self) -> Workspace {
-        Workspace::discover(&self.dir).expect("project root discovered")
+        Workspace::discover(&self.dir)
+            .expect(".speclink.yaml parses")
+            .expect("project root discovered")
     }
 }
 
@@ -225,6 +227,39 @@ fn leftover_remote_file_content_is_never_parsed() {
     assert!(res.leftover_remote_file);
 }
 
+// --- bad .speclink.yaml: fail-closed — a parse failure must never read as fs mode ---
+
+#[test]
+fn bad_app_yaml_fails_discovery_naming_the_file_and_reason() {
+    // Spec scenario 壞 .speclink.yaml 不落入 fs 模式: syntax error + local openspec/
+    // present. Discovery reads the file for spec_dir, so it must fail loudly there —
+    // not silently default and let the command run in fs mode.
+    let p = TempProject::new("bad-yaml")
+        .with_openspec()
+        .with_app_yaml(": not yaml : [\n");
+    let err = Workspace::discover(&p.dir).expect_err("bad .speclink.yaml must fail discovery");
+    let msg = err.to_string();
+    assert!(msg.contains(".speclink.yaml"), "error names the file: {msg}");
+}
+
+#[test]
+fn bad_app_yaml_fails_mode_resolution_instead_of_fs_mode() {
+    // Type mismatch on the remote section is the dangerous case: it used to
+    // silently parse as "no remote section" = fs mode.
+    for bad in ["remote: [unclosed\n", "remote: 42\n"] {
+        let p = TempProject::new("bad-yaml-mode").with_openspec().with_app_yaml(bad);
+        let ws = Workspace {
+            root: p.dir.clone(),
+            spec_dir_name: "openspec".to_string(),
+        };
+        let err = ws
+            .resolve_mode_with(None)
+            .expect_err(&format!("{bad:?} must fail mode resolution"));
+        let msg = err.to_string();
+        assert!(msg.contains(".speclink.yaml"), "error names the file for {bad:?}: {msg}");
+    }
+}
+
 // --- discovery ---
 
 #[test]
@@ -233,7 +268,9 @@ fn discovery_finds_root_by_app_yaml_alone() {
     let p = TempProject::new("discover").with_app_yaml(&format!("remote:\n  url: {URL}\n"));
     let nested = p.dir.join("src").join("deep");
     std::fs::create_dir_all(&nested).unwrap();
-    let ws = Workspace::discover(&nested).expect("root found from nested dir");
+    let ws = Workspace::discover(&nested)
+        .expect(".speclink.yaml parses")
+        .expect("root found from nested dir");
     assert_eq!(ws.root, p.dir);
 }
 
@@ -243,7 +280,9 @@ fn discovery_still_finds_root_by_leftover_file_alone() {
     // CLI can print the migration warning instead of "not in a project".
     let p = TempProject::new("discover-leftover")
         .with_leftover_remote_file(&format!("url: {URL}\n"));
-    let ws = Workspace::discover(&p.dir).expect("root found");
+    let ws = Workspace::discover(&p.dir)
+        .expect(".speclink.yaml parses")
+        .expect("root found");
     assert_eq!(ws.root, p.dir);
     let res = resolve(&ws, None);
     assert!(matches!(res.mode, StoreMode::Fs), "leftover never sets the mode");

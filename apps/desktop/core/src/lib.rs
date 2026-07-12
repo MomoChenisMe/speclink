@@ -27,9 +27,11 @@ pub struct ProjectContext {
 }
 
 /// 自 `root` 起向上探索 speclink 專案；找到則建構 [`ProjectContext`]，否則回傳 `None`
-/// （非 speclink 專案目錄）。不 spawn CLI、不移動任何文件真相。
+/// （非 speclink 專案目錄；壞 `.speclink.yaml` 依引擎 fail-closed 同樣視為建構
+/// 失敗——Phase 3 WorkspaceSession 收編時再浮出錯誤細節）。不 spawn CLI、不移動
+/// 任何文件真相。
 pub fn init_core_context(root: &Path) -> Option<ProjectContext> {
-    let workspace = Workspace::discover(root)?;
+    let workspace = Workspace::discover(root).ok().flatten()?;
     let store = FsStore::new(&workspace.root, &workspace.spec_dir_name);
     Some(ProjectContext { workspace, store })
 }

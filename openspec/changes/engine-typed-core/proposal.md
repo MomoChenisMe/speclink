@@ -7,7 +7,7 @@
 ## What Changes
 
 - `speclink-core` 新增 typed Command Runtime：每個觸及 Store 的動詞有 typed command 輸入、typed outcome 輸出與帶穩定錯誤碼的 typed error，取代「各入口自行組裝 core 函式」。
-- 變更型動詞（new change、new artifact、task done、claim、in-progress、archive、discard 與 discuss 系列等）成功時發出 typed domain events；事件隨 outcome 回傳。本刀只固定事件契約與發出點，不做持久化與訂閱。
+- 變更型動詞（new change、new artifact、task done、task undone、claim、in-progress、archive、discard 與 discuss 系列等）成功時發出 typed domain events；事件隨 outcome 回傳。本刀只固定事件契約與發出點，不做持久化與訂閱。
 - `speclink-cli` 的 handler 改為經 runtime 取得 outcome 後渲染；人眼輸出與 `--json` 形狀不變。
 - `speclink-node` 的 dispatch 保留現有 argv 介面與回傳 envelope 作相容層，內部改路由到 runtime；錯誤碼改由統一 typed error 映射產生。
 - **BREAKING（刻意的行為變更）**：`.speclink.yaml` 與 `openspec/config.yaml`「存在但解析失敗」時，所有入口回 typed error 並停止（CLI 以非零 exit code 結束並印出指向壞檔的錯誤），不再靜默退回預設；只有「檔案不存在」才允許預設。壞 `.speclink.yaml` 從此不再被解讀為 fs 模式。

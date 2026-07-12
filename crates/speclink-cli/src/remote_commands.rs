@@ -16,7 +16,9 @@ struct RemoteCtx {
 /// Resolve remote mode for the current workspace. `Ok(None)` = fs mode
 /// (including "no workspace at all" — the fs path owns that error).
 fn remote_ctx() -> Result<Option<RemoteCtx>> {
-    let Some(ws) = core::workspace::Workspace::discover_cwd() else {
+    // A broken .speclink.yaml fails here — before either the remote or the fs
+    // path runs (fail-closed: no local reads, no remote requests).
+    let Some(ws) = core::workspace::Workspace::discover_cwd()? else {
         return Ok(None);
     };
     let resolution = ws.resolve_mode()?;
@@ -306,7 +308,7 @@ fn cmd_link(a: LinkArgs) -> Result<()> {
 }
 
 fn cmd_unlink() -> Result<()> {
-    let root = core::workspace::Workspace::discover_cwd()
+    let root = core::workspace::Workspace::discover_cwd()?
         .map(|ws| ws.root)
         .unwrap_or(std::env::current_dir()?);
     if !core::init::remove_remote_section(&root)? {
@@ -321,7 +323,7 @@ fn cmd_unlink() -> Result<()> {
 
 fn cmd_auth(a: AuthArgs) -> Result<()> {
     // Both auth verbs need the connection (its origin keys the credentials).
-    let Some(ws) = core::workspace::Workspace::discover_cwd() else {
+    let Some(ws) = core::workspace::Workspace::discover_cwd()? else {
         bail!("Not connected to a remote store — run `speclink link <url>` first");
     };
     let conn = match ws.resolve_mode()?.mode {
@@ -573,7 +575,9 @@ fn remote_task_done(
         },
     };
     // Attribution: same git-derived touched-file set the fs path records.
-    let ws = core::workspace::Workspace::discover_cwd();
+    // Best-effort — remote mode already resolved, so a config error here is
+    // unreachable; an empty set is the existing no-workspace behavior.
+    let ws = core::workspace::Workspace::discover_cwd().ok().flatten();
     let touched: Vec<String> = ws
         .map(|w| core::tasks::git_changed_files(&w.root))
         .unwrap_or_default();
