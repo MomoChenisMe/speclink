@@ -50,10 +50,14 @@ impl ErrorCode {
 /// A typed command failure: `code` classifies it for programmatic handling,
 /// `message` is the semantic text — the SAME string the CLI prints (frozen by
 /// the regression baseline), so hosts can hand it to users or agents verbatim.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct CommandError {
     pub code: ErrorCode,
     pub message: String,
+    /// The original flow error when one exists. Hosts with their own error
+    /// taxonomy (the Node SDK's store-bridge failures) downcast it to refine
+    /// their envelope — that taxonomy stays at the envelope layer (決策三).
+    pub source: Option<anyhow::Error>,
 }
 
 impl CommandError {
@@ -61,6 +65,7 @@ impl CommandError {
         CommandError {
             code,
             message: message.into(),
+            source: None,
         }
     }
 }
@@ -95,12 +100,18 @@ impl std::fmt::Display for Refusal {
 impl std::error::Error for Refusal {}
 
 /// Classify a core-flow anyhow error: a [`Refusal`] marker → `refused`,
-/// everything else → `error`. Message text passes through verbatim.
+/// everything else → `error`. Message text passes through verbatim; the
+/// original error rides along as `source` for host-side refinement.
 fn classify(e: anyhow::Error) -> CommandError {
-    if let Some(r) = e.downcast_ref::<Refusal>() {
-        return CommandError::new(ErrorCode::Refused, r.0.clone());
+    let (code, message) = match e.downcast_ref::<Refusal>() {
+        Some(r) => (ErrorCode::Refused, r.0.clone()),
+        None => (ErrorCode::Error, e.to_string()),
+    };
+    CommandError {
+        code,
+        message,
+        source: Some(e),
     }
-    CommandError::new(ErrorCode::Error, e.to_string())
 }
 
 /// Domain events reported by mutating verbs (design 決策四). Payload = subject

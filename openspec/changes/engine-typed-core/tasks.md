@@ -25,9 +25,9 @@
 
 ## 5. Node dispatch 相容層（design 決策六）
 
-- [ ] 5.1 撰寫「dispatch 的輸入輸出契約」新場景的失敗測試：宿主 Store 工作流設定文字壞 YAML → dispatch(['new','change','demo']) 以 Error 拒絕且 code 為 invalid_config；不存在 change 的 status → code not_found 且 message 與 CLI 訊息相同（crates/speclink-node/__test__/，vitest）。紅燈。
-- [ ] 5.2 dispatch 改路由 runtime 並刪除 verb_list／verb_status／verb_new／verb_claim 的重組邏輯（crates/speclink-node/src/lib.rs）：argv 詞彙與 envelope 形狀不變、「動詞覆蓋與跨入口一致性」成立——同一 workspace 狀態下 dispatch 與 CLI 的結果語意與錯誤分類一致；5.1 與既有 vitest 全綠。
-- [ ] 5.3 驗證：cd crates/speclink-node 後 npm run build 與 npm test 全綠（engine／store-bridge／write-path／stress 既有套件不得回歸）。
+- [x] 5.1 撰寫「dispatch 的輸入輸出契約」新場景的失敗測試：宿主 Store 工作流設定文字壞 YAML → dispatch(['new','change','demo']) 以 Error 拒絕且 code 為 invalid_config；不存在 change 的 status → code not_found 且 message 與 CLI 訊息相同（crates/speclink-node/__test__/，vitest）。紅燈。
+- [x] 5.2 dispatch 改路由 runtime 並刪除 verb_list／verb_status／verb_new／verb_claim 的重組邏輯（crates/speclink-node/src/lib.rs）：argv 詞彙與 envelope 形狀不變、「動詞覆蓋與跨入口一致性」成立——同一 workspace 狀態下 dispatch 與 CLI 的結果語意與錯誤分類一致；5.1 與既有 vitest 全綠。
+- [x] 5.3 驗證：cd crates/speclink-node 後 npm run build 與 npm test 全綠（engine／store-bridge／write-path／stress 既有套件不得回歸）。
 
 ## 6. 全量回歸與收尾
 
