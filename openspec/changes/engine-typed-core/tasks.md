@@ -7,9 +7,9 @@
 
 ## 2. command 模組型別與查詢群（design 決策一：runtime 落在 speclink-core 的 command 模組；決策二：動詞覆蓋判準——讀寫 Store 的領域動詞才進 runtime）
 
-- [ ] 2.1 撰寫 runtime 查詢群的失敗測試：經唯一進入點對測試 store 執行 list／status／validate 回 typed outcome、對不存在 change 回 not_found、查詢不產生事件（新檔 crates/speclink-core/src/command/mod.rs 的 #[cfg(test)]，用既有 teststore）。cargo test 紅燈。
-- [ ] 2.2 實作 command 模組：Command 封閉 enum（依決策二覆蓋表分組）、各 typed outcome、CommandError（typed error 與穩定錯誤碼註冊表：invalid_argv、not_found、invalid_config、refused、error）、execute 查詢群（list、show、status、instructions、validate、analyze、drift、artifact cat、language show、discuss list／show），2.1 轉綠；bootstrap 動詞（init、update、config、schema 等）不出現在 Command 中。
-- [ ] 2.3 對新公開 API 跑 sharp-edges 稽核檢查表（speclink instructions --skill audit）並修正發現；驗證 cargo test -p speclink-core 全綠。
+- [x] 2.1 撰寫 runtime 查詢群的失敗測試：經唯一進入點對測試 store 執行 list／status／validate 回 typed outcome、對不存在 change 回 not_found、查詢不產生事件（新檔 crates/speclink-core/src/command/mod.rs 的 #[cfg(test)]，用既有 teststore）。cargo test 紅燈。
+- [x] 2.2 實作 command 模組：Command 封閉 enum（依決策二覆蓋表分組）、各 typed outcome、CommandError（typed error 與穩定錯誤碼註冊表：invalid_argv、not_found、invalid_config、refused、error）、execute 查詢群（list、show、status、instructions、validate、analyze、drift、artifact cat、language show、discuss list／show），2.1 轉綠；bootstrap 動詞（init、update、config、schema 等）不出現在 Command 中。
+- [x] 2.3 對新公開 API 跑 sharp-edges 稽核檢查表（speclink instructions --skill audit）並修正發現；驗證 cargo test -p speclink-core 全綠。
 
 ## 3. 變更群與領域事件（design 決策四：domain events 的種類、載荷與發出點）
 
