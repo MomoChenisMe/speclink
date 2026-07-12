@@ -18,10 +18,10 @@
 
 ## 4. CLI 分群切換（design 決策六：CLI 與 Node 的遷移策略——逐動詞群、輸出凍結）
 
-- [ ] 4.1 建置並保存 baseline exe（cargo build --release -p speclink-cli）於非 scratchpad 位置，準備固定樣本 workspace 供遷移前後雙沙盒對照；記錄對照步驟與樣本內容。
-- [ ] 4.2 查詢群 handler 改經 runtime（crates/speclink-cli/src/commands.rs，clap 定義與渲染碼不動）：對樣本 workspace 跑覆蓋表查詢動詞（人眼＋--json 兩形式），與 baseline diff 為空、--json 欄位維持既有 camelCase 契約；parity／color 對照相關項通過。
-- [ ] 4.3 變更群與 discuss 群 handler 改經 runtime：錯誤訊息文字沿用現行 CLI 訊息（穩定錯誤碼註冊表的 CLI 映射，design 決策三：typed error 與穩定錯誤碼註冊表）、refused 類拒絕（discard 未帶 --force）exit code 與訊息不變；與 baseline diff 為空。
-- [ ] 4.4 重構：移除 commands.rs 內因遷移而孤兒化的組裝碼；驗證 cargo test -p speclink-cli 全綠、cargo build --release 全 workspace 編譯通過。
+- [x] 4.1 建置並保存 baseline exe（cargo build --release -p speclink-cli）於非 scratchpad 位置，準備固定樣本 workspace 供遷移前後雙沙盒對照；記錄對照步驟與樣本內容。
+- [x] 4.2 查詢群 handler 改經 runtime（crates/speclink-cli/src/commands.rs，clap 定義與渲染碼不動）：對樣本 workspace 跑覆蓋表查詢動詞（人眼＋--json 兩形式），與 baseline diff 為空、--json 欄位維持既有 camelCase 契約；parity／color 對照相關項通過。
+- [x] 4.3 變更群與 discuss 群 handler 改經 runtime：錯誤訊息文字沿用現行 CLI 訊息（穩定錯誤碼註冊表的 CLI 映射，design 決策三：typed error 與穩定錯誤碼註冊表）、refused 類拒絕（discard 未帶 --force）exit code 與訊息不變；與 baseline diff 為空。
+- [x] 4.4 重構：移除 commands.rs 內因遷移而孤兒化的組裝碼；驗證 cargo test -p speclink-cli 全綠、cargo build --release 全 workspace 編譯通過。
 
 ## 5. Node dispatch 相容層（design 決策六）
 
