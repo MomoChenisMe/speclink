@@ -1,7 +1,5 @@
 // Included into main.rs. Command handlers and rendering.
 
-use core::model::Change;
-use core::schema::Schema;
 use core::store::Store;
 use core::workspace::Workspace;
 
@@ -47,6 +45,8 @@ fn dispatch(cli: Cli) -> Result<()> {
 fn cmd_claim(a: ClaimArgs) -> Result<()> {
     match remote_ctx()? {
         Some(ctx) => remote_claim(&ctx, &a.name),
+        // fs 模式是純拒絕、不觸 Store（在非專案目錄也同一句）——訊息與
+        // runtime 的 Claim 分支共用同一份 frozen 文字（node dispatch 經該分支）。
         None => bail!("claim requires a remote store — this project uses the local fs store"),
     }
 }
@@ -77,17 +77,18 @@ fn cmd_artifact(a: ArtifactArgs) -> Result<()> {
             if let Some(ctx) = remote_ctx()? {
                 return remote_artifact_cat(&ctx, &artifact, change.as_deref());
             }
-            let (_ws, store) = open_project()?;
+            let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
-            let change = resolve_change(store, change.as_deref())?;
-            let rel = artifact_rel_path(&artifact)?;
-            match store.read_artifact(&change.name, &rel) {
-                Some(content) => {
-                    print!("{content}");
-                    Ok(())
-                }
-                None => bail!("artifact '{artifact}' not found for change '{}'", change.name),
-            }
+            let outcome = run_command(
+                store,
+                Some(&ws),
+                core::command::Command::ArtifactCat { artifact, change },
+            )?;
+            let core::command::CommandOutcome::ArtifactCat(content) = outcome else {
+                unreachable!("artifact cat yields raw content");
+            };
+            print!("{content}");
+            Ok(())
         }
     }
 }
@@ -100,15 +101,14 @@ fn cmd_language(a: LanguageArgs) -> Result<()> {
                 print!("{}", v_str(&payload, "content"));
                 return Ok(());
             }
-            let (_ws, store) = open_project()?;
+            let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
-            match store.read_language() {
-                Some(content) => {
-                    print!("{content}");
-                    Ok(())
-                }
-                None => bail!("this project has no LANGUAGE document (shared vocabulary)"),
-            }
+            let outcome = run_command(store, Some(&ws), core::command::Command::LanguageShow)?;
+            let core::command::CommandOutcome::Language(content) = outcome else {
+                unreachable!("language show yields raw content");
+            };
+            print!("{content}");
+            Ok(())
         }
     }
 }
@@ -153,32 +153,16 @@ fn warn_leftover_remote_file() {
     );
 }
 
-fn resolve_change(store: &dyn Store, name: Option<&str>) -> Result<Change> {
-    resolve_change_worded(store, name, "Use --change to specify one:")
-}
-
-/// Positional-style resolution (analyze/drift): Spectra says just "Specify one:".
-fn resolve_change_positional(store: &dyn Store, name: Option<&str>) -> Result<Change> {
-    resolve_change_worded(store, name, "Specify one:")
-}
-
-fn resolve_change_worded(store: &dyn Store, name: Option<&str>, specify: &str) -> Result<Change> {
-    if let Some(n) = name {
-        return core::model::find_change(store, n)
-            .ok_or_else(|| anyhow::anyhow!("Change '{n}' not found."));
-    }
-    let mut changes = core::model::list_changes(store);
-    match changes.len() {
-        0 => bail!("No active changes. Create one with: speclink new change <name>"),
-        1 => Ok(changes.remove(0)),
-        _ => {
-            // Spectra lists the candidates by most-recently-modified first (newest file
-            // mtime inside each change, whole seconds, name tiebreak).
-            sort_changes(store, &mut changes, "modified");
-            let names: Vec<&str> = changes.iter().map(|c| c.name.as_str()).collect();
-            bail!("Multiple changes found. {specify} {}", names.join(", "))
-        }
-    }
+/// Route a command through the engine runtime. The typed error converts into
+/// the anyhow error main() prints — `Error: {message}`, text frozen by the
+/// regression baseline. Events are not consumed by the CLI (yet).
+fn run_command(
+    store: &dyn Store,
+    ws: Option<&core::workspace::Workspace>,
+    cmd: core::command::Command,
+) -> Result<core::command::CommandOutcome> {
+    let (outcome, _events) = core::command::execute(store, ws, cmd).map_err(anyhow::Error::new)?;
+    Ok(outcome)
 }
 
 /// For read/analysis commands: when no change name is given and no changes exist, print the
@@ -192,21 +176,8 @@ fn info_if_no_changes(store: &dyn Store, name: Option<&str>) -> bool {
     }
 }
 
-/// Resolve a schema by name (project → user → built-in) or fail with Spectra's messages.
-fn resolve_schema(ws: &Workspace, name: &str) -> Result<Schema> {
-    match core::schema::resolve_with(Some(ws), name) {
-        Some(Ok(s)) => Ok(s),
-        Some(Err(e)) => bail!("{e}"),
-        None => bail!("{}", core::schema::not_found_msg(name)),
-    }
-}
-
-fn schema_for(ws: &Workspace, change: &Change) -> Result<Schema> {
-    resolve_schema(ws, &change.meta.schema_name())
-}
-
 // Shared with the Node SDK: the list serialization path lives in core::listing.
-use core::listing::{proposal_summary, sort_changes, specs_json_items, task_counts, ListChangeJson};
+use core::listing::ListChangeJson;
 
 // --- init / update ---
 
@@ -284,71 +255,78 @@ fn cmd_list(a: ListArgs) -> Result<()> {
     if let Some(ctx) = remote_ctx()? {
         return remote_list(&ctx, &a);
     }
-    let (_ws, store) = open_project()?;
+    let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
-    // --specs alone shows only specs; combined with --changes both sections print.
-    if a.specs && !a.changes {
-        return list_specs(store, a.json);
-    }
-    let mut changes = core::model::list_changes(store);
-    sort_changes(store, &mut changes, &a.sort);
+    let outcome = run_command(
+        store,
+        Some(&ws),
+        core::command::Command::List {
+            sort: a.sort.clone(),
+            specs: a.specs,
+            changes: a.changes,
+        },
+    )?;
+    let core::command::CommandOutcome::List(list) = outcome else {
+        unreachable!("list command yields a list outcome");
+    };
+    // --specs alone omits the changes section (outcome.changes is None).
+    let Some(items) = &list.changes else {
+        return render_specs_section(list.specs.as_ref().expect("specs requested"), a.json);
+    };
     if a.json {
-        let items: Vec<ListChangeJson> = core::listing::changes_json(store, &changes);
-        if a.specs {
+        if let Some(specs) = &list.specs {
             let mut payload = serde_json::Map::new();
-            payload.insert("changes".into(), serde_json::to_value(&items)?);
-            payload.insert("specs".into(), specs_json_items(store));
+            payload.insert("changes".into(), serde_json::to_value(items)?);
+            payload.insert("specs".into(), specs.clone());
             return print_json(&serde_json::Value::Object(payload));
         }
         return print_json(&serde_json::json!({ "changes": items }));
     }
-    if changes.is_empty() {
+    if items.is_empty() {
         println!("No active changes.");
-        if a.specs {
+        if let Some(specs) = &list.specs {
             println!();
-            list_specs(store, false)?;
+            render_specs_section(specs, false)?;
         }
         return Ok(());
     }
     println!("{}", color::bold("Changes:"));
-    for c in &changes {
-        let (complete, total) = task_counts(store, c);
-        let summary = proposal_summary(store, c);
+    for c in items {
         // Spectra omits the progress marker entirely for changes with zero tasks.
-        let marker = if total > 0 {
-            format!(" [{complete}/{total}]")
+        let marker = if c.total_tasks > 0 {
+            format!(" [{}/{}]", c.completed_tasks, c.total_tasks)
         } else {
             String::new()
         };
         // The dim wrapper always prints — an empty summary yields Spectra's empty
         // \x1b[2m\x1b[0m pair in color mode and nothing in plain mode.
-        let suffix = if summary.is_empty() {
+        let suffix = if c.summary.is_empty() {
             String::new()
         } else {
-            format!(" — {summary}")
+            format!(" — {}", c.summary)
         };
         println!("  {} {}{marker}{}", color::cyan("•"), c.name, color::dim(&suffix));
     }
-    if a.specs {
+    if let Some(specs) = &list.specs {
         println!();
-        list_specs(store, false)?;
+        render_specs_section(specs, false)?;
     }
     Ok(())
 }
 
-fn list_specs(store: &dyn Store, json: bool) -> Result<()> {
-    let mut specs = store.list_canonical_capabilities();
-    specs.sort();
+/// Render the specs section from the outcome's `{id, path}` items.
+fn render_specs_section(specs: &serde_json::Value, json: bool) -> Result<()> {
     if json {
-        return print_json(&serde_json::json!({ "specs": specs_json_items(store) }));
+        return print_json(&serde_json::json!({ "specs": specs }));
     }
-    if specs.is_empty() {
+    let items = specs.as_array().map(Vec::as_slice).unwrap_or_default();
+    if items.is_empty() {
         println!("No specs.");
         return Ok(());
     }
     println!("{}", color::bold("Specs:"));
-    for s in specs {
-        println!("  {} {s}", color::cyan("•"));
+    for s in items {
+        println!("  {} {}", color::cyan("•"), s["id"].as_str().unwrap_or_default());
     }
     Ok(())
 }
@@ -356,118 +334,85 @@ fn list_specs(store: &dyn Store, json: bool) -> Result<()> {
 // --- show ---
 
 fn cmd_show(a: ShowArgs) -> Result<()> {
-    let (_ws, store) = open_project()?;
+    let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
-    let item = match a.item {
-        Some(n) => n,
-        None => bail!("Please specify an item name."),
+    let outcome = run_command(
+        store,
+        Some(&ws),
+        core::command::Command::Show {
+            item: a.item.clone(),
+            item_type: a.item_type.clone(),
+        },
+    )?;
+    let core::command::CommandOutcome::Show(show) = outcome else {
+        unreachable!("show command yields a show outcome");
     };
-    let item_type = a.item_type.as_deref();
-    if let Some(t) = item_type {
-        if t != "change" && t != "spec" {
-            bail!("Unknown type: {t}. Use 'change' or 'spec'.");
-        }
-    }
-
-    let is_spec = store.canonical_spec_exists(&item);
-    let change = core::model::find_change(store, &item);
-
-    // Decide whether the item is a spec or a change.
-    let show_spec = item_type == Some("spec")
-        || (item_type != Some("change") && change.is_none() && is_spec);
-
-    if show_spec {
-        if !is_spec {
-            if item_type == Some("spec") {
-                bail!("Spec '{item}' not found.");
+    match show {
+        core::command::ShowOutcome::Spec { name, content } => {
+            if a.json {
+                return print_json(&serde_json::json!({
+                    "files": [{ "content": content, "name": "spec.md" }],
+                    "name": name,
+                }));
             }
-            bail!("Item '{item}' not found as a change or spec.");
-        }
-        let content = store.read_canonical_spec(&item).unwrap_or_default();
-        if a.json {
-            return print_json(&serde_json::json!({
-                "files": [{ "content": content, "name": "spec.md" }],
-                "name": item,
-            }));
-        }
-        println!("{}: {item}", color::bold("Spec"));
-        println!();
-        println!("{}", color::dim("--- spec.md ---"));
-        print!("{content}");
-        println!(); // Spectra always emits a trailing newline (an extra blank when content ends with \n)
-        return Ok(());
-    }
-
-    let Some(change) = change else {
-        if item_type == Some("change") {
-            bail!("Change '{item}' not found.");
-        }
-        bail!("Item '{item}' not found as a change or spec.");
-    };
-    // show never resolves the schema — the Schema/Created lines echo the metadata verbatim,
-    // and Spectra treats the metadata as one unit: unless BOTH schema and created are
-    // present, neither is reported (missing/partial .openspec.yaml → null).
-    let (schema_name, created) = match (&change.meta.schema, &change.meta.created) {
-        (Some(s), Some(c)) => (Some(s.clone()), Some(c.clone())),
-        _ => (None, None),
-    };
-    let read_opt_str = |name: &str| store.read_artifact(&change.name, name);
-
-    if a.json {
-        let proposal = read_opt_str("proposal.md");
-        let design = read_opt_str("design.md");
-        let tasks = read_opt_str("tasks.md");
-        let caps: Vec<String> = store
-            .delta_capabilities(&change.name)
-            .into_iter()
-            .map(|c| format!("{c}/spec.md"))
-            .collect();
-        return print_json(&serde_json::json!({
-            "name": change.name,
-            "schema": schema_name,
-            "created": created,
-            "proposal": proposal,
-            "design": design,
-            "tasks": tasks,
-            "deltaSpecs": caps,
-            "fromDiscussions": change.meta.from_discussions(),
-            "restaleFrom": change.meta.restale_from(),
-        }));
-    }
-
-    println!("{}: {}", color::bold("Change"), change.name);
-    if let Some(schema_name) = &schema_name {
-        println!("{}: {schema_name}", color::bold("Schema"));
-    }
-    if let Some(created) = &created {
-        println!("{}: {created}", color::bold("Created"));
-    }
-    let proposal = read_opt_str("proposal.md");
-    let caps = store.delta_capabilities(&change.name);
-    // The header's trailing blank line prints only when a section follows.
-    if proposal.is_some() || !caps.is_empty() {
-        println!();
-    }
-    // The Proposal section renders whenever the FILE exists (even empty), matching Spectra.
-    if let Some(proposal) = proposal {
-        println!("{}", color::dim("--- Proposal ---"));
-        print!("{proposal}");
-        if !caps.is_empty() {
-            // The proposal's own trailing newline determines the blank-line count before the header.
-            print!("\n\n{}\n", color::dim("--- Delta Specs ---"));
-            for c in &caps {
-                println!("  {c}/spec.md");
-            }
-        } else {
-            // Spectra always appends a newline after the proposal body (an extra blank
-            // line when the file already ends with one), same as the spec branch above.
+            println!("{}: {name}", color::bold("Spec"));
             println!();
+            println!("{}", color::dim("--- spec.md ---"));
+            print!("{content}");
+            println!(); // Spectra always emits a trailing newline (an extra blank when content ends with \n)
         }
-    } else if !caps.is_empty() {
-        // No proposal, but delta specs exist — still render the section.
-        println!("{}", color::dim("--- Delta Specs ---"));
-        for c in &caps {
-            println!("  {c}/spec.md");
+        core::command::ShowOutcome::Change(c) => {
+            let caps: Vec<String> = c
+                .delta_capabilities
+                .iter()
+                .map(|cap| format!("{cap}/spec.md"))
+                .collect();
+            if a.json {
+                return print_json(&serde_json::json!({
+                    "name": c.name,
+                    "schema": c.schema,
+                    "created": c.created,
+                    "proposal": c.proposal,
+                    "design": c.design,
+                    "tasks": c.tasks,
+                    "deltaSpecs": caps,
+                    "fromDiscussions": c.from_discussions,
+                    "restaleFrom": c.restale_from,
+                }));
+            }
+            println!("{}: {}", color::bold("Change"), c.name);
+            if let Some(schema_name) = &c.schema {
+                println!("{}: {schema_name}", color::bold("Schema"));
+            }
+            if let Some(created) = &c.created {
+                println!("{}: {created}", color::bold("Created"));
+            }
+            // The header's trailing blank line prints only when a section follows.
+            if c.proposal.is_some() || !caps.is_empty() {
+                println!();
+            }
+            // The Proposal section renders whenever the FILE exists (even empty), matching Spectra.
+            if let Some(proposal) = &c.proposal {
+                println!("{}", color::dim("--- Proposal ---"));
+                print!("{proposal}");
+                if !caps.is_empty() {
+                    // The proposal's own trailing newline determines the blank-line count before the header.
+                    print!("\n\n{}\n", color::dim("--- Delta Specs ---"));
+                    for cap in &caps {
+                        println!("  {cap}");
+                    }
+                } else {
+                    // Spectra always appends a newline after the proposal body (an extra blank
+                    // line when the file already ends with one), same as the spec branch above.
+                    println!();
+                }
+            } else if !caps.is_empty() {
+                // No proposal, but delta specs exist — still render the section.
+                println!("{}", color::dim("--- Delta Specs ---"));
+                for cap in &caps {
+                    println!("  {cap}");
+                }
+            }
         }
     }
     Ok(())
@@ -476,27 +421,22 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
 // --- validate ---
 
 fn cmd_validate(a: ValidateArgs) -> Result<()> {
-    let (_ws, store) = open_project()?;
+    let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
-    let mut changes = if let Some(item) = a.item.as_deref() {
-        vec![core::model::find_change(store, item)
-            .ok_or_else(|| anyhow::anyhow!("Change '{item}' not found."))?]
-    } else if a.all || a.changes {
-        core::model::list_changes(store)
-    } else {
-        match resolve_change(store, None) {
-            Ok(c) => vec![c],
-            Err(_) => core::model::list_changes(store),
-        }
+    let outcome = run_command(
+        store,
+        Some(&ws),
+        core::command::Command::Validate {
+            item: a.item.clone(),
+            all: a.all,
+            changes: a.changes,
+            strict: a.strict,
+        },
+    )?;
+    let core::command::CommandOutcome::Validate(v) = outcome else {
+        unreachable!("validate command yields a validate outcome");
     };
-    // Multi-change runs are ordered newest-modified first (matches Spectra).
-    sort_changes(store, &mut changes, "modified");
-    // Spectra's validate never resolves the change's schema (an unresolvable one still validates).
-    let schema = core::schema::spec_driven();
-    let results: Vec<_> = changes
-        .iter()
-        .map(|c| core::validate::validate_change(store, c, &schema, a.strict))
-        .collect();
+    let results = v.results;
     let any_invalid = results.iter().any(|r| !r.valid);
     if a.json {
         print_json(&results)?;
@@ -527,16 +467,19 @@ fn cmd_validate(a: ValidateArgs) -> Result<()> {
 // --- analyze ---
 
 fn cmd_analyze(a: ChangeArg) -> Result<()> {
-    let (_ws, store) = open_project()?;
+    let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     if info_if_no_changes(store, a.change.as_deref()) {
         return Ok(());
     }
-    let change = resolve_change_positional(store, a.change.as_deref())?;
-    // Spectra's analyzer is schema-agnostic (hard-wired to the classic artifacts) and never
-    // resolves the change's schema.
-    let schema = core::schema::spec_driven();
-    let report = core::analyzer::analyze(store, &change, &schema);
+    let outcome = run_command(
+        store,
+        Some(&ws),
+        core::command::Command::Analyze { change: a.change.clone() },
+    )?;
+    let core::command::CommandOutcome::Analyze(report) = outcome else {
+        unreachable!("analyze command yields an analyze outcome");
+    };
     if a.json {
         return print_json(&report);
     }
@@ -599,8 +542,14 @@ fn cmd_drift(a: ChangeArg) -> Result<()> {
     if info_if_no_changes(store, a.change.as_deref()) {
         return Ok(());
     }
-    let change = resolve_change_positional(store, a.change.as_deref())?;
-    let report = core::drift::analyze(&ws, store, &change);
+    let outcome = run_command(
+        store,
+        Some(&ws),
+        core::command::Command::Drift { change: a.change.clone() },
+    )?;
+    let core::command::CommandOutcome::Drift(report) = outcome else {
+        unreachable!("drift command yields a drift outcome");
+    };
     if a.json {
         return print_json(&report);
     }
@@ -689,33 +638,21 @@ fn cmd_archive(a: ArchiveArgs) -> Result<()> {
     if a.all || a.changes.len() > 1 {
         return cmd_archive_bulk(&ws, store, &a);
     }
-    let change = resolve_change(store, a.changes.first().map(|s| s.as_str()))?;
-
-    mark_all_tasks_done(store, &change, a.mark_tasks_complete)?;
-    let opts = core::archive::ArchiveOptions {
-        skip_specs: a.skip_specs,
-        no_validate: a.no_validate,
-        mark_tasks_complete: a.mark_tasks_complete,
+    // mark-tasks-complete 與封存語意（含 in-progress 標記不動）單點在 runtime。
+    let outcome = run_command(
+        store,
+        Some(&ws),
+        core::command::Command::Archive {
+            change: a.changes.first().cloned(),
+            skip_specs: a.skip_specs,
+            no_validate: a.no_validate,
+            mark_tasks_complete: a.mark_tasks_complete,
+        },
+    )?;
+    let core::command::CommandOutcome::Archive(outcome) = outcome else {
+        unreachable!("archive yields an archive outcome");
     };
-    // Spectra leaves the in-progress marker untouched on archive; so do we.
-    let outcome = core::archive::archive(&ws, store, &change, &opts)?;
     print_archive_outcome(&outcome);
-    Ok(())
-}
-
-fn mark_all_tasks_done(store: &dyn Store, change: &core::model::Change, enabled: bool) -> Result<()> {
-    if !enabled {
-        return Ok(());
-    }
-    if let Some(text) = store.read_artifact(&change.name, "tasks.md") {
-        // Star-bullet checkboxes are tasks too (matches Spectra).
-        let done = text
-            .replace("- [ ] ", "- [x] ")
-            .replace("- [ ]\t", "- [x]\t")
-            .replace("* [ ] ", "* [x] ")
-            .replace("* [ ]\t", "* [x]\t");
-        store.write_artifact(&change.name, "tasks.md", &done)?;
-    }
     Ok(())
 }
 
@@ -806,18 +743,18 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
             skipped.push((change.name.clone(), format!("tasks incomplete ({complete}/{total})")));
             continue;
         }
-        mark_all_tasks_done(store, change, a.mark_tasks_complete)?;
-
-        let opts = core::archive::ArchiveOptions {
+        let archive_cmd = core::command::Command::Archive {
+            change: Some(change.name.clone()),
             skip_specs: a.skip_specs,
             no_validate: a.no_validate,
             mark_tasks_complete: a.mark_tasks_complete,
         };
-        match core::archive::archive(ws, store, change, &opts) {
-            Ok(outcome) => {
+        match run_command(store, Some(ws), archive_cmd) {
+            Ok(core::command::CommandOutcome::Archive(outcome)) => {
                 print_archive_outcome(&outcome);
                 archived.push(outcome.change_name);
             }
+            Ok(_) => unreachable!("archive yields an archive outcome"),
             Err(e) => {
                 // Fail-fast: earlier archives are already applied and cannot be rolled back.
                 println!();
@@ -855,7 +792,14 @@ fn cmd_discard(a: DiscardArgs) -> Result<()> {
     }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
-    let outcome = core::discard::discard(&ws, store, &a.change, a.force)?;
+    let cmd_outcome = run_command(
+        store,
+        Some(&ws),
+        core::command::Command::Discard { change: a.change.clone(), force: a.force },
+    )?;
+    let core::command::CommandOutcome::Discard(outcome) = cmd_outcome else {
+        unreachable!("discard yields a discard outcome");
+    };
     if a.json {
         let discussions: Vec<serde_json::Value> = outcome
             .unlinked_discussions
@@ -885,13 +829,17 @@ fn cmd_status(a: StatusArgs) -> Result<()> {
     if info_if_no_changes(store, a.change.as_deref()) {
         return Ok(());
     }
-    let change = resolve_change(store, a.change.as_deref())?;
-    let schema = if let Some(s) = a.schema.as_deref() {
-        resolve_schema(&ws, s)?
-    } else {
-        schema_for(&ws, &change)?
+    let outcome = run_command(
+        store,
+        Some(&ws),
+        core::command::Command::Status {
+            change: a.change.clone(),
+            schema: a.schema.clone(),
+        },
+    )?;
+    let core::command::CommandOutcome::Status(report) = outcome else {
+        unreachable!("status command yields a status outcome");
     };
-    let report = core::status::build(store, &change, &schema);
     if a.json {
         return print_json(&report);
     }
@@ -943,31 +891,32 @@ fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
     if info_if_no_changes(store, a.change.as_deref()) {
         return Ok(());
     }
-    let change = resolve_change(store, a.change.as_deref())?;
-    let schema = if let Some(s) = a.schema.as_deref() {
-        resolve_schema(&ws, s)?
-    } else {
-        schema_for(&ws, &change)?
+    let outcome = run_command(
+        store,
+        Some(&ws),
+        core::command::Command::Instructions {
+            artifact: a.artifact.clone(),
+            change: a.change.clone(),
+            schema: a.schema.clone(),
+        },
+    )?;
+    let core::command::CommandOutcome::Instructions(instr) = outcome else {
+        unreachable!("instructions command yields an instructions outcome");
     };
-    // No-arg default: the first incomplete artifact, or the apply/status view once every
-    // artifact exists (matches Spectra — not the proposal-creation instructions).
-    let default_artifact = core::status::first_incomplete_artifact(store, &change, &schema)
-        .unwrap_or_else(|| "apply".to_string());
-    let artifact = a.artifact.as_deref().unwrap_or(&default_artifact);
-    if artifact == "apply" {
-        let payload = core::instructions::build_apply(&ws, store, &change, &schema)?;
-        if a.json {
-            return print_json(&payload);
+    match instr {
+        core::command::InstructionsOutcome::Apply(payload) => {
+            if a.json {
+                return print_json(&payload);
+            }
+            render_apply_human(&payload);
         }
-        render_apply_human(&payload);
-        return Ok(());
+        core::command::InstructionsOutcome::Artifact(payload) => {
+            if a.json {
+                return print_json(&payload);
+            }
+            render_artifact_human(&payload);
+        }
     }
-    let payload = core::instructions::build_artifact(&ws, store, &change, &schema, artifact)?
-        .ok_or_else(|| anyhow::anyhow!("Artifact '{artifact}' not found in schema"))?;
-    if a.json {
-        return print_json(&payload);
-    }
-    render_artifact_human(&payload);
     Ok(())
 }
 
@@ -1054,32 +1003,24 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
-    // Default schema comes from openspec/config.yaml; the name is NOT validated here (Spectra
-    // accepts unknown names and lets downstream commands fail on resolution).
-    let schema = match a.schema {
-        Some(s) => s,
-        None => core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
-            .schema_name(),
-    };
-    if let Some(slug) = a.from_discussion.as_deref() {
-        if core::discuss::info(store, slug).is_none() {
-            bail!("discussion '{slug}' not found — run `speclink discuss new` first");
-        }
-    }
-    let dir = core::newcmd::new_change(
-        &ws,
+    let outcome = run_command(
         store,
-        &a.name,
-        a.description.as_deref(),
-        &schema,
-        a.agent.as_deref(),
-        a.from_discussion.as_deref(),
+        Some(&ws),
+        core::command::Command::NewChange {
+            name: a.name.clone(),
+            description: a.description.clone(),
+            schema: a.schema.clone(),
+            agent: a.agent.clone(),
+            from_discussion: a.from_discussion.clone(),
+        },
     )?;
-    println!("{} Created change: {}", color::green("✓"), a.name);
-    println!("  Path: {}", dir.to_string_lossy());
-    println!("  Schema: {schema}");
+    let core::command::CommandOutcome::NewChange(o) = outcome else {
+        unreachable!("new change yields a new-change outcome");
+    };
+    println!("{} Created change: {}", color::green("✓"), o.name);
+    println!("  Path: {}", o.dir.to_string_lossy());
+    println!("  Schema: {}", o.schema);
     if let Some(slug) = a.from_discussion.as_deref() {
-        core::discuss::mark_promoted(store, slug, &a.name)?;
         println!("  From discussion: {slug}");
     }
     Ok(())
@@ -1091,78 +1032,41 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
     }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
-    let type_ok = ["proposal", "design", "tasks", "spec"].contains(&a.artifact_type.as_str());
-    let type_err = || {
-        anyhow::anyhow!(
-            "Unknown artifact type '{}'. Valid types: proposal, design, tasks, spec",
-            a.artifact_type
-        )
-    };
-    // Spectra's order: with an explicit --change, validate the type before existence; when
-    // auto-detecting, resolve the change first (so "No active changes" wins over a bad type).
-    // Change-not-found is reported WITHOUT a trailing period.
-    let change = match a.change.as_deref() {
-        Some(name) => {
-            if !type_ok {
-                return Err(type_err());
-            }
-            core::model::find_change(store, name)
-                .ok_or_else(|| anyhow::anyhow!("Change '{name}' not found"))?
-        }
-        None => {
-            let c = resolve_change(store, None)?;
-            if !type_ok {
-                return Err(type_err());
-            }
-            c
-        }
-    };
-    // Best-effort schema resolution: an unresolvable/broken schema still creates the artifact
-    // (with no template → an empty file), matching Spectra.
-    let schema = match core::schema::resolve_with(Some(&ws), &change.meta.schema_name()) {
-        Some(Ok(s)) => s,
-        _ => core::schema::Schema {
-            name: change.meta.schema_name(),
-            display_name: change.meta.schema_name(),
-            description: None,
-            source: "project".to_string(),
-            artifacts: Vec::new(),
-            apply_requires: Vec::new(),
-            apply_tracks: None,
-            apply_instruction: None,
-        },
-    };
     let content = if a.stdin {
         Some(read_stdin())
     } else {
         None
     };
-    let had_content = content.is_some();
-    let (artifact_id, path) = core::newcmd::new_artifact(
+    let outcome = run_command(
         store,
-        &change,
-        &schema,
-        &a.artifact_type,
-        a.capability.as_deref(),
-        content.as_deref(),
-        a.force,
+        Some(&ws),
+        core::command::Command::NewArtifact {
+            kind: a.artifact_type.clone(),
+            capability: a.capability.clone(),
+            change: a.change.clone(),
+            content,
+            force: a.force,
+        },
     )?;
-    let _ = artifact_id;
+    let core::command::CommandOutcome::NewArtifact(o) = outcome else {
+        unreachable!("new artifact yields a new-artifact outcome");
+    };
     if a.json {
-        // Compact single-line JSON, matching Spectra.
+        // Compact single-line JSON, matching Spectra ("artifact" echoes the
+        // input token, not the schema artifact id).
         let v = serde_json::json!({
             "artifact": a.artifact_type,
-            "change": change.name,
-            "path": path.to_string_lossy(),
+            "change": o.change,
+            "path": o.path.to_string_lossy(),
             "status": "created",
-            "validated": had_content,
+            "validated": o.had_content,
             "warnings": [],
         });
         println!("{}", serde_json::to_string(&v)?);
         return Ok(());
     }
-    println!("{} Created {}: {}", color::green("✓"), a.artifact_type, path.to_string_lossy());
-    if had_content {
+    println!("{} Created {}: {}", color::green("✓"), a.artifact_type, o.path.to_string_lossy());
+    if o.had_content {
         println!("  Content validated ✓");
     }
     Ok(())
@@ -1578,89 +1482,61 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
             }
             let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
-            // `task done` does not require the change to exist — it goes straight to tasks.md
-            // (matching Spectra, which reports "tasks.md not found for change '<name>'").
-            let change_name = match change.as_deref() {
-                Some(name) => name.to_string(),
-                None => resolve_change(store, None)?.name,
-            };
-            // Check tasks.md existence BEFORE validating the id (matches Spectra's order).
-            if !store.artifact_exists(&change_name, "tasks.md") {
-                bail!("tasks.md not found for change '{change_name}'");
-            }
-            let id: usize = task_id
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid task ID '{task_id}': must be a number"))?;
-            if id < 1 {
-                bail!("Task ID must be >= 1");
-            }
-            // 完成語意（勾章、寫回、touched 記錄、首次完成蓋開工章）單點在引擎；
-            // 這裡只剩呈現：already 維持現行錯誤結束（引擎已保證零檔案效果）。
-            let outcome = core::tasks::complete(
+            let outcome = run_command(
                 store,
-                &ws,
-                &change_name,
-                id,
-                core::util::git_identity(&ws.root).as_deref(),
-                None,
+                Some(&ws),
+                core::command::Command::TaskDone { task_id: task_id.clone(), change },
             )?;
-            let desc = outcome.description;
-            if outcome.already {
-                bail!("Task {id} is already done");
+            let core::command::CommandOutcome::TaskDone(o) = outcome else {
+                unreachable!("task done yields a task-flip outcome");
+            };
+            // 呈現：already 維持現行錯誤結束（引擎已保證零檔案效果）。
+            if o.already {
+                bail!("Task {} is already done", o.task_id);
             }
-
             if json {
                 // Compact single-line JSON, matching Spectra.
                 let v = serde_json::json!({
-                    "change": change_name,
+                    "change": o.change,
                     "status": "done",
-                    "task_desc": desc,
-                    "task_id": task_id.to_string(),
+                    "task_desc": o.description,
+                    "task_id": o.task_id_arg,
                 });
                 println!("{}", serde_json::to_string(&v)?);
                 return Ok(());
             }
-            println!("{} Task {task_id} marked as done: {desc}", color::green("✓"));
+            println!("{} Task {task_id} marked as done: {}", color::green("✓"), o.description);
         }
         TaskCommands::Undone { task_id, change, json } => {
             if let Some(ctx) = remote_ctx()? {
                 return remote_task_undone(&ctx, &task_id, change.as_deref(), json);
             }
-            let (_ws, store) = open_project()?;
+            let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
-            let change_name = match change.as_deref() {
-                Some(name) => name.to_string(),
-                None => resolve_change(store, None)?.name,
+            let outcome = run_command(
+                store,
+                Some(&ws),
+                core::command::Command::TaskUndone { task_id: task_id.clone(), change },
+            )?;
+            let core::command::CommandOutcome::TaskUndone(o) = outcome else {
+                unreachable!("task undone yields a task-flip outcome");
             };
-            // Check tasks.md existence BEFORE validating the id (same order as `done`).
-            if !store.artifact_exists(&change_name, "tasks.md") {
-                bail!("tasks.md not found for change '{change_name}'");
+            // already 對稱 done 以錯誤結束（引擎已保證零檔案效果）。
+            if o.already {
+                bail!("Task {} is already not done", o.task_id);
             }
-            let id: usize = task_id
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid task ID '{task_id}': must be a number"))?;
-            if id < 1 {
-                bail!("Task ID must be >= 1");
-            }
-            // 取消勾選語意（純狀態翻轉、零側效）單點在引擎；already 對稱 done 以錯誤結束。
-            let outcome = core::tasks::uncomplete(store, &change_name, id)?;
-            let desc = outcome.description;
-            if outcome.already {
-                bail!("Task {id} is already not done");
-            }
-
             if json {
                 // Compact single-line JSON, key order symmetric with `done`.
                 let v = serde_json::json!({
-                    "change": change_name,
+                    "change": o.change,
                     "status": "undone",
-                    "task_desc": desc,
-                    "task_id": task_id.to_string(),
+                    "task_desc": o.description,
+                    "task_id": o.task_id_arg,
                 });
                 println!("{}", serde_json::to_string(&v)?);
                 return Ok(());
             }
-            println!("{} Task {task_id} marked as not done: {desc}", color::green("✓"));
+            println!("{} Task {task_id} marked as not done: {}", color::green("✓"), o.description);
         }
     }
     Ok(())
@@ -1672,7 +1548,8 @@ fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
     match a.command {
         InProgressCommands::Add { name } => {
             let (ws, store) = open_project()?;
-            core::inprogress::add(&store, &name, core::util::git_identity(&ws.root).as_deref(), None)?;
+            let store: &dyn Store = &store;
+            run_command(store, Some(&ws), core::command::Command::InProgressAdd { name })?;
         }
     }
     Ok(())
@@ -1699,8 +1576,11 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
     let store: &dyn Store = &store;
     match a.command {
         DiscussCommands::New { topic, slug, json } => {
-            let created_by = core::util::git_identity(&ws.root);
-            let info = core::discuss::new_discussion(store, &topic, slug.as_deref(), created_by.as_deref())?;
+            let outcome =
+                run_command(store, Some(&ws), core::command::Command::DiscussNew { topic, slug })?;
+            let core::command::CommandOutcome::DiscussNew(info) = outcome else {
+                unreachable!("discuss new yields a discussion info");
+            };
             if json {
                 return print_json(&info);
             }
@@ -1709,10 +1589,10 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             println!("  Path: {}", info.path);
         }
         DiscussCommands::List { archived, json } => {
-            let items = if archived {
-                core::discuss::list_archived(store)
-            } else {
-                core::discuss::list_discussions(store)
+            let outcome =
+                run_command(store, Some(&ws), core::command::Command::DiscussList { archived })?;
+            let core::command::CommandOutcome::DiscussList(items) = outcome else {
+                unreachable!("discuss list yields a discussion list");
             };
             if json {
                 return print_json(&serde_json::json!({ "discussions": items }));
@@ -1729,33 +1609,65 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             }
         }
         DiscussCommands::Show { slug, json } => {
-            let content = core::discuss::show_discussion(store, &slug)
-                .ok_or_else(|| anyhow::anyhow!("discussion '{slug}' not found"))?;
+            let outcome =
+                run_command(store, Some(&ws), core::command::Command::DiscussShow { slug })?;
+            let core::command::CommandOutcome::DiscussShow(show) = outcome else {
+                unreachable!("discuss show yields a discussion document");
+            };
             if json {
-                let info = core::discuss::info(store, &slug);
-                return print_json(&serde_json::json!({ "info": info, "content": content }));
+                return print_json(&serde_json::json!({ "info": show.info, "content": show.content }));
             }
-            print!("{content}");
+            print!("{}", show.content);
         }
         DiscussCommands::Context { slug, stdin, json } => {
             let content = read_stdin_content(stdin);
-            core::discuss::set_context(store, &slug, &content)?;
+            let outcome = run_command(
+                store,
+                Some(&ws),
+                core::command::Command::DiscussContext { slug, content },
+            )?;
+            let core::command::CommandOutcome::DiscussContext(o) = outcome else {
+                unreachable!("discuss context yields a subject outcome");
+            };
             if json {
-                return print_json(&serde_json::json!({ "slug": slug, "context": "set" }));
+                return print_json(&serde_json::json!({ "slug": o.slug, "context": "set" }));
             }
-            println!("{} Set context for discussion '{slug}'", color::green("✓"));
+            println!("{} Set context for discussion '{}'", color::green("✓"), o.slug);
         }
         DiscussCommands::AddRound { slug, mode, stdin, json } => {
             let content = read_stdin_content(stdin);
-            let round = core::discuss::add_round(store, &slug, &mode, &content)?;
+            let outcome = run_command(
+                store,
+                Some(&ws),
+                core::command::Command::DiscussAddRound { slug, mode, content },
+            )?;
+            let core::command::CommandOutcome::DiscussAddRound(o) = outcome else {
+                unreachable!("discuss add-round yields a round outcome");
+            };
             if json {
-                return print_json(&serde_json::json!({ "slug": slug, "round": round, "mode": mode }));
+                return print_json(
+                    &serde_json::json!({ "slug": o.slug, "round": o.round, "mode": o.mode }),
+                );
             }
-            println!("{} Recorded round {round} ({mode}) to discussion '{slug}'", color::green("✓"));
+            println!(
+                "{} Recorded round {} ({}) to discussion '{}'",
+                color::green("✓"),
+                o.round,
+                o.mode,
+                o.slug
+            );
         }
         DiscussCommands::Conclude { slug, stdin, json } => {
             let content = read_stdin_content(stdin);
-            let flagged = core::discuss::conclude(store, &slug, &content)?;
+            let outcome = run_command(
+                store,
+                Some(&ws),
+                core::command::Command::DiscussConclude { slug, content },
+            )?;
+            let core::command::CommandOutcome::DiscussConclude(o) = outcome else {
+                unreachable!("discuss conclude yields a conclude outcome");
+            };
+            let (slug, flagged) = (o.slug, o.restale_flagged);
             if json {
                 // Byte-identical to before when nothing was flagged (promoted_to empty);
                 // the array appears only when a re-conclude actually staled changes.
@@ -1775,61 +1687,109 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             }
         }
         DiscussCommands::Archive { slug, json } => {
-            match core::discuss::archive_discussion(store, &slug)? {
-                Some(file) => {
-                    if json {
-                        return print_json(&serde_json::json!({
-                            "slug": slug,
-                            "archived_to": format!("discussions/archive/{file}"),
-                        }));
-                    }
-                    println!("{} Archived discussion: {slug} → discussions/archive/{file}", color::green("✓"));
-                }
-                None => bail!("discussion '{slug}' not found"),
-            }
-        }
-        DiscussCommands::Discard { slug, force, json } => {
-            core::discuss::discard_discussion(store, &slug, force)?;
-            if json {
-                return print_json(&serde_json::json!({ "slug": slug, "status": "discarded" }));
-            }
-            println!("{} Discarded discussion: {slug}", color::green("✓"));
-        }
-        DiscussCommands::Promote { slug, name, json } => {
-            let outcome = core::discuss::promote(&ws, store, &slug, name.as_deref())?;
+            let outcome =
+                run_command(store, Some(&ws), core::command::Command::DiscussArchive { slug })?;
+            let core::command::CommandOutcome::DiscussArchive(o) = outcome else {
+                unreachable!("discuss archive yields an archive outcome");
+            };
             if json {
                 return print_json(&serde_json::json!({
-                    "change": outcome.change,
-                    "path": core::util::to_slash(&outcome.path),
-                    "slug": slug,
+                    "slug": o.slug,
+                    "archived_to": format!("discussions/archive/{}", o.archived_file),
+                }));
+            }
+            println!(
+                "{} Archived discussion: {} → discussions/archive/{}",
+                color::green("✓"),
+                o.slug,
+                o.archived_file
+            );
+        }
+        DiscussCommands::Discard { slug, force, json } => {
+            let outcome = run_command(
+                store,
+                Some(&ws),
+                core::command::Command::DiscussDiscard { slug, force },
+            )?;
+            let core::command::CommandOutcome::DiscussDiscard(o) = outcome else {
+                unreachable!("discuss discard yields a subject outcome");
+            };
+            if json {
+                return print_json(&serde_json::json!({ "slug": o.slug, "status": "discarded" }));
+            }
+            println!("{} Discarded discussion: {}", color::green("✓"), o.slug);
+        }
+        DiscussCommands::Promote { slug, name, json } => {
+            let outcome = run_command(
+                store,
+                Some(&ws),
+                core::command::Command::DiscussPromote { slug, name },
+            )?;
+            let core::command::CommandOutcome::DiscussPromote(o) = outcome else {
+                unreachable!("discuss promote yields a promote outcome");
+            };
+            if json {
+                return print_json(&serde_json::json!({
+                    "change": o.change,
+                    "path": core::util::to_slash(&o.path),
+                    "slug": o.slug,
                     "status": "promoted",
                 }));
             }
-            println!("{} Promoted discussion '{slug}' → change '{}'", color::green("✓"), outcome.change);
-            println!("  Path: {}", outcome.path.to_string_lossy());
+            println!(
+                "{} Promoted discussion '{}' → change '{}'",
+                color::green("✓"),
+                o.slug,
+                o.change
+            );
+            println!("  Path: {}", o.path.to_string_lossy());
             println!("  Proposal prefilled from the conclusion — run /speclink-propose to complete the artifacts");
         }
         DiscussCommands::Link { slug, change, json } => {
-            core::discuss::link(store, &slug, &change)?;
+            let outcome = run_command(
+                store,
+                Some(&ws),
+                core::command::Command::DiscussLink { slug, change },
+            )?;
+            let core::command::CommandOutcome::DiscussLink(o) = outcome else {
+                unreachable!("discuss link yields a bind outcome");
+            };
             if json {
                 return print_json(&serde_json::json!({
-                    "change": change,
-                    "slug": slug,
+                    "change": o.change,
+                    "slug": o.slug,
                     "status": "linked",
                 }));
             }
-            println!("{} Linked discussion '{slug}' → change '{change}'", color::green("✓"));
+            println!(
+                "{} Linked discussion '{}' → change '{}'",
+                color::green("✓"),
+                o.slug,
+                o.change
+            );
         }
         DiscussCommands::Seal { slug, change, json } => {
-            core::discuss::seal(store, &slug, &change)?;
+            let outcome = run_command(
+                store,
+                Some(&ws),
+                core::command::Command::DiscussSeal { slug, change },
+            )?;
+            let core::command::CommandOutcome::DiscussSeal(o) = outcome else {
+                unreachable!("discuss seal yields a bind outcome");
+            };
             if json {
                 return print_json(&serde_json::json!({
-                    "change": change,
-                    "slug": slug,
+                    "change": o.change,
+                    "slug": o.slug,
                     "status": "sealed",
                 }));
             }
-            println!("{} Sealed discussion '{slug}' → change '{change}' (marked promoted)", color::green("✓"));
+            println!(
+                "{} Sealed discussion '{}' → change '{}' (marked promoted)",
+                color::green("✓"),
+                o.slug,
+                o.change
+            );
         }
     }
     Ok(())

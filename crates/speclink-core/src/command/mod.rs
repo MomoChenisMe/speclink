@@ -1000,6 +1000,11 @@ fn run_new_change(
         from_discussion.as_deref(),
     )
     .map_err(classify)?;
+    // A change born of a discussion marks that discussion promoted — both
+    // entry points already did this inline; it is part of the verb's meaning.
+    if let Some(slug) = from_discussion.as_deref() {
+        crate::discuss::mark_promoted(store, slug, &name).map_err(classify)?;
+    }
     Ok(CommandOutcome::NewChange(NewChangeOutcome { name, dir, schema }))
 }
 
