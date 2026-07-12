@@ -1884,7 +1884,7 @@ code:
 ---
 ### Requirement: 清單最新在前與換頁瀏覽
 
-規格頁與已封存頁的清單 SHALL 以最新在前排序：封存變更依封存日期新→舊（同日由封存目錄名字典序降冪涵蓋）、封存討論依建立日期新→舊（同日以 slug 字母升冪決勝）、規格依最後修改時間新→舊（修改時間不可得者一律排最後、以名稱字母升冪決勝）。上述清單 SHALL 以每頁 20 筆換頁瀏覽：搜尋過濾後超過 20 筆時，清單底部 SHALL 顯示換頁控制列——上一頁鈕、目前頁與總頁數、下一頁鈕；第 1 頁時上一頁鈕 SHALL 不可用、末頁時下一頁鈕 SHALL 不可用；過濾後 20 筆以內換頁控制列 SHALL 缺席。搜尋字串變更 SHALL 使清單回到第 1 頁；換頁後清單 SHALL 捲回頂部；清單縮短使目前頁碼越界時 SHALL 鉗制至末頁而非顯示空頁。排序與換頁 SHALL 僅屬前端呈現，清單載入行為與清單資料欄位 SHALL NOT 因此改變。
+規格頁與已封存頁的清單 SHALL 以最新在前排序：封存變更依封存日期新→舊（同日由封存目錄名字典序降冪涵蓋）、封存討論依建立日期新→舊（同日以 slug 字母升冪決勝）、規格依最後修改時間新→舊（修改時間不可得者一律排最後、以名稱字母升冪決勝）。上述清單 SHALL 以每頁 20 筆換頁瀏覽。清單頁版面 SHALL 填滿視窗高度且頁面本身不縱向捲動：搜尋框（與已封存頁的子頁籤列）固定於頂部、卡片清單於內部容器縱向捲動。搜尋過濾後超過 20 筆時，換頁控制列——上一頁鈕、目前頁與總頁數、下一頁鈕——SHALL 常駐固定於頁面底部，不隨清單內容捲動移出視窗（不捲動即可換頁）；第 1 頁時上一頁鈕 SHALL 不可用、末頁時下一頁鈕 SHALL 不可用；過濾後 20 筆以內換頁控制列 SHALL 缺席。搜尋字串變更 SHALL 使清單回到第 1 頁；換頁後內部捲動容器 SHALL 捲回頂部；清單縮短使目前頁碼越界時 SHALL 鉗制至末頁而非顯示空頁。已封存頁「變更」「討論」兩子頁籤 SHALL 維持各自獨立的換頁控制列與頁碼。排序與換頁 SHALL 僅屬前端呈現，清單載入行為與清單資料欄位 SHALL NOT 因此改變。
 
 #### Scenario: 封存變更最新在前
 
@@ -1899,7 +1899,12 @@ code:
 #### Scenario: 超過 20 筆顯示換頁控制列
 
 - **WHEN** 已封存頁「變更」子頁籤過濾後有 45 筆
-- **THEN** 清單顯示第 1 頁的 20 筆與底部換頁控制列（上一頁不可用、頁數顯示第 1／3 頁）；點下一頁顯示第 21–40 筆並捲回清單頂部
+- **THEN** 清單顯示第 1 頁的 20 筆，換頁控制列常駐於頁面底部（上一頁不可用、頁數顯示第 1／3 頁）；點下一頁顯示第 21–40 筆並使內部捲動容器捲回頂部
+
+#### Scenario: 換頁控制列不捲動即可觸及
+
+- **WHEN** 已封存頁「變更」子頁籤過濾後超過 20 筆，視窗高度僅能顯示部分卡片，且使用者尚未捲動
+- **THEN** 換頁控制列已於頁面底部可見且可點擊；捲動卡片清單（內部容器）時，搜尋框、子頁籤列與換頁控制列維持固定位置，不隨內容移出視窗
 
 #### Scenario: 20 筆以內換頁控制列缺席
 
@@ -1911,25 +1916,15 @@ code:
 - **WHEN** 使用者於「變更」子頁籤第 3 頁修改搜尋字串
 - **THEN** 清單回到第 1 頁顯示新過濾結果的最前 20 筆
 
+
 <!-- @trace
-source: specs-archive-pagination
+source: archived-page-fill-height
 updated: 2026-07-12
 code:
-  - packages/ui/src/__tests__/archivedDrawer.test.tsx
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
   - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/listPager.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/specDrawer.test.tsx
   - packages/ui/src/__tests__/specList.test.tsx
-  - packages/ui/src/components/ArchivedDrawer.tsx
   - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/ListPager.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/SpecDrawer.tsx
   - packages/ui/src/components/SpecList.tsx
-  - packages/ui/src/i18n.tsx
 -->

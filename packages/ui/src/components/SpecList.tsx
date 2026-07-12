@@ -103,14 +103,17 @@ export interface SpecListProps {
 /** 規格頁（design D1）：正典 spec 卡片清單＋名稱搜尋（design D3：大小寫不敏感
  * 子字串、純前端即打即濾）；點卡片開抽屜檢視全文，無行內展開、無任何規格寫入動詞。
  * 清單最新在前（modifiedAt 降冪、缺席殿後、名稱升冪決勝）並依 PAGE_SIZE 換頁
- *（spec「清單最新在前與換頁瀏覽」）——排序與換頁純屬呈現層。 */
+ *（spec「清單最新在前與換頁瀏覽」）——排序與換頁純屬呈現層。
+ * 版面填滿視窗高度：搜尋框與標題列固定頂部、卡片清單於內部容器捲動、
+ * 換頁控制列沉底常駐（不捲動即可換頁）。 */
 export function SpecList({ specs, onOpen }: SpecListProps) {
   const { t } = useI18n();
   // 搜尋字串留元件內——規格頁無跨視圖保留需求（比對規則共用 matchesQuery）。
   const [query, setQuery] = useState("");
   // 頁碼 state 以 min(page, pageCount) 鉗制派生——清單縮短不停在越界頁。
   const [rawPage, setRawPage] = useState(1);
-  const topRef = useRef<HTMLDivElement>(null);
+  // 內部捲動容器 ref——換頁後歸位（清單自己捲、頁面不捲）。
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const sorted = useMemo(
     () =>
@@ -130,12 +133,11 @@ export function SpecList({ specs, onOpen }: SpecListProps) {
 
   const goPage = (next: number) => {
     setRawPage(next);
-    // jsdom 未實作 scrollIntoView——選擇性呼叫，真實視窗照常捲回清單頂。
-    topRef.current?.scrollIntoView?.({ block: "start" });
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
   };
 
   return (
-    <div className="flex flex-col gap-3 max-w-3xl mx-auto w-full">
+    <div className="flex h-full min-h-0 flex-col gap-3 max-w-3xl mx-auto w-full">
       <Input
         placeholder={t("specs.searchPlaceholder")}
         value={query}
@@ -144,13 +146,13 @@ export function SpecList({ specs, onOpen }: SpecListProps) {
           setRawPage(1);
         }}
       />
-      <div ref={topRef} className="flex items-center gap-2">
+      <div className="flex items-center gap-2">
         <h2 className="text-base font-semibold">{t("specs.heading")}</h2>
         <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium tabular-nums">
           {filtered.length}
         </span>
       </div>
-      <div className="flex flex-col gap-2.5">
+      <div ref={scrollRef} data-list-scroll className="flex flex-1 min-h-0 flex-col gap-2.5 overflow-y-auto">
         {specs.length === 0 ? (
           <div className="text-muted-foreground text-sm py-8 text-center">{t("specs.empty")}</div>
         ) : filtered.length === 0 ? (
