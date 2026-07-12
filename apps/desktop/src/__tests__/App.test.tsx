@@ -588,6 +588,9 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
     fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
+    // 已封存頁為「變更／討論」子頁籤（specs-archive-pagination design D3）：
+    // 討論卡在「已封存的討論」子頁籤下。
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /已封存的討論/ }));
     await waitFor(() => screen.getByText("Old topic"));
     fireEvent.click(screen.getByText("Old topic"));
     await waitFor(() => expect(screen.getByText("封存背景內文。")).toBeTruthy());
