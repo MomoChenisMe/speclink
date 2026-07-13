@@ -27,6 +27,7 @@ import {
 } from "@speclink/ui";
 
 import { createAppStore } from "./store";
+import { initTray, type TrayController } from "./tray";
 import { ProjectTabs } from "./components/ProjectTabs";
 import { SettingsView } from "./views/SettingsView";
 import type { WorkspaceAdapter } from "./adapter/workspace";
@@ -186,6 +187,26 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
       useStore.getState().disposeSearch();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useStore]);
+
+  // 系統匣狀態選單（tray-status-menu）：訂閱同一 store 於選單列／系統匣呈現狀態並可切專案。
+  // store 為本元件範圍，故於此接線（非 main.tsx）。建立失敗（如非 Tauri 環境）只靜默降級——
+  // app 照常、僅無系統匣（與檔案監看不可用時的降級一致）。卸載時 dispose。
+  useEffect(() => {
+    let controller: TrayController | null = null;
+    let disposed = false;
+    initTray(useStore)
+      .then((c) => {
+        if (disposed) c.dispose();
+        else controller = c;
+      })
+      .catch(() => {
+        /* 系統匣不可用：app 照常運作 */
+      });
+    return () => {
+      disposed = true;
+      controller?.dispose();
+    };
   }, [useStore]);
 
   // 鍵盤切換分頁：Ctrl+Tab 循環、Ctrl+1..9 直達（spec「專案分頁列存於 app 本機」）。

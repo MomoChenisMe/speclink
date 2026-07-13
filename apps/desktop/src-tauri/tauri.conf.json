@@ -9,6 +9,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Speclink",
         "width": 1440,
         "height": 900,
