@@ -32,7 +32,7 @@ pub fn cached_git_identity(root: &Path) -> Option<String> {
     let cache = IDENTITY_CACHE.get_or_init(Default::default);
     let mut map = cache.lock().unwrap_or_else(|p| p.into_inner());
     map.entry(root.to_path_buf())
-        .or_insert_with(|| speclink_core::util::git_identity(root))
+        .or_insert_with(|| speclink_host::context::git_identity(root))
         .clone()
 }
 

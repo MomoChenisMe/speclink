@@ -42,7 +42,8 @@ pub fn archive_at(root: &Path, change: &str) -> Result<Value, String> {
         no_validate: false,
         mark_tasks_complete: false,
     };
-    let outcome = speclink_core::archive::archive(&ctx.workspace, store, &change, &opts)
+    let actor = crate::manage::cached_git_identity(&ctx.workspace.root);
+    let outcome = speclink_core::archive::archive(&ctx.workspace, store, &change, &opts, actor.as_deref())
         .map_err(|e| e.to_string())?;
     // ArchiveOutcome 未實作 Serialize；GUI 需要的結果欄位以 camelCase 手動組出。
     Ok(serde_json::json!({

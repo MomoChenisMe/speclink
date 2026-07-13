@@ -1,0 +1,16 @@
+[package]
+name = "speclink-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Canonical Rust Host application layer: ExecutionContext, binding fail-closed validation, policy injection, lifecycle gate, TeamStore composition"
+
+[dependencies]
+speclink-core = { path = "../speclink-core" }
+speclink-store = { path = "../speclink-store" }
+anyhow.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+
+[dev-dependencies]
+chrono.workspace = true

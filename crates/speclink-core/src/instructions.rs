@@ -54,6 +54,7 @@ pub struct ArtifactInstructions {
 pub fn build_artifact(
     ws: &Workspace,
     store: &dyn Store,
+    env: &crate::config::EnvOverrides,
     change: &Change,
     schema: &Schema,
     artifact_id: &str,
@@ -64,9 +65,9 @@ pub fn build_artifact(
     let app = AppConfig::load(&ws.app_config())?;
     let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref())?;
     // Policy values come from the four-layer resolution (env > legacy app key >
-    // config.yaml > default) — never from one config file alone.
-    let policy =
-        crate::config::resolve_policy(&crate::config::EnvOverrides::from_env(), &app, &wf);
+    // config.yaml > default) — never from one config file alone. The env layer
+    // arrives injected from the Host boundary.
+    let policy = crate::config::resolve_policy(env, &app, &wf);
 
     let dependencies = artifact
         .requires
@@ -260,13 +261,13 @@ pub fn apply_state(schema: &Schema, store: &dyn Store, change: &Change, tasks: &
 pub fn build_apply(
     ws: &Workspace,
     store: &dyn Store,
+    env: &crate::config::EnvOverrides,
     change: &Change,
     schema: &Schema,
 ) -> Result<ApplyInstructions, crate::config::ConfigError> {
     let app = AppConfig::load(&ws.app_config())?;
     let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref())?;
-    let policy =
-        crate::config::resolve_policy(&crate::config::EnvOverrides::from_env(), &app, &wf);
+    let policy = crate::config::resolve_policy(env, &app, &wf);
     let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
     let parsed = tasks::parse(&tasks_md);
     let (total, complete, remaining) = tasks::progress(&parsed);

@@ -4,19 +4,19 @@ use crate::model::{self, Change};
 use crate::schema::Schema;
 use crate::store::Store;
 use crate::util;
-use crate::workspace::Workspace;
 use anyhow::{bail, Result};
 use std::path::PathBuf;
 
-/// Create a new change with its metadata document.
+/// Create a new change with its metadata document. `actor` is the
+/// Host-resolved display identity — None (anonymous) stamps no created_by.
 pub fn new_change(
-    ws: &Workspace,
     store: &dyn Store,
     name: &str,
     _description: Option<&str>,
     schema: &str,
     agent: Option<&str>,
     from_discussion: Option<&str>,
+    actor: Option<&str>,
 ) -> Result<PathBuf> {
     if !is_kebab_case(name) {
         bail!("Invalid change name '{name}'. Must be kebab-case (e.g., 'add-feature').");
@@ -26,7 +26,7 @@ pub fn new_change(
     }
     let created = util::today();
     let mut meta = format!("schema: {schema}\ncreated: {created}\n");
-    if let Some(id) = util::git_identity(&ws.root) {
+    if let Some(id) = actor {
         meta.push_str(&format!("created_by: {id}\n"));
     }
     if let Some(agent) = agent {
@@ -143,4 +143,37 @@ fn is_kebab_case(s: &str) -> bool {
 /// Convenience: find or error for an active change by name.
 pub fn require_change(store: &dyn Store, name: &str) -> Result<Change> {
     model::find_change(store, name).ok_or_else(|| anyhow::anyhow!("Change '{name}' not found."))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::teststore::TestStore;
+
+    // --- ExecutionContext 由 Host 解析且不可覆寫：new change 收明確 actor ---
+
+    #[test]
+    fn new_change_stamps_the_injected_actor_only() {
+        let store = TestStore::default();
+        new_change(&store, "with-actor", None, "spec-driven", None, None, Some("Alice <a@example.com>"))
+            .expect("new change succeeds");
+        assert!(
+            store.meta("with-actor").contains("created_by: Alice <a@example.com>\n"),
+            "created_by is the injected actor, meta: {}",
+            store.meta("with-actor")
+        );
+    }
+
+    #[test]
+    fn new_change_without_actor_stamps_no_created_by() {
+        // 無身分：沿用現行無章行為（同今日無 git／未設 user.name）。
+        let store = TestStore::default();
+        new_change(&store, "anon", None, "spec-driven", None, None, None)
+            .expect("new change succeeds");
+        assert!(
+            !store.meta("anon").contains("created_by:"),
+            "anonymous stays unstamped, meta: {}",
+            store.meta("anon")
+        );
+    }
 }

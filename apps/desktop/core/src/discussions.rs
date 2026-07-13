@@ -78,7 +78,8 @@ pub fn promote_discussion_at(root: &Path, slug: &str, name: Option<&str>) -> Res
         return Err(format!("invalid discussion slug: {slug}"));
     }
     let ctx = open(root)?;
-    let outcome = discuss::promote(&ctx.workspace, &ctx.store, slug, name)
+    let actor = crate::manage::cached_git_identity(&ctx.workspace.root);
+    let outcome = discuss::promote(&ctx.store, slug, name, actor.as_deref())
         .map_err(|e| e.to_string())?;
     Ok(json!({
         "change": outcome.change,

@@ -128,7 +128,7 @@ pub fn read_settings_at(root: &Path) -> Result<SettingsSnapshot, String> {
 /// 與 status 輸出一致）。schema 解析失敗或找不到時給空——與壞檔同語意：不在
 /// 未知 schema 上呈現猜測的固定鍵。
 fn schema_artifact_ids(ws: &Workspace, cfg: &WorkflowConfig) -> Vec<String> {
-    match speclink_core::schema::resolve_with(Some(ws), &cfg.schema_name()) {
+    match speclink_core::schema::resolve_with(Some(ws), Some(&speclink_host::context::global_config_dir()), &cfg.schema_name()) {
         Some(Ok(schema)) => speclink_core::status::display_order(&schema)
             .into_iter()
             .map(|a| a.id.clone())

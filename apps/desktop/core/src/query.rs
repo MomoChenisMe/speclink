@@ -238,7 +238,7 @@ fn resolve_schema(
     ws: &speclink_core::workspace::Workspace,
     name: &str,
 ) -> Result<speclink_core::schema::Schema, String> {
-    match speclink_core::schema::resolve_with(Some(ws), name) {
+    match speclink_core::schema::resolve_with(Some(ws), Some(&speclink_host::context::global_config_dir()), name) {
         Some(Ok(s)) => Ok(s),
         Some(Err(e)) => Err(e),
         None => Err(speclink_core::schema::not_found_msg(name)),
