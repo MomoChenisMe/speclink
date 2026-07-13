@@ -25,8 +25,8 @@
 ## 6. remote instructions 與 skill 接線（design 決策五：remote instructions 與 skill 的接線為最小文案變更）
 
 - [x] 6.1 撰寫並轉綠測試，覆蓋「remote skill 讀投影且禁止寫回」的 instructions 面：remote 模式 apply 階段 instructions 的 contextFiles 每個值為投影下路徑（key 與集合邏輯不變）、materialize 由 remote 動詞流程觸發（crates/speclink-core/src/instructions.rs、crates/speclink-cli/src/remote_commands.rs）；本地模式同動詞 instructions 輸出與現行逐位元一致（twin 對照的 remote instructions 期望值同步更新，其餘情境不變）。
-- [ ] 6.2 更新 apply 與 verify 技能的 remote 段落（讀投影、唯讀、修改必經 speclink 動詞）並完成三處同步：先修改 crates/speclink-core/assets 下技能與 .claude/skills 與 .agents/skills 實例並提交，再於乾淨樹以 UPDATE_GOLDEN=1 cargo test -p speclink-core --test render_golden 再生 golden、逐 diff 審視後提交；驗證 render golden 與 cargo test -p speclink-core 全綠。
+- [x] 6.2 更新 apply 與 verify 技能的 remote 段落（讀投影、唯讀、修改必經 speclink 動詞）並完成三處同步：先修改 crates/speclink-core/assets 下技能與 .claude/skills 與 .agents/skills 實例並提交，再於乾淨樹以 UPDATE_GOLDEN=1 cargo test -p speclink-core --test render_golden 再生 golden、逐 diff 審視後提交；驗證 render golden 與 cargo test -p speclink-core 全綠。
 
 ## 7. 全量收尾
 
-- [ ] 7.1 對新公開 API 跑 sharp-edges 稽核檢查表（speclink instructions --skill audit）並修正發現；驗證 cargo test --workspace 與 npm run test:all 全綠；parity 31 項／color 16 項／twin 8 情境全綠（remote instructions 新期望值除外皆逐位元不變）；git diff --stat 對照 proposal Impact 清單檢查改動面無溢出（本地 fs 模式零行為變更）。
+- [x] 7.1 對新公開 API 跑 sharp-edges 稽核檢查表（speclink instructions --skill audit）並修正發現；驗證 cargo test --workspace 與 npm run test:all 全綠；parity 31 項／color 16 項／twin 8 情境全綠（remote instructions 新期望值除外皆逐位元不變）；git diff --stat 對照 proposal Impact 清單檢查改動面無溢出（本地 fs 模式零行為變更）。
