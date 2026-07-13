@@ -42,5 +42,5 @@
 - Affected specs: `context-projection`（新增）。
 - Affected code:
   - New: crates/speclink-host/src/projection.rs
-  - Modified: crates/speclink-host/src/lib.rs、crates/speclink-core/src/instructions.rs、crates/speclink-core/src/skills.rs、crates/speclink-core/src/init.rs（ensure_gitignore 公開沿用）、crates/speclink-cli/src/remote_commands.rs、crates/speclink-core/assets/skills 下 apply 與 verify 技能檔（實際檔名以資產目錄為準）、.claude/skills 與 .agents/skills 對應技能實例、crates/speclink-core/tests/golden 對應快照
+  - Modified: crates/speclink-host/src/lib.rs、crates/speclink-core/src/instructions.rs、crates/speclink-core/src/init.rs（ensure_gitignore 公開沿用）、crates/speclink-cli/src/remote_commands.rs、crates/speclink-cli/tests/remote_read_path.rs（接線測試）、crates/speclink-core/assets/skills 下 apply 與 verify 技能檔（技能文案全在 .md 資產，renderer skills.rs 無需修改）、.claude/skills 與 .agents/skills 對應技能實例、crates/speclink-core/tests/golden 對應快照
   - Removed: 無

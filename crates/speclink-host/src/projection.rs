@@ -114,6 +114,17 @@ fn safe_rel_path(path: &str) -> Result<PathBuf> {
     Ok(p.to_path_buf())
 }
 
+/// The projection's own files are reserved at the document-ingest boundary:
+/// a snapshot document by these names would be silently overwritten
+/// (manifest.json, INDEX.md) or would mark the projection stale at birth
+/// (STALE).
+fn reject_reserved_document(path: &str) -> Result<()> {
+    if matches!(path, "manifest.json" | "INDEX.md" | STALE_MARKER) {
+        bail!("snapshot document path collides with a reserved projection file: {path}");
+    }
+    Ok(())
+}
+
 /// What a snapshot document is, judged structurally from its path — the
 /// first component is the spec root, whatever the server names it.
 enum DocKind<'a> {
@@ -260,6 +271,7 @@ fn materialize_with_fault(
     let selected = select(&documents, request)?;
     let mut rels = Vec::with_capacity(selected.len());
     for d in &selected {
+        reject_reserved_document(&d.path)?;
         rels.push(safe_rel_path(&d.path)?);
     }
 
@@ -1044,6 +1056,41 @@ mod tests {
             format!("{err:#}").contains("unknown context flow"),
             "a typo'd flow fails closed: {err:#}"
         );
+    }
+
+    // --- 邊界防護：路徑逃逸與保留檔名的 snapshot 文件拒收 ---
+
+    #[test]
+    fn hostile_or_reserved_document_paths_are_refused() {
+        let p = TempProject::new("hostile");
+        struct OneDoc(String);
+        impl SnapshotProvider for OneDoc {
+            fn snapshot(&self, _request: &ContextSnapshotRequest) -> Result<ContextSnapshot> {
+                let content = "x".to_string();
+                let digest = speclink_store::content_digest(&content);
+                Ok(ContextSnapshot {
+                    snapshot_id: "snap-h".to_string(),
+                    policy_revision: None,
+                    digest: digest.clone(),
+                    documents: vec![ContextDocument {
+                        path: self.0.clone(),
+                        content,
+                        revision: None,
+                        digest,
+                    }],
+                })
+            }
+        }
+        for path in ["../evil.md", "/abs.md", "", "a/../../evil.md", "manifest.json", "INDEX.md", "STALE"] {
+            let err = materialize(&p.ws(), &OneDoc(path.to_string()), &full_request())
+                .unwrap_err();
+            let msg = format!("{err:#}");
+            assert!(
+                msg.contains("escapes the projection") || msg.contains("reserved projection file"),
+                "{path:?} is refused: {msg}"
+            );
+        }
+        assert!(!p.ws().work_dir().join("context").exists(), "nothing was materialized");
     }
 
     // --- 本地 fs 模式不建立投影；remote 模式才 materialize ---
