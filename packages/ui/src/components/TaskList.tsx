@@ -21,14 +21,15 @@ import { CheckCheck, GripVertical, LocateFixed, RotateCcw } from "lucide-react";
 
 import { useI18n } from "../i18n";
 import { SUB_LABEL_CLS } from "./SectionedDoc";
-import { parseTaskDoc, resolveDropTarget, type TaskDocItem } from "../tasks";
+import { parseTaskDoc, resolveDropTarget, taskKey, type TaskDocItem } from "../tasks";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 
 export interface TaskListProps {
   markdown: string | null;
-  /** 勾選/取消第 ordinal 個任務（1-based）。 */
-  onToggle?: (ordinal: number, done: boolean) => void;
+  /** 勾選/取消第 ordinal 個任務（1-based）；帶 ID 任務同時回報 stableId
+   * （tsk_ 前綴），勾選請求以它定址、無 ID 舊檔走 ordinal 相容路徑。 */
+  onToggle?: (ordinal: number, done: boolean, stableId?: string) => void;
   /**
    * 拖放落點：把第 from 個任務移到以第 to 個任務為錨的位置（皆 1-based、一次
    * 到位）。before=true＝插錨前（群組標題落點解析為組首）；省略＝方向推斷。
@@ -54,7 +55,7 @@ function TaskRowBody({
 }: {
   item: TaskItem;
   readOnly?: boolean;
-  onToggle?: (ordinal: number, done: boolean) => void;
+  onToggle?: (ordinal: number, done: boolean, stableId?: string) => void;
 }) {
   const { t } = useI18n();
   return (
@@ -64,7 +65,7 @@ function TaskRowBody({
         className="mt-1"
         checked={item.done}
         disabled={readOnly}
-        onCheckedChange={(v) => onToggle?.(item.ordinal, v === true)}
+        onCheckedChange={(v) => onToggle?.(item.ordinal, v === true, item.stableId)}
       />
       <span
         className={`flex-1 text-base leading-relaxed ${
@@ -100,7 +101,7 @@ function SortableTaskRow({
   rowRef,
 }: {
   item: TaskItem;
-  onToggle?: (ordinal: number, done: boolean) => void;
+  onToggle?: (ordinal: number, done: boolean, stableId?: string) => void;
   /** 「下一個未完成」的短暫高亮標記。 */
   highlight?: boolean;
   /** 列元素回報（定位捲動用）。 */
@@ -203,14 +204,14 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
       )
     ) : readOnly ? (
       <div
-        key={`t-${item.ordinal}`}
+        key={`t-${taskKey(item)}`}
         className="group/task flex items-start gap-2 py-1 pl-1 rounded-md hover:bg-muted/50"
       >
         <TaskRowBody item={item} readOnly onToggle={onToggle} />
       </div>
     ) : (
       <SortableTaskRow
-        key={`t-${item.ordinal}`}
+        key={`t-${taskKey(item)}`}
         item={item}
         onToggle={onToggle}
         highlight={highlightOrdinal === item.ordinal}

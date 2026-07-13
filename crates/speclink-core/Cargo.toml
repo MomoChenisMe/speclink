@@ -11,6 +11,8 @@ serde_yaml.workspace = true
 chrono.workspace = true
 regex.workspace = true
 anyhow.workspace = true
+ulid.workspace = true
+sha2 = "0.10"
 
 [dev-dependencies]
 regex.workspace = true

@@ -124,16 +124,23 @@ pub fn archive(
         }
     }
 
-    // The @trace `code:` list is the set of code files changed in the work tree at archive time
-    // (git status, excluding the spec/work dirs), sorted — matching Spectra. When the tree is
-    // clean the list is empty and the @trace block is omitted entirely.
+    // The @trace `code:` list (spec verify-evidence「archive trace 由 evidence
+    // 建立」): a change with v2 evidence aggregates its recorded entries; a
+    // v1-only (or absent) record keeps the current producer — the work tree's
+    // git state at archive time (matching Spectra). Sorted either way; an
+    // empty list omits the @trace block entirely. The output format is frozen.
+    // touched.json itself remains in place for the commit skill.
+    let record = TouchedRecord::load(ws, &change.name);
     let trace_files = {
-        let mut f = crate::tasks::git_changed_files(&ws.root);
+        let mut f = if record.entries.is_empty() {
+            crate::tasks::git_changed_files(&ws.root)
+        } else {
+            record.all_files()
+        };
         f.sort();
         f.dedup();
         f
     };
-    let _ = TouchedRecord::load(ws, &change.name); // touched.json remains for the commit skill
 
     let mut caps = Vec::new();
     let mut created_specs: Vec<String> = Vec::new();
@@ -594,5 +601,110 @@ mod tests {
             outcome.archived_discussions.iter().map(|(s, _)| s.as_str()).collect();
         assert_eq!(slugs, vec!["only"]);
         assert!(store.archived_discussion_exists("only"));
+    }
+
+    // --- archive trace 由 evidence 建立（spec verify-evidence）---
+
+    const DELTA_SPEC: &str = "## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+
+    fn temp_root(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("speclink-archive-trace-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn trace_store() -> TestStore {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 done\n");
+        store.put_artifact("demo", "specs/auth/spec.md", DELTA_SPEC);
+        store
+    }
+
+    fn apply_opts() -> ArchiveOptions {
+        ArchiveOptions { skip_specs: false, no_validate: true, mark_tasks_complete: false }
+    }
+
+    fn git(root: &std::path::Path, args: &[&str]) {
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        assert!(ok, "git {args:?} failed");
+    }
+
+    #[test]
+    fn trace_from_v2_evidence_is_byte_isomorphic_with_the_current_producer() {
+        // 甲：v2 evidence 記錄檔案清單、workspace 無 git（現行產生者拿不到檔案）；
+        // 乙：無記錄、git 工作樹髒同一組檔案（現行產生者）。相同檔案清單 →
+        // 封存後正典 spec 逐位元一致。甲的 basis digest 為捏造（必然 stale），
+        // 本地 archive 不受 gate 阻擋（gate 檢查僅供遠端 Host）。
+        let root_a = temp_root("v2");
+        let ws_a = Workspace { root: root_a.clone(), spec_dir_name: "openspec".to_string() };
+        std::fs::create_dir_all(ws_a.touched_dir()).unwrap();
+        std::fs::write(
+            ws_a.touched_dir().join("demo.json"),
+            "{\n  \"version\": 2,\n  \"change\": \"demo\",\n  \"entries\": [\n    {\n      \"taskId\": \"tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV\",\n      \"taskDesc\": \"1.1 done\",\n      \"touchedFiles\": [\"src/b.rs\", \"src/a.rs\"],\n      \"basisDigests\": { \"spec\": \"sha256:0\", \"tasks\": \"sha256:0\", \"policy\": \"sha256:0\" },\n      \"recordedAt\": \"2026-07-13T00:00:00Z\"\n    }\n  ]\n}",
+        )
+        .unwrap();
+        let store_a = trace_store();
+        let change_a = crate::model::find_change(&store_a, "demo").unwrap();
+        archive(&ws_a, &store_a, &change_a, &apply_opts(), None).unwrap();
+        let canon_a = store_a.read_canonical_spec("auth").unwrap();
+
+        let root_b = temp_root("git");
+        git(&root_b, &["init", "-q"]);
+        for rel in ["src/a.rs", "src/b.rs"] {
+            let p = root_b.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, "content\n").unwrap();
+        }
+        let ws_b = Workspace { root: root_b.clone(), spec_dir_name: "openspec".to_string() };
+        let store_b = trace_store();
+        let change_b = crate::model::find_change(&store_b, "demo").unwrap();
+        archive(&ws_b, &store_b, &change_b, &apply_opts(), None).unwrap();
+        let canon_b = store_b.read_canonical_spec("auth").unwrap();
+
+        assert_eq!(canon_a, canon_b, "same file list → byte-identical canonical output");
+        assert!(canon_a.contains("<!-- @trace"), "trace block injected: {canon_a}");
+        assert!(canon_a.contains("  - src/a.rs\n"), "aggregated files listed sorted: {canon_a}");
+        assert!(canon_a.contains("  - src/b.rs\n"));
+        let _ = std::fs::remove_dir_all(&root_a);
+        let _ = std::fs::remove_dir_all(&root_b);
+    }
+
+    #[test]
+    fn v1_only_record_keeps_the_current_producer_without_error() {
+        // v1 舊檔（無 entries）沿現行路徑：trace 仍取 archive 當下的 git 工作樹
+        // 狀態，v1 檔案清單不取代之；全程無錯誤。
+        let root = temp_root("v1");
+        git(&root, &["init", "-q"]);
+        let p = root.join("src").join("current.rs");
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, "content\n").unwrap();
+        let ws = Workspace { root: root.clone(), spec_dir_name: "openspec".to_string() };
+        std::fs::create_dir_all(ws.touched_dir()).unwrap();
+        std::fs::write(
+            ws.touched_dir().join("demo.json"),
+            "{\"change\":\"demo\",\"touched\":[{\"task_id\":\"1\",\"task_desc\":\"1.1 done\",\"files\":[\"src/recorded.rs\"]}]}",
+        )
+        .unwrap();
+        let store = trace_store();
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&ws, &store, &change, &apply_opts(), None).unwrap();
+        let canon = store.read_canonical_spec("auth").unwrap();
+        assert!(
+            canon.contains("  - src/current.rs\n"),
+            "v1-only record keeps the git-state producer: {canon}"
+        );
+        assert!(
+            !canon.contains("src/recorded.rs"),
+            "v1 file list must not replace the current producer: {canon}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

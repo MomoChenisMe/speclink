@@ -43,8 +43,9 @@ export interface RichDetailDrawerProps {
   /** 收合分析結果（design D2：分析鈕再點、面板關閉鈕共用此路徑）。 */
   onClearVerb?: () => void;
   onDelete?: (change: string) => void;
-  /** 勾選/取消任務並回寫 tasks.md；重載由宿主 refresh 後的刷新世代遞增驅動（單一資料流）。 */
-  onToggleTask?: (change: string, ordinal: number, done: boolean) => Promise<void>;
+  /** 勾選/取消任務並回寫 tasks.md；task 為 tsk_ stable ID（帶 ID 任務）或
+   * ordinal 字串（無 ID 相容路徑）。重載由宿主 refresh 後的刷新世代遞增驅動（單一資料流）。 */
+  onToggleTask?: (change: string, task: string, done: boolean) => Promise<void>;
   /** 移動任務順序並回寫 tasks.md（before 為可選側別）；重載由宿主 refresh 後的刷新世代遞增驅動。 */
   onMoveTask?: (change: string, from: number, to: number, before?: boolean) => Promise<void>;
   /** 批次設定全部任務完成狀態（工具列「全部已完成」／「重置任務」），單次寫回。 */
@@ -166,7 +167,7 @@ export function RichDetailDrawer({
   // 勾選走樂觀更新（design D3）：本地先翻轉 tasksMd 立即反映，再發寫回；失敗
   // 還原快照並顯示單行錯誤。不鎖清單——僅以 pendingWrites 讓世代重載讓路，
   // 寫回成功後的重載仍統一由宿主 refresh 的世代遞增驅動（單一資料流）。
-  const handleToggle = async (ordinal: number, done: boolean) => {
+  const handleToggle = async (ordinal: number, done: boolean, stableId?: string) => {
     if (!name || !onToggleTask) return;
     setTaskError(null);
     // 作廢在途載入（design D4）：更早發起、較晚到達的舊回應不得覆蓋樂觀狀態；
@@ -180,7 +181,8 @@ export function RichDetailDrawer({
     });
     setPendingWrites((n) => n + 1);
     try {
-      await onToggleTask(name, ordinal, done);
+      // 帶 ID 任務以 stable ID 定址；無 ID 舊檔走 ordinal 相容路徑。
+      await onToggleTask(name, stableId ?? String(ordinal), done);
     } catch (e) {
       setTasksMd(snapshot ?? null);
       setTaskError(e instanceof Error ? e.message : String(e));
@@ -374,7 +376,7 @@ export function RichDetailDrawer({
                 markdown={tasksMd ?? null}
                 busy={taskBusy}
                 onDragActiveChange={setDragActive}
-                onToggle={(ordinal, done) => void handleToggle(ordinal, done)}
+                onToggle={(ordinal, done, stableId) => void handleToggle(ordinal, done, stableId)}
                 onReorder={(from, to, before) => void handleReorder(from, to, before)}
                 onSetAll={(done) => void handleSetAll(done)}
               />

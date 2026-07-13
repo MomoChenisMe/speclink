@@ -134,8 +134,10 @@ fn guard_meta(change: &Change) -> Result<(), CommandError> {
 pub enum DomainEvent {
     ChangeCreated { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ArtifactCreated { change: String, artifact: String, occurred_at: chrono::DateTime<chrono::Utc> },
-    TaskCompleted { change: String, task_id: usize, occurred_at: chrono::DateTime<chrono::Utc> },
-    TaskUncompleted { change: String, task_id: usize, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// `task_id` is the task's stable ID; undone on an unstamped task falls
+    /// back to the ordinal string (undone never stamps).
+    TaskCompleted { change: String, task_id: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    TaskUncompleted { change: String, task_id: String, occurred_at: chrono::DateTime<chrono::Utc> },
     /// No fs-store success path today — the mapping is contract for the remote store.
     ChangeClaimed { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeMarkedInProgress { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -372,8 +374,10 @@ pub struct NewArtifactOutcome {
 
 /// `task done` / `task undone` outcome. `task_id_arg` preserves the raw argv
 /// token for rendering (the CLI echoes the input verbatim, e.g. "01");
-/// `task_id` is the parsed index the mutation used. `already` = nothing
-/// changed (zero file effects) — presentation stays with the entry point.
+/// `task_id` is the resolved 1-based ordinal the mutation used. `stable_id`
+/// is the task's stable ID when it has one (done stamps its target, so only
+/// undone on an unstamped task leaves it None). `already` = nothing changed
+/// (zero file effects) — presentation stays with the entry point.
 #[derive(Debug)]
 pub struct TaskFlipOutcome {
     pub change: String,
@@ -381,6 +385,7 @@ pub struct TaskFlipOutcome {
     pub task_id_arg: String,
     pub description: String,
     pub already: bool,
+    pub stable_id: Option<String>,
 }
 
 /// `in-progress add` outcome: whether this call stamped the marker (false for
@@ -479,6 +484,9 @@ pub struct ExecutionContext {
     /// anonymous: stamping flows stamp nothing (the current local behavior
     /// when git is absent or user.name is unset).
     pub actor: Option<String>,
+    /// Repo binding key resolved at the Host boundary (local fs mode: the
+    /// default binding). Recorded in completion evidence; `None` stays absent.
+    pub repo: Option<String>,
     /// The SPECLINK_* env-override layer of policy resolution, read at the
     /// Host boundary and injected here.
     pub env: crate::config::EnvOverrides,
@@ -533,10 +541,10 @@ pub fn execute(
             run_new_artifact(store, ws, ctx.user_config_dir.as_deref(), &kind, capability.as_deref(), change.as_deref(), content.as_deref(), force)
         }
         Command::TaskDone { task_id, change } => {
-            run_task_flip(store, ws, ctx.actor.as_deref(), &task_id, change.as_deref(), TaskFlip::Done)
+            run_task_flip(store, ws, ctx, &task_id, change.as_deref(), TaskFlip::Done)
         }
         Command::TaskUndone { task_id, change } => {
-            run_task_flip(store, ws, ctx.actor.as_deref(), &task_id, change.as_deref(), TaskFlip::Undone)
+            run_task_flip(store, ws, ctx, &task_id, change.as_deref(), TaskFlip::Undone)
         }
         Command::Claim { name } => {
             // Fail-closed gate first: claiming a change whose metadata is
@@ -638,13 +646,13 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         CommandOutcome::TaskDone(o) if o.already => Vec::new(),
         CommandOutcome::TaskDone(o) => vec![DomainEvent::TaskCompleted {
             change: o.change.clone(),
-            task_id: o.task_id,
+            task_id: o.stable_id.clone().unwrap_or_else(|| o.task_id.to_string()),
             occurred_at: at,
         }],
         CommandOutcome::TaskUndone(o) if o.already => Vec::new(),
         CommandOutcome::TaskUndone(o) => vec![DomainEvent::TaskUncompleted {
             change: o.change.clone(),
-            task_id: o.task_id,
+            task_id: o.stable_id.clone().unwrap_or_else(|| o.task_id.to_string()),
             occurred_at: at,
         }],
         CommandOutcome::InProgressAdd(o) if !o.stamped => Vec::new(),
@@ -1152,7 +1160,7 @@ enum TaskFlip {
 fn run_task_flip(
     store: &dyn Store,
     ws: Option<&Workspace>,
-    actor: Option<&str>,
+    ctx: &ExecutionContext,
     task_id: &str,
     change: Option<&str>,
     flip: TaskFlip,
@@ -1170,40 +1178,51 @@ fn run_task_flip(
             format!("tasks.md not found for change '{change_name}'"),
         ));
     }
-    let id: usize = task_id.parse().map_err(|_| {
-        CommandError::new(
-            ErrorCode::InvalidArgv,
-            format!("Invalid task ID '{task_id}': must be a number"),
-        )
-    })?;
-    if id < 1 {
-        return Err(CommandError::new(ErrorCode::InvalidArgv, "Task ID must be >= 1"));
-    }
+    // Closed dual value domain: pure digits → ordinal (frozen behavior),
+    // tsk_ prefix → stable-ID lookup, anything else refuses.
+    let addr = if task_id.starts_with("tsk_") {
+        crate::tasks::TaskAddr::Stable(task_id.to_string())
+    } else {
+        let id: usize = task_id.parse().map_err(|_| {
+            CommandError::new(
+                ErrorCode::InvalidArgv,
+                format!("Invalid task ID '{task_id}': must be a number or a tsk_-prefixed stable ID"),
+            )
+        })?;
+        if id < 1 {
+            return Err(CommandError::new(ErrorCode::InvalidArgv, "Task ID must be >= 1"));
+        }
+        crate::tasks::TaskAddr::Ordinal(id)
+    };
     let host = host_workspace(ws);
-    let (description, already) = match flip {
+    let (description, already, ordinal, stable_id) = match flip {
         TaskFlip::Done => {
             let o = crate::tasks::complete(
                 store,
                 &host,
                 &change_name,
-                id,
-                actor,
-                None,
+                &addr,
+                &crate::tasks::CompleteAttribution {
+                    identity: ctx.actor.as_deref(),
+                    agent: None,
+                    repo: ctx.repo.as_deref(),
+                },
             )
             .map_err(classify)?;
-            (o.description, o.already)
+            (o.description, o.already, o.ordinal, o.stable_id)
         }
         TaskFlip::Undone => {
-            let o = crate::tasks::uncomplete(store, &change_name, id).map_err(classify)?;
-            (o.description, o.already)
+            let o = crate::tasks::uncomplete(store, &change_name, &addr).map_err(classify)?;
+            (o.description, o.already, o.ordinal, o.stable_id)
         }
     };
     let outcome = TaskFlipOutcome {
         change: change_name,
-        task_id: id,
+        task_id: ordinal,
         task_id_arg: task_id.to_string(),
         description,
         already,
+        stable_id,
     };
     Ok(match flip {
         TaskFlip::Done => CommandOutcome::TaskDone(outcome),
@@ -1737,7 +1756,7 @@ mod tests {
         match &events[0] {
             DomainEvent::TaskCompleted { change, task_id, .. } => {
                 assert_eq!(change, "demo");
-                assert_eq!(*task_id, 1);
+                assert!(task_id.starts_with("tsk_"), "event carries the stamped stable id: {task_id}");
             }
             other => panic!("expected task-completed, got {other:?}"),
         }
@@ -1776,6 +1795,248 @@ mod tests {
             },
         );
         assert_eq!(kinds(&events), ["task-uncompleted"]);
+    }
+
+    // --- 蓋章時機（spec task-identity: 產出全檔蓋章、task done 單行補章）---
+
+    #[test]
+    fn new_artifact_tasks_stamps_every_task_line() {
+        let store = TestStore::with_meta("demo", META);
+        ok(
+            &store,
+            Command::NewArtifact {
+                kind: "tasks".to_string(),
+                capability: None,
+                change: Some("demo".to_string()),
+                content: Some(
+                    "## 1. Group\n\n- [ ] 1.1 first\n- [ ] 1.2 second\n- [x] 1.3 third\n"
+                        .to_string(),
+                ),
+                force: false,
+            },
+        );
+        let written = store.read_artifact("demo", "tasks.md").unwrap();
+        let tasks = crate::tasks::parse(&written);
+        assert_eq!(tasks.len(), 3);
+        assert!(tasks.iter().all(|t| t.stable_id.is_some()), "every task carries an id: {written}");
+        let mut ids: Vec<String> = tasks.iter().filter_map(|t| t.stable_id.clone()).collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), 3, "ids must be unique");
+        assert_eq!(tasks[0].description, "1.1 first");
+        assert_eq!(tasks[1].description, "1.2 second");
+        assert_eq!(tasks[2].description, "1.3 third");
+    }
+
+    #[test]
+    fn task_done_on_unstamped_file_touches_only_the_target_line() {
+        const TASKS: &str = "## 1. Group\n\n- [ ] 1.1 first\n- [ ] 1.2 second\n- [ ] 1.3 third\n";
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", TASKS);
+        ok(&store, Command::TaskDone { task_id: "3".to_string(), change: Some("demo".to_string()) });
+        let written = store.read_artifact("demo", "tasks.md").unwrap();
+        let orig: Vec<&str> = TASKS.lines().collect();
+        let new: Vec<&str> = written.lines().collect();
+        assert_eq!(orig.len(), new.len());
+        for (i, (o, n)) in orig.iter().zip(&new).enumerate() {
+            if i == 4 {
+                assert!(
+                    n.starts_with("- [x] 1.3 third <!-- speclink-task:tsk_"),
+                    "target must be checked and stamped: {n}"
+                );
+            } else {
+                assert_eq!(o, n, "line {i} must stay byte-identical");
+            }
+        }
+        let stamped_id =
+            crate::tasks::parse(&written)[2].stable_id.clone().expect("target gained an id");
+        assert!(stamped_id.starts_with("tsk_"));
+    }
+
+    #[test]
+    fn task_undone_never_stamps() {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 first\n");
+        ok(&store, Command::TaskUndone { task_id: "1".to_string(), change: Some("demo".to_string()) });
+        assert_eq!(
+            store.read_artifact("demo", "tasks.md").unwrap(),
+            "- [ ] 1.1 first\n",
+            "undone flips without stamping"
+        );
+    }
+
+    // --- 雙值域定址、重複拒絕與事件載荷（spec task-identity）---
+
+    const TID_A: &str = "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV";
+    const TID_B: &str = "tsk_01BX5ZZKBKACTAV9WEVGEMMVRZ";
+
+    #[test]
+    fn stable_id_addressing_hits_the_original_task_after_reorder() {
+        let store = TestStore::with_meta("demo", META);
+        // 「1.2 beta」原為第 2 任務、帶 ID；重排後移到末位，第 2 位改為 gamma。
+        store.put_artifact(
+            "demo",
+            "tasks.md",
+            &format!("- [ ] 1.1 alpha\n- [ ] 1.3 gamma\n- [ ] 1.2 beta <!-- speclink-task:{TID_B} -->\n"),
+        );
+        let (outcome, _) = ok(
+            &store,
+            Command::TaskDone { task_id: TID_B.to_string(), change: Some("demo".to_string()) },
+        );
+        match outcome {
+            CommandOutcome::TaskDone(o) => {
+                assert_eq!(o.description, "1.2 beta", "stable id must hit the original task");
+                assert!(!o.already);
+            }
+            other => panic!("expected a task-done outcome, got {other:?}"),
+        }
+        let (outcome, _) = ok(
+            &store,
+            Command::TaskDone { task_id: "2".to_string(), change: Some("demo".to_string()) },
+        );
+        match outcome {
+            CommandOutcome::TaskDone(o) => {
+                assert_eq!(o.description, "1.3 gamma", "ordinal must hit the task now in slot 2");
+            }
+            other => panic!("expected a task-done outcome, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_stable_id_errors_symmetric_to_out_of_range() {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n- [x] 1.2 b\n");
+        let ctx = ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() };
+        let ordinal_err = execute(
+            &store,
+            &ctx,
+            Command::TaskDone { task_id: "9".to_string(), change: Some("demo".to_string()) },
+        )
+        .expect_err("out-of-range ordinal must fail");
+        assert_eq!(ordinal_err.message, "Task 9 not found (total: 2)");
+        let id_err = execute(
+            &store,
+            &ctx,
+            Command::TaskDone {
+                task_id: "tsk_01NOPE0000000000000000000ial".to_string(),
+                change: Some("demo".to_string()),
+            },
+        )
+        .expect_err("unknown stable id must fail");
+        assert_eq!(
+            id_err.message,
+            "Task tsk_01NOPE0000000000000000000ial not found (total: 2)",
+            "unknown id error is symmetric to out-of-range"
+        );
+        assert_eq!(id_err.code, ordinal_err.code, "same error shape as out-of-range");
+        let undone_err = execute(
+            &store,
+            &ctx,
+            Command::TaskUndone {
+                task_id: "tsk_01NOPE0000000000000000000ial".to_string(),
+                change: Some("demo".to_string()),
+            },
+        )
+        .expect_err("unknown stable id must fail for undone too");
+        assert_eq!(undone_err.message, "Task tsk_01NOPE0000000000000000000ial not found (total: 2)");
+        assert_eq!(*store.artifact_writes.borrow(), 0, "failed addressing writes nothing");
+    }
+
+    #[test]
+    fn duplicate_stable_ids_refuse_task_verbs_naming_the_value() {
+        let dup_md = format!(
+            "- [ ] 1.1 a <!-- speclink-task:{TID_A} -->\n- [x] 1.2 b <!-- speclink-task:{TID_A} -->\n"
+        );
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", &dup_md);
+        let ctx = ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() };
+        let done_err = execute(
+            &store,
+            &ctx,
+            Command::TaskDone { task_id: TID_A.to_string(), change: Some("demo".to_string()) },
+        )
+        .expect_err("duplicate ids must refuse task done");
+        assert!(
+            done_err.message.contains(TID_A),
+            "error must name the duplicate value: {}",
+            done_err.message
+        );
+        let undone_err = execute(
+            &store,
+            &ctx,
+            Command::TaskUndone { task_id: "2".to_string(), change: Some("demo".to_string()) },
+        )
+        .expect_err("duplicate ids must refuse task undone regardless of addressing");
+        assert!(undone_err.message.contains(TID_A));
+        assert_eq!(
+            store.read_artifact("demo", "tasks.md").unwrap(),
+            dup_md,
+            "refusal leaves tasks.md byte-identical"
+        );
+        assert_eq!(*store.artifact_writes.borrow(), 0, "refusal writes nothing");
+    }
+
+    #[test]
+    fn task_completed_event_carries_the_stable_id() {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", &format!("- [ ] 1.1 a <!-- speclink-task:{TID_A} -->\n"));
+        let (_, events) = ok(
+            &store,
+            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()) },
+        );
+        match &events[0] {
+            DomainEvent::TaskCompleted { task_id, .. } => assert_eq!(task_id, TID_A),
+            other => panic!("expected task-completed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn task_completed_event_on_unstamped_task_carries_the_fresh_id() {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n");
+        let (_, events) = ok(
+            &store,
+            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()) },
+        );
+        let written = store.read_artifact("demo", "tasks.md").unwrap();
+        let fresh = crate::tasks::parse(&written)[0]
+            .stable_id
+            .clone()
+            .expect("done stamps the target line");
+        match &events[0] {
+            DomainEvent::TaskCompleted { task_id, .. } => {
+                assert_eq!(task_id, &fresh, "event carries the id stamped by this very write");
+            }
+            other => panic!("expected task-completed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn task_uncompleted_event_id_is_stable_id_or_ordinal_string() {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact(
+            "demo",
+            "tasks.md",
+            &format!("- [x] 1.1 a <!-- speclink-task:{TID_A} -->\n- [x] 1.2 b\n"),
+        );
+        let (_, events) = ok(
+            &store,
+            Command::TaskUndone { task_id: "1".to_string(), change: Some("demo".to_string()) },
+        );
+        match &events[0] {
+            DomainEvent::TaskUncompleted { task_id, .. } => assert_eq!(task_id, TID_A),
+            other => panic!("expected task-uncompleted, got {other:?}"),
+        }
+        let (_, events) = ok(
+            &store,
+            Command::TaskUndone { task_id: "2".to_string(), change: Some("demo".to_string()) },
+        );
+        match &events[0] {
+            DomainEvent::TaskUncompleted { task_id, .. } => {
+                assert_eq!(task_id, "2", "undone on an unstamped task falls back to the ordinal string");
+            }
+            other => panic!("expected task-uncompleted, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1990,11 +2251,11 @@ mod tests {
                 "artifact-created",
             ),
             (
-                DomainEvent::TaskCompleted { change: s("c"), task_id: 1, occurred_at: at },
+                DomainEvent::TaskCompleted { change: s("c"), task_id: s("tsk_1"), occurred_at: at },
                 "task-completed",
             ),
             (
-                DomainEvent::TaskUncompleted { change: s("c"), task_id: 1, occurred_at: at },
+                DomainEvent::TaskUncompleted { change: s("c"), task_id: s("tsk_1"), occurred_at: at },
                 "task-uncompleted",
             ),
             (DomainEvent::ChangeClaimed { change: s("c"), occurred_at: at }, "change-claimed"),

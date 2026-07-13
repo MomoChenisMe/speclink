@@ -87,6 +87,9 @@ fn run_engine(
         actor: workspace
             .as_ref()
             .and_then(|ws| speclink_host::context::git_identity(&ws.root)),
+        // Node dispatch carries no task verbs (list/status/new/claim), so no
+        // completion evidence is recorded through this path.
+        repo: None,
         env: speclink_host::policy::process_env_overrides(),
         workspace,
         user_config_dir: Some(speclink_host::context::global_config_dir()),

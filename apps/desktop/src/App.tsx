@@ -362,8 +362,8 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
         verbResult={s.drawerVerb}
         onClearVerb={s.clearDrawerVerb}
         onDelete={s.requestDelete}
-        onToggleTask={async (change, ordinal, done) => {
-          await dataSource.setTaskDone(change, ordinal, done);
+        onToggleTask={async (change, task, done) => {
+          await dataSource.setTaskDone(change, task, done);
           await s.refresh();
         }}
         onMoveTask={async (change, from, to, before) => {
