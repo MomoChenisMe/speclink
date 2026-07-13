@@ -2,10 +2,13 @@
 //
 // Routing rule: each dual-mode command checks `remote_ctx()` first; `None`
 // falls through to the existing fs body untouched (fs behavior is the
-// regression-protected baseline). Handlers here re-shape server payloads
-// into the exact fs-parity stdout (human and --json) — server extras like
-// `repo`/`lifecycle` never leak into the parity view.
+// regression-protected baseline). Handlers here are a thin translation:
+// argv → typed protocol client → the same rendering fs mode uses. Server
+// extras (`repo`/`lifecycle`) live on the protocol DTOs and never leak into
+// the parity view.
 
+use speclink_protocol::command::CreateChangeRequest;
+use speclink_protocol::query as protocol_query;
 use speclink_remote::auth as remote_auth;
 use speclink_remote::client::Client as RemoteClient;
 
@@ -36,33 +39,20 @@ fn remote_ctx() -> Result<Option<RemoteCtx>> {
     let Some(token) = remote_auth::resolve_token(&origin) else {
         bail!("not logged in to {origin} — run `speclink auth login`");
     };
-    Ok(Some(RemoteCtx {
-        client: RemoteClient::new(&conn.url, &token, conn.repo.as_deref()),
-    }))
-}
-
-/// A 2xx body that doesn't match the contract shape is a client/server
-/// version skew, reported like any other unexpected response.
-fn remote_shape_err(e: serde_json::Error) -> anyhow::Error {
-    anyhow::anyhow!("unexpected server response — update speclink or report a bug ({e})")
-}
-
-fn v_str(v: &serde_json::Value, key: &str) -> String {
-    v.get(key)
-        .and_then(|x| x.as_str())
-        .unwrap_or_default()
-        .to_string()
-}
-
-fn v_usize(v: &serde_json::Value, key: &str) -> usize {
-    v.get(key).and_then(|x| x.as_u64()).unwrap_or(0) as usize
-}
-
-fn v_array(v: &serde_json::Value, key: &str) -> Vec<serde_json::Value> {
-    v.get(key)
-        .and_then(|x| x.as_array())
-        .cloned()
-        .unwrap_or_default()
+    // The binding handshake precedes every verb (fail closed): an
+    // incompatible API version or a missing/ambiguous binding stops here —
+    // no verb request leaves the client.
+    let client = RemoteClient::new(&conn.url, &token, conn.repo.as_deref());
+    let binding = client.handshake()?;
+    // The confirmed repo identity rides every subsequent request: a declared
+    // `remote.repo` keeps its value; an undeclared one adopts the server's
+    // unambiguous binding.
+    let client = if conn.repo.is_none() && !binding.repo.key.is_empty() {
+        RemoteClient::new(&conn.url, &token, Some(&binding.repo.key))
+    } else {
+        client
+    };
+    Ok(Some(RemoteCtx { client }))
 }
 
 // --- list ---
@@ -71,30 +61,25 @@ fn remote_list(ctx: &RemoteCtx, a: &ListArgs) -> Result<()> {
     if a.specs && !a.changes {
         return remote_list_specs(ctx, a.json);
     }
-    let payload = ctx.client.list_changes()?;
-    let items = v_array(&payload, "changes");
+    let items = ctx.client.list_changes()?.changes;
     if a.json {
         let parity: Vec<ListChangeJson> = items
             .iter()
             .map(|c| ListChangeJson {
-                completed_tasks: v_usize(c, "completedTasks"),
-                name: v_str(c, "name"),
-                status: v_str(c, "status"),
-                summary: v_str(c, "summary"),
-                total_tasks: v_usize(c, "totalTasks"),
-                // Mirror the server's field when present; absent yields empty (parity-preserving).
-                restale_from: v_array(c, "restaleFrom")
-                    .iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect(),
-                meta_error: c.get("metaError").and_then(|v| v.as_str()).map(str::to_string),
+                completed_tasks: c.completed_tasks,
+                name: c.name.clone(),
+                status: c.status.clone(),
+                summary: c.summary.clone(),
+                total_tasks: c.total_tasks,
+                restale_from: c.restale_from.clone(),
+                meta_error: c.meta_error.clone(),
             })
             .collect();
         if a.specs {
-            let mut out = serde_json::Map::new();
-            out.insert("changes".into(), serde_json::to_value(&parity)?);
-            out.insert("specs".into(), remote_specs_value(ctx)?);
-            return print_json(&serde_json::Value::Object(out));
+            return print_json(&serde_json::json!({
+                "changes": parity,
+                "specs": remote_specs_parity(ctx)?,
+            }));
         }
         return print_json(&serde_json::json!({ "changes": parity }));
     }
@@ -108,20 +93,17 @@ fn remote_list(ctx: &RemoteCtx, a: &ListArgs) -> Result<()> {
     }
     println!("{}", color::bold("Changes:"));
     for c in &items {
-        let complete = v_usize(c, "completedTasks");
-        let total = v_usize(c, "totalTasks");
-        let summary = v_str(c, "summary");
-        let marker = if total > 0 {
-            format!(" [{complete}/{total}]")
+        let marker = if c.total_tasks > 0 {
+            format!(" [{}/{}]", c.completed_tasks, c.total_tasks)
         } else {
             String::new()
         };
-        let suffix = if summary.is_empty() {
+        let suffix = if c.summary.is_empty() {
             String::new()
         } else {
-            format!(" — {summary}")
+            format!(" — {}", c.summary)
         };
-        println!("  {} {}{marker}{}", color::cyan("•"), v_str(c, "name"), color::dim(&suffix));
+        println!("  {} {}{marker}{}", color::cyan("•"), c.name, color::dim(&suffix));
     }
     if a.specs {
         println!();
@@ -130,35 +112,23 @@ fn remote_list(ctx: &RemoteCtx, a: &ListArgs) -> Result<()> {
     Ok(())
 }
 
-fn remote_specs_value(ctx: &RemoteCtx) -> Result<serde_json::Value> {
-    let payload = ctx.client.list_specs()?;
-    let items = v_array(&payload, "specs");
-    Ok(serde_json::Value::Array(
-        items
-            .iter()
-            .map(|s| {
-                serde_json::json!({
-                    "id": v_str(s, "id"),
-                    "path": v_str(s, "path"),
-                })
-            })
-            .collect(),
-    ))
+/// The parity view of the spec listing: id and path only.
+fn remote_specs_parity(ctx: &RemoteCtx) -> Result<Vec<protocol_query::SpecSummary>> {
+    Ok(ctx.client.list_specs()?.specs)
 }
 
 fn remote_list_specs(ctx: &RemoteCtx, json: bool) -> Result<()> {
+    let specs = remote_specs_parity(ctx)?;
     if json {
-        return print_json(&serde_json::json!({ "specs": remote_specs_value(ctx)? }));
+        return print_json(&serde_json::json!({ "specs": specs }));
     }
-    let payload = ctx.client.list_specs()?;
-    let items = v_array(&payload, "specs");
-    if items.is_empty() {
+    if specs.is_empty() {
         println!("No specs.");
         return Ok(());
     }
     println!("{}", color::bold("Specs:"));
-    for s in &items {
-        println!("  {} {}", color::cyan("•"), v_str(s, "id"));
+    for s in &specs {
+        println!("  {} {}", color::cyan("•"), s.id);
     }
     Ok(())
 }
@@ -176,10 +146,12 @@ fn remote_resolve_change(
     if let Some(n) = name {
         return Ok(Some(n.to_string()));
     }
-    let payload = ctx.client.list_changes()?;
-    let mut names: Vec<String> = v_array(&payload, "changes")
-        .iter()
-        .map(|c| v_str(c, "name"))
+    let mut names: Vec<String> = ctx
+        .client
+        .list_changes()?
+        .changes
+        .into_iter()
+        .map(|c| c.name)
         .collect();
     match names.len() {
         0 => {
@@ -193,6 +165,28 @@ fn remote_resolve_change(
 
 // --- status ---
 
+/// The wire status reshaped into the fs report type — the same rendering
+/// path keeps stdout byte-identical to fs mode; server extras (repo,
+/// lifecycle, versions) simply don't cross this boundary.
+fn to_status_report(status: protocol_query::ChangeStatus) -> core::status::StatusReport {
+    core::status::StatusReport {
+        change_name: status.change_name,
+        schema_name: status.schema_name,
+        is_complete: status.is_complete,
+        apply_requires: status.apply_requires,
+        artifacts: status
+            .artifacts
+            .into_iter()
+            .map(|a| core::status::ArtifactStatusJson {
+                id: a.id,
+                output_path: a.output_path,
+                status: a.status,
+                blocked_by: a.missing_deps,
+            })
+            .collect(),
+    }
+}
+
 fn remote_status(ctx: &RemoteCtx, a: &StatusArgs) -> Result<()> {
     if a.schema.is_some() {
         bail!("--schema is not supported in remote mode — the server's workflow config decides the schema");
@@ -202,11 +196,7 @@ fn remote_status(ctx: &RemoteCtx, a: &StatusArgs) -> Result<()> {
     else {
         return Ok(());
     };
-    let payload = ctx.client.get_change(&name)?;
-    // Deserializing into the fs report type keeps stdout byte-identical to fs
-    // mode; server extras (repo, lifecycle, versions) are dropped by serde.
-    let report: core::status::StatusReport =
-        serde_json::from_value(payload).map_err(remote_shape_err)?;
+    let report = to_status_report(ctx.client.get_change(&name)?);
     if a.json {
         return print_json(&report);
     }
@@ -215,6 +205,68 @@ fn remote_status(ctx: &RemoteCtx, a: &StatusArgs) -> Result<()> {
 }
 
 // --- instructions ---
+
+fn to_apply_instructions(
+    p: protocol_query::ApplyInstructions,
+) -> core::instructions::ApplyInstructions {
+    core::instructions::ApplyInstructions {
+        change_name: p.change_name,
+        change_dir: p.change_dir,
+        schema_name: p.schema_name,
+        context_files: p.context_files,
+        progress: core::instructions::Progress {
+            total: p.progress.total,
+            complete: p.progress.complete,
+            remaining: p.progress.remaining,
+        },
+        tasks: p
+            .tasks
+            .into_iter()
+            .map(|t| core::instructions::TaskJson {
+                id: t.id,
+                description: t.description,
+                done: t.done,
+                parallel: t.parallel,
+            })
+            .collect(),
+        state: p.state,
+        missing_artifacts: p.missing_artifacts,
+        locale: p.locale,
+        instruction: p.instruction,
+        // Deliberately fs-only (local file checks) — the wire contract
+        // omits it, so the remote payload never renders one.
+        preflight: None,
+    }
+}
+
+fn to_artifact_instructions(
+    p: protocol_query::ArtifactInstructions,
+) -> core::instructions::ArtifactInstructions {
+    core::instructions::ArtifactInstructions {
+        change_name: p.change_name,
+        artifact_id: p.artifact_id,
+        schema_name: p.schema_name,
+        change_dir: p.change_dir,
+        output_path: p.output_path,
+        description: p.description,
+        instruction: p.instruction,
+        context: p.context,
+        rules: p.rules,
+        locale: p.locale,
+        template: p.template,
+        dependencies: p
+            .dependencies
+            .into_iter()
+            .map(|d| core::instructions::Dependency {
+                id: d.id,
+                done: d.done,
+                path: d.path,
+                description: d.description,
+            })
+            .collect(),
+        unlocks: p.unlocks,
+    }
+}
 
 fn remote_instructions(ctx: &RemoteCtx, a: &InstructionsArgs) -> Result<()> {
     if a.schema.is_some() {
@@ -229,29 +281,23 @@ fn remote_instructions(ctx: &RemoteCtx, a: &InstructionsArgs) -> Result<()> {
     // server's artifact list is already in display order), else "apply".
     let artifact = match a.artifact.as_deref() {
         Some(s) => s.to_string(),
-        None => {
-            let status_payload = ctx.client.get_change(&name)?;
-            let report: core::status::StatusReport =
-                serde_json::from_value(status_payload).map_err(remote_shape_err)?;
-            report
-                .artifacts
-                .iter()
-                .find(|x| x.status != "done")
-                .map(|x| x.id.clone())
-                .unwrap_or_else(|| "apply".to_string())
-        }
+        None => ctx
+            .client
+            .get_change(&name)?
+            .artifacts
+            .iter()
+            .find(|x| x.status != "done")
+            .map(|x| x.id.clone())
+            .unwrap_or_else(|| "apply".to_string()),
     };
-    let payload = ctx.client.instructions(&name, &artifact)?;
     if artifact == "apply" {
-        let p: core::instructions::ApplyInstructions =
-            serde_json::from_value(payload).map_err(remote_shape_err)?;
+        let p = to_apply_instructions(ctx.client.apply_instructions(&name)?);
         if a.json {
             return print_json(&p);
         }
         render_apply_human(&p);
     } else {
-        let p: core::instructions::ArtifactInstructions =
-            serde_json::from_value(payload).map_err(remote_shape_err)?;
+        let p = to_artifact_instructions(ctx.client.artifact_instructions(&name, &artifact)?);
         if a.json {
             return print_json(&p);
         }
@@ -369,22 +415,23 @@ fn cmd_auth(a: AuthArgs) -> Result<()> {
     }
 }
 
-fn print_identity(whoami: &serde_json::Value) {
-    let user = whoami.get("user").cloned().unwrap_or_default();
-    let name = v_str(&user, "name");
-    let handle = v_str(&user, "handle");
-    if handle.is_empty() {
-        println!("{} Logged in as {name}", color::green("✓"));
+fn print_identity(whoami: &protocol_query::WhoamiResponse) {
+    if whoami.user.handle.is_empty() {
+        println!("{} Logged in as {}", color::green("✓"), whoami.user.name);
     } else {
-        println!("{} Logged in as {name} (@{handle})", color::green("✓"));
+        println!(
+            "{} Logged in as {} (@{})",
+            color::green("✓"),
+            whoami.user.name,
+            whoami.user.handle
+        );
     }
 }
 
 /// Check the declared repo against the server's registry (`whoami.repos[]`).
-fn ensure_repo_registered(whoami: &serde_json::Value, repo: &str) -> Result<()> {
-    let repos = v_array(whoami, "repos");
-    let names: Vec<String> = repos.iter().map(|r| v_str(r, "name")).collect();
-    if names.iter().any(|n| n == repo) {
+fn ensure_repo_registered(whoami: &protocol_query::WhoamiResponse, repo: &str) -> Result<()> {
+    let names: Vec<&str> = whoami.repos.iter().map(|r| r.name.as_str()).collect();
+    if names.iter().any(|n| *n == repo) {
         return Ok(());
     }
     bail!(
@@ -417,12 +464,17 @@ fn validate_or_defer(root: &std::path::Path, url: &str, repo: Option<&str>) -> R
 /// Advisory fork/mirror hint: compare the local `git remote origin` URL with
 /// the server's reference value for this repo. One stderr line on mismatch;
 /// silence when either side has no value; never affects results or exit code.
-fn git_reference_warning(root: &std::path::Path, repo: Option<&str>, whoami: &serde_json::Value) {
+fn git_reference_warning(
+    root: &std::path::Path,
+    repo: Option<&str>,
+    whoami: &protocol_query::WhoamiResponse,
+) {
     let Some(repo) = repo else { return };
-    let reference = v_array(whoami, "repos")
+    let reference = whoami
+        .repos
         .iter()
-        .find(|r| v_str(r, "name") == repo)
-        .map(|r| v_str(r, "gitUrl"))
+        .find(|r| r.name == repo)
+        .map(|r| r.git_url.clone())
         .unwrap_or_default();
     if reference.is_empty() {
         return;
@@ -458,31 +510,22 @@ fn remote_artifact_cat(ctx: &RemoteCtx, artifact: &str, change: Option<&str>) ->
             None => return Ok(()),
         },
     };
-    let payload = ctx.client.get_artifact(&change, artifact)?;
-    print!("{}", v_str(&payload, "content"));
+    print!("{}", ctx.client.get_artifact(&change, artifact)?.content);
     Ok(())
 }
 
 // --- write path: changes ---
 
 fn remote_new_change(ctx: &RemoteCtx, a: &NewChangeArgs) -> Result<()> {
-    let mut body = serde_json::json!({ "name": a.name });
-    if let Some(s) = &a.schema {
-        body["schema"] = serde_json::json!(s);
-    }
-    if let Some(d) = &a.description {
-        body["description"] = serde_json::json!(d);
-    }
-    if let Some(agent) = &a.agent {
-        body["agent"] = serde_json::json!(agent);
-    }
-    if let Some(slug) = &a.from_discussion {
-        body["fromDiscussion"] = serde_json::json!(slug);
-    }
-    let resp = ctx.client.create_change(body)?;
+    let resp = ctx.client.create_change(CreateChangeRequest {
+        name: a.name.clone(),
+        schema: a.schema.clone(),
+        description: a.description.clone(),
+        agent: a.agent.clone(),
+        from_discussion: a.from_discussion.clone(),
+    })?;
     println!("{} Created change: {}", color::green("✓"), a.name);
-    let schema = v_str(&resp, "schema");
-    if !schema.is_empty() {
+    if let Some(schema) = resp.schema.filter(|s| !s.is_empty()) {
         println!("  Schema: {schema}");
     }
     if let Some(slug) = &a.from_discussion {
@@ -514,7 +557,7 @@ fn remote_new_artifact(ctx: &RemoteCtx, a: &NewArtifactArgs) -> Result<()> {
     } else {
         // Template comes from the server's workflow schema, rendered by the
         // embedded engine (built-in/user schema definitions are engine-local).
-        let schema_name = v_str(&ctx.client.config()?, "schema");
+        let schema_name = ctx.client.config()?.schema;
         let name = if schema_name.is_empty() { "spec-driven".to_string() } else { schema_name };
         match core::schema::resolve_with(None, Some(&speclink_host::context::global_config_dir()), &name) {
             Some(Ok(schema)) => schema
@@ -534,14 +577,14 @@ fn remote_new_artifact(ctx: &RemoteCtx, a: &NewArtifactArgs) -> Result<()> {
     // --force overwrites: re-read the current version so the write still
     // asserts what it replaces; plain create asserts absence (If-Match: 0).
     let version = if a.force {
-        match ctx.client.get_artifact(&change, &artifact_path) {
-            Ok(v) => v.get("version").and_then(|x| x.as_u64()).unwrap_or(0),
-            Err(_) => 0,
-        }
+        ctx.client
+            .get_artifact(&change, &artifact_path)
+            .map(|got| got.version)
+            .unwrap_or(0)
     } else {
         0
     };
-    let resp = ctx.client.put_artifact(&change, &artifact_path, &content, version)?;
+    ctx.client.put_artifact(&change, &artifact_path, &content, version)?;
     if a.json {
         let v = serde_json::json!({
             "artifact": a.artifact_type,
@@ -554,7 +597,6 @@ fn remote_new_artifact(ctx: &RemoteCtx, a: &NewArtifactArgs) -> Result<()> {
         println!("{}", serde_json::to_string(&v)?);
         return Ok(());
     }
-    let _ = resp;
     println!("{} Created {}: {}", color::green("✓"), a.artifact_type, artifact_path);
     if a.stdin {
         println!("  Content validated ✓");
@@ -583,8 +625,7 @@ fn remote_task_done(
         .map(|w| core::tasks::git_changed_files(&w.root))
         .unwrap_or_default();
     let resp = ctx.client.task_done(&change, task_id, &touched)?;
-    let desc = v_str(&resp, "taskDesc");
-    if resp.get("alreadyDone").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if resp.already_done {
         bail!("Task {task_id} is already done");
     }
     if json {
@@ -592,13 +633,13 @@ fn remote_task_done(
         let v = serde_json::json!({
             "change": change,
             "status": "done",
-            "task_desc": desc,
+            "task_desc": resp.task_desc,
             "task_id": task_id,
         });
         println!("{}", serde_json::to_string(&v)?);
         return Ok(());
     }
-    println!("{} Task {task_id} marked as done: {desc}", color::green("✓"));
+    println!("{} Task {task_id} marked as done: {}", color::green("✓"), resp.task_desc);
     Ok(())
 }
 
@@ -616,8 +657,7 @@ fn remote_task_undone(
         },
     };
     let resp = ctx.client.task_undone(&change, task_id)?;
-    let desc = v_str(&resp, "taskDesc");
-    if resp.get("alreadyUndone").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if resp.already_undone {
         bail!("Task {task_id} is already not done");
     }
     if json {
@@ -625,19 +665,18 @@ fn remote_task_undone(
         let v = serde_json::json!({
             "change": change,
             "status": "undone",
-            "task_desc": desc,
+            "task_desc": resp.task_desc,
             "task_id": task_id,
         });
         println!("{}", serde_json::to_string(&v)?);
         return Ok(());
     }
-    println!("{} Task {task_id} marked as not done: {desc}", color::green("✓"));
+    println!("{} Task {task_id} marked as not done: {}", color::green("✓"), resp.task_desc);
     Ok(())
 }
 
 fn remote_claim(ctx: &RemoteCtx, name: &str) -> Result<()> {
-    let resp = ctx.client.claim(name)?;
-    let _ = resp;
+    let _ = ctx.client.claim(name)?;
     println!("{} Claimed change: {name}", color::green("✓"));
     Ok(())
 }
@@ -657,9 +696,8 @@ fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
     };
     let resp = ctx.client.archive(&name)?;
     println!("{} Archived change: {name}", color::green("✓"));
-    let specs = v_array(&resp, "specs");
-    if !specs.is_empty() {
-        let caps: Vec<String> = specs.iter().map(|s| v_str(s, "capability")).collect();
+    if !resp.specs.is_empty() {
+        let caps: Vec<&str> = resp.specs.iter().map(|s| s.capability.as_str()).collect();
         println!("  Specs updated: {}", caps.join(", "));
     }
     Ok(())
@@ -670,11 +708,7 @@ fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
 fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
     match a.command {
         DiscussCommands::List { archived, json } => {
-            let payload = ctx.client.list_discussions(archived)?;
-            let items: Vec<core::discuss::DiscussionInfo> = serde_json::from_value(
-                payload.get("discussions").cloned().unwrap_or_else(|| serde_json::json!([])),
-            )
-            .map_err(remote_shape_err)?;
+            let items = ctx.client.list_discussions(archived)?.discussions;
             if json {
                 return print_json(&serde_json::json!({ "discussions": items }));
             }
@@ -693,11 +727,12 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
         DiscussCommands::Show { slug, json } => {
             let payload = ctx.client.show_discussion(&slug)?;
             if json {
-                let info = payload.get("info").cloned().unwrap_or(serde_json::Value::Null);
-                let content = v_str(&payload, "content");
-                return print_json(&serde_json::json!({ "info": info, "content": content }));
+                return print_json(&serde_json::json!({
+                    "info": payload.info,
+                    "content": payload.content,
+                }));
             }
-            print!("{}", v_str(&payload, "content"));
+            print!("{}", payload.content);
             Ok(())
         }
         DiscussCommands::New { topic, slug, json } => {
@@ -710,9 +745,9 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             if json {
                 return print_json(&resp);
             }
-            println!("{} Created discussion: {}", color::green("✓"), v_str(&resp, "slug"));
-            println!("  Topic: {}", v_str(&resp, "topic"));
-            println!("  Path: {}", v_str(&resp, "path"));
+            println!("{} Created discussion: {}", color::green("✓"), resp.slug);
+            println!("  Topic: {}", resp.topic);
+            println!("  Path: {}", resp.path);
             Ok(())
         }
         DiscussCommands::Context { slug, stdin, json } => {
@@ -726,8 +761,7 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
         }
         DiscussCommands::AddRound { slug, mode, stdin, json } => {
             let content = read_stdin_content(stdin);
-            let resp = ctx.client.discussion_add_round(&slug, &mode, &content)?;
-            let round = resp.get("round").and_then(|v| v.as_u64()).unwrap_or(0);
+            let round = ctx.client.discussion_add_round(&slug, &mode, &content)?.round;
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "round": round, "mode": mode }));
             }
@@ -744,8 +778,7 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             Ok(())
         }
         DiscussCommands::Archive { slug, json } => {
-            let resp = ctx.client.discussion_archive(&slug)?;
-            let archived_to = v_str(&resp, "archivedTo");
+            let archived_to = ctx.client.discussion_archive(&slug)?.archived_to;
             if json {
                 return print_json(&serde_json::json!({ "slug": slug, "archived_to": archived_to }));
             }
@@ -753,8 +786,7 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             Ok(())
         }
         DiscussCommands::Promote { slug, name, json } => {
-            let resp = ctx.client.discussion_promote(&slug, name.as_deref())?;
-            let change = v_str(&resp, "change");
+            let change = ctx.client.discussion_promote(&slug, name.as_deref())?.change;
             if json {
                 return print_json(&serde_json::json!({
                     "change": change,

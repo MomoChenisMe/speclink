@@ -31,8 +31,18 @@ struct MockServer {
     captured: Arc<Mutex<Vec<Captured>>>,
 }
 
+/// The compatible handshake every verb-focused test needs — the binding
+/// precedes any verb, so the mock always serves it unless a test overrides
+/// the route to probe handshake failures.
+const BINDING_BODY: &str = r#"{"actor":{"id":"u_1","name":"Tester"},"project":{"id":"prj_1","key":"demo","name":"Demo"},"repo":{"id":"repo_1","key":"backend","name":"Backend"},"apiVersion":"1","engineVersion":"0.1.0","capabilities":{"events":{"transports":[],"polling":{"url":"/sync-state","etag":true}}}}"#;
+
 /// Routes: (method, path after the project base — query ignored, status, body).
-fn mock_server(routes: Vec<(&'static str, &'static str, u16, String)>) -> MockServer {
+/// The binding handshake route is injected automatically unless the test
+/// declares its own.
+fn mock_server(mut routes: Vec<(&'static str, &'static str, u16, String)>) -> MockServer {
+    if !routes.iter().any(|(_, suffix, _, _)| *suffix == "/binding") {
+        routes.push(("GET", "/binding", 200, BINDING_BODY.to_string()));
+    }
     let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind mock server"));
     let port = server.server_addr().to_ip().expect("ip").port();
     let base = format!("http://127.0.0.1:{port}/api/speclink/v1/projects/demo");
@@ -199,7 +209,7 @@ fn new_change_conflict_reports_already_exists() {
         "POST",
         "/changes",
         409,
-        r#"{"reason":"already_exists","message":"taken","name":"demo"}"#.into(),
+        r#"{"status":409,"reason":"refused","message":"name already in use — pick another"}"#.into(),
     )]);
     let p = TempProject::remote("new-change-conflict", &mock.base, "backend");
     let out = p.run(&["new", "change", "demo"]);
@@ -267,7 +277,7 @@ fn artifact_version_conflict_suggests_rereading() {
         "PUT",
         "/changes/demo/artifacts/design",
         409,
-        r#"{"reason":"version_conflict","message":"stale","currentVersion":4}"#.into(),
+        r#"{"status":409,"reason":"revision_conflict","message":"stale"}"#.into(),
     )]);
     let p = TempProject::remote("artifact-conflict", &mock.base, "backend");
     let out = p.run_stdin(
@@ -286,7 +296,7 @@ fn artifact_write_by_non_owner_reports_ownership_lost() {
         "PUT",
         "/changes/demo/artifacts/design",
         409,
-        r#"{"reason":"ownership_lost","message":"claimed","claimedBy":"chiang"}"#.into(),
+        r#"{"status":409,"reason":"refused","message":"change is held by chiang — coordinate, or re-claim if it was released"}"#.into(),
     )]);
     let p = TempProject::remote("artifact-owner", &mock.base, "backend");
     let out = p.run_stdin(
@@ -327,7 +337,7 @@ fn task_done_during_ingest_says_wait() {
         "POST",
         "/changes/demo/tasks/3/done",
         409,
-        r#"{"reason":"change_busy","message":"busy","lifecycle":"busy"}"#.into(),
+        r#"{"status":409,"reason":"refused","message":"change is busy — wait for the in-flight operation to finish, then retry"}"#.into(),
     )]);
     let p = TempProject::remote("task-busy", &mock.base, "backend");
     let out = p.run(&["task", "done", "3", "--change", "demo"]);
@@ -415,7 +425,7 @@ fn claim_preempted_names_the_holder() {
         "POST",
         "/changes/demo/claim",
         409,
-        r#"{"reason":"ownership_lost","message":"claimed","claimedBy":"chiang"}"#.into(),
+        r#"{"status":409,"reason":"refused","message":"change is held by chiang — coordinate, or re-claim if it was released"}"#.into(),
     )]);
     let p = TempProject::remote("claim-lost", &mock.base, "backend");
     let out = p.run(&["claim", "demo"]);
@@ -431,7 +441,7 @@ fn claim_in_wrong_repo_names_both_repos() {
         "POST",
         "/changes/add-rate-limit/claim",
         403,
-        r#"{"reason":"repo_mismatch","message":"wrong repo","changeRepo":"backend","requestRepo":"frontend"}"#.into(),
+        r#"{"status":409,"reason":"refused","message":"change belongs to repo 'backend' but you are 'frontend' — run this verb from the owning repo"}"#.into(),
     )]);
     let p = TempProject::remote("claim-mismatch", &mock.base, "frontend");
     let out = p.run(&["claim", "add-rate-limit"]);
@@ -447,7 +457,7 @@ fn claim_while_gate_pending_points_at_the_approver() {
         "POST",
         "/changes/demo/claim",
         409,
-        r#"{"reason":"gate_pending","message":"pending","gate":"proposal"}"#.into(),
+        r#"{"status":409,"reason":"refused","message":"waiting for proposal approval in the team system — ask the approver"}"#.into(),
     )]);
     let p = TempProject::remote("claim-gate", &mock.base, "backend");
     let out = p.run(&["claim", "demo"]);
@@ -477,7 +487,7 @@ fn archive_with_open_tasks_counts_the_remainder() {
         "POST",
         "/changes/demo/archive",
         409,
-        r#"{"reason":"tasks_incomplete","message":"open","remaining":3}"#.into(),
+        r#"{"status":409,"reason":"refused","message":"3 task(s) still open — finish them before archiving"}"#.into(),
     )]);
     let p = TempProject::remote("archive-tasks", &mock.base, "backend");
     let out = p.run(&["archive", "demo"]);
@@ -491,7 +501,7 @@ fn archive_spec_conflict_names_the_capabilities() {
         "POST",
         "/changes/demo/archive",
         409,
-        r#"{"reason":"version_conflict","message":"moved","conflicts":[{"capability":"cap-a","baseVersion":3,"currentVersion":5}]}"#.into(),
+        r#"{"status":409,"reason":"refused","message":"canonical spec(s) cap-a moved since propose — resolve in the team system, then retry"}"#.into(),
     )]);
     let p = TempProject::remote("archive-conflict", &mock.base, "backend");
     let out = p.run(&["archive", "demo"]);
@@ -577,7 +587,7 @@ fn discuss_round_on_archived_discussion_reports_it() {
         "POST",
         "/discussions/old-topic/rounds",
         409,
-        r#"{"reason":"discussion_archived","message":"archived","slug":"old-topic"}"#.into(),
+        r#"{"status":409,"reason":"refused","message":"discussion 'old-topic' is archived — restore it in the team system first"}"#.into(),
     )]);
     let p = TempProject::remote("disc-archived", &mock.base, "backend");
     let out = p.run_stdin(

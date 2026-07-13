@@ -16,9 +16,19 @@ struct MockServer {
     base: String,
 }
 
+/// The compatible handshake every verb-focused test needs — the binding
+/// precedes any verb, so the mock always serves it unless a test overrides
+/// the route to probe handshake failures.
+const BINDING_BODY: &str = r#"{"actor":{"id":"u_1","name":"Tester"},"project":{"id":"prj_1","key":"demo","name":"Demo"},"repo":{"id":"repo_1","key":"backend","name":"Backend"},"apiVersion":"1","engineVersion":"0.1.0","capabilities":{"events":{"transports":[],"polling":{"url":"/sync-state","etag":true}}}}"#;
+
 /// Routes: (method, path — matched against the part after the project base,
-/// query string ignored, response body). Unmatched requests get 404.
-fn mock_server(routes: Vec<(&'static str, &'static str, String)>) -> MockServer {
+/// query string ignored, response body). Unmatched requests get 404. The
+/// binding handshake route is injected automatically unless the test
+/// declares its own.
+fn mock_server(mut routes: Vec<(&'static str, &'static str, String)>) -> MockServer {
+    if !routes.iter().any(|(_, suffix, _)| *suffix == "/binding") {
+        routes.push(("GET", "/binding", BINDING_BODY.to_string()));
+    }
     let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind mock server"));
     let port = server.server_addr().to_ip().expect("ip").port();
     let base = format!("http://127.0.0.1:{port}/api/speclink/v1/projects/demo");

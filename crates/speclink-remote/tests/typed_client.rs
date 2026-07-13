@@ -1,0 +1,467 @@
+//! The typed-client contract: every verb's request path and body match the
+//! protocol DTOs, responses come back as protocol types (no raw JSON
+//! bypass), If-Match travels typed and a stale write surfaces as
+//! `revision_conflict` with the existing conflict wording, and every registry
+//! reason maps to a CLI message byte-identical to the current remote error
+//! translation (design decision three).
+
+use speclink_protocol::command::{
+    AddDiscussionRoundRequest, CreateChangeRequest, CreateDiscussionRequest,
+    PromoteDiscussionRequest, PutArtifactRequest, TaskDoneRequest,
+};
+use speclink_remote::client::Client;
+use std::sync::{Arc, Mutex};
+
+// --- capturing mock server (serves every request with one status/body) ---
+
+#[derive(Clone, Debug)]
+struct Captured {
+    method: String,
+    path: String,
+    headers: Vec<(String, String)>, // lowercased names
+    body: String,
+}
+
+impl Captured {
+    fn header(&self, name: &str) -> Option<&str> {
+        let want = name.to_ascii_lowercase();
+        self.headers.iter().find(|(k, _)| *k == want).map(|(_, v)| v.as_str())
+    }
+}
+
+struct MockServer {
+    server: Arc<tiny_http::Server>,
+    base: String,
+    captured: Arc<Mutex<Vec<Captured>>>,
+}
+
+fn serve(status: u16, body: &'static str) -> MockServer {
+    let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind mock server"));
+    let port = server.server_addr().to_ip().expect("ip addr").port();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let looper = Arc::clone(&server);
+    let sink = Arc::clone(&captured);
+    std::thread::spawn(move || {
+        for mut req in looper.incoming_requests() {
+            let mut body_text = String::new();
+            let _ = req.as_reader().read_to_string(&mut body_text);
+            sink.lock().unwrap().push(Captured {
+                method: req.method().to_string(),
+                path: req.url().to_string(),
+                headers: req
+                    .headers()
+                    .iter()
+                    .map(|h| (h.field.to_string().to_ascii_lowercase(), h.value.to_string()))
+                    .collect(),
+                body: body_text,
+            });
+            let response = tiny_http::Response::from_string(body)
+                .with_status_code(status)
+                .with_header(
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                        .unwrap(),
+                );
+            let _ = req.respond(response);
+        }
+    });
+    MockServer {
+        server,
+        base: format!("http://127.0.0.1:{port}/api/speclink/v1/projects/demo"),
+        captured,
+    }
+}
+
+impl MockServer {
+    fn last(&self) -> Captured {
+        self.captured.lock().unwrap().last().expect("a captured request").clone()
+    }
+}
+
+impl Drop for MockServer {
+    fn drop(&mut self) {
+        self.server.unblock();
+    }
+}
+
+fn client(mock: &MockServer) -> Client {
+    Client::new(&mock.base, "tok", Some("backend"))
+}
+
+fn assert_call(cap: &Captured, method: &str, path_suffix: &str) {
+    assert_eq!(cap.method, method);
+    assert!(
+        cap.path.ends_with(path_suffix),
+        "path was {}, wanted suffix {path_suffix}",
+        cap.path
+    );
+}
+
+// --- read verbs: typed responses off the wire samples ---
+
+#[test]
+fn list_changes_returns_typed_summaries() {
+    let mock = serve(
+        200,
+        r#"{"changes":[{"name":"demo","summary":"Demo change summary","status":"done","completedTasks":2,"totalTasks":2,"repo":"backend","lifecycle":"applying","claimedBy":"me"}]}"#,
+    );
+    let resp = client(&mock).list_changes().expect("list ok");
+    assert_eq!(resp.changes.len(), 1);
+    assert_eq!(resp.changes[0].name, "demo");
+    assert_eq!(resp.changes[0].completed_tasks, 2);
+    assert_eq!(resp.changes[0].repo.as_deref(), Some("backend"));
+    assert_call(&mock.last(), "GET", "/changes");
+}
+
+#[test]
+fn get_change_returns_the_typed_status() {
+    let mock = serve(
+        200,
+        r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":true,"applyRequires":["tasks"],"artifacts":[{"id":"proposal","outputPath":"proposal.md","status":"done","version":3}],"repo":"backend","lifecycle":"applying","statusVersion":4,"claimedBy":"me"}"#,
+    );
+    let status = client(&mock).get_change("demo").expect("status ok");
+    assert_eq!(status.change_name, "demo");
+    assert_eq!(status.artifacts[0].version, Some(3));
+    assert_call(&mock.last(), "GET", "/changes/demo");
+}
+
+#[test]
+fn instructions_split_into_apply_and_artifact_typed_calls() {
+    let mock = serve(
+        200,
+        r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"tasks":"tasks.md"},"progress":{"total":2,"complete":2,"remaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"parallel":false}],"state":"all_done","locale":"English","instruction":"Work through the tasks.\n"}"#,
+    );
+    let apply = client(&mock).apply_instructions("demo").expect("apply ok");
+    assert_eq!(apply.state, "all_done");
+    assert_eq!(apply.progress.remaining, 0);
+    assert_call(&mock.last(), "GET", "/changes/demo/instructions/apply");
+
+    let mock2 = serve(
+        200,
+        r###"{"changeName":"demo","artifactId":"proposal","schemaName":"spec-driven","changeDir":"changes/demo","outputPath":"proposal.md","description":"Initial proposal document outlining the change","instruction":"Create the proposal.\n","locale":"English","template":"## Why\n","dependencies":[],"unlocks":["design"]}"###,
+    );
+    let artifact = client(&mock2)
+        .artifact_instructions("demo", "proposal")
+        .expect("artifact ok");
+    assert_eq!(artifact.artifact_id, "proposal");
+    assert_eq!(artifact.unlocks, ["design"]);
+    assert_call(&mock2.last(), "GET", "/changes/demo/instructions/proposal");
+}
+
+#[test]
+fn get_artifact_returns_typed_content_and_version() {
+    let mock = serve(
+        200,
+        r###"{"artifact":"design","content":"## Context\n","version":8}"###,
+    );
+    let got = client(&mock).get_artifact("demo", "design").expect("artifact ok");
+    assert_eq!(got.content, "## Context\n");
+    assert_eq!(got.version, 8);
+    assert_call(&mock.last(), "GET", "/changes/demo/artifacts/design");
+}
+
+#[test]
+fn list_specs_language_config_and_whoami_are_typed() {
+    let mock = serve(
+        200,
+        r#"{"specs":[{"id":"user-auth","path":"specs/user-auth/spec.md"}]}"#,
+    );
+    let specs = client(&mock).list_specs().expect("specs ok");
+    assert_eq!(specs.specs[0].id, "user-auth");
+    assert_call(&mock.last(), "GET", "/specs");
+
+    let mock2 = serve(200, r###"{"content":"# Language\n"}"###);
+    let language = client(&mock2).language().expect("language ok");
+    assert_eq!(language.content, "# Language\n");
+    assert_call(&mock2.last(), "GET", "/language");
+
+    let mock3 = serve(200, r#"{"schema":"spec-driven"}"#);
+    let config = client(&mock3).config().expect("config ok");
+    assert_eq!(config.schema, "spec-driven");
+    assert_call(&mock3.last(), "GET", "/config");
+
+    let mock4 = serve(
+        200,
+        r#"{"user":{"name":"王小明","handle":"ming"},"repos":[{"name":"backend","gitUrl":"https://git.example.com/erp.git"}]}"#,
+    );
+    let whoami = client(&mock4).whoami().expect("whoami ok");
+    assert_eq!(whoami.user.handle, "ming");
+    assert_eq!(whoami.repos[0].name, "backend");
+    assert_call(&mock4.last(), "GET", "/whoami");
+}
+
+#[test]
+fn discussion_reads_are_typed() {
+    let mock = serve(
+        200,
+        r#"{"discussions":[{"slug":"demo-topic","topic":"Demo topic","status":"open","rounds":0,"created":"2026-07-01","path":"discussions/demo-topic.md","archived":false}]}"#,
+    );
+    let list = client(&mock).list_discussions(false).expect("list ok");
+    assert_eq!(list.discussions[0].slug, "demo-topic");
+    assert_call(&mock.last(), "GET", "/discussions");
+
+    let archived = client(&mock).list_discussions(true).expect("archived ok");
+    assert_eq!(archived.discussions.len(), 1);
+    assert!(
+        mock.last().path.ends_with("/discussions?archived=true"),
+        "archived filter travels as the query string: {}",
+        mock.last().path
+    );
+
+    let mock2 = serve(
+        200,
+        r###"{"info":{"slug":"demo-topic","topic":"Demo topic","status":"open","rounds":0,"created":"2026-07-01","path":"discussions/demo-topic.md","archived":false},"content":"# Discussion: Demo topic\n"}"###,
+    );
+    let show = client(&mock2).show_discussion("demo-topic").expect("show ok");
+    assert_eq!(show.info.topic, "Demo topic");
+    assert_eq!(show.content, "# Discussion: Demo topic\n");
+    assert_call(&mock2.last(), "GET", "/discussions/demo-topic");
+}
+
+// --- write verbs: bodies are exactly the protocol DTO serializations ---
+
+#[test]
+fn create_change_posts_the_typed_request_body() {
+    let mock = serve(
+        201,
+        r#"{"name":"demo","schema":"spec-driven","repo":"backend","lifecycle":"drafting"}"#,
+    );
+    let req = CreateChangeRequest {
+        name: "demo".into(),
+        schema: Some("spec-driven".into()),
+        description: None,
+        agent: Some("claude".into()),
+        from_discussion: None,
+    };
+    let resp = client(&mock).create_change(req.clone()).expect("create ok");
+    assert_eq!(resp.name, "demo");
+    assert_eq!(resp.schema.as_deref(), Some("spec-driven"));
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/changes");
+    assert_eq!(
+        cap.body,
+        serde_json::to_string(&req).unwrap(),
+        "the wire body is the DTO serialization, nothing re-assembled"
+    );
+}
+
+#[test]
+fn put_artifact_carries_if_match_and_the_content_envelope() {
+    let mock = serve(200, r#"{"artifact":"design","version":8}"#);
+    let resp = client(&mock)
+        .put_artifact("demo", "design", "## Context\n", 7)
+        .expect("put ok");
+    assert_eq!(resp.version, 8);
+    let cap = mock.last();
+    assert_call(&cap, "PUT", "/changes/demo/artifacts/design");
+    assert_eq!(cap.header("if-match"), Some("7"));
+    assert_eq!(
+        cap.body,
+        serde_json::to_string(&PutArtifactRequest { content: "## Context\n".into() }).unwrap()
+    );
+}
+
+#[test]
+fn stale_write_surfaces_revision_conflict_with_the_existing_wording() {
+    let mock = serve(
+        409,
+        r#"{"status":409,"reason":"revision_conflict","message":"expected 3, at 7"}"#,
+    );
+    let err = client(&mock)
+        .put_artifact("demo", "design", "content", 3)
+        .unwrap_err();
+    assert_eq!(mock.last().header("if-match"), Some("3"));
+    assert_eq!(err.reason.as_deref(), Some("revision_conflict"));
+    assert_eq!(
+        err.message, "content changed since you read it — re-read it and re-apply your edit",
+        "byte-identical to the current 409 conflict wording"
+    );
+}
+
+#[test]
+fn task_verbs_post_typed_bodies() {
+    let mock = serve(200, r#"{"taskDesc":"1.1 First","alreadyDone":false}"#);
+    let done = client(&mock)
+        .task_done("demo", "3", &["src/lib.rs".to_string()])
+        .expect("done ok");
+    assert_eq!(done.task_desc, "1.1 First");
+    assert!(!done.already_done);
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/changes/demo/tasks/3/done");
+    assert_eq!(
+        cap.body,
+        serde_json::to_string(&TaskDoneRequest { touched_files: vec!["src/lib.rs".into()] })
+            .unwrap()
+    );
+
+    let empty = client(&mock).task_done("demo", "4", &[]).expect("done ok");
+    assert!(!empty.already_done);
+    assert_eq!(mock.last().body, "{}", "empty attribution stays the bare object");
+
+    let mock2 = serve(200, r#"{"taskDesc":"1.1 First","alreadyUndone":true}"#);
+    let undone = client(&mock2).task_undone("demo", "3").expect("undone ok");
+    assert!(undone.already_undone);
+    let cap2 = mock2.last();
+    assert_call(&cap2, "POST", "/changes/demo/tasks/3/undone");
+    assert_eq!(cap2.body, "{}", "unchecking never records touched files");
+}
+
+#[test]
+fn claim_and_archive_return_typed_responses() {
+    let mock = serve(200, r#"{"lifecycle":"applying","claimedBy":"me"}"#);
+    let claim = client(&mock).claim("demo").expect("claim ok");
+    assert_eq!(claim.claimed_by.as_deref(), Some("me"));
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/changes/demo/claim");
+    assert_eq!(cap.body, "{}");
+
+    let mock2 = serve(200, r#"{"specs":[{"capability":"user-auth"}]}"#);
+    let archive = client(&mock2).archive("demo").expect("archive ok");
+    assert_eq!(archive.specs[0].capability, "user-auth");
+    assert_call(&mock2.last(), "POST", "/changes/demo/archive");
+}
+
+#[test]
+fn discussion_writes_post_typed_bodies() {
+    let mock = serve(
+        201,
+        r#"{"slug":"auth-scope","topic":"Auth scope","path":"discussions/auth-scope.md"}"#,
+    );
+    let created = client(&mock).new_discussion("Auth scope").expect("new ok");
+    assert_eq!(created.slug, "auth-scope");
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/discussions");
+    assert_eq!(
+        cap.body,
+        serde_json::to_string(&CreateDiscussionRequest { topic: "Auth scope".into() }).unwrap()
+    );
+
+    let mock2 = serve(200, r#"{"round":3}"#);
+    let round = client(&mock2)
+        .discussion_add_round("auth-scope", "assumptions", "…")
+        .expect("round ok");
+    assert_eq!(round.round, 3);
+    let cap2 = mock2.last();
+    assert_call(&cap2, "POST", "/discussions/auth-scope/rounds");
+    assert_eq!(
+        cap2.body,
+        serde_json::to_string(&AddDiscussionRoundRequest {
+            mode: "assumptions".into(),
+            content: "…".into(),
+        })
+        .unwrap()
+    );
+
+    let mock3 = serve(200, "{}");
+    client(&mock3)
+        .discussion_context("auth-scope", "context body")
+        .expect("context ok");
+    assert_call(&mock3.last(), "PUT", "/discussions/auth-scope/context");
+    client(&mock3)
+        .discussion_conclude("auth-scope", "the conclusion")
+        .expect("conclude ok");
+    assert_call(&mock3.last(), "POST", "/discussions/auth-scope/conclude");
+
+    let mock4 = serve(200, r#"{"archivedTo":"discussions/archive/auth-scope.md"}"#);
+    let archived = client(&mock4).discussion_archive("auth-scope").expect("archive ok");
+    assert_eq!(archived.archived_to, "discussions/archive/auth-scope.md");
+
+    let mock5 = serve(200, r#"{"change":"add-auth"}"#);
+    let promoted = client(&mock5)
+        .discussion_promote("auth-scope", Some("add-auth"))
+        .expect("promote ok");
+    assert_eq!(promoted.change, "add-auth");
+    assert_eq!(
+        mock5.last().body,
+        serde_json::to_string(&PromoteDiscussionRequest { name: Some("add-auth".into()) })
+            .unwrap()
+    );
+    let bare = client(&mock5).discussion_promote("auth-scope", None).expect("promote ok");
+    assert_eq!(bare.change, "add-auth");
+    assert_eq!(mock5.last().body, "{}", "no explicit name posts the bare object");
+}
+
+// --- the registry mapping table, byte for byte (design decision three) ---
+
+#[test]
+fn every_registry_reason_maps_to_the_frozen_cli_message() {
+    // (status, wire body, expected message, expected reason)
+    let cases: Vec<(u16, &str, String, Option<&str>)> = vec![
+        // Connection-layer wording is client-owned, byte-identical to the
+        // current translation table.
+        (
+            409,
+            r#"{"status":409,"reason":"revision_conflict","message":"stale"}"#,
+            "content changed since you read it — re-read it and re-apply your edit".into(),
+            Some("revision_conflict"),
+        ),
+        (
+            401,
+            r#"{"status":401,"reason":"permission_denied","message":"bad token"}"#,
+            "authentication failed — run `speclink auth login`".into(),
+            Some("permission_denied"),
+        ),
+        (
+            403,
+            r#"{"status":403,"reason":"permission_denied","message":"no access"}"#,
+            "access denied — your account has no access to this project; ask a project admin"
+                .into(),
+            Some("permission_denied"),
+        ),
+        (
+            400,
+            r#"{"status":400,"reason":"internal","message":"if-match required"}"#,
+            "internal speclink error — update speclink or report a bug".into(),
+            Some("internal"),
+        ),
+        // Engine-class reasons relay the server's message verbatim, the way
+        // fs mode prints engine messages.
+        (
+            404,
+            r#"{"status":404,"reason":"not_found","message":"Change 'ghost' not found."}"#,
+            "Change 'ghost' not found.".into(),
+            Some("not_found"),
+        ),
+        (
+            400,
+            r#"{"status":400,"reason":"invalid_argument","message":"Unknown artifact type 'blueprint'."}"#,
+            "Unknown artifact type 'blueprint'.".into(),
+            Some("invalid_argument"),
+        ),
+        (
+            400,
+            r#"{"status":400,"reason":"invalid_config","message":"this project has multiple repos — set `remote.repo` in .speclink.yaml (candidates: backend, frontend)"}"#,
+            "this project has multiple repos — set `remote.repo` in .speclink.yaml (candidates: backend, frontend)".into(),
+            Some("invalid_config"),
+        ),
+        (
+            409,
+            r#"{"status":409,"reason":"refused","message":"change is held by chiang — coordinate, or re-claim if it was released"}"#,
+            "change is held by chiang — coordinate, or re-claim if it was released".into(),
+            Some("refused"),
+        ),
+        // Unknown reasons stay a generic error with the status for bug
+        // reports only — never a panic.
+        (
+            418,
+            r#"{"status":418,"reason":"im_a_teapot","message":"short and stout"}"#,
+            "unexpected server response — update speclink or report a bug (HTTP 418)".into(),
+            Some("im_a_teapot"),
+        ),
+    ];
+    for (status, body, want_message, want_reason) in cases {
+        let mock = serve(status, Box::leak(body.to_string().into_boxed_str()));
+        let err = client(&mock).list_changes().unwrap_err();
+        assert_eq!(err.message, want_message, "message frozen for {body}");
+        assert_eq!(err.reason.as_deref(), want_reason, "reason kept for {body}");
+    }
+}
+
+#[test]
+fn unavailable_covers_every_5xx_before_the_reason_table() {
+    let mock = serve(503, r#"{"status":503,"reason":"unavailable","message":"maintenance"}"#);
+    let err = client(&mock).list_changes().unwrap_err();
+    assert_eq!(
+        err.message,
+        "server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)"
+    );
+}

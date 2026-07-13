@@ -1,0 +1,13 @@
+[package]
+name = "speclink-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+# JSON Schema 匯出僅限本 crate 依賴（design 決策二）；不得滲入 core／host。
+schemars = "1"
+
+[dev-dependencies]
+serde_json = { workspace = true }

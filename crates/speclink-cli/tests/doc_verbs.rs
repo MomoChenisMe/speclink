@@ -13,7 +13,15 @@ struct MockServer {
     base: String,
 }
 
-fn mock_server(routes: Vec<(&'static str, &'static str, u16, String)>) -> MockServer {
+/// The compatible handshake every verb-focused test needs — the binding
+/// precedes any verb, so the mock always serves it unless a test overrides
+/// the route to probe handshake failures.
+const BINDING_BODY: &str = r#"{"actor":{"id":"u_1","name":"Tester"},"project":{"id":"prj_1","key":"demo","name":"Demo"},"repo":{"id":"repo_1","key":"backend","name":"Backend"},"apiVersion":"1","engineVersion":"0.1.0"}"#;
+
+fn mock_server(mut routes: Vec<(&'static str, &'static str, u16, String)>) -> MockServer {
+    if !routes.iter().any(|(_, suffix, _, _)| *suffix == "/binding") {
+        routes.push(("GET", "/binding", 200, BINDING_BODY.to_string()));
+    }
     let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind mock server"));
     let port = server.server_addr().to_ip().expect("ip").port();
     let base = format!("http://127.0.0.1:{port}/api/speclink/v1/projects/demo");
@@ -157,7 +165,7 @@ fn remote_artifact_cat_missing_document_fails_semantically() {
         "GET",
         "/changes/demo/artifacts/design",
         404,
-        r#"{"reason":"not_found","message":"missing","resource":"artifact","name":"design"}"#.into(),
+        r#"{"status":404,"reason":"not_found","message":"artifact 'design' not found — run `speclink list` (or the matching list verb) to check the name"}"#.into(),
     )]);
     let p = TempProject::remote("cat-remote-missing", &mock.base);
     let out = p.run(&["artifact", "cat", "design", "--change", "demo"], Some("tok"));
@@ -211,7 +219,7 @@ fn remote_language_show_missing_fails_semantically() {
         "GET",
         "/language",
         404,
-        r#"{"reason":"not_found","message":"missing","resource":"language","name":"LANGUAGE"}"#.into(),
+        r#"{"status":404,"reason":"not_found","message":"language document 'LANGUAGE' not found — the project has no shared vocabulary yet"}"#.into(),
     )]);
     let p = TempProject::remote("lang-remote-missing", &mock.base);
     let out = p.run(&["language", "show"], Some("tok"));
