@@ -12,6 +12,7 @@ path = "src/main.rs"
 speclink-core = { path = "../speclink-core" }
 speclink-fs = { path = "../speclink-fs" }
 speclink-host = { path = "../speclink-host" }
+speclink-protocol = { path = "../speclink-protocol" }
 speclink-remote = { path = "../speclink-remote" }
 serde.workspace = true
 serde_json.workspace = true

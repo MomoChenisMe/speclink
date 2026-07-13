@@ -97,8 +97,7 @@ fn cmd_language(a: LanguageArgs) -> Result<()> {
     match a.command {
         LanguageCommands::Show => {
             if let Some(ctx) = remote_ctx()? {
-                let payload = ctx.client.language()?;
-                print!("{}", v_str(&payload, "content"));
+                print!("{}", ctx.client.language()?.content);
                 return Ok(());
             }
             let (ws, store) = open_project()?;
