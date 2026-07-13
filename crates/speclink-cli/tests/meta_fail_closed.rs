@@ -129,6 +129,25 @@ fn status_on_broken_meta_exits_non_zero_naming_file_and_reason() {
     );
 }
 
+#[test]
+fn drift_on_broken_meta_exits_non_zero_naming_file_and_reason() {
+    // drift is CLI-orchestrated (Host-collected facts → compute_* → merge); its
+    // fail-closed meta guard runs before any collection, so a corrupt change
+    // refuses with the same file-then-reason error the engine query verbs give.
+    let p = TempProject::new("drift");
+    let out = p.run(&["drift", "broken-change"]);
+    assert!(!out.status.success(), "drift must fail closed");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains(BROKEN_FILE_PREFIX),
+        "stderr names the file then the reason: {err}"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).trim().is_empty(),
+        "no drift payload on stdout"
+    );
+}
+
 // --- lifecycle writes refuse (spec「壞 metadata 使生命週期寫入 fail closed」) ---
 
 #[test]

@@ -220,8 +220,6 @@ pub enum Command {
     },
     /// `analyze [change]`
     Analyze { change: Option<String> },
-    /// `drift [change]`
-    Drift { change: Option<String> },
     /// `artifact cat <artifact> [--change <name>]`
     ArtifactCat {
         artifact: String,
@@ -449,7 +447,6 @@ pub enum CommandOutcome {
     Instructions(InstructionsOutcome),
     Validate(ValidateOutcome),
     Analyze(crate::analyzer::AnalyzeReport),
-    Drift(crate::drift::DriftReport),
     /// Raw artifact content (`artifact cat`).
     ArtifactCat(String),
     /// Raw LANGUAGE document content (`language show`).
@@ -523,7 +520,6 @@ pub fn execute(
             run_validate(store, item.as_deref(), all, changes, strict)
         }
         Command::Analyze { change } => run_analyze(store, change.as_deref()),
-        Command::Drift { change } => run_drift(store, ws, change.as_deref()),
         Command::ArtifactCat { artifact, change } => {
             run_artifact_cat(store, &artifact, change.as_deref())
         }
@@ -629,7 +625,6 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         | CommandOutcome::Instructions(_)
         | CommandOutcome::Validate(_)
         | CommandOutcome::Analyze(_)
-        | CommandOutcome::Drift(_)
         | CommandOutcome::ArtifactCat(_)
         | CommandOutcome::Language(_)
         | CommandOutcome::DiscussList(_)
@@ -975,17 +970,18 @@ fn run_analyze(store: &dyn Store, change: Option<&str>) -> Result<CommandOutcome
     )))
 }
 
-fn run_drift(
+/// Resolve and meta-guard a change for the drift verb, which the CLI now
+/// orchestrates outside `execute` (Host collects the workspace facts, the
+/// Engine computes each side, the merger assembles the report). Uses the same
+/// positional resolution and fail-closed meta guard the engine query verbs do,
+/// so drift's not-found / ambiguous / corrupt-meta behaviour is unchanged.
+pub fn resolve_guarded_change(
     store: &dyn Store,
-    ws: Option<&Workspace>,
     change: Option<&str>,
-) -> Result<CommandOutcome, CommandError> {
+) -> Result<Change, CommandError> {
     let change = resolve_change(store, change, SPECIFY_POSITIONAL)?;
     guard_meta(&change)?;
-    let host = host_workspace(ws);
-    Ok(CommandOutcome::Drift(crate::drift::analyze(
-        &host, store, &change,
-    )))
+    Ok(change)
 }
 
 /// Artifact id → change-relative path (the `artifact cat` vocabulary).
@@ -1406,7 +1402,9 @@ mod tests {
                 },
             ),
             ("analyze", Command::Analyze { change: Some("demo".to_string()) }),
-            ("drift", Command::Drift { change: Some("demo".to_string()) }),
+            // drift no longer routes through `execute` — it is CLI-orchestrated
+            // (Host-collected facts → compute_* → merge); its corrupt-meta
+            // fail-closed is covered at the CLI layer (meta_fail_closed).
             (
                 "artifact cat",
                 Command::ArtifactCat { artifact: "tasks".to_string(), change: Some("demo".to_string()) },
@@ -2320,7 +2318,6 @@ mod tests {
             Command::Instructions { artifact: _, change: _, schema: _ } => {}
             Command::Validate { item: _, all: _, changes: _, strict: _ } => {}
             Command::Analyze { change: _ } => {}
-            Command::Drift { change: _ } => {}
             Command::ArtifactCat { artifact: _, change: _ } => {}
             Command::LanguageShow => {}
             Command::DiscussList { archived: _ } => {}
