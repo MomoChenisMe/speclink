@@ -3,5 +3,15 @@
   "identifier": "default",
   "description": "Speclink 桌面 app 的預設能力集",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "core:tray:default",
+    "core:tray:allow-set-title",
+    "core:menu:default",
+    "core:image:allow-from-bytes",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize"
+  ]
 }

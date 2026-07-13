@@ -1,0 +1,15 @@
+// 系統匣圖示資產：單色 template PNG（Speclink 標記剪影，可見形狀由 alpha 表達）。
+// macOS 以 iconAsTemplate 依 alpha 渲染為系統色，自動適應深淺色選單列。前端擁有（design
+// D1）故內嵌為 base64 常數，免資產管線與 fetch——tray.ts 以 Image.fromBytes 解碼（需 Rust
+// image-png feature）。來源檔為 apps/desktop/src-tauri/icons/speclink-tray-18@2x.png
+// （36×36，使用者提供、單色深藍剪影，design D5a）；更新來源檔後須重新編碼此常數。
+const TRAY_ICON_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAD6klEQVR42u2XT4gcRRTGfz0zawwRo2shRi2JRCgxBBWEEPUQD0JEUUHx7xJFBEUvIRgh4kFZ0QVRUESUNZJDDiJq/hizC1EwGjB6U8jhGUPA0gTNO2Tjupud6enx8hqaYXoyM9msKClouqemu/qr733vva/h3PiPjaR9wvmwAtgLXD3gmmuAB4EXgRkAjdLq9eFah7nPgCuAcaBhc60eN5cBh4EHAK9R7nc+1JwPzX5AtTPUcj5sPxPanQ8HbZ337HfV+ZAMylAGZM6HGlAFmn2Ev2XPV+z8lPPhL42yqVemaiULJxoldT60NEqzR1YSjdIyJhbZ9BzwnPNhSqO84nw47QYr85khzoeKMXDE1s6BjTofXtAoTedDZUEA5aEwhtYD3wPHgT+BP4CNzoc7NUrWDVRtPhnSKJld/u58WANcWMjSYWCo7b6zC6hdT8BUYW7SNHWbhTZbMEAFcRezb9gAsWCibgdlLOXnBpAOCijJ65Cl6ny1qWSQwpgAcxol7aCJsz46AZoBljsfxoFlwLhG2blQoColc6uBu4FrgR3OhydMqNV/A9B3wDZguUa5BpgAXrVilp3Bu7JBQ7YBmNYos/b7iDFW0yj1spbRxaIk9v8S4MQggA4Ai50PHwDTwDPAdo1Sdz4MaZRGh/7Vbfd5S/kcWHc6G9LJMc4AdQtnYru6EnhWo7xbBJBfOx/uAkaNhTy0uRXJgC0a5U3nwx0aZaLbRjoBSoFvgdvNDw2bpV0JPK1R3m+7f53p7Ciwz4BcYJ0+s0y9AdisUcacD0s0yt/9MJQCBzTKrQWPswz4ErgO+MVY+A14zDT2I3AzcCNwKTBZ0CDOh23Ao8B+4Hp79nGN8kMvWVa0ERXnQ1WjHDPGdgIn7Zi24w3gFgvZfuAl4CLnw5AdVY0yAuwywE8CPwN7+upleR8yO5tolKPA88AI8DCwCbgceAt4DdgIfAWstg2klgD5O34FvtEoHwNjwCX9tI6mMVQFmibcnPay8TVwr0Y51SbYzNb6AphwPuyyT6U9vQKqAosKHRrnw1YDs9dePFTIJCyEH2qU6bYsTMy2Jhpl0vmw1srI28DrvYr6JHAP8BNwmYVpPbAbuK+sOPZg2m4CpjTKoX4L48vm9A4DS21uB/BQXhxLqnIGnA/MWsrXgfOAzDbxEdBwPqwyXTU6NetOot4NbAE+tS/YWeAdjTLnfKhplIZGSfPDNJaaf94HXAx8AqwCtgKP2LqnCvemZc6h0iG7BFDgKmAtsBiomzBbZV8bpqMRO2+w1N5s6Y6xd7BMKl0NuvNhhfPhkH0OjxUa6KCmv+Z8GHU+LC3UuHPj/zH+Abfh0cijkpQpAAAAAElFTkSuQmCC";
+
+/** 解碼內嵌 base64 為位元組——供 Image.fromBytes 建立 tray 圖示。 */
+export function trayIconBytes(): Uint8Array {
+  const binary = atob(TRAY_ICON_BASE64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
