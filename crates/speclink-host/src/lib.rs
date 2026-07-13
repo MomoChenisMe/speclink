@@ -12,6 +12,7 @@
 pub mod binding;
 pub mod commit;
 pub mod context;
+pub mod drift;
 pub mod evidence;
 pub mod gate;
 pub mod policy;

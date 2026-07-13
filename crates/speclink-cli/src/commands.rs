@@ -558,18 +558,25 @@ fn cmd_drift(a: ChangeArg) -> Result<()> {
     if info_if_no_changes(store, a.change.as_deref()) {
         return Ok(());
     }
-    let outcome = run_command(
-        store,
-        Some(&ws),
-        core::command::Command::Drift { change: a.change.clone() },
-    )?;
-    let core::command::CommandOutcome::Drift(report) = outcome else {
-        unreachable!("drift command yields a drift outcome");
+    // Client/server drift split, orchestrated locally: the Host collects the
+    // workspace facts and fixes the basis; the Engine computes the spec side and
+    // the workspace side; the single merger assembles the frozen report shape.
+    let change = core::command::resolve_guarded_change(store, a.change.as_deref())
+        .map_err(anyhow::Error::new)?;
+    let binding = speclink_host::binding::local_default_binding();
+    let bundle = speclink_host::drift::produce_drift_bundle(store, &ws, &change, &binding);
+    let facts = speclink_host::drift::collect_workspace_facts(&ws, store, &change);
+    let spec = core::drift::compute_spec_drift(store, &change);
+    let workspace = core::drift::compute_workspace_drift(store, &change, Some(&facts));
+    let basis = core::drift::DriftBasis {
+        expected: bundle.basis_digests.clone(),
+        current: core::tasks::current_basis_digests(store, &change.name),
     };
+    let report = core::drift::merge_drift_reports(&change, spec, workspace, Some(&basis));
     if a.json {
         return print_json(&report);
     }
-    render_drift(&report);
+    render_drift(&report.report);
     Ok(())
 }
 
