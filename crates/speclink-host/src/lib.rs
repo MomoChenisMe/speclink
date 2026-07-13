@@ -16,3 +16,4 @@ pub mod drift;
 pub mod evidence;
 pub mod gate;
 pub mod policy;
+pub mod projection;

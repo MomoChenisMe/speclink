@@ -241,6 +241,32 @@ pub struct ApplyInstructions {
     pub preflight: Option<Preflight>,
 }
 
+/// Remote mode retargets apply `contextFiles` onto the Context Projection
+/// mirror (platform architecture §7): the key set and the server's
+/// collection logic stay untouched — every value becomes the corresponding
+/// path under the projection's spec-root mirror, so skills read the
+/// read-only projection instead of unreachable server paths. Never called
+/// on the local fs path, whose output stays byte-identical.
+pub fn project_context_files(
+    context_files: &mut std::collections::BTreeMap<String, String>,
+    projection_spec_root: &Path,
+    change_name: &str,
+) {
+    let change_dir = projection_spec_root.join("changes").join(change_name);
+    for (key, value) in context_files.iter_mut() {
+        *value = match key.as_str() {
+            // The spec-driven artifact locations build_apply emits.
+            "proposal" => join_display(&change_dir, "proposal.md"),
+            "design" => join_display(&change_dir, "design.md"),
+            "tasks" => join_display(&change_dir, "tasks.md"),
+            "specs" => join_display(&change_dir, "specs/**/*.md"),
+            // Unknown keys keep the server's spec-root-relative value,
+            // re-rooted under the projection mirror.
+            _ => join_display(projection_spec_root, value),
+        };
+    }
+}
+
 /// Compute apply state: blocked | ready | all_done.
 pub fn apply_state(schema: &Schema, store: &dyn Store, change: &Change, tasks: &[Task]) -> String {
     let tasks_artifact = schema.artifact("tasks");
@@ -336,4 +362,42 @@ pub fn build_apply(
         instruction: schema.apply_instruction.clone(),
         preflight,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- remote contextFiles 重定向：key 與集合邏輯不變、值指向投影鏡像 ---
+
+    #[test]
+    fn project_context_files_retargets_values_and_keeps_keys() {
+        let mut files = std::collections::BTreeMap::from([
+            ("design".to_string(), "changes/demo/design.md".to_string()),
+            ("proposal".to_string(), "changes/demo/proposal.md".to_string()),
+            ("specs".to_string(), "changes/demo/specs/**/*.md".to_string()),
+            ("tasks".to_string(), "changes/demo/tasks.md".to_string()),
+            ("extra".to_string(), "changes/demo/extra.md".to_string()),
+        ]);
+        let root = Path::new("/ws/.speclink/context/openspec");
+        project_context_files(&mut files, root, "demo");
+
+        // key 集合不變。
+        let keys: Vec<&str> = files.keys().map(String::as_str).collect();
+        assert_eq!(keys, ["design", "extra", "proposal", "specs", "tasks"]);
+
+        // 已知 key 的值 = 投影鏡像下該 change 的對應路徑。
+        let change_dir = root.join("changes").join("demo");
+        assert_eq!(files["proposal"], change_dir.join("proposal.md").to_string_lossy());
+        assert_eq!(files["design"], change_dir.join("design.md").to_string_lossy());
+        assert_eq!(files["tasks"], change_dir.join("tasks.md").to_string_lossy());
+        assert_eq!(files["specs"], change_dir.join("specs/**/*.md").to_string_lossy());
+        // 未知 key 保留 server 相對值、改掛投影鏡像根下。
+        assert_eq!(files["extra"], root.join("changes/demo/extra.md").to_string_lossy());
+
+        // 每個值都在投影下。
+        for v in files.values() {
+            assert!(v.starts_with(&root.to_string_lossy().to_string()), "{v} under projection");
+        }
+    }
 }

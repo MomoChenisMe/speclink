@@ -3403,6 +3403,7 @@ dependencies = [
  "sha2",
  "speclink-core",
  "speclink-fs",
+ "speclink-protocol",
  "speclink-store",
 ]
 

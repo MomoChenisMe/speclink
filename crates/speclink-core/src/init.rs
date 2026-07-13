@@ -594,9 +594,13 @@ fn write_if(path: &Path, content: &str, force: bool) -> Result<()> {
     Ok(())
 }
 
-fn ensure_gitignore(path: &Path) -> Result<()> {
+/// Ensure `.gitignore` covers the `.speclink/` work directory, appending the
+/// standard block when it does not. Returns whether the file was amended —
+/// the context materializer turns that into a warning (never a silent write
+/// of an unignored projection).
+pub fn ensure_gitignore(path: &Path) -> Result<bool> {
     match util::read_opt(path) {
-        Some(text) if text.contains(".speclink/") => Ok(()),
+        Some(text) if text.contains(".speclink/") => Ok(false),
         Some(text) => {
             let mut new = text;
             if !new.ends_with('\n') {
@@ -605,11 +609,11 @@ fn ensure_gitignore(path: &Path) -> Result<()> {
             new.push('\n');
             new.push_str(GITIGNORE_BLOCK);
             util::write_file(path, &new)?;
-            Ok(())
+            Ok(true)
         }
         None => {
             util::write_file(path, GITIGNORE_BLOCK)?;
-            Ok(())
+            Ok(true)
         }
     }
 }

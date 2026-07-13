@@ -255,6 +255,84 @@ fn instructions_apply_json_field_names_match_fs_mode() {
     assert_eq!(keys_of(&stdout_json(&r)), fs_keys, "instructions apply --json field names");
 }
 
+// --- remote instructions 指向投影（context-projection）---
+
+#[test]
+fn instructions_apply_materializes_the_projection_and_points_context_files_at_it() {
+    let mock = mock_server(vec![
+        ("GET", "/changes/demo/instructions/apply", APPLY_BODY.to_string()),
+        (
+            "GET",
+            "/changes/demo/artifacts/proposal",
+            r###"{"artifact":"proposal","content":"## Why\n\nDemo change summary\n","version":3}"###
+                .to_string(),
+        ),
+        (
+            "GET",
+            "/changes/demo/artifacts/design",
+            r###"{"artifact":"design","content":"## Context\n\nDemo design\n","version":1}"###
+                .to_string(),
+        ),
+        (
+            "GET",
+            "/changes/demo/artifacts/tasks",
+            r#"{"artifact":"tasks","content":"- [x] 1.1 First\n- [x] 1.2 Second\n","version":5}"#
+                .to_string(),
+        ),
+    ]);
+    let remote = TempProject::remote("proj-apply", &mock.base, Some("backend"));
+
+    let out = remote.run(&["instructions", "apply", "--change", "demo", "--json"], Some("tok"));
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let payload = stdout_json(&out);
+    let files = payload["contextFiles"].as_object().expect("contextFiles object");
+
+    // key 與集合邏輯不變（server 宣告的 key 原樣保留）。
+    let keys: Vec<&str> = files.keys().map(String::as_str).collect();
+    assert_eq!(keys, ["design", "proposal", "specs", "tasks"]);
+
+    // 每個值都指向投影下（.speclink/context 的 openspec 鏡像）。
+    let projection = remote
+        .dir
+        .canonicalize()
+        .expect("canonicalize temp dir")
+        .join(".speclink")
+        .join("context");
+    for (key, value) in files {
+        let value = value.as_str().unwrap();
+        assert!(
+            PathBuf::from(value).starts_with(&projection),
+            "{key} points into the projection: {value}"
+        );
+    }
+
+    // materialize 由動詞流程觸發：非 glob 的 contextFiles 是投影下存在的文件。
+    for key in ["proposal", "design", "tasks"] {
+        let path = PathBuf::from(files[key].as_str().unwrap());
+        assert!(path.is_file(), "{key} exists in the projection: {}", path.display());
+    }
+    assert!(projection.join("manifest.json").is_file(), "manifest written");
+    assert!(
+        std::fs::read_to_string(PathBuf::from(files["proposal"].as_str().unwrap()))
+            .unwrap()
+            .contains("Demo change summary"),
+        "projected content is the server's"
+    );
+}
+
+#[test]
+fn fs_instructions_apply_carries_no_projection_path() {
+    let fs = TempProject::fs_twin("no-proj-fs");
+    let f = fs.run(&["instructions", "apply", "--change", "demo", "--json"], None);
+    assert!(f.status.success());
+    let text = String::from_utf8_lossy(&f.stdout);
+    assert!(
+        !text.contains(".speclink"),
+        "local mode never points at a projection: {text}"
+    );
+    assert!(!fs.dir.join(".speclink").exists(), "local mode writes no projection");
+}
+
 #[test]
 fn instructions_artifact_json_field_names_match_fs_mode() {
     let mock = mock_server(vec![(

@@ -268,6 +268,81 @@ fn to_artifact_instructions(
     }
 }
 
+/// Phase-1 snapshot source over the existing verb contract: the change's own
+/// artifacts (proposal/design/tasks) are fetchable today; delta and canonical
+/// specs arrive with the Phase 2 Context API. The provider seam keeps that
+/// upgrade out of the verb flow.
+struct VerbContextProvider<'c> {
+    client: &'c RemoteClient,
+    change: String,
+}
+
+impl speclink_host::projection::SnapshotProvider for VerbContextProvider<'_> {
+    fn snapshot(
+        &self,
+        _request: &speclink_protocol::context::ContextSnapshotRequest,
+    ) -> Result<speclink_protocol::context::ContextSnapshot> {
+        use speclink_host::projection::content_digest;
+        use speclink_protocol::context::{ContextDocument, ContextSnapshot};
+        let mut documents = Vec::new();
+        for artifact in ["proposal", "design", "tasks"] {
+            match self.client.get_artifact(&self.change, artifact) {
+                Ok(got) => {
+                    let digest = content_digest(&got.content);
+                    documents.push(ContextDocument {
+                        path: format!("openspec/changes/{}/{artifact}.md", self.change),
+                        content: got.content,
+                        revision: Some(got.version),
+                        digest,
+                    });
+                }
+                // An absent artifact is a normal shape (the schema may not
+                // require it yet) — the projection simply omits it.
+                Err(e) if e.reason.as_deref() == Some("not_found") => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
+        let combined: Vec<&str> = documents.iter().map(|d| d.digest.as_str()).collect();
+        let digest = content_digest(&combined.join("\n"));
+        // Deterministic content-derived identity — the verb contract carries
+        // no snapshot ids until the Phase 2 Context API.
+        let snapshot_id = format!("verb-{}", &digest.trim_start_matches("sha256:")[..12]);
+        Ok(ContextSnapshot { snapshot_id, policy_revision: None, digest, documents })
+    }
+}
+
+/// The remote verb flow's materialize trigger: refresh the projection for
+/// this change's apply flow and point contextFiles into it. Projection
+/// trouble is a loud warning, never a verb failure — the instructions
+/// payload itself is intact either way.
+fn point_context_files_at_projection(
+    ctx: &RemoteCtx,
+    name: &str,
+    context_files: &mut std::collections::BTreeMap<String, String>,
+) {
+    let Some(ws) = core::workspace::Workspace::discover_cwd().ok().flatten() else {
+        return;
+    };
+    let provider = VerbContextProvider { client: &ctx.client, change: name.to_string() };
+    let request = speclink_protocol::context::ContextSnapshotRequest {
+        change: Some(name.to_string()),
+        flow: Some("apply".to_string()),
+    };
+    match speclink_host::projection::materialize(&ws, &provider, &request) {
+        Ok(out) => {
+            for w in &out.warnings {
+                eprintln!("speclink: warning: {w}");
+            }
+        }
+        Err(e) => eprintln!("speclink: warning: context projection not refreshed: {e:#}"),
+    }
+    core::instructions::project_context_files(
+        context_files,
+        &speclink_host::projection::projection_dir(&ws).join("openspec"),
+        name,
+    );
+}
+
 fn remote_instructions(ctx: &RemoteCtx, a: &InstructionsArgs) -> Result<()> {
     if a.schema.is_some() {
         bail!("--schema is not supported in remote mode — the server's workflow config decides the schema");
@@ -291,7 +366,8 @@ fn remote_instructions(ctx: &RemoteCtx, a: &InstructionsArgs) -> Result<()> {
             .unwrap_or_else(|| "apply".to_string()),
     };
     if artifact == "apply" {
-        let p = to_apply_instructions(ctx.client.apply_instructions(&name)?);
+        let mut p = to_apply_instructions(ctx.client.apply_instructions(&name)?);
+        point_context_files_at_projection(ctx, &name, &mut p.context_files);
         if a.json {
             return print_json(&p);
         }
