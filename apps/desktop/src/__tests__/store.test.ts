@@ -124,6 +124,19 @@ describe("app store (Zustand)", () => {
     vi.useRealTimers();
   });
 
+  it("disposeSearch cancels the pending debounced search（卸載後在途去抖不觸發）", async () => {
+    // 生命週期清理：元件卸載時取消漏出的去抖 timer 並作廢在途回填，
+    // 杜絕搜尋在擁有它的 store 卸載後才開火所致的未處理例外。
+    vi.useFakeTimers();
+    const ds = fakeDataSource({ searchWorkspace: vi.fn().mockResolvedValue([]) });
+    const store = createAppStore(ds);
+    store.getState().setBoardQuery("di");
+    store.getState().disposeSearch();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(ds.searchWorkspace).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it("boardQuery and the archived-page query are independent", () => {
     // spec「搜尋字串…與已封存頁獨立」：各自設值互不覆蓋。
     const store = createAppStore(fakeDataSource());

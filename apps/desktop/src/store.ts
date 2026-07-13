@@ -71,6 +71,9 @@ export interface AppState {
   setView: (v: ListView) => void;
   setQuery: (q: string) => void;
   setBoardQuery: (q: string) => void;
+  /** 生命週期清理：取消在途搜尋去抖 timer 並作廢在途回填——由擁有此 store 的
+   * 元件卸載時呼叫，杜絕去抖在 store 卸載後才開火（否則漏出的 timer 會非同步觸發）。 */
+  disposeSearch: () => void;
   toggleExpand: (name: string) => void;
   openDetail: (name: string) => void;
   closeDetail: () => void;
@@ -245,6 +248,15 @@ export function createAppStore(
             if (seq === searchSeq) set({ searchHits: [] });
           });
       }, 200);
+    },
+
+    disposeSearch() {
+      if (searchTimer !== null) {
+        clearTimeout(searchTimer);
+        searchTimer = null;
+      }
+      // 前進序號作廢任何已開火、在途的查詢回填（latest-wins 語意）。
+      searchSeq++;
     },
 
     toggleExpand(name) {
