@@ -1,0 +1,11 @@
+[package]
+name = "speclink-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "TeamStore contract: typed errors, scoped addressing, snapshot/UoW/CAS, transactional outbox, and the reusable conformance suite"
+
+[dependencies]
+serde_json = { workspace = true }
+chrono = { workspace = true }
+sha2 = "0.10"
