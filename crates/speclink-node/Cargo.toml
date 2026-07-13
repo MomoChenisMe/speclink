@@ -20,6 +20,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 speclink-core = { path = "../speclink-core" }
 speclink-fs = { path = "../speclink-fs" }
+speclink-host = { path = "../speclink-host" }
 
 [build-dependencies]
 napi-build = "2"

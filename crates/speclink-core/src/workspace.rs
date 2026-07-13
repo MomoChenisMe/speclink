@@ -133,10 +133,6 @@ impl Workspace {
         })
     }
 
-    /// [`Workspace::resolve_mode_with`] against the process environment.
-    pub fn resolve_mode(&self) -> anyhow::Result<ModeResolution> {
-        self.resolve_mode_with(std::env::var("SPECLINK_STORE_URL").ok())
-    }
 }
 
 /// File name of the LEGACY remote connection file. No longer parsed: its
@@ -172,4 +168,65 @@ pub struct ModeResolution {
     /// True when a leftover legacy `.speclink.remote.yaml` sits in the project
     /// root (never parsed; the CLI prints one migration warning).
     pub leftover_remote_file: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Throwaway workspace root with the given `.speclink.yaml` content.
+    /// `label` keeps parallel tests in distinct sandboxes.
+    fn workspace_with(label: &str, app_yaml: &str) -> Workspace {
+        let dir = std::env::temp_dir().join(format!(
+            "speclink-ws-mode-{label}-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp workspace");
+        std::fs::write(dir.join(".speclink.yaml"), app_yaml).expect("write app config");
+        Workspace {
+            root: dir,
+            spec_dir_name: "openspec".to_string(),
+        }
+    }
+
+    // --- store 模式解析以注入值運作（env 層由 host 邊界注入） ---
+
+    #[test]
+    fn injected_store_url_supplies_the_remote_url() {
+        let ws = workspace_with("inject-url", "remote:\n  repo: web\n");
+        let resolution = ws
+            .resolve_mode_with(Some("http://injected.example".to_string()))
+            .expect("mode resolves");
+        match resolution.mode {
+            StoreMode::Remote(conn) => {
+                assert_eq!(conn.url, "http://injected.example");
+                assert_eq!(conn.repo.as_deref(), Some("web"));
+            }
+            StoreMode::Fs => panic!("remote section + injected url must resolve remote"),
+        }
+        std::fs::remove_dir_all(&ws.root).ok();
+    }
+
+    #[test]
+    fn missing_injected_url_with_bare_remote_section_fails_loudly() {
+        let ws = workspace_with("bare-remote", "remote:\n");
+        let err = ws.resolve_mode_with(None).expect_err("both url sources missing");
+        let msg = format!("{err}");
+        assert!(msg.contains("remote.url"), "error names the config key: {msg}");
+        assert!(msg.contains("SPECLINK_STORE_URL"), "error names the env var: {msg}");
+        std::fs::remove_dir_all(&ws.root).ok();
+    }
+
+    #[test]
+    fn injected_url_never_flips_an_fs_workspace_into_remote() {
+        let ws = workspace_with("fs-only", "locale: tw\n");
+        let resolution = ws
+            .resolve_mode_with(Some("http://injected.example".to_string()))
+            .expect("mode resolves");
+        assert!(
+            matches!(resolution.mode, StoreMode::Fs),
+            "no remote section: the injected url must not create remote mode"
+        );
+        std::fs::remove_dir_all(&ws.root).ok();
+    }
 }

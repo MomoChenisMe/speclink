@@ -4,7 +4,6 @@
 
 use crate::store::Store;
 use crate::util;
-use crate::workspace::Workspace;
 use anyhow::Result;
 use std::path::PathBuf;
 
@@ -84,16 +83,16 @@ pub struct DemoOutcome {
     pub path: PathBuf,
 }
 
-pub fn generate(ws: &Workspace, store: &dyn Store) -> Result<DemoOutcome> {
+/// `actor` is the Host-resolved display identity — None stamps no created_by.
+pub fn generate(store: &dyn Store, actor: Option<&str>) -> Result<DemoOutcome> {
     let (theme, proposal, design, tasks, spec) = THEMES[util::pseudo_random(THEMES.len())];
     let word = WORDS[util::pseudo_random(WORDS.len())];
     let mon = POKEMON[util::pseudo_random(POKEMON.len())];
     let name = format!("slx-{word}-{mon}");
 
     let created = util::today();
-    let identity = util::git_identity(&ws.root);
     let mut meta = format!("schema: spec-driven\ncreated: {created}\n");
-    if let Some(id) = identity {
+    if let Some(id) = actor {
         meta.push_str(&format!("created_by: {id}\n"));
     }
 

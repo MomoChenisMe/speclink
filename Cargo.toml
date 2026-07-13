@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/speclink-core", "crates/speclink-fs", "crates/speclink-remote", "crates/speclink-cli", "crates/speclink-node", "crates/speclink-store", "apps/desktop/core", "apps/desktop/src-tauri"]
+members = ["crates/speclink-core", "crates/speclink-fs", "crates/speclink-remote", "crates/speclink-cli", "crates/speclink-node", "crates/speclink-store", "crates/speclink-host", "apps/desktop/core", "apps/desktop/src-tauri"]
 
 [workspace.package]
 version = "0.1.0"

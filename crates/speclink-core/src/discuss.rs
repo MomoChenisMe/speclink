@@ -8,7 +8,6 @@
 
 use crate::store::{DiscussionDoc, Store};
 use crate::util;
-use crate::workspace::Workspace;
 use anyhow::{bail, Result};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -501,10 +500,10 @@ fn strip_date_prefix(name: &str) -> &str {
 /// step leaves the later steps unexecuted, so a name collision never marks the
 /// discussion.
 pub fn promote(
-    ws: &Workspace,
     store: &dyn Store,
     slug: &str,
     name: Option<&str>,
+    actor: Option<&str>,
 ) -> Result<PromoteOutcome> {
     match info(store, slug) {
         None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
@@ -517,7 +516,7 @@ pub fn promote(
     let schema =
         crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
             .schema_name();
-    let dir = crate::newcmd::new_change(ws, store, &change_name, None, &schema, None, Some(slug))?;
+    let dir = crate::newcmd::new_change(store, &change_name, None, &schema, None, Some(slug), actor)?;
     // Prefill the proposal's Why from the discussion conclusion (topic as fallback);
     // the remaining sections stay as TBD markers for /speclink-propose to complete.
     let why = conclusion_text(store, slug).unwrap_or_else(|| {
@@ -911,7 +910,7 @@ mod tests {
     #[test]
     fn promote_rejects_missing_discussion() {
         let store = TestStore::default();
-        let err = super::promote(&ghost_ws(), &store, "ghost", None).unwrap_err();
+        let err = super::promote(&store, "ghost", None, None).unwrap_err();
         assert!(err.to_string().contains("not found"), "err: {err}");
     }
 
@@ -922,7 +921,7 @@ mod tests {
             .archived_discussions
             .borrow_mut()
             .insert("old-topic".to_string(), concluded_doc("old-topic", "Old", "done"));
-        let err = super::promote(&ghost_ws(), &store, "old-topic", None).unwrap_err();
+        let err = super::promote(&store, "old-topic", None, None).unwrap_err();
         assert!(err.to_string().contains("archived"), "err: {err}");
         assert!(!store.change_exists("old-topic"), "no change may be created");
     }
@@ -933,7 +932,7 @@ mod tests {
             "alpha-search",
             &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
         );
-        let outcome = super::promote(&ghost_ws(), &store, "alpha-search", None).unwrap();
+        let outcome = super::promote(&store, "alpha-search", None, None).unwrap();
         assert_eq!(outcome.change, "alpha-search");
         assert!(store.change_exists("alpha-search"));
     }
@@ -945,7 +944,7 @@ mod tests {
             &concluded_doc("beta-cache", "Beta cache", "add cache layer"),
         );
         let outcome =
-            super::promote(&ghost_ws(), &store, "beta-cache", Some("cache-layer")).unwrap();
+            super::promote(&store, "beta-cache", Some("cache-layer"), None).unwrap();
         assert_eq!(outcome.change, "cache-layer");
         assert!(store.change_exists("cache-layer"));
         assert!(!store.change_exists("beta-cache"));
@@ -959,7 +958,7 @@ mod tests {
             "2026-07-06-retro",
             &concluded_doc("2026-07-06-retro", "Retro", "do the retro"),
         );
-        let outcome = super::promote(&ghost_ws(), &store, "2026-07-06-retro", None).unwrap();
+        let outcome = super::promote(&store, "2026-07-06-retro", None, None).unwrap();
         assert_eq!(outcome.change, "retro");
 
         let store2 = TestStore::with_live_discussion(
@@ -967,7 +966,7 @@ mod tests {
             &concluded_doc("gamma-x", "Gamma x", "ship gamma"),
         );
         let outcome2 =
-            super::promote(&ghost_ws(), &store2, "gamma-x", Some("2026-01-02-gamma-cut")).unwrap();
+            super::promote(&store2, "gamma-x", Some("2026-01-02-gamma-cut"), None).unwrap();
         assert_eq!(outcome2.change, "gamma-cut");
     }
 
@@ -977,7 +976,7 @@ mod tests {
             "alpha-search",
             &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
         );
-        super::promote(&ghost_ws(), &store, "alpha-search", None).unwrap();
+        super::promote(&store, "alpha-search", None, None).unwrap();
         let meta = store.meta("alpha-search");
         assert!(meta.starts_with("schema: spec-driven\ncreated: "), "meta: {meta}");
         assert!(meta.contains("from_discussion: alpha-search\n"), "meta: {meta}");
@@ -989,7 +988,7 @@ mod tests {
             "alpha-search",
             &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
         );
-        super::promote(&ghost_ws(), &store, "alpha-search", None).unwrap();
+        super::promote(&store, "alpha-search", None, None).unwrap();
         let proposal = store.read_artifact("alpha-search", "proposal.md").unwrap();
         assert_eq!(
             proposal,
@@ -1002,7 +1001,7 @@ mod tests {
         // Placeholder-only conclusion → the topic is the Why fallback.
         let store =
             TestStore::with_live_discussion("open-one", &open_doc("open-one", "Open topic"));
-        super::promote(&ghost_ws(), &store, "open-one", None).unwrap();
+        super::promote(&store, "open-one", None, None).unwrap();
         let proposal = store.read_artifact("open-one", "proposal.md").unwrap();
         assert!(proposal.starts_with("## Why\n\nOpen topic\n"), "proposal: {proposal}");
     }
@@ -1013,13 +1012,13 @@ mod tests {
             "alpha-search",
             &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
         );
-        super::promote(&ghost_ws(), &store, "alpha-search", None).unwrap();
+        super::promote(&store, "alpha-search", None, None).unwrap();
         let text = store.discussion("alpha-search");
         assert!(text.contains("status: promoted\n"), "text: {text}");
         assert!(text.contains("promoted_to: alpha-search\n"), "text: {text}");
 
         // Second cut: promoted_to becomes a comma-separated accumulator.
-        super::promote(&ghost_ws(), &store, "alpha-search", Some("second-cut")).unwrap();
+        super::promote(&store, "alpha-search", Some("second-cut"), None).unwrap();
         let text = store.discussion("alpha-search");
         assert!(text.contains("promoted_to: alpha-search, second-cut\n"), "text: {text}");
     }
@@ -1032,7 +1031,7 @@ mod tests {
         );
         store.metas.borrow_mut().insert("alpha-search".to_string(), "schema: spec-driven\n".to_string());
         let before = store.discussion("alpha-search");
-        let err = super::promote(&ghost_ws(), &store, "alpha-search", None).unwrap_err();
+        let err = super::promote(&store, "alpha-search", None, None).unwrap_err();
         assert!(err.to_string().contains("already exists"), "err: {err}");
         assert_eq!(store.discussion("alpha-search"), before, "discussion must not be marked");
     }

@@ -3285,6 +3285,7 @@ dependencies = [
  "serde_yaml",
  "speclink-core",
  "speclink-fs",
+ "speclink-host",
  "speclink-remote",
  "tiny_http",
 ]
@@ -3326,6 +3327,7 @@ dependencies = [
  "serde_yaml",
  "speclink-core",
  "speclink-fs",
+ "speclink-host",
 ]
 
 [[package]]
@@ -3334,6 +3336,18 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "speclink-core",
+]
+
+[[package]]
+name = "speclink-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde_json",
+ "sha2",
+ "speclink-core",
+ "speclink-store",
 ]
 
 [[package]]
@@ -3348,6 +3362,7 @@ dependencies = [
  "serde_json",
  "speclink-core",
  "speclink-fs",
+ "speclink-host",
 ]
 
 [[package]]
@@ -3359,6 +3374,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "speclink-core",
+ "speclink-host",
  "tiny_http",
  "ureq",
 ]

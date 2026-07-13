@@ -105,17 +105,6 @@ pub fn git_available(root: &Path) -> bool {
     git(root, &["rev-parse", "--is-inside-work-tree"]).as_deref() == Some("true")
 }
 
-/// Build the "Name <email>" identity string from git config, if available.
-pub fn git_identity(root: &Path) -> Option<String> {
-    let name = git(root, &["config", "user.name"]);
-    let email = git(root, &["config", "user.email"]);
-    match (name, email) {
-        (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some(format!("{n} <{e}>")),
-        (Some(n), _) if !n.is_empty() => Some(n),
-        _ => None,
-    }
-}
-
 /// Today's date as YYYY-MM-DD (local time).
 pub fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()

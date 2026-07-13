@@ -21,7 +21,7 @@ fn remote_ctx() -> Result<Option<RemoteCtx>> {
     let Some(ws) = core::workspace::Workspace::discover_cwd()? else {
         return Ok(None);
     };
-    let resolution = ws.resolve_mode()?;
+    let resolution = speclink_host::context::resolve_store_mode(&ws)?;
     let conn = match resolution.mode {
         core::workspace::StoreMode::Fs => return Ok(None),
         core::workspace::StoreMode::Remote(conn) => conn,
@@ -327,7 +327,7 @@ fn cmd_auth(a: AuthArgs) -> Result<()> {
     let Some(ws) = core::workspace::Workspace::discover_cwd()? else {
         bail!("Not connected to a remote store — run `speclink link <url>` first");
     };
-    let conn = match ws.resolve_mode()?.mode {
+    let conn = match speclink_host::context::resolve_store_mode(&ws)?.mode {
         core::workspace::StoreMode::Remote(conn) => conn,
         core::workspace::StoreMode::Fs => {
             bail!("Not connected to a remote store — run `speclink link <url>` first")
@@ -516,7 +516,7 @@ fn remote_new_artifact(ctx: &RemoteCtx, a: &NewArtifactArgs) -> Result<()> {
         // embedded engine (built-in/user schema definitions are engine-local).
         let schema_name = v_str(&ctx.client.config()?, "schema");
         let name = if schema_name.is_empty() { "spec-driven".to_string() } else { schema_name };
-        match core::schema::resolve_with(None, &name) {
+        match core::schema::resolve_with(None, Some(&speclink_host::context::global_config_dir()), &name) {
             Some(Ok(schema)) => schema
                 .artifact(schema_artifact_id)
                 .and_then(|art| art.template.clone())

@@ -289,30 +289,6 @@ pub fn locale_display(code: Option<&str>) -> String {
     }
 }
 
-/// Machine-level speclink directory (global config, user schemas), by OS convention:
-/// Windows `%USERPROFILE%\AppData\Roaming` (derived from the profile — Spectra ignores a
-/// redirected APPDATA env var, probed), macOS `~/Library/Application Support`,
-/// Linux `$XDG_CONFIG_HOME`|`~/.config`.
-pub fn global_config_dir() -> std::path::PathBuf {
-    use std::path::PathBuf;
-    let base = if cfg!(windows) {
-        std::env::var("USERPROFILE")
-            .map(|h| PathBuf::from(h).join("AppData").join("Roaming"))
-            .ok()
-    } else if cfg!(target_os = "macos") {
-        std::env::var("HOME")
-            .map(|h| PathBuf::from(h).join("Library").join("Application Support"))
-            .ok()
-    } else {
-        std::env::var("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .ok()
-            .filter(|p| p.is_absolute())
-            .or_else(|| std::env::var("HOME").map(|h| PathBuf::from(h).join(".config")).ok())
-    };
-    base.unwrap_or_else(|| PathBuf::from(".")).join("speclink")
-}
-
 /// `openspec/config.yaml` — workflow configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct WorkflowConfig {
@@ -341,13 +317,9 @@ pub struct EnvOverrides {
 }
 
 impl EnvOverrides {
-    /// Read overrides from the process environment.
-    pub fn from_env() -> EnvOverrides {
-        Self::from_lookup(|key| std::env::var(key).ok())
-    }
-
-    /// Read overrides through an injectable lookup, so resolution stays testable
-    /// without mutating process-global environment state.
+    /// Read overrides through an injectable lookup — the only constructor:
+    /// the process-env read lives at the Host boundary (speclink-host), so
+    /// the Engine's policy resolution runs on injected values only.
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> EnvOverrides {
         EnvOverrides {
             locale: get("SPECLINK_LOCALE").and_then(non_empty),
@@ -656,6 +628,19 @@ mod tests {
     }
 
     const NO_ENV: &[(&str, &str)] = &[];
+
+    // --- 注入形 lookup 是唯一 env 來源：process env 不可見 ---
+
+    #[test]
+    fn from_lookup_never_reads_the_process_environment() {
+        std::env::set_var("SPECLINK_AUDIT", "true");
+        let env = EnvOverrides::from_lookup(|_| None);
+        std::env::remove_var("SPECLINK_AUDIT");
+        assert_eq!(
+            env.audit, None,
+            "an empty injected lookup yields no overrides regardless of process env"
+        );
+    }
 
     // --- locale: env > old app key > config.yaml > default ---
 

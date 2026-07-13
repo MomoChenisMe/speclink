@@ -469,24 +469,47 @@ pub enum CommandOutcome {
     DiscussDiscard(DiscussSubjectOutcome),
 }
 
-/// Execute one command against the store. `ws` is the host workspace when the
-/// entry point has one (CLI); hosts without a local workspace (Node SDK) pass
-/// `None` and get a synthetic workspace for the flows that only use it for
-/// host-side lookups. Returns the typed outcome plus the domain events the
-/// execution produced (always empty for queries).
+/// The Host-resolved engine-side execution context — resolved once at the
+/// Host boundary and consumed by every flow downstream. Command inputs carry
+/// no actor or policy fields, so this context is the only identity source;
+/// the Engine itself never reads process env or git identity.
+#[derive(Debug, Clone, Default)]
+pub struct ExecutionContext {
+    /// Display identity ("Name <email>") stamping flows record. `None` =
+    /// anonymous: stamping flows stamp nothing (the current local behavior
+    /// when git is absent or user.name is unset).
+    pub actor: Option<String>,
+    /// The SPECLINK_* env-override layer of policy resolution, read at the
+    /// Host boundary and injected here.
+    pub env: crate::config::EnvOverrides,
+    /// Host workspace for host-side lookups (schema resolution, app config,
+    /// drift's git probes). `None` = no local workspace (Node host store):
+    /// flows that need host files are only dispatched by entry points that
+    /// hold a real workspace (the CLI).
+    pub workspace: Option<Workspace>,
+    /// The machine-level speclink directory (user schemas), resolved at the
+    /// Host boundary (speclink-host's `global_config_dir`). `None` skips the
+    /// user schema location.
+    pub user_config_dir: Option<std::path::PathBuf>,
+}
+
+/// Execute one command against the store under the Host-resolved context.
+/// Returns the typed outcome plus the domain events the execution produced
+/// (always empty for queries).
 pub fn execute(
     store: &dyn Store,
-    ws: Option<&Workspace>,
+    ctx: &ExecutionContext,
     cmd: Command,
 ) -> Result<(CommandOutcome, Vec<DomainEvent>), CommandError> {
+    let ws = ctx.workspace.as_ref();
     let outcome = match cmd {
         Command::List { sort, specs, changes } => run_list(store, &sort, specs, changes),
         Command::Show { item, item_type } => run_show(store, item.as_deref(), item_type.as_deref()),
         Command::Status { change, schema } => {
-            run_status(store, ws, change.as_deref(), schema.as_deref())
+            run_status(store, ws, ctx.user_config_dir.as_deref(), change.as_deref(), schema.as_deref())
         }
         Command::Instructions { artifact, change, schema } => {
-            run_instructions(store, ws, artifact.as_deref(), change.as_deref(), schema.as_deref())
+            run_instructions(store, ws, ctx.user_config_dir.as_deref(), &ctx.env, artifact.as_deref(), change.as_deref(), schema.as_deref())
         }
         Command::Validate { item, all, changes, strict } => {
             run_validate(store, item.as_deref(), all, changes, strict)
@@ -504,16 +527,16 @@ pub fn execute(
         })),
         Command::DiscussShow { slug } => run_discuss_show(store, &slug),
         Command::NewChange { name, description, schema, agent, from_discussion } => {
-            run_new_change(store, ws, name, description, schema, agent, from_discussion)
+            run_new_change(store, ctx.actor.as_deref(), name, description, schema, agent, from_discussion)
         }
         Command::NewArtifact { kind, capability, change, content, force } => {
-            run_new_artifact(store, ws, &kind, capability.as_deref(), change.as_deref(), content.as_deref(), force)
+            run_new_artifact(store, ws, ctx.user_config_dir.as_deref(), &kind, capability.as_deref(), change.as_deref(), content.as_deref(), force)
         }
         Command::TaskDone { task_id, change } => {
-            run_task_flip(store, ws, &task_id, change.as_deref(), TaskFlip::Done)
+            run_task_flip(store, ws, ctx.actor.as_deref(), &task_id, change.as_deref(), TaskFlip::Done)
         }
         Command::TaskUndone { task_id, change } => {
-            run_task_flip(store, ws, &task_id, change.as_deref(), TaskFlip::Undone)
+            run_task_flip(store, ws, ctx.actor.as_deref(), &task_id, change.as_deref(), TaskFlip::Undone)
         }
         Command::Claim { name } => {
             // Fail-closed gate first: claiming a change whose metadata is
@@ -526,15 +549,16 @@ pub fn execute(
                 "claim requires a remote store — this project uses the local fs store",
             ))
         }
-        Command::InProgressAdd { name } => run_in_progress_add(store, ws, &name),
+        Command::InProgressAdd { name } => run_in_progress_add(store, ctx.actor.as_deref(), &name),
         Command::Archive { change, skip_specs, no_validate, mark_tasks_complete } => run_archive(
             store,
             ws,
+            ctx.actor.as_deref(),
             change.as_deref(),
             crate::archive::ArchiveOptions { skip_specs, no_validate, mark_tasks_complete },
         ),
         Command::Discard { change, force } => run_discard(store, ws, &change, force),
-        Command::DiscussNew { topic, slug } => run_discuss_new(store, ws, &topic, slug.as_deref()),
+        Command::DiscussNew { topic, slug } => run_discuss_new(store, ctx.actor.as_deref(), &topic, slug.as_deref()),
         Command::DiscussContext { slug, content } => {
             crate::discuss::set_context(store, &slug, &content).map_err(classify)?;
             Ok(CommandOutcome::DiscussContext(DiscussSubjectOutcome { slug }))
@@ -548,8 +572,8 @@ pub fn execute(
             Ok(CommandOutcome::DiscussConclude(DiscussConcludeOutcome { slug, restale_flagged }))
         }
         Command::DiscussPromote { slug, name } => {
-            let host = host_workspace(ws);
-            let o = crate::discuss::promote(&host, store, &slug, name.as_deref()).map_err(classify)?;
+            let o = crate::discuss::promote(store, &slug, name.as_deref(), ctx.actor.as_deref())
+                .map_err(classify)?;
             Ok(CommandOutcome::DiscussPromote(DiscussPromoteOutcome {
                 slug,
                 change: o.change,
@@ -722,8 +746,12 @@ fn resolve_change(
 }
 
 /// Resolve a schema by name (project → user → built-in), frozen CLI messages.
-fn resolve_schema(ws: Option<&Workspace>, name: &str) -> Result<Schema, CommandError> {
-    match crate::schema::resolve_with(ws, name) {
+fn resolve_schema(
+    ws: Option<&Workspace>,
+    user_dir: Option<&std::path::Path>,
+    name: &str,
+) -> Result<Schema, CommandError> {
+    match crate::schema::resolve_with(ws, user_dir, name) {
         Some(Ok(s)) => Ok(s),
         Some(Err(e)) => Err(CommandError::new(ErrorCode::Error, e)),
         None => Err(CommandError::new(
@@ -838,6 +866,7 @@ fn run_show(
 fn run_status(
     store: &dyn Store,
     ws: Option<&Workspace>,
+    user_dir: Option<&std::path::Path>,
     change: Option<&str>,
     schema: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
@@ -847,7 +876,7 @@ fn run_status(
         Some(s) => s.to_string(),
         None => change.meta.schema_name(),
     };
-    let schema = resolve_schema(ws, &schema_name)?;
+    let schema = resolve_schema(ws, user_dir, &schema_name)?;
     Ok(CommandOutcome::Status(crate::status::build(
         store, &change, &schema,
     )))
@@ -856,6 +885,8 @@ fn run_status(
 fn run_instructions(
     store: &dyn Store,
     ws: Option<&Workspace>,
+    user_dir: Option<&std::path::Path>,
+    env: &crate::config::EnvOverrides,
     artifact: Option<&str>,
     change: Option<&str>,
     schema: Option<&str>,
@@ -863,8 +894,8 @@ fn run_instructions(
     let change = resolve_change(store, change, SPECIFY_FLAG)?;
     guard_meta(&change)?;
     let schema = match schema {
-        Some(s) => resolve_schema(ws, s)?,
-        None => resolve_schema(ws, &change.meta.schema_name())?,
+        Some(s) => resolve_schema(ws, user_dir, s)?,
+        None => resolve_schema(ws, user_dir, &change.meta.schema_name())?,
     };
     // No-arg default: the first incomplete artifact, or the apply view once
     // every artifact exists (matches Spectra).
@@ -873,10 +904,10 @@ fn run_instructions(
     let artifact = artifact.unwrap_or(&default_artifact);
     let host = host_workspace(ws);
     if artifact == "apply" {
-        let payload = crate::instructions::build_apply(&host, store, &change, &schema)?;
+        let payload = crate::instructions::build_apply(&host, store, env, &change, &schema)?;
         return Ok(CommandOutcome::Instructions(InstructionsOutcome::Apply(payload)));
     }
-    let payload = crate::instructions::build_artifact(&host, store, &change, &schema, artifact)?
+    let payload = crate::instructions::build_artifact(&host, store, env, &change, &schema, artifact)?
         .ok_or_else(|| {
             CommandError::new(
                 ErrorCode::NotFound,
@@ -1008,7 +1039,7 @@ fn run_discuss_show(store: &dyn Store, slug: &str) -> Result<CommandOutcome, Com
 
 fn run_new_change(
     store: &dyn Store,
-    ws: Option<&Workspace>,
+    actor: Option<&str>,
     name: String,
     description: Option<String>,
     schema: Option<String>,
@@ -1030,15 +1061,14 @@ fn run_new_change(
             ));
         }
     }
-    let host = host_workspace(ws);
     let dir = crate::newcmd::new_change(
-        &host,
         store,
         &name,
         description.as_deref(),
         &schema,
         agent.as_deref(),
         from_discussion.as_deref(),
+        actor,
     )
     .map_err(classify)?;
     // A change born of a discussion marks that discussion promoted — both
@@ -1052,6 +1082,7 @@ fn run_new_change(
 fn run_new_artifact(
     store: &dyn Store,
     ws: Option<&Workspace>,
+    user_dir: Option<&std::path::Path>,
     kind: &str,
     capability: Option<&str>,
     change: Option<&str>,
@@ -1087,7 +1118,7 @@ fn run_new_artifact(
     };
     // Best-effort schema resolution: an unresolvable/broken schema still
     // creates the artifact (no template → empty file), matching Spectra.
-    let schema = match crate::schema::resolve_with(ws, &change.meta.schema_name()) {
+    let schema = match crate::schema::resolve_with(ws, user_dir, &change.meta.schema_name()) {
         Some(Ok(s)) => s,
         _ => Schema {
             name: change.meta.schema_name(),
@@ -1121,6 +1152,7 @@ enum TaskFlip {
 fn run_task_flip(
     store: &dyn Store,
     ws: Option<&Workspace>,
+    actor: Option<&str>,
     task_id: &str,
     change: Option<&str>,
     flip: TaskFlip,
@@ -1155,7 +1187,7 @@ fn run_task_flip(
                 &host,
                 &change_name,
                 id,
-                crate::util::git_identity(&host.root).as_deref(),
+                actor,
                 None,
             )
             .map_err(classify)?;
@@ -1181,17 +1213,10 @@ fn run_task_flip(
 
 fn run_in_progress_add(
     store: &dyn Store,
-    ws: Option<&Workspace>,
+    actor: Option<&str>,
     name: &str,
 ) -> Result<CommandOutcome, CommandError> {
-    let host = host_workspace(ws);
-    let stamped = crate::inprogress::add(
-        store,
-        name,
-        crate::util::git_identity(&host.root).as_deref(),
-        None,
-    )
-    .map_err(classify)?;
+    let stamped = crate::inprogress::add(store, name, actor, None).map_err(classify)?;
     Ok(CommandOutcome::InProgressAdd(InProgressOutcome {
         name: name.to_string(),
         stamped,
@@ -1201,6 +1226,7 @@ fn run_in_progress_add(
 fn run_archive(
     store: &dyn Store,
     ws: Option<&Workspace>,
+    actor: Option<&str>,
     change: Option<&str>,
     opts: crate::archive::ArchiveOptions,
 ) -> Result<CommandOutcome, CommandError> {
@@ -1223,7 +1249,7 @@ fn run_archive(
     }
     let host = host_workspace(ws);
     // The in-progress marker stays untouched on archive (matches Spectra).
-    let outcome = crate::archive::archive(&host, store, &change, &opts).map_err(classify)?;
+    let outcome = crate::archive::archive(&host, store, &change, &opts, actor).map_err(classify)?;
     Ok(CommandOutcome::Archive(outcome))
 }
 
@@ -1246,18 +1272,11 @@ fn run_discard(
 
 fn run_discuss_new(
     store: &dyn Store,
-    ws: Option<&Workspace>,
+    actor: Option<&str>,
     topic: &str,
     slug: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
-    let host = host_workspace(ws);
-    let info = crate::discuss::new_discussion(
-        store,
-        topic,
-        slug,
-        crate::util::git_identity(&host.root).as_deref(),
-    )
-    .map_err(classify)?;
+    let info = crate::discuss::new_discussion(store, topic, slug, actor).map_err(classify)?;
     Ok(CommandOutcome::DiscussNew(info))
 }
 
@@ -1282,7 +1301,7 @@ mod tests {
     #[test]
     fn list_returns_typed_outcome_without_events() {
         let store = TestStore::with_meta("demo", META);
-        let (outcome, events) = execute(&store, None, list_cmd()).expect("list executes");
+        let (outcome, events) = execute(&store, &ExecutionContext::default(), list_cmd()).expect("list executes");
         match outcome {
             CommandOutcome::List(list) => {
                 let changes = list.changes.expect("changes section present");
@@ -1302,7 +1321,7 @@ mod tests {
         let store = TestStore::with_meta("demo", META);
         let (outcome, events) = execute(
             &store,
-            None,
+            &ExecutionContext::default(),
             Command::Status {
                 change: Some("demo".to_string()),
                 schema: None,
@@ -1324,7 +1343,7 @@ mod tests {
         let store = TestStore::with_meta("demo", META);
         let (outcome, events) = execute(
             &store,
-            None,
+            &ExecutionContext::default(),
             Command::Validate {
                 item: Some("demo".to_string()),
                 all: false,
@@ -1375,7 +1394,7 @@ mod tests {
             ),
         ];
         for (verb, cmd) in cmds {
-            let err = execute(&store, None, cmd)
+            let err = execute(&store, &ExecutionContext::default(), cmd)
                 .expect_err(&format!("{verb} on corrupt meta must refuse"));
             assert_eq!(
                 err.code,
@@ -1403,7 +1422,7 @@ mod tests {
         let store = TestStore::with_meta("good", META);
         store.metas.borrow_mut().insert("broken".to_string(), BAD_META.to_string());
         store.put_artifact("good", "tasks.md", "- [x] 1.1 a\n");
-        let (outcome, _) = execute(&store, None, list_cmd()).expect("list must stay available");
+        let (outcome, _) = execute(&store, &ExecutionContext::default(), list_cmd()).expect("list must stay available");
         let CommandOutcome::List(list) = outcome else {
             panic!("expected a list outcome");
         };
@@ -1432,7 +1451,7 @@ mod tests {
         store.put_artifact("demo", "tasks.md", TASKS);
         let err = execute(
             &store,
-            None,
+            &ExecutionContext::default(),
             Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()) },
         )
         .expect_err("task done on corrupt meta must refuse");
@@ -1443,7 +1462,7 @@ mod tests {
         );
         let err = execute(
             &store,
-            None,
+            &ExecutionContext::default(),
             Command::TaskUndone { task_id: "2".to_string(), change: Some("demo".to_string()) },
         )
         .expect_err("task undone on corrupt meta must refuse");
@@ -1461,7 +1480,7 @@ mod tests {
     #[test]
     fn claim_on_corrupt_meta_refuses_naming_the_file() {
         let store = TestStore::with_meta("demo", BAD_META);
-        let err = execute(&store, None, Command::Claim { name: "demo".to_string() })
+        let err = execute(&store, &ExecutionContext::default(), Command::Claim { name: "demo".to_string() })
             .expect_err("claim on corrupt meta must refuse");
         assert!(
             err.message.contains("openspec/changes/demo/.openspec.yaml"),
@@ -1482,7 +1501,7 @@ mod tests {
             store.put_artifact("demo", "tasks.md", TASKS);
             let err = execute(
                 &store,
-                None,
+                &ExecutionContext::default(),
                 Command::Archive {
                     change: Some("demo".to_string()),
                     skip_specs: false,
@@ -1514,7 +1533,7 @@ mod tests {
         let store = TestStore::with_meta("demo", BAD_META);
         let err = execute(
             &store,
-            None,
+            &ExecutionContext::default(),
             Command::NewArtifact {
                 kind: "design".to_string(),
                 capability: None,
@@ -1540,7 +1559,7 @@ mod tests {
         let store = TestStore::with_meta("demo", META);
         let err = execute(
             &store,
-            None,
+            &ExecutionContext::default(),
             Command::Status {
                 change: Some("ghost".to_string()),
                 schema: None,
@@ -1557,7 +1576,7 @@ mod tests {
         let store = TestStore::default();
         let err = execute(
             &store,
-            None,
+            &ExecutionContext::default(),
             Command::Validate {
                 item: Some("ghost".to_string()),
                 all: false,
@@ -1574,7 +1593,7 @@ mod tests {
     #[test]
     fn status_with_no_changes_is_not_found_with_the_informational_text() {
         let store = TestStore::default();
-        let err = execute(&store, None, Command::Status { change: None, schema: None })
+        let err = execute(&store, &ExecutionContext::default(), Command::Status { change: None, schema: None })
             .expect_err("no changes must fail resolution");
         assert_eq!(err.code, ErrorCode::NotFound);
         assert_eq!(
@@ -1587,7 +1606,7 @@ mod tests {
     fn status_with_multiple_changes_is_invalid_argv_naming_candidates() {
         let store = TestStore::with_meta("alpha", META);
         store.metas.borrow_mut().insert("beta".to_string(), META.to_string());
-        let err = execute(&store, None, Command::Status { change: None, schema: None })
+        let err = execute(&store, &ExecutionContext::default(), Command::Status { change: None, schema: None })
             .expect_err("ambiguous auto-detect must fail");
         assert_eq!(err.code, ErrorCode::InvalidArgv);
         assert!(
@@ -1625,8 +1644,8 @@ mod tests {
         store: &TestStore,
         cmd: Command,
     ) -> (CommandOutcome, Vec<DomainEvent>) {
-        let ws = ghost_ws();
-        execute(store, Some(&ws), cmd).expect("command succeeds")
+        let ctx = ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() };
+        execute(store, &ctx, cmd).expect("command succeeds")
     }
 
     fn kinds(events: &[DomainEvent]) -> Vec<&'static str> {
@@ -1666,7 +1685,7 @@ mod tests {
         let store = TestStore::with_meta("demo", META);
         let err = execute(
             &store,
-            Some(&ghost_ws()),
+            &ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() },
             Command::NewChange {
                 name: "demo".to_string(),
                 description: None,
@@ -1766,7 +1785,7 @@ mod tests {
         let store = TestStore::with_meta("demo", META);
         let err = execute(
             &store,
-            Some(&ghost_ws()),
+            &ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() },
             Command::Claim { name: "demo".to_string() },
         )
         .expect_err("claim must refuse on a plain store");
@@ -1821,7 +1840,7 @@ mod tests {
         let store = TestStore::with_meta("demo", "schema: spec-driven\nstarted_at: 2026-07-10\n");
         let err = execute(
             &store,
-            Some(&ghost_ws()),
+            &ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() },
             Command::Discard { change: "demo".to_string(), force: false },
         )
         .expect_err("started change must refuse discard");
@@ -2022,6 +2041,130 @@ mod tests {
         assert_eq!(table.len(), 17, "the coverage table has 17 mutating verbs");
         for (event, kind) in &table {
             assert_eq!(event.kind(), *kind, "for {event:?}");
+        }
+    }
+
+    // === ExecutionContext 由 Host 解析且不可覆寫（spec: command 無從攜帶 identity／本地 actor 語意不變） ===
+
+    #[test]
+    fn command_inputs_carry_no_actor_or_policy_fields() {
+        // Command 封閉 enum 的完整欄位解構：任何 variant 若新增 actor 或
+        // policy 欄位，這裡缺欄位的解構就編譯失敗——蓋章身分與政策只能
+        // 來自 ExecutionContext，呼叫端與模型無從經 command 參數覆寫。
+        let probe = list_cmd();
+        match probe {
+            Command::List { sort: _, specs: _, changes: _ } => {}
+            Command::Show { item: _, item_type: _ } => {}
+            Command::Status { change: _, schema: _ } => {}
+            Command::Instructions { artifact: _, change: _, schema: _ } => {}
+            Command::Validate { item: _, all: _, changes: _, strict: _ } => {}
+            Command::Analyze { change: _ } => {}
+            Command::Drift { change: _ } => {}
+            Command::ArtifactCat { artifact: _, change: _ } => {}
+            Command::LanguageShow => {}
+            Command::DiscussList { archived: _ } => {}
+            Command::DiscussShow { slug: _ } => {}
+            Command::NewChange {
+                name: _,
+                description: _,
+                schema: _,
+                agent: _,
+                from_discussion: _,
+            } => {}
+            Command::NewArtifact { kind: _, capability: _, change: _, content: _, force: _ } => {}
+            Command::TaskDone { task_id: _, change: _ } => {}
+            Command::TaskUndone { task_id: _, change: _ } => {}
+            Command::Claim { name: _ } => {}
+            Command::InProgressAdd { name: _ } => {}
+            Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _ } => {}
+            Command::Discard { change: _, force: _ } => {}
+            Command::DiscussNew { topic: _, slug: _ } => {}
+            Command::DiscussContext { slug: _, content: _ } => {}
+            Command::DiscussAddRound { slug: _, mode: _, content: _ } => {}
+            Command::DiscussConclude { slug: _, content: _ } => {}
+            Command::DiscussPromote { slug: _, name: _ } => {}
+            Command::DiscussLink { slug: _, change: _ } => {}
+            Command::DiscussSeal { slug: _, change: _ } => {}
+            Command::DiscussArchive { slug: _ } => {}
+            Command::DiscussDiscard { slug: _, force: _ } => {}
+        }
+    }
+
+    fn actor_ctx(actor: Option<&str>) -> ExecutionContext {
+        ExecutionContext {
+            actor: actor.map(str::to_string),
+            workspace: Some(ghost_ws()),
+            ..Default::default()
+        }
+    }
+
+    fn new_change_cmd(name: &str) -> Command {
+        Command::NewChange {
+            name: name.to_string(),
+            description: None,
+            schema: None,
+            agent: None,
+            from_discussion: None,
+        }
+    }
+
+    #[test]
+    fn created_by_stamp_follows_context_actor_only() {
+        // new change 的 created_by 章只隨 context actor 改變；無身分時
+        // 沿用現行無章行為。
+        let store = TestStore::default();
+        execute(
+            &store,
+            &actor_ctx(Some("Ctx Actor <ctx@example.com>")),
+            new_change_cmd("stamped"),
+        )
+        .expect("new change succeeds");
+        assert!(
+            store.meta("stamped").contains("created_by: Ctx Actor <ctx@example.com>\n"),
+            "created_by follows the context actor, meta: {}",
+            store.meta("stamped")
+        );
+
+        execute(&store, &actor_ctx(None), new_change_cmd("anon")).expect("new change succeeds");
+        assert!(
+            !store.meta("anon").contains("created_by:"),
+            "anonymous context keeps the current no-stamp behavior, meta: {}",
+            store.meta("anon")
+        );
+    }
+
+    #[test]
+    fn started_by_stamp_follows_context_actor_only() {
+        let store = TestStore::with_meta("demo", META);
+        execute(
+            &store,
+            &actor_ctx(Some("Ctx Actor <ctx@example.com>")),
+            Command::InProgressAdd { name: "demo".to_string() },
+        )
+        .expect("in-progress add succeeds");
+        assert!(
+            store.meta("demo").contains("started_by: Ctx Actor <ctx@example.com>\n"),
+            "started_by follows the context actor, meta: {}",
+            store.meta("demo")
+        );
+    }
+
+    #[test]
+    fn discussion_created_by_follows_context_actor_only() {
+        let store = TestStore::default();
+        let (outcome, _) = execute(
+            &store,
+            &actor_ctx(Some("Ctx Actor <ctx@example.com>")),
+            Command::DiscussNew { topic: "Identity probe".to_string(), slug: None },
+        )
+        .expect("discuss new succeeds");
+        match outcome {
+            CommandOutcome::DiscussNew(info) => assert_eq!(
+                info.created_by.as_deref(),
+                Some("Ctx Actor <ctx@example.com>"),
+                "the discussion creator stamp follows the context actor"
+            ),
+            other => panic!("expected a discuss-new outcome, got {other:?}"),
         }
     }
 }

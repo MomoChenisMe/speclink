@@ -79,9 +79,20 @@ fn run_engine(
     cmd: core::command::Command,
 ) -> std::result::Result<core::command::CommandOutcome, DispatchError> {
     let store = backend.store();
-    let ws = backend.workspace();
+    // Host boundary: identity and the SPECLINK_* env layer are resolved here
+    // and injected — the engine runtime only ever consumes the context. A
+    // host-store backend has no local workspace, hence no git identity.
+    let workspace = backend.workspace();
+    let ctx = core::command::ExecutionContext {
+        actor: workspace
+            .as_ref()
+            .and_then(|ws| speclink_host::context::git_identity(&ws.root)),
+        env: speclink_host::policy::process_env_overrides(),
+        workspace,
+        user_config_dir: Some(speclink_host::context::global_config_dir()),
+    };
     let (outcome, _events) =
-        core::command::execute(store.as_ref(), ws.as_ref(), cmd).map_err(DispatchError::from)?;
+        core::command::execute(store.as_ref(), &ctx, cmd).map_err(DispatchError::from)?;
     Ok(outcome)
 }
 

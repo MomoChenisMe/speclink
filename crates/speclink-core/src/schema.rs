@@ -204,12 +204,19 @@ pub fn load_dir(dir: &Path, name: &str, source: &str) -> Result<Schema, String> 
 // --- resolution ---
 
 /// Schema search directories in resolution order: project then user.
-pub fn schema_dirs(ws: Option<&Workspace>) -> Vec<(PathBuf, &'static str)> {
+/// `user_dir` is the Host-resolved machine-level speclink directory
+/// (speclink-host's `global_config_dir`) — None skips the user location.
+pub fn schema_dirs(
+    ws: Option<&Workspace>,
+    user_dir: Option<&Path>,
+) -> Vec<(PathBuf, &'static str)> {
     let mut v = Vec::new();
     if let Some(w) = ws {
         v.push((w.spec_dir().join("schemas"), "project"));
     }
-    v.push((crate::config::global_config_dir().join("schemas"), "user"));
+    if let Some(dir) = user_dir {
+        v.push((dir.join("schemas"), "user"));
+    }
     v
 }
 
@@ -220,9 +227,9 @@ pub struct SchemaSource {
 }
 
 /// Every location where `name` exists, in resolution order.
-pub fn sources(ws: Option<&Workspace>, name: &str) -> Vec<SchemaSource> {
+pub fn sources(ws: Option<&Workspace>, user_dir: Option<&Path>, name: &str) -> Vec<SchemaSource> {
     let mut out = Vec::new();
-    for (dir, src) in schema_dirs(ws) {
+    for (dir, src) in schema_dirs(ws, user_dir) {
         let y = dir.join(name).join("schema.yaml");
         if y.is_file() {
             out.push(SchemaSource { path: Some(y), source: src });
@@ -235,8 +242,12 @@ pub fn sources(ws: Option<&Workspace>, name: &str) -> Vec<SchemaSource> {
 }
 
 /// Resolve a schema: None = not found; Some(Err) = found but invalid (parse error / cycle).
-pub fn resolve_with(ws: Option<&Workspace>, name: &str) -> Option<Result<Schema, String>> {
-    for (dir, src) in schema_dirs(ws) {
+pub fn resolve_with(
+    ws: Option<&Workspace>,
+    user_dir: Option<&Path>,
+    name: &str,
+) -> Option<Result<Schema, String>> {
+    for (dir, src) in schema_dirs(ws, user_dir) {
         let d = dir.join(name);
         if d.join("schema.yaml").is_file() {
             return Some(load_dir(&d, name, src));
@@ -271,7 +282,7 @@ pub struct ListedSchema {
 }
 
 /// All schemas: built-in first, then project (alphabetical), then user (alphabetical).
-pub fn list_all(ws: Option<&Workspace>) -> Vec<ListedSchema> {
+pub fn list_all(ws: Option<&Workspace>, user_dir: Option<&Path>) -> Vec<ListedSchema> {
     let b = spec_driven();
     let mut out = vec![ListedSchema {
         name: b.name.clone(),
@@ -279,7 +290,7 @@ pub fn list_all(ws: Option<&Workspace>) -> Vec<ListedSchema> {
         description: b.description.clone(),
         artifact_ids: b.artifact_ids(),
     }];
-    for (dir, src) in schema_dirs(ws) {
+    for (dir, src) in schema_dirs(ws, user_dir) {
         let mut names: Vec<String> = std::fs::read_dir(&dir)
             .map(|it| {
                 it.flatten()
@@ -304,7 +315,13 @@ pub fn list_all(ws: Option<&Workspace>) -> Vec<ListedSchema> {
 // --- fork / init ---
 
 /// Fork (copy) a schema into the project's `openspec/schemas/`. Returns the new name.
-pub fn fork(ws: &Workspace, source: &str, name: Option<&str>, force: bool) -> Result<String, String> {
+pub fn fork(
+    ws: &Workspace,
+    user_dir: Option<&Path>,
+    source: &str,
+    name: Option<&str>,
+    force: bool,
+) -> Result<String, String> {
     let new_name = name
         .map(|s| s.to_string())
         .unwrap_or_else(|| format!("{source}-custom"));
@@ -312,7 +329,7 @@ pub fn fork(ws: &Workspace, source: &str, name: Option<&str>, force: bool) -> Re
     if target.join("schema.yaml").is_file() && !force {
         return Err(format!("Schema '{new_name}' already exists. Use --force to overwrite."));
     }
-    let srcs = sources(Some(ws), source);
+    let srcs = sources(Some(ws), user_dir, source);
     let Some(first) = srcs.first() else {
         return Err(not_found_msg(source));
     };

@@ -161,7 +161,15 @@ fn run_command(
     ws: Option<&core::workspace::Workspace>,
     cmd: core::command::Command,
 ) -> Result<core::command::CommandOutcome> {
-    let (outcome, _events) = core::command::execute(store, ws, cmd).map_err(anyhow::Error::new)?;
+    // Host boundary: identity and the SPECLINK_* env layer are resolved here
+    // and injected — the engine runtime only ever consumes the context.
+    let ctx = core::command::ExecutionContext {
+        actor: ws.and_then(|w| speclink_host::context::git_identity(&w.root)),
+        env: speclink_host::policy::process_env_overrides(),
+        workspace: ws.cloned(),
+        user_config_dir: Some(speclink_host::context::global_config_dir()),
+    };
+    let (outcome, _events) = core::command::execute(store, &ctx, cmd).map_err(anyhow::Error::new)?;
     Ok(outcome)
 }
 
@@ -1083,7 +1091,7 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
 
 fn cmd_schemas(a: JsonFlag) -> Result<()> {
     let ws = core::workspace::Workspace::discover_cwd()?;
-    let schemas = core::schema::list_all(ws.as_ref());
+    let schemas = core::schema::list_all(ws.as_ref(), Some(&speclink_host::context::global_config_dir()));
     if a.json {
         let items: Vec<_> = schemas
             .iter()
@@ -1111,7 +1119,7 @@ fn cmd_schemas(a: JsonFlag) -> Result<()> {
 fn cmd_templates(a: TemplatesArgs) -> Result<()> {
     let ws = core::workspace::Workspace::discover_cwd()?;
     let schema_name = a.schema.unwrap_or_else(|| "spec-driven".to_string());
-    let schema = match core::schema::resolve_with(ws.as_ref(), &schema_name) {
+    let schema = match core::schema::resolve_with(ws.as_ref(), Some(&speclink_host::context::global_config_dir()), &schema_name) {
         Some(Ok(s)) => s,
         Some(Err(e)) => bail!("{e}"),
         None => bail!("{}", core::schema::not_found_msg(&schema_name)),
@@ -1155,7 +1163,7 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
     match a.command {
         SchemaCommands::Which { name, all: _, json } => {
             let n = name.unwrap_or_else(|| "spec-driven".to_string());
-            let sources = core::schema::sources(ws.as_ref(), &n);
+            let sources = core::schema::sources(ws.as_ref(), Some(&speclink_host::context::global_config_dir()), &n);
             if sources.is_empty() {
                 // Unknown schema is informational, not an error (exit 0).
                 println!("Schema: {n}");
@@ -1192,7 +1200,7 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
         }
         SchemaCommands::Validate { name, verbose: _, json } => {
             let n = name.unwrap_or_else(|| "spec-driven".to_string());
-            match core::schema::resolve_with(ws.as_ref(), &n) {
+            match core::schema::resolve_with(ws.as_ref(), Some(&speclink_host::context::global_config_dir()), &n) {
                 Some(Ok(s)) => {
                     let count = s.artifacts.len();
                     if json {
@@ -1217,7 +1225,7 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
         }
         SchemaCommands::Fork { source, name, force, json: _ } => {
             let ws = require_workspace()?;
-            let new_name = core::schema::fork(&ws, &source, name.as_deref(), force)
+            let new_name = core::schema::fork(&ws, Some(&speclink_host::context::global_config_dir()), &source, name.as_deref(), force)
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             println!("{} Forked '{source}' → '{new_name}'", color::green("✓"));
         }
@@ -1240,7 +1248,7 @@ fn cmd_schema(a: SchemaArgs) -> Result<()> {
 // --- config (global) ---
 
 fn global_config_path() -> PathBuf {
-    core::config::global_config_dir().join("config.yaml")
+    speclink_host::context::global_config_dir().join("config.yaml")
 }
 
 fn cmd_config(a: ConfigArgs) -> Result<()> {
@@ -1566,7 +1574,7 @@ fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
 
 fn cmd_demo() -> Result<()> {
     let (ws, store) = open_project()?;
-    let outcome = core::demo::generate(&ws, &store)?;
+    let outcome = core::demo::generate(&store, speclink_host::context::git_identity(&ws.root).as_deref())?;
     println!("{} Created demo change: {}", color::green("✓"), outcome.name);
     println!("  Theme: {}", outcome.theme);
     println!("  Path: {}", core::util::to_slash(&outcome.path));

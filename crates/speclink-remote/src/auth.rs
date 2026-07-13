@@ -19,7 +19,7 @@ pub fn credentials_path() -> PathBuf {
 
 /// The user-level config directory (same base as the global CLI config).
 pub fn speclink_config_dir() -> PathBuf {
-    speclink_core::config::global_config_dir()
+    speclink_host::context::global_config_dir()
 }
 
 /// The origin (`scheme://host[:port]`) of a connection URL — credentials are

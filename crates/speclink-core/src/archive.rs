@@ -90,11 +90,13 @@ fn trace_block(change: &str, date: &str, files: &[String]) -> String {
     s
 }
 
+/// `actor` is the Host-resolved display identity — None stamps no archived_by.
 pub fn archive(
     ws: &Workspace,
     store: &dyn Store,
     change: &Change,
     opts: &ArchiveOptions,
+    actor: Option<&str>,
 ) -> Result<ArchiveOutcome> {
     // Fail-closed gate: archiving stamps and moves the metadata document —
     // refuse a corrupt one before any validation or file effect.
@@ -210,7 +212,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         if !meta.ends_with('\n') {
             meta.push('\n');
         }
-        if let Some(id) = util::git_identity(&ws.root) {
+        if let Some(id) = actor {
             meta.push_str(&format!("archived_by: {id}\n"));
         }
         meta.push_str(&format!("archived_at: {date}\n"));
@@ -490,6 +492,7 @@ mod tests {
                 no_validate: true,
                 mark_tasks_complete: false,
             },
+            None,
         )
         .unwrap();
 
@@ -539,7 +542,7 @@ mod tests {
         store.discussions.borrow_mut().insert("d2".into(), discussion_doc("d2"));
         let change = crate::model::find_change(&store, "cut").unwrap();
 
-        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts()).unwrap();
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
 
         let slugs: Vec<&str> =
             outcome.archived_discussions.iter().map(|(s, _)| s.as_str()).collect();
@@ -564,7 +567,7 @@ mod tests {
         store.discussions.borrow_mut().insert("d2".into(), discussion_doc("d2"));
         let change = crate::model::find_change(&store, "cut").unwrap();
 
-        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts()).unwrap();
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
 
         let slugs: Vec<&str> =
             outcome.archived_discussions.iter().map(|(s, _)| s.as_str()).collect();
@@ -585,7 +588,7 @@ mod tests {
         store.discussions.borrow_mut().insert("only".into(), discussion_doc("only"));
         let change = crate::model::find_change(&store, "cut").unwrap();
 
-        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts()).unwrap();
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
 
         let slugs: Vec<&str> =
             outcome.archived_discussions.iter().map(|(s, _)| s.as_str()).collect();
