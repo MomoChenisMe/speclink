@@ -3364,6 +3364,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "speclink-store"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "sqlite-wasm-rs"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
