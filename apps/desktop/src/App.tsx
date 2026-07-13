@@ -182,6 +182,8 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
     });
     return () => {
       void unlisten.then((f) => f());
+      // 卸載時取消漏出的搜尋去抖，杜絕在途 timer 於 store 卸載後才開火。
+      useStore.getState().disposeSearch();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useStore]);
