@@ -92,6 +92,9 @@ pub fn new_artifact(
         validate_artifact_content(&artifact_id, &rel, &body)?;
     }
 
+    // Engine-produced tasks carry stable IDs on every task line (spec task-identity).
+    let body = if artifact_id == "tasks" { crate::tasks::stamp_all(&body) } else { body };
+
     let out_path = store.write_artifact(&change.name, &rel, &body)?;
     Ok((artifact_id, out_path))
 }

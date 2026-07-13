@@ -188,8 +188,8 @@ export interface SpeclinkDataSource {
   changeMeta(change: string): Promise<ChangeMetaInfo | null>;
   /** 刪除一個 active change（破壞性；UI 需先確認）。 */
   deleteChange(change: string): Promise<void>;
-  /** 勾選/取消 tasks.md 的第 ordinal（1-based）個任務。 */
-  setTaskDone(change: string, ordinal: number, done: boolean): Promise<void>;
+  /** 勾選/取消任務：task 為 tsk_ stable ID 或 ordinal 字串（無 ID 相容路徑）。 */
+  setTaskDone(change: string, task: string, done: boolean): Promise<void>;
   /** 批次設定全部任務完成狀態（true＝全部已完成、false＝重置任務），單次寫回。 */
   setAllTasks(change: string, done: boolean): Promise<void>;
   /**

@@ -165,6 +165,7 @@ fn run_command(
     // and injected — the engine runtime only ever consumes the context.
     let ctx = core::command::ExecutionContext {
         actor: ws.and_then(|w| speclink_host::context::git_identity(&w.root)),
+        repo: Some(speclink_host::binding::local_default_binding().repo.as_str().to_string()),
         env: speclink_host::policy::process_env_overrides(),
         workspace: ws.cloned(),
         user_config_dir: Some(speclink_host::context::global_config_dir()),

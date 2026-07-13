@@ -77,12 +77,12 @@ fn delete_change(state: State<AppState>, change: String) -> Result<(), String> {
 async fn set_task_done(
     state: State<'_, AppState>,
     change: String,
-    ordinal: usize,
+    task: String,
     done: bool,
 ) -> Result<(), String> {
     let root = state.root();
     tauri::async_runtime::spawn_blocking(move || {
-        speclink_desktop_core::manage::set_task_done_at(&root, &change, ordinal, done)
+        speclink_desktop_core::manage::set_task_done_at(&root, &change, &task, done)
     })
     .await
     .map_err(|e| format!("task write worker failed: {e}"))?

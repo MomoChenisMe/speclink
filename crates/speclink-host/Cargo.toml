@@ -11,6 +11,7 @@ speclink-store = { path = "../speclink-store" }
 anyhow.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
+chrono.workspace = true
 
 [dev-dependencies]
-chrono.workspace = true
+speclink-fs = { path = "../speclink-fs" }

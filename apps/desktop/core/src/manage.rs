@@ -67,8 +67,9 @@ pub fn delete_change_at(root: &Path, change: &str) -> Result<(), String> {
     std::fs::remove_dir_all(&found.dir).map_err(|e| format!("delete failed: {e}"))
 }
 
-/// 勾選/取消 tasks.md 的第 `ordinal`（1-based，僅計 checkbox 行）個任務。
-/// ordinal 越界或無 tasks.md 回 `Err`。
+/// 勾選/取消一個任務。`task` 雙值域（與 CLI task 動詞一致）：純數字＝1-based
+/// ordinal（僅計 checkbox 行）、tsk_ 前綴＝stable ID 定址；其餘值、定址不中
+/// 或無 tasks.md 回 `Err`。
 ///
 /// done=true 走引擎的任務完成協作函式——與 CLI `task done` 相同的檔案效果
 /// （勾章、touched 記錄、首次完成蓋開工章；identity 沿 git 身分、agent 缺席）。
@@ -76,11 +77,19 @@ pub fn delete_change_at(root: &Path, change: &str) -> Result<(), String> {
 /// 只可能來自競態，不以錯誤打斷使用者），不寫任何檔案。
 /// done=false（取消勾選）走引擎的反向動詞 uncomplete——純狀態翻轉，
 /// 不蓋章、不記 touched。
-pub fn set_task_done_at(root: &Path, change: &str, ordinal: usize, done: bool) -> Result<(), String> {
+pub fn set_task_done_at(root: &Path, change: &str, task: &str, done: bool) -> Result<(), String> {
     let _guard = write_guard();
     if !crate::query::is_safe_path_param(change) {
         return Err(format!("invalid change name: {change}"));
     }
+    let addr = if task.starts_with("tsk_") {
+        speclink_core::tasks::TaskAddr::Stable(task.to_string())
+    } else {
+        let ordinal: usize = task
+            .parse()
+            .map_err(|_| format!("invalid task id: {task}"))?;
+        speclink_core::tasks::TaskAddr::Ordinal(ordinal)
+    };
     let ctx = init_core_context(root)
         .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
     if done {
@@ -89,14 +98,17 @@ pub fn set_task_done_at(root: &Path, change: &str, ordinal: usize, done: bool) -
             &ctx.store,
             &ctx.workspace,
             change,
-            ordinal,
-            identity.as_deref(),
-            None,
+            &addr,
+            &speclink_core::tasks::CompleteAttribution {
+                identity: identity.as_deref(),
+                agent: None,
+                repo: None,
+            },
         )
         .map(|_| ()) // already → 冪等成功（引擎保證零檔案效果）
         .map_err(|e| e.to_string())
     } else {
-        speclink_core::tasks::uncomplete(&ctx.store, change, ordinal)
+        speclink_core::tasks::uncomplete(&ctx.store, change, &addr)
             .map(|_| ()) // already → 冪等成功（引擎保證零檔案效果）
             .map_err(|e| e.to_string())
     }
@@ -525,14 +537,14 @@ mod tests {
     #[test]
     fn set_task_done_toggles_only_the_target_line() {
         let root = fixture_with_tasks("toggle");
-        set_task_done_at(&root, "task-change", 1, true).expect("check first");
-        set_task_done_at(&root, "task-change", 2, false).expect("uncheck second");
+        set_task_done_at(&root, "task-change", "1", true).expect("check first");
+        set_task_done_at(&root, "task-change", "2", false).expect("uncheck second");
         let text = read_tasks(&root);
         assert!(text.contains("- [x] 1.1 first"));
         assert!(text.contains("- [ ] 1.2 second"));
         assert!(text.contains("- [ ] 2.1 third"), "untouched line intact");
         assert!(text.contains("## 1. Group A"), "group headings intact");
-        assert!(set_task_done_at(&root, "task-change", 99, true).is_err(), "out of range errors");
+        assert!(set_task_done_at(&root, "task-change", "99", true).is_err(), "out of range errors");
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -544,7 +556,7 @@ mod tests {
             "star-uncheck",
             "## 1. Group\n\n- [x] 1.1 first\n* [x] 1.2 star\n",
         );
-        set_task_done_at(&root, "task-change", 2, false).expect("uncheck star-bullet task");
+        set_task_done_at(&root, "task-change", "2", false).expect("uncheck star-bullet task");
         let text = read_tasks(&root);
         assert!(text.contains("* [ ] 1.2 star"), "star bullet must flip back to open: {text}");
         assert!(text.contains("- [x] 1.1 first"), "other line untouched: {text}");
@@ -758,11 +770,42 @@ mod tests {
     }
 
     #[test]
+    fn set_task_done_accepts_stable_id_and_ordinal_domains() {
+        // spec task-identity「桌面顯示無標記且勾選命中」的 desktop core 端：
+        // tsk_ 定址命中帶該 ID 的任務（重排無虞）、註解原文保留；純數字走
+        // ordinal 相容路徑；其餘值回 Err。
+        const TID: &str = "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV";
+        let root = fixture_with_tasks_md(
+            "dual-domain",
+            &format!("## 1. 群組\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙 <!-- speclink-task:{TID} -->\n"),
+        );
+        set_task_done_at(&root, "task-change", TID, true).expect("stable id toggle ok");
+        let lines = task_lines(&root);
+        assert!(lines[1].starts_with("- [x] 1.2 乙"), "stable id hits its task: {lines:?}");
+        assert!(lines[1].contains(TID), "trailing comment preserved verbatim: {lines:?}");
+        set_task_done_at(&root, "task-change", "1", true).expect("ordinal compat ok");
+        assert!(task_lines(&root)[0].starts_with("- [x] 1.1 甲"));
+        assert!(
+            set_task_done_at(&root, "task-change", "abc", true).is_err(),
+            "a value neither numeric nor tsk_-prefixed must error"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn set_task_done_does_not_renumber() {
         // 勾選不改順序，也不得觸發重編號——就算既有編號是亂的。
+        // （task done 對無 ID 目標行會單行補章 stable ID 註解，故目標行以前綴比對。）
         let root = fixture_with_tasks_md("renum-toggle", "## 1. 群組\n\n- [ ] 1.9 甲\n- [ ] 1.5 乙\n");
-        set_task_done_at(&root, "task-change", 1, true).expect("toggle ok");
-        assert_eq!(task_lines(&root), vec!["- [x] 1.9 甲", "- [ ] 1.5 乙"]);
+        set_task_done_at(&root, "task-change", "1", true).expect("toggle ok");
+        let lines = task_lines(&root);
+        assert_eq!(lines.len(), 2);
+        assert!(
+            lines[0].starts_with("- [x] 1.9 甲"),
+            "checked line keeps its numbering: {}",
+            lines[0]
+        );
+        assert_eq!(lines[1], "- [ ] 1.5 乙");
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -813,8 +856,8 @@ mod tests {
             );
             let r1 = root.clone();
             let r2 = root.clone();
-            let t1 = std::thread::spawn(move || set_task_done_at(&r1, "task-change", 1, false));
-            let t2 = std::thread::spawn(move || set_task_done_at(&r2, "task-change", 2, false));
+            let t1 = std::thread::spawn(move || set_task_done_at(&r1, "task-change", "1", false));
+            let t2 = std::thread::spawn(move || set_task_done_at(&r2, "task-change", "2", false));
             t1.join().unwrap().expect("uncheck 1 ok");
             t2.join().unwrap().expect("uncheck 2 ok");
             let text = read_tasks(&root);
@@ -888,7 +931,7 @@ mod tests {
         fx.add_change("demo", META_UNSTARTED);
         giterize(fx.root(), Some("src/main.rs"));
 
-        set_task_done_at(fx.root(), "demo", 1, true).expect("check ok");
+        set_task_done_at(fx.root(), "demo", "1", true).expect("check ok");
 
         let tasks = fs::read_to_string(change_file(&fx, "demo", "tasks.md")).unwrap();
         assert!(tasks.contains("- [x] 1.1 First task"), "task must be checked: {tasks}");
@@ -918,7 +961,7 @@ mod tests {
         let tasks_path = change_file(&fx, "demo", "tasks.md");
         let before = fs::read_to_string(&tasks_path).unwrap();
         set_readonly(&tasks_path, true);
-        let r = set_task_done_at(fx.root(), "demo", 2, true);
+        let r = set_task_done_at(fx.root(), "demo", "2", true);
         set_readonly(&tasks_path, false);
         assert!(r.is_ok(), "duplicate done=true must be an idempotent success: {r:?}");
         assert_eq!(fs::read_to_string(&tasks_path).unwrap(), before);
@@ -935,7 +978,7 @@ mod tests {
         let touched_before = "{\n  \"change\": \"demo\",\n  \"touched\": []\n}";
         fx.write(".speclink/touched/demo.json", touched_before);
 
-        set_task_done_at(fx.root(), "demo", 2, false).expect("uncheck ok");
+        set_task_done_at(fx.root(), "demo", "2", false).expect("uncheck ok");
         move_task_at(fx.root(), "demo", 1, 2, None).expect("move ok");
 
         assert_eq!(meta_of(&fx, "demo"), META_UNSTARTED, "meta must stay byte-identical");
@@ -955,7 +998,7 @@ mod tests {
             let fx = crate::testfixture::FixtureRoot::new(&format!("align-{n}"));
             fx.add_change("demo", META_UNSTARTED);
             fx.write("openspec/changes/demo/tasks.md", mixed);
-            set_task_done_at(fx.root(), "demo", n, true).expect("check ok");
+            set_task_done_at(fx.root(), "demo", &n.to_string(), true).expect("check ok");
             let text = fs::read_to_string(change_file(&fx, "demo", "tasks.md")).unwrap();
             let parsed = speclink_core::tasks::parse(&text);
             assert_eq!(parsed.len(), 4, "engine must see the same 4 checkboxes");

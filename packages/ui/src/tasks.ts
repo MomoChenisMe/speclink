@@ -4,10 +4,25 @@ export interface TaskLine {
   text: string;
 }
 
-/** 任務文件的一個節點：群組標題或任務（帶 1-based 序數，供寫回 tasks.md 定位）。 */
+/** 任務文件的一個節點：群組標題或任務（帶 1-based 序數，供寫回 tasks.md 定位；
+ * stableId＝行尾 speclink-task 註解的不可變身分，無註解舊檔缺席）。 */
 export type TaskDocItem =
   | { kind: "group"; text: string }
-  | { kind: "task"; ordinal: number; done: boolean; text: string };
+  | { kind: "task"; ordinal: number; done: boolean; text: string; stableId?: string };
+
+/** 行尾 speclink-task ID 註解（spec task-identity）——顯示一律剝離。 */
+const TASK_ID_RE = /\s*<!--\s*speclink-task:\s*(\S+?)\s*-->\s*$/;
+
+/** 剝離行尾 ID 註解：顯示文字與無註解時相同，ID 入獨立欄位。 */
+function splitStableId(text: string): { text: string; stableId?: string } {
+  const m = text.match(TASK_ID_RE);
+  return m ? { text: text.slice(0, m.index).trimEnd(), stableId: m[1] } : { text };
+}
+
+/** 清單項呈現 key：stable ID 第一、無 ID 舊檔退回 ordinal（spec task-identity）。 */
+export function taskKey(item: Extract<TaskDocItem, { kind: "task" }>): string {
+  return item.stableId ?? String(item.ordinal);
+}
 
 /** 解析 tasks.md 為群組標題＋任務序列（序數僅計 checkbox 行，與桌面寫入 command 對齊）。 */
 export function parseTaskDoc(markdown: string | null | undefined): TaskDocItem[] {
@@ -23,7 +38,13 @@ export function parseTaskDoc(markdown: string | null | undefined): TaskDocItem[]
     const t = line.match(/^\s*-\s*\[([ xX])\]\s+(.*\S)\s*$/);
     if (t) {
       ordinal += 1;
-      items.push({ kind: "task", ordinal, done: t[1].toLowerCase() === "x", text: t[2] });
+      const done = t[1].toLowerCase() === "x";
+      const { text, stableId } = splitStableId(t[2]);
+      items.push(
+        stableId
+          ? { kind: "task", ordinal, done, text, stableId }
+          : { kind: "task", ordinal, done, text },
+      );
     }
   }
   return items;
@@ -91,13 +112,14 @@ export function resolveDropTarget(
   return null; // 標題之前無任務（檔首）
 }
 
-/** 解析 tasks.md 的 checkbox 行（`- [ ]` / `- [x]`）為任務清單。非 checkbox 行忽略。 */
+/** 解析 tasks.md 的 checkbox 行（`- [ ]` / `- [x]`）為任務清單。非 checkbox 行忽略；
+ * 顯示文字剝離行尾 ID 註解。 */
 export function parseTasks(markdown: string | null | undefined): TaskLine[] {
   if (!markdown) return [];
   const out: TaskLine[] = [];
   for (const line of markdown.split(/\r?\n/)) {
     const m = line.match(/^\s*-\s*\[([ xX])\]\s+(.*\S)\s*$/);
-    if (m) out.push({ done: m[1].toLowerCase() === "x", text: m[2] });
+    if (m) out.push({ done: m[1].toLowerCase() === "x", text: splitStableId(m[2]).text });
   }
   return out;
 }

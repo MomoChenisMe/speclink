@@ -49,8 +49,8 @@ export function createTauriDataSource(): SpeclinkDataSource {
     async deleteChange(change: string): Promise<void> {
       await invoke("delete_change", { change });
     },
-    async setTaskDone(change: string, ordinal: number, done: boolean): Promise<void> {
-      await invoke("set_task_done", { change, ordinal, done });
+    async setTaskDone(change: string, task: string, done: boolean): Promise<void> {
+      await invoke("set_task_done", { change, task, done });
     },
     async setAllTasks(change: string, done: boolean): Promise<void> {
       await invoke("set_all_tasks", { change, done });

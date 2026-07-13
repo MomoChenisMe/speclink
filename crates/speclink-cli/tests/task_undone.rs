@@ -179,7 +179,7 @@ fn invalid_task_id_errors_match_done_shapes() {
     assert!(!out.status.success());
     assert_eq!(
         String::from_utf8_lossy(&out.stderr),
-        "Error: Invalid task ID 'abc': must be a number\n"
+        "Error: Invalid task ID 'abc': must be a number or a tsk_-prefixed stable ID\n"
     );
 
     // id < 1。

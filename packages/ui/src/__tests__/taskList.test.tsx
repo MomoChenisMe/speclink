@@ -42,9 +42,9 @@ describe("TaskList", () => {
     expect(first.getAttribute("aria-checked")).toBe("false");
     expect(second.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(first);
-    expect(onToggle).toHaveBeenCalledWith(1, true);
+    expect(onToggle).toHaveBeenCalledWith(1, true, undefined);
     fireEvent.click(second);
-    expect(onToggle).toHaveBeenCalledWith(2, false);
+    expect(onToggle).toHaveBeenCalledWith(2, false, undefined);
   });
 
   it("renders a drag handle per task and no step buttons", () => {
@@ -101,10 +101,10 @@ describe("TaskList 勾選框主題化", () => {
     expect(first.tagName).not.toBe("INPUT");
     first.focus();
     await userEvent.keyboard(" ");
-    expect(onToggle).toHaveBeenCalledWith(1, true);
+    expect(onToggle).toHaveBeenCalledWith(1, true, undefined);
     fireEvent.click(first);
     // 點擊與空白鍵走同一回呼、同一參數。
-    expect(onToggle).toHaveBeenNthCalledWith(2, 1, true);
+    expect(onToggle).toHaveBeenNthCalledWith(2, 1, true, undefined);
   });
 
   it("readOnly 時勾選框不可互動", () => {
@@ -218,5 +218,55 @@ describe("resolveDropTarget（拖放落點解析，design D6）", () => {
       const headFirst = parseTaskDoc("## 1. X\n\n- [ ] 1.1 a\n- [ ] 1.2 b\n");
       expect(resolveDropTarget(headFirst, 2, "g-0")).toBeNull();
     });
+  });
+});
+
+// --- stable task ID（spec task-identity「UI 剝離 ID 註解並以 stable ID 操作」）---
+
+import { setTaskMark, taskKey } from "../tasks";
+
+const TID_A = "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV";
+const TID_B = "tsk_01BX5ZZKBKACTAV9WEVGEMMVRZ";
+const MD_IDS = `## 1. Group A\n\n- [ ] 1.1 first <!-- speclink-task:${TID_A} -->\n- [x] 1.2 second <!-- speclink-task:${TID_B} -->\n`;
+
+describe("stable task IDs", () => {
+  it("parseTaskDoc 剝離標記入 stableId，顯示文字與無註解時相同", () => {
+    const withIds = parseTaskDoc(MD_IDS).filter((i) => i.kind === "task");
+    const without = parseTaskDoc("## 1. Group A\n\n- [ ] 1.1 first\n- [x] 1.2 second\n").filter(
+      (i) => i.kind === "task",
+    );
+    expect(withIds.map((t) => (t.kind === "task" ? t.text : ""))).toEqual(
+      without.map((t) => (t.kind === "task" ? t.text : "")),
+    );
+    expect(withIds[0]).toMatchObject({ ordinal: 1, stableId: TID_A });
+    expect(withIds[1]).toMatchObject({ ordinal: 2, stableId: TID_B });
+    expect(without.every((t) => t.kind === "task" && t.stableId === undefined)).toBe(true);
+  });
+
+  it("taskKey 以 stable ID 為 key、無 ID 退回 ordinal", () => {
+    expect(taskKey({ kind: "task", ordinal: 3, done: false, text: "x", stableId: TID_A })).toBe(
+      TID_A,
+    );
+    expect(taskKey({ kind: "task", ordinal: 3, done: false, text: "x" })).toBe("3");
+  });
+
+  it("清單顯示不含標記、勾選請求攜 stable ID（無 ID 走 ordinal 相容）", () => {
+    const onToggle = vi.fn();
+    const stamped = render(<TaskList markdown={MD_IDS} onToggle={onToggle} />);
+    expect(screen.getByText("1.1 first")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("speclink-task");
+    fireEvent.click(screen.getByRole("checkbox", { name: "任務 1" }));
+    expect(onToggle).toHaveBeenCalledWith(1, true, TID_A);
+    stamped.unmount();
+    // 無 ID 任務：stableId 缺席 → ordinal 相容路徑。
+    const bare = vi.fn();
+    render(<TaskList markdown={"- [ ] 1.1 solo\n"} onToggle={bare} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "任務 1" }));
+    expect(bare).toHaveBeenCalledWith(1, true, undefined);
+  });
+
+  it("setTaskMark 樂觀就地改寫保留行尾註解原文", () => {
+    const next = setTaskMark(`- [ ] 1.1 first <!-- speclink-task:${TID_A} -->\n`, 1, true);
+    expect(next).toBe(`- [x] 1.1 first <!-- speclink-task:${TID_A} -->\n`);
   });
 });
