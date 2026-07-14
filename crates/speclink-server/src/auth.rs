@@ -10,6 +10,7 @@
 
 use crate::config::{ActorConfig, ProjectConfig};
 use crate::error::ApiError;
+use crate::identity::User;
 use crate::state::AppState;
 use axum::extract::{FromRequestParts, Path};
 use axum::http::request::Parts;
@@ -95,17 +96,30 @@ impl FromRequestParts<AppState> for Binding {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        // 1. bearer PAT → actor, resolved per-request against the identity store
-        //    (決策 5): hash-match, unrevoked, unexpired, owning user active. Any
-        //    failure is the same 401 permission_denied so the cause is never
-        //    probed; no cache means suspension and revocation are immediate.
+        // 1. bearer token → actor, resolved per-request against the identity
+        //    store (決策 4): split by prefix — `spk_at_` is a device access
+        //    token, anything else a PAT — into the same check-list (hash-match,
+        //    unrevoked, unexpired, owning user active). Any failure is the same
+        //    401 permission_denied so the cause is never probed; no cache means
+        //    suspension and revocation are immediate. A PAT's last-used is
+        //    advanced once every check passes (`touch_pat_id`).
         let token = bearer_token(parts)
             .ok_or_else(|| ApiError::permission_denied("missing or malformed bearer token"))?;
-        let (pat, user) = state
-            .identity
-            .authenticate_pat(&token)
-            .map_err(|_| ApiError::internal("identity store unavailable"))?
-            .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
+        let (user, touch_pat_id): (User, Option<String>) = if token.starts_with("spk_at_") {
+            let user = state
+                .identity
+                .authenticate_access_token(&token)
+                .map_err(|_| ApiError::internal("identity store unavailable"))?
+                .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
+            (user, None)
+        } else {
+            let (pat, user) = state
+                .identity
+                .authenticate_pat(&token)
+                .map_err(|_| ApiError::internal("identity store unavailable"))?
+                .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
+            (user, Some(pat.id))
+        };
 
         // 2. project key → registered project (unregistered → not found)
         let params = Path::<HashMap<String, String>>::from_request_parts(parts, state)
@@ -151,9 +165,12 @@ impl FromRequestParts<AppState> for Binding {
         //    sole repo or refuses as ambiguous)
         let repo = resolve_repo(&project, header(parts, "x-speclink-repo"))?;
 
-        // The request authenticated: advance last-used. Best-effort — a metering
-        // write failure never fails the request.
-        let _ = state.identity.touch_pat(&pat.id);
+        // The request authenticated. A PAT's last-used advances best-effort — a
+        // metering write failure never fails the request; an access token keeps
+        // no last-used (it is short-lived and rotates).
+        if let Some(pat_id) = &touch_pat_id {
+            let _ = state.identity.touch_pat(pat_id);
+        }
 
         let actor = ActorConfig { id: user.id, display: user.display };
         Ok(Binding { actor, project, repo })

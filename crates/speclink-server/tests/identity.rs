@@ -183,6 +183,100 @@ fn a_higher_schema_version_is_refused() {
     assert!(matches!(err, IdentityError::Open(_)), "refusal is an Open error: {err:?}");
 }
 
+/// The schema-version-1 identity shape server-identity-pat shipped, before the
+/// device-flow tables were added.
+const V1_SCHEMA: &str = "\
+CREATE TABLE meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+CREATE TABLE users (
+    id TEXT PRIMARY KEY NOT NULL, display TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL, active INTEGER NOT NULL, admin INTEGER NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE memberships (user_id TEXT NOT NULL, project_key TEXT NOT NULL, PRIMARY KEY (user_id, project_key));
+CREATE TABLE pats (
+    id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, prefix TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL, expires_at TEXT, revoked_at TEXT, last_used_at TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, session_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL, revoked_at TEXT, created_at TEXT NOT NULL
+);
+";
+
+/// The SHA-256 hex of `plaintext` — mirrors the store's `hash_token` so a test
+/// can plant a credential whose plaintext it also knows.
+fn sha256_hex(plaintext: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(plaintext.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[test]
+fn a_version_1_database_migrates_preserving_users_and_pats() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("v1.db");
+    // A PAT that existed before the migration, hashed as the store would hash it.
+    const PAT: &str = "spk_pat_v1preexisting00000000000000000000000000000000000000000000000000";
+    let now = Utc::now().to_rfc3339();
+    {
+        // Hand-build a schema-version-1 identity database with a user, a
+        // membership and a PAT — the shape the previous knife wrote.
+        let conn = rusqlite::Connection::open(&path).expect("create v1 db");
+        conn.execute_batch(V1_SCHEMA).expect("v1 schema");
+        conn.execute_batch(
+            "INSERT INTO meta VALUES ('format','speclink-identity-store');\
+             INSERT INTO meta VALUES ('schema_version','1');",
+        )
+        .expect("seed meta");
+        conn.execute(
+            "INSERT INTO users (id, display, email, password_hash, active, admin, created_at) \
+             VALUES ('usr_old','Old <old@example.com>','old@example.com','argon2-hash',1,0,?1)",
+            rusqlite::params![now],
+        )
+        .expect("seed user");
+        conn.execute(
+            "INSERT INTO memberships (user_id, project_key) VALUES ('usr_old','demo')",
+            [],
+        )
+        .expect("seed membership");
+        conn.execute(
+            "INSERT INTO pats (id, user_id, prefix, token_hash, name, expires_at, revoked_at, last_used_at, created_at) \
+             VALUES ('pat_old','usr_old','spk_pat_v1pr',?1,'legacy',NULL,NULL,NULL,?2)",
+            rusqlite::params![sha256_hex(PAT), now],
+        )
+        .expect("seed pat");
+    }
+
+    // Opening with the current server migrates 1 → 2 in place.
+    let s = IdentitySqlite::open(&path).expect("open migrates the v1 database");
+
+    // Existing data is intact and the pre-existing PAT still authenticates.
+    let user = s.get_user("usr_old").expect("get user").expect("migrated user survives");
+    assert_eq!(user.email, "old@example.com");
+    assert!(s.is_member("usr_old", "demo").expect("membership check"), "membership preserved");
+    let (_, who) = s
+        .authenticate_pat(PAT)
+        .expect("auth")
+        .expect("the pre-existing PAT still authenticates after migration");
+    assert_eq!(who.id, "usr_old");
+    drop(s);
+
+    // The schema now records version 2 and the device-flow tables exist.
+    let conn = rusqlite::Connection::open(&path).expect("reopen for inspection");
+    let version: String = conn
+        .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
+        .expect("schema version");
+    assert_eq!(version, "2", "the database was migrated to version 2");
+    for table in ["device_authorizations", "credential_families", "access_tokens", "refresh_credentials"] {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                rusqlite::params![table],
+                |r| r.get(0),
+            )
+            .expect("table lookup");
+        assert_eq!(exists, 1, "migration created the {table} table");
+    }
+}
+
 #[test]
 fn credentials_are_only_ever_stored_as_hashes() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -194,10 +288,14 @@ fn credentials_are_only_ever_stored_as_hashes() {
     let user_id = s.accept_invitation(&invite_token, PASSWORD).expect("accept");
     let session = s.create_session(&user_id, Duration::hours(1)).expect("session");
     let (_, pat) = s.create_pat(&user_id, "tok", None).expect("pat");
+    // The device authorization's two codes must also land only as hashes.
+    let device = s
+        .create_device_authorization(Duration::seconds(5), Duration::minutes(15))
+        .expect("device authorization");
     drop(s);
 
     // Sweep every cell of every table: no plaintext credential is present.
-    let secrets = [PASSWORD, &invite_token, &session, &pat];
+    let secrets = [PASSWORD, &invite_token, &session, &pat, &device.device_code, &device.user_code];
     let conn = rusqlite::Connection::open(&path).expect("reopen for inspection");
     let tables: Vec<String> = conn
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")

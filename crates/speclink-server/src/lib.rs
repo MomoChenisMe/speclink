@@ -8,6 +8,7 @@
 pub mod app;
 pub mod auth;
 pub mod config;
+pub mod device;
 pub mod error;
 pub mod identity;
 pub mod identity_sqlite;

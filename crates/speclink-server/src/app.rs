@@ -2,6 +2,7 @@
 //! the single assembly point they extend.
 
 use crate::auth::Binding;
+use crate::device;
 use crate::routes;
 use crate::state::AppState;
 use crate::web;
@@ -47,6 +48,12 @@ pub fn router(state: AppState) -> Router {
         .route("/account", get(web::account_page))
         .route("/account/tokens", post(web::create_pat))
         .route("/account/tokens/{id}/revoke", post(web::revoke_pat))
+        .route("/account/device/{id}/revoke", post(web::revoke_device_family))
+        .route("/activate", get(web::activate_page).post(web::activate_submit))
+        .route("/auth/device", post(device::initiate))
+        .route("/auth/device/token", post(device::poll_token))
+        .route("/auth/refresh", post(device::refresh))
+        .route("/auth/revoke", post(device::revoke))
         .nest("/api/speclink/v1/projects/{key}", project)
         .with_state(state)
 }
