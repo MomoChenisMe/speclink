@@ -1,0 +1,693 @@
+//! Query and command route handlers. Every handler runs its verb through the
+//! bridge (the canonical Host → Engine → TeamStore path), converts the typed
+//! Engine outcome into a speclink-protocol DTO, and attaches the scope ETag.
+
+use crate::auth::Binding;
+use crate::error::ApiError;
+use crate::state::AppState;
+use crate::verb;
+use axum::extract::{Path, Query, State};
+use axum::http::header::ETAG;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::Json;
+use serde::{Deserialize, Serialize};
+use speclink_core::command::{Command, CommandOutcome, InstructionsOutcome};
+use speclink_core::config::WorkflowConfig;
+use speclink_core::discuss::DiscussionInfo as EngineDiscussionInfo;
+use speclink_core::instructions as engine;
+use speclink_core::listing::ListChangeJson;
+use speclink_core::status::StatusReport;
+use speclink_protocol::command::{
+    AddDiscussionRoundRequest, AddDiscussionRoundResponse, ArchiveDiscussionResponse,
+    ArchiveResponse, ArchivedSpec, ClaimResponse, ConcludeDiscussionRequest, CreateChangeRequest,
+    CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
+    PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest, PutArtifactResponse,
+    SetDiscussionContextRequest, TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse,
+};
+use speclink_protocol::query::{
+    ApplyInstructions, ArtifactContent, ArtifactInstructions, ArtifactStatus, ChangeStatus,
+    ChangeSummary, ConfigResponse, DependencyEntry, DiscussionInfo, LanguageResponse,
+    ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, Progress, ShowDiscussionResponse,
+    SpecSummary, TaskEntry, WhoamiRepo, WhoamiResponse, WhoamiUser,
+};
+use speclink_store::DocumentId;
+
+/// An acknowledgment body for verbs whose response the client ignores.
+#[derive(Serialize)]
+struct Ack {}
+
+/// A JSON response carrying the scope ETag.
+fn ok<T: Serialize>(dto: T, etag: &str) -> Response {
+    ([(ETAG, etag.to_string())], Json(dto)).into_response()
+}
+
+/// The unexpected-outcome guard: the command runtime returned an outcome kind
+/// this route never asks for. A server bug, not a client error.
+fn wrong_outcome(route: &str) -> ApiError {
+    ApiError::internal(format!("{route}: unexpected command outcome"))
+}
+
+// --- queries ---
+
+/// `GET /changes`
+pub async fn list_changes(
+    State(state): State<AppState>,
+    binding: Binding,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::List { sort: "name".to_string(), specs: false, changes: false },
+    )
+    .await?;
+    let changes = match result.execution.outcome {
+        CommandOutcome::List(list) => list.changes.unwrap_or_default(),
+        _ => return Err(wrong_outcome("list")),
+    };
+    let dto = ListChangesResponse {
+        changes: changes.into_iter().map(change_summary).collect(),
+    };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `GET /changes/{name}`
+pub async fn get_change(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::Status { change: Some(name), schema: None },
+    )
+    .await?;
+    let report = match result.execution.outcome {
+        CommandOutcome::Status(report) => report,
+        _ => return Err(wrong_outcome("status")),
+    };
+    Ok(ok(change_status(report), &result.etag))
+}
+
+/// `GET /changes/{name}/instructions/{*artifact}` — `apply` yields the apply
+/// view, any other artifact its instructions.
+pub async fn instructions(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name, artifact)): Path<(String, String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::Instructions {
+            artifact: Some(artifact),
+            change: Some(name),
+            schema: None,
+        },
+    )
+    .await?;
+    match result.execution.outcome {
+        CommandOutcome::Instructions(InstructionsOutcome::Apply(apply)) => {
+            Ok(ok(apply_instructions(apply), &result.etag))
+        }
+        CommandOutcome::Instructions(InstructionsOutcome::Artifact(artifact)) => {
+            Ok(ok(artifact_instructions(artifact), &result.etag))
+        }
+        _ => Err(wrong_outcome("instructions")),
+    }
+}
+
+/// `GET /changes/{name}/artifacts/{*artifact}`
+pub async fn get_artifact(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name, artifact)): Path<(String, String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::ArtifactCat { artifact: artifact.clone(), change: Some(name.clone()) },
+    )
+    .await?;
+    let content = match result.execution.outcome {
+        CommandOutcome::ArtifactCat(content) => content,
+        _ => return Err(wrong_outcome("artifact")),
+    };
+    // Stamp the version so a later If-Match write can CAS against it.
+    let version = match artifact_rel_path(&artifact) {
+        Some(rel) => verb::read_doc(
+            &state,
+            &binding,
+            DocumentId::ChangeArtifact { change: name, artifact: rel },
+        )
+        .await?
+        .map(|doc| doc.revision.0)
+        .unwrap_or(0),
+        None => 0,
+    };
+    let dto = ArtifactContent { artifact, content, version };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `GET /specs`
+pub async fn list_specs(
+    State(state): State<AppState>,
+    binding: Binding,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::List { sort: "name".to_string(), specs: true, changes: false },
+    )
+    .await?;
+    let specs_value = match result.execution.outcome {
+        CommandOutcome::List(list) => list.specs.unwrap_or_else(|| serde_json::json!([])),
+        _ => return Err(wrong_outcome("specs")),
+    };
+    let specs: Vec<SpecSummary> = serde_json::from_value(specs_value)
+        .map_err(|e| ApiError::internal(format!("specs shape: {e}")))?;
+    Ok(ok(ListSpecsResponse { specs }, &result.etag))
+}
+
+/// `GET /language`
+pub async fn language(
+    State(state): State<AppState>,
+    binding: Binding,
+) -> Result<Response, ApiError> {
+    let result = verb::run(&state, &binding, Command::LanguageShow).await?;
+    let content = match result.execution.outcome {
+        CommandOutcome::Language(content) => content,
+        _ => return Err(wrong_outcome("language")),
+    };
+    Ok(ok(LanguageResponse { content }, &result.etag))
+}
+
+/// `GET /config` — the default workflow schema, read from the store's config.
+pub async fn config(
+    State(state): State<AppState>,
+    binding: Binding,
+) -> Result<Response, ApiError> {
+    let etag = verb::scope_etag(&state, &binding).await?;
+    let doc = verb::read_doc(&state, &binding, DocumentId::WorkflowConfig).await?;
+    let schema = WorkflowConfig::from_text(doc.as_ref().map(|d| d.content.as_str()))
+        .map_err(|e| ApiError::invalid_config(e.to_string()))?
+        .schema_name();
+    Ok(ok(ConfigResponse { schema }, &etag))
+}
+
+/// `GET /whoami` — the authenticated identity and the project's repos, from the
+/// binding.
+pub async fn whoami(
+    State(state): State<AppState>,
+    binding: Binding,
+) -> Result<Response, ApiError> {
+    let etag = verb::scope_etag(&state, &binding).await?;
+    let dto = WhoamiResponse {
+        user: WhoamiUser {
+            name: binding.actor.display.clone(),
+            handle: binding.actor.id.clone(),
+        },
+        repos: binding
+            .project
+            .repos
+            .iter()
+            .map(|r| WhoamiRepo { name: r.clone(), git_url: String::new() })
+            .collect(),
+    };
+    Ok(ok(dto, &etag))
+}
+
+/// `GET /sync-state` — the scope state token for change polling (design 決策
+/// 五). With `If-None-Match` matching the current ETag the scope is unchanged
+/// (304); otherwise the new ETag is returned (200). A dropped-events client
+/// converges by polling this and re-reading through Query.
+pub async fn sync_state(
+    State(state): State<AppState>,
+    binding: Binding,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let etag = verb::scope_etag(&state, &binding).await?;
+    let unchanged = headers
+        .get("if-none-match")
+        .and_then(|v| v.to_str().ok())
+        .map(|inm| inm == etag)
+        .unwrap_or(false);
+    if unchanged {
+        return Ok((StatusCode::NOT_MODIFIED, [(ETAG, etag)]).into_response());
+    }
+    Ok((StatusCode::OK, [(ETAG, etag)], Json(Ack {})).into_response())
+}
+
+// --- change commands ---
+
+/// `POST /changes`
+pub async fn create_change(
+    State(state): State<AppState>,
+    binding: Binding,
+    Json(req): Json<CreateChangeRequest>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::NewChange {
+            name: req.name,
+            description: req.description,
+            schema: req.schema,
+            agent: req.agent,
+            from_discussion: req.from_discussion,
+        },
+    )
+    .await?;
+    let outcome = match result.execution.outcome {
+        CommandOutcome::NewChange(o) => o,
+        _ => return Err(wrong_outcome("create-change")),
+    };
+    let dto = CreateChangeResponse {
+        name: outcome.name,
+        schema: Some(outcome.schema),
+        repo: Some(binding.repo.clone()),
+        lifecycle: None,
+    };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `PUT /changes/{name}/artifacts/{*artifact}` with the `If-Match` write
+/// precondition. The write commits atomically through the bridge; a stale
+/// precondition is a 409 revision_conflict with no partial write.
+pub async fn put_artifact(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name, artifact)): Path<(String, String, String)>,
+    headers: HeaderMap,
+    Json(req): Json<PutArtifactRequest>,
+) -> Result<Response, ApiError> {
+    let if_match = parse_if_match(&headers)?;
+    let rel = artifact_rel_path(&artifact)
+        .ok_or_else(|| ApiError::invalid_argument(format!("unknown artifact '{artifact}'")))?;
+    let cmd = artifact_write_command(&artifact, name.clone(), req.content)?;
+    let doc = DocumentId::ChangeArtifact { change: name, artifact: rel };
+    let (version, etag) = verb::run_write_with_if_match(&state, &binding, doc, if_match, cmd).await?;
+    Ok(ok(PutArtifactResponse { artifact, version }, &etag))
+}
+
+/// `POST /changes/{name}/tasks/{taskId}/done`
+pub async fn task_done(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name, task_id)): Path<(String, String, String)>,
+    Json(_req): Json<TaskDoneRequest>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::TaskDone { task_id, change: Some(name) },
+    )
+    .await?;
+    let outcome = match result.execution.outcome {
+        CommandOutcome::TaskDone(o) => o,
+        _ => return Err(wrong_outcome("task-done")),
+    };
+    let dto = TaskDoneResponse { task_desc: outcome.description, already_done: outcome.already };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `POST /changes/{name}/tasks/{taskId}/undone`
+pub async fn task_undone(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name, task_id)): Path<(String, String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::TaskUndone { task_id, change: Some(name) },
+    )
+    .await?;
+    let outcome = match result.execution.outcome {
+        CommandOutcome::TaskUndone(o) => o,
+        _ => return Err(wrong_outcome("task-undone")),
+    };
+    let dto = TaskUndoneResponse { task_desc: outcome.description, already_undone: outcome.already };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `POST /changes/{name}/claim` — a minimal team-mode acknowledgment; durable
+/// ownership arrives with the auth/admin knife. Refuses on a missing change.
+pub async fn claim(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let meta = verb::read_doc(&state, &binding, DocumentId::ChangeMeta { change: name.clone() }).await?;
+    if meta.is_none() {
+        return Err(ApiError::not_found(format!("Change '{name}' not found.")));
+    }
+    let etag = verb::scope_etag(&state, &binding).await?;
+    let dto = ClaimResponse {
+        lifecycle: None,
+        claimed_by: Some(binding.actor.display.clone()),
+    };
+    Ok(ok(dto, &etag))
+}
+
+/// `POST /changes/{name}/archive`
+pub async fn archive(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::Archive {
+            change: Some(name),
+            skip_specs: false,
+            no_validate: false,
+            mark_tasks_complete: false,
+        },
+    )
+    .await?;
+    let outcome = match result.execution.outcome {
+        CommandOutcome::Archive(o) => o,
+        _ => return Err(wrong_outcome("archive")),
+    };
+    let dto = ArchiveResponse {
+        specs: outcome
+            .caps
+            .into_iter()
+            .map(|c| ArchivedSpec { capability: c.capability })
+            .collect(),
+    };
+    Ok(ok(dto, &result.etag))
+}
+
+/// Parse the `If-Match` header as the write precondition version (`0` =
+/// create-only). Absent or unparseable is an invalid argument — the client
+/// always sends it.
+fn parse_if_match(headers: &HeaderMap) -> Result<u64, ApiError> {
+    let value = headers
+        .get("if-match")
+        .ok_or_else(|| ApiError::invalid_argument("missing If-Match header"))?;
+    value
+        .to_str()
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .ok_or_else(|| ApiError::invalid_argument("If-Match must be a version number"))
+}
+
+/// Map an artifact id to the Engine's new-artifact command. `force` is always
+/// set — the If-Match precondition already decided create vs overwrite.
+fn artifact_write_command(
+    artifact: &str,
+    change: String,
+    content: String,
+) -> Result<Command, ApiError> {
+    let (kind, capability) = match artifact {
+        "proposal" | "design" | "tasks" => (artifact.to_string(), None),
+        _ => match artifact.strip_prefix("specs/") {
+            Some(cap) if !cap.is_empty() && !cap.contains('/') => {
+                ("spec".to_string(), Some(cap.to_string()))
+            }
+            _ => return Err(ApiError::invalid_argument(format!("unknown artifact '{artifact}'"))),
+        },
+    };
+    Ok(Command::NewArtifact {
+        kind,
+        capability,
+        change: Some(change),
+        content: Some(content),
+        force: true,
+    })
+}
+
+// --- discussions ---
+
+/// Query string of `GET /discussions`.
+#[derive(Deserialize)]
+pub struct ListDiscussionsQuery {
+    #[serde(default)]
+    archived: bool,
+}
+
+/// `GET /discussions[?archived=true]`
+pub async fn list_discussions(
+    State(state): State<AppState>,
+    binding: Binding,
+    Query(query): Query<ListDiscussionsQuery>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(&state, &binding, Command::DiscussList { archived: query.archived }).await?;
+    let discussions = match result.execution.outcome {
+        CommandOutcome::DiscussList(list) => list,
+        _ => return Err(wrong_outcome("discuss-list")),
+    };
+    let dto = ListDiscussionsResponse {
+        discussions: discussions.into_iter().map(discussion_info).collect(),
+    };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `POST /discussions`
+pub async fn create_discussion(
+    State(state): State<AppState>,
+    binding: Binding,
+    Json(req): Json<CreateDiscussionRequest>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(&state, &binding, Command::DiscussNew { topic: req.topic, slug: None }).await?;
+    let info = match result.execution.outcome {
+        CommandOutcome::DiscussNew(info) => info,
+        _ => return Err(wrong_outcome("discuss-new")),
+    };
+    let dto = CreateDiscussionResponse { slug: info.slug, topic: info.topic, path: info.path };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `GET /discussions/{slug}`
+pub async fn show_discussion(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, slug)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(&state, &binding, Command::DiscussShow { slug }).await?;
+    let show = match result.execution.outcome {
+        CommandOutcome::DiscussShow(show) => show,
+        _ => return Err(wrong_outcome("discuss-show")),
+    };
+    let info = show
+        .info
+        .ok_or_else(|| ApiError::internal("discuss-show: missing discussion info"))?;
+    let dto = ShowDiscussionResponse { info: discussion_info(info), content: show.content };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `PUT /discussions/{slug}/context`
+pub async fn set_discussion_context(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, slug)): Path<(String, String)>,
+    Json(req): Json<SetDiscussionContextRequest>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::DiscussContext { slug, content: req.content },
+    )
+    .await?;
+    Ok(ok(Ack {}, &result.etag))
+}
+
+/// `POST /discussions/{slug}/rounds`
+pub async fn add_discussion_round(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, slug)): Path<(String, String)>,
+    Json(req): Json<AddDiscussionRoundRequest>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::DiscussAddRound { slug, mode: req.mode, content: req.content },
+    )
+    .await?;
+    let round = match result.execution.outcome {
+        CommandOutcome::DiscussAddRound(o) => o.round,
+        _ => return Err(wrong_outcome("discuss-add-round")),
+    };
+    Ok(ok(AddDiscussionRoundResponse { round: round as u64 }, &result.etag))
+}
+
+/// `POST /discussions/{slug}/conclude`
+pub async fn conclude_discussion(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, slug)): Path<(String, String)>,
+    Json(req): Json<ConcludeDiscussionRequest>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::DiscussConclude { slug, content: req.content },
+    )
+    .await?;
+    Ok(ok(Ack {}, &result.etag))
+}
+
+/// `POST /discussions/{slug}/archive`
+pub async fn archive_discussion(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, slug)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(&state, &binding, Command::DiscussArchive { slug }).await?;
+    let archived_file = match result.execution.outcome {
+        CommandOutcome::DiscussArchive(o) => o.archived_file,
+        _ => return Err(wrong_outcome("discuss-archive")),
+    };
+    let dto = ArchiveDiscussionResponse {
+        archived_to: format!("discussions/archive/{archived_file}"),
+    };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `POST /discussions/{slug}/promote`
+pub async fn promote_discussion(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, slug)): Path<(String, String)>,
+    Json(req): Json<PromoteDiscussionRequest>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::DiscussPromote { slug, name: req.name },
+    )
+    .await?;
+    let change = match result.execution.outcome {
+        CommandOutcome::DiscussPromote(o) => o.change,
+        _ => return Err(wrong_outcome("discuss-promote")),
+    };
+    Ok(ok(PromoteDiscussionResponse { change }, &result.etag))
+}
+
+fn discussion_info(info: EngineDiscussionInfo) -> DiscussionInfo {
+    DiscussionInfo {
+        slug: info.slug,
+        topic: info.topic,
+        status: info.status,
+        rounds: info.rounds,
+        created: info.created,
+        created_by: info.created_by,
+        path: info.path,
+        archived: info.archived,
+    }
+}
+
+// --- Engine outcome → protocol DTO (typed field mapping, no raw JSON) ---
+
+fn change_summary(change: ListChangeJson) -> ChangeSummary {
+    ChangeSummary {
+        name: change.name,
+        summary: change.summary,
+        status: change.status,
+        completed_tasks: change.completed_tasks,
+        total_tasks: change.total_tasks,
+        restale_from: change.restale_from,
+        meta_error: change.meta_error,
+        repo: None,
+        lifecycle: None,
+        claimed_by: None,
+    }
+}
+
+fn change_status(report: StatusReport) -> ChangeStatus {
+    ChangeStatus {
+        change_name: report.change_name,
+        schema_name: report.schema_name,
+        is_complete: report.is_complete,
+        apply_requires: report.apply_requires,
+        artifacts: report
+            .artifacts
+            .into_iter()
+            .map(|a| ArtifactStatus {
+                id: a.id,
+                output_path: a.output_path,
+                status: a.status,
+                missing_deps: a.blocked_by,
+                version: None,
+            })
+            .collect(),
+        status_version: None,
+        repo: None,
+        lifecycle: None,
+        claimed_by: None,
+    }
+}
+
+fn apply_instructions(apply: engine::ApplyInstructions) -> ApplyInstructions {
+    ApplyInstructions {
+        change_name: apply.change_name,
+        change_dir: apply.change_dir,
+        schema_name: apply.schema_name,
+        context_files: apply.context_files,
+        progress: Progress {
+            total: apply.progress.total,
+            complete: apply.progress.complete,
+            remaining: apply.progress.remaining,
+        },
+        tasks: apply.tasks.into_iter().map(task_entry).collect(),
+        state: apply.state,
+        missing_artifacts: apply.missing_artifacts,
+        locale: apply.locale,
+        instruction: apply.instruction,
+    }
+}
+
+fn artifact_instructions(instr: engine::ArtifactInstructions) -> ArtifactInstructions {
+    ArtifactInstructions {
+        change_name: instr.change_name,
+        artifact_id: instr.artifact_id,
+        schema_name: instr.schema_name,
+        change_dir: instr.change_dir,
+        output_path: instr.output_path,
+        description: instr.description,
+        instruction: instr.instruction,
+        context: instr.context,
+        rules: instr.rules,
+        locale: instr.locale,
+        template: instr.template,
+        dependencies: instr
+            .dependencies
+            .into_iter()
+            .map(|d| DependencyEntry {
+                id: d.id,
+                done: d.done,
+                path: d.path,
+                description: d.description,
+            })
+            .collect(),
+        unlocks: instr.unlocks,
+    }
+}
+
+fn task_entry(task: engine::TaskJson) -> TaskEntry {
+    TaskEntry {
+        id: task.id,
+        description: task.description,
+        done: task.done,
+        parallel: task.parallel,
+    }
+}
+
+/// The artifact id → change-relative document path (the `artifact cat`
+/// vocabulary), mirroring the Engine's mapping.
+fn artifact_rel_path(artifact: &str) -> Option<String> {
+    match artifact {
+        "proposal" => Some("proposal.md".to_string()),
+        "design" => Some("design.md".to_string()),
+        "tasks" => Some("tasks.md".to_string()),
+        _ => artifact
+            .strip_prefix("specs/")
+            .filter(|cap| !cap.is_empty() && !cap.contains('/'))
+            .map(|cap| format!("specs/{cap}/spec.md")),
+    }
+}
