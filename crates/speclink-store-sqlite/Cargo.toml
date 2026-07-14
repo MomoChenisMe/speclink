@@ -1,0 +1,15 @@
+[package]
+name = "speclink-store-sqlite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "SQLite reference driver for the TeamStore contract: single-file persistence, crash-safe commits, versioned schema, and full conformance"
+
+[dependencies]
+speclink-store = { path = "../speclink-store" }
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
