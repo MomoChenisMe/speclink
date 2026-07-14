@@ -1,0 +1,29 @@
+[package]
+name = "speclink-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The official Speclink HTTP server: an axum adapter that serves the Client Protocol over the Host → Engine → TeamStore path"
+
+[[bin]]
+name = "speclink-server"
+path = "src/main.rs"
+
+[dependencies]
+speclink-core = { path = "../speclink-core" }
+speclink-host = { path = "../speclink-host" }
+speclink-protocol = { path = "../speclink-protocol" }
+speclink-store = { path = "../speclink-store" }
+speclink-store-sqlite = { path = "../speclink-store-sqlite" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+speclink-remote = { path = "../speclink-remote" }
+ureq = { version = "2", features = ["json"] }

@@ -17,3 +17,4 @@ chrono.workspace = true
 
 [dev-dependencies]
 speclink-fs = { path = "../speclink-fs" }
+tempfile = "3"
