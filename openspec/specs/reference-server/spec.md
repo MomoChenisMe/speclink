@@ -209,7 +209,7 @@ code:
 ---
 ### Requirement: 啟動組態 fail closed
 
-server SHALL 以組態檔啟動，宣告 store driver、Project/Repo registry 與 identity 資料庫（sqlite 路徑；memory 變體 SHALL 僅供測試組態）。組態檔缺失、不可解析、宣告未知 driver、或 registry/identity 段形狀不合 SHALL 使啟動失敗並印出指向錯誤的原因，SHALL NOT 以部分預設啟動；組態 SHALL NOT 含 bootstrap token 對 actor 的映射段。sqlite driver SHALL 為預設持久層選項，memory driver SHALL 僅供測試組態。
+server SHALL 以組態檔啟動，宣告 store driver、identity 資料庫（sqlite 路徑；memory 變體 SHALL 僅供測試組態）、public url 與事件參數。組態檔缺失、不可解析、宣告未知 driver、或任一段形狀不合 SHALL 使啟動失敗並印出指向錯誤的原因，SHALL NOT 以部分預設啟動；組態 SHALL NOT 含 bootstrap token 對 actor 的映射段，SHALL NOT 含 Project/Repo registry 段——registry 的事實來源是 server 資料庫（見 server-setup 能力），殘留 projects 段 SHALL 使啟動失敗並指出已由 registry 取代。sqlite driver SHALL 為預設持久層選項，memory driver SHALL 僅供測試組態。
 
 #### Scenario: 壞組態拒絕啟動
 
@@ -226,13 +226,16 @@ server SHALL 以組態檔啟動，宣告 store driver、Project/Repo registry �
 - **WHEN** 以仍含舊 bootstrap tokens 段的組態檔啟動 server
 - **THEN** 啟動失敗且原因指出該段已由 identity 儲存取代
 
+#### Scenario: 殘留 projects 段拒絕啟動
+
+- **WHEN** 以仍含舊 projects registry 段的組態檔啟動 server
+- **THEN** 啟動失敗且原因指出該段已由 server 資料庫的 registry 取代
+
 
 <!-- @trace
-source: server-identity-pat
+source: server-setup-registry
 updated: 2026-07-14
 code:
-  - Cargo.lock
-  - crates/speclink-server/Cargo.toml
   - crates/speclink-server/src/app.rs
   - crates/speclink-server/src/auth.rs
   - crates/speclink-server/src/config.rs
@@ -240,21 +243,22 @@ code:
   - crates/speclink-server/src/identity_sqlite.rs
   - crates/speclink-server/src/lib.rs
   - crates/speclink-server/src/main.rs
-  - crates/speclink-server/src/state.rs
+  - crates/speclink-server/src/routes.rs
+  - crates/speclink-server/src/setup.rs
   - crates/speclink-server/src/web.rs
+  - crates/speclink-server/tests/auth_device.rs
   - crates/speclink-server/tests/auth_pat.rs
   - crates/speclink-server/tests/binding.rs
-  - crates/speclink-server/tests/command_routes.rs
   - crates/speclink-server/tests/common/mod.rs
-  - crates/speclink-server/tests/discussion_routes.rs
+  - crates/speclink-server/tests/device_e2e.rs
   - crates/speclink-server/tests/e2e_cli.rs
   - crates/speclink-server/tests/identity.rs
   - crates/speclink-server/tests/invite.rs
   - crates/speclink-server/tests/query_routes.rs
+  - crates/speclink-server/tests/refresh_rotation.rs
+  - crates/speclink-server/tests/setup_flow.rs
   - crates/speclink-server/tests/startup.rs
-  - crates/speclink-server/tests/sync_state.rs
-  - crates/speclink-server/tests/web_account.rs
-  - crates/speclink-server/tests/web_invite.rs
+  - crates/speclink-server/tests/web_device_sessions.rs
 -->
 
 ---

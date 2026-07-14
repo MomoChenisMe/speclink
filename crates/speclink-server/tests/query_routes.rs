@@ -39,6 +39,7 @@ fn seeded_base() -> (String, String, String) {
         identity: common::empty_identity(),
         config: Arc::new(common::demo_config()),
     };
+    common::seed_demo_registry(&*state.identity);
     let (pat, user) = common::seed_pat(&state.identity, &["demo"]);
     (common::start(state), pat, user)
 }

@@ -32,10 +32,14 @@ fn seed() -> (String, Arc<IdentitySqlite>, String, String) {
         .expect("invite");
     let user_id = identity.accept_invitation(&token, "pw-correct-horse").expect("accept");
     let (_, pat) = identity.create_pat(&user_id, "cli", None).expect("pat");
+    // The registry now lives in the identity store: seed `demo` (the user's
+    // membership) and `multi` (registered but not a membership, for the 403 path).
+    common::seed_demo_registry(&*identity);
+    common::seed_multi_project(&*identity);
     let state = AppState {
         events: common::detached_events(),
         store: Arc::new(MemoryStore::new()),
-        config: Arc::new(common::config_with_dual_repo_project()),
+        config: Arc::new(common::demo_config()),
         identity: identity.clone(),
     };
     (common::start(state), identity, pat, user_id)

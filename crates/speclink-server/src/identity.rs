@@ -27,6 +27,22 @@ pub struct User {
     pub admin: bool,
 }
 
+/// A registered project in the registry: its URL key and display name. The
+/// repos it holds are listed separately (决策 1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Project {
+    pub key: String,
+    pub name: String,
+}
+
+/// A repo registered within a project: its key (unique in the project) and
+/// display name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Repo {
+    pub key: String,
+    pub name: String,
+}
+
 /// A pending invitation, resolved from its one-time token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invitation {
@@ -199,6 +215,64 @@ pub trait IdentityStore: Send + Sync {
 
     /// Whether `user_id` is a member of `project_key`.
     fn is_member(&self, user_id: &str, project_key: &str) -> Result<bool, IdentityError>;
+
+    // --- Project/Repo registry (决策 1) ---
+
+    /// Every registered project, ordered by key.
+    fn list_projects(&self) -> Result<Vec<Project>, IdentityError>;
+
+    /// Resolve a project by its key; `None` if unregistered.
+    fn get_project(&self, key: &str) -> Result<Option<Project>, IdentityError>;
+
+    /// A project's repos, ordered by key. An unregistered project yields an
+    /// empty list.
+    fn list_repos(&self, project_key: &str) -> Result<Vec<Repo>, IdentityError>;
+
+    /// Register a project. Rejects a key that already exists
+    /// ([`IdentityError::Duplicate`]).
+    fn create_project(&self, key: &str, name: &str) -> Result<(), IdentityError>;
+
+    /// Register a repo within a project. Rejects a repo key that already exists
+    /// in that project ([`IdentityError::Duplicate`]).
+    fn create_repo(&self, project_key: &str, key: &str, name: &str) -> Result<(), IdentityError>;
+
+    // --- first-run bootstrap setup token (決策 3) ---
+
+    /// Whether any admin user exists. Setup is open only while this is false.
+    fn has_admin(&self) -> Result<bool, IdentityError>;
+
+    /// Whether an unconsumed, unexpired setup token is outstanding — so a
+    /// restart does not mint a redundant one while the operator still holds a
+    /// live token.
+    fn has_valid_setup_token(&self) -> Result<bool, IdentityError>;
+
+    /// Mint a bootstrap setup token: invalidate any prior token (作廢), store the
+    /// new hash with `ttl`, and return the one-time plaintext (shown once on
+    /// stdout, never persisted).
+    fn create_setup_token(&self, ttl: Duration) -> Result<String, IdentityError>;
+
+    /// Whether `token` is a valid (known, unconsumed, unexpired) setup token.
+    /// Unknown, expired and consumed tokens are all `false` — the gate never
+    /// distinguishes the reason.
+    fn is_valid_setup_token(&self, token: &str) -> Result<bool, IdentityError>;
+
+    /// Consume the setup token by its plaintext (setup completion). Idempotent;
+    /// an unknown or already-consumed token is a no-op.
+    fn consume_setup_token(&self, token: &str) -> Result<(), IdentityError>;
+
+    /// Create the first admin directly (决策 4): an active user with the admin
+    /// flag, no invitation and no memberships. Rejects an email that already has
+    /// a user ([`IdentityError::Duplicate`]). Returns the new user id.
+    fn create_admin_user(
+        &self,
+        email: &str,
+        display: &str,
+        password: &str,
+    ) -> Result<String, IdentityError>;
+
+    /// The identity database's current schema version, for the setup store-status
+    /// panel.
+    fn schema_version(&self) -> Result<u32, IdentityError>;
 
     /// Open a session for `user_id`; returns the plaintext session id (the
     /// cookie value).

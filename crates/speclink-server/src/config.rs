@@ -2,11 +2,13 @@
 //! fail closed」).
 //!
 //! The server starts from a single YAML file that declares the store driver,
-//! the Project/Repo registry, and the identity database. A file that is
-//! missing, unparseable, declares an unknown driver, carries a residual
-//! `tokens` section, or is otherwise shaped wrong makes startup fail with a
+//! the public origin, and the identity database. A file that is missing,
+//! unparseable, declares an unknown driver, carries a residual `tokens` or
+//! `projects` section, or is otherwise shaped wrong makes startup fail with a
 //! reason pointing at the file — never a partial-default start. Authentication
-//! is the identity store's PATs; the old bootstrap `tokens` section is gone.
+//! is the identity store's PATs; the old bootstrap `tokens` section is gone, and
+//! the Project/Repo registry now lives in the server database (server-setup
+//! capability), not the config.
 
 use crate::events::EventSettings;
 use serde::Deserialize;
@@ -17,11 +19,11 @@ use std::time::Duration;
 /// option; `memory` exists only for test configurations.
 pub const SUPPORTED_DRIVERS: &[&str] = &["sqlite", "memory"];
 
-/// The validated server configuration.
+/// The validated server configuration. The Project/Repo registry is no longer a
+/// config concern — it lives in the server database (server-setup capability).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerConfig {
     pub store: StoreConfig,
-    pub projects: Vec<ProjectConfig>,
     pub identity: IdentityConfig,
     /// The server's external origin, used to build invite URLs and to validate
     /// the Origin of change-making POSTs (決策 4).
@@ -50,14 +52,6 @@ pub enum IdentityConfig {
     Memory,
 }
 
-/// One registered project: its URL key, display name, and the repos it holds.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectConfig {
-    pub key: String,
-    pub name: String,
-    pub repos: Vec<String>,
-}
-
 /// The actor a request authenticates as: a stable id and the display identity
 /// recorded in history and events. Sourced from the PAT's owning user.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,6 +76,9 @@ pub enum ConfigError {
     MissingField { path: String, field: String },
     /// The config still carries the retired bootstrap `tokens` section.
     ResidualTokens { path: String },
+    /// The config still carries the retired Project/Repo `projects` section,
+    /// replaced by the server database's registry.
+    ResidualProjects { path: String },
 }
 
 impl std::fmt::Display for ConfigError {
@@ -110,6 +107,10 @@ impl std::fmt::Display for ConfigError {
                 f,
                 "config file '{path}': the 'tokens' section has been replaced by the identity store — remove it and declare an 'identity' database instead"
             ),
+            ConfigError::ResidualProjects { path } => write!(
+                f,
+                "config file '{path}': the 'projects' section has been replaced by the server database's registry — remove it and register projects through /setup or the admin interface"
+            ),
         }
     }
 }
@@ -123,8 +124,6 @@ impl std::error::Error for ConfigError {}
 struct RawConfig {
     store: RawStore,
     #[serde(default)]
-    projects: Vec<RawProject>,
-    #[serde(default)]
     identity: Option<RawIdentity>,
     #[serde(default)]
     public_url: Option<String>,
@@ -136,6 +135,10 @@ struct RawConfig {
     /// here fails startup with a reason.
     #[serde(default)]
     tokens: Option<serde_yaml::Value>,
+    /// Presence detection for the retired Project/Repo `projects` section: any
+    /// value here fails startup with a reason pointing at the registry.
+    #[serde(default)]
+    projects: Option<serde_yaml::Value>,
 }
 
 #[derive(Deserialize)]
@@ -162,15 +165,6 @@ struct RawIdentity {
     path: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct RawProject {
-    key: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    repos: Vec<String>,
-}
-
 /// Load and validate the configuration at `path`, fail closed.
 pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
     let shown = path.display().to_string();
@@ -187,6 +181,13 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
     // name its replacement.
     if raw.tokens.is_some() {
         return Err(ConfigError::ResidualTokens { path: shown });
+    }
+
+    // The Project/Repo registry moved into the server database; a residual
+    // `projects` section is a retired shape that fails closed and names the
+    // registry as its replacement.
+    if raw.projects.is_some() {
+        return Err(ConfigError::ResidualProjects { path: shown });
     }
 
     let store = match raw.store.driver.as_str() {
@@ -227,16 +228,6 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
         }
     };
 
-    let projects = raw
-        .projects
-        .into_iter()
-        .map(|p| ProjectConfig {
-            name: p.name.unwrap_or_else(|| p.key.clone()),
-            key: p.key,
-            repos: p.repos,
-        })
-        .collect();
-
     let public_url = raw
         .public_url
         .unwrap_or_else(|| "http://localhost:8080".to_string());
@@ -253,7 +244,7 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
         None => defaults,
     };
 
-    Ok(ServerConfig { store, projects, identity, public_url, events })
+    Ok(ServerConfig { store, identity, public_url, events })
 }
 
 #[cfg(test)]
@@ -269,15 +260,11 @@ mod tests {
     }
 
     #[test]
-    fn a_memory_config_loads_with_registry_and_identity() {
-        let cfg = load_text(
-            "store:\n  driver: memory\nidentity:\n  driver: memory\nprojects:\n  - key: demo\n    name: Demo\n    repos:\n      - backend\n",
-        )
-        .expect("valid memory config loads");
+    fn a_memory_config_loads_with_identity() {
+        let cfg = load_text("store:\n  driver: memory\nidentity:\n  driver: memory\n")
+            .expect("valid memory config loads");
         assert_eq!(cfg.store, StoreConfig::Memory);
         assert_eq!(cfg.identity, IdentityConfig::Memory);
-        assert_eq!(cfg.projects[0].key, "demo");
-        assert_eq!(cfg.projects[0].repos, ["backend"]);
     }
 
     #[test]
@@ -289,6 +276,17 @@ mod tests {
         let shown = err.to_string();
         assert!(matches!(err, ConfigError::ResidualTokens { .. }));
         assert!(shown.contains("identity store"), "the reason points at the identity store: {shown}");
+    }
+
+    #[test]
+    fn a_residual_projects_section_fails_closed_naming_its_replacement() {
+        let err = load_text(
+            "store:\n  driver: memory\nidentity:\n  driver: memory\nprojects:\n  - key: demo\n    repos:\n      - backend\n",
+        )
+        .expect_err("a retired projects section must fail startup");
+        let shown = err.to_string();
+        assert!(matches!(err, ConfigError::ResidualProjects { .. }));
+        assert!(shown.contains("registry"), "the reason points at the registry: {shown}");
     }
 
     #[test]

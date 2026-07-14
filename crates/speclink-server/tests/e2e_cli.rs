@@ -1,17 +1,20 @@
-//! End-to-end: the real CLI binary against the real server over SQLite, driven
-//! entirely through the identity flow (server-identity spec, 決策 3/4/5). An
-//! operator mints an invitation with the `invite` subcommand; the invitee walks
-//! the web forms to set a password, log in and create a PAT; that PAT
-//! configures the real CLI, whose remote verbs match fs mode; revoking the PAT
-//! makes the very next CLI call fail authentication.
+//! End-to-end onboarding: the real CLI binary against the real server over
+//! SQLite, driven from a fresh database through the whole /setup flow
+//! (server-setup spec「setup 流程完成開箱四要素」/「完成 setup 即可邀請與連線」,
+//! 決策 3/4/5). An operator takes the one-time token off the server's stdout and
+//! completes /setup (first admin + first project/repo); mints an invitation with
+//! the `invite` subcommand; the invitee walks the web forms to set a password,
+//! log in and create a PAT; that PAT configures the real CLI, whose remote verbs
+//! match fs mode; a restart confirms /setup is closed and the data persists; and
+//! revoking the PAT makes the very next CLI call fail authentication.
 
 use speclink_protocol::command::CreateChangeRequest;
 use speclink_remote::client::Client;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output};
-use std::sync::Once;
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::{Arc, Mutex, Once};
 use std::time::{Duration, Instant};
 
 const PROPOSAL: &str = "## Why\n\nDemo change.\n\n## What Changes\n\n- a thing\n";
@@ -22,6 +25,11 @@ const SPEC: &str = "## ADDED Requirements\n\n### Requirement: Demo\nDemo SHALL w
 const EMAIL: &str = "dev@example.com";
 const DISPLAY: &str = "E2E <e2e@example.com>";
 const PASSWORD: &str = "e2e-correct-horse";
+
+// The first admin, created through /setup (not via invitation).
+const ADMIN_EMAIL: &str = "root@example.com";
+const ADMIN_DISPLAY: &str = "Root <root@example.com>";
+const ADMIN_PASSWORD: &str = "root-correct-horse";
 
 // --- binaries ---
 
@@ -53,19 +61,31 @@ fn server_bin() -> PathBuf {
 struct Server {
     child: Child,
     addr: String,
+    /// The server's captured stdout lines — where the one-time setup token
+    /// appears on a fresh start.
+    stdout: Arc<Mutex<Vec<String>>>,
 }
 
 impl Server {
-    /// Start the server binary with `config` bound to a free loopback port and
-    /// wait until `/healthz` answers.
+    /// Start the server binary with `config` bound to a free loopback port,
+    /// capturing stdout, and wait until `/healthz` answers.
     fn start(config: &Path) -> Server {
         let port = free_port();
         let addr = format!("127.0.0.1:{port}");
-        let child = Command::new(server_bin())
+        let mut child = Command::new(server_bin())
             .args(["--config", config.to_str().unwrap(), "--addr", &addr])
+            .stdout(Stdio::piped())
             .spawn()
             .expect("spawn speclink-server");
-        let server = Server { child, addr };
+        let out = child.stdout.take().expect("piped stdout");
+        let stdout = Arc::new(Mutex::new(Vec::new()));
+        let sink = stdout.clone();
+        std::thread::spawn(move || {
+            for line in BufReader::new(out).lines().map_while(Result::ok) {
+                sink.lock().expect("stdout lock").push(line);
+            }
+        });
+        let server = Server { child, addr, stdout };
         server.wait_ready();
         server
     }
@@ -89,6 +109,47 @@ impl Server {
         }
         panic!("server did not become ready at {url}");
     }
+
+    /// The one-time setup token parsed from the `/setup?token=…` guidance line
+    /// the server prints on a fresh start.
+    fn setup_token(&self) -> String {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(token) = self
+                .stdout
+                .lock()
+                .expect("stdout lock")
+                .iter()
+                .find_map(|line| parse_setup_token(line))
+            {
+                return token;
+            }
+            if Instant::now() > deadline {
+                panic!("no setup token on stdout: {:?}", self.stdout.lock().expect("stdout lock"));
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    /// Whether the server printed a setup-token line (a fresh start does; a
+    /// restart over a completed database does not).
+    fn printed_setup_token(&self) -> bool {
+        self.stdout.lock().expect("stdout lock").iter().any(|l| parse_setup_token(l).is_some())
+    }
+}
+
+/// Extract the `token=` value from a `/setup?token=…` guidance line.
+fn parse_setup_token(line: &str) -> Option<String> {
+    if !line.contains("/setup") {
+        return None;
+    }
+    let token: String = line
+        .split("token=")
+        .nth(1)?
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    (!token.is_empty()).then_some(token)
 }
 
 impl Drop for Server {
@@ -116,7 +177,7 @@ fn write_config(dir: &Path, db: &Path) -> PathBuf {
     let mut file = std::fs::File::create(&path).expect("create config");
     write!(
         file,
-        "store:\n  driver: sqlite\n  path: {}\nidentity:\n  driver: sqlite\n  path: {}\nprojects:\n  - key: demo\n    name: Demo\n    repos:\n      - backend\n",
+        "store:\n  driver: sqlite\n  path: {}\nidentity:\n  driver: sqlite\n  path: {}\n",
         db.display(),
         identity_db.display()
     )
@@ -300,17 +361,58 @@ fn run_cli(project: &Path, args: &[&str], token: Option<&str>) -> Output {
     cmd.output().expect("run speclink CLI")
 }
 
+/// Walk the /setup flow with the one-time token: create the first admin, then
+/// register the first project (`demo`) and repo (`backend`). After this the
+/// token is consumed and /setup is closed.
+fn complete_setup(base: &str, token: &str) {
+    let http = agent();
+    let admin = http
+        .post(&format!("{base}/setup?token={token}"))
+        .send_form(&[("email", ADMIN_EMAIL), ("display", ADMIN_DISPLAY), ("password", ADMIN_PASSWORD)])
+        .expect("setup: create the first admin");
+    assert_eq!(admin.status(), 200, "the setup admin section succeeds");
+    let project = http
+        .post(&format!("{base}/setup?token={token}"))
+        .send_form(&[
+            ("project_key", "demo"),
+            ("project_name", "Demo"),
+            ("repo_key", "backend"),
+            ("repo_name", "Backend"),
+        ])
+        .expect("setup: register the first project/repo");
+    assert_eq!(project.status(), 200, "the setup project/repo section succeeds");
+}
+
+/// GET `url` and return its HTTP status, treating a protocol error as its code.
+fn get_status(url: &str) -> u16 {
+    match ureq::get(url).call() {
+        Ok(resp) => resp.status(),
+        Err(ureq::Error::Status(code, _)) => code,
+        Err(e) => panic!("transport error for {url}: {e}"),
+    }
+}
+
 // --- the e2e ---
 
 #[test]
-fn invite_to_pat_drives_the_cli_and_revocation_denies_it() {
+fn setup_flow_onboards_a_team_and_a_restart_closes_it() {
     let workdir = tempfile::tempdir().expect("workdir");
     let db = workdir.path().join("store.db");
     let config = write_config(workdir.path(), &db);
 
+    // A fresh server prints a one-time setup token; complete /setup to create the
+    // first admin and register the first project/repo (開箱四要素).
     let server = Server::start(&config);
+    let setup_token = server.setup_token();
+    complete_setup(&server.base(), &setup_token);
+    assert_eq!(
+        get_status(&format!("{}/setup?token={}", server.base(), setup_token)),
+        404,
+        "/setup closes once setup completes",
+    );
 
-    // The full identity flow: invite → accept → login → PAT.
+    // Invite a member into the just-registered project, then walk the web flow to
+    // a PAT (完成 setup 即可邀請與連線).
     let token = invite(&config);
     let (pat, session) = create_pat_via_web(&server.base(), &token);
 
@@ -358,9 +460,28 @@ fn invite_to_pat_drives_the_cli_and_revocation_denies_it() {
         "remote discuss list names the seeded discussion",
     );
 
+    // Restart over the same database: /setup stays closed (no token printed, 404)
+    // and the seeded data persists — the member's PAT still lists the change
+    // (重啟確認關門且資料完整).
+    drop(server);
+    let restarted = Server::start(&config);
+    assert!(!restarted.printed_setup_token(), "a restart over a completed database prints no setup token");
+    assert_eq!(get_status(&format!("{}/setup", restarted.base())), 404, "/setup stays closed after restart");
+    let restarted_remote = remote_project(workdir.path(), &restarted.project_url());
+    let after_restart = run_cli(&restarted_remote, &["list", "--json"], Some(&pat));
+    assert!(
+        after_restart.status.success(),
+        "the PAT still authenticates after restart: {}",
+        String::from_utf8_lossy(&after_restart.stderr),
+    );
+    assert!(
+        String::from_utf8_lossy(&after_restart.stdout).contains("demo"),
+        "the seeded change persists across the restart",
+    );
+
     // Revoke the PAT: the very next CLI call fails authentication (401).
-    revoke_pat(&server.base(), &session);
-    let after = run_cli(&remote, &["list", "--json"], Some(&pat));
+    revoke_pat(&restarted.base(), &session);
+    let after = run_cli(&restarted_remote, &["list", "--json"], Some(&pat));
     assert!(!after.status.success(), "the revoked PAT no longer authorizes CLI calls");
     let stderr = String::from_utf8_lossy(&after.stderr);
     assert!(

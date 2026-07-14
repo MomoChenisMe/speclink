@@ -92,6 +92,8 @@ fn device_flow_end_to_end_over_a_real_sqlite_server() {
         })
         .expect("invite");
     let user_id = identity.accept_invitation(&invite, PASSWORD).expect("accept");
+    // The registry now lives in the identity store; register `demo` (repo backend).
+    common::seed_demo_registry(&*identity);
 
     // A real SQLite team store, behind the real router.
     let store = speclink_server::build_store(&StoreConfig::Sqlite { path: store_path }).expect("store");

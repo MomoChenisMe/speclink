@@ -318,7 +318,7 @@ pub(crate) fn current_user(state: &AppState, headers: &HeaderMap) -> Option<User
 /// Validate that a change-making POST is same-origin with the configured public
 /// URL. A request with neither Origin nor Referer (a non-browser client) is
 /// allowed; a present-but-foreign origin is refused with 403.
-fn check_origin(headers: &HeaderMap, public_url: &str) -> Result<(), Response> {
+pub(crate) fn check_origin(headers: &HeaderMap, public_url: &str) -> Result<(), Response> {
     let claimed = header_str(headers, "origin").or_else(|| header_str(headers, "referer"));
     match claimed {
         None => Ok(()),

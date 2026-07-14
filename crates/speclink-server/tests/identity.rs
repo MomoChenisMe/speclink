@@ -6,6 +6,7 @@
 
 use chrono::{Duration, Utc};
 use speclink_server::identity::{IdentityError, IdentityStore, IdentitySqlite, NewInvitation};
+use speclink_server::identity::{Project, Repo};
 
 /// A fresh in-memory identity store for lifecycle tests.
 fn store() -> IdentitySqlite {
@@ -245,7 +246,7 @@ fn a_version_1_database_migrates_preserving_users_and_pats() {
         .expect("seed pat");
     }
 
-    // Opening with the current server migrates 1 → 2 in place.
+    // Opening with the current server migrates 1 → 3 in place.
     let s = IdentitySqlite::open(&path).expect("open migrates the v1 database");
 
     // Existing data is intact and the pre-existing PAT still authenticates.
@@ -259,12 +260,12 @@ fn a_version_1_database_migrates_preserving_users_and_pats() {
     assert_eq!(who.id, "usr_old");
     drop(s);
 
-    // The schema now records version 2 and the device-flow tables exist.
+    // The schema now records version 3 and the device-flow tables exist.
     let conn = rusqlite::Connection::open(&path).expect("reopen for inspection");
     let version: String = conn
         .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
         .expect("schema version");
-    assert_eq!(version, "2", "the database was migrated to version 2");
+    assert_eq!(version, "3", "the database was migrated to the current version");
     for table in ["device_authorizations", "credential_families", "access_tokens", "refresh_credentials"] {
         let exists: i64 = conn
             .query_row(
@@ -320,5 +321,152 @@ fn credentials_are_only_ever_stored_as_hashes() {
                 }
             }
         }
+    }
+}
+
+// --- Project/Repo registry (server-setup spec「registry 持久化且 binding 讀庫」) ---
+
+#[test]
+fn the_registry_persists_projects_and_repos() {
+    let s = store();
+    s.create_project("demo", "Demo").expect("create project");
+    s.create_repo("demo", "backend", "Backend").expect("create repo");
+    s.create_repo("demo", "frontend", "Frontend").expect("create a second repo");
+
+    let project: Project = s.get_project("demo").expect("get").expect("the project exists");
+    assert_eq!(project.key, "demo");
+    assert_eq!(project.name, "Demo");
+    assert!(s.get_project("ghost").expect("get").is_none(), "an unregistered key is absent");
+
+    let projects = s.list_projects().expect("list projects");
+    assert_eq!(projects.len(), 1, "one project is registered");
+    assert_eq!(projects[0].key, "demo");
+
+    let repos: Vec<Repo> = s.list_repos("demo").expect("list repos");
+    let keys: Vec<&str> = repos.iter().map(|r| r.key.as_str()).collect();
+    assert_eq!(keys, ["backend", "frontend"], "the project's repos are listed, ordered by key");
+    assert_eq!(repos[0].name, "Backend", "a repo carries its display name");
+    assert!(s.list_repos("ghost").expect("list").is_empty(), "an unregistered project has no repos");
+}
+
+#[test]
+fn a_duplicate_project_key_is_rejected_and_leaves_the_original() {
+    let s = store();
+    s.create_project("demo", "Demo").expect("create project");
+    assert!(
+        matches!(s.create_project("demo", "Demo Again").unwrap_err(), IdentityError::Duplicate(_)),
+        "a duplicate project key is rejected"
+    );
+    assert_eq!(
+        s.get_project("demo").expect("get").expect("still exists").name,
+        "Demo",
+        "the original project is untouched",
+    );
+}
+
+#[test]
+fn a_duplicate_repo_key_in_the_same_project_is_rejected() {
+    let s = store();
+    s.create_project("demo", "Demo").expect("create project");
+    s.create_repo("demo", "backend", "Backend").expect("create repo");
+    assert!(
+        matches!(
+            s.create_repo("demo", "backend", "Backend Again").unwrap_err(),
+            IdentityError::Duplicate(_)
+        ),
+        "a duplicate repo key within one project is rejected",
+    );
+    // The same repo key under a different project is fine — repos are scoped.
+    s.create_project("other", "Other").expect("create another project");
+    s.create_repo("other", "backend", "Backend")
+        .expect("the same repo key under a different project is allowed");
+}
+
+/// The schema-version-2 identity shape (users, memberships, PATs) before the
+/// registry tables were added — enough to seed a user and PAT for a migration
+/// test. Migrating 2 → 3 only adds tables, so this subset suffices.
+const V2_SCHEMA: &str = "\
+CREATE TABLE meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+CREATE TABLE users (
+    id TEXT PRIMARY KEY NOT NULL, display TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL, active INTEGER NOT NULL, admin INTEGER NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE memberships (user_id TEXT NOT NULL, project_key TEXT NOT NULL, PRIMARY KEY (user_id, project_key));
+CREATE TABLE pats (
+    id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, prefix TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL, expires_at TEXT, revoked_at TEXT, last_used_at TEXT, created_at TEXT NOT NULL
+);
+";
+
+#[test]
+fn a_version_2_database_migrates_preserving_users_and_pats_and_enables_the_registry() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("v2.db");
+    // A PAT that existed before the registry migration, hashed as the store hashes it.
+    const PAT: &str = "spk_pat_v2preexisting00000000000000000000000000000000000000000000000000";
+    let now = Utc::now().to_rfc3339();
+    {
+        // Hand-build a schema-version-2 identity database with a user, a
+        // membership and a PAT — the shape the prior knife wrote.
+        let conn = rusqlite::Connection::open(&path).expect("create v2 db");
+        conn.execute_batch(V2_SCHEMA).expect("v2 schema");
+        conn.execute_batch(
+            "INSERT INTO meta VALUES ('format','speclink-identity-store');\
+             INSERT INTO meta VALUES ('schema_version','2');",
+        )
+        .expect("seed meta");
+        conn.execute(
+            "INSERT INTO users (id, display, email, password_hash, active, admin, created_at) \
+             VALUES ('usr_old','Old <old@example.com>','old@example.com','argon2-hash',1,0,?1)",
+            rusqlite::params![now],
+        )
+        .expect("seed user");
+        conn.execute(
+            "INSERT INTO memberships (user_id, project_key) VALUES ('usr_old','demo')",
+            [],
+        )
+        .expect("seed membership");
+        conn.execute(
+            "INSERT INTO pats (id, user_id, prefix, token_hash, name, expires_at, revoked_at, last_used_at, created_at) \
+             VALUES ('pat_old','usr_old','spk_pat_v2pr',?1,'legacy',NULL,NULL,NULL,?2)",
+            rusqlite::params![sha256_hex(PAT), now],
+        )
+        .expect("seed pat");
+    }
+
+    // Opening with the current server migrates 2 → 3 in place.
+    let s = IdentitySqlite::open(&path).expect("open migrates the v2 database");
+
+    // Existing data is intact and the pre-existing PAT still authenticates.
+    let user = s.get_user("usr_old").expect("get user").expect("migrated user survives");
+    assert_eq!(user.email, "old@example.com");
+    assert!(s.is_member("usr_old", "demo").expect("membership check"), "membership preserved");
+    let (_, who) = s
+        .authenticate_pat(PAT)
+        .expect("auth")
+        .expect("the pre-existing PAT still authenticates after migration");
+    assert_eq!(who.id, "usr_old");
+
+    // The registry is available on the migrated database.
+    s.create_project("demo", "Demo").expect("registry is usable after migration");
+    s.create_repo("demo", "backend", "Backend").expect("registry repo is usable");
+    assert_eq!(s.get_project("demo").expect("get").expect("exists").key, "demo");
+    drop(s);
+
+    // The schema now records version 3 and the registry tables exist.
+    let conn = rusqlite::Connection::open(&path).expect("reopen for inspection");
+    let version: String = conn
+        .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
+        .expect("schema version");
+    assert_eq!(version, "3", "the database was migrated to version 3");
+    for table in ["projects", "repos"] {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                rusqlite::params![table],
+                |r| r.get(0),
+            )
+            .expect("table lookup");
+        assert_eq!(exists, 1, "migration created the {table} table");
     }
 }
