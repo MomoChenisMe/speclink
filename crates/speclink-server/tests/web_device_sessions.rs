@@ -27,6 +27,7 @@ fn seed() -> (String, Arc<IdentitySqlite>, String) {
         .expect("invite");
     let user_id = identity.accept_invitation(&token, PASSWORD).expect("accept");
     let state = AppState {
+        events: common::detached_events(),
         store: Arc::new(MemoryStore::new()),
         config: Arc::new(common::demo_config()),
         identity: identity.clone(),

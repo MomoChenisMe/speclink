@@ -27,6 +27,7 @@ fn seeded(days: i64) -> (String, String, Arc<IdentitySqlite>) {
         })
         .expect("seed invitation");
     let state = AppState {
+        events: common::detached_events(),
         store: Arc::new(MemoryStore::new()),
         config: Arc::new(common::demo_config()),
         identity: identity.clone(),

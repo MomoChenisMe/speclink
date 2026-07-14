@@ -33,6 +33,7 @@ fn seed() -> (String, Arc<IdentitySqlite>, String, String) {
     let user_id = identity.accept_invitation(&token, "pw-correct-horse").expect("accept");
     let (_, pat) = identity.create_pat(&user_id, "cli", None).expect("pat");
     let state = AppState {
+        events: common::detached_events(),
         store: Arc::new(MemoryStore::new()),
         config: Arc::new(common::config_with_dual_repo_project()),
         identity: identity.clone(),

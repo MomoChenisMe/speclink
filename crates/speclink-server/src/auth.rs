@@ -19,7 +19,7 @@ use speclink_host::binding::{resolve_binding, BindingCandidate, BindingError};
 use speclink_host::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
 use speclink_host::policy::EffectiveWorkflowPolicy;
 use speclink_protocol::binding::{Actor as BindingActor, BindingResponse, Capabilities, ScopeRef};
-use speclink_protocol::events::{EventsDeclaration, PollingDeclaration};
+use speclink_protocol::events::{EventTransport, EventsDeclaration, PollingDeclaration, TransportKind};
 use speclink_protocol::API_VERSION;
 use speclink_store::{ProjectId, RepoId};
 use std::collections::HashMap;
@@ -54,8 +54,9 @@ impl Binding {
     }
 
     /// The `/binding` handshake response: identity, versions, and the
-    /// capability declaration (polling over `/sync-state` with ETag; no push
-    /// transport in this knife).
+    /// capability declaration — the sse push transport at `/events` (resume
+    /// supported) alongside the unchanged polling fallback over `/sync-state`
+    /// with ETag. The declared urls match the served routes.
     pub fn to_response(&self) -> BindingResponse {
         BindingResponse {
             actor: BindingActor {
@@ -78,7 +79,11 @@ impl Binding {
                 context_snapshots: false,
                 authentication: Vec::new(),
                 events: EventsDeclaration {
-                    transports: Vec::new(),
+                    transports: vec![EventTransport {
+                        kind: TransportKind::Sse,
+                        url: "/events".to_string(),
+                        resume: true,
+                    }],
                     polling: Some(PollingDeclaration {
                         url: "/sync-state".to_string(),
                         etag: true,

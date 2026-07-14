@@ -38,7 +38,8 @@ pub fn router(state: AppState) -> Router {
         .route("/language", get(routes::language))
         .route("/config", get(routes::config))
         .route("/whoami", get(routes::whoami))
-        .route("/sync-state", get(routes::sync_state));
+        .route("/sync-state", get(routes::sync_state))
+        .route("/events", get(routes::events));
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))

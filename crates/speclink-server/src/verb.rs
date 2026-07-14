@@ -31,18 +31,23 @@ pub fn scope_token(store: &dyn TeamStore, scope: &Scope) -> Result<String, Store
 }
 
 /// Run `cmd` over the binding's scope and read the resulting ETag, on the
-/// blocking pool.
+/// blocking pool. On success the scope's event broadcaster is notified so any
+/// commit's outbox events reach subscribers (决策 2).
 pub async fn run(state: &AppState, binding: &Binding, cmd: Command) -> Result<VerbResult, ApiError> {
     let store = state.store.clone();
     let ctx = binding.execution_context();
     let scope = scope_of(binding);
-    tokio::task::spawn_blocking(move || -> Result<VerbResult, ApiError> {
+    let result = tokio::task::spawn_blocking(move || -> Result<VerbResult, ApiError> {
         let execution = bridge::execute(store.as_ref(), &ctx, cmd)?;
         let etag = scope_token(store.as_ref(), &scope)?;
         Ok(VerbResult { execution, etag })
     })
     .await
-    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?
+    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
+    if result.is_ok() {
+        state.events.notify(&scope_of(binding));
+    }
+    result
 }
 
 /// The scope's ETag, read on the blocking pool. For query routes that do not
@@ -70,7 +75,7 @@ pub async fn run_write_with_if_match(
     let store = state.store.clone();
     let ctx = binding.execution_context();
     let scope = scope_of(binding);
-    tokio::task::spawn_blocking(move || -> Result<(u64, String), ApiError> {
+    let result = tokio::task::spawn_blocking(move || -> Result<(u64, String), ApiError> {
         let current = store
             .snapshot(&scope)
             .map_err(ApiError::from)?
@@ -90,7 +95,11 @@ pub async fn run_write_with_if_match(
         Ok((version, etag))
     })
     .await
-    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?
+    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
+    if result.is_ok() {
+        state.events.notify(&scope_of(binding));
+    }
+    result
 }
 
 /// Enforce the `If-Match` precondition: `0` is create-only (the document must
