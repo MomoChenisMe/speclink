@@ -4,9 +4,9 @@
 #![allow(dead_code)]
 
 use chrono::{Duration, Utc};
-use speclink_server::config::{IdentityConfig, ProjectConfig, ServerConfig, StoreConfig};
+use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
 use speclink_server::events::{EventHub, EventSettings};
-use speclink_server::identity::{IdentitySqlite, NewInvitation};
+use speclink_server::identity::{IdentityStore, IdentitySqlite, NewInvitation};
 use speclink_server::state::{AppState, SharedIdentity, SharedStore};
 use speclink_store::memory::MemoryStore;
 use std::net::TcpListener as StdListener;
@@ -34,17 +34,13 @@ pub fn start(state: AppState) -> String {
     format!("http://{addr}")
 }
 
-/// A single-project, single-repo, single-token configuration for tests.
+/// A minimal in-memory configuration for tests. The Project/Repo registry is
+/// seeded into the identity store separately (see [`seed_demo_registry`]).
 pub fn demo_config() -> ServerConfig {
     ServerConfig {
         store: StoreConfig::Memory,
         identity: IdentityConfig::Memory,
         public_url: "http://127.0.0.1".to_string(),
-        projects: vec![ProjectConfig {
-            key: "demo".to_string(),
-            name: "Demo".to_string(),
-            repos: vec!["backend".to_string()],
-        }],
         events: EventSettings::default(),
     }
 }
@@ -91,48 +87,62 @@ pub fn seed_named_pat(
     (pat, user_id)
 }
 
-/// Build an [`AppState`] over `store` and the demo configuration.
+/// Build an [`AppState`] over `store` and the demo configuration, with the demo
+/// project seeded into the registry.
 pub fn state_with(store: SharedStore) -> AppState {
     let events = EventHub::new(store.clone(), EventSettings::default());
+    let identity = empty_identity();
+    seed_demo_registry(&*identity);
     AppState {
         store,
-        identity: empty_identity(),
+        identity,
         config: Arc::new(demo_config()),
         events,
     }
 }
 
 /// Build an [`AppState`] over `store`, the demo configuration, and explicit
-/// event settings (short heartbeat / small buffer for stream tests).
+/// event settings (short heartbeat / small buffer for stream tests). The demo
+/// project is seeded into the registry.
 pub fn state_with_event_settings(store: SharedStore, settings: EventSettings) -> AppState {
     let events = EventHub::new(store.clone(), settings);
+    let identity = empty_identity();
+    seed_demo_registry(&*identity);
     AppState {
         store,
-        identity: empty_identity(),
+        identity,
         config: Arc::new(demo_config()),
         events,
     }
 }
 
-/// Build an [`AppState`] over a fresh in-memory store and `config`.
+/// Build an [`AppState`] over a fresh in-memory store and `config`, with the
+/// demo project seeded into the registry.
 pub fn state_with_config(config: ServerConfig) -> AppState {
     let store: SharedStore = Arc::new(MemoryStore::new());
     let events = EventHub::new(store.clone(), config.events.clone());
+    let identity = empty_identity();
+    seed_demo_registry(&*identity);
     AppState {
         store,
-        identity: empty_identity(),
+        identity,
         config: Arc::new(config),
         events,
     }
 }
 
-/// The demo configuration with an additional two-repo project `multi`.
-pub fn config_with_dual_repo_project() -> ServerConfig {
-    let mut config = demo_config();
-    config.projects.push(ProjectConfig {
-        key: "multi".to_string(),
-        name: "Multi".to_string(),
-        repos: vec!["web".to_string(), "api".to_string()],
-    });
-    config
+/// Seed the default demo project (repo `backend`) into the registry — the
+/// registry equivalent of what `demo_config` used to declare. The state builders
+/// call this, so binding-exercising tests need no per-test registry seeding.
+pub fn seed_demo_registry(identity: &dyn IdentityStore) {
+    identity.create_project("demo", "Demo").expect("seed demo project");
+    identity.create_repo("demo", "backend", "backend").expect("seed demo repo");
+}
+
+/// Additionally register the two-repo `multi` project (repos `web`, `api`) — for
+/// the ambiguous-repo and membership tests that need a second project.
+pub fn seed_multi_project(identity: &dyn IdentityStore) {
+    identity.create_project("multi", "Multi").expect("seed multi project");
+    identity.create_repo("multi", "web", "web").expect("seed multi web repo");
+    identity.create_repo("multi", "api", "api").expect("seed multi api repo");
 }

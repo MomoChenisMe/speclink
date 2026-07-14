@@ -6,8 +6,8 @@
 
 use crate::identity::{
     hash_password, hash_token, random_token, user_code, verify_password, DeviceAuthorization,
-    DeviceFamily, DevicePoll, IdentityError, IdentityStore, Invitation, NewInvitation, Pat,
-    RefreshOutcome, SessionInfo, TokenPair, User,
+    DeviceFamily, DevicePoll, IdentityError, IdentityStore, Invitation, NewInvitation, Pat, Project,
+    RefreshOutcome, Repo, SessionInfo, TokenPair, User,
 };
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -17,7 +17,7 @@ use std::sync::{Mutex, MutexGuard};
 /// The schema version this server reads and writes. A database recording a
 /// higher version is refused; a lower one is migrated up. Bump and add a
 /// migration when the shape changes.
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 
 /// The marker written to `meta` that distinguishes a speclink identity store
 /// from an unrelated SQLite file.
@@ -129,6 +129,36 @@ CREATE TABLE refresh_credentials (
 );
 ";
 
+/// The Project/Repo registry tables (schema version 3, 决策 1). Held apart from
+/// [`SCHEMA_SQL`] so the same statements both extend a fresh database and migrate
+/// an older one: a project keyed by its URL key, and repos scoped to a project by
+/// a composite key so the same repo key can recur across projects.
+const REGISTRY_SCHEMA_SQL: &str = "\
+CREATE TABLE projects (
+    key  TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL
+);
+CREATE TABLE repos (
+    project_key TEXT NOT NULL,
+    key         TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    PRIMARY KEY (project_key, key)
+);
+";
+
+/// The first-run bootstrap setup token record (schema version 3, 決策 3): a
+/// single hashed token with an expiry, minted only while no admin exists and
+/// consumed once setup completes. Added in the same version bump as the registry.
+const SETUP_SCHEMA_SQL: &str = "\
+CREATE TABLE setup_tokens (
+    id          TEXT PRIMARY KEY NOT NULL,
+    token_hash  TEXT NOT NULL UNIQUE,
+    expires_at  TEXT NOT NULL,
+    consumed_at TEXT,
+    created_at  TEXT NOT NULL
+);
+";
+
 /// A SQLite-backed identity store. Reads and writes are serialized behind a
 /// mutex — identity lookups are light single-row queries in the single-node
 /// design, so per-request locking is acceptable (決策 5).
@@ -190,12 +220,12 @@ impl IdentitySqlite {
         };
 
         // Past the gate: a fresh database is initialized at the current version;
-        // an older one is migrated up. Both add the device tables.
+        // an older one is migrated up. A fresh init lays down every table.
         conn.execute_batch("PRAGMA foreign_keys=ON;").map_err(open_err)?;
         match existing_version {
             None => {
                 conn.execute_batch(&format!(
-                    "BEGIN;\n{SCHEMA_SQL}{DEVICE_SCHEMA_SQL}INSERT INTO meta (key, value) VALUES ('format', '{IDENTITY_MARKER}');\nINSERT INTO meta (key, value) VALUES ('schema_version', '{SCHEMA_VERSION}');\nCOMMIT;"
+                    "BEGIN;\n{SCHEMA_SQL}{DEVICE_SCHEMA_SQL}{REGISTRY_SCHEMA_SQL}{SETUP_SCHEMA_SQL}INSERT INTO meta (key, value) VALUES ('format', '{IDENTITY_MARKER}');\nINSERT INTO meta (key, value) VALUES ('schema_version', '{SCHEMA_VERSION}');\nCOMMIT;"
                 ))
                 .map_err(open_err)?;
             }
@@ -442,6 +472,172 @@ impl IdentityStore for IdentitySqlite {
             .optional()
             .map_err(backend)?;
         Ok(found.is_some())
+    }
+
+    fn list_projects(&self) -> Result<Vec<Project>, IdentityError> {
+        let guard = self.conn();
+        let mut stmt = guard
+            .prepare("SELECT key, name FROM projects ORDER BY key")
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map([], |r| Ok(Project { key: r.get(0)?, name: r.get(1)? }))
+            .map_err(backend)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(backend)
+    }
+
+    fn get_project(&self, key: &str) -> Result<Option<Project>, IdentityError> {
+        self.conn()
+            .query_row(
+                "SELECT key, name FROM projects WHERE key = ?1",
+                params![key],
+                |r| Ok(Project { key: r.get(0)?, name: r.get(1)? }),
+            )
+            .optional()
+            .map_err(backend)
+    }
+
+    fn list_repos(&self, project_key: &str) -> Result<Vec<Repo>, IdentityError> {
+        let guard = self.conn();
+        let mut stmt = guard
+            .prepare("SELECT key, name FROM repos WHERE project_key = ?1 ORDER BY key")
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map(params![project_key], |r| Ok(Repo { key: r.get(0)?, name: r.get(1)? }))
+            .map_err(backend)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(backend)
+    }
+
+    fn create_project(&self, key: &str, name: &str) -> Result<(), IdentityError> {
+        let guard = self.conn();
+        // Serialized behind the store mutex, so a check-then-insert is race-free.
+        let exists: Option<i64> = guard
+            .query_row("SELECT 1 FROM projects WHERE key = ?1", params![key], |r| r.get(0))
+            .optional()
+            .map_err(backend)?;
+        if exists.is_some() {
+            return Err(IdentityError::Duplicate(format!("project '{key}' already exists")));
+        }
+        guard
+            .execute("INSERT INTO projects (key, name) VALUES (?1, ?2)", params![key, name])
+            .map(|_| ())
+            .map_err(backend)
+    }
+
+    fn create_repo(&self, project_key: &str, key: &str, name: &str) -> Result<(), IdentityError> {
+        let guard = self.conn();
+        let exists: Option<i64> = guard
+            .query_row(
+                "SELECT 1 FROM repos WHERE project_key = ?1 AND key = ?2",
+                params![project_key, key],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        if exists.is_some() {
+            return Err(IdentityError::Duplicate(format!(
+                "repo '{key}' already exists in project '{project_key}'"
+            )));
+        }
+        guard
+            .execute(
+                "INSERT INTO repos (project_key, key, name) VALUES (?1, ?2, ?3)",
+                params![project_key, key, name],
+            )
+            .map(|_| ())
+            .map_err(backend)
+    }
+
+    fn has_admin(&self) -> Result<bool, IdentityError> {
+        let found: Option<i64> = self
+            .conn()
+            .query_row("SELECT 1 FROM users WHERE admin = 1 AND active = 1 LIMIT 1", [], |r| r.get(0))
+            .optional()
+            .map_err(backend)?;
+        Ok(found.is_some())
+    }
+
+    fn has_valid_setup_token(&self) -> Result<bool, IdentityError> {
+        let found: Option<i64> = self
+            .conn()
+            .query_row(
+                "SELECT 1 FROM setup_tokens WHERE consumed_at IS NULL AND expires_at > ?1 LIMIT 1",
+                params![now()],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        Ok(found.is_some())
+    }
+
+    fn create_setup_token(&self, ttl: Duration) -> Result<String, IdentityError> {
+        let plaintext = format!("spk_setup_{}", random_token());
+        let now = Utc::now();
+        let mut guard = self.conn();
+        let tx = guard.transaction().map_err(backend)?;
+        // Only one setup token stands at a time: minting a fresh one retires any
+        // prior (作廢), so an expired-then-regenerated old value is dead.
+        tx.execute("DELETE FROM setup_tokens", []).map_err(backend)?;
+        tx.execute(
+            "INSERT INTO setup_tokens (id, token_hash, expires_at, consumed_at, created_at) VALUES (?1, ?2, ?3, NULL, ?4)",
+            params![new_id("setup"), hash_token(&plaintext), ts(now + ttl), ts(now)],
+        )
+        .map_err(backend)?;
+        tx.commit().map_err(backend)?;
+        Ok(plaintext)
+    }
+
+    fn is_valid_setup_token(&self, token: &str) -> Result<bool, IdentityError> {
+        let found: Option<i64> = self
+            .conn()
+            .query_row(
+                "SELECT 1 FROM setup_tokens WHERE token_hash = ?1 AND consumed_at IS NULL AND expires_at > ?2",
+                params![hash_token(token), now()],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        Ok(found.is_some())
+    }
+
+    fn consume_setup_token(&self, token: &str) -> Result<(), IdentityError> {
+        self.conn()
+            .execute(
+                "UPDATE setup_tokens SET consumed_at = ?2 WHERE token_hash = ?1 AND consumed_at IS NULL",
+                params![hash_token(token), now()],
+            )
+            .map(|_| ())
+            .map_err(backend)
+    }
+
+    fn create_admin_user(
+        &self,
+        email: &str,
+        display: &str,
+        password: &str,
+    ) -> Result<String, IdentityError> {
+        let password_hash = hash_password(password)?;
+        let guard = self.conn();
+        let exists: Option<i64> = guard
+            .query_row("SELECT 1 FROM users WHERE email = ?1 LIMIT 1", params![email], |r| r.get(0))
+            .optional()
+            .map_err(backend)?;
+        if exists.is_some() {
+            return Err(IdentityError::Duplicate(format!("a user already exists for '{email}'")));
+        }
+        let user_id = new_id("usr");
+        guard
+            .execute(
+                "INSERT INTO users (id, display, email, password_hash, active, admin, created_at) VALUES (?1, ?2, ?3, ?4, 1, 1, ?5)",
+                params![user_id, display, email, password_hash, now()],
+            )
+            .map_err(backend)?;
+        Ok(user_id)
+    }
+
+    fn schema_version(&self) -> Result<u32, IdentityError> {
+        meta_value(&self.conn(), "schema_version")?
+            .and_then(|v| v.parse::<u32>().ok())
+            .ok_or_else(|| IdentityError::Backend("identity schema version missing".into()))
     }
 
     fn create_session(&self, user_id: &str, ttl: Duration) -> Result<String, IdentityError> {
@@ -1022,11 +1218,18 @@ fn invitation_memberships(conn: &Connection, invitation_id: &str) -> Result<Vec<
 /// Migrate an identity database from `from` up to [`SCHEMA_VERSION`], one step
 /// at a time. Each step only adds tables and never touches existing rows, so
 /// the users, memberships, PATs and sessions a prior version wrote survive
-/// intact. Runs in a transaction so a partial migration never lands.
+/// intact. Each step runs in its own transaction so a partial migration never
+/// lands. A version-1 database walks every step (1 → 2 → 3).
 fn migrate(conn: &Connection, from: u32) -> Result<(), IdentityError> {
     if from <= 1 {
         conn.execute_batch(&format!(
             "BEGIN;\n{DEVICE_SCHEMA_SQL}UPDATE meta SET value = '2' WHERE key = 'schema_version';\nCOMMIT;"
+        ))
+        .map_err(open_err)?;
+    }
+    if from <= 2 {
+        conn.execute_batch(&format!(
+            "BEGIN;\n{REGISTRY_SCHEMA_SQL}{SETUP_SCHEMA_SQL}UPDATE meta SET value = '3' WHERE key = 'schema_version';\nCOMMIT;"
         ))
         .map_err(open_err)?;
     }

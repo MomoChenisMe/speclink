@@ -100,6 +100,23 @@ fn run_server(args: RunArgs) -> ExitCode {
         }
     };
 
+    // First-run bootstrap (決策 3): while no admin exists and no live token
+    // stands, mint a one-time setup token and print it once — the only place its
+    // plaintext ever appears. An operator opens /setup with it to finish setup.
+    match speclink_server::setup::ensure_setup_token(identity.as_ref()) {
+        Ok(Some(token)) => {
+            let base = config.public_url.trim_end_matches('/');
+            println!(
+                "Speclink 首次啟動：開啟 {base}/setup?token={token} 完成初始設定（此連結 24 小時內有效，且僅顯示這一次）。"
+            );
+        }
+        Ok(None) => {}
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    }
+
     let events = EventHub::new(store.clone(), config.events.clone());
     let state = AppState { store, identity, config: Arc::new(config), events };
     let runtime = match tokio::runtime::Runtime::new() {
@@ -139,6 +156,28 @@ fn run_invite(args: InviteArgs) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+
+    // Every --project must name a registered project (決策 5): the registry lives
+    // in the identity store now, not the config. An unregistered key is refused
+    // non-zero, listing the registered keys.
+    let registered: Vec<String> = match store.list_projects() {
+        Ok(projects) => projects.into_iter().map(|p| p.key).collect(),
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    for project in &args.projects {
+        if !registered.iter().any(|k| k == project) {
+            let listed = if registered.is_empty() {
+                "(none registered)".to_string()
+            } else {
+                registered.join(", ")
+            };
+            eprintln!("project '{project}' is not registered; registered projects: {listed}");
+            return ExitCode::FAILURE;
+        }
+    }
 
     let invitation = NewInvitation {
         email: args.email,

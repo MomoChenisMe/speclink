@@ -4,6 +4,7 @@
 use crate::auth::Binding;
 use crate::device;
 use crate::routes;
+use crate::setup;
 use crate::state::AppState;
 use crate::web;
 use axum::extract::State;
@@ -43,6 +44,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
+        .route("/setup", get(setup::setup_page).post(setup::setup_submit))
         .route("/invite/{token}", get(web::invite_page).post(web::accept_invite))
         .route("/login", get(web::login_page).post(web::do_login))
         .route("/logout", post(web::do_logout))

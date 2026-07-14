@@ -72,7 +72,8 @@ fn unregistered_repo_header_is_not_found() {
 
 #[test]
 fn ambiguous_repo_without_a_header_is_refused_and_names_candidates() {
-    let state = common::state_with_config(common::config_with_dual_repo_project());
+    let state = common::state_with_config(common::demo_config());
+    common::seed_multi_project(&*state.identity);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo", "multi"]);
     let base = common::start(state);
     let (_status, err) = error_of(get_binding(&base, "multi", &pat, API_VERSION, None));

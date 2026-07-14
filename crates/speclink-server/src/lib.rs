@@ -14,6 +14,7 @@ pub mod events;
 pub mod identity;
 pub mod identity_sqlite;
 pub mod routes;
+pub mod setup;
 pub mod state;
 pub mod verb;
 pub mod web;

@@ -208,16 +208,18 @@ pub async fn whoami(
     binding: Binding,
 ) -> Result<Response, ApiError> {
     let etag = verb::scope_etag(&state, &binding).await?;
+    let repos = state
+        .identity
+        .list_repos(&binding.project.key)
+        .map_err(|_| ApiError::internal("identity store unavailable"))?;
     let dto = WhoamiResponse {
         user: WhoamiUser {
             name: binding.actor.display.clone(),
             handle: binding.actor.id.clone(),
         },
-        repos: binding
-            .project
-            .repos
+        repos: repos
             .iter()
-            .map(|r| WhoamiRepo { name: r.clone(), git_url: String::new() })
+            .map(|r| WhoamiRepo { name: r.key.clone(), git_url: String::new() })
             .collect(),
     };
     Ok(ok(dto, &etag))

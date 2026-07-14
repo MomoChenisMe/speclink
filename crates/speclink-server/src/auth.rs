@@ -8,9 +8,9 @@
 //! Host's `resolve_binding`, which never auto-picks). Any step's failure stops
 //! the request before the verb runs.
 
-use crate::config::{ActorConfig, ProjectConfig};
+use crate::config::ActorConfig;
 use crate::error::ApiError;
-use crate::identity::User;
+use crate::identity::{Project, Repo, User};
 use crate::state::AppState;
 use axum::extract::{FromRequestParts, Path};
 use axum::http::request::Parts;
@@ -28,11 +28,11 @@ use std::collections::HashMap;
 const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// A resolved request identity: the authenticated actor, the registered
-/// project, and the bound repo key.
+/// project (from the registry), and the bound repo key.
 #[derive(Debug, Clone)]
 pub struct Binding {
     pub actor: ActorConfig,
-    pub project: ProjectConfig,
+    pub project: Project,
     pub repo: String,
 }
 
@@ -126,7 +126,8 @@ impl FromRequestParts<AppState> for Binding {
             (user, Some(pat.id))
         };
 
-        // 2. project key → registered project (unregistered → not found)
+        // 2. project key → registered project, read from the registry
+        //    (unregistered → not found; a store failure → internal).
         let params = Path::<HashMap<String, String>>::from_request_parts(parts, state)
             .await
             .map_err(|_| ApiError::not_found("project not found"))?;
@@ -135,12 +136,10 @@ impl FromRequestParts<AppState> for Binding {
             .cloned()
             .ok_or_else(|| ApiError::not_found("project not found"))?;
         let project = state
-            .config
-            .projects
-            .iter()
-            .find(|p| p.key == key)
-            .ok_or_else(|| ApiError::not_found(format!("project '{key}' not found")))?
-            .clone();
+            .identity
+            .get_project(&key)
+            .map_err(|_| ApiError::internal("identity store unavailable"))?
+            .ok_or_else(|| ApiError::not_found(format!("project '{key}' not found")))?;
 
         // 3. membership: a valid token whose user is not a member of the URL
         //    project is 403, distinct from the 401 of an invalid token.
@@ -167,8 +166,13 @@ impl FromRequestParts<AppState> for Binding {
         }
 
         // 5. repo adjudication (explicit must be registered; absent binds the
-        //    sole repo or refuses as ambiguous)
-        let repo = resolve_repo(&project, header(parts, "x-speclink-repo"))?;
+        //    sole repo or refuses as ambiguous). The candidate repos come from
+        //    the registry.
+        let repos = state
+            .identity
+            .list_repos(&project.key)
+            .map_err(|_| ApiError::internal("identity store unavailable"))?;
+        let repo = resolve_repo(&project.key, &repos, header(parts, "x-speclink-repo"))?;
 
         // The request authenticated. A PAT's last-used advances best-effort — a
         // metering write failure never fails the request; an access token keeps
@@ -183,43 +187,40 @@ impl FromRequestParts<AppState> for Binding {
 }
 
 /// Adjudicate the repo for a request, fail closed. Reuses the Host's
-/// `resolve_binding` for the no-header case so ambiguity never auto-picks.
-fn resolve_repo(project: &ProjectConfig, repo_header: Option<String>) -> Result<String, ApiError> {
+/// `resolve_binding` for the no-header case so ambiguity never auto-picks. The
+/// candidate `repos` come from the registry; the error classification and
+/// messages are byte-identical to the config-registry era.
+fn resolve_repo(project_key: &str, repos: &[Repo], repo_header: Option<String>) -> Result<String, ApiError> {
     if let Some(repo) = repo_header {
-        return if project.repos.iter().any(|r| *r == repo) {
+        return if repos.iter().any(|r| r.key == repo) {
             Ok(repo)
         } else {
             Err(ApiError::not_found(format!(
-                "repo '{repo}' is not registered in project '{}'",
-                project.key
+                "repo '{repo}' is not registered in project '{project_key}'"
             )))
         };
     }
-    let candidates: Vec<BindingCandidate> = project
-        .repos
+    let candidates: Vec<BindingCandidate> = repos
         .iter()
         .map(|r| BindingCandidate {
-            project: ProjectId::new(project.key.clone()),
-            repo: RepoId::new(r.clone()),
-            project_key: project.key.clone(),
-            repo_key: r.clone(),
+            project: ProjectId::new(project_key.to_string()),
+            repo: RepoId::new(r.key.clone()),
+            project_key: project_key.to_string(),
+            repo_key: r.key.clone(),
             permitted: true,
         })
         .collect();
     match resolve_binding(candidates) {
         Ok(binding) => Ok(binding.repo.as_str().to_string()),
         Err(BindingError::Missing) => Err(ApiError::not_found(format!(
-            "project '{}' has no registered repo",
-            project.key
+            "project '{project_key}' has no registered repo"
         ))),
         Err(BindingError::Ambiguous { candidates }) => Err(ApiError::refused(format!(
-            "project '{}' registers multiple repos — specify one with X-Speclink-Repo (candidates: {})",
-            project.key,
+            "project '{project_key}' registers multiple repos — specify one with X-Speclink-Repo (candidates: {})",
             candidates.join(", ")
         ))),
         Err(BindingError::PermissionDenied { .. }) => Err(ApiError::permission_denied(format!(
-            "no permitted repo in project '{}'",
-            project.key
+            "no permitted repo in project '{project_key}'"
         ))),
     }
 }

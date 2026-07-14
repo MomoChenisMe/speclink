@@ -66,3 +66,16 @@ fn a_residual_tokens_section_exits_non_zero_naming_its_replacement() {
         "stderr says the tokens section is replaced by the identity store: {stderr}"
     );
 }
+
+#[test]
+fn a_residual_projects_section_exits_non_zero_naming_its_replacement() {
+    let (out, _file) = run_with_contents(
+        "store:\n  driver: memory\nidentity:\n  driver: memory\nprojects:\n  - key: demo\n    repos:\n      - backend\n",
+    );
+    assert!(!out.status.success(), "a retired projects section must fail startup");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("registry"),
+        "stderr says the projects section is replaced by the registry: {stderr}"
+    );
+}
