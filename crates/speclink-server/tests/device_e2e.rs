@@ -95,7 +95,7 @@ fn device_flow_end_to_end_over_a_real_sqlite_server() {
 
     // A real SQLite team store, behind the real router.
     let store = speclink_server::build_store(&StoreConfig::Sqlite { path: store_path }).expect("store");
-    let state = AppState { store, identity: identity.clone(), config: Arc::new(common::demo_config()) };
+    let state = AppState { store, identity: identity.clone(), config: Arc::new(common::demo_config()), events: common::detached_events() };
     let base = common::start(state);
 
     // 1. initiate → two codes.

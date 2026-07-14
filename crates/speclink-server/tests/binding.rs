@@ -7,6 +7,7 @@ mod common;
 
 use speclink_protocol::binding::BindingResponse;
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
+use speclink_protocol::events::TransportKind;
 use speclink_protocol::API_VERSION;
 
 /// `GET {project}/binding` with the given credentials and headers.
@@ -115,9 +116,14 @@ fn a_compatible_request_returns_the_binding_with_capabilities() {
     assert_eq!(binding.api_version, API_VERSION);
     assert!(!binding.engine_version.is_empty(), "engine version is declared");
 
+    // capabilities declare the sse push transport alongside the unchanged
+    // polling fallback (reference-server「capabilities 宣告含 sse 與 polling」).
     let events = &binding.capabilities.events;
-    assert!(events.transports.is_empty(), "no push transport is declared");
+    assert_eq!(events.transports.len(), 1, "one push transport is declared");
+    assert_eq!(events.transports[0].kind, TransportKind::Sse, "it is the sse transport");
+    assert_eq!(events.transports[0].url, "/events", "the url is the event endpoint");
+    assert!(events.transports[0].resume, "resume is declared true");
     let polling = events.polling.as_ref().expect("polling is declared");
-    assert_eq!(polling.url, "/sync-state");
+    assert_eq!(polling.url, "/sync-state", "polling is unchanged");
     assert!(polling.etag, "etag polling is declared");
 }

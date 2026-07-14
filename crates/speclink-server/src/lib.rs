@@ -10,6 +10,7 @@ pub mod auth;
 pub mod config;
 pub mod device;
 pub mod error;
+pub mod events;
 pub mod identity;
 pub mod identity_sqlite;
 pub mod routes;

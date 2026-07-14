@@ -56,7 +56,7 @@ code:
 ---
 ### Requirement: binding 與認證前置 fail closed
 
-所有路由 SHALL 前置認證與 binding 裁決：bearer 憑證缺失或無效 SHALL 回 401 permission_denied——憑證查驗對 identity 儲存逐請求進行（hash 命中、未撤銷、未過期、所屬 user 為 active），SHALL NOT 存在組態檔靜態 token 表的認證路徑；actor 非 URL project 的 member SHALL 回 403 permission_denied。project key 未註冊 SHALL 回 404 not_found；X-Speclink-Repo 標頭指向未註冊 repo SHALL 回 not_found；缺標頭且該 project 註冊多個 repo SHALL 拒絕並於 message 指出候選需明示，SHALL NOT 自動選擇；恰一個 repo 時 SHALL 綁定之。X-Speclink-Api-Version 與 server 不相容 SHALL 拒絕並帶版本原因。前置任一步失敗 SHALL NOT 執行動詞。/binding SHALL 回 actor、project、repo、apiVersion、engineVersion 與 capabilities（宣告 polling 端點與 etag 支援；本能力不宣告 push transport）。
+所有路由 SHALL 前置認證與 binding 裁決：bearer 憑證缺失或無效 SHALL 回 401 permission_denied——憑證查驗對 identity 儲存逐請求進行（hash 命中、未撤銷、未過期、所屬 user 為 active），SHALL NOT 存在組態檔靜態 token 表的認證路徑；actor 非 URL project 的 member SHALL 回 403 permission_denied。project key 未註冊 SHALL 回 404 not_found；X-Speclink-Repo 標頭指向未註冊 repo SHALL 回 not_found；缺標頭且該 project 註冊多個 repo SHALL 拒絕並於 message 指出候選需明示，SHALL NOT 自動選擇；恰一個 repo 時 SHALL 綁定之。X-Speclink-Api-Version 與 server 不相容 SHALL 拒絕並帶版本原因。前置任一步失敗 SHALL NOT 執行動詞。/binding SHALL 回 actor、project、repo、apiVersion、engineVersion 與 capabilities——宣告 polling 端點與 etag 支援，並宣告 sse push transport（事件端點 url 與 resume 支援），宣告 SHALL 與實際服務的端點一致。
 
 #### Scenario: 未知 token 拒於門外
 
@@ -73,36 +73,40 @@ code:
 - **WHEN** 以 /account 建立的有效 PAT 對 actor 具 membership 的 project 呼叫 /binding
 - **THEN** 回成功 binding，actor 為該 PAT 所屬 user 的身分
 
----
+#### Scenario: capabilities 宣告含 sse 與 polling
+
+- **WHEN** 完成相容的 /binding handshake
+- **THEN** capabilities 的 events 宣告同時含 sse transport（resume 為 true）與既有 polling 宣告
 
 
 <!-- @trace
-source: server-identity-pat
+source: server-sse-events
 updated: 2026-07-14
 code:
   - Cargo.lock
+  - crates/speclink-protocol/src/events.rs
   - crates/speclink-server/Cargo.toml
   - crates/speclink-server/src/app.rs
   - crates/speclink-server/src/auth.rs
   - crates/speclink-server/src/config.rs
-  - crates/speclink-server/src/identity.rs
-  - crates/speclink-server/src/identity_sqlite.rs
+  - crates/speclink-server/src/events.rs
   - crates/speclink-server/src/lib.rs
   - crates/speclink-server/src/main.rs
+  - crates/speclink-server/src/routes.rs
   - crates/speclink-server/src/state.rs
-  - crates/speclink-server/src/web.rs
+  - crates/speclink-server/src/verb.rs
+  - crates/speclink-server/tests/auth_device.rs
   - crates/speclink-server/tests/auth_pat.rs
   - crates/speclink-server/tests/binding.rs
-  - crates/speclink-server/tests/command_routes.rs
   - crates/speclink-server/tests/common/mod.rs
-  - crates/speclink-server/tests/discussion_routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/identity.rs
-  - crates/speclink-server/tests/invite.rs
+  - crates/speclink-server/tests/device_e2e.rs
+  - crates/speclink-server/tests/device_flow.rs
   - crates/speclink-server/tests/query_routes.rs
-  - crates/speclink-server/tests/startup.rs
-  - crates/speclink-server/tests/sync_state.rs
+  - crates/speclink-server/tests/refresh_rotation.rs
+  - crates/speclink-server/tests/sse_events.rs
   - crates/speclink-server/tests/web_account.rs
+  - crates/speclink-server/tests/web_activate.rs
+  - crates/speclink-server/tests/web_device_sessions.rs
   - crates/speclink-server/tests/web_invite.rs
 -->
 

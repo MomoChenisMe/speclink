@@ -35,6 +35,7 @@ fn seed() -> (String, Arc<IdentitySqlite>, PathBuf, tempfile::TempDir, String) {
     let user_id = identity.accept_invitation(&token, "pw-correct-horse").expect("accept");
     // A second project `multi` the user is NOT a member of, for the 403 path.
     let state = AppState {
+        events: common::detached_events(),
         store: Arc::new(MemoryStore::new()),
         config: Arc::new(common::config_with_dual_repo_project()),
         identity: identity.clone(),

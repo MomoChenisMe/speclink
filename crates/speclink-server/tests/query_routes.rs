@@ -34,6 +34,7 @@ fn seeded_base() -> (String, String, String) {
     store.commit(uow, Vec::new()).expect("seed commit");
 
     let state = AppState {
+        events: common::detached_events(),
         store: Arc::new(store),
         identity: common::empty_identity(),
         config: Arc::new(common::demo_config()),

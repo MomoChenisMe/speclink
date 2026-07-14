@@ -8,8 +8,10 @@
 //! reason pointing at the file — never a partial-default start. Authentication
 //! is the identity store's PATs; the old bootstrap `tokens` section is gone.
 
+use crate::events::EventSettings;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// The store drivers the server can bind. `sqlite` is the default persistent
 /// option; `memory` exists only for test configurations.
@@ -24,6 +26,9 @@ pub struct ServerConfig {
     /// The server's external origin, used to build invite URLs and to validate
     /// the Origin of change-making POSTs (決策 4).
     pub public_url: String,
+    /// Event-stream tunables (retention, connection buffer, heartbeat). An
+    /// absent `events` section uses the defaults; a malformed one fails startup.
+    pub events: EventSettings,
 }
 
 /// The store backend to bind.
@@ -123,10 +128,24 @@ struct RawConfig {
     identity: Option<RawIdentity>,
     #[serde(default)]
     public_url: Option<String>,
+    /// Event-stream tunables. Absent → all defaults; a malformed shape fails the
+    /// whole parse (fail closed), like any other config error.
+    #[serde(default)]
+    events: Option<RawEvents>,
     /// Presence detection for the retired bootstrap `tokens` section: any value
     /// here fails startup with a reason.
     #[serde(default)]
     tokens: Option<serde_yaml::Value>,
+}
+
+#[derive(Deserialize)]
+struct RawEvents {
+    #[serde(default)]
+    retention: Option<u64>,
+    #[serde(default)]
+    buffer: Option<usize>,
+    #[serde(default)]
+    heartbeat_secs: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -222,7 +241,19 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
         .public_url
         .unwrap_or_else(|| "http://localhost:8080".to_string());
 
-    Ok(ServerConfig { store, projects, identity, public_url })
+    // An absent section is all defaults; a present one overrides only the
+    // fields it names. A malformed shape already failed the parse above.
+    let defaults = EventSettings::default();
+    let events = match raw.events {
+        Some(e) => EventSettings {
+            retention: e.retention.unwrap_or(defaults.retention),
+            buffer: e.buffer.unwrap_or(defaults.buffer),
+            heartbeat: e.heartbeat_secs.map(Duration::from_secs).unwrap_or(defaults.heartbeat),
+        },
+        None => defaults,
+    };
+
+    Ok(ServerConfig { store, projects, identity, public_url, events })
 }
 
 #[cfg(test)]
@@ -347,5 +378,32 @@ mod tests {
     fn sqlite_without_a_path_fails_closed() {
         let err = load_text("store:\n  driver: sqlite\n").expect_err("sqlite needs a path");
         assert!(matches!(err, ConfigError::MissingField { field, .. } if field == "store.path"));
+    }
+
+    #[test]
+    fn an_absent_events_section_uses_all_defaults() {
+        let cfg = load_text("store:\n  driver: memory\nidentity:\n  driver: memory\n").expect("loads");
+        assert_eq!(cfg.events, EventSettings::default(), "no events section means all defaults");
+    }
+
+    #[test]
+    fn an_events_section_overrides_only_the_fields_it_names() {
+        let cfg = load_text(
+            "store:\n  driver: memory\nidentity:\n  driver: memory\nevents:\n  retention: 8\n  heartbeat_secs: 5\n",
+        )
+        .expect("loads");
+        let defaults = EventSettings::default();
+        assert_eq!(cfg.events.retention, 8, "a named field overrides");
+        assert_eq!(cfg.events.heartbeat, Duration::from_secs(5));
+        assert_eq!(cfg.events.buffer, defaults.buffer, "an unnamed field keeps its default");
+    }
+
+    #[test]
+    fn a_malformed_events_section_fails_closed() {
+        let err = load_text(
+            "store:\n  driver: memory\nidentity:\n  driver: memory\nevents:\n  retention: not-a-number\n",
+        )
+        .expect_err("a bad events shape fails startup");
+        assert!(matches!(err, ConfigError::Unparseable { .. }), "shape mismatch is a parse failure");
     }
 }

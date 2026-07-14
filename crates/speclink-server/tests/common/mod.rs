@@ -5,6 +5,7 @@
 
 use chrono::{Duration, Utc};
 use speclink_server::config::{IdentityConfig, ProjectConfig, ServerConfig, StoreConfig};
+use speclink_server::events::{EventHub, EventSettings};
 use speclink_server::identity::{IdentitySqlite, NewInvitation};
 use speclink_server::state::{AppState, SharedIdentity, SharedStore};
 use speclink_store::memory::MemoryStore;
@@ -44,6 +45,7 @@ pub fn demo_config() -> ServerConfig {
             name: "Demo".to_string(),
             repos: vec!["backend".to_string()],
         }],
+        events: EventSettings::default(),
     }
 }
 
@@ -53,15 +55,32 @@ pub fn empty_identity() -> SharedIdentity {
     Arc::new(IdentitySqlite::open_memory().expect("in-memory identity store"))
 }
 
+/// An event hub over a throwaway store, for tests that build [`AppState`]
+/// directly but never exercise the event stream (auth, web, device flows).
+pub fn detached_events() -> Arc<EventHub> {
+    EventHub::new(Arc::new(MemoryStore::new()), EventSettings::default())
+}
+
 /// Seed a user (display [`SEED_DISPLAY`]) that is a member of every project in
 /// `projects`, plus a PAT. Returns the PAT plaintext (the bearer to send) and
 /// the new user's id (the actor id to expect). Call on `state.identity` before
 /// [`start`] moves the state.
 pub fn seed_pat(identity: &SharedIdentity, projects: &[&str]) -> (String, String) {
+    seed_named_pat(identity, "tester@example.com", SEED_DISPLAY, projects)
+}
+
+/// Seed a user with `email`/`display` (a member of `projects`) plus a PAT, so a
+/// test can hold two distinct identities. Returns the PAT plaintext and user id.
+pub fn seed_named_pat(
+    identity: &SharedIdentity,
+    email: &str,
+    display: &str,
+    projects: &[&str],
+) -> (String, String) {
     let token = identity
         .create_invitation(NewInvitation {
-            email: "tester@example.com".to_string(),
-            display: SEED_DISPLAY.to_string(),
+            email: email.to_string(),
+            display: display.to_string(),
             memberships: projects.iter().map(|p| p.to_string()).collect(),
             admin: false,
             expires_at: Utc::now() + Duration::days(1),
@@ -74,19 +93,36 @@ pub fn seed_pat(identity: &SharedIdentity, projects: &[&str]) -> (String, String
 
 /// Build an [`AppState`] over `store` and the demo configuration.
 pub fn state_with(store: SharedStore) -> AppState {
+    let events = EventHub::new(store.clone(), EventSettings::default());
     AppState {
         store,
         identity: empty_identity(),
         config: Arc::new(demo_config()),
+        events,
+    }
+}
+
+/// Build an [`AppState`] over `store`, the demo configuration, and explicit
+/// event settings (short heartbeat / small buffer for stream tests).
+pub fn state_with_event_settings(store: SharedStore, settings: EventSettings) -> AppState {
+    let events = EventHub::new(store.clone(), settings);
+    AppState {
+        store,
+        identity: empty_identity(),
+        config: Arc::new(demo_config()),
+        events,
     }
 }
 
 /// Build an [`AppState`] over a fresh in-memory store and `config`.
 pub fn state_with_config(config: ServerConfig) -> AppState {
+    let store: SharedStore = Arc::new(MemoryStore::new());
+    let events = EventHub::new(store.clone(), config.events.clone());
     AppState {
-        store: Arc::new(MemoryStore::new()),
+        store,
         identity: empty_identity(),
         config: Arc::new(config),
+        events,
     }
 }
 

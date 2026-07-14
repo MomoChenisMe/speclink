@@ -1,6 +1,7 @@
 //! Shared application state handed to every route handler.
 
 use crate::config::ServerConfig;
+use crate::events::EventHub;
 use crate::identity::IdentityStore;
 use speclink_store::TeamStore;
 use std::sync::Arc;
@@ -13,11 +14,13 @@ pub type SharedStore = Arc<dyn TeamStore + Send + Sync>;
 /// web entry both resolve identity through it.
 pub type SharedIdentity = Arc<dyn IdentityStore>;
 
-/// State every handler receives: the store backend, the identity store, and the
-/// validated configuration (Project/Repo registry and public origin).
+/// State every handler receives: the store backend, the identity store, the
+/// validated configuration (Project/Repo registry and public origin), and the
+/// per-scope event broadcaster fed from the store's outbox.
 #[derive(Clone)]
 pub struct AppState {
     pub store: SharedStore,
     pub identity: SharedIdentity,
     pub config: Arc<ServerConfig>,
+    pub events: Arc<EventHub>,
 }
