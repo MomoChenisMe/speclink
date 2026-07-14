@@ -31,3 +31,4 @@ chrono = { workspace = true }
 tempfile = "3"
 speclink-remote = { path = "../speclink-remote" }
 ureq = { version = "2", features = ["json"] }
+sha2 = "0.10"

@@ -71,6 +71,72 @@ pub struct SessionInfo {
     pub revoked_at: Option<DateTime<Utc>>,
 }
 
+/// The plaintext codes and metadata from initiating a device authorization. The
+/// two codes are returned only here; the store keeps only their hashes (決策 2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceAuthorization {
+    /// High-entropy code the initiating client polls and exchanges for tokens.
+    pub device_code: String,
+    /// Short, human-enterable code shown on the approval page.
+    pub user_code: String,
+    pub expires_at: DateTime<Utc>,
+    /// Minimum interval a client must wait between polls.
+    pub interval: Duration,
+}
+
+/// A device credential family's metadata for the account page: when it was
+/// approved, when it was last refreshed, its approval source, and whether it is
+/// revoked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceFamily {
+    pub id: String,
+    pub created_at: DateTime<Utc>,
+    pub last_refresh_at: DateTime<Utc>,
+    pub source: String,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+/// A freshly issued access + refresh pair (plaintext, shown once), from an
+/// approval or a refresh rotation. The store keeps only the hashes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenPair {
+    pub access_token: String,
+    pub refresh_token: String,
+    /// When the access token expires (short-lived; the refresh rotates).
+    pub access_expires_at: DateTime<Utc>,
+}
+
+/// The outcome of polling a device authorization by its device code. The
+/// intermediate and terminal states are typed values, not wire errors (決策 1);
+/// only an unknown device code is an error to the caller.
+#[derive(Debug)]
+pub enum DevicePoll {
+    /// No authorization holds this device code.
+    NotFound,
+    /// Not yet approved or denied.
+    Pending,
+    /// Polled sooner than the declared interval; the request is undisturbed.
+    SlowDown,
+    /// The authorization expired before it was approved.
+    Expired,
+    /// A user denied the request on the approval page.
+    Denied,
+    /// Approved: the token pair, minted and returned exactly once.
+    Approved(TokenPair),
+}
+
+/// The outcome of a refresh rotation.
+#[derive(Debug)]
+pub enum RefreshOutcome {
+    /// No refresh credential holds this value.
+    NotFound,
+    /// The value was already rotated away, or itself/its family revoked — a
+    /// reuse signal. The whole family has now been torn down; the request fails.
+    Reused,
+    /// Rotated: the old value is dead and a fresh pair is issued.
+    Rotated(TokenPair),
+}
+
 /// Why an identity operation failed.
 #[derive(Debug)]
 pub enum IdentityError {
@@ -170,6 +236,61 @@ pub trait IdentityStore: Send + Sync {
 
     /// Advance a PAT's last-used timestamp after a successful request.
     fn touch_pat(&self, pat_id: &str) -> Result<(), IdentityError>;
+
+    // --- device authorization flow ---
+
+    /// Initiate a device authorization: mint a high-entropy device code and a
+    /// short human-enterable user code — both hashed at rest — sharing `ttl`
+    /// and the minimum poll `interval`. Returns the plaintext codes.
+    fn create_device_authorization(
+        &self,
+        interval: Duration,
+        ttl: Duration,
+    ) -> Result<DeviceAuthorization, IdentityError>;
+
+    /// Poll a device authorization by its device code. A poll sooner than the
+    /// declared interval since the last accepted poll is [`DevicePoll::SlowDown`]
+    /// and leaves the request untouched; otherwise it reports the current state.
+    fn poll_device(&self, device_code: &str) -> Result<DevicePoll, IdentityError>;
+
+    /// Deny the still-pending authorization named by `user_code`, recording the
+    /// acting user. Returns whether it applied — unknown, used and expired codes
+    /// are all `false` (the approval page shows one invalid response for all).
+    fn deny_device(&self, user_code: &str, approver_id: &str) -> Result<bool, IdentityError>;
+
+    /// Whether a user code names a still-pending, unexpired authorization — the
+    /// approval page's guard before it shows the confirm step. Unknown, used and
+    /// expired codes are all `false`.
+    fn device_is_pending(&self, user_code: &str) -> Result<bool, IdentityError>;
+
+    /// Approve the still-pending authorization named by `user_code`, binding the
+    /// approver. Returns whether it applied (same `false` as [`IdentityStore::deny_device`]
+    /// for unknown/used/expired).
+    fn approve_device(&self, user_code: &str, approver_id: &str) -> Result<bool, IdentityError>;
+
+    /// Authenticate a bearer device access token for API access: hash-match,
+    /// unrevoked, unexpired, its credential family unrevoked, owning user active.
+    /// Per-request with no cache, so suspension and revocation take effect at
+    /// once. The membership check is the caller's, as for PATs.
+    fn authenticate_access_token(&self, token: &str) -> Result<Option<User>, IdentityError>;
+
+    /// Rotate a refresh credential: a valid, unused one is spent and a fresh
+    /// access token + refresh credential minted in the same family. Reusing an
+    /// already-spent or revoked value (a leak signal) tears down the whole
+    /// family — its access tokens and refresh credentials — and fails.
+    fn refresh(&self, refresh_token: &str) -> Result<RefreshOutcome, IdentityError>;
+
+    /// Revoke the credential family a refresh credential belongs to (logout).
+    /// Returns whether the refresh credential was recognized.
+    fn revoke_family_by_refresh(&self, refresh_token: &str) -> Result<bool, IdentityError>;
+
+    /// List a user's device credential families for the account page (决策 5).
+    fn list_device_families(&self, user_id: &str) -> Result<Vec<DeviceFamily>, IdentityError>;
+
+    /// Revoke one of `user_id`'s own device credential families — the access
+    /// tokens and refresh credentials under it die at once. Idempotent; a family
+    /// that is not the user's own is a no-op.
+    fn revoke_family(&self, user_id: &str, family_id: &str) -> Result<(), IdentityError>;
 }
 
 // --- credential hashing (決策 2) ---
@@ -186,6 +307,24 @@ pub(crate) fn random_token() -> String {
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
     to_hex(&bytes)
+}
+
+/// A short, human-enterable user code from an alphabet that avoids visually
+/// confusable characters (no O/0, I/1, L). Eight characters grouped `XXXX-XXXX`
+/// for reading (决策 2). Entropy (31^8 ≈ 8.5e11) plus the short TTL is the abuse
+/// guard this knife makes; global rate limiting is a deployment-layer concern.
+pub(crate) fn user_code() -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    let mut bytes = [0u8; 8];
+    OsRng.fill_bytes(&mut bytes);
+    let c: Vec<char> = bytes
+        .iter()
+        .map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char)
+        .collect();
+    format!(
+        "{}{}{}{}-{}{}{}{}",
+        c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]
+    )
 }
 
 /// Hash a password with argon2id (a PHC string carrying its own salt).

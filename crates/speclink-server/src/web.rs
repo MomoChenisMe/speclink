@@ -41,6 +41,16 @@ pub struct CreatePatForm {
     pub expires: String,
 }
 
+/// The `/activate` form submission: the user code, plus an optional decision
+/// (`approve`/`deny`) once the confirm step is shown.
+#[derive(Deserialize)]
+pub struct ActivateForm {
+    #[serde(default)]
+    pub user_code: String,
+    #[serde(default)]
+    pub action: String,
+}
+
 /// `GET /invite/{token}` — a valid invitation shows the set-password form; a
 /// used, expired or unknown token yields the same invalid page.
 pub async fn invite_page(State(state): State<AppState>, Path(token): Path<String>) -> Response {
@@ -134,7 +144,8 @@ pub async fn account_page(State(state): State<AppState>, headers: HeaderMap) -> 
     };
     let sessions = state.identity.list_sessions(&user.id).unwrap_or_default();
     let pats = state.identity.list_pats(&user.id).unwrap_or_default();
-    Html(account_html(&user, &sessions, &pats, None, None)).into_response()
+    let families = state.identity.list_device_families(&user.id).unwrap_or_default();
+    Html(account_html(&user, &sessions, &pats, &families, None, None)).into_response()
 }
 
 /// `POST /account/tokens` — create a PAT for the logged-in user. The response
@@ -156,9 +167,10 @@ pub async fn create_pat(
         Err(()) => {
             let sessions = state.identity.list_sessions(&user.id).unwrap_or_default();
             let pats = state.identity.list_pats(&user.id).unwrap_or_default();
+            let families = state.identity.list_device_families(&user.id).unwrap_or_default();
             return (
                 StatusCode::BAD_REQUEST,
-                Html(account_html(&user, &sessions, &pats, None, Some("到期日格式須為 YYYY-MM-DD"))),
+                Html(account_html(&user, &sessions, &pats, &families, None, Some("到期日格式須為 YYYY-MM-DD"))),
             )
                 .into_response();
         }
@@ -167,7 +179,8 @@ pub async fn create_pat(
         Ok((_, plaintext)) => {
             let sessions = state.identity.list_sessions(&user.id).unwrap_or_default();
             let pats = state.identity.list_pats(&user.id).unwrap_or_default();
-            Html(account_html(&user, &sessions, &pats, Some(&plaintext), None)).into_response()
+            let families = state.identity.list_device_families(&user.id).unwrap_or_default();
+            Html(account_html(&user, &sessions, &pats, &families, Some(&plaintext), None)).into_response()
         }
         Err(_) => internal_error(),
     }
@@ -188,6 +201,69 @@ pub async fn revoke_pat(
     };
     let _ = state.identity.revoke_pat(&user.id, &pat_id);
     Redirect::to("/account").into_response()
+}
+
+/// `POST /account/device/{id}/revoke` — revoke one of the user's own device
+/// credential families; its access token and refresh credential die at once,
+/// leaving other families and PATs untouched.
+pub async fn revoke_device_family(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(family_id): Path<String>,
+) -> Response {
+    if let Err(refused) = check_origin(&headers, &state.config.public_url) {
+        return refused;
+    }
+    let Some(user) = current_user(&state, &headers) else {
+        return Redirect::to("/login").into_response();
+    };
+    let _ = state.identity.revoke_family(&user.id, &family_id);
+    Redirect::to("/account").into_response()
+}
+
+/// `GET /activate` — the device approval page. An unauthenticated visit
+/// redirects to login (the device request stays untouched).
+pub async fn activate_page(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if current_user(&state, &headers).is_none() {
+        return Redirect::to("/login").into_response();
+    }
+    Html(activate_form(None)).into_response()
+}
+
+/// `POST /activate` — enter a user code to reach the explicit confirm step, or
+/// confirm the approve/deny. Session-protected (an unauthenticated POST leaves
+/// the request unapproved) and same-origin; the acting user is recorded on the
+/// decision. Unknown, used and expired user codes all get one invalid page.
+pub async fn activate_submit(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<ActivateForm>,
+) -> Response {
+    if let Err(refused) = check_origin(&headers, &state.config.public_url) {
+        return refused;
+    }
+    let Some(user) = current_user(&state, &headers) else {
+        return Redirect::to("/login").into_response();
+    };
+    let user_code = form.user_code.trim();
+    match form.action.as_str() {
+        "approve" => match state.identity.approve_device(user_code, &user.id) {
+            Ok(true) => Html(activate_result("已核准。你可以回到裝置繼續登入。")).into_response(),
+            Ok(false) => activate_invalid(),
+            Err(_) => internal_error(),
+        },
+        "deny" => match state.identity.deny_device(user_code, &user.id) {
+            Ok(true) => Html(activate_result("已拒絕這個裝置的登入請求。")).into_response(),
+            Ok(false) => activate_invalid(),
+            Err(_) => internal_error(),
+        },
+        // No decision yet: validate the code and show the explicit confirm step.
+        _ => match state.identity.device_is_pending(user_code) {
+            Ok(true) => Html(activate_confirm(user_code)).into_response(),
+            Ok(false) => activate_invalid(),
+            Err(_) => internal_error(),
+        },
+    }
 }
 
 /// Parse the optional expiry field. Empty means a permanent token; a date is
@@ -311,6 +387,7 @@ fn account_html(
     user: &User,
     sessions: &[crate::identity::SessionInfo],
     pats: &[crate::identity::Pat],
+    families: &[crate::identity::DeviceFamily],
     flash: Option<&str>,
     error: Option<&str>,
 ) -> String {
@@ -356,11 +433,62 @@ fn account_html(
         ));
     }
 
+    let mut family_rows = String::new();
+    for f in families {
+        let status = if f.revoked_at.is_some() { "（已撤銷）" } else { "" };
+        let revoke = if f.revoked_at.is_none() {
+            format!(
+                "<form method=\"post\" action=\"/account/device/{id}/revoke\"><button type=\"submit\">撤銷</button></form>",
+                id = escape(&f.id)
+            )
+        } else {
+            String::new()
+        };
+        family_rows.push_str(&format!(
+            "<li>{source}{status} — 建立於 {created}，最近 refresh {last} {revoke}</li>\n",
+            source = escape(&f.source),
+            created = fmt_ts(f.created_at),
+            last = fmt_ts(f.last_refresh_at),
+        ));
+    }
+
     let body = format!(
-        "<h1>帳號</h1>\n<p>{email}</p>\n<form method=\"post\" action=\"/logout\"><button type=\"submit\">登出</button></form>\n{flash}{error}\n<h2>Personal Access Tokens</h2>\n<ul>\n{pat_rows}</ul>\n<form method=\"post\" action=\"/account/tokens\">\n<label>名稱 <input type=\"text\" name=\"name\" required></label>\n<label>到期日（YYYY-MM-DD，留空為永久） <input type=\"text\" name=\"expires\"></label>\n<button type=\"submit\">建立 PAT</button>\n</form>\n<h2>Sessions</h2>\n<ul>\n{session_rows}</ul>\n",
+        "<h1>帳號</h1>\n<p>{email}</p>\n<form method=\"post\" action=\"/logout\"><button type=\"submit\">登出</button></form>\n{flash}{error}\n<h2>Personal Access Tokens</h2>\n<ul>\n{pat_rows}</ul>\n<form method=\"post\" action=\"/account/tokens\">\n<label>名稱 <input type=\"text\" name=\"name\" required></label>\n<label>到期日（YYYY-MM-DD，留空為永久） <input type=\"text\" name=\"expires\"></label>\n<button type=\"submit\">建立 PAT</button>\n</form>\n<h2>裝置登入 Sessions</h2>\n<ul>\n{family_rows}</ul>\n<h2>Sessions</h2>\n<ul>\n{session_rows}</ul>\n",
         email = escape(&user.email),
     );
     page("帳號", &body)
+}
+
+/// The device-code entry form (the first step of `/activate`).
+fn activate_form(error: Option<&str>) -> String {
+    let error = error
+        .map(|e| format!("<p class=\"error\">{}</p>", escape(e)))
+        .unwrap_or_default();
+    let body = format!(
+        "<h1>裝置登入</h1>\n<p>輸入裝置上顯示的代碼以核准登入。</p>\n{error}<form method=\"post\" action=\"/activate\">\n<label>裝置代碼 <input type=\"text\" name=\"user_code\" required></label>\n<button type=\"submit\">下一步</button>\n</form>\n"
+    );
+    page("裝置登入", &body)
+}
+
+/// The explicit confirm step: the user code plus approve/deny buttons.
+fn activate_confirm(user_code: &str) -> String {
+    let code = escape(user_code);
+    let body = format!(
+        "<h1>確認裝置登入</h1>\n<p>代碼 <code>{code}</code> 的裝置要求以你的身分登入。</p>\n<form method=\"post\" action=\"/activate\">\n<input type=\"hidden\" name=\"user_code\" value=\"{code}\">\n<button type=\"submit\" name=\"action\" value=\"approve\">核准</button>\n<button type=\"submit\" name=\"action\" value=\"deny\">拒絕</button>\n</form>\n"
+    );
+    page("確認裝置登入", &body)
+}
+
+/// The result page after an approve or deny decision.
+fn activate_result(message: &str) -> String {
+    page("裝置登入", &format!("<h1>裝置登入</h1>\n<p>{}</p>\n", escape(message)))
+}
+
+/// The single invalid-code page returned for unknown, used or expired user
+/// codes — the reason is never distinguished.
+fn activate_invalid() -> Response {
+    let body = "<h1>裝置代碼無效</h1>\n<p>這個裝置代碼無法使用。請確認代碼，或在裝置上重新開始登入。</p>\n";
+    (StatusCode::NOT_FOUND, Html(page("裝置代碼無效", body))).into_response()
 }
 
 /// Format a timestamp for display (date and minute, UTC).

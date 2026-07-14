@@ -5,8 +5,9 @@
 //! discipline as the sqlite TeamStore driver.
 
 use crate::identity::{
-    hash_password, hash_token, random_token, verify_password, IdentityError, IdentityStore,
-    Invitation, NewInvitation, Pat, SessionInfo, User,
+    hash_password, hash_token, random_token, user_code, verify_password, DeviceAuthorization,
+    DeviceFamily, DevicePoll, IdentityError, IdentityStore, Invitation, NewInvitation, Pat,
+    RefreshOutcome, SessionInfo, TokenPair, User,
 };
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -14,12 +15,19 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
 /// The schema version this server reads and writes. A database recording a
-/// higher version is refused. Bump and add a migration when the shape changes.
-const SCHEMA_VERSION: u32 = 1;
+/// higher version is refused; a lower one is migrated up. Bump and add a
+/// migration when the shape changes.
+const SCHEMA_VERSION: u32 = 2;
 
 /// The marker written to `meta` that distinguishes a speclink identity store
 /// from an unrelated SQLite file.
 const IDENTITY_MARKER: &str = "speclink-identity-store";
+
+/// The device access token's lifetime — short (決策 3), far below the PAT
+/// convention. The rotating refresh credential carries the long-lived session.
+fn access_token_ttl() -> Duration {
+    Duration::hours(1)
+}
 
 const SCHEMA_SQL: &str = "\
 CREATE TABLE meta (
@@ -76,6 +84,51 @@ CREATE TABLE sessions (
 );
 ";
 
+/// The device-flow tables (schema version 2). Held apart from [`SCHEMA_SQL`] so
+/// the same statements both extend a fresh database and migrate a version-1 one:
+/// a pending device authorization (two codes hashed), and — once approved — a
+/// credential family owning short-lived access tokens and rotating refresh
+/// credentials. Every credential lands as a hash, never plaintext (決策 2).
+const DEVICE_SCHEMA_SQL: &str = "\
+CREATE TABLE device_authorizations (
+    id             TEXT PRIMARY KEY NOT NULL,
+    device_hash    TEXT NOT NULL UNIQUE,
+    user_hash      TEXT NOT NULL UNIQUE,
+    status         TEXT NOT NULL,
+    approver_id    TEXT,
+    family_id      TEXT,
+    expires_at     TEXT NOT NULL,
+    interval_secs  INTEGER NOT NULL,
+    last_polled_at TEXT,
+    created_at     TEXT NOT NULL
+);
+CREATE TABLE credential_families (
+    id         TEXT PRIMARY KEY NOT NULL,
+    user_id    TEXT NOT NULL,
+    source     TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    revoked_at TEXT
+);
+CREATE TABLE access_tokens (
+    id         TEXT PRIMARY KEY NOT NULL,
+    family_id  TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE refresh_credentials (
+    id         TEXT PRIMARY KEY NOT NULL,
+    family_id  TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    used_at    TEXT,
+    revoked_at TEXT,
+    created_at TEXT NOT NULL
+);
+";
+
 /// A SQLite-backed identity store. Reads and writes are serialized behind a
 /// mutex — identity lookups are light single-row queries in the single-node
 /// design, so per-request locking is acceptable (決策 5).
@@ -110,7 +163,7 @@ impl IdentitySqlite {
         // subcommand and the running server can touch the same file.
         conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(open_err)?;
         let has_meta = table_exists(&conn, "meta")?;
-        if has_meta {
+        let existing_version: Option<u32> = if has_meta {
             let marker: Option<String> = meta_value(&conn, "format")?;
             if marker.as_deref() != Some(IDENTITY_MARKER) {
                 return Err(IdentityError::Open(
@@ -127,19 +180,27 @@ impl IdentitySqlite {
                     "incompatible identity schema version {version}; this server supports {SCHEMA_VERSION}"
                 )));
             }
+            Some(version)
         } else if has_any_user_table(&conn)? {
             return Err(IdentityError::Open(
                 "existing SQLite database is not a speclink identity store".into(),
             ));
-        }
+        } else {
+            None
+        };
 
-        // Past the gate: initialize a fresh database in one transaction.
+        // Past the gate: a fresh database is initialized at the current version;
+        // an older one is migrated up. Both add the device tables.
         conn.execute_batch("PRAGMA foreign_keys=ON;").map_err(open_err)?;
-        if !has_meta {
-            conn.execute_batch(&format!(
-                "BEGIN;\n{SCHEMA_SQL}\nINSERT INTO meta (key, value) VALUES ('format', '{IDENTITY_MARKER}');\nINSERT INTO meta (key, value) VALUES ('schema_version', '{SCHEMA_VERSION}');\nCOMMIT;"
-            ))
-            .map_err(open_err)?;
+        match existing_version {
+            None => {
+                conn.execute_batch(&format!(
+                    "BEGIN;\n{SCHEMA_SQL}{DEVICE_SCHEMA_SQL}INSERT INTO meta (key, value) VALUES ('format', '{IDENTITY_MARKER}');\nINSERT INTO meta (key, value) VALUES ('schema_version', '{SCHEMA_VERSION}');\nCOMMIT;"
+                ))
+                .map_err(open_err)?;
+            }
+            Some(version) if version < SCHEMA_VERSION => migrate(&conn, version)?,
+            Some(_) => {}
         }
         Ok(Self { inner: Mutex::new(conn) })
     }
@@ -546,6 +607,350 @@ impl IdentityStore for IdentitySqlite {
             .map(|_| ())
             .map_err(backend)
     }
+
+    fn create_device_authorization(
+        &self,
+        interval: Duration,
+        ttl: Duration,
+    ) -> Result<DeviceAuthorization, IdentityError> {
+        let device_code = format!("spk_dc_{}", random_token());
+        let user_code = user_code();
+        let created = Utc::now();
+        let expires_at = created + ttl;
+        let interval_secs = interval.num_seconds().max(0);
+        self.conn()
+            .execute(
+                "INSERT INTO device_authorizations (id, device_hash, user_hash, status, approver_id, family_id, expires_at, interval_secs, last_polled_at, created_at) \
+                 VALUES (?1, ?2, ?3, 'pending', NULL, NULL, ?4, ?5, NULL, ?6)",
+                params![
+                    new_id("dev"),
+                    hash_token(&device_code),
+                    hash_token(&user_code),
+                    ts(expires_at),
+                    interval_secs,
+                    ts(created)
+                ],
+            )
+            .map_err(backend)?;
+        Ok(DeviceAuthorization { device_code, user_code, expires_at, interval })
+    }
+
+    fn poll_device(&self, device_code: &str) -> Result<DevicePoll, IdentityError> {
+        let mut guard = self.conn();
+        let now = Utc::now();
+        let row = guard
+            .query_row(
+                "SELECT id, status, approver_id, family_id, expires_at, interval_secs, last_polled_at \
+                 FROM device_authorizations WHERE device_hash = ?1",
+                params![hash_token(device_code)],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                        r.get::<_, String>(4)?,
+                        r.get::<_, i64>(5)?,
+                        r.get::<_, Option<String>>(6)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(backend)?;
+        let Some((id, status, approver_id, family_id, expires_at, interval_secs, last_polled_at)) = row
+        else {
+            return Ok(DevicePoll::NotFound);
+        };
+
+        // A poll sooner than the interval since the last accepted poll backs the
+        // client off without disturbing the request (the clock is not advanced).
+        if let Some(last) = last_polled_at {
+            if now - parse_ts(&last)? < Duration::seconds(interval_secs) {
+                return Ok(DevicePoll::SlowDown);
+            }
+        }
+        // This poll is accepted: record it, then report the current state.
+        guard
+            .execute(
+                "UPDATE device_authorizations SET last_polled_at = ?2 WHERE id = ?1",
+                params![id, ts(now)],
+            )
+            .map_err(backend)?;
+        match status.as_str() {
+            "denied" => Ok(DevicePoll::Denied),
+            "approved" => {
+                // The token pair is minted and delivered exactly once; a re-poll
+                // of a consumed authorization finds a spent device code.
+                if family_id.is_some() {
+                    return Ok(DevicePoll::NotFound);
+                }
+                let approver = approver_id.ok_or_else(|| {
+                    IdentityError::Backend("approved authorization without an approver".into())
+                })?;
+                // Mint the family, access token and refresh credential atomically,
+                // and stamp the family id so a second poll cannot re-mint.
+                let tx = guard.transaction().map_err(backend)?;
+                let family_id = new_id("fam");
+                tx.execute(
+                    "INSERT INTO credential_families (id, user_id, source, created_at, revoked_at) \
+                     VALUES (?1, ?2, ?3, ?4, NULL)",
+                    params![family_id, approver, "device 授權", ts(now)],
+                )
+                .map_err(backend)?;
+                let pair = issue_pair(&tx, &family_id, &approver, now)?;
+                tx.execute(
+                    "UPDATE device_authorizations SET family_id = ?2 WHERE id = ?1",
+                    params![id, family_id],
+                )
+                .map_err(backend)?;
+                tx.commit().map_err(backend)?;
+                Ok(DevicePoll::Approved(pair))
+            }
+            _ if now >= parse_ts(&expires_at)? => Ok(DevicePoll::Expired),
+            _ => Ok(DevicePoll::Pending),
+        }
+    }
+
+    fn deny_device(&self, user_code: &str, approver_id: &str) -> Result<bool, IdentityError> {
+        self.decide_device(user_code, approver_id, "denied")
+    }
+
+    fn device_is_pending(&self, user_code: &str) -> Result<bool, IdentityError> {
+        let found: Option<i64> = self
+            .conn()
+            .query_row(
+                "SELECT 1 FROM device_authorizations \
+                 WHERE user_hash = ?1 AND status = 'pending' AND expires_at > ?2",
+                params![hash_token(user_code), now()],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        Ok(found.is_some())
+    }
+
+    fn approve_device(&self, user_code: &str, approver_id: &str) -> Result<bool, IdentityError> {
+        self.decide_device(user_code, approver_id, "approved")
+    }
+
+    fn authenticate_access_token(&self, token: &str) -> Result<Option<User>, IdentityError> {
+        // The whole device credential check-list in one query (決策 4): hash
+        // match, access token unrevoked and unexpired, its family unrevoked, and
+        // the owning user active. A suspended user or a revoked family drops the
+        // row, so the token stops authenticating at once.
+        self.conn()
+            .query_row(
+                "SELECT u.id, u.display, u.email, u.active, u.admin \
+                 FROM access_tokens a \
+                 JOIN users u ON u.id = a.user_id \
+                 JOIN credential_families f ON f.id = a.family_id \
+                 WHERE a.token_hash = ?1 AND a.revoked_at IS NULL AND a.expires_at > ?2 \
+                   AND f.revoked_at IS NULL AND u.active = 1",
+                params![hash_token(token), now()],
+                map_user,
+            )
+            .optional()
+            .map_err(backend)
+    }
+
+    fn refresh(&self, refresh_token: &str) -> Result<RefreshOutcome, IdentityError> {
+        let mut guard = self.conn();
+        let now = Utc::now();
+        let tx = guard.transaction().map_err(backend)?;
+        let row = tx
+            .query_row(
+                "SELECT rc.id, rc.family_id, rc.user_id, rc.used_at, rc.revoked_at, f.revoked_at \
+                 FROM refresh_credentials rc JOIN credential_families f ON f.id = rc.family_id \
+                 WHERE rc.token_hash = ?1",
+                params![hash_token(refresh_token)],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                        r.get::<_, Option<String>>(4)?,
+                        r.get::<_, Option<String>>(5)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(backend)?;
+        let Some((id, family_id, user_id, used_at, revoked_at, family_revoked)) = row else {
+            return Ok(RefreshOutcome::NotFound);
+        };
+        // A reuse signal: the value was already rotated away, or it/its family
+        // has been revoked. Tear down the whole family and refuse.
+        if used_at.is_some() || revoked_at.is_some() || family_revoked.is_some() {
+            revoke_family_rows(&tx, &family_id, now)?;
+            tx.commit().map_err(backend)?;
+            return Ok(RefreshOutcome::Reused);
+        }
+        // Fresh: spend this credential and mint a new pair in the same family.
+        tx.execute(
+            "UPDATE refresh_credentials SET used_at = ?2 WHERE id = ?1",
+            params![id, ts(now)],
+        )
+        .map_err(backend)?;
+        let pair = issue_pair(&tx, &family_id, &user_id, now)?;
+        tx.commit().map_err(backend)?;
+        Ok(RefreshOutcome::Rotated(pair))
+    }
+
+    fn revoke_family_by_refresh(&self, refresh_token: &str) -> Result<bool, IdentityError> {
+        let mut guard = self.conn();
+        let now = Utc::now();
+        let tx = guard.transaction().map_err(backend)?;
+        let family_id: Option<String> = tx
+            .query_row(
+                "SELECT family_id FROM refresh_credentials WHERE token_hash = ?1",
+                params![hash_token(refresh_token)],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        let Some(family_id) = family_id else {
+            return Ok(false);
+        };
+        revoke_family_rows(&tx, &family_id, now)?;
+        tx.commit().map_err(backend)?;
+        Ok(true)
+    }
+
+    fn list_device_families(&self, user_id: &str) -> Result<Vec<DeviceFamily>, IdentityError> {
+        let guard = self.conn();
+        let mut stmt = guard
+            .prepare(
+                "SELECT f.id, f.source, f.created_at, f.revoked_at, \
+                        (SELECT MAX(rc.created_at) FROM refresh_credentials rc WHERE rc.family_id = f.id) \
+                 FROM credential_families f WHERE f.user_id = ?1 ORDER BY f.created_at DESC",
+            )
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map(params![user_id], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, Option<String>>(4)?,
+                ))
+            })
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, source, created_at, revoked_at, last_refresh) = row.map_err(backend)?;
+            let created = parse_ts(&created_at)?;
+            out.push(DeviceFamily {
+                last_refresh_at: match last_refresh {
+                    Some(t) => parse_ts(&t)?,
+                    None => created,
+                },
+                id,
+                created_at: created,
+                source,
+                revoked_at: parse_opt_ts(revoked_at)?,
+            });
+        }
+        Ok(out)
+    }
+
+    fn revoke_family(&self, user_id: &str, family_id: &str) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let now = Utc::now();
+        // Scope to the user's own family; a foreign or unknown id is a no-op.
+        let owned: Option<i64> = guard
+            .query_row(
+                "SELECT 1 FROM credential_families WHERE id = ?1 AND user_id = ?2",
+                params![family_id, user_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        if owned.is_none() {
+            return Ok(());
+        }
+        let tx = guard.transaction().map_err(backend)?;
+        revoke_family_rows(&tx, family_id, now)?;
+        tx.commit().map_err(backend)?;
+        Ok(())
+    }
+}
+
+impl IdentitySqlite {
+    /// Move a still-pending, unexpired authorization to `status` ('approved' or
+    /// 'denied'), binding the acting user. Returns whether it applied — unknown,
+    /// used and expired user codes are all `false`, so the approval page renders
+    /// one invalid response for every non-actionable code.
+    fn decide_device(
+        &self,
+        user_code: &str,
+        approver_id: &str,
+        status: &str,
+    ) -> Result<bool, IdentityError> {
+        let n = self
+            .conn()
+            .execute(
+                "UPDATE device_authorizations SET status = ?2, approver_id = ?3 \
+                 WHERE user_hash = ?1 AND status = 'pending' AND expires_at > ?4",
+                params![hash_token(user_code), status, approver_id, now()],
+            )
+            .map_err(backend)?;
+        Ok(n > 0)
+    }
+}
+
+// --- device credential minting ---
+
+/// Issue a fresh access token and refresh credential into `family_id`, returning
+/// the plaintexts and the access token's expiry. Shared by the approval mint and
+/// refresh rotation. Runs inside the caller's transaction; both credentials land
+/// only as hashes with their identifiable prefixes (決策 3).
+fn issue_pair(
+    tx: &Connection,
+    family_id: &str,
+    user_id: &str,
+    now: DateTime<Utc>,
+) -> Result<TokenPair, IdentityError> {
+    let access_token = format!("spk_at_{}", random_token());
+    let refresh_token = format!("spk_rt_{}", random_token());
+    let access_expires_at = now + access_token_ttl();
+    tx.execute(
+        "INSERT INTO access_tokens (id, family_id, user_id, token_hash, expires_at, revoked_at, created_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6)",
+        params![new_id("at"), family_id, user_id, hash_token(&access_token), ts(access_expires_at), ts(now)],
+    )
+    .map_err(backend)?;
+    tx.execute(
+        "INSERT INTO refresh_credentials (id, family_id, user_id, token_hash, used_at, revoked_at, created_at) \
+         VALUES (?1, ?2, ?3, ?4, NULL, NULL, ?5)",
+        params![new_id("rt"), family_id, user_id, hash_token(&refresh_token), ts(now)],
+    )
+    .map_err(backend)?;
+    Ok(TokenPair { access_token, refresh_token, access_expires_at })
+}
+
+/// Revoke a whole credential family: the family row and every access token and
+/// refresh credential under it (决策 3). Idempotent — already-revoked rows are
+/// left untouched. Runs inside the caller's transaction.
+fn revoke_family_rows(tx: &Connection, family_id: &str, now: DateTime<Utc>) -> Result<(), IdentityError> {
+    let stamp = ts(now);
+    tx.execute(
+        "UPDATE credential_families SET revoked_at = ?2 WHERE id = ?1 AND revoked_at IS NULL",
+        params![family_id, stamp],
+    )
+    .map_err(backend)?;
+    tx.execute(
+        "UPDATE access_tokens SET revoked_at = ?2 WHERE family_id = ?1 AND revoked_at IS NULL",
+        params![family_id, stamp],
+    )
+    .map_err(backend)?;
+    tx.execute(
+        "UPDATE refresh_credentials SET revoked_at = ?2 WHERE family_id = ?1 AND revoked_at IS NULL",
+        params![family_id, stamp],
+    )
+    .map_err(backend)?;
+    Ok(())
 }
 
 // --- row mapping ---
@@ -613,6 +1018,20 @@ fn invitation_memberships(conn: &Connection, invitation_id: &str) -> Result<Vec<
 }
 
 // --- gate helpers ---
+
+/// Migrate an identity database from `from` up to [`SCHEMA_VERSION`], one step
+/// at a time. Each step only adds tables and never touches existing rows, so
+/// the users, memberships, PATs and sessions a prior version wrote survive
+/// intact. Runs in a transaction so a partial migration never lands.
+fn migrate(conn: &Connection, from: u32) -> Result<(), IdentityError> {
+    if from <= 1 {
+        conn.execute_batch(&format!(
+            "BEGIN;\n{DEVICE_SCHEMA_SQL}UPDATE meta SET value = '2' WHERE key = 'schema_version';\nCOMMIT;"
+        ))
+        .map_err(open_err)?;
+    }
+    Ok(())
+}
 
 fn table_exists(conn: &Connection, name: &str) -> Result<bool, IdentityError> {
     let found: Option<i64> = conn
