@@ -95,17 +95,17 @@ impl FromRequestParts<AppState> for Binding {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        // 1. token → actor (unknown/missing → permission denied)
+        // 1. bearer PAT → actor, resolved per-request against the identity store
+        //    (決策 5): hash-match, unrevoked, unexpired, owning user active. Any
+        //    failure is the same 401 permission_denied so the cause is never
+        //    probed; no cache means suspension and revocation are immediate.
         let token = bearer_token(parts)
             .ok_or_else(|| ApiError::permission_denied("missing or malformed bearer token"))?;
-        let actor = state
-            .config
-            .tokens
-            .iter()
-            .find(|t| t.token == token)
-            .ok_or_else(|| ApiError::permission_denied("unknown token"))?
-            .actor
-            .clone();
+        let (pat, user) = state
+            .identity
+            .authenticate_pat(&token)
+            .map_err(|_| ApiError::internal("identity store unavailable"))?
+            .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
 
         // 2. project key → registered project (unregistered → not found)
         let params = Path::<HashMap<String, String>>::from_request_parts(parts, state)
@@ -123,7 +123,20 @@ impl FromRequestParts<AppState> for Binding {
             .ok_or_else(|| ApiError::not_found(format!("project '{key}' not found")))?
             .clone();
 
-        // 3. API version compatibility (incompatible → refused with reason)
+        // 3. membership: a valid token whose user is not a member of the URL
+        //    project is 403, distinct from the 401 of an invalid token.
+        let member = state
+            .identity
+            .is_member(&user.id, &project.key)
+            .map_err(|_| ApiError::internal("identity store unavailable"))?;
+        if !member {
+            return Err(ApiError::forbidden(format!(
+                "actor is not a member of project '{}'",
+                project.key
+            )));
+        }
+
+        // 4. API version compatibility (incompatible → refused with reason)
         let version = header(parts, "x-speclink-api-version");
         if version.as_deref() != Some(API_VERSION) {
             let sent = version
@@ -134,10 +147,15 @@ impl FromRequestParts<AppState> for Binding {
             )));
         }
 
-        // 4. repo adjudication (explicit must be registered; absent binds the
+        // 5. repo adjudication (explicit must be registered; absent binds the
         //    sole repo or refuses as ambiguous)
         let repo = resolve_repo(&project, header(parts, "x-speclink-repo"))?;
 
+        // The request authenticated: advance last-used. Best-effort — a metering
+        // write failure never fails the request.
+        let _ = state.identity.touch_pat(&pat.id);
+
+        let actor = ActorConfig { id: user.id, display: user.display };
         Ok(Binding { actor, project, repo })
     }
 }

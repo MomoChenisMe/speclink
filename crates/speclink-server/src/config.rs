@@ -1,11 +1,12 @@
-//! Startup configuration, loaded fail closed (design 決策三).
+//! Startup configuration, loaded fail closed (reference-server spec「啟動組態
+//! fail closed」).
 //!
 //! The server starts from a single YAML file that declares the store driver,
-//! the Project/Repo registry, and the bootstrap token → actor mapping. A file
-//! that is missing, unparseable, declares an unknown driver, or is otherwise
-//! shaped wrong makes startup fail with a reason pointing at the file — never a
-//! partial-default start. This is bootstrap authentication only; a full account
-//! system replaces the token section in a later knife.
+//! the Project/Repo registry, and the identity database. A file that is
+//! missing, unparseable, declares an unknown driver, carries a residual
+//! `tokens` section, or is otherwise shaped wrong makes startup fail with a
+//! reason pointing at the file — never a partial-default start. Authentication
+//! is the identity store's PATs; the old bootstrap `tokens` section is gone.
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -19,7 +20,10 @@ pub const SUPPORTED_DRIVERS: &[&str] = &["sqlite", "memory"];
 pub struct ServerConfig {
     pub store: StoreConfig,
     pub projects: Vec<ProjectConfig>,
-    pub tokens: Vec<TokenConfig>,
+    pub identity: IdentityConfig,
+    /// The server's external origin, used to build invite URLs and to validate
+    /// the Origin of change-making POSTs (決策 4).
+    pub public_url: String,
 }
 
 /// The store backend to bind.
@@ -31,6 +35,16 @@ pub enum StoreConfig {
     Memory,
 }
 
+/// Where the server's identity store lives. A separate database from the store
+/// (決策 1); the `memory` variant is for test configurations only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdentityConfig {
+    /// A single SQLite identity database file.
+    Sqlite { path: PathBuf },
+    /// An in-memory identity store — test configurations only.
+    Memory,
+}
+
 /// One registered project: its URL key, display name, and the repos it holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectConfig {
@@ -39,15 +53,8 @@ pub struct ProjectConfig {
     pub repos: Vec<String>,
 }
 
-/// One bootstrap bearer token and the actor it authenticates as.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TokenConfig {
-    pub token: String,
-    pub actor: ActorConfig,
-}
-
-/// The actor a token maps to: a stable id and the display identity recorded in
-/// history and events.
+/// The actor a request authenticates as: a stable id and the display identity
+/// recorded in history and events. Sourced from the PAT's owning user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActorConfig {
     pub id: String,
@@ -64,8 +71,12 @@ pub enum ConfigError {
     Unparseable { path: String, reason: String },
     /// The store driver is not one this server supports.
     UnknownDriver { path: String, driver: String },
+    /// The identity driver is not one this server supports.
+    UnknownIdentityDriver { path: String, driver: String },
     /// A required field for the chosen shape is absent.
     MissingField { path: String, field: String },
+    /// The config still carries the retired bootstrap `tokens` section.
+    ResidualTokens { path: String },
 }
 
 impl std::fmt::Display for ConfigError {
@@ -82,9 +93,18 @@ impl std::fmt::Display for ConfigError {
                 "config file '{path}': unknown store driver '{driver}' (supported: {})",
                 SUPPORTED_DRIVERS.join(", ")
             ),
+            ConfigError::UnknownIdentityDriver { path, driver } => write!(
+                f,
+                "config file '{path}': unknown identity driver '{driver}' (supported: {})",
+                SUPPORTED_DRIVERS.join(", ")
+            ),
             ConfigError::MissingField { path, field } => {
                 write!(f, "config file '{path}': missing required field '{field}'")
             }
+            ConfigError::ResidualTokens { path } => write!(
+                f,
+                "config file '{path}': the 'tokens' section has been replaced by the identity store — remove it and declare an 'identity' database instead"
+            ),
         }
     }
 }
@@ -100,11 +120,24 @@ struct RawConfig {
     #[serde(default)]
     projects: Vec<RawProject>,
     #[serde(default)]
-    tokens: Vec<RawToken>,
+    identity: Option<RawIdentity>,
+    #[serde(default)]
+    public_url: Option<String>,
+    /// Presence detection for the retired bootstrap `tokens` section: any value
+    /// here fails startup with a reason.
+    #[serde(default)]
+    tokens: Option<serde_yaml::Value>,
 }
 
 #[derive(Deserialize)]
 struct RawStore {
+    driver: String,
+    #[serde(default)]
+    path: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RawIdentity {
     driver: String,
     #[serde(default)]
     path: Option<String>,
@@ -119,19 +152,6 @@ struct RawProject {
     repos: Vec<String>,
 }
 
-#[derive(Deserialize)]
-struct RawToken {
-    token: String,
-    actor: RawActor,
-}
-
-#[derive(Deserialize)]
-struct RawActor {
-    #[serde(default)]
-    id: Option<String>,
-    display: String,
-}
-
 /// Load and validate the configuration at `path`, fail closed.
 pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
     let shown = path.display().to_string();
@@ -143,6 +163,12 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
         path: shown.clone(),
         reason: e.to_string(),
     })?;
+
+    // A residual bootstrap `tokens` section is a retired shape: fail closed and
+    // name its replacement.
+    if raw.tokens.is_some() {
+        return Err(ConfigError::ResidualTokens { path: shown });
+    }
 
     let store = match raw.store.driver.as_str() {
         "sqlite" => {
@@ -161,6 +187,27 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
         }
     };
 
+    let raw_identity = raw.identity.ok_or_else(|| ConfigError::MissingField {
+        path: shown.clone(),
+        field: "identity".to_string(),
+    })?;
+    let identity = match raw_identity.driver.as_str() {
+        "sqlite" => {
+            let path = raw_identity.path.ok_or_else(|| ConfigError::MissingField {
+                path: shown.clone(),
+                field: "identity.path".to_string(),
+            })?;
+            IdentityConfig::Sqlite { path: PathBuf::from(path) }
+        }
+        "memory" => IdentityConfig::Memory,
+        other => {
+            return Err(ConfigError::UnknownIdentityDriver {
+                path: shown,
+                driver: other.to_string(),
+            })
+        }
+    };
+
     let projects = raw
         .projects
         .into_iter()
@@ -171,19 +218,11 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
         })
         .collect();
 
-    let tokens = raw
-        .tokens
-        .into_iter()
-        .map(|t| TokenConfig {
-            token: t.token,
-            actor: ActorConfig {
-                id: t.actor.id.unwrap_or_else(|| t.actor.display.clone()),
-                display: t.actor.display,
-            },
-        })
-        .collect();
+    let public_url = raw
+        .public_url
+        .unwrap_or_else(|| "http://localhost:8080".to_string());
 
-    Ok(ServerConfig { store, projects, tokens })
+    Ok(ServerConfig { store, projects, identity, public_url })
 }
 
 #[cfg(test)]
@@ -199,23 +238,73 @@ mod tests {
     }
 
     #[test]
-    fn a_memory_config_loads_with_registry_and_tokens() {
+    fn a_memory_config_loads_with_registry_and_identity() {
         let cfg = load_text(
-            "store:\n  driver: memory\nprojects:\n  - key: demo\n    name: Demo\n    repos:\n      - backend\ntokens:\n  - token: secret\n    actor:\n      id: u_1\n      display: Alice <a@example.com>\n",
+            "store:\n  driver: memory\nidentity:\n  driver: memory\nprojects:\n  - key: demo\n    name: Demo\n    repos:\n      - backend\n",
         )
         .expect("valid memory config loads");
         assert_eq!(cfg.store, StoreConfig::Memory);
+        assert_eq!(cfg.identity, IdentityConfig::Memory);
         assert_eq!(cfg.projects[0].key, "demo");
         assert_eq!(cfg.projects[0].repos, ["backend"]);
-        assert_eq!(cfg.tokens[0].token, "secret");
-        assert_eq!(cfg.tokens[0].actor.display, "Alice <a@example.com>");
+    }
+
+    #[test]
+    fn a_residual_tokens_section_fails_closed_naming_its_replacement() {
+        let err = load_text(
+            "store:\n  driver: memory\nidentity:\n  driver: memory\ntokens:\n  - token: secret\n    actor:\n      display: Alice\n",
+        )
+        .expect_err("a retired tokens section must fail startup");
+        let shown = err.to_string();
+        assert!(matches!(err, ConfigError::ResidualTokens { .. }));
+        assert!(shown.contains("identity store"), "the reason points at the identity store: {shown}");
     }
 
     #[test]
     fn a_sqlite_config_carries_its_path() {
-        let cfg = load_text("store:\n  driver: sqlite\n  path: /var/lib/speclink/store.db\n")
-            .expect("valid sqlite config loads");
+        let cfg = load_text(
+            "store:\n  driver: sqlite\n  path: /var/lib/speclink/store.db\nidentity:\n  driver: sqlite\n  path: /var/lib/speclink/identity.db\n",
+        )
+        .expect("valid sqlite config loads");
         assert_eq!(cfg.store, StoreConfig::Sqlite { path: PathBuf::from("/var/lib/speclink/store.db") });
+        assert_eq!(
+            cfg.identity,
+            IdentityConfig::Sqlite { path: PathBuf::from("/var/lib/speclink/identity.db") }
+        );
+    }
+
+    #[test]
+    fn public_url_defaults_when_absent_and_is_honored_when_present() {
+        let default = load_text("store:\n  driver: memory\nidentity:\n  driver: memory\n")
+            .expect("loads");
+        assert_eq!(default.public_url, "http://localhost:8080");
+        let set = load_text(
+            "store:\n  driver: memory\nidentity:\n  driver: memory\npublic_url: https://speclink.example\n",
+        )
+        .expect("loads");
+        assert_eq!(set.public_url, "https://speclink.example");
+    }
+
+    #[test]
+    fn a_missing_identity_section_fails_closed() {
+        let err = load_text("store:\n  driver: memory\n").expect_err("identity is required");
+        assert!(matches!(err, ConfigError::MissingField { field, .. } if field == "identity"));
+    }
+
+    #[test]
+    fn an_unknown_identity_driver_fails_closed() {
+        let err = load_text("store:\n  driver: memory\nidentity:\n  driver: postgres\n")
+            .expect_err("an unsupported identity driver must fail startup");
+        let shown = err.to_string();
+        assert!(matches!(err, ConfigError::UnknownIdentityDriver { .. }));
+        assert!(shown.contains("postgres"), "names the bad identity driver: {shown}");
+    }
+
+    #[test]
+    fn identity_sqlite_without_a_path_fails_closed() {
+        let err = load_text("store:\n  driver: memory\nidentity:\n  driver: sqlite\n")
+            .expect_err("identity sqlite needs a path");
+        assert!(matches!(err, ConfigError::MissingField { field, .. } if field == "identity.path"));
     }
 
     #[test]

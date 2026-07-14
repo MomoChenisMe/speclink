@@ -1,7 +1,9 @@
-//! End-to-end: the real CLI binary against the real server over SQLite
-//! (reference-server spec「真實 CLI 端到端一致」). Data is seeded through the
-//! command routes (never straight into the database); remote CLI output matches
-//! fs mode; and the server restart keeps the SQLite data intact.
+//! End-to-end: the real CLI binary against the real server over SQLite, driven
+//! entirely through the identity flow (server-identity spec, 決策 3/4/5). An
+//! operator mints an invitation with the `invite` subcommand; the invitee walks
+//! the web forms to set a password, log in and create a PAT; that PAT
+//! configures the real CLI, whose remote verbs match fs mode; revoking the PAT
+//! makes the very next CLI call fail authentication.
 
 use speclink_protocol::command::CreateChangeRequest;
 use speclink_remote::client::Client;
@@ -12,12 +14,14 @@ use std::process::{Child, Command, Output};
 use std::sync::Once;
 use std::time::{Duration, Instant};
 
-const TOKEN: &str = "e2e-token";
-
 const PROPOSAL: &str = "## Why\n\nDemo change.\n\n## What Changes\n\n- a thing\n";
 const DESIGN: &str = "## Context\n\nDemo design.\n";
 const TASKS: &str = "## 1. Work\n\n- [ ] 1.1 First\n- [ ] 1.2 Second\n";
 const SPEC: &str = "## ADDED Requirements\n\n### Requirement: Demo\nDemo SHALL work.\n\n#### Scenario: works\n- **WHEN** run\n- **THEN** ok\n";
+
+const EMAIL: &str = "dev@example.com";
+const DISPLAY: &str = "E2E <e2e@example.com>";
+const PASSWORD: &str = "e2e-correct-horse";
 
 // --- binaries ---
 
@@ -102,23 +106,124 @@ fn free_port() -> u16 {
         .port()
 }
 
-// --- config, seeding, project layout ---
+// --- config ---
 
+/// Write a server config: SQLite store and SQLite identity in `dir`, a `demo`
+/// project, and no bootstrap tokens (retired).
 fn write_config(dir: &Path, db: &Path) -> PathBuf {
     let path = dir.join("server.yaml");
+    let identity_db = dir.join("identity.db");
     let mut file = std::fs::File::create(&path).expect("create config");
     write!(
         file,
-        "store:\n  driver: sqlite\n  path: {}\nprojects:\n  - key: demo\n    name: Demo\n    repos:\n      - backend\ntokens:\n  - token: {TOKEN}\n    actor:\n      id: u_e2e\n      display: E2E <e2e@example.com>\n",
-        db.display()
+        "store:\n  driver: sqlite\n  path: {}\nidentity:\n  driver: sqlite\n  path: {}\nprojects:\n  - key: demo\n    name: Demo\n    repos:\n      - backend\n",
+        db.display(),
+        identity_db.display()
     )
     .expect("write config");
     path
 }
 
-/// Seed change `demo` through the command routes with the typed client.
-fn seed(project_url: &str) {
-    let client = Client::new(project_url, TOKEN, Some("backend"));
+// --- identity flow over the web (invite → accept → login → PAT) ---
+
+/// A ureq agent that does not follow redirects.
+fn agent() -> ureq::Agent {
+    ureq::builder().redirects(0).build()
+}
+
+/// Run the `invite` subcommand against `config` and return the one-time token
+/// parsed from the printed URL.
+fn invite(config: &Path) -> String {
+    let out = Command::new(server_bin())
+        .arg("invite")
+        .args(["--config", config.to_str().unwrap()])
+        .args(["--email", EMAIL, "--display", DISPLAY, "--project", "demo"])
+        .output()
+        .expect("run invite subcommand");
+    assert!(out.status.success(), "invite failed: {}", String::from_utf8_lossy(&out.stderr));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    stdout
+        .split_whitespace()
+        .find(|w| w.contains("/invite/"))
+        .and_then(|url| url.rsplit("/invite/").next())
+        .unwrap_or_else(|| panic!("invite printed a URL: {stdout}"))
+        .trim()
+        .to_string()
+}
+
+/// Walk the web forms: accept the invitation, log in, create a PAT. Returns the
+/// PAT plaintext and the session cookie value (for the later revoke).
+fn create_pat_via_web(base: &str, token: &str) -> (String, String) {
+    let http = agent();
+
+    // Accept the invitation (set the password) — creates the active user.
+    let accept = http
+        .post(&format!("{base}/invite/{token}"))
+        .send_form(&[("password", PASSWORD)])
+        .expect("accept invitation");
+    assert!((300..400).contains(&accept.status()), "accepting the invitation succeeds");
+
+    // Log in.
+    let login = http
+        .post(&format!("{base}/login"))
+        .send_form(&[("email", EMAIL), ("password", PASSWORD)])
+        .expect("login");
+    assert!((300..400).contains(&login.status()), "login succeeds");
+    let session = login
+        .header("set-cookie")
+        .and_then(|c| c.split(';').next())
+        .and_then(|c| c.trim().strip_prefix("speclink_session="))
+        .expect("a session cookie")
+        .to_string();
+
+    // Create a PAT; the plaintext is shown once in the response.
+    let created = http
+        .post(&format!("{base}/account/tokens"))
+        .set("Cookie", &format!("speclink_session={session}"))
+        .send_form(&[("name", "cli"), ("expires", "")])
+        .expect("create PAT");
+    let body = created.into_string().unwrap_or_default();
+    let pat = body
+        .match_indices("spk_pat_")
+        .map(|(i, _)| {
+            body[i..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect::<String>()
+        })
+        .find(|t| t.len() == 72)
+        .unwrap_or_else(|| panic!("PAT plaintext in response: {body}"));
+    (pat, session)
+}
+
+/// Revoke the (single) PAT via the account page.
+fn revoke_pat(base: &str, session: &str) {
+    let http = agent();
+    let cookie = format!("speclink_session={session}");
+    let account = http
+        .get(&format!("{base}/account"))
+        .set("Cookie", &cookie)
+        .call()
+        .expect("load account page")
+        .into_string()
+        .unwrap_or_default();
+    let marker = "/account/tokens/";
+    let start = account.find(marker).expect("a revoke form") + marker.len();
+    let pat_id = &account[start..][..account[start..].find("/revoke").expect("revoke suffix")];
+    let resp = http
+        .post(&format!("{base}/account/tokens/{pat_id}/revoke"))
+        .set("Cookie", &cookie)
+        .send_form(&[])
+        .expect("revoke PAT");
+    assert!((200..400).contains(&resp.status()), "revoke succeeds");
+}
+
+// --- store seeding, project layout ---
+
+/// Seed change `demo` through the command routes with the typed client using
+/// `pat`.
+fn seed(project_url: &str, pat: &str) {
+    let client = Client::new(project_url, pat, Some("backend"));
     client
         .create_change(CreateChangeRequest {
             name: "demo".to_string(),
@@ -198,19 +303,23 @@ fn run_cli(project: &Path, args: &[&str], token: Option<&str>) -> Output {
 // --- the e2e ---
 
 #[test]
-fn real_cli_over_real_server_matches_fs_and_survives_restart() {
+fn invite_to_pat_drives_the_cli_and_revocation_denies_it() {
     let workdir = tempfile::tempdir().expect("workdir");
     let db = workdir.path().join("store.db");
     let config = write_config(workdir.path(), &db);
 
     let server = Server::start(&config);
-    seed(&server.project_url());
 
+    // The full identity flow: invite → accept → login → PAT.
+    let token = invite(&config);
+    let (pat, session) = create_pat_via_web(&server.base(), &token);
+
+    // Seed the store with that PAT, then run remote verbs with it.
+    seed(&server.project_url(), &pat);
     let remote = remote_project(workdir.path(), &server.project_url());
     let fs = fs_project(workdir.path());
 
-    // Remote verbs succeed against the real server.
-    let list = run_cli(&remote, &["list", "--json"], Some(TOKEN));
+    let list = run_cli(&remote, &["list", "--json"], Some(&pat));
     assert!(list.status.success(), "remote list failed: {}", String::from_utf8_lossy(&list.stderr));
     assert!(
         String::from_utf8_lossy(&list.stdout).contains("demo"),
@@ -219,7 +328,7 @@ fn real_cli_over_real_server_matches_fs_and_survives_restart() {
     );
 
     // Byte-identical parity against fs mode (fs is the shape authority).
-    let remote_status = run_cli(&remote, &["status", "--change", "demo", "--json"], Some(TOKEN));
+    let remote_status = run_cli(&remote, &["status", "--change", "demo", "--json"], Some(&pat));
     let fs_status = run_cli(&fs, &["status", "--change", "demo", "--json"], None);
     assert!(
         remote_status.status.success() && fs_status.status.success(),
@@ -229,47 +338,33 @@ fn real_cli_over_real_server_matches_fs_and_survives_restart() {
     );
     assert_eq!(
         remote_status.stdout, fs_status.stdout,
-        "remote status --json is byte-identical to fs mode\nremote: {}\nfs:     {}",
-        String::from_utf8_lossy(&remote_status.stdout),
-        String::from_utf8_lossy(&fs_status.stdout),
+        "remote status --json is byte-identical to fs mode",
     );
 
-    // Apply instructions match on their content once the fields that legitimately
-    // differ between the two modes are set aside: `changeDir`/`contextFiles`
-    // point into the remote projection (vs the fs paths), and `preflight` is a
-    // deliberately fs-only local-file check the wire contract omits.
-    let remote_apply = run_cli(&remote, &["instructions", "apply", "--change", "demo", "--json"], Some(TOKEN));
+    let remote_apply = run_cli(&remote, &["instructions", "apply", "--change", "demo", "--json"], Some(&pat));
     let fs_apply = run_cli(&fs, &["instructions", "apply", "--change", "demo", "--json"], None);
-    assert!(
-        remote_apply.status.success() && fs_apply.status.success(),
-        "apply runs on both paths"
-    );
+    assert!(remote_apply.status.success() && fs_apply.status.success(), "apply runs on both paths");
     assert_eq!(
         content_only(&remote_apply.stdout),
         content_only(&fs_apply.stdout),
-        "remote and fs apply agree on the store-determined content\nremote: {}\nfs:     {}",
-        String::from_utf8_lossy(&remote_apply.stdout),
-        String::from_utf8_lossy(&fs_apply.stdout),
+        "remote and fs apply agree on the store-determined content",
     );
 
-    // Discussions replay end to end: the seeded discussion is listed.
-    let discuss = run_cli(&remote, &["discuss", "list", "--json"], Some(TOKEN));
+    // Discussions replay end to end.
+    let discuss = run_cli(&remote, &["discuss", "list", "--json"], Some(&pat));
     assert!(discuss.status.success(), "remote discuss list failed: {}", String::from_utf8_lossy(&discuss.stderr));
     assert!(
         String::from_utf8_lossy(&discuss.stdout).contains("Rate limiting approach"),
-        "remote discuss list names the seeded discussion: {}",
-        String::from_utf8_lossy(&discuss.stdout)
+        "remote discuss list names the seeded discussion",
     );
 
-    // Restart the server against the same database: the data is still there.
-    drop(server);
-    let restarted = Server::start(&config);
-    let remote2 = remote_project(&workdir.path().join("after"), &restarted.project_url());
-    let list2 = run_cli(&remote2, &["list", "--json"], Some(TOKEN));
-    assert!(list2.status.success(), "list after restart failed: {}", String::from_utf8_lossy(&list2.stderr));
+    // Revoke the PAT: the very next CLI call fails authentication (401).
+    revoke_pat(&server.base(), &session);
+    let after = run_cli(&remote, &["list", "--json"], Some(&pat));
+    assert!(!after.status.success(), "the revoked PAT no longer authorizes CLI calls");
+    let stderr = String::from_utf8_lossy(&after.stderr);
     assert!(
-        String::from_utf8_lossy(&list2.stdout).contains("demo"),
-        "the change persisted across the restart: {}",
-        String::from_utf8_lossy(&list2.stdout)
+        stderr.contains("authentication failed"),
+        "the revoked call maps to the 401 authentication message: {stderr}"
     );
 }

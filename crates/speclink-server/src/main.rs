@@ -1,8 +1,14 @@
-//! The `speclink-server` binary: load the configuration fail closed, build the
-//! store, then bind and serve. A configuration failure prints the reason and
-//! exits non-zero — before any port is bound.
+//! The `speclink-server` binary. With no subcommand it runs the server: load
+//! the configuration fail closed, build the store, then bind and serve — a
+//! configuration failure prints the reason and exits non-zero before any port
+//! is bound. The `invite` subcommand is the headless management entry (決策 3):
+//! it mints a one-time invitation against the configured identity store and
+//! prints its URL.
 
-use clap::Parser;
+use chrono::{Duration, Utc};
+use clap::{Args as ClapArgs, Parser, Subcommand};
+use speclink_server::config::IdentityConfig;
+use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::AppState;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -10,21 +16,68 @@ use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(name = "speclink-server", about = "The official Speclink HTTP server")]
-struct Args {
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+    #[command(flatten)]
+    run: RunArgs,
+}
+
+/// The run-mode arguments, used when no subcommand is given.
+#[derive(ClapArgs)]
+struct RunArgs {
     /// Path to the server configuration file (YAML).
     #[arg(long)]
-    config: PathBuf,
+    config: Option<PathBuf>,
     /// Address to bind.
     #[arg(long, default_value = "127.0.0.1:8080")]
     addr: String,
 }
 
-fn main() -> ExitCode {
-    let args = Args::parse();
+#[derive(Subcommand)]
+enum Command {
+    /// Create a one-time invitation and print its acceptance URL.
+    Invite(InviteArgs),
+}
 
-    // Fail closed on configuration before anything else — no port is bound
-    // until the config is valid and the store opens.
-    let config = match speclink_server::config::load(&args.config) {
+#[derive(ClapArgs)]
+struct InviteArgs {
+    /// Path to the server configuration file (locates the identity database).
+    #[arg(long)]
+    config: PathBuf,
+    /// The invitee's email (the login identity).
+    #[arg(long)]
+    email: String,
+    /// The invitee's display name.
+    #[arg(long)]
+    display: String,
+    /// A project to grant membership to (repeatable).
+    #[arg(long = "project")]
+    projects: Vec<String>,
+    /// Grant the admin flag.
+    #[arg(long, default_value_t = false)]
+    admin: bool,
+    /// Days until the invitation expires.
+    #[arg(long = "expires-in-days", default_value_t = 7)]
+    expires_in_days: i64,
+}
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    match cli.command {
+        Some(Command::Invite(args)) => run_invite(args),
+        None => run_server(cli.run),
+    }
+}
+
+/// Load the config and serve. Fail closed: a config or store failure prints the
+/// reason and exits non-zero before any port is bound.
+fn run_server(args: RunArgs) -> ExitCode {
+    let Some(config_path) = args.config else {
+        eprintln!("missing required argument --config");
+        return ExitCode::FAILURE;
+    };
+    let config = match speclink_server::config::load(&config_path) {
         Ok(config) => config,
         Err(e) => {
             eprintln!("{e}");
@@ -38,8 +91,15 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let identity = match speclink_server::build_identity(&config.identity) {
+        Ok(identity) => identity,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
 
-    let state = AppState { store, config: Arc::new(config) };
+    let state = AppState { store, identity, config: Arc::new(config) };
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime,
         Err(e) => {
@@ -52,4 +112,48 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
+}
+
+/// Mint an invitation against the configured identity store and print its URL.
+/// A duplicate email or any store failure prints the reason and exits non-zero.
+fn run_invite(args: InviteArgs) -> ExitCode {
+    let config = match speclink_server::config::load(&args.config) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let store = match &config.identity {
+        IdentityConfig::Sqlite { path } => match IdentitySqlite::open(path) {
+            Ok(store) => store,
+            Err(e) => {
+                eprintln!("{e}");
+                return ExitCode::FAILURE;
+            }
+        },
+        IdentityConfig::Memory => {
+            eprintln!("invite needs a persistent identity store; the config declares an in-memory one");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let invitation = NewInvitation {
+        email: args.email,
+        display: args.display,
+        memberships: args.projects,
+        admin: args.admin,
+        expires_at: Utc::now() + Duration::days(args.expires_in_days),
+    };
+    match store.create_invitation(invitation) {
+        Ok(token) => {
+            let base = config.public_url.trim_end_matches('/');
+            println!("{base}/invite/{token}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
 }

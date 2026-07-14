@@ -54,9 +54,9 @@ fn sync_url(base: &str) -> String {
 }
 
 /// GET `/sync-state`, optionally with If-None-Match; returns (status, etag).
-fn poll(url: &str, if_none_match: Option<&str>) -> (u16, String) {
+fn poll(url: &str, token: &str, if_none_match: Option<&str>) -> (u16, String) {
     let mut req = ureq::get(url)
-        .set("Authorization", "Bearer secret")
+        .set("Authorization", &format!("Bearer {token}"))
         .set("X-Speclink-Api-Version", "1")
         .set("X-Speclink-Repo", "backend");
     if let Some(inm) = if_none_match {
@@ -71,10 +71,10 @@ fn poll(url: &str, if_none_match: Option<&str>) -> (u16, String) {
     }
 }
 
-fn client(base: &str) -> Client {
+fn client(base: &str, token: &str) -> Client {
     Client::new(
         &format!("{base}/api/speclink/v1/projects/demo"),
-        "secret",
+        token,
         Some("backend"),
     )
 }
@@ -82,20 +82,22 @@ fn client(base: &str) -> Client {
 #[test]
 fn polling_detects_a_change_across_a_commit() {
     let store = seeded_store();
-    let base = common::start(common::state_with(store));
+    let state = common::state_with(store);
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
     let url = sync_url(&base);
 
-    let (status, e0) = poll(&url, None);
+    let (status, e0) = poll(&url, &pat, None);
     assert_eq!(status, 200, "the first poll returns the current token");
     assert!(!e0.is_empty(), "an ETag is declared");
 
-    let (status, _) = poll(&url, Some(&e0));
+    let (status, _) = poll(&url, &pat, Some(&e0));
     assert_eq!(status, 304, "re-polling before any write is not modified");
 
     // Another writer completes a commit.
-    client(&base).task_done("demo", "1", &[]).expect("task done");
+    client(&base, &pat).task_done("demo", "1", &[]).expect("task done");
 
-    let (status, e1) = poll(&url, Some(&e0));
+    let (status, e1) = poll(&url, &pat, Some(&e0));
     assert_eq!(status, 200, "re-polling after the write returns 200");
     assert_ne!(e1, e0, "the ETag advanced with the commit");
 }
@@ -105,10 +107,12 @@ fn a_query_against_an_unreachable_store_is_503_unavailable() {
     // Asserted at the wire envelope: the typed client collapses every 5xx to a
     // generic reasonless message, so the raw response carries the registry
     // reason.
-    let base = common::start(common::state_with(crashed_store()));
+    let state = common::state_with(crashed_store());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
     let url = format!("{base}/api/speclink/v1/projects/demo/changes");
     let (status, reason) = match ureq::get(&url)
-        .set("Authorization", "Bearer secret")
+        .set("Authorization", &format!("Bearer {pat}"))
         .set("X-Speclink-Api-Version", "1")
         .set("X-Speclink-Repo", "backend")
         .call()

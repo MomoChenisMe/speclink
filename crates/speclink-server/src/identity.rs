@@ -1,0 +1,218 @@
+//! The server's own identity store: users, project memberships, invitations,
+//! PATs and sessions (server-identity spec). The store is abstracted behind a
+//! trait so the routes and the auth precondition depend on the behaviour, not
+//! the backend; [`IdentitySqlite`] is the only implementation, in a file-backed
+//! and an in-memory (test-only) variant.
+//!
+//! Every credential lands as a hash and never as plaintext (決策 2): passwords
+//! use argon2id; PATs, invitation tokens and session ids are high-entropy random
+//! values stored as their SHA-256. A PAT's plaintext is shown once at creation
+//! and carries the identifiable `spk_pat_` prefix.
+
+use argon2::password_hash::rand_core::{OsRng, RngCore};
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::Argon2;
+use chrono::{DateTime, Duration, Utc};
+use sha2::{Digest, Sha256};
+
+pub use crate::identity_sqlite::IdentitySqlite;
+
+/// A user account. The password hash never leaves the store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct User {
+    pub id: String,
+    pub display: String,
+    pub email: String,
+    pub active: bool,
+    pub admin: bool,
+}
+
+/// A pending invitation, resolved from its one-time token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Invitation {
+    pub id: String,
+    pub email: String,
+    pub display: String,
+    pub admin: bool,
+    pub memberships: Vec<String>,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// The parameters the invite subcommand supplies to mint an invitation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewInvitation {
+    pub email: String,
+    pub display: String,
+    pub memberships: Vec<String>,
+    pub admin: bool,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// A PAT's stored metadata — never the plaintext, which exists only at creation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pat {
+    pub id: String,
+    pub user_id: String,
+    pub prefix: String,
+    pub name: String,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A session's metadata for the account page. The session id is never stored in
+/// plaintext, so it cannot be shown back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionInfo {
+    pub id: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+/// Why an identity operation failed.
+#[derive(Debug)]
+pub enum IdentityError {
+    /// The identity database could not be opened, is not a speclink identity
+    /// store, or records a version this server cannot read (fail closed).
+    Open(String),
+    /// A uniqueness guard rejected the write (e.g. the email already has an
+    /// active user or an outstanding invitation).
+    Duplicate(String),
+    /// The invitation is used, expired or unknown at accept time.
+    InvalidInvitation,
+    /// A backend failure.
+    Backend(String),
+}
+
+impl std::fmt::Display for IdentityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IdentityError::Open(r) => write!(f, "cannot open identity store: {r}"),
+            IdentityError::Duplicate(r) => write!(f, "{r}"),
+            IdentityError::InvalidInvitation => write!(f, "the invitation is invalid"),
+            IdentityError::Backend(r) => write!(f, "identity store backend error: {r}"),
+        }
+    }
+}
+
+impl std::error::Error for IdentityError {}
+
+/// The identity store contract. Object-safe: the routes and the auth layer hold
+/// `Arc<dyn IdentityStore>`.
+pub trait IdentityStore: Send + Sync {
+    /// Mint an invitation and return its one-time plaintext token. Rejects an
+    /// email that already has an active user or an outstanding invitation.
+    fn create_invitation(&self, req: NewInvitation) -> Result<String, IdentityError>;
+
+    /// Resolve a token to a still-valid invitation (unconsumed and unexpired);
+    /// `None` covers used, expired and unknown tokens alike.
+    fn find_valid_invitation(&self, token: &str) -> Result<Option<Invitation>, IdentityError>;
+
+    /// Accept an invitation atomically: create an active user with the invited
+    /// memberships and admin flag, and consume the invitation. Returns the new
+    /// user id, or [`IdentityError::InvalidInvitation`] if the token is no
+    /// longer valid.
+    fn accept_invitation(&self, token: &str, password: &str) -> Result<String, IdentityError>;
+
+    /// Fetch a user by id.
+    fn get_user(&self, user_id: &str) -> Result<Option<User>, IdentityError>;
+
+    /// Fetch a user by email.
+    fn find_user_by_email(&self, email: &str) -> Result<Option<User>, IdentityError>;
+
+    /// Verify an email/password pair. Returns the user on success, and `None`
+    /// uniformly for an unknown email, a wrong password, or a suspended user —
+    /// the caller cannot tell which, so login failure never leaks account
+    /// existence.
+    fn authenticate_password(&self, email: &str, password: &str) -> Result<Option<User>, IdentityError>;
+
+    /// Set a user's active state (admin/test support).
+    fn set_user_active(&self, user_id: &str, active: bool) -> Result<(), IdentityError>;
+
+    /// Whether `user_id` is a member of `project_key`.
+    fn is_member(&self, user_id: &str, project_key: &str) -> Result<bool, IdentityError>;
+
+    /// Open a session for `user_id`; returns the plaintext session id (the
+    /// cookie value).
+    fn create_session(&self, user_id: &str, ttl: Duration) -> Result<String, IdentityError>;
+
+    /// Resolve a session id to its user if the session is live (unrevoked,
+    /// unexpired, active user).
+    fn authenticate_session(&self, session_id: &str) -> Result<Option<User>, IdentityError>;
+
+    /// Revoke a session by its plaintext id (logout). Idempotent.
+    fn revoke_session(&self, session_id: &str) -> Result<(), IdentityError>;
+
+    /// List a user's sessions for the account page.
+    fn list_sessions(&self, user_id: &str) -> Result<Vec<SessionInfo>, IdentityError>;
+
+    /// Create a PAT for `user_id`; returns its metadata and the one-time
+    /// plaintext (shown once at creation).
+    fn create_pat(
+        &self,
+        user_id: &str,
+        name: &str,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<(Pat, String), IdentityError>;
+
+    /// List a user's PATs (metadata only).
+    fn list_pats(&self, user_id: &str) -> Result<Vec<Pat>, IdentityError>;
+
+    /// Revoke one of `user_id`'s own PATs. Idempotent.
+    fn revoke_pat(&self, user_id: &str, pat_id: &str) -> Result<(), IdentityError>;
+
+    /// Authenticate a bearer PAT for API access: hash-match, unrevoked,
+    /// unexpired, owning user active. Membership is the caller's check;
+    /// last-used is advanced separately by [`IdentityStore::touch_pat`].
+    fn authenticate_pat(&self, token: &str) -> Result<Option<(Pat, User)>, IdentityError>;
+
+    /// Advance a PAT's last-used timestamp after a successful request.
+    fn touch_pat(&self, pat_id: &str) -> Result<(), IdentityError>;
+}
+
+// --- credential hashing (決策 2) ---
+
+/// SHA-256 of a high-entropy token, hex-encoded. High-entropy secrets need no
+/// slow hash; a table lookup on the digest is enough.
+pub(crate) fn hash_token(plaintext: &str) -> String {
+    let digest = Sha256::digest(plaintext.as_bytes());
+    to_hex(&digest)
+}
+
+/// A fresh high-entropy random token: 32 bytes of OS randomness, hex-encoded.
+pub(crate) fn random_token() -> String {
+    let mut bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut bytes);
+    to_hex(&bytes)
+}
+
+/// Hash a password with argon2id (a PHC string carrying its own salt).
+pub(crate) fn hash_password(password: &str) -> Result<String, IdentityError> {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map(|h| h.to_string())
+        .map_err(|e| IdentityError::Backend(format!("password hashing failed: {e}")))
+}
+
+/// Verify a password against a stored argon2 PHC hash.
+pub(crate) fn verify_password(hash: &str, password: &str) -> bool {
+    match PasswordHash::new(hash) {
+        Ok(parsed) => Argon2::default()
+            .verify_password(password.as_bytes(), &parsed)
+            .is_ok(),
+        Err(_) => false,
+    }
+}
+
+/// Lower-hex encode bytes.
+fn to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}

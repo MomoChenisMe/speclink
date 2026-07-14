@@ -12,7 +12,7 @@ use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamS
 use std::sync::Arc;
 
 /// A server seeded with one change (`demo`) and one canonical spec.
-fn seeded_base() -> String {
+fn seeded_base() -> (String, String, String) {
     let store = MemoryStore::new();
     let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
     let mut uow = store
@@ -35,23 +35,25 @@ fn seeded_base() -> String {
 
     let state = AppState {
         store: Arc::new(store),
+        identity: common::empty_identity(),
         config: Arc::new(common::demo_config()),
     };
-    common::start(state)
+    let (pat, user) = common::seed_pat(&state.identity, &["demo"]);
+    (common::start(state), pat, user)
 }
 
-fn client(base: &str) -> Client {
+fn client(base: &str, token: &str) -> Client {
     Client::new(
         &format!("{base}/api/speclink/v1/projects/demo"),
-        "secret",
+        token,
         Some("backend"),
     )
 }
 
 #[test]
 fn list_status_and_specs_return_typed_dtos() {
-    let base = seeded_base();
-    let client = client(&base);
+    let (base, pat, _user) = seeded_base();
+    let client = client(&base, &pat);
 
     let list = client.list_changes().expect("list changes");
     assert_eq!(list.changes.len(), 1);
@@ -75,8 +77,8 @@ fn list_status_and_specs_return_typed_dtos() {
 
 #[test]
 fn instructions_and_artifact_content_return_typed_dtos() {
-    let base = seeded_base();
-    let client = client(&base);
+    let (base, pat, _user) = seeded_base();
+    let client = client(&base, &pat);
 
     let apply = client.apply_instructions("demo").expect("apply instructions");
     assert_eq!(apply.change_name, "demo");
@@ -97,22 +99,22 @@ fn instructions_and_artifact_content_return_typed_dtos() {
 
 #[test]
 fn config_and_whoami_return_typed_dtos() {
-    let base = seeded_base();
-    let client = client(&base);
+    let (base, pat, user_id) = seeded_base();
+    let client = client(&base, &pat);
 
     let config = client.config().expect("config");
     assert_eq!(config.schema, "spec-driven", "the default workflow schema");
 
     let whoami = client.whoami().expect("whoami");
-    assert_eq!(whoami.user.handle, "u_1");
-    assert_eq!(whoami.user.name, "Tester <tester@example.com>");
+    assert_eq!(whoami.user.handle, user_id, "whoami reports the PAT owner's id");
+    assert_eq!(whoami.user.name, common::SEED_DISPLAY);
     assert!(whoami.repos.iter().any(|r| r.name == "backend"), "whoami lists the repo");
 }
 
 #[test]
 fn a_missing_change_is_the_404_not_found_triple() {
-    let base = seeded_base();
-    let client = client(&base);
+    let (base, pat, _user) = seeded_base();
+    let client = client(&base, &pat);
     let err = client.get_change("ghost").expect_err("a missing change is an error");
     assert_eq!(
         err.reason.as_deref(),
