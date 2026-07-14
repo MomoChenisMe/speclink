@@ -56,11 +56,11 @@ code:
 ---
 ### Requirement: binding 與認證前置 fail closed
 
-所有路由 SHALL 前置認證與 binding 裁決：bearer token 缺失或未知 SHALL 回 401 permission_denied；project key 未註冊 SHALL 回 404 not_found；X-Speclink-Repo 標頭指向未註冊 repo SHALL 回 not_found；缺標頭且該 project 註冊多個 repo SHALL 拒絕並於 message 指出候選需明示，SHALL NOT 自動選擇；恰一個 repo 時 SHALL 綁定之。X-Speclink-Api-Version 與 server 不相容 SHALL 拒絕並帶版本原因。前置任一步失敗 SHALL NOT 執行動詞。/binding SHALL 回 actor、project、repo、apiVersion、engineVersion 與 capabilities（宣告 polling 端點與 etag 支援；本能力不宣告 push transport）。
+所有路由 SHALL 前置認證與 binding 裁決：bearer 憑證缺失或無效 SHALL 回 401 permission_denied——憑證查驗對 identity 儲存逐請求進行（hash 命中、未撤銷、未過期、所屬 user 為 active），SHALL NOT 存在組態檔靜態 token 表的認證路徑；actor 非 URL project 的 member SHALL 回 403 permission_denied。project key 未註冊 SHALL 回 404 not_found；X-Speclink-Repo 標頭指向未註冊 repo SHALL 回 not_found；缺標頭且該 project 註冊多個 repo SHALL 拒絕並於 message 指出候選需明示，SHALL NOT 自動選擇；恰一個 repo 時 SHALL 綁定之。X-Speclink-Api-Version 與 server 不相容 SHALL 拒絕並帶版本原因。前置任一步失敗 SHALL NOT 執行動詞。/binding SHALL 回 actor、project、repo、apiVersion、engineVersion 與 capabilities（宣告 polling 端點與 etag 支援；本能力不宣告 push transport）。
 
 #### Scenario: 未知 token 拒於門外
 
-- **WHEN** 以未配置的 token 呼叫任一查詢路由
+- **WHEN** 以 identity 儲存中不存在的 token 呼叫任一查詢路由
 - **THEN** 回 401 且 reason 為 permission_denied；server 未執行任何 engine 動詞
 
 #### Scenario: repo 多義拒絕不代選
@@ -68,37 +68,42 @@ code:
 - **WHEN** 對註冊兩個 repo 的 project 不帶 X-Speclink-Repo 呼叫 /binding
 - **THEN** 回拒絕且 message 指出需明示 repo；SHALL NOT 回任一候選的成功 binding
 
+#### Scenario: 有效 PAT 完成 binding
+
+- **WHEN** 以 /account 建立的有效 PAT 對 actor 具 membership 的 project 呼叫 /binding
+- **THEN** 回成功 binding，actor 為該 PAT 所屬 user 的身分
+
 ---
 
+
 <!-- @trace
-source: server-http-adapter
+source: server-identity-pat
 updated: 2026-07-14
 code:
   - Cargo.lock
-  - Cargo.toml
-  - crates/speclink-host/Cargo.toml
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/lib.rs
-  - crates/speclink-host/tests/bridge_dual_path.rs
   - crates/speclink-server/Cargo.toml
   - crates/speclink-server/src/app.rs
   - crates/speclink-server/src/auth.rs
   - crates/speclink-server/src/config.rs
-  - crates/speclink-server/src/error.rs
+  - crates/speclink-server/src/identity.rs
+  - crates/speclink-server/src/identity_sqlite.rs
   - crates/speclink-server/src/lib.rs
   - crates/speclink-server/src/main.rs
-  - crates/speclink-server/src/routes.rs
   - crates/speclink-server/src/state.rs
-  - crates/speclink-server/src/verb.rs
+  - crates/speclink-server/src/web.rs
+  - crates/speclink-server/tests/auth_pat.rs
   - crates/speclink-server/tests/binding.rs
   - crates/speclink-server/tests/command_routes.rs
   - crates/speclink-server/tests/common/mod.rs
   - crates/speclink-server/tests/discussion_routes.rs
   - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/health.rs
+  - crates/speclink-server/tests/identity.rs
+  - crates/speclink-server/tests/invite.rs
   - crates/speclink-server/tests/query_routes.rs
   - crates/speclink-server/tests/startup.rs
   - crates/speclink-server/tests/sync_state.rs
+  - crates/speclink-server/tests/web_account.rs
+  - crates/speclink-server/tests/web_invite.rs
 -->
 
 ---
@@ -200,7 +205,7 @@ code:
 ---
 ### Requirement: 啟動組態 fail closed
 
-server SHALL 以組態檔啟動，宣告 store driver、Project/Repo registry 與 bootstrap token 對 actor 的映射。組態檔缺失、不可解析、宣告未知 driver、或 registry/token 段形狀不合 SHALL 使啟動失敗並印出指向錯誤的原因，SHALL NOT 以部分預設啟動。sqlite driver SHALL 為預設持久層選項，memory driver SHALL 僅供測試組態。
+server SHALL 以組態檔啟動，宣告 store driver、Project/Repo registry 與 identity 資料庫（sqlite 路徑；memory 變體 SHALL 僅供測試組態）。組態檔缺失、不可解析、宣告未知 driver、或 registry/identity 段形狀不合 SHALL 使啟動失敗並印出指向錯誤的原因，SHALL NOT 以部分預設啟動；組態 SHALL NOT 含 bootstrap token 對 actor 的映射段。sqlite driver SHALL 為預設持久層選項，memory driver SHALL 僅供測試組態。
 
 #### Scenario: 壞組態拒絕啟動
 
@@ -212,37 +217,40 @@ server SHALL 以組態檔啟動，宣告 store driver、Project/Repo registry �
 - **WHEN** 組態宣告 store driver 為未支援的名稱
 - **THEN** 啟動失敗且原因列出支援的 driver 名稱
 
----
+#### Scenario: 殘留 tokens 段拒絕啟動
+
+- **WHEN** 以仍含舊 bootstrap tokens 段的組態檔啟動 server
+- **THEN** 啟動失敗且原因指出該段已由 identity 儲存取代
+
 
 <!-- @trace
-source: server-http-adapter
+source: server-identity-pat
 updated: 2026-07-14
 code:
   - Cargo.lock
-  - Cargo.toml
-  - crates/speclink-host/Cargo.toml
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/lib.rs
-  - crates/speclink-host/tests/bridge_dual_path.rs
   - crates/speclink-server/Cargo.toml
   - crates/speclink-server/src/app.rs
   - crates/speclink-server/src/auth.rs
   - crates/speclink-server/src/config.rs
-  - crates/speclink-server/src/error.rs
+  - crates/speclink-server/src/identity.rs
+  - crates/speclink-server/src/identity_sqlite.rs
   - crates/speclink-server/src/lib.rs
   - crates/speclink-server/src/main.rs
-  - crates/speclink-server/src/routes.rs
   - crates/speclink-server/src/state.rs
-  - crates/speclink-server/src/verb.rs
+  - crates/speclink-server/src/web.rs
+  - crates/speclink-server/tests/auth_pat.rs
   - crates/speclink-server/tests/binding.rs
   - crates/speclink-server/tests/command_routes.rs
   - crates/speclink-server/tests/common/mod.rs
   - crates/speclink-server/tests/discussion_routes.rs
   - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/health.rs
+  - crates/speclink-server/tests/identity.rs
+  - crates/speclink-server/tests/invite.rs
   - crates/speclink-server/tests/query_routes.rs
   - crates/speclink-server/tests/startup.rs
   - crates/speclink-server/tests/sync_state.rs
+  - crates/speclink-server/tests/web_account.rs
+  - crates/speclink-server/tests/web_invite.rs
 -->
 
 ---

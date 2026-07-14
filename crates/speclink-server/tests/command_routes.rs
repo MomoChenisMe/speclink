@@ -42,10 +42,10 @@ fn seeded_store() -> Arc<MemoryStore> {
     store
 }
 
-fn client(base: &str) -> Client {
+fn client(base: &str, token: &str) -> Client {
     Client::new(
         &format!("{base}/api/speclink/v1/projects/demo"),
-        "secret",
+        token,
         Some("backend"),
     )
 }
@@ -53,8 +53,10 @@ fn client(base: &str) -> Client {
 #[test]
 fn competing_writers_on_the_same_version_leave_a_distinguishable_conflict() {
     let store = seeded_store();
-    let base = common::start(common::state_with(store.clone()));
-    let client = client(&base);
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
 
     let read = client.get_artifact("demo", "proposal").expect("read proposal");
     let version = read.version;
@@ -81,8 +83,10 @@ fn competing_writers_on_the_same_version_leave_a_distinguishable_conflict() {
 #[test]
 fn a_completed_task_lands_a_task_completed_event_in_the_outbox() {
     let store = seeded_store();
-    let base = common::start(common::state_with(store.clone()));
-    let client = client(&base);
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
 
     let done = client.task_done("demo", "1", &[]).expect("task done");
     assert!(!done.already_done, "the task flipped for the first time");

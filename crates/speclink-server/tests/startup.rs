@@ -53,3 +53,16 @@ fn an_unknown_driver_exits_non_zero_listing_supported_drivers() {
         "stderr lists the supported drivers: {stderr}"
     );
 }
+
+#[test]
+fn a_residual_tokens_section_exits_non_zero_naming_its_replacement() {
+    let (out, _file) = run_with_contents(
+        "store:\n  driver: memory\nidentity:\n  driver: memory\ntokens:\n  - token: x\n    actor:\n      display: A\n",
+    );
+    assert!(!out.status.success(), "a retired tokens section must fail startup");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("identity store"),
+        "stderr says the tokens section is replaced by the identity store: {stderr}"
+    );
+}

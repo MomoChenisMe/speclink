@@ -13,10 +13,10 @@ fn scope() -> Scope {
     Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
 }
 
-fn client(base: &str) -> Client {
+fn client(base: &str, token: &str) -> Client {
     Client::new(
         &format!("{base}/api/speclink/v1/projects/demo"),
-        "secret",
+        token,
         Some("backend"),
     )
 }
@@ -24,8 +24,10 @@ fn client(base: &str) -> Client {
 #[test]
 fn create_and_show_round_trip_a_discussion() {
     let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
-    let base = common::start(common::state_with(store));
-    let client = client(&base);
+    let state = common::state_with(store);
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
 
     let created = client.new_discussion("Rate limiting").expect("create discussion");
     assert!(!created.slug.is_empty(), "a slug is derived from the topic");
@@ -41,8 +43,10 @@ fn create_and_show_round_trip_a_discussion() {
 #[test]
 fn promote_returns_the_change_and_lands_both_events() {
     let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
-    let base = common::start(common::state_with(store.clone()));
-    let client = client(&base);
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
 
     let created = client.new_discussion("Auth scope").expect("create discussion");
     let promoted = client

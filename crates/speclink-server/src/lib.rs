@@ -9,12 +9,16 @@ pub mod app;
 pub mod auth;
 pub mod config;
 pub mod error;
+pub mod identity;
+pub mod identity_sqlite;
 pub mod routes;
 pub mod state;
 pub mod verb;
+pub mod web;
 
-use config::StoreConfig;
-use state::{AppState, SharedStore};
+use config::{IdentityConfig, StoreConfig};
+use identity::IdentitySqlite;
+use state::{AppState, SharedIdentity, SharedStore};
 use std::sync::Arc;
 
 /// Build the store backend the configuration declares, fail closed: a SQLite
@@ -30,6 +34,17 @@ pub fn build_store(store: &StoreConfig) -> anyhow::Result<SharedStore> {
             Ok(Arc::new(store))
         }
     }
+}
+
+/// Build the identity store the configuration declares, fail closed: a foreign
+/// or newer identity database is refused with its bytes untouched.
+pub fn build_identity(identity: &IdentityConfig) -> anyhow::Result<SharedIdentity> {
+    let store = match identity {
+        IdentityConfig::Memory => IdentitySqlite::open_memory(),
+        IdentityConfig::Sqlite { path } => IdentitySqlite::open(path),
+    }
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(Arc::new(store))
 }
 
 /// Bind `addr` and serve until the process is signalled. The router is built

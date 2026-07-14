@@ -9,8 +9,6 @@ use speclink_protocol::binding::BindingResponse;
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_protocol::API_VERSION;
 
-const TOKEN: &str = "secret";
-
 /// `GET {project}/binding` with the given credentials and headers.
 fn get_binding(
     base: &str,
@@ -53,24 +51,30 @@ fn unknown_token_is_rejected_401_permission_denied() {
 
 #[test]
 fn unregistered_project_is_404_not_found() {
-    let base = common::start(common::state_with_config(common::demo_config()));
-    let (status, err) = error_of(get_binding(&base, "ghost", TOKEN, API_VERSION, Some("backend")));
+    let state = common::state_with_config(common::demo_config());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let (status, err) = error_of(get_binding(&base, "ghost", &pat, API_VERSION, Some("backend")));
     assert_eq!(status, 404);
     assert_eq!(err.reason, ErrorReason::NotFound);
 }
 
 #[test]
 fn unregistered_repo_header_is_not_found() {
-    let base = common::start(common::state_with_config(common::demo_config()));
-    let (status, err) = error_of(get_binding(&base, "demo", TOKEN, API_VERSION, Some("ghost-repo")));
+    let state = common::state_with_config(common::demo_config());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let (status, err) = error_of(get_binding(&base, "demo", &pat, API_VERSION, Some("ghost-repo")));
     assert_eq!(status, 404);
     assert_eq!(err.reason, ErrorReason::NotFound);
 }
 
 #[test]
 fn ambiguous_repo_without_a_header_is_refused_and_names_candidates() {
-    let base = common::start(common::state_with_config(common::config_with_dual_repo_project()));
-    let (_status, err) = error_of(get_binding(&base, "multi", TOKEN, API_VERSION, None));
+    let state = common::state_with_config(common::config_with_dual_repo_project());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo", "multi"]);
+    let base = common::start(state);
+    let (_status, err) = error_of(get_binding(&base, "multi", &pat, API_VERSION, None));
     assert_eq!(err.reason, ErrorReason::Refused);
     assert!(
         err.message.contains("web") && err.message.contains("api"),
@@ -81,8 +85,10 @@ fn ambiguous_repo_without_a_header_is_refused_and_names_candidates() {
 
 #[test]
 fn incompatible_api_version_is_refused_with_a_version_reason() {
-    let base = common::start(common::state_with_config(common::demo_config()));
-    let (_status, err) = error_of(get_binding(&base, "demo", TOKEN, "999", Some("backend")));
+    let state = common::state_with_config(common::demo_config());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let (_status, err) = error_of(get_binding(&base, "demo", &pat, "999", Some("backend")));
     assert_eq!(err.reason, ErrorReason::Refused);
     assert!(
         err.message.to_lowercase().contains("version"),
@@ -93,15 +99,17 @@ fn incompatible_api_version_is_refused_with_a_version_reason() {
 
 #[test]
 fn a_compatible_request_returns_the_binding_with_capabilities() {
-    let base = common::start(common::state_with_config(common::demo_config()));
-    let resp = get_binding(&base, "demo", TOKEN, API_VERSION, Some("backend"))
+    let state = common::state_with_config(common::demo_config());
+    let (pat, user_id) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let resp = get_binding(&base, "demo", &pat, API_VERSION, Some("backend"))
         .expect("a compatible request binds");
     assert_eq!(resp.status(), 200);
     let binding: BindingResponse =
         serde_json::from_str(&resp.into_string().unwrap()).expect("a BindingResponse body");
 
-    assert_eq!(binding.actor.id, "u_1");
-    assert_eq!(binding.actor.name, "Tester <tester@example.com>");
+    assert_eq!(binding.actor.id, user_id);
+    assert_eq!(binding.actor.name, common::SEED_DISPLAY);
     assert_eq!(binding.project.key, "demo");
     assert_eq!(binding.repo.key, "backend");
     assert_eq!(binding.api_version, API_VERSION);

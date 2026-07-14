@@ -4,6 +4,7 @@
 use crate::auth::Binding;
 use crate::routes;
 use crate::state::AppState;
+use crate::web;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post, put};
@@ -40,6 +41,12 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
+        .route("/invite/{token}", get(web::invite_page).post(web::accept_invite))
+        .route("/login", get(web::login_page).post(web::do_login))
+        .route("/logout", post(web::do_logout))
+        .route("/account", get(web::account_page))
+        .route("/account/tokens", post(web::create_pat))
+        .route("/account/tokens/{id}/revoke", post(web::revoke_pat))
         .nest("/api/speclink/v1/projects/{key}", project)
         .with_state(state)
 }
