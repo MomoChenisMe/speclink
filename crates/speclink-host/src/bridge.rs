@@ -566,8 +566,8 @@ impl Store for BridgeStore {
     }
 
     fn read_language(&self) -> Option<String> {
-        // The TeamStore document set has no shared-vocabulary kind; a missing
-        // LANGUAGE document is a normal state, not an error.
-        None
+        // The scope's shared-vocabulary document; a missing LANGUAGE document is
+        // a normal state, not an error.
+        self.read_doc(&DocumentId::Language)
     }
 }

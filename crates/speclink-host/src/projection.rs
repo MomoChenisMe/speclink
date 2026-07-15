@@ -437,6 +437,15 @@ pub fn is_stale(ws: &Workspace) -> bool {
     projection_dir(ws).join(STALE_MARKER).is_file()
 }
 
+/// The snapshot id the current projection's manifest records, if any — the
+/// value a refresh sends as `If-None-Match` so an unchanged scope can skip the
+/// rewrite. Absent when there is no projection or its manifest is unreadable.
+pub fn current_snapshot_id(ws: &Workspace) -> Option<String> {
+    let text = speclink_core::util::read_opt(&projection_dir(ws).join("manifest.json"))?;
+    let manifest: ProjectionManifest = serde_json::from_str(&text).ok()?;
+    Some(manifest.snapshot_id)
+}
+
 /// Rebuild the projection from a fresh snapshot (full rebuild — the
 /// blueprint's disposable semantics); the whole-directory switch means the
 /// stale marker does not survive.

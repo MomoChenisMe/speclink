@@ -10,7 +10,7 @@
 use speclink_protocol::command::CreateChangeRequest;
 use speclink_protocol::query as protocol_query;
 use speclink_remote::auth as remote_auth;
-use speclink_remote::client::Client as RemoteClient;
+use speclink_remote::client::{Client as RemoteClient, ContextSnapshotOutcome};
 
 struct RemoteCtx {
     client: RemoteClient,
@@ -268,53 +268,30 @@ fn to_artifact_instructions(
     }
 }
 
-/// Phase-1 snapshot source over the existing verb contract: the change's own
-/// artifacts (proposal/design/tasks) are fetchable today; delta and canonical
-/// specs arrive with the Phase 2 Context API. The provider seam keeps that
-/// upgrade out of the verb flow.
-struct VerbContextProvider<'c> {
-    client: &'c RemoteClient,
-    change: String,
+/// Snapshot source for the projection materializer: one consistent snapshot
+/// already fetched from the Context API. Flow narrowing is the materializer's
+/// job (design 決策三), so the provider returns the fetched snapshot verbatim —
+/// the provider seam keeps the Context API call out of the materializer.
+struct VerbContextProvider {
+    snapshot: speclink_protocol::context::ContextSnapshot,
 }
 
-impl speclink_host::projection::SnapshotProvider for VerbContextProvider<'_> {
+impl speclink_host::projection::SnapshotProvider for VerbContextProvider {
     fn snapshot(
         &self,
         _request: &speclink_protocol::context::ContextSnapshotRequest,
     ) -> Result<speclink_protocol::context::ContextSnapshot> {
-        use speclink_host::projection::content_digest;
-        use speclink_protocol::context::{ContextDocument, ContextSnapshot};
-        let mut documents = Vec::new();
-        for artifact in ["proposal", "design", "tasks"] {
-            match self.client.get_artifact(&self.change, artifact) {
-                Ok(got) => {
-                    let digest = content_digest(&got.content);
-                    documents.push(ContextDocument {
-                        path: format!("openspec/changes/{}/{artifact}.md", self.change),
-                        content: got.content,
-                        revision: Some(got.version),
-                        digest,
-                    });
-                }
-                // An absent artifact is a normal shape (the schema may not
-                // require it yet) — the projection simply omits it.
-                Err(e) if e.reason.as_deref() == Some("not_found") => {}
-                Err(e) => return Err(e.into()),
-            }
-        }
-        let combined: Vec<&str> = documents.iter().map(|d| d.digest.as_str()).collect();
-        let digest = content_digest(&combined.join("\n"));
-        // Deterministic content-derived identity — the verb contract carries
-        // no snapshot ids until the Phase 2 Context API.
-        let snapshot_id = format!("verb-{}", &digest.trim_start_matches("sha256:")[..12]);
-        Ok(ContextSnapshot { snapshot_id, policy_revision: None, digest, documents })
+        Ok(self.snapshot.clone())
     }
 }
 
-/// The remote verb flow's materialize trigger: refresh the projection for
-/// this change's apply flow and point contextFiles into it. Projection
-/// trouble is a loud warning, never a verb failure — the instructions
-/// payload itself is intact either way.
+/// The remote verb flow's projection refresh: fetch one consistent Context API
+/// snapshot for this change's apply flow, then materialize it and point
+/// contextFiles into the projection. The manifest's current snapshot id travels
+/// as `If-None-Match`, so an unchanged scope returns 304 and the rewrite is
+/// skipped (免重寫). Projection trouble is a loud warning, never a verb failure —
+/// the instructions payload is intact either way, and a failed fetch marks the
+/// existing projection stale rather than serving it silently.
 fn point_context_files_at_projection(
     ctx: &RemoteCtx,
     name: &str,
@@ -323,18 +300,31 @@ fn point_context_files_at_projection(
     let Some(ws) = core::workspace::Workspace::discover_cwd().ok().flatten() else {
         return;
     };
-    let provider = VerbContextProvider { client: &ctx.client, change: name.to_string() };
     let request = speclink_protocol::context::ContextSnapshotRequest {
         change: Some(name.to_string()),
         flow: Some("apply".to_string()),
     };
-    match speclink_host::projection::materialize(&ws, &provider, &request) {
-        Ok(out) => {
-            for w in &out.warnings {
-                eprintln!("speclink: warning: {w}");
+    let known = speclink_host::projection::current_snapshot_id(&ws);
+    match ctx.client.context_snapshot(&request, known.as_deref()) {
+        // Unchanged since the projection's snapshot id: leave it untouched.
+        Ok(ContextSnapshotOutcome::Unchanged) => {}
+        Ok(ContextSnapshotOutcome::Fresh(snapshot)) => {
+            let provider = VerbContextProvider { snapshot };
+            match speclink_host::projection::materialize(&ws, &provider, &request) {
+                Ok(out) => {
+                    for w in &out.warnings {
+                        eprintln!("speclink: warning: {w}");
+                    }
+                }
+                Err(e) => eprintln!("speclink: warning: context projection not refreshed: {e:#}"),
             }
         }
-        Err(e) => eprintln!("speclink: warning: context projection not refreshed: {e:#}"),
+        Err(e) => {
+            eprintln!("speclink: warning: context projection not refreshed: {e}");
+            // Keep the existing projection but flag it stale. No projection yet
+            // is a no-op (mark_stale bails, which we ignore).
+            let _ = speclink_host::projection::mark_stale(&ws);
+        }
     }
     core::instructions::project_context_files(
         context_files,

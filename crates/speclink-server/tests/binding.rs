@@ -116,6 +116,10 @@ fn a_compatible_request_returns_the_binding_with_capabilities() {
     assert_eq!(binding.repo.key, "backend");
     assert_eq!(binding.api_version, API_VERSION);
     assert!(!binding.engine_version.is_empty(), "engine version is declared");
+    assert!(
+        binding.capabilities.context_snapshots,
+        "the context snapshot endpoint is advertised as a capability"
+    );
 
     // capabilities declare the sse push transport alongside the unchanged
     // polling fallback (reference-server「capabilities 宣告含 sse 與 polling」).

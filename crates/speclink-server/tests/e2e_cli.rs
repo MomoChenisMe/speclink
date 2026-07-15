@@ -9,7 +9,8 @@
 //! revoking the PAT makes the very next CLI call fail authentication.
 
 use speclink_protocol::command::CreateChangeRequest;
-use speclink_remote::client::Client;
+use speclink_protocol::context::ContextSnapshotRequest;
+use speclink_remote::client::{Client, ContextSnapshotOutcome};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,8 @@ const PROPOSAL: &str = "## Why\n\nDemo change.\n\n## What Changes\n\n- a thing\n
 const DESIGN: &str = "## Context\n\nDemo design.\n";
 const TASKS: &str = "## 1. Work\n\n- [ ] 1.1 First\n- [ ] 1.2 Second\n";
 const SPEC: &str = "## ADDED Requirements\n\n### Requirement: Demo\nDemo SHALL work.\n\n#### Scenario: works\n- **WHEN** run\n- **THEN** ok\n";
+const CANON_SPEC: &str = "### Requirement: Cap A\nCap A SHALL work.\n";
+const LANGUAGE_DOC: &str = "# Shared Vocabulary\n\n- Change: a proposed edit.\n";
 
 const EMAIL: &str = "dev@example.com";
 const DISPLAY: &str = "E2E <e2e@example.com>";
@@ -488,4 +491,135 @@ fn setup_flow_onboards_a_team_and_a_restart_closes_it() {
         stderr.contains("authentication failed"),
         "the revoked call maps to the 401 authentication message: {stderr}"
     );
+}
+
+// --- Context API projection e2e (server-context-api / context-projection) ---
+
+/// Seed the store scope directly, before the server opens it, with documents
+/// the command routes cannot create: a canonical spec, the workflow config, and
+/// the LANGUAGE document (the store's new shared-vocabulary kind). Dropping the
+/// store closes the connection before the server starts.
+fn preseed_scope(db: &Path) {
+    use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
+    let store = speclink_store_sqlite::SqliteTeamStore::open(db).expect("open store for preseed");
+    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope,
+            CommandContext { command: "preseed".into(), actor: "preseed".into() },
+        )
+        .expect("begin preseed uow");
+    uow.create(DocumentId::CanonicalSpec { capability: "cap-a".into() }, CANON_SPEC);
+    uow.create(DocumentId::WorkflowConfig, "schema: spec-driven\n");
+    uow.create(DocumentId::Language, LANGUAGE_DOC);
+    store.commit(uow, Vec::new()).expect("preseed commit");
+}
+
+/// The snapshot id recorded in a projection's manifest.
+fn manifest_snapshot_id(projection: &Path) -> String {
+    let text = std::fs::read_to_string(projection.join("manifest.json")).expect("manifest.json");
+    let json: serde_json::Value = serde_json::from_str(&text).expect("manifest json");
+    json["snapshotId"].as_str().expect("snapshotId string").to_string()
+}
+
+#[test]
+fn remote_apply_materializes_a_consistent_context_projection_from_the_real_server() {
+    let workdir = tempfile::tempdir().expect("workdir");
+    let db = workdir.path().join("store.db");
+
+    // Seed the scope with the canonical spec / config / LANGUAGE the command
+    // routes cannot create, then bring the server up over the same database.
+    preseed_scope(&db);
+    let config = write_config(workdir.path(), &db);
+    let server = Server::start(&config);
+    complete_setup(&server.base(), &server.setup_token());
+    let (pat, _session) = create_pat_via_web(&server.base(), &invite(&config));
+
+    // Seed the change (artifacts + a delta spec on cap-a) through the API.
+    seed(&server.project_url(), &pat);
+    let remote = remote_project(workdir.path(), &server.project_url());
+    let projection = remote
+        .canonicalize()
+        .expect("canonicalize remote dir")
+        .join(".speclink")
+        .join("context");
+
+    // Run the apply-stage verb: it materializes the projection from one Context
+    // API snapshot.
+    let apply = run_cli(&remote, &["instructions", "apply", "--change", "demo", "--json"], Some(&pat));
+    assert!(apply.status.success(), "remote apply failed: {}", String::from_utf8_lossy(&apply.stderr));
+
+    // The projection mirrors the change's artifacts, its delta spec, and the
+    // matching canonical spec (apply flow narrows to the delta's capability),
+    // plus INDEX and manifest.
+    for rel in [
+        "openspec/changes/demo/proposal.md",
+        "openspec/changes/demo/design.md",
+        "openspec/changes/demo/tasks.md",
+        "openspec/changes/demo/specs/cap-a/spec.md",
+        "openspec/specs/cap-a/spec.md",
+        "INDEX.md",
+        "manifest.json",
+    ] {
+        assert!(projection.join(rel).is_file(), "{rel} is in the projection");
+    }
+
+    // The manifest snapshot id is the server's real scope token, and the whole
+    // projection verifies fail-closed.
+    let ws = speclink_core::workspace::Workspace {
+        root: remote.canonicalize().expect("canonicalize remote dir"),
+        spec_dir_name: "openspec".to_string(),
+    };
+    speclink_host::projection::verify_projection(&ws).expect("the projection verifies");
+
+    // The server's change-narrowed snapshot carries config and LANGUAGE (the new
+    // store kind), and its id matches the materialized manifest.
+    let client = Client::new(&server.project_url(), &pat, Some("backend"));
+    let request = ContextSnapshotRequest { change: Some("demo".to_string()), flow: None };
+    let snapshot = match client.context_snapshot(&request, None).expect("context snapshot") {
+        ContextSnapshotOutcome::Fresh(s) => s,
+        ContextSnapshotOutcome::Unchanged => panic!("a fresh request is never unchanged"),
+    };
+    let doc_paths: Vec<&str> = snapshot.documents.iter().map(|d| d.path.as_str()).collect();
+    assert!(doc_paths.contains(&"openspec/config.yaml"), "server response carries config: {doc_paths:?}");
+    assert!(doc_paths.contains(&"openspec/LANGUAGE.md"), "server response carries LANGUAGE: {doc_paths:?}");
+    let id_before = manifest_snapshot_id(&projection);
+    assert_eq!(id_before, snapshot.snapshot_id, "the manifest id is the server's snapshot id");
+
+    // contextFiles: every value is a path under the projection that exists (glob
+    // values excluded — they are patterns, not single files).
+    let payload: serde_json::Value = serde_json::from_slice(&apply.stdout).expect("apply json");
+    let files = payload["contextFiles"].as_object().expect("contextFiles object");
+    for (key, value) in files {
+        let value = value.as_str().unwrap();
+        assert!(PathBuf::from(value).starts_with(&projection), "{key} points into the projection: {value}");
+        if !value.contains('*') {
+            assert!(PathBuf::from(value).is_file(), "{key} exists under the projection: {value}");
+        }
+    }
+
+    // Repeating the same verb with no commit in between does not rewrite the
+    // projection: a sentinel dropped into the directory survives (免重寫).
+    let sentinel = projection.join("SENTINEL");
+    std::fs::write(&sentinel, "probe").unwrap();
+    let again = run_cli(&remote, &["instructions", "apply", "--change", "demo", "--json"], Some(&pat));
+    assert!(again.status.success(), "second apply failed: {}", String::from_utf8_lossy(&again.stderr));
+    assert!(sentinel.is_file(), "an unchanged scope skips the rewrite");
+    assert_eq!(manifest_snapshot_id(&projection), id_before, "the snapshot id is unchanged");
+
+    // Another write advances the scope; the next apply updates the projection to
+    // the new snapshot (and the rewrite removes the sentinel).
+    let proposal = client.get_artifact("demo", "proposal").expect("read proposal");
+    client
+        .put_artifact("demo", "proposal", "## Why\n\nEdited.\n", proposal.version)
+        .expect("edit proposal");
+    let after = run_cli(&remote, &["instructions", "apply", "--change", "demo", "--json"], Some(&pat));
+    assert!(after.status.success(), "third apply failed: {}", String::from_utf8_lossy(&after.stderr));
+    assert!(!sentinel.exists(), "a fresh snapshot rewrites the projection");
+    assert_ne!(
+        manifest_snapshot_id(&projection),
+        id_before,
+        "the projection updated to the new scope snapshot",
+    );
+    speclink_host::projection::verify_projection(&ws).expect("the refreshed projection verifies");
 }

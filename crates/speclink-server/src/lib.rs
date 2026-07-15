@@ -11,6 +11,7 @@ pub mod audit;
 pub mod auth;
 pub mod backup;
 pub mod config;
+pub mod context;
 pub mod device;
 pub mod error;
 pub mod events;

@@ -76,7 +76,7 @@ impl Binding {
             api_version: API_VERSION.to_string(),
             engine_version: ENGINE_VERSION.to_string(),
             capabilities: Capabilities {
-                context_snapshots: false,
+                context_snapshots: true,
                 authentication: Vec::new(),
                 events: EventsDeclaration {
                     transports: vec![EventTransport {
