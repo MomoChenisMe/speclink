@@ -538,11 +538,16 @@ fn remote_apply_materializes_a_consistent_context_projection_from_the_real_serve
     // Seed the change (artifacts + a delta spec on cap-a) through the API.
     seed(&server.project_url(), &pat);
     let remote = remote_project(workdir.path(), &server.project_url());
-    let projection = remote
-        .canonicalize()
-        .expect("canonicalize remote dir")
-        .join(".speclink")
-        .join("context");
+    // macOS 的 temp_dir 在 /var → /private/var symlink 下，CLI 由 getcwd 回報實體
+    // 路徑，故非 Windows 平台需解析才能與 CLI 輸出同底比對；Windows 的 canonicalize
+    // 會加 \\?\ 前綴並展開 8.3 短名（RUNNER~1 → runneradmin），兩者 CLI 輸出都沒有，
+    // 反而讓同一個目錄變成兩種拼法。與 discuss_promote_snapshot.rs 同一處理。
+    let projection_root = if cfg!(windows) {
+        remote.clone()
+    } else {
+        remote.canonicalize().expect("canonicalize remote dir")
+    };
+    let projection = projection_root.join(".speclink").join("context");
 
     // Run the apply-stage verb: it materializes the projection from one Context
     // API snapshot.
