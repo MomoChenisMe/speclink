@@ -16,8 +16,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// The store drivers the server can bind. `sqlite` is the default persistent
-/// option; `memory` exists only for test configurations.
-pub const SUPPORTED_DRIVERS: &[&str] = &["sqlite", "memory"];
+/// option, `serverfs` the plain-directory alternative; `memory` exists only for
+/// test configurations.
+pub const SUPPORTED_DRIVERS: &[&str] = &["sqlite", "serverfs", "memory"];
 
 /// The validated server configuration. The Project/Repo registry is no longer a
 /// config concern — it lives in the server database (server-setup capability).
@@ -38,6 +39,10 @@ pub struct ServerConfig {
 pub enum StoreConfig {
     /// A single SQLite database file.
     Sqlite { path: PathBuf },
+    /// A plain data directory, driven by the filesystem driver. Single-node,
+    /// and requires a filesystem with working advisory locks (a local disk or
+    /// a mount that honours flock).
+    ServerFs { path: PathBuf },
     /// The in-memory reference store — test configurations only.
     Memory,
 }
@@ -197,6 +202,13 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
                 field: "store.path".to_string(),
             })?;
             StoreConfig::Sqlite { path: PathBuf::from(path) }
+        }
+        "serverfs" => {
+            let path = raw.store.path.ok_or_else(|| ConfigError::MissingField {
+                path: shown.clone(),
+                field: "store.path".to_string(),
+            })?;
+            StoreConfig::ServerFs { path: PathBuf::from(path) }
         }
         "memory" => StoreConfig::Memory,
         other => {
@@ -369,13 +381,49 @@ mod tests {
         let shown = err.to_string();
         assert!(matches!(err, ConfigError::UnknownDriver { .. }));
         assert!(shown.contains("postgres"), "names the bad driver: {shown}");
-        assert!(shown.contains("sqlite") && shown.contains("memory"), "lists supported drivers: {shown}");
+        assert!(
+            shown.contains("sqlite") && shown.contains("serverfs") && shown.contains("memory"),
+            "lists supported drivers: {shown}"
+        );
     }
 
     #[test]
     fn sqlite_without_a_path_fails_closed() {
         let err = load_text("store:\n  driver: sqlite\n").expect_err("sqlite needs a path");
         assert!(matches!(err, ConfigError::MissingField { field, .. } if field == "store.path"));
+    }
+
+    #[test]
+    fn a_serverfs_config_carries_its_data_directory() {
+        let cfg = load_text(
+            "store:\n  driver: serverfs\n  path: /var/lib/speclink/store\nidentity:\n  driver: memory\n",
+        )
+        .expect("valid serverfs config loads");
+        assert_eq!(
+            cfg.store,
+            StoreConfig::ServerFs { path: PathBuf::from("/var/lib/speclink/store") }
+        );
+    }
+
+    #[test]
+    fn serverfs_without_a_path_fails_closed() {
+        let err = load_text("store:\n  driver: serverfs\n").expect_err("serverfs needs a path");
+        assert!(matches!(err, ConfigError::MissingField { field, .. } if field == "store.path"));
+    }
+
+    #[test]
+    fn a_misspelled_serverfs_is_an_unknown_driver_not_a_near_miss() {
+        // Nothing guesses at what the operator meant: a driver name that is
+        // not on the list is refused outright, so a typo can never quietly
+        // start the server on a different persistence layer than intended.
+        for typo in ["server-fs", "serverFS", "fs"] {
+            let err = load_text(&format!("store:\n  driver: {typo}\n  path: /tmp/x\n"))
+                .unwrap_err();
+            assert!(
+                matches!(err, ConfigError::UnknownDriver { .. }),
+                "{typo} must not resolve to serverfs"
+            );
+        }
     }
 
     #[test]

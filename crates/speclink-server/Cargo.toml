@@ -15,6 +15,7 @@ speclink-host = { path = "../speclink-host" }
 speclink-protocol = { path = "../speclink-protocol" }
 speclink-store = { path = "../speclink-store" }
 speclink-store-sqlite = { path = "../speclink-store-sqlite" }
+speclink-store-fs = { path = "../speclink-store-fs" }
 axum = "0.8"
 async-stream = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "sync"] }

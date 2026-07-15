@@ -49,8 +49,54 @@ fn an_unknown_driver_exits_non_zero_listing_supported_drivers() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("postgres"), "stderr names the bad driver: {stderr}");
     assert!(
-        stderr.contains("sqlite") && stderr.contains("memory"),
+        stderr.contains("sqlite") && stderr.contains("serverfs") && stderr.contains("memory"),
         "stderr lists the supported drivers: {stderr}"
+    );
+}
+
+#[test]
+fn a_serverfs_store_pointed_at_a_foreign_directory_exits_non_zero_and_touches_nothing() {
+    // The operator mistypes a path and lands on a directory that is already
+    // someone's data. Starting here would mean writing a store's marker and
+    // scope tree into it; the server refuses instead, and — the part that
+    // actually matters — leaves every byte where it was.
+    let dir = tempfile::tempdir().expect("data dir");
+    std::fs::create_dir(dir.path().join("photos")).expect("create");
+    std::fs::write(dir.path().join("photos/beach.jpg"), b"jpeg").expect("write");
+    std::fs::write(dir.path().join("notes.txt"), b"do not delete").expect("write");
+
+    let identity = dir.path().join("identity.db");
+    let (out, _file) = run_with_contents(&format!(
+        "store:\n  driver: serverfs\n  path: {}\nidentity:\n  driver: sqlite\n  path: {}\n",
+        dir.path().display(),
+        identity.display()
+    ));
+
+    assert!(!out.status.success(), "a foreign data directory must fail startup");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(&dir.path().display().to_string()),
+        "stderr names the directory: {stderr}"
+    );
+    assert!(
+        stderr.contains("not a speclink team store"),
+        "stderr states the reason: {stderr}"
+    );
+
+    assert_eq!(
+        std::fs::read(dir.path().join("notes.txt")).expect("read back"),
+        b"do not delete",
+        "a refused start must not touch the directory's contents"
+    );
+    let mut left: Vec<String> = std::fs::read_dir(dir.path())
+        .expect("read dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    assert_eq!(
+        left,
+        ["notes.txt", "photos"],
+        "a refused start leaves no marker, lock or scope tree behind"
     );
 }
 

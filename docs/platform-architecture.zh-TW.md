@@ -1141,7 +1141,8 @@ flowchart LR
 
 官方發布 native binary、Docker image、SQLite one-container compose 與 PostgreSQL compose profile。SQLite 是預設；
 Server FS 與 PostgreSQL 在首次 setup 可選。SQLite/FS profile 僅允許一個 server instance；PostgreSQL 在完成
-distributed coordination 前也不宣稱 Cluster mode。
+distributed coordination 前也不宣稱 Cluster mode。各 driver 的組態、選型依據與前提（Server FS 需檔案系統支援
+flock 語意）見 [Server Store Driver 選型](server-store-drivers.zh-TW.md)。
 
 ### 13.2 Server Admin UI
 

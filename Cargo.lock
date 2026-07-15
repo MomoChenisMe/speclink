@@ -1084,6 +1084,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs4"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e72ed92b67c146290f88e9c89d60ca163ea417a446f61ffd7b72df3e7f1dfd5"
+dependencies = [
+ "rustix",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "fsevent-sys"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3674,6 +3684,7 @@ dependencies = [
  "speclink-protocol",
  "speclink-remote",
  "speclink-store",
+ "speclink-store-fs",
  "speclink-store-sqlite",
  "tar",
  "tempfile",
@@ -3688,6 +3699,19 @@ dependencies = [
  "chrono",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "speclink-store-fs"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "fs4",
+ "serde",
+ "serde_json",
+ "speclink-store",
+ "speclink-store-sqlite",
+ "tempfile",
 ]
 
 [[package]]
