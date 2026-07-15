@@ -1,0 +1,44 @@
+[package]
+name = "speclink-store-postgres"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PostgreSQL driver for the TeamStore contract: transactional commits, advisory-lock single writer, versioned schema, and full conformance"
+# Test targets are listed explicitly: each needs `harness = false` to report
+# `skipped` when no PostgreSQL instance is configured. See tests/support/mod.rs.
+autotests = false
+
+[dependencies]
+speclink-store = { path = "../speclink-store" }
+postgres = "0.19.14"
+chrono = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# Bundles must be driver-independent, which only a second driver can show.
+speclink-store-sqlite = { path = "../speclink-store-sqlite" }
+tempfile = "3"
+
+[[test]]
+name = "infra"
+harness = false
+
+[[test]]
+name = "bundle_and_outbox"
+harness = false
+
+[[test]]
+name = "version_gate"
+harness = false
+
+[[test]]
+name = "single_writer"
+harness = false
+
+[[test]]
+name = "resilience"
+harness = false
+
+[[test]]
+name = "conformance"
+harness = false

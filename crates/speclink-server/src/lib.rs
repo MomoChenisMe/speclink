@@ -46,6 +46,23 @@ pub fn build_store(store: &StoreConfig) -> anyhow::Result<SharedStore> {
             })?;
             Ok(Arc::new(store))
         }
+        StoreConfig::Postgres { url } => {
+            // A password in the config file is accepted — some deployments have
+            // nowhere else to put it — but it is a secret at rest in a file that
+            // gets copied, diffed and pasted, so say so once at startup. The
+            // URL itself is never echoed: that would print the very secret this
+            // warns about.
+            if speclink_store_postgres::url_embeds_password(url).unwrap_or(false) {
+                eprintln!(
+                    "warning: the postgres store url carries a password; \
+                     prefer leaving it out and setting {} instead",
+                    speclink_store_postgres::PASSWORD_VAR
+                );
+            }
+            let store = speclink_store_postgres::PostgresTeamStore::connect(url)
+                .map_err(|e| anyhow::anyhow!("cannot open postgres store: {e}"))?;
+            Ok(Arc::new(store))
+        }
     }
 }
 

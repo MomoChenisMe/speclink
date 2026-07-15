@@ -16,6 +16,7 @@ speclink-protocol = { path = "../speclink-protocol" }
 speclink-store = { path = "../speclink-store" }
 speclink-store-sqlite = { path = "../speclink-store-sqlite" }
 speclink-store-fs = { path = "../speclink-store-fs" }
+speclink-store-postgres = { path = "../speclink-store-postgres" }
 axum = "0.8"
 async-stream = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "sync"] }
@@ -33,6 +34,13 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+postgres = "0.19.14"
 speclink-remote = { path = "../speclink-remote" }
 ureq = { version = "2", features = ["json"] }
 sha2 = "0.10"
+
+# Needs a real PostgreSQL instance, so it runs its own harness to report
+# `skipped` rather than `passed` when none is configured. See tests/pg/mod.rs.
+[[test]]
+name = "postgres_store"
+harness = false

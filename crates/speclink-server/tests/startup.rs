@@ -44,12 +44,15 @@ fn an_unparseable_config_exits_non_zero_with_the_reason() {
 
 #[test]
 fn an_unknown_driver_exits_non_zero_listing_supported_drivers() {
-    let (out, _file) = run_with_contents("store:\n  driver: postgres\n");
+    let (out, _file) = run_with_contents("store:\n  driver: mysql\n");
     assert!(!out.status.success(), "an unsupported driver must fail startup");
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("postgres"), "stderr names the bad driver: {stderr}");
+    assert!(stderr.contains("mysql"), "stderr names the bad driver: {stderr}");
     assert!(
-        stderr.contains("sqlite") && stderr.contains("serverfs") && stderr.contains("memory"),
+        stderr.contains("sqlite")
+            && stderr.contains("serverfs")
+            && stderr.contains("postgres")
+            && stderr.contains("memory"),
         "stderr lists the supported drivers: {stderr}"
     );
 }

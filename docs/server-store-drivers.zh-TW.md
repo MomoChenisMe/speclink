@@ -6,6 +6,7 @@
 |---|---|---|
 | `sqlite` | 單一資料庫檔 | **預設**。無特殊前提，任何檔案系統可用 |
 | `serverfs` | 單一資料目錄 | 偏好純檔案持久層（備份工具直接可見目錄、無資料庫維運）；**前提見下** |
+| `postgres` | PostgreSQL 資料庫 | 已有 PostgreSQL 維運基礎（統一資料庫棧、既有備份與監控直接套用）；**前提見下** |
 | `memory` | 記憶體 | **僅供測試組態**，行程結束即消失 |
 
 未知的 driver 名稱使啟動失敗並列出支援清單（fail closed）——拼錯 `serverfs` 不會靜默退回別的持久層。
@@ -57,6 +58,50 @@ serverfs 以資料目錄內鎖檔的 **OS advisory lock（flock 語意）**取�
 ### 磁碟用量
 
 每次 commit 為異動文件寫入一個新的 revision 內容檔；被取代的舊 revision 檔在**下次開啟時**由孤兒掃描清除。長時間執行的 server 在重啟前，磁碟用量會隨累計寫入量成長。目前不做壓縮、去重或歷史裁剪。
+
+## postgres
+
+```yaml
+store:
+  driver: postgres
+  url: postgres://speclink@db.internal:5432/speclink   # 密碼建議留空，見下
+identity:
+  driver: sqlite
+  path: /var/lib/speclink/identity.db
+```
+
+四張表（`documents`、`history`、`outbox`、`meta`）建在連線的 current schema，因此 URL 帶 `search_path` 即可讓多個 store 共用一個資料庫。空 schema 會初始化為現行 schema version。
+
+### 密碼來源
+
+密碼**優先來自環境變數 `SPECLINK_POSTGRES_PASSWORD`**：URL 省略密碼時由它補全。URL 內嵌密碼仍可啟動，但會在 stderr 輸出一行警告——組態檔會被複製、diff、貼進 issue，密碼不該躺在裡面。URL 已帶密碼時環境變數不覆蓋它。
+
+### 前提
+
+- **Single-node only。** 同 scope 的寫入以 PostgreSQL **transaction-scoped advisory lock**（`pg_advisory_xact_lock`）序列化：鎖隨 transaction 結束或連線死亡自動釋放，**不會有殘留鎖**；跨 scope 寫入互不阻塞；讀取不取鎖。
+  但與 serverfs 不同，**兩個 server 指向同一資料庫不會被拒絕**——advisory lock 只序列化、不獨占。正確性（CAS、transaction 原子性）不受影響，資料不會損毀，但 driver **不宣告 cluster 能力**，多節點請靠部署紀律。cluster 模式待 distributed coordination 完成後另行處理。
+- **最低支援版本：PostgreSQL 15。** CI 以該版本執行完整測試集。driver 未使用更新的功能，但只有 15 以上是受測的。
+- **schema 是 driver 私有格式。** 手動編輯視同損毀（版本守門會攔下大部分亂改）。要人類可讀的匯出，用 `backup` 產生的 export bundle。
+
+### 拒用的情況（fail closed）
+
+以下情況啟動失敗且**資料庫內容不變**——偵測全程唯讀，不會留下任何痕跡：
+
+- schema 已有資料表但不是本 driver 建立的（例如 URL 打錯，指到既有資料庫）
+- `meta` 記錄的 schema version 高於本 driver 支援
+- 認證失敗或資料庫不存在（回 `backend` 並帶伺服器原文）
+
+運行中連線中斷不算損毀：請求回 `unavailable`、`/readyz` 轉紅，連線恢復後同一 server 直接續用，不需重啟。
+
+### 測試前提
+
+本 driver 的測試集需要**真實 PostgreSQL 實例**，由環境變數 `SPECLINK_TEST_POSTGRES_URL` 指定。未設定時測試以顯性 `skipped` 結束並印出啟用指引——不會靜默回報通過。因此 `npm run test:all` 在沒有 PostgreSQL 的機器上仍可全綠，但**完整驗證本 driver 需要 PG**；CI 另有一個 job 起 PostgreSQL 15 service container 必跑該測試集，且對 `skipped` 直接紅燈。
+
+一行啟用：
+
+```
+docker run --rm -d -p 5432:5432 -e POSTGRES_PASSWORD=speclink --name speclink-pg postgres:15 && export SPECLINK_TEST_POSTGRES_URL=postgres://postgres:speclink@localhost:5432/postgres
+```
 
 ## 更換 driver
 

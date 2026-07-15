@@ -16,9 +16,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// The store drivers the server can bind. `sqlite` is the default persistent
-/// option, `serverfs` the plain-directory alternative; `memory` exists only for
-/// test configurations.
-pub const SUPPORTED_DRIVERS: &[&str] = &["sqlite", "serverfs", "memory"];
+/// option, `serverfs` the plain-directory alternative, `postgres` the option for
+/// teams that already run one; `memory` exists only for test configurations.
+pub const SUPPORTED_DRIVERS: &[&str] = &["sqlite", "serverfs", "postgres", "memory"];
 
 /// The validated server configuration. The Project/Repo registry is no longer a
 /// config concern — it lives in the server database (server-setup capability).
@@ -43,6 +43,11 @@ pub enum StoreConfig {
     /// and requires a filesystem with working advisory locks (a local disk or
     /// a mount that honours flock).
     ServerFs { path: PathBuf },
+    /// A PostgreSQL database, named by a connection URL. Single-node: the
+    /// driver serializes writers, it does not coordinate a cluster. The
+    /// password may be left out of the URL and supplied by
+    /// `SPECLINK_POSTGRES_PASSWORD` instead.
+    Postgres { url: String },
     /// The in-memory reference store — test configurations only.
     Memory,
 }
@@ -161,6 +166,9 @@ struct RawStore {
     driver: String,
     #[serde(default)]
     path: Option<String>,
+    /// The `postgres` driver's connection URL.
+    #[serde(default)]
+    url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -209,6 +217,13 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
                 field: "store.path".to_string(),
             })?;
             StoreConfig::ServerFs { path: PathBuf::from(path) }
+        }
+        "postgres" => {
+            let url = raw.store.url.ok_or_else(|| ConfigError::MissingField {
+                path: shown.clone(),
+                field: "store.url".to_string(),
+            })?;
+            StoreConfig::Postgres { url }
         }
         "memory" => StoreConfig::Memory,
         other => {
@@ -376,15 +391,42 @@ mod tests {
 
     #[test]
     fn an_unknown_driver_fails_closed_and_lists_supported_drivers() {
-        let err = load_text("store:\n  driver: postgres\n")
+        let err = load_text("store:\n  driver: mysql\n")
             .expect_err("an unsupported driver must fail startup");
         let shown = err.to_string();
         assert!(matches!(err, ConfigError::UnknownDriver { .. }));
-        assert!(shown.contains("postgres"), "names the bad driver: {shown}");
+        assert!(shown.contains("mysql"), "names the bad driver: {shown}");
         assert!(
-            shown.contains("sqlite") && shown.contains("serverfs") && shown.contains("memory"),
+            shown.contains("sqlite")
+                && shown.contains("serverfs")
+                && shown.contains("postgres")
+                && shown.contains("memory"),
             "lists supported drivers: {shown}"
         );
+    }
+
+    #[test]
+    fn a_postgres_store_section_carries_its_connection_url() {
+        let config = load_text(
+            "store:\n  driver: postgres\n  url: postgres://localhost/speclink\n\
+             identity:\n  driver: memory\npublic_url: http://localhost:8080\n",
+        )
+        .expect("a postgres store section is valid");
+        assert_eq!(
+            config.store,
+            StoreConfig::Postgres {
+                url: "postgres://localhost/speclink".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn a_postgres_store_without_a_url_fails_closed() {
+        let err = load_text("store:\n  driver: postgres\nidentity:\n  driver: memory\n")
+            .expect_err("postgres without a url must fail startup");
+        let shown = err.to_string();
+        assert!(matches!(err, ConfigError::MissingField { .. }));
+        assert!(shown.contains("store.url"), "names the missing field: {shown}");
     }
 
     #[test]
