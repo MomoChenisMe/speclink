@@ -6,6 +6,7 @@
 //! binding refusals all map to this type here and nowhere else; the three
 //! vocabularies never merge and the registry is never widened.
 
+use crate::identity::IdentityError;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -121,6 +122,24 @@ impl From<StoreError> for ApiError {
             StoreError::Unavailable => ApiError::unavailable("the store backend is temporarily unavailable"),
             StoreError::Corrupt { reason } => ApiError::internal(format!("corrupt: {reason}")),
             StoreError::Backend { source } => ApiError::internal(format!("backend: {source}")),
+        }
+    }
+}
+
+/// An identity-store failure → wire reason + status, for the admin API. A guard
+/// rejection (duplicate key, refused last-admin) is 409; an unknown subject is
+/// 404; an open/backend failure is 500. Auth-layer identity errors keep their
+/// own inline mapping (a uniform 401/403), so this covers the admin actions.
+impl From<IdentityError> for ApiError {
+    fn from(e: IdentityError) -> ApiError {
+        match e {
+            IdentityError::Duplicate(m) => ApiError::refused(m),
+            IdentityError::Refused(m) => ApiError::refused(m),
+            IdentityError::NotFound(m) => ApiError::not_found(m),
+            IdentityError::InvalidInvitation => ApiError::refused("the invitation is invalid"),
+            IdentityError::Open(m) | IdentityError::Backend(m) => {
+                ApiError::internal(format!("identity store error: {m}"))
+            }
         }
     }
 }

@@ -7,11 +7,12 @@
 
 use chrono::{Duration, Utc};
 use clap::{Args as ClapArgs, Parser, Subcommand};
+use speclink_server::audit::AuditActor;
 use speclink_server::config::IdentityConfig;
 use speclink_server::events::EventHub;
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::AppState;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -39,6 +40,90 @@ struct RunArgs {
 enum Command {
     /// Create a one-time invitation and print its acceptance URL.
     Invite(InviteArgs),
+    /// User management, the headless equivalent of the /admin actions.
+    #[command(subcommand)]
+    User(UserCommand),
+    /// Token management.
+    #[command(subcommand)]
+    Token(TokenCommand),
+    /// Project registry management.
+    #[command(subcommand)]
+    Project(ProjectCommand),
+    /// Repo registry management.
+    #[command(subcommand)]
+    Repo(RepoCommand),
+}
+
+#[derive(Subcommand)]
+enum UserCommand {
+    /// Suspend a user; they lose access on their next request.
+    Suspend(UserTargetArgs),
+    /// Reactivate a suspended user.
+    Reactivate(UserTargetArgs),
+}
+
+#[derive(ClapArgs)]
+struct UserTargetArgs {
+    /// Path to the server configuration file (locates the identity database).
+    #[arg(long)]
+    config: PathBuf,
+    /// The target user's email.
+    #[arg(long)]
+    email: String,
+}
+
+#[derive(Subcommand)]
+enum TokenCommand {
+    /// Revoke a PAT by its id; the next use fails at once.
+    Revoke(TokenRevokeArgs),
+}
+
+#[derive(ClapArgs)]
+struct TokenRevokeArgs {
+    #[arg(long)]
+    config: PathBuf,
+    /// The PAT's id (from the credential list, not its plaintext).
+    #[arg(long = "token-id")]
+    token_id: String,
+}
+
+#[derive(Subcommand)]
+enum ProjectCommand {
+    /// Register a project.
+    Create(ProjectCreateArgs),
+}
+
+#[derive(ClapArgs)]
+struct ProjectCreateArgs {
+    #[arg(long)]
+    config: PathBuf,
+    /// The project's URL key (stable identifier).
+    #[arg(long)]
+    key: String,
+    /// The display name (defaults to the key).
+    #[arg(long)]
+    name: Option<String>,
+}
+
+#[derive(Subcommand)]
+enum RepoCommand {
+    /// Register a repo within a project.
+    Create(RepoCreateArgs),
+}
+
+#[derive(ClapArgs)]
+struct RepoCreateArgs {
+    #[arg(long)]
+    config: PathBuf,
+    /// The owning project's key.
+    #[arg(long)]
+    project: String,
+    /// The repo's key (unique within the project).
+    #[arg(long)]
+    key: String,
+    /// The display name (defaults to the key).
+    #[arg(long)]
+    name: Option<String>,
 }
 
 #[derive(ClapArgs)]
@@ -67,7 +152,26 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Some(Command::Invite(args)) => run_invite(args),
+        Some(Command::User(UserCommand::Suspend(args))) => run_set_suspended(args, true),
+        Some(Command::User(UserCommand::Reactivate(args))) => run_set_suspended(args, false),
+        Some(Command::Token(TokenCommand::Revoke(args))) => run_token_revoke(args),
+        Some(Command::Project(ProjectCommand::Create(args))) => run_project_create(args),
+        Some(Command::Repo(RepoCommand::Create(args))) => run_repo_create(args),
         None => run_server(cli.run),
+    }
+}
+
+/// Open the identity store the config declares, for the headless management
+/// subcommands (決策 2: the same single-point actions the admin API and /admin
+/// forms call). An in-memory config has no persistent store to manage.
+fn open_identity(config_path: &Path) -> Result<IdentitySqlite, String> {
+    let config = speclink_server::config::load(config_path).map_err(|e| e.to_string())?;
+    match &config.identity {
+        IdentityConfig::Sqlite { path } => IdentitySqlite::open(path).map_err(|e| e.to_string()),
+        IdentityConfig::Memory => Err(
+            "this subcommand needs a persistent identity store; the config declares an in-memory one"
+                .to_string(),
+        ),
     }
 }
 
@@ -186,10 +290,111 @@ fn run_invite(args: InviteArgs) -> ExitCode {
         admin: args.admin,
         expires_at: Utc::now() + Duration::days(args.expires_in_days),
     };
-    match store.create_invitation(invitation) {
+    // The invite subcommand shares the single-point path with the /admin form
+    // (決策 2); the CLI records the host as operator and source cli.
+    match store.admin_create_invitation(&AuditActor::system_cli(), invitation) {
         Ok(token) => {
             let base = config.public_url.trim_end_matches('/');
             println!("{base}/invite/{token}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Suspend or reactivate the user named by `--email`. Resolves the email to a
+/// user id, then runs the single-point action under a CLI-sourced actor (operator
+/// `system`). A refused (last active admin) or unknown email exits non-zero.
+fn run_set_suspended(args: UserTargetArgs, suspended: bool) -> ExitCode {
+    let store = match open_identity(&args.config) {
+        Ok(store) => store,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let user = match store.find_user_by_email(&args.email) {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            eprintln!("no user with email '{}'", args.email);
+            return ExitCode::FAILURE;
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match store.admin_set_user_suspended(&AuditActor::system_cli(), &user.id, suspended) {
+        Ok(()) => {
+            println!("{} {}", if suspended { "suspended" } else { "reactivated" }, args.email);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Force-revoke a PAT by its id under a CLI-sourced actor.
+fn run_token_revoke(args: TokenRevokeArgs) -> ExitCode {
+    let store = match open_identity(&args.config) {
+        Ok(store) => store,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match store.admin_revoke_pat(&AuditActor::system_cli(), &args.token_id) {
+        Ok(()) => {
+            println!("revoked {}", args.token_id);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Register a project under a CLI-sourced actor.
+fn run_project_create(args: ProjectCreateArgs) -> ExitCode {
+    let store = match open_identity(&args.config) {
+        Ok(store) => store,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let name = args.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(&args.key);
+    match store.admin_create_project(&AuditActor::system_cli(), &args.key, name) {
+        Ok(()) => {
+            println!("created project {}", args.key);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Register a repo within a project under a CLI-sourced actor.
+fn run_repo_create(args: RepoCreateArgs) -> ExitCode {
+    let store = match open_identity(&args.config) {
+        Ok(store) => store,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let name = args.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(&args.key);
+    match store.admin_create_repo(&AuditActor::system_cli(), &args.project, &args.key, name) {
+        Ok(()) => {
+            println!("created repo {}/{}", args.project, args.key);
             ExitCode::SUCCESS
         }
         Err(e) => {

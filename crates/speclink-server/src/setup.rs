@@ -7,6 +7,7 @@
 //! and a missing/unknown/expired/consumed token gets one invalid response with
 //! the reason never distinguished.
 
+use crate::audit::{AuditAction, AuditActor, AuditSource};
 use crate::identity::{IdentityError, IdentityStore};
 use crate::state::AppState;
 use crate::web;
@@ -152,8 +153,16 @@ fn render_flow(state: &AppState, token: &str) -> Response {
         return Html(project_form(state, token, None)).into_response();
     };
     // Admin + project stand: setup is complete. Consume the token (idempotent)
-    // and show the connection info once.
+    // and show the connection info once. Record the completion as an audit (源
+    // web, operator the first admin) — this branch runs once, since the consumed
+    // token then gates every further /setup request closed (決策 3).
     let _ = state.identity.consume_setup_token(token);
+    if let Ok(users) = state.identity.list_users() {
+        if let Some(admin) = users.iter().find(|u| u.admin) {
+            let actor = AuditActor::user(admin.id.clone(), AuditSource::Web);
+            let _ = state.identity.record_audit(&actor, AuditAction::SetupCompleted, &project.key);
+        }
+    }
     let repos = state.identity.list_repos(&project.key).unwrap_or_default();
     let repo_key = repos.first().map(|r| r.key.as_str()).unwrap_or("");
     Html(connection_info(&state.config.public_url, &project.key, repo_key)).into_response()

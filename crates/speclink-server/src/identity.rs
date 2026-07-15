@@ -15,6 +15,7 @@ use argon2::Argon2;
 use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
 
+use crate::audit::{AuditAction, AuditActor, AuditEntry};
 pub use crate::identity_sqlite::IdentitySqlite;
 
 /// A user account. The password hash never leaves the store.
@@ -164,6 +165,12 @@ pub enum IdentityError {
     Duplicate(String),
     /// The invitation is used, expired or unknown at accept time.
     InvalidInvitation,
+    /// A management action was refused by a guard (e.g. suspending the last
+    /// active admin). The reason is carried for display.
+    Refused(String),
+    /// The subject of a management action does not exist (e.g. an unknown user
+    /// id). The reason is carried for display.
+    NotFound(String),
     /// A backend failure.
     Backend(String),
 }
@@ -174,6 +181,8 @@ impl std::fmt::Display for IdentityError {
             IdentityError::Open(r) => write!(f, "cannot open identity store: {r}"),
             IdentityError::Duplicate(r) => write!(f, "{r}"),
             IdentityError::InvalidInvitation => write!(f, "the invitation is invalid"),
+            IdentityError::Refused(r) => write!(f, "{r}"),
+            IdentityError::NotFound(r) => write!(f, "{r}"),
             IdentityError::Backend(r) => write!(f, "identity store backend error: {r}"),
         }
     }
@@ -365,6 +374,144 @@ pub trait IdentityStore: Send + Sync {
     /// tokens and refresh credentials under it die at once. Idempotent; a family
     /// that is not the user's own is a no-op.
     fn revoke_family(&self, user_id: &str, family_id: &str) -> Result<(), IdentityError>;
+
+    // --- audit log (決策 3) ---
+
+    /// Append one audit record: the operator and source from `actor`, the
+    /// closed-set `action`, and the `subject` it acted on. Append-only — there
+    /// is no update or delete. State-changing management actions instead write
+    /// their audit in the same transaction as the mutation (see the `admin_*`
+    /// methods); this standalone write records actions with no identity mutation
+    /// of their own (setup completion) and backs the audit lifecycle tests.
+    fn record_audit(
+        &self,
+        actor: &AuditActor,
+        action: AuditAction,
+        subject: &str,
+    ) -> Result<(), IdentityError>;
+
+    /// A page of audit records, newest first (reverse chronological). `limit`
+    /// caps the page and `offset` skips that many newest records — the /admin
+    /// audit view's read-only pagination.
+    fn list_audit(&self, limit: u32, offset: u32) -> Result<Vec<AuditEntry>, IdentityError>;
+
+    // --- admin user management (決策 2): mutation + audit in one transaction ---
+
+    /// Every user, oldest first — the /admin user list.
+    fn list_users(&self) -> Result<Vec<User>, IdentityError>;
+
+    /// A user's project memberships (the project keys), for the /admin user view.
+    fn list_memberships(&self, user_id: &str) -> Result<Vec<String>, IdentityError>;
+
+    /// Mint an invitation (as [`IdentityStore::create_invitation`]) and record a
+    /// `user-invited` audit in the same transaction, under `actor`. The invite
+    /// subcommand (source cli) and the /admin form (source web/api) share this
+    /// single path. Returns the one-time plaintext token.
+    fn admin_create_invitation(
+        &self,
+        actor: &AuditActor,
+        req: NewInvitation,
+    ) -> Result<String, IdentityError>;
+
+    /// Suspend (`suspended = true`) or reactivate a user, recording a
+    /// `user-suspended` / `user-reactivated` audit atomically. Suspending the
+    /// last active admin is [`IdentityError::Refused`] with the reason — the
+    /// admin stays active and no audit is written. An unknown user id is
+    /// [`IdentityError::NotFound`].
+    fn admin_set_user_suspended(
+        &self,
+        actor: &AuditActor,
+        user_id: &str,
+        suspended: bool,
+    ) -> Result<(), IdentityError>;
+
+    /// Grant (`member = true`) or revoke a user's membership of a project,
+    /// recording a `membership-changed` audit atomically. Idempotent on the
+    /// membership itself; an unknown user id is [`IdentityError::NotFound`].
+    fn admin_set_membership(
+        &self,
+        actor: &AuditActor,
+        user_id: &str,
+        project_key: &str,
+        member: bool,
+    ) -> Result<(), IdentityError>;
+
+    /// Set or clear a user's admin flag, recording an `admin-flag-changed` audit
+    /// atomically. An unknown user id is [`IdentityError::NotFound`].
+    fn admin_set_admin_flag(
+        &self,
+        actor: &AuditActor,
+        user_id: &str,
+        admin: bool,
+    ) -> Result<(), IdentityError>;
+
+    // --- admin registry management (決策 2): mutation + audit in one transaction ---
+
+    /// Register a project (as [`IdentityStore::create_project`]) and record a
+    /// `project-created` audit atomically. Rejects a duplicate key
+    /// ([`IdentityError::Duplicate`]).
+    fn admin_create_project(
+        &self,
+        actor: &AuditActor,
+        key: &str,
+        name: &str,
+    ) -> Result<(), IdentityError>;
+
+    /// Register a repo in a project (as [`IdentityStore::create_repo`]) and
+    /// record a `repo-created` audit atomically. Rejects a duplicate key in that
+    /// project ([`IdentityError::Duplicate`]).
+    fn admin_create_repo(
+        &self,
+        actor: &AuditActor,
+        project_key: &str,
+        key: &str,
+        name: &str,
+    ) -> Result<(), IdentityError>;
+
+    /// Change a project's display name, recording a `project-renamed` audit
+    /// atomically. The key is the stable identifier and has no change interface;
+    /// an unknown key is [`IdentityError::NotFound`].
+    fn admin_rename_project(
+        &self,
+        actor: &AuditActor,
+        key: &str,
+        name: &str,
+    ) -> Result<(), IdentityError>;
+
+    /// Change a repo's display name, recording a `repo-renamed` audit atomically.
+    /// The key is stable and has no change interface; an unknown repo is
+    /// [`IdentityError::NotFound`].
+    fn admin_rename_repo(
+        &self,
+        actor: &AuditActor,
+        project_key: &str,
+        key: &str,
+        name: &str,
+    ) -> Result<(), IdentityError>;
+
+    // --- admin credential oversight (決策 4): metadata only, force revoke ---
+
+    /// Every PAT across all users, metadata only ([`Pat`] carries no hash or
+    /// plaintext), newest first — the /admin credential view. There is no
+    /// interface that reads back a secret value.
+    fn list_all_pats(&self) -> Result<Vec<Pat>, IdentityError>;
+
+    /// Every device credential family across all users, paired with its owning
+    /// user id, newest first. Metadata only — no secret is ever returned.
+    fn list_all_device_families(&self) -> Result<Vec<(String, DeviceFamily)>, IdentityError>;
+
+    /// Force-revoke any user's PAT by id — the same immediate revocation as
+    /// self-service ([`IdentityStore::revoke_pat`]) but not scoped to an owner —
+    /// recording a `token-revoked` audit (the token id and prefix, never a hash
+    /// or plaintext) in the same transaction. An unknown id is
+    /// [`IdentityError::NotFound`]; an already-revoked token is idempotent.
+    fn admin_revoke_pat(&self, actor: &AuditActor, pat_id: &str) -> Result<(), IdentityError>;
+
+    /// Force-revoke any device credential family by id — tearing down its access
+    /// tokens and refresh credentials at once, as self-service revocation does —
+    /// recording a `token-revoked` audit (the family id, no secret) in the same
+    /// transaction. An unknown id is [`IdentityError::NotFound`].
+    fn admin_revoke_family(&self, actor: &AuditActor, family_id: &str) -> Result<(), IdentityError>;
 }
 
 // --- credential hashing (決策 2) ---

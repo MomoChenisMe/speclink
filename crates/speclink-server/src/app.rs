@@ -1,6 +1,7 @@
 //! HTTP router assembly. Verb routes are layered on in later knives; this is
 //! the single assembly point they extend.
 
+use crate::admin;
 use crate::auth::Binding;
 use crate::device;
 use crate::routes;
@@ -53,10 +54,28 @@ pub fn router(state: AppState) -> Router {
         .route("/account/tokens/{id}/revoke", post(web::revoke_pat))
         .route("/account/device/{id}/revoke", post(web::revoke_device_family))
         .route("/activate", get(web::activate_page).post(web::activate_submit))
+        .route("/admin", get(admin::admin_home))
+        .route("/admin/users", get(admin::users_page))
+        .route("/admin/users/invite", post(admin::web_invite))
+        .route("/admin/users/{id}/suspend", post(admin::web_suspend_user))
+        .route("/admin/users/{id}/reactivate", post(admin::web_reactivate_user))
+        .route("/admin/users/{id}/membership", post(admin::web_set_membership))
+        .route("/admin/users/{id}/admin-flag", post(admin::web_set_admin_flag))
+        .route("/admin/registry", get(admin::registry_page))
+        .route("/admin/registry/projects", post(admin::web_create_project))
+        .route("/admin/registry/projects/{key}/rename", post(admin::web_rename_project))
+        .route("/admin/registry/repos", post(admin::web_create_repo))
+        .route("/admin/registry/repos/rename", post(admin::web_rename_repo))
+        .route("/admin/credentials", get(admin::credentials_page))
+        .route("/admin/credentials/tokens/{id}/revoke", post(admin::web_revoke_token))
+        .route("/admin/credentials/families/{id}/revoke", post(admin::web_revoke_family))
+        .route("/admin/audit", get(admin::audit_page))
+        .route("/admin/system", get(admin::system_page))
         .route("/auth/device", post(device::initiate))
         .route("/auth/device/token", post(device::poll_token))
         .route("/auth/refresh", post(device::refresh))
         .route("/auth/revoke", post(device::revoke))
+        .nest("/api/speclink/v1/admin", admin::api_router())
         .nest("/api/speclink/v1/projects/{key}", project)
         .with_state(state)
 }

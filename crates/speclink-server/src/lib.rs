@@ -5,7 +5,9 @@
 //! crate (design 決策二): handlers run the synchronous bridge on the blocking
 //! pool, and the Engine/Host/Store crates stay runtime-free.
 
+pub mod admin;
 pub mod app;
+pub mod audit;
 pub mod auth;
 pub mod config;
 pub mod device;

@@ -5,6 +5,7 @@
 //! SQLite file is refused with its bytes untouched.
 
 use chrono::{Duration, Utc};
+use speclink_server::audit::{AuditAction, AuditActor, AuditSource};
 use speclink_server::identity::{IdentityError, IdentityStore, IdentitySqlite, NewInvitation};
 use speclink_server::identity::{Project, Repo};
 
@@ -246,7 +247,7 @@ fn a_version_1_database_migrates_preserving_users_and_pats() {
         .expect("seed pat");
     }
 
-    // Opening with the current server migrates 1 → 3 in place.
+    // Opening with the current server migrates 1 → 4 in place.
     let s = IdentitySqlite::open(&path).expect("open migrates the v1 database");
 
     // Existing data is intact and the pre-existing PAT still authenticates.
@@ -265,7 +266,7 @@ fn a_version_1_database_migrates_preserving_users_and_pats() {
     let version: String = conn
         .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
         .expect("schema version");
-    assert_eq!(version, "3", "the database was migrated to the current version");
+    assert_eq!(version, "4", "the database was migrated to the current version");
     for table in ["device_authorizations", "credential_families", "access_tokens", "refresh_credentials"] {
         let exists: i64 = conn
             .query_row(
@@ -434,7 +435,7 @@ fn a_version_2_database_migrates_preserving_users_and_pats_and_enables_the_regis
         .expect("seed pat");
     }
 
-    // Opening with the current server migrates 2 → 3 in place.
+    // Opening with the current server migrates 2 → 4 in place.
     let s = IdentitySqlite::open(&path).expect("open migrates the v2 database");
 
     // Existing data is intact and the pre-existing PAT still authenticates.
@@ -453,12 +454,12 @@ fn a_version_2_database_migrates_preserving_users_and_pats_and_enables_the_regis
     assert_eq!(s.get_project("demo").expect("get").expect("exists").key, "demo");
     drop(s);
 
-    // The schema now records version 3 and the registry tables exist.
+    // The schema now records version 4 and the registry tables exist.
     let conn = rusqlite::Connection::open(&path).expect("reopen for inspection");
     let version: String = conn
         .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
         .expect("schema version");
-    assert_eq!(version, "3", "the database was migrated to version 3");
+    assert_eq!(version, "4", "the database was migrated to version 4");
     for table in ["projects", "repos"] {
         let exists: i64 = conn
             .query_row(
@@ -469,4 +470,136 @@ fn a_version_2_database_migrates_preserving_users_and_pats_and_enables_the_regis
             .expect("table lookup");
         assert_eq!(exists, 1, "migration created the {table} table");
     }
+}
+
+/// The schema-version-3 identity shape (users, memberships, PATs, registry)
+/// before the audit table was added — enough to seed data for a migration test.
+/// Migrating 3 → 4 only adds the audit_log table, so this subset suffices.
+const V3_SCHEMA: &str = "\
+CREATE TABLE meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+CREATE TABLE users (
+    id TEXT PRIMARY KEY NOT NULL, display TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL, active INTEGER NOT NULL, admin INTEGER NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE memberships (user_id TEXT NOT NULL, project_key TEXT NOT NULL, PRIMARY KEY (user_id, project_key));
+CREATE TABLE pats (
+    id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, prefix TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL, expires_at TEXT, revoked_at TEXT, last_used_at TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE projects (key TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL);
+CREATE TABLE repos (project_key TEXT NOT NULL, key TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY (project_key, key));
+";
+
+#[test]
+fn a_version_3_database_migrates_preserving_data_and_adds_a_writable_audit_log() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("v3.db");
+    // A PAT that existed before the audit migration, hashed as the store hashes it.
+    const PAT: &str = "spk_pat_v3preexisting00000000000000000000000000000000000000000000000000";
+    let now = Utc::now().to_rfc3339();
+    {
+        // Hand-build a schema-version-3 identity database with a user, a
+        // membership, a PAT and a registered project — the shape the prior knife wrote.
+        let conn = rusqlite::Connection::open(&path).expect("create v3 db");
+        conn.execute_batch(V3_SCHEMA).expect("v3 schema");
+        conn.execute_batch(
+            "INSERT INTO meta VALUES ('format','speclink-identity-store');\
+             INSERT INTO meta VALUES ('schema_version','3');",
+        )
+        .expect("seed meta");
+        conn.execute(
+            "INSERT INTO users (id, display, email, password_hash, active, admin, created_at) \
+             VALUES ('usr_old','Old <old@example.com>','old@example.com','argon2-hash',1,0,?1)",
+            rusqlite::params![now],
+        )
+        .expect("seed user");
+        conn.execute("INSERT INTO memberships (user_id, project_key) VALUES ('usr_old','demo')", [])
+            .expect("seed membership");
+        conn.execute(
+            "INSERT INTO pats (id, user_id, prefix, token_hash, name, expires_at, revoked_at, last_used_at, created_at) \
+             VALUES ('pat_old','usr_old','spk_pat_v3pr',?1,'legacy',NULL,NULL,NULL,?2)",
+            rusqlite::params![sha256_hex(PAT), now],
+        )
+        .expect("seed pat");
+        conn.execute("INSERT INTO projects (key, name) VALUES ('demo','Demo')", [])
+            .expect("seed project");
+    }
+
+    // Opening with the current server migrates 3 → 4 in place.
+    let s = IdentitySqlite::open(&path).expect("open migrates the v3 database");
+
+    // Existing data is intact: the user, its membership, its PAT and the project all survive.
+    let user = s.get_user("usr_old").expect("get user").expect("migrated user survives");
+    assert_eq!(user.email, "old@example.com");
+    assert!(s.is_member("usr_old", "demo").expect("membership check"), "membership preserved");
+    let (_, who) = s
+        .authenticate_pat(PAT)
+        .expect("auth")
+        .expect("the pre-existing PAT still authenticates after migration");
+    assert_eq!(who.id, "usr_old");
+    assert_eq!(s.get_project("demo").expect("get").expect("exists").key, "demo", "project preserved");
+
+    // The audit log is writable and queryable on the migrated database.
+    s.record_audit(&AuditActor::user("usr_old", AuditSource::Api), AuditAction::UserSuspended, "usr_target")
+        .expect("audit is writable after migration");
+    let page = s.list_audit(10, 0).expect("audit is queryable");
+    assert_eq!(page.len(), 1, "the recorded audit entry reads back");
+    assert_eq!(page[0].action, "user-suspended");
+    assert_eq!(page[0].subject, "usr_target");
+    assert_eq!(page[0].source, "api");
+    drop(s);
+
+    // The schema now records version 4 and the audit_log table exists.
+    let conn = rusqlite::Connection::open(&path).expect("reopen for inspection");
+    let version: String = conn
+        .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
+        .expect("schema version");
+    assert_eq!(version, "4", "the database was migrated to version 4");
+    let exists: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'audit_log'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("table lookup");
+    assert_eq!(exists, 1, "migration created the audit_log table");
+}
+
+#[test]
+fn the_audit_log_is_append_only_reverse_chronological_and_paginates() {
+    let s = store();
+    // Record three entries in order; each carries a distinct action, subject and source.
+    s.record_audit(&AuditActor::user("usr_admin", AuditSource::Web), AuditAction::UserInvited, "alice@example.com")
+        .expect("record 1");
+    s.record_audit(&AuditActor::system_cli(), AuditAction::TokenRevoked, "pat_x (spk_pat_abcd)")
+        .expect("record 2");
+    s.record_audit(&AuditActor::user("usr_admin", AuditSource::Api), AuditAction::ProjectCreated, "demo")
+        .expect("record 3");
+
+    // The full page is newest-first (reverse of insertion order).
+    let all = s.list_audit(10, 0).expect("list");
+    assert_eq!(all.len(), 3, "all three entries read back");
+    assert_eq!(all[0].action, "project-created", "newest first");
+    assert_eq!(all[1].action, "token-revoked");
+    assert_eq!(all[2].action, "user-invited", "oldest last");
+
+    // The five-tuple round-trips: operator, action, subject, source (and a UTC time).
+    assert_eq!(all[2].actor_id, "usr_admin");
+    assert_eq!(all[2].subject, "alice@example.com");
+    assert_eq!(all[2].source, "web");
+    assert_eq!(all[1].actor_id, AuditActor::SYSTEM, "a CLI action records the host as operator");
+    assert_eq!(all[1].source, "cli");
+    assert!(all[0].created_at <= Utc::now(), "the entry carries a UTC timestamp");
+
+    // Pagination walks the log a page at a time, still newest-first.
+    let first = s.list_audit(2, 0).expect("page 1");
+    assert_eq!(first.len(), 2);
+    assert_eq!(first[0].action, "project-created");
+    assert_eq!(first[1].action, "token-revoked");
+    let second = s.list_audit(2, 2).expect("page 2");
+    assert_eq!(second.len(), 1, "the offset skips the first page");
+    assert_eq!(second[0].action, "user-invited");
+
+    // There is no update or delete interface: the trait exposes only append and read.
+    // (Enforced by the absence of any mutating audit method — verified at compile time.)
 }
