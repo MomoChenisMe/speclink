@@ -172,6 +172,7 @@ enum DocIdDto {
     Discussion { slug: String, archived: bool },
     WorkflowConfig,
     ArchivedChange { change: String, doc: String },
+    Language,
 }
 
 impl From<&DocumentId> for DocIdDto {
@@ -191,6 +192,7 @@ impl From<&DocumentId> for DocIdDto {
             DocumentId::ArchivedChange { change, doc } => {
                 DocIdDto::ArchivedChange { change: change.clone(), doc: doc.clone() }
             }
+            DocumentId::Language => DocIdDto::Language,
         }
     }
 }
@@ -206,6 +208,7 @@ impl From<DocIdDto> for DocumentId {
             DocIdDto::Discussion { slug, archived } => DocumentId::Discussion { slug, archived },
             DocIdDto::WorkflowConfig => DocumentId::WorkflowConfig,
             DocIdDto::ArchivedChange { change, doc } => DocumentId::ArchivedChange { change, doc },
+            DocIdDto::Language => DocumentId::Language,
         }
     }
 }

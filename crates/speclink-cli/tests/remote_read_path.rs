@@ -66,6 +66,101 @@ impl Drop for MockServer {
     }
 }
 
+// --- context-aware mock (POST /context with conditional 304 / 503) ---
+
+/// How the context mock answers `POST /context`.
+enum ContextBehavior {
+    /// Serve `body` on a fresh request; a matching `If-None-Match` is 304.
+    Serve { snapshot_id: String, body: String },
+    /// Always fail `/context` with 503 unavailable.
+    Unavailable,
+}
+
+/// A mock that serves the handshake, the apply-instructions body, and
+/// `POST /context` per `behavior`. Everything else is 404.
+fn context_mock(apply_body: &str, behavior: ContextBehavior) -> MockServer {
+    let apply_body = apply_body.to_string();
+    let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind mock server"));
+    let port = server.server_addr().to_ip().expect("ip").port();
+    let base = format!("http://127.0.0.1:{port}/api/speclink/v1/projects/demo");
+    let looper = Arc::clone(&server);
+    std::thread::spawn(move || {
+        let full = |s: &str| format!("/api/speclink/v1/projects/demo{s}");
+        for req in looper.incoming_requests() {
+            let method = req.method().to_string();
+            let path = req.url().split('?').next().unwrap_or_default().to_string();
+            let inm = req
+                .headers()
+                .iter()
+                .find(|h| h.field.to_string().eq_ignore_ascii_case("if-none-match"))
+                .map(|h| h.value.to_string());
+            let (status, body): (u16, String) = if method == "GET" && path == full("/binding") {
+                (200, BINDING_BODY.to_string())
+            } else if method == "GET" && path == full("/changes/demo/instructions/apply") {
+                (200, apply_body.clone())
+            } else if method == "POST" && path == full("/context") {
+                match &behavior {
+                    ContextBehavior::Unavailable => (
+                        503,
+                        r#"{"status":503,"reason":"unavailable","message":"down"}"#.to_string(),
+                    ),
+                    ContextBehavior::Serve { snapshot_id, body } => {
+                        if inm.as_deref() == Some(snapshot_id.as_str()) {
+                            (304, String::new())
+                        } else {
+                            (200, body.clone())
+                        }
+                    }
+                }
+            } else {
+                (404, r#"{"reason":"not_found","message":"no route"}"#.to_string())
+            };
+            let resp = tiny_http::Response::from_string(body)
+                .with_status_code(status)
+                .with_header(
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                        .unwrap(),
+                );
+            let _ = req.respond(resp);
+        }
+    });
+    MockServer { server, base }
+}
+
+/// A full apply-flow context snapshot for `demo` with the given id: the change's
+/// artifacts, its delta spec, the matching canonical spec, config and LANGUAGE —
+/// digests computed with the contract digest so the materializer accepts it.
+fn demo_snapshot(snapshot_id: &str) -> String {
+    use speclink_host::projection::content_digest;
+    use speclink_protocol::context::{ContextDocument, ContextSnapshot};
+    let doc = |path: &str, content: &str| ContextDocument {
+        path: path.to_string(),
+        content: content.to_string(),
+        revision: Some(1),
+        digest: content_digest(content),
+    };
+    let documents = vec![
+        doc("openspec/changes/demo/proposal.md", "## Why\n\nDemo change summary\n"),
+        doc("openspec/changes/demo/design.md", "## Context\n\nDemo design\n"),
+        doc("openspec/changes/demo/tasks.md", "- [x] 1.1 First\n- [x] 1.2 Second\n"),
+        doc(
+            "openspec/changes/demo/specs/cap-a/spec.md",
+            "## MODIFIED Requirements\n\n### Requirement: Demo\n",
+        ),
+        doc("openspec/specs/cap-a/spec.md", "### Requirement: Demo\nDemo SHALL work.\n"),
+        doc("openspec/config.yaml", "schema: spec-driven\n"),
+        doc("openspec/LANGUAGE.md", "# Vocabulary\n"),
+    ];
+    let combined: Vec<&str> = documents.iter().map(|d| d.digest.as_str()).collect();
+    let snapshot = ContextSnapshot {
+        snapshot_id: snapshot_id.to_string(),
+        policy_revision: Some(1),
+        digest: content_digest(&combined.join("\n")),
+        documents,
+    };
+    serde_json::to_string(&snapshot).unwrap()
+}
+
 // --- throwaway projects ---
 
 struct TempProject {
@@ -141,6 +236,23 @@ impl TempProject {
             cmd.env("SPECLINK_TOKEN", t);
         }
         cmd.output().expect("run speclink binary")
+    }
+
+    /// Like [`run`], but redirects the store URL to `url` (a second server) via
+    /// `SPECLINK_STORE_URL` — for tests that drive the same project against two
+    /// servers in sequence.
+    fn run_url(&self, args: &[&str], token: &str, url: &str) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_speclink"))
+            .args(args)
+            .current_dir(&self.dir)
+            .env_remove("SPECLINK_LOCALE")
+            .env_remove("SPECLINK_SPEC_LOCALE")
+            .env_remove("SPECLINK_TDD")
+            .env_remove("SPECLINK_AUDIT")
+            .env("SPECLINK_TOKEN", token)
+            .env("SPECLINK_STORE_URL", url)
+            .output()
+            .expect("run speclink binary")
     }
 }
 
@@ -255,31 +367,24 @@ fn instructions_apply_json_field_names_match_fs_mode() {
     assert_eq!(keys_of(&stdout_json(&r)), fs_keys, "instructions apply --json field names");
 }
 
-// --- remote instructions 指向投影（context-projection）---
+// --- remote instructions 指向投影（context-projection）：以 Context API 為來源 ---
+
+/// The projection root of a remote temp project.
+fn projection_dir_of(remote: &TempProject) -> PathBuf {
+    remote
+        .dir
+        .canonicalize()
+        .expect("canonicalize temp dir")
+        .join(".speclink")
+        .join("context")
+}
 
 #[test]
-fn instructions_apply_materializes_the_projection_and_points_context_files_at_it() {
-    let mock = mock_server(vec![
-        ("GET", "/changes/demo/instructions/apply", APPLY_BODY.to_string()),
-        (
-            "GET",
-            "/changes/demo/artifacts/proposal",
-            r###"{"artifact":"proposal","content":"## Why\n\nDemo change summary\n","version":3}"###
-                .to_string(),
-        ),
-        (
-            "GET",
-            "/changes/demo/artifacts/design",
-            r###"{"artifact":"design","content":"## Context\n\nDemo design\n","version":1}"###
-                .to_string(),
-        ),
-        (
-            "GET",
-            "/changes/demo/artifacts/tasks",
-            r#"{"artifact":"tasks","content":"- [x] 1.1 First\n- [x] 1.2 Second\n","version":5}"#
-                .to_string(),
-        ),
-    ]);
+fn instructions_apply_materializes_the_projection_from_the_context_api() {
+    let mock = context_mock(
+        APPLY_BODY,
+        ContextBehavior::Serve { snapshot_id: "snap-1".to_string(), body: demo_snapshot("snap-1") },
+    );
     let remote = TempProject::remote("proj-apply", &mock.base, Some("backend"));
 
     let out = remote.run(&["instructions", "apply", "--change", "demo", "--json"], Some("tok"));
@@ -292,12 +397,7 @@ fn instructions_apply_materializes_the_projection_and_points_context_files_at_it
     assert_eq!(keys, ["design", "proposal", "specs", "tasks"]);
 
     // 每個值都指向投影下（.speclink/context 的 openspec 鏡像）。
-    let projection = remote
-        .dir
-        .canonicalize()
-        .expect("canonicalize temp dir")
-        .join(".speclink")
-        .join("context");
+    let projection = projection_dir_of(&remote);
     for (key, value) in files {
         let value = value.as_str().unwrap();
         assert!(
@@ -306,18 +406,89 @@ fn instructions_apply_materializes_the_projection_and_points_context_files_at_it
         );
     }
 
-    // materialize 由動詞流程觸發：非 glob 的 contextFiles 是投影下存在的文件。
-    for key in ["proposal", "design", "tasks"] {
-        let path = PathBuf::from(files[key].as_str().unwrap());
-        assert!(path.is_file(), "{key} exists in the projection: {}", path.display());
+    // 投影以 Context API 為來源：含正典 specs 與 delta specs（不再只有三個 artifact）。
+    for rel in [
+        "openspec/changes/demo/proposal.md",
+        "openspec/changes/demo/design.md",
+        "openspec/changes/demo/tasks.md",
+        "openspec/changes/demo/specs/cap-a/spec.md",
+        "openspec/specs/cap-a/spec.md",
+    ] {
+        assert!(projection.join(rel).is_file(), "{rel} is in the apply-flow projection");
     }
-    assert!(projection.join("manifest.json").is_file(), "manifest written");
+
+    // manifest snapshot id 為 server 回應的識別。
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(projection.join("manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(manifest["snapshotId"], "snap-1", "manifest carries the server snapshot id");
     assert!(
-        std::fs::read_to_string(PathBuf::from(files["proposal"].as_str().unwrap()))
+        std::fs::read_to_string(projection.join("openspec/changes/demo/proposal.md"))
             .unwrap()
             .contains("Demo change summary"),
         "projected content is the server's"
     );
+}
+
+#[test]
+fn an_unchanged_scope_skips_the_projection_rewrite() {
+    let mock = context_mock(
+        APPLY_BODY,
+        ContextBehavior::Serve { snapshot_id: "snap-1".to_string(), body: demo_snapshot("snap-1") },
+    );
+    let remote = TempProject::remote("proj-unchanged", &mock.base, Some("backend"));
+
+    // First run materializes the projection.
+    let out1 = remote.run(&["instructions", "apply", "--change", "demo", "--json"], Some("tok"));
+    assert!(out1.status.success(), "stderr: {}", String::from_utf8_lossy(&out1.stderr));
+    let projection = projection_dir_of(&remote);
+    assert!(projection.join("manifest.json").is_file(), "first run materialized");
+
+    // A sentinel in the projection dir: a rewrite (staging + whole-directory
+    // switch) would replace the directory and remove it.
+    let sentinel = projection.join("SENTINEL");
+    std::fs::write(&sentinel, "probe").unwrap();
+
+    // Second run: the CLI sends the manifest id as If-None-Match; the scope is
+    // unchanged, so the mock answers 304 and the projection is not rewritten.
+    let out2 = remote.run(&["instructions", "apply", "--change", "demo", "--json"], Some("tok"));
+    assert!(out2.status.success(), "stderr: {}", String::from_utf8_lossy(&out2.stderr));
+    assert!(sentinel.is_file(), "the sentinel survives → the projection was not rewritten (免重寫)");
+
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(projection.join("manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(manifest["snapshotId"], "snap-1", "the projection still holds the same snapshot");
+}
+
+#[test]
+fn a_context_api_failure_marks_the_existing_projection_stale_without_blocking_the_verb() {
+    // A healthy server materializes the projection first.
+    let ok = context_mock(
+        APPLY_BODY,
+        ContextBehavior::Serve { snapshot_id: "snap-1".to_string(), body: demo_snapshot("snap-1") },
+    );
+    let remote = TempProject::remote("proj-stale", &ok.base, Some("backend"));
+    let out1 = remote.run(&["instructions", "apply", "--change", "demo", "--json"], Some("tok"));
+    assert!(out1.status.success(), "stderr: {}", String::from_utf8_lossy(&out1.stderr));
+    let projection = projection_dir_of(&remote);
+    assert!(projection.join("manifest.json").is_file(), "materialized");
+    assert!(!projection.join("STALE").exists(), "not stale after a fresh materialize");
+
+    // A failing Context API: the verb still completes, warns, and marks the
+    // existing projection stale (韌性語意不變).
+    let bad = context_mock(APPLY_BODY, ContextBehavior::Unavailable);
+    let out2 = remote.run_url(&["instructions", "apply", "--change", "demo", "--json"], "tok", &bad.base);
+    assert!(
+        out2.status.success(),
+        "the verb completes despite the projection failure: {}",
+        String::from_utf8_lossy(&out2.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out2.stderr);
+    assert!(stderr.contains("not refreshed"), "a loud warning is emitted: {stderr}");
+    assert!(projection.join("STALE").is_file(), "the existing projection is marked stale");
+    // The instructions payload itself is intact.
+    assert_eq!(stdout_json(&out2)["changeName"], "demo", "the verb payload is unaffected");
 }
 
 #[test]

@@ -74,6 +74,9 @@ pub enum DocumentId {
     WorkflowConfig,
     /// A document of an archived change, by its relative name.
     ArchivedChange { change: String, doc: String },
+    /// The scope's shared-vocabulary document (`LANGUAGE.md`): one per scope,
+    /// like [`DocumentId::WorkflowConfig`]. Absent is a normal state.
+    Language,
 }
 
 /// Full document identity: the (project, repo, document) triple.
@@ -305,7 +308,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn document_id_covers_six_logical_kinds() {
+    fn document_id_covers_seven_logical_kinds() {
         let kinds = [
             DocumentId::ChangeMeta {
                 change: "add-auth".into(),
@@ -326,6 +329,7 @@ mod tests {
                 change: "old-change".into(),
                 doc: "proposal.md".into(),
             },
+            DocumentId::Language,
         ];
         // Closed enum: exhaustive match without a wildcard arm — a new kind
         // breaks compilation here instead of silently passing drivers by.
@@ -337,6 +341,7 @@ mod tests {
                 DocumentId::Discussion { .. } => {}
                 DocumentId::WorkflowConfig => {}
                 DocumentId::ArchivedChange { .. } => {}
+                DocumentId::Language => {}
             }
         }
     }

@@ -3,6 +3,7 @@
 
 use crate::admin;
 use crate::auth::Binding;
+use crate::context;
 use crate::device;
 use crate::routes;
 use crate::setup;
@@ -41,6 +42,7 @@ pub fn router(state: AppState) -> Router {
         .route("/config", get(routes::config))
         .route("/whoami", get(routes::whoami))
         .route("/sync-state", get(routes::sync_state))
+        .route("/context", post(context::snapshot))
         .route("/events", get(routes::events));
     Router::new()
         .route("/healthz", get(healthz))

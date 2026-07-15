@@ -9,7 +9,8 @@ use speclink_protocol::command::{
     AddDiscussionRoundRequest, CreateChangeRequest, CreateDiscussionRequest,
     PromoteDiscussionRequest, PutArtifactRequest, TaskDoneRequest,
 };
-use speclink_remote::client::Client;
+use speclink_protocol::context::ContextSnapshotRequest;
+use speclink_remote::client::{Client, ContextSnapshotOutcome};
 use std::sync::{Arc, Mutex};
 
 // --- capturing mock server (serves every request with one status/body) ---
@@ -463,5 +464,62 @@ fn unavailable_covers_every_5xx_before_the_reason_table() {
     assert_eq!(
         err.message,
         "server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)"
+    );
+}
+
+// --- context snapshot: the two-valued conditional read ---
+
+#[test]
+fn context_snapshot_fresh_posts_the_request_and_returns_the_snapshot() {
+    let mock = serve(
+        200,
+        r#"{"snapshotId":"snap-5","policyRevision":1,"digest":"sha256:aa","documents":[{"path":"openspec/config.yaml","content":"schema: spec-driven\n","revision":1,"digest":"sha256:bb"}]}"#,
+    );
+    let request = ContextSnapshotRequest { change: Some("demo".into()), flow: Some("apply".into()) };
+    let outcome = client(&mock).context_snapshot(&request, None).expect("snapshot ok");
+    match outcome {
+        ContextSnapshotOutcome::Fresh(snap) => {
+            assert_eq!(snap.snapshot_id, "snap-5");
+            assert_eq!(snap.documents.len(), 1);
+            assert_eq!(snap.documents[0].path, "openspec/config.yaml");
+        }
+        ContextSnapshotOutcome::Unchanged => panic!("expected a fresh snapshot, got Unchanged"),
+    }
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/context");
+    assert_eq!(
+        cap.body,
+        serde_json::to_string(&request).unwrap(),
+        "the wire body is the request DTO serialization, nothing re-assembled"
+    );
+    assert_eq!(cap.header("if-none-match"), None, "no known id → no If-None-Match header");
+}
+
+#[test]
+fn context_snapshot_sends_if_none_match_and_304_is_unchanged() {
+    let mock = serve(304, "");
+    let request = ContextSnapshotRequest { change: Some("demo".into()), flow: Some("apply".into()) };
+    let outcome = client(&mock)
+        .context_snapshot(&request, Some("snap-5"))
+        .expect("a 304 is a normal outcome, not an error");
+    assert!(matches!(outcome, ContextSnapshotOutcome::Unchanged), "a 304 is the Unchanged value");
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/context");
+    assert_eq!(
+        cap.header("if-none-match"),
+        Some("snap-5"),
+        "the caller's known snapshot id travels as If-None-Match"
+    );
+}
+
+#[test]
+fn context_snapshot_translates_a_503_like_any_verb() {
+    let mock = serve(503, r#"{"status":503,"reason":"unavailable","message":"maintenance"}"#);
+    let request = ContextSnapshotRequest { change: None, flow: None };
+    let err = client(&mock).context_snapshot(&request, None).unwrap_err();
+    assert_eq!(
+        err.message,
+        "server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)",
+        "a 5xx collapses to the frozen unavailable message"
     );
 }

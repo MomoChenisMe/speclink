@@ -64,6 +64,7 @@ fn encode_doc(doc: &DocumentId) -> String {
         }
         DocumentId::WorkflowConfig => "wc".to_string(),
         DocumentId::ArchivedChange { change, doc } => format!("ac{SEP}{change}{SEP}{doc}"),
+        DocumentId::Language => "lg".to_string(),
     }
 }
 
@@ -76,6 +77,7 @@ fn decode_doc(key: &str) -> Result<DocumentId, StoreError> {
     let parts: Vec<&str> = key.split(SEP).collect();
     match parts.as_slice() {
         ["wc"] => Ok(DocumentId::WorkflowConfig),
+        ["lg"] => Ok(DocumentId::Language),
         ["cm", change] => Ok(DocumentId::ChangeMeta {
             change: (*change).to_string(),
         }),

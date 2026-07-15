@@ -10,6 +10,7 @@ use crate::{translate_protocol_error, translate_transport, RemoteError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use speclink_protocol::binding::BindingResponse;
+use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, ArchiveDiscussionResponse,
     ArchiveResponse, ClaimResponse, ConcludeDiscussionRequest, CreateChangeRequest,
@@ -31,6 +32,17 @@ pub const API_VERSION: &str = speclink_protocol::API_VERSION;
 /// The bare-object body for verbs whose request carries no fields.
 #[derive(Serialize)]
 struct Empty {}
+
+/// The outcome of a context snapshot request: the scope was unchanged since the
+/// caller's known snapshot id (a 304 with no body), or a fresh snapshot. The
+/// two-valued shape lets a projection refresh skip rewriting when nothing moved.
+#[derive(Debug)]
+pub enum ContextSnapshotOutcome {
+    /// The scope state token still matches the caller's known snapshot id.
+    Unchanged,
+    /// A fresh consistent snapshot of the scope's context documents.
+    Fresh(ContextSnapshot),
+}
 
 /// A client bound to one project-scoped base URL, one token, and (optionally)
 /// one repo identity.
@@ -188,6 +200,42 @@ impl Client {
     /// `GET /whoami`
     pub fn whoami(&self) -> Result<WhoamiResponse, RemoteError> {
         self.get("/whoami")
+    }
+
+    // --- context snapshot ---
+
+    /// `POST /context` with the request body and, when the caller already holds
+    /// a snapshot, its id as `If-None-Match`. A 304 (the scope state token still
+    /// matches) is [`ContextSnapshotOutcome::Unchanged`]; a 200 is a fresh
+    /// snapshot. Every other status goes through the registry translation like
+    /// any verb — this is the only conditional path that reads a 304, so it does
+    /// not funnel through `send` (which has no not-modified outcome). A 304 is a
+    /// non-redirect 3xx: ureq surfaces it as `Ok` with status 304, not an error.
+    pub fn context_snapshot(
+        &self,
+        request: &ContextSnapshotRequest,
+        known_snapshot_id: Option<&str>,
+    ) -> Result<ContextSnapshotOutcome, RemoteError> {
+        let mut req = self.request("POST", "/context");
+        if let Some(id) = known_snapshot_id {
+            req = req.set("If-None-Match", id);
+        }
+        match req.send_json(request) {
+            Ok(resp) if resp.status() == 304 => Ok(ContextSnapshotOutcome::Unchanged),
+            Ok(resp) => {
+                let snapshot: ContextSnapshot = resp.into_json().map_err(|_| RemoteError {
+                    message: "unexpected server response — the server did not return valid JSON"
+                        .into(),
+                    reason: None,
+                })?;
+                Ok(ContextSnapshotOutcome::Fresh(snapshot))
+            }
+            Err(ureq::Error::Status(status, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                Err(translate_protocol_error(status, &body))
+            }
+            Err(ureq::Error::Transport(_)) => Err(translate_transport()),
+        }
     }
 
     // --- write path ---

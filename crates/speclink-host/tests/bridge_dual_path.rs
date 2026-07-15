@@ -264,3 +264,43 @@ fn not_found_failure_carries_the_same_error_code_on_both_paths() {
     assert_eq!(fs_err.code, ErrorCode::NotFound, "fs path classifies not_found");
     assert_eq!(br_code, ErrorCode::NotFound, "bridge path classifies not_found");
 }
+
+/// The shared-vocabulary document: fs reads `LANGUAGE.md`, the bridge reads the
+/// `DocumentId::Language` document — the same content on both seams (the store
+/// contract gained the Language kind so server mode is no longer LANGUAGE-blind).
+#[test]
+fn language_show_reads_the_shared_vocabulary_on_both_paths() {
+    const LANGUAGE: &str = "# Shared Vocabulary\n\n- Change: a proposed edit.\n";
+
+    // fs seam: LANGUAGE.md written into the openspec tree.
+    let (dir, fs) = seed_fs();
+    std::fs::write(dir.path().join("openspec").join("LANGUAGE.md"), LANGUAGE)
+        .expect("write LANGUAGE.md");
+
+    // bridge seam: the Language document committed into the scope.
+    let (mem, scope) = seed_teamstore();
+    let mut uow = mem
+        .begin_unit_of_work(
+            &scope,
+            CommandContext { command: "seed".to_string(), actor: "seed".to_string() },
+        )
+        .expect("begin uow");
+    uow.create(DocumentId::Language, LANGUAGE);
+    mem.commit(uow, Vec::new()).expect("seed language commit");
+
+    let (fs_out, _) =
+        engine_execute(&fs, &fs_engine_ctx(), Command::LanguageShow).expect("fs language show");
+    let bridged =
+        bridge::execute(&mem, &host_ctx(), Command::LanguageShow).expect("bridged language show");
+
+    let content = |o: &CommandOutcome| match o {
+        CommandOutcome::Language(c) => c.clone(),
+        other => panic!("expected a language outcome, got {other:?}"),
+    };
+    assert_eq!(content(&fs_out), LANGUAGE, "fs reads the shared vocabulary");
+    assert_eq!(
+        content(&bridged.outcome),
+        LANGUAGE,
+        "the bridge reads the seeded Language document identically",
+    );
+}
