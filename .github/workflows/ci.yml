@@ -71,3 +71,52 @@ jobs:
 
       - name: Test (Desktop)
         run: npm test -w apps/desktop
+
+  # The PostgreSQL driver needs a real database, which `services` can only give
+  # a Linux runner — hence a job of its own rather than a step in the matrix
+  # above. There, with no SPECLINK_TEST_POSTGRES_URL set, those suites report
+  # `skipped` and the matrix stays green on machines without a database.
+  postgres-store:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # The supported floor. The driver uses nothing newer, and the floor is
+        # what CI must prove, so this pins the version rather than tracking
+        # latest.
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: speclink
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      SPECLINK_TEST_POSTGRES_URL: postgres://postgres:speclink@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test (postgres driver, and the server over it)
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p speclink-store-postgres 2>&1 | tee postgres-suites.log
+          cargo test --locked -p speclink-server --test postgres_store 2>&1 | tee -a postgres-suites.log
+
+      # The suites skip rather than fail when no database is configured — right
+      # on a developer's laptop, useless here. Without this, a typo in the URL
+      # or a service that never came up would leave this job green having run
+      # nothing at all.
+      - name: Guard — the suites must have actually run
+        shell: bash
+        run: |
+          if grep -q 'skipped' postgres-suites.log; then
+            echo "::error::the PostgreSQL suites reported skipped — the service or SPECLINK_TEST_POSTGRES_URL never reached them, so nothing was tested"
+            exit 1
+          fi
