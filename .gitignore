@@ -12,3 +12,6 @@ openspec/.vector-search.db*
 node_modules/
 apps/desktop/dist/
 apps/desktop/src-tauri/gen/
+
+# macOS
+.DS_Store
