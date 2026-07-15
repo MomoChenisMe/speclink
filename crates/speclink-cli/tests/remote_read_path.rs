@@ -371,12 +371,16 @@ fn instructions_apply_json_field_names_match_fs_mode() {
 
 /// The projection root of a remote temp project.
 fn projection_dir_of(remote: &TempProject) -> PathBuf {
-    remote
-        .dir
-        .canonicalize()
-        .expect("canonicalize temp dir")
-        .join(".speclink")
-        .join("context")
+    // macOS 的 temp_dir 在 /var → /private/var symlink 下，CLI 由 getcwd 回報實體
+    // 路徑，故非 Windows 平台需解析才能與 CLI 輸出同底比對；Windows 的 canonicalize
+    // 會加 \\?\ 前綴並把 8.3 短名展開（RUNNER~1 → runneradmin），兩者 CLI 輸出都沒有，
+    // 反而讓同一個目錄變成兩種拼法。與 discuss_promote_snapshot.rs 同一處理。
+    let dir = if cfg!(windows) {
+        remote.dir.clone()
+    } else {
+        remote.dir.canonicalize().expect("canonicalize temp dir")
+    };
+    dir.join(".speclink").join("context")
 }
 
 #[test]
