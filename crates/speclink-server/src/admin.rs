@@ -8,7 +8,7 @@
 //! record in one transaction (決策 2/3); the API handler, the /admin form and the
 //! CLI subcommand all call the same path.
 
-use crate::audit::{AuditActor, AuditSource};
+use crate::audit::{AuditAction, AuditActor, AuditSource};
 use crate::auth::{bearer_token, header};
 use crate::error::ApiError;
 use crate::identity::{IdentityError, NewInvitation, User};
@@ -23,7 +23,7 @@ use axum::{Json, Router};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use speclink_protocol::API_VERSION;
-use speclink_store::{OutboxCursor, ProjectId, RepoId, Scope, StoreError};
+use speclink_store::{OutboxCursor, ProjectId, RepoId, Scope, StoreError, CONTRACT_VERSION};
 use std::collections::HashMap;
 
 /// An acknowledgment body for admin API actions whose response the caller ignores.
@@ -279,6 +279,7 @@ pub async fn admin_home(State(state): State<AppState>, headers: HeaderMap) -> Re
         <li><a href=\"/admin/users\">使用者</a></li>\n\
         <li><a href=\"/admin/registry\">Registry（Project／Repo）</a></li>\n\
         <li><a href=\"/admin/credentials\">憑證</a></li>\n\
+        <li><a href=\"/admin/data\">資料操作</a></li>\n\
         <li><a href=\"/admin/system\">系統狀態</a></li>\n\
         <li><a href=\"/admin/audit\">Audit log</a></li>\n\
         </ul>\n</nav>\n";
@@ -938,6 +939,153 @@ pub async fn system_page(State(state): State<AppState>, headers: HeaderMap) -> R
         return refused;
     }
     Html(render_system(&gather_system(&state))).into_response()
+}
+
+// --- data operations (决策 5): scope export download ---
+
+/// `GET /admin/data` — the data-operations page: a scope export-download link per
+/// registered scope.
+pub async fn data_page(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(refused) = require_admin(&state, &headers) {
+        return refused;
+    }
+    Html(render_data_page(&state)).into_response()
+}
+
+/// Render the data-operations page: recent backup info, one export-download link
+/// per registered scope, and the store-migration trigger (决策 5).
+fn render_data_page(state: &AppState) -> String {
+    let mut scope_rows = String::new();
+    for project in state.identity.list_projects().unwrap_or_default() {
+        for repo in state.identity.list_repos(&project.key).unwrap_or_default() {
+            scope_rows.push_str(&format!(
+                "<tr><td>{p}</td><td>{r}</td>\
+                 <td><a href=\"/admin/data/export/{p}/{r}\">下載 export bundle</a></td></tr>\n",
+                p = web::escape(&project.key),
+                r = web::escape(&repo.key),
+            ));
+        }
+    }
+
+    // Most recent backup/verify summary, if any has been recorded.
+    let backup_info = match state.identity.latest_backup() {
+        Ok(Some(rec)) => format!(
+            "<ul>\n<li>類型：{kind}</li>\n<li>建立時間：{created}</li>\n\
+             <li>格式版本：{fmt}</li>\n<li>摘要：{detail}</li>\n\
+             <li>結果：{result}</li>\n</ul>\n",
+            kind = web::escape(&rec.kind),
+            created = web::escape(&rec.created_at.to_rfc3339()),
+            fmt = rec.format_version,
+            detail = web::escape(&rec.detail),
+            result = if rec.ok { "通過" } else { "失敗" },
+        ),
+        _ => "<p>尚無備份記錄。</p>\n".to_string(),
+    };
+
+    let body = format!(
+        "<h1>資料操作</h1>\n<p><a href=\"/admin\">← 管理面</a></p>\n\
+         <h2>最近備份資訊</h2>\n{backup_info}\
+         <h2>Scope export 下載</h2>\n\
+         <table>\n<thead><tr><th>Project</th><th>Repo</th><th></th></tr></thead>\n\
+         <tbody>\n{scope_rows}</tbody>\n</table>\n\
+         <h2>Store 遷移</h2>\n\
+         <p>觸發 TeamStore migrate（前置 health 檢查通過才執行）。</p>\n\
+         <form method=\"post\" action=\"/admin/data/migrate\">\n\
+         <button type=\"submit\">觸發遷移</button>\n</form>\n"
+    );
+    web::page("資料操作", &body)
+}
+
+/// `POST /admin/data/migrate` — trigger a store migration to the current contract
+/// version (决策 5). A pre-flight health check must pass first: an unhealthy store
+/// is refused with the reason and no `store-migrated` audit is written. A
+/// successful migration records `store-migrated`.
+pub async fn web_migrate_store(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let actor = match guard_web(&state, &headers) {
+        Ok(actor) => actor,
+        Err(refused) => return refused,
+    };
+    // Pre-flight: an unhealthy backend is not migrated, and nothing is recorded.
+    if let Err(e) = state.store.health() {
+        return (
+            StatusCode::CONFLICT,
+            Html(web::page(
+                "遷移未執行",
+                &format!("<h1>Store health 檢查未通過，遷移未執行</h1>\n<p>{}</p>\n", web::escape(&e.to_string())),
+            )),
+        )
+            .into_response();
+    }
+    match state.store.migrate(CONTRACT_VERSION) {
+        Ok(()) => {
+            let _ = state.identity.record_audit(
+                &actor,
+                AuditAction::StoreMigrated,
+                &format!("contract version {CONTRACT_VERSION}"),
+            );
+            Redirect::to("/admin/data").into_response()
+        }
+        Err(e) => (
+            StatusCode::CONFLICT,
+            Html(web::page(
+                "遷移失敗",
+                &format!("<h1>遷移失敗</h1>\n<p>{}</p>\n", web::escape(&e.to_string())),
+            )),
+        )
+            .into_response(),
+    }
+}
+
+/// `GET /admin/data/export/{project}/{repo}` — download a scope's export bundle
+/// (决策 5). Admin-gated; an unregistered scope is 404; a scope-exported audit is
+/// recorded. The download reuses the backup bundle shape, so it passes the same
+/// structure and digest verification a backup member does.
+pub async fn web_export_scope(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project, repo)): Path<(String, String)>,
+) -> Response {
+    let (_user, actor) = match require_admin(&state, &headers) {
+        Ok(admin) => admin,
+        Err(refused) => return refused,
+    };
+    // Export on an unknown scope would silently yield an empty bundle, so gate on
+    // the registry and 404 anything unregistered.
+    if !scope_is_registered(&state, &project, &repo) {
+        return (StatusCode::NOT_FOUND, Html(web::page("找不到", "<h1>找不到該 scope</h1>\n")))
+            .into_response();
+    }
+    let scope = Scope::new(ProjectId::new(&project), RepoId::new(&repo));
+    let bytes = match crate::backup::export_bundle_json(state.store.as_ref(), &scope) {
+        Ok(bytes) => bytes,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
+    let _ =
+        state.identity.record_audit(&actor, AuditAction::ScopeExported, &format!("{project}/{repo}"));
+    let filename = format!("{project}__{repo}.bundle.json");
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "application/json".to_string()),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\""),
+            ),
+        ],
+        bytes,
+    )
+        .into_response()
+}
+
+/// Whether `(project, repo)` names a registered scope.
+fn scope_is_registered(state: &AppState, project: &str, repo: &str) -> bool {
+    if !matches!(state.identity.get_project(project), Ok(Some(_))) {
+        return false;
+    }
+    state
+        .identity
+        .list_repos(project)
+        .map(|repos| repos.iter().any(|r| r.key == repo))
+        .unwrap_or(false)
 }
 
 /// Render the system status page.

@@ -65,6 +65,36 @@ pub struct NewInvitation {
     pub expires_at: DateTime<Utc>,
 }
 
+/// A backup or verify result to record in the identity store's backup log, for
+/// the admin backup-info view (决策 5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewBackupRecord {
+    /// `backup` or `verify`.
+    pub kind: String,
+    /// The backup's own creation time (from its manifest/summary).
+    pub created_at: DateTime<Utc>,
+    pub format_version: u32,
+    pub scope_count: usize,
+    /// Whether the run succeeded (a verify's integrity result; a backup is true).
+    pub ok: bool,
+    /// A short human summary shown on the admin page.
+    pub detail: String,
+}
+
+/// A recorded backup/verify result, read back for the admin backup-info view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BackupRecord {
+    pub id: String,
+    pub kind: String,
+    pub created_at: DateTime<Utc>,
+    pub format_version: u32,
+    pub scope_count: usize,
+    pub ok: bool,
+    pub detail: String,
+    /// When this record was written.
+    pub recorded_at: DateTime<Utc>,
+}
+
 /// A PAT's stored metadata — never the plaintext, which exists only at creation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pat {
@@ -394,6 +424,20 @@ pub trait IdentityStore: Send + Sync {
     /// caps the page and `offset` skips that many newest records — the /admin
     /// audit view's read-only pagination.
     fn list_audit(&self, limit: u32, offset: u32) -> Result<Vec<AuditEntry>, IdentityError>;
+
+    // --- backup records (决策 5): mutation + audit in one transaction ---
+
+    /// Record a backup/verify result summary and a `backup-recorded` audit in the
+    /// same transaction, under `actor` — the source of the admin backup-info view.
+    fn record_backup(
+        &self,
+        actor: &AuditActor,
+        record: NewBackupRecord,
+    ) -> Result<(), IdentityError>;
+
+    /// The most recently recorded backup/verify result, or `None` if none has
+    /// been recorded.
+    fn latest_backup(&self) -> Result<Option<BackupRecord>, IdentityError>;
 
     // --- admin user management (決策 2): mutation + audit in one transaction ---
 
