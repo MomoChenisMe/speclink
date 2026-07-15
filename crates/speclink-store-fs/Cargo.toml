@@ -1,0 +1,17 @@
+[package]
+name = "speclink-store-fs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Filesystem driver for the TeamStore contract: one data directory, atomic index publish, advisory-lock single writer, and full conformance"
+
+[dependencies]
+speclink-store = { path = "../speclink-store" }
+fs4 = "1.1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+speclink-store-sqlite = { path = "../speclink-store-sqlite" }

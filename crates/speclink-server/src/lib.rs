@@ -28,15 +28,21 @@ use identity::IdentitySqlite;
 use state::{AppState, SharedIdentity, SharedStore};
 use std::sync::Arc;
 
-/// Build the store backend the configuration declares, fail closed: a SQLite
-/// open failure (unreadable path, corrupt or incompatible database) propagates
-/// rather than starting on a broken store.
+/// Build the store backend the configuration declares, fail closed: an open
+/// failure (unreadable path, corrupt or incompatible data, a directory already
+/// held by another server) propagates rather than starting on a broken store.
 pub fn build_store(store: &StoreConfig) -> anyhow::Result<SharedStore> {
     match store {
         StoreConfig::Memory => Ok(Arc::new(speclink_store::memory::MemoryStore::new())),
         StoreConfig::Sqlite { path } => {
             let store = speclink_store_sqlite::SqliteTeamStore::open(path).map_err(|e| {
                 anyhow::anyhow!("cannot open sqlite store at '{}': {e}", path.display())
+            })?;
+            Ok(Arc::new(store))
+        }
+        StoreConfig::ServerFs { path } => {
+            let store = speclink_store_fs::FsTeamStore::open(path).map_err(|e| {
+                anyhow::anyhow!("cannot open serverfs store at '{}': {e}", path.display())
             })?;
             Ok(Arc::new(store))
         }
