@@ -10,7 +10,7 @@ use clap::{Args as ClapArgs, Parser, Subcommand};
 use speclink_server::audit::AuditActor;
 use speclink_server::config::IdentityConfig;
 use speclink_server::events::EventHub;
-use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
+use speclink_server::identity::{IdentitySqlite, IdentityStore, NewBackupRecord, NewInvitation};
 use speclink_server::state::AppState;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -52,6 +52,44 @@ enum Command {
     /// Repo registry management.
     #[command(subcommand)]
     Repo(RepoCommand),
+    /// Produce a single self-describing backup file (offline: the store and
+    /// identity must not be under concurrent writes).
+    Backup(BackupArgs),
+    /// Verify a backup file's integrity without restoring it.
+    VerifyBackup(VerifyBackupArgs),
+    /// Restore a backup into an empty target, then validate it.
+    Restore(RestoreArgs),
+}
+
+#[derive(ClapArgs)]
+struct RestoreArgs {
+    /// Path to the server configuration file (locates the empty target).
+    #[arg(long)]
+    config: PathBuf,
+    /// The backup file to restore.
+    #[arg(long)]
+    input: PathBuf,
+}
+
+#[derive(ClapArgs)]
+struct BackupArgs {
+    /// Path to the server configuration file (locates the store and identity).
+    #[arg(long)]
+    config: PathBuf,
+    /// Where to write the backup file.
+    #[arg(long)]
+    output: PathBuf,
+}
+
+#[derive(ClapArgs)]
+struct VerifyBackupArgs {
+    /// The backup file to verify.
+    #[arg(long)]
+    input: PathBuf,
+    /// An optional server configuration; when given, the verify result is
+    /// recorded in that identity store's backup log (决策 5).
+    #[arg(long)]
+    config: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -157,6 +195,9 @@ fn main() -> ExitCode {
         Some(Command::Token(TokenCommand::Revoke(args))) => run_token_revoke(args),
         Some(Command::Project(ProjectCommand::Create(args))) => run_project_create(args),
         Some(Command::Repo(RepoCommand::Create(args))) => run_repo_create(args),
+        Some(Command::Backup(args)) => run_backup(args),
+        Some(Command::VerifyBackup(args)) => run_verify_backup(args),
+        Some(Command::Restore(args)) => run_restore(args),
         None => run_server(cli.run),
     }
 }
@@ -374,6 +415,147 @@ fn run_project_create(args: ProjectCreateArgs) -> ExitCode {
         Ok(()) => {
             println!("created project {}", args.key);
             ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Produce a backup of the configured store and identity into `--output`
+/// (决策 1/2). Offline: the operator guarantees no concurrent writes. A memory
+/// identity has no persistent database to snapshot and is refused.
+fn run_backup(args: BackupArgs) -> ExitCode {
+    let config = match speclink_server::config::load(&args.config) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let store = match speclink_server::build_store(&config.store) {
+        Ok(store) => store,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let identity = match &config.identity {
+        IdentityConfig::Sqlite { path } => match IdentitySqlite::open(path) {
+            Ok(store) => store,
+            Err(e) => {
+                eprintln!("{e}");
+                return ExitCode::FAILURE;
+            }
+        },
+        IdentityConfig::Memory => {
+            eprintln!("backup needs a persistent identity store; the config declares an in-memory one");
+            return ExitCode::FAILURE;
+        }
+    };
+    match speclink_server::backup::create(store.as_ref(), &identity, &args.output) {
+        Ok(summary) => {
+            let detail = format!("{} 個 scope、{} 個成員", summary.scope_count, summary.member_count);
+            // Record the run in the identity store's backup log for the admin
+            // backup-info view (决策 5).
+            let _ = identity.record_backup(
+                &AuditActor::system_cli(),
+                NewBackupRecord {
+                    kind: "backup".to_string(),
+                    created_at: summary.created_at,
+                    format_version: summary.backup_format_version,
+                    scope_count: summary.scope_count,
+                    ok: true,
+                    detail: detail.clone(),
+                },
+            );
+            println!("備份完成：{detail} → {}", args.output.display());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Verify a backup file's integrity (决策 4). A digest mismatch, unparseable
+/// structure or unknown format version prints the reason and exits non-zero. When
+/// `--config` is given, the outcome is recorded in that identity store's backup
+/// log (决策 5).
+fn run_verify_backup(args: VerifyBackupArgs) -> ExitCode {
+    let result = speclink_server::backup::verify(&args.input);
+    if let Some(config_path) = &args.config {
+        record_verify_result(config_path, &result);
+    }
+    match &result {
+        Ok(report) => {
+            println!(
+                "備份完整：格式版本 {}、{} 個成員、{} 個 scope",
+                report.backup_format_version, report.member_count, report.scope_count
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Record a verify outcome into the config's identity store (best-effort — a
+/// config or store problem never changes the verify's own exit code).
+fn record_verify_result(
+    config_path: &Path,
+    result: &Result<speclink_server::backup::VerifyReport, speclink_server::backup::BackupError>,
+) {
+    let Ok(config) = speclink_server::config::load(config_path) else { return };
+    let IdentityConfig::Sqlite { path } = &config.identity else { return };
+    let Ok(identity) = IdentitySqlite::open(path) else { return };
+    let record = match result {
+        Ok(report) => NewBackupRecord {
+            kind: "verify".to_string(),
+            created_at: Utc::now(),
+            format_version: report.backup_format_version,
+            scope_count: report.scope_count,
+            ok: true,
+            detail: format!("{} 個成員、{} 個 scope 驗證通過", report.member_count, report.scope_count),
+        },
+        Err(e) => NewBackupRecord {
+            kind: "verify".to_string(),
+            created_at: Utc::now(),
+            format_version: 0,
+            scope_count: 0,
+            ok: false,
+            detail: format!("驗證失敗：{e}"),
+        },
+    };
+    let _ = identity.record_backup(&AuditActor::system_cli(), record);
+}
+
+/// Restore a backup into the empty target the config declares, then validate
+/// (决策 3). A non-empty target, an integrity failure, or a validation mismatch
+/// prints the reason and exits non-zero; a mismatch marks the target unusable.
+fn run_restore(args: RestoreArgs) -> ExitCode {
+    let config = match speclink_server::config::load(&args.config) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match speclink_server::backup::restore(&config, &args.input) {
+        Ok(report) if report.ok => {
+            println!("還原完成且驗證通過：{} 個 scope 全數比對一致", report.scopes_checked);
+            ExitCode::SUCCESS
+        }
+        Ok(report) => {
+            eprintln!("還原後驗證發現不符，此目標不可投產：");
+            for diff in &report.differences {
+                eprintln!("  - {diff}");
+            }
+            ExitCode::FAILURE
         }
         Err(e) => {
             eprintln!("{e}");

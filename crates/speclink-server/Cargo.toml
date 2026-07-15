@@ -25,7 +25,9 @@ anyhow = { workspace = true }
 clap = { workspace = true }
 argon2 = { version = "0.5", features = ["std"] }
 sha2 = "0.10"
-rusqlite = { version = "0.40.1", features = ["bundled"] }
+rusqlite = { version = "0.40.1", features = ["bundled", "backup"] }
+tar = "0.4"
+tempfile = "3"
 chrono = { workspace = true }
 
 [dev-dependencies]

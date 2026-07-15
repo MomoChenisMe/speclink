@@ -49,6 +49,12 @@ pub enum AuditAction {
     RepoRenamed,
     TokenRevoked,
     SetupCompleted,
+    /// An admin downloaded a scope's export bundle (决策 5).
+    ScopeExported,
+    /// An admin triggered a store migration that succeeded (决策 5).
+    StoreMigrated,
+    /// A backup or verify run recorded its result summary (决策 5).
+    BackupRecorded,
 }
 
 impl AuditAction {
@@ -66,6 +72,9 @@ impl AuditAction {
             AuditAction::RepoRenamed => "repo-renamed",
             AuditAction::TokenRevoked => "token-revoked",
             AuditAction::SetupCompleted => "setup-completed",
+            AuditAction::ScopeExported => "scope-exported",
+            AuditAction::StoreMigrated => "store-migrated",
+            AuditAction::BackupRecorded => "backup-recorded",
         }
     }
 }

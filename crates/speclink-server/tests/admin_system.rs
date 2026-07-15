@@ -103,7 +103,7 @@ fn the_system_view_aggregates_the_observable_surface() {
         .expect("json");
     assert_eq!(json["api_version"], API_VERSION);
     assert!(json["engine_version"].as_str().is_some_and(|v| !v.is_empty()), "engine version present");
-    assert_eq!(json["identity_schema_version"], 4, "current identity schema version");
+    assert_eq!(json["identity_schema_version"], 5, "current identity schema version");
     assert_eq!(json["store_healthy"], true);
     assert!(json["store_driver"].as_str().is_some_and(|v| !v.is_empty()), "store driver present");
     let backlogs = json["outbox_backlogs"].as_array().expect("backlogs");

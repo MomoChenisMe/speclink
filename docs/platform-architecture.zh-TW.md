@@ -1167,7 +1167,7 @@ public URL、第一個 Project/Repo 與初始連線資訊；初始化完成後 t
 `/admin` 至少提供使用者邀請/停權、role、Project/Repo registry、Engine/API/Store schema versions、Store/outbox health、
 migration、backup/export、restore validation、audit log 與 token revocation。使用 same-origin secure cookie，PAT/secret
 不得存 browser localStorage；PostgreSQL password 等 deployment secret 優先來自環境變數或 secret file。
-所有管理動作寫 audit log。Headless 環境可關閉 Admin UI，改用 server CLI/Admin API。
+所有管理動作寫 audit log。Headless 環境可關閉 Admin UI，改用 server CLI/Admin API。備份、還原與驗證的離線子命令操作與排程範例見 [Server 備份、還原與驗證](server-backup.zh-TW.md)。
 
 Server Admin UI 不提供 change 看板、proposal、tasks、discussion、workflow policy 日常編輯、apply、drift、verify
 或本機 Agent tools；這些由 Desktop/自訂 Presentation UI 負責。有 Admin 權限的 Desktop 可以呼叫同一套 Admin API

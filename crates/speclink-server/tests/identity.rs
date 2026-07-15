@@ -247,7 +247,7 @@ fn a_version_1_database_migrates_preserving_users_and_pats() {
         .expect("seed pat");
     }
 
-    // Opening with the current server migrates 1 → 4 in place.
+    // Opening with the current server migrates 1 → 5 in place.
     let s = IdentitySqlite::open(&path).expect("open migrates the v1 database");
 
     // Existing data is intact and the pre-existing PAT still authenticates.
@@ -266,7 +266,7 @@ fn a_version_1_database_migrates_preserving_users_and_pats() {
     let version: String = conn
         .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
         .expect("schema version");
-    assert_eq!(version, "4", "the database was migrated to the current version");
+    assert_eq!(version, "5", "the database was migrated to the current version");
     for table in ["device_authorizations", "credential_families", "access_tokens", "refresh_credentials"] {
         let exists: i64 = conn
             .query_row(
@@ -435,7 +435,7 @@ fn a_version_2_database_migrates_preserving_users_and_pats_and_enables_the_regis
         .expect("seed pat");
     }
 
-    // Opening with the current server migrates 2 → 4 in place.
+    // Opening with the current server migrates 2 → 5 in place.
     let s = IdentitySqlite::open(&path).expect("open migrates the v2 database");
 
     // Existing data is intact and the pre-existing PAT still authenticates.
@@ -459,7 +459,7 @@ fn a_version_2_database_migrates_preserving_users_and_pats_and_enables_the_regis
     let version: String = conn
         .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
         .expect("schema version");
-    assert_eq!(version, "4", "the database was migrated to version 4");
+    assert_eq!(version, "5", "the database was migrated to version 5");
     for table in ["projects", "repos"] {
         let exists: i64 = conn
             .query_row(
@@ -549,20 +549,23 @@ fn a_version_3_database_migrates_preserving_data_and_adds_a_writable_audit_log()
     assert_eq!(page[0].source, "api");
     drop(s);
 
-    // The schema now records version 4 and the audit_log table exists.
+    // The schema now records version 5, and both the audit_log (v4) and the
+    // backup_records (v5) tables exist.
     let conn = rusqlite::Connection::open(&path).expect("reopen for inspection");
     let version: String = conn
         .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
         .expect("schema version");
-    assert_eq!(version, "4", "the database was migrated to version 4");
-    let exists: i64 = conn
-        .query_row(
-            "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'audit_log'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("table lookup");
-    assert_eq!(exists, 1, "migration created the audit_log table");
+    assert_eq!(version, "5", "the database was migrated to version 5");
+    for table in ["audit_log", "backup_records"] {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                rusqlite::params![table],
+                |r| r.get(0),
+            )
+            .expect("table lookup");
+        assert_eq!(exists, 1, "migration created the {table} table");
+    }
 }
 
 #[test]

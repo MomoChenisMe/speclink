@@ -6,9 +6,9 @@
 
 use crate::audit::{AuditAction, AuditActor, AuditEntry};
 use crate::identity::{
-    hash_password, hash_token, random_token, user_code, verify_password, DeviceAuthorization,
-    DeviceFamily, DevicePoll, IdentityError, IdentityStore, Invitation, NewInvitation, Pat, Project,
-    RefreshOutcome, Repo, SessionInfo, TokenPair, User,
+    hash_password, hash_token, random_token, user_code, verify_password, BackupRecord,
+    DeviceAuthorization, DeviceFamily, DevicePoll, IdentityError, IdentityStore, Invitation,
+    NewBackupRecord, NewInvitation, Pat, Project, RefreshOutcome, Repo, SessionInfo, TokenPair, User,
 };
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -18,7 +18,7 @@ use std::sync::{Mutex, MutexGuard};
 /// The schema version this server reads and writes. A database recording a
 /// higher version is refused; a lower one is migrated up. Bump and add a
 /// migration when the shape changes.
-const SCHEMA_VERSION: u32 = 4;
+const SCHEMA_VERSION: u32 = 5;
 
 /// The marker written to `meta` that distinguishes a speclink identity store
 /// from an unrelated SQLite file.
@@ -176,6 +176,23 @@ CREATE TABLE audit_log (
 );
 ";
 
+/// The backup-record log (schema version 5, 决策 5). Held apart from
+/// [`SCHEMA_SQL`] so the same statement both extends a fresh database and
+/// migrates an older one: an append-only summary of each backup/verify run, for
+/// the admin backup-info view. Holds no secret.
+const BACKUP_SCHEMA_SQL: &str = "\
+CREATE TABLE backup_records (
+    id             TEXT PRIMARY KEY NOT NULL,
+    kind           TEXT NOT NULL,
+    created_at     TEXT NOT NULL,
+    format_version INTEGER NOT NULL,
+    scope_count    INTEGER NOT NULL,
+    ok             INTEGER NOT NULL,
+    detail         TEXT NOT NULL,
+    recorded_at    TEXT NOT NULL
+);
+";
+
 /// A SQLite-backed identity store. Reads and writes are serialized behind a
 /// mutex — identity lookups are light single-row queries in the single-node
 /// design, so per-request locking is acceptable (決策 5).
@@ -242,7 +259,7 @@ impl IdentitySqlite {
         match existing_version {
             None => {
                 conn.execute_batch(&format!(
-                    "BEGIN;\n{SCHEMA_SQL}{DEVICE_SCHEMA_SQL}{REGISTRY_SCHEMA_SQL}{SETUP_SCHEMA_SQL}{AUDIT_SCHEMA_SQL}INSERT INTO meta (key, value) VALUES ('format', '{IDENTITY_MARKER}');\nINSERT INTO meta (key, value) VALUES ('schema_version', '{SCHEMA_VERSION}');\nCOMMIT;"
+                    "BEGIN;\n{SCHEMA_SQL}{DEVICE_SCHEMA_SQL}{REGISTRY_SCHEMA_SQL}{SETUP_SCHEMA_SQL}{AUDIT_SCHEMA_SQL}{BACKUP_SCHEMA_SQL}INSERT INTO meta (key, value) VALUES ('format', '{IDENTITY_MARKER}');\nINSERT INTO meta (key, value) VALUES ('schema_version', '{SCHEMA_VERSION}');\nCOMMIT;"
                 ))
                 .map_err(open_err)?;
             }
@@ -254,6 +271,15 @@ impl IdentitySqlite {
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
         self.inner.lock().expect("identity store mutex poisoned")
+    }
+
+    /// Snapshot the identity database to `dest` through the SQLite online backup
+    /// API — a time-point-consistent copy with any WAL folded in (决策 2). Works
+    /// from a file-backed or an in-memory source; `dest` is created or replaced.
+    pub fn snapshot_to<P: AsRef<Path>>(&self, dest: P) -> Result<(), IdentityError> {
+        let conn = self.conn();
+        conn.backup(rusqlite::MAIN_DB, dest.as_ref(), None).map_err(backend)?;
+        Ok(())
     }
 }
 
@@ -1063,6 +1089,72 @@ impl IdentityStore for IdentitySqlite {
         Ok(out)
     }
 
+    fn record_backup(
+        &self,
+        actor: &AuditActor,
+        record: NewBackupRecord,
+    ) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let tx = guard.transaction().map_err(backend)?;
+        tx.execute(
+            "INSERT INTO backup_records \
+             (id, kind, created_at, format_version, scope_count, ok, detail, recorded_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                new_id("bkp"),
+                record.kind,
+                ts(record.created_at),
+                record.format_version,
+                record.scope_count as i64,
+                record.ok as i64,
+                record.detail,
+                now(),
+            ],
+        )
+        .map_err(backend)?;
+        insert_audit(&tx, actor, AuditAction::BackupRecorded, &record.detail)?;
+        tx.commit().map_err(backend)?;
+        Ok(())
+    }
+
+    fn latest_backup(&self) -> Result<Option<BackupRecord>, IdentityError> {
+        let guard = self.conn();
+        // Newest by record time; rowid breaks a same-microsecond tie.
+        guard
+            .query_row(
+                "SELECT id, kind, created_at, format_version, scope_count, ok, detail, recorded_at \
+                 FROM backup_records ORDER BY recorded_at DESC, rowid DESC LIMIT 1",
+                [],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, i64>(3)?,
+                        r.get::<_, i64>(4)?,
+                        r.get::<_, i64>(5)?,
+                        r.get::<_, String>(6)?,
+                        r.get::<_, String>(7)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(backend)?
+            .map(|(id, kind, created_at, format_version, scope_count, ok, detail, recorded_at)| {
+                Ok(BackupRecord {
+                    id,
+                    kind,
+                    created_at: parse_ts(&created_at)?,
+                    format_version: format_version as u32,
+                    scope_count: scope_count as usize,
+                    ok: ok != 0,
+                    detail,
+                    recorded_at: parse_ts(&recorded_at)?,
+                })
+            })
+            .transpose()
+    }
+
     fn list_users(&self) -> Result<Vec<User>, IdentityError> {
         let guard = self.conn();
         let mut stmt = guard
@@ -1670,6 +1762,12 @@ fn migrate(conn: &Connection, from: u32) -> Result<(), IdentityError> {
     if from <= 3 {
         conn.execute_batch(&format!(
             "BEGIN;\n{AUDIT_SCHEMA_SQL}UPDATE meta SET value = '4' WHERE key = 'schema_version';\nCOMMIT;"
+        ))
+        .map_err(open_err)?;
+    }
+    if from <= 4 {
+        conn.execute_batch(&format!(
+            "BEGIN;\n{BACKUP_SCHEMA_SQL}UPDATE meta SET value = '5' WHERE key = 'schema_version';\nCOMMIT;"
         ))
         .map_err(open_err)?;
     }
