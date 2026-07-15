@@ -18,5 +18,5 @@
 ## 4. server 接線、CI 與回歸
 
 - [x] 4.1 【紅→綠】server 組態 store 段新增 postgres 變體（url）：密碼可由環境變數補全、URL 內嵌密碼啟動警告（涵蓋「密碼來源紀律」情境）；build_store 單點接線；以 postgres 組態跑既有 server e2e 動詞流程，行為與 sqlite 組態一致、重啟資料完整。 <!-- speclink-task:tsk_01KXJ3YMYHPM235YN7EVPJFWGQ -->
-- [ ] 4.2 CI 工作流新增 PostgreSQL service container 與測試環境變數，使本 crate 測試集於 CI 必跑且失敗擋工作流（涵蓋「CI 必跑」情境）。驗收：CI 定義含 service 與變數，工作流跑過一次全綠。 <!-- speclink-task:tsk_01KXJ3YMYHS4RWR3HCKAVN2XV8 -->
+- [x] 4.2 CI 工作流新增 PostgreSQL service container 與測試環境變數，使本 crate 測試集於 CI 必跑且失敗擋工作流（涵蓋「CI 必跑」情境）。驗收：CI 定義含 service 與變數，工作流跑過一次全綠。 <!-- speclink-task:tsk_01KXJ3YMYHS4RWR3HCKAVN2XV8 -->
 - [x] 4.3 執行 npm run test:all 確認全 workspace 回歸：parity 31 項、color 16 項、twin 8 情境凍結零 diff；文件註記完整驗證需 PG 與支援的最低主版本。驗收：全數通過。 <!-- speclink-task:tsk_01KXJ3YMYH91371WVHNHCVQ59S -->
