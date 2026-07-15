@@ -4,6 +4,7 @@
 //! foreign or newer database is refused with its bytes untouched — the same
 //! discipline as the sqlite TeamStore driver.
 
+use crate::audit::{AuditAction, AuditActor, AuditEntry};
 use crate::identity::{
     hash_password, hash_token, random_token, user_code, verify_password, DeviceAuthorization,
     DeviceFamily, DevicePoll, IdentityError, IdentityStore, Invitation, NewInvitation, Pat, Project,
@@ -17,7 +18,7 @@ use std::sync::{Mutex, MutexGuard};
 /// The schema version this server reads and writes. A database recording a
 /// higher version is refused; a lower one is migrated up. Bump and add a
 /// migration when the shape changes.
-const SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 4;
 
 /// The marker written to `meta` that distinguishes a speclink identity store
 /// from an unrelated SQLite file.
@@ -159,6 +160,22 @@ CREATE TABLE setup_tokens (
 );
 ";
 
+/// The management audit log (schema version 4, 決策 3). Held apart from
+/// [`SCHEMA_SQL`] so the same statement both extends a fresh database and
+/// migrates an older one: an append-only five-tuple (operator, closed-set action
+/// kind, subject, UTC time, source). No update or delete path touches it, and no
+/// secret value is ever recorded here.
+const AUDIT_SCHEMA_SQL: &str = "\
+CREATE TABLE audit_log (
+    id         TEXT PRIMARY KEY NOT NULL,
+    actor_id   TEXT NOT NULL,
+    action     TEXT NOT NULL,
+    subject    TEXT NOT NULL,
+    source     TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+";
+
 /// A SQLite-backed identity store. Reads and writes are serialized behind a
 /// mutex — identity lookups are light single-row queries in the single-node
 /// design, so per-request locking is acceptable (決策 5).
@@ -225,7 +242,7 @@ impl IdentitySqlite {
         match existing_version {
             None => {
                 conn.execute_batch(&format!(
-                    "BEGIN;\n{SCHEMA_SQL}{DEVICE_SCHEMA_SQL}{REGISTRY_SCHEMA_SQL}{SETUP_SCHEMA_SQL}INSERT INTO meta (key, value) VALUES ('format', '{IDENTITY_MARKER}');\nINSERT INTO meta (key, value) VALUES ('schema_version', '{SCHEMA_VERSION}');\nCOMMIT;"
+                    "BEGIN;\n{SCHEMA_SQL}{DEVICE_SCHEMA_SQL}{REGISTRY_SCHEMA_SQL}{SETUP_SCHEMA_SQL}{AUDIT_SCHEMA_SQL}INSERT INTO meta (key, value) VALUES ('format', '{IDENTITY_MARKER}');\nINSERT INTO meta (key, value) VALUES ('schema_version', '{SCHEMA_VERSION}');\nCOMMIT;"
                 ))
                 .map_err(open_err)?;
             }
@@ -244,51 +261,8 @@ impl IdentityStore for IdentitySqlite {
     fn create_invitation(&self, req: NewInvitation) -> Result<String, IdentityError> {
         let mut guard = self.conn();
         let now = now();
-        // Guard: no active user and no outstanding invitation for this email.
-        let active_user: Option<i64> = guard
-            .query_row(
-                "SELECT 1 FROM users WHERE email = ?1 AND active = 1 LIMIT 1",
-                params![req.email],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(backend)?;
-        if active_user.is_some() {
-            return Err(IdentityError::Duplicate(format!(
-                "an active user already exists for '{}'",
-                req.email
-            )));
-        }
-        let pending: Option<i64> = guard
-            .query_row(
-                "SELECT 1 FROM invitations WHERE email = ?1 AND consumed_at IS NULL AND expires_at > ?2 LIMIT 1",
-                params![req.email, now],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(backend)?;
-        if pending.is_some() {
-            return Err(IdentityError::Duplicate(format!(
-                "an unexpired invitation already exists for '{}'",
-                req.email
-            )));
-        }
-
-        let plaintext = random_token();
-        let id = new_id("inv");
         let tx = guard.transaction().map_err(backend)?;
-        tx.execute(
-            "INSERT INTO invitations (id, email, display, admin, token_hash, expires_at, consumed_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)",
-            params![id, req.email, req.display, req.admin as i64, hash_token(&plaintext), ts(req.expires_at), now],
-        )
-        .map_err(backend)?;
-        for project in &req.memberships {
-            tx.execute(
-                "INSERT INTO invitation_memberships (invitation_id, project_key) VALUES (?1, ?2)",
-                params![id, project],
-            )
-            .map_err(backend)?;
-        }
+        let plaintext = insert_invitation(&tx, &req, &now)?;
         tx.commit().map_err(backend)?;
         Ok(plaintext)
     }
@@ -508,43 +482,13 @@ impl IdentityStore for IdentitySqlite {
     }
 
     fn create_project(&self, key: &str, name: &str) -> Result<(), IdentityError> {
-        let guard = self.conn();
-        // Serialized behind the store mutex, so a check-then-insert is race-free.
-        let exists: Option<i64> = guard
-            .query_row("SELECT 1 FROM projects WHERE key = ?1", params![key], |r| r.get(0))
-            .optional()
-            .map_err(backend)?;
-        if exists.is_some() {
-            return Err(IdentityError::Duplicate(format!("project '{key}' already exists")));
-        }
-        guard
-            .execute("INSERT INTO projects (key, name) VALUES (?1, ?2)", params![key, name])
-            .map(|_| ())
-            .map_err(backend)
+        // Serialized behind the store mutex, so the helper's check-then-insert is
+        // race-free without a transaction of its own.
+        insert_project(&self.conn(), key, name)
     }
 
     fn create_repo(&self, project_key: &str, key: &str, name: &str) -> Result<(), IdentityError> {
-        let guard = self.conn();
-        let exists: Option<i64> = guard
-            .query_row(
-                "SELECT 1 FROM repos WHERE project_key = ?1 AND key = ?2",
-                params![project_key, key],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(backend)?;
-        if exists.is_some() {
-            return Err(IdentityError::Duplicate(format!(
-                "repo '{key}' already exists in project '{project_key}'"
-            )));
-        }
-        guard
-            .execute(
-                "INSERT INTO repos (project_key, key, name) VALUES (?1, ?2, ?3)",
-                params![project_key, key, name],
-            )
-            .map(|_| ())
-            .map_err(backend)
+        insert_repo(&self.conn(), project_key, key, name)
     }
 
     fn has_admin(&self) -> Result<bool, IdentityError> {
@@ -1071,6 +1015,352 @@ impl IdentityStore for IdentitySqlite {
         tx.commit().map_err(backend)?;
         Ok(())
     }
+
+    fn record_audit(
+        &self,
+        actor: &AuditActor,
+        action: AuditAction,
+        subject: &str,
+    ) -> Result<(), IdentityError> {
+        insert_audit(&self.conn(), actor, action, subject)
+    }
+
+    fn list_audit(&self, limit: u32, offset: u32) -> Result<Vec<AuditEntry>, IdentityError> {
+        let guard = self.conn();
+        // Newest first: created_at is the chronological key, rowid the collision-
+        // free tiebreaker so records written in the same microsecond still read
+        // back in exact insertion order.
+        let mut stmt = guard
+            .prepare(
+                "SELECT id, actor_id, action, subject, source, created_at FROM audit_log \
+                 ORDER BY created_at DESC, rowid DESC LIMIT ?1 OFFSET ?2",
+            )
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map(params![limit, offset], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                ))
+            })
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, actor_id, action, subject, source, created_at) = row.map_err(backend)?;
+            out.push(AuditEntry {
+                id,
+                actor_id,
+                action,
+                subject,
+                source,
+                created_at: parse_ts(&created_at)?,
+            });
+        }
+        Ok(out)
+    }
+
+    fn list_users(&self) -> Result<Vec<User>, IdentityError> {
+        let guard = self.conn();
+        let mut stmt = guard
+            .prepare("SELECT id, display, email, active, admin FROM users ORDER BY created_at")
+            .map_err(backend)?;
+        let rows = stmt.query_map([], map_user).map_err(backend)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(backend)
+    }
+
+    fn list_memberships(&self, user_id: &str) -> Result<Vec<String>, IdentityError> {
+        let guard = self.conn();
+        let mut stmt = guard
+            .prepare("SELECT project_key FROM memberships WHERE user_id = ?1 ORDER BY project_key")
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map(params![user_id], |r| r.get::<_, String>(0))
+            .map_err(backend)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(backend)
+    }
+
+    fn admin_create_invitation(
+        &self,
+        actor: &AuditActor,
+        req: NewInvitation,
+    ) -> Result<String, IdentityError> {
+        let mut guard = self.conn();
+        let now = now();
+        let tx = guard.transaction().map_err(backend)?;
+        let plaintext = insert_invitation(&tx, &req, &now)?;
+        insert_audit(&tx, actor, AuditAction::UserInvited, &req.email)?;
+        tx.commit().map_err(backend)?;
+        Ok(plaintext)
+    }
+
+    fn admin_set_user_suspended(
+        &self,
+        actor: &AuditActor,
+        user_id: &str,
+        suspended: bool,
+    ) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let tx = guard.transaction().map_err(backend)?;
+        let (active, admin) = user_state(&tx, user_id)?;
+        // Refuse to suspend the last active admin: with it gone no one could
+        // administer the server (決策/risks). The guard, the mutation and the
+        // audit all live in this one transaction, so a refusal writes nothing.
+        if suspended && active && admin {
+            let others: i64 = tx
+                .query_row(
+                    "SELECT count(*) FROM users WHERE admin = 1 AND active = 1 AND id != ?1",
+                    params![user_id],
+                    |r| r.get(0),
+                )
+                .map_err(backend)?;
+            if others == 0 {
+                return Err(IdentityError::Refused(
+                    "不能停權最後一位在職管理員；請先指派另一位管理員再停權".into(),
+                ));
+            }
+        }
+        tx.execute(
+            "UPDATE users SET active = ?2 WHERE id = ?1",
+            params![user_id, (!suspended) as i64],
+        )
+        .map_err(backend)?;
+        let action = if suspended {
+            AuditAction::UserSuspended
+        } else {
+            AuditAction::UserReactivated
+        };
+        insert_audit(&tx, actor, action, user_id)?;
+        tx.commit().map_err(backend)?;
+        Ok(())
+    }
+
+    fn admin_set_membership(
+        &self,
+        actor: &AuditActor,
+        user_id: &str,
+        project_key: &str,
+        member: bool,
+    ) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let tx = guard.transaction().map_err(backend)?;
+        let _ = user_state(&tx, user_id)?;
+        if member {
+            tx.execute(
+                "INSERT OR IGNORE INTO memberships (user_id, project_key) VALUES (?1, ?2)",
+                params![user_id, project_key],
+            )
+            .map_err(backend)?;
+        } else {
+            tx.execute(
+                "DELETE FROM memberships WHERE user_id = ?1 AND project_key = ?2",
+                params![user_id, project_key],
+            )
+            .map_err(backend)?;
+        }
+        let subject = format!(
+            "{user_id} @ {project_key} → {}",
+            if member { "member" } else { "removed" }
+        );
+        insert_audit(&tx, actor, AuditAction::MembershipChanged, &subject)?;
+        tx.commit().map_err(backend)?;
+        Ok(())
+    }
+
+    fn admin_set_admin_flag(
+        &self,
+        actor: &AuditActor,
+        user_id: &str,
+        admin: bool,
+    ) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let tx = guard.transaction().map_err(backend)?;
+        let _ = user_state(&tx, user_id)?;
+        tx.execute(
+            "UPDATE users SET admin = ?2 WHERE id = ?1",
+            params![user_id, admin as i64],
+        )
+        .map_err(backend)?;
+        let subject = format!("{user_id} → {}", if admin { "admin" } else { "non-admin" });
+        insert_audit(&tx, actor, AuditAction::AdminFlagChanged, &subject)?;
+        tx.commit().map_err(backend)?;
+        Ok(())
+    }
+
+    fn admin_create_project(
+        &self,
+        actor: &AuditActor,
+        key: &str,
+        name: &str,
+    ) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let tx = guard.transaction().map_err(backend)?;
+        insert_project(&tx, key, name)?;
+        insert_audit(&tx, actor, AuditAction::ProjectCreated, key)?;
+        tx.commit().map_err(backend)?;
+        Ok(())
+    }
+
+    fn admin_create_repo(
+        &self,
+        actor: &AuditActor,
+        project_key: &str,
+        key: &str,
+        name: &str,
+    ) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let tx = guard.transaction().map_err(backend)?;
+        insert_repo(&tx, project_key, key, name)?;
+        insert_audit(&tx, actor, AuditAction::RepoCreated, &format!("{project_key}/{key}"))?;
+        tx.commit().map_err(backend)?;
+        Ok(())
+    }
+
+    fn admin_rename_project(
+        &self,
+        actor: &AuditActor,
+        key: &str,
+        name: &str,
+    ) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let tx = guard.transaction().map_err(backend)?;
+        // The key is the stable identifier; only the display name changes. An
+        // unknown project is NotFound so a rename never writes a phantom audit.
+        let n = tx
+            .execute("UPDATE projects SET name = ?2 WHERE key = ?1", params![key, name])
+            .map_err(backend)?;
+        if n == 0 {
+            return Err(IdentityError::NotFound(format!("no such project '{key}'")));
+        }
+        insert_audit(&tx, actor, AuditAction::ProjectRenamed, &format!("{key} → {name}"))?;
+        tx.commit().map_err(backend)?;
+        Ok(())
+    }
+
+    fn admin_rename_repo(
+        &self,
+        actor: &AuditActor,
+        project_key: &str,
+        key: &str,
+        name: &str,
+    ) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let tx = guard.transaction().map_err(backend)?;
+        let n = tx
+            .execute(
+                "UPDATE repos SET name = ?3 WHERE project_key = ?1 AND key = ?2",
+                params![project_key, key, name],
+            )
+            .map_err(backend)?;
+        if n == 0 {
+            return Err(IdentityError::NotFound(format!(
+                "no such repo '{key}' in project '{project_key}'"
+            )));
+        }
+        insert_audit(&tx, actor, AuditAction::RepoRenamed, &format!("{project_key}/{key} → {name}"))?;
+        tx.commit().map_err(backend)?;
+        Ok(())
+    }
+
+    fn list_all_pats(&self) -> Result<Vec<Pat>, IdentityError> {
+        let guard = self.conn();
+        let mut stmt = guard
+            .prepare(
+                "SELECT id, user_id, prefix, name, expires_at, revoked_at, last_used_at, created_at FROM pats ORDER BY created_at DESC",
+            )
+            .map_err(backend)?;
+        let rows = stmt.query_map([], map_pat_row).map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(backend)?.into_pat()?);
+        }
+        Ok(out)
+    }
+
+    fn list_all_device_families(&self) -> Result<Vec<(String, DeviceFamily)>, IdentityError> {
+        let guard = self.conn();
+        let mut stmt = guard
+            .prepare(
+                "SELECT f.id, f.user_id, f.source, f.created_at, f.revoked_at, \
+                        (SELECT MAX(rc.created_at) FROM refresh_credentials rc WHERE rc.family_id = f.id) \
+                 FROM credential_families f ORDER BY f.created_at DESC",
+            )
+            .map_err(backend)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, Option<String>>(4)?,
+                    r.get::<_, Option<String>>(5)?,
+                ))
+            })
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, user_id, source, created_at, revoked_at, last_refresh) = row.map_err(backend)?;
+            let created = parse_ts(&created_at)?;
+            out.push((
+                user_id,
+                DeviceFamily {
+                    last_refresh_at: match last_refresh {
+                        Some(t) => parse_ts(&t)?,
+                        None => created,
+                    },
+                    id,
+                    created_at: created,
+                    source,
+                    revoked_at: parse_opt_ts(revoked_at)?,
+                },
+            ));
+        }
+        Ok(out)
+    }
+
+    fn admin_revoke_pat(&self, actor: &AuditActor, pat_id: &str) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let tx = guard.transaction().map_err(backend)?;
+        // The prefix identifies the token in the audit without exposing a secret;
+        // an unknown id is NotFound so a revoke never writes a phantom audit.
+        let prefix: Option<String> = tx
+            .query_row("SELECT prefix FROM pats WHERE id = ?1", params![pat_id], |r| r.get(0))
+            .optional()
+            .map_err(backend)?;
+        let Some(prefix) = prefix else {
+            return Err(IdentityError::NotFound(format!("no such token '{pat_id}'")));
+        };
+        // The same revocation as self-service: stamp revoked_at (idempotent).
+        tx.execute(
+            "UPDATE pats SET revoked_at = ?2 WHERE id = ?1 AND revoked_at IS NULL",
+            params![pat_id, now()],
+        )
+        .map_err(backend)?;
+        insert_audit(&tx, actor, AuditAction::TokenRevoked, &format!("{pat_id} ({prefix})"))?;
+        tx.commit().map_err(backend)?;
+        Ok(())
+    }
+
+    fn admin_revoke_family(&self, actor: &AuditActor, family_id: &str) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let now = Utc::now();
+        let tx = guard.transaction().map_err(backend)?;
+        let exists: Option<i64> = tx
+            .query_row("SELECT 1 FROM credential_families WHERE id = ?1", params![family_id], |r| r.get(0))
+            .optional()
+            .map_err(backend)?;
+        if exists.is_none() {
+            return Err(IdentityError::NotFound(format!("no such credential family '{family_id}'")));
+        }
+        revoke_family_rows(&tx, family_id, now)?;
+        insert_audit(&tx, actor, AuditAction::TokenRevoked, family_id)?;
+        tx.commit().map_err(backend)?;
+        Ok(())
+    }
 }
 
 impl IdentitySqlite {
@@ -1149,6 +1439,150 @@ fn revoke_family_rows(tx: &Connection, family_id: &str, now: DateTime<Utc>) -> R
     Ok(())
 }
 
+// --- invitation (決策 2: one path for the invite subcommand and the /admin form) ---
+
+/// Guard and insert one invitation on `conn`, returning its one-time plaintext
+/// token. Runs inside the caller's transaction so [`IdentityStore::create_invitation`]
+/// and [`IdentityStore::admin_create_invitation`] share a single guarded path —
+/// the latter adds an audit row in the same transaction. Rejects an email that
+/// already has an active user or an outstanding invitation.
+fn insert_invitation(
+    conn: &Connection,
+    req: &NewInvitation,
+    now: &str,
+) -> Result<String, IdentityError> {
+    let active_user: Option<i64> = conn
+        .query_row(
+            "SELECT 1 FROM users WHERE email = ?1 AND active = 1 LIMIT 1",
+            params![req.email],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(backend)?;
+    if active_user.is_some() {
+        return Err(IdentityError::Duplicate(format!(
+            "an active user already exists for '{}'",
+            req.email
+        )));
+    }
+    let pending: Option<i64> = conn
+        .query_row(
+            "SELECT 1 FROM invitations WHERE email = ?1 AND consumed_at IS NULL AND expires_at > ?2 LIMIT 1",
+            params![req.email, now],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(backend)?;
+    if pending.is_some() {
+        return Err(IdentityError::Duplicate(format!(
+            "an unexpired invitation already exists for '{}'",
+            req.email
+        )));
+    }
+
+    let plaintext = random_token();
+    let id = new_id("inv");
+    conn.execute(
+        "INSERT INTO invitations (id, email, display, admin, token_hash, expires_at, consumed_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)",
+        params![id, req.email, req.display, req.admin as i64, hash_token(&plaintext), ts(req.expires_at), now],
+    )
+    .map_err(backend)?;
+    for project in &req.memberships {
+        conn.execute(
+            "INSERT INTO invitation_memberships (invitation_id, project_key) VALUES (?1, ?2)",
+            params![id, project],
+        )
+        .map_err(backend)?;
+    }
+    Ok(plaintext)
+}
+
+// --- registry (決策 2: one path for setup, the invite subcommand and /admin) ---
+
+/// Guard and insert one project on `conn`. Runs on a plain connection (mutex-
+/// serialized) for [`IdentityStore::create_project`], or inside a transaction for
+/// [`IdentityStore::admin_create_project`] which adds an audit row alongside.
+/// Rejects a key that already exists.
+fn insert_project(conn: &Connection, key: &str, name: &str) -> Result<(), IdentityError> {
+    let exists: Option<i64> = conn
+        .query_row("SELECT 1 FROM projects WHERE key = ?1", params![key], |r| r.get(0))
+        .optional()
+        .map_err(backend)?;
+    if exists.is_some() {
+        return Err(IdentityError::Duplicate(format!("project '{key}' already exists")));
+    }
+    conn.execute("INSERT INTO projects (key, name) VALUES (?1, ?2)", params![key, name])
+        .map(|_| ())
+        .map_err(backend)
+}
+
+/// Guard and insert one repo on `conn`. Rejects a repo key that already exists in
+/// that project. Shared by [`IdentityStore::create_repo`] and its admin variant.
+fn insert_repo(conn: &Connection, project_key: &str, key: &str, name: &str) -> Result<(), IdentityError> {
+    let exists: Option<i64> = conn
+        .query_row(
+            "SELECT 1 FROM repos WHERE project_key = ?1 AND key = ?2",
+            params![project_key, key],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(backend)?;
+    if exists.is_some() {
+        return Err(IdentityError::Duplicate(format!(
+            "repo '{key}' already exists in project '{project_key}'"
+        )));
+    }
+    conn.execute(
+        "INSERT INTO repos (project_key, key, name) VALUES (?1, ?2, ?3)",
+        params![project_key, key, name],
+    )
+    .map(|_| ())
+    .map_err(backend)
+}
+
+// --- admin user management (決策 2) ---
+
+/// The `(active, admin)` flags of a user on `conn`, or [`IdentityError::NotFound`]
+/// if no such user — a management action never acts on a phantom subject.
+fn user_state(conn: &Connection, user_id: &str) -> Result<(bool, bool), IdentityError> {
+    conn.query_row(
+        "SELECT active, admin FROM users WHERE id = ?1",
+        params![user_id],
+        |r| Ok((r.get::<_, i64>(0)? != 0, r.get::<_, i64>(1)? != 0)),
+    )
+    .optional()
+    .map_err(backend)?
+    .ok_or_else(|| IdentityError::NotFound(format!("no such user '{user_id}'")))
+}
+
+// --- audit (決策 3) ---
+
+/// Append one audit row on `conn`. Runs on a plain connection for a standalone
+/// record, or inside a management action's transaction (a `Transaction` derefs
+/// to `Connection`) so the audit and the mutation it describes commit or roll
+/// back together — the "audit 與動作同生死" invariant.
+fn insert_audit(
+    conn: &Connection,
+    actor: &AuditActor,
+    action: AuditAction,
+    subject: &str,
+) -> Result<(), IdentityError> {
+    conn.execute(
+        "INSERT INTO audit_log (id, actor_id, action, subject, source, created_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            new_id("aud"),
+            actor.id,
+            action.as_str(),
+            subject,
+            actor.source.as_str(),
+            now()
+        ],
+    )
+    .map(|_| ())
+    .map_err(backend)
+}
+
 // --- row mapping ---
 
 /// Map a `(id, display, email, active, admin)` row to a [`User`].
@@ -1219,7 +1653,7 @@ fn invitation_memberships(conn: &Connection, invitation_id: &str) -> Result<Vec<
 /// at a time. Each step only adds tables and never touches existing rows, so
 /// the users, memberships, PATs and sessions a prior version wrote survive
 /// intact. Each step runs in its own transaction so a partial migration never
-/// lands. A version-1 database walks every step (1 → 2 → 3).
+/// lands. A version-1 database walks every step (1 → 2 → 3 → 4).
 fn migrate(conn: &Connection, from: u32) -> Result<(), IdentityError> {
     if from <= 1 {
         conn.execute_batch(&format!(
@@ -1230,6 +1664,12 @@ fn migrate(conn: &Connection, from: u32) -> Result<(), IdentityError> {
     if from <= 2 {
         conn.execute_batch(&format!(
             "BEGIN;\n{REGISTRY_SCHEMA_SQL}{SETUP_SCHEMA_SQL}UPDATE meta SET value = '3' WHERE key = 'schema_version';\nCOMMIT;"
+        ))
+        .map_err(open_err)?;
+    }
+    if from <= 3 {
+        conn.execute_batch(&format!(
+            "BEGIN;\n{AUDIT_SCHEMA_SQL}UPDATE meta SET value = '4' WHERE key = 'schema_version';\nCOMMIT;"
         ))
         .map_err(open_err)?;
     }

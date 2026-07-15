@@ -226,14 +226,14 @@ fn resolve_repo(project_key: &str, repos: &[Repo], repo_header: Option<String>) 
 }
 
 /// Extract the bearer token from the Authorization header.
-fn bearer_token(parts: &Parts) -> Option<String> {
+pub(crate) fn bearer_token(parts: &Parts) -> Option<String> {
     let value = parts.headers.get(axum::http::header::AUTHORIZATION)?;
     let text = value.to_str().ok()?;
     text.strip_prefix("Bearer ").map(|t| t.trim().to_string())
 }
 
 /// Read a request header as a string.
-fn header(parts: &Parts, name: &str) -> Option<String> {
+pub(crate) fn header(parts: &Parts, name: &str) -> Option<String> {
     parts.headers.get(name)?.to_str().ok().map(str::to_string)
 }
 
