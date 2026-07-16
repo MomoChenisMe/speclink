@@ -29,7 +29,7 @@ import {
   matchesQuery,
   type BoardFilters,
 } from "../search";
-import { changeStage, STAGE_BADGE, STAGES, type Stage } from "../stage";
+import { changeStage, STAGE_BADGE, STAGE_BAR, STAGE_ICON, STAGES, type Stage } from "../stage";
 import { BoardSearchBar } from "./BoardSearchBar";
 import { ChangeCard } from "./ChangeCard";
 import { DiscussionCard, DiscussionColumn } from "./DiscussionColumn";
@@ -45,22 +45,22 @@ const STAGE_STYLE: Record<Stage, { icon: LucideIcon; top: string; badge: string;
     icon: Lightbulb,
     top: "border-t-primary/25",
     badge: STAGE_BADGE.proposed,
-    bar: "bg-primary/50",
-    iconCls: "text-primary/50",
+    bar: STAGE_BAR.proposed,
+    iconCls: STAGE_ICON.proposed,
   },
   "in-progress": {
     icon: Hammer,
     top: "border-t-primary/55",
     badge: STAGE_BADGE["in-progress"],
-    bar: "bg-primary/75",
-    iconCls: "text-primary/75",
+    bar: STAGE_BAR["in-progress"],
+    iconCls: STAGE_ICON["in-progress"],
   },
   ready: {
     icon: CircleCheckBig,
     top: "border-t-primary",
     badge: STAGE_BADGE.ready,
-    bar: "bg-primary",
-    iconCls: "text-primary",
+    bar: STAGE_BAR.ready,
+    iconCls: STAGE_ICON.ready,
   },
 };
 

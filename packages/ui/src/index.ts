@@ -53,7 +53,7 @@ export { DocumentViewer } from "./components/DocumentViewer";
 export type { DocumentViewerProps } from "./components/DocumentViewer";
 
 // 看板
-export { changeStage, STAGES, type Stage } from "./stage";
+export { changeStage, STAGE_BADGE, STAGE_BAR, STAGE_ICON, STAGES, type Stage } from "./stage";
 export { siblingChangesOf } from "./siblings";
 export { parseTasks, type TaskLine } from "./tasks";
 export type { ArtifactStatus, StatusReport } from "./adapter";

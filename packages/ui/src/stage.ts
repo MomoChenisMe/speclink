@@ -17,6 +17,24 @@ export const STAGE_BADGE: Record<Stage, string> = {
 };
 
 /**
+ * 各階段的進度條填色——單一 teal 色相深淺階梯（提案中最淺、進行中次之、
+ * 已就緒最深）。看板欄位進度條與系統匣面板進度條共用此單一來源，避免
+ * 兩處配色分歧。
+ */
+export const STAGE_BAR: Record<Stage, string> = {
+  proposed: "bg-primary/50",
+  "in-progress": "bg-primary/75",
+  ready: "bg-primary",
+};
+
+/** 各階段的圖示色——與 STAGE_BAR 同階梯；看板欄標題與面板分區標題共用。 */
+export const STAGE_ICON: Record<Stage, string> = {
+  proposed: "text-primary/50",
+  "in-progress": "text-primary/75",
+  ready: "text-primary",
+};
+
+/**
  * 由生命週期標記派生 change 的階段（優先序由上而下）：
  * - 任務全完成（總數 > 0 且完成數 == 總數）→ ready（可歸檔，全完成優先）
  * - meta 含 started_at 或任務完成數 > 0 → in-progress（任務進度涵蓋手改

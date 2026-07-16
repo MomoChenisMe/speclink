@@ -386,11 +386,40 @@ code:
 
 ---
 ### Requirement: 面板樣式（macOS）
-於 macOS，點擊系統匣圖示 SHALL NOT 顯示原生下拉選單，而 SHALL 於圖示下方彈出貼齊圖示的面板視窗，再次點擊 SHALL 收合——無需任何偏好設定。面板內容 SHALL 與原生選單同源（同一前端資料層：專案、生命週期分區的變更與進度、討論——討論比照原生選單分「討論」與「已轉出」兩分區），SHALL NOT 為面板另建第二條資料查詢路徑。變更與討論列 SHALL 於列尾常駐複製鈕（複製內容與原生選單的複製動作一致：變更為 name、討論為 slug）；複製鈕點擊後 SHALL 短暫顯示成功回饋（勾號圖示，與看板複製鈕同模式）後自行復原。點擊列本體 SHALL 顯示主視窗並開啟對應詳情。面板高度 SHALL 自適應內容（隨內容增減貼合，達上限高度後面板內部捲動、不得於內容未超限時出現多餘捲動與空白）。面板開啟 SHALL NOT 奪取目前前景 app 的焦點；面板失焦時 SHALL 自動收合。面板視窗建立失敗時 app SHALL 以原生選單樣式運作（選單實作跨平台保留、兼作 macOS 失敗後備）並於設定頁本機設定簽浮出單行錯誤。
+
+於 macOS，點擊系統匣圖示 SHALL NOT 顯示原生下拉選單，而 SHALL 於圖示下方彈出貼齊圖示的面板視窗，再次點擊 SHALL 收合——無需任何偏好設定。面板內容 SHALL 與原生選單同源（同一前端資料層：專案、生命週期分區的變更與進度、討論——討論比照原生選單分「討論」與「已轉出」兩分區），SHALL NOT 為面板另建第二條資料查詢路徑。
+
+專案區 SHALL 呈現為橫向 tab 條：每個 tab SHALL 顯示專案名首字母的圓角方塊 avatar 與專案名；作用中專案的 tab SHALL 以實心主色底＋反白文字標示；tab 總寬超出面板時 SHALL 可橫向捲動且 SHALL NOT 顯示捲軸。點擊 tab SHALL 原地切換作用中專案——面板下方內容隨之更新，SHALL NOT 喚起主視窗、SHALL NOT 收合面板。tab 條尾端 SHALL 有「加入專案」動作項：點擊 SHALL 先顯示主視窗（含切換至其所在桌面——確保後續對話框於使用者眼前可見）再開啟資料夾選擇器（與主視窗「開啟專案」同語意）——選定即以分頁加入該專案並成為作用中專案，取消則無任何變化。資料夾選擇器等系統原生對話框 SHALL 跟隨系統語言呈現（app SHALL 宣告繁體中文在地化，不得固定英文介面）。
+
+生命週期分區與討論分區 SHALL 各自以半透明圓角卡片容器呈現（面板毛玻璃底 SHALL 可透出），分區標題 SHALL 含主色上色的分區圖示，並 SHALL 顯示該分區的項目計數（徽章樣式與看板欄計數同語彙）。空狀態卡（討論零筆、全無變更）SHALL 維持最小高度、內容垂直置中，不得塌陷成細條。有任務的變更列，其進度條填色 SHALL 依階段套用與看板同源的主色深淺階梯（提案中最淺、進行中次之、已就緒最深）。
+
+變更與討論列 SHALL 於列尾常駐複製鈕（複製內容與原生選單的複製動作一致：變更為 name、討論為 slug）；複製鈕點擊後 SHALL 短暫顯示成功回饋（勾號圖示，與看板複製鈕同模式）後自行復原。點擊變更或討論列本體 SHALL 顯示主視窗並開啟對應詳情。
+
+面板開啟時 SHALL NOT 有任何互動元素自動取得焦點（不得出現系統焦點框）；複製鈕 SHALL NOT 可經 Tab 鍵取得焦點。面板高度 SHALL 自適應內容（隨內容增減貼合，達上限高度後面板內部捲動、不得於內容未超限時出現多餘捲動與空白）。面板開啟 SHALL NOT 奪取目前前景 app 的焦點；面板失焦時 SHALL 自動收合。面板視窗建立失敗時 app SHALL 以原生選單樣式運作（選單實作跨平台保留、兼作 macOS 失敗後備）並於設定頁本機設定簽浮出單行錯誤。
 
 #### Scenario: 面板樣式下點擊圖示彈出貼齊面板
 - **WHEN** 使用者於 macOS 點擊系統匣圖示
-- **THEN** 圖示下方彈出貼齊圖示的面板，呈現專案、變更（含進度）與討論清單，未出現原生下拉選單
+- **THEN** 圖示下方彈出貼齊圖示的面板，頂部為專案 tab 條、其下以卡片分區呈現變更（含進度）與討論清單，未出現原生下拉選單
+
+#### Scenario: 點擊專案 tab 原地切換
+- **WHEN** 面板開啟且有兩個以上專案分頁，使用者點擊非作用中專案的 tab
+- **THEN** 該 tab 轉為實心主色的作用中標示，面板下方的變更與討論內容切換為該專案，主視窗未被喚起、面板保持開啟
+
+#### Scenario: tab 條尾端快速加入專案
+- **WHEN** 主視窗位於另一個桌面或未在前景，使用者點擊 tab 條尾端的「加入專案」項並於資料夾選擇器選定一個專案目錄
+- **THEN** 主視窗先被喚起（桌面切換至其所在處）、資料夾選擇器於前景出現；選定後該專案以分頁加入並成為作用中專案；於選擇器按取消則分頁無任何變化
+
+#### Scenario: 分區標題顯示項目計數
+- **WHEN** 面板列出提案中 1 筆變更、討論 0 筆
+- **THEN** 「提案中」分區標題帶計數徽章 1；討論空狀態卡顯示計數 0 且維持最小高度、內容垂直置中
+
+#### Scenario: 進度條依階段深淺
+- **WHEN** 面板同時列出提案中與進行中各一個有任務的變更
+- **THEN** 兩列進度條填色同為主色但深淺不同——提案中較淺、進行中較深，與看板欄位的階段配色同階梯
+
+#### Scenario: 開啟面板無預設焦點
+- **WHEN** 使用者點擊系統匣圖示開啟面板
+- **THEN** 面板中無任何元素帶系統焦點框（含第一顆複製鈕），複製鈕仍可點擊複製並顯示勾號回饋
 
 #### Scenario: 面板不搶焦點且失焦自動收合
 - **WHEN** 使用者於其他 app 位於前景時點擊系統匣圖示開啟面板，隨後點擊面板外任意處
@@ -410,18 +439,21 @@ code:
 
 
 <!-- @trace
-source: tray-macos-panel-only
+source: tray-panel-card-design
 updated: 2026-07-16
 code:
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/trayStyle.test.ts
+  - apps/desktop/src-tauri/Info.plist
+  - apps/desktop/src-tauri/src/panel.rs
+  - apps/desktop/src/__tests__/tray.test.ts
+  - apps/desktop/src/__tests__/trayPanel.test.tsx
   - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
+  - apps/desktop/src/panel/TrayPanel.tsx
+  - apps/desktop/src/panel/main.tsx
   - apps/desktop/src/tray.ts
-  - apps/desktop/src/trayStyle.ts
-  - apps/desktop/src/views/SettingsView.tsx
+  - packages/ui/src/__tests__/stage.test.ts
+  - packages/ui/src/components/KanbanBoard.tsx
+  - packages/ui/src/index.ts
+  - packages/ui/src/stage.ts
 -->
 
 ---
