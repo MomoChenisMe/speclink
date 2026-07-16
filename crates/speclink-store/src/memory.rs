@@ -537,7 +537,10 @@ impl TeamStore for MemoryStore {
                     .map(|cell| cell.revision)
             })
             .collect();
-        if mode == ImportMode::CreateNew && existing.iter().any(|found| found.is_some()) {
+        // Create-new is gated on the whole scope, not on the bundle's own
+        // documents: anything already there rejects the import.
+        let scope_holds_any_document = inner.docs.get(&key).is_some_and(|docs| !docs.is_empty());
+        if mode == ImportMode::CreateNew && scope_holds_any_document {
             return Err(StoreError::Backend {
                 source: "import (create-new): target scope already holds documents".into(),
             });
