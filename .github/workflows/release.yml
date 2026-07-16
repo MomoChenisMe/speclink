@@ -1,6 +1,7 @@
-# Release: push a tag like `v0.1.0` and this builds speclink for Windows / Linux / macOS
-# (x86_64 + arm64 where applicable), packages archives with SHA-256 checksums, and publishes
-# a GitHub Release with the artifacts attached.
+# Release: push a tag like `v0.1.0` and this builds speclink (CLI) and speclink-server
+# for Windows / Linux / macOS (x86_64 + arm64 where applicable), packages archives with
+# SHA-256 checksums, publishes a GitHub Release with the artifacts attached, and pushes
+# the server Docker image to ghcr.
 #
 # Usage:
 #   1. Bump `version` in crates/speclink-cli/Cargo.toml (and speclink-core), commit.
@@ -46,21 +47,26 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
+      # 只建置要發布的兩支 binary。全 workspace 建置會把 tauri crate 一起拖進來，
+      # 而它需要 GTK/WebKit 系統庫與先行的 vite build（見 ci.yml），release runner
+      # 都沒有——桌面 app 不是 release 產物，不必為它付這個代價。
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: cargo build --release --locked --target ${{ matrix.target }} -p speclink-cli -p speclink-server
 
       - name: Package
         shell: bash
         run: |
-          NAME="speclink-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p dist
-          if [[ "${{ matrix.target }}" == *windows* ]]; then
-            cp "target/${{ matrix.target }}/release/speclink.exe" dist/
-            (cd dist && 7z a "${NAME}.zip" speclink.exe > /dev/null && rm speclink.exe)
-          else
-            cp "target/${{ matrix.target }}/release/speclink" dist/
-            (cd dist && tar czf "${NAME}.tar.gz" speclink && rm speclink)
-          fi
+          for BIN in speclink speclink-server; do
+            NAME="${BIN}-${GITHUB_REF_NAME}-${{ matrix.target }}"
+            if [[ "${{ matrix.target }}" == *windows* ]]; then
+              cp "target/${{ matrix.target }}/release/${BIN}.exe" dist/
+              (cd dist && 7z a "${NAME}.zip" "${BIN}.exe" > /dev/null && rm "${BIN}.exe")
+            else
+              cp "target/${{ matrix.target }}/release/${BIN}" dist/
+              (cd dist && tar czf "${NAME}.tar.gz" "${BIN}" && rm "${BIN}")
+            fi
+          done
 
       - uses: actions/upload-artifact@v4
         with:
@@ -68,8 +74,50 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # server Docker image → ghcr，tag 對齊 release 版本（v0.1.0 → 0.1.0，semver
+  # 亦自動附 latest）。兩架構經 qemu 模擬建置——arm64 的 Rust 編譯在模擬下偏慢，
+  # 屬已知代價（設計明訂先不做多架構矩陣最佳化）。
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # metadata-action 會把 owner 正規化為小寫（ghcr 要求）。
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/speclink-server
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/speclink-server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # 部署文件對使用者承諾「每個 release tag 同時產出全部四種形態」，所以映像推送
+  # 失敗時不該還發出一個少了 Docker 形態的 Release——needs 納入 docker 讓四形態
+  # 的產出是全有全無。
   release:
-    needs: build
+    needs: [build, docker]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

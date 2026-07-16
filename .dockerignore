@@ -1,0 +1,14 @@
+# Docker build context 排除（crates/speclink-server/Dockerfile 以 repo 根為 context）。
+# cargo 解析 workspace 需要所有成員的 Cargo.toml，故不可整目錄排除 apps/。
+.git
+target
+**/node_modules
+apps/desktop/dist
+apps/desktop/src-tauri/gen
+openspec
+docs
+deploy
+.speclink
+.claude
+.agents
+.github

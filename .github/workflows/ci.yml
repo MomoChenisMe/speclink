@@ -72,6 +72,111 @@ jobs:
       - name: Test (Desktop)
         run: npm test -w apps/desktop
 
+  # Docker 冒煙（server-release spec）：映像 build 得起來只是下限——起得來、
+  # /healthz 與 /readyz 皆 2xx、logs 印 setup token、壞組態 fail closed 以非零
+  # exit code 結束，四件事都驗到才算。兩份 compose 檔的語法驗證也掛在這裡。
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build image
+        run: docker build -f crates/speclink-server/Dockerfile -t speclink-server:smoke .
+
+      - name: Compose 檔語法驗證
+        env:
+          # postgres compose 對缺密碼設計成大聲失敗（${VAR:?}），語法驗證給假值通過。
+          SPECLINK_POSTGRES_PASSWORD: ci-syntax-check-only
+        run: |
+          docker compose -f deploy/docker-compose.yml config --quiet
+          docker compose -f deploy/docker-compose.postgres.yml config --quiet
+
+      # 語法過不代表起得來，這一步驗真正的 compose 路徑。
+      #
+      # --build 是必要的，不是保險：compose 對 image: 是「先 pull、失敗才 build」。
+      # 今天 ghcr 上還沒有 :latest（pull 403 → 回退建置）所以看起來會過，但首次
+      # 正式發版推出 :latest 的那天，這一步會改拉已發布映像、不再建置本 commit 的
+      # 原始碼——測的東西被無聲掉包。--build 讓它永遠建置受測原始碼。
+      - name: 冒煙 — SQLite compose 一行開箱
+        shell: bash
+        working-directory: deploy
+        run: |
+          docker compose up -d --build
+          ok=""
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8080/readyz; then ok=1; break; fi
+            sleep 1
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::compose 起的 server 未在 60 秒內就緒"
+            docker compose logs
+            exit 1
+          fi
+          if ! docker compose logs server | grep -Eq 'setup\?token=[A-Za-z0-9_]+'; then
+            echo "::error::compose logs 沒有一次性 setup token 行"
+            docker compose logs
+            exit 1
+          fi
+          docker compose down -v
+
+      - name: 冒煙 — 起容器（SQLite 組態）→ /healthz、/readyz → setup token 行
+        shell: bash
+        run: |
+          docker run -d --name smoke -p 8080:8080 speclink-server:smoke
+          ok=""
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8080/healthz \
+               && curl -fsS -o /dev/null http://127.0.0.1:8080/readyz; then ok=1; break; fi
+            sleep 1
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::/healthz 或 /readyz 未在 30 秒內回 2xx"
+            docker logs smoke
+            exit 1
+          fi
+          if ! docker logs smoke | grep -Eq 'setup\?token=[A-Za-z0-9_]+'; then
+            echo "::error::logs 沒有一次性 setup token 行"
+            docker logs smoke
+            exit 1
+          fi
+          docker stop smoke
+
+      # spec 的 THEN 有兩句：非零 exit code「且」不綁定連接埠。後者在容器退出後
+      # 無法用 curl 觀察——埠映射隨容器一起拆掉，那種斷言恆真、是假覆蓋。改以
+      # 啟動順序的可觀察代理來驗：main.rs 的順序是 config → store → identity →
+      # setup token → bind，所以「死在 config 階段」＋「沒印出 token 行」即證明
+      # 執行從未走到 bind。
+      - name: 壞組態容器即死（fail closed，且未走到 bind）
+        shell: bash
+        run: |
+          printf 'store: [unclosed\n' > bad-config.yaml
+          docker run -d --name badcfg \
+            -v "$PWD/bad-config.yaml:/etc/speclink/config.yaml:ro" speclink-server:smoke
+          for _ in $(seq 1 15); do
+            st=$(docker inspect -f '{{.State.Status}}' badcfg)
+            [ "$st" = "exited" ] && break
+            sleep 1
+          done
+          if [ "$(docker inspect -f '{{.State.Status}}' badcfg)" != "exited" ]; then
+            echo "::error::壞組態容器 15 秒內未退出——啟動守門失效"
+            docker logs badcfg
+            exit 1
+          fi
+          rc=$(docker inspect -f '{{.State.ExitCode}}' badcfg)
+          docker logs badcfg || true
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::壞組態容器以 0 退出——fail closed 失效"
+            exit 1
+          fi
+          if ! docker logs badcfg 2>&1 | grep -q 'cannot parse config file'; then
+            echo "::error::非零退出但不是因為組態解析失敗——守門的把關點跑掉了"
+            exit 1
+          fi
+          if docker logs badcfg 2>&1 | grep -q 'setup?token='; then
+            echo "::error::壞組態下仍鑄出 setup token——執行走過了 config 守門"
+            exit 1
+          fi
+
   # The PostgreSQL driver needs a real database, which `services` can only give
   # a Linux runner — hence a job of its own rather than a step in the matrix
   # above. There, with no SPECLINK_TEST_POSTGRES_URL set, those suites report

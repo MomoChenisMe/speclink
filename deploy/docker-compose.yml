@@ -1,0 +1,53 @@
+# Speclink server — SQLite 單容器「一行開箱」（架構 §13.4）：
+#
+#   docker compose up -d
+#   docker compose logs server        # 取一次性 setup token（含 /setup?token=… 的那行）
+#   瀏覽器開該連結完成初始設定
+#
+# 可調環境變數（皆有預設，正式部署至少要設 SPECLINK_PUBLIC_URL）：
+#   SPECLINK_PUBLIC_URL  對外網址（預設 http://localhost:8080）
+#   SPECLINK_PORT        對外埠（預設 8080）
+#
+# ⚠ 單一 instance 限制（架構 §13.1）：SQLite profile 只允許一個 server instance。
+#   不得 docker compose up --scale、不得多個 replica 指向同一個 volume——
+#   SQLite 的單寫者檔案鎖會讓第二個 instance 顯性報錯而非靜默共用。
+#   需要水平擴充前先換 PostgreSQL driver（見 docker-compose.postgres.yml）。
+
+name: speclink
+
+configs:
+  server-config:
+    # server 的組態 YAML 不做環境變數展開，改由 compose 在 up 時插值產生本檔
+    # 並掛進容器覆蓋映像內的預設組態。
+    content: |
+      store:
+        driver: sqlite
+        path: /data/store.db
+      identity:
+        driver: sqlite
+        path: /data/identity.db
+      # 預設與 SPECLINK_PORT 連動：只改埠而忘了設 public_url 時，setup 連結與
+      # 同源檢查仍指向正確的埠。
+      public_url: ${SPECLINK_PUBLIC_URL:-http://localhost:${SPECLINK_PORT:-8080}}
+
+services:
+  server:
+    image: ghcr.io/momochenisme/speclink-server:latest
+    # 本機沒有該映像時就地從原始碼建置（首次正式發版前 registry 尚無映像，
+    # 這個回退讓 compose 現在就能起、CI 也能驗真正的 compose 路徑）。
+    # 要用官方映像請先 docker compose pull。
+    build:
+      context: ..
+      dockerfile: crates/speclink-server/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${SPECLINK_PORT:-8080}:8080"
+    configs:
+      - source: server-config
+        target: /etc/speclink/config.yaml
+    volumes:
+      # named volume 持久化 store 與 identity 兩個 SQLite 資料庫檔。
+      - speclink-data:/data
+
+volumes:
+  speclink-data:
