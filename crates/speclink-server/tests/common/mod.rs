@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+pub mod subscriber;
+
 use chrono::{Duration, Utc};
 use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
 use speclink_server::events::{EventHub, EventSettings};
