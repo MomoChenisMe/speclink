@@ -21,6 +21,7 @@ pub fn router(state: AppState) -> Router {
         .route("/binding", get(binding))
         .route("/changes", get(routes::list_changes).post(routes::create_change))
         .route("/changes/{name}", get(routes::get_change))
+        .route("/changes/{name}/drift", get(routes::drift))
         .route("/changes/{name}/instructions/{*artifact}", get(routes::instructions))
         .route(
             "/changes/{name}/artifacts/{*artifact}",

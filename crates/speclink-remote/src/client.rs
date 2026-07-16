@@ -19,6 +19,7 @@ use speclink_protocol::command::{
     PutArtifactResponse, SetDiscussionContextRequest, TaskDoneRequest, TaskDoneResponse,
     TaskUndoneResponse,
 };
+use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::query::{
     ApplyInstructions, ArtifactContent, ArtifactInstructions, ChangeStatus, ConfigResponse,
     LanguageResponse, ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse,
@@ -180,6 +181,13 @@ impl Client {
         artifact: &str,
     ) -> Result<ArtifactContent, RemoteError> {
         self.get(&format!("/changes/{name}/artifacts/{artifact}"))
+    }
+
+    /// `GET /changes/{name}/drift` — the change's spec-side drift and the basis
+    /// digests of the snapshot it was computed at. The workspace side is the
+    /// caller's own to collect: it is not on the wire and never was.
+    pub fn spec_drift(&self, name: &str) -> Result<SpecDriftResponse, RemoteError> {
+        self.get(&format!("/changes/{name}/drift"))
     }
 
     /// `GET /specs`

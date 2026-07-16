@@ -552,6 +552,9 @@ fn render_analyze(report: &core::analyzer::AnalyzeReport) {
 // --- drift ---
 
 fn cmd_drift(a: ChangeArg) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_drift(&ctx, &a);
+    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     if info_if_no_changes(store, a.change.as_deref()) {

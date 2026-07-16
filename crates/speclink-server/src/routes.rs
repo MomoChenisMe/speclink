@@ -23,6 +23,7 @@ use speclink_core::discuss::DiscussionInfo as EngineDiscussionInfo;
 use speclink_core::instructions as engine;
 use speclink_core::listing::ListChangeJson;
 use speclink_core::status::StatusReport;
+use speclink_host::drift as host_drift;
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, ArchiveDiscussionResponse,
     ArchiveResponse, ArchivedSpec, ClaimResponse, ConcludeDiscussionRequest, CreateChangeRequest,
@@ -30,6 +31,7 @@ use speclink_protocol::command::{
     PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest, PutArtifactResponse,
     SetDiscussionContextRequest, TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse,
 };
+use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::query::{
     ApplyInstructions, ArtifactContent, ArtifactInstructions, ArtifactStatus, ChangeStatus,
     ChangeSummary, ConfigResponse, DependencyEntry, DiscussionInfo, LanguageResponse,
@@ -93,6 +95,31 @@ pub async fn get_change(
         _ => return Err(wrong_outcome("status")),
     };
     Ok(ok(change_status(report), &result.etag))
+}
+
+/// `GET /changes/{name}/drift` — the change's spec-side drift over one store
+/// snapshot, with that snapshot's basis digests. The Host's `spec_drift` entry
+/// owns the composition (server-drift-api design 決策 2), so both halves come
+/// from the same snapshot. Workspace facts stay the client's own business: the
+/// Server runs no git, and the wire gives it no field to claim one in. The
+/// computation is a read — no unit of work, no event.
+pub async fn drift(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let store = state.store.clone();
+    let scope = verb::scope_of(&binding);
+    // The report and the ETag are read in the same blocking hop, as a verb's are.
+    let (payload, etag) =
+        tokio::task::spawn_blocking(move || -> Result<(SpecDriftResponse, String), ApiError> {
+            let view = host_drift::spec_drift(store.as_ref(), &scope, &name)?;
+            let etag = verb::scope_token(store.as_ref(), &scope)?;
+            Ok((host_drift::spec_drift_view_to_wire(&view), etag))
+        })
+        .await
+        .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
+    Ok(ok(payload, &etag))
 }
 
 /// `GET /changes/{name}/instructions/{*artifact}` — `apply` yields the apply

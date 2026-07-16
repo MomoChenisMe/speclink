@@ -11,6 +11,7 @@ pub mod binding;
 pub mod command;
 pub mod context;
 pub mod device;
+pub mod drift;
 pub mod error;
 pub mod events;
 pub mod query;
