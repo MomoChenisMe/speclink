@@ -28,7 +28,7 @@ import {
 } from "@speclink/ui";
 
 import { createAppStore } from "./store";
-import { detectMacOS, initTray, type TrayController } from "./tray";
+import { initTray, type TrayController } from "./tray";
 import { ProjectTabs } from "./components/ProjectTabs";
 import { SettingsView } from "./views/SettingsView";
 import type { WorkspaceAdapter } from "./adapter/workspace";
@@ -346,9 +346,6 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
               workspace={workspace}
               localePref={localePref}
               onLocalePrefChange={onLocalePrefChange}
-              showTrayStyle={detectMacOS()}
-              trayStyle={s.trayStyle}
-              onTrayStyleChange={s.setTrayStyle}
               trayPanelError={s.trayPanelError}
             />
           ) : workspace !== undefined && s.tabs.length === 0 ? (

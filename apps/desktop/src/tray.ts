@@ -18,7 +18,10 @@ import { handleIconState } from "@tauri-apps/plugin-positioner";
 
 import { appT } from "./i18n/runtime";
 import { trayIconBytes } from "./trayIcon";
-import type { TrayStyle } from "./trayStyle";
+
+/** 系統匣互動樣式：由平台決定（macOS＝panel、其餘＝native-menu），panel 建立失敗時
+    退回 native-menu——執行期狀態、不持久化（tray-macos-panel-only 拆除偏好）。 */
+export type TrayStyle = "native-menu" | "panel";
 
 /** 組模型所需的 store 快照（自 AppState 收斂而來——與看板同源，design D3）。 */
 export interface TraySnapshot {

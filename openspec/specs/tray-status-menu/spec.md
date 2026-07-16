@@ -7,11 +7,15 @@ TBD - created by archiving change 'system-tray-status'. Update Purpose after arc
 ## Requirements
 
 ### Requirement: 系統匣圖示與原生選單
-桌面 app SHALL 於系統匣（macOS 選單列、Windows 通知區域、Linux AppIndicator）顯示 Speclink 圖示；互動 SHALL 依「系統匣樣式」偏好進行——預設為原生下拉選單（menu-first），macOS 上可切換為面板樣式（見「面板樣式（macOS）」需求）。圖示 SHALL 為單色 Speclink 標記（使用者提供的可辨識剪影）；macOS 上 SHALL 以 template 單色形式渲染以適應深淺色選單列。原生選單 SHALL 依序包含：專案區（已開啟的專案分頁）、生命週期分區（提案中／進行中／已就緒）、討論區、動作區（「開啟 Speclink」與「結束」）。
+桌面 app SHALL 於系統匣（macOS 選單列、Windows 通知區域、Linux AppIndicator）顯示 Speclink 圖示；互動樣式 SHALL 由平台決定——macOS 一律為面板（見「面板樣式（macOS）」需求）、非 macOS 平台一律為原生下拉選單（menu-first），SHALL NOT 提供樣式偏好或切換介面。圖示 SHALL 為單色 Speclink 標記（使用者提供的可辨識剪影）；macOS 上 SHALL 以 template 單色形式渲染以適應深淺色選單列。原生選單 SHALL 依序包含：專案區（已開啟的專案分頁）、生命週期分區（提案中／進行中／已就緒）、討論區、動作區（「開啟 Speclink」與「結束」）。
 
-#### Scenario: 啟動後系統匣出現圖示與完整選單
-- **WHEN** 使用者啟動桌面 app 且載入完成（未曾更動系統匣樣式偏好）
+#### Scenario: 非 macOS 啟動後系統匣出現圖示與完整選單
+- **WHEN** 使用者於 Windows 或 Linux 啟動桌面 app 且載入完成
 - **THEN** 系統匣出現單色 Speclink 標記圖示，展開選單依序可見專案區、生命週期分區、討論區、動作區（「開啟 Speclink」「結束」）
+
+#### Scenario: macOS 啟動後點擊圖示即面板
+- **WHEN** 使用者於 macOS 啟動桌面 app 且載入完成，點擊系統匣圖示
+- **THEN** 彈出面板而非原生下拉選單，過程中無需任何樣式設定
 
 #### Scenario: 無專案分頁時選單仍可用
 - **WHEN** app 尚未開啟任何專案
@@ -19,40 +23,18 @@ TBD - created by archiving change 'system-tray-status'. Update Purpose after arc
 
 
 <!-- @trace
-source: tray-copy-and-panel-mode
+source: tray-macos-panel-only
 updated: 2026-07-16
 code:
-  - .dockerignore
-  - .github/workflows/ci.yml
-  - .github/workflows/release.yml
-  - Cargo.lock
-  - apps/desktop/package.json
-  - apps/desktop/panel.html
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/capabilities/macos.json
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/panel.rs
-  - apps/desktop/src-tauri/tauri.conf.json
   - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/tray.test.ts
-  - apps/desktop/src/__tests__/trayPanel.test.tsx
+  - apps/desktop/src/__tests__/store.test.ts
   - apps/desktop/src/__tests__/trayStyle.test.ts
   - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/panel/TrayPanel.tsx
-  - apps/desktop/src/panel/main.tsx
   - apps/desktop/src/store.ts
   - apps/desktop/src/tray.ts
   - apps/desktop/src/trayStyle.ts
   - apps/desktop/src/views/SettingsView.tsx
-  - apps/desktop/vite.config.ts
-  - crates/speclink-server/Dockerfile
-  - deploy/.env.example
-  - deploy/docker-compose.postgres.yml
-  - deploy/docker-compose.yml
-  - docs/server-deployment.zh-TW.md
-  - package-lock.json
 -->
 
 ---
@@ -404,10 +386,10 @@ code:
 
 ---
 ### Requirement: 面板樣式（macOS）
-於 macOS，當「系統匣樣式」偏好為「面板」時，點擊系統匣圖示 SHALL NOT 顯示原生下拉選單，而 SHALL 於圖示下方彈出貼齊圖示的面板視窗，再次點擊 SHALL 收合。面板內容 SHALL 與原生選單同源（同一前端資料層：專案、生命週期分區的變更與進度、討論——討論比照原生選單分「討論」與「已轉出」兩分區），SHALL NOT 為面板另建第二條資料查詢路徑。變更與討論列 SHALL 於列尾常駐複製鈕（複製內容與原生選單的複製動作一致：變更為 name、討論為 slug）；複製鈕點擊後 SHALL 短暫顯示成功回饋（勾號圖示，與看板複製鈕同模式）後自行復原。點擊列本體 SHALL 顯示主視窗並開啟對應詳情。面板高度 SHALL 自適應內容（隨內容增減貼合，達上限高度後面板內部捲動、不得於內容未超限時出現多餘捲動與空白）。面板開啟 SHALL NOT 奪取目前前景 app 的焦點；面板失焦時 SHALL 自動收合。面板視窗建立失敗時 app SHALL 退回原生選單樣式並於設定頁浮出單行錯誤。
+於 macOS，點擊系統匣圖示 SHALL NOT 顯示原生下拉選單，而 SHALL 於圖示下方彈出貼齊圖示的面板視窗，再次點擊 SHALL 收合——無需任何偏好設定。面板內容 SHALL 與原生選單同源（同一前端資料層：專案、生命週期分區的變更與進度、討論——討論比照原生選單分「討論」與「已轉出」兩分區），SHALL NOT 為面板另建第二條資料查詢路徑。變更與討論列 SHALL 於列尾常駐複製鈕（複製內容與原生選單的複製動作一致：變更為 name、討論為 slug）；複製鈕點擊後 SHALL 短暫顯示成功回饋（勾號圖示，與看板複製鈕同模式）後自行復原。點擊列本體 SHALL 顯示主視窗並開啟對應詳情。面板高度 SHALL 自適應內容（隨內容增減貼合，達上限高度後面板內部捲動、不得於內容未超限時出現多餘捲動與空白）。面板開啟 SHALL NOT 奪取目前前景 app 的焦點；面板失焦時 SHALL 自動收合。面板視窗建立失敗時 app SHALL 以原生選單樣式運作（選單實作跨平台保留、兼作 macOS 失敗後備）並於設定頁本機設定簽浮出單行錯誤。
 
 #### Scenario: 面板樣式下點擊圖示彈出貼齊面板
-- **WHEN** 系統匣樣式偏好為「面板」且使用者點擊系統匣圖示
+- **WHEN** 使用者於 macOS 點擊系統匣圖示
 - **THEN** 圖示下方彈出貼齊圖示的面板，呈現專案、變更（含進度）與討論清單，未出現原生下拉選單
 
 #### Scenario: 面板不搶焦點且失焦自動收合
@@ -423,44 +405,23 @@ code:
 - **THEN** 面板高度貼合內容（下方無大片空白），內容增加超過上限高度後面板內部出現捲動
 
 #### Scenario: 面板建立失敗退回原生選單
-- **WHEN** 系統匣樣式偏好為「面板」但面板視窗建立失敗
-- **THEN** 系統匣以原生選單樣式運作，設定頁浮出單行錯誤訊息
+- **WHEN** macOS 上面板視窗建立失敗
+- **THEN** 系統匣以原生選單樣式運作，設定頁本機設定簽浮出單行錯誤訊息
+
 
 <!-- @trace
-source: tray-copy-and-panel-mode
+source: tray-macos-panel-only
 updated: 2026-07-16
 code:
-  - .dockerignore
-  - .github/workflows/ci.yml
-  - .github/workflows/release.yml
-  - Cargo.lock
-  - apps/desktop/package.json
-  - apps/desktop/panel.html
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/capabilities/macos.json
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/panel.rs
-  - apps/desktop/src-tauri/tauri.conf.json
   - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/tray.test.ts
-  - apps/desktop/src/__tests__/trayPanel.test.tsx
+  - apps/desktop/src/__tests__/store.test.ts
   - apps/desktop/src/__tests__/trayStyle.test.ts
   - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/panel/TrayPanel.tsx
-  - apps/desktop/src/panel/main.tsx
   - apps/desktop/src/store.ts
   - apps/desktop/src/tray.ts
   - apps/desktop/src/trayStyle.ts
   - apps/desktop/src/views/SettingsView.tsx
-  - apps/desktop/vite.config.ts
-  - crates/speclink-server/Dockerfile
-  - deploy/.env.example
-  - deploy/docker-compose.postgres.yml
-  - deploy/docker-compose.yml
-  - docs/server-deployment.zh-TW.md
-  - package-lock.json
 -->
 
 ---
