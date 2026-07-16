@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { act, render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
-import { I18nProvider, type ChangeItem } from "@speclink/ui";
+import { I18nProvider, STAGE_BADGE, STAGE_BAR, STAGE_ICON, type ChangeItem } from "@speclink/ui";
 
 import { TrayPanel } from "../panel/TrayPanel";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -45,6 +45,7 @@ function renderPanel(over: Partial<Parameters<typeof TrayPanel>[0]> = {}) {
     onOpenProject: vi.fn(),
     onOpenApp: vi.fn(),
     onCopy: vi.fn(),
+    onAddProject: vi.fn(),
   };
   render(<TrayPanel snapshot={snapshot()} {...handlers} {...over} />);
   return handlers;
@@ -77,10 +78,15 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
     expect(h.onOpenProject).toHaveBeenCalledWith("/proj/two");
   });
 
-  it("無變更顯示空狀態、無討論顯示「討論 0」", () => {
+  it("無變更顯示空狀態卡、無討論顯示帶計數 0 的討論卡（皆有最小高度，D8）", () => {
     renderPanel({ snapshot: snapshot({ changes: [], discussions: [] }) });
-    expect(screen.getByText("尚無進行中變更")).toBeTruthy();
-    expect(screen.getByText("討論 0")).toBeTruthy();
+    const empty = screen.getByTestId("panel-empty-changes");
+    expect(empty.textContent).toContain("尚無進行中變更");
+    expect(empty.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-12", "items-center"]));
+    const disc = screen.getByTestId("panel-section-discussions");
+    expect(disc.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-12", "justify-center"]));
+    expect(within(disc).getByText("討論")).toBeTruthy();
+    expect(within(disc).getByTestId("panel-section-count").textContent).toBe("0");
   });
 
   it("討論分流：已轉出討論列於「已轉出」分區（討論中列於「討論」分區）", () => {
@@ -125,6 +131,131 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
   });
 });
 
+describe("TrayPanel 專案 tab 條（spec「面板樣式（macOS）」；design D1）", () => {
+  it("每個 tab 含專案名首字母 avatar 與專案名", () => {
+    renderPanel();
+    const one = screen.getByTestId("panel-project-/proj/one");
+    expect(within(one).getByText("O")).toBeTruthy();
+    expect(within(one).getByText("one")).toBeTruthy();
+    const two = screen.getByTestId("panel-project-/proj/two");
+    expect(within(two).getByText("T")).toBeTruthy();
+    expect(within(two).getByText("two")).toBeTruthy();
+  });
+
+  it("作用中 tab 實心主色底、非作用中無實心底", () => {
+    renderPanel();
+    const one = screen.getByTestId("panel-project-/proj/one");
+    const two = screen.getByTestId("panel-project-/proj/two");
+    expect(one.className.split(/\s+/)).toContain("bg-primary");
+    expect(two.className.split(/\s+/)).not.toContain("bg-primary");
+  });
+
+  it("tab 條尾端有「加入專案」動作項，點擊觸發 onAddProject 而非 onOpenProject（D7）", () => {
+    const h = renderPanel();
+    const strip = screen.getByTestId("panel-project-tabs");
+    const add = within(strip).getByTestId("panel-add-project");
+    expect(add.getAttribute("title")).toBe("加入專案");
+    fireEvent.click(add);
+    expect(h.onAddProject).toHaveBeenCalled();
+    expect(h.onOpenProject).not.toHaveBeenCalled();
+  });
+
+  it("tab 容器橫向捲動且隱藏捲軸", () => {
+    renderPanel();
+    const strip = screen.getByTestId("panel-project-tabs");
+    const classes = strip.className.split(/\s+/);
+    expect(classes).toContain("overflow-x-auto");
+    expect(classes).toContain("[scrollbar-width:none]");
+    expect(classes).toContain("[&::-webkit-scrollbar]:hidden");
+  });
+});
+
+describe("TrayPanel 分區卡片化與主色（spec「面板樣式（macOS）」；design D2／D3）", () => {
+  const discBoth = [
+    { slug: "open-d", topic: "討論中的", promoted: false },
+    { slug: "prom-d", topic: "已轉出的", promoted: true },
+  ];
+
+  it("生命週期與討論分區各自為圓角半透明卡片、無 hr 分隔線", () => {
+    renderPanel({ snapshot: snapshot({ discussions: discBoth }) });
+    for (const id of [
+      "panel-section-proposed",
+      "panel-section-in-progress",
+      "panel-section-ready",
+      "panel-section-discussions",
+      "panel-section-promoted",
+    ]) {
+      const classes = screen.getByTestId(id).className.split(/\s+/);
+      expect(classes).toContain("rounded-lg");
+      expect(classes).toContain("bg-foreground/5");
+    }
+    expect(document.querySelector("hr")).toBeNull();
+  });
+
+  it("分區標題圖示帶主色（生命週期依階段階梯、討論分區主色）", () => {
+    renderPanel({ snapshot: snapshot({ discussions: discBoth }) });
+    const iconClasses = (id: string) =>
+      (screen.getByTestId(id).querySelector("svg")?.getAttribute("class") ?? "").split(/\s+/);
+    expect(iconClasses("panel-section-proposed")).toContain(STAGE_ICON.proposed);
+    expect(iconClasses("panel-section-in-progress")).toContain(STAGE_ICON["in-progress"]);
+    expect(iconClasses("panel-section-ready")).toContain(STAGE_ICON.ready);
+    expect(iconClasses("panel-section-discussions")).toContain("text-primary");
+    expect(iconClasses("panel-section-promoted")).toContain("text-primary");
+  });
+
+  it("根容器以毛玻璃同半徑圓角裁切（wash 不得畫出 vibrancy 圓角外）", () => {
+    renderPanel();
+    const root = screen.getByTestId("panel-root");
+    expect(root.className.split(/\s+/)).toContain("rounded-[13px]");
+  });
+
+  it("進度條填色依階段套用共用色階（STAGE_BAR）", () => {
+    renderPanel();
+    const fillClasses = (name: string) =>
+      (
+        screen
+          .getByTestId(`panel-change-${name}`)
+          .querySelector('[data-testid="panel-progress-fill"]')?.className ?? ""
+      ).split(/\s+/);
+    expect(fillClasses("prop")).toContain(STAGE_BAR.proposed);
+    expect(fillClasses("inprog")).toContain(STAGE_BAR["in-progress"]);
+    expect(fillClasses("rdy")).toContain(STAGE_BAR.ready);
+  });
+});
+
+describe("TrayPanel 分區計數（spec「面板樣式（macOS）」；design D8）", () => {
+  it("各分區標題帶項目計數徽章（STAGE_BADGE 同語彙；討論分區取看板討論欄同款）", () => {
+    renderPanel({
+      snapshot: snapshot({
+        discussions: [
+          { slug: "open-d", topic: "討論中的", promoted: false },
+          { slug: "prom-d", topic: "已轉出的", promoted: true },
+        ],
+      }),
+    });
+    const count = (id: string) =>
+      screen.getByTestId(id).querySelector('[data-testid="panel-section-count"]')!;
+    for (const id of [
+      "panel-section-proposed",
+      "panel-section-in-progress",
+      "panel-section-ready",
+      "panel-section-discussions",
+      "panel-section-promoted",
+    ]) {
+      expect(count(id).textContent).toBe("1");
+    }
+    expect(count("panel-section-proposed").className.split(/\s+/)).toEqual(
+      expect.arrayContaining(STAGE_BADGE.proposed.split(/\s+/)),
+    );
+    expect(count("panel-section-ready").className.split(/\s+/)).toEqual(
+      expect.arrayContaining(STAGE_BADGE.ready.split(/\s+/)),
+    );
+    expect(count("panel-section-discussions").className.split(/\s+/)).toEqual(
+      expect.arrayContaining(STAGE_BADGE.proposed.split(/\s+/)),
+    );
+  });
+});
+
 describe("TrayPanel 互動（開啟與 hover 複製）", () => {
   it("點擊變更列本體發出開啟事件（攜帶 change name）", () => {
     const h = renderPanel();
@@ -158,6 +289,20 @@ describe("TrayPanel 互動（開啟與 hover 複製）", () => {
     const h = renderPanel();
     fireEvent.click(screen.getByText("開啟 Speclink"));
     expect(h.onOpenApp).toHaveBeenCalled();
+  });
+
+  it("複製鈕退出 tab 順序（tabIndex=-1）且點擊仍複製（design D4 焦點修復）", () => {
+    const h = renderPanel();
+    const discBtn = within(screen.getByTestId("panel-discussion-d1")).getByRole("button", {
+      name: "複製 slug",
+    });
+    const changeBtn = within(screen.getByTestId("panel-change-inprog")).getByRole("button", {
+      name: "複製名稱",
+    });
+    expect(discBtn.getAttribute("tabindex")).toBe("-1");
+    expect(changeBtn.getAttribute("tabindex")).toBe("-1");
+    fireEvent.click(discBtn);
+    expect(h.onCopy).toHaveBeenCalledWith("d1");
   });
 
   it("複製回饋：點擊後圖示短暫轉勾號、約 1.2 秒後復原（看板 copied 同模式）", () => {

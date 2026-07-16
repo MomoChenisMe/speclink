@@ -56,6 +56,7 @@ function PanelRoot() {
       onOpenChange={(name) => act("open-change", name)}
       onOpenDiscussion={(slug) => act("open-discussion", slug)}
       onOpenApp={() => act("open-app")}
+      onAddProject={() => act("add-project")}
       onCopy={(text) => {
         void writeText(text).catch(() => {});
       }}

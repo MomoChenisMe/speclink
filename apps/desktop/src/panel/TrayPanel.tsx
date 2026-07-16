@@ -6,6 +6,9 @@
 import { useState, type ReactNode } from "react";
 import {
   changeStage,
+  STAGE_BADGE,
+  STAGE_BAR,
+  STAGE_ICON,
   STAGES,
   cn,
   useI18n,
@@ -20,6 +23,7 @@ import {
   Hammer,
   Lightbulb,
   MessageSquareText,
+  Plus,
   type LucideIcon,
 } from "lucide-react";
 
@@ -41,6 +45,8 @@ export interface TrayPanelProps {
   onOpenApp: () => void;
   /** 複製回呼（面板入口接 clipboard 外掛——Rust 端，不受焦點限制）。 */
   onCopy: (text: string) => void;
+  /** 快速加入專案（design D7）：開資料夾選擇器，選定即加入並切換、取消無事。 */
+  onAddProject: () => void;
 }
 
 /** 列尾常駐複製鈕：stopPropagation 使複製不觸發列本體的開啟；
@@ -50,6 +56,9 @@ function CopyButton({ label, text, onCopy }: { label: string; text: string; onCo
   return (
     <button
       type="button"
+      // 退出 tab 順序（design D4）：面板成 key window 後 WebKit 會把焦點給
+      // 第一個可 tab 元素——複製鈕是面板唯一 button，不退出就吃到焦點框。
+      tabIndex={-1}
       aria-label={label}
       title={label}
       onClick={(e) => {
@@ -69,12 +78,55 @@ function CopyButton({ label, text, onCopy }: { label: string; text: string; onCo
   );
 }
 
-function SectionHeader({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+function SectionHeader({
+  icon: Icon,
+  label,
+  iconCls,
+  count,
+  badgeCls,
+}: {
+  icon: LucideIcon;
+  label: string;
+  /** 分區圖示主色（生命週期依 STAGE_ICON 階梯、討論分區 text-primary）。 */
+  iconCls: string;
+  /** 分區項目計數（design D8）：徽章與看板欄計數同語彙。 */
+  count: number;
+  /** 計數徽章配色：生命週期取 STAGE_BADGE[stage]、討論分區取看板討論欄同款。 */
+  badgeCls: string;
+}) {
   return (
-    <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground">
-      <Icon className="h-3 w-3" />
+    <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-1 text-xs font-semibold text-muted-foreground">
+      <Icon className={cn("h-3.5 w-3.5", iconCls)} />
       {label}
+      <span
+        data-testid="panel-section-count"
+        className={cn(
+          "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
+          badgeCls,
+        )}
+      >
+        {count}
+      </span>
     </div>
+  );
+}
+
+/** 分區卡片容器（spec「面板樣式（macOS）」；design D2）：半透明圓角卡疊在
+    vibrancy 上——底色用主題 token 的低透明度（非寫死色值），毛玻璃可透出。 */
+function SectionCard({
+  testid,
+  className,
+  children,
+}: {
+  testid: string;
+  /** 附加樣式（空狀態卡的最小高度與垂直置中，design D8）。 */
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section data-testid={testid} className={cn("flex flex-col rounded-lg bg-foreground/5 p-1", className)}>
+      {children}
+    </section>
   );
 }
 
@@ -114,6 +166,7 @@ export function TrayPanel({
   onOpenDiscussion,
   onOpenApp,
   onCopy,
+  onAddProject,
 }: TrayPanelProps) {
   const { t } = useI18n();
   const moreLabel = (n: number) => t("tray.more").replace("{n}", String(n));
@@ -129,10 +182,21 @@ export function TrayPanel({
   })).filter((s) => s.items.length > 0);
 
   return (
-    <div className="flex flex-col p-1.5 text-[13px] text-foreground">
-      {/* 專案區：作用中打勾（與原生選單同序） */}
-      {tabs.length > 0 && (
-        <>
+    // 極淡主色漸層 wash（design D3）：低透明度不遮蔽 vibrancy。圓角 13px 與
+    // Rust 側 apply_vibrancy 半徑一致——wash 畫出圓角外會在頂角留下方形殘料。
+    <div
+      data-testid="panel-root"
+      className="flex flex-col gap-1.5 rounded-[13px] bg-linear-to-b from-primary/5 to-transparent p-2 text-[13px] text-foreground"
+    >
+      {/* 專案 tab 條（spec「面板樣式（macOS）」；design D1）：首字母 avatar＋
+          專案名、作用中實心主色卡、超寬橫向捲動且隱藏捲軸；點 tab 沿用
+          open-project 原地切換語意（不喚主視窗）。刻意用 div 非 button——
+          面板中唯一可 tab 元素會吃到 WebKit 的預設焦點（design D4）。
+          條常駐（零專案時仍有尾端「加入專案」項，design D7）。 */}
+      <div
+        data-testid="panel-project-tabs"
+        className="flex gap-1 overflow-x-auto p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
           {tabs.map((tab) => {
             const active = tab.root === snapshot?.activeRoot;
             return (
@@ -141,42 +205,86 @@ export function TrayPanel({
                 data-testid={`panel-project-${tab.root}`}
                 data-active={active ? "true" : "false"}
                 onClick={() => onOpenProject(tab.root)}
-                className={cn(rowClass, active && "font-medium")}
+                className={cn(
+                  "flex shrink-0 flex-col items-center gap-1 rounded-lg px-2.5 py-1.5",
+                  active ? "bg-primary text-primary-foreground" : "hover:bg-primary/10",
+                )}
               >
-                <span className="w-3.5 shrink-0 text-xs">{active ? "✓" : ""}</span>
-                <span className="truncate">{tab.name}</span>
+                <span
+                  aria-hidden
+                  className={cn(
+                    "flex h-6 w-6 items-center justify-center rounded-md text-[13px] font-semibold",
+                    active ? "bg-primary-foreground/20" : "bg-primary/10 text-primary",
+                  )}
+                >
+                  {tab.name.charAt(0).toUpperCase()}
+                </span>
+                <span className="max-w-24 truncate text-[11px] leading-none">{tab.name}</span>
               </div>
             );
           })}
-          <hr className="my-1 border-foreground/10" />
-        </>
-      )}
+        {/* 尾端快速加入專案（design D7）：開資料夾選擇器，選定即加入並切換。 */}
+        <div
+          data-testid="panel-add-project"
+          title={t("tray.addProject")}
+          aria-label={t("tray.addProject")}
+          onClick={onAddProject}
+          className="flex shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-md border border-dashed border-muted-foreground/40">
+            <Plus className="h-3.5 w-3.5" />
+          </span>
+          <span className="text-[11px] leading-none">{t("tray.addProject")}</span>
+        </div>
+      </div>
 
-      {/* 生命週期分區：各階段 header＋變更列（真進度條取代 unicode 方塊） */}
+      {/* 生命週期分區：各階段一張卡（header 主色階梯圖示＋計數＋變更列） */}
       {staged.length === 0 ? (
-        <div className="px-2 py-1 text-muted-foreground">{t("tray.noChanges")}</div>
+        <div
+          data-testid="panel-empty-changes"
+          className="flex min-h-12 items-center rounded-lg bg-foreground/5 px-2 py-1.5 text-muted-foreground"
+        >
+          {t("tray.noChanges")}
+        </div>
       ) : (
         staged.map(({ stage, items }) => (
-          <section key={stage}>
-            <SectionHeader icon={STAGE_ICONS[stage]} label={t(`stage.${stage}`)} />
+          <SectionCard key={stage} testid={`panel-section-${stage}`}>
+            <SectionHeader
+              icon={STAGE_ICONS[stage]}
+              iconCls={STAGE_ICON[stage]}
+              label={t(`stage.${stage}`)}
+              count={items.length}
+              badgeCls={STAGE_BADGE[stage]}
+            />
             <OverflowGroup
               moreLabel={moreLabel}
               collapseLabel={collapseLabel}
               rows={items.map((c) => (
-                <ChangeRow key={c.name} c={c} onOpen={onOpenChange} onCopy={onCopy} copyLabel={t("tray.copyName")} />
+                <ChangeRow
+                  key={c.name}
+                  c={c}
+                  stage={stage}
+                  onOpen={onOpenChange}
+                  onCopy={onCopy}
+                  copyLabel={t("tray.copyName")}
+                />
               ))}
             />
-          </section>
+          </SectionCard>
         ))
       )}
-
-      <hr className="my-1 border-foreground/10" />
 
       {/* 討論區分流（spec「討論列表」）：「討論」列討論中、「已轉出」列已轉出；
           slug 為題、topic 為描述（識別錨點慣例，與看板討論卡一致） */}
       {openDiscussions.length > 0 ? (
-        <section>
-          <SectionHeader icon={MessageSquareText} label={t("tray.discussionsHeader")} />
+        <SectionCard testid="panel-section-discussions">
+          <SectionHeader
+            icon={MessageSquareText}
+            iconCls="text-primary"
+            label={t("tray.discussionsHeader")}
+            count={openDiscussions.length}
+            badgeCls={STAGE_BADGE.proposed}
+          />
           <OverflowGroup
             moreLabel={moreLabel}
             collapseLabel={collapseLabel}
@@ -184,15 +292,28 @@ export function TrayPanel({
               <DiscussionRow key={d.slug} d={d} onOpen={onOpenDiscussion} onCopy={onCopy} copyLabel={t("tray.copySlug")} />
             ))}
           />
-        </section>
+        </SectionCard>
       ) : (
-        <div className="px-2 py-1 text-muted-foreground">
-          {t("tray.discussions").replace("{n}", "0")}
-        </div>
+        /* 空狀態與非空同構（design D8）：標題＋計數 0、最小高度垂直置中。 */
+        <SectionCard testid="panel-section-discussions" className="min-h-12 justify-center">
+          <SectionHeader
+            icon={MessageSquareText}
+            iconCls="text-primary"
+            label={t("tray.discussionsHeader")}
+            count={0}
+            badgeCls={STAGE_BADGE.proposed}
+          />
+        </SectionCard>
       )}
       {promotedDiscussions.length > 0 && (
-        <section>
-          <SectionHeader icon={ArrowUpRight} label={t("tray.promotedHeader")} />
+        <SectionCard testid="panel-section-promoted">
+          <SectionHeader
+            icon={ArrowUpRight}
+            iconCls="text-primary"
+            label={t("tray.promotedHeader")}
+            count={promotedDiscussions.length}
+            badgeCls={STAGE_BADGE.proposed}
+          />
           <OverflowGroup
             moreLabel={moreLabel}
             collapseLabel={collapseLabel}
@@ -200,10 +321,8 @@ export function TrayPanel({
               <DiscussionRow key={d.slug} d={d} onOpen={onOpenDiscussion} onCopy={onCopy} copyLabel={t("tray.copySlug")} />
             ))}
           />
-        </section>
+        </SectionCard>
       )}
-
-      <hr className="my-1 border-foreground/10" />
 
       {/* 動作區：開啟主視窗（面板樣式下進 app 的把手） */}
       <div onClick={onOpenApp} className={rowClass}>
@@ -244,11 +363,14 @@ function DiscussionRow({
 
 function ChangeRow({
   c,
+  stage,
   onOpen,
   onCopy,
   copyLabel,
 }: {
   c: ChangeItem;
+  /** 所屬生命週期階段——進度條填色取 STAGE_BAR 深淺階梯（design D3）。 */
+  stage: Stage;
   onOpen: (name: string) => void;
   onCopy: (text: string) => void;
   copyLabel: string;
@@ -268,7 +390,11 @@ function ChangeRow({
         {c.totalTasks > 0 && (
           <div className="mt-1 h-1 overflow-hidden rounded-full bg-foreground/10 group-hover:bg-primary-foreground/25">
             <div
-              className="h-full rounded-full bg-primary group-hover:bg-primary-foreground"
+              data-testid="panel-progress-fill"
+              className={cn(
+                "h-full rounded-full group-hover:bg-primary-foreground",
+                STAGE_BAR[stage],
+              )}
               style={{ width: `${pct}%` }}
             />
           </div>

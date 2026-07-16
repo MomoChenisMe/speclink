@@ -77,6 +77,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "tray.openDiscussion": "開啟此討論",
     "tray.copySlug": "複製 slug",
     "tray.noChanges": "尚無進行中變更",
+    "tray.addProject": "加入專案",
   },
   en: {
     "app.currentProject": "Current project",
@@ -153,5 +154,6 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "tray.openDiscussion": "Open this discussion",
     "tray.copySlug": "Copy slug",
     "tray.noChanges": "No changes in progress",
+    "tray.addProject": "Add project",
   },
 };

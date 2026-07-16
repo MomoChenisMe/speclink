@@ -1,6 +1,6 @@
 //! 系統匣面板（tray-status-menu「面板樣式（macOS）」；design D5）：lazy 建立
 //! tray-panel webview 視窗並轉為 nonactivating NSPanel——開啟不奪前景 app 焦點、
-//! 失焦（resign key）自動收合；window-vibrancy 套 popover 材質、positioner 以
+//! 失焦（resign key）自動收合；window-vibrancy 套 HudWindow 材質、positioner 以
 //! tray 相對位置貼齊圖示（座標由前端 handleIconState 餵入）。任一步建立失敗
 //! 回單行 Err——前端據此退回原生選單樣式並於設定頁浮出。
 
@@ -53,7 +53,7 @@ pub fn toggle(app: &AppHandle) -> Result<(), String> {
 }
 
 /// 建立面板視窗：無邊框、透明、不進工作列、置頂、先隱藏；轉 NSPanel 後套
-/// nonactivating style mask、浮動層級、vibrancy popover 材質與失焦收合。
+/// nonactivating style mask、浮動層級、vibrancy HudWindow 材質與失焦收合。
 fn create(app: &AppHandle) -> Result<(), String> {
     let window = WebviewWindowBuilder::new(app, PANEL_LABEL, WebviewUrl::App("panel.html".into()))
         .title("Speclink")
@@ -83,11 +83,12 @@ fn create(app: &AppHandle) -> Result<(), String> {
     panel.set_opaque(false);
     panel.set_transparent(true);
     // 毛玻璃：於類別交換「之後」明確套用（builder 期套用不保證存續；menubar app
-    // 的實證路徑即 window-vibrancy 顯式呼叫）。材質選 Menu——即真 NSMenu 所用、
-    // 淺色模式下透感最接近原生選單（Popover 偏不透明，實測對照後更換）。
+    // 的實證路徑即 window-vibrancy 顯式呼叫）。材質選 HudWindow——透感最強、
+    // 背後內容經 blur 可辨（design D6：Menu 為真 NSMenu 材質但淺色模式近乎
+    // 不透、不滿足「毛玻璃底可透出」，Popover 更不透——實測裁決換用）。
     apply_vibrancy(
         &window,
-        NSVisualEffectMaterial::Menu,
+        NSVisualEffectMaterial::HudWindow,
         Some(NSVisualEffectState::Active),
         Some(13.0),
     )

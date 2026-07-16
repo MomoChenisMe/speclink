@@ -193,6 +193,8 @@ export interface TrayStoreApi {
     /** 系統匣樣式偏好：native-menu 掛原生選單、panel 卸選單改走點擊事件。 */
     trayStyle: TrayStyle;
     openProjectAt: (root: string) => void | Promise<void>;
+    /** 開資料夾選擇器加入專案（面板 add-project 動作用；取消即無事）。 */
+    openProjectViaDialog: () => void | Promise<void>;
     /** 開啟變更詳情抽屜（子選單「開啟此變更」用）。 */
     openDetail: (name: string) => void;
     /** 開啟討論抽屜（討論項點擊用）。 */
@@ -355,6 +357,9 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
     (event) => {
       const { kind, id } = event.payload ?? {};
       if (kind === "open-project" && id) void store.getState().openProjectAt(id);
+      // 快速加入專案（D7）：走 openIn 先喚起主視窗——主視窗位於另一桌面時
+      // macOS 隨聚焦切換 Space，資料夾選擇器才於前景可見；取消即無事。
+      else if (kind === "add-project") openIn(() => void store.getState().openProjectViaDialog());
       else if (kind === "open-change" && id) openIn(() => store.getState().openDetail(id));
       else if (kind === "open-discussion" && id) openIn(() => store.getState().openDiscussion(id));
       else if (kind === "open-app") void openMainWindow();

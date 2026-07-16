@@ -276,6 +276,7 @@ function makeStore(
   openProjectAt = vi.fn(),
   openDetail = vi.fn(),
   openDiscussion = vi.fn(),
+  openProjectViaDialog = vi.fn(),
 ) {
   let state = {
     tabs: [
@@ -297,6 +298,7 @@ function makeStore(
     openProjectAt,
     openDetail,
     openDiscussion,
+    openProjectViaDialog,
   };
   const listeners = new Set<() => void>();
   return {
@@ -314,6 +316,7 @@ function makeStore(
     openProjectAt,
     openDetail,
     openDiscussion,
+    openProjectViaDialog,
   };
 }
 
@@ -529,6 +532,18 @@ describe("initTray 接線（選單）", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(win.show).toHaveBeenCalled();
     expect(bag.openDetail).toHaveBeenCalledWith("alpha");
+  });
+
+  it("面板動作 add-project 先喚起主視窗再轉呼資料夾選擇流程（D7 快速加入專案）", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
+    (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "add-project" } });
+    // 喚起主視窗（openIn 路徑）：主視窗在另一桌面時 macOS 才會切 Space，
+    // 選擇器才於前景可見（D7 實測修訂）。openMainWindow 為 async，沖洗微任務。
+    await new Promise((r) => setTimeout(r, 0));
+    expect(win.show).toHaveBeenCalled();
+    expect(bag.openProjectViaDialog).toHaveBeenCalled();
   });
 
   it("dispose 取消訂閱並關閉 tray", async () => {
