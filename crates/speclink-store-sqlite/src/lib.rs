@@ -761,8 +761,7 @@ impl TeamStore for SqliteTeamStore {
 
         let tx = inner.conn.transaction().map_err(map_sqlite)?;
 
-        // Pre-read existing revisions to classify each document and enforce
-        // create-new emptiness.
+        // Pre-read existing revisions to classify each document.
         let mut existing: Vec<Option<u64>> = Vec::with_capacity(bundle.documents.len());
         for doc in &bundle.documents {
             let doc_id = encode_doc(&doc.doc);
@@ -777,7 +776,16 @@ impl TeamStore for SqliteTeamStore {
                 .map(|v| v as u64);
             existing.push(current);
         }
-        if mode == ImportMode::CreateNew && existing.iter().any(Option::is_some) {
+        // Create-new is gated on the whole scope, not on the bundle's own
+        // documents: anything already there rejects the import.
+        let scope_holds_any_document: bool = tx
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM documents WHERE project = ?1 AND repo = ?2)",
+                params![project, repo],
+                |r| r.get(0),
+            )
+            .map_err(map_sqlite)?;
+        if mode == ImportMode::CreateNew && scope_holds_any_document {
             return Err(StoreError::Backend {
                 source: "import (create-new): target scope already holds documents".into(),
             });

@@ -6,7 +6,8 @@
 //! implementation claims. Any failure fails the suite as a whole.
 
 use crate::types::{
-    Capability, CapabilityLevel, FaultPoint, ImportMode, OutboxCursor, Revision, CONTRACT_VERSION,
+    Capability, CapabilityLevel, FaultPoint, ImportMode, ImportOutcome, OutboxCursor, Revision,
+    CONTRACT_VERSION,
 };
 use crate::{StoreError, TeamStore};
 
@@ -133,6 +134,10 @@ pub fn run(harness: &mut dyn StoreHarness) -> ConformanceReport {
     }
     if has(Capability::Backup) {
         gates.push(("check:backup-roundtrip", check_backup_roundtrip(harness)));
+        gates.push((
+            "check:import-createnew-scope",
+            check_import_createnew_scope(harness),
+        ));
     }
     for (check, outcome) in gates {
         if let Err(detail) = outcome {
@@ -656,6 +661,80 @@ fn check_backup_roundtrip(harness: &mut dyn StoreHarness) -> Result<(), String> 
         return Err("rejected import still moved the store".into());
     }
     Ok(())
+}
+
+/// Create-new is gated on the whole target scope, not on the bundle's own
+/// documents: a scope holding anything at all rejects the import outright,
+/// even when the bundle names none of what is already there. Overwrite
+/// carries no such precondition.
+fn check_import_createnew_scope(harness: &mut dyn StoreHarness) -> Result<(), String> {
+    let scope = scope("main");
+
+    // A bundle holding only billing, exported from a scope of its own.
+    let source = harness.reset();
+    create(source, &scope, &[(doc("billing"), "billing v1")], vec![])?;
+    let bundle = source
+        .export(&scope)
+        .map_err(|e| format!("export failed: {e}"))?;
+
+    // The target already holds auth — a document the bundle never mentions.
+    let target = harness.reset();
+    let before = create(target, &scope, &[(doc("auth"), "auth v1")], vec![])?;
+    match target.import(bundle, ImportMode::CreateNew) {
+        Err(StoreError::Backend { .. }) => {}
+        Ok(report) => {
+            return Err(format!(
+                "create-new import accepted a scope already holding a document: {report:?}"
+            ))
+        }
+        Err(other) => return Err(format!("expected a backend failure, got: {other}")),
+    }
+    if let Some(content) = read_content(target, &scope, &doc("billing"))? {
+        return Err(format!(
+            "rejected create-new import still applied a document: {content:?}"
+        ));
+    }
+    match read_content(target, &scope, &doc("auth"))? {
+        Some(content) if content == "auth v1" => {}
+        other => {
+            return Err(format!(
+                "rejected create-new import disturbed the target scope: {other:?}"
+            ))
+        }
+    }
+    {
+        let snap = target
+            .snapshot(&scope)
+            .map_err(|e| format!("snapshot failed: {e}"))?;
+        if snap.revision() != before {
+            return Err(format!(
+                "rejected create-new import moved the project revision: {:?} to {:?}",
+                before,
+                snap.revision()
+            ));
+        }
+    }
+
+    // Overwrite mode applies to a scope holding the same document.
+    let source = harness.reset();
+    create(source, &scope, &[(doc("auth"), "auth v2")], vec![])?;
+    let bundle = source
+        .export(&scope)
+        .map_err(|e| format!("export failed: {e}"))?;
+
+    let target = harness.reset();
+    create(target, &scope, &[(doc("auth"), "auth v1")], vec![])?;
+    let report = target
+        .import(bundle, ImportMode::Overwrite)
+        .map_err(|e| format!("overwrite import into a non-empty scope failed: {e}"))?;
+    match report.documents.as_slice() {
+        [imported] if imported.outcome == ImportOutcome::Overwritten => {}
+        other => return Err(format!("expected one overwritten document, got: {other:?}")),
+    }
+    match read_content(target, &scope, &doc("auth"))? {
+        Some(content) if content == "auth v2" => Ok(()),
+        other => Err(format!("overwrite import did not apply: {other:?}")),
+    }
 }
 
 #[cfg(test)]
