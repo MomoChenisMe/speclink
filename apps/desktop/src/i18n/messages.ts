@@ -35,6 +35,11 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.uiLocaleHelp":
       "只影響這台機器上的介面顯示，存於 app 本機；不寫入任何專案檔案，與 config.yaml 的 locale（AI 產出語言）無關。",
     "settings.followSystem": "跟隨系統",
+    "settings.trayStyleLabel": "系統匣樣式",
+    "settings.trayStyleNative": "原生選單",
+    "settings.trayStylePanel": "面板",
+    "settings.trayStyleHelp":
+      "「面板」為試驗樣式：點擊系統匣圖示改為彈出貼齊圖示的面板（僅 macOS）。切換即時生效，存於 app 本機。",
     "settings.localTabLabel": "本機設定",
     "settings.localTabNote": "此簽的內容僅存於此裝置，不寫入版本庫。",
     "settings.policyCard": "產出政策",
@@ -69,7 +74,13 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "tray.quit": "結束",
     "tray.discussions": "討論 {n}",
     "tray.discussionsHeader": "討論",
+    "tray.promotedHeader": "已轉出",
+    "tray.more": "還有 {n} 個…",
+    "tray.collapse": "收合",
     "tray.openChange": "開啟此變更",
+    "tray.copyName": "複製名稱",
+    "tray.openDiscussion": "開啟此討論",
+    "tray.copySlug": "複製 slug",
     "tray.noChanges": "尚無進行中變更",
   },
   en: {
@@ -105,6 +116,11 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.uiLocaleHelp":
       "Only affects this machine's interface and is stored locally; it never writes to project files and is unrelated to config.yaml's locale (AI output language).",
     "settings.followSystem": "Follow system",
+    "settings.trayStyleLabel": "Tray style",
+    "settings.trayStyleNative": "Native menu",
+    "settings.trayStylePanel": "Panel",
+    "settings.trayStyleHelp":
+      "\"Panel\" is an experimental style: clicking the tray icon opens a panel anchored to it (macOS only). Takes effect immediately and is stored locally.",
     "settings.localTabLabel": "Local settings",
     "settings.localTabNote": "Everything on this tab is stored on this device only — never written to the repository.",
     "settings.policyCard": "Output policy",
@@ -139,7 +155,13 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "tray.quit": "Quit",
     "tray.discussions": "Discussions {n}",
     "tray.discussionsHeader": "Discussions",
+    "tray.promotedHeader": "Promoted",
+    "tray.more": "{n} more…",
+    "tray.collapse": "Collapse",
     "tray.openChange": "Open this change",
+    "tray.copyName": "Copy name",
+    "tray.openDiscussion": "Open this discussion",
+    "tray.copySlug": "Copy slug",
     "tray.noChanges": "No changes in progress",
   },
 };

@@ -13,9 +13,18 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 speclink-desktop-core = { path = "../core" }
 notify-debouncer-mini = "0.7.0"
+
+# 面板樣式（tray-status-menu「面板樣式（macOS）」）僅 macOS：非 macOS 建置不攜入。
+[target.'cfg(target_os = "macos")'.dependencies]
+# 釘 commit（v2.1 分支 2026-07-16 快照）：git 相依的供應鏈衛生，升級須明改 rev。
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e894383aa068ec5365a42994e3ac94ba1b6" }
+tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
+# 釘 0.6 與 tauri 內建 window effects 的同版共用——不同版本並存會重複連結 objc 類別符號。
+window-vibrancy = "0.6"

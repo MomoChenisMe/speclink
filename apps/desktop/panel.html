@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-Hant" style="background: transparent">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Speclink Tray Panel</title>
+    <style>
+      /* vibrancy 透出＋原生手感：背景透明、關 rubber-band、內容不可選取 */
+      html,
+      body {
+        background: transparent !important;
+        overflow-y: auto;
+        overscroll-behavior: none;
+        user-select: none;
+        -webkit-user-select: none;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body style="background: transparent">
+    <div id="root"></div>
+    <script type="module" src="/src/panel/main.tsx"></script>
+  </body>
+</html>

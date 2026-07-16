@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { Archive, GitBranch, FileText, Settings, FolderOpen } from "lucide-react";
 import {
   KanbanBoard,
@@ -27,7 +28,7 @@ import {
 } from "@speclink/ui";
 
 import { createAppStore } from "./store";
-import { initTray, type TrayController } from "./tray";
+import { detectMacOS, initTray, type TrayController } from "./tray";
 import { ProjectTabs } from "./components/ProjectTabs";
 import { SettingsView } from "./views/SettingsView";
 import type { WorkspaceAdapter } from "./adapter/workspace";
@@ -195,7 +196,13 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
   useEffect(() => {
     let controller: TrayController | null = null;
     let disposed = false;
-    initTray(useStore)
+    // 面板樣式（macOS）：點擊圖示 toggle 面板；建立失敗退回原生選單並於設定頁浮出錯誤。
+    const onPanelToggle = () => {
+      void invoke("toggle_tray_panel").catch((e) => {
+        useStore.getState().panelFallback(String(e));
+      });
+    };
+    initTray(useStore, { onPanelToggle })
       .then((c) => {
         if (disposed) c.dispose();
         else controller = c;
@@ -339,6 +346,10 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
               workspace={workspace}
               localePref={localePref}
               onLocalePrefChange={onLocalePrefChange}
+              showTrayStyle={detectMacOS()}
+              trayStyle={s.trayStyle}
+              onTrayStyleChange={s.setTrayStyle}
+              trayPanelError={s.trayPanelError}
             />
           ) : workspace !== undefined && s.tabs.length === 0 ? (
             // 零分頁（首次使用）：空狀態引導頁取代空看板。

@@ -5,6 +5,9 @@
 
 mod watch;
 
+#[cfg(target_os = "macos")]
+mod panel;
+
 use std::path::PathBuf;
 
 use serde_json::Value;
@@ -301,6 +304,20 @@ fn write_workflow_content(
     )
 }
 
+/// 系統匣面板 toggle（tray-status-menu「面板樣式（macOS）」）：macOS 委派
+/// panel 模組；其他平台恆回 Err（面板樣式偏好在非 macOS 不可達，此為守門）。
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn toggle_tray_panel(app: tauri::AppHandle) -> Result<(), String> {
+    panel::toggle(&app)
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn toggle_tray_panel() -> Result<(), String> {
+    Err("tray panel is macOS-only".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -310,8 +327,16 @@ pub fn run() {
     let root = speclink_desktop_core::init_core_context(&cwd)
         .map(|ctx| ctx.workspace.root)
         .unwrap_or(cwd);
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init());
+    // 面板樣式相依僅 macOS 註冊（design D6）：positioner 供 tray 相對定位、
+    // nspanel 供不搶焦點的 NSPanel 容器。
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_nspanel::init());
+    builder
         .setup(move |app| {
             // spec 目錄監看：外部寫者（CLI、agent、編輯器）的變更去抖後以
             // workspace-changed 事件通知前端整批 refresh。建立失敗只記錄——
@@ -366,7 +391,8 @@ pub fn run() {
             read_settings,
             write_app_tools,
             write_workflow_config,
-            write_workflow_content
+            write_workflow_content,
+            toggle_tray_panel
         ])
         .run(tauri::generate_context!())
         .expect("error while running Speclink desktop app");

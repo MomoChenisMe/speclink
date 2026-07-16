@@ -25,6 +25,7 @@ import {
 
 import type { SettingsSnapshot, WorkspaceAdapter } from "../adapter/workspace";
 import type { LocalePreference } from "../i18n/locale";
+import type { TrayStyle } from "../trayStyle";
 
 /** 行↔條目轉換（design D2）：一行一條規則——儲存時逐行修剪頭尾空白、空行滌除，行序即寫入順序。 */
 const entriesToText = (entries: string[]) => entries.join("\n");
@@ -43,6 +44,14 @@ export interface SettingsViewProps {
   localePref: LocalePreference;
   /** 切換即時生效並持久化（App 層負責寫 localStorage）。 */
   onLocalePrefChange: (pref: LocalePreference) => void;
+  /** 系統匣樣式卡僅 macOS 顯示（面板樣式為 macOS 限定；App 層判平台）。 */
+  showTrayStyle?: boolean;
+  /** 系統匣樣式偏好現值（app 本機；缺值視為原生選單）。 */
+  trayStyle?: TrayStyle;
+  /** 切換即時對系統匣生效並持久化（store 負責寫 localStorage）。 */
+  onTrayStyleChange?: (style: TrayStyle) => void;
+  /** 面板建立失敗的單行錯誤（spec：退回原生選單並於設定頁浮出）。 */
+  trayPanelError?: string | null;
 }
 
 function FieldHelp({ children }: { children: React.ReactNode }) {
@@ -134,7 +143,15 @@ function CardEditControls({
   );
 }
 
-export function SettingsView({ workspace, localePref, onLocalePrefChange }: SettingsViewProps) {
+export function SettingsView({
+  workspace,
+  localePref,
+  onLocalePrefChange,
+  showTrayStyle = false,
+  trayStyle = "native-menu",
+  onTrayStyleChange,
+  trayPanelError = null,
+}: SettingsViewProps) {
   const { t } = useI18n();
   const [snap, setSnap] = useState<SettingsSnapshot | null>(null);
   const [tools, setTools] = useState<string[]>([]);
@@ -257,6 +274,11 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
     { value: null, label: t("settings.followSystem") },
     { value: "zh-TW", label: "繁體中文" },
     { value: "en", label: "English" },
+  ];
+
+  const trayStyleOptions: Array<{ value: TrayStyle; label: string }> = [
+    { value: "native-menu", label: t("settings.trayStyleNative") },
+    { value: "panel", label: t("settings.trayStylePanel") },
   ];
 
   const contextCollapsed = !ctxEditing && !contextExpanded && isLongContext(contextText);
@@ -549,6 +571,38 @@ export function SettingsView({ workspace, localePref, onLocalePrefChange }: Sett
               <FieldHelp>{t("settings.uiLocaleHelp")}</FieldHelp>
             </CardContent>
           </Card>
+          {/* 系統匣樣式卡（spec「系統匣樣式偏好」）：僅 macOS 顯示；切換即時對系統匣
+              生效並持久化於 app 本機，不觸碰 .speclink.yaml 與 config.yaml。 */}
+          {showTrayStyle && (
+            <Card data-testid="tray-style-card">
+              <CardHeader>
+                <CardTitle className="text-base">{t("settings.trayStyleLabel")}</CardTitle>
+              </CardHeader>
+              <CardContent className="gap-2">
+                <div className="flex gap-1.5" data-testid="tray-style">
+                  {trayStyleOptions.map((opt) => (
+                    <Button
+                      key={opt.value}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "text-sm font-normal",
+                        trayStyle === opt.value
+                          ? "border-primary bg-primary/8 font-medium text-primary hover:bg-primary/8 hover:text-primary"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => onTrayStyleChange?.(opt.value)}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+                <FieldHelp>{t("settings.trayStyleHelp")}</FieldHelp>
+                {trayPanelError && <ParseErrorBanner message={trayPanelError} />}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>
