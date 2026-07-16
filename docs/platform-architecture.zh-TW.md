@@ -1239,6 +1239,11 @@ Project/Repo，PAT 只是 fallback。binding/capability handshake 成功後才�
 invalidate，Desktop 仍以 Query + ETag 重讀。Server 不可用時 Desktop 保留唯讀 snapshot，不得將遠端 workspace
 自動改成本地 workspace。
 
+**本地開發啟動**：開發迴圈不經 docker——repo root 的 `npm run dev` 讀取 `.env`（對照 `.env.example`）插值生成
+`.dev/config.yaml`，native 直跑 server（`cargo run` 或 release binary＋`--config`）並同起 Desktop，之後走與上述
+完全相同的一條 /setup 初始化流程。這不是另一顆 server：docker compose 是部署形態，本地開發啟動只是同一顆
+speclink-server 的另一種啟動方式（「組態 YAML 不做環境變數展開、由編排層插值」的決策在兩者一體適用）。
+
 建議官方交付拆成：
 
 ```text
