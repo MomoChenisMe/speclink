@@ -519,58 +519,31 @@ describe("SettingsView UI 語言三選（design D8）", () => {
   });
 });
 
-describe("系統匣樣式偏好（spec「系統匣樣式偏好」；design D4）", () => {
-  it("macOS（showTrayStyle）顯示二選並於點選時回呼、不觸碰兩份專案設定檔", async () => {
-    const onTrayStyleChange = vi.fn();
-    const ws = fakeWorkspace(snapshot());
-    render(
-      <SettingsView
-        workspace={ws}
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        showTrayStyle
-        trayStyle="native-menu"
-        onTrayStyleChange={onTrayStyleChange}
-      />,
-    );
-    await screen.findByRole("tab", { name: "本機設定" });
-    switchToTab("本機設定");
-    const group = await screen.findByTestId("tray-style");
-    fireEvent.click(within(group).getByText("面板"));
-    expect(onTrayStyleChange).toHaveBeenCalledWith("panel");
-    fireEvent.click(within(group).getByText("原生選單"));
-    expect(onTrayStyleChange).toHaveBeenCalledWith("native-menu");
-    expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
-    expect(ws.writeAppTools).not.toHaveBeenCalled();
-  });
-
-  it("非 macOS（未開 showTrayStyle）不顯示系統匣樣式卡", async () => {
+describe("系統匣樣式卡已拆除（tray-macos-panel-only：樣式由平台決定）", () => {
+  it("本機設定簽不再出現「系統匣樣式」卡", async () => {
     const ws = fakeWorkspace(snapshot());
     render(<SettingsView workspace={ws} localePref={null} onLocalePrefChange={vi.fn()} />);
     await screen.findByRole("tab", { name: "本機設定" });
     switchToTab("本機設定");
     await screen.findByTestId("ui-locale");
     expect(screen.queryByTestId("tray-style-card")).toBeNull();
+    expect(screen.queryByText("系統匣樣式")).toBeNull();
   });
 
-  it("面板建立失敗：系統匣樣式卡浮出單行錯誤（退回原生選單由 store 落實）", async () => {
+  it("面板建立失敗：本機設定簽以獨立警示行浮出單行錯誤（規格「面板樣式（macOS）」失敗場景）", async () => {
     const ws = fakeWorkspace(snapshot());
     render(
       <SettingsView
         workspace={ws}
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        showTrayStyle
-        trayStyle="native-menu"
-        onTrayStyleChange={vi.fn()}
         trayPanelError="tray panel window creation failed: boom"
       />,
     );
     await screen.findByRole("tab", { name: "本機設定" });
     switchToTab("本機設定");
-    const card = await screen.findByTestId("tray-style-card");
-    expect(within(card).getByRole("alert").textContent).toContain(
-      "tray panel window creation failed: boom",
-    );
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("tray panel window creation failed: boom");
+    expect(screen.queryByTestId("tray-style-card")).toBeNull();
   });
 });

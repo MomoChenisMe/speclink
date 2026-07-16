@@ -25,7 +25,7 @@ import {
   upsertTab,
   type ProjectTab,
 } from "./tabs";
-import { readTrayStylePreference, writeTrayStylePreference, type TrayStyle } from "./trayStyle";
+import { detectMacOS, type TrayStyle } from "./tray";
 
 /** 主頁面：變更看板（預設）、規格頁、已封存獨立頁或設定頁。 */
 export type BoardView = "board" | "specs" | "archived" | "settings";
@@ -124,12 +124,10 @@ export interface AppState {
   /** Ctrl+1..9：直達第 N 個分頁（1-based；超界不動作）。 */
   gotoTab: (n: number) => Promise<void>;
 
-  // --- 系統匣樣式偏好（app 本機；設定頁 macOS 限定、tray 接線層訂閱分流） ---
-  /** 系統匣樣式現值（native-menu | panel；缺值視為 native-menu）。 */
+  // --- 系統匣樣式（平台決定；tray 接線層訂閱分流） ---
+  /** 系統匣樣式現值：macOS＝panel、其餘＝native-menu；執行期狀態、不持久化。 */
   trayStyle: TrayStyle;
-  /** 切換即時對系統匣生效並持久化於 app 本機（localStorage 單鍵）。 */
-  setTrayStyle: (style: TrayStyle) => void;
-  /** 面板建立失敗的單行錯誤（設定頁系統匣樣式卡浮出；切換樣式時清除）。 */
+  /** 面板建立失敗的單行錯誤（設定頁本機設定簽以獨立警示行浮出）。 */
   trayPanelError: string | null;
   /** 面板建立失敗的退回（spec：退回原生選單並浮出單行錯誤）。 */
   panelFallback: (message: string) => void;
@@ -423,15 +421,10 @@ export function createAppStore(
     pendingInit: null,
     tabErrors: {},
 
-    // --- 系統匣樣式偏好 ---
-    trayStyle: readTrayStylePreference(),
-    setTrayStyle(style) {
-      writeTrayStylePreference(style);
-      set({ trayStyle: style, trayPanelError: null });
-    },
+    // --- 系統匣樣式（平台決定、不持久化） ---
+    trayStyle: detectMacOS() ? "panel" : "native-menu",
     trayPanelError: null,
     panelFallback(message) {
-      writeTrayStylePreference("native-menu");
       set({ trayStyle: "native-menu", trayPanelError: message });
     },
 
