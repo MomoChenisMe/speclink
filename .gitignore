@@ -13,5 +13,8 @@ node_modules/
 apps/desktop/dist/
 apps/desktop/src-tauri/gen/
 
+# Deployment secrets（deploy/.env.example 是入版本控制的樣板）
+deploy/.env
+
 # macOS
 .DS_Store

@@ -1,0 +1,66 @@
+# Speclink server — PostgreSQL profile（server ＋ postgres 兩服務）：
+#
+#   cp .env.example .env    # 填入密碼；.env 不入版本控制
+#   docker compose -f docker-compose.postgres.yml up -d
+#
+# secret 紀律（架構 §13.2）：密碼只經環境變數注入——store url 不含密碼，
+# server 由 SPECLINK_POSTGRES_PASSWORD 補全；postgres 服務用同源的變數初始化。
+# 版本控制內（本檔與 .env.example）沒有任何明文密碼。
+#
+# identity 資料庫維持 /data 下的 SQLite 檔（identity 獨立於 TeamStore driver 選擇）。
+
+name: speclink-postgres
+
+configs:
+  server-config:
+    # server 的組態 YAML 不做環境變數展開，改由 compose 在 up 時插值產生本檔。
+    # url 刻意不含密碼：postgres driver 會以 SPECLINK_POSTGRES_PASSWORD 補全。
+    content: |
+      store:
+        driver: postgres
+        url: postgres://speclink@postgres:5432/speclink
+      identity:
+        driver: sqlite
+        path: /data/identity.db
+      # 預設與 SPECLINK_PORT 連動（同 docker-compose.yml）。
+      public_url: ${SPECLINK_PUBLIC_URL:-http://localhost:${SPECLINK_PORT:-8080}}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: speclink
+      POSTGRES_DB: speclink
+      POSTGRES_PASSWORD: ${SPECLINK_POSTGRES_PASSWORD:?請複製 .env.example 為 .env 並設定密碼}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U speclink -d speclink"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    image: ghcr.io/momochenisme/speclink-server:latest
+    # 同 docker-compose.yml：本機無映像時就地建置。要用官方映像先 docker compose pull。
+    build:
+      context: ..
+      dockerfile: crates/speclink-server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPECLINK_POSTGRES_PASSWORD: ${SPECLINK_POSTGRES_PASSWORD:?請複製 .env.example 為 .env 並設定密碼}
+    ports:
+      - "${SPECLINK_PORT:-8080}:8080"
+    configs:
+      - source: server-config
+        target: /etc/speclink/config.yaml
+    volumes:
+      - speclink-data:/data
+
+volumes:
+  speclink-data:
+  postgres-data:
