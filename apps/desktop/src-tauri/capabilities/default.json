@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "dialog:allow-open",
+    "clipboard-manager:allow-write-text",
     "core:tray:default",
     "core:tray:allow-set-title",
     "core:menu:default",

@@ -4,6 +4,8 @@ import { TrayIcon } from "@tauri-apps/api/tray";
 import { Menu } from "@tauri-apps/api/menu";
 import { Image } from "@tauri-apps/api/image";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { emit as tauriEmit, listen as tauriListen } from "@tauri-apps/api/event";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 import {
   buildTrayModel,
@@ -21,6 +23,14 @@ vi.mock("@tauri-apps/api/tray", () => ({ TrayIcon: { new: vi.fn() } }));
 vi.mock("@tauri-apps/api/menu", () => ({ Menu: { new: vi.fn() } }));
 vi.mock("@tauri-apps/api/image", () => ({ Image: { fromBytes: vi.fn() } }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: vi.fn() }));
+vi.mock("@tauri-apps/api/event", () => ({
+  emit: vi.fn().mockResolvedValue(undefined),
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn() }));
+vi.mock("@tauri-apps/plugin-positioner", () => ({
+  handleIconState: vi.fn().mockResolvedValue(undefined),
+}));
 
 const fakeT = (key: string): string =>
   (({
@@ -28,7 +38,12 @@ const fakeT = (key: string): string =>
     "tray.quit": "結束",
     "tray.discussions": "討論 {n}",
     "tray.discussionsHeader": "討論",
+    "tray.promotedHeader": "已轉出",
+    "tray.more": "還有 {n} 個…",
     "tray.openChange": "開啟此變更",
+    "tray.copyName": "複製名稱",
+    "tray.openDiscussion": "開啟此討論",
+    "tray.copySlug": "複製 slug",
     "tray.noChanges": "尚無進行中變更",
     "stage.proposed": "提案中",
     "stage.in-progress": "進行中",
@@ -53,8 +68,8 @@ function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
       change({ name: "rdy", totalTasks: 4, completedTasks: 4 }), // ready
     ],
     discussions: [
-      { slug: "d1", topic: "討論一" },
-      { slug: "d2", topic: "討論二" },
+      { slug: "d1", topic: "討論一", promoted: false },
+      { slug: "d2", topic: "討論二", promoted: false },
     ],
     ...over,
   };
@@ -97,15 +112,30 @@ describe("buildTrayModel", () => {
     expect(headers.map((h) => h.label)).toEqual(["提案中", "進行中", "已就緒", "討論"]);
   });
 
-  it("變更列帶進度條標籤與「開啟此變更」子選單動作", () => {
+  it("變更列帶進度條標籤，子選單動作依序為「開啟此變更」「複製名稱」", () => {
     const changes = byKind(buildTrayModel(snapshot(), fakeT).items, "change");
     expect(changes.map((c) => c.name)).toEqual(["prop", "inprog", "rdy"]);
     // 進行中 3/12 → 進度條＋n/m
     const inprog = changes.find((c) => c.name === "inprog")!;
     expect(inprog.label).toBe("inprog  ▓▓░░░░░░ 3/12");
-    expect(inprog.actions).toEqual([{ kind: "open-change", label: "開啟此變更" }]);
+    expect(inprog.actions).toEqual([
+      { kind: "open-change", label: "開啟此變更" },
+      { kind: "copy-name", label: "複製名稱" },
+    ]);
     // ready 全滿
     expect(changes.find((c) => c.name === "rdy")!.label).toBe("rdy  ▓▓▓▓▓▓▓▓ 4/4");
+  });
+
+  it("複製來源為純名稱：標籤含進度條字元、name 不含（spec 例：0/10）", () => {
+    const items = buildTrayModel(
+      snapshot({
+        changes: [change({ name: "phase2-e2e-chain", totalTasks: 10, completedTasks: 0 })],
+      }),
+      fakeT,
+    ).items;
+    const c = byKind(items, "change")[0];
+    expect(c.label).toBe("phase2-e2e-chain  ░░░░░░░░ 0/10");
+    expect(c.name).toBe("phase2-e2e-chain");
   });
 
   it("無任務的變更僅顯示名稱（不畫進度條）", () => {
@@ -116,12 +146,16 @@ describe("buildTrayModel", () => {
     expect(byKind(items, "change")[0].label).toBe("empty-tasks");
   });
 
-  it("列出討論（header＋各討論項，帶 slug）", () => {
+  it("討論項以 slug 為標籤、攜帶 topic，子選單動作依序為「開啟此討論」「複製 slug」", () => {
     const items = buildTrayModel(snapshot(), fakeT).items;
     const disc = byKind(items, "discussion");
-    expect(disc.map((d) => [d.slug, d.label])).toEqual([
-      ["d1", "討論一"],
-      ["d2", "討論二"],
+    expect(disc.map((d) => [d.slug, d.label, d.topic])).toEqual([
+      ["d1", "d1", "討論一"],
+      ["d2", "d2", "討論二"],
+    ]);
+    expect(disc[0].actions).toEqual([
+      { kind: "open-discussion", label: "開啟此討論" },
+      { kind: "copy-slug", label: "複製 slug" },
     ]);
   });
 
@@ -135,6 +169,77 @@ describe("buildTrayModel", () => {
     const items = buildTrayModel(snapshot({ discussions: [] }), fakeT).items;
     expect(byKind(items, "discussion")).toHaveLength(0);
     expect(byKind(items, "empty").some((e) => e.label === "討論 0")).toBe(true);
+  });
+
+  it("討論分流：已轉出討論列於「已轉出」分區、討論中列於「討論」分區", () => {
+    const items = buildTrayModel(
+      snapshot({
+        discussions: [
+          { slug: "open-d", topic: "討論中的", promoted: false },
+          { slug: "prom-d", topic: "已轉出的", promoted: true },
+        ],
+      }),
+      fakeT,
+    ).items;
+    const headers = byKind(items, "header").map((h) => h.label);
+    expect(headers).toContain("討論");
+    expect(headers).toContain("已轉出");
+    // 順序：討論 header → open-d → 已轉出 header → prom-d
+    const labels = items.map((i) => ("label" in i ? i.label : i.kind));
+    const iDisc = labels.indexOf("討論");
+    const iOpen = labels.indexOf("open-d");
+    const iProm = labels.indexOf("已轉出");
+    const iPromD = labels.indexOf("prom-d");
+    expect(iDisc).toBeLessThan(iOpen);
+    expect(iOpen).toBeLessThan(iProm);
+    expect(iProm).toBeLessThan(iPromD);
+    // 兩分區子選單結構相同（同為 discussion 項、帶完整動作）
+    const disc = byKind(items, "discussion");
+    expect(disc.map((d) => d.actions.length)).toEqual([2, 2]);
+  });
+
+  it("無已轉出討論時不出現「已轉出」分區；無討論中仍顯示「討論 0」且已轉出照列", () => {
+    const none = buildTrayModel(snapshot(), fakeT).items;
+    expect(byKind(none, "header").map((h) => h.label)).not.toContain("已轉出");
+
+    const onlyPromoted = buildTrayModel(
+      snapshot({ discussions: [{ slug: "prom-d", topic: "已轉出的", promoted: true }] }),
+      fakeT,
+    ).items;
+    expect(byKind(onlyPromoted, "empty").some((e) => e.label === "討論 0")).toBe(true);
+    expect(byKind(onlyPromoted, "header").map((h) => h.label)).toContain("已轉出");
+    expect(byKind(onlyPromoted, "discussion").map((d) => d.slug)).toEqual(["prom-d"]);
+  });
+
+  it("分區逾 5 筆：直列前 5、尾端「還有 N 個…」內嵌其餘（spec Example 門檻邊界 5/6/20）", () => {
+    const mk = (n: number) =>
+      Array.from({ length: n }, (_, i) => change({ name: `c${i}`, totalTasks: 2, completedTasks: 1 }));
+    // 5 → 無溢出節點
+    let items = buildTrayModel(snapshot({ changes: mk(5), discussions: [] }), fakeT).items;
+    expect(byKind(items, "change")).toHaveLength(5);
+    expect(byKind(items, "overflow")).toHaveLength(0);
+    // 6 → 5＋還有 1 個
+    items = buildTrayModel(snapshot({ changes: mk(6), discussions: [] }), fakeT).items;
+    expect(byKind(items, "change")).toHaveLength(5);
+    let overflow = byKind(items, "overflow")[0];
+    expect(overflow.label).toBe("還有 1 個…");
+    expect(overflow.items).toHaveLength(1);
+    // 20 → 5＋還有 15 個，內嵌項目保有完整動作（同構 change 模型）
+    items = buildTrayModel(snapshot({ changes: mk(20), discussions: [] }), fakeT).items;
+    expect(byKind(items, "change")).toHaveLength(5);
+    overflow = byKind(items, "overflow")[0];
+    expect(overflow.label).toBe("還有 15 個…");
+    expect(overflow.items).toHaveLength(15);
+    const nested = overflow.items[0] as Extract<TrayMenuItem, { kind: "change" }>;
+    expect(nested.kind).toBe("change");
+    expect(nested.actions).toHaveLength(2);
+  });
+
+  it("討論分區同樣適用溢出門檻", () => {
+    const ds = Array.from({ length: 7 }, (_, i) => ({ slug: `d${i}`, topic: `t${i}`, promoted: false }));
+    const items = buildTrayModel(snapshot({ discussions: ds }), fakeT).items;
+    expect(byKind(items, "discussion")).toHaveLength(5);
+    expect(byKind(items, "overflow")[0].label).toBe("還有 2 個…");
   });
 
   it("徽章＝進行中變更數", () => {
@@ -182,7 +287,13 @@ function makeStore(
       change({ name: "alpha", totalTasks: 12, completedTasks: 3 }),
       change({ name: "gamma", totalTasks: 5, completedTasks: 0 }),
     ],
-    discussions: { active: [{ slug: "d1", topic: "t1" }, { slug: "d2", topic: "t2" }] },
+    discussions: {
+      active: [
+        { slug: "d1", topic: "t1", promotedTo: [] as string[] },
+        { slug: "d2", topic: "t2", promotedTo: [] as string[] },
+      ],
+    },
+    trayStyle: "native-menu" as "native-menu" | "panel",
     openProjectAt,
     openDetail,
     openDiscussion,
@@ -210,12 +321,18 @@ function makeStore(
 type AnyItem = any;
 
 describe("initTray 接線（選單）", () => {
-  const trayObj = { setMenu: vi.fn(), setTitle: vi.fn(), close: vi.fn() };
+  const trayObj = {
+    setMenu: vi.fn(),
+    setTitle: vi.fn(),
+    setShowMenuOnLeftClick: vi.fn(),
+    close: vi.fn(),
+  };
   const win = { show: vi.fn(), setFocus: vi.fn(), unminimize: vi.fn() };
   let lastItems: AnyItem[] = [];
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(writeText).mockResolvedValue(undefined as never);
     vi.mocked(Image.fromBytes).mockResolvedValue({} as never);
     vi.mocked(Menu.new).mockImplementation(async (opts?: { items?: AnyItem[] }) => {
       lastItems = opts?.items ?? [];
@@ -278,14 +395,43 @@ describe("initTray 接線（選單）", () => {
     expect(bag.openDetail).toHaveBeenCalledWith("alpha");
   });
 
-  it("點討論項開主視窗並開啟該討論", async () => {
+  it("變更子選單「複製名稱」寫入剪貼簿且不開主視窗", async () => {
     const bag = makeStore();
     await initTray(bag.store, { isMacOS: true });
-    const disc = lastItems.find((i) => i.text === "t1");
+    const alpha = lastItems.find((i) => Array.isArray(i.items) && (i.text ?? "").startsWith("alpha"));
+    expect(alpha.items.map((a: AnyItem) => a.text)).toEqual(["開啟此變更", "複製名稱"]);
+    await alpha.items[1].action();
+    expect(writeText).toHaveBeenCalledWith("alpha");
+    expect(win.show).not.toHaveBeenCalled();
+  });
+
+  it("討論為子選單：父標籤 slug、首行 disabled topic、開啟與複製 slug 動作", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true });
+    const disc = lastItems.find((i) => Array.isArray(i.items) && i.text === "d1");
     expect(disc).toBeDefined();
-    await disc.action();
+    // 首行為 topic 描述（disabled、不可選取）
+    expect(disc.items[0].text).toBe("t1");
+    expect(disc.items[0].enabled).toBe(false);
+    // 開啟此討論 → 主視窗＋openDiscussion
+    expect(disc.items[1].text).toBe("開啟此討論");
+    await disc.items[1].action();
     expect(win.show).toHaveBeenCalled();
     expect(bag.openDiscussion).toHaveBeenCalledWith("d1");
+    // 複製 slug → 剪貼簿為 slug
+    expect(disc.items[2].text).toBe("複製 slug");
+    await disc.items[2].action();
+    expect(writeText).toHaveBeenCalledWith("d1");
+  });
+
+  it("剪貼簿寫入失敗時靜默（不拋出、不彈窗）", async () => {
+    vi.mocked(writeText).mockRejectedValue(new Error("denied"));
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true });
+    const alpha = lastItems.find((i) => Array.isArray(i.items) && (i.text ?? "").startsWith("alpha"));
+    await expect(Promise.resolve(alpha.items[1].action())).resolves.not.toThrow();
+    // 沖洗微任務：內部 rejection 須被吞掉，否則 vitest 以 unhandled rejection 失敗
+    await new Promise((r) => setTimeout(r, 0));
   });
 
   it("點「開啟 Speclink」顯示視窗並取得焦點", async () => {
@@ -301,6 +447,88 @@ describe("initTray 接線（選單）", () => {
     const { store } = makeStore();
     await initTray(store, { isMacOS: true });
     expect(lastItems.find((i) => i.item === "Quit")).toBeDefined();
+  });
+
+  it("panel 樣式：建立時不掛選單、不開左鍵選單，點擊圖示觸發 onPanelToggle", async () => {
+    const bag = makeStore();
+    bag.emit({ trayStyle: "panel" });
+    const onPanelToggle = vi.fn();
+    await initTray(bag.store, { isMacOS: true, onPanelToggle });
+    const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
+    expect(opts.menu).toBeUndefined();
+    expect(opts.showMenuOnLeftClick).toBe(false);
+    opts.action({ type: "Click", button: "Left", buttonState: "Up" });
+    expect(onPanelToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("native 樣式：點擊事件不觸發 onPanelToggle（選單接管互動）", async () => {
+    const bag = makeStore();
+    const onPanelToggle = vi.fn();
+    await initTray(bag.store, { isMacOS: true, onPanelToggle });
+    const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
+    opts.action?.({ type: "Click", button: "Left", buttonState: "Up" });
+    expect(onPanelToggle).not.toHaveBeenCalled();
+  });
+
+  it("樣式切換即時分流：panel 卸選單且關左鍵開選單、切回 native 雙雙復原（無需重啟）", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    trayObj.setMenu.mockClear();
+    vi.useFakeTimers();
+    bag.emit({ trayStyle: "panel" });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(trayObj.setMenu).toHaveBeenLastCalledWith(null);
+    // 關鍵：僅卸選單不夠——左鍵仍被「開選單」路徑吃掉，點擊事件到不了 action。
+    expect(trayObj.setShowMenuOnLeftClick).toHaveBeenLastCalledWith(false);
+    bag.emit({ trayStyle: "native-menu" });
+    await vi.advanceTimersByTimeAsync(50);
+    vi.useRealTimers();
+    expect(trayObj.setMenu).toHaveBeenLastCalledWith({ id: "menu" });
+    expect(trayObj.setShowMenuOnLeftClick).toHaveBeenLastCalledWith(true);
+  });
+
+  it("溢出節點轉為原生子選單（內含其餘變更、各自保有動作子選單）", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    vi.useFakeTimers();
+    bag.emit({
+      changes: Array.from({ length: 7 }, (_, i) =>
+        change({ name: `c${i}`, totalTasks: 2, completedTasks: 1 }),
+      ),
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    vi.useRealTimers();
+    const more = lastItems.find((i) => i.text === "還有 2 個…");
+    expect(more).toBeDefined();
+    expect(more.items).toHaveLength(2);
+    // 內嵌項目仍是完整變更子選單（開啟此變更＋複製名稱）
+    expect(more.items[0].items.map((a: AnyItem) => a.text)).toEqual(["開啟此變更", "複製名稱"]);
+  });
+
+  it("面板事件接線：訂閱 ready/action、去抖推送快照、動作回流 store", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    // 訂閱面板的 ready 與 action 事件
+    const topics = vi.mocked(tauriListen).mock.calls.map((c) => c[0]);
+    expect(topics).toContain("tray-panel-ready");
+    expect(topics).toContain("tray-panel-action");
+    // 資料變動去抖後推送快照給面板
+    vi.mocked(tauriEmit).mockClear();
+    vi.useFakeTimers();
+    bag.emit({ activeRoot: "/proj/two" });
+    await vi.advanceTimersByTimeAsync(50);
+    vi.useRealTimers();
+    expect(vi.mocked(tauriEmit)).toHaveBeenCalledWith(
+      "tray-snapshot",
+      expect.objectContaining({ activeRoot: "/proj/two" }),
+    );
+    // 動作回流：open-change 開主視窗並開啟該變更詳情
+    const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
+    (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-change", id: "alpha" } });
+    // openMainWindow 為 async（unminimize → show）：沖洗微任務後再斷言
+    await new Promise((r) => setTimeout(r, 0));
+    expect(win.show).toHaveBeenCalled();
+    expect(bag.openDetail).toHaveBeenCalledWith("alpha");
   });
 
   it("dispose 取消訂閱並關閉 tray", async () => {

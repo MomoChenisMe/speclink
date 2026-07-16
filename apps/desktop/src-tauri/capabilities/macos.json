@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "macos-tray-panel",
+  "description": "macOS 面板樣式所需能力（tray 相對定位與面板視窗操作）",
+  "platforms": ["macOS"],
+  "windows": ["main", "tray-panel"],
+  "permissions": [
+    "core:default",
+    "positioner:default",
+    "clipboard-manager:allow-write-text",
+    "core:window:allow-set-size"
+  ]
+}

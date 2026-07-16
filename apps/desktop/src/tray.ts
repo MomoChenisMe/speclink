@@ -12,28 +12,51 @@ import {
 } from "@tauri-apps/api/menu";
 import { Image } from "@tauri-apps/api/image";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { emit, listen } from "@tauri-apps/api/event";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { handleIconState } from "@tauri-apps/plugin-positioner";
 
 import { appT } from "./i18n/runtime";
 import { trayIconBytes } from "./trayIcon";
+import type { TrayStyle } from "./trayStyle";
 
 /** 組模型所需的 store 快照（自 AppState 收斂而來——與看板同源，design D3）。 */
 export interface TraySnapshot {
   tabs: Array<{ root: string; name: string }>;
   activeRoot: string | null;
   changes: ChangeItem[];
-  /** 進看板的 active 討論（列出於討論區；slug 供點擊開啟）。 */
-  discussions: Array<{ slug: string; topic: string }>;
+  /** 進看板的 active 討論（slug 供點擊開啟；promoted＝已轉出變更，分流至「已轉出」分區）。 */
+  discussions: Array<{ slug: string; topic: string; promoted: boolean }>;
 }
 
 /** 變更子選單的動作項。 */
-export type TrayChangeAction = { kind: "open-change"; label: string };
+export type TrayChangeAction = { kind: "open-change" | "copy-name"; label: string };
+
+/** 討論子選單的動作項。 */
+export type TrayDiscussionAction = { kind: "open-discussion" | "copy-slug"; label: string };
+
+/** 分區溢出門檻（spec「分區溢出摺疊」）：各分區直列筆數上限，逾此收進溢出節點。 */
+export const OVERFLOW_LIMIT = 5;
 
 /** 選單項目模型（純資料；接線層據此建原生 menu item 並掛 action）。 */
 export type TrayMenuItem =
   | { kind: "project"; root: string; label: string; checked: boolean }
   | { kind: "header"; label: string }
   | { kind: "change"; name: string; label: string; actions: TrayChangeAction[] }
-  | { kind: "discussion"; slug: string; label: string }
+  | {
+      kind: "discussion";
+      slug: string;
+      /** 父項標籤＝slug（識別錨點直出）；topic 降為子選單首行描述。 */
+      label: string;
+      topic: string;
+      actions: TrayDiscussionAction[];
+    }
+  | {
+      /** 分區溢出節點「還有 N 個…」：內嵌其餘項目的同構模型（接線層遞迴轉子選單）。 */
+      kind: "overflow";
+      label: string;
+      items: TrayMenuItem[];
+    }
   | { kind: "empty"; label: string }
   | { kind: "separator" }
   | { kind: "open"; label: string }
@@ -62,14 +85,29 @@ function changeLabel(c: ChangeItem): string {
 /**
  * 由 store 快照組出選單模型。純函式、無平台分支。區段順序：
  * 專案區（作用中打勾）→ 分隔 → 生命週期分區（提案中/進行中/已就緒各一 header＋變更子選單，
- * 變更列帶進度條，子選單含「開啟此變更」；全無變更則空狀態）→ 分隔 → 討論區（header＋各討論項，
- * 無則「討論 0」）→ 分隔 → 動作區（開啟 Speclink、結束）。徽章＝進行中變更數。
+ * 變更列帶進度條，子選單含「開啟此變更」「複製名稱」；全無變更則空狀態）→ 分隔 →
+ * 討論區（header＋各討論子選單：父項標籤為 slug、topic 為子選單首行描述、
+ * 含「開啟此討論」「複製 slug」；無則「討論 0」）→ 分隔 → 動作區（開啟 Speclink、結束）。
+ * 徽章＝進行中變更數。
  */
 export function buildTrayModel(
   snapshot: TraySnapshot,
   t: (key: string) => string,
 ): TrayModel {
   const items: TrayMenuItem[] = [];
+
+  /** 分區切片：逾門檻收進「還有 N 個…」溢出節點（≤門檻原樣返回）。 */
+  const withOverflow = (rows: TrayMenuItem[]): TrayMenuItem[] => {
+    if (rows.length <= OVERFLOW_LIMIT) return rows;
+    return [
+      ...rows.slice(0, OVERFLOW_LIMIT),
+      {
+        kind: "overflow",
+        label: t("tray.more").replace("{n}", String(rows.length - OVERFLOW_LIMIT)),
+        items: rows.slice(OVERFLOW_LIMIT),
+      },
+    ];
+  };
 
   // 專案區
   for (const tab of snapshot.tabs) {
@@ -89,27 +127,47 @@ export function buildTrayModel(
     if (staged.length === 0) continue;
     anyChange = true;
     items.push({ kind: "header", label: t(`stage.${stage}`) });
-    for (const c of staged) {
-      items.push({
-        kind: "change",
-        name: c.name,
-        label: changeLabel(c),
-        actions: [{ kind: "open-change", label: t("tray.openChange") }],
-      });
-    }
+    items.push(
+      ...withOverflow(
+        staged.map((c): TrayMenuItem => ({
+          kind: "change",
+          name: c.name,
+          label: changeLabel(c),
+          actions: [
+            { kind: "open-change", label: t("tray.openChange") },
+            { kind: "copy-name", label: t("tray.copyName") },
+          ],
+        })),
+      ),
+    );
   }
   if (!anyChange) items.push({ kind: "empty", label: t("tray.noChanges") });
 
   items.push({ kind: "separator" });
 
-  // 討論區
-  if (snapshot.discussions.length > 0) {
+  // 討論區分流（spec「討論列表」）：「討論」分區列討論中、「已轉出」分區列已轉出，
+  // 無已轉出不顯示該分區；無討論中顯示「討論 0」。兩分區子選單結構相同。
+  const discussionItem = (d: { slug: string; topic: string }): TrayMenuItem => ({
+    kind: "discussion",
+    slug: d.slug,
+    label: d.slug,
+    topic: d.topic,
+    actions: [
+      { kind: "open-discussion", label: t("tray.openDiscussion") },
+      { kind: "copy-slug", label: t("tray.copySlug") },
+    ],
+  });
+  const openDiscussions = snapshot.discussions.filter((d) => !d.promoted);
+  const promotedDiscussions = snapshot.discussions.filter((d) => d.promoted);
+  if (openDiscussions.length > 0) {
     items.push({ kind: "header", label: t("tray.discussionsHeader") });
-    for (const d of snapshot.discussions) {
-      items.push({ kind: "discussion", slug: d.slug, label: d.topic });
-    }
+    items.push(...withOverflow(openDiscussions.map(discussionItem)));
   } else {
     items.push({ kind: "empty", label: t("tray.discussions").replace("{n}", "0") });
+  }
+  if (promotedDiscussions.length > 0) {
+    items.push({ kind: "header", label: t("tray.promotedHeader") });
+    items.push(...withOverflow(promotedDiscussions.map(discussionItem)));
   }
 
   items.push({ kind: "separator" });
@@ -128,7 +186,9 @@ export interface TrayStoreApi {
     tabs: Array<{ root: string; name: string }>;
     activeRoot: string | null;
     changes: ChangeItem[];
-    discussions: { active: Array<{ slug: string; topic: string }> };
+    discussions: { active: Array<{ slug: string; topic: string; promotedTo: string[] }> };
+    /** 系統匣樣式偏好：native-menu 掛原生選單、panel 卸選單改走點擊事件。 */
+    trayStyle: TrayStyle;
     openProjectAt: (root: string) => void | Promise<void>;
     /** 開啟變更詳情抽屜（子選單「開啟此變更」用）。 */
     openDetail: (name: string) => void;
@@ -143,6 +203,8 @@ export interface TrayDeps {
   isMacOS?: boolean;
   /** 選單重建去抖延遲（ms）；預設與看板刷新同量級（400ms）。 */
   debounceMs?: number;
+  /** 面板樣式下左鍵點擊圖示的開閉回呼（面板實作由呼叫端注入；未注入即無動作）。 */
+  onPanelToggle?: () => void;
 }
 
 export interface TrayController {
@@ -151,7 +213,7 @@ export interface TrayController {
 }
 
 /** 平台偵測：navigator.userAgent 判 macOS——無 os plugin，前端自足且可測。 */
-function detectMacOS(): boolean {
+export function detectMacOS(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || (navigator as { platform?: string }).platform || "";
   return /Macintosh|Mac OS/i.test(ua);
@@ -163,7 +225,11 @@ function toSnapshot(state: ReturnType<TrayStoreApi["getState"]>): TraySnapshot {
     tabs: state.tabs.map((t) => ({ root: t.root, name: t.name })),
     activeRoot: state.activeRoot,
     changes: state.changes,
-    discussions: state.discussions.active.map((d) => ({ slug: d.slug, topic: d.topic })),
+    discussions: state.discussions.active.map((d) => ({
+      slug: d.slug,
+      topic: d.topic,
+      promoted: d.promotedTo.length > 0,
+    })),
   };
 }
 
@@ -187,6 +253,23 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
     void openMainWindow();
     fn();
   };
+  /** 寫剪貼簿（Rust 端外掛——主視窗隱藏/無焦點仍成功）；失敗靜默、不彈窗不中斷選單。 */
+  const copy = (text: string) => {
+    void writeText(text).catch(() => {});
+  };
+  /** 動作聯集 → 子選單項：open-* 開主視窗執行 store 動作、copy-* 寫剪貼簿。 */
+  const actionItems = (
+    actions: Array<TrayChangeAction | TrayDiscussionAction>,
+    open: () => void,
+    copyText: string,
+  ): MenuItemOptions[] =>
+    actions.map((a) => ({
+      text: a.label,
+      action:
+        a.kind === "open-change" || a.kind === "open-discussion"
+          ? () => openIn(open)
+          : () => copy(copyText),
+    }));
   const toOptions = (item: TrayMenuItem): TrayItemOptions => {
     switch (item.kind) {
       case "project":
@@ -203,16 +286,24 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
       case "change":
         return {
           text: item.label,
-          items: item.actions.map((a) => ({
-            text: a.label,
-            action: () => openIn(() => store.getState().openDetail(item.name)),
-          })),
+          items: actionItems(item.actions, () => store.getState().openDetail(item.name), item.name),
         };
       case "discussion":
         return {
           text: item.label,
-          action: () => openIn(() => store.getState().openDiscussion(item.slug)),
+          items: [
+            // topic 首行描述：disabled、不可選取，僅供辨識
+            { text: item.topic, enabled: false },
+            ...actionItems(
+              item.actions,
+              () => store.getState().openDiscussion(item.slug),
+              item.slug,
+            ),
+          ],
         };
+      case "overflow":
+        // 溢出節點 → 原生子選單（內嵌項目遞迴轉換；macOS 選單超高原生捲動）
+        return { text: item.label, items: item.items.map(toOptions) };
       case "separator":
         return { item: "Separator" };
       case "open":
@@ -221,6 +312,7 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
         return { item: "Quit", text: item.label };
     }
   };
+  const styleOf = () => store.getState().trayStyle;
   const render = async () => {
     const model = buildTrayModel(toSnapshot(store.getState()), appT);
     const menu = await Menu.new({ items: model.items.map(toOptions) });
@@ -228,23 +320,65 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   };
 
   const first = await render();
+  const nativeAtInit = styleOf() === "native-menu";
   const tray = await TrayIcon.new({
     icon,
     iconAsTemplate: isMac,
     tooltip: "Speclink",
-    menu: first.menu,
+    // 樣式分流：native-menu 掛選單（左鍵開選單）；panel 不掛——點擊交給 action。
+    menu: nativeAtInit ? first.menu : undefined,
+    showMenuOnLeftClick: nativeAtInit,
     title: isMac ? first.badge || undefined : undefined,
+    action: (event) => {
+      // 面板樣式限定：左鍵放開時開閉面板（原生選單樣式由選單接管點擊）。
+      if (styleOf() !== "panel") return;
+      // 先餵 tray 事件座標給 positioner——面板顯示前的 TrayBottomCenter 依此定位。
+      void handleIconState(event).catch(() => {});
+      const e = event as { type?: string; button?: string; buttonState?: string };
+      if (e.type === "Click" && e.button === "Left" && e.buttonState === "Up") {
+        deps.onPanelToggle?.();
+      }
+    },
   });
 
-  // 去抖訂閱：資料變動後整份重建選單並更新 macOS 徽章。
+  // 面板接線（design D5）：主視窗擁有資料——面板 ready 時補推快照（lazy 建窗的
+  // 首開空窗）、去抖訂閱時推送、面板動作事件回流 store 執行（與選單動作同語意）。
+  const pushSnapshot = () => {
+    void emit("tray-snapshot", toSnapshot(store.getState()));
+  };
+  const unlistenReady = await listen("tray-panel-ready", pushSnapshot);
+  const unlistenAction = await listen<{ kind: string; id?: string }>(
+    "tray-panel-action",
+    (event) => {
+      const { kind, id } = event.payload ?? {};
+      if (kind === "open-project" && id) void store.getState().openProjectAt(id);
+      else if (kind === "open-change" && id) openIn(() => store.getState().openDetail(id));
+      else if (kind === "open-discussion" && id) openIn(() => store.getState().openDiscussion(id));
+      else if (kind === "open-app") void openMainWindow();
+    },
+  );
+
+  // 去抖訂閱：資料或樣式變動後依樣式分流——native 重建選單＋徽章；panel 卸選單、
+  // 僅更新徽章；兩樣式皆推送快照給面板（面板未開時為無害廣播）。
   let timer: ReturnType<typeof setTimeout> | null = null;
   const unsubscribe = store.subscribe(() => {
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {
       void (async () => {
-        const { menu, badge } = await render();
-        await tray.setMenu(menu);
-        if (isMac) await tray.setTitle(badge || null);
+        pushSnapshot();
+        if (styleOf() === "native-menu") {
+          const { menu, badge } = await render();
+          await tray.setMenu(menu);
+          await tray.setShowMenuOnLeftClick(true);
+          if (isMac) await tray.setTitle(badge || null);
+        } else {
+          // 卸選單＋關左鍵開選單缺一不可：後者不關，左鍵仍被「開選單」路徑
+          // 吃掉（選單已空＝點了無事發生），點擊事件到不了 action／面板。
+          await tray.setMenu(null);
+          await tray.setShowMenuOnLeftClick(false);
+          const model = buildTrayModel(toSnapshot(store.getState()), appT);
+          if (isMac) await tray.setTitle(model.badge || null);
+        }
       })();
     }, debounceMs);
   });
@@ -253,6 +387,8 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
     dispose: () => {
       if (timer !== null) clearTimeout(timer);
       unsubscribe();
+      unlistenReady();
+      unlistenAction();
       void tray.close();
     },
   };

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -9,5 +10,12 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      // 多頁入口：main（主視窗）＋ panel（系統匣面板樣式，design D5）。
+      input: {
+        main: fileURLToPath(new URL("index.html", import.meta.url)),
+        panel: fileURLToPath(new URL("panel.html", import.meta.url)),
+      },
+    },
   },
 });
