@@ -160,6 +160,36 @@ fn get_artifact_returns_typed_content_and_version() {
     assert_call(&mock.last(), "GET", "/changes/demo/artifacts/design");
 }
 
+/// The drift response arrives as protocol types and maps back to the Engine's
+/// spec-side report through the Host's single mapping — the merger downstream
+/// only ever sees Engine types.
+#[test]
+fn spec_drift_returns_typed_report_and_basis() {
+    let mock = serve(
+        200,
+        r###"{"specDrift":{"dimension":{"kind":"Specs","status":"1 stale assumptions","score":4,"contributesToTotal":true},"specAssumptions":[{"capability":"auth","operation":"MODIFIED","requirement":"Rotate tokens","reason":"target requirement no longer exists in the canonical spec"}]},"basis":{"spec":"sha256:aaa","tasks":"sha256:bbb","policy":"sha256:ccc"},"change":{"created":"2026-07-13","design":"## Context\n","tasks":"- [ ] 1.1 First\n"}}"###,
+    );
+    let response = client(&mock).spec_drift("demo").expect("drift ok");
+    assert_call(&mock.last(), "GET", "/changes/demo/drift");
+
+    assert_eq!(response.spec_drift.dimension.kind, "Specs");
+    assert_eq!(response.spec_drift.dimension.score, 4);
+    assert_eq!(response.spec_drift.spec_assumptions[0].capability, "auth");
+    assert_eq!(response.basis.spec, "sha256:aaa");
+    assert_eq!(response.change.created.as_deref(), Some("2026-07-13"));
+    assert_eq!(response.change.design.as_deref(), Some("## Context\n"));
+
+    // Back to Engine types via the Host's mapping — what the merger consumes.
+    let report = speclink_host::drift::spec_drift_from_wire(&response.spec_drift);
+    assert_eq!(report.dimension.kind, "Specs");
+    assert!(report.dimension.contributes_to_total);
+    assert_eq!(report.spec_assumptions.len(), 1);
+    assert_eq!(report.spec_assumptions[0].requirement, "Rotate tokens");
+
+    let basis = speclink_host::drift::basis_from_wire(&response.basis);
+    assert_eq!(basis.tasks, "sha256:bbb");
+}
+
 #[test]
 fn list_specs_language_config_and_whoami_are_typed() {
     let mock = serve(

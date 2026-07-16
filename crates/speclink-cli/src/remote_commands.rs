@@ -564,6 +564,58 @@ fn git_reference_warning(
     }
 }
 
+// --- drift ---
+
+/// Remote drift: the Server supplies the spec side, the basis it was computed
+/// against, and the change's store-side inputs; the workspace side is collected
+/// and computed here off the local checkout; the Engine's one merger assembles
+/// the report and the renderer fs mode uses prints it — so there is no second
+/// merge and no second output shape.
+fn remote_drift(ctx: &RemoteCtx, a: &ChangeArg) -> Result<()> {
+    // Positional-style wording, matching the fs verb's auto-detect error.
+    let Some(name) = remote_resolve_change(ctx, a.change.as_deref(), "Specify one:")? else {
+        return Ok(());
+    };
+    // A server failure stops here: no report is rendered from half the facts.
+    let response = ctx.client.spec_drift(&name)?;
+
+    let docs = speclink_host::drift::RemoteDriftStore::new(
+        &name,
+        response.change.created,
+        response.change.design,
+        response.change.tasks,
+    );
+    let change = docs.change();
+    let spec = speclink_host::drift::spec_drift_from_wire(&response.spec_drift);
+
+    // The workspace side needs a checkout. Remote mode always has a workspace
+    // (the .speclink.yaml the mode was resolved from), so git availability is
+    // what actually distinguishes "there is code here" from "there is not".
+    // Without it the facts are absent — which the Engine reports as
+    // unavailable. Collecting anyway would stat the anchors against a
+    // codeless directory and report every one of them broken: an absent
+    // checkout would read as deleted code.
+    let ws = core::workspace::Workspace::discover_cwd()?
+        .filter(|w| core::util::git_available(&w.root));
+    let facts = ws
+        .as_ref()
+        .map(|w| speclink_host::drift::collect_workspace_facts(w, &docs, &change));
+    let workspace = core::drift::compute_workspace_drift(&docs, &change, facts.as_ref());
+
+    // The spec side and its basis come from one server snapshot, so expected
+    // and current are the same fixed point and the report is never stale —
+    // matching fs mode, where the bundle and the current digests are read
+    // back-to-back off one store.
+    let digests = speclink_host::drift::basis_from_wire(&response.basis);
+    let basis = core::drift::DriftBasis { expected: digests.clone(), current: digests };
+    let report = core::drift::merge_drift_reports(&change, spec, workspace, Some(&basis));
+    if a.json {
+        return print_json(&report);
+    }
+    render_drift(&report.report);
+    Ok(())
+}
+
 // --- artifact cat (remote) ---
 
 fn remote_artifact_cat(ctx: &RemoteCtx, artifact: &str, change: Option<&str>) -> Result<()> {

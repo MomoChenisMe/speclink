@@ -118,7 +118,13 @@ fn command_label(outcome: &CommandOutcome) -> String {
 /// carries each materialized document's revision (the CAS precondition writes
 /// derive), fixed at materialize time; `staged` collects the writes to commit,
 /// coalesced per document (last write of a document wins).
-struct BridgeStore {
+///
+/// Crate-visible so the Host's own read-only query entry points can compose the
+/// Engine over a scope, and no wider: an adapter holding this view could run
+/// arbitrary Engine functions outside the Host's composition points, and — since
+/// the Engine's `Store` seam includes writes — could stage writes that are then
+/// silently dropped for want of a commit. Both stay impossible by visibility.
+pub(crate) struct BridgeStore {
     view: RefCell<BTreeMap<DocumentId, String>>,
     base: BTreeMap<DocumentId, Revision>,
     staged: RefCell<BTreeMap<DocumentId, StagedOp>>,
@@ -130,7 +136,10 @@ impl BridgeStore {
     /// enumeration seam — `Snapshot` reads are point lookups), and each is read
     /// back through the same snapshot so content and revision agree at one
     /// project revision.
-    fn materialize(store: &dyn TeamStore, scope: &Scope) -> Result<BridgeStore, StoreError> {
+    pub(crate) fn materialize(
+        store: &dyn TeamStore,
+        scope: &Scope,
+    ) -> Result<BridgeStore, StoreError> {
         let snapshot = store.snapshot(scope)?;
         let bundle = store.export(scope)?;
         let mut view = BTreeMap::new();
