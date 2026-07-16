@@ -245,8 +245,9 @@ flowchart LR
 | 6 | `drift-client-server-split` | Phase 1 / 遠端 drift | 將 spec drift 與 code/git drift 拆分並定義單一合併報告 |
 | 7 | `protocol-client-context` | Phase 1 第 4、5 項 | Command/Query/Context/Event schema、typed client、binding handshake、Context Materializer |
 | 8 | `reference-server` | Phase 2 | Rust Host adapter、SQLite/ServerFS/PostgreSQL、auth/account/admin、SSE/ETag、backup |
-| 9 | `desktop-workspace-session` | Phase 3 | Local/remote spec-only/remote+checkout、Keychain、RemoteDataSource、event manager |
-| 10 | `agent-tool-adapters` | Phase 4 | MCP、Copilot Tools、typed N-API Host/Engine 與 tool-specific Skill renderer |
+| 9 | `remote-dev-harness` | Phase 3 前置基建 | 一鍵 `npm run dev` 同起 server（env 驅動設定）與 desktop 的本地開發迴圈；Phase 3 每日手動測試不能依賴 docker 重建映像（排 `phase2-e2e-chain` 之後、`desktop-workspace-session` 之前） |
+| 10 | `desktop-workspace-session` | Phase 3 | Local/remote spec-only/remote+checkout、Keychain、RemoteDataSource、event manager |
+| 11 | `agent-tool-adapters` | Phase 4 | MCP、Copilot Tools、typed N-API Host/Engine 與 tool-specific Skill renderer |
 
 ### 4.3 可以平行的工作
 
