@@ -421,10 +421,7 @@ function AppInner({ createSession, workspace, localePref, onLocalePrefChange }: 
         }}
         sourceDiscussions={sourceDiscussions}
         siblingChanges={siblingChanges}
-        onOpenDiscussion={(slug) => {
-          s.closeDetail();
-          s.openDiscussion(slug);
-        }}
+        onOpenDiscussion={s.openDiscussion}
         onOpenSibling={s.openDetail}
       />
 
@@ -459,10 +456,7 @@ function AppInner({ createSession, workspace, localePref, onLocalePrefChange }: 
         loadDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
         changes={s.changes}
         archivedChanges={s.archived}
-        onOpenChangeCard={(name) => {
-          s.closeDiscussion();
-          s.openDetail(name);
-        }}
+        onOpenChangeCard={s.openDetail}
       />
 
       {/* 初始化確認（design D3：寫入型確認框——取消靠左持預設焦點、建立靠右拉開距離） */}

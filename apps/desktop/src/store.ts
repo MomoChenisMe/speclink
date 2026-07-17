@@ -297,10 +297,19 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       set({ expandedName: get().expandedName === name ? null : name });
     },
 
+    // detail 抽屜互斥（drawer-exclusivity）：每個 open* 清除其他三個 detail 欄位，
+    // 後開者取代先開者；互斥由此層保證，呼叫端入口不需自行先關再開。
     openDetail(name) {
       const c = get().changes.find((x) => x.name === name);
       // 換 change 清掉上一個 change 的動詞結果（drawerVerb keyed by change）。
-      if (c) set({ detailChange: c, drawerVerb: null });
+      if (c)
+        set({
+          detailChange: c,
+          drawerVerb: null,
+          detailDiscussion: null,
+          detailSpec: null,
+          detailArchived: null,
+        });
     },
 
     closeDetail() {
@@ -312,7 +321,15 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const d =
         lists.active.find((x) => x.slug === slug) ??
         lists.archived.find((x) => x.slug === slug);
-      if (d) set({ detailDiscussion: d });
+      // 取代變更詳情抽屜時 drawerVerb 一併清空（比照 closeDetail）。
+      if (d)
+        set({
+          detailDiscussion: d,
+          detailChange: null,
+          drawerVerb: null,
+          detailSpec: null,
+          detailArchived: null,
+        });
     },
 
     closeDiscussion() {
@@ -320,7 +337,13 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     openSpec(capability) {
-      set({ detailSpec: capability });
+      set({
+        detailSpec: capability,
+        detailChange: null,
+        drawerVerb: null,
+        detailDiscussion: null,
+        detailArchived: null,
+      });
     },
 
     closeSpec() {
@@ -328,7 +351,13 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     openArchived(target) {
-      set({ detailArchived: target });
+      set({
+        detailArchived: target,
+        detailChange: null,
+        drawerVerb: null,
+        detailDiscussion: null,
+        detailSpec: null,
+      });
     },
 
     closeArchived() {

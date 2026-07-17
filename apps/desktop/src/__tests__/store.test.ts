@@ -287,6 +287,49 @@ describe("app store (Zustand)", () => {
     expect(store.getState().detailArchived).toBeNull();
   });
 
+  it("detail 抽屜互斥：任一 open* 動作清除其他三個 detail 欄位（後開者取代先開者）", async () => {
+    // 規格「detail 抽屜互斥」Example 表：討論→變更詳情→規格→封存→討論。
+    const ds = fakeDataSource({
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [
+          { slug: "topic-a", topic: "t", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
+        ],
+        archived: [],
+      }),
+    });
+    const store = storeWith(ds);
+    await store.getState().refresh();
+
+    store.getState().openDiscussion("topic-a");
+    expect(store.getState().detailDiscussion?.slug).toBe("topic-a");
+    store.getState().openDetail("desktop-shell-and-browser");
+    expect(store.getState().detailChange?.name).toBe("desktop-shell-and-browser");
+    expect(store.getState().detailDiscussion).toBeNull();
+
+    store.getState().openSpec("desktop-app");
+    expect(store.getState().detailSpec).toBe("desktop-app");
+    expect(store.getState().detailChange).toBeNull();
+
+    store.getState().openArchived({ kind: "change", datedName: "2026-07-04-x" });
+    expect(store.getState().detailArchived).toEqual({ kind: "change", datedName: "2026-07-04-x" });
+    expect(store.getState().detailSpec).toBeNull();
+
+    store.getState().openDiscussion("topic-a");
+    expect(store.getState().detailDiscussion?.slug).toBe("topic-a");
+    expect(store.getState().detailArchived).toBeNull();
+  });
+
+  it("detail 抽屜互斥：取代變更詳情抽屜時 drawerVerb 一併清空（比照 closeDetail）", async () => {
+    const store = storeWith(fakeDataSource());
+    await store.getState().refresh();
+    store.getState().openDetail("desktop-shell-and-browser");
+    await store.getState().runVerb("analyze", "desktop-shell-and-browser");
+    expect(store.getState().drawerVerb).not.toBeNull();
+    store.getState().openSpec("desktop-app");
+    expect(store.getState().detailChange).toBeNull();
+    expect(store.getState().drawerVerb).toBeNull();
+  });
+
   it("reorderCard failure surfaces a one-line error and still refreshes", async () => {
     // spec「寫回失敗不留假象」：錯誤浮上 verbResult、看板刷新回磁碟現況。
     const ds = fakeDataSource({
