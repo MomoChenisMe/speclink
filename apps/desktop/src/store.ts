@@ -16,6 +16,7 @@ import type {
 } from "@speclink/ui";
 
 import { appT } from "./i18n/runtime";
+import type { ConnectionsAdapter, ConnectionView } from "./adapter/connections";
 import type { WorkspaceAdapter } from "./adapter/workspace";
 import { locatorKey, type WorkspaceSession } from "./session";
 import {
@@ -30,6 +31,16 @@ import { detectMacOS, type TrayStyle } from "./tray";
 
 /** 主頁面：變更看板（預設）、規格頁、已封存獨立頁或設定頁。 */
 export type BoardView = "board" | "specs" | "archived" | "settings";
+
+/** 逐連線登入互動狀態（desktop-connections）：patInput＝device flow 明確
+ * 不支援（404/405），就地收 PAT（規格 PAT fallback）；notice＝非錯誤提示
+ * （如 PAT 登出後的帳號頁撤銷提醒）。 */
+export type ConnectionPhase =
+  | { kind: "idle" }
+  | { kind: "busy" }
+  | { kind: "patInput"; error: string | null }
+  | { kind: "notice"; message: string }
+  | { kind: "error"; message: string };
 
 export interface AppState {
   changes: ChangeItem[];
@@ -134,6 +145,23 @@ export interface AppState {
   trayPanelError: string | null;
   /** 面板建立失敗的退回（spec：退回原生選單並浮出單行錯誤）。 */
   panelFallback: (message: string) => void;
+
+  // --- server 連線（desktop-connections）：app 全域、不經 session 綁定 ---
+  /** saved servers 清單（registry 檢視＋由 Keychain 推導的登入狀態）。 */
+  connections: ConnectionView[];
+  /** 逐連線互動狀態（keyed by origin；執行期狀態、不持久化）。 */
+  connectionPhases: Record<string, ConnectionPhase>;
+  refreshConnections: () => Promise<void>;
+  /** 新增（同 origin 即更新顯示名）並隨即進入登入流程（決策 7）；
+   * 無效輸入上拋、由表單就地呈現。 */
+  addConnection: (baseUrl: string, name: string) => Promise<void>;
+  /** device 預設登入；明確不支援時轉 patInput、連線錯誤浮為可讀狀態。 */
+  loginConnection: (origin: string) => Promise<void>;
+  /** PAT 單次過境提交；無效 PAT 留在輸入面並就地浮錯。 */
+  submitPat: (origin: string, pat: string) => Promise<void>;
+  logoutConnection: (origin: string) => Promise<void>;
+  /** 移除連線（Rust 側先登出再刪條目——決策 6）。 */
+  removeConnection: (id: string) => Promise<void>;
 }
 
 /** createAppStore 的注入面（workspace-session 決策 6）：session 工廠取代全域
@@ -143,6 +171,8 @@ export interface AppStoreDeps {
   createSession: (root: string, name: string) => WorkspaceSession;
   /** workspace 探測面；未注入時對應 UI 不啟用。 */
   workspace?: WorkspaceAdapter;
+  /** server 連線面（desktop-connections）；未注入時伺服器頁籤不啟用。 */
+  connections?: ConnectionsAdapter;
 }
 
 /**
@@ -151,7 +181,7 @@ export interface AppStoreDeps {
  * 一律經活躍 session 的 dataSource（單活躍載入語意不變）。
  */
 export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppState>> {
-  const { createSession, workspace } = deps;
+  const { createSession, workspace, connections: connectionsAdapter } = deps;
   return create<AppState>((set, get) => {
     // 全文查詢的去抖與 latest-wins 狀態（design D6）——閉包層、不進 store state。
     let searchSeq = 0;
@@ -161,6 +191,11 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     function activeDataSource(): SpeclinkDataSource | null {
       const { activeKey, sessions } = get();
       return (activeKey && sessions[activeKey]?.dataSource) || null;
+    }
+
+    /** 逐連線互動狀態的單點更新（desktop-connections）。 */
+    function setConnectionPhase(origin: string, phase: ConnectionPhase) {
+      set({ connectionPhases: { ...get().connectionPhases, [origin]: phase } });
     }
 
     /** 命中專案的共同尾聲：upsert session 與分頁（去重）、設 activeKey、清對話框、
@@ -489,6 +524,89 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     trayPanelError: null,
     panelFallback(message) {
       set({ trayStyle: "native-menu", trayPanelError: message });
+    },
+
+    // --- server 連線（desktop-connections；決策 5/6/7） ---
+    connections: [],
+    connectionPhases: {},
+    async refreshConnections() {
+      if (!connectionsAdapter) return;
+      try {
+        set({ connections: await connectionsAdapter.list() });
+      } catch {
+        // 清單讀取失敗保留現值——registry 壞檔在 Rust 側已歸零，走到這裡
+        // 多半是暫時性環境問題，不清空使用者眼前的清單。
+      }
+    },
+    async addConnection(baseUrl, name) {
+      if (!connectionsAdapter) return;
+      const entry = await connectionsAdapter.add(baseUrl, name);
+      // 規格「新增後清單即時反映」：條目先上清單、再進入登入流程。
+      await get().refreshConnections();
+      await get().loginConnection(entry.origin);
+    },
+    async loginConnection(origin) {
+      if (!connectionsAdapter) return;
+      setConnectionPhase(origin, { kind: "busy" });
+      try {
+        const result = await connectionsAdapter.deviceLogin(origin);
+        if (result.status === "loggedIn") {
+          setConnectionPhase(origin, { kind: "idle" });
+          await get().refreshConnections();
+        } else if (result.status === "unsupported") {
+          setConnectionPhase(origin, { kind: "patInput", error: null });
+        } else if (result.status === "denied") {
+          setConnectionPhase(origin, { kind: "error", message: appT("servers.denied") });
+        } else {
+          setConnectionPhase(origin, { kind: "error", message: appT("servers.expired") });
+        }
+      } catch (e) {
+        setConnectionPhase(origin, { kind: "error", message: String(e) });
+      }
+    },
+    async submitPat(origin, pat) {
+      if (!connectionsAdapter) return;
+      setConnectionPhase(origin, { kind: "busy" });
+      try {
+        await connectionsAdapter.patLogin(origin, pat);
+        setConnectionPhase(origin, { kind: "idle" });
+        await get().refreshConnections();
+      } catch (e) {
+        // 無效 PAT：留在輸入面、就地浮出錯誤。
+        setConnectionPhase(origin, { kind: "patInput", error: String(e) });
+      }
+    },
+    async logoutConnection(origin) {
+      if (!connectionsAdapter) return;
+      setConnectionPhase(origin, { kind: "busy" });
+      try {
+        const outcome = await connectionsAdapter.logout(origin);
+        setConnectionPhase(
+          origin,
+          outcome.patNotice
+            ? { kind: "notice", message: appT("servers.patNotice") }
+            : { kind: "idle" },
+        );
+        await get().refreshConnections();
+      } catch (e) {
+        setConnectionPhase(origin, { kind: "error", message: String(e) });
+      }
+    },
+    async removeConnection(id) {
+      if (!connectionsAdapter) return;
+      const origin = get().connections.find((c) => c.id === id)?.origin;
+      if (origin) setConnectionPhase(origin, { kind: "busy" });
+      try {
+        await connectionsAdapter.remove(id);
+        if (origin) {
+          const phases = { ...get().connectionPhases };
+          delete phases[origin];
+          set({ connectionPhases: phases });
+        }
+        await get().refreshConnections();
+      } catch (e) {
+        if (origin) setConnectionPhase(origin, { kind: "error", message: String(e) });
+      }
     },
 
     async openProjectAt(path) {

@@ -81,6 +81,7 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/device/token", post(device::poll_token))
         .route("/auth/refresh", post(device::refresh))
         .route("/auth/revoke", post(device::revoke))
+        .route("/auth/whoami", get(crate::auth::auth_whoami))
         .nest("/api/speclink/v1/admin", admin::api_router())
         .nest("/api/speclink/v1/projects/{key}", project)
         .with_state(state)

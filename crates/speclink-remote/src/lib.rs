@@ -15,6 +15,7 @@
 
 pub mod auth;
 pub mod client;
+pub mod device;
 
 /// A translated remote failure: one semantic line for the user/agent, plus
 /// the machine-readable `reason` when the server provided one.

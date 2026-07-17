@@ -6,6 +6,8 @@
 //! command 逐呼叫收 root，直通 desktop-core 的帶路徑函式；分頁切換不再改寫
 //! 任何全域，前一分頁 in-flight 呼叫以其原 root 結算。
 
+pub mod connections;
+pub mod credentials;
 mod watch;
 
 #[cfg(target_os = "macos")]
@@ -281,6 +283,148 @@ fn write_workflow_content(
     speclink_desktop_core::settings::write_workflow_content_at(&root, &edit, rules.as_deref())
 }
 
+/// 連線 registry 檔位置：appConfigDir 下 connections.json（design 決策 4）。
+fn connections_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_config_dir()
+        .map(|dir| connections::registry_path(&dir))
+        .map_err(|e| format!("無法取得 app 設定目錄：{e}"))
+}
+
+/// 連線層狀態：credential 出入口（生產＝OS Keychain）與 access token 的記憶體
+/// 持有（短效、絕不落盤、絕不過境 TS——決策 2）。
+struct ConnectionsState {
+    credentials: Box<dyn credentials::CredentialStore>,
+    access_tokens: std::sync::Mutex<std::collections::HashMap<String, String>>,
+}
+
+/// 條目的 TS 檢視：registry 欄位＋由 Keychain 推導的登入狀態。secret 不出現。
+fn entry_view(entry: &connections::ConnectionEntry, state: &ConnectionsState) -> Value {
+    let logged_in = state
+        .credentials
+        .get(&entry.origin, credentials::CredentialKind::Refresh)
+        .ok()
+        .flatten()
+        .is_some()
+        || state
+            .credentials
+            .get(&entry.origin, credentials::CredentialKind::Pat)
+            .ok()
+            .flatten()
+            .is_some();
+    let mut view = serde_json::to_value(entry).expect("entry serializes");
+    view["loggedIn"] = Value::Bool(logged_in);
+    view
+}
+
+#[tauri::command]
+fn connection_list(app: tauri::AppHandle) -> Result<Vec<Value>, String> {
+    let state = app.state::<std::sync::Arc<ConnectionsState>>();
+    Ok(connections::read_registry(&connections_path(&app)?)
+        .iter()
+        .map(|entry| entry_view(entry, &state))
+        .collect())
+}
+
+#[tauri::command]
+fn connection_add(app: tauri::AppHandle, base_url: String, name: String) -> Result<Value, String> {
+    let path = connections_path(&app)?;
+    let mut entries = connections::read_registry(&path);
+    let id = connections::upsert_connection(&mut entries, &base_url, &name)?;
+    connections::write_registry(&path, &entries)?;
+    let state = app.state::<std::sync::Arc<ConnectionsState>>();
+    let entry = entries.iter().find(|e| e.id == id).expect("剛 upsert 的條目存在");
+    Ok(entry_view(entry, &state))
+}
+
+/// 移除連線＝先走登出語意（撤銷＋刪 Keychain entry）再刪 registry 條目
+/// （決策 6）。登出的本機刪除失敗會上拋、不刪條目——避免留下孤兒 credential。
+#[tauri::command]
+async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let path = connections_path(&app)?;
+    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut entries = connections::read_registry(&path);
+        if let Some(entry) = entries.iter().find(|e| e.id == id) {
+            let origin = entry.origin.clone();
+            connections::logout(&origin, &*state.credentials, &path)?;
+            state.access_tokens.lock().expect("token lock").remove(&origin);
+            entries = connections::read_registry(&path); // logout 剛清了身分欄位
+            entries.retain(|e| e.id != id);
+            connections::write_registry(&path, &entries)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("connection worker failed: {e}"))?
+}
+
+/// device login（決策 5）：網路與輪詢在 blocking pool 執行；瀏覽器開啟走
+/// tauri-plugin-opener。回 TS 的只有狀態與顯示名——access token 存入記憶體
+/// 持有、refresh credential 已由編排層寫入 Keychain。
+#[tauri::command]
+async fn device_login(app: tauri::AppHandle, origin: String) -> Result<Value, String> {
+    let path = connections_path(&app)?;
+    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    let opener_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let opener = move |url: &str| -> Result<(), String> {
+            use tauri_plugin_opener::OpenerExt;
+            opener_app
+                .opener()
+                .open_url(url.to_string(), None::<String>)
+                .map_err(|e| format!("無法開啟系統瀏覽器：{e}"))
+        };
+        match connections::device_login(&origin, &*state.credentials, &path, &opener)? {
+            connections::DeviceLoginOutcome::LoggedIn { display, access_token } => {
+                state.access_tokens.lock().expect("token lock").insert(origin, access_token);
+                Ok(serde_json::json!({ "status": "loggedIn", "display": display }))
+            }
+            connections::DeviceLoginOutcome::Unsupported => {
+                Ok(serde_json::json!({ "status": "unsupported" }))
+            }
+            connections::DeviceLoginOutcome::Denied => {
+                Ok(serde_json::json!({ "status": "denied" }))
+            }
+            connections::DeviceLoginOutcome::Expired => {
+                Ok(serde_json::json!({ "status": "expired" }))
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("login worker failed: {e}"))?
+}
+
+/// PAT 登入：PAT 僅單次過境此參數（不回讀、不入 log、不進 TS 狀態）。
+#[tauri::command]
+async fn pat_login(app: tauri::AppHandle, origin: String, pat: String) -> Result<Value, String> {
+    let path = connections_path(&app)?;
+    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let display = connections::pat_login(&origin, &pat, &*state.credentials, &path)?;
+        Ok(serde_json::json!({ "status": "loggedIn", "display": display }))
+    })
+    .await
+    .map_err(|e| format!("login worker failed: {e}"))?
+}
+
+/// 登出（決策 6）：盡力撤銷＋必刪本機，並丟棄記憶體中的 access token。
+#[tauri::command]
+async fn connection_logout(app: tauri::AppHandle, origin: String) -> Result<Value, String> {
+    let path = connections_path(&app)?;
+    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let outcome = connections::logout(&origin, &*state.credentials, &path)?;
+        state.access_tokens.lock().expect("token lock").remove(&origin);
+        Ok(serde_json::json!({
+            "revokedOnServer": outcome.revoked_on_server,
+            "patNotice": outcome.pat_notice,
+        }))
+    })
+    .await
+    .map_err(|e| format!("logout worker failed: {e}"))?
+}
+
 /// 系統匣面板 toggle（tray-status-menu「面板樣式（macOS）」）：macOS 委派
 /// panel 模組；其他平台恆回 Err（面板樣式偏好在非 macOS 不可達，此為守門）。
 #[cfg(target_os = "macos")]
@@ -306,7 +450,8 @@ fn quit_app(app: tauri::AppHandle) {
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_clipboard_manager::init());
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_opener::init());
     // 面板樣式相依僅 macOS 註冊（design D6）：positioner 供 tray 相對定位、
     // nspanel 供不搶焦點的 NSPanel 容器。
     #[cfg(target_os = "macos")]
@@ -320,6 +465,11 @@ pub fn run() {
             // session 驅動；建立失敗僅記錄，app 照常、只失去自動刷新）。
             let slot: WatcherState = std::sync::Mutex::new(None);
             app.manage(slot);
+            // 連線層：credential 生產出入口＝OS Keychain；access token 記憶體持有。
+            app.manage(std::sync::Arc::new(ConnectionsState {
+                credentials: Box::new(credentials::KeyringCredentialStore),
+                access_tokens: std::sync::Mutex::new(std::collections::HashMap::new()),
+            }));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -355,6 +505,12 @@ pub fn run() {
             write_app_tools,
             write_workflow_config,
             write_workflow_content,
+            connection_list,
+            connection_add,
+            connection_remove,
+            device_login,
+            pat_login,
+            connection_logout,
             toggle_tray_panel,
             quit_app
         ])

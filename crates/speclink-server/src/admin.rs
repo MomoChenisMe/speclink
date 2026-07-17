@@ -48,7 +48,7 @@ impl FromRequestParts<AppState> for AdminApi {
         //    (決策 1): `spk_at_` is a device access token, anything else a PAT,
         //    into the same check-list (hash-match, unrevoked, unexpired, owning
         //    user active). No cache means suspension and revocation are immediate.
-        let token = bearer_token(parts)
+        let token = bearer_token(&parts.headers)
             .ok_or_else(|| ApiError::permission_denied("missing or malformed bearer token"))?;
         let (user, touch_pat_id): (User, Option<String>) = if token.starts_with("spk_at_") {
             let user = state
