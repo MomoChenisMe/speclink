@@ -30,6 +30,7 @@ import type { WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
 import { ProjectTabs } from "./components/ProjectTabs";
 import { SettingsView } from "./views/SettingsView";
+import type { ConnectionsAdapter } from "./adapter/connections";
 import type { WorkspaceAdapter } from "./adapter/workspace";
 import { APP_MESSAGES } from "./i18n/messages";
 import {
@@ -45,6 +46,8 @@ export interface AppProps {
   createSession: (root: string, name: string) => WorkspaceSession;
   /** workspace 探測面（開專案／init／統計／監看重掛）；未注入時對應 UI 不啟用。 */
   workspace?: WorkspaceAdapter;
+  /** server 連線面（desktop-connections）；未注入時伺服器頁籤不啟用。 */
+  connections?: ConnectionsAdapter;
 }
 
 /** 零分頁空狀態引導頁（spec：取代空看板；說明既有專案與一般目錄初始化兩條路）。 */
@@ -112,7 +115,7 @@ function NavItem({
 }
 
 /** 桌面 app 進入點：解析 UI 語言（偏好優先、null 跟隨系統）並掛 I18nProvider。 */
-export function App({ createSession, workspace }: AppProps) {
+export function App({ createSession, workspace, connections }: AppProps) {
   const [localePref, setLocalePrefState] = useState<LocalePreference>(() => readLocalePreference());
   // 切換即時生效並持久化（設定頁的 UI 語言三選接這裡）。
   const setLocalePref = (pref: LocalePreference) => {
@@ -128,6 +131,7 @@ export function App({ createSession, workspace }: AppProps) {
       <AppInner
         createSession={createSession}
         workspace={workspace}
+        connections={connections}
         localePref={localePref}
         onLocalePrefChange={setLocalePref}
       />
@@ -142,10 +146,16 @@ interface AppInnerProps extends AppProps {
 }
 
 /** 桌面主畫面：生命週期看板（主視圖）＋已封存獨立頁＋設定頁＋Spectra 級詳情抽屜。 */
-function AppInner({ createSession, workspace, localePref, onLocalePrefChange }: AppInnerProps) {
+function AppInner({
+  createSession,
+  workspace,
+  connections,
+  localePref,
+  onLocalePrefChange,
+}: AppInnerProps) {
   const useStore = useMemo(
-    () => createAppStore({ createSession, workspace }),
-    [createSession, workspace],
+    () => createAppStore({ createSession, workspace, connections }),
+    [createSession, workspace, connections],
   );
   const s = useStore();
   // 活躍 session（workspace-session 決策 6）：詳情／規格／封存抽屜的文件載入
@@ -361,6 +371,18 @@ function AppInner({ createSession, workspace, localePref, onLocalePrefChange }: 
               localePref={localePref}
               onLocalePrefChange={onLocalePrefChange}
               trayPanelError={s.trayPanelError}
+              servers={
+                connections && {
+                  connections: s.connections,
+                  phases: s.connectionPhases,
+                  onAdd: s.addConnection,
+                  onLogin: s.loginConnection,
+                  onSubmitPat: s.submitPat,
+                  onLogout: s.logoutConnection,
+                  onRemove: s.removeConnection,
+                  onRefresh: s.refreshConnections,
+                }
+              }
             />
           ) : workspace !== undefined && s.tabs.length === 0 ? (
             // 零分頁（首次使用）：空狀態引導頁取代空看板。

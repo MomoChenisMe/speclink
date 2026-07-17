@@ -26,6 +26,7 @@ import {
 import type { SettingsSnapshot } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
 import type { LocalePreference } from "../i18n/locale";
+import { ServersPanel, type ServersPanelProps } from "../components/ServersPanel";
 
 /** 行↔條目轉換（design D2）：一行一條規則——儲存時逐行修剪頭尾空白、空行滌除，行序即寫入順序。 */
 const entriesToText = (entries: string[]) => entries.join("\n");
@@ -47,6 +48,8 @@ export interface SettingsViewProps {
   onLocalePrefChange: (pref: LocalePreference) => void;
   /** 面板建立失敗的單行錯誤（spec：退回原生選單並於本機設定簽以獨立警示行浮出）。 */
   trayPanelError?: string | null;
+  /** 伺服器頁籤（desktop-connections；app 全域、不經 session）；未注入即不顯示。 */
+  servers?: ServersPanelProps;
 }
 
 function FieldHelp({ children }: { children: React.ReactNode }) {
@@ -143,6 +146,7 @@ export function SettingsView({
   localePref,
   onLocalePrefChange,
   trayPanelError = null,
+  servers,
 }: SettingsViewProps) {
   const { t } = useI18n();
   const [snap, setSnap] = useState<SettingsSnapshot | null>(null);
@@ -286,6 +290,8 @@ export function SettingsView({
           </TabsTrigger>
           {/* 本機設定簽不掛任何解析錯誤（design D3）。 */}
           <TabsTrigger value="local">{t("settings.localTabLabel")}</TabsTrigger>
+          {/* 伺服器簽（desktop-connections 決策 7）：app 全域、不經 session 綁定。 */}
+          {servers && <TabsTrigger value="servers">{t("settings.serversTabLabel")}</TabsTrigger>}
         </TabsList>
 
         {/* config.yaml 簽：專案說明／產出規則／產出政策 */}
@@ -562,6 +568,13 @@ export function SettingsView({
               系統匣樣式由平台決定、無設定卡，錯誤仍於本機設定簽浮出。 */}
           {trayPanelError && <ParseErrorBanner message={trayPanelError} />}
         </TabsContent>
+
+        {/* 伺服器簽：saved servers 清單與登入管理（desktop-connections）。 */}
+        {servers && (
+          <TabsContent value="servers" className="pt-3 flex flex-col gap-4">
+            <ServersPanel {...servers} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

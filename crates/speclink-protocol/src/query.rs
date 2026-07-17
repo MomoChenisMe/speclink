@@ -196,6 +196,15 @@ pub struct WhoamiResponse {
     pub repos: Vec<WhoamiRepo>,
 }
 
+/// `GET /auth/whoami` response (root level, no project scope): the identity
+/// behind a bearer — the display a client shows right after logging in,
+/// before any project is chosen.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthWhoamiResponse {
+    pub user: WhoamiUser,
+}
+
 /// The authenticated identity inside [`WhoamiResponse`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

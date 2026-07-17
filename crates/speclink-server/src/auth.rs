@@ -20,6 +20,7 @@ use speclink_host::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutio
 use speclink_host::policy::EffectiveWorkflowPolicy;
 use speclink_protocol::binding::{Actor as BindingActor, BindingResponse, Capabilities, ScopeRef};
 use speclink_protocol::events::{EventTransport, EventsDeclaration, PollingDeclaration, TransportKind};
+use speclink_protocol::query::{AuthWhoamiResponse, WhoamiUser};
 use speclink_protocol::API_VERSION;
 use speclink_store::{ProjectId, RepoId};
 use std::collections::HashMap;
@@ -108,23 +109,9 @@ impl FromRequestParts<AppState> for Binding {
         //    401 permission_denied so the cause is never probed; no cache means
         //    suspension and revocation are immediate. A PAT's last-used is
         //    advanced once every check passes (`touch_pat_id`).
-        let token = bearer_token(parts)
+        let token = bearer_token(&parts.headers)
             .ok_or_else(|| ApiError::permission_denied("missing or malformed bearer token"))?;
-        let (user, touch_pat_id): (User, Option<String>) = if token.starts_with("spk_at_") {
-            let user = state
-                .identity
-                .authenticate_access_token(&token)
-                .map_err(|_| ApiError::internal("identity store unavailable"))?
-                .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
-            (user, None)
-        } else {
-            let (pat, user) = state
-                .identity
-                .authenticate_pat(&token)
-                .map_err(|_| ApiError::internal("identity store unavailable"))?
-                .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
-            (user, Some(pat.id))
-        };
+        let (user, touch_pat_id) = resolve_bearer(state, &token)?;
 
         // 2. project key → registered project, read from the registry
         //    (unregistered → not found; a store failure → internal).
@@ -225,9 +212,56 @@ fn resolve_repo(project_key: &str, repos: &[Repo], repo_header: Option<String>) 
     }
 }
 
+/// Resolve a bearer to its user — the Binding precondition's first step,
+/// shared with the root-level `/auth/whoami`: `spk_at_` is a device access
+/// token, anything else a PAT, into the same check-list (hash-match,
+/// unrevoked, unexpired, owning user active). Any failure is the same 401 so
+/// the cause is never probed. A PAT hit returns its id for the caller to
+/// touch once the request is otherwise accepted.
+pub(crate) fn resolve_bearer(
+    state: &AppState,
+    token: &str,
+) -> Result<(User, Option<String>), ApiError> {
+    if token.starts_with("spk_at_") {
+        let user = state
+            .identity
+            .authenticate_access_token(token)
+            .map_err(|_| ApiError::internal("identity store unavailable"))?
+            .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
+        Ok((user, None))
+    } else {
+        let (pat, user) = state
+            .identity
+            .authenticate_pat(token)
+            .map_err(|_| ApiError::internal("identity store unavailable"))?
+            .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
+        Ok((user, Some(pat.id)))
+    }
+}
+
+/// `GET /auth/whoami` — the identity behind a bearer, at the server root
+/// (connection-registry-keychain 決策 8). No project scope, no API-version or
+/// repo header: this is what a client shows right after logging in, before
+/// any project is chosen. Resolution is exactly the Binding's first step; a
+/// PAT hit advances its last-used best-effort like any authenticated call.
+pub async fn auth_whoami(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<axum::Json<AuthWhoamiResponse>, ApiError> {
+    let token = bearer_token(&headers)
+        .ok_or_else(|| ApiError::permission_denied("missing or malformed bearer token"))?;
+    let (user, touch_pat_id) = resolve_bearer(&state, &token)?;
+    if let Some(pat_id) = &touch_pat_id {
+        let _ = state.identity.touch_pat(pat_id);
+    }
+    Ok(axum::Json(AuthWhoamiResponse {
+        user: WhoamiUser { name: user.display, handle: user.id },
+    }))
+}
+
 /// Extract the bearer token from the Authorization header.
-pub(crate) fn bearer_token(parts: &Parts) -> Option<String> {
-    let value = parts.headers.get(axum::http::header::AUTHORIZATION)?;
+pub(crate) fn bearer_token(headers: &axum::http::HeaderMap) -> Option<String> {
+    let value = headers.get(axum::http::header::AUTHORIZATION)?;
     let text = value.to_str().ok()?;
     text.strip_prefix("Bearer ").map(|t| t.trim().to_string())
 }
