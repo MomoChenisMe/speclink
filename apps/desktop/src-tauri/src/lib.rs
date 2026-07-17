@@ -295,6 +295,13 @@ fn toggle_tray_panel() -> Result<(), String> {
     Err("tray panel is macOS-only".to_string())
 }
 
+/// 結束 app（tray-status-menu「開啟視窗與結束動作」）：webview 無法自行結束
+/// 行程的能力橋接——面板動作區「結束」經此命令結束整個 app。
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -348,7 +355,8 @@ pub fn run() {
             write_app_tools,
             write_workflow_config,
             write_workflow_content,
-            toggle_tray_panel
+            toggle_tray_panel,
+            quit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running Speclink desktop app");

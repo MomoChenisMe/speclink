@@ -44,6 +44,8 @@ function renderPanel(over: Partial<Parameters<typeof TrayPanel>[0]> = {}) {
     onOpenDiscussion: vi.fn(),
     onOpenProject: vi.fn(),
     onOpenApp: vi.fn(),
+    onOpenSettings: vi.fn(),
+    onQuit: vi.fn(),
     onCopy: vi.fn(),
     onAddProject: vi.fn(),
   };
@@ -352,6 +354,22 @@ describe("TrayPanel 互動（開啟與 hover 複製）", () => {
     const h = renderPanel();
     fireEvent.click(screen.getByText("開啟 Speclink"));
     expect(h.onOpenApp).toHaveBeenCalled();
+  });
+
+  it("動作區塊依序渲染「開啟 Speclink」「設定」「結束」，點擊各列觸發對應回呼", () => {
+    const h = renderPanel();
+    const follows = (a: Element, b: Element) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    const open = screen.getByText("開啟 Speclink");
+    const settings = screen.getByText("設定");
+    const quit = screen.getByText("結束");
+    expect(follows(open, settings)).toBe(true);
+    expect(follows(settings, quit)).toBe(true);
+    fireEvent.click(settings);
+    expect(h.onOpenSettings).toHaveBeenCalled();
+    expect(h.onOpenApp).not.toHaveBeenCalled();
+    fireEvent.click(quit);
+    expect(h.onQuit).toHaveBeenCalled();
   });
 
   it("複製鈕退出 tab 順序（tabIndex=-1）且點擊仍複製（design D4 焦點修復）", () => {

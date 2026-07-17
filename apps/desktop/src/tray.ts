@@ -13,6 +13,7 @@ import {
 import { Image } from "@tauri-apps/api/image";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit, listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { handleIconState } from "@tauri-apps/plugin-positioner";
 
@@ -66,6 +67,7 @@ export type TrayMenuItem =
   | { kind: "empty"; label: string }
   | { kind: "separator" }
   | { kind: "open"; label: string }
+  | { kind: "settings"; label: string }
   | { kind: "quit"; label: string };
 
 export interface TrayModel {
@@ -93,7 +95,7 @@ function changeLabel(c: ChangeItem): string {
  * 專案區（作用中打勾）→ 分隔 → 生命週期分區（提案中/進行中/已就緒各一 header＋變更子選單，
  * 變更列帶進度條，子選單含「開啟此變更」「複製名稱」；全無變更則空狀態）→ 分隔 →
  * 討論區（header＋各討論子選單：父項標籤為 slug、topic 為子選單首行描述、
- * 含「開啟此討論」「複製 slug」；無則「討論 0」）→ 分隔 → 動作區（開啟 Speclink、結束）。
+ * 含「開啟此討論」「複製 slug」；無則「討論 0」）→ 分隔 → 動作區（開啟 Speclink、設定、結束）。
  * 徽章＝進行中變更數。
  */
 export function buildTrayModel(
@@ -179,6 +181,7 @@ export function buildTrayModel(
 
   items.push({ kind: "separator" });
   items.push({ kind: "open", label: t("tray.open") });
+  items.push({ kind: "settings", label: t("tray.settings") });
   items.push({ kind: "quit", label: t("tray.quit") });
 
   const inProgress = snapshot.changes.filter((c) => changeStage(c) === "in-progress").length;
@@ -203,6 +206,8 @@ export interface TrayStoreApi {
     openDetail: (name: string) => void;
     /** 開啟討論抽屜（討論項點擊用）。 */
     openDiscussion: (slug: string) => void;
+    /** 切換主頁面（動作區「設定」用；store 既有 BoardView 動作的結構子集）。 */
+    setBoardView: (view: "settings") => void;
   };
   subscribe: (listener: () => void) => () => void;
 }
@@ -212,7 +217,7 @@ export interface TrayDeps {
   isMacOS?: boolean;
   /** 選單重建去抖延遲（ms）；預設與看板刷新同量級（400ms）。 */
   debounceMs?: number;
-  /** 面板樣式下左鍵點擊圖示的開閉回呼（面板實作由呼叫端注入；未注入即無動作）。 */
+  /** 面板樣式下點擊圖示（不分左右鍵）的開閉回呼（面板實作由呼叫端注入；未注入即無動作）。 */
   onPanelToggle?: () => void;
 }
 
@@ -322,6 +327,9 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
         return { item: "Separator" };
       case "open":
         return { text: item.label, action: () => openMainWindow() };
+      case "settings":
+        // 喚起主視窗＋切設定頁（與「開啟此變更」同一喚起語意）
+        return { text: item.label, action: () => openIn(() => store.getState().setBoardView("settings")) };
       case "quit":
         return { item: "Quit", text: item.label };
     }
@@ -344,12 +352,17 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
     showMenuOnLeftClick: nativeAtInit,
     title: isMac ? first.badge || undefined : undefined,
     action: (event) => {
-      // 面板樣式限定：左鍵放開時開閉面板（原生選單樣式由選單接管點擊）。
+      // 面板樣式限定（原生選單樣式由選單接管點擊）。
       if (styleOf() !== "panel") return;
       // 先餵 tray 事件座標給 positioner——面板顯示前的 TrayBottomCenter 依此定位。
       void handleIconState(event).catch(() => {});
       const e = event as { type?: string; button?: string; buttonState?: string };
-      if (e.type === "Click" && e.button === "Left" && e.buttonState === "Up") {
+      // 點擊不分左右鍵（spec「面板樣式（macOS）」）：主鍵與次要鍵放開時皆開閉面板。
+      if (
+        e.type === "Click" &&
+        (e.button === "Left" || e.button === "Right") &&
+        e.buttonState === "Up"
+      ) {
         deps.onPanelToggle?.();
       }
     },
@@ -372,6 +385,9 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
       else if (kind === "open-change" && id) openIn(() => store.getState().openDetail(id));
       else if (kind === "open-discussion" && id) openIn(() => store.getState().openDiscussion(id));
       else if (kind === "open-app") void openMainWindow();
+      else if (kind === "open-settings") openIn(() => store.getState().setBoardView("settings"));
+      // 結束走 Rust 命令（webview 無法自行結束行程）；失敗靜默——tray 無可浮出錯誤的介面。
+      else if (kind === "quit") void invoke("quit_app").catch(() => {});
     },
   );
 
