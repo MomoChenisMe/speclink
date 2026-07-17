@@ -454,7 +454,7 @@ describe("抽屜內分析結果呈現", () => {
 
   it("合併結果呈現結構驗證列、繁中維度摘要卡與發現卡", async () => {
     const props = makeProps({
-      verbResult: {
+      drawerVerb: {
         change: "desktop-shell-and-browser",
         validate: { valid: true, errors: [] },
         analyze: report,
@@ -472,7 +472,7 @@ describe("抽屜內分析結果呈現", () => {
 
   it("結構驗證失敗於面板逐條呈現錯誤", async () => {
     const props = makeProps({
-      verbResult: {
+      drawerVerb: {
         change: "desktop-shell-and-browser",
         validate: { valid: false, errors: ["tasks.md: missing", "second error"] },
         analyze: report,
@@ -488,7 +488,7 @@ describe("抽屜內分析結果呈現", () => {
 
   it("執行失敗呈現 core 的單行錯誤", async () => {
     const props = makeProps({
-      verbResult: { change: "desktop-shell-and-browser", error: "parse boom" },
+      drawerVerb: { change: "desktop-shell-and-browser", error: "parse boom" },
     });
     render(<RichDetailDrawer {...(props as never)} />);
     await screen.findByText("MomoChen");
@@ -497,7 +497,7 @@ describe("抽屜內分析結果呈現", () => {
 
   it("動詞結果屬於別的 change 時不呈現", async () => {
     const props = makeProps({
-      verbResult: { change: "some-other-change", validate: { valid: true, errors: [] } },
+      drawerVerb: { change: "some-other-change", validate: { valid: true, errors: [] } },
     });
     render(<RichDetailDrawer {...(props as never)} />);
     await screen.findByText("MomoChen");
@@ -507,7 +507,7 @@ describe("抽屜內分析結果呈現", () => {
   // design D2：分析鈕為切換——結果開啟時再點收合（onClearVerb）、不重跑動詞。
   it("結果開啟時分析鈕 aria-pressed，再點呼叫 onClearVerb 而非重跑", async () => {
     const props = makeProps({
-      verbResult: {
+      drawerVerb: {
         change: "desktop-shell-and-browser",
         validate: { valid: true, errors: [] },
         analyze: report,
@@ -536,7 +536,7 @@ describe("抽屜內分析結果呈現", () => {
 
   it("面板關閉鈕呼叫 onClearVerb 收合", async () => {
     const props = makeProps({
-      verbResult: {
+      drawerVerb: {
         change: "desktop-shell-and-browser",
         validate: { valid: true, errors: [] },
         analyze: report,

@@ -1,4 +1,5 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand";
+import { toast } from "sonner";
 import type {
   ArchivedTarget,
   CardKind,
@@ -28,6 +29,19 @@ import {
   type ProjectTab,
 } from "./tabs";
 import { detectMacOS, type TrayStyle } from "./tray";
+
+const FAILURE_TOAST_ID = "desktop-operation-failure";
+type FailureMessageKey =
+  | "store.deleteFailed"
+  | "store.archiveFailed"
+  | "store.discussionArchiveFailed"
+  | "store.reorderFailed"
+  | "store.openProjectFailed"
+  | "store.initFailed";
+
+function showFailureToast(subject: string, messageKey: FailureMessageKey, error: unknown): void {
+  toast.error(`${subject} · ${appT(messageKey)} ✗ ${String(error)}`, { id: FAILURE_TOAST_ID });
+}
 
 /** 主頁面：變更看板（預設）、規格頁、已封存獨立頁或設定頁。 */
 export type BoardView = "board" | "specs" | "archived" | "settings";
@@ -74,8 +88,6 @@ export interface AppState {
   pendingDelete: string | null;
   /** 待確認的討論歸檔（slug）。 */
   pendingArchiveDiscussion: string | null;
-  /** 視窗頂列狀態列：看板全域操作（刪除／封存／拖排失敗）之結果；null=無。 */
-  verbResult: string | null;
   /** 詳情抽屜內呈現的 validate／analyze 結構化結果（keyed by change）；null=無。 */
   drawerVerb: VerbDrawerResult | null;
 
@@ -108,7 +120,7 @@ export interface AppState {
   runVerb: (verb: Verb, change: string) => Promise<void>;
   /** 收合詳情抽屜的分析結果（design D2：再按分析或面板關閉鈕）。 */
   clearDrawerVerb: () => void;
-  /** 看板拖排寫回：把卡片排到兩鄰居之間（null＝欄頂／欄底）；失敗浮上 verbResult。 */
+  /** 看板拖排寫回：把卡片排到兩鄰居之間（null＝欄頂／欄底）；失敗以 toast 呈現。 */
   reorderCard: (kind: CardKind, id: string, prevId: string | null, nextId: string | null) => Promise<void>;
 
   // --- workspace／專案分頁列（注入 workspace adapter 時生效；design D3/D10/D11） ---
@@ -243,7 +255,6 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     pendingArchive: null,
     pendingDelete: null,
     pendingArchiveDiscussion: null,
-    verbResult: null,
     drawerVerb: null,
 
     async refresh() {
@@ -425,9 +436,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!dataSource) return;
       try {
         await dataSource.deleteChange(name);
-        set({ verbResult: `${name} · ${appT("store.deleted")}`, detailChange: null });
+        set({ detailChange: null });
       } catch (e) {
-        set({ verbResult: `${name} · ${appT("store.deleteFailed")} ✗ ${String(e)}` });
+        showFailureToast(name, "store.deleteFailed", e);
       }
       await get().refresh();
     },
@@ -448,9 +459,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!dataSource) return;
       try {
         await dataSource.archiveDiscussion(slug);
-        set({ verbResult: `${slug} · ${appT("store.discussionArchived")}`, detailDiscussion: null });
+        set({ detailDiscussion: null });
       } catch (e) {
-        set({ verbResult: `${slug} · ${appT("store.discussionArchiveFailed")} ✗ ${String(e)}` });
+        showFailureToast(slug, "store.discussionArchiveFailed", e);
       }
       await get().refresh();
     },
@@ -462,15 +473,14 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     async runVerb(verb, change) {
       const dataSource = activeDataSource();
       if (!dataSource) return;
-      // archive 屬看板全域操作：結果仍呈於視窗頂列狀態列（D1）。
+      // archive 屬看板全域操作：成功由畫面表達，失敗以單槽 toast 呈現（D1）。
       if (verb === "archive") {
         try {
-          const r = await dataSource.runVerb(verb, change);
-          const o = (r ?? {}) as { datedName?: string };
-          set({ verbResult: `${change} · archive ✓ ${o.datedName ?? "archived"}` });
+          await dataSource.runVerb(verb, change);
+          set({ detailChange: null });
         } catch (e) {
           // 失敗時呈現 core 的錯誤訊息，不靜默吞掉。
-          set({ verbResult: `${change} · ${verb} ✗ ${String(e)}` });
+          showFailureToast(change, "store.archiveFailed", e);
         }
         await get().refresh();
         return;
@@ -506,8 +516,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       try {
         await dataSource.reorderCard(kind, id, prevId, nextId);
       } catch (e) {
-        // 寫回失敗不留假象（spec）：單行錯誤浮上，refresh 回磁碟現況。
-        set({ verbResult: `${id} · ${appT("store.reorderFailed")} ✗ ${String(e)}` });
+        // 寫回失敗不留假象（spec）：單行錯誤 toast，refresh 回磁碟現況。
+        showFailureToast(id, "store.reorderFailed", e);
       }
       await get().refresh();
     },
@@ -616,8 +626,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         if (probe.status === "project") await enterProject(probe.root, probe.name);
         else set({ pendingInit: probe.dir });
       } catch (e) {
-        // 開啟失敗（spec：顯示單行錯誤訊息並維持原專案）。
-        set({ verbResult: String(e) });
+        // 開啟失敗（spec：顯示帶所選路徑的單行錯誤並維持原專案）。
+        showFailureToast(path, "store.openProjectFailed", e);
       }
     },
 
@@ -670,8 +680,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         const probe = await workspace.initProject(dir, tools);
         if (probe.status === "project") await enterProject(probe.root, probe.name);
       } catch (e) {
-        // 初始化失敗：單行錯誤、不切換 root（spec）。
-        set({ verbResult: String(e) });
+        // 初始化失敗：顯示帶所選目錄的單行錯誤、不切換 root（spec）。
+        showFailureToast(dir, "store.initFailed", e);
       }
     },
 
