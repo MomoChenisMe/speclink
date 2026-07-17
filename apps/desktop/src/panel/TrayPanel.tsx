@@ -24,6 +24,8 @@ import {
   Lightbulb,
   MessageSquareText,
   Plus,
+  Power,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 
@@ -43,6 +45,10 @@ export interface TrayPanelProps {
   onOpenChange: (name: string) => void;
   onOpenDiscussion: (slug: string) => void;
   onOpenApp: () => void;
+  /** 開主視窗並切至設定頁（動作區「設定」；與原生選單同語意）。 */
+  onOpenSettings: () => void;
+  /** 結束 app（動作區「結束」；面板端經 Rust 命令結束行程）。 */
+  onQuit: () => void;
   /** 複製回呼（面板入口接 clipboard 外掛——Rust 端，不受焦點限制）。 */
   onCopy: (text: string) => void;
   /** 快速加入專案（design D7）：開資料夾選擇器，選定即加入並切換、取消無事。 */
@@ -176,6 +182,8 @@ export function TrayPanel({
   onOpenChange,
   onOpenDiscussion,
   onOpenApp,
+  onOpenSettings,
+  onQuit,
   onCopy,
   onAddProject,
 }: TrayPanelProps) {
@@ -343,10 +351,18 @@ export function TrayPanel({
 
       <Divider />
 
-      {/* 動作區：開啟主視窗（面板樣式下進 app 的把手） */}
+      {/* 動作區：開啟主視窗、設定、結束（spec 動作區塊三項；與原生選單同序） */}
       <div onClick={onOpenApp} className={rowClass}>
         <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary-foreground" />
         {t("tray.open")}
+      </div>
+      <div onClick={onOpenSettings} className={rowClass}>
+        <Settings className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary-foreground" />
+        {t("tray.settings")}
+      </div>
+      <div onClick={onQuit} className={rowClass}>
+        <Power className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary-foreground" />
+        {t("tray.quit")}
       </div>
     </div>
   );

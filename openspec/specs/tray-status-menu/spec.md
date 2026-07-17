@@ -7,11 +7,11 @@ TBD - created by archiving change 'system-tray-status'. Update Purpose after arc
 ## Requirements
 
 ### Requirement: 系統匣圖示與原生選單
-桌面 app SHALL 於系統匣（macOS 選單列、Windows 通知區域、Linux AppIndicator）顯示 Speclink 圖示；互動樣式 SHALL 由平台決定——macOS 一律為面板（見「面板樣式（macOS）」需求）、非 macOS 平台一律為原生下拉選單（menu-first），SHALL NOT 提供樣式偏好或切換介面。圖示 SHALL 為單色 Speclink 標記（使用者提供的可辨識剪影）；macOS 上 SHALL 以 template 單色形式渲染以適應深淺色選單列。原生選單 SHALL 依序包含：專案區（已開啟的專案分頁）、生命週期分區（提案中／進行中／已就緒）、討論區、動作區（「開啟 Speclink」與「結束」）。
+桌面 app SHALL 於系統匣（macOS 選單列、Windows 通知區域、Linux AppIndicator）顯示 Speclink 圖示；互動樣式 SHALL 由平台決定——macOS 一律為面板（見「面板樣式（macOS）」需求）、非 macOS 平台一律為原生下拉選單（menu-first），SHALL NOT 提供樣式偏好或切換介面。圖示 SHALL 為單色 Speclink 標記（使用者提供的可辨識剪影）；macOS 上 SHALL 以 template 單色形式渲染以適應深淺色選單列。原生選單 SHALL 依序包含：專案區（已開啟的專案分頁）、生命週期分區（提案中／進行中／已就緒）、討論區、動作區（「開啟 Speclink」「設定」「結束」）。
 
 #### Scenario: 非 macOS 啟動後系統匣出現圖示與完整選單
 - **WHEN** 使用者於 Windows 或 Linux 啟動桌面 app 且載入完成
-- **THEN** 系統匣出現單色 Speclink 標記圖示，展開選單依序可見專案區、生命週期分區、討論區、動作區（「開啟 Speclink」「結束」）
+- **THEN** 系統匣出現單色 Speclink 標記圖示，展開選單依序可見專案區、生命週期分區、討論區、動作區（「開啟 Speclink」「設定」「結束」）
 
 #### Scenario: macOS 啟動後點擊圖示即面板
 - **WHEN** 使用者於 macOS 啟動桌面 app 且載入完成，點擊系統匣圖示
@@ -23,18 +23,16 @@ TBD - created by archiving change 'system-tray-status'. Update Purpose after arc
 
 
 <!-- @trace
-source: tray-macos-panel-only
-updated: 2026-07-16
+source: tray-right-click
+updated: 2026-07-17
 code:
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/trayStyle.test.ts
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src/__tests__/tray.test.ts
+  - apps/desktop/src/__tests__/trayPanel.test.tsx
   - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
+  - apps/desktop/src/panel/TrayPanel.tsx
+  - apps/desktop/src/panel/main.tsx
   - apps/desktop/src/tray.ts
-  - apps/desktop/src/trayStyle.ts
-  - apps/desktop/src/views/SettingsView.tsx
 -->
 
 ---
@@ -271,49 +269,36 @@ code:
 
 ---
 ### Requirement: 開啟視窗與結束動作
-選單「開啟 Speclink」SHALL 顯示主視窗並使其取得焦點；「結束」SHALL 結束 app。除「開啟 Speclink」、變更子選單動作與討論項外，選單其他操作 SHALL NOT 改變主視窗的顯示與焦點狀態。
+選單「開啟 Speclink」SHALL 顯示主視窗並使其取得焦點；「設定」SHALL 顯示主視窗、使其取得焦點並將主頁面切換至設定頁；「結束」SHALL 結束 app——原生選單與 macOS 面板皆同（面板的「結束」SHALL 結束整個 app 行程，SHALL NOT 僅收合面板）。除「開啟 Speclink」「設定」、變更子選單動作與討論項外，選單其他操作 SHALL NOT 改變主視窗的顯示與焦點狀態。
 
 #### Scenario: 自最小化狀態開啟主視窗
 - **WHEN** 主視窗處於最小化或被其他視窗遮蔽，使用者點選「開啟 Speclink」
 - **THEN** 主視窗顯示於前景並取得焦點
 
+#### Scenario: 設定動作開啟主視窗並跳至設定頁
+- **WHEN** 主視窗未在前景且顯示看板頁，使用者點選系統匣動作區的「設定」
+- **THEN** 主視窗顯示於前景並取得焦點，主頁面切換至設定頁
+
 #### Scenario: 結束 app
 - **WHEN** 使用者點選選單的「結束」
 - **THEN** app 行程結束，系統匣圖示消失
 
+#### Scenario: 自面板結束 app
+- **WHEN** 使用者於 macOS 面板點擊動作區塊的「結束」
+- **THEN** app 行程結束，面板與系統匣圖示一併消失
+
 
 <!-- @trace
-source: system-tray-status
-updated: 2026-07-13
+source: tray-right-click
+updated: 2026-07-17
 code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/icons/128x128.png
-  - apps/desktop/src-tauri/icons/128x128@2x.png
-  - apps/desktop/src-tauri/icons/32x32.png
-  - apps/desktop/src-tauri/icons/64x64.png
-  - apps/desktop/src-tauri/icons/Square107x107Logo.png
-  - apps/desktop/src-tauri/icons/Square142x142Logo.png
-  - apps/desktop/src-tauri/icons/Square150x150Logo.png
-  - apps/desktop/src-tauri/icons/Square284x284Logo.png
-  - apps/desktop/src-tauri/icons/Square30x30Logo.png
-  - apps/desktop/src-tauri/icons/Square310x310Logo.png
-  - apps/desktop/src-tauri/icons/Square44x44Logo.png
-  - apps/desktop/src-tauri/icons/Square71x71Logo.png
-  - apps/desktop/src-tauri/icons/Square89x89Logo.png
-  - apps/desktop/src-tauri/icons/StoreLogo.png
-  - apps/desktop/src-tauri/icons/icon.icns
-  - apps/desktop/src-tauri/icons/icon.ico
-  - apps/desktop/src-tauri/icons/icon.png
-  - apps/desktop/src-tauri/icons/speclink-tray-18.png
-  - apps/desktop/src-tauri/icons/speclink-tray-18@2x.png
-  - apps/desktop/src-tauri/tauri.conf.json
-  - apps/desktop/src/App.tsx
+  - apps/desktop/src-tauri/src/lib.rs
   - apps/desktop/src/__tests__/tray.test.ts
+  - apps/desktop/src/__tests__/trayPanel.test.tsx
   - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/panel/TrayPanel.tsx
+  - apps/desktop/src/panel/main.tsx
   - apps/desktop/src/tray.ts
-  - apps/desktop/src/trayIcon.ts
 -->
 
 ---
@@ -361,11 +346,11 @@ code:
 ---
 ### Requirement: 面板樣式（macOS）
 
-於 macOS，點擊系統匣圖示 SHALL NOT 顯示原生下拉選單，而 SHALL 於圖示下方彈出貼齊圖示的面板視窗，再次點擊 SHALL 收合——無需任何偏好設定。面板內容 SHALL 與原生選單同源（同一前端資料層：專案、生命週期分區的變更與進度、討論——討論比照原生選單分「討論」與「已轉出」兩分區），SHALL NOT 為面板另建第二條資料查詢路徑。
+於 macOS，點擊系統匣圖示 SHALL NOT 顯示原生下拉選單，而 SHALL 於圖示下方彈出貼齊圖示的面板視窗，再次點擊 SHALL 收合——無需任何偏好設定。點擊 SHALL 不分滑鼠按鍵：主鍵（左鍵）與次要鍵（右鍵）點擊圖示 SHALL 完全等價，皆為開閉面板。面板內容 SHALL 與原生選單同源（同一前端資料層：專案、生命週期分區的變更與進度、討論——討論比照原生選單分「討論」與「已轉出」兩分區），SHALL NOT 為面板另建第二條資料查詢路徑。
 
 專案區 SHALL 呈現為橫向 tab 條：每個 tab SHALL 顯示專案名首字母的圓角方塊 avatar 與專案名；作用中專案的 tab SHALL 以實心主色底＋反白文字標示；tab 總寬超出面板時 SHALL 可橫向捲動且 SHALL NOT 顯示捲軸。點擊 tab SHALL 原地切換作用中專案——面板下方內容隨之更新，SHALL NOT 喚起主視窗、SHALL NOT 收合面板。tab 條尾端 SHALL 有「加入專案」動作項：點擊 SHALL 先顯示主視窗（含切換至其所在桌面——確保後續對話框於使用者眼前可見）再開啟資料夾選擇器（與主視窗「開啟專案」同語意）——選定即以分頁加入該專案並成為作用中專案，取消則無任何變化。資料夾選擇器等系統原生對話框 SHALL 跟隨系統語言呈現（app SHALL 宣告繁體中文在地化，不得固定英文介面）。
 
-面板內容 SHALL 依區塊排列：專案 tab 條之下依序為討論區塊（「討論」分區常駐呈現，其後「已轉出」分區有料才現）、生命週期區塊（提案中→進行中→已就緒）、動作區塊（「開啟 Speclink」）。專案 tab 條與討論區塊之間、討論區塊與生命週期區塊之間、生命週期區塊與動作區塊之間 SHALL 各有一條分割線（共三條）；區塊內部（分區卡之間）SHALL NOT 出現分割線。此區塊順序為面板刻意設計；原生選單的區段順序仍依「系統匣圖示與原生選單」需求（生命週期分區在前、討論區在後），不受本段影響。
+面板內容 SHALL 依區塊排列：專案 tab 條之下依序為討論區塊（「討論」分區常駐呈現，其後「已轉出」分區有料才現）、生命週期區塊（提案中→進行中→已就緒）、動作區塊（「開啟 Speclink」「設定」「結束」）。專案 tab 條與討論區塊之間、討論區塊與生命週期區塊之間、生命週期區塊與動作區塊之間 SHALL 各有一條分割線（共三條）；區塊內部（分區卡之間）SHALL NOT 出現分割線。此區塊順序為面板刻意設計；原生選單的區段順序仍依「系統匣圖示與原生選單」需求（生命週期分區在前、討論區在後），不受本段影響。
 
 生命週期分區與討論分區 SHALL 各自以半透明圓角卡片容器呈現（面板毛玻璃底 SHALL 可透出），分區標題 SHALL 含主色上色的分區圖示，並 SHALL 顯示該分區的項目計數（徽章樣式與看板欄計數同語彙）。生命週期三個階段分區（提案中／進行中／已就緒）SHALL 常駐呈現：零筆階段 SHALL 以「分區標題＋計數 0」的空狀態卡呈現，SHALL NOT 因該階段無變更而整卡消失；全無變更時 SHALL NOT 顯示佔位卡（原「尚無進行中變更」），而以三張計數 0 的分區卡呈現，分區順序固定為提案中→進行中→已就緒。「已轉出」分區 SHALL 維持有料才現——零筆時 SHALL NOT 呈現（與「討論列表」需求一致）。空狀態卡（討論零筆、生命週期零筆階段）SHALL 維持最小高度、內容垂直置中，不得塌陷成細條。有任務的變更列，其進度條填色 SHALL 依階段套用與看板同源的主色深淺階梯（提案中最淺、進行中次之、已就緒最深）。
 
@@ -375,11 +360,15 @@ code:
 
 #### Scenario: 面板樣式下點擊圖示彈出貼齊面板
 - **WHEN** 使用者於 macOS 點擊系統匣圖示
-- **THEN** 圖示下方彈出貼齊圖示的面板，頂部為專案 tab 條，其下依序以卡片分區呈現討論區塊、生命週期區塊（含進度）與「開啟 Speclink」動作，區塊之間有分割線，未出現原生下拉選單
+- **THEN** 圖示下方彈出貼齊圖示的面板，頂部為專案 tab 條，其下依序以卡片分區呈現討論區塊、生命週期區塊（含進度）與動作區塊（「開啟 Speclink」「設定」「結束」），區塊之間有分割線，未出現原生下拉選單
+
+#### Scenario: 右鍵點擊圖示與左鍵等價
+- **WHEN** 使用者於 macOS 以滑鼠次要鍵（右鍵）點擊系統匣圖示
+- **THEN** 面板於圖示下方彈出且貼齊位置與左鍵點擊一致；面板已開啟時再以右鍵點擊圖示則面板收合——與左鍵行為完全相同
 
 #### Scenario: 區塊順序與分割線
 - **WHEN** 面板開啟，作用中專案存在討論中討論、已轉出討論與各階段變更
-- **THEN** 由上而下依序為：專案 tab 條、分割線、「討論」分區、「已轉出」分區、分割線、「提案中」「進行中」「已就緒」分區、分割線、「開啟 Speclink」；分割線恰為三條且僅出現於區塊之間、分區卡之間無分割線
+- **THEN** 由上而下依序為：專案 tab 條、分割線、「討論」分區、「已轉出」分區、分割線、「提案中」「進行中」「已就緒」分區、分割線、「開啟 Speclink」「設定」「結束」；分割線恰為三條且僅出現於區塊之間、分區卡之間無分割線
 
 #### Scenario: 點擊專案 tab 原地切換
 - **WHEN** 面板開啟且有兩個以上專案分頁，使用者點擊非作用中專案的 tab
@@ -427,11 +416,16 @@ code:
 
 
 <!-- @trace
-source: tray-empty-stage-sections
+source: tray-right-click
 updated: 2026-07-17
 code:
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src/__tests__/tray.test.ts
   - apps/desktop/src/__tests__/trayPanel.test.tsx
+  - apps/desktop/src/i18n/messages.ts
   - apps/desktop/src/panel/TrayPanel.tsx
+  - apps/desktop/src/panel/main.tsx
+  - apps/desktop/src/tray.ts
 -->
 
 ---

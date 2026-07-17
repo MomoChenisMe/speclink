@@ -5,6 +5,7 @@ import { Menu } from "@tauri-apps/api/menu";
 import { Image } from "@tauri-apps/api/image";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit as tauriEmit, listen as tauriListen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 import {
@@ -27,6 +28,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   emit: vi.fn().mockResolvedValue(undefined),
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn() }));
 vi.mock("@tauri-apps/plugin-positioner", () => ({
   handleIconState: vi.fn().mockResolvedValue(undefined),
@@ -35,6 +37,7 @@ vi.mock("@tauri-apps/plugin-positioner", () => ({
 const fakeT = (key: string): string =>
   (({
     "tray.open": "開啟 Speclink",
+    "tray.settings": "設定",
     "tray.quit": "結束",
     "tray.discussions": "討論 {n}",
     "tray.discussionsHeader": "討論",
@@ -264,6 +267,7 @@ describe("buildTrayModel", () => {
       "discussion",
       "separator",
       "open",
+      "settings",
       "quit",
     ]);
   });
@@ -277,6 +281,7 @@ function makeStore(
   openDetail = vi.fn(),
   openDiscussion = vi.fn(),
   openProjectViaDialog = vi.fn(),
+  setBoardView = vi.fn(),
 ) {
   let state = {
     tabs: [
@@ -299,6 +304,7 @@ function makeStore(
     openDetail,
     openDiscussion,
     openProjectViaDialog,
+    setBoardView,
   };
   const listeners = new Set<() => void>();
   return {
@@ -317,6 +323,7 @@ function makeStore(
     openDetail,
     openDiscussion,
     openProjectViaDialog,
+    setBoardView,
   };
 }
 
@@ -446,6 +453,19 @@ describe("initTray 接線（選單）", () => {
     expect(win.setFocus).toHaveBeenCalled();
   });
 
+  it("點「設定」開主視窗、取得焦點並切換至設定頁", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true });
+    const settings = lastItems.find((i) => i.text === "設定");
+    expect(settings).toBeDefined();
+    settings.action();
+    // openMainWindow 為 async（unminimize → show → setFocus）：沖洗微任務後再斷言
+    await new Promise((r) => setTimeout(r, 0));
+    expect(win.show).toHaveBeenCalled();
+    expect(win.setFocus).toHaveBeenCalled();
+    expect(bag.setBoardView).toHaveBeenCalledWith("settings");
+  });
+
   it("「結束」映射為原生 predefined Quit", async () => {
     const { store } = makeStore();
     await initTray(store, { isMacOS: true });
@@ -464,12 +484,26 @@ describe("initTray 接線（選單）", () => {
     expect(onPanelToggle).toHaveBeenCalledTimes(1);
   });
 
+  it("panel 樣式：右鍵點擊圖示同樣觸發 onPanelToggle（與左鍵等價），Down 不觸發", async () => {
+    const bag = makeStore();
+    bag.emit({ trayStyle: "panel" });
+    const onPanelToggle = vi.fn();
+    await initTray(bag.store, { isMacOS: true, onPanelToggle });
+    const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
+    opts.action({ type: "Click", button: "Right", buttonState: "Up" });
+    expect(onPanelToggle).toHaveBeenCalledTimes(1);
+    // 放開才開閉：Down 事件不觸發（與左鍵同規則）
+    opts.action({ type: "Click", button: "Right", buttonState: "Down" });
+    expect(onPanelToggle).toHaveBeenCalledTimes(1);
+  });
+
   it("native 樣式：點擊事件不觸發 onPanelToggle（選單接管互動）", async () => {
     const bag = makeStore();
     const onPanelToggle = vi.fn();
     await initTray(bag.store, { isMacOS: true, onPanelToggle });
     const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
     opts.action?.({ type: "Click", button: "Left", buttonState: "Up" });
+    opts.action?.({ type: "Click", button: "Right", buttonState: "Up" });
     expect(onPanelToggle).not.toHaveBeenCalled();
   });
 
@@ -532,6 +566,25 @@ describe("initTray 接線（選單）", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(win.show).toHaveBeenCalled();
     expect(bag.openDetail).toHaveBeenCalledWith("alpha");
+  });
+
+  it("面板動作 open-settings 喚起主視窗並切換至設定頁", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
+    (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-settings" } });
+    // openMainWindow 為 async：沖洗微任務後再斷言
+    await new Promise((r) => setTimeout(r, 0));
+    expect(win.show).toHaveBeenCalled();
+    expect(bag.setBoardView).toHaveBeenCalledWith("settings");
+  });
+
+  it("面板動作 quit 呼叫結束 app 的命令", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
+    (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "quit" } });
+    expect(invoke).toHaveBeenCalledWith("quit_app");
   });
 
   it("面板動作 add-project 先喚起主視窗再轉呼資料夾選擇流程（D7 快速加入專案）", async () => {
