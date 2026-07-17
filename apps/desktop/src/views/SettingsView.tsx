@@ -23,7 +23,8 @@ import {
   useI18n,
 } from "@speclink/ui";
 
-import type { SettingsSnapshot, WorkspaceAdapter } from "../adapter/workspace";
+import type { SettingsSnapshot } from "../adapter/workspace";
+import type { WorkspaceSettingsProvider } from "../session";
 import type { LocalePreference } from "../i18n/locale";
 
 /** 行↔條目轉換（design D2）：一行一條規則——儲存時逐行修剪頭尾空白、空行滌除，行序即寫入順序。 */
@@ -38,7 +39,8 @@ const textToEntries = (text: string) =>
 const isLongContext = (text: string) => text.split("\n").length > 12 || text.length > 1200;
 
 export interface SettingsViewProps {
-  workspace: WorkspaceAdapter;
+  /** 活躍 session 的設定面（root 已綁定；workspace-session 決策 3）。 */
+  settings: WorkspaceSettingsProvider;
   /** UI 語言偏好現值（null＝跟隨系統）。 */
   localePref: LocalePreference;
   /** 切換即時生效並持久化（App 層負責寫 localStorage）。 */
@@ -137,7 +139,7 @@ function CardEditControls({
 }
 
 export function SettingsView({
-  workspace,
+  settings,
   localePref,
   onLocalePrefChange,
   trayPanelError = null,
@@ -165,7 +167,7 @@ export function SettingsView({
   const [wfMsg, setWfMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    void workspace.readSettings().then((s) => {
+    void settings.readSettings().then((s) => {
       setSnap(s);
       setTools(s.app.tools);
       setLocale(s.workflow.locale ?? "");
@@ -179,7 +181,7 @@ export function SettingsView({
         ),
       );
     });
-  }, [workspace]);
+  }, [settings]);
 
   if (!snap) return null;
 
@@ -191,7 +193,7 @@ export function SettingsView({
 
   const saveApp = async () => {
     try {
-      await workspace.writeAppTools(tools);
+      await settings.writeAppTools(tools);
       setAppMsg(t("settings.saved"));
     } catch (e) {
       // 寫入失敗：單行錯誤（指明檔案與階段，來自 desktop-core），表單維持原值。
@@ -201,7 +203,7 @@ export function SettingsView({
 
   const saveWorkflow = async () => {
     try {
-      await workspace.writeWorkflowConfig({
+      await settings.writeWorkflowConfig({
         locale: locale || null,
         specLocale: specLocale || null,
         tdd,
@@ -222,7 +224,7 @@ export function SettingsView({
   const saveContext = async () => {
     // 僅寫 context 鍵（清空＝移除鍵）；產出規則卡對應的 rules 鍵不觸碰。
     try {
-      await workspace.writeWorkflowContext(draftContext);
+      await settings.writeWorkflowContext(draftContext);
       setContextText(draftContext);
       setContextExpanded(false);
       setCtxEditing(false);
@@ -251,7 +253,7 @@ export function SettingsView({
       textToEntries(draftRules[id] ?? ""),
     ]);
     try {
-      await workspace.writeWorkflowRules(nextRules);
+      await settings.writeWorkflowRules(nextRules);
       setRules(Object.fromEntries(nextRules));
       setRulesEditing(false);
       setRulesMsg(t("settings.saved"));

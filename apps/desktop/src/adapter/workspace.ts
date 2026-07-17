@@ -1,18 +1,17 @@
-// workspace 管理操作的桌面 adapter（design D6）：直接 invoke 七支桌面專屬
-// command，不經 packages/ui 的 SpeclinkDataSource——該介面是 change／spec
-// 瀏覽管理抽象，專案與設定語意屬宿主。
-import { invoke } from "@tauri-apps/api/core";
+// workspace 管理操作的桌面 adapter（design D6；workspace-session 決策 3/4）：
+// 直接 invoke 桌面專屬 command，不經 packages/ui 的 SpeclinkDataSource——該介面
+// 是 change／spec 瀏覽管理抽象，專案與設定語意屬宿主。探測面（開啟／初始化／
+// 統計）收路徑參數；設定面經 createWorkspaceSettings 將 root 綁入閉包，每支
+// command 顯式帶 root。
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+
+import type { InvokeFn, WorkspaceSettingsProvider } from "../session";
 
 /** open_project／init_project 的三態判定 payload。 */
 export type ProjectProbe =
   | { status: "project"; root: string; name: string }
   | { status: "uninitialized"; dir: string };
-
-export interface ProjectInfo {
-  root: string;
-  name: string;
-}
 
 /** read_settings 的快照 payload（欄位值＋各檔可選的 parseError）。 */
 export interface SettingsSnapshot {
@@ -40,44 +39,53 @@ export interface WorkflowFields {
   audit: boolean;
 }
 
+/** 探測面：開啟／初始化／統計皆收路徑參數、無全域語意（設定面見
+ * createWorkspaceSettings，經 session 綁 root）。 */
 export interface WorkspaceAdapter {
   openProject(path: string): Promise<ProjectProbe>;
   initProject(path: string, tools: string[]): Promise<ProjectProbe>;
-  currentProject(): Promise<ProjectInfo>;
+  /** 啟動語境的預設目錄（首啟無持久化分頁時據此顯式開啟）；純讀。 */
+  startupDir(): Promise<string>;
   projectStats(path: string): Promise<{ pendingWrapUp: number }>;
+  /** 監看重掛（workspace-session 決策 5）：顯式跟隨活躍 session。 */
+  watchWorkspace(root: string): Promise<void>;
   /** 原生資料夾選擇器；取消回 null。 */
   pickFolder(): Promise<string | null>;
-  readSettings(): Promise<SettingsSnapshot>;
-  writeAppTools(tools: string[]): Promise<void>;
-  writeWorkflowConfig(fields: WorkflowFields): Promise<void>;
-  /** 寫入專案說明（config.yaml 的 context）；空字串＝清空即移除鍵。rules 不動。 */
-  writeWorkflowContext(context: string): Promise<void>;
-  /** 整份代換產出規則（節序即寫入序；空節移除鍵、全空移除 rules 鍵）。context 不動。 */
-  writeWorkflowRules(rules: Array<[string, string[]]>): Promise<void>;
 }
 
 export function createWorkspaceAdapter(): WorkspaceAdapter {
   return {
-    openProject: (path) => invoke("open_project", { path }),
-    initProject: (path, tools) => invoke("init_project", { path, tools }),
-    currentProject: () => invoke("current_project"),
-    projectStats: (path) => invoke("project_stats", { path }),
+    openProject: (path) => tauriInvoke("open_project", { path }),
+    initProject: (path, tools) => tauriInvoke("init_project", { path, tools }),
+    startupDir: () => tauriInvoke("startup_dir"),
+    projectStats: (path) => tauriInvoke("project_stats", { path }),
+    watchWorkspace: (root) => tauriInvoke("watch_workspace", { root }),
     pickFolder: async () => {
       const picked = await open({ directory: true, multiple: false });
       return typeof picked === "string" ? picked : null;
     },
-    readSettings: () => invoke("read_settings"),
-    writeAppTools: (tools) => invoke("write_app_tools", { tools }),
+  };
+}
+
+/** 設定面工廠（workspace-session 決策 3）：root 綁入閉包，每支 command 顯式
+ * 帶 root 直通 desktop-core 的帶路徑函式。invoke 可注入以利測試。 */
+export function createWorkspaceSettings(
+  root: string,
+  invoke: InvokeFn = tauriInvoke as InvokeFn,
+): WorkspaceSettingsProvider {
+  return {
+    readSettings: () => invoke("read_settings", { root }),
+    writeAppTools: (tools) => invoke("write_app_tools", { root, tools }),
     writeWorkflowConfig: (fields) =>
       invoke("write_workflow_config", {
+        root,
         locale: fields.locale,
         specLocale: fields.specLocale,
         tdd: fields.tdd,
         audit: fields.audit,
       }),
     writeWorkflowContext: (context) =>
-      invoke("write_workflow_content", { context, rules: null }),
-    writeWorkflowRules: (rules) =>
-      invoke("write_workflow_content", { context: null, rules }),
+      invoke("write_workflow_content", { root, context, rules: null }),
+    writeWorkflowRules: (rules) => invoke("write_workflow_content", { root, context: null, rules }),
   };
 }

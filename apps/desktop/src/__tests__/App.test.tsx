@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent, within } from "@testing-library/rea
 
 import { App } from "../App";
 import { APP_MESSAGES } from "../i18n/messages";
+import type { WorkspaceSession } from "../session";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 // 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發。
@@ -42,20 +43,28 @@ beforeEach(() => {
   workspaceHandlers.length = 0;
   drawerSpy.rich.length = 0;
   drawerSpy.disc.length = 0;
+  // 各測試自行預置分頁持久化；先清掉避免跨測試洩漏。
+  localStorage.removeItem("speclink.projectTabs");
   // jsdom 的 navigator.language 為 en-US；既有中文斷言以明示偏好 zh-TW 固定 UI 語言。
   localStorage.setItem("speclink.uiLocale", "zh-TW");
 });
 
-// 空狀態引導頁（spec Scenario「零分頁時顯示空狀態引導頁」）：注入 workspace
-// 且零分頁時取代空看板；含「開啟專案」操作。
+// workspace 探測面 mock（workspace-session 決策 6）：預設非專案語境——
+// openProject 拒絕、startupDir 拒絕（首啟回退維持零分頁）。
 function fakeWorkspace() {
   return {
     openProject: vi.fn().mockRejectedValue("not a project"),
     initProject: vi.fn(),
-    // 預設不可用：enterProject 的 current_project 校正走 catch、以委派值為準。
-    currentProject: vi.fn().mockRejectedValue("current_project unavailable in this fake"),
-    projectStats: vi.fn(),
+    startupDir: vi.fn().mockRejectedValue("startup dir unavailable in this fake"),
+    projectStats: vi.fn().mockResolvedValue({ pendingWrapUp: 0 }),
+    watchWorkspace: vi.fn().mockResolvedValue(undefined),
     pickFolder: vi.fn().mockResolvedValue(null),
+  };
+}
+
+/** 活躍 session 的設定面 mock（設定頁經 session.settings 讀寫）。 */
+function fakeSettings() {
+  return {
     readSettings: vi.fn().mockResolvedValue({
       app: { tools: [], customTools: [], parseError: null },
       workflow: {
@@ -70,8 +79,54 @@ function fakeWorkspace() {
       },
     }),
     writeAppTools: vi.fn(),
-    writeWorkflowConfig: vi.fn(),
+    writeWorkflowConfig: vi.fn().mockResolvedValue(undefined),
+    writeWorkflowContext: vi.fn(),
+    writeWorkflowRules: vi.fn(),
   };
+}
+
+/** session 工廠：dataSource 共用注入的 fake；events 訂閱者收進 workspaceHandlers，
+ * 測試以 workspaceHandlers.forEach((h) => h()) 模擬 workspace-changed。 */
+function makeSession(ds: SpeclinkDataSource, settings = fakeSettings()) {
+  return (root: string, name: string): WorkspaceSession => ({
+    id: `local:${root}`,
+    locator: { kind: "local", root },
+    descriptor: { name, badge: null },
+    dataSource: ds,
+    settings: settings as never,
+    events: {
+      subscribe: (h: () => void) => {
+        workspaceHandlers.push(h);
+        return () => {
+          const i = workspaceHandlers.indexOf(h);
+          if (i >= 0) workspaceHandlers.splice(i, 1);
+        };
+      },
+    },
+  });
+}
+
+/** 預置單一專案分頁 A（v2 持久化、activeKey 指向）並渲染 App——
+ * 資料經活躍 session 的 dataSource 載入（App 無全域 dataSource）。 */
+function renderApp(
+  ds: SpeclinkDataSource = fakeDataSource(),
+  over: { ws?: ReturnType<typeof fakeWorkspace>; settings?: ReturnType<typeof fakeSettings> } = {},
+) {
+  localStorage.setItem(
+    "speclink.projectTabs",
+    JSON.stringify({
+      version: 2,
+      tabs: [{ locator: { kind: "local", root: "A" }, name: "proj-a" }],
+      activeKey: "local:A",
+    }),
+  );
+  const ws = over.ws ?? fakeWorkspace();
+  if (!over.ws) {
+    ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
+  }
+  const settings = over.settings ?? fakeSettings();
+  render(<App createSession={makeSession(ds, settings)} workspace={ws as never} />);
+  return { ds, ws, settings };
 }
 
 const STATUS: StatusReport = {
@@ -113,7 +168,7 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
 
 describe("App (kanban primary + rich detail)", () => {
   it("renders the kanban board by default with change cards", async () => {
-    render(<App dataSource={fakeDataSource()} />);
+    renderApp();
     await waitFor(() => expect(screen.getByText("desktop-shell-and-browser")).toBeTruthy());
     // 看板欄位存在
     expect(document.querySelector('[data-column="ready"]')).toBeTruthy();
@@ -121,7 +176,7 @@ describe("App (kanban primary + rich detail)", () => {
 
   it("opens the rich detail drawer with metadata when a card is clicked", async () => {
     const ds = fakeDataSource();
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     fireEvent.click(screen.getByText("desktop-shell-and-browser"));
     await waitFor(() => expect(screen.getByText("MomoChen")).toBeTruthy());
@@ -130,7 +185,7 @@ describe("App (kanban primary + rich detail)", () => {
 
   it("delete flow: drawer delete → confirm dialog → deleteChange called", async () => {
     const ds = fakeDataSource();
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     fireEvent.click(screen.getByText("desktop-shell-and-browser"));
     await waitFor(() => screen.getByRole("button", { name: /刪除/ }));
@@ -143,7 +198,7 @@ describe("App (kanban primary + rich detail)", () => {
 
   it("passes an increasing refreshGen generation to both drawers", async () => {
     // design D1：世代自 store 經 props 下發，內容元件據此重載（重載行為由 packages/ui 測試承載）。
-    render(<App dataSource={fakeDataSource()} />);
+    renderApp();
     await waitFor(() => expect(workspaceHandlers.length).toBeGreaterThan(0));
     await waitFor(() => expect(drawerSpy.rich.length).toBeGreaterThan(0));
     await waitFor(() => expect(drawerSpy.disc.length).toBeGreaterThan(0));
@@ -158,7 +213,7 @@ describe("App (kanban primary + rich detail)", () => {
 
   it("workspace-changed event triggers a full refresh (external writers reflected)", async () => {
     const ds = fakeDataSource();
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     await waitFor(() => expect(workspaceHandlers.length).toBeGreaterThan(0));
     const before = (ds.listChanges as Mock).mock.calls.length;
@@ -179,7 +234,7 @@ describe("App (kanban primary + rich detail)", () => {
         archived: [],
       }),
     });
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("Settled topic"));
     // 轉為變更動詞與確認框皆已撤除；轉出改由 CLI／agent。
     expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
@@ -199,7 +254,7 @@ describe("App (kanban primary + rich detail)", () => {
         archived: [],
       }),
     });
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("Settled topic"));
     const card = screen.getByText("Settled topic").closest("[data-discussion]") as HTMLElement;
     fireEvent.click(within(card).getByRole("button", { name: /^封存$/ }));
@@ -214,7 +269,7 @@ describe("App (kanban primary + rich detail)", () => {
   it("零分頁（注入 workspace）：顯示空狀態引導頁取代空看板，含開啟專案操作", async () => {
     const ws = fakeWorkspace();
     const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
-    render(<App dataSource={ds} workspace={ws as never} />);
+    render(<App createSession={makeSession(ds)} workspace={ws as never} />);
     expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
     // 空狀態頁自帶開啟專案操作（接資料夾選擇器）。
     const openButtons = screen.getAllByText("開啟專案");
@@ -228,7 +283,7 @@ describe("App (kanban primary + rich detail)", () => {
     ws.pickFolder = vi.fn().mockResolvedValue("D:/newproj");
     ws.openProject = vi.fn().mockResolvedValue({ status: "uninitialized", dir: "D:/newproj" });
     const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
-    render(<App dataSource={ds} workspace={ws as never} />);
+    render(<App createSession={makeSession(ds)} workspace={ws as never} />);
     const openButtons = await screen.findAllByText("開啟專案");
     fireEvent.click(openButtons[openButtons.length - 1]);
     const dialog = await screen.findByRole("alertdialog");
@@ -265,8 +320,7 @@ describe("App (kanban primary + rich detail)", () => {
       .mockImplementation((p: string) =>
         Promise.resolve({ status: "project", root: p, name: p === "A" ? "proj-a" : "proj-b" }),
       );
-    ws.projectStats = vi.fn().mockResolvedValue({ pendingWrapUp: 0 });
-    render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
+    render(<App createSession={makeSession(fakeDataSource())} workspace={ws as never} />);
     const tabA = (await screen.findByText("proj-a")).closest("[data-tab]") as HTMLElement;
     expect(tabA.getAttribute("data-active")).toBe("true");
     // 佔位文字已被分頁列取代。
@@ -287,7 +341,8 @@ describe("App (kanban primary + rich detail)", () => {
     ws.openProject = vi
       .fn()
       .mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
-    render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
+    const settings = fakeSettings();
+    render(<App createSession={makeSession(fakeDataSource(), settings)} workspace={ws as never} />);
     // 開設定頁 → 切至本機設定簽（Radix TabsTrigger 以 mousedown 觸發）→ 切 English。
     fireEvent.click(await screen.findByText("設定"));
     fireEvent.mouseDown(await screen.findByRole("tab", { name: "本機設定" }));
@@ -298,7 +353,7 @@ describe("App (kanban primary + rich detail)", () => {
     expect(screen.getByText("Changes")).toBeTruthy();
     // 持久化於 app 本機；config.yaml 未被觸碰。
     expect(localStorage.getItem("speclink.uiLocale")).toBe("en");
-    expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
+    expect(settings.writeWorkflowConfig).not.toHaveBeenCalled();
   });
 
   it("寫入 config locale 不改 UI 語言（spec 互不影響的反向）", async () => {
@@ -310,13 +365,14 @@ describe("App (kanban primary + rich detail)", () => {
     ws.openProject = vi
       .fn()
       .mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
-    render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
+    const settings = fakeSettings();
+    render(<App createSession={makeSession(fakeDataSource(), settings)} workspace={ws as never} />);
     fireEvent.click(await screen.findByText("設定"));
     const locale = (await screen.findByLabelText("locale")) as HTMLSelectElement;
     fireEvent.change(locale, { target: { value: "ja" } });
     fireEvent.click(screen.getByTestId("save-workflow"));
     await waitFor(() =>
-      expect(ws.writeWorkflowConfig).toHaveBeenCalledWith(
+      expect(settings.writeWorkflowConfig).toHaveBeenCalledWith(
         expect.objectContaining({ locale: "ja" }),
       ),
     );
@@ -331,7 +387,7 @@ describe("App (kanban primary + rich detail)", () => {
         { datedName: "2026-07-04-old-change", date: "2026-07-04", name: "old-change" },
       ]),
     });
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     fireEvent.click(screen.getByLabelText("已封存"));
     await waitFor(() => expect(screen.getByText("已封存的變更")).toBeTruthy());
@@ -342,7 +398,7 @@ describe("App (kanban primary + rich detail)", () => {
 
 describe("board search wiring（看板搜尋接線）", () => {
   it("kanban view renders a search input that filters cards and reflects boardQuery", async () => {
-    render(<App dataSource={fakeDataSource()} />);
+    renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const input = screen.getByPlaceholderText("搜尋看板卡片…") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "zzz-no-match" } });
@@ -357,7 +413,7 @@ describe("board search wiring（看板搜尋接線）", () => {
   it("the archived page search input does not contain the board query (independence)", async () => {
     // spec「搜尋字串不跨啟動保留且與已封存頁獨立」的獨立性半邊；
     // 不跨啟動由 store 無 persist 保證（store.test.ts 1.x）。
-    render(<App dataSource={fakeDataSource()} />);
+    renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     fireEvent.change(screen.getByPlaceholderText("搜尋看板卡片…"), {
       target: { value: "kanban-only" },
@@ -371,7 +427,7 @@ describe("board search wiring（看板搜尋接線）", () => {
 
 describe("sidebar navigation structure（側欄導覽結構）", () => {
   it("側欄由上而下依序為變更/規格/已封存/設定，無備忘項，頂欄無已封存鈕", async () => {
-    render(<App dataSource={fakeDataSource()} />);
+    renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
     // 已封存項以 aria-label 為無障礙名稱（徽章數字不污染），其餘取文字內容。
@@ -386,13 +442,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
   });
 
   it("設定導覽項沉底：為側欄最末子元素、以自動上邊距與頂部三項彈性區隔，切頁與高亮語意不變", async () => {
-    localStorage.setItem(
-      "speclink.projectTabs",
-      JSON.stringify({ tabs: [{ root: "A", name: "proj-a" }], activeRoot: "A" }),
-    );
-    const ws = fakeWorkspace();
-    ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
-    render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
+    renderApp();
     await screen.findByText("desktop-shell-and-browser");
     const aside = document.querySelector("aside") as HTMLElement;
     const settingsNav = within(aside).getByRole("button", { name: "設定" });
@@ -419,7 +469,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
         { datedName: "2026-07-05-other-change", date: "2026-07-05", name: "other-change" },
       ]),
     });
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
     const nav = within(aside).getByRole("button", { name: "已封存" });
@@ -431,7 +481,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     const ds = fakeDataSource({
       listArchived: vi.fn().mockImplementation(() => Promise.resolve([...archived])),
     });
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
     const nav = within(aside).getByRole("button", { name: "已封存" });
@@ -443,7 +493,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
   });
 
   it("已封存導覽為切頁而非 toggle：再點停留在已封存頁，點變更才返回看板", async () => {
-    render(<App dataSource={fakeDataSource()} />);
+    renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
     const archivedNav = within(aside).getByRole("button", { name: "已封存" });
@@ -465,7 +515,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
   it("點導覽「規格」進入規格頁：主內容出現規格清單、導覽項 active", async () => {
     // spec Scenario「進入規格頁顯示卡片清單」：切頁語意（與已封存頁同型），
     // 主內容渲染 SpecList（正典 spec 卡片＋搜尋列），返回看板點「變更」。
-    render(<App dataSource={fakeDataSource()} />);
+    renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
     const specsNav = within(aside).getByRole("button", { name: "規格" });
@@ -487,7 +537,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     const ds = fakeDataSource({
       getSpecDocument: vi.fn().mockResolvedValue("# desktop-app Specification\n\n正典內文段落。"),
     });
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
     fireEvent.click(within(aside).getByRole("button", { name: "規格" }));
@@ -516,7 +566,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
       ]),
       getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
     });
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
     fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
@@ -556,7 +606,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
           "---\ntopic: Old topic\nslug: old-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Old topic\n\n## Context\n\n封存背景內文。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n",
         ),
     });
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
     fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
@@ -584,7 +634,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
           "---\ntopic: Old topic\nslug: old-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Old topic\n\n## Context\n\n封存背景內文。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n",
         ),
     });
-    render(<App dataSource={ds} />);
+    renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
     fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
@@ -612,13 +662,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
 // 影響、維持 overflow-y-auto 整頁捲動。
 describe("main content scroll containment（主內容區捲動約束）", () => {
   it("看板/規格/已封存頁 main 為 overflow-hidden，設定頁維持 overflow-y-auto", async () => {
-    localStorage.setItem(
-      "speclink.projectTabs",
-      JSON.stringify({ tabs: [{ root: "A", name: "proj-a" }], activeRoot: "A" }),
-    );
-    const ws = fakeWorkspace();
-    ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
-    render(<App dataSource={fakeDataSource()} workspace={ws as never} />);
+    renderApp();
     await screen.findByText("desktop-shell-and-browser");
     const main = () => document.querySelector("main") as HTMLElement;
     const aside = document.querySelector("aside") as HTMLElement;

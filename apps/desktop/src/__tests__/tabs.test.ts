@@ -13,80 +13,160 @@ import {
   pendingWrapUpCount,
   type ProjectTab,
 } from "../tabs";
+import { locatorKey, type WorkspaceLocator } from "../session";
 import { APP_MESSAGES } from "../i18n/messages";
 
+function local(root: string): WorkspaceLocator {
+  return { kind: "local", root };
+}
+
 function tab(root: string, name = root): ProjectTab {
-  return { root, name, badge: null };
+  return { locator: local(root), name, badge: null };
+}
+
+function keys(tabs: Array<{ locator: WorkspaceLocator }>): string[] {
+  return tabs.map((t) => locatorKey(t.locator));
+}
+
+function memStorage(): Storage {
+  const map = new Map<string, string>();
+  return {
+    getItem: (k: string) => map.get(k) ?? null,
+    setItem: (k: string, v: string) => void map.set(k, v),
+    removeItem: (k: string) => void map.delete(k),
+    clear: () => map.clear(),
+    key: () => null,
+    get length() {
+      return map.size;
+    },
+  } as Storage;
 }
 
 describe("upsertTab（spec「成功開啟後記入分頁並去重上移」的清單面）", () => {
   it("appends a new project at the end", () => {
-    const tabs = upsertTab([tab("A")], { root: "B", name: "B" });
-    expect(tabs.map((t) => t.root)).toEqual(["A", "B"]);
+    const tabs = upsertTab([tab("A")], { locator: local("B"), name: "B" });
+    expect(keys(tabs)).toEqual(["local:A", "local:B"]);
   });
 
   it("reopening an existing project keeps one tab in place (dedup)", () => {
-    const tabs = upsertTab([tab("A"), tab("B")], { root: "A", name: "A" });
-    expect(tabs.map((t) => t.root)).toEqual(["A", "B"]);
+    const tabs = upsertTab([tab("A"), tab("B")], { locator: local("A"), name: "A" });
+    expect(keys(tabs)).toEqual(["local:A", "local:B"]);
     expect(tabs).toHaveLength(2);
   });
 
   it("caps at MAX_TABS by dropping the oldest tab", () => {
     let tabs: ProjectTab[] = [];
-    for (let i = 0; i < MAX_TABS; i++) tabs = upsertTab(tabs, { root: `p${i}`, name: `p${i}` });
+    for (let i = 0; i < MAX_TABS; i++)
+      tabs = upsertTab(tabs, { locator: local(`p${i}`), name: `p${i}` });
     expect(tabs).toHaveLength(MAX_TABS);
-    tabs = upsertTab(tabs, { root: "extra", name: "extra" });
+    tabs = upsertTab(tabs, { locator: local("extra"), name: "extra" });
     expect(tabs).toHaveLength(MAX_TABS);
-    expect(tabs.some((t) => t.root === "p0")).toBe(false);
-    expect(tabs.at(-1)?.root).toBe("extra");
+    expect(keys(tabs)).not.toContain("local:p0");
+    expect(keys(tabs).at(-1)).toBe("local:extra");
   });
 
   it("updates the display name of an existing tab", () => {
-    const tabs = upsertTab([tab("A", "old")], { root: "A", name: "new" });
+    const tabs = upsertTab([tab("A", "old")], { locator: local("A"), name: "new" });
     expect(tabs[0].name).toBe("new");
   });
 });
 
 describe("removeTab", () => {
-  it("removes the tab with the given root", () => {
-    expect(removeTab([tab("A"), tab("B")], "A").map((t) => t.root)).toEqual(["B"]);
+  it("removes the tab with the given locator key", () => {
+    expect(keys(removeTab([tab("A"), tab("B")], "local:A"))).toEqual(["local:B"]);
   });
 });
 
-describe("persistTabs / readPersistedTabs（跨啟動還原）", () => {
-  function memStorage(): Storage {
-    const map = new Map<string, string>();
-    return {
-      getItem: (k: string) => map.get(k) ?? null,
-      setItem: (k: string, v: string) => void map.set(k, v),
-      removeItem: (k: string) => void map.delete(k),
-      clear: () => map.clear(),
-      key: () => null,
-      get length() {
-        return map.size;
-      },
-    } as Storage;
-  }
-
-  it("round-trips tabs (order), names and the active root", () => {
-    const st = memStorage();
-    persistTabs([tab("B", "beta"), tab("A", "alpha")], "A", st);
-    const restored = readPersistedTabs(st);
-    expect(restored.tabs.map((t) => t.root)).toEqual(["B", "A"]);
-    expect(restored.tabs[0].name).toBe("beta");
-    expect(restored.activeRoot).toBe("A");
-  });
-
+describe("分頁持久化 v2 與 v1 靜默遷移（spec「分頁持久化 v2 與 v1 靜默遷移」）", () => {
   it("empty storage restores to zero tabs", () => {
     const restored = readPersistedTabs(memStorage());
     expect(restored.tabs).toEqual([]);
-    expect(restored.activeRoot).toBeNull();
+    expect(restored.activeKey).toBeNull();
   });
 
-  it("garbage stored values restore to zero tabs instead of crashing", () => {
+  it("round-trips v2 (locator, order, names, activeKey) and stamps version 2", () => {
+    const st = memStorage();
+    const tabs: ProjectTab[] = [
+      { locator: local("B"), name: "beta", badge: null },
+      { locator: local("A"), name: "alpha", badge: null },
+    ];
+    persistTabs(tabs, "local:A", st);
+    const raw = JSON.parse(st.getItem("speclink.projectTabs") ?? "{}");
+    expect(raw.version).toBe(2);
+    const restored = readPersistedTabs(st);
+    expect(restored.tabs.map((t) => t.locator)).toEqual([local("B"), local("A")]);
+    expect(restored.tabs.map((t) => t.name)).toEqual(["beta", "alpha"]);
+    expect(restored.activeKey).toBe("local:A");
+  });
+
+  it("v1 payload (root＋name＋activeRoot) silently migrates to local locators and activeKey", () => {
+    // 契約範例（spec Scenario「舊版使用者升級後分頁完整保留」）：兩個專案分頁＋activeRoot。
+    const st = memStorage();
+    st.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({
+        tabs: [
+          { root: "A", name: "alpha" },
+          { root: "B", name: "beta" },
+        ],
+        activeRoot: "B",
+      }),
+    );
+    const restored = readPersistedTabs(st);
+    expect(restored.tabs).toEqual([
+      { locator: local("A"), name: "alpha" },
+      { locator: local("B"), name: "beta" },
+    ]);
+    expect(restored.activeKey).toBe("local:B");
+  });
+
+  it("the next persist after a v1 read writes v2", () => {
+    const st = memStorage();
+    st.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({ tabs: [{ root: "A", name: "alpha" }], activeRoot: "A" }),
+    );
+    const restored = readPersistedTabs(st);
+    persistTabs(
+      restored.tabs.map((t) => ({ ...t, badge: null })),
+      restored.activeKey,
+      st,
+    );
+    const raw = JSON.parse(st.getItem("speclink.projectTabs") ?? "{}");
+    expect(raw.version).toBe(2);
+    expect(raw.tabs).toEqual([{ locator: local("A"), name: "alpha" }]);
+    expect(raw.activeKey).toBe("local:A");
+  });
+
+  it("v1 entries with a non-string root are dropped", () => {
+    const st = memStorage();
+    st.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({
+        tabs: [
+          { root: 7, name: "bogus" },
+          { root: "A", name: "alpha" },
+        ],
+        activeRoot: "A",
+      }),
+    );
+    expect(readPersistedTabs(st).tabs).toEqual([{ locator: local("A"), name: "alpha" }]);
+  });
+
+  it("garbage JSON restores to zero tabs and no active key（spec「壞 JSON 歸零」）", () => {
     const st = memStorage();
     st.setItem("speclink.projectTabs", "{not json");
-    expect(readPersistedTabs(st).tabs).toEqual([]);
+    const restored = readPersistedTabs(st);
+    expect(restored.tabs).toEqual([]);
+    expect(restored.activeKey).toBeNull();
+  });
+
+  it("unrecognized shapes restore to zero tabs", () => {
+    const st = memStorage();
+    st.setItem("speclink.projectTabs", JSON.stringify({ version: 99, tabs: "x" }));
+    const restored = readPersistedTabs(st);
+    expect(restored.tabs).toEqual([]);
+    expect(restored.activeKey).toBeNull();
   });
 });
 
