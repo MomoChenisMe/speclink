@@ -78,15 +78,38 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
     expect(h.onOpenProject).toHaveBeenCalledWith("/proj/two");
   });
 
-  it("無變更顯示空狀態卡、無討論顯示帶計數 0 的討論卡（皆有最小高度，D8）", () => {
+  it("全無變更時三個生命週期分區常駐：各帶計數 0 空狀態卡、無佔位卡（D8 同構）", () => {
     renderPanel({ snapshot: snapshot({ changes: [], discussions: [] }) });
-    const empty = screen.getByTestId("panel-empty-changes");
-    expect(empty.textContent).toContain("尚無進行中變更");
-    expect(empty.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-12", "items-center"]));
+    // 佔位卡不再存在（spec「面板樣式（macOS）」常駐分區行為）
+    expect(screen.queryByTestId("panel-empty-changes")).toBeNull();
+    expect(screen.queryByText("尚無進行中變更")).toBeNull();
+    for (const id of ["panel-section-proposed", "panel-section-in-progress", "panel-section-ready"]) {
+      const card = screen.getByTestId(id);
+      expect(card.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-12", "justify-center"]));
+      expect(within(card).getByTestId("panel-section-count").textContent).toBe("0");
+    }
     const disc = screen.getByTestId("panel-section-discussions");
     expect(disc.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-12", "justify-center"]));
     expect(within(disc).getByText("討論")).toBeTruthy();
     expect(within(disc).getByTestId("panel-section-count").textContent).toBe("0");
+  });
+
+  it("部分有資料時空階段分區仍常駐：計數 0/1/0、順序固定提案中→進行中→已就緒", () => {
+    renderPanel({
+      snapshot: snapshot({
+        changes: [change({ name: "solo", totalTasks: 12, completedTasks: 3 })], // in-progress
+        discussions: [],
+      }),
+    });
+    const ids = ["panel-section-proposed", "panel-section-in-progress", "panel-section-ready"];
+    const counts = ids.map(
+      (id) => within(screen.getByTestId(id)).getByTestId("panel-section-count").textContent,
+    );
+    expect(counts).toEqual(["0", "1", "0"]);
+    expect(within(screen.getByTestId("panel-section-in-progress")).getByTestId("panel-change-solo")).toBeTruthy();
+    const [proposed, inProgress, ready] = ids.map((id) => screen.getByTestId(id));
+    expect(proposed.compareDocumentPosition(inProgress) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(inProgress.compareDocumentPosition(ready) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("討論分流：已轉出討論列於「已轉出」分區（討論中列於「討論」分區）", () => {
@@ -110,6 +133,46 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
   it("無已轉出討論時不出現「已轉出」分區", () => {
     renderPanel();
     expect(screen.queryByText("已轉出")).toBeNull();
+  });
+
+  it("區塊順序：討論（＋已轉出）區塊位於生命週期分區之前、「開啟 Speclink」最末", () => {
+    renderPanel({
+      snapshot: snapshot({
+        discussions: [
+          { slug: "open-d", topic: "討論中的", promoted: false },
+          { slug: "prom-d", topic: "已轉出的", promoted: true },
+        ],
+      }),
+    });
+    const follows = (a: Element, b: Element) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    const discussions = screen.getByTestId("panel-section-discussions");
+    const promoted = screen.getByTestId("panel-section-promoted");
+    const proposed = screen.getByTestId("panel-section-proposed");
+    const ready = screen.getByTestId("panel-section-ready");
+    const open = screen.getByText("開啟 Speclink");
+    expect(follows(discussions, promoted)).toBe(true);
+    expect(follows(promoted, proposed)).toBe(true);
+    expect(follows(ready, open)).toBe(true);
+  });
+
+  it("分割線恰三條：tab 條後、討論區塊後、生命週期區塊後；分區卡之間無分割線", () => {
+    renderPanel();
+    const dividers = screen.getAllByTestId("panel-divider");
+    expect(dividers.length).toBe(3);
+    const follows = (a: Element, b: Element) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    const tabs = screen.getByTestId("panel-project-tabs");
+    const discussions = screen.getByTestId("panel-section-discussions");
+    const proposed = screen.getByTestId("panel-section-proposed");
+    const ready = screen.getByTestId("panel-section-ready");
+    const open = screen.getByText("開啟 Speclink");
+    expect(follows(tabs, dividers[0])).toBe(true);
+    expect(follows(dividers[0], discussions)).toBe(true);
+    expect(follows(discussions, dividers[1])).toBe(true);
+    expect(follows(dividers[1], proposed)).toBe(true);
+    expect(follows(ready, dividers[2])).toBe(true);
+    expect(follows(dividers[2], open)).toBe(true);
   });
 
   it("分區逾 5 筆：面板顯示前 5＋「還有 N 個…」，點擊展開、再點收合", () => {

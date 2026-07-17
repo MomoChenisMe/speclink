@@ -82,49 +82,23 @@ code:
 
 ---
 ### Requirement: 生命週期分區與變更進度
-選單主體 SHALL 依生命週期階段分區（提案中、進行中、已就緒）：每個非空階段 SHALL 有一個分區標題，其下 SHALL 列出該階段的所有變更。每張變更列 SHALL 顯示其名稱與任務數「n/m」；有任務（總數大於 0）的變更 SHALL 另顯示一條文字進度條反映完成比例。全無變更時 SHALL 顯示明確空狀態文字。
+選單主體 SHALL 依生命週期階段分區（提案中、進行中、已就緒）：每個非空階段 SHALL 有一個分區標題，其下 SHALL 列出該階段的所有變更。每張變更列 SHALL 顯示其名稱與任務數「n/m」；有任務（總數大於 0）的變更 SHALL 另顯示一條文字進度條反映完成比例。全無變更時 SHALL 顯示明確空狀態文字。本需求的「非空階段才有分區標題」與「全無變更顯示空狀態文字」SHALL 僅約束原生選單（非 macOS 平台，及 macOS 面板建立失敗的後備）；macOS 面板的生命週期分區呈現 SHALL 依「面板樣式（macOS）」需求——三階段分區常駐、零筆階段以計數 0 的空狀態卡呈現。
 
 #### Scenario: 進行中變更顯示進度條與任務數
 - **WHEN** 作用中專案有一個進行中變更、完成 3 個共 12 個任務
 - **THEN** 「進行中」分區標題下該變更顯示其名稱、文字進度條與「3/12」
 
-#### Scenario: 全無變更顯示空狀態
-- **WHEN** 作用中專案沒有任何變更
-- **THEN** 選單顯示明確空狀態文字而非空白，其餘區段照常
+#### Scenario: 全無變更時原生選單顯示空狀態
+- **WHEN** 作用中專案沒有任何變更，且互動樣式為原生選單（非 macOS 平台，或 macOS 面板建立失敗後備）
+- **THEN** 選單顯示明確空狀態文字而非空白、不出現空階段的分區標題，其餘區段照常
 
 
 <!-- @trace
-source: system-tray-status
-updated: 2026-07-13
+source: tray-empty-stage-sections
+updated: 2026-07-17
 code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/icons/128x128.png
-  - apps/desktop/src-tauri/icons/128x128@2x.png
-  - apps/desktop/src-tauri/icons/32x32.png
-  - apps/desktop/src-tauri/icons/64x64.png
-  - apps/desktop/src-tauri/icons/Square107x107Logo.png
-  - apps/desktop/src-tauri/icons/Square142x142Logo.png
-  - apps/desktop/src-tauri/icons/Square150x150Logo.png
-  - apps/desktop/src-tauri/icons/Square284x284Logo.png
-  - apps/desktop/src-tauri/icons/Square30x30Logo.png
-  - apps/desktop/src-tauri/icons/Square310x310Logo.png
-  - apps/desktop/src-tauri/icons/Square44x44Logo.png
-  - apps/desktop/src-tauri/icons/Square71x71Logo.png
-  - apps/desktop/src-tauri/icons/Square89x89Logo.png
-  - apps/desktop/src-tauri/icons/StoreLogo.png
-  - apps/desktop/src-tauri/icons/icon.icns
-  - apps/desktop/src-tauri/icons/icon.ico
-  - apps/desktop/src-tauri/icons/icon.png
-  - apps/desktop/src-tauri/icons/speclink-tray-18.png
-  - apps/desktop/src-tauri/icons/speclink-tray-18@2x.png
-  - apps/desktop/src-tauri/tauri.conf.json
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/tray.test.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/tray.ts
-  - apps/desktop/src/trayIcon.ts
+  - apps/desktop/src/__tests__/trayPanel.test.tsx
+  - apps/desktop/src/panel/TrayPanel.tsx
 -->
 
 ---
@@ -391,7 +365,9 @@ code:
 
 專案區 SHALL 呈現為橫向 tab 條：每個 tab SHALL 顯示專案名首字母的圓角方塊 avatar 與專案名；作用中專案的 tab SHALL 以實心主色底＋反白文字標示；tab 總寬超出面板時 SHALL 可橫向捲動且 SHALL NOT 顯示捲軸。點擊 tab SHALL 原地切換作用中專案——面板下方內容隨之更新，SHALL NOT 喚起主視窗、SHALL NOT 收合面板。tab 條尾端 SHALL 有「加入專案」動作項：點擊 SHALL 先顯示主視窗（含切換至其所在桌面——確保後續對話框於使用者眼前可見）再開啟資料夾選擇器（與主視窗「開啟專案」同語意）——選定即以分頁加入該專案並成為作用中專案，取消則無任何變化。資料夾選擇器等系統原生對話框 SHALL 跟隨系統語言呈現（app SHALL 宣告繁體中文在地化，不得固定英文介面）。
 
-生命週期分區與討論分區 SHALL 各自以半透明圓角卡片容器呈現（面板毛玻璃底 SHALL 可透出），分區標題 SHALL 含主色上色的分區圖示，並 SHALL 顯示該分區的項目計數（徽章樣式與看板欄計數同語彙）。空狀態卡（討論零筆、全無變更）SHALL 維持最小高度、內容垂直置中，不得塌陷成細條。有任務的變更列，其進度條填色 SHALL 依階段套用與看板同源的主色深淺階梯（提案中最淺、進行中次之、已就緒最深）。
+面板內容 SHALL 依區塊排列：專案 tab 條之下依序為討論區塊（「討論」分區常駐呈現，其後「已轉出」分區有料才現）、生命週期區塊（提案中→進行中→已就緒）、動作區塊（「開啟 Speclink」）。專案 tab 條與討論區塊之間、討論區塊與生命週期區塊之間、生命週期區塊與動作區塊之間 SHALL 各有一條分割線（共三條）；區塊內部（分區卡之間）SHALL NOT 出現分割線。此區塊順序為面板刻意設計；原生選單的區段順序仍依「系統匣圖示與原生選單」需求（生命週期分區在前、討論區在後），不受本段影響。
+
+生命週期分區與討論分區 SHALL 各自以半透明圓角卡片容器呈現（面板毛玻璃底 SHALL 可透出），分區標題 SHALL 含主色上色的分區圖示，並 SHALL 顯示該分區的項目計數（徽章樣式與看板欄計數同語彙）。生命週期三個階段分區（提案中／進行中／已就緒）SHALL 常駐呈現：零筆階段 SHALL 以「分區標題＋計數 0」的空狀態卡呈現，SHALL NOT 因該階段無變更而整卡消失；全無變更時 SHALL NOT 顯示佔位卡（原「尚無進行中變更」），而以三張計數 0 的分區卡呈現，分區順序固定為提案中→進行中→已就緒。「已轉出」分區 SHALL 維持有料才現——零筆時 SHALL NOT 呈現（與「討論列表」需求一致）。空狀態卡（討論零筆、生命週期零筆階段）SHALL 維持最小高度、內容垂直置中，不得塌陷成細條。有任務的變更列，其進度條填色 SHALL 依階段套用與看板同源的主色深淺階梯（提案中最淺、進行中次之、已就緒最深）。
 
 變更與討論列 SHALL 於列尾常駐複製鈕（複製內容與原生選單的複製動作一致：變更為 name、討論為 slug）；複製鈕點擊後 SHALL 短暫顯示成功回饋（勾號圖示，與看板複製鈕同模式）後自行復原。點擊變更或討論列本體 SHALL 顯示主視窗並開啟對應詳情。
 
@@ -399,7 +375,11 @@ code:
 
 #### Scenario: 面板樣式下點擊圖示彈出貼齊面板
 - **WHEN** 使用者於 macOS 點擊系統匣圖示
-- **THEN** 圖示下方彈出貼齊圖示的面板，頂部為專案 tab 條、其下以卡片分區呈現變更（含進度）與討論清單，未出現原生下拉選單
+- **THEN** 圖示下方彈出貼齊圖示的面板，頂部為專案 tab 條，其下依序以卡片分區呈現討論區塊、生命週期區塊（含進度）與「開啟 Speclink」動作，區塊之間有分割線，未出現原生下拉選單
+
+#### Scenario: 區塊順序與分割線
+- **WHEN** 面板開啟，作用中專案存在討論中討論、已轉出討論與各階段變更
+- **THEN** 由上而下依序為：專案 tab 條、分割線、「討論」分區、「已轉出」分區、分割線、「提案中」「進行中」「已就緒」分區、分割線、「開啟 Speclink」；分割線恰為三條且僅出現於區塊之間、分區卡之間無分割線
 
 #### Scenario: 點擊專案 tab 原地切換
 - **WHEN** 面板開啟且有兩個以上專案分頁，使用者點擊非作用中專案的 tab
@@ -412,6 +392,14 @@ code:
 #### Scenario: 分區標題顯示項目計數
 - **WHEN** 面板列出提案中 1 筆變更、討論 0 筆
 - **THEN** 「提案中」分區標題帶計數徽章 1；討論空狀態卡顯示計數 0 且維持最小高度、內容垂直置中
+
+#### Scenario: 全無變更時三個生命週期分區常駐
+- **WHEN** 作用中專案沒有任何變更，使用者於 macOS 開啟面板
+- **THEN** 面板依序呈現「提案中」「進行中」「已就緒」三張分區卡，各帶計數徽章 0、維持最小高度且內容垂直置中，未出現「尚無進行中變更」佔位卡
+
+#### Scenario: 部分有資料時空階段分區仍常駐
+- **WHEN** 作用中專案僅有 1 個進行中變更，無提案中與已就緒變更
+- **THEN** 「進行中」分區卡帶計數徽章 1 並列出該變更；「提案中」與「已就緒」分區卡仍呈現且各帶計數徽章 0，三張分區卡依提案中→進行中→已就緒順序排列
 
 #### Scenario: 進度條依階段深淺
 - **WHEN** 面板同時列出提案中與進行中各一個有任務的變更
@@ -439,21 +427,11 @@ code:
 
 
 <!-- @trace
-source: tray-panel-card-design
-updated: 2026-07-16
+source: tray-empty-stage-sections
+updated: 2026-07-17
 code:
-  - apps/desktop/src-tauri/Info.plist
-  - apps/desktop/src-tauri/src/panel.rs
-  - apps/desktop/src/__tests__/tray.test.ts
   - apps/desktop/src/__tests__/trayPanel.test.tsx
-  - apps/desktop/src/i18n/messages.ts
   - apps/desktop/src/panel/TrayPanel.tsx
-  - apps/desktop/src/panel/main.tsx
-  - apps/desktop/src/tray.ts
-  - packages/ui/src/__tests__/stage.test.ts
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/stage.ts
 -->
 
 ---

@@ -130,6 +130,17 @@ function SectionCard({
   );
 }
 
+/** 空狀態分區卡附加樣式（design D8）：最小高度＋內容垂直置中——生命週期
+    零筆階段卡與討論零筆卡共用，維持空狀態同構。 */
+const emptyCardClass = "min-h-12 justify-center";
+
+/** 區塊分割線（spec「面板樣式（macOS）」區塊順序與分割線）：低透明度細線
+    疊在毛玻璃上，僅出現於 tab 條後與內容區塊之間——區塊內部（分區卡之間）
+    不加線；以 div 而非 hr 實作，面板卡片化後不使用原生分隔線元素。 */
+function Divider() {
+  return <div data-testid="panel-divider" aria-hidden className="mx-1 h-px shrink-0 bg-foreground/10" />;
+}
+
 /** 原生選單式列：hover 整列 accent 反白（含子元素經 group-hover 反白）。 */
 const rowClass =
   "group flex w-full items-center gap-2 rounded-[5px] px-2 py-1 text-left hover:bg-primary hover:text-primary-foreground";
@@ -179,7 +190,7 @@ export function TrayPanel({
   const staged = STAGES.map((stage) => ({
     stage,
     items: changes.filter((c) => changeStage(c) === stage),
-  })).filter((s) => s.items.length > 0);
+  }));
 
   return (
     // 極淡主色漸層 wash（design D3）：低透明度不遮蔽 vibrancy。圓角 13px 與
@@ -240,41 +251,10 @@ export function TrayPanel({
         </div>
       </div>
 
-      {/* 生命週期分區：各階段一張卡（header 主色階梯圖示＋計數＋變更列） */}
-      {staged.length === 0 ? (
-        <div
-          data-testid="panel-empty-changes"
-          className="flex min-h-12 items-center rounded-lg bg-foreground/5 px-2 py-1.5 text-muted-foreground"
-        >
-          {t("tray.noChanges")}
-        </div>
-      ) : (
-        staged.map(({ stage, items }) => (
-          <SectionCard key={stage} testid={`panel-section-${stage}`}>
-            <SectionHeader
-              icon={STAGE_ICONS[stage]}
-              iconCls={STAGE_ICON[stage]}
-              label={t(`stage.${stage}`)}
-              count={items.length}
-              badgeCls={STAGE_BADGE[stage]}
-            />
-            <OverflowGroup
-              moreLabel={moreLabel}
-              collapseLabel={collapseLabel}
-              rows={items.map((c) => (
-                <ChangeRow
-                  key={c.name}
-                  c={c}
-                  stage={stage}
-                  onOpen={onOpenChange}
-                  onCopy={onCopy}
-                  copyLabel={t("tray.copyName")}
-                />
-              ))}
-            />
-          </SectionCard>
-        ))
-      )}
+      {/* 區塊順序（spec「面板樣式（macOS）」區塊順序與分割線）：tab 條之下
+          依序為討論區塊（討論常駐＋已轉出有料才現）、生命週期區塊、動作區塊，
+          塊間各一條分割線。 */}
+      <Divider />
 
       {/* 討論區分流（spec「討論列表」）：「討論」列討論中、「已轉出」列已轉出；
           slug 為題、topic 為描述（識別錨點慣例，與看板討論卡一致） */}
@@ -297,7 +277,7 @@ export function TrayPanel({
         </SectionCard>
       ) : (
         /* 空狀態與非空同構（design D8）：標題＋計數 0、最小高度垂直置中。 */
-        <SectionCard testid="panel-section-discussions" className="min-h-12 justify-center">
+        <SectionCard testid="panel-section-discussions" className={emptyCardClass}>
           <SectionHeader
             icon={MessageSquareText}
             iconCls="text-primary"
@@ -325,6 +305,43 @@ export function TrayPanel({
           />
         </SectionCard>
       )}
+
+      <Divider />
+
+      {/* 生命週期分區：三階段分區卡常駐（工作站常駐、衍生群組有料才現）——
+          零筆階段呈標題＋計數 0 的空狀態卡（與討論分區同構，design D8），
+          分區位置固定不隨資料增減跳動；原生選單的全空佔位文案不在此重現。 */}
+      {staged.map(({ stage, items }) => (
+        <SectionCard
+          key={stage}
+          testid={`panel-section-${stage}`}
+          className={items.length === 0 ? emptyCardClass : undefined}
+        >
+          <SectionHeader
+            icon={STAGE_ICONS[stage]}
+            iconCls={STAGE_ICON[stage]}
+            label={t(`stage.${stage}`)}
+            count={items.length}
+            badgeCls={STAGE_BADGE[stage]}
+          />
+          <OverflowGroup
+            moreLabel={moreLabel}
+            collapseLabel={collapseLabel}
+            rows={items.map((c) => (
+              <ChangeRow
+                key={c.name}
+                c={c}
+                stage={stage}
+                onOpen={onOpenChange}
+                onCopy={onCopy}
+                copyLabel={t("tray.copyName")}
+              />
+            ))}
+          />
+        </SectionCard>
+      ))}
+
+      <Divider />
 
       {/* 動作區：開啟主視窗（面板樣式下進 app 的把手） */}
       <div onClick={onOpenApp} className={rowClass}>
