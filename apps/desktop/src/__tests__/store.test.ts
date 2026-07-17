@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 import { createAppStore } from "../store";
+import type { WorkspaceSession } from "../session";
 
 const STATUS: StatusReport = {
   changeName: "x",
@@ -39,9 +40,35 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
   };
 }
 
+/** 假 session（workspace-session 決策 6）：資料載入一律經活躍 session 的 dataSource。 */
+function fakeSession(ds: SpeclinkDataSource, root = "A", name = "a"): WorkspaceSession {
+  return {
+    id: `local:${root}`,
+    locator: { kind: "local", root },
+    descriptor: { name, badge: null },
+    dataSource: ds,
+    settings: {
+      readSettings: vi.fn(),
+      writeAppTools: vi.fn(),
+      writeWorkflowConfig: vi.fn(),
+      writeWorkflowContext: vi.fn(),
+      writeWorkflowRules: vi.fn(),
+    },
+    events: { subscribe: () => () => {} },
+  };
+}
+
+/** 以活躍 session 預置 store（注入 session 工廠、無 workspace 探測面）。 */
+function storeWith(ds: SpeclinkDataSource) {
+  const store = createAppStore({ createSession: (root, name) => fakeSession(ds, root, name) });
+  const session = fakeSession(ds);
+  store.setState({ sessions: { [session.id]: session }, activeKey: session.id });
+  return store;
+}
+
 describe("app store (Zustand)", () => {
   it("refresh loads changes, specs and archived", async () => {
-    const store = createAppStore(fakeDataSource());
+    const store = storeWith(fakeDataSource());
     await store.getState().refresh();
     expect(store.getState().changes).toHaveLength(1);
     expect(store.getState().specs).toHaveLength(1);
@@ -51,7 +78,7 @@ describe("app store (Zustand)", () => {
 
   it("refresh increments the refreshGen generation (initial 0)", async () => {
     // 刷新世代：內容元件據此重載已載入的文件（design D1）。
-    const store = createAppStore(fakeDataSource());
+    const store = storeWith(fakeDataSource());
     expect(store.getState().refreshGen).toBe(0);
     await store.getState().refresh();
     expect(store.getState().refreshGen).toBe(1);
@@ -60,7 +87,7 @@ describe("app store (Zustand)", () => {
   });
 
   it("setView, setQuery and toggleExpand update UI state", () => {
-    const store = createAppStore(fakeDataSource());
+    const store = storeWith(fakeDataSource());
     store.getState().setView("archived");
     store.getState().setQuery("desk");
     store.getState().toggleExpand("a");
@@ -75,7 +102,7 @@ describe("app store (Zustand)", () => {
   it("boardView can switch to the specs page and keeps the specs list state", async () => {
     // spec「規格頁提供清單、搜尋與展開檢視」：主視圖新增 specs 態
     // （與看板、已封存、設定並列），切換不動已載入的 specs 清單。
-    const store = createAppStore(fakeDataSource());
+    const store = storeWith(fakeDataSource());
     await store.getState().refresh();
     store.getState().setBoardView("specs");
     expect(store.getState().boardView).toBe("specs");
@@ -86,7 +113,7 @@ describe("app store (Zustand)", () => {
 
   it("boardQuery starts empty and setBoardQuery updates it", () => {
     // 看板搜尋字串：純 UI 狀態、不入任何 persist 機制（spec「不跨啟動保留」）。
-    const store = createAppStore(fakeDataSource());
+    const store = storeWith(fakeDataSource());
     expect(store.getState().boardQuery).toBe("");
     store.getState().setBoardQuery("desk");
     expect(store.getState().boardQuery).toBe("desk");
@@ -97,7 +124,7 @@ describe("app store (Zustand)", () => {
     vi.useFakeTimers();
     const hits = [{ kind: "change", id: "demo", artifact: "design.md", snippet: "…x…" }];
     const ds = fakeDataSource({ searchWorkspace: vi.fn().mockResolvedValue(hits) });
-    const store = createAppStore(ds);
+    const store = storeWith(ds);
     store.getState().setBoardQuery("d");
     store.getState().setBoardQuery("di");
     expect(ds.searchWorkspace).not.toHaveBeenCalled();
@@ -116,7 +143,7 @@ describe("app store (Zustand)", () => {
     // spec「全文查詢失敗靜默退回欄位比對」：不彈錯、不阻斷輸入。
     vi.useFakeTimers();
     const ds = fakeDataSource({ searchWorkspace: vi.fn().mockRejectedValue(new Error("ipc down")) });
-    const store = createAppStore(ds);
+    const store = storeWith(ds);
     store.getState().setBoardQuery("x");
     await vi.advanceTimersByTimeAsync(200);
     expect(store.getState().searchHits).toEqual([]);
@@ -129,7 +156,7 @@ describe("app store (Zustand)", () => {
     // 杜絕搜尋在擁有它的 store 卸載後才開火所致的未處理例外。
     vi.useFakeTimers();
     const ds = fakeDataSource({ searchWorkspace: vi.fn().mockResolvedValue([]) });
-    const store = createAppStore(ds);
+    const store = storeWith(ds);
     store.getState().setBoardQuery("di");
     store.getState().disposeSearch();
     await vi.advanceTimersByTimeAsync(300);
@@ -139,7 +166,7 @@ describe("app store (Zustand)", () => {
 
   it("boardQuery and the archived-page query are independent", () => {
     // spec「搜尋字串…與已封存頁獨立」：各自設值互不覆蓋。
-    const store = createAppStore(fakeDataSource());
+    const store = storeWith(fakeDataSource());
     store.getState().setBoardQuery("kanban");
     store.getState().setQuery("archived");
     expect(store.getState().boardQuery).toBe("kanban");
@@ -150,7 +177,7 @@ describe("app store (Zustand)", () => {
 
   it("archive confirm flow: request sets pending, confirm runs archive and clears", async () => {
     const ds = fakeDataSource();
-    const store = createAppStore(ds);
+    const store = storeWith(ds);
     store.getState().requestArchive("desktop-shell-and-browser");
     expect(store.getState().pendingArchive).toBe("desktop-shell-and-browser");
     await store.getState().confirmArchive();
@@ -160,7 +187,7 @@ describe("app store (Zustand)", () => {
 
   it("cancelArchive clears pending without running", () => {
     const ds = fakeDataSource();
-    const store = createAppStore(ds);
+    const store = storeWith(ds);
     store.getState().requestArchive("x");
     store.getState().cancelArchive();
     expect(store.getState().pendingArchive).toBeNull();
@@ -183,7 +210,7 @@ describe("app store (Zustand)", () => {
       Promise.resolve(verb === "validate" ? { valid: true, errors: [] } : report),
     );
     const ds = fakeDataSource({ runVerb });
-    const store = createAppStore(ds);
+    const store = storeWith(ds);
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
     expect(runVerb).toHaveBeenCalledWith("validate", "desktop-shell-and-browser");
     expect(runVerb).toHaveBeenCalledWith("analyze", "desktop-shell-and-browser");
@@ -199,7 +226,7 @@ describe("app store (Zustand)", () => {
   it("runVerb analyze failure surfaces the error in the drawer result", async () => {
     // 任一動詞失敗不靜默：error 進抽屜結果呈現 core 訊息。
     const ds = fakeDataSource({ runVerb: vi.fn().mockRejectedValue(new Error("parse boom")) });
-    const store = createAppStore(ds);
+    const store = storeWith(ds);
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
     expect(store.getState().drawerVerb?.change).toBe("desktop-shell-and-browser");
     expect(store.getState().drawerVerb?.error).toContain("parse boom");
@@ -208,7 +235,7 @@ describe("app store (Zustand)", () => {
   it("clearDrawerVerb closes the analysis result; switching change still clears it", async () => {
     // design D2：分析面板可關閉——clearDrawerVerb 收合；既有「換 change 清空」不回歸。
     const ds = fakeDataSource();
-    const store = createAppStore(ds);
+    const store = storeWith(ds);
     await store.getState().refresh();
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
     expect(store.getState().drawerVerb).not.toBeNull();
@@ -222,7 +249,7 @@ describe("app store (Zustand)", () => {
 
   it("runVerb archive still surfaces in the top-bar verbResult", async () => {
     const ds = fakeDataSource({ runVerb: vi.fn().mockResolvedValue({ datedName: "2026-07-09-x" }) });
-    const store = createAppStore(ds);
+    const store = storeWith(ds);
     await store.getState().runVerb("archive", "desktop-shell-and-browser");
     expect(store.getState().verbResult).toContain("archive");
     expect(store.getState().drawerVerb).toBeNull();
@@ -232,7 +259,7 @@ describe("app store (Zustand)", () => {
   it("reorderCard passes neighbor ids through and refreshes on success", async () => {
     // design D5：store 動作把 kind/id/prevId/nextId 原樣交給 data source，成功後整批 refresh。
     const ds = fakeDataSource();
-    const store = createAppStore(ds);
+    const store = storeWith(ds);
     await store.getState().reorderCard("discussion", "slug-a", "prev-s", null);
     expect(ds.reorderCard).toHaveBeenCalledWith("discussion", "slug-a", "prev-s", null);
     expect(ds.listChanges).toHaveBeenCalled();
@@ -240,7 +267,7 @@ describe("app store (Zustand)", () => {
   });
 
   it("detailSpec 開閉 action 比照 detailChange（spec-archive-drawer design D2）", async () => {
-    const store = createAppStore(fakeDataSource());
+    const store = storeWith(fakeDataSource());
     await store.getState().refresh();
     expect(store.getState().detailSpec).toBeNull();
     store.getState().openSpec("desktop-app");
@@ -250,7 +277,7 @@ describe("app store (Zustand)", () => {
   });
 
   it("detailArchived 開閉 action：change 與 discussion 兩型 discriminated target", () => {
-    const store = createAppStore(fakeDataSource());
+    const store = storeWith(fakeDataSource());
     expect(store.getState().detailArchived).toBeNull();
     store.getState().openArchived({ kind: "change", datedName: "2026-07-04-x" });
     expect(store.getState().detailArchived).toEqual({ kind: "change", datedName: "2026-07-04-x" });
@@ -265,7 +292,7 @@ describe("app store (Zustand)", () => {
     const ds = fakeDataSource({
       reorderCard: vi.fn().mockRejectedValue(new Error("file locked")),
     });
-    const store = createAppStore(ds);
+    const store = storeWith(ds);
     await store.getState().reorderCard("change", "chg-a", null, "chg-b");
     expect(store.getState().verbResult).toContain("chg-a");
     expect(store.getState().verbResult).toContain("file locked");
@@ -284,15 +311,15 @@ describe("系統匣樣式由平台決定", () => {
   it("macOS 初值為 panel、非 macOS 為 native-menu，且不讀 localStorage 舊偏好", () => {
     localStorage.setItem("speclink.trayStyle", "native-menu"); // 舊偏好殘留：不再被讀取
     setUA(MAC_UA);
-    expect(createAppStore(fakeDataSource()).getState().trayStyle).toBe("panel");
+    expect(storeWith(fakeDataSource()).getState().trayStyle).toBe("panel");
     setUA(WIN_UA);
-    expect(createAppStore(fakeDataSource()).getState().trayStyle).toBe("native-menu");
+    expect(storeWith(fakeDataSource()).getState().trayStyle).toBe("native-menu");
     localStorage.removeItem("speclink.trayStyle");
   });
 
   it("panelFallback 退回 native-menu、浮出單行錯誤，且不寫 localStorage（規格「面板樣式（macOS）」失敗退回）", () => {
     setUA(MAC_UA);
-    const store = createAppStore(fakeDataSource());
+    const store = storeWith(fakeDataSource());
     store.getState().panelFallback("tray panel window creation failed: boom");
     expect(store.getState().trayStyle).toBe("native-menu");
     expect(store.getState().trayPanelError).toBe("tray panel window creation failed: boom");

@@ -24,10 +24,10 @@ function change(over: Partial<ChangeItem> & { name: string }): ChangeItem {
 function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
   return {
     tabs: [
-      { root: "/proj/one", name: "one" },
-      { root: "/proj/two", name: "two" },
+      { key: "local:/proj/one", root: "/proj/one", name: "one" },
+      { key: "local:/proj/two", root: "/proj/two", name: "two" },
     ],
-    activeRoot: "/proj/one",
+    activeKey: "local:/proj/one",
     changes: [
       change({ name: "prop", totalTasks: 5, completedTasks: 0 }), // proposed
       change({ name: "inprog", totalTasks: 12, completedTasks: 3 }), // in-progress
@@ -70,8 +70,8 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
 
   it("專案區列出分頁且作用中標示、點非作用中專案回呼切換", () => {
     const h = renderPanel();
-    const one = screen.getByTestId("panel-project-/proj/one");
-    const two = screen.getByTestId("panel-project-/proj/two");
+    const one = screen.getByTestId("panel-project-local:/proj/one");
+    const two = screen.getByTestId("panel-project-local:/proj/two");
     expect(one.getAttribute("data-active")).toBe("true");
     expect(two.getAttribute("data-active")).toBe("false");
     fireEvent.click(two);
@@ -134,18 +134,18 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
 describe("TrayPanel 專案 tab 條（spec「面板樣式（macOS）」；design D1）", () => {
   it("每個 tab 含專案名首字母 avatar 與專案名", () => {
     renderPanel();
-    const one = screen.getByTestId("panel-project-/proj/one");
+    const one = screen.getByTestId("panel-project-local:/proj/one");
     expect(within(one).getByText("O")).toBeTruthy();
     expect(within(one).getByText("one")).toBeTruthy();
-    const two = screen.getByTestId("panel-project-/proj/two");
+    const two = screen.getByTestId("panel-project-local:/proj/two");
     expect(within(two).getByText("T")).toBeTruthy();
     expect(within(two).getByText("two")).toBeTruthy();
   });
 
   it("作用中 tab 實心主色底、非作用中無實心底", () => {
     renderPanel();
-    const one = screen.getByTestId("panel-project-/proj/one");
-    const two = screen.getByTestId("panel-project-/proj/two");
+    const one = screen.getByTestId("panel-project-local:/proj/one");
+    const two = screen.getByTestId("panel-project-local:/proj/two");
     expect(one.className.split(/\s+/)).toContain("bg-primary");
     expect(two.className.split(/\s+/)).not.toContain("bg-primary");
   });

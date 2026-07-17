@@ -17,16 +17,19 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { handleIconState } from "@tauri-apps/plugin-positioner";
 
 import { appT } from "./i18n/runtime";
+import { locatorKey, type WorkspaceLocator } from "./session";
 import { trayIconBytes } from "./trayIcon";
 
 /** 系統匣互動樣式：由平台決定（macOS＝panel、其餘＝native-menu），panel 建立失敗時
     退回 native-menu——執行期狀態、不持久化（tray-macos-panel-only 拆除偏好）。 */
 export type TrayStyle = "native-menu" | "panel";
 
-/** 組模型所需的 store 快照（自 AppState 收斂而來——與看板同源，design D3）。 */
+/** 組模型所需的 store 快照（自 AppState 收斂而來——與看板同源，design D3）。
+ * 分頁項識別＝locator key（workspace-session 決策 6）；root 供 open-project
+ * 動作沿用既有開啟語意（local 分頁）。 */
 export interface TraySnapshot {
-  tabs: Array<{ root: string; name: string }>;
-  activeRoot: string | null;
+  tabs: Array<{ key: string; root: string; name: string }>;
+  activeKey: string | null;
   changes: ChangeItem[];
   /** 進看板的 active 討論（slug 供點擊開啟；promoted＝已轉出變更，分流至「已轉出」分區）。 */
   discussions: Array<{ slug: string; topic: string; promoted: boolean }>;
@@ -43,7 +46,7 @@ export const OVERFLOW_LIMIT = 5;
 
 /** 選單項目模型（純資料；接線層據此建原生 menu item 並掛 action）。 */
 export type TrayMenuItem =
-  | { kind: "project"; root: string; label: string; checked: boolean }
+  | { kind: "project"; key: string; root: string; label: string; checked: boolean }
   | { kind: "header"; label: string }
   | { kind: "change"; name: string; label: string; actions: TrayChangeAction[] }
   | {
@@ -112,13 +115,14 @@ export function buildTrayModel(
     ];
   };
 
-  // 專案區
+  // 專案區（識別＝locator key；顯示文字與行為不變）
   for (const tab of snapshot.tabs) {
     items.push({
       kind: "project",
+      key: tab.key,
       root: tab.root,
       label: tab.name,
-      checked: tab.root === snapshot.activeRoot,
+      checked: tab.key === snapshot.activeKey,
     });
   }
   if (snapshot.tabs.length > 0) items.push({ kind: "separator" });
@@ -186,8 +190,8 @@ export function buildTrayModel(
 /** tray 訂閱所需的最小 store 介面（Zustand bound store 相容——AppState 的結構子集）。 */
 export interface TrayStoreApi {
   getState: () => {
-    tabs: Array<{ root: string; name: string }>;
-    activeRoot: string | null;
+    tabs: Array<{ locator: WorkspaceLocator; name: string }>;
+    activeKey: string | null;
     changes: ChangeItem[];
     discussions: { active: Array<{ slug: string; topic: string; promotedTo: string[] }> };
     /** 系統匣樣式偏好：native-menu 掛原生選單、panel 卸選單改走點擊事件。 */
@@ -227,8 +231,13 @@ export function detectMacOS(): boolean {
 /** store 狀態 → 模型快照（與看板同源）。 */
 function toSnapshot(state: ReturnType<TrayStoreApi["getState"]>): TraySnapshot {
   return {
-    tabs: state.tabs.map((t) => ({ root: t.root, name: t.name })),
-    activeRoot: state.activeRoot,
+    tabs: state.tabs.map((t) => ({
+      key: locatorKey(t.locator),
+      // remote 本刀無建構路徑；root 僅 local 分頁有意義（open-project 動作用）。
+      root: t.locator.kind === "local" ? t.locator.root : "",
+      name: t.name,
+    })),
+    activeKey: state.activeKey,
     changes: state.changes,
     discussions: state.discussions.active.map((d) => ({
       slug: d.slug,

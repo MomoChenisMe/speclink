@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { Archive, GitBranch, FileText, Settings, FolderOpen } from "lucide-react";
 import {
@@ -23,11 +22,11 @@ import {
   I18nProvider,
   useI18n,
   siblingChangesOf,
-  type SpeclinkDataSource,
   type Verb,
 } from "@speclink/ui";
 
 import { createAppStore } from "./store";
+import type { WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
 import { ProjectTabs } from "./components/ProjectTabs";
 import { SettingsView } from "./views/SettingsView";
@@ -42,8 +41,9 @@ import {
 import { setAppT } from "./i18n/runtime";
 
 export interface AppProps {
-  dataSource: SpeclinkDataSource;
-  /** workspace 管理操作（開專案／init／設定）；未注入時對應 UI 不啟用。 */
+  /** local session 工廠（root 綁定 dataSource／settings／events；workspace-session 決策 3/6）。 */
+  createSession: (root: string, name: string) => WorkspaceSession;
+  /** workspace 探測面（開專案／init／統計／監看重掛）；未注入時對應 UI 不啟用。 */
   workspace?: WorkspaceAdapter;
 }
 
@@ -112,7 +112,7 @@ function NavItem({
 }
 
 /** 桌面 app 進入點：解析 UI 語言（偏好優先、null 跟隨系統）並掛 I18nProvider。 */
-export function App({ dataSource, workspace }: AppProps) {
+export function App({ createSession, workspace }: AppProps) {
   const [localePref, setLocalePrefState] = useState<LocalePreference>(() => readLocalePreference());
   // 切換即時生效並持久化（設定頁的 UI 語言三選接這裡）。
   const setLocalePref = (pref: LocalePreference) => {
@@ -126,7 +126,7 @@ export function App({ dataSource, workspace }: AppProps) {
   return (
     <I18nProvider locale={uiLocale} messages={APP_MESSAGES}>
       <AppInner
-        dataSource={dataSource}
+        createSession={createSession}
         workspace={workspace}
         localePref={localePref}
         onLocalePrefChange={setLocalePref}
@@ -142,9 +142,16 @@ interface AppInnerProps extends AppProps {
 }
 
 /** 桌面主畫面：生命週期看板（主視圖）＋已封存獨立頁＋設定頁＋Spectra 級詳情抽屜。 */
-function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: AppInnerProps) {
-  const useStore = useMemo(() => createAppStore(dataSource, workspace), [dataSource, workspace]);
+function AppInner({ createSession, workspace, localePref, onLocalePrefChange }: AppInnerProps) {
+  const useStore = useMemo(
+    () => createAppStore({ createSession, workspace }),
+    [createSession, workspace],
+  );
   const s = useStore();
+  // 活躍 session（workspace-session 決策 6）：詳情／規格／封存抽屜的文件載入
+  // 與設定頁一律經它——App 不再持有全域 dataSource。
+  const activeSession = s.activeKey ? s.sessions[s.activeKey] : undefined;
+  const dataSource = activeSession?.dataSource;
   // 初始化確認框的工具多選（預設勾 claude）；對話框每次開啟重設。
   const [initTools, setInitTools] = useState<string[]>(["claude"]);
   useEffect(() => {
@@ -169,26 +176,33 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
   };
 
   useEffect(() => {
-    // 啟動：有 workspace 即還原分頁列（含切回上次活躍專案與背景徽章快照）；
-    // 否則維持既有的整批 refresh。
+    // 啟動：有 workspace 即還原分頁列（依持久化 activeKey 切回上次活躍專案、
+    // 背景徽章快照）；否則維持既有的整批 refresh（無活躍 session 時為無事）。
     if (workspace) void useStore.getState().restoreTabs();
     else void useStore.getState().refresh();
-    // 檔案監看的宿主層 wiring：外部寫者（CLI、agent、編輯器）改動 openspec/
-    // 後，後端去抖發出 workspace-changed，前端一律整批 refresh。卸載時解除。
-    const unlisten = listen("workspace-changed", () => {
+    return () => {
+      // 卸載時取消漏出的搜尋去抖，杜絕在途 timer 於 store 卸載後才開火。
+      useStore.getState().disposeSearch();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useStore]);
+
+  // 檔案監看的宿主層 wiring（workspace-session 決策 5）：訂閱活躍 session 的
+  // 事件來源（workspace-changed 以自身 root 過濾），觸發既有整批 refresh；
+  // 切換活躍分頁即換訂閱、卸載時解除。
+  useEffect(() => {
+    const st = useStore.getState();
+    const session = st.activeKey ? st.sessions[st.activeKey] : undefined;
+    if (!session) return;
+    return session.events.subscribe(() => {
       if (boardDragActive.current) {
         pendingRefresh.current = true;
         return;
       }
       void useStore.getState().refresh();
     });
-    return () => {
-      void unlisten.then((f) => f());
-      // 卸載時取消漏出的搜尋去抖，杜絕在途 timer 於 store 卸載後才開火。
-      useStore.getState().disposeSearch();
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useStore]);
+  }, [useStore, s.activeKey]);
 
   // 系統匣狀態選單（tray-status-menu）：訂閱同一 store 於選單列／系統匣呈現狀態並可切專案。
   // store 為本元件範圍，故於此接線（非 main.tsx）。建立失敗（如非 Tauri 環境）只靜默降級——
@@ -274,9 +288,9 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
           // 專案分頁列取代「目前專案」佔位（design D10）：active 分頁即目前專案。
           <ProjectTabs
             tabs={s.tabs}
-            activeRoot={s.activeRoot}
+            activeKey={s.activeKey}
             tabErrors={s.tabErrors}
-            onActivate={(root) => void s.activateTab(root)}
+            onActivate={(key) => void s.activateTab(key)}
             onClose={s.closeTab}
             onOpen={() => void s.openProjectViaDialog()}
           />
@@ -341,9 +355,9 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
         {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
             制列沉底常駐）；設定頁維持整頁縱向捲動 */}
         <main className={`flex-1 p-5 ${s.boardView === "settings" ? "overflow-y-auto" : "overflow-hidden"}`}>
-          {s.boardView === "settings" && workspace !== undefined ? (
+          {s.boardView === "settings" && activeSession !== undefined ? (
             <SettingsView
-              workspace={workspace}
+              settings={activeSession.settings}
               localePref={localePref}
               onLocalePrefChange={onLocalePrefChange}
               trayPanelError={s.trayPanelError}
@@ -386,23 +400,23 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
         onOpenChange={(o) => !o && s.closeDetail()}
         change={s.detailChange}
         refreshGen={s.refreshGen}
-        loadDocument={(change, artifact) => dataSource.getDocument(change, artifact)}
-        loadCapabilities={(change) => dataSource.changeCapabilities(change)}
-        loadMeta={(change) => dataSource.changeMeta(change)}
+        loadDocument={(change, artifact) => dataSource?.getDocument(change, artifact) ?? Promise.resolve(null)}
+        loadCapabilities={(change) => dataSource?.changeCapabilities(change) ?? Promise.resolve([])}
+        loadMeta={(change) => dataSource?.changeMeta(change) ?? Promise.resolve(null)}
         onRunVerb={onRunVerb}
         verbResult={s.drawerVerb}
         onClearVerb={s.clearDrawerVerb}
         onDelete={s.requestDelete}
         onToggleTask={async (change, task, done) => {
-          await dataSource.setTaskDone(change, task, done);
+          await dataSource?.setTaskDone(change, task, done);
           await s.refresh();
         }}
         onMoveTask={async (change, from, to, before) => {
-          await dataSource.moveTask(change, from, to, before);
+          await dataSource?.moveTask(change, from, to, before);
           await s.refresh();
         }}
         onSetAllTasks={async (change, done) => {
-          await dataSource.setAllTasks(change, done);
+          await dataSource?.setAllTasks(change, done);
           await s.refresh();
         }}
         sourceDiscussions={sourceDiscussions}
@@ -420,7 +434,7 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
         onOpenChange={(o) => !o && s.closeSpec()}
         capability={s.detailSpec}
         refreshGen={s.refreshGen}
-        loadDocument={(capability) => dataSource.getSpecDocument(capability)}
+        loadDocument={(capability) => dataSource?.getSpecDocument(capability) ?? Promise.resolve(null)}
       />
 
       {/* 唯讀封存抽屜（封存變更四分頁／封存討論三區段） */}
@@ -429,9 +443,9 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
         onOpenChange={(o) => !o && s.closeArchived()}
         target={s.detailArchived}
         refreshGen={s.refreshGen}
-        loadDocument={(datedName, artifact) => dataSource.getArchivedDocument(datedName, artifact)}
-        loadCapabilities={(datedName) => dataSource.archivedCapabilities(datedName)}
-        loadDiscussionDocument={(slug) => dataSource.getDiscussionDocument(slug)}
+        loadDocument={(datedName, artifact) => dataSource?.getArchivedDocument(datedName, artifact) ?? Promise.resolve(null)}
+        loadCapabilities={(datedName) => dataSource?.archivedCapabilities(datedName) ?? Promise.resolve([])}
+        loadDiscussionDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
         sourceDiscussions={archivedSourceDiscussions}
         onOpenDiscussion={(slug) => s.openArchived({ kind: "discussion", slug })}
       />
@@ -442,7 +456,7 @@ function AppInner({ dataSource, workspace, localePref, onLocalePrefChange }: App
         onOpenChange={(o) => !o && s.closeDiscussion()}
         discussion={s.detailDiscussion}
         refreshGen={s.refreshGen}
-        loadDocument={(slug) => dataSource.getDiscussionDocument(slug)}
+        loadDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
         changes={s.changes}
         archivedChanges={s.archived}
         onOpenChangeCard={(name) => {

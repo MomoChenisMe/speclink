@@ -1,7 +1,8 @@
 //! openspec/ 檔案監看（design D3）：遞迴監看探索出的 spec 目錄樹，事件合併
-//! 去抖後以回呼通知——不帶 payload，訂閱端一律整批 refresh，不做細粒度 diff。
-//! 回呼式核心與 Tauri 事件發送分離：本模組不知道 Tauri 存在，lib.rs 的 setup
-//! 把回呼接到 `workspace-changed` 事件上。
+//! 去抖後以回呼通知——回呼不帶參數，訂閱端一律整批 refresh，不做細粒度 diff。
+//! 回呼式核心與 Tauri 事件發送分離：本模組不知道 Tauri 存在，lib.rs 的
+//! watch_workspace command 把回呼接到 `workspace-changed` 事件上（payload 為
+//! 被監看的 root，由掛載處閉包補上——workspace-session 決策 5）。
 //!
 //! 監看目標由 [`resolve_watch_target`] 解析：自起點向上探索 speclink 專案
 //! （與查詢指令的 `Workspace::discover` 同源），取其實際 spec 目錄——監看根

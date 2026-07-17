@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type {
   SpeclinkDataSource,
   CardKind,
@@ -11,74 +11,88 @@ import type {
   Verb,
 } from "@speclink/ui";
 
+import type { InvokeFn } from "../session";
+
 // core-backed adapter：以 Tauri invoke 呼叫 speclink-desktop 的 #[command]，
 // 實作 @speclink/ui 的 SpeclinkDataSource 介面。command 名與參數對應 src-tauri/src/lib.rs。
-export function createTauriDataSource(): SpeclinkDataSource {
+// root 綁入閉包（workspace-session 決策 3/4）：每支 command 顯式帶 root，直通
+// desktop-core 的帶路徑函式——Rust 側無 current-root 全域。invoke 可注入以利測試。
+export function createTauriDataSource(
+  root: string,
+  invoke: InvokeFn = tauriInvoke as InvokeFn,
+): SpeclinkDataSource {
   return {
     async listChanges(): Promise<ChangeItem[]> {
-      const r = await invoke<{ changes: ChangeItem[] }>("list_changes");
+      const r = await invoke<{ changes: ChangeItem[] }>("list_changes", { root });
       return r.changes;
     },
     async listSpecs(): Promise<SpecItem[]> {
-      const r = await invoke<{ specs: SpecItem[] }>("list_specs");
+      const r = await invoke<{ specs: SpecItem[] }>("list_specs", { root });
       return r.specs;
     },
     async listArchived(): Promise<ArchivedItem[]> {
-      const r = await invoke<{ archived: ArchivedItem[] }>("archived_changes");
+      const r = await invoke<{ archived: ArchivedItem[] }>("archived_changes", { root });
       return r.archived;
     },
     async status(change: string): Promise<StatusReport> {
-      return await invoke<StatusReport>("status", { change });
+      return await invoke<StatusReport>("status", { root, change });
     },
     async getDocument(change: string, artifact: string): Promise<string | null> {
-      return await invoke<string | null>("document", { change, artifact });
+      return await invoke<string | null>("document", { root, change, artifact });
     },
     async getSpecDocument(capability: string): Promise<string | null> {
-      return await invoke<string | null>("spec_document", { capability });
+      return await invoke<string | null>("spec_document", { root, capability });
     },
     async searchWorkspace(query: string): Promise<SearchHit[]> {
-      const r = await invoke<{ hits: SearchHit[] }>("search_workspace", { query });
+      const r = await invoke<{ hits: SearchHit[] }>("search_workspace", { root, query });
       return r.hits;
     },
     async changeCapabilities(change: string): Promise<string[]> {
-      return await invoke<string[]>("change_capabilities", { change });
+      return await invoke<string[]>("change_capabilities", { root, change });
     },
     async changeMeta(change: string) {
-      return await invoke<import("@speclink/ui").ChangeMetaInfo | null>("change_meta", { change });
+      return await invoke<import("@speclink/ui").ChangeMetaInfo | null>("change_meta", {
+        root,
+        change,
+      });
     },
     async deleteChange(change: string): Promise<void> {
-      await invoke("delete_change", { change });
+      await invoke("delete_change", { root, change });
     },
     async setTaskDone(change: string, task: string, done: boolean): Promise<void> {
-      await invoke("set_task_done", { change, task, done });
+      await invoke("set_task_done", { root, change, task, done });
     },
     async setAllTasks(change: string, done: boolean): Promise<void> {
-      await invoke("set_all_tasks", { change, done });
+      await invoke("set_all_tasks", { root, change, done });
     },
     async moveTask(change: string, from: number, to: number, before?: boolean): Promise<void> {
-      await invoke("move_task", { change, from, to, before: before ?? null });
+      await invoke("move_task", { root, change, from, to, before: before ?? null });
     },
     async runVerb(verb: Verb, change: string): Promise<unknown> {
       // 動詞 command 與動詞同名（validate/analyze/archive）。
-      return await invoke(verb, { change });
+      return await invoke(verb, { root, change });
     },
     async getArchivedDocument(datedName: string, artifact: string): Promise<string | null> {
-      return await invoke<string | null>("archived_document", { datedName, artifact });
+      return await invoke<string | null>("archived_document", { root, datedName, artifact });
     },
     async archivedCapabilities(datedName: string): Promise<string[]> {
-      return await invoke<string[]>("archived_capabilities", { datedName });
+      return await invoke<string[]>("archived_capabilities", { root, datedName });
     },
     async listDiscussions(): Promise<DiscussionLists> {
-      return await invoke<DiscussionLists>("list_discussions");
+      return await invoke<DiscussionLists>("list_discussions", { root });
     },
     async getDiscussionDocument(slug: string): Promise<string | null> {
-      return await invoke<string | null>("discussion_document", { slug });
+      return await invoke<string | null>("discussion_document", { root, slug });
     },
     async promoteDiscussion(slug: string, name?: string): Promise<{ change: string }> {
-      return await invoke<{ change: string }>("promote_discussion", { slug, name: name ?? null });
+      return await invoke<{ change: string }>("promote_discussion", {
+        root,
+        slug,
+        name: name ?? null,
+      });
     },
     async archiveDiscussion(slug: string): Promise<void> {
-      await invoke("archive_discussion", { slug });
+      await invoke("archive_discussion", { root, slug });
     },
     async reorderCard(
       kind: CardKind,
@@ -86,7 +100,7 @@ export function createTauriDataSource(): SpeclinkDataSource {
       prevId: string | null,
       nextId: string | null,
     ): Promise<void> {
-      await invoke("reorder_card", { kind, id, prevId, nextId });
+      await invoke("reorder_card", { root, kind, id, prevId, nextId });
     },
   };
 }

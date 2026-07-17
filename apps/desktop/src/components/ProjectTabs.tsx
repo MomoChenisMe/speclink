@@ -1,6 +1,7 @@
 // 專案分頁列（design D10，UI 形態對齊 Spectra）：active 分頁 teal 粗框標示
 // 目前專案、✕ 僅 active 與 hover 顯示、「＋」掛尾端接資料夾選擇器、徽章顯示
 // 進行中變更數（hover tooltip）、失效分頁錯誤態（警示標記＋自分頁移除）。
+// 分頁識別＝locator key（workspace-session 決策 1）；顯示文字與行為不變。
 import { AlertTriangle, Plus, X } from "lucide-react";
 import {
   Button,
@@ -13,19 +14,20 @@ import {
 } from "@speclink/ui";
 
 import type { ProjectTab } from "../tabs";
+import { locatorKey } from "../session";
 
 export interface ProjectTabsProps {
   tabs: ProjectTab[];
-  activeRoot: string | null;
-  /** 失效分頁錯誤（root → 單行訊息）。 */
+  activeKey: string | null;
+  /** 失效分頁錯誤（locator key → 單行訊息）。 */
   tabErrors: Record<string, string>;
-  onActivate?: (root: string) => void;
-  onClose?: (root: string) => void;
+  onActivate?: (key: string) => void;
+  onClose?: (key: string) => void;
   /** 「＋」入口：開資料夾選擇器。 */
   onOpen?: () => void;
 }
 
-function TabBadge({ badge, root }: { badge: number | null; root: string }) {
+function TabBadge({ badge, tabKey }: { badge: number | null; tabKey: string }) {
   const { t } = useI18n();
   if (badge === null) return null;
   return (
@@ -33,7 +35,7 @@ function TabBadge({ badge, root }: { badge: number | null; root: string }) {
       <Tooltip>
         <TooltipTrigger asChild>
           <span
-            data-badge={root}
+            data-badge={tabKey}
             className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-primary/12 text-primary text-[10px] font-semibold tabular-nums"
           >
             {badge}
@@ -45,20 +47,23 @@ function TabBadge({ badge, root }: { badge: number | null; root: string }) {
   );
 }
 
-export function ProjectTabs({ tabs, activeRoot, tabErrors, onActivate, onClose, onOpen }: ProjectTabsProps) {
+export function ProjectTabs({ tabs, activeKey, tabErrors, onActivate, onClose, onOpen }: ProjectTabsProps) {
   const { t } = useI18n();
   return (
     <div className="flex items-center gap-1 min-w-0 overflow-x-auto" data-project-tabs>
       {tabs.map((tab) => {
-        const active = tab.root === activeRoot;
-        const error = tabErrors[tab.root] !== undefined;
+        const key = locatorKey(tab.locator);
+        // tooltip 顯示路徑（local 分頁）——顯示文字凍結；remote 本刀無建構路徑。
+        const path = tab.locator.kind === "local" ? tab.locator.root : key;
+        const active = key === activeKey;
+        const error = tabErrors[key] !== undefined;
         return (
           <div
-            key={tab.root}
-            data-tab={tab.root}
+            key={key}
+            data-tab={key}
             data-active={String(active)}
             data-error={String(error)}
-            title={error ? tabErrors[tab.root] : tab.root}
+            title={error ? tabErrors[key] : path}
             className={cn(
               "group flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs shrink-0 cursor-pointer transition-colors",
               active
@@ -67,12 +72,12 @@ export function ProjectTabs({ tabs, activeRoot, tabErrors, onActivate, onClose, 
               error && "text-muted-foreground/60",
             )}
             onClick={() => {
-              if (!active) onActivate?.(tab.root);
+              if (!active) onActivate?.(key);
             }}
           >
             {error && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
             <span className="truncate max-w-[140px]">{tab.name}</span>
-            {!error && <TabBadge badge={tab.badge} root={tab.root} />}
+            {!error && <TabBadge badge={tab.badge} tabKey={key} />}
             {error ? (
               <Button
                 type="button"
@@ -82,7 +87,7 @@ export function ProjectTabs({ tabs, activeRoot, tabErrors, onActivate, onClose, 
                 className="h-4 w-4 shrink-0 text-muted-foreground hover:text-foreground"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onClose?.(tab.root);
+                  onClose?.(key);
                 }}
               >
                 <X className="h-3 w-3" />
@@ -100,7 +105,7 @@ export function ProjectTabs({ tabs, activeRoot, tabErrors, onActivate, onClose, 
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onClose?.(tab.root);
+                  onClose?.(key);
                 }}
               >
                 <X className="h-3 w-3" />

@@ -1,6 +1,5 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type {
-  SpeclinkDataSource,
   ArchivedTarget,
   CardKind,
   ChangeItem,
@@ -10,6 +9,7 @@ import type {
   DiscussionLists,
   ListView,
   SearchHit,
+  SpeclinkDataSource,
   Verb,
   AnalyzeReport,
   VerbDrawerResult,
@@ -17,6 +17,7 @@ import type {
 
 import { appT } from "./i18n/runtime";
 import type { WorkspaceAdapter } from "./adapter/workspace";
+import { locatorKey, type WorkspaceSession } from "./session";
 import {
   pendingWrapUpCount,
   persistTabs,
@@ -100,24 +101,26 @@ export interface AppState {
   reorderCard: (kind: CardKind, id: string, prevId: string | null, nextId: string | null) => Promise<void>;
 
   // --- workspace／專案分頁列（注入 workspace adapter 時生效；design D3/D10/D11） ---
-  /** 分頁清單（開啟順序；持久化於 app 本機）。 */
+  /** 分頁清單（開啟順序；持久化於 app 本機）。分頁身分＝locator（workspace-session 決策 1）。 */
   tabs: ProjectTab[];
-  /** 目前 active 分頁的 root（null＝零分頁空狀態）。 */
-  activeRoot: string | null;
+  /** session 集（locatorKey 為鍵；workspace-session 決策 6）——資料載入一律經活躍 session。 */
+  sessions: Record<string, WorkspaceSession>;
+  /** 目前 active 分頁的 locator key（null＝零分頁空狀態）。 */
+  activeKey: string | null;
   /** 待確認的初始化目錄（uninitialized 判定觸發；null＝無對話框）。 */
   pendingInit: string | null;
-  /** 失效分頁錯誤（root → 單行訊息）。 */
+  /** 失效分頁錯誤（locator key → 單行訊息）。 */
   tabErrors: Record<string, string>;
   /** 開啟專案（dialog 或還原路徑）：三態分流。 */
   openProjectAt: (path: string) => Promise<void>;
   /** 開資料夾選擇器再走 openProjectAt；取消即無事。 */
   openProjectViaDialog: () => Promise<void>;
-  /** 點分頁：與開啟專案相同語意；失敗轉該分頁錯誤態、不切換。 */
-  activateTab: (root: string) => Promise<void>;
-  closeTab: (root: string) => void;
+  /** 點分頁（locator key）：與開啟專案相同語意；失敗轉該分頁錯誤態、不切換。 */
+  activateTab: (key: string) => Promise<void>;
+  closeTab: (key: string) => void;
   confirmInit: (tools: string[]) => Promise<void>;
   cancelInit: () => void;
-  /** 啟動：還原持久化分頁、切回最後活躍專案、背景分頁各查一次徽章快照。 */
+  /** 啟動：還原持久化分頁、依持久化 activeKey 切回最後活躍專案、背景分頁各查一次徽章快照。 */
   restoreTabs: () => Promise<void>;
   /** Ctrl+Tab：循環切至下一分頁（走開啟專案語意）。 */
   cycleTab: () => Promise<void>;
@@ -133,37 +136,55 @@ export interface AppState {
   panelFallback: (message: string) => void;
 }
 
+/** createAppStore 的注入面（workspace-session 決策 6）：session 工廠取代全域
+ * dataSource；workspace 為探測面（開專案／init／統計／選資料夾／監看重掛）。 */
+export interface AppStoreDeps {
+  /** local session 工廠（root、顯示名）；測試注入假 session。 */
+  createSession: (root: string, name: string) => WorkspaceSession;
+  /** workspace 探測面；未注入時對應 UI 不啟用。 */
+  workspace?: WorkspaceAdapter;
+}
+
 /**
- * 以注入的 dataSource 建立 app 狀態 store（Zustand）。狀態集中此處、留在 apps/desktop；
- * 共用元件（packages/ui）不依賴 store，仍經 props 取資料——守住資料源解耦。
+ * 建立 app 狀態 store（Zustand）。狀態集中此處、留在 apps/desktop；共用元件
+ * （packages/ui）不依賴 store，仍經 props 取資料——守住資料源解耦。資料載入
+ * 一律經活躍 session 的 dataSource（單活躍載入語意不變）。
  */
-export function createAppStore(
-  dataSource: SpeclinkDataSource,
-  workspace?: WorkspaceAdapter,
-): UseBoundStore<StoreApi<AppState>> {
+export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppState>> {
+  const { createSession, workspace } = deps;
   return create<AppState>((set, get) => {
     // 全文查詢的去抖與 latest-wins 狀態（design D6）——閉包層、不進 store state。
     let searchSeq = 0;
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
-    /** 命中專案的共同尾聲：記分頁（去重）、設 active、清對話框、persist、整批 refresh。
+    /** 活躍 session 的 dataSource；零分頁空狀態回 null（資料操作一律早退）。 */
+    function activeDataSource(): SpeclinkDataSource | null {
+      const { activeKey, sessions } = get();
+      return (activeKey && sessions[activeKey]?.dataSource) || null;
+    }
+
+    /** 命中專案的共同尾聲：upsert session 與分頁（去重）、設 activeKey、清對話框、
+     * persist、顯式重掛監看、整批 refresh。probe 為純探測，其回報值即後端真相。
      * 舊 active 分頁的徽章停留在最後一次 refresh 的派生值——即切走時的快照（design D11）。 */
     async function enterProject(root: string, name: string) {
-      // 切換後經 current_project 同步 active 分頁標示——後端 root 是唯一真相；
-      // 查詢不可用時以委派回報值為準（同一次切換的返回值）。
-      let cur = { root, name };
-      if (workspace) {
-        try {
-          cur = await workspace.currentProject();
-        } catch {
-          // 委派值即後端切換後的回報，逕用。
-        }
-      }
-      const tabs = upsertTab(get().tabs, cur);
+      const locator = { kind: "local", root } as const;
+      const key = locatorKey(locator);
+      const tabs = upsertTab(get().tabs, { locator, name });
+      const sessions = { ...get().sessions };
+      if (!sessions[key]) sessions[key] = createSession(root, name);
+      // 淘汰出分頁列的 session 一併回收（上限丟最舊）。
+      const live = new Set(tabs.map((t) => locatorKey(t.locator)));
+      for (const k of Object.keys(sessions)) if (!live.has(k)) delete sessions[k];
       const tabErrors = { ...get().tabErrors };
-      delete tabErrors[cur.root];
-      set({ tabs, tabErrors, activeRoot: cur.root, pendingInit: null });
-      persistTabs(tabs, cur.root);
+      delete tabErrors[key];
+      set({ tabs, sessions, tabErrors, activeKey: key, pendingInit: null });
+      persistTabs(tabs, key);
+      // 監看顯式跟隨活躍 session（決策 5）；不可用僅失去自動刷新、app 照常。
+      try {
+        await workspace?.watchWorkspace(root);
+      } catch {
+        /* 降級：無自動刷新 */
+      }
       await get().refresh();
     }
 
@@ -191,6 +212,8 @@ export function createAppStore(
     drawerVerb: null,
 
     async refresh() {
+      const dataSource = activeDataSource();
+      if (!dataSource) return;
       const [changes, specs, archived, discussions] = await Promise.all([
         dataSource.listChanges(),
         dataSource.listSpecs(),
@@ -211,11 +234,11 @@ export function createAppStore(
       // active 分頁徽章＝待收尾數（已就緒變更＋已結論未轉出討論），隨看板刷新
       // 派生（spec-archive-drawer design D6）；背景分頁不動、保留最後已知值
       //（design D11 背景快照制）。
-      const { activeRoot, tabs } = get();
-      if (activeRoot && tabs.some((t) => t.root === activeRoot)) {
+      const { activeKey, tabs } = get();
+      if (activeKey && tabs.some((t) => locatorKey(t.locator) === activeKey)) {
         set({
           tabs: tabs.map((t) =>
-            t.root === activeRoot
+            locatorKey(t.locator) === activeKey
               ? { ...t, badge: pendingWrapUpCount(changes, discussions.active) }
               : t,
           ),
@@ -248,6 +271,8 @@ export function createAppStore(
         return;
       }
       searchTimer = setTimeout(() => {
+        const dataSource = activeDataSource();
+        if (!dataSource) return;
         void dataSource
           .searchWorkspace(boardQuery)
           .then((hits) => {
@@ -332,6 +357,8 @@ export function createAppStore(
       const name = get().pendingDelete;
       set({ pendingDelete: null });
       if (!name) return;
+      const dataSource = activeDataSource();
+      if (!dataSource) return;
       try {
         await dataSource.deleteChange(name);
         set({ verbResult: `${name} · ${appT("store.deleted")}`, detailChange: null });
@@ -353,6 +380,8 @@ export function createAppStore(
       const slug = get().pendingArchiveDiscussion;
       set({ pendingArchiveDiscussion: null });
       if (!slug) return;
+      const dataSource = activeDataSource();
+      if (!dataSource) return;
       try {
         await dataSource.archiveDiscussion(slug);
         set({ verbResult: `${slug} · ${appT("store.discussionArchived")}`, detailDiscussion: null });
@@ -367,6 +396,8 @@ export function createAppStore(
     },
 
     async runVerb(verb, change) {
+      const dataSource = activeDataSource();
+      if (!dataSource) return;
       // archive 屬看板全域操作：結果仍呈於視窗頂列狀態列（D1）。
       if (verb === "archive") {
         try {
@@ -406,6 +437,8 @@ export function createAppStore(
     },
 
     async reorderCard(kind, id, prevId, nextId) {
+      const dataSource = activeDataSource();
+      if (!dataSource) return;
       try {
         await dataSource.reorderCard(kind, id, prevId, nextId);
       } catch (e) {
@@ -417,7 +450,8 @@ export function createAppStore(
 
     // --- workspace／專案分頁列 ---
     tabs: [],
-    activeRoot: null,
+    sessions: {},
+    activeKey: null,
     pendingInit: null,
     tabErrors: {},
 
@@ -446,33 +480,38 @@ export function createAppStore(
       if (picked) await get().openProjectAt(picked);
     },
 
-    async activateTab(root) {
+    async activateTab(key) {
       if (!workspace) return;
+      const tab = get().tabs.find((t) => locatorKey(t.locator) === key);
+      // remote locator 本刀無建構路徑（型別先行）；查無分頁即無事。
+      if (!tab || tab.locator.kind !== "local") return;
       try {
-        const probe = await workspace.openProject(root);
+        const probe = await workspace.openProject(tab.locator.root);
         if (probe.status === "project") {
           await enterProject(probe.root, probe.name);
         } else {
           // openspec/ 已刪但目錄還在：分頁轉錯誤態，不開初始化對話框。
-          set({ tabErrors: { ...get().tabErrors, [root]: appT("store.tabInvalid") } });
+          set({ tabErrors: { ...get().tabErrors, [key]: appT("store.tabInvalid") } });
         }
       } catch (e) {
-        set({ tabErrors: { ...get().tabErrors, [root]: String(e) } });
+        set({ tabErrors: { ...get().tabErrors, [key]: String(e) } });
       }
     },
 
-    closeTab(root) {
-      const tabs = removeTab(get().tabs, root);
+    closeTab(key) {
+      const tabs = removeTab(get().tabs, key);
+      const sessions = { ...get().sessions };
+      delete sessions[key];
       const tabErrors = { ...get().tabErrors };
-      delete tabErrors[root];
-      const wasActive = get().activeRoot === root;
-      const activeRoot = wasActive ? null : get().activeRoot;
-      set({ tabs, tabErrors, activeRoot });
-      persistTabs(tabs, activeRoot);
+      delete tabErrors[key];
+      const wasActive = get().activeKey === key;
+      const activeKey = wasActive ? null : get().activeKey;
+      set({ tabs, sessions, tabErrors, activeKey });
+      persistTabs(tabs, activeKey);
       // 關掉 active 分頁：切到最近的剩餘分頁（走完整開啟語意）；零分頁則空狀態。
       if (wasActive) {
         const next = tabs.at(-1);
-        if (next) void get().activateTab(next.root);
+        if (next) void get().activateTab(locatorKey(next.locator));
       }
     },
 
@@ -494,17 +533,17 @@ export function createAppStore(
     },
 
     async cycleTab() {
-      const { tabs, activeRoot } = get();
+      const { tabs, activeKey } = get();
       if (tabs.length < 2) return;
-      const idx = tabs.findIndex((t) => t.root === activeRoot);
+      const idx = tabs.findIndex((t) => locatorKey(t.locator) === activeKey);
       const next = tabs[(idx + 1) % tabs.length];
-      await get().activateTab(next.root);
+      await get().activateTab(locatorKey(next.locator));
     },
 
     async gotoTab(n) {
       const target = get().tabs[n - 1];
-      if (!target || target.root === get().activeRoot) return;
-      await get().activateTab(target.root);
+      if (!target || locatorKey(target.locator) === get().activeKey) return;
+      await get().activateTab(locatorKey(target.locator));
     },
 
     async restoreTabs() {
@@ -512,34 +551,40 @@ export function createAppStore(
       const persisted = readPersistedTabs();
       const tabs: ProjectTab[] = persisted.tabs.map((t) => ({ ...t, badge: null }));
       set({ tabs });
-      if (persisted.activeRoot && tabs.some((t) => t.root === persisted.activeRoot)) {
+      // 首啟活躍專案由持久化 activeKey 決定（決策 4/6）。
+      const activeTab = persisted.activeKey
+        ? tabs.find((t) => locatorKey(t.locator) === persisted.activeKey)
+        : undefined;
+      if (activeTab) {
         // 切回上次活躍專案（完整開啟語意；失效即轉錯誤態、維持空狀態）。
-        await get().activateTab(persisted.activeRoot);
+        await get().activateTab(locatorKey(activeTab.locator));
       } else if (tabs.length === 0) {
-        // 首啟無持久化分頁：後端 root（cwd 探索）若是專案即自動記入。
+        // 首啟無持久化分頁：啟動目錄（cwd 探索）若是專案即自動記入。
         try {
-          const cur = await workspace.currentProject();
-          const probe = await workspace.openProject(cur.root);
+          const dir = await workspace.startupDir();
+          const probe = await workspace.openProject(dir);
           if (probe.status === "project") await enterProject(probe.root, probe.name);
         } catch {
           // 非專案目錄啟動：維持零分頁空狀態。
         }
       }
       // 背景分頁徽章：啟動時各查一次快照；失效路徑轉錯誤態（design D11）。
-      const active = get().activeRoot;
+      const active = get().activeKey;
       await Promise.all(
         get()
-          .tabs.filter((t) => t.root !== active)
+          .tabs.filter((t) => locatorKey(t.locator) !== active)
           .map(async (t) => {
+            const key = locatorKey(t.locator);
+            if (t.locator.kind !== "local") return;
             try {
-              const stats = await workspace.projectStats(t.root);
+              const stats = await workspace.projectStats(t.locator.root);
               set({
                 tabs: get().tabs.map((x) =>
-                  x.root === t.root ? { ...x, badge: stats.pendingWrapUp } : x,
+                  locatorKey(x.locator) === key ? { ...x, badge: stats.pendingWrapUp } : x,
                 ),
               });
             } catch (e) {
-              set({ tabErrors: { ...get().tabErrors, [t.root]: String(e) } });
+              set({ tabErrors: { ...get().tabErrors, [key]: String(e) } });
             }
           }),
       );

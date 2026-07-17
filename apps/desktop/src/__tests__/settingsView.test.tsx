@@ -8,7 +8,8 @@ import { I18nProvider } from "@speclink/ui";
 
 import { SettingsView } from "../views/SettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
-import type { SettingsSnapshot, WorkspaceAdapter } from "../adapter/workspace";
+import type { SettingsSnapshot } from "../adapter/workspace";
+import type { WorkspaceSettingsProvider } from "../session";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
@@ -36,29 +37,25 @@ function snapshot(over: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
   };
 }
 
-function fakeWorkspace(snap: SettingsSnapshot): WorkspaceAdapter {
+/** 活躍 session 的設定面 mock（workspace-session 決策 3：root 已綁定）。 */
+function fakeSettings(snap: SettingsSnapshot): WorkspaceSettingsProvider {
   return {
-    openProject: vi.fn(),
-    initProject: vi.fn(),
-    currentProject: vi.fn(),
-    projectStats: vi.fn(),
-    pickFolder: vi.fn(),
     readSettings: vi.fn().mockResolvedValue(snap),
     writeAppTools: vi.fn().mockResolvedValue(undefined),
     writeWorkflowConfig: vi.fn().mockResolvedValue(undefined),
     writeWorkflowContext: vi.fn().mockResolvedValue(undefined),
     writeWorkflowRules: vi.fn().mockResolvedValue(undefined),
-  } as unknown as WorkspaceAdapter;
+  } as unknown as WorkspaceSettingsProvider;
 }
 
 function renderView(
   snap: SettingsSnapshot,
   over: { onLocalePrefChange?: (p: "zh-TW" | "en" | null) => void } = {},
 ) {
-  const ws = fakeWorkspace(snap);
+  const ws = fakeSettings(snap);
   render(
     <SettingsView
-      workspace={ws}
+      settings={ws}
       localePref={null}
       onLocalePrefChange={over.onLocalePrefChange ?? vi.fn()}
     />,
@@ -504,9 +501,9 @@ describe("SettingsView UI 語言三選（design D8）", () => {
   it("切換 UI 語言即回呼偏好、不觸碰 config.yaml 寫入", async () => {
     const onLocalePrefChange = vi.fn();
     const snap = snapshot();
-    const ws = fakeWorkspace(snap);
+    const ws = fakeSettings(snap);
     render(
-      <SettingsView workspace={ws} localePref={null} onLocalePrefChange={onLocalePrefChange} />,
+      <SettingsView settings={ws} localePref={null} onLocalePrefChange={onLocalePrefChange} />,
     );
     await screen.findByRole("tab", { name: "本機設定" });
     switchToTab("本機設定");
@@ -521,8 +518,8 @@ describe("SettingsView UI 語言三選（design D8）", () => {
 
 describe("系統匣樣式卡已拆除（tray-macos-panel-only：樣式由平台決定）", () => {
   it("本機設定簽不再出現「系統匣樣式」卡", async () => {
-    const ws = fakeWorkspace(snapshot());
-    render(<SettingsView workspace={ws} localePref={null} onLocalePrefChange={vi.fn()} />);
+    const ws = fakeSettings(snapshot());
+    render(<SettingsView settings={ws} localePref={null} onLocalePrefChange={vi.fn()} />);
     await screen.findByRole("tab", { name: "本機設定" });
     switchToTab("本機設定");
     await screen.findByTestId("ui-locale");
@@ -531,10 +528,10 @@ describe("系統匣樣式卡已拆除（tray-macos-panel-only：樣式由平台�
   });
 
   it("面板建立失敗：本機設定簽以獨立警示行浮出單行錯誤（規格「面板樣式（macOS）」失敗場景）", async () => {
-    const ws = fakeWorkspace(snapshot());
+    const ws = fakeSettings(snapshot());
     render(
       <SettingsView
-        workspace={ws}
+        settings={ws}
         localePref={null}
         onLocalePrefChange={vi.fn()}
         trayPanelError="tray panel window creation failed: boom"

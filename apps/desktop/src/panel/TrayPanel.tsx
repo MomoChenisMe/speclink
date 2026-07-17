@@ -198,11 +198,13 @@ export function TrayPanel({
         className="flex gap-1 overflow-x-auto p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
           {tabs.map((tab) => {
-            const active = tab.root === snapshot?.activeRoot;
+            // 識別＝locator key（workspace-session 決策 6）；點擊沿用 open-project
+            // 原地切換語意（root）——顯示文字與行為不變。
+            const active = tab.key === snapshot?.activeKey;
             return (
               <div
-                key={tab.root}
-                data-testid={`panel-project-${tab.root}`}
+                key={tab.key}
+                data-testid={`panel-project-${tab.key}`}
                 data-active={active ? "true" : "false"}
                 onClick={() => onOpenProject(tab.root)}
                 className={cn(

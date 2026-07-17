@@ -58,10 +58,10 @@ function change(over: Partial<ChangeItem> & { name: string }): ChangeItem {
 function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
   return {
     tabs: [
-      { root: "/proj/one", name: "one" },
-      { root: "/proj/two", name: "two" },
+      { key: "local:/proj/one", root: "/proj/one", name: "one" },
+      { key: "local:/proj/two", root: "/proj/two", name: "two" },
     ],
-    activeRoot: "/proj/one",
+    activeKey: "local:/proj/one",
     changes: [
       change({ name: "prop", totalTasks: 5, completedTasks: 0 }), // proposed
       change({ name: "inprog", totalTasks: 12, completedTasks: 3 }), // in-progress
@@ -280,10 +280,10 @@ function makeStore(
 ) {
   let state = {
     tabs: [
-      { root: "/proj/one", name: "one" },
-      { root: "/proj/two", name: "two" },
+      { locator: { kind: "local", root: "/proj/one" } as const, name: "one" },
+      { locator: { kind: "local", root: "/proj/two" } as const, name: "two" },
     ],
-    activeRoot: "/proj/one",
+    activeKey: "local:/proj/one",
     changes: [
       change({ name: "alpha", totalTasks: 12, completedTasks: 3 }),
       change({ name: "gamma", totalTasks: 5, completedTasks: 0 }),
@@ -518,12 +518,12 @@ describe("initTray 接線（選單）", () => {
     // 資料變動去抖後推送快照給面板
     vi.mocked(tauriEmit).mockClear();
     vi.useFakeTimers();
-    bag.emit({ activeRoot: "/proj/two" });
+    bag.emit({ activeKey: "local:/proj/two" });
     await vi.advanceTimersByTimeAsync(50);
     vi.useRealTimers();
     expect(vi.mocked(tauriEmit)).toHaveBeenCalledWith(
       "tray-snapshot",
-      expect.objectContaining({ activeRoot: "/proj/two" }),
+      expect.objectContaining({ activeKey: "local:/proj/two" }),
     );
     // 動作回流：open-change 開主視窗並開啟該變更詳情
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
@@ -553,7 +553,7 @@ describe("initTray 接線（選單）", () => {
     expect(trayObj.close).toHaveBeenCalled();
     trayObj.setMenu.mockClear();
     vi.useFakeTimers();
-    bag.emit({ activeRoot: "/proj/two" });
+    bag.emit({ activeKey: "local:/proj/two" });
     await vi.advanceTimersByTimeAsync(50);
     vi.useRealTimers();
     expect(trayObj.setMenu).not.toHaveBeenCalled();

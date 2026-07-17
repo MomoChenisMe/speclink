@@ -8,6 +8,7 @@ import { I18nProvider } from "@speclink/ui";
 import { ProjectTabs } from "../components/ProjectTabs";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { ProjectTab } from "../tabs";
+import type { WorkspaceLocator } from "../session";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
@@ -18,14 +19,16 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
+const local = (root: string): WorkspaceLocator => ({ kind: "local", root });
+
 const tabs: ProjectTab[] = [
-  { root: "C:\\proj\\alpha", name: "alpha", badge: 3 },
-  { root: "C:\\proj\\beta", name: "beta", badge: 2 },
+  { locator: local("C:\\proj\\alpha"), name: "alpha", badge: 3 },
+  { locator: local("C:\\proj\\beta"), name: "beta", badge: 2 },
 ];
 
 describe("ProjectTabs", () => {
   it("renders one tab per project and marks the active one", () => {
-    render(<ProjectTabs tabs={tabs} activeRoot="C:\proj\alpha" tabErrors={{}} />);
+    render(<ProjectTabs tabs={tabs} activeKey="local:C:\proj\alpha" tabErrors={{}} />);
     const alpha = screen.getByText("alpha").closest("[data-tab]") as HTMLElement;
     const beta = screen.getByText("beta").closest("[data-tab]") as HTMLElement;
     expect(alpha.getAttribute("data-active")).toBe("true");
@@ -33,7 +36,7 @@ describe("ProjectTabs", () => {
   });
 
   it("shows the in-progress badge on each tab", () => {
-    render(<ProjectTabs tabs={tabs} activeRoot="C:\proj\alpha" tabErrors={{}} />);
+    render(<ProjectTabs tabs={tabs} activeKey="local:C:\proj\alpha" tabErrors={{}} />);
     const alpha = screen.getByText("alpha").closest("[data-tab]") as HTMLElement;
     expect(within(alpha).getByText("3")).toBeTruthy();
     const beta = screen.getByText("beta").closest("[data-tab]") as HTMLElement;
@@ -43,10 +46,10 @@ describe("ProjectTabs", () => {
   it("clicking a background tab fires onActivate with its root", () => {
     const onActivate = vi.fn();
     render(
-      <ProjectTabs tabs={tabs} activeRoot="C:\proj\alpha" tabErrors={{}} onActivate={onActivate} />,
+      <ProjectTabs tabs={tabs} activeKey="local:C:\proj\alpha" tabErrors={{}} onActivate={onActivate} />,
     );
     fireEvent.click(screen.getByText("beta"));
-    expect(onActivate).toHaveBeenCalledWith("C:\\proj\\beta");
+    expect(onActivate).toHaveBeenCalledWith("local:C:\\proj\\beta");
   });
 
   it("close button appears on the active tab and fires onClose without activating", () => {
@@ -55,7 +58,7 @@ describe("ProjectTabs", () => {
     render(
       <ProjectTabs
         tabs={tabs}
-        activeRoot="C:\proj\alpha"
+        activeKey="local:C:\proj\alpha"
         tabErrors={{}}
         onClose={onClose}
         onActivate={onActivate}
@@ -63,13 +66,13 @@ describe("ProjectTabs", () => {
     );
     const alpha = screen.getByText("alpha").closest("[data-tab]") as HTMLElement;
     fireEvent.click(within(alpha).getByLabelText("關閉分頁"));
-    expect(onClose).toHaveBeenCalledWith("C:\\proj\\alpha");
+    expect(onClose).toHaveBeenCalledWith("local:C:\\proj\\alpha");
     expect(onActivate).not.toHaveBeenCalled();
   });
 
   it("the + button fires onOpen (dialog entry)", () => {
     const onOpen = vi.fn();
-    render(<ProjectTabs tabs={tabs} activeRoot="C:\proj\alpha" tabErrors={{}} onOpen={onOpen} />);
+    render(<ProjectTabs tabs={tabs} activeKey="local:C:\proj\alpha" tabErrors={{}} onOpen={onOpen} />);
     fireEvent.click(screen.getByLabelText("開啟專案"));
     expect(onOpen).toHaveBeenCalled();
   });
@@ -79,14 +82,14 @@ describe("ProjectTabs", () => {
     render(
       <ProjectTabs
         tabs={tabs}
-        activeRoot="C:\proj\alpha"
-        tabErrors={{ "C:\\proj\\beta": "cannot open" }}
+        activeKey="local:C:\proj\alpha"
+        tabErrors={{ "local:C:\\proj\\beta": "cannot open" }}
         onClose={onClose}
       />,
     );
     const beta = screen.getByText("beta").closest("[data-tab]") as HTMLElement;
     expect(beta.getAttribute("data-error")).toBe("true");
     fireEvent.click(within(beta).getByLabelText("自分頁移除"));
-    expect(onClose).toHaveBeenCalledWith("C:\\proj\\beta");
+    expect(onClose).toHaveBeenCalledWith("local:C:\\proj\\beta");
   });
 });
