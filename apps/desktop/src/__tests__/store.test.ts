@@ -1,8 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 import { createAppStore } from "../store";
 import type { WorkspaceSession } from "../session";
+
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
+vi.mock("sonner", () => ({ toast: { error: toastError } }));
 
 const STATUS: StatusReport = {
   changeName: "x",
@@ -65,6 +68,10 @@ function storeWith(ds: SpeclinkDataSource) {
   store.setState({ sessions: { [session.id]: session }, activeKey: session.id });
   return store;
 }
+
+beforeEach(() => {
+  toastError.mockClear();
+});
 
 describe("app store (Zustand)", () => {
   it("refresh loads changes, specs and archived", async () => {
@@ -147,7 +154,7 @@ describe("app store (Zustand)", () => {
     store.getState().setBoardQuery("x");
     await vi.advanceTimersByTimeAsync(200);
     expect(store.getState().searchHits).toEqual([]);
-    expect(store.getState().verbResult).toBeNull();
+    expect(toastError).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 
@@ -194,9 +201,80 @@ describe("app store (Zustand)", () => {
     expect(ds.runVerb).not.toHaveBeenCalled();
   });
 
+  it("刪除、封存變更與封存討論成功時皆不發出 toast", async () => {
+    const ds = fakeDataSource({
+      runVerb: vi.fn().mockResolvedValue({ datedName: "2026-07-17-desktop-shell-and-browser" }),
+    });
+    const store = storeWith(ds);
+
+    store.getState().requestDelete("desktop-shell-and-browser");
+    await store.getState().confirmDelete();
+    await store.getState().runVerb("archive", "desktop-shell-and-browser");
+    store.getState().requestArchiveDiscussion("desktop-feedback-surface");
+    await store.getState().confirmArchiveDiscussion();
+
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("四條 store 失敗路徑皆發出含主詞、core 錯誤與相同固定 id 的 error toast", async () => {
+    const ds = fakeDataSource({
+      deleteChange: vi.fn().mockRejectedValue(new Error("delete locked")),
+      runVerb: vi.fn().mockRejectedValue(new Error("archive blocked")),
+      archiveDiscussion: vi.fn().mockRejectedValue(new Error("discussion locked")),
+      reorderCard: vi.fn().mockRejectedValue(new Error("order locked")),
+    });
+    const store = storeWith(ds);
+
+    store.getState().requestDelete("delete-me");
+    await store.getState().confirmDelete();
+    await store.getState().runVerb("archive", "archive-me");
+    store.getState().requestArchiveDiscussion("discussion-me");
+    await store.getState().confirmArchiveDiscussion();
+    await store.getState().reorderCard("change", "reorder-me", null, "next-change");
+
+    expect(toastError).toHaveBeenCalledTimes(4);
+    const expected = [
+      ["delete-me", "delete locked"],
+      ["archive-me", "archive blocked"],
+      ["discussion-me", "discussion locked"],
+      ["reorder-me", "order locked"],
+    ];
+    for (const [index, [subject, coreError]] of expected.entries()) {
+      const [message, options] = toastError.mock.calls[index] as [string, { id?: string }];
+      expect(message).toContain(subject);
+      expect(message).toContain(coreError);
+      expect(options.id).toEqual(expect.any(String));
+    }
+    expect(new Set(toastError.mock.calls.map((call) => call[1]?.id)).size).toBe(1);
+    expect(ds.listChanges).toHaveBeenCalled();
+  });
+
+  it("core 錯誤為空、超長或 HTML-like 字串時皆安全交給 sonner", async () => {
+    const longError = "x".repeat(20_000);
+    const htmlLikeError = '<img src="x" onerror="globalThis.pwned=true">';
+    const deleteChange = vi
+      .fn()
+      .mockRejectedValueOnce("")
+      .mockRejectedValueOnce(longError)
+      .mockRejectedValueOnce(htmlLikeError);
+    const store = storeWith(fakeDataSource({ deleteChange }));
+
+    for (const subject of ["empty-error", "long-error", "html-error"]) {
+      store.getState().requestDelete(subject);
+      await store.getState().confirmDelete();
+    }
+
+    expect(toastError).toHaveBeenCalledTimes(3);
+    const messages = toastError.mock.calls.map(([message]) => message as string);
+    expect(messages[0]).toContain("empty-error");
+    expect(messages[0]).toContain("✗ ");
+    expect(messages[1]).toContain(longError);
+    expect(messages[2]).toContain(htmlLikeError);
+    expect(messages.every((message) => typeof message === "string")).toBe(true);
+  });
+
   it("runVerb analyze runs validate and analyze together into one drawer result", async () => {
-    // design D1：「分析」單鍵雙動詞——validate＋analyze 合併為單一結構化抽屜結果，
-    // 頂列 verbResult 保留給全域操作。
+    // design D1：「分析」單鍵雙動詞——validate＋analyze 合併為單一結構化抽屜結果。
     const report = {
       change_id: "x",
       dimensions: [{ dimension: "Ambiguity", status: "1 issue(s) found", finding_count: 1 }],
@@ -219,7 +297,7 @@ describe("app store (Zustand)", () => {
       validate: { valid: true },
       analyze: { findings: [{ dimension: "Ambiguity" }] },
     });
-    expect(store.getState().verbResult).toBeNull();
+    expect(toastError).not.toHaveBeenCalled();
     expect(ds.listChanges).toHaveBeenCalled();
   });
 
@@ -247,13 +325,31 @@ describe("app store (Zustand)", () => {
     expect(store.getState().drawerVerb).toBeNull();
   });
 
-  it("runVerb archive still surfaces in the top-bar verbResult", async () => {
+  it("runVerb archive 成功維持靜默", async () => {
     const ds = fakeDataSource({ runVerb: vi.fn().mockResolvedValue({ datedName: "2026-07-09-x" }) });
     const store = storeWith(ds);
     await store.getState().runVerb("archive", "desktop-shell-and-browser");
-    expect(store.getState().verbResult).toContain("archive");
+    expect(toastError).not.toHaveBeenCalled();
     expect(store.getState().drawerVerb).toBeNull();
     expect(ds.listChanges).toHaveBeenCalled();
+  });
+
+  it("詳情抽屜中的封存成功會關閉抽屜，失敗則保留 change 上下文", async () => {
+    const successStore = storeWith(fakeDataSource());
+    await successStore.getState().refresh();
+    successStore.getState().openDetail("desktop-shell-and-browser");
+    successStore.getState().requestArchive("desktop-shell-and-browser");
+    await successStore.getState().confirmArchive();
+    expect(successStore.getState().detailChange).toBeNull();
+
+    const failureStore = storeWith(fakeDataSource({
+      runVerb: vi.fn().mockRejectedValue(new Error("archive prerequisites missing")),
+    }));
+    await failureStore.getState().refresh();
+    failureStore.getState().openDetail("desktop-shell-and-browser");
+    failureStore.getState().requestArchive("desktop-shell-and-browser");
+    await failureStore.getState().confirmArchive();
+    expect(failureStore.getState().detailChange?.name).toBe("desktop-shell-and-browser");
   });
 
   it("reorderCard passes neighbor ids through and refreshes on success", async () => {
@@ -263,7 +359,7 @@ describe("app store (Zustand)", () => {
     await store.getState().reorderCard("discussion", "slug-a", "prev-s", null);
     expect(ds.reorderCard).toHaveBeenCalledWith("discussion", "slug-a", "prev-s", null);
     expect(ds.listChanges).toHaveBeenCalled();
-    expect(store.getState().verbResult).toBeNull();
+    expect(toastError).not.toHaveBeenCalled();
   });
 
   it("detailSpec 開閉 action 比照 detailChange（spec-archive-drawer design D2）", async () => {
@@ -330,17 +426,6 @@ describe("app store (Zustand)", () => {
     expect(store.getState().drawerVerb).toBeNull();
   });
 
-  it("reorderCard failure surfaces a one-line error and still refreshes", async () => {
-    // spec「寫回失敗不留假象」：錯誤浮上 verbResult、看板刷新回磁碟現況。
-    const ds = fakeDataSource({
-      reorderCard: vi.fn().mockRejectedValue(new Error("file locked")),
-    });
-    const store = storeWith(ds);
-    await store.getState().reorderCard("change", "chg-a", null, "chg-b");
-    expect(store.getState().verbResult).toContain("chg-a");
-    expect(store.getState().verbResult).toContain("file locked");
-    expect(ds.listChanges).toHaveBeenCalled();
-  });
 });
 
 // ---- 系統匣樣式由平台決定（tray-macos-panel-only：規格「系統匣圖示與原生選單」平台分流） ----

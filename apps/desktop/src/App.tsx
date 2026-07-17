@@ -20,6 +20,7 @@ import {
   Button,
   Checkbox,
   I18nProvider,
+  Toaster,
   useI18n,
   siblingChangesOf,
   type Verb,
@@ -135,6 +136,7 @@ export function App({ createSession, workspace, connections }: AppProps) {
         localePref={localePref}
         onLocalePrefChange={setLocalePref}
       />
+      <Toaster />
     </I18nProvider>
   );
 }
@@ -177,6 +179,10 @@ function AppInner({
   // 的整批 refresh（避免拖曳中卡片重排打斷手勢），放開後補跑一次。
   const boardDragActive = useRef(false);
   const pendingRefresh = useRef(false);
+  // Radix AlertDialog 從 Sheet 的 portal 開關時，原生 WebView 可能讓底下 Sheet
+  // 短暫收到 onOpenChange(false)。確認中的成功／失敗應由 store 決定是否關抽屜，
+  // 不讓這個 portal 生命週期誤清 detailChange。
+  const detailConfirmInFlight = useRef(false);
   const handleBoardDragActive = (active: boolean) => {
     boardDragActive.current = active;
     if (!active && pendingRefresh.current) {
@@ -261,6 +267,18 @@ function AppInner({
     else void s.runVerb(verb, change);
   };
 
+  const confirmDetailAction = async (confirm: () => Promise<void>) => {
+    detailConfirmInFlight.current = true;
+    try {
+      await confirm();
+    } finally {
+      // 讓 AlertDialog 的收合 callback 先完成；之後使用者仍可正常手動關閉抽屜。
+      queueMicrotask(() => {
+        detailConfirmInFlight.current = false;
+      });
+    }
+  };
+
   // 同源連結資料：來源討論清單（記錄已不在時以 slug 充當 topic，出身討論在前）與
   // 同源刀（與此變更共享至少一份來源討論的 active 變更，可互跳）。
   const fromSlugs = s.detailChange?.fromDiscussions ?? [];
@@ -310,9 +328,6 @@ function AppInner({
           </span>
         )}
         <div className="flex-1" />
-        {s.verbResult && (
-          <span className="text-xs font-mono text-muted-foreground truncate max-w-[40%]">{s.verbResult}</span>
-        )}
         <Button
           variant="ghost"
           size="sm"
@@ -419,14 +434,14 @@ function AppInner({
       {/* Spectra 級詳情抽屜（含互動任務） */}
       <RichDetailDrawer
         open={s.detailChange !== null}
-        onOpenChange={(o) => !o && s.closeDetail()}
+        onOpenChange={(o) => !o && !detailConfirmInFlight.current && s.closeDetail()}
         change={s.detailChange}
         refreshGen={s.refreshGen}
         loadDocument={(change, artifact) => dataSource?.getDocument(change, artifact) ?? Promise.resolve(null)}
         loadCapabilities={(change) => dataSource?.changeCapabilities(change) ?? Promise.resolve([])}
         loadMeta={(change) => dataSource?.changeMeta(change) ?? Promise.resolve(null)}
         onRunVerb={onRunVerb}
-        verbResult={s.drawerVerb}
+        drawerVerb={s.drawerVerb}
         onClearVerb={s.clearDrawerVerb}
         onDelete={s.requestDelete}
         onToggleTask={async (change, task, done) => {
@@ -546,7 +561,9 @@ function AppInner({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={s.cancelArchive}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={s.confirmArchive}>{t("app.archiveConfirm")}</AlertDialogAction>
+            <AlertDialogAction onClick={() => void confirmDetailAction(s.confirmArchive)}>
+              {t("app.archiveConfirm")}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -562,7 +579,10 @@ function AppInner({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={s.cancelDelete}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={s.confirmDelete}>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => void confirmDetailAction(s.confirmDelete)}
+            >
               {t("app.deleteConfirm")}
             </AlertDialogAction>
           </AlertDialogFooter>

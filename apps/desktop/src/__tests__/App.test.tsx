@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within, act } from "@testing-library/react";
 
 import { App } from "../App";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -20,9 +20,11 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 
-// 兩個抽屜的 pass-through spy：捕捉 props（驗證刷新世代下發）後照常渲染原元件。
-const { drawerSpy } = vi.hoisted(() => ({
+// 兩個抽屜的 pass-through spy：捕捉 props（驗證刷新世代下發）後照常渲染原元件；
+// Toaster 以 marker 驗證由 App 根層掛載，行為整合由 packages/ui 測試承載。
+const { drawerSpy, toasterSpy } = vi.hoisted(() => ({
   drawerSpy: { rich: [] as Array<Record<string, unknown>>, disc: [] as Array<Record<string, unknown>> },
+  toasterSpy: vi.fn(),
 }));
 vi.mock("@speclink/ui", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@speclink/ui")>();
@@ -36,6 +38,10 @@ vi.mock("@speclink/ui", async (importOriginal) => {
       drawerSpy.disc.push(props);
       return <mod.DiscussionDrawer {...(props as object) as Parameters<typeof mod.DiscussionDrawer>[0]} />;
     },
+    Toaster: () => {
+      toasterSpy();
+      return <div data-testid="app-toaster" />;
+    },
   };
 });
 
@@ -43,6 +49,7 @@ beforeEach(() => {
   workspaceHandlers.length = 0;
   drawerSpy.rich.length = 0;
   drawerSpy.disc.length = 0;
+  toasterSpy.mockClear();
   // 各測試自行預置分頁持久化；先清掉避免跨測試洩漏。
   localStorage.removeItem("speclink.projectTabs");
   // jsdom 的 navigator.language 為 en-US；既有中文斷言以明示偏好 zh-TW 固定 UI 語言。
@@ -167,6 +174,16 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
 }
 
 describe("App (kanban primary + rich detail)", () => {
+  it("根層掛載 Toaster，頂欄不含操作結果文字節點", async () => {
+    renderApp();
+    await waitFor(() => expect(screen.getByTestId("app-toaster")).toBeTruthy());
+    expect(toasterSpy).toHaveBeenCalledTimes(1);
+
+    const header = document.querySelector("header") as HTMLElement;
+    expect(header).toBeTruthy();
+    expect(header.querySelector(".font-mono")).toBeNull();
+  });
+
   it("renders the kanban board by default with change cards", async () => {
     renderApp();
     await waitFor(() => expect(screen.getByText("desktop-shell-and-browser")).toBeTruthy());
@@ -194,6 +211,34 @@ describe("App (kanban primary + rich detail)", () => {
     await waitFor(() => screen.getByText("刪除變更？"));
     fireEvent.click(screen.getByRole("button", { name: "刪除" }));
     await waitFor(() => expect(ds.deleteChange).toHaveBeenCalledWith("desktop-shell-and-browser"));
+  });
+
+  it("封存失敗時確認框關閉不會連帶關閉詳情抽屜", async () => {
+    let rejectArchive!: (reason: unknown) => void;
+    const ds = fakeDataSource({
+      runVerb: vi.fn().mockImplementation(
+        () => new Promise((_, reject) => {
+          rejectArchive = reject;
+        }),
+      ),
+    });
+    renderApp(ds);
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    const drawer = await screen.findByRole("dialog");
+    fireEvent.click(within(drawer).getByRole("button", { name: "封存" }));
+    const confirm = await screen.findByRole("alertdialog");
+    fireEvent.click(within(confirm).getByRole("button", { name: "封存" }));
+    await waitFor(() => expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser"));
+    // 原生 WebView 中 AlertDialog 收合會讓底下的 Sheet 收到 false；操作尚在途時須忽略。
+    act(() => {
+      (drawerSpy.rich[drawerSpy.rich.length - 1].onOpenChange as (open: boolean) => void)(false);
+    });
+    const stayedOpen = drawerSpy.rich[drawerSpy.rich.length - 1].open;
+    await act(async () => {
+      rejectArchive(new Error("archive prerequisites missing"));
+    });
+    expect(stayedOpen).toBe(true);
+    expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 
   it("passes an increasing refreshGen generation to both drawers", async () => {

@@ -9,6 +9,9 @@ import { locatorKey, type WorkspaceSession } from "../session";
 import { persistTabs, readPersistedTabs, type ProjectTab } from "../tabs";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
+vi.mock("sonner", () => ({ toast: { error: toastError } }));
+
 function fakeDataSource(): SpeclinkDataSource {
   return {
     listChanges: vi.fn().mockResolvedValue([
@@ -83,6 +86,7 @@ function keys(tabs: ProjectTab[]): string[] {
 
 beforeEach(() => {
   localStorage.clear();
+  toastError.mockClear();
 });
 
 describe("開啟專案 action 三態（design D3）", () => {
@@ -148,16 +152,34 @@ describe("開啟專案 action 三態（design D3）", () => {
     expect(keys(s.tabs)).toContain("local:C:\\proj\\fresh");
   });
 
-  it("開啟失敗（dialog 路徑）：顯示單行錯誤、維持原狀態", async () => {
-    const ws = fakeWorkspace({
+  it("開啟與初始化失敗皆以相同固定 id 發出含主詞與 core 錯誤的 toast", async () => {
+    const openWs = fakeWorkspace({
       openProject: vi.fn().mockRejectedValue("cannot open 'C:\\gone': not an existing directory"),
     });
-    const store = makeStore(fakeDataSource(), ws);
-    await store.getState().openProjectAt("C:\\gone");
-    const s = store.getState();
-    expect(s.tabs).toEqual([]);
-    expect(s.activeKey).toBeNull();
-    expect(s.verbResult).toContain("cannot open");
+    const openStore = makeStore(fakeDataSource(), openWs);
+    await openStore.getState().openProjectAt("C:\\gone");
+    expect(openStore.getState().tabs).toEqual([]);
+    expect(openStore.getState().activeKey).toBeNull();
+
+    const initWs = fakeWorkspace({
+      openProject: vi.fn().mockResolvedValue({ status: "uninitialized", dir: "C:\\fresh" }),
+      initProject: vi.fn().mockRejectedValue("cannot initialize 'C:\\fresh': permission denied"),
+    });
+    const initStore = makeStore(fakeDataSource(), initWs);
+    await initStore.getState().openProjectAt("C:\\fresh");
+    await initStore.getState().confirmInit(["codex"]);
+    expect(initStore.getState().tabs).toEqual([]);
+    expect(initStore.getState().activeKey).toBeNull();
+
+    expect(toastError).toHaveBeenCalledTimes(2);
+    const [openMessage, openOptions] = toastError.mock.calls[0] as [string, { id?: string }];
+    expect(openMessage).toContain("C:\\gone");
+    expect(openMessage).toContain("cannot open");
+    const [initMessage, initOptions] = toastError.mock.calls[1] as [string, { id?: string }];
+    expect(initMessage).toContain("C:\\fresh");
+    expect(initMessage).toContain("permission denied");
+    expect(openOptions.id).toEqual(expect.any(String));
+    expect(initOptions.id).toBe(openOptions.id);
   });
 });
 

@@ -38,8 +38,8 @@ export interface RichDetailDrawerProps {
   loadCapabilities: (change: string) => Promise<string[]>;
   loadMeta: (change: string) => Promise<ChangeMetaInfo | null>;
   onRunVerb?: (verb: Verb, change: string) => void;
-  /** 抽屜內呈現的分析結構化結果（validate＋analyze 合併；僅當 change 相符時呈現；archive 走頂列）。 */
-  verbResult?: VerbDrawerResult | null;
+  /** 抽屜內呈現的分析結構化結果（validate＋analyze 合併；僅當 change 相符時呈現；archive 不走此結果面）。 */
+  drawerVerb?: VerbDrawerResult | null;
   /** 收合分析結果（design D2：分析鈕再點、面板關閉鈕共用此路徑）。 */
   onClearVerb?: () => void;
   onDelete?: (change: string) => void;
@@ -72,7 +72,7 @@ export function RichDetailDrawer({
   loadCapabilities,
   loadMeta,
   onRunVerb,
-  verbResult,
+  drawerVerb,
   onClearVerb,
   onDelete,
   onToggleTask,
@@ -152,7 +152,7 @@ export function RichDetailDrawer({
   if (!change) return null;
 
   // 分析結果是否對本 change 開啟——分析鈕切換態與面板呈現共用同一判定（design D2）。
-  const verbOpen = !!(verbResult && verbResult.change === change.name);
+  const verbOpen = !!(drawerVerb && drawerVerb.change === change.name);
   const pct = change.totalTasks > 0 ? Math.round((change.completedTasks / change.totalTasks) * 100) : 0;
   const taskBadge = `${change.completedTasks}/${change.totalTasks}`;
   const delta = sumDeltaCounts(Object.values(specDocs).map(specDeltaCounts));
@@ -329,14 +329,14 @@ export function RichDetailDrawer({
             </Button>
           </div>
           {/* 分析結果（validate＋analyze 合併）於動作列近處呈現——僅當前 change 相符時（design D1）。 */}
-          {verbOpen && verbResult && (
+          {verbOpen && drawerVerb && (
             <div data-verb-result className="pt-1">
-              {verbResult.error ? (
-                <div className="text-xs text-destructive">{verbResult.error}</div>
+              {drawerVerb.error ? (
+                <div className="text-xs text-destructive">{drawerVerb.error}</div>
               ) : (
                 <AnalyzePanel
-                  report={verbResult.analyze}
-                  validate={verbResult.validate}
+                  report={drawerVerb.analyze}
+                  validate={drawerVerb.validate}
                   onClose={onClearVerb}
                 />
               )}

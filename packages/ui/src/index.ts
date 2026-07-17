@@ -9,6 +9,7 @@ export { I18nProvider, useI18n, MESSAGES, type UiLocale, type I18nProviderProps 
 
 // shadcn/ui 設計系統原語（跨桌面/web 共用）
 export { cn } from "./lib/utils";
+export { Toaster } from "./components/ui/sonner";
 export { Button, buttonVariants, type ButtonProps } from "./components/ui/button";
 export {
   Card,
