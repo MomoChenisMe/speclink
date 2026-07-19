@@ -1,0 +1,9 @@
+## 1. Toast token bridge（TDD）
+
+- [x] 1.1 [Red] 為「看板全域操作成功靜默、失敗以 toast 浮層呈現」新增失敗測試至 `packages/ui/src/__tests__/sonner.test.tsx`，完整覆蓋 D1: 由 Toaster wrapper 橋接主介面語意 tokens、D2: Error toast 使用中性 card 表面與 destructive 局部強調、D3: Token defaults 與呼叫端樣式採可預測合併：斷言 root 將一般背景／前景／邊框／圓角映射到 card、card-foreground、border、radius 並繼承 host 字型；`toast.error` 的 card 表面不變且 error class 將 icon／邊框接至 destructive；傳入自訂 root style、toast class 與 error class 後 defaults 與自訂值皆保留。驗證：`npm test -w packages/ui -- src/__tests__/sonner.test.tsx` 因映射尚未實作而見紅，既有 6 秒逾時、關閉與單槽測試仍通過。 <!-- speclink-task:tsk_01KXR5AV19FRD9SPVH0YW0B6CY -->
+- [x] 1.2 [Green] 於 `packages/ui/src/components/ui/sonner.tsx` 實作 D1、D2、D3：透過 Sonner 公開 CSS custom properties 與 `toastOptions.classNames` 消費既有語意 tokens，不啟用 `richColors`、不加入 raw hex／HSL；一般 toast 呈 card surface，error toast 以 destructive 強調 icon／邊框，root font 繼承 host，且逐欄合併呼叫者的 style/classNames，同時保留 system theme、6000ms、closeButton、visibleToasts=1 與 i18n aria-label。驗證：`npm test -w packages/ui -- src/__tests__/sonner.test.tsx` 全綠。 <!-- speclink-task:tsk_01KXR5AV19D86CCWQ8JBNJW3EE -->
+
+## 2. 回歸與真實視窗驗證
+
+- [x] 2.1 [Refactor] 檢視 `packages/ui/src/components/ui/sonner.tsx` 僅保留薄 token bridge、無第二套色票或不必要抽象，並確認 `packages/ui/src/__tests__/sonner.test.tsx` 的斷言釘住可觀察 contract 而非 Sonner 私有實作；驗證：`npm test -w packages/ui`、`npm test -w apps/desktop` 與 `npm run build -w apps/desktop` 全部通過，既有 toast 訊息、逾時、關閉、單槽與 overlay 行為無回歸。 <!-- speclink-task:tsk_01KXR5AV1911ZCDMHJ36YPR6EN -->
+- [x] 2.2 以 release desktop 觸發封存失敗並完成淺色／深色視覺驗收：toast 維持疊於抽屜遮罩上方，使用主介面 card surface、可讀前景、border、radius、陰影與 host 字體，錯誤 icon／邊框呈 destructive；切換模式後由同名 tokens 取得新值，無 Sonner 內建白／黑灰階或整張高飽和紅底。驗證：`npm run build -w apps/desktop`、`cargo build --release -p speclink-desktop` 後啟動 release app，各模式各留一張截圖並人工核對上述可觀察結果。 <!-- speclink-task:tsk_01KXR5AV195CXHR0T8MAPF6MFT -->
