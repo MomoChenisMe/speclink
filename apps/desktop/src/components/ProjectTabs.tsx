@@ -2,7 +2,7 @@
 // 目前專案、✕ 僅 active 與 hover 顯示、「＋」掛尾端接資料夾選擇器、徽章顯示
 // 進行中變更數（hover tooltip）、失效分頁錯誤態（警示標記＋自分頁移除）。
 // 分頁識別＝locator key（workspace-session 決策 1）；顯示文字與行為不變。
-import { AlertTriangle, Plus, X } from "lucide-react";
+import { AlertTriangle, Cloud, Folder, Plus, X } from "lucide-react";
 import {
   Button,
   cn,
@@ -53,8 +53,9 @@ export function ProjectTabs({ tabs, activeKey, tabErrors, onActivate, onClose, o
     <div className="flex items-center gap-1 min-w-0 overflow-x-auto" data-project-tabs>
       {tabs.map((tab) => {
         const key = locatorKey(tab.locator);
-        // tooltip 顯示路徑（local 分頁）——顯示文字凍結；remote 本刀無建構路徑。
+        // tooltip：local 顯示路徑、remote 顯示 locator key（分頁名已是 Project/Repo）。
         const path = tab.locator.kind === "local" ? tab.locator.root : key;
+        const remote = tab.locator.kind === "remote";
         const active = key === activeKey;
         const error = tabErrors[key] !== undefined;
         return (
@@ -76,6 +77,13 @@ export function ProjectTabs({ tabs, activeKey, tabErrors, onActivate, onClose, o
             }}
           >
             {error && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
+            {/* 來源圖示（remote-data-source §10.5）：remote＝主色 cloud、local＝
+                folder——兩者並立讓分頁列一眼可辨資料來源。 */}
+            {remote ? (
+              <Cloud data-cloud={key} className="h-3 w-3 shrink-0 text-primary" strokeWidth={2.5} />
+            ) : (
+              <Folder data-folder={key} className="h-3 w-3 shrink-0" />
+            )}
             <span className="truncate max-w-[140px]">{tab.name}</span>
             {!error && <TabBadge badge={tab.badge} tabKey={key} />}
             {error ? (

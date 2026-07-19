@@ -8,6 +8,8 @@
 
 pub mod connections;
 pub mod credentials;
+pub mod event_manager;
+pub mod remote;
 mod watch;
 
 #[cfg(target_os = "macos")]
@@ -291,11 +293,25 @@ fn connections_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("無法取得 app 設定目錄：{e}"))
 }
 
-/// 連線層狀態：credential 出入口（生產＝OS Keychain）與 access token 的記憶體
-/// 持有（短效、絕不落盤、絕不過境 TS——決策 2）。
+/// 連線層狀態：credential 出入口（生產＝OS Keychain）與 per-origin 的
+/// TokenManager（access token 記憶體持有——短效、絕不落盤、絕不過境 TS，
+/// 決策 2；換發與 401 語意見 remote 模組）。
 struct ConnectionsState {
     credentials: Box<dyn credentials::CredentialStore>,
-    access_tokens: std::sync::Mutex<std::collections::HashMap<String, String>>,
+    managers: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<remote::TokenManager>>>,
+}
+
+impl ConnectionsState {
+    /// 該 origin 的 TokenManager——惰性建立、跨 command 共用（needs-reauth
+    /// 狀態與 token 快取都掛在同一顆上）。
+    fn manager_for(&self, origin: &str) -> std::sync::Arc<remote::TokenManager> {
+        self.managers
+            .lock()
+            .expect("manager lock")
+            .entry(origin.to_string())
+            .or_insert_with(|| std::sync::Arc::new(remote::TokenManager::new(origin)))
+            .clone()
+    }
 }
 
 /// 條目的 TS 檢視：registry 欄位＋由 Keychain 推導的登入狀態。secret 不出現。
@@ -348,7 +364,7 @@ async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), Stri
         if let Some(entry) = entries.iter().find(|e| e.id == id) {
             let origin = entry.origin.clone();
             connections::logout(&origin, &*state.credentials, &path)?;
-            state.access_tokens.lock().expect("token lock").remove(&origin);
+            state.managers.lock().expect("manager lock").remove(&origin);
             entries = connections::read_registry(&path); // logout 剛清了身分欄位
             entries.retain(|e| e.id != id);
             connections::write_registry(&path, &entries)?;
@@ -377,7 +393,7 @@ async fn device_login(app: tauri::AppHandle, origin: String) -> Result<Value, St
         };
         match connections::device_login(&origin, &*state.credentials, &path, &opener)? {
             connections::DeviceLoginOutcome::LoggedIn { display, access_token } => {
-                state.access_tokens.lock().expect("token lock").insert(origin, access_token);
+                state.manager_for(&origin).adopt_access_token(&access_token);
                 Ok(serde_json::json!({ "status": "loggedIn", "display": display }))
             }
             connections::DeviceLoginOutcome::Unsupported => {
@@ -408,6 +424,15 @@ async fn pat_login(app: tauri::AppHandle, origin: String, pat: String) -> Result
     .map_err(|e| format!("login worker failed: {e}"))?
 }
 
+/// 連線的 runtime 狀態（remote 決策 4）：needs-reauth 布林＋繁中訊息。TS 據此
+/// 呈現需重新認證，token 本身永不出現。
+#[tauri::command]
+fn connection_state(app: tauri::AppHandle, origin: String) -> Value {
+    let state = app.state::<std::sync::Arc<ConnectionsState>>();
+    let message = state.manager_for(&origin).needs_reauth();
+    serde_json::json!({ "needsReauth": message.is_some(), "message": message })
+}
+
 /// 登出（決策 6）：盡力撤銷＋必刪本機，並丟棄記憶體中的 access token。
 #[tauri::command]
 async fn connection_logout(app: tauri::AppHandle, origin: String) -> Result<Value, String> {
@@ -415,7 +440,7 @@ async fn connection_logout(app: tauri::AppHandle, origin: String) -> Result<Valu
     let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let outcome = connections::logout(&origin, &*state.credentials, &path)?;
-        state.access_tokens.lock().expect("token lock").remove(&origin);
+        state.managers.lock().expect("manager lock").remove(&origin);
         Ok(serde_json::json!({
             "revokedOnServer": outcome.revoked_on_server,
             "patNotice": outcome.pat_notice,
@@ -423,6 +448,301 @@ async fn connection_logout(app: tauri::AppHandle, origin: String) -> Result<Valu
     })
     .await
     .map_err(|e| format!("logout worker failed: {e}"))?
+}
+
+// --- remote workspace 資料面（remote-data-source 決策 6、7） ---
+
+/// connectionId → origin（registry 查找）。條目消失＝連線已被移除。
+fn connection_origin(app: &tauri::AppHandle, connection_id: &str) -> Result<String, String> {
+    let path = connections_path(app)?;
+    connections::read_registry(&path)
+        .iter()
+        .find(|entry| entry.id == connection_id)
+        .map(|entry| entry.origin.clone())
+        .ok_or_else(|| "連線不存在——請重新設定 server 連線".to_string())
+}
+
+/// 資料面命令的共用骨架：解析 origin、取 TokenManager，於 blocking pool 以
+/// 無狀態重建的 RemoteWorkspace 執行一擊。
+async fn with_remote<T, F>(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    call: F,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce(&remote::RemoteWorkspace, &dyn credentials::CredentialStore) -> Result<T, String>
+        + Send
+        + 'static,
+{
+    let origin = connection_origin(&app, &connection_id)?;
+    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let manager = state.manager_for(&origin);
+        let workspace = remote::RemoteWorkspace::at(&origin, &project, &repo, &manager);
+        call(&workspace, &*state.credentials)
+    })
+    .await
+    .map_err(|e| format!("remote worker failed: {e}"))?
+}
+
+/// 開啟 remote workspace（決策 6，fail-closed）：以 project[/repo] 識別
+/// handshake，成功回 project/repo 顯示名與 capability 描述；失敗原樣回錯、
+/// 不建立任何 runtime 狀態。
+#[tauri::command]
+async fn remote_open(
+    app: tauri::AppHandle,
+    connection_id: String,
+    target: String,
+) -> Result<Value, String> {
+    let origin = connection_origin(&app, &connection_id)?;
+    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let manager = state.manager_for(&origin);
+        let (_, info) = remote::open_workspace(&origin, &target, &manager, &*state.credentials)
+            .map_err(|e| e.message)?;
+        serde_json::to_value(&info).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("remote worker failed: {e}"))?
+}
+
+#[tauri::command]
+async fn remote_list_changes(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+) -> Result<Value, String> {
+    with_remote(app, connection_id, project, repo, |ws, credentials| {
+        let changes = ws.list_changes(credentials).map_err(|e| e.message)?;
+        serde_json::to_value(&changes).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remote_list_specs(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+) -> Result<Value, String> {
+    with_remote(app, connection_id, project, repo, |ws, credentials| {
+        let specs = ws.list_specs(credentials).map_err(|e| e.message)?;
+        serde_json::to_value(&specs).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remote_status(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+) -> Result<Value, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let status = ws.change_status(credentials, &change).map_err(|e| e.message)?;
+        serde_json::to_value(&status).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// artifact 內文：404（change 或 artifact 不存在）與本地語意一致回 null。
+#[tauri::command]
+async fn remote_document(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+    artifact: String,
+) -> Result<Option<String>, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        match ws.document(credentials, &change, &artifact) {
+            Ok(doc) => Ok(Some(doc.content)),
+            Err(e) if e.status == Some(404) => Ok(None),
+            Err(e) => Err(e.message),
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remote_set_task_done(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+    task: String,
+    done: bool,
+) -> Result<(), String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        ws.set_task_done(credentials, &change, &task, done).map_err(|e| e.message)
+    })
+    .await
+}
+
+/// 組合類批次寫回（決策 1 (b)）：中途失敗中止並回報已完成筆數。
+#[tauri::command]
+async fn remote_set_all_tasks(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+    done: bool,
+) -> Result<(), String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        ws.set_all_tasks(credentials, &change, done).map(|_| ()).map_err(|failure| {
+            format!("批次寫回中止（已完成 {} 筆）：{}", failure.completed, failure.error.message)
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remote_archive(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+) -> Result<Value, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let archived = ws.archive(credentials, &change).map_err(|e| e.message)?;
+        serde_json::to_value(&archived).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remote_list_discussions(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+) -> Result<Value, String> {
+    with_remote(app, connection_id, project, repo, |ws, credentials| {
+        let lists = ws.list_discussions(credentials).map_err(|e| e.message)?;
+        serde_json::to_value(&lists).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// 討論內文：404 與本地語意一致回 null。
+#[tauri::command]
+async fn remote_discussion_document(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    slug: String,
+) -> Result<Option<String>, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        match ws.discussion_document(credentials, &slug) {
+            Ok(shown) => Ok(Some(shown.content)),
+            Err(e) if e.status == Some(404) => Ok(None),
+            Err(e) => Err(e.message),
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remote_promote_discussion(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    slug: String,
+    name: Option<String>,
+) -> Result<Value, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let promoted =
+            ws.promote_discussion(credentials, &slug, name.as_deref()).map_err(|e| e.message)?;
+        serde_json::to_value(&promoted).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remote_archive_discussion(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    slug: String,
+) -> Result<(), String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        ws.archive_discussion(credentials, &slug).map(|_| ()).map_err(|e| e.message)
+    })
+    .await
+}
+
+/// remote 事件訂閱的生產退避序列（決策 5：指數退避、封頂 30s）。
+const REMOTE_BACKOFF: [std::time::Duration; 6] = [
+    std::time::Duration::from_millis(500),
+    std::time::Duration::from_secs(1),
+    std::time::Duration::from_secs(2),
+    std::time::Duration::from_secs(5),
+    std::time::Duration::from_secs(10),
+    std::time::Duration::from_secs(30),
+];
+
+/// remote session 的 locator key（與 TS session.ts 的 locatorKey 同構）。
+fn remote_locator_key(connection_id: &str, project: &str, repo: &str) -> String {
+    format!("remote:{connection_id}/{project}/{repo}")
+}
+
+/// 註冊 remote 分頁的事件訂閱（決策 3）：同 connection 同 scope 的 sessions
+/// 共用單一 SSE 流；invalidate 即 emit remote-workspace-changed（payload＝
+/// locator key），前端據此經 Query 重讀。
+#[tauri::command]
+fn remote_watch(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+) -> Result<(), String> {
+    let origin = connection_origin(&app, &connection_id)?;
+    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    let events = app.state::<std::sync::Arc<event_manager::EventManager>>().inner().clone();
+    let key = remote_locator_key(&connection_id, &project, &repo);
+    let base = format!("{origin}/api/speclink/v1/projects/{project}");
+    let manager = state.manager_for(&origin);
+    let sub_state = state.clone();
+    let sub_manager = manager.clone();
+    let sub_base = base.clone();
+    let sub_repo = repo.clone();
+    let etag_repo = repo;
+    events.register(
+        &key,
+        move |last| {
+            sub_manager.execute(&*sub_state.credentials, |token| {
+                speclink_remote::events::subscribe(&sub_base, token, Some(&sub_repo), last)
+            })
+        },
+        move || {
+            manager.execute(&*state.credentials, |token| {
+                speclink_remote::events::sync_state(&base, token, Some(&etag_repo))
+            })
+        },
+        REMOTE_BACKOFF.to_vec(),
+    );
+    Ok(())
+}
+
+/// 退出 remote 分頁的事件訂閱：最後一個 session 退出即收束該流。
+#[tauri::command]
+fn remote_unwatch(app: tauri::AppHandle, connection_id: String, project: String, repo: String) {
+    let events = app.state::<std::sync::Arc<event_manager::EventManager>>();
+    events.unregister(&remote_locator_key(&connection_id, &project, &repo));
 }
 
 /// 系統匣面板 toggle（tray-status-menu「面板樣式（macOS）」）：macOS 委派
@@ -468,8 +788,16 @@ pub fn run() {
             // 連線層：credential 生產出入口＝OS Keychain；access token 記憶體持有。
             app.manage(std::sync::Arc::new(ConnectionsState {
                 credentials: Box::new(credentials::KeyringCredentialStore),
-                access_tokens: std::sync::Mutex::new(std::collections::HashMap::new()),
+                managers: std::sync::Mutex::new(std::collections::HashMap::new()),
             }));
+            // remote 事件中樞：invalidate → remote-workspace-changed（payload＝
+            // locator key），前端 session 據此過濾重讀。
+            let emitter = app.handle().clone();
+            app.manage(std::sync::Arc::new(event_manager::EventManager::new(
+                move |key: String| {
+                    let _ = emitter.emit("remote-workspace-changed", key);
+                },
+            )));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -510,7 +838,22 @@ pub fn run() {
             connection_remove,
             device_login,
             pat_login,
+            connection_state,
             connection_logout,
+            remote_open,
+            remote_list_changes,
+            remote_list_specs,
+            remote_status,
+            remote_document,
+            remote_set_task_done,
+            remote_set_all_tasks,
+            remote_archive,
+            remote_list_discussions,
+            remote_discussion_document,
+            remote_promote_discussion,
+            remote_archive_discussion,
+            remote_watch,
+            remote_unwatch,
             toggle_tray_panel,
             quit_app
         ])

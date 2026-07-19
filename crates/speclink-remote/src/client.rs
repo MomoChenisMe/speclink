@@ -107,6 +107,7 @@ impl Client {
                 message: "unexpected server response — the server did not return valid JSON"
                     .into(),
                 reason: None,
+                status: None,
             }),
             Err(ureq::Error::Status(status, resp)) => {
                 let body = resp.into_string().unwrap_or_default();
@@ -143,6 +144,7 @@ impl Client {
                 message: "server does not support this CLI's API version — upgrade the CLI or the server"
                     .into(),
                 reason: Some("api_version_unsupported".into()),
+                status: None,
             });
         }
         Ok(binding)
@@ -235,6 +237,7 @@ impl Client {
                     message: "unexpected server response — the server did not return valid JSON"
                         .into(),
                     reason: None,
+                    status: None,
                 })?;
                 Ok(ContextSnapshotOutcome::Fresh(snapshot))
             }

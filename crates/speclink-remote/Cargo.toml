@@ -17,6 +17,7 @@ ureq = { version = "2", features = ["json"] }
 [dev-dependencies]
 tiny_http = "0.12"
 speclink-server = { path = "../speclink-server" }
+speclink-store = { path = "../speclink-store" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net"] }
 chrono = { workspace = true }

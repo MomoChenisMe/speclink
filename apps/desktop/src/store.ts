@@ -136,6 +136,9 @@ export interface AppState {
   tabErrors: Record<string, string>;
   /** 開啟專案（dialog 或還原路徑）：三態分流。 */
   openProjectAt: (path: string) => Promise<void>;
+  /** 開啟 remote workspace（remote-data-source 決策 6）：handshake 成功才建
+   * session 與分頁並切至看板；失敗上拋、由開啟表單就地呈現。 */
+  openRemoteWorkspace: (connectionId: string, target: string) => Promise<void>;
   /** 開資料夾選擇器再走 openProjectAt；取消即無事。 */
   openProjectViaDialog: () => Promise<void>;
   /** 點分頁（locator key）：與開啟專案相同語意；失敗轉該分頁錯誤態、不切換。 */
@@ -181,6 +184,10 @@ export interface AppState {
 export interface AppStoreDeps {
   /** local session 工廠（root、顯示名）；測試注入假 session。 */
   createSession: (root: string, name: string) => WorkspaceSession;
+  /** remote session 工廠（remote-data-source 決策 6/7）：以 connectionId 與
+   * workspace 識別（project 或 project/repo）走 handshake，成功回 session、
+   * 失敗上拋——未注入時 remote 開啟入口不啟用。 */
+  openRemote?: (connectionId: string, target: string) => Promise<WorkspaceSession>;
   /** workspace 探測面；未注入時對應 UI 不啟用。 */
   workspace?: WorkspaceAdapter;
   /** server 連線面（desktop-connections）；未注入時伺服器頁籤不啟用。 */
@@ -193,16 +200,21 @@ export interface AppStoreDeps {
  * 一律經活躍 session 的 dataSource（單活躍載入語意不變）。
  */
 export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppState>> {
-  const { createSession, workspace, connections: connectionsAdapter } = deps;
+  const { createSession, openRemote, workspace, connections: connectionsAdapter } = deps;
   return create<AppState>((set, get) => {
     // 全文查詢的去抖與 latest-wins 狀態（design D6）——閉包層、不進 store state。
     let searchSeq = 0;
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
+    /** 活躍 session；零分頁空狀態回 null。 */
+    function activeSession(): WorkspaceSession | null {
+      const { activeKey, sessions } = get();
+      return (activeKey && sessions[activeKey]) || null;
+    }
+
     /** 活躍 session 的 dataSource；零分頁空狀態回 null（資料操作一律早退）。 */
     function activeDataSource(): SpeclinkDataSource | null {
-      const { activeKey, sessions } = get();
-      return (activeKey && sessions[activeKey]?.dataSource) || null;
+      return activeSession()?.dataSource ?? null;
     }
 
     /** 逐連線互動狀態的單點更新（desktop-connections）。 */
@@ -235,6 +247,25 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       await get().refresh();
     }
 
+    /** remote session 的入列尾聲（remote-data-source 決策 6）：upsert 分頁與
+     * session、設 activeKey、persist、整批 refresh。無檔案監看——事件面由
+     * session 的 remote-workspace-changed 訂閱承擔。 */
+    async function adoptRemoteSession(session: WorkspaceSession) {
+      const key = session.id;
+      const tabs = upsertTab(get().tabs, {
+        locator: session.locator,
+        name: session.descriptor.name,
+      });
+      const sessions = { ...get().sessions, [key]: session };
+      const live = new Set(tabs.map((t) => locatorKey(t.locator)));
+      for (const k of Object.keys(sessions)) if (!live.has(k)) delete sessions[k];
+      const tabErrors = { ...get().tabErrors };
+      delete tabErrors[key];
+      set({ tabs, sessions, tabErrors, activeKey: key, pendingInit: null });
+      persistTabs(tabs, key);
+      await get().refresh();
+    }
+
     return {
     changes: [],
     specs: [],
@@ -258,12 +289,15 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     drawerVerb: null,
 
     async refresh() {
-      const dataSource = activeDataSource();
-      if (!dataSource) return;
+      const session = activeSession();
+      if (!session) return;
+      const dataSource = session.dataSource;
+      // capability 驅動（remote-data-source 決策 2）：server 未提供的讀取跳過、
+      // 以空集呈現（archived 頁另有提示卡），不讓整批 refresh 失敗。
       const [changes, specs, archived, discussions] = await Promise.all([
         dataSource.listChanges(),
         dataSource.listSpecs(),
-        dataSource.listArchived(),
+        session.capabilities.listArchived ? dataSource.listArchived() : Promise.resolve([]),
         dataSource.listDiscussions(),
       ]);
       set({ changes, specs, archived, discussions, loaded: true });
@@ -637,11 +671,39 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (picked) await get().openProjectAt(picked);
     },
 
+    async openRemoteWorkspace(connectionId, target) {
+      if (!openRemote) return;
+      // handshake fail-closed（決策 6）：失敗原樣上拋、不建分頁不建 session。
+      const session = await openRemote(connectionId, target);
+      await adoptRemoteSession(session);
+      // 開啟 workspace 的意圖是看板——自伺服器頁切回看板呈現 server 資料。
+      set({ boardView: "board" });
+    },
+
     async activateTab(key) {
       if (!workspace) return;
       const tab = get().tabs.find((t) => locatorKey(t.locator) === key);
-      // remote locator 本刀無建構路徑（型別先行）；查無分頁即無事。
-      if (!tab || tab.locator.kind !== "local") return;
+      if (!tab) return;
+      if (tab.locator.kind === "remote") {
+        const existing = get().sessions[key];
+        try {
+          if (existing) {
+            const tabErrors = { ...get().tabErrors };
+            delete tabErrors[key];
+            set({ activeKey: key, tabErrors });
+            persistTabs(get().tabs, key);
+            await get().refresh();
+          } else if (openRemote) {
+            // 重啟恢復（規格「重啟後 remote 分頁恢復需重驗」）：重走 handshake。
+            const { connectionId, projectId, repoId } = tab.locator;
+            await adoptRemoteSession(await openRemote(connectionId, `${projectId}/${repoId}`));
+          }
+        } catch (e) {
+          // 失敗呈現狀態、分頁不消失（needs-reauth／server 錯誤原樣呈現）。
+          set({ tabErrors: { ...get().tabErrors, [key]: String(e) } });
+        }
+        return;
+      }
       try {
         const probe = await workspace.openProject(tab.locator.root);
         if (probe.status === "project") {

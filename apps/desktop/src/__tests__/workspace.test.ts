@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SpeclinkDataSource } from "@speclink/ui";
 
 import { createAppStore } from "../store";
-import { locatorKey, type WorkspaceSession } from "../session";
+import { locatorKey, LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { persistTabs, readPersistedTabs, type ProjectTab } from "../tabs";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 
@@ -66,6 +66,7 @@ function fakeSession(ds: SpeclinkDataSource, root: string, name: string): Worksp
       writeWorkflowRules: vi.fn(),
     },
     events: { subscribe: () => () => {} },
+    capabilities: LOCAL_CAPABILITIES,
   };
 }
 

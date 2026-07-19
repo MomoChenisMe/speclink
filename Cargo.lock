@@ -4387,6 +4387,7 @@ dependencies = [
  "speclink-host",
  "speclink-protocol",
  "speclink-server",
+ "speclink-store",
  "tempfile",
  "tiny_http",
  "tokio",

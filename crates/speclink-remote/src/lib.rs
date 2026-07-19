@@ -16,6 +16,7 @@
 pub mod auth;
 pub mod client;
 pub mod device;
+pub mod events;
 
 /// A translated remote failure: one semantic line for the user/agent, plus
 /// the machine-readable `reason` when the server provided one.
@@ -23,6 +24,11 @@ pub mod device;
 pub struct RemoteError {
     pub message: String,
     pub reason: Option<String>,
+    /// The HTTP status of the protocol response this failure translates, when
+    /// there was one (transport and local failures carry `None`). `reason`
+    /// alone cannot split 401 from 403 — both are `permission_denied` — and a
+    /// client's refresh-and-retry decision hinges on exactly that split.
+    pub status: Option<u16>,
 }
 
 impl std::fmt::Display for RemoteError {
@@ -39,6 +45,7 @@ pub fn translate_transport() -> RemoteError {
     RemoteError {
         message: "server unreachable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)".into(),
         reason: None,
+        status: None,
     }
 }
 
@@ -57,6 +64,7 @@ pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
         return RemoteError {
             message: "server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)".into(),
             reason: None,
+            status: Some(status),
         };
     }
 
@@ -69,7 +77,7 @@ pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
                 "unexpected server response — update speclink or report a bug (HTTP {status})"
             ),
         };
-        return RemoteError { message, reason: None };
+        return RemoteError { message, reason: None, status: Some(status) };
     };
 
     let reason = Some(err.reason.as_str().to_string());
@@ -99,5 +107,5 @@ pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
         ),
     };
 
-    RemoteError { message, reason }
+    RemoteError { message, reason, status: Some(status) }
 }

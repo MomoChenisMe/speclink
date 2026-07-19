@@ -196,4 +196,27 @@ describe("全文命中與名稱層模糊比對併入可見集合", () => {
     expect(screen.getByText("engine-typed-core")).toBeTruthy();
     expect(screen.queryByText("web-role-views")).toBeNull();
   });
+
+  it("searchUnavailableReason 停用搜尋輸入並附說明（remote capability 缺口）", () => {
+    render(
+      <KanbanBoard
+        changes={changes}
+        discussions={discussions}
+        query=""
+        onQuery={() => {}}
+        searchUnavailableReason="此 server 尚未提供全文搜尋——功能已停用"
+      />,
+    );
+    const input = screen.getByPlaceholderText("搜尋看板卡片…") as HTMLInputElement;
+    expect(input.disabled).toBe(true);
+    expect(input.title).toBe("此 server 尚未提供全文搜尋——功能已停用");
+  });
+
+  it("未提供 searchUnavailableReason 時搜尋照常可用（本地不受影響）", () => {
+    render(
+      <KanbanBoard changes={changes} discussions={discussions} query="" onQuery={() => {}} />,
+    );
+    const input = screen.getByPlaceholderText("搜尋看板卡片…") as HTMLInputElement;
+    expect(input.disabled).toBe(false);
+  });
 });

@@ -45,6 +45,9 @@ import { setAppT } from "./i18n/runtime";
 export interface AppProps {
   /** local session 工廠（root 綁定 dataSource／settings／events；workspace-session 決策 3/6）。 */
   createSession: (root: string, name: string) => WorkspaceSession;
+  /** remote session 工廠（remote-data-source 決策 6/7）：handshake 成功回
+   * session、失敗上拋；未注入時 remote 開啟入口不啟用。 */
+  openRemote?: (connectionId: string, target: string) => Promise<WorkspaceSession>;
   /** workspace 探測面（開專案／init／統計／監看重掛）；未注入時對應 UI 不啟用。 */
   workspace?: WorkspaceAdapter;
   /** server 連線面（desktop-connections）；未注入時伺服器頁籤不啟用。 */
@@ -116,7 +119,7 @@ function NavItem({
 }
 
 /** 桌面 app 進入點：解析 UI 語言（偏好優先、null 跟隨系統）並掛 I18nProvider。 */
-export function App({ createSession, workspace, connections }: AppProps) {
+export function App({ createSession, openRemote, workspace, connections }: AppProps) {
   const [localePref, setLocalePrefState] = useState<LocalePreference>(() => readLocalePreference());
   // 切換即時生效並持久化（設定頁的 UI 語言三選接這裡）。
   const setLocalePref = (pref: LocalePreference) => {
@@ -131,6 +134,7 @@ export function App({ createSession, workspace, connections }: AppProps) {
     <I18nProvider locale={uiLocale} messages={APP_MESSAGES}>
       <AppInner
         createSession={createSession}
+        openRemote={openRemote}
         workspace={workspace}
         connections={connections}
         localePref={localePref}
@@ -150,20 +154,35 @@ interface AppInnerProps extends AppProps {
 /** 桌面主畫面：生命週期看板（主視圖）＋已封存獨立頁＋設定頁＋Spectra 級詳情抽屜。 */
 function AppInner({
   createSession,
+  openRemote,
   workspace,
   connections,
   localePref,
   onLocalePrefChange,
 }: AppInnerProps) {
   const useStore = useMemo(
-    () => createAppStore({ createSession, workspace, connections }),
-    [createSession, workspace, connections],
+    () => createAppStore({ createSession, openRemote, workspace, connections }),
+    [createSession, openRemote, workspace, connections],
   );
   const s = useStore();
   // 活躍 session（workspace-session 決策 6）：詳情／規格／封存抽屜的文件載入
   // 與設定頁一律經它——App 不再持有全域 dataSource。
   const activeSession = s.activeKey ? s.sessions[s.activeKey] : undefined;
   const dataSource = activeSession?.dataSource;
+  // capability 驅動停用（remote-data-source 決策 2）：remote session 依 server
+  // 端點覆蓋停用 affordance；本地 session 全真、同一路徑零分岐。
+  const caps = activeSession?.capabilities;
+  const servers = connections && {
+    connections: s.connections,
+    phases: s.connectionPhases,
+    onAdd: s.addConnection,
+    onLogin: s.loginConnection,
+    onSubmitPat: s.submitPat,
+    onLogout: s.logoutConnection,
+    onRemove: s.removeConnection,
+    onRefresh: s.refreshConnections,
+    onOpenWorkspace: openRemote && ((id: string, target: string) => s.openRemoteWorkspace(id, target)),
+  };
   // 初始化確認框的工具多選（預設勾 claude）；對話框每次開啟重設。
   const [initTools, setInitTools] = useState<string[]>(["claude"]);
   useEffect(() => {
@@ -386,18 +405,7 @@ function AppInner({
               localePref={localePref}
               onLocalePrefChange={onLocalePrefChange}
               trayPanelError={s.trayPanelError}
-              servers={
-                connections && {
-                  connections: s.connections,
-                  phases: s.connectionPhases,
-                  onAdd: s.addConnection,
-                  onLogin: s.loginConnection,
-                  onSubmitPat: s.submitPat,
-                  onLogout: s.logoutConnection,
-                  onRemove: s.removeConnection,
-                  onRefresh: s.refreshConnections,
-                }
-              }
+              servers={servers}
             />
           ) : workspace !== undefined && s.tabs.length === 0 ? (
             // 零分頁（首次使用）：空狀態引導頁取代空看板。
@@ -416,9 +424,25 @@ function AppInner({
               query={s.boardQuery}
               onQuery={s.setBoardQuery}
               fulltextHits={s.searchHits}
-              onReorder={(kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)}
+              searchUnavailableReason={
+                caps && !caps.searchWorkspace ? t("remote.searchUnavailable") : undefined
+              }
+              onReorder={
+                caps && !caps.reorderCard
+                  ? undefined
+                  : (kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)
+              }
               onDragActiveChange={handleBoardDragActive}
             />
+          ) : caps && !caps.listArchived ? (
+            // remote capability 缺口（決策 2）：不偽造封存頁——提示卡如實呈現。
+            <div
+              data-testid="archived-unavailable"
+              className="rounded-md border border-border bg-card p-6 text-sm"
+            >
+              <div className="font-medium">{t("remote.archivedUnavailableTitle")}</div>
+              <p className="mt-1 text-muted-foreground">{t("remote.archivedUnavailableBody")}</p>
+            </div>
           ) : (
             <ArchivedList
               archived={s.archived}
@@ -438,20 +462,41 @@ function AppInner({
         change={s.detailChange}
         refreshGen={s.refreshGen}
         loadDocument={(change, artifact) => dataSource?.getDocument(change, artifact) ?? Promise.resolve(null)}
-        loadCapabilities={(change) => dataSource?.changeCapabilities(change) ?? Promise.resolve([])}
-        loadMeta={(change) => dataSource?.changeMeta(change) ?? Promise.resolve(null)}
+        // capability 缺口的讀取（changeCapabilities/changeMeta 無 server 來源）
+        // 以空集呈現——資料缺口不偽造、也不讓抽屜載入失敗。
+        loadCapabilities={(change) =>
+          caps && !caps.changeCapabilities
+            ? Promise.resolve([])
+            : (dataSource?.changeCapabilities(change) ?? Promise.resolve([]))
+        }
+        loadMeta={(change) =>
+          caps && !caps.changeMeta
+            ? Promise.resolve(null)
+            : (dataSource?.changeMeta(change) ?? Promise.resolve(null))
+        }
         onRunVerb={onRunVerb}
         drawerVerb={s.drawerVerb}
         onClearVerb={s.clearDrawerVerb}
         onDelete={s.requestDelete}
+        unavailable={
+          caps && {
+            analyze:
+              caps.validate && caps.analyze ? undefined : t("remote.analyzeUnavailable"),
+            delete: caps.deleteChange ? undefined : t("remote.deleteUnavailable"),
+          }
+        }
         onToggleTask={async (change, task, done) => {
           await dataSource?.setTaskDone(change, task, done);
           await s.refresh();
         }}
-        onMoveTask={async (change, from, to, before) => {
-          await dataSource?.moveTask(change, from, to, before);
-          await s.refresh();
-        }}
+        onMoveTask={
+          caps && !caps.moveTask
+            ? undefined
+            : async (change, from, to, before) => {
+                await dataSource?.moveTask(change, from, to, before);
+                await s.refresh();
+              }
+        }
         onSetAllTasks={async (change, done) => {
           await dataSource?.setAllTasks(change, done);
           await s.refresh();
@@ -468,7 +513,13 @@ function AppInner({
         onOpenChange={(o) => !o && s.closeSpec()}
         capability={s.detailSpec}
         refreshGen={s.refreshGen}
-        loadDocument={(capability) => dataSource?.getSpecDocument(capability) ?? Promise.resolve(null)}
+        // capability 缺口（正典 spec 內文無 server 端點）：內文區以繁中提示卡
+        // 如實呈現缺口，不偽造、不以「找不到」誤導。
+        loadDocument={(capability) =>
+          caps && !caps.getSpecDocument
+            ? Promise.resolve(t("remote.specDocUnavailable"))
+            : (dataSource?.getSpecDocument(capability) ?? Promise.resolve(null))
+        }
       />
 
       {/* 唯讀封存抽屜（封存變更四分頁／封存討論三區段） */}

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, type Mock } from "vitest";
 import { render as rtlRender, screen, waitFor, fireEvent, act, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -122,6 +123,31 @@ describe("提案／設計分頁章節標籤", () => {
     expect(screen.getByText("變更內容")).toBeTruthy();
     expect(screen.queryByText("Why")).toBeNull();
     expect(screen.queryByText("What Changes")).toBeNull();
+  });
+});
+
+// remote-data-source 手動驗證回歸：空殼 change（server 上尚無 proposal 文件）
+// loadDocument 回 null——「不存在」須呈現尚無文案，不得與「載入中」共用同一字樣。
+describe("提案分頁載入中／不存在分流", () => {
+  it("loadDocument 回 null 時顯示尚無提案文案，而非載入中", async () => {
+    const props = makeProps({
+      loadDocument: vi.fn(async () => null),
+      loadCapabilities: vi.fn(async () => []),
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("（此 change 尚無提案內容）")).toBeTruthy());
+    expect(screen.queryByText("載入中…")).toBeNull();
+  });
+
+  it("載入未完成（promise 未解決）時顯示載入中", async () => {
+    const props = makeProps({
+      loadDocument: vi.fn(() => new Promise<string>(() => {})),
+      loadCapabilities: vi.fn(async () => []),
+      loadMeta: vi.fn(() => new Promise<never>(() => {})),
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("載入中…")).toBeTruthy());
+    expect(screen.queryByText("（此 change 尚無提案內容）")).toBeNull();
   });
 });
 
@@ -426,6 +452,57 @@ describe("RichDetailDrawer", () => {
     expect(props.onRunVerb).toHaveBeenCalledWith("analyze", "desktop-shell-and-browser");
     fireEvent.click(screen.getByRole("button", { name: /封存/ }));
     expect(props.onRunVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
+  });
+
+  it("unavailable 停用分析與刪除並附繁中說明；封存照常（remote capability 缺口）", async () => {
+    // Radix Sheet 會在 jsdom body 設 pointer-events:none；停用這項環境檢查，
+    // 仍以實際 pointer enter/leave 驗證 tooltip trigger。
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const props = makeProps({
+      unavailable: {
+        analyze: "此 server 尚未提供 validate/analyze——功能已停用",
+        delete: "此 server 尚未提供刪除變更——功能已停用",
+      },
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    const analyze = screen.getByRole("button", { name: /分析/ }) as HTMLButtonElement;
+    expect(analyze.disabled).toBe(true);
+    expect(analyze.title).toContain("validate/analyze");
+    const analyzeTrigger = analyze.parentElement!;
+    await user.hover(analyzeTrigger);
+    await waitFor(() => expect(analyzeTrigger.getAttribute("data-state")).toContain("open"));
+    expect(document.querySelector("[data-radix-popper-content-wrapper]")?.textContent).toContain("validate/analyze");
+    const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
+    expect(del.disabled).toBe(true);
+    expect(del.title).toContain("刪除變更");
+    // archive 是直達端點——照常可點。
+    fireEvent.click(screen.getByRole("button", { name: /封存/ }));
+    expect(props.onRunVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
+  });
+
+  it("delete unavailable 的繁中說明會顯示為可見 tooltip", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(<RichDetailDrawer {...(makeProps({ unavailable: { delete: "此 server 尚未提供刪除變更——功能已停用" } }) as never)} />);
+    await screen.findByText("MomoChen");
+    const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
+    const deleteTrigger = del.parentElement!;
+    await user.hover(deleteTrigger);
+    await waitFor(() => expect(deleteTrigger.getAttribute("data-state")).toContain("open"));
+    expect(document.querySelector("[data-radix-popper-content-wrapper]")?.textContent).toContain("刪除變更");
+  });
+
+  it("onMoveTask 缺席時 TaskList 收到 onReorder undefined（把手整段停用）", async () => {
+    taskListProps.length = 0;
+    const props = makeProps({ onToggleTask: vi.fn(), onSetAllTasks: vi.fn() });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
+    await waitFor(() => expect(taskListProps.length).toBeGreaterThan(0));
+    const latest = taskListProps.at(-1)!;
+    expect(latest.onReorder).toBeUndefined();
+    expect(latest.onToggle).toBeDefined();
+    expect(latest.onSetAll).toBeDefined();
   });
 });
 

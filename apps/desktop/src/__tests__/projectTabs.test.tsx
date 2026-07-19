@@ -92,4 +92,26 @@ describe("ProjectTabs", () => {
     fireEvent.click(within(beta).getByLabelText("自分頁移除"));
     expect(onClose).toHaveBeenCalledWith("local:C:\\proj\\beta");
   });
+
+  it("remote tabs carry a cloud marker and the Project/Repo name（remote-data-source §10.5）", () => {
+    const remoteTabs: ProjectTab[] = [
+      ...tabs,
+      {
+        locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+        name: "Demo/backend",
+        badge: null,
+      },
+    ];
+    render(<ProjectTabs tabs={remoteTabs} activeKey="remote:c1/demo/backend" tabErrors={{}} />);
+    const remote = screen.getByText("Demo/backend").closest("[data-tab]") as HTMLElement;
+    const cloud = remote.querySelector("[data-cloud]") as HTMLElement;
+    expect(cloud).toBeTruthy();
+    // cloud 以主色加深——與 local 的 folder 圖示形成視覺區分。
+    expect(cloud.getAttribute("class")).toContain("text-primary");
+    expect(remote.querySelector("[data-folder]")).toBeNull();
+    // local 分頁長 folder 圖示、不長 cloud。
+    const alpha = screen.getByText("alpha").closest("[data-tab]") as HTMLElement;
+    expect(alpha.querySelector("[data-cloud]")).toBeNull();
+    expect(alpha.querySelector("[data-folder]")).toBeTruthy();
+  });
 });

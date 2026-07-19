@@ -189,4 +189,62 @@ describe("ServersPanel", () => {
     await waitFor(() => expect(screen.queryByText("本地")).toBeNull());
     expect(screen.getByTestId("servers-empty")).toBeTruthy();
   });
+
+  // --- 開啟 workspace（remote-data-source 決策 6：handshake fail-closed） ---
+
+  function renderLoggedInPanel(onOpenWorkspace: (id: string, target: string) => Promise<void>) {
+    rtlRender(
+      <ServersPanel
+        connections={[
+          {
+            id: "conn_1",
+            origin: "http://localhost:8080",
+            name: "本地",
+            lastActorDisplay: DISPLAY,
+            loggedIn: true,
+          },
+        ]}
+        phases={{}}
+        onAdd={async () => {}}
+        onLogin={() => {}}
+        onSubmitPat={() => {}}
+        onLogout={() => {}}
+        onRemove={() => {}}
+        onOpenWorkspace={onOpenWorkspace}
+      />,
+      { wrapper: zhWrapper },
+    );
+  }
+
+  function submitWorkspace(target: string) {
+    fireEvent.click(screen.getByRole("button", { name: "開啟 workspace" }));
+    fireEvent.change(screen.getByPlaceholderText("project 或 project/repo"), {
+      target: { value: target },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "開啟" }));
+  }
+
+  it("已登入條目輸入 workspace 識別開啟成功後收合表單", async () => {
+    const open = vi.fn().mockResolvedValue(undefined);
+    renderLoggedInPanel(open);
+
+    submitWorkspace("demo/backend");
+    await waitFor(() => expect(open).toHaveBeenCalledWith("conn_1", "demo/backend"));
+    // 成功：表單收合、草稿清空。
+    await waitFor(() =>
+      expect(screen.queryByTestId("workspace-form-http://localhost:8080")).toBeNull(),
+    );
+  });
+
+  it("handshake 失敗原樣呈現 server 錯誤且不收合（fail-closed）", async () => {
+    const open = vi.fn().mockRejectedValue(new Error("access denied — no access"));
+    renderLoggedInPanel(open);
+
+    submitWorkspace("secret");
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("access denied"),
+    );
+    // 表單留在原地供更正；不建分頁由 store 測試釘死。
+    expect(screen.getByTestId("workspace-form-http://localhost:8080")).toBeTruthy();
+  });
 });

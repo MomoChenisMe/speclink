@@ -33,6 +33,8 @@ export interface TaskListProps {
   /**
    * 拖放落點：把第 from 個任務移到以第 to 個任務為錨的位置（皆 1-based、一次
    * 到位）。before=true＝插錨前（群組標題落點解析為組首）；省略＝方向推斷。
+   * 未提供＝拖排停用（remote capability 缺口）：不渲染把手、不掛 DndContext，
+   * 勾選與批次工具列照常。
    */
   onReorder?: (from: number, to: number, before?: boolean) => void;
   /** 寫入進行中時鎖定互動。 */
@@ -193,9 +195,13 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
     return <div className="text-muted-foreground text-sm py-6">{t("tasks.empty")}</div>;
   }
 
+  // 可拖排＝互動且宿主供拖排寫回；capability 缺口（remote）時把手與 DndContext
+  // 一併不上——絕不渲染點了沒事的假 affordance。
+  const sortable = !readOnly && onReorder !== undefined;
+
   const rows = items.map((item, i) =>
     item.kind === "group" ? (
-      readOnly ? (
+      !sortable ? (
         <h4 key={`g-${i}`} className={`${SUB_LABEL_CLS} mt-4 mb-1.5 first:mt-0`}>
           {item.text}
         </h4>
@@ -208,6 +214,21 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
         className="group/task flex items-start gap-2 py-1 pl-1 rounded-md hover:bg-muted/50"
       >
         <TaskRowBody item={item} readOnly onToggle={onToggle} />
+      </div>
+    ) : !sortable ? (
+      // 互動但無拖排：無把手，保留高亮與定位捲動（「下一個未完成」照常）。
+      <div
+        key={`t-${taskKey(item)}`}
+        ref={(el) => {
+          if (el) rowRefs.current.set(item.ordinal, el);
+          else rowRefs.current.delete(item.ordinal);
+        }}
+        data-highlight={highlightOrdinal === item.ordinal ? "true" : "false"}
+        className={`group/task flex items-start gap-2 py-1 pl-1 rounded-md transition-colors hover:bg-muted/50 ${
+          highlightOrdinal === item.ordinal ? "bg-accent ring-1 ring-primary/40" : ""
+        }`}
+      >
+        <TaskRowBody item={item} onToggle={onToggle} />
       </div>
     ) : (
       <SortableTaskRow
@@ -249,46 +270,60 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
     onReorder?.(Number(a.id), target.to, target.before);
   };
 
+  /* 批次操作工具列（spec「任務分頁提供批次操作工具列」）：全部已完成／下一個
+     未完成（n）／重置任務；全完成時前兩鍵不可用，批次寫回期間整列 disabled。 */
+  const toolbar = (
+    <div className="mb-2 flex items-center gap-1 rounded-md border border-border px-2 py-1.5">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={toolbarBtn}
+        disabled={allDone || busy}
+        onClick={() => onSetAll?.(true)}
+      >
+        <CheckCheck className="h-3.5 w-3.5" /> {t("tasks.completeAll")}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={toolbarBtn}
+        disabled={allDone || busy}
+        onClick={locateNext}
+      >
+        <LocateFixed className="h-3.5 w-3.5" /> {t("tasks.nextUndone")}
+        <kbd className="rounded border border-border bg-muted px-1 text-[10px] text-muted-foreground">
+          n
+        </kbd>
+      </Button>
+      <div className="flex-1" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={toolbarBtn}
+        disabled={busy}
+        onClick={() => onSetAll?.(false)}
+      >
+        <RotateCcw className="h-3.5 w-3.5" /> {t("tasks.resetAll")}
+      </Button>
+    </div>
+  );
+
+  // 拖排停用（capability 缺口）：工具列與勾選照常、不掛 DndContext。
+  if (!sortable) {
+    return (
+      <>
+        {toolbar}
+        <div className={`flex flex-col ${busy ? "opacity-60 pointer-events-none" : ""}`}>{rows}</div>
+      </>
+    );
+  }
+
   return (
     <>
-      {/* 批次操作工具列（spec「任務分頁提供批次操作工具列」）：全部已完成／下一個
-          未完成（n）／重置任務；全完成時前兩鍵不可用，批次寫回期間整列 disabled。 */}
-      <div className="mb-2 flex items-center gap-1 rounded-md border border-border px-2 py-1.5">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={toolbarBtn}
-          disabled={allDone || busy}
-          onClick={() => onSetAll?.(true)}
-        >
-          <CheckCheck className="h-3.5 w-3.5" /> {t("tasks.completeAll")}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={toolbarBtn}
-          disabled={allDone || busy}
-          onClick={locateNext}
-        >
-          <LocateFixed className="h-3.5 w-3.5" /> {t("tasks.nextUndone")}
-          <kbd className="rounded border border-border bg-muted px-1 text-[10px] text-muted-foreground">
-            n
-          </kbd>
-        </Button>
-        <div className="flex-1" />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={toolbarBtn}
-          disabled={busy}
-          onClick={() => onSetAll?.(false)}
-        >
-          <RotateCcw className="h-3.5 w-3.5" /> {t("tasks.resetAll")}
-        </Button>
-      </div>
+      {toolbar}
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
