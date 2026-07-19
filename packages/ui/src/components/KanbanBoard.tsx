@@ -79,6 +79,9 @@ export interface KanbanBoardProps {
   /** 看板搜尋字串（選配，與 onQuery 成對提供時渲染搜尋輸入並過濾卡片）。 */
   query?: string;
   onQuery?: (q: string) => void;
+  /** 全文搜尋不可用的說明（remote capability 缺口）：提供時搜尋輸入 disabled
+   * 並以其文字為 tooltip（title）；缺席＝照常（本地不受影響）。 */
+  searchUnavailableReason?: string;
   /** workspace 全文查詢命中（design D6）：命中卡片併入可見集合並呈 snippet 行。 */
   fulltextHits?: SearchHit[];
   /**
@@ -207,6 +210,7 @@ export function KanbanBoard({
   query,
   onQuery,
   fulltextHits,
+  searchUnavailableReason,
   onReorder,
   onDragActiveChange,
 }: KanbanBoardProps) {
@@ -311,6 +315,7 @@ export function KanbanBoard({
         <BoardSearchBar
           query={query}
           onQuery={onQuery}
+          disabledReason={searchUnavailableReason}
           hitCount={visibleChanges.length + (visibleDiscussions?.length ?? 0)}
           filtersOpen={filtersOpen}
           onToggleFilters={() => setFiltersOpen((v) => !v)}

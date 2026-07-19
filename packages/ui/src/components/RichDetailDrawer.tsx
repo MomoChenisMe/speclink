@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import {
   Archive,
   Check,
@@ -19,6 +19,7 @@ import { useI18n } from "../i18n";
 import { relativeDays } from "../time";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { READING_COLUMN_CLS } from "./Markdown";
@@ -58,9 +59,32 @@ export interface RichDetailDrawerProps {
   onOpenDiscussion?: (slug: string) => void;
   /** 點同源 change 互跳。 */
   onOpenSibling?: (name: string) => void;
+  /** capability 缺口的停用說明（remote session）：欄位存在＝該 affordance
+   * disabled 並以其文字顯示 tooltip。缺席＝全功能（本地不受影響）。 */
+  unavailable?: {
+    /** 分析（validate＋analyze 合併鈕）。 */
+    analyze?: string;
+    /** 刪除變更。 */
+    delete?: string;
+  };
 }
 
 type Doc = string | null | undefined;
+
+/** disabled 元素不可靠地接收 hover；用可互動 wrapper 承接 tooltip trigger。 */
+function UnavailableAction({ reason, children }: { reason?: string; children: ReactElement }) {
+  if (!reason) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex" tabIndex={0}>
+          {children}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{reason}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 /** Spectra 級詳情抽屜：metadata、進度、動作列、icon 分頁（提案/設計/互動任務/彩色規格）。 */
 export function RichDetailDrawer({
@@ -82,6 +106,7 @@ export function RichDetailDrawer({
   siblingChanges,
   onOpenDiscussion,
   onOpenSibling,
+  unavailable,
 }: RichDetailDrawerProps) {
   const { t } = useI18n();
   const [meta, setMeta] = useState<ChangeMetaInfo | null>(null);
@@ -305,29 +330,39 @@ export function RichDetailDrawer({
             <span className="text-xs text-muted-foreground tabular-nums">{pct}%</span>
           </div>
           {/* 動作列 */}
-          <div className="flex items-center gap-1.5 pt-1">
-            <Button
-              variant="outline"
-              size="sm"
-              aria-pressed={verbOpen}
-              className={`h-7 gap-1 ${verbOpen ? "bg-accent" : ""}`}
-              onClick={() => (verbOpen ? onClearVerb?.() : onRunVerb?.("analyze", change.name))}
-            >
-              <Sparkles className="h-3.5 w-3.5" /> {t("common.analyze")}
-            </Button>
-            <div className="flex-1" />
-            <Button variant="outline" size="sm" className="h-7 gap-1" onClick={() => onRunVerb?.("archive", change.name)}>
-              <Archive className="h-3.5 w-3.5" /> {t("common.archive")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1 text-destructive hover:text-destructive"
-              onClick={() => onDelete?.(change.name)}
-            >
-              <Trash2 className="h-3.5 w-3.5" /> {t("rdrawer.delete")}
-            </Button>
-          </div>
+          <TooltipProvider delayDuration={0}>
+            <div className="flex items-center gap-1.5 pt-1">
+              <UnavailableAction reason={unavailable?.analyze}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-pressed={verbOpen}
+                  disabled={unavailable?.analyze !== undefined}
+                  title={unavailable?.analyze}
+                  className={`h-7 gap-1 ${verbOpen ? "bg-accent" : ""}`}
+                  onClick={() => (verbOpen ? onClearVerb?.() : onRunVerb?.("analyze", change.name))}
+                >
+                  <Sparkles className="h-3.5 w-3.5" /> {t("common.analyze")}
+                </Button>
+              </UnavailableAction>
+              <div className="flex-1" />
+              <Button variant="outline" size="sm" className="h-7 gap-1" onClick={() => onRunVerb?.("archive", change.name)}>
+                <Archive className="h-3.5 w-3.5" /> {t("common.archive")}
+              </Button>
+              <UnavailableAction reason={unavailable?.delete}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={unavailable?.delete !== undefined}
+                  title={unavailable?.delete}
+                  className="h-7 gap-1 text-destructive hover:text-destructive"
+                  onClick={() => onDelete?.(change.name)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> {t("rdrawer.delete")}
+                </Button>
+              </UnavailableAction>
+            </div>
+          </TooltipProvider>
           {/* 分析結果（validate＋analyze 合併）於動作列近處呈現——僅當前 change 相符時（design D1）。 */}
           {verbOpen && drawerVerb && (
             <div data-verb-result className="pt-1">
@@ -364,7 +399,14 @@ export function RichDetailDrawer({
           <div className="flex-1 overflow-y-auto pt-3">
             {/* 共用置中容器包住分頁全部內容——區段標籤、任務清單與內文同欄（design D4）。 */}
             <div data-reading-column className={READING_COLUMN_CLS}>
-            <TabsContent value="proposal"><SectionedDoc content={proposal ?? null} empty={t("common.loading")} /></TabsContent>
+            {/* undefined＝載入在途、null＝文件不存在（空殼 change）——兩態文案分流，
+                不存在不得掛「載入中」（remote 空 change 曾長駐載入中）。 */}
+            <TabsContent value="proposal">
+              <SectionedDoc
+                content={proposal ?? null}
+                empty={proposal === undefined ? t("common.loading") : t("list.noProposalDoc")}
+              />
+            </TabsContent>
             <TabsContent value="design"><SectionedDoc content={design ?? null} empty={t("list.noDesignDoc")} /></TabsContent>
             <TabsContent value="tasks">
               {taskError && (
@@ -377,7 +419,10 @@ export function RichDetailDrawer({
                 busy={taskBusy}
                 onDragActiveChange={setDragActive}
                 onToggle={(ordinal, done, stableId) => void handleToggle(ordinal, done, stableId)}
-                onReorder={(from, to, before) => void handleReorder(from, to, before)}
+                // 拖排寫回未提供（remote capability 缺口）即整段停用——把手不渲染。
+                onReorder={
+                  onMoveTask ? (from, to, before) => void handleReorder(from, to, before) : undefined
+                }
                 onSetAll={(done) => void handleSetAll(done)}
               />
             </TabsContent>

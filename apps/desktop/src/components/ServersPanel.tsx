@@ -29,6 +29,9 @@ export interface ServersPanelProps {
   onRemove: (id: string) => void;
   /** 掛載時載入清單（頁籤切入才觸發）。 */
   onRefresh?: () => void;
+  /** 開啟 remote workspace（remote-data-source 決策 6）：以 workspace 識別
+   * handshake，失敗 reject、就地呈現 server 錯誤；未注入時入口不顯示。 */
+  onOpenWorkspace?: (id: string, target: string) => Promise<void>;
 }
 
 /** 單列的狀態文字：互動狀態優先於登入狀態。 */
@@ -67,6 +70,7 @@ export function ServersPanel({
   onLogout,
   onRemove,
   onRefresh,
+  onOpenWorkspace,
 }: ServersPanelProps) {
   const { t } = useI18n();
   const [url, setUrl] = useState("");
@@ -75,6 +79,34 @@ export function ServersPanel({
   const [adding, setAdding] = useState(false);
   /** PAT 草稿（keyed by origin）：僅存在提交前的元件狀態，提交即清空。 */
   const [patDrafts, setPatDrafts] = useState<Record<string, string>>({});
+  /** 開啟 workspace 的就地表單（keyed by connection id）：展開態、識別草稿與
+   * handshake 失敗的就地錯誤（fail-closed——不建分頁、錯誤原樣呈現）。 */
+  const [workspaceForms, setWorkspaceForms] = useState<
+    Record<string, { open: boolean; draft: string; error: string | null; busy: boolean }>
+  >({});
+
+  function workspaceForm(id: string) {
+    return workspaceForms[id] ?? { open: false, draft: "", error: null, busy: false };
+  }
+
+  function patchWorkspaceForm(
+    id: string,
+    patch: Partial<{ open: boolean; draft: string; error: string | null; busy: boolean }>,
+  ) {
+    setWorkspaceForms((forms) => ({ ...forms, [id]: { ...workspaceForm(id), ...patch } }));
+  }
+
+  async function submitWorkspace(id: string) {
+    const target = workspaceForm(id).draft.trim();
+    if (!target || !onOpenWorkspace) return;
+    patchWorkspaceForm(id, { busy: true, error: null });
+    try {
+      await onOpenWorkspace(id, target);
+      patchWorkspaceForm(id, { open: false, draft: "", busy: false });
+    } catch (e) {
+      patchWorkspaceForm(id, { error: String(e), busy: false });
+    }
+  }
 
   useEffect(() => {
     onRefresh?.();
@@ -135,6 +167,22 @@ export function ServersPanel({
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
+                      {entry.loggedIn && onOpenWorkspace && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={busy}
+                          data-testid={`open-workspace-${entry.origin}`}
+                          onClick={() =>
+                            patchWorkspaceForm(entry.id, {
+                              open: !workspaceForm(entry.id).open,
+                              error: null,
+                            })
+                          }
+                        >
+                          {t("servers.openWorkspace")}
+                        </Button>
+                      )}
                       {entry.loggedIn ? (
                         <Button
                           type="button"
@@ -168,6 +216,38 @@ export function ServersPanel({
                     </div>
                   </div>
                   <StatusLine entry={entry} phase={phase} />
+                  {entry.loggedIn && onOpenWorkspace && workspaceForm(entry.id).open && (
+                    <div
+                      className="flex flex-col gap-1.5"
+                      data-testid={`workspace-form-${entry.origin}`}
+                    >
+                      <p className="text-xs text-muted-foreground m-0">
+                        {t("servers.workspaceHint")}
+                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          placeholder={t("servers.workspacePlaceholder")}
+                          value={workspaceForm(entry.id).draft}
+                          onChange={(e) =>
+                            patchWorkspaceForm(entry.id, { draft: e.target.value })
+                          }
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={workspaceForm(entry.id).busy}
+                          onClick={() => void submitWorkspace(entry.id)}
+                        >
+                          {t("servers.workspaceSubmit")}
+                        </Button>
+                      </div>
+                      {workspaceForm(entry.id).error && (
+                        <span role="alert" className="text-xs text-red-600 dark:text-red-400">
+                          {workspaceForm(entry.id).error}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {phase.kind === "patInput" && (
                     <div className="flex flex-col gap-1.5" data-testid={`pat-input-${entry.origin}`}>
                       <p className="text-xs text-muted-foreground m-0">{t("servers.patHint")}</p>

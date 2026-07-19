@@ -3,7 +3,7 @@ import { render, screen, waitFor, fireEvent, within, act } from "@testing-librar
 
 import { App } from "../App";
 import { APP_MESSAGES } from "../i18n/messages";
-import type { WorkspaceSession } from "../session";
+import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 // 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發。
@@ -110,6 +110,7 @@ function makeSession(ds: SpeclinkDataSource, settings = fakeSettings()) {
         };
       },
     },
+    capabilities: LOCAL_CAPABILITIES,
   });
 }
 

@@ -21,6 +21,7 @@ export function BoardSearchBar({
   onCloseFilters,
   activeFilterCount = 0,
   children,
+  disabledReason,
 }: {
   query: string;
   onQuery: (q: string) => void;
@@ -36,12 +37,16 @@ export function BoardSearchBar({
   activeFilterCount?: number;
   /** 篩選面板內容（design D5）——三維度選單與全部清除。 */
   children?: React.ReactNode;
+  /** 搜尋不可用的說明（remote capability 缺口）：提供時輸入 disabled 並以其
+   * 文字為 tooltip（title）、聚焦快捷鍵停用；缺席＝照常。 */
+  disabledReason?: string;
 }) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   // 全域快捷鍵聚焦：macOS Cmd+F、其他平台 Ctrl+F（spec「快捷鍵聚焦搜尋輸入」）。
   useEffect(() => {
+    if (disabledReason !== undefined) return; // 停用時快捷鍵一併不掛。
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
@@ -50,7 +55,7 @@ export function BoardSearchBar({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [disabledReason]);
   // 面板關閉路徑：Esc 與點擊面板外（開關鈕在 popoverRef 內，點它走 toggle 不誤關）。
   const close = onCloseFilters ?? onToggleFilters;
   useEffect(() => {
@@ -77,6 +82,8 @@ export function BoardSearchBar({
           ref={inputRef}
           placeholder={t("kanban.searchPlaceholder")}
           value={query}
+          disabled={disabledReason !== undefined}
+          title={disabledReason}
           onChange={(e) => onQuery(e.target.value)}
           className={`pl-8 ${active ? "pr-24" : ""}`}
         />

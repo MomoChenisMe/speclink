@@ -1,8 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { invoke } from "@tauri-apps/api/core";
 
 import { App } from "./App";
-import { createLocalSession } from "./session";
+import { createLocalSession, createRemoteSession, type RemoteOpenInfo } from "./session";
 import { createConnectionsAdapter } from "./adapter/connections";
 import { createWorkspaceAdapter } from "./adapter/workspace";
 // Noto Sans TC 隨 app 打包（離線、未裝字體的機器皆生效）。可變字重版：
@@ -17,6 +18,12 @@ if (root) {
     <StrictMode>
       <App
         createSession={(dir, name) => createLocalSession(dir, { name })}
+        openRemote={async (connectionId, target) => {
+          // handshake fail-closed（remote-data-source 決策 6）：remote_open 成功
+          // 才建 session；失敗原樣上拋由開啟表單呈現。
+          const info = await invoke<RemoteOpenInfo>("remote_open", { connectionId, target });
+          return createRemoteSession(connectionId, info);
+        }}
         workspace={createWorkspaceAdapter()}
         connections={createConnectionsAdapter()}
       />

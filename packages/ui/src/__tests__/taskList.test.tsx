@@ -80,6 +80,21 @@ describe("TaskList", () => {
     expect(screen.queryByLabelText("拖曳任務 1")).toBeNull();
     expect((screen.getByRole("checkbox", { name: "任務 1" }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("無 onReorder 時不渲染把手（remote capability 停用），勾選與工具列照常", () => {
+    // remote-workspace-data spec「capability 驅動停用且不偽造缺口」：拖排寫回
+    // 缺席即整段不掛——絕不渲染點了沒事的假把手。
+    const onToggle = vi.fn();
+    const onSetAll = vi.fn();
+    render(<TaskList markdown={MD} onToggle={onToggle} onSetAll={onSetAll} />);
+    expect(screen.queryByLabelText("拖曳任務 1")).toBeNull();
+    // 勾選照常互動。
+    fireEvent.click(screen.getByRole("checkbox", { name: "任務 1" }));
+    expect(onToggle).toHaveBeenCalledWith(1, true, undefined);
+    // 批次工具列照常（setAllTasks 在 remote 是組合實作、仍支援）。
+    fireEvent.click(screen.getByRole("button", { name: /全部已完成/ }));
+    expect(onSetAll).toHaveBeenCalledWith(true);
+  });
 });
 
 // spec「表單控制項與按鈕以主題化元件呈現」（desktop-shadcn-controls）

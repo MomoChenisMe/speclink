@@ -2,7 +2,7 @@ import { beforeEach, describe, it, expect, vi } from "vitest";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 import { createAppStore } from "../store";
-import type { WorkspaceSession } from "../session";
+import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: toastError } }));
@@ -58,6 +58,7 @@ function fakeSession(ds: SpeclinkDataSource, root = "A", name = "a"): WorkspaceS
       writeWorkflowRules: vi.fn(),
     },
     events: { subscribe: () => () => {} },
+    capabilities: LOCAL_CAPABILITIES,
   };
 }
 
