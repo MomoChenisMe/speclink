@@ -1991,6 +1991,8 @@ code:
 
 上述任一操作失敗時，app SHALL 以 toast 浮層呈現失敗訊息。訊息 SHALL 包含操作對象的主詞與 core 回報的原始錯誤內容，SHALL NOT 吞掉或改寫該錯誤內容。toast SHALL 疊於詳情抽屜與確認對話框的遮罩之上——抽屜或確認框開啟中發生失敗時，toast SHALL 完整可見且不被遮蔽。toast SHALL 於固定時距後自動消失，並 SHALL 提供關閉鈕供提前關閉。同時 SHALL 僅呈現一則 toast；新訊息 SHALL 取代前一則並重置其自動消失時距。
 
+toast 的表面、前景、邊框、圓角、陰影與字體 SHALL 沿用桌面 app 的既有語意設計 tokens。失敗 toast SHALL 保持中性 card 表面與可讀前景，並以 destructive token 強調錯誤圖示與邊框；SHALL NOT 使用獨立於主介面的內建明暗色票或另建 raw 色票。作業系統切換淺色或深色模式時，toast SHALL 由同一組語意 tokens 取得該模式的對應值。
+
 失敗後看板 SHALL 刷新回磁碟現況，SHALL NOT 保留未落檔的假象順序或狀態。
 
 封存變更成功時 SHALL 關閉詳情抽屜。成功之所以能靜默，前提是畫面可見地表達了結果；詳情抽屜開啟時遮蔽看板，該前提即不成立。
@@ -1999,6 +2001,16 @@ code:
 
 - **WHEN** 使用者於某 change 的詳情抽屜點按「封存」，而封存因前置未滿足失敗
 - **THEN** toast 疊於抽屜遮罩之上完整呈現，內容含該 change 名稱與 core 回報的錯誤訊息；詳情抽屜維持開啟
+
+#### Scenario: 失敗 toast 沿用主介面語意色彩
+
+- **WHEN** 桌面 app 在淺色或深色模式呈現任一看板全域操作的失敗 toast
+- **THEN** toast 使用該模式的 card 表面、可讀前景、border、radius、陰影與 host 字體，錯誤圖示與邊框使用 destructive 語意；toast 不呈現獨立於主介面的內建明暗色票
+
+#### Scenario: 系統明暗模式切換後 toast 使用對應 tokens
+
+- **WHEN** 作業系統由淺色切換為深色或由深色切換為淺色，之後看板全域操作失敗
+- **THEN** 新呈現的 toast 使用同一組語意 token 名稱在目前模式下的值，訊息內容、逾時、關閉與單槽取代行為不變
 
 #### Scenario: 刪除成功不呈現任何文字訊息
 
@@ -2038,22 +2050,9 @@ code:
 
 
 <!-- @trace
-source: desktop-failure-toast
-updated: 2026-07-17
+source: desktop-toast-theme-alignment
+updated: 2026-07-19
 code:
-  - apps/desktop/package.json
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/richDrawer.test.tsx
   - packages/ui/src/__tests__/sonner.test.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
   - packages/ui/src/components/ui/sonner.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
 -->
