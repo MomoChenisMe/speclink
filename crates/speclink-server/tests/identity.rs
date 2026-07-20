@@ -6,7 +6,9 @@
 
 use chrono::{Duration, Utc};
 use speclink_server::audit::{AuditAction, AuditActor, AuditSource};
-use speclink_server::identity::{IdentityError, IdentityStore, IdentitySqlite, NewInvitation};
+use speclink_server::identity::{
+    IdentityError, IdentitySqlite, IdentityStore, MembershipRole, NewInvitation,
+};
 use speclink_server::identity::{Project, Repo};
 
 /// A fresh in-memory identity store for lifecycle tests.
@@ -40,6 +42,11 @@ fn accepting_an_invitation_creates_an_active_user_with_memberships() {
     assert!(user.active, "the accepted user is active");
     assert_eq!(user.email, "a@example.com");
     assert!(s.is_member(&user_id, "demo").expect("membership check"), "the invited membership is granted");
+    assert_eq!(
+        s.membership_role(&user_id, "demo").expect("membership role"),
+        Some(MembershipRole::Editor),
+        "invitation-created memberships are always editor",
+    );
 
     // One-time: the token no longer resolves to a valid invitation.
     assert!(s.find_valid_invitation(&token).expect("lookup").is_none(), "consumed invitation is invalid");
@@ -247,13 +254,18 @@ fn a_version_1_database_migrates_preserving_users_and_pats() {
         .expect("seed pat");
     }
 
-    // Opening with the current server migrates 1 → 5 in place.
+    // Opening with the current server migrates 1 → 6 in place.
     let s = IdentitySqlite::open(&path).expect("open migrates the v1 database");
 
     // Existing data is intact and the pre-existing PAT still authenticates.
     let user = s.get_user("usr_old").expect("get user").expect("migrated user survives");
     assert_eq!(user.email, "old@example.com");
     assert!(s.is_member("usr_old", "demo").expect("membership check"), "membership preserved");
+    assert_eq!(
+        s.membership_role("usr_old", "demo").expect("membership role"),
+        Some(MembershipRole::Editor),
+        "every pre-role membership migrates to editor",
+    );
     let (_, who) = s
         .authenticate_pat(PAT)
         .expect("auth")
@@ -266,7 +278,15 @@ fn a_version_1_database_migrates_preserving_users_and_pats() {
     let version: String = conn
         .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
         .expect("schema version");
-    assert_eq!(version, "5", "the database was migrated to the current version");
+    assert_eq!(version, "6", "the database was migrated to the current version");
+    let role: String = conn
+        .query_row(
+            "SELECT role FROM memberships WHERE user_id = 'usr_old' AND project_key = 'demo'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("migrated membership role");
+    assert_eq!(role, "editor", "the migration backfills editor explicitly");
     for table in ["device_authorizations", "credential_families", "access_tokens", "refresh_credentials"] {
         let exists: i64 = conn
             .query_row(
@@ -459,7 +479,7 @@ fn a_version_2_database_migrates_preserving_users_and_pats_and_enables_the_regis
     let version: String = conn
         .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
         .expect("schema version");
-    assert_eq!(version, "5", "the database was migrated to version 5");
+    assert_eq!(version, "6", "the database was migrated to version 6");
     for table in ["projects", "repos"] {
         let exists: i64 = conn
             .query_row(
@@ -555,7 +575,7 @@ fn a_version_3_database_migrates_preserving_data_and_adds_a_writable_audit_log()
     let version: String = conn
         .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
         .expect("schema version");
-    assert_eq!(version, "5", "the database was migrated to version 5");
+    assert_eq!(version, "6", "the database was migrated to version 6");
     for table in ["audit_log", "backup_records"] {
         let exists: i64 = conn
             .query_row(

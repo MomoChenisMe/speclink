@@ -185,6 +185,26 @@ pub struct LanguageResponse {
 pub struct ConfigResponse {
     #[serde(default)]
     pub schema: String,
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub revision: u64,
+}
+
+/// `PUT /config` request — a full workflow policy document guarded by the
+/// scope revision returned from [`ConfigResponse`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PutConfigRequest {
+    pub content: String,
+    pub expected_revision: u64,
+}
+
+/// `PUT /config` response — the scope revision after the successful commit.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PutConfigResponse {
+    pub revision: u64,
 }
 
 /// `GET /whoami` response.
@@ -370,6 +390,16 @@ mod tests {
 
         let config: ConfigResponse = serde_json::from_str(r#"{"schema":"spec-driven"}"#).unwrap();
         assert_eq!(config.schema, "spec-driven");
+        assert_eq!(config.content, None, "older servers omit policy content");
+        assert_eq!(config.revision, 0, "older servers omit policy revision");
+
+        let put: PutConfigRequest = serde_json::from_str(
+            r#"{"content":"schema: spec-driven\n","expectedRevision":7}"#,
+        )
+        .unwrap();
+        assert_eq!(put.expected_revision, 7);
+        let put_json = serde_json::to_value(&put).unwrap();
+        assert_eq!(put_json["expectedRevision"], 7, "request is camelCase");
 
         let whoami: WhoamiResponse = serde_json::from_str(
             r#"{"user":{"name":"王小明","handle":"ming"},"repos":[{"name":"backend","gitUrl":"https://git.example.com/erp.git"}]}"#,

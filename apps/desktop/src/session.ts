@@ -9,6 +9,7 @@ import type { SpeclinkDataSource } from "@speclink/ui";
 import { createRemoteDataSource } from "./adapter/remoteDataSource";
 import { createTauriDataSource } from "./adapter/tauriDataSource";
 import {
+  createRemoteSettings,
   createWorkspaceSettings,
   type SettingsSnapshot,
   type WorkflowFields,
@@ -43,11 +44,15 @@ export interface WorkspaceDescriptor {
 /** 設定面（design 決策 3）：現 WorkspaceAdapter 設定面的 root 綁定版——
  * 方法不收 root，root 已綁入 session 閉包。 */
 export interface WorkspaceSettingsProvider {
+  kind: "local" | "remote";
+  /** remote 取自 handshake；local 固定為 true。server 仍是最終防線。 */
+  policyWrite: boolean;
   readSettings(): Promise<SettingsSnapshot>;
   writeAppTools(tools: string[]): Promise<void>;
-  writeWorkflowConfig(fields: WorkflowFields): Promise<void>;
-  writeWorkflowContext(context: string): Promise<void>;
-  writeWorkflowRules(rules: Array<[string, string[]]>): Promise<void>;
+  /** remote 成功回新 revision；local 維持 void。 */
+  writeWorkflowConfig(fields: WorkflowFields): Promise<number | void>;
+  writeWorkflowContext(context: string): Promise<number | void>;
+  writeWorkflowRules(rules: Array<[string, string[]]>): Promise<number | void>;
 }
 
 /** 事件面（design 決策 5）：workspace-changed 以自身 locator 過濾後才觸發。 */
@@ -83,6 +88,8 @@ export interface WorkspaceCapabilities {
   promoteDiscussion: boolean;
   archiveDiscussion: boolean;
   reorderCard: boolean;
+  /** remote membership 是否可寫 policy；local 固定為 true。 */
+  policyWrite: boolean;
   /** server 是否宣告事件能力（SSE／polling）；缺席時退化為手動重整。 */
   liveUpdates: boolean;
 }
@@ -112,6 +119,7 @@ export const LOCAL_CAPABILITIES: WorkspaceCapabilities = {
   promoteDiscussion: true,
   archiveDiscussion: true,
   reorderCard: true,
+  policyWrite: true,
   liveUpdates: true,
 };
 
@@ -190,19 +198,6 @@ export interface RemoteSessionDeps {
   listen?: ListenFn;
 }
 
-/** remote 設定面：server 無設定端點——每個方法一致回拒絕（決策 1 (c)）。 */
-function remoteSettingsStub(): WorkspaceSettingsProvider {
-  const refuse = () =>
-    Promise.reject(new Error("此 server 尚未提供「workspace 設定」——功能已停用"));
-  return {
-    readSettings: refuse,
-    writeAppTools: refuse,
-    writeWorkflowConfig: refuse,
-    writeWorkflowContext: refuse,
-    writeWorkflowRules: refuse,
-  };
-}
-
 /** remote session 工廠（決策 6/7）：以 remote_open（handshake）的結果建
  * session——handshake 成功是建立前置，這裡不再打 server。dataSource 為
  * remote_* 的薄 invoke 包裝；事件面訂閱時掛 remote_watch（Rust 端同
@@ -228,7 +223,13 @@ export function createRemoteSession(
     locator,
     descriptor: { name: `${info.projectName}/${info.repoName}`, badge: null },
     dataSource: createRemoteDataSource(connectionId, info.projectKey, info.repoKey, invoke),
-    settings: remoteSettingsStub(),
+    settings: createRemoteSettings(
+      connectionId,
+      info.projectKey,
+      info.repoKey,
+      info.capabilities.policyWrite,
+      invoke,
+    ),
     events: {
       subscribe(onChange) {
         void invoke("remote_watch", { ...watchArgs });

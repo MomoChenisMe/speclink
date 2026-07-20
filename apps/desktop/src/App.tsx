@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Archive, GitBranch, FileText, Settings, FolderOpen } from "lucide-react";
+import { Archive, GitBranch, FileText, Settings, SlidersHorizontal, FolderOpen } from "lucide-react";
 import {
   KanbanBoard,
   ArchivedList,
@@ -30,7 +30,8 @@ import { createAppStore } from "./store";
 import type { WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
 import { ProjectTabs } from "./components/ProjectTabs";
-import { SettingsView } from "./views/SettingsView";
+import { AppSettingsView } from "./views/AppSettingsView";
+import { ProjectSettingsView } from "./views/ProjectSettingsView";
 import type { ConnectionsAdapter } from "./adapter/connections";
 import type { WorkspaceAdapter } from "./adapter/workspace";
 import { APP_MESSAGES } from "./i18n/messages";
@@ -386,6 +387,12 @@ function AppInner({
               </span>
             }
           />
+          <NavItem
+            icon={<SlidersHorizontal className="h-4 w-4" />}
+            label={t("app.navProjectSettings")}
+            active={s.boardView === "project-settings"}
+            onClick={() => s.setBoardView("project-settings")}
+          />
           {/* 設定沉底：自動上邊距推至側欄底部（design D5），切頁與高亮語意不變。 */}
           <NavItem
             icon={<Settings className="h-4 w-4" />}
@@ -398,10 +405,9 @@ function AppInner({
 
         {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
             制列沉底常駐）；設定頁維持整頁縱向捲動 */}
-        <main className={`flex-1 p-5 ${s.boardView === "settings" ? "overflow-y-auto" : "overflow-hidden"}`}>
-          {s.boardView === "settings" && activeSession !== undefined ? (
-            <SettingsView
-              settings={activeSession.settings}
+        <main className={`flex-1 p-5 ${s.boardView === "settings" || s.boardView === "project-settings" ? "overflow-y-auto" : "overflow-hidden"}`}>
+          {s.boardView === "settings" ? (
+            <AppSettingsView
               localePref={localePref}
               onLocalePrefChange={onLocalePrefChange}
               trayPanelError={s.trayPanelError}
@@ -410,6 +416,8 @@ function AppInner({
           ) : workspace !== undefined && s.tabs.length === 0 ? (
             // 零分頁（首次使用）：空狀態引導頁取代空看板。
             <EmptyState onOpen={() => void s.openProjectViaDialog()} />
+          ) : s.boardView === "project-settings" && activeSession !== undefined ? (
+            <ProjectSettingsView settings={activeSession.settings} />
           ) : s.boardView === "specs" ? (
             <SpecList specs={s.specs} onOpen={s.openSpec} />
           ) : s.boardView === "board" ? (

@@ -12,6 +12,10 @@
 use crate::connections::{refresh_connection, RefreshFailure};
 use crate::credentials::{CredentialKind, CredentialStore};
 use serde::Serialize;
+use speclink_desktop_core::settings::{
+    read_workflow_settings_from_text, rewrite_workflow_content_text, rewrite_workflow_fields_text,
+    AppSettings, ContextEdit, WorkflowPolicyFields, WorkflowSettings,
+};
 use speclink_protocol::binding::BindingResponse;
 use speclink_protocol::command::{
     ArchiveDiscussionResponse, ArchiveResponse, ClaimResponse, PromoteDiscussionResponse,
@@ -194,6 +198,8 @@ pub struct RemoteCapabilities {
     pub reorder_card: bool,
     pub change_meta: bool,
     pub change_capabilities: bool,
+    /// 此 membership 是否可寫 workflow policy；server 仍是最終權限防線。
+    pub policy_write: bool,
     /// handshake 宣告了事件能力（SSE transport 或 polling）——缺席時 UI 退化
     /// 為手動重整。
     pub live_updates: bool,
@@ -228,7 +234,63 @@ impl RemoteCapabilities {
             reorder_card: false,
             change_meta: false,
             change_capabilities: false,
+            policy_write: binding.capabilities.policy_write,
             live_updates,
+        }
+    }
+}
+
+/// `/config` 經 desktop-core 文字 seam 後交給前端的設定快照。remote 無
+/// `.speclink.yaml` 面，仍保留空 app 欄位以沿用 SettingsSnapshot 的穩定形狀。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteSettingsSnapshot {
+    pub app: AppSettings,
+    pub workflow: RemoteWorkflowSettings,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteWorkflowSettings {
+    #[serde(flatten)]
+    pub settings: WorkflowSettings,
+    pub revision: u64,
+}
+
+/// Tauri 保留 remote protocol 的 machine-readable reason/status，讓前端可將
+/// revision_conflict 與一般錯誤分流；message 仍是使用者可讀單行文字。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteSettingsError {
+    pub message: String,
+    pub reason: Option<String>,
+    pub status: Option<u16>,
+}
+
+impl RemoteSettingsError {
+    pub fn local(message: impl Into<String>) -> RemoteSettingsError {
+        RemoteSettingsError {
+            message: message.into(),
+            reason: Some("invalid_config".to_string()),
+            status: None,
+        }
+    }
+
+    pub fn command(message: impl Into<String>) -> RemoteSettingsError {
+        RemoteSettingsError {
+            message: message.into(),
+            reason: None,
+            status: None,
+        }
+    }
+}
+
+impl From<RemoteError> for RemoteSettingsError {
+    fn from(error: RemoteError) -> Self {
+        RemoteSettingsError {
+            message: error.message,
+            reason: error.reason,
+            status: error.status,
         }
     }
 }
@@ -357,6 +419,77 @@ impl RemoteWorkspace {
         credentials: &dyn CredentialStore,
     ) -> Result<ListSpecsResponse, RemoteError> {
         self.run(credentials, |client| client.list_specs())
+    }
+
+    /// GET `/config` 的文件原文一律經 desktop-core from-text seam；revision
+    /// 與解析結果同一份 response snapshot，避免欄位與 CAS token 分裂。
+    pub fn read_settings(
+        &self,
+        credentials: &dyn CredentialStore,
+    ) -> Result<RemoteSettingsSnapshot, RemoteSettingsError> {
+        let config = self
+            .run(credentials, |client| client.config())
+            .map_err(RemoteSettingsError::from)?;
+        Ok(RemoteSettingsSnapshot {
+            app: AppSettings {
+                tools: Vec::new(),
+                custom_tools: Vec::new(),
+                parse_error: None,
+            },
+            workflow: RemoteWorkflowSettings {
+                settings: read_workflow_settings_from_text(config.content.as_deref()),
+                revision: config.revision,
+            },
+        })
+    }
+
+    /// 政策四欄位 targeted rewrite：GET 全文 → 共用文字 seam → PUT 全文＋
+    /// 畫面讀得的 expected revision。PUT 仍由 server 做 role／驗證／CAS。
+    pub fn write_workflow_fields(
+        &self,
+        credentials: &dyn CredentialStore,
+        fields: &WorkflowPolicyFields,
+        expected_revision: u64,
+    ) -> Result<u64, RemoteSettingsError> {
+        let config = self
+            .run(credentials, |client| client.config())
+            .map_err(RemoteSettingsError::from)?;
+        let rewritten =
+            rewrite_workflow_fields_text(config.content.as_deref().unwrap_or_default(), fields)
+                .map_err(RemoteSettingsError::local)?;
+        self.run(credentials, |client| {
+            client.put_config(&rewritten, expected_revision)
+        })
+        .map(|response| response.revision)
+        .map_err(RemoteSettingsError::from)
+    }
+
+    /// context/rules targeted rewrite；None 表示不觸及該鍵，Some 空值沿用 seam
+    /// 的移除語意。沒有任何省略 expected revision 的寫入路徑。
+    pub fn write_workflow_content(
+        &self,
+        credentials: &dyn CredentialStore,
+        context: Option<&str>,
+        rules: Option<&[(String, Vec<String>)]>,
+        expected_revision: u64,
+    ) -> Result<u64, RemoteSettingsError> {
+        let config = self
+            .run(credentials, |client| client.config())
+            .map_err(RemoteSettingsError::from)?;
+        let context_edit = context
+            .map(|value| ContextEdit::Set(value.to_string()))
+            .unwrap_or(ContextEdit::Keep);
+        let rewritten = rewrite_workflow_content_text(
+            config.content.as_deref().unwrap_or_default(),
+            &context_edit,
+            rules,
+        )
+        .map_err(RemoteSettingsError::local)?;
+        self.run(credentials, |client| {
+            client.put_config(&rewritten, expected_revision)
+        })
+        .map(|response| response.revision)
+        .map_err(RemoteSettingsError::from)
     }
 
     pub fn change_status(

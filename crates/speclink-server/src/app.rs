@@ -40,7 +40,7 @@ pub fn router(state: AppState) -> Router {
         .route("/discussions/{slug}/promote", post(routes::promote_discussion))
         .route("/specs", get(routes::list_specs))
         .route("/language", get(routes::language))
-        .route("/config", get(routes::config))
+        .route("/config", get(routes::config).put(routes::put_config))
         .route("/whoami", get(routes::whoami))
         .route("/sync-state", get(routes::sync_state))
         .route("/context", post(context::snapshot))

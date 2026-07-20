@@ -389,7 +389,7 @@ describe("App (kanban primary + rich detail)", () => {
       .mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
     const settings = fakeSettings();
     render(<App createSession={makeSession(fakeDataSource(), settings)} workspace={ws as never} />);
-    // 開設定頁 → 切至本機設定簽（Radix TabsTrigger 以 mousedown 觸發）→ 切 English。
+    // 開應用程式設定頁 → 本機設定為預設簽 → 切 English。
     fireEvent.click(await screen.findByText("設定"));
     fireEvent.mouseDown(await screen.findByRole("tab", { name: "本機設定" }));
     const group = await screen.findByTestId("ui-locale");
@@ -413,7 +413,7 @@ describe("App (kanban primary + rich detail)", () => {
       .mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
     const settings = fakeSettings();
     render(<App createSession={makeSession(fakeDataSource(), settings)} workspace={ws as never} />);
-    fireEvent.click(await screen.findByText("設定"));
+    fireEvent.click(await screen.findByText("專案設定"));
     const locale = (await screen.findByLabelText("locale")) as HTMLSelectElement;
     fireEvent.change(locale, { target: { value: "ja" } });
     fireEvent.click(screen.getByTestId("save-workflow"));
@@ -472,7 +472,7 @@ describe("board search wiring（看板搜尋接線）", () => {
 });
 
 describe("sidebar navigation structure（側欄導覽結構）", () => {
-  it("側欄由上而下依序為變更/規格/已封存/設定，無備忘項，頂欄無已封存鈕", async () => {
+  it("側欄頂部依序為變更/規格/已封存/專案設定，設定沉底，無備忘項且頂欄無已封存鈕", async () => {
     renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
@@ -480,23 +480,23 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     const labels = within(aside)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
-    expect(labels).toEqual(["變更", "規格", "已封存", "設定"]);
+    expect(labels).toEqual(["變更", "規格", "已封存", "專案設定", "設定"]);
     expect(screen.queryByText("備忘")).toBeNull();
     const header = document.querySelector("header") as HTMLElement;
     expect(within(header).queryByLabelText("已封存")).toBeNull();
     expect(within(header).queryByText("已封存")).toBeNull();
   });
 
-  it("設定導覽項沉底：為側欄最末子元素、以自動上邊距與頂部三項彈性區隔，切頁與高亮語意不變", async () => {
+  it("設定導覽項沉底：為側欄最末子元素、以自動上邊距與頂部四項彈性區隔，切頁與高亮語意不變", async () => {
     renderApp();
     await screen.findByText("desktop-shell-and-browser");
     const aside = document.querySelector("aside") as HTMLElement;
     const settingsNav = within(aside).getByRole("button", { name: "設定" });
-    // 頂部三項維持依序；設定為側欄最末子元素。
+    // 頂部四項維持依序；設定為側欄最末子元素。
     const labels = within(aside)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
-    expect(labels.slice(0, 3)).toEqual(["變更", "規格", "已封存"]);
+    expect(labels.slice(0, 4)).toEqual(["變更", "規格", "已封存", "專案設定"]);
     expect(aside.lastElementChild).toBe(settingsNav);
     // 彈性區隔：jsdom 無版面計算，以等效自動上邊距 class 斷言（design D5）。
     expect(settingsNav.className).toContain("mt-auto");
@@ -506,6 +506,40 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeNull());
     expect(settingsNav.className).toContain("bg-primary");
     expect(changesNav.className).not.toContain("bg-primary");
+  });
+
+  it("點專案設定切至專案設定頁並轉移高亮", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    const aside = document.querySelector("aside") as HTMLElement;
+    const projectSettingsNav = within(aside).getByRole("button", { name: "專案設定" });
+    const changesNav = within(aside).getByRole("button", { name: "變更" });
+
+    fireEvent.click(projectSettingsNav);
+
+    expect(await screen.findByRole("tab", { name: "config.yaml" })).toBeTruthy();
+    expect(document.querySelector('[data-column="ready"]')).toBeNull();
+    expect(projectSettingsNav.className).toContain("bg-primary");
+    expect(changesNav.className).not.toContain("bg-primary");
+  });
+
+  it("零分頁時設定仍進入應用程式設定頁，專案設定則呈現空狀態引導頁", async () => {
+    const ws = fakeWorkspace();
+    render(<App createSession={makeSession(fakeDataSource())} workspace={ws as never} />);
+    expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
+    const aside = document.querySelector("aside") as HTMLElement;
+    const settingsNav = within(aside).getByRole("button", { name: "設定" });
+
+    fireEvent.click(settingsNav);
+    expect(await screen.findByRole("tab", { name: "本機設定" })).toBeTruthy();
+    expect(screen.queryByText("開啟一個專案開始")).toBeNull();
+    expect(settingsNav.className).toContain("bg-primary");
+
+    const projectSettingsNav = within(aside).getByRole("button", { name: "專案設定" });
+    fireEvent.click(projectSettingsNav);
+    expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
+    expect(projectSettingsNav.className).toContain("bg-primary");
+    expect(settingsNav.className).not.toContain("bg-primary");
   });
 
   it("已封存導覽項帶封存數量徽章，無障礙標籤為「已封存」", async () => {
