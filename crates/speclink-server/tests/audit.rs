@@ -7,7 +7,9 @@
 
 use chrono::{Duration, Utc};
 use speclink_server::audit::{AuditActor, AuditSource};
-use speclink_server::identity::{DevicePoll, IdentityError, IdentitySqlite, IdentityStore, NewInvitation};
+use speclink_server::identity::{
+    DevicePoll, IdentityError, IdentitySqlite, IdentityStore, MembershipRole, NewInvitation,
+};
 use speclink_server::identity::{Project, Repo};
 
 /// A fresh in-memory identity store.
@@ -121,9 +123,21 @@ fn each_variant_type_user_action_writes_exactly_one_audit() {
     assert!(s.get_user(&target).unwrap().unwrap().active, "reactivate took effect");
 
     // membership grant → membership-changed, then revoke → membership-changed
-    s.admin_set_membership(&op, &target, "demo", true).expect("grant");
+    s.admin_set_membership(&op, &target, "demo", MembershipRole::Reader, true)
+        .expect("grant");
     assert!(s.is_member(&target, "demo").unwrap(), "membership granted");
-    s.admin_set_membership(&op, &target, "demo", false).expect("revoke");
+    assert_eq!(
+        s.membership_role(&target, "demo").expect("membership role"),
+        Some(MembershipRole::Reader),
+        "the requested role is stored",
+    );
+    let membership_audit = s.list_audit(1, 0).expect("membership audit");
+    assert!(
+        membership_audit[0].subject.contains("reader"),
+        "the new role value is present in the audit subject",
+    );
+    s.admin_set_membership(&op, &target, "demo", MembershipRole::Reader, false)
+        .expect("revoke");
     assert!(!s.is_member(&target, "demo").unwrap(), "membership revoked");
 
     // admin flag → admin-flag-changed
@@ -154,8 +168,22 @@ fn list_users_and_memberships_read_back() {
     let s = store();
     let admin_id = seed_user(&s, "admin@example.com", true);
     let member_id = seed_user(&s, "member@example.com", false);
-    s.admin_set_membership(&web(&admin_id), &member_id, "demo", true).expect("grant");
-    s.admin_set_membership(&web(&admin_id), &member_id, "extra", true).expect("grant");
+    s.admin_set_membership(
+        &web(&admin_id),
+        &member_id,
+        "demo",
+        MembershipRole::Editor,
+        true,
+    )
+    .expect("grant");
+    s.admin_set_membership(
+        &web(&admin_id),
+        &member_id,
+        "extra",
+        MembershipRole::Reader,
+        true,
+    )
+    .expect("grant");
 
     let users = s.list_users().expect("list users");
     assert_eq!(users.len(), 2, "both users are listed");

@@ -488,6 +488,41 @@ where
     .map_err(|e| format!("remote worker failed: {e}"))?
 }
 
+/// remote settings 專用骨架：錯誤保留 reason/status 的結構化形狀，供前端
+/// 辨識 revision_conflict；其他資料面仍沿用既有單行 String 契約。
+async fn with_remote_settings<T, F>(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    call: F,
+) -> Result<T, remote::RemoteSettingsError>
+where
+    T: Send + 'static,
+    F: FnOnce(
+            &remote::RemoteWorkspace,
+            &dyn credentials::CredentialStore,
+        ) -> Result<T, remote::RemoteSettingsError>
+        + Send
+        + 'static,
+{
+    let origin =
+        connection_origin(&app, &connection_id).map_err(remote::RemoteSettingsError::command)?;
+    let state = app
+        .state::<std::sync::Arc<ConnectionsState>>()
+        .inner()
+        .clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let manager = state.manager_for(&origin);
+        let workspace = remote::RemoteWorkspace::at(&origin, &project, &repo, &manager);
+        call(&workspace, &*state.credentials)
+    })
+    .await
+    .map_err(|error| {
+        remote::RemoteSettingsError::command(format!("remote worker failed: {error}"))
+    })?
+}
+
 /// 開啟 remote workspace（決策 6，fail-closed）：以 project[/repo] 識別
 /// handshake，成功回 project/repo 顯示名與 capability 描述；失敗原樣回錯、
 /// 不建立任何 runtime 狀態。
@@ -507,6 +542,68 @@ async fn remote_open(
     })
     .await
     .map_err(|e| format!("remote worker failed: {e}"))?
+}
+
+/// remote Workflow 設定快照：`/config` 原文經 desktop-core 文字 seam，並帶
+/// 與該原文同一 response 的 revision。
+#[tauri::command]
+async fn remote_read_settings(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+) -> Result<remote::RemoteSettingsSnapshot, remote::RemoteSettingsError> {
+    with_remote_settings(app, connection_id, project, repo, |ws, credentials| {
+        ws.read_settings(credentials)
+    })
+    .await
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn remote_write_workflow_config(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    locale: Option<String>,
+    spec_locale: Option<String>,
+    tdd: bool,
+    audit: bool,
+    expected_revision: u64,
+) -> Result<u64, remote::RemoteSettingsError> {
+    let fields = speclink_desktop_core::settings::WorkflowPolicyFields {
+        locale,
+        spec_locale,
+        tdd,
+        audit,
+    };
+    with_remote_settings(app, connection_id, project, repo, move |ws, credentials| {
+        ws.write_workflow_fields(credentials, &fields, expected_revision)
+    })
+    .await
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn remote_write_workflow_content(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    context: Option<String>,
+    rules: Option<Vec<(String, Vec<String>)>>,
+    expected_revision: u64,
+) -> Result<u64, remote::RemoteSettingsError> {
+    with_remote_settings(app, connection_id, project, repo, move |ws, credentials| {
+        ws.write_workflow_content(
+            credentials,
+            context.as_deref(),
+            rules.as_deref(),
+            expected_revision,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -841,6 +938,9 @@ pub fn run() {
             connection_state,
             connection_logout,
             remote_open,
+            remote_read_settings,
+            remote_write_workflow_config,
+            remote_write_workflow_content,
             remote_list_changes,
             remote_list_specs,
             remote_status,

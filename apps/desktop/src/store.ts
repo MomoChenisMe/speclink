@@ -43,8 +43,8 @@ function showFailureToast(subject: string, messageKey: FailureMessageKey, error:
   toast.error(`${subject} · ${appT(messageKey)} ✗ ${String(error)}`, { id: FAILURE_TOAST_ID });
 }
 
-/** 主頁面：變更看板（預設）、規格頁、已封存獨立頁或設定頁。 */
-export type BoardView = "board" | "specs" | "archived" | "settings";
+/** 主頁面：變更看板（預設）、規格頁、已封存頁、專案設定或應用程式設定。 */
+export type BoardView = "board" | "specs" | "archived" | "project-settings" | "settings";
 
 /** 逐連線登入互動狀態（desktop-connections）：patInput＝device flow 明確
  * 不支援（404/405），就地收 PAT（規格 PAT fallback）；notice＝非錯誤提示

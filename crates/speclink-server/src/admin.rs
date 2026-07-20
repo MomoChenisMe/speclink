@@ -11,7 +11,7 @@
 use crate::audit::{AuditAction, AuditActor, AuditSource};
 use crate::auth::{bearer_token, header};
 use crate::error::ApiError;
-use crate::identity::{IdentityError, NewInvitation, User};
+use crate::identity::{IdentityError, MembershipRole, NewInvitation, User};
 use crate::state::{AppState, SharedStore};
 use crate::web;
 use axum::extract::{Form, FromRequestParts, Path, Query, State};
@@ -43,7 +43,10 @@ pub struct AdminApi {
 impl FromRequestParts<AppState> for AdminApi {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         // 1. bearer token → user, resolved per-request against the identity store
         //    (決策 1): `spk_at_` is a device access token, anything else a PAT,
         //    into the same check-list (hash-match, unrevoked, unexpired, owning
@@ -75,7 +78,9 @@ impl FromRequestParts<AppState> for AdminApi {
         // 3. API version compatibility — the same check every other API route runs.
         let version = header(parts, "x-speclink-api-version");
         if version.as_deref() != Some(API_VERSION) {
-            let sent = version.map(|v| format!(", client sent '{v}'")).unwrap_or_default();
+            let sent = version
+                .map(|v| format!(", client sent '{v}'"))
+                .unwrap_or_default();
             return Err(ApiError::refused(format!(
                 "incompatible api version — this server speaks version '{API_VERSION}'{sent}"
             )));
@@ -96,7 +101,10 @@ impl FromRequestParts<AppState> for AdminApi {
 /// logged-in non-admin is 403; an unauthenticated (or suspended, whose session
 /// no longer authenticates) visit redirects to login. On success the audit actor
 /// records source `web`.
-pub(crate) fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<(User, AuditActor), Response> {
+pub(crate) fn require_admin(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(User, AuditActor), Response> {
     match web::current_user(state, headers) {
         Some(user) if user.admin => {
             let actor = AuditActor::user(user.id.clone(), AuditSource::Web);
@@ -111,7 +119,10 @@ pub(crate) fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<(Us
 fn forbidden_page() -> Response {
     (
         axum::http::StatusCode::FORBIDDEN,
-        axum::response::Html(web::page("拒絕存取", "<h1>需要管理員權限</h1>\n<p>你的帳號沒有管理權限。</p>\n")),
+        axum::response::Html(web::page(
+            "拒絕存取",
+            "<h1>需要管理員權限</h1>\n<p>你的帳號沒有管理權限。</p>\n",
+        )),
     )
         .into_response()
 }
@@ -196,7 +207,10 @@ pub struct CreateRepoBody {
 
 /// A trimmed override, or the key itself when the name is empty.
 fn name_or_key<'a>(name: &'a Option<String>, key: &'a str) -> &'a str {
-    name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(key)
+    name.as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .unwrap_or(key)
 }
 
 /// `POST /api/speclink/v1/admin/users/{id}/suspend`
@@ -205,7 +219,9 @@ pub async fn api_suspend_user(
     admin: AdminApi,
     Path(user_id): Path<String>,
 ) -> Result<Response, ApiError> {
-    state.identity.admin_set_user_suspended(&admin.actor, &user_id, true)?;
+    state
+        .identity
+        .admin_set_user_suspended(&admin.actor, &user_id, true)?;
     Ok(Json(Ack {}).into_response())
 }
 
@@ -215,7 +231,9 @@ pub async fn api_reactivate_user(
     admin: AdminApi,
     Path(user_id): Path<String>,
 ) -> Result<Response, ApiError> {
-    state.identity.admin_set_user_suspended(&admin.actor, &user_id, false)?;
+    state
+        .identity
+        .admin_set_user_suspended(&admin.actor, &user_id, false)?;
     Ok(Json(Ack {}).into_response())
 }
 
@@ -236,7 +254,9 @@ pub async fn api_create_project(
     Json(body): Json<CreateProjectBody>,
 ) -> Result<Response, ApiError> {
     let name = name_or_key(&body.name, &body.key).to_string();
-    state.identity.admin_create_project(&admin.actor, &body.key, &name)?;
+    state
+        .identity
+        .admin_create_project(&admin.actor, &body.key, &name)?;
     Ok(Json(Ack {}).into_response())
 }
 
@@ -247,7 +267,9 @@ pub async fn api_create_repo(
     Json(body): Json<CreateRepoBody>,
 ) -> Result<Response, ApiError> {
     let name = name_or_key(&body.name, &body.key).to_string();
-    state.identity.admin_create_repo(&admin.actor, &body.project_key, &body.key, &name)?;
+    state
+        .identity
+        .admin_create_repo(&admin.actor, &body.project_key, &body.key, &name)?;
     Ok(Json(Ack {}).into_response())
 }
 
@@ -320,7 +342,10 @@ fn set_user_suspended_via_form(
         Ok(actor) => actor,
         Err(refused) => return refused,
     };
-    match state.identity.admin_set_user_suspended(&actor, user_id, suspended) {
+    match state
+        .identity
+        .admin_set_user_suspended(&actor, user_id, suspended)
+    {
         Ok(()) => Redirect::to("/admin/users").into_response(),
         Err(e) => admin_action_error(&e),
     }
@@ -373,8 +398,14 @@ pub struct InviteForm {
 #[derive(Deserialize)]
 pub struct MembershipForm {
     project_key: String,
+    #[serde(default = "default_membership_role")]
+    role: String,
     #[serde(default)]
     action: String,
+}
+
+fn default_membership_role() -> String {
+    MembershipRole::Editor.as_str().to_string()
 }
 
 /// The admin-flag toggle: the next value as a string ("true"/"false").
@@ -429,7 +460,10 @@ pub async fn web_invite(
     };
     match state.identity.admin_create_invitation(&actor, req) {
         Ok(token) => {
-            let url = format!("{}/invite/{token}", state.config.public_url.trim_end_matches('/'));
+            let url = format!(
+                "{}/invite/{token}",
+                state.config.public_url.trim_end_matches('/')
+            );
             Html(render_users(&state, Some(&url), None)).into_response()
         }
         Err(e) => Html(render_users(&state, None, Some(&e.to_string()))).into_response(),
@@ -448,7 +482,14 @@ pub async fn web_set_membership(
         Err(refused) => return refused,
     };
     let member = form.action == "grant";
-    match state.identity.admin_set_membership(&actor, &user_id, form.project_key.trim(), member) {
+    let role = match MembershipRole::parse(form.role.trim()) {
+        Ok(role) => role,
+        Err(e) => return admin_action_error(&e),
+    };
+    match state
+        .identity
+        .admin_set_membership(&actor, &user_id, form.project_key.trim(), role, member)
+    {
         Ok(()) => Redirect::to("/admin/users").into_response(),
         Err(e) => admin_action_error(&e),
     }
@@ -465,7 +506,10 @@ pub async fn web_set_admin_flag(
         Ok(actor) => actor,
         Err(refused) => return refused,
     };
-    match state.identity.admin_set_admin_flag(&actor, &user_id, form.admin == "true") {
+    match state
+        .identity
+        .admin_set_admin_flag(&actor, &user_id, form.admin == "true")
+    {
         Ok(()) => Redirect::to("/admin/users").into_response(),
         Err(e) => admin_action_error(&e),
     }
@@ -478,11 +522,21 @@ fn render_users(state: &AppState, flash: Option<&str>, error: Option<&str>) -> S
     let projects = state.identity.list_projects().unwrap_or_default();
     let options: String = projects
         .iter()
-        .map(|p| format!("<option value=\"{k}\">{k}</option>", k = web::escape(&p.key)))
+        .map(|p| {
+            format!(
+                "<option value=\"{k}\">{k}</option>",
+                k = web::escape(&p.key)
+            )
+        })
         .collect();
 
     let flash_html = flash
-        .map(|url| format!("<div class=\"flash\"><p>邀請連結（只顯示一次）：</p>\n<code>{}</code></div>\n", web::escape(url)))
+        .map(|url| {
+            format!(
+                "<div class=\"flash\"><p>邀請連結（只顯示一次）：</p>\n<code>{}</code></div>\n",
+                web::escape(url)
+            )
+        })
         .unwrap_or_default();
     let error_html = error
         .map(|e| format!("<p class=\"error\">{}</p>\n", web::escape(e)))
@@ -494,16 +548,23 @@ fn render_users(state: &AppState, flash: Option<&str>, error: Option<&str>) -> S
         let memberships = state.identity.list_memberships(&u.id).unwrap_or_default();
         let mut mem_html = String::new();
         for m in &memberships {
+            let role = state
+                .identity
+                .membership_role(&u.id, m)
+                .ok()
+                .flatten()
+                .unwrap_or_default();
             mem_html.push_str(&format!(
-                "<form method=\"post\" action=\"/admin/users/{id}/membership\" class=\"inline\"><input type=\"hidden\" name=\"project_key\" value=\"{k}\"><input type=\"hidden\" name=\"action\" value=\"revoke\"><button type=\"submit\">{k} ✕</button></form> ",
-                k = web::escape(m)
+                "<form method=\"post\" action=\"/admin/users/{id}/membership\" class=\"inline\"><input type=\"hidden\" name=\"project_key\" value=\"{k}\"><input type=\"hidden\" name=\"role\" value=\"{role}\"><input type=\"hidden\" name=\"action\" value=\"revoke\"><button type=\"submit\">{k} ({role}) ✕</button></form> ",
+                k = web::escape(m),
+                role = role.as_str(),
             ));
         }
         let add_mem = if projects.is_empty() {
             String::new()
         } else {
             format!(
-                "<form method=\"post\" action=\"/admin/users/{id}/membership\" class=\"inline\"><input type=\"hidden\" name=\"action\" value=\"grant\"><select name=\"project_key\">{options}</select><button type=\"submit\">加入</button></form>"
+                "<form method=\"post\" action=\"/admin/users/{id}/membership\" class=\"inline\"><input type=\"hidden\" name=\"action\" value=\"grant\"><select name=\"project_key\">{options}</select><select name=\"role\"><option value=\"editor\">editor</option><option value=\"reader\">reader</option></select><button type=\"submit\">加入／更新</button></form>"
             )
         };
         let active_ctrl = if u.active {
@@ -607,7 +668,10 @@ pub async fn web_rename_project(
         Ok(actor) => actor,
         Err(refused) => return refused,
     };
-    match state.identity.admin_rename_project(&actor, &key, form.name.trim()) {
+    match state
+        .identity
+        .admin_rename_project(&actor, &key, form.name.trim())
+    {
         Ok(()) => Redirect::to("/admin/registry").into_response(),
         Err(e) => admin_action_error(&e),
     }
@@ -625,7 +689,10 @@ pub async fn web_create_repo(
     };
     let key = form.key.trim();
     let name = non_empty(&form.name).unwrap_or(key);
-    match state.identity.admin_create_repo(&actor, form.project_key.trim(), key, name) {
+    match state
+        .identity
+        .admin_create_repo(&actor, form.project_key.trim(), key, name)
+    {
         Ok(()) => Redirect::to("/admin/registry").into_response(),
         Err(e) => admin_action_error(&e),
     }
@@ -641,7 +708,12 @@ pub async fn web_rename_repo(
         Ok(actor) => actor,
         Err(refused) => return refused,
     };
-    match state.identity.admin_rename_repo(&actor, form.project_key.trim(), form.key.trim(), form.name.trim()) {
+    match state.identity.admin_rename_repo(
+        &actor,
+        form.project_key.trim(),
+        form.key.trim(),
+        form.name.trim(),
+    ) {
         Ok(()) => Redirect::to("/admin/registry").into_response(),
         Err(e) => admin_action_error(&e),
     }
@@ -759,7 +831,10 @@ fn render_credentials(state: &AppState) -> String {
         ));
     }
 
-    let families = state.identity.list_all_device_families().unwrap_or_default();
+    let families = state
+        .identity
+        .list_all_device_families()
+        .unwrap_or_default();
     let mut fam_rows = String::new();
     for (uid, f) in &families {
         let revoke = if f.revoked_at.is_none() {
@@ -818,7 +893,10 @@ pub async fn audit_page(
 /// append-only and this page only reads it.
 fn render_audit(state: &AppState, page: u32) -> String {
     let offset = page.saturating_mul(AUDIT_PAGE);
-    let entries = state.identity.list_audit(AUDIT_PAGE, offset).unwrap_or_default();
+    let entries = state
+        .identity
+        .list_audit(AUDIT_PAGE, offset)
+        .unwrap_or_default();
     let mut rows = String::new();
     for e in &entries {
         rows.push_str(&format!(
@@ -906,7 +984,10 @@ fn gather_system(state: &AppState) -> SystemInfo {
     let mut outbox_backlogs = Vec::new();
     for project in state.identity.list_projects().unwrap_or_default() {
         for repo in state.identity.list_repos(&project.key).unwrap_or_default() {
-            let scope = Scope::new(ProjectId::new(project.key.clone()), RepoId::new(repo.key.clone()));
+            let scope = Scope::new(
+                ProjectId::new(project.key.clone()),
+                RepoId::new(repo.key.clone()),
+            );
             outbox_backlogs.push(ScopeBacklog {
                 project: project.key.clone(),
                 repo: repo.key,
@@ -921,7 +1002,11 @@ fn gather_system(state: &AppState) -> SystemInfo {
         store_driver: manifest.driver,
         store_contract_version: manifest.contract_version,
         store_level: manifest.level.as_str().to_string(),
-        store_capabilities: manifest.capabilities.iter().map(|c| c.as_str().to_string()).collect(),
+        store_capabilities: manifest
+            .capabilities
+            .iter()
+            .map(|c| c.as_str().to_string())
+            .collect(),
         store_healthy,
         store_health_error,
         outbox_backlogs,
@@ -1011,7 +1096,10 @@ pub async fn web_migrate_store(State(state): State<AppState>, headers: HeaderMap
             StatusCode::CONFLICT,
             Html(web::page(
                 "遷移未執行",
-                &format!("<h1>Store health 檢查未通過，遷移未執行</h1>\n<p>{}</p>\n", web::escape(&e.to_string())),
+                &format!(
+                    "<h1>Store health 檢查未通過，遷移未執行</h1>\n<p>{}</p>\n",
+                    web::escape(&e.to_string())
+                ),
             )),
         )
             .into_response();
@@ -1029,7 +1117,10 @@ pub async fn web_migrate_store(State(state): State<AppState>, headers: HeaderMap
             StatusCode::CONFLICT,
             Html(web::page(
                 "遷移失敗",
-                &format!("<h1>遷移失敗</h1>\n<p>{}</p>\n", web::escape(&e.to_string())),
+                &format!(
+                    "<h1>遷移失敗</h1>\n<p>{}</p>\n",
+                    web::escape(&e.to_string())
+                ),
             )),
         )
             .into_response(),
@@ -1052,7 +1143,10 @@ pub async fn web_export_scope(
     // Export on an unknown scope would silently yield an empty bundle, so gate on
     // the registry and 404 anything unregistered.
     if !scope_is_registered(&state, &project, &repo) {
-        return (StatusCode::NOT_FOUND, Html(web::page("找不到", "<h1>找不到該 scope</h1>\n")))
+        return (
+            StatusCode::NOT_FOUND,
+            Html(web::page("找不到", "<h1>找不到該 scope</h1>\n")),
+        )
             .into_response();
     }
     let scope = Scope::new(ProjectId::new(&project), RepoId::new(&repo));
@@ -1060,12 +1154,18 @@ pub async fn web_export_scope(
         Ok(bytes) => bytes,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     };
-    let _ =
-        state.identity.record_audit(&actor, AuditAction::ScopeExported, &format!("{project}/{repo}"));
+    let _ = state.identity.record_audit(
+        &actor,
+        AuditAction::ScopeExported,
+        &format!("{project}/{repo}"),
+    );
     let filename = format!("{project}__{repo}.bundle.json");
     (
         [
-            (axum::http::header::CONTENT_TYPE, "application/json".to_string()),
+            (
+                axum::http::header::CONTENT_TYPE,
+                "application/json".to_string(),
+            ),
             (
                 axum::http::header::CONTENT_DISPOSITION,
                 format!("attachment; filename=\"{filename}\""),
@@ -1104,7 +1204,10 @@ fn render_system(info: &SystemInfo) -> String {
             "<tr><td>{project}</td><td>{repo}</td><td>{backlog}</td></tr>\n",
             project = web::escape(&b.project),
             repo = web::escape(&b.repo),
-            backlog = b.backlog.map(|n| n.to_string()).unwrap_or_else(|| "無法讀取".to_string()),
+            backlog = b
+                .backlog
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "無法讀取".to_string()),
         ));
     }
     let body = format!(

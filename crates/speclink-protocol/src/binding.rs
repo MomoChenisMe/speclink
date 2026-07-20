@@ -47,6 +47,8 @@ pub struct Capabilities {
     #[serde(default)]
     pub context_snapshots: bool,
     #[serde(default)]
+    pub policy_write: bool,
+    #[serde(default)]
     pub authentication: Vec<String>,
     #[serde(default)]
     pub events: EventsDeclaration,
@@ -69,6 +71,7 @@ mod tests {
         assert_eq!(handshake.api_version, crate::API_VERSION);
         assert_eq!(handshake.engine_version, "1.4.0");
         assert!(handshake.capabilities.context_snapshots);
+        assert!(!handshake.capabilities.policy_write, "older handshakes default read-only");
 
         let events = &handshake.capabilities.events;
         assert_eq!(events.transports.len(), 1);
@@ -94,6 +97,7 @@ mod tests {
         .unwrap();
         assert!(handshake.capabilities.events.transports.is_empty());
         assert!(handshake.capabilities.events.polling.is_none());
+        assert!(!handshake.capabilities.policy_write);
     }
 
     #[test]

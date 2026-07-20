@@ -197,39 +197,26 @@ code:
 ---
 ### Requirement: 伺服器管理最小面
 
-設定頁 SHALL 提供伺服器頁籤（app 全域範圍）：呈現 saved servers 清單（顯示名、origin、登入狀態與身分）、新增連線（URL 與顯示名）、登入、登出與移除操作。表單控制項 SHALL 使用專案自建 UI 元件、文案為繁體中文。此頁籤為最小管理面；Workspace chooser 與設定資訊架構重整不屬本能力。
+應用程式設定頁 SHALL 提供伺服器頁籤（app 全域範圍、與任何專案分頁無關）：呈現 saved servers 清單（顯示名、origin、登入狀態與身分）、新增連線（URL 與顯示名）、登入、登出與移除操作。表單控制項 SHALL 使用專案自建 UI 元件、文案為繁體中文。此頁籤為最小管理面。
 
 #### Scenario: 新增後清單即時反映
 
 - **WHEN** 於伺服器頁籤新增 URL 與顯示名
 - **THEN** 清單立即出現該條目並進入登入流程；完成登入後條目顯示身分名
 
+
 <!-- @trace
-source: connection-registry-keychain
-updated: 2026-07-17
+source: settings-ia-restructure
+updated: 2026-07-18
 code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/credentials.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/tests/connections.rs
-  - apps/desktop/src-tauri/tests/login_orchestration.rs
   - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/serversPanel.test.tsx
-  - apps/desktop/src/adapter/connections.ts
-  - apps/desktop/src/components/ServersPanel.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/appSettingsView.test.tsx
+  - apps/desktop/src/__tests__/projectSettingsView.test.tsx
+  - apps/desktop/src/__tests__/settingsView.test.tsx
   - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/main.tsx
   - apps/desktop/src/store.ts
+  - apps/desktop/src/views/AppSettingsView.tsx
+  - apps/desktop/src/views/ProjectSettingsView.tsx
   - apps/desktop/src/views/SettingsView.tsx
-  - crates/speclink-protocol/src/query.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/device.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/tests/device_flow.rs
-  - crates/speclink-server/src/admin.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/auth.rs
-  - crates/speclink-server/tests/auth_whoami.rs
 -->

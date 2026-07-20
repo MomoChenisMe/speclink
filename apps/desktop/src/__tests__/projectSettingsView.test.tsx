@@ -1,12 +1,12 @@
-// SettingsView（spec 需求「設定頁圖形化讀寫兩層設定」「設定頁編輯專案說明與產出規則」
-// 的前端面＋design D1–D3）：三頁簽組織（config.yaml／.speclink.yaml／本機設定）、
+// ProjectSettingsView（spec 需求「設定頁圖形化讀寫兩層設定」「設定頁編輯專案說明與產出規則」
+// 的前端面）：兩頁簽組織（config.yaml／.speclink.yaml）、
 // 專案說明與產出規則拆為獨立卡各持編輯態、解析失敗簽級警示。
 import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { I18nProvider } from "@speclink/ui";
 
-import { SettingsView } from "../views/SettingsView";
+import { ProjectSettingsView } from "../views/ProjectSettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { SettingsSnapshot } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
@@ -40,6 +40,8 @@ function snapshot(over: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
 /** 活躍 session 的設定面 mock（workspace-session 決策 3：root 已綁定）。 */
 function fakeSettings(snap: SettingsSnapshot): WorkspaceSettingsProvider {
   return {
+    kind: "local",
+    policyWrite: true,
     readSettings: vi.fn().mockResolvedValue(snap),
     writeAppTools: vi.fn().mockResolvedValue(undefined),
     writeWorkflowConfig: vi.fn().mockResolvedValue(undefined),
@@ -48,16 +50,11 @@ function fakeSettings(snap: SettingsSnapshot): WorkspaceSettingsProvider {
   } as unknown as WorkspaceSettingsProvider;
 }
 
-function renderView(
-  snap: SettingsSnapshot,
-  over: { onLocalePrefChange?: (p: "zh-TW" | "en" | null) => void } = {},
-) {
+function renderView(snap: SettingsSnapshot) {
   const ws = fakeSettings(snap);
   render(
-    <SettingsView
+    <ProjectSettingsView
       settings={ws}
-      localePref={null}
-      onLocalePrefChange={over.onLocalePrefChange ?? vi.fn()}
     />,
   );
   return ws;
@@ -84,7 +81,7 @@ function switchToTab(name: string) {
   fireEvent.mouseDown(screen.getByRole("tab", { name }));
 }
 
-describe("SettingsView 載入", () => {
+describe("ProjectSettingsView 載入", () => {
   it("呈現兩檔現值：config.yaml 簽的政策欄位、.speclink.yaml 簽的 tools 勾選；未設定欄位呈預設狀態", async () => {
     renderView(snapshot());
     const locale = (await screen.findByLabelText("locale")) as HTMLSelectElement;
@@ -109,7 +106,7 @@ describe("SettingsView 載入", () => {
   });
 });
 
-describe("SettingsView 寫入", () => {
+describe("ProjectSettingsView 寫入", () => {
   it("tools 加選 codex 後儲存 → writeAppTools 收到完整選集", async () => {
     const ws = renderView(snapshot());
     await screen.findByRole("tab", { name: ".speclink.yaml" });
@@ -159,14 +156,14 @@ describe("SettingsView 寫入", () => {
   });
 });
 
-// ---- 三頁簽組織（spec 需求「設定頁圖形化讀寫兩層設定」；design D1/D3）----
+// ---- 兩頁簽組織（spec 需求「設定頁圖形化讀寫兩層設定」）----
 
-describe("設定頁三頁簽組織（spec Scenario「三頁簽組織與預設簽」）", () => {
-  it("頁簽依序 config.yaml／.speclink.yaml／本機設定，預設落在 config.yaml 簽（三卡＋mono 路徑註記）", async () => {
+describe("專案設定頁兩頁簽組織（spec Scenario「兩頁分工與預設簽」）", () => {
+  it("頁簽依序 config.yaml／.speclink.yaml，預設落在 config.yaml 簽（三卡＋mono 路徑註記）", async () => {
     renderView(projectSnap());
     await screen.findByTestId("context-card");
     const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-    expect(tabs).toEqual(["config.yaml", ".speclink.yaml", "本機設定"]);
+    expect(tabs).toEqual(["config.yaml", ".speclink.yaml"]);
     expect(screen.getByRole("tab", { name: "config.yaml" }).getAttribute("aria-selected")).toBe("true");
     // config.yaml 簽卡片歸屬：專案說明、產出規則、產出政策。
     expect(screen.getByTestId("context-card")).toBeTruthy();
@@ -178,10 +175,9 @@ describe("設定頁三頁簽組織（spec Scenario「三頁簽組織與預設簽
     expect(note.className).toContain("font-mono");
     // 其他簽的卡片不在畫面上。
     expect(screen.queryByLabelText("claude")).toBeNull();
-    expect(screen.queryByTestId("ui-locale")).toBeNull();
   });
 
-  it("切至 .speclink.yaml 簽見 AI 工具卡；切至本機設定簽見介面語言卡與「僅存於此裝置」註記", async () => {
+  it("切至 .speclink.yaml 簽見 AI 工具卡與等寬字檔案路徑註記", async () => {
     renderView(projectSnap());
     await screen.findByTestId("context-card");
     switchToTab(".speclink.yaml");
@@ -191,26 +187,15 @@ describe("設定頁三頁簽組織（spec Scenario「三頁簽組織與預設簽
     expect(note.textContent).toBe(".speclink.yaml");
     expect(note.className).toContain("font-mono");
     expect(screen.queryByTestId("context-card")).toBeNull();
-    switchToTab("本機設定");
-    expect(screen.getByText("介面語言")).toBeTruthy();
-    expect(screen.getByTestId("ui-locale")).toBeTruthy();
-    expect(screen.getByTestId("local-note").textContent).toMatch(/僅存於此裝置/);
-    expect(screen.queryByLabelText("claude")).toBeNull();
   });
 
-  it("config.yaml 解析失敗：頁簽帶警示點（未切至該簽也可見）、簽首橫幅、簽內表單與編輯鈕停用；本機設定簽不受影響", async () => {
+  it("config.yaml 解析失敗：頁簽帶警示點、簽首橫幅、簽內表單與編輯鈕停用", async () => {
     renderView(
       projectSnap({ context: null, rules: {}, schemaArtifacts: [], parseError: "invalid yaml at line 3" }),
     );
     const configTab = await screen.findByRole("tab", { name: "config.yaml" });
-    // 停在本機設定簽仍可見 config.yaml 簽的警示點（spec Scenario「解析失敗簽級警示」）。
-    switchToTab("本機設定");
     expect(within(configTab).getByTestId("tab-warning")).toBeTruthy();
-    // 本機設定簽不受影響：介面語言三選照常可用。
-    const group = screen.getByTestId("ui-locale");
-    expect((within(group).getByText("English") as HTMLButtonElement).disabled).toBe(false);
-    // 切回 config.yaml 簽：橫幅浮出、政策表單與兩卡編輯鈕停用。
-    switchToTab("config.yaml");
+    // config.yaml 簽：橫幅浮出、政策表單與兩卡編輯鈕停用。
     expect(await screen.findByText(/invalid yaml at line 3/)).toBeTruthy();
     expect((screen.getByTestId("save-workflow") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText("tdd") as HTMLInputElement).disabled).toBe(true);
@@ -497,50 +482,178 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
   });
 });
 
-describe("SettingsView UI 語言三選（design D8）", () => {
-  it("切換 UI 語言即回呼偏好、不觸碰 config.yaml 寫入", async () => {
-    const onLocalePrefChange = vi.fn();
-    const snap = snapshot();
-    const ws = fakeSettings(snap);
-    render(
-      <SettingsView settings={ws} localePref={null} onLocalePrefChange={onLocalePrefChange} />,
+describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => {
+  function remoteSettings(
+    snap: SettingsSnapshot,
+    policyWrite: boolean,
+    nextRevision = 42,
+  ): WorkspaceSettingsProvider {
+    return {
+      kind: "remote",
+      policyWrite,
+      readSettings: vi.fn().mockResolvedValue(snap),
+      writeAppTools: vi.fn().mockRejectedValue(new Error("remote 無 tools 設定")),
+      writeWorkflowConfig: vi.fn().mockResolvedValue(nextRevision),
+      writeWorkflowContext: vi.fn().mockResolvedValue(nextRevision),
+      writeWorkflowRules: vi.fn().mockResolvedValue(nextRevision),
+    } as unknown as WorkspaceSettingsProvider;
+  }
+
+  it("editor 僅見 Workflow 簽、mono revision，政策可存且成功後 revision 前進", async () => {
+    const snap = projectSnap({ revision: 41 } as Partial<SettingsSnapshot["workflow"]>);
+    const ws = remoteSettings(snap, true);
+    render(<ProjectSettingsView settings={ws} />);
+
+    const tab = await screen.findByRole("tab", { name: "Workflow" });
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    expect(tab.getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("tab", { name: ".speclink.yaml" })).toBeNull();
+    const revision = screen.getByTestId("policy-revision");
+    expect(revision.textContent).toContain("41");
+    expect(revision.className).toContain("font-mono");
+
+    fireEvent.click(screen.getByLabelText("audit"));
+    fireEvent.click(screen.getByTestId("save-workflow"));
+    await waitFor(() =>
+      expect(ws.writeWorkflowConfig).toHaveBeenCalledWith({
+        locale: "tw",
+        specLocale: null,
+        tdd: true,
+        audit: true,
+      }),
     );
-    await screen.findByRole("tab", { name: "本機設定" });
-    switchToTab("本機設定");
-    const group = await screen.findByTestId("ui-locale");
-    fireEvent.click(within(group).getByText("English"));
-    expect(onLocalePrefChange).toHaveBeenCalledWith("en");
-    fireEvent.click(within(group).getByText(/跟隨系統/));
-    expect(onLocalePrefChange).toHaveBeenCalledWith(null);
+    await waitFor(() => expect(screen.getByTestId("policy-revision").textContent).toContain("42"));
+  });
+
+  it("reader 看得到三卡現值但全唯讀，存檔停用並附繁中角色說明", async () => {
+    const ws = remoteSettings(
+      projectSnap({ revision: 9 } as Partial<SettingsSnapshot["workflow"]>),
+      false,
+    );
+    render(<ProjectSettingsView settings={ws} />);
+
+    await screen.findByRole("tab", { name: "Workflow" });
+    expect(screen.getByTestId("context-card")).toBeTruthy();
+    expect(screen.getByTestId("rules-card")).toBeTruthy();
+    expect(screen.getByTestId("policy-card")).toBeTruthy();
+    expect(screen.getByTestId("policy-reader-note").textContent).toContain("你的角色為檢視者");
+    expect((screen.getByTestId("context-edit") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("rules-edit") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("locale") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText("tdd") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByTestId("save-workflow") as HTMLButtonElement).disabled).toBe(true);
     expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
   });
-});
 
-describe("系統匣樣式卡已拆除（tray-macos-panel-only：樣式由平台決定）", () => {
-  it("本機設定簽不再出現「系統匣樣式」卡", async () => {
-    const ws = fakeSettings(snapshot());
-    render(<SettingsView settings={ws} localePref={null} onLocalePrefChange={vi.fn()} />);
-    await screen.findByRole("tab", { name: "本機設定" });
-    switchToTab("本機設定");
-    await screen.findByTestId("ui-locale");
-    expect(screen.queryByTestId("tray-style-card")).toBeNull();
-    expect(screen.queryByText("系統匣樣式")).toBeNull();
+  it("409 保留原始輸入、重讀最新 revision 逐欄對照，且只提供兩個知情出口", async () => {
+    const initial = projectSnap({ revision: 41 } as Partial<SettingsSnapshot["workflow"]>);
+    const latest = projectSnap({
+      revision: 42,
+      context: "server 較新的說明",
+      rules: { tasks: ["server rule"] },
+    } as Partial<SettingsSnapshot["workflow"]>);
+    const ws = remoteSettings(initial, true);
+    (ws.readSettings as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(latest);
+    (ws.writeWorkflowContext as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+      message: "policy revision conflict",
+      reason: "revision_conflict",
+      status: 409,
+    });
+    render(<ProjectSettingsView settings={ws} />);
+
+    const contextCard = await screen.findByTestId("context-card");
+    fireEvent.click(within(contextCard).getByTestId("context-edit"));
+    fireEvent.change(within(contextCard).getByTestId("context-input"), {
+      target: { value: "我的原始輸入\n保留換行" },
+    });
+    fireEvent.click(within(contextCard).getByTestId("context-save"));
+
+    const panel = await screen.findByTestId("policy-conflict-panel");
+    expect((within(contextCard).getByTestId("context-input") as HTMLTextAreaElement).value).toBe(
+      "我的原始輸入\n保留換行",
+    );
+    expect(ws.readSettings).toHaveBeenCalledTimes(2);
+    expect(within(panel).getByTestId("conflict-revision").textContent).toContain("42");
+    const contextRow = within(panel).getByTestId("conflict-row-context");
+    expect(within(contextRow).getByTestId("conflict-server").textContent).toContain(
+      "server 較新的說明",
+    );
+    expect(within(contextRow).getByTestId("conflict-mine").textContent).toContain(
+      "我的原始輸入",
+    );
+    expect(within(panel).getByTestId("conflict-row-rules-tasks")).toBeTruthy();
+    expect(within(panel).getByTestId("conflict-row-audit")).toBeTruthy();
+    expect(within(panel).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "以 server 版重載",
+      "檢視後以最新 revision 重新提交",
+    ]);
+    expect(screen.queryByText(/強制覆寫/)).toBeNull();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "以 server 版重載" }));
+    await waitFor(() => expect(screen.queryByTestId("policy-conflict-panel")).toBeNull());
+    expect(screen.getByTestId("context-readonly").textContent).toContain("server 較新的說明");
+    expect(screen.getByTestId("policy-revision").textContent).toContain("42");
+    expect(ws.writeWorkflowContext).toHaveBeenCalledTimes(1);
   });
 
-  it("面板建立失敗：本機設定簽以獨立警示行浮出單行錯誤（規格「面板樣式（macOS）」失敗場景）", async () => {
-    const ws = fakeSettings(snapshot());
-    render(
-      <SettingsView
-        settings={ws}
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        trayPanelError="tray panel window creation failed: boom"
-      />,
+  it("以最新 revision 重送仍遇 409 時遞迴重讀對照，輸入不變且無 force 路徑", async () => {
+    const initial = projectSnap({ revision: 41 } as Partial<SettingsSnapshot["workflow"]>);
+    const latest42 = projectSnap({
+      revision: 42,
+      locale: "ja",
+    } as Partial<SettingsSnapshot["workflow"]>);
+    const latest43 = projectSnap({
+      revision: 43,
+      locale: "tw",
+    } as Partial<SettingsSnapshot["workflow"]>);
+    const ws = remoteSettings(initial, true, 44);
+    (ws.readSettings as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(latest42)
+      .mockResolvedValueOnce(latest43);
+    (ws.writeWorkflowConfig as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockRejectedValueOnce({ reason: "revision_conflict", status: 409, message: "conflict 41" })
+      .mockRejectedValueOnce({ reason: "revision_conflict", status: 409, message: "conflict 42" })
+      .mockResolvedValueOnce(44);
+    render(<ProjectSettingsView settings={ws} />);
+
+    const locale = (await screen.findByLabelText("locale")) as HTMLSelectElement;
+    fireEvent.change(locale, { target: { value: "en" } });
+    fireEvent.click(screen.getByTestId("save-workflow"));
+    let panel = await screen.findByTestId("policy-conflict-panel");
+    let localeRow = within(panel).getByTestId("conflict-row-locale");
+    expect(within(localeRow).getByTestId("conflict-server").textContent).toContain("ja");
+    expect(within(localeRow).getByTestId("conflict-mine").textContent).toContain("en");
+
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "檢視後以最新 revision 重新提交" }),
     );
-    await screen.findByRole("tab", { name: "本機設定" });
-    switchToTab("本機設定");
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("tray panel window creation failed: boom");
-    expect(screen.queryByTestId("tray-style-card")).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByTestId("conflict-revision").textContent).toContain("43"),
+    );
+    panel = screen.getByTestId("policy-conflict-panel");
+    localeRow = within(panel).getByTestId("conflict-row-locale");
+    expect(within(localeRow).getByTestId("conflict-server").textContent).toContain("tw");
+    expect(within(localeRow).getByTestId("conflict-mine").textContent).toContain("en");
+    expect(locale.value).toBe("en");
+    expect(ws.readSettings).toHaveBeenCalledTimes(3);
+    expect(ws.writeWorkflowConfig).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "檢視後以最新 revision 重新提交" }),
+    );
+    await waitFor(() => expect(screen.queryByTestId("policy-conflict-panel")).toBeNull());
+    expect(screen.getByTestId("policy-revision").textContent).toContain("44");
+    expect(locale.value).toBe("en");
+    expect(ws.writeWorkflowConfig).toHaveBeenCalledTimes(3);
+    for (const call of (ws.writeWorkflowConfig as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(call[0]).toMatchObject({ locale: "en" });
+    }
+    expect(screen.queryByText(/強制覆寫/)).toBeNull();
   });
 });

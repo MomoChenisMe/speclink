@@ -1,6 +1,6 @@
-// 設定頁（spec 需求「設定頁圖形化讀寫兩層設定」「設定頁編輯專案說明與產出規則」；
-// design D1–D3）：三頁簽組織——config.yaml（專案說明／產出規則／產出政策）、
-// .speclink.yaml（AI 工具）、本機設定（介面語言）。頁簽標籤檔名直出（字面常數，
+// 專案設定頁（spec 需求「設定頁圖形化讀寫兩層設定」「設定頁編輯專案說明與產出規則」）：
+// 兩頁簽組織——config.yaml（專案說明／產出規則／產出政策）、
+// .speclink.yaml（AI 工具）。頁簽標籤檔名直出（字面常數，
 // LANGUAGE.md 明文例外）；專案說明與產出規則為獨立卡各持編輯態；解析失敗掛簽級
 // 警示點與簽首橫幅。欄位旁說明文字承接被 Mapping 讀-改-寫移除的範本註解教學角色。
 import { useEffect, useState } from "react";
@@ -23,10 +23,49 @@ import {
   useI18n,
 } from "@speclink/ui";
 
-import type { SettingsSnapshot } from "../adapter/workspace";
+import type { SettingsSnapshot, WorkflowFields } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
-import type { LocalePreference } from "../i18n/locale";
-import { ServersPanel, type ServersPanelProps } from "../components/ServersPanel";
+
+type PendingRemoteWrite =
+  | { kind: "policy"; fields: WorkflowFields }
+  | { kind: "context"; context: string }
+  | { kind: "rules"; rules: Array<[string, string[]]> };
+
+interface ConflictRow {
+  key: string;
+  label: string;
+  server: string;
+  mine: string;
+}
+
+interface PolicyConflict {
+  latest: SettingsSnapshot;
+  pending: PendingRemoteWrite;
+  rows: ConflictRow[];
+}
+
+function remoteErrorReason(error: unknown): string | null {
+  if (typeof error === "object" && error !== null && "reason" in error) {
+    const reason = (error as { reason?: unknown }).reason;
+    return typeof reason === "string" ? reason : null;
+  }
+  if (typeof error === "string") {
+    try {
+      return remoteErrorReason(JSON.parse(error));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function errorMessage(error: unknown): string {
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return String(error);
+}
 
 /** 行↔條目轉換（design D2）：一行一條規則——儲存時逐行修剪頭尾空白、空行滌除，行序即寫入順序。 */
 const entriesToText = (entries: string[]) => entries.join("\n");
@@ -39,17 +78,9 @@ const textToEntries = (text: string) =>
 /** 收合門檻（design D3）：唯讀 markdown 超長截斷——渲染高度無法在 jsdom 量測，以原文規模判定。 */
 const isLongContext = (text: string) => text.split("\n").length > 12 || text.length > 1200;
 
-export interface SettingsViewProps {
+export interface ProjectSettingsViewProps {
   /** 活躍 session 的設定面（root 已綁定；workspace-session 決策 3）。 */
   settings: WorkspaceSettingsProvider;
-  /** UI 語言偏好現值（null＝跟隨系統）。 */
-  localePref: LocalePreference;
-  /** 切換即時生效並持久化（App 層負責寫 localStorage）。 */
-  onLocalePrefChange: (pref: LocalePreference) => void;
-  /** 面板建立失敗的單行錯誤（spec：退回原生選單並於本機設定簽以獨立警示行浮出）。 */
-  trayPanelError?: string | null;
-  /** 伺服器頁籤（desktop-connections；app 全域、不經 session）；未注入即不顯示。 */
-  servers?: ServersPanelProps;
 }
 
 function FieldHelp({ children }: { children: React.ReactNode }) {
@@ -109,6 +140,7 @@ function CardEditControls({
             variant="outline"
             size="sm"
             data-testid={`${testPrefix}-cancel`}
+            disabled={disabled}
             className="text-sm font-normal text-muted-foreground hover:text-foreground"
             onClick={onCancel}
           >
@@ -118,6 +150,7 @@ function CardEditControls({
             type="button"
             size="sm"
             data-testid={`${testPrefix}-save`}
+            disabled={disabled}
             className="text-sm"
             onClick={onSave}
           >
@@ -141,13 +174,7 @@ function CardEditControls({
   );
 }
 
-export function SettingsView({
-  settings,
-  localePref,
-  onLocalePrefChange,
-  trayPanelError = null,
-  servers,
-}: SettingsViewProps) {
+export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
   const { t } = useI18n();
   const [snap, setSnap] = useState<SettingsSnapshot | null>(null);
   const [tools, setTools] = useState<string[]>([]);
@@ -169,28 +196,55 @@ export function SettingsView({
   const [contextExpanded, setContextExpanded] = useState(false);
   const [appMsg, setAppMsg] = useState<string | null>(null);
   const [wfMsg, setWfMsg] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<PolicyConflict | null>(null);
+
+  const hydrate = (next: SettingsSnapshot) => {
+    setSnap(next);
+    setTools(next.app.tools);
+    setLocale(next.workflow.locale ?? "");
+    setSpecLocale(next.workflow.specLocale ?? "");
+    setTdd(next.workflow.tdd);
+    setAudit(next.workflow.audit);
+    setContextText(next.workflow.context ?? "");
+    const nextRules = Object.fromEntries(
+      next.workflow.schemaArtifacts.map((id) => [id, next.workflow.rules[id] ?? []]),
+    );
+    setRules(nextRules);
+    setDraftContext(next.workflow.context ?? "");
+    setDraftRules(
+      Object.fromEntries(
+        next.workflow.schemaArtifacts.map((id) => [
+          id,
+          entriesToText(next.workflow.rules[id] ?? []),
+        ]),
+      ),
+    );
+    setCtxEditing(false);
+    setRulesEditing(false);
+    setContextExpanded(false);
+  };
 
   useEffect(() => {
-    void settings.readSettings().then((s) => {
-      setSnap(s);
-      setTools(s.app.tools);
-      setLocale(s.workflow.locale ?? "");
-      setSpecLocale(s.workflow.specLocale ?? "");
-      setTdd(s.workflow.tdd);
-      setAudit(s.workflow.audit);
-      setContextText(s.workflow.context ?? "");
-      setRules(
-        Object.fromEntries(
-          s.workflow.schemaArtifacts.map((id) => [id, s.workflow.rules[id] ?? []]),
-        ),
-      );
-    });
+    void settings.readSettings().then(hydrate);
   }, [settings]);
 
   if (!snap) return null;
 
+  const isRemote = settings.kind === "remote";
   const appDisabled = snap.app.parseError !== null;
-  const wfDisabled = snap.workflow.parseError !== null;
+  const wfDisabled =
+    snap.workflow.parseError !== null ||
+    (isRemote && !settings.policyWrite) ||
+    conflict !== null;
+
+  const adoptRevision = (next: number | void) => {
+    if (typeof next !== "number") return;
+    setSnap((current) =>
+      current === null
+        ? current
+        : { ...current, workflow: { ...current.workflow, revision: next } },
+    );
+  };
 
   const toggleTool = (tool: string, on: boolean) =>
     setTools((prev) => (on ? [...prev.filter((x) => x !== tool), tool] : prev.filter((x) => x !== tool)));
@@ -201,21 +255,107 @@ export function SettingsView({
       setAppMsg(t("settings.saved"));
     } catch (e) {
       // 寫入失敗：單行錯誤（指明檔案與階段，來自 desktop-core），表單維持原值。
-      setAppMsg(String(e));
+      setAppMsg(errorMessage(e));
     }
   };
 
-  const saveWorkflow = async () => {
-    try {
-      await settings.writeWorkflowConfig({
-        locale: locale || null,
-        specLocale: specLocale || null,
-        tdd,
-        audit,
+  const buildConflictRows = (
+    latest: SettingsSnapshot,
+    pending: PendingRemoteWrite,
+  ): ConflictRow[] => {
+    const policy =
+      pending.kind === "policy"
+        ? pending.fields
+        : {
+            locale: locale || null,
+            specLocale: specLocale || null,
+            tdd,
+            audit,
+          };
+    const mineContext =
+      pending.kind === "context" ? pending.context : ctxEditing ? draftContext : contextText;
+    const artifactIds = Array.from(
+      new Set([...snap.workflow.schemaArtifacts, ...latest.workflow.schemaArtifacts]),
+    );
+    const pendingRules = pending.kind === "rules" ? Object.fromEntries(pending.rules) : null;
+    const show = (value: string | null | undefined) => value || "—";
+    const rows: ConflictRow[] = [
+      {
+        key: "context",
+        label: t("settings.contextLabel"),
+        server: show(latest.workflow.context),
+        mine: show(mineContext),
+      },
+      {
+        key: "locale",
+        label: "locale",
+        server: show(latest.workflow.locale),
+        mine: show(policy.locale),
+      },
+      {
+        key: "spec-locale",
+        label: "spec_locale",
+        server: show(latest.workflow.specLocale),
+        mine: show(policy.specLocale),
+      },
+      {
+        key: "tdd",
+        label: "tdd",
+        server: String(latest.workflow.tdd),
+        mine: String(policy.tdd),
+      },
+      {
+        key: "audit",
+        label: "audit",
+        server: String(latest.workflow.audit),
+        mine: String(policy.audit),
+      },
+    ];
+    for (const id of artifactIds) {
+      const mine = rulesEditing
+        ? draftRules[id] ?? ""
+        : entriesToText(pendingRules?.[id] ?? rules[id] ?? []);
+      rows.push({
+        key: `rules-${id}`,
+        label: `rules.${id}`,
+        server: show(entriesToText(latest.workflow.rules[id] ?? [])),
+        mine: show(mine),
       });
+    }
+    return rows;
+  };
+
+  const handleWriteError = async (
+    error: unknown,
+    pending: PendingRemoteWrite,
+  ): Promise<boolean> => {
+    if (!isRemote || remoteErrorReason(error) !== "revision_conflict") return false;
+    try {
+      const latest = await settings.readSettings();
+      setConflict({ latest, pending, rows: buildConflictRows(latest, pending) });
+    } catch (readError) {
+      const message = errorMessage(readError);
+      if (pending.kind === "policy") setWfMsg(message);
+      else if (pending.kind === "context") setCtxMsg(message);
+      else setRulesMsg(message);
+    }
+    return true;
+  };
+
+  const saveWorkflow = async () => {
+    const fields: WorkflowFields = {
+      locale: locale || null,
+      specLocale: specLocale || null,
+      tdd,
+      audit,
+    };
+    try {
+      const next = await settings.writeWorkflowConfig(fields);
+      adoptRevision(next);
       setWfMsg(t("settings.saved"));
     } catch (e) {
-      setWfMsg(String(e));
+      if (await handleWriteError(e, { kind: "policy", fields })) setWfMsg(null);
+      else setWfMsg(errorMessage(e));
     }
   };
 
@@ -228,14 +368,16 @@ export function SettingsView({
   const saveContext = async () => {
     // 僅寫 context 鍵（清空＝移除鍵）；產出規則卡對應的 rules 鍵不觸碰。
     try {
-      await settings.writeWorkflowContext(draftContext);
+      const next = await settings.writeWorkflowContext(draftContext);
+      adoptRevision(next);
       setContextText(draftContext);
       setContextExpanded(false);
       setCtxEditing(false);
       setCtxMsg(t("settings.saved"));
     } catch (e) {
       // 寫入失敗：單行錯誤，維持編輯態不遺失輸入。
-      setCtxMsg(String(e));
+      if (await handleWriteError(e, { kind: "context", context: draftContext })) setCtxMsg(null);
+      else setCtxMsg(errorMessage(e));
     }
   };
 
@@ -257,47 +399,161 @@ export function SettingsView({
       textToEntries(draftRules[id] ?? ""),
     ]);
     try {
-      await settings.writeWorkflowRules(nextRules);
+      const next = await settings.writeWorkflowRules(nextRules);
+      adoptRevision(next);
       setRules(Object.fromEntries(nextRules));
       setRulesEditing(false);
       setRulesMsg(t("settings.saved"));
     } catch (e) {
-      setRulesMsg(String(e));
+      if (await handleWriteError(e, { kind: "rules", rules: nextRules })) setRulesMsg(null);
+      else setRulesMsg(errorMessage(e));
     }
   };
 
-  const uiLocaleOptions: Array<{ value: LocalePreference; label: string }> = [
-    { value: null, label: t("settings.followSystem") },
-    { value: "zh-TW", label: "繁體中文" },
-    { value: "en", label: "English" },
-  ];
+  const reloadServerVersion = () => {
+    if (conflict === null) return;
+    hydrate(conflict.latest);
+    setConflict(null);
+    setCtxMsg(null);
+    setRulesMsg(null);
+    setWfMsg(null);
+  };
+
+  const retryConflict = async () => {
+    if (conflict === null) return;
+    const pending = conflict.pending;
+    try {
+      let next: number | void;
+      if (pending.kind === "policy") {
+        next = await settings.writeWorkflowConfig(pending.fields);
+        setWfMsg(t("settings.saved"));
+      } else if (pending.kind === "context") {
+        next = await settings.writeWorkflowContext(pending.context);
+        setContextText(pending.context);
+        setContextExpanded(false);
+        setCtxEditing(false);
+        setCtxMsg(t("settings.saved"));
+      } else {
+        next = await settings.writeWorkflowRules(pending.rules);
+        setRules(Object.fromEntries(pending.rules));
+        setRulesEditing(false);
+        setRulesMsg(t("settings.saved"));
+      }
+      adoptRevision(next);
+      setConflict(null);
+    } catch (error) {
+      if (!(await handleWriteError(error, pending))) {
+        const message = errorMessage(error);
+        if (pending.kind === "policy") setWfMsg(message);
+        else if (pending.kind === "context") setCtxMsg(message);
+        else setRulesMsg(message);
+      }
+    }
+  };
 
   const contextCollapsed = !ctxEditing && !contextExpanded && isLongContext(contextText);
   const populatedRuleKeys = snap.workflow.schemaArtifacts.filter((id) => (rules[id] ?? []).length > 0);
 
   return (
     <div className="max-w-2xl mx-auto w-full">
-      {/* 三頁簽（design D1）：標籤檔名直出為字面常數（LANGUAGE.md 明文例外）、本機設定經字典。 */}
+      {/* 兩頁簽：標籤檔名直出為字面常數（LANGUAGE.md 明文例外）。 */}
       <Tabs defaultValue="config">
         <TabsList>
           <TabsTrigger value="config">
-            config.yaml
+            {isRemote ? t("remote.workflowTab") : "config.yaml"}
             {wfDisabled && <TabWarningDot />}
           </TabsTrigger>
-          <TabsTrigger value="speclink">
-            .speclink.yaml
-            {appDisabled && <TabWarningDot />}
-          </TabsTrigger>
-          {/* 本機設定簽不掛任何解析錯誤（design D3）。 */}
-          <TabsTrigger value="local">{t("settings.localTabLabel")}</TabsTrigger>
-          {/* 伺服器簽（desktop-connections 決策 7）：app 全域、不經 session 綁定。 */}
-          {servers && <TabsTrigger value="servers">{t("settings.serversTabLabel")}</TabsTrigger>}
+          {!isRemote && (
+            <TabsTrigger value="speclink">
+              .speclink.yaml
+              {appDisabled && <TabWarningDot />}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* config.yaml 簽：專案說明／產出規則／產出政策 */}
         <TabsContent value="config" className="pt-3 flex flex-col gap-4">
-          <span data-testid="file-note-config" className="font-mono text-xs text-muted-foreground">openspec/config.yaml</span>
+          {isRemote ? (
+            <div className="flex flex-col gap-2">
+              <span
+                data-testid="policy-revision"
+                className="font-mono text-xs tracking-wide text-muted-foreground"
+              >
+                {t("remote.policyRevision")} {snap.workflow.revision ?? "—"}
+              </span>
+              {!settings.policyWrite && (
+                <p
+                  data-testid="policy-reader-note"
+                  className="m-0 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+                >
+                  {t("remote.policyReader")}
+                </p>
+              )}
+            </div>
+          ) : (
+            <span data-testid="file-note-config" className="font-mono text-xs text-muted-foreground">
+              openspec/config.yaml
+            </span>
+          )}
           {snap.workflow.parseError !== null && <ParseErrorBanner message={snap.workflow.parseError} />}
+          {conflict !== null && (
+            <Card data-testid="policy-conflict-panel" className="border-primary/30 bg-muted/20">
+              <CardHeader className="gap-1">
+                <CardTitle className="text-base">{t("remote.conflictTitle")}</CardTitle>
+                <p className="m-0 text-xs text-muted-foreground">{t("remote.conflictHint")}</p>
+                <span
+                  data-testid="conflict-revision"
+                  className="font-mono text-xs tracking-wide text-muted-foreground"
+                >
+                  {t("remote.conflictRevision")} {conflict.latest.workflow.revision ?? "—"}
+                </span>
+              </CardHeader>
+              <CardContent className="gap-3">
+                <div className="overflow-hidden rounded-md border border-border">
+                  <div className="grid grid-cols-[minmax(96px,0.7fr)_1fr_1fr] gap-px bg-border text-xs">
+                    <span className="bg-muted px-2 py-1.5 font-medium" />
+                    <span className="bg-muted px-2 py-1.5 font-medium">
+                      {t("remote.serverValue")}
+                    </span>
+                    <span className="bg-muted px-2 py-1.5 font-medium">
+                      {t("remote.myInput")}
+                    </span>
+                    {conflict.rows.map((row) => (
+                      <div
+                        key={row.key}
+                        data-testid={`conflict-row-${row.key}`}
+                        className="col-span-3 grid grid-cols-subgrid gap-px"
+                      >
+                        <span className="bg-card px-2 py-1.5 font-mono text-muted-foreground">
+                          {row.label}
+                        </span>
+                        <span
+                          data-testid="conflict-server"
+                          className="whitespace-pre-wrap break-words bg-card px-2 py-1.5 font-mono"
+                        >
+                          {row.server}
+                        </span>
+                        <span
+                          data-testid="conflict-mine"
+                          className="whitespace-pre-wrap break-words bg-card px-2 py-1.5 font-mono"
+                        >
+                          {row.mine}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={reloadServerVersion}>
+                    {t("remote.reloadServer")}
+                  </Button>
+                  <Button type="button" size="sm" onClick={() => void retryConflict()}>
+                    {t("remote.resubmitLatest")}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* 專案說明卡（獨立編輯態） */}
           <Card data-testid="context-card">
@@ -319,6 +575,7 @@ export function SettingsView({
                   <Textarea
                     data-testid="context-input"
                     value={draftContext}
+                    disabled={wfDisabled}
                     rows={10}
                     className="font-mono"
                     onChange={(e) => setDraftContext(e.target.value)}
@@ -372,6 +629,7 @@ export function SettingsView({
                         id={`rules-input-${id}`}
                         data-testid={`rules-input-${id}`}
                         value={draftRules[id] ?? ""}
+                        disabled={wfDisabled}
                         rows={3}
                         className="font-mono"
                         onChange={(e) =>
@@ -481,7 +739,7 @@ export function SettingsView({
         </TabsContent>
 
         {/* .speclink.yaml 簽：AI 工具 */}
-        <TabsContent value="speclink" className="pt-3 flex flex-col gap-4">
+        {!isRemote && <TabsContent value="speclink" className="pt-3 flex flex-col gap-4">
           <span data-testid="file-note-speclink" className="font-mono text-xs text-muted-foreground">.speclink.yaml</span>
           {snap.app.parseError !== null && <ParseErrorBanner message={snap.app.parseError} />}
           <Card data-testid="tools-card">
@@ -532,49 +790,8 @@ export function SettingsView({
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsContent>}
 
-        {/* 本機設定簽：介面語言（app 本機偏好——與 config.yaml 的 locale 是兩件事） */}
-        <TabsContent value="local" className="pt-3 flex flex-col gap-4">
-          <span data-testid="local-note" className="text-xs text-muted-foreground">{t("settings.localTabNote")}</span>
-          <Card data-testid="ui-locale-card">
-            <CardHeader>
-              <CardTitle className="text-base">{t("settings.uiLocaleLabel")}</CardTitle>
-            </CardHeader>
-            <CardContent className="gap-2">
-              <div className="flex gap-1.5" data-testid="ui-locale">
-                {uiLocaleOptions.map((opt) => (
-                  <Button
-                    key={String(opt.value)}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "text-sm font-normal",
-                      localePref === opt.value
-                        ? "border-primary bg-primary/8 font-medium text-primary hover:bg-primary/8 hover:text-primary"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() => onLocalePrefChange(opt.value)}
-                  >
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
-              <FieldHelp>{t("settings.uiLocaleHelp")}</FieldHelp>
-            </CardContent>
-          </Card>
-          {/* 面板建立失敗的獨立警示行（spec「面板樣式（macOS）」失敗退回）：
-              系統匣樣式由平台決定、無設定卡，錯誤仍於本機設定簽浮出。 */}
-          {trayPanelError && <ParseErrorBanner message={trayPanelError} />}
-        </TabsContent>
-
-        {/* 伺服器簽：saved servers 清單與登入管理（desktop-connections）。 */}
-        {servers && (
-          <TabsContent value="servers" className="pt-3 flex flex-col gap-4">
-            <ServersPanel {...servers} />
-          </TabsContent>
-        )}
       </Tabs>
     </div>
   );

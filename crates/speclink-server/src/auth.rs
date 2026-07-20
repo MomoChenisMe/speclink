@@ -10,7 +10,7 @@
 
 use crate::config::ActorConfig;
 use crate::error::ApiError;
-use crate::identity::{Project, Repo, User};
+use crate::identity::{MembershipRole, Project, Repo, User};
 use crate::state::AppState;
 use axum::extract::{FromRequestParts, Path};
 use axum::http::request::Parts;
@@ -35,6 +35,7 @@ pub struct Binding {
     pub actor: ActorConfig,
     pub project: Project,
     pub repo: String,
+    pub policy_write: bool,
 }
 
 impl Binding {
@@ -78,6 +79,7 @@ impl Binding {
             engine_version: ENGINE_VERSION.to_string(),
             capabilities: Capabilities {
                 context_snapshots: true,
+                policy_write: self.policy_write,
                 authentication: Vec::new(),
                 events: EventsDeclaration {
                     transports: vec![EventTransport {
@@ -130,16 +132,16 @@ impl FromRequestParts<AppState> for Binding {
 
         // 3. membership: a valid token whose user is not a member of the URL
         //    project is 403, distinct from the 401 of an invalid token.
-        let member = state
+        let role = state
             .identity
-            .is_member(&user.id, &project.key)
+            .membership_role(&user.id, &project.key)
             .map_err(|_| ApiError::internal("identity store unavailable"))?;
-        if !member {
+        let Some(role) = role else {
             return Err(ApiError::forbidden(format!(
                 "actor is not a member of project '{}'",
                 project.key
             )));
-        }
+        };
 
         // 4. API version compatibility (incompatible → refused with reason)
         let version = header(parts, "x-speclink-api-version");
@@ -168,8 +170,16 @@ impl FromRequestParts<AppState> for Binding {
             let _ = state.identity.touch_pat(pat_id);
         }
 
-        let actor = ActorConfig { id: user.id, display: user.display };
-        Ok(Binding { actor, project, repo })
+        let actor = ActorConfig {
+            id: user.id,
+            display: user.display,
+        };
+        Ok(Binding {
+            actor,
+            project,
+            repo,
+            policy_write: role == MembershipRole::Editor,
+        })
     }
 }
 

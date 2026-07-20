@@ -96,8 +96,24 @@ pub fn read_settings_at(root: &Path) -> Result<SettingsSnapshot, String> {
             },
         ),
     };
-    let workflow = match WorkflowConfig::from_text(read_opt(&workflow_config_path(&ws)).as_deref())
-    {
+    let workflow = workflow_settings_from_text(
+        read_opt(&workflow_config_path(&ws)).as_deref(),
+        Some(&ws),
+    );
+    Ok(SettingsSnapshot { app, workflow })
+}
+
+/// 從 server `/config` 或本機檔案原文建立 workflow 設定快照。此入口不讀檔、
+/// 不依賴 checkout，讓 local/remote 共用完全相同的欄位預設與 parse-error 語意。
+pub fn read_workflow_settings_from_text(text: Option<&str>) -> WorkflowSettings {
+    workflow_settings_from_text(text, None)
+}
+
+fn workflow_settings_from_text(
+    text: Option<&str>,
+    workspace: Option<&Workspace>,
+) -> WorkflowSettings {
+    match WorkflowConfig::from_text(text) {
         // 缺席與可解析同一 arm：缺檔的 typed 載入即預設值狀態。
         Ok(cfg) => WorkflowSettings {
             locale: cfg.locale.clone(),
@@ -106,7 +122,7 @@ pub fn read_settings_at(root: &Path) -> Result<SettingsSnapshot, String> {
             audit: cfg.audit.unwrap_or(false),
             context: cfg.context.clone(),
             rules: cfg.rules.clone(),
-            schema_artifacts: schema_artifact_ids(&ws, &cfg),
+            schema_artifacts: schema_artifact_ids(workspace, &cfg),
             parse_error: None,
         },
         Err(e) => WorkflowSettings {
@@ -120,21 +136,45 @@ pub fn read_settings_at(root: &Path) -> Result<SettingsSnapshot, String> {
             schema_artifacts: Vec::new(),
             parse_error: Some(single_line(&e.reason)),
         },
-    };
-    Ok(SettingsSnapshot { app, workflow })
+    }
 }
 
 /// 活躍 schema 的 artifact id（引擎顯示序＝`status::display_order` 的拓撲序，
 /// 與 status 輸出一致）。schema 解析失敗或找不到時給空——與壞檔同語意：不在
 /// 未知 schema 上呈現猜測的固定鍵。
-fn schema_artifact_ids(ws: &Workspace, cfg: &WorkflowConfig) -> Vec<String> {
-    match speclink_core::schema::resolve_with(Some(ws), Some(&speclink_host::context::global_config_dir()), &cfg.schema_name()) {
+fn schema_artifact_ids(ws: Option<&Workspace>, cfg: &WorkflowConfig) -> Vec<String> {
+    match speclink_core::schema::resolve_with(ws, Some(&speclink_host::context::global_config_dir()), &cfg.schema_name()) {
         Some(Ok(schema)) => speclink_core::status::display_order(&schema)
             .into_iter()
             .map(|a| a.id.clone())
             .collect(),
         _ => Vec::new(),
     }
+}
+
+/// 純文字政策欄位改寫 seam。只代換 locale/spec_locale/tdd/audit，其他鍵的
+/// parsed value 保持不變；設回預設值時移除鍵。輸出在回傳前再經 typed 驗證。
+pub fn rewrite_workflow_fields_text(
+    original: &str,
+    fields: &WorkflowPolicyFields,
+) -> Result<String, String> {
+    rewrite_workflow_fields_text_for(original, fields, "config.yaml")
+}
+
+fn rewrite_workflow_fields_text_for(
+    original: &str,
+    fields: &WorkflowPolicyFields,
+    file: &str,
+) -> Result<String, String> {
+    let new_text = speclink_core::config::update_workflow_config_text(
+        original,
+        fields,
+        &ContextEdit::Keep,
+        None,
+    )
+    .map_err(|e| single_line(&e.to_string()))?;
+    verify_workflow_text(&new_text, fields, file, "rewrite verification")?;
+    Ok(new_text)
 }
 
 /// 寫入 `openspec/config.yaml` 的政策欄位（design D5 雙重驗證）：core 純函式
@@ -152,14 +192,7 @@ pub fn write_workflow_fields_at(
     let file = format!("{}/config.yaml", ws.spec_dir_name);
     let path = workflow_config_path(&ws);
     let original = read_opt(&path).unwrap_or_default();
-    let new_text = speclink_core::config::update_workflow_config_text(
-        &original,
-        fields,
-        &speclink_core::config::ContextEdit::Keep,
-        None,
-    )
-    .map_err(|e| single_line(&e.to_string()))?;
-    verify_workflow_text(&new_text, fields, &file, "pre-write verification")?;
+    let new_text = rewrite_workflow_fields_text_for(&original, fields, &file)?;
     std::fs::write(&path, &new_text).map_err(|e| format!("{file}: write failed: {e}"))?;
     let reread = read_opt(&path)
         .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
@@ -182,44 +215,84 @@ pub fn write_workflow_content_at(
     let file = format!("{}/config.yaml", ws.spec_dir_name);
     let path = workflow_config_path(&ws);
     let original = read_opt(&path).unwrap_or_default();
-    // typed 載入即帶「空文件→預設、壞檔→Err」語意（引擎 fail-closed 下沉）。
-    let current = WorkflowConfig::from_text(Some(original.as_str())).map_err(|e| {
+    let new_text = rewrite_workflow_content_text_for(&original, context, rules, &file)?;
+    let expected = WorkflowConfig::from_text(Some(&new_text)).map_err(|e| {
         format!("{file}: pre-write verification failed: {}", single_line(&e.reason))
     })?;
-    let fields = WorkflowPolicyFields {
-        locale: current.locale.clone(),
-        spec_locale: current.spec_locale.clone(),
-        tdd: current.tdd.unwrap_or(false),
-        audit: current.audit.unwrap_or(false),
-    };
-    // 期望效果（驗證基準）——獨立於 core 的清理實作再算一次，作為第二道防線。
+    let fields = workflow_policy_fields(&expected);
+    std::fs::write(&path, &new_text).map_err(|e| format!("{file}: write failed: {e}"))?;
+    let reread = read_opt(&path)
+        .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
+    verify_workflow_content_text(
+        &reread,
+        &expected.context,
+        &expected.rules,
+        &fields,
+        &file,
+        "verify after write",
+    )
+}
+
+/// 純文字 context/rules targeted-key 改寫 seam。政策欄位從原文讀出再原樣
+/// 回填，讓 remote 與 local 共用同一份未觸及鍵與清空移除語意。
+pub fn rewrite_workflow_content_text(
+    original: &str,
+    context: &ContextEdit,
+    rules: Option<&[(String, Vec<String>)]>,
+) -> Result<String, String> {
+    rewrite_workflow_content_text_for(original, context, rules, "config.yaml")
+}
+
+fn rewrite_workflow_content_text_for(
+    original: &str,
+    context: &ContextEdit,
+    rules: Option<&[(String, Vec<String>)]>,
+    file: &str,
+) -> Result<String, String> {
+    let current = WorkflowConfig::from_text(Some(original)).map_err(|e| {
+        format!("{file}: rewrite verification failed: {}", single_line(&e.reason))
+    })?;
+    let fields = workflow_policy_fields(&current);
     let want_context = match context {
         ContextEdit::Keep => current.context.clone(),
-        ContextEdit::Set(v) if !v.trim().is_empty() => Some(v.clone()),
+        ContextEdit::Set(value) if !value.trim().is_empty() => Some(value.clone()),
         ContextEdit::Set(_) | ContextEdit::Remove => None,
     };
     let want_rules: BTreeMap<String, Vec<String>> = match rules {
         None => current.rules.clone(),
         Some(sections) => sections
             .iter()
-            .filter_map(|(k, v)| {
-                let cleaned: Vec<String> = v
+            .filter_map(|(key, entries)| {
+                let cleaned: Vec<String> = entries
                     .iter()
-                    .map(|e| e.trim().to_string())
-                    .filter(|e| !e.is_empty())
+                    .map(|entry| entry.trim().to_string())
+                    .filter(|entry| !entry.is_empty())
                     .collect();
-                (!cleaned.is_empty()).then(|| (k.clone(), cleaned))
+                (!cleaned.is_empty()).then(|| (key.clone(), cleaned))
             })
             .collect(),
     };
     let new_text =
-        speclink_core::config::update_workflow_config_text(&original, &fields, context, rules)
+        speclink_core::config::update_workflow_config_text(original, &fields, context, rules)
             .map_err(|e| single_line(&e.to_string()))?;
-    verify_workflow_content_text(&new_text, &want_context, &want_rules, &fields, &file, "pre-write verification")?;
-    std::fs::write(&path, &new_text).map_err(|e| format!("{file}: write failed: {e}"))?;
-    let reread = read_opt(&path)
-        .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
-    verify_workflow_content_text(&reread, &want_context, &want_rules, &fields, &file, "verify after write")
+    verify_workflow_content_text(
+        &new_text,
+        &want_context,
+        &want_rules,
+        &fields,
+        file,
+        "rewrite verification",
+    )?;
+    Ok(new_text)
+}
+
+fn workflow_policy_fields(config: &WorkflowConfig) -> WorkflowPolicyFields {
+    WorkflowPolicyFields {
+        locale: config.locale.clone(),
+        spec_locale: config.spec_locale.clone(),
+        tdd: config.tdd.unwrap_or(false),
+        audit: config.audit.unwrap_or(false),
+    }
 }
 
 /// 驗證一份 config.yaml 文字可解析，且 context／rules 與政策欄位皆為期望值。
@@ -407,6 +480,77 @@ mod tests {
     fn read_settings_outside_a_project_is_an_error() {
         let dir = std::env::temp_dir();
         assert!(read_settings_at(&dir).is_err());
+    }
+
+    #[test]
+    fn read_workflow_settings_from_text_parses_every_remote_editable_field() {
+        let settings = read_workflow_settings_from_text(Some(
+            "schema: spec-driven\nlocale: tw\nspec_locale: auto\ntdd: true\naudit: true\ncontext: 專案說明\nrules:\n  tasks:\n    - 完成後驗證\n",
+        ));
+        assert_eq!(settings.locale.as_deref(), Some("tw"));
+        assert_eq!(settings.spec_locale.as_deref(), Some("auto"));
+        assert!(settings.tdd);
+        assert!(settings.audit);
+        assert_eq!(settings.context.as_deref(), Some("專案說明"));
+        assert_eq!(settings.rules["tasks"], ["完成後驗證"]);
+        assert_eq!(settings.schema_artifacts, SPEC_DRIVEN_IDS);
+        assert_eq!(settings.parse_error, None);
+    }
+
+    // spec Example「政策欄位寫入效果」row 1。
+    #[test]
+    fn text_rewrite_adds_tdd_true_when_the_key_is_absent() {
+        let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
+        let output = rewrite_workflow_fields_text("schema: spec-driven\n", &fields)
+            .expect("rewrite");
+        let parsed = WorkflowConfig::from_text(Some(&output)).expect("parse output");
+        assert_eq!(parsed.tdd, Some(true));
+    }
+
+    // spec Example「政策欄位寫入效果」row 2。
+    #[test]
+    fn text_rewrite_removes_tdd_when_reset_to_the_default() {
+        let output = rewrite_workflow_fields_text(
+            "schema: spec-driven\ntdd: true\n",
+            &WorkflowPolicyFields::default(),
+        )
+        .expect("rewrite");
+        let mapping: serde_yaml::Mapping = serde_yaml::from_str(&output).expect("mapping");
+        assert!(!mapping.contains_key("tdd"), "default false removes the key: {output}");
+    }
+
+    // spec Example「政策欄位寫入效果」row 3。
+    #[test]
+    fn text_rewrite_adds_spec_locale_and_preserves_locale_and_rules_values() {
+        let original = "locale: tw\nrules:\n  proposal:\n    - keep\n";
+        let fields = WorkflowPolicyFields {
+            locale: Some("tw".into()),
+            spec_locale: Some("auto".into()),
+            ..Default::default()
+        };
+        let output = rewrite_workflow_fields_text(original, &fields).expect("rewrite");
+        let before = WorkflowConfig::from_text(Some(original)).expect("parse before");
+        let after = WorkflowConfig::from_text(Some(&output)).expect("parse after");
+        assert_eq!(after.spec_locale.as_deref(), Some("auto"));
+        assert_eq!(after.locale, before.locale);
+        assert_eq!(after.rules, before.rules);
+    }
+
+    #[test]
+    fn content_text_rewrite_preserves_policy_and_the_untouched_rules_value() {
+        let original = "schema: spec-driven\nlocale: tw\ntdd: true\ncontext: old\nrules:\n  tasks:\n    - keep me\n";
+        let output = rewrite_workflow_content_text(
+            original,
+            &ContextEdit::Set("new context".into()),
+            None,
+        )
+        .expect("rewrite");
+        let before = WorkflowConfig::from_text(Some(original)).expect("parse before");
+        let after = WorkflowConfig::from_text(Some(&output)).expect("parse after");
+        assert_eq!(after.context.as_deref(), Some("new context"));
+        assert_eq!(after.rules, before.rules);
+        assert_eq!(after.locale, before.locale);
+        assert_eq!(after.tdd, before.tdd);
     }
 
     // --- 寫入：雙重驗證與失敗浮出（spec 需求「設定寫入具解析驗證且失敗浮出」） ---

@@ -8,7 +8,8 @@ use crate::audit::{AuditAction, AuditActor, AuditEntry};
 use crate::identity::{
     hash_password, hash_token, random_token, user_code, verify_password, BackupRecord,
     DeviceAuthorization, DeviceFamily, DevicePoll, IdentityError, IdentityStore, Invitation,
-    NewBackupRecord, NewInvitation, Pat, Project, RefreshOutcome, Repo, SessionInfo, TokenPair, User,
+    MembershipRole, NewBackupRecord, NewInvitation, Pat, Project, RefreshOutcome, Repo,
+    SessionInfo, TokenPair, User,
 };
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -18,7 +19,7 @@ use std::sync::{Mutex, MutexGuard};
 /// The schema version this server reads and writes. A database recording a
 /// higher version is refused; a lower one is migrated up. Bump and add a
 /// migration when the shape changes.
-const SCHEMA_VERSION: u32 = 5;
+const SCHEMA_VERSION: u32 = 6;
 
 /// The marker written to `meta` that distinguishes a speclink identity store
 /// from an unrelated SQLite file.
@@ -47,6 +48,7 @@ CREATE TABLE users (
 CREATE TABLE memberships (
     user_id     TEXT NOT NULL,
     project_key TEXT NOT NULL,
+    role        TEXT NOT NULL DEFAULT 'editor',
     PRIMARY KEY (user_id, project_key)
 );
 CREATE TABLE invitations (
@@ -225,7 +227,8 @@ impl IdentitySqlite {
     fn gate_and_init(conn: Connection) -> Result<Self, IdentityError> {
         // Wait on a briefly-held lock rather than failing at once — the invite
         // subcommand and the running server can touch the same file.
-        conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(open_err)?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(open_err)?;
         let has_meta = table_exists(&conn, "meta")?;
         let existing_version: Option<u32> = if has_meta {
             let marker: Option<String> = meta_value(&conn, "format")?;
@@ -255,7 +258,8 @@ impl IdentitySqlite {
 
         // Past the gate: a fresh database is initialized at the current version;
         // an older one is migrated up. A fresh init lays down every table.
-        conn.execute_batch("PRAGMA foreign_keys=ON;").map_err(open_err)?;
+        conn.execute_batch("PRAGMA foreign_keys=ON;")
+            .map_err(open_err)?;
         match existing_version {
             None => {
                 conn.execute_batch(&format!(
@@ -266,7 +270,9 @@ impl IdentitySqlite {
             Some(version) if version < SCHEMA_VERSION => migrate(&conn, version)?,
             Some(_) => {}
         }
-        Ok(Self { inner: Mutex::new(conn) })
+        Ok(Self {
+            inner: Mutex::new(conn),
+        })
     }
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
@@ -278,7 +284,8 @@ impl IdentitySqlite {
     /// from a file-backed or an in-memory source; `dest` is created or replaced.
     pub fn snapshot_to<P: AsRef<Path>>(&self, dest: P) -> Result<(), IdentityError> {
         let conn = self.conn();
-        conn.backup(rusqlite::MAIN_DB, dest.as_ref(), None).map_err(backend)?;
+        conn.backup(rusqlite::MAIN_DB, dest.as_ref(), None)
+            .map_err(backend)?;
         Ok(())
     }
 }
@@ -372,7 +379,7 @@ impl IdentityStore for IdentitySqlite {
         };
         for project in projects {
             tx.execute(
-                "INSERT INTO memberships (user_id, project_key) VALUES (?1, ?2)",
+                "INSERT INTO memberships (user_id, project_key, role) VALUES (?1, ?2, 'editor')",
                 params![user_id, project],
             )
             .map_err(backend)?;
@@ -408,7 +415,11 @@ impl IdentityStore for IdentitySqlite {
             .map_err(backend)
     }
 
-    fn authenticate_password(&self, email: &str, password: &str) -> Result<Option<User>, IdentityError> {
+    fn authenticate_password(
+        &self,
+        email: &str,
+        password: &str,
+    ) -> Result<Option<User>, IdentityError> {
         let guard = self.conn();
         let row = guard
             .query_row(
@@ -474,13 +485,42 @@ impl IdentityStore for IdentitySqlite {
         Ok(found.is_some())
     }
 
+    fn membership_role(
+        &self,
+        user_id: &str,
+        project_key: &str,
+    ) -> Result<Option<MembershipRole>, IdentityError> {
+        let role: Option<String> = self
+            .conn()
+            .query_row(
+                "SELECT role FROM memberships WHERE user_id = ?1 AND project_key = ?2",
+                params![user_id, project_key],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        role.map(|value| {
+            MembershipRole::parse(&value).map_err(|e| {
+                IdentityError::Backend(format!(
+                    "invalid role in membership {user_id} @ {project_key}: {e}"
+                ))
+            })
+        })
+        .transpose()
+    }
+
     fn list_projects(&self) -> Result<Vec<Project>, IdentityError> {
         let guard = self.conn();
         let mut stmt = guard
             .prepare("SELECT key, name FROM projects ORDER BY key")
             .map_err(backend)?;
         let rows = stmt
-            .query_map([], |r| Ok(Project { key: r.get(0)?, name: r.get(1)? }))
+            .query_map([], |r| {
+                Ok(Project {
+                    key: r.get(0)?,
+                    name: r.get(1)?,
+                })
+            })
             .map_err(backend)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(backend)
     }
@@ -490,7 +530,12 @@ impl IdentityStore for IdentitySqlite {
             .query_row(
                 "SELECT key, name FROM projects WHERE key = ?1",
                 params![key],
-                |r| Ok(Project { key: r.get(0)?, name: r.get(1)? }),
+                |r| {
+                    Ok(Project {
+                        key: r.get(0)?,
+                        name: r.get(1)?,
+                    })
+                },
             )
             .optional()
             .map_err(backend)
@@ -502,7 +547,12 @@ impl IdentityStore for IdentitySqlite {
             .prepare("SELECT key, name FROM repos WHERE project_key = ?1 ORDER BY key")
             .map_err(backend)?;
         let rows = stmt
-            .query_map(params![project_key], |r| Ok(Repo { key: r.get(0)?, name: r.get(1)? }))
+            .query_map(params![project_key], |r| {
+                Ok(Repo {
+                    key: r.get(0)?,
+                    name: r.get(1)?,
+                })
+            })
             .map_err(backend)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(backend)
     }
@@ -520,7 +570,11 @@ impl IdentityStore for IdentitySqlite {
     fn has_admin(&self) -> Result<bool, IdentityError> {
         let found: Option<i64> = self
             .conn()
-            .query_row("SELECT 1 FROM users WHERE admin = 1 AND active = 1 LIMIT 1", [], |r| r.get(0))
+            .query_row(
+                "SELECT 1 FROM users WHERE admin = 1 AND active = 1 LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
             .optional()
             .map_err(backend)?;
         Ok(found.is_some())
@@ -546,7 +600,8 @@ impl IdentityStore for IdentitySqlite {
         let tx = guard.transaction().map_err(backend)?;
         // Only one setup token stands at a time: minting a fresh one retires any
         // prior (作廢), so an expired-then-regenerated old value is dead.
-        tx.execute("DELETE FROM setup_tokens", []).map_err(backend)?;
+        tx.execute("DELETE FROM setup_tokens", [])
+            .map_err(backend)?;
         tx.execute(
             "INSERT INTO setup_tokens (id, token_hash, expires_at, consumed_at, created_at) VALUES (?1, ?2, ?3, NULL, ?4)",
             params![new_id("setup"), hash_token(&plaintext), ts(now + ttl), ts(now)],
@@ -588,11 +643,17 @@ impl IdentityStore for IdentitySqlite {
         let password_hash = hash_password(password)?;
         let guard = self.conn();
         let exists: Option<i64> = guard
-            .query_row("SELECT 1 FROM users WHERE email = ?1 LIMIT 1", params![email], |r| r.get(0))
+            .query_row(
+                "SELECT 1 FROM users WHERE email = ?1 LIMIT 1",
+                params![email],
+                |r| r.get(0),
+            )
             .optional()
             .map_err(backend)?;
         if exists.is_some() {
-            return Err(IdentityError::Duplicate(format!("a user already exists for '{email}'")));
+            return Err(IdentityError::Duplicate(format!(
+                "a user already exists for '{email}'"
+            )));
         }
         let user_id = new_id("usr");
         guard
@@ -711,7 +772,9 @@ impl IdentityStore for IdentitySqlite {
                 "SELECT id, user_id, prefix, name, expires_at, revoked_at, last_used_at, created_at FROM pats WHERE user_id = ?1 ORDER BY created_at DESC",
             )
             .map_err(backend)?;
-        let rows = stmt.query_map(params![user_id], map_pat_row).map_err(backend)?;
+        let rows = stmt
+            .query_map(params![user_id], map_pat_row)
+            .map_err(backend)?;
         let mut out = Vec::new();
         for row in rows {
             out.push(row.map_err(backend)?.into_pat()?);
@@ -730,13 +793,22 @@ impl IdentityStore for IdentitySqlite {
     }
 
     fn authenticate_pat(&self, token: &str) -> Result<Option<(Pat, User)>, IdentityError> {
+        Ok(self
+            .authenticate_pat_allow_suspended(token)?
+            .filter(|(_, user)| user.active))
+    }
+
+    fn authenticate_pat_allow_suspended(
+        &self,
+        token: &str,
+    ) -> Result<Option<(Pat, User)>, IdentityError> {
         let guard = self.conn();
         let row = guard
             .query_row(
                 "SELECT p.id, p.user_id, p.prefix, p.name, p.expires_at, p.revoked_at, p.last_used_at, p.created_at, \
                         u.id, u.display, u.email, u.active, u.admin \
                  FROM pats p JOIN users u ON u.id = p.user_id \
-                 WHERE p.token_hash = ?1 AND p.revoked_at IS NULL AND (p.expires_at IS NULL OR p.expires_at > ?2) AND u.active = 1",
+                 WHERE p.token_hash = ?1 AND p.revoked_at IS NULL AND (p.expires_at IS NULL OR p.expires_at > ?2)",
                 params![hash_token(token), now()],
                 |r| {
                     let raw = PatRow {
@@ -769,7 +841,10 @@ impl IdentityStore for IdentitySqlite {
 
     fn touch_pat(&self, pat_id: &str) -> Result<(), IdentityError> {
         self.conn()
-            .execute("UPDATE pats SET last_used_at = ?2 WHERE id = ?1", params![pat_id, now()])
+            .execute(
+                "UPDATE pats SET last_used_at = ?2 WHERE id = ?1",
+                params![pat_id, now()],
+            )
             .map(|_| ())
             .map_err(backend)
     }
@@ -798,7 +873,12 @@ impl IdentityStore for IdentitySqlite {
                 ],
             )
             .map_err(backend)?;
-        Ok(DeviceAuthorization { device_code, user_code, expires_at, interval })
+        Ok(DeviceAuthorization {
+            device_code,
+            user_code,
+            expires_at,
+            interval,
+        })
     }
 
     fn poll_device(&self, device_code: &str) -> Result<DevicePoll, IdentityError> {
@@ -823,7 +903,8 @@ impl IdentityStore for IdentitySqlite {
             )
             .optional()
             .map_err(backend)?;
-        let Some((id, status, approver_id, family_id, expires_at, interval_secs, last_polled_at)) = row
+        let Some((id, status, approver_id, family_id, expires_at, interval_secs, last_polled_at)) =
+            row
         else {
             return Ok(DevicePoll::NotFound);
         };
@@ -900,10 +981,20 @@ impl IdentityStore for IdentitySqlite {
     }
 
     fn authenticate_access_token(&self, token: &str) -> Result<Option<User>, IdentityError> {
+        Ok(self
+            .authenticate_access_token_allow_suspended(token)?
+            .filter(|user| user.active))
+    }
+
+    fn authenticate_access_token_allow_suspended(
+        &self,
+        token: &str,
+    ) -> Result<Option<User>, IdentityError> {
         // The whole device credential check-list in one query (決策 4): hash
         // match, access token unrevoked and unexpired, its family unrevoked, and
-        // the owning user active. A suspended user or a revoked family drops the
-        // row, so the token stops authenticating at once.
+        // the owning user. The active flag stays in the returned User so the
+        // identity-only gate can classify a suspended account as 403; the
+        // regular authenticate method filters it back to the existing 401.
         self.conn()
             .query_row(
                 "SELECT u.id, u.display, u.email, u.active, u.admin \
@@ -911,7 +1002,7 @@ impl IdentityStore for IdentitySqlite {
                  JOIN users u ON u.id = a.user_id \
                  JOIN credential_families f ON f.id = a.family_id \
                  WHERE a.token_hash = ?1 AND a.revoked_at IS NULL AND a.expires_at > ?2 \
-                   AND f.revoked_at IS NULL AND u.active = 1",
+                   AND f.revoked_at IS NULL",
                 params![hash_token(token), now()],
                 map_user,
             )
@@ -1235,6 +1326,7 @@ impl IdentityStore for IdentitySqlite {
         actor: &AuditActor,
         user_id: &str,
         project_key: &str,
+        role: MembershipRole,
         member: bool,
     ) -> Result<(), IdentityError> {
         let mut guard = self.conn();
@@ -1242,8 +1334,9 @@ impl IdentityStore for IdentitySqlite {
         let _ = user_state(&tx, user_id)?;
         if member {
             tx.execute(
-                "INSERT OR IGNORE INTO memberships (user_id, project_key) VALUES (?1, ?2)",
-                params![user_id, project_key],
+                "INSERT INTO memberships (user_id, project_key, role) VALUES (?1, ?2, ?3) \
+                 ON CONFLICT(user_id, project_key) DO UPDATE SET role = excluded.role",
+                params![user_id, project_key, role.as_str()],
             )
             .map_err(backend)?;
         } else {
@@ -1255,7 +1348,7 @@ impl IdentityStore for IdentitySqlite {
         }
         let subject = format!(
             "{user_id} @ {project_key} → {}",
-            if member { "member" } else { "removed" }
+            if member { role.as_str() } else { "removed" }
         );
         insert_audit(&tx, actor, AuditAction::MembershipChanged, &subject)?;
         tx.commit().map_err(backend)?;
@@ -1306,7 +1399,12 @@ impl IdentityStore for IdentitySqlite {
         let mut guard = self.conn();
         let tx = guard.transaction().map_err(backend)?;
         insert_repo(&tx, project_key, key, name)?;
-        insert_audit(&tx, actor, AuditAction::RepoCreated, &format!("{project_key}/{key}"))?;
+        insert_audit(
+            &tx,
+            actor,
+            AuditAction::RepoCreated,
+            &format!("{project_key}/{key}"),
+        )?;
         tx.commit().map_err(backend)?;
         Ok(())
     }
@@ -1322,12 +1420,20 @@ impl IdentityStore for IdentitySqlite {
         // The key is the stable identifier; only the display name changes. An
         // unknown project is NotFound so a rename never writes a phantom audit.
         let n = tx
-            .execute("UPDATE projects SET name = ?2 WHERE key = ?1", params![key, name])
+            .execute(
+                "UPDATE projects SET name = ?2 WHERE key = ?1",
+                params![key, name],
+            )
             .map_err(backend)?;
         if n == 0 {
             return Err(IdentityError::NotFound(format!("no such project '{key}'")));
         }
-        insert_audit(&tx, actor, AuditAction::ProjectRenamed, &format!("{key} → {name}"))?;
+        insert_audit(
+            &tx,
+            actor,
+            AuditAction::ProjectRenamed,
+            &format!("{key} → {name}"),
+        )?;
         tx.commit().map_err(backend)?;
         Ok(())
     }
@@ -1352,7 +1458,12 @@ impl IdentityStore for IdentitySqlite {
                 "no such repo '{key}' in project '{project_key}'"
             )));
         }
-        insert_audit(&tx, actor, AuditAction::RepoRenamed, &format!("{project_key}/{key} → {name}"))?;
+        insert_audit(
+            &tx,
+            actor,
+            AuditAction::RepoRenamed,
+            &format!("{project_key}/{key} → {name}"),
+        )?;
         tx.commit().map_err(backend)?;
         Ok(())
     }
@@ -1395,7 +1506,8 @@ impl IdentityStore for IdentitySqlite {
             .map_err(backend)?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, user_id, source, created_at, revoked_at, last_refresh) = row.map_err(backend)?;
+            let (id, user_id, source, created_at, revoked_at, last_refresh) =
+                row.map_err(backend)?;
             let created = parse_ts(&created_at)?;
             out.push((
                 user_id,
@@ -1420,7 +1532,11 @@ impl IdentityStore for IdentitySqlite {
         // The prefix identifies the token in the audit without exposing a secret;
         // an unknown id is NotFound so a revoke never writes a phantom audit.
         let prefix: Option<String> = tx
-            .query_row("SELECT prefix FROM pats WHERE id = ?1", params![pat_id], |r| r.get(0))
+            .query_row(
+                "SELECT prefix FROM pats WHERE id = ?1",
+                params![pat_id],
+                |r| r.get(0),
+            )
             .optional()
             .map_err(backend)?;
         let Some(prefix) = prefix else {
@@ -1432,21 +1548,36 @@ impl IdentityStore for IdentitySqlite {
             params![pat_id, now()],
         )
         .map_err(backend)?;
-        insert_audit(&tx, actor, AuditAction::TokenRevoked, &format!("{pat_id} ({prefix})"))?;
+        insert_audit(
+            &tx,
+            actor,
+            AuditAction::TokenRevoked,
+            &format!("{pat_id} ({prefix})"),
+        )?;
         tx.commit().map_err(backend)?;
         Ok(())
     }
 
-    fn admin_revoke_family(&self, actor: &AuditActor, family_id: &str) -> Result<(), IdentityError> {
+    fn admin_revoke_family(
+        &self,
+        actor: &AuditActor,
+        family_id: &str,
+    ) -> Result<(), IdentityError> {
         let mut guard = self.conn();
         let now = Utc::now();
         let tx = guard.transaction().map_err(backend)?;
         let exists: Option<i64> = tx
-            .query_row("SELECT 1 FROM credential_families WHERE id = ?1", params![family_id], |r| r.get(0))
+            .query_row(
+                "SELECT 1 FROM credential_families WHERE id = ?1",
+                params![family_id],
+                |r| r.get(0),
+            )
             .optional()
             .map_err(backend)?;
         if exists.is_none() {
-            return Err(IdentityError::NotFound(format!("no such credential family '{family_id}'")));
+            return Err(IdentityError::NotFound(format!(
+                "no such credential family '{family_id}'"
+            )));
         }
         revoke_family_rows(&tx, family_id, now)?;
         insert_audit(&tx, actor, AuditAction::TokenRevoked, family_id)?;
@@ -1505,13 +1636,21 @@ fn issue_pair(
         params![new_id("rt"), family_id, user_id, hash_token(&refresh_token), ts(now)],
     )
     .map_err(backend)?;
-    Ok(TokenPair { access_token, refresh_token, access_expires_at })
+    Ok(TokenPair {
+        access_token,
+        refresh_token,
+        access_expires_at,
+    })
 }
 
 /// Revoke a whole credential family: the family row and every access token and
 /// refresh credential under it (决策 3). Idempotent — already-revoked rows are
 /// left untouched. Runs inside the caller's transaction.
-fn revoke_family_rows(tx: &Connection, family_id: &str, now: DateTime<Utc>) -> Result<(), IdentityError> {
+fn revoke_family_rows(
+    tx: &Connection,
+    family_id: &str,
+    now: DateTime<Utc>,
+) -> Result<(), IdentityError> {
     let stamp = ts(now);
     tx.execute(
         "UPDATE credential_families SET revoked_at = ?2 WHERE id = ?1 AND revoked_at IS NULL",
@@ -1597,20 +1736,32 @@ fn insert_invitation(
 /// Rejects a key that already exists.
 fn insert_project(conn: &Connection, key: &str, name: &str) -> Result<(), IdentityError> {
     let exists: Option<i64> = conn
-        .query_row("SELECT 1 FROM projects WHERE key = ?1", params![key], |r| r.get(0))
+        .query_row("SELECT 1 FROM projects WHERE key = ?1", params![key], |r| {
+            r.get(0)
+        })
         .optional()
         .map_err(backend)?;
     if exists.is_some() {
-        return Err(IdentityError::Duplicate(format!("project '{key}' already exists")));
+        return Err(IdentityError::Duplicate(format!(
+            "project '{key}' already exists"
+        )));
     }
-    conn.execute("INSERT INTO projects (key, name) VALUES (?1, ?2)", params![key, name])
-        .map(|_| ())
-        .map_err(backend)
+    conn.execute(
+        "INSERT INTO projects (key, name) VALUES (?1, ?2)",
+        params![key, name],
+    )
+    .map(|_| ())
+    .map_err(backend)
 }
 
 /// Guard and insert one repo on `conn`. Rejects a repo key that already exists in
 /// that project. Shared by [`IdentityStore::create_repo`] and its admin variant.
-fn insert_repo(conn: &Connection, project_key: &str, key: &str, name: &str) -> Result<(), IdentityError> {
+fn insert_repo(
+    conn: &Connection,
+    project_key: &str,
+    key: &str,
+    name: &str,
+) -> Result<(), IdentityError> {
     let exists: Option<i64> = conn
         .query_row(
             "SELECT 1 FROM repos WHERE project_key = ?1 AND key = ?2",
@@ -1729,7 +1880,10 @@ fn map_pat_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<PatRow> {
 }
 
 /// The invitation's granted project keys.
-fn invitation_memberships(conn: &Connection, invitation_id: &str) -> Result<Vec<String>, IdentityError> {
+fn invitation_memberships(
+    conn: &Connection,
+    invitation_id: &str,
+) -> Result<Vec<String>, IdentityError> {
     let mut stmt = conn
         .prepare("SELECT project_key FROM invitation_memberships WHERE invitation_id = ?1 ORDER BY project_key")
         .map_err(backend)?;
@@ -1771,6 +1925,12 @@ fn migrate(conn: &Connection, from: u32) -> Result<(), IdentityError> {
         ))
         .map_err(open_err)?;
     }
+    if from <= 5 {
+        conn.execute_batch(
+            "BEGIN;\nALTER TABLE memberships ADD COLUMN role TEXT NOT NULL DEFAULT 'editor';\nUPDATE meta SET value = '6' WHERE key = 'schema_version';\nCOMMIT;",
+        )
+        .map_err(open_err)?;
+    }
     Ok(())
 }
 
@@ -1798,9 +1958,11 @@ fn has_any_user_table(conn: &Connection) -> Result<bool, IdentityError> {
 }
 
 fn meta_value(conn: &Connection, key: &str) -> Result<Option<String>, IdentityError> {
-    conn.query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| r.get(0))
-        .optional()
-        .map_err(open_err)
+    conn.query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| {
+        r.get(0)
+    })
+    .optional()
+    .map_err(open_err)
 }
 
 // --- timestamp + id + error helpers ---

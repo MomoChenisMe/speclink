@@ -28,6 +28,40 @@ pub struct User {
     pub admin: bool,
 }
 
+/// The deliberately small project-membership role model. Authorization code
+/// treats an unknown stored value as corruption instead of silently granting
+/// editor access.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MembershipRole {
+    Editor,
+    Reader,
+}
+
+impl MembershipRole {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Editor => "editor",
+            Self::Reader => "reader",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, IdentityError> {
+        match value {
+            "editor" => Ok(Self::Editor),
+            "reader" => Ok(Self::Reader),
+            other => Err(IdentityError::Refused(format!(
+                "unknown membership role '{other}'"
+            ))),
+        }
+    }
+}
+
+impl Default for MembershipRole {
+    fn default() -> Self {
+        Self::Editor
+    }
+}
+
 /// A registered project in the registry: its URL key and display name. The
 /// repos it holds are listed separately (决策 1).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -247,13 +281,24 @@ pub trait IdentityStore: Send + Sync {
     /// uniformly for an unknown email, a wrong password, or a suspended user —
     /// the caller cannot tell which, so login failure never leaks account
     /// existence.
-    fn authenticate_password(&self, email: &str, password: &str) -> Result<Option<User>, IdentityError>;
+    fn authenticate_password(
+        &self,
+        email: &str,
+        password: &str,
+    ) -> Result<Option<User>, IdentityError>;
 
     /// Set a user's active state (admin/test support).
     fn set_user_active(&self, user_id: &str, active: bool) -> Result<(), IdentityError>;
 
     /// Whether `user_id` is a member of `project_key`.
     fn is_member(&self, user_id: &str, project_key: &str) -> Result<bool, IdentityError>;
+
+    /// The user's role in `project_key`, or `None` when there is no membership.
+    fn membership_role(
+        &self,
+        user_id: &str,
+        project_key: &str,
+    ) -> Result<Option<MembershipRole>, IdentityError>;
 
     // --- Project/Repo registry (决策 1) ---
 
@@ -347,6 +392,15 @@ pub trait IdentityStore: Send + Sync {
     /// last-used is advanced separately by [`IdentityStore::touch_pat`].
     fn authenticate_pat(&self, token: &str) -> Result<Option<(Pat, User)>, IdentityError>;
 
+    /// Validate a bearer PAT's credential state while retaining the owning
+    /// user's active flag. This is only for identity-scoped gates that must
+    /// distinguish a valid suspended account (403) from an invalid credential
+    /// (401); project binding continues to use [`IdentityStore::authenticate_pat`].
+    fn authenticate_pat_allow_suspended(
+        &self,
+        token: &str,
+    ) -> Result<Option<(Pat, User)>, IdentityError>;
+
     /// Advance a PAT's last-used timestamp after a successful request.
     fn touch_pat(&self, pat_id: &str) -> Result<(), IdentityError>;
 
@@ -386,6 +440,14 @@ pub trait IdentityStore: Send + Sync {
     /// Per-request with no cache, so suspension and revocation take effect at
     /// once. The membership check is the caller's, as for PATs.
     fn authenticate_access_token(&self, token: &str) -> Result<Option<User>, IdentityError>;
+
+    /// Validate a device access token and retain the owning user's active flag,
+    /// for the same identity-scoped 401/403 distinction as
+    /// [`IdentityStore::authenticate_pat_allow_suspended`].
+    fn authenticate_access_token_allow_suspended(
+        &self,
+        token: &str,
+    ) -> Result<Option<User>, IdentityError>;
 
     /// Rotate a refresh credential: a valid, unused one is spent and a fresh
     /// access token + refresh credential minted in the same family. Reusing an
@@ -469,14 +531,16 @@ pub trait IdentityStore: Send + Sync {
         suspended: bool,
     ) -> Result<(), IdentityError>;
 
-    /// Grant (`member = true`) or revoke a user's membership of a project,
-    /// recording a `membership-changed` audit atomically. Idempotent on the
-    /// membership itself; an unknown user id is [`IdentityError::NotFound`].
+    /// Grant/update (`member = true`) or revoke a user's membership of a
+    /// project, recording the requested `role` in a `membership-changed` audit
+    /// atomically. Idempotent on the membership itself; an unknown user id is
+    /// [`IdentityError::NotFound`].
     fn admin_set_membership(
         &self,
         actor: &AuditActor,
         user_id: &str,
         project_key: &str,
+        role: MembershipRole,
         member: bool,
     ) -> Result<(), IdentityError>;
 
@@ -555,7 +619,8 @@ pub trait IdentityStore: Send + Sync {
     /// tokens and refresh credentials at once, as self-service revocation does —
     /// recording a `token-revoked` audit (the family id, no secret) in the same
     /// transaction. An unknown id is [`IdentityError::NotFound`].
-    fn admin_revoke_family(&self, actor: &AuditActor, family_id: &str) -> Result<(), IdentityError>;
+    fn admin_revoke_family(&self, actor: &AuditActor, family_id: &str)
+        -> Result<(), IdentityError>;
 }
 
 // --- credential hashing (決策 2) ---

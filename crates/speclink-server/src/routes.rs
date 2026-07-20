@@ -35,10 +35,11 @@ use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::query::{
     ApplyInstructions, ArtifactContent, ArtifactInstructions, ArtifactStatus, ChangeStatus,
     ChangeSummary, ConfigResponse, DependencyEntry, DiscussionInfo, LanguageResponse,
-    ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, Progress, ShowDiscussionResponse,
-    SpecSummary, TaskEntry, WhoamiRepo, WhoamiResponse, WhoamiUser,
+    ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, Progress, PutConfigRequest,
+    PutConfigResponse, ShowDiscussionResponse, SpecSummary, TaskEntry, WhoamiRepo, WhoamiResponse,
+    WhoamiUser,
 };
-use speclink_store::DocumentId;
+use speclink_store::{CommandContext, DocumentId};
 
 /// An acknowledgment body for verbs whose response the client ignores.
 #[derive(Serialize)]
@@ -215,17 +216,98 @@ pub async fn language(
     Ok(ok(LanguageResponse { content }, &result.etag))
 }
 
-/// `GET /config` — the default workflow schema, read from the store's config.
-pub async fn config(
+/// `GET /config` — the workflow policy source and its scope revision, read from
+/// one store snapshot so `revision` is exactly the ETag value.
+pub async fn config(State(state): State<AppState>, binding: Binding) -> Result<Response, ApiError> {
+    let store = state.store.clone();
+    let scope = verb::scope_of(&binding);
+    let (dto, etag) = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
+        let revision = snapshot.revision().0;
+        let content = snapshot
+            .read(&DocumentId::WorkflowConfig)
+            .map_err(ApiError::from)?
+            .map(|doc| doc.content);
+        let schema = WorkflowConfig::from_text(content.as_deref())
+            .map_err(|e| ApiError::invalid_config(e.to_string()))?
+            .schema_name();
+        Ok((
+            ConfigResponse {
+                schema,
+                content,
+                revision,
+            },
+            format!("\"{revision}\""),
+        ))
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
+    Ok(ok(dto, &etag))
+}
+
+/// `PUT /config` — server-authoritative workflow policy write. Authorization
+/// and engine parsing happen before any unit of work exists; only then is the
+/// client's scope revision compared and the document committed with store CAS.
+pub async fn put_config(
     State(state): State<AppState>,
     binding: Binding,
+    Json(req): Json<PutConfigRequest>,
 ) -> Result<Response, ApiError> {
-    let etag = verb::scope_etag(&state, &binding).await?;
-    let doc = verb::read_doc(&state, &binding, DocumentId::WorkflowConfig).await?;
-    let schema = WorkflowConfig::from_text(doc.as_ref().map(|d| d.content.as_str()))
-        .map_err(|e| ApiError::invalid_config(e.to_string()))?
-        .schema_name();
-    Ok(ok(ConfigResponse { schema }, &etag))
+    // First defense: the UI capability is only a hint; this request-time role
+    // decision is the final enforcement point.
+    if !binding.policy_write {
+        return Err(ApiError::forbidden(
+            "reader memberships cannot write workflow policy",
+        ));
+    }
+
+    // Second defense: parse the complete document through the engine config
+    // model before a write is staged. A malformed document never reaches CAS.
+    WorkflowConfig::from_text(Some(&req.content))
+        .map_err(|e| ApiError::invalid_config(e.to_string()))?;
+
+    let store = state.store.clone();
+    let scope = verb::scope_of(&binding);
+    let actor = binding.actor.id.clone();
+    let expected_revision = req.expected_revision;
+    let content = req.content;
+    let result = tokio::task::spawn_blocking(move || -> Result<(u64, String), ApiError> {
+        let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
+        let actual_revision = snapshot.revision().0;
+        if actual_revision != expected_revision {
+            return Err(ApiError::revision_conflict(format!(
+                "expected scope revision {expected_revision}, actual {actual_revision}"
+            )));
+        }
+        let current = snapshot
+            .read(&DocumentId::WorkflowConfig)
+            .map_err(ApiError::from)?;
+        drop(snapshot);
+
+        let mut uow = store
+            .begin_unit_of_work(
+                &scope,
+                CommandContext {
+                    command: "put-config".into(),
+                    actor,
+                },
+            )
+            .map_err(ApiError::from)?;
+        match current {
+            Some(doc) => uow.update(DocumentId::WorkflowConfig, content, doc.revision),
+            None => uow.create(DocumentId::WorkflowConfig, content),
+        }
+        let revision = store.commit(uow, Vec::new()).map_err(ApiError::from)?.0;
+        Ok((revision, format!("\"{revision}\"")))
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
+
+    if result.is_ok() {
+        state.events.notify(&verb::scope_of(&binding));
+    }
+    let (revision, etag) = result?;
+    Ok(ok(PutConfigResponse { revision }, &etag))
 }
 
 /// `GET /whoami` — the authenticated identity and the project's repos, from the

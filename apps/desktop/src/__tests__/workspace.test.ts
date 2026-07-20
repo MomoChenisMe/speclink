@@ -59,6 +59,8 @@ function fakeSession(ds: SpeclinkDataSource, root: string, name: string): Worksp
     descriptor: { name, badge: null },
     dataSource: ds,
     settings: {
+      kind: "local",
+      policyWrite: true,
       readSettings: vi.fn(),
       writeAppTools: vi.fn(),
       writeWorkflowConfig: vi.fn(),

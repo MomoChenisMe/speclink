@@ -28,6 +28,8 @@ export interface SettingsSnapshot {
     /** 活躍 schema 的 artifact id（引擎顯示序）——產出規則分節的固定鍵。 */
     schemaArtifacts: string[];
     parseError: string | null;
+    /** remote policy 的 scope revision；local 快照不帶此欄。 */
+    revision?: number;
   };
 }
 
@@ -74,6 +76,8 @@ export function createWorkspaceSettings(
   invoke: InvokeFn = tauriInvoke as InvokeFn,
 ): WorkspaceSettingsProvider {
   return {
+    kind: "local",
+    policyWrite: true,
     readSettings: () => invoke("read_settings", { root }),
     writeAppTools: (tools) => invoke("write_app_tools", { root, tools }),
     writeWorkflowConfig: (fields) =>
@@ -87,5 +91,69 @@ export function createWorkspaceSettings(
     writeWorkflowContext: (context) =>
       invoke("write_workflow_content", { root, context, rules: null }),
     writeWorkflowRules: (rules) => invoke("write_workflow_content", { root, context: null, rules }),
+  };
+}
+
+/** remote 設定面：locator 綁入閉包；read 保存 server revision，三種 targeted
+ * write 都必須帶該 expectedRevision，成功後才前進本地 token。 */
+export function createRemoteSettings(
+  connectionId: string,
+  project: string,
+  repo: string,
+  policyWrite: boolean,
+  invoke: InvokeFn = tauriInvoke as InvokeFn,
+): WorkspaceSettingsProvider {
+  const scope = { connectionId, project, repo };
+  let revision: number | null = null;
+
+  const expectedRevision = () => {
+    if (!policyWrite) throw new Error("你的角色為檢視者，只能查看此 Workflow 政策。");
+    if (revision === null) throw new Error("尚未讀取 policy revision，無法儲存");
+    return revision;
+  };
+  const adoptRevision = async (request: Promise<number>) => {
+    const next = await request;
+    revision = next;
+    return next;
+  };
+
+  return {
+    kind: "remote",
+    policyWrite,
+    readSettings: async () => {
+      const snapshot = await invoke<SettingsSnapshot>("remote_read_settings", scope);
+      revision = snapshot.workflow.revision ?? null;
+      return snapshot;
+    },
+    writeAppTools: () => Promise.reject(new Error("remote Workflow 無 .speclink.yaml 工具設定")),
+    writeWorkflowConfig: (fields) =>
+      adoptRevision(
+        invoke<number>("remote_write_workflow_config", {
+          ...scope,
+          locale: fields.locale,
+          specLocale: fields.specLocale,
+          tdd: fields.tdd,
+          audit: fields.audit,
+          expectedRevision: expectedRevision(),
+        }),
+      ),
+    writeWorkflowContext: (context) =>
+      adoptRevision(
+        invoke<number>("remote_write_workflow_content", {
+          ...scope,
+          context,
+          rules: null,
+          expectedRevision: expectedRevision(),
+        }),
+      ),
+    writeWorkflowRules: (rules) =>
+      adoptRevision(
+        invoke<number>("remote_write_workflow_content", {
+          ...scope,
+          context: null,
+          rules,
+          expectedRevision: expectedRevision(),
+        }),
+      ),
   };
 }

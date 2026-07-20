@@ -23,7 +23,7 @@ use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::query::{
     ApplyInstructions, ArtifactContent, ArtifactInstructions, ChangeStatus, ConfigResponse,
     LanguageResponse, ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse,
-    ShowDiscussionResponse, WhoamiResponse,
+    PutConfigRequest, PutConfigResponse, ShowDiscussionResponse, WhoamiResponse,
 };
 
 /// The contract major version this client speaks (`X-Speclink-Api-Version`)
@@ -250,6 +250,25 @@ impl Client {
     }
 
     // --- write path ---
+
+    /// `PUT /config` with the complete workflow policy source and the scope
+    /// revision returned by [`Client::config`]. There is deliberately no
+    /// overload without `expected_revision` and therefore no force-write path.
+    pub fn put_config(
+        &self,
+        content: &str,
+        expected_revision: u64,
+    ) -> Result<PutConfigResponse, RemoteError> {
+        self.send(
+            "PUT",
+            "/config",
+            Some(&PutConfigRequest {
+                content: content.to_string(),
+                expected_revision,
+            }),
+            &[],
+        )
+    }
 
     /// `POST /changes`
     pub fn create_change(

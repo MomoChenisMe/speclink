@@ -7,7 +7,9 @@
 mod common;
 
 use chrono::{Duration, Utc};
-use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
+use speclink_server::identity::{
+    IdentitySqlite, IdentityStore, MembershipRole, NewInvitation,
+};
 use speclink_server::state::AppState;
 use speclink_store::memory::MemoryStore;
 use std::sync::Arc;
@@ -77,6 +79,7 @@ fn the_users_page_lists_and_drives_the_single_point_actions() {
     assert_eq!(status, 200);
     assert!(body.contains("member@example.com"), "the member is listed");
     assert!(body.contains("建立邀請"), "the invite form is present");
+    assert!(body.contains("value=\"reader\""), "the membership form offers the reader role");
 
     // Invite: the acceptance URL is shown once.
     let agent = ureq::builder().redirects(0).build();
@@ -90,8 +93,18 @@ fn the_users_page_lists_and_drives_the_single_point_actions() {
     assert!(invited.contains("/invite/"), "the invite acceptance URL is shown");
 
     // Membership grant and admin-flag toggle through the forms.
-    assert!((300..400).contains(&post(&base, &format!("/admin/users/{member_id}/membership"), &admin, &[("project_key", "demo"), ("action", "grant")])));
+    assert!((300..400).contains(&post(
+        &base,
+        &format!("/admin/users/{member_id}/membership"),
+        &admin,
+        &[("project_key", "demo"), ("role", "reader"), ("action", "grant")],
+    )));
     assert!(identity.is_member(&member_id, "demo").unwrap(), "membership granted via the form");
+    assert_eq!(
+        identity.membership_role(&member_id, "demo").unwrap(),
+        Some(MembershipRole::Reader),
+        "the form-selected role is stored",
+    );
     assert!((300..400).contains(&post(&base, &format!("/admin/users/{member_id}/admin-flag"), &admin, &[("admin", "true")])));
     assert!(identity.get_user(&member_id).unwrap().unwrap().admin, "admin flag set via the form");
 }
