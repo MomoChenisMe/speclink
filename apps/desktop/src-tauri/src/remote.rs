@@ -12,6 +12,8 @@
 use crate::connections::{refresh_connection, RefreshFailure};
 use crate::credentials::{CredentialKind, CredentialStore};
 use serde::Serialize;
+use speclink_core::model::{require_valid_meta, ChangeMeta};
+use speclink_core::store::Store;
 use speclink_desktop_core::settings::{
     read_workflow_settings_from_text, rewrite_workflow_content_text, rewrite_workflow_fields_text,
     AppSettings, ContextEdit, WorkflowPolicyFields, WorkflowSettings,
@@ -22,15 +24,76 @@ use speclink_protocol::command::{
 };
 use speclink_protocol::events::TransportKind;
 use speclink_protocol::query::{
-    ArtifactContent, ChangeStatus, DiscussionInfo, ListChangesResponse, ListSpecsResponse,
-    ShowDiscussionResponse,
+    ArchivedListResponse, ArtifactContent, ChangeStatus, DiscussionInfo, ImportBundle,
+    ImportBundleDocument, ImportDocumentId, ImportReportResponse, ImportScope, ListChangesResponse,
+    ListSpecsResponse, ScopesResponse, SearchResponse, ShowDiscussionResponse,
+    SpecDocumentResponse,
 };
 use speclink_remote::client::Client;
 use speclink_remote::RemoteError;
+use speclink_store::content_digest;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 /// needs-reauth 的繁中狀態訊息（完整重新認證 UX 屬後續刀，本刀只回報狀態）。
 const REAUTH_MESSAGE: &str = "此連線的登入已失效——請重新登入";
+const OFFLINE_MESSAGE: &str = "此連線目前離線——顯示最後成功載入的內容";
+const OFFLINE_WRITE_MESSAGE: &str = "此連線目前離線——寫入已拒絕，未排隊或暫存";
+pub const REMOTE_CONNECTION_STATE_EVENT: &str = "remote-connection-state";
+pub const DEFAULT_FAILURE_THRESHOLD: usize = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConnectionState {
+    Online,
+    Offline,
+    NeedsReauth,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionStateEvent {
+    pub connection_id: String,
+    pub state: ConnectionState,
+    pub message: Option<String>,
+}
+
+/// `remote_open` 專用的 IPC failure shape。只公開復原分類需要的欄位，
+/// credential、header 與 Keychain 內容都不跨越 Tauri 邊界。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteOpenFailure {
+    pub message: String,
+    pub reason: Option<String>,
+    pub status: Option<u16>,
+}
+
+impl RemoteOpenFailure {
+    pub fn unknown(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            reason: None,
+            status: None,
+        }
+    }
+}
+
+impl From<RemoteError> for RemoteOpenFailure {
+    fn from(error: RemoteError) -> Self {
+        Self {
+            message: error.message,
+            reason: error.reason,
+            status: error.status,
+        }
+    }
+}
+
+struct ConnectionHealth {
+    connection_id: Option<String>,
+    state: ConnectionState,
+    consecutive_failures: usize,
+}
 
 /// 一條 connection 的 token 生命週期管理者。
 pub struct TokenManager {
@@ -39,26 +102,64 @@ pub struct TokenManager {
     bearer: Mutex<Option<String>>,
     /// needs-reauth 狀態訊息；Some 之後所有操作直接拒絕。
     needs_reauth: Mutex<Option<String>>,
+    health: Mutex<ConnectionHealth>,
+    failure_threshold: usize,
+    state_observer: Arc<dyn Fn(ConnectionStateEvent) + Send + Sync>,
 }
 
 impl TokenManager {
     pub fn new(origin: &str) -> TokenManager {
+        Self::with_state_observer(origin, DEFAULT_FAILURE_THRESHOLD, |_| {})
+    }
+
+    pub fn with_connection_state(
+        origin: &str,
+        connection_id: &str,
+        failure_threshold: usize,
+        observer: impl Fn(ConnectionStateEvent) + Send + Sync + 'static,
+    ) -> TokenManager {
+        let manager = Self::with_state_observer(origin, failure_threshold, observer);
+        manager.bind_connection_id(connection_id);
+        manager
+    }
+
+    pub(crate) fn with_state_observer(
+        origin: &str,
+        failure_threshold: usize,
+        observer: impl Fn(ConnectionStateEvent) + Send + Sync + 'static,
+    ) -> TokenManager {
         TokenManager {
             origin: origin.to_string(),
             bearer: Mutex::new(None),
             needs_reauth: Mutex::new(None),
+            health: Mutex::new(ConnectionHealth {
+                connection_id: None,
+                state: ConnectionState::Online,
+                consecutive_failures: 0,
+            }),
+            failure_threshold: failure_threshold.max(1),
+            state_observer: Arc::new(observer),
         }
+    }
+
+    pub fn bind_connection_id(&self, connection_id: &str) {
+        self.health.lock().expect("health lock").connection_id = Some(connection_id.to_string());
     }
 
     /// 登入流程換得的 access token 交接進來；重新登入即復原 needs-reauth。
     pub fn adopt_access_token(&self, token: &str) {
         *self.bearer.lock().expect("bearer lock") = Some(token.to_string());
         *self.needs_reauth.lock().expect("reauth lock") = None;
+        self.transition_online();
     }
 
     /// TS 可查的連線狀態：Some(繁中訊息)＝需重新認證。
     pub fn needs_reauth(&self) -> Option<String> {
         self.needs_reauth.lock().expect("reauth lock").clone()
+    }
+
+    pub fn connection_state(&self) -> ConnectionState {
+        self.health.lock().expect("health lock").state
     }
 
     /// 以有效 bearer 執行一次請求（呼叫端逐請求建構 speclink-remote Client）：
@@ -71,19 +172,152 @@ impl TokenManager {
         if self.needs_reauth().is_some() {
             return Err(rejected());
         }
-        let bearer = self.acquire(credentials)?;
+        let bearer = match self.acquire(credentials) {
+            Ok(bearer) => bearer,
+            Err(error) => return self.observe_result(Err(error)),
+        };
         match call(&bearer) {
             Err(e) if e.status == Some(401) => {
                 // 快取的 bearer 已死：換發後恰好重試一次。PAT 連線無可換發，
                 // mint 會交回同一枚 PAT，重試再 401 即進 needs-reauth。
                 *self.bearer.lock().expect("bearer lock") = None;
-                let fresh = self.mint(credentials)?;
+                let fresh = match self.mint(credentials) {
+                    Ok(fresh) => fresh,
+                    Err(error) => return self.observe_result(Err(error)),
+                };
                 match call(&fresh) {
                     Err(e) if e.status == Some(401) => Err(self.flag_reauth()),
-                    other => other,
+                    other => self.observe_result(other),
                 }
             }
-            other => other,
+            other => self.observe_result(other),
+        }
+    }
+
+    pub fn execute_write<T>(
+        &self,
+        credentials: &dyn CredentialStore,
+        call: impl Fn(&str) -> Result<T, RemoteError>,
+    ) -> Result<T, RemoteError> {
+        self.ensure_write_allowed()?;
+        self.execute(credentials, call)
+    }
+
+    fn ensure_write_allowed(&self) -> Result<(), RemoteError> {
+        match self.connection_state() {
+            ConnectionState::Online => Ok(()),
+            ConnectionState::Offline => Err(offline_rejected()),
+            ConnectionState::NeedsReauth => Err(rejected()),
+        }
+    }
+
+    fn observe_result<T>(&self, result: Result<T, RemoteError>) -> Result<T, RemoteError> {
+        match result {
+            Ok(value) => {
+                self.record_success();
+                Ok(value)
+            }
+            Err(error) => {
+                if is_transport_failure(&error) {
+                    self.record_transport_failure();
+                }
+                Err(error)
+            }
+        }
+    }
+
+    fn record_success(&self) {
+        let event = {
+            let mut health = self.health.lock().expect("health lock");
+            health.consecutive_failures = 0;
+            if health.state == ConnectionState::Offline {
+                health.state = ConnectionState::Online;
+                health
+                    .connection_id
+                    .clone()
+                    .map(|connection_id| ConnectionStateEvent {
+                        connection_id,
+                        state: ConnectionState::Online,
+                        message: None,
+                    })
+            } else {
+                None
+            }
+        };
+        self.emit_state(event);
+    }
+
+    fn record_transport_failure(&self) {
+        let event = {
+            let mut health = self.health.lock().expect("health lock");
+            if health.state == ConnectionState::NeedsReauth {
+                return;
+            }
+            health.consecutive_failures = health.consecutive_failures.saturating_add(1);
+            if health.consecutive_failures >= self.failure_threshold
+                && health.state != ConnectionState::Offline
+            {
+                health.state = ConnectionState::Offline;
+                health
+                    .connection_id
+                    .clone()
+                    .map(|connection_id| ConnectionStateEvent {
+                        connection_id,
+                        state: ConnectionState::Offline,
+                        message: Some(OFFLINE_MESSAGE.to_string()),
+                    })
+            } else {
+                None
+            }
+        };
+        self.emit_state(event);
+    }
+
+    fn transition_online(&self) {
+        let event = {
+            let mut health = self.health.lock().expect("health lock");
+            health.consecutive_failures = 0;
+            if health.state != ConnectionState::Online {
+                health.state = ConnectionState::Online;
+                health
+                    .connection_id
+                    .clone()
+                    .map(|connection_id| ConnectionStateEvent {
+                        connection_id,
+                        state: ConnectionState::Online,
+                        message: None,
+                    })
+            } else {
+                None
+            }
+        };
+        self.emit_state(event);
+    }
+
+    fn transition_needs_reauth(&self) {
+        let event = {
+            let mut health = self.health.lock().expect("health lock");
+            health.consecutive_failures = 0;
+            if health.state != ConnectionState::NeedsReauth {
+                health.state = ConnectionState::NeedsReauth;
+                health
+                    .connection_id
+                    .clone()
+                    .map(|connection_id| ConnectionStateEvent {
+                        connection_id,
+                        state: ConnectionState::NeedsReauth,
+                        message: Some(REAUTH_MESSAGE.to_string()),
+                    })
+            } else {
+                None
+            }
+        };
+        self.emit_state(event);
+    }
+
+    fn emit_state(&self, event: Option<ConnectionStateEvent>) {
+        if let Some(event) = event {
+            (self.state_observer)(event);
         }
     }
 
@@ -111,7 +345,10 @@ impl TokenManager {
                 Err(RefreshFailure::Unavailable(message)) => return Err(unavailable(message)),
             }
         } else {
-            match credentials.get(&self.origin, CredentialKind::Pat).map_err(unavailable)? {
+            match credentials
+                .get(&self.origin, CredentialKind::Pat)
+                .map_err(unavailable)?
+            {
                 Some(pat) => pat,
                 None => return Err(self.flag_reauth()),
             }
@@ -124,8 +361,15 @@ impl TokenManager {
     fn flag_reauth(&self) -> RemoteError {
         *self.bearer.lock().expect("bearer lock") = None;
         *self.needs_reauth.lock().expect("reauth lock") = Some(REAUTH_MESSAGE.to_string());
+        self.transition_needs_reauth();
         rejected()
     }
+}
+
+fn is_transport_failure(error: &RemoteError) -> bool {
+    error.status.is_none()
+        && error.reason.is_none()
+        && error.message.starts_with("server unreachable")
 }
 
 /// needs-reauth 的拒絕錯誤：繁中訊息＋機讀 reason。
@@ -137,9 +381,21 @@ fn rejected() -> RemoteError {
     }
 }
 
+fn offline_rejected() -> RemoteError {
+    RemoteError {
+        message: OFFLINE_WRITE_MESSAGE.to_string(),
+        reason: Some("offline".to_string()),
+        status: None,
+    }
+}
+
 /// 暫時性失敗原樣中繼（訊息來自 refresh 編排或 Keychain）。
 fn unavailable(message: String) -> RemoteError {
-    RemoteError { message, reason: None, status: None }
+    RemoteError {
+        message,
+        reason: None,
+        status: None,
+    }
 }
 
 /// SpeclinkDataSource 的 artifact 定址是檔名（proposal.md、tasks.md、
@@ -150,6 +406,332 @@ fn artifact_id(artifact: &str) -> &str {
         return cap_dir;
     }
     artifact.strip_suffix(".md").unwrap_or(artifact)
+}
+
+/// Read one local filesystem workspace through the Engine Store seam and
+/// produce the migration wire bundle. Every source is read before upload; any
+/// corrupt metadata or unsupported artifact pattern aborts the whole build.
+pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<ImportBundle, String> {
+    if project.trim().is_empty() || repo.trim().is_empty() {
+        return Err("migration target project and repo must both be selected".to_string());
+    }
+    let context = speclink_desktop_core::init_core_context(root)
+        .ok_or_else(|| format!("not a local speclink workspace: {}", root.display()))?;
+    let store: &dyn Store = &context.store;
+    let user_dir = speclink_host::context::global_config_dir();
+    let mut documents = BTreeMap::<ImportDocumentId, String>::new();
+
+    for change in store.list_changes() {
+        require_valid_meta(&change).map_err(|error| error.to_string())?;
+        let meta = store.read_change_meta(&change.name).unwrap_or_default();
+        insert_import_document(
+            &mut documents,
+            ImportDocumentId::ChangeMeta {
+                change: change.name.clone(),
+            },
+            meta,
+        )?;
+        let schema =
+            resolve_migration_schema(&context.workspace, &user_dir, &change.meta.schema_name())?;
+        for artifact in migration_artifact_paths(&schema, store.delta_capabilities(&change.name))? {
+            if let Some(content) = store.read_artifact(&change.name, &artifact) {
+                insert_import_document(
+                    &mut documents,
+                    ImportDocumentId::ChangeArtifact {
+                        change: change.name.clone(),
+                        artifact,
+                    },
+                    content,
+                )?;
+            }
+        }
+    }
+
+    let mut capabilities = store.list_canonical_capabilities();
+    capabilities.sort();
+    for capability in capabilities {
+        if let Some(content) = store.read_canonical_spec(&capability) {
+            insert_import_document(
+                &mut documents,
+                ImportDocumentId::CanonicalSpec { capability },
+                content,
+            )?;
+        }
+    }
+
+    for discussion in store.list_live_discussions() {
+        insert_import_document(
+            &mut documents,
+            ImportDocumentId::Discussion {
+                slug: discussion.slug,
+                archived: false,
+            },
+            discussion.text,
+        )?;
+    }
+    for discussion in store.list_archived_discussions() {
+        insert_import_document(
+            &mut documents,
+            ImportDocumentId::Discussion {
+                slug: discussion.slug,
+                archived: true,
+            },
+            discussion.text,
+        )?;
+    }
+
+    for dated_name in store.list_archived_changes() {
+        let meta = store.read_archived_meta(&dated_name).unwrap_or_default();
+        let parsed = ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
+            format!("invalid openspec/changes/archive/{dated_name}/.openspec.yaml: {reason}")
+        })?;
+        insert_import_document(
+            &mut documents,
+            ImportDocumentId::ArchivedChange {
+                change: dated_name.clone(),
+                doc: ".openspec.yaml".to_string(),
+            },
+            meta,
+        )?;
+        let schema =
+            resolve_migration_schema(&context.workspace, &user_dir, &parsed.schema_name())?;
+        for artifact in
+            migration_artifact_paths(&schema, store.archived_delta_capabilities(&dated_name))?
+        {
+            if let Some(content) = store.read_archived_artifact(&dated_name, &artifact) {
+                insert_import_document(
+                    &mut documents,
+                    ImportDocumentId::ArchivedChange {
+                        change: dated_name.clone(),
+                        doc: artifact,
+                    },
+                    content,
+                )?;
+            }
+        }
+    }
+
+    if let Some(content) = store.read_workflow_config() {
+        insert_import_document(&mut documents, ImportDocumentId::WorkflowConfig, content)?;
+    }
+    if let Some(content) = store.read_language() {
+        insert_import_document(&mut documents, ImportDocumentId::Language, content)?;
+    }
+
+    Ok(ImportBundle {
+        format_version: speclink_store::BUNDLE_FORMAT_VERSION,
+        scope: ImportScope {
+            project: project.to_string(),
+            repo: repo.to_string(),
+        },
+        project_revision: 0,
+        documents: documents
+            .into_iter()
+            .map(|(document, content)| ImportBundleDocument {
+                digest: content_digest(&content),
+                document,
+                content,
+            })
+            .collect(),
+    })
+}
+
+fn resolve_migration_schema(
+    workspace: &speclink_core::workspace::Workspace,
+    user_dir: &Path,
+    name: &str,
+) -> Result<speclink_core::schema::Schema, String> {
+    speclink_core::schema::resolve_with(Some(workspace), Some(user_dir), name)
+        .ok_or_else(|| speclink_core::schema::not_found_msg(name))?
+}
+
+fn migration_artifact_paths(
+    schema: &speclink_core::schema::Schema,
+    delta_capabilities: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let mut paths = BTreeSet::new();
+    for artifact in &schema.artifacts {
+        if artifact.output_path == "specs/**/*.md" {
+            paths.extend(
+                delta_capabilities
+                    .iter()
+                    .map(|capability| format!("specs/{capability}/spec.md")),
+            );
+        } else if artifact.output_path.contains('*') {
+            return Err(format!(
+                "cannot enumerate migration artifact pattern '{}' in schema '{}'",
+                artifact.output_path, schema.name
+            ));
+        } else {
+            paths.insert(artifact.output_path.clone());
+        }
+    }
+    Ok(paths.into_iter().collect())
+}
+
+fn insert_import_document(
+    documents: &mut BTreeMap<ImportDocumentId, String>,
+    document: ImportDocumentId,
+    content: String,
+) -> Result<(), String> {
+    if documents.insert(document.clone(), content).is_some() {
+        return Err(format!("duplicate local migration document: {document:?}"));
+    }
+    Ok(())
+}
+
+/// Successful local-to-remote conversion. The UI uses `checkoutRoot` to replace
+/// the local tab in place and displays the retained backup path.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrationResult {
+    pub report: ImportReportResponse,
+    pub backup_path: String,
+    pub checkout_root: String,
+}
+
+/// Result of resolving a coexistence conflict in favor of server truth. This
+/// path never builds or uploads a Bundle; it only retains the local tree.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteAdoptionResult {
+    pub backup_path: String,
+    pub checkout_root: String,
+}
+
+/// Bundle and import a local workspace, then—and only then—rename the local
+/// `openspec/` tree to a dated backup and write the remote marker.
+pub fn migrate_workspace(
+    root: &Path,
+    origin: &str,
+    project: &str,
+    repo: &str,
+    manager: &Arc<TokenManager>,
+    credentials: &dyn CredentialStore,
+) -> Result<MigrationResult, String> {
+    let context = speclink_desktop_core::init_core_context(root)
+        .ok_or_else(|| format!("not a local speclink workspace: {}", root.display()))?;
+    if context.workspace.spec_dir_name != "openspec" {
+        return Err(format!(
+            "local-to-remote migration requires the default openspec/ directory; this workspace uses {}/",
+            context.workspace.spec_dir_name
+        ));
+    }
+    let checkout_root = context.workspace.root;
+    let bundle = build_import_bundle(root, project, repo)?;
+    let project_base = format!(
+        "{}/api/speclink/v1/projects/{project}",
+        origin.trim_end_matches('/')
+    );
+    let report = manager
+        .execute_write(credentials, |token| {
+            Client::new(&project_base, token, Some(repo)).import(&bundle)
+        })
+        .map_err(|error| error.message)?;
+
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let backup_path =
+        finalize_local_migration_with(&checkout_root, origin, project, repo, &date, |from, to| {
+            std::fs::rename(from, to)
+        })?;
+    Ok(MigrationResult {
+        report,
+        backup_path: backup_path.display().to_string(),
+        checkout_root: checkout_root.display().to_string(),
+    })
+}
+
+/// Retain the local `openspec/` tree and leave the existing remote marker
+/// byte-for-byte intact. Used only after the UI has successfully handshaken
+/// with the marker's server scope.
+pub fn adopt_remote_workspace(root: &Path) -> Result<RemoteAdoptionResult, String> {
+    let context = speclink_desktop_core::init_core_context(root)
+        .ok_or_else(|| format!("not a local speclink workspace: {}", root.display()))?;
+    if context.workspace.spec_dir_name != "openspec" {
+        return Err(format!(
+            "adopting server truth requires the default openspec/ directory; this workspace uses {}/",
+            context.workspace.spec_dir_name
+        ));
+    }
+    let checkout_root = context.workspace.root;
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let backup_path =
+        adopt_remote_workspace_with(&checkout_root, &date, |from, to| std::fs::rename(from, to))?;
+    Ok(RemoteAdoptionResult {
+        backup_path: backup_path.display().to_string(),
+        checkout_root: checkout_root.display().to_string(),
+    })
+}
+
+fn adopt_remote_workspace_with(
+    root: &Path,
+    date: &str,
+    rename: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+) -> Result<std::path::PathBuf, String> {
+    let marker = root.join(".speclink.yaml");
+    if !marker.is_file() {
+        return Err(format!(
+            "cannot adopt server truth without an existing remote marker: {}",
+            marker.display()
+        ));
+    }
+    let source = root.join("openspec");
+    let backup = next_migration_backup(root, date);
+    rename(&source, &backup).map_err(|error| {
+        format!(
+            "server content was verified but the local backup rename failed ({error}). Local openspec/ remains intact; no upload or server write was attempted. Rename '{}' to '{}' manually before reopening the checkout.",
+            source.display(),
+            backup.display()
+        )
+    })?;
+    Ok(backup)
+}
+
+fn finalize_local_migration_with(
+    root: &Path,
+    origin: &str,
+    project: &str,
+    repo: &str,
+    date: &str,
+    rename: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+) -> Result<std::path::PathBuf, String> {
+    let source = root.join("openspec");
+    let backup = next_migration_backup(root, date);
+    rename(&source, &backup).map_err(|error| {
+        format!(
+            "server import succeeded, but the local backup rename failed ({error}). Local openspec/ remains intact and no remote marker was written. Rename '{}' to '{}' manually, then reconnect this folder as a checkout; do not retry import into the same scope.",
+            source.display(),
+            backup.display()
+        )
+    })?;
+
+    let project_url = format!(
+        "{}/api/speclink/v1/projects/{project}",
+        origin.trim_end_matches('/')
+    );
+    speclink_core::init::write_remote_section(root, &project_url, Some(repo)).map_err(|error| {
+        format!(
+            "server import and local backup succeeded, but the remote marker could not be written ({error}). The backup is retained at '{}'; repair .speclink.yaml before opening this folder as a checkout.",
+            backup.display()
+        )
+    })?;
+    Ok(backup)
+}
+
+fn next_migration_backup(root: &Path, date: &str) -> std::path::PathBuf {
+    let base = format!("openspec.migrated-{date}");
+    let first = root.join(&base);
+    if !first.exists() {
+        return first;
+    }
+    let mut sequence = 2_u64;
+    loop {
+        let candidate = root.join(format!("{base}-{sequence}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+        sequence += 1;
+    }
 }
 
 // --- handshake 與資料面三類矩陣（決策 1、2、6） ---
@@ -183,14 +765,15 @@ pub struct RemoteCapabilities {
     pub archive_discussion: bool,
     // (b) 組合
     pub set_all_tasks: bool,
-    // (c) 不支援（server 無端點；changeMeta/changeCapabilities 依實際 payload
-    // 定奪為無來源——ChangeStatus/ChangeSummary 皆不帶 metadata 與 capability
-    // 名清單）
+    // 新增的 server 純讀取面（封存、搜尋、正典 spec 內文）
     pub list_archived: bool,
     pub get_archived_document: bool,
     pub archived_capabilities: bool,
     pub search_workspace: bool,
     pub get_spec_document: bool,
+    // (c) 不支援（server 無端點；changeMeta/changeCapabilities 依實際 payload
+    // 定奪為無來源——ChangeStatus/ChangeSummary 皆不帶 metadata 與 capability
+    // 名清單）
     pub validate: bool,
     pub analyze: bool,
     pub delete_change: bool,
@@ -209,7 +792,10 @@ impl RemoteCapabilities {
     fn from_binding(binding: &BindingResponse) -> RemoteCapabilities {
         let events = &binding.capabilities.events;
         let live_updates = events.polling.is_some()
-            || events.transports.iter().any(|t| t.kind == TransportKind::Sse);
+            || events
+                .transports
+                .iter()
+                .any(|t| t.kind == TransportKind::Sse);
         RemoteCapabilities {
             list_changes: true,
             list_specs: true,
@@ -222,11 +808,11 @@ impl RemoteCapabilities {
             promote_discussion: true,
             archive_discussion: true,
             set_all_tasks: true,
-            list_archived: false,
-            get_archived_document: false,
-            archived_capabilities: false,
-            search_workspace: false,
-            get_spec_document: false,
+            list_archived: true,
+            get_archived_document: true,
+            archived_capabilities: true,
+            search_workspace: true,
+            get_spec_document: true,
             validate: false,
             analyze: false,
             delete_change: false,
@@ -337,8 +923,10 @@ pub fn open_workspace(
         Some((project, repo)) => (project.trim(), Some(repo.trim().to_string())),
         None => (target.trim(), None),
     };
-    let project_base =
-        format!("{}/api/speclink/v1/projects/{project}", origin.trim_end_matches('/'));
+    let project_base = format!(
+        "{}/api/speclink/v1/projects/{project}",
+        origin.trim_end_matches('/')
+    );
     let repo_header = repo.clone();
     let binding = manager.execute(credentials, |token| {
         Client::new(&project_base, token, repo_header.as_deref()).handshake()
@@ -357,6 +945,19 @@ pub fn open_workspace(
         manager: Arc::clone(manager),
     };
     Ok((workspace, info))
+}
+
+/// chooser 在選定 project/repo 前讀取登入者可見 scopes。此請求只有 bearer，
+/// 不攜帶 fabricated repo header；membership 過濾由 server 負責。
+pub fn list_scopes(
+    origin: &str,
+    manager: &Arc<TokenManager>,
+    credentials: &dyn CredentialStore,
+) -> Result<ScopesResponse, RemoteError> {
+    let api_root = format!("{}/api/speclink/v1", origin.trim_end_matches('/'));
+    manager.execute(credentials, |token| {
+        Client::new(&api_root, token, None).list_scopes()
+    })
 }
 
 /// 一個 handshake 成功後的 remote workspace 把手：資料面操作的 (a) 直達與
@@ -407,6 +1008,16 @@ impl RemoteWorkspace {
         })
     }
 
+    fn run_write<T>(
+        &self,
+        credentials: &dyn CredentialStore,
+        call: impl Fn(&Client) -> Result<T, RemoteError>,
+    ) -> Result<T, RemoteError> {
+        self.manager.execute_write(credentials, |token| {
+            call(&Client::new(&self.project_base, token, Some(&self.repo)))
+        })
+    }
+
     pub fn list_changes(
         &self,
         credentials: &dyn CredentialStore,
@@ -451,13 +1062,16 @@ impl RemoteWorkspace {
         fields: &WorkflowPolicyFields,
         expected_revision: u64,
     ) -> Result<u64, RemoteSettingsError> {
+        self.manager
+            .ensure_write_allowed()
+            .map_err(RemoteSettingsError::from)?;
         let config = self
             .run(credentials, |client| client.config())
             .map_err(RemoteSettingsError::from)?;
         let rewritten =
             rewrite_workflow_fields_text(config.content.as_deref().unwrap_or_default(), fields)
                 .map_err(RemoteSettingsError::local)?;
-        self.run(credentials, |client| {
+        self.run_write(credentials, |client| {
             client.put_config(&rewritten, expected_revision)
         })
         .map(|response| response.revision)
@@ -473,6 +1087,9 @@ impl RemoteWorkspace {
         rules: Option<&[(String, Vec<String>)]>,
         expected_revision: u64,
     ) -> Result<u64, RemoteSettingsError> {
+        self.manager
+            .ensure_write_allowed()
+            .map_err(RemoteSettingsError::from)?;
         let config = self
             .run(credentials, |client| client.config())
             .map_err(RemoteSettingsError::from)?;
@@ -485,11 +1102,55 @@ impl RemoteWorkspace {
             rules,
         )
         .map_err(RemoteSettingsError::local)?;
-        self.run(credentials, |client| {
+        self.run_write(credentials, |client| {
             client.put_config(&rewritten, expected_revision)
         })
         .map(|response| response.revision)
         .map_err(RemoteSettingsError::from)
+    }
+
+    pub fn list_archived(
+        &self,
+        credentials: &dyn CredentialStore,
+    ) -> Result<ArchivedListResponse, RemoteError> {
+        self.run(credentials, |client| client.archived_list())
+    }
+
+    pub fn spec_document(
+        &self,
+        credentials: &dyn CredentialStore,
+        capability: &str,
+    ) -> Result<SpecDocumentResponse, RemoteError> {
+        self.run(credentials, |client| client.spec_document(capability))
+    }
+
+    pub fn search_workspace(
+        &self,
+        credentials: &dyn CredentialStore,
+        query: &str,
+    ) -> Result<SearchResponse, RemoteError> {
+        self.run(credentials, |client| client.search(query))
+    }
+
+    pub fn archived_document(
+        &self,
+        credentials: &dyn CredentialStore,
+        dated_name: &str,
+        artifact: &str,
+    ) -> Result<SpecDocumentResponse, RemoteError> {
+        self.run(credentials, |client| {
+            client.archived_artifact(dated_name, artifact)
+        })
+    }
+
+    pub fn archived_capabilities(
+        &self,
+        credentials: &dyn CredentialStore,
+        dated_name: &str,
+    ) -> Result<Vec<String>, RemoteError> {
+        self.run(credentials, |client| {
+            client.archived_capabilities(dated_name)
+        })
     }
 
     pub fn change_status(
@@ -517,7 +1178,7 @@ impl RemoteWorkspace {
         task: &str,
         done: bool,
     ) -> Result<(), RemoteError> {
-        self.run(credentials, |client| {
+        self.run_write(credentials, |client| {
             if done {
                 client.task_done(change, task, &[]).map(|_| ())
             } else {
@@ -531,7 +1192,7 @@ impl RemoteWorkspace {
         credentials: &dyn CredentialStore,
         change: &str,
     ) -> Result<ClaimResponse, RemoteError> {
-        self.run(credentials, |client| client.claim(change))
+        self.run_write(credentials, |client| client.claim(change))
     }
 
     pub fn archive(
@@ -539,7 +1200,7 @@ impl RemoteWorkspace {
         credentials: &dyn CredentialStore,
         change: &str,
     ) -> Result<ArchiveResponse, RemoteError> {
-        self.run(credentials, |client| client.archive(change))
+        self.run_write(credentials, |client| client.archive(change))
     }
 
     pub fn list_discussions(
@@ -548,7 +1209,10 @@ impl RemoteWorkspace {
     ) -> Result<DiscussionLists, RemoteError> {
         let active = self.run(credentials, |client| client.list_discussions(false))?;
         let archived = self.run(credentials, |client| client.list_discussions(true))?;
-        Ok(DiscussionLists { active: active.discussions, archived: archived.discussions })
+        Ok(DiscussionLists {
+            active: active.discussions,
+            archived: archived.discussions,
+        })
     }
 
     pub fn discussion_document(
@@ -565,7 +1229,7 @@ impl RemoteWorkspace {
         slug: &str,
         name: Option<&str>,
     ) -> Result<PromoteDiscussionResponse, RemoteError> {
-        self.run(credentials, |client| client.discussion_promote(slug, name))
+        self.run_write(credentials, |client| client.discussion_promote(slug, name))
     }
 
     pub fn archive_discussion(
@@ -573,7 +1237,7 @@ impl RemoteWorkspace {
         credentials: &dyn CredentialStore,
         slug: &str,
     ) -> Result<ArchiveDiscussionResponse, RemoteError> {
-        self.run(credentials, |client| client.discussion_archive(slug))
+        self.run_write(credentials, |client| client.discussion_archive(slug))
     }
 
     /// (b) 組合：逐任務寫回，非原子——中途失敗即中止並回報已完成筆數。
@@ -584,6 +1248,12 @@ impl RemoteWorkspace {
         task_ids: &[String],
         done: bool,
     ) -> Result<usize, SetTasksFailure> {
+        self.manager
+            .ensure_write_allowed()
+            .map_err(|error| SetTasksFailure {
+                completed: 0,
+                error,
+            })?;
         let mut completed = 0;
         for task in task_ids {
             self.set_task_done(credentials, change, task, done)
@@ -601,9 +1271,18 @@ impl RemoteWorkspace {
         change: &str,
         done: bool,
     ) -> Result<usize, SetTasksFailure> {
+        self.manager
+            .ensure_write_allowed()
+            .map_err(|error| SetTasksFailure {
+                completed: 0,
+                error,
+            })?;
         let instructions = self
             .run(credentials, |client| client.apply_instructions(change))
-            .map_err(|error| SetTasksFailure { completed: 0, error })?;
+            .map_err(|error| SetTasksFailure {
+                completed: 0,
+                error,
+            })?;
         let pending: Vec<String> = instructions
             .tasks
             .into_iter()
@@ -611,5 +1290,309 @@ impl RemoteWorkspace {
             .map(|task| task.id)
             .collect();
         self.set_tasks(credentials, change, &pending, done)
+    }
+}
+
+#[cfg(test)]
+mod migration_bundle_tests {
+    use super::{adopt_remote_workspace_with, build_import_bundle, finalize_local_migration_with};
+    use speclink_protocol::query::ImportDocumentId;
+    use std::collections::BTreeMap;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    fn write(root: &Path, relative: &str, content: &str) {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().expect("fixture parent")).unwrap();
+        std::fs::write(path, content).unwrap();
+    }
+
+    fn complete_workspace() -> TempDir {
+        let root = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "openspec/config.yaml",
+            "schema: spec-driven\nlocale: tw\n",
+        );
+        write(root.path(), "openspec/LANGUAGE.md", "TeamStore: 團隊儲存\n");
+        write(
+            root.path(),
+            "openspec/changes/active-change/.openspec.yaml",
+            "schema: spec-driven\ncreated: 2026-07-21\n",
+        );
+        write(
+            root.path(),
+            "openspec/changes/active-change/proposal.md",
+            "## Why\n\nActive proposal.\n",
+        );
+        write(
+            root.path(),
+            "openspec/changes/active-change/design.md",
+            "## Context\n\nActive design.\n",
+        );
+        write(
+            root.path(),
+            "openspec/changes/active-change/tasks.md",
+            "- [ ] 1.1 Active task\n",
+        );
+        write(
+            root.path(),
+            "openspec/changes/active-change/specs/payments/spec.md",
+            "## ADDED Requirements\n\n### Requirement: Active payment\n",
+        );
+        write(
+            root.path(),
+            "openspec/specs/accounts/spec.md",
+            "# accounts Specification\n\nCanonical accounts.\n",
+        );
+        write(
+            root.path(),
+            "openspec/discussions/live-plan.md",
+            "---\ntopic: Live plan\nslug: live-plan\nstatus: open\ncreated: 2026-07-21\n---\n\nLive discussion.\n",
+        );
+        write(
+            root.path(),
+            "openspec/discussions/archive/2026-07-20-old-plan.md",
+            "---\ntopic: Old plan\nslug: old-plan\nstatus: concluded\ncreated: 2026-07-20\n---\n\nArchived discussion.\n",
+        );
+        write(
+            root.path(),
+            "openspec/changes/archive/2026-07-20-old-change/.openspec.yaml",
+            "schema: spec-driven\ncreated: 2026-07-20\n",
+        );
+        write(
+            root.path(),
+            "openspec/changes/archive/2026-07-20-old-change/proposal.md",
+            "## Why\n\nArchived proposal.\n",
+        );
+        write(
+            root.path(),
+            "openspec/changes/archive/2026-07-20-old-change/tasks.md",
+            "- [x] 1.1 Archived task\n",
+        );
+        write(
+            root.path(),
+            "openspec/changes/archive/2026-07-20-old-change/specs/payments/spec.md",
+            "## ADDED Requirements\n\n### Requirement: Archived payment\n",
+        );
+        root
+    }
+
+    #[test]
+    fn bundle_contains_every_local_workspace_document_with_exact_content() {
+        let root = complete_workspace();
+        let bundle = build_import_bundle(root.path(), "demo", "backend")
+            .expect("complete local workspace builds");
+        assert_eq!(bundle.format_version, 1);
+        assert_eq!(bundle.scope.project, "demo");
+        assert_eq!(bundle.scope.repo, "backend");
+        assert_eq!(bundle.project_revision, 0);
+
+        let documents: BTreeMap<ImportDocumentId, String> = bundle
+            .documents
+            .into_iter()
+            .map(|document| (document.document, document.content))
+            .collect();
+        let expected = BTreeMap::from([
+            (
+                ImportDocumentId::ChangeMeta {
+                    change: "active-change".into(),
+                },
+                "schema: spec-driven\ncreated: 2026-07-21\n".into(),
+            ),
+            (
+                ImportDocumentId::ChangeArtifact {
+                    change: "active-change".into(),
+                    artifact: "proposal.md".into(),
+                },
+                "## Why\n\nActive proposal.\n".into(),
+            ),
+            (
+                ImportDocumentId::ChangeArtifact {
+                    change: "active-change".into(),
+                    artifact: "design.md".into(),
+                },
+                "## Context\n\nActive design.\n".into(),
+            ),
+            (
+                ImportDocumentId::ChangeArtifact {
+                    change: "active-change".into(),
+                    artifact: "tasks.md".into(),
+                },
+                "- [ ] 1.1 Active task\n".into(),
+            ),
+            (
+                ImportDocumentId::ChangeArtifact {
+                    change: "active-change".into(),
+                    artifact: "specs/payments/spec.md".into(),
+                },
+                "## ADDED Requirements\n\n### Requirement: Active payment\n".into(),
+            ),
+            (
+                ImportDocumentId::CanonicalSpec {
+                    capability: "accounts".into(),
+                },
+                "# accounts Specification\n\nCanonical accounts.\n".into(),
+            ),
+            (
+                ImportDocumentId::Discussion {
+                    slug: "live-plan".into(),
+                    archived: false,
+                },
+                "---\ntopic: Live plan\nslug: live-plan\nstatus: open\ncreated: 2026-07-21\n---\n\nLive discussion.\n".into(),
+            ),
+            (
+                ImportDocumentId::Discussion {
+                    slug: "old-plan".into(),
+                    archived: true,
+                },
+                "---\ntopic: Old plan\nslug: old-plan\nstatus: concluded\ncreated: 2026-07-20\n---\n\nArchived discussion.\n".into(),
+            ),
+            (
+                ImportDocumentId::ArchivedChange {
+                    change: "2026-07-20-old-change".into(),
+                    doc: ".openspec.yaml".into(),
+                },
+                "schema: spec-driven\ncreated: 2026-07-20\n".into(),
+            ),
+            (
+                ImportDocumentId::ArchivedChange {
+                    change: "2026-07-20-old-change".into(),
+                    doc: "proposal.md".into(),
+                },
+                "## Why\n\nArchived proposal.\n".into(),
+            ),
+            (
+                ImportDocumentId::ArchivedChange {
+                    change: "2026-07-20-old-change".into(),
+                    doc: "tasks.md".into(),
+                },
+                "- [x] 1.1 Archived task\n".into(),
+            ),
+            (
+                ImportDocumentId::ArchivedChange {
+                    change: "2026-07-20-old-change".into(),
+                    doc: "specs/payments/spec.md".into(),
+                },
+                "## ADDED Requirements\n\n### Requirement: Archived payment\n".into(),
+            ),
+            (
+                ImportDocumentId::WorkflowConfig,
+                "schema: spec-driven\nlocale: tw\n".into(),
+            ),
+            (
+                ImportDocumentId::Language,
+                "TeamStore: 團隊儲存\n".into(),
+            ),
+        ]);
+        assert_eq!(documents, expected);
+    }
+
+    #[test]
+    fn corrupt_change_metadata_aborts_the_bundle_and_names_the_file() {
+        let root = complete_workspace();
+        write(
+            root.path(),
+            "openspec/changes/active-change/.openspec.yaml",
+            "schema: [unterminated\n",
+        );
+
+        let error = build_import_bundle(root.path(), "demo", "backend")
+            .expect_err("corrupt metadata must fail closed");
+        assert!(
+            error.contains("openspec/changes/active-change/.openspec.yaml"),
+            "error names the corrupt metadata file: {error}"
+        );
+    }
+
+    #[test]
+    fn successful_conversion_renames_the_local_tree_before_writing_the_marker() {
+        let root = complete_workspace();
+        let marker = root.path().join(".speclink.yaml");
+        let backup = finalize_local_migration_with(
+            root.path(),
+            "https://spec.example.test",
+            "demo",
+            "backend",
+            "2026-07-21",
+            |from, to| {
+                assert!(from.is_dir(), "local truth exists until the rename");
+                assert!(!marker.exists(), "marker is not written before the backup");
+                std::fs::rename(from, to)
+            },
+        )
+        .expect("conversion succeeds");
+
+        assert_eq!(backup, root.path().join("openspec.migrated-2026-07-21"));
+        assert!(!root.path().join("openspec").exists());
+        assert!(backup.join("changes/active-change/proposal.md").is_file());
+        let marker = std::fs::read_to_string(marker).expect("remote marker");
+        assert!(marker.contains("https://spec.example.test/api/speclink/v1/projects/demo"));
+        assert!(marker.contains("repo: backend"));
+    }
+
+    #[test]
+    fn an_existing_dated_backup_uses_the_next_available_sequence() {
+        let root = complete_workspace();
+        std::fs::create_dir(root.path().join("openspec.migrated-2026-07-21")).unwrap();
+        std::fs::create_dir(root.path().join("openspec.migrated-2026-07-21-2")).unwrap();
+
+        let backup = finalize_local_migration_with(
+            root.path(),
+            "https://spec.example.test",
+            "demo",
+            "backend",
+            "2026-07-21",
+            |from, to| std::fs::rename(from, to),
+        )
+        .expect("conversion succeeds");
+        assert_eq!(backup, root.path().join("openspec.migrated-2026-07-21-3"));
+        assert!(backup.is_dir());
+    }
+
+    #[test]
+    fn adopting_server_truth_only_renames_local_truth_and_preserves_the_marker() {
+        let root = complete_workspace();
+        let marker = "remote:\n  url: https://spec.example.test/api/speclink/v1/projects/demo\n  repo: backend\n";
+        write(root.path(), ".speclink.yaml", marker);
+
+        let backup = adopt_remote_workspace_with(root.path(), "2026-07-21", |from, to| {
+            std::fs::rename(from, to)
+        })
+        .expect("server truth adoption succeeds");
+
+        assert_eq!(backup, root.path().join("openspec.migrated-2026-07-21"));
+        assert!(!root.path().join("openspec").exists());
+        assert!(backup.join("changes/active-change/proposal.md").is_file());
+        assert_eq!(
+            std::fs::read_to_string(root.path().join(".speclink.yaml")).unwrap(),
+            marker,
+            "remote marker is not rewritten"
+        );
+    }
+
+    #[test]
+    fn a_rename_failure_keeps_local_truth_and_writes_no_marker() {
+        let root = complete_workspace();
+        let error = finalize_local_migration_with(
+            root.path(),
+            "https://spec.example.test",
+            "demo",
+            "backend",
+            "2026-07-21",
+            |_, _| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "fixture denied",
+                ))
+            },
+        )
+        .expect_err("rename failure is reported");
+
+        assert!(error.contains("server import succeeded"));
+        assert!(error.contains("Rename") && error.contains("do not retry import"));
+        assert!(root.path().join("openspec").is_dir());
+        assert!(!root.path().join("openspec.migrated-2026-07-21").exists());
+        assert!(!root.path().join(".speclink.yaml").exists());
     }
 }

@@ -171,6 +171,11 @@ impl Store for TestStore {
     fn canonical_spec_path(&self, cap: &str) -> PathBuf {
         PathBuf::from(format!("specs/{cap}/spec.md"))
     }
+    fn list_archived_changes(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.archived_metas.borrow().keys().cloned().collect();
+        names.sort_by(|a, b| b.cmp(a));
+        names
+    }
     fn archived_change_exists(&self, dated_name: &str) -> bool {
         self.archived_metas.borrow().contains_key(dated_name)
     }
@@ -253,5 +258,34 @@ impl Store for TestStore {
     }
     fn read_language(&self) -> Option<String> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TestStore;
+    use crate::store::Store;
+
+    #[test]
+    fn archived_changes_are_visible_after_archive_in_dated_name_descending_order() {
+        let store = TestStore::default();
+        store
+            .create_change("older", "schema: spec-driven\n")
+            .expect("create older change");
+        store
+            .create_change("newer", "schema: spec-driven\n")
+            .expect("create newer change");
+
+        store
+            .archive_change("older", "2026-06-01-older")
+            .expect("archive older change");
+        store
+            .archive_change("newer", "2026-07-20-newer")
+            .expect("archive newer change");
+
+        assert_eq!(
+            store.list_archived_changes(),
+            vec!["2026-07-20-newer", "2026-06-01-older"]
+        );
     }
 }

@@ -12,11 +12,11 @@ export const REMOTE_KEY = "remote:c1/demo/backend";
 export const REMOTE_CAPS: WorkspaceCapabilities = {
   listChanges: true,
   listSpecs: true,
-  listArchived: false,
+  listArchived: true,
   status: true,
   getDocument: true,
-  getSpecDocument: false,
-  searchWorkspace: false,
+  getSpecDocument: true,
+  searchWorkspace: true,
   changeCapabilities: false,
   changeMeta: false,
   deleteChange: false,
@@ -26,17 +26,18 @@ export const REMOTE_CAPS: WorkspaceCapabilities = {
   validate: false,
   analyze: false,
   archive: true,
-  getArchivedDocument: false,
-  archivedCapabilities: false,
+  getArchivedDocument: true,
+  archivedCapabilities: true,
   listDiscussions: true,
   getDiscussionDocument: true,
   promoteDiscussion: true,
   archiveDiscussion: true,
   reorderCard: false,
+  policyWrite: true,
   liveUpdates: true,
 };
 
-/** 假 remote dataSource：直達方法回真值樣本；不支援方法一律拒絕（鏡射 remote adapter）。 */
+/** 假 remote dataSource：直達方法回真值樣本；其餘不支援方法拒絕（鏡射 remote adapter）。 */
 export function fakeRemoteDs(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSource {
   const refuse = () => Promise.reject(new Error("此 server 尚未提供——功能已停用"));
   return {
@@ -44,7 +45,18 @@ export function fakeRemoteDs(over: Partial<SpeclinkDataSource> = {}): SpeclinkDa
       { name: "remote-change", status: "in-progress", totalTasks: 2, completedTasks: 0 },
     ]),
     listSpecs: vi.fn().mockResolvedValue([{ id: "auth" }]),
-    listArchived: vi.fn(refuse),
+    listArchived: vi.fn().mockResolvedValue([
+      {
+        datedName: "2026-07-04-remote-old",
+        date: "2026-07-04",
+        name: "remote-old",
+        tasksTotal: 1,
+        tasksDone: 1,
+        specCount: 1,
+        createdBy: "Remote Creator",
+        fromDiscussions: [],
+      },
+    ]),
     status: vi.fn().mockResolvedValue({
       changeName: "remote-change",
       schemaName: "spec-driven",
@@ -53,8 +65,8 @@ export function fakeRemoteDs(over: Partial<SpeclinkDataSource> = {}): SpeclinkDa
       artifacts: [],
     }),
     getDocument: vi.fn().mockResolvedValue("- [ ] 1.1 First\n- [ ] 1.2 Second\n"),
-    getSpecDocument: vi.fn(refuse),
-    searchWorkspace: vi.fn(refuse),
+    getSpecDocument: vi.fn().mockResolvedValue("# auth Specification\n\nRemote canonical truth.\n"),
+    searchWorkspace: vi.fn().mockResolvedValue([]),
     changeCapabilities: vi.fn(refuse),
     changeMeta: vi.fn(refuse),
     deleteChange: vi.fn(refuse),
@@ -62,8 +74,8 @@ export function fakeRemoteDs(over: Partial<SpeclinkDataSource> = {}): SpeclinkDa
     setAllTasks: vi.fn().mockResolvedValue(undefined),
     moveTask: vi.fn(refuse),
     runVerb: vi.fn().mockResolvedValue({}),
-    getArchivedDocument: vi.fn(refuse),
-    archivedCapabilities: vi.fn(refuse),
+    getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\nRemote archived truth.\n"),
+    archivedCapabilities: vi.fn().mockResolvedValue(["auth"]),
     listDiscussions: vi.fn().mockResolvedValue({ active: [], archived: [] }),
     getDiscussionDocument: vi.fn().mockResolvedValue(null),
     promoteDiscussion: vi.fn().mockResolvedValue({ change: "chg" }),
@@ -81,6 +93,8 @@ export function fakeRemoteSession(ds: SpeclinkDataSource): WorkspaceSession {
     descriptor: { name: "Demo/backend", badge: null },
     dataSource: ds,
     settings: {
+      kind: "remote",
+      policyWrite: true,
       readSettings: vi.fn(),
       writeAppTools: vi.fn(),
       writeWorkflowConfig: vi.fn(),

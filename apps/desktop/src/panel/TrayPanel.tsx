@@ -16,20 +16,28 @@ import {
   type Stage,
 } from "@speclink/ui";
 import {
+  AlertTriangle,
   ArrowUpRight,
   Check,
   CircleCheckBig,
+  Cloud,
+  CloudOff,
   Copy,
+  Folder,
   Hammer,
   Lightbulb,
+  LoaderCircle,
+  LogIn,
   MessageSquareText,
   Plus,
   Power,
+  RefreshCw,
+  Server,
   Settings,
   type LucideIcon,
 } from "lucide-react";
 
-import { OVERFLOW_LIMIT, type TraySnapshot } from "../tray";
+import { OVERFLOW_LIMIT, type TraySnapshot, type TrayTabSnapshot } from "../tray";
 
 /** 分區圖示與看板欄位同款（KanbanBoard）：提案中／進行中／已就緒。 */
 const STAGE_ICONS: Record<Stage, LucideIcon> = {
@@ -41,7 +49,7 @@ const STAGE_ICONS: Record<Stage, LucideIcon> = {
 export interface TrayPanelProps {
   /** 主視窗推送的快照；null＝尚未收到（lazy 建窗後的短暫空窗）。 */
   snapshot: TraySnapshot | null;
-  onOpenProject: (root: string) => void;
+  onOpenProject: (key: string) => void;
   onOpenChange: (name: string) => void;
   onOpenDiscussion: (slug: string) => void;
   onOpenApp: () => void;
@@ -53,6 +61,14 @@ export interface TrayPanelProps {
   onCopy: (text: string) => void;
   /** 快速加入專案（design D7）：開資料夾選擇器，選定即加入並切換、取消無事。 */
   onAddProject: () => void;
+  /** 原地 retry：只回流主視窗 store，不顯示或聚焦主視窗。 */
+  onRetryWorkspace: (key: string) => void;
+  /** 顯式在主視窗顯示對應 recovery destination。 */
+  onOpenRecovery: (key: string) => void;
+  /** 顯式顯示並聚焦對應 connection 的伺服器設定。 */
+  onOpenServerSettings: (connectionId: string) => void;
+  /** 顯式顯示並聚焦對應 connection 的登入流程。 */
+  onReauthenticate: (connectionId: string) => void;
 }
 
 /** 列尾常駐複製鈕：stopPropagation 使複製不觸發列本體的開啟；
@@ -176,6 +192,131 @@ function OverflowGroup({
   );
 }
 
+function tabStatusLabel(tab: TrayTabSnapshot, t: (key: string) => string): string {
+  if (tab.source === "local") return "";
+  if (tab.status === "restoring") return t("tray.recovery.restoring");
+  if (tab.status === "offline") return t("tray.recovery.offline");
+  if (tab.status === "needs-reauth" || tab.failureKind === "needs-reauth") {
+    return t("tray.recovery.needsReauth");
+  }
+  if (tab.failureKind === "access-denied") return t("tray.recovery.accessDenied");
+  if (tab.failureKind === "not-found") return t("tray.recovery.notFound");
+  if (tab.failureKind === "unknown") return t("tray.recovery.unknown");
+  if (tab.status === "error") return t("tray.recovery.unreachable");
+  return "";
+}
+
+function RemoteTabIcon({ tab }: { tab: Extract<TrayTabSnapshot, { source: "remote" }> }) {
+  if (tab.status === "restoring") {
+    return <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />;
+  }
+  if (tab.status === "offline") return <CloudOff className="h-3.5 w-3.5" />;
+  if (tab.status === "needs-reauth" || tab.failureKind === "needs-reauth") {
+    return <LogIn className="h-3.5 w-3.5" />;
+  }
+  if (tab.status === "error") return <AlertTriangle className="h-3.5 w-3.5" />;
+  return <Cloud className="h-3.5 w-3.5" />;
+}
+
+function PanelRecoveryCard({
+  tab,
+  onRetry,
+  onOpenRecovery,
+  onOpenServerSettings,
+  onReauthenticate,
+}: {
+  tab: Extract<TrayTabSnapshot, { source: "remote" }>;
+  onRetry: () => void;
+  onOpenRecovery: () => void;
+  onOpenServerSettings: () => void;
+  onReauthenticate: () => void;
+}) {
+  const { t } = useI18n();
+  const restoring = tab.status === "restoring";
+  const needsReauth = tab.failureKind === "needs-reauth";
+  const summary = tabStatusLabel(tab, t);
+  return (
+    <section
+      data-testid="panel-recovery-card"
+      data-status={tab.status}
+      role="status"
+      aria-live="polite"
+      className="rounded-xl border border-amber-500/30 bg-foreground/5 p-3"
+    >
+      <div className="flex items-start gap-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300">
+          {restoring ? (
+            <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+          ) : needsReauth ? (
+            <LogIn className="h-4 w-4" />
+          ) : (
+            <AlertTriangle className="h-4 w-4" />
+          )}
+        </span>
+        <div className="min-w-0">
+          <div className="font-semibold">{summary}</div>
+          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{tab.name}</div>
+        </div>
+      </div>
+
+      <dl className="mt-3 grid gap-2 rounded-lg bg-background/45 p-2 text-[11px]">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Cloud className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <dt className="text-muted-foreground">{t("tray.recovery.workspace")}</dt>
+          <dd className="ml-auto truncate font-medium">{tab.name}</dd>
+        </div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Server className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <dt className="text-muted-foreground">{t("tray.recovery.server")}</dt>
+          <dd className="ml-auto truncate font-medium">
+            {tab.source === "remote" ? tab.serverLabel : ""}
+            {tab.serverOrigin ? ` · ${tab.serverOrigin}` : ""}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-3 grid grid-cols-2 gap-1.5">
+        {!restoring &&
+          (needsReauth ? (
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={onReauthenticate}
+              className="col-span-2 flex min-h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-2 font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              <LogIn className="h-3.5 w-3.5" /> {t("tray.recovery.reauthenticate")}
+            </button>
+          ) : (
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={onRetry}
+              className="col-span-2 flex min-h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-2 font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> {t("tray.recovery.retry")}
+            </button>
+          ))}
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={onOpenRecovery}
+          className="flex min-h-8 items-center justify-center gap-1 rounded-md bg-foreground/8 px-2 text-[11px] hover:bg-foreground/15"
+        >
+          <ArrowUpRight className="h-3 w-3" /> {t("tray.recovery.open")}
+        </button>
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={onOpenServerSettings}
+          className="flex min-h-8 items-center justify-center gap-1 rounded-md bg-foreground/8 px-2 text-[11px] hover:bg-foreground/15"
+        >
+          <Settings className="h-3 w-3" /> {t("tray.recovery.settings")}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function TrayPanel({
   snapshot,
   onOpenProject,
@@ -186,6 +327,10 @@ export function TrayPanel({
   onQuit,
   onCopy,
   onAddProject,
+  onRetryWorkspace,
+  onOpenRecovery,
+  onOpenServerSettings,
+  onReauthenticate,
 }: TrayPanelProps) {
   const { t } = useI18n();
   const moreLabel = (n: number) => t("tray.more").replace("{n}", String(n));
@@ -199,6 +344,13 @@ export function TrayPanel({
     stage,
     items: changes.filter((c) => changeStage(c) === stage),
   }));
+  const activeTab = tabs.find((tab) => tab.key === snapshot?.activeKey);
+  const activeRecovery =
+    activeTab?.status === "restoring" || activeTab?.status === "error" ? activeTab : null;
+  const activeStale =
+    activeTab?.status === "offline" || activeTab?.status === "needs-reauth"
+      ? activeTab
+      : null;
 
   return (
     // 極淡主色漸層 wash（design D3）：低透明度不遮蔽 vibrancy。圓角 13px 與
@@ -214,21 +366,31 @@ export function TrayPanel({
           條常駐（零專案時仍有尾端「加入專案」項，design D7）。 */}
       <div
         data-testid="panel-project-tabs"
+        role="tablist"
+        aria-label={t("app.workspaceTabs")}
         className="flex gap-1 overflow-x-auto p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
           {tabs.map((tab) => {
-            // 識別＝locator key（workspace-session 決策 6）；點擊沿用 open-project
-            // 原地切換語意（root）——顯示文字與行為不變。
+            // 識別與切換把手皆為 locator key（workspace-session 決策 6）。
             const active = tab.key === snapshot?.activeKey;
             return (
               <div
                 key={tab.key}
                 data-testid={`panel-project-${tab.key}`}
                 data-active={active ? "true" : "false"}
-                onClick={() => onOpenProject(tab.root)}
+                data-status={tab.status}
+                role="tab"
+                aria-selected={active}
+                aria-label={`${tab.name}${tabStatusLabel(tab, t) ? `，${tabStatusLabel(tab, t)}` : ""}`}
+                tabIndex={-1}
+                onClick={() => onOpenProject(tab.key)}
                 className={cn(
-                  "flex shrink-0 flex-col items-center gap-1 rounded-lg px-2.5 py-1.5",
-                  active ? "bg-primary text-primary-foreground" : "hover:bg-primary/10",
+                  "flex min-h-14 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border px-2.5 py-1.5",
+                  active && tab.status === "ready"
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : active
+                      ? "border-amber-500/60 bg-amber-500/15 text-foreground"
+                      : "border-transparent hover:bg-primary/10",
                 )}
               >
                 <span
@@ -238,9 +400,18 @@ export function TrayPanel({
                     active ? "bg-primary-foreground/20" : "bg-primary/10 text-primary",
                   )}
                 >
-                  {tab.name.charAt(0).toUpperCase()}
+                  {tab.source === "remote" ? (
+                    <RemoteTabIcon tab={tab} />
+                  ) : (
+                    tab.name.charAt(0).toUpperCase()
+                  )}
                 </span>
                 <span className="max-w-24 truncate text-[11px] leading-none">{tab.name}</span>
+                {tab.source === "remote" && tab.status !== "ready" && (
+                  <span className="max-w-24 truncate text-[9px] leading-none text-muted-foreground">
+                    {tabStatusLabel(tab, t)}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -263,6 +434,41 @@ export function TrayPanel({
           依序為討論區塊（討論常駐＋已轉出有料才現）、生命週期區塊、動作區塊，
           塊間各一條分割線。 */}
       <Divider />
+
+      {activeRecovery ? (
+        <>
+          <PanelRecoveryCard
+            tab={activeRecovery}
+            onRetry={() => onRetryWorkspace(activeRecovery.key)}
+            onOpenRecovery={() => onOpenRecovery(activeRecovery.key)}
+            onOpenServerSettings={() => onOpenServerSettings(activeRecovery.connectionId)}
+            onReauthenticate={() => onReauthenticate(activeRecovery.connectionId)}
+          />
+          <Divider />
+        </>
+      ) : (
+        <>
+          {activeStale && (
+            <div
+              data-testid="panel-stale-status"
+              role="status"
+              className="flex min-h-8 items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px]"
+            >
+              <CloudOff className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-300" />
+              <span className="font-medium">{tabStatusLabel(activeStale, t)}</span>
+              <span className="ml-auto text-muted-foreground">{t("tray.recovery.stale")}</span>
+              {activeStale.status === "needs-reauth" && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => onReauthenticate(activeStale.connectionId)}
+                  className="rounded bg-amber-500/15 px-2 py-1 font-medium hover:bg-amber-500/25"
+                >
+                  {t("tray.recovery.reauthenticate")}
+                </button>
+              )}
+            </div>
+          )}
 
       {/* 討論區分流（spec「討論列表」）：「討論」列討論中、「已轉出」列已轉出；
           slug 為題、topic 為描述（識別錨點慣例，與看板討論卡一致） */}
@@ -350,6 +556,8 @@ export function TrayPanel({
       ))}
 
       <Divider />
+        </>
+      )}
 
       {/* 動作區：開啟主視窗、設定、結束（spec 動作區塊三項；與原生選單同序） */}
       <div onClick={onOpenApp} className={rowClass}>

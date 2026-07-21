@@ -13,9 +13,6 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use speclink_protocol::events::InvalidationEvent;
-use std::convert::Infallible;
-use tokio::sync::broadcast::error::RecvError;
 use serde::{Deserialize, Serialize};
 use speclink_core::command::{Command, CommandOutcome, InstructionsOutcome};
 use speclink_core::config::WorkflowConfig;
@@ -32,14 +29,21 @@ use speclink_protocol::command::{
     SetDiscussionContextRequest, TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse,
 };
 use speclink_protocol::drift::SpecDriftResponse;
+use speclink_protocol::events::InvalidationEvent;
 use speclink_protocol::query::{
     ApplyInstructions, ArtifactContent, ArtifactInstructions, ArtifactStatus, ChangeStatus,
-    ChangeSummary, ConfigResponse, DependencyEntry, DiscussionInfo, LanguageResponse,
+    ChangeSummary, ConfigResponse, DependencyEntry, DiscussionInfo, ImportBundle, ImportDocumentId,
+    ImportDocumentOutcome, ImportReportResponse, ImportedDocument, LanguageResponse,
     ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, Progress, PutConfigRequest,
     PutConfigResponse, ShowDiscussionResponse, SpecSummary, TaskEntry, WhoamiRepo, WhoamiResponse,
     WhoamiUser,
 };
-use speclink_store::{CommandContext, DocumentId};
+use speclink_store::{
+    content_digest, Bundle, BundleDoc, CommandContext, DocumentId, ImportMode, ImportOutcome,
+    Revision, StoreError, BUNDLE_FORMAT_VERSION,
+};
+use std::convert::Infallible;
+use tokio::sync::broadcast::error::RecvError;
 
 /// An acknowledgment body for verbs whose response the client ignores.
 #[derive(Serialize)]
@@ -66,7 +70,11 @@ pub async fn list_changes(
     let result = verb::run(
         &state,
         &binding,
-        Command::List { sort: "name".to_string(), specs: false, changes: false },
+        Command::List {
+            sort: "name".to_string(),
+            specs: false,
+            changes: false,
+        },
     )
     .await?;
     let changes = match result.execution.outcome {
@@ -88,7 +96,10 @@ pub async fn get_change(
     let result = verb::run(
         &state,
         &binding,
-        Command::Status { change: Some(name), schema: None },
+        Command::Status {
+            change: Some(name),
+            schema: None,
+        },
     )
     .await?;
     let report = match result.execution.outcome {
@@ -160,7 +171,10 @@ pub async fn get_artifact(
     let result = verb::run(
         &state,
         &binding,
-        Command::ArtifactCat { artifact: artifact.clone(), change: Some(name.clone()) },
+        Command::ArtifactCat {
+            artifact: artifact.clone(),
+            change: Some(name.clone()),
+        },
     )
     .await?;
     let content = match result.execution.outcome {
@@ -172,14 +186,21 @@ pub async fn get_artifact(
         Some(rel) => verb::read_doc(
             &state,
             &binding,
-            DocumentId::ChangeArtifact { change: name, artifact: rel },
+            DocumentId::ChangeArtifact {
+                change: name,
+                artifact: rel,
+            },
         )
         .await?
         .map(|doc| doc.revision.0)
         .unwrap_or(0),
         None => 0,
     };
-    let dto = ArtifactContent { artifact, content, version };
+    let dto = ArtifactContent {
+        artifact,
+        content,
+        version,
+    };
     Ok(ok(dto, &result.etag))
 }
 
@@ -191,7 +212,11 @@ pub async fn list_specs(
     let result = verb::run(
         &state,
         &binding,
-        Command::List { sort: "name".to_string(), specs: true, changes: false },
+        Command::List {
+            sort: "name".to_string(),
+            specs: true,
+            changes: false,
+        },
     )
     .await?;
     let specs_value = match result.execution.outcome {
@@ -310,12 +335,144 @@ pub async fn put_config(
     Ok(ok(PutConfigResponse { revision }, &etag))
 }
 
-/// `GET /whoami` — the authenticated identity and the project's repos, from the
-/// binding.
-pub async fn whoami(
+/// `POST /import` — local-to-remote migration into one empty bound scope.
+/// The wire has no operation selector; the handler always invokes CreateNew.
+pub async fn import_bundle(
     State(state): State<AppState>,
     binding: Binding,
+    Json(request): Json<ImportBundle>,
 ) -> Result<Response, ApiError> {
+    if !binding.policy_write {
+        return Err(ApiError::forbidden(
+            "reader memberships cannot import a workspace",
+        ));
+    }
+
+    if request.format_version != BUNDLE_FORMAT_VERSION {
+        return Err(ApiError::refused(format!(
+            "unsupported bundle format version {} (supported: {})",
+            request.format_version, BUNDLE_FORMAT_VERSION
+        )));
+    }
+
+    let scope = verb::scope_of(&binding);
+    if request.scope.project != scope.project.as_str() || request.scope.repo != scope.repo.as_str()
+    {
+        return Err(ApiError::refused(format!(
+            "bundle scope {}/{} does not match authenticated binding {}/{}",
+            request.scope.project,
+            request.scope.repo,
+            scope.project.as_str(),
+            scope.repo.as_str()
+        )));
+    }
+
+    let mut documents = Vec::with_capacity(request.documents.len());
+    for document in request.documents {
+        let actual_digest = content_digest(&document.content);
+        if actual_digest != document.digest {
+            return Err(ApiError::invalid_argument(format!(
+                "bundle digest mismatch for {:?}",
+                document.document
+            )));
+        }
+        documents.push(BundleDoc {
+            doc: import_document_id(document.document),
+            content: document.content,
+            digest: document.digest,
+        });
+    }
+
+    let bundle = Bundle {
+        format_version: request.format_version,
+        scope: scope.clone(),
+        project_revision: Revision(request.project_revision),
+        documents,
+    };
+    let store = state.store.clone();
+    let report = tokio::task::spawn_blocking(move || {
+        store
+            .import(bundle, ImportMode::CreateNew)
+            .map_err(import_store_error)
+    })
+    .await
+    .map_err(|error| ApiError::internal(format!("blocking task failed: {error}")))??;
+
+    let project_revision = report.project_revision.0;
+    let documents = report
+        .documents
+        .into_iter()
+        .map(|document| {
+            if document.outcome != ImportOutcome::Created {
+                return Err(ApiError::internal(
+                    "CreateNew import returned an impossible overwrite outcome",
+                ));
+            }
+            Ok(ImportedDocument {
+                document: store_document_id(document.doc),
+                outcome: ImportDocumentOutcome::Created,
+            })
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
+
+    state.events.notify(&scope);
+    Ok(ok(
+        ImportReportResponse {
+            project_revision,
+            documents,
+        },
+        &format!("\"{project_revision}\""),
+    ))
+}
+
+fn import_store_error(error: StoreError) -> ApiError {
+    match error {
+        StoreError::Backend { source } if source.contains("import (create-new)") => {
+            ApiError::refused(source)
+        }
+        other => ApiError::from(other),
+    }
+}
+
+fn import_document_id(document: ImportDocumentId) -> DocumentId {
+    match document {
+        ImportDocumentId::ChangeMeta { change } => DocumentId::ChangeMeta { change },
+        ImportDocumentId::ChangeArtifact { change, artifact } => {
+            DocumentId::ChangeArtifact { change, artifact }
+        }
+        ImportDocumentId::CanonicalSpec { capability } => DocumentId::CanonicalSpec { capability },
+        ImportDocumentId::Discussion { slug, archived } => {
+            DocumentId::Discussion { slug, archived }
+        }
+        ImportDocumentId::WorkflowConfig => DocumentId::WorkflowConfig,
+        ImportDocumentId::ArchivedChange { change, doc } => {
+            DocumentId::ArchivedChange { change, doc }
+        }
+        ImportDocumentId::Language => DocumentId::Language,
+    }
+}
+
+fn store_document_id(document: DocumentId) -> ImportDocumentId {
+    match document {
+        DocumentId::ChangeMeta { change } => ImportDocumentId::ChangeMeta { change },
+        DocumentId::ChangeArtifact { change, artifact } => {
+            ImportDocumentId::ChangeArtifact { change, artifact }
+        }
+        DocumentId::CanonicalSpec { capability } => ImportDocumentId::CanonicalSpec { capability },
+        DocumentId::Discussion { slug, archived } => {
+            ImportDocumentId::Discussion { slug, archived }
+        }
+        DocumentId::WorkflowConfig => ImportDocumentId::WorkflowConfig,
+        DocumentId::ArchivedChange { change, doc } => {
+            ImportDocumentId::ArchivedChange { change, doc }
+        }
+        DocumentId::Language => ImportDocumentId::Language,
+    }
+}
+
+/// `GET /whoami` — the authenticated identity and the project's repos, from the
+/// binding.
+pub async fn whoami(State(state): State<AppState>, binding: Binding) -> Result<Response, ApiError> {
     let etag = verb::scope_etag(&state, &binding).await?;
     let repos = state
         .identity
@@ -328,7 +485,10 @@ pub async fn whoami(
         },
         repos: repos
             .iter()
-            .map(|r| WhoamiRepo { name: r.key.clone(), git_url: String::new() })
+            .map(|r| WhoamiRepo {
+                name: r.key.clone(),
+                git_url: String::new(),
+            })
             .collect(),
     };
     Ok(ok(dto, &etag))
@@ -422,7 +582,9 @@ fn invalidation_event(hint: &InvalidationEvent) -> Event {
 /// The reset signal — a distinct SSE event type telling the client its cursor
 /// is cleaned; it converges by re-reading through Query + ETag.
 fn reset_event() -> Event {
-    Event::default().event("reset").data("cursor expired; re-read via query")
+    Event::default()
+        .event("reset")
+        .data("cursor expired; re-read via query")
 }
 
 // --- change commands ---
@@ -472,8 +634,12 @@ pub async fn put_artifact(
     let rel = artifact_rel_path(&artifact)
         .ok_or_else(|| ApiError::invalid_argument(format!("unknown artifact '{artifact}'")))?;
     let cmd = artifact_write_command(&artifact, name.clone(), req.content)?;
-    let doc = DocumentId::ChangeArtifact { change: name, artifact: rel };
-    let (version, etag) = verb::run_write_with_if_match(&state, &binding, doc, if_match, cmd).await?;
+    let doc = DocumentId::ChangeArtifact {
+        change: name,
+        artifact: rel,
+    };
+    let (version, etag) =
+        verb::run_write_with_if_match(&state, &binding, doc, if_match, cmd).await?;
     Ok(ok(PutArtifactResponse { artifact, version }, &etag))
 }
 
@@ -487,14 +653,20 @@ pub async fn task_done(
     let result = verb::run(
         &state,
         &binding,
-        Command::TaskDone { task_id, change: Some(name) },
+        Command::TaskDone {
+            task_id,
+            change: Some(name),
+        },
     )
     .await?;
     let outcome = match result.execution.outcome {
         CommandOutcome::TaskDone(o) => o,
         _ => return Err(wrong_outcome("task-done")),
     };
-    let dto = TaskDoneResponse { task_desc: outcome.description, already_done: outcome.already };
+    let dto = TaskDoneResponse {
+        task_desc: outcome.description,
+        already_done: outcome.already,
+    };
     Ok(ok(dto, &result.etag))
 }
 
@@ -507,14 +679,20 @@ pub async fn task_undone(
     let result = verb::run(
         &state,
         &binding,
-        Command::TaskUndone { task_id, change: Some(name) },
+        Command::TaskUndone {
+            task_id,
+            change: Some(name),
+        },
     )
     .await?;
     let outcome = match result.execution.outcome {
         CommandOutcome::TaskUndone(o) => o,
         _ => return Err(wrong_outcome("task-undone")),
     };
-    let dto = TaskUndoneResponse { task_desc: outcome.description, already_undone: outcome.already };
+    let dto = TaskUndoneResponse {
+        task_desc: outcome.description,
+        already_undone: outcome.already,
+    };
     Ok(ok(dto, &result.etag))
 }
 
@@ -525,7 +703,14 @@ pub async fn claim(
     binding: Binding,
     Path((_key, name)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let meta = verb::read_doc(&state, &binding, DocumentId::ChangeMeta { change: name.clone() }).await?;
+    let meta = verb::read_doc(
+        &state,
+        &binding,
+        DocumentId::ChangeMeta {
+            change: name.clone(),
+        },
+    )
+    .await?;
     if meta.is_none() {
         return Err(ApiError::not_found(format!("Change '{name}' not found.")));
     }
@@ -562,7 +747,9 @@ pub async fn archive(
         specs: outcome
             .caps
             .into_iter()
-            .map(|c| ArchivedSpec { capability: c.capability })
+            .map(|c| ArchivedSpec {
+                capability: c.capability,
+            })
             .collect(),
     };
     Ok(ok(dto, &result.etag))
@@ -595,7 +782,11 @@ fn artifact_write_command(
             Some(cap) if !cap.is_empty() && !cap.contains('/') => {
                 ("spec".to_string(), Some(cap.to_string()))
             }
-            _ => return Err(ApiError::invalid_argument(format!("unknown artifact '{artifact}'"))),
+            _ => {
+                return Err(ApiError::invalid_argument(format!(
+                    "unknown artifact '{artifact}'"
+                )))
+            }
         },
     };
     Ok(Command::NewArtifact {
@@ -622,7 +813,14 @@ pub async fn list_discussions(
     binding: Binding,
     Query(query): Query<ListDiscussionsQuery>,
 ) -> Result<Response, ApiError> {
-    let result = verb::run(&state, &binding, Command::DiscussList { archived: query.archived }).await?;
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::DiscussList {
+            archived: query.archived,
+        },
+    )
+    .await?;
     let discussions = match result.execution.outcome {
         CommandOutcome::DiscussList(list) => list,
         _ => return Err(wrong_outcome("discuss-list")),
@@ -639,12 +837,24 @@ pub async fn create_discussion(
     binding: Binding,
     Json(req): Json<CreateDiscussionRequest>,
 ) -> Result<Response, ApiError> {
-    let result = verb::run(&state, &binding, Command::DiscussNew { topic: req.topic, slug: None }).await?;
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::DiscussNew {
+            topic: req.topic,
+            slug: None,
+        },
+    )
+    .await?;
     let info = match result.execution.outcome {
         CommandOutcome::DiscussNew(info) => info,
         _ => return Err(wrong_outcome("discuss-new")),
     };
-    let dto = CreateDiscussionResponse { slug: info.slug, topic: info.topic, path: info.path };
+    let dto = CreateDiscussionResponse {
+        slug: info.slug,
+        topic: info.topic,
+        path: info.path,
+    };
     Ok(ok(dto, &result.etag))
 }
 
@@ -662,7 +872,10 @@ pub async fn show_discussion(
     let info = show
         .info
         .ok_or_else(|| ApiError::internal("discuss-show: missing discussion info"))?;
-    let dto = ShowDiscussionResponse { info: discussion_info(info), content: show.content };
+    let dto = ShowDiscussionResponse {
+        info: discussion_info(info),
+        content: show.content,
+    };
     Ok(ok(dto, &result.etag))
 }
 
@@ -676,7 +889,10 @@ pub async fn set_discussion_context(
     let result = verb::run(
         &state,
         &binding,
-        Command::DiscussContext { slug, content: req.content },
+        Command::DiscussContext {
+            slug,
+            content: req.content,
+        },
     )
     .await?;
     Ok(ok(Ack {}, &result.etag))
@@ -692,14 +908,23 @@ pub async fn add_discussion_round(
     let result = verb::run(
         &state,
         &binding,
-        Command::DiscussAddRound { slug, mode: req.mode, content: req.content },
+        Command::DiscussAddRound {
+            slug,
+            mode: req.mode,
+            content: req.content,
+        },
     )
     .await?;
     let round = match result.execution.outcome {
         CommandOutcome::DiscussAddRound(o) => o.round,
         _ => return Err(wrong_outcome("discuss-add-round")),
     };
-    Ok(ok(AddDiscussionRoundResponse { round: round as u64 }, &result.etag))
+    Ok(ok(
+        AddDiscussionRoundResponse {
+            round: round as u64,
+        },
+        &result.etag,
+    ))
 }
 
 /// `POST /discussions/{slug}/conclude`
@@ -712,7 +937,10 @@ pub async fn conclude_discussion(
     let result = verb::run(
         &state,
         &binding,
-        Command::DiscussConclude { slug, content: req.content },
+        Command::DiscussConclude {
+            slug,
+            content: req.content,
+        },
     )
     .await?;
     Ok(ok(Ack {}, &result.etag))
@@ -745,7 +973,10 @@ pub async fn promote_discussion(
     let result = verb::run(
         &state,
         &binding,
-        Command::DiscussPromote { slug, name: req.name },
+        Command::DiscussPromote {
+            slug,
+            name: req.name,
+        },
     )
     .await?;
     let change = match result.execution.outcome {

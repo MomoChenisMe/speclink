@@ -1,29 +1,30 @@
 //! The single request layer plus the per-verb path mapping.
 //!
-//! Every request carries the contract's three headers (`Authorization`,
-//! `X-Speclink-Api-Version`, `X-Speclink-Repo`); every non-2xx response goes
-//! through the protocol registry mapping. Requests and responses are
-//! speclink-protocol DTOs end to end — no verb assembles or picks apart raw
-//! JSON, and no verb re-implements transport or error handling.
+//! Every project-bound request carries the contract headers (`Authorization`,
+//! `X-Speclink-Api-Version`, and `X-Speclink-Repo` when selected); the
+//! pre-binding `/scopes` request carries only its bearer. Every non-2xx response
+//! goes through the protocol registry mapping. Requests and responses are
+//! speclink-protocol DTOs end to end — no verb assembles or picks apart raw JSON,
+//! and no verb re-implements transport or error handling.
 
 use crate::{translate_protocol_error, translate_transport, RemoteError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use speclink_protocol::binding::BindingResponse;
-use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, ArchiveDiscussionResponse,
     ArchiveResponse, ClaimResponse, ConcludeDiscussionRequest, CreateChangeRequest,
     CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
-    PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest,
-    PutArtifactResponse, SetDiscussionContextRequest, TaskDoneRequest, TaskDoneResponse,
-    TaskUndoneResponse,
+    PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest, PutArtifactResponse,
+    SetDiscussionContextRequest, TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse,
 };
+use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::query::{
-    ApplyInstructions, ArtifactContent, ArtifactInstructions, ChangeStatus, ConfigResponse,
-    LanguageResponse, ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse,
-    PutConfigRequest, PutConfigResponse, ShowDiscussionResponse, WhoamiResponse,
+    ApplyInstructions, ArchivedListResponse, ArtifactContent, ArtifactInstructions, ChangeStatus,
+    ConfigResponse, ImportBundle, ImportReportResponse, LanguageResponse, ListChangesResponse,
+    ListDiscussionsResponse, ListSpecsResponse, PutConfigRequest, PutConfigResponse,
+    ScopesResponse, SearchResponse, ShowDiscussionResponse, SpecDocumentResponse, WhoamiResponse,
 };
 
 /// The contract major version this client speaks (`X-Speclink-Api-Version`)
@@ -49,6 +50,7 @@ pub enum ContextSnapshotOutcome {
 /// one repo identity.
 pub struct Client {
     base: String,
+    api_root: String,
     token: String,
     repo: Option<String>,
     agent: ureq::Agent,
@@ -59,8 +61,14 @@ impl Client {
     /// tolerated); `repo` is the registered repo name from the connection
     /// file, when declared.
     pub fn new(base_url: &str, token: &str, repo: Option<&str>) -> Client {
+        let base = base_url.trim_end_matches('/').to_string();
+        let api_root = base
+            .rsplit_once("/projects/")
+            .map(|(root, _project)| root.to_string())
+            .unwrap_or_else(|| base.clone());
         Client {
-            base: base_url.trim_end_matches('/').to_string(),
+            base,
+            api_root,
             token: token.to_string(),
             repo: repo.map(str::to_string),
             agent: ureq::AgentBuilder::new()
@@ -69,8 +77,8 @@ impl Client {
         }
     }
 
-    /// One request skeleton with the contract's three headers — every call,
-    /// handshake included, goes through here so the headers exist exactly once.
+    /// One project-bound request skeleton with the contract headers — every
+    /// bound call, handshake included, goes through here exactly once.
     fn request(&self, method: &str, path: &str) -> ureq::Request {
         let mut req = self
             .agent
@@ -81,6 +89,15 @@ impl Client {
             req = req.set("X-Speclink-Repo", repo);
         }
         req
+    }
+
+    /// Identity-scoped request before a project/repo is chosen. `/scopes`
+    /// deliberately carries only its bearer: sending a fabricated repo header
+    /// would make the chooser prerequisite depend on the choice it must return.
+    fn identity_request(&self, method: &str, path: &str) -> ureq::Request {
+        self.agent
+            .request(method, &format!("{}{}", self.api_root, path))
+            .set("Authorization", &format!("Bearer {}", self.token))
     }
 
     /// One request through the contract's header and error rules. Every verb
@@ -98,14 +115,24 @@ impl Client {
         for (k, v) in extra_headers {
             req = req.set(k, v);
         }
+        self.send_request(req, body)
+    }
+
+    /// Execute an already-built request through the one response/error
+    /// translation path. This supports the identity-only and query-parameter
+    /// variants without duplicating protocol handling.
+    fn send_request<T: DeserializeOwned, B: Serialize>(
+        &self,
+        req: ureq::Request,
+        body: Option<&B>,
+    ) -> Result<T, RemoteError> {
         let result = match body {
             Some(payload) => req.send_json(payload),
             None => req.call(),
         };
         match result {
             Ok(resp) => resp.into_json().map_err(|_| RemoteError {
-                message: "unexpected server response — the server did not return valid JSON"
-                    .into(),
+                message: "unexpected server response — the server did not return valid JSON".into(),
                 reason: None,
                 status: None,
             }),
@@ -141,8 +168,9 @@ impl Client {
         let binding: BindingResponse = self.get("/binding")?;
         if binding.api_version != API_VERSION {
             return Err(RemoteError {
-                message: "server does not support this CLI's API version — upgrade the CLI or the server"
-                    .into(),
+                message:
+                    "server does not support this CLI's API version — upgrade the CLI or the server"
+                        .into(),
                 reason: Some("api_version_unsupported".into()),
                 status: None,
             });
@@ -151,6 +179,13 @@ impl Client {
     }
 
     // --- read path ---
+
+    /// `GET /scopes` — identity-only membership discovery. The client is
+    /// usually constructed from one project URL, so this call derives the API
+    /// root and intentionally omits repo/version binding headers.
+    pub fn list_scopes(&self) -> Result<ScopesResponse, RemoteError> {
+        self.send_request::<ScopesResponse, Empty>(self.identity_request("GET", "/scopes"), None)
+    }
 
     /// `GET /changes`
     pub fn list_changes(&self) -> Result<ListChangesResponse, RemoteError> {
@@ -177,11 +212,7 @@ impl Client {
     }
 
     /// `GET /changes/{name}/artifacts/{artifact}`
-    pub fn get_artifact(
-        &self,
-        name: &str,
-        artifact: &str,
-    ) -> Result<ArtifactContent, RemoteError> {
+    pub fn get_artifact(&self, name: &str, artifact: &str) -> Result<ArtifactContent, RemoteError> {
         self.get(&format!("/changes/{name}/artifacts/{artifact}"))
     }
 
@@ -195,6 +226,37 @@ impl Client {
     /// `GET /specs`
     pub fn list_specs(&self) -> Result<ListSpecsResponse, RemoteError> {
         self.get("/specs")
+    }
+
+    /// `GET /specs/{capability}/document`
+    pub fn spec_document(&self, capability: &str) -> Result<SpecDocumentResponse, RemoteError> {
+        self.get(&format!("/specs/{capability}/document"))
+    }
+
+    /// `GET /archived`
+    pub fn archived_list(&self) -> Result<ArchivedListResponse, RemoteError> {
+        self.get("/archived")
+    }
+
+    /// `GET /archived/{datedName}/artifacts/{artifact}`
+    pub fn archived_artifact(
+        &self,
+        dated_name: &str,
+        artifact: &str,
+    ) -> Result<SpecDocumentResponse, RemoteError> {
+        self.get(&format!("/archived/{dated_name}/artifacts/{artifact}"))
+    }
+
+    /// `GET /archived/{datedName}/capabilities`
+    pub fn archived_capabilities(&self, dated_name: &str) -> Result<Vec<String>, RemoteError> {
+        self.get(&format!("/archived/{dated_name}/capabilities"))
+    }
+
+    /// `GET /search?q=...`; ureq owns query encoding so whitespace and
+    /// non-ASCII search text are transmitted without raw URL assembly.
+    pub fn search(&self, query: &str) -> Result<SearchResponse, RemoteError> {
+        let request = self.request("GET", "/search").query("q", query);
+        self.send_request::<SearchResponse, Empty>(request, None)
     }
 
     /// `GET /language`
@@ -251,6 +313,13 @@ impl Client {
 
     // --- write path ---
 
+    /// `POST /import` — atomically migrate a complete local workspace bundle
+    /// into the empty bound scope. The request DTO deliberately has no mode,
+    /// so callers cannot select the store's maintenance-only Overwrite path.
+    pub fn import(&self, bundle: &ImportBundle) -> Result<ImportReportResponse, RemoteError> {
+        self.post("/import", bundle)
+    }
+
     /// `PUT /config` with the complete workflow policy source and the scope
     /// revision returned by [`Client::config`]. There is deliberately no
     /// overload without `expected_revision` and therefore no force-write path.
@@ -291,7 +360,9 @@ impl Client {
         self.send(
             "PUT",
             &format!("/changes/{name}/artifacts/{artifact}"),
-            Some(&PutArtifactRequest { content: content.to_string() }),
+            Some(&PutArtifactRequest {
+                content: content.to_string(),
+            }),
             &[("If-Match", &if_match.to_string())],
         )
     }
@@ -305,7 +376,9 @@ impl Client {
     ) -> Result<TaskDoneResponse, RemoteError> {
         self.post(
             &format!("/changes/{name}/tasks/{task_id}/done"),
-            &TaskDoneRequest { touched_files: touched_files.to_vec() },
+            &TaskDoneRequest {
+                touched_files: touched_files.to_vec(),
+            },
         )
     }
 
@@ -316,7 +389,10 @@ impl Client {
         name: &str,
         task_id: &str,
     ) -> Result<TaskUndoneResponse, RemoteError> {
-        self.post(&format!("/changes/{name}/tasks/{task_id}/undone"), &Empty {})
+        self.post(
+            &format!("/changes/{name}/tasks/{task_id}/undone"),
+            &Empty {},
+        )
     }
 
     /// `POST /changes/{name}/claim`
@@ -332,10 +408,7 @@ impl Client {
     // --- discussions ---
 
     /// `GET /discussions?archived=`
-    pub fn list_discussions(
-        &self,
-        archived: bool,
-    ) -> Result<ListDiscussionsResponse, RemoteError> {
+    pub fn list_discussions(&self, archived: bool) -> Result<ListDiscussionsResponse, RemoteError> {
         if archived {
             self.get("/discussions?archived=true")
         } else {
@@ -345,7 +418,12 @@ impl Client {
 
     /// `POST /discussions`
     pub fn new_discussion(&self, topic: &str) -> Result<CreateDiscussionResponse, RemoteError> {
-        self.post("/discussions", &CreateDiscussionRequest { topic: topic.to_string() })
+        self.post(
+            "/discussions",
+            &CreateDiscussionRequest {
+                topic: topic.to_string(),
+            },
+        )
     }
 
     /// `GET /discussions/{slug}`
@@ -359,7 +437,9 @@ impl Client {
         self.send::<serde::de::IgnoredAny, _>(
             "PUT",
             &format!("/discussions/{slug}/context"),
-            Some(&SetDiscussionContextRequest { content: content.to_string() }),
+            Some(&SetDiscussionContextRequest {
+                content: content.to_string(),
+            }),
             &[],
         )
         .map(|_| ())
@@ -386,16 +466,15 @@ impl Client {
     pub fn discussion_conclude(&self, slug: &str, content: &str) -> Result<(), RemoteError> {
         self.post::<serde::de::IgnoredAny, _>(
             &format!("/discussions/{slug}/conclude"),
-            &ConcludeDiscussionRequest { content: content.to_string() },
+            &ConcludeDiscussionRequest {
+                content: content.to_string(),
+            },
         )
         .map(|_| ())
     }
 
     /// `POST /discussions/{slug}/archive`
-    pub fn discussion_archive(
-        &self,
-        slug: &str,
-    ) -> Result<ArchiveDiscussionResponse, RemoteError> {
+    pub fn discussion_archive(&self, slug: &str) -> Result<ArchiveDiscussionResponse, RemoteError> {
         self.post(&format!("/discussions/{slug}/archive"), &Empty {})
     }
 
@@ -407,7 +486,9 @@ impl Client {
     ) -> Result<PromoteDiscussionResponse, RemoteError> {
         self.post(
             &format!("/discussions/{slug}/promote"),
-            &PromoteDiscussionRequest { name: name.map(str::to_string) },
+            &PromoteDiscussionRequest {
+                name: name.map(str::to_string),
+            },
         )
     }
 }

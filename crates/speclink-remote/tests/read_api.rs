@@ -1,4 +1,6 @@
-//! Typed workflow-config client methods against the real in-process server.
+//! Typed read-client methods against the real in-process server. These assert
+//! URL derivation for identity-only `/scopes` and every project-bound response
+//! shape without a mock JSON bypass.
 
 use chrono::{Duration, Utc};
 use speclink_remote::client::Client;
@@ -9,6 +11,8 @@ use speclink_server::state::AppState;
 use speclink_store::memory::MemoryStore;
 use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
 use std::sync::Arc;
+
+const DATED_NAME: &str = "2026-07-19-old-feature";
 
 struct Fixture {
     client: Client,
@@ -21,15 +25,73 @@ fn fixture() -> Fixture {
         .begin_unit_of_work(
             &scope,
             CommandContext {
-                command: "seed-workflow-config-client".to_string(),
+                command: "seed-read-client".to_string(),
                 actor: "test".to_string(),
             },
         )
         .expect("begin seed");
-    uow.create(
-        DocumentId::WorkflowConfig,
-        "schema: spec-driven\nlocale: en\n",
-    );
+    for (document, content) in [
+        (
+            DocumentId::WorkflowConfig,
+            "schema: spec-driven\nlocale: en\n",
+        ),
+        (
+            DocumentId::CanonicalSpec {
+                capability: "payments".to_string(),
+            },
+            "# payments Specification\n\nCanonical truth.\n",
+        ),
+        (
+            DocumentId::ArchivedChange {
+                change: DATED_NAME.to_string(),
+                doc: ".openspec.yaml".to_string(),
+            },
+            "schema: spec-driven\ncreated: 2026-07-18\ncreated_by: Creator\nfrom_discussion: source-talk\n",
+        ),
+        (
+            DocumentId::ArchivedChange {
+                change: DATED_NAME.to_string(),
+                doc: "proposal.md".to_string(),
+            },
+            "## Why\n\nArchived truth.\n",
+        ),
+        (
+            DocumentId::ArchivedChange {
+                change: DATED_NAME.to_string(),
+                doc: "tasks.md".to_string(),
+            },
+            "- [x] 1.1 Done\n- [ ] 1.2 Pending\n",
+        ),
+        (
+            DocumentId::ArchivedChange {
+                change: DATED_NAME.to_string(),
+                doc: "specs/payments/spec.md".to_string(),
+            },
+            "## ADDED Requirements\n\n### Requirement: Pay\n",
+        ),
+        (
+            DocumentId::ChangeMeta {
+                change: "searchable".to_string(),
+            },
+            "schema: spec-driven\n",
+        ),
+        (
+            DocumentId::ChangeArtifact {
+                change: "searchable".to_string(),
+                artifact: "proposal.md".to_string(),
+            },
+            "## Why\n\nRemoteNeedle in a change.\n",
+        ),
+        (
+            DocumentId::Discussion {
+                slug: "search-talk".to_string(),
+                archived: false,
+            },
+            "---\ntopic: Search\nslug: search-talk\nstatus: open\ncreated: 2026-07-19\n---\n\nRemoteNeedle in a discussion.\n",
+        ),
+    ] {
+        uow.create(document, content);
+    }
     store.commit(uow, Vec::new()).expect("seed commit");
 
     let identity = Arc::new(IdentitySqlite::open_memory().expect("identity"));
@@ -39,8 +101,8 @@ fn fixture() -> Fixture {
         .expect("repo");
     let invitation = identity
         .create_invitation(NewInvitation {
-            email: "editor@example.com".to_string(),
-            display: "Editor".to_string(),
+            email: "reader@example.com".to_string(),
+            display: "Reader".to_string(),
             memberships: vec!["demo".to_string()],
             admin: false,
             expires_at: Utc::now() + Duration::days(1),
@@ -83,6 +145,58 @@ fn fixture() -> Fixture {
 }
 
 #[test]
+fn scopes_and_documents_are_typed_end_to_end() {
+    let fixture = fixture();
+
+    let scopes = fixture.client.list_scopes().expect("scopes");
+    assert_eq!(scopes.projects.len(), 1);
+    assert_eq!(scopes.projects[0].key, "demo");
+    assert_eq!(scopes.projects[0].repos[0].key, "backend");
+
+    let spec = fixture
+        .client
+        .spec_document("payments")
+        .expect("spec document");
+    assert_eq!(
+        spec.content,
+        "# payments Specification\n\nCanonical truth.\n"
+    );
+}
+
+#[test]
+fn archive_and_search_methods_return_desktop_aligned_typed_shapes() {
+    let fixture = fixture();
+
+    let archived = fixture.client.archived_list().expect("archived list");
+    assert_eq!(archived.archived.len(), 1);
+    let item = &archived.archived[0];
+    assert_eq!(item.dated_name, DATED_NAME);
+    assert_eq!(item.tasks_total, Some(2));
+    assert_eq!(item.tasks_done, Some(1));
+    assert_eq!(item.spec_count, 1);
+    assert_eq!(item.created_by.as_deref(), Some("Creator"));
+    assert_eq!(item.from_discussions, ["source-talk"]);
+
+    let artifact = fixture
+        .client
+        .archived_artifact(DATED_NAME, "proposal.md")
+        .expect("archived artifact");
+    assert_eq!(artifact.content, "## Why\n\nArchived truth.\n");
+    assert_eq!(
+        fixture
+            .client
+            .archived_capabilities(DATED_NAME)
+            .expect("archived capabilities"),
+        ["payments"]
+    );
+
+    let search = fixture.client.search("remoteneedle").expect("search");
+    assert_eq!(search.hits.len(), 2);
+    assert!(search.hits.iter().any(|hit| hit.kind == "change"));
+    assert!(search.hits.iter().any(|hit| hit.kind == "discussion"));
+}
+
+#[test]
 fn config_read_and_cas_write_round_trip_through_typed_methods() {
     let fixture = fixture();
 
@@ -111,12 +225,7 @@ fn config_read_and_cas_write_round_trip_through_typed_methods() {
         .expect_err("stale expected revision conflicts");
     assert_eq!(stale.reason.as_deref(), Some("revision_conflict"));
     assert_eq!(
-        fixture
-            .client
-            .config()
-            .expect("winner remains")
-            .content
-            .as_deref(),
+        fixture.client.config().expect("winner remains").content.as_deref(),
         Some(updated_source),
         "the stale write has no side effect",
     );

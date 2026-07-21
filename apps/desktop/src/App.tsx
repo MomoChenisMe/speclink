@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Archive, GitBranch, FileText, Settings, SlidersHorizontal, FolderOpen } from "lucide-react";
+import {
+  Archive,
+  CloudOff,
+  GitBranch,
+  FileText,
+  Settings,
+  SlidersHorizontal,
+  FolderOpen,
+} from "lucide-react";
 import {
   KanbanBoard,
   ArchivedList,
@@ -27,13 +35,21 @@ import {
 } from "@speclink/ui";
 
 import { createAppStore } from "./store";
-import type { WorkspaceSession } from "./session";
+import { locatorKey, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
 import { ProjectTabs } from "./components/ProjectTabs";
+import { WorkspaceChooser } from "./components/WorkspaceChooser";
+import { MigrationDialog } from "./components/MigrationDialog";
+import { RemoteConflictDialog } from "./components/RemoteConflictDialog";
+import { RemoteWorkspaceRecovery } from "./components/RemoteWorkspaceRecovery";
 import { AppSettingsView } from "./views/AppSettingsView";
 import { ProjectSettingsView } from "./views/ProjectSettingsView";
 import type { ConnectionsAdapter } from "./adapter/connections";
 import type { WorkspaceAdapter } from "./adapter/workspace";
+import {
+  createMigrationAdapter,
+  type MigrationAdapter,
+} from "./adapter/migration";
 import { APP_MESSAGES } from "./i18n/messages";
 import {
   readLocalePreference,
@@ -48,12 +64,30 @@ export interface AppProps {
   createSession: (root: string, name: string) => WorkspaceSession;
   /** remote session 工廠（remote-data-source 決策 6/7）：handshake 成功回
    * session、失敗上拋；未注入時 remote 開啟入口不啟用。 */
-  openRemote?: (connectionId: string, target: string) => Promise<WorkspaceSession>;
+  openRemote?: (
+    connectionId: string,
+    target: string,
+    checkoutRoot?: string,
+  ) => Promise<WorkspaceSession>;
   /** workspace 探測面（開專案／init／統計／監看重掛）；未注入時對應 UI 不啟用。 */
   workspace?: WorkspaceAdapter;
   /** server 連線面（desktop-connections）；未注入時伺服器頁籤不啟用。 */
   connections?: ConnectionsAdapter;
+  /** 正式 local→remote 遷移命令；預設使用 Tauri adapter，測試可注入。 */
+  migration?: MigrationAdapter;
 }
+
+const DEFAULT_MIGRATION_ADAPTER = createMigrationAdapter();
+
+const DISABLED_CHOOSER_CONNECTIONS: Pick<
+  ConnectionsAdapter,
+  "scopes" | "bindCheckout"
+> = {
+  scopes: async () => ({ projects: [] }),
+  bindCheckout: async () => {
+    throw new Error("此環境未提供 server 連線功能");
+  },
+};
 
 /** 零分頁空狀態引導頁（spec：取代空看板；說明既有專案與一般目錄初始化兩條路）。 */
 function EmptyState({ onOpen }: { onOpen: () => void }) {
@@ -64,7 +98,7 @@ function EmptyState({ onOpen }: { onOpen: () => void }) {
       <h2 className="text-lg font-semibold">{t("app.emptyTitle")}</h2>
       <p className="text-sm text-muted-foreground max-w-md">{t("app.emptyDesc")}</p>
       <Button className="gap-1.5" onClick={onOpen}>
-        <FolderOpen className="h-4 w-4" /> {t("app.openProject")}
+        <FolderOpen className="h-4 w-4" /> {t("app.addWorkspace")}
       </Button>
     </div>
   );
@@ -120,7 +154,13 @@ function NavItem({
 }
 
 /** 桌面 app 進入點：解析 UI 語言（偏好優先、null 跟隨系統）並掛 I18nProvider。 */
-export function App({ createSession, openRemote, workspace, connections }: AppProps) {
+export function App({
+  createSession,
+  openRemote,
+  workspace,
+  connections,
+  migration = DEFAULT_MIGRATION_ADAPTER,
+}: AppProps) {
   const [localePref, setLocalePrefState] = useState<LocalePreference>(() => readLocalePreference());
   // 切換即時生效並持久化（設定頁的 UI 語言三選接這裡）。
   const setLocalePref = (pref: LocalePreference) => {
@@ -138,6 +178,7 @@ export function App({ createSession, openRemote, workspace, connections }: AppPr
         openRemote={openRemote}
         workspace={workspace}
         connections={connections}
+        migration={migration}
         localePref={localePref}
         onLocalePrefChange={setLocalePref}
       />
@@ -158,21 +199,47 @@ function AppInner({
   openRemote,
   workspace,
   connections,
+  migration,
   localePref,
   onLocalePrefChange,
 }: AppInnerProps) {
   const useStore = useMemo(
-    () => createAppStore({ createSession, openRemote, workspace, connections }),
-    [createSession, openRemote, workspace, connections],
+    () => createAppStore({ createSession, openRemote, workspace, connections, migration }),
+    [createSession, openRemote, workspace, connections, migration],
   );
   const s = useStore();
   // 活躍 session（workspace-session 決策 6）：詳情／規格／封存抽屜的文件載入
   // 與設定頁一律經它——App 不再持有全域 dataSource。
   const activeSession = s.activeKey ? s.sessions[s.activeKey] : undefined;
+  const activeTab = s.activeKey
+    ? s.tabs.find((tab) => locatorKey(tab.locator) === s.activeKey)
+    : undefined;
+  const activeRecovery = s.activeKey ? s.remoteRecovery[s.activeKey] : undefined;
+  const activeRecoveryTab =
+    !activeSession && activeRecovery && activeTab?.locator.kind === "remote"
+      ? activeTab
+      : undefined;
+  const activeRecoveryConnectionId =
+    activeRecoveryTab?.locator.kind === "remote"
+      ? activeRecoveryTab.locator.connectionId
+      : undefined;
+  const activeRecoveryConnection = activeRecoveryConnectionId
+    ? s.connections.find((connection) => connection.id === activeRecoveryConnectionId)
+    : undefined;
   const dataSource = activeSession?.dataSource;
   // capability 驅動停用（remote-data-source 決策 2）：remote session 依 server
   // 端點覆蓋停用 affordance；本地 session 全真、同一路徑零分岐。
   const caps = activeSession?.capabilities;
+  const connectionState = activeSession?.connectionState;
+  const remoteArchiveScope =
+    activeSession?.locator.kind === "remote" ? activeSession.descriptor.name : null;
+  const stale =
+    activeSession?.locator.kind === "remote" &&
+    connectionState !== undefined &&
+    connectionState.state !== "online";
+  const sessionConnectionStates = Object.fromEntries(
+    Object.entries(s.sessions).map(([key, session]) => [key, session.connectionState]),
+  );
   const servers = connections && {
     connections: s.connections,
     phases: s.connectionPhases,
@@ -182,7 +249,9 @@ function AppInner({
     onLogout: s.logoutConnection,
     onRemove: s.removeConnection,
     onRefresh: s.refreshConnections,
-    onOpenWorkspace: openRemote && ((id: string, target: string) => s.openRemoteWorkspace(id, target)),
+    focusConnectionId: s.reauthConnectionId,
+    onOpenWorkspace:
+      openRemote && ((id: string) => s.openWorkspaceChooser({ initialConnectionId: id })),
   };
   // 初始化確認框的工具多選（預設勾 claude）；對話框每次開啟重設。
   const [initTools, setInitTools] = useState<string[]>(["claude"]);
@@ -216,12 +285,13 @@ function AppInner({
     // 背景徽章快照）；否則維持既有的整批 refresh（無活躍 session 時為無事）。
     if (workspace) void useStore.getState().restoreTabs();
     else void useStore.getState().refresh();
+    if (connections) void useStore.getState().refreshConnections();
     return () => {
       // 卸載時取消漏出的搜尋去抖，杜絕在途 timer 於 store 卸載後才開火。
       useStore.getState().disposeSearch();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useStore]);
+  }, [useStore, connections, workspace]);
 
   // 檔案監看的宿主層 wiring（workspace-session 決策 5）：訂閱活躍 session 的
   // 事件來源（workspace-changed 以自身 root 過濾），觸發既有整批 refresh；
@@ -230,15 +300,24 @@ function AppInner({
     const st = useStore.getState();
     const session = st.activeKey ? st.sessions[st.activeKey] : undefined;
     if (!session) return;
-    return session.events.subscribe(() => {
-      if (boardDragActive.current) {
-        pendingRefresh.current = true;
-        return;
-      }
-      void useStore.getState().refresh();
-    });
+    return session.events.subscribe(
+      () => {
+        if (boardDragActive.current) {
+          pendingRefresh.current = true;
+          return;
+        }
+        void useStore.getState().refresh();
+      },
+      (event) => {
+        const store = useStore.getState();
+        store.applyRemoteConnectionState(event);
+        // Rust runtime 是連線狀態單一真相；worker 收斂回 online 時以同一事件
+        // 驅動全量 Query 重查，使用者不需再等下一筆 SSE 或手動重整。
+        if (event.state === "online") void store.refresh();
+      },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useStore, s.activeKey]);
+  }, [useStore, s.activeKey, s.sessionEpoch]);
 
   // 系統匣狀態選單（tray-status-menu）：訂閱同一 store 於選單列／系統匣呈現狀態並可切專案。
   // store 為本元件範圍，故於此接線（非 main.tsx）。建立失敗（如非 Tauri 環境）只靜默降級——
@@ -338,9 +417,11 @@ function AppInner({
             tabs={s.tabs}
             activeKey={s.activeKey}
             tabErrors={s.tabErrors}
+            recoveryStates={s.remoteRecovery}
+            connectionStates={sessionConnectionStates}
             onActivate={(key) => void s.activateTab(key)}
             onClose={s.closeTab}
-            onOpen={() => void s.openProjectViaDialog()}
+            onOpen={() => s.openWorkspaceChooser()}
           />
         ) : (
           <span className="text-xs text-muted-foreground px-2 py-0.5 rounded border border-border">
@@ -352,11 +433,46 @@ function AppInner({
           variant="ghost"
           size="sm"
           className="gap-1.5 px-2 text-sm font-normal text-muted-foreground hover:text-foreground"
-          onClick={() => void s.openProjectViaDialog()}
+          onClick={() => s.openWorkspaceChooser()}
         >
-          <FolderOpen className="h-4 w-4" /> {t("app.openProject")}
+          <FolderOpen className="h-4 w-4" /> {t("app.addWorkspace")}
         </Button>
       </header>
+
+      {stale && connectionState && (
+        <div
+          role="status"
+          data-testid="remote-stale-banner"
+          data-connection-state={connectionState.state}
+          className="flex min-h-10 shrink-0 items-center gap-2 border-b border-amber-500/35 bg-amber-500/10 px-4 py-2 text-amber-950 dark:text-amber-100"
+        >
+          <CloudOff className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+          <div className="min-w-0 text-xs">
+            <span className="font-semibold">
+              {connectionState.state === "needs-reauth"
+                ? t("remote.reauthTitle")
+                : t("remote.offlineTitle")}
+            </span>
+            <span className="ml-2 text-amber-900/75 dark:text-amber-100/75">
+              {connectionState.message ?? t("remote.staleHint")}
+            </span>
+          </div>
+          <span className="ml-auto rounded border border-amber-600/30 bg-background/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-800 dark:text-amber-200">
+            stale
+          </span>
+          {connectionState.state === "needs-reauth" && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 border-amber-600/40 bg-background/80 text-xs text-amber-900 hover:bg-amber-500/15 dark:text-amber-100"
+              onClick={() => s.openConnectionReauth(connectionState.connectionId)}
+            >
+              {t("remote.reauthAction")}
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* 左側欄 */}
@@ -412,10 +528,21 @@ function AppInner({
               onLocalePrefChange={onLocalePrefChange}
               trayPanelError={s.trayPanelError}
               servers={servers}
+              focusConnectionId={s.reauthConnectionId}
             />
           ) : workspace !== undefined && s.tabs.length === 0 ? (
-            // 零分頁（首次使用）：空狀態引導頁取代空看板。
-            <EmptyState onOpen={() => void s.openProjectViaDialog()} />
+            // 零分頁（首次使用）：專案範圍頁面落入空狀態；應用程式設定已於上方先行處理。
+            <EmptyState onOpen={() => s.openWorkspaceChooser()} />
+          ) : activeRecoveryTab && activeRecovery && activeRecoveryConnectionId ? (
+            <RemoteWorkspaceRecovery
+              tab={activeRecoveryTab}
+              recovery={activeRecovery}
+              connection={activeRecoveryConnection}
+              onRetry={() => void s.retryRemoteWorkspace(locatorKey(activeRecoveryTab.locator))}
+              onOpenSettings={() => s.openConnectionReauth(activeRecoveryConnectionId)}
+              onReauthenticate={() => s.openConnectionReauth(activeRecoveryConnectionId)}
+              onRemove={() => s.closeTab(locatorKey(activeRecoveryTab.locator))}
+            />
           ) : s.boardView === "project-settings" && activeSession !== undefined ? (
             <ProjectSettingsView settings={activeSession.settings} />
           ) : s.boardView === "specs" ? (
@@ -424,11 +551,13 @@ function AppInner({
             <KanbanBoard
               changes={s.changes}
               onOpenChange={s.openDetail}
-              onArchive={s.requestArchive}
+              onArchive={caps && !caps.archive ? undefined : s.requestArchive}
               discussions={s.discussions}
               archivedChanges={s.archived}
               onOpenDiscussion={s.openDiscussion}
-              onArchiveDiscussion={s.requestArchiveDiscussion}
+              onArchiveDiscussion={
+                caps && !caps.archiveDiscussion ? undefined : s.requestArchiveDiscussion
+              }
               query={s.boardQuery}
               onQuery={s.setBoardQuery}
               fulltextHits={s.searchHits}
@@ -442,15 +571,6 @@ function AppInner({
               }
               onDragActiveChange={handleBoardDragActive}
             />
-          ) : caps && !caps.listArchived ? (
-            // remote capability 缺口（決策 2）：不偽造封存頁——提示卡如實呈現。
-            <div
-              data-testid="archived-unavailable"
-              className="rounded-md border border-border bg-card p-6 text-sm"
-            >
-              <div className="font-medium">{t("remote.archivedUnavailableTitle")}</div>
-              <p className="mt-1 text-muted-foreground">{t("remote.archivedUnavailableBody")}</p>
-            </div>
           ) : (
             <ArchivedList
               archived={s.archived}
@@ -490,13 +610,20 @@ function AppInner({
           caps && {
             analyze:
               caps.validate && caps.analyze ? undefined : t("remote.analyzeUnavailable"),
+            archive: caps.archive ? undefined : t("remote.writeUnavailable"),
             delete: caps.deleteChange ? undefined : t("remote.deleteUnavailable"),
+            tasks:
+              caps.setTaskDone && caps.setAllTasks ? undefined : t("remote.writeUnavailable"),
           }
         }
-        onToggleTask={async (change, task, done) => {
-          await dataSource?.setTaskDone(change, task, done);
-          await s.refresh();
-        }}
+        onToggleTask={
+          caps && !caps.setTaskDone
+            ? undefined
+            : async (change, task, done) => {
+                await dataSource?.setTaskDone(change, task, done);
+                await s.refresh();
+              }
+        }
         onMoveTask={
           caps && !caps.moveTask
             ? undefined
@@ -505,10 +632,14 @@ function AppInner({
                 await s.refresh();
               }
         }
-        onSetAllTasks={async (change, done) => {
-          await dataSource?.setAllTasks(change, done);
-          await s.refresh();
-        }}
+        onSetAllTasks={
+          caps && !caps.setAllTasks
+            ? undefined
+            : async (change, done) => {
+                await dataSource?.setAllTasks(change, done);
+                await s.refresh();
+              }
+        }
         sourceDiscussions={sourceDiscussions}
         siblingChanges={siblingChanges}
         onOpenDiscussion={s.openDiscussion}
@@ -521,12 +652,8 @@ function AppInner({
         onOpenChange={(o) => !o && s.closeSpec()}
         capability={s.detailSpec}
         refreshGen={s.refreshGen}
-        // capability 缺口（正典 spec 內文無 server 端點）：內文區以繁中提示卡
-        // 如實呈現缺口，不偽造、不以「找不到」誤導。
         loadDocument={(capability) =>
-          caps && !caps.getSpecDocument
-            ? Promise.resolve(t("remote.specDocUnavailable"))
-            : (dataSource?.getSpecDocument(capability) ?? Promise.resolve(null))
+          dataSource?.getSpecDocument(capability) ?? Promise.resolve(null)
         }
       />
 
@@ -553,6 +680,44 @@ function AppInner({
         changes={s.changes}
         archivedChanges={s.archived}
         onOpenChangeCard={s.openDetail}
+      />
+
+      {workspace && (
+        <WorkspaceChooser
+          open={s.workspaceChooser !== null}
+          onOpenChange={(isOpen) => !isOpen && s.closeWorkspaceChooser()}
+          connections={s.connections}
+          connectionAdapter={connections ?? DISABLED_CHOOSER_CONNECTIONS}
+          workspace={workspace}
+          onOpenLocal={s.openProjectAt}
+          onRequestMigration={s.requestMigration}
+          onAddServer={s.addConnection}
+          onRefreshConnections={s.refreshConnections}
+          onOpenRemote={s.openRemoteWorkspace}
+          initialConnectionId={s.workspaceChooser?.initialConnectionId}
+          initialServerUrl={s.workspaceChooser?.initialServerUrl}
+        />
+      )}
+
+      {workspace && migration && (
+        <MigrationDialog
+          open={s.migrationRoot !== null}
+          root={s.migrationRoot ?? ""}
+          connections={s.connections}
+          connectionAdapter={connections ?? DISABLED_CHOOSER_CONNECTIONS}
+          migration={migration}
+          onOpenChange={(isOpen) => !isOpen && s.cancelMigration()}
+          onMigrated={(connectionId, target, checkoutRoot) =>
+            s.replaceLocalWorkspaceWithRemote(checkoutRoot, connectionId, target)
+          }
+        />
+      )}
+
+      <RemoteConflictDialog
+        conflict={s.pendingRemoteConflict}
+        onContinueLocal={s.continueLocalFromConflict}
+        onUseServer={s.useServerFromConflict}
+        onMigrateLocal={s.migrateLocalFromConflict}
       />
 
       {/* 初始化確認（design D3：寫入型確認框——取消靠左持預設焦點、建立靠右拉開距離） */}
@@ -604,7 +769,12 @@ function AppInner({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={s.cancelArchiveDiscussion}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={s.confirmArchiveDiscussion}>{t("app.archiveConfirm")}</AlertDialogAction>
+            <AlertDialogAction
+              disabled={caps !== undefined && !caps.archiveDiscussion}
+              onClick={s.confirmArchiveDiscussion}
+            >
+              {t("app.archiveConfirm")}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -616,11 +786,19 @@ function AppInner({
             <AlertDialogTitle>{t("app.archiveTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
               <BoldName text={t("app.archiveDesc")} name={s.pendingArchive ?? ""} />
+              {remoteArchiveScope && (
+                <span className="mt-2 block rounded-md border border-border bg-muted/45 px-2.5 py-2 font-mono text-xs text-foreground">
+                  {t("app.archiveRemoteScope").replace("{scope}", remoteArchiveScope)}
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={s.cancelArchive}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void confirmDetailAction(s.confirmArchive)}>
+            <AlertDialogAction
+              disabled={caps !== undefined && !caps.archive}
+              onClick={() => void confirmDetailAction(s.confirmArchive)}
+            >
               {t("app.archiveConfirm")}
             </AlertDialogAction>
           </AlertDialogFooter>

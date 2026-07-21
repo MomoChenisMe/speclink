@@ -25,6 +25,8 @@ export interface AppSettingsViewProps {
   trayPanelError?: string | null;
   /** app 全域伺服器管理面；測試或不支援連線的殼層可不注入。 */
   servers?: ServersPanelProps;
+  /** needs-reauth 導向時預選伺服器簽並聚焦該 connection。 */
+  focusConnectionId?: string | null;
 }
 
 function FieldHelp({ children }: { children: React.ReactNode }) {
@@ -49,6 +51,7 @@ export function AppSettingsView({
   onLocalePrefChange,
   trayPanelError = null,
   servers,
+  focusConnectionId = null,
 }: AppSettingsViewProps) {
   const { t } = useI18n();
   const uiLocaleOptions: Array<{ value: LocalePreference; label: string }> = [
@@ -59,7 +62,10 @@ export function AppSettingsView({
 
   return (
     <div className="max-w-2xl mx-auto w-full">
-      <Tabs defaultValue="local">
+      <Tabs
+        key={focusConnectionId ?? "settings"}
+        defaultValue={focusConnectionId ? "servers" : "local"}
+      >
         <TabsList>
           <TabsTrigger value="local">{t("settings.localTabLabel")}</TabsTrigger>
           {servers && <TabsTrigger value="servers">{t("settings.serversTabLabel")}</TabsTrigger>}

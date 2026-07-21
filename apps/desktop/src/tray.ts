@@ -18,18 +18,45 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { handleIconState } from "@tauri-apps/plugin-positioner";
 
 import { appT } from "./i18n/runtime";
-import { locatorKey, type WorkspaceLocator } from "./session";
+import type { ConnectionView } from "./adapter/connections";
+import {
+  locatorKey,
+  remoteWorkspaceStatus,
+  type RemoteRecoveryKind,
+  type RemoteWorkspaceRecoveryState,
+  type RemoteWorkspaceStatus,
+  type WorkspaceLocator,
+  type WorkspaceSession,
+} from "./session";
 import { trayIconBytes } from "./trayIcon";
 
 /** 系統匣互動樣式：由平台決定（macOS＝panel、其餘＝native-menu），panel 建立失敗時
     退回 native-menu——執行期狀態、不持久化（tray-macos-panel-only 拆除偏好）。 */
 export type TrayStyle = "native-menu" | "panel";
 
+export type TrayTabSnapshot =
+  | {
+      key: string;
+      name: string;
+      source: "local";
+      status: "ready";
+    }
+  | {
+      key: string;
+      name: string;
+      source: "remote";
+      status: RemoteWorkspaceStatus;
+      /** 僅 remote error 的封閉分類；不把 raw technical detail 帶入 Tray。 */
+      failureKind?: RemoteRecoveryKind;
+      connectionId: string;
+      serverLabel: string;
+      serverOrigin?: string;
+    };
+
 /** 組模型所需的 store 快照（自 AppState 收斂而來——與看板同源，design D3）。
- * 分頁項識別＝locator key（workspace-session 決策 6）；root 供 open-project
- * 動作沿用既有開啟語意（local 分頁）。 */
+ * 分頁項識別與切換把手皆為 locator key（workspace-session 決策 6）。 */
 export interface TraySnapshot {
-  tabs: Array<{ key: string; root: string; name: string }>;
+  tabs: TrayTabSnapshot[];
   activeKey: string | null;
   changes: ChangeItem[];
   /** 進看板的 active 討論（slug 供點擊開啟；promoted＝已轉出變更，分流至「已轉出」分區）。 */
@@ -42,12 +69,34 @@ export type TrayChangeAction = { kind: "open-change" | "copy-name"; label: strin
 /** 討論子選單的動作項。 */
 export type TrayDiscussionAction = { kind: "open-discussion" | "copy-slug"; label: string };
 
+export type TrayRecoveryAction = {
+  kind: "retry" | "open-recovery" | "open-settings" | "reauthenticate";
+  label: string;
+};
+
 /** 分區溢出門檻（spec「分區溢出摺疊」）：各分區直列筆數上限，逾此收進溢出節點。 */
 export const OVERFLOW_LIMIT = 5;
 
 /** 選單項目模型（純資料；接線層據此建原生 menu item 並掛 action）。 */
 export type TrayMenuItem =
-  | { kind: "project"; key: string; root: string; label: string; checked: boolean }
+  | {
+      kind: "project";
+      key: string;
+      label: string;
+      checked: boolean;
+      source: "local" | "remote";
+      status: "ready" | "offline";
+    }
+  | {
+      kind: "recovery";
+      key: string;
+      connectionId: string;
+      label: string;
+      summary: string;
+      active: boolean;
+      status: "restoring" | "error" | "needs-reauth";
+      actions: TrayRecoveryAction[];
+    }
   | { kind: "header"; label: string }
   | { kind: "change"; name: string; label: string; actions: TrayChangeAction[] }
   | {
@@ -103,6 +152,22 @@ export function buildTrayModel(
   t: (key: string) => string,
 ): TrayModel {
   const items: TrayMenuItem[] = [];
+  const activeTab = snapshot.tabs.find((tab) => tab.key === snapshot.activeKey);
+  const hideWorkspaceData =
+    activeTab?.status === "restoring" || activeTab?.status === "error";
+
+  const statusSummary = (tab: TrayTabSnapshot): string => {
+    if (tab.source === "local") return "";
+    if (tab.status === "restoring") return t("tray.recovery.restoring");
+    if (tab.status === "offline") return t("tray.recovery.offline");
+    if (tab.status === "needs-reauth" || tab.failureKind === "needs-reauth") {
+      return t("tray.recovery.needsReauth");
+    }
+    if (tab.failureKind === "access-denied") return t("tray.recovery.accessDenied");
+    if (tab.failureKind === "not-found") return t("tray.recovery.notFound");
+    if (tab.failureKind === "unknown") return t("tray.recovery.unknown");
+    return t("tray.recovery.unreachable");
+  };
 
   /** 分區切片：逾門檻收進「還有 N 個…」溢出節點（≤門檻原樣返回）。 */
   const withOverflow = (rows: TrayMenuItem[]): TrayMenuItem[] => {
@@ -119,72 +184,108 @@ export function buildTrayModel(
 
   // 專案區（識別＝locator key；顯示文字與行為不變）
   for (const tab of snapshot.tabs) {
-    items.push({
-      kind: "project",
-      key: tab.key,
-      root: tab.root,
-      label: tab.name,
-      checked: tab.key === snapshot.activeKey,
-    });
+    if (tab.status === "ready" || tab.status === "offline") {
+      items.push({
+        kind: "project",
+        key: tab.key,
+        label:
+          tab.status === "offline" ? `${tab.name} — ${statusSummary(tab)}` : tab.name,
+        checked: tab.key === snapshot.activeKey,
+        source: tab.source,
+        status: tab.status,
+      });
+    } else {
+      const needsReauth =
+        tab.status === "needs-reauth" || tab.failureKind === "needs-reauth";
+      const summary = statusSummary(tab);
+      const actions: TrayRecoveryAction[] =
+        tab.status === "restoring"
+          ? []
+          : [
+              {
+                kind: needsReauth ? "reauthenticate" : "retry",
+                label: t(
+                  needsReauth
+                    ? "tray.recovery.reauthenticate"
+                    : "tray.recovery.retry",
+                ),
+              },
+              { kind: "open-recovery", label: t("tray.recovery.open") },
+              { kind: "open-settings", label: t("tray.recovery.settings") },
+            ];
+      items.push({
+        kind: "recovery",
+        key: tab.key,
+        connectionId: tab.connectionId,
+        label: `${tab.name} — ${summary}`,
+        summary,
+        active: tab.key === snapshot.activeKey,
+        status: tab.status,
+        actions,
+      });
+    }
   }
   if (snapshot.tabs.length > 0) items.push({ kind: "separator" });
 
-  // 生命週期分區：每個非空階段一個 header＋變更子選單
-  let anyChange = false;
-  for (const stage of STAGES) {
-    const staged = snapshot.changes.filter((c) => changeStage(c) === stage);
-    if (staged.length === 0) continue;
-    anyChange = true;
-    items.push({ kind: "header", label: t(`stage.${stage}`) });
-    items.push(
-      ...withOverflow(
-        staged.map((c): TrayMenuItem => ({
-          kind: "change",
-          name: c.name,
-          label: changeLabel(c),
-          actions: [
-            { kind: "open-change", label: t("tray.openChange") },
-            { kind: "copy-name", label: t("tray.copyName") },
-          ],
-        })),
-      ),
-    );
-  }
-  if (!anyChange) items.push({ kind: "empty", label: t("tray.noChanges") });
+  if (!hideWorkspaceData) {
+    // 生命週期分區：每個非空階段一個 header＋變更子選單
+    let anyChange = false;
+    for (const stage of STAGES) {
+      const staged = snapshot.changes.filter((c) => changeStage(c) === stage);
+      if (staged.length === 0) continue;
+      anyChange = true;
+      items.push({ kind: "header", label: t(`stage.${stage}`) });
+      items.push(
+        ...withOverflow(
+          staged.map((c): TrayMenuItem => ({
+            kind: "change",
+            name: c.name,
+            label: changeLabel(c),
+            actions: [
+              { kind: "open-change", label: t("tray.openChange") },
+              { kind: "copy-name", label: t("tray.copyName") },
+            ],
+          })),
+        ),
+      );
+    }
+    if (!anyChange) items.push({ kind: "empty", label: t("tray.noChanges") });
 
-  items.push({ kind: "separator" });
+    items.push({ kind: "separator" });
 
-  // 討論區分流（spec「討論列表」）：「討論」分區列討論中、「已轉出」分區列已轉出，
-  // 無已轉出不顯示該分區；無討論中顯示「討論 0」。兩分區子選單結構相同。
-  const discussionItem = (d: { slug: string; topic: string }): TrayMenuItem => ({
-    kind: "discussion",
-    slug: d.slug,
-    label: d.slug,
-    topic: d.topic,
-    actions: [
-      { kind: "open-discussion", label: t("tray.openDiscussion") },
-      { kind: "copy-slug", label: t("tray.copySlug") },
-    ],
-  });
-  const openDiscussions = snapshot.discussions.filter((d) => !d.promoted);
-  const promotedDiscussions = snapshot.discussions.filter((d) => d.promoted);
-  if (openDiscussions.length > 0) {
-    items.push({ kind: "header", label: t("tray.discussionsHeader") });
-    items.push(...withOverflow(openDiscussions.map(discussionItem)));
-  } else {
-    items.push({ kind: "empty", label: t("tray.discussions").replace("{n}", "0") });
-  }
-  if (promotedDiscussions.length > 0) {
-    items.push({ kind: "header", label: t("tray.promotedHeader") });
-    items.push(...withOverflow(promotedDiscussions.map(discussionItem)));
-  }
+    // 討論區分流（spec「討論列表」）。
+    const discussionItem = (d: { slug: string; topic: string }): TrayMenuItem => ({
+      kind: "discussion",
+      slug: d.slug,
+      label: d.slug,
+      topic: d.topic,
+      actions: [
+        { kind: "open-discussion", label: t("tray.openDiscussion") },
+        { kind: "copy-slug", label: t("tray.copySlug") },
+      ],
+    });
+    const openDiscussions = snapshot.discussions.filter((d) => !d.promoted);
+    const promotedDiscussions = snapshot.discussions.filter((d) => d.promoted);
+    if (openDiscussions.length > 0) {
+      items.push({ kind: "header", label: t("tray.discussionsHeader") });
+      items.push(...withOverflow(openDiscussions.map(discussionItem)));
+    } else {
+      items.push({ kind: "empty", label: t("tray.discussions").replace("{n}", "0") });
+    }
+    if (promotedDiscussions.length > 0) {
+      items.push({ kind: "header", label: t("tray.promotedHeader") });
+      items.push(...withOverflow(promotedDiscussions.map(discussionItem)));
+    }
 
-  items.push({ kind: "separator" });
+    items.push({ kind: "separator" });
+  }
   items.push({ kind: "open", label: t("tray.open") });
   items.push({ kind: "settings", label: t("tray.settings") });
   items.push({ kind: "quit", label: t("tray.quit") });
 
-  const inProgress = snapshot.changes.filter((c) => changeStage(c) === "in-progress").length;
+  const inProgress = hideWorkspaceData
+    ? 0
+    : snapshot.changes.filter((c) => changeStage(c) === "in-progress").length;
   return { items, badge: inProgress > 0 ? String(inProgress) : "" };
 }
 
@@ -197,9 +298,16 @@ export interface TrayStoreApi {
     activeKey: string | null;
     changes: ChangeItem[];
     discussions: { active: Array<{ slug: string; topic: string; promotedTo: string[] }> };
+    sessions: Record<string, WorkspaceSession>;
+    remoteRecovery: Record<string, RemoteWorkspaceRecoveryState>;
+    connections: ConnectionView[];
     /** 系統匣樣式偏好：native-menu 掛原生選單、panel 卸選單改走點擊事件。 */
     trayStyle: TrayStyle;
-    openProjectAt: (root: string) => void | Promise<void>;
+    /** 切換既有分頁；locator key 同時涵蓋 local 與 remote。 */
+    activateTab: (key: string) => void | Promise<void>;
+    retryRemoteWorkspace: (key: string) => void | Promise<void>;
+    showRemoteWorkspaceRecovery: (key: string) => void;
+    openConnectionReauth: (connectionId: string) => void;
     /** 開資料夾選擇器加入專案（面板 add-project 動作用；取消即無事）。 */
     openProjectViaDialog: () => void | Promise<void>;
     /** 開啟變更詳情抽屜（子選單「開啟此變更」用）。 */
@@ -234,14 +342,33 @@ export function detectMacOS(): boolean {
 }
 
 /** store 狀態 → 模型快照（與看板同源）。 */
-function toSnapshot(state: ReturnType<TrayStoreApi["getState"]>): TraySnapshot {
+export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>): TraySnapshot {
   return {
-    tabs: state.tabs.map((t) => ({
-      key: locatorKey(t.locator),
-      // remote 本刀無建構路徑；root 僅 local 分頁有意義（open-project 動作用）。
-      root: t.locator.kind === "local" ? t.locator.root : "",
-      name: t.name,
-    })),
+    tabs: state.tabs.map((tab): TrayTabSnapshot => {
+      const key = locatorKey(tab.locator);
+      if (tab.locator.kind === "local") {
+        return { key, name: tab.name, source: "local", status: "ready" };
+      }
+      const connectionId = tab.locator.connectionId;
+      const recovery = state.remoteRecovery[key];
+      const session = state.sessions[key];
+      const connection = state.connections.find((entry) => entry.id === connectionId);
+      return {
+        key,
+        name: tab.name,
+        source: "remote",
+        status: remoteWorkspaceStatus(session, recovery),
+        failureKind:
+          recovery?.status === "error"
+            ? recovery.failure.kind
+            : session?.connectionState?.state === "needs-reauth"
+              ? "needs-reauth"
+              : undefined,
+        connectionId,
+        serverLabel: connection?.name ?? connectionId,
+        serverOrigin: connection?.origin,
+      };
+    }),
     activeKey: state.activeKey,
     changes: state.changes,
     discussions: state.discussions.active.map((d) => ({
@@ -254,7 +381,7 @@ function toSnapshot(state: ReturnType<TrayStoreApi["getState"]>): TraySnapshot {
 
 /**
  * 初始化系統匣原生選單：建圖示與首份選單、訂閱 store（去抖重建選單與 macOS 徽章）。
- * 回傳 controller，其 dispose 於 app 卸載時清理。專案切換走 store 既有 openProjectAt
+ * 回傳 controller，其 dispose 於 app 卸載時清理。專案切換走 store 既有 activateTab
  * 且不動視窗焦點；變更子選單「開啟此變更」與討論項開主視窗並跳詳情；「結束」為原生 predefined Quit。
  */
 export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promise<TrayController> {
@@ -296,8 +423,32 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
           text: item.label,
           checked: item.checked,
           action: () => {
-            void store.getState().openProjectAt(item.root);
+            void store.getState().activateTab(item.key);
           },
+        };
+      case "recovery":
+        if (item.actions.length === 0) return { text: item.label, enabled: false };
+        return {
+          text: item.label,
+          items: [
+            {
+              text: appT(item.active ? "tray.recovery.active" : "tray.recovery.inactive"),
+              enabled: false,
+            },
+            { text: item.summary, enabled: false },
+            ...item.actions.map((action): MenuItemOptions => ({
+              text: action.label,
+              action: () => {
+                if (action.kind === "retry") {
+                  void store.getState().retryRemoteWorkspace(item.key);
+                } else if (action.kind === "open-recovery") {
+                  openIn(() => store.getState().showRemoteWorkspaceRecovery(item.key));
+                } else {
+                  openIn(() => store.getState().openConnectionReauth(item.connectionId));
+                }
+              },
+            })),
+          ],
         };
       case "header":
       case "empty":
@@ -336,7 +487,7 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   };
   const styleOf = () => store.getState().trayStyle;
   const render = async () => {
-    const model = buildTrayModel(toSnapshot(store.getState()), appT);
+    const model = buildTrayModel(buildTraySnapshot(store.getState()), appT);
     const menu = await Menu.new({ items: model.items.map(toOptions) });
     return { menu, badge: model.badge };
   };
@@ -371,14 +522,20 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   // 面板接線（design D5）：主視窗擁有資料——面板 ready 時補推快照（lazy 建窗的
   // 首開空窗）、去抖訂閱時推送、面板動作事件回流 store 執行（與選單動作同語意）。
   const pushSnapshot = () => {
-    void emit("tray-snapshot", toSnapshot(store.getState()));
+    void emit("tray-snapshot", buildTraySnapshot(store.getState()));
   };
   const unlistenReady = await listen("tray-panel-ready", pushSnapshot);
   const unlistenAction = await listen<{ kind: string; id?: string }>(
     "tray-panel-action",
     (event) => {
       const { kind, id } = event.payload ?? {};
-      if (kind === "open-project" && id) void store.getState().openProjectAt(id);
+      if (kind === "open-project" && id) void store.getState().activateTab(id);
+      else if (kind === "retry-workspace" && id) void store.getState().retryRemoteWorkspace(id);
+      else if (kind === "open-recovery" && id) {
+        openIn(() => store.getState().showRemoteWorkspaceRecovery(id));
+      } else if ((kind === "open-server-settings" || kind === "reauthenticate") && id) {
+        openIn(() => store.getState().openConnectionReauth(id));
+      }
       // 快速加入專案（D7）：走 openIn 先喚起主視窗——主視窗位於另一桌面時
       // macOS 隨聚焦切換 Space，資料夾選擇器才於前景可見；取消即無事。
       else if (kind === "add-project") openIn(() => void store.getState().openProjectViaDialog());
@@ -409,7 +566,7 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
           // 吃掉（選單已空＝點了無事發生），點擊事件到不了 action／面板。
           await tray.setMenu(null);
           await tray.setShowMenuOnLeftClick(false);
-          const model = buildTrayModel(toSnapshot(store.getState()), appT);
+          const model = buildTrayModel(buildTraySnapshot(store.getState()), appT);
           if (isMac) await tray.setTitle(model.badge || null);
         }
       })();

@@ -70,6 +70,8 @@ function fakeAdapter(over: Partial<ConnectionsAdapter> = {}) {
       if (entry) entry.lastActorDisplay = null;
       return { revokedOnServer: true, patNotice: false };
     },
+    scopes: async () => ({ projects: [] }),
+    bindCheckout: async (path) => path,
     ...over,
   };
   return adapter;
@@ -190,9 +192,9 @@ describe("ServersPanel", () => {
     expect(screen.getByTestId("servers-empty")).toBeTruthy();
   });
 
-  // --- 開啟 workspace（remote-data-source 決策 6：handshake fail-closed） ---
+  // --- 開啟 workspace：退役文字輸入，匯流至統一 chooser ---
 
-  function renderLoggedInPanel(onOpenWorkspace: (id: string, target: string) => Promise<void>) {
+  function renderLoggedInPanel(onOpenWorkspace: (id: string) => void) {
     rtlRender(
       <ServersPanel
         connections={[
@@ -216,35 +218,25 @@ describe("ServersPanel", () => {
     );
   }
 
-  function submitWorkspace(target: string) {
+  function openWorkspaceChooser() {
     fireEvent.click(screen.getByRole("button", { name: "開啟 workspace" }));
-    fireEvent.change(screen.getByPlaceholderText("project 或 project/repo"), {
-      target: { value: target },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "開啟" }));
   }
 
-  it("已登入條目輸入 workspace 識別開啟成功後收合表單", async () => {
-    const open = vi.fn().mockResolvedValue(undefined);
+  it("已登入條目開啟統一 chooser 並預選該 connection", () => {
+    const open = vi.fn();
     renderLoggedInPanel(open);
 
-    submitWorkspace("demo/backend");
-    await waitFor(() => expect(open).toHaveBeenCalledWith("conn_1", "demo/backend"));
-    // 成功：表單收合、草稿清空。
-    await waitFor(() =>
-      expect(screen.queryByTestId("workspace-form-http://localhost:8080")).toBeNull(),
-    );
+    openWorkspaceChooser();
+    expect(open).toHaveBeenCalledWith("conn_1");
+    expect(screen.queryByPlaceholderText("project 或 project/repo")).toBeNull();
   });
 
-  it("handshake 失敗原樣呈現 server 錯誤且不收合（fail-closed）", async () => {
-    const open = vi.fn().mockRejectedValue(new Error("access denied — no access"));
+  it("不再呈現臨時 repo 文字輸入表單", () => {
+    const open = vi.fn();
     renderLoggedInPanel(open);
 
-    submitWorkspace("secret");
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toContain("access denied"),
-    );
-    // 表單留在原地供更正；不建分頁由 store 測試釘死。
-    expect(screen.getByTestId("workspace-form-http://localhost:8080")).toBeTruthy();
+    openWorkspaceChooser();
+    expect(screen.queryByTestId("workspace-form-http://localhost:8080")).toBeNull();
+    expect(screen.queryByPlaceholderText("project 或 project/repo")).toBeNull();
   });
 });

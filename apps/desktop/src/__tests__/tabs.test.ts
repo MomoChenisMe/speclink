@@ -99,6 +99,21 @@ describe("分頁持久化 v2 與 v1 靜默遷移（spec「分頁持久化 v2 與
     expect(restored.activeKey).toBe("local:A");
   });
 
+  it("v2 round-trips remote checkoutRoot without putting it in activeKey", () => {
+    const st = memStorage();
+    const locator: WorkspaceLocator = {
+      kind: "remote",
+      connectionId: "c1",
+      projectId: "demo",
+      repoId: "backend",
+      checkoutRoot: "/work/backend",
+    };
+    persistTabs([{ locator, name: "Demo/Backend", badge: null }], locatorKey(locator), st);
+    const restored = readPersistedTabs(st);
+    expect(restored.tabs).toEqual([{ locator, name: "Demo/Backend" }]);
+    expect(restored.activeKey).toBe("remote:c1/demo/backend");
+  });
+
   it("v1 payload (root＋name＋activeRoot) silently migrates to local locators and activeKey", () => {
     // 契約範例（spec Scenario「舊版使用者升級後分頁完整保留」）：兩個專案分頁＋activeRoot。
     const st = memStorage();

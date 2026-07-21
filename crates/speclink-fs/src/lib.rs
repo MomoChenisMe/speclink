@@ -252,6 +252,20 @@ impl Store for FsStore {
 
     // --- archive ---
 
+    fn list_archived_changes(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        let Ok(entries) = std::fs::read_dir(self.layout.archive_dir()) else {
+            return names;
+        };
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                names.push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+        names.sort_by(|a, b| b.cmp(a));
+        names
+    }
+
     fn archived_change_exists(&self, dated_name: &str) -> bool {
         self.layout.archived_change_dir(dated_name).exists()
     }

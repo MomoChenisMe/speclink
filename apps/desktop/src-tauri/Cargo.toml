@@ -17,11 +17,15 @@ tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-ap
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-opener = "2"
+chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 speclink-desktop-core = { path = "../core" }
+speclink-core = { path = "../../../crates/speclink-core" }
+speclink-host = { path = "../../../crates/speclink-host" }
 speclink-remote = { path = "../../../crates/speclink-remote" }
 speclink-protocol = { path = "../../../crates/speclink-protocol" }
+speclink-store = { path = "../../../crates/speclink-store" }
 notify-debouncer-mini = "0.7.0"
 ulid = { workspace = true }
 # credential 唯一落點 OS Keychain（design 決策 2）：僅啟用 macOS/Windows 原生
@@ -32,10 +36,8 @@ keyring = { version = "3", features = ["apple-native", "windows-native"] }
 [dev-dependencies]
 tempfile = "3"
 speclink-server = { path = "../../../crates/speclink-server" }
-speclink-store = { path = "../../../crates/speclink-store" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net"] }
-chrono = { workspace = true }
 tiny_http = "0.12"
 
 # 面板樣式（tray-status-menu「面板樣式（macOS）」）僅 macOS：非 macOS 建置不攜入。

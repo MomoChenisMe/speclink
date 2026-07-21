@@ -30,7 +30,11 @@ export function upsertTab(
 ): ProjectTab[] {
   const key = locatorKey(entry.locator);
   if (tabs.some((t) => locatorKey(t.locator) === key)) {
-    return tabs.map((t) => (locatorKey(t.locator) === key ? { ...t, name: entry.name } : t));
+    return tabs.map((t) =>
+      locatorKey(t.locator) === key
+        ? { ...t, locator: entry.locator, name: entry.name }
+        : t,
+    );
   }
   const next = [...tabs, { locator: entry.locator, name: entry.name, badge: null }];
   return next.length > MAX_TABS ? next.slice(next.length - MAX_TABS) : next;

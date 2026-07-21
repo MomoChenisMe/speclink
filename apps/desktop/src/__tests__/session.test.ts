@@ -3,8 +3,17 @@
 // 無任何建構路徑——key 規則先釘死，使持久化 schema 跨後續刀穩定。
 import { describe, it, expect } from "vitest";
 
-import { createLocalSession, locatorKey, type WorkspaceLocator } from "../session";
+import {
+  createLocalSession,
+  createRemoteSession,
+  locatorKey,
+  remoteWorkspaceStatus,
+  type RemoteOpenInfo,
+  type RemoteWorkspaceRecoveryState,
+  type WorkspaceLocator,
+} from "../session";
 import { upsertTab, type ProjectTab } from "../tabs";
+import { REMOTE_CAPS } from "./helpers/remoteFixtures";
 
 /** 假 invoke：記錄每筆 (cmd, args) 並依 cmd 回覆最小合法 payload。 */
 function fakeInvoke() {
@@ -141,6 +150,65 @@ describe("createLocalSession（spec「每個 session 自帶 dataSource 且 Rust 
   });
 });
 
+describe("createRemoteSession checkoutRoot 落地邊界", () => {
+  const info: RemoteOpenInfo = {
+    projectKey: "demo",
+    projectName: "Demo",
+    repoKey: "backend",
+    repoName: "Backend",
+    capabilities: REMOTE_CAPS,
+  };
+
+  it("把 checkoutRoot 寫入 locator，但 locator key 維持 scope 身分", () => {
+    const session = createRemoteSession("c1", info, "/work/backend", {
+      invoke: fakeInvoke().invoke,
+    });
+    expect(session.locator).toEqual({
+      kind: "remote",
+      connectionId: "c1",
+      projectId: "demo",
+      repoId: "backend",
+      checkoutRoot: "/work/backend",
+    });
+    expect(session.id).toBe("remote:c1/demo/backend");
+  });
+
+  it("checkoutRoot 不改變 capability 描述", () => {
+    const invoke = fakeInvoke().invoke;
+    expect(createRemoteSession("c1", info, "/work/backend", { invoke }).capabilities).toEqual(
+      createRemoteSession("c1", info, undefined, { invoke }).capabilities,
+    );
+  });
+
+  it("共用狀態投影依序裁決 recovery、connection state 與 ready", () => {
+    const session = createRemoteSession("c1", info, undefined, { invoke: fakeInvoke().invoke });
+    const restoring: RemoteWorkspaceRecoveryState = { status: "restoring", failure: null };
+    const error: RemoteWorkspaceRecoveryState = {
+      status: "error",
+      failure: { kind: "unreachable", message: "offline", reason: null, status: null },
+    };
+
+    expect(remoteWorkspaceStatus(undefined, restoring)).toBe("restoring");
+    expect(remoteWorkspaceStatus(undefined, error)).toBe("error");
+    expect(remoteWorkspaceStatus(session, undefined)).toBe("ready");
+    expect(
+      remoteWorkspaceStatus(
+        { ...session, connectionState: { connectionId: "c1", state: "offline", message: "x" } },
+        undefined,
+      ),
+    ).toBe("offline");
+    expect(
+      remoteWorkspaceStatus(
+        {
+          ...session,
+          connectionState: { connectionId: "c1", state: "needs-reauth", message: "x" },
+        },
+        undefined,
+      ),
+    ).toBe("needs-reauth");
+  });
+});
+
 describe("upsertTab 以 locator key 去重（spec「同一專案重複開啟仍去重」）", () => {
   const local = (root: string): WorkspaceLocator => ({ kind: "local", root });
   const tab = (root: string, name = root): ProjectTab => ({
@@ -162,5 +230,22 @@ describe("upsertTab 以 locator key 去重（spec「同一專案重複開啟仍�
     expect(tabs.map((t) => locatorKey(t.locator))).toEqual(["local:A", "local:B"]);
     expect(tabs[0].name).toBe("new");
     expect(tabs[1].name).toBe("beta");
+  });
+
+  it("同一 remote scope 重綁 checkout 會原地覆寫 locator，不分裂分頁", () => {
+    const oldLocator: WorkspaceLocator = {
+      kind: "remote",
+      connectionId: "c1",
+      projectId: "demo",
+      repoId: "backend",
+      checkoutRoot: "/work/old",
+    };
+    const newLocator: WorkspaceLocator = { ...oldLocator, checkoutRoot: "/work/new" };
+    const tabs = upsertTab([{ locator: oldLocator, name: "Demo/Backend", badge: null }], {
+      locator: newLocator,
+      name: "Demo/Backend",
+    });
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0].locator).toEqual(newLocator);
   });
 });

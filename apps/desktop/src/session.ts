@@ -58,7 +58,15 @@ export interface WorkspaceSettingsProvider {
 /** 事件面（design 決策 5）：workspace-changed 以自身 locator 過濾後才觸發。 */
 export interface WorkspaceEvents {
   /** 訂閱過濾後的變更通知；回傳解除訂閱函式。 */
-  subscribe(onChange: () => void): () => void;
+  subscribe(onChange: () => void, onConnectionState?: (event: RemoteConnectionStateEvent) => void): () => void;
+}
+
+export type RemoteConnectionState = "online" | "offline" | "needs-reauth";
+
+export interface RemoteConnectionStateEvent {
+  connectionId: string;
+  state: RemoteConnectionState;
+  message: string | null;
 }
 
 /** 逐操作的 capability 描述（remote-data-source 決策 2）：UI 據此停用
@@ -133,6 +141,10 @@ export interface WorkspaceSession {
   settings: WorkspaceSettingsProvider;
   events: WorkspaceEvents;
   capabilities: WorkspaceCapabilities;
+  /** handshake 原始 capability；offline mask 解除時由此精確還原。 */
+  baseCapabilities?: WorkspaceCapabilities;
+  /** local 為缺席；remote 初始 online，之後只接受 Rust 事件更新。 */
+  connectionState?: RemoteConnectionStateEvent;
 }
 
 export type InvokeFn = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -193,9 +205,160 @@ export interface RemoteOpenInfo {
   capabilities: WorkspaceCapabilities;
 }
 
+export type RemoteRecoveryKind =
+  | "unreachable"
+  | "needs-reauth"
+  | "access-denied"
+  | "not-found"
+  | "unknown";
+
+export interface RemoteOpenFailure {
+  kind: RemoteRecoveryKind;
+  message: string;
+  reason: string | null;
+  status: number | null;
+}
+
+export type RemoteWorkspaceRecoveryState =
+  | { status: "restoring"; failure: null }
+  | { status: "error"; failure: RemoteOpenFailure };
+
+export type RemoteWorkspaceStatus =
+  | "ready"
+  | "restoring"
+  | "offline"
+  | "needs-reauth"
+  | "error";
+
+/** 主視窗 tab、復原頁與 Tray 共用的單一狀態裁決。無 session 且無明確
+ * recovery state 是不完整狀態，安全降階為 error，絕不偽裝成 ready。 */
+export function remoteWorkspaceStatus(
+  session: WorkspaceSession | undefined,
+  recovery: RemoteWorkspaceRecoveryState | undefined,
+): RemoteWorkspaceStatus {
+  if (recovery) return recovery.status;
+  if (!session) return "error";
+  if (session.locator.kind !== "remote") return "ready";
+  const connectionState = session.connectionState?.state ?? "online";
+  return connectionState === "online" ? "ready" : connectionState;
+}
+
+function structuredRemoteOpenFailure(
+  error: unknown,
+): Omit<RemoteOpenFailure, "kind"> | null {
+  if (!error || typeof error !== "object") return null;
+  const candidate = error as Record<string, unknown>;
+  if (typeof candidate.message !== "string") return null;
+  const reason = candidate.reason;
+  if (reason !== null && typeof reason !== "string") return null;
+  const status = candidate.status;
+  if (
+    status !== null &&
+    (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599)
+  ) {
+    return null;
+  }
+  return {
+    message: candidate.message,
+    reason,
+    status,
+  };
+}
+
+/** 將 Tauri object rejection 與舊版 string/Error rejection 收斂成封閉分類。
+ * `message` 僅保留作 technical detail，分類永不比對其文字。 */
+export function normalizeRemoteOpenFailure(error: unknown): RemoteOpenFailure {
+  if (error instanceof RemoteOpenError) return error.failure;
+  const failure = structuredRemoteOpenFailure(error);
+  if (!failure) {
+    return {
+      kind: "unknown",
+      message: error instanceof Error ? error.message : String(error),
+      reason: null,
+      status: null,
+    };
+  }
+
+  let kind: RemoteRecoveryKind = "unknown";
+  if (failure.status === 401 || failure.reason === "needs_reauth") {
+    kind = "needs-reauth";
+  } else if (failure.status === 403) {
+    kind = "access-denied";
+  } else if (failure.status === 404 || failure.reason === "not_found") {
+    kind = "not-found";
+  } else if (
+    failure.reason === "unavailable" ||
+    failure.reason === "offline" ||
+    (failure.reason === null && failure.status === null) ||
+    (failure.status !== null && failure.status >= 500)
+  ) {
+    kind = "unreachable";
+  }
+  return { kind, ...failure };
+}
+
+export class RemoteOpenError extends Error {
+  readonly failure: RemoteOpenFailure;
+
+  constructor(failure: RemoteOpenFailure) {
+    super(failure.message);
+    this.name = "RemoteOpenError";
+    this.failure = failure;
+  }
+}
+
 export interface RemoteSessionDeps {
   invoke?: InvokeFn;
   listen?: ListenFn;
+}
+
+const REMOTE_WRITE_CAPABILITIES: ReadonlyArray<keyof WorkspaceCapabilities> = [
+  "deleteChange",
+  "setTaskDone",
+  "setAllTasks",
+  "moveTask",
+  "archive",
+  "promoteDiscussion",
+  "archiveDiscussion",
+  "reorderCard",
+  "policyWrite",
+];
+
+function maskRemoteWrites(capabilities: WorkspaceCapabilities): WorkspaceCapabilities {
+  const masked = { ...capabilities };
+  for (const key of REMOTE_WRITE_CAPABILITIES) masked[key] = false;
+  return masked;
+}
+
+export function applyRemoteConnectionState(
+  session: WorkspaceSession,
+  event: RemoteConnectionStateEvent,
+): WorkspaceSession {
+  if (session.locator.kind !== "remote" || session.locator.connectionId !== event.connectionId) {
+    return session;
+  }
+  const baseCapabilities = session.baseCapabilities ?? session.capabilities;
+  const writable = event.state === "online";
+  return {
+    ...session,
+    baseCapabilities,
+    connectionState: event,
+    capabilities: writable ? baseCapabilities : maskRemoteWrites(baseCapabilities),
+    settings: {
+      ...session.settings,
+      policyWrite: writable ? baseCapabilities.policyWrite : false,
+    },
+  };
+}
+
+function isRemoteConnectionStateEvent(payload: unknown): payload is RemoteConnectionStateEvent {
+  if (!payload || typeof payload !== "object") return false;
+  const event = payload as Partial<RemoteConnectionStateEvent>;
+  return (
+    typeof event.connectionId === "string" &&
+    (event.state === "online" || event.state === "offline" || event.state === "needs-reauth") &&
+    (event.message === null || typeof event.message === "string")
+  );
 }
 
 /** remote session 工廠（決策 6/7）：以 remote_open（handshake）的結果建
@@ -206,6 +369,7 @@ export interface RemoteSessionDeps {
 export function createRemoteSession(
   connectionId: string,
   info: RemoteOpenInfo,
+  checkoutRoot?: string,
   deps: RemoteSessionDeps = {},
 ): WorkspaceSession {
   const invoke = deps.invoke ?? (tauriInvoke as InvokeFn);
@@ -215,6 +379,7 @@ export function createRemoteSession(
     connectionId,
     projectId: info.projectKey,
     repoId: info.repoKey,
+    ...(checkoutRoot ? { checkoutRoot } : {}),
   };
   const key = locatorKey(locator);
   const watchArgs = { connectionId, project: info.projectKey, repo: info.repoKey };
@@ -231,17 +396,28 @@ export function createRemoteSession(
       invoke,
     ),
     events: {
-      subscribe(onChange) {
+      subscribe(onChange, onConnectionState) {
         void invoke("remote_watch", { ...watchArgs });
-        const unlisten = listen("remote-workspace-changed", (e) => {
+        const unlistenWorkspace = listen("remote-workspace-changed", (e) => {
           if (e.payload === key) onChange();
         });
+        const unlistenState = listen("remote-connection-state", (e) => {
+          if (
+            isRemoteConnectionStateEvent(e.payload) &&
+            e.payload.connectionId === connectionId
+          ) {
+            onConnectionState?.(e.payload);
+          }
+        });
         return () => {
-          void unlisten.then((f) => f());
+          void unlistenWorkspace.then((f) => f());
+          void unlistenState.then((f) => f());
           void invoke("remote_unwatch", { ...watchArgs });
         };
       },
     },
     capabilities: info.capabilities,
+    baseCapabilities: info.capabilities,
+    connectionState: { connectionId, state: "online", message: null },
   };
 }

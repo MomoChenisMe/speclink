@@ -8,7 +8,7 @@ import { I18nProvider } from "@speclink/ui";
 import { ProjectTabs } from "../components/ProjectTabs";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { ProjectTab } from "../tabs";
-import type { WorkspaceLocator } from "../session";
+import type { RemoteWorkspaceRecoveryState, WorkspaceLocator } from "../session";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
@@ -73,7 +73,7 @@ describe("ProjectTabs", () => {
   it("the + button fires onOpen (dialog entry)", () => {
     const onOpen = vi.fn();
     render(<ProjectTabs tabs={tabs} activeKey="local:C:\proj\alpha" tabErrors={{}} onOpen={onOpen} />);
-    fireEvent.click(screen.getByLabelText("開啟專案"));
+    fireEvent.click(screen.getByLabelText("新增 Workspace"));
     expect(onOpen).toHaveBeenCalled();
   });
 
@@ -97,7 +97,13 @@ describe("ProjectTabs", () => {
     const remoteTabs: ProjectTab[] = [
       ...tabs,
       {
-        locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+        locator: {
+          kind: "remote",
+          connectionId: "c1",
+          projectId: "demo",
+          repoId: "backend",
+          checkoutRoot: "/work/backend",
+        },
         name: "Demo/backend",
         badge: null,
       },
@@ -108,10 +114,77 @@ describe("ProjectTabs", () => {
     expect(cloud).toBeTruthy();
     // cloud 以主色加深——與 local 的 folder 圖示形成視覺區分。
     expect(cloud.getAttribute("class")).toContain("text-primary");
+    expect(remote.getAttribute("title")).toBe("已連接 checkout：/work/backend");
     expect(remote.querySelector("[data-folder]")).toBeNull();
     // local 分頁長 folder 圖示、不長 cloud。
     const alpha = screen.getByText("alpha").closest("[data-tab]") as HTMLElement;
     expect(alpha.querySelector("[data-cloud]")).toBeNull();
     expect(alpha.querySelector("[data-folder]")).toBeTruthy();
+  });
+
+  it("remote error tab remains a selectable active destination with one concise status", () => {
+    const remoteTabs: ProjectTab[] = [
+      {
+        locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+        name: "Demo/backend",
+        badge: null,
+      },
+    ];
+    const recoveryStates: Record<string, RemoteWorkspaceRecoveryState> = {
+      "remote:c1/demo/backend": {
+        status: "error",
+        failure: {
+          kind: "unreachable",
+          message: "server unreachable — technical detail only",
+          reason: null,
+          status: null,
+        },
+      },
+    };
+    render(
+      <ProjectTabs
+        tabs={remoteTabs}
+        activeKey="remote:c1/demo/backend"
+        tabErrors={{}}
+        recoveryStates={recoveryStates}
+      />,
+    );
+
+    const tab = screen.getByRole("tab", { name: /Demo\/backend/ });
+    expect(tab.getAttribute("aria-selected")).toBe("true");
+    expect(tab.getAttribute("aria-disabled")).not.toBe("true");
+    expect(tab.getAttribute("data-status")).toBe("error");
+    expect(tab.getAttribute("title")).toBe("無法連線");
+    expect(tab.getAttribute("title")).not.toContain("technical detail");
+    expect(tab.querySelectorAll("[data-tab-status]")).toHaveLength(1);
+    expect(tab.getAttribute("class")).not.toContain("opacity-60");
+  });
+
+  it("background recovery tab supports mouse and keyboard activation", () => {
+    const onActivate = vi.fn();
+    const remoteTabs: ProjectTab[] = [
+      {
+        locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+        name: "Demo/backend",
+        badge: null,
+      },
+    ];
+    render(
+      <ProjectTabs
+        tabs={remoteTabs}
+        activeKey={null}
+        tabErrors={{}}
+        recoveryStates={{
+          "remote:c1/demo/backend": { status: "restoring", failure: null },
+        }}
+        onActivate={onActivate}
+      />,
+    );
+    const tab = screen.getByRole("tab", { name: /Demo\/backend/ });
+    fireEvent.keyDown(tab, { key: "Enter" });
+    fireEvent.click(tab);
+    expect(onActivate).toHaveBeenCalledTimes(2);
+    expect(tab.getAttribute("data-status")).toBe("restoring");
+    expect(tab.querySelectorAll("[data-tab-status]")).toHaveLength(1);
   });
 });

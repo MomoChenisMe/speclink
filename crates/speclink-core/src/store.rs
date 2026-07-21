@@ -100,6 +100,11 @@ pub trait Store {
 
     // --- archive ---
 
+    /// Archived change dated names, sorted descending. Backends that do not
+    /// expose archive browsing may keep the empty default.
+    fn list_archived_changes(&self) -> Vec<String> {
+        Vec::new()
+    }
     /// Whether an archived change with this dated name exists.
     fn archived_change_exists(&self, dated_name: &str) -> bool;
     /// Move an active change into the archive under its dated name.

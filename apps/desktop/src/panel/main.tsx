@@ -52,13 +52,17 @@ function PanelRoot() {
   return (
     <TrayPanel
       snapshot={snap}
-      onOpenProject={(root) => act("open-project", root)}
+      onOpenProject={(key) => act("open-project", key)}
       onOpenChange={(name) => act("open-change", name)}
       onOpenDiscussion={(slug) => act("open-discussion", slug)}
       onOpenApp={() => act("open-app")}
       onOpenSettings={() => act("open-settings")}
       onQuit={() => act("quit")}
       onAddProject={() => act("add-project")}
+      onRetryWorkspace={(key) => act("retry-workspace", key)}
+      onOpenRecovery={(key) => act("open-recovery", key)}
+      onOpenServerSettings={(connectionId) => act("open-server-settings", connectionId)}
+      onReauthenticate={(connectionId) => act("reauthenticate", connectionId)}
       onCopy={(text) => {
         void writeText(text).catch(() => {});
       }}

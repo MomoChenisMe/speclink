@@ -312,14 +312,16 @@ describe("App (kanban primary + rich detail)", () => {
     await waitFor(() => expect(ds.archiveDiscussion).toHaveBeenCalledWith("settled"));
   });
 
-  it("零分頁（注入 workspace）：顯示空狀態引導頁取代空看板，含開啟專案操作", async () => {
+  it("零分頁（注入 workspace）：顯示空狀態引導頁，經 chooser 沿用本機開啟", async () => {
     const ws = fakeWorkspace();
     const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
     expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
-    // 空狀態頁自帶開啟專案操作（接資料夾選擇器）。
-    const openButtons = screen.getAllByText("開啟專案");
+    // 空狀態與頂列皆匯流至新增 Workspace chooser，再選本機資料夾。
+    const openButtons = screen.getAllByText("新增 Workspace");
     fireEvent.click(openButtons[openButtons.length - 1]);
+    const chooser = await screen.findByRole("alertdialog");
+    fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
     await waitFor(() => expect(ws.pickFolder).toHaveBeenCalled());
   });
 
@@ -330,10 +332,14 @@ describe("App (kanban primary + rich detail)", () => {
     ws.openProject = vi.fn().mockResolvedValue({ status: "uninitialized", dir: "D:/newproj" });
     const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
-    const openButtons = await screen.findAllByText("開啟專案");
+    const openButtons = await screen.findAllByText("新增 Workspace");
     fireEvent.click(openButtons[openButtons.length - 1]);
-    const dialog = await screen.findByRole("alertdialog");
-    const claude = within(dialog).getByRole("checkbox", { name: "claude" });
+    const chooser = await screen.findByRole("alertdialog");
+    fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
+    // chooser 關閉有離場動畫；等待初始化框的專屬控制項，避免抓到尚未卸載的 chooser。
+    const claude = await screen.findByRole("checkbox", { name: "claude" });
+    const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
+    expect(dialog).toBeTruthy();
     const codex = within(dialog).getByRole("checkbox", { name: "codex" });
     // 主題化原語（button 元素）而非原生 input。
     expect(claude.tagName).not.toBe("INPUT");
