@@ -10,6 +10,7 @@ pub mod connections;
 pub mod credentials;
 pub mod event_manager;
 pub mod remote;
+pub mod tray;
 mod watch;
 
 #[cfg(target_os = "macos")]
@@ -189,7 +190,8 @@ fn prewarm_identity(root: PathBuf) {
     });
 }
 
-/// 開啟專案＝純探測（決策 4）：只回報三態 payload，不改寫任何全域、不重掛
+/// 開啟專案＝純探測：只回報本機 project／remoteBinding／uninitialized payload，
+/// 錯誤走 Result；不改寫任何全域、不重掛
 /// 監看——同一路徑重複呼叫冪等無副作用。監看跟隨由前端顯式 watch_workspace。
 #[tauri::command]
 fn open_project(path: String) -> Result<Value, String> {
@@ -199,7 +201,8 @@ fn open_project(path: String) -> Result<Value, String> {
 
 #[tauri::command]
 fn init_project(path: String, tools: Vec<String>) -> Result<Value, String> {
-    let probe = speclink_desktop_core::project::init_project_at(std::path::Path::new(&path), &tools)?;
+    let probe =
+        speclink_desktop_core::project::init_project_at(std::path::Path::new(&path), &tools)?;
     serde_json::to_value(&probe).map_err(|e| e.to_string())
 }
 
@@ -264,8 +267,12 @@ fn write_workflow_config(
     tdd: bool,
     audit: bool,
 ) -> Result<(), String> {
-    let fields =
-        speclink_desktop_core::settings::WorkflowPolicyFields { locale, spec_locale, tdd, audit };
+    let fields = speclink_desktop_core::settings::WorkflowPolicyFields {
+        locale,
+        spec_locale,
+        tdd,
+        audit,
+    };
     speclink_desktop_core::settings::write_workflow_fields_at(&root, &fields)
 }
 
@@ -298,19 +305,38 @@ fn connections_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 /// 決策 2；換發與 401 語意見 remote 模組）。
 struct ConnectionsState {
     credentials: Box<dyn credentials::CredentialStore>,
-    managers: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<remote::TokenManager>>>,
+    managers:
+        std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<remote::TokenManager>>>,
+    state_observer: std::sync::Arc<dyn Fn(remote::ConnectionStateEvent) + Send + Sync>,
 }
 
 impl ConnectionsState {
     /// 該 origin 的 TokenManager——惰性建立、跨 command 共用（needs-reauth
     /// 狀態與 token 快取都掛在同一顆上）。
     fn manager_for(&self, origin: &str) -> std::sync::Arc<remote::TokenManager> {
+        let observer = self.state_observer.clone();
         self.managers
             .lock()
             .expect("manager lock")
             .entry(origin.to_string())
-            .or_insert_with(|| std::sync::Arc::new(remote::TokenManager::new(origin)))
+            .or_insert_with(|| {
+                std::sync::Arc::new(remote::TokenManager::with_state_observer(
+                    origin,
+                    remote::DEFAULT_FAILURE_THRESHOLD,
+                    move |event| observer(event),
+                ))
+            })
             .clone()
+    }
+
+    fn manager_for_connection(
+        &self,
+        connection_id: &str,
+        origin: &str,
+    ) -> std::sync::Arc<remote::TokenManager> {
+        let manager = self.manager_for(origin);
+        manager.bind_connection_id(connection_id);
+        manager
     }
 }
 
@@ -349,8 +375,23 @@ fn connection_add(app: tauri::AppHandle, base_url: String, name: String) -> Resu
     let id = connections::upsert_connection(&mut entries, &base_url, &name)?;
     connections::write_registry(&path, &entries)?;
     let state = app.state::<std::sync::Arc<ConnectionsState>>();
-    let entry = entries.iter().find(|e| e.id == id).expect("剛 upsert 的條目存在");
+    let entry = entries
+        .iter()
+        .find(|e| e.id == id)
+        .expect("剛 upsert 的條目存在");
     Ok(entry_view(entry, &state))
+}
+
+/// chooser 的 checkout 綁定邊界：驗證 marker 一致性，或在無 marker 的 git
+/// checkout 寫入與 CLI init remote 同構的 `.speclink.yaml` remote section。
+#[tauri::command]
+fn bind_checkout(
+    path: String,
+    origin: String,
+    project: String,
+    repo: String,
+) -> Result<String, String> {
+    connections::bind_checkout(std::path::Path::new(&path), &origin, &project, &repo)
 }
 
 /// 移除連線＝先走登出語意（撤銷＋刪 Keychain entry）再刪 registry 條目
@@ -358,7 +399,10 @@ fn connection_add(app: tauri::AppHandle, base_url: String, name: String) -> Resu
 #[tauri::command]
 async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let path = connections_path(&app)?;
-    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    let state = app
+        .state::<std::sync::Arc<ConnectionsState>>()
+        .inner()
+        .clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut entries = connections::read_registry(&path);
         if let Some(entry) = entries.iter().find(|e| e.id == id) {
@@ -381,7 +425,10 @@ async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), Stri
 #[tauri::command]
 async fn device_login(app: tauri::AppHandle, origin: String) -> Result<Value, String> {
     let path = connections_path(&app)?;
-    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    let state = app
+        .state::<std::sync::Arc<ConnectionsState>>()
+        .inner()
+        .clone();
     let opener_app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let opener = move |url: &str| -> Result<(), String> {
@@ -392,7 +439,10 @@ async fn device_login(app: tauri::AppHandle, origin: String) -> Result<Value, St
                 .map_err(|e| format!("無法開啟系統瀏覽器：{e}"))
         };
         match connections::device_login(&origin, &*state.credentials, &path, &opener)? {
-            connections::DeviceLoginOutcome::LoggedIn { display, access_token } => {
+            connections::DeviceLoginOutcome::LoggedIn {
+                display,
+                access_token,
+            } => {
                 state.manager_for(&origin).adopt_access_token(&access_token);
                 Ok(serde_json::json!({ "status": "loggedIn", "display": display }))
             }
@@ -415,9 +465,13 @@ async fn device_login(app: tauri::AppHandle, origin: String) -> Result<Value, St
 #[tauri::command]
 async fn pat_login(app: tauri::AppHandle, origin: String, pat: String) -> Result<Value, String> {
     let path = connections_path(&app)?;
-    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    let state = app
+        .state::<std::sync::Arc<ConnectionsState>>()
+        .inner()
+        .clone();
     tauri::async_runtime::spawn_blocking(move || {
         let display = connections::pat_login(&origin, &pat, &*state.credentials, &path)?;
+        state.manager_for(&origin).adopt_access_token(&pat);
         Ok(serde_json::json!({ "status": "loggedIn", "display": display }))
     })
     .await
@@ -437,7 +491,10 @@ fn connection_state(app: tauri::AppHandle, origin: String) -> Value {
 #[tauri::command]
 async fn connection_logout(app: tauri::AppHandle, origin: String) -> Result<Value, String> {
     let path = connections_path(&app)?;
-    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    let state = app
+        .state::<std::sync::Arc<ConnectionsState>>()
+        .inner()
+        .clone();
     tauri::async_runtime::spawn_blocking(move || {
         let outcome = connections::logout(&origin, &*state.credentials, &path)?;
         state.managers.lock().expect("manager lock").remove(&origin);
@@ -478,9 +535,12 @@ where
         + 'static,
 {
     let origin = connection_origin(&app, &connection_id)?;
-    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+    let state = app
+        .state::<std::sync::Arc<ConnectionsState>>()
+        .inner()
+        .clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let manager = state.manager_for(&origin);
+        let manager = state.manager_for_connection(&connection_id, &origin);
         let workspace = remote::RemoteWorkspace::at(&origin, &project, &repo, &manager);
         call(&workspace, &*state.credentials)
     })
@@ -513,7 +573,7 @@ where
         .inner()
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let manager = state.manager_for(&origin);
+        let manager = state.manager_for_connection(&connection_id, &origin);
         let workspace = remote::RemoteWorkspace::at(&origin, &project, &repo, &manager);
         call(&workspace, &*state.credentials)
     })
@@ -531,17 +591,24 @@ async fn remote_open(
     app: tauri::AppHandle,
     connection_id: String,
     target: String,
-) -> Result<Value, String> {
-    let origin = connection_origin(&app, &connection_id)?;
-    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
+) -> Result<Value, remote::RemoteOpenFailure> {
+    let origin = connection_origin(&app, &connection_id)
+        .map_err(remote::RemoteOpenFailure::unknown)?;
+    let state = app
+        .state::<std::sync::Arc<ConnectionsState>>()
+        .inner()
+        .clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let manager = state.manager_for(&origin);
+        let manager = state.manager_for_connection(&connection_id, &origin);
         let (_, info) = remote::open_workspace(&origin, &target, &manager, &*state.credentials)
-            .map_err(|e| e.message)?;
-        serde_json::to_value(&info).map_err(|e| e.to_string())
+            .map_err(remote::RemoteOpenFailure::from)?;
+        serde_json::to_value(&info)
+            .map_err(|error| remote::RemoteOpenFailure::unknown(error.to_string()))
     })
     .await
-    .map_err(|e| format!("remote worker failed: {e}"))?
+    .map_err(|error| {
+        remote::RemoteOpenFailure::unknown(format!("remote worker failed: {error}"))
+    })?
 }
 
 /// remote Workflow 設定快照：`/config` 原文經 desktop-core 文字 seam，並帶
@@ -620,6 +687,68 @@ async fn remote_list_changes(
     .await
 }
 
+/// chooser 的 identity-scoped `/scopes` 清單；選定 repo 前不建立 remote session。
+#[tauri::command]
+async fn remote_scopes(app: tauri::AppHandle, connection_id: String) -> Result<Value, String> {
+    let origin = connection_origin(&app, &connection_id)?;
+    let state = app
+        .state::<std::sync::Arc<ConnectionsState>>()
+        .inner()
+        .clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let manager = state.manager_for_connection(&connection_id, &origin);
+        let scopes = remote::list_scopes(&origin, &manager, &*state.credentials)
+            .map_err(|error| error.message)?;
+        serde_json::to_value(scopes).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Local-to-remote migration: import first, then retain a dated local backup
+/// and write the checkout marker before returning the conversion result.
+#[tauri::command]
+async fn migrate_workspace(
+    app: tauri::AppHandle,
+    connection_id: String,
+    root: PathBuf,
+    project: String,
+    repo: String,
+) -> Result<Value, String> {
+    let origin = connection_origin(&app, &connection_id)?;
+    let state = app
+        .state::<std::sync::Arc<ConnectionsState>>()
+        .inner()
+        .clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let manager = state.manager_for_connection(&connection_id, &origin);
+        let result = remote::migrate_workspace(
+            &root,
+            &origin,
+            &project,
+            &repo,
+            &manager,
+            &*state.credentials,
+        )?;
+        serde_json::to_value(result).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("migration worker failed: {error}"))?
+}
+
+/// Resolve local/remote coexistence in favor of server truth. The UI performs
+/// a read-only handshake first; this command only retains local openspec/ as a
+/// dated backup and never sends an import request.
+#[tauri::command]
+async fn adopt_remote_workspace(root: PathBuf) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = remote::adopt_remote_workspace(&root)?;
+        serde_json::to_value(result).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("remote adoption worker failed: {error}"))?
+}
+
 #[tauri::command]
 async fn remote_list_specs(
     app: tauri::AppHandle,
@@ -635,6 +764,99 @@ async fn remote_list_specs(
 }
 
 #[tauri::command]
+async fn remote_list_archived(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+) -> Result<Value, String> {
+    with_remote(app, connection_id, project, repo, |ws, credentials| {
+        let archived = ws.list_archived(credentials).map_err(|e| e.message)?;
+        serde_json::to_value(&archived).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// 正典 spec 內文：404 與本地語意一致回 null。
+#[tauri::command]
+async fn remote_spec_document(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    capability: String,
+) -> Result<Option<String>, String> {
+    with_remote(
+        app,
+        connection_id,
+        project,
+        repo,
+        move |ws, credentials| match ws.spec_document(credentials, &capability) {
+            Ok(document) => Ok(Some(document.content)),
+            Err(error) if error.status == Some(404) => Ok(None),
+            Err(error) => Err(error.message),
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+async fn remote_search_workspace(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    query: String,
+) -> Result<Value, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let search = ws
+            .search_workspace(credentials, &query)
+            .map_err(|e| e.message)?;
+        serde_json::to_value(&search).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// 封存 artifact 內文：404 與本地語意一致回 null。
+#[tauri::command]
+async fn remote_archived_document(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    dated_name: String,
+    artifact: String,
+) -> Result<Option<String>, String> {
+    with_remote(
+        app,
+        connection_id,
+        project,
+        repo,
+        move |ws, credentials| match ws.archived_document(credentials, &dated_name, &artifact) {
+            Ok(document) => Ok(Some(document.content)),
+            Err(error) if error.status == Some(404) => Ok(None),
+            Err(error) => Err(error.message),
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+async fn remote_archived_capabilities(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    dated_name: String,
+) -> Result<Vec<String>, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        ws.archived_capabilities(credentials, &dated_name)
+            .map_err(|error| error.message)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn remote_status(
     app: tauri::AppHandle,
     connection_id: String,
@@ -643,7 +865,9 @@ async fn remote_status(
     change: String,
 ) -> Result<Value, String> {
     with_remote(app, connection_id, project, repo, move |ws, credentials| {
-        let status = ws.change_status(credentials, &change).map_err(|e| e.message)?;
+        let status = ws
+            .change_status(credentials, &change)
+            .map_err(|e| e.message)?;
         serde_json::to_value(&status).map_err(|e| e.to_string())
     })
     .await
@@ -659,13 +883,17 @@ async fn remote_document(
     change: String,
     artifact: String,
 ) -> Result<Option<String>, String> {
-    with_remote(app, connection_id, project, repo, move |ws, credentials| {
-        match ws.document(credentials, &change, &artifact) {
+    with_remote(
+        app,
+        connection_id,
+        project,
+        repo,
+        move |ws, credentials| match ws.document(credentials, &change, &artifact) {
             Ok(doc) => Ok(Some(doc.content)),
             Err(e) if e.status == Some(404) => Ok(None),
             Err(e) => Err(e.message),
-        }
-    })
+        },
+    )
     .await
 }
 
@@ -680,7 +908,8 @@ async fn remote_set_task_done(
     done: bool,
 ) -> Result<(), String> {
     with_remote(app, connection_id, project, repo, move |ws, credentials| {
-        ws.set_task_done(credentials, &change, &task, done).map_err(|e| e.message)
+        ws.set_task_done(credentials, &change, &task, done)
+            .map_err(|e| e.message)
     })
     .await
 }
@@ -696,9 +925,14 @@ async fn remote_set_all_tasks(
     done: bool,
 ) -> Result<(), String> {
     with_remote(app, connection_id, project, repo, move |ws, credentials| {
-        ws.set_all_tasks(credentials, &change, done).map(|_| ()).map_err(|failure| {
-            format!("批次寫回中止（已完成 {} 筆）：{}", failure.completed, failure.error.message)
-        })
+        ws.set_all_tasks(credentials, &change, done)
+            .map(|_| ())
+            .map_err(|failure| {
+                format!(
+                    "批次寫回中止（已完成 {} 筆）：{}",
+                    failure.completed, failure.error.message
+                )
+            })
     })
     .await
 }
@@ -741,13 +975,17 @@ async fn remote_discussion_document(
     repo: String,
     slug: String,
 ) -> Result<Option<String>, String> {
-    with_remote(app, connection_id, project, repo, move |ws, credentials| {
-        match ws.discussion_document(credentials, &slug) {
+    with_remote(
+        app,
+        connection_id,
+        project,
+        repo,
+        move |ws, credentials| match ws.discussion_document(credentials, &slug) {
             Ok(shown) => Ok(Some(shown.content)),
             Err(e) if e.status == Some(404) => Ok(None),
             Err(e) => Err(e.message),
-        }
-    })
+        },
+    )
     .await
 }
 
@@ -761,8 +999,9 @@ async fn remote_promote_discussion(
     name: Option<String>,
 ) -> Result<Value, String> {
     with_remote(app, connection_id, project, repo, move |ws, credentials| {
-        let promoted =
-            ws.promote_discussion(credentials, &slug, name.as_deref()).map_err(|e| e.message)?;
+        let promoted = ws
+            .promote_discussion(credentials, &slug, name.as_deref())
+            .map_err(|e| e.message)?;
         serde_json::to_value(&promoted).map_err(|e| e.to_string())
     })
     .await
@@ -777,7 +1016,9 @@ async fn remote_archive_discussion(
     slug: String,
 ) -> Result<(), String> {
     with_remote(app, connection_id, project, repo, move |ws, credentials| {
-        ws.archive_discussion(credentials, &slug).map(|_| ()).map_err(|e| e.message)
+        ws.archive_discussion(credentials, &slug)
+            .map(|_| ())
+            .map_err(|e| e.message)
     })
     .await
 }
@@ -808,11 +1049,17 @@ fn remote_watch(
     repo: String,
 ) -> Result<(), String> {
     let origin = connection_origin(&app, &connection_id)?;
-    let state = app.state::<std::sync::Arc<ConnectionsState>>().inner().clone();
-    let events = app.state::<std::sync::Arc<event_manager::EventManager>>().inner().clone();
+    let state = app
+        .state::<std::sync::Arc<ConnectionsState>>()
+        .inner()
+        .clone();
+    let events = app
+        .state::<std::sync::Arc<event_manager::EventManager>>()
+        .inner()
+        .clone();
     let key = remote_locator_key(&connection_id, &project, &repo);
     let base = format!("{origin}/api/speclink/v1/projects/{project}");
-    let manager = state.manager_for(&origin);
+    let manager = state.manager_for_connection(&connection_id, &origin);
     let sub_state = state.clone();
     let sub_manager = manager.clone();
     let sub_base = base.clone();
@@ -883,9 +1130,13 @@ pub fn run() {
             let slot: WatcherState = std::sync::Mutex::new(None);
             app.manage(slot);
             // 連線層：credential 生產出入口＝OS Keychain；access token 記憶體持有。
+            let state_emitter = app.handle().clone();
             app.manage(std::sync::Arc::new(ConnectionsState {
                 credentials: Box::new(credentials::KeyringCredentialStore),
                 managers: std::sync::Mutex::new(std::collections::HashMap::new()),
+                state_observer: std::sync::Arc::new(move |event| {
+                    let _ = state_emitter.emit(remote::REMOTE_CONNECTION_STATE_EVENT, event);
+                }),
             }));
             // remote 事件中樞：invalidate → remote-workspace-changed（payload＝
             // locator key），前端 session 據此過濾重讀。
@@ -932,6 +1183,7 @@ pub fn run() {
             write_workflow_content,
             connection_list,
             connection_add,
+            bind_checkout,
             connection_remove,
             device_login,
             pat_login,
@@ -941,8 +1193,16 @@ pub fn run() {
             remote_read_settings,
             remote_write_workflow_config,
             remote_write_workflow_content,
+            remote_scopes,
+            migrate_workspace,
+            adopt_remote_workspace,
             remote_list_changes,
             remote_list_specs,
+            remote_list_archived,
+            remote_spec_document,
+            remote_search_workspace,
+            remote_archived_document,
+            remote_archived_capabilities,
             remote_status,
             remote_document,
             remote_set_task_done,

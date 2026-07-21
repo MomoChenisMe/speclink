@@ -19,7 +19,15 @@ import type {
 import { appT } from "./i18n/runtime";
 import type { ConnectionsAdapter, ConnectionView } from "./adapter/connections";
 import type { WorkspaceAdapter } from "./adapter/workspace";
-import { locatorKey, type WorkspaceSession } from "./session";
+import type { MigrationAdapter } from "./adapter/migration";
+import {
+  applyRemoteConnectionState,
+  locatorKey,
+  normalizeRemoteOpenFailure,
+  type RemoteConnectionStateEvent,
+  type RemoteWorkspaceRecoveryState,
+  type WorkspaceSession,
+} from "./session";
 import {
   pendingWrapUpCount,
   persistTabs,
@@ -55,6 +63,17 @@ export type ConnectionPhase =
   | { kind: "patInput"; error: string | null }
   | { kind: "notice"; message: string }
   | { kind: "error"; message: string };
+
+export interface WorkspaceChooserIntent {
+  initialConnectionId?: string | null;
+  initialServerUrl?: string | null;
+}
+
+export interface RemoteMarkerConflict {
+  path: string;
+  url: string;
+  repo: string | null;
+}
 
 export interface AppState {
   changes: ChangeItem[];
@@ -128,21 +147,55 @@ export interface AppState {
   tabs: ProjectTab[];
   /** session 集（locatorKey 為鍵；workspace-session 決策 6）——資料載入一律經活躍 session。 */
   sessions: Record<string, WorkspaceSession>;
+  /** Rust connection 狀態事件套用至同 connection 的所有 remote sessions。 */
+  applyRemoteConnectionState: (event: RemoteConnectionStateEvent) => void;
+  /** session 事件訂閱世代；重新認證完成後遞增，讓 active worker 解除再重掛。 */
+  sessionEpoch: number;
   /** 目前 active 分頁的 locator key（null＝零分頁空狀態）。 */
   activeKey: string | null;
   /** 待確認的初始化目錄（uninitialized 判定觸發；null＝無對話框）。 */
   pendingInit: string | null;
   /** 失效分頁錯誤（locator key → 單行訊息）。 */
   tabErrors: Record<string, string>;
+  /** 尚無 session 的 remote 分頁復原狀態；執行期限定、不持久化。 */
+  remoteRecovery: Record<string, RemoteWorkspaceRecoveryState>;
+  /** null＝chooser 關閉；物件承載伺服器頁或 remote marker 的預選意圖。 */
+  workspaceChooser: WorkspaceChooserIntent | null;
+  openWorkspaceChooser: (intent?: WorkspaceChooserIntent) => void;
+  closeWorkspaceChooser: () => void;
+  /** local openspec/ 與 remote marker 並存時的強制選擇。 */
+  pendingRemoteConflict: RemoteMarkerConflict | null;
+  continueLocalFromConflict: () => Promise<void>;
+  useServerFromConflict: () => Promise<void>;
+  migrateLocalFromConflict: () => Promise<void>;
+  cancelRemoteConflict: () => void;
+  /** 正式遷移對話框的本機來源 root。 */
+  migrationRoot: string | null;
+  requestMigration: (root: string) => Promise<void>;
+  cancelMigration: () => void;
   /** 開啟專案（dialog 或還原路徑）：三態分流。 */
   openProjectAt: (path: string) => Promise<void>;
   /** 開啟 remote workspace（remote-data-source 決策 6）：handshake 成功才建
    * session 與分頁並切至看板；失敗上拋、由開啟表單就地呈現。 */
-  openRemoteWorkspace: (connectionId: string, target: string) => Promise<void>;
+  openRemoteWorkspace: (
+    connectionId: string,
+    target: string,
+    checkoutRoot?: string,
+  ) => Promise<void>;
+  /** 正式遷移完成後，以同 checkoutRoot 的 remote session 原地取代 local 分頁。 */
+  replaceLocalWorkspaceWithRemote: (
+    root: string,
+    connectionId: string,
+    target: string,
+  ) => Promise<void>;
   /** 開資料夾選擇器再走 openProjectAt；取消即無事。 */
   openProjectViaDialog: () => Promise<void>;
-  /** 點分頁（locator key）：與開啟專案相同語意；失敗轉該分頁錯誤態、不切換。 */
+  /** 點分頁（locator key）：remote 無 session 時先選取並進 restoring，失敗留在復原頁。 */
   activateTab: (key: string) => Promise<void>;
+  /** 對既有 remote recovery 分頁原地重走 handshake，不改主視窗焦點。 */
+  retryRemoteWorkspace: (key: string) => Promise<void>;
+  /** 由 Tray 顯式開啟問題詳情：選取既有 recovery destination，但不隱含重試。 */
+  showRemoteWorkspaceRecovery: (key: string) => void;
   closeTab: (key: string) => void;
   confirmInit: (tools: string[]) => Promise<void>;
   cancelInit: () => void;
@@ -166,6 +219,9 @@ export interface AppState {
   connections: ConnectionView[];
   /** 逐連線互動狀態（keyed by origin；執行期狀態、不持久化）。 */
   connectionPhases: Record<string, ConnectionPhase>;
+  /** needs-reauth 導向伺服器簽時要聚焦的 connection id。 */
+  reauthConnectionId: string | null;
+  openConnectionReauth: (connectionId: string) => void;
   refreshConnections: () => Promise<void>;
   /** 新增（同 origin 即更新顯示名）並隨即進入登入流程（決策 7）；
    * 無效輸入上拋、由表單就地呈現。 */
@@ -187,11 +243,17 @@ export interface AppStoreDeps {
   /** remote session 工廠（remote-data-source 決策 6/7）：以 connectionId 與
    * workspace 識別（project 或 project/repo）走 handshake，成功回 session、
    * 失敗上拋——未注入時 remote 開啟入口不啟用。 */
-  openRemote?: (connectionId: string, target: string) => Promise<WorkspaceSession>;
+  openRemote?: (
+    connectionId: string,
+    target: string,
+    checkoutRoot?: string,
+  ) => Promise<WorkspaceSession>;
   /** workspace 探測面；未注入時對應 UI 不啟用。 */
   workspace?: WorkspaceAdapter;
   /** server 連線面（desktop-connections）；未注入時伺服器頁籤不啟用。 */
   connections?: ConnectionsAdapter;
+  /** local→remote 遷移與「採用 server」本機備份面。 */
+  migration?: MigrationAdapter;
 }
 
 /**
@@ -200,11 +262,29 @@ export interface AppStoreDeps {
  * 一律經活躍 session 的 dataSource（單活躍載入語意不變）。
  */
 export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppState>> {
-  const { createSession, openRemote, workspace, connections: connectionsAdapter } = deps;
+  const {
+    createSession,
+    openRemote,
+    workspace,
+    connections: connectionsAdapter,
+    migration,
+  } = deps;
   return create<AppState>((set, get) => {
     // 全文查詢的去抖與 latest-wins 狀態（design D6）——閉包層、不進 store state。
     let searchSeq = 0;
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
+    // remote handshake 世代只屬目前 app 執行期；同 locator 僅最新結果可落地。
+    const remoteOpenGeneration = new Map<string, number>();
+
+    function bumpRemoteOpenGeneration(key: string): number {
+      const generation = (remoteOpenGeneration.get(key) ?? 0) + 1;
+      remoteOpenGeneration.set(key, generation);
+      return generation;
+    }
+
+    function isCurrentRemoteOpen(key: string, generation: number): boolean {
+      return remoteOpenGeneration.get(key) === generation;
+    }
 
     /** 活躍 session；零分頁空狀態回 null。 */
     function activeSession(): WorkspaceSession | null {
@@ -220,6 +300,68 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     /** 逐連線互動狀態的單點更新（desktop-connections）。 */
     function setConnectionPhase(origin: string, phase: ConnectionPhase) {
       set({ connectionPhases: { ...get().connectionPhases, [origin]: phase } });
+    }
+
+    /** 登入成功後原地復活同 connection 的全部已建立 remote sessions：逐一
+     * handshake、保留失敗 session／分頁並標 tab error，最後重查與重掛 worker。 */
+    async function recoverRemoteSessions(origin: string) {
+      if (!openRemote) return;
+      const connectionId = get().connections.find((entry) => entry.origin === origin)?.id;
+      if (!connectionId) return;
+      const targets = Object.entries(get().sessions).filter(
+        ([, session]) =>
+          session.locator.kind === "remote" && session.locator.connectionId === connectionId,
+      );
+      const recoveryKeys = get()
+        .tabs.filter(
+          (tab) =>
+            tab.locator.kind === "remote" &&
+            tab.locator.connectionId === connectionId &&
+            !get().sessions[locatorKey(tab.locator)],
+        )
+        .map((tab) => locatorKey(tab.locator));
+      if (targets.length === 0 && recoveryKeys.length === 0) return;
+
+      const sessions = { ...get().sessions };
+      const tabErrors = { ...get().tabErrors };
+      for (const [key, session] of targets) {
+        const locator = session.locator;
+        if (locator.kind !== "remote") continue;
+        try {
+          const target = `${locator.projectId}/${locator.repoId}`;
+          const fresh = locator.checkoutRoot
+            ? await openRemote(connectionId, target, locator.checkoutRoot)
+            : await openRemote(connectionId, target);
+          if (fresh.id !== key) throw new Error("重新連線後 workspace 身分不一致");
+          sessions[key] = fresh;
+          delete tabErrors[key];
+        } catch (error) {
+          tabErrors[key] = String(error);
+        }
+      }
+      set({ sessions, tabErrors });
+      for (const key of recoveryKeys) await reconnectRemoteTab(key, false);
+      await get().refresh();
+      set((state) => ({
+        sessionEpoch: state.sessionEpoch + 1,
+        boardView: "board",
+        reauthConnectionId: null,
+      }));
+    }
+
+    function markerLocation(url: string): { origin: string; project: string } {
+      const parsed = new URL(url);
+      const marker = "/api/speclink/v1/projects/";
+      const index = parsed.pathname.indexOf(marker);
+      const project =
+        index >= 0 ? parsed.pathname.slice(index + marker.length).split("/")[0] : "";
+      if (!project) throw new Error("remote marker 的 url 未包含 project 識別");
+      return { origin: parsed.origin.toLowerCase(), project: decodeURIComponent(project) };
+    }
+
+    function pathName(path: string): string {
+      const trimmed = path.replace(/[\\/]+$/, "");
+      return trimmed.split(/[\\/]/).pop() || path;
     }
 
     /** 命中專案的共同尾聲：upsert session 與分頁（去重）、設 activeKey、清對話框、
@@ -261,9 +403,79 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       for (const k of Object.keys(sessions)) if (!live.has(k)) delete sessions[k];
       const tabErrors = { ...get().tabErrors };
       delete tabErrors[key];
-      set({ tabs, sessions, tabErrors, activeKey: key, pendingInit: null });
+      const remoteRecovery = { ...get().remoteRecovery };
+      delete remoteRecovery[key];
+      set({ tabs, sessions, tabErrors, remoteRecovery, activeKey: key, pendingInit: null });
       persistTabs(tabs, key);
       await get().refresh();
+    }
+
+    /** 對已存在的 remote tab 重走 handshake。activate=true 只在使用者選取分頁時
+     * 同步更新 activeKey；Tray／retry 使用 false，不得搶走目前作用中分頁。 */
+    async function reconnectRemoteTab(key: string, activate: boolean) {
+      if (!openRemote) return;
+      const tab = get().tabs.find((candidate) => locatorKey(candidate.locator) === key);
+      if (!tab || tab.locator.kind !== "remote") return;
+
+      const generation = bumpRemoteOpenGeneration(key);
+      set((state) => {
+        const tabErrors = { ...state.tabErrors };
+        delete tabErrors[key];
+        return {
+          ...(activate ? { activeKey: key, boardView: "board" as const } : {}),
+          tabErrors,
+          remoteRecovery: {
+            ...state.remoteRecovery,
+            [key]: { status: "restoring", failure: null },
+          },
+        };
+      });
+      if (activate) persistTabs(get().tabs, key);
+
+      const { connectionId, projectId, repoId, checkoutRoot } = tab.locator;
+      try {
+        const session = checkoutRoot
+          ? await openRemote(connectionId, `${projectId}/${repoId}`, checkoutRoot)
+          : await openRemote(connectionId, `${projectId}/${repoId}`);
+        if (!isCurrentRemoteOpen(key, generation)) return;
+        if (!get().tabs.some((candidate) => locatorKey(candidate.locator) === key)) return;
+        if (session.id !== key) throw new Error("重新連線後 workspace 身分不一致");
+
+        const tabs = get().tabs.map((candidate) =>
+          locatorKey(candidate.locator) === key
+            ? {
+                ...candidate,
+                locator: session.locator,
+                name: session.descriptor.name,
+              }
+            : candidate,
+        );
+        const tabErrors = { ...get().tabErrors };
+        delete tabErrors[key];
+        const remoteRecovery = { ...get().remoteRecovery };
+        delete remoteRecovery[key];
+        set((state) => ({
+          tabs,
+          sessions: { ...state.sessions, [key]: session },
+          tabErrors,
+          remoteRecovery,
+          // activeKey 先於 session 成立時，必須顯式觸發事件訂閱重新掛載。
+          sessionEpoch: state.sessionEpoch + 1,
+        }));
+        persistTabs(tabs, get().activeKey);
+        if (get().activeKey === key) await get().refresh();
+      } catch (error) {
+        if (!isCurrentRemoteOpen(key, generation)) return;
+        if (!get().tabs.some((candidate) => locatorKey(candidate.locator) === key)) return;
+        const failure = normalizeRemoteOpenFailure(error);
+        set((state) => ({
+          tabErrors: { ...state.tabErrors, [key]: failure.message },
+          remoteRecovery: {
+            ...state.remoteRecovery,
+            [key]: { status: "error", failure },
+          },
+        }));
+      }
     }
 
     return {
@@ -294,12 +506,20 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const dataSource = session.dataSource;
       // capability 驅動（remote-data-source 決策 2）：server 未提供的讀取跳過、
       // 以空集呈現（archived 頁另有提示卡），不讓整批 refresh 失敗。
-      const [changes, specs, archived, discussions] = await Promise.all([
-        dataSource.listChanges(),
-        dataSource.listSpecs(),
-        session.capabilities.listArchived ? dataSource.listArchived() : Promise.resolve([]),
-        dataSource.listDiscussions(),
-      ]);
+      let loaded: [ChangeItem[], SpecItem[], ArchivedItem[], DiscussionLists];
+      try {
+        loaded = await Promise.all([
+          dataSource.listChanges(),
+          dataSource.listSpecs(),
+          session.capabilities.listArchived ? dataSource.listArchived() : Promise.resolve([]),
+          dataSource.listDiscussions(),
+        ]);
+      } catch {
+        // remote 壞天氣：最後一次成功 snapshot 是唯讀真值；任一 reload 失敗
+        // 都不得用空集或部分結果覆蓋。連線呈現只由 Rust 狀態事件決定。
+        return;
+      }
+      const [changes, specs, archived, discussions] = loaded;
       set({ changes, specs, archived, discussions, loaded: true });
       // 詳情開著時同步其資料（如任務數更新）
       const cur = get().detailChange;
@@ -329,7 +549,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     setBoardView(boardView) {
-      set({ boardView });
+      set({ boardView, reauthConnectionId: null });
     },
 
     setView(view) {
@@ -559,9 +779,92 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     // --- workspace／專案分頁列 ---
     tabs: [],
     sessions: {},
+    sessionEpoch: 0,
+    applyRemoteConnectionState(event) {
+      let changed = false;
+      const sessions = Object.fromEntries(
+        Object.entries(get().sessions).map(([key, session]) => {
+          const next = applyRemoteConnectionState(session, event);
+          if (next !== session) changed = true;
+          return [key, next];
+        }),
+      );
+      if (changed) set({ sessions });
+    },
     activeKey: null,
     pendingInit: null,
     tabErrors: {},
+    remoteRecovery: {},
+    workspaceChooser: null,
+    pendingRemoteConflict: null,
+    migrationRoot: null,
+
+    openWorkspaceChooser(intent = {}) {
+      set({ workspaceChooser: intent });
+    },
+
+    closeWorkspaceChooser() {
+      set({ workspaceChooser: null });
+    },
+
+    async requestMigration(root) {
+      if (!workspace) throw new Error("此環境未提供本機 workspace 功能");
+      const probe = await workspace.openProject(root);
+      if (probe.status !== "project") {
+        throw new Error(`無法準備本機遷移分頁：${root} 不再是本機 Speclink 專案`);
+      }
+      // 遷移確認前先建立 local session／分頁。如此 import 失敗時仍有原 local
+      // 分頁可留在原位，成功時 replaceLocalWorkspaceWithRemote 才有明確取代目標。
+      await enterProject(probe.root, probe.name);
+      set({ migrationRoot: probe.root, workspaceChooser: null });
+    },
+
+    cancelMigration() {
+      set({ migrationRoot: null });
+    },
+
+    async continueLocalFromConflict() {
+      const conflict = get().pendingRemoteConflict;
+      if (!conflict) return;
+      set({ pendingRemoteConflict: null });
+      await enterProject(conflict.path, pathName(conflict.path));
+    },
+
+    async useServerFromConflict() {
+      const conflict = get().pendingRemoteConflict;
+      if (!conflict) return;
+      if (!openRemote) throw new Error("此環境未提供 remote workspace 功能");
+      if (!migration) throw new Error("此環境未提供本機 workspace 備份功能");
+
+      const marker = markerLocation(conflict.url);
+      let available = get().connections;
+      if (connectionsAdapter) {
+        available = await connectionsAdapter.list();
+        set({ connections: available });
+      }
+      const connection = available.find(
+        (entry) => entry.loggedIn && entry.origin.toLowerCase() === marker.origin,
+      );
+      if (!connection) throw new Error(`尚未登入 ${marker.origin}，無法採用 server 內容`);
+      const target = conflict.repo ? `${marker.project}/${conflict.repo}` : marker.project;
+
+      // 先完成只讀 handshake，再改名本機 openspec/；任一步失敗都不建立 remote 分頁。
+      const session = await openRemote(connection.id, target, conflict.path);
+      await migration.adoptRemote(conflict.path);
+      await adoptRemoteSession(session);
+      set({ pendingRemoteConflict: null, boardView: "board" });
+    },
+
+    async migrateLocalFromConflict() {
+      const conflict = get().pendingRemoteConflict;
+      if (!conflict) return;
+      await enterProject(conflict.path, pathName(conflict.path));
+      set({ pendingRemoteConflict: null, migrationRoot: conflict.path });
+    },
+
+    cancelRemoteConflict() {
+      set({ pendingRemoteConflict: null });
+    },
 
     // --- 系統匣樣式（平台決定、不持久化） ---
     trayStyle: detectMacOS() ? "panel" : "native-menu",
@@ -573,6 +876,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     // --- server 連線（desktop-connections；決策 5/6/7） ---
     connections: [],
     connectionPhases: {},
+    reauthConnectionId: null,
+    openConnectionReauth(connectionId) {
+      set({ boardView: "settings", reauthConnectionId: connectionId });
+    },
     async refreshConnections() {
       if (!connectionsAdapter) return;
       try {
@@ -595,8 +902,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       try {
         const result = await connectionsAdapter.deviceLogin(origin);
         if (result.status === "loggedIn") {
-          setConnectionPhase(origin, { kind: "idle" });
           await get().refreshConnections();
+          await recoverRemoteSessions(origin);
+          setConnectionPhase(origin, { kind: "idle" });
         } else if (result.status === "unsupported") {
           setConnectionPhase(origin, { kind: "patInput", error: null });
         } else if (result.status === "denied") {
@@ -613,8 +921,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       setConnectionPhase(origin, { kind: "busy" });
       try {
         await connectionsAdapter.patLogin(origin, pat);
-        setConnectionPhase(origin, { kind: "idle" });
         await get().refreshConnections();
+        await recoverRemoteSessions(origin);
+        setConnectionPhase(origin, { kind: "idle" });
       } catch (e) {
         // 無效 PAT：留在輸入面、就地浮出錯誤。
         setConnectionPhase(origin, { kind: "patInput", error: String(e) });
@@ -657,8 +966,35 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!workspace) return;
       try {
         const probe = await workspace.openProject(path);
-        if (probe.status === "project") await enterProject(probe.root, probe.name);
-        else set({ pendingInit: probe.dir });
+        if (probe.status === "project") {
+          await enterProject(probe.root, probe.name);
+        } else if (probe.status === "uninitialized") {
+          set({ pendingInit: probe.dir });
+        } else if (probe.hasLocalOpenspec) {
+          set({
+            pendingRemoteConflict: {
+              path,
+              url: probe.url,
+              repo: probe.repo ?? null,
+            },
+          });
+        } else {
+          const marker = markerLocation(probe.url);
+          let available = get().connections;
+          if (connectionsAdapter) {
+            available = await connectionsAdapter.list();
+            set({ connections: available });
+          }
+          const connection = available.find(
+            (entry) => entry.loggedIn && entry.origin.toLowerCase() === marker.origin,
+          );
+          const target = probe.repo ? `${marker.project}/${probe.repo}` : marker.project;
+          if (connection) {
+            await get().openRemoteWorkspace(connection.id, target, path);
+          } else {
+            set({ workspaceChooser: { initialServerUrl: marker.origin } });
+          }
+        }
       } catch (e) {
         // 開啟失敗（spec：顯示帶所選路徑的單行錯誤並維持原專案）。
         showFailureToast(path, "store.openProjectFailed", e);
@@ -671,13 +1007,56 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (picked) await get().openProjectAt(picked);
     },
 
-    async openRemoteWorkspace(connectionId, target) {
+    async openRemoteWorkspace(connectionId, target, checkoutRoot) {
       if (!openRemote) return;
       // handshake fail-closed（決策 6）：失敗原樣上拋、不建分頁不建 session。
-      const session = await openRemote(connectionId, target);
+      const session = checkoutRoot
+        ? await openRemote(connectionId, target, checkoutRoot)
+        : await openRemote(connectionId, target);
       await adoptRemoteSession(session);
       // 開啟 workspace 的意圖是看板——自伺服器頁切回看板呈現 server 資料。
-      set({ boardView: "board" });
+      set({ boardView: "board", workspaceChooser: null });
+    },
+
+    async replaceLocalWorkspaceWithRemote(root, connectionId, target) {
+      if (!openRemote) throw new Error("此環境未提供 remote workspace 功能");
+      const localKey = locatorKey({ kind: "local", root });
+      if (!get().tabs.some((tab) => locatorKey(tab.locator) === localKey)) {
+        throw new Error(`找不到待轉換的本機分頁：${root}`);
+      }
+
+      // handshake 成功前不改 store；若開啟 remote 失敗，原 local 分頁與 session 保留。
+      const session = await openRemote(connectionId, target, root);
+      const remoteKey = session.id;
+      const replacement = {
+        locator: session.locator,
+        name: session.descriptor.name,
+        badge: null,
+      };
+      const tabs: ProjectTab[] = [];
+      for (const tab of get().tabs) {
+        const key = locatorKey(tab.locator);
+        if (key === localKey) tabs.push(replacement);
+        else if (key !== remoteKey) tabs.push(tab);
+      }
+
+      const sessions = { ...get().sessions, [remoteKey]: session };
+      delete sessions[localKey];
+      const live = new Set(tabs.map((tab) => locatorKey(tab.locator)));
+      for (const key of Object.keys(sessions)) if (!live.has(key)) delete sessions[key];
+      const tabErrors = { ...get().tabErrors };
+      delete tabErrors[localKey];
+      delete tabErrors[remoteKey];
+      set({
+        tabs,
+        sessions,
+        tabErrors,
+        activeKey: remoteKey,
+        boardView: "board",
+        workspaceChooser: null,
+      });
+      persistTabs(tabs, remoteKey);
+      await get().refresh();
     },
 
     async activateTab(key) {
@@ -686,21 +1065,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!tab) return;
       if (tab.locator.kind === "remote") {
         const existing = get().sessions[key];
-        try {
-          if (existing) {
-            const tabErrors = { ...get().tabErrors };
-            delete tabErrors[key];
-            set({ activeKey: key, tabErrors });
-            persistTabs(get().tabs, key);
-            await get().refresh();
-          } else if (openRemote) {
-            // 重啟恢復（規格「重啟後 remote 分頁恢復需重驗」）：重走 handshake。
-            const { connectionId, projectId, repoId } = tab.locator;
-            await adoptRemoteSession(await openRemote(connectionId, `${projectId}/${repoId}`));
-          }
-        } catch (e) {
-          // 失敗呈現狀態、分頁不消失（needs-reauth／server 錯誤原樣呈現）。
-          set({ tabErrors: { ...get().tabErrors, [key]: String(e) } });
+        if (existing) {
+          bumpRemoteOpenGeneration(key);
+          const tabErrors = { ...get().tabErrors };
+          delete tabErrors[key];
+          const remoteRecovery = { ...get().remoteRecovery };
+          delete remoteRecovery[key];
+          set({ activeKey: key, tabErrors, remoteRecovery });
+          persistTabs(get().tabs, key);
+          await get().refresh();
+        } else {
+          await reconnectRemoteTab(key, true);
         }
         return;
       }
@@ -717,15 +1092,29 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       }
     },
 
+    async retryRemoteWorkspace(key) {
+      await reconnectRemoteTab(key, false);
+    },
+
+    showRemoteWorkspaceRecovery(key) {
+      const tab = get().tabs.find((candidate) => locatorKey(candidate.locator) === key);
+      if (tab?.locator.kind !== "remote" || !get().remoteRecovery[key]) return;
+      set({ activeKey: key, boardView: "board" });
+      persistTabs(get().tabs, key);
+    },
+
     closeTab(key) {
+      bumpRemoteOpenGeneration(key);
       const tabs = removeTab(get().tabs, key);
       const sessions = { ...get().sessions };
       delete sessions[key];
       const tabErrors = { ...get().tabErrors };
       delete tabErrors[key];
+      const remoteRecovery = { ...get().remoteRecovery };
+      delete remoteRecovery[key];
       const wasActive = get().activeKey === key;
       const activeKey = wasActive ? null : get().activeKey;
-      set({ tabs, sessions, tabErrors, activeKey });
+      set({ tabs, sessions, tabErrors, remoteRecovery, activeKey });
       persistTabs(tabs, activeKey);
       // 關掉 active 分頁：切到最近的剩餘分頁（走完整開啟語意）；零分頁則空狀態。
       if (wasActive) {

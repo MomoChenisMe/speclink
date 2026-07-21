@@ -23,6 +23,20 @@ function fakeInvoke() {
   const results: Record<string, unknown> = {
     remote_list_changes: { changes: [{ name: "chg", status: "in-progress", completedTasks: 1, totalTasks: 2, summary: "s" }] },
     remote_list_specs: { specs: [{ id: "auth", path: "specs/auth/spec.md" }] },
+    remote_list_archived: {
+      archived: [
+        {
+          datedName: "2026-01-01-old",
+          date: "2026-01-01",
+          name: "old",
+          tasksTotal: 2,
+          tasksDone: 2,
+          specCount: 1,
+          createdBy: "momo",
+          fromDiscussions: ["source"],
+        },
+      ],
+    },
     remote_status: {
       changeName: "chg",
       schemaName: "spec-driven",
@@ -31,13 +45,35 @@ function fakeInvoke() {
       artifacts: [],
     },
     remote_document: "content",
+    remote_spec_document: "# auth Specification",
+    remote_search_workspace: {
+      hits: [{ kind: "change", id: "chg", artifact: "proposal.md", snippet: "needle" }],
+    },
     remote_archive: { specs: [] },
+    remote_archived_document: "archived content",
+    remote_archived_capabilities: ["auth"],
     remote_list_discussions: {
       active: [{ slug: "s1", topic: "T", status: "open", rounds: 1, created: "2026-01-01" }],
       archived: [],
     },
     remote_discussion_document: "discussion text",
     remote_promote_discussion: { change: "chg" },
+    remote_read_settings: {
+      app: { tools: [], customTools: [], parseError: null },
+      workflow: {
+        locale: "tw",
+        specLocale: null,
+        tdd: false,
+        audit: false,
+        context: "Remote context",
+        rules: {},
+        schemaArtifacts: ["proposal", "design", "specs", "tasks"],
+        parseError: null,
+        revision: 7,
+      },
+    },
+    remote_write_workflow_config: 8,
+    remote_write_workflow_content: 8,
   };
   const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
     calls.push({ cmd, args });
@@ -51,11 +87,11 @@ function openInfo(): RemoteOpenInfo {
   const capabilities: WorkspaceCapabilities = {
     listChanges: true,
     listSpecs: true,
-    listArchived: false,
+    listArchived: true,
     status: true,
     getDocument: true,
-    getSpecDocument: false,
-    searchWorkspace: false,
+    getSpecDocument: true,
+    searchWorkspace: true,
     changeCapabilities: false,
     changeMeta: false,
     deleteChange: false,
@@ -65,13 +101,14 @@ function openInfo(): RemoteOpenInfo {
     validate: false,
     analyze: false,
     archive: true,
-    getArchivedDocument: false,
-    archivedCapabilities: false,
+    getArchivedDocument: true,
+    archivedCapabilities: true,
     listDiscussions: true,
     getDiscussionDocument: true,
     promoteDiscussion: true,
     archiveDiscussion: true,
     reorderCard: false,
+    policyWrite: true,
     liveUpdates: true,
   };
   return {
@@ -90,11 +127,16 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
 
     await ds.listChanges();
     await ds.listSpecs();
+    await ds.listArchived();
     await ds.status("chg");
     await ds.getDocument("chg", "tasks");
+    await ds.getSpecDocument("auth");
+    await ds.searchWorkspace("needle");
     await ds.setTaskDone("chg", "1", true);
     await ds.setAllTasks("chg", true);
     await ds.runVerb("archive", "chg");
+    await ds.getArchivedDocument("2026-01-01-old", "proposal.md");
+    await ds.archivedCapabilities("2026-01-01-old");
     await ds.listDiscussions();
     await ds.getDiscussionDocument("s1");
     await ds.promoteDiscussion("s1");
@@ -103,11 +145,16 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     expect(calls.map((c) => c.cmd)).toEqual([
       "remote_list_changes",
       "remote_list_specs",
+      "remote_list_archived",
       "remote_status",
       "remote_document",
+      "remote_spec_document",
+      "remote_search_workspace",
       "remote_set_task_done",
       "remote_set_all_tasks",
       "remote_archive",
+      "remote_archived_document",
+      "remote_archived_capabilities",
       "remote_list_discussions",
       "remote_discussion_document",
       "remote_promote_discussion",
@@ -122,14 +169,21 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
       .map((c) => c.cmd);
     expect(missing).toEqual([]);
     // 方法專屬參數映射。
-    expect(calls[2].args).toMatchObject({ change: "chg" });
-    expect(calls[3].args).toMatchObject({ change: "chg", artifact: "tasks" });
-    expect(calls[4].args).toMatchObject({ change: "chg", task: "1", done: true });
-    expect(calls[5].args).toMatchObject({ change: "chg", done: true });
-    expect(calls[6].args).toMatchObject({ change: "chg" });
-    expect(calls[8].args).toMatchObject({ slug: "s1" });
-    expect(calls[9].args).toMatchObject({ slug: "s1", name: null });
-    expect(calls[10].args).toMatchObject({ slug: "s1" });
+    expect(calls[3].args).toMatchObject({ change: "chg" });
+    expect(calls[4].args).toMatchObject({ change: "chg", artifact: "tasks" });
+    expect(calls[5].args).toMatchObject({ capability: "auth" });
+    expect(calls[6].args).toMatchObject({ query: "needle" });
+    expect(calls[7].args).toMatchObject({ change: "chg", task: "1", done: true });
+    expect(calls[8].args).toMatchObject({ change: "chg", done: true });
+    expect(calls[9].args).toMatchObject({ change: "chg" });
+    expect(calls[10].args).toMatchObject({
+      datedName: "2026-01-01-old",
+      artifact: "proposal.md",
+    });
+    expect(calls[11].args).toMatchObject({ datedName: "2026-01-01-old" });
+    expect(calls[13].args).toMatchObject({ slug: "s1" });
+    expect(calls[14].args).toMatchObject({ slug: "s1", name: null });
+    expect(calls[15].args).toMatchObject({ slug: "s1" });
   });
 
   it("returns server payloads in the UI shapes", async () => {
@@ -139,8 +193,18 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     expect(changes[0]).toMatchObject({ name: "chg", totalTasks: 2 });
     const specs = await ds.listSpecs();
     expect(specs[0].id).toBe("auth");
+    const archived = await ds.listArchived();
+    expect(archived[0]).toMatchObject({ datedName: "2026-01-01-old", specCount: 1 });
     const status = await ds.status("chg");
     expect(status.schemaName).toBe("spec-driven");
+    await expect(ds.getSpecDocument("auth")).resolves.toBe("# auth Specification");
+    await expect(ds.searchWorkspace("needle")).resolves.toEqual([
+      { kind: "change", id: "chg", artifact: "proposal.md", snippet: "needle" },
+    ]);
+    await expect(
+      ds.getArchivedDocument("2026-01-01-old", "proposal.md"),
+    ).resolves.toBe("archived content");
+    await expect(ds.archivedCapabilities("2026-01-01-old")).resolves.toEqual(["auth"]);
     const discussions = await ds.listDiscussions();
     // server 不外露 promotedTo——以空清單補齊 UI 必填欄位（資料缺口，非偽造 affordance）。
     expect(discussions.active[0]).toMatchObject({ slug: "s1", promotedTo: [] });
@@ -150,11 +214,6 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     const { calls, invoke } = fakeInvoke();
     const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
     const rejections: Array<Promise<unknown>> = [
-      ds.listArchived(),
-      ds.getArchivedDocument("2026-01-01-chg", "proposal.md"),
-      ds.archivedCapabilities("2026-01-01-chg"),
-      ds.searchWorkspace("q"),
-      ds.getSpecDocument("cap"),
       ds.changeCapabilities("chg"),
       ds.changeMeta("chg"),
       ds.deleteChange("chg"),
@@ -173,7 +232,7 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
 describe("createRemoteSession（決策 6/7：handshake 結果建 session）", () => {
   it("derives id from the locator, names the tab Project/Repo, and carries capabilities", () => {
     const { invoke } = fakeInvoke();
-    const session = createRemoteSession(CONN, openInfo(), { invoke });
+    const session = createRemoteSession(CONN, openInfo(), undefined, { invoke });
     expect(session.id).toBe(`remote:${CONN}/${PROJECT}/${REPO}`);
     expect(session.locator).toEqual({
       kind: "remote",
@@ -182,21 +241,64 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
       repoId: REPO,
     });
     expect(session.descriptor.name).toBe("Demo/backend");
-    expect(session.capabilities.searchWorkspace).toBe(false);
+    expect(session.capabilities.searchWorkspace).toBe(true);
+    expect(session.capabilities.listArchived).toBe(true);
+    expect(session.capabilities.getSpecDocument).toBe(true);
     expect(session.capabilities.listChanges).toBe(true);
+    expect(session.settings.kind).toBe("remote");
+    expect(session.settings.policyWrite).toBe(true);
+  });
+
+  it("remote settings 綁 locator，以讀得 revision 作 expectedRevision 寫回", async () => {
+    const { calls, invoke } = fakeInvoke();
+    const session = createRemoteSession(CONN, openInfo(), undefined, { invoke });
+
+    const snap = await session.settings.readSettings();
+    expect(snap.workflow.revision).toBe(7);
+    await expect(
+      session.settings.writeWorkflowConfig({
+        locale: "tw",
+        specLocale: "auto",
+        tdd: true,
+        audit: false,
+      }),
+    ).resolves.toBe(8);
+    await session.settings.writeWorkflowContext("updated");
+    await session.settings.writeWorkflowRules([["tasks", ["test first"]]]);
+
+    expect(calls.find((call) => call.cmd === "remote_read_settings")?.args).toEqual({
+      connectionId: CONN,
+      project: PROJECT,
+      repo: REPO,
+    });
+    expect(calls.find((call) => call.cmd === "remote_write_workflow_config")?.args).toMatchObject({
+      connectionId: CONN,
+      project: PROJECT,
+      repo: REPO,
+      locale: "tw",
+      specLocale: "auto",
+      tdd: true,
+      audit: false,
+      expectedRevision: 7,
+    });
+    const contentWrites = calls.filter((call) => call.cmd === "remote_write_workflow_content");
+    expect(contentWrites[0]?.args).toMatchObject({ context: "updated", expectedRevision: 8 });
+    expect(contentWrites[1]?.args).toMatchObject({
+      rules: [["tasks", ["test first"]]],
+      expectedRevision: 8,
+    });
   });
 
   it("events subscribe watches the stream, filters by locator key, and unwatches on teardown", async () => {
     const { calls, invoke } = fakeInvoke();
-    let handler: ((e: { payload: unknown }) => void) | undefined;
+    const handlers = new Map<string, (e: { payload: unknown }) => void>();
     const listen = async (event: string, h: (e: { payload: unknown }) => void) => {
-      expect(event).toBe("remote-workspace-changed");
-      handler = h;
+      handlers.set(event, h);
       return () => {
-        handler = undefined;
+        handlers.delete(event);
       };
     };
-    const session = createRemoteSession(CONN, openInfo(), { invoke, listen });
+    const session = createRemoteSession(CONN, openInfo(), undefined, { invoke, listen });
     let fired = 0;
     const unsubscribe = session.events.subscribe(() => {
       fired += 1;
@@ -209,15 +311,15 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
       repo: REPO,
     });
 
-    handler?.({ payload: "remote:other/x/y" });
+    handlers.get("remote-workspace-changed")?.({ payload: "remote:other/x/y" });
     expect(fired).toBe(0);
-    handler?.({ payload: session.id });
+    handlers.get("remote-workspace-changed")?.({ payload: session.id });
     expect(fired).toBe(1);
 
     unsubscribe();
     await Promise.resolve();
     expect(calls.map((c) => c.cmd)).toContain("remote_unwatch");
-    handler?.({ payload: session.id });
+    handlers.get("remote-workspace-changed")?.({ payload: session.id });
     expect(fired).toBe(1);
   });
 

@@ -40,9 +40,24 @@ pub struct EventManager {
     subs: Mutex<HashMap<String, SubEntry>>,
 }
 
+impl Drop for EventManager {
+    fn drop(&mut self) {
+        let mut subs = self.subs.lock().expect("subs lock");
+        for (_, entry) in subs.drain() {
+            entry.shutdown.store(true, Ordering::Relaxed);
+            if let Some(abort) = entry.stream_abort.lock().expect("abort lock").take() {
+                abort.abort();
+            }
+        }
+    }
+}
+
 impl EventManager {
     pub fn new(notify: impl Fn(String) + Send + Sync + 'static) -> EventManager {
-        EventManager { notify: Arc::new(notify), subs: Mutex::new(HashMap::new()) }
+        EventManager {
+            notify: Arc::new(notify),
+            subs: Mutex::new(HashMap::new()),
+        }
     }
 
     /// 註冊一個 session：同 key 已有訂閱即共用（參照計數＋1，閉包棄用），
@@ -62,19 +77,33 @@ impl EventManager {
             Arc::new(Mutex::new(None));
         subs.insert(
             key.to_string(),
-            SubEntry { count: 1, shutdown: shutdown.clone(), stream_abort: stream_abort.clone() },
+            SubEntry {
+                count: 1,
+                shutdown: shutdown.clone(),
+                stream_abort: stream_abort.clone(),
+            },
         );
         let notify = Arc::clone(&self.notify);
         let key = key.to_string();
         std::thread::spawn(move || {
-            worker(key, notify, subscribe, sync_state, backoff, shutdown, stream_abort)
+            worker(
+                key,
+                notify,
+                subscribe,
+                sync_state,
+                backoff,
+                shutdown,
+                stream_abort,
+            )
         });
     }
 
     /// 退出一個 session：參照計數歸零時收束訂閱（中止流、worker 退場）。
     pub fn unregister(&self, key: &str) {
         let mut subs = self.subs.lock().expect("subs lock");
-        let Some(entry) = subs.get_mut(key) else { return };
+        let Some(entry) = subs.get_mut(key) else {
+            return;
+        };
         entry.count = entry.count.saturating_sub(1);
         if entry.count == 0 {
             let entry = subs.remove(key).expect("entry exists");
@@ -100,11 +129,18 @@ fn worker(
     let mut last_event_id: Option<u64> = None;
     let mut last_etag: Option<String> = None;
     let mut attempt = 0usize;
+    let mut recovery_episode = false;
+    let mut recovery_invalidation_sent = false;
     loop {
         if shutdown.load(Ordering::Relaxed) {
             return;
         }
         if let Ok(mut stream) = subscribe(last_event_id) {
+            // 曾斷線後第一次成功重訂即全量失效；若前一輪 sync-state 已送過，
+            // 此處只結束 recovery episode，不重複通知。
+            if recovery_episode && !recovery_invalidation_sent {
+                notify(key.clone());
+            }
             let abort = stream.abort_handle();
             *stream_abort.lock().expect("abort lock") = Some(abort.clone());
             // shutdown 恰於掛上把手前發生：自行收束。
@@ -134,10 +170,17 @@ fn worker(
                     // Ok(None)＝中止把手收束（unregister）。
                     Ok(None) => return,
                     // 斷線：進收斂程序。
-                    Err(_) => break,
+                    Err(_) => {
+                        recovery_episode = true;
+                        recovery_invalidation_sent = false;
+                        break;
+                    }
                 }
             }
             *stream_abort.lock().expect("abort lock") = None;
+        } else if !recovery_episode {
+            recovery_episode = true;
+            recovery_invalidation_sent = false;
         }
         if shutdown.load(Ordering::Relaxed) {
             return;
@@ -145,9 +188,18 @@ fn worker(
         // 收斂 (2)：ETag 相異即發重載通知——完全漏掉 push 仍經 Query 收斂。
         // SSE 不可用期間每輪退避都經過這裡：輪詢即心跳。
         if let Ok(etag) = sync_state() {
-            if last_etag.as_deref() != Some(etag.as_str()) {
+            let changed = last_etag.as_deref() != Some(etag.as_str());
+            if changed {
                 last_etag = Some(etag);
                 notify(key.clone());
+            }
+            // 同一斷線 episode 第一次成功收斂必送一次全量失效；ETag 已變時
+            // 上方通知即同一筆，不再重複。SSE 持續失敗時後續輪詢也不洗版。
+            if recovery_episode && !recovery_invalidation_sent {
+                if !changed {
+                    notify(key.clone());
+                }
+                recovery_invalidation_sent = true;
             }
         }
         // 收斂 (3)：退避後重連（Last-Event-ID 續傳）。序列走完即停在最末值。

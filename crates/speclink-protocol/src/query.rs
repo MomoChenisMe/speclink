@@ -10,6 +10,145 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::binding::ScopeRef;
+
+/// `POST /import` request. This migration surface is intentionally closed:
+/// there is no mode field, so the store's maintenance-only Overwrite mode can
+/// never be selected over the wire.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImportBundle {
+    pub format_version: u32,
+    pub scope: ImportScope,
+    pub project_revision: u64,
+    pub documents: Vec<ImportBundleDocument>,
+}
+
+/// The source scope declared by an import bundle. The server requires this to
+/// match the authenticated project/repo binding instead of trusting it as an
+/// alternate destination selector.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImportScope {
+    pub project: String,
+    pub repo: String,
+}
+
+/// One content-addressed document in an [`ImportBundle`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImportBundleDocument {
+    pub document: ImportDocumentId,
+    pub content: String,
+    pub digest: String,
+}
+
+/// The closed logical document identity used by migration bundles. The tagged
+/// shape stays path-free and maps one-to-one to the TeamStore contract.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ImportDocumentId {
+    ChangeMeta { change: String },
+    ChangeArtifact { change: String, artifact: String },
+    CanonicalSpec { capability: String },
+    Discussion { slug: String, archived: bool },
+    WorkflowConfig,
+    ArchivedChange { change: String, doc: String },
+    Language,
+}
+
+/// Successful `POST /import` response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReportResponse {
+    pub project_revision: u64,
+    pub documents: Vec<ImportedDocument>,
+}
+
+/// One imported document and its migration-only outcome.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedDocument {
+    pub document: ImportDocumentId,
+    pub outcome: ImportDocumentOutcome,
+}
+
+/// CreateNew is the only wire operation, so Created is the only representable
+/// success outcome. Overwritten deliberately does not exist in this registry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum ImportDocumentOutcome {
+    Created,
+}
+
+/// `GET /scopes` response: every project the caller is a member of, with its
+/// registered repos. This route is identity-scoped and precedes repo binding.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopesResponse {
+    pub projects: Vec<ProjectScope>,
+}
+
+/// One membership-filtered project inside [`ScopesResponse`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectScope {
+    pub id: String,
+    pub key: String,
+    pub name: String,
+    pub repos: Vec<ScopeRef>,
+}
+
+/// `GET /specs/{capability}/document` and archived-artifact response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SpecDocumentResponse {
+    pub content: String,
+}
+
+/// `GET /archived` response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchivedListResponse {
+    pub archived: Vec<ArchivedItem>,
+}
+
+/// One archived change, shaped like the desktop archive card.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchivedItem {
+    pub dated_name: String,
+    pub date: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tasks_total: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tasks_done: Option<usize>,
+    #[serde(default)]
+    pub spec_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    #[serde(default)]
+    pub from_discussions: Vec<String>,
+}
+
+/// `GET /search` response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResponse {
+    pub hits: Vec<SearchHit>,
+}
+
+/// The first matching artifact for one active change or live discussion.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHit {
+    pub kind: String,
+    pub id: String,
+    pub artifact: String,
+    pub snippet: String,
+}
+
 /// `GET /changes` response.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -280,6 +419,57 @@ mod tests {
     use crate::query::*;
 
     #[test]
+    fn server_scope_read_dtos_round_trip_in_desktop_aligned_shapes() {
+        let scopes: ScopesResponse = serde_json::from_str(
+            r#"{"projects":[{"id":"prj_demo","key":"demo","name":"Demo","repos":[{"id":"repo_backend","key":"backend","name":"Backend"}]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(scopes.projects[0].repos[0].key, "backend");
+
+        let archived: ArchivedListResponse = serde_json::from_str(
+            r#"{"archived":[{"datedName":"2026-07-20-old","date":"2026-07-20","name":"old","tasksTotal":2,"tasksDone":1,"specCount":1,"createdBy":"momo","fromDiscussions":["source"]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(archived.archived[0].tasks_total, Some(2));
+        assert_eq!(archived.archived[0].from_discussions, ["source"]);
+
+        let document = SpecDocumentResponse {
+            content: "# spec\n".to_string(),
+        };
+        let search = SearchResponse {
+            hits: vec![SearchHit {
+                kind: "change".to_string(),
+                id: "demo".to_string(),
+                artifact: "proposal.md".to_string(),
+                snippet: "…needle…".to_string(),
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(document).unwrap()["content"],
+            "# spec\n"
+        );
+        assert_eq!(
+            serde_json::to_value(search).unwrap()["hits"][0]["artifact"],
+            "proposal.md"
+        );
+    }
+
+    #[test]
+    fn server_scope_read_dtos_export_json_schema() {
+        for schema in [
+            serde_json::to_string(&schemars::schema_for!(ScopesResponse)).unwrap(),
+            serde_json::to_string(&schemars::schema_for!(SpecDocumentResponse)).unwrap(),
+            serde_json::to_string(&schemars::schema_for!(ArchivedListResponse)).unwrap(),
+            serde_json::to_string(&schemars::schema_for!(SearchResponse)).unwrap(),
+        ] {
+            assert!(
+                schema.contains("properties"),
+                "DTO schema is structural: {schema}"
+            );
+        }
+    }
+
+    #[test]
     fn change_summary_round_trips_and_defaults_extras() {
         let full: ChangeSummary = serde_json::from_str(
             r#"{"name":"demo","summary":"Demo change summary","status":"done","completedTasks":2,"totalTasks":2,"repo":"backend","lifecycle":"applying","claimedBy":"me"}"#,
@@ -288,7 +478,10 @@ mod tests {
         assert_eq!(full.name, "demo");
         assert_eq!(full.completed_tasks, 2);
         assert_eq!(full.repo.as_deref(), Some("backend"));
-        assert!(full.restale_from.is_empty(), "absent restaleFrom defaults to empty");
+        assert!(
+            full.restale_from.is_empty(),
+            "absent restaleFrom defaults to empty"
+        );
         assert_eq!(full.meta_error, None);
 
         let list: ListChangesResponse =
@@ -296,7 +489,10 @@ mod tests {
         assert_eq!(list.changes.len(), 1);
 
         let json = serde_json::to_value(&full).unwrap();
-        assert_eq!(json["completedTasks"], 2, "fields serialize camelCase: {json}");
+        assert_eq!(
+            json["completedTasks"], 2,
+            "fields serialize camelCase: {json}"
+        );
         let back: ChangeSummary = serde_json::from_value(json).unwrap();
         assert_eq!(back, full);
     }
@@ -379,9 +575,10 @@ mod tests {
 
     #[test]
     fn spec_language_config_and_whoami_shapes_deserialize() {
-        let specs: ListSpecsResponse =
-            serde_json::from_str(r#"{"specs":[{"id":"user-auth","path":"specs/user-auth/spec.md"}]}"#)
-                .unwrap();
+        let specs: ListSpecsResponse = serde_json::from_str(
+            r#"{"specs":[{"id":"user-auth","path":"specs/user-auth/spec.md"}]}"#,
+        )
+        .unwrap();
         assert_eq!(specs.specs[0].id, "user-auth");
 
         let language: LanguageResponse =
@@ -408,7 +605,10 @@ mod tests {
         assert_eq!(whoami.user.handle, "ming");
         assert_eq!(whoami.repos[0].git_url, "https://git.example.com/erp.git");
         let json = serde_json::to_value(&whoami).unwrap();
-        assert_eq!(json["repos"][0]["gitUrl"], "https://git.example.com/erp.git");
+        assert_eq!(
+            json["repos"][0]["gitUrl"],
+            "https://git.example.com/erp.git"
+        );
     }
 
     #[test]
@@ -430,18 +630,33 @@ mod tests {
             r##"{"info":{"slug":"demo-topic","topic":"Demo topic","status":"open","rounds":0,"created":"2026-07-01","createdBy":"Ming <m@example.com>","path":"discussions/demo-topic.md","archived":false},"content":"# Discussion\n"}"##,
         )
         .unwrap();
-        assert_eq!(show.info.created_by.as_deref(), Some("Ming <m@example.com>"));
+        assert_eq!(
+            show.info.created_by.as_deref(),
+            Some("Ming <m@example.com>")
+        );
         assert_eq!(show.content, "# Discussion\n");
     }
 
     #[test]
     fn query_dtos_export_json_schema() {
         for (name, schema) in [
-            ("ListChangesResponse", schemars::schema_for!(ListChangesResponse)),
+            (
+                "ListChangesResponse",
+                schemars::schema_for!(ListChangesResponse),
+            ),
             ("ChangeStatus", schemars::schema_for!(ChangeStatus)),
-            ("ApplyInstructions", schemars::schema_for!(ApplyInstructions)),
-            ("ArtifactInstructions", schemars::schema_for!(ArtifactInstructions)),
-            ("ShowDiscussionResponse", schemars::schema_for!(ShowDiscussionResponse)),
+            (
+                "ApplyInstructions",
+                schemars::schema_for!(ApplyInstructions),
+            ),
+            (
+                "ArtifactInstructions",
+                schemars::schema_for!(ArtifactInstructions),
+            ),
+            (
+                "ShowDiscussionResponse",
+                schemars::schema_for!(ShowDiscussionResponse),
+            ),
         ] {
             let text = serde_json::to_string(&schema)
                 .unwrap_or_else(|e| panic!("{name} schema must serialize: {e}"));

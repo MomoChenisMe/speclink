@@ -16,8 +16,9 @@ import type { InvokeFn } from "../session";
 
 // remote adapter（remote-data-source 決策 7）：SpeclinkDataSource 對 remote_*
 // command 的薄 invoke 包裝——每擊帶 locator 識別（connectionId＋project＋repo），
-// 所有 HTTP、token、重試邏輯在 Rust。不支援方法（決策 1 (c)：server 無端點）
-// 回拒絕錯誤、不打任何 invoke——server 缺什麼就停用什麼，不在 client 偽造。
+// 所有 HTTP、token、重試邏輯在 Rust。server 純讀取面直達；其餘不支援方法
+// （決策 1 (c)：server 無端點）回拒絕錯誤、不打任何 invoke——server 缺什麼
+// 就停用什麼，不在 client 偽造。
 
 /** (c) 類操作的拒絕（與 Rust remote::unsupported 同語意、同繁中措辭）。 */
 function unsupported(operation: string): Promise<never> {
@@ -55,8 +56,11 @@ export function createRemoteDataSource(
       const r = await invoke<{ specs: SpecItem[] }>("remote_list_specs", { ...locator });
       return r.specs;
     },
-    listArchived(): Promise<ArchivedItem[]> {
-      return unsupported("封存瀏覽");
+    async listArchived(): Promise<ArchivedItem[]> {
+      const r = await invoke<{ archived: ArchivedItem[] }>("remote_list_archived", {
+        ...locator,
+      });
+      return r.archived;
     },
     async status(change: string): Promise<StatusReport> {
       return await invoke<StatusReport>("remote_status", { ...locator, change });
@@ -64,11 +68,18 @@ export function createRemoteDataSource(
     async getDocument(change: string, artifact: string): Promise<string | null> {
       return await invoke<string | null>("remote_document", { ...locator, change, artifact });
     },
-    getSpecDocument(): Promise<string | null> {
-      return unsupported("正典 spec 內文");
+    async getSpecDocument(capability: string): Promise<string | null> {
+      return await invoke<string | null>("remote_spec_document", {
+        ...locator,
+        capability,
+      });
     },
-    searchWorkspace(): Promise<SearchHit[]> {
-      return unsupported("全文搜尋");
+    async searchWorkspace(query: string): Promise<SearchHit[]> {
+      const r = await invoke<{ hits: SearchHit[] }>("remote_search_workspace", {
+        ...locator,
+        query,
+      });
+      return r.hits;
     },
     changeCapabilities(): Promise<string[]> {
       return unsupported("capability 清單");
@@ -94,11 +105,18 @@ export function createRemoteDataSource(
       }
       return await invoke("remote_archive", { ...locator, change });
     },
-    getArchivedDocument(): Promise<string | null> {
-      return unsupported("封存文件");
+    async getArchivedDocument(datedName: string, artifact: string): Promise<string | null> {
+      return await invoke<string | null>("remote_archived_document", {
+        ...locator,
+        datedName,
+        artifact,
+      });
     },
-    archivedCapabilities(): Promise<string[]> {
-      return unsupported("封存 capability 清單");
+    async archivedCapabilities(datedName: string): Promise<string[]> {
+      return await invoke<string[]>("remote_archived_capabilities", {
+        ...locator,
+        datedName,
+      });
     },
     async listDiscussions(): Promise<DiscussionLists> {
       const r = await invoke<{ active: RemoteDiscussionInfo[]; archived: RemoteDiscussionInfo[] }>(

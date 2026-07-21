@@ -30,6 +30,20 @@ export interface LogoutResult {
   patNotice: boolean;
 }
 
+export interface ScopeRefView {
+  id: string;
+  key: string;
+  name: string;
+}
+
+export interface ProjectScopeView extends ScopeRefView {
+  repos: ScopeRefView[];
+}
+
+export interface ScopesView {
+  projects: ProjectScopeView[];
+}
+
 export interface ConnectionsAdapter {
   list(): Promise<ConnectionView[]>;
   add(baseUrl: string, name: string): Promise<ConnectionView>;
@@ -39,6 +53,10 @@ export interface ConnectionsAdapter {
   /** PAT 單次過境：呼叫後 TS 不保留任何拷貝。 */
   patLogin(origin: string, pat: string): Promise<{ status: "loggedIn"; display: string }>;
   logout(origin: string): Promise<LogoutResult>;
+  /** 登入者 membership 過濾後的 Project／Repo 清單。 */
+  scopes(connectionId: string): Promise<ScopesView>;
+  /** 驗證 checkout marker 一致性，或為無 marker 的 git repo 寫入 marker。 */
+  bindCheckout(path: string, origin: string, project: string, repo: string): Promise<string>;
 }
 
 export function createConnectionsAdapter(
@@ -51,5 +69,8 @@ export function createConnectionsAdapter(
     deviceLogin: (origin) => invoke("device_login", { origin }),
     patLogin: (origin, pat) => invoke("pat_login", { origin, pat }),
     logout: (origin) => invoke("connection_logout", { origin }),
+    scopes: (connectionId) => invoke("remote_scopes", { connectionId }),
+    bindCheckout: (path, origin, project, repo) =>
+      invoke("bind_checkout", { path, origin, project, repo }),
   };
 }

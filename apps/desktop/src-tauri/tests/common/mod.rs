@@ -21,7 +21,73 @@ pub struct Harness {
     pub user_id: String,
     pub store: SharedStore,
     pub registry: PathBuf,
+    pub server: RestartableServer,
     _dir: tempfile::TempDir,
+}
+
+pub struct RestartableServer {
+    addr: std::net::SocketAddr,
+    state: AppState,
+    running: std::sync::Mutex<
+        Option<(
+            tokio::sync::oneshot::Sender<()>,
+            std::thread::JoinHandle<()>,
+        )>,
+    >,
+}
+
+impl RestartableServer {
+    fn from_listener(listener: std::net::TcpListener, state: AppState) -> RestartableServer {
+        let addr = listener.local_addr().expect("local addr");
+        let server = RestartableServer {
+            addr,
+            state,
+            running: std::sync::Mutex::new(None),
+        };
+        server.spawn(listener);
+        server
+    }
+
+    fn spawn(&self, listener: std::net::TcpListener) {
+        listener.set_nonblocking(true).expect("nonblocking");
+        let state = self.state.clone();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let thread = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new().expect("runtime");
+            runtime.block_on(async move {
+                let listener = tokio::net::TcpListener::from_std(listener).expect("adopt listener");
+                axum::serve(listener, speclink_server::app::router(state))
+                    .with_graceful_shutdown(async move {
+                        let _ = shutdown_rx.await;
+                    })
+                    .await
+                    .expect("serve");
+            });
+        });
+        *self.running.lock().expect("server lock") = Some((shutdown_tx, thread));
+    }
+
+    pub fn stop(&self) {
+        let Some((shutdown, thread)) = self.running.lock().expect("server lock").take() else {
+            return;
+        };
+        let _ = shutdown.send(());
+        thread.join().expect("server stops");
+    }
+
+    pub fn start(&self) {
+        if self.running.lock().expect("server lock").is_some() {
+            return;
+        }
+        let listener = std::net::TcpListener::bind(self.addr).expect("rebind loopback");
+        self.spawn(listener);
+    }
+}
+
+impl Drop for RestartableServer {
+    fn drop(&mut self) {
+        self.stop();
+    }
 }
 
 /// demo project 的 scope（repo backend）。
@@ -47,11 +113,21 @@ pub fn harness() -> Harness {
 /// 同 [`harness`]，但以指定的 EventSettings 起 server（SSE／retention 測試用）。
 pub fn harness_with_events(settings: EventSettings) -> Harness {
     let identity = Arc::new(IdentitySqlite::open_memory().expect("memory identity"));
-    identity.create_project("demo", "Demo").expect("seed demo project");
-    identity.create_repo("demo", "backend", "backend").expect("seed demo repo");
-    identity.create_project("multi", "Multi").expect("seed multi project");
-    identity.create_repo("multi", "web", "web").expect("seed multi web repo");
-    identity.create_repo("multi", "api", "api").expect("seed multi api repo");
+    identity
+        .create_project("demo", "Demo")
+        .expect("seed demo project");
+    identity
+        .create_repo("demo", "backend", "backend")
+        .expect("seed demo repo");
+    identity
+        .create_project("multi", "Multi")
+        .expect("seed multi project");
+    identity
+        .create_repo("multi", "web", "web")
+        .expect("seed multi web repo");
+    identity
+        .create_repo("multi", "api", "api")
+        .expect("seed multi api repo");
     let invite = identity
         .create_invitation(NewInvitation {
             email: "dev@example.com".to_string(),
@@ -61,7 +137,9 @@ pub fn harness_with_events(settings: EventSettings) -> Harness {
             expires_at: Utc::now() + Duration::days(1),
         })
         .expect("invite");
-    let user_id = identity.accept_invitation(&invite, "pw-correct-horse").expect("accept");
+    let user_id = identity
+        .accept_invitation(&invite, "pw-correct-horse")
+        .expect("accept");
 
     let store: SharedStore = Arc::new(speclink_store::memory::MemoryStore::new());
     let state = AppState {
@@ -78,14 +156,7 @@ pub fn harness_with_events(settings: EventSettings) -> Harness {
 
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let addr = listener.local_addr().expect("local addr");
-    listener.set_nonblocking(true).expect("nonblocking");
-    std::thread::spawn(move || {
-        let runtime = tokio::runtime::Runtime::new().expect("runtime");
-        runtime.block_on(async move {
-            let listener = tokio::net::TcpListener::from_std(listener).expect("adopt listener");
-            axum::serve(listener, speclink_server::app::router(state)).await.expect("serve");
-        });
-    });
+    let server = RestartableServer::from_listener(listener, state);
 
     let dir = tempfile::tempdir().expect("tempdir");
     let registry = dir.path().join("connections.json");
@@ -93,23 +164,46 @@ pub fn harness_with_events(settings: EventSettings) -> Harness {
     let mut entries = Vec::new();
     speclink_desktop_lib::connections::upsert_connection(&mut entries, &origin, "本地")
         .expect("seed entry");
-    speclink_desktop_lib::connections::write_registry(&registry, &entries)
-        .expect("write registry");
+    speclink_desktop_lib::connections::write_registry(&registry, &entries).expect("write registry");
 
-    Harness { origin, identity, user_id, store, registry, _dir: dir }
+    Harness {
+        origin,
+        identity,
+        user_id,
+        store,
+        registry,
+        server,
+        _dir: dir,
+    }
 }
 
 /// 種 change `demo`（schema＋給定的 tasks.md 內容）進 demo/backend scope。
 pub fn seed_change(store: &dyn TeamStore, tasks: &str) {
+    seed_named_change(store, "demo", tasks);
+}
+
+/// 在 demo/backend scope 種指定名稱的 change，供重啟期間外部寫入情境使用。
+pub fn seed_named_change(store: &dyn TeamStore, change: &str, tasks: &str) {
     let mut uow = store
         .begin_unit_of_work(
             &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
+            CommandContext {
+                command: "seed".into(),
+                actor: "seed".into(),
+            },
         )
         .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
     uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
+        DocumentId::ChangeMeta {
+            change: change.into(),
+        },
+        "schema: spec-driven\n",
+    );
+    uow.create(
+        DocumentId::ChangeArtifact {
+            change: change.into(),
+            artifact: "tasks.md".into(),
+        },
         tasks,
     );
     store.commit(uow, Vec::new()).expect("seed commit");
@@ -124,7 +218,11 @@ pub fn device_login_approved(
     let identity = h.identity.clone();
     let user_id = h.user_id.clone();
     let opener = move |url: &str| {
-        let code = url.split("user_code=").nth(1).expect("user_code 預填參數").to_string();
+        let code = url
+            .split("user_code=")
+            .nth(1)
+            .expect("user_code 預填參數")
+            .to_string();
         assert!(identity.approve_device(&code, &user_id).expect("approve"));
         Ok(())
     };
@@ -134,6 +232,9 @@ pub fn device_login_approved(
 
 /// 給使用者簽一枚 PAT（資料面測試最短的 credential 路徑）。
 pub fn pat_of(h: &Harness) -> String {
-    let (_, pat) = h.identity.create_pat(&h.user_id, "test", None).expect("pat");
+    let (_, pat) = h
+        .identity
+        .create_pat(&h.user_id, "test", None)
+        .expect("pat");
     pat
 }

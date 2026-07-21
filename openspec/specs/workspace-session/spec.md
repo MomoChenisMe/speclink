@@ -8,41 +8,48 @@ TBD - created by archiving change 'workspace-session-model'. Update Purpose afte
 
 ### Requirement: 分頁身分為 WorkspaceLocator 而非 root 路徑
 
-Desktop 分頁 SHALL 以 WorkspaceLocator 為身分：local 變體攜帶 root 路徑，remote 變體（connectionId／projectId／repoId／可選 checkoutRoot）本階段僅存在於型別、SHALL NOT 有任何建構路徑。分頁去重、活躍分頁記錄與 tray 選單識別 SHALL 一律經 locator key（local 為 local:{root}），SHALL NOT 再以裸 root 字串比對。UI 可觀察行為（分頁列呈現、切換、關閉、上限淘汰、tray 顯示）SHALL 與重構前一致。
+Desktop 分頁 SHALL 以 WorkspaceLocator 為身分：local 變體攜帶 root 路徑，remote 變體（connectionId／projectId／repoId／可選 checkoutRoot）經 chooser 或 remote marker 探測的 handshake 成功路徑建構，checkoutRoot 由 checkout 綁定流程寫入且不參與分頁身分（locator key 不含 checkoutRoot——同 scope 重綁不同 checkout 為同一分頁、新值覆寫舊值）。分頁去重、活躍分頁記錄與 tray 選單識別 SHALL 一律經 locator key（local 為 local:{root}），SHALL NOT 再以裸 root 字串比對。local 分頁的 UI 可觀察行為（分頁列呈現、切換、關閉、上限淘汰、tray 顯示）SHALL 與 root 字串時代一致。
 
 #### Scenario: 同一專案重複開啟仍去重
 
 - **WHEN** 使用者對已在分頁列的資料夾再次執行開啟
 - **THEN** 分頁列不新增條目，既有分頁更新顯示名並成為活躍分頁，與重構前行為一致
 
+#### Scenario: 同 scope 重綁 checkout 不分裂分頁
+
+- **WHEN** 對已開啟的 remote 分頁以另一資料夾重新完成 checkout 綁定
+- **THEN** 分頁列仍為同一分頁，checkoutRoot 更新為新資料夾
+
 
 <!-- @trace
-source: workspace-session-model
-updated: 2026-07-17
+source: workspace-chooser-onboarding
+updated: 2026-07-20
 code:
+  - Cargo.lock
+  - apps/desktop/core/src/project.rs
+  - apps/desktop/src-tauri/Cargo.toml
+  - apps/desktop/src-tauri/src/connections.rs
   - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/watch.rs
+  - apps/desktop/src-tauri/src/remote.rs
   - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/App.test.tsx
   - apps/desktop/src/__tests__/projectTabs.test.tsx
+  - apps/desktop/src/__tests__/remoteDataSource.test.ts
+  - apps/desktop/src/__tests__/remoteOpen.test.ts
+  - apps/desktop/src/__tests__/serversPanel.test.tsx
   - apps/desktop/src/__tests__/session.test.ts
-  - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
   - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/__tests__/tray.test.ts
-  - apps/desktop/src/__tests__/trayPanel.test.tsx
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
+  - apps/desktop/src/__tests__/workspaceChooser.test.tsx
+  - apps/desktop/src/adapter/connections.ts
   - apps/desktop/src/adapter/workspace.ts
   - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/components/ServersPanel.tsx
+  - apps/desktop/src/components/WorkspaceChooser.tsx
+  - apps/desktop/src/i18n/messages.ts
   - apps/desktop/src/main.tsx
-  - apps/desktop/src/panel/TrayPanel.tsx
   - apps/desktop/src/session.ts
   - apps/desktop/src/store.ts
   - apps/desktop/src/tabs.ts
-  - apps/desktop/src/tray.ts
-  - apps/desktop/src/views/SettingsView.tsx
 -->
 
 ---
@@ -212,4 +219,64 @@ code:
   - apps/desktop/src/tabs.ts
   - apps/desktop/src/tray.ts
   - apps/desktop/src/views/SettingsView.tsx
+-->
+
+---
+### Requirement: 可選取的 remote 復原分頁與 session 邊界
+
+已存在於分頁列的 remote workspace 在尚無可用 WorkspaceSession 時，Desktop SHALL 允許該分頁成為作用中 navigation destination，並以 locator key 記錄 activeKey；handshake 進行中 SHALL 呈 restoring，失敗 SHALL 呈 error 復原頁。此狀態下 workspace 資料操作 SHALL 視為無 active session 而不執行，主內容 SHALL NOT 顯示上一個分頁的資料或偽造 stale snapshot。restoring／error 為不持久化的執行期狀態；關閉分頁 SHALL 同時清除，retry 成功 SHALL 於同一 locator key 建立 session 並清除而不新增分頁。
+
+#### Scenario: handshake 失敗仍選取該分頁
+
+- **WHEN** local 分頁作用中，使用者點擊一個持久化但尚無 session 的 remote 分頁，而 handshake 失敗
+- **THEN** remote 分頁成為作用中且顯示 error 復原頁，local 分頁資料不再出現在主內容，remote 分頁未消失
+
+#### Scenario: retry 成功原地建立 session
+
+- **WHEN** 作用中的 remote error 分頁再次執行 retry 且 handshake 成功
+- **THEN** 同一分頁原地取得 session 並顯示 server 資料，restoring／error 清除，分頁列不新增重複項目
+
+#### Scenario: 較舊 handshake 不搶回作用中分頁
+
+- **WHEN** remote 分頁 A 的 handshake 尚未完成時使用者切至分頁 B，之後 A 的 handshake 才成功或失敗
+- **THEN** A 的結果只更新 A 的 session 或 recovery 狀態，activeKey 維持 B
+
+#### Scenario: 同分頁只接受最新 retry 結果
+
+- **WHEN** 同一 remote error 分頁先後觸發兩次 retry，第二次成功後第一個較舊請求才失敗
+- **THEN** 該分頁維持第二次成功建立的 session，較舊失敗 SHALL NOT 覆蓋成 error
+
+#### Scenario: local 分頁切換維持既有行為
+
+- **WHEN** 使用者在兩個有效 local 分頁之間切換
+- **THEN** active session、watcher、看板資料與持久化 activeKey 依既有流程切換，不建立 remote recovery 狀態
+
+<!-- @trace
+source: remote-workspace-recovery-ux
+updated: 2026-07-21
+code:
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src-tauri/src/remote.rs
+  - apps/desktop/src-tauri/src/tray.rs
+  - apps/desktop/src-tauri/tests/remote_data.rs
+  - apps/desktop/src-tauri/tests/tray_menu.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/projectTabs.test.tsx
+  - apps/desktop/src/__tests__/remoteDataSource.test.ts
+  - apps/desktop/src/__tests__/remoteOpen.test.ts
+  - apps/desktop/src/__tests__/remoteResilience.test.tsx
+  - apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx
+  - apps/desktop/src/__tests__/session.test.ts
+  - apps/desktop/src/__tests__/tray.test.ts
+  - apps/desktop/src/__tests__/trayPanel.test.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/components/RemoteWorkspaceRecovery.tsx
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/main.tsx
+  - apps/desktop/src/panel/TrayPanel.tsx
+  - apps/desktop/src/panel/main.tsx
+  - apps/desktop/src/session.ts
+  - apps/desktop/src/store.ts
+  - apps/desktop/src/tray.ts
 -->

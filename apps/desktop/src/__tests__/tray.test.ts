@@ -10,12 +10,19 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 import {
   buildTrayModel,
+  buildTraySnapshot,
   progressBar,
   initTray,
   type TraySnapshot,
   type TrayMenuItem,
   type TrayStoreApi,
 } from "../tray";
+import type { WorkspaceLocator } from "../session";
+import type {
+  RemoteWorkspaceRecoveryState,
+  WorkspaceSession,
+} from "../session";
+import type { ConnectionView } from "../adapter/connections";
 import { trayIconBytes } from "../trayIcon";
 
 // tray.ts 於頂層 import @tauri-apps/api 的 tray/menu/window/image（＋面板模式的 webviewWindow/dpi）；
@@ -48,6 +55,15 @@ const fakeT = (key: string): string =>
     "tray.openDiscussion": "開啟此討論",
     "tray.copySlug": "複製 slug",
     "tray.noChanges": "尚無進行中變更",
+    "tray.recovery.active": "作用中",
+    "tray.recovery.restoring": "正在連線",
+    "tray.recovery.offline": "離線（最後資料）",
+    "tray.recovery.needsReauth": "需要重新登入",
+    "tray.recovery.unreachable": "無法連線",
+    "tray.recovery.retry": "重新連線",
+    "tray.recovery.open": "在 Speclink 中查看問題",
+    "tray.recovery.settings": "伺服器設定",
+    "tray.recovery.reauthenticate": "重新登入",
     "stage.proposed": "提案中",
     "stage.in-progress": "進行中",
     "stage.ready": "已就緒",
@@ -61,8 +77,8 @@ function change(over: Partial<ChangeItem> & { name: string }): ChangeItem {
 function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
   return {
     tabs: [
-      { key: "local:/proj/one", root: "/proj/one", name: "one" },
-      { key: "local:/proj/two", root: "/proj/two", name: "two" },
+      { key: "local:/proj/one", name: "one", source: "local", status: "ready" },
+      { key: "local:/proj/two", name: "two", source: "local", status: "ready" },
     ],
     activeKey: "local:/proj/one",
     changes: [
@@ -105,7 +121,7 @@ describe("progressBar", () => {
 describe("buildTrayModel", () => {
   it("專案項依分頁順序、作用中打勾", () => {
     const projects = byKind(buildTrayModel(snapshot(), fakeT).items, "project");
-    expect(projects.map((p) => p.root)).toEqual(["/proj/one", "/proj/two"]);
+    expect(projects.map((p) => p.key)).toEqual(["local:/proj/one", "local:/proj/two"]);
     expect(projects.map((p) => p.checked)).toEqual([true, false]);
   });
 
@@ -271,12 +287,81 @@ describe("buildTrayModel", () => {
       "quit",
     ]);
   });
+
+  it("共用狀態投影讓 restoring／error／needs-reauth 成為原生復原項，且 active error 不顯示舊資料", () => {
+    const errorKey = "remote:c1/demo/error";
+    const model = buildTrayModel(
+      snapshot({
+        tabs: [
+          { key: "local:/proj/one", name: "one", source: "local", status: "ready" },
+          {
+            key: "remote:c1/demo/ready",
+            name: "Demo/ready",
+            source: "remote",
+            status: "ready",
+            connectionId: "c1",
+            serverLabel: "Team Server",
+          },
+          {
+            key: "remote:c1/demo/restoring",
+            name: "Demo/restoring",
+            source: "remote",
+            status: "restoring",
+            connectionId: "c1",
+            serverLabel: "Team Server",
+          },
+          {
+            key: errorKey,
+            name: "Demo/error",
+            source: "remote",
+            status: "error",
+            failureKind: "unreachable",
+            connectionId: "c1",
+            serverLabel: "Team Server",
+            serverOrigin: "https://spec.example.test",
+          },
+          {
+            key: "remote:c1/demo/auth",
+            name: "Demo/auth",
+            source: "remote",
+            status: "needs-reauth",
+            connectionId: "c1",
+            serverLabel: "Team Server",
+          },
+        ],
+        activeKey: errorKey,
+        changes: [change({ name: "previous-workspace-change", totalTasks: 2, completedTasks: 1 })],
+        discussions: [{ slug: "previous-workspace-discussion", topic: "舊資料", promoted: false }],
+      } as unknown as Partial<TraySnapshot>),
+      fakeT,
+    );
+
+    const recoveries = byKind(model.items, "recovery");
+    expect(recoveries.map((item) => item.status)).toEqual([
+      "restoring",
+      "error",
+      "needs-reauth",
+    ]);
+    expect(recoveries.find((item) => item.status === "restoring")?.actions).toEqual([]);
+    expect(recoveries.find((item) => item.status === "error")?.actions.map((a) => a.kind)).toEqual([
+      "retry",
+      "open-recovery",
+      "open-settings",
+    ]);
+    expect(recoveries.find((item) => item.status === "needs-reauth")?.actions[0]?.kind).toBe(
+      "reauthenticate",
+    );
+    expect(byKind(model.items, "change")).toHaveLength(0);
+    expect(byKind(model.items, "discussion")).toHaveLength(0);
+    expect(model.badge).toBe("");
+  });
 });
 
 // ---- 接線層（Tauri tray/menu/window API）----
 
 /** 可觀察的假 store（tabs＋changes＋discussions＋動作），可推變更通知訂閱者。 */
 function makeStore(
+  activateTab = vi.fn(),
   openProjectAt = vi.fn(),
   openDetail = vi.fn(),
   openDiscussion = vi.fn(),
@@ -287,7 +372,7 @@ function makeStore(
     tabs: [
       { locator: { kind: "local", root: "/proj/one" } as const, name: "one" },
       { locator: { kind: "local", root: "/proj/two" } as const, name: "two" },
-    ],
+    ] as Array<{ locator: WorkspaceLocator; name: string }>,
     activeKey: "local:/proj/one",
     changes: [
       change({ name: "alpha", totalTasks: 12, completedTasks: 3 }),
@@ -300,11 +385,18 @@ function makeStore(
       ],
     },
     trayStyle: "native-menu" as "native-menu" | "panel",
+    activateTab,
     openProjectAt,
     openDetail,
     openDiscussion,
     openProjectViaDialog,
     setBoardView,
+    sessions: {} as Record<string, WorkspaceSession>,
+    remoteRecovery: {} as Record<string, RemoteWorkspaceRecoveryState>,
+    connections: [] as ConnectionView[],
+    retryRemoteWorkspace: vi.fn(),
+    showRemoteWorkspaceRecovery: vi.fn(),
+    openConnectionReauth: vi.fn(),
   };
   const listeners = new Set<() => void>();
   return {
@@ -319,11 +411,15 @@ function makeStore(
       state = { ...state, ...next };
       listeners.forEach((l) => l());
     },
+    activateTab,
     openProjectAt,
     openDetail,
     openDiscussion,
     openProjectViaDialog,
     setBoardView,
+    retryRemoteWorkspace: state.retryRemoteWorkspace,
+    showRemoteWorkspaceRecovery: state.showRemoteWorkspaceRecovery,
+    openConnectionReauth: state.openConnectionReauth,
   };
 }
 
@@ -386,12 +482,40 @@ describe("initTray 接線（選單）", () => {
     expect(trayObj.setTitle).toHaveBeenLastCalledWith("2");
   });
 
-  it("點非作用中專案呼叫 openProjectAt", async () => {
+  it.each([
+    ["local", { kind: "local", root: "/proj/two" } as const, "two", "local:/proj/two"],
+    [
+      "remote",
+      { kind: "remote", connectionId: "conn-1", projectId: "demo", repoId: "backend" } as const,
+      "Demo/backend",
+      "remote:conn-1/demo/backend",
+    ],
+  ])("點非作用中 %s 專案以 locator key 呼叫 activateTab", async (_kind, locator, name, key) => {
     const bag = makeStore();
+    bag.emit({
+      tabs: [
+        { locator: { kind: "local", root: "/proj/one" }, name: "one" },
+        { locator, name },
+      ],
+      sessions:
+        _kind === "remote"
+          ? {
+              [key]: {
+                locator,
+                connectionState: {
+                  connectionId: "conn-1",
+                  state: "online",
+                  message: null,
+                },
+              } as WorkspaceSession,
+            }
+          : {},
+    });
     await initTray(bag.store, { isMacOS: true });
     const projects = lastItems.filter((i) => "checked" in i);
     projects[1].action();
-    expect(bag.openProjectAt).toHaveBeenCalledWith("/proj/two");
+    expect(bag.activateTab).toHaveBeenCalledWith(key);
+    expect(bag.openProjectAt).not.toHaveBeenCalled();
   });
 
   it("變更子選單「開啟此變更」開主視窗並開啟該變更詳情", async () => {
@@ -403,6 +527,116 @@ describe("initTray 接線（選單）", () => {
     await alpha.items[0].action();
     expect(win.show).toHaveBeenCalled();
     expect(bag.openDetail).toHaveBeenCalledWith("alpha");
+  });
+
+  it("原生 needs-reauth submenu 的顯式詳情與登入才聚焦主視窗", async () => {
+    const bag = makeStore();
+    const key = "remote:c1/demo/backend";
+    bag.emit({
+      tabs: [
+        {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+          name: "Demo/backend",
+        },
+      ],
+      activeKey: key,
+      remoteRecovery: {
+        [key]: {
+          status: "error",
+          failure: {
+            kind: "needs-reauth",
+            message: "sensitive technical detail must not enter tray snapshot",
+            reason: "needs_reauth",
+            status: 401,
+          },
+        },
+      },
+      connections: [
+        {
+          id: "c1",
+          origin: "https://spec.example.test",
+          name: "Team Server",
+          loggedIn: false,
+        },
+      ],
+    });
+    await initTray(bag.store, { isMacOS: true });
+
+    const recovery = lastItems.find((item) =>
+      Array.isArray(item.items) && item.text.includes("Demo/backend"),
+    );
+    expect(recovery.items.map((item: AnyItem) => item.text)).toEqual([
+      "作用中",
+      "需要重新登入",
+      "重新登入",
+      "在 Speclink 中查看問題",
+      "伺服器設定",
+    ]);
+
+    recovery.items[2].action();
+    expect(bag.openConnectionReauth).toHaveBeenCalledWith("c1");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(win.show).toHaveBeenCalledTimes(1);
+
+    win.show.mockClear();
+    recovery.items[3].action();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(bag.showRemoteWorkspaceRecovery).toHaveBeenCalledWith(key);
+    expect(win.show).toHaveBeenCalledTimes(1);
+  });
+
+  it("原生 error submenu 直接 retry 不顯示或聚焦主視窗，且 snapshot 不攜帶 technical detail", async () => {
+    const bag = makeStore();
+    const key = "remote:c1/demo/backend";
+    bag.emit({
+      tabs: [
+        {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+          name: "Demo/backend",
+        },
+      ],
+      activeKey: key,
+      remoteRecovery: {
+        [key]: {
+          status: "error",
+          failure: {
+            kind: "unreachable",
+            message: "authorization: Bearer must-never-enter-tray",
+            reason: "offline",
+            status: null,
+          },
+        },
+      },
+      connections: [
+        {
+          id: "c1",
+          origin: "https://spec.example.test",
+          name: "Team Server",
+          loggedIn: true,
+        },
+      ],
+    });
+
+    const projected = buildTraySnapshot(bag.store.getState());
+    expect(JSON.stringify(projected)).not.toContain("must-never-enter-tray");
+    expect(projected.tabs[0]).toEqual(
+      expect.objectContaining({
+        key,
+        status: "error",
+        failureKind: "unreachable",
+        serverLabel: "Team Server",
+      }),
+    );
+
+    await initTray(bag.store, { isMacOS: true });
+    const recovery = lastItems.find(
+      (item) => Array.isArray(item.items) && item.text.includes("Demo/backend"),
+    );
+    recovery.items[2].action();
+    expect(bag.retryRemoteWorkspace).toHaveBeenCalledWith(key);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(win.show).not.toHaveBeenCalled();
+    expect(win.setFocus).not.toHaveBeenCalled();
   });
 
   it("變更子選單「複製名稱」寫入剪貼簿且不開主視窗", async () => {
@@ -566,6 +800,43 @@ describe("initTray 接線（選單）", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(win.show).toHaveBeenCalled();
     expect(bag.openDetail).toHaveBeenCalledWith("alpha");
+  });
+
+  it("面板動作 open-project 以 remote locator key 呼叫 activateTab", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
+    const remoteKey = "remote:conn-1/demo/backend";
+    (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-project", id: remoteKey } });
+    expect(bag.activateTab).toHaveBeenCalledWith(remoteKey);
+    expect(bag.openProjectAt).not.toHaveBeenCalled();
+  });
+
+  it("面板 recovery action 的 retry 留在 Tray，詳情／設定／登入才顯示並聚焦主視窗", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
+    const dispatch = actionCall[1] as (event: AnyItem) => void;
+    const key = "remote:c1/demo/backend";
+
+    dispatch({ payload: { kind: "retry-workspace", id: key } });
+    expect(bag.retryRemoteWorkspace).toHaveBeenCalledWith(key);
+    expect(win.show).not.toHaveBeenCalled();
+
+    dispatch({ payload: { kind: "open-recovery", id: key } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(bag.showRemoteWorkspaceRecovery).toHaveBeenCalledWith(key);
+    expect(win.show).toHaveBeenCalledTimes(1);
+    expect(win.setFocus).toHaveBeenCalledTimes(1);
+
+    win.show.mockClear();
+    win.setFocus.mockClear();
+    dispatch({ payload: { kind: "open-server-settings", id: "c1" } });
+    dispatch({ payload: { kind: "reauthenticate", id: "c1" } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(bag.openConnectionReauth).toHaveBeenCalledTimes(2);
+    expect(win.show).toHaveBeenCalledTimes(2);
+    expect(win.setFocus).toHaveBeenCalledTimes(2);
   });
 
   it("面板動作 open-settings 喚起主視窗並切換至設定頁", async () => {

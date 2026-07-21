@@ -105,17 +105,16 @@ function main() {
   mkdirSync(devDir, { recursive: true });
   writeFileSync(path.join(devDir, 'config.yaml'), generated.configYaml);
 
-  // tauri.conf.json 無 devUrl——tauri dev 直接載入 apps/desktop/dist。
-  // 全新 checkout 沒有 dist（gitignored），先建一次前端資產。
-  if (!existsSync(path.join(ROOT, 'apps/desktop/dist/index.html'))) {
-    console.log('speclink dev: apps/desktop/dist 不存在，先建置前端資產…');
-    const build = spawnSync('npm', ['run', 'build', '-w', 'apps/desktop'], {
-      cwd: ROOT,
-      stdio: 'inherit',
-      shell: IS_WINDOWS,
-    });
-    if (build.status !== 0) process.exit(build.status ?? 1);
-  }
+  // tauri.conf.json 無 devUrl——tauri dev 直接載入 apps/desktop/dist。dist 是
+  // gitignored 的快照，不能只在缺席時建一次，否則後續 source 變更會讓
+  // `npm run dev` 靜默載入舊 UI。每次啟動皆先產生當前 checkout 的前端資產。
+  console.log('speclink dev: 建置當前前端資產…');
+  const build = spawnSync('npm', ['run', 'build', '-w', 'apps/desktop'], {
+    cwd: ROOT,
+    stdio: 'inherit',
+    shell: IS_WINDOWS,
+  });
+  if (build.status !== 0) process.exit(build.status ?? 1);
 
   // detached：child 自成 process group，收束時整組終止——cargo/npm 的孫 process
   //（server binary、vite、tauri）不殘留。代價是終端 Ctrl+C 不會直達 child，

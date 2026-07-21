@@ -8,9 +8,15 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import type { InvokeFn, WorkspaceSettingsProvider } from "../session";
 
-/** open_project／init_project 的三態判定 payload。 */
+/** open_project／init_project 的四態判定 payload（錯誤走 rejected Promise）。 */
 export type ProjectProbe =
   | { status: "project"; root: string; name: string }
+  | {
+      status: "remoteBinding";
+      url: string;
+      repo?: string | null;
+      hasLocalOpenspec: boolean;
+    }
   | { status: "uninitialized"; dir: string };
 
 /** read_settings 的快照 payload（欄位值＋各檔可選的 parseError）。 */

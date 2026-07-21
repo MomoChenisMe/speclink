@@ -1,4 +1,4 @@
-//! 開啟專案：所選目錄的三態判定（命中專案／未初始化／錯誤）與未初始化目錄的
+//! 開啟專案：所選目錄的四態判定（本機專案／remote binding／未初始化／錯誤）與未初始化目錄的
 //! 初始化。僅回報判定結果或執行 init——root 的切換由 Tauri 層的狀態持有者決定。
 
 use std::path::Path;
@@ -8,17 +8,24 @@ use speclink_core::skills::Tool;
 use speclink_core::workspace::Workspace;
 
 /// `open_project_at` 的判定結果——僅回報，不切換任何狀態。
-/// 序列化為 `{ "status": "project" | "uninitialized", … }` 供前端分流。
+/// 序列化為 `{ "status": "project" | "remoteBinding" | "uninitialized", … }` 供前端分流。
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", tag = "status")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "status")]
 pub enum ProjectProbe {
     /// 向上探索命中 speclink 專案：`root` 為探索到的專案根、`name` 為其目錄名。
     Project { root: String, name: String },
+    /// 命中 `.speclink.yaml` 的 remote section；Desktop 必須走 remote handshake，
+    /// 並以呼叫端原始 path 作為 checkoutRoot，不得把 marker 當成本機專案。
+    RemoteBinding {
+        url: String,
+        repo: Option<String>,
+        has_local_openspec: bool,
+    },
     /// 目錄存在且可讀，但不屬於任何 speclink 專案（前端據此開初始化確認框）。
     Uninitialized { dir: String },
 }
 
-/// 對所選目錄做開啟專案的三態判定（design D3）：以該目錄為起點沿用
+/// 對所選目錄做開啟專案的四態判定：以該目錄為起點沿用
 /// `Workspace::discover` 向上探索（與 app 啟動語意一致）。零寫入。
 /// 不存在或非目錄的路徑是單行 Err——必須在探索前攔下，否則已刪除路徑
 /// 會經祖先誤命中別的專案（分頁失效態依賴這個判定）。
@@ -30,10 +37,22 @@ pub fn open_project_at(path: &Path) -> Result<ProjectProbe, String> {
         ));
     }
     match Workspace::discover(path) {
-        Ok(Some(ws)) => Ok(ProjectProbe::Project {
-            name: project_name(&ws.root),
-            root: ws.root.display().to_string(),
-        }),
+        Ok(Some(ws)) => {
+            let resolution = ws.resolve_mode_with(None).map_err(|e| e.to_string())?;
+            match resolution.mode {
+                speclink_core::workspace::StoreMode::Remote(remote) => {
+                    Ok(ProjectProbe::RemoteBinding {
+                        url: remote.url,
+                        repo: remote.repo,
+                        has_local_openspec: resolution.coexists,
+                    })
+                }
+                speclink_core::workspace::StoreMode::Fs => Ok(ProjectProbe::Project {
+                    name: project_name(&ws.root),
+                    root: ws.root.display().to_string(),
+                }),
+            }
+        }
         Ok(None) => Ok(ProjectProbe::Uninitialized {
             dir: path.display().to_string(),
         }),
@@ -183,6 +202,57 @@ mod tests {
             other => panic!("expected Uninitialized, got {other:?}"),
         }
         assert_eq!(entries(plain.path()), before, "probe must not write anything");
+    }
+
+    #[test]
+    fn open_project_at_remote_marker_reports_binding_without_local_openspec() {
+        let plain = PlainDir::new("open-remote");
+        std::fs::write(
+            plain.path().join(".speclink.yaml"),
+            "remote:\n  url: https://spec.example.test/team/\n  repo: desktop\n",
+        )
+        .unwrap();
+
+        let probe = open_project_at(plain.path()).expect("probe ok");
+        assert_eq!(
+            serde_json::to_value(probe).unwrap(),
+            serde_json::json!({
+                "status": "remoteBinding",
+                "url": "https://spec.example.test/team/",
+                "repo": "desktop",
+                "hasLocalOpenspec": false,
+            })
+        );
+    }
+
+    #[test]
+    fn open_project_at_remote_marker_and_openspec_reports_coexistence() {
+        let fx = FixtureRoot::new("open-remote-coexists");
+        fx.write(
+            ".speclink.yaml",
+            "remote:\n  url: https://spec.example.test\n  repo: desktop\n",
+        );
+
+        let probe = open_project_at(fx.root()).expect("probe ok");
+        assert_eq!(
+            serde_json::to_value(probe).unwrap(),
+            serde_json::json!({
+                "status": "remoteBinding",
+                "url": "https://spec.example.test",
+                "repo": "desktop",
+                "hasLocalOpenspec": true,
+            })
+        );
+    }
+
+    #[test]
+    fn open_project_at_malformed_remote_marker_fails_closed() {
+        let plain = PlainDir::new("open-remote-bad-yaml");
+        std::fs::write(plain.path().join(".speclink.yaml"), "remote: [\n").unwrap();
+
+        let err = open_project_at(plain.path()).expect_err("broken marker must fail");
+        assert!(err.contains(".speclink.yaml"), "error names marker: {err}");
+        assert!(!err.contains('\n'), "single line: {err:?}");
     }
 
     #[test]

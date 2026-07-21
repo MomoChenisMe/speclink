@@ -64,8 +64,12 @@ export interface RichDetailDrawerProps {
   unavailable?: {
     /** 分析（validate＋analyze 合併鈕）。 */
     analyze?: string;
+    /** 封存變更。 */
+    archive?: string;
     /** 刪除變更。 */
     delete?: string;
+    /** 任務勾選、批次與拖排。 */
+    tasks?: string;
   };
 }
 
@@ -145,16 +149,20 @@ export function RichDetailDrawer({
     const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
       if (requestSeq.current === seq) apply(v);
     };
-    void loadMeta(target).then(fresh(setMeta));
-    void loadDocument(target, "proposal.md").then(fresh(setProposal));
-    void loadDocument(target, "design.md").then(fresh(setDesign));
-    void loadDocument(target, "tasks.md").then(fresh(setTasksMd));
-    void loadCapabilities(target).then(async (caps) => {
-      const entries = await Promise.all(
-        caps.map(async (cap) => [cap, await loadDocument(target, `specs/${cap}/spec.md`)] as const),
-      );
-      if (requestSeq.current === seq) setSpecDocs(Object.fromEntries(entries));
-    });
+    void loadMeta(target).then(fresh(setMeta)).catch(() => undefined);
+    void loadDocument(target, "proposal.md").then(fresh(setProposal)).catch(() => undefined);
+    void loadDocument(target, "design.md").then(fresh(setDesign)).catch(() => undefined);
+    void loadDocument(target, "tasks.md").then(fresh(setTasksMd)).catch(() => undefined);
+    void loadCapabilities(target)
+      .then(async (caps) => {
+        const entries = await Promise.all(
+          caps.map(
+            async (cap) => [cap, await loadDocument(target, `specs/${cap}/spec.md`)] as const,
+          ),
+        );
+        if (requestSeq.current === seq) setSpecDocs(Object.fromEntries(entries));
+      })
+      .catch(() => undefined);
   };
 
   // 開啟／換 change：清空後全量載入（載入中狀態屬新內容的正確呈現）。
@@ -346,9 +354,18 @@ export function RichDetailDrawer({
                 </Button>
               </UnavailableAction>
               <div className="flex-1" />
-              <Button variant="outline" size="sm" className="h-7 gap-1" onClick={() => onRunVerb?.("archive", change.name)}>
-                <Archive className="h-3.5 w-3.5" /> {t("common.archive")}
-              </Button>
+              <UnavailableAction reason={unavailable?.archive}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={unavailable?.archive !== undefined}
+                  title={unavailable?.archive}
+                  className="h-7 gap-1"
+                  onClick={() => onRunVerb?.("archive", change.name)}
+                >
+                  <Archive className="h-3.5 w-3.5" /> {t("common.archive")}
+                </Button>
+              </UnavailableAction>
               <UnavailableAction reason={unavailable?.delete}>
                 <Button
                   variant="outline"
@@ -417,6 +434,7 @@ export function RichDetailDrawer({
               <TaskList
                 markdown={tasksMd ?? null}
                 busy={taskBusy}
+                readOnly={unavailable?.tasks !== undefined}
                 onDragActiveChange={setDragActive}
                 onToggle={(ordinal, done, stableId) => void handleToggle(ordinal, done, stableId)}
                 // 拖排寫回未提供（remote capability 缺口）即整段停用——把手不渲染。

@@ -390,6 +390,21 @@ impl Store for BridgeStore {
 
     // --- archive ---
 
+    fn list_archived_changes(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .view
+            .borrow()
+            .keys()
+            .filter_map(|id| match id {
+                DocumentId::ArchivedChange { change, .. } => Some(change.clone()),
+                _ => None,
+            })
+            .collect();
+        names.sort_by(|a, b| b.cmp(a));
+        names.dedup();
+        names
+    }
+
     fn archived_change_exists(&self, dated_name: &str) -> bool {
         self.view.borrow().keys().any(|id| matches!(
             id,
@@ -578,5 +593,56 @@ impl Store for BridgeStore {
         // The scope's shared-vocabulary document; a missing LANGUAGE document is
         // a normal state, not an error.
         self.read_doc(&DocumentId::Language)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BridgeStore;
+    use crate::binding::local_default_binding;
+    use speclink_core::store::Store;
+    use speclink_store::memory::MemoryStore;
+    use speclink_store::{CommandContext, DocumentId, Scope, TeamStore};
+
+    #[test]
+    fn archived_changes_match_point_reads_and_are_sorted_descending() {
+        let store = MemoryStore::new();
+        let binding = local_default_binding();
+        let scope = Scope::new(binding.project, binding.repo);
+        let mut uow = store
+            .begin_unit_of_work(
+                &scope,
+                CommandContext {
+                    command: "seed".to_string(),
+                    actor: "test".to_string(),
+                },
+            )
+            .expect("begin seed unit of work");
+        for change in ["older", "newer"] {
+            uow.create(
+                DocumentId::ChangeMeta {
+                    change: change.to_string(),
+                },
+                "schema: spec-driven\n",
+            );
+        }
+        store.commit(uow, Vec::new()).expect("commit seed data");
+
+        let bridge = BridgeStore::materialize(&store, &scope).expect("materialize bridge");
+        bridge
+            .archive_change("older", "2026-06-01-older")
+            .expect("archive older change");
+        bridge
+            .archive_change("newer", "2026-07-20-newer")
+            .expect("archive newer change");
+
+        let archived = bridge.list_archived_changes();
+        assert_eq!(archived, vec!["2026-07-20-newer", "2026-06-01-older"]);
+        assert!(
+            archived
+                .iter()
+                .all(|dated_name| bridge.archived_change_exists(dated_name)),
+            "archive enumeration and point existence checks must agree"
+        );
     }
 }

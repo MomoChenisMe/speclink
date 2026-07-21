@@ -319,8 +319,14 @@ fn archive_change_moves_dir_and_meta_is_stampable() {
 
     assert!(!store.archived_change_exists("2026-07-04-demo"));
     store.archive_change("demo", "2026-07-04-demo").unwrap();
+    store.create_change("older", "schema: spec-driven\n").unwrap();
+    store.archive_change("older", "2026-06-01-older").unwrap();
     assert!(store.archived_change_exists("2026-07-04-demo"));
     assert!(!store.change_exists("demo"));
+    assert_eq!(
+        store.list_archived_changes(),
+        vec!["2026-07-04-demo", "2026-06-01-older"]
+    );
     // The whole tree moved.
     assert!(root
         .dir

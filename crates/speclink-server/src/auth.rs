@@ -19,7 +19,9 @@ use speclink_host::binding::{resolve_binding, BindingCandidate, BindingError};
 use speclink_host::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
 use speclink_host::policy::EffectiveWorkflowPolicy;
 use speclink_protocol::binding::{Actor as BindingActor, BindingResponse, Capabilities, ScopeRef};
-use speclink_protocol::events::{EventTransport, EventsDeclaration, PollingDeclaration, TransportKind};
+use speclink_protocol::events::{
+    EventTransport, EventsDeclaration, PollingDeclaration, TransportKind,
+};
 use speclink_protocol::query::{AuthWhoamiResponse, WhoamiUser};
 use speclink_protocol::API_VERSION;
 use speclink_store::{ProjectId, RepoId};
@@ -36,6 +38,14 @@ pub struct Binding {
     pub project: Project,
     pub repo: String,
     pub policy_write: bool,
+}
+
+/// An authenticated identity before any project or repo is selected. The
+/// `/scopes` chooser prerequisite uses this extractor, so requiring a binding
+/// header here would be circular.
+#[derive(Debug, Clone)]
+pub struct IdentityOnly {
+    pub user: User,
 }
 
 impl Binding {
@@ -183,11 +193,50 @@ impl FromRequestParts<AppState> for Binding {
     }
 }
 
+impl FromRequestParts<AppState> for IdentityOnly {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let token = bearer_token(&parts.headers)
+            .ok_or_else(|| ApiError::permission_denied("missing or malformed bearer token"))?;
+        let (user, touch_pat_id) = if token.starts_with("spk_at_") {
+            let user = state
+                .identity
+                .authenticate_access_token_allow_suspended(&token)
+                .map_err(|_| ApiError::internal("identity store unavailable"))?
+                .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
+            (user, None)
+        } else {
+            let (pat, user) = state
+                .identity
+                .authenticate_pat_allow_suspended(&token)
+                .map_err(|_| ApiError::internal("identity store unavailable"))?
+                .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
+            (user, Some(pat.id))
+        };
+
+        if !user.active {
+            return Err(ApiError::forbidden("account is suspended"));
+        }
+        if let Some(pat_id) = &touch_pat_id {
+            let _ = state.identity.touch_pat(pat_id);
+        }
+        Ok(IdentityOnly { user })
+    }
+}
+
 /// Adjudicate the repo for a request, fail closed. Reuses the Host's
 /// `resolve_binding` for the no-header case so ambiguity never auto-picks. The
 /// candidate `repos` come from the registry; the error classification and
 /// messages are byte-identical to the config-registry era.
-fn resolve_repo(project_key: &str, repos: &[Repo], repo_header: Option<String>) -> Result<String, ApiError> {
+fn resolve_repo(
+    project_key: &str,
+    repos: &[Repo],
+    repo_header: Option<String>,
+) -> Result<String, ApiError> {
     if let Some(repo) = repo_header {
         return if repos.iter().any(|r| r.key == repo) {
             Ok(repo)
@@ -265,7 +314,10 @@ pub async fn auth_whoami(
         let _ = state.identity.touch_pat(pat_id);
     }
     Ok(axum::Json(AuthWhoamiResponse {
-        user: WhoamiUser { name: user.display, handle: user.id },
+        user: WhoamiUser {
+            name: user.display,
+            handle: user.id,
+        },
     }))
 }
 

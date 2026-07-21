@@ -14,6 +14,7 @@ use chrono::{Duration, Utc};
 use common::Harness;
 use speclink_desktop_lib::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::remote::{self, RemoteWorkspace, TokenManager};
+use speclink_remote::RemoteError;
 use speclink_server::identity::{IdentityStore, NewInvitation};
 use speclink_store::{CommandContext, DocumentId, TeamStore};
 use std::sync::Arc;
@@ -23,13 +24,19 @@ const FOUR_TASKS: &str = "- [ ] 1.1 First\n- [ ] 1.2 Second\n- [ ] 1.3 Third\n- 
 /// 一條 PAT 憑證入 in-memory store，回傳 (credentials, manager)。
 fn runtime(h: &Harness) -> (MemoryCredentialStore, Arc<TokenManager>) {
     let store = MemoryCredentialStore::new();
-    store.set(&h.origin, CredentialKind::Pat, &common::pat_of(h)).expect("set pat");
+    store
+        .set(&h.origin, CredentialKind::Pat, &common::pat_of(h))
+        .expect("set pat");
     let manager = Arc::new(TokenManager::new(&h.origin));
     (store, manager)
 }
 
 /// handshake 成功開出 workspace。
-fn open(h: &Harness, credentials: &MemoryCredentialStore, manager: &Arc<TokenManager>) -> RemoteWorkspace {
+fn open(
+    h: &Harness,
+    credentials: &MemoryCredentialStore,
+    manager: &Arc<TokenManager>,
+) -> RemoteWorkspace {
     let (workspace, _info) =
         remote::open_workspace(&h.origin, "demo", manager, credentials).expect("open workspace");
     workspace
@@ -47,10 +54,19 @@ fn seed_discussion(store: &dyn TeamStore, slug: &str, topic: &str) {
     let mut uow = store
         .begin_unit_of_work(
             &common::scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
+            CommandContext {
+                command: "seed".into(),
+                actor: "seed".into(),
+            },
         )
         .expect("begin uow");
-    uow.create(DocumentId::Discussion { slug: slug.into(), archived: false }, &doc);
+    uow.create(
+        DocumentId::Discussion {
+            slug: slug.into(),
+            archived: false,
+        },
+        &doc,
+    );
     store.commit(uow, Vec::new()).expect("seed discussion");
 }
 
@@ -89,15 +105,15 @@ fn open_handshakes_and_returns_identity_and_capability_description() {
         ("getDiscussionDocument", caps.get_discussion_document),
         ("promoteDiscussion", caps.promote_discussion),
         ("archiveDiscussion", caps.archive_discussion),
-    ] {
-        assert!(on, "{name} 是直達／組合類，capability 應為真");
-    }
-    for (name, on) in [
         ("listArchived", caps.list_archived),
         ("getArchivedDocument", caps.get_archived_document),
         ("archivedCapabilities", caps.archived_capabilities),
         ("searchWorkspace", caps.search_workspace),
         ("getSpecDocument", caps.get_spec_document),
+    ] {
+        assert!(on, "{name} 是直達／組合類，capability 應為真");
+    }
+    for (name, on) in [
         ("validate", caps.validate),
         ("analyze", caps.analyze),
         ("deleteChange", caps.delete_change),
@@ -106,9 +122,15 @@ fn open_handshakes_and_returns_identity_and_capability_description() {
         ("changeMeta", caps.change_meta),
         ("changeCapabilities", caps.change_capabilities),
     ] {
-        assert!(!on, "{name} 無 server 端點，capability 應為假（不偽造缺口）");
+        assert!(
+            !on,
+            "{name} 無 server 端點，capability 應為假（不偽造缺口）"
+        );
     }
-    assert!(caps.live_updates, "handshake 宣告了 SSE 與 polling——事件能力為真");
+    assert!(
+        caps.live_updates,
+        "handshake 宣告了 SSE 與 polling——事件能力為真"
+    );
 }
 
 #[test]
@@ -127,11 +149,18 @@ fn open_fails_closed_on_403_404_and_ambiguity() {
             expires_at: Utc::now() + Duration::days(1),
         })
         .expect("invite");
-    let stranger_id =
-        h.identity.accept_invitation(&stranger_invite, "pw-stranger").expect("accept");
-    let (_, stranger_pat) = h.identity.create_pat(&stranger_id, "test", None).expect("pat");
+    let stranger_id = h
+        .identity
+        .accept_invitation(&stranger_invite, "pw-stranger")
+        .expect("accept");
+    let (_, stranger_pat) = h
+        .identity
+        .create_pat(&stranger_id, "test", None)
+        .expect("pat");
     let credentials = MemoryCredentialStore::new();
-    credentials.set(&h.origin, CredentialKind::Pat, &stranger_pat).expect("set");
+    credentials
+        .set(&h.origin, CredentialKind::Pat, &stranger_pat)
+        .expect("set");
     let manager = Arc::new(TokenManager::new(&h.origin));
     let err = remote::open_workspace(&h.origin, "demo", &manager, &credentials)
         .expect_err("非成員 fail-closed");
@@ -142,7 +171,11 @@ fn open_fails_closed_on_403_404_and_ambiguity() {
     let err = remote::open_workspace(&h.origin, "nope", &manager, &credentials)
         .expect_err("不存在的 project fail-closed");
     assert_eq!(err.status, Some(404));
-    assert!(err.message.contains("nope"), "server 錯誤原樣呈現：{}", err.message);
+    assert!(
+        err.message.contains("nope"),
+        "server 錯誤原樣呈現：{}",
+        err.message
+    );
 
     // 多義：multi 有兩個 repo、未指定——server 的 refused 原樣呈現。
     let err = remote::open_workspace(&h.origin, "multi", &manager, &credentials)
@@ -153,6 +186,42 @@ fn open_fails_closed_on_403_404_and_ambiguity() {
         "多義拒絕帶候選清單：{}",
         err.message
     );
+}
+
+#[test]
+fn remote_open_failure_serializes_machine_readable_fields_without_credentials() {
+    let cases = [
+        ("transport", None, None),
+        ("unauthorized", Some("permission_denied"), Some(401)),
+        ("forbidden", Some("permission_denied"), Some(403)),
+        ("missing", Some("not_found"), Some(404)),
+        ("unknown", Some("future_reason"), Some(599)),
+    ];
+
+    for (message, reason, status) in cases {
+        let failure = remote::RemoteOpenFailure::from(RemoteError {
+            message: message.to_string(),
+            reason: reason.map(str::to_string),
+            status,
+        });
+        let value = serde_json::to_value(failure).expect("serialize remote_open failure");
+        let object = value.as_object().expect("failure is an object");
+
+        assert_eq!(object.len(), 3, "failure payload 只允許三個公開欄位");
+        assert_eq!(object.get("message").and_then(|v| v.as_str()), Some(message));
+        assert_eq!(object.get("reason").and_then(|v| v.as_str()), reason);
+        assert_eq!(object.get("status").and_then(|v| v.as_u64()), status.map(u64::from));
+        for forbidden in [
+            "token",
+            "accessToken",
+            "refreshCredential",
+            "pat",
+            "authorization",
+            "keychain",
+        ] {
+            assert!(!object.contains_key(forbidden), "不得序列化 {forbidden}");
+        }
+    }
 }
 
 // --- 直達類：逐方法回 server 真值 ---
@@ -166,11 +235,16 @@ fn changes_specs_and_artifacts_read_server_truth() {
             .store
             .begin_unit_of_work(
                 &common::scope(),
-                CommandContext { command: "seed".into(), actor: "seed".into() },
+                CommandContext {
+                    command: "seed".into(),
+                    actor: "seed".into(),
+                },
             )
             .expect("begin uow");
         uow.create(
-            DocumentId::CanonicalSpec { capability: "auth".into() },
+            DocumentId::CanonicalSpec {
+                capability: "auth".into(),
+            },
             "## Purpose\n\nAuth canon.\n",
         );
         h.store.commit(uow, Vec::new()).expect("seed spec");
@@ -184,24 +258,144 @@ fn changes_specs_and_artifacts_read_server_truth() {
     assert_eq!(changes.changes[0].total_tasks, 4, "任務數是 server 真值");
 
     let specs = ws.list_specs(&credentials).expect("list specs");
-    assert!(specs.specs.iter().any(|s| s.id == "auth"), "正典 spec 清單：{:?}", specs.specs);
+    assert!(
+        specs.specs.iter().any(|s| s.id == "auth"),
+        "正典 spec 清單：{:?}",
+        specs.specs
+    );
 
     let status = ws.change_status(&credentials, "demo").expect("status");
     assert_eq!(status.change_name, "demo");
     assert_eq!(status.schema_name, "spec-driven");
-    assert!(status.artifacts.iter().any(|a| a.id == "tasks"), "artifact 狀態來自 server");
+    assert!(
+        status.artifacts.iter().any(|a| a.id == "tasks"),
+        "artifact 狀態來自 server"
+    );
 
-    let doc = ws.document(&credentials, "demo", "tasks").expect("document");
-    assert!(doc.content.contains("- [ ] 1.1 First"), "artifact 內文是 server 真值");
+    let doc = ws
+        .document(&credentials, "demo", "tasks")
+        .expect("document");
+    assert!(
+        doc.content.contains("- [ ] 1.1 First"),
+        "artifact 內文是 server 真值"
+    );
 
     // SpeclinkDataSource 的定址是檔名（proposal.md、tasks.md、specs/{cap}/spec.md）
     // ——server 端點吃 artifact id；runtime 單點正規化，UI 檔名不得漏成 400。
-    let doc = ws.document(&credentials, "demo", "tasks.md").expect("檔名定址同樣成立");
+    let doc = ws
+        .document(&credentials, "demo", "tasks.md")
+        .expect("檔名定址同樣成立");
     assert!(doc.content.contains("- [ ] 1.1 First"));
     let err = ws
         .document(&credentials, "demo", "proposal.md")
         .expect_err("不存在的 artifact 是 404");
-    assert_eq!(err.status, Some(404), "檔名正規化後缺席是 not_found、不是 invalid_argument");
+    assert_eq!(
+        err.status,
+        Some(404),
+        "檔名正規化後缺席是 not_found、不是 invalid_argument"
+    );
+}
+
+#[test]
+fn archived_spec_document_and_search_reads_reach_server_truth() {
+    let h = common::harness();
+    common::seed_change(h.store.as_ref(), FOUR_TASKS);
+    seed_discussion(h.store.as_ref(), "search-talk", "RemoteNeedle discussion");
+    let dated_name = "2026-07-19-old-feature";
+    let mut uow = h
+        .store
+        .begin_unit_of_work(
+            &common::scope(),
+            CommandContext {
+                command: "seed-read-surfaces".into(),
+                actor: "seed".into(),
+            },
+        )
+        .expect("begin uow");
+    for (document, content) in [
+        (
+            DocumentId::CanonicalSpec {
+                capability: "auth".into(),
+            },
+            "# auth Specification\n\nRemote canonical truth.\n",
+        ),
+        (
+            DocumentId::ChangeArtifact {
+                change: "demo".into(),
+                artifact: "proposal.md".into(),
+            },
+            "## Why\n\nRemoteNeedle in a change.\n",
+        ),
+        (
+            DocumentId::ArchivedChange {
+                change: dated_name.into(),
+                doc: ".openspec.yaml".into(),
+            },
+            "schema: spec-driven\ncreated_by: Creator\nfrom_discussion: source-talk\n",
+        ),
+        (
+            DocumentId::ArchivedChange {
+                change: dated_name.into(),
+                doc: "proposal.md".into(),
+            },
+            "## Why\n\nRemote archived truth.\n",
+        ),
+        (
+            DocumentId::ArchivedChange {
+                change: dated_name.into(),
+                doc: "tasks.md".into(),
+            },
+            "- [x] 1.1 Done\n",
+        ),
+        (
+            DocumentId::ArchivedChange {
+                change: dated_name.into(),
+                doc: "specs/auth/spec.md".into(),
+            },
+            "## ADDED Requirements\n\n### Requirement: Login\n",
+        ),
+    ] {
+        uow.create(document, content);
+    }
+    h.store.commit(uow, Vec::new()).expect("seed read surfaces");
+
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+    assert_eq!(
+        ws.spec_document(&credentials, "auth")
+            .expect("spec document")
+            .content,
+        "# auth Specification\n\nRemote canonical truth.\n"
+    );
+
+    let archived = ws.list_archived(&credentials).expect("archived list");
+    let item = archived
+        .archived
+        .iter()
+        .find(|item| item.dated_name == dated_name)
+        .expect("archived item");
+    assert_eq!(item.tasks_done, Some(1));
+    assert_eq!(item.spec_count, 1);
+    assert_eq!(item.created_by.as_deref(), Some("Creator"));
+    assert_eq!(item.from_discussions, ["source-talk"]);
+    assert_eq!(
+        ws.archived_document(&credentials, dated_name, "proposal.md")
+            .expect("archived document")
+            .content,
+        "## Why\n\nRemote archived truth.\n"
+    );
+    assert_eq!(
+        ws.archived_capabilities(&credentials, dated_name)
+            .expect("archived capabilities"),
+        ["auth"]
+    );
+
+    let search = ws
+        .search_workspace(&credentials, "remoteneedle")
+        .expect("search");
+    assert_eq!(search.hits.len(), 2);
+    assert!(search.hits.iter().any(|hit| hit.kind == "change"));
+    assert!(search.hits.iter().any(|hit| hit.kind == "discussion"));
 }
 
 #[test]
@@ -214,7 +408,10 @@ fn task_flips_claim_and_archive_write_through() {
             .store
             .begin_unit_of_work(
                 &common::scope(),
-                CommandContext { command: "seed".into(), actor: "seed".into() },
+                CommandContext {
+                    command: "seed".into(),
+                    actor: "seed".into(),
+                },
             )
             .expect("begin uow");
         uow.create(
@@ -230,16 +427,33 @@ fn task_flips_claim_and_archive_write_through() {
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
 
-    ws.set_task_done(&credentials, "demo", "1", true).expect("task done");
-    let doc = ws.document(&credentials, "demo", "tasks").expect("document");
-    assert!(doc.content.contains("- [x] 1.1 First"), "勾選寫穿 server：{}", doc.content);
+    ws.set_task_done(&credentials, "demo", "1", true)
+        .expect("task done");
+    let doc = ws
+        .document(&credentials, "demo", "tasks")
+        .expect("document");
+    assert!(
+        doc.content.contains("- [x] 1.1 First"),
+        "勾選寫穿 server：{}",
+        doc.content
+    );
 
-    ws.set_task_done(&credentials, "demo", "1", false).expect("task undone");
-    let doc = ws.document(&credentials, "demo", "tasks").expect("document");
-    assert!(doc.content.contains("- [ ] 1.1 First"), "取消勾選寫穿 server");
+    ws.set_task_done(&credentials, "demo", "1", false)
+        .expect("task undone");
+    let doc = ws
+        .document(&credentials, "demo", "tasks")
+        .expect("document");
+    assert!(
+        doc.content.contains("- [ ] 1.1 First"),
+        "取消勾選寫穿 server"
+    );
 
     let claim = ws.claim(&credentials, "demo").expect("claim");
-    assert_eq!(claim.claimed_by.as_deref(), Some(common::DISPLAY), "claim 回實際 actor");
+    assert_eq!(
+        claim.claimed_by.as_deref(),
+        Some(common::DISPLAY),
+        "claim 回實際 actor"
+    );
 
     let archived = ws.archive(&credentials, "demo").expect("archive");
     assert_eq!(archived.specs.len(), 1, "delta spec 折入正典");
@@ -258,14 +472,24 @@ fn discussion_flow_reads_and_writes_through() {
     let ws = open(&h, &credentials, &manager);
 
     let lists = ws.list_discussions(&credentials).expect("list discussions");
-    assert!(lists.active.iter().any(|d| d.slug == "rate-limiting"), "active 清單是 server 真值");
+    assert!(
+        lists.active.iter().any(|d| d.slug == "rate-limiting"),
+        "active 清單是 server 真值"
+    );
     assert!(lists.archived.is_empty(), "尚無 archived 討論");
 
-    let shown = ws.discussion_document(&credentials, "rate-limiting").expect("show");
+    let shown = ws
+        .discussion_document(&credentials, "rate-limiting")
+        .expect("show");
     assert_eq!(shown.info.topic, "Rate limiting");
-    assert!(shown.content.contains("**Decision**: do it"), "討論內文是 server 真值");
+    assert!(
+        shown.content.contains("**Decision**: do it"),
+        "討論內文是 server 真值"
+    );
 
-    let promoted = ws.promote_discussion(&credentials, "rate-limiting", None).expect("promote");
+    let promoted = ws
+        .promote_discussion(&credentials, "rate-limiting", None)
+        .expect("promote");
     assert!(!promoted.change.is_empty(), "promote 回新 change 名");
     let changes = ws.list_changes(&credentials).expect("list changes");
     assert!(
@@ -273,11 +497,23 @@ fn discussion_flow_reads_and_writes_through() {
         "promote 產生的 change 出現在清單"
     );
 
-    let archived = ws.archive_discussion(&credentials, "old-topic").expect("archive discussion");
-    assert!(archived.archived_to.contains("old-topic"), "封存路徑回真值：{}", archived.archived_to);
+    let archived = ws
+        .archive_discussion(&credentials, "old-topic")
+        .expect("archive discussion");
+    assert!(
+        archived.archived_to.contains("old-topic"),
+        "封存路徑回真值：{}",
+        archived.archived_to
+    );
     let lists = ws.list_discussions(&credentials).expect("list discussions");
-    assert!(!lists.active.iter().any(|d| d.slug == "old-topic"), "封存後離開 active");
-    assert!(lists.archived.iter().any(|d| d.slug == "old-topic"), "出現在 archived");
+    assert!(
+        !lists.active.iter().any(|d| d.slug == "old-topic"),
+        "封存後離開 active"
+    );
+    assert!(
+        lists.archived.iter().any(|d| d.slug == "old-topic"),
+        "出現在 archived"
+    );
 }
 
 // --- 組合類：set_tasks 中途失敗中止並回報筆數 ---
@@ -290,21 +526,40 @@ fn composed_set_tasks_aborts_midway_and_reports_the_completed_count() {
     let ws = open(&h, &credentials, &manager);
 
     // 「99」不存在：前兩筆成功、第三筆失敗即中止，第四筆不得執行。
-    let ids: Vec<String> = ["1", "2", "99", "4"].iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = ["1", "2", "99", "4"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let failure = ws
         .set_tasks(&credentials, "demo", &ids, true)
         .expect_err("中途失敗即中止");
     assert_eq!(failure.completed, 2, "回報已完成筆數");
 
-    let doc = ws.document(&credentials, "demo", "tasks").expect("document");
-    assert_eq!(doc.content.matches("- [x]").count(), 2, "恰好前兩筆落地：{}", doc.content);
+    let doc = ws
+        .document(&credentials, "demo", "tasks")
+        .expect("document");
+    assert_eq!(
+        doc.content.matches("- [x]").count(),
+        2,
+        "恰好前兩筆落地：{}",
+        doc.content
+    );
     assert!(doc.content.contains("- [ ] 1.4 Fourth"), "中止後不再前進");
 
     // set_all_tasks 走 server 的任務清單組合——把剩餘任務補完。
-    let completed = ws.set_all_tasks(&credentials, "demo", true).expect("set all");
+    let completed = ws
+        .set_all_tasks(&credentials, "demo", true)
+        .expect("set all");
     assert_eq!(completed, 2, "剩餘兩筆由組合實作補完");
-    let doc = ws.document(&credentials, "demo", "tasks").expect("document");
-    assert_eq!(doc.content.matches("- [x]").count(), 4, "全數完成：{}", doc.content);
+    let doc = ws
+        .document(&credentials, "demo", "tasks")
+        .expect("document");
+    assert_eq!(
+        doc.content.matches("- [x]").count(),
+        4,
+        "全數完成：{}",
+        doc.content
+    );
 }
 
 // --- 不支援類：回拒絕錯誤 ---
@@ -312,7 +567,19 @@ fn composed_set_tasks_aborts_midway_and_reports_the_completed_count() {
 #[test]
 fn unsupported_operations_are_refused_with_a_zh_tw_message() {
     let err = remote::unsupported("全文搜尋");
-    assert_eq!(err.reason.as_deref(), Some("unsupported"), "機讀 reason 固定");
-    assert!(err.message.contains("全文搜尋"), "訊息點名操作：{}", err.message);
-    assert!(err.message.contains("尚未提供"), "繁中說明缺口來自 server：{}", err.message);
+    assert_eq!(
+        err.reason.as_deref(),
+        Some("unsupported"),
+        "機讀 reason 固定"
+    );
+    assert!(
+        err.message.contains("全文搜尋"),
+        "訊息點名操作：{}",
+        err.message
+    );
+    assert!(
+        err.message.contains("尚未提供"),
+        "繁中說明缺口來自 server：{}",
+        err.message
+    );
 }

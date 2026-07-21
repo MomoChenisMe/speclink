@@ -343,6 +343,11 @@ impl Store for RemoteDriftStore {
     fn canonical_spec_path(&self, _cap: &str) -> std::path::PathBuf {
         unreachable!("the spec side is computed on the Server; this store serves the workspace side")
     }
+    fn list_archived_changes(&self) -> Vec<String> {
+        // This adapter is permanently limited to one active change's drift
+        // inputs; archive browsing belongs to the full BridgeStore surface.
+        Vec::new()
+    }
     fn archived_change_exists(&self, _dated_name: &str) -> bool {
         unreachable!("remote drift never touches the archive")
     }
@@ -730,6 +735,10 @@ mod tests {
         // 另一個 change 名不屬於此 store —— 不冒充服務。
         assert!(store.find_change("other").is_none());
         assert!(!store.artifact_exists("other", "design.md"));
+        assert!(
+            store.list_archived_changes().is_empty(),
+            "the drift-only adapter never exposes archive browsing"
+        );
     }
 
     /// 缺席與空內容是兩件事：`artifact_exists` 驅動 Structure 維度的「no design」

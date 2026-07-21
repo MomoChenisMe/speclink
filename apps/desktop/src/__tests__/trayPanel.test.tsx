@@ -24,8 +24,8 @@ function change(over: Partial<ChangeItem> & { name: string }): ChangeItem {
 function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
   return {
     tabs: [
-      { key: "local:/proj/one", root: "/proj/one", name: "one" },
-      { key: "local:/proj/two", root: "/proj/two", name: "two" },
+      { key: "local:/proj/one", name: "one", source: "local", status: "ready" },
+      { key: "local:/proj/two", name: "two", source: "local", status: "ready" },
     ],
     activeKey: "local:/proj/one",
     changes: [
@@ -48,12 +48,156 @@ function renderPanel(over: Partial<Parameters<typeof TrayPanel>[0]> = {}) {
     onQuit: vi.fn(),
     onCopy: vi.fn(),
     onAddProject: vi.fn(),
+    onRetryWorkspace: vi.fn(),
+    onOpenRecovery: vi.fn(),
+    onOpenServerSettings: vi.fn(),
+    onReauthenticate: vi.fn(),
   };
   render(<TrayPanel snapshot={snapshot()} {...handlers} {...over} />);
   return handlers;
 }
 
 describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
+  it("active no-session error 以精簡復原卡取代舊資料，retry 原地而詳情／登入走明確回呼", () => {
+    const key = "remote:c1/demo/backend";
+    const h = renderPanel({
+      snapshot: snapshot({
+        tabs: [
+          {
+            key,
+            name: "Demo/backend",
+            source: "remote",
+            status: "error",
+            failureKind: "needs-reauth",
+            connectionId: "c1",
+            serverLabel: "Team Server",
+            serverOrigin: "https://spec.example.test",
+          },
+        ],
+        activeKey: key,
+        changes: [change({ name: "previous-workspace-change", totalTasks: 2, completedTasks: 1 })],
+        discussions: [{ slug: "previous-workspace-discussion", topic: "舊資料", promoted: false }],
+      } as unknown as Partial<TraySnapshot>),
+    });
+
+    const card = screen.getByTestId("panel-recovery-card");
+    expect(card.textContent).toContain("需要重新登入");
+    expect(card.textContent).toContain("Demo/backend");
+    expect(card.textContent).toContain("Team Server");
+    expect(screen.queryByText("previous-workspace-change")).toBeNull();
+    expect(screen.queryByText("previous-workspace-discussion")).toBeNull();
+    expect(screen.queryByTestId("panel-section-proposed")).toBeNull();
+
+    fireEvent.click(within(card).getByRole("button", { name: "重新登入" }));
+    fireEvent.click(within(card).getByRole("button", { name: "在 Speclink 中查看問題" }));
+    expect(h.onReauthenticate).toHaveBeenCalledWith("c1");
+    expect(h.onOpenRecovery).toHaveBeenCalledWith(key);
+    for (const button of within(card).getAllByRole("button")) {
+      expect(button.getAttribute("tabindex")).toBe("-1");
+    }
+  });
+
+  it("active restoring 顯示進度且不可重複 retry，offline session 則保留 stale 內容", () => {
+    const key = "remote:c1/demo/backend";
+    const { rerender } = rtlRender(
+      <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
+        <TrayPanel
+          snapshot={snapshot({
+            tabs: [
+              {
+                key,
+                name: "Demo/backend",
+                source: "remote",
+                status: "restoring",
+                connectionId: "c1",
+                serverLabel: "Team Server",
+              },
+            ],
+            activeKey: key,
+          } as unknown as Partial<TraySnapshot>)}
+          onOpenProject={vi.fn()}
+          onOpenChange={vi.fn()}
+          onOpenDiscussion={vi.fn()}
+          onOpenApp={vi.fn()}
+          onOpenSettings={vi.fn()}
+          onQuit={vi.fn()}
+          onCopy={vi.fn()}
+          onAddProject={vi.fn()}
+          onRetryWorkspace={vi.fn()}
+          onOpenRecovery={vi.fn()}
+          onOpenServerSettings={vi.fn()}
+          onReauthenticate={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    expect(screen.getByTestId("panel-recovery-card").textContent).toContain("正在連線");
+    expect(screen.queryByRole("button", { name: "重新連線" })).toBeNull();
+
+    rerender(
+      <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
+        <TrayPanel
+          snapshot={snapshot({
+            tabs: [
+              {
+                key,
+                name: "Demo/backend",
+                source: "remote",
+                status: "offline",
+                connectionId: "c1",
+                serverLabel: "Team Server",
+              },
+            ],
+            activeKey: key,
+            changes: [change({ name: "offline-stale-change", totalTasks: 2, completedTasks: 1 })],
+          } as unknown as Partial<TraySnapshot>)}
+          onOpenProject={vi.fn()}
+          onOpenChange={vi.fn()}
+          onOpenDiscussion={vi.fn()}
+          onOpenApp={vi.fn()}
+          onOpenSettings={vi.fn()}
+          onQuit={vi.fn()}
+          onCopy={vi.fn()}
+          onAddProject={vi.fn()}
+          onRetryWorkspace={vi.fn()}
+          onOpenRecovery={vi.fn()}
+          onOpenServerSettings={vi.fn()}
+          onReauthenticate={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    expect(screen.getByTestId("panel-stale-status").textContent).toContain("離線");
+    expect(screen.getByText("offline-stale-change")).toBeTruthy();
+    expect(screen.queryByTestId("panel-recovery-card")).toBeNull();
+  });
+
+  it("active unreachable 的 Panel retry 只走原地回呼，不誤觸主視窗詳情", () => {
+    const key = "remote:c1/demo/backend";
+    const h = renderPanel({
+      snapshot: snapshot({
+        tabs: [
+          {
+            key,
+            name: "Demo/backend",
+            source: "remote",
+            status: "error",
+            failureKind: "unreachable",
+            connectionId: "c1",
+            serverLabel: "Team Server",
+          },
+        ],
+        activeKey: key,
+      } as unknown as Partial<TraySnapshot>),
+    });
+    fireEvent.click(
+      within(screen.getByTestId("panel-recovery-card")).getByRole("button", {
+        name: "重新連線",
+      }),
+    );
+    expect(h.onRetryWorkspace).toHaveBeenCalledWith(key);
+    expect(h.onOpenRecovery).not.toHaveBeenCalled();
+    expect(h.onOpenApp).not.toHaveBeenCalled();
+  });
+
   it("依生命週期分區渲染變更（含進度數）與討論清單（slug 為題、topic 為描述）", () => {
     renderPanel();
     // 生命週期分區 header
@@ -77,7 +221,28 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
     expect(one.getAttribute("data-active")).toBe("true");
     expect(two.getAttribute("data-active")).toBe("false");
     fireEvent.click(two);
-    expect(h.onOpenProject).toHaveBeenCalledWith("/proj/two");
+    expect(h.onOpenProject).toHaveBeenCalledWith("local:/proj/two");
+  });
+
+  it("點 remote 專案 tab 以 locator key 回呼切換，不因空 root 靜默", () => {
+    const remoteKey = "remote:conn-1/demo/backend";
+    const h = renderPanel({
+      snapshot: snapshot({
+        tabs: [
+          { key: "local:/proj/one", name: "one", source: "local", status: "ready" },
+          {
+            key: remoteKey,
+            name: "Demo/backend",
+            source: "remote",
+            status: "ready",
+            connectionId: "conn-1",
+            serverLabel: "Team Server",
+          },
+        ],
+      }),
+    });
+    fireEvent.click(screen.getByTestId(`panel-project-${remoteKey}`));
+    expect(h.onOpenProject).toHaveBeenCalledWith(remoteKey);
   });
 
   it("全無變更時三個生命週期分區常駐：各帶計數 0 空狀態卡、無佔位卡（D8 同構）", () => {

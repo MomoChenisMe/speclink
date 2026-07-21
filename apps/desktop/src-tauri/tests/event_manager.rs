@@ -10,7 +10,9 @@
 
 mod common;
 
+use speclink_desktop_lib::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::event_manager::EventManager;
+use speclink_desktop_lib::remote::{ConnectionState, ConnectionStateEvent, TokenManager};
 use speclink_remote::client::Client;
 use speclink_remote::events;
 use speclink_server::events::EventSettings;
@@ -23,15 +25,137 @@ use std::time::Duration;
 const FOUR_TASKS: &str = "- [ ] 1.1 First\n- [ ] 1.2 Second\n- [ ] 1.3 Third\n- [ ] 1.4 Fourth\n";
 const KEY: &str = "remote:conn_x/demo/backend";
 
+// --- 退避輪詢的 sync-state 失敗納入 connection failure count ---
+
+#[test]
+fn repeated_sync_state_failures_during_backoff_drive_the_connection_offline() {
+    let (state_tx, state_rx) = mpsc::channel::<ConnectionStateEvent>();
+    let manager = Arc::new(TokenManager::with_connection_state(
+        "http://server.test",
+        "conn_x",
+        2,
+        move |event| {
+            let _ = state_tx.send(event);
+        },
+    ));
+    manager.adopt_access_token("pat");
+    let credentials = Arc::new(MemoryCredentialStore::new());
+    credentials
+        .set("http://server.test", CredentialKind::Pat, "pat")
+        .expect("set PAT");
+
+    let (notify, _rx) = sink();
+    let events = EventManager::new(notify);
+    let sync_manager = manager.clone();
+    let sync_credentials = credentials.clone();
+    events.register(
+        KEY,
+        |_| Err(speclink_remote::translate_transport()),
+        move || {
+            sync_manager.execute(sync_credentials.as_ref(), |_| -> Result<String, _> {
+                Err(speclink_remote::translate_transport())
+            })
+        },
+        vec![Duration::from_millis(5)],
+    );
+
+    let offline = state_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("每輪退避的 sync-state 失敗達閾值後廣播 offline");
+    assert_eq!(offline.connection_id, "conn_x");
+    assert_eq!(offline.state, ConnectionState::Offline);
+    events.unregister(KEY);
+}
+
+#[test]
+fn a_restarted_server_recovers_online_and_invalidates_without_user_action() {
+    let h = common::harness_with_events(common::fast_events());
+    common::seed_change(h.store.as_ref(), FOUR_TASKS);
+    let pat = common::pat_of(&h);
+    let credentials = Arc::new(MemoryCredentialStore::new());
+    credentials
+        .set(&h.origin, CredentialKind::Pat, &pat)
+        .expect("set PAT");
+    let (state_tx, state_rx) = mpsc::channel::<ConnectionStateEvent>();
+    let runtime = Arc::new(TokenManager::with_connection_state(
+        &h.origin,
+        "conn_x",
+        1,
+        move |event| {
+            let _ = state_tx.send(event);
+        },
+    ));
+    runtime.adopt_access_token(&pat);
+
+    h.server.stop();
+    let (notify, notify_rx) = sink();
+    let events = EventManager::new(notify);
+    let sub_base = project_base(&h.origin);
+    let sub_runtime = runtime.clone();
+    let sub_credentials = credentials.clone();
+    let sync_base = project_base(&h.origin);
+    let sync_runtime = runtime.clone();
+    let sync_credentials = credentials.clone();
+    events.register(
+        KEY,
+        move |last| {
+            sub_runtime.execute(sub_credentials.as_ref(), |token| {
+                events::subscribe(&sub_base, token, Some("backend"), last)
+            })
+        },
+        move || {
+            sync_runtime.execute(sync_credentials.as_ref(), |token| {
+                events::sync_state(&sync_base, token, Some("backend"))
+            })
+        },
+        vec![Duration::from_millis(30)],
+    );
+    let offline = state_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("server 停止後 worker 自動轉 offline");
+    assert_eq!(offline.state, ConnectionState::Offline);
+
+    // 模擬同一持久 store 在 desktop 斷線期間由另一個 client 寫入。
+    common::seed_named_change(h.store.as_ref(), "recovered", "- [ ] 1.1 Recovered\n");
+    h.server.start();
+
+    let online = state_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("server 重啟後 worker 自動轉 online");
+    assert_eq!(online.state, ConnectionState::Online);
+    expect_notified(&notify_rx, "恢復收斂後送出全量失效通知");
+    let names = writer(&h.origin, &pat)
+        .list_changes()
+        .expect("恢復後可讀 server 真值")
+        .changes
+        .into_iter()
+        .map(|change| change.name)
+        .collect::<Vec<_>>();
+    assert!(names.iter().any(|name| name == "recovered"));
+    events.unregister(KEY);
+}
+
 /// 收 remote-workspace-changed 的測試水槽。
-fn sink() -> (impl Fn(String) + Send + Sync + 'static, mpsc::Receiver<String>) {
+fn sink() -> (
+    impl Fn(String) + Send + Sync + 'static,
+    mpsc::Receiver<String>,
+) {
     let (tx, rx) = mpsc::channel();
-    (move |key: String| { let _ = tx.send(key); }, rx)
+    (
+        move |key: String| {
+            let _ = tx.send(key);
+        },
+        rx,
+    )
 }
 
 /// 對 demo project 的資料面 client（直連 server、觸發 outbox 事件用）。
 fn writer(origin: &str, pat: &str) -> Client {
-    Client::new(&format!("{origin}/api/speclink/v1/projects/demo"), pat, Some("backend"))
+    Client::new(
+        &format!("{origin}/api/speclink/v1/projects/demo"),
+        pat,
+        Some("backend"),
+    )
 }
 
 fn project_base(origin_or_proxy: &str) -> String {
@@ -45,7 +169,9 @@ fn drain(rx: &mpsc::Receiver<String>) {
 
 /// 在 timeout 內至少收到一則指定 key 的通知。
 fn expect_notified(rx: &mpsc::Receiver<String>, why: &str) {
-    let got = rx.recv_timeout(Duration::from_secs(5)).unwrap_or_else(|_| panic!("{why}: 未收到通知"));
+    let got = rx
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap_or_else(|_| panic!("{why}: 未收到通知"));
     assert_eq!(got, KEY, "{why}: 通知 payload 是 locator key");
 }
 
@@ -66,17 +192,28 @@ fn proxy_to(upstream_origin: &str) -> Proxy {
     std::thread::spawn(move || {
         for conn in listener.incoming() {
             let Ok(client) = conn else { break };
-            let Ok(server) = TcpStream::connect(&upstream) else { continue };
-            sink.lock().unwrap().push(client.try_clone().expect("clone"));
-            sink.lock().unwrap().push(server.try_clone().expect("clone"));
-            let (mut c_read, mut s_write) =
-                (client.try_clone().expect("clone"), server.try_clone().expect("clone"));
+            let Ok(server) = TcpStream::connect(&upstream) else {
+                continue;
+            };
+            sink.lock()
+                .unwrap()
+                .push(client.try_clone().expect("clone"));
+            sink.lock()
+                .unwrap()
+                .push(server.try_clone().expect("clone"));
+            let (mut c_read, mut s_write) = (
+                client.try_clone().expect("clone"),
+                server.try_clone().expect("clone"),
+            );
             let (mut s_read, mut c_write) = (server, client);
             std::thread::spawn(move || pump(&mut c_read, &mut s_write));
             std::thread::spawn(move || pump(&mut s_read, &mut c_write));
         }
     });
-    Proxy { origin: format!("http://{addr}"), live }
+    Proxy {
+        origin: format!("http://{addr}"),
+        live,
+    }
 }
 
 fn pump(from: &mut TcpStream, to: &mut TcpStream) {
@@ -104,12 +241,7 @@ impl Proxy {
 }
 
 /// 對 manager 注入的訂閱與 sync-state 閉包（帶連線計數）。
-fn register_via(
-    manager: &EventManager,
-    base: &str,
-    pat: &str,
-    connects: &Arc<AtomicUsize>,
-) {
+fn register_via(manager: &EventManager, base: &str, pat: &str, connects: &Arc<AtomicUsize>) {
     let sub_base = project_base(base);
     let sub_pat = pat.to_string();
     let counter = connects.clone();
@@ -139,7 +271,9 @@ fn an_invalidate_dispatches_the_locator_key_to_the_frontend() {
     register_via(&manager, &h.origin, &pat, &connects);
     std::thread::sleep(Duration::from_millis(150));
 
-    writer(&h.origin, &pat).task_done("demo", "1", &[]).expect("task done");
+    writer(&h.origin, &pat)
+        .task_done("demo", "1", &[])
+        .expect("task done");
     expect_notified(&rx, "invalidate 到達即發前端事件");
 }
 
@@ -157,7 +291,11 @@ fn two_sessions_on_one_connection_share_a_single_subscription() {
     register_via(&manager, &h.origin, &pat, &connects);
     register_via(&manager, &h.origin, &pat, &connects);
     std::thread::sleep(Duration::from_millis(150));
-    assert_eq!(connects.load(Ordering::SeqCst), 1, "兩 session 共用單一訂閱");
+    assert_eq!(
+        connects.load(Ordering::SeqCst),
+        1,
+        "兩 session 共用單一訂閱"
+    );
 
     let w = writer(&h.origin, &pat);
     w.task_done("demo", "1", &[]).expect("task done");
@@ -206,16 +344,21 @@ fn a_severed_stream_converges_via_etag_and_resumes_live() {
 
     // 強制斷流；斷線期間 server 側發生變更。
     proxy.sever();
-    w.task_done("demo", "2", &[]).expect("task done while severed");
+    w.task_done("demo", "2", &[])
+        .expect("task done while severed");
     // 收斂：sync-state ETag 相異即發重載通知（Query 為重讀正典），並以注入
     // 退避序列重連、Last-Event-ID 續傳——錯過的變更不得遺漏。
     expect_notified(&rx, "斷線期間的變更經收斂反映");
 
     // 重連後的新事件走正常推播。
     drain(&rx);
-    w.task_done("demo", "3", &[]).expect("task done after recovery");
+    w.task_done("demo", "3", &[])
+        .expect("task done after recovery");
     expect_notified(&rx, "續訂後新事件照常分發");
-    assert!(connects.load(Ordering::SeqCst) >= 2, "斷流後經重連（計數前進）");
+    assert!(
+        connects.load(Ordering::SeqCst) >= 2,
+        "斷流後經重連（計數前進）"
+    );
 }
 
 // --- reset 信號 → 全量重載通知 → 自新位點續訂 ---
@@ -257,7 +400,8 @@ fn a_reset_triggers_a_full_reload_notification_and_a_stable_fresh_subscription()
         if task == "1" {
             w.task_undone("demo", task).expect("undone");
         } else {
-            w.task_done("demo", task, &[]).expect("task done while severed");
+            w.task_done("demo", task, &[])
+                .expect("task done while severed");
         }
     }
     std::thread::sleep(Duration::from_millis(300));

@@ -1,11 +1,15 @@
 // capability 驅動停用（remote-data-source 規格「capability 驅動停用且不偽造
-// 缺口」；design 決策 2）：remote 分頁停用搜尋/拖排/validate/analyze/刪除附
-// 繁中說明、archived 頁呈現提示卡；本地分頁全功能不變（迴歸斷言）。
+// 缺口」；design 決策 2）：remote 分頁的封存／搜尋／spec 內文直達，仍停用
+// 拖排/validate/analyze/刪除附繁中說明；本地分頁全功能不變（迴歸斷言）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 
 import { App } from "../App";
-import { createLocalSession, type WorkspaceSession } from "../session";
+import {
+  applyRemoteConnectionState,
+  createLocalSession,
+  type WorkspaceSession,
+} from "../session";
 import type { SpeclinkDataSource } from "@speclink/ui";
 import { fakeRemoteDs, fakeRemoteSession, REMOTE_KEY } from "./helpers/remoteFixtures";
 
@@ -89,22 +93,36 @@ function renderLocalApp(ds: SpeclinkDataSource) {
 }
 
 describe("remote 分頁的 capability 停用", () => {
-  it("搜尋輸入停用附繁中說明、看板照常呈現 server 資料", async () => {
-    renderRemoteApp(fakeRemoteDs());
+  it("搜尋輸入啟用並直達 server、看板照常呈現資料", async () => {
+    const ds = fakeRemoteDs();
+    renderRemoteApp(ds);
     await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
     const input = screen.getByPlaceholderText("搜尋看板卡片…") as HTMLInputElement;
-    expect(input.disabled).toBe(true);
-    expect(input.title).toContain("全文搜尋");
+    expect(input.disabled).toBe(false);
+    fireEvent.change(input, { target: { value: "needle" } });
+    await waitFor(() => expect(ds.searchWorkspace).toHaveBeenCalledWith("needle"));
   });
 
-  it("archived 頁呈現尚未提供提示卡、不打 listArchived", async () => {
+  it("archived 頁呈現 server 清單、不再顯示缺口提示卡", async () => {
     const ds = fakeRemoteDs();
     renderRemoteApp(ds);
     await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "已封存" }));
-    await waitFor(() => expect(screen.getByTestId("archived-unavailable")).toBeTruthy());
-    expect(screen.getByText("此 server 尚未提供封存瀏覽")).toBeTruthy();
-    expect(ds.listArchived).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText("remote-old")).toBeTruthy());
+    expect(screen.queryByTestId("archived-unavailable")).toBeNull();
+    expect(ds.listArchived).toHaveBeenCalled();
+  });
+
+  it("規格卡直達 server 正典內文、不再以提示文字代替", async () => {
+    const ds = fakeRemoteDs();
+    renderRemoteApp(ds);
+    await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
+    const aside = document.querySelector("aside") as HTMLElement;
+    fireEvent.click(within(aside).getByRole("button", { name: "規格" }));
+    await waitFor(() => expect(screen.getByText("auth")).toBeTruthy());
+    fireEvent.click(screen.getByText("auth"));
+    await waitFor(() => expect(screen.getByText("Remote canonical truth.")).toBeTruthy());
+    expect(ds.getSpecDocument).toHaveBeenCalledWith("auth");
   });
 
   it("詳情抽屜的分析與刪除停用附繁中說明、封存照常可用", async () => {
@@ -119,6 +137,38 @@ describe("remote 分頁的 capability 停用", () => {
     expect(del.title).toContain("刪除變更");
     const archive = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
     expect(archive.disabled).toBe(false);
+  });
+
+  it("remote 封存沿用確認路徑、描述指出 Project/Repo scope，取消不寫入而確認會寫 server", async () => {
+    const ds = fakeRemoteDs();
+    renderRemoteApp(ds);
+    await screen.findByText("remote-change");
+    fireEvent.click(screen.getByText("remote-change"));
+    fireEvent.click(await screen.findByRole("button", { name: "封存" }));
+
+    let dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText(/server 上的 scope：Demo\/backend/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(ds.runVerb).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "封存" }));
+    dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "封存" }));
+    await waitFor(() => expect(ds.runVerb).toHaveBeenCalledWith("archive", "remote-change"));
+  });
+
+  it("offline mask 同時維持 deleteChange 停用並關閉 archive", () => {
+    const session = fakeRemoteSession(fakeRemoteDs());
+    const offline = applyRemoteConnectionState(
+      {
+        ...session,
+        baseCapabilities: session.capabilities,
+        connectionState: { connectionId: "c1", state: "online", message: null },
+      },
+      { connectionId: "c1", state: "offline", message: "offline" },
+    );
+    expect(offline.capabilities.deleteChange).toBe(false);
+    expect(offline.capabilities.archive).toBe(false);
   });
 });
 

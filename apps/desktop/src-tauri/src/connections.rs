@@ -47,7 +47,8 @@ pub fn write_registry(path: &Path, entries: &[ConnectionEntry]) -> Result<(), St
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("無法建立設定目錄：{e}"))?;
     }
-    let text = serde_json::to_string_pretty(entries).map_err(|e| format!("無法序列化連線清單：{e}"))?;
+    let text =
+        serde_json::to_string_pretty(entries).map_err(|e| format!("無法序列化連線清單：{e}"))?;
     std::fs::write(path, text).map_err(|e| format!("無法寫入連線清單：{e}"))
 }
 
@@ -81,7 +82,10 @@ pub fn upsert_connection(
         existing.name = name.to_string();
         return Ok(existing.id.clone());
     }
-    let id = format!("conn_{}", ulid::Ulid::new().to_string().to_ascii_lowercase());
+    let id = format!(
+        "conn_{}",
+        ulid::Ulid::new().to_string().to_ascii_lowercase()
+    );
     entries.push(ConnectionEntry {
         id: id.clone(),
         origin,
@@ -91,6 +95,53 @@ pub fn upsert_connection(
     Ok(id)
 }
 
+/// 驗證並綁定本機 checkout。已有 remote marker 時只接受相同 origin/repo；
+/// 無 marker 時要求 `.git` 存在，再由 core 的正典 writer 寫入同構 section。
+/// 回傳原始 checkout 路徑供 remote locator 的 checkoutRoot 使用。
+pub fn bind_checkout(
+    root: &Path,
+    selected_origin: &str,
+    selected_project: &str,
+    selected_repo: &str,
+) -> Result<String, String> {
+    if !root.is_dir() {
+        return Err(format!(
+            "無法連接 checkout：{} 不是現有資料夾",
+            root.display()
+        ));
+    }
+    let selected_origin = normalize_origin(selected_origin)?;
+    let marker_path = root.join(".speclink.yaml");
+    let app = speclink_core::config::AppConfig::load(&marker_path).map_err(|e| e.to_string())?;
+
+    if let Some(remote) = app.remote {
+        let marker_url = remote
+            .url
+            .filter(|url| !url.trim().is_empty())
+            .ok_or_else(|| "remote marker 缺少 remote.url，無法確認 checkout 綁定".to_string())?;
+        let marker_origin = normalize_origin(&marker_url)
+            .map_err(|e| format!("remote marker 的 url「{marker_url}」無效：{e}"))?;
+        let marker_repo = remote
+            .repo
+            .filter(|repo| !repo.trim().is_empty())
+            .unwrap_or_else(|| "（未指定 repo）".to_string());
+        if marker_origin != selected_origin || marker_repo != selected_repo {
+            return Err(format!(
+                "此資料夾的 remote marker 指向 {marker_origin} / {marker_repo}，與所選 {selected_origin} / {selected_repo} 不一致"
+            ));
+        }
+        return Ok(root.display().to_string());
+    }
+
+    if !root.join(".git").exists() {
+        return Err("選擇的資料夾不是 Git repository，無法連接 checkout".to_string());
+    }
+    let project_url = format!("{selected_origin}/api/speclink/v1/projects/{selected_project}");
+    speclink_core::init::write_remote_section(root, &project_url, Some(selected_repo))
+        .map_err(|e| format!("無法寫入 remote marker：{e}"))?;
+    Ok(root.display().to_string())
+}
+
 // --- 登入／登出編排（決策 3、5、6） ---
 
 /// device_login 的可讀結果：Unsupported 是 PAT fallback 訊號（決策 3），
@@ -98,7 +149,10 @@ pub fn upsert_connection(
 /// access token 短效、只在 Rust 記憶體——由 lib.rs 的命令層持有，不落盤。
 #[derive(Debug)]
 pub enum DeviceLoginOutcome {
-    LoggedIn { display: String, access_token: String },
+    LoggedIn {
+        display: String,
+        access_token: String,
+    },
     Unsupported,
     Denied,
     Expired,
@@ -120,7 +174,10 @@ pub fn device_login(
         match refresh_connection(origin, credentials) {
             Ok(access) => {
                 let display = record_identity_from_server(origin, &access, registry_path)?;
-                return Ok(DeviceLoginOutcome::LoggedIn { display, access_token: access });
+                return Ok(DeviceLoginOutcome::LoggedIn {
+                    display,
+                    access_token: access,
+                });
             }
             // 明確被拒＝credential 已死：清掉殘骸、走完整 device flow 重新核准。
             Err(RefreshFailure::Rejected(_)) => {
@@ -137,8 +194,15 @@ pub fn device_login(
         InitiateOutcome::Unsupported => return Ok(DeviceLoginOutcome::Unsupported),
     };
 
-    let sep = if auth.verification_uri.contains('?') { '&' } else { '?' };
-    open_browser(&format!("{}{sep}user_code={}", auth.verification_uri, auth.user_code))?;
+    let sep = if auth.verification_uri.contains('?') {
+        '&'
+    } else {
+        '?'
+    };
+    open_browser(&format!(
+        "{}{sep}user_code={}",
+        auth.verification_uri, auth.user_code
+    ))?;
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(auth.expires_in);
     let interval = std::time::Duration::from_secs(auth.interval.max(1));
@@ -146,13 +210,18 @@ pub fn device_login(
         let poll = device::poll(origin, &auth.device_code).map_err(|e| e.to_string())?;
         match poll.status {
             DeviceTokenStatus::Approved => {
-                let access =
-                    poll.access_token.ok_or("server 未隨核准回傳 access token")?;
-                let refresh =
-                    poll.refresh_token.ok_or("server 未隨核准回傳 refresh credential")?;
+                let access = poll
+                    .access_token
+                    .ok_or("server 未隨核准回傳 access token")?;
+                let refresh = poll
+                    .refresh_token
+                    .ok_or("server 未隨核准回傳 refresh credential")?;
                 credentials.set(origin, CredentialKind::Refresh, &refresh)?;
                 let display = record_identity_from_server(origin, &access, registry_path)?;
-                return Ok(DeviceLoginOutcome::LoggedIn { display, access_token: access });
+                return Ok(DeviceLoginOutcome::LoggedIn {
+                    display,
+                    access_token: access,
+                });
             }
             DeviceTokenStatus::Denied => return Ok(DeviceLoginOutcome::Denied),
             DeviceTokenStatus::Expired => return Ok(DeviceLoginOutcome::Expired),
@@ -213,7 +282,10 @@ pub fn logout(
         pat_notice = true;
     }
     record_identity(registry_path, origin, None)?;
-    Ok(LogoutOutcome { revoked_on_server, pat_notice })
+    Ok(LogoutOutcome {
+        revoked_on_server,
+        pat_notice,
+    })
 }
 
 /// rotation 失敗的兩種語意——呼叫端據此決定「清掉 credential 要求重登入」
@@ -287,4 +359,94 @@ fn record_identity(
         write_registry(registry_path, &entries)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod checkout_tests {
+    use super::*;
+
+    fn git_checkout() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("temp checkout");
+        std::fs::create_dir(dir.path().join(".git")).expect("git marker");
+        dir
+    }
+
+    fn write_marker(root: &Path, url: &str, repo: &str) {
+        std::fs::write(
+            root.join(".speclink.yaml"),
+            format!("remote:\n  url: {url}\n  repo: {repo}\n"),
+        )
+        .expect("write marker");
+    }
+
+    #[test]
+    fn matching_marker_binds_the_checkout() {
+        let dir = git_checkout();
+        write_marker(dir.path(), "https://spec.example.test/team/", "desktop");
+
+        let bound = bind_checkout(dir.path(), "https://SPEC.example.test", "acme", "desktop")
+            .expect("matching origin and repo");
+
+        assert_eq!(bound, dir.path().display().to_string());
+    }
+
+    #[test]
+    fn mismatched_marker_origin_reports_where_the_marker_points() {
+        let dir = git_checkout();
+        write_marker(dir.path(), "https://other.example.test/team", "desktop");
+
+        let err = bind_checkout(dir.path(), "https://spec.example.test", "acme", "desktop")
+            .expect_err("origin mismatch");
+
+        assert!(err.contains("https://other.example.test"), "{err}");
+        assert!(err.contains("desktop"), "{err}");
+    }
+
+    #[test]
+    fn mismatched_marker_repo_reports_where_the_marker_points() {
+        let dir = git_checkout();
+        write_marker(dir.path(), "https://spec.example.test", "api");
+
+        let err = bind_checkout(dir.path(), "https://spec.example.test", "acme", "desktop")
+            .expect_err("repo mismatch");
+
+        assert!(err.contains("https://spec.example.test"), "{err}");
+        assert!(err.contains("api"), "{err}");
+    }
+
+    #[test]
+    fn markerless_git_checkout_is_written_in_cli_compatible_shape() {
+        let dir = git_checkout();
+
+        bind_checkout(dir.path(), "https://spec.example.test", "acme", "desktop")
+            .expect("new binding");
+
+        let workspace = speclink_core::workspace::Workspace::discover(dir.path())
+            .expect("CLI discovery succeeds")
+            .expect("marker creates workspace");
+        let resolution = workspace
+            .resolve_mode_with(None)
+            .expect("CLI mode resolution succeeds");
+        match resolution.mode {
+            speclink_core::workspace::StoreMode::Remote(remote) => {
+                assert_eq!(
+                    remote.url,
+                    "https://spec.example.test/api/speclink/v1/projects/acme"
+                );
+                assert_eq!(remote.repo.as_deref(), Some("desktop"));
+            }
+            speclink_core::workspace::StoreMode::Fs => panic!("written marker must select remote"),
+        }
+    }
+
+    #[test]
+    fn non_git_directory_is_rejected_without_writing_a_marker() {
+        let dir = tempfile::tempdir().expect("plain directory");
+
+        let err = bind_checkout(dir.path(), "https://spec.example.test", "acme", "desktop")
+            .expect_err("not a git checkout");
+
+        assert!(err.contains("Git"), "{err}");
+        assert!(!dir.path().join(".speclink.yaml").exists());
+    }
 }
