@@ -35,23 +35,37 @@ pub fn invalidation_of(entry: &OutboxEntry) -> InvalidationEvent {
 /// identity — the client re-reads everything, never misses.
 fn classify(name: &str, payload: &Value) -> (InvalidationScope, String) {
     match name {
-        "change-created" | "artifact-created" | "task-completed" | "task-uncompleted"
-        | "change-claimed" | "change-marked-in-progress" | "change-discarded" => {
-            (InvalidationScope::Change, str_field(payload, "change"))
-        }
+        "change-created"
+        | "artifact-created"
+        | "task-completed"
+        | "task-uncompleted"
+        | "change-claimed"
+        | "change-marked-in-progress"
+        | "change-discarded" => (InvalidationScope::Change, str_field(payload, "change")),
         "change-archived" => (InvalidationScope::Spec, str_field(payload, "change")),
-        "discussion-created" | "discussion-context-set" | "discussion-round-added"
-        | "discussion-concluded" | "discussion-promoted" | "discussion-linked"
-        | "discussion-sealed" | "discussion-archived" | "discussion-discarded" => {
-            (InvalidationScope::Discussion, str_field(payload, "slug"))
-        }
-        _ => (InvalidationScope::Unknown("unknown".to_string()), String::new()),
+        "discussion-created"
+        | "discussion-context-set"
+        | "discussion-round-added"
+        | "discussion-concluded"
+        | "discussion-promoted"
+        | "discussion-linked"
+        | "discussion-sealed"
+        | "discussion-archived"
+        | "discussion-discarded" => (InvalidationScope::Discussion, str_field(payload, "slug")),
+        _ => (
+            InvalidationScope::Unknown("unknown".to_string()),
+            String::new(),
+        ),
     }
 }
 
 /// Read a string field from an event payload, empty string if absent.
 fn str_field(payload: &Value, key: &str) -> String {
-    payload.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
+    payload
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// Tunables for the event stream. An absent config section uses these defaults
@@ -70,7 +84,11 @@ pub struct EventSettings {
 
 impl Default for EventSettings {
     fn default() -> Self {
-        EventSettings { retention: 1024, buffer: 256, heartbeat: Duration::from_secs(15) }
+        EventSettings {
+            retention: 1024,
+            buffer: 256,
+            heartbeat: Duration::from_secs(15),
+        }
     }
 }
 
@@ -118,7 +136,11 @@ pub struct EventHub {
 
 impl EventHub {
     pub fn new(store: SharedStore, settings: EventSettings) -> Arc<Self> {
-        Arc::new(EventHub { store, settings, scopes: Mutex::new(HashMap::new()) })
+        Arc::new(EventHub {
+            store,
+            settings,
+            scopes: Mutex::new(HashMap::new()),
+        })
     }
 
     /// The stream tunables (heartbeat interval and buffer size the route needs).
@@ -155,7 +177,10 @@ impl EventHub {
                     let notify = Arc::new(Notify::new());
                     scopes.insert(
                         scope.clone(),
-                        ScopeChannel { tx: tx.clone(), notify: notify.clone() },
+                        ScopeChannel {
+                            tx: tx.clone(),
+                            notify: notify.clone(),
+                        },
                     );
                     (tx, notify, true)
                 }
@@ -168,13 +193,29 @@ impl EventHub {
         let acked = self.store.outbox_acked(scope)?.0;
         let newest = self.newest_seq(scope, acked)?;
         let plan = match last_event_id {
-            Some(l) if l < acked => ResumePlan { reset: true, backfill: Vec::new(), cursor: newest },
+            Some(l) if l < acked => ResumePlan {
+                reset: true,
+                backfill: Vec::new(),
+                cursor: newest,
+            },
             Some(l) => {
-                let backfill =
-                    self.store.read_outbox(scope, OutboxCursor(l))?.iter().map(invalidation_of).collect();
-                ResumePlan { reset: false, backfill, cursor: l }
+                let backfill = self
+                    .store
+                    .read_outbox(scope, OutboxCursor(l))?
+                    .iter()
+                    .map(invalidation_of)
+                    .collect();
+                ResumePlan {
+                    reset: false,
+                    backfill,
+                    cursor: l,
+                }
             }
-            None => ResumePlan { reset: false, backfill: Vec::new(), cursor: newest },
+            None => ResumePlan {
+                reset: false,
+                backfill: Vec::new(),
+                cursor: newest,
+            },
         };
 
         if is_new {
@@ -210,7 +251,10 @@ impl EventHub {
                 };
                 for entry in &entries {
                     cursor = entry.seq;
-                    let _ = tx.send(StreamEvent { seq: entry.seq, event: invalidation_of(entry) });
+                    let _ = tx.send(StreamEvent {
+                        seq: entry.seq,
+                        event: invalidation_of(entry),
+                    });
                 }
                 if cursor > self.settings.retention {
                     self.ack(&scope, cursor - self.settings.retention).await;
@@ -232,7 +276,8 @@ impl EventHub {
     async fn ack(&self, scope: &Scope, up_to: u64) {
         let store = self.store.clone();
         let scope = scope.clone();
-        let _ = tokio::task::spawn_blocking(move || store.ack_outbox(&scope, OutboxCursor(up_to))).await;
+        let _ = tokio::task::spawn_blocking(move || store.ack_outbox(&scope, OutboxCursor(up_to)))
+            .await;
     }
 }
 
@@ -261,7 +306,12 @@ mod tests {
         use serde_json::json;
         // (event name, payload, expected category, expected resource id)
         let cases: &[(&str, Value, InvalidationScope, &str)] = &[
-            ("change-created", json!({ "change": "add-auth" }), InvalidationScope::Change, "add-auth"),
+            (
+                "change-created",
+                json!({ "change": "add-auth" }),
+                InvalidationScope::Change,
+                "add-auth",
+            ),
             (
                 "artifact-created",
                 json!({ "change": "add-auth", "artifact": "proposal.md" }),
@@ -280,21 +330,36 @@ mod tests {
                 InvalidationScope::Change,
                 "add-auth",
             ),
-            ("change-claimed", json!({ "change": "add-auth" }), InvalidationScope::Change, "add-auth"),
+            (
+                "change-claimed",
+                json!({ "change": "add-auth" }),
+                InvalidationScope::Change,
+                "add-auth",
+            ),
             (
                 "change-marked-in-progress",
                 json!({ "change": "add-auth" }),
                 InvalidationScope::Change,
                 "add-auth",
             ),
-            ("change-discarded", json!({ "change": "add-auth" }), InvalidationScope::Change, "add-auth"),
+            (
+                "change-discarded",
+                json!({ "change": "add-auth" }),
+                InvalidationScope::Change,
+                "add-auth",
+            ),
             (
                 "change-archived",
                 json!({ "change": "add-auth", "datedName": "2026-07-14-add-auth" }),
                 InvalidationScope::Spec,
                 "add-auth",
             ),
-            ("discussion-created", json!({ "slug": "topic" }), InvalidationScope::Discussion, "topic"),
+            (
+                "discussion-created",
+                json!({ "slug": "topic" }),
+                InvalidationScope::Discussion,
+                "topic",
+            ),
             (
                 "discussion-context-set",
                 json!({ "slug": "topic" }),
@@ -347,8 +412,14 @@ mod tests {
         for (name, payload, want_scope, want_resource) in cases {
             let ev = invalidation_of(&entry(name, payload.clone()));
             assert_eq!(&ev.scope, want_scope, "{name} maps to the wrong category");
-            assert_eq!(ev.resource_id, *want_resource, "{name} maps to the wrong resource");
-            assert_eq!(ev.event_id, "7", "{name} carries its outbox sequence as the event id");
+            assert_eq!(
+                ev.resource_id, *want_resource,
+                "{name} maps to the wrong resource"
+            );
+            assert_eq!(
+                ev.event_id, "7",
+                "{name} carries its outbox sequence as the event id"
+            );
             assert_eq!(ev.revision, 42, "{name} carries the commit revision");
         }
     }
@@ -357,9 +428,15 @@ mod tests {
     fn an_unrecognized_event_name_is_emitted_under_the_unknown_category() {
         // Not swallowed — a future event name still invalidates; the client
         // over-reads rather than missing it.
-        let ev = invalidation_of(&entry("widget-frobbed", serde_json::json!({ "widget": "x" })));
+        let ev = invalidation_of(&entry(
+            "widget-frobbed",
+            serde_json::json!({ "widget": "x" }),
+        ));
         assert_eq!(ev.scope, InvalidationScope::Unknown("unknown".to_string()));
-        assert_eq!(ev.resource_id, "", "an unmapped event has no resource identity");
+        assert_eq!(
+            ev.resource_id, "",
+            "an unmapped event has no resource identity"
+        );
         assert_eq!(ev.event_id, "7");
     }
 
@@ -385,11 +462,17 @@ mod tests {
         let mut uow = store
             .begin_unit_of_work(
                 &scope(),
-                CommandContext { command: "t".into(), actor: "t".into() },
+                CommandContext {
+                    command: "t".into(),
+                    actor: "t".into(),
+                },
             )
             .expect("begin uow");
         uow.create(
-            DocumentId::ChangeArtifact { change: "demo".into(), artifact: format!("a{n}.md") },
+            DocumentId::ChangeArtifact {
+                change: "demo".into(),
+                artifact: format!("a{n}.md"),
+            },
             "x",
         );
         store
@@ -407,7 +490,11 @@ mod tests {
 
     /// Event settings with an explicit retention and small, fast test bounds.
     fn settings(retention: u64) -> EventSettings {
-        EventSettings { retention, buffer: 64, heartbeat: Duration::from_millis(50) }
+        EventSettings {
+            retention,
+            buffer: 64,
+            heartbeat: Duration::from_millis(50),
+        }
     }
 
     /// Receive one broadcast event, failing if none arrives within 2s.
@@ -436,18 +523,37 @@ mod tests {
         let hub = EventHub::new(shared, settings(1024));
         let mut rx = hub.subscribe(&scope(), None).expect("subscribe").rx;
 
-        commit_event(&store, 1, "task-completed", json!({ "change": "demo", "taskId": "1" }));
+        commit_event(
+            &store,
+            1,
+            "task-completed",
+            json!({ "change": "demo", "taskId": "1" }),
+        );
         hub.notify(&scope());
-        commit_event(&store, 2, "task-completed", json!({ "change": "demo", "taskId": "2" }));
+        commit_event(
+            &store,
+            2,
+            "task-completed",
+            json!({ "change": "demo", "taskId": "2" }),
+        );
         hub.notify(&scope());
 
         let first = recv(&mut rx).await;
         let second = recv(&mut rx).await;
-        assert!(second.seq > first.seq, "the sequence is monotonic: {} then {}", first.seq, second.seq);
+        assert!(
+            second.seq > first.seq,
+            "the sequence is monotonic: {} then {}",
+            first.seq,
+            second.seq
+        );
         // The pushed event is what read_outbox → invalidation_of yields.
         assert_eq!(first.event.scope, InvalidationScope::Change);
         assert_eq!(first.event.resource_id, "demo");
-        assert_eq!(first.event.event_id, first.seq.to_string(), "the event id is the outbox seq");
+        assert_eq!(
+            first.event.event_id,
+            first.seq.to_string(),
+            "the event id is the outbox seq"
+        );
     }
 
     #[tokio::test]
@@ -458,7 +564,12 @@ mod tests {
         let mut rx = hub.subscribe(&scope(), None).expect("subscribe").rx;
 
         for i in 1..=5 {
-            commit_event(&store, i, "task-completed", json!({ "change": "demo", "taskId": i.to_string() }));
+            commit_event(
+                &store,
+                i,
+                "task-completed",
+                json!({ "change": "demo", "taskId": i.to_string() }),
+            );
         }
         hub.notify(&scope());
         for _ in 0..5 {
@@ -478,7 +589,12 @@ mod tests {
         let _sub = hub.subscribe(&scope(), None).expect("subscribe");
 
         for i in 1..=5 {
-            commit_event(&store, i, "task-completed", json!({ "change": "demo", "taskId": i.to_string() }));
+            commit_event(
+                &store,
+                i,
+                "task-completed",
+                json!({ "change": "demo", "taskId": i.to_string() }),
+            );
         }
         hub.notify(&scope());
         let s = store.clone();
@@ -486,13 +602,26 @@ mod tests {
 
         // A Last-Event-ID below the acked floor (2) can no longer resume: reset.
         let reset_plan = hub.subscribe(&scope(), Some(1)).expect("subscribe").plan;
-        assert!(reset_plan.reset, "a cursor below the acked floor gets a reset");
-        assert!(reset_plan.backfill.is_empty(), "reset does not resend cleaned entries");
+        assert!(
+            reset_plan.reset,
+            "a cursor below the acked floor gets a reset"
+        );
+        assert!(
+            reset_plan.backfill.is_empty(),
+            "reset does not resend cleaned entries"
+        );
 
         // A Last-Event-ID at or above the floor resumes, backfilling what follows.
         let resume_plan = hub.subscribe(&scope(), Some(3)).expect("subscribe").plan;
-        assert!(!resume_plan.reset, "a cursor within the kept window resumes without reset");
-        assert_eq!(resume_plan.backfill.len(), 2, "entries 4 and 5 are backfilled");
+        assert!(
+            !resume_plan.reset,
+            "a cursor within the kept window resumes without reset"
+        );
+        assert_eq!(
+            resume_plan.backfill.len(),
+            2,
+            "entries 4 and 5 are backfilled"
+        );
         assert_eq!(resume_plan.backfill[0].event_id, "4");
         assert_eq!(resume_plan.backfill[1].event_id, "5");
     }
@@ -504,7 +633,11 @@ mod tests {
         // A live buffer of 4: a receiver more than 4 events behind is lagged.
         let hub = EventHub::new(
             shared,
-            EventSettings { retention: 1024, buffer: 4, heartbeat: Duration::from_millis(50) },
+            EventSettings {
+                retention: 1024,
+                buffer: 4,
+                heartbeat: Duration::from_millis(50),
+            },
         );
         let mut fast = hub.subscribe(&scope(), None).expect("subscribe fast").rx;
         let mut slow = hub.subscribe(&scope(), None).expect("subscribe slow").rx;
@@ -512,10 +645,18 @@ mod tests {
         // Twenty writes. The fast subscriber drains each as it lands (staying
         // within its buffer); the slow one never reads.
         for i in 1..=20u64 {
-            commit_event(&store, i, "task-completed", json!({ "change": "demo", "taskId": i.to_string() }));
+            commit_event(
+                &store,
+                i,
+                "task-completed",
+                json!({ "change": "demo", "taskId": i.to_string() }),
+            );
             hub.notify(&scope());
             let ev = recv(&mut fast).await;
-            assert_eq!(ev.seq, i, "the fast subscriber keeps up, gapless and in order");
+            assert_eq!(
+                ev.seq, i,
+                "the fast subscriber keeps up, gapless and in order"
+            );
         }
 
         // The slow subscriber overflowed its bounded buffer: it is lagged
@@ -527,12 +668,18 @@ mod tests {
                 Err(broadcast::error::RecvError::Closed) => break false,
             }
         };
-        assert!(dropped, "the slow subscriber is dropped once its buffer overflows");
+        assert!(
+            dropped,
+            "the slow subscriber is dropped once its buffer overflows"
+        );
 
         // A dropped subscriber recovers by reconnecting with its Last-Event-ID
         // (retention 1024 keeps everything, so it resumes rather than resets).
         let plan = hub.subscribe(&scope(), Some(2)).expect("resubscribe").plan;
         assert!(!plan.reset, "within retention the reconnect resumes");
-        assert!(!plan.backfill.is_empty(), "the gap since its last id is backfilled");
+        assert!(
+            !plan.backfill.is_empty(),
+            "the gap since its last id is backfilled"
+        );
     }
 }

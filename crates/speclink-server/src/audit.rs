@@ -95,12 +95,18 @@ impl AuditActor {
 
     /// An operator identified by a user id, acting through `source`.
     pub fn user(id: impl Into<String>, source: AuditSource) -> Self {
-        AuditActor { id: id.into(), source }
+        AuditActor {
+            id: id.into(),
+            source,
+        }
     }
 
     /// The host acting through a CLI subcommand (operator recorded as `system`).
     pub fn system_cli() -> Self {
-        AuditActor { id: AuditActor::SYSTEM.to_string(), source: AuditSource::Cli }
+        AuditActor {
+            id: AuditActor::SYSTEM.to_string(),
+            source: AuditSource::Cli,
+        }
     }
 }
 

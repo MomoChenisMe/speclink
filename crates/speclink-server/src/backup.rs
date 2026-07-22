@@ -56,7 +56,10 @@ impl std::fmt::Display for BackupError {
             BackupError::Io(r) => write!(f, "backup io failed: {r}"),
             BackupError::Integrity(r) => write!(f, "backup integrity check failed: {r}"),
             BackupError::TargetNotEmpty(r) => {
-                write!(f, "restore target is not empty (restore only into an empty target): {r}")
+                write!(
+                    f,
+                    "restore target is not empty (restore only into an empty target): {r}"
+                )
             }
             BackupError::Unsupported(r) => write!(f, "restore is not supported here: {r}"),
         }
@@ -178,20 +181,25 @@ enum DocIdDto {
 impl From<&DocumentId> for DocIdDto {
     fn from(doc: &DocumentId) -> Self {
         match doc {
-            DocumentId::ChangeMeta { change } => DocIdDto::ChangeMeta { change: change.clone() },
-            DocumentId::ChangeArtifact { change, artifact } => {
-                DocIdDto::ChangeArtifact { change: change.clone(), artifact: artifact.clone() }
-            }
-            DocumentId::CanonicalSpec { capability } => {
-                DocIdDto::CanonicalSpec { capability: capability.clone() }
-            }
-            DocumentId::Discussion { slug, archived } => {
-                DocIdDto::Discussion { slug: slug.clone(), archived: *archived }
-            }
+            DocumentId::ChangeMeta { change } => DocIdDto::ChangeMeta {
+                change: change.clone(),
+            },
+            DocumentId::ChangeArtifact { change, artifact } => DocIdDto::ChangeArtifact {
+                change: change.clone(),
+                artifact: artifact.clone(),
+            },
+            DocumentId::CanonicalSpec { capability } => DocIdDto::CanonicalSpec {
+                capability: capability.clone(),
+            },
+            DocumentId::Discussion { slug, archived } => DocIdDto::Discussion {
+                slug: slug.clone(),
+                archived: *archived,
+            },
             DocumentId::WorkflowConfig => DocIdDto::WorkflowConfig,
-            DocumentId::ArchivedChange { change, doc } => {
-                DocIdDto::ArchivedChange { change: change.clone(), doc: doc.clone() }
-            }
+            DocumentId::ArchivedChange { change, doc } => DocIdDto::ArchivedChange {
+                change: change.clone(),
+                doc: doc.clone(),
+            },
             DocumentId::Language => DocIdDto::Language,
         }
     }
@@ -240,7 +248,11 @@ impl BundleDto {
             documents: self
                 .documents
                 .into_iter()
-                .map(|d| BundleDoc { doc: d.doc.into(), content: d.content, digest: d.digest })
+                .map(|d| BundleDoc {
+                    doc: d.doc.into(),
+                    content: d.content,
+                    digest: d.digest,
+                })
                 .collect(),
         }
     }
@@ -267,7 +279,9 @@ fn append<W: std::io::Write>(
     header.set_mode(0o644);
     header.set_mtime(0);
     header.set_cksum();
-    builder.append_data(&mut header, name, bytes).map_err(|e| BackupError::Io(e.to_string()))
+    builder
+        .append_data(&mut header, name, bytes)
+        .map_err(|e| BackupError::Io(e.to_string()))
 }
 
 // --- backup ----------------------------------------------------------------
@@ -281,15 +295,21 @@ pub fn create(
 ) -> Result<BackupSummary, BackupError> {
     // Enumerate every registry scope: one bundle per (project, repo) pair. The
     // registry lives in the identity store (决策 1), not the store or config.
-    let projects = identity.list_projects().map_err(|e| BackupError::Identity(e.to_string()))?;
+    let projects = identity
+        .list_projects()
+        .map_err(|e| BackupError::Identity(e.to_string()))?;
     let mut repo_count = 0usize;
     let mut scopes: Vec<Scope> = Vec::new();
     for project in &projects {
-        let repos =
-            identity.list_repos(&project.key).map_err(|e| BackupError::Identity(e.to_string()))?;
+        let repos = identity
+            .list_repos(&project.key)
+            .map_err(|e| BackupError::Identity(e.to_string()))?;
         repo_count += repos.len();
         for repo in repos {
-            scopes.push(Scope::new(ProjectId::new(&project.key), RepoId::new(&repo.key)));
+            scopes.push(Scope::new(
+                ProjectId::new(&project.key),
+                RepoId::new(&repo.key),
+            ));
         }
     }
 
@@ -298,12 +318,17 @@ pub fn create(
     // Serialized bundle bytes, kept to write into the tar after the manifest.
     let mut bundle_bytes: Vec<(String, Vec<u8>)> = Vec::new();
     for (i, scope) in scopes.iter().enumerate() {
-        let bundle = store.export(scope).map_err(|e| BackupError::Store(e.to_string()))?;
+        let bundle = store
+            .export(scope)
+            .map_err(|e| BackupError::Store(e.to_string()))?;
         let dto = BundleDto::from_bundle(&bundle);
         let bytes = serde_json::to_vec_pretty(&dto)
             .map_err(|e| BackupError::Store(format!("serialize bundle: {e}")))?;
         let member = format!("bundles/{i}.json");
-        members.push(MemberDigest { name: member.clone(), digest: digest_bytes(&bytes) });
+        members.push(MemberDigest {
+            name: member.clone(),
+            digest: digest_bytes(&bytes),
+        });
         scope_entries.push(ScopeEntry {
             project: scope.project.as_str().to_string(),
             repo: scope.repo.as_str().to_string(),
@@ -363,12 +388,18 @@ pub fn create(
     let file = std::fs::File::create(output).map_err(|e| BackupError::Io(e.to_string()))?;
     let mut builder = tar::Builder::new(file);
     append(&mut builder, MANIFEST_NAME, &manifest_bytes)?;
-    append(&mut builder, MANIFEST_DIGEST_NAME, manifest_digest.as_bytes())?;
+    append(
+        &mut builder,
+        MANIFEST_DIGEST_NAME,
+        manifest_digest.as_bytes(),
+    )?;
     for (member, bytes) in &bundle_bytes {
         append(&mut builder, member, bytes)?;
     }
     append(&mut builder, IDENTITY_MEMBER, &identity_bytes)?;
-    builder.finish().map_err(|e| BackupError::Io(e.to_string()))?;
+    builder
+        .finish()
+        .map_err(|e| BackupError::Io(e.to_string()))?;
 
     Ok(BackupSummary {
         created_at,
@@ -391,7 +422,10 @@ fn read_members(input: &Path) -> Result<std::collections::BTreeMap<String, Vec<u
     let file = std::fs::File::open(input).map_err(|e| BackupError::Io(e.to_string()))?;
     let mut archive = tar::Archive::new(file);
     let mut members = std::collections::BTreeMap::new();
-    for entry in archive.entries().map_err(|e| BackupError::Io(e.to_string()))? {
+    for entry in archive
+        .entries()
+        .map_err(|e| BackupError::Io(e.to_string()))?
+    {
         let mut entry = entry.map_err(|e| BackupError::Io(e.to_string()))?;
         let name = entry
             .path()
@@ -399,7 +433,9 @@ fn read_members(input: &Path) -> Result<std::collections::BTreeMap<String, Vec<u
             .to_string_lossy()
             .to_string();
         let mut bytes = Vec::new();
-        entry.read_to_end(&mut bytes).map_err(|e| BackupError::Io(e.to_string()))?;
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|e| BackupError::Io(e.to_string()))?;
         members.insert(name, bytes);
     }
     Ok(members)
@@ -424,7 +460,9 @@ fn load_verified(
         .ok_or_else(|| BackupError::Integrity(format!("missing {MANIFEST_DIGEST_NAME}")))?;
     let side = String::from_utf8_lossy(side);
     if side.trim() != digest_bytes(manifest_bytes) {
-        return Err(BackupError::Integrity(format!("{MANIFEST_NAME} digest mismatch")));
+        return Err(BackupError::Integrity(format!(
+            "{MANIFEST_NAME} digest mismatch"
+        )));
     }
     let manifest: Manifest = serde_json::from_slice(manifest_bytes)
         .map_err(|e| BackupError::Integrity(format!("unparseable {MANIFEST_NAME}: {e}")))?;
@@ -444,7 +482,10 @@ fn load_verified(
             .get(&member.name)
             .ok_or_else(|| BackupError::Integrity(format!("missing member {}", member.name)))?;
         if digest_bytes(bytes) != member.digest {
-            return Err(BackupError::Integrity(format!("digest mismatch for {}", member.name)));
+            return Err(BackupError::Integrity(format!(
+                "digest mismatch for {}",
+                member.name
+            )));
         }
     }
 
@@ -496,11 +537,14 @@ pub fn restore(config: &ServerConfig, input: &Path) -> Result<ValidationReport, 
     // Empty-target guard (决策 3). Read-only: on refusal the target's existing
     // bytes are left untouched.
     {
-        let store = crate::build_store(&config.store).map_err(|e| BackupError::Store(e.to_string()))?;
+        let store =
+            crate::build_store(&config.store).map_err(|e| BackupError::Store(e.to_string()))?;
         let mut existing = Vec::new();
         for entry in &manifest.scopes {
             let scope = Scope::new(ProjectId::new(&entry.project), RepoId::new(&entry.repo));
-            let bundle = store.export(&scope).map_err(|e| BackupError::Store(e.to_string()))?;
+            let bundle = store
+                .export(&scope)
+                .map_err(|e| BackupError::Store(e.to_string()))?;
             if !bundle.documents.is_empty() {
                 existing.push(format!(
                     "scope {}/{} holds {} document(s)",
@@ -510,8 +554,8 @@ pub fn restore(config: &ServerConfig, input: &Path) -> Result<ValidationReport, 
                 ));
             }
         }
-        let identity =
-            crate::build_identity(&config.identity).map_err(|e| BackupError::Identity(e.to_string()))?;
+        let identity = crate::build_identity(&config.identity)
+            .map_err(|e| BackupError::Identity(e.to_string()))?;
         let users = identity.list_users().map_err(idn)?.len();
         if users > 0 {
             existing.push(format!("{users} user(s) exist"));
@@ -523,13 +567,17 @@ pub fn restore(config: &ServerConfig, input: &Path) -> Result<ValidationReport, 
 
     // Place the identity snapshot at the target path (决策 3).
     let snapshot_bytes = members.get(&manifest.identity.member).ok_or_else(|| {
-        BackupError::Integrity(format!("missing identity member {}", manifest.identity.member))
+        BackupError::Integrity(format!(
+            "missing identity member {}",
+            manifest.identity.member
+        ))
     })?;
     std::fs::write(&identity_path, snapshot_bytes).map_err(|e| BackupError::Io(e.to_string()))?;
 
     // Per-scope import into the target store, in fresh-create mode.
     {
-        let store = crate::build_store(&config.store).map_err(|e| BackupError::Store(e.to_string()))?;
+        let store =
+            crate::build_store(&config.store).map_err(|e| BackupError::Store(e.to_string()))?;
         for entry in &manifest.scopes {
             let bytes = members.get(&entry.member).ok_or_else(|| {
                 BackupError::Integrity(format!("missing bundle {}", entry.member))
@@ -558,7 +606,9 @@ pub fn validate(config: &ServerConfig, input: &Path) -> Result<ValidationReport,
     let store = crate::build_store(&config.store).map_err(|e| BackupError::Store(e.to_string()))?;
     for entry in &manifest.scopes {
         let scope = Scope::new(ProjectId::new(&entry.project), RepoId::new(&entry.repo));
-        let target = store.export(&scope).map_err(|e| BackupError::Store(e.to_string()))?;
+        let target = store
+            .export(&scope)
+            .map_err(|e| BackupError::Store(e.to_string()))?;
         if target.documents.len() != entry.doc_count {
             differences.push(format!(
                 "scope {}/{}: {} document(s), expected {}",
@@ -569,9 +619,9 @@ pub fn validate(config: &ServerConfig, input: &Path) -> Result<ValidationReport,
             ));
             continue;
         }
-        let bytes = members.get(&entry.member).ok_or_else(|| {
-            BackupError::Integrity(format!("missing bundle {}", entry.member))
-        })?;
+        let bytes = members
+            .get(&entry.member)
+            .ok_or_else(|| BackupError::Integrity(format!("missing bundle {}", entry.member)))?;
         let expected: BundleDto = serde_json::from_slice(bytes).map_err(|e| {
             BackupError::Integrity(format!("unparseable bundle {}: {e}", entry.member))
         })?;
@@ -586,8 +636,8 @@ pub fn validate(config: &ServerConfig, input: &Path) -> Result<ValidationReport,
     }
 
     // Identity: counts and schema version against the manifest.
-    let identity =
-        crate::build_identity(&config.identity).map_err(|e| BackupError::Identity(e.to_string()))?;
+    let identity = crate::build_identity(&config.identity)
+        .map_err(|e| BackupError::Identity(e.to_string()))?;
     let user_count = identity.list_users().map_err(idn)?.len();
     let projects = identity.list_projects().map_err(idn)?;
     let project_count = projects.len();
@@ -599,7 +649,11 @@ pub fn validate(config: &ServerConfig, input: &Path) -> Result<ValidationReport,
     let schema_version = identity.schema_version().map_err(idn)?;
     for (name, got, want) in [
         ("user count", user_count, manifest.identity.user_count),
-        ("project count", project_count, manifest.identity.project_count),
+        (
+            "project count",
+            project_count,
+            manifest.identity.project_count,
+        ),
         ("repo count", repo_count, manifest.identity.repo_count),
         ("audit count", audit_count, manifest.identity.audit_count),
     ] {
@@ -632,7 +686,9 @@ fn digest_multiset<'a>(digests: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
 /// (决策 5) — the admin scope-download reuses the backup export shape, so a
 /// downloaded bundle passes the same structure and digest verification.
 pub fn export_bundle_json(store: &dyn TeamStore, scope: &Scope) -> Result<Vec<u8>, BackupError> {
-    let bundle = store.export(scope).map_err(|e| BackupError::Store(e.to_string()))?;
+    let bundle = store
+        .export(scope)
+        .map_err(|e| BackupError::Store(e.to_string()))?;
     serde_json::to_vec_pretty(&BundleDto::from_bundle(&bundle))
         .map_err(|e| BackupError::Store(format!("serialize bundle: {e}")))
 }

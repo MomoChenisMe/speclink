@@ -7,15 +7,15 @@
 //! and revoke are layered on in the following tasks.
 
 use crate::error::ApiError;
-use crate::state::AppState;
 use crate::identity::{DevicePoll, RefreshOutcome};
+use crate::state::AppState;
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::{Duration, Utc};
 use speclink_protocol::device::{
     DeviceAuthorizationResponse, DeviceTokenRequest, DeviceTokenResponse, DeviceTokenStatus,
-    RefreshRequest, RefreshResponse, RevokeRequest,
+    RefreshRequest, RefreshResponse, RevokeRequest, RevokeResponse,
 };
 
 /// How long a device authorization request stays valid before it expires.
@@ -79,7 +79,12 @@ pub async fn poll_token(
 
 /// A poll response carrying only a non-approved status (no token fields).
 fn bare(status: DeviceTokenStatus) -> DeviceTokenResponse {
-    DeviceTokenResponse { status, access_token: None, refresh_token: None, expires_in: None }
+    DeviceTokenResponse {
+        status,
+        access_token: None,
+        refresh_token: None,
+        expires_in: None,
+    }
 }
 
 /// `POST /auth/refresh` — rotate a refresh credential for a fresh pair. A
@@ -117,7 +122,7 @@ pub async fn revoke(
         .revoke_family_by_refresh(&req.refresh_token)
         .map_err(|_| ApiError::internal("identity store unavailable"))?
     {
-        Ok(Json(serde_json::json!({})).into_response())
+        Ok(Json(RevokeResponse {}).into_response())
     } else {
         Err(ApiError::permission_denied("invalid refresh credential"))
     }

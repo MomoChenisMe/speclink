@@ -13,7 +13,11 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone)]
 pub enum Frame {
     Comment(String),
-    Event { id: Option<String>, event: Option<String>, data: String },
+    Event {
+        id: Option<String>,
+        event: Option<String>,
+        data: String,
+    },
 }
 
 /// One invalidation hint as the recorder keeps it: the outbox sequence (the
@@ -36,7 +40,12 @@ struct Conn {
 }
 
 impl Conn {
-    fn open(events_url: &str, token: &str, repo: &str, last_event_id: Option<&str>) -> Result<Conn, u16> {
+    fn open(
+        events_url: &str,
+        token: &str,
+        repo: &str,
+        last_event_id: Option<&str>,
+    ) -> Result<Conn, u16> {
         let mut req = ureq::get(events_url)
             .set("Authorization", &format!("Bearer {token}"))
             .set("X-Speclink-Api-Version", "1")
@@ -60,7 +69,10 @@ impl Conn {
     /// The next dispatched event within `timeout`, skipping heartbeat comments.
     fn next_event(&self, timeout: Duration) -> Option<Frame> {
         let deadline = Instant::now() + timeout;
-        while let Ok(frame) = self.rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        while let Ok(frame) = self
+            .rx
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        {
             if let Frame::Event { .. } = frame {
                 return Some(frame);
             }
@@ -86,7 +98,11 @@ fn parse_frames<R: BufRead>(mut reader: R, tx: mpsc::Sender<Frame>) {
         let text = line.trim_end_matches(['\r', '\n']);
         if text.is_empty() {
             if have_fields {
-                let frame = Frame::Event { id: id.take(), event: event.take(), data: data.join("\n") };
+                let frame = Frame::Event {
+                    id: id.take(),
+                    event: event.take(),
+                    data: data.join("\n"),
+                };
                 data.clear();
                 have_fields = false;
                 if tx.send(frame).is_err() {
@@ -96,7 +112,10 @@ fn parse_frames<R: BufRead>(mut reader: R, tx: mpsc::Sender<Frame>) {
             continue;
         }
         if let Some(comment) = text.strip_prefix(':') {
-            if tx.send(Frame::Comment(comment.trim_start().to_string())).is_err() {
+            if tx
+                .send(Frame::Comment(comment.trim_start().to_string()))
+                .is_err()
+            {
                 break;
             }
             continue;
@@ -160,10 +179,15 @@ impl Recorder {
     /// server pushes, so a write must happen (or a heartbeat fire) within
     /// `timeout`.
     pub fn await_teardown(&mut self, timeout: Duration) {
-        let Some(thread) = self.closing.take() else { return };
+        let Some(thread) = self.closing.take() else {
+            return;
+        };
         let deadline = Instant::now() + timeout;
         while !thread.is_finished() {
-            assert!(Instant::now() < deadline, "the dropped subscriber socket closes within {timeout:?}");
+            assert!(
+                Instant::now() < deadline,
+                "the dropped subscriber socket closes within {timeout:?}"
+            );
             std::thread::sleep(Duration::from_millis(20));
         }
         thread.join().expect("reader thread exits cleanly");
@@ -173,7 +197,10 @@ impl Recorder {
     /// true when the server answers with a `reset` first frame (the cursor was
     /// cleaned), false when the resume proceeds with backfill.
     pub fn reconnect_from_last(&mut self) -> bool {
-        let last = self.last_seq().expect("resume needs at least one recorded event").to_string();
+        let last = self
+            .last_seq()
+            .expect("resume needs at least one recorded event")
+            .to_string();
         let conn = Conn::open(&self.events_url, &self.token, &self.repo, Some(&last))
             .expect("resubscribe /events");
         // A reset, when owed, is the first frame; a backfilled event otherwise.
@@ -212,7 +239,10 @@ impl Recorder {
                 frames.push(frame);
             }
         }
-        frames.into_iter().filter(|frame| self.record(frame.clone())).count()
+        frames
+            .into_iter()
+            .filter(|frame| self.record(frame.clone()))
+            .count()
     }
 
     /// Wait until an event for `resource` arrives (recording everything seen
@@ -252,11 +282,15 @@ impl Recorder {
 
     /// Record one frame, deduplicating by sequence. Returns whether it was new.
     fn record(&mut self, frame: Frame) -> bool {
-        let Frame::Event { id, event, data } = frame else { return false };
+        let Frame::Event { id, event, data } = frame else {
+            return false;
+        };
         if event.as_deref() == Some("reset") {
             return false;
         }
-        let Some(parsed) = parse_event(id.as_deref(), &data) else { return false };
+        let Some(parsed) = parse_event(id.as_deref(), &data) else {
+            return false;
+        };
         if self.events.iter().any(|e| e.seq == parsed.seq) {
             return false;
         }
@@ -271,13 +305,28 @@ fn parse_event(id: Option<&str>, data: &str) -> Option<RecordedEvent> {
     let dto: serde_json::Value = serde_json::from_str(data).ok()?;
     let seq: u64 = id
         .map(str::to_string)
-        .or_else(|| dto.get("eventId").and_then(|v| v.as_str()).map(str::to_string))?
+        .or_else(|| {
+            dto.get("eventId")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })?
         .parse()
         .ok()?;
     Some(RecordedEvent {
         seq,
-        scope: dto.get("scope").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-        resource: dto.get("resourceId").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-        revision: dto.get("revision").and_then(|v| v.as_u64()).unwrap_or_default(),
+        scope: dto
+            .get("scope")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        resource: dto
+            .get("resourceId")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        revision: dto
+            .get("revision")
+            .and_then(|v| v.as_u64())
+            .unwrap_or_default(),
     })
 }

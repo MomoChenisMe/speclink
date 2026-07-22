@@ -8,7 +8,7 @@ pub mod subscriber;
 use chrono::{Duration, Utc};
 use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
 use speclink_server::events::{EventHub, EventSettings};
-use speclink_server::identity::{IdentityStore, IdentitySqlite, NewInvitation};
+use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::{AppState, SharedIdentity, SharedStore};
 use speclink_store::memory::MemoryStore;
 use std::net::TcpListener as StdListener;
@@ -84,8 +84,12 @@ pub fn seed_named_pat(
             expires_at: Utc::now() + Duration::days(1),
         })
         .expect("seed invitation");
-    let user_id = identity.accept_invitation(&token, "seed-password").expect("seed accept");
-    let (_, pat) = identity.create_pat(&user_id, "test", None).expect("seed pat");
+    let user_id = identity
+        .accept_invitation(&token, "seed-password")
+        .expect("seed accept");
+    let (_, pat) = identity
+        .create_pat(&user_id, "test", None)
+        .expect("seed pat");
     (pat, user_id)
 }
 
@@ -137,14 +141,24 @@ pub fn state_with_config(config: ServerConfig) -> AppState {
 /// registry equivalent of what `demo_config` used to declare. The state builders
 /// call this, so binding-exercising tests need no per-test registry seeding.
 pub fn seed_demo_registry(identity: &dyn IdentityStore) {
-    identity.create_project("demo", "Demo").expect("seed demo project");
-    identity.create_repo("demo", "backend", "backend").expect("seed demo repo");
+    identity
+        .create_project("demo", "Demo")
+        .expect("seed demo project");
+    identity
+        .create_repo("demo", "backend", "backend")
+        .expect("seed demo repo");
 }
 
 /// Additionally register the two-repo `multi` project (repos `web`, `api`) — for
 /// the ambiguous-repo and membership tests that need a second project.
 pub fn seed_multi_project(identity: &dyn IdentityStore) {
-    identity.create_project("multi", "Multi").expect("seed multi project");
-    identity.create_repo("multi", "web", "web").expect("seed multi web repo");
-    identity.create_repo("multi", "api", "api").expect("seed multi api repo");
+    identity
+        .create_project("multi", "Multi")
+        .expect("seed multi project");
+    identity
+        .create_repo("multi", "web", "web")
+        .expect("seed multi web repo");
+    identity
+        .create_repo("multi", "api", "api")
+        .expect("seed multi api repo");
 }

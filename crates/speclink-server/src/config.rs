@@ -209,14 +209,18 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
                 path: shown.clone(),
                 field: "store.path".to_string(),
             })?;
-            StoreConfig::Sqlite { path: PathBuf::from(path) }
+            StoreConfig::Sqlite {
+                path: PathBuf::from(path),
+            }
         }
         "serverfs" => {
             let path = raw.store.path.ok_or_else(|| ConfigError::MissingField {
                 path: shown.clone(),
                 field: "store.path".to_string(),
             })?;
-            StoreConfig::ServerFs { path: PathBuf::from(path) }
+            StoreConfig::ServerFs {
+                path: PathBuf::from(path),
+            }
         }
         "postgres" => {
             let url = raw.store.url.ok_or_else(|| ConfigError::MissingField {
@@ -244,7 +248,9 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
                 path: shown.clone(),
                 field: "identity.path".to_string(),
             })?;
-            IdentityConfig::Sqlite { path: PathBuf::from(path) }
+            IdentityConfig::Sqlite {
+                path: PathBuf::from(path),
+            }
         }
         "memory" => IdentityConfig::Memory,
         other => {
@@ -266,12 +272,20 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
         Some(e) => EventSettings {
             retention: e.retention.unwrap_or(defaults.retention),
             buffer: e.buffer.unwrap_or(defaults.buffer),
-            heartbeat: e.heartbeat_secs.map(Duration::from_secs).unwrap_or(defaults.heartbeat),
+            heartbeat: e
+                .heartbeat_secs
+                .map(Duration::from_secs)
+                .unwrap_or(defaults.heartbeat),
         },
         None => defaults,
     };
 
-    Ok(ServerConfig { store, identity, public_url, events })
+    Ok(ServerConfig {
+        store,
+        identity,
+        public_url,
+        events,
+    })
 }
 
 #[cfg(test)]
@@ -302,7 +316,10 @@ mod tests {
         .expect_err("a retired tokens section must fail startup");
         let shown = err.to_string();
         assert!(matches!(err, ConfigError::ResidualTokens { .. }));
-        assert!(shown.contains("identity store"), "the reason points at the identity store: {shown}");
+        assert!(
+            shown.contains("identity store"),
+            "the reason points at the identity store: {shown}"
+        );
     }
 
     #[test]
@@ -313,7 +330,10 @@ mod tests {
         .expect_err("a retired projects section must fail startup");
         let shown = err.to_string();
         assert!(matches!(err, ConfigError::ResidualProjects { .. }));
-        assert!(shown.contains("registry"), "the reason points at the registry: {shown}");
+        assert!(
+            shown.contains("registry"),
+            "the reason points at the registry: {shown}"
+        );
     }
 
     #[test]
@@ -322,17 +342,24 @@ mod tests {
             "store:\n  driver: sqlite\n  path: /var/lib/speclink/store.db\nidentity:\n  driver: sqlite\n  path: /var/lib/speclink/identity.db\n",
         )
         .expect("valid sqlite config loads");
-        assert_eq!(cfg.store, StoreConfig::Sqlite { path: PathBuf::from("/var/lib/speclink/store.db") });
+        assert_eq!(
+            cfg.store,
+            StoreConfig::Sqlite {
+                path: PathBuf::from("/var/lib/speclink/store.db")
+            }
+        );
         assert_eq!(
             cfg.identity,
-            IdentityConfig::Sqlite { path: PathBuf::from("/var/lib/speclink/identity.db") }
+            IdentityConfig::Sqlite {
+                path: PathBuf::from("/var/lib/speclink/identity.db")
+            }
         );
     }
 
     #[test]
     fn public_url_defaults_when_absent_and_is_honored_when_present() {
-        let default = load_text("store:\n  driver: memory\nidentity:\n  driver: memory\n")
-            .expect("loads");
+        let default =
+            load_text("store:\n  driver: memory\nidentity:\n  driver: memory\n").expect("loads");
         assert_eq!(default.public_url, "http://localhost:8080");
         let set = load_text(
             "store:\n  driver: memory\nidentity:\n  driver: memory\npublic_url: https://speclink.example\n",
@@ -353,7 +380,10 @@ mod tests {
             .expect_err("an unsupported identity driver must fail startup");
         let shown = err.to_string();
         assert!(matches!(err, ConfigError::UnknownIdentityDriver { .. }));
-        assert!(shown.contains("postgres"), "names the bad identity driver: {shown}");
+        assert!(
+            shown.contains("postgres"),
+            "names the bad identity driver: {shown}"
+        );
     }
 
     #[test]
@@ -376,17 +406,25 @@ mod tests {
 
     #[test]
     fn an_unparseable_file_fails_closed_with_path_and_reason() {
-        let err = load_text("store: : : not yaml\n  - broken").expect_err("bad YAML must fail startup");
+        let err =
+            load_text("store: : : not yaml\n  - broken").expect_err("bad YAML must fail startup");
         let shown = err.to_string();
         assert!(matches!(err, ConfigError::Unparseable { .. }));
-        assert!(shown.contains("cannot parse config file"), "reason points at parsing: {shown}");
+        assert!(
+            shown.contains("cannot parse config file"),
+            "reason points at parsing: {shown}"
+        );
     }
 
     #[test]
     fn a_wrong_shape_fails_closed() {
         // Valid YAML, but the required `store` section is absent.
-        let err = load_text("projects: []\ntokens: []\n").expect_err("missing store must fail startup");
-        assert!(matches!(err, ConfigError::Unparseable { .. }), "shape mismatch is a parse failure");
+        let err =
+            load_text("projects: []\ntokens: []\n").expect_err("missing store must fail startup");
+        assert!(
+            matches!(err, ConfigError::Unparseable { .. }),
+            "shape mismatch is a parse failure"
+        );
     }
 
     #[test]
@@ -426,7 +464,10 @@ mod tests {
             .expect_err("postgres without a url must fail startup");
         let shown = err.to_string();
         assert!(matches!(err, ConfigError::MissingField { .. }));
-        assert!(shown.contains("store.url"), "names the missing field: {shown}");
+        assert!(
+            shown.contains("store.url"),
+            "names the missing field: {shown}"
+        );
     }
 
     #[test]
@@ -443,7 +484,9 @@ mod tests {
         .expect("valid serverfs config loads");
         assert_eq!(
             cfg.store,
-            StoreConfig::ServerFs { path: PathBuf::from("/var/lib/speclink/store") }
+            StoreConfig::ServerFs {
+                path: PathBuf::from("/var/lib/speclink/store")
+            }
         );
     }
 
@@ -459,8 +502,8 @@ mod tests {
         // not on the list is refused outright, so a typo can never quietly
         // start the server on a different persistence layer than intended.
         for typo in ["server-fs", "serverFS", "fs"] {
-            let err = load_text(&format!("store:\n  driver: {typo}\n  path: /tmp/x\n"))
-                .unwrap_err();
+            let err =
+                load_text(&format!("store:\n  driver: {typo}\n  path: /tmp/x\n")).unwrap_err();
             assert!(
                 matches!(err, ConfigError::UnknownDriver { .. }),
                 "{typo} must not resolve to serverfs"
@@ -470,8 +513,13 @@ mod tests {
 
     #[test]
     fn an_absent_events_section_uses_all_defaults() {
-        let cfg = load_text("store:\n  driver: memory\nidentity:\n  driver: memory\n").expect("loads");
-        assert_eq!(cfg.events, EventSettings::default(), "no events section means all defaults");
+        let cfg =
+            load_text("store:\n  driver: memory\nidentity:\n  driver: memory\n").expect("loads");
+        assert_eq!(
+            cfg.events,
+            EventSettings::default(),
+            "no events section means all defaults"
+        );
     }
 
     #[test]
@@ -483,7 +531,10 @@ mod tests {
         let defaults = EventSettings::default();
         assert_eq!(cfg.events.retention, 8, "a named field overrides");
         assert_eq!(cfg.events.heartbeat, Duration::from_secs(5));
-        assert_eq!(cfg.events.buffer, defaults.buffer, "an unnamed field keeps its default");
+        assert_eq!(
+            cfg.events.buffer, defaults.buffer,
+            "an unnamed field keeps its default"
+        );
     }
 
     #[test]
@@ -492,6 +543,9 @@ mod tests {
             "store:\n  driver: memory\nidentity:\n  driver: memory\nevents:\n  retention: not-a-number\n",
         )
         .expect_err("a bad events shape fails startup");
-        assert!(matches!(err, ConfigError::Unparseable { .. }), "shape mismatch is a parse failure");
+        assert!(
+            matches!(err, ConfigError::Unparseable { .. }),
+            "shape mismatch is a parse failure"
+        );
     }
 }
