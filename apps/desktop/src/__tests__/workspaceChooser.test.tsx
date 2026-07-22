@@ -191,7 +191,8 @@ describe("WorkspaceChooser", () => {
     await waitFor(() =>
       expect(add).toHaveBeenCalledWith("https://new.example.test", "新 Server"),
     );
-    expect(screen.getByRole("status").textContent).toContain("連線已新增");
+    // add 被呼叫≠完成：status 訊息在 promise resolve 後才渲染，須非同步等。
+    expect((await screen.findByRole("status")).textContent).toContain("連線已新增");
   });
 
   it("本機資料夾分流沿用既有開啟流程", async () => {
