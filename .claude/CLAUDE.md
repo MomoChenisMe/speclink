@@ -1,4 +1,4 @@
-# Claude 工作指引
+# 工作指引
 
 ## 開發流程
 
@@ -9,25 +9,12 @@
 - 先寫測試 → 再寫實作 → 最後重構
 - 目標覆蓋率 80% 以上（unit、integration、E2E）
 
-### Git 提交規範
+### 基本 Git 提交規範
 
 Git commit 訊息使用 `conventional-commit` 技能，遵循 Conventional Commits v1.0.0：
 
 - description 和 body 使用繁體中文
 - 範例：`feat(auth): 新增 GitHub OAuth 登入`、`fix(collab): 修正 Y.js 同步衝突`
-
-### UI 文字規範
-
-- 所有 UI 文字直接使用**繁體中文**硬編碼
-- 技術術語保留英文（如 Agent、Tool、Session、Markdown）
-
-### UI 元件規範
-
-表單控制項一律使用 `packages/web/src/shared/ui` 的自建元件，**禁止裸原生** `<input>` / `<select>` / `<textarea>`：
-
-- 文字輸入 → `Input`、多行 → `Textarea`、下拉 → `Select`、勾選 → `Checkbox`、開關 → `Switch`、單選群組 → `RadioGroup`
-- 例外（維持原生）：以按鈕觸發的 **hidden file input**（`type="file"` + `hidden`）、以及點擊由外層整列處理的 **純視覺 radio 圓點**（`pointer-events-none`）
-- 統一原因：原生控制項在 Windows 會用 OS chrome、不吃主題（底色/箭頭/勾選不一致）。自建元件提供主題化 border/bg/focus，搭配 root 的 per-class `color-scheme`（`:root` light、`.dark` dark）才能跨平台一致
 
 ---
 
@@ -79,24 +66,17 @@ Git commit 訊息使用 `conventional-commit` 技能，遵循 Conventional Commi
 
 判準：每一行改動都應該能直接對應到使用者的需求。
 
----
-
-## 文檔查詢優先順序
+### 文檔查詢優先順序
 
 | 優先級 | 來源     | 說明                                            |
 | ------ | -------- | ----------------------------------------------- |
-| 1      | 專案本地 | Grep/Glob 搜尋現有規格、程式碼、搭配對應 Skills |
+| 1      | 專案本地 | 搜尋現有規格、程式碼、搭配對應 Skills |
 | 2      | MCP 工具 | `context7` 等已整合的 MCP server                |
 | 3      | 網路搜尋 | 僅當以上無法解決時                              |
 
 > 先看專案規格和程式碼怎麼做，再查官方文檔，最後才 websearch。不假設 API 簽名。
 
----
+### 溝通與表達
 
-## 溝通風格
-
-| 項目     | 說明                         |
-| -------- | ---------------------------- |
-| 態度     | 平等對話，直接、清晰、有邏輯 |
-| 立場     | 有信心時保持技術立場         |
-| 需求不清 | 使用詢問工具進行釐清，不猜測 |
+- 儘量使用簡單明的中文表達，避免使用過於複雜的英文術語，例如：「YAGNI（You Aren't Gonna Need It，意指「你不會需要它」）」、「KISS（Keep It Simple, Stupid，意指「保持簡單」）」等。
+- 若對話中提到的專有名詞或任何較深的英文技術名詞和縮寫，請附上中文解釋或註解。
