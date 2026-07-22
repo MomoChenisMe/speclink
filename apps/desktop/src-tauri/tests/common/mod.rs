@@ -14,9 +14,24 @@ use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamS
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, Mutex, MutexGuard, Once};
 
 pub const DISPLAY: &str = "Dev <dev@example.com>";
+
+/// 同一 test binary 內的 harness 互斥。多個 in-process loopback server 併行
+/// 且 CPU 吃緊時，macOS 核心偶發把回應中的連線整條重置——客端讀到一半收
+/// EINVAL，動詞已在 server 提交卻回報「server unreachable」（本機以 8 條
+/// 忙迴圈壓測可穩定重現；單 harness 序列跑同等壓力下不出現）。以 harness
+/// 生命週期互斥將 loopback server 序列化即根除觸發條件；測試內部的併發
+/// （多 session、proxy、worker）不受影響。
+static HARNESS_GATE: Mutex<()> = Mutex::new(());
+
+fn acquire_harness_gate() -> MutexGuard<'static, ()> {
+    // 前一個測試 panic 只代表該測試失敗，poison 不該連坐後續測試。
+    HARNESS_GATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 pub struct Harness {
     pub origin: String,
@@ -26,6 +41,8 @@ pub struct Harness {
     pub registry: PathBuf,
     pub server: RestartableServer,
     _dir: tempfile::TempDir,
+    /// 最後宣告：server 完整收束後才釋放互斥。
+    _gate: MutexGuard<'static, ()>,
 }
 
 pub struct RestartableServer {
@@ -98,6 +115,8 @@ impl Drop for RestartableServer {
 pub struct Phase3Harness {
     pub first: Phase3Server,
     pub second: Phase3Server,
+    /// 最後宣告：兩台 server 都收束後才釋放互斥。
+    _gate: MutexGuard<'static, ()>,
 }
 
 impl Phase3Harness {
@@ -561,9 +580,11 @@ impl RemoteCheckout {
 }
 
 pub fn phase3_harness() -> Phase3Harness {
+    let gate = acquire_harness_gate();
     Phase3Harness {
         first: Phase3Server::new("first", "alpha", &["pm", "rd"]),
         second: Phase3Server::new("second", "beta", &["main"]),
+        _gate: gate,
     }
 }
 
@@ -632,6 +653,7 @@ pub fn harness() -> Harness {
 
 /// 同 [`harness`]，但以指定的 EventSettings 起 server（SSE／retention 測試用）。
 pub fn harness_with_events(settings: EventSettings) -> Harness {
+    let gate = acquire_harness_gate();
     let identity = Arc::new(IdentitySqlite::open_memory().expect("memory identity"));
     identity
         .create_project("demo", "Demo")
@@ -694,6 +716,7 @@ pub fn harness_with_events(settings: EventSettings) -> Harness {
         registry,
         server,
         _dir: dir,
+        _gate: gate,
     }
 }
 
