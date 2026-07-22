@@ -86,6 +86,12 @@ pub struct RevokeRequest {
     pub refresh_token: String,
 }
 
+/// `POST /auth/revoke` success response. Revocation has no result payload;
+/// the empty object keeps the endpoint typed without changing its wire shape.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RevokeResponse {}
+
 #[cfg(test)]
 mod tests {
     use crate::device::*;
@@ -178,6 +184,9 @@ mod tests {
             serde_json::from_str(r#"{"refreshToken":"spk_rt_bye"}"#).unwrap();
         assert_eq!(revoke.refresh_token, "spk_rt_bye");
         assert_eq!(serde_json::to_value(&revoke).unwrap()["refreshToken"], "spk_rt_bye");
+
+        let revoked: RevokeResponse = serde_json::from_str("{}").unwrap();
+        assert_eq!(serde_json::to_value(&revoked).unwrap(), serde_json::json!({}));
     }
 
     #[test]
@@ -196,6 +205,11 @@ mod tests {
         assert!(
             init.contains("deviceCode") && init.contains("verificationUri"),
             "schema fields are camelCase: {init}"
+        );
+        let revoke = serde_json::to_string(&schemars::schema_for!(RevokeResponse)).unwrap();
+        assert!(
+            revoke.contains(r#""type":"object""#),
+            "empty revoke response still exports an object schema: {revoke}"
         );
     }
 }

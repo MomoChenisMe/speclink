@@ -108,7 +108,10 @@ fn submit_admin(state: &AppState, token: &str, form: &SetupForm) -> Response {
     if email.is_empty() || display.is_empty() || form.password.is_empty() {
         return Html(admin_form(token, Some("email、顯示名稱與密碼皆為必填"))).into_response();
     }
-    match state.identity.create_admin_user(email, display, &form.password) {
+    match state
+        .identity
+        .create_admin_user(email, display, &form.password)
+    {
         Ok(_) => render_flow(state, token),
         Err(IdentityError::Duplicate(msg)) => Html(admin_form(token, Some(&msg))).into_response(),
         Err(_) => internal_error(),
@@ -121,19 +124,28 @@ fn submit_project(state: &AppState, token: &str, form: &SetupForm) -> Response {
     let project_key = form.project_key.trim();
     let repo_key = form.repo_key.trim();
     if project_key.is_empty() || repo_key.is_empty() {
-        return Html(project_form(state, token, Some("project key 與 repo key 皆為必填"))).into_response();
+        return Html(project_form(
+            state,
+            token,
+            Some("project key 與 repo key 皆為必填"),
+        ))
+        .into_response();
     }
     let project_name = non_empty_or(&form.project_name, project_key);
     let repo_name = non_empty_or(&form.repo_name, repo_key);
     if let Err(e) = state.identity.create_project(project_key, project_name) {
         return match e {
-            IdentityError::Duplicate(msg) => Html(project_form(state, token, Some(&msg))).into_response(),
+            IdentityError::Duplicate(msg) => {
+                Html(project_form(state, token, Some(&msg))).into_response()
+            }
             _ => internal_error(),
         };
     }
     if let Err(e) = state.identity.create_repo(project_key, repo_key, repo_name) {
         return match e {
-            IdentityError::Duplicate(msg) => Html(project_form(state, token, Some(&msg))).into_response(),
+            IdentityError::Duplicate(msg) => {
+                Html(project_form(state, token, Some(&msg))).into_response()
+            }
             _ => internal_error(),
         };
     }
@@ -160,12 +172,19 @@ fn render_flow(state: &AppState, token: &str) -> Response {
     if let Ok(users) = state.identity.list_users() {
         if let Some(admin) = users.iter().find(|u| u.admin) {
             let actor = AuditActor::user(admin.id.clone(), AuditSource::Web);
-            let _ = state.identity.record_audit(&actor, AuditAction::SetupCompleted, &project.key);
+            let _ = state
+                .identity
+                .record_audit(&actor, AuditAction::SetupCompleted, &project.key);
         }
     }
     let repos = state.identity.list_repos(&project.key).unwrap_or_default();
     let repo_key = repos.first().map(|r| r.key.as_str()).unwrap_or("");
-    Html(connection_info(&state.config.public_url, &project.key, repo_key)).into_response()
+    Html(connection_info(
+        &state.config.public_url,
+        &project.key,
+        repo_key,
+    ))
+    .into_response()
 }
 
 /// The gate decision for a /setup request.
@@ -283,16 +302,28 @@ fn non_empty_or<'a>(value: &'a str, fallback: &'a str) -> &'a str {
 
 /// `/setup` is closed once setup completes — a bare 404 for any token.
 fn setup_closed() -> Response {
-    (StatusCode::NOT_FOUND, Html(web::page("找不到頁面", "<h1>找不到頁面</h1>\n"))).into_response()
+    (
+        StatusCode::NOT_FOUND,
+        Html(web::page("找不到頁面", "<h1>找不到頁面</h1>\n")),
+    )
+        .into_response()
 }
 
 /// The single invalid-token response — byte-identical for a missing, unknown,
 /// expired or consumed token so the reason is never distinguished.
 fn setup_invalid() -> Response {
     let body = "<h1>設定連結無效</h1>\n<p>這個初始設定連結無法使用。請使用 server 啟動時輸出的最新連結。</p>\n";
-    (StatusCode::UNAUTHORIZED, Html(web::page("設定連結無效", body))).into_response()
+    (
+        StatusCode::UNAUTHORIZED,
+        Html(web::page("設定連結無效", body)),
+    )
+        .into_response()
 }
 
 fn internal_error() -> Response {
-    (StatusCode::INTERNAL_SERVER_ERROR, Html(web::page("錯誤", "<h1>發生錯誤</h1>\n"))).into_response()
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Html(web::page("錯誤", "<h1>發生錯誤</h1>\n")),
+    )
+        .into_response()
 }

@@ -25,18 +25,30 @@ pub struct ApiError {
 
 impl ApiError {
     fn new(status: StatusCode, reason: ErrorReason, message: impl Into<String>) -> ApiError {
-        ApiError { status, reason, message: message.into() }
+        ApiError {
+            status,
+            reason,
+            message: message.into(),
+        }
     }
 
     /// 401 — the caller could not be authenticated for this operation.
     pub fn permission_denied(message: impl Into<String>) -> ApiError {
-        ApiError::new(StatusCode::UNAUTHORIZED, ErrorReason::PermissionDenied, message)
+        ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            ErrorReason::PermissionDenied,
+            message,
+        )
     }
 
     /// 403 — the authenticated caller is not allowed to act in this scope
     /// (store-layer permission, distinct from the 401 auth failure).
     pub fn forbidden(message: impl Into<String>) -> ApiError {
-        ApiError::new(StatusCode::FORBIDDEN, ErrorReason::PermissionDenied, message)
+        ApiError::new(
+            StatusCode::FORBIDDEN,
+            ErrorReason::PermissionDenied,
+            message,
+        )
     }
 
     /// 404 — the addressed subject does not exist (or is not visible).
@@ -52,12 +64,20 @@ impl ApiError {
 
     /// 400 — the arguments are invalid or ambiguous.
     pub fn invalid_argument(message: impl Into<String>) -> ApiError {
-        ApiError::new(StatusCode::BAD_REQUEST, ErrorReason::InvalidArgument, message)
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            ErrorReason::InvalidArgument,
+            message,
+        )
     }
 
     /// 422 — a config document exists but cannot be parsed.
     pub fn invalid_config(message: impl Into<String>) -> ApiError {
-        ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, ErrorReason::InvalidConfig, message)
+        ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ErrorReason::InvalidConfig,
+            message,
+        )
     }
 
     /// 409 — a CAS precondition failed; the message carries expected/actual.
@@ -67,12 +87,20 @@ impl ApiError {
 
     /// 503 — the store backend is temporarily unable to serve.
     pub fn unavailable(message: impl Into<String>) -> ApiError {
-        ApiError::new(StatusCode::SERVICE_UNAVAILABLE, ErrorReason::Unavailable, message)
+        ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ErrorReason::Unavailable,
+            message,
+        )
     }
 
     /// 500 — any other failure.
     pub fn internal(message: impl Into<String>) -> ApiError {
-        ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorReason::Internal, message)
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorReason::Internal,
+            message,
+        )
     }
 }
 
@@ -112,14 +140,23 @@ impl From<CommandError> for ApiError {
 impl From<StoreError> for ApiError {
     fn from(e: StoreError) -> ApiError {
         match e {
-            StoreError::NotFound => ApiError::not_found("the addressed scope or document does not exist"),
+            StoreError::NotFound => {
+                ApiError::not_found("the addressed scope or document does not exist")
+            }
             StoreError::PermissionDenied => {
                 ApiError::forbidden("not allowed to perform this operation in this scope")
             }
-            StoreError::RevisionConflict { doc, expected, actual } => ApiError::revision_conflict(
-                format!("{:?}: expected {:?}, actual {:?}", doc.doc, expected, actual),
-            ),
-            StoreError::Unavailable => ApiError::unavailable("the store backend is temporarily unavailable"),
+            StoreError::RevisionConflict {
+                doc,
+                expected,
+                actual,
+            } => ApiError::revision_conflict(format!(
+                "{:?}: expected {:?}, actual {:?}",
+                doc.doc, expected, actual
+            )),
+            StoreError::Unavailable => {
+                ApiError::unavailable("the store backend is temporarily unavailable")
+            }
             StoreError::Corrupt { reason } => ApiError::internal(format!("corrupt: {reason}")),
             StoreError::Backend { source } => ApiError::internal(format!("backend: {source}")),
         }
@@ -163,17 +200,40 @@ mod tests {
     #[test]
     fn engine_five_codes_map_to_reason_and_status() {
         let cases = [
-            (ErrorCode::InvalidArgv, StatusCode::BAD_REQUEST, ErrorReason::InvalidArgument),
-            (ErrorCode::NotFound, StatusCode::NOT_FOUND, ErrorReason::NotFound),
-            (ErrorCode::InvalidConfig, StatusCode::UNPROCESSABLE_ENTITY, ErrorReason::InvalidConfig),
-            (ErrorCode::Refused, StatusCode::CONFLICT, ErrorReason::Refused),
-            (ErrorCode::Error, StatusCode::INTERNAL_SERVER_ERROR, ErrorReason::Internal),
+            (
+                ErrorCode::InvalidArgv,
+                StatusCode::BAD_REQUEST,
+                ErrorReason::InvalidArgument,
+            ),
+            (
+                ErrorCode::NotFound,
+                StatusCode::NOT_FOUND,
+                ErrorReason::NotFound,
+            ),
+            (
+                ErrorCode::InvalidConfig,
+                StatusCode::UNPROCESSABLE_ENTITY,
+                ErrorReason::InvalidConfig,
+            ),
+            (
+                ErrorCode::Refused,
+                StatusCode::CONFLICT,
+                ErrorReason::Refused,
+            ),
+            (
+                ErrorCode::Error,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorReason::Internal,
+            ),
         ];
         for (code, status, reason) in cases {
             let api = ApiError::from(CommandError::new(code, "engine text"));
             assert_eq!(api.status, status, "status for {code:?}");
             assert_eq!(api.reason, reason, "reason for {code:?}");
-            assert_eq!(api.message, "engine text", "message relayed verbatim for {code:?}");
+            assert_eq!(
+                api.message, "engine text",
+                "message relayed verbatim for {code:?}"
+            );
         }
     }
 
@@ -185,8 +245,16 @@ mod tests {
             doc: DocumentId::WorkflowConfig,
         };
         let cases = [
-            (StoreError::NotFound, StatusCode::NOT_FOUND, ErrorReason::NotFound),
-            (StoreError::PermissionDenied, StatusCode::FORBIDDEN, ErrorReason::PermissionDenied),
+            (
+                StoreError::NotFound,
+                StatusCode::NOT_FOUND,
+                ErrorReason::NotFound,
+            ),
+            (
+                StoreError::PermissionDenied,
+                StatusCode::FORBIDDEN,
+                ErrorReason::PermissionDenied,
+            ),
             (
                 StoreError::RevisionConflict {
                     doc: doc.clone(),
@@ -196,9 +264,25 @@ mod tests {
                 StatusCode::CONFLICT,
                 ErrorReason::RevisionConflict,
             ),
-            (StoreError::Unavailable, StatusCode::SERVICE_UNAVAILABLE, ErrorReason::Unavailable),
-            (StoreError::Corrupt { reason: "bad".into() }, StatusCode::INTERNAL_SERVER_ERROR, ErrorReason::Internal),
-            (StoreError::Backend { source: "io".into() }, StatusCode::INTERNAL_SERVER_ERROR, ErrorReason::Internal),
+            (
+                StoreError::Unavailable,
+                StatusCode::SERVICE_UNAVAILABLE,
+                ErrorReason::Unavailable,
+            ),
+            (
+                StoreError::Corrupt {
+                    reason: "bad".into(),
+                },
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorReason::Internal,
+            ),
+            (
+                StoreError::Backend {
+                    source: "io".into(),
+                },
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorReason::Internal,
+            ),
         ];
         for (err, status, reason) in cases {
             let is_conflict = matches!(err, StoreError::RevisionConflict { .. });

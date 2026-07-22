@@ -97,9 +97,13 @@ mod tests {
         std::fs::create_dir_all(changes.join("demo")).unwrap();
         let hits = Arc::new(AtomicUsize::new(0));
         let h = Arc::clone(&hits);
-        let _watcher = watch_openspec(&root.0.join("openspec"), Duration::from_millis(300), move || {
-            h.fetch_add(1, Ordering::SeqCst);
-        })
+        let _watcher = watch_openspec(
+            &root.0.join("openspec"),
+            Duration::from_millis(300),
+            move || {
+                h.fetch_add(1, Ordering::SeqCst);
+            },
+        )
         .expect("watcher starts on an existing openspec tree");
         // 監看就緒緩衝（Windows ReadDirectoryChangesW 掛載非同步），並讓 Linux 的掛載
         // 自我通知流完：notify 以 WalkDir 遞迴補掛 watch，父目錄的 OPEN 遮罩把走訪
@@ -108,7 +112,11 @@ mod tests {
         hits.store(0, Ordering::SeqCst); // 丟棄掛載批次，只計入動作後的通知
 
         // 一波連續寫入（外部 CLI 動詞的典型效果：meta＋tasks）。
-        std::fs::write(changes.join("demo").join(".openspec.yaml"), "schema: spec-driven\n").unwrap();
+        std::fs::write(
+            changes.join("demo").join(".openspec.yaml"),
+            "schema: spec-driven\n",
+        )
+        .unwrap();
         std::fs::write(changes.join("demo").join("tasks.md"), "- [ ] 1.1 t\n").unwrap();
 
         std::thread::sleep(Duration::from_millis(2000));
@@ -125,9 +133,13 @@ mod tests {
         std::fs::create_dir_all(root.0.join(".speclink")).unwrap();
         let hits = Arc::new(AtomicUsize::new(0));
         let h = Arc::clone(&hits);
-        let _watcher = watch_openspec(&root.0.join("openspec"), Duration::from_millis(200), move || {
-            h.fetch_add(1, Ordering::SeqCst);
-        })
+        let _watcher = watch_openspec(
+            &root.0.join("openspec"),
+            Duration::from_millis(200),
+            move || {
+                h.fetch_add(1, Ordering::SeqCst);
+            },
+        )
         .expect("watcher starts");
         // 同 coalesce 測試：等掛載自我通知（Linux inotify 的 OPEN 遮罩）流完後歸零。
         std::thread::sleep(Duration::from_millis(600));
@@ -138,7 +150,11 @@ mod tests {
         std::fs::write(root.0.join("note.txt"), "not a spec doc").unwrap();
 
         std::thread::sleep(Duration::from_millis(1200));
-        assert_eq!(hits.load(Ordering::SeqCst), 0, "writes outside openspec/ must not notify");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            0,
+            "writes outside openspec/ must not notify"
+        );
     }
 
     #[test]
@@ -154,27 +170,28 @@ mod tests {
 
     #[test]
     fn resolve_watch_target_respects_custom_spec_dir_name() {
-        let dir = std::env::temp_dir().join(format!(
-            "speclink-watch-customdir-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("speclink-watch-customdir-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("myspecs")).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), "spec_dir: myspecs\n").unwrap();
         let target = resolve_watch_target(&dir).expect("project with custom spec dir must resolve");
-        assert_eq!(target, dir.join("myspecs"), "watch target is the discovered spec dir, not a hardcoded name");
+        assert_eq!(
+            target,
+            dir.join("myspecs"),
+            "watch target is the discovered spec dir, not a hardcoded name"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn resolve_watch_target_outside_any_project_errors() {
-        let dir = std::env::temp_dir().join(format!(
-            "speclink-watch-noproj-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("speclink-watch-noproj-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let err = resolve_watch_target(&dir).expect_err("non-project start must be a loggable error");
+        let err =
+            resolve_watch_target(&dir).expect_err("non-project start must be a loggable error");
         assert!(
             err.contains(&dir.display().to_string()),
             "error must name the start path for the log: {err}"
@@ -188,14 +205,21 @@ mod tests {
         let ghost = std::env::temp_dir().join("speclink-watch-ghost-root-nonexistent");
         let _ = std::fs::remove_dir_all(&ghost);
         let err = watch_openspec(&ghost.join("openspec"), Duration::from_millis(100), || {});
-        assert!(err.is_err(), "missing target must be a loggable error, not a panic");
+        assert!(
+            err.is_err(),
+            "missing target must be a loggable error, not a panic"
+        );
 
         // 上層目錄存在但監看目標本身不存在。
-        let root = std::env::temp_dir().join(format!("speclink-watch-nospec-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("speclink-watch-nospec-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let err = watch_openspec(&root.join("openspec"), Duration::from_millis(100), || {});
-        assert!(err.is_err(), "nonexistent target dir must be a loggable error");
+        assert!(
+            err.is_err(),
+            "nonexistent target dir must be a loggable error"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }

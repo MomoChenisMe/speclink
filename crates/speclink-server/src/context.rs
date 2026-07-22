@@ -40,9 +40,10 @@ pub async fn snapshot(
         .map(str::to_string);
     let scope = verb::scope_of(&binding);
     let store = state.store.clone();
-    let outcome = tokio::task::spawn_blocking(move || build(store.as_ref(), &scope, &request, if_none_match))
-        .await
-        .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
+    let outcome =
+        tokio::task::spawn_blocking(move || build(store.as_ref(), &scope, &request, if_none_match))
+            .await
+            .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
     match outcome {
         BuildOutcome::NotModified(etag) => {
             Ok((StatusCode::NOT_MODIFIED, [(ETAG, etag)]).into_response())
@@ -57,7 +58,10 @@ pub async fn snapshot(
 /// `If-None-Match` still matches the scope state token.
 enum BuildOutcome {
     NotModified(String),
-    Snapshot { etag: String, snapshot: ContextSnapshot },
+    Snapshot {
+        etag: String,
+        snapshot: ContextSnapshot,
+    },
 }
 
 /// Build the snapshot on the blocking pool. A single `snapshot` fixes the scope
@@ -135,15 +139,21 @@ fn build(
 /// metadata and archived documents are never part of the readable mirror.
 fn select_path(doc: &DocumentId, change: Option<&str>) -> Option<String> {
     match doc {
-        DocumentId::ChangeArtifact { change: c, artifact } => {
-            change.map_or(true, |n| n == c).then(|| format!("openspec/changes/{c}/{artifact}"))
+        DocumentId::ChangeArtifact {
+            change: c,
+            artifact,
+        } => change
+            .map_or(true, |n| n == c)
+            .then(|| format!("openspec/changes/{c}/{artifact}")),
+        DocumentId::CanonicalSpec { capability } => {
+            Some(format!("openspec/specs/{capability}/spec.md"))
         }
-        DocumentId::CanonicalSpec { capability } => Some(format!("openspec/specs/{capability}/spec.md")),
         DocumentId::WorkflowConfig => Some(CONFIG_PATH.to_string()),
         DocumentId::Language => Some("openspec/LANGUAGE.md".to_string()),
-        DocumentId::Discussion { slug, archived: false } if change.is_none() => {
-            Some(format!("openspec/discussions/{slug}.md"))
-        }
+        DocumentId::Discussion {
+            slug,
+            archived: false,
+        } if change.is_none() => Some(format!("openspec/discussions/{slug}.md")),
         _ => None,
     }
 }

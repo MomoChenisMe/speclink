@@ -20,7 +20,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use speclink_protocol::device::{
     DeviceAuthorizationResponse, DeviceTokenRequest, DeviceTokenResponse, RefreshRequest,
-    RefreshResponse, RevokeRequest,
+    RefreshResponse, RevokeRequest, RevokeResponse,
 };
 use speclink_protocol::query::AuthWhoamiResponse;
 
@@ -134,7 +134,7 @@ pub fn whoami(base_url: &str, bearer: &str) -> Result<AuthWhoamiResponse, Remote
 /// `POST /auth/revoke` — revoke the family a refresh credential belongs to
 /// (logout semantics). An unknown credential is a refusal.
 pub fn revoke(base_url: &str, refresh_token: &str) -> Result<(), RemoteError> {
-    post::<serde_json::Value, RevokeRequest>(
+    post::<RevokeResponse, RevokeRequest>(
         base_url,
         "/auth/revoke",
         Some(&RevokeRequest { refresh_token: refresh_token.to_string() }),

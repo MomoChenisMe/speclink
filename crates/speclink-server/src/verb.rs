@@ -33,7 +33,11 @@ pub fn scope_token(store: &dyn TeamStore, scope: &Scope) -> Result<String, Store
 /// Run `cmd` over the binding's scope and read the resulting ETag, on the
 /// blocking pool. On success the scope's event broadcaster is notified so any
 /// commit's outbox events reach subscribers (决策 2).
-pub async fn run(state: &AppState, binding: &Binding, cmd: Command) -> Result<VerbResult, ApiError> {
+pub async fn run(
+    state: &AppState,
+    binding: &Binding,
+    cmd: Command,
+) -> Result<VerbResult, ApiError> {
     let store = state.store.clone();
     let ctx = binding.execution_context();
     let scope = scope_of(binding);
@@ -115,7 +119,9 @@ fn check_if_match(if_match: u64, current: Option<u64>) -> Result<(), ApiError> {
     if satisfied {
         Ok(())
     } else {
-        let actual = current.map(|c| c.to_string()).unwrap_or_else(|| "absent".to_string());
+        let actual = current
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "absent".to_string());
         Err(ApiError::revision_conflict(format!(
             "expected version {if_match}, actual {actual}"
         )))

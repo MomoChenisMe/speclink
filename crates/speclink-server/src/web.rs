@@ -190,7 +190,10 @@ pub async fn account_page(State(state): State<AppState>, headers: HeaderMap) -> 
     };
     let sessions = state.identity.list_sessions(&user.id).unwrap_or_default();
     let pats = state.identity.list_pats(&user.id).unwrap_or_default();
-    let families = state.identity.list_device_families(&user.id).unwrap_or_default();
+    let families = state
+        .identity
+        .list_device_families(&user.id)
+        .unwrap_or_default();
     Html(account_html(&user, &sessions, &pats, &families, None, None)).into_response()
 }
 
@@ -213,10 +216,20 @@ pub async fn create_pat(
         Err(()) => {
             let sessions = state.identity.list_sessions(&user.id).unwrap_or_default();
             let pats = state.identity.list_pats(&user.id).unwrap_or_default();
-            let families = state.identity.list_device_families(&user.id).unwrap_or_default();
+            let families = state
+                .identity
+                .list_device_families(&user.id)
+                .unwrap_or_default();
             return (
                 StatusCode::BAD_REQUEST,
-                Html(account_html(&user, &sessions, &pats, &families, None, Some("到期日格式須為 YYYY-MM-DD"))),
+                Html(account_html(
+                    &user,
+                    &sessions,
+                    &pats,
+                    &families,
+                    None,
+                    Some("到期日格式須為 YYYY-MM-DD"),
+                )),
             )
                 .into_response();
         }
@@ -225,8 +238,19 @@ pub async fn create_pat(
         Ok((_, plaintext)) => {
             let sessions = state.identity.list_sessions(&user.id).unwrap_or_default();
             let pats = state.identity.list_pats(&user.id).unwrap_or_default();
-            let families = state.identity.list_device_families(&user.id).unwrap_or_default();
-            Html(account_html(&user, &sessions, &pats, &families, Some(&plaintext), None)).into_response()
+            let families = state
+                .identity
+                .list_device_families(&user.id)
+                .unwrap_or_default();
+            Html(account_html(
+                &user,
+                &sessions,
+                &pats,
+                &families,
+                Some(&plaintext),
+                None,
+            ))
+            .into_response()
         }
         Err(_) => internal_error(),
     }
@@ -327,7 +351,10 @@ fn parse_expiry(input: &str) -> Result<Option<chrono::DateTime<chrono::Utc>>, ()
     }
     let date = chrono::NaiveDate::parse_from_str(trimmed, "%Y-%m-%d").map_err(|_| ())?;
     let naive = date.and_hms_opt(23, 59, 59).ok_or(())?;
-    Ok(Some(chrono::DateTime::from_naive_utc_and_offset(naive, chrono::Utc)))
+    Ok(Some(chrono::DateTime::from_naive_utc_and_offset(
+        naive,
+        chrono::Utc,
+    )))
 }
 
 // --- session cookie + origin (決策 4) ---
@@ -465,9 +492,19 @@ fn account_html(
 
     let mut pat_rows = String::new();
     for pat in pats {
-        let expires = pat.expires_at.map(fmt_ts).unwrap_or_else(|| "永久".to_string());
-        let last_used = pat.last_used_at.map(fmt_ts).unwrap_or_else(|| "從未".to_string());
-        let status = if pat.revoked_at.is_some() { "（已撤銷）" } else { "" };
+        let expires = pat
+            .expires_at
+            .map(fmt_ts)
+            .unwrap_or_else(|| "永久".to_string());
+        let last_used = pat
+            .last_used_at
+            .map(fmt_ts)
+            .unwrap_or_else(|| "從未".to_string());
+        let status = if pat.revoked_at.is_some() {
+            "（已撤銷）"
+        } else {
+            ""
+        };
         let revoke = if pat.revoked_at.is_none() {
             format!(
                 "<form method=\"post\" action=\"/account/tokens/{id}/revoke\"><button type=\"submit\">撤銷</button></form>",
@@ -485,7 +522,11 @@ fn account_html(
 
     let mut session_rows = String::new();
     for s in sessions {
-        let status = if s.revoked_at.is_some() { "（已撤銷）" } else { "" };
+        let status = if s.revoked_at.is_some() {
+            "（已撤銷）"
+        } else {
+            ""
+        };
         session_rows.push_str(&format!(
             "<li>建立於 {created}，到期 {expires}{status}</li>\n",
             created = fmt_ts(s.created_at),
@@ -495,7 +536,11 @@ fn account_html(
 
     let mut family_rows = String::new();
     for f in families {
-        let status = if f.revoked_at.is_some() { "（已撤銷）" } else { "" };
+        let status = if f.revoked_at.is_some() {
+            "（已撤銷）"
+        } else {
+            ""
+        };
         let revoke = if f.revoked_at.is_none() {
             format!(
                 "<form method=\"post\" action=\"/account/device/{id}/revoke\"><button type=\"submit\">撤銷</button></form>",
@@ -544,7 +589,10 @@ fn activate_confirm(user_code: &str) -> String {
 
 /// The result page after an approve or deny decision.
 fn activate_result(message: &str) -> String {
-    page("裝置登入", &format!("<h1>裝置登入</h1>\n<p>{}</p>\n", escape(message)))
+    page(
+        "裝置登入",
+        &format!("<h1>裝置登入</h1>\n<p>{}</p>\n", escape(message)),
+    )
 }
 
 /// The single invalid-code page returned for unknown, used or expired user

@@ -51,7 +51,12 @@ impl MemoryCredentialStore {
 
 impl CredentialStore for MemoryCredentialStore {
     fn get(&self, origin: &str, kind: CredentialKind) -> Result<Option<String>, String> {
-        Ok(self.slots.lock().expect("credential lock").get(&(origin.to_string(), kind)).cloned())
+        Ok(self
+            .slots
+            .lock()
+            .expect("credential lock")
+            .get(&(origin.to_string(), kind))
+            .cloned())
     }
 
     fn set(&self, origin: &str, kind: CredentialKind, secret: &str) -> Result<(), String> {
@@ -63,7 +68,10 @@ impl CredentialStore for MemoryCredentialStore {
     }
 
     fn delete(&self, origin: &str, kind: CredentialKind) -> Result<(), String> {
-        self.slots.lock().expect("credential lock").remove(&(origin.to_string(), kind));
+        self.slots
+            .lock()
+            .expect("credential lock")
+            .remove(&(origin.to_string(), kind));
         Ok(())
     }
 }
