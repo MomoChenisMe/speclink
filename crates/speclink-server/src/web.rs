@@ -5,7 +5,7 @@
 
 use crate::identity::{IdentityError, User};
 use crate::state::AppState;
-use axum::extract::{Form, Path, State};
+use axum::extract::{Form, Path, Query, State};
 use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -20,6 +20,33 @@ fn session_ttl() -> Duration {
     Duration::days(7)
 }
 
+/// Accept only the exact `XXXX-XXXX` alphabet generated for device user codes.
+/// The validated characters are URL-safe, so redirects can use a fixed path
+/// without accepting any caller-controlled destination.
+fn validated_user_code(input: &str) -> Option<&str> {
+    let bytes = input.as_bytes();
+    let valid = bytes.len() == 9
+        && bytes[4] == b'-'
+        && bytes.iter().enumerate().all(|(index, byte)| {
+            index == 4
+                || matches!(
+                    byte,
+                    b'A'..=b'H' | b'J'..=b'K' | b'M'..=b'N' | b'P'..=b'Z' | b'2'..=b'9'
+                )
+        });
+    valid.then_some(input)
+}
+
+fn activation_location(user_code: &str) -> String {
+    format!("/activate?user_code={user_code}")
+}
+
+fn login_location(user_code: Option<&str>) -> String {
+    user_code
+        .map(|code| format!("/login?user_code={code}"))
+        .unwrap_or_else(|| "/login".to_string())
+}
+
 /// The set-password form submission.
 #[derive(Deserialize)]
 pub struct AcceptForm {
@@ -31,6 +58,15 @@ pub struct AcceptForm {
 pub struct LoginForm {
     pub email: String,
     pub password: String,
+    #[serde(default)]
+    pub user_code: String,
+}
+
+/// The optional device user code carried by login and activation GET requests.
+#[derive(Deserialize)]
+pub struct UserCodeQuery {
+    #[serde(default)]
+    pub user_code: String,
 }
 
 /// The create-PAT form submission.
@@ -94,9 +130,10 @@ pub async fn accept_invite(
     }
 }
 
-/// `GET /login` — the login form.
-pub async fn login_page() -> Response {
-    Html(login_form(None)).into_response()
+/// `GET /login` — the login form, optionally carrying one validated device
+/// user code back to the activation page after authentication.
+pub async fn login_page(Query(query): Query<UserCodeQuery>) -> Response {
+    Html(login_form(None, validated_user_code(&query.user_code))).into_response()
 }
 
 /// `POST /login` — verify the password with argon2 and open a session. A
@@ -110,14 +147,23 @@ pub async fn do_login(
     if let Err(refused) = check_origin(&headers, &state.config.public_url) {
         return refused;
     }
-    match state.identity.authenticate_password(&form.email, &form.password) {
+    let user_code = validated_user_code(&form.user_code);
+    match state
+        .identity
+        .authenticate_password(&form.email, &form.password)
+    {
         Ok(Some(user)) => match state.identity.create_session(&user.id, session_ttl()) {
-            Ok(session) => with_session_cookie(Redirect::to("/account").into_response(), &session),
+            Ok(session) => {
+                let destination = user_code
+                    .map(activation_location)
+                    .unwrap_or_else(|| "/account".to_string());
+                with_session_cookie(Redirect::to(&destination).into_response(), &session)
+            }
             Err(_) => internal_error(),
         },
         Ok(None) => (
             StatusCode::UNAUTHORIZED,
-            Html(login_form(Some("帳號或密碼不正確"))),
+            Html(login_form(Some("帳號或密碼不正確"), user_code)),
         )
             .into_response(),
         Err(_) => internal_error(),
@@ -221,13 +267,19 @@ pub async fn revoke_device_family(
     Redirect::to("/account").into_response()
 }
 
-/// `GET /activate` — the device approval page. An unauthenticated visit
-/// redirects to login (the device request stays untouched).
-pub async fn activate_page(State(state): State<AppState>, headers: HeaderMap) -> Response {
+/// `GET /activate` — the device approval page. A valid user-code query is
+/// carried through login and prefilled, but GET never checks or changes device
+/// authorization state.
+pub async fn activate_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<UserCodeQuery>,
+) -> Response {
+    let user_code = validated_user_code(&query.user_code);
     if current_user(&state, &headers).is_none() {
-        return Redirect::to("/login").into_response();
+        return Redirect::to(&login_location(user_code)).into_response();
     }
-    Html(activate_form(None)).into_response()
+    Html(activate_form(None, user_code)).into_response()
 }
 
 /// `POST /activate` — enter a user code to reach the explicit confirm step, or
@@ -371,12 +423,20 @@ fn invite_form(token: &str, email: &str, error: Option<&str>) -> String {
 
 /// The login form. On failure it carries a uniform message and no submitted
 /// values, so the response never leaks whether an email exists.
-fn login_form(error: Option<&str>) -> String {
+fn login_form(error: Option<&str>, user_code: Option<&str>) -> String {
     let error = error
         .map(|e| format!("<p class=\"error\">{}</p>", escape(e)))
         .unwrap_or_default();
+    let user_code = user_code
+        .map(|code| {
+            format!(
+                "<input type=\"hidden\" name=\"user_code\" value=\"{}\">\n",
+                escape(code)
+            )
+        })
+        .unwrap_or_default();
     let body = format!(
-        "<h1>登入</h1>\n{error}<form method=\"post\" action=\"/login\">\n<label>Email <input type=\"email\" name=\"email\" required></label>\n<label>密碼 <input type=\"password\" name=\"password\" required></label>\n<button type=\"submit\">登入</button>\n</form>\n"
+        "<h1>登入</h1>\n{error}<form method=\"post\" action=\"/login\">\n{user_code}<label>Email <input type=\"email\" name=\"email\" required></label>\n<label>密碼 <input type=\"password\" name=\"password\" required></label>\n<button type=\"submit\">登入</button>\n</form>\n"
     );
     page("登入", &body)
 }
@@ -460,12 +520,15 @@ fn account_html(
 }
 
 /// The device-code entry form (the first step of `/activate`).
-fn activate_form(error: Option<&str>) -> String {
+fn activate_form(error: Option<&str>, user_code: Option<&str>) -> String {
     let error = error
         .map(|e| format!("<p class=\"error\">{}</p>", escape(e)))
         .unwrap_or_default();
+    let value = user_code
+        .map(|code| format!(" value=\"{}\"", escape(code)))
+        .unwrap_or_default();
     let body = format!(
-        "<h1>裝置登入</h1>\n<p>輸入裝置上顯示的代碼以核准登入。</p>\n{error}<form method=\"post\" action=\"/activate\">\n<label>裝置代碼 <input type=\"text\" name=\"user_code\" required></label>\n<button type=\"submit\">下一步</button>\n</form>\n"
+        "<h1>裝置登入</h1>\n<p>輸入裝置上顯示的代碼以核准登入。</p>\n{error}<form method=\"post\" action=\"/activate\">\n<label>裝置代碼 <input type=\"text\" name=\"user_code\"{value} required></label>\n<button type=\"submit\">下一步</button>\n</form>\n"
     );
     page("裝置登入", &body)
 }
