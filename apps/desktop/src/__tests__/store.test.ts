@@ -1,7 +1,8 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
-import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
+import type { ChangeItem, SearchHit, SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 import { createAppStore } from "../store";
+import type { WorkspaceAdapter } from "../adapter/workspace";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
@@ -72,8 +73,58 @@ function storeWith(ds: SpeclinkDataSource) {
   return store;
 }
 
+function remoteSession(ds: SpeclinkDataSource, repoId: string): WorkspaceSession {
+  const locator = { kind: "remote" as const, connectionId: "c1", projectId: "demo", repoId };
+  return {
+    id: `remote:c1/demo/${repoId}`,
+    locator,
+    descriptor: { name: `Demo/${repoId}`, badge: null },
+    dataSource: ds,
+    settings: {
+      kind: "remote",
+      policyWrite: true,
+      readSettings: vi.fn(),
+      writeAppTools: vi.fn(),
+      writeWorkflowConfig: vi.fn(),
+      writeWorkflowContext: vi.fn(),
+      writeWorkflowRules: vi.fn(),
+    },
+    events: { subscribe: () => () => {} },
+    capabilities: LOCAL_CAPABILITIES,
+  };
+}
+
+function storeWithRemoteSessions(a: WorkspaceSession, b: WorkspaceSession) {
+  const store = createAppStore({
+    createSession: () => {
+      throw new Error("remote session 測試不得建立 local session");
+    },
+    workspace: {} as WorkspaceAdapter,
+  });
+  store.setState({
+    tabs: [
+      { locator: a.locator, name: a.descriptor.name, badge: null },
+      { locator: b.locator, name: b.descriptor.name, badge: null },
+    ],
+    sessions: { [a.id]: a, [b.id]: b },
+    activeKey: a.id,
+  });
+  return store;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
   toastError.mockClear();
+  localStorage.clear();
 });
 
 describe("app store (Zustand)", () => {
@@ -94,6 +145,214 @@ describe("app store (Zustand)", () => {
     expect(store.getState().refreshGen).toBe(1);
     await store.getState().refresh();
     expect(store.getState().refreshGen).toBe(2);
+  });
+
+  it("switches back to each remote session's own last-success snapshot when refresh fails", async () => {
+    const aChanges = vi
+      .fn()
+      .mockResolvedValue([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]);
+    const bChanges = vi
+      .fn()
+      .mockResolvedValue([{ name: "b-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]);
+    const a = remoteSession(fakeDataSource({ listChanges: aChanges }), "alpha");
+    const b = remoteSession(fakeDataSource({ listChanges: bChanges }), "beta");
+    const store = storeWithRemoteSessions(a, b);
+
+    await store.getState().refresh();
+    await store.getState().activateTab(b.id);
+    expect(store.getState().changes.map((change) => change.name)).toEqual(["b-change"]);
+
+    aChanges.mockRejectedValue(new Error("alpha offline"));
+    bChanges.mockRejectedValue(new Error("beta offline"));
+    await store.getState().activateTab(a.id);
+    const afterReturningToA = store.getState().changes.map((change) => change.name);
+    await store.getState().activateTab(b.id);
+    const afterReturningToB = store.getState().changes.map((change) => change.name);
+
+    expect([afterReturningToA, afterReturningToB]).toEqual([["a-change"], ["b-change"]]);
+    const persisted = JSON.parse(localStorage.getItem("speclink.projectTabs") ?? "{}");
+    expect(Object.keys(persisted).sort()).toEqual(["activeKey", "tabs", "version"]);
+    expect(JSON.stringify(persisted)).not.toContain("a-change");
+    expect(JSON.stringify(persisted)).not.toContain("b-change");
+  });
+
+  it("clears the previous workspace when a never-loaded needs-reauth session cannot refresh", async () => {
+    const a = remoteSession(
+      fakeDataSource({
+        listChanges: vi
+          .fn()
+          .mockResolvedValue([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]),
+        listSpecs: vi.fn().mockResolvedValue([{ id: "a-spec" }]),
+      }),
+      "alpha",
+    );
+    const b = remoteSession(
+      fakeDataSource({ listChanges: vi.fn().mockRejectedValue(new Error("login required")) }),
+      "beta",
+    );
+    b.connectionState = {
+      connectionId: "c1",
+      state: "needs-reauth",
+      message: "請重新登入",
+    };
+    const store = storeWithRemoteSessions(a, b);
+    await store.getState().refresh();
+
+    await store.getState().activateTab(b.id);
+
+    const state = store.getState();
+    expect(state.activeKey).toBe(b.id);
+    expect(state.changes).toEqual([]);
+    expect(state.specs).toEqual([]);
+    expect(state.archived).toEqual([]);
+    expect(state.discussions).toEqual({ active: [], archived: [] });
+    expect(state.loaded).toBe(false);
+  });
+
+  it("clears a closed active session's content instead of retaining its runtime snapshot", async () => {
+    const a = remoteSession(
+      fakeDataSource({
+        listChanges: vi
+          .fn()
+          .mockResolvedValue([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]),
+      }),
+      "alpha",
+    );
+    const store = createAppStore({
+      createSession: () => {
+        throw new Error("remote session 測試不得建立 local session");
+      },
+      workspace: {} as WorkspaceAdapter,
+    });
+    store.setState({
+      tabs: [{ locator: a.locator, name: a.descriptor.name, badge: null }],
+      sessions: { [a.id]: a },
+      activeKey: a.id,
+    });
+    await store.getState().refresh();
+
+    store.getState().closeTab(a.id);
+
+    expect(store.getState().activeKey).toBeNull();
+    expect(store.getState().changes).toEqual([]);
+    expect(store.getState().loaded).toBe(false);
+  });
+
+  it("does not let a late refresh from workspace A overwrite active workspace B", async () => {
+    const pendingA = deferred<ChangeItem[]>();
+    const a = remoteSession(
+      fakeDataSource({ listChanges: vi.fn(() => pendingA.promise) }),
+      "alpha",
+    );
+    const b = remoteSession(
+      fakeDataSource({
+        listChanges: vi
+          .fn()
+          .mockResolvedValue([{ name: "b-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]),
+      }),
+      "beta",
+    );
+    const store = storeWithRemoteSessions(a, b);
+
+    const aRefresh = store.getState().refresh();
+    await store.getState().activateTab(b.id);
+    expect(store.getState().changes.map((change) => change.name)).toEqual(["b-change"]);
+
+    pendingA.resolve([
+      { name: "a-late", status: "in-progress", totalTasks: 1, completedTasks: 0 },
+    ]);
+    await aRefresh;
+
+    expect(store.getState().activeKey).toBe(b.id);
+    expect(store.getState().changes.map((change) => change.name)).toEqual(["b-change"]);
+  });
+
+  it("keeps the latest refresh result when an older request for the same session finishes last", async () => {
+    const older = deferred<ChangeItem[]>();
+    const latest = deferred<ChangeItem[]>();
+    const listChanges = vi
+      .fn()
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => latest.promise);
+    const b = remoteSession(fakeDataSource({ listChanges }), "beta");
+    const other = remoteSession(fakeDataSource(), "other");
+    const store = storeWithRemoteSessions(b, other);
+
+    const olderRefresh = store.getState().refresh();
+    const latestRefresh = store.getState().refresh();
+    latest.resolve([
+      { name: "newer", status: "in-progress", totalTasks: 1, completedTasks: 0 },
+    ]);
+    await latestRefresh;
+    older.resolve([
+      { name: "older", status: "in-progress", totalTasks: 1, completedTasks: 0 },
+    ]);
+    await olderRefresh;
+
+    expect(store.getState().changes.map((change) => change.name)).toEqual(["newer"]);
+  });
+
+  it("invalidates workspace A search and detail state when switching to needs-reauth B", async () => {
+    vi.useFakeTimers();
+    const pendingSearch = deferred<SearchHit[]>();
+    const a = remoteSession(
+      fakeDataSource({
+        listChanges: vi
+          .fn()
+          .mockResolvedValue([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]),
+        searchWorkspace: vi.fn(() => pendingSearch.promise),
+      }),
+      "alpha",
+    );
+    const b = remoteSession(
+      fakeDataSource({ listChanges: vi.fn().mockRejectedValue(new Error("login required")) }),
+      "beta",
+    );
+    b.connectionState = {
+      connectionId: "c1",
+      state: "needs-reauth",
+      message: "請重新登入",
+    };
+    const store = storeWithRemoteSessions(a, b);
+
+    try {
+      await store.getState().refresh();
+      store.getState().openDetail("a-change");
+      store.setState({
+        detailSpec: "a-spec",
+        pendingArchive: "a-change",
+        pendingDelete: "a-change",
+        pendingArchiveDiscussion: "a-topic",
+      });
+      store.getState().setBoardQuery("a");
+      await vi.advanceTimersByTimeAsync(200);
+
+      await store.getState().activateTab(b.id);
+
+      expect(store.getState()).toMatchObject({
+        activeKey: b.id,
+        searchHits: [],
+        detailChange: null,
+        detailDiscussion: null,
+        detailSpec: null,
+        detailArchived: null,
+        pendingArchive: null,
+        pendingDelete: null,
+        pendingArchiveDiscussion: null,
+        drawerVerb: null,
+      });
+
+      pendingSearch.resolve([
+        { kind: "change", id: "a-change", artifact: "design.md", snippet: "A only" },
+      ]);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(store.getState().searchHits).toEqual([]);
+      expect(store.getState().boardQuery).toBe("a");
+    } finally {
+      store.getState().disposeSearch();
+      vi.useRealTimers();
+    }
   });
 
   it("setView, setQuery and toggleExpand update UI state", () => {

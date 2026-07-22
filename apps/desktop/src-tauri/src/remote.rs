@@ -100,6 +100,8 @@ pub struct TokenManager {
     origin: String,
     /// 記憶體持有的 bearer；絕不落盤、絕不過境 TS。
     bearer: Mutex<Option<String>>,
+    /// 同一 connection 的 credential 取得／輪替 singleflight。
+    rotation: Mutex<()>,
     /// needs-reauth 狀態訊息；Some 之後所有操作直接拒絕。
     needs_reauth: Mutex<Option<String>>,
     health: Mutex<ConnectionHealth>,
@@ -131,6 +133,7 @@ impl TokenManager {
         TokenManager {
             origin: origin.to_string(),
             bearer: Mutex::new(None),
+            rotation: Mutex::new(()),
             needs_reauth: Mutex::new(None),
             health: Mutex::new(ConnectionHealth {
                 connection_id: None,
@@ -180,8 +183,7 @@ impl TokenManager {
             Err(e) if e.status == Some(401) => {
                 // 快取的 bearer 已死：換發後恰好重試一次。PAT 連線無可換發，
                 // mint 會交回同一枚 PAT，重試再 401 即進 needs-reauth。
-                *self.bearer.lock().expect("bearer lock") = None;
-                let fresh = match self.mint(credentials) {
+                let fresh = match self.recover_after_unauthorized(credentials, &bearer) {
                     Ok(fresh) => fresh,
                     Err(error) => return self.observe_result(Err(error)),
                 };
@@ -326,6 +328,33 @@ impl TokenManager {
         if let Some(cached) = self.bearer.lock().expect("bearer lock").clone() {
             return Ok(cached);
         }
+        let _rotation = self.rotation.lock().expect("rotation lock");
+        if self.needs_reauth().is_some() {
+            return Err(rejected());
+        }
+        if let Some(cached) = self.bearer.lock().expect("bearer lock").clone() {
+            return Ok(cached);
+        }
+        self.mint(credentials)
+    }
+
+    /// 401 後只允許一個 caller 輪替；等待者若看到已發布且不同於自己被拒的
+    /// bearer，直接複用先行者結果，不得清掉新 token 再消耗 refresh。
+    fn recover_after_unauthorized(
+        &self,
+        credentials: &dyn CredentialStore,
+        rejected_bearer: &str,
+    ) -> Result<String, RemoteError> {
+        let _rotation = self.rotation.lock().expect("rotation lock");
+        if self.needs_reauth().is_some() {
+            return Err(rejected());
+        }
+        if let Some(current) = self.bearer.lock().expect("bearer lock").clone() {
+            if current != rejected_bearer {
+                return Ok(current);
+            }
+        }
+        *self.bearer.lock().expect("bearer lock") = None;
         self.mint(credentials)
     }
 

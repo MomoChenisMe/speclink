@@ -235,6 +235,11 @@ export interface AppState {
   removeConnection: (id: string) => Promise<void>;
 }
 
+type WorkspaceSnapshot = Pick<
+  AppState,
+  "changes" | "specs" | "archived" | "discussions" | "loaded"
+>;
+
 /** createAppStore 的注入面（workspace-session 決策 6）：session 工廠取代全域
  * dataSource；workspace 為探測面（開專案／init／統計／選資料夾／監看重掛）。 */
 export interface AppStoreDeps {
@@ -275,6 +280,70 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
     // remote handshake 世代只屬目前 app 執行期；同 locator 僅最新結果可落地。
     const remoteOpenGeneration = new Map<string, number>();
+    // 看板最後成功內容只活在本次 app 執行期，依 locator 隔離且不進 localStorage。
+    const workspaceSnapshots = new Map<string, WorkspaceSnapshot>();
+    const latestRefreshGeneration = new Map<string, number>();
+    let nextRefreshGeneration = 0;
+
+    function emptyWorkspaceSnapshot(): WorkspaceSnapshot {
+      return {
+        changes: [],
+        specs: [],
+        archived: [],
+        discussions: { active: [], archived: [] },
+        loaded: false,
+      };
+    }
+
+    function visibleWorkspaceSnapshot(key: string): WorkspaceSnapshot {
+      return workspaceSnapshots.get(key) ?? emptyWorkspaceSnapshot();
+    }
+
+    function resetWorkspaceTransientState(): Partial<AppState> {
+      if (searchTimer !== null) {
+        clearTimeout(searchTimer);
+        searchTimer = null;
+      }
+      searchSeq++;
+      return {
+        searchHits: [],
+        expandedName: null,
+        detailChange: null,
+        detailDiscussion: null,
+        detailSpec: null,
+        detailArchived: null,
+        pendingArchive: null,
+        pendingDelete: null,
+        pendingArchiveDiscussion: null,
+        drawerVerb: null,
+      };
+    }
+
+    function workspaceActivationState(key: string): Partial<AppState> {
+      return {
+        ...visibleWorkspaceSnapshot(key),
+        ...(get().activeKey === key ? {} : resetWorkspaceTransientState()),
+      };
+    }
+
+    function beginRefresh(key: string): number {
+      const generation = ++nextRefreshGeneration;
+      latestRefreshGeneration.set(key, generation);
+      return generation;
+    }
+
+    function isCurrentRefresh(key: string, generation: number): boolean {
+      return latestRefreshGeneration.get(key) === generation;
+    }
+
+    function pruneWorkspaceSnapshots(live: Set<string>): void {
+      for (const key of workspaceSnapshots.keys()) {
+        if (!live.has(key)) workspaceSnapshots.delete(key);
+      }
+      for (const key of latestRefreshGeneration.keys()) {
+        if (!live.has(key)) latestRefreshGeneration.delete(key);
+      }
+    }
 
     function bumpRemoteOpenGeneration(key: string): number {
       const generation = (remoteOpenGeneration.get(key) ?? 0) + 1;
@@ -376,9 +445,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       // 淘汰出分頁列的 session 一併回收（上限丟最舊）。
       const live = new Set(tabs.map((t) => locatorKey(t.locator)));
       for (const k of Object.keys(sessions)) if (!live.has(k)) delete sessions[k];
+      pruneWorkspaceSnapshots(live);
       const tabErrors = { ...get().tabErrors };
       delete tabErrors[key];
-      set({ tabs, sessions, tabErrors, activeKey: key, pendingInit: null });
+      set({
+        tabs,
+        sessions,
+        tabErrors,
+        activeKey: key,
+        pendingInit: null,
+        ...workspaceActivationState(key),
+      });
       persistTabs(tabs, key);
       // 監看顯式跟隨活躍 session（決策 5）；不可用僅失去自動刷新、app 照常。
       try {
@@ -401,11 +478,20 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const sessions = { ...get().sessions, [key]: session };
       const live = new Set(tabs.map((t) => locatorKey(t.locator)));
       for (const k of Object.keys(sessions)) if (!live.has(k)) delete sessions[k];
+      pruneWorkspaceSnapshots(live);
       const tabErrors = { ...get().tabErrors };
       delete tabErrors[key];
       const remoteRecovery = { ...get().remoteRecovery };
       delete remoteRecovery[key];
-      set({ tabs, sessions, tabErrors, remoteRecovery, activeKey: key, pendingInit: null });
+      set({
+        tabs,
+        sessions,
+        tabErrors,
+        remoteRecovery,
+        activeKey: key,
+        pendingInit: null,
+        ...workspaceActivationState(key),
+      });
       persistTabs(tabs, key);
       await get().refresh();
     }
@@ -422,7 +508,13 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         const tabErrors = { ...state.tabErrors };
         delete tabErrors[key];
         return {
-          ...(activate ? { activeKey: key, boardView: "board" as const } : {}),
+          ...(activate
+            ? {
+                activeKey: key,
+                boardView: "board" as const,
+                ...workspaceActivationState(key),
+              }
+            : {}),
           tabErrors,
           remoteRecovery: {
             ...state.remoteRecovery,
@@ -501,8 +593,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     drawerVerb: null,
 
     async refresh() {
-      const session = activeSession();
-      if (!session) return;
+      const sourceKey = get().activeKey;
+      const session = sourceKey ? get().sessions[sourceKey] : null;
+      if (!sourceKey || !session) return;
+      const generation = beginRefresh(sourceKey);
       const dataSource = session.dataSource;
       // capability 驅動（remote-data-source 決策 2）：server 未提供的讀取跳過、
       // 以空集呈現（archived 頁另有提示卡），不讓整批 refresh 失敗。
@@ -520,7 +614,24 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         return;
       }
       const [changes, specs, archived, discussions] = loaded;
-      set({ changes, specs, archived, discussions, loaded: true });
+      const snapshot: WorkspaceSnapshot = {
+        changes,
+        specs,
+        archived,
+        discussions,
+        loaded: true,
+      };
+      if (!isCurrentRefresh(sourceKey, generation)) return;
+      workspaceSnapshots.set(sourceKey, snapshot);
+      set((state) => ({
+        tabs: state.tabs.map((tab) =>
+          locatorKey(tab.locator) === sourceKey
+            ? { ...tab, badge: pendingWrapUpCount(changes, discussions.active) }
+            : tab,
+        ),
+        ...(state.activeKey === sourceKey ? snapshot : {}),
+      }));
+      if (get().activeKey !== sourceKey) return;
       // 詳情開著時同步其資料（如任務數更新）
       const cur = get().detailChange;
       if (cur) {
@@ -530,19 +641,6 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const curD = get().detailDiscussion;
       if (curD) {
         set({ detailDiscussion: discussions.active.find((d) => d.slug === curD.slug) ?? null });
-      }
-      // active 分頁徽章＝待收尾數（已就緒變更＋已結論未轉出討論），隨看板刷新
-      // 派生（spec-archive-drawer design D6）；背景分頁不動、保留最後已知值
-      //（design D11 背景快照制）。
-      const { activeKey, tabs } = get();
-      if (activeKey && tabs.some((t) => locatorKey(t.locator) === activeKey)) {
-        set({
-          tabs: tabs.map((t) =>
-            locatorKey(t.locator) === activeKey
-              ? { ...t, badge: pendingWrapUpCount(changes, discussions.active) }
-              : t,
-          ),
-        });
       }
       // 清單就緒後遞增刷新世代——開著的內容檢視據此重載至磁碟現況。
       set((st) => ({ refreshGen: st.refreshGen + 1 }));
@@ -1044,6 +1142,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       delete sessions[localKey];
       const live = new Set(tabs.map((tab) => locatorKey(tab.locator)));
       for (const key of Object.keys(sessions)) if (!live.has(key)) delete sessions[key];
+      workspaceSnapshots.delete(localKey);
+      pruneWorkspaceSnapshots(live);
       const tabErrors = { ...get().tabErrors };
       delete tabErrors[localKey];
       delete tabErrors[remoteKey];
@@ -1054,6 +1154,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         activeKey: remoteKey,
         boardView: "board",
         workspaceChooser: null,
+        ...workspaceActivationState(remoteKey),
       });
       persistTabs(tabs, remoteKey);
       await get().refresh();
@@ -1071,7 +1172,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           delete tabErrors[key];
           const remoteRecovery = { ...get().remoteRecovery };
           delete remoteRecovery[key];
-          set({ activeKey: key, tabErrors, remoteRecovery });
+          set({
+            activeKey: key,
+            tabErrors,
+            remoteRecovery,
+            ...workspaceActivationState(key),
+          });
           persistTabs(get().tabs, key);
           await get().refresh();
         } else {
@@ -1099,7 +1205,11 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     showRemoteWorkspaceRecovery(key) {
       const tab = get().tabs.find((candidate) => locatorKey(candidate.locator) === key);
       if (tab?.locator.kind !== "remote" || !get().remoteRecovery[key]) return;
-      set({ activeKey: key, boardView: "board" });
+      set({
+        activeKey: key,
+        boardView: "board",
+        ...workspaceActivationState(key),
+      });
       persistTabs(get().tabs, key);
     },
 
@@ -1114,7 +1224,18 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       delete remoteRecovery[key];
       const wasActive = get().activeKey === key;
       const activeKey = wasActive ? null : get().activeKey;
-      set({ tabs, sessions, tabErrors, remoteRecovery, activeKey });
+      workspaceSnapshots.delete(key);
+      latestRefreshGeneration.delete(key);
+      set({
+        tabs,
+        sessions,
+        tabErrors,
+        remoteRecovery,
+        activeKey,
+        ...(wasActive
+          ? { ...emptyWorkspaceSnapshot(), ...resetWorkspaceTransientState() }
+          : {}),
+      });
       persistTabs(tabs, activeKey);
       // 關掉 active 分頁：切到最近的剩餘分頁（走完整開啟語意）；零分頁則空狀態。
       if (wasActive) {

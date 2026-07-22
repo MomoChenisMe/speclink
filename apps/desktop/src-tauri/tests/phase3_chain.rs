@@ -7,14 +7,85 @@ use speclink_desktop_lib::credentials::{CredentialKind, CredentialStore, MemoryC
 use speclink_desktop_lib::event_manager::EventManager;
 use speclink_desktop_lib::remote::{self, ConnectionState, TokenManager};
 use speclink_remote::events;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Barrier, Condvar, Mutex};
 use std::time::Duration;
 
 const TASKS: &str = "## 1. Work\n\n- [ ] 1.1 First\n";
 const RD_TASKS: &str = "## 1. RD Work\n\n- [ ] 1.1 Reflect through PM\n";
 const RD_PROPOSAL: &str =
     "## Why\n\nRD checkout 驗證 CLI 與 desktop 資料面互通。\n\n## What Changes\n\n- 完成 RD 任務。\n";
+
+/// 讓競態中的 refresh 讀取先取得同一份舊值。singleflight 正常時只有 leader
+/// 會進入此 gate，短暫 timeout 後即可自行前進；破壞互斥時兩個 caller 會同時抵達。
+struct ReconnectCredentialStore {
+    inner: MemoryCredentialStore,
+    armed: AtomicBool,
+    refresh_readers: Mutex<HashSet<std::thread::ThreadId>>,
+    arrived: Mutex<usize>,
+    release: Condvar,
+}
+
+impl ReconnectCredentialStore {
+    fn new() -> Self {
+        Self {
+            inner: MemoryCredentialStore::new(),
+            armed: AtomicBool::new(false),
+            refresh_readers: Mutex::new(HashSet::new()),
+            arrived: Mutex::new(0),
+            release: Condvar::new(),
+        }
+    }
+
+    fn arm(&self) {
+        self.refresh_readers.lock().expect("reader lock").clear();
+        *self.arrived.lock().expect("arrival lock") = 0;
+        self.armed.store(true, Ordering::SeqCst);
+    }
+
+    fn disarm(&self) {
+        self.armed.store(false, Ordering::SeqCst);
+        self.release.notify_all();
+    }
+
+    fn refresh_readers(&self) -> usize {
+        self.refresh_readers.lock().expect("reader lock").len()
+    }
+}
+
+impl CredentialStore for ReconnectCredentialStore {
+    fn get(&self, origin: &str, kind: CredentialKind) -> Result<Option<String>, String> {
+        let value = self.inner.get(origin, kind)?;
+        if kind == CredentialKind::Refresh && self.armed.load(Ordering::SeqCst) {
+            self.refresh_readers
+                .lock()
+                .expect("reader lock")
+                .insert(std::thread::current().id());
+            let mut arrived = self.arrived.lock().expect("arrival lock");
+            *arrived += 1;
+            if *arrived >= 2 {
+                self.release.notify_all();
+            } else {
+                let (next, _) = self
+                    .release
+                    .wait_timeout_while(arrived, Duration::from_millis(250), |count| *count < 2)
+                    .expect("refresh read gate");
+                arrived = next;
+            }
+            drop(arrived);
+        }
+        Ok(value)
+    }
+
+    fn set(&self, origin: &str, kind: CredentialKind, secret: &str) -> Result<(), String> {
+        self.inner.set(origin, kind, secret)
+    }
+
+    fn delete(&self, origin: &str, kind: CredentialKind) -> Result<(), String> {
+        self.inner.delete(origin, kind)
+    }
+}
 
 #[test]
 fn phase3_helpers_start_two_isolated_servers_and_drive_the_real_cli() {
@@ -109,6 +180,103 @@ fn failure_diagnostics_can_be_materialized_for_ci_upload() {
             "{name} must contain {expected:?}: {content}"
         );
     }
+}
+
+#[test]
+fn same_origin_workspaces_share_one_rotation_after_reconnect() {
+    const EXPIRED: &str = "spk_at_expired_multitab_reconnect";
+
+    let h = common::phase3_harness();
+    h.first.seed_change("pm", "pm-reconnect", TASKS);
+    h.first.seed_change("rd", "rd-reconnect", RD_TASKS);
+
+    let credentials = Arc::new(ReconnectCredentialStore::new());
+    let access = h.first.device_login_editor(credentials.as_ref());
+    let refresh_before = credentials
+        .get(&h.first.origin, CredentialKind::Refresh)
+        .expect("read initial refresh credential")
+        .expect("device login stored refresh credential");
+    let (state_tx, state_rx) = std::sync::mpsc::channel();
+    let manager = Arc::new(TokenManager::with_connection_state(
+        &h.first.origin,
+        "conn_multitab_reconnect",
+        1,
+        move |state| {
+            let _ = state_tx.send(state);
+        },
+    ));
+    manager.adopt_access_token(&access);
+
+    let (pm_workspace, _) =
+        remote::open_workspace(&h.first.origin, "alpha/pm", &manager, credentials.as_ref())
+            .expect("open PM workspace before reconnect");
+    let (rd_workspace, _) =
+        remote::open_workspace(&h.first.origin, "alpha/rd", &manager, credentials.as_ref())
+            .expect("open RD workspace before reconnect");
+
+    h.first.stop();
+    h.first.start();
+    manager.adopt_access_token(EXPIRED);
+    while state_rx.try_recv().is_ok() {}
+    credentials.arm();
+
+    let start = Arc::new(Barrier::new(3));
+    let pm_credentials = credentials.clone();
+    let pm_start = start.clone();
+    let pm_thread = std::thread::spawn(move || {
+        pm_start.wait();
+        pm_workspace.list_changes(pm_credentials.as_ref())
+    });
+    let rd_credentials = credentials.clone();
+    let rd_start = start.clone();
+    let rd_thread = std::thread::spawn(move || {
+        rd_start.wait();
+        rd_workspace.list_changes(rd_credentials.as_ref())
+    });
+    start.wait();
+
+    let pm_changes = pm_thread.join().expect("PM reconnect thread");
+    let rd_changes = rd_thread.join().expect("RD reconnect thread");
+    let refresh_readers = credentials.refresh_readers();
+    credentials.disarm();
+    let refresh_after = credentials
+        .get(&h.first.origin, CredentialKind::Refresh)
+        .expect("read rotated refresh credential")
+        .expect("rotation stored replacement refresh credential");
+
+    assert!(
+        pm_changes.as_ref().is_ok_and(|list| list
+            .changes
+            .iter()
+            .any(|change| change.name == "pm-reconnect")),
+        "PM workspace 應在重連 rotation 後恢復：{pm_changes:?}"
+    );
+    assert!(
+        rd_changes.as_ref().is_ok_and(|list| list
+            .changes
+            .iter()
+            .any(|change| change.name == "rd-reconnect")),
+        "RD workspace 應共用 rotation 並恢復：{rd_changes:?}"
+    );
+    assert_ne!(
+        refresh_after, refresh_before,
+        "重連必須確實完成一次 refresh credential rotation"
+    );
+    assert_eq!(
+        refresh_readers, 1,
+        "同來源多 workspace 只能由 singleflight leader thread 執行 rotation"
+    );
+    assert!(
+        manager.needs_reauth().is_none(),
+        "競態不得誤入 needs-reauth"
+    );
+    assert_eq!(manager.connection_state(), ConnectionState::Online);
+    assert!(
+        state_rx
+            .try_iter()
+            .all(|event| event.state != ConnectionState::NeedsReauth),
+        "競態不得廣播 needs-reauth"
+    );
 }
 
 #[test]
