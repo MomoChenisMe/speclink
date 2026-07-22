@@ -110,8 +110,10 @@ fn a_restarted_server_recovers_online_and_invalidates_without_user_action() {
         },
         vec![Duration::from_millis(30)],
     );
+    // Windows 對 refused connect 會在 winsock 內部重試（單次 ~1s 才回錯），
+    // CI runner 排程再放大——上限只防吊死，放寬不影響通過速度。
     let offline = state_rx
-        .recv_timeout(Duration::from_secs(2))
+        .recv_timeout(Duration::from_secs(15))
         .expect("server 停止後 worker 自動轉 offline");
     assert_eq!(offline.state, ConnectionState::Offline);
 
@@ -120,7 +122,7 @@ fn a_restarted_server_recovers_online_and_invalidates_without_user_action() {
     h.server.start();
 
     let online = state_rx
-        .recv_timeout(Duration::from_secs(5))
+        .recv_timeout(Duration::from_secs(15))
         .expect("server 重啟後 worker 自動轉 online");
     assert_eq!(online.state, ConnectionState::Online);
     expect_notified(&notify_rx, "恢復收斂後送出全量失效通知");
