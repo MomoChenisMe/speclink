@@ -72,6 +72,49 @@ jobs:
       - name: Test (Desktop)
         run: npm test -w apps/desktop
 
+  # Phase 3 收官劇本獨立計時、獨立失敗現場；不藏在 workspace 單元測試裡。
+  phase3-e2e:
+    runs-on: ubuntu-latest
+    env:
+      PHASE3_E2E_ARTIFACT_DIR: target/phase3-e2e-artifacts
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Build desktop frontend
+        run: |
+          npm ci
+          npm run build -w apps/desktop
+
+      - name: Test Phase 3 continuous chain
+        shell: bash
+        run: |
+          mkdir -p "$PHASE3_E2E_ARTIFACT_DIR"
+          set -o pipefail
+          cargo test --locked -p speclink-desktop --test phase3_chain -- --nocapture 2>&1 \
+            | tee "$PHASE3_E2E_ARTIFACT_DIR/test-output.log"
+
+      - name: Upload Phase 3 failure diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-e2e-failure-${{ runner.os }}
+          path: target/phase3-e2e-artifacts/
+          if-no-files-found: warn
+
   # Docker 冒煙（server-release spec）：映像 build 得起來只是下限——起得來、
   # /healthz 與 /readyz 皆 2xx、logs 印 setup token、壞組態 fail closed 以非零
   # exit code 結束，四件事都驗到才算。兩份 compose 檔的語法驗證也掛在這裡。
