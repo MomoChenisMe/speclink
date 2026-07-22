@@ -13,220 +13,105 @@
 Speclink is a Spec-Driven Development (SDD) engine and tool platform implemented in Rust. PMs, POs, developers, and AI
 agents share the same change, artifact, task, verification, and archive semantics across two deployment paths:
 
-- **Local repository:** specs live in `openspec/` and collaboration uses Git. No server is required.
+- **Local repository:** specs live in the repository's `openspec/` directory and collaboration uses Git. No server is required.
 - **Remote store:** specs live in a shared Store and a Speclink Host governs identity, revisions, transactions, events, and workflow rules.
 
-The local CLI uses the CLI shipped with [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) as its behavioral design reference and compatibility
-baseline. Parity and golden tests protect human output, `--json` shapes, and core workflow behavior; Speclink extends that baseline
-with discussions, Desktop, storage abstraction, the Node SDK, and the planned Remote Platform.
+The local CLI uses the CLI shipped with [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) as its behavioral reference and
+compatibility baseline. Parity and golden tests protect human output, `--json` shapes, and core workflow behavior; Speclink extends
+that baseline with discussions, Desktop, storage abstraction, the Node SDK, and the Remote Platform.
 
-> **Current status:** the local-repository path, CLI, local Desktop, and Node N-API SDK have working implementations. The new
-> TeamStore contract, `speclink-server`, Server Admin UI, and Desktop Remote Workspace are being delivered in phases defined by
-> the [platform architecture blueprint](docs/platform-architecture.zh-TW.md). The old remote REST v1 is no longer the target architecture.
+> **Current status (2026-07-17):** Local Repo, CLI, local Desktop, the Node N-API SDK, the TeamStore contract and all three official
+> Store drivers, `speclink-server`, Server setup/admin/auth/backup, and Remote CLI/Context Projection have working implementations.
+> Desktop Server Connections are available, while complete Desktop Remote Workspace and verify/evidence remain partial. MCP/Copilot
+> Tools, SSO, runtime plugins, and cluster mode are planned. Legacy remote REST v1 is deprecated and is no longer the target architecture.
 
-See the [current implementation alignment and refactoring roadmap](docs/implementation-refactor-roadmap.zh-TW.md) for the gap analysis,
-implementation priority, and acceptance gates for each phase.
+See [Product Capability Status](docs/product-status.md) for evidence, limits, and the last verification date. See the
+[implementation alignment and refactoring roadmap](docs/implementation-refactor-roadmap.zh-TW.md) for the remaining gap, delivery order,
+and acceptance gates for each phase.
 
-## Architecture
+## Current capabilities / 目前能力
 
-Speclink has one Rust implementation of workflow semantics. CLI, Desktop, Server, Node SDK, MCP, and Copilot Tools must all call
-the same Command Runtime rather than reimplementing lifecycle or archive behavior.
+- **Available:** Local Repo CLI, local Desktop, Node N-API SDK, Command Runtime/Host/Protocol, SQLite/Server FS/PostgreSQL TeamStore, single-node Server, Admin/Auth, Remote CLI, and Server operations.
+- **Partial:** generated Agent skills, Desktop Remote Workspace, and verify/task evidence; use product-status for the precise usable subset and gap.
+- **Planned:** MCP/Copilot in-process tools, SSO, runtime plugins, cluster mode, and a standalone verb-contract user guide.
+- **Deprecated:** the legacy remote REST v1 prototype; new work uses the current Client Protocol/Host path.
 
-```text
-Local Repository
-  Agent / CLI / Desktop
-    -> Embedded Rust Runtime
-    -> FsStore
-    -> repo/openspec/
-    -> Git
+The complete matrix is maintained only in [Product Capability Status](docs/product-status.md), not duplicated in the README.
 
-Remote Store
-  Desktop / CLI / MCP / Web UI / Copilot Tool
-    -> Speclink Host
-    -> Same Rust Runtime
-    -> TeamStore (SQLite / Server FS / PostgreSQL / Custom)
-```
-
-Remote specs are not synchronized into a second writable local truth. File-oriented agents consume a read-only
-`.speclink/context/` snapshot and send every remote write through Host commands.
-
-## Implementation Status
-
-| Component | Today | Target |
-|---|---|---|
-| `speclink-core` | Rust SDD engine and current workflow modules | Typed Command Runtime, domain events, fail-closed policy |
-| `speclink-fs` | Local `openspec/` Store | Keep local mode serverless; add journal/recovery for Server FS |
-| `speclink-cli` | Local CLI and existing remote-client foundation | New shared Command/Query/Context Protocol |
-| `speclink-desktop` | Local board, specs, archives, tasks, and settings | Local/Remote WorkspaceSession, offline and CAS-conflict UX |
-| `@speclink/engine` | Rust N-API SDK and Store bridge | Typed commands, Host/Tool integration, cross-platform prebuilt binaries |
-| `speclink-server` | Not delivered yet | Rust single-node server, SQLite default, Admin UI, SSE, backup/restore |
-
-## SDD Workflow
+## SDD workflow / SDD 工作流
 
 ```text
-discuss? -> propose -> apply <-> ingest -> verify? -> archive
+onboard? → discuss? → propose → apply ⇄ ingest → archive
+                         ↑
+                 resume after pause: drift first
+
+utilities: validate / analyze / audit / commit / verify and evidence
 ```
 
-PM, PO, and developer are human roles. Claude Code, Codex App/CLI, GitHub Copilot, Cursor, and similar products are Agent
-Hosts/Applications that run models and tools. An Agent Host loads a Speclink Skill, then reaches the Speclink Host through CLI,
-MCP, or an in-process Tool. A Skill is workflow knowledge, not the Embedded Speclink Host; local and remote paths share this model.
+Use `discuss` only when requirements need convergence; clear requirements can go directly to `propose`. Requirement changes during
+implementation route to `ingest`, and resumed idle work starts with `drift`. See the [complete SDD workflow](docs/workflow.md) for
+complete-proposal, fast-scaffold, existing-change, and “do not implement” discussion outcomes.
 
-`discuss` is optional. `propose` creates the artifacts, `apply` implements tasks, `ingest` absorbs requirement changes,
-`verify` runs where a code checkout exists, and `archive` merges deltas into canonical specs.
+## Local Repo quick start / Local Repo 快速開始
 
-## Local Quick Start
-
-With a stable Rust toolchain:
+A stable Rust toolchain is required:
 
 ```bash
-git clone <this-repo>
-cd speclink
-cargo build --release
+cargo install --path crates/speclink-cli
+speclink --version
 ```
 
-Inside the repository where you want to use Speclink:
+Inside the repository adopting Speclink:
 
 ```bash
-speclink init
-speclink demo
+speclink init --tools claude,codex
 speclink list
-speclink status --change <change-name>
-speclink validate <change-name> --strict
 ```
 
-Initialization creates `openspec/`, `.speclink.yaml`, gitignored `.speclink/` work data, and the selected Claude Code or Codex
-skills. See the [local getting-started guide](docs/getting-started.md) for a complete loop.
+Then invoke `/speclink-propose <change>` in Claude or `$speclink-propose <change>` in Codex. The Agent creates the artifacts required
+by the schema DAG. Follow [Local Repo Getting Started](docs/getting-started.md) for a copyable first loop and direct CLI equivalents.
 
-## Main CLI Commands
+## Deployment paths / 部署路徑
 
-| Command | Purpose |
-|---|---|
-| `speclink init` / `update` | Initialize a workspace or synchronize generated skills |
-| `speclink new change` / `new artifact` | Create a change and its artifacts |
-| `speclink list` / `show` / `status` | Query changes, specs, and the artifact DAG |
-| `speclink instructions` | Build artifact or apply instructions |
-| `speclink task done` | Complete a task and record touched files |
-| `speclink validate` / `analyze` / `drift` | Structural, quality, and drift analysis |
-| `speclink discuss ...` | Create, conclude, link, and archive discussions |
-| `speclink archive` / `discard` | Archive or discard a change |
+- **Local repository:** Embedded Rust Runtime → FsStore → `openspec/` → Git; suited to repository-local, offline collaboration.
+- **Remote store:** CLI/Desktop/other Client → Speclink Host → the same Rust Runtime → TeamStore; suited to shared canon, centralized identity, revisions, transactions, and events.
 
-Run `speclink <command> --help` for all options. Existing parity and golden tests protect observable CLI behavior.
+A Remote Store does not synchronize into a second writable local truth. Agents with a checkout consume read-only `.speclink/context/`
+and send writes through Host commands. The [platform architecture blueprint](docs/platform-architecture.zh-TW.md) defines the target
+boundary. Current Server operations are documented in [deployment](docs/server-deployment.zh-TW.md),
+[Store drivers](docs/server-store-drivers.zh-TW.md), and [backup/restore](docs/server-backup.zh-TW.md) (Traditional Chinese).
 
-## Speclink Desktop
+## Documentation map / 文件地圖
 
-Desktop is currently the official ready-to-use UI for local repositories, including the change board, canonical specs, archives,
-detail drawers, tasks, and settings.
+| Document | Purpose |
+| --- | --- |
+| [Local Repo Getting Started](docs/getting-started.md) | Copyable first Local Repo loop using current entry points |
+| [Complete SDD Workflow](docs/workflow.md) | Purpose, timing, branches, completion criteria, and recovery for every stage |
+| [Product Capability Status](docs/product-status.md) | Available/Partial/Planned/Deprecated with evidence and limits |
+| [Configuration](docs/configuration.md) | Local/Remote ownership and current fields |
+| [Node SDK](docs/sdk-node.md) | `@speclink/engine` installation, Store bridge, and dispatch surface |
+| [Platform architecture blueprint](docs/platform-architecture.zh-TW.md) | Sole target architecture for Engine, Host, Store, Protocol, Server, Desktop, and Agents (Traditional Chinese) |
+| [Implementation refactoring roadmap](docs/implementation-refactor-roadmap.zh-TW.md) | Delivery order, phases, and gates beneath the target architecture (Traditional Chinese) |
+| [Server deployment](docs/server-deployment.zh-TW.md) | Native/Docker/Compose deployment and upgrades (Traditional Chinese) |
+| [Server Store drivers](docs/server-store-drivers.zh-TW.md) | SQLite/Server FS/PostgreSQL selection and prerequisites (Traditional Chinese) |
+| [Server backup and restore](docs/server-backup.zh-TW.md) | Backup/verify-backup/restore (Traditional Chinese) |
+| [Brand assets](docs/assets/brand/README.md) | Logo, color, and usage guidance |
 
-Some local Desktop features and UI/UX direction reference [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app), including
-visual tracking of changes/specs/tasks, project switching, task progress, and archive browsing. Speclink Desktop is not a Spectra
-App fork: it is independently implemented with Tauri and React and extends its own discussion lifecycle, DataSource contract, and
-planned Remote Workspace model.
+`openspec/changes/archive/` and `openspec/discussions/archive/` are historical audit records, not current operating guides. The
+advanced `docs/verb-contract.md` user guide does not exist yet; canonical specs remain the contract and product-status records the gap.
 
-```bash
-npm install
-npm --workspace @speclink/desktop run tauri -- dev
-```
-
-The target Desktop also supports local folders, PM/PO remote spec-only workspaces, and developer remote workspaces attached to a
-local checkout. It will manage server login, Project/Repo selection, OS Keychain credentials, SSE/ETag recovery, read-only offline
-state, and revision conflicts. Desktop is the default Presentation UI, not the only possible UI.
-
-## Node SDK and Agent Tools
-
-`@speclink/engine` loads the same Rust Engine through N-API. The currently implemented installation, Store bridge, and `dispatch`
-surface are documented in the [Node SDK guide](docs/sdk-node.md).
-
-```text
-Copilot SDK Agent
-  -> @speclink/copilot-tools
-  -> @speclink/host
-  -> @speclink/engine (N-API / Rust)
-  -> Node TeamStore Adapter
-```
-
-Tools call the in-process Host directly. They do not need CLI, MCP, or HTTP, and they must not bypass the Host to write the Store.
-
-If published, the official `@speclink/store-sqlite`, `@speclink/store-fs`, and `@speclink/store-postgres` packages are optional
-N-API facades over the same Rust driver crates, not TypeScript rewrites. The official `speclink-server` links the Rust crates
-directly; Node packages exist only for Node Hosts and in-process agents. Custom JavaScript Stores may use the async bridge but must
-pass the TeamStore conformance suite.
-
-## Target Remote Platform
-
-The official `speclink-server` will provide a single Rust binary and Docker image, SQLite by default, built-in Server FS and
-PostgreSQL drivers, first-run `/setup`, `/admin`, PATs and roles, Project/Repo binding, TeamStore transactions and immutable
-history, Query + ETag, SSE, context snapshots, verification evidence, migration, and backup/restore.
-
-It also provides an ordinary-user `/account` portal, self-service PATs, invitations, and browser/device authorization for Desktop.
-
-Server Admin UI manages installation, Store, identities, Project/Repo, migration, and recovery. Daily spec work remains in
-Desktop or another Presentation UI.
-
-With a checkout, the agent-visible Context Projection defaults to `.speclink/context/` at the workspace root, not `.git/`. This
-avoids linked-worktree `.git` files, search-tool exclusions, and cross-worktree cache mixing. Without a checkout, Desktop app data,
-MCP resources/search, or a host-managed Session FS carries the projection.
-
-## Configuration Ownership
-
-| Location | Responsibility |
-|---|---|
-| `openspec/config.yaml` or remote Store config | Workflow policy: schema, context, rules, locale, TDD, and audit |
-| `.speclink.yaml` | Repository/workspace binding and local tool integration; never credentials |
-| `.speclink/` | Context snapshots, touched/evidence caches, and other local work data |
-| OS Keychain | Remote credentials |
-
-See [Configuration](docs/configuration.md) for the current local behavior. Remote workflow policy is authoritative at a Store
-revision and local overrides may not silently replace team policy.
-
-## Repository Layout
-
-```text
-crates/
-├── speclink-core       Rust SDD engine
-├── speclink-fs         Local filesystem Store
-├── speclink-cli        CLI frontend
-├── speclink-remote     Existing remote-client foundation
-└── speclink-node       N-API Node bindings
-
-apps/desktop/           Tauri + React Desktop
-packages/ui/            Shared UI and DataSource contract
-openspec/               This repository's specs and change history
-docs/                   Current documentation and platform blueprint
-```
-
-## Development
+## Development / 開發
 
 ```bash
 cargo test --workspace
 npm --workspace @speclink/desktop test
 npm --workspace @speclink/desktop run build
+npm --workspace @speclink/engine test
 ```
 
-Engine and Store changes must preserve CLI parity, render goldens, storage-abstraction tests, and cross-platform behavior. Remote
-phases also require TeamStore conformance, fault injection, transaction recovery, Protocol, and Desktop end-to-end tests.
+Parity and golden tests protect observable CLI output. See product-status and the responsibility documents for Server, Store, and
+Desktop test prerequisites and current limitations.
 
-## Documentation
-
-| Document | Purpose |
-|---|---|
-| [Platform architecture blueprint](docs/platform-architecture.zh-TW.md) | Sole target architecture and roadmap baseline |
-| [Local getting started](docs/getting-started.md) | Current local-repository SDD workflow |
-| [Configuration](docs/configuration.md) | Current local settings, ownership, and migration |
-| [Node SDK](docs/sdk-node.md) | Current N-API SDK, Store bridge, and dispatch surface |
-| [Brand assets](docs/assets/brand/README.md) | Logos, colors, and usage |
-
-Archived changes and discussions under `openspec/` are audit history, not current architecture entry points.
-
-## Roadmap
-
-1. **Phase 1, Engine foundation:** Typed Runtime, TeamStore contract, UoW, events, binding, and Protocol.
-2. **Phase 2, Remote Server:** SQLite/FS/PostgreSQL, auth, Admin UI, SSE, migration, and backup/restore.
-3. **Phase 3, Desktop Remote Workspace:** WorkspaceSession, login, Project/Repo, checkout, offline/conflict UX.
-4. **Phase 4, Agent ecosystem:** Copilot Tools, MCP, custom UI, SSO, runtime plugins, and Cluster mode.
-
-See the [platform architecture blueprint](docs/platform-architecture.zh-TW.md) for dependencies, P0/P1 correctness requirements,
-and explicit non-goals.
-
-## License
+## License / 授權
 
 [MIT](LICENSE)
