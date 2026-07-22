@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 const EMAIL: &str = "user@example.com";
 const PASSWORD: &str = "correct-horse-battery";
+const USER_CODE: &str = "ABCD-EFGH";
 
 /// Seed a user through the identity store (invite → accept) and start a server
 /// over it. Returns the base URL and the identity store.
@@ -75,6 +76,7 @@ fn login_sets_a_secure_session_cookie_and_reaches_account() {
         .send_form(&[("email", EMAIL), ("password", PASSWORD)])
         .expect("login responds");
     assert!((300..400).contains(&resp.status()), "a good login redirects, got {}", resp.status());
+    assert_eq!(resp.header("location"), Some("/account"), "a direct login still reaches account");
     let set = resp.header("set-cookie").expect("Set-Cookie present");
     assert!(set.contains("HttpOnly"), "cookie is HttpOnly: {set}");
     assert!(set.contains("Secure"), "cookie is Secure: {set}");
@@ -89,6 +91,81 @@ fn login_sets_a_secure_session_cookie_and_reaches_account() {
     );
     assert_eq!(status, 200, "the session reaches the account page");
     assert!(body.contains(EMAIL), "the account page names the user: {body}");
+}
+
+#[test]
+fn login_page_preserves_only_a_valid_user_code() {
+    let (base, _identity) = server_with_user();
+
+    let (status, valid) = status_body(agent().get(&format!("{base}/login?user_code={USER_CODE}")).call());
+    assert_eq!(status, 200);
+    assert!(
+        valid.contains(&format!("type=\"hidden\" name=\"user_code\" value=\"{USER_CODE}\"")),
+        "the valid code is carried by the login form: {valid}"
+    );
+
+    let malicious = "%3Cscript%3Ealert%281%29%3C%2Fscript%3E";
+    let (status, malformed) = status_body(agent().get(&format!("{base}/login?user_code={malicious}")).call());
+    assert_eq!(status, 200);
+    assert!(!malformed.contains("script"), "malformed input is not reflected: {malformed}");
+    assert!(!malformed.contains("name=\"user_code\""), "malformed input is not preserved: {malformed}");
+}
+
+#[test]
+fn a_valid_user_code_returns_to_activation_after_login() {
+    let (base, _identity) = server_with_user();
+
+    let response = agent()
+        .post(&format!("{base}/login"))
+        .send_form(&[("email", EMAIL), ("password", PASSWORD), ("user_code", USER_CODE)])
+        .expect("login responds");
+
+    assert!((300..400).contains(&response.status()), "a good login redirects");
+    assert_eq!(
+        response.header("location"),
+        Some("/activate?user_code=ABCD-EFGH"),
+        "the server rebuilds the one allowed activation destination"
+    );
+    assert!(response.header("set-cookie").is_some(), "the returning response opens a session");
+}
+
+#[test]
+fn a_failed_login_preserves_the_user_code_without_disclosing_the_account() {
+    let (base, _identity) = server_with_user();
+
+    let unknown = status_body(
+        agent()
+            .post(&format!("{base}/login"))
+            .send_form(&[("email", "nobody@example.com"), ("password", PASSWORD), ("user_code", USER_CODE)]),
+    );
+    let wrong = status_body(
+        agent()
+            .post(&format!("{base}/login"))
+            .send_form(&[("email", EMAIL), ("password", "wrong-password"), ("user_code", USER_CODE)]),
+    );
+
+    assert_eq!(unknown.0, wrong.0, "same status for unknown email and wrong password");
+    assert_eq!(unknown.1, wrong.1, "the same code produces a byte-identical failure page");
+    assert!(
+        unknown.1.contains(&format!("type=\"hidden\" name=\"user_code\" value=\"{USER_CODE}\"")),
+        "the valid activation context survives a retry: {}",
+        unknown.1
+    );
+    assert!(!unknown.1.contains("nobody@example.com"), "the submitted email is not reflected");
+    assert!(!unknown.1.contains(PASSWORD), "the submitted password is not reflected");
+}
+
+#[test]
+fn a_malformed_user_code_falls_back_to_account_after_login() {
+    let (base, _identity) = server_with_user();
+
+    let response = agent()
+        .post(&format!("{base}/login"))
+        .send_form(&[("email", EMAIL), ("password", PASSWORD), ("user_code", "https://evil.example")])
+        .expect("login responds");
+
+    assert_eq!(response.header("location"), Some("/account"), "malformed input cannot choose a destination");
+    assert!(!response.header("location").unwrap_or_default().contains("evil.example"));
 }
 
 #[test]
