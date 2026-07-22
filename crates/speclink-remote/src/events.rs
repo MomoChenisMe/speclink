@@ -22,6 +22,16 @@ use std::time::Duration;
 /// between heartbeats.
 const ABORT_POLL: Duration = Duration::from_secs(2);
 
+/// How long a stream may stay completely silent before it is treated as dead.
+/// The server sends comment heartbeats at a fixed interval (default 15s), so
+/// a healthy connection is never silent this long — but a half-open socket
+/// whose FIN/RST never arrived would otherwise block [`EventStream::next`]
+/// forever (observed on macOS loopback under CPU starvation). Three missed
+/// default heartbeats: generous against scheduler pauses, still a bounded
+/// recovery. A server configured with a heartbeat above this limit only costs
+/// a periodic lossless resubscribe (Last-Event-ID continues the sequence).
+const STALL_LIMIT: Duration = Duration::from_secs(45);
+
 /// A typed event off the stream. Unknown event names are skipped (a newer
 /// server never breaks an older client); convergence is guaranteed by Query +
 /// ETag regardless.
@@ -58,6 +68,8 @@ pub struct EventStream {
     event: Option<String>,
     data: Vec<String>,
     have_fields: bool,
+    /// When the last byte (heartbeats included) arrived — the stall clock.
+    last_activity: std::time::Instant,
 }
 
 /// Open a subscription to `{base_url}/events`. `base_url`, `token`, and
@@ -93,6 +105,7 @@ pub fn subscribe(
             event: None,
             data: Vec::new(),
             have_fields: false,
+            last_activity: std::time::Instant::now(),
         }),
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
@@ -130,11 +143,21 @@ impl EventStream {
                         Err(disconnected())
                     };
                 }
-                Ok(n) => self.pending.extend_from_slice(&chunk[..n]),
-                // A read timeout is the abort poll tick, not a failure.
+                Ok(n) => {
+                    self.last_activity = std::time::Instant::now();
+                    self.pending.extend_from_slice(&chunk[..n]);
+                }
+                // A read timeout is the abort poll tick, not a failure — but a
+                // stream silent past the stall limit is a dead connection whose
+                // teardown never reached us: hand it to the resubscribe path.
                 Err(e)
                     if e.kind() == std::io::ErrorKind::WouldBlock
-                        || e.kind() == std::io::ErrorKind::TimedOut => {}
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
+                    if self.last_activity.elapsed() >= STALL_LIMIT {
+                        return Err(stalled());
+                    }
+                }
                 Err(_) => {
                     return if self.aborted.load(Ordering::Relaxed) {
                         Ok(None)
@@ -235,6 +258,16 @@ pub fn sync_state(
 fn disconnected() -> RemoteError {
     RemoteError {
         message: "event stream disconnected — resubscribe and converge via sync-state".into(),
+        reason: None,
+        status: None,
+    }
+}
+
+/// The stream stayed silent past [`STALL_LIMIT`]: the connection is presumed
+/// half-open and dead. Same recovery path as a clean disconnect.
+fn stalled() -> RemoteError {
+    RemoteError {
+        message: "event stream stalled — no heartbeat within the stall limit; resubscribe and converge via sync-state".into(),
         reason: None,
         status: None,
     }

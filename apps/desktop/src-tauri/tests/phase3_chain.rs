@@ -769,16 +769,17 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
     h.first.seed_change("pm", "first-during-outage", TASKS);
     while invalidated_rx.try_recv().is_ok() {}
     h.first.start();
-    let online_event = first_state_rx.recv_timeout(Duration::from_secs(5));
-    let recovery_deadline = std::time::Instant::now() + Duration::from_secs(5);
+    // 期限須蓋過 client 的 SSE stall 偵測（45s）：半開連線的 worker 要等
+    // stall 逾時才會重訂。正常路徑事件毫秒級到達，迴圈立即結束。
+    let online_event = first_state_rx.recv_timeout(Duration::from_secs(75));
+    let recovery_deadline = std::time::Instant::now() + Duration::from_secs(75);
     let mut recovery_keys = Vec::new();
     while std::time::Instant::now() < recovery_deadline
-        && !recovery_keys.iter().any(|key| key == PM_KEY)
+        && !(recovery_keys.iter().any(|key| key == PM_KEY)
+            && rd_connects.load(Ordering::SeqCst) >= 2)
     {
-        let remaining = recovery_deadline.saturating_duration_since(std::time::Instant::now());
-        match invalidated_rx.recv_timeout(remaining) {
-            Ok(key) => recovery_keys.push(key),
-            Err(_) => break,
+        if let Ok(key) = invalidated_rx.recv_timeout(Duration::from_millis(250)) {
+            recovery_keys.push(key);
         }
     }
     let recovered_changes = pm_workspace.list_changes(credentials.as_ref());
