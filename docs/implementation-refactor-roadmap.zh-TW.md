@@ -3,6 +3,11 @@
 > 狀態：Implementation companion
 >
 > 目標架構唯一正典為 [`platform-architecture.zh-TW.md`](platform-architecture.zh-TW.md)。本文件只記錄目前程式碼與目標架構的差距、重構邊界及交付順序；若兩份文件衝突，以平台架構為準。
+>
+> 能力是否已可使用，請以最後查核於 **2026-07-17** 的
+> [`product-status.zh-TW.md`](product-status.zh-TW.md) 為準；如何選擇與執行 SDD 流程，請見
+> [`workflow.zh-TW.md`](workflow.zh-TW.md)。本文保留的「現況」段落是制定各 Phase／Gate 時的差距背景，
+> 不是持續更新的產品狀態表；即使後續能力已交付，本文仍只作為唯一目標架構之下的執行伴隨文件。
 
 ## 1. 結論
 

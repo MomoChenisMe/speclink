@@ -1,118 +1,165 @@
-# 入門教學
+# Speclink Local Repo 入門
 
-> English version: [getting-started.md](getting-started.md)
+**繁體中文** · [English](getting-started.md)
 
-> **文件狀態：**本文描述目前已實作的本地 repo 流程。Local/Remote 平台的目標架構與交付階段，以[平台架構藍圖](platform-architecture.zh-TW.md)為準。
+這份教學使用目前已實作的 Local Repo 路徑，走完第一輪：**init → propose → apply → checks → archive**。規格位於 repo 的 `openspec/`，由 Git 協作，不需要 server。完整 Remote／Server 狀態見[產品能力狀態](product-status.zh-TW.md)。
 
-本教學在純本地專案走完一輪完整的規格驅動開發(SDD)循環:**init → discuss → propose → apply → verify → archive**。
+## Before you start / 開始前
 
-Speclink 的設計是由 AI 代理(Claude Code 或 Codex)透過生成的 `/speclink-*` 技能驅動,底下由 `speclink` CLI 擔任引擎。以下每一步同時展示要呼叫的技能與背後運作的 CLI。
+本範例假設需求已清楚：「新增 CSV export」。如果仍需比較方向、形成決策或保存取捨，先讀[完整 SDD 工作流](workflow.zh-TW.md)並使用 `discuss`；不要把每個問題都記成 discussion。
 
-## 0. 安裝
+Speclink 有三個呼叫層級：
 
-從原始碼建置(需 Rust 工具鏈):
+| Layer / 層級 | This guide uses / 本教學用法 | Responsibility / 責任 |
+| --- | --- | --- |
+| Claude skill | `/speclink-propose add-csv-export` | Agent 依 workflow 讀背景、產生 artifacts、驗證並在需要時詢問。 |
+| Codex skill | `$speclink-propose add-csv-export` | 與 Claude 產生相同 Speclink artifacts，呼叫語法使用 Codex `$skill`。 |
+| Direct CLI | `speclink status --change add-csv-export --json` | CLI／Host 是執行引擎；它管理 change、artifact DAG、tasks 與生命週期，不替使用者做需求判斷。 |
 
-```
+以下 Agent 指令請依你使用的 Host 二選一；CLI 區塊則可直接在 shell 執行。
+
+## 1. Install / 安裝
+
+在 Speclink 原始碼 repo，以 stable Rust toolchain 安裝 CLI：
+
+```bash
 cargo install --path crates/speclink-cli
 speclink --version
 ```
 
-預期輸出:`speclink 0.1.0 (x64)`(架構後綴依平台而異)。
+`speclink --help` 應列出 `init`、`status`、`validate`、`analyze`、`drift`、`archive` 與 `discuss` 等目前命令。
 
-## 1. init — 初始化專案
+## 2. Initialize / 初始化
 
-```
-speclink init
-```
+切到要導入 Speclink 的 repo：
 
-預期輸出:
-
-```
-✓ Initialized at <你的專案>\openspec
-Generated files for: claude
+```bash
+speclink init --tools claude,codex
 ```
 
-這會建立 `openspec/` 規格目錄(`specs/`、`changes/archive/`、`config.yaml`)、`.speclink.yaml` 應用設定、`.gitignore` 的 `.speclink/` 條目,以及 AI 工具檔案(`CLAUDE.md` 與 `/speclink-*` 技能)。已安裝的 AI 工具會自動偵測;可用 `--tools claude,codex` 明確指定。
+這會建立 `openspec/`、`.speclink.yaml`、gitignored `.speclink/` 工作資料，並為選定 Host 產生 skills。查看目前狀態：
 
-## 2. discuss — 需求模糊時的選用步驟
-
-在代理中執行 `/speclink-discuss add csv export`。代理透過 CLI 把討論記錄成持久文件:
-
-```
-speclink discuss new "add csv export"     → ✓ Created discussion: add-csv-export
-speclink discuss add-round <slug> --stdin → ✓ Recorded round 1 (interview) …
-speclink discuss conclude <slug> --stdin  → ✓ Concluded discussion 'add-csv-export'
+```bash
+speclink list
+speclink validate --specs --all --strict
 ```
 
-文件位於 `openspec/discussions/add-csv-export.md`,逐輪累積。需求已經清楚時可完全跳過此步。
+若 repo 已有大量程式但沒有 canonical specs，先用 Claude `/speclink-onboard` 或 Codex `$speclink-onboard` 依目前行為建規格，再建立新 change。
 
-## 3. propose — 規劃 change
+## 3. Propose / 提案
 
-執行 `/speclink-propose add-csv-export`(或加 `--from-discussion add-csv-export` 以收斂後的討論播種)。代理建立 change 與四個產物:
+在 Claude：
 
+```text
+/speclink-propose add-csv-export
 ```
-speclink new change add-csv-export --agent claude
+
+在 Codex：
+
+```text
+$speclink-propose add-csv-export
+```
+
+Agent 會建立 change，逐一讀取 schema instructions，並完成 `applyRequires` 依賴鏈上的 artifacts。常見 spec-driven change 會有 proposal、delta specs、tasks，跨模組或有重要技術決策時才需要 design；**design 是條件式 artifact，不保證每個 change 固定產生四份檔案。**
+
+隨時查看 DAG：
+
+```bash
+speclink status --change add-csv-export --json
+```
+
+進階使用者若要直接操作 CLI，底層流程是：
+
+```bash
+speclink new change add-csv-export
+speclink instructions proposal --change add-csv-export --json
 speclink new artifact proposal --change add-csv-export --stdin
-speclink new artifact spec csv-export --change add-csv-export --stdin
-speclink new artifact design --change add-csv-export --stdin
-speclink new artifact tasks --change add-csv-export --stdin
 ```
 
-隨時可查看進度:
+最後一行會從 stdin 讀取符合 instructions template 的完整 Markdown。接著重新執行 `status`，只建立顯示為 ready 且 schema 實際需要的 artifacts；spec 使用 `speclink new artifact spec <capability> --change add-csv-export --stdin`。直接 CLI 適合已理解 artifact contract 的使用者，否則使用 Agent skill。
 
-```
-speclink status --change add-csv-export
-```
+如果來源是 concluded discussion，Claude 使用 `/speclink-propose --from-discussion <slug>`，Codex 使用 `$speclink-propose --from-discussion <slug>`。其他轉為變更或併入既有 change 的路徑見 workflow，不在 happy path 展開。
 
-預期輸出:artifact DAG,以 `✓ done`／`○ ready`／`✗ blocked` 標示;四個產物齊備後顯示 `✓ All artifacts complete`。
+## 4. Apply / 實作
 
-## 4. apply — 實作任務
+artifacts 完成後，在 Claude：
 
-執行 `/speclink-apply add-csv-export`。代理讀取產物、逐一完成 `tasks.md` 的核取方塊,並記錄每項完成:
-
-```
-speclink task done 1 --change add-csv-export
-→ ✓ Task 1 marked as done: <任務描述>
+```text
+/speclink-apply add-csv-export
 ```
 
-代理透過 `speclink instructions apply --change add-csv-export --json` 取得 context 檔案、進度與剩餘任務(全部勾選後 state 變為 `all_done`)。
+在 Codex：
 
-## 5. verify — 對照產物驗證實作
-
-執行 `/speclink-verify add-csv-export`。代理將實作與 spec delta、design 契約逐一對照。結構健檢也可直接執行:
-
-```
-speclink validate add-csv-export   → ✓ add-csv-export — valid
-speclink analyze add-csv-export    → 四維度發現報告
+```text
+$speclink-apply add-csv-export
 ```
 
-## 6. archive — 讓 change 落地
+Agent 會讀 proposal／specs／design（若存在）／tasks，逐項實作與驗證。底層進度入口是：
 
-執行 `/speclink-archive add-csv-export`,或直接:
-
+```bash
+speclink instructions apply --change add-csv-export --json
+speclink task done --change add-csv-export 1
 ```
+
+只有 task 的行為、實作契約與驗證目標都完成後才可 `task done`。若實作被回滾或勾錯，使用：
+
+```bash
+speclink task undone --change add-csv-export 1
+```
+
+當 apply instructions 回傳 `state: all_done`，才進入最終檢查。
+
+## 5. Check / 檢查
+
+檢查 artifact 一致性與結構：
+
+```bash
+speclink analyze add-csv-export --json
+speclink validate add-csv-export
+```
+
+再執行專案自己的 tests、lint、build 或人工驗收。`validate`／`analyze` 只檢查 artifacts，不能取代 code correctness。
+
+引擎內有 verify workflow asset，但此 repo 目前沒有生成可呼叫的 `/speclink-verify` 或 `$speclink-verify`。因此不要把它當成本教學指令；使用專案 tests、逐 Requirement／Scenario 對照與 `task done` evidence 完成實作驗證。完整限制見 product-status 的 Verify and task evidence 列。
+
+## 6. Archive / 封存
+
+所有 tasks 完成、artifacts valid、delta assumptions 未過時且實作檢查通過後，在 Claude：
+
+```text
+/speclink-archive add-csv-export
+```
+
+在 Codex：
+
+```text
+$speclink-archive add-csv-export
+```
+
+或直接執行：
+
+```bash
 speclink archive add-csv-export -y
 ```
 
-預期輸出:
+封存會將 delta specs 合併至 canonical specs，並把 change 移至 `openspec/changes/archive/`。不要用 `--mark-tasks-complete` 或 `--no-validate` 跳過未完成工作。
 
-```
-✓ Archived: add-csv-export → 2026-07-04-add-csv-export
-Specs applied: csv-export (added: 1, modified: 0, removed: 0, renamed: 0)
-```
+## What was created / 產物位置
 
-delta 規格合併進正典 `openspec/specs/csv-export/spec.md`,change 目錄移入 `openspec/changes/archive/`;若這是從某討論晉升的最後一個 change,該討論會一併歸檔。
-
-## 檔案放哪裡
-
-| 路徑 | 用途 |
+| Path / 路徑 | Meaning / 意義 |
 | --- | --- |
-| `openspec/specs/<cap>/spec.md` | 正典規格(當前事實) |
-| `openspec/changes/<name>/` | 進行中的 change 提案 |
-| `openspec/changes/archive/` | 已歸檔的 change |
-| `openspec/discussions/` | 討論文件 |
-| `openspec/config.yaml` | 工作流設定 |
-| `.speclink.yaml` | 應用設定(宿主側) |
-| `.speclink/` | 工作資料(gitignored) |
+| `openspec/specs/<capability>/spec.md` | canonical specs，目前行為真相 |
+| `openspec/changes/<name>/` | active change 與 schema 所需 artifacts |
+| `openspec/changes/archive/` | 已封存 changes 的稽核記錄 |
+| `openspec/discussions/` | 需要決策時才建立的 discussion documents |
+| `openspec/config.yaml` | workflow policy、context、rules、locale、TDD／audit |
+| `.speclink.yaml` | workspace binding 與本機工具整合 |
+| `.speclink/` | gitignored Context Projection、touched/evidence 等工作資料 |
 
-Engine、TeamStore、Server 與 UI 的目標架構見[平台架構藍圖](platform-architecture.zh-TW.md)。
+## Leave the happy path / 離開主路徑
+
+- 需求仍模糊：先 `discuss`。
+- discussion 結論要快速建立 change 或併入既有 change：查[Discussion outcomes](workflow.zh-TW.md#discussion-outcomes--討論結論分流)。
+- 實作中需求改變：`$speclink-ingest <change>`（Claude 對應 `/speclink-ingest`）。
+- change 暫停後續作：先 `$speclink-drift <change>`（Claude 對應 `/speclink-drift`）。
+- 要判斷 Server、Desktop Remote Workspace、Agent tools 是否可用：查[產品能力狀態](product-status.zh-TW.md)，不要從架構藍圖推論目前已交付。

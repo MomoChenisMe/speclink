@@ -3,6 +3,12 @@
 > 本文件描述 Speclink 從本地 SDD 工具擴展為可組合平台的完整目標架構，並作為後續設計的整合基準。
 > 本文是唯一目標架構基準；舊 architecture、team-mode 與 verb-contract 文件已移除。
 > 本文不表示所有目標元件皆已完成。
+>
+> 目前可用、部分可用、規劃中與已棄用的能力，請以最後查核於 **2026-07-17** 的
+> [`product-status.zh-TW.md`](product-status.zh-TW.md) 為準；實際使用時請從
+> [`workflow.zh-TW.md`](workflow.zh-TW.md) 選擇流程入口。本文件中的元件與呼叫鏈描述的是目標，
+> 不應單獨當成已交付證據；其下的交付順序見
+> [`implementation-refactor-roadmap.zh-TW.md`](implementation-refactor-roadmap.zh-TW.md)。
 
 ## 1. 核心結論
 
