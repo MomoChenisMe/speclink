@@ -62,6 +62,15 @@ impl ApiError {
         ApiError::new(StatusCode::CONFLICT, ErrorReason::Refused, message)
     }
 
+    /// 413 — the request body exceeds the route's declared size cap.
+    pub fn payload_too_large(message: impl Into<String>) -> ApiError {
+        ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            ErrorReason::Refused,
+            message,
+        )
+    }
+
     /// 400 — the arguments are invalid or ambiguous.
     pub fn invalid_argument(message: impl Into<String>) -> ApiError {
         ApiError::new(

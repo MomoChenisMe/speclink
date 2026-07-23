@@ -124,6 +124,7 @@ pub fn doc_key(doc: &DocumentId) -> String {
             format!("ac.{}.{}", escape(change), escape(doc))
         }
         DocumentId::Language => "lg".to_string(),
+        DocumentId::BoardOrder => "bo".to_string(),
     }
 }
 
@@ -137,6 +138,7 @@ pub fn decode_doc_key(key: &str) -> Result<DocumentId, StoreError> {
     match parts.as_slice() {
         ["wc"] => Ok(DocumentId::WorkflowConfig),
         ["lg"] => Ok(DocumentId::Language),
+        ["bo"] => Ok(DocumentId::BoardOrder),
         ["cm", change] => Ok(DocumentId::ChangeMeta {
             change: unescape(change)?,
         }),

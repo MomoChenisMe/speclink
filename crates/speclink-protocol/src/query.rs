@@ -55,6 +55,7 @@ pub enum ImportDocumentId {
     WorkflowConfig,
     ArchivedChange { change: String, doc: String },
     Language,
+    BoardOrder,
 }
 
 /// Successful `POST /import` response.
@@ -79,6 +80,33 @@ pub struct ImportedDocument {
 #[serde(rename_all = "camelCase")]
 pub enum ImportDocumentOutcome {
     Created,
+}
+
+/// `GET /board-order` response: the scope's opaque board-order document and
+/// the scope revision (the CAS token a later PUT sends back as `If-Match`).
+/// An absent document is a normal state — `content` is null.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardOrderResponse {
+    pub content: Option<String>,
+    pub revision: u64,
+}
+
+/// `PUT /board-order` request: the full replacement text. The server stores
+/// it verbatim — the CAS precondition travels in the `If-Match` header, not
+/// the body.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PutBoardOrderRequest {
+    pub content: String,
+}
+
+/// Successful `PUT /board-order` response: the scope revision the write
+/// landed at (also the new ETag value).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PutBoardOrderResponse {
+    pub revision: u64,
 }
 
 /// `GET /scopes` response: every project the caller is a member of, with its

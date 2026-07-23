@@ -33,16 +33,17 @@ use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::events::InvalidationEvent;
 use speclink_protocol::query::{
     AnalyzeDimension, AnalyzeFinding, AnalyzeMsg, AnalyzeReportResponse, ApplyInstructions,
-    ArtifactContent, ArtifactInstructions, ArtifactStatus, ChangeStatus, ChangeSummary,
-    ConfigResponse, DependencyEntry, DiscussionInfo, ImportBundle, ImportDocumentId,
+    ArtifactContent, ArtifactInstructions, ArtifactStatus, BoardOrderResponse, ChangeStatus,
+    ChangeSummary, ConfigResponse, DependencyEntry, DiscussionInfo, ImportBundle, ImportDocumentId,
     ImportDocumentOutcome, ImportReportResponse, ImportedDocument, LanguageResponse,
-    ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, Progress, PutConfigRequest,
-    PutConfigResponse, ShowDiscussionResponse, SpecSummary, TaskEntry, ValidateChangeResponse,
-    WhoamiRepo, WhoamiResponse, WhoamiUser,
+    ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, Progress,
+    PutBoardOrderRequest, PutBoardOrderResponse, PutConfigRequest, PutConfigResponse,
+    ShowDiscussionResponse, SpecSummary, TaskEntry, ValidateChangeResponse, WhoamiRepo,
+    WhoamiResponse, WhoamiUser,
 };
 use speclink_store::{
-    content_digest, Bundle, BundleDoc, CommandContext, DocumentId, ImportMode, ImportOutcome,
-    Revision, StoreError, BUNDLE_FORMAT_VERSION,
+    content_digest, Bundle, BundleDoc, CommandContext, DocumentId, EventRecord, ImportMode,
+    ImportOutcome, Revision, StoreError, BUNDLE_FORMAT_VERSION,
 };
 use std::convert::Infallible;
 use tokio::sync::broadcast::error::RecvError;
@@ -486,6 +487,118 @@ pub async fn put_config(
     Ok(ok(PutConfigResponse { revision }, &etag))
 }
 
+/// `GET /board-order` — the scope's opaque board-order document, read from one
+/// store snapshot so `revision` is exactly the ETag value. Absence is a normal
+/// state: `content` is null and the ETag still carries the scope revision.
+pub async fn board_order(
+    State(state): State<AppState>,
+    binding: Binding,
+) -> Result<Response, ApiError> {
+    let store = state.store.clone();
+    let scope = verb::scope_of(&binding);
+    let (dto, etag) = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
+        let revision = snapshot.revision().0;
+        let content = snapshot
+            .read(&DocumentId::BoardOrder)
+            .map_err(ApiError::from)?
+            .map(|doc| doc.content);
+        Ok((
+            BoardOrderResponse { content, revision },
+            format!("\"{revision}\""),
+        ))
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
+    Ok(ok(dto, &etag))
+}
+
+/// `PUT /board-order` — full-replacement CAS write of the opaque board
+/// resource, along the put_config shape: role check, `If-Match` against the
+/// scope revision, then store CAS. The content is a presentation resource the
+/// server never parses; the commit carries an event so subscribers re-read.
+pub async fn put_board_order(
+    State(state): State<AppState>,
+    binding: Binding,
+    headers: HeaderMap,
+    Json(req): Json<PutBoardOrderRequest>,
+) -> Result<Response, ApiError> {
+    // The UI capability is only a hint; this request-time role decision is
+    // the final enforcement point.
+    if !binding.policy_write {
+        return Err(ApiError::forbidden(
+            "reader memberships cannot write the board order",
+        ));
+    }
+
+    // The board-order document is a small rank map; anything near this cap
+    // is a malfunctioning client, refused before any write is staged.
+    const BOARD_ORDER_CONTENT_CAP_BYTES: usize = 1024 * 1024;
+    if req.content.len() > BOARD_ORDER_CONTENT_CAP_BYTES {
+        return Err(ApiError::payload_too_large(format!(
+            "board order content exceeds the {BOARD_ORDER_CONTENT_CAP_BYTES}-byte cap"
+        )));
+    }
+
+    let expected_revision = headers
+        .get(axum::http::header::IF_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|raw| raw.trim().trim_matches('"').parse::<u64>().ok())
+        .ok_or_else(|| {
+            ApiError::invalid_argument("If-Match must carry the scope revision ETag")
+        })?;
+
+    let store = state.store.clone();
+    let scope = verb::scope_of(&binding);
+    let actor = binding.actor.id.clone();
+    let content = req.content;
+    let result = tokio::task::spawn_blocking(move || -> Result<(u64, String), ApiError> {
+        let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
+        let actual_revision = snapshot.revision().0;
+        if actual_revision != expected_revision {
+            return Err(ApiError::revision_conflict(format!(
+                "expected scope revision {expected_revision}, actual {actual_revision}"
+            )));
+        }
+        let current = snapshot
+            .read(&DocumentId::BoardOrder)
+            .map_err(ApiError::from)?;
+        drop(snapshot);
+
+        let mut uow = store
+            .begin_unit_of_work(
+                &scope,
+                CommandContext {
+                    command: "put-board-order".into(),
+                    actor: actor.clone(),
+                },
+            )
+            .map_err(ApiError::from)?;
+        match current {
+            Some(doc) => uow.update(DocumentId::BoardOrder, content, doc.revision),
+            None => uow.create(DocumentId::BoardOrder, content),
+        }
+        // The event lands in the outbox so subscribed clients receive an
+        // invalidation and re-read; put_config has no such need.
+        let event = EventRecord {
+            name: "board-order-updated".into(),
+            payload: serde_json::json!({}),
+            actor,
+            at: chrono::Utc::now(),
+        };
+        let revision = store.commit(uow, vec![event]).map_err(ApiError::from)?.0;
+        Ok((revision, format!("\"{revision}\"")))
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
+
+    if result.is_ok() {
+        state.events.notify(&verb::scope_of(&binding));
+    }
+    let (revision, etag) = result?;
+    Ok(ok(PutBoardOrderResponse { revision }, &etag))
+}
+
 /// `POST /import` — local-to-remote migration into one empty bound scope.
 /// The wire has no operation selector; the handler always invokes CreateNew.
 pub async fn import_bundle(
@@ -600,6 +713,7 @@ fn import_document_id(document: ImportDocumentId) -> DocumentId {
             DocumentId::ArchivedChange { change, doc }
         }
         ImportDocumentId::Language => DocumentId::Language,
+        ImportDocumentId::BoardOrder => DocumentId::BoardOrder,
     }
 }
 
@@ -618,6 +732,7 @@ fn store_document_id(document: DocumentId) -> ImportDocumentId {
             ImportDocumentId::ArchivedChange { change, doc }
         }
         DocumentId::Language => ImportDocumentId::Language,
+        DocumentId::BoardOrder => ImportDocumentId::BoardOrder,
     }
 }
 

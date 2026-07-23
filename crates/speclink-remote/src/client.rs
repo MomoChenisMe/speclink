@@ -23,9 +23,10 @@ use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::query::{
     AnalyzeReportResponse, ApplyInstructions, ArchivedListResponse, ArtifactContent,
-    ArtifactInstructions, ChangeStatus, ConfigResponse, ImportBundle, ImportReportResponse,
-    LanguageResponse, ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse,
-    PutConfigRequest, PutConfigResponse, ScopesResponse, SearchResponse, ShowDiscussionResponse,
+    ArtifactInstructions, BoardOrderResponse, ChangeStatus, ConfigResponse, ImportBundle,
+    ImportReportResponse, LanguageResponse, ListChangesResponse, ListDiscussionsResponse,
+    ListSpecsResponse, PutBoardOrderRequest, PutBoardOrderResponse, PutConfigRequest,
+    PutConfigResponse, ScopesResponse, SearchResponse, ShowDiscussionResponse,
     SpecDocumentResponse, ValidateChangeResponse, WhoamiResponse,
 };
 
@@ -271,6 +272,12 @@ impl Client {
         self.get("/config")
     }
 
+    /// `GET /board-order` — the scope's opaque board-order document; an
+    /// absent document is a normal state (`content` null).
+    pub fn board_order(&self) -> Result<BoardOrderResponse, RemoteError> {
+        self.get("/board-order")
+    }
+
     /// `GET /whoami`
     pub fn whoami(&self) -> Result<WhoamiResponse, RemoteError> {
         self.get("/whoami")
@@ -338,6 +345,24 @@ impl Client {
                 expected_revision,
             }),
             &[],
+        )
+    }
+
+    /// `PUT /board-order` with the full replacement text and `If-Match` = the
+    /// scope revision returned by [`Client::board_order`]. There is
+    /// deliberately no force-write path.
+    pub fn put_board_order(
+        &self,
+        content: &str,
+        expected_revision: u64,
+    ) -> Result<PutBoardOrderResponse, RemoteError> {
+        self.send(
+            "PUT",
+            "/board-order",
+            Some(&PutBoardOrderRequest {
+                content: content.to_string(),
+            }),
+            &[("If-Match", &expected_revision.to_string())],
         )
     }
 

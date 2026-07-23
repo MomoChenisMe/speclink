@@ -1016,6 +1016,32 @@ async fn remote_move_task(
     .await
 }
 
+/// 看板拖排直達（remote-board-order 決策 5）：鄰居定址與本地 reorder_card
+/// 同形；順序寫入 scope 的 board resource，不觸碰卡片 meta。
+#[tauri::command]
+async fn remote_reorder_card(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    kind: String,
+    id: String,
+    prev_id: Option<String>,
+    next_id: Option<String>,
+) -> Result<(), String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        ws.reorder_card(
+            credentials,
+            &kind,
+            &id,
+            prev_id.as_deref(),
+            next_id.as_deref(),
+        )
+        .map_err(|e| e.message)
+    })
+    .await
+}
+
 #[tauri::command]
 async fn remote_list_discussions(
     app: tauri::AppHandle,
@@ -1276,6 +1302,7 @@ pub fn run() {
             remote_analyze,
             remote_delete_change,
             remote_move_task,
+            remote_reorder_card,
             remote_list_discussions,
             remote_discussion_document,
             remote_promote_discussion,

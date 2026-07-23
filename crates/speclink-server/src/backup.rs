@@ -176,6 +176,7 @@ enum DocIdDto {
     WorkflowConfig,
     ArchivedChange { change: String, doc: String },
     Language,
+    BoardOrder,
 }
 
 impl From<&DocumentId> for DocIdDto {
@@ -201,6 +202,7 @@ impl From<&DocumentId> for DocIdDto {
                 doc: doc.clone(),
             },
             DocumentId::Language => DocIdDto::Language,
+            DocumentId::BoardOrder => DocIdDto::BoardOrder,
         }
     }
 }
@@ -217,6 +219,7 @@ impl From<DocIdDto> for DocumentId {
             DocIdDto::WorkflowConfig => DocumentId::WorkflowConfig,
             DocIdDto::ArchivedChange { change, doc } => DocumentId::ArchivedChange { change, doc },
             DocIdDto::Language => DocumentId::Language,
+            DocIdDto::BoardOrder => DocumentId::BoardOrder,
         }
     }
 }

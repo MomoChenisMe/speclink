@@ -565,9 +565,12 @@ function AppInner({
                 caps && !caps.searchWorkspace ? t("remote.searchUnavailable") : undefined
               }
               onReorder={
-                caps && !caps.reorderCard
-                  ? undefined
-                  : (kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)
+                caps?.reorderCard
+                  ? (kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)
+                  : undefined
+              }
+              reorderUnavailableReason={
+                caps && !caps.reorderCard ? t("remote.reorderUnavailable") : undefined
               }
               onDragActiveChange={handleBoardDragActive}
             />

@@ -84,6 +84,7 @@ function fakeInvoke() {
     },
     remote_delete_change: null,
     remote_move_task: null,
+    remote_reorder_card: null,
   };
   const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
     calls.push({ cmd, args });
@@ -92,7 +93,8 @@ function fakeInvoke() {
   return { calls, invoke };
 }
 
-/** handshake 結果 fixture：直達／組合真、不支援假（決策 1 矩陣）。 */
+/** handshake 結果 fixture（editor）：全操作面直達，停用清單清空
+ *（remote-board-order 決策 7）。 */
 function openInfo(): RemoteOpenInfo {
   const capabilities: WorkspaceCapabilities = {
     listChanges: true,
@@ -117,7 +119,7 @@ function openInfo(): RemoteOpenInfo {
     getDiscussionDocument: true,
     promoteDiscussion: true,
     archiveDiscussion: true,
-    reorderCard: false,
+    reorderCard: true,
     policyWrite: true,
     liveUpdates: true,
   };
@@ -127,6 +129,21 @@ function openInfo(): RemoteOpenInfo {
     repoKey: REPO,
     repoName: "backend",
     capabilities,
+  };
+}
+
+/** reader 的 handshake 結果：寫入面（含看板拖排）依 role 停用。 */
+function readerInfo(): RemoteOpenInfo {
+  const info = openInfo();
+  return {
+    ...info,
+    capabilities: {
+      ...info.capabilities,
+      deleteChange: false,
+      moveTask: false,
+      reorderCard: false,
+      policyWrite: false,
+    },
   };
 }
 
@@ -155,6 +172,7 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     await ds.getDiscussionDocument("s1");
     await ds.promoteDiscussion("s1");
     await ds.archiveDiscussion("s1");
+    await ds.reorderCard("change", "chg", "prev-card", "next-card");
 
     expect(calls.map((c) => c.cmd)).toEqual([
       "remote_list_changes",
@@ -177,6 +195,7 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
       "remote_discussion_document",
       "remote_promote_discussion",
       "remote_archive_discussion",
+      "remote_reorder_card",
     ]);
     // 每一擊都帶 locator 識別。
     const missing = calls
@@ -208,6 +227,13 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     expect(calls[17].args).toMatchObject({ slug: "s1" });
     expect(calls[18].args).toMatchObject({ slug: "s1", name: null });
     expect(calls[19].args).toMatchObject({ slug: "s1" });
+    // 看板拖排直達（remote-board-order）：鄰居定址與本地 reorder_card 同形。
+    expect(calls[20].args).toMatchObject({
+      kind: "change",
+      id: "chg",
+      prevId: "prev-card",
+      nextId: "next-card",
+    });
   });
 
   it("returns server payloads in the UI shapes", async () => {
@@ -240,7 +266,6 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     const rejections: Array<Promise<unknown>> = [
       ds.changeCapabilities("chg"),
       ds.changeMeta("chg"),
-      ds.reorderCard("change", "chg", null, null),
     ];
     for (const p of rejections) {
       await expect(p).rejects.toThrow(/尚未提供/);
@@ -267,6 +292,15 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
     expect(session.capabilities.listChanges).toBe(true);
     expect(session.settings.kind).toBe("remote");
     expect(session.settings.policyWrite).toBe(true);
+  });
+
+  it("capability 依 role：editor 的 reorderCard 真、reader 假（不偽造缺口）", () => {
+    const { invoke } = fakeInvoke();
+    const editor = createRemoteSession(CONN, openInfo(), undefined, { invoke });
+    expect(editor.capabilities.reorderCard).toBe(true);
+    const reader = createRemoteSession(CONN, readerInfo(), undefined, { invoke });
+    expect(reader.capabilities.reorderCard).toBe(false);
+    expect(reader.capabilities.listChanges).toBe(true);
   });
 
   it("remote settings 綁 locator，以讀得 revision 作 expectedRevision 寫回", async () => {

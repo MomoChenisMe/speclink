@@ -11,7 +11,7 @@
 
 use crate::connections::{refresh_connection, RefreshFailure};
 use crate::credentials::{CredentialKind, CredentialStore};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use speclink_core::model::{require_valid_meta, ChangeMeta};
 use speclink_core::store::Store;
 use speclink_desktop_core::settings::{
@@ -24,15 +24,15 @@ use speclink_protocol::command::{
 };
 use speclink_protocol::events::TransportKind;
 use speclink_protocol::query::{
-    ArchivedListResponse, ArtifactContent, ChangeStatus, DiscussionInfo, ImportBundle,
-    ImportBundleDocument, ImportDocumentId, ImportReportResponse, ImportScope, ListChangesResponse,
-    ListSpecsResponse, ScopesResponse, SearchResponse, ShowDiscussionResponse,
-    SpecDocumentResponse,
+    ArchivedListResponse, ArtifactContent, ChangeStatus, ChangeSummary, DiscussionInfo,
+    ImportBundle, ImportBundleDocument, ImportDocumentId, ImportReportResponse, ImportScope,
+    ListChangesResponse, ListSpecsResponse, ScopesResponse, SearchResponse,
+    ShowDiscussionResponse, SpecDocumentResponse,
 };
 use speclink_remote::client::Client;
 use speclink_remote::RemoteError;
 use speclink_store::content_digest;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -775,6 +775,184 @@ pub fn unsupported(operation: &str) -> RemoteError {
     }
 }
 
+// --- 看板順序 overlay 與拖排寫回（remote-board-order） ---
+
+/// 桌面側 board resource 的預期 JSON 形狀（決策 2）：兩段 rank 圖。server 視
+/// 內容為不透明文本，解析（與損壞容錯）整個歸桌面（決策 6）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub(crate) struct BoardOrderDoc {
+    pub(crate) changes: BTreeMap<String, String>,
+    pub(crate) discussions: BTreeMap<String, String>,
+}
+
+/// 解析 board resource 內容：缺席或無法解析為預期形狀（壞 JSON、非物件）
+/// 一律視為全員缺 rank——回退序照常渲染、看板不 fail（決策 6）。
+pub(crate) fn parse_board_order(content: Option<&str>) -> BoardOrderDoc {
+    content
+        .and_then(|text| serde_json::from_str(text).ok())
+        .unwrap_or_default()
+}
+
+/// 穩定排序疊上 rank 複合鍵（與本地 board_sorted_changes 同構——決策 4）：
+/// 缺值置頂維持 server 回傳序、具值依 rank 位元組字典序升冪、同值以名稱決斷。
+fn sort_with_ranks<T>(
+    items: &mut [T],
+    ranks: &BTreeMap<String, String>,
+    name_of: impl Fn(&T) -> &str,
+) {
+    items.sort_by(|x, y| match (ranks.get(name_of(x)), ranks.get(name_of(y))) {
+        (None, None) => std::cmp::Ordering::Equal, // 穩定排序保留 server 回傳序
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (Some(a), Some(b)) => a.cmp(b).then_with(|| name_of(x).cmp(name_of(y))),
+    });
+}
+
+pub(crate) fn overlay_changes_order(items: &mut [ChangeSummary], board: &BoardOrderDoc) {
+    sort_with_ranks(items, &board.changes, |c| &c.name);
+}
+
+pub(crate) fn overlay_discussions_order(items: &mut [DiscussionInfo], board: &BoardOrderDoc) {
+    sort_with_ranks(items, &board.discussions, |d| &d.slug);
+}
+
+/// 變更卡所屬欄——與前端 changeStage 對 remote 清單 payload 的推導同構
+/// （wire 無 startedAt 欄，開工判定退為完成數 > 0，兩側一致）。
+fn change_stage(c: &ChangeSummary) -> u8 {
+    if c.total_tasks > 0 && c.completed_tasks >= c.total_tasks {
+        2
+    } else if c.completed_tasks > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+/// reorder 一次嘗試所需的 server 現況：兩份清單（修剪與欄推導用）、board
+/// resource 內容與其 CAS revision。
+#[derive(Debug, Clone)]
+pub(crate) struct BoardSnapshot {
+    pub(crate) changes: Vec<ChangeSummary>,
+    pub(crate) discussions: Vec<DiscussionInfo>,
+    pub(crate) content: Option<String>,
+    pub(crate) revision: u64,
+}
+
+/// 欄內有缺 rank 卡時依當前顯示序整欄補章（決策 5——等距鍵只落在 board
+/// resource 圖內，與本地 reorder 的補章語意同構）；回傳欄成員的 id→rank 表。
+fn ensure_column_ranks<'a>(
+    members: &[&'a str],
+    map: &mut BTreeMap<String, String>,
+) -> HashMap<&'a str, String> {
+    if members.iter().any(|member| !map.contains_key(*member)) {
+        let keys = speclink_desktop_core::rank::spread(members.len());
+        for (member, key) in members.iter().zip(&keys) {
+            map.insert((*member).to_string(), key.clone());
+        }
+        members.iter().copied().zip(keys).collect()
+    } else {
+        members
+            .iter()
+            .map(|member| (*member, map[*member].clone()))
+            .collect()
+    }
+}
+
+fn card_not_found(id: &str) -> RemoteError {
+    RemoteError {
+        message: format!("查無此卡：{id}"),
+        reason: Some("not_found".to_string()),
+        status: None,
+    }
+}
+
+/// 計算一次拖排寫回的全文（決策 5）：修剪不在現行清單的條目 → 推導被拖卡
+/// 所在欄成員（顯示序）→ 缺 rank 整欄補章 → 落點鄰居中點鍵 → 序列化。
+pub(crate) fn reorder_full_text(
+    snapshot: &BoardSnapshot,
+    kind: &str,
+    id: &str,
+    prev_id: Option<&str>,
+    next_id: Option<&str>,
+) -> Result<String, RemoteError> {
+    let mut doc = parse_board_order(snapshot.content.as_deref());
+    doc.changes
+        .retain(|name, _| snapshot.changes.iter().any(|c| &c.name == name));
+    doc.discussions
+        .retain(|slug, _| snapshot.discussions.iter().any(|d| &d.slug == slug));
+
+    match kind {
+        "change" => {
+            let mut ordered = snapshot.changes.clone();
+            overlay_changes_order(&mut ordered, &doc);
+            let dragged = ordered
+                .iter()
+                .find(|c| c.name == id)
+                .ok_or_else(|| card_not_found(id))?;
+            let stage = change_stage(dragged);
+            let column: Vec<&str> = ordered
+                .iter()
+                .filter(|c| change_stage(c) == stage)
+                .map(|c| c.name.as_str())
+                .collect();
+            let ranks = ensure_column_ranks(&column, &mut doc.changes);
+            let key = speclink_desktop_core::rank::neighbor_midpoint(&ranks, prev_id, next_id);
+            doc.changes.insert(id.to_string(), key);
+        }
+        "discussion" => {
+            let mut ordered = snapshot.discussions.clone();
+            overlay_discussions_order(&mut ordered, &doc);
+            if !ordered.iter().any(|d| d.slug == id) {
+                return Err(card_not_found(id));
+            }
+            let column: Vec<&str> = ordered.iter().map(|d| d.slug.as_str()).collect();
+            let ranks = ensure_column_ranks(&column, &mut doc.discussions);
+            let key = speclink_desktop_core::rank::neighbor_midpoint(&ranks, prev_id, next_id);
+            doc.discussions.insert(id.to_string(), key);
+        }
+        other => {
+            return Err(RemoteError {
+                message: format!("無效的卡片類別：{other}"),
+                reason: Some("invalid_argument".to_string()),
+                status: None,
+            })
+        }
+    }
+    serde_json::to_string(&doc).map_err(|error| RemoteError {
+        message: format!("board resource 序列化失敗：{error}"),
+        reason: None,
+        status: None,
+    })
+}
+
+/// 拖排寫回的 CAS 收斂迴圈（決策 5）：讀現況 → 重算全文 → PUT 帶 If-Match；
+/// 409 重讀重算重試恰一次，再敗原樣回錯——呼叫端刷新 server 現況，絕不保留
+/// 未落檔的假象順序。
+pub(crate) fn reorder_via(
+    read: impl Fn() -> Result<BoardSnapshot, RemoteError>,
+    put: impl Fn(&str, u64) -> Result<(), RemoteError>,
+    kind: &str,
+    id: &str,
+    prev_id: Option<&str>,
+    next_id: Option<&str>,
+) -> Result<(), RemoteError> {
+    let mut retried = false;
+    loop {
+        let snapshot = read()?;
+        let text = reorder_full_text(&snapshot, kind, id, prev_id, next_id)?;
+        match put(&text, snapshot.revision) {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if !retried && error.reason.as_deref() == Some("revision_conflict") =>
+            {
+                retried = true;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 /// 逐操作的 capability 描述（決策 2）：來源＝決策 1 矩陣常量＋handshake 的
 /// events 宣告。serde 化即隨 remote_open 回 TS 的 payload；UI 據此停用
 /// affordance。本地 session 的對應描述全真——同一 UI 路徑、零分岐維護。
@@ -806,10 +984,12 @@ pub struct RemoteCapabilities {
     pub analyze: bool,
     pub delete_change: bool,
     pub move_task: bool,
+    // 看板拖排直達 board resource（remote-board-order 決策 7）：依 role 翻真
+    //（editor 真、reader 假——server 的 PUT /board-order 以同一 role bit 強制）。
+    pub reorder_card: bool,
     // (c) 不支援（server 無端點；changeMeta/changeCapabilities 依實際 payload
     // 定奪為無來源——ChangeStatus/ChangeSummary 皆不帶 metadata 與 capability
-    // 名清單；看板拖排待 remote-board-order 刀）
-    pub reorder_card: bool,
+    // 名清單）
     pub change_meta: bool,
     pub change_capabilities: bool,
     /// 此 membership 是否可寫 workflow policy；server 仍是最終權限防線。
@@ -848,7 +1028,7 @@ impl RemoteCapabilities {
             analyze: binding.capabilities.analyze,
             delete_change: binding.capabilities.delete_change,
             move_task: binding.capabilities.move_task,
-            reorder_card: false,
+            reorder_card: binding.capabilities.policy_write,
             change_meta: false,
             change_capabilities: false,
             policy_write: binding.capabilities.policy_write,
@@ -1049,11 +1229,26 @@ impl RemoteWorkspace {
         })
     }
 
+    /// 清單同時取 board resource 於 Rust 側合併排序（決策 4）：UI 與 TS 層
+    /// 不做排序、不知道 board resource 存在。board resource 讀取失敗（端點
+    /// 缺席的舊 server）視為缺席——回退序照常渲染。
     pub fn list_changes(
         &self,
         credentials: &dyn CredentialStore,
     ) -> Result<ListChangesResponse, RemoteError> {
-        self.run(credentials, |client| client.list_changes())
+        let mut response = self.run(credentials, |client| client.list_changes())?;
+        let board = self.board_order_doc(credentials);
+        overlay_changes_order(&mut response.changes, &board);
+        Ok(response)
+    }
+
+    /// 讀 board resource 並解析為桌面側形狀；任何讀取失敗與缺席同義
+    /// （決策 6：爆炸半徑＝退回預設序）。
+    fn board_order_doc(&self, credentials: &dyn CredentialStore) -> BoardOrderDoc {
+        self.run(credentials, |client| client.board_order())
+            .ok()
+            .map(|response| parse_board_order(response.content.as_deref()))
+            .unwrap_or_default()
     }
 
     pub fn list_specs(
@@ -1280,16 +1475,59 @@ impl RemoteWorkspace {
         self.run_write(credentials, |client| client.archive(change))
     }
 
+    /// active 討論同樣疊 board resource 排序 overlay（決策 4）；archived 清單
+    /// 不屬看板、維持 server 回傳序。
     pub fn list_discussions(
         &self,
         credentials: &dyn CredentialStore,
     ) -> Result<DiscussionLists, RemoteError> {
         let active = self.run(credentials, |client| client.list_discussions(false))?;
         let archived = self.run(credentials, |client| client.list_discussions(true))?;
+        let mut active = active.discussions;
+        let board = self.board_order_doc(credentials);
+        overlay_discussions_order(&mut active, &board);
         Ok(DiscussionLists {
-            active: active.discussions,
+            active,
             archived: archived.discussions,
         })
+    }
+
+    /// 看板拖排直達（決策 5）：讀清單＋board resource → 補章／中點 → PUT 全文
+    /// 帶 If-Match；409 重讀重算重試恰一次，再敗原樣回錯（前端刷新 server
+    /// 現況，不留假象順序）。全程不觸碰任何卡片 meta／frontmatter。
+    pub fn reorder_card(
+        &self,
+        credentials: &dyn CredentialStore,
+        kind: &str,
+        id: &str,
+        prev_id: Option<&str>,
+        next_id: Option<&str>,
+    ) -> Result<(), RemoteError> {
+        reorder_via(
+            || {
+                let changes = self
+                    .run(credentials, |client| client.list_changes())?
+                    .changes;
+                let discussions = self
+                    .run(credentials, |client| client.list_discussions(false))?
+                    .discussions;
+                let board = self.run(credentials, |client| client.board_order())?;
+                Ok(BoardSnapshot {
+                    changes,
+                    discussions,
+                    content: board.content,
+                    revision: board.revision,
+                })
+            },
+            |content, revision| {
+                self.run_write(credentials, |client| client.put_board_order(content, revision))
+                    .map(|_| ())
+            },
+            kind,
+            id,
+            prev_id,
+            next_id,
+        )
     }
 
     pub fn discussion_document(
@@ -1392,21 +1630,22 @@ mod capability_tests {
     }
 
     #[test]
-    fn editor_handshake_unlocks_all_four_verb_capabilities() {
-        // 規格「capability 驅動停用且不偽造缺口」修訂後語意：editor 四欄全真、
-        // 看板拖排維持停用（待 remote-board-order 刀）。
+    fn editor_handshake_unlocks_all_write_capabilities_including_board_reorder() {
+        // 規格「capability 驅動停用且不偽造缺口」修訂後語意：editor 全操作面
+        // 直達，停用清單清空（remote-board-order 決策 7）。
         let caps = RemoteCapabilities::from_binding(&binding_with(Capabilities {
             validate: true,
             analyze: true,
             delete_change: true,
             move_task: true,
+            policy_write: true,
             ..Default::default()
         }));
         assert!(caps.validate, "validate follows the handshake");
         assert!(caps.analyze, "analyze follows the handshake");
         assert!(caps.delete_change, "deleteChange follows the handshake");
         assert!(caps.move_task, "moveTask follows the handshake");
-        assert!(!caps.reorder_card, "board reorder stays disabled (no endpoint yet)");
+        assert!(caps.reorder_card, "board reorder follows the editor role");
     }
 
     #[test]
@@ -1422,6 +1661,391 @@ mod capability_tests {
         assert!(caps.analyze);
         assert!(!caps.delete_change, "reader write verbs stay disabled");
         assert!(!caps.move_task);
+        assert!(!caps.reorder_card, "reader board reorder stays disabled");
+    }
+}
+
+#[cfg(test)]
+mod board_order_tests {
+    use super::{overlay_changes_order, overlay_discussions_order, parse_board_order};
+    use speclink_protocol::query::{ChangeSummary, DiscussionInfo};
+
+    pub(super) fn change(name: &str, completed: usize, total: usize) -> ChangeSummary {
+        ChangeSummary {
+            name: name.into(),
+            summary: String::new(),
+            status: "in-progress".into(),
+            completed_tasks: completed,
+            total_tasks: total,
+            restale_from: Vec::new(),
+            meta_error: None,
+            repo: None,
+            lifecycle: None,
+            claimed_by: None,
+        }
+    }
+
+    pub(super) fn discussion(slug: &str) -> DiscussionInfo {
+        DiscussionInfo {
+            slug: slug.into(),
+            topic: slug.to_uppercase(),
+            status: "open".into(),
+            rounds: 1,
+            created: "2026-01-02".into(),
+            created_by: None,
+            path: format!("openspec/discussions/{slug}.md"),
+            archived: false,
+        }
+    }
+
+    fn names(items: &[ChangeSummary]) -> Vec<&str> {
+        items.iter().map(|c| c.name.as_str()).collect()
+    }
+
+    #[test]
+    fn ranked_changes_sort_ascending_with_unranked_on_top_in_server_order() {
+        // 規格「remote 排序 overlay 與本地語意同構」＋ board-card-order
+        // Example「四卡混排」：W(b)、X(f)、Y(n)、Z(無 rank) → Z、W、X、Y。
+        let board = parse_board_order(Some(
+            "{\"changes\":{\"w\":\"b\",\"x\":\"f\",\"y\":\"n\"},\"discussions\":{}}",
+        ));
+        let mut items = vec![change("y", 0, 2), change("x", 0, 2), change("z", 0, 2), change("w", 0, 2)];
+        overlay_changes_order(&mut items, &board);
+        assert_eq!(names(&items), ["z", "w", "x", "y"]);
+    }
+
+    #[test]
+    fn equal_ranks_break_ties_by_name() {
+        // board-card-order Example「同值以名稱決斷」：beta 與 alpha 同 rank n
+        // → alpha 在前，跨機器確定。
+        let board = parse_board_order(Some(
+            "{\"changes\":{\"beta\":\"n\",\"alpha\":\"n\"},\"discussions\":{}}",
+        ));
+        let mut items = vec![change("beta", 0, 2), change("alpha", 0, 2)];
+        overlay_changes_order(&mut items, &board);
+        assert_eq!(names(&items), ["alpha", "beta"]);
+    }
+
+    #[test]
+    fn multiple_unranked_keep_the_server_order_among_themselves() {
+        let board = parse_board_order(Some("{\"changes\":{\"m\":\"n\"},\"discussions\":{}}"));
+        let mut items = vec![change("delta", 0, 2), change("bravo", 0, 2), change("m", 0, 2)];
+        overlay_changes_order(&mut items, &board);
+        assert_eq!(names(&items), ["delta", "bravo", "m"], "缺 rank 卡維持 server 回傳序置頂");
+    }
+
+    #[test]
+    fn absent_board_resource_leaves_the_server_order_untouched() {
+        // 規格 Scenario「無 board resource 時行為不變」：逐項一致。
+        let mut items = vec![change("c", 1, 2), change("a", 0, 2), change("b", 2, 2)];
+        let before = names(&items).into_iter().map(String::from).collect::<Vec<_>>();
+        let board = parse_board_order(None);
+        overlay_changes_order(&mut items, &board);
+        assert_eq!(names(&items), before.iter().map(String::as_str).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn corrupt_board_resource_is_treated_as_all_unranked() {
+        // 規格 Scenario「壞文件退回回退序」＋ design 決策 6：非法 JSON／非預期
+        // 形狀＝全員缺 rank，照常渲染不失效。
+        for corrupt in ["not json at all {{{", "[1,2,3]", "{\"changes\":\"not-a-map\"}"] {
+            let mut items = vec![change("c", 0, 2), change("a", 0, 2)];
+            let board = parse_board_order(Some(corrupt));
+            overlay_changes_order(&mut items, &board);
+            assert_eq!(names(&items), ["c", "a"], "corrupt content {corrupt:?} falls back");
+        }
+    }
+
+    #[test]
+    fn discussions_overlay_follows_the_same_semantics() {
+        let board = parse_board_order(Some(
+            "{\"changes\":{},\"discussions\":{\"delta\":\"b\",\"charlie\":\"n\",\"echo\":\"n\"}}",
+        ));
+        let mut items = vec![
+            discussion("charlie"),
+            discussion("zulu"),
+            discussion("echo"),
+            discussion("delta"),
+        ];
+        overlay_discussions_order(&mut items, &board);
+        let slugs: Vec<&str> = items.iter().map(|i| i.slug.as_str()).collect();
+        // zulu 缺 rank 置頂；delta(b) < charlie(n)==echo(n) 同值以 slug 決斷。
+        assert_eq!(slugs, ["zulu", "delta", "charlie", "echo"]);
+    }
+}
+
+#[cfg(test)]
+mod board_reorder_tests {
+    use super::board_order_tests::{change, discussion};
+    use super::{parse_board_order, reorder_via, BoardOrderDoc, BoardSnapshot};
+    use speclink_remote::RemoteError;
+    use std::cell::{Cell, RefCell};
+
+    fn conflict() -> RemoteError {
+        RemoteError {
+            message: "revision 衝突".into(),
+            reason: Some("revision_conflict".into()),
+            status: Some(409),
+        }
+    }
+
+    /// 依 snapshot 產生 read/put 假 IO；記錄每次 put 的 (content, revision)。
+    struct FakeIo {
+        snapshots: RefCell<Vec<BoardSnapshot>>,
+        reads: Cell<usize>,
+        puts: RefCell<Vec<(String, u64)>>,
+        /// 依呼叫序回應 put：true＝成功、false＝409。
+        put_plan: Vec<bool>,
+    }
+
+    impl FakeIo {
+        fn new(snapshots: Vec<BoardSnapshot>, put_plan: Vec<bool>) -> FakeIo {
+            FakeIo {
+                snapshots: RefCell::new(snapshots),
+                reads: Cell::new(0),
+                puts: RefCell::new(Vec::new()),
+                put_plan,
+            }
+        }
+
+        fn run(
+            &self,
+            kind: &str,
+            id: &str,
+            prev: Option<&str>,
+            next: Option<&str>,
+        ) -> Result<(), RemoteError> {
+            reorder_via(
+                || {
+                    let index = self.reads.get();
+                    self.reads.set(index + 1);
+                    let snapshots = self.snapshots.borrow();
+                    Ok(snapshots[index.min(snapshots.len() - 1)].clone())
+                },
+                |content, revision| {
+                    let attempt = self.puts.borrow().len();
+                    self.puts.borrow_mut().push((content.to_string(), revision));
+                    if self.put_plan[attempt] {
+                        Ok(())
+                    } else {
+                        Err(conflict())
+                    }
+                },
+                kind,
+                id,
+                prev,
+                next,
+            )
+        }
+    }
+
+    fn snapshot(
+        changes: Vec<speclink_protocol::query::ChangeSummary>,
+        discussions: Vec<speclink_protocol::query::DiscussionInfo>,
+        content: Option<&str>,
+        revision: u64,
+    ) -> BoardSnapshot {
+        BoardSnapshot {
+            changes,
+            discussions,
+            content: content.map(String::from),
+            revision,
+        }
+    }
+
+    #[test]
+    fn unranked_column_is_backfilled_into_the_board_resource_only() {
+        // design 決策 5：欄內缺 rank → 依當前顯示序整欄補章，等距鍵只落在
+        // board resource 圖內；落點取鄰居中點。
+        let io = FakeIo::new(
+            vec![snapshot(
+                vec![change("a", 0, 4), change("b", 0, 4), change("c", 0, 4)],
+                vec![],
+                None,
+                5,
+            )],
+            vec![true],
+        );
+        io.run("change", "c", Some("a"), Some("b")).expect("reorder lands");
+
+        let puts = io.puts.borrow();
+        assert_eq!(puts.len(), 1, "恰一次 PUT 全文");
+        let (content, revision) = &puts[0];
+        assert_eq!(*revision, 5, "If-Match 帶讀到的 scope revision");
+        let doc = parse_board_order(Some(content));
+        let (a, b, c) = (&doc.changes["a"], &doc.changes["b"], &doc.changes["c"]);
+        assert!(a < c && c < b, "c 落在 a 與 b 之間：{a} < {c} < {b}");
+        assert!(doc.discussions.is_empty(), "補章只涵蓋被拖卡所在欄");
+    }
+
+    #[test]
+    fn backfill_covers_only_the_dragged_cards_column() {
+        // 欄推導與前端 changeStage 同構：proposed(0) 與 ready(全完成) 分欄，
+        // 拖 proposed 卡不為 ready 卡補章。
+        let io = FakeIo::new(
+            vec![snapshot(
+                vec![change("done", 4, 4), change("a", 0, 4), change("b", 0, 4)],
+                vec![],
+                None,
+                3,
+            )],
+            vec![true],
+        );
+        io.run("change", "b", None, Some("a")).expect("reorder lands");
+        let puts = io.puts.borrow();
+        let doc = parse_board_order(Some(&puts[0].0));
+        assert!(!doc.changes.contains_key("done"), "他欄的卡不被補章觸碰");
+        assert!(doc.changes["b"] < doc.changes["a"], "b 落在 a 之前（欄頂）");
+    }
+
+    #[test]
+    fn vanished_neighbors_are_open_ends_and_inverted_ranks_drop_the_upper_bound() {
+        // 規格「拖排寫回以全文 CAS 與一次重試收斂」：消失的鄰居視開放端、
+        // 鄰居現值逆序時棄上界保底——沿本地 neighbor_midpoint 語意。
+        let board = "{\"changes\":{\"a\":\"f\",\"b\":\"n\",\"drag\":\"t\"},\"discussions\":{}}";
+        let io = FakeIo::new(
+            vec![snapshot(
+                vec![change("a", 0, 4), change("b", 0, 4), change("drag", 0, 4)],
+                vec![],
+                Some(board),
+                7,
+            )],
+            vec![true],
+        );
+        // prev 指向已消失的卡（開放端＝欄頂）、next 為 a(f) → key < f。
+        io.run("change", "drag", Some("ghost"), Some("a")).expect("reorder lands");
+        let doc = parse_board_order(Some(&io.puts.borrow()[0].0));
+        assert!(doc.changes["drag"].as_str() < "f", "消失的 prev 視為欄頂開放端");
+
+        // 逆序鄰居（prev=b(n)、next=a(f)，n > f）→ 棄上界：key > n。
+        let io = FakeIo::new(
+            vec![snapshot(
+                vec![change("a", 0, 4), change("b", 0, 4), change("drag", 0, 4)],
+                vec![],
+                Some(board),
+                7,
+            )],
+            vec![true],
+        );
+        io.run("change", "drag", Some("b"), Some("a")).expect("reorder lands");
+        let doc = parse_board_order(Some(&io.puts.borrow()[0].0));
+        assert!(doc.changes["drag"].as_str() > "n", "逆序鄰居棄上界保底");
+    }
+
+    #[test]
+    fn entries_absent_from_the_current_lists_are_pruned_on_rewrite() {
+        // 規格 Scenario「已封存卡的條目被修剪」：PUT 全文不含不在現行清單
+        // 的條目——changes 與 discussions 兩段圖皆修剪。
+        let board = "{\"changes\":{\"gone\":\"d\",\"a\":\"f\",\"b\":\"n\"},\
+                     \"discussions\":{\"stale\":\"g\",\"topic\":\"m\"}}";
+        let io = FakeIo::new(
+            vec![snapshot(
+                vec![change("a", 0, 4), change("b", 0, 4)],
+                vec![discussion("topic")],
+                Some(board),
+                9,
+            )],
+            vec![true],
+        );
+        io.run("change", "a", Some("b"), None).expect("reorder lands");
+        let doc = parse_board_order(Some(&io.puts.borrow()[0].0));
+        assert!(!doc.changes.contains_key("gone"), "封存變更的條目被修剪");
+        assert!(!doc.discussions.contains_key("stale"), "孤兒討論條目一併修剪");
+        assert!(doc.discussions.contains_key("topic"), "現行清單內的條目保留");
+    }
+
+    #[test]
+    fn a_conflict_rereads_recomputes_and_retries_exactly_once() {
+        // 規格 Scenario「409 重讀後落位」：重讀 → 重算 → 重試恰一次成功，
+        // 第二次 PUT 帶新 revision 且落點基於他人已寫入的新 board。
+        let first = snapshot(
+            vec![change("a", 0, 4), change("b", 0, 4), change("drag", 0, 4)],
+            vec![],
+            Some("{\"changes\":{\"a\":\"f\",\"b\":\"n\",\"drag\":\"t\"},\"discussions\":{}}"),
+            5,
+        );
+        let second = snapshot(
+            vec![change("a", 0, 4), change("b", 0, 4), change("drag", 0, 4)],
+            vec![],
+            Some("{\"changes\":{\"a\":\"c\",\"b\":\"x\",\"drag\":\"t\"},\"discussions\":{}}"),
+            8,
+        );
+        let io = FakeIo::new(vec![first, second], vec![false, true]);
+        io.run("change", "drag", Some("a"), Some("b")).expect("retry lands");
+
+        assert_eq!(io.reads.get(), 2, "409 後重讀一次");
+        let puts = io.puts.borrow();
+        assert_eq!(puts.len(), 2, "重試恰一次");
+        assert_eq!(puts[1].1, 8, "重試帶重讀後的新 revision");
+        let doc = parse_board_order(Some(&puts[1].0));
+        let key = doc.changes["drag"].as_str();
+        assert!("c" < key && key < "x", "落點基於重讀後的鄰居現值：c < {key} < x");
+    }
+
+    #[test]
+    fn a_second_conflict_surfaces_the_error_without_a_third_attempt() {
+        // 規格 Scenario「重試仍敗不留假象」：再敗回錯誤（機器可判），呼叫端
+        // 據此刷新 server 現況；絕不第三次嘗試。
+        let base = snapshot(
+            vec![change("a", 0, 4), change("drag", 0, 4)],
+            vec![],
+            None,
+            5,
+        );
+        let io = FakeIo::new(vec![base.clone(), base], vec![false, false]);
+        let error = io.run("change", "drag", Some("a"), None).expect_err("both attempts conflict");
+        assert_eq!(error.reason.as_deref(), Some("revision_conflict"));
+        assert_eq!(io.puts.borrow().len(), 2, "重試上限恰一次，無第三次 PUT");
+    }
+
+    #[test]
+    fn a_dragged_card_missing_from_the_list_is_an_error_without_any_put() {
+        let io = FakeIo::new(
+            vec![snapshot(vec![change("a", 0, 4)], vec![], None, 5)],
+            vec![true],
+        );
+        io.run("change", "ghost", None, None).expect_err("unknown card is refused");
+        assert!(io.puts.borrow().is_empty(), "查無此卡不產生任何寫入");
+    }
+
+    #[test]
+    fn discussions_reorder_writes_the_discussions_map() {
+        let io = FakeIo::new(
+            vec![snapshot(
+                vec![],
+                vec![discussion("alpha"), discussion("beta"), discussion("gamma")],
+                None,
+                4,
+            )],
+            vec![true],
+        );
+        io.run("discussion", "gamma", Some("alpha"), Some("beta")).expect("reorder lands");
+        let doc = parse_board_order(Some(&io.puts.borrow()[0].0));
+        let (a, b, g) = (
+            &doc.discussions["alpha"],
+            &doc.discussions["beta"],
+            &doc.discussions["gamma"],
+        );
+        assert!(a < g && g < b, "gamma 落在 alpha 與 beta 之間");
+        assert!(doc.changes.is_empty(), "變更圖不被討論拖排觸碰");
+    }
+
+    #[test]
+    fn corrupt_board_content_is_rebuilt_by_the_next_reorder() {
+        // 規格 Scenario「壞文件退回回退序」後半：下一次成功拖排重建合法文件。
+        let io = FakeIo::new(
+            vec![snapshot(
+                vec![change("a", 0, 4), change("b", 0, 4)],
+                vec![],
+                Some("not json at all {{{"),
+                6,
+            )],
+            vec![true],
+        );
+        io.run("change", "b", None, Some("a")).expect("reorder lands");
+        let text = &io.puts.borrow()[0].0;
+        let doc: BoardOrderDoc = serde_json::from_str(text).expect("重建後為合法 JSON 形狀");
+        assert!(doc.changes["b"] < doc.changes["a"]);
     }
 }
 
