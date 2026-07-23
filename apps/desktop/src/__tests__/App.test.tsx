@@ -98,7 +98,7 @@ function makeSession(ds: SpeclinkDataSource, settings = fakeSettings()) {
   return (root: string, name: string): WorkspaceSession => ({
     id: `local:${root}`,
     locator: { kind: "local", root },
-    descriptor: { name, badge: null },
+    descriptor: { name },
     dataSource: ds,
     settings: settings as never,
     events: {

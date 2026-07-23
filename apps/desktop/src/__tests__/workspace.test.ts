@@ -15,7 +15,6 @@ vi.mock("sonner", () => ({ toast: { error: toastError } }));
 function fakeDataSource(): SpeclinkDataSource {
   return {
     listChanges: vi.fn().mockResolvedValue([
-      // 1 個進行中（有開工章）＋1 個提案中 → active 徽章派生值 1。
       { name: "started", status: "in-progress", totalTasks: 10, completedTasks: 0, startedAt: "2026-07-06" },
       { name: "proposed", status: "in-progress", totalTasks: 28, completedTasks: 0 },
     ]),
@@ -56,7 +55,7 @@ function fakeSession(ds: SpeclinkDataSource, root: string, name: string): Worksp
   return {
     id: `local:${root}`,
     locator: { kind: "local", root },
-    descriptor: { name, badge: null },
+    descriptor: { name },
     dataSource: ds,
     settings: {
       kind: "local",
@@ -80,7 +79,7 @@ function makeStore(ds: SpeclinkDataSource, ws: WorkspaceAdapter) {
 }
 
 function tab(root: string, name = root): ProjectTab {
-  return { locator: { kind: "local", root }, name, badge: null };
+  return { locator: { kind: "local", root }, name };
 }
 
 function keys(tabs: ProjectTab[]): string[] {
@@ -234,7 +233,7 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
     expect(store.getState().sessions["local:B"]).toBeUndefined();
   });
 
-  it("restoreTabs：依持久化 activeKey 還原活躍分頁、背景分頁各查一次 project_stats 快照", async () => {
+  it("restoreTabs：依持久化 activeKey 還原活躍分頁、背景 local 分頁各探測一次路徑有效性", async () => {
     persistTabs([tab("A", "a"), tab("B", "b")], "local:A");
     const ws = fakeWorkspace({
       openProject: vi
@@ -249,10 +248,10 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
     const s = store.getState();
     expect(keys(s.tabs)).toEqual(["local:A", "local:B"]);
     expect(s.activeKey).toBe("local:A");
-    // 背景分頁 B 查一次快照；active 分頁 A 不經 project_stats（隨 refresh 派生）。
+    // 背景分頁 B 探測一次路徑；active 分頁 A 不經 project_stats。分頁不攜帶計數徽章。
     expect(ws.projectStats).toHaveBeenCalledWith("B");
     expect(ws.projectStats).not.toHaveBeenCalledWith("A");
-    expect(s.tabs.find((t) => locatorKey(t.locator) === "local:B")?.badge).toBe(2);
+    expect(s.tabs.every((t) => !("badge" in t))).toBe(true);
   });
 
   it("首啟無持久化分頁：啟動目錄（cwd 探索）為專案時自動記入（決策 4 首啟路徑）", async () => {
@@ -277,7 +276,7 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
     expect(store.getState().activeKey).toBeNull();
   });
 
-  it("active 分頁徽章隨 refresh 派生待收尾數；全部收尾後歸零（spec「分頁徽章顯示待收尾數」）", async () => {
+  it("refresh 後分頁不攜帶計數徽章（spec「分頁不顯示計數徽章」）", async () => {
     const ds = fakeDataSource();
     // 契約範例：2 個已就緒變更＋1 份已結論未轉出討論 → 徽章 3。
     ds.listChanges = vi.fn().mockResolvedValue([
@@ -300,34 +299,7 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
       activeKey: "local:A",
     });
     await store.getState().refresh();
-    expect(store.getState().tabs[0].badge).toBe(3);
-    // 全部收尾（封存與轉出）後看板刷新 → 徽章歸零。
-    ds.listChanges = vi.fn().mockResolvedValue([
-      { name: "started", status: "in-progress", totalTasks: 10, completedTasks: 2, startedAt: "2026-07-06" },
-    ]);
-    ds.listDiscussions = vi.fn().mockResolvedValue({ active: [], archived: [] });
-    await store.getState().refresh();
-    expect(store.getState().tabs[0].badge).toBe(0);
-  });
-
-  it("切走時 active 分頁徽章凍結為當下值（背景快照制，design D11）", async () => {
-    const ws = fakeWorkspace({
-      openProject: vi.fn().mockResolvedValue({ status: "project", root: "B", name: "b" }),
-    });
-    const ds = fakeDataSource();
-    ds.listChanges = vi.fn().mockResolvedValue([
-      { name: "ready", status: "in-progress", totalTasks: 5, completedTasks: 5 },
-    ]);
-    const store = makeStore(ds, ws);
-    store.setState({
-      tabs: [tab("A", "a"), tab("B", "b")],
-      sessions: { "local:A": fakeSession(ds, "A", "a") },
-      activeKey: "local:A",
-    });
-    await store.getState().refresh(); // A 徽章 → 1（1 個已就緒變更）
-    await store.getState().activateTab("local:B");
-    const a = store.getState().tabs.find((t) => locatorKey(t.locator) === "local:A");
-    expect(a?.badge).toBe(1);
+    expect("badge" in store.getState().tabs[0]).toBe(false);
   });
 
   it("切換以純探測回報值為準（決策 4：probe 即後端真相，無 current-root 全域）", async () => {

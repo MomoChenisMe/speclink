@@ -121,8 +121,6 @@ export type TrayMenuItem =
 
 export interface TrayModel {
   items: TrayMenuItem[];
-  /** macOS 標題徽章：進行中變更數；0 時為空字串（非 macOS 平台不套用）。 */
-  badge: string;
 }
 
 /** unicode 方塊進度條（width 格）；total<=0 回空字串（無任務不畫）。 */
@@ -145,7 +143,6 @@ function changeLabel(c: ChangeItem): string {
  * 變更列帶進度條，子選單含「開啟此變更」「複製名稱」；全無變更則空狀態）→ 分隔 →
  * 討論區（header＋各討論子選單：父項標籤為 slug、topic 為子選單首行描述、
  * 含「開啟此討論」「複製 slug」；無則「討論 0」）→ 分隔 → 動作區（開啟 Speclink、設定、結束）。
- * 徽章＝進行中變更數。
  */
 export function buildTrayModel(
   snapshot: TraySnapshot,
@@ -283,10 +280,7 @@ export function buildTrayModel(
   items.push({ kind: "settings", label: t("tray.settings") });
   items.push({ kind: "quit", label: t("tray.quit") });
 
-  const inProgress = hideWorkspaceData
-    ? 0
-    : snapshot.changes.filter((c) => changeStage(c) === "in-progress").length;
-  return { items, badge: inProgress > 0 ? String(inProgress) : "" };
+  return { items };
 }
 
 // ---- 接線層：訂閱 store、去抖重建、掛點擊 handler ----
@@ -321,7 +315,7 @@ export interface TrayStoreApi {
 }
 
 export interface TrayDeps {
-  /** macOS 才套用文字徽章與 template 圖示（可注入以利測試；預設由 navigator 偵測）。 */
+  /** macOS 才套用 template 圖示（可注入以利測試；預設由 navigator 偵測）。 */
   isMacOS?: boolean;
   /** 選單重建去抖延遲（ms）；預設與看板刷新同量級（400ms）。 */
   debounceMs?: number;
@@ -380,7 +374,7 @@ export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>): 
 }
 
 /**
- * 初始化系統匣原生選單：建圖示與首份選單、訂閱 store（去抖重建選單與 macOS 徽章）。
+ * 初始化系統匣原生選單：建圖示與首份選單、訂閱 store（去抖重建選單）。
  * 回傳 controller，其 dispose 於 app 卸載時清理。專案切換走 store 既有 activateTab
  * 且不動視窗焦點；變更子選單「開啟此變更」與討論項開主視窗並跳詳情；「結束」為原生 predefined Quit。
  */
@@ -489,19 +483,27 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   const render = async () => {
     const model = buildTrayModel(buildTraySnapshot(store.getState()), appT);
     const menu = await Menu.new({ items: model.items.map(toOptions) });
-    return { menu, badge: model.badge };
+    return { menu };
   };
 
   const first = await render();
   const nativeAtInit = styleOf() === "native-menu";
+  // 固定 id＋先移除同 id 孤兒：webview 重建（重載、視窗重開）會再跑 initTray，
+  // 前一個 context 的 tray 無人 dispose 時成為殭屍——其 title 永遠凍在最後值，
+  // 使用者看到的就是「徽章不更新」。同 id 至多一個 tray，殭屍在此被清掉。
+  try {
+    await TrayIcon.removeById("speclink-tray");
+  } catch {
+    /* 無孤兒即略過 */
+  }
   const tray = await TrayIcon.new({
+    id: "speclink-tray",
     icon,
     iconAsTemplate: isMac,
     tooltip: "Speclink",
     // 樣式分流：native-menu 掛選單（左鍵開選單）；panel 不掛——點擊交給 action。
     menu: nativeAtInit ? first.menu : undefined,
     showMenuOnLeftClick: nativeAtInit,
-    title: isMac ? first.badge || undefined : undefined,
     action: (event) => {
       // 面板樣式限定（原生選單樣式由選單接管點擊）。
       if (styleOf() !== "panel") return;
@@ -548,26 +550,27 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
     },
   );
 
-  // 去抖訂閱：資料或樣式變動後依樣式分流——native 重建選單＋徽章；panel 卸選單、
-  // 僅更新徽章；兩樣式皆推送快照給面板（面板未開時為無害廣播）。
+  // 去抖訂閱：資料或樣式變動後依樣式分流——native 重建選單；panel 卸選單；
+  // 兩樣式皆推送快照給面板（面板未開時為無害廣播）。
   let timer: ReturnType<typeof setTimeout> | null = null;
   const unsubscribe = store.subscribe(() => {
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {
       void (async () => {
         pushSnapshot();
-        if (styleOf() === "native-menu") {
-          const { menu, badge } = await render();
-          await tray.setMenu(menu);
-          await tray.setShowMenuOnLeftClick(true);
-          if (isMac) await tray.setTitle(badge || null);
-        } else {
-          // 卸選單＋關左鍵開選單缺一不可：後者不關，左鍵仍被「開選單」路徑
-          // 吃掉（選單已空＝點了無事發生），點擊事件到不了 action／面板。
-          await tray.setMenu(null);
-          await tray.setShowMenuOnLeftClick(false);
-          const model = buildTrayModel(buildTraySnapshot(store.getState()), appT);
-          if (isMac) await tray.setTitle(model.badge || null);
+        try {
+          if (styleOf() === "native-menu") {
+            const { menu } = await render();
+            await tray.setMenu(menu);
+            await tray.setShowMenuOnLeftClick(true);
+          } else {
+            // 卸選單＋關左鍵開選單缺一不可：後者不關，左鍵仍被「開選單」路徑
+            // 吃掉（選單已空＝點了無事發生），點擊事件到不了 action／面板。
+            await tray.setMenu(null);
+            await tray.setShowMenuOnLeftClick(false);
+          }
+        } catch (e) {
+          console.error("tray menu update failed", e);
         }
       })();
     }, debounceMs);

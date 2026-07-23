@@ -22,8 +22,8 @@ function render(ui: ReactElement) {
 const local = (root: string): WorkspaceLocator => ({ kind: "local", root });
 
 const tabs: ProjectTab[] = [
-  { locator: local("C:\\proj\\alpha"), name: "alpha", badge: 3 },
-  { locator: local("C:\\proj\\beta"), name: "beta", badge: 2 },
+  { locator: local("C:\\proj\\alpha"), name: "alpha" },
+  { locator: local("C:\\proj\\beta"), name: "beta" },
 ];
 
 describe("ProjectTabs", () => {
@@ -35,12 +35,9 @@ describe("ProjectTabs", () => {
     expect(beta.getAttribute("data-active")).toBe("false");
   });
 
-  it("shows the in-progress badge on each tab", () => {
+  it("tabs render no count badge（spec「分頁不顯示計數徽章」）", () => {
     render(<ProjectTabs tabs={tabs} activeKey="local:C:\proj\alpha" tabErrors={{}} />);
-    const alpha = screen.getByText("alpha").closest("[data-tab]") as HTMLElement;
-    expect(within(alpha).getByText("3")).toBeTruthy();
-    const beta = screen.getByText("beta").closest("[data-tab]") as HTMLElement;
-    expect(within(beta).getByText("2")).toBeTruthy();
+    expect(document.querySelector("[data-badge]")).toBeNull();
   });
 
   it("clicking a background tab fires onActivate with its root", () => {
@@ -105,7 +102,6 @@ describe("ProjectTabs", () => {
           checkoutRoot: "/work/backend",
         },
         name: "Demo/backend",
-        badge: null,
       },
     ];
     render(<ProjectTabs tabs={remoteTabs} activeKey="remote:c1/demo/backend" tabErrors={{}} />);
@@ -127,7 +123,6 @@ describe("ProjectTabs", () => {
       {
         locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
         name: "Demo/backend",
-        badge: null,
       },
     ];
     const recoveryStates: Record<string, RemoteWorkspaceRecoveryState> = {
@@ -166,7 +161,6 @@ describe("ProjectTabs", () => {
       {
         locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
         name: "Demo/backend",
-        badge: null,
       },
     ];
     render(

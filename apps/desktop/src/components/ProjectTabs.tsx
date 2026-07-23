@@ -1,16 +1,12 @@
 // 專案分頁列（design D10，UI 形態對齊 Spectra）：active 分頁 teal 粗框標示
-// 目前專案、✕ 僅 active 與 hover 顯示、「＋」掛尾端接資料夾選擇器、徽章顯示
-// 進行中變更數（hover tooltip）、失效分頁錯誤態（警示標記＋自分頁移除）。
+// 目前專案、✕ 僅 active 與 hover 顯示、「＋」掛尾端接資料夾選擇器、
+// 失效分頁錯誤態（警示標記＋自分頁移除）；分頁不顯示計數徽章。
 // 分頁識別＝locator key（workspace-session 決策 1）；顯示文字與行為不變。
 import { AlertTriangle, Cloud, CloudOff, Folder, LoaderCircle, LogIn, Plus, X } from "lucide-react";
 import {
   Button,
   cn,
   useI18n,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
 } from "@speclink/ui";
 
 import type { ProjectTab } from "../tabs";
@@ -32,26 +28,6 @@ export interface ProjectTabsProps {
   onClose?: (key: string) => void;
   /** 「＋」入口：開新增 Workspace chooser。 */
   onOpen?: () => void;
-}
-
-function TabBadge({ badge, tabKey }: { badge: number | null; tabKey: string }) {
-  const { t } = useI18n();
-  if (badge === null) return null;
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            data-badge={tabKey}
-            className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-primary/12 text-primary text-[10px] font-semibold tabular-nums"
-          >
-            {badge}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{t("app.tabBadgeTooltip").replace("{n}", String(badge))}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
 }
 
 export function ProjectTabs({
@@ -174,7 +150,6 @@ export function ProjectTabs({
               {statusIcon}
               <span className="truncate max-w-[140px]">{tab.name}</span>
               {status !== "ready" && <span className="sr-only">，{statusLabel}</span>}
-              {status === "ready" && <TabBadge badge={tab.badge} tabKey={key} />}
             </button>
             {error ? (
               <Button

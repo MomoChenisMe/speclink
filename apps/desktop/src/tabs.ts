@@ -9,8 +9,6 @@ import { locatorKey, type WorkspaceLocator } from "./session";
 export interface ProjectTab {
   locator: WorkspaceLocator;
   name: string;
-  /** 待收尾數（spec-archive-drawer design D6）；null＝尚未取得（restore 快照前）。 */
-  badge: number | null;
 }
 
 export interface PersistedTabs {
@@ -36,7 +34,7 @@ export function upsertTab(
         : t,
     );
   }
-  const next = [...tabs, { locator: entry.locator, name: entry.name, badge: null }];
+  const next = [...tabs, { locator: entry.locator, name: entry.name }];
   return next.length > MAX_TABS ? next.slice(next.length - MAX_TABS) : next;
 }
 
@@ -122,11 +120,3 @@ export function readPersistedTabs(storage: Storage = localStorage): PersistedTab
   }
 }
 
-/** 徽章派生：待收尾數＝已就緒變更（changeStage ready，與看板欄位規則同源）＋
- * 已結論未轉出討論（concluded；promoted 已轉出、open 仍在推進，皆不計）。
- * 待收尾＝等使用者執行動詞的卡片（spec-archive-drawer design D6）。 */
-export function pendingWrapUpCount(changes: ChangeItem[], discussions: DiscussionItem[]): number {
-  const ready = changes.filter((c) => changeStage(c) === "ready").length;
-  const concluded = discussions.filter((d) => d.status === "concluded").length;
-  return ready + concluded;
-}

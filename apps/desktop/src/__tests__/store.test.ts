@@ -49,7 +49,7 @@ function fakeSession(ds: SpeclinkDataSource, root = "A", name = "a"): WorkspaceS
   return {
     id: `local:${root}`,
     locator: { kind: "local", root },
-    descriptor: { name, badge: null },
+    descriptor: { name },
     dataSource: ds,
     settings: {
       kind: "local",
@@ -78,7 +78,7 @@ function remoteSession(ds: SpeclinkDataSource, repoId: string): WorkspaceSession
   return {
     id: `remote:c1/demo/${repoId}`,
     locator,
-    descriptor: { name: `Demo/${repoId}`, badge: null },
+    descriptor: { name: `Demo/${repoId}` },
     dataSource: ds,
     settings: {
       kind: "remote",
@@ -103,8 +103,8 @@ function storeWithRemoteSessions(a: WorkspaceSession, b: WorkspaceSession) {
   });
   store.setState({
     tabs: [
-      { locator: a.locator, name: a.descriptor.name, badge: null },
-      { locator: b.locator, name: b.descriptor.name, badge: null },
+      { locator: a.locator, name: a.descriptor.name },
+      { locator: b.locator, name: b.descriptor.name },
     ],
     sessions: { [a.id]: a, [b.id]: b },
     activeKey: a.id,
@@ -225,7 +225,7 @@ describe("app store (Zustand)", () => {
       workspace: {} as WorkspaceAdapter,
     });
     store.setState({
-      tabs: [{ locator: a.locator, name: a.descriptor.name, badge: null }],
+      tabs: [{ locator: a.locator, name: a.descriptor.name }],
       sessions: { [a.id]: a },
       activeKey: a.id,
     });
