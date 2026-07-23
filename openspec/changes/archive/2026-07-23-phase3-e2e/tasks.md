@@ -13,7 +13,7 @@
 ## 3. gate 錨定與 CI
 
 - [x] 3.1（規格「gate 條目逐一錨定於劇本斷言」；design「決策 3：gate 條目逐一錨定」）：六條 gate 的命名斷言補齊——三形態 session 並存（local＋remote spec-only＋remote+checkout 同時存在）、locator key 身分、capability 停用、registry 與分頁持久化序列化掃描無 credential、Polling＋ETag 收斂、stale 只讀且恢復後 server 查無離線寫入。全綠。 <!-- speclink-task:tsk_01KY178KD7YHTYMNG3PM7Q3Q71 -->
-- [ ] 3.2 .github/workflows/ci.yml 劇本獨立 job（與單元測試分開）、失敗上傳 server 輸出 artifact。驗證：CI 綠。 <!-- speclink-task:tsk_01KY178KD7PY3Q45C7CF3AYVE7 -->
+- [x] 3.2 .github/workflows/ci.yml 劇本獨立 job（與單元測試分開）、失敗上傳 server 輸出 artifact。驗證：CI 綠。 <!-- speclink-task:tsk_01KY178KD7PY3Q45C7CF3AYVE7 -->
 
 ## 4. 驗收
 
