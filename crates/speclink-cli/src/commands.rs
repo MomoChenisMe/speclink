@@ -436,6 +436,9 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
 // --- validate ---
 
 fn cmd_validate(a: ValidateArgs) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_validate(&ctx, &a);
+    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     let outcome = run_command(
@@ -451,16 +454,21 @@ fn cmd_validate(a: ValidateArgs) -> Result<()> {
     let core::command::CommandOutcome::Validate(v) = outcome else {
         unreachable!("validate command yields a validate outcome");
     };
-    let results = v.results;
+    render_validate_results(&v.results, a.json)
+}
+
+/// fs 與 remote 共用的 validate 渲染：--json 印完整結果陣列、人眼逐 change
+/// 列 error/warn；任一 invalid 以「Validation failed.」非零收尾。
+fn render_validate_results(results: &[core::validate::ValidationResult], json: bool) -> Result<()> {
     let any_invalid = results.iter().any(|r| !r.valid);
-    if a.json {
+    if json {
         print_json(&results)?;
         if any_invalid {
             bail!("Validation failed.");
         }
         return Ok(());
     }
-    for r in &results {
+    for r in results {
         if r.valid {
             println!("{} {} — valid", color::green("✓"), r.change);
         } else {
@@ -482,6 +490,9 @@ fn cmd_validate(a: ValidateArgs) -> Result<()> {
 // --- analyze ---
 
 fn cmd_analyze(a: ChangeArg) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_analyze(&ctx, &a);
+    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     if info_if_no_changes(store, a.change.as_deref()) {
@@ -825,19 +836,24 @@ fn cmd_discard(a: DiscardArgs) -> Result<()> {
     let core::command::CommandOutcome::Discard(outcome) = cmd_outcome else {
         unreachable!("discard yields a discard outcome");
     };
-    if a.json {
-        let discussions: Vec<serde_json::Value> = outcome
-            .unlinked_discussions
+    render_discard(&outcome.change_name, &outcome.unlinked_discussions, a.json)
+}
+
+/// fs 與 remote 共用的 discard 渲染：--json 為 change＋unlinkedDiscussions、
+/// 人眼列出每筆 unlink 後狀態。
+fn render_discard(change: &str, unlinked: &[(String, String)], json: bool) -> Result<()> {
+    if json {
+        let discussions: Vec<serde_json::Value> = unlinked
             .iter()
             .map(|(slug, status)| serde_json::json!({ "slug": slug, "status": status }))
             .collect();
         return print_json(&serde_json::json!({
-            "change": outcome.change_name,
+            "change": change,
             "unlinkedDiscussions": discussions,
         }));
     }
-    println!("{} Discarded change: {}", color::green("✓"), outcome.change_name);
-    for (slug, status) in &outcome.unlinked_discussions {
+    println!("{} Discarded change: {change}", color::green("✓"));
+    for (slug, status) in unlinked {
         println!("  Discussion unlinked: {slug} → {status}");
     }
     Ok(())

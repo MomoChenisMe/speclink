@@ -373,6 +373,127 @@ fn mark_undone(tasks_md: &str, target_id: usize) -> Option<(String, String, bool
     flip_task(tasks_md, target_id, false)
 }
 
+/// Outcome of [`move_task`]: the moved task's cleaned description after the
+/// move (prefixes already renumbered).
+#[derive(Debug, Clone)]
+pub struct MoveTaskOutcome {
+    pub description: String,
+}
+
+/// True when the line is a checkbox task in [`parse`]'s domain (dash and star
+/// bullets both count) — move ordinals share the same 1-based addressing as
+/// task done/undone.
+fn is_checkbox_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let Some(body) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) else {
+        return false;
+    };
+    body.starts_with("[ ] ") || body.starts_with("[x] ") || body.starts_with("[X] ")
+}
+
+/// 0-based indices of the checkbox lines.
+fn checkbox_line_indices(lines: &[String]) -> Vec<usize> {
+    lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| is_checkbox_line(l))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// 重算任務編號前綴：群組編號取自「## N.」標題自身的數字；群組內第 k 個
+/// checkbox 行、文字以「數字.數字＋空白」開頭者，前綴重寫為「N.k」。其餘一律
+/// 逐字元保留——無前綴、子版號（1.2.3）、無數字標題的群組、首個標題前的任務、
+/// 群組標題與非 checkbox 行都不改寫（重編號永不弄丟使用者文字）。
+fn renumber_task_prefixes(lines: &mut [String]) {
+    let prefix_re = regex::Regex::new(r"^(\s*[-*]\s*\[[ xX]\]\s+)(\d+\.\d+)(\s)").unwrap();
+    let mut group: Option<u64> = None;
+    let mut k = 0usize;
+    for line in lines.iter_mut() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("## ") {
+            let rest = rest.trim_start();
+            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            group = if !digits.is_empty() && rest[digits.len()..].starts_with('.') {
+                digits.parse().ok()
+            } else {
+                None
+            };
+            k = 0;
+            continue;
+        }
+        if is_checkbox_line(line) {
+            k += 1;
+            if let Some(g) = group {
+                *line = prefix_re.replace(line, format!("${{1}}{g}.{k}${{3}}")).into_owned();
+            }
+        }
+    }
+}
+
+/// 把第 `from` 個任務移到以第 `to` 個任務為錨的位置（皆 1-based、僅計 checkbox
+/// 行）——桌面拖排與 server 端點共用的唯一搬移引擎。只搬 checkbox 行本身，群組
+/// 標題與其他行不動；越界回 `Err` 且零寫入。`before`：None＝方向推斷（向上插錨
+/// 前、向下插錨後——組界時貼齊手勢方向的群組）；Some(true)＝明確插於錨任務行之
+/// 前（跨過群組標題即成為錨所屬群組的組首）；Some(false)＝明確插於錨任務行之
+/// 後。搬移成功後重算編號前綴、保留檔尾換行狀態，一次寫回。
+pub fn move_task(
+    store: &dyn Store,
+    change: &str,
+    from: usize,
+    to: usize,
+    before: Option<bool>,
+) -> Result<MoveTaskOutcome> {
+    let text = store
+        .read_artifact(change, "tasks.md")
+        .ok_or_else(|| anyhow::anyhow!("tasks.md not found for change '{change}'"))?;
+    let had_trailing_newline = text.ends_with('\n');
+    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
+    let idx = checkbox_line_indices(&lines);
+    let n = idx.len();
+    if from == 0 || to == 0 || from > n || to > n {
+        // Refusal 標記：命令層歸類 refused（server 端 409），非 internal error——
+        // index 定址在他人同時編輯下可位移，越界是可預期的競態拒絕。
+        return Err(anyhow::Error::new(crate::command::Refusal(format!(
+            "task index out of range (1..={n})"
+        ))));
+    }
+    let moved_ordinal = if from == to {
+        from
+    } else {
+        let moved = lines.remove(idx[from - 1]);
+        // 移除後重算剩餘 checkbox 行位置；錨任務（原第 to 個）在移除後的 0-based 位置。
+        let idx2 = checkbox_line_indices(&lines);
+        let anchor = if to < from { to - 1 } else { to - 2 };
+        // 側別決定貼邊；未指定時以方向推斷（向上插前、向下插後）——否則向下拖到
+        // 群組末位會越過群組邊界、被吞進下一群組（順序相同、群組歸屬錯誤）。
+        let insert_before = before.unwrap_or(to < from);
+        let insert_at = if insert_before {
+            idx2[anchor]
+        } else {
+            idx2[anchor] + 1
+        };
+        lines.insert(insert_at, moved);
+        renumber_task_prefixes(&mut lines);
+        checkbox_line_indices(&lines)
+            .iter()
+            .position(|&i| i == insert_at)
+            .expect("the inserted line is a checkbox line")
+            + 1
+    };
+    let mut out = lines.join("\n");
+    if had_trailing_newline {
+        out.push('\n');
+    }
+    store.write_artifact(change, "tasks.md", &out)?;
+    let description = parse(&out)
+        .into_iter()
+        .find(|t| t.id == moved_ordinal)
+        .map(|t| t.description)
+        .unwrap_or_default();
+    Ok(MoveTaskOutcome { description })
+}
+
 // --- Touched-file tracking / per-task evidence ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1030,5 +1151,183 @@ mod tests {
             seeded,
             "undone must not write or alter any evidence record"
         );
+    }
+
+    // --- 任務搬移＋重編號（自 desktop core 遷入；spec「任務搬移端點與重編號效果」）---
+
+    fn tasks_text(store: &TestStore) -> String {
+        store.read_artifact("demo", "tasks.md").unwrap()
+    }
+
+    fn move_lines(store: &TestStore) -> Vec<String> {
+        tasks_text(store)
+            .lines()
+            .filter(|l| l.trim_start().starts_with("- ["))
+            .map(|l| l.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn move_within_group_renumbers_prefixes_per_spec_example() {
+        // spec Example「組內移動重編號」：把 1.1 甲拖到末位 → 乙丙甲，前綴重寫 1.1/1.2/1.3。
+        let store = store_with(META_UNSTARTED, "## 1. 群組\n\n- [ ] 1.1 甲\n- [x] 1.2 乙\n- [ ] 1.3 丙\n");
+        let out = move_task(&store, "demo", 1, 3, None).unwrap();
+        assert_eq!(
+            move_lines(&store),
+            vec!["- [x] 1.1 乙", "- [ ] 1.2 丙", "- [ ] 1.3 甲"],
+            "prefixes must follow the new order"
+        );
+        assert_eq!(out.description, "1.3 甲", "outcome carries the post-move description");
+        assert!(tasks_text(&store).contains("## 1. 群組"), "group heading untouched");
+    }
+
+    #[test]
+    fn move_up_infers_insert_before_the_anchor() {
+        let store = store_with(META_UNSTARTED, "## 1. 群組\n\n- [ ] 1.1 甲\n- [x] 1.2 乙\n- [ ] 1.3 丙\n");
+        let out = move_task(&store, "demo", 3, 1, None).unwrap();
+        assert_eq!(
+            move_lines(&store),
+            vec!["- [ ] 1.1 丙", "- [ ] 1.2 甲", "- [x] 1.3 乙"],
+            "an upward move must insert before the anchor"
+        );
+        assert_eq!(out.description, "1.1 丙");
+    }
+
+    #[test]
+    fn move_across_groups_takes_the_new_groups_numbering() {
+        // spec scenario「跨群組搬移重編號」：把第 1 個任務移到第 3 個任務之後。
+        let store = store_with(
+            META_UNSTARTED,
+            "## 1. 前段\n\n說明文字原樣保留。\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n\n## 2. 後段\n\n- [ ] 2.1 丙\n- [ ] 2.2 丁\n",
+        );
+        let out = move_task(&store, "demo", 1, 3, None).unwrap();
+        assert_eq!(
+            move_lines(&store),
+            vec!["- [ ] 1.1 乙", "- [ ] 2.1 丙", "- [ ] 2.2 甲", "- [ ] 2.3 丁"]
+        );
+        assert_eq!(out.description, "2.2 甲", "moved task takes the new group's numbering");
+        let text = tasks_text(&store);
+        assert!(text.contains("說明文字原樣保留。"), "prose lines byte-identical");
+        assert!(text.contains("## 1. 前段") && text.contains("## 2. 後段"));
+    }
+
+    #[test]
+    fn downward_move_to_group_end_stays_in_the_origin_group() {
+        // 向下拖到群組末位必須落在錨 checkbox 之後（留在原群組），不得吞進下一群組。
+        let store = store_with(
+            META_UNSTARTED,
+            "## 1. 前段\n\n- [ ] 1.1 甲\n- [x] 1.2 乙\n- [ ] 1.3 丙\n\n## 2. 後段\n\n- [ ] 2.1 丁\n- [ ] 2.2 戊\n",
+        );
+        move_task(&store, "demo", 1, 3, None).unwrap();
+        assert_eq!(
+            move_lines(&store),
+            vec!["- [x] 1.1 乙", "- [ ] 1.2 丙", "- [ ] 1.3 甲", "- [ ] 2.1 丁", "- [ ] 2.2 戊"],
+            "a downward move onto the last task of a group must not leak into the next group"
+        );
+        let text = tasks_text(&store);
+        let g2 = text.split("## 2. 後段").nth(1).unwrap();
+        assert!(!g2.contains("甲"), "甲 must stay under group 1: {text}");
+    }
+
+    #[test]
+    fn before_true_crosses_the_heading_and_becomes_group_head() {
+        // 明確 before=true：插於錨任務行之前，跨過群組標題成為錨所屬群組的組首。
+        let store = store_with(
+            META_UNSTARTED,
+            "## 1. 前段\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n\n## 2. 後段\n\n- [ ] 2.1 丙\n- [ ] 2.2 丁\n",
+        );
+        move_task(&store, "demo", 2, 3, Some(true)).unwrap();
+        assert_eq!(
+            move_lines(&store),
+            vec!["- [ ] 1.1 甲", "- [ ] 2.1 乙", "- [ ] 2.2 丙", "- [ ] 2.3 丁"],
+            "before=true must insert ahead of the anchor line, across the heading"
+        );
+        let text = tasks_text(&store);
+        let g2 = text.split("## 2. 後段").nth(1).unwrap();
+        assert!(g2.contains("乙"), "乙 must live under group 2: {text}");
+    }
+
+    #[test]
+    fn before_false_explicitly_inserts_after_the_anchor() {
+        // 明確側別覆蓋方向推斷：向上移動＋before=false → 落在錨任務之後。
+        let store = store_with(META_UNSTARTED, "## 1. 群組\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n- [ ] 1.3 丙\n");
+        move_task(&store, "demo", 3, 1, Some(false)).unwrap();
+        assert_eq!(
+            move_lines(&store),
+            vec!["- [ ] 1.1 甲", "- [ ] 1.2 丙", "- [ ] 1.3 乙"],
+            "before=false anchors after task 1 even on an upward move"
+        );
+    }
+
+    #[test]
+    fn renumber_leaves_unprefixed_and_sub_versioned_text_verbatim() {
+        // 重編號只改「數字.數字＋空白」前綴：無前綴與子版號（1.2.3）逐字元保留。
+        let store = store_with(META_UNSTARTED, "## 1. 群組\n\n- [ ] 1.1 甲\n- [ ] 補充說明不帶編號\n- [ ] 1.2 乙\n");
+        move_task(&store, "demo", 3, 1, None).unwrap();
+        assert_eq!(
+            move_lines(&store),
+            vec!["- [ ] 1.1 乙", "- [ ] 1.2 甲", "- [ ] 補充說明不帶編號"],
+            "unprefixed task text must stay untouched while others renumber"
+        );
+        let store = store_with(META_UNSTARTED, "## 1. 群組\n\n- [ ] 1.1 甲\n- [ ] 1.2.3 子版號文字\n");
+        move_task(&store, "demo", 2, 1, None).unwrap();
+        assert_eq!(
+            move_lines(&store),
+            vec!["- [ ] 1.2.3 子版號文字", "- [ ] 1.2 甲"],
+            "sub-versioned prefixes must be preserved verbatim"
+        );
+    }
+
+    #[test]
+    fn groups_without_numeric_heading_are_not_renumbered() {
+        let store = store_with(META_UNSTARTED, "## 準備\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n");
+        move_task(&store, "demo", 1, 2, None).unwrap();
+        assert_eq!(
+            move_lines(&store),
+            vec!["- [ ] 1.2 乙", "- [ ] 1.1 甲"],
+            "a heading without a numeric prefix must leave its tasks' numbers alone"
+        );
+        // sharp-edge：標題數字超出 u64——解析失敗即視為無數字標題，任務保留原文。
+        let store = store_with(META_UNSTARTED, "## 99999999999999999999999. 巨數\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n");
+        move_task(&store, "demo", 1, 2, None).unwrap();
+        assert_eq!(
+            move_lines(&store),
+            vec!["- [ ] 1.2 乙", "- [ ] 1.1 甲"],
+            "unparseable group numbers must not rewrite anything"
+        );
+    }
+
+    #[test]
+    fn out_of_range_move_errors_without_writes() {
+        // spec scenario「越界拒絕零副作用」：只有 3 個任務時 from=5 拒絕，內容不變。
+        const TASKS: &str = "## 1. 群組\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n- [ ] 1.3 丙\n";
+        let store = store_with(META_UNSTARTED, TASKS);
+        for (from, to) in [(5usize, 1usize), (0, 1), (1, 0), (1, 9)] {
+            let err = move_task(&store, "demo", from, to, None).unwrap_err();
+            assert!(
+                err.to_string().contains("out of range"),
+                "({from},{to}) must name the out-of-range refusal: {err}"
+            );
+        }
+        assert_eq!(tasks_text(&store), TASKS, "failed moves must not rewrite the file");
+        assert_eq!(*store.artifact_writes.borrow(), 0, "refusal must not write");
+    }
+
+    #[test]
+    fn move_missing_tasks_md_errors() {
+        let store = TestStore::with_meta("demo", META_UNSTARTED);
+        let err = move_task(&store, "demo", 1, 2, None).unwrap_err();
+        assert_eq!(err.to_string(), "tasks.md not found for change 'demo'");
+        assert_eq!(*store.artifact_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn move_preserves_trailing_newline_state() {
+        let store = store_with(META_UNSTARTED, "- [ ] 1.1 甲\n- [ ] 1.2 乙\n");
+        move_task(&store, "demo", 1, 2, None).unwrap();
+        assert!(tasks_text(&store).ends_with("\n"), "trailing newline preserved");
+        let store = store_with(META_UNSTARTED, "- [ ] 1.1 甲\n- [ ] 1.2 乙");
+        move_task(&store, "demo", 1, 2, None).unwrap();
+        assert!(!tasks_text(&store).ends_with("\n"), "absent trailing newline preserved");
     }
 }

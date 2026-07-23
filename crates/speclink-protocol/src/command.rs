@@ -107,6 +107,48 @@ pub struct ArchivedSpec {
     pub capability: String,
 }
 
+/// `DELETE /changes/{name}` response — the discarded change and the source
+/// discussions the discard unlinked (server-verb-api: discard 全語意).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardResponse {
+    #[serde(default)]
+    pub change: String,
+    #[serde(default)]
+    pub unlinked_discussions: Vec<UnlinkedDiscussion>,
+}
+
+/// One source discussion the discard unlinked, with its status after unlinking.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlinkedDiscussion {
+    pub slug: String,
+    pub status: String,
+}
+
+/// `POST /changes/{name}/tasks/move` request — 1-based checkbox ordinals plus
+/// the optional explicit side (absent = direction inference), mirroring the UI
+/// moveTask signature.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveTaskRequest {
+    pub from: usize,
+    pub to: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<bool>,
+}
+
+/// `POST /changes/{name}/tasks/move` response — the moved task's post-move
+/// description (prefixes already renumbered).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveTaskResponse {
+    #[serde(default)]
+    pub change: String,
+    #[serde(default)]
+    pub description: String,
+}
+
 /// `POST /discussions` request body.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

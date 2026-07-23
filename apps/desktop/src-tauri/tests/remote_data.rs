@@ -110,14 +110,15 @@ fn open_handshakes_and_returns_identity_and_capability_description() {
         ("archivedCapabilities", caps.archived_capabilities),
         ("searchWorkspace", caps.search_workspace),
         ("getSpecDocument", caps.get_spec_document),
-    ] {
-        assert!(on, "{name} 是直達／組合類，capability 應為真");
-    }
-    for (name, on) in [
+        // remote-verb-parity：動詞端點直達，editor handshake 四欄全真。
         ("validate", caps.validate),
         ("analyze", caps.analyze),
         ("deleteChange", caps.delete_change),
         ("moveTask", caps.move_task),
+    ] {
+        assert!(on, "{name} 是直達／組合類，capability 應為真");
+    }
+    for (name, on) in [
         ("reorderCard", caps.reorder_card),
         ("changeMeta", caps.change_meta),
         ("changeCapabilities", caps.change_capabilities),

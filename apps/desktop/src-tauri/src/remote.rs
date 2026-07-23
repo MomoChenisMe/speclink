@@ -800,13 +800,15 @@ pub struct RemoteCapabilities {
     pub archived_capabilities: bool,
     pub search_workspace: bool,
     pub get_spec_document: bool,
-    // (c) 不支援（server 無端點；changeMeta/changeCapabilities 依實際 payload
-    // 定奪為無來源——ChangeStatus/ChangeSummary 皆不帶 metadata 與 capability
-    // 名清單）
+    // 動詞端點直達（remote-verb-parity）：唯讀衍生查詢全 role 真、寫入動詞
+    // 依 handshake 的 role 呈現（server 仍是最終權限防線）。
     pub validate: bool,
     pub analyze: bool,
     pub delete_change: bool,
     pub move_task: bool,
+    // (c) 不支援（server 無端點；changeMeta/changeCapabilities 依實際 payload
+    // 定奪為無來源——ChangeStatus/ChangeSummary 皆不帶 metadata 與 capability
+    // 名清單；看板拖排待 remote-board-order 刀）
     pub reorder_card: bool,
     pub change_meta: bool,
     pub change_capabilities: bool,
@@ -842,10 +844,10 @@ impl RemoteCapabilities {
             archived_capabilities: true,
             search_workspace: true,
             get_spec_document: true,
-            validate: false,
-            analyze: false,
-            delete_change: false,
-            move_task: false,
+            validate: binding.capabilities.validate,
+            analyze: binding.capabilities.analyze,
+            delete_change: binding.capabilities.delete_change,
+            move_task: binding.capabilities.move_task,
             reorder_card: false,
             change_meta: false,
             change_capabilities: false,
@@ -1224,6 +1226,52 @@ impl RemoteWorkspace {
         self.run_write(credentials, |client| client.claim(change))
     }
 
+    /// validate 動詞（唯讀衍生查詢）：wire DTO 轉回引擎型別，序列化後與本地
+    /// verbs::validate_at 的 payload 同形（remote-verb-parity）。
+    pub fn validate(
+        &self,
+        credentials: &dyn CredentialStore,
+        change: &str,
+    ) -> Result<speclink_core::validate::ValidationResult, RemoteError> {
+        self.run(credentials, |client| client.validate_change(change))
+            .map(speclink_remote::convert::validation_result)
+    }
+
+    /// analyze 動詞（唯讀衍生查詢）：payload 與本地 verbs::analyze_at 同形。
+    pub fn analyze(
+        &self,
+        credentials: &dyn CredentialStore,
+        change: &str,
+    ) -> Result<speclink_core::analyzer::AnalyzeReport, RemoteError> {
+        self.run(credentials, |client| client.analyze_change(change))
+            .map(speclink_remote::convert::analyze_report)
+    }
+
+    /// 刪除變更＝server 端 discard 全語意（guard/unlink/原子刪除）；force 由
+    /// 呼叫端決定（桌面固定 true——決策 3：與本地無 guard 直刪同模式）。
+    pub fn delete_change(
+        &self,
+        credentials: &dyn CredentialStore,
+        change: &str,
+        force: bool,
+    ) -> Result<(), RemoteError> {
+        self.run_write(credentials, |client| client.discard(change, force))
+            .map(|_| ())
+    }
+
+    /// 任務搬移：index 定址直達 server 端點，重編號效果與本地拖排一致。
+    pub fn move_task(
+        &self,
+        credentials: &dyn CredentialStore,
+        change: &str,
+        from: usize,
+        to: usize,
+        before: Option<bool>,
+    ) -> Result<(), RemoteError> {
+        self.run_write(credentials, |client| client.move_task(change, from, to, before))
+            .map(|_| ())
+    }
+
     pub fn archive(
         &self,
         credentials: &dyn CredentialStore,
@@ -1319,6 +1367,61 @@ impl RemoteWorkspace {
             .map(|task| task.id)
             .collect();
         self.set_tasks(credentials, change, &pending, done)
+    }
+}
+
+#[cfg(test)]
+mod capability_tests {
+    use super::RemoteCapabilities;
+    use speclink_protocol::binding::{Actor, BindingResponse, Capabilities, ScopeRef};
+
+    fn binding_with(capabilities: Capabilities) -> BindingResponse {
+        let scope = |key: &str| ScopeRef {
+            id: format!("id_{key}"),
+            key: key.to_string(),
+            name: key.to_string(),
+        };
+        BindingResponse {
+            actor: Actor { id: "u_1".to_string(), name: "Tester".to_string() },
+            project: scope("demo"),
+            repo: scope("backend"),
+            api_version: "1".to_string(),
+            engine_version: "0.1.0".to_string(),
+            capabilities,
+        }
+    }
+
+    #[test]
+    fn editor_handshake_unlocks_all_four_verb_capabilities() {
+        // 規格「capability 驅動停用且不偽造缺口」修訂後語意：editor 四欄全真、
+        // 看板拖排維持停用（待 remote-board-order 刀）。
+        let caps = RemoteCapabilities::from_binding(&binding_with(Capabilities {
+            validate: true,
+            analyze: true,
+            delete_change: true,
+            move_task: true,
+            ..Default::default()
+        }));
+        assert!(caps.validate, "validate follows the handshake");
+        assert!(caps.analyze, "analyze follows the handshake");
+        assert!(caps.delete_change, "deleteChange follows the handshake");
+        assert!(caps.move_task, "moveTask follows the handshake");
+        assert!(!caps.reorder_card, "board reorder stays disabled (no endpoint yet)");
+    }
+
+    #[test]
+    fn reader_handshake_keeps_write_verbs_disabled_but_derived_queries_on() {
+        let caps = RemoteCapabilities::from_binding(&binding_with(Capabilities {
+            validate: true,
+            analyze: true,
+            delete_change: false,
+            move_task: false,
+            ..Default::default()
+        }));
+        assert!(caps.validate, "reader may run the read-only derived queries");
+        assert!(caps.analyze);
+        assert!(!caps.delete_change, "reader write verbs stay disabled");
+        assert!(!caps.move_task);
     }
 }
 

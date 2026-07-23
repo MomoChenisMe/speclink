@@ -48,6 +48,16 @@ pub struct Capabilities {
     pub context_snapshots: bool,
     #[serde(default)]
     pub policy_write: bool,
+    /// validate/analyze 唯讀衍生查詢端點（全 role 可用）。
+    #[serde(default)]
+    pub validate: bool,
+    #[serde(default)]
+    pub analyze: bool,
+    /// 寫入動詞（editor 限定；reader 收 false 呈現停用）。
+    #[serde(default)]
+    pub delete_change: bool,
+    #[serde(default)]
+    pub move_task: bool,
     #[serde(default)]
     pub authentication: Vec<String>,
     #[serde(default)]

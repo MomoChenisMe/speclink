@@ -24,19 +24,21 @@ use speclink_host::drift as host_drift;
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, ArchiveDiscussionResponse,
     ArchiveResponse, ArchivedSpec, ClaimResponse, ConcludeDiscussionRequest, CreateChangeRequest,
-    CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
-    PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest, PutArtifactResponse,
-    SetDiscussionContextRequest, TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse,
+    CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse, DiscardResponse,
+    MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
+    PutArtifactRequest, PutArtifactResponse, SetDiscussionContextRequest, TaskDoneRequest,
+    TaskDoneResponse, TaskUndoneResponse, UnlinkedDiscussion,
 };
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::events::InvalidationEvent;
 use speclink_protocol::query::{
-    ApplyInstructions, ArtifactContent, ArtifactInstructions, ArtifactStatus, ChangeStatus,
-    ChangeSummary, ConfigResponse, DependencyEntry, DiscussionInfo, ImportBundle, ImportDocumentId,
+    AnalyzeDimension, AnalyzeFinding, AnalyzeMsg, AnalyzeReportResponse, ApplyInstructions,
+    ArtifactContent, ArtifactInstructions, ArtifactStatus, ChangeStatus, ChangeSummary,
+    ConfigResponse, DependencyEntry, DiscussionInfo, ImportBundle, ImportDocumentId,
     ImportDocumentOutcome, ImportReportResponse, ImportedDocument, LanguageResponse,
     ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, Progress, PutConfigRequest,
-    PutConfigResponse, ShowDiscussionResponse, SpecSummary, TaskEntry, WhoamiRepo, WhoamiResponse,
-    WhoamiUser,
+    PutConfigResponse, ShowDiscussionResponse, SpecSummary, TaskEntry, ValidateChangeResponse,
+    WhoamiRepo, WhoamiResponse, WhoamiUser,
 };
 use speclink_store::{
     content_digest, Bundle, BundleDoc, CommandContext, DocumentId, ImportMode, ImportOutcome,
@@ -132,6 +134,155 @@ pub async fn drift(
         .await
         .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
     Ok(ok(payload, &etag))
+}
+
+/// `GET /changes/{name}/validate` — a read-only derived query through the
+/// Command gateway (server-verb-api 決策 1)，與 drift 端點同形。端點固定單
+/// change（決策 2：CLI 的聚合語意由 client 組合）、非 strict；查詢無 commit，
+/// scope revision 不前進、不發事件。
+pub async fn validate_change(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::Validate { item: Some(name), all: false, changes: false, strict: false },
+    )
+    .await?;
+    let mut results = match result.execution.outcome {
+        CommandOutcome::Validate(v) => v.results,
+        _ => return Err(wrong_outcome("validate")),
+    };
+    // 帶 item 的 Validate 恰回一筆。
+    let r = results
+        .pop()
+        .ok_or_else(|| ApiError::internal("validate: empty result set"))?;
+    let dto = ValidateChangeResponse {
+        change: r.change,
+        valid: r.valid,
+        errors: r.errors,
+        warnings: r.warnings,
+    };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `GET /changes/{name}/analyze` — the engine's full AnalyzeReport as a
+/// read-only derived query (server-verb-api 決策 1)。
+pub async fn analyze_change(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(&state, &binding, Command::Analyze { change: Some(name) }).await?;
+    let report = match result.execution.outcome {
+        CommandOutcome::Analyze(report) => report,
+        _ => return Err(wrong_outcome("analyze")),
+    };
+    Ok(ok(analyze_report(report), &result.etag))
+}
+
+fn analyze_msg(m: speclink_core::analyzer::Msg) -> AnalyzeMsg {
+    AnalyzeMsg { key: m.key, params: m.params }
+}
+
+fn analyze_report(report: speclink_core::analyzer::AnalyzeReport) -> AnalyzeReportResponse {
+    AnalyzeReportResponse {
+        change_id: report.change_id,
+        dimensions: report
+            .dimensions
+            .into_iter()
+            .map(|d| AnalyzeDimension {
+                dimension: d.dimension,
+                status: d.status,
+                finding_count: d.finding_count,
+            })
+            .collect(),
+        findings: report
+            .findings
+            .into_iter()
+            .map(|f| AnalyzeFinding {
+                id: f.id,
+                dimension: f.dimension,
+                severity: f.severity,
+                location: f.location,
+                summary: f.summary,
+                recommendation: f.recommendation,
+                summary_msg: analyze_msg(f.summary_msg),
+                recommendation_msg: analyze_msg(f.recommendation_msg),
+            })
+            .collect(),
+        artifacts_analyzed: report.artifacts_analyzed,
+        artifacts_missing: report.artifacts_missing,
+    }
+}
+
+/// `DELETE /changes/{name}?force=` query input; force defaults to false.
+#[derive(Deserialize)]
+pub struct DeleteChangeQuery {
+    #[serde(default)]
+    force: bool,
+}
+
+/// `DELETE /changes/{name}` — Command::Discard 全語意（server-verb-api 決策
+/// 3）：fail-closed meta 檢查、started-work guard（force=false 拒絕、reason
+/// 機器可判為 refused）、來源討論 unlink、UoW 原子刪除；commit 的 outbox 事件
+/// 讓 SSE invalidate 自動發生。editor 限定（決策 5）。
+pub async fn delete_change(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+    Query(query): Query<DeleteChangeQuery>,
+) -> Result<Response, ApiError> {
+    // UI capability 只是提示；request-time role 檢查才是最終執行點。
+    if !binding.editor {
+        return Err(ApiError::forbidden("reader memberships cannot delete changes"));
+    }
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::Discard { change: name, force: query.force },
+    )
+    .await?;
+    let outcome = match result.execution.outcome {
+        CommandOutcome::Discard(o) => o,
+        _ => return Err(wrong_outcome("discard")),
+    };
+    let dto = DiscardResponse {
+        change: outcome.change_name,
+        unlinked_discussions: outcome
+            .unlinked_discussions
+            .into_iter()
+            .map(|(slug, status)| UnlinkedDiscussion { slug, status })
+            .collect(),
+    };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `POST /changes/{name}/tasks/move` — Command::TaskMove（server-verb-api 決策
+/// 4）：index 定址的搬移＋重編號，越界拒絕零副作用。editor 限定（決策 5）。
+pub async fn move_task(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+    Json(req): Json<MoveTaskRequest>,
+) -> Result<Response, ApiError> {
+    if !binding.editor {
+        return Err(ApiError::forbidden("reader memberships cannot move tasks"));
+    }
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::TaskMove { change: name, from: req.from, to: req.to, before: req.before },
+    )
+    .await?;
+    let outcome = match result.execution.outcome {
+        CommandOutcome::TaskMove(o) => o,
+        _ => return Err(wrong_outcome("task move")),
+    };
+    let dto = MoveTaskResponse { change: outcome.change, description: outcome.description };
+    Ok(ok(dto, &result.etag))
 }
 
 /// `GET /changes/{name}/instructions/{*artifact}` — `apply` yields the apply

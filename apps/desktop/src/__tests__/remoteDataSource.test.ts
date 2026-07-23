@@ -74,6 +74,16 @@ function fakeInvoke() {
     },
     remote_write_workflow_config: 8,
     remote_write_workflow_content: 8,
+    remote_validate: { change: "chg", valid: true, errors: [], warnings: [] },
+    remote_analyze: {
+      change_id: "chg",
+      dimensions: [],
+      findings: [],
+      artifacts_analyzed: [],
+      artifacts_missing: [],
+    },
+    remote_delete_change: null,
+    remote_move_task: null,
   };
   const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
     calls.push({ cmd, args });
@@ -94,12 +104,12 @@ function openInfo(): RemoteOpenInfo {
     searchWorkspace: true,
     changeCapabilities: false,
     changeMeta: false,
-    deleteChange: false,
+    deleteChange: true,
     setTaskDone: true,
     setAllTasks: true,
-    moveTask: false,
-    validate: false,
-    analyze: false,
+    moveTask: true,
+    validate: true,
+    analyze: true,
     archive: true,
     getArchivedDocument: true,
     archivedCapabilities: true,
@@ -135,6 +145,10 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     await ds.setTaskDone("chg", "1", true);
     await ds.setAllTasks("chg", true);
     await ds.runVerb("archive", "chg");
+    await ds.runVerb("validate", "chg");
+    await ds.runVerb("analyze", "chg");
+    await ds.deleteChange("chg");
+    await ds.moveTask("chg", 1, 3);
     await ds.getArchivedDocument("2026-01-01-old", "proposal.md");
     await ds.archivedCapabilities("2026-01-01-old");
     await ds.listDiscussions();
@@ -153,6 +167,10 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
       "remote_set_task_done",
       "remote_set_all_tasks",
       "remote_archive",
+      "remote_validate",
+      "remote_analyze",
+      "remote_delete_change",
+      "remote_move_task",
       "remote_archived_document",
       "remote_archived_capabilities",
       "remote_list_discussions",
@@ -176,14 +194,20 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     expect(calls[7].args).toMatchObject({ change: "chg", task: "1", done: true });
     expect(calls[8].args).toMatchObject({ change: "chg", done: true });
     expect(calls[9].args).toMatchObject({ change: "chg" });
-    expect(calls[10].args).toMatchObject({
+    expect(calls[10].args).toMatchObject({ change: "chg" });
+    expect(calls[11].args).toMatchObject({ change: "chg" });
+    // 桌面 remote 刪除固定帶 force=true（決策 3：與本地無 guard 直刪同模式，
+    // 確認對話框在 UI 層）。
+    expect(calls[12].args).toMatchObject({ change: "chg", force: true });
+    expect(calls[13].args).toMatchObject({ change: "chg", from: 1, to: 3, before: null });
+    expect(calls[14].args).toMatchObject({
       datedName: "2026-01-01-old",
       artifact: "proposal.md",
     });
-    expect(calls[11].args).toMatchObject({ datedName: "2026-01-01-old" });
-    expect(calls[13].args).toMatchObject({ slug: "s1" });
-    expect(calls[14].args).toMatchObject({ slug: "s1", name: null });
-    expect(calls[15].args).toMatchObject({ slug: "s1" });
+    expect(calls[15].args).toMatchObject({ datedName: "2026-01-01-old" });
+    expect(calls[17].args).toMatchObject({ slug: "s1" });
+    expect(calls[18].args).toMatchObject({ slug: "s1", name: null });
+    expect(calls[19].args).toMatchObject({ slug: "s1" });
   });
 
   it("returns server payloads in the UI shapes", async () => {
@@ -216,11 +240,7 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     const rejections: Array<Promise<unknown>> = [
       ds.changeCapabilities("chg"),
       ds.changeMeta("chg"),
-      ds.deleteChange("chg"),
-      ds.moveTask("chg", 1, 2),
       ds.reorderCard("change", "chg", null, null),
-      ds.runVerb("validate", "chg"),
-      ds.runVerb("analyze", "chg"),
     ];
     for (const p of rejections) {
       await expect(p).rejects.toThrow(/尚未提供/);

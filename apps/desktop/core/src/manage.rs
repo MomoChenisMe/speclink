@@ -196,10 +196,8 @@ pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), Str
 }
 
 /// 把第 `from` 個任務移到以第 `to` 個任務為錨的位置（皆 1-based、僅計 checkbox 行）。
-/// 只搬 checkbox 行本身，群組標題與其他行不動；越界回 `Err`。
-/// `before`：None＝方向推斷（向上插錨前、向下插錨後——組界時貼齊手勢方向的群組）；
-/// Some(true)＝明確插於錨任務行之前（跨過群組標題即成為錨所屬群組的組首）；
-/// Some(false)＝明確插於錨任務行之後。搬移成功後重算編號前綴（design D2），一次寫回。
+/// 搬移＋重編號語意整段遷入 speclink-core（remote-verb-parity design 決策 4）——
+/// 此處薄呼叫 core 同一引擎，桌面拖排與 server 端點行為逐位元一致。
 pub fn move_task_at(
     root: &Path,
     change: &str,
@@ -208,69 +206,14 @@ pub fn move_task_at(
     before: Option<bool>,
 ) -> Result<(), String> {
     let _guard = write_guard();
-    edit_tasks(root, change, |lines, idx| {
-        let n = idx.len();
-        if from == 0 || to == 0 || from > n || to > n {
-            return Err(format!("task index out of range (1..={n})"));
-        }
-        if from == to {
-            return Ok(());
-        }
-        let moved = lines.remove(idx[from - 1]);
-        // 移除後重算剩餘 checkbox 行位置；錨任務（原第 to 個）在移除後的 0-based 位置。
-        let idx2: Vec<usize> = lines
-            .iter()
-            .enumerate()
-            .filter(|(_, l)| is_task_line(l))
-            .map(|(i, _)| i)
-            .collect();
-        let anchor = if to < from { to - 1 } else { to - 2 };
-        // 側別決定貼邊；未指定時以方向推斷（向上插前、向下插後）——否則向下拖到
-        // 群組末位會越過群組邊界、被吞進下一群組（順序相同、群組歸屬錯誤）。
-        let insert_before = before.unwrap_or(to < from);
-        let insert_at = if insert_before {
-            idx2[anchor]
-        } else {
-            idx2[anchor] + 1
-        };
-        lines.insert(insert_at, moved);
-        renumber_task_prefixes(lines);
-        Ok(())
-    })
-}
-
-/// 重算任務編號前綴（design D2）：群組編號取自「## N.」標題自身的數字；
-/// 群組內第 k 個 checkbox 行、文字以「數字.數字＋空白」開頭者，前綴重寫為「N.k」。
-/// 其餘一律逐字元保留——無前綴、子版號（1.2.3）、無數字標題的群組、首個標題前的
-/// 任務、群組標題與非 checkbox 行都不改寫（重編號永不弄丟使用者文字）。
-fn renumber_task_prefixes(lines: &mut [String]) {
-    let prefix_re = regex::Regex::new(r"^(\s*-\s*\[[ xX]\]\s+)(\d+\.\d+)(\s)").unwrap();
-    let mut group: Option<u64> = None;
-    let mut k = 0usize;
-    for line in lines.iter_mut() {
-        let t = line.trim_start();
-        if let Some(rest) = t.strip_prefix("## ") {
-            let rest = rest.trim_start();
-            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-            group = if !digits.is_empty() && rest[digits.len()..].starts_with('.') {
-                digits.parse().ok()
-            } else {
-                None
-            };
-            k = 0;
-            continue;
-        }
-        if is_task_line(line) {
-            k += 1;
-            if let Some(g) = group {
-                *line = prefix_re.replace(line, format!("${{1}}{g}.{k}${{3}}")).into_owned();
-            }
-        }
+    if !crate::query::is_safe_path_param(change) {
+        return Err(format!("invalid change name: {change}"));
     }
-}
-
-fn is_task_line(line: &str) -> bool {
-    regex::Regex::new(r"^\s*-\s*\[[ xX]\]\s").unwrap().is_match(line)
+    let ctx = init_core_context(root)
+        .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
+    speclink_core::tasks::move_task(&ctx.store, change, from, to, before)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// 看板拖排寫回（design D3/D5）：以鄰居識別碼表達落點，計中點 rank 寫回被拖卡的
@@ -395,41 +338,6 @@ fn neighbor_midpoint(
         _ => next,
     };
     crate::rank::midpoint(prev.as_deref(), next.as_deref())
-}
-
-/// 讀 tasks.md → 以（行陣列, checkbox 行索引）呼叫編輯器 → 寫回。
-fn edit_tasks(
-    root: &Path,
-    change: &str,
-    edit: impl FnOnce(&mut Vec<String>, &[usize]) -> Result<(), String>,
-) -> Result<(), String> {
-    if !crate::query::is_safe_path_param(change) {
-        return Err(format!("invalid change name: {change}"));
-    }
-    let ctx = init_core_context(root)
-        .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
-    let text = ctx
-        .store
-        .read_artifact(change, "tasks.md")
-        .ok_or_else(|| format!("tasks.md not found for change: {change}"))?;
-    // 保留檔尾換行狀態
-    let had_trailing_newline = text.ends_with('\n');
-    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
-    let idx: Vec<usize> = lines
-        .iter()
-        .enumerate()
-        .filter(|(_, l)| is_task_line(l))
-        .map(|(i, _)| i)
-        .collect();
-    edit(&mut lines, &idx)?;
-    let mut out = lines.join("\n");
-    if had_trailing_newline {
-        out.push('\n');
-    }
-    ctx.store
-        .write_artifact(change, "tasks.md", &out)
-        .map_err(|e| e.to_string())?;
-    Ok(())
 }
 
 #[cfg(test)]

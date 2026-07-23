@@ -87,8 +87,10 @@ export function createRemoteDataSource(
     changeMeta(): Promise<import("@speclink/ui").ChangeMetaInfo | null> {
       return unsupported("change 詮釋資料");
     },
-    deleteChange(): Promise<void> {
-      return unsupported("刪除變更");
+    async deleteChange(change: string): Promise<void> {
+      // 決策 3：桌面 remote 刪除固定帶 force=true（與本地無 guard 直刪同模式，
+      // 確認對話框在 UI 層）；server 端仍執行 discard 全語意（unlink＋原子刪除）。
+      await invoke("remote_delete_change", { ...locator, change, force: true });
     },
     async setTaskDone(change: string, task: string, done: boolean): Promise<void> {
       await invoke("remote_set_task_done", { ...locator, change, task, done });
@@ -96,13 +98,13 @@ export function createRemoteDataSource(
     async setAllTasks(change: string, done: boolean): Promise<void> {
       await invoke("remote_set_all_tasks", { ...locator, change, done });
     },
-    moveTask(): Promise<void> {
-      return unsupported("任務排序");
+    async moveTask(change: string, from: number, to: number, before?: boolean): Promise<void> {
+      await invoke("remote_move_task", { ...locator, change, from, to, before: before ?? null });
     },
     async runVerb(verb: Verb, change: string): Promise<unknown> {
-      if (verb !== "archive") {
-        return unsupported(verb === "validate" ? "validate 動詞" : "analyze 動詞");
-      }
+      // 動詞 command 對 remote_* 同名映射（validate/analyze/archive 皆直達）。
+      if (verb === "validate") return await invoke("remote_validate", { ...locator, change });
+      if (verb === "analyze") return await invoke("remote_analyze", { ...locator, change });
       return await invoke("remote_archive", { ...locator, change });
     },
     async getArchivedDocument(datedName: string, artifact: string): Promise<string | null> {

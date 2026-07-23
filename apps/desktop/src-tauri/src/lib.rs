@@ -953,6 +953,70 @@ async fn remote_archive(
 }
 
 #[tauri::command]
+async fn remote_validate(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+) -> Result<Value, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let result = ws.validate(credentials, &change).map_err(|e| e.message)?;
+        serde_json::to_value(&result).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remote_analyze(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+) -> Result<Value, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let report = ws.analyze(credentials, &change).map_err(|e| e.message)?;
+        serde_json::to_value(&report).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remote_delete_change(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+    force: bool,
+) -> Result<(), String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        ws.delete_change(credentials, &change, force)
+            .map_err(|e| e.message)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remote_move_task(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+    from: usize,
+    to: usize,
+    before: Option<bool>,
+) -> Result<(), String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        ws.move_task(credentials, &change, from, to, before)
+            .map_err(|e| e.message)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn remote_list_discussions(
     app: tauri::AppHandle,
     connection_id: String,
@@ -1208,6 +1272,10 @@ pub fn run() {
             remote_set_task_done,
             remote_set_all_tasks,
             remote_archive,
+            remote_validate,
+            remote_analyze,
+            remote_delete_change,
+            remote_move_task,
             remote_list_discussions,
             remote_discussion_document,
             remote_promote_discussion,

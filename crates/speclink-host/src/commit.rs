@@ -67,6 +67,9 @@ pub fn event_record_of(event: &DomainEvent, actor: &Actor) -> EventRecord {
         DomainEvent::TaskUncompleted { change, task_id, occurred_at } => {
             (json!({ "change": change, "taskId": task_id }), *occurred_at)
         }
+        DomainEvent::TaskMoved { change, occurred_at } => {
+            (json!({ "change": change }), *occurred_at)
+        }
         DomainEvent::ChangeClaimed { change, occurred_at } => {
             (json!({ "change": change }), *occurred_at)
         }

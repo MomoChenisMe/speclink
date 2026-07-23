@@ -138,6 +138,7 @@ pub enum DomainEvent {
     /// back to the ordinal string (undone never stamps).
     TaskCompleted { change: String, task_id: String, occurred_at: chrono::DateTime<chrono::Utc> },
     TaskUncompleted { change: String, task_id: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    TaskMoved { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     /// No fs-store success path today — the mapping is contract for the remote store.
     ChangeClaimed { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeMarkedInProgress { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -162,6 +163,7 @@ impl DomainEvent {
             DomainEvent::ArtifactCreated { .. } => "artifact-created",
             DomainEvent::TaskCompleted { .. } => "task-completed",
             DomainEvent::TaskUncompleted { .. } => "task-uncompleted",
+            DomainEvent::TaskMoved { .. } => "task-moved",
             DomainEvent::ChangeClaimed { .. } => "change-claimed",
             DomainEvent::ChangeMarkedInProgress { .. } => "change-marked-in-progress",
             DomainEvent::ChangeArchived { .. } => "change-archived",
@@ -259,6 +261,15 @@ pub enum Command {
     TaskUndone {
         task_id: String,
         change: Option<String>,
+    },
+    /// 任務搬移（無 CLI argv 形；desktop 拖排與 server 端點的共用動詞）。
+    /// `from`/`to` 為 1-based checkbox ordinal、`before` 為可省略側別，
+    /// 鏡射 UI moveTask 簽名（design 決策 4）。
+    TaskMove {
+        change: String,
+        from: usize,
+        to: usize,
+        before: Option<bool>,
     },
     /// `claim <name>` — remote-store only; the plain-store path refuses.
     Claim { name: String },
@@ -386,6 +397,14 @@ pub struct TaskFlipOutcome {
     pub stable_id: Option<String>,
 }
 
+/// `task move` outcome: the subject change and the moved task's cleaned
+/// description after the move (prefixes already renumbered).
+#[derive(Debug)]
+pub struct TaskMoveOutcome {
+    pub change: String,
+    pub description: String,
+}
+
 /// `in-progress add` outcome: whether this call stamped the marker (false for
 /// the idempotent/unknown-name silent successes — no event then).
 #[derive(Debug)]
@@ -457,6 +476,7 @@ pub enum CommandOutcome {
     NewArtifact(NewArtifactOutcome),
     TaskDone(TaskFlipOutcome),
     TaskUndone(TaskFlipOutcome),
+    TaskMove(TaskMoveOutcome),
     InProgressAdd(InProgressOutcome),
     Archive(crate::archive::ArchiveOutcome),
     Discard(crate::discard::DiscardOutcome),
@@ -541,6 +561,9 @@ pub fn execute(
         }
         Command::TaskUndone { task_id, change } => {
             run_task_flip(store, ws, ctx, &task_id, change.as_deref(), TaskFlip::Undone)
+        }
+        Command::TaskMove { change, from, to, before } => {
+            run_task_move(store, &change, from, to, before)
         }
         Command::Claim { name } => {
             // Fail-closed gate first: claiming a change whose metadata is
@@ -648,6 +671,10 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         CommandOutcome::TaskUndone(o) => vec![DomainEvent::TaskUncompleted {
             change: o.change.clone(),
             task_id: o.stable_id.clone().unwrap_or_else(|| o.task_id.to_string()),
+            occurred_at: at,
+        }],
+        CommandOutcome::TaskMove(o) => vec![DomainEvent::TaskMoved {
+            change: o.change.clone(),
             occurred_at: at,
         }],
         CommandOutcome::InProgressAdd(o) if !o.stamped => Vec::new(),
@@ -1224,6 +1251,27 @@ fn run_task_flip(
         TaskFlip::Done => CommandOutcome::TaskDone(outcome),
         TaskFlip::Undone => CommandOutcome::TaskUndone(outcome),
     })
+}
+
+fn run_task_move(
+    store: &dyn Store,
+    change: &str,
+    from: usize,
+    to: usize,
+    before: Option<bool>,
+) -> Result<CommandOutcome, CommandError> {
+    // tasks.md 的存在先於索引檢查（與 task done/undone 同序）。
+    if !store.artifact_exists(change, "tasks.md") {
+        return Err(CommandError::new(
+            ErrorCode::NotFound,
+            format!("tasks.md not found for change '{change}'"),
+        ));
+    }
+    let o = crate::tasks::move_task(store, change, from, to, before).map_err(classify)?;
+    Ok(CommandOutcome::TaskMove(TaskMoveOutcome {
+        change: change.to_string(),
+        description: o.description,
+    }))
 }
 
 fn run_in_progress_add(
@@ -2236,9 +2284,77 @@ mod tests {
         }
     }
 
+    // --- TaskMove 經 gateway（spec「任務搬移端點與重編號效果」；design 決策 4）---
+
+    #[test]
+    fn task_move_rewrites_tasks_and_reports_task_moved_event() {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact(
+            "demo",
+            "tasks.md",
+            "## 1. 前段\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n\n## 2. 後段\n\n- [ ] 2.1 丙\n",
+        );
+        let (outcome, events) = ok(
+            &store,
+            Command::TaskMove { change: "demo".to_string(), from: 1, to: 3, before: None },
+        );
+        match outcome {
+            CommandOutcome::TaskMove(o) => {
+                assert_eq!(o.change, "demo");
+                assert_eq!(o.description, "2.2 甲", "outcome carries the post-move description");
+            }
+            other => panic!("expected a task-move outcome, got {other:?}"),
+        }
+        assert_eq!(kinds(&events), ["task-moved"]);
+        match &events[0] {
+            DomainEvent::TaskMoved { change, .. } => assert_eq!(change, "demo"),
+            other => panic!("expected task-moved, got {other:?}"),
+        }
+        let text = store
+            .artifacts
+            .borrow()
+            .get(&("demo".to_string(), "tasks.md".to_string()))
+            .unwrap()
+            .clone();
+        assert!(text.contains("- [ ] 2.2 甲"), "moved line renumbered into group 2: {text}");
+    }
+
+    #[test]
+    fn task_move_out_of_range_refuses_without_writes_or_events() {
+        const TASKS: &str = "- [ ] 1.1 a\n- [ ] 1.2 b\n- [ ] 1.3 c\n";
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", TASKS);
+        let err = execute(
+            &store,
+            &ExecutionContext::default(),
+            Command::TaskMove { change: "demo".to_string(), from: 5, to: 1, before: None },
+        )
+        .expect_err("out-of-range move must refuse");
+        assert!(err.message.contains("out of range"), "must name the refusal: {}", err.message);
+        assert_eq!(
+            store.artifacts.borrow().get(&("demo".to_string(), "tasks.md".to_string())).unwrap(),
+            TASKS,
+            "tasks.md byte-identical"
+        );
+        assert_eq!(*store.artifact_writes.borrow(), 0, "refusal must not write");
+    }
+
+    #[test]
+    fn task_move_missing_tasks_md_is_not_found() {
+        let store = TestStore::with_meta("demo", META);
+        let err = execute(
+            &store,
+            &ExecutionContext::default(),
+            Command::TaskMove { change: "demo".to_string(), from: 1, to: 2, before: None },
+        )
+        .expect_err("move without tasks.md must refuse");
+        assert_eq!(err.code, ErrorCode::NotFound);
+        assert_eq!(err.message, "tasks.md not found for change 'demo'");
+    }
+
     #[test]
     fn event_kind_table_matches_the_spec_coverage_table() {
-        // spec Example 變更型動詞與事件種類對應——17 列逐一斷言（含 execute 中
+        // spec Example 變更型動詞與事件種類對應——18 列逐一斷言（含 execute 中
         // 無成功路徑的 change-claimed：對應表本身是契約）。
         let at = chrono::Utc::now();
         let s = |v: &str| v.to_string();
@@ -2256,6 +2372,7 @@ mod tests {
                 DomainEvent::TaskUncompleted { change: s("c"), task_id: s("tsk_1"), occurred_at: at },
                 "task-uncompleted",
             ),
+            (DomainEvent::TaskMoved { change: s("c"), occurred_at: at }, "task-moved"),
             (DomainEvent::ChangeClaimed { change: s("c"), occurred_at: at }, "change-claimed"),
             (
                 DomainEvent::ChangeMarkedInProgress { change: s("c"), occurred_at: at },
@@ -2297,7 +2414,7 @@ mod tests {
                 "discussion-discarded",
             ),
         ];
-        assert_eq!(table.len(), 17, "the coverage table has 17 mutating verbs");
+        assert_eq!(table.len(), 18, "the coverage table has 18 mutating verbs");
         for (event, kind) in &table {
             assert_eq!(event.kind(), *kind, "for {event:?}");
         }
@@ -2332,6 +2449,7 @@ mod tests {
             Command::NewArtifact { kind: _, capability: _, change: _, content: _, force: _ } => {}
             Command::TaskDone { task_id: _, change: _ } => {}
             Command::TaskUndone { task_id: _, change: _ } => {}
+            Command::TaskMove { change: _, from: _, to: _, before: _ } => {}
             Command::Claim { name: _ } => {}
             Command::InProgressAdd { name: _ } => {}
             Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _ } => {}
