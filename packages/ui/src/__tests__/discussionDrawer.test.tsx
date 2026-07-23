@@ -371,7 +371,11 @@ describe("DiscussionDrawer", () => {
   it("衍生變更分頁列出子變更現況；存活者可跳轉、已刪除者不可", async () => {
     const props = makeProps({ discussion: promotedD });
     render(<DiscussionDrawer {...(props as never)} />);
-    await waitFor(() => screen.getByRole("tab", { name: /衍生變更/ }));
+    // 先等文件載入落定（section 分頁組掛上、背景分頁出現）再切衍生變更：否則
+    // loadDocument resolve 會把 fallback 分頁組換成 sections 分頁組（key 變、重新
+    // mount），選中分頁重置回預設，衍生變更面板被隱藏、cut-a 從 DOM 消失。與本檔
+    // 其他分頁測試一致的等待。
+    await screen.findByRole("tab", { name: /背景/ });
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
     const rowA = screen.getByText("cut-a").closest("[data-promoted-row]") as HTMLElement;
     expect(within(rowA).getByText("提案中")).toBeTruthy();
