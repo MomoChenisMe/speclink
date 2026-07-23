@@ -318,6 +318,68 @@ pub struct LanguageResponse {
     pub content: String,
 }
 
+/// `GET /changes/{name}/validate` response — one change's structural
+/// validation, the engine's `ValidationResult` on the wire (server-verb-api:
+/// 端點固定單 change，CLI 的聚合語意由 client 組合).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidateChangeResponse {
+    pub change: String,
+    pub valid: bool,
+    #[serde(default)]
+    pub errors: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+/// `GET /changes/{name}/analyze` response — the engine's full `AnalyzeReport`
+/// on the wire.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyzeReportResponse {
+    pub change_id: String,
+    #[serde(default)]
+    pub dimensions: Vec<AnalyzeDimension>,
+    #[serde(default)]
+    pub findings: Vec<AnalyzeFinding>,
+    #[serde(default)]
+    pub artifacts_analyzed: Vec<String>,
+    #[serde(default)]
+    pub artifacts_missing: Vec<String>,
+}
+
+/// One analysis dimension's rollup.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyzeDimension {
+    pub dimension: String,
+    pub status: String,
+    pub finding_count: usize,
+}
+
+/// One analysis finding, with its typed i18n messages.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyzeFinding {
+    pub id: String,
+    pub dimension: String,
+    pub severity: String,
+    pub location: String,
+    pub summary: String,
+    pub recommendation: String,
+    pub summary_msg: AnalyzeMsg,
+    pub recommendation_msg: AnalyzeMsg,
+}
+
+/// A typed, locale-independent message: key plus named parameters.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyzeMsg {
+    pub key: String,
+    #[serde(default)]
+    pub params: std::collections::BTreeMap<String, String>,
+}
+
 /// `GET /config` response — the workflow policy view a client may read.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

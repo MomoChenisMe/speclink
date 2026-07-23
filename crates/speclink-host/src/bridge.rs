@@ -212,7 +212,9 @@ impl BridgeStore {
             name: name.to_string(),
             meta,
             meta_error,
-            dir: PathBuf::from(format!("changes/{name}")),
+            // fs adapter 的 workspace 相對形狀：引擎以 dir 組錯誤訊息與
+            // 路徑輸出，remote 模式必須與 fs 模式逐位元一致（verb-contract）。
+            dir: PathBuf::from(format!("openspec/changes/{name}")),
         }
     }
 
@@ -278,7 +280,7 @@ impl Store for BridgeStore {
 
     fn create_change(&self, name: &str, meta_text: &str) -> anyhow::Result<PathBuf> {
         self.put(DocumentId::ChangeMeta { change: name.to_string() }, meta_text.to_string());
-        Ok(PathBuf::from(format!("changes/{name}")))
+        Ok(PathBuf::from(format!("openspec/changes/{name}")))
     }
 
     fn updated_at_secs(&self, _name: &str) -> u64 {
@@ -331,7 +333,7 @@ impl Store for BridgeStore {
             },
             content.to_string(),
         );
-        Ok(PathBuf::from(format!("changes/{change}/{artifact}")))
+        Ok(PathBuf::from(format!("openspec/changes/{change}/{artifact}")))
     }
 
     fn artifact_exists(&self, change: &str, artifact: &str) -> bool {

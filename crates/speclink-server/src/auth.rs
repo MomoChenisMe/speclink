@@ -38,6 +38,9 @@ pub struct Binding {
     pub project: Project,
     pub repo: String,
     pub policy_write: bool,
+    /// The membership role is Editor — the gate every write verb shares
+    /// (policy write, DELETE change, task move).
+    pub editor: bool,
 }
 
 /// An authenticated identity before any project or repo is selected. The
@@ -90,6 +93,12 @@ impl Binding {
             capabilities: Capabilities {
                 context_snapshots: true,
                 policy_write: self.policy_write,
+                // 唯讀衍生查詢全 role 可用；寫入動詞依 role（server-verb-api
+                // 決策 5：capability 依 role 呈現）。
+                validate: true,
+                analyze: true,
+                delete_change: self.editor,
+                move_task: self.editor,
                 authentication: Vec::new(),
                 events: EventsDeclaration {
                     transports: vec![EventTransport {
@@ -184,11 +193,13 @@ impl FromRequestParts<AppState> for Binding {
             id: user.id,
             display: user.display,
         };
+        let editor = role == MembershipRole::Editor;
         Ok(Binding {
             actor,
             project,
             repo,
-            policy_write: role == MembershipRole::Editor,
+            policy_write: editor,
+            editor,
         })
     }
 }

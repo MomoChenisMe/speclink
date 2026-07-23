@@ -39,6 +39,7 @@ fn classify(name: &str, payload: &Value) -> (InvalidationScope, String) {
         | "artifact-created"
         | "task-completed"
         | "task-uncompleted"
+        | "task-moved"
         | "change-claimed"
         | "change-marked-in-progress"
         | "change-discarded" => (InvalidationScope::Change, str_field(payload, "change")),

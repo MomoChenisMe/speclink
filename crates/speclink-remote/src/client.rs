@@ -14,17 +14,19 @@ use speclink_protocol::binding::BindingResponse;
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, ArchiveDiscussionResponse,
     ArchiveResponse, ClaimResponse, ConcludeDiscussionRequest, CreateChangeRequest,
-    CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
-    PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest, PutArtifactResponse,
-    SetDiscussionContextRequest, TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse,
+    CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse, DiscardResponse,
+    MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
+    PutArtifactRequest, PutArtifactResponse, SetDiscussionContextRequest, TaskDoneRequest,
+    TaskDoneResponse, TaskUndoneResponse,
 };
 use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::query::{
-    ApplyInstructions, ArchivedListResponse, ArtifactContent, ArtifactInstructions, ChangeStatus,
-    ConfigResponse, ImportBundle, ImportReportResponse, LanguageResponse, ListChangesResponse,
-    ListDiscussionsResponse, ListSpecsResponse, PutConfigRequest, PutConfigResponse,
-    ScopesResponse, SearchResponse, ShowDiscussionResponse, SpecDocumentResponse, WhoamiResponse,
+    AnalyzeReportResponse, ApplyInstructions, ArchivedListResponse, ArtifactContent,
+    ArtifactInstructions, ChangeStatus, ConfigResponse, ImportBundle, ImportReportResponse,
+    LanguageResponse, ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse,
+    PutConfigRequest, PutConfigResponse, ScopesResponse, SearchResponse, ShowDiscussionResponse,
+    SpecDocumentResponse, ValidateChangeResponse, WhoamiResponse,
 };
 
 /// The contract major version this client speaks (`X-Speclink-Api-Version`)
@@ -403,6 +405,43 @@ impl Client {
     /// `POST /changes/{name}/archive`
     pub fn archive(&self, name: &str) -> Result<ArchiveResponse, RemoteError> {
         self.post(&format!("/changes/{name}/archive"), &Empty {})
+    }
+
+    /// `GET /changes/{name}/validate` — 唯讀衍生查詢；端點固定單 change，
+    /// CLI 的聚合語意由呼叫端逐 change 組合（server-verb-api 決策 2）。
+    pub fn validate_change(&self, name: &str) -> Result<ValidateChangeResponse, RemoteError> {
+        self.get(&format!("/changes/{name}/validate"))
+    }
+
+    /// `GET /changes/{name}/analyze` — 唯讀衍生查詢，完整 AnalyzeReport。
+    pub fn analyze_change(&self, name: &str) -> Result<AnalyzeReportResponse, RemoteError> {
+        self.get(&format!("/changes/{name}/analyze"))
+    }
+
+    /// `DELETE /changes/{name}?force=` — Command::Discard 全語意；force=false
+    /// 對已開工 change 的 guard 拒絕以 `refused` 回來，由呼叫端翻譯呈現。
+    pub fn discard(&self, name: &str, force: bool) -> Result<DiscardResponse, RemoteError> {
+        self.send::<DiscardResponse, Empty>(
+            "DELETE",
+            &format!("/changes/{name}?force={force}"),
+            None,
+            &[],
+        )
+    }
+
+    /// `POST /changes/{name}/tasks/move` — 1-based checkbox ordinal 定址的
+    /// 搬移＋重編號（鏡射 UI moveTask 簽名）。
+    pub fn move_task(
+        &self,
+        name: &str,
+        from: usize,
+        to: usize,
+        before: Option<bool>,
+    ) -> Result<MoveTaskResponse, RemoteError> {
+        self.post(
+            &format!("/changes/{name}/tasks/move"),
+            &MoveTaskRequest { from, to, before },
+        )
     }
 
     // --- discussions ---

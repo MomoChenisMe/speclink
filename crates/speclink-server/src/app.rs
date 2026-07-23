@@ -29,8 +29,14 @@ pub fn router(state: AppState) -> Router {
             "/changes",
             get(routes::list_changes).post(routes::create_change),
         )
-        .route("/changes/{name}", get(routes::get_change))
+        .route(
+            "/changes/{name}",
+            get(routes::get_change).delete(routes::delete_change),
+        )
         .route("/changes/{name}/drift", get(routes::drift))
+        .route("/changes/{name}/validate", get(routes::validate_change))
+        .route("/changes/{name}/analyze", get(routes::analyze_change))
+        .route("/changes/{name}/tasks/move", post(routes::move_task))
         .route(
             "/changes/{name}/instructions/{*artifact}",
             get(routes::instructions),

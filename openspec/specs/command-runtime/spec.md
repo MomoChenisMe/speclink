@@ -80,6 +80,7 @@ TBD - created by archiving change 'engine-typed-core'. Update Purpose after arch
 | new artifact | artifact-created |
 | task done | task-completed |
 | task undone | task-uncompleted |
+| task move | task-moved |
 | claim | change-claimed |
 | in-progress add | change-marked-in-progress |
 | archive | change-archived |
@@ -93,6 +94,39 @@ TBD - created by archiving change 'engine-typed-core'. Update Purpose after arch
 | discuss seal | discussion-sealed |
 | discuss archive | discussion-archived |
 | discuss discard | discussion-discarded |
+
+
+<!-- @trace
+source: remote-verb-parity
+updated: 2026-07-23
+code:
+  - apps/desktop/core/src/manage.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src-tauri/src/remote.rs
+  - apps/desktop/src-tauri/tests/remote_data.rs
+  - apps/desktop/src/__tests__/remoteDataSource.test.ts
+  - apps/desktop/src/adapter/remoteDataSource.ts
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/remote_commands.rs
+  - crates/speclink-cli/tests/remote_verb_parity.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-host/src/bridge.rs
+  - crates/speclink-host/src/commit.rs
+  - crates/speclink-protocol/src/binding.rs
+  - crates/speclink-protocol/src/command.rs
+  - crates/speclink-protocol/src/query.rs
+  - crates/speclink-remote/src/client.rs
+  - crates/speclink-remote/src/convert.rs
+  - crates/speclink-remote/src/lib.rs
+  - crates/speclink-server/src/app.rs
+  - crates/speclink-server/src/auth.rs
+  - crates/speclink-server/src/events.rs
+  - crates/speclink-server/src/routes.rs
+  - crates/speclink-server/tests/verb_api.rs
+  - docs/verb-contract.md
+  - docs/verb-contract.zh-TW.md
+-->
 
 ---
 ### Requirement: change metadata 損壞的跨入口處置

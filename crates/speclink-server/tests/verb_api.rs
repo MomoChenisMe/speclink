@@ -1,0 +1,359 @@
+//! Verb-parity endpoints (server-verb-api spec): validate/analyze as read-only
+//! derived queries, DELETE change with full discard semantics, and the task
+//! move endpoint — all through the Command gateway, write verbs editor-only.
+
+mod common;
+
+use serde_json::{json, Value};
+use speclink_protocol::error::{ErrorReason, ErrorResponse};
+use speclink_remote::client::Client;
+use speclink_server::audit::AuditActor;
+use speclink_server::identity::MembershipRole;
+use speclink_store::memory::MemoryStore;
+use speclink_store::{
+    CommandContext, DocumentId, OutboxCursor, ProjectId, RepoId, Scope, TeamStore,
+};
+use std::sync::Arc;
+
+fn scope() -> Scope {
+    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
+}
+
+/// 兩群組任務檔（spec「跨群組搬移重編號」的 GIVEN）。
+const TASKS_TWO_GROUPS: &str =
+    "## 1. 前段\n\n- [ ] 1.1 甲\n- [ ] 1.2 乙\n\n## 2. 後段\n\n- [ ] 2.1 丙\n";
+
+struct Fixture {
+    base: String,
+    store: Arc<MemoryStore>,
+    editor_pat: String,
+    reader_pat: String,
+}
+
+/// Server over a store seeded with change `demo`; `tasks` picks its tasks.md
+/// (None seeds no tasks file). An editor PAT and a reader PAT are both live.
+fn fixture(tasks: Option<&str>) -> Fixture {
+    let store = Arc::new(MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
+    uow.create(
+        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "proposal.md".into() },
+        "## Why\n\nseed\n",
+    );
+    if let Some(tasks) = tasks {
+        uow.create(
+            DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
+            tasks,
+        );
+    }
+    store.commit(uow, Vec::new()).expect("seed commit");
+
+    let state = common::state_with(store.clone());
+    let (editor_pat, _) =
+        common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
+    let (reader_pat, reader_id) =
+        common::seed_named_pat(&state.identity, "reader@example.com", "Reader", &["demo"]);
+    state
+        .identity
+        .admin_set_membership(
+            &AuditActor::system_cli(),
+            &reader_id,
+            "demo",
+            MembershipRole::Reader,
+            true,
+        )
+        .expect("set reader role");
+    Fixture { base: common::start(state), store, editor_pat, reader_pat }
+}
+
+fn client(f: &Fixture, pat: &str) -> Client {
+    Client::new(&format!("{}/api/speclink/v1/projects/demo", f.base), pat, Some("backend"))
+}
+
+fn request(method: &str, f: &Fixture, pat: &str, tail: &str) -> ureq::Request {
+    ureq::request(method, &format!("{}/api/speclink/v1/projects/demo/{tail}", f.base))
+        .set("Authorization", &format!("Bearer {pat}"))
+        .set("X-Speclink-Api-Version", speclink_protocol::API_VERSION)
+        .set("X-Speclink-Repo", "backend")
+}
+
+fn get_json(f: &Fixture, pat: &str, tail: &str) -> (Value, Option<String>) {
+    let response = request("GET", f, pat, tail).call().expect("GET succeeds");
+    let etag = response.header("ETag").map(str::to_string);
+    (response.into_json::<Value>().expect("JSON body"), etag)
+}
+
+fn protocol_error(result: Result<ureq::Response, ureq::Error>) -> (u16, ErrorResponse) {
+    match result {
+        Ok(response) => panic!("expected protocol error, got {}", response.status()),
+        Err(ureq::Error::Status(status, response)) => {
+            let body = response.into_string().unwrap_or_default();
+            let error = serde_json::from_str(&body)
+                .unwrap_or_else(|_| panic!("expected ErrorResponse, got {body:?}"));
+            (status, error)
+        }
+        Err(error) => panic!("transport error: {error}"),
+    }
+}
+
+fn revision(f: &Fixture) -> u64 {
+    f.store.snapshot(&scope()).expect("snapshot").revision().0
+}
+
+fn outbox_names(f: &Fixture) -> Vec<String> {
+    f.store
+        .read_outbox(&scope(), OutboxCursor(0))
+        .expect("read outbox")
+        .iter()
+        .map(|e| e.record.name.clone())
+        .collect()
+}
+
+fn artifact_content(f: &Fixture, artifact: &str) -> Option<String> {
+    f.store
+        .snapshot(&scope())
+        .expect("snapshot")
+        .read(&DocumentId::ChangeArtifact { change: "demo".into(), artifact: artifact.into() })
+        .expect("read artifact")
+        .map(|d| d.content)
+}
+
+// --- 規格「validate 與 analyze 為唯讀衍生查詢端點」---
+
+#[test]
+fn validate_reports_the_engines_frozen_errors_without_advancing_revision() {
+    let f = fixture(None);
+    // 追加一個零操作 delta spec：fs 模式 speclink validate 對同內容的凍結錯誤項。
+    let mut uow = f
+        .store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed2".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "specs/auth/spec.md".into() },
+        "## Notes\n\nno delta operation here\n",
+    );
+    f.store.commit(uow, Vec::new()).expect("seed spec");
+
+    let before = revision(&f);
+    // reader 與 editor 皆可用（唯讀衍生查詢）。
+    for pat in [&f.editor_pat, &f.reader_pat] {
+        let (body, etag) = get_json(&f, pat, "changes/demo/validate");
+        assert_eq!(body["change"], "demo");
+        assert_eq!(body["valid"], false);
+        let errors: Vec<&str> =
+            body["errors"].as_array().expect("errors array").iter().filter_map(|e| e.as_str()).collect();
+        assert_eq!(
+            errors,
+            vec![
+                "openspec/changes/demo/specs/auth/spec.md: Parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
+            ],
+            "the endpoint relays the engine's fs-mode frozen error verbatim"
+        );
+        assert!(body["warnings"].as_array().expect("warnings array").is_empty());
+        assert_eq!(etag.as_deref(), Some(format!("\"{before}\"").as_str()), "scope ETag attached");
+    }
+    assert_eq!(revision(&f), before, "a derived query never advances the scope revision");
+    assert!(outbox_names(&f).is_empty(), "a derived query publishes no event");
+}
+
+#[test]
+fn analyze_is_available_to_reader_and_reports_the_engines_findings() {
+    let f = fixture(None);
+    // 情境缺具體 Example → 引擎的 Ambiguity finding（與本地 fs 模式同 outcome）。
+    let mut uow = f
+        .store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed2".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "specs/auth/spec.md".into() },
+        "## ADDED Requirements\n\n### Requirement: 登入保護\n\n系統 SHALL 保護登入。\n\n#### Scenario: 密碼錯誤被拒\n\n- **WHEN** 密碼錯誤\n- **THEN** 拒絕登入\n",
+    );
+    f.store.commit(uow, Vec::new()).expect("seed spec");
+
+    let before = revision(&f);
+    let (body, _) = get_json(&f, &f.reader_pat, "changes/demo/analyze");
+    assert_eq!(body["changeId"], "demo", "the full AnalyzeReport shape, camelCase fields");
+    assert_eq!(body["dimensions"].as_array().expect("dimensions").len(), 4);
+    let findings = body["findings"].as_array().expect("findings");
+    let amb = findings
+        .iter()
+        .find(|x| x["id"].as_str().unwrap_or_default().starts_with("AMB"))
+        .expect("the engine's ambiguity finding is relayed");
+    assert_eq!(amb["severity"], "Suggestion");
+    assert_eq!(amb["location"], "specs/auth/spec.md");
+    assert!(amb["summaryMsg"]["key"].is_string(), "typed msg key relayed");
+    assert_eq!(revision(&f), before, "analyze never advances the scope revision");
+    assert!(outbox_names(&f).is_empty(), "analyze publishes no event");
+}
+
+#[test]
+fn validate_and_analyze_on_a_missing_change_are_404() {
+    let f = fixture(None);
+    for tail in ["changes/no-such/validate", "changes/no-such/analyze"] {
+        let (status, error) = protocol_error(request("GET", &f, &f.editor_pat, tail).call());
+        assert_eq!(status, 404, "{tail}");
+        assert_eq!(error.reason, ErrorReason::NotFound);
+        assert!(
+            error.message.contains("no-such"),
+            "{tail} names the missing change: {}",
+            error.message
+        );
+    }
+}
+
+// --- 規格「DELETE change 為 discard 全語意」---
+
+#[test]
+fn delete_unstarted_change_removes_it_and_publishes_the_invalidation_event() {
+    let f = fixture(Some("- [ ] 1.1 甲\n"));
+    let response = request("DELETE", &f, &f.editor_pat, "changes/demo")
+        .call()
+        .expect("delete an unstarted change succeeds");
+    assert_eq!(response.status(), 200);
+
+    let (list, _) = get_json(&f, &f.editor_pat, "changes");
+    assert!(
+        list["changes"].as_array().expect("changes").iter().all(|c| c["name"] != "demo"),
+        "the deleted change leaves the list"
+    );
+    assert_eq!(artifact_content(&f, "tasks.md"), None, "artifacts are gone");
+    assert!(
+        outbox_names(&f).contains(&"change-discarded".to_string()),
+        "the commit publishes change-discarded so SSE subscribers get an invalidate: {:?}",
+        outbox_names(&f)
+    );
+}
+
+#[test]
+fn delete_started_change_requires_force_and_refuses_with_zero_side_effects() {
+    let f = fixture(Some("- [x] 1.1 已開工\n- [ ] 1.2 乙\n"));
+    let before = revision(&f);
+
+    let (status, error) = protocol_error(request("DELETE", &f, &f.editor_pat, "changes/demo").call());
+    assert_eq!(status, 409);
+    assert_eq!(error.reason, ErrorReason::Refused, "machine-readable needs-force refusal");
+    assert_eq!(revision(&f), before, "a refusal writes nothing");
+    assert!(artifact_content(&f, "tasks.md").is_some(), "the change is fully preserved");
+
+    let response = request("DELETE", &f, &f.editor_pat, "changes/demo?force=true")
+        .call()
+        .expect("force=true deletes the started change");
+    assert_eq!(response.status(), 200);
+    assert_eq!(artifact_content(&f, "tasks.md"), None, "force removes the change");
+}
+
+#[test]
+fn delete_unlinks_the_promoted_source_discussion() {
+    let f = fixture(None);
+    let c = client(&f, &f.editor_pat);
+    let slug = c.new_discussion("Auth flow").expect("new discussion").slug;
+    c.discussion_conclude(&slug, "結論：做。").expect("conclude");
+    let change = c.discussion_promote(&slug, Some("add-auth-change")).expect("promote").change;
+    assert_eq!(change, "add-auth-change");
+    let shown = c.show_discussion(&slug).expect("show discussion");
+    assert!(shown.content.contains("add-auth-change"), "promote links the change");
+
+    let response = request("DELETE", &f, &f.editor_pat, "changes/add-auth-change?force=false")
+        .call()
+        .expect("delete the promoted change");
+    assert_eq!(response.status(), 200);
+
+    let shown = c.show_discussion(&slug).expect("show discussion");
+    assert!(
+        !shown.content.contains("add-auth-change"),
+        "promoted_to no longer lists the deleted change: {}",
+        shown.content
+    );
+    assert_eq!(
+        shown.info.status, "concluded",
+        "an emptied promoted_to list reverts the discussion status"
+    );
+}
+
+// --- 規格「任務搬移端點與重編號效果」---
+
+#[test]
+fn move_across_groups_renumbers_and_publishes_the_invalidation_event() {
+    let f = fixture(Some(TASKS_TWO_GROUPS));
+    let response = request("POST", &f, &f.editor_pat, "changes/demo/tasks/move")
+        .send_json(json!({ "from": 1, "to": 3 }))
+        .expect("move succeeds");
+    assert_eq!(response.status(), 200);
+    let body = response.into_json::<Value>().expect("JSON body");
+    assert_eq!(body["change"], "demo");
+    assert_eq!(body["description"], "2.2 甲", "the moved task's post-move description");
+
+    assert_eq!(
+        artifact_content(&f, "tasks.md").expect("tasks.md"),
+        "## 1. 前段\n\n- [ ] 1.1 乙\n\n## 2. 後段\n\n- [ ] 2.1 丙\n- [ ] 2.2 甲\n",
+        "the checkbox line lands after the anchor and both groups renumber; other lines byte-identical"
+    );
+    assert!(
+        outbox_names(&f).contains(&"task-moved".to_string()),
+        "the commit publishes task-moved so SSE subscribers get an invalidate: {:?}",
+        outbox_names(&f)
+    );
+}
+
+#[test]
+fn move_out_of_range_refuses_with_zero_side_effects() {
+    let f = fixture(Some(TASKS_TWO_GROUPS));
+    let before = revision(&f);
+    let (status, error) = protocol_error(
+        request("POST", &f, &f.editor_pat, "changes/demo/tasks/move")
+            .send_json(json!({ "from": 5, "to": 1 })),
+    );
+    assert_eq!(status, 409);
+    assert_eq!(error.reason, ErrorReason::Refused);
+    assert!(error.message.contains("out of range"), "names the refusal: {}", error.message);
+    assert_eq!(artifact_content(&f, "tasks.md").as_deref(), Some(TASKS_TWO_GROUPS));
+    assert_eq!(revision(&f), before, "a refused move writes nothing");
+    assert!(outbox_names(&f).is_empty(), "a refused move publishes no event");
+}
+
+// --- 規格「寫入動詞 editor 限定」---
+
+#[test]
+fn reader_delete_and_move_are_forbidden_with_intact_scope() {
+    let f = fixture(Some(TASKS_TWO_GROUPS));
+    let before = revision(&f);
+
+    let (status, error) = protocol_error(request("DELETE", &f, &f.reader_pat, "changes/demo").call());
+    assert_eq!(status, 403);
+    assert_eq!(error.reason, ErrorReason::PermissionDenied, "machine-readable role refusal");
+
+    let (status, error) = protocol_error(
+        request("POST", &f, &f.reader_pat, "changes/demo/tasks/move")
+            .send_json(json!({ "from": 1, "to": 3 })),
+    );
+    assert_eq!(status, 403);
+    assert_eq!(error.reason, ErrorReason::PermissionDenied);
+
+    assert_eq!(revision(&f), before, "reader refusals write nothing");
+    assert_eq!(artifact_content(&f, "tasks.md").as_deref(), Some(TASKS_TWO_GROUPS));
+}
+
+#[test]
+fn handshake_capabilities_follow_the_membership_role() {
+    let f = fixture(None);
+    let (editor, _) = get_json(&f, &f.editor_pat, "binding");
+    let (reader, _) = get_json(&f, &f.reader_pat, "binding");
+    for key in ["validate", "analyze", "deleteChange", "moveTask"] {
+        assert_eq!(editor["capabilities"][key], true, "editor {key}");
+    }
+    assert_eq!(reader["capabilities"]["validate"], true);
+    assert_eq!(reader["capabilities"]["analyze"], true);
+    assert_eq!(reader["capabilities"]["deleteChange"], false, "reader write verbs stay disabled");
+    assert_eq!(reader["capabilities"]["moveTask"], false);
+}

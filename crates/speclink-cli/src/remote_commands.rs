@@ -799,10 +799,48 @@ fn remote_claim(ctx: &RemoteCtx, name: &str) -> Result<()> {
     Ok(())
 }
 
-// Destructive change removal stays host-governed in remote mode — the local-only
-// verb does not cross the wire (mirrors `discuss discard`'s remote refusal).
-fn remote_discard(_ctx: &RemoteCtx, _a: &DiscardArgs) -> Result<()> {
-    bail!("discard is not available in remote mode — remove changes in the team system")
+// --- validate / analyze：唯讀衍生查詢的 remote 分流（remote-verb-parity）---
+
+/// 聚合語意（無參數／--all／--changes）由 client 組合：先 list 再逐 change 打
+/// 單 change 端點（design 決策 2）；DTO 轉回本地型別後走 fs 同一渲染（決策 6）。
+fn remote_validate(ctx: &RemoteCtx, a: &ValidateArgs) -> Result<()> {
+    let names: Vec<String> = if let Some(item) = &a.item {
+        vec![item.clone()]
+    } else {
+        // 無參數與 --all/--changes 的目標集在 remote 皆為 scope 的全部
+        // changes（fs 的「恰一個 active change 單驗」是同集合的特例）。
+        ctx.client.list_changes()?.changes.into_iter().map(|c| c.name).collect()
+    };
+    let results: Vec<core::validate::ValidationResult> = names
+        .iter()
+        .map(|n| ctx.client.validate_change(n).map(speclink_remote::convert::validation_result))
+        .collect::<Result<Vec<_>, _>>()?;
+    render_validate_results(&results, a.json)
+}
+
+fn remote_analyze(ctx: &RemoteCtx, a: &ChangeArg) -> Result<()> {
+    let Some(name) = remote_resolve_change(ctx, a.change.as_deref(), "Specify one:")? else {
+        return Ok(());
+    };
+    let report = speclink_remote::convert::analyze_report(ctx.client.analyze_change(&name)?);
+    if a.json {
+        return print_json(&report);
+    }
+    render_analyze(&report);
+    Ok(())
+}
+
+/// remote discard：直通 DELETE 端點（--force 為 query 參數）。guard 拒絕由
+/// server 以引擎凍結訊息（含「pass --force」指引）回來，經標準錯誤翻譯原文
+/// 呈現——與 fs 模式同語意（design 決策 3／6）。
+fn remote_discard(ctx: &RemoteCtx, a: &DiscardArgs) -> Result<()> {
+    let outcome = ctx.client.discard(&a.change, a.force)?;
+    let unlinked: Vec<(String, String)> = outcome
+        .unlinked_discussions
+        .into_iter()
+        .map(|d| (d.slug, d.status))
+        .collect();
+    render_discard(&outcome.change, &unlinked, a.json)
 }
 
 fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
