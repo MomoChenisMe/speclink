@@ -115,11 +115,12 @@ fn open_handshakes_and_returns_identity_and_capability_description() {
         ("analyze", caps.analyze),
         ("deleteChange", caps.delete_change),
         ("moveTask", caps.move_task),
+        // remote-board-order：看板拖排直達 board resource，editor 為真。
+        ("reorderCard", caps.reorder_card),
     ] {
         assert!(on, "{name} 是直達／組合類，capability 應為真");
     }
     for (name, on) in [
-        ("reorderCard", caps.reorder_card),
         ("changeMeta", caps.change_meta),
         ("changeCapabilities", caps.change_capabilities),
     ] {
@@ -461,6 +462,48 @@ fn task_flips_claim_and_archive_write_through() {
     assert_eq!(archived.specs[0].capability, "auth");
     let changes = ws.list_changes(&credentials).expect("list changes");
     assert!(changes.changes.is_empty(), "archive 後不在 active 清單");
+}
+
+#[test]
+fn board_reorder_writes_the_board_resource_only_and_meta_is_untouched() {
+    // 規格「board resource 為 scope 單文件且 server 不解析」Scenario「拖排不動
+    // 卡片文件」＋「看板卡片順序以 board_rank 欄位為真相」修訂後的 remote 不寫
+    // meta 斷言：拖排後只有 board resource 產生新 revision。
+    let h = common::harness();
+    common::seed_named_change(h.store.as_ref(), "alpha", FOUR_TASKS);
+    common::seed_named_change(h.store.as_ref(), "bravo", FOUR_TASKS);
+    common::seed_named_change(h.store.as_ref(), "carol", FOUR_TASKS);
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+
+    let read_meta = |name: &str| {
+        let snap = h.store.snapshot(&common::scope()).expect("snapshot");
+        snap.read(&DocumentId::ChangeMeta {
+            change: name.into(),
+        })
+        .expect("read meta")
+        .expect("meta exists")
+    };
+    let before: Vec<_> = ["alpha", "bravo", "carol"].map(read_meta).into();
+
+    ws.reorder_card(&credentials, "change", "carol", None, Some("alpha"))
+        .expect("reorder lands");
+
+    let snap = h.store.snapshot(&common::scope()).expect("snapshot");
+    snap.read(&DocumentId::BoardOrder)
+        .expect("read board resource")
+        .expect("board resource created by the first reorder");
+    for (name, was) in ["alpha", "bravo", "carol"].iter().zip(before) {
+        let now = read_meta(name);
+        assert_eq!(now.content, was.content, "{name} 的 meta 內容不變");
+        assert_eq!(now.revision, was.revision, "{name} 的 meta revision 不變");
+    }
+
+    // 清單 overlay 反映新序：carol 移到欄頂（alpha 之前），跨讀取持久。
+    let changes = ws.list_changes(&credentials).expect("list changes");
+    let names: Vec<&str> = changes.changes.iter().map(|c| c.name.as_str()).collect();
+    let pos = |n: &str| names.iter().position(|x| *x == n).expect("card present");
+    assert!(pos("carol") < pos("alpha"), "拖排後 carol 在 alpha 前：{names:?}");
 }
 
 #[test]

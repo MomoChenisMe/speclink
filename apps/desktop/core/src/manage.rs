@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use speclink_core::store::Store;
 
 use crate::init_core_context;
+use crate::rank::neighbor_midpoint;
 
 /// 每專案根一次的 git 身分快取（design D1：identity 每根快取）：完成路徑高頻取用，
 /// 而 GUI 進程 spawn git 在部分環境極慢（防毒掃描，實測單次 ~3 秒）——首次取得後
@@ -322,22 +323,6 @@ fn reorder_discussion(
         };
     let key = neighbor_midpoint(&ranks, prev_id, next_id);
     speclink_core::discuss::set_board_rank(store, id, &key).map_err(|e| e.to_string())
-}
-
-/// 以鄰居現值推導新鍵：不在現存集合的鄰居（已封存／刪除的 race）視為開放端；
-/// 現值逆序（stale 落點）時棄上界保底——寧可落位偏移，不產生非法鍵。
-fn neighbor_midpoint(
-    ranks: &std::collections::HashMap<&str, String>,
-    prev_id: Option<&str>,
-    next_id: Option<&str>,
-) -> String {
-    let prev = prev_id.and_then(|p| ranks.get(p)).cloned();
-    let next = next_id.and_then(|n| ranks.get(n)).cloned();
-    let next = match (&prev, &next) {
-        (Some(a), Some(b)) if a >= b => None,
-        _ => next,
-    };
-    crate::rank::midpoint(prev.as_deref(), next.as_deref())
 }
 
 #[cfg(test)]

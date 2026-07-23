@@ -50,6 +50,26 @@ function showFailureToast(subject: string, messageKey: FailureMessageKey, error:
   toast.error(`${subject} · ${appT(messageKey)} ✗ ${String(error)}`, { id: FAILURE_TOAST_ID });
 }
 
+/** remote 拖排放開後的暫時可見序：只按 UI 已解析好的鄰居移動，不理解 rank。 */
+function moveBetweenNeighbors<T>(
+  items: T[],
+  itemId: (item: T) => string,
+  id: string,
+  prevId: string | null,
+  nextId: string | null,
+): T[] {
+  const moving = items.find((item) => itemId(item) === id);
+  if (!moving) return items;
+  const remaining = items.filter((item) => itemId(item) !== id);
+  const nextIndex = nextId === null ? -1 : remaining.findIndex((item) => itemId(item) === nextId);
+  if (nextIndex >= 0) {
+    return [...remaining.slice(0, nextIndex), moving, ...remaining.slice(nextIndex)];
+  }
+  const prevIndex = prevId === null ? -1 : remaining.findIndex((item) => itemId(item) === prevId);
+  const insertAt = prevIndex >= 0 ? prevIndex + 1 : nextId !== null ? 0 : remaining.length;
+  return [...remaining.slice(0, insertAt), moving, ...remaining.slice(insertAt)];
+}
+
 /** 主頁面：變更看板（預設）、規格頁、已封存頁、專案設定或應用程式設定。 */
 export type BoardView = "board" | "specs" | "archived" | "project-settings" | "settings";
 
@@ -858,10 +878,54 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     async reorderCard(kind, id, prevId, nextId) {
       const dataSource = activeDataSource();
       if (!dataSource) return;
+      const sourceKey = get().activeKey;
+      const session = activeSession();
+      let previousSnapshot: WorkspaceSnapshot | null = null;
+      if (sourceKey && session?.locator.kind === "remote") {
+        const current = get();
+        previousSnapshot = workspaceSnapshots.get(sourceKey) ?? {
+          changes: current.changes,
+          specs: current.specs,
+          archived: current.archived,
+          discussions: current.discussions,
+          loaded: current.loaded,
+        };
+        const optimistic: WorkspaceSnapshot =
+          kind === "change"
+            ? {
+                ...previousSnapshot,
+                changes: moveBetweenNeighbors(
+                  previousSnapshot.changes,
+                  (change) => change.name,
+                  id,
+                  prevId,
+                  nextId,
+                ),
+              }
+            : {
+                ...previousSnapshot,
+                discussions: {
+                  ...previousSnapshot.discussions,
+                  active: moveBetweenNeighbors(
+                    previousSnapshot.discussions.active,
+                    (discussion) => discussion.slug,
+                    id,
+                    prevId,
+                    nextId,
+                  ),
+                },
+              };
+        workspaceSnapshots.set(sourceKey, optimistic);
+        set((state) => (state.activeKey === sourceKey ? optimistic : {}));
+      }
       try {
         await dataSource.reorderCard(kind, id, prevId, nextId);
       } catch (e) {
-        // 寫回失敗不留假象（spec）：單行錯誤 toast，refresh 回磁碟現況。
+        // 寫回失敗不留假象（spec）：先復原最後成功 snapshot，再 refresh server 現況。
+        if (sourceKey && previousSnapshot) {
+          workspaceSnapshots.set(sourceKey, previousSnapshot);
+          set((state) => (state.activeKey === sourceKey ? previousSnapshot! : {}));
+        }
         showFailureToast(id, "store.reorderFailed", e);
       }
       await get().refresh();

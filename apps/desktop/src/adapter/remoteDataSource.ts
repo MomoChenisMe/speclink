@@ -140,8 +140,13 @@ export function createRemoteDataSource(
     async archiveDiscussion(slug: string): Promise<void> {
       await invoke("remote_archive_discussion", { ...locator, slug });
     },
-    reorderCard(_kind: CardKind): Promise<void> {
-      return unsupported("看板排序");
+    async reorderCard(
+      kind: CardKind,
+      id: string,
+      prevId: string | null,
+      nextId: string | null,
+    ): Promise<void> {
+      await invoke("remote_reorder_card", { ...locator, kind, id, prevId, nextId });
     },
   };
 }

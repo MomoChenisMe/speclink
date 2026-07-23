@@ -89,6 +89,8 @@ export interface KanbanBoardProps {
    * （null＝欄頂／欄底）；未提供時卡片不掛 sortable（封存拖放照舊）。
    */
   onReorder?: (kind: CardKind, id: string, prevId: string | null, nextId: string | null) => void;
+  /** 拖排不可用時的使用者可見說明；文字由宿主依 capability 與語系提供。 */
+  reorderUnavailableReason?: string;
   /** 拖曳手勢期間（按住～放開）回報 true——宿主據此讓外部刷新讓路（任務列同款）。 */
   onDragActiveChange?: (active: boolean) => void;
 }
@@ -212,6 +214,7 @@ export function KanbanBoard({
   fulltextHits,
   searchUnavailableReason,
   onReorder,
+  reorderUnavailableReason,
   onDragActiveChange,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -311,6 +314,14 @@ export function KanbanBoard({
       }}
     >
       <div className="flex h-full min-h-0 flex-col gap-3">
+      {reorderUnavailableReason && (
+        <div
+          role="note"
+          className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+        >
+          {reorderUnavailableReason}
+        </div>
+      )}
       {showSearch && (
         <BoardSearchBar
           query={query}
@@ -403,22 +414,36 @@ export function KanbanBoard({
         )}
         {STAGES.map((stage) => (
           <Column key={stage} stage={stage} count={byStage[stage].length}>
-            <SortableContext
-              items={byStage[stage].map((c) => cardDndId("change", c.name))}
-              strategy={verticalListSortingStrategy}
-            >
-              {byStage[stage].map((c) => (
-                <SortableCard
+            {onReorder ? (
+              <SortableContext
+                items={byStage[stage].map((c) => cardDndId("change", c.name))}
+                strategy={verticalListSortingStrategy}
+              >
+                {byStage[stage].map((c) => (
+                  <SortableCard
+                    key={c.name}
+                    change={c}
+                    barClass={STAGE_STYLE[stage].bar}
+                    highlight={q}
+                    hit={hitByCard.get(`change:${c.name}`)}
+                    onOpenChange={onOpenChange}
+                    onArchive={onArchive}
+                  />
+                ))}
+              </SortableContext>
+            ) : (
+              byStage[stage].map((c) => (
+                <ChangeCard
                   key={c.name}
                   change={c}
                   barClass={STAGE_STYLE[stage].bar}
                   highlight={q}
                   hit={hitByCard.get(`change:${c.name}`)}
-                  onOpenChange={onOpenChange}
+                  onOpen={onOpenChange}
                   onArchive={onArchive}
                 />
-              ))}
-            </SortableContext>
+              ))
+            )}
           </Column>
         ))}
       </div>

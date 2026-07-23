@@ -6,8 +6,8 @@
 //! implementation claims. Any failure fails the suite as a whole.
 
 use crate::types::{
-    Capability, CapabilityLevel, FaultPoint, ImportMode, ImportOutcome, OutboxCursor, Revision,
-    CONTRACT_VERSION,
+    Capability, CapabilityLevel, DocumentId, FaultPoint, ImportMode, ImportOutcome, OutboxCursor,
+    Revision, CONTRACT_VERSION,
 };
 use crate::{StoreError, TeamStore};
 
@@ -112,6 +112,10 @@ pub fn run(harness: &mut dyn StoreHarness) -> ConformanceReport {
     let has = |capability: Capability| manifest.capabilities.contains(&capability);
     let mut gates: Vec<(&str, Result<(), String>)> = Vec::new();
     gates.push(("gate:tenant-scope", gate_tenant_scope(harness)));
+    gates.push((
+        "gate:board-order-roundtrip",
+        gate_board_order_roundtrip(harness),
+    ));
     if has(Capability::Snapshot) {
         gates.push(("gate:mixed-snapshot", gate_mixed_snapshot(harness)));
     }
@@ -280,6 +284,42 @@ fn gate_tenant_scope(harness: &mut dyn StoreHarness) -> Result<(), String> {
         )),
         Err(other) => Err(format!("expected isolation, got failure: {other}")),
     }
+}
+
+/// The scope-level board order document is a first-class kind: a UoW write
+/// survives a restart byte-for-byte and the generic export enumeration
+/// includes it.
+fn gate_board_order_roundtrip(harness: &mut dyn StoreHarness) -> Result<(), String> {
+    harness.reset();
+    let scope = scope("main");
+    // Opaque presentation text by contract — the store must not care what
+    // shape the content takes.
+    let content = "{\"changes\":{\"add-auth\":\"n\"},\"discussions\":{\"auth-scope\":\"c\"}}";
+    create(
+        harness.store(),
+        &scope,
+        &[(DocumentId::BoardOrder, content)],
+        vec![],
+    )?;
+
+    harness.restart();
+    let store = harness.store();
+    match read_content(store, &scope, &DocumentId::BoardOrder)? {
+        Some(read) if read == content => {}
+        other => return Err(format!("board order did not round-trip: {other:?}")),
+    }
+
+    let bundle = store
+        .export(&scope)
+        .map_err(|e| format!("export failed: {e}"))?;
+    if !bundle
+        .documents
+        .iter()
+        .any(|doc| doc.doc == DocumentId::BoardOrder && doc.content == content)
+    {
+        return Err("export bundle omits the board order document".into());
+    }
+    Ok(())
 }
 
 /// A snapshot is a fixed-point view: a concurrent commit must not bleed in,

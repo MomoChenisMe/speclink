@@ -21,6 +21,12 @@ use speclink_protocol::binding::BindingResponse;
 /// routes retain Axum's conservative default body limit.
 const IMPORT_BODY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
 
+/// Transport bound for the board-order routes: generous enough that an
+/// over-cap request is still read in full and answered with a clean 413 by
+/// the handler (which enforces the real content cap) instead of a dropped
+/// connection mid-upload.
+const BOARD_ORDER_BODY_LIMIT_BYTES: usize = 4 * 1024 * 1024;
+
 /// Build the HTTP router over the shared application state.
 pub fn router(state: AppState) -> Router {
     let project = Router::new()
@@ -94,6 +100,12 @@ pub fn router(state: AppState) -> Router {
         .route("/search", get(read_api::search))
         .route("/language", get(routes::language))
         .route("/config", get(routes::config).put(routes::put_config))
+        .route(
+            "/board-order",
+            get(routes::board_order)
+                .put(routes::put_board_order)
+                .layer(DefaultBodyLimit::max(BOARD_ORDER_BODY_LIMIT_BYTES)),
+        )
         .route(
             "/import",
             post(routes::import_bundle).layer(DefaultBodyLimit::max(IMPORT_BODY_LIMIT_BYTES)),

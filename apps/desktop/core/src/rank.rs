@@ -90,6 +90,23 @@ pub fn spread(n: usize) -> Vec<String> {
         .collect()
 }
 
+/// 以鄰居現值推導新鍵：不在現存集合的鄰居（已封存／刪除的 race）視為開放端；
+/// 現值逆序（stale 落點）時棄上界保底——寧可落位偏移，不產生非法鍵。
+/// 本地拖排（manage）與 remote 拖排共用此單一來源，兩模式落點語意同構。
+pub fn neighbor_midpoint(
+    ranks: &std::collections::HashMap<&str, String>,
+    prev_id: Option<&str>,
+    next_id: Option<&str>,
+) -> String {
+    let prev = prev_id.and_then(|p| ranks.get(p)).cloned();
+    let next = next_id.and_then(|n| ranks.get(n)).cloned();
+    let next = match (&prev, &next) {
+        (Some(a), Some(b)) if a >= b => None,
+        _ => next,
+    };
+    midpoint(prev.as_deref(), next.as_deref())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{midpoint, spread};

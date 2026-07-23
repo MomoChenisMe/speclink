@@ -307,6 +307,22 @@ describe("KanbanBoard 拖排（design D6）", () => {
     expect(card.getAttribute("aria-label")).toContain("working-y");
   });
 
+  it("does not mount change cards as sortables when reorder is unavailable", () => {
+    render(<KanbanBoard changes={changes} />);
+    expect(document.querySelector('[aria-roledescription="sortable"]')).toBeNull();
+  });
+
+  it("shows the provided reorder-unavailable reason without adding a drag handle", () => {
+    render(
+      <KanbanBoard
+        changes={changes}
+        reorderUnavailableReason="此 Workspace 目前為唯讀狀態——無法拖曳調整卡片順序"
+      />,
+    );
+    expect(screen.getByText(/唯讀狀態.*無法拖曳調整卡片順序/)).toBeTruthy();
+    expect(document.querySelector('[aria-roledescription="sortable"]')).toBeNull();
+  });
+
   it("pins the pointer activation distance at 8 (click-through lesson)", () => {
     // dnd-kit 可拖曳元素必須設 distance 8，否則單擊被拖曳監聽吃掉（CLAUDE.md）。
     expect(DRAG_ACTIVATION_DISTANCE).toBe(8);

@@ -77,6 +77,10 @@ pub enum DocumentId {
     /// The scope's shared-vocabulary document (`LANGUAGE.md`): one per scope,
     /// like [`DocumentId::WorkflowConfig`]. Absent is a normal state.
     Language,
+    /// The scope's shared board-order document: one per scope, like
+    /// [`DocumentId::WorkflowConfig`]. Opaque presentation content the store
+    /// never interprets. Absent is a normal state.
+    BoardOrder,
 }
 
 /// Full document identity: the (project, repo, document) triple.
@@ -308,7 +312,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn document_id_covers_seven_logical_kinds() {
+    fn document_id_covers_eight_logical_kinds() {
         let kinds = [
             DocumentId::ChangeMeta {
                 change: "add-auth".into(),
@@ -330,7 +334,9 @@ mod tests {
                 doc: "proposal.md".into(),
             },
             DocumentId::Language,
+            DocumentId::BoardOrder,
         ];
+        assert_eq!(kinds.len(), 8);
         // Closed enum: exhaustive match without a wildcard arm — a new kind
         // breaks compilation here instead of silently passing drivers by.
         for kind in &kinds {
@@ -342,6 +348,7 @@ mod tests {
                 DocumentId::WorkflowConfig => {}
                 DocumentId::ArchivedChange { .. } => {}
                 DocumentId::Language => {}
+                DocumentId::BoardOrder => {}
             }
         }
     }

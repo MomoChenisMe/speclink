@@ -624,6 +624,70 @@ describe("app store (Zustand)", () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
+  it("remote reorder 在 server 寫回完成前先更新可見卡片順序", async () => {
+    const writing = deferred<void>();
+    const listed: ChangeItem[] = [
+      { name: "alpha", status: "proposed", totalTasks: 0, completedTasks: 0 },
+      { name: "beta", status: "proposed", totalTasks: 0, completedTasks: 0 },
+    ];
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue(listed),
+      reorderCard: vi.fn().mockReturnValue(writing.promise),
+    });
+    const active = remoteSession(ds, "backend");
+    const other = remoteSession(fakeDataSource(), "other");
+    const store = storeWithRemoteSessions(active, other);
+    await store.getState().refresh();
+
+    const saving = store.getState().reorderCard("change", "beta", null, "alpha");
+
+    expect(store.getState().changes.map((change) => change.name)).toEqual(["beta", "alpha"]);
+    writing.resolve();
+    await saving;
+  });
+
+  it("remote reorder 寫回失敗且 refresh 失敗時仍立即還原最後成功順序", async () => {
+    const writing = deferred<void>();
+    const listed: ChangeItem[] = [
+      { name: "alpha", status: "proposed", totalTasks: 0, completedTasks: 0 },
+      { name: "beta", status: "proposed", totalTasks: 0, completedTasks: 0 },
+    ];
+    const listChanges = vi.fn().mockResolvedValueOnce(listed).mockRejectedValue(new Error("offline"));
+    const ds = fakeDataSource({ listChanges, reorderCard: vi.fn().mockReturnValue(writing.promise) });
+    const active = remoteSession(ds, "backend");
+    const other = remoteSession(fakeDataSource(), "other");
+    const store = storeWithRemoteSessions(active, other);
+    await store.getState().refresh();
+
+    const saving = store.getState().reorderCard("change", "beta", null, "alpha");
+    expect(store.getState().changes.map((change) => change.name)).toEqual(["beta", "alpha"]);
+    writing.reject(new Error("write failed"));
+    await saving;
+
+    expect(store.getState().changes.map((change) => change.name)).toEqual(["alpha", "beta"]);
+    expect(toastError).toHaveBeenCalledTimes(1);
+  });
+
+  it("local reorder 維持既有流程，不在資料源寫回前改動可見順序", async () => {
+    const writing = deferred<void>();
+    const listed: ChangeItem[] = [
+      { name: "alpha", status: "proposed", totalTasks: 0, completedTasks: 0 },
+      { name: "beta", status: "proposed", totalTasks: 0, completedTasks: 0 },
+    ];
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue(listed),
+      reorderCard: vi.fn().mockReturnValue(writing.promise),
+    });
+    const store = storeWith(ds);
+    await store.getState().refresh();
+
+    const saving = store.getState().reorderCard("change", "beta", null, "alpha");
+
+    expect(store.getState().changes.map((change) => change.name)).toEqual(["alpha", "beta"]);
+    writing.resolve();
+    await saving;
+  });
+
   it("detailSpec 開閉 action 比照 detailChange（spec-archive-drawer design D2）", async () => {
     const store = storeWith(fakeDataSource());
     await store.getState().refresh();

@@ -93,6 +93,13 @@ function renderLocalApp(ds: SpeclinkDataSource) {
 }
 
 describe("remote 分頁的 capability 停用", () => {
+  it("reader 看板不渲染拖排把手並顯示繁中角色說明", async () => {
+    renderRemoteApp(fakeRemoteDs());
+    await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
+    expect(document.querySelector('[aria-roledescription="sortable"]')).toBeNull();
+    expect(screen.getByText(/唯讀狀態.*無法拖曳調整卡片順序/)).toBeTruthy();
+  });
+
   it("搜尋輸入啟用並直達 server、看板照常呈現資料", async () => {
     const ds = fakeRemoteDs();
     renderRemoteApp(ds);

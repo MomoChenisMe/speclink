@@ -176,49 +176,49 @@ code:
 ---
 ### Requirement: capability 驅動停用且不偽造缺口
 
-RemoteDataSource SHALL 附帶逐操作的 capability 描述（來源＝handshake 回應與端點覆蓋矩陣）；封存瀏覽、全文搜尋、正典 spec 內文、validate/analyze 動詞、刪除變更與任務拖排 SHALL 直達 server 對應端點、與本地 session 同形呈現（刪除與任務拖排依 role：reader 呈現停用附繁體中文說明）；server 仍無對應端點的操作（看板拖排）SHALL 於 UI 停用並附繁體中文說明，對應 DataSource 方法 SHALL 回拒絕錯誤；SHALL NOT 於 client 端偽造或近似實作缺口。本地 session 的全部操作 SHALL 維持可用且行為零改動。批次任務操作以逐任務寫回組合時，中途失敗 SHALL 中止並回報已完成筆數。
+RemoteDataSource SHALL 附帶逐操作的 capability 描述（來源＝handshake 回應與端點覆蓋矩陣）；封存瀏覽、全文搜尋、正典 spec 內文、validate/analyze 動詞、刪除變更、任務拖排與看板拖排 SHALL 直達 server 對應端點、與本地 session 同形呈現（寫入面操作依 role：reader 呈現停用附繁體中文說明）；未來出現 server 無對應端點的操作時 SHALL 於 UI 停用並附繁體中文說明、對應 DataSource 方法 SHALL 回拒絕錯誤；SHALL NOT 於 client 端偽造或近似實作缺口。本地 session 的全部操作 SHALL 維持可用且行為零改動。批次任務操作以逐任務寫回組合時，中途失敗 SHALL 中止並回報已完成筆數。
 
-#### Scenario: 動詞與寫入面直達而看板拖排停用
+#### Scenario: 全操作面直達
 
-- **WHEN** 以 editor 身分於 remote 分頁執行 validate、analyze、刪除一個變更並拖排一個任務
-- **THEN** 四者皆如本地生效並呈現真實結果（刪除後卡片消失、任務落位並重編號）；同時看板卡片拖排維持停用附繁中說明，本地分頁全功能照常
+- **WHEN** 以 editor 身分於 remote 分頁執行 validate、刪除一個變更、拖排一個任務並拖排一張看板卡片
+- **THEN** 四者皆如本地生效並呈現真實結果，無任何操作呈現「server 尚未提供」停用說明；本地分頁全功能照常
 
 #### Scenario: reader 的寫入面呈現停用
 
 - **WHEN** 以 reader 身分開啟 remote 分頁
-- **THEN** 刪除變更與任務拖排呈現停用附繁中說明、validate/analyze 照常可用，對應停用方法回拒絕錯誤
+- **THEN** 刪除變更、任務拖排與看板拖排呈現停用附繁中說明、讀取面與 validate/analyze 照常可用，對應停用方法回拒絕錯誤
 
 
 <!-- @trace
-source: remote-verb-parity
+source: remote-board-order
 updated: 2026-07-23
 code:
   - apps/desktop/core/src/manage.rs
+  - apps/desktop/core/src/rank.rs
   - apps/desktop/src-tauri/src/lib.rs
   - apps/desktop/src-tauri/src/remote.rs
   - apps/desktop/src-tauri/tests/remote_data.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/remoteCapabilities.test.tsx
   - apps/desktop/src/__tests__/remoteDataSource.test.ts
+  - apps/desktop/src/__tests__/store.test.ts
   - apps/desktop/src/adapter/remoteDataSource.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/remote_verb_parity.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-protocol/src/binding.rs
-  - crates/speclink-protocol/src/command.rs
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/store.ts
   - crates/speclink-protocol/src/query.rs
   - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/src/convert.rs
-  - crates/speclink-remote/src/lib.rs
   - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/auth.rs
-  - crates/speclink-server/src/events.rs
+  - crates/speclink-server/src/backup.rs
+  - crates/speclink-server/src/error.rs
   - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/verb_api.rs
-  - docs/verb-contract.md
-  - docs/verb-contract.zh-TW.md
+  - crates/speclink-server/tests/board_order.rs
+  - crates/speclink-store-fs/src/layout.rs
+  - crates/speclink-store-postgres/src/lib.rs
+  - crates/speclink-store-sqlite/src/lib.rs
+  - crates/speclink-store/src/conformance/mod.rs
+  - crates/speclink-store/src/types.rs
+  - packages/ui/src/__tests__/kanban.test.tsx
+  - packages/ui/src/components/KanbanBoard.tsx
 -->
 
 ---
