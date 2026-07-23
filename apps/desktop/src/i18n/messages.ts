@@ -27,7 +27,6 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "app.deleteConfirm": "刪除",
     "app.closeTab": "關閉分頁",
     "app.removeTab": "自分頁移除",
-    "app.tabBadgeTooltip": "{n} 個待收尾項目（已就緒變更＋已結論討論）",
     "app.checkoutTooltip": "已連接 checkout：{path}",
     "app.initTitle": "初始化 speclink 工作區？",
     "app.initDesc":
@@ -149,7 +148,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "tray.recovery.notFound": "找不到 Workspace",
     "tray.recovery.unknown": "無法開啟 Workspace",
     "tray.recovery.retry": "重新連線",
-    "tray.recovery.open": "在 Speclink 中查看問題",
+    "tray.recovery.open": "查看問題",
     "tray.recovery.settings": "伺服器設定",
     "tray.recovery.reauthenticate": "重新登入",
     "tray.recovery.workspace": "Workspace",
@@ -252,7 +251,6 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "app.deleteConfirm": "Delete",
     "app.closeTab": "Close tab",
     "app.removeTab": "Remove tab",
-    "app.tabBadgeTooltip": "{n} items awaiting wrap-up (ready changes + concluded discussions)",
     "app.checkoutTooltip": "Connected checkout: {path}",
     "app.initTitle": "Initialize a speclink workspace?",
     "app.initDesc":
@@ -374,7 +372,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "tray.recovery.notFound": "Workspace not found",
     "tray.recovery.unknown": "Unable to open workspace",
     "tray.recovery.retry": "Reconnect",
-    "tray.recovery.open": "View issue in Speclink",
+    "tray.recovery.open": "View issue",
     "tray.recovery.settings": "Server settings",
     "tray.recovery.reauthenticate": "Sign in again",
     "tray.recovery.workspace": "Workspace",

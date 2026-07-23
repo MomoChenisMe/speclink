@@ -89,7 +89,7 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
     expect(screen.queryByTestId("panel-section-proposed")).toBeNull();
 
     fireEvent.click(within(card).getByRole("button", { name: "重新登入" }));
-    fireEvent.click(within(card).getByRole("button", { name: "在 Speclink 中查看問題" }));
+    fireEvent.click(within(card).getByRole("button", { name: "查看問題" }));
     expect(h.onReauthenticate).toHaveBeenCalledWith("c1");
     expect(h.onOpenRecovery).toHaveBeenCalledWith(key);
     for (const button of within(card).getAllByRole("button")) {

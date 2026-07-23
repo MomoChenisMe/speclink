@@ -322,48 +322,6 @@ code:
 -->
 
 ---
-### Requirement: macOS 進行中數文字徽章
-macOS 上系統匣圖示旁 SHALL 顯示作用中專案的進行中變更數文字徽章，並隨資料變動更新；數量為 0 時 SHALL 不顯示文字。非 macOS 平台 SHALL 無此徽章且 SHALL NOT 因此產生錯誤。
-
-#### Scenario: 徽章隨進行中變更數更新
-- **WHEN** macOS 上作用中專案的進行中變更數自 2 變為 0
-- **THEN** 圖示旁的「2」文字徽章消失；再有變更進入進行中時徽章重新顯示對應數字
-
-<!-- @trace
-source: system-tray-status
-updated: 2026-07-13
-code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/icons/128x128.png
-  - apps/desktop/src-tauri/icons/128x128@2x.png
-  - apps/desktop/src-tauri/icons/32x32.png
-  - apps/desktop/src-tauri/icons/64x64.png
-  - apps/desktop/src-tauri/icons/Square107x107Logo.png
-  - apps/desktop/src-tauri/icons/Square142x142Logo.png
-  - apps/desktop/src-tauri/icons/Square150x150Logo.png
-  - apps/desktop/src-tauri/icons/Square284x284Logo.png
-  - apps/desktop/src-tauri/icons/Square30x30Logo.png
-  - apps/desktop/src-tauri/icons/Square310x310Logo.png
-  - apps/desktop/src-tauri/icons/Square44x44Logo.png
-  - apps/desktop/src-tauri/icons/Square71x71Logo.png
-  - apps/desktop/src-tauri/icons/Square89x89Logo.png
-  - apps/desktop/src-tauri/icons/StoreLogo.png
-  - apps/desktop/src-tauri/icons/icon.icns
-  - apps/desktop/src-tauri/icons/icon.ico
-  - apps/desktop/src-tauri/icons/icon.png
-  - apps/desktop/src-tauri/icons/speclink-tray-18.png
-  - apps/desktop/src-tauri/icons/speclink-tray-18@2x.png
-  - apps/desktop/src-tauri/tauri.conf.json
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/tray.test.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/tray.ts
-  - apps/desktop/src/trayIcon.ts
--->
-
----
 ### Requirement: 面板樣式（macOS）
 
 於 macOS，點擊系統匣圖示 SHALL NOT 顯示原生下拉選單，而 SHALL 於圖示下方彈出貼齊圖示的面板視窗，再次點擊 SHALL 收合——無需任何偏好設定。點擊 SHALL 不分滑鼠按鍵：主鍵（左鍵）與次要鍵（右鍵）點擊圖示 SHALL 完全等價，皆為開閉面板。面板內容 SHALL 與原生選單同源（同一前端 store 投影：專案與復原狀態、生命週期分區的變更與進度、討論——討論比照原生選單分「討論」與「已轉出」兩分區），SHALL NOT 為面板另建第二條資料查詢路徑或狀態機。

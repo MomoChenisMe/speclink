@@ -29,7 +29,6 @@ import {
   type WorkspaceSession,
 } from "./session";
 import {
-  pendingWrapUpCount,
   persistTabs,
   readPersistedTabs,
   removeTab,
@@ -199,7 +198,7 @@ export interface AppState {
   closeTab: (key: string) => void;
   confirmInit: (tools: string[]) => Promise<void>;
   cancelInit: () => void;
-  /** 啟動：還原持久化分頁、依持久化 activeKey 切回最後活躍專案、背景分頁各查一次徽章快照。 */
+  /** 啟動：還原持久化分頁、依持久化 activeKey 切回最後活躍專案、背景 local 分頁各探測一次路徑有效性。 */
   restoreTabs: () => Promise<void>;
   /** Ctrl+Tab：循環切至下一分頁（走開啟專案語意）。 */
   cycleTab: () => Promise<void>;
@@ -434,8 +433,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     }
 
     /** 命中專案的共同尾聲：upsert session 與分頁（去重）、設 activeKey、清對話框、
-     * persist、顯式重掛監看、整批 refresh。probe 為純探測，其回報值即後端真相。
-     * 舊 active 分頁的徽章停留在最後一次 refresh 的派生值——即切走時的快照（design D11）。 */
+     * persist、顯式重掛監看、整批 refresh。probe 為純探測，其回報值即後端真相。 */
     async function enterProject(root: string, name: string) {
       const locator = { kind: "local", root } as const;
       const key = locatorKey(locator);
@@ -624,11 +622,6 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!isCurrentRefresh(sourceKey, generation)) return;
       workspaceSnapshots.set(sourceKey, snapshot);
       set((state) => ({
-        tabs: state.tabs.map((tab) =>
-          locatorKey(tab.locator) === sourceKey
-            ? { ...tab, badge: pendingWrapUpCount(changes, discussions.active) }
-            : tab,
-        ),
         ...(state.activeKey === sourceKey ? snapshot : {}),
       }));
       if (get().activeKey !== sourceKey) return;
@@ -1129,7 +1122,6 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const replacement = {
         locator: session.locator,
         name: session.descriptor.name,
-        badge: null,
       };
       const tabs: ProjectTab[] = [];
       for (const tab of get().tabs) {
@@ -1278,7 +1270,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     async restoreTabs() {
       if (!workspace) return;
       const persisted = readPersistedTabs();
-      const tabs: ProjectTab[] = persisted.tabs.map((t) => ({ ...t, badge: null }));
+      const tabs: ProjectTab[] = persisted.tabs.map((t) => ({ ...t }));
       set({ tabs });
       // 首啟活躍專案由持久化 activeKey 決定（決策 4/6）。
       const activeTab = persisted.activeKey
@@ -1297,7 +1289,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           // 非專案目錄啟動：維持零分頁空狀態。
         }
       }
-      // 背景分頁徽章：啟動時各查一次快照；失效路徑轉錯誤態（design D11）。
+      // 背景 local 分頁啟動時各探測一次路徑有效性；失效轉錯誤態（design D11）。
       const active = get().activeKey;
       await Promise.all(
         get()
@@ -1306,12 +1298,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
             const key = locatorKey(t.locator);
             if (t.locator.kind !== "local") return;
             try {
-              const stats = await workspace.projectStats(t.locator.root);
-              set({
-                tabs: get().tabs.map((x) =>
-                  locatorKey(x.locator) === key ? { ...x, badge: stats.pendingWrapUp } : x,
-                ),
-              });
+              await workspace.projectStats(t.locator.root);
             } catch (e) {
               set({ tabErrors: { ...get().tabErrors, [key]: String(e) } });
             }

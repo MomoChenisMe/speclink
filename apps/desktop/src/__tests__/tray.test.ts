@@ -27,7 +27,9 @@ import { trayIconBytes } from "../trayIcon";
 
 // tray.ts 於頂層 import @tauri-apps/api 的 tray/menu/window/image（＋面板模式的 webviewWindow/dpi）；
 // 於 jsdom 下以樁替，使模組載入安全並讓接線測試可攔截呼叫。純函式測試不觸及這些。
-vi.mock("@tauri-apps/api/tray", () => ({ TrayIcon: { new: vi.fn() } }));
+vi.mock("@tauri-apps/api/tray", () => ({
+  TrayIcon: { new: vi.fn(), removeById: vi.fn() },
+}));
 vi.mock("@tauri-apps/api/menu", () => ({ Menu: { new: vi.fn() } }));
 vi.mock("@tauri-apps/api/image", () => ({ Image: { fromBytes: vi.fn() } }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: vi.fn() }));
@@ -61,7 +63,7 @@ const fakeT = (key: string): string =>
     "tray.recovery.needsReauth": "需要重新登入",
     "tray.recovery.unreachable": "無法連線",
     "tray.recovery.retry": "重新連線",
-    "tray.recovery.open": "在 Speclink 中查看問題",
+    "tray.recovery.open": "查看問題",
     "tray.recovery.settings": "伺服器設定",
     "tray.recovery.reauthenticate": "重新登入",
     "stage.proposed": "提案中",
@@ -261,9 +263,8 @@ describe("buildTrayModel", () => {
     expect(byKind(items, "overflow")[0].label).toBe("還有 2 個…");
   });
 
-  it("徽章＝進行中變更數", () => {
-    expect(buildTrayModel(snapshot(), fakeT).badge).toBe("1");
-    expect(buildTrayModel(snapshot({ changes: [] }), fakeT).badge).toBe("");
+  it("模型不含數字徽章欄位（系統匣不顯示數字）", () => {
+    expect("badge" in buildTrayModel(snapshot(), fakeT)).toBe(false);
   });
 
   it("區段順序：專案 → 分隔 → 各階段(header+change) → 分隔 → 討論(header+項) → 分隔 → 動作", () => {
@@ -353,7 +354,6 @@ describe("buildTrayModel", () => {
     );
     expect(byKind(model.items, "change")).toHaveLength(0);
     expect(byKind(model.items, "discussion")).toHaveLength(0);
-    expect(model.badge).toBe("");
   });
 });
 
@@ -459,7 +459,7 @@ describe("initTray 接線（選單）", () => {
     expect(projects.map((p: AnyItem) => p.checked)).toEqual([true, false]);
   });
 
-  it("變更列為子選單（有 items）、標籤帶進度條；store 變動後重建並更新徽章", async () => {
+  it("變更列為子選單（有 items）、標籤帶進度條；store 變動後重建選單", async () => {
     const bag = makeStore();
     await initTray(bag.store, { isMacOS: true, debounceMs: 100 });
     vi.mocked(Menu.new).mockClear();
@@ -479,7 +479,6 @@ describe("initTray 接線（選單）", () => {
     expect(trayObj.setMenu).toHaveBeenCalledTimes(1);
     const submenus = lastItems.filter((i) => Array.isArray(i.items) && /\d+\/\d+$/.test(i.text ?? ""));
     expect(submenus.map((s: AnyItem) => s.text)).toEqual(["alpha  ▓▓▓▓░░░░ 6/12", "beta  ▓▓░░░░░░ 2/8"]);
-    expect(trayObj.setTitle).toHaveBeenLastCalledWith("2");
   });
 
   it.each([
@@ -569,7 +568,7 @@ describe("initTray 接線（選單）", () => {
       "作用中",
       "需要重新登入",
       "重新登入",
-      "在 Speclink 中查看問題",
+      "查看問題",
       "伺服器設定",
     ]);
 
@@ -756,6 +755,35 @@ describe("initTray 接線（選單）", () => {
     vi.useRealTimers();
     expect(trayObj.setMenu).toHaveBeenLastCalledWith({ id: "menu" });
     expect(trayObj.setShowMenuOnLeftClick).toHaveBeenLastCalledWith(true);
+  });
+
+  it("tray 以固定 id 建立，建立前先移除同 id 孤兒（webview 重建不殘留殭屍徽章）", async () => {
+    const { store } = makeStore();
+    await initTray(store, { isMacOS: true });
+    expect(TrayIcon.removeById).toHaveBeenCalledWith("speclink-tray");
+    const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
+    expect(opts.id).toBe("speclink-tray");
+    expect(vi.mocked(TrayIcon.removeById).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(TrayIcon.new).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("不顯示數字徽章：建立不帶 title，資料變動與點擊圖示皆不呼叫 setTitle", async () => {
+    const bag = makeStore();
+    bag.emit({ trayStyle: "panel" });
+    const onPanelToggle = vi.fn();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50, onPanelToggle });
+    const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
+    expect(opts.title).toBeUndefined();
+    vi.useFakeTimers();
+    bag.emit({
+      changes: [change({ name: "alpha", totalTasks: 12, completedTasks: 6 })],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    vi.useRealTimers();
+    opts.action({ type: "Click", button: "Left", buttonState: "Up" });
+    await Promise.resolve();
+    expect(trayObj.setTitle).not.toHaveBeenCalled();
   });
 
   it("溢出節點轉為原生子選單（內含其餘變更、各自保有動作子選單）", async () => {

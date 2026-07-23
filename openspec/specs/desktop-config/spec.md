@@ -180,7 +180,7 @@ code:
 ---
 ### Requirement: 專案分頁列存於 app 本機
 
-app 頂欄 SHALL 以分頁列呈現開啟過的專案（路徑與顯示名，上限 10 個分頁）：分頁 SHALL 跨啟動持久化於 app 本機狀態（含順序與最後活躍分頁），SHALL NOT 寫入任何專案目錄。點擊分頁 SHALL 以該路徑執行與「開啟專案」相同的切換語意；同一專案再次開啟 SHALL 去重並移至既有分頁；關閉分頁 SHALL 將其自持久化清單移除。分頁 SHALL 顯示該專案「待收尾數」徽章——已就緒（任務全數完成、等待封存）變更數＋已結論未轉出討論數，已轉出（promoted）討論 SHALL NOT 計入；活躍分頁隨看板刷新即時更新，背景分頁 SHALL 於 app 啟動時各查詢一次、之後保留最後已知值；hover 徽章的說明文字 SHALL 使用待收尾語意。分頁指向已不存在的路徑時 SHALL 以錯誤態呈現，點擊 SHALL 顯示錯誤並提供自分頁移除，SHALL NOT 切換專案。無任何分頁時 app SHALL 顯示「開啟專案」空狀態引導頁而非空看板。app SHALL 支援 Ctrl+Tab 循環切換與 Ctrl+1..9 直達第 N 個分頁。
+app 頂欄 SHALL 以分頁列呈現開啟過的專案（路徑與顯示名，上限 10 個分頁）：分頁 SHALL 跨啟動持久化於 app 本機狀態（含順序與最後活躍分頁），SHALL NOT 寫入任何專案目錄。點擊分頁 SHALL 以該路徑執行與「開啟專案」相同的切換語意；同一專案再次開啟 SHALL 去重並移至既有分頁；關閉分頁 SHALL 將其自持久化清單移除。分頁 SHALL NOT 顯示待收尾數或其他計數徽章——待收尾狀態由看板欄位計數與系統匣面板分區計數承載。分頁指向已不存在的路徑時 SHALL 以錯誤態呈現，點擊 SHALL 顯示錯誤並提供自分頁移除，SHALL NOT 切換專案；背景 local 分頁 SHALL 於 app 啟動時各探測一次路徑有效性，失效即轉錯誤態。無任何分頁時 app SHALL 顯示「開啟專案」空狀態引導頁而非空看板。app SHALL 支援 Ctrl+Tab 循環切換與 Ctrl+1..9 直達第 N 個分頁。
 
 #### Scenario: 成功開啟後記入分頁並去重上移
 
@@ -192,20 +192,10 @@ app 頂欄 SHALL 以分頁列呈現開啟過的專案（路徑與顯示名，上
 - **WHEN** 使用者於專案 A 為 active 時點擊專案 B 的分頁（或按 Ctrl+Tab 循環至 B）
 - **THEN** 看板、已封存與設定頁改為呈現專案 B 內容，B 的分頁轉為 active，行為與經「開啟專案」選定 B 一致
 
-#### Scenario: 分頁徽章顯示待收尾數
+#### Scenario: 分頁不顯示計數徽章
 
-- **WHEN** 分頁列含專案 A（active，2 個已就緒變更與 1 份已結論未轉出討論）與背景專案 B（啟動時查得待收尾數 1）
-- **THEN** A 的分頁徽章顯示 3 並隨看板刷新即時更新（全部封存與轉出後歸零），B 的分頁徽章顯示 1（最後已知值）；hover 徽章顯示待收尾語意的說明文字
-
-##### Example: 待收尾數計算
-
-| 看板狀態 | 計入待收尾 | 說明 |
-| -------- | ---------- | ---- |
-| 變更 21/21 任務完成（已就緒欄） | 是 | 等待使用者封存 |
-| 變更 5/21 進行中 | 否 | agent 工作中，無需使用者動作 |
-| 討論 concluded 未轉出 | 是 | 等待轉為變更或封存 |
-| 討論 promoted（已轉出） | 否 | 已轉出，隨子變更生命週期收尾 |
-| 討論 open（討論中） | 否 | 討論仍在推進 |
+- **WHEN** 分頁列含專案 A（active，2 個已就緒變更與 1 份已結論未轉出討論）與背景專案 B
+- **THEN** A 與 B 的分頁均僅顯示專案名稱與必要狀態圖示，無任何計數徽章或待收尾數 hover 說明
 
 #### Scenario: 分頁路徑已消失時轉錯誤態
 
@@ -219,33 +209,21 @@ app 頂欄 SHALL 以分頁列呈現開啟過的專案（路徑與顯示名，上
 
 
 <!-- @trace
-source: spec-archive-drawer
-updated: 2026-07-11
+source: tray-badge-and-recovery-buttons
+updated: 2026-07-23
 code:
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/projectTabs.test.tsx
   - apps/desktop/src/__tests__/store.test.ts
   - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/__tests__/tray.test.ts
+  - apps/desktop/src/__tests__/trayPanel.test.tsx
   - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/adapter/workspace.ts
+  - apps/desktop/src/components/ProjectTabs.tsx
   - apps/desktop/src/i18n/messages.ts
   - apps/desktop/src/store.ts
   - apps/desktop/src/tabs.ts
-  - packages/ui/src/__tests__/archivedDrawer.test.tsx
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/specDrawer.test.tsx
-  - packages/ui/src/__tests__/specList.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/SpecDrawer.tsx
-  - packages/ui/src/components/SpecList.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+  - apps/desktop/src/tray.ts
 -->
 
 ---
@@ -603,5 +581,3 @@ code:
 
 - **WHEN** config.yaml 被外部改壞為無法解析後使用者開啟設定頁
 - **THEN** config.yaml 簽浮出解析失敗說明，專案說明卡與產出規則卡的編輯鈕停用，不提供任何寫入途徑
-
----

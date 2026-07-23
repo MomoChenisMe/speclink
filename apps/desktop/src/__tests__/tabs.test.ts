@@ -2,7 +2,6 @@
 // 順序＋最後活躍）、上限 10、去重、關閉移除；徽章派生為待收尾數
 //（spec-archive-drawer design D6：已就緒變更＋已結論未轉出討論）。
 import { describe, it, expect } from "vitest";
-import type { ChangeItem, DiscussionItem } from "@speclink/ui";
 
 import {
   MAX_TABS,
@@ -10,7 +9,6 @@ import {
   removeTab,
   persistTabs,
   readPersistedTabs,
-  pendingWrapUpCount,
   type ProjectTab,
 } from "../tabs";
 import { locatorKey, type WorkspaceLocator } from "../session";
@@ -21,7 +19,7 @@ function local(root: string): WorkspaceLocator {
 }
 
 function tab(root: string, name = root): ProjectTab {
-  return { locator: local(root), name, badge: null };
+  return { locator: local(root), name };
 }
 
 function keys(tabs: Array<{ locator: WorkspaceLocator }>): string[] {
@@ -87,8 +85,8 @@ describe("分頁持久化 v2 與 v1 靜默遷移（spec「分頁持久化 v2 與
   it("round-trips v2 (locator, order, names, activeKey) and stamps version 2", () => {
     const st = memStorage();
     const tabs: ProjectTab[] = [
-      { locator: local("B"), name: "beta", badge: null },
-      { locator: local("A"), name: "alpha", badge: null },
+      { locator: local("B"), name: "beta" },
+      { locator: local("A"), name: "alpha" },
     ];
     persistTabs(tabs, "local:A", st);
     const raw = JSON.parse(st.getItem("speclink.projectTabs") ?? "{}");
@@ -108,7 +106,7 @@ describe("分頁持久化 v2 與 v1 靜默遷移（spec「分頁持久化 v2 與
       repoId: "backend",
       checkoutRoot: "/work/backend",
     };
-    persistTabs([{ locator, name: "Demo/Backend", badge: null }], locatorKey(locator), st);
+    persistTabs([{ locator, name: "Demo/Backend" }], locatorKey(locator), st);
     const restored = readPersistedTabs(st);
     expect(restored.tabs).toEqual([{ locator, name: "Demo/Backend" }]);
     expect(restored.activeKey).toBe("remote:c1/demo/backend");
@@ -143,7 +141,7 @@ describe("分頁持久化 v2 與 v1 靜默遷移（spec「分頁持久化 v2 與
     );
     const restored = readPersistedTabs(st);
     persistTabs(
-      restored.tabs.map((t) => ({ ...t, badge: null })),
+      restored.tabs.map((t) => ({ ...t })),
       restored.activeKey,
       st,
     );
@@ -185,47 +183,10 @@ describe("分頁持久化 v2 與 v1 靜默遷移（spec「分頁持久化 v2 與
   });
 });
 
-describe("pendingWrapUpCount（徽章＝待收尾數：已就緒變更＋已結論未轉出討論）", () => {
-  function discussion(slug: string, status: string, promotedTo: string[] = []): DiscussionItem {
-    return { slug, topic: slug, status, rounds: 1, created: "2026-01-02", promotedTo };
-  }
-
-  it("counts ready changes plus concluded discussions; in-progress/open/promoted excluded", () => {
-    // 契約範例：2 個已就緒變更＋1 份已結論未轉出討論 → 徽章 3。
-    const changes: ChangeItem[] = [
-      { name: "proposed", status: "x", totalTasks: 28, completedTasks: 0 },
-      { name: "started", status: "x", totalTasks: 10, completedTasks: 0, startedAt: "2026-07-06" },
-      { name: "progressed", status: "x", totalTasks: 14, completedTasks: 2 },
-      { name: "ready-a", status: "x", totalTasks: 5, completedTasks: 5 },
-      { name: "ready-b", status: "x", totalTasks: 3, completedTasks: 3 },
-    ];
-    const discussions: DiscussionItem[] = [
-      discussion("alpha-concluded", "concluded"),
-      discussion("beta-open", "open"),
-      discussion("gamma-promoted", "promoted", ["cut-a"]),
-    ];
-    expect(pendingWrapUpCount(changes, discussions)).toBe(3);
-  });
-
-  it("returns zero when nothing awaits the user", () => {
-    // 全部收尾後歸零：只剩進行中變更與 open／promoted 討論。
-    const changes: ChangeItem[] = [
-      { name: "started", status: "x", totalTasks: 10, completedTasks: 2, startedAt: "2026-07-06" },
-    ];
-    const discussions: DiscussionItem[] = [
-      discussion("beta-open", "open"),
-      discussion("gamma-promoted", "promoted", ["cut-a"]),
-    ];
-    expect(pendingWrapUpCount(changes, discussions)).toBe(0);
-  });
-});
-
-describe("分頁徽章 tooltip（待收尾語意）", () => {
-  it("uses pending-wrap-up wording with the {n} placeholder in both locales", () => {
-    expect(APP_MESSAGES["zh-TW"]["app.tabBadgeTooltip"]).toContain("待收尾");
-    expect(APP_MESSAGES["zh-TW"]["app.tabBadgeTooltip"]).toContain("{n}");
-    expect(APP_MESSAGES.en["app.tabBadgeTooltip"].toLowerCase()).toContain("wrap");
-    expect(APP_MESSAGES.en["app.tabBadgeTooltip"]).toContain("{n}");
+describe("分頁徽章已移除（分頁不顯示計數）", () => {
+  it("app 字典不再含 tabBadgeTooltip", () => {
+    expect("app.tabBadgeTooltip" in APP_MESSAGES["zh-TW"]).toBe(false);
+    expect("app.tabBadgeTooltip" in APP_MESSAGES.en).toBe(false);
   });
 
   it("zh-TW and en app dictionaries expose the same key set", () => {
