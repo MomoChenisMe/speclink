@@ -1,0 +1,126 @@
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const zhPath = path.join(root, 'docs/remote-getting-started.zh-TW.md');
+const enPath = path.join(root, 'docs/remote-getting-started.md');
+
+function read(relativePath) {
+  return readFileSync(path.join(root, relativePath), 'utf8');
+}
+
+function h2s(markdown) {
+  return [...markdown.matchAll(/^## (.+)$/gm)].map((match) => match[1]);
+}
+
+function localMarkdownLinks(markdown) {
+  return [...markdown.matchAll(/!?\[[^\]]*]\(([^)]+)\)/g)]
+    .map((match) => match[1].trim().replace(/^<|>$/g, ''))
+    .filter((target) => !/^(?:https?:|mailto:|#)/.test(target));
+}
+
+test('remote getting-started guides exist with matching section order', () => {
+  assert.equal(existsSync(zhPath), true, 'missing Traditional Chinese remote guide');
+  assert.equal(existsSync(enPath), true, 'missing English remote guide');
+
+  const zh = read('docs/remote-getting-started.zh-TW.md');
+  const en = read('docs/remote-getting-started.md');
+  assert.deepEqual(h2s(zh), h2s(en));
+});
+
+test('both guides cover the remote setup, authorization, and recovery contract', () => {
+  for (const relativePath of [
+    'docs/remote-getting-started.zh-TW.md',
+    'docs/remote-getting-started.md',
+  ]) {
+    const guide = read(relativePath);
+    for (const required of [
+      '/account',
+      'POST `/account/tokens`',
+      '/admin/users',
+      'HTTP 405',
+      'membership',
+      'project-scoped URL',
+      'spec-only',
+      'checkout',
+      'offline',
+      'npm run dev:reset',
+    ]) {
+      assert.match(guide, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+  }
+});
+
+test('existing user entry points link to the matching remote guide', () => {
+  assert.match(read('README.md'), /docs\/remote-getting-started\.zh-TW\.md/);
+  assert.match(read('README.en.md'), /docs\/remote-getting-started\.md/);
+  assert.match(read('docs/product-status.zh-TW.md'), /remote-getting-started\.zh-TW\.md/);
+  assert.match(read('docs/product-status.md'), /remote-getting-started\.md/);
+  assert.match(read('docs/server-deployment.zh-TW.md'), /remote-getting-started\.zh-TW\.md/);
+});
+
+test('documented browser routes preserve their actual HTTP method boundary', () => {
+  const routes = read('crates/speclink-server/src/app.rs');
+  assert.match(routes, /\.route\("\/account", get\(web::account_page\)\)/);
+  assert.match(routes, /\.route\("\/account\/tokens", post\(web::create_pat\)\)/);
+  assert.match(routes, /\.route\("\/admin\/users", get\(admin::users_page\)\)/);
+  assert.doesNotMatch(routes, /\.route\("\/account\/tokens", get\(/);
+
+  for (const relativePath of [
+    'docs/remote-getting-started.zh-TW.md',
+    'docs/remote-getting-started.md',
+  ]) {
+    const guide = read(relativePath);
+    assert.match(guide, /POST `\/account\/tokens`/);
+    assert.match(guide, /HTTP 405 Method Not Allowed/);
+    assert.equal(
+      localMarkdownLinks(guide).some((target) => target.endsWith('/account/tokens')),
+      false,
+      `${relativePath} must not link to the POST-only action as a browser page`,
+    );
+  }
+});
+
+test('documented CLI commands are present in the current help surface', () => {
+  const cases = [
+    [[], /Commands:[\s\S]*\blink\b[\s\S]*\bauth\b/],
+    [['link', '--help'], /Usage: speclink link \[OPTIONS\] <URL>[\s\S]*--repo <REPO>/],
+    [['auth', 'login', '--help'], /Usage: speclink auth login \[OPTIONS\][\s\S]*--token-stdin/],
+  ];
+
+  for (const [args, expected] of cases) {
+    const result = spawnSync('speclink', args.length === 0 ? ['--help'] : args, {
+      cwd: root,
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, expected);
+  }
+});
+
+test('relative Markdown links in the changed documentation resolve', () => {
+  const documents = [
+    'README.md',
+    'README.en.md',
+    'docs/remote-getting-started.zh-TW.md',
+    'docs/remote-getting-started.md',
+    'docs/product-status.zh-TW.md',
+    'docs/product-status.md',
+    'docs/server-deployment.zh-TW.md',
+    'docs/platform-architecture.zh-TW.md',
+  ];
+
+  for (const relativePath of documents) {
+    const markdown = read(relativePath);
+    for (const target of localMarkdownLinks(markdown)) {
+      const withoutFragment = target.split('#', 1)[0];
+      if (withoutFragment === '') continue;
+      const resolved = path.resolve(root, path.dirname(relativePath), withoutFragment);
+      assert.equal(existsSync(resolved), true, `${relativePath}: broken link ${target}`);
+    }
+  }
+});
