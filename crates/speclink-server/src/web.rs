@@ -364,7 +364,7 @@ fn parse_expiry(input: &str) -> Result<Option<chrono::DateTime<chrono::Utc>>, ()
 // --- session cookie + origin (決策 4) ---
 
 /// Attach a fresh session cookie to a response.
-fn with_session_cookie(mut resp: Response, session: &str) -> Response {
+pub(crate) fn with_session_cookie(mut resp: Response, session: &str) -> Response {
     let cookie = format!("{SESSION_COOKIE}={session}; HttpOnly; Secure; SameSite=Strict; Path=/");
     if let Ok(value) = HeaderValue::from_str(&cookie) {
         resp.headers_mut().insert(SET_COOKIE, value);
@@ -445,12 +445,17 @@ fn origin_of(url: &str) -> &str {
 // session。登入 destination 由 Server 裁決：有效 device userCode → 通過白名單的
 // returnTo → 角色 home；一般成員的 `/admin` destination 回 403 不降級。
 
-/// `/api/speclink/v1/web` 下的 browser session routes。
+/// `/api/speclink/v1/web` 下的 browser session／invite routes。setup routes 由
+/// [`crate::setup::web_router`] 併入（app.rs）。
 pub fn api_router() -> Router<AppState> {
     Router::new()
         .route("/session", get(api_session))
         .route("/login", post(api_login))
         .route("/logout", post(api_logout))
+        .route(
+            "/invite/{token}",
+            get(api_invite_summary).post(api_invite_accept),
+        )
 }
 
 #[derive(Serialize)]
@@ -473,12 +478,12 @@ struct WebError {
 }
 
 /// 200 `{data}`.
-fn web_ok<T: Serialize>(data: T) -> Response {
+pub(crate) fn web_ok<T: Serialize>(data: T) -> Response {
     (StatusCode::OK, Json(DataEnvelope { data })).into_response()
 }
 
 /// A `{error}` envelope at `status`.
-fn web_err(status: StatusCode, code: &'static str, message: impl Into<String>) -> Response {
+pub(crate) fn web_err(status: StatusCode, code: &'static str, message: impl Into<String>) -> Response {
     (
         status,
         Json(ErrorEnvelope {
@@ -490,6 +495,46 @@ fn web_err(status: StatusCode, code: &'static str, message: impl Into<String>) -
         }),
     )
         .into_response()
+}
+
+/// A `{error}` envelope carrying one `fieldErrors` entry, so the SPA can place the
+/// message next to the offending form field.
+pub(crate) fn web_field_err(
+    status: StatusCode,
+    code: &'static str,
+    message: impl Into<String>,
+    field: &str,
+    field_message: impl Into<String>,
+) -> Response {
+    let mut fields = BTreeMap::new();
+    fields.insert(field.to_string(), field_message.into());
+    (
+        status,
+        Json(ErrorEnvelope {
+            error: WebError {
+                code,
+                message: message.into(),
+                field_errors: Some(fields),
+            },
+        }),
+    )
+        .into_response()
+}
+
+/// Open a Web session for a just-committed account, returning the plaintext cookie
+/// value. A creation failure is a retryable recovery error (500) — a committed
+/// account or setup is never presented as logged in when the session cannot open.
+pub(crate) fn open_session(state: &AppState, user_id: &str) -> Result<String, Response> {
+    state
+        .identity
+        .create_session(user_id, session_ttl())
+        .map_err(|_| {
+            web_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                "無法建立 session，請重試登入",
+            )
+        })
 }
 
 #[derive(Serialize)]
@@ -675,6 +720,102 @@ pub async fn api_logout(State(state): State<AppState>, headers: HeaderMap) -> Re
     with_cleared_cookie(web_ok(Destination {
         destination: "/login".to_string(),
     }))
+}
+
+/// The non-secret invitation summary the set-password form needs.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InvitationSummary {
+    email: String,
+    display: String,
+    admin: bool,
+}
+
+/// The browser invite acceptance body (camelCase).
+#[derive(Deserialize)]
+pub struct AcceptBody {
+    password: String,
+}
+
+/// The single "邀請無效" JSON result for used, expired or unknown tokens — the
+/// reason is never distinguished (mirrors the HTML flow's 404).
+fn invalid_invitation_json() -> Response {
+    web_err(StatusCode::NOT_FOUND, "invalid_invitation", "邀請無效")
+}
+
+/// `GET /api/speclink/v1/web/invite/{token}` — the non-secret summary for the
+/// set-password form. A used, expired or unknown token is one indistinguishable 404.
+pub async fn api_invite_summary(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Response {
+    match state.identity.find_valid_invitation(&token) {
+        Ok(Some(inv)) => web_ok(InvitationSummary {
+            email: inv.email,
+            display: inv.display,
+            admin: inv.admin,
+        }),
+        Ok(None) => invalid_invitation_json(),
+        Err(_) => web_err(StatusCode::INTERNAL_SERVER_ERROR, "internal", "發生錯誤"),
+    }
+}
+
+/// `POST /api/speclink/v1/web/invite/{token}` — accept the invitation: same-origin,
+/// atomically create the active user with the invited memberships and consume the
+/// invitation, then open the user's Web session and return the Server-adjudicated
+/// destination (admin → `/admin`, member → `/account`). A no-longer-valid token is
+/// the same 404 and creates no session.
+pub async fn api_invite_accept(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+    headers: HeaderMap,
+    body: Result<Json<AcceptBody>, JsonRejection>,
+) -> Response {
+    if !is_same_origin(&headers, &state.config.public_url) {
+        return web_err(
+            StatusCode::FORBIDDEN,
+            "same_origin_required",
+            "跨來源請求被拒絕",
+        );
+    }
+    let Ok(Json(body)) = body else {
+        return web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    if body.password.is_empty() {
+        return web_field_err(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "請輸入密碼",
+            "password",
+            "請輸入密碼",
+        );
+    }
+    match state.identity.accept_invitation(&token, &body.password) {
+        Ok(user_id) => open_session_destination(&state, &user_id),
+        Err(IdentityError::InvalidInvitation) => invalid_invitation_json(),
+        Err(_) => web_err(StatusCode::INTERNAL_SERVER_ERROR, "internal", "發生錯誤"),
+    }
+}
+
+/// Open the just-created user's session and return its role-home destination with
+/// the cookie set. A session-creation failure yields the retryable recovery error.
+fn open_session_destination(state: &AppState, user_id: &str) -> Response {
+    let Some(user) = state.identity.get_user(user_id).ok().flatten() else {
+        return web_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            "無法建立 session，請重試登入",
+        );
+    };
+    match open_session(state, user_id) {
+        Ok(session) => with_session_cookie(
+            web_ok(Destination {
+                destination: role_home(user.admin).to_string(),
+            }),
+            &session,
+        ),
+        Err(recovery) => recovery,
+    }
 }
 
 // --- rendering (embedded, no external resources) ---

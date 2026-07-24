@@ -13,6 +13,8 @@ import { FocusLayout } from "../layouts/FocusLayout";
 import { AccountLayout } from "../layouts/AccountLayout";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { LoginPage } from "../pages/LoginPage";
+import { SetupPage } from "../pages/SetupPage";
+import { InvitePage } from "../pages/InvitePage";
 import { AccountPage } from "../pages/AccountPage";
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 
@@ -126,6 +128,22 @@ export function AppRoutes() {
           element={
             <FocusLayout>
               <LoginPage />
+            </FocusLayout>
+          }
+        />
+        <Route
+          path="/setup"
+          element={
+            <FocusLayout>
+              <SetupPage />
+            </FocusLayout>
+          }
+        />
+        <Route
+          path="/invite/:token"
+          element={
+            <FocusLayout>
+              <InvitePage />
             </FocusLayout>
           }
         />

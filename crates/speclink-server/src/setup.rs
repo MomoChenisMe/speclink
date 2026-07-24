@@ -11,11 +11,14 @@ use crate::audit::{AuditAction, AuditActor, AuditSource};
 use crate::identity::{IdentityError, IdentityStore};
 use crate::state::AppState;
 use crate::web;
+use axum::extract::rejection::JsonRejection;
 use axum::extract::{Form, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
+use axum::routing::{get, post};
+use axum::{Json, Router};
 use chrono::Duration;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The default lifetime of a bootstrap setup token (決策 3): long enough for an
 /// operator to finish, short enough to keep the window narrow.
@@ -217,6 +220,308 @@ fn gate(state: &AppState, token: Option<&str>) -> Gate {
 /// The `?token=` value, treating an empty string as absent.
 fn token_of(q: &SetupQuery) -> Option<&str> {
     q.token.as_deref().filter(|t| !t.is_empty())
+}
+
+// --- browser JSON setup API (決策 D2／D3／D8 第三階段)：/api/speclink/v1/web/setup ---
+//
+// bootstrap-token 門禁的 same-origin JSON 流程。GET 唯讀回目前步驟與 Store 狀態；兩個
+// 提交節點分別建立第一位 Admin 與第一組 Project／Repo。registry 節點在既有 setup 交易
+// 邊界內耗用 token、記錄 audit 並建立第一位 Admin 的 Web session，回
+// `destination:"/admin?welcome=1"` 與 `connection`。gate 沿用 HTML 流程（closed→404、
+// invalid→401），已耗用 token 因此不可區分。
+
+/// `/api/speclink/v1/web` 下的 setup routes（app.rs 併入 [`crate::web::api_router`]）。
+pub fn web_router() -> Router<AppState> {
+    Router::new()
+        .route("/setup", get(api_setup_state))
+        .route("/setup/admin", post(api_setup_admin))
+        .route("/setup/registry", post(api_setup_registry))
+}
+
+/// The store-status panel's fields (四要素之二)。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StoreStatusPayload {
+    driver: String,
+    contract_version: u32,
+    level: String,
+    capabilities: Vec<String>,
+    healthy: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    health_error: Option<String>,
+    identity_schema_version: u32,
+}
+
+/// The current setup step and store status (GET state / after the admin node).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SetupStatePayload {
+    step: &'static str,
+    store: StoreStatusPayload,
+}
+
+/// The initial connection info returned on completion (源 = 部署組態的 public URL)。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConnectionPayload {
+    public_url: String,
+    project_key: String,
+    repo_key: String,
+}
+
+/// The completion response: the welcome destination plus connection info.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SetupCompletePayload {
+    destination: &'static str,
+    connection: ConnectionPayload,
+}
+
+/// The create-admin node body (camelCase).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminBody {
+    #[serde(default)]
+    email: String,
+    #[serde(default)]
+    display: String,
+    #[serde(default)]
+    password: String,
+}
+
+/// The create-project/repo node body (camelCase).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegistryBody {
+    #[serde(default)]
+    project_key: String,
+    #[serde(default)]
+    project_name: String,
+    #[serde(default)]
+    repo_key: String,
+    #[serde(default)]
+    repo_name: String,
+}
+
+/// `GET /setup?token=` — the current step and store status. Read-only: it never
+/// completes setup or mutates. Token-gated (closed → 404, invalid → 401).
+pub async fn api_setup_state(State(state): State<AppState>, Query(q): Query<SetupQuery>) -> Response {
+    match gate(&state, token_of(&q)) {
+        Gate::Closed => web_setup_closed(),
+        Gate::Invalid => web_setup_invalid(),
+        Gate::Open => web::web_ok(SetupStatePayload {
+            step: current_step(&state),
+            store: store_payload(&state),
+        }),
+    }
+}
+
+/// `POST /setup/admin?token=` — create the first admin (same-origin, token-gated),
+/// advancing to the registry step. Idempotent: once an admin exists a repeat is a
+/// no-op that reports the registry step, never a second admin.
+pub async fn api_setup_admin(
+    State(state): State<AppState>,
+    Query(q): Query<SetupQuery>,
+    headers: HeaderMap,
+    body: Result<Json<AdminBody>, JsonRejection>,
+) -> Response {
+    if !web::is_same_origin(&headers, &state.config.public_url) {
+        return web::web_err(
+            StatusCode::FORBIDDEN,
+            "same_origin_required",
+            "跨來源請求被拒絕",
+        );
+    }
+    match gate(&state, token_of(&q)) {
+        Gate::Closed => return web_setup_closed(),
+        Gate::Invalid => return web_setup_invalid(),
+        Gate::Open => {}
+    }
+    // An admin already stands (resumed flow): do not create a second — report the
+    // registry step.
+    if state.identity.has_admin().unwrap_or(false) {
+        return web::web_ok(SetupStatePayload {
+            step: "registry",
+            store: store_payload(&state),
+        });
+    }
+    let Ok(Json(body)) = body else {
+        return web::web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    let email = body.email.trim();
+    let display = body.display.trim();
+    if email.is_empty() || display.is_empty() || body.password.is_empty() {
+        return web::web_err(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "email、顯示名稱與密碼皆為必填",
+        );
+    }
+    match state
+        .identity
+        .create_admin_user(email, display, &body.password)
+    {
+        Ok(_) => web::web_ok(SetupStatePayload {
+            step: "registry",
+            store: store_payload(&state),
+        }),
+        Err(IdentityError::Duplicate(msg)) => {
+            web::web_field_err(StatusCode::CONFLICT, "duplicate", msg, "email", "此 email 已被使用")
+        }
+        Err(_) => internal_error_json(),
+    }
+}
+
+/// `POST /setup/registry?token=` — register the first project/repo, then complete
+/// setup (the last node): consume the token, record the audit, open the admin's
+/// session, and return the welcome destination and connection info. Idempotent on
+/// resume: a project that already stands is not recreated.
+pub async fn api_setup_registry(
+    State(state): State<AppState>,
+    Query(q): Query<SetupQuery>,
+    headers: HeaderMap,
+    body: Result<Json<RegistryBody>, JsonRejection>,
+) -> Response {
+    if !web::is_same_origin(&headers, &state.config.public_url) {
+        return web::web_err(
+            StatusCode::FORBIDDEN,
+            "same_origin_required",
+            "跨來源請求被拒絕",
+        );
+    }
+    let token = q.token.clone().unwrap_or_default();
+    match gate(&state, token_of(&q)) {
+        Gate::Closed => return web_setup_closed(),
+        Gate::Invalid => return web_setup_invalid(),
+        Gate::Open => {}
+    }
+    // The admin node precedes the registry node.
+    if !state.identity.has_admin().unwrap_or(false) {
+        return web::web_err(StatusCode::CONFLICT, "admin_required", "請先建立管理員");
+    }
+    // Register the project/repo if none stands yet (idempotent on resume).
+    if state.identity.list_projects().unwrap_or_default().is_empty() {
+        let Ok(Json(body)) = body else {
+            return web::web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+        };
+        let project_key = body.project_key.trim();
+        let repo_key = body.repo_key.trim();
+        if project_key.is_empty() || repo_key.is_empty() {
+            return web::web_err(
+                StatusCode::BAD_REQUEST,
+                "validation_error",
+                "project key 與 repo key 皆為必填",
+            );
+        }
+        let project_name = non_empty_or(&body.project_name, project_key);
+        let repo_name = non_empty_or(&body.repo_name, repo_key);
+        if let Err(e) = state.identity.create_project(project_key, project_name) {
+            return registry_error(e);
+        }
+        if let Err(e) = state.identity.create_repo(project_key, repo_key, repo_name) {
+            return registry_error(e);
+        }
+    }
+    complete_setup_json(&state, &token)
+}
+
+/// The current step: the admin form while no admin exists, otherwise the registry
+/// form.
+fn current_step(state: &AppState) -> &'static str {
+    if state.identity.has_admin().unwrap_or(false) {
+        "registry"
+    } else {
+        "admin"
+    }
+}
+
+/// Complete setup in the existing transaction boundary: consume the token, record
+/// the `SetupCompleted` audit (源 web, operator the first admin), and open the
+/// admin's Web session. A session failure is a retryable recovery — the created
+/// admin is never presented as logged in.
+fn complete_setup_json(state: &AppState, token: &str) -> Response {
+    let projects = state.identity.list_projects().unwrap_or_default();
+    let Some(project) = projects.first() else {
+        return internal_error_json();
+    };
+    let Some(admin) = state
+        .identity
+        .list_users()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|u| u.admin)
+    else {
+        return internal_error_json();
+    };
+    // Consume the token (idempotent) and record the completion audit once — the
+    // consumed token then gates every further /setup request closed.
+    let _ = state.identity.consume_setup_token(token);
+    let actor = AuditActor::user(admin.id.clone(), AuditSource::Web);
+    let _ = state
+        .identity
+        .record_audit(&actor, AuditAction::SetupCompleted, &project.key);
+    let session = match web::open_session(state, &admin.id) {
+        Ok(session) => session,
+        Err(recovery) => return recovery,
+    };
+    let repos = state.identity.list_repos(&project.key).unwrap_or_default();
+    let repo_key = repos.first().map(|r| r.key.clone()).unwrap_or_default();
+    web::with_session_cookie(
+        web::web_ok(SetupCompletePayload {
+            destination: "/admin?welcome=1",
+            connection: ConnectionPayload {
+                public_url: state.config.public_url.clone(),
+                project_key: project.key.clone(),
+                repo_key,
+            },
+        }),
+        &session,
+    )
+}
+
+/// The store manifest, health and identity schema version as a JSON payload.
+fn store_payload(state: &AppState) -> StoreStatusPayload {
+    let manifest = state.store.manifest();
+    let (healthy, health_error) = match state.store.health() {
+        Ok(()) => (true, None),
+        Err(e) => (false, Some(e.to_string())),
+    };
+    StoreStatusPayload {
+        driver: manifest.driver.clone(),
+        contract_version: manifest.contract_version,
+        level: manifest.level.as_str().to_string(),
+        capabilities: manifest
+            .capabilities
+            .iter()
+            .map(|c| c.as_str().to_string())
+            .collect(),
+        healthy,
+        health_error,
+        identity_schema_version: state.identity.schema_version().unwrap_or(0),
+    }
+}
+
+/// A registry-creation error as JSON: a duplicate key is a 409, anything else 500.
+fn registry_error(e: IdentityError) -> Response {
+    match e {
+        IdentityError::Duplicate(msg) => web::web_err(StatusCode::CONFLICT, "duplicate", msg),
+        _ => internal_error_json(),
+    }
+}
+
+/// The JSON closed result — a 404 once setup completes (any token).
+fn web_setup_closed() -> Response {
+    web::web_err(StatusCode::NOT_FOUND, "setup_closed", "找不到頁面")
+}
+
+/// The JSON invalid-token result — 401, byte-identical for a missing, unknown,
+/// expired or consumed token so the reason is never distinguished.
+fn web_setup_invalid() -> Response {
+    web::web_err(StatusCode::UNAUTHORIZED, "invalid_setup_token", "設定連結無效")
+}
+
+fn internal_error_json() -> Response {
+    web::web_err(StatusCode::INTERNAL_SERVER_ERROR, "internal", "發生錯誤")
 }
 
 // --- rendering (embedded, no external resources; reuses web.rs's shell) ---
