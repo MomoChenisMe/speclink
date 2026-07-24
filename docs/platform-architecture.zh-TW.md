@@ -1191,7 +1191,7 @@ Admin UI 與一般使用者入口必須分開。Admin 建立或邀請 user、指
 Admin 建立 invitation + Project/Repo role
 -> 使用者開啟一次性 invite URL
 -> 設定本機帳號密碼，或經已設定的 OIDC 登入
--> /account/tokens 建立 PAT
+-> 瀏覽 /account，由帳號頁表單 POST /account/tokens 建立 PAT
 -> 選擇名稱、到期日與不超過自身 role 的 scopes
 -> PAT 明文只顯示一次；Server 只保存 token id/prefix、hash、scopes、expiry、last-used
 ```

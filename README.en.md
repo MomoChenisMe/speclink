@@ -78,7 +78,8 @@ by the schema DAG. Follow [Local Repo Getting Started](docs/getting-started.md) 
 
 A Remote Store does not synchronize into a second writable local truth. Agents with a checkout consume read-only `.speclink/context/`
 and send writes through Host commands. The [platform architecture blueprint](docs/platform-architecture.zh-TW.md) defines the target
-boundary. Current Server operations are documented in [deployment](docs/server-deployment.zh-TW.md),
+boundary. Follow [Remote Server, Desktop, and CLI Getting Started](docs/remote-getting-started.md) for the complete first-run path.
+Current Server operations are documented in [deployment](docs/server-deployment.zh-TW.md),
 [Store drivers](docs/server-store-drivers.zh-TW.md), and [backup/restore](docs/server-backup.zh-TW.md) (Traditional Chinese).
 
 ## Documentation map / 文件地圖
@@ -86,6 +87,7 @@ boundary. Current Server operations are documented in [deployment](docs/server-d
 | Document | Purpose |
 | --- | --- |
 | [Local Repo Getting Started](docs/getting-started.md) | Copyable first Local Repo loop using current entry points |
+| [Remote Server, Desktop, and CLI Getting Started](docs/remote-getting-started.md) | Complete setup, membership, sign-in, Desktop/CLI, and recovery path |
 | [Complete SDD Workflow](docs/workflow.md) | Purpose, timing, branches, completion criteria, and recovery for every stage |
 | [Product Capability Status](docs/product-status.md) | Available/Partial/Planned/Deprecated with evidence and limits |
 | [Configuration](docs/configuration.md) | Local/Remote ownership and current fields |

@@ -76,13 +76,15 @@ speclink list
 
 Remote Store 不會同步成第二份可寫的本地真相；有 checkout 的 Agent 使用唯讀 `.speclink/context/`，遠端寫入仍走
 Host command。目標邊界以[平台架構藍圖](docs/platform-architecture.zh-TW.md)為準，現行 Server 操作見
-[部署](docs/server-deployment.zh-TW.md)、[Store drivers](docs/server-store-drivers.zh-TW.md)與[備份／還原](docs/server-backup.zh-TW.md)。
+[Remote 入門教學](docs/remote-getting-started.zh-TW.md)、[部署](docs/server-deployment.zh-TW.md)、
+[Store drivers](docs/server-store-drivers.zh-TW.md)與[備份／還原](docs/server-backup.zh-TW.md)。
 
 ## Documentation map / 文件地圖
 
 | 文件 | 用途 |
 | --- | --- |
 | [Local Repo 入門教學](docs/getting-started.zh-TW.md) | 目前可複製的第一輪 Local Repo 流程 |
+| [Remote Server、Desktop 與 CLI 入門教學](docs/remote-getting-started.zh-TW.md) | 從 `/setup`、membership、登入到 Desktop／CLI 與失聯恢復的完整流程 |
 | [完整 SDD 工作流](docs/workflow.zh-TW.md) | 每個階段的用途、使用時機、分支、完成判準與恢復方式 |
 | [產品能力狀態](docs/product-status.zh-TW.md) | Available／Partial／Planned／Deprecated、證據與限制 |
 | [設定說明](docs/configuration.zh-TW.md) | Local／Remote 設定歸屬與目前欄位 |

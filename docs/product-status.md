@@ -4,6 +4,9 @@
 
 Last verified: **2026-07-17**. This document is the canonical answer to “can I use this now?” The [platform architecture blueprint](platform-architecture.zh-TW.md) defines the sole target architecture, while the [implementation refactoring roadmap](implementation-refactor-roadmap.zh-TW.md) sequences delivery beneath it. A file, crate, or canonical spec is not sufficient evidence of a complete product path.
 
+To exercise Remote Server, Desktop, and CLI from clean local data, follow
+[Remote Server, Desktop, and CLI Getting Started](remote-getting-started.md) through setup, membership, sign-in, workspace, and recovery checks.
+
 ## Status model / 狀態模型
 
 - **Available（可用）**: a user-operable entry point plus either two independent evidence sources or one end-to-end source.

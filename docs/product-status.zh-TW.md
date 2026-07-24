@@ -4,6 +4,9 @@
 
 最後查核日期：**2026-07-17**。本文是「目前能不能用」的正典；[平台架構藍圖](platform-architecture.zh-TW.md)描述唯一目標架構，[實作重構路線圖](implementation-refactor-roadmap.zh-TW.md)描述其下的交付順序。檔案、crate 或正典 spec 單獨存在不代表產品路徑已完整交付。
 
+要從全新本地資料實際操作 Remote Server、Desktop 與 CLI，請依
+[Remote 入門教學](remote-getting-started.zh-TW.md)完成 setup、membership、登入、workspace 與恢復測試。
+
 ## Status model / 狀態模型
 
 - **Available（可用）**：有可操作入口，並有至少兩項獨立證據或一項端到端證據。

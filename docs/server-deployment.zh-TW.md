@@ -2,6 +2,9 @@
 
 官方 `speclink-server` 有四種發布形態（架構 §13.1）：native binary、Docker image、SQLite 單容器 compose、PostgreSQL compose profile。每個 release tag 同時產出全部四種：GitHub Release 附各平台 binary 壓縮檔與 `SHA256SUMS.txt`，Docker image 發布於 `ghcr.io/momochenisme/speclink-server`（tag 對齊版本，另附 `latest`）。
 
+若目標是從全新資料完成 `/setup`、membership、Desktop 與 Remote CLI，而不是部署正式服務，請先依
+[Remote Server、Desktop 與 CLI 入門教學](remote-getting-started.zh-TW.md)操作。
+
 不論哪種形態，啟動後的行為一致：
 
 - **健康檢查**：`GET /healthz` 回程序存活、`GET /readyz` 回 store 就緒（未就緒為 503）。
