@@ -43,7 +43,7 @@ Start the harness:
 npm run dev
 ```
 
-It generates `.dev/config.yaml`, builds the Desktop frontend, and starts both `speclink-server` and Tauri Desktop. The terminal prints a first-run-only URL:
+It generates `.dev/config.yaml`, builds `speclink-cli` and the Desktop frontend from the current checkout, and only then starts both `speclink-server` and Tauri Desktop. If the CLI build fails, the harness exits non-zero and leaves no long-running process behind — this is what guarantees that the CLI you verify with in section 7 comes from the same source as Server and Desktop. The terminal prints a first-run-only URL:
 
 ```text
 http://localhost:8080/setup?token=...
@@ -125,38 +125,39 @@ A remote tab is created only after a successful handshake. Tab restoration, role
 
 ## 7. Connect and smoke-test the Remote CLI / 連接並測試 Remote CLI
 
-Build the CLI from the current checkout:
+The `npm run dev` step in section 2 already built the CLI from the current checkout. Running it through `npm run cli` needs no CLI installation and never picks up a different version from `PATH`:
 
-```bash
-cargo build -p speclink-cli
-```
+- At the Speclink repository root: `npm run cli -- <args>`.
+- From any other directory, including this section's test directory: `npm --prefix /path/to/speclink run cli -- <args>`. `--prefix` only selects which checkout provides the CLI; the CLI still acts on the directory you are in.
+- To parse `--json` output directly, add `--silent`: `npm run --silent cli -- <args>` keeps npm lifecycle messages out of stdout.
+- Everything after `--` is forwarded to the CLI verbatim; omitting `--` lets npm consume the flags instead.
 
 Run the following in a separate test directory, not at the Speclink product repository root:
 
 ```bash
 mkdir -p /tmp/speclink-remote-smoke
 cd /tmp/speclink-remote-smoke
-/path/to/speclink/target/debug/speclink link \
+npm --prefix /path/to/speclink run cli -- link \
   http://localhost:8080/api/speclink/v1/projects/demo \
   --repo backend
-/path/to/speclink/target/debug/speclink auth login
+npm --prefix /path/to/speclink run cli -- auth login
 ```
 
 Replace `/path/to/speclink` with the actual absolute repository path. Paste the PAT only when `auth login` prompts, keeping it out of shell history. Test reads:
 
 ```bash
-/path/to/speclink/target/debug/speclink auth status
-/path/to/speclink/target/debug/speclink list
-/path/to/speclink/target/debug/speclink list --json
+npm --prefix /path/to/speclink run cli -- auth status
+npm --prefix /path/to/speclink run cli -- list
+npm --prefix /path/to/speclink run --silent cli -- list --json
 ```
 
 As an `editor`, test a minimal write and structural checks:
 
 ```bash
-/path/to/speclink/target/debug/speclink new change remote-smoke-test
-/path/to/speclink/target/debug/speclink status --change remote-smoke-test
-/path/to/speclink/target/debug/speclink validate remote-smoke-test
-/path/to/speclink/target/debug/speclink analyze remote-smoke-test
+npm --prefix /path/to/speclink run cli -- new change remote-smoke-test
+npm --prefix /path/to/speclink run cli -- status --change remote-smoke-test
+npm --prefix /path/to/speclink run cli -- validate remote-smoke-test
+npm --prefix /path/to/speclink run cli -- analyze remote-smoke-test
 ```
 
 Return to Desktop and confirm that `remote-smoke-test` appears on the same `demo` / `backend` board. Remote CLI writes a remote binding and read-only Context Projection in the test directory; specification writes still pass through the Server Host.
@@ -214,7 +215,9 @@ When `.env` selects PostgreSQL, `npm run dev:reset` does not delete the external
 | 401 / reauthentication required | The PAT, access token, or device credential family expired or was revoked | Sign in again from Desktop Server settings, or create a new PAT at `/account` |
 | The Server is offline and the tab is stale | SSE/HTTP is temporarily unavailable | Keep the snapshot read-only, restart the Server, and wait for Query plus ETag convergence |
 | The checkout marker conflicts | `.speclink.yaml` points to another Server origin or Repo | Do not mask it with manual edits; choose the correct checkout or use the Desktop conflict choices |
-| CLI reports not logged in | The directory is linked, but that Server origin has no credential | Run `speclink auth login` in the same test directory |
+| CLI reports not logged in | The directory is linked, but that Server origin has no credential | Run `npm --prefix /path/to/speclink run cli -- auth login` in the same test directory |
+| CLI behaviour disagrees with Server / Desktop | The `speclink` on `PATH` is a different version or comes from another checkout | Use `npm run cli` (or `npm --prefix <checkout> run cli`) to run the current checkout's binary; no `PATH` change needed |
+| `npm run cli` reports it cannot run the checkout CLI | The current checkout has no debug binary yet | Run `npm run dev` or `cargo build -p speclink-cli`; the message names both the binary path and the working directory |
 | No setup token appears after restart | Setup is complete and data still exists | Sign in at `/account` or `/admin`; only a full `npm run dev:reset` reopens setup |
 | Old Desktop connections fail after reset | Identity, Project, and credentials were deleted | Complete setup again, grant membership, then add or sign in to the connection again |
 

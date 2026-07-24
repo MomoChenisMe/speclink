@@ -1250,6 +1250,11 @@ invalidate，Desktop 仍以 Query + ETag 重讀。Server 不可用時 Desktop �
 完全相同的一條 /setup 初始化流程。這不是另一顆 server：docker compose 是部署形態，本地開發啟動只是同一顆
 speclink-server 的另一種啟動方式（「組態 YAML 不做環境變數展開、由編排層插值」的決策在兩者一體適用）。
 
+啟動 server／Desktop 這兩個長時間 process 之前，`npm run dev` 會先同步建置目前 checkout 的 `speclink-cli`；
+build 失敗即以非零狀態中止，不留半完成環境。CLI 本身不進 dev lifecycle，改由 `npm run cli -- <args>` 依需要執行
+`target/debug` 內那顆 binary（Windows 為 `.exe`），因此 server、Desktop 與 CLI 三個入口必定同源，測試結果可重現。
+wrapper 不查 PATH，也不安裝或覆寫使用者既有的 speclink。
+
 建議官方交付拆成：
 
 ```text

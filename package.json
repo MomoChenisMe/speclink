@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:reset": "node scripts/dev.mjs --reset",
+    "cli": "node scripts/cli.mjs",
     "test:all": "node --test \"scripts/**/*.test.mjs\" && cargo test --workspace && npm test -w packages/ui && npm test -w apps/desktop && npm --prefix crates/speclink-node ci && npm --prefix crates/speclink-node run build && npm --prefix crates/speclink-node test"
   }
 }
