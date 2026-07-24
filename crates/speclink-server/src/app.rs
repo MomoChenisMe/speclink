@@ -2,6 +2,7 @@
 //! the single assembly point they extend.
 
 use crate::admin;
+use crate::assets;
 use crate::auth::Binding;
 use crate::context;
 use crate::device;
@@ -184,6 +185,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/speclink/v1/scopes", get(read_api::scopes))
         .nest("/api/speclink/v1/admin", admin::api_router())
         .nest("/api/speclink/v1/projects/{key}", project)
+        // 內嵌 SPA（D5）：內容雜湊資產與 browser-route fallback shell。fallback 只在
+        // 上方任何明確 route 都未命中時執行，故永不吞掉 API／auth／health／下載 route。
+        .route("/assets/{*path}", get(assets::asset))
+        .fallback(assets::spa_fallback)
         .with_state(state)
 }
 

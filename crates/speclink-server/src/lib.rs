@@ -7,6 +7,7 @@
 
 pub mod admin;
 pub mod app;
+pub mod assets;
 pub mod audit;
 pub mod auth;
 pub mod backup;
