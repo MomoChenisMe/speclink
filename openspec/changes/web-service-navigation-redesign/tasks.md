@@ -17,8 +17,8 @@ verification.
 
 ## 2. Browser API、session 與安全導向
 
-- [ ] 2.1 RED：在 `crates/speclink-server/tests/web_session.rs` 先寫 `{data}`／`{error}` camelCase envelope、cookie flags、同源 mutation、email 不可枚舉、active session、device code／safe `returnTo`／role home 優先序、外部 redirect 與一般成員 admin destination 拒絕的失敗 integration tests；執行 `cargo test -p speclink-server --test web_session`，確認因 `/api/speclink/v1/web` contract 尚未實作而失敗。 <!-- speclink-task:tsk_01KY98N6286Y9YKPYZ88HHKW28 -->
-- [ ] 2.2 GREEN／REFACTOR：依「D2：browser JSON API 使用獨立 same-origin session 邊界」與「D3：導向由伺服器計算，深連結與裝置核准優先」在 `crates/speclink-server/src/web.rs`、`auth.rs` 與 router 實作 session／login／logout typed response、origin-first guard 與 Server-owned destination，使「導向遵守伺服器裁決與安全優先序」及「本機密碼登入與 session 安全屬性」成立，且 bearer admin API 不接受 cookie；執行 2.1 測試與既有 `auth_pat`、`auth_device`、`web_account` tests，確認新舊認證邊界全綠。 <!-- speclink-task:tsk_01KY98N628QDG7HRGQ6QA67BJH -->
+- [x] 2.1 RED：在 `crates/speclink-server/tests/web_session.rs` 先寫 `{data}`／`{error}` camelCase envelope、cookie flags、同源 mutation、email 不可枚舉、active session、device code／safe `returnTo`／role home 優先序、外部 redirect 與一般成員 admin destination 拒絕的失敗 integration tests；執行 `cargo test -p speclink-server --test web_session`，確認因 `/api/speclink/v1/web` contract 尚未實作而失敗。 <!-- speclink-task:tsk_01KY98N6286Y9YKPYZ88HHKW28 -->
+- [x] 2.2 GREEN／REFACTOR：依「D2：browser JSON API 使用獨立 same-origin session 邊界」與「D3：導向由伺服器計算，深連結與裝置核准優先」在 `crates/speclink-server/src/web.rs`、`auth.rs` 與 router 實作 session／login／logout typed response、origin-first guard 與 Server-owned destination，使「導向遵守伺服器裁決與安全優先序」及「本機密碼登入與 session 安全屬性」成立，且 bearer admin API 不接受 cookie；執行 2.1 測試與既有 `auth_pat`、`auth_device`、`web_account` tests，確認新舊認證邊界全綠。 <!-- speclink-task:tsk_01KY98N628QDG7HRGQ6QA67BJH -->
 
 ## 3. SPA 殼層、導覽與互動狀態
 
