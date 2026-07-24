@@ -32,8 +32,8 @@ verification.
 
 ## 5. Account、PAT 與 device activation
 
-- [ ] 5.1 RED：在 `crates/speclink-server/tests/web_account.rs`、device authorization tests 與 SPA account／activation tests 先寫 account summary 僅含本人 metadata、PAT plaintext 只出現一次、PAT／Web session／device family 撤銷即時生效、activation 明確確認、401 safe return 與 secrets 不出現在 read payload 的失敗測試；執行指定 Rust tests 與 `npm test -w apps/server-web -- account activate`，確認 browser JSON account surface 尚未滿足契約。 <!-- speclink-task:tsk_01KY98N628HDAVA6C91VJZ1Z5N -->
-- [ ] 5.2 GREEN／REFACTOR：在 `crates/speclink-server` identity adapter 與 `apps/server-web` account／activation routes 實作「帳號 browser API 保持憑證祕密邊界」，復用既有 PAT、session 與 device family domain actions，不新增 refresh credential 或 hash 的讀取路徑；執行 5.1、既有 `server-device-auth` 與 `auth_pat` tests，確認 plaintext、撤銷、confirmation 與登入失效行為全綠。 <!-- speclink-task:tsk_01KY98N628HXFBPB0JHTPMYVHT -->
+- [x] 5.1 RED：在 `crates/speclink-server/tests/web_account.rs`、device authorization tests 與 SPA account／activation tests 先寫 account summary 僅含本人 metadata、PAT plaintext 只出現一次、PAT／Web session／device family 撤銷即時生效、activation 明確確認、401 safe return 與 secrets 不出現在 read payload 的失敗測試；執行指定 Rust tests 與 `npm test -w apps/server-web -- account activate`，確認 browser JSON account surface 尚未滿足契約。 <!-- speclink-task:tsk_01KY98N628HDAVA6C91VJZ1Z5N -->
+- [x] 5.2 GREEN／REFACTOR：在 `crates/speclink-server` identity adapter 與 `apps/server-web` account／activation routes 實作「帳號 browser API 保持憑證祕密邊界」，復用既有 PAT、session 與 device family domain actions，不新增 refresh credential 或 hash 的讀取路徑；執行 5.1、既有 `server-device-auth` 與 `auth_pat` tests，確認 plaintext、撤銷、confirmation 與登入失效行為全綠。 <!-- speclink-task:tsk_01KY98N628HXFBPB0JHTPMYVHT -->
 
 ## 6. Admin view models 與 single-point mutations
 

@@ -15,6 +15,7 @@ import { AdminLayout } from "../layouts/AdminLayout";
 import { LoginPage } from "../pages/LoginPage";
 import { SetupPage } from "../pages/SetupPage";
 import { InvitePage } from "../pages/InvitePage";
+import { ActivatePage } from "../pages/ActivatePage";
 import { AccountPage } from "../pages/AccountPage";
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 
@@ -144,6 +145,14 @@ export function AppRoutes() {
           element={
             <FocusLayout>
               <InvitePage />
+            </FocusLayout>
+          }
+        />
+        <Route
+          path="/activate"
+          element={
+            <FocusLayout>
+              <ActivatePage />
             </FocusLayout>
           }
         />

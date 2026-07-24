@@ -67,6 +67,48 @@ export type SetupComplete = {
 /** The non-secret invitation summary for the set-password form. */
 export type InvitationSummary = { email: string; display: string; admin: boolean };
 
+/** A PAT's non-secret metadata (prefix, never the plaintext or hash). */
+export type PatMeta = {
+  id: string;
+  prefix: string;
+  name: string;
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+};
+
+/** A Web session's metadata (the id is a metadata id, not the cookie secret). */
+export type SessionMeta = {
+  id: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+};
+
+/** A device credential family's metadata (never the refresh credential). */
+export type DeviceFamilyMeta = {
+  id: string;
+  source: string;
+  createdAt: string;
+  lastRefreshAt: string;
+  revokedAt: string | null;
+};
+
+/** The account self-service summary: own user plus credential metadata. */
+export type AccountSummary = {
+  user: SessionUser;
+  pats: PatMeta[];
+  sessions: SessionMeta[];
+  deviceFamilies: DeviceFamilyMeta[];
+};
+
+/** A freshly-created PAT: metadata plus the one-time plaintext. */
+export type PatCreated = { pat: PatMeta; plaintext: string };
+
+/** The device activation outcome the SPA reflects. */
+export type ActivateResult = { status: "pending" | "approved" | "denied" };
+
 /** A browser-API failure carrying the `{error}` envelope's fields. */
 export class WebApiError extends Error {
   constructor(
@@ -90,6 +132,12 @@ export interface WebClient {
   submitSetupRegistry(token: string, body: SetupRegistryBody): Promise<SetupComplete>;
   getInvitation(token: string): Promise<InvitationSummary>;
   acceptInvitation(token: string, body: { password: string }): Promise<{ destination: string }>;
+  getAccount(): Promise<AccountSummary>;
+  createPat(body: { name: string; expires?: string }): Promise<PatCreated>;
+  revokePat(id: string): Promise<void>;
+  revokeDevice(id: string): Promise<void>;
+  checkActivation(userCode: string): Promise<ActivateResult>;
+  decideActivation(userCode: string, action: "approve" | "deny"): Promise<ActivateResult>;
 }
 
 const BASE = "/api/speclink/v1/web";
@@ -125,5 +173,11 @@ export function createHttpClient(): WebClient {
     submitSetupRegistry: (token, body) => request("POST", `/setup/registry${q(token)}`, body),
     getInvitation: (token) => request("GET", `/invite/${encodeURIComponent(token)}`),
     acceptInvitation: (token, body) => request("POST", `/invite/${encodeURIComponent(token)}`, body),
+    getAccount: () => request("GET", "/account"),
+    createPat: (body) => request("POST", "/account/tokens", body),
+    revokePat: (id) => request("POST", `/account/tokens/${encodeURIComponent(id)}/revoke`, {}),
+    revokeDevice: (id) => request("POST", `/account/devices/${encodeURIComponent(id)}/revoke`, {}),
+    checkActivation: (userCode) => request("POST", "/activate", { userCode }),
+    decideActivation: (userCode, action) => request("POST", "/activate", { userCode, action }),
   };
 }
