@@ -5,12 +5,16 @@
 
 use crate::identity::{IdentityError, User};
 use crate::state::AppState;
+use axum::extract::rejection::JsonRejection;
 use axum::extract::{Form, Path, Query, State};
 use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::routing::{get, post};
+use axum::{Json, Router};
 use chrono::Duration;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// The session cookie name.
 const SESSION_COOKIE: &str = "speclink_session";
@@ -394,19 +398,28 @@ pub(crate) fn current_user(state: &AppState, headers: &HeaderMap) -> Option<User
     state.identity.authenticate_session(&session).ok().flatten()
 }
 
+/// True if a change-making request is same-origin with `public_url`, or carries
+/// neither Origin nor Referer (a non-browser client is not a CSRF vector). A
+/// present-but-foreign origin is not same-origin.
+pub(crate) fn is_same_origin(headers: &HeaderMap, public_url: &str) -> bool {
+    match header_str(headers, "origin").or_else(|| header_str(headers, "referer")) {
+        None => true,
+        Some(value) => origin_of(&value) == origin_of(public_url),
+    }
+}
+
 /// Validate that a change-making POST is same-origin with the configured public
-/// URL. A request with neither Origin nor Referer (a non-browser client) is
-/// allowed; a present-but-foreign origin is refused with 403.
+/// URL (HTML forms). A request with neither Origin nor Referer (a non-browser
+/// client) is allowed; a present-but-foreign origin is refused with 403.
 pub(crate) fn check_origin(headers: &HeaderMap, public_url: &str) -> Result<(), Response> {
-    let claimed = header_str(headers, "origin").or_else(|| header_str(headers, "referer"));
-    match claimed {
-        None => Ok(()),
-        Some(value) if origin_of(&value) == origin_of(public_url) => Ok(()),
-        Some(_) => Err((
+    if is_same_origin(headers, public_url) {
+        Ok(())
+    } else {
+        Err((
             StatusCode::FORBIDDEN,
             Html(page("拒絕", "<h1>跨來源請求被拒絕</h1>\n")),
         )
-            .into_response()),
+            .into_response())
     }
 }
 
@@ -423,6 +436,245 @@ fn origin_of(url: &str) -> &str {
         }
         None => url,
     }
+}
+
+// --- browser JSON API (決策 D2／D3)：/api/speclink/v1/web ---
+//
+// bundled SPA 專用的 same-origin、session-cookie API。成功回 `{data: T}`、失敗回
+// `{error: {code, message, fieldErrors?}}`，欄位 camelCase。mutation 先驗同源再解析
+// session。登入 destination 由 Server 裁決：有效 device userCode → 通過白名單的
+// returnTo → 角色 home；一般成員的 `/admin` destination 回 403 不降級。
+
+/// `/api/speclink/v1/web` 下的 browser session routes。
+pub fn api_router() -> Router<AppState> {
+    Router::new()
+        .route("/session", get(api_session))
+        .route("/login", post(api_login))
+        .route("/logout", post(api_logout))
+}
+
+#[derive(Serialize)]
+struct DataEnvelope<T: Serialize> {
+    data: T,
+}
+
+#[derive(Serialize)]
+struct ErrorEnvelope {
+    error: WebError,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebError {
+    code: &'static str,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    field_errors: Option<BTreeMap<String, String>>,
+}
+
+/// 200 `{data}`.
+fn web_ok<T: Serialize>(data: T) -> Response {
+    (StatusCode::OK, Json(DataEnvelope { data })).into_response()
+}
+
+/// A `{error}` envelope at `status`.
+fn web_err(status: StatusCode, code: &'static str, message: impl Into<String>) -> Response {
+    (
+        status,
+        Json(ErrorEnvelope {
+            error: WebError {
+                code,
+                message: message.into(),
+                field_errors: None,
+            },
+        }),
+    )
+        .into_response()
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionPayload {
+    authenticated: bool,
+    user: Option<UserPayload>,
+    home: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UserPayload {
+    id: String,
+    email: String,
+    display: String,
+    admin: bool,
+}
+
+impl UserPayload {
+    fn of(user: &User) -> UserPayload {
+        UserPayload {
+            id: user.id.clone(),
+            email: user.email.clone(),
+            display: user.display.clone(),
+            admin: user.admin,
+        }
+    }
+}
+
+/// 預設的角色 home。
+fn role_home(admin: bool) -> &'static str {
+    if admin {
+        "/admin"
+    } else {
+        "/account"
+    }
+}
+
+/// `GET /session` — 呼叫者身分與其角色 home。永不回錯：沒有或失效的 session 只是
+/// `authenticated: false`。
+pub async fn api_session(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    match current_user(&state, &headers) {
+        Some(user) => web_ok(SessionPayload {
+            authenticated: true,
+            user: Some(UserPayload::of(&user)),
+            home: role_home(user.admin).to_string(),
+        }),
+        None => web_ok(SessionPayload {
+            authenticated: false,
+            user: None,
+            home: "/login".to_string(),
+        }),
+    }
+}
+
+/// The browser login body (camelCase).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoginBody {
+    email: String,
+    password: String,
+    #[serde(default)]
+    user_code: Option<String>,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+/// The login success destination the SPA navigates to.
+#[derive(Serialize)]
+struct Destination {
+    destination: String,
+}
+
+/// A whitelisted in-site return path and its first segment. Accepts only a
+/// single leading `/`, no scheme/authority (rejecting `//…` and `/\…`), with a
+/// first segment of `account`, `activate` or `admin`.
+fn classify_return_to(path: &str) -> Option<(&str, &str)> {
+    if !path.starts_with('/') || path.starts_with("//") || path.starts_with("/\\") {
+        return None;
+    }
+    let first = path[1..]
+        .split(|c| c == '/' || c == '\\' || c == '?' || c == '#')
+        .next()
+        .unwrap_or("");
+    match first {
+        "account" | "activate" | "admin" => Some((path, first)),
+        _ => None,
+    }
+}
+
+/// Adjudicate the post-login destination: a valid device `userCode`, then a
+/// whitelisted `returnTo`, then the role home. A member's `/admin` destination
+/// is refused (403), not downgraded.
+fn compute_destination(
+    user: &User,
+    user_code: Option<&str>,
+    return_to: Option<&str>,
+) -> Result<String, Response> {
+    if let Some(code) = user_code.and_then(validated_user_code) {
+        return Ok(activation_location(code));
+    }
+    if let Some(path) = return_to.filter(|r| !r.is_empty()) {
+        if let Some((safe, first)) = classify_return_to(path) {
+            if first == "admin" && !user.admin {
+                return Err(web_err(
+                    StatusCode::FORBIDDEN,
+                    "permission_denied",
+                    "沒有管理權限",
+                ));
+            }
+            return Ok(safe.to_string());
+        }
+        // 不安全的 returnTo 直接忽略——落到角色 home。
+    }
+    Ok(role_home(user.admin).to_string())
+}
+
+/// `POST /login` — 以 argon2 驗證 email＋密碼、建立 session 並回傳 Server 裁決的
+/// destination。先檢查同源；失敗為統一 401，永不洩漏 email 是否存在。
+pub async fn api_login(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Result<Json<LoginBody>, JsonRejection>,
+) -> Response {
+    if !is_same_origin(&headers, &state.config.public_url) {
+        return web_err(
+            StatusCode::FORBIDDEN,
+            "same_origin_required",
+            "跨來源請求被拒絕",
+        );
+    }
+    let Ok(Json(body)) = body else {
+        return web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    match state
+        .identity
+        .authenticate_password(&body.email, &body.password)
+    {
+        Ok(Some(user)) => {
+            let destination = match compute_destination(
+                &user,
+                body.user_code.as_deref(),
+                body.return_to.as_deref(),
+            ) {
+                Ok(destination) => destination,
+                Err(refused) => return refused,
+            };
+            match state.identity.create_session(&user.id, session_ttl()) {
+                Ok(session) => with_session_cookie(web_ok(Destination { destination }), &session),
+                Err(_) => web_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal",
+                    "無法建立 session，請重試登入",
+                ),
+            }
+        }
+        Ok(None) => web_err(
+            StatusCode::UNAUTHORIZED,
+            "invalid_credentials",
+            "帳號或密碼不正確",
+        ),
+        Err(_) => web_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            "登入時發生錯誤",
+        ),
+    }
+}
+
+/// `POST /logout` — 撤銷 server 端 session 並清除 cookie。
+pub async fn api_logout(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if !is_same_origin(&headers, &state.config.public_url) {
+        return web_err(
+            StatusCode::FORBIDDEN,
+            "same_origin_required",
+            "跨來源請求被拒絕",
+        );
+    }
+    if let Some(session) = read_session_cookie(&headers) {
+        let _ = state.identity.revoke_session(&session);
+    }
+    with_cleared_cookie(web_ok(Destination {
+        destination: "/login".to_string(),
+    }))
 }
 
 // --- rendering (embedded, no external resources) ---

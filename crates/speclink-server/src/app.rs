@@ -183,6 +183,7 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/revoke", post(device::revoke))
         .route("/auth/whoami", get(crate::auth::auth_whoami))
         .route("/api/speclink/v1/scopes", get(read_api::scopes))
+        .nest("/api/speclink/v1/web", web::api_router())
         .nest("/api/speclink/v1/admin", admin::api_router())
         .nest("/api/speclink/v1/projects/{key}", project)
         // 內嵌 SPA（D5）：內容雜湊資產與 browser-route fallback shell。fallback 只在
