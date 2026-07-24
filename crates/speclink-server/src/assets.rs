@@ -18,6 +18,14 @@ use rust_embed::RustEmbed;
 #[folder = "../../apps/server-web/dist"]
 struct WebAssets;
 
+/// Release fail-closed：release（非 debug）build 於編譯期要求 production `index.html`
+/// 存在，否則以編譯錯誤中止——絕不產生只有 API、沒有內嵌 SPA 的 server artifact
+/// （server-release「缺少 Web build 使 release build 失敗」）。debug build 由 dist
+/// 動態讀取，不套用此門檻。路徑相對於本源碼檔（`crates/speclink-server/src/`）。
+#[cfg(not(debug_assertions))]
+const _EMBEDDED_SPA_INDEX: &[u8] =
+    include_bytes!("../../../apps/server-web/dist/index.html");
+
 /// SPA shell 的 self-only Content Security Policy。不從 CDN 或 Google Fonts 載入；
 /// script／font／img／xhr 皆限同源。`unsafe-inline` 只放寬給 style——Radix UI 原語
 /// 於執行期設定 inline 定位樣式；script 維持嚴格。

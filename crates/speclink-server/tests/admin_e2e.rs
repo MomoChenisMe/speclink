@@ -5,6 +5,7 @@
 //! force-revokes that PAT and the member's next CLI call fails 401; and the audit
 //! page carries every action in reverse-chronological order.
 
+use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -152,28 +153,29 @@ fn agent() -> ureq::Agent {
     ureq::builder().redirects(0).build()
 }
 
-/// Complete /setup: create the first admin and the first project/repo (demo/backend).
+/// Complete setup over the browser JSON API: create the first admin and the first
+/// project/repo (demo/backend).
 fn complete_setup(base: &str, token: &str) {
     let http = agent();
     let admin = http
-        .post(&format!("{base}/setup?token={token}"))
-        .send_form(&[("email", ADMIN_EMAIL), ("display", ADMIN_DISPLAY), ("password", ADMIN_PASSWORD)])
+        .post(&format!("{base}/api/speclink/v1/web/setup/admin?token={token}"))
+        .send_json(json!({ "email": ADMIN_EMAIL, "display": ADMIN_DISPLAY, "password": ADMIN_PASSWORD }))
         .expect("setup admin");
     assert_eq!(admin.status(), 200, "setup admin section");
     let project = http
-        .post(&format!("{base}/setup?token={token}"))
-        .send_form(&[("project_key", "demo"), ("project_name", "Demo"), ("repo_key", "backend"), ("repo_name", "Backend")])
-        .expect("setup project");
-    assert_eq!(project.status(), 200, "setup project section");
+        .post(&format!("{base}/api/speclink/v1/web/setup/registry?token={token}"))
+        .send_json(json!({ "projectKey": "demo", "projectName": "Demo", "repoKey": "backend", "repoName": "Backend" }))
+        .expect("setup registry");
+    assert_eq!(project.status(), 200, "setup registry section");
 }
 
-/// Log in and return the session cookie value.
+/// Log in over the browser JSON API and return the session cookie value.
 fn login(base: &str, email: &str, password: &str) -> String {
     let resp = agent()
-        .post(&format!("{base}/login"))
-        .send_form(&[("email", email), ("password", password)])
+        .post(&format!("{base}/api/speclink/v1/web/login"))
+        .send_json(json!({ "email": email, "password": password }))
         .expect("login");
-    assert!((300..400).contains(&resp.status()), "login succeeds");
+    assert_eq!(resp.status(), 200, "login succeeds");
     resp.header("set-cookie")
         .and_then(|c| c.split(';').next())
         .and_then(|c| c.trim().strip_prefix("speclink_session="))
@@ -181,64 +183,50 @@ fn login(base: &str, email: &str, password: &str) -> String {
         .to_string()
 }
 
-/// POST a form with the admin session cookie; returns the response.
-fn post_admin(base: &str, path: &str, session: &str, fields: &[(&str, &str)]) -> ureq::Response {
+/// POST JSON to a browser admin path with the admin session cookie; returns the response.
+fn post_admin(base: &str, path: &str, session: &str, body: Value) -> ureq::Response {
     agent()
         .post(&format!("{base}{path}"))
         .set("Cookie", &format!("speclink_session={session}"))
-        .send_form(fields)
+        .send_json(body)
         .unwrap_or_else(|e| match e {
             ureq::Error::Status(_, resp) => resp,
             e => panic!("transport error posting {path}: {e}"),
         })
 }
 
-/// GET a page with the admin session cookie; returns the body.
-fn get_admin(base: &str, path: &str, session: &str) -> String {
+/// GET JSON from a browser admin path with the admin session cookie; returns the parsed body.
+fn get_admin(base: &str, path: &str, session: &str) -> Value {
     agent()
         .get(&format!("{base}{path}"))
         .set("Cookie", &format!("speclink_session={session}"))
         .call()
         .expect("admin GET")
-        .into_string()
-        .unwrap_or_default()
+        .into_json()
+        .expect("admin GET json")
 }
 
-/// Walk the member web flow: accept the invitation, log in, create a PAT. Returns
-/// the PAT plaintext.
+/// Walk the member web flow over the JSON API: accept the invitation, log in,
+/// create a PAT. Returns the PAT plaintext.
 fn member_pat(base: &str, invite_token: &str) -> String {
     let http = agent();
     let accept = http
-        .post(&format!("{base}/invite/{invite_token}"))
-        .send_form(&[("password", MEMBER_PASSWORD)])
+        .post(&format!("{base}/api/speclink/v1/web/invite/{invite_token}"))
+        .send_json(json!({ "password": MEMBER_PASSWORD }))
         .expect("accept invitation");
-    assert!((300..400).contains(&accept.status()), "accept invitation");
+    assert_eq!(accept.status(), 200, "accept invitation");
     let session = login(base, MEMBER_EMAIL, MEMBER_PASSWORD);
-    let created = http
-        .post(&format!("{base}/account/tokens"))
+    let created: Value = http
+        .post(&format!("{base}/api/speclink/v1/web/account/tokens"))
         .set("Cookie", &format!("speclink_session={session}"))
-        .send_form(&[("name", "cli"), ("expires", "")])
+        .send_json(json!({ "name": "cli" }))
         .expect("create PAT")
-        .into_string()
-        .unwrap_or_default();
-    created
-        .match_indices("spk_pat_")
-        .map(|(i, _)| created[i..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect::<String>())
-        .find(|t| t.len() == 72)
+        .into_json()
+        .expect("create PAT json");
+    created["data"]["plaintext"]
+        .as_str()
         .unwrap_or_else(|| panic!("PAT plaintext in response: {created}"))
-}
-
-/// Parse a token out of the first `/invite/<token>` occurrence in `html`.
-fn invite_token_from(html: &str) -> String {
-    let idx = html.find("/invite/").expect("an invite URL in the response") + "/invite/".len();
-    html[idx..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect()
-}
-
-/// Parse the member's PAT id from the credentials page's revoke form action.
-fn pat_id_from(html: &str) -> String {
-    let marker = "/admin/credentials/tokens/";
-    let start = html.find(marker).expect("a token revoke form") + marker.len();
-    html[start..][..html[start..].find("/revoke").expect("revoke suffix")].to_string()
+        .to_string()
 }
 
 // --- CLI helpers ---
@@ -280,12 +268,19 @@ fn the_admin_manages_a_team_end_to_end_over_the_real_binaries() {
     let base = server.base();
     let admin = login(&base, ADMIN_EMAIL, ADMIN_PASSWORD);
 
-    // 2. Through /admin, register a second project/repo and invite the member.
-    assert!((300..400).contains(&post_admin(&base, "/admin/registry/projects", &admin, &[("key", "team"), ("name", "Team")]).status()));
-    assert!((300..400).contains(&post_admin(&base, "/admin/registry/repos", &admin, &[("project_key", "team"), ("key", "api"), ("name", "API")]).status()));
-    let invite = post_admin(&base, "/admin/users/invite", &admin, &[("email", MEMBER_EMAIL), ("display", "Member"), ("projects", "team")]);
-    assert_eq!(invite.status(), 200, "the invite form renders the acceptance URL");
-    let invite_token = invite_token_from(&invite.into_string().unwrap_or_default());
+    // 2. Through the browser admin API, register a second project/repo and invite the member.
+    assert_eq!(
+        post_admin(&base, "/api/speclink/v1/web/admin/registry/projects", &admin, json!({ "key": "team", "name": "Team" })).status(),
+        200
+    );
+    assert_eq!(
+        post_admin(&base, "/api/speclink/v1/web/admin/registry/repos", &admin, json!({ "projectKey": "team", "key": "api", "name": "API" })).status(),
+        200
+    );
+    let invite = post_admin(&base, "/api/speclink/v1/web/admin/users/invite", &admin, json!({ "email": MEMBER_EMAIL, "display": "Member", "memberships": ["team"] }));
+    assert_eq!(invite.status(), 200, "the invite API returns the acceptance token");
+    let invite_body: Value = invite.into_json().expect("invite json");
+    let invite_token = invite_body["data"]["token"].as_str().expect("an invite token").to_string();
 
     // 3. The member accepts, gets a PAT, and runs a CLI verb against team/api.
     let pat = member_pat(&base, &invite_token);
@@ -294,19 +289,34 @@ fn the_admin_manages_a_team_end_to_end_over_the_real_binaries() {
     let before = run_cli(&remote, &["list", "--json"], &pat);
     assert!(before.status.success(), "the member's PAT runs a CLI verb: {}", String::from_utf8_lossy(&before.stderr));
 
-    // 4. The admin force-revokes that PAT from the credential page.
-    let creds = get_admin(&base, "/admin/credentials", &admin);
-    assert!(creds.contains("spk_pat_"), "the member's PAT is listed");
-    let pat_id = pat_id_from(&creds);
-    assert!((300..400).contains(&post_admin(&base, &format!("/admin/credentials/tokens/{pat_id}/revoke"), &admin, &[]).status()));
+    // 4. The admin force-revokes that PAT from the credentials view.
+    let creds = get_admin(&base, "/api/speclink/v1/web/admin/credentials", &admin);
+    let pats = creds["data"]["pats"].as_array().expect("the credentials view lists PATs");
+    let pat_id = pats
+        .iter()
+        .find(|p| p["name"] == "cli")
+        .expect("the member's PAT is listed")["id"]
+        .as_str()
+        .expect("a PAT id")
+        .to_string();
+    assert_eq!(
+        post_admin(&base, &format!("/api/speclink/v1/web/admin/credentials/tokens/{pat_id}/revoke"), &admin, json!({})).status(),
+        200
+    );
 
     // 5. The member's next CLI call fails to authenticate.
     let after = run_cli(&remote, &["list", "--json"], &pat);
     assert!(!after.status.success(), "the revoked PAT no longer authenticates");
 
-    // 6. The audit page carries every action, newest first.
-    let audit = get_admin(&base, "/admin/audit", &admin);
-    let order = |needle: &str| audit.find(needle).unwrap_or_else(|| panic!("audit missing {needle}:\n{audit}"));
+    // 6. The audit carries every action, newest first.
+    let audit = get_admin(&base, "/api/speclink/v1/web/admin/audit", &admin);
+    let entries = audit["data"]["entries"].as_array().expect("audit entries");
+    let order = |needle: &str| {
+        entries
+            .iter()
+            .position(|e| e["action"] == needle)
+            .unwrap_or_else(|| panic!("audit missing {needle}: {audit}"))
+    };
     let revoked = order("token-revoked");
     let invited = order("user-invited");
     let repo_created = order("repo-created");

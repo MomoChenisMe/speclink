@@ -78,8 +78,8 @@ fn get_api(base: &str, path: &str, bearer: Option<&str>, version: Option<&str>) 
     req.call()
 }
 
-/// `GET` a /admin page with an optional session cookie; returns the HTTP status,
-/// following no redirects (a login redirect is meaningful here).
+/// `GET` a browser path with an optional session cookie; returns the HTTP status,
+/// following no redirects.
 fn get_page_status(base: &str, path: &str, session: Option<&str>) -> u16 {
     let agent = ureq::builder().redirects(0).build();
     let mut req = agent.get(&format!("{base}{path}"));
@@ -126,11 +126,11 @@ fn a_missing_bearer_is_401_from_the_admin_api() {
 }
 
 #[test]
-fn a_non_admin_session_is_403_from_the_admin_pages() {
+fn a_non_admin_session_is_403_from_the_browser_admin_api() {
     let (base, _identity, _admin, member) = start();
     let (_, member_session, _) = member;
-    let status = get_page_status(&base, "/admin", Some(&member_session));
-    assert_eq!(status, 403, "a logged-in non-admin may not enter the management pages");
+    let status = get_page_status(&base, "/api/speclink/v1/web/admin/overview", Some(&member_session));
+    assert_eq!(status, 403, "a logged-in non-admin may not read the management views");
 }
 
 #[test]
@@ -140,8 +140,8 @@ fn an_admin_passes_the_gate_via_both_bearer_and_session() {
     let resp = get_api(&base, "/api/speclink/v1/admin/audit", Some(&admin_pat), Some(API_VERSION))
         .expect("an admin bearer passes the API gate");
     assert_eq!(resp.status(), 200, "the admin API answers an admin bearer");
-    let page = get_page_status(&base, "/admin", Some(&admin_session));
-    assert_eq!(page, 200, "the /admin page answers an admin session");
+    let page = get_page_status(&base, "/api/speclink/v1/web/admin/overview", Some(&admin_session));
+    assert_eq!(page, 200, "the browser admin API answers an admin session");
 }
 
 #[test]
@@ -149,13 +149,13 @@ fn a_suspended_admin_loses_access_on_the_next_request() {
     let (base, identity, admin, _member) = start();
     let (admin_pat, admin_session, admin_id) = admin;
     // The admin could enter before suspension.
-    assert_eq!(get_page_status(&base, "/admin", Some(&admin_session)), 200, "admin enters before suspension");
+    assert_eq!(get_page_status(&base, "/api/speclink/v1/web/admin/overview", Some(&admin_session)), 200, "admin enters before suspension");
     // Suspend the admin; the very next request must lose the management面.
     identity.set_user_active(&admin_id, false).expect("suspend");
     assert_ne!(
-        get_page_status(&base, "/admin", Some(&admin_session)),
+        get_page_status(&base, "/api/speclink/v1/web/admin/overview", Some(&admin_session)),
         200,
-        "a suspended admin's session no longer reaches /admin"
+        "a suspended admin's session no longer reaches the management views"
     );
     let (status, _err) = error_of(get_api(&base, "/api/speclink/v1/admin/audit", Some(&admin_pat), Some(API_VERSION)));
     assert_eq!(status, 401, "a suspended admin's bearer no longer authenticates");

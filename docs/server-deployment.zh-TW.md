@@ -5,6 +5,12 @@
 若目標是從全新資料完成 `/setup`、membership、Desktop 與 Remote CLI，而不是部署正式服務，請先依
 [Remote Server、Desktop 與 CLI 入門教學](remote-getting-started.zh-TW.md)操作。
 
+## 交付物：內嵌 SPA 的單一 binary／image
+
+瀏覽器主控台（`apps/server-web` 的 React SPA）於**編譯期內嵌**進 `speclink-server`：`index.html`、manifest、hashed JS／CSS、字型與圖示都與 API 打包在同一支 binary／image，永遠 same-origin、同版本。**runtime 不需要 Node、外部 `dist` volume、CDN 或第二個靜態檔服務**——把單一 binary（或 image）放進空環境即可載入完整 UI。
+
+需編譯的三種形態（native binary、Docker image、本機 production build）遵循同一建置順序：`npm ci`（依 lockfile 安裝依賴）→ `npm run build -w apps/server-web`（Vite production build 產出 `dist`）→ `cargo build --release -p speclink-server`（於編譯期內嵌 `dist`）。缺少 `index.html` 或 manifest 時 server release build 會 **fail closed**：以非零 exit code 結束並提示「先建置 `apps/server-web`」，不會產出只有 API、沒有 UI 的 artifact。Docker image 由 multi-stage 達成同一保證——Node stage 產 `dist`、Rust stage 內嵌、最終 runtime 只有 non-root server binary，映像內不帶 Node runtime。
+
 不論哪種形態，啟動後的行為一致：
 
 - **健康檢查**：`GET /healthz` 回程序存活、`GET /readyz` 回 store 就緒（未就緒為 503）。
@@ -130,6 +136,14 @@ docker compose exec server speclink-server invite \
 3. 啟動守門承接相容性：組態或資料不相容時容器以非零 exit code 結束，資料不會被半升級；資料庫 schema 落後新版時 server 會啟動但 `/readyz` 回 503。
 4. 需要資料層遷移時，由 admin 在 `/admin` 資料操作頁觸發 store 遷移（前置 health 檢查通過才執行，成功記入 audit）。
 5. `/healthz`、`/readyz` 皆綠即完成。
+
+## 回退（rollback）
+
+回退＝部署**上一版** binary／image，沒有資料修復步驟：
+
+- 沒有 identity schema、TeamStore 或設定 migration；資料與 session schema 跨版本相容，回退不需要動資料。
+- 新 SPA release 若出現資產或呈現問題，直接以上一版 binary／image 重啟即可回退；切換前的 git revision 就是短期 rollback surface。
+- native binary 換回上一版壓縮檔內的 binary；Docker 形態把 `docker compose` 指回上一版 image tag 後 `up -d` 重建容器（volume 不動）。
 
 ## 相關文件
 

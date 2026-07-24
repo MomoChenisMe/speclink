@@ -12,7 +12,6 @@ use speclink_protocol::API_VERSION;
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::{AppState, SharedStore};
 use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, FaultPoint, ProjectId, RepoId, Scope, TeamStore};
 use std::sync::Arc;
 
 /// Seed an admin (session + pat) and a plain member; returns the identity handle,
@@ -43,20 +42,6 @@ fn seed_user(identity: &Arc<IdentitySqlite>, email: &str, admin: bool) -> (Strin
     (session, pat, user_id)
 }
 
-/// A store driven into the crashed state, so `health()` reports Unavailable.
-fn crashed_store() -> SharedStore {
-    let store = MemoryStore::new();
-    store.crash_at(FaultPoint::AfterDocWrites);
-    let scope = Scope::new(ProjectId::new("default"), RepoId::new("main"));
-    let mut uow = store
-        .begin_unit_of_work(&scope, CommandContext { command: "seed".into(), actor: "seed".into() })
-        .expect("begin uow");
-    uow.create(DocumentId::WorkflowConfig, "x");
-    let _ = store.commit(uow, Vec::new());
-    assert!(store.health().is_err(), "the store is unhealthy after the crash");
-    Arc::new(store)
-}
-
 fn start(identity: Arc<IdentitySqlite>, store: SharedStore) -> String {
     let state = AppState {
         events: common::detached_events(),
@@ -67,30 +52,12 @@ fn start(identity: Arc<IdentitySqlite>, store: SharedStore) -> String {
     common::start(state)
 }
 
-fn get_page(base: &str, path: &str, session: &str) -> (u16, String) {
-    let agent = ureq::builder().redirects(0).build();
-    match agent.get(&format!("{base}{path}")).set("Cookie", &format!("speclink_session={session}")).call() {
-        Ok(resp) => (resp.status(), resp.into_string().unwrap_or_default()),
-        Err(ureq::Error::Status(code, resp)) => (code, resp.into_string().unwrap_or_default()),
-        Err(e) => panic!("transport error: {e}"),
-    }
-}
-
 #[test]
 fn the_system_view_aggregates_the_observable_surface() {
-    let (identity, (admin_session, admin_pat), _member) = seed();
+    let (identity, (_, admin_pat), _) = seed();
     let base = start(identity, Arc::new(MemoryStore::new()));
 
-    // The page renders every field.
-    let (status, body) = get_page(&base, "/admin/system", &admin_session);
-    assert_eq!(status, 200);
-    assert!(body.contains("Engine 版本"), "engine version shown");
-    assert!(body.contains("API 版本"), "api version shown");
-    assert!(body.contains("Identity schema 版本"), "identity schema shown");
-    assert!(body.contains("正常"), "store health shown as healthy");
-    assert!(body.contains("demo") && body.contains("backend"), "the demo/backend scope backlog is listed");
-
-    // The JSON API returns the same aggregation.
+    // The system aggregation is served over the bearer admin API.
     let json: serde_json::Value = ureq::builder()
         .redirects(0)
         .build()
@@ -111,28 +78,4 @@ fn the_system_view_aggregates_the_observable_surface() {
         backlogs.iter().any(|b| b["project"] == "demo" && b["repo"] == "backend" && b["backlog"] == 0),
         "the demo/backend backlog is zero on a fresh store"
     );
-}
-
-#[test]
-fn a_store_outage_does_not_disable_the_management_ui() {
-    let (identity, (admin_session, _admin_pat), (_member_session, member_id)) = seed();
-    let base = start(identity.clone(), crashed_store());
-
-    // The system page renders and reports the store health failure — not a 500.
-    let (status, body) = get_page(&base, "/admin/system", &admin_session);
-    assert_eq!(status, 200, "the system page renders despite the store outage");
-    assert!(body.contains("異常"), "the store health failure is shown");
-
-    // Identity-side management is unaffected: suspending the member still works.
-    let suspend = ureq::builder()
-        .redirects(0)
-        .build()
-        .post(&format!("{base}/admin/users/{member_id}/suspend"))
-        .set("Cookie", &format!("speclink_session={admin_session}"))
-        .call()
-        .expect("suspend");
-    assert!((300..400).contains(&suspend.status()), "the suspend action succeeds while the store is down");
-    assert!(!identity.get_user(&member_id).unwrap().unwrap().active, "the member is suspended");
-    let audit = identity.list_audit(10, 0).unwrap();
-    assert!(audit.iter().any(|e| e.action == "user-suspended"), "the action was audited");
 }

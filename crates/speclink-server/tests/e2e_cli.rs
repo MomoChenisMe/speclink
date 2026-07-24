@@ -222,17 +222,17 @@ fn create_pat_via_web(base: &str, token: &str) -> (String, String) {
 
     // Accept the invitation (set the password) — creates the active user.
     let accept = http
-        .post(&format!("{base}/invite/{token}"))
-        .send_form(&[("password", PASSWORD)])
+        .post(&format!("{base}/api/speclink/v1/web/invite/{token}"))
+        .send_json(serde_json::json!({ "password": PASSWORD }))
         .expect("accept invitation");
-    assert!((300..400).contains(&accept.status()), "accepting the invitation succeeds");
+    assert_eq!(accept.status(), 200, "accepting the invitation succeeds");
 
     // Log in.
     let login = http
-        .post(&format!("{base}/login"))
-        .send_form(&[("email", EMAIL), ("password", PASSWORD)])
+        .post(&format!("{base}/api/speclink/v1/web/login"))
+        .send_json(serde_json::json!({ "email": EMAIL, "password": PASSWORD }))
         .expect("login");
-    assert!((300..400).contains(&login.status()), "login succeeds");
+    assert_eq!(login.status(), 200, "login succeeds");
     let session = login
         .header("set-cookie")
         .and_then(|c| c.split(';').next())
@@ -240,23 +240,18 @@ fn create_pat_via_web(base: &str, token: &str) -> (String, String) {
         .expect("a session cookie")
         .to_string();
 
-    // Create a PAT; the plaintext is shown once in the response.
-    let created = http
-        .post(&format!("{base}/account/tokens"))
+    // Create a PAT; the plaintext appears once in the JSON response.
+    let created: serde_json::Value = http
+        .post(&format!("{base}/api/speclink/v1/web/account/tokens"))
         .set("Cookie", &format!("speclink_session={session}"))
-        .send_form(&[("name", "cli"), ("expires", "")])
-        .expect("create PAT");
-    let body = created.into_string().unwrap_or_default();
-    let pat = body
-        .match_indices("spk_pat_")
-        .map(|(i, _)| {
-            body[i..]
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect::<String>()
-        })
-        .find(|t| t.len() == 72)
-        .unwrap_or_else(|| panic!("PAT plaintext in response: {body}"));
+        .send_json(serde_json::json!({ "name": "cli" }))
+        .expect("create PAT")
+        .into_json()
+        .expect("create PAT json");
+    let pat = created["data"]["plaintext"]
+        .as_str()
+        .unwrap_or_else(|| panic!("PAT plaintext in response: {created}"))
+        .to_string();
     (pat, session)
 }
 
@@ -264,22 +259,23 @@ fn create_pat_via_web(base: &str, token: &str) -> (String, String) {
 fn revoke_pat(base: &str, session: &str) {
     let http = agent();
     let cookie = format!("speclink_session={session}");
-    let account = http
-        .get(&format!("{base}/account"))
+    let account: serde_json::Value = http
+        .get(&format!("{base}/api/speclink/v1/web/account"))
         .set("Cookie", &cookie)
         .call()
-        .expect("load account page")
-        .into_string()
-        .unwrap_or_default();
-    let marker = "/account/tokens/";
-    let start = account.find(marker).expect("a revoke form") + marker.len();
-    let pat_id = &account[start..][..account[start..].find("/revoke").expect("revoke suffix")];
+        .expect("load account")
+        .into_json()
+        .expect("account json");
+    let pat_id = account["data"]["pats"][0]["id"]
+        .as_str()
+        .expect("a PAT id")
+        .to_string();
     let resp = http
-        .post(&format!("{base}/account/tokens/{pat_id}/revoke"))
+        .post(&format!("{base}/api/speclink/v1/web/account/tokens/{pat_id}/revoke"))
         .set("Cookie", &cookie)
-        .send_form(&[])
+        .send_json(serde_json::json!({}))
         .expect("revoke PAT");
-    assert!((200..400).contains(&resp.status()), "revoke succeeds");
+    assert_eq!(resp.status(), 200, "revoke succeeds");
 }
 
 // --- store seeding, project layout ---
@@ -370,18 +366,18 @@ fn run_cli(project: &Path, args: &[&str], token: Option<&str>) -> Output {
 fn complete_setup(base: &str, token: &str) {
     let http = agent();
     let admin = http
-        .post(&format!("{base}/setup?token={token}"))
-        .send_form(&[("email", ADMIN_EMAIL), ("display", ADMIN_DISPLAY), ("password", ADMIN_PASSWORD)])
+        .post(&format!("{base}/api/speclink/v1/web/setup/admin?token={token}"))
+        .send_json(serde_json::json!({ "email": ADMIN_EMAIL, "display": ADMIN_DISPLAY, "password": ADMIN_PASSWORD }))
         .expect("setup: create the first admin");
     assert_eq!(admin.status(), 200, "the setup admin section succeeds");
     let project = http
-        .post(&format!("{base}/setup?token={token}"))
-        .send_form(&[
-            ("project_key", "demo"),
-            ("project_name", "Demo"),
-            ("repo_key", "backend"),
-            ("repo_name", "Backend"),
-        ])
+        .post(&format!("{base}/api/speclink/v1/web/setup/registry?token={token}"))
+        .send_json(serde_json::json!({
+            "projectKey": "demo",
+            "projectName": "Demo",
+            "repoKey": "backend",
+            "repoName": "Backend",
+        }))
         .expect("setup: register the first project/repo");
     assert_eq!(project.status(), 200, "the setup project/repo section succeeds");
 }
@@ -409,7 +405,7 @@ fn setup_flow_onboards_a_team_and_a_restart_closes_it() {
     let setup_token = server.setup_token();
     complete_setup(&server.base(), &setup_token);
     assert_eq!(
-        get_status(&format!("{}/setup?token={}", server.base(), setup_token)),
+        get_status(&format!("{}/api/speclink/v1/web/setup?token={}", server.base(), setup_token)),
         404,
         "/setup closes once setup completes",
     );
@@ -469,7 +465,7 @@ fn setup_flow_onboards_a_team_and_a_restart_closes_it() {
     drop(server);
     let restarted = Server::start(&config);
     assert!(!restarted.printed_setup_token(), "a restart over a completed database prints no setup token");
-    assert_eq!(get_status(&format!("{}/setup", restarted.base())), 404, "/setup stays closed after restart");
+    assert_eq!(get_status(&format!("{}/api/speclink/v1/web/setup", restarted.base())), 404, "/setup stays closed after restart");
     let restarted_remote = remote_project(workdir.path(), &restarted.project_url());
     let after_restart = run_cli(&restarted_remote, &["list", "--json"], Some(&pat));
     assert!(

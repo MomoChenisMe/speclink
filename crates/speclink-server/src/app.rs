@@ -118,65 +118,13 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
-        .route("/setup", get(setup::setup_page).post(setup::setup_submit))
-        .route(
-            "/invite/{token}",
-            get(web::invite_page).post(web::accept_invite),
-        )
-        .route("/login", get(web::login_page).post(web::do_login))
-        .route("/logout", post(web::do_logout))
-        .route("/account", get(web::account_page))
-        .route("/account/tokens", post(web::create_pat))
-        .route("/account/tokens/{id}/revoke", post(web::revoke_pat))
-        .route(
-            "/account/device/{id}/revoke",
-            post(web::revoke_device_family),
-        )
-        .route(
-            "/activate",
-            get(web::activate_page).post(web::activate_submit),
-        )
-        .route("/admin", get(admin::admin_home))
-        .route("/admin/users", get(admin::users_page))
-        .route("/admin/users/invite", post(admin::web_invite))
-        .route("/admin/users/{id}/suspend", post(admin::web_suspend_user))
-        .route(
-            "/admin/users/{id}/reactivate",
-            post(admin::web_reactivate_user),
-        )
-        .route(
-            "/admin/users/{id}/membership",
-            post(admin::web_set_membership),
-        )
-        .route(
-            "/admin/users/{id}/admin-flag",
-            post(admin::web_set_admin_flag),
-        )
-        .route("/admin/registry", get(admin::registry_page))
-        .route("/admin/registry/projects", post(admin::web_create_project))
-        .route(
-            "/admin/registry/projects/{key}/rename",
-            post(admin::web_rename_project),
-        )
-        .route("/admin/registry/repos", post(admin::web_create_repo))
-        .route("/admin/registry/repos/rename", post(admin::web_rename_repo))
-        .route("/admin/credentials", get(admin::credentials_page))
-        .route(
-            "/admin/credentials/tokens/{id}/revoke",
-            post(admin::web_revoke_token),
-        )
-        .route(
-            "/admin/credentials/families/{id}/revoke",
-            post(admin::web_revoke_family),
-        )
-        .route("/admin/audit", get(admin::audit_page))
-        .route("/admin/system", get(admin::system_page))
-        .route("/admin/data", get(admin::data_page))
+        // 唯一保留的 /admin HTML route：scope export bundle 下載（session-admin gated）。
+        // 其餘 setup／invite／login／account／activate／admin 頁面與 form 已由內嵌 SPA
+        // 與 `/api/speclink/v1/web` browser API 取代（D8 第六階段）。
         .route(
             "/admin/data/export/{project}/{repo}",
             get(admin::web_export_scope),
         )
-        .route("/admin/data/migrate", post(admin::web_migrate_store))
         .route("/auth/device", post(device::initiate))
         .route("/auth/device/token", post(device::poll_token))
         .route("/auth/refresh", post(device::refresh))

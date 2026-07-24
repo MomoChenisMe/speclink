@@ -83,7 +83,7 @@ fn suspension_is_equivalent_across_api_web_and_cli() {
     // identity store the CLI can also open.
     let identity = Arc::new(IdentitySqlite::open(&identity_db).expect("identity"));
     common::seed_demo_registry(&*identity);
-    let (admin_pat, admin_session, _admin_id) = seed_user(&identity, "admin@example.com", true);
+    let (admin_pat, _admin_session, _admin_id) = seed_user(&identity, "admin@example.com", true);
     let (m1_pat, _, m1_id) = seed_user(&identity, "m1@example.com", false);
     let (m2_pat, _, m2_id) = seed_user(&identity, "m2@example.com", false);
     let (m3_pat, _, _m3_id) = seed_user(&identity, "m3@example.com", false);
@@ -117,13 +117,29 @@ fn suspension_is_equivalent_across_api_web_and_cli() {
         .expect("api suspend");
     assert_eq!(api.status(), 200, "the admin API suspends m1");
 
-    // Entry 2 — /admin form (session, no Origin so same-origin admits it): m2, source web.
+    // Entry 2 — browser JSON admin API (session via JSON login, same-origin): m2, source web.
+    let admin_cookie = {
+        let resp = http
+            .post(&format!("{base}/api/speclink/v1/web/login"))
+            .set("Origin", "http://127.0.0.1")
+            .send_json(serde_json::json!({
+                "email": "admin@example.com",
+                "password": "pw-correct-horse"
+            }))
+            .expect("json login");
+        resp.header("set-cookie")
+            .and_then(|c| c.split(';').next())
+            .and_then(|c| c.trim().strip_prefix("speclink_session="))
+            .expect("login sets a session cookie")
+            .to_string()
+    };
     let web = http
-        .post(&format!("{base}/admin/users/{m2_id}/suspend"))
-        .set("Cookie", &format!("speclink_session={admin_session}"))
+        .post(&format!("{base}/api/speclink/v1/web/admin/users/{m2_id}/suspend"))
+        .set("Cookie", &format!("speclink_session={admin_cookie}"))
+        .set("Origin", "http://127.0.0.1")
         .call()
         .expect("web suspend");
-    assert!((300..400).contains(&web.status()), "the /admin form suspends m2 and redirects");
+    assert_eq!(web.status(), 200, "the browser admin API suspends m2");
 
     // Entry 3 — server CLI subcommand: m3, source cli, operator system.
     let out = Command::new(server_bin())
