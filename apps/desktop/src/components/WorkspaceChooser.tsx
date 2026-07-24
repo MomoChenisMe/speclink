@@ -7,6 +7,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Button,
+  Checkbox,
   Input,
   cn,
   useI18n,
@@ -32,7 +33,10 @@ export interface WorkspaceChooserProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   connections: ConnectionView[];
-  connectionAdapter: Pick<ConnectionsAdapter, "scopes" | "bindCheckout">;
+  connectionAdapter: Pick<
+    ConnectionsAdapter,
+    "scopes" | "inspectCheckout" | "bindCheckout"
+  >;
   workspace: Pick<WorkspaceAdapter, "pickFolder" | "openProject">;
   onOpenLocal: (path: string) => Promise<void>;
   onRequestMigration?: (root: string) => Promise<void>;
@@ -47,6 +51,10 @@ export interface WorkspaceChooserProps {
   initialConnectionId?: string | null;
   /** remote marker 未登入時：server 步驟預填 marker url。 */
   initialServerUrl?: string | null;
+  /** 既有 marker 缺工具選集：直達 checkout 步驟並預選此 scope。 */
+  initialScope?: { projectKey: string; repoKey: string } | null;
+  /** 既有 marker 缺工具選集：checkout 步驟預填此資料夾路徑並自動 inspect。 */
+  initialCheckoutPath?: string | null;
 }
 
 const STEP_NUMBER: Record<Step, number> = {
@@ -187,6 +195,8 @@ export function WorkspaceChooser({
   onOpenRemote,
   initialConnectionId = null,
   initialServerUrl = null,
+  initialScope = null,
+  initialCheckoutPath = null,
 }: WorkspaceChooserProps) {
   const { t } = useI18n();
   const [step, setStep] = useState<Step>("source");
@@ -195,6 +205,8 @@ export function WorkspaceChooser({
   const [scope, setScope] = useState<ScopeChoice | null>(null);
   const [checkoutMode, setCheckoutMode] = useState<"skip" | "folder" | null>(null);
   const [checkoutRoot, setCheckoutRoot] = useState<string | null>(null);
+  // folder mode 的 built-in 工具選集：inspect 回傳既有選集作為初值，開啟時交給 bind。
+  const [checkoutTools, setCheckoutTools] = useState<string[]>([]);
   const [serverUrl, setServerUrl] = useState("");
   const [serverName, setServerName] = useState("");
   const [showAddServer, setShowAddServer] = useState(false);
@@ -219,6 +231,45 @@ export function WorkspaceChooser({
     }
   }
 
+  // 既有 marker 缺工具選集的入口：載入 scopes、依 key 預選 scope、直達 checkout
+  // 步驟並以預填 path inspect（顯示既有選集），讓使用者明示選擇 Claude／Codex。
+  async function startAtCheckout(
+    selected: ConnectionView,
+    scopeKeys: { projectKey: string; repoKey: string },
+    path: string,
+  ) {
+    setConnection(selected);
+    setScope(null);
+    setScopes(null);
+    setError(null);
+    setBusy(true);
+    try {
+      const loaded = await connectionAdapter.scopes(selected.id);
+      setScopes(loaded);
+      const project = loaded.projects.find((p) => p.key === scopeKeys.projectKey);
+      const repo = project?.repos.find((r) => r.key === scopeKeys.repoKey);
+      if (!project || !repo) {
+        setStep("scopes");
+        return;
+      }
+      setScope({ project, repo });
+      setStep("checkout");
+      const inspection = await connectionAdapter.inspectCheckout(
+        path,
+        selected.origin,
+        project.key,
+        repo.key,
+      );
+      setCheckoutMode("folder");
+      setCheckoutRoot(inspection.root);
+      setCheckoutTools(inspection.tools);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
     void onRefreshConnections();
@@ -227,6 +278,7 @@ export function WorkspaceChooser({
     setScope(null);
     setCheckoutMode(null);
     setCheckoutRoot(null);
+    setCheckoutTools([]);
     setServerUrl(initialServerUrl ?? "");
     setServerName("");
     setShowAddServer(Boolean(initialServerUrl));
@@ -237,8 +289,13 @@ export function WorkspaceChooser({
     const selected = initialConnectionId
       ? connections.find((entry) => entry.id === initialConnectionId && entry.loggedIn)
       : undefined;
-    if (selected) void selectConnection(selected);
-    else setStep(initialConnectionId || initialServerUrl ? "server" : "source");
+    if (selected && initialScope && initialCheckoutPath) {
+      void startAtCheckout(selected, initialScope, initialCheckoutPath);
+    } else if (selected) {
+      void selectConnection(selected);
+    } else {
+      setStep(initialConnectionId || initialServerUrl ? "server" : "source");
+    }
     // 開啟時只消費當次入口意圖；連線清單更新不得把進行中的 chooser 重設。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialConnectionId, initialServerUrl]);
@@ -300,6 +357,8 @@ export function WorkspaceChooser({
     }
   }
 
+  // 先檢查階段（零寫入）：選好資料夾後 inspect 驗證 marker 一致性，成功才顯示
+  // 工具 checkbox 並以既有選集預選。失敗保留在 checkout 步驟顯示錯誤、不寫入。
   async function chooseCheckoutFolder() {
     if (!connection || !scope) return;
     const picked = await workspace.pickFolder();
@@ -307,32 +366,54 @@ export function WorkspaceChooser({
     setBusy(true);
     setError(null);
     try {
-      const bound = await connectionAdapter.bindCheckout(
+      const inspection = await connectionAdapter.inspectCheckout(
         picked,
         connection.origin,
         scope.project.key,
         scope.repo.key,
       );
       setCheckoutMode("folder");
-      setCheckoutRoot(bound);
+      setCheckoutRoot(inspection.root);
+      setCheckoutTools(inspection.tools);
     } catch (e) {
       setCheckoutMode(null);
       setCheckoutRoot(null);
+      setCheckoutTools([]);
       setError(String(e));
     } finally {
       setBusy(false);
     }
   }
 
+  function toggleCheckoutTool(tool: string, on: boolean) {
+    setCheckoutTools((prev) =>
+      on ? [...prev.filter((t) => t !== tool), tool] : prev.filter((t) => t !== tool),
+    );
+  }
+
+  // 開啟：skip 直接 handshake；folder mode 先同步受管產物（bind），全部成功才
+  // openRemote 帶 checkoutRoot——同步任一步失敗保留步驟與選集供重試，不開分頁。
   async function openRemote() {
     if (!connection || !scope || checkoutMode === null) return;
+    if (checkoutMode === "folder" && (checkoutTools.length === 0 || !checkoutRoot)) return;
     setBusy(true);
     setError(null);
     try {
+      let checkoutTarget: string | undefined;
+      if (checkoutMode === "folder") {
+        await connectionAdapter.bindCheckout(
+          checkoutRoot!,
+          connection.origin,
+          scope.project.key,
+          scope.repo.key,
+          checkoutTools,
+        );
+        checkoutTarget = checkoutRoot!;
+      }
       await onOpenRemote(
         connection.id,
         `${scope.project.key}/${scope.repo.key}`,
-        checkoutMode === "folder" ? checkoutRoot ?? undefined : undefined,
+        checkoutTarget,
       );
       onOpenChange(false);
     } catch (e) {
@@ -489,6 +570,7 @@ export function WorkspaceChooser({
               onClick={() => {
                 setCheckoutMode("skip");
                 setCheckoutRoot(null);
+                setCheckoutTools([]);
                 setError(null);
               }}
             />
@@ -500,6 +582,32 @@ export function WorkspaceChooser({
               disabled={busy}
               onClick={() => void chooseCheckoutFolder()}
             />
+            {checkoutMode === "folder" && checkoutRoot && (
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
+                <span className="text-sm font-medium">{t("chooser.checkoutTools")}</span>
+                <div className="flex gap-4">
+                  {["claude", "codex"].map((tool) => (
+                    <label
+                      key={tool}
+                      htmlFor={`checkout-tool-${tool}`}
+                      className="flex items-center gap-1.5 text-sm"
+                    >
+                      <Checkbox
+                        id={`checkout-tool-${tool}`}
+                        aria-label={tool}
+                        checked={checkoutTools.includes(tool)}
+                        disabled={busy}
+                        onCheckedChange={(v) => toggleCheckoutTool(tool, v === true)}
+                      />
+                      {tool}
+                    </label>
+                  ))}
+                </div>
+                <span className="text-xs leading-5 text-muted-foreground">
+                  {t("chooser.checkoutToolsHelp")}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -547,7 +655,11 @@ export function WorkspaceChooser({
               <Button
                 type="button"
                 size="sm"
-                disabled={checkoutMode === null || busy}
+                disabled={
+                  checkoutMode === null ||
+                  busy ||
+                  (checkoutMode === "folder" && checkoutTools.length === 0)
+                }
                 onClick={() => void openRemote()}
               >
                 {t("chooser.open")}

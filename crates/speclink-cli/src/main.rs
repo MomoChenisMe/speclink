@@ -3,7 +3,7 @@ use clap::{Args, Parser, Subcommand};
 use speclink_core as core;
 
 mod color;
-use std::io::{IsTerminal, Read};
+use std::io::{BufRead, IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 

@@ -4,7 +4,6 @@
 use std::path::Path;
 
 use serde::Serialize;
-use speclink_core::skills::Tool;
 use speclink_core::workspace::Workspace;
 
 /// `open_project_at` 的判定結果——僅回報，不切換任何狀態。
@@ -111,14 +110,7 @@ pub fn project_stats_at(path: &Path) -> Result<serde_json::Value, String> {
 /// 重跑三態判定回報命中的專案。`tools` 為內建工具名（claude／codex）；
 /// 未知名在任何寫入之前被拒，單行 Err。
 pub fn init_project_at(path: &Path, tools: &[String]) -> Result<ProjectProbe, String> {
-    let mut selected: Vec<Tool> = Vec::new();
-    for name in tools {
-        let t = Tool::parse(name)
-            .ok_or_else(|| format!("unknown tool '{name}' (supported: claude, codex)"))?;
-        if !selected.contains(&t) {
-            selected.push(t);
-        }
-    }
+    let selected = speclink_core::init::parse_tool_names(tools).map_err(|e| e.to_string())?;
     speclink_core::init::init(path, &selected, false, "openspec").map_err(|e| e.to_string())?;
     open_project_at(path)
 }

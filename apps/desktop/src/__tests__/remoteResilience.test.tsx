@@ -369,6 +369,7 @@ describe("remote offline stale snapshot", () => {
       patLogin: vi.fn(),
       logout: vi.fn(),
       scopes: vi.fn(),
+      inspectCheckout: vi.fn(),
       bindCheckout: vi.fn(),
     } as ConnectionsAdapter;
     const createSession = vi.fn(() => {

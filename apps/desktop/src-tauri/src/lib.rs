@@ -382,16 +382,29 @@ fn connection_add(app: tauri::AppHandle, base_url: String, name: String) -> Resu
     Ok(entry_view(entry, &state))
 }
 
-/// chooser 的 checkout 綁定邊界：驗證 marker 一致性，或在無 marker 的 git
-/// checkout 寫入與 CLI init remote 同構的 `.speclink.yaml` remote section。
+/// chooser 的 checkout 先檢查階段（零寫入）：驗證資料夾與 marker 一致性，
+/// 回傳 `{ root, tools }` 供 picker 顯示既有 built-in 工具選集。
+#[tauri::command]
+fn inspect_checkout(
+    path: String,
+    origin: String,
+    project: String,
+    repo: String,
+) -> Result<connections::CheckoutInspection, String> {
+    connections::inspect_checkout(std::path::Path::new(&path), &origin, &project, &repo)
+}
+
+/// chooser 的 checkout 提交階段：重做 marker 邊界驗證，無 marker 時寫入與 CLI
+/// init remote 同構的 remote section，再對非空 built-in 選集執行 Core reconciliation。
 #[tauri::command]
 fn bind_checkout(
     path: String,
     origin: String,
     project: String,
     repo: String,
+    tools: Vec<String>,
 ) -> Result<String, String> {
-    connections::bind_checkout(std::path::Path::new(&path), &origin, &project, &repo)
+    connections::bind_checkout(std::path::Path::new(&path), &origin, &project, &repo, &tools)
 }
 
 /// 移除連線＝先走登出語意（撤銷＋刪 Keychain entry）再刪 registry 條目
@@ -1273,6 +1286,7 @@ pub fn run() {
             write_workflow_content,
             connection_list,
             connection_add,
+            inspect_checkout,
             bind_checkout,
             connection_remove,
             device_login,

@@ -86,6 +86,10 @@ export type ConnectionPhase =
 export interface WorkspaceChooserIntent {
   initialConnectionId?: string | null;
   initialServerUrl?: string | null;
+  /** 既有 marker 缺工具選集時，預填 scope 讓 chooser 直達 checkout 步驟。 */
+  initialScope?: { projectKey: string; repoKey: string } | null;
+  /** 既有 marker 缺工具選集時，預填 checkout 資料夾路徑（chooser 直接 inspect）。 */
+  initialCheckoutPath?: string | null;
 }
 
 export interface RemoteMarkerConflict {
@@ -1003,6 +1007,26 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!connection) throw new Error(`尚未登入 ${marker.origin}，無法採用 server 內容`);
       const target = conflict.repo ? `${marker.project}/${conflict.repo}` : marker.project;
 
+      // 資料夾轉為 checkout 前先收斂既有工具選集（spec「以 server 為準」＝備份後棄用
+      // 本機、完成工具 reconciliation 後開啟）。同步在建立分頁之前完成。
+      if (connectionsAdapter && conflict.repo) {
+        const inspection = await connectionsAdapter.inspectCheckout(
+          conflict.path,
+          connection.origin,
+          marker.project,
+          conflict.repo,
+        );
+        if (inspection.tools.length > 0) {
+          await connectionsAdapter.bindCheckout(
+            conflict.path,
+            connection.origin,
+            marker.project,
+            conflict.repo,
+            inspection.tools,
+          );
+        }
+      }
+
       // 先完成只讀 handshake，再改名本機 openspec/；任一步失敗都不建立 remote 分頁。
       const session = await openRemote(connection.id, target, conflict.path);
       await migration.adoptRemote(conflict.path);
@@ -1144,10 +1168,38 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
             (entry) => entry.loggedIn && entry.origin.toLowerCase() === marker.origin,
           );
           const target = probe.repo ? `${marker.project}/${probe.repo}` : marker.project;
-          if (connection) {
-            await get().openRemoteWorkspace(connection.id, target, path);
-          } else {
+          if (!connection) {
             set({ workspaceChooser: { initialServerUrl: marker.origin } });
+          } else if (connectionsAdapter && probe.repo) {
+            // 開啟前先收斂本機 Agent 工具（spec「remote marker 資料夾的探測分流」）：
+            // 有既有選集就自動 reconciliation 後才 handshake；缺選集則導回 chooser
+            // checkout 步驟由使用者明示選擇，同步成功前不建立 remote session。
+            const inspection = await connectionsAdapter.inspectCheckout(
+              path,
+              connection.origin,
+              marker.project,
+              probe.repo,
+            );
+            if (inspection.tools.length === 0) {
+              set({
+                workspaceChooser: {
+                  initialConnectionId: connection.id,
+                  initialScope: { projectKey: marker.project, repoKey: probe.repo },
+                  initialCheckoutPath: path,
+                },
+              });
+            } else {
+              await connectionsAdapter.bindCheckout(
+                path,
+                connection.origin,
+                marker.project,
+                probe.repo,
+                inspection.tools,
+              );
+              await get().openRemoteWorkspace(connection.id, target, path);
+            }
+          } else {
+            await get().openRemoteWorkspace(connection.id, target, path);
           }
         }
       } catch (e) {
