@@ -22,8 +22,8 @@ verification.
 
 ## 3. SPA 殼層、導覽與互動狀態
 
-- [ ] 3.1 RED：在 `apps/server-web/src/__tests__/app.test.tsx` 先寫三種殼層、七個 admin 目的地、一般成員裁切、direct deep link、route focus、loading／empty／403／error boundary、field error 保留、單次提交、AlertDialog、mobile Sheet、skip link、keyboard 與 reduced-motion 的失敗 Vitest＋Testing Library tests；執行 `npm test -w apps/server-web`，確認因 router、typed client 與 layouts 尚未完成而失敗。 <!-- speclink-task:tsk_01KY98N628JFDH1HW70MB6K8SB -->
-- [ ] 3.2 GREEN／REFACTOR：依「D6：Speclink 維運主控台採高密度、低動態、可存取設計」實作 `apps/server-web/src/api/client.ts` 唯一 raw HTTP 入口、lazy routes、專注／帳號／管理殼與 responsive navigation，使「全部 browser route 由單一 SPA 提供可發現導覽」、「共用設計系統維持高密度可存取體驗」與「Browser API 互動狀態一致且可恢復」成立；執行 3.1 tests、`npm run build -w apps/server-web` 與 axe 可存取性 assertions，確認沒有白屏、重複提交、整頁水平捲動或未標示 control。 <!-- speclink-task:tsk_01KY98N628ARAP219YWWJWWRD9 -->
+- [x] 3.1 RED：在 `apps/server-web/src/__tests__/app.test.tsx` 先寫三種殼層、七個 admin 目的地、一般成員裁切、direct deep link、route focus、loading／empty／403／error boundary、field error 保留、單次提交、AlertDialog、mobile Sheet、skip link、keyboard 與 reduced-motion 的失敗 Vitest＋Testing Library tests；執行 `npm test -w apps/server-web`，確認因 router、typed client 與 layouts 尚未完成而失敗。 <!-- speclink-task:tsk_01KY98N628JFDH1HW70MB6K8SB -->
+- [x] 3.2 GREEN／REFACTOR：依「D6：Speclink 維運主控台採高密度、低動態、可存取設計」實作 `apps/server-web/src/api/client.ts` 唯一 raw HTTP 入口、lazy routes、專注／帳號／管理殼與 responsive navigation，使「全部 browser route 由單一 SPA 提供可發現導覽」、「共用設計系統維持高密度可存取體驗」與「Browser API 互動狀態一致且可恢復」成立；執行 3.1 tests、`npm run build -w apps/server-web` 與 axe 可存取性 assertions，確認沒有白屏、重複提交、整頁水平捲動或未標示 control。 <!-- speclink-task:tsk_01KY98N628ARAP219YWWJWWRD9 -->
 
 ## 4. Setup 與 invite 自動登入
 

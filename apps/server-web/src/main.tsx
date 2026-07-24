@@ -4,12 +4,13 @@ import { createRoot } from "react-dom/client";
 import "@fontsource-variable/noto-sans-tc";
 import "./index.css";
 import { App } from "./App";
+import { createHttpClient } from "./api/client";
 
 const root = document.getElementById("root");
 if (root) {
   createRoot(root).render(
     <StrictMode>
-      <App />
+      <App client={createHttpClient()} />
     </StrictMode>,
   );
 }

@@ -12,7 +12,8 @@
     "@fontsource-variable/noto-sans-tc": "^5.2.10",
     "@speclink/ui": "*",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.2",
@@ -21,6 +22,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "jest-axe": "^9.0.0",
     "jsdom": "^25.0.1",
     "tailwindcss": "^4.3.2",
     "typescript": "^5.7.0",
