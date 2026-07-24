@@ -29,6 +29,16 @@ export {
   AlertDialogAction,
   AlertDialogCancel,
 } from "./components/ui/alert-dialog";
+export { Label } from "./components/ui/label";
+export {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetClose,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "./components/ui/sheet";
 
 export type {
   SpeclinkDataSource,
