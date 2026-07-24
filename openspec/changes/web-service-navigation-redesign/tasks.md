@@ -37,8 +37,8 @@ verification.
 
 ## 6. Admin view models 與 single-point mutations
 
-- [ ] 6.1 RED：在 `crates/speclink-server/tests/admin_web_api.rs`、`admin_three_entry.rs` 與 SPA admin tests 先寫 session-only 401／403、origin-first guard、七個獨立 view models、secret exclusion、action eligibility、Store 不健康降級、三入口等效 mutation／audit source、最後 admin 保護、registry key 不可改與破壞性確認的失敗測試；執行指定 Rust tests 與 `npm test -w apps/server-web -- admin`，確認 browser admin API 與七頁尚未存在而失敗。 <!-- speclink-task:tsk_01KY98N628A5NJ3W0A1HZETF0M -->
-- [ ] 6.2 GREEN／REFACTOR：依「D4：管理 SPA 補齊 view-model API，所有 mutation 重用既有 domain action」在 `crates/speclink-server/src/admin.rs`、browser adapter 與 SPA admin routes 實作「admin 門禁前置且非 admin 一律 403」、「管理動作三入口同一實作且功能完備」與「管理 browser API 提供最小且完整的頁面 view model」；執行 6.1、既有 `admin_api`、`admin_pages`、`admin_system`、`audit` tests，確認 bearer API／CLI 不變、audit source 正確且 store degradation 不阻斷 identity 管理。 <!-- speclink-task:tsk_01KY98N62893WB91FFDWE5SKW5 -->
+- [x] 6.1 RED：在 `crates/speclink-server/tests/admin_web_api.rs`、`admin_three_entry.rs` 與 SPA admin tests 先寫 session-only 401／403、origin-first guard、七個獨立 view models、secret exclusion、action eligibility、Store 不健康降級、三入口等效 mutation／audit source、最後 admin 保護、registry key 不可改與破壞性確認的失敗測試；執行指定 Rust tests 與 `npm test -w apps/server-web -- admin`，確認 browser admin API 與七頁尚未存在而失敗。 <!-- speclink-task:tsk_01KY98N628A5NJ3W0A1HZETF0M -->
+- [x] 6.2 GREEN／REFACTOR：依「D4：管理 SPA 補齊 view-model API，所有 mutation 重用既有 domain action」在 `crates/speclink-server/src/admin.rs`、browser adapter 與 SPA admin routes 實作「admin 門禁前置且非 admin 一律 403」、「管理動作三入口同一實作且功能完備」與「管理 browser API 提供最小且完整的頁面 view model」；執行 6.1、既有 `admin_api`、`admin_pages`、`admin_system`、`audit` tests，確認 bearer API／CLI 不變、audit source 正確且 store degradation 不阻斷 identity 管理。 <!-- speclink-task:tsk_01KY98N62893WB91FFDWE5SKW5 -->
 
 ## 7. 全面切換、交付 gate 與安全驗收
 

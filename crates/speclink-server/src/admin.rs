@@ -11,7 +11,9 @@
 use crate::audit::{AuditAction, AuditActor, AuditSource};
 use crate::auth::{bearer_token, header};
 use crate::error::ApiError;
-use crate::identity::{IdentityError, MembershipRole, NewInvitation, User};
+use crate::identity::{
+    DeviceFamily, IdentityError, MembershipRole, NewInvitation, Pat, Project, Repo, User,
+};
 use crate::state::{AppState, SharedStore};
 use crate::web;
 use axum::extract::{Form, FromRequestParts, Path, Query, State};
@@ -939,10 +941,10 @@ fn non_empty(value: &str) -> Option<&str> {
 /// One scope's outbox backlog: newest sequence minus the acked cursor. `backlog`
 /// is `None` when the store could not be read (e.g. it is unavailable).
 #[derive(Serialize)]
-struct ScopeBacklog {
-    project: String,
-    repo: String,
-    backlog: Option<u64>,
+pub(crate) struct ScopeBacklog {
+    pub(crate) project: String,
+    pub(crate) repo: String,
+    pub(crate) backlog: Option<u64>,
 }
 
 /// The read-only system aggregation (決策 5): engine/API versions, the store
@@ -951,16 +953,16 @@ struct ScopeBacklog {
 /// probe. A store failure surfaces as a health error, not a 500.
 #[derive(Serialize)]
 pub struct SystemInfo {
-    engine_version: String,
-    api_version: String,
-    identity_schema_version: Option<u32>,
-    store_driver: String,
-    store_contract_version: u32,
-    store_level: String,
-    store_capabilities: Vec<String>,
-    store_healthy: bool,
-    store_health_error: Option<String>,
-    outbox_backlogs: Vec<ScopeBacklog>,
+    pub(crate) engine_version: String,
+    pub(crate) api_version: String,
+    pub(crate) identity_schema_version: Option<u32>,
+    pub(crate) store_driver: String,
+    pub(crate) store_contract_version: u32,
+    pub(crate) store_level: String,
+    pub(crate) store_capabilities: Vec<String>,
+    pub(crate) store_healthy: bool,
+    pub(crate) store_health_error: Option<String>,
+    pub(crate) outbox_backlogs: Vec<ScopeBacklog>,
 }
 
 /// One scope's backlog: newest outbox sequence minus the acked cursor.
@@ -1232,4 +1234,782 @@ fn render_system(info: &SystemInfo) -> String {
         caps = web::escape(&info.store_capabilities.join(", ")),
     );
     web::page("系統狀態", &body)
+}
+
+// --- browser JSON admin API (server-admin spec, D4)：/api/speclink/v1/web/admin ---
+//
+// SPA 專用的 session-cookie admin API：先驗同源（mutation）、active session 與 admin
+// 旗標；未登入 401、非 admin 403 `permission_denied`（不新增 wire reason）。七個獨立
+// view model 只回頁面所需 metadata（絕不含 hash／plaintext／refresh credential／token），
+// mutation 呼叫與 bearer API／CLI 相同的單點 `admin_*` 函式，audit source `web`。
+
+/// The browser admin gate: an active session whose user carries the admin flag.
+/// Returns the admin and a web-source audit actor, or a JSON 401/403.
+fn require_web_admin(state: &AppState, headers: &HeaderMap) -> Result<(User, AuditActor), Response> {
+    match web::current_user(state, headers) {
+        Some(user) if user.admin => {
+            let actor = AuditActor::user(user.id.clone(), AuditSource::Web);
+            Ok((user, actor))
+        }
+        Some(_) => Err(web::web_err(
+            StatusCode::FORBIDDEN,
+            "permission_denied",
+            "沒有管理權限",
+        )),
+        None => Err(web::web_err(
+            StatusCode::UNAUTHORIZED,
+            "unauthenticated",
+            "請先登入",
+        )),
+    }
+}
+
+/// A mutation gate: same-origin first (before the permission decision), then the
+/// admin session. Returns the web-source audit actor.
+fn web_admin_mutation(state: &AppState, headers: &HeaderMap) -> Result<AuditActor, Response> {
+    if !web::is_same_origin(headers, &state.config.public_url) {
+        return Err(web::web_err(
+            StatusCode::FORBIDDEN,
+            "same_origin_required",
+            "跨來源請求被拒絕",
+        ));
+    }
+    let (_user, actor) = require_web_admin(state, headers)?;
+    Ok(actor)
+}
+
+/// A mutation acknowledgement (no view model).
+#[derive(Serialize)]
+struct WebAck {
+    ok: bool,
+}
+
+/// Map a single-point admin action's result to a JSON response: a refused guard
+/// (e.g. the last active admin) is 409 with its reason, an unknown subject 404,
+/// a duplicate key 409, anything else a 500 without internal detail.
+fn admin_result(result: Result<(), IdentityError>) -> Response {
+    match result {
+        Ok(()) => web::web_ok(WebAck { ok: true }),
+        Err(IdentityError::Refused(msg)) => web::web_err(StatusCode::CONFLICT, "refused", msg),
+        Err(IdentityError::NotFound(msg)) => web::web_err(StatusCode::NOT_FOUND, "not_found", msg),
+        Err(IdentityError::Duplicate(msg)) => web::web_err(StatusCode::CONFLICT, "duplicate", msg),
+        Err(_) => web::web_err(StatusCode::INTERNAL_SERVER_ERROR, "internal", "發生錯誤"),
+    }
+}
+
+fn iso_opt(dt: Option<DateTime<Utc>>) -> Option<String> {
+    dt.map(|t| t.to_rfc3339())
+}
+
+// --- view models (read; secrets never appear) ---
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebConnection {
+    public_url: String,
+    project_key: String,
+    repo_key: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebOverview {
+    active_users: usize,
+    suspended_users: usize,
+    projects: usize,
+    repos: usize,
+    active_credentials: usize,
+    store_healthy: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    store_health_error: Option<String>,
+    identity_schema_version: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    connection: Option<WebConnection>,
+}
+
+/// `GET /admin/overview` — the low-cost summary the management nav needs.
+pub async fn web_admin_overview(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(refused) = require_web_admin(&state, &headers) {
+        return refused;
+    }
+    let users = state.identity.list_users().unwrap_or_default();
+    let projects = state.identity.list_projects().unwrap_or_default();
+    let repos: usize = projects
+        .iter()
+        .map(|p| state.identity.list_repos(&p.key).map(|r| r.len()).unwrap_or(0))
+        .sum();
+    let active_pats = state
+        .identity
+        .list_all_pats()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| p.revoked_at.is_none())
+        .count();
+    let active_families = state
+        .identity
+        .list_all_device_families()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(_, f)| f.revoked_at.is_none())
+        .count();
+    let (store_healthy, store_health_error) = match state.store.health() {
+        Ok(()) => (true, None),
+        Err(e) => (false, Some(e.to_string())),
+    };
+    let connection = projects.first().map(|p| WebConnection {
+        public_url: state.config.public_url.clone(),
+        project_key: p.key.clone(),
+        repo_key: state
+            .identity
+            .list_repos(&p.key)
+            .ok()
+            .and_then(|r| r.first().map(|r| r.key.clone()))
+            .unwrap_or_default(),
+    });
+    web::web_ok(WebOverview {
+        active_users: users.iter().filter(|u| u.active).count(),
+        suspended_users: users.iter().filter(|u| !u.active).count(),
+        projects: projects.len(),
+        repos,
+        active_credentials: active_pats + active_families,
+        store_healthy,
+        store_health_error,
+        identity_schema_version: state.identity.schema_version().unwrap_or(0),
+        connection,
+    })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebMembership {
+    project_key: String,
+    role: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebUser {
+    id: String,
+    email: String,
+    display: String,
+    admin: bool,
+    active: bool,
+    memberships: Vec<WebMembership>,
+    can_suspend: bool,
+    can_remove_admin: bool,
+}
+
+#[derive(Serialize)]
+struct WebUsers {
+    users: Vec<WebUser>,
+}
+
+/// `GET /admin/users` — the users view model with per-row action eligibility.
+pub async fn web_admin_users(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(refused) = require_web_admin(&state, &headers) {
+        return refused;
+    }
+    let users = state.identity.list_users().unwrap_or_default();
+    let active_admins = users.iter().filter(|u| u.active && u.admin).count();
+    let rows = users
+        .iter()
+        .map(|u| {
+            let last_active_admin = u.active && u.admin && active_admins <= 1;
+            let memberships = state
+                .identity
+                .list_memberships(&u.id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|key| {
+                    let role = state
+                        .identity
+                        .membership_role(&u.id, &key)
+                        .ok()
+                        .flatten()
+                        .map(|r| r.as_str().to_string())
+                        .unwrap_or_default();
+                    WebMembership { project_key: key, role }
+                })
+                .collect();
+            WebUser {
+                id: u.id.clone(),
+                email: u.email.clone(),
+                display: u.display.clone(),
+                admin: u.admin,
+                active: u.active,
+                memberships,
+                can_suspend: u.active && !last_active_admin,
+                can_remove_admin: u.admin && !last_active_admin,
+            }
+        })
+        .collect();
+    web::web_ok(WebUsers { users: rows })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebRepo {
+    key: String,
+    name: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebProject {
+    key: String,
+    name: String,
+    repos: Vec<WebRepo>,
+}
+
+#[derive(Serialize)]
+struct WebRegistry {
+    projects: Vec<WebProject>,
+}
+
+/// `GET /admin/registry` — projects and their repos (keys are stable, no rename).
+pub async fn web_admin_registry(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(refused) = require_web_admin(&state, &headers) {
+        return refused;
+    }
+    let projects = state
+        .identity
+        .list_projects()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p: Project| {
+            let repos = state
+                .identity
+                .list_repos(&p.key)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|r: Repo| WebRepo { key: r.key, name: r.name })
+                .collect();
+            WebProject { key: p.key, name: p.name, repos }
+        })
+        .collect();
+    web::web_ok(WebRegistry { projects })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebPat {
+    id: String,
+    user_id: String,
+    prefix: String,
+    name: String,
+    created_at: String,
+    expires_at: Option<String>,
+    last_used_at: Option<String>,
+    revoked_at: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebCredFamily {
+    id: String,
+    user_id: String,
+    source: String,
+    created_at: String,
+    last_refresh_at: String,
+    revoked_at: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebCredentials {
+    pats: Vec<WebPat>,
+    device_families: Vec<WebCredFamily>,
+}
+
+/// `GET /admin/credentials` — every credential's metadata (no secret value).
+pub async fn web_admin_credentials(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(refused) = require_web_admin(&state, &headers) {
+        return refused;
+    }
+    let pats = state
+        .identity
+        .list_all_pats()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p: Pat| WebPat {
+            id: p.id,
+            user_id: p.user_id,
+            prefix: p.prefix,
+            name: p.name,
+            created_at: p.created_at.to_rfc3339(),
+            expires_at: iso_opt(p.expires_at),
+            last_used_at: iso_opt(p.last_used_at),
+            revoked_at: iso_opt(p.revoked_at),
+        })
+        .collect();
+    let device_families = state
+        .identity
+        .list_all_device_families()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(user_id, f): (String, DeviceFamily)| WebCredFamily {
+            id: f.id,
+            user_id,
+            source: f.source,
+            created_at: f.created_at.to_rfc3339(),
+            last_refresh_at: f.last_refresh_at.to_rfc3339(),
+            revoked_at: iso_opt(f.revoked_at),
+        })
+        .collect();
+    web::web_ok(WebCredentials { pats, device_families })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebScope {
+    project: String,
+    repo: String,
+    export_path: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebData {
+    scopes: Vec<WebScope>,
+    store_healthy: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    store_health_error: Option<String>,
+}
+
+/// `GET /admin/data` — the registered scopes (each with its export-download path)
+/// and store health. Store failure degrades this view but keeps identity management up.
+pub async fn web_admin_data(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(refused) = require_web_admin(&state, &headers) {
+        return refused;
+    }
+    let mut scopes = Vec::new();
+    for project in state.identity.list_projects().unwrap_or_default() {
+        for repo in state.identity.list_repos(&project.key).unwrap_or_default() {
+            scopes.push(WebScope {
+                export_path: format!("/admin/data/export/{}/{}", project.key, repo.key),
+                project: project.key.clone(),
+                repo: repo.key,
+            });
+        }
+    }
+    let (store_healthy, store_health_error) = match state.store.health() {
+        Ok(()) => (true, None),
+        Err(e) => (false, Some(e.to_string())),
+    };
+    web::web_ok(WebData { scopes, store_healthy, store_health_error })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebBacklog {
+    project: String,
+    repo: String,
+    backlog: Option<u64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebSystem {
+    engine_version: String,
+    api_version: String,
+    identity_schema_version: Option<u32>,
+    store_driver: String,
+    store_contract_version: u32,
+    store_level: String,
+    store_capabilities: Vec<String>,
+    store_healthy: bool,
+    store_health_error: Option<String>,
+    outbox_backlogs: Vec<WebBacklog>,
+}
+
+/// `GET /admin/system` — the system aggregation (camelCase). Reuses [`gather_system`].
+pub async fn web_admin_system(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(refused) = require_web_admin(&state, &headers) {
+        return refused;
+    }
+    let info = gather_system(&state);
+    web::web_ok(WebSystem {
+        engine_version: info.engine_version,
+        api_version: info.api_version,
+        identity_schema_version: info.identity_schema_version,
+        store_driver: info.store_driver,
+        store_contract_version: info.store_contract_version,
+        store_level: info.store_level,
+        store_capabilities: info.store_capabilities,
+        store_healthy: info.store_healthy,
+        store_health_error: info.store_health_error,
+        outbox_backlogs: info
+            .outbox_backlogs
+            .into_iter()
+            .map(|b| WebBacklog { project: b.project, repo: b.repo, backlog: b.backlog })
+            .collect(),
+    })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebAuditEntry {
+    id: String,
+    actor_id: String,
+    action: String,
+    subject: String,
+    source: String,
+    created_at: String,
+}
+
+#[derive(Serialize)]
+struct WebAudit {
+    entries: Vec<WebAuditEntry>,
+}
+
+/// `GET /admin/audit` — the newest-first management audit log page.
+pub async fn web_admin_audit(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<AuditQuery>,
+) -> Response {
+    if let Err(refused) = require_web_admin(&state, &headers) {
+        return refused;
+    }
+    let entries = state
+        .identity
+        .list_audit(query.limit, query.offset)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|e| WebAuditEntry {
+            id: e.id,
+            actor_id: e.actor_id,
+            action: e.action,
+            subject: e.subject,
+            source: e.source,
+            created_at: e.created_at.to_rfc3339(),
+        })
+        .collect();
+    web::web_ok(WebAudit { entries })
+}
+
+// --- mutations (源 web; each calls the single-point admin_* fn) ---
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebInviteBody {
+    email: String,
+    display: String,
+    #[serde(default)]
+    memberships: Vec<String>,
+    #[serde(default)]
+    admin: bool,
+}
+
+#[derive(Serialize)]
+struct WebInviteResult {
+    token: String,
+}
+
+/// `POST /admin/users/invite` — mint an invitation via the single-point action.
+pub async fn web_admin_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Result<Json<WebInviteBody>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let actor = match web_admin_mutation(&state, &headers) {
+        Ok(actor) => actor,
+        Err(refused) => return refused,
+    };
+    let Ok(Json(body)) = body else {
+        return web::web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    let email = body.email.trim();
+    let display = body.display.trim();
+    if email.is_empty() || display.is_empty() {
+        return web::web_err(StatusCode::BAD_REQUEST, "validation_error", "email 與顯示名稱皆為必填");
+    }
+    match state.identity.admin_create_invitation(
+        &actor,
+        NewInvitation {
+            email: email.to_string(),
+            display: display.to_string(),
+            memberships: body.memberships,
+            admin: body.admin,
+            expires_at: Utc::now() + Duration::days(7),
+        },
+    ) {
+        Ok(token) => web::web_ok(WebInviteResult { token }),
+        Err(IdentityError::Duplicate(msg)) => web::web_err(StatusCode::CONFLICT, "duplicate", msg),
+        Err(_) => web::web_err(StatusCode::INTERNAL_SERVER_ERROR, "internal", "發生錯誤"),
+    }
+}
+
+/// `POST /admin/users/{id}/suspend`
+pub async fn web_admin_suspend(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+) -> Response {
+    match web_admin_mutation(&state, &headers) {
+        Ok(actor) => admin_result(state.identity.admin_set_user_suspended(&actor, &user_id, true)),
+        Err(refused) => refused,
+    }
+}
+
+/// `POST /admin/users/{id}/reactivate`
+pub async fn web_admin_reactivate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+) -> Response {
+    match web_admin_mutation(&state, &headers) {
+        Ok(actor) => admin_result(state.identity.admin_set_user_suspended(&actor, &user_id, false)),
+        Err(refused) => refused,
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebMembershipBody {
+    project_key: String,
+    #[serde(default)]
+    role: String,
+    member: bool,
+}
+
+/// `POST /admin/users/{id}/membership`
+pub async fn web_admin_membership(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+    body: Result<Json<WebMembershipBody>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let actor = match web_admin_mutation(&state, &headers) {
+        Ok(actor) => actor,
+        Err(refused) => return refused,
+    };
+    let Ok(Json(body)) = body else {
+        return web::web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    let role = if body.role.is_empty() {
+        MembershipRole::default()
+    } else {
+        match MembershipRole::parse(&body.role) {
+            Ok(role) => role,
+            Err(_) => return web::web_err(StatusCode::BAD_REQUEST, "validation_error", "未知的角色"),
+        }
+    };
+    admin_result(
+        state
+            .identity
+            .admin_set_membership(&actor, &user_id, &body.project_key, role, body.member),
+    )
+}
+
+#[derive(Deserialize)]
+pub struct WebAdminFlagBody {
+    admin: bool,
+}
+
+/// `POST /admin/users/{id}/admin-flag`
+pub async fn web_admin_flag(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+    body: Result<Json<WebAdminFlagBody>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let actor = match web_admin_mutation(&state, &headers) {
+        Ok(actor) => actor,
+        Err(refused) => return refused,
+    };
+    let Ok(Json(body)) = body else {
+        return web::web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    admin_result(state.identity.admin_set_admin_flag(&actor, &user_id, body.admin))
+}
+
+#[derive(Deserialize)]
+pub struct WebCreateProjectBody {
+    key: String,
+    #[serde(default)]
+    name: Option<String>,
+}
+
+/// `POST /admin/registry/projects`
+pub async fn web_admin_create_project(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Result<Json<WebCreateProjectBody>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let actor = match web_admin_mutation(&state, &headers) {
+        Ok(actor) => actor,
+        Err(refused) => return refused,
+    };
+    let Ok(Json(body)) = body else {
+        return web::web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    let key = body.key.trim();
+    if key.is_empty() {
+        return web::web_err(StatusCode::BAD_REQUEST, "validation_error", "project key 為必填");
+    }
+    let name = name_or_key(&body.name, key).to_string();
+    admin_result(state.identity.admin_create_project(&actor, key, &name))
+}
+
+#[derive(Deserialize)]
+pub struct WebRenameBody {
+    name: String,
+}
+
+/// `POST /admin/registry/projects/{key}/rename` — the display name only; the key
+/// is the stable identifier and has no change interface.
+pub async fn web_admin_rename_project(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(key): Path<String>,
+    body: Result<Json<WebRenameBody>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let actor = match web_admin_mutation(&state, &headers) {
+        Ok(actor) => actor,
+        Err(refused) => return refused,
+    };
+    let Ok(Json(body)) = body else {
+        return web::web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    admin_result(state.identity.admin_rename_project(&actor, &key, body.name.trim()))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebCreateRepoBody {
+    project_key: String,
+    key: String,
+    #[serde(default)]
+    name: Option<String>,
+}
+
+/// `POST /admin/registry/repos`
+pub async fn web_admin_create_repo(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Result<Json<WebCreateRepoBody>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let actor = match web_admin_mutation(&state, &headers) {
+        Ok(actor) => actor,
+        Err(refused) => return refused,
+    };
+    let Ok(Json(body)) = body else {
+        return web::web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    let key = body.key.trim();
+    if key.is_empty() || body.project_key.trim().is_empty() {
+        return web::web_err(StatusCode::BAD_REQUEST, "validation_error", "project 與 repo key 皆為必填");
+    }
+    let name = name_or_key(&body.name, key).to_string();
+    admin_result(
+        state
+            .identity
+            .admin_create_repo(&actor, body.project_key.trim(), key, &name),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebRenameRepoBody {
+    project_key: String,
+    key: String,
+    name: String,
+}
+
+/// `POST /admin/registry/repos/rename` — the repo display name only; keys stable.
+pub async fn web_admin_rename_repo(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Result<Json<WebRenameRepoBody>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let actor = match web_admin_mutation(&state, &headers) {
+        Ok(actor) => actor,
+        Err(refused) => return refused,
+    };
+    let Ok(Json(body)) = body else {
+        return web::web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    admin_result(
+        state
+            .identity
+            .admin_rename_repo(&actor, body.project_key.trim(), body.key.trim(), body.name.trim()),
+    )
+}
+
+/// `POST /admin/credentials/tokens/{id}/revoke`
+pub async fn web_admin_revoke_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(pat_id): Path<String>,
+) -> Response {
+    match web_admin_mutation(&state, &headers) {
+        Ok(actor) => admin_result(state.identity.admin_revoke_pat(&actor, &pat_id)),
+        Err(refused) => refused,
+    }
+}
+
+/// `POST /admin/credentials/families/{id}/revoke`
+pub async fn web_admin_revoke_family(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(family_id): Path<String>,
+) -> Response {
+    match web_admin_mutation(&state, &headers) {
+        Ok(actor) => admin_result(state.identity.admin_revoke_family(&actor, &family_id)),
+        Err(refused) => refused,
+    }
+}
+
+/// `POST /admin/data/migrate` — migrate the store to the current contract version.
+/// An unhealthy backend is not migrated (409) and nothing is recorded.
+pub async fn web_admin_migrate(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let actor = match web_admin_mutation(&state, &headers) {
+        Ok(actor) => actor,
+        Err(refused) => return refused,
+    };
+    if let Err(e) = state.store.health() {
+        return web::web_err(
+            StatusCode::CONFLICT,
+            "store_unhealthy",
+            format!("Store health 檢查未通過，遷移未執行：{e}"),
+        );
+    }
+    match state.store.migrate(CONTRACT_VERSION) {
+        Ok(()) => {
+            let _ = state.identity.record_audit(
+                &actor,
+                AuditAction::StoreMigrated,
+                &format!("contract version {CONTRACT_VERSION}"),
+            );
+            web::web_ok(WebAck { ok: true })
+        }
+        Err(e) => web::web_err(StatusCode::CONFLICT, "migrate_failed", e.to_string()),
+    }
+}
+
+/// The browser admin API sub-router, merged into the `/api/speclink/v1/web` nest.
+/// Every handler runs the session + admin gate; mutations additionally verify
+/// same-origin before the permission decision.
+pub fn web_router() -> Router<AppState> {
+    Router::new()
+        .route("/admin/overview", get(web_admin_overview))
+        .route("/admin/users", get(web_admin_users))
+        .route("/admin/users/invite", post(web_admin_invite))
+        .route("/admin/users/{id}/suspend", post(web_admin_suspend))
+        .route("/admin/users/{id}/reactivate", post(web_admin_reactivate))
+        .route("/admin/users/{id}/membership", post(web_admin_membership))
+        .route("/admin/users/{id}/admin-flag", post(web_admin_flag))
+        .route("/admin/registry", get(web_admin_registry))
+        .route("/admin/registry/projects", post(web_admin_create_project))
+        .route("/admin/registry/projects/{key}/rename", post(web_admin_rename_project))
+        .route("/admin/registry/repos", post(web_admin_create_repo))
+        .route("/admin/registry/repos/rename", post(web_admin_rename_repo))
+        .route("/admin/credentials", get(web_admin_credentials))
+        .route("/admin/credentials/tokens/{id}/revoke", post(web_admin_revoke_token))
+        .route("/admin/credentials/families/{id}/revoke", post(web_admin_revoke_family))
+        .route("/admin/data", get(web_admin_data))
+        .route("/admin/data/migrate", post(web_admin_migrate))
+        .route("/admin/system", get(web_admin_system))
+        .route("/admin/audit", get(web_admin_audit))
 }

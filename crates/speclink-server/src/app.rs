@@ -185,7 +185,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/speclink/v1/scopes", get(read_api::scopes))
         .nest(
             "/api/speclink/v1/web",
-            web::api_router().merge(setup::web_router()),
+            web::api_router()
+                .merge(setup::web_router())
+                .merge(admin::web_router()),
         )
         .nest("/api/speclink/v1/admin", admin::api_router())
         .nest("/api/speclink/v1/projects/{key}", project)
