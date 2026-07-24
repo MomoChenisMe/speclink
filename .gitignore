@@ -8,10 +8,13 @@ openspec/.vector-search.db*
 # Speclink app data
 .speclink/
 
-# JS workspace (desktop app + shared UI)
+# JS workspace (desktop app + shared UI + server web console)
 node_modules/
 apps/desktop/dist/
 apps/desktop/src-tauri/gen/
+# Server Web Console 的 Vite 產物：不入版本控制，各 build path（dev／CI／Docker／
+# release）皆重建後由 speclink-server 內嵌（D5）。
+apps/server-web/dist/
 
 # Deployment secrets（deploy/.env.example 是入版本控制的樣板）
 deploy/.env

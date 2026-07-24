@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+/* 共用 semantic theme（青綠 token、@theme 映射、body 字型）——與 Desktop 同一份，
+   不建立第二套 theme（server-web-console「共用設計系統維持高密度可存取體驗」）。 */
+@import "../../../packages/ui/src/theme.css";
+
+/* 共用元件庫在 node_modules（Tailwind 預設不掃），明確納入其 class 來源。 */
+@source "../../../packages/ui/src";
