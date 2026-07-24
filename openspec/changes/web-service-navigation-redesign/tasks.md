@@ -27,8 +27,8 @@ verification.
 
 ## 4. Setup 與 invite 自動登入
 
-- [ ] 4.1 RED：在 `crates/speclink-server/tests/web_setup.rs`、`web_invite.rs` 與對應 React route tests 先寫 setup 可續作四要素、同源拒絕、完成回 connection＋`/admin?welcome=1`、重送不複製資料、invite token 不可區分、一般／admin destination、自動 session 與 session failure recovery 的失敗測試；執行指定 Rust tests 與 `npm test -w apps/server-web -- setup invite`，確認舊 HTML／form 行為無法滿足 JSON 與自動登入契約。 <!-- speclink-task:tsk_01KY98N628T38RM41DFD9REASA -->
-- [ ] 4.2 GREEN／REFACTOR：依「D8：依功能面漸進切換，最終刪除舊 HTML」的第三階段，在 `crates/speclink-server/src/setup.rs`、identity browser adapter 與 SPA routes 實作「setup 流程完成開箱四要素」及「邀請一次性且到期失效」，保持既有交易、token、audit 與 public URL 邊界，只在 4.1 Rust／React tests 全綠後切換 `/setup`、`/invite/:token`；再執行既有 `setup`、`invite`、`admin_e2e` regression tests 確認 CLI invite 與 binding 未退化。 <!-- speclink-task:tsk_01KY98N628SRGHGV58ZC5QFMVM -->
+- [x] 4.1 RED：在 `crates/speclink-server/tests/web_setup.rs`、`web_invite.rs` 與對應 React route tests 先寫 setup 可續作四要素、同源拒絕、完成回 connection＋`/admin?welcome=1`、重送不複製資料、invite token 不可區分、一般／admin destination、自動 session 與 session failure recovery 的失敗測試；執行指定 Rust tests 與 `npm test -w apps/server-web -- setup invite`，確認舊 HTML／form 行為無法滿足 JSON 與自動登入契約。 <!-- speclink-task:tsk_01KY98N628T38RM41DFD9REASA -->
+- [x] 4.2 GREEN／REFACTOR：依「D8：依功能面漸進切換，最終刪除舊 HTML」的第三階段，在 `crates/speclink-server/src/setup.rs`、identity browser adapter 與 SPA routes 實作「setup 流程完成開箱四要素」及「邀請一次性且到期失效」，保持既有交易、token、audit 與 public URL 邊界，只在 4.1 Rust／React tests 全綠後切換 `/setup`、`/invite/:token`；再執行既有 `setup`、`invite`、`admin_e2e` regression tests 確認 CLI invite 與 binding 未退化。 <!-- speclink-task:tsk_01KY98N628SRGHGV58ZC5QFMVM -->
 
 ## 5. Account、PAT 與 device activation
 
