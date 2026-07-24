@@ -309,6 +309,7 @@ fn workspace_init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str, stor
     Ok(())
 }
 
+#[derive(Debug)]
 pub struct UpdateOutcome {
     pub updated: Vec<String>,
     pub pruned: Vec<String>,
@@ -401,6 +402,29 @@ pub fn update(root: &Path) -> Result<UpdateOutcome> {
     save_custom_state(root, &customs)?;
 
     Ok(out)
+}
+
+/// Converge a workspace on `tools` as the COMPLETE desired state of its built-ins —
+/// the single entry point CLI init, remote init and the desktop share.
+///
+/// Two steps, both existing behavior: `.speclink.yaml`'s claude/codex entries are
+/// rewritten to match the selection (custom descriptors, remote, spec_dir and unknown
+/// keys carry over untouched), then [`update`] generates the selected tools' skills and
+/// marker blocks and prunes the deselected ones. Marker wording follows the store mode
+/// recorded in the config, so a remote checkout is never given a local spec tree.
+///
+/// Empty selections and malformed configs fail before anything is written. Beyond that
+/// there is no rollback: every managed write is idempotent, so the same selection can be
+/// submitted again to converge (design: "失敗不開啟 Workspace並以可重試收斂取代跨檔回滾").
+pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutcome> {
+    if tools.is_empty() {
+        bail!("no tools selected (supported: claude, codex)");
+    }
+    let path = root.join(".speclink.yaml");
+    let original = util::read_opt(&path).unwrap_or_default();
+    let rewritten = crate::config::update_app_config_tools_text(&original, tools)?;
+    util::write_file(&path, &rewritten)?;
+    update(root)
 }
 
 /// Recorded footprint of a generated custom tool — what a later update needs in order to
@@ -540,9 +564,10 @@ fn strip_marker(text: &str) -> String {
     format!("{before}{after}")
 }
 
-/// Detect installed AI tools by their footprints (deliberate difference from Spectra, which
-/// generates nothing when --tools is omitted). Defaults to claude when nothing is found.
-pub fn detect_tools(root: &Path) -> Vec<Tool> {
+/// Detect installed AI tools by their footprints, WITHOUT any fallback — an empty result
+/// means "no footprint found", which desktop checkout preselection needs (it must not
+/// invent a Claude default). [`detect_tools`] layers the claude fallback on top.
+pub fn detect_footprint_tools(root: &Path) -> Vec<Tool> {
     let mut out = Vec::new();
     if root.join(".claude").is_dir() {
         out.push(Tool::Claude);
@@ -550,6 +575,13 @@ pub fn detect_tools(root: &Path) -> Vec<Tool> {
     if root.join(".agents").is_dir() || root.join("AGENTS.md").is_file() {
         out.push(Tool::Codex);
     }
+    out
+}
+
+/// Detect installed AI tools by their footprints (deliberate difference from Spectra, which
+/// generates nothing when --tools is omitted). Defaults to claude when nothing is found.
+pub fn detect_tools(root: &Path) -> Vec<Tool> {
+    let mut out = detect_footprint_tools(root);
     if out.is_empty() {
         out.push(Tool::Claude);
     }
@@ -621,19 +653,26 @@ pub fn ensure_gitignore(path: &Path) -> Result<bool> {
 /// Validate a comma-separated `--tools` value into a tool list. Speclink deliberately scopes
 /// the supported tools to claude + codex.
 pub fn parse_tools(spec: &str) -> Result<Vec<Tool>> {
+    parse_tool_names(&spec.split(',').collect::<Vec<&str>>())
+}
+
+/// Validate built-in tool NAMES into a deduplicated selection: blank entries are skipped,
+/// an unknown name is a loud error. The CLI arrives here through [`parse_tools`] with a
+/// comma-separated value, the desktop with a list — one rule, one message for both.
+pub fn parse_tool_names<S: AsRef<str>>(names: &[S]) -> Result<Vec<Tool>> {
     let mut out = Vec::new();
-    for part in spec.split(',') {
-        let part = part.trim();
-        if part.is_empty() {
+    for name in names {
+        let name = name.as_ref().trim();
+        if name.is_empty() {
             continue;
         }
-        match Tool::parse(part) {
+        match Tool::parse(name) {
             Some(t) => {
                 if !out.contains(&t) {
                     out.push(t);
                 }
             }
-            None => bail!("unknown tool: {part} (supported: claude, codex)"),
+            None => bail!("unknown tool: {name} (supported: claude, codex)"),
         }
     }
     Ok(out)
@@ -661,6 +700,22 @@ mod tests {
 
         fn read(&self, rel: &str) -> String {
             std::fs::read_to_string(self.dir.join(rel.split('/').collect::<PathBuf>())).unwrap()
+        }
+
+        fn at(&self, rel: &str) -> PathBuf {
+            self.dir.join(rel.split('/').collect::<PathBuf>())
+        }
+
+        fn write(&self, rel: &str, content: &str) {
+            let path = self.at(rel);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(path, content).unwrap();
+        }
+
+        fn exists(&self, rel: &str) -> bool {
+            self.at(rel).exists()
         }
     }
 
@@ -713,5 +768,218 @@ mod tests {
         for word in ["locale", "tdd", "audit"] {
             assert!(!app.contains(word), "no policy key {word} expected:\n{app}");
         }
+    }
+
+    // --- 共用 built-in tools reconciliation ---
+    // Spec requirement: 「built-in tools 權威收斂」＋ design「Core 單一 Workspace 工具同步入口」
+    // ／「Built-in 選擇收斂且保留自訂描述子」與 Implementation Contract 的
+    // 「Core and configuration contract」。
+
+    const CUSTOM_DESCRIPTOR: &str = "  - name: wad-harness\n    skills_dir: .wad/skills\n    instructions_file: WAD.md\n";
+    const REMOTE_URL: &str = "https://team.example.test/api/speclink/v1/projects/acme";
+    const CLAUDE_USER_TEXT: &str = "使用者寫在 CLAUDE.md 的段落";
+    const CODEX_USER_TEXT: &str = "使用者寫在 AGENTS.md 的段落";
+
+    fn instructions_file(tool: Tool) -> &'static str {
+        match tool {
+            Tool::Claude => "CLAUDE.md",
+            Tool::Codex => "AGENTS.md",
+        }
+    }
+
+    fn user_text(tool: Tool) -> &'static str {
+        match tool {
+            Tool::Claude => CLAUDE_USER_TEXT,
+            Tool::Codex => CODEX_USER_TEXT,
+        }
+    }
+
+    fn propose_skill(tool: Tool) -> String {
+        format!("{}/speclink-propose/SKILL.md", tool.skills_dir())
+    }
+
+    /// Remote 模式 workspace，其 `.speclink.yaml` 除 built-in 選集外還帶 custom
+    /// descriptor、remote section 與未知頂層鍵；兩份指令檔在 marker 之外先有使用者文字。
+    fn seed_remote_workspace(root: &TempRoot, builtins: &[Tool]) {
+        root.write("CLAUDE.md", &format!("{CLAUDE_USER_TEXT}\n"));
+        root.write("AGENTS.md", &format!("{CODEX_USER_TEXT}\n"));
+        let listed: String = builtins.iter().map(|t| format!("  - {}\n", t.name())).collect();
+        root.write(
+            ".speclink.yaml",
+            &format!(
+                "tools:\n{listed}{CUSTOM_DESCRIPTOR}remote:\n  url: {REMOTE_URL}\n  repo: desktop\nfuture_top_level: keep me\n"
+            ),
+        );
+        update(&root.dir).expect("seed update");
+    }
+
+    fn builtin_names(root: &TempRoot) -> Vec<String> {
+        let app = crate::config::AppConfig::load(&root.at(".speclink.yaml")).expect("config parses");
+        let mut names: Vec<String> = app
+            .tools
+            .iter()
+            .filter_map(|e| match e {
+                ToolEntry::Builtin(n) => Some(n.clone()),
+                ToolEntry::Descriptor(_) => None,
+            })
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn marker_count(text: &str) -> usize {
+        text.matches("<!-- SPECLINK:START").count()
+    }
+
+    /// 目錄快照（檔案內容與目錄項目），供「零寫入」斷言逐位元組比對。
+    fn snapshot(root: &TempRoot) -> Vec<(String, Vec<u8>)> {
+        fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, Vec<u8>)>) {
+            let mut entries: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().collect();
+            entries.sort_by_key(|e| e.file_name());
+            for entry in entries {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let rel = if prefix.is_empty() { name } else { format!("{prefix}/{name}") };
+                if entry.path().is_dir() {
+                    out.push((format!("{rel}/"), Vec::new()));
+                    walk(&entry.path(), &rel, out);
+                } else {
+                    out.push((rel, std::fs::read(entry.path()).unwrap()));
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(&root.dir, "", &mut out);
+        out
+    }
+
+    /// Spec example「built-in 選集轉換」逐列：轉換後 built-in 集合等於請求，
+    /// custom descriptor／未知頂層鍵／remote 原值保留，marker 不重複，使用者文字不動。
+    #[test]
+    fn reconcile_converts_builtin_selection_row_by_row() {
+        let rows: [(&[Tool], &[Tool]); 3] = [
+            (&[Tool::Claude], &[Tool::Codex]),
+            (&[Tool::Claude, Tool::Codex], &[Tool::Claude]),
+            (&[Tool::Codex], &[Tool::Claude, Tool::Codex]),
+        ];
+        for (i, (from, to)) in rows.iter().enumerate() {
+            let root = TempRoot::new(&format!("reconcile-row-{i}"));
+            seed_remote_workspace(&root, from);
+
+            reconcile_builtin_tools(&root.dir, to).expect("reconcile succeeds");
+
+            let want: Vec<String> = {
+                let mut v: Vec<String> = to.iter().map(|t| t.name().to_string()).collect();
+                v.sort();
+                v
+            };
+            assert_eq!(builtin_names(&root), want, "row {i}: built-in 集合須等於請求");
+
+            let app_text = root.read(".speclink.yaml");
+            assert!(app_text.contains("wad-harness"), "row {i}: custom descriptor 須保留:\n{app_text}");
+            assert!(app_text.contains("keep me"), "row {i}: 未知頂層鍵須保留:\n{app_text}");
+            let app = crate::config::AppConfig::load(&root.at(".speclink.yaml")).expect("config parses");
+            let remote = app.remote.as_ref().expect("remote section 須保留");
+            assert_eq!(remote.url.as_deref(), Some(REMOTE_URL), "row {i}");
+            assert_eq!(remote.repo.as_deref(), Some("desktop"), "row {i}");
+
+            for tool in [Tool::Claude, Tool::Codex] {
+                let md = instructions_file(tool);
+                let text = root.read(md);
+                let skill = propose_skill(tool);
+                if to.contains(&tool) {
+                    assert_eq!(marker_count(&text), 1, "row {i}: {md} 應恰有一個 marker:\n{text}");
+                    assert!(root.exists(&skill), "row {i}: {skill} 應被補齊");
+                } else {
+                    assert_eq!(marker_count(&text), 0, "row {i}: {md} 的 marker 應被移除:\n{text}");
+                    assert!(!root.exists(&skill), "row {i}: {skill} 應被清理");
+                }
+                assert!(text.contains(user_text(tool)), "row {i}: {md} 的使用者文字須保留:\n{text}");
+            }
+            assert!(!root.exists("openspec"), "row {i}: remote 模式不得建立 openspec/");
+        }
+    }
+
+    /// 既有選集缺少產物時自動補齊，其他使用者檔案不受影響。
+    #[test]
+    fn reconcile_backfills_missing_managed_artifacts() {
+        let root = TempRoot::new("reconcile-backfill");
+        seed_remote_workspace(&root, &[Tool::Codex]);
+        root.write("AGENTS.md", &format!("{CODEX_USER_TEXT}\n"));
+        std::fs::remove_dir_all(root.at(".agents/skills/speclink-propose")).unwrap();
+        root.write("docs/notes.md", "使用者檔案\n");
+
+        reconcile_builtin_tools(&root.dir, &[Tool::Codex]).expect("reconcile succeeds");
+
+        let text = root.read("AGENTS.md");
+        assert_eq!(marker_count(&text), 1, "缺席的 marker 應補齊:\n{text}");
+        assert!(text.contains(CODEX_USER_TEXT), "使用者文字須保留:\n{text}");
+        assert!(root.exists(".agents/skills/speclink-propose/SKILL.md"), "缺席的 Skill 應補齊");
+        assert_eq!(root.read("docs/notes.md"), "使用者檔案\n");
+    }
+
+    /// 空選集在任何寫入之前被拒（build-in 選集是非空契約）。
+    #[test]
+    fn reconcile_rejects_an_empty_selection_without_writing() {
+        let root = TempRoot::new("reconcile-empty");
+        seed_remote_workspace(&root, &[Tool::Codex]);
+        let before = snapshot(&root);
+
+        let err = reconcile_builtin_tools(&root.dir, &[]).expect_err("空選集必須失敗");
+
+        let message = err.to_string();
+        assert!(message.contains("claude") && message.contains("codex"), "{message}");
+        assert_eq!(snapshot(&root), before, "失敗不得留下任何寫入");
+    }
+
+    /// 壞 YAML 以單行錯誤失敗，設定與受管產物逐位元組不變。
+    #[test]
+    fn reconcile_bad_config_fails_loud_with_zero_writes() {
+        let root = TempRoot::new("reconcile-bad-yaml");
+        seed_remote_workspace(&root, &[Tool::Codex]);
+        root.write(".speclink.yaml", "tools: [unclosed\n");
+        let before = snapshot(&root);
+
+        let err = reconcile_builtin_tools(&root.dir, &[Tool::Claude]).expect_err("壞 YAML 必須失敗");
+
+        let message = err.to_string();
+        assert!(message.contains(".speclink.yaml"), "錯誤須指名檔案：{message}");
+        assert_eq!(message.lines().count(), 1, "錯誤須為單行：{message}");
+        assert_eq!(snapshot(&root), before, "失敗不得留下任何寫入");
+    }
+
+    /// Remote 模式沿用 remote 指令措辭，且不建立本機規格樹。
+    #[test]
+    fn reconcile_in_remote_mode_keeps_remote_wording_and_creates_no_spec_tree() {
+        let root = TempRoot::new("reconcile-remote-wording");
+        seed_remote_workspace(&root, &[Tool::Claude]);
+
+        reconcile_builtin_tools(&root.dir, &[Tool::Claude, Tool::Codex]).expect("reconcile succeeds");
+
+        for md in ["CLAUDE.md", "AGENTS.md"] {
+            let text = root.read(md);
+            assert!(text.contains("team system's spec store"), "{md} 須用 remote 措辭:\n{text}");
+            assert!(!text.contains("openspec/specs/"), "{md} 不得出現本機規格路徑:\n{text}");
+        }
+        assert!(!root.exists("openspec"), "remote 模式不得建立 openspec/");
+    }
+
+    /// 同一選集下，既有 Workspace 收斂的受管產物與 filesystem init 的產物相同。
+    #[test]
+    fn reconcile_matches_init_output_for_the_same_selection() {
+        let both = [Tool::Claude, Tool::Codex];
+        let fresh = TempRoot::new("reconcile-parity-init");
+        init(&fresh.dir, &both, false, "openspec").unwrap();
+
+        let converged = TempRoot::new("reconcile-parity-converged");
+        init(&converged.dir, &[Tool::Claude], false, "openspec").unwrap();
+        reconcile_builtin_tools(&converged.dir, &both).expect("reconcile succeeds");
+
+        for tool in both {
+            let md = instructions_file(tool);
+            assert_eq!(converged.read(md), fresh.read(md), "{md} 受管內容須與 init 相同");
+            let skill = propose_skill(tool);
+            assert_eq!(converged.read(&skill), fresh.read(&skill), "{skill} 須與 init 相同");
+        }
+        assert!(converged.exists("openspec/specs"), "既有 filesystem 規格樹須保留");
     }
 }

@@ -115,6 +115,22 @@ fn init_store_remote_writes_the_remote_section() {
         !env.dir.join(".speclink.remote.yaml").exists(),
         "the legacy connection file is never created"
     );
+    // spec Scenario「Remote init 顯式選擇 Claude」的其餘產物：Skills、settings、
+    // .gitignore 與記錄下來的 built-in 選集。
+    let tools: Vec<&str> = yaml
+        .get("tools")
+        .and_then(|t| t.as_sequence())
+        .expect("tools recorded")
+        .iter()
+        .filter_map(|t| t.as_str())
+        .collect();
+    assert_eq!(tools, vec!["claude"], "explicit selection is what gets recorded");
+    assert!(
+        env.dir.join(".claude").join("skills").join("speclink-propose").join("SKILL.md").is_file(),
+        "Claude skills installed"
+    );
+    assert!(env.dir.join(".claude").join("settings.json").is_file(), "Claude settings written");
+    assert!(env.dir.join(".gitignore").is_file(), ".gitignore written");
 }
 
 // --- link ---
@@ -141,6 +157,42 @@ fn link_writes_the_section_and_preserves_existing_fields() {
         !env.dir.join(".speclink.remote.yaml").exists(),
         "link never creates the legacy connection file"
     );
+}
+
+/// spec Scenario「link 保留既有 tools 與其他欄位」：link 不觸發工具詢問，
+/// 也不同步任何受管產物——自訂描述子與未知頂層鍵原值保留。
+#[test]
+fn link_leaves_custom_descriptors_unknown_keys_and_managed_artifacts_alone() {
+    let env = TempEnv::new("link-descriptor").with_app_yaml(concat!(
+        "tools:\n",
+        "  - claude\n",
+        "  - name: wad-harness\n",
+        "    skills_dir: .wad/skills\n",
+        "    instructions_file: WAD.md\n",
+        "future_top_level: keep me\n",
+    ));
+    let out = env.run(&["link", URL, "--repo", "backend"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+
+    let yaml = env.app_yaml();
+    assert_eq!(str_of(remote_of(&yaml), "url"), URL);
+    assert_eq!(
+        yaml.get("future_top_level").and_then(|v| v.as_str()),
+        Some("keep me"),
+        "unknown top-level key survives"
+    );
+    let descriptor = yaml
+        .get("tools")
+        .and_then(|t| t.as_sequence())
+        .expect("tools list preserved")
+        .iter()
+        .find(|t| t.get("name").is_some())
+        .expect("custom descriptor preserved");
+    assert_eq!(str_of(descriptor, "skills_dir"), ".wad/skills");
+    assert_eq!(str_of(descriptor, "instructions_file"), "WAD.md");
+    assert!(!env.dir.join("CLAUDE.md").exists(), "link never generates managed artifacts");
+    assert!(!env.dir.join(".claude").exists(), "link never generates skills");
+    assert!(!env.dir.join("WAD.md").exists(), "link never generates custom artifacts");
 }
 
 #[test]

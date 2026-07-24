@@ -28,7 +28,10 @@ function fakeWorkspace(): WorkspaceAdapter {
   } as unknown as WorkspaceAdapter;
 }
 
-function fakeConnections(entries: ConnectionView[]): ConnectionsAdapter {
+function fakeConnections(
+  entries: ConnectionView[],
+  over: Partial<ConnectionsAdapter> = {},
+): ConnectionsAdapter {
   return {
     list: vi.fn().mockResolvedValue(entries),
     add: vi.fn(),
@@ -37,7 +40,12 @@ function fakeConnections(entries: ConnectionView[]): ConnectionsAdapter {
     patLogin: vi.fn(),
     logout: vi.fn(),
     scopes: vi.fn(),
-    bindCheckout: vi.fn(),
+    // 既有 marker 的預設：帶一個 built-in 選集，走自動 reconciliation 路徑。
+    inspectCheckout: vi
+      .fn()
+      .mockImplementation(async (path: string) => ({ root: path, tools: ["claude"] })),
+    bindCheckout: vi.fn().mockImplementation(async (path: string) => path),
+    ...over,
   } as unknown as ConnectionsAdapter;
 }
 
@@ -246,7 +254,7 @@ describe("remote marker probe 分流", () => {
     loggedIn: true,
   };
 
-  it("僅 remote marker 且 connection 已登入：直達 handshake 並帶 checkoutRoot", async () => {
+  it("僅 remote marker、已登入且有工具選集：先 reconciliation 後 handshake", async () => {
     const workspace = fakeWorkspace();
     vi.mocked(workspace.openProject).mockResolvedValue({
       status: "remoteBinding",
@@ -254,19 +262,95 @@ describe("remote marker probe 分流", () => {
       repo: "backend",
       hasLocalOpenspec: false,
     });
+    const order: string[] = [];
     const session = fakeRemoteSession(fakeRemoteDs());
     session.locator = { ...session.locator, checkoutRoot: "/work/backend" };
-    const openRemote = vi.fn().mockResolvedValue(session);
+    const inspectCheckout = vi.fn().mockImplementation(async (path: string) => {
+      order.push("inspect");
+      return { root: path, tools: ["codex"] };
+    });
+    const bindCheckout = vi.fn().mockImplementation(async (path: string) => {
+      order.push("bind");
+      return path;
+    });
+    const openRemote = vi.fn().mockImplementation(async () => {
+      order.push("handshake");
+      return session;
+    });
     const store = storeWith(openRemote, {
       workspace,
-      connections: fakeConnections([loggedIn]),
+      connections: fakeConnections([loggedIn], { inspectCheckout, bindCheckout }),
     });
 
     await store.getState().openProjectAt("/work/backend");
 
+    // 先補齊既有選集的受管產物，成功後才 handshake。
+    expect(bindCheckout).toHaveBeenCalledWith(
+      "/work/backend",
+      "https://spec.example.test",
+      "demo",
+      "backend",
+      ["codex"],
+    );
+    expect(order).toEqual(["inspect", "bind", "handshake"]);
     expect(openRemote).toHaveBeenCalledWith("c1", "demo/backend", "/work/backend");
     expect(store.getState().activeKey).toBe(KEY);
     expect(store.getState().workspaceChooser).toBeNull();
+  });
+
+  it("僅 remote marker、已登入但缺工具選集：導向 chooser checkout 並預填 scope／path，不 handshake", async () => {
+    const workspace = fakeWorkspace();
+    vi.mocked(workspace.openProject).mockResolvedValue({
+      status: "remoteBinding",
+      url: markerUrl,
+      repo: "backend",
+      hasLocalOpenspec: false,
+    });
+    const inspectCheckout = vi
+      .fn()
+      .mockResolvedValue({ root: "/work/backend", tools: [] });
+    const bindCheckout = vi.fn();
+    const openRemote = vi.fn();
+    const store = storeWith(openRemote, {
+      workspace,
+      connections: fakeConnections([loggedIn], { inspectCheckout, bindCheckout }),
+    });
+
+    await store.getState().openProjectAt("/work/backend");
+
+    expect(openRemote).not.toHaveBeenCalled();
+    expect(bindCheckout).not.toHaveBeenCalled();
+    expect(store.getState().activeKey).toBeNull();
+    expect(store.getState().workspaceChooser).toEqual({
+      initialConnectionId: "c1",
+      initialScope: { projectKey: "demo", repoKey: "backend" },
+      initialCheckoutPath: "/work/backend",
+    });
+  });
+
+  it("僅 remote marker、已登入且有選集：reconciliation 失敗不建 tab／session且不 handshake", async () => {
+    const workspace = fakeWorkspace();
+    vi.mocked(workspace.openProject).mockResolvedValue({
+      status: "remoteBinding",
+      url: markerUrl,
+      repo: "backend",
+      hasLocalOpenspec: false,
+    });
+    const bindCheckout = vi.fn().mockRejectedValue(new Error("同步技能時檔案系統錯誤"));
+    const openRemote = vi.fn();
+    const store = storeWith(openRemote, {
+      workspace,
+      connections: fakeConnections([loggedIn], {
+        inspectCheckout: vi.fn().mockResolvedValue({ root: "/work/backend", tools: ["codex"] }),
+        bindCheckout,
+      }),
+    });
+
+    await store.getState().openProjectAt("/work/backend");
+
+    expect(openRemote).not.toHaveBeenCalled();
+    expect(store.getState().activeKey).toBeNull();
+    expect(store.getState().tabs).toHaveLength(0);
   });
 
   it("無已登入 connection：不 handshake，改開 chooser 並預填 marker origin", async () => {
@@ -334,6 +418,10 @@ describe("remote marker probe 分流", () => {
     const order: string[] = [];
     const session = fakeRemoteSession(fakeRemoteDs());
     session.locator = { ...session.locator, checkoutRoot: "/work/coexists" };
+    const bindCheckout = vi.fn().mockImplementation(async (path: string) => {
+      order.push("reconcile");
+      return path;
+    });
     const openRemote = vi.fn().mockImplementation(async () => {
       order.push("handshake");
       return session;
@@ -351,7 +439,10 @@ describe("remote marker probe 分流", () => {
     const store = createAppStore({
       createSession: localSession,
       workspace,
-      connections: fakeConnections([loggedIn]),
+      connections: fakeConnections([loggedIn], {
+        inspectCheckout: vi.fn().mockResolvedValue({ root: "/work/coexists", tools: ["codex"] }),
+        bindCheckout,
+      }),
       openRemote,
       migration,
     });
@@ -359,7 +450,8 @@ describe("remote marker probe 分流", () => {
 
     await store.getState().useServerFromConflict();
 
-    expect(order).toEqual(["handshake", "backup"]);
+    // 先同步（reconcile）受管產物，再備份本機，最後開啟——建 tab 前工具已收斂。
+    expect(order).toEqual(["reconcile", "handshake", "backup"]);
     expect(migration.migrate).not.toHaveBeenCalled();
     expect(migration.adoptRemote).toHaveBeenCalledWith("/work/coexists");
     expect(store.getState().pendingRemoteConflict).toBeNull();

@@ -95,13 +95,22 @@ pub fn upsert_connection(
     Ok(id)
 }
 
-/// 驗證並綁定本機 checkout。已有 remote marker 時只接受相同 origin/repo；
-/// 無 marker 時要求 `.git` 存在，再由 core 的正典 writer 寫入同構 section。
-/// 回傳原始 checkout 路徑供 remote locator 的 checkoutRoot 使用。
-pub fn bind_checkout(
+/// `inspect_checkout` 的零寫入結果：確認過的 checkout 根路徑，以及要在 picker
+/// 中預選的既有 built-in 工具選集（僅 claude／codex，順序穩定）。IPC 序列化為
+/// camelCase `{ root, tools }`——不攜帶任何 credential 或 Server 資料。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutInspection {
+    pub root: String,
+    pub tools: Vec<String>,
+}
+
+/// 一次驗證資料夾與 marker 一致性，回傳確認過的 checkout 根路徑（display 字串）。
+/// 零寫入：`inspect_checkout` 與 `bind_checkout` 共用此邊界，因此提交時重做的是
+/// 同一組檢查。相符 marker 只接受相同 origin/repo；無 marker 時要求 `.git` 存在。
+fn validate_checkout(
     root: &Path,
     selected_origin: &str,
-    selected_project: &str,
     selected_repo: &str,
 ) -> Result<String, String> {
     if !root.is_dir() {
@@ -111,8 +120,8 @@ pub fn bind_checkout(
         ));
     }
     let selected_origin = normalize_origin(selected_origin)?;
-    let marker_path = root.join(".speclink.yaml");
-    let app = speclink_core::config::AppConfig::load(&marker_path).map_err(|e| e.to_string())?;
+    let app =
+        speclink_core::config::AppConfig::load(&root.join(".speclink.yaml")).map_err(|e| e.to_string())?;
 
     if let Some(remote) = app.remote {
         let marker_url = remote
@@ -130,16 +139,95 @@ pub fn bind_checkout(
                 "此資料夾的 remote marker 指向 {marker_origin} / {marker_repo}，與所選 {selected_origin} / {selected_repo} 不一致"
             ));
         }
-        return Ok(root.display().to_string());
-    }
-
-    if !root.join(".git").exists() {
+    } else if !root.join(".git").exists() {
         return Err("選擇的資料夾不是 Git repository，無法連接 checkout".to_string());
     }
-    let project_url = format!("{selected_origin}/api/speclink/v1/projects/{selected_project}");
-    speclink_core::init::write_remote_section(root, &project_url, Some(selected_repo))
-        .map_err(|e| format!("無法寫入 remote marker：{e}"))?;
     Ok(root.display().to_string())
+}
+
+/// 決定 picker 的預選：`.speclink.yaml` 記錄了 built-in 選集就用它（僅 claude／codex，
+/// 去重、順序穩定）；缺清單時只依實際 Claude／Codex footprint 預選，絕不補 Claude fallback。
+fn preselected_tools(root: &Path) -> Vec<String> {
+    use speclink_core::config::ToolEntry;
+    use speclink_core::skills::Tool;
+    let app = match speclink_core::config::AppConfig::load(&root.join(".speclink.yaml")) {
+        Ok(app) => app,
+        Err(_) => return Vec::new(),
+    };
+    let mut picked: Vec<Tool> = Vec::new();
+    for entry in &app.tools {
+        if let ToolEntry::Builtin(name) = entry {
+            if let Some(t) = Tool::parse(name) {
+                if !picked.contains(&t) {
+                    picked.push(t);
+                }
+            }
+        }
+    }
+    if picked.is_empty() {
+        for tool in speclink_core::init::detect_footprint_tools(root) {
+            if !picked.contains(&tool) {
+                picked.push(tool);
+            }
+        }
+    }
+    picked.iter().map(|t| t.name().to_string()).collect()
+}
+
+/// 先檢查階段（零寫入）：驗證資料夾與 marker，回傳確認過的根路徑與要預選的工具選集。
+pub fn inspect_checkout(
+    root: &Path,
+    selected_origin: &str,
+    selected_project: &str,
+    selected_repo: &str,
+) -> Result<CheckoutInspection, String> {
+    let _ = selected_project;
+    let root_str = validate_checkout(root, selected_origin, selected_repo)?;
+    Ok(CheckoutInspection {
+        root: root_str,
+        tools: preselected_tools(root),
+    })
+}
+
+/// 提交階段：重做 marker 邊界驗證，無 marker 時寫入與 CLI init remote 同構的
+/// remote section，再對非空 built-in 選集執行 Core reconciliation（生成所選、
+/// 清理未選、保留自訂描述子與使用者內容）。全部成功才回傳 checkout 根路徑供
+/// remote locator 的 checkoutRoot 使用；任一步失敗回傳單行 Err、不回傳 root。
+pub fn bind_checkout(
+    root: &Path,
+    selected_origin: &str,
+    selected_project: &str,
+    selected_repo: &str,
+    tools: &[String],
+) -> Result<String, String> {
+    // 空選集／未知工具在任何寫入之前被拒（fail loud）。
+    let selected =
+        speclink_core::init::parse_tool_names(tools).map_err(|e| single_line(&e.to_string()))?;
+    if selected.is_empty() {
+        return Err("請至少選擇一個內建工具：claude、codex 或兩者".to_string());
+    }
+    let root_str = validate_checkout(root, selected_origin, selected_repo)?;
+
+    // 無 marker 時先寫入同構 remote section，讓後續 reconciliation 沿用 remote 措辭。
+    if speclink_core::config::AppConfig::load(&root.join(".speclink.yaml"))
+        .map_err(|e| e.to_string())?
+        .remote
+        .is_none()
+    {
+        let normalized = normalize_origin(selected_origin)?;
+        let project_url = format!("{normalized}/api/speclink/v1/projects/{selected_project}");
+        speclink_core::init::write_remote_section(root, &project_url, Some(selected_repo))
+            .map_err(|e| format!("無法寫入 remote marker：{e}"))?;
+    }
+
+    speclink_core::init::reconcile_builtin_tools(root, &selected)
+        .map_err(|e| single_line(&e.to_string()))?;
+    Ok(root_str)
+}
+
+/// 把多行錯誤壓成單行（IPC 錯誤在 UI 只呈現一行）。
+fn single_line(message: &str) -> String {
+    message.split('\n').next().unwrap_or(message).trim().to_string()
 }
 
 // --- 登入／登出編排（決策 3、5、6） ---
@@ -363,7 +451,13 @@ fn record_identity(
 
 #[cfg(test)]
 mod checkout_tests {
+    //! spec「checkout 綁定驗證與 marker 寫入」、design「Desktop checkout 採先檢查、
+    //! 後同步的兩階段 IPC」與 Implementation Contract 的「Desktop IPC and UI contract」。
     use super::*;
+
+    const ORIGIN: &str = "https://spec.example.test";
+    const PROJECT: &str = "acme";
+    const REPO: &str = "desktop";
 
     fn git_checkout() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("temp checkout");
@@ -371,55 +465,191 @@ mod checkout_tests {
         dir
     }
 
+    fn write(root: &Path, rel: &str, content: &str) {
+        let path = root.join(rel.split('/').collect::<PathBuf>());
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("parent dir");
+        }
+        std::fs::write(path, content).expect("write file");
+    }
+
     fn write_marker(root: &Path, url: &str, repo: &str) {
-        std::fs::write(
-            root.join(".speclink.yaml"),
-            format!("remote:\n  url: {url}\n  repo: {repo}\n"),
-        )
-        .expect("write marker");
+        write(root, ".speclink.yaml", &format!("remote:\n  url: {url}\n  repo: {repo}\n"));
+    }
+
+    /// 帶 built-in 選集、custom descriptor 與未知頂層鍵的相符 marker。
+    fn write_full_marker(root: &Path, builtins: &[&str]) {
+        let listed: String = builtins.iter().map(|t| format!("  - {t}\n")).collect();
+        write(
+            root,
+            ".speclink.yaml",
+            &format!(
+                "tools:\n{listed}  - name: wad-harness\n    skills_dir: .wad/skills\n    instructions_file: WAD.md\nremote:\n  url: {ORIGIN}/api/speclink/v1/projects/{PROJECT}\n  repo: {REPO}\nfuture_top_level: keep me\n"
+            ),
+        );
+    }
+
+    fn exists(root: &Path, rel: &str) -> bool {
+        root.join(rel.split('/').collect::<PathBuf>()).exists()
+    }
+
+    fn read(root: &Path, rel: &str) -> String {
+        std::fs::read_to_string(root.join(rel.split('/').collect::<PathBuf>())).expect("read file")
+    }
+
+    /// 目錄快照，供「零寫入」逐位元組比對。
+    fn snapshot(root: &Path) -> Vec<(String, Vec<u8>)> {
+        fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, Vec<u8>)>) {
+            let mut entries: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().collect();
+            entries.sort_by_key(|e| e.file_name());
+            for entry in entries {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let rel = if prefix.is_empty() { name } else { format!("{prefix}/{name}") };
+                if entry.path().is_dir() {
+                    out.push((format!("{rel}/"), Vec::new()));
+                    walk(&entry.path(), &rel, out);
+                } else {
+                    out.push((rel, std::fs::read(entry.path()).unwrap()));
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(root, "", &mut out);
+        out
+    }
+
+    fn inspect(root: &Path) -> Result<CheckoutInspection, String> {
+        inspect_checkout(root, ORIGIN, PROJECT, REPO)
+    }
+
+    fn bind(root: &Path, tools: &[&str]) -> Result<String, String> {
+        let owned: Vec<String> = tools.iter().map(|t| t.to_string()).collect();
+        bind_checkout(root, ORIGIN, PROJECT, REPO, &owned)
+    }
+
+    // --- inspect_checkout：零寫入的先檢查階段 ---
+
+    #[test]
+    fn inspect_matching_marker_reports_root_and_recorded_tools_without_writing() {
+        let dir = git_checkout();
+        write_full_marker(dir.path(), &["codex"]);
+        let before = snapshot(dir.path());
+
+        let seen = inspect(dir.path()).expect("matching origin and repo");
+
+        assert_eq!(seen.root, dir.path().display().to_string());
+        assert_eq!(seen.tools, vec!["codex".to_string()], "只回報既有 built-in 選集");
+        assert_eq!(snapshot(dir.path()), before, "檢查階段必須零寫入");
     }
 
     #[test]
-    fn matching_marker_binds_the_checkout() {
+    fn inspect_mismatched_marker_origin_reports_where_the_marker_points() {
         let dir = git_checkout();
-        write_marker(dir.path(), "https://spec.example.test/team/", "desktop");
+        write_marker(dir.path(), "https://other.example.test/team", REPO);
+        let before = snapshot(dir.path());
 
-        let bound = bind_checkout(dir.path(), "https://SPEC.example.test", "acme", "desktop")
-            .expect("matching origin and repo");
-
-        assert_eq!(bound, dir.path().display().to_string());
-    }
-
-    #[test]
-    fn mismatched_marker_origin_reports_where_the_marker_points() {
-        let dir = git_checkout();
-        write_marker(dir.path(), "https://other.example.test/team", "desktop");
-
-        let err = bind_checkout(dir.path(), "https://spec.example.test", "acme", "desktop")
-            .expect_err("origin mismatch");
+        let err = inspect(dir.path()).expect_err("origin mismatch");
 
         assert!(err.contains("https://other.example.test"), "{err}");
-        assert!(err.contains("desktop"), "{err}");
+        assert!(err.contains(REPO), "{err}");
+        assert_eq!(snapshot(dir.path()), before, "拒絕時磁碟不變");
     }
 
     #[test]
-    fn mismatched_marker_repo_reports_where_the_marker_points() {
+    fn inspect_mismatched_marker_repo_reports_where_the_marker_points() {
         let dir = git_checkout();
-        write_marker(dir.path(), "https://spec.example.test", "api");
+        write_marker(dir.path(), ORIGIN, "api");
+        let before = snapshot(dir.path());
 
-        let err = bind_checkout(dir.path(), "https://spec.example.test", "acme", "desktop")
-            .expect_err("repo mismatch");
+        let err = inspect(dir.path()).expect_err("repo mismatch");
 
-        assert!(err.contains("https://spec.example.test"), "{err}");
+        assert!(err.contains(ORIGIN), "{err}");
         assert!(err.contains("api"), "{err}");
+        assert_eq!(snapshot(dir.path()), before, "拒絕時磁碟不變");
     }
 
     #[test]
-    fn markerless_git_checkout_is_written_in_cli_compatible_shape() {
+    fn inspect_non_git_directory_without_a_marker_is_rejected() {
+        let dir = tempfile::tempdir().expect("plain directory");
+        let before = snapshot(dir.path());
+
+        let err = inspect(dir.path()).expect_err("not a git checkout");
+
+        assert!(err.contains("Git"), "{err}");
+        assert_eq!(snapshot(dir.path()), before, "拒絕時磁碟不變");
+    }
+
+    #[test]
+    fn inspect_unparseable_config_is_rejected_fail_closed() {
+        let dir = git_checkout();
+        write(dir.path(), ".speclink.yaml", "tools: [unclosed\n");
+        let before = snapshot(dir.path());
+
+        let err = inspect(dir.path()).expect_err("bad yaml");
+
+        assert!(err.contains(".speclink.yaml"), "錯誤須指名檔案：{err}");
+        assert_eq!(snapshot(dir.path()), before, "拒絕時磁碟不變");
+    }
+
+    #[test]
+    fn inspect_without_a_tools_list_preselects_only_actual_footprints() {
+        // marker 缺 tools 清單時只依實際 footprint 預選——不再補 Claude fallback。
+        let bare = git_checkout();
+        write_marker(bare.path(), ORIGIN, REPO);
+        assert!(
+            inspect(bare.path()).expect("bare checkout").tools.is_empty(),
+            "沒有任何 footprint 時不得預選 Claude"
+        );
+
+        let codex = git_checkout();
+        write_marker(codex.path(), ORIGIN, REPO);
+        write(codex.path(), "AGENTS.md", "使用者文字\n");
+        assert_eq!(
+            inspect(codex.path()).expect("codex footprint").tools,
+            vec!["codex".to_string()]
+        );
+    }
+
+    #[test]
+    fn inspect_reports_only_builtins_from_a_mixed_tools_list() {
+        let dir = git_checkout();
+        write_full_marker(dir.path(), &["codex"]);
+
+        let seen = inspect(dir.path()).expect("mixed tools list");
+
+        assert_eq!(seen.tools, vec!["codex".to_string()], "自訂描述子不進入 picker");
+    }
+
+    // --- bind_checkout：提交階段 ---
+
+    #[test]
+    fn bind_rejects_an_empty_tool_selection_without_writing() {
+        let dir = git_checkout();
+        let before = snapshot(dir.path());
+
+        let err = bind(dir.path(), &[]).expect_err("空選集必須被拒");
+
+        assert!(err.contains("claude") && err.contains("codex"), "{err}");
+        assert_eq!(snapshot(dir.path()), before, "拒絕時磁碟不變");
+    }
+
+    #[test]
+    fn bind_rejects_an_unknown_tool_name_without_writing() {
+        let dir = git_checkout();
+        let before = snapshot(dir.path());
+
+        let err = bind(dir.path(), &["claude", "vscode"]).expect_err("未知工具必須被拒");
+
+        assert!(err.contains("vscode"), "須指出違規名稱：{err}");
+        assert_eq!(snapshot(dir.path()), before, "拒絕時磁碟不變");
+    }
+
+    #[test]
+    fn bind_markerless_git_checkout_writes_cli_compatible_marker_and_syncs_tools() {
         let dir = git_checkout();
 
-        bind_checkout(dir.path(), "https://spec.example.test", "acme", "desktop")
-            .expect("new binding");
+        let bound = bind(dir.path(), &["claude", "codex"]).expect("new binding");
+        assert_eq!(bound, dir.path().display().to_string());
 
         let workspace = speclink_core::workspace::Workspace::discover(dir.path())
             .expect("CLI discovery succeeds")
@@ -431,22 +661,213 @@ mod checkout_tests {
             speclink_core::workspace::StoreMode::Remote(remote) => {
                 assert_eq!(
                     remote.url,
-                    "https://spec.example.test/api/speclink/v1/projects/acme"
+                    format!("{ORIGIN}/api/speclink/v1/projects/{PROJECT}")
                 );
-                assert_eq!(remote.repo.as_deref(), Some("desktop"));
+                assert_eq!(remote.repo.as_deref(), Some(REPO));
             }
             speclink_core::workspace::StoreMode::Fs => panic!("written marker must select remote"),
         }
+        for (md, skill) in [
+            ("CLAUDE.md", ".claude/skills/speclink-propose/SKILL.md"),
+            ("AGENTS.md", ".agents/skills/speclink-propose/SKILL.md"),
+        ] {
+            assert!(read(dir.path(), md).contains("<!-- SPECLINK:START"), "{md} marker");
+            assert!(exists(dir.path(), skill), "{skill} 應生成");
+        }
+        assert!(
+            read(dir.path(), "AGENTS.md").contains("team system's spec store"),
+            "Remote checkout 須用 remote 措辭"
+        );
+        assert!(!exists(dir.path(), "openspec"), "Remote checkout 不建本機規格樹");
+        assert_eq!(inspect(dir.path()).expect("re-inspect").tools, vec!["claude", "codex"]);
     }
 
     #[test]
-    fn non_git_directory_is_rejected_without_writing_a_marker() {
-        let dir = tempfile::tempdir().expect("plain directory");
+    fn bind_existing_matching_marker_backfills_missing_artifacts() {
+        let dir = git_checkout();
+        write_full_marker(dir.path(), &["codex"]);
+        write(dir.path(), "AGENTS.md", "只剩使用者文字\n");
 
-        let err = bind_checkout(dir.path(), "https://spec.example.test", "acme", "desktop")
-            .expect_err("not a git checkout");
+        bind(dir.path(), &["codex"]).expect("既有相符 marker 仍須同步");
+
+        let agents = read(dir.path(), "AGENTS.md");
+        assert!(agents.contains("<!-- SPECLINK:START"), "缺席的區塊須補齊:\n{agents}");
+        assert!(agents.contains("只剩使用者文字"), "使用者文字須保留:\n{agents}");
+        assert!(exists(dir.path(), ".agents/skills/speclink-propose/SKILL.md"));
+        let config = read(dir.path(), ".speclink.yaml");
+        assert!(config.contains(&format!("projects/{PROJECT}")), "remote 值不變:\n{config}");
+        assert!(config.contains("keep me"), "未知頂層鍵須保留:\n{config}");
+        assert!(!exists(dir.path(), "openspec"));
+    }
+
+    #[test]
+    fn bind_switches_claude_to_codex_preserving_user_text_and_descriptors() {
+        let dir = git_checkout();
+        write_full_marker(dir.path(), &["claude"]);
+        write(dir.path(), "CLAUDE.md", "使用者寫的段落\n");
+        bind(dir.path(), &["claude"]).expect("先收斂到 claude");
+        assert!(exists(dir.path(), ".claude/skills/speclink-propose/SKILL.md"), "precondition");
+
+        bind(dir.path(), &["codex"]).expect("切換為 codex");
+
+        assert_eq!(inspect(dir.path()).expect("re-inspect").tools, vec!["codex"]);
+        let claude_md = read(dir.path(), "CLAUDE.md");
+        assert!(!claude_md.contains("<!-- SPECLINK:START"), "Claude 區塊須移除:\n{claude_md}");
+        assert!(claude_md.contains("使用者寫的段落"), "使用者文字須保留:\n{claude_md}");
+        assert!(!exists(dir.path(), ".claude/skills/speclink-propose/SKILL.md"));
+        assert!(exists(dir.path(), ".agents/skills/speclink-propose/SKILL.md"));
+        let config = read(dir.path(), ".speclink.yaml");
+        assert!(config.contains("wad-harness"), "custom descriptor 須保留:\n{config}");
+        assert!(!exists(dir.path(), "openspec"));
+    }
+
+    #[test]
+    fn bind_failure_returns_no_root_and_leaves_the_folder_untouched() {
+        let dir = tempfile::tempdir().expect("plain directory");
+        let before = snapshot(dir.path());
+
+        let err = bind(dir.path(), &["claude"]).expect_err("not a git checkout");
 
         assert!(err.contains("Git"), "{err}");
-        assert!(!dir.path().join(".speclink.yaml").exists());
+        assert_eq!(snapshot(dir.path()), before, "失敗不得留下任何寫入");
+    }
+
+    // --- 3.3 AUDIT：sharp-edges 負向鎖定（無 silent success、無危險預設） ---
+
+    /// Lazy Developer：純空白的工具值不是「有效選集」——收斂為空並被拒，零寫入。
+    #[test]
+    fn bind_whitespace_only_tools_collapse_to_empty_and_are_rejected() {
+        let dir = git_checkout();
+        let before = snapshot(dir.path());
+
+        let err = bind(dir.path(), &[" ", ""]).expect_err("純空白視為空選集");
+
+        assert!(err.contains("claude") && err.contains("codex"), "{err}");
+        assert_eq!(snapshot(dir.path()), before, "拒絕時磁碟不變");
+    }
+
+    /// Confused／Scoundrel：重複工具名去重，不寫出重複的 tools 條目或重複 marker。
+    #[test]
+    fn bind_duplicate_tool_names_do_not_duplicate_markers_or_entries() {
+        let dir = git_checkout();
+
+        bind(dir.path(), &["codex", "codex", "codex"]).expect("重複名須被吸收");
+
+        assert_eq!(inspect(dir.path()).expect("re-inspect").tools, vec!["codex"]);
+        let agents = read(dir.path(), "AGENTS.md");
+        assert_eq!(
+            agents.matches("<!-- SPECLINK:START").count(),
+            1,
+            "marker 不得重複:\n{agents}"
+        );
+        let config = read(dir.path(), ".speclink.yaml");
+        assert_eq!(config.matches("- codex").count(), 1, "tools 條目不得重複:\n{config}");
+    }
+
+    /// Scoundrel：marker 不一致時 bind 必須在任何 reconciliation／marker 寫入之前 fail loud，
+    /// 既有的 Speclink 受管產物與自訂描述子逐位元組不動。
+    #[test]
+    fn bind_mismatched_marker_fails_loud_without_reconciling() {
+        let dir = git_checkout();
+        write_marker(dir.path(), "https://other.example.test", REPO);
+        write(dir.path(), "CLAUDE.md", "使用者段落\n");
+        let before = snapshot(dir.path());
+
+        let err = bind(dir.path(), &["claude", "codex"]).expect_err("origin 不符必須被拒");
+
+        assert!(err.contains("https://other.example.test"), "{err}");
+        assert!(!exists(dir.path(), ".claude/skills/speclink-propose/SKILL.md"), "不得生成");
+        assert!(!exists(dir.path(), ".agents"), "不得生成");
+        assert_eq!(snapshot(dir.path()), before, "拒絕時磁碟逐位元組不變");
+    }
+
+    /// 可交換字串語意：marker 相符時 `project` 參數不參與驗證（只在寫新 marker 時使用），
+    /// 因此傳入任意 project 仍成功——鎖住「別把 project 誤當一致性檢查的一部分」。
+    #[test]
+    fn bind_ignores_project_when_an_existing_marker_matches() {
+        let dir = git_checkout();
+        write_full_marker(dir.path(), &["codex"]);
+
+        let owned = vec!["codex".to_string()];
+        let bound = bind_checkout(dir.path(), ORIGIN, "a-totally-different-project", REPO, &owned)
+            .expect("marker 相符時 project 不影響驗證");
+
+        assert_eq!(bound, dir.path().display().to_string());
+        // remote 值仍是 marker 原本的 project，未被傳入的 project 覆寫。
+        let config = read(dir.path(), ".speclink.yaml");
+        assert!(config.contains(&format!("projects/{PROJECT}")), "remote 值不變:\n{config}");
+        assert!(!config.contains("a-totally-different-project"), "不得改寫 remote:\n{config}");
+    }
+
+    /// 最簡呼叫也不得跳過 custom descriptor 保留——單一工具 bind 後描述子仍在。
+    #[test]
+    fn bind_preserves_custom_descriptor_on_the_simplest_call() {
+        let dir = git_checkout();
+        write_full_marker(dir.path(), &["codex"]);
+
+        bind(dir.path(), &["codex"]).expect("最簡 bind");
+
+        let config = read(dir.path(), ".speclink.yaml");
+        assert!(config.contains("wad-harness"), "custom descriptor 須保留:\n{config}");
+        assert!(config.contains(".wad/skills"), "descriptor 欄位須保留:\n{config}");
+    }
+
+    // --- 6.1 跨入口一致性（spec「Remote Workspace bootstrap 跨入口一致性」） ---
+
+    /// Desktop bind 與 CLI Remote init（`speclink_core::init::init_remote`——CLI
+    /// `cmd_init_remote` 呼叫的正是它）對等價的新 Git checkout 選取相同 Codex，
+    /// SHALL 產生同構的 built-in tools、Remote marker、Skills 與 `AGENTS.md` Remote
+    /// Speclink 區塊，且兩者皆不建 `openspec/`。此測試把「一致性」釘在共用 Core 上。
+    #[test]
+    fn desktop_bind_and_cli_remote_init_produce_isomorphic_artifacts() {
+        use speclink_core::skills::Tool;
+
+        // 兩入口收斂到相同的最終 project URL，remote section 才可能同構。
+        let project_url = format!("{ORIGIN}/api/speclink/v1/projects/{PROJECT}");
+
+        let desktop = git_checkout();
+        bind(desktop.path(), &["codex"]).expect("Desktop bind");
+
+        let cli = git_checkout();
+        speclink_core::init::init_remote(cli.path(), &[Tool::Codex], false, &project_url, Some(REPO))
+            .expect("CLI Remote init");
+
+        // AGENTS.md（含 Remote Speclink 區塊）逐位元組同構。
+        assert_eq!(
+            read(desktop.path(), "AGENTS.md"),
+            read(cli.path(), "AGENTS.md"),
+            "AGENTS.md Remote 區塊須同構"
+        );
+        assert!(
+            read(desktop.path(), "AGENTS.md").contains("team system's spec store"),
+            "須為 Remote 措辭"
+        );
+        // Skills 正典逐位元組同構。
+        for skill in ["speclink-apply", "speclink-archive", "speclink-propose"] {
+            let rel = format!(".agents/skills/{skill}/SKILL.md");
+            assert_eq!(read(desktop.path(), &rel), read(cli.path(), &rel), "{rel} 須同構");
+        }
+        // built-in tools 選集同構。
+        assert_eq!(inspect(desktop.path()).unwrap().tools, vec!["codex"]);
+        assert_eq!(
+            preselected_tools(cli.path()),
+            vec!["codex".to_string()],
+            "CLI init 的 tools 同構"
+        );
+        // 兩者都不建本機規格樹。
+        assert!(!exists(desktop.path(), "openspec"));
+        assert!(!exists(cli.path(), "openspec"));
+    }
+
+    /// 重試冪等：相同選集再次 bind SHALL 收斂到逐位元組相同的受管產物，不重複 marker。
+    #[test]
+    fn bind_retry_with_the_same_selection_is_byte_identical() {
+        let dir = git_checkout();
+        bind(dir.path(), &["codex"]).expect("first bind");
+        let after_first = snapshot(dir.path());
+
+        bind(dir.path(), &["codex"]).expect("retry bind");
+
+        assert_eq!(snapshot(dir.path()), after_first, "相同選集重試須冪等");
     }
 }

@@ -71,6 +71,7 @@ function fakeAdapter(over: Partial<ConnectionsAdapter> = {}) {
       return { revokedOnServer: true, patNotice: false };
     },
     scopes: async () => ({ projects: [] }),
+    inspectCheckout: async (path) => ({ root: path, tools: [] }),
     bindCheckout: async (path) => path,
     ...over,
   };

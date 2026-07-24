@@ -46,9 +46,20 @@ function fakeConnections(over: Partial<ConnectionsAdapter> = {}): ConnectionsAda
     patLogin: vi.fn().mockResolvedValue({ status: "loggedIn", display: "Momo" }),
     logout: vi.fn().mockResolvedValue({ revokedOnServer: true, patNotice: false }),
     scopes: vi.fn().mockResolvedValue(SCOPES),
+    inspectCheckout: vi
+      .fn()
+      .mockImplementation(async (path: string) => ({ root: path, tools: ["claude"] })),
     bindCheckout: vi.fn().mockImplementation(async (path: string) => path),
     ...over,
   };
+}
+
+/** 走到 checkout 步驟並選好本機資料夾（inspect 完成後顯示工具 checkbox）。 */
+async function reachCheckoutFolder() {
+  fireEvent.click(screen.getByRole("button", { name: /選擇本機資料夾/ }));
+  await waitFor(() =>
+    expect(screen.getByRole("checkbox", { name: /claude/i })).toBeTruthy(),
+  );
 }
 
 function fakeWorkspace(over: Partial<WorkspaceAdapter> = {}): WorkspaceAdapter {
@@ -71,6 +82,9 @@ function renderChooser({
   onOpenLocal = vi.fn().mockResolvedValue(undefined),
   onRequestMigration = vi.fn().mockResolvedValue(undefined),
   onAddServer = vi.fn().mockResolvedValue(undefined),
+  initialConnectionId,
+  initialScope,
+  initialCheckoutPath,
 }: {
   adapter?: ConnectionsAdapter;
   workspace?: WorkspaceAdapter;
@@ -79,6 +93,9 @@ function renderChooser({
   onOpenLocal?: ReturnType<typeof vi.fn>;
   onRequestMigration?: ReturnType<typeof vi.fn>;
   onAddServer?: ReturnType<typeof vi.fn>;
+  initialConnectionId?: string;
+  initialScope?: { projectKey: string; repoKey: string };
+  initialCheckoutPath?: string;
 } = {}) {
   const onOpenChange = vi.fn();
   render(
@@ -93,6 +110,9 @@ function renderChooser({
       onAddServer={onAddServer}
       onRefreshConnections={vi.fn().mockResolvedValue(undefined)}
       onOpenRemote={onOpenRemote}
+      initialConnectionId={initialConnectionId}
+      initialScope={initialScope}
+      initialCheckoutPath={initialCheckoutPath}
     />,
     { wrapper: zhWrapper },
   );
@@ -132,13 +152,15 @@ describe("WorkspaceChooser", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("選擇 checkout 會走 marker 驗證，拒絕訊息指出 marker 指向且不開分頁", async () => {
-    const bind = vi.fn().mockRejectedValue(
+  // spec/design「Desktop IPC and UI contract」：先 inspect（零寫入的先檢查）
+  it("選擇 checkout 會先走 inspect marker 驗證，拒絕訊息指出 marker 指向且不顯示工具選集", async () => {
+    const inspect = vi.fn().mockRejectedValue(
       new Error(
         "此資料夾的 remote marker 指向 https://other.example.test / api，與所選不一致",
       ),
     );
-    const adapter = fakeConnections({ bindCheckout: bind });
+    const bind = vi.fn();
+    const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
     const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
     const open = vi.fn().mockResolvedValue(undefined);
     renderChooser({ adapter, workspace, onOpenRemote: open });
@@ -151,13 +173,168 @@ describe("WorkspaceChooser", () => {
         "https://other.example.test / api",
       ),
     );
-    expect(bind).toHaveBeenCalledWith(
+    expect(inspect).toHaveBeenCalledWith(
       "/work/desktop",
       "https://spec.example.test",
       "speclink",
       "desktop",
     );
+    expect(bind).not.toHaveBeenCalled();
+    expect(screen.queryByRole("checkbox", { name: /claude/i })).toBeNull();
     expect(open).not.toHaveBeenCalled();
+  });
+
+  // spec/design「Desktop IPC and UI contract」：inspect 後顯示既有選集，
+  // submit 依序 bind（帶選集）後才 openRemote（帶 checkoutRoot）。
+  it("folder mode：inspect 預選既有工具，開啟時先 bind 後 openRemote", async () => {
+    const inspect = vi
+      .fn()
+      .mockResolvedValue({ root: "/work/desktop", tools: ["codex"] });
+    const bind = vi.fn().mockResolvedValue("/work/desktop");
+    const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
+    const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
+    const open = vi.fn().mockResolvedValue(undefined);
+    const { onOpenChange } = renderChooser({ adapter, workspace, onOpenRemote: open });
+
+    await chooseDesktopRepo();
+    await reachCheckoutFolder();
+
+    // inspect 回傳 codex → codex 勾選、claude 未勾。
+    expect(
+      (screen.getByRole("checkbox", { name: /codex/i }) as HTMLInputElement).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
+    expect(
+      (screen.getByRole("checkbox", { name: /claude/i }) as HTMLInputElement).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "開啟 Workspace" }));
+
+    await waitFor(() =>
+      expect(bind).toHaveBeenCalledWith(
+        "/work/desktop",
+        "https://spec.example.test",
+        "speclink",
+        "desktop",
+        ["codex"],
+      ),
+    );
+    await waitFor(() =>
+      expect(open).toHaveBeenCalledWith("conn_1", "speclink/desktop", "/work/desktop"),
+    );
+    // 同步成功才開啟：bind 先於 openRemote。
+    expect(bind.mock.invocationCallOrder[0]).toBeLessThan(open.mock.invocationCallOrder[0]);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("folder mode：空工具選集時「開啟 Workspace」停用且不 bind", async () => {
+    const inspect = vi.fn().mockResolvedValue({ root: "/work/desktop", tools: [] });
+    const bind = vi.fn();
+    const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
+    const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
+    renderChooser({ adapter, workspace });
+
+    await chooseDesktopRepo();
+    await reachCheckoutFolder();
+
+    expect(
+      (screen.getByRole("button", { name: "開啟 Workspace" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    // 勾一個工具後啟用。
+    fireEvent.click(screen.getByRole("checkbox", { name: /claude/i }));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "開啟 Workspace" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    expect(bind).not.toHaveBeenCalled();
+  });
+
+  it("folder mode：bind 失敗保留 path 與工具選集且不 openRemote", async () => {
+    const inspect = vi
+      .fn()
+      .mockResolvedValue({ root: "/work/desktop", tools: ["claude", "codex"] });
+    const bind = vi.fn().mockRejectedValue(new Error("同步技能時發生檔案系統錯誤"));
+    const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
+    const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
+    const open = vi.fn().mockResolvedValue(undefined);
+    const { onOpenChange } = renderChooser({ adapter, workspace, onOpenRemote: open });
+
+    await chooseDesktopRepo();
+    await reachCheckoutFolder();
+    fireEvent.click(screen.getByRole("button", { name: "開啟 Workspace" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("同步技能時發生檔案系統錯誤"),
+    );
+    expect(open).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    // 選集與 path 留存：checkbox 仍在、仍勾選，可重試。
+    expect(
+      (screen.getByRole("checkbox", { name: /claude/i }) as HTMLInputElement).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
+  });
+
+  // spec「缺少工具選集時導向 checkout 選擇」：intent 直達 checkout 步驟並預填 scope／path
+  it("缺選集 intent：直達 checkout 步驟、依 scope inspect 預填 path 並要求明示選擇", async () => {
+    const inspect = vi.fn().mockResolvedValue({ root: "/work/desktop", tools: [] });
+    const adapter = fakeConnections({ inspectCheckout: inspect });
+    const open = vi.fn().mockResolvedValue(undefined);
+    renderChooser({
+      adapter,
+      onOpenRemote: open,
+      initialConnectionId: "conn_1",
+      initialScope: { projectKey: "speclink", repoKey: "desktop" },
+      initialCheckoutPath: "/work/desktop",
+    });
+
+    // 直達 checkout 步驟並以預填 path inspect（不必再走 source→server→scopes）。
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: /claude/i })).toBeTruthy(),
+    );
+    expect(inspect).toHaveBeenCalledWith(
+      "/work/desktop",
+      "https://spec.example.test",
+      "speclink",
+      "desktop",
+    );
+    // 缺選集 → Open 停用，需使用者明示勾選。
+    expect(
+      (screen.getByRole("button", { name: "開啟 Workspace" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("folder mode：bind 進行中不得重複送出", async () => {
+    let release: (value: string) => void = () => {};
+    const inspect = vi
+      .fn()
+      .mockResolvedValue({ root: "/work/desktop", tools: ["claude"] });
+    const bind = vi.fn().mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
+    const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
+    renderChooser({ adapter, workspace });
+
+    await chooseDesktopRepo();
+    await reachCheckoutFolder();
+    const openButton = screen.getByRole("button", { name: "開啟 Workspace" });
+    fireEvent.click(openButton);
+    await waitFor(() => expect((openButton as HTMLButtonElement).disabled).toBe(true));
+    fireEvent.click(openButton);
+    fireEvent.click(openButton);
+
+    expect(bind).toHaveBeenCalledTimes(1);
+    release("/work/desktop");
   });
 
   it("scopes 沒有 membership 時顯示繁中空清單說明", async () => {

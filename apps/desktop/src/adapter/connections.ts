@@ -44,6 +44,13 @@ export interface ScopesView {
   projects: ProjectScopeView[];
 }
 
+/** inspect_checkout 的零寫入結果：確認過的 checkout 根路徑與要預選的既有 built-in
+ * 工具選集（僅 claude／codex）。不含任何 credential 或 Server 資料。 */
+export interface CheckoutInspection {
+  root: string;
+  tools: string[];
+}
+
 export interface ConnectionsAdapter {
   list(): Promise<ConnectionView[]>;
   add(baseUrl: string, name: string): Promise<ConnectionView>;
@@ -55,8 +62,21 @@ export interface ConnectionsAdapter {
   logout(origin: string): Promise<LogoutResult>;
   /** 登入者 membership 過濾後的 Project／Repo 清單。 */
   scopes(connectionId: string): Promise<ScopesView>;
-  /** 驗證 checkout marker 一致性，或為無 marker 的 git repo 寫入 marker。 */
-  bindCheckout(path: string, origin: string, project: string, repo: string): Promise<string>;
+  /** 先檢查階段（零寫入）：驗證 checkout marker 一致性並回報要預選的既有工具選集。 */
+  inspectCheckout(
+    path: string,
+    origin: string,
+    project: string,
+    repo: string,
+  ): Promise<CheckoutInspection>;
+  /** 提交階段：重做驗證、無 marker 時寫入 marker，再同步所選 built-in 工具的受管產物。 */
+  bindCheckout(
+    path: string,
+    origin: string,
+    project: string,
+    repo: string,
+    tools: string[],
+  ): Promise<string>;
 }
 
 export function createConnectionsAdapter(
@@ -70,7 +90,9 @@ export function createConnectionsAdapter(
     patLogin: (origin, pat) => invoke("pat_login", { origin, pat }),
     logout: (origin) => invoke("connection_logout", { origin }),
     scopes: (connectionId) => invoke("remote_scopes", { connectionId }),
-    bindCheckout: (path, origin, project, repo) =>
-      invoke("bind_checkout", { path, origin, project, repo }),
+    inspectCheckout: (path, origin, project, repo) =>
+      invoke("inspect_checkout", { path, origin, project, repo }),
+    bindCheckout: (path, origin, project, repo, tools) =>
+      invoke("bind_checkout", { path, origin, project, repo, tools }),
   };
 }

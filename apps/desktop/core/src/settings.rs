@@ -339,55 +339,17 @@ fn verify_workflow_text(
     }
 }
 
-/// 寫入 `.speclink.yaml` 的內建工具選集（同一套雙重驗證），成功後呼叫
-/// `speclink_core::init::update` 全同步技能（新選工具生成、取消工具清理殘留），
-/// 同步失敗浮出錯誤而非靜默。未知工具名在任何寫入之前被拒。
+/// 寫入 `.speclink.yaml` 的內建工具選集並同步受管產物。編排全在
+/// `speclink_core::init::reconcile_builtin_tools`——設定頁、CLI init 與 checkout 綁定
+/// 共用同一入口，因此三者對相同選集產生相同結果。未知工具名、空選集與無法解析的
+/// 原檔都在任何寫入之前被拒。
 pub fn write_tools_at(root: &Path, tools: &[String]) -> Result<(), String> {
     let ws = discover(root)?;
-    let mut selected: Vec<Tool> = Vec::new();
-    for name in tools {
-        let t = Tool::parse(name)
-            .ok_or_else(|| format!("unknown tool '{name}' (supported: claude, codex)"))?;
-        if !selected.contains(&t) {
-            selected.push(t);
-        }
-    }
-    let file = ".speclink.yaml";
-    let path = ws.app_config();
-    let original = read_opt(&path).unwrap_or_default();
-    let new_text = speclink_core::config::update_app_config_tools_text(&original, &selected)
+    let selected =
+        speclink_core::init::parse_tool_names(tools).map_err(|e| single_line(&e.to_string()))?;
+    speclink_core::init::reconcile_builtin_tools(&ws.root, &selected)
         .map_err(|e| single_line(&e.to_string()))?;
-    verify_app_text(&new_text, &selected, file, "pre-write verification")?;
-    std::fs::write(&path, &new_text).map_err(|e| format!("{file}: write failed: {e}"))?;
-    let reread = read_opt(&path)
-        .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
-    verify_app_text(&reread, &selected, file, "verify after write")?;
-    speclink_core::init::update(&ws.root).map_err(|e| single_line(&e.to_string()))?;
     Ok(())
-}
-
-/// 驗證一份 .speclink.yaml 文字可解析且內建工具選集與請求一致（順序無關）。
-fn verify_app_text(text: &str, selected: &[Tool], file: &str, stage: &str) -> Result<(), String> {
-    let cfg: AppConfig = serde_yaml::from_str(text)
-        .map_err(|e| format!("{file}: {stage} failed: {}", single_line(&e.to_string())))?;
-    let mut got: Vec<Tool> = Vec::new();
-    for entry in &cfg.tools {
-        if let ToolEntry::Builtin(name) = entry {
-            if let Some(t) = Tool::parse(name) {
-                if !got.contains(&t) {
-                    got.push(t);
-                }
-            }
-        }
-    }
-    let mut want = selected.to_vec();
-    want.sort_by_key(Tool::name);
-    got.sort_by_key(Tool::name);
-    if want == got {
-        Ok(())
-    } else {
-        Err(format!("{file}: {stage} failed: rewritten tool selection does not match the request"))
-    }
 }
 
 fn discover(root: &Path) -> Result<Workspace, String> {

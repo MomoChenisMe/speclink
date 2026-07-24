@@ -81,9 +81,12 @@ const DEFAULT_MIGRATION_ADAPTER = createMigrationAdapter();
 
 const DISABLED_CHOOSER_CONNECTIONS: Pick<
   ConnectionsAdapter,
-  "scopes" | "bindCheckout"
+  "scopes" | "inspectCheckout" | "bindCheckout"
 > = {
   scopes: async () => ({ projects: [] }),
+  inspectCheckout: async () => {
+    throw new Error("此環境未提供 server 連線功能");
+  },
   bindCheckout: async () => {
     throw new Error("此環境未提供 server 連線功能");
   },
@@ -699,6 +702,8 @@ function AppInner({
           onOpenRemote={s.openRemoteWorkspace}
           initialConnectionId={s.workspaceChooser?.initialConnectionId}
           initialServerUrl={s.workspaceChooser?.initialServerUrl}
+          initialScope={s.workspaceChooser?.initialScope}
+          initialCheckoutPath={s.workspaceChooser?.initialCheckoutPath}
         />
       )}
 

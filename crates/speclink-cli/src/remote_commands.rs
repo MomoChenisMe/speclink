@@ -374,23 +374,25 @@ fn remote_instructions(ctx: &RemoteCtx, a: &InstructionsArgs) -> Result<()> {
 
 // --- init / link / unlink / auth ---
 
-fn cmd_init_remote(a: &InitArgs, root: &std::path::Path, display_base: &str) -> Result<()> {
+/// `tools` arrives already resolved and validated by `cmd_init` — filesystem and remote
+/// init share that one entry, so a remote checkout is bootstrapped from the same selection
+/// rules (and the same non-empty guarantee) as a local one.
+fn cmd_init_remote(
+    a: &InitArgs,
+    root: &std::path::Path,
+    display_base: &str,
+    tools: &[core::skills::Tool],
+) -> Result<()> {
     let Some(url) = a.url.as_deref() else {
         bail!("--store remote requires --url <project-scoped url>");
     };
     if a.dir.is_some() {
         bail!("--dir has no meaning with --store remote (documents live on the server)");
     }
-    let tools = match a.tools.as_deref() {
-        Some(spec) => core::init::parse_tools(spec)?,
-        None => core::init::detect_tools(root),
-    };
-    core::init::init_remote(root, &tools, a.force, url, a.repo.as_deref())?;
+    core::init::init_remote(root, tools, a.force, url, a.repo.as_deref())?;
     println!("{} Initialized at {display_base} (remote store)", color::green("✓"));
-    if !tools.is_empty() {
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        println!("Generated files for: {}", names.join(", "));
-    }
+    let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+    println!("Generated files for: {}", names.join(", "));
     // Validate the declared repo now when credentials exist; defer otherwise
     // (offline init must not block — the first verb still validates).
     validate_or_defer(root, url, a.repo.as_deref())

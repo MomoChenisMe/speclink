@@ -1537,6 +1537,37 @@ mod tests {
         }
     }
 
+    /// Spec example「built-in 選集轉換」第三列（codex → claude,codex）：兩者都在且不重複，
+    /// 同時鎖住 Implementation Contract 的「其他鍵保持可解析且值不變」——包含未知頂層鍵。
+    #[test]
+    fn tools_update_adds_missing_builtin_and_keeps_unknown_top_level_keys() {
+        let doc = concat!(
+            "tools:\n",
+            "  - codex\n",
+            "  - name: wad-harness\n",
+            "    skills_dir: .wad/skills\n",
+            "    instructions_file: WAD.md\n",
+            "future_top_level: keep me\n",
+        );
+        let out = update_app_config_tools_text(doc, &[Tool::Claude, Tool::Codex]).expect("rewrite ok");
+        let a = app(&out);
+        let builtins: Vec<&str> = a
+            .tools
+            .iter()
+            .filter_map(|e| match e {
+                ToolEntry::Builtin(s) => Some(s.as_str()),
+                ToolEntry::Descriptor(_) => None,
+            })
+            .collect();
+        assert_eq!(builtins, ["codex", "claude"], "既有項保序、新項 append，且不重複");
+        assert!(a.tools.iter().any(|e| matches!(e, ToolEntry::Descriptor(_))));
+        let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+        assert_eq!(
+            m.get("future_top_level").and_then(|v| v.as_str()),
+            Some("keep me")
+        );
+    }
+
     #[test]
     fn tools_update_empty_selection_keeps_descriptors_only() {
         let doc = "tools:\n  - claude\n  - name: wad-harness\n    skills_dir: .wad/skills\n    instructions_file: WAD.md\n";
