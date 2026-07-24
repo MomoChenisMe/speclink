@@ -196,18 +196,18 @@ fn agent() -> ureq::Agent {
 fn complete_setup(base: &str, token: &str) {
     let http = agent();
     let admin = http
-        .post(&format!("{base}/setup?token={token}"))
-        .send_form(&[("email", ADMIN_EMAIL), ("display", ADMIN_DISPLAY), ("password", ADMIN_PASSWORD)])
+        .post(&format!("{base}/api/speclink/v1/web/setup/admin?token={token}"))
+        .send_json(serde_json::json!({ "email": ADMIN_EMAIL, "display": ADMIN_DISPLAY, "password": ADMIN_PASSWORD }))
         .expect("setup: create the first admin");
     assert_eq!(admin.status(), 200, "the setup admin section succeeds");
     let project = http
-        .post(&format!("{base}/setup?token={token}"))
-        .send_form(&[
-            ("project_key", "demo"),
-            ("project_name", "Demo"),
-            ("repo_key", "backend"),
-            ("repo_name", "Backend"),
-        ])
+        .post(&format!("{base}/api/speclink/v1/web/setup/registry?token={token}"))
+        .send_json(serde_json::json!({
+            "projectKey": "demo",
+            "projectName": "Demo",
+            "repoKey": "backend",
+            "repoName": "Backend",
+        }))
         .expect("setup: register the first project/repo");
     assert_eq!(project.status(), 200, "the setup project/repo section succeeds");
 }
@@ -233,36 +233,32 @@ fn invite(config: &Path) -> String {
 fn create_pat_via_web(base: &str, token: &str) -> String {
     let http = agent();
     let accept = http
-        .post(&format!("{base}/invite/{token}"))
-        .send_form(&[("password", PASSWORD)])
+        .post(&format!("{base}/api/speclink/v1/web/invite/{token}"))
+        .send_json(serde_json::json!({ "password": PASSWORD }))
         .expect("accept invitation");
-    assert!((300..400).contains(&accept.status()), "accepting the invitation succeeds");
+    assert_eq!(accept.status(), 200, "accepting the invitation succeeds");
     let login = http
-        .post(&format!("{base}/login"))
-        .send_form(&[("email", EMAIL), ("password", PASSWORD)])
+        .post(&format!("{base}/api/speclink/v1/web/login"))
+        .send_json(serde_json::json!({ "email": EMAIL, "password": PASSWORD }))
         .expect("login");
-    assert!((300..400).contains(&login.status()), "login succeeds");
+    assert_eq!(login.status(), 200, "login succeeds");
     let session = login
         .header("set-cookie")
         .and_then(|c| c.split(';').next())
         .and_then(|c| c.trim().strip_prefix("speclink_session="))
         .expect("a session cookie")
         .to_string();
-    let created = http
-        .post(&format!("{base}/account/tokens"))
+    let created: serde_json::Value = http
+        .post(&format!("{base}/api/speclink/v1/web/account/tokens"))
         .set("Cookie", &format!("speclink_session={session}"))
-        .send_form(&[("name", "cli"), ("expires", "")])
-        .expect("create PAT");
-    let body = created.into_string().unwrap_or_default();
-    body.match_indices("spk_pat_")
-        .map(|(i, _)| {
-            body[i..]
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect::<String>()
-        })
-        .find(|t| t.len() == 72)
-        .unwrap_or_else(|| panic!("PAT plaintext in response: {body}"))
+        .send_json(serde_json::json!({ "name": "cli" }))
+        .expect("create PAT")
+        .into_json()
+        .expect("create PAT json");
+    created["data"]["plaintext"]
+        .as_str()
+        .unwrap_or_else(|| panic!("PAT plaintext in response: {created}"))
+        .to_string()
 }
 
 // --- the CLI, run from a real git checkout ---

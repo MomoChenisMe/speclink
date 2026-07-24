@@ -24,17 +24,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # smoke: 該 target 是否能在自身 runner 上原生執行（決定是否跑 server SPA
+        # smoke）。交叉編譯的 macOS Intel 在 arm64 runner 上不可原生執行，故跳過。
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            smoke: true
           - os: ubuntu-22.04            # older glibc baseline for wide compatibility
             target: x86_64-unknown-linux-gnu
+            smoke: true
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
+            smoke: true
           - os: macos-latest            # Apple Silicon
             target: aarch64-apple-darwin
+            smoke: true
           - os: macos-latest            # Intel (cross-compiled; clang handles the bundled SQLite C)
             target: x86_64-apple-darwin
+            smoke: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -47,11 +54,63 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
+      # server binary 於編譯期內嵌 apps/server-web 的 production dist（設計 D5），
+      # 故 dist 必須在 cargo build 之前產出。建置順序固定為 npm ci（lockfile）→
+      # Web test → Web production build → 編譯 server；每個 release binary 因此都
+      # 通過同一次 source revision 的 Web 驗證並攜帶對齊版本的內嵌資產。缺 index／
+      # manifest 時 Rust 內嵌會 fail closed，不會產生只有 API 沒有 UI 的 artifact。
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Install npm dependencies (root workspaces)
+        run: npm ci
+
+      - name: Test (Server Web)
+        run: npm test -w apps/server-web
+
+      - name: Build server-web frontend (vite → dist)
+        run: npm run build -w apps/server-web
+
       # 只建置要發布的兩支 binary。全 workspace 建置會把 tauri crate 一起拖進來，
       # 而它需要 GTK/WebKit 系統庫與先行的 vite build（見 ci.yml），release runner
       # 都沒有——桌面 app 不是 release 產物，不必為它付這個代價。
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }} -p speclink-cli -p speclink-server
+
+      # server-release smoke：把 release binary 放進「沒有相鄰 dist」的乾淨工作目錄
+      # 啟動，證明 SPA 只能來自 binary 內嵌——GET /login 載入內嵌 index（HTML），
+      # 未知 /api 路徑回真正的 JSON 404、不被 SPA fallback 吞成 200 HTML。交叉編譯
+      # target（在異架 runner 上不可原生執行）跳過此步。
+      - name: Server SPA smoke（無相鄰 dist 載入內嵌 index）
+        if: matrix.smoke
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/speclink-server"
+          [ -f "$BIN.exe" ] && BIN="$BIN.exe"
+          # 刻意獨立、無任何 dist 的工作目錄：資產只能出自 binary 內嵌。
+          rm -rf smoke-runtime && mkdir -p smoke-runtime
+          printf 'store:\n  driver: sqlite\n  path: smoke-runtime/store.db\nidentity:\n  driver: sqlite\n  path: smoke-runtime/identity.db\n' > smoke-runtime/config.yaml
+          "./$BIN" --config smoke-runtime/config.yaml --addr 127.0.0.1:8188 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ok=""
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8188/login; then ok=1; break; fi
+            sleep 1
+          done
+          [ -n "$ok" ] || { echo "::error::server 未在 30 秒內於無 dist 環境回應 /login"; exit 1; }
+          # /login 回內嵌 SPA index：必須是 HTML，而非 404 或空。
+          login_ctype="$(curl -s -o /dev/null -w '%{content_type}' http://127.0.0.1:8188/login)"
+          echo "$login_ctype" | grep -qi 'text/html' \
+            || { echo "::error::/login 未回 HTML（內嵌 index 未載入）：$login_ctype"; exit 1; }
+          # 未知 browser API 應為 JSON 404，禁止被 catch-all fallback 變成 200 HTML。
+          miss_code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8188/api/speclink/v1/web/missing)"
+          miss_ctype="$(curl -s -o /dev/null -w '%{content_type}' http://127.0.0.1:8188/api/speclink/v1/web/missing)"
+          [ "$miss_code" = "404" ] \
+            || { echo "::error::未知 /api 未回 404（實際 $miss_code）"; exit 1; }
+          echo "$miss_ctype" | grep -qi 'application/json' \
+            || { echo "::error::/api 404 非 JSON（$miss_ctype）"; exit 1; }
 
       - name: Package
         shell: bash

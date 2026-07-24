@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1
-# 多階段建置：Rust 編譯層 → 最小執行層。build context 是 repo 根：
+# 多階段建置：Node 產 SPA 資產 → Rust 內嵌編譯 → 最小執行層。build context 是 repo 根：
 #   docker build -f crates/speclink-server/Dockerfile .
+#
+# 交付定位：單一 speclink-server binary 同源提供 API 與 SPA（設計 D5／D7）。SPA 資產
+# 於 Rust 編譯期內嵌進 binary，runtime 不需要 Node、外部 dist volume、CDN 或第二個
+# 靜態檔服務；最終 image 只有 server binary 與 non-root 使用者。
 #
 # 基底定案：alpine（musl），非 distroless（glibc）。理由（rusqlite bundled 實測）：
 # - rusqlite bundled 的 SQLite C 原始碼在 rust:alpine 加 musl-dev 後編譯通過；
@@ -10,13 +14,27 @@
 #   distroless 無 shell 無工具，得另外編一支探針 binary，複雜度不值。
 # - alpine 保留 shell，容器內執行 backup/restore 等子命令與除錯都更直接。
 
+# --- Stage 1：Node — 以 lockfile 安裝並產出 apps/server-web 的 production dist。 ---
+FROM node:20-alpine AS web
+WORKDIR /src
+COPY . .
+# npm ci 依 package-lock.json 做乾淨安裝（.dockerignore 已排除 host node_modules），
+# 再對 server-web 做 Vite production build。dist 於此階段內生成，不依賴 host build——
+# 內嵌來源永遠對齊 image 這次的 source revision。
+RUN npm ci && npm run build -w apps/server-web
+
+# --- Stage 2：Rust — 編譯 speclink-server，內嵌上一階段產出的 dist。 ---
 FROM rust:1-alpine AS build
 # musl-dev＋gcc：rusqlite bundled 經 cc crate 編譯 SQLite C 原始碼所需。
 RUN apk add --no-cache musl-dev gcc
 WORKDIR /src
 COPY . .
+# 帶入 Node stage 現建的 SPA 資產供 compile-time asset embedding；缺 index 或
+# manifest 時 Rust 內嵌會 fail closed（見 crates/speclink-server），不產出半成品。
+COPY --from=web /src/apps/server-web/dist ./apps/server-web/dist
 RUN cargo build --release --locked -p speclink-server
 
+# --- Stage 3：runtime — 只有 server binary 與 non-root 使用者，無 Node runtime。 ---
 FROM alpine:3.21 AS runtime
 # ca-certificates：binary 目前無出站 TLS，但 CA bundle 極小，先備妥（設計決策 1）。
 # 固定 uid/gid 10001：bind mount 情境下權限可預期。

@@ -90,7 +90,7 @@ PAT（Personal Access Token，個人存取權杖）是 CLI 與 Desktop fallback 
 
 登入後，在 Personal Access Tokens 表單填名稱（例如 `local-cli`），到期日可留空，再按「建立 PAT」。PAT 明文只顯示一次，請立即複製到安全位置。
 
-`/account/tokens` 不是可瀏覽頁面：帳號頁的表單會 **POST `/account/tokens`**。若直接在網址列以 GET 開啟 `http://localhost:8080/account/tokens`，Server 會回 **HTTP 405 Method Not Allowed**；此時請回 `/account`。
+`/account` 是單頁應用（SPA）頁面：在其 Personal Access Tokens 表單建立 PAT，SPA 會提交至 browser API **POST `/api/speclink/v1/web/account/tokens`**，明文只顯示一次。`/account/tokens` 本身不是可瀏覽頁面——若直接以 GET 開啟會得到 JSON 404。
 
 不要把 PAT 放進：
 
@@ -209,7 +209,7 @@ npm run dev
 
 | 症狀 | 原因 | 處理方式 |
 | --- | --- | --- |
-| 開啟 `/account/tokens` 得到 HTTP 405 | 該路由只接受表單 POST，不是 GET 頁面 | 開啟 `/account`，由 Personal Access Tokens 表單建立 PAT |
+| 直接開啟 `/account/tokens` 得到 404 | 它是 browser-API 端點，不是頁面 | 開啟 `/account`，由 Personal Access Tokens 表單建立 PAT |
 | Desktop 顯示沒有任何 Project／Repo membership | registry 已有資源，但目前帳號沒有 Project membership；Admin 也不會 bypass | 到 `/admin/users` 對實際登入帳號授予 `reader` 或 `editor`，再重新開啟 chooser |
 | Desktop Project／Repo 清單仍是空的 | 授權加在另一個帳號，或 chooser 尚未重新載入 | 核對 `/account` 的 email，補正 membership，關閉並重新開啟 chooser；必要時登出再登入 |
 | 401／需要重新認證 | PAT、access token 或 device credential family 已失效／撤銷 | 從 Desktop Server 設定重新登入，或由 `/account` 建新 PAT |

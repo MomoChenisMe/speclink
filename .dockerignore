@@ -1,5 +1,9 @@
 # Docker build context 排除（crates/speclink-server/Dockerfile 以 repo 根為 context）。
 # cargo 解析 workspace 需要所有成員的 Cargo.toml，故不可整目錄排除 apps/。
+#
+# 注意：不排除 apps/server-web/dist。它是 server binary 的內嵌來源；Dockerfile 的
+# Node stage 會在 image 內重建它，但仍保留於 context——一旦改採 host build 內嵌，
+# 這裡若排除掉就會讓內嵌 fail closed。desktop dist 則與 server 交付無關，照舊排除。
 .git
 target
 **/node_modules

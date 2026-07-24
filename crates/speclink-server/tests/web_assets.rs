@@ -168,3 +168,37 @@ fn health_and_ready_are_not_swallowed_by_fallback() {
     let (code, _) = status_body(get(&base, "/readyz"));
     assert_eq!(code, 200, "memory store is healthy");
 }
+
+#[test]
+fn every_browser_route_serves_the_spa_shell_after_the_switch() {
+    // D8 phase 6: the old server-rendered HTML pages/forms are gone; every defined
+    // browser URL is now served by the SPA shell through the fallback, so a direct
+    // open or refresh of /login, /setup, /invite/:token, /account, /activate,
+    // /admin and /admin/* works. (server-release「Release binary 在空 runtime 載入
+    // SPA」at the integration level.)
+    let base = server();
+    for path in [
+        "/login",
+        "/setup",
+        "/activate",
+        "/account",
+        "/admin",
+        "/admin/users",
+        "/admin/audit",
+        "/invite/some-token",
+    ] {
+        let (code, body) = status_body(get(&base, path));
+        assert_eq!(code, 200, "{path} serves the SPA shell");
+        assert!(
+            body.contains("id=\"root\""),
+            "{path} must return the SPA shell, not an HTML page"
+        );
+    }
+    // Spec content stays a real 404 — the /admin UI never serves changes/specs/
+    // discussions, and these paths are not in the browser-route allowlist.
+    for path in ["/admin/changes", "/admin/specs", "/admin/discussions"] {
+        let (code, body) = status_body(get(&base, path));
+        assert_eq!(code, 404, "{path} is not a browser route");
+        assert!(!body.contains("id=\"root\""), "{path} must not return the shell");
+    }
+}

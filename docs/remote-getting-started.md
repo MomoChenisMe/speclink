@@ -90,7 +90,7 @@ A PAT (Personal Access Token) is a credential for CLI and the Desktop fallback. 
 
 After signing in, enter a recognizable name such as `local-cli` in the Personal Access Tokens form, optionally leave expiry blank, and create the PAT. Its plaintext is shown once; copy it immediately to a secure location.
 
-`/account/tokens` is not a browsable page. The account form performs **POST `/account/tokens`**. Directly opening `http://localhost:8080/account/tokens` with GET returns **HTTP 405 Method Not Allowed**; return to `/account`.
+`/account` is a single-page app page. Create a PAT from its Personal Access Tokens form; the SPA submits it to the browser API **POST `/api/speclink/v1/web/account/tokens`** and shows the plaintext once. `/account/tokens` itself is not a browsable page — opening it directly with GET returns a JSON 404.
 
 Never put a PAT in:
 
@@ -209,7 +209,7 @@ When `.env` selects PostgreSQL, `npm run dev:reset` does not delete the external
 
 | Symptom | Cause | Resolution |
 | --- | --- | --- |
-| Opening `/account/tokens` returns HTTP 405 | The route accepts form POST only; it is not a GET page | Open `/account` and create a PAT from the Personal Access Tokens form |
+| Opening `/account/tokens` directly returns 404 | It is a browser-API endpoint, not a page | Open `/account` and create a PAT from the Personal Access Tokens form |
 | Desktop says there is no Project/Repo membership | Registry resources exist, but the account lacks Project membership; Admin does not bypass it | Grant `reader` or `editor` to the actual account at `/admin/users`, then reopen the chooser |
 | The Project/Repo list remains empty | Membership was granted to another account, or the chooser has not reloaded | Check the email at `/account`, correct membership, and reopen the chooser; sign out/in if needed |
 | 401 / reauthentication required | The PAT, access token, or device credential family expired or was revoked | Sign in again from Desktop Server settings, or create a new PAT at `/account` |

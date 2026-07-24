@@ -58,19 +58,27 @@ jobs:
       - name: Install npm dependencies (root workspaces)
         run: npm ci
 
-      # tauri::generate_context! embeds frontendDist at compile time — dist must
-      # exist before any cargo build of the desktop crate.
-      - name: Build desktop frontend (vite → dist)
-        run: npm run build -w apps/desktop
-
-      - name: Test (Rust workspace)
-        run: cargo test --workspace --locked
-
       - name: Test (UI)
         run: npm test -w packages/ui
 
       - name: Test (Desktop)
         run: npm test -w apps/desktop
+
+      - name: Test (Server Web)
+        run: npm test -w apps/server-web
+
+      # 兩個前端 production build 都必須在 cargo test 之前完成：desktop 供
+      # tauri::generate_context! 於編譯期內嵌 frontendDist；server-web 供
+      # speclink-server 的 compile-time asset embedding。Rust 的 embedded asset／
+      # route 測試才會驗到當次 source 產出的 index 與 manifest，而非過期產物。
+      - name: Build desktop frontend (vite → dist)
+        run: npm run build -w apps/desktop
+
+      - name: Build server-web frontend (vite → dist)
+        run: npm run build -w apps/server-web
+
+      - name: Test (Rust workspace)
+        run: cargo test --workspace --locked
 
   # Phase 3 收官劇本獨立計時、獨立失敗現場；不藏在 workspace 單元測試裡。
   phase3-e2e:

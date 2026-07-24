@@ -280,6 +280,25 @@ fn a_return_to_outside_the_whitelisted_prefixes_is_ignored() {
 }
 
 #[test]
+fn a_dot_dot_traversal_return_to_cannot_walk_past_the_whitelist() {
+    let (base, _id) = start();
+    // A first segment of `account` must not be walkable to `/admin` via `..` — the
+    // whitelist rejects any traversal, so a member falls to their role home.
+    for evil in ["/account/../admin", "/account/..%2fadmin", "/admin/../account/../admin"] {
+        let (status, body) = json_of(login_raw(
+            &base,
+            "member@example.com",
+            json!({ "returnTo": evil }),
+        ));
+        assert_eq!(status, 200, "login still succeeds for {evil}");
+        assert_eq!(
+            body["data"]["destination"], json!("/account"),
+            "a `..` traversal returnTo ({evil}) is ignored in favour of role home"
+        );
+    }
+}
+
+#[test]
 fn a_member_cannot_use_return_to_to_reach_admin() {
     let (base, _id) = start();
     let (status, body) = json_of(login_raw(

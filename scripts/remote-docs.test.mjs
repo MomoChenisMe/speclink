@@ -53,9 +53,9 @@ test('both guides cover the remote setup, authorization, and recovery contract',
     const guide = read(relativePath);
     for (const required of [
       '/account',
-      'POST `/account/tokens`',
+      'POST `/api/speclink/v1/web/account/tokens`',
       '/admin/users',
-      'HTTP 405',
+      '404',
       'membership',
       'project-scoped URL',
       'spec-only',
@@ -76,17 +76,21 @@ test('existing user entry points link to the matching remote guide', () => {
   assert.match(read('docs/server-deployment.zh-TW.md'), /remote-getting-started\.zh-TW\.md/);
 });
 
-test('documented browser routes preserve their actual HTTP method boundary', () => {
+test('documented browser routes reflect the SPA + browser-API surface', () => {
   const routes = read('crates/speclink-server/src/app.rs');
-  assert.match(routes, /\.route\("\/account", get\(web::account_page\)\)/);
-  assert.match(routes, /\.route\("\/account\/tokens", post\(web::create_pat\)\)/);
-  assert.match(routes, /\.route\("\/admin\/users", get\(admin::users_page\)\)/);
-  assert.doesNotMatch(routes, /\.route\("\/account\/tokens", get\(/);
+  // After the SPA migration the server-rendered /account and /admin/users HTML
+  // pages are gone; every browser route is served by the SPA shell fallback.
+  assert.match(routes, /\.fallback\(assets::spa_fallback\)/);
+  assert.doesNotMatch(routes, /web::account_page/);
+  assert.doesNotMatch(routes, /admin::users_page/);
+  // PAT creation is a same-origin browser-API POST, never a browsable GET page.
+  const webApi = read('crates/speclink-server/src/web.rs');
+  assert.match(webApi, /\.route\("\/account\/tokens", post\(api_create_pat\)\)/);
 
   for (const relativePath of remoteGuides) {
     const guide = read(relativePath);
-    assert.match(guide, /POST `\/account\/tokens`/);
-    assert.match(guide, /HTTP 405 Method Not Allowed/);
+    // The guides create a PAT through the account SPA page's browser API.
+    assert.match(guide, /\/api\/speclink\/v1\/web\/account\/tokens/);
     assert.equal(
       localMarkdownLinks(guide).some((target) => target.endsWith('/account/tokens')),
       false,
