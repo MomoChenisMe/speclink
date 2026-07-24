@@ -1,0 +1,23 @@
+## 1. Dev CLI build gate（TDD）
+
+- [x] 1.1 RED：為「一鍵啟動 remote 開發環境」與設計決策「先建置 CLI 再啟動長時間程序」撰寫失敗測試，證明 cargo build -p speclink-cli 先於 Server／Desktop spawn，且 build 非零或 spawn error 時長時間 child 數為零；執行 node --test scripts/dev.test.mjs 必須因尚未實作的新斷言失敗。影響：scripts/dev.test.mjs；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 不修改。 <!-- speclink-task:tsk_01KY931E0GAGZ66QHRYER9BME9 -->
+- [x] 1.2 GREEN：以最少變更讓 npm run dev 完成 checkout CLI build gate、保留 npm run dev:reset 純重置與既有雙 child lifecycle；執行 node --test scripts/dev.test.mjs 必須全綠，且測試確認 build failure 回傳非零狀態。影響：scripts/dev.mjs、scripts/dev.test.mjs；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 不修改。 <!-- speclink-task:tsk_01KY931E0G2B3B9WNKX0MC0FCV -->
+- [x] 1.3 REFACTOR：落實設計決策「以小型可注入函式測試程序邊界」，只抽出 prerequisite 與 spawn 所需的最小 seam，維持 env→config 純函式與 signal 收束行為；以 node --test scripts/dev.test.mjs 全綠及 mutation check 證明順序／零 child 斷言有效。影響：scripts/dev.mjs、scripts/dev.test.mjs；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 不修改。 <!-- speclink-task:tsk_01KY931E0GVKX5CDARCA7ZV7XJ -->
+
+## 2. Checkout CLI wrapper（TDD）
+
+- [x] 2.1 RED：為「checkout 內 CLI 測試入口」與設計決策「以 checkout 內 binary 提供 CLI wrapper」撰寫失敗測試，涵蓋 win32 .exe／非 win32 path、PATH 舊版不被選用、argv、stdio、environment、INIT_CWD／fallback cwd、成功與失敗 exit code、missing binary 禁止 fallback；執行 node --test scripts/cli.test.mjs 必須因 wrapper 尚未存在或行為未實作而失敗。影響：scripts/cli.test.mjs；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 不修改。 <!-- speclink-task:tsk_01KY931E0GM4ZTJSWF5EM7PT52 -->
+- [x] 2.2 GREEN：新增 package-level cli script 與 Node wrapper，讓 npm run cli -- <args> 固定執行 checkout debug binary並透明轉送程序契約，讓 npm run --silent cli -- <args> 可提供無 wrapper 額外 stdout 的 machine-readable 路徑；執行 node --test scripts/cli.test.mjs 必須全綠。影響：package.json、scripts/cli.mjs、scripts/cli.test.mjs；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 不修改。 <!-- speclink-task:tsk_01KY931E0G98XJK5P37HTR2B4R -->
+- [x] 2.3 REFACTOR／AUDIT：依「以小型可注入函式測試程序邊界」收斂 wrapper 公開 seam，執行 audit discipline 的 Scoundrel／Lazy Developer／Confused Developer 檢查，確認 binary path 固定、預設不 fallback、錯誤會明確失敗且參數不被混淆；以 node --test scripts/cli.test.mjs 全綠及 git diff 人工檢視驗證。影響：scripts/cli.mjs、scripts/cli.test.mjs、package.json；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 不修改。 <!-- speclink-task:tsk_01KY931E0GZGP7E68M2D0RZRNE -->
+
+## 3. 操作文件（TDD）
+
+- [x] 3.1 RED：先擴充 Remote 文件契約測試，要求中英文教學說明 npm run dev 已建置同版 CLI、互動用 npm run cli、machine-readable 用 npm run --silent cli，以及從外部測試 repo 搭配 npm --prefix 保留 cwd；執行 node --test scripts/remote-docs.test.mjs 必須因文件尚未補齊而失敗。影響：scripts/remote-docs.test.mjs；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 不修改。 <!-- speclink-task:tsk_01KY931E0GTCBTXHPCAJ0SPFXB -->
+- [x] 3.2 GREEN：補齊中英文 Remote getting started 與平台開發啟動說明，使沒有全域 CLI 或已有錯版 CLI 的使用者都能依文件使用同一 checkout 驗證；執行 node --test scripts/remote-docs.test.mjs 必須全綠，且人工確認中英文命令與失敗排查對稱。影響：docs/remote-getting-started.zh-TW.md、docs/remote-getting-started.md、docs/platform-architecture.zh-TW.md、scripts/remote-docs.test.mjs；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 不修改。 <!-- speclink-task:tsk_01KY931E0GEG7K755HY27SJN84 -->
+- [x] 3.3 REFACTOR：移除文件與測試中的重複敘述但保留可複製命令與版本邊界；以 node --test scripts/remote-docs.test.mjs 全綠及雙語段落人工對照驗證。影響：docs/remote-getting-started.zh-TW.md、docs/remote-getting-started.md、docs/platform-architecture.zh-TW.md、scripts/remote-docs.test.mjs；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 不修改。 <!-- speclink-task:tsk_01KY931E0GMT028PZAKDG3MF0S -->
+
+## 4. 整合驗證
+
+- [x] 4.1 驗證 dev harness 與 wrapper 的完整 Node suite，執行 node --test "scripts/**/*.test.mjs" 必須全綠，並以測試證據確認既有 dev 設定、雙 child 收束、CLI build gate、跨平台 wrapper 與 Remote 文件契約同時成立。影響：scripts/dev.test.mjs、scripts/cli.test.mjs、scripts/remote-docs.test.mjs；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 不修改。 <!-- speclink-task:tsk_01KY931E0G86QZ9ZR0P69B9E5C -->
+- [x] 4.2 驗證 repo 全鏈與 CLI 相容性，執行 npm run test:all、cargo build -p speclink-cli，並以 npm run --silent cli -- --version 與至少一個既有 --json 查詢確認 checkout binary、camelCase payload、--no-color／人眼輸出及非零錯誤狀態沒有回歸；既有 parity／color／twin harness 若受影響必須全綠或記錄刻意分歧。影響：package.json、scripts/dev.mjs、scripts/cli.mjs；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 僅作回歸驗證，不修改。 <!-- speclink-task:tsk_01KY931E0GR2EBEKA7F2VR9MTW -->
+- [x] 4.3 執行 speclink analyze dev-harness-cli-access 與 speclink validate dev-harness-cli-access --strict，確認 proposal、design、dev-harness delta spec、tasks 的 capability coverage、TDD 順序與 implementation contract 無 Critical／Warning，並將可接受的 Suggestion 留在驗證摘要。影響：openspec/changes/dev-harness-cli-access/；邊界：crates/speclink-cli/src/、crates/speclink-core/src/ 不修改。 <!-- speclink-task:tsk_01KY931E0GFX65EMCBH0PM6651 -->

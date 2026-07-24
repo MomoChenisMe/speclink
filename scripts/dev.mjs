@@ -80,6 +80,80 @@ public_url: ${publicUrl}
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const IS_WINDOWS = process.platform === 'win32';
 
+/// detached：child 自成 process group，收束時整組終止——cargo/npm 的孫 process
+///（server binary、vite、tauri）不殘留。代價是終端 Ctrl+C 不會直達 child，
+/// 由 main() 的 SIGINT/SIGTERM handler 轉送。
+function spawnDevChild(cmd, args) {
+  return spawn(cmd, args, {
+    cwd: ROOT,
+    stdio: 'inherit',
+    shell: IS_WINDOWS && cmd === 'npm',
+    detached: !IS_WINDOWS,
+  });
+}
+
+/// 長時間程序啟動前的同步前置條件，順序即契約：
+/// 1. 目前 checkout 的 CLI——測試者用 npm run cli 驗證的就是這顆 binary。
+/// 2. Desktop 前端資產：tauri.conf.json 無 devUrl，tauri dev 直接載入
+///    apps/desktop/dist。dist 是 gitignored 的快照，不能只在缺席時建一次，
+///    否則後續 source 變更會讓 npm run dev 靜默載入舊 UI。
+function devPrerequisites(isWindows) {
+  return [
+    {
+      message: 'speclink dev: 建置當前 checkout 的 speclink-cli…',
+      failure: 'speclink dev: 無法建置當前 checkout 的 speclink-cli',
+      cmd: 'cargo',
+      args: ['build', '-p', 'speclink-cli'],
+      // cargo 是真 binary；Windows 的 npm 是 npm.cmd，必須走 shell。
+      shell: false,
+    },
+    {
+      message: 'speclink dev: 建置當前前端資產…',
+      failure: 'speclink dev: 無法建置 Desktop 前端資產',
+      cmd: 'npm',
+      args: ['run', 'build', '-w', 'apps/desktop'],
+      shell: isWindows,
+    },
+  ];
+}
+
+/// prerequisite → 長時間 child 的啟動編排。任一 prerequisite 以非零狀態結束或
+/// 無法啟動時回傳其狀態（無可用狀態時為 1）且 children 為空——不留「環境看似
+/// 成功、CLI 尚不可用」的半完成狀態。全部成功時 status 為 null。
+export function startDevEnvironment({
+  addr,
+  isWindows = IS_WINDOWS,
+  runSync = spawnSync,
+  spawnChild = spawnDevChild,
+  log = console.log,
+  logError = console.error,
+}) {
+  for (const step of devPrerequisites(isWindows)) {
+    log(step.message);
+    const result = runSync(step.cmd, step.args, {
+      cwd: ROOT,
+      stdio: 'inherit',
+      shell: step.shell,
+    });
+    if (result.error || result.status !== 0) {
+      // spawn 失敗時 stdio: 'inherit' 不會留下任何線索，必須自己點名。
+      if (result.error) logError(`${step.failure}：${result.error.message}`);
+      return { status: result.status ?? 1, children: [] };
+    }
+  }
+
+  return {
+    status: null,
+    children: [
+      spawnChild('cargo', [
+        'run', '-p', 'speclink-server', '--',
+        '--config', '.dev/config.yaml', '--addr', addr,
+      ]),
+      spawnChild('npm', ['run', 'tauri', '-w', 'apps/desktop', '--', 'dev']),
+    ],
+  };
+}
+
 function main() {
   const devDir = path.join(ROOT, '.dev');
 
@@ -105,35 +179,9 @@ function main() {
   mkdirSync(devDir, { recursive: true });
   writeFileSync(path.join(devDir, 'config.yaml'), generated.configYaml);
 
-  // tauri.conf.json 無 devUrl——tauri dev 直接載入 apps/desktop/dist。dist 是
-  // gitignored 的快照，不能只在缺席時建一次，否則後續 source 變更會讓
-  // `npm run dev` 靜默載入舊 UI。每次啟動皆先產生當前 checkout 的前端資產。
-  console.log('speclink dev: 建置當前前端資產…');
-  const build = spawnSync('npm', ['run', 'build', '-w', 'apps/desktop'], {
-    cwd: ROOT,
-    stdio: 'inherit',
-    shell: IS_WINDOWS,
-  });
-  if (build.status !== 0) process.exit(build.status ?? 1);
-
-  // detached：child 自成 process group，收束時整組終止——cargo/npm 的孫 process
-  //（server binary、vite、tauri）不殘留。代價是終端 Ctrl+C 不會直達 child，
-  // 由下方的 SIGINT/SIGTERM handler 轉送。
-  const spawnChild = (cmd, args) =>
-    spawn(cmd, args, {
-      cwd: ROOT,
-      stdio: 'inherit',
-      shell: IS_WINDOWS && cmd === 'npm',
-      detached: !IS_WINDOWS,
-    });
-
-  const children = [
-    spawnChild('cargo', [
-      'run', '-p', 'speclink-server', '--',
-      '--config', '.dev/config.yaml', '--addr', generated.addr,
-    ]),
-    spawnChild('npm', ['run', 'tauri', '-w', 'apps/desktop', '--', 'dev']),
-  ];
+  const started = startDevEnvironment({ addr: generated.addr });
+  if (started.status !== null) process.exit(started.status);
+  const children = started.children;
 
   let closing = false;
   let exitCode = 0;

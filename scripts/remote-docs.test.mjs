@@ -23,6 +23,22 @@ function localMarkdownLinks(markdown) {
     .filter((target) => !/^(?:https?:|mailto:|#)/.test(target));
 }
 
+function literal(text) {
+  return new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+}
+
+/// 取出以 prefix 開頭的 h2 章節內文，讓斷言綁在該章節而不是整份文件。
+function sectionStartingWith(markdown, prefix, relativePath) {
+  const section = markdown.split(/^## /m).slice(1).find((body) => body.startsWith(prefix));
+  assert.ok(section, `${relativePath}: 找不到以「${prefix}」開頭的章節`);
+  return section;
+}
+
+const remoteGuides = [
+  'docs/remote-getting-started.zh-TW.md',
+  'docs/remote-getting-started.md',
+];
+
 test('remote getting-started guides exist with matching section order', () => {
   assert.equal(existsSync(zhPath), true, 'missing Traditional Chinese remote guide');
   assert.equal(existsSync(enPath), true, 'missing English remote guide');
@@ -33,10 +49,7 @@ test('remote getting-started guides exist with matching section order', () => {
 });
 
 test('both guides cover the remote setup, authorization, and recovery contract', () => {
-  for (const relativePath of [
-    'docs/remote-getting-started.zh-TW.md',
-    'docs/remote-getting-started.md',
-  ]) {
+  for (const relativePath of remoteGuides) {
     const guide = read(relativePath);
     for (const required of [
       '/account',
@@ -50,7 +63,7 @@ test('both guides cover the remote setup, authorization, and recovery contract',
       'offline',
       'npm run dev:reset',
     ]) {
-      assert.match(guide, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+      assert.match(guide, literal(required));
     }
   }
 });
@@ -70,10 +83,7 @@ test('documented browser routes preserve their actual HTTP method boundary', () 
   assert.match(routes, /\.route\("\/admin\/users", get\(admin::users_page\)\)/);
   assert.doesNotMatch(routes, /\.route\("\/account\/tokens", get\(/);
 
-  for (const relativePath of [
-    'docs/remote-getting-started.zh-TW.md',
-    'docs/remote-getting-started.md',
-  ]) {
+  for (const relativePath of remoteGuides) {
     const guide = read(relativePath);
     assert.match(guide, /POST `\/account\/tokens`/);
     assert.match(guide, /HTTP 405 Method Not Allowed/);
@@ -83,6 +93,45 @@ test('documented browser routes preserve their actual HTTP method boundary', () 
       `${relativePath} must not link to the POST-only action as a browser page`,
     );
   }
+});
+
+test('both guides tie the dev startup step to the checkout CLI build', () => {
+  for (const relativePath of remoteGuides) {
+    const startup = sectionStartingWith(read(relativePath), '2.', relativePath);
+    assert.match(startup, literal('speclink-cli'));
+  }
+});
+
+test('both guides verify the CLI through the checkout wrapper', () => {
+  for (const relativePath of remoteGuides) {
+    const guide = read(relativePath);
+    for (const required of [
+      'npm run cli -- ',
+      'npm run --silent cli -- ',
+      'npm --prefix ',
+    ]) {
+      assert.match(guide, literal(required), `${relativePath}: 缺少 ${required}`);
+    }
+    assert.doesNotMatch(
+      guide,
+      /path\/to\/speclink\/target\/debug\/speclink/,
+      `${relativePath}: 不應再教使用者手打 binary 絕對路徑`,
+    );
+  }
+});
+
+test('both guides troubleshoot a stale speclink on PATH', () => {
+  for (const relativePath of remoteGuides) {
+    const troubleshooting = sectionStartingWith(read(relativePath), '10.', relativePath);
+    assert.match(troubleshooting, literal('PATH'));
+    assert.match(troubleshooting, literal('npm run cli'));
+  }
+});
+
+test('platform architecture records the dev CLI build gate', () => {
+  const doc = read('docs/platform-architecture.zh-TW.md');
+  assert.match(doc, literal('speclink-cli'));
+  assert.match(doc, literal('npm run cli'));
 });
 
 test('documented CLI commands are present in the current help surface', () => {

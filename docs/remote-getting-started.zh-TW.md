@@ -43,7 +43,7 @@ npm run dev:reset
 npm run dev
 ```
 
-此命令會產生 `.dev/config.yaml`、建置 Desktop 前端，並同時啟動 `speclink-server` 與 Tauri Desktop。終端會印出只供首次設定使用的網址：
+此命令會產生 `.dev/config.yaml`、建置目前 checkout 的 `speclink-cli` 與 Desktop 前端，成功後才同時啟動 `speclink-server` 與 Tauri Desktop。CLI 建置失敗時它會以非零狀態結束，且不會留下任何長時間執行的 process——這保證第 7 節用來驗證的 CLI 與 Server／Desktop 來自同一份原始碼。終端會印出只供首次設定使用的網址：
 
 ```text
 http://localhost:8080/setup?token=...
@@ -125,38 +125,39 @@ handshake 成功後才會建立 remote 分頁。分頁重啟恢復、角色能�
 
 ## 7. Connect and smoke-test the Remote CLI / 連接並測試 Remote CLI
 
-先確保 CLI 是目前 checkout 的版本：
+第 2 節的 `npm run dev` 已經建置好目前 checkout 的 CLI。用 `npm run cli` 執行它，就不必先安裝 CLI，也不會誤用 PATH 上另一版：
 
-```bash
-cargo build -p speclink-cli
-```
+- 在 Speclink repo root：`npm run cli -- <args>`。
+- 在其他資料夾（本節的測試資料夾就是）：`npm --prefix /path/to/speclink run cli -- <args>`。`--prefix` 只決定用哪個 checkout 的 CLI，CLI 仍作用於你目前所在的資料夾。
+- 需要直接解析 `--json` 輸出時加 `--silent`：`npm run --silent cli -- <args>`，避免 npm 的 lifecycle 訊息混進 stdout。
+- `--` 之後的參數原樣傳給 CLI；漏掉 `--` 會被 npm 自己吃掉。
 
 在另一個測試資料夾執行以下命令；不要在 Speclink 產品 repo 根目錄執行：
 
 ```bash
 mkdir -p /tmp/speclink-remote-smoke
 cd /tmp/speclink-remote-smoke
-/path/to/speclink/target/debug/speclink link \
+npm --prefix /path/to/speclink run cli -- link \
   http://localhost:8080/api/speclink/v1/projects/demo \
   --repo backend
-/path/to/speclink/target/debug/speclink auth login
+npm --prefix /path/to/speclink run cli -- auth login
 ```
 
 將 `/path/to/speclink` 換成實際 repo 絕對路徑。`auth login` 提示後再貼 PAT，避免把 token 寫進 shell history。登入後先測讀取：
 
 ```bash
-/path/to/speclink/target/debug/speclink auth status
-/path/to/speclink/target/debug/speclink list
-/path/to/speclink/target/debug/speclink list --json
+npm --prefix /path/to/speclink run cli -- auth status
+npm --prefix /path/to/speclink run cli -- list
+npm --prefix /path/to/speclink run --silent cli -- list --json
 ```
 
 再以 `editor` 身分測最小寫入與結構檢查：
 
 ```bash
-/path/to/speclink/target/debug/speclink new change remote-smoke-test
-/path/to/speclink/target/debug/speclink status --change remote-smoke-test
-/path/to/speclink/target/debug/speclink validate remote-smoke-test
-/path/to/speclink/target/debug/speclink analyze remote-smoke-test
+npm --prefix /path/to/speclink run cli -- new change remote-smoke-test
+npm --prefix /path/to/speclink run cli -- status --change remote-smoke-test
+npm --prefix /path/to/speclink run cli -- validate remote-smoke-test
+npm --prefix /path/to/speclink run cli -- analyze remote-smoke-test
 ```
 
 回 Desktop，確認 `remote-smoke-test` 出現在同一個 `demo`／`backend` 看板。Remote CLI 會在測試資料夾寫入 remote binding 與唯讀 Context Projection；規格寫入仍由 Server Host 處理。
@@ -214,7 +215,9 @@ npm run dev
 | 401／需要重新認證 | PAT、access token 或 device credential family 已失效／撤銷 | 從 Desktop Server 設定重新登入，或由 `/account` 建新 PAT |
 | Server offline，分頁顯示 stale | SSE／HTTP 暫時不可達 | 保留唯讀 snapshot，不嘗試離線寫入；重啟 Server 等待 Query＋ETag 自動收斂 |
 | checkout marker 衝突 | `.speclink.yaml` 指向不同 Server origin 或 Repo | 不要手改掩蓋；選正確 checkout，或依 Desktop 衝突對話選擇本地、以 Server 為準或遷移 |
-| CLI 顯示 not logged in | 已 link，但該 Server origin 尚無 credential | 在同一測試資料夾執行 `speclink auth login` |
+| CLI 顯示 not logged in | 已 link，但該 Server origin 尚無 credential | 在同一測試資料夾執行 `npm --prefix /path/to/speclink run cli -- auth login` |
+| CLI 行為與 Server／Desktop 對不上 | PATH 上的 `speclink` 是另一版或另一個 checkout 建的 | 改用 `npm run cli`（或 `npm --prefix <checkout> run cli`）執行目前 checkout 的 binary，不必動 PATH |
+| `npm run cli` 說無法執行 checkout CLI | 目前 checkout 尚未建置 debug binary | 執行 `npm run dev` 或 `cargo build -p speclink-cli`；訊息會同時列出 binary 路徑與 cwd 供比對 |
 | 重啟後沒有 setup token | setup 已完成且資料仍存在 | 直接登入 `/account`／`/admin`；只有完全 `npm run dev:reset` 才會重新 setup |
 | reset 後舊 Desktop connection 失效 | identity、Project 與 credential 已被刪除 | 完成新 setup、重授 membership，再新增或重新登入 connection |
 
