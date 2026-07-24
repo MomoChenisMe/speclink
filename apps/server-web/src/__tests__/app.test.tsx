@@ -41,6 +41,12 @@ function makeClient(overrides: Record<string, unknown> = {}) {
       storeHealthy: true,
       identitySchemaVersion: 1,
     })),
+    getAccount: vi.fn(async () => ({
+      user: { id: "u1", email: "member@example.com", display: "Member", admin: false },
+      pats: [],
+      sessions: [],
+      deviceFamilies: [],
+    })),
     ...overrides,
   };
 }

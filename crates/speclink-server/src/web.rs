@@ -3,7 +3,7 @@
 //! invitation acceptance page; login, logout and the account page are layered on
 //! in the following tasks.
 
-use crate::identity::{IdentityError, User};
+use crate::identity::{DeviceFamily, IdentityError, Pat, SessionInfo, User};
 use crate::state::AppState;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{Form, Path, Query, State};
@@ -456,6 +456,11 @@ pub fn api_router() -> Router<AppState> {
             "/invite/{token}",
             get(api_invite_summary).post(api_invite_accept),
         )
+        .route("/account", get(api_account))
+        .route("/account/tokens", post(api_create_pat))
+        .route("/account/tokens/{id}/revoke", post(api_revoke_pat))
+        .route("/account/devices/{id}/revoke", post(api_revoke_device))
+        .route("/activate", post(api_activate))
 }
 
 #[derive(Serialize)]
@@ -815,6 +820,313 @@ fn open_session_destination(state: &AppState, user_id: &str) -> Response {
             &session,
         ),
         Err(recovery) => recovery,
+    }
+}
+
+// --- browser JSON account + activation API (server-identity「帳號 browser API 保持
+// 憑證祕密邊界」與 server-device-auth「核准頁 session 保護且明確確認」, D2／D3／D4) ---
+//
+// account read／mutation 與 activation decision 皆先驗同源與 active session。read
+// payload 只回呈現與 eligibility 所需 metadata，絕不含 hash／refresh credential／
+// password／可重播 session secret；PAT 明文只在建立回應出現一次。
+
+/// The authenticated user for a browser API request, or a 401 recovery response.
+fn require_user(state: &AppState, headers: &HeaderMap) -> Result<User, Response> {
+    current_user(state, headers)
+        .ok_or_else(|| web_err(StatusCode::UNAUTHORIZED, "unauthenticated", "請先登入"))
+}
+
+/// Refuse a change-making request whose Origin/Referer is foreign (403).
+fn require_same_origin(headers: &HeaderMap, public_url: &str) -> Result<(), Response> {
+    if is_same_origin(headers, public_url) {
+        Ok(())
+    } else {
+        Err(web_err(
+            StatusCode::FORBIDDEN,
+            "same_origin_required",
+            "跨來源請求被拒絕",
+        ))
+    }
+}
+
+/// A generic `{data:{ok:true}}` acknowledgement for a mutation with no view model.
+#[derive(Serialize)]
+struct OkPayload {
+    ok: bool,
+}
+
+fn ok_ack() -> Response {
+    web_ok(OkPayload { ok: true })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AccountPayload {
+    user: UserPayload,
+    pats: Vec<PatPayload>,
+    sessions: Vec<SessionMetaPayload>,
+    device_families: Vec<DeviceFamilyPayload>,
+}
+
+/// A PAT's non-secret metadata (prefix, not the plaintext or hash).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PatPayload {
+    id: String,
+    prefix: String,
+    name: String,
+    created_at: String,
+    expires_at: Option<String>,
+    last_used_at: Option<String>,
+    revoked_at: Option<String>,
+}
+
+impl PatPayload {
+    fn of(p: &Pat) -> PatPayload {
+        PatPayload {
+            id: p.id.clone(),
+            prefix: p.prefix.clone(),
+            name: p.name.clone(),
+            created_at: p.created_at.to_rfc3339(),
+            expires_at: p.expires_at.map(|t| t.to_rfc3339()),
+            last_used_at: p.last_used_at.map(|t| t.to_rfc3339()),
+            revoked_at: p.revoked_at.map(|t| t.to_rfc3339()),
+        }
+    }
+}
+
+/// A Web session's metadata (the id is a metadata id, never the cookie secret).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionMetaPayload {
+    id: String,
+    created_at: String,
+    expires_at: String,
+    revoked_at: Option<String>,
+}
+
+impl SessionMetaPayload {
+    fn of(s: &SessionInfo) -> SessionMetaPayload {
+        SessionMetaPayload {
+            id: s.id.clone(),
+            created_at: s.created_at.to_rfc3339(),
+            expires_at: s.expires_at.to_rfc3339(),
+            revoked_at: s.revoked_at.map(|t| t.to_rfc3339()),
+        }
+    }
+}
+
+/// A device credential family's metadata (no refresh credential is ever included).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceFamilyPayload {
+    id: String,
+    source: String,
+    created_at: String,
+    last_refresh_at: String,
+    revoked_at: Option<String>,
+}
+
+impl DeviceFamilyPayload {
+    fn of(f: &DeviceFamily) -> DeviceFamilyPayload {
+        DeviceFamilyPayload {
+            id: f.id.clone(),
+            source: f.source.clone(),
+            created_at: f.created_at.to_rfc3339(),
+            last_refresh_at: f.last_refresh_at.to_rfc3339(),
+            revoked_at: f.revoked_at.map(|t| t.to_rfc3339()),
+        }
+    }
+}
+
+/// The PAT-create response: the metadata plus the one-time plaintext.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PatCreatedPayload {
+    pat: PatPayload,
+    plaintext: String,
+}
+
+/// `GET /account` — the caller's own user, PAT metadata, Web sessions and device
+/// families. Session-protected; secrets never appear.
+pub async fn api_account(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let user = match require_user(&state, &headers) {
+        Ok(user) => user,
+        Err(refused) => return refused,
+    };
+    let pats = state.identity.list_pats(&user.id).unwrap_or_default();
+    let sessions = state.identity.list_sessions(&user.id).unwrap_or_default();
+    let families = state
+        .identity
+        .list_device_families(&user.id)
+        .unwrap_or_default();
+    web_ok(AccountPayload {
+        user: UserPayload::of(&user),
+        pats: pats.iter().map(PatPayload::of).collect(),
+        sessions: sessions.iter().map(SessionMetaPayload::of).collect(),
+        device_families: families.iter().map(DeviceFamilyPayload::of).collect(),
+    })
+}
+
+/// The create-PAT body (camelCase).
+#[derive(Deserialize)]
+pub struct CreatePatBody {
+    name: String,
+    #[serde(default)]
+    expires: Option<String>,
+}
+
+/// `POST /account/tokens` — create a PAT for the logged-in user. The response is
+/// the only place the plaintext appears.
+pub async fn api_create_pat(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Result<Json<CreatePatBody>, JsonRejection>,
+) -> Response {
+    if let Err(refused) = require_same_origin(&headers, &state.config.public_url) {
+        return refused;
+    }
+    let user = match require_user(&state, &headers) {
+        Ok(user) => user,
+        Err(refused) => return refused,
+    };
+    let Ok(Json(body)) = body else {
+        return web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    let name = body.name.trim();
+    if name.is_empty() {
+        return web_field_err(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "請輸入名稱",
+            "name",
+            "請輸入名稱",
+        );
+    }
+    let expires_at = match parse_expiry(body.expires.as_deref().unwrap_or("")) {
+        Ok(expires_at) => expires_at,
+        Err(()) => {
+            return web_field_err(
+                StatusCode::BAD_REQUEST,
+                "validation_error",
+                "到期日格式須為 YYYY-MM-DD",
+                "expires",
+                "格式須為 YYYY-MM-DD",
+            )
+        }
+    };
+    match state.identity.create_pat(&user.id, name, expires_at) {
+        Ok((pat, plaintext)) => web_ok(PatCreatedPayload {
+            pat: PatPayload::of(&pat),
+            plaintext,
+        }),
+        Err(_) => web_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            "建立 PAT 時發生錯誤",
+        ),
+    }
+}
+
+/// `POST /account/tokens/{id}/revoke` — revoke one of the caller's own PATs.
+/// Immediate for the next API request. Idempotent.
+pub async fn api_revoke_pat(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(pat_id): Path<String>,
+) -> Response {
+    if let Err(refused) = require_same_origin(&headers, &state.config.public_url) {
+        return refused;
+    }
+    let user = match require_user(&state, &headers) {
+        Ok(user) => user,
+        Err(refused) => return refused,
+    };
+    let _ = state.identity.revoke_pat(&user.id, &pat_id);
+    ok_ack()
+}
+
+/// `POST /account/devices/{id}/revoke` — revoke one of the caller's own device
+/// credential families; its access token and refresh credential die at once.
+pub async fn api_revoke_device(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(family_id): Path<String>,
+) -> Response {
+    if let Err(refused) = require_same_origin(&headers, &state.config.public_url) {
+        return refused;
+    }
+    let user = match require_user(&state, &headers) {
+        Ok(user) => user,
+        Err(refused) => return refused,
+    };
+    let _ = state.identity.revoke_family(&user.id, &family_id);
+    ok_ack()
+}
+
+/// The activation body: the user code and an optional decision.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivateBody {
+    #[serde(default)]
+    user_code: String,
+    #[serde(default)]
+    action: Option<String>,
+}
+
+/// The activation outcome the SPA reflects.
+#[derive(Serialize)]
+struct ActivateStatus {
+    status: &'static str,
+}
+
+/// The single invalid-code JSON result for unknown, used or expired user codes.
+fn activate_invalid_json() -> Response {
+    web_err(
+        StatusCode::NOT_FOUND,
+        "invalid_user_code",
+        "這個裝置代碼無法使用",
+    )
+}
+
+/// `POST /activate` — session-protected device approval. No `action` is the
+/// explicit confirm step (checks the code without deciding); `approve`/`deny`
+/// record the decision against the acting user. Same-origin; unknown, used and
+/// expired codes are one indistinguishable 404. GET never queries state, so there
+/// is no GET endpoint here.
+pub async fn api_activate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Result<Json<ActivateBody>, JsonRejection>,
+) -> Response {
+    if let Err(refused) = require_same_origin(&headers, &state.config.public_url) {
+        return refused;
+    }
+    let user = match require_user(&state, &headers) {
+        Ok(user) => user,
+        Err(refused) => return refused,
+    };
+    let Ok(Json(body)) = body else {
+        return web_err(StatusCode::BAD_REQUEST, "invalid_request", "請求格式不正確");
+    };
+    let user_code = body.user_code.trim();
+    match body.action.as_deref() {
+        Some("approve") => match state.identity.approve_device(user_code, &user.id) {
+            Ok(true) => web_ok(ActivateStatus { status: "approved" }),
+            Ok(false) => activate_invalid_json(),
+            Err(_) => web_err(StatusCode::INTERNAL_SERVER_ERROR, "internal", "發生錯誤"),
+        },
+        Some("deny") => match state.identity.deny_device(user_code, &user.id) {
+            Ok(true) => web_ok(ActivateStatus { status: "denied" }),
+            Ok(false) => activate_invalid_json(),
+            Err(_) => web_err(StatusCode::INTERNAL_SERVER_ERROR, "internal", "發生錯誤"),
+        },
+        // No decision yet: the explicit confirm step validates the code only.
+        _ => match state.identity.device_is_pending(user_code) {
+            Ok(true) => web_ok(ActivateStatus { status: "pending" }),
+            Ok(false) => activate_invalid_json(),
+            Err(_) => web_err(StatusCode::INTERNAL_SERVER_ERROR, "internal", "發生錯誤"),
+        },
     }
 }
 
