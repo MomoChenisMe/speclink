@@ -33,7 +33,9 @@ export const SheetContent = React.forwardRef<
     <SheetPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed z-50 inset-y-0 right-0 h-full w-[440px] max-w-[92vw] bg-card border-l border-border shadow-lg p-5 overflow-y-auto flex flex-col gap-4 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+        // overflow-x-hidden 為必要而非贅述：CSS 規定 overflow-x: visible 搭配
+        // overflow-y: auto 時，x 軸會被計算為 auto——單一過長子項即讓面板長出水平捲軸。
+        "fixed z-50 inset-y-0 right-0 h-full w-[440px] max-w-[92vw] bg-card border-l border-border shadow-lg p-5 overflow-y-auto overflow-x-hidden flex flex-col gap-4 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
         className,
       )}
       {...props}

@@ -138,6 +138,29 @@ describe("ArchivedDrawer（封存變更 target）", () => {
     expect(screen.getByRole("button", { name: "beta-flow" })).toBeTruthy();
   });
 
+  // spec 需求「抽屜標頭標記受寬度約束且抽屜不產生水平捲軸」：同一約束須於已封存抽屜成立。
+  it("長 topic 來源討論標記受寬度上限約束並截斷，title 保留全文，面板關閉水平捲動", async () => {
+    const LONG_TOPIC =
+      "目前前端專案的設計，是完全純文字的web服務，我希望可以設計一下，因為有好幾個端點都要自己打URL才能夠進去，完全不符合人性，所以請你幫我重新設計一下";
+    const props = makeProps({
+      sourceDiscussions: [{ slug: "web-service-navigation-redesign", topic: LONG_TOPIC }],
+      onOpenDiscussion: vi.fn(),
+    });
+    render(<ArchivedDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    const chip = screen.getByRole("button", { name: LONG_TOPIC });
+    expect(chip.className).toContain("max-w-full");
+    expect(chip.className).toContain("min-w-0");
+    expect(chip.getAttribute("title")).toBe(LONG_TOPIC);
+    const label = chip.querySelector("[data-source-discussion-label]") as HTMLElement | null;
+    expect(label).toBeTruthy();
+    expect(label!.className).toContain("truncate");
+    expect(label!.textContent).toBe(LONG_TOPIC);
+    const panel = drawerEl();
+    expect(panel!.className).toContain("overflow-y-auto");
+    expect(panel!.className).toContain("overflow-x-hidden");
+  });
+
   it("sourceDiscussions 缺席或空陣列時來源討論區塊不渲染", async () => {
     const { unmount } = render(<ArchivedDrawer {...(makeProps() as never)} />);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());

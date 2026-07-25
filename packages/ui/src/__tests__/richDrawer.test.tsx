@@ -649,3 +649,56 @@ describe("變更抽屜閱讀欄置中", () => {
     expect(within(col).getByTestId("tasklist-stub")).toBeTruthy();
   });
 });
+
+// spec 需求「抽屜標頭標記受寬度約束且抽屜不產生水平捲軸」：長 topic 的來源討論標記
+// 不得撐寬抽屜——標記受寬度上限約束並截斷、title 保留全文、抽屜面板關閉水平捲動。
+describe("變更抽屜來源討論標記寬度約束", () => {
+  const LONG_TOPIC =
+    "目前前端專案的設計，是完全純文字的web服務，我希望可以設計一下，因為有好幾個端點都要自己打URL才能夠進去，完全不符合人性，所以請你幫我重新設計一下";
+
+  it("長 topic 標記受寬度上限約束並截斷，title 保留完整 topic", async () => {
+    const props = makeProps({
+      sourceDiscussions: [{ slug: "web-service-navigation-redesign", topic: LONG_TOPIC }],
+      onOpenDiscussion: vi.fn(),
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("來自討論：");
+    const chip = screen.getByRole("button", { name: LONG_TOPIC });
+    // 可收縮且不超出抽屜內容區寬度。
+    expect(chip.className).toContain("max-w-full");
+    expect(chip.className).toContain("min-w-0");
+    // 完整 topic 由原生提示保留。
+    expect(chip.getAttribute("title")).toBe(LONG_TOPIC);
+    // 文字本身以截斷樣式呈現（Button 為 inline-flex，截斷需落在內層區塊子項）。
+    const label = chip.querySelector("[data-source-discussion-label]") as HTMLElement | null;
+    expect(label).toBeTruthy();
+    expect(label!.className).toContain("truncate");
+    expect(label!.textContent).toBe(LONG_TOPIC);
+  });
+
+  it("抽屜面板關閉水平捲動（垂直自動捲動不連帶開啟水平）", async () => {
+    const props = makeProps({
+      sourceDiscussions: [{ slug: "web-service-navigation-redesign", topic: LONG_TOPIC }],
+    });
+    const { baseElement } = render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("來自討論：");
+    const panel = baseElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(panel).toBeTruthy();
+    expect(panel.className).toContain("overflow-y-auto");
+    expect(panel.className).toContain("overflow-x-hidden");
+  });
+
+  it("短 topic 呈現與點擊行為不變", async () => {
+    const onOpenDiscussion = vi.fn();
+    const props = makeProps({
+      sourceDiscussions: [{ slug: "alpha-ux", topic: "Alpha UX 討論" }],
+      onOpenDiscussion,
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("來自討論：");
+    const chip = screen.getByRole("button", { name: "Alpha UX 討論" });
+    expect(chip.textContent).toBe("Alpha UX 討論");
+    fireEvent.click(chip);
+    expect(onOpenDiscussion).toHaveBeenCalledWith("alpha-ux");
+  });
+});

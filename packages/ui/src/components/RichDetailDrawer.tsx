@@ -22,6 +22,7 @@ import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
+import { SourceDiscussionChip } from "./SourceDiscussionChip";
 import { READING_COLUMN_CLS } from "./Markdown";
 import { SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
@@ -301,16 +302,11 @@ export function RichDetailDrawer({
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
               <span>{t("rdrawer.fromDiscussion")}</span>
               {(sourceDiscussions ?? []).map((src) => (
-                <Button
+                <SourceDiscussionChip
                   key={src.slug}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-auto rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/20 hover:text-primary"
+                  topic={src.topic}
                   onClick={() => onOpenDiscussion?.(src.slug)}
-                >
-                  {src.topic}
-                </Button>
+                />
               ))}
               {(siblingChanges ?? []).length > 0 && (
                 <>
