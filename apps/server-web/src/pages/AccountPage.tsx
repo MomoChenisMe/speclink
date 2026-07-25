@@ -8,7 +8,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  Badge,
   Button,
+  Card,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@speclink/ui";
 import { useClient } from "../app/context";
 import { useAsync } from "../lib/useAsync";
@@ -172,27 +180,27 @@ function PatSection({
       {pats.length === 0 ? (
         <p className="text-sm text-muted-foreground">尚無 PAT。</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-muted-foreground">
-              <tr>
-                <th className="py-1 pr-4 font-medium">前綴</th>
-                <th className="py-1 pr-4 font-medium">名稱</th>
-                <th className="py-1 pr-4 font-medium">到期</th>
-                <th className="py-1 pr-4 font-medium">最近使用</th>
-                <th className="py-1 font-medium">狀態</th>
-              </tr>
-            </thead>
-            <tbody>
+        <Card className="overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>前綴</TableHead>
+                <TableHead>名稱</TableHead>
+                <TableHead>到期</TableHead>
+                <TableHead>最近使用</TableHead>
+                <TableHead>狀態</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {pats.map((pat) => (
-                <tr key={pat.id} className="border-t">
-                  <td className="py-1.5 pr-4 font-mono">{pat.prefix}</td>
-                  <td className="py-1.5 pr-4">{pat.name}</td>
-                  <td className="py-1.5 pr-4">{fmtDate(pat.expiresAt, "永久")}</td>
-                  <td className="py-1.5 pr-4">{fmtDate(pat.lastUsedAt, "從未")}</td>
-                  <td className="py-1.5">
+                <TableRow key={pat.id}>
+                  <TableCell className="font-mono">{pat.prefix}</TableCell>
+                  <TableCell>{pat.name}</TableCell>
+                  <TableCell>{fmtDate(pat.expiresAt, "永久")}</TableCell>
+                  <TableCell>{fmtDate(pat.lastUsedAt, "從未")}</TableCell>
+                  <TableCell>
                     {pat.revokedAt ? (
-                      <span className="text-muted-foreground">已撤銷</span>
+                      <Badge variant="outline">已撤銷</Badge>
                     ) : (
                       <Button
                         type="button"
@@ -204,32 +212,34 @@ function PatSection({
                         撤銷
                       </Button>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </Card>
       )}
 
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <Field id="pat-name" label="名稱" value={name} onChange={setName} error={fieldErrors.name} />
-        <Field
-          id="pat-expires"
-          label="到期日（YYYY-MM-DD，留空為永久）"
-          value={expires}
-          onChange={setExpires}
-          error={fieldErrors.expires}
-        />
-        {message && Object.keys(fieldErrors).length === 0 && (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        )}
-        <Button type="submit" disabled={pending}>
-          {pending ? "建立中…" : "建立 PAT"}
-        </Button>
-      </form>
+      <Card className="max-w-md p-4">
+        <form onSubmit={onSubmit} className="space-y-4" noValidate>
+          <Field id="pat-name" label="名稱" value={name} onChange={setName} error={fieldErrors.name} />
+          <Field
+            id="pat-expires"
+            label="到期日（YYYY-MM-DD，留空為永久）"
+            value={expires}
+            onChange={setExpires}
+            error={fieldErrors.expires}
+          />
+          {message && Object.keys(fieldErrors).length === 0 && (
+            <p role="alert" className="text-sm text-destructive">
+              {message}
+            </p>
+          )}
+          <Button type="submit" disabled={pending}>
+            {pending ? "建立中…" : "建立 PAT"}
+          </Button>
+        </form>
+      </Card>
     </section>
   );
 }
@@ -242,26 +252,30 @@ function SessionSection({ sessions }: { sessions: SessionMeta[] }) {
       {sessions.length === 0 ? (
         <p className="text-sm text-muted-foreground">尚無 session。</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-muted-foreground">
-              <tr>
-                <th className="py-1 pr-4 font-medium">建立</th>
-                <th className="py-1 pr-4 font-medium">到期</th>
-                <th className="py-1 font-medium">狀態</th>
-              </tr>
-            </thead>
-            <tbody>
+        <Card className="overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>建立</TableHead>
+                <TableHead>到期</TableHead>
+                <TableHead>狀態</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {sessions.map((session) => (
-                <tr key={session.id} className="border-t">
-                  <td className="py-1.5 pr-4">{fmtDate(session.createdAt, "—")}</td>
-                  <td className="py-1.5 pr-4">{fmtDate(session.expiresAt, "—")}</td>
-                  <td className="py-1.5">{session.revokedAt ? "已撤銷" : "有效"}</td>
-                </tr>
+                <TableRow key={session.id}>
+                  <TableCell>{fmtDate(session.createdAt, "—")}</TableCell>
+                  <TableCell>{fmtDate(session.expiresAt, "—")}</TableCell>
+                  <TableCell>
+                    <Badge variant={session.revokedAt ? "outline" : "secondary"}>
+                      {session.revokedAt ? "已撤銷" : "有效"}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </Card>
       )}
     </section>
   );
@@ -281,25 +295,27 @@ function DeviceSection({
       {families.length === 0 ? (
         <p className="text-sm text-muted-foreground">尚無裝置登入。</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-muted-foreground">
-              <tr>
-                <th className="py-1 pr-4 font-medium">來源</th>
-                <th className="py-1 pr-4 font-medium">建立</th>
-                <th className="py-1 pr-4 font-medium">最近 refresh</th>
-                <th className="py-1 font-medium">狀態</th>
-              </tr>
-            </thead>
-            <tbody>
+        <Card className="overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>來源</TableHead>
+                <TableHead>建立</TableHead>
+                <TableHead>最近 refresh</TableHead>
+                <TableHead>狀態</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {families.map((family) => (
-                <tr key={family.id} className="border-t">
-                  <td className="py-1.5 pr-4">{family.source}</td>
-                  <td className="py-1.5 pr-4">{fmtDate(family.createdAt, "—")}</td>
-                  <td className="py-1.5 pr-4">{fmtDate(family.lastRefreshAt, "—")}</td>
-                  <td className="py-1.5">
+                <TableRow key={family.id}>
+                  <TableCell>
+                    <Badge variant="secondary">{family.source}</Badge>
+                  </TableCell>
+                  <TableCell>{fmtDate(family.createdAt, "—")}</TableCell>
+                  <TableCell>{fmtDate(family.lastRefreshAt, "—")}</TableCell>
+                  <TableCell>
                     {family.revokedAt ? (
-                      <span className="text-muted-foreground">已撤銷</span>
+                      <Badge variant="outline">已撤銷</Badge>
                     ) : (
                       <Button
                         type="button"
@@ -311,12 +327,12 @@ function DeviceSection({
                         撤銷
                       </Button>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </Card>
       )}
     </section>
   );

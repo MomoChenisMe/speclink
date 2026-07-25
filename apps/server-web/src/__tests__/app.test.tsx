@@ -255,3 +255,54 @@ describe("響應式導覽", () => {
     }
   });
 });
+
+// server-web-console「Browser API 互動狀態一致且可恢復」的 Scenario「Session 過期回到
+// 登入並保留安全路徑」：已載入的受保護 route 呼叫 browser API 收到 401 即回登入頁。
+// 401 有兩種語意——unauthenticated（session 失效，要導向）與 invalid_credentials
+// （登入密碼錯，要留在原頁顯示錯誤），必須依 error code 分派。
+describe("Session 過期回到登入並保留安全路徑", () => {
+  it("受保護 route 收到 401 unauthenticated 後回登入頁，returnTo 為當前路徑", async () => {
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce(ADMIN)
+      .mockResolvedValue(UNAUTH);
+    const client = makeClient({
+      getSession,
+      getAdminUsers: vi.fn(async () => {
+        throw new WebApiError(401, "unauthenticated", "請先登入");
+      }),
+      login: vi.fn(async () => ({ destination: "/admin/users" })),
+    });
+    renderAt("/admin/users", client);
+    // 401 觸發 session 重讀 → guard 判定未登入 → 導向登入頁。
+    expect(await screen.findByRole("button", { name: /登入/ })).toBeTruthy();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/email|電子郵件/i), "admin@example.com");
+    await user.type(screen.getByLabelText(/密碼|password/i), "pw");
+    await user.click(screen.getByRole("button", { name: /登入/ }));
+    await waitFor(() => expect(client.login).toHaveBeenCalledOnce());
+    expect(client.login).toHaveBeenCalledWith(
+      expect.objectContaining({ returnTo: "/admin/users" }),
+    );
+  });
+
+  it("登入失敗的 401 invalid_credentials 留在登入頁顯示錯誤，不觸發導向迴圈", async () => {
+    const client = makeClient({
+      getSession: vi.fn(async () => UNAUTH),
+      login: vi.fn(async () => {
+        throw new WebApiError(401, "invalid_credentials", "電子郵件或密碼不正確");
+      }),
+    });
+    renderAt("/login", client);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/email|電子郵件/i), "admin@example.com");
+    await user.type(screen.getByLabelText(/密碼|password/i), "wrong");
+    await user.click(screen.getByRole("button", { name: /登入/ }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByText("電子郵件或密碼不正確")).toBeTruthy();
+    // 仍在登入頁、輸入保留。
+    expect((screen.getByLabelText(/email|電子郵件/i) as HTMLInputElement).value).toBe(
+      "admin@example.com",
+    );
+  });
+});

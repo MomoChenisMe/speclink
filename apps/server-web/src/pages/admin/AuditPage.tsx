@@ -1,3 +1,13 @@
+import {
+  Badge,
+  Card,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { AdminError, AdminLoading } from "./states";
@@ -20,30 +30,32 @@ export function AuditPage() {
         (data.entries.length === 0 ? (
           <p className="text-sm text-muted-foreground">尚無稽核事件。</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-muted-foreground">
-                <tr>
-                  <th className="py-1 pr-4 font-medium">動作</th>
-                  <th className="py-1 pr-4 font-medium">對象</th>
-                  <th className="py-1 pr-4 font-medium">來源</th>
-                  <th className="py-1 pr-4 font-medium">操作者</th>
-                  <th className="py-1 font-medium">時間</th>
-                </tr>
-              </thead>
-              <tbody>
+          <Card className="overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>動作</TableHead>
+                  <TableHead>對象</TableHead>
+                  <TableHead>來源</TableHead>
+                  <TableHead>操作者</TableHead>
+                  <TableHead>時間</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {data.entries.map((e) => (
-                  <tr key={e.id} className="border-t">
-                    <td className="py-1.5 pr-4 font-mono">{e.action}</td>
-                    <td className="py-1.5 pr-4 font-mono">{e.subject}</td>
-                    <td className="py-1.5 pr-4">{e.source}</td>
-                    <td className="py-1.5 pr-4 font-mono">{e.actorId}</td>
-                    <td className="py-1.5">{e.createdAt}</td>
-                  </tr>
+                  <TableRow key={e.id}>
+                    <TableCell className="font-mono">{e.action}</TableCell>
+                    <TableCell className="font-mono">{e.subject}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{e.source}</Badge>
+                    </TableCell>
+                    <TableCell className="font-mono">{e.actorId}</TableCell>
+                    <TableCell>{e.createdAt}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          </Card>
         ))}
     </div>
   );

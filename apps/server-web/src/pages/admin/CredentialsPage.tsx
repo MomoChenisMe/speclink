@@ -8,7 +8,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  Badge,
   Button,
+  Card,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
@@ -54,29 +62,29 @@ export function CredentialsPage() {
             {data.pats.length === 0 ? (
               <p className="text-sm text-muted-foreground">尚無 PAT。</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="text-muted-foreground">
-                    <tr>
-                      <th className="py-1 pr-4 font-medium">前綴</th>
-                      <th className="py-1 pr-4 font-medium">名稱</th>
-                      <th className="py-1 pr-4 font-medium">使用者</th>
-                      <th className="py-1 pr-4 font-medium">建立</th>
-                      <th className="py-1 pr-4 font-medium">到期</th>
-                      <th className="py-1 font-medium">狀態</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <Card className="overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>前綴</TableHead>
+                      <TableHead>名稱</TableHead>
+                      <TableHead>使用者</TableHead>
+                      <TableHead>建立</TableHead>
+                      <TableHead>到期</TableHead>
+                      <TableHead>狀態</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {data.pats.map((p) => (
-                      <tr key={p.id} className="border-t">
-                        <td className="py-1.5 pr-4 font-mono">{p.prefix}</td>
-                        <td className="py-1.5 pr-4">{p.name}</td>
-                        <td className="py-1.5 pr-4 font-mono">{p.userId}</td>
-                        <td className="py-1.5 pr-4">{fmtDate(p.createdAt, "—")}</td>
-                        <td className="py-1.5 pr-4">{fmtDate(p.expiresAt, "永久")}</td>
-                        <td className="py-1.5">
+                      <TableRow key={p.id}>
+                        <TableCell className="font-mono">{p.prefix}</TableCell>
+                        <TableCell>{p.name}</TableCell>
+                        <TableCell className="font-mono">{p.userId}</TableCell>
+                        <TableCell>{fmtDate(p.createdAt, "—")}</TableCell>
+                        <TableCell>{fmtDate(p.expiresAt, "永久")}</TableCell>
+                        <TableCell>
                           {p.revokedAt ? (
-                            <span className="text-muted-foreground">已撤銷</span>
+                            <Badge variant="outline">已撤銷</Badge>
                           ) : (
                             <Button
                               type="button"
@@ -94,12 +102,12 @@ export function CredentialsPage() {
                               撤銷
                             </Button>
                           )}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </TableBody>
+                </Table>
+              </Card>
             )}
           </section>
 
@@ -108,27 +116,29 @@ export function CredentialsPage() {
             {data.deviceFamilies.length === 0 ? (
               <p className="text-sm text-muted-foreground">尚無裝置憑證。</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="text-muted-foreground">
-                    <tr>
-                      <th className="py-1 pr-4 font-medium">來源</th>
-                      <th className="py-1 pr-4 font-medium">使用者</th>
-                      <th className="py-1 pr-4 font-medium">建立</th>
-                      <th className="py-1 pr-4 font-medium">最近 refresh</th>
-                      <th className="py-1 font-medium">狀態</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <Card className="overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>來源</TableHead>
+                      <TableHead>使用者</TableHead>
+                      <TableHead>建立</TableHead>
+                      <TableHead>最近 refresh</TableHead>
+                      <TableHead>狀態</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {data.deviceFamilies.map((f) => (
-                      <tr key={f.id} className="border-t">
-                        <td className="py-1.5 pr-4">{f.source}</td>
-                        <td className="py-1.5 pr-4 font-mono">{f.userId}</td>
-                        <td className="py-1.5 pr-4">{fmtDate(f.createdAt, "—")}</td>
-                        <td className="py-1.5 pr-4">{fmtDate(f.lastRefreshAt, "—")}</td>
-                        <td className="py-1.5">
+                      <TableRow key={f.id}>
+                        <TableCell>
+                          <Badge variant="secondary">{f.source}</Badge>
+                        </TableCell>
+                        <TableCell className="font-mono">{f.userId}</TableCell>
+                        <TableCell>{fmtDate(f.createdAt, "—")}</TableCell>
+                        <TableCell>{fmtDate(f.lastRefreshAt, "—")}</TableCell>
+                        <TableCell>
                           {f.revokedAt ? (
-                            <span className="text-muted-foreground">已撤銷</span>
+                            <Badge variant="outline">已撤銷</Badge>
                           ) : (
                             <Button
                               type="button"
@@ -146,12 +156,12 @@ export function CredentialsPage() {
                               撤銷
                             </Button>
                           )}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </TableBody>
+                </Table>
+              </Card>
             )}
           </section>
         </>

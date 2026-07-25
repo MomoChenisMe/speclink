@@ -1,5 +1,18 @@
 import { useState, type FormEvent } from "react";
-import { Button, Input } from "@speclink/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { readFormError } from "../../lib/formError";
@@ -71,24 +84,26 @@ function CreateProjectForm({ afterMutate }: { afterMutate: () => void }) {
   return (
     <section className="space-y-4">
       <h2 className="text-lg font-medium">建立 project</h2>
-      <form onSubmit={onSubmit} className="max-w-md space-y-4" noValidate>
-        <Field id="new-project-key" label="Project key" value={key} onChange={setKey} error={fieldErrors.key} />
-        <Field
-          id="new-project-name"
-          label="Project 名稱"
-          value={name}
-          onChange={setName}
-          error={fieldErrors.name}
-        />
-        {message && Object.keys(fieldErrors).length === 0 && (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        )}
-        <Button type="submit" disabled={pending}>
-          {pending ? "建立中…" : "建立 project"}
-        </Button>
-      </form>
+      <Card className="max-w-md p-4">
+        <form onSubmit={onSubmit} className="space-y-4" noValidate>
+          <Field id="new-project-key" label="Project key" value={key} onChange={setKey} error={fieldErrors.key} />
+          <Field
+            id="new-project-name"
+            label="Project 名稱"
+            value={name}
+            onChange={setName}
+            error={fieldErrors.name}
+          />
+          {message && Object.keys(fieldErrors).length === 0 && (
+            <p role="alert" className="text-sm text-destructive">
+              {message}
+            </p>
+          )}
+          <Button type="submit" disabled={pending}>
+            {pending ? "建立中…" : "建立 project"}
+          </Button>
+        </form>
+      </Card>
     </section>
   );
 }
@@ -96,43 +111,62 @@ function CreateProjectForm({ afterMutate }: { afterMutate: () => void }) {
 function ProjectCard({ project, afterMutate }: { project: AdminProject; afterMutate: () => void }) {
   const client = useClient();
   return (
-    <li className="space-y-4 rounded-lg border p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <code className="font-mono text-sm">{project.key}</code>
-        <span className="text-muted-foreground">{project.name}</span>
-      </div>
-      <RenameForm
-        label={`重新命名專案 ${project.name}`}
-        current={project.name}
-        onRename={(name) => client.adminRenameProject(project.key, name)}
-        afterMutate={afterMutate}
-      />
+    <li>
+      <Card>
+        {/* 標頭：名稱＋key chip 為身分（key 不可改），更名表單靠右、不與唯讀文字重複。 */}
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+          <CardTitle className="flex items-center gap-2 text-base">
+            {project.name}
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs font-normal text-muted-foreground">
+              {project.key}
+            </code>
+          </CardTitle>
+          <RenameForm
+            label={`重新命名專案 ${project.name}`}
+            current={project.name}
+            onRename={(name) => client.adminRenameProject(project.key, name)}
+            afterMutate={afterMutate}
+          />
+        </CardHeader>
+        <CardContent className="gap-4">
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">儲存庫</h3>
+            {project.repos.length === 0 ? (
+              <p className="text-sm text-muted-foreground">尚無儲存庫。</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Repo key</TableHead>
+                    <TableHead>名稱（可更名）</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {project.repos.map((r) => (
+                    <TableRow key={r.key}>
+                      <TableCell>
+                        <code className="font-mono">{r.key}</code>
+                      </TableCell>
+                      <TableCell>
+                        <RenameForm
+                          label={`重新命名儲存庫 ${r.name}`}
+                          current={r.name}
+                          onRename={(name) =>
+                            client.adminRenameRepo({ projectKey: project.key, key: r.key, name })
+                          }
+                          afterMutate={afterMutate}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
 
-      <div className="space-y-2">
-        <h3 className="text-sm font-medium">儲存庫</h3>
-        {project.repos.length === 0 ? (
-          <p className="text-sm text-muted-foreground">尚無儲存庫。</p>
-        ) : (
-          <ul className="space-y-2">
-            {project.repos.map((r) => (
-              <li key={r.key} className="flex flex-wrap items-center gap-2">
-                <code className="font-mono text-sm">{r.key}</code>
-                <span className="text-muted-foreground">{r.name}</span>
-                <RenameForm
-                  label={`重新命名儲存庫 ${r.name}`}
-                  current={r.name}
-                  onRename={(name) =>
-                    client.adminRenameRepo({ projectKey: project.key, key: r.key, name })
-                  }
-                  afterMutate={afterMutate}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <CreateRepoForm projectKey={project.key} afterMutate={afterMutate} />
+          <CreateRepoForm projectKey={project.key} afterMutate={afterMutate} />
+        </CardContent>
+      </Card>
     </li>
   );
 }
@@ -217,9 +251,9 @@ function CreateRepoForm({ projectKey, afterMutate }: { projectKey: string; after
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3 border-t pt-3" noValidate>
+    <form onSubmit={onSubmit} className="space-y-3 border-t border-border pt-4" noValidate>
       <p className="text-sm font-medium">新增儲存庫</p>
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,14rem)_auto] sm:items-end">
         <Field
           id={`new-repo-key-${projectKey}`}
           label="Repo key"
@@ -234,7 +268,7 @@ function CreateRepoForm({ projectKey, afterMutate }: { projectKey: string; after
           onChange={setName}
           error={fieldErrors.name}
         />
-        <Button type="submit" variant="outline" size="sm" disabled={pending}>
+        <Button type="submit" variant="outline" disabled={pending}>
           建立 repo
         </Button>
       </div>

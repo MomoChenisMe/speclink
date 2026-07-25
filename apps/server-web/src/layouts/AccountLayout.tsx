@@ -2,6 +2,7 @@ import { useRef, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { SkipLink } from "../components/SkipLink";
 import { LogoutButton } from "../components/LogoutButton";
+import { Wordmark } from "../components/Wordmark";
 import { useFocusMain } from "../lib/useFocusMain";
 
 // 一般成員的帳號殼：帳號入口與登出空間上分離，不顯示任何管理導覽。
@@ -13,12 +14,12 @@ export function AccountLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SkipLink />
-      <header className="flex items-center justify-between border-b px-4 py-3">
-        <span className="text-lg font-semibold text-primary">Speclink</span>
+      <header className="flex h-14 items-center justify-between border-b border-border px-4">
+        <Wordmark />
         <div className="flex items-center gap-3">
           <NavLink
             to="/account"
-            className="rounded-md px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md px-2 py-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             帳號
           </NavLink>

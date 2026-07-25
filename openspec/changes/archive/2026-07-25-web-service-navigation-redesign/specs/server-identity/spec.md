@@ -66,7 +66,7 @@
 
 ### Requirement: 帳號 browser API 保持憑證祕密邊界
 
-登入使用者 SHALL 能經 `/api/speclink/v1/web/account` 讀取 user、PAT metadata、Web sessions 與 device families，並建立／撤銷自己的 PAT、登出 Web session、撤銷 device family。讀取 payload SHALL 僅含呈現與 eligibility 所需 metadata，SHALL NOT 包含 PAT hash、password hash、refresh credential 或可重播的 session secret。PAT 建立回應 SHALL 只在該次 `{data}` 內回傳 plaintext；後續讀取 SHALL 僅回 prefix、名稱、到期、撤銷時戳與 last-used。所有 mutation SHALL 驗證同源與 active session。
+登入使用者 SHALL 能經 `/api/speclink/v1/web/account` 讀取 user、PAT metadata、Web sessions 與 device families，並建立／撤銷自己的 PAT、經 `POST /logout` 結束目前 Web session、撤銷 device family。Web session 清單 SHALL 為唯讀呈現，SHALL NOT 提供逐一撤銷其他 session 的操作。讀取 payload SHALL 僅含呈現與 eligibility 所需 metadata，SHALL NOT 包含 PAT hash、password hash、refresh credential 或可重播的 session secret。PAT 建立回應 SHALL 只在該次 `{data}` 內回傳 plaintext；後續讀取 SHALL 僅回 prefix、名稱、到期、撤銷時戳與 last-used。所有 mutation SHALL 驗證同源與 active session。
 
 #### Scenario: PAT 明文只在建立回應出現
 

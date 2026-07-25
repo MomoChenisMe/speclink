@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Button } from "@speclink/ui";
 import type { SessionData } from "../api/client";
 import { SessionProvider, useClient, useSession } from "../app/context";
 import { FocusLayout } from "../layouts/FocusLayout";
@@ -18,6 +19,7 @@ import { InvitePage } from "../pages/InvitePage";
 import { ActivatePage } from "../pages/ActivatePage";
 import { AccountPage } from "../pages/AccountPage";
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
+import { loginRedirect } from "../lib/returnTo";
 
 // 管理面切為獨立 lazy chunk：登入／帳號初載 bundle 不含管理程式碼（D1）。
 const AdminSection = lazy(() => import("../pages/admin/AdminSection"));
@@ -39,13 +41,9 @@ function BootError({ onRetry }: { onRetry: () => void }) {
     <div role="alert" className="grid min-h-screen place-items-center bg-background">
       <div className="text-center">
         <p className="text-destructive">無法載入，發生錯誤。</p>
-        <button
-          type="button"
-          onClick={onRetry}
-          className="mt-3 rounded-md border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onRetry}>
           重試
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -71,17 +69,6 @@ function SessionGate({ children }: { children: ReactNode }) {
   if (error != null && session == null) return <BootError onRetry={() => void refresh()} />;
   if (session == null) return <BootLoading />;
   return <SessionProvider value={{ session, refresh }}>{children}</SessionProvider>;
-}
-
-// 未登入受保護 route 導向登入頁，只保留通過白名單的站內路徑作 returnTo（server 再驗）。
-function safeReturnTo(pathname: string): string | null {
-  const first = pathname.replace(/^\//, "").split(/[/?#]/)[0];
-  return ["account", "activate", "admin"].includes(first) ? pathname : null;
-}
-
-function loginRedirect(pathname: string): string {
-  const rt = safeReturnTo(pathname);
-  return rt ? `/login?returnTo=${encodeURIComponent(rt)}` : "/login";
 }
 
 function RequireAuth({ children }: { children: ReactNode }) {

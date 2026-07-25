@@ -1,3 +1,12 @@
+import {
+  Card,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { AdminError, AdminLoading } from "./states";
@@ -37,26 +46,26 @@ export function SystemPage() {
             {data.outboxBacklogs.length === 0 ? (
               <p className="text-sm text-muted-foreground">無 backlog 資料。</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="text-muted-foreground">
-                    <tr>
-                      <th className="py-1 pr-4 font-medium">專案</th>
-                      <th className="py-1 pr-4 font-medium">儲存庫</th>
-                      <th className="py-1 font-medium">Backlog</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <Card className="overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>專案</TableHead>
+                      <TableHead>儲存庫</TableHead>
+                      <TableHead>Backlog</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {data.outboxBacklogs.map((b) => (
-                      <tr key={`${b.project}/${b.repo}`} className="border-t">
-                        <td className="py-1.5 pr-4 font-mono">{b.project}</td>
-                        <td className="py-1.5 pr-4 font-mono">{b.repo}</td>
-                        <td className="py-1.5 tabular-nums">{b.backlog ?? "—"}</td>
-                      </tr>
+                      <TableRow key={`${b.project}/${b.repo}`}>
+                        <TableCell className="font-mono">{b.project}</TableCell>
+                        <TableCell className="font-mono">{b.repo}</TableCell>
+                        <TableCell className="tabular-nums">{b.backlog ?? "—"}</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </TableBody>
+                </Table>
+              </Card>
             )}
           </section>
         </>
@@ -67,9 +76,9 @@ export function SystemPage() {
 
 function Row({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-lg border p-3">
+    <Card className="p-3">
       <dt className="text-sm text-muted-foreground">{label}</dt>
       <dd className="mt-1 font-mono text-sm break-all">{value}</dd>
-    </div>
+    </Card>
   );
 }
