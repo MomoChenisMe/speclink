@@ -4,6 +4,7 @@ import { Code2, FileText, ListChecks, Maximize2, Minimize2, PenTool } from "luci
 import { useI18n } from "../i18n";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
+import { SourceDiscussionChip } from "./SourceDiscussionChip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { DeltaSpecView } from "./DeltaBadges";
 import { ConclusionView, RoundsView, splitDiscussionSections } from "./DiscussionDrawer";
@@ -140,16 +141,11 @@ export function ArchivedDrawer({
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
               <span>{t("rdrawer.fromDiscussion")}</span>
               {(sourceDiscussions ?? []).map((src) => (
-                <Button
+                <SourceDiscussionChip
                   key={src.slug}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-auto rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/20 hover:text-primary"
+                  topic={src.topic}
                   onClick={() => onOpenDiscussion?.(src.slug)}
-                >
-                  {src.topic}
-                </Button>
+                />
               ))}
             </div>
           )}

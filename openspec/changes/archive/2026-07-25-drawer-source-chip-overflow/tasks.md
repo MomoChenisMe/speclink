@@ -1,0 +1,5 @@
+## 1. 抽屜標頭標記受寬度約束且抽屜不產生水平捲軸
+
+- [x] 1.1 RED：先寫失敗測試釘住「抽屜標頭標記受寬度約束且抽屜不產生水平捲軸」——在 `packages/ui/src/__tests__/richDrawer.test.tsx` 與 `packages/ui/src/__tests__/archivedDrawer.test.tsx` 斷言：來源討論標記帶有截斷樣式與寬度上限、標記的 `title` 屬性等於該討論完整 topic、抽屜面板不允許水平捲動、短 topic 的標記仍完整呈現且點擊仍呼叫開啟該討論的 callback。以 `npm test -w packages/ui -- richDrawer archivedDrawer` 執行，預期因目前標記無寬度上限、無截斷、無 `title` 而失敗。 <!-- speclink-task:tsk_01KYBV1GBHGEFZ710ST78KRP1V -->
+- [x] 1.2 GREEN：讓兩處抽屜的來源討論標記在超出可用寬度時截斷並以 `title` 保留全文，且抽屜面板不再於水平方向產生捲軸——修改點為 `packages/ui/src/components/RichDetailDrawer.tsx` 與 `packages/ui/src/components/ArchivedDrawer.tsx` 的來源討論標記，以及 `packages/ui/src/components/ui/sheet.tsx` 的面板捲動設定（面板目前只宣告垂直自動捲動，依 CSS 規則水平連帶成為自動捲動，需明確關閉水平捲動）。來源討論的資料來源、數量、排序與點擊開啟討論的行為不得改變。以 1.1 測試轉綠與 `npm test -w packages/ui` 全綠驗證。 <!-- speclink-task:tsk_01KYBV1GBHM7MPSMB96816AGAB -->
+- [x] 1.3 REFACTOR／驗收：確認兩處抽屜使用同一種截斷處理方式而非各寫一份，並執行 `npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；接著以 `cargo build --release -p speclink-desktop` 產出 exe（重建前先關閉執行中的 exe），在真實視窗開啟一個來源討論 topic 長句的變更詳情抽屜與其已封存抽屜，截圖確認標頭、動作列與內文皆無水平捲軸、標記已截斷、停留可見完整 topic，且短 topic 變更的呈現與修正前一致。 <!-- speclink-task:tsk_01KYBV1GBHCGT5H6EJ4G73QVTW -->
