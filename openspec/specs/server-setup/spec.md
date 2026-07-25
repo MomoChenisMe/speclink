@@ -100,47 +100,132 @@ code:
 ---
 ### Requirement: setup 流程完成開箱四要素
 
-/setup SHALL 以 bootstrap token 門禁，流程 SHALL 涵蓋：建立第一位 Admin（email、顯示名、密碼，直接為 active 且帶 admin 旗標，不經邀請）、顯示 Store 狀態（manifest 的 driver 與 capabilities、health 結果、identity schema version）、建立第一組 Project 與 Repo（寫 registry）、顯示初始連線資訊（部署組態的 public url 與所建 project/repo keys）。流程 SHALL 冪等可續作：token 未耗用前重入不重建已完成的節；變更型 POST SHALL 沿用同源驗證。setup SHALL NOT 寫入 public url——其唯一來源是部署組態。
+`/setup` SPA 與 `/api/speclink/v1/web/setup/*` SHALL 以 bootstrap token 門禁，流程 SHALL 涵蓋：建立第一位 Admin（email、顯示名、密碼，直接為 active 且帶 admin 旗標，不經邀請）、顯示 Store 狀態（manifest 的 driver 與 capabilities、health 結果、identity schema version）、建立第一組 Project 與 Repo（寫 registry）、顯示初始連線資訊（部署組態的 public URL 與所建 project／repo keys）。流程 SHALL 冪等可續作：token 未耗用前重入不重建已完成的節；全部 mutation SHALL 驗證同源並回相同 `{data}`／`{error}` browser JSON envelope。setup SHALL NOT 寫入 public URL，其唯一來源 SHALL 為部署組態。
+
+完成最後節點 SHALL 在既有 setup 交易邊界內耗用 bootstrap token、記錄 audit 並建立第一位 Admin 的 Web session；成功回應 SHALL 帶 `destination: "/admin?welcome=1"` 與 `connection: {publicUrl, projectKey, repoKey}`。Session cookie SHALL 在回應送出前設定完成；若 session 建立失敗，Server SHALL 回可重試登入的 recovery error，SHALL NOT 把結果表示為已登入。
 
 #### Scenario: 完成 setup 即可邀請與連線
 
-- **WHEN** 完成 setup 建立 Admin 與第一組 Project/Repo 後，以 invite 子命令對該 project 邀請成員，成員接受邀請、建 PAT 並以 CLI 連線
-- **THEN** 邀請建立成功；成員的 /binding 對該 project/repo 成功；CLI remote 動詞照常運作
+- **WHEN** 完成 setup 建立 Admin 與第一組 Project／Repo 後，以 invite 子命令對該 project 邀請成員，成員接受邀請、建 PAT 並以 CLI 連線
+- **THEN** setup 回應建立 session 並導向 `/admin?welcome=1` 顯示連線資訊；邀請建立成功；成員的 `/binding` 對該 project／repo 成功；CLI remote 動詞照常運作
 
 #### Scenario: 中斷後憑同一 token 續作
 
-- **WHEN** 完成第一位 Admin 建立後關閉瀏覽器，再憑同一 token 進入 /setup
-- **THEN** Admin 節顯示已完成不重建；可繼續建立 Project/Repo 完成流程
+- **WHEN** 完成第一位 Admin 建立後關閉瀏覽器，再憑同一 token 進入 `/setup`
+- **THEN** SPA 顯示 Admin 節已完成且不重建，可繼續建立 Project／Repo 完成流程
 
----
+#### Scenario: 重複完成不建立第二份資料
+
+- **WHEN** setup completion 請求因 client 未收到回應而以相同 bootstrap token 重送
+- **THEN** Server 不建立第二位 Admin 或第二組 Project／Repo；已耗用 token 回既有不可區分的無效 token 結果
+
+#### Scenario: 跨 origin setup mutation 被拒絕
+
+- **WHEN** 有效 bootstrap token 從不同 origin 提交任一 setup mutation
+- **THEN** Server 回 403，不建立或修改 Admin、registry、session 與 audit 成功事件
+
 
 <!-- @trace
-source: server-setup-registry
-updated: 2026-07-14
+source: web-service-navigation-redesign
+updated: 2026-07-25
 code:
+  - .dockerignore
+  - .github/workflows/ci.yml
+  - .github/workflows/release.yml
+  - Cargo.lock
+  - apps/desktop/src/index.css
+  - apps/server-web/index.html
+  - apps/server-web/package.json
+  - apps/server-web/src/App.tsx
+  - apps/server-web/src/__tests__/a11y.test.tsx
+  - apps/server-web/src/__tests__/account.test.tsx
+  - apps/server-web/src/__tests__/activate.test.tsx
+  - apps/server-web/src/__tests__/admin.test.tsx
+  - apps/server-web/src/__tests__/app.test.tsx
+  - apps/server-web/src/__tests__/build.test.ts
+  - apps/server-web/src/__tests__/invite.test.tsx
+  - apps/server-web/src/__tests__/setup.test.tsx
+  - apps/server-web/src/api/client.ts
+  - apps/server-web/src/app/context.tsx
+  - apps/server-web/src/assets/logo-mark.png
+  - apps/server-web/src/assets/speclink-wordmark.png
+  - apps/server-web/src/components/AdminNav.tsx
+  - apps/server-web/src/components/Field.tsx
+  - apps/server-web/src/components/LogoutButton.tsx
+  - apps/server-web/src/components/RouteErrorBoundary.tsx
+  - apps/server-web/src/components/SkipLink.tsx
+  - apps/server-web/src/components/Wordmark.tsx
+  - apps/server-web/src/index.css
+  - apps/server-web/src/layouts/AccountLayout.tsx
+  - apps/server-web/src/layouts/AdminLayout.tsx
+  - apps/server-web/src/layouts/FocusLayout.tsx
+  - apps/server-web/src/lib/formError.ts
+  - apps/server-web/src/lib/returnTo.ts
+  - apps/server-web/src/lib/useAsync.ts
+  - apps/server-web/src/lib/useFocusMain.ts
+  - apps/server-web/src/lib/useMediaQuery.ts
+  - apps/server-web/src/main.tsx
+  - apps/server-web/src/pages/AccountPage.tsx
+  - apps/server-web/src/pages/ActivatePage.tsx
+  - apps/server-web/src/pages/InvitePage.tsx
+  - apps/server-web/src/pages/LoginPage.tsx
+  - apps/server-web/src/pages/SetupPage.tsx
+  - apps/server-web/src/pages/admin/AdminSection.tsx
+  - apps/server-web/src/pages/admin/AuditPage.tsx
+  - apps/server-web/src/pages/admin/CredentialsPage.tsx
+  - apps/server-web/src/pages/admin/DataPage.tsx
+  - apps/server-web/src/pages/admin/OverviewPage.tsx
+  - apps/server-web/src/pages/admin/RegistryPage.tsx
+  - apps/server-web/src/pages/admin/SystemPage.tsx
+  - apps/server-web/src/pages/admin/UsersPage.tsx
+  - apps/server-web/src/pages/admin/states.tsx
+  - apps/server-web/src/pages/admin/stubs.tsx
+  - apps/server-web/src/routes/AppRoutes.tsx
+  - apps/server-web/src/vite-env.d.ts
+  - apps/server-web/tsconfig.json
+  - apps/server-web/vite.config.ts
+  - apps/server-web/vitest.config.ts
+  - apps/server-web/vitest.setup.ts
+  - crates/speclink-server/Cargo.toml
+  - crates/speclink-server/Dockerfile
+  - crates/speclink-server/src/admin.rs
   - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/auth.rs
-  - crates/speclink-server/src/config.rs
-  - crates/speclink-server/src/identity.rs
-  - crates/speclink-server/src/identity_sqlite.rs
+  - crates/speclink-server/src/assets.rs
   - crates/speclink-server/src/lib.rs
-  - crates/speclink-server/src/main.rs
-  - crates/speclink-server/src/routes.rs
   - crates/speclink-server/src/setup.rs
   - crates/speclink-server/src/web.rs
-  - crates/speclink-server/tests/auth_device.rs
-  - crates/speclink-server/tests/auth_pat.rs
-  - crates/speclink-server/tests/binding.rs
-  - crates/speclink-server/tests/common/mod.rs
+  - crates/speclink-server/tests/admin_api.rs
+  - crates/speclink-server/tests/admin_data.rs
+  - crates/speclink-server/tests/admin_e2e.rs
+  - crates/speclink-server/tests/admin_pages.rs
+  - crates/speclink-server/tests/admin_system.rs
+  - crates/speclink-server/tests/admin_three_entry.rs
+  - crates/speclink-server/tests/admin_web_api.rs
+  - crates/speclink-server/tests/backup_e2e.rs
   - crates/speclink-server/tests/device_e2e.rs
   - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/identity.rs
-  - crates/speclink-server/tests/invite.rs
-  - crates/speclink-server/tests/query_routes.rs
-  - crates/speclink-server/tests/refresh_rotation.rs
+  - crates/speclink-server/tests/phase2_chain.rs
   - crates/speclink-server/tests/setup_flow.rs
-  - crates/speclink-server/tests/startup.rs
+  - crates/speclink-server/tests/web_account.rs
+  - crates/speclink-server/tests/web_activate.rs
+  - crates/speclink-server/tests/web_assets.rs
   - crates/speclink-server/tests/web_device_sessions.rs
+  - crates/speclink-server/tests/web_invite.rs
+  - crates/speclink-server/tests/web_session.rs
+  - crates/speclink-server/tests/web_setup.rs
+  - docs/remote-getting-started.md
+  - docs/remote-getting-started.zh-TW.md
+  - docs/server-deployment.zh-TW.md
+  - package-lock.json
+  - package.json
+  - packages/ui/src/__tests__/table.test.tsx
+  - packages/ui/src/__tests__/theme.test.ts
+  - packages/ui/src/components/ui/label.tsx
+  - packages/ui/src/components/ui/table.tsx
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
+  - scripts/delivery-gate.test.mjs
+  - scripts/remote-docs.test.mjs
 -->
 
 ---

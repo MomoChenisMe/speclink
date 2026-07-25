@@ -20,6 +20,15 @@ export {
 } from "./components/ui/card";
 export { Badge, badgeVariants, type BadgeProps } from "./components/ui/badge";
 export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  TableCaption,
+} from "./components/ui/table";
+export {
   AlertDialog,
   AlertDialogContent,
   AlertDialogHeader,

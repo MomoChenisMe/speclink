@@ -111,3 +111,131 @@ code:
   - deploy/docker-compose.yml
   - docs/server-deployment.zh-TW.md
 -->
+
+---
+### Requirement: Server 交付物內嵌同版本 SPA 資產
+
+Release binary、Docker image 與本機 production build SHALL 在編譯期內嵌 `apps/server-web` 同一次 source revision 產生的 Vite `index.html`、manifest、hashed JavaScript／CSS、字型與圖示。建置順序 SHALL 為安裝 lockfile 固定的 npm dependencies、執行 `apps/server-web` production build、再編譯 `speclink-server`；缺少 index 或 manifest 時 server release build SHALL 以非零 exit code 失敗並指出需先完成 Web workspace build，SHALL NOT 產生只有 API 而沒有 UI 的成功 artifact。Runtime SHALL 只需要 non-root server binary，SHALL NOT 需要 Node、外部 `dist` volume、CDN 或第二個 Web service。
+
+#### Scenario: Release binary 在空 runtime 載入 SPA
+
+- **WHEN** 將 release server binary 放入沒有 Node 與 `apps/server-web/dist` 的 runtime，啟動後 GET `/login` 與 HTML 引用的 hashed assets
+- **THEN** index 與全部資產成功回應、版本來自同一 binary，且未知 `/api/speclink/v1/web/missing` 回 JSON 404
+
+#### Scenario: 缺少 Web build 使 release build 失敗
+
+- **WHEN** production index 或 manifest 不存在時執行 server release build
+- **THEN** build 以非零 exit code 結束並輸出先建置 `apps/server-web` 的可執行提示，不產生可發布 server artifact
+
+#### Scenario: Docker multi-stage 不攜帶 Node runtime
+
+- **WHEN** Docker workflow 依 lockfile 建 Web assets、編譯 server 並檢視最終 image
+- **THEN** 最終 image 只有執行 server 所需檔案與 non-root 使用者，沒有 Node runtime 或獨立靜態檔服務
+
+#### Scenario: Release workflow 保持資產與版本對齊
+
+- **WHEN** tag 觸發 server binary 與 Docker image 發布
+- **THEN** 每個 server artifact 都先通過同 revision 的 Web test 與 production build，並在無外部 assets 的 smoke test 載入 `/login`
+
+<!-- @trace
+source: web-service-navigation-redesign
+updated: 2026-07-25
+code:
+  - .dockerignore
+  - .github/workflows/ci.yml
+  - .github/workflows/release.yml
+  - Cargo.lock
+  - apps/desktop/src/index.css
+  - apps/server-web/index.html
+  - apps/server-web/package.json
+  - apps/server-web/src/App.tsx
+  - apps/server-web/src/__tests__/a11y.test.tsx
+  - apps/server-web/src/__tests__/account.test.tsx
+  - apps/server-web/src/__tests__/activate.test.tsx
+  - apps/server-web/src/__tests__/admin.test.tsx
+  - apps/server-web/src/__tests__/app.test.tsx
+  - apps/server-web/src/__tests__/build.test.ts
+  - apps/server-web/src/__tests__/invite.test.tsx
+  - apps/server-web/src/__tests__/setup.test.tsx
+  - apps/server-web/src/api/client.ts
+  - apps/server-web/src/app/context.tsx
+  - apps/server-web/src/assets/logo-mark.png
+  - apps/server-web/src/assets/speclink-wordmark.png
+  - apps/server-web/src/components/AdminNav.tsx
+  - apps/server-web/src/components/Field.tsx
+  - apps/server-web/src/components/LogoutButton.tsx
+  - apps/server-web/src/components/RouteErrorBoundary.tsx
+  - apps/server-web/src/components/SkipLink.tsx
+  - apps/server-web/src/components/Wordmark.tsx
+  - apps/server-web/src/index.css
+  - apps/server-web/src/layouts/AccountLayout.tsx
+  - apps/server-web/src/layouts/AdminLayout.tsx
+  - apps/server-web/src/layouts/FocusLayout.tsx
+  - apps/server-web/src/lib/formError.ts
+  - apps/server-web/src/lib/returnTo.ts
+  - apps/server-web/src/lib/useAsync.ts
+  - apps/server-web/src/lib/useFocusMain.ts
+  - apps/server-web/src/lib/useMediaQuery.ts
+  - apps/server-web/src/main.tsx
+  - apps/server-web/src/pages/AccountPage.tsx
+  - apps/server-web/src/pages/ActivatePage.tsx
+  - apps/server-web/src/pages/InvitePage.tsx
+  - apps/server-web/src/pages/LoginPage.tsx
+  - apps/server-web/src/pages/SetupPage.tsx
+  - apps/server-web/src/pages/admin/AdminSection.tsx
+  - apps/server-web/src/pages/admin/AuditPage.tsx
+  - apps/server-web/src/pages/admin/CredentialsPage.tsx
+  - apps/server-web/src/pages/admin/DataPage.tsx
+  - apps/server-web/src/pages/admin/OverviewPage.tsx
+  - apps/server-web/src/pages/admin/RegistryPage.tsx
+  - apps/server-web/src/pages/admin/SystemPage.tsx
+  - apps/server-web/src/pages/admin/UsersPage.tsx
+  - apps/server-web/src/pages/admin/states.tsx
+  - apps/server-web/src/pages/admin/stubs.tsx
+  - apps/server-web/src/routes/AppRoutes.tsx
+  - apps/server-web/src/vite-env.d.ts
+  - apps/server-web/tsconfig.json
+  - apps/server-web/vite.config.ts
+  - apps/server-web/vitest.config.ts
+  - apps/server-web/vitest.setup.ts
+  - crates/speclink-server/Cargo.toml
+  - crates/speclink-server/Dockerfile
+  - crates/speclink-server/src/admin.rs
+  - crates/speclink-server/src/app.rs
+  - crates/speclink-server/src/assets.rs
+  - crates/speclink-server/src/lib.rs
+  - crates/speclink-server/src/setup.rs
+  - crates/speclink-server/src/web.rs
+  - crates/speclink-server/tests/admin_api.rs
+  - crates/speclink-server/tests/admin_data.rs
+  - crates/speclink-server/tests/admin_e2e.rs
+  - crates/speclink-server/tests/admin_pages.rs
+  - crates/speclink-server/tests/admin_system.rs
+  - crates/speclink-server/tests/admin_three_entry.rs
+  - crates/speclink-server/tests/admin_web_api.rs
+  - crates/speclink-server/tests/backup_e2e.rs
+  - crates/speclink-server/tests/device_e2e.rs
+  - crates/speclink-server/tests/e2e_cli.rs
+  - crates/speclink-server/tests/phase2_chain.rs
+  - crates/speclink-server/tests/setup_flow.rs
+  - crates/speclink-server/tests/web_account.rs
+  - crates/speclink-server/tests/web_activate.rs
+  - crates/speclink-server/tests/web_assets.rs
+  - crates/speclink-server/tests/web_device_sessions.rs
+  - crates/speclink-server/tests/web_invite.rs
+  - crates/speclink-server/tests/web_session.rs
+  - crates/speclink-server/tests/web_setup.rs
+  - docs/remote-getting-started.md
+  - docs/remote-getting-started.zh-TW.md
+  - docs/server-deployment.zh-TW.md
+  - package-lock.json
+  - package.json
+  - packages/ui/src/__tests__/table.test.tsx
+  - packages/ui/src/__tests__/theme.test.ts
+  - packages/ui/src/components/ui/label.tsx
+  - packages/ui/src/components/ui/table.tsx
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
+  - scripts/delivery-gate.test.mjs
+  - scripts/remote-docs.test.mjs
+-->

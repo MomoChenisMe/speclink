@@ -6,3 +6,9 @@
 
 /* 共用元件庫在 node_modules（Tailwind 預設不掃），明確納入其 class 來源。 */
 @source "../../../packages/ui/src";
+
+/* route 切換後 useFocusMain 程式聚焦 h1／main（tabindex=-1，鍵盤不可及）：
+   螢幕閱讀器仍宣告新頁標題，但不顯示瀏覽器預設 focus 外框。 */
+[tabindex="-1"]:focus {
+  outline: none;
+}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { LogOut } from "lucide-react";
 import { Button } from "@speclink/ui";
 import { useClient, useSession } from "../app/context";
 
@@ -24,7 +25,8 @@ export function LogoutButton() {
   }
 
   return (
-    <Button variant="outline" size="sm" disabled={pending} onClick={onLogout}>
+    <Button variant="outline" size="sm" className="gap-1.5" disabled={pending} onClick={onLogout}>
+      <LogOut aria-hidden="true" className="h-4 w-4" />
       登出
     </Button>
   );

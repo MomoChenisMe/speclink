@@ -170,12 +170,35 @@ describe("管理使用者頁", () => {
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText(/邀請.*email|email|電子郵件/i), "new@example.com");
     await user.type(screen.getByLabelText(/顯示名稱|display/i), "New");
+    // 成員資格為既有專案的勾選清單（server 端 memberships 只收 project key）。
+    await user.click(screen.getByRole("checkbox", { name: /demo/ }));
     await user.click(screen.getByRole("button", { name: /邀請|建立邀請|送出邀請/ }));
     await waitFor(() => expect(client.adminInvite).toHaveBeenCalledOnce());
     expect(client.adminInvite).toHaveBeenCalledWith(
-      expect.objectContaining({ email: "new@example.com", display: "New" }),
+      expect.objectContaining({
+        email: "new@example.com",
+        display: "New",
+        memberships: ["demo"],
+      }),
     );
     expect(await screen.findByText(/invite-token-123/)).toBeTruthy();
+  });
+
+  it("成員資格以下拉選單新增：專案來自 registry、role 為固定集合", async () => {
+    const client = makeClient();
+    renderAt("/admin/users", client);
+    const user = userEvent.setup();
+    const project = await screen.findByLabelText("Member 專案代碼");
+    await user.selectOptions(project, "demo");
+    await user.selectOptions(screen.getByLabelText("Member 角色"), "reader");
+    await user.click(screen.getByRole("button", { name: "為 Member 新增成員資格" }));
+    await waitFor(() =>
+      expect(client.adminSetMembership).toHaveBeenCalledWith("m1", {
+        projectKey: "demo",
+        role: "reader",
+        member: true,
+      }),
+    );
   });
 });
 
@@ -233,5 +256,69 @@ describe("管理稽核紀錄頁", () => {
     renderAt("/admin/audit", makeClient());
     expect(await screen.findByText(/user-suspended/)).toBeTruthy();
     expect(screen.getByText(/web/)).toBeTruthy();
+  });
+});
+
+// server-setup「完成 setup 即可邀請與連線」要求導向 /admin?welcome=1 顯示連線資訊；
+// server-admin「Store 不健康時 identity 管理仍可用」要求 overview 明確顯示 storeHealthy:false。
+describe("管理總覽的歡迎區塊與 store 健康", () => {
+  const CONNECTION = { publicUrl: "https://speclink.example", projectKey: "demo", repoKey: "backend" };
+
+  it("welcome=1 呈現 setup 完成的連線資訊三欄位且可複製", async () => {
+    const client = makeClient({
+      getAdminOverview: vi.fn(async () => ({
+        activeUsers: 1,
+        suspendedUsers: 0,
+        projects: 1,
+        repos: 1,
+        activeCredentials: 0,
+        storeHealthy: true,
+        identitySchemaVersion: 1,
+        connection: CONNECTION,
+      })),
+    });
+    renderAt("/admin?welcome=1", client);
+    const welcome = await screen.findByRole("region", { name: /開始使用|歡迎/ });
+    expect(within(welcome).getByText(CONNECTION.publicUrl)).toBeTruthy();
+    expect(within(welcome).getByText(CONNECTION.projectKey)).toBeTruthy();
+    expect(within(welcome).getByText(CONNECTION.repoKey)).toBeTruthy();
+    // 三個欄位各有複製動作（proposal：「呈現並可複製」）。
+    expect(within(welcome).getAllByRole("button", { name: /複製/ }).length).toBe(3);
+  });
+
+  it("無 welcome 參數時不呈現歡迎區塊", async () => {
+    const client = makeClient({
+      getAdminOverview: vi.fn(async () => ({
+        activeUsers: 1,
+        suspendedUsers: 0,
+        projects: 1,
+        repos: 1,
+        activeCredentials: 0,
+        storeHealthy: true,
+        identitySchemaVersion: 1,
+        connection: CONNECTION,
+      })),
+    });
+    renderAt("/admin", client);
+    expect(await screen.findByRole("heading", { name: "總覽" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: /開始使用|歡迎/ })).toBeNull();
+  });
+
+  it("storeHealthy:false 時總覽以 role=alert 呈現降級狀態與可公開錯誤", async () => {
+    const client = makeClient({
+      getAdminOverview: vi.fn(async () => ({
+        activeUsers: 1,
+        suspendedUsers: 0,
+        projects: 1,
+        repos: 1,
+        activeCredentials: 0,
+        storeHealthy: false,
+        storeHealthError: "store unreachable",
+        identitySchemaVersion: 1,
+      })),
+    });
+    renderAt("/admin", client);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("store unreachable");
   });
 });

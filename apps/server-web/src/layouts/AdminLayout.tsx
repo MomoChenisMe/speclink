@@ -11,6 +11,7 @@ import {
 import { SkipLink } from "../components/SkipLink";
 import { AdminNav } from "../components/AdminNav";
 import { LogoutButton } from "../components/LogoutButton";
+import { Wordmark } from "../components/Wordmark";
 import { useFocusMain } from "../lib/useFocusMain";
 import { useMediaQuery } from "../lib/useMediaQuery";
 
@@ -24,9 +25,10 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const [sheetOpen, setSheetOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    // 滿高欄式版面：側欄（bg-card＋border-r）隨視窗延伸到底，內容短時不留斷裂空白。
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
       <SkipLink />
-      <header className="flex items-center justify-between border-b px-4 py-3">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
         <div className="flex items-center gap-3">
           {narrow && (
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -45,13 +47,16 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               </SheetContent>
             </Sheet>
           )}
-          <span className="text-lg font-semibold text-primary">Speclink</span>
+          <Wordmark />
         </div>
         <LogoutButton />
       </header>
-      <div className="flex">
+      <div className="flex flex-1">
         {!narrow && (
-          <nav aria-label="管理導覽" className="w-56 shrink-0 border-r p-3">
+          <nav
+            aria-label="管理導覽"
+            className="w-56 shrink-0 border-r border-border bg-card p-3"
+          >
             <AdminNav />
           </nav>
         )}

@@ -8,16 +8,25 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  Badge,
   Button,
-  Input,
+  Card,
+  Checkbox,
   Label,
+  NativeSelect,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { readFormError } from "../../lib/formError";
 import { Field } from "../../components/Field";
 import { AdminError, AdminLoading } from "./states";
-import type { AdminUser } from "../../api/client";
+import type { AdminProject, AdminUser } from "../../api/client";
 
 // 管理使用者頁（server-admin, D4／D6）：列出使用者與 membership、邀請、停權／復權、
 // admin 旗標與 membership 調整。停權為破壞性操作，先以 AlertDialog 確認；最後一位
@@ -28,6 +37,9 @@ type Confirm = { title: string; run: () => Promise<void> };
 export function UsersPage() {
   const client = useClient();
   const { loading, data, error, reload } = useAsync(() => client.getAdminUsers(), []);
+  // 成員資格的專案選項來自 registry（project key 為封閉集合，不開放自由輸入）。
+  const registry = useAsync(() => client.getAdminRegistry(), []);
+  const projects = registry.data?.projects ?? [];
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -61,34 +73,37 @@ export function UsersPage() {
       {error != null && <AdminError onRetry={reload} />}
       {data && (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-muted-foreground">
-                <tr>
-                  <th className="py-1 pr-4 font-medium">電子郵件</th>
-                  <th className="py-1 pr-4 font-medium">顯示名稱</th>
-                  <th className="py-1 pr-4 font-medium">狀態</th>
-                  <th className="py-1 pr-4 font-medium">管理員</th>
-                  <th className="py-1 pr-4 font-medium">成員資格</th>
-                  <th className="py-1 font-medium">操作</th>
-                </tr>
-              </thead>
-              <tbody>
+          {/* Data-Dense Dashboard：資料表置於卡片容器內（與 Desktop 卡片語彙一致）。 */}
+          <Card className="overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>電子郵件</TableHead>
+                  <TableHead>顯示名稱</TableHead>
+                  <TableHead>狀態</TableHead>
+                  <TableHead>管理員</TableHead>
+                  <TableHead>成員資格</TableHead>
+                  <TableHead>操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {data.users.map((u) => (
-                  <tr key={u.id} className="border-t align-top">
-                    <td className="py-1.5 pr-4">{u.email}</td>
-                    <td className="py-1.5 pr-4">{u.display}</td>
-                    <td className="py-1.5 pr-4">{u.active ? "有效" : "已停權"}</td>
-                    <td className="py-1.5 pr-4">
+                  <TableRow key={u.id} className="align-top">
+                    <TableCell>{u.email}</TableCell>
+                    <TableCell>{u.display}</TableCell>
+                    <TableCell>
+                      <Badge variant={u.active ? "secondary" : "outline"}>
+                        {u.active ? "有效" : "已停權"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           id={`admin-flag-${u.id}`}
-                          className="h-4 w-4"
                           checked={u.admin}
                           disabled={busy || (u.admin && !u.canRemoveAdmin)}
-                          onChange={(e) =>
-                            runNow(() => client.adminSetAdminFlag(u.id, e.target.checked))
+                          onCheckedChange={(v) =>
+                            runNow(() => client.adminSetAdminFlag(u.id, v === true))
                           }
                         />
                         <Label
@@ -98,15 +113,16 @@ export function UsersPage() {
                           管理員
                         </Label>
                       </div>
-                    </td>
-                    <td className="py-1.5 pr-4">
+                    </TableCell>
+                    <TableCell>
                       <MembershipEditor
                         user={u}
+                        projects={projects}
                         busy={busy}
                         onSet={(body) => runNow(() => client.adminSetMembership(u.id, body))}
                       />
-                    </td>
-                    <td className="py-1.5">
+                    </TableCell>
+                    <TableCell>
                       {u.active ? (
                         <Button
                           type="button"
@@ -135,14 +151,14 @@ export function UsersPage() {
                           復權
                         </Button>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          </Card>
 
-          <InviteForm />
+          <InviteForm projects={projects} />
         </>
       )}
 
@@ -164,25 +180,28 @@ export function UsersPage() {
   );
 }
 
-// 每位使用者的 membership：列出並可逐一移除，另有精簡的新增表單。
+// 每位使用者的 membership：列出並可逐一移除；新增以下拉選單——專案來自 registry、
+// role 為 server 端固定集合（editor／reader），不開放自由輸入。
 function MembershipEditor({
   user,
+  projects,
   busy,
   onSet,
 }: {
   user: AdminUser;
+  projects: AdminProject[];
   busy: boolean;
   onSet: (body: { projectKey: string; role: string; member: boolean }) => void;
 }) {
   const [projectKey, setProjectKey] = useState("");
-  const [role, setRole] = useState("");
+  const [role, setRole] = useState("editor");
 
   function add(event: FormEvent) {
     event.preventDefault();
-    if (busy || !projectKey.trim() || !role.trim()) return;
-    onSet({ projectKey: projectKey.trim(), role: role.trim(), member: true });
+    if (busy || !projectKey) return;
+    onSet({ projectKey, role, member: true });
     setProjectKey("");
-    setRole("");
+    setRole("editor");
   }
 
   return (
@@ -194,7 +213,7 @@ function MembershipEditor({
           {user.memberships.map((m) => (
             <li key={`${m.projectKey}:${m.role}`} className="flex items-center gap-2">
               <span className="font-mono">{m.projectKey}</span>
-              <span className="text-muted-foreground">{m.role}</span>
+              <Badge variant="outline">{m.role}</Badge>
               <Button
                 type="button"
                 variant="ghost"
@@ -210,21 +229,35 @@ function MembershipEditor({
         </ul>
       )}
       <form onSubmit={add} className="flex flex-wrap items-center gap-2">
-        <Input
+        <NativeSelect
           aria-label={`${user.display} 專案代碼`}
           value={projectKey}
           onChange={(e) => setProjectKey(e.target.value)}
-          placeholder="project"
-          className="h-8 w-28"
-        />
-        <Input
+          className="w-36"
+        >
+          <option value="">選擇專案…</option>
+          {projects.map((p) => (
+            <option key={p.key} value={p.key}>
+              {p.key}
+            </option>
+          ))}
+        </NativeSelect>
+        <NativeSelect
           aria-label={`${user.display} 角色`}
           value={role}
           onChange={(e) => setRole(e.target.value)}
-          placeholder="role"
-          className="h-8 w-24"
-        />
-        <Button type="submit" variant="outline" size="sm" disabled={busy}>
+          className="w-28"
+        >
+          <option value="editor">editor</option>
+          <option value="reader">reader</option>
+        </NativeSelect>
+        <Button
+          type="submit"
+          variant="outline"
+          size="sm"
+          aria-label={`為 ${user.display} 新增成員資格`}
+          disabled={busy || !projectKey}
+        >
           新增
         </Button>
       </form>
@@ -233,11 +266,13 @@ function MembershipEditor({
 }
 
 // 邀請表單：成功後把一次性 token 顯示一次（token 進入 URL 成為邀請連結）。
-function InviteForm() {
+// 成員資格為既有專案的勾選清單——server 端只收 project key（接受邀請時 role 固定
+// editor），不開放自由文字輸入。
+function InviteForm({ projects }: { projects: AdminProject[] }) {
   const client = useClient();
   const [email, setEmail] = useState("");
   const [display, setDisplay] = useState("");
-  const [memberships, setMemberships] = useState("");
+  const [memberships, setMemberships] = useState<string[]>([]);
   const [admin, setAdmin] = useState(false);
   const [pending, setPending] = useState(false);
   const [token, setToken] = useState<string | null>(null);
@@ -251,20 +286,16 @@ function InviteForm() {
     setMessage(null);
     setFieldErrors({});
     try {
-      const list = memberships
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
       const { token: created } = await client.adminInvite({
         email,
         display,
-        memberships: list,
+        memberships,
         admin,
       });
       setToken(created);
       setEmail("");
       setDisplay("");
-      setMemberships("");
+      setMemberships([]);
       setAdmin(false);
     } catch (error) {
       const read = readFormError(error, "建立邀請時發生錯誤");
@@ -288,47 +319,72 @@ function InviteForm() {
           <code className="mt-1 block break-all font-mono text-sm">{token}</code>
         </div>
       )}
-      <form onSubmit={onSubmit} className="max-w-md space-y-4" noValidate>
-        <Field
-          id="invite-email"
-          label="電子郵件"
-          value={email}
-          onChange={setEmail}
-          error={fieldErrors.email}
-        />
-        <Field
-          id="invite-display"
-          label="顯示名稱"
-          value={display}
-          onChange={setDisplay}
-          error={fieldErrors.display}
-        />
-        <Field
-          id="invite-memberships"
-          label="成員資格（projectKey:role，以逗號分隔）"
-          value={memberships}
-          onChange={setMemberships}
-          error={fieldErrors.memberships}
-        />
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="invite-admin"
-            className="h-4 w-4"
-            checked={admin}
-            onChange={(e) => setAdmin(e.target.checked)}
+      <Card className="max-w-md p-4">
+        <form onSubmit={onSubmit} className="space-y-4" noValidate>
+          <Field
+            id="invite-email"
+            label="電子郵件"
+            value={email}
+            onChange={setEmail}
+            error={fieldErrors.email}
           />
-          <Label htmlFor="invite-admin">設為管理員</Label>
-        </div>
-        {message && Object.keys(fieldErrors).length === 0 && (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        )}
-        <Button type="submit" disabled={pending}>
-          {pending ? "送出中…" : "送出邀請"}
-        </Button>
-      </form>
+          <Field
+            id="invite-display"
+            label="顯示名稱"
+            value={display}
+            onChange={setDisplay}
+            error={fieldErrors.display}
+          />
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">成員資格</legend>
+            {projects.length === 0 ? (
+              <p className="text-sm text-muted-foreground">尚無專案。</p>
+            ) : (
+              projects.map((p) => (
+                <div key={p.key} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`invite-membership-${p.key}`}
+                    checked={memberships.includes(p.key)}
+                    onCheckedChange={(v) =>
+                      setMemberships((prev) =>
+                        v === true ? [...prev, p.key] : prev.filter((k) => k !== p.key),
+                      )
+                    }
+                  />
+                  <Label
+                    htmlFor={`invite-membership-${p.key}`}
+                    className="flex items-center gap-2 font-normal"
+                  >
+                    <code className="font-mono">{p.key}</code>
+                    <span className="text-muted-foreground">{p.name}</span>
+                  </Label>
+                </div>
+              ))
+            )}
+            {fieldErrors.memberships && (
+              <p role="alert" className="text-sm text-destructive">
+                {fieldErrors.memberships}
+              </p>
+            )}
+          </fieldset>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="invite-admin"
+              checked={admin}
+              onCheckedChange={(v) => setAdmin(v === true)}
+            />
+            <Label htmlFor="invite-admin">設為管理員</Label>
+          </div>
+          {message && Object.keys(fieldErrors).length === 0 && (
+            <p role="alert" className="text-sm text-destructive">
+              {message}
+            </p>
+          )}
+          <Button type="submit" disabled={pending}>
+            {pending ? "送出中…" : "送出邀請"}
+          </Button>
+        </form>
+      </Card>
     </section>
   );
 }
