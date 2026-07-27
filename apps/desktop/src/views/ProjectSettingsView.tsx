@@ -13,7 +13,11 @@ import {
   CardTitle,
   Checkbox,
   Markdown,
-  NativeSelect,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Tabs,
   TabsContent,
   TabsList,
@@ -25,6 +29,9 @@ import {
 
 import type { SettingsSnapshot, WorkflowFields } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
+
+/** locale／spec_locale 的「未設定」在 config 裡是空字串，Radix Select 的 item 不接受空字串。 */
+const LOCALE_UNSET = "__unset__";
 
 type PendingRemoteWrite =
   | { kind: "policy"; fields: WorkflowFields }
@@ -667,33 +674,41 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
             <CardContent className="gap-2.5">
               <div className="grid grid-cols-[110px_1fr] items-center gap-x-3 gap-y-1">
                 <label htmlFor="cfg-locale" className="text-sm font-medium">locale</label>
-                <NativeSelect
-                  id="cfg-locale"
-                  value={locale}
+                <Select
+                  value={locale === "" ? LOCALE_UNSET : locale}
                   disabled={wfDisabled}
-                  onChange={(e) => setLocale(e.target.value)}
+                  onValueChange={(v) => setLocale(v === LOCALE_UNSET ? "" : v)}
                 >
-                  <option value="">{t("settings.localeUnset")}</option>
-                  <option value="tw">tw（繁體中文）</option>
-                  <option value="ja">ja（日本語）</option>
-                  <option value="en">en（English）</option>
-                </NativeSelect>
+                  <SelectTrigger id="cfg-locale">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={LOCALE_UNSET}>{t("settings.localeUnset")}</SelectItem>
+                    <SelectItem value="tw">tw（繁體中文）</SelectItem>
+                    <SelectItem value="ja">ja（日本語）</SelectItem>
+                    <SelectItem value="en">en（English）</SelectItem>
+                  </SelectContent>
+                </Select>
                 <span />
                 <FieldHelp>{t("settings.localeHelp")}</FieldHelp>
 
                 <label htmlFor="cfg-spec-locale" className="text-sm font-medium">spec_locale</label>
-                <NativeSelect
-                  id="cfg-spec-locale"
-                  value={specLocale}
+                <Select
+                  value={specLocale === "" ? LOCALE_UNSET : specLocale}
                   disabled={wfDisabled}
-                  onChange={(e) => setSpecLocale(e.target.value)}
+                  onValueChange={(v) => setSpecLocale(v === LOCALE_UNSET ? "" : v)}
                 >
-                  <option value="">{t("settings.localeUnset")}</option>
-                  <option value="auto">auto</option>
-                  <option value="tw">tw（繁體中文）</option>
-                  <option value="ja">ja（日本語）</option>
-                  <option value="en">en（English）</option>
-                </NativeSelect>
+                  <SelectTrigger id="cfg-spec-locale">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={LOCALE_UNSET}>{t("settings.localeUnset")}</SelectItem>
+                    <SelectItem value="auto">auto</SelectItem>
+                    <SelectItem value="tw">tw（繁體中文）</SelectItem>
+                    <SelectItem value="ja">ja（日本語）</SelectItem>
+                    <SelectItem value="en">en（English）</SelectItem>
+                  </SelectContent>
+                </Select>
                 <span />
                 <FieldHelp>{t("settings.specLocaleHelp")}</FieldHelp>
 

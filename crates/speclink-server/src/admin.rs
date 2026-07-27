@@ -12,7 +12,8 @@ use crate::audit::{AuditAction, AuditActor, AuditSource};
 use crate::auth::{bearer_token, header};
 use crate::error::ApiError;
 use crate::identity::{
-    DeviceFamily, IdentityError, MembershipRole, NewInvitation, Pat, Project, Repo, User,
+    AuditFilter, DeviceFamily, IdentityError, MembershipRole, NewInvitation, Pat, Project, Repo,
+    User,
 };
 use crate::state::{AppState, SharedStore};
 use crate::web;
@@ -25,7 +26,9 @@ use axum::{Json, Router};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use speclink_protocol::API_VERSION;
-use speclink_store::{OutboxCursor, ProjectId, RepoId, Scope, StoreError, CONTRACT_VERSION};
+use speclink_store::{
+    Capability, OutboxCursor, ProjectId, RepoId, Scope, StoreError, CONTRACT_VERSION,
+};
 
 /// An acknowledgment body for admin API actions whose response the caller ignores.
 #[derive(Serialize)]
@@ -142,6 +145,11 @@ pub struct AuditQuery {
 fn default_limit() -> u32 {
     50
 }
+
+/// The largest page the browser audit view will serve. A caller asking for more
+/// is clamped rather than refused — the cap exists so one request cannot pull
+/// the whole log into memory, not to police the caller.
+const MAX_AUDIT_PAGE_SIZE: u32 = 200;
 
 /// One audit record on the wire: the five-tuple, the time as RFC3339.
 #[derive(Serialize)]
@@ -510,6 +518,22 @@ struct WebConnection {
     repo_key: String,
 }
 
+/// One item needing an administrator's attention. `kind` is a closed set the SPA
+/// maps to copy — the wire carries no user-facing prose; `destination` is the
+/// in-app route that acts on it, and `count` how many the item covers (0 when the
+/// item is about an absence rather than a quantity).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebTodo {
+    kind: &'static str,
+    destination: &'static str,
+    count: u64,
+}
+
+/// How many of the newest audit events the overview's activity block carries.
+/// The full log lives on the audit destination — this is a glance, not a page.
+const RECENT_AUDIT: u32 = 5;
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WebOverview {
@@ -518,12 +542,15 @@ struct WebOverview {
     projects: usize,
     repos: usize,
     active_credentials: usize,
+    pending_invitations: u64,
     store_healthy: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     store_health_error: Option<String>,
     identity_schema_version: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     connection: Option<WebConnection>,
+    todos: Vec<WebTodo>,
+    recent_audit: Vec<WebAuditEntry>,
 }
 
 /// `GET /admin/overview` — the low-cost summary the management nav needs.
@@ -565,16 +592,54 @@ pub async fn web_admin_overview(State(state): State<AppState>, headers: HeaderMa
             .and_then(|r| r.first().map(|r| r.key.clone()))
             .unwrap_or_default(),
     });
+    let active_credentials = active_pats + active_families;
+    let pending_invitations = state.identity.count_pending_invitations().unwrap_or(0);
+
+    // 待處理事項：只在真的有事可做時才出現一則。空清單讓前端整塊不渲染，不留空殼。
+    let mut todos = Vec::new();
+    if active_credentials == 0 {
+        todos.push(WebTodo {
+            kind: "no-active-credentials",
+            destination: "/account",
+            count: 0,
+        });
+    }
+    if pending_invitations > 0 {
+        todos.push(WebTodo {
+            kind: "pending-invitations",
+            destination: "/admin/users",
+            count: pending_invitations,
+        });
+    }
+
+    let recent_audit = state
+        .identity
+        .list_audit(RECENT_AUDIT, 0)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|e| WebAuditEntry {
+            id: e.id,
+            actor_id: e.actor_id,
+            action: e.action,
+            subject: e.subject,
+            source: e.source,
+            created_at: e.created_at.to_rfc3339(),
+        })
+        .collect();
+
     web::web_ok(WebOverview {
         active_users: users.iter().filter(|u| u.active).count(),
         suspended_users: users.iter().filter(|u| !u.active).count(),
         projects: projects.len(),
         repos,
-        active_credentials: active_pats + active_families,
+        active_credentials,
+        pending_invitations,
         store_healthy,
         store_health_error,
         identity_schema_version: state.identity.schema_version().unwrap_or(0),
         connection,
+        todos,
+        recent_audit,
     })
 }
 
@@ -593,14 +658,30 @@ struct WebUser {
     display: String,
     admin: bool,
     active: bool,
+    created_at: String,
     memberships: Vec<WebMembership>,
     can_suspend: bool,
     can_remove_admin: bool,
 }
 
+/// 待啟用邀請：受邀者尚未接受，因此還沒有 user row。祕密邊界不變——帶得出去的只有
+/// email、顯示名稱、角色、成員資格與時間，token 與其 hash 都不在 view model 裡。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebPendingInvitation {
+    id: String,
+    email: String,
+    display: String,
+    admin: bool,
+    memberships: Vec<String>,
+    created_at: String,
+    expires_at: String,
+}
+
 #[derive(Serialize)]
 struct WebUsers {
     users: Vec<WebUser>,
+    pending: Vec<WebPendingInvitation>,
 }
 
 /// `GET /admin/users` — the users view model with per-row action eligibility.
@@ -636,13 +717,32 @@ pub async fn web_admin_users(State(state): State<AppState>, headers: HeaderMap) 
                 display: u.display.clone(),
                 admin: u.admin,
                 active: u.active,
+                created_at: u.created_at.to_rfc3339(),
                 memberships,
                 can_suspend: u.active && !last_active_admin,
                 can_remove_admin: u.admin && !last_active_admin,
             }
         })
         .collect();
-    web::web_ok(WebUsers { users: rows })
+    let pending = state
+        .identity
+        .list_pending_invitations()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|i| WebPendingInvitation {
+            id: i.id,
+            email: i.email,
+            display: i.display,
+            admin: i.admin,
+            memberships: i.memberships,
+            created_at: i.created_at.to_rfc3339(),
+            expires_at: i.expires_at.to_rfc3339(),
+        })
+        .collect();
+    web::web_ok(WebUsers {
+        users: rows,
+        pending,
+    })
 }
 
 #[derive(Serialize)]
@@ -766,21 +866,9 @@ struct WebScope {
     export_path: String,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WebData {
-    scopes: Vec<WebScope>,
-    store_healthy: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    store_health_error: Option<String>,
-}
-
-/// `GET /admin/data` — the registered scopes (each with its export-download path)
-/// and store health. Store failure degrades this view but keeps identity management up.
-pub async fn web_admin_data(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if let Err(refused) = require_web_admin(&state, &headers) {
-        return refused;
-    }
+/// Every registered scope with its export-download path. Read from the registry,
+/// so it stays available while the team store itself is down.
+fn exportable_scopes(state: &AppState) -> Vec<WebScope> {
     let mut scopes = Vec::new();
     for project in state.identity.list_projects().unwrap_or_default() {
         for repo in state.identity.list_repos(&project.key).unwrap_or_default() {
@@ -791,11 +879,7 @@ pub async fn web_admin_data(State(state): State<AppState>, headers: HeaderMap) -
             });
         }
     }
-    let (store_healthy, store_health_error) = match state.store.health() {
-        Ok(()) => (true, None),
-        Err(e) => (false, Some(e.to_string())),
-    };
-    web::web_ok(WebData { scopes, store_healthy, store_health_error })
+    scopes
 }
 
 #[derive(Serialize)]
@@ -806,6 +890,10 @@ struct WebBacklog {
     backlog: Option<u64>,
 }
 
+/// The system page's single view model: the former data and system views merged
+/// into one struct. Store health described once, in one response — two views each
+/// printing their own copy is how the console grew two disagreeing truths.
+/// Existing field names are carried over unchanged.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WebSystem {
@@ -819,14 +907,26 @@ struct WebSystem {
     store_healthy: bool,
     store_health_error: Option<String>,
     outbox_backlogs: Vec<WebBacklog>,
+    /// From the former data view: every registered scope's export-download path.
+    scopes: Vec<WebScope>,
+    /// Whether a migration can be offered at all — the backend must both declare
+    /// the capability and be healthy. `POST /admin/data/migrate` re-checks health
+    /// itself; this only decides whether the console offers the button.
+    migrate_available: bool,
 }
 
-/// `GET /admin/system` — the system aggregation (camelCase). Reuses [`gather_system`].
+/// `GET /admin/system` — the merged system aggregation (camelCase). Reuses
+/// [`gather_system`] and adds the two groups the data view used to carry.
 pub async fn web_admin_system(State(state): State<AppState>, headers: HeaderMap) -> Response {
     if let Err(refused) = require_web_admin(&state, &headers) {
         return refused;
     }
     let info = gather_system(&state);
+    let migrate_available = info.store_healthy
+        && info
+            .store_capabilities
+            .iter()
+            .any(|c| c == Capability::Migration.as_str());
     web::web_ok(WebSystem {
         engine_version: info.engine_version,
         api_version: info.api_version,
@@ -842,6 +942,8 @@ pub async fn web_admin_system(State(state): State<AppState>, headers: HeaderMap)
             .into_iter()
             .map(|b| WebBacklog { project: b.project, repo: b.repo, backlog: b.backlog })
             .collect(),
+        scopes: exportable_scopes(&state),
+        migrate_available,
     })
 }
 
@@ -857,34 +959,156 @@ struct WebAuditEntry {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct WebAudit {
     entries: Vec<WebAuditEntry>,
+    /// How many pages the filter matches at the requested page size. 0 when
+    /// nothing matches, so the SPA can distinguish "empty result" from "page 1".
+    total_pages: u64,
 }
 
-/// `GET /admin/audit` — the newest-first management audit log page.
+/// The browser audit view's query string: keyword, action, source, an inclusive
+/// time range, the 1-based page and the page size. Every field is optional; the
+/// unfiltered default is page 1 of [`default_limit`] newest records.
+#[derive(Deserialize)]
+pub struct WebAuditQuery {
+    #[serde(default)]
+    q: Option<String>,
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    from: Option<String>,
+    #[serde(default)]
+    to: Option<String>,
+    /// Signed so a negative page reaches the guard below instead of failing
+    /// deserialization with a shapeless 400 (the contract names the code).
+    #[serde(default = "default_page")]
+    page: i64,
+    /// Signed for the same reason as `page`: an out-of-range value must reach the
+    /// clamp below, not fall out of deserialization as a shapeless 400.
+    #[serde(default = "default_web_limit")]
+    limit: i64,
+}
+
+fn default_page() -> i64 {
+    1
+}
+
+fn default_web_limit() -> i64 {
+    i64::from(default_limit())
+}
+
+/// Which end of the range a boundary is. Named rather than a bare `bool`: the two
+/// call sites differ only in this argument, and a swapped flag would silently
+/// shift the window by a day with no type error.
+#[derive(Clone, Copy)]
+enum Bound {
+    Start,
+    End,
+}
+
+/// Parse an optional boundary. Accepts a full RFC3339 timestamp or the bare
+/// `YYYY-MM-DD` a date input produces — the latter is read as that day's start
+/// in UTC for [`Bound::Start`] and its end for [`Bound::End`], so a one-day range
+/// holds that whole day. Times are UTC, matching the `createdAt` the view renders.
+fn parse_bound(raw: Option<&str>, bound: Bound) -> Result<Option<DateTime<Utc>>, ()> {
+    let Some(text) = raw.map(str::trim).filter(|t| !t.is_empty()) else {
+        return Ok(None);
+    };
+    if let Ok(dt) = DateTime::parse_from_rfc3339(text) {
+        return Ok(Some(dt.with_timezone(&Utc)));
+    }
+    let date = chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").map_err(|_| ())?;
+    let time = match bound {
+        Bound::Start => chrono::NaiveTime::MIN,
+        Bound::End => chrono::NaiveTime::from_hms_milli_opt(23, 59, 59, 999).expect("valid time"),
+    };
+    Ok(Some(DateTime::from_naive_utc_and_offset(
+        date.and_time(time),
+        Utc,
+    )))
+}
+
+/// `GET /admin/audit` — one filtered, newest-first page of the management audit
+/// log plus its total page count. Filtering and paging run in the store; the SPA
+/// only forwards the parameters and renders what comes back.
 pub async fn web_admin_audit(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(query): Query<AuditQuery>,
+    Query(query): Query<WebAuditQuery>,
 ) -> Response {
     if let Err(refused) = require_web_admin(&state, &headers) {
         return refused;
     }
-    let entries = state
-        .identity
-        .list_audit(query.limit, query.offset)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|e| WebAuditEntry {
-            id: e.id,
-            actor_id: e.actor_id,
-            action: e.action,
-            subject: e.subject,
-            source: e.source,
-            created_at: e.created_at.to_rfc3339(),
-        })
-        .collect();
-    web::web_ok(WebAudit { entries })
+    // Page numbering is 1-based; 0 and negatives are a caller bug, not "the
+    // first page" — silently coercing them would hide a broken pager.
+    if query.page < 1 {
+        return web::web_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_argument",
+            "頁碼必須是 1 以上的整數",
+        );
+    }
+    // Page size is a display preference, not a correctness parameter: clamp it
+    // rather than refuse. 0 and negatives mean "as small as a page can be" (1),
+    // and the upper bound keeps one request from pulling the whole log into memory.
+    let per_page = query.limit.clamp(1, i64::from(MAX_AUDIT_PAGE_SIZE)) as u32;
+    let (Ok(from), Ok(to)) = (
+        parse_bound(query.from.as_deref(), Bound::Start),
+        parse_bound(query.to.as_deref(), Bound::End),
+    ) else {
+        return web::web_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_argument",
+            "時間格式不正確，請用 YYYY-MM-DD 或 RFC3339",
+        );
+    };
+    if let (Some(from), Some(to)) = (from, to) {
+        if from > to {
+            return web::web_err(
+                StatusCode::BAD_REQUEST,
+                "invalid_argument",
+                "時間區間的起始不能晚於結束",
+            );
+        }
+    }
+    let filter = AuditFilter {
+        keyword: query.q,
+        action: query.action,
+        source: query.source,
+        from,
+        to,
+        page: query.page as u32,
+        per_page,
+    };
+    let page = match state.identity.query_audit(&filter) {
+        Ok(page) => page,
+        Err(_) => {
+            return web::web_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                "發生錯誤",
+            )
+        }
+    };
+    let total_pages = page.total.div_ceil(u64::from(per_page));
+    web::web_ok(WebAudit {
+        entries: page
+            .entries
+            .into_iter()
+            .map(|e| WebAuditEntry {
+                id: e.id,
+                actor_id: e.actor_id,
+                action: e.action,
+                subject: e.subject,
+                source: e.source,
+                created_at: e.created_at.to_rfc3339(),
+            })
+            .collect(),
+        total_pages,
+    })
 }
 
 // --- mutations (源 web; each calls the single-point admin_* fn) ---
@@ -1148,6 +1372,18 @@ pub async fn web_admin_revoke_token(
     }
 }
 
+/// `POST /admin/users/invitations/{id}/revoke`
+pub async fn web_admin_revoke_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(invitation_id): Path<String>,
+) -> Response {
+    match web_admin_mutation(&state, &headers) {
+        Ok(actor) => admin_result(state.identity.admin_revoke_invitation(&actor, &invitation_id)),
+        Err(refused) => refused,
+    }
+}
+
 /// `POST /admin/credentials/families/{id}/revoke`
 pub async fn web_admin_revoke_family(
     State(state): State<AppState>,
@@ -1195,6 +1431,10 @@ pub fn web_router() -> Router<AppState> {
         .route("/admin/overview", get(web_admin_overview))
         .route("/admin/users", get(web_admin_users))
         .route("/admin/users/invite", post(web_admin_invite))
+        .route(
+            "/admin/users/invitations/{id}/revoke",
+            post(web_admin_revoke_invitation),
+        )
         .route("/admin/users/{id}/suspend", post(web_admin_suspend))
         .route("/admin/users/{id}/reactivate", post(web_admin_reactivate))
         .route("/admin/users/{id}/membership", post(web_admin_membership))
@@ -1207,7 +1447,6 @@ pub fn web_router() -> Router<AppState> {
         .route("/admin/credentials", get(web_admin_credentials))
         .route("/admin/credentials/tokens/{id}/revoke", post(web_admin_revoke_token))
         .route("/admin/credentials/families/{id}/revoke", post(web_admin_revoke_family))
-        .route("/admin/data", get(web_admin_data))
         .route("/admin/data/migrate", post(web_admin_migrate))
         .route("/admin/system", get(web_admin_system))
         .route("/admin/audit", get(web_admin_audit))

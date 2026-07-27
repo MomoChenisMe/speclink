@@ -7,12 +7,11 @@ import {
   type ReactNode,
 } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { Button } from "@speclink/ui";
+import { Button, useI18n } from "@speclink/ui";
 import type { SessionData } from "../api/client";
 import { SessionProvider, useClient, useSession } from "../app/context";
 import { FocusLayout } from "../layouts/FocusLayout";
-import { AccountLayout } from "../layouts/AccountLayout";
-import { AdminLayout } from "../layouts/AdminLayout";
+import { ConsoleLayout } from "../layouts/ConsoleLayout";
 import { LoginPage } from "../pages/LoginPage";
 import { SetupPage } from "../pages/SetupPage";
 import { InvitePage } from "../pages/InvitePage";
@@ -25,24 +24,26 @@ import { loginRedirect } from "../lib/returnTo";
 const AdminSection = lazy(() => import("../pages/admin/AdminSection"));
 
 function BootLoading() {
+  const { t } = useI18n();
   return (
     <div
       role="status"
       aria-live="polite"
       className="grid min-h-screen place-items-center bg-background text-muted-foreground"
     >
-      載入中…
+      {t("common.loading")}
     </div>
   );
 }
 
 function BootError({ onRetry }: { onRetry: () => void }) {
+  const { t } = useI18n();
   return (
     <div role="alert" className="grid min-h-screen place-items-center bg-background">
       <div className="text-center">
-        <p className="text-destructive">無法載入，發生錯誤。</p>
+        <p className="text-destructive">{t("nav.bootError")}</p>
         <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onRetry}>
-          重試
+          {t("common.retry")}
         </Button>
       </div>
     </div>
@@ -82,11 +83,12 @@ function RequireAuth({ children }: { children: ReactNode }) {
 
 // 非 admin 一律明確 403，且不顯示管理導覽（焦點流程殼呈現無權限狀態）。
 function Forbidden() {
+  const { t } = useI18n();
   return (
     <FocusLayout>
       <div role="alert">
-        <h1 className="text-2xl font-semibold">沒有權限</h1>
-        <p className="mt-2 text-muted-foreground">你沒有存取管理面的權限。</p>
+        <h1 className="text-2xl font-semibold">{t("nav.forbiddenTitle")}</h1>
+        <p className="mt-2 text-muted-foreground">{t("nav.forbiddenBody")}</p>
       </div>
     </FocusLayout>
   );
@@ -108,6 +110,7 @@ function RootRedirect() {
 }
 
 export function AppRoutes() {
+  const { t } = useI18n();
   return (
     <SessionGate>
       <Routes>
@@ -147,9 +150,9 @@ export function AppRoutes() {
           path="/account"
           element={
             <RequireAuth>
-              <AccountLayout>
+              <ConsoleLayout>
                 <AccountPage />
-              </AccountLayout>
+              </ConsoleLayout>
             </RequireAuth>
           }
         />
@@ -157,19 +160,19 @@ export function AppRoutes() {
           path="/admin/*"
           element={
             <RequireAdmin>
-              <AdminLayout>
+              <ConsoleLayout>
                 <RouteErrorBoundary>
                   <Suspense
                     fallback={
                       <p role="status" aria-live="polite" className="text-muted-foreground">
-                        載入中…
+                        {t("common.loading")}
                       </p>
                     }
                   >
                     <AdminSection />
                   </Suspense>
                 </RouteErrorBoundary>
-              </AdminLayout>
+              </ConsoleLayout>
             </RequireAdmin>
           }
         />

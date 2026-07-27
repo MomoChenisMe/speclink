@@ -76,16 +76,16 @@ describe("setup 開箱流程", () => {
       expect.objectContaining({ email: "root@example.com", display: "Root", password: "hunter2password" }),
     );
     // The registry step's project/repo fields appear.
-    expect(await screen.findByLabelText(/project key/i)).toBeTruthy();
-    expect(screen.getByLabelText(/repo key/i)).toBeTruthy();
+    expect(await screen.findByLabelText(/專案代號/)).toBeTruthy();
+    expect(screen.getByLabelText(/儲存庫代號/)).toBeTruthy();
   });
 
   it("完成 registry 呼叫 submitSetupRegistry 並帶正確參數", async () => {
     const client = makeClient({ getSetupState: vi.fn(async () => ({ step: "registry", store: STORE })) });
     renderAt("/setup?token=boot", client);
     const user = userEvent.setup();
-    await user.type(await screen.findByLabelText(/project key/i), "demo");
-    await user.type(screen.getByLabelText(/repo key/i), "backend");
+    await user.type(await screen.findByLabelText(/專案代號/), "demo");
+    await user.type(screen.getByLabelText(/儲存庫代號/), "backend");
     await user.click(screen.getByRole("button", { name: /建立|完成/ }));
     await waitFor(() => expect(client.submitSetupRegistry).toHaveBeenCalledOnce());
     expect(client.submitSetupRegistry).toHaveBeenCalledWith(

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
-import { Button } from "@speclink/ui";
+import { Button, useI18n } from "@speclink/ui";
 import { useClient, useSession } from "../app/context";
 import { Field } from "../components/Field";
 import { WebApiError } from "../api/client";
@@ -13,6 +13,7 @@ import { WebApiError } from "../api/client";
 const CODE = /^[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}$/;
 
 export function ActivatePage() {
+  const { t } = useI18n();
   const client = useClient();
   const { session } = useSession();
   const [params] = useSearchParams();
@@ -30,7 +31,7 @@ export function ActivatePage() {
   }
 
   function fail(error: unknown) {
-    setMessage(error instanceof WebApiError ? error.message : "這個裝置代碼無法使用。");
+    setMessage(error instanceof WebApiError ? error.message : t("activate.invalidCode"));
   }
 
   async function onCheck(event: FormEvent) {
@@ -54,11 +55,7 @@ export function ActivatePage() {
     setMessage(null);
     try {
       const { status } = await client.decideActivation(code.trim(), action);
-      setResult(
-        status === "approved"
-          ? "已核准。你可以回到裝置繼續登入。"
-          : "已拒絕這個裝置的登入請求。",
-      );
+      setResult(status === "approved" ? t("activate.approved") : t("activate.denied"));
       setPhase("done");
     } catch (error) {
       fail(error);
@@ -70,7 +67,7 @@ export function ActivatePage() {
   if (phase === "done") {
     return (
       <div>
-        <h1 className="mb-2 text-2xl font-semibold">裝置登入</h1>
+        <h1 className="mb-2 text-2xl font-semibold">{t("activate.title")}</h1>
         <p role="status" aria-live="polite" className="text-muted-foreground">
           {result}
         </p>
@@ -80,25 +77,23 @@ export function ActivatePage() {
 
   return (
     <div>
-      <h1 className="mb-2 text-2xl font-semibold">裝置登入</h1>
+      <h1 className="mb-2 text-2xl font-semibold">{t("activate.title")}</h1>
       {phase === "enter" ? (
         <form onSubmit={onCheck} className="space-y-4" noValidate>
-          <p className="text-muted-foreground">輸入裝置上顯示的代碼以核准登入。</p>
-          <Field id="user-code" label="裝置代碼" value={code} onChange={setCode} />
+          <p className="text-muted-foreground">{t("activate.prompt")}</p>
+          <Field id="user-code" label={t("activate.codeLabel")} value={code} onChange={setCode} />
           {message && (
             <p role="alert" className="text-sm text-destructive">
               {message}
             </p>
           )}
           <Button type="submit" disabled={pending}>
-            {pending ? "檢查中…" : "下一步"}
+            {pending ? t("activate.checking") : t("common.next")}
           </Button>
         </form>
       ) : (
         <div className="space-y-4">
-          <p className="text-muted-foreground">
-            代碼 <code className="font-mono">{code}</code> 的裝置要求以你的身分登入。
-          </p>
+          <p className="text-muted-foreground">{t("activate.confirmBody").replace("{code}", code)}</p>
           {message && (
             <p role="alert" className="text-sm text-destructive">
               {message}
@@ -106,7 +101,7 @@ export function ActivatePage() {
           )}
           <div className="flex gap-3">
             <Button type="button" onClick={() => onDecide("approve")} disabled={pending}>
-              核准
+              {t("activate.approve")}
             </Button>
             <Button
               type="button"
@@ -114,7 +109,7 @@ export function ActivatePage() {
               onClick={() => onDecide("deny")}
               disabled={pending}
             >
-              拒絕
+              {t("activate.deny")}
             </Button>
           </div>
         </div>

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 
 // 帳號自助頁（server-identity「帳號 browser API 保持憑證祕密邊界」, D4／D6）。顯示
-// 使用者、PAT、Web session 與裝置；建立 PAT 的明文只顯示一次；撤銷等破壞性操作先以
+// 使用者、存取金鑰、登入工作階段與裝置；建立金鑰的明文只顯示一次；撤銷等破壞性操作先以
 // AlertDialog 確認才送出。
 
 const MEMBER = {
@@ -83,34 +83,52 @@ beforeEach(() => {
 });
 
 describe("帳號自助頁", () => {
-  it("顯示使用者、PAT、Web session 與裝置", async () => {
+  it("顯示使用者、存取金鑰、登入工作階段與裝置", async () => {
     renderAt("/account", makeClient());
-    expect(await screen.findByText(/member@example.com/)).toBeTruthy();
+    // 等帳號資料本身載入——header 的電子郵件連結在資料回來前就已渲染，不能當等待錨點。
+    expect(await screen.findByRole("cell", { name: "cli" })).toBeTruthy();
+    expect(screen.getAllByText(/member@example.com/).length).toBeGreaterThan(0);
     // PAT、session、device 各區塊的識別資料（精確 cell 查詢，避開撤銷鈕 aria-label）。
-    expect(screen.getByRole("cell", { name: "cli" })).toBeTruthy();
     expect(screen.getByRole("cell", { name: "slk_abc" })).toBeTruthy();
     expect(screen.getByRole("cell", { name: "device 授權" })).toBeTruthy();
   });
 
-  it("建立 PAT 後明文只顯示一次", async () => {
+  // 建立動作與管理列表頁一致：頁面唯一 primary action 開抽屜，欄位不常駐頁面。
+  it("建立表單不常駐頁面，按下建立存取金鑰後才出現於抽屜", async () => {
+    renderAt("/account", makeClient());
+    await screen.findByRole("cell", { name: "cli" });
+    expect(screen.queryByLabelText(/到期日/)).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /建立存取金鑰/ }));
+    const drawer = await screen.findByRole("dialog", { name: /建立存取金鑰/ });
+    expect(within(drawer).getByLabelText(/名稱/)).toBeTruthy();
+    expect(within(drawer).getByLabelText(/到期日/)).toBeTruthy();
+  });
+
+  it("建立存取金鑰後抽屜關閉，明文只顯示一次且可複製", async () => {
     const client = makeClient();
     renderAt("/account", client);
     const user = userEvent.setup();
-    await user.type(await screen.findByLabelText(/名稱|name/i), "laptop");
-    await user.click(screen.getByRole("button", { name: /建立 PAT|建立權杖|新增/ }));
+    await screen.findByRole("cell", { name: "cli" });
+    await user.click(screen.getByRole("button", { name: /建立存取金鑰/ }));
+    const drawer = await screen.findByRole("dialog", { name: /建立存取金鑰/ });
+    await user.type(within(drawer).getByLabelText(/名稱/), "laptop");
+    await user.click(within(drawer).getByRole("button", { name: /^建立$|建立存取金鑰/ }));
     await waitFor(() => expect(client.createPat).toHaveBeenCalledOnce());
     expect(client.createPat).toHaveBeenCalledWith(expect.objectContaining({ name: "laptop" }));
-    // 明文出現在建立回饋中。
+    // 送出成功後抽屜關閉，明文出現在頁面的一次性回饋中並附複製鈕。
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(await screen.findByText(/slk_new_SECRETPLAINTEXT/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /複製/ })).toBeTruthy();
   });
 
-  it("撤銷 PAT 需先經 AlertDialog 確認才送出", async () => {
+  it("撤銷存取金鑰需先經 AlertDialog 確認才送出", async () => {
     const client = makeClient();
     renderAt("/account", client);
     const user = userEvent.setup();
     await screen.findByText(/slk_abc/);
     // 觸發撤銷：先出現確認對話框，尚未呼叫撤銷。
-    await user.click(screen.getByRole("button", { name: /撤銷 PAT/ }));
+    await user.click(screen.getByRole("button", { name: /撤銷存取金鑰/ }));
     const dialog = await screen.findByRole("alertdialog");
     expect(client.revokePat).not.toHaveBeenCalled();
     // 確認後才送出，帶正確 PAT id。

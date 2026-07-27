@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, waitFor, fireEvent, within, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { App } from "../App";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -420,8 +421,9 @@ describe("App (kanban primary + rich detail)", () => {
     const settings = fakeSettings();
     render(<App createSession={makeSession(fakeDataSource(), settings)} workspace={ws as never} />);
     fireEvent.click(await screen.findByText("專案設定"));
-    const locale = (await screen.findByLabelText("locale")) as HTMLSelectElement;
-    fireEvent.change(locale, { target: { value: "ja" } });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByLabelText("locale"));
+    await user.click(await screen.findByRole("option", { name: /^ja/ }));
     fireEvent.click(screen.getByTestId("save-workflow"));
     await waitFor(() =>
       expect(settings.writeWorkflowConfig).toHaveBeenCalledWith(

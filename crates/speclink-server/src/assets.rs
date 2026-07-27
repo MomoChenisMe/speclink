@@ -42,9 +42,10 @@ frame-ancestors 'none'";
 /// SPA 擁有的 browser GET route。這些 path 直接開啟或重新整理回傳 shell；其餘
 /// 落到真 404（D5 的 allowlist）。
 ///
-/// admin 面只列舉七個管理目的地，不 blanket `/admin/*`——`/admin/changes`、
+/// admin 面只列舉六個管理目的地，不 blanket `/admin/*`——`/admin/changes`、
 /// `/admin/specs`、`/admin/discussions` 等 SHALL 維持 404（Non-Goal：管理面不提供
-/// changes／specs／discussions 的檢視或編輯）。
+/// changes／specs／discussions 的檢視或編輯）。`/admin/data` 已不是目的地，但仍留在
+/// 清單裡：舊書籤要拿到 shell 才能由 SPA 導向 `/admin/system`，回 404 只會是死連結。
 fn is_browser_route(path: &str) -> bool {
     matches!(
         path,

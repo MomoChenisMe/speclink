@@ -11,3 +11,13 @@ for (const key of ["localStorage", "sessionStorage"] as const) {
   storage.clear();
   Object.defineProperty(globalThis, key, { configurable: true, value: storage });
 }
+
+// jsdom 未實作 Pointer Capture 與 scrollIntoView，Radix Select 開關與捲到選中項時
+// 會直接呼叫。缺一即拋 TypeError——環境缺口，補 no-op stub。
+if (typeof window !== "undefined") {
+  const proto = window.Element.prototype as unknown as Record<string, unknown>;
+  if (!proto.hasPointerCapture) proto.hasPointerCapture = () => false;
+  if (!proto.setPointerCapture) proto.setPointerCapture = () => {};
+  if (!proto.releasePointerCapture) proto.releasePointerCapture = () => {};
+  if (!proto.scrollIntoView) proto.scrollIntoView = () => {};
+}

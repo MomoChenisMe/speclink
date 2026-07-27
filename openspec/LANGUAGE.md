@@ -78,3 +78,51 @@
 - **definition**: 清單分批瀏覽（pagination）。artifacts 散文稱「換頁」；UI 文案不出現「換頁／分頁」名詞，僅用「上一頁」「下一頁」「第 N／M 頁」。
 - **avoid**: 分頁（pagination 語意上）
 - **why**: 「分頁」已被抽屜 tabs 語意佔用（提案／設計／任務／規格分頁），同詞兩義會使規格與討論記錄歧義。2026-07-11 討論「specs-archive-pagination」定案。
+
+### 專案代號
+
+- **definition**: project key——建立專案時指定、之後不可變更的識別字串。介面以唯讀文字呈現並標示「建立後不可變更」，與可更名的「專案名稱」分離。
+- **avoid**: Project key、project key、專案 key、專案 ID（使用者可見文案中）
+- **why**: 「key」在中文文案裡會與「金鑰」混淆（同一個介面上還有存取金鑰）；「代號」點明它是識別而非密鑰。2026-07-25 變更「admin-console-redesign」定案。
+
+### 儲存庫代號
+
+- **definition**: repo key——建立儲存庫時指定、之後不可變更的識別字串。與「專案代號」同一語彙，同樣以唯讀文字呈現。
+- **avoid**: Repo key、repo key、儲存庫 key
+- **why**: 同「專案代號」。2026-07-25 變更「admin-console-redesign」定案。
+
+### 建立專案
+
+- **definition**: 新增一個專案（含指定專案代號與名稱）的動作，管理面「專案與儲存庫」頁的 primary action。
+- **avoid**: 建立 project、新增 project
+- **why**: 中英夾雜的動作名無法與頁名「專案與儲存庫」呼應；工程詞不出現在使用者可見文案。2026-07-25 變更「admin-console-redesign」定案。
+
+### 存取金鑰
+
+- **definition**: Personal Access Token（PAT）——使用者自助建立、供遠端工作流程以其身分連線的長效憑證。明文只在建立時顯示一次。
+- **avoid**: Personal Access Tokens、PAT、權杖、token（使用者可見文案中）
+- **why**: 「PAT」是縮寫工程詞，使用者無法從字面推出用途；「存取金鑰」同時說明了「拿來存取」與「是機密」。2026-07-25 變更「admin-console-redesign」定案。
+
+### 登入工作階段
+
+- **definition**: Web session——瀏覽器登入後持有的 cookie 工作階段，帳號頁以唯讀清單呈現其建立與到期。
+- **avoid**: Web Sessions、session（使用者可見文案中）
+- **why**: 「session」未譯時與「裝置登入」難以區分；「登入工作階段」明示它是這一次瀏覽器登入的存續期。2026-07-25 變更「admin-console-redesign」定案。
+
+### 資料結構版本
+
+- **definition**: identity schema version——識別資料庫的結構版本，呈現於系統頁的執行環境與總覽的系統健康摘要。
+- **avoid**: Schema 版本、schema version、識別 schema
+- **why**: 「schema」對非開發者無意義，且遷移動作的文案（「執行資料結構遷移」）本來就用「資料結構」，兩處必須同詞。2026-07-25 變更「admin-console-redesign」定案。
+
+### 待送佇列
+
+- **definition**: outbox backlog——某個範圍尚未同步出去的事件筆數，呈現於系統頁的儲存狀態。
+- **avoid**: Outbox backlog、outbox、backlog
+- **why**: 「backlog」在中文語境常被讀成「待辦事項」，與總覽的「需要處理」撞義；「待送佇列」點明是「還沒送出去的東西排著」。2026-07-25 變更「admin-console-redesign」定案。
+
+### 儲存後端
+
+- **definition**: TeamStore 的實作與其執行狀態——驅動（sqlite／postgres／serverfs 等）、契約版本、等級、能力與健康，統一以「儲存後端」為主詞，呈現於系統頁。
+- **avoid**: Store、Store 狀態、store driver（使用者可見文案中）
+- **why**: 「Store」單獨出現時看不出是什麼的儲存；統一主詞後，「儲存後端目前無法使用」這類降級訊息才讀得通。2026-07-25 變更「admin-console-redesign」定案。

@@ -64,7 +64,12 @@ export function BoardSearchBar({
       if (e.key === "Escape") close();
     };
     const onDown = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) close();
+      const target = e.target as Element | null;
+      // 面板內的 Select 展開後，選單被 Radix portal 到 body，DOM 上不在 popoverRef 內。
+      // 不排除它的話，選任何一個篩選值都會順手把整個面板關掉——原生 select 由作業系統
+      // 繪製、不產生 DOM 事件，換成 Radix 才浮現這條路徑。
+      if (target?.closest?.("[data-radix-popper-content-wrapper]")) return;
+      if (popoverRef.current && !popoverRef.current.contains(target as Node)) close();
     };
     window.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onDown);

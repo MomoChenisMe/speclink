@@ -34,10 +34,13 @@ import { BoardSearchBar } from "./BoardSearchBar";
 import { ChangeCard } from "./ChangeCard";
 import { DiscussionCard, DiscussionColumn } from "./DiscussionColumn";
 import { Button } from "./ui/button";
-import { NativeSelect } from "./ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 /** 移動 8px 才視為拖曳——否則 dnd-kit 會吃掉單純點擊，導致卡片無法開啟詳情。 */
 export const DRAG_ACTIVATION_DISTANCE = 8;
+
+/** 篩選維度的「全部」在 BoardFilters 裡是 null，但 Radix Select 的 item 不接受空字串。 */
+const FILTER_ALL = "__all__";
 
 /** 各階段的視覺主題——單一 teal 色相、以深淺表達生命週期推進，守住主色系。 */
 const STAGE_STYLE: Record<Stage, { icon: LucideIcon; top: string; badge: string; bar: string; iconCls: string }> = {
@@ -336,51 +339,69 @@ export function KanbanBoard({
           {/* 篩選面板內容（design D5）：三維度選單直欄堆疊，選回「全部」即單獨清除。 */}
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted-foreground">{t("filter.createdBy")}</span>
-            <NativeSelect
-              aria-label={t("filter.createdBy")}
-              value={filters.createdBy ?? ""}
-              onChange={(e) => setFilters({ ...filters, createdBy: e.target.value || null })}
+            <Select
+              value={filters.createdBy ?? FILTER_ALL}
+              onValueChange={(v) =>
+                setFilters({ ...filters, createdBy: v === FILTER_ALL ? null : v })
+              }
             >
-              <option value="">{t("filter.all")}</option>
-              {creators.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </NativeSelect>
+              <SelectTrigger aria-label={t("filter.createdBy")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
+                {creators.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted-foreground">{t("filter.createdWithin")}</span>
-            <NativeSelect
-              aria-label={t("filter.createdWithin")}
-              value={filters.createdWithin ?? ""}
-              onChange={(e) =>
+            <Select
+              value={filters.createdWithin ?? FILTER_ALL}
+              onValueChange={(v) =>
                 setFilters({
                   ...filters,
-                  createdWithin: (e.target.value || null) as BoardFilters["createdWithin"],
+                  createdWithin: (v === FILTER_ALL
+                    ? null
+                    : v) as BoardFilters["createdWithin"],
                 })
               }
             >
-              <option value="">{t("filter.all")}</option>
-              <option value="7d">{t("filter.range7d")}</option>
-              <option value="30d">{t("filter.range30d")}</option>
-              <option value="earlier">{t("filter.rangeEarlier")}</option>
-            </NativeSelect>
+              <SelectTrigger aria-label={t("filter.createdWithin")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
+                <SelectItem value="7d">{t("filter.range7d")}</SelectItem>
+                <SelectItem value="30d">{t("filter.range30d")}</SelectItem>
+                <SelectItem value="earlier">{t("filter.rangeEarlier")}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted-foreground">{t("filter.fromDiscussion")}</span>
-            <NativeSelect
-              aria-label={t("filter.fromDiscussion")}
-              value={filters.fromDiscussion ?? ""}
-              onChange={(e) => setFilters({ ...filters, fromDiscussion: e.target.value || null })}
+            <Select
+              value={filters.fromDiscussion ?? FILTER_ALL}
+              onValueChange={(v) =>
+                setFilters({ ...filters, fromDiscussion: v === FILTER_ALL ? null : v })
+              }
             >
-              <option value="">{t("filter.all")}</option>
-              {sourceDiscussions.map((d) => (
-                <option key={d.slug} value={d.slug}>
-                  {d.slug}
-                </option>
-              ))}
-            </NativeSelect>
+              <SelectTrigger aria-label={t("filter.fromDiscussion")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
+                {sourceDiscussions.map((d) => (
+                  <SelectItem key={d.slug} value={d.slug}>
+                    {d.slug}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {activeFilterCount > 0 && (
             <Button

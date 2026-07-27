@@ -2,7 +2,7 @@
 // 純檔案系統斷言：以 node 環境執行，import.meta.url 才是 file:// URL
 // （jsdom 環境會把它換成 http location，導致 fileURLToPath 失敗）。
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // 共用 semantic theme（D1/D7）：青綠 token 從 apps/desktop/src/index.css 抽到
@@ -57,7 +57,48 @@ const THEME_MAP = [
   "--radius-md: calc(var(--radius) - 2px);",
 ];
 
+// 元件只能用這份 theme 真的映射出來的語意色。用了沒定義的 token（例如上游 shadcn 的
+// `bg-popover`——這個 theme 沒有 `--popover`）Tailwind 會產出一條解析不到值的宣告，
+// 元件靜默變透明：不會有編譯錯誤、不會有測試紅燈，只有肉眼看得到。
+const componentSources = () => {
+  const dir = fileURLToPath(new URL("..", import.meta.url));
+  const files: string[] = [];
+  const walk = (path: string) => {
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      if (entry.name === "__tests__") continue;
+      const child = `${path}/${entry.name}`;
+      if (entry.isDirectory()) walk(child);
+      else if (entry.name.endsWith(".tsx")) files.push(child);
+    }
+  };
+  walk(dir);
+  // 註解裡提到某個 class 名稱（例如解釋為什麼不用它）不該被當成用到了它。
+  const stripComments = (source: string) =>
+    source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  return files.map((f) => [f, stripComments(readFileSync(f, "utf8"))] as const);
+};
+
+/** Tailwind 內建色階（bg-amber-500 之類）不經 theme，排除。 */
+const PALETTE =
+  /^(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}$/;
+const BUILTIN = new Set(["black", "white", "transparent", "current", "inherit"]);
+
 describe("共用 semantic theme 抽取", () => {
+  it("元件用到的 bg-* 語意色都在 theme.css 有對應 token", () => {
+    const mapped = new Set([...themeCss().matchAll(/--color-([a-z0-9-]+):/g)].map((m) => m[1]));
+    const unmapped: string[] = [];
+    for (const [file, source] of componentSources()) {
+      for (const match of source.matchAll(/\bbg-([a-z][a-z0-9-]*)/g)) {
+        const name = match[1];
+        if (mapped.has(name) || BUILTIN.has(name) || PALETTE.test(name)) continue;
+        unmapped.push(`${file.split("/src/")[1]}: bg-${name}`);
+      }
+    }
+    expect(unmapped).toEqual([]);
+  });
+});
+
+describe("共用 semantic theme 抽取（既有）", () => {
   it("packages/ui/src/theme.css 保留全部 canonical light token 值", () => {
     const css = themeCss();
     for (const token of LIGHT_TOKENS) {

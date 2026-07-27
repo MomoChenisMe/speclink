@@ -1,6 +1,6 @@
 //! Browser JSON admin API（server-admin spec, D4）。`/api/speclink/v1/web/admin/*`
 //! 是 session-cookie 的管理面：未登入 401、非 admin 403 `permission_denied`；mutation
-//! 先驗同源再裁權限。七個 view model 只回頁面所需 metadata（絕不含 hash／plaintext／
+//! 先驗同源再裁權限。六個 view model 只回頁面所需 metadata（絕不含 hash／plaintext／
 //! refresh credential／token），mutation 呼叫與 bearer API／CLI 相同的單點 `admin_*`
 //! 函式，audit source `web`。Store 不健康只降級 overview／system／data，identity 管理仍可用。
 
@@ -118,9 +118,9 @@ fn json_of(result: Result<ureq::Response, ureq::Error>) -> (u16, Value) {
     }
 }
 
-const VIEWS: [&str; 7] = [
-    "overview", "users", "registry", "credentials", "data", "system", "audit",
-];
+// 六個 view model：原「資料操作」已併入 system（admin-console-redesign），
+// 其欄位與斷言改由 admin_system_view.rs 覆蓋。
+const VIEWS: [&str; 6] = ["overview", "users", "registry", "credentials", "system", "audit"];
 
 #[test]
 fn admin_views_require_an_admin_session() {
@@ -160,7 +160,7 @@ fn a_cross_origin_admin_mutation_is_refused_before_the_permission_decision() {
 }
 
 #[test]
-fn all_seven_view_models_load_for_an_admin() {
+fn all_six_view_models_load_for_an_admin() {
     let (base, _id, _a, _m) = start_healthy();
     let admin = login(&base, "admin@example.com");
     for view in VIEWS {

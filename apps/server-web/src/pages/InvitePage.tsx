@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Button } from "@speclink/ui";
+import { Button, useI18n } from "@speclink/ui";
 import { useClient, useSession } from "../app/context";
 import { useAsync } from "../lib/useAsync";
 import { readFormError } from "../lib/formError";
@@ -11,6 +11,7 @@ import { Field } from "../components/Field";
 // destination 導向（admin→/admin，一般→/account）。已用／過期／未知 token 一律顯示
 // 不可區分的「邀請無效」且無表單。
 export function InvitePage() {
+  const { t } = useI18n();
   const client = useClient();
   const { refresh } = useSession();
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export function InvitePage() {
       await refresh();
       navigate(destination);
     } catch (error) {
-      const read = readFormError(error, "接受邀請時發生錯誤");
+      const read = readFormError(error, t("invite.error"));
       setMessage(read.message);
       setFieldErrors(read.fieldErrors);
       setPending(false);
@@ -42,7 +43,7 @@ export function InvitePage() {
   if (loading) {
     return (
       <p role="status" aria-live="polite" className="text-muted-foreground">
-        載入中…
+        {t("common.loading")}
       </p>
     );
   }
@@ -50,22 +51,20 @@ export function InvitePage() {
     // 已用／過期／未知 token：不可區分的固定訊息，不回顯內部原因。
     return (
       <div role="alert">
-        <h1 className="mb-2 text-2xl font-semibold">邀請無效</h1>
-        <p className="text-muted-foreground">
-          這個邀請連結無法使用。請向邀請你的人索取新的連結。
-        </p>
+        <h1 className="mb-2 text-2xl font-semibold">{t("invite.invalidTitle")}</h1>
+        <p className="text-muted-foreground">{t("invite.invalidBody")}</p>
       </div>
     );
   }
 
   return (
     <div>
-      <h1 className="mb-2 text-2xl font-semibold">接受邀請</h1>
-      <p className="mb-6 text-muted-foreground">為 {data.email} 設定登入密碼。</p>
+      <h1 className="mb-2 text-2xl font-semibold">{t("invite.title")}</h1>
+      <p className="mb-6 text-muted-foreground">{t("invite.body").replace("{email}", data.email)}</p>
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <Field
           id="password"
-          label="密碼"
+          label={t("field.password")}
           type="password"
           autoComplete="new-password"
           value={password}
@@ -78,7 +77,7 @@ export function InvitePage() {
           </p>
         )}
         <Button type="submit" disabled={pending}>
-          {pending ? "建立中…" : "建立帳號"}
+          {pending ? t("common.creating") : t("invite.submit")}
         </Button>
       </form>
     </div>

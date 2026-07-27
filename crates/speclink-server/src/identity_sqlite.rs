@@ -6,9 +6,9 @@
 
 use crate::audit::{AuditAction, AuditActor, AuditEntry};
 use crate::identity::{
-    hash_password, hash_token, random_token, user_code, verify_password, BackupRecord,
-    DeviceAuthorization, DeviceFamily, DevicePoll, IdentityError, IdentityStore, Invitation,
-    MembershipRole, NewBackupRecord, NewInvitation, Pat, Project, RefreshOutcome, Repo,
+    hash_password, hash_token, random_token, user_code, verify_password, AuditFilter, AuditPage,
+    BackupRecord, DeviceAuthorization, DeviceFamily, DevicePoll, IdentityError, IdentityStore,
+    Invitation, MembershipRole, NewBackupRecord, NewInvitation, Pat, Project, RefreshOutcome, Repo,
     SessionInfo, TokenPair, User,
 };
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
@@ -300,12 +300,67 @@ impl IdentityStore for IdentitySqlite {
         Ok(plaintext)
     }
 
+    fn list_pending_invitations(&self) -> Result<Vec<Invitation>, IdentityError> {
+        // 與 count_pending_invitations 同一組「仍有效」判準：未使用且未過期。
+        let guard = self.conn();
+        let mut stmt = guard
+            .prepare(
+                "SELECT id, email, display, admin, created_at, expires_at FROM invitations \
+                 WHERE consumed_at IS NULL AND expires_at > ?1 ORDER BY created_at DESC, id",
+            )
+            .map_err(backend)?;
+        // rusqlite 的 mapper 回不了 IdentityError，時間解析與成員查詢留到 mapper 之外。
+        let rows: Vec<(String, String, String, i64, String, String)> = stmt
+            .query_map(params![now()], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            })
+            .map_err(backend)?
+            .collect::<Result<_, _>>()
+            .map_err(backend)?;
+
+        rows.into_iter()
+            .map(|(id, email, display, admin, created_at, expires_at)| {
+                let memberships = invitation_memberships(&guard, &id)?;
+                Ok(Invitation {
+                    id,
+                    email,
+                    display,
+                    admin: admin != 0,
+                    memberships,
+                    created_at: parse_ts(&created_at)?,
+                    expires_at: parse_ts(&expires_at)?,
+                })
+            })
+            .collect()
+    }
+
+    fn count_pending_invitations(&self) -> Result<u64, IdentityError> {
+        // The same "still valid" predicate the accept path uses: unconsumed and
+        // unexpired. Counting expired invitations would show an admin a todo no
+        // action can clear.
+        self.conn()
+            .query_row(
+                "SELECT COUNT(*) FROM invitations WHERE consumed_at IS NULL AND expires_at > ?1",
+                params![now()],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|n| n as u64)
+            .map_err(backend)
+    }
+
     fn find_valid_invitation(&self, token: &str) -> Result<Option<Invitation>, IdentityError> {
         let guard = self.conn();
         let hash = hash_token(token);
         let row = guard
             .query_row(
-                "SELECT id, email, display, admin, expires_at FROM invitations WHERE token_hash = ?1 AND consumed_at IS NULL AND expires_at > ?2",
+                "SELECT id, email, display, admin, created_at, expires_at FROM invitations WHERE token_hash = ?1 AND consumed_at IS NULL AND expires_at > ?2",
                 params![hash, now()],
                 |r| {
                     Ok((
@@ -314,12 +369,13 @@ impl IdentityStore for IdentitySqlite {
                         r.get::<_, String>(2)?,
                         r.get::<_, i64>(3)?,
                         r.get::<_, String>(4)?,
+                        r.get::<_, String>(5)?,
                     ))
                 },
             )
             .optional()
             .map_err(backend)?;
-        let Some((id, email, display, admin, expires_at)) = row else {
+        let Some((id, email, display, admin, created_at, expires_at)) = row else {
             return Ok(None);
         };
         let memberships = invitation_memberships(&guard, &id)?;
@@ -329,6 +385,7 @@ impl IdentityStore for IdentitySqlite {
             display,
             admin: admin != 0,
             memberships,
+            created_at: parse_ts(&created_at)?,
             expires_at: parse_ts(&expires_at)?,
         }))
     }
@@ -396,23 +453,27 @@ impl IdentityStore for IdentitySqlite {
     fn get_user(&self, user_id: &str) -> Result<Option<User>, IdentityError> {
         self.conn()
             .query_row(
-                "SELECT id, display, email, active, admin FROM users WHERE id = ?1",
+                "SELECT id, display, email, active, admin, created_at FROM users WHERE id = ?1",
                 params![user_id],
-                map_user,
+                map_user_row,
             )
             .optional()
-            .map_err(backend)
+            .map_err(backend)?
+            .map(UserRow::into_user)
+            .transpose()
     }
 
     fn find_user_by_email(&self, email: &str) -> Result<Option<User>, IdentityError> {
         self.conn()
             .query_row(
-                "SELECT id, display, email, active, admin FROM users WHERE email = ?1",
+                "SELECT id, display, email, active, admin, created_at FROM users WHERE email = ?1",
                 params![email],
-                map_user,
+                map_user_row,
             )
             .optional()
-            .map_err(backend)
+            .map_err(backend)?
+            .map(UserRow::into_user)
+            .transpose()
     }
 
     fn authenticate_password(
@@ -423,18 +484,19 @@ impl IdentityStore for IdentitySqlite {
         let guard = self.conn();
         let row = guard
             .query_row(
-                "SELECT id, display, email, active, admin, password_hash FROM users WHERE email = ?1",
+                "SELECT id, display, email, active, admin, created_at, password_hash FROM users WHERE email = ?1",
                 params![email],
                 |r| {
                     Ok((
-                        User {
+                        UserRow {
                             id: r.get(0)?,
                             display: r.get(1)?,
                             email: r.get(2)?,
                             active: r.get::<_, i64>(3)? != 0,
                             admin: r.get::<_, i64>(4)? != 0,
+                            created_at: r.get::<_, String>(5)?,
                         },
-                        r.get::<_, String>(5)?,
+                        r.get::<_, String>(6)?,
                     ))
                 },
             )
@@ -447,7 +509,7 @@ impl IdentityStore for IdentitySqlite {
                 // not distinguishable by timing from a wrong password.
                 let ok = verify_password(&hash, password);
                 if user.active && ok {
-                    Ok(Some(user))
+                    Ok(Some(user.into_user()?))
                 } else {
                     Ok(None)
                 }
@@ -686,14 +748,16 @@ impl IdentityStore for IdentitySqlite {
     fn authenticate_session(&self, session_id: &str) -> Result<Option<User>, IdentityError> {
         self.conn()
             .query_row(
-                "SELECT u.id, u.display, u.email, u.active, u.admin \
+                "SELECT u.id, u.display, u.email, u.active, u.admin, u.created_at \
                  FROM sessions s JOIN users u ON u.id = s.user_id \
                  WHERE s.session_hash = ?1 AND s.revoked_at IS NULL AND s.expires_at > ?2 AND u.active = 1",
                 params![hash_token(session_id), now()],
-                map_user,
+                map_user_row,
             )
             .optional()
-            .map_err(backend)
+            .map_err(backend)?
+            .map(UserRow::into_user)
+            .transpose()
     }
 
     fn revoke_session(&self, session_id: &str) -> Result<(), IdentityError> {
@@ -806,7 +870,7 @@ impl IdentityStore for IdentitySqlite {
         let row = guard
             .query_row(
                 "SELECT p.id, p.user_id, p.prefix, p.name, p.expires_at, p.revoked_at, p.last_used_at, p.created_at, \
-                        u.id, u.display, u.email, u.active, u.admin \
+                        u.id, u.display, u.email, u.active, u.admin, u.created_at \
                  FROM pats p JOIN users u ON u.id = p.user_id \
                  WHERE p.token_hash = ?1 AND p.revoked_at IS NULL AND (p.expires_at IS NULL OR p.expires_at > ?2)",
                 params![hash_token(token), now()],
@@ -821,12 +885,13 @@ impl IdentityStore for IdentitySqlite {
                         last_used_at: r.get(6)?,
                         created_at: r.get(7)?,
                     };
-                    let user = User {
+                    let user = UserRow {
                         id: r.get(8)?,
                         display: r.get(9)?,
                         email: r.get(10)?,
                         active: r.get::<_, i64>(11)? != 0,
                         admin: r.get::<_, i64>(12)? != 0,
+                        created_at: r.get(13)?,
                     };
                     Ok((raw, user))
                 },
@@ -834,7 +899,7 @@ impl IdentityStore for IdentitySqlite {
             .optional()
             .map_err(backend)?;
         match row {
-            Some((raw, user)) => Ok(Some((raw.into_pat()?, user))),
+            Some((raw, user)) => Ok(Some((raw.into_pat()?, user.into_user()?))),
             None => Ok(None),
         }
     }
@@ -997,17 +1062,19 @@ impl IdentityStore for IdentitySqlite {
         // regular authenticate method filters it back to the existing 401.
         self.conn()
             .query_row(
-                "SELECT u.id, u.display, u.email, u.active, u.admin \
+                "SELECT u.id, u.display, u.email, u.active, u.admin, u.created_at \
                  FROM access_tokens a \
                  JOIN users u ON u.id = a.user_id \
                  JOIN credential_families f ON f.id = a.family_id \
                  WHERE a.token_hash = ?1 AND a.revoked_at IS NULL AND a.expires_at > ?2 \
                    AND f.revoked_at IS NULL",
                 params![hash_token(token), now()],
-                map_user,
+                map_user_row,
             )
             .optional()
-            .map_err(backend)
+            .map_err(backend)?
+            .map(UserRow::into_user)
+            .transpose()
     }
 
     fn refresh(&self, refresh_token: &str) -> Result<RefreshOutcome, IdentityError> {
@@ -1180,6 +1247,58 @@ impl IdentityStore for IdentitySqlite {
         Ok(out)
     }
 
+    fn query_audit(&self, filter: &AuditFilter) -> Result<AuditPage, IdentityError> {
+        let guard = self.conn();
+        // One WHERE clause drives both the count and the page, so the total can
+        // never disagree with what the page was taken from.
+        let (where_sql, mut args) = audit_where(filter);
+        let narrowing = args.len();
+        let total: u64 = guard
+            .query_row(
+                &format!("SELECT COUNT(*) FROM audit_log{where_sql}"),
+                rusqlite::params_from_iter(args.iter()),
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(backend)? as u64;
+        // A page past the end is not an error — it yields no rows and the caller
+        // still learns the real total (server-admin「頁碼超出總頁數回空清單」).
+        let offset = u64::from(filter.page.saturating_sub(1)) * u64::from(filter.per_page);
+        args.push(Box::new(i64::from(filter.per_page)));
+        args.push(Box::new(offset as i64));
+        let sql = format!(
+            "SELECT id, actor_id, action, subject, source, created_at FROM audit_log{where_sql} \
+             ORDER BY created_at DESC, rowid DESC LIMIT ?{} OFFSET ?{}",
+            narrowing + 1,
+            narrowing + 2,
+        );
+        let mut stmt = guard.prepare(&sql).map_err(backend)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(args.iter()), |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                ))
+            })
+            .map_err(backend)?;
+        let mut entries = Vec::new();
+        for row in rows {
+            let (id, actor_id, action, subject, source, created_at) = row.map_err(backend)?;
+            entries.push(AuditEntry {
+                id,
+                actor_id,
+                action,
+                subject,
+                source,
+                created_at: parse_ts(&created_at)?,
+            });
+        }
+        Ok(AuditPage { entries, total })
+    }
+
     fn record_backup(
         &self,
         actor: &AuditActor,
@@ -1249,10 +1368,14 @@ impl IdentityStore for IdentitySqlite {
     fn list_users(&self) -> Result<Vec<User>, IdentityError> {
         let guard = self.conn();
         let mut stmt = guard
-            .prepare("SELECT id, display, email, active, admin FROM users ORDER BY created_at")
+            .prepare("SELECT id, display, email, active, admin, created_at FROM users ORDER BY created_at")
             .map_err(backend)?;
-        let rows = stmt.query_map([], map_user).map_err(backend)?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(backend)
+        let rows = stmt.query_map([], map_user_row).map_err(backend)?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(backend)?
+            .into_iter()
+            .map(UserRow::into_user)
+            .collect()
     }
 
     fn list_memberships(&self, user_id: &str) -> Result<Vec<String>, IdentityError> {
@@ -1278,6 +1401,38 @@ impl IdentityStore for IdentitySqlite {
         insert_audit(&tx, actor, AuditAction::UserInvited, &req.email)?;
         tx.commit().map_err(backend)?;
         Ok(plaintext)
+    }
+
+    fn admin_revoke_invitation(
+        &self,
+        actor: &AuditActor,
+        invitation_id: &str,
+    ) -> Result<(), IdentityError> {
+        let mut guard = self.conn();
+        let tx = guard.transaction().map_err(backend)?;
+        // 只認未接受的邀請。已接受的那筆背後已經有帳號，該走停權而不是回收邀請；
+        // 讀 email 是為了讓稽核事件指得出對象（token 與 hash 不進稽核）。
+        let email = tx
+            .query_row(
+                "SELECT email FROM invitations WHERE id = ?1 AND consumed_at IS NULL",
+                params![invitation_id],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(backend)?
+            .ok_or_else(|| IdentityError::NotFound("找不到待啟用的邀請".to_string()))?;
+        // 直接刪除而非標記：未接受的邀請沒有稽核以外的歷史價值，而 consumed_at 的語意
+        // 是「已被接受」，借用它會讓接受路徑的判準跟著失真。
+        tx.execute(
+            "DELETE FROM invitation_memberships WHERE invitation_id = ?1",
+            params![invitation_id],
+        )
+        .map_err(backend)?;
+        tx.execute("DELETE FROM invitations WHERE id = ?1", params![invitation_id])
+            .map_err(backend)?;
+        insert_audit(&tx, actor, AuditAction::InvitationRevoked, &email)?;
+        tx.commit().map_err(backend)?;
+        Ok(())
     }
 
     fn admin_set_user_suspended(
@@ -1826,16 +1981,89 @@ fn insert_audit(
     .map_err(backend)
 }
 
+/// Build the audit filter's WHERE clause and its bound values. Every narrowing
+/// is a bound parameter — no user text is ever concatenated into the SQL. An
+/// unknown action or source simply matches no row (server-admin「未知動作名稱回
+/// 空清單與總頁數 0」), so no name needs validating against a closed set here.
+fn audit_where(filter: &AuditFilter) -> (String, Vec<Box<dyn rusqlite::ToSql>>) {
+    let mut clauses: Vec<String> = Vec::new();
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    let bind = |clause: String, value: Box<dyn rusqlite::ToSql>, args: &mut Vec<_>, clauses: &mut Vec<String>| {
+        args.push(value);
+        clauses.push(clause.replace("?N", &format!("?{}", args.len())));
+    };
+    if let Some(keyword) = filter.keyword.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
+        // Action and subject only. `actor_id` is an opaque hex id nobody types on
+        // purpose, and every record in an install shares few of them — including
+        // it would let a short hex-looking keyword ("e3") match the whole log.
+        //
+        // LIKE with escaped wildcards: a keyword containing % or _ narrows on the
+        // literal character instead of silently matching everything.
+        let pattern = format!(
+            "%{}%",
+            keyword.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+        );
+        args.push(Box::new(pattern));
+        let n = args.len();
+        clauses.push(format!(
+            "(action LIKE ?{n} ESCAPE '\\' OR subject LIKE ?{n} ESCAPE '\\')"
+        ));
+    }
+    if let Some(action) = filter.action.as_deref().map(str::trim).filter(|a| !a.is_empty()) {
+        bind("action = ?N".into(), Box::new(action.to_string()), &mut args, &mut clauses);
+    }
+    if let Some(source) = filter.source.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        bind("source = ?N".into(), Box::new(source.to_string()), &mut args, &mut clauses);
+    }
+    if let Some(from) = filter.from {
+        bind("created_at >= ?N".into(), Box::new(ts(from)), &mut args, &mut clauses);
+    }
+    if let Some(to) = filter.to {
+        bind("created_at <= ?N".into(), Box::new(ts(to)), &mut args, &mut clauses);
+    }
+    if clauses.is_empty() {
+        (String::new(), args)
+    } else {
+        (format!(" WHERE {}", clauses.join(" AND ")), args)
+    }
+}
+
 // --- row mapping ---
 
-/// Map a `(id, display, email, active, admin)` row to a [`User`].
-fn map_user(r: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
-    Ok(User {
+/// The raw text columns of a `users` row, before timestamp parsing.
+struct UserRow {
+    id: String,
+    display: String,
+    email: String,
+    active: bool,
+    admin: bool,
+    created_at: String,
+}
+
+impl UserRow {
+    fn into_user(self) -> Result<User, IdentityError> {
+        Ok(User {
+            id: self.id,
+            display: self.display,
+            email: self.email,
+            active: self.active,
+            admin: self.admin,
+            created_at: parse_ts(&self.created_at)?,
+        })
+    }
+}
+
+/// Map a `(id, display, email, active, admin, created_at)` row to a [`UserRow`].
+/// The timestamp is parsed by [`UserRow::into_user`] — rusqlite's mapper cannot
+/// return an [`IdentityError`], so a malformed stored timestamp surfaces there.
+fn map_user_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<UserRow> {
+    Ok(UserRow {
         id: r.get(0)?,
         display: r.get(1)?,
         email: r.get(2)?,
         active: r.get::<_, i64>(3)? != 0,
         admin: r.get::<_, i64>(4)? != 0,
+        created_at: r.get(5)?,
     })
 }
 

@@ -24,16 +24,22 @@ export type LoginBody = {
 
 export type AdminConnection = { publicUrl: string; projectKey: string; repoKey: string };
 
+/** 一則待處理事項：kind 為封閉集合（文案由前端對應），destination 是處理它的路由。 */
+export type AdminTodo = { kind: string; destination: string; count: number };
+
 export type AdminOverview = {
   activeUsers: number;
   suspendedUsers: number;
   projects: number;
   repos: number;
   activeCredentials: number;
+  pendingInvitations: number;
   storeHealthy: boolean;
   storeHealthError?: string;
   identitySchemaVersion: number;
   connection?: AdminConnection;
+  todos: AdminTodo[];
+  recentAudit: AdminAuditEntry[];
 };
 
 export type AdminMembership = { projectKey: string; role: string };
@@ -43,11 +49,23 @@ export type AdminUser = {
   display: string;
   admin: boolean;
   active: boolean;
+  createdAt: string;
   memberships: AdminMembership[];
   canSuspend: boolean;
   canRemoveAdmin: boolean;
 };
-export type AdminUsers = { users: AdminUser[] };
+/** 已寄出但尚未接受的邀請；受邀者此時還沒有 user row。不含 token。 */
+export type AdminPendingInvitation = {
+  id: string;
+  email: string;
+  display: string;
+  admin: boolean;
+  memberships: string[];
+  createdAt: string;
+  expiresAt: string;
+};
+
+export type AdminUsers = { users: AdminUser[]; pending: AdminPendingInvitation[] };
 
 export type AdminRepo = { key: string; name: string };
 export type AdminProject = { key: string; name: string; repos: AdminRepo[] };
@@ -74,9 +92,10 @@ export type AdminCredFamily = {
 export type AdminCredentials = { pats: AdminPat[]; deviceFamilies: AdminCredFamily[] };
 
 export type AdminScope = { project: string; repo: string; exportPath: string };
-export type AdminData = { scopes: AdminScope[]; storeHealthy: boolean; storeHealthError?: string };
 
 export type AdminBacklog = { project: string; repo: string; backlog: number | null };
+
+/** 系統頁的單一 view model：原「資料操作」與「系統狀態」兩份合併為一份。 */
 export type AdminSystem = {
   engineVersion: string;
   apiVersion: string;
@@ -88,6 +107,8 @@ export type AdminSystem = {
   storeHealthy: boolean;
   storeHealthError: string | null;
   outboxBacklogs: AdminBacklog[];
+  scopes: AdminScope[];
+  migrateAvailable: boolean;
 };
 
 export type AdminAuditEntry = {
@@ -98,7 +119,20 @@ export type AdminAuditEntry = {
   source: string;
   createdAt: string;
 };
-export type AdminAudit = { entries: AdminAuditEntry[] };
+export type AdminAudit = { entries: AdminAuditEntry[]; totalPages: number };
+
+/** 稽核篩選與分頁參數——伺服器套用後只回當頁事件與總頁數，前端不自行裁切。 */
+export type AdminAuditParams = {
+  q?: string;
+  action?: string;
+  source?: string;
+  /** `YYYY-MM-DD` 或 RFC3339；伺服器把純日期讀成該日的起訖。 */
+  from?: string;
+  to?: string;
+  /** 1-based。小於 1 由伺服器回 400 `invalid_argument`。 */
+  page?: number;
+  limit?: number;
+};
 
 /** The setup store-status panel (四要素之二). */
 export type StoreStatus = {
@@ -206,11 +240,11 @@ export interface WebClient {
   checkActivation(userCode: string): Promise<ActivateResult>;
   decideActivation(userCode: string, action: "approve" | "deny"): Promise<ActivateResult>;
   getAdminUsers(): Promise<AdminUsers>;
+  adminRevokeInvitation(id: string): Promise<void>;
   getAdminRegistry(): Promise<AdminRegistry>;
   getAdminCredentials(): Promise<AdminCredentials>;
-  getAdminData(): Promise<AdminData>;
   getAdminSystem(): Promise<AdminSystem>;
-  getAdminAudit(): Promise<AdminAudit>;
+  getAdminAudit(params?: AdminAuditParams): Promise<AdminAudit>;
   adminInvite(body: {
     email: string;
     display: string;
@@ -256,6 +290,15 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 /** The production client — every method is a typed call over the same-origin API. */
 export function createHttpClient(): WebClient {
   const q = (token: string) => `?token=${encodeURIComponent(token)}`;
+  // 只把有值的參數送出：空字串代表「未篩選」，不該變成 `?q=` 這種空條件。
+  const qs = (params?: Record<string, string | number | undefined>) => {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params ?? {})) {
+      if (value !== undefined && value !== "") search.set(key, String(value));
+    }
+    const text = search.toString();
+    return text ? `?${text}` : "";
+  };
   return {
     getSession: () => request("GET", "/session"),
     login: (body) => request("POST", "/login", body),
@@ -273,11 +316,11 @@ export function createHttpClient(): WebClient {
     checkActivation: (userCode) => request("POST", "/activate", { userCode }),
     decideActivation: (userCode, action) => request("POST", "/activate", { userCode, action }),
     getAdminUsers: () => request("GET", "/admin/users"),
+    adminRevokeInvitation: (id) => request("POST", `/admin/users/invitations/${encodeURIComponent(id)}/revoke`),
     getAdminRegistry: () => request("GET", "/admin/registry"),
     getAdminCredentials: () => request("GET", "/admin/credentials"),
-    getAdminData: () => request("GET", "/admin/data"),
     getAdminSystem: () => request("GET", "/admin/system"),
-    getAdminAudit: () => request("GET", "/admin/audit"),
+    getAdminAudit: (params) => request("GET", `/admin/audit${qs(params)}`),
     adminInvite: (body) => request("POST", "/admin/users/invite", body),
     adminSuspend: (id) => request("POST", `/admin/users/${encodeURIComponent(id)}/suspend`, {}),
     adminReactivate: (id) => request("POST", `/admin/users/${encodeURIComponent(id)}/reactivate`, {}),

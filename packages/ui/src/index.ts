@@ -6,6 +6,13 @@ export const UI_PACKAGE = "@speclink/ui";
 
 // UI 介面 i18n（zh-TW／en；與 config locale 無關）
 export { I18nProvider, useI18n, MESSAGES, type UiLocale, type I18nProviderProps } from "./i18n";
+export {
+  detectSystemLocale,
+  readLocalePreference,
+  writeLocalePreference,
+  resolveUiLocale,
+  type LocalePreference,
+} from "./locale";
 
 // shadcn/ui 設計系統原語（跨桌面/web 共用）
 export { cn } from "./lib/utils";
@@ -99,7 +106,15 @@ export { ChangeList, type ChangeListProps, type ListView } from "./components/Ch
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 export { Input } from "./components/ui/input";
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./components/ui/tooltip";
-export { NativeSelect, type NativeSelectProps } from "./components/ui/select";
+export {
+  Select,
+  SelectGroup,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectLabel,
+  SelectItem,
+} from "./components/ui/select";
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox";
 export { Textarea, type TextareaProps } from "./components/ui/textarea";
 
