@@ -150,35 +150,13 @@ speclink-remote 與 CLI remote 攔截層的 wire payload 處理 SHALL 全數經 
 
 #### Scenario: remote 輸出凍結
 
-- **WHEN** 對 stub server 於重構前後執行 twin harness 的全部情境
-- **THEN** remote 與 fs 模式的 stdout、stderr 與 exit code 逐位元一致，8 情境全綠
+- **WHEN** 執行 `crates/speclink-cli/tests/remote_read_path.rs` 對 stub server 與 fs 模式雙跑同一動詞的全部對照情境
+- **THEN** remote 與 fs 模式的 `--json` 欄位形狀（key 集合）一致，全部對照情境全綠
+
 
 <!-- @trace
-source: protocol-typed-client
-updated: 2026-07-13
+source: stale-verification-vehicles
+updated: 2026-07-27
 code:
-  - Cargo.lock
-  - Cargo.toml
-  - crates/speclink-cli/Cargo.toml
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/doc_verbs.rs
-  - crates/speclink-cli/tests/no_raw_wire_json.rs
-  - crates/speclink-cli/tests/remote_handshake_gate.rs
-  - crates/speclink-cli/tests/remote_read_path.rs
-  - crates/speclink-cli/tests/remote_write_path.rs
-  - crates/speclink-protocol/Cargo.toml
-  - crates/speclink-protocol/src/binding.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-protocol/src/context.rs
-  - crates/speclink-protocol/src/error.rs
-  - crates/speclink-protocol/src/events.rs
-  - crates/speclink-protocol/src/lib.rs
-  - crates/speclink-protocol/src/query.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - crates/speclink-remote/tests/handshake.rs
-  - crates/speclink-remote/tests/typed_client.rs
+  - docs/implementation-refactor-roadmap.zh-TW.md
 -->

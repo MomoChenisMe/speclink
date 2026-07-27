@@ -288,45 +288,14 @@ CLI 與 Node dispatch 改經 Host 組裝後，全部現行動詞的人眼輸出�
 #### Scenario: baseline 對照逐位元一致
 
 - **WHEN** 對同一樣本 workspace 於遷移前後執行覆蓋表動詞（人眼與 --json 兩形式，含設定 SPECLINK_TDD 與 git 身分的情境）
-- **THEN** stdout、stderr 與 exit code 逐位元一致；parity、color 與 twin 回歸對照全綠
+- **THEN** stdout、stderr 與 exit code 逐位元一致；`crates/speclink-cli/tests/` 的整合測試（含 `--no-color` 人眼輸出斷言與 fs／remote 對照）與 `crates/speclink-core/tests/render_golden.rs` 全綠
+
 
 <!-- @trace
-source: host-runtime-binding-policy
-updated: 2026-07-13
+source: stale-verification-vehicles
+updated: 2026-07-27
 code:
-  - Cargo.lock
-  - Cargo.toml
-  - apps/desktop/core/Cargo.toml
-  - apps/desktop/core/src/discussions.rs
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/settings.rs
-  - apps/desktop/core/src/verbs.rs
-  - crates/speclink-cli/Cargo.toml
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/config.rs
-  - crates/speclink-core/src/demo.rs
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/instructions.rs
-  - crates/speclink-core/src/newcmd.rs
-  - crates/speclink-core/src/schema.rs
-  - crates/speclink-core/src/util.rs
-  - crates/speclink-core/src/workspace.rs
-  - crates/speclink-core/tests/no_process_env.rs
-  - crates/speclink-host/Cargo.toml
-  - crates/speclink-host/src/binding.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-host/src/context.rs
-  - crates/speclink-host/src/gate.rs
-  - crates/speclink-host/src/lib.rs
-  - crates/speclink-host/src/policy.rs
-  - crates/speclink-node/Cargo.toml
-  - crates/speclink-node/src/lib.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/auth.rs
+  - docs/implementation-refactor-roadmap.zh-TW.md
 -->
 
 ---
