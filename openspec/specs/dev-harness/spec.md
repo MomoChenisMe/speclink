@@ -144,7 +144,7 @@ code:
 ---
 ### Requirement: checkout 內 CLI 測試入口
 
-repo root SHALL 提供 npm run cli -- <args>，固定執行同一 checkout 的 target/debug/speclink；Windows SHALL 使用 target/debug/speclink.exe。wrapper SHALL NOT 查詢或 fallback 到 PATH 中的 speclink，SHALL 原序轉送 `<args>`、繼承 environment 與 stdin/stdout/stderr，並回傳既有 CLI 的 exit code。child 工作目錄 SHALL 優先採用 npm 的 INIT_CWD，該值不存在時 SHALL 採用 wrapper 的 process.cwd()。wrapper 不新增子指令、旗標、stdin 格式、輸出 envelope 或檔案系統效果；既有 --json camelCase payload、--no-color、人眼輸出與 Spectra 2.3.1 parity 行為 SHALL 保持不變。
+repo root SHALL 提供 npm run cli -- <args>，固定執行同一 checkout 的 target/debug/speclink；Windows SHALL 使用 target/debug/speclink.exe。wrapper SHALL NOT 查詢或 fallback 到 PATH 中的 speclink，SHALL 原序轉送 `<args>`、繼承 environment 與 stdin/stdout/stderr，並回傳既有 CLI 的 exit code。child 工作目錄 SHALL 優先採用 npm 的 INIT_CWD，該值不存在時 SHALL 採用 wrapper 的 process.cwd()。wrapper 不新增子指令、旗標、stdin 格式、輸出 envelope 或檔案系統效果；既有 --json camelCase payload、--no-color 與人眼輸出行為 SHALL 保持不變。
 
 #### Scenario: PATH 中舊版 CLI 不影響 checkout binary
 
@@ -176,34 +176,53 @@ repo root SHALL 提供 npm run cli -- <args>，固定執行同一 checkout 的 t
 - **WHEN** 使用 npm run --silent cli -- <args> 傳入既有 --json 或 --no-color 旗標
 - **THEN** wrapper 不增加 stdout 內容，CLI 的 --json camelCase payload、--no-color 人眼文字與 exit code 維持既有位元級輸出契約
 
+
 <!-- @trace
-source: dev-harness-cli-access
-updated: 2026-07-24
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/core/src/settings.rs
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src/__tests__/remoteResilience.test.tsx
-  - apps/desktop/src/__tests__/serversPanel.test.tsx
-  - apps/desktop/src/__tests__/workspaceChooser.test.tsx
-  - apps/desktop/src/adapter/connections.ts
-  - apps/desktop/src/components/WorkspaceChooser.tsx
-  - apps/desktop/src/i18n/messages.ts
+  - README.en.md
+  - README.md
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
   - crates/speclink-cli/src/commands.rs
   - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/init_tools.rs
-  - crates/speclink-cli/tests/remote_section.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
   - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
+  - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
   - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/context.rs
   - docs/platform-architecture.zh-TW.md
-  - docs/remote-getting-started.md
-  - docs/remote-getting-started.zh-TW.md
-  - package.json
-  - scripts/cli.mjs
-  - scripts/cli.test.mjs
-  - scripts/dev.mjs
-  - scripts/dev.test.mjs
-  - scripts/remote-docs.test.mjs
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->

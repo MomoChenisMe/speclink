@@ -200,9 +200,10 @@ code:
 
 ---
 ### Requirement: remote 區段與模式解析
+
 `.speclink.yaml` 的 remote 區段（欄位：url 選填——缺席時由環境變數 SPECLINK_STORE_URL 供給、含專案範疇；repo 選填為本 repo 在專案內的註冊名）存在時，CLI SHALL 以 remote 模式運作；不存在時 SHALL 以 fs 模式運作。remote 區段與 openspec/ 目錄並存時，remote 模式 SHALL 生效且 CLI SHALL 於 stderr 輸出一行並存警告。環境變數 SPECLINK_STORE_URL 存在時 SHALL 覆寫區段的 url。remote 區段存在但區段 url 與環境變數皆缺席時，CLI SHALL 以非 0 exit code 明確失敗並同時提示 remote.url 欄位與 SPECLINK_STORE_URL 兩種設定方式，SHALL NOT 靜默改以 fs 模式執行。
 
-`.speclink.yaml` 檔案存在但無法解析（YAML 語法錯誤或型別不符）時，模式判定 SHALL fail-closed：任何依賴模式判定或應用層設定的指令 SHALL 以非零 exit code 失敗，stderr SHALL 指出 .speclink.yaml 與解析原因；SHALL NOT 視為無 remote 區段而以 fs 模式執行，SHALL NOT 發出任何遠端請求。檔案不存在時 SHALL 以 fs 模式運作。此 fail-closed 行為屬對 Spectra 2.3.1 的刻意分歧（Spectra 於壞檔時靜默退回預設）。
+`.speclink.yaml` 檔案存在但無法解析（YAML 語法錯誤或型別不符）時，模式判定 SHALL fail-closed：任何依賴模式判定或應用層設定的指令 SHALL 以非零 exit code 失敗，stderr SHALL 指出 .speclink.yaml 與解析原因；SHALL NOT 視為無 remote 區段而以 fs 模式執行，SHALL NOT 發出任何遠端請求。檔案不存在時 SHALL 以 fs 模式運作。此 fail-closed 行為為刻意設計。
 
 #### Scenario: 有 remote 區段即 remote 模式
 
@@ -228,6 +229,57 @@ code:
 
 - **WHEN** .speclink.yaml 含 YAML 語法錯誤且專案根有 openspec/ 目錄，執行 speclink list
 - **THEN** exit code 非 0，stderr 指出 .speclink.yaml 與解析原因，指令不讀取本地 openspec/、不發出任何遠端請求
+
+
+<!-- @trace
+source: spectra-legacy-cleanup
+updated: 2026-07-27
+code:
+  - README.en.md
+  - README.md
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
+  - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/context.rs
+  - docs/platform-architecture.zh-TW.md
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
+-->
 
 ---
 ### Requirement: 殘留連接檔的遷移警告
