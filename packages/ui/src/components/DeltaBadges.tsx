@@ -25,7 +25,7 @@ const DELTA_LABEL_KEYS: Record<keyof DeltaCounts, string> = {
   renamed: "delta.renamed",
 };
 
-/** Spectra 式彩色 delta 計數：+新增=綠、~修改=琥珀、-移除=紅、→更名=藍。 */
+/** 彩色 delta 計數：+新增=綠、~修改=琥珀、-移除=紅、→更名=藍。 */
 export function DeltaBadges({ counts }: { counts: DeltaCounts }) {
   const parts: { text: string; cls: string }[] = [];
   if (counts.added) parts.push({ text: `+${counts.added}`, cls: DELTA_COLORS.added });

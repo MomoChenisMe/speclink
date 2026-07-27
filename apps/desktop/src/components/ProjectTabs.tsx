@@ -1,4 +1,4 @@
-// 專案分頁列（design D10，UI 形態對齊 Spectra）：active 分頁 teal 粗框標示
+// 專案分頁列（design D10）：active 分頁 teal 粗框標示
 // 目前專案、✕ 僅 active 與 hover 顯示、「＋」掛尾端接資料夾選擇器、
 // 失效分頁錯誤態（警示標記＋自分頁移除）；分頁不顯示計數徽章。
 // 分頁識別＝locator key（workspace-session 決策 1）；顯示文字與行為不變。

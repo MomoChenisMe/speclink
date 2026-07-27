@@ -22,7 +22,7 @@ pub struct Dependency {
     pub description: String,
 }
 
-/// Per-artifact instructions payload (field order matches Spectra).
+/// Per-artifact instructions payload (frozen field order).
 #[derive(Debug, Serialize, serde::Deserialize)]
 pub struct ArtifactInstructions {
     #[serde(rename = "changeName")]
@@ -36,7 +36,7 @@ pub struct ArtifactInstructions {
     #[serde(rename = "outputPath")]
     pub output_path: String,
     pub description: String,
-    /// Omitted entirely when the (custom) schema has no instruction, matching Spectra.
+    /// Omitted entirely when the (custom) schema has no instruction (frozen output shape).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instruction: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -90,7 +90,7 @@ pub fn build_artifact(
     let unlocks: Vec<String> = if self_done {
         Vec::new()
     } else {
-        // Listed in display order (topological tier, alphabetical tiebreak), matching Spectra.
+        // Listed in display order (topological tier, alphabetical tiebreak) — frozen output shape.
         crate::status::display_order(schema)
             .into_iter()
             .filter(|y| y.id != artifact.id)
@@ -178,8 +178,8 @@ audit checklist (fetch it with `speclink instructions --skill audit`).",
         context: wf.context_text(),
         rules: wf.rules_for(&artifact.id),
         locale: policy.locale,
-        // Spectra fills the payload template by looking the artifact up in the BUILT-IN schema
-        // matching the yaml display name — never from the custom templates/ file (which only
+        // The payload template is looked up in the BUILT-IN schema matching the yaml display
+        // name — never in the custom templates/ file (which only
         // `new artifact` reads). A custom display name therefore yields an empty template.
         template: if schema.is_builtin() {
             artifact.template.clone().unwrap_or_default()
@@ -217,7 +217,7 @@ impl From<&Task> for TaskJson {
     }
 }
 
-/// Apply-mode instructions payload (field order matches Spectra).
+/// Apply-mode instructions payload (frozen field order).
 #[derive(Debug, Serialize, serde::Deserialize)]
 pub struct ApplyInstructions {
     #[serde(rename = "changeName")]
@@ -234,7 +234,7 @@ pub struct ApplyInstructions {
     #[serde(rename = "missingArtifacts", skip_serializing_if = "Option::is_none")]
     pub missing_artifacts: Option<Vec<String>>,
     pub locale: String,
-    /// Omitted when the (custom) schema defines no apply instruction, matching Spectra.
+    /// Omitted when the (custom) schema defines no apply instruction (frozen output shape).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instruction: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -298,7 +298,7 @@ pub fn build_apply(
     let parsed = tasks::parse(&tasks_md);
     let (total, complete, remaining) = tasks::progress(&parsed);
 
-    // contextFiles includes artifacts whose files exist (empty files count, matching Spectra).
+    // contextFiles includes artifacts whose files exist (empty files count) — frozen output shape.
     let mut context_files = std::collections::BTreeMap::new();
     if store.artifact_exists(&change.name, "proposal.md") {
         context_files.insert("proposal".to_string(), join_display(&change.dir, "proposal.md"));
@@ -329,7 +329,7 @@ pub fn build_apply(
             .map(|s| s.to_string())
             .collect();
         // Blocked by zero checkboxes rather than a missing artifact → the key is
-        // omitted entirely (matches Spectra: no empty missingArtifacts array).
+        // omitted entirely (frozen output shape: no empty missingArtifacts array).
         if missing.is_empty() {
             None
         } else {
@@ -338,7 +338,7 @@ pub fn build_apply(
     } else {
         None
     };
-    // Preflight only in the ready state — Spectra drops it again once all tasks are done.
+    // Preflight only in the ready state — the field drops out again once all tasks are done.
     let preflight = if state == "ready" {
         Some(Preflight::compute(ws, store, change))
     } else {

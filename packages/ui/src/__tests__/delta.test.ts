@@ -73,7 +73,7 @@ describe("splitDeltaSections", () => {
 });
 
 describe("sum + format", () => {
-  it("sums and formats Spectra-style", () => {
+  it("sums and formats the count summary", () => {
     const total = sumDeltaCounts([
       { added: 1, modified: 0, removed: 0, renamed: 0 },
       { added: 0, modified: 2, removed: 0, renamed: 0 },

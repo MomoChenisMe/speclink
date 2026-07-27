@@ -63,7 +63,7 @@ describe("TaskList", () => {
     expect(screen.getByText("1.1 first").className).toContain("text-base");
   });
 
-  it("群組標題與章節標籤同款式（任務群組標題與章節標籤同款式，design D6 次級款＝Spectra 原尺寸）", () => {
+  it("群組標題與章節標籤同款式（任務群組標題與章節標籤同款式，design D6 次級款＝原尺寸）", () => {
     render(<TaskList markdown={MD} />);
     const heading = screen.getByText("1. Group A");
     // 標籤家族次級款（共用常數 SUB_LABEL_CLS）：粗體、字級同內文基準 16px、小於章節主標題。

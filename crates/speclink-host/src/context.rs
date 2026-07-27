@@ -66,7 +66,7 @@ pub fn resolve_store_mode(ws: &Workspace) -> anyhow::Result<ModeResolution> {
 
 /// Machine-level speclink directory (global config, user schemas), by OS
 /// convention: Windows `%USERPROFILE%\AppData\Roaming` (derived from the
-/// profile — Spectra ignores a redirected APPDATA env var, probed), macOS
+/// profile — a redirected APPDATA env var is deliberately ignored), macOS
 /// `~/Library/Application Support`, Linux `$XDG_CONFIG_HOME`|`~/.config`.
 /// A Host-boundary lookup: the Engine receives the resolved directory and
 /// never reads these variables itself.

@@ -80,7 +80,7 @@ pub fn new_artifact(
     let body = match content {
         Some(c) => c.to_string(),
         // Template from the schema; a missing template file (or an artifact the schema doesn't
-        // define) yields an empty file, matching Spectra.
+        // define) yields an empty file (frozen behavior).
         None => schema
             .artifact(&artifact_id)
             .and_then(|a| a.template.clone())
@@ -115,7 +115,7 @@ fn validate_artifact_content(artifact_id: &str, rel: &str, body: &str) -> Result
             }
         }
         "tasks" => {
-            // Spectra requires at least one INCOMPLETE checkbox.
+            // At least one INCOMPLETE checkbox is required.
             let ok = body
                 .lines()
                 .any(|l| l.trim_start().starts_with("- [ ] "));

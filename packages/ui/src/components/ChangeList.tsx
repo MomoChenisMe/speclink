@@ -7,7 +7,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ChangeListItem } from "./ChangeListItem";
 
-/** Spectra 式封存列：日期＋名稱＋複製完整封存名。 */
+/** 封存列：日期＋名稱＋複製完整封存名。 */
 function ArchivedRow({ item }: { item: ArchivedItem }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);

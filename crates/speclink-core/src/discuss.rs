@@ -1,4 +1,4 @@
-//! Discussion documents — speclink's enhancement over Spectra's ephemeral discuss.
+//! Discussion documents — a speclink extension: discussions are durable records.
 //!
 //! Each discussion is a single append-only document (stored by the Store as a
 //! live discussion under its slug) so an iterative conversation accumulates a

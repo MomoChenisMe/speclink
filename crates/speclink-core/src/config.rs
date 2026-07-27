@@ -273,12 +273,12 @@ impl AppConfig {
     }
 }
 
-/// Map a locale code to its human-readable name (matches Spectra).
+/// Map a locale code to its human-readable name (frozen mapping).
 ///
 /// Matching is case-SENSITIVE. Only `ja`/`tw`/`en` (and no locale) are mapped; any other code is
-/// echoed back verbatim, exactly like Spectra.
+/// echoed back verbatim.
 pub fn locale_display(code: Option<&str>) -> String {
-    // No trimming and no case folding: Spectra preserves any unmapped value verbatim (including
+    // No trimming and no case folding: any unmapped value is preserved verbatim (including
     // empty/whitespace and case-variants like "JA").
     match code {
         None => "English".to_string(),
@@ -376,7 +376,7 @@ pub fn resolve_policy(env: &EnvOverrides, app: &AppConfig, wf: &WorkflowConfig) 
 }
 
 /// Layered locale code: first layer where the key is present wins (an app-level key present
-/// but empty still wins, matching Spectra; values pass through verbatim, see `locale_display`).
+/// but empty still wins; values pass through verbatim, see `locale_display`).
 fn locale_code<'a>(env: &'a EnvOverrides, app: &'a AppConfig, wf: &'a WorkflowConfig) -> Option<&'a str> {
     env.locale
         .as_deref()
@@ -406,7 +406,7 @@ fn spec_locale_code(env: &EnvOverrides, app: &AppConfig, wf: &WorkflowConfig) ->
 }
 
 /// Resolve the effective locale display name: the app-level `.speclink.yaml` locale wins, with the
-/// `openspec/config.yaml` locale as a fallback (matches Spectra). Env-blind two-layer view —
+/// `openspec/config.yaml` locale as a fallback. Env-blind two-layer view —
 /// callers that honor `SPECLINK_*` use `resolve_policy` instead.
 pub fn resolve_locale(app: &AppConfig, wf: &WorkflowConfig) -> String {
     locale_display(locale_code(&EnvOverrides::default(), app, wf))

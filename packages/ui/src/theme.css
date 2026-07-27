@@ -12,7 +12,7 @@
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
-  /* Speclink 主色：teal 青綠——「link」的連結語意，與 Spectra 紅明確區隔 */
+  /* Speclink 主色：teal 青綠——取「link」的連結語意 */
   --primary: oklch(0.52 0.1 192);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);

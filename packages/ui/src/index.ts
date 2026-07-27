@@ -99,7 +99,7 @@ export {
 } from "./components/DiscussionDrawer";
 export { DetailDrawer, type DetailDrawerProps } from "./components/DetailDrawer";
 
-// Spectra 風清單 + 分頁 + 富文本
+// 清單 + 分頁 + 富文本
 export { Markdown, type MarkdownProps } from "./components/Markdown";
 export { ChangeListItem, type ChangeListItemProps } from "./components/ChangeListItem";
 export { ChangeList, type ChangeListProps, type ListView } from "./components/ChangeList";
@@ -118,7 +118,7 @@ export {
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox";
 export { Textarea, type TextareaProps } from "./components/ui/textarea";
 
-// Spectra 級詳情
+// 富詳情
 export type { ChangeMetaInfo } from "./adapter";
 export { specDeltaCounts, sumDeltaCounts, formatDeltaCounts, type DeltaCounts } from "./delta";
 export { RichDetailDrawer, type RichDetailDrawerProps } from "./components/RichDetailDrawer";

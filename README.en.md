@@ -16,9 +16,9 @@ agents share the same change, artifact, task, verification, and archive semantic
 - **Local repository:** specs live in the repository's `openspec/` directory and collaboration uses Git. No server is required.
 - **Remote store:** specs live in a shared Store and a Speclink Host governs identity, revisions, transactions, events, and workflow rules.
 
-The local CLI uses the CLI shipped with [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) as its behavioral reference and
-compatibility baseline. Parity and golden tests protect human output, `--json` shapes, and core workflow behavior; Speclink extends
-that baseline with discussions, Desktop, storage abstraction, the Node SDK, and the Remote Platform.
+The local CLI was originally designed with the CLI shipped with [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) as its
+behavioral reference. Golden and CLI integration tests protect human output, `--json` shapes, and core workflow behavior; Speclink extends
+that foundation with discussions, Desktop, storage abstraction, the Node SDK, and the Remote Platform.
 
 > **Current status (2026-07-17):** Local Repo, CLI, local Desktop, the Node N-API SDK, the TeamStore contract and all three official
 > Store drivers, `speclink-server`, Server setup/admin/auth/backup, and Remote CLI/Context Projection have working implementations.
@@ -111,7 +111,7 @@ npm --workspace @speclink/desktop run build
 npm --workspace @speclink/engine test
 ```
 
-Parity and golden tests protect observable CLI output. See product-status and the responsibility documents for Server, Store, and
+Golden and CLI integration tests protect observable CLI output. See product-status and the responsibility documents for Server, Store, and
 Desktop test prerequisites and current limitations.
 
 ## License / 授權

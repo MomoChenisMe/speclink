@@ -196,7 +196,7 @@ interface AppInnerProps extends AppProps {
   onLocalePrefChange: (pref: LocalePreference) => void;
 }
 
-/** 桌面主畫面：生命週期看板（主視圖）＋已封存獨立頁＋設定頁＋Spectra 級詳情抽屜。 */
+/** 桌面主畫面：生命週期看板（主視圖）＋已封存獨立頁＋設定頁＋富詳情抽屜。 */
 function AppInner({
   createSession,
   openRemote,
@@ -589,7 +589,7 @@ function AppInner({
         </main>
       </div>
 
-      {/* Spectra 級詳情抽屜（含互動任務） */}
+      {/* 富詳情抽屜（含互動任務） */}
       <RichDetailDrawer
         open={s.detailChange !== null}
         onOpenChange={(o) => !o && !detailConfirmInFlight.current && s.closeDetail()}

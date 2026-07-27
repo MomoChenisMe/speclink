@@ -16,8 +16,8 @@ Speclink 是以 Rust 實作的 Spec-Driven Development（SDD）引擎與工具�
 - **Local Repo**：規格位於 repo 的 `openspec/`，由 Git 協作，不需要 server。
 - **Remote Store**：規格位於共享 Store，由 Speclink Host 統一處理認證、revision、交易、事件與流程裁決。
 
-Local CLI 的設計以 [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) 所附 CLI 為行為參考與相容基準，並以
-parity/golden tests 保護人眼輸出、`--json` shape 與核心工作流；Speclink 在此基礎上加入 discussion、Desktop、
+Local CLI 設計之初以 [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) 所附 CLI 為行為參考；
+人眼輸出、`--json` shape 與核心工作流由 golden 與 CLI 整合測試保護；Speclink 在此基礎上加入 discussion、Desktop、
 Store abstraction、Node SDK 與 Remote Platform 等延伸。
 
 > **目前狀態（2026-07-17）：**Local Repo、CLI、Local Desktop、Node N-API SDK、TeamStore contract 與三個官方
@@ -108,7 +108,7 @@ npm --workspace @speclink/desktop run build
 npm --workspace @speclink/engine test
 ```
 
-CLI 可觀察輸出由 parity／golden tests 保護；Server／Store／Desktop 的特定測試前提與目前限制請查 product-status
+CLI 可觀察輸出由 golden 與 CLI 整合測試保護；Server／Store／Desktop 的特定測試前提與目前限制請查 product-status
 及責任文件。
 
 ## License / 授權

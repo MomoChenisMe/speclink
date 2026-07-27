@@ -211,7 +211,7 @@ pub enum Command {
         schema: Option<String>,
     },
     /// `validate [item] [--all] [--changes] [--strict]`. The CLI's `--specs`
-    /// flag is accepted-and-ignored there (Spectra parity) and deliberately has
+    /// flag is accepted-and-ignored there (frozen CLI surface) and deliberately has
     /// no field here — carrying a dead input would read as if it selected
     /// spec validation.
     Validate {
@@ -326,7 +326,7 @@ pub enum ShowOutcome {
 }
 
 /// `show <change>` payload. `schema`/`created` echo the metadata verbatim as
-/// one unit: unless BOTH are present, neither is reported (matches Spectra).
+/// one unit: unless BOTH are present, neither is reported (frozen output shape).
 #[derive(Debug)]
 pub struct ShowChange {
     pub name: String,
@@ -742,7 +742,7 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
 
 /// Specify-wording of the multi-change auto-detect error: flag-style verbs.
 const SPECIFY_FLAG: &str = "Use --change to specify one:";
-/// Positional-style verbs (analyze, drift) say just this (matches Spectra).
+/// Positional-style verbs (analyze, drift) say just this (frozen wording).
 const SPECIFY_POSITIONAL: &str = "Specify one:";
 
 /// Resolve a change by name, or auto-detect when no name is given (exactly one
@@ -928,7 +928,7 @@ fn run_instructions(
         None => resolve_schema(ws, user_dir, &change.meta.schema_name())?,
     };
     // No-arg default: the first incomplete artifact, or the apply view once
-    // every artifact exists (matches Spectra).
+    // every artifact exists (frozen behavior).
     let default_artifact = crate::status::first_incomplete_artifact(store, &change, &schema)
         .unwrap_or_else(|| "apply".to_string());
     let artifact = artifact.unwrap_or(&default_artifact);
@@ -966,7 +966,7 @@ fn run_validate(
         crate::model::list_changes(store)
     } else {
         // No item: exactly one change validates alone; zero or several fall
-        // back to validating everything (matches Spectra).
+        // back to validating everything (frozen behavior).
         match resolve_change(store, None, SPECIFY_FLAG) {
             Ok(c) => {
                 guard_meta(&c)?;
@@ -975,9 +975,9 @@ fn run_validate(
             Err(_) => crate::model::list_changes(store),
         }
     };
-    // Multi-change runs are ordered newest-modified first (matches Spectra).
+    // Multi-change runs are ordered newest-modified first (frozen ordering).
     crate::listing::sort_changes(store, &mut changes, "modified");
-    // Spectra's validate never resolves the change's schema (an unresolvable
+    // validate never resolves the change's schema (an unresolvable
     // one still validates).
     let schema = crate::schema::spec_driven();
     let results = changes
@@ -990,7 +990,7 @@ fn run_validate(
 fn run_analyze(store: &dyn Store, change: Option<&str>) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_POSITIONAL)?;
     guard_meta(&change)?;
-    // Spectra's analyzer is schema-agnostic and never resolves the change's schema.
+    // The analyzer is schema-agnostic and never resolves the change's schema.
     let schema = crate::schema::spec_driven();
     Ok(CommandOutcome::Analyze(crate::analyzer::analyze(
         store, &change, &schema,
@@ -1078,7 +1078,7 @@ fn run_new_change(
     from_discussion: Option<String>,
 ) -> Result<CommandOutcome, CommandError> {
     // Default schema comes from openspec/config.yaml; the name is NOT validated
-    // here (downstream commands fail on resolution, matching Spectra).
+    // here (downstream commands fail on resolution).
     let schema = match schema {
         Some(s) => s,
         None => crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
@@ -1127,7 +1127,7 @@ fn run_new_artifact(
             format!("Unknown artifact type '{kind}'. Valid types: proposal, design, tasks, spec"),
         )
     };
-    // Spectra's order: with an explicit --change, validate the type before
+    // Frozen order: with an explicit --change, validate the type before
     // existence; when auto-detecting, resolve the change first (so "No active
     // changes" wins over a bad type). Change-not-found here has NO trailing period.
     let change = match change {
@@ -1148,7 +1148,7 @@ fn run_new_artifact(
         }
     };
     // Best-effort schema resolution: an unresolvable/broken schema still
-    // creates the artifact (no template → empty file), matching Spectra.
+    // creates the artifact (no template → empty file) — frozen behavior.
     let schema = match crate::schema::resolve_with(ws, user_dir, &change.meta.schema_name()) {
         Some(Ok(s)) => s,
         _ => Schema {
@@ -1190,7 +1190,7 @@ fn run_task_flip(
 ) -> Result<CommandOutcome, CommandError> {
     // `task done`/`task undone` do not require the change to exist — they go
     // straight to tasks.md, and its existence is checked BEFORE the id
-    // (matching Spectra's order).
+    // (frozen order).
     let change_name = match change {
         Some(name) => name.to_string(),
         None => resolve_change(store, None, SPECIFY_FLAG)?.name,
@@ -1299,7 +1299,7 @@ fn run_archive(
     guard_meta(&change)?;
     if opts.mark_tasks_complete {
         if let Some(text) = store.read_artifact(&change.name, "tasks.md") {
-            // Star-bullet checkboxes are tasks too (matches Spectra).
+            // Star-bullet checkboxes are tasks too (frozen rule).
             let done = text
                 .replace("- [ ] ", "- [x] ")
                 .replace("- [ ]\t", "- [x]\t")
@@ -1311,7 +1311,7 @@ fn run_archive(
         }
     }
     let host = host_workspace(ws);
-    // The in-progress marker stays untouched on archive (matches Spectra).
+    // The in-progress marker stays untouched on archive (frozen behavior).
     let outcome = crate::archive::archive(&host, store, &change, &opts, actor).map_err(classify)?;
     Ok(CommandOutcome::Archive(outcome))
 }

@@ -172,9 +172,8 @@ Target archive directory already exists.
 
 ## RENAMED is actually executed (speclink-specific)
 
-Unlike Spectra — which documents `## RENAMED Requirements` but never applies a rename in
-any syntax and always reports `renamed: 0` — speclink executes renames at archive time.
-Both documented forms work:
+speclink executes renames at archive time — `## RENAMED Requirements` is applied to the
+canonical spec, not merely recorded. Both documented forms work:
 
 ```markdown
 ## RENAMED Requirements

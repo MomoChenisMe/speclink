@@ -1,5 +1,5 @@
 //! Workflow schemas: the embedded `spec-driven` schema plus custom schemas in the OpenSpec
-//! format Spectra follows (`openspec/schemas/<name>/schema.yaml` + `templates/`).
+//! format (`openspec/schemas/<name>/schema.yaml` + `templates/`).
 //! Resolution order: project → user → built-in.
 
 use crate::workspace::Workspace;
@@ -29,9 +29,9 @@ pub struct Schema {
     /// Resolution key — for custom schemas this is the directory name.
     pub name: String,
     /// The yaml `name:` field — what payloads and `status` display as the schema name
-    /// (a pristine fork still reports "spec-driven", matching Spectra).
+    /// (a pristine fork still reports "spec-driven").
     pub display_name: String,
-    /// Display description. Custom schemas show none (matches Spectra).
+    /// Display description. Custom schemas show none (frozen output shape).
     pub description: Option<String>,
     /// "package" | "project" | "user"
     pub source: String,
@@ -64,7 +64,7 @@ const A_DESIGN_TMPL: &str = include_str!("../assets/schema/spec-driven/design.te
 const A_TASKS_INSTR: &str = include_str!("../assets/schema/spec-driven/tasks.instruction.md");
 const A_TASKS_TMPL: &str = include_str!("../assets/schema/spec-driven/tasks.template.md");
 const A_APPLY_INSTR: &str = include_str!("../assets/schema/spec-driven/apply.instruction.md");
-/// The YAML dump Spectra's `schema fork spec-driven` produces, shipped verbatim.
+/// The YAML dump `schema fork spec-driven` produces, shipped verbatim.
 pub const FORK_SCHEMA_YAML: &str =
     include_str!("../assets/schema/spec-driven/fork.schema.yaml");
 
@@ -161,7 +161,7 @@ fn has_cycle(arts: &[ArtifactYaml]) -> bool {
 }
 
 /// Load a custom schema from its directory. `name` is the directory name (the resolution key —
-/// the yaml `name:` field is ignored for resolution, matching Spectra).
+/// the yaml `name:` field is ignored for resolution).
 pub fn load_dir(dir: &Path, name: &str, source: &str) -> Result<Schema, String> {
     let text = std::fs::read_to_string(dir.join("schema.yaml"))
         .map_err(|e| format!("Schema parse error: {e}"))?;
@@ -170,7 +170,7 @@ pub fn load_dir(dir: &Path, name: &str, source: &str) -> Result<Schema, String> 
     if has_cycle(&y.artifacts) {
         return Err("Invalid schema: Schema contains circular dependencies".to_string());
     }
-    let _ = &y.description; // custom schemas display no description (Spectra quirk)
+    let _ = &y.description; // custom schemas display no description (frozen output shape)
     let artifacts = y
         .artifacts
         .into_iter()
@@ -259,13 +259,13 @@ pub fn resolve_with(
     None
 }
 
-/// Spectra's not-found message for a schema name.
+/// The not-found message for a schema name.
 pub fn not_found_msg(name: &str) -> String {
     format!("Schema not found: Schema '{name}' not found in project, user, or built-in locations")
 }
 
-/// The built-in template for an artifact id, looked up by a schema's DISPLAY name — Spectra fills
-/// the instructions payload template this way (custom display names get an empty template).
+/// The built-in template for an artifact id, looked up by a schema's DISPLAY name — the
+/// instructions payload template is filled this way (custom display names get an empty template).
 pub fn builtin_template(display_name: &str, artifact_id: &str) -> Option<String> {
     if display_name != "spec-driven" {
         return None;
@@ -338,7 +338,7 @@ pub fn fork(
     };
     match &first.path {
         None => {
-            // Built-in: ship the verbatim Spectra fork dump + the four templates.
+            // Built-in: ship the verbatim fork dump + the four templates.
             write("schema.yaml", FORK_SCHEMA_YAML)?;
             write("templates/proposal.md", A_PROPOSAL_TMPL)?;
             write("templates/spec.md", A_SPECS_TMPL)?;

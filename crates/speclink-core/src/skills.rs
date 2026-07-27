@@ -12,7 +12,7 @@ pub enum RenderTarget<'a> {
 }
 
 /// A tool target for generated skills. Speclink deliberately scopes the tool matrix to
-/// claude + codex (Spectra also supports cursor/gemini/windsurf).
+/// claude + codex.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
     Claude,
@@ -92,7 +92,7 @@ pub fn registry() -> Vec<Skill> {
         Skill { name: "analyze", description: "Analyze artifact consistency for a change", fork: true, disallow_edit: true, for_codex: false, body: B_ANALYZE },
         Skill { name: "apply", description: "Implement or resume tasks from a Speclink change", fork: false, disallow_edit: false, for_codex: true, body: B_APPLY },
         Skill { name: "archive", description: "Archive a completed change", fork: false, disallow_edit: false, for_codex: true, body: B_ARCHIVE },
-        // Not a fork skill (unlike Spectra): the rewritten standalone mode fans out three
+        // Not a fork skill: the rewritten standalone mode fans out three
         // parallel audit agents, which the fork's Explore agent cannot spawn.
         Skill { name: "audit", description: "Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures", fork: false, disallow_edit: true, for_codex: true, body: B_AUDIT },
         Skill { name: "commit", description: "Commit files related to a specific Speclink change", fork: false, disallow_edit: false, for_codex: true, body: B_COMMIT },
@@ -138,7 +138,7 @@ pub fn substitute(body: &str, tool: Tool, spec_dir: &str) -> String {
         .replace("/speclink:", tool.slash_replacement())
 }
 
-/// Claude-only fork preamble (matches Spectra): fork auto-select rules that take
+/// Claude-only fork preamble: fork auto-select rules that take
 /// precedence over the shared skill body.
 fn fork_context(skill_name: &str) -> Option<String> {
     let rule = match skill_name {
@@ -239,7 +239,7 @@ pub fn render_skill_file_custom(skill: &Skill, tool: &CustomTool, spec_dir: &str
 }
 
 /// Render a complete SKILL.md (frontmatter + substituted body) for a tool. The fork/agent and
-/// disallowedTools lines are Claude-only (matches Spectra).
+/// disallowedTools lines are Claude-only (frozen output shape).
 pub fn render_skill_file(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
     let mut fm = String::from("---\n");
     fm.push_str(&format!("name: speclink-{}\n", skill.name));
@@ -266,7 +266,7 @@ pub fn render_skill_file(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
         }
     }
     fm.push_str(&substitute(skill.body, tool, spec_dir));
-    // Exactly one trailing newline (matches Spectra), regardless of asset file endings.
+    // Exactly one trailing newline (frozen output shape), regardless of asset file endings.
     while fm.ends_with("\n\n") {
         fm.pop();
     }

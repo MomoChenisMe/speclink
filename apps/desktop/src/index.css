@@ -12,7 +12,7 @@
 
 /* markdown 排版由 typography 的 prose 接管（基準 16px）；.markdown 為薄覆寫掛鉤。
    prose 色彩變數映射設計 token——token 已隨系統深色偏好翻轉，毋需 prose-invert。
-   下方覆寫僅保留 Spectra 特調：teal code chip、GFM 任務清單、表格橫向捲動。 */
+   下方覆寫僅保留本專案特調：teal code chip、GFM 任務清單、表格橫向捲動。 */
 .markdown {
   --tw-prose-body: var(--foreground);
   --tw-prose-headings: var(--foreground);
@@ -43,7 +43,7 @@
 /* 表格橫向捲動（prose 不處理 overflow） */
 .markdown table { display: block; overflow-x: auto; }
 .markdown th { background: var(--muted); }
-/* GFM 任務清單 checkbox（Spectra 式：懸掛縮排對齊、完成項刪除線） */
+/* GFM 任務清單 checkbox（懸掛縮排對齊、完成項刪除線） */
 .markdown li:has(> input[type="checkbox"]) {
   list-style: none;
   margin-left: -1.2em;

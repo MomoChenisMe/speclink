@@ -109,8 +109,8 @@ fn parse_delta_spec(text: &str) -> Vec<Requirement> {
                 }
             }
         } else if !t.starts_with('#') {
-            // Concrete = ASCII digits, backticked code, or a double-quoted string (matches
-            // Spectra; single/fullwidth quotes and non-ASCII digits do NOT count).
+            // Concrete = ASCII digits, backticked code, or a double-quoted string
+            // (single/fullwidth quotes and non-ASCII digits do NOT count).
             if t.chars().any(|c| c.is_ascii_digit() || c == '`' || c == '"') {
                 if let Some(req) = reqs.last_mut() {
                     if let Some(sc) = req.scenarios.last_mut() {
@@ -123,12 +123,12 @@ fn parse_delta_spec(text: &str) -> Vec<Requirement> {
     reqs
 }
 
-/// Extract capability names from the proposal (probed against Spectra): a
+/// Extract capability names from the proposal (frozen extraction rules): a
 /// "Capabilities"-titled section opens extraction — `## Capabilities` (h2) or
 /// `### New/Modified Capabilities` (h3) — and EVERY following line contributes its first
 /// backticked whitespace-free token (any bullet style, numbered lists, plain prose),
 /// continuing through unrelated h3 headings until the next h2. Angle-bracket
-/// placeholders are kept (Spectra flags `<placeholder>` as a missing spec); a backticked
+/// placeholders are kept (`<placeholder>` is flagged as a missing spec); a backticked
 /// token containing whitespace disqualifies the line with no fallback to later pairs.
 fn parse_capabilities(proposal: &str) -> (Vec<String>, Vec<String>) {
     let mut new_caps = Vec::new();
@@ -178,8 +178,8 @@ fn first_backtick_token(line: &str) -> Option<String> {
 }
 
 fn design_headings(design: &str) -> Vec<String> {
-    // Leading whitespace is trimmed before the `### ` check (probed: Spectra recognizes
-    // headings indented by spaces or tabs, beyond CommonMark's 3-space limit).
+    // Leading whitespace is trimmed before the `### ` check: headings indented by spaces
+    // or tabs are recognized, beyond CommonMark's 3-space limit.
     design
         .lines()
         .filter_map(|l| l.trim_start().strip_prefix("### ").map(|s| s.trim().to_string()))
@@ -194,7 +194,7 @@ fn task_descriptions(tasks: &str) -> Vec<String> {
 }
 
 /// A requirement is "covered" if its name appears as a contiguous (case-insensitive) substring in
-/// some task line — matches Spectra (e.g. "CSV Export" ↔ "Implement CSV exporter", but NOT
+/// some task line (e.g. "CSV Export" ↔ "Implement CSV exporter", but NOT
 /// "csv-export" or "export_csv"). No identifier-token splitting.
 fn req_covered(name: &str, tasks: &[String]) -> bool {
     let n = name.trim().to_lowercase();
@@ -205,7 +205,7 @@ fn req_covered(name: &str, tasks: &[String]) -> bool {
 }
 
 /// First weak/vague pattern on a spec line — at most ONE finding per line, taken in
-/// Spectra's fixed check order (should, may, might, consider, possibly, TBD, TODO, ???,
+/// the frozen check order (should, may, might, consider, possibly, TBD, TODO, ???,
 /// TKTK). All English patterns match as case-insensitive SUBSTRINGS ("shoulder" flags
 /// 'should', "outbdoor" flags 'TBD' — probed), and heading lines ('#'-leading after
 /// trim) are never scanned. The CJK additions (speclink divergence) follow in the same
@@ -263,7 +263,7 @@ pub fn analyze(store: &dyn Store, change: &Change, schema: &Schema) -> AnalyzeRe
         spec_texts.push((rel, text));
     }
 
-    // Artifact presence is EXISTS-based (an empty or op-less file still counts), matching Spectra.
+    // Artifact presence is EXISTS-based (an empty or op-less file still counts) — frozen rule.
     let proposal_present = store.artifact_exists(&change.name, "proposal.md");
     let specs_present = !delta_caps.is_empty();
     let tasks_present = store.artifact_exists(&change.name, "tasks.md");
@@ -329,14 +329,14 @@ pub fn analyze(store: &dyn Store, change: &Change, schema: &Schema) -> AnalyzeRe
                     "Verify tasks cover this design decision",
                     "conDesignNotInTasks", [("keyword", hl.as_str())],
                 );
-                // Spectra sends this recommendation without params.
+                // This recommendation is sent without params (frozen output shape).
                 f.recommendation_msg.params.clear();
                 consistency.push(f);
             }
         }
     }
 
-    // --- Ambiguity — grouped per FILE (matches Spectra), each file emitting its
+    // --- Ambiguity — grouped per FILE (frozen output shape), each file emitting its
     // no-scenario, then abstract-scenario, then weak-language findings in turn.
     if !ambiguity_skipped {
         let mut n = 0;
@@ -435,7 +435,7 @@ pub fn analyze(store: &dyn Store, change: &Change, schema: &Schema) -> AnalyzeRe
                 Some(text) => {
                     if !text.contains(&format!("### Requirement: {}", req.name)) {
                         n += 1;
-                        // Spectra's summary params are {name}; the recommendation additionally
+                        // The summary params are {name}; the recommendation additionally
                         // carries {spec}.
                         let mut f = make_finding(
                             "GAP", n, "Gaps", Severity::Warning, loc,
@@ -480,7 +480,7 @@ pub fn analyze(store: &dyn Store, change: &Change, schema: &Schema) -> AnalyzeRe
     findings.extend(ambiguity);
     findings.extend(gaps);
 
-    // Spectra's analyzer is hard-wired to the classic four artifacts regardless of the change's
+    // The analyzer is hard-wired to the classic four artifacts regardless of the change's
     // schema (a custom schema's own artifacts are never listed here).
     let _ = schema;
     let mut analyzed = Vec::new();

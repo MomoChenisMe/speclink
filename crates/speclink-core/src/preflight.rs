@@ -28,7 +28,7 @@ pub struct Preflight {
     /// Populated only from desktop-app data; always empty in a CLI-only project (probed).
     #[serde(rename = "driftedFiles")]
     pub drifted_files: Vec<String>,
-    /// Omitted entirely when `created` is missing or unparseable, matching Spectra.
+    /// Omitted entirely when `created` is missing or unparseable (frozen output shape).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub staleness: Option<Staleness>,
 }
@@ -43,8 +43,8 @@ pub fn days_old(created: Option<&str>) -> i64 {
     (today - created_date).num_days().max(0)
 }
 
-/// Extensions Spectra accepts as "code" references in the proposal's Affected code
-/// line (probed against 2.3.1; case-sensitive — `a.JS`/`a.Rs` do not count).
+/// Extensions accepted as "code" references in the proposal's Affected code
+/// line (frozen list; case-sensitive — `a.JS`/`a.Rs` do not count).
 const CODE_EXTS: [&str; 12] = [
     "md", "html", "js", "ts", "tsx", "jsx", "css", "json", "yaml", "rs", "toml", "svelte",
 ];

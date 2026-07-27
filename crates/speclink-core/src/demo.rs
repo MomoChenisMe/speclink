@@ -1,13 +1,12 @@
 //! Generate a demo change with sample data. The theme rotates randomly per run and the
-//! name/adjective pools mirror Spectra's (probed from 2.3.1; change names use the slx-
-//! prefix instead of spx-).
+//! name/adjective pools are frozen (change names use the slx- prefix).
 
 use crate::store::Store;
 use crate::util;
 use anyhow::Result;
 use std::path::PathBuf;
 
-/// (theme, proposal, design, tasks, spec) — one entry per Spectra demo theme.
+/// (theme, proposal, design, tasks, spec) — one entry per demo theme.
 const THEMES: &[(&str, &str, &str, &str, &str)] = &[
     (
         "access-control",

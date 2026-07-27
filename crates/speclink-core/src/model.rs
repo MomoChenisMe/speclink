@@ -208,7 +208,7 @@ pub fn find_change(store: &dyn Store, name: &str) -> Option<Change> {
 
 /// Whether an artifact's output exists and has content.
 pub fn artifact_done(store: &dyn Store, change: &str, artifact: &Artifact) -> bool {
-    // Done-ness is EXISTS-based — an empty file counts (matches Spectra). A glob-style output
+    // Done-ness is EXISTS-based — an empty file counts (frozen rule). A glob-style output
     // (e.g. "specs/**/*.md") is done when any matching delta spec exists.
     if artifact.output_path.contains("**") {
         return !store.delta_capabilities(change).is_empty();
@@ -222,8 +222,8 @@ pub fn delta_spec_artifact(cap: &str) -> String {
 }
 
 /// Number of `### Requirement:` declarations under an ADDED/MODIFIED/REMOVED section. A RENAMED
-/// section (FROM:/TO:) and empty operation headers contribute zero — matching Spectra's rule that
-/// a delta spec must contain at least one applied operation.
+/// section (FROM:/TO:) and empty operation headers contribute zero — a delta spec must
+/// contain at least one applied operation.
 pub fn op_requirement_count(text: &str) -> usize {
     let mut op = "";
     let mut count = 0;
@@ -262,14 +262,12 @@ pub fn has_orphan_requirement(text: &str) -> bool {
 /// Whether a delta spec body has an applicable operation (ADDED/MODIFIED/REMOVED with a requirement).
 pub fn has_delta_operation(text: &str) -> bool {
     // Speclink divergence #4: a RENAMED section with at least one valid FROM/TO pair
-    // counts as an operation, so a pure-rename delta validates and archives. (Spectra
-    // documents RENAMED but treats rename-only deltas as invalid and never applies
-    // renames at all.)
+    // counts as an operation, so a pure-rename delta validates and archives.
     op_requirement_count(text) > 0 || !rename_pairs(text).is_empty()
 }
 
 /// Rename pairs from `## RENAMED Requirements` sections (speclink divergence #4 —
-/// Spectra parses but never applies renames). Both documented syntaxes:
+/// renames are actually applied). Both documented syntaxes:
 /// - bullet form: `- FROM: `### Requirement: Old`` / `- TO: `### Requirement: New``
 ///   (bold markers and bare names accepted)
 /// - header form: `### Requirement: Old` followed by a `TO: New` line
@@ -370,7 +368,7 @@ pub fn blocked_by(schema: &Schema, store: &dyn Store, change: &str, id: &str) ->
         .collect()
 }
 
-/// Whether EVERY artifact in the schema is done (matches Spectra — an absent optional artifact
+/// Whether EVERY artifact in the schema is done (an absent optional artifact
 /// such as `design` keeps the change incomplete).
 pub fn is_complete(schema: &Schema, store: &dyn Store, change: &str) -> bool {
     schema
