@@ -108,9 +108,9 @@ pub fn archive(
         bail!("Archived change '{}' already exists", dated_name);
     }
 
-    // Single-change archive validates first (matches Spectra): a structurally invalid
-    // change refuses to archive unless --no-validate is passed. The error strings drop
-    // validate's "Parse error: " prefix — that is how Spectra renders them here.
+    // Single-change archive validates first: a structurally invalid change refuses to
+    // archive unless --no-validate is passed. The error strings drop validate's
+    // "Parse error: " prefix — that is the frozen rendering here.
     if !opts.no_validate {
         let schema = crate::schema::spec_driven();
         let result = crate::validate::validate_change(store, change, &schema, false);
@@ -127,7 +127,7 @@ pub fn archive(
     // The @trace `code:` list (spec verify-evidence「archive trace 由 evidence
     // 建立」): a change with v2 evidence aggregates its recorded entries; a
     // v1-only (or absent) record keeps the current producer — the work tree's
-    // git state at archive time (matching Spectra). Sorted either way; an
+    // git state at archive time. Sorted either way; an
     // empty list omits the @trace block entirely. The output format is frozen.
     // touched.json itself remains in place for the commit skill.
     let record = TouchedRecord::load(ws, &change.name);
@@ -151,7 +151,7 @@ pub fn archive(
         for cap in store.delta_capabilities(&change.name) {
             let delta_rel = model::delta_spec_artifact(&cap);
             let delta_text = store.read_artifact(&change.name, &delta_rel).unwrap_or_default();
-            // Even with --no-validate, Spectra hard-fails at apply time on a delta that
+            // Even with --no-validate, apply time hard-fails on a delta that
             // parses to zero operations, leaving the change in place.
             if store.artifact_exists(&change.name, &delta_rel)
                 && !model::has_delta_operation(&delta_text)
@@ -168,8 +168,8 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
             // merge, and is the snapshot backup content.
             let existing = store.read_canonical_spec(&cap);
             if let Some(existing_text) = &existing {
-                // Back up the pre-apply canonical spec for unarchive support (matches Spectra:
-                // snapshots/<date>-<name>/specs/<cap>/spec.md holds the previous bytes).
+                // Back up the pre-apply canonical spec for unarchive support
+                // (snapshots/<date>-<name>/specs/<cap>/spec.md holds the previous bytes).
                 let backup_path = snapshot_dir.join("specs").join(&cap).join("spec.md");
                 util::write_file(&backup_path, existing_text)
                     .map_err(|e| anyhow::anyhow!("Failed to backup spec: {e}"))?;
@@ -193,7 +193,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     }
 
     // Snapshot manifest: a bare array of created capability names, written only when a spec
-    // was created (matches Spectra byte-for-byte: `["cap-x"]`, no trailing newline).
+    // was created (frozen byte-for-byte: `["cap-x"]`, no trailing newline).
     if !created_specs.is_empty() {
         util::write_file(
             &snapshot_dir.join("created_specs.json"),
@@ -207,7 +207,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     // Move change into the archive under its dated name.
     store.archive_change(&change.name, &dated_name)?;
 
-    // Clear the app-side "started" marker for this change, if present (matches Spectra).
+    // Clear the app-side "started" marker for this change, if present.
     let _ = util::remove_file(
         &ws.work_dir()
             .join("changes")
@@ -337,7 +337,7 @@ fn apply_delta_to_canonical(
     trace_files: &[String],
     existing: Option<&str>,
 ) -> Result<CapCounts> {
-    // Spectra omits the @trace block entirely when there are no touched code files.
+    // The @trace block is omitted entirely when there are no touched code files.
     let trace = trace_block(change, date, trace_files);
     let make_block = |r: &DeltaReq, fresh: bool| {
         let body = strip_before_notes(&r.block);
@@ -387,7 +387,7 @@ fn apply_delta_to_canonical(
         out.push_str("## Requirements\n\n");
         let joined: Vec<String> = blocks.iter().map(|b| b.trim_end().to_string()).collect();
         out.push_str(&joined.join("\n\n---\n"));
-        // Spectra ends the file with a newline UNLESS the last block ends with an @trace
+        // The file ends with a newline UNLESS the last block ends with an @trace
         // comment (`-->`), which is written without one.
         if !out.ends_with('\n') && !out.ends_with("-->") {
             out.push('\n');
@@ -398,8 +398,8 @@ fn apply_delta_to_canonical(
 
     // Merge into an existing canonical spec.
     let (header, mut blocks) = parse_canonical(existing);
-    // Spectra splices out a removed requirement's text but leaves its preceding `---`; when the
-    // LAST requirement is removed this leaves a dangling separator, which we reproduce below.
+    // A removed requirement's text is spliced out but its preceding `---` stays; when the
+    // LAST requirement is removed this leaves a dangling separator, reproduced below.
     let orig_last = blocks.last().map(|(n, _)| n.clone());
     for r in reqs {
         match r.operation.as_str() {
@@ -411,8 +411,8 @@ fn apply_delta_to_canonical(
                 }
             }
             "MODIFIED" => {
-                // Only apply MODIFIED to an existing requirement; skip if absent (matches Spectra,
-                // which flags it via analyze's gapModifiedNotFound rather than materializing it).
+                // Only apply MODIFIED to an existing requirement; skip if absent (an absent one
+                // is flagged via analyze's gapModifiedNotFound rather than materialized).
                 if let Some(slot) = blocks.iter_mut().find(|(n, _)| *n == r.name) {
                     slot.1 = make_block(r, false);
                     counts.modified += 1;
@@ -430,9 +430,8 @@ fn apply_delta_to_canonical(
         }
     }
 
-    // Speclink divergence #4: RENAMED is actually executed. Spectra documents the
-    // section (FROM:/TO:) but never applies a rename in any syntax and reports
-    // renamed: 0; speclink renames the canonical requirement header and counts it.
+    // Speclink divergence #4: RENAMED is actually executed — the canonical requirement
+    // header is renamed in either documented syntax and counted under `renamed:`.
     for (from, to) in renames {
         if let Some(slot) = blocks.iter_mut().find(|(n, _)| n == from) {
             slot.1 = slot.1.replacen(
@@ -448,16 +447,16 @@ fn apply_delta_to_canonical(
     let mut out = header;
     let joined: Vec<String> = blocks.iter().map(|(_, b)| b.trim_end().to_string()).collect();
     out.push_str(&joined.join("\n\n---\n"));
-    // Dangling separator when the original last requirement was removed (matches Spectra).
+    // Dangling separator when the original last requirement was removed (frozen output shape).
     let last_removed = orig_last
         .map(|n| !blocks.iter().any(|(bn, _)| *bn == n))
         .unwrap_or(false);
     if last_removed && !blocks.is_empty() {
         out.push_str("\n\n---\n");
     }
-    // Trailing newline (probed): ensured only when no @trace was injected this run —
-    // with injection Spectra leaves the file exactly as joined (no newline even when
-    // the last requirement is not the traced one), and never adds one after `-->`.
+    // Trailing newline (frozen): ensured only when no @trace was injected this run —
+    // with injection the file stays exactly as joined (no newline even when the last
+    // requirement is not the traced one), and never one after `-->`.
     if trace_files.is_empty() && !out.ends_with('\n') && !out.ends_with("-->") {
         out.push('\n');
     }

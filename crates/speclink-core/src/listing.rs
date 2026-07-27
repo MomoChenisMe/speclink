@@ -6,7 +6,7 @@ use crate::model::Change;
 use crate::store::Store;
 use serde::Serialize;
 
-/// One change entry of `list --json` (field order matches Spectra).
+/// One change entry of `list --json` (frozen field order).
 #[derive(Debug, Serialize)]
 pub struct ListChangeJson {
     #[serde(rename = "completedTasks")]
@@ -19,7 +19,7 @@ pub struct ListChangeJson {
     pub total_tasks: usize,
     /// Discussions this change reflected then went stale against — re-concluded after
     /// seal, pending re-ingest (speclink extension). Omitted when empty so the common-case
-    /// `list --json` output stays byte-identical to the Spectra-parity baseline.
+    /// `list --json` output stays byte-identical to the frozen baseline.
     #[serde(rename = "restaleFrom", skip_serializing_if = "Vec::is_empty")]
     pub restale_from: Vec<String>,
     /// Parse-failure reason when the change's `.openspec.yaml` is corrupt
@@ -29,7 +29,7 @@ pub struct ListChangeJson {
     pub meta_error: Option<String>,
 }
 
-/// Order changes for listing (probed against Spectra):
+/// Order changes for listing (frozen ordering contract):
 /// - "name": alphabetical.
 /// - "created": changes with a VALID metadata pair (schema AND created both present) come
 ///   first, created descending, mtime-then-name tiebreak; invalid-metadata changes follow

@@ -1,8 +1,8 @@
 //! Baseline pin for the promote-flow sink (design D1/D2): `discuss promote`
 //! (default-name and --name forms) and `discuss list --json` outputs are
 //! recorded verbatim BEFORE the flow moves into speclink-core, and must stay
-//! bit-identical after. Discussion verbs are speclink-specific (no Spectra
-//! parity fixture), so this self-baseline is the regression guard.
+//! bit-identical after. Discussion verbs are speclink-specific, so this
+//! self-baseline is the regression guard.
 
 use std::path::PathBuf;
 use std::process::{Command, Output};

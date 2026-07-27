@@ -968,7 +968,7 @@ Speclink Desktop 是：
 - UI/DataSource contract 的參考實作。
 - 一個可替換的 presentation consumer，而非 Store 管理器或唯一介面。
 
-現有 Local Desktop 的部分產品方向與 UI/UX 參考
+Local Desktop 的部分產品方向與 UI/UX 設計之初曾參考
 [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app)，例如 changes/specs/tasks 的視覺追蹤、專案切換、
 任務進度與 archive 瀏覽。Speclink Desktop 並非其 fork；程式獨立實作，且本藍圖的 DataSource、Remote Workspace、
 Server、Store 與 Agent 整合均屬 Speclink 自己的目標架構。

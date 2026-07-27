@@ -54,7 +54,7 @@ pub fn display_order(schema: &Schema) -> Vec<&crate::schema::Artifact> {
 }
 
 /// First not-done artifact in display order (used as the default for `instructions` with no
-/// artifact argument) — matches Spectra returning the next incomplete artifact.
+/// artifact argument) — the next incomplete artifact is returned.
 pub fn first_incomplete_artifact(store: &dyn Store, change: &Change, schema: &Schema) -> Option<String> {
     display_order(schema)
         .into_iter()

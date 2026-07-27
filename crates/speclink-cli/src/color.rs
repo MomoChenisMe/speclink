@@ -1,9 +1,9 @@
-//! ANSI styling with Spectra's palette and anstream-compatible enablement semantics
+//! ANSI styling with the frozen palette and anstream-compatible enablement semantics
 //! (probed: CLICOLOR_FORCE overrides NO_COLOR; a piped stdout disables color).
 //!
 //! Styling goes through tiny helpers so plain mode stays byte-identical: every helper
 //! returns the input unchanged when color is off, and `dim("")` in color mode emits the
-//! empty `\x1b[2m\x1b[0m` pair exactly like Spectra does for a change without a summary.
+//! empty `\x1b[2m\x1b[0m` pair for a change without a summary — the frozen output shape.
 
 use std::io::IsTerminal;
 use std::sync::OnceLock;

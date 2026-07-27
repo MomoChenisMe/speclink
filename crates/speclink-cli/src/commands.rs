@@ -190,8 +190,8 @@ use core::listing::ListChangeJson;
 // --- init / update ---
 
 fn cmd_init(a: InitArgs) -> Result<()> {
-    // The success line echoes the PATH argument verbatim (Spectra prints ".\openspec" for
-    // `init .`); the absolute path is only used internally.
+    // The success line echoes the PATH argument verbatim (`init .` prints ".\openspec");
+    // the absolute path is only used internally.
     let display_base = match a.path.as_deref() {
         Some(p) => p.to_string(),
         None => std::env::current_dir()?.display().to_string(),
@@ -373,13 +373,13 @@ fn cmd_list(a: ListArgs) -> Result<()> {
     }
     println!("{}", color::bold("Changes:"));
     for c in items {
-        // Spectra omits the progress marker entirely for changes with zero tasks.
+        // The progress marker is omitted entirely for changes with zero tasks.
         let marker = if c.total_tasks > 0 {
             format!(" [{}/{}]", c.completed_tasks, c.total_tasks)
         } else {
             String::new()
         };
-        // The dim wrapper always prints — an empty summary yields Spectra's empty
+        // The dim wrapper always prints — an empty summary yields the empty
         // \x1b[2m\x1b[0m pair in color mode and nothing in plain mode.
         let suffix = if c.summary.is_empty() {
             String::new()
@@ -447,7 +447,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
             println!();
             println!("{}", color::dim("--- spec.md ---"));
             print!("{content}");
-            println!(); // Spectra always emits a trailing newline (an extra blank when content ends with \n)
+            println!(); // A trailing newline is always emitted (an extra blank when content ends with \n)
         }
         core::command::ShowOutcome::Change(c) => {
             let caps: Vec<String> = c
@@ -479,7 +479,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
             if c.proposal.is_some() || !caps.is_empty() {
                 println!();
             }
-            // The Proposal section renders whenever the FILE exists (even empty), matching Spectra.
+            // The Proposal section renders whenever the FILE exists (even empty) — frozen behavior.
             if let Some(proposal) = &c.proposal {
                 println!("{}", color::dim("--- Proposal ---"));
                 print!("{proposal}");
@@ -490,7 +490,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
                         println!("  {cap}");
                     }
                 } else {
-                    // Spectra always appends a newline after the proposal body (an extra blank
+                    // A newline is always appended after the proposal body (an extra blank
                     // line when the file already ends with one), same as the spec branch above.
                     println!();
                 }
@@ -595,7 +595,7 @@ fn render_analyze(report: &core::analyzer::AnalyzeReport) {
         } else {
             color::yellow("●")
         };
-        // Spectra's bold span covers a 14-wide padded name; the 15th column separator
+        // The bold span covers a 14-wide padded name; the 15th column separator
         // space stays outside it (plain bytes are identical to the old {:<15} form).
         println!(
             "  {sym} {} {} ({} findings)",
@@ -605,7 +605,7 @@ fn render_analyze(report: &core::analyzer::AnalyzeReport) {
         );
     }
     // The blank separator is tied to the "Analyzed:" line; an empty change (nothing analyzed)
-    // prints "Missing:" directly after the dimensions, matching Spectra.
+    // prints "Missing:" directly after the dimensions (frozen output shape).
     if !report.artifacts_analyzed.is_empty() {
         println!();
         println!("  {} {}", color::dim("Analyzed:"), report.artifacts_analyzed.join(", "));
@@ -1039,7 +1039,7 @@ fn render_artifact_human(p: &core::instructions::ArtifactInstructions) {
     println!("{}: {}", color::bold("Output"), p.output_path);
     println!("{}: {}", color::bold("Description"), p.description);
     // Each section is preceded by one blank separator and rendered only when non-empty
-    // (a custom schema may have no instruction and an empty template), matching Spectra.
+    // (a custom schema may have no instruction and an empty template) — frozen output shape.
     if let Some(instr) = &p.instruction {
         println!();
         println!("{}", color::bold("Instruction:"));
@@ -1166,7 +1166,7 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
         unreachable!("new artifact yields a new-artifact outcome");
     };
     if a.json {
-        // Compact single-line JSON, matching Spectra ("artifact" echoes the
+        // Compact single-line JSON, frozen shape ("artifact" echoes the
         // input token, not the schema artifact id).
         let v = serde_json::json!({
             "artifact": a.artifact_type,
@@ -1386,7 +1386,7 @@ fn cmd_config(a: ConfigArgs) -> Result<()> {
         ConfigCommands::Set { key, value, string, allow_unknown: _ } => {
             let mut cfg = load_global_map(&path);
             // Values parse to native YAML scalars (1 → int, true → bool); --string forces
-            // string storage (matches Spectra).
+            // string storage (frozen behavior).
             let stored = if string {
                 serde_yaml::Value::String(value.clone())
             } else {
@@ -1401,7 +1401,7 @@ fn cmd_config(a: ConfigArgs) -> Result<()> {
             let mut cfg = load_global_map(&path);
             cfg.remove(serde_yaml::Value::String(key.clone()));
             save_global_map(&path, &cfg)?;
-            // Printed whether or not the key existed (matches Spectra).
+            // Printed whether or not the key existed (frozen behavior).
             println!("{} Removed key: {key}", color::green("✓"));
         }
         ConfigCommands::Reset { all: _, yes: _ } => {
@@ -1411,8 +1411,8 @@ fn cmd_config(a: ConfigArgs) -> Result<()> {
             println!("{} Config reset.", color::green("✓"));
         }
         ConfigCommands::Edit => {
-            // VISUAL wins over EDITOR; the vi fallback matches Spectra (including the
-            // failure message when no editor can be spawned).
+            // VISUAL wins over EDITOR; the vi fallback and the failure message when no
+            // editor can be spawned are both frozen.
             let editor = std::env::var("VISUAL")
                 .or_else(|_| std::env::var("EDITOR"))
                 .unwrap_or_else(|_| "vi".to_string());
@@ -1437,8 +1437,8 @@ fn scalar_str(v: &serde_yaml::Value) -> String {
     }
 }
 
-// Insertion-ordered mapping (serde_yaml::Mapping) — Spectra preserves the order keys were
-// first set in both the stored YAML and `config list` output.
+// Insertion-ordered mapping (serde_yaml::Mapping) — the order keys were first set is
+// preserved in both the stored YAML and `config list` output.
 fn load_global_map(path: &std::path::Path) -> serde_yaml::Mapping {
     match core::util::read_opt(path) {
         Some(s) => serde_yaml::from_str(&s).unwrap_or_default(),
@@ -1455,7 +1455,7 @@ fn save_global_map(path: &std::path::Path, map: &serde_yaml::Mapping) -> Result<
 // --- completion ---
 
 /// Validated display name for a completion shell. Elvish IS supported, but the error message
-/// only lists the four common shells — replicated from Spectra verbatim.
+/// only lists the four common shells — frozen verbatim.
 fn completion_shell(shell: Option<&str>) -> Result<&'static str> {
     match shell.unwrap_or("bash") {
         "bash" => Ok("Bash"),
@@ -1480,8 +1480,8 @@ fn cmd_completion(a: CompletionArgs) -> Result<()> {
             };
             let mut cmd = Cli::command();
             if sh == clap_complete::Shell::Bash {
-                // Spectra's (older clap_complete) bash script offers positional value
-                // names as completion candidates ("[CHANGE]", "<KEY>"); newer
+                // The frozen bash script (from an older clap_complete) offers positional
+                // value names as completion candidates ("[CHANGE]", "<KEY>"); newer
                 // clap_complete dropped them, so they are re-injected here.
                 let mut buf: Vec<u8> = Vec::new();
                 clap_complete::generate(sh, &mut cmd, "speclink", &mut buf);
@@ -1492,7 +1492,7 @@ fn cmd_completion(a: CompletionArgs) -> Result<()> {
             clap_complete::generate(sh, &mut cmd, "speclink", &mut std::io::stdout());
         }
         CompletionCommands::Install { shell, verbose: _ } => {
-            // Spectra does not write to the shell profile; it prints guidance.
+            // The shell profile is never written to; guidance is printed instead.
             let name = completion_shell(shell.as_deref())?;
             println!("Note: Shell completion for {name} — generate and source the output.");
             println!("Run: speclink completion generate {name} > completion_script");
@@ -1507,7 +1507,7 @@ fn cmd_completion(a: CompletionArgs) -> Result<()> {
 }
 
 /// Append positional value-name placeholders (`<KEY>`, `[CHANGE]`) to each `opts="..."`
-/// line of a clap_complete bash script, matching the older clap_complete Spectra ships.
+/// line of a clap_complete bash script, matching the frozen older clap_complete output.
 /// Command paths are recovered from the script's own `parent,child) cmd="label"` arms.
 fn bash_inject_positionals(script: &str, root: &clap::Command) -> String {
     use std::collections::HashMap;
@@ -1609,7 +1609,7 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
                 bail!("Task {} is already done", o.task_id);
             }
             if json {
-                // Compact single-line JSON, matching Spectra.
+                // Compact single-line JSON, frozen shape.
                 let v = serde_json::json!({
                     "change": o.change,
                     "status": "done",

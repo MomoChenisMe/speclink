@@ -1,8 +1,7 @@
 # Rust build artifacts
 /target/
 
-# Legacy Spectra app data
-.spectra/
+# Legacy app data
 openspec/.vector-search.db*
 
 # Speclink app data

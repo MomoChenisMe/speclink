@@ -91,7 +91,7 @@ function UnavailableAction({ reason, children }: { reason?: string; children: Re
   );
 }
 
-/** Spectra 級詳情抽屜：metadata、進度、動作列、icon 分頁（提案/設計/互動任務/彩色規格）。 */
+/** 富詳情抽屜：metadata、進度、動作列、icon 分頁（提案/設計/互動任務/彩色規格）。 */
 export function RichDetailDrawer({
   open,
   onOpenChange,

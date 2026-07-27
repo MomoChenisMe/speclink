@@ -165,7 +165,7 @@ discuss? → propose → apply ⇄ ingest → archive\n\n\
 }
 
 /// Insert or replace the SPECLINK:START..END block in an existing document. When the document
-/// has no marker yet, the block is PREPENDED above the user's content (matches Spectra).
+/// has no marker yet, the block is PREPENDED above the user's content (frozen behavior).
 fn upsert_marker(existing: Option<String>, block: &str) -> String {
     let start = "<!-- SPECLINK:START";
     let end = "<!-- SPECLINK:END -->";
@@ -284,7 +284,7 @@ fn store_init(spec_root: &Path, force: bool) -> Result<()> {
 fn workspace_init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str, store: StoreKind) -> Result<()> {
     // .speclink.yaml — the template plus the actual tool selection, so `update` can sync
     // (regenerate + prune) against the recorded list later. A non-default --dir is
-    // persisted as an active spec_dir line (matches Spectra) so later commands find it.
+    // persisted as an active spec_dir line so later commands find it.
     let mut config_content = if tools.is_empty() {
         APP_CONFIG_TEMPLATE.to_string()
     } else {
@@ -322,7 +322,7 @@ pub struct UpdateOutcome {
 /// (built-in name or custom descriptor) is regenerated and generated files for tools NOT on
 /// the list are pruned (speclink-* skill dirs removed, the SPECLINK marker block stripped
 /// from the instruction file). Unknown built-in names produce a warning note; an invalid
-/// descriptor is an error. Without a recorded list, built-ins fall back to Spectra's
+/// descriptor is an error. Without a recorded list, built-ins fall back to legacy
 /// behavior: regenerate the tools whose dot-directories exist (codex excluded).
 pub fn update(root: &Path) -> Result<UpdateOutcome> {
     let app = crate::config::AppConfig::load(&root.join(".speclink.yaml"))?;
@@ -363,7 +363,7 @@ pub fn update(root: &Path) -> Result<UpdateOutcome> {
     }
 
     if app.tools.is_empty() {
-        // Legacy fallback (matches Spectra): directory detection, codex excluded, no
+        // Legacy fallback: directory detection, codex excluded, no
         // built-in prune. Custom footprints recorded by an earlier update are still
         // synced below — an emptied tools list must not strand them.
         if root.join(".claude").is_dir() {
@@ -578,8 +578,8 @@ pub fn detect_footprint_tools(root: &Path) -> Vec<Tool> {
     out
 }
 
-/// Detect installed AI tools by their footprints (deliberate difference from Spectra, which
-/// generates nothing when --tools is omitted). Defaults to claude when nothing is found.
+/// Detect installed AI tools by their footprints (legacy fallback path only — `init`
+/// itself requires an explicit tool selection). Defaults to claude when nothing is found.
 pub fn detect_tools(root: &Path) -> Vec<Tool> {
     let mut out = detect_footprint_tools(root);
     if out.is_empty() {

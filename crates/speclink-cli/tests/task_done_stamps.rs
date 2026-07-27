@@ -130,7 +130,7 @@ fn json_payload_shape_is_frozen_and_still_stamps() {
     let out = p.run(&["task", "done", "2", "--change", "demo", "--json"]);
 
     assert!(out.status.success());
-    // Compact single-line payload, key order frozen (matches Spectra).
+    // Compact single-line payload, key order frozen.
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
         "{\"change\":\"demo\",\"status\":\"done\",\"task_desc\":\"1.2 second task\",\"task_id\":\"2\"}\n"

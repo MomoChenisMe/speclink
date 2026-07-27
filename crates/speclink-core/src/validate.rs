@@ -18,7 +18,7 @@ pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, str
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
 
-    // Spectra's validate is lenient: a missing proposal is NOT an error, and a scenario-less
+    // validate is lenient: a missing proposal is NOT an error, and a scenario-less
     // requirement is NOT an error. The one hard error is an EXISTING delta spec file that parses
     // to zero applied operations (empty, RENAMED-only, or an operation-less requirement). The
     // informational "No delta specs found" warning fires only when there is not even a capability
@@ -35,7 +35,7 @@ pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, str
                 spec_path.to_string_lossy()
             ));
         }
-        // Duplicate requirement names are hard errors (probed against Spectra): the same
+        // Duplicate requirement names are hard errors: the same
         // name twice inside one ADDED/MODIFIED/REMOVED section, or the same name across
         // two different sections. Reported with the change-relative path.
         let rel = spec_path

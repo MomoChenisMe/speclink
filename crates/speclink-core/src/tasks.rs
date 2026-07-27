@@ -93,7 +93,7 @@ pub fn duplicate_stable_ids(tasks: &[Task]) -> Vec<String> {
 }
 
 /// Parse tasks.md into an ordered list of checkbox tasks. Dash and star bullets both
-/// count (matches Spectra: `* [ ]` is a task).
+/// count (`* [ ]` is a task).
 pub fn parse(tasks_md: &str) -> Vec<Task> {
     let mut out = Vec::new();
     let mut id = 0usize;
@@ -176,8 +176,8 @@ pub fn mark_done(tasks_md: &str, target_id: usize) -> Option<(String, String, bo
 }
 
 /// Flip the id-th checkbox in either direction. Returns (new_content, task_description,
-/// already_in_target_state, stable_id) or None if not found. Indent, bullet style (Spectra
-/// rewrites `* [ ]` to `* [x]`), and trailing newline are preserved.
+/// already_in_target_state, stable_id) or None if not found. Indent, bullet style (`* [ ]`
+/// is rewritten to `* [x]`), and trailing newline are preserved.
 fn flip_task(
     tasks_md: &str,
     target_id: usize,
@@ -293,7 +293,7 @@ pub fn complete(
     store.write_artifact(change, "tasks.md", &new_content)?;
 
     // Record touched files: only those not already attributed to an earlier task;
-    // when nothing new is dirty, no entry is appended at all (matches Spectra).
+    // when nothing new is dirty, no entry is appended at all (frozen behavior).
     // The v1 `touched` entry stays alongside the v2 evidence entry — the commit
     // skill's documented file-list channel keeps its exact shape.
     let mut record = TouchedRecord::load(ws, change);
@@ -642,7 +642,7 @@ fn head_commit(root: &Path) -> Option<String> {
 /// Untracked directories are expanded to individual files (`-uall`). The spec directory and
 /// speclink work directory are excluded, since @trace records *code* changes, not spec artifacts.
 pub fn git_changed_files(root: &Path) -> Vec<String> {
-    // Only when the project root is itself the git root (matches Spectra): a project
+    // Only when the project root is itself the git root: a project
     // nested inside an ancestor repo records nothing, instead of walking up and
     // capturing dirty files from outside the project.
     if !root.join(".git").exists() {
@@ -671,7 +671,7 @@ pub fn git_changed_files(root: &Path) -> Vec<String> {
             continue; // skip directory entries
         }
         // Exclude spec artifacts, work files, and tool-scaffolding dirs from the code trace
-        // (Spectra records CLAUDE.md / config but not .claude/.agents/.cursor/.gemini or .gitignore).
+        // (CLAUDE.md / config are recorded, .claude/.agents/.cursor/.gemini and .gitignore are not).
         if path.starts_with("openspec/")
             || path.starts_with(".speclink/")
             || path.starts_with(".git/")

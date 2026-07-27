@@ -79,7 +79,7 @@ export function sumDeltaCounts(list: DeltaCounts[]): DeltaCounts {
   );
 }
 
-/** 顯示為 Spectra 風的 `+1 ~2 -0` 摘要（省略為 0 的項）。 */
+/** 顯示為 `+1 ~2 -0` 摘要（省略為 0 的項）。 */
 export function formatDeltaCounts(c: DeltaCounts): string {
   const parts: string[] = [];
   if (c.added) parts.push(`+${c.added}`);

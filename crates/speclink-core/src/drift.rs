@@ -16,9 +16,9 @@ use crate::workspace::Workspace;
 
 const ANCHOR_CAP: usize = 50;
 
-/// Stopwords filtered out of symbol-anchor extraction (probed against Spectra word by word).
-// Spectra filters Rust type/keyword names and the GWT keywords, but KEEPS ordinary English
-// words ("The", "Also", "Should", …) and — surprisingly — Eq/Ord/PartialEq/PartialOrd.
+/// Stopwords filtered out of symbol-anchor extraction (frozen word-by-word list).
+// Rust type/keyword names and the GWT keywords are filtered out, but ordinary English words
+// ("The", "Also", "Should", …) and — surprisingly — Eq/Ord/PartialEq/PartialOrd are KEPT.
 const STOPWORDS: &[&str] = &[
     "Context", "State", "Result", "Error", "Option", "Vec", "Rust", "JSON", "CLI", "API",
     "Box", "String", "Self", "Ok", "Err", "Some", "None",
@@ -227,10 +227,9 @@ fn code_like(token: &str) -> bool {
     camel.is_match(token) || pascal_multi.is_match(token)
 }
 
-/// Anchor extraction, second deliberate divergence from Spectra here: Spectra's bare
-/// `\b[A-Z]\w+\b` prose scan is silenced in practice by its self-hit corpus; with speclink's
-/// change-dir exclusion it surfaced prose capitalized words (headings, sentence starts) as
-/// broken-anchor noise. Anchors are therefore restricted to code-like tokens anywhere in the
+/// Anchor extraction, the second deliberate design decision here: a bare
+/// `\b[A-Z]\w+\b` prose scan surfaces prose capitalized words (headings, sentence starts)
+/// as broken-anchor noise once the change's own directory is excluded from the corpus. Anchors are therefore restricted to code-like tokens anywhere in the
 /// design plus backtick spans, and backticked file paths become existence-checked anchors.
 fn extract_anchors(design: &str) -> Vec<Anchor> {
     // name -> is_path; BTreeMap keeps the output order stable.
@@ -310,9 +309,9 @@ fn tracked_doc_contents(ws: &Workspace, exclude_prefix: &str) -> Vec<String> {
 
 /// Whether an anchor matches (whole-word, case-sensitive) in the search corpus: the committed
 /// content of tracked files (HEAD) plus the work-tree content of tracked markdown/text
-/// documents. Deliberate difference from Spectra: the change's own directory is excluded, so
-/// broken anchors keep working after the design is committed (Spectra's corpus includes the
-/// design itself, making Structure permanently silent post-commit).
+/// documents. Deliberate design: the change's own directory is excluded, so broken anchors
+/// keep working after the design is committed (a corpus including the design itself would
+/// make Structure permanently silent post-commit).
 #[cfg(test)]
 fn symbol_found(ws: &Workspace, doc_contents: &[String], exclude_prefix: &str, symbol: &str) -> bool {
     // ASCII word boundary, matching `git grep --word-regexp` semantics.
@@ -792,9 +791,9 @@ pub fn analyze(ws: &Workspace, store: &dyn Store, change: &Change) -> DriftRepor
     let total_anchors = anchors.len();
 
     let git_ok = util::git_available(&ws.root);
-    // Deliberate difference from Spectra: the created DATE is anchored to midnight. Spectra
-    // passes the bare date, and git's approxidate fills the missing time-of-day from the
-    // current clock — making same-day changes always count 0 commits.
+    // Deliberate design: the created DATE is anchored to midnight. Passing the bare date
+    // would let git's approxidate fill the missing time-of-day from the current clock —
+    // making same-day changes always count 0 commits.
     let since_arg = match change.meta.created.as_deref() {
         Some(c) if !c.is_empty() => format!("--since={c} 00:00:00"),
         _ => "--since=".to_string(),
@@ -807,11 +806,11 @@ pub fn analyze(ws: &Workspace, store: &dyn Store, change: &Change) -> DriftRepor
     } else {
         None
     };
-    // The log call fails in a repo with no commits — that is what Spectra's
+    // The log call fails in a repo with no commits — that is what the
     // "git unavailable" statuses key off, not `git_available`.
     let git_has_commits = since_log.is_some();
     let commit_files = parse_commit_files(since_log.as_deref().unwrap_or(""));
-    // Spectra's CLI never populates last_commit (it is an app-side field).
+    // The CLI never populates last_commit (it is an app-side field).
     let last_commit: Option<String> = None;
 
     // The change's storage location relative to the project root, as a git
@@ -892,8 +891,8 @@ pub fn analyze(ws: &Workspace, store: &dyn Store, change: &Change) -> DriftRepor
         (format!("{}/{} anchors broken", broken.len(), total_anchors), score)
     };
 
-    // Tasks dimension — real signals (deliberate difference from Spectra, whose arrays are
-    // always empty): an unchecked task is "maybe-done" when a file it references was committed
+    // Tasks dimension — real signals (deliberate design; the arrays are never left empty):
+    // an unchecked task is "maybe-done" when a file it references was committed
     // in the window and exists; "blocked" when a referenced file was touched and is now gone.
     let mut tasks_maybe_resolved: Vec<String> = Vec::new();
     let mut tasks_blocked_external: Vec<String> = Vec::new();

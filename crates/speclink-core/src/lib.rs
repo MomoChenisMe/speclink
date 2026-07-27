@@ -1,4 +1,4 @@
-//! speclink-core: spec-driven development engine (Spectra-compatible behavior).
+//! speclink-core: spec-driven development engine.
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

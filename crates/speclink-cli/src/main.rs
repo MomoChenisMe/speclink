@@ -7,7 +7,7 @@ use std::io::{BufRead, IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-/// Version string with the architecture suffix Spectra appends (e.g. "2.3.1 (x64)").
+/// Version string with the frozen architecture suffix (e.g. "2.3.1 (x64)").
 const VERSION: &str = {
     #[cfg(target_arch = "x86_64")]
     {
