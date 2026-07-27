@@ -264,40 +264,17 @@ code:
 ---
 ### Requirement: 真實 CLI 端到端一致
 
-以真實 CLI binary 對真 server（SQLite store）執行 remote 動詞流程 SHALL 與 fs 模式（形狀權威）一致。儲存決定型輸出（無本地路徑欄位者，如 status）SHALL stdout/stderr/exit code 逐位元一致；帶本地路徑或投影欄位的輸出（如 apply 的 changeDir/contextFiles，以及 fs-only 的 preflight）SHALL 在剔除該類欄位後內容一致——此與 stub 對測對同類欄位採欄位形狀（key）比對的語意一致。twin harness 全部情境的欄位形狀 parity 由 stub 對測凍結（設計決策 7：stub 驗 client、e2e 驗 server，互補不互代）；e2e SHALL 以代表性 remote 動詞重放驗證 server 端到端行為並驗證重啟持久性。e2e 的資料播種 SHALL 經命令路由完成，SHALL NOT 直接寫入 store 後端。
+以真實 CLI binary 對真 server（SQLite store）執行 remote 動詞流程 SHALL 與 fs 模式（形狀權威）一致。儲存決定型輸出（無本地路徑欄位者，如 status）SHALL stdout/stderr/exit code 逐位元一致；帶本地路徑或投影欄位的輸出（如 apply 的 changeDir/contextFiles，以及 fs-only 的 preflight）SHALL 在剔除該類欄位後內容一致——此與 stub 對測對同類欄位採欄位形狀（key）比對的語意一致。`crates/speclink-cli/tests/remote_read_path.rs` 全部對照情境的欄位形狀由 stub 對測凍結（設計決策 7：stub 驗 client、e2e 驗 server，互補不互代）；e2e SHALL 以代表性 remote 動詞重放驗證 server 端到端行為並驗證重啟持久性。e2e 的資料播種 SHALL 經命令路由完成，SHALL NOT 直接寫入 store 後端。
 
 #### Scenario: 代表性動詞對真 server 重放
 
 - **WHEN** 啟動 tempdir SQLite 組態的真 server，將 CLI 指向它並重放代表性 remote 動詞（list、status、instructions apply、discuss list）
 - **THEN** 儲存決定型輸出與 fs 模式逐位元一致、帶路徑欄位者剔除該類欄位後內容一致；server 重啟後既建立的資料仍可完整查詢
 
+
 <!-- @trace
-source: server-http-adapter
-updated: 2026-07-14
+source: stale-verification-vehicles
+updated: 2026-07-27
 code:
-  - Cargo.lock
-  - Cargo.toml
-  - crates/speclink-host/Cargo.toml
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/lib.rs
-  - crates/speclink-host/tests/bridge_dual_path.rs
-  - crates/speclink-server/Cargo.toml
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/auth.rs
-  - crates/speclink-server/src/config.rs
-  - crates/speclink-server/src/error.rs
-  - crates/speclink-server/src/lib.rs
-  - crates/speclink-server/src/main.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/src/state.rs
-  - crates/speclink-server/src/verb.rs
-  - crates/speclink-server/tests/binding.rs
-  - crates/speclink-server/tests/command_routes.rs
-  - crates/speclink-server/tests/common/mod.rs
-  - crates/speclink-server/tests/discussion_routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/health.rs
-  - crates/speclink-server/tests/query_routes.rs
-  - crates/speclink-server/tests/startup.rs
-  - crates/speclink-server/tests/sync_state.rs
+  - docs/implementation-refactor-roadmap.zh-TW.md
 -->

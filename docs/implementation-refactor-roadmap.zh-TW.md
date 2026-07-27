@@ -15,7 +15,7 @@ Speclink 需要分階段重構，但不需要推翻目前的 Local Repo、CLI、
 
 現況已具備可保留的產品基礎：
 
-- Rust CLI 與 Local Repo 工作流可運作，並有 parity、golden 與整合測試保護。
+- Rust CLI 與 Local Repo 工作流可運作，並有 golden 與整合測試保護。
 - `speclink-core` 已將多數規格文件存取放到 `Store` trait 後方。
 - `speclink-fs` 已保留 `openspec/` 的既有檔案佈局與行為。
 - `@speclink/engine` 已證明同一份 Rust Engine 可透過 N-API 被 Node.js 載入。
@@ -36,7 +36,7 @@ Speclink 需要分階段重構，但不需要推翻目前的 Local Repo、CLI、
 |---|---|---|---|
 | `speclink-core` | Rust 流程模組，尚無統一 typed command 前門 | parsing、schema、status、validate、analyze、delta merge 等領域演算法 | 各入口直接呼叫模組函式、隱式讀 env/git/workspace |
 | `speclink-fs` | 本地 `openspec/` Store | Layout、檔案相容性、本地零服務模式 | 不能直接宣稱具 TeamStore transaction/recovery 能力 |
-| `speclink-cli` | 完整本地 CLI，加上舊 remote REST 旁路 | clap surface、rendering、parity 護欄 | 每個 handler 自行判斷 local/remote 並重組結果 |
+| `speclink-cli` | 完整本地 CLI，加上舊 remote REST 旁路 | clap surface、rendering、輸出凍結護欄 | 每個 handler 自行判斷 local/remote 並重組結果 |
 | `speclink-remote` | 舊 REST v1 client prototype | transport/error mapping、project URL/repo key 經驗 | 不作為新 Protocol 的相容負擔或正式 Server contract |
 | `@speclink/engine` | N-API、FsStore、自訂 JS Store bridge、四組 dispatch 動詞 | 同一 Rust binary、render API、bridge 測試基礎 | 手刻 argv router、panic tunnel、thread-per-dispatch、現有 31-method Store contract |
 | Desktop core | Local Repo query/command 與設定操作 | Local UX、watcher、cache、UI 元件 | 直接刪檔、自行改 tasks、root-only ProjectContext |
