@@ -56,6 +56,31 @@ tools:
 schema: spec-driven                tdd: true
 ```
 
+## 用 `workflow-config` 動詞管理 `openspec/config.yaml`
+
+`speclink workflow-config` 管的是**工作流政策檔**；`speclink config` 管的是與專案無關的全域 KV 存放，兩者互不相干。
+
+| 子指令 | 作用 |
+|---|---|
+| `show [--json]` | 顯示政策四欄、`context`（行數）與 `rules`（各節條數）。顯示**正典值**——不套用環境變數或舊鍵覆寫（有效值的四層解析屬 `speclink instructions` 的職責）。`--json` payload 欄位為 camelCase：`locale`、`specLocale`、`tdd`、`audit`、`context`、`rules`；未設定的欄位為 `null`，未設定的布林為 `false`。 |
+| `set <key> <value>` | 寫入 `locale`、`spec_locale`、`tdd`、`audit` 之一。其他鍵以非 0 exit code 拒絕；`tdd`／`audit` 僅接受 `true`／`false`。設為 `false`（或 locale 設為空字串）＝**移除該鍵**，維持「未設定＝預設」語意。 |
+| `context --stdin` | 以 stdin 全文設定 `context`；內容僅空白時移除該鍵。 |
+| `rules <artifact> --stdin` | 整節代換該 artifact 的規則（一行一條、空行忽略）；stdin 為空時移除該節。`artifact` 限目前 schema 的 artifact id，未知 id 以非 0 exit code 拒絕。 |
+
+三個寫入子指令都支援 `--dry-run`：印出 unified diff 至 stdout、不寫入任何檔案、exit code 0。預覽與實寫走完全相同的改寫路徑，所以 diff 就是會落檔的內容。
+
+```bash
+speclink workflow-config set tdd true --dry-run   # 先看
+speclink workflow-config set tdd true             # 再落檔
+cat CONTEXT.md | speclink workflow-config context --stdin
+```
+
+**fs 與 remote 模式。** 模式由既有 binding 判定：fs 模式直接讀寫 `openspec/config.yaml`；remote 模式經連線讀取 server 端 config 文件與其版本、套用同一改寫、寫回時附帶該版本。版本識別不出現在指令介面——被他人並行改寫時以非 0 exit code 提示重新執行，絕不覆蓋他人寫入。離線或認證失效同樣以非 0 exit code 失敗，不暫存也不排隊。
+
+**既知取捨：模板註解會喪失。** 寫入是 read-modify-write（讀進整份文件、改目標鍵、整份寫回），其他鍵值一律保留，但原檔的模板註解在重寫後不再存在——與桌面設定頁同一取捨。首次使用先跑 `--dry-run` 看 diff 再決定。文件無法解析時一律 fail-closed：讀寫都以非 0 exit code 拒絕（重寫壞檔會毀掉既有內容）。
+
+內建技能 `speclink-config` 就建立在這個動詞之上——它從 codebase 的固定來源整理 `context` 與 `rules`，一律先產 diff 交使用者裁決再寫入。
+
 ## 自訂工具描述子
 
 `tools` 清單除內建名（`claude`、`codex`）外，也接受描述子物件，用於任何其他 AI harness：

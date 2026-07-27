@@ -76,6 +76,7 @@ const B_APPLY: &str = include_str!("../assets/skills/apply.md");
 const B_ARCHIVE: &str = include_str!("../assets/skills/archive.md");
 const B_AUDIT: &str = include_str!("../assets/skills/audit.md");
 const B_COMMIT: &str = include_str!("../assets/skills/commit.md");
+const B_CONFIG: &str = include_str!("../assets/skills/config.md");
 const B_DISCUSS: &str = include_str!("../assets/skills/discuss.md");
 const B_DRIFT: &str = include_str!("../assets/skills/drift.md");
 const B_INGEST: &str = include_str!("../assets/skills/ingest.md");
@@ -96,6 +97,10 @@ pub fn registry() -> Vec<Skill> {
         // parallel audit agents, which the fork's Explore agent cannot spawn.
         Skill { name: "audit", description: "Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures", fork: false, disallow_edit: true, for_codex: true, body: B_AUDIT },
         Skill { name: "commit", description: "Commit files related to a specific Speclink change", fork: false, disallow_edit: false, for_codex: true, body: B_COMMIT },
+        // Writes only through `speclink workflow-config` (never a direct file
+        // edit), so Edit/Write stay disallowed; not a fork skill because the
+        // policy fields must be asked for interactively.
+        Skill { name: "config", description: "Compose the workflow config's context and rules from the codebase, landed through an approved diff", fork: false, disallow_edit: true, for_codex: true, body: B_CONFIG },
         Skill { name: "discuss", description: "Have a focused discussion that is recorded to a discussion document", fork: false, disallow_edit: true, for_codex: true, body: B_DISCUSS },
         Skill { name: "drift", description: "Detect drift between a Speclink change and the current codebase state", fork: true, disallow_edit: true, for_codex: true, body: B_DRIFT },
         Skill { name: "ingest", description: "Update an existing Speclink change from external context", fork: false, disallow_edit: false, for_codex: true, body: B_INGEST },
@@ -113,6 +118,7 @@ pub fn skill_body(name: &str) -> Option<&'static str> {
         "archive" => B_ARCHIVE,
         "audit" => B_AUDIT,
         "commit" => B_COMMIT,
+        "config" => B_CONFIG,
         "discuss" => B_DISCUSS,
         "drift" => B_DRIFT,
         "ingest" => B_INGEST,

@@ -129,4 +129,3 @@ When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` dat
 - If `speclink drift` returns a non-zero exit code (e.g., older binary without the drift subcommand), report the error and stop
 - Do NOT auto-invoke any follow-up command — recommendations are user-confirmed
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-

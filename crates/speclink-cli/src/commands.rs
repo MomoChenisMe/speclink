@@ -30,6 +30,7 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Feedback(a) => cmd_feedback(a),
         Commands::Schema(a) => cmd_schema(a),
         Commands::Config(a) => cmd_config(a),
+        Commands::WorkflowConfig(a) => cmd_workflow_config(a),
         Commands::Completion(a) => cmd_completion(a),
         Commands::Task(a) => cmd_task(a),
         Commands::InProgress(a) => cmd_in_progress(a),
@@ -1450,6 +1451,350 @@ fn save_global_map(path: &std::path::Path, map: &serde_yaml::Mapping) -> Result<
     let yaml = serde_yaml::to_string(map)?;
     core::util::write_file(path, &yaml)?;
     Ok(())
+}
+
+// --- workflow-config (openspec/config.yaml) ---
+
+/// The policy keys `workflow-config set` accepts, in canonical order.
+const POLICY_KEYS: [&str; 4] = ["locale", "spec_locale", "tdd", "audit"];
+
+/// `workflow-config show --json` payload. camelCase field names are the contract;
+/// the values are CANONICAL (what the document says), never the four-layer
+/// resolution — effective policy is the instructions payload's job.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkflowConfigJson {
+    locale: Option<String>,
+    spec_locale: Option<String>,
+    tdd: bool,
+    audit: bool,
+    context: Option<String>,
+    rules: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+/// A write subcommand once argv and stdin are resolved — the shape both the fs
+/// and the remote branch hand to the shared rewrite.
+enum WorkflowConfigWrite {
+    Policy { key: String, value: String },
+    Context(String),
+    Rules { artifact: String, body: String },
+}
+
+/// The rewrite a write subcommand produces: the complete new document plus the
+/// line printed on a successful write.
+struct WorkflowConfigEdit {
+    new_text: String,
+    summary: String,
+}
+
+fn cmd_workflow_config(a: WorkflowConfigArgs) -> Result<()> {
+    let json = matches!(a.command, WorkflowConfigCommands::Show { json: true });
+    let write = workflow_config_write(&a.command)?;
+    if let Some(ctx) = remote_ctx()? {
+        return remote_workflow_config(&ctx, write, json);
+    }
+    let ws = require_workspace()?;
+    let label = format!("{}/config.yaml", ws.spec_dir_name);
+    let path = ws.spec_dir().join("config.yaml");
+    let original = core::util::read_opt(&path).unwrap_or_default();
+    let Some((write, dry_run)) = write else {
+        return print_workflow_config(&original, &label, json);
+    };
+    let edit = plan_workflow_config_edit(&write, &original, &label, Some(&ws))?;
+    if dry_run {
+        print!("{}", unified_diff(&label, &original, &edit.new_text));
+        return Ok(());
+    }
+    std::fs::write(&path, &edit.new_text).map_err(|e| anyhow::anyhow!("{label}: write failed: {e}"))?;
+    println!("{} {}", color::green("✓"), edit.summary);
+    Ok(())
+}
+
+/// Split the parsed subcommand into `show` (None) or a resolved write plus its
+/// `--dry-run` flag. stdin is consumed here, at the argv layer, so the rewrite
+/// itself stays a pure text→text step shared by both modes.
+fn workflow_config_write(
+    cmd: &WorkflowConfigCommands,
+) -> Result<Option<(WorkflowConfigWrite, bool)>> {
+    Ok(match cmd {
+        WorkflowConfigCommands::Show { .. } => None,
+        WorkflowConfigCommands::Set { key, value, dry_run } => Some((
+            WorkflowConfigWrite::Policy { key: key.clone(), value: value.clone() },
+            *dry_run,
+        )),
+        WorkflowConfigCommands::Context { stdin, dry_run } => {
+            require_stdin_flag(*stdin, "context --stdin")?;
+            Some((WorkflowConfigWrite::Context(read_stdin()), *dry_run))
+        }
+        WorkflowConfigCommands::Rules { artifact, stdin, dry_run } => {
+            require_stdin_flag(*stdin, &format!("rules {artifact} --stdin"))?;
+            Some((
+                WorkflowConfigWrite::Rules { artifact: artifact.clone(), body: read_stdin() },
+                *dry_run,
+            ))
+        }
+    })
+}
+
+/// Content-taking subcommands require the flag explicitly: without it the
+/// command would silently write an empty document from an interactive terminal.
+fn require_stdin_flag(flag: bool, usage: &str) -> Result<()> {
+    if flag {
+        return Ok(());
+    }
+    bail!("content is read from stdin — run: speclink workflow-config {usage}")
+}
+
+/// Render the canonical view of a workflow-config document.
+fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> {
+    let cfg = core::config::WorkflowConfig::from_text(Some(original))
+        .map_err(|e| anyhow::anyhow!("invalid {label}: {}", e.reason))?;
+    if json {
+        return print_json(&WorkflowConfigJson {
+            locale: cfg.locale.clone(),
+            spec_locale: cfg.spec_locale.clone(),
+            tdd: cfg.tdd.unwrap_or(false),
+            audit: cfg.audit.unwrap_or(false),
+            context: cfg.context_text(),
+            rules: cfg.rules.clone(),
+        });
+    }
+    println!("{} {label}", color::bold("Workflow config:"));
+    println!();
+    let locale = match cfg.locale.as_deref() {
+        Some(v) => v.to_string(),
+        None => "unset (English)".to_string(),
+    };
+    let spec_locale = match cfg.spec_locale.as_deref() {
+        Some(v) => v.to_string(),
+        None => "unset (specs in English)".to_string(),
+    };
+    println!("  {:<13}{locale}", "locale");
+    println!("  {:<13}{spec_locale}", "spec_locale");
+    println!("  {:<13}{}", "tdd", toggle_display(cfg.tdd));
+    println!("  {:<13}{}", "audit", toggle_display(cfg.audit));
+    let context = match cfg.context_text() {
+        Some(text) => format!("{} lines", text.lines().count()),
+        None => "none".to_string(),
+    };
+    println!("  {:<13}{context}", "context");
+    let rules: Vec<String> = cfg
+        .rules
+        .iter()
+        .filter(|(_, entries)| !entries.is_empty())
+        .map(|(artifact, entries)| format!("{artifact} {}", entries.len()))
+        .collect();
+    let rules = if rules.is_empty() { "none".to_string() } else { rules.join(", ") };
+    println!("  {:<13}{rules}", "rules");
+    Ok(())
+}
+
+/// A toggle's canonical display: `false` is never stored, so "not set" and
+/// "set to false" are the same state — name the default so it reads as one.
+fn toggle_display(value: Option<bool>) -> &'static str {
+    match value {
+        Some(true) => "on",
+        Some(false) | None => "unset (off)",
+    }
+}
+
+/// Apply one write to `original` through the core rewrite seam — the single
+/// place fs and remote share, so their write semantics can never diverge.
+/// Fails closed on an unparseable document: the read-modify-write would
+/// otherwise destroy the user's content.
+fn plan_workflow_config_edit(
+    write: &WorkflowConfigWrite,
+    original: &str,
+    label: &str,
+    ws: Option<&Workspace>,
+) -> Result<WorkflowConfigEdit> {
+    let current = core::config::WorkflowConfig::from_text(Some(original))
+        .map_err(|e| anyhow::anyhow!("invalid {label}: {} — write refused", e.reason))?;
+    // The seam takes the COMPLETE target state of the four policy keys, so the
+    // current values are read back first and only the edited key moves.
+    let mut fields = core::config::WorkflowPolicyFields {
+        locale: current.locale.clone(),
+        spec_locale: current.spec_locale.clone(),
+        tdd: current.tdd.unwrap_or(false),
+        audit: current.audit.unwrap_or(false),
+    };
+    let mut context = core::config::ContextEdit::Keep;
+    let mut rules: Option<Vec<(String, Vec<String>)>> = None;
+    let summary = match write {
+        WorkflowConfigWrite::Policy { key, value } => {
+            set_policy_field(&mut fields, key, value)?;
+            format!("{key} = {value}")
+        }
+        WorkflowConfigWrite::Context(text) => {
+            let summary = if text.trim().is_empty() {
+                "context removed".to_string()
+            } else {
+                format!("context set ({} lines)", text.trim_end().lines().count())
+            };
+            context = core::config::ContextEdit::Set(text.clone());
+            summary
+        }
+        WorkflowConfigWrite::Rules { artifact, body } => {
+            let artifacts = workflow_schema_artifacts(ws, &current);
+            if artifacts.is_empty() {
+                bail!("{}", core::schema::not_found_msg(&current.schema_name()));
+            }
+            if !artifacts.iter().any(|id| id == artifact) {
+                bail!(
+                    "Unknown artifact '{artifact}' for schema '{}'. Use one of: {}",
+                    current.schema_name(),
+                    artifacts.join(", ")
+                );
+            }
+            let entries: Vec<String> = body
+                .lines()
+                .map(|line| line.trim().to_string())
+                .filter(|line| !line.is_empty())
+                .collect();
+            let summary = if entries.is_empty() {
+                format!("rules.{artifact} removed")
+            } else {
+                format!("rules.{artifact} = {} entries", entries.len())
+            };
+            rules = Some(merged_rules(&current.rules, &artifacts, artifact, entries));
+            summary
+        }
+    };
+    let new_text =
+        core::config::update_workflow_config_text(original, &fields, &context, rules.as_deref())?;
+    Ok(WorkflowConfigEdit { new_text, summary })
+}
+
+/// Map one `set <key> <value>` onto the complete-target-state fields. An empty
+/// locale value and `false` both mean "back to default" — the seam then removes
+/// the key, keeping unset-means-default intact.
+fn set_policy_field(
+    fields: &mut core::config::WorkflowPolicyFields,
+    key: &str,
+    value: &str,
+) -> Result<()> {
+    let text = || {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    };
+    match key {
+        "locale" => fields.locale = text(),
+        "spec_locale" => fields.spec_locale = text(),
+        "tdd" => fields.tdd = policy_bool(key, value)?,
+        "audit" => fields.audit = policy_bool(key, value)?,
+        _ => bail!("Unknown key '{key}'. Use one of: {}", POLICY_KEYS.join(", ")),
+    }
+    Ok(())
+}
+
+/// Toggles accept only `true`/`false` — "1", "yes" and friends are refused
+/// rather than guessed at.
+fn policy_bool(key: &str, value: &str) -> Result<bool> {
+    match value {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => bail!("Value for '{key}' must be true or false (got '{value}')"),
+    }
+}
+
+/// The active schema's artifact ids in display order — both the accepted keys
+/// for `rules <artifact>` and the section order written back. Empty when the
+/// schema cannot be resolved (the caller turns that into the not-found error).
+fn workflow_schema_artifacts(
+    ws: Option<&Workspace>,
+    cfg: &core::config::WorkflowConfig,
+) -> Vec<String> {
+    let user_dir = speclink_host::context::global_config_dir();
+    match core::schema::resolve_with(ws, Some(&user_dir), &cfg.schema_name()) {
+        Some(Ok(schema)) => core::status::display_order(&schema)
+            .into_iter()
+            .map(|a| a.id.clone())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// The complete rules map the seam replaces wholesale: the target section
+/// swapped in, every other section carried over. Ordered by the schema's
+/// artifact display order (the layout the desktop settings page also writes),
+/// with any section outside the schema appended after so nothing is dropped.
+/// Empty sections are removed by the seam.
+fn merged_rules(
+    current: &std::collections::BTreeMap<String, Vec<String>>,
+    artifacts: &[String],
+    target: &str,
+    entries: Vec<String>,
+) -> Vec<(String, Vec<String>)> {
+    let mut keys: Vec<String> = artifacts.to_vec();
+    for key in current.keys() {
+        if !keys.contains(key) {
+            keys.push(key.clone());
+        }
+    }
+    let mut out = Vec::with_capacity(keys.len());
+    for key in keys {
+        let section = if key == target {
+            entries.clone()
+        } else {
+            current.get(&key).cloned().unwrap_or_default()
+        };
+        out.push((key, section));
+    }
+    out
+}
+
+/// Unified diff over lines, generated here rather than shelled out to a system
+/// `diff` (Windows has none): the changed span between the common prefix and
+/// suffix, with up to three lines of context on each side. Empty when the two
+/// texts are identical.
+fn unified_diff(label: &str, old: &str, new: &str) -> String {
+    if old == new {
+        return String::new();
+    }
+    let o: Vec<&str> = old.lines().collect();
+    let n: Vec<&str> = new.lines().collect();
+    let mut pre = 0;
+    while pre < o.len() && pre < n.len() && o[pre] == n[pre] {
+        pre += 1;
+    }
+    let mut suf = 0;
+    while suf < o.len() - pre && suf < n.len() - pre && o[o.len() - 1 - suf] == n[n.len() - 1 - suf]
+    {
+        suf += 1;
+    }
+    const CTX: usize = 3;
+    let start = pre - pre.min(CTX);
+    let o_end = o.len() - suf + suf.min(CTX);
+    let n_end = n.len() - suf + suf.min(CTX);
+    let mut out = format!("--- a/{label}\n+++ b/{label}\n");
+    out.push_str(&format!(
+        "@@ -{} +{} @@\n",
+        hunk_range(start, o_end - start),
+        hunk_range(start, n_end - start)
+    ));
+    for line in &o[start..pre] {
+        out.push_str(&format!(" {line}\n"));
+    }
+    for line in &o[pre..o.len() - suf] {
+        out.push_str(&format!("-{line}\n"));
+    }
+    for line in &n[pre..n.len() - suf] {
+        out.push_str(&format!("+{line}\n"));
+    }
+    for line in &o[o.len() - suf..o_end] {
+        out.push_str(&format!(" {line}\n"));
+    }
+    out
+}
+
+/// One side of a hunk header. An empty side is `0,0` by unified-diff convention
+/// (there is no line 1 to point at).
+fn hunk_range(start: usize, count: usize) -> String {
+    if count == 0 {
+        "0,0".to_string()
+    } else {
+        format!("{},{count}", start + 1)
+    }
 }
 
 // --- completion ---

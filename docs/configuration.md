@@ -56,6 +56,31 @@ tools:
 schema: spec-driven                tdd: true
 ```
 
+## Managing `openspec/config.yaml` with the `workflow-config` verb
+
+`speclink workflow-config` manages the **workflow policy file**; `speclink config` manages the project-independent global key-value store. The two are unrelated.
+
+| Subcommand | What it does |
+|---|---|
+| `show [--json]` | Prints the four policy fields, `context` (line count) and `rules` (entries per section). Shows the **canonical values** — environment variables and deprecated keys are NOT applied (resolving effective values is `speclink instructions`' job). The `--json` payload is camelCase: `locale`, `specLocale`, `tdd`, `audit`, `context`, `rules`; unset fields are `null`, unset toggles are `false`. |
+| `set <key> <value>` | Writes one of `locale`, `spec_locale`, `tdd`, `audit`. Any other key exits non-zero; `tdd`/`audit` accept only `true`/`false`. Setting `false` (or a locale to an empty string) **removes the key**, keeping unset-means-default intact. |
+| `context --stdin` | Sets `context` to the full stdin text; whitespace-only input removes the key. |
+| `rules <artifact> --stdin` | Replaces that artifact's rule section wholesale (one entry per line, blank lines ignored); empty stdin removes the section. `artifact` must be an artifact id of the active schema — an unknown id exits non-zero. |
+
+All three write subcommands support `--dry-run`: the unified diff goes to stdout, nothing is written, exit code 0. The preview and the real write share the exact same rewrite path, so the diff IS what would land.
+
+```bash
+speclink workflow-config set tdd true --dry-run   # look first
+speclink workflow-config set tdd true             # then write
+cat CONTEXT.md | speclink workflow-config context --stdin
+```
+
+**fs and remote mode.** The mode comes from the existing binding: fs mode reads and writes `openspec/config.yaml` directly; remote mode reads the server's config document with its revision, applies the same rewrite, and writes back guarded by that revision. The revision never appears in the command interface — a concurrent write by someone else exits non-zero asking you to re-run, and never overwrites their write. Being offline or losing authentication also exits non-zero; nothing is spooled or queued.
+
+**Known trade-off: template comments are lost.** Writes are read-modify-write (parse the whole document, change the target key, write it all back). Every other key and value is preserved, but the original file's template comments do not survive the rewrite — the same trade-off the desktop settings page makes. Run `--dry-run` first to see the diff before deciding. An unparseable document always fails closed: both reads and writes exit non-zero (rewriting a broken file would destroy its content).
+
+The built-in `speclink-config` skill is built on this verb — it composes `context` and `rules` from a fixed set of codebase sources and always presents a diff for approval before writing.
+
 ## Custom tool descriptors
 
 The `tools` list accepts built-in names (`claude`, `codex`) and custom descriptor objects for any other AI harness:

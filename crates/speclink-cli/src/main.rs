@@ -82,6 +82,9 @@ enum Commands {
     Schema(SchemaArgs),
     /// Config management commands
     Config(ConfigArgs),
+    /// Workflow config commands (openspec/config.yaml)
+    #[command(name = "workflow-config")]
+    WorkflowConfig(WorkflowConfigArgs),
     /// Shell completion commands
     Completion(CompletionArgs),
     /// Task operations
@@ -511,6 +514,52 @@ enum ConfigCommands {
     },
     /// Edit config in $EDITOR
     Edit,
+}
+
+#[derive(Args)]
+struct WorkflowConfigArgs {
+    #[command(subcommand)]
+    command: WorkflowConfigCommands,
+}
+
+#[derive(Subcommand)]
+enum WorkflowConfigCommands {
+    /// Show the canonical workflow config (policy fields, context, rules)
+    Show {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Set a policy field: locale, spec_locale, tdd, audit
+    Set {
+        /// Policy key
+        key: String,
+        /// Policy value (tdd/audit take true or false)
+        value: String,
+        /// Print the unified diff instead of writing
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+    },
+    /// Replace the project context from stdin (blank input removes it)
+    Context {
+        /// Read the content from stdin
+        #[arg(long)]
+        stdin: bool,
+        /// Print the unified diff instead of writing
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+    },
+    /// Replace one artifact's rule section from stdin (empty input removes it)
+    Rules {
+        /// Artifact id of the active schema (proposal, design, specs, tasks, ...)
+        artifact: String,
+        /// Read the rules from stdin (one per line)
+        #[arg(long)]
+        stdin: bool,
+        /// Print the unified diff instead of writing
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+    },
 }
 
 #[derive(Args)]
