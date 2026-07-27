@@ -8,12 +8,12 @@ TBD - created by archiving change 'unify-user-documentation'. Update Purpose aft
 
 ### Requirement: 使用者文件採漸進揭露與單一責任
 
-Speclink 使用者文件 SHALL 以 README、getting-started、workflow、product-status、平台架構與實作路線圖形成漸進揭露入口。README SHALL 保留品牌圖片、標語「一套 SDD Engine，支援 Local Repo 與 Remote Store」、語言切換、Rust SDD 引擎與工具平台定位、PM／PO／RD／AI Agent 共用 change／artifact／task／verify／archive 語意、Local Repo／Remote Store 雙路徑、Spectra App 2.3.1 CLI 行為參考與 parity／golden tests 相容基線，並 SHALL 提供由 product-status 校正的目前狀態摘要、最短流程心智模型、Local Repo 開始入口與文件地圖。getting-started SHALL 只承載可直接完成的 Local Repo 第一輪，workflow SHALL 作為完整使用流程正典，product-status SHALL 作為目前能力狀態正典，平台架構 SHALL 維持唯一目標架構正典，實作路線圖 SHALL 維持其下的交付順序伴隨文件。各文件 SHALL 以連結導向下一層細節，SHALL NOT 在 README 或 getting-started 複製完整架構與狀態矩陣。
+Speclink 使用者文件 SHALL 以 README、getting-started、workflow、product-status、平台架構與實作路線圖形成漸進揭露入口。README SHALL 保留品牌圖片、標語「一套 SDD Engine，支援 Local Repo 與 Remote Store」、語言切換、Rust SDD 引擎與工具平台定位、PM／PO／RD／AI Agent 共用 change／artifact／task／verify／archive 語意、Local Repo／Remote Store 雙路徑、設計之初以 Spectra App 2.3.1 CLI 為行為參考的歷史起源，並 SHALL 提供由 product-status 校正的目前狀態摘要、最短流程心智模型、Local Repo 開始入口與文件地圖。getting-started SHALL 只承載可直接完成的 Local Repo 第一輪，workflow SHALL 作為完整使用流程正典，product-status SHALL 作為目前能力狀態正典，平台架構 SHALL 維持唯一目標架構正典，實作路線圖 SHALL 維持其下的交付順序伴隨文件。各文件 SHALL 以連結導向下一層細節，SHALL NOT 在 README 或 getting-started 複製完整架構與狀態矩陣。
 
 #### Scenario: README 保留專案定位與起源
 
 - **WHEN** 使用者開啟繁體中文或英文 README 判斷 Speclink 是什麼及為何存在
-- **THEN** 首段可見品牌圖片、SDD Engine 標語、語言切換、Rust 實作與共同流程語意、Local Repo／Remote Store 說明及 Spectra App 2.3.1 相容性起源，後續目前狀態清楚區分已可運作與分階段建置內容，並連到實作重構路線圖
+- **THEN** 首段可見品牌圖片、SDD Engine 標語、語言切換、Rust 實作與共同流程語意、Local Repo／Remote Store 說明及 Spectra App 2.3.1 行為參考起源，後續目前狀態清楚區分已可運作與分階段建置內容，並連到實作重構路線圖
 - **AND** 文件整理只校正過時事實、術語與連結，不得將上述首段改成僅含導覽連結的入口
 
 #### Scenario: 首次使用者由 README 到完成第一輪
@@ -28,20 +28,53 @@ Speclink 使用者文件 SHALL 以 README、getting-started、workflow、product
 
 
 <!-- @trace
-source: unify-user-documentation
-updated: 2026-07-17
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
   - README.en.md
   - README.md
-  - docs/getting-started.md
-  - docs/getting-started.zh-TW.md
-  - docs/implementation-refactor-roadmap.zh-TW.md
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
+  - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/context.rs
   - docs/platform-architecture.zh-TW.md
-  - docs/product-status.md
-  - docs/product-status.zh-TW.md
-  - docs/workflow.md
-  - docs/workflow.zh-TW.md
-  - packages/ui/src/__tests__/sonner.test.tsx
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->
 
 ---
@@ -199,7 +232,7 @@ code:
 ---
 ### Requirement: 中英文文件保持結構與事實對等
 
-`README.md`／`README.en.md`、`docs/getting-started.zh-TW.md`／`docs/getting-started.md`、`docs/workflow.zh-TW.md`／`docs/workflow.md`、`docs/product-status.zh-TW.md`／`docs/product-status.md` SHALL 分別保持相同的 H2 章節集合與順序、狀態矩陣列集合、命令語意及交叉連結。兩版 README SHALL 共用品牌圖片並保持標語、產品定位、共同流程語意、Local Repo／Remote Store、Spectra App 2.3.1 相容基線及目前狀態摘要的概念對等。繁體中文散文 SHALL 使用 `openspec/LANGUAGE.md` 的正典詞彙；引擎動詞、CLI 命令、欄位名與程式識別符 SHALL 保留於 code span，不以避免詞取代使用者文案。
+`README.md`／`README.en.md`、`docs/getting-started.zh-TW.md`／`docs/getting-started.md`、`docs/workflow.zh-TW.md`／`docs/workflow.md`、`docs/product-status.zh-TW.md`／`docs/product-status.md` SHALL 分別保持相同的 H2 章節集合與順序、狀態矩陣列集合、命令語意及交叉連結。兩版 README SHALL 共用品牌圖片並保持標語、產品定位、共同流程語意、Local Repo／Remote Store、Spectra App 2.3.1 行為參考起源及目前狀態摘要的概念對等。繁體中文散文 SHALL 使用 `openspec/LANGUAGE.md` 的正典詞彙；引擎動詞、CLI 命令、欄位名與程式識別符 SHALL 保留於 code span，不以避免詞取代使用者文案。
 
 #### Scenario: 語言切換不遺失流程資訊
 
@@ -213,20 +246,53 @@ code:
 
 
 <!-- @trace
-source: unify-user-documentation
-updated: 2026-07-17
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
   - README.en.md
   - README.md
-  - docs/getting-started.md
-  - docs/getting-started.zh-TW.md
-  - docs/implementation-refactor-roadmap.zh-TW.md
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
+  - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/context.rs
   - docs/platform-architecture.zh-TW.md
-  - docs/product-status.md
-  - docs/product-status.zh-TW.md
-  - docs/workflow.md
-  - docs/workflow.zh-TW.md
-  - packages/ui/src/__tests__/sonner.test.tsx
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->
 
 ---

@@ -8,7 +8,7 @@ TBD - created by archiving change 'commit-plan-visibility'. Update Purpose after
 
 ### Requirement: commit 確認閘門所見即所簽
 
-內嵌 speclink-commit 技能（事實來源 crates/speclink-core/assets/skills/commit.md，經 init 與 update 渲染至各工具技能目錄）SHALL 規定以下確認流程：commit 訊息 SHALL 於使用者確認之前生成；commit 計畫（分組檔案清單）與 commit 訊息 SHALL 在呼叫確認工具之前以可見文字一次輸出；確認問題的文字 SHALL NOT 指涉對話中未曾輸出的內容。本能力屬 Speclink 自身延伸、非 Spectra parity 對照面；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
+內嵌 speclink-commit 技能（事實來源 crates/speclink-core/assets/skills/commit.md，經 init 與 update 渲染至各工具技能目錄）SHALL 規定以下確認流程：commit 訊息 SHALL 於使用者確認之前生成；commit 計畫（分組檔案清單）與 commit 訊息 SHALL 在呼叫確認工具之前以可見文字一次輸出；確認問題的文字 SHALL NOT 指涉對話中未曾輸出的內容。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
 
 #### Scenario: 渲染產物將訊息生成排在確認之前
 
@@ -30,14 +30,53 @@ TBD - created by archiving change 'commit-plan-visibility'. Update Purpose after
 - **WHEN** 執行環境沒有 AskUserQuestion 工具
 - **THEN** 技能檔 SHALL 規定以純文字提出相同的確認問題並等待使用者回覆，且同樣 SHALL 先輸出計畫與訊息後才提問
 
+
 <!-- @trace
-source: commit-plan-visibility
-updated: 2026-07-12
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
-  - crates/speclink-core/assets/skills/commit.md
+  - README.en.md
+  - README.md
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
+  - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
   - crates/speclink-core/tests/golden/claude.snapshot.md
   - crates/speclink-core/tests/golden/codex.snapshot.md
   - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
   - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/render_golden.rs
+  - crates/speclink-host/src/context.rs
+  - docs/platform-architecture.zh-TW.md
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->

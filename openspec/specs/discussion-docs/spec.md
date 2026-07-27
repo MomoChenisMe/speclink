@@ -70,7 +70,7 @@ speclink 生成的 discuss 技能內容 SHALL 指示 agent 在建立討論記錄
 ---
 ### Requirement: 討論以 link 動詞併入既有變更
 
-speclink discuss link SHALL 接受兩個位置參數（討論 slug 與既有變更名），鑄造變更側連結：變更 meta 檔（openspec/changes/<change>/.openspec.yaml）的 from_discussion 欄位 SHALL 為逗號分隔清單——尚無該欄位時增寫為單值；已指向其他討論時 SHALL 於既有值尾端以逗號累加本 slug、既有值保留不覆蓋；清單已含本 slug 時 SHALL 為冪等成功不改檔。討論記錄（openspec/discussions/<slug>.md）SHALL 逐位元不變——link SHALL NOT 標記 status: promoted、SHALL NOT 寫 promoted_to；「已轉出」的標記職責移交 speclink discuss seal。open 與 concluded 狀態的討論皆 SHALL 可併入；已封存討論 SHALL NOT 可併入。指令不吃 stdin，旗標僅 --json。成功時 exit code 0，stdout 輸出單行成功訊息（含討論 slug 與變更名；--no-color 下無 ANSI 色彩）；帶 --json 時輸出含 slug 與 change 欄位（camelCase）的 payload。守衛失敗（討論不存在、討論已封存、變更不存在）時 SHALL 以非零 exit code 結束、stderr 說明原因，且兩側檔案 SHALL 逐位元不變。同一組合重跑 SHALL 為冪等成功：exit code 0 且兩側檔案內容不變。變更封存時，其 from_discussion 清單中的每份討論 SHALL 各自檢查：無其他在途變更的 from_discussion 清單引用該討論時，既有自動封存機制 SHALL 將該記錄移入 openspec/discussions/archive/；僅單一來源討論之變更，其封存的人眼輸出 SHALL 與變更前逐位元一致。本指令為 Speclink 自有延伸，不在 Spectra 對照範圍；既有指令的人眼與 --json 輸出 SHALL 逐位元不變。
+speclink discuss link SHALL 接受兩個位置參數（討論 slug 與既有變更名），鑄造變更側連結：變更 meta 檔（openspec/changes/<change>/.openspec.yaml）的 from_discussion 欄位 SHALL 為逗號分隔清單——尚無該欄位時增寫為單值；已指向其他討論時 SHALL 於既有值尾端以逗號累加本 slug、既有值保留不覆蓋；清單已含本 slug 時 SHALL 為冪等成功不改檔。討論記錄（openspec/discussions/<slug>.md）SHALL 逐位元不變——link SHALL NOT 標記 status: promoted、SHALL NOT 寫 promoted_to；「已轉出」的標記職責移交 speclink discuss seal。open 與 concluded 狀態的討論皆 SHALL 可併入；已封存討論 SHALL NOT 可併入。指令不吃 stdin，旗標僅 --json。成功時 exit code 0，stdout 輸出單行成功訊息（含討論 slug 與變更名；--no-color 下無 ANSI 色彩）；帶 --json 時輸出含 slug 與 change 欄位（camelCase）的 payload。守衛失敗（討論不存在、討論已封存、變更不存在）時 SHALL 以非零 exit code 結束、stderr 說明原因，且兩側檔案 SHALL 逐位元不變。同一組合重跑 SHALL 為冪等成功：exit code 0 且兩側檔案內容不變。變更封存時，其 from_discussion 清單中的每份討論 SHALL 各自檢查：無其他在途變更的 from_discussion 清單引用該討論時，既有自動封存機制 SHALL 將該記錄移入 openspec/discussions/archive/；僅單一來源討論之變更，其封存的人眼輸出 SHALL 與變更前逐位元一致。本指令為 Speclink 自有延伸；既有指令的人眼與 --json 輸出 SHALL 逐位元不變。
 
 #### Scenario: 成功併入既有變更
 
@@ -115,20 +115,53 @@ speclink discuss link SHALL 接受兩個位置參數（討論 slug 與既有變�
 
 
 <!-- @trace
-source: discussion-reflection-seal
-updated: 2026-07-09
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
+  - README.en.md
+  - README.md
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
   - crates/speclink-cli/src/commands.rs
   - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/discuss_seal.rs
-  - crates/speclink-core/assets/skills/discuss.md
-  - crates/speclink-core/assets/skills/ingest.md
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
   - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
   - crates/speclink-core/tests/golden/claude.snapshot.md
   - crates/speclink-core/tests/golden/codex.snapshot.md
   - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
   - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/context.rs
+  - docs/platform-architecture.zh-TW.md
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->
 
 ---
@@ -222,7 +255,7 @@ code:
 ---
 ### Requirement: 內容落地以 seal 動詞標記已轉出
 
-speclink discuss seal SHALL 接受兩個位置參數（討論 slug 與變更名）。前置守衛 SHALL 全數通過方可寫入：討論 SHALL 存在且未封存、變更 SHALL 存在、且變更 meta 的 from_discussion 清單 SHALL 含該 slug（鏈須先由 link／promote／new change 鑄妥）——任一不滿足時 SHALL 以非零 exit code 結束、stderr 說明原因，且兩側檔案逐位元不變。守衛通過時：討論記錄 frontmatter 的 status SHALL 標記 promoted（由 open 或 concluded 轉入），promoted_to SHALL 以逗號累加該變更名、既有值保留不覆蓋。指令不吃 stdin，旗標僅 --json 與 --no-color。成功時 exit code 0、stdout 單行成功訊息（--no-color 下無 ANSI 色彩）；帶 --json 時輸出含 slug 與 change 欄位（camelCase）的 payload。同一組合重跑 SHALL 為冪等成功：promoted_to 已含該變更名時不改檔、exit code 0。本指令為 Speclink 自有延伸，不在 Spectra 對照範圍。
+speclink discuss seal SHALL 接受兩個位置參數（討論 slug 與變更名）。前置守衛 SHALL 全數通過方可寫入：討論 SHALL 存在且未封存、變更 SHALL 存在、且變更 meta 的 from_discussion 清單 SHALL 含該 slug（鏈須先由 link／promote／new change 鑄妥）——任一不滿足時 SHALL 以非零 exit code 結束、stderr 說明原因，且兩側檔案逐位元不變。守衛通過時：討論記錄 frontmatter 的 status SHALL 標記 promoted（由 open 或 concluded 轉入），promoted_to SHALL 以逗號累加該變更名、既有值保留不覆蓋。指令不吃 stdin，旗標僅 --json 與 --no-color。成功時 exit code 0、stdout 單行成功訊息（--no-color 下無 ANSI 色彩）；帶 --json 時輸出含 slug 與 change 欄位（camelCase）的 payload。同一組合重跑 SHALL 為冪等成功：promoted_to 已含該變更名時不改檔、exit code 0。本指令為 Speclink 自有延伸。
 
 #### Scenario: 成功封印標記已轉出
 
@@ -249,21 +282,55 @@ speclink discuss seal SHALL 接受兩個位置參數（討論 slug 與變更名�
 | 變更 meta 的 from_discussion 未含該 slug | 拒絕：鏈未鑄妥 |
 | promoted_to 已含該變更名 | 冪等成功，不改檔 |
 
+
 <!-- @trace
-source: discussion-reflection-seal
-updated: 2026-07-09
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
+  - README.en.md
+  - README.md
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
   - crates/speclink-cli/src/commands.rs
   - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/discuss_seal.rs
-  - crates/speclink-core/assets/skills/discuss.md
-  - crates/speclink-core/assets/skills/ingest.md
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
   - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
   - crates/speclink-core/tests/golden/claude.snapshot.md
   - crates/speclink-core/tests/golden/codex.snapshot.md
   - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
   - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/context.rs
+  - docs/platform-architecture.zh-TW.md
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->
 
 ---
@@ -301,7 +368,7 @@ code:
 ---
 ### Requirement: 討論重新結論標記已反映變更待重新反映
 
-speclink discuss conclude 寫入結論後 SHALL 檢查討論記錄 frontmatter 的 promoted_to：非空時 SHALL 對其中每個變更名判存活——僅 openspec/changes/<name>/ 存在（active）者納入蓋章，僅存在於 openspec/changes/archive/ 者 SHALL 跳過。對每個納入的 active 變更，其 meta 檔（openspec/changes/<name>/.openspec.yaml）的 restale_from 欄位 SHALL 以逗號累加本討論 slug——尚無該欄位時增寫為單值、已有其他值時於尾端累加、已含本 slug 時 SHALL 冪等不改該檔；既有 meta 欄位 SHALL 逐字保留。判存活的鍵 SHALL 為 promoted_to 非空（曾被反映），SHALL NOT 綁 status 欄位值。promoted_to 為空、或其項全為已歸檔變更時，SHALL NOT 寫入任何變更 meta。討論記錄的 Context、Rounds 區 SHALL 逐位元不變（僅 Conclusion 區依既有 conclude 行為改寫）。成功時 stdout SHALL 於既有結論訊息後，另報告被標記待重新反映的 active 變更清單（無則不報告）；帶 --json 時 payload SHALL 含被標記變更名的陣列。本行為為 Speclink 自有延伸，不在 Spectra 對照範圍；未觸發蓋章時（promoted_to 空）既有 conclude 的人眼與 --json 輸出 SHALL 逐位元不變。
+speclink discuss conclude 寫入結論後 SHALL 檢查討論記錄 frontmatter 的 promoted_to：非空時 SHALL 對其中每個變更名判存活——僅 openspec/changes/<name>/ 存在（active）者納入蓋章，僅存在於 openspec/changes/archive/ 者 SHALL 跳過。對每個納入的 active 變更，其 meta 檔（openspec/changes/<name>/.openspec.yaml）的 restale_from 欄位 SHALL 以逗號累加本討論 slug——尚無該欄位時增寫為單值、已有其他值時於尾端累加、已含本 slug 時 SHALL 冪等不改該檔；既有 meta 欄位 SHALL 逐字保留。判存活的鍵 SHALL 為 promoted_to 非空（曾被反映），SHALL NOT 綁 status 欄位值。promoted_to 為空、或其項全為已歸檔變更時，SHALL NOT 寫入任何變更 meta。討論記錄的 Context、Rounds 區 SHALL 逐位元不變（僅 Conclusion 區依既有 conclude 行為改寫）。成功時 stdout SHALL 於既有結論訊息後，另報告被標記待重新反映的 active 變更清單（無則不報告）；帶 --json 時 payload SHALL 含被標記變更名的陣列。本行為為 Speclink 自有延伸；未觸發蓋章時（promoted_to 空）既有 conclude 的人眼與 --json 輸出 SHALL 逐位元不變。
 
 #### Scenario: 重新結論已反映討論蓋章其 active 變更
 
@@ -329,30 +396,55 @@ speclink discuss conclude 寫入結論後 SHALL 檢查討論記錄 frontmatter �
 - **WHEN** 執行 speclink discuss conclude alpha-search 帶新結論
 - **THEN** cut-a 的 meta 增寫 restale_from: alpha-search
 
----
 
 <!-- @trace
-source: reconclude-restale
-updated: 2026-07-09
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - README.en.md
+  - README.md
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
   - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/reconclude_restale.rs
-  - crates/speclink-core/assets/skills/ingest.md
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
   - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
   - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
   - crates/speclink-core/src/listing.rs
   - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
   - crates/speclink-core/tests/golden/claude.snapshot.md
   - crates/speclink-core/tests/golden/codex.snapshot.md
   - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
   - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/i18n.tsx
+  - crates/speclink-host/src/context.rs
+  - docs/platform-architecture.zh-TW.md
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->
 
 ---

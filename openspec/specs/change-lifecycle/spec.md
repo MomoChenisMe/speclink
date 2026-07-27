@@ -199,7 +199,7 @@ code:
 
 speclink task done 成功完成一項任務時，若該 change 的 .openspec.yaml 尚無 started_* 欄位，SHALL 於同一操作內蓋開工章：started_at 為當日 ISO 日期；started_by 依 git 身分可得性寫入——可歸屬者寫入、不可歸屬者缺席；本指令無 agent 識別來源，started_with 缺席。meta 既有欄位 SHALL 逐字元保留。該 change 已有 started_* 時 SHALL 保留首章不變。touched-files 記錄（.speclink/ 下）行為 SHALL 維持現行語意。
 
-本需求為 parity 敏感：指令的人眼輸出、--json payload（change、status、taskDesc、taskId 對應之既有欄位形狀）與 exit code SHALL 與現行位元級一致（對 Spectra 2.3.1 的輸出 parity 不變）；.openspec.yaml 的開工章為刻意檔案效果分歧——自我基線的檔案樹對照 SHALL 隨本需求更新並記載此差異。錯誤路徑（tasks.md 缺失、任務序號無效、任務已完成）SHALL 維持現行訊息與非零 exit code，且 SHALL NOT 寫入任何檔案。
+本需求為輸出凍結敏感：指令的人眼輸出、--json payload（change、status、taskDesc、taskId 對應之既有欄位形狀）與 exit code SHALL 與現行位元級一致（既有輸出基線不變）；.openspec.yaml 的開工章為刻意檔案效果變更——自我基線的檔案樹對照 SHALL 隨本需求更新並記載此差異。錯誤路徑（tasks.md 缺失、任務序號無效、任務已完成）SHALL 維持現行訊息與非零 exit code，且 SHALL NOT 寫入任何檔案。
 
 #### Scenario: 首次完成任務蓋開工章
 
@@ -227,27 +227,61 @@ speclink task done 成功完成一項任務時，若該 change 的 .openspec.yam
 - **WHEN** 對無 tasks.md 的 change 名執行 speclink task done
 - **THEN** 指令以現行「tasks.md not found」錯誤結束，該 change 的 .openspec.yaml（若存在）無任何變動
 
+
 <!-- @trace
-source: task-done-implies-started
-updated: 2026-07-07
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
-  - Cargo.lock
-  - apps/desktop/core/src/manage.rs
-  - crates/speclink-cli/Cargo.toml
+  - README.en.md
+  - README.md
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
   - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
   - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
+  - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
   - crates/speclink-core/src/tasks.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/tests/no_direct_fs.rs
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/stage.test.ts
-  - packages/ui/src/stage.ts
+  - crates/speclink-core/src/validate.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/context.rs
+  - docs/platform-architecture.zh-TW.md
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->
 
 ---
 ### Requirement: 變更以 discard 動詞廢棄
 
-speclink discard SHALL 接受一個位置參數（變更名）與 --force、--json 旗標，廢棄一個尚未動工的變更：刪除 openspec/changes/<change>/ 目錄整棵，並刪除該變更的 touched 紀錄檔（若存在）。變更不存在時 SHALL 以非零 exit code 結束並於 stderr 說明。變更有動工痕跡——meta 含 started_at，或 tasks.md 有任何已勾任務——且未帶 --force 時 SHALL 拒絕：非零 exit code、stderr 提示動工痕跡與 --force，且 SHALL NOT 改動任何檔案；帶 --force 時 SHALL 照常執行。成功時 exit code 0，stdout 報告已刪除的變更名與每份解鏈討論的 slug 及回退後狀態（--no-color 下無 ANSI 色彩）；帶 --json 時 SHALL 輸出 camelCase payload：變更名與解鏈討論清單（各含 slug 與回退後狀態）。remote store 模式下 SHALL 以非零 exit code 於 stderr 報 discard 不支援。變更目錄刪除失敗時 SHALL 以非零 exit code 回報，已完成的討論解鏈不回滾且輸出 SHALL 明示已解鏈清單。本指令為 Speclink 自有延伸，不在 Spectra 對照範圍；既有指令的人眼與 --json 輸出 SHALL 逐位元不變。
+speclink discard SHALL 接受一個位置參數（變更名）與 --force、--json 旗標，廢棄一個尚未動工的變更：刪除 openspec/changes/<change>/ 目錄整棵，並刪除該變更的 touched 紀錄檔（若存在）。變更不存在時 SHALL 以非零 exit code 結束並於 stderr 說明。變更有動工痕跡——meta 含 started_at，或 tasks.md 有任何已勾任務——且未帶 --force 時 SHALL 拒絕：非零 exit code、stderr 提示動工痕跡與 --force，且 SHALL NOT 改動任何檔案；帶 --force 時 SHALL 照常執行。成功時 exit code 0，stdout 報告已刪除的變更名與每份解鏈討論的 slug 及回退後狀態（--no-color 下無 ANSI 色彩）；帶 --json 時 SHALL 輸出 camelCase payload：變更名與解鏈討論清單（各含 slug 與回退後狀態）。remote store 模式下 SHALL 以非零 exit code 於 stderr 報 discard 不支援。變更目錄刪除失敗時 SHALL 以非零 exit code 回報，已完成的討論解鏈不回滾且輸出 SHALL 明示已解鏈清單。本指令為 Speclink 自有延伸；既有指令的人眼與 --json 輸出 SHALL 逐位元不變。
 
 #### Scenario: 未動工變更成功廢棄
 
@@ -288,29 +322,61 @@ speclink discard SHALL 接受一個位置參數（變更名）與 --force、--js
 - **WHEN** 執行 speclink discard <change> --json 成功廢棄
 - **THEN** stdout 為 JSON：含變更名欄位與解鏈討論陣列（每項含 slug 與回退後狀態），欄位名一律 camelCase
 
+
 <!-- @trace
-source: discard-change-verb
-updated: 2026-07-09
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
   - README.en.md
   - README.md
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
   - crates/speclink-cli/src/commands.rs
   - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-core/src/discard.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
   - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
   - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-fs/tests/store_fs.rs
-  - crates/speclink-node/src/store_bridge.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/context.rs
+  - docs/platform-architecture.zh-TW.md
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->
 
 ---
 ### Requirement: restale_from 記錄變更待重新反映的討論並經 CLI 觀測
 
-變更 meta 檔（openspec/changes/<name>/.openspec.yaml）MAY 帶 restale_from 欄位——逗號分隔的討論 slug 清單，語意為「本變更曾反映（seal）這些討論，其後這些討論被重新結論，內容相對新結論過期、待 re-ingest」。ChangeMeta SHALL 提供 restale_from() accessor 回傳 Vec<String>：欄位缺席時回空、逗號值 SHALL 各段 trim 後分割，行為平行既有 from_discussion／from_discussions()。此欄位由 discuss conclude 寫入、discuss seal 清除（見 discussion-docs 正典），本需求規範其讀取與觀測。speclink show <change> --json SHALL 於變更 payload 恆曝 restaleFrom（camelCase 字串陣列，無旗標為空陣列），平行既有 fromDiscussions。speclink list --json SHALL 於 restale_from 非空的變更 payload 曝 restaleFrom 陣列、為空時省略該欄位——以維持 list --json 對無旗標變更的既有（Spectra 對照）輸出逐位元不變。speclink analyze <change> 於某變更 restale_from 非空時 SHALL 出一條資訊性 finding，指明該變更反映的討論已重新結論、需重新 ingest 以同步新結論。此欄位讀取 SHALL 為零 per-load 掃描——僅讀既存 meta 欄位，不掃描討論記錄。
+變更 meta 檔（openspec/changes/<name>/.openspec.yaml）MAY 帶 restale_from 欄位——逗號分隔的討論 slug 清單，語意為「本變更曾反映（seal）這些討論，其後這些討論被重新結論，內容相對新結論過期、待 re-ingest」。ChangeMeta SHALL 提供 restale_from() accessor 回傳 Vec<String>：欄位缺席時回空、逗號值 SHALL 各段 trim 後分割，行為平行既有 from_discussion／from_discussions()。此欄位由 discuss conclude 寫入、discuss seal 清除（見 discussion-docs 正典），本需求規範其讀取與觀測。speclink show <change> --json SHALL 於變更 payload 恆曝 restaleFrom（camelCase 字串陣列，無旗標為空陣列），平行既有 fromDiscussions。speclink list --json SHALL 於 restale_from 非空的變更 payload 曝 restaleFrom 陣列、為空時省略該欄位——以維持 list --json 對無旗標變更的既有輸出逐位元不變。speclink analyze <change> 於某變更 restale_from 非空時 SHALL 出一條資訊性 finding，指明該變更反映的討論已重新結論、需重新 ingest 以同步新結論。此欄位讀取 SHALL 為零 per-load 掃描——僅讀既存 meta 欄位，不掃描討論記錄。
 
 #### Scenario: restale_from() accessor 讀取
 
@@ -322,7 +388,7 @@ code:
 - **WHEN** 對 restale_from 含 alpha-search 的變更、以及無該欄位的變更，各執行 speclink show <change> --json
 - **THEN** 前者 payload 的 restaleFrom 為 ["alpha-search"]；後者 payload 的 restaleFrom 為空陣列（欄位恆存在）
 
-#### Scenario: list 曝 restaleFrom 且對無旗標變更保 parity
+#### Scenario: list 曝 restaleFrom 且對無旗標變更輸出不變
 
 - **WHEN** 對含一個 restale_from 非空變更與一個無該欄位變更的專案執行 speclink list --json
 - **THEN** 非空變更的 payload 含 restaleFrom 陣列（如 ["alpha-search"]）；無旗標變更的 payload 省略 restaleFrom 欄位，其 list --json 輸出與本變更前逐位元一致
@@ -332,28 +398,55 @@ code:
 - **WHEN** 對 restale_from 非空的變更執行 speclink analyze <change>
 - **THEN** 輸出含一條資訊性 finding，指明該變更反映的討論已重新結論、需 re-ingest；restale_from 為空時無此 finding，且 analyze 輸出與本變更前逐位元一致
 
+
 <!-- @trace
-source: reconclude-restale
-updated: 2026-07-09
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - README.en.md
+  - README.md
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
   - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/reconclude_restale.rs
-  - crates/speclink-core/assets/skills/ingest.md
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
   - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
   - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
   - crates/speclink-core/src/listing.rs
   - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
   - crates/speclink-core/tests/golden/claude.snapshot.md
   - crates/speclink-core/tests/golden/codex.snapshot.md
   - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
   - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/i18n.tsx
+  - crates/speclink-host/src/context.rs
+  - docs/platform-architecture.zh-TW.md
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->
 
 ---

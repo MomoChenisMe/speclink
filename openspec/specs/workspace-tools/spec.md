@@ -127,7 +127,7 @@ code:
 ---
 ### Requirement: init 內建 Agent 工具選擇
 
-所有 `speclink init`（filesystem 與 Remote Store）SHALL 在任何 Workspace 寫入前解析至少一個內建 Agent 工具。顯式 `--tools` SHALL 接受 `claude`、`codex` 或逗號分隔的兩者並跳過詢問；解析後為空或含未知名稱 SHALL 以非零 exit code 失敗。未提供 `--tools` 且 stdin 為互動終端時，CLI SHALL 於 stderr 明示詢問 Claude 與 Codex 並允許選一個或兩個；兩者皆未選 SHALL NOT 開始 init，並 SHALL 繼續要求有效選擇。未提供 `--tools` 且 stdin 非互動終端時，CLI SHALL 在零寫入狀態以非零 exit code 失敗，stderr SHALL 指出 `--tools` 與三種有效選法，stdout SHALL 為空。init SHALL NOT 將 redirected／piped stdin 當作工具答案，SHALL NOT 新增 stdin payload 或 `--json` 介面。此行為是對 Spectra 2.3.1 與既有 footprint 自動偵測的刻意分歧；顯式提供 `--tools` 時既有人眼成功輸出與 `--no-color` 行為 SHALL 維持既有基線。
+所有 `speclink init`（filesystem 與 Remote Store）SHALL 在任何 Workspace 寫入前解析至少一個內建 Agent 工具。顯式 `--tools` SHALL 接受 `claude`、`codex` 或逗號分隔的兩者並跳過詢問；解析後為空或含未知名稱 SHALL 以非零 exit code 失敗。未提供 `--tools` 且 stdin 為互動終端時，CLI SHALL 於 stderr 明示詢問 Claude 與 Codex 並允許選一個或兩個；兩者皆未選 SHALL NOT 開始 init，並 SHALL 繼續要求有效選擇。未提供 `--tools` 且 stdin 非互動終端時，CLI SHALL 在零寫入狀態以非零 exit code 失敗，stderr SHALL 指出 `--tools` 與三種有效選法，stdout SHALL 為空。init SHALL NOT 將 redirected／piped stdin 當作工具答案，SHALL NOT 新增 stdin payload 或 `--json` 介面。此行為是對早期 footprint 自動偵測的刻意分歧；顯式提供 `--tools` 時既有人眼成功輸出與 `--no-color` 行為 SHALL 維持既有基線。
 
 #### Scenario: filesystem init 顯式選擇 Codex
 
@@ -164,31 +164,55 @@ code:
 - **WHEN** 以 `--no-color` 執行互動式 init 並選取任一有效工具
 - **THEN** prompt 與成功輸出不含 ANSI escape sequence，exit code 與檔案效果和有色模式相同
 
+
 <!-- @trace
-source: unify-agent-tool-bootstrap
-updated: 2026-07-24
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/core/src/settings.rs
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/lib.rs
+  - README.en.md
+  - README.md
   - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/remoteOpen.test.ts
-  - apps/desktop/src/__tests__/remoteResilience.test.tsx
-  - apps/desktop/src/__tests__/serversPanel.test.tsx
-  - apps/desktop/src/__tests__/workspaceChooser.test.tsx
-  - apps/desktop/src/adapter/connections.ts
-  - apps/desktop/src/components/WorkspaceChooser.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
   - crates/speclink-cli/src/commands.rs
   - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/init_tools.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-cli/tests/remote_section.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
   - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
+  - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
   - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/context.rs
+  - docs/platform-architecture.zh-TW.md
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->
 
 ---

@@ -237,7 +237,7 @@ code:
 ---
 ### Requirement: board_rank 不進 CLI 輸出且既有輸出逐位元不變
 
-`board_rank` SHALL 為桌面看板專用欄位：speclink list --json、speclink discuss list --json 及對應人眼輸出 SHALL NOT 出現 rank 相關欄位，且對含 `board_rank` 的 repo，上述輸出 SHALL 與同一 repo 移除全部 `board_rank` 欄位後的輸出逐位元一致（項目順序與欄位皆不變）。本需求為 parity 敏感：對 Spectra 2.3.1 的既有回歸對照 SHALL 維持位元級一致。
+`board_rank` SHALL 為桌面看板專用欄位：speclink list --json、speclink discuss list --json 及對應人眼輸出 SHALL NOT 出現 rank 相關欄位，且對含 `board_rank` 的 repo，上述輸出 SHALL 與同一 repo 移除全部 `board_rank` 欄位後的輸出逐位元一致（項目順序與欄位皆不變）。本需求為輸出凍結敏感：既有輸出基線 SHALL 維持位元級一致。
 
 #### Scenario: 含 rank 的 repo 之 CLI 輸出不變
 
@@ -246,35 +246,53 @@ code:
 
 
 <!-- @trace
-source: desktop-card-reorder
-updated: 2026-07-08
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
-  - apps/desktop/core/src/discussions.rs
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/rank.rs
-  - apps/desktop/src-tauri/src/lib.rs
+  - README.en.md
+  - README.md
   - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
   - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/inprogress.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
   - crates/speclink-core/src/listing.rs
   - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/util.rs
-  - packages/ui/src/__tests__/discussionColumn.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/boardDnd.ts
-  - packages/ui/src/components/DiscussionColumn.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/i18n.tsx
+  - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/validate.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/context.rs
+  - docs/platform-architecture.zh-TW.md
+  - packages/ui/src/__tests__/delta.test.ts
+  - packages/ui/src/__tests__/taskList.test.tsx
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/delta.ts
   - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->
 
 ---

@@ -325,7 +325,7 @@ code:
 ---
 ### Requirement: 任務取消勾選動詞
 
-CLI SHALL 提供 speclink task undone <task-id>（旗標 --change <name> 與 --json，無 stdin），把已勾選的任務翻回未勾選。task-id SHALL 接受兩種值域：純數字（ordinal 定址，行為與輸出與現行逐位元一致）與 tsk_ 前綴的 stable ID（依 task-identity 能力查找）。取消勾選 SHALL 為純狀態翻轉：SHALL NOT 寫入 touched 記錄、SHALL NOT 變更 change 的開工標記、SHALL NOT 補指派 stable ID。省略 --change 時的變更解析規則 SHALL 與 task done 相同。成功時 exit code 為 0；任務已是未勾選、task id 既非數字亦非 tsk_ 前綴、task id 超界或查無此 stable ID、tasks.md 不存在時 SHALL 以非 0 exit code 結束、stderr 輸出語義化訊息（形狀與 task done 的對應錯誤對稱）且無任何檔案效果。remote 模式下本動詞的人眼與 --json 輸出形狀 SHALL 與 fs 模式一致。本動詞為對 Spectra 2.3.1 的刻意延伸（Spectra 無此動詞），SHALL NOT 改變既有指令的 parity 基線。
+CLI SHALL 提供 speclink task undone <task-id>（旗標 --change <name> 與 --json，無 stdin），把已勾選的任務翻回未勾選。task-id SHALL 接受兩種值域：純數字（ordinal 定址，行為與輸出與現行逐位元一致）與 tsk_ 前綴的 stable ID（依 task-identity 能力查找）。取消勾選 SHALL 為純狀態翻轉：SHALL NOT 寫入 touched 記錄、SHALL NOT 變更 change 的開工標記、SHALL NOT 補指派 stable ID。省略 --change 時的變更解析規則 SHALL 與 task done 相同。成功時 exit code 為 0；任務已是未勾選、task id 既非數字亦非 tsk_ 前綴、task id 超界或查無此 stable ID、tasks.md 不存在時 SHALL 以非 0 exit code 結束、stderr 輸出語義化訊息（形狀與 task done 的對應錯誤對稱）且無任何檔案效果。remote 模式下本動詞的人眼與 --json 輸出形狀 SHALL 與 fs 模式一致。本動詞為 speclink 自有延伸，SHALL NOT 改變既有指令的輸出基線。
 
 #### Scenario: 取消已勾選的任務
 
@@ -370,30 +370,51 @@ CLI SHALL 提供 speclink task undone <task-id>（旗標 --change <name> 與 --j
 
 
 <!-- @trace
-source: stable-task-and-evidence
-updated: 2026-07-13
+source: spectra-legacy-cleanup
+updated: 2026-07-27
 code:
-  - Cargo.lock
-  - Cargo.toml
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/src-tauri/src/lib.rs
+  - README.en.md
+  - README.md
   - apps/desktop/src/App.tsx
-  - apps/desktop/src/adapter/tauriDataSource.ts
+  - apps/desktop/src/components/ProjectTabs.tsx
+  - apps/desktop/src/index.css
+  - crates/speclink-cli/src/color.rs
   - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/tests/task_stable_id.rs
-  - crates/speclink-cli/tests/task_undone.rs
-  - crates/speclink-core/Cargo.toml
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
+  - crates/speclink-cli/tests/task_done_stamps.rs
+  - crates/speclink-core/assets/skills/archive.md
+  - crates/speclink-core/src/analyzer.rs
   - crates/speclink-core/src/archive.rs
   - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/src/demo.rs
+  - crates/speclink-core/src/discuss.rs
+  - crates/speclink-core/src/drift.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/instructions.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
   - crates/speclink-core/src/newcmd.rs
+  - crates/speclink-core/src/preflight.rs
+  - crates/speclink-core/src/schema.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/status.rs
   - crates/speclink-core/src/tasks.rs
-  - crates/speclink-host/Cargo.toml
-  - crates/speclink-host/src/evidence.rs
-  - crates/speclink-host/src/lib.rs
-  - crates/speclink-node/src/lib.rs
+  - crates/speclink-core/src/validate.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/context.rs
+  - docs/platform-architecture.zh-TW.md
+  - packages/ui/src/__tests__/delta.test.ts
   - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ChangeList.tsx
+  - packages/ui/src/components/DeltaBadges.tsx
   - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/tasks.ts
+  - packages/ui/src/delta.ts
+  - packages/ui/src/index.ts
+  - packages/ui/src/theme.css
 -->

@@ -8,7 +8,7 @@ speclink 已完成自立，對 Spectra 的對齊是歷史事實而非進行式�
 
 1. README 聲稱以「parity/golden tests」保護相容基準，但 parity suite 並不存在於 repo——文件失真。
 2. 正典規格 12 份以「對 Spectra 2.3.1 的 parity 基線」定義輸出凍結，其中 store-abstraction 更點名不存在的 parity_suite 31 項／color_suite 16 項／twin harness 8 情境為驗證載體——規格要求執行不存在的測試，AI 代理照做時只能編造結果或卡住。
-3. 源碼約 128 處「(matches Spectra)」類註解誤導新維護者以為需安裝 Spectra 驗證行為。
+3. 源碼與 UI 共 141 處「(matches Spectra)」類註解誤導新維護者以為需安裝 Spectra 驗證行為。
 
 目標使用者：接手本 repo 的開發者，以及經 AI 代理跑 SDD 流程的維護者（產出 proposal／specs／design／tasks 時會讀取正典規格與 README）。使用情境：verify 與 archive 階段的規格閱讀、propose 階段的規則遵循、日常維護的源碼導讀。
 
@@ -47,7 +47,7 @@ speclink 已完成自立，對 Spectra 的對齊是歷史事實而非進行式�
 
 - Affected specs: board-card-order、change-lifecycle、command-runtime、commit-skill、dev-harness、discussion-docs、remote-connection、store-abstraction、user-documentation、verb-contract、workflow-config、workspace-tools（12 個能力全為 MODIFIED——措辭改寫、行為不變）
 - Affected code:
-  - Modified: README.md、README.en.md、docs/platform-architecture.zh-TW.md、crates/speclink-core/assets/skills/archive.md、.claude/skills/speclink-archive/SKILL.md、.agents/skills/speclink-archive/SKILL.md、crates/speclink-core/tests/golden/claude.snapshot.md、crates/speclink-core/tests/golden/codex.snapshot.md、crates/speclink-core/tests/golden/neutral-cli.snapshot.md、crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md；另含源碼註解批次改寫——crates/speclink-core/src/、crates/speclink-cli/src/、crates/speclink-cli/tests/、crates/speclink-host/src/context.rs、packages/ui/src/、apps/desktop/src/ 下含 Spectra 字樣的註解檔（以 grep 定位，清單見 tasks）
+  - Modified: README.md、README.en.md、docs/platform-architecture.zh-TW.md、.gitignore（移除已無作用的 `.spectra/` 忽略規則）、crates/speclink-core/assets/skills/archive.md、.claude/skills/speclink-archive/SKILL.md、.agents/skills/speclink-archive/SKILL.md、crates/speclink-core/tests/golden/claude.snapshot.md、crates/speclink-core/tests/golden/codex.snapshot.md、crates/speclink-core/tests/golden/neutral-cli.snapshot.md、crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md；另含源碼註解批次改寫——crates/speclink-core/src/、crates/speclink-cli/src/、crates/speclink-cli/tests/、crates/speclink-host/src/context.rs、packages/ui/src/、apps/desktop/src/ 下含 Spectra 字樣的註解檔（以 grep 定位，清單見 tasks）
   - New: （無）
   - Removed: （無）
 
