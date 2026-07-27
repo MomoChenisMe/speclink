@@ -972,3 +972,48 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
         }
     }
 }
+
+// --- workflow-config ---
+
+/// The document label in remote mode: the server holds one workflow-config
+/// document per scope, with no local path to name.
+const REMOTE_CONFIG_LABEL: &str = "config.yaml";
+
+/// Remote workflow-config: read the server document (content plus the scope
+/// revision), apply the SAME core rewrite fs mode uses, write back guarded by
+/// the revision just read. The revision never reaches the command surface — a
+/// CAS refusal simply means someone else wrote in the read→write window, and
+/// re-running the command is the whole fix.
+fn remote_workflow_config(
+    ctx: &RemoteCtx,
+    write: Option<(WorkflowConfigWrite, bool)>,
+    json: bool,
+) -> Result<()> {
+    let current = ctx.client.config()?;
+    let original = current.content.unwrap_or_default();
+    let Some((write, dry_run)) = write else {
+        return print_workflow_config(&original, REMOTE_CONFIG_LABEL, json);
+    };
+    let edit = plan_workflow_config_edit(&write, &original, REMOTE_CONFIG_LABEL, None)?;
+    if dry_run {
+        print!("{}", unified_diff(REMOTE_CONFIG_LABEL, &original, &edit.new_text));
+        return Ok(());
+    }
+    ctx.client
+        .put_config(&edit.new_text, current.revision)
+        .map_err(remote_config_write_error)?;
+    println!("{} {}", color::green("✓"), edit.summary);
+    Ok(())
+}
+
+/// The CAS refusal restated in this verb's own terms — the generic
+/// "re-read and re-apply" wording does not say what the user should do with a
+/// single-shot command. Every other failure keeps its translated message.
+fn remote_config_write_error(e: speclink_remote::RemoteError) -> anyhow::Error {
+    if e.reason.as_deref() == Some("revision_conflict") {
+        return anyhow::anyhow!(
+            "the workflow config was updated by someone else — re-run this command to apply your change on top"
+        );
+    }
+    anyhow::Error::new(e)
+}
