@@ -752,16 +752,6 @@ pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<Vec<Stri
 mod tests {
     use crate::store::Store;
     use crate::teststore::TestStore;
-    use crate::workspace::Workspace;
-
-    fn ghost_ws() -> Workspace {
-        // Nonexistent root: git probes fail soft (no identity stamped), so the
-        // flow is fully deterministic on any machine.
-        Workspace {
-            root: std::env::temp_dir().join("speclink-discuss-test-ghost-root"),
-            spec_dir_name: "openspec".to_string(),
-        }
-    }
 
     /// A scaffolded discussion document with a written conclusion.
     fn concluded_doc(slug: &str, topic: &str, decision: &str) -> String {
