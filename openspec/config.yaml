@@ -6,95 +6,80 @@ audit: true
 context: |
   ## 專案
 
-  Speclink — 以 Rust 實作的 Spec-Driven Development（SDD）引擎與工具平台，同時支援
-  Local Repo（`openspec/` + Git、零服務）與 Remote Store（Speclink Host + TeamStore）兩條路徑。
-  Local CLI 以 Spectra App 2.3.1 所附 CLI 為行為參考與相容基準，並以 parity／golden tests
-  保護人眼輸出、`--json` shape 與核心工作流；Speclink 另擴充 discussion、Desktop、Store abstraction、
-  Node SDK、Client Protocol 與 Remote Platform。
+  Speclink — 以 Rust 實作的 Spec-Driven Development（SDD）引擎與平台，同時支援 Local Repo
+  （`openspec/` ＋ Git、可完全離線）與 Remote Store（Speclink Host ＋ TeamStore）兩條路徑。
 
-  Cargo workspace 包含：
-  - `speclink-core`：SDD 領域演算法、artifact/schema、discussion、validate/analyze、task 與 archive 語意。
-  - `speclink-fs`：Local Repo 的文件儲存與既有 `openspec/` 版面。
-  - `speclink-store` 與 `speclink-store-{sqlite,fs,postgres}`：TeamStore contract 及三種 server driver。
-  - `speclink-host`：統一 command/query/context application boundary、revision、transaction、event 與 evidence 協調。
-  - `speclink-protocol`、`speclink-remote`：Client Protocol 型別與遠端 transport/client 邊界；legacy REST v1 不再是目標架構。
-  - `speclink-cli`、`speclink-server`、`speclink-node`：CLI／HTTP Server／Node N-API adapters。
-  - `apps/desktop/core`、`apps/desktop/src-tauri` 與 `apps/desktop`：Desktop Rust core、Tauri adapter 與 React UI。
+  技術棧：Rust（serde／chrono／anyhow／clap／ulid，HTTP client 用 ureq、async 用 tokio ＋
+  axum）、store driver 為 rusqlite／postgres／檔案系統、Node SDK 用 napi-rs、桌面用 Tauri；
+  前端 React ＋ TypeScript ＋ Vite ＋ Tailwind v4 ＋ Radix UI ＋ zustand，測試用 vitest；
+  drift 與 archive 會呼叫 git。
 
-  目前能力與限制以 `docs/product-status.zh-TW.md` 為準；唯一目標架構是
-  `docs/platform-architecture.zh-TW.md`，`docs/implementation-refactor-roadmap.zh-TW.md` 只記錄其下交付順序。
+  Cargo workspace：`speclink-core`（SDD 引擎）、`speclink-fs`（儲存介面的
+  預設檔案系統實作，維持 `openspec/` 版面）、`speclink-store` ＋
+  `speclink-store-{sqlite,fs,postgres}`（TeamStore contract：Project／Repo 定址、CAS 寫入、
+  不可變歷史、transactional outbox，及三種 driver）、`speclink-host`（引擎唯一的應用層邊界：
+  execution context、revision、transaction、event、evidence）、`speclink-protocol`（wire
+  contract，Rust 型別為正典、JSON Schema 是匯出）＋ `speclink-remote`（型別化 client）、
+  `speclink-cli`、`speclink-server`（axum adapter，async 邊界僅在此）、`speclink-node`
+  （napi-rs 綁定，引擎核心維持同步）。桌面與前端：`apps/desktop/core`（純邏輯、不依賴 Tauri）
+  ＋ `apps/desktop/src-tauri`（Tauri 殼）、`apps/desktop`、`apps/server-web`、`packages/ui`。
 
-  ## 載重技術決策（會塑造規格與設計，不可弄錯）
+  現況與限制以 `docs/product-status.zh-TW.md` 為準；唯一目標架構是
+  `docs/platform-architecture.zh-TW.md`。
 
-  - **分層邊界**：領域演算法歸 `speclink-core` 且不得含 ANSI 或寫死特定儲存媒介；Local Repo I/O 歸
-    `speclink-fs`，TeamStore contract／driver 歸 store crates，應用層裁決歸 `speclink-host`；CLI、Server、
-    Node 與 Desktop 只經穩定 Host／Protocol contract 組裝輸入與呈現。
-  - **雙輸出路徑**：每個指令有人眼互動輸出（含 ANSI 色彩，可 `--no-color`）與機器可讀 `--json`，兩條路徑都是契約。
-  - **`--json` 欄位一律 camelCase**：Rust struct 用 snake_case，經 `#[serde(rename = "…")]` 輸出成
-    `changeName` / `completedTasks` / `outputPath`；欄位名與 Spectra 對齊，是回歸對照的一部分。
-  - **正典 vs delta**：正典規格（`openspec/specs/<capability>/spec.md`）是現況唯一真相；
-    變更以 delta 表述（ADDED / MODIFIED / REMOVED / RENAMED），archive 時併入正典並注入 `@trace`。
-  - **設定分兩層**：`.speclink.yaml`（應用層：locale、spec_locale、tdd、audit、tools）；
-    `openspec/config.yaml`（工作流層：本檔的 context 與 rules）。
-  - **資料與執行環境**：serde / serde_yaml / serde_json；時間用 chrono；drift 與 archive 會呼叫 git。
-    Local Repo 可完全離線；Remote／Server／Desktop connection 路徑已有 Tokio、Axum、HTTP、SQLite、
-    Server FS、PostgreSQL 與 OS Keychain 等 async／network／外部系統邊界，錯誤、timeout、認證、revision
-    與交易不可沿用「純本地無服務」假設。
-  - **技能相容**：init 為 claude（`.claude/skills/`）與 codex（`.agents/skills/` + AGENTS.md）產生技能與注入區塊；update 同步並清理殘留。
+  ## 跨 artifact 的載重約束
 
-  > 精確版本一律以各 Cargo.toml 為準，不在此列舉（會過時）。
-
-
-  ## 紅線約束
-
-  - **TDD 無例外**：紅 → 綠 → 重構；先寫會失敗的測試再實作，禁止先實作後補測試。
-  - **既有 CLI 輸出是回歸保護對象**：對 Spectra 2.3.1 的一致性已是既成基線；改動人眼或 `--json` 輸出前，
-    須確認回歸對照（scratchpad 的 parity_suite 31 項 / color_suite 16 項 / twin harness 8 情境）仍通過或已刻意更新。
-  - **跨平台**：Windows / macOS / Linux —— 路徑分隔、換行、git 行為不得假設單一平台。
-  - **禁止過度設計 / 過度防禦**：只做被要求的事，只在系統邊界（CLI 輸入、git / 檔案系統、外部檔案）驗證。
-  - **語言**：UI 與散文用繁體中文；結構標記（### Requirement:、#### Scenario:、WHEN/THEN）與規範關鍵字（SHALL / SHALL NOT / MUST）、Rust 識別符一律保留英文。
+  - **雙輸出路徑都是契約**：每個指令有人眼輸出（ANSI 色彩，可 `--no-color`）與 `--json`；
+    `--json` 欄位一律 camelCase，欄位名本身是契約的一部分。
+  - **既有輸出是回歸保護對象**：人眼輸出與 `--json` shape 都是既成契約；改動前後須以
+    golden（`cargo test -p speclink-core --test render_golden`）與 CLI 測試確認未意外變動，
+    刻意變更則同批更新 golden 並在提案記載。
+  - **正典 vs delta**：正典規格是現況唯一真相；變更以 delta 表述（ADDED／MODIFIED／REMOVED／
+    RENAMED），archive 時併入正典並注入 `@trace`。
+  - **設定分三層**：`openspec/config.yaml`（工作流政策，隨 spec store 走）、`.speclink.yaml`
+    （本 checkout 的 `tools` 與 `spec_dir`）、`SPECLINK_*` 環境變數（個人／CI 覆寫）。
+  - **遠端路徑不可沿用純本地假設**：Remote／Server／Desktop 已有 Tokio、Axum、HTTP、SQLite、
+    PostgreSQL、OS Keychain 等邊界——錯誤、timeout、認證、revision 與交易都要處理。
+  - **跨平台**：Windows ／ macOS ／ Linux——路徑分隔、換行、git 行為不得假設單一平台。
+  - **禁止過度設計／過度防禦**：只做被要求的事，只在系統邊界驗證。
 rules:
   proposal:
   - 必須說明目標使用者（透過 AI 代理跑 SDD 的開發者 / PO / PM）與使用情境（對應哪個 workflow 階段或技能）
   - 必須包含「非目標 (Non-Goals)」段落，明確排除不在範圍內的事項
-  - 必須明確指出影響的 crate（speclink-core / speclink-cli）
+  - 必須明確指出影響的 crate 或 app（如 speclink-core / speclink-cli / speclink-host / apps/desktop）
   - 若新增或變更 CLI 指令，必須說明子指令、旗標、stdin 與 exit code
   - 若改動既有指令的輸出或行為，必須列「相容性影響」：人眼與 `--json` 哪些會變、是否破壞回歸對照、既有使用者如何遷移
-  - 若涉及設定欄位（.speclink.yaml / openspec/config.yaml），必須說明新增/變更的欄位與預設值
+  - 若涉及設定欄位（openspec/config.yaml / .speclink.yaml），必須說明新增或變更的欄位與預設值
   - 若涉及技能或注入區塊（CLAUDE.md / AGENTS.md），必須說明影響哪些技能與哪些工具（claude / codex）
   - 禁止提案中包含實作細節（Rust 片段、資料結構）—— 屬 design
   - 不可包含過度設計的內容 —— 只描述被要求的功能
   specs:
-  - 使用 WHEN / THEN 撰寫場景，且只用可觀察的 CLI 行為（stdout/stderr 內容、exit code、`--json` 欄位、檔案系統效果），不得出現 Rust 型別或函式名稱
+  - 場景只以可觀察的 CLI 行為描述（stdout/stderr 內容、exit code、`--json` 欄位、檔案系統效果），不得出現 Rust 型別或函式名稱
   - 必須涵蓋正常流程與異常流程（錯誤輸入、找不到變更、驗證失敗）
-  - 每個需求必須可測試（可直接對應 `cargo test` 案例或 parity/color fixture）
-  - 使用 SHALL / SHALL NOT 表達強制行為；結構標記與關鍵字保留英文，散文用 `spec_locale`
+  - 每個需求必須可測試（可直接對應 `cargo test` 案例或 golden fixture）
   - 指令若同時有人眼與 `--json` 輸出，兩條路徑都要涵蓋，並說明 `--no-color` 下的行為
   - CLI 指令規格須包含：子指令、旗標、stdin 輸入（若有）、成功/失敗的 exit code、輸出去向（stdout vs stderr）
   - '`--json` 規格須包含 payload 結構：欄位名（camelCase）與型別'
-  - 檔案系統效果須明確：建立/修改哪些檔（proposal.md、delta spec、.openspec.yaml、.speclink/ 的 touched 與 snapshots）
+  - 檔案系統效果須明確：建立或修改哪些檔（proposal.md、delta spec、.openspec.yaml、.speclink/ 的 touched 與 snapshots）
   - 與語言相關的行為須分別敘明 `tw` / `ja` / `en`（或未設定）下的預期，含中文弱語言偵測
-  - parity 敏感的行為須標明對 Spectra 2.3.1 的預期：維持位元級一致，或屬刻意分歧（並記載正規化方式）
+  - 遠端路徑的規格須敘明 revision 衝突、離線與認證失效下的可觀察行為
+  - 動到既有輸出的規格須標明是維持既有位元級輸出，或屬刻意變更（並敘明變更前後的差異）
   design:
-  - |
-    命名慣例（設計指令 / 型別 / 輸出時遵循）：
-    - CLI 子指令 kebab-case 或空白分隔動詞（new change、task done、discuss add-round）；模組檔 snake_case.rs
-    - 函式與變數 snake_case；型別 / enum PascalCase；常數 UPPER_SNAKE_CASE
-    - `--json` 欄位一律 camelCase（透過 `#[serde(rename)]`），欄位名與 Spectra 對齊
-    - 旗標 kebab-case（--no-color、--strict、--all、--json）
-    - 規格結構標記與 SHALL / MUST 一律英文
-  - 必須指明變更落在哪個 crate 與其邊界：流程邏輯歸 core、呈現與色彩歸 cli；core 不得含 ANSI 或寫死的儲存/檔案系統假設
+  - 必須指明變更落在哪個 crate 與其邊界：領域演算法歸 speclink-core（不得含 ANSI 或寫死儲存媒介）、Local Repo I/O 歸 speclink-fs、TeamStore contract 與 driver 歸 store crates、應用層裁決歸 speclink-host；CLI / Server / Node / Desktop 只經穩定 Host 或 Protocol contract 組裝輸入與呈現
+  - 桌面的邏輯與測試歸 speclink-desktop-core（不依賴 Tauri、可獨立 cargo test）；Tauri 殼的每個 command 只做單行委派
+  - CLI 子指令用 kebab-case 或空白分隔動詞（new change、task done、discuss add-round）；模組檔 snake_case.rs
+  - 函式與變數 snake_case；型別與 enum PascalCase；常數 UPPER_SNAKE_CASE；旗標 kebab-case（--no-color、--strict、--all、--json）
+  - '`--json` 欄位一律 camelCase（透過 #[serde(rename)]），欄位名是對外契約'
   - 若涉及序列化或設定，必須說明 serde 結構與向後相容（能讀既有檔案）
   - 若涉及 git 互動（drift / archive），必須說明用到的 git 行為與跨平台考量
   - 每個技術決策必須列出至少一個替代方案及其取捨；涉及規格儲存或流程抽象時，須說明如何朝「storage 解耦的規格驅動引擎」靠攏（或為何暫時不）
   - 必須包含風險與緩解策略（優先涵蓋回歸對照與跨平台）
   - 禁止過度設計：不引入不必要的抽象層
   tasks:
-  - 嚴格遵循 TDD 順序：先寫測試 → 再實作 → 最後重構，禁止先實作後補測試
   - 格式範例：「1.1 撰寫 XXX 測試」→「1.2 實作 XXX 功能」→「1.3 重構 XXX」
   - 使用 checkbox 格式 `- [ ]` 追蹤完成狀態
-  - 單元測試用 Rust `#[cfg(test)]` 模組 + `cargo test`；CLI 輸出的回歸驗證用 scratchpad 的 parity / color / twin harness
+  - 單元測試用 Rust `#[cfg(test)]` 模組 ＋ `cargo test`；輸出的回歸驗證用 crates/speclink-core/tests/golden 與 crates/speclink-cli/tests/ 的整合測試
   - 每個階段結束須包含編譯或測試驗證步驟（`cargo test` / `cargo build --release` / `speclink <cmd> --json`）與可觀察的預期結果
-  - 每個 task 必須標註影響的檔案路徑（從 crates/speclink-core/src/ 或 crates/speclink-cli/src/ 開始），檔名遵循 design 命名慣例並點名對應的 CLI 指令
-  - 動到既有 CLI 輸出的 task，驗證步驟須確認回歸對照（parity / color）仍通過或已刻意更新
+  - 每個 task 必須標註影響的檔案路徑（從 crates/ 或 apps/ 開始），檔名遵循 design 命名慣例並點名對應的 CLI 指令
+  - 動到既有輸出的 task，驗證步驟須確認 golden 與 CLI 測試仍通過，或已在同批刻意更新 golden
   - 涉及 `--json` 的 task，須斷言 payload 結構（欄位存在、camelCase 命名與型別）
