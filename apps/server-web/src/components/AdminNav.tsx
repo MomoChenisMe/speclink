@@ -1,8 +1,6 @@
 import { NavLink } from "react-router-dom";
 import {
   Activity,
-  CircleUser,
-  Database,
   FolderGit2,
   KeyRound,
   LayoutDashboard,
@@ -10,18 +8,23 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { cn } from "@speclink/ui";
+import { cn, useI18n } from "@speclink/ui";
 
-// 管理導覽的七個固定目的地，加上帳號入口（D6）。側欄與窄螢幕 Sheet 共用。
-// 圖示與選中態（實心主色）對齊 Desktop 側欄語彙。
-const DESTINATIONS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
-  { to: "/admin", label: "總覽", icon: LayoutDashboard, end: true },
-  { to: "/admin/users", label: "使用者", icon: Users },
-  { to: "/admin/registry", label: "專案與儲存庫", icon: FolderGit2 },
-  { to: "/admin/credentials", label: "憑證", icon: KeyRound },
-  { to: "/admin/data", label: "資料操作", icon: Database },
-  { to: "/admin/system", label: "系統狀態", icon: Activity },
-  { to: "/admin/audit", label: "稽核紀錄", icon: ScrollText },
+// 管理導覽的六個固定目的地，分為日常與維運兩組。帳號不是側欄目的地——入口在 header
+// 的電子郵件連結（HeaderAccount）。圖示與選中態（實心主色）對齊 Desktop 側欄語彙。
+// tour 是首次導覽的目標標記（components/Tour.tsx）；每個目的地一步。
+type Destination = { to: string; labelKey: string; icon: LucideIcon; tour: string; end?: boolean };
+
+const PRIMARY: Destination[] = [
+  { to: "/admin", labelKey: "nav.overview", icon: LayoutDashboard, tour: "nav-overview", end: true },
+  { to: "/admin/users", labelKey: "nav.users", icon: Users, tour: "nav-users" },
+  { to: "/admin/registry", labelKey: "nav.registry", icon: FolderGit2, tour: "nav-registry" },
+];
+
+const OPERATIONS: Destination[] = [
+  { to: "/admin/credentials", labelKey: "nav.credentials", icon: KeyRound, tour: "nav-credentials" },
+  { to: "/admin/system", labelKey: "nav.system", icon: Activity, tour: "nav-system" },
+  { to: "/admin/audit", labelKey: "nav.audit", icon: ScrollText, tour: "nav-audit" },
 ];
 
 function itemClass(isActive: boolean): string {
@@ -33,32 +36,38 @@ function itemClass(isActive: boolean): string {
   );
 }
 
-export function AdminNav({ onNavigate }: { onNavigate?: () => void }) {
+function Group({ items, onNavigate }: { items: Destination[]; onNavigate?: () => void }) {
+  const { t } = useI18n();
   return (
     <ul className="space-y-1">
-      {DESTINATIONS.map(({ to, label, icon: Icon, end }) => (
+      {items.map(({ to, labelKey, icon: Icon, tour, end }) => (
         <li key={to}>
           <NavLink
             to={to}
             end={end}
+            data-tour={tour}
             onClick={onNavigate}
             className={({ isActive }) => itemClass(isActive)}
           >
             <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
-            {label}
+            {t(labelKey)}
           </NavLink>
         </li>
       ))}
-      <li className="mt-2 border-t border-border pt-2">
-        <NavLink
-          to="/account"
-          onClick={onNavigate}
-          className={({ isActive }) => itemClass(isActive)}
-        >
-          <CircleUser aria-hidden="true" className="h-4 w-4 shrink-0" />
-          帳號
-        </NavLink>
-      </li>
     </ul>
+  );
+}
+
+export function AdminNav({ onNavigate }: { onNavigate?: () => void }) {
+  const { t } = useI18n();
+  return (
+    <>
+      <Group items={PRIMARY} onNavigate={onNavigate} />
+      {/* 分組標籤而非可點目的地：維運三項與日常三項視覺分離（proposal 版面藍圖）。 */}
+      <p className="mt-3 border-t border-border px-3 pb-1 pt-3 text-xs font-medium tracking-wide text-muted-foreground">
+        {t("shell.operations")}
+      </p>
+      <Group items={OPERATIONS} onNavigate={onNavigate} />
+    </>
   );
 }

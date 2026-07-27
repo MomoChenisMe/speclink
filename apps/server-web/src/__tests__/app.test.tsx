@@ -38,8 +38,11 @@ function makeClient(overrides: Record<string, unknown> = {}) {
       projects: 1,
       repos: 1,
       activeCredentials: 0,
+      pendingInvitations: 0,
       storeHealthy: true,
       identitySchemaVersion: 1,
+      todos: [],
+      recentAudit: [],
     })),
     getAccount: vi.fn(async () => ({
       user: { id: "u1", email: "member@example.com", display: "Member", admin: false },
@@ -55,15 +58,9 @@ function renderAt(route: string, client: ReturnType<typeof makeClient>) {
   return render(<App client={client as never} initialEntries={[route]} />);
 }
 
-const ADMIN_DESTINATIONS = [
-  "總覽",
-  "使用者",
-  "專案與儲存庫",
-  "憑證",
-  "資料操作",
-  "系統狀態",
-  "稽核紀錄",
-];
+// 側欄六個目的地與 header 帳號入口的完整契約在 admin-console-shell.test.tsx；
+// 此檔只保留殼層以外的路由、focus、互動狀態與 session 過期行為，避免同一份清單兩處維護。
+const ADMIN_DESTINATIONS = ["使用者", "憑證", "稽核紀錄", "系統"];
 
 beforeEach(() => {
   window.matchMedia = ((query: string) => ({
@@ -88,20 +85,10 @@ describe("三種殼層與角色導覽", () => {
     expect(screen.getByRole("button", { name: /登入/ })).toBeTruthy();
   });
 
-  it("管理殼呈現七個管理目的地、帳號與登出", async () => {
-    renderAt("/admin", makeClient({ getSession: vi.fn(async () => ADMIN) }));
-    const nav = await screen.findByRole("navigation");
-    for (const dest of ADMIN_DESTINATIONS) {
-      expect(within(nav).getByText(dest), `nav has ${dest}`).toBeTruthy();
-    }
-    expect(within(nav).getByText("帳號")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /登出/ })).toBeTruthy();
-  });
-
   it("一般成員的帳號殼不顯示任何管理目的地", async () => {
     renderAt("/account", makeClient({ getSession: vi.fn(async () => MEMBER) }));
     await screen.findByRole("main");
-    for (const dest of ["使用者", "憑證", "稽核紀錄", "系統狀態"]) {
+    for (const dest of ADMIN_DESTINATIONS) {
       expect(screen.queryByText(dest), `no admin dest ${dest}`).toBeNull();
     }
   });
@@ -227,32 +214,6 @@ describe("資料頁互動狀態", () => {
     });
     renderAt("/admin", client);
     expect(await screen.findByRole("button", { name: /重試|retry/i })).toBeTruthy();
-  });
-});
-
-// --- responsive nav ---
-
-describe("響應式導覽", () => {
-  it("窄螢幕收合側欄，可見 trigger 開啟含七目的地的 Sheet", async () => {
-    // 1024px 以下：matchMedia 對窄螢幕 query 回 matches:true。
-    window.matchMedia = ((query: string) => ({
-      matches: /max-width/.test(query),
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    })) as unknown as typeof window.matchMedia;
-    renderAt("/admin", makeClient({ getSession: vi.fn(async () => ADMIN) }));
-    const trigger = await screen.findByRole("button", { name: /開啟導覽|選單|menu/i });
-    const user = userEvent.setup();
-    await user.click(trigger);
-    const dialog = await screen.findByRole("dialog");
-    for (const dest of ADMIN_DESTINATIONS) {
-      expect(within(dialog).getByText(dest)).toBeTruthy();
-    }
   });
 });
 

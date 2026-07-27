@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button } from "@speclink/ui";
+import { Button, useI18n } from "@speclink/ui";
 import { useClient, useSession } from "../app/context";
 import { useAsync } from "../lib/useAsync";
 import { readFormError } from "../lib/formError";
@@ -11,6 +11,7 @@ import type { SetupState } from "../api/client";
 // URL query 帶入；兩個提交節點分別建立第一位 Admin 與第一組 Project／Repo，最後節點
 // 完成後 Server 已建立 session 並回 `/admin?welcome=1`，SPA 站內導向。
 export function SetupPage() {
+  const { t } = useI18n();
   const client = useClient();
   const [params] = useSearchParams();
   const token = params.get("token") ?? "";
@@ -24,24 +25,22 @@ export function SetupPage() {
     if (loading) {
       return (
         <p role="status" aria-live="polite" className="text-muted-foreground">
-          載入中…
+          {t("common.loading")}
         </p>
       );
     }
     // 無效／過期／已耗用 token：不可區分的固定訊息，不回顯內部原因。
     return (
       <div role="alert">
-        <h1 className="mb-2 text-2xl font-semibold">設定連結無效</h1>
-        <p className="text-muted-foreground">
-          這個初始設定連結無法使用。請使用 server 啟動時輸出的最新連結。
-        </p>
+        <h1 className="mb-2 text-2xl font-semibold">{t("setup.invalidTitle")}</h1>
+        <p className="text-muted-foreground">{t("setup.invalidBody")}</p>
       </div>
     );
   }
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">Speclink 初始設定</h1>
+      <h1 className="mb-6 text-2xl font-semibold">{t("setup.title")}</h1>
       {state.step === "admin" ? (
         <AdminStep token={token} onAdvance={setAdvanced} />
       ) : (
@@ -59,6 +58,7 @@ function AdminStep({
   token: string;
   onAdvance: (state: SetupState) => void;
 }) {
+  const { t } = useI18n();
   const client = useClient();
   const [email, setEmail] = useState("");
   const [display, setDisplay] = useState("");
@@ -77,7 +77,7 @@ function AdminStep({
       const next = await client.submitSetupAdmin(token, { email, display, password });
       onAdvance(next);
     } catch (error) {
-      const read = readFormError(error, "建立管理員時發生錯誤");
+      const read = readFormError(error, t("setup.createAdminError"));
       setMessage(read.message);
       setFieldErrors(read.fieldErrors);
       setPending(false);
@@ -86,20 +86,20 @@ function AdminStep({
 
   return (
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
-      <h2 className="text-lg font-medium">1. 建立管理員帳號</h2>
+      <h2 className="text-lg font-medium">{t("setup.step1")}</h2>
       <Field
         id="email"
-        label="電子郵件"
+        label={t("field.email")}
         type="email"
         autoComplete="email"
         value={email}
         onChange={setEmail}
         error={fieldErrors.email}
       />
-      <Field id="display" label="顯示名稱" value={display} onChange={setDisplay} error={fieldErrors.display} />
+      <Field id="display" label={t("field.display")} value={display} onChange={setDisplay} error={fieldErrors.display} />
       <Field
         id="password"
-        label="密碼"
+        label={t("field.password")}
         type="password"
         autoComplete="new-password"
         value={password}
@@ -112,7 +112,7 @@ function AdminStep({
         </p>
       )}
       <Button type="submit" disabled={pending}>
-        {pending ? "建立中…" : "建立管理員"}
+        {pending ? t("common.creating") : t("setup.createAdmin")}
       </Button>
     </form>
   );
@@ -121,6 +121,7 @@ function AdminStep({
 // 節點二：建立第一組 Project／Repo，完成 setup。成功後 Server 已建立 admin session，
 // SPA 導向回傳的 `/admin?welcome=1`。
 function RegistryStep({ token }: { token: string }) {
+  const { t } = useI18n();
   const client = useClient();
   const { refresh } = useSession();
   const navigate = useNavigate();
@@ -148,7 +149,7 @@ function RegistryStep({ token }: { token: string }) {
       await refresh();
       navigate(destination);
     } catch (error) {
-      const read = readFormError(error, "建立 Project 與 Repo 時發生錯誤");
+      const read = readFormError(error, t("setup.createRegistryError"));
       setMessage(read.message);
       setFieldErrors(read.fieldErrors);
       setPending(false);
@@ -157,18 +158,18 @@ function RegistryStep({ token }: { token: string }) {
 
   return (
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
-      <h2 className="text-lg font-medium">2. 建立第一組 Project 與 Repo</h2>
-      <Field id="project-key" label="Project key" value={projectKey} onChange={setProjectKey} error={fieldErrors.projectKey} />
-      <Field id="project-name" label="Project 名稱" value={projectName} onChange={setProjectName} />
-      <Field id="repo-key" label="Repo key" value={repoKey} onChange={setRepoKey} error={fieldErrors.repoKey} />
-      <Field id="repo-name" label="Repo 名稱" value={repoName} onChange={setRepoName} />
+      <h2 className="text-lg font-medium">{t("setup.step2")}</h2>
+      <Field id="project-key" label={t("registry.projectKeyLabel")} value={projectKey} onChange={setProjectKey} error={fieldErrors.projectKey} />
+      <Field id="project-name" label={t("registry.projectNameLabel")} value={projectName} onChange={setProjectName} />
+      <Field id="repo-key" label={t("registry.repoKeyLabel")} value={repoKey} onChange={setRepoKey} error={fieldErrors.repoKey} />
+      <Field id="repo-name" label={t("registry.repoNameLabel")} value={repoName} onChange={setRepoName} />
       {message && Object.keys(fieldErrors).length === 0 && (
         <p role="alert" className="text-sm text-destructive">
           {message}
         </p>
       )}
       <Button type="submit" disabled={pending}>
-        {pending ? "建立中…" : "建立 Project 與 Repo"}
+        {pending ? t("common.creating") : t("setup.createRegistry")}
       </Button>
     </form>
   );

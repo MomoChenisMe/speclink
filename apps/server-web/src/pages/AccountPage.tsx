@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { KeyRound } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,16 +18,19 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  useI18n,
 } from "@speclink/ui";
 import { useClient } from "../app/context";
 import { useAsync } from "../lib/useAsync";
 import { readFormError } from "../lib/formError";
 import { Field } from "../components/Field";
+import { DetailSheet } from "../components/DetailSheet";
+import { CopyButton } from "../components/CopyButton";
 import type { DeviceFamilyMeta, PatMeta, SessionMeta } from "../api/client";
 
 // 帳號自助頁（server-identity「帳號 browser API 保持憑證祕密邊界」, D4／D6）：使用者、
-// PAT、Web session 與裝置。PAT 明文只在建立時顯示一次；撤銷等破壞性操作先以 AlertDialog
-// 確認且立即生效。所有 server 資料留在本 route 的 component state（D1）。
+// 存取金鑰、登入工作階段與裝置。金鑰明文只在建立時顯示一次；撤銷等破壞性操作先以
+// AlertDialog 確認且立即生效。所有 server 資料留在本 route 的 component state（D1）。
 
 type Confirm = { title: string; run: () => Promise<void> };
 
@@ -36,25 +40,27 @@ function fmtDate(iso: string | null, fallback: string): string {
 }
 
 export function AccountPage() {
+  const { t } = useI18n();
   const client = useClient();
   const { loading, data, reload } = useAsync(() => client.getAccount(), []);
   const [plaintext, setPlaintext] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [busy, setBusy] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   if (!data) {
     if (loading) {
       return (
         <p role="status" aria-live="polite" className="text-muted-foreground">
-          載入中…
+          {t("common.loading")}
         </p>
       );
     }
     return (
       <div role="alert">
-        <p className="text-destructive">無法載入帳號資料。</p>
+        <p className="text-destructive">{t("account.loadFailed")}</p>
         <Button type="button" variant="outline" className="mt-3" onClick={reload}>
-          重試
+          {t("common.retry")}
         </Button>
       </div>
     );
@@ -74,12 +80,22 @@ export function AccountPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold">帳號</h1>
-        <p className="mt-1 text-muted-foreground">
-          {data.user.display}（{data.user.email}）
-        </p>
-      </header>
+      {/* 頁面標題區塊用 div：<header> 會被讀成第二個 banner，與殼層 header 相衝。 */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">{t("account.title")}</h1>
+          <p className="mt-1 text-muted-foreground">
+            {t("account.identity")
+              .replace("{display}", data.user.display)
+              .replace("{email}", data.user.email)}
+          </p>
+        </div>
+        {/* 與管理列表頁一致：頁面唯一 primary action 開抽屜，建立欄位不常駐頁面。 */}
+        <Button type="button" className="gap-1.5" onClick={() => setCreateOpen(true)}>
+          <KeyRound aria-hidden="true" className="h-4 w-4" />
+          {t("account.createKey")}
+        </Button>
+      </div>
 
       {plaintext && (
         <div
@@ -87,18 +103,19 @@ export function AccountPage() {
           aria-live="polite"
           className="rounded-md border border-primary bg-primary/5 p-4"
         >
-          <p className="text-sm font-medium">新的 PAT，只會顯示這一次，請立即複製保存：</p>
-          <code className="mt-1 block break-all font-mono text-sm">{plaintext}</code>
+          <p className="text-sm font-medium">{t("account.newKeyNotice")}</p>
+          <div className="mt-1 flex items-start gap-3">
+            <code className="min-w-0 flex-1 break-all font-mono text-sm">{plaintext}</code>
+            <CopyButton value={plaintext} />
+          </div>
         </div>
       )}
 
       <PatSection
         pats={data.pats}
-        onCreated={setPlaintext}
-        afterMutate={reload}
         onRevoke={(pat) =>
           setConfirm({
-            title: `撤銷 PAT「${pat.name}」？`,
+            title: t("account.revokeKeyTitle").replace("{name}", pat.name),
             run: () => client.revokePat(pat.id),
           })
         }
@@ -110,22 +127,32 @@ export function AccountPage() {
         families={data.deviceFamilies}
         onRevoke={(family) =>
           setConfirm({
-            title: `撤銷裝置登入「${family.source}」？`,
+            title: t("account.revokeDeviceTitle").replace("{name}", family.source),
             run: () => client.revokeDevice(family.id),
           })
         }
+      />
+
+      <CreateKeySheet
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={(secret) => {
+          setPlaintext(secret);
+          setCreateOpen(false);
+          reload();
+        }}
       />
 
       <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{confirm?.title}</AlertDialogTitle>
-            <AlertDialogDescription>撤銷後無法復原，且立即生效。</AlertDialogDescription>
+            <AlertDialogDescription>{t("account.revokeBody")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={runConfirmed} disabled={busy}>
-              撤銷
+              {t("common.revoke")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -134,18 +161,76 @@ export function AccountPage() {
   );
 }
 
-// PAT 區塊：建立表單（明文只出現一次）＋列表與逐一撤銷。
+// 存取金鑰區塊：唯讀列表與逐一撤銷。建立走頁面的 primary action 開抽屜。
 function PatSection({
   pats,
-  onCreated,
-  afterMutate,
   onRevoke,
 }: {
   pats: PatMeta[];
-  onCreated: (plaintext: string) => void;
-  afterMutate: () => void;
   onRevoke: (pat: PatMeta) => void;
 }) {
+  const { t } = useI18n();
+  return (
+    <section className="space-y-4">
+      <h2 className="text-lg font-medium">{t("account.keys")}</h2>
+      {pats.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("account.noKeys")}</p>
+      ) : (
+        <Card className="overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("field.prefix")}</TableHead>
+                <TableHead>{t("field.name")}</TableHead>
+                <TableHead>{t("field.expires")}</TableHead>
+                <TableHead>{t("field.lastUsed")}</TableHead>
+                <TableHead>{t("field.status")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pats.map((pat) => (
+                <TableRow key={pat.id}>
+                  <TableCell className="font-mono">{pat.prefix}</TableCell>
+                  <TableCell>{pat.name}</TableCell>
+                  <TableCell>{fmtDate(pat.expiresAt, t("common.forever"))}</TableCell>
+                  <TableCell>{fmtDate(pat.lastUsedAt, t("common.never"))}</TableCell>
+                  <TableCell>
+                    {pat.revokedAt ? (
+                      <Badge variant="outline">{t("common.revoked")}</Badge>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-label={t("account.revokeKey").replace("{name}", pat.name)}
+                        onClick={() => onRevoke(pat)}
+                      >
+                        {t("common.revoke")}
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+    </section>
+  );
+}
+
+// 建立存取金鑰的抽屜。成功後由頁面呈現一次性明文——明文屬於整頁的一次性回饋，
+// 不該跟著抽屜一起關掉。
+function CreateKeySheet({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (plaintext: string) => void;
+}) {
+  const { t } = useI18n();
   const client = useClient();
   const [name, setName] = useState("");
   const [expires, setExpires] = useState("");
@@ -161,12 +246,11 @@ function PatSection({
     setFieldErrors({});
     try {
       const { plaintext } = await client.createPat({ name, expires: expires || undefined });
-      onCreated(plaintext);
       setName("");
       setExpires("");
-      afterMutate();
+      onCreated(plaintext);
     } catch (error) {
-      const read = readFormError(error, "建立 PAT 時發生錯誤");
+      const read = readFormError(error, t("account.createKeyError"));
       setMessage(read.message);
       setFieldErrors(read.fieldErrors);
     } finally {
@@ -174,101 +258,69 @@ function PatSection({
     }
   }
 
-  return (
-    <section className="space-y-4">
-      <h2 className="text-lg font-medium">Personal Access Tokens</h2>
-      {pats.length === 0 ? (
-        <p className="text-sm text-muted-foreground">尚無 PAT。</p>
-      ) : (
-        <Card className="overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>前綴</TableHead>
-                <TableHead>名稱</TableHead>
-                <TableHead>到期</TableHead>
-                <TableHead>最近使用</TableHead>
-                <TableHead>狀態</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pats.map((pat) => (
-                <TableRow key={pat.id}>
-                  <TableCell className="font-mono">{pat.prefix}</TableCell>
-                  <TableCell>{pat.name}</TableCell>
-                  <TableCell>{fmtDate(pat.expiresAt, "永久")}</TableCell>
-                  <TableCell>{fmtDate(pat.lastUsedAt, "從未")}</TableCell>
-                  <TableCell>
-                    {pat.revokedAt ? (
-                      <Badge variant="outline">已撤銷</Badge>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        aria-label={`撤銷 PAT ${pat.name}`}
-                        onClick={() => onRevoke(pat)}
-                      >
-                        撤銷
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
+  if (!open) return null;
 
-      <Card className="max-w-md p-4">
-        <form onSubmit={onSubmit} className="space-y-4" noValidate>
-          <Field id="pat-name" label="名稱" value={name} onChange={setName} error={fieldErrors.name} />
-          <Field
-            id="pat-expires"
-            label="到期日（YYYY-MM-DD，留空為永久）"
-            value={expires}
-            onChange={setExpires}
-            error={fieldErrors.expires}
-          />
-          {message && Object.keys(fieldErrors).length === 0 && (
-            <p role="alert" className="text-sm text-destructive">
-              {message}
-            </p>
-          )}
-          <Button type="submit" disabled={pending}>
-            {pending ? "建立中…" : "建立 PAT"}
+  return (
+    <DetailSheet open onOpenChange={onOpenChange} title={t("account.createKey")}>
+      <form onSubmit={onSubmit} className="space-y-4" noValidate>
+        <Field
+          id="pat-name"
+          label={t("account.keyNameLabel")}
+          value={name}
+          onChange={setName}
+          error={fieldErrors.name}
+        />
+        <Field
+          id="pat-expires"
+          label={t("account.keyExpiresLabel")}
+          value={expires}
+          onChange={setExpires}
+          error={fieldErrors.expires}
+        />
+        {message && Object.keys(fieldErrors).length === 0 && (
+          <p role="alert" className="text-sm text-destructive">
+            {message}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            {t("common.cancel")}
           </Button>
-        </form>
-      </Card>
-    </section>
+          <Button type="submit" disabled={pending}>
+            {pending ? t("common.creating") : t("common.create")}
+          </Button>
+        </div>
+      </form>
+    </DetailSheet>
   );
 }
 
-// Web session 區塊：唯讀清單（登出由帳號殼的登出動作處理）。
+// 登入工作階段區塊：唯讀清單（登出由殼層的登出動作處理）。
 function SessionSection({ sessions }: { sessions: SessionMeta[] }) {
+  const { t } = useI18n();
   return (
     <section className="space-y-4">
-      <h2 className="text-lg font-medium">Web Sessions</h2>
+      <h2 className="text-lg font-medium">{t("account.sessions")}</h2>
       {sessions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">尚無 session。</p>
+        <p className="text-sm text-muted-foreground">{t("account.noSessions")}</p>
       ) : (
         <Card className="overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>建立</TableHead>
-                <TableHead>到期</TableHead>
-                <TableHead>狀態</TableHead>
+                <TableHead>{t("field.created")}</TableHead>
+                <TableHead>{t("field.expires")}</TableHead>
+                <TableHead>{t("field.status")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sessions.map((session) => (
                 <TableRow key={session.id}>
-                  <TableCell>{fmtDate(session.createdAt, "—")}</TableCell>
-                  <TableCell>{fmtDate(session.expiresAt, "—")}</TableCell>
+                  <TableCell>{fmtDate(session.createdAt, t("common.dash"))}</TableCell>
+                  <TableCell>{fmtDate(session.expiresAt, t("common.dash"))}</TableCell>
                   <TableCell>
                     <Badge variant={session.revokedAt ? "outline" : "secondary"}>
-                      {session.revokedAt ? "已撤銷" : "有效"}
+                      {session.revokedAt ? t("common.revoked") : t("common.active")}
                     </Badge>
                   </TableCell>
                 </TableRow>
@@ -289,20 +341,21 @@ function DeviceSection({
   families: DeviceFamilyMeta[];
   onRevoke: (family: DeviceFamilyMeta) => void;
 }) {
+  const { t } = useI18n();
   return (
     <section className="space-y-4">
-      <h2 className="text-lg font-medium">裝置登入</h2>
+      <h2 className="text-lg font-medium">{t("account.devices")}</h2>
       {families.length === 0 ? (
-        <p className="text-sm text-muted-foreground">尚無裝置登入。</p>
+        <p className="text-sm text-muted-foreground">{t("account.noDevices")}</p>
       ) : (
         <Card className="overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>來源</TableHead>
-                <TableHead>建立</TableHead>
-                <TableHead>最近 refresh</TableHead>
-                <TableHead>狀態</TableHead>
+                <TableHead>{t("field.source")}</TableHead>
+                <TableHead>{t("field.created")}</TableHead>
+                <TableHead>{t("field.lastRefresh")}</TableHead>
+                <TableHead>{t("field.status")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -311,20 +364,20 @@ function DeviceSection({
                   <TableCell>
                     <Badge variant="secondary">{family.source}</Badge>
                   </TableCell>
-                  <TableCell>{fmtDate(family.createdAt, "—")}</TableCell>
-                  <TableCell>{fmtDate(family.lastRefreshAt, "—")}</TableCell>
+                  <TableCell>{fmtDate(family.createdAt, t("common.dash"))}</TableCell>
+                  <TableCell>{fmtDate(family.lastRefreshAt, t("common.dash"))}</TableCell>
                   <TableCell>
                     {family.revokedAt ? (
-                      <Badge variant="outline">已撤銷</Badge>
+                      <Badge variant="outline">{t("common.revoked")}</Badge>
                     ) : (
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        aria-label={`撤銷裝置登入 ${family.source}`}
+                        aria-label={t("account.revokeDevice").replace("{name}", family.source)}
                         onClick={() => onRevoke(family)}
                       >
-                        撤銷
+                        {t("common.revoke")}
                       </Button>
                     )}
                   </TableCell>

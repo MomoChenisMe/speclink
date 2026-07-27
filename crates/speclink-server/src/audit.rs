@@ -39,6 +39,8 @@ impl AuditSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditAction {
     UserInvited,
+    /// An admin cancelled an invitation before it was accepted.
+    InvitationRevoked,
     UserSuspended,
     UserReactivated,
     MembershipChanged,
@@ -62,6 +64,7 @@ impl AuditAction {
     pub fn as_str(self) -> &'static str {
         match self {
             AuditAction::UserInvited => "user-invited",
+            AuditAction::InvitationRevoked => "invitation-revoked",
             AuditAction::UserSuspended => "user-suspended",
             AuditAction::UserReactivated => "user-reactivated",
             AuditAction::MembershipChanged => "membership-changed",

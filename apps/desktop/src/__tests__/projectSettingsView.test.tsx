@@ -3,6 +3,7 @@
 // 專案說明與產出規則拆為獨立卡各持編輯態、解析失敗簽級警示。
 import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { I18nProvider } from "@speclink/ui";
 
@@ -84,10 +85,10 @@ function switchToTab(name: string) {
 describe("ProjectSettingsView 載入", () => {
   it("呈現兩檔現值：config.yaml 簽的政策欄位、.speclink.yaml 簽的 tools 勾選；未設定欄位呈預設狀態", async () => {
     renderView(snapshot());
-    const locale = (await screen.findByLabelText("locale")) as HTMLSelectElement;
-    expect(locale.value).toBe("tw");
+    // 下拉是 Radix Select（非原生 select），現值讀 trigger 上顯示的文字。
+    expect((await screen.findByLabelText("locale")).textContent).toContain("tw");
     // 未設定的 spec_locale 呈預設值狀態（空字串＝未設定）。
-    expect((screen.getByLabelText("spec_locale") as HTMLSelectElement).value).toBe("");
+    expect(screen.getByLabelText("spec_locale").textContent).toContain("未設定");
     expect(screen.getByLabelText("tdd").getAttribute("aria-checked")).toBe("true");
     expect(screen.getByLabelText("audit").getAttribute("aria-checked")).toBe("false");
     switchToTab(".speclink.yaml");
@@ -132,8 +133,9 @@ describe("ProjectSettingsView 寫入", () => {
 
   it("locale 下拉改值後儲存 → 新值進完整目標狀態；設回未設定送 null", async () => {
     const ws = renderView(snapshot());
-    const locale = (await screen.findByLabelText("locale")) as HTMLSelectElement;
-    fireEvent.change(locale, { target: { value: "" } });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByLabelText("locale"));
+    await user.click(await screen.findByRole("option", { name: /未設定/ }));
     fireEvent.click(screen.getByTestId("save-workflow"));
     await waitFor(() =>
       expect(ws.writeWorkflowConfig).toHaveBeenCalledWith({
@@ -539,7 +541,7 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     expect(screen.getByTestId("policy-reader-note").textContent).toContain("你的角色為檢視者");
     expect((screen.getByTestId("context-edit") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId("rules-edit") as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByLabelText("locale") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText("locale") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText("tdd") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByTestId("save-workflow") as HTMLButtonElement).disabled).toBe(true);
     expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
@@ -622,8 +624,9 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
       .mockResolvedValueOnce(44);
     render(<ProjectSettingsView settings={ws} />);
 
-    const locale = (await screen.findByLabelText("locale")) as HTMLSelectElement;
-    fireEvent.change(locale, { target: { value: "en" } });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByLabelText("locale"));
+    await user.click(await screen.findByRole("option", { name: /^en/ }));
     fireEvent.click(screen.getByTestId("save-workflow"));
     let panel = await screen.findByTestId("policy-conflict-panel");
     let localeRow = within(panel).getByTestId("conflict-row-locale");
@@ -640,7 +643,8 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     localeRow = within(panel).getByTestId("conflict-row-locale");
     expect(within(localeRow).getByTestId("conflict-server").textContent).toContain("tw");
     expect(within(localeRow).getByTestId("conflict-mine").textContent).toContain("en");
-    expect(locale.value).toBe("en");
+    // 輸入不變：衝突面板來回後，下拉仍停在使用者選的值。
+    expect(screen.getByLabelText("locale").textContent).toContain("en");
     expect(ws.readSettings).toHaveBeenCalledTimes(3);
     expect(ws.writeWorkflowConfig).toHaveBeenCalledTimes(2);
 
@@ -649,7 +653,7 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     );
     await waitFor(() => expect(screen.queryByTestId("policy-conflict-panel")).toBeNull());
     expect(screen.getByTestId("policy-revision").textContent).toContain("44");
-    expect(locale.value).toBe("en");
+    expect(screen.getByLabelText("locale").textContent).toContain("en");
     expect(ws.writeWorkflowConfig).toHaveBeenCalledTimes(3);
     for (const call of (ws.writeWorkflowConfig as ReturnType<typeof vi.fn>).mock.calls) {
       expect(call[0]).toMatchObject({ locale: "en" });

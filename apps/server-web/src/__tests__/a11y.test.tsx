@@ -24,8 +24,11 @@ function client(overrides: Record<string, unknown> = {}) {
       projects: 1,
       repos: 1,
       activeCredentials: 0,
+      pendingInvitations: 0,
       storeHealthy: true,
       identitySchemaVersion: 1,
+      todos: [],
+      recentAudit: [],
     })),
     ...overrides,
   } as never;

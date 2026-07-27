@@ -2,6 +2,7 @@
 // 清除鈕（清空後保持聚焦）與即時命中數、Cmd+F／Ctrl+F 聚焦快捷鍵。
 import { describe, it, expect } from "vitest";
 import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState, type ReactElement, type ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -86,8 +87,21 @@ describe("BoardSearchBar（搜尋列，design D5）", () => {
 
 // spec 需求「看板搜尋過濾卡片」的篩選面板（design D5）：收於漏斗開關的彈出面板、
 // 三維度選單、與搜尋字串 AND 交集、可單獨清除與全部清除、關閉不清除過濾。
+//
+// 三個維度改用 Radix Select 後不再是原生 <select>，操作路徑是「點開 trigger → 點選項」。
+// Radix 開啟時會把 body 的 pointer-events 關掉（避免背景誤觸），jsdom 沒有真實命中測試，
+// 所以關掉 userEvent 的 pointer-events 檢查。
+const pointer = () => userEvent.setup({ pointerEventsCheck: 0 });
+
+/** 點開某個維度的下拉並選中一個選項。 */
+async function pick(dimension: string, option: string) {
+  const user = pointer();
+  await user.click(screen.getByLabelText(dimension));
+  await user.click(await screen.findByRole("option", { name: option }));
+}
+
 describe("篩選面板（design D5）", () => {
-  it("面板預設關閉；點篩選鈕彈出三維度；關閉後過濾持續且鈕帶啟用計數", () => {
+  it("面板預設關閉；點篩選鈕彈出三維度；關閉後過濾持續且鈕帶啟用計數", async () => {
     render(<Host />);
     // 預設：單列只有搜尋框與篩選鈕，面板不佔版面。
     expect(screen.queryByLabelText("建立者")).toBeNull();
@@ -100,7 +114,7 @@ describe("篩選面板（design D5）", () => {
     expect(screen.getByLabelText("建立時間")).toBeTruthy();
     expect(screen.getByLabelText("來源討論")).toBeTruthy();
     // 啟用一個維度後關閉面板：面板消失、過濾持續、鈕帶計數。
-    fireEvent.change(screen.getByLabelText("建立時間"), { target: { value: "7d" } });
+    await pick("建立時間", "近 7 天");
     fireEvent.click(toggle);
     expect(screen.queryByLabelText("建立時間")).toBeNull();
     expect(toggle.textContent).toContain("1");
@@ -116,12 +130,10 @@ describe("篩選面板（design D5）", () => {
     expect(screen.queryByLabelText("建立者")).toBeNull();
   });
 
-  it("建立者篩選過濾卡片；與搜尋字串 AND 交集；選回全部即單獨清除", () => {
+  it("建立者篩選過濾卡片；與搜尋字串 AND 交集；選回全部即單獨清除", async () => {
     render(<Host />);
     fireEvent.click(screen.getByRole("button", { name: "篩選" }));
-    fireEvent.change(screen.getByLabelText("建立者"), {
-      target: { value: "Momo Chen <momo@example.com>" },
-    });
+    await pick("建立者", "Momo Chen <momo@example.com>");
     expect(screen.getByText("engine-typed-core")).toBeTruthy();
     expect(screen.queryByText("web-role-views")).toBeNull();
     // AND 交集：query 命中另一張 → 兩張皆不可見。
@@ -130,28 +142,26 @@ describe("篩選面板（design D5）", () => {
     expect(document.querySelector('[data-change="engine-typed-core"]')).toBeNull();
     expect(document.querySelector('[data-change="web-role-views"]')).toBeNull();
     // 單獨清除（選回全部）：回到僅以字串過濾（卡名經高亮 mark 拆分，改以 data-change 查詢）。
-    fireEvent.change(screen.getByLabelText("建立者"), { target: { value: "" } });
+    await pick("建立者", "全部");
     expect(document.querySelector('[data-change="web-role-views"]')).toBeTruthy();
   });
 
-  it("面板內全部清除還原所有維度", () => {
+  it("面板內全部清除還原所有維度", async () => {
     render(<Host />);
     const toggle = screen.getByRole("button", { name: "篩選" });
     fireEvent.click(toggle);
-    fireEvent.change(screen.getByLabelText("建立者"), {
-      target: { value: "Momo Chen <momo@example.com>" },
-    });
-    fireEvent.change(screen.getByLabelText("建立時間"), { target: { value: "7d" } });
+    await pick("建立者", "Momo Chen <momo@example.com>");
+    await pick("建立時間", "近 7 天");
     fireEvent.click(screen.getByRole("button", { name: "清除全部篩選" }));
     expect(document.querySelector('[data-change="web-role-views"]')).toBeTruthy();
     expect(document.querySelector('[data-change="engine-typed-core"]')).toBeTruthy();
     expect(toggle.textContent).not.toContain("2");
   });
 
-  it("來源討論篩選：顯示該討論卡自身與其衍生變更卡", () => {
+  it("來源討論篩選：顯示該討論卡自身與其衍生變更卡", async () => {
     render(<Host />);
     fireEvent.click(screen.getByRole("button", { name: "篩選" }));
-    fireEvent.change(screen.getByLabelText("來源討論"), { target: { value: "collab" } });
+    await pick("來源討論", "collab");
     expect(screen.getByText("engine-typed-core")).toBeTruthy();
     expect(screen.queryByText("web-role-views")).toBeNull();
     // 非來源的 open 討論卡也被過濾。
@@ -160,11 +170,11 @@ describe("篩選面板（design D5）", () => {
     expect(screen.getByRole("button", { name: /已轉出/ }).textContent).toContain("1");
   });
 
-  it("建立時間篩選提供三窗選項", () => {
+  it("建立時間篩選提供三窗選項", async () => {
     render(<Host />);
     fireEvent.click(screen.getByRole("button", { name: "篩選" }));
-    const sel = screen.getByLabelText("建立時間") as HTMLSelectElement;
-    const labels = Array.from(sel.options).map((o) => o.textContent);
+    await pointer().click(screen.getByLabelText("建立時間"));
+    const labels = (await screen.findAllByRole("option")).map((o) => o.textContent);
     expect(labels).toContain("近 7 天");
     expect(labels).toContain("近 30 天");
     expect(labels).toContain("更早");

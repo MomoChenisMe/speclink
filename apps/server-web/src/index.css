@@ -12,3 +12,18 @@
 [tabindex="-1"]:focus {
   outline: none;
 }
+
+/* 「reduced motion 停用轉場」（server-web-console「共用設計系統維持高密度可存取體驗」）：
+   動畫散在 Tailwind 的 transition-colors／animate-* utility 裡，逐處加 motion-reduce:
+   一定會漏且漏掉時毫無訊號，因此在樣式層一次守門。不寫 0s 而寫 0.01ms：時長為零時
+   transitionend／animationend 不會觸發，依賴這些事件收尾的元件會卡在中間狀態。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

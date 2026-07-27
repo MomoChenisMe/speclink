@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Input, Label } from "@speclink/ui";
+import { Button, Input, Label, useI18n } from "@speclink/ui";
 import { useClient, useSession } from "../app/context";
 import { WebApiError } from "../api/client";
 
 // 本機密碼登入。提交期間停用避免重複；失敗保留輸入、把錯誤放欄位旁並以 role=alert
 // 宣告；成功依 Server 回傳的 destination 導向（D3）。
 export function LoginPage() {
+  const { t } = useI18n();
   const client = useClient();
   const { refresh } = useSession();
   const navigate = useNavigate();
@@ -35,7 +36,7 @@ export function LoginPage() {
         setMessage(error.message);
         setFieldErrors(error.fieldErrors ?? {});
       } else {
-        setMessage("登入時發生錯誤");
+        setMessage(t("login.error"));
       }
       setPending(false);
     }
@@ -45,10 +46,10 @@ export function LoginPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">登入</h1>
+      <h1 className="mb-6 text-2xl font-semibold">{t("login.title")}</h1>
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <div className="space-y-1.5">
-          <Label htmlFor="email">電子郵件</Label>
+          <Label htmlFor="email">{t("field.email")}</Label>
           <Input
             id="email"
             type="email"
@@ -65,7 +66,7 @@ export function LoginPage() {
           )}
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="password">密碼</Label>
+          <Label htmlFor="password">{t("field.password")}</Label>
           <Input
             id="password"
             type="password"
@@ -87,7 +88,7 @@ export function LoginPage() {
           </p>
         )}
         <Button type="submit" disabled={pending}>
-          {pending ? "登入中…" : "登入"}
+          {pending ? t("login.pending") : t("login.submit")}
         </Button>
       </form>
     </div>

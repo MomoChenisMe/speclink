@@ -26,6 +26,9 @@ pub struct User {
     pub email: String,
     pub active: bool,
     pub admin: bool,
+    /// When the account was created — the admin users list shows it as the
+    /// account's age; nothing authenticates or authorizes on it.
+    pub created_at: DateTime<Utc>,
 }
 
 /// The deliberately small project-membership role model. Authorization code
@@ -78,6 +81,34 @@ pub struct Repo {
     pub name: String,
 }
 
+/// A filter over the management audit log (the browser audit view's query
+/// string). Every field is optional; `None` means "do not narrow on this".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditFilter {
+    /// Case-insensitive substring, matched against action, subject and actor id.
+    pub keyword: Option<String>,
+    /// An exact action name. An unknown name simply matches nothing.
+    pub action: Option<String>,
+    /// An exact source name (`web`, `api`, `cli`).
+    pub source: Option<String>,
+    /// Inclusive lower bound on the record time.
+    pub from: Option<DateTime<Utc>>,
+    /// Inclusive upper bound on the record time.
+    pub to: Option<DateTime<Utc>>,
+    /// 1-based page number. The caller validates it before building the filter.
+    pub page: u32,
+    /// Records per page.
+    pub per_page: u32,
+}
+
+/// One page of a filtered audit query: the page's records (newest first) and how
+/// many records the filter matches in total, so the caller can derive page count.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditPage {
+    pub entries: Vec<AuditEntry>,
+    pub total: u64,
+}
+
 /// A pending invitation, resolved from its one-time token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invitation {
@@ -86,6 +117,7 @@ pub struct Invitation {
     pub display: String,
     pub admin: bool,
     pub memberships: Vec<String>,
+    pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -260,6 +292,17 @@ pub trait IdentityStore: Send + Sync {
     /// Mint an invitation and return its one-time plaintext token. Rejects an
     /// email that already has an active user or an outstanding invitation.
     fn create_invitation(&self, req: NewInvitation) -> Result<String, IdentityError>;
+
+    /// Every still-outstanding invitation — unconsumed and unexpired, newest
+    /// first. The users view lists these alongside real users: a person who has
+    /// been invited but has not accepted yet has no user row, and would
+    /// otherwise be invisible to the admin who just invited them.
+    fn list_pending_invitations(&self) -> Result<Vec<Invitation>, IdentityError>;
+
+    /// How many invitations are still outstanding — unconsumed and unexpired. The
+    /// overview reports it as the "waiting to activate" count; an expired
+    /// invitation is not actionable, so it does not count.
+    fn count_pending_invitations(&self) -> Result<u64, IdentityError>;
 
     /// Resolve a token to a still-valid invitation (unconsumed and unexpired);
     /// `None` covers used, expired and unknown tokens alike.
@@ -487,6 +530,12 @@ pub trait IdentityStore: Send + Sync {
     /// audit view's read-only pagination.
     fn list_audit(&self, limit: u32, offset: u32) -> Result<Vec<AuditEntry>, IdentityError>;
 
+    /// One filtered, newest-first page of audit records plus the total number of
+    /// records the filter matches. The filtering and paging happen in the store,
+    /// not in the caller — the log grows monotonically with operation, so a
+    /// caller that read it whole and narrowed in memory would degrade linearly.
+    fn query_audit(&self, filter: &AuditFilter) -> Result<AuditPage, IdentityError>;
+
     // --- backup records (决策 5): mutation + audit in one transaction ---
 
     /// Record a backup/verify result summary and a `backup-recorded` audit in the
@@ -508,6 +557,16 @@ pub trait IdentityStore: Send + Sync {
 
     /// A user's project memberships (the project keys), for the /admin user view.
     fn list_memberships(&self, user_id: &str) -> Result<Vec<String>, IdentityError>;
+
+    /// Cancel a still-pending invitation: the invitation is removed and its
+    /// token stops working immediately. Returns [`IdentityError::NotFound`] when
+    /// the id is unknown or the invitation was already accepted — an accepted
+    /// invitation has a real account behind it, which is suspended, not cancelled.
+    fn admin_revoke_invitation(
+        &self,
+        actor: &AuditActor,
+        invitation_id: &str,
+    ) -> Result<(), IdentityError>;
 
     /// Mint an invitation (as [`IdentityStore::create_invitation`]) and record a
     /// `user-invited` audit in the same transaction, under `actor`. The invite
