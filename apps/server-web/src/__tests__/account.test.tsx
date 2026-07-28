@@ -15,6 +15,10 @@ const MEMBER = {
 
 const ACCOUNT = {
   user: { id: "u1", email: "member@example.com", display: "Member", admin: false },
+  memberships: [
+    { projectKey: "alpha", projectName: "Alpha 專案", role: "editor" },
+    { projectKey: "beta", projectName: "Beta 專案", role: "reader" },
+  ],
   pats: [
     {
       id: "p1",
@@ -120,6 +124,58 @@ describe("帳號自助頁", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(await screen.findByText(/slk_new_SECRETPLAINTEXT/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /複製/ })).toBeTruthy();
+  });
+
+  // 我的專案區塊（server-web-console「帳號頁呈現我的專案」）：資料來自 account
+  // summary、唯讀、admin 與一般成員同一形狀，無隸屬時仍顯示區塊與空狀態。
+  it("列出自己的專案顯示名與角色，且無任何編輯操作", async () => {
+    renderAt("/account", makeClient());
+    const section = await screen.findByRole("region", { name: /我的專案/ });
+    expect(within(section).getByText("Alpha 專案")).toBeTruthy();
+    expect(within(section).getByText("editor")).toBeTruthy();
+    expect(within(section).getByText("Beta 專案")).toBeTruthy();
+    expect(within(section).getByText("reader")).toBeTruthy();
+    expect(within(section).queryAllByRole("button")).toHaveLength(0);
+    expect(within(section).queryAllByRole("link")).toHaveLength(0);
+  });
+
+  it("專案顯示名缺席時以專案代號呈現", async () => {
+    const client = makeClient({
+      getAccount: vi.fn(async () => ({
+        ...ACCOUNT,
+        memberships: [{ projectKey: "alpha", projectName: "", role: "editor" }],
+      })),
+    });
+    renderAt("/account", client);
+    const section = await screen.findByRole("region", { name: /我的專案/ });
+    expect(within(section).getByText("alpha")).toBeTruthy();
+  });
+
+  // admin 也走同一區塊：個人視角只列自己的隸屬，全部專案是 /admin 的治理視角。
+  it("admin 看到的是自己的隸屬而非全部專案", async () => {
+    const admin = { id: "u9", email: "admin@example.com", display: "Admin", admin: true };
+    const client = makeClient({
+      getSession: vi.fn(async () => ({ authenticated: true, user: admin, home: "/admin" })),
+      getAccount: vi.fn(async () => ({
+        ...ACCOUNT,
+        user: admin,
+        memberships: [{ projectKey: "alpha", projectName: "Alpha 專案", role: "editor" }],
+      })),
+    });
+    renderAt("/account", client);
+    const section = await screen.findByRole("region", { name: /我的專案/ });
+    expect(within(section).getByText("Alpha 專案")).toBeTruthy();
+    expect(within(section).queryByText("Beta 專案")).toBeNull();
+    expect(within(section).getAllByRole("row")).toHaveLength(2); // 表頭＋唯一一列
+  });
+
+  it("無任何隸屬時區塊仍可見並呈現空狀態", async () => {
+    const client = makeClient({
+      getAccount: vi.fn(async () => ({ ...ACCOUNT, memberships: [] })),
+    });
+    renderAt("/account", client);
+    const section = await screen.findByRole("region", { name: /我的專案/ });
+    expect(within(section).getByText(/管理員/)).toBeTruthy();
   });
 
   it("撤銷存取金鑰需先經 AlertDialog 確認才送出", async () => {

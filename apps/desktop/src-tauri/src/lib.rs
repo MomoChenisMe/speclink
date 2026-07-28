@@ -432,11 +432,11 @@ async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), Stri
     .map_err(|e| format!("connection worker failed: {e}"))?
 }
 
-/// device login（決策 5）：網路與輪詢在 blocking pool 執行；瀏覽器開啟走
-/// tauri-plugin-opener。回 TS 的只有狀態與顯示名——access token 存入記憶體
-/// 持有、refresh credential 已由編排層寫入 Keychain。
+/// device login 啟動段（決策二）：網路在 blocking pool 執行；瀏覽器開啟走
+/// tauri-plugin-opener。回 TS 的只有狀態、顯示名與等待授權面所需的授權資訊——
+/// access token 存入記憶體持有、refresh credential 已由編排層寫入 Keychain。
 #[tauri::command]
-async fn device_login(app: tauri::AppHandle, origin: String) -> Result<Value, String> {
+async fn device_login_start(app: tauri::AppHandle, origin: String) -> Result<Value, String> {
     let path = connections_path(&app)?;
     let state = app
         .state::<std::sync::Arc<ConnectionsState>>()
@@ -451,21 +451,57 @@ async fn device_login(app: tauri::AppHandle, origin: String) -> Result<Value, St
                 .open_url(url.to_string(), None::<String>)
                 .map_err(|e| format!("無法開啟系統瀏覽器：{e}"))
         };
-        match connections::device_login(&origin, &*state.credentials, &path, &opener)? {
-            connections::DeviceLoginOutcome::LoggedIn {
+        match connections::device_login_start(&origin, &*state.credentials, &path, &opener)? {
+            connections::DeviceLoginStart::LoggedIn {
                 display,
                 access_token,
             } => {
                 state.manager_for(&origin).adopt_access_token(&access_token);
                 Ok(serde_json::json!({ "status": "loggedIn", "display": display }))
             }
-            connections::DeviceLoginOutcome::Unsupported => {
+            connections::DeviceLoginStart::AwaitingApproval(auth) => Ok(serde_json::json!({
+                "status": "awaitingApproval",
+                "authorization": auth,
+            })),
+            connections::DeviceLoginStart::Unsupported => {
                 Ok(serde_json::json!({ "status": "unsupported" }))
             }
-            connections::DeviceLoginOutcome::Denied => {
+        }
+    })
+    .await
+    .map_err(|e| format!("login worker failed: {e}"))?
+}
+
+/// device login 單次觀測段（決策二）：對授權請求輪詢一次。輪詢節奏與取消都歸
+/// TS 側排程——此命令是純請求-回應，不睡眠、不留跨呼叫狀態。
+#[tauri::command]
+async fn device_login_observe(
+    app: tauri::AppHandle,
+    origin: String,
+    device_code: String,
+) -> Result<Value, String> {
+    let path = connections_path(&app)?;
+    let state = app
+        .state::<std::sync::Arc<ConnectionsState>>()
+        .inner()
+        .clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        match connections::device_login_observe(&origin, &device_code, &*state.credentials, &path)?
+        {
+            connections::DeviceLoginObservation::LoggedIn {
+                display,
+                access_token,
+            } => {
+                state.manager_for(&origin).adopt_access_token(&access_token);
+                Ok(serde_json::json!({ "status": "loggedIn", "display": display }))
+            }
+            connections::DeviceLoginObservation::Pending { slow_down } => {
+                Ok(serde_json::json!({ "status": "pending", "slowDown": slow_down }))
+            }
+            connections::DeviceLoginObservation::Denied => {
                 Ok(serde_json::json!({ "status": "denied" }))
             }
-            connections::DeviceLoginOutcome::Expired => {
+            connections::DeviceLoginObservation::Expired => {
                 Ok(serde_json::json!({ "status": "expired" }))
             }
         }
@@ -1289,7 +1325,8 @@ pub fn run() {
             inspect_checkout,
             bind_checkout,
             connection_remove,
-            device_login,
+            device_login_start,
+            device_login_observe,
             pat_login,
             connection_state,
             connection_logout,

@@ -362,21 +362,10 @@ impl Phase3Server {
             assert!(identity.approve_device(&code, &user_id).expect("approve"));
             Ok(())
         };
-        let outcome = speclink_desktop_lib::connections::device_login(
-            &self.origin,
-            store,
-            &self.registry,
-            &opener,
-        )
-        .expect("phase3 device login");
+        let access_token = device_login_two_segments(&self.origin, store, &self.registry, &opener)
+            .expect("phase3 device login");
         self.record("editor device login approved".to_string());
-        match outcome {
-            speclink_desktop_lib::connections::DeviceLoginOutcome::LoggedIn {
-                access_token,
-                ..
-            } => access_token,
-            other => panic!("phase3 editor device login did not complete: {other:?}"),
-        }
+        access_token
     }
 
     pub fn revoke_editor_device_family(&self) {
@@ -769,8 +758,29 @@ pub fn device_login_approved(
         assert!(identity.approve_device(&code, &user_id).expect("approve"));
         Ok(())
     };
-    speclink_desktop_lib::connections::device_login(&h.origin, store, &h.registry, &opener)
-        .expect("device login");
+    device_login_two_segments(&h.origin, store, &h.registry, &opener).expect("device login");
+}
+
+/// 兩段編排（design 決策二）走完一次 device login：啟動段開「瀏覽器」（假開啟器
+/// 就地核准）後，做一次觀測即得終態——測試不需要真的排程輪詢。回傳 access token。
+fn device_login_two_segments(
+    origin: &str,
+    store: &dyn speclink_desktop_lib::credentials::CredentialStore,
+    registry: &std::path::Path,
+    opener: &dyn Fn(&str) -> Result<(), String>,
+) -> Result<String, String> {
+    use speclink_desktop_lib::connections::{
+        device_login_observe, device_login_start, DeviceLoginObservation, DeviceLoginStart,
+    };
+    let auth = match device_login_start(origin, store, registry, opener)? {
+        DeviceLoginStart::LoggedIn { access_token, .. } => return Ok(access_token),
+        DeviceLoginStart::AwaitingApproval(auth) => auth,
+        other => return Err(format!("device login did not complete: {other:?}")),
+    };
+    match device_login_observe(origin, &auth.device_code, store, registry)? {
+        DeviceLoginObservation::LoggedIn { access_token, .. } => Ok(access_token),
+        other => Err(format!("device login did not complete: {other:?}")),
+    }
 }
 
 /// 給使用者簽一枚 PAT（資料面測試最短的 credential 路徑）。

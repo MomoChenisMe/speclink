@@ -24,6 +24,7 @@ const DESTINATIONS = ["總覽", "使用者", "專案與儲存庫", "憑證", "�
 
 const ACCOUNT = {
   user: { id: "u1", email: "member@example.com", display: "Member", admin: false },
+  memberships: [],
   pats: [],
   sessions: [],
   deviceFamilies: [],

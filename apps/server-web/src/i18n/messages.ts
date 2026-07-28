@@ -281,6 +281,8 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "account.title": "帳號",
     "account.identity": "{display}（{email}）",
     "account.loadFailed": "無法載入帳號資料。",
+    "account.projects": "我的專案",
+    "account.noProjects": "尚無專案隸屬。專案隸屬由管理員授予，需要存取時請聯絡管理員。",
     "account.newKeyNotice": "新的存取金鑰，只會顯示這一次，請立即複製保存：",
     "account.keys": "存取金鑰",
     "account.noKeys": "尚無存取金鑰。遠端工作流程需要存取金鑰才能以你的身分連線。",
@@ -321,8 +323,9 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "activate.confirmBody": "代碼 {code} 的裝置要求以你的身分登入。",
     "activate.approve": "核准",
     "activate.deny": "拒絕",
-    "activate.approved": "已核准。你可以回到裝置繼續登入。",
+    "activate.approved": "已核准這個裝置的登入請求。",
     "activate.denied": "已拒絕這個裝置的登入請求。",
+    "activate.returnHint": "可以關閉這個分頁，回到 Speclink app 繼續——app 會自行取得結果。",
 
     // 初始設定
     "setup.invalidTitle": "設定連結無效",
@@ -605,6 +608,9 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "account.title": "Account",
     "account.identity": "{display} ({email})",
     "account.loadFailed": "Could not load your account.",
+    "account.projects": "My projects",
+    "account.noProjects":
+      "No project memberships yet. An administrator grants them — ask yours for access.",
     "account.newKeyNotice": "Your new access key is shown only once — copy it now:",
     "account.keys": "Access keys",
     "account.noKeys": "No access keys yet. Remote workflows need one to connect as you.",
@@ -645,8 +651,10 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "activate.confirmBody": "The device with code {code} is asking to sign in as you.",
     "activate.approve": "Approve",
     "activate.deny": "Deny",
-    "activate.approved": "Approved. You can go back to the device and continue signing in.",
+    "activate.approved": "Approved this device's sign-in request.",
     "activate.denied": "Denied this device's sign-in request.",
+    "activate.returnHint":
+      "You can close this tab and return to the Speclink app — it picks up the result on its own.",
 
     // Setup
     "setup.invalidTitle": "Setup link is not valid",

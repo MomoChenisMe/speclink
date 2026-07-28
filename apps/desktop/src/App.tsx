@@ -248,6 +248,7 @@ function AppInner({
     phases: s.connectionPhases,
     onAdd: s.addConnection,
     onLogin: s.loginConnection,
+    onCancelLogin: s.cancelLogin,
     onSubmitPat: s.submitPat,
     onLogout: s.logoutConnection,
     onRemove: s.removeConnection,
@@ -698,6 +699,9 @@ function AppInner({
           onOpenLocal={s.openProjectAt}
           onRequestMigration={s.requestMigration}
           onAddServer={s.addConnection}
+          phases={s.connectionPhases}
+          onCancelLogin={s.cancelLogin}
+          onSubmitPat={s.submitPat}
           onRefreshConnections={s.refreshConnections}
           onOpenRemote={s.openRemoteWorkspace}
           initialConnectionId={s.workspaceChooser?.initialConnectionId}

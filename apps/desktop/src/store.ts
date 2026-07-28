@@ -74,11 +74,13 @@ function moveBetweenNeighbors<T>(
 export type BoardView = "board" | "specs" | "archived" | "project-settings" | "settings";
 
 /** 逐連線登入互動狀態（desktop-connections）：patInput＝device flow 明確
- * 不支援（404/405），就地收 PAT（規格 PAT fallback）；notice＝非錯誤提示
- * （如 PAT 登出後的帳號頁撤銷提醒）。 */
+ * 不支援（404/405），就地收 PAT（規格 PAT fallback）；awaitingApproval＝device
+ * 授權等待中，承載裝置碼、驗證網址與截止時刻（倒數由呈現層以截止時刻計算，
+ * 不依賴輪詢節奏）；notice＝非錯誤提示（如 PAT 登出後的帳號頁撤銷提醒）。 */
 export type ConnectionPhase =
   | { kind: "idle" }
   | { kind: "busy" }
+  | { kind: "awaitingApproval"; userCode: string; verificationUri: string; expiresAt: number }
   | { kind: "patInput"; error: string | null }
   | { kind: "notice"; message: string }
   | { kind: "error"; message: string };
@@ -247,10 +249,14 @@ export interface AppState {
   openConnectionReauth: (connectionId: string) => void;
   refreshConnections: () => Promise<void>;
   /** 新增（同 origin 即更新顯示名）並隨即進入登入流程（決策 7）；
-   * 無效輸入上拋、由表單就地呈現。 */
-  addConnection: (baseUrl: string, name: string) => Promise<void>;
-  /** device 預設登入；明確不支援時轉 patInput、連線錯誤浮為可讀狀態。 */
+   * 無效輸入上拋、由表單就地呈現。回傳正規化 origin（決策三——供發起登入的
+   * 介面追蹤該連線的互動狀態）；無 adapter 時回 null。 */
+  addConnection: (baseUrl: string, name: string) => Promise<string | null>;
+  /** device 預設登入的啟動段；明確不支援時轉 patInput、連線錯誤浮為可讀狀態。
+   * 等待授權時進 awaitingApproval 並由本 store 排程單次觀測（design 決策二）。 */
   loginConnection: (origin: string) => Promise<void>;
+  /** 取消等待授權：停止排程、回未登入；授權請求留給 server 自然逾期。 */
+  cancelLogin: (origin: string) => void;
   /** PAT 單次過境提交；無效 PAT 留在輸入面並就地浮錯。 */
   submitPat: (origin: string, pat: string) => Promise<void>;
   logoutConnection: (origin: string) => Promise<void>;
@@ -392,6 +398,64 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     /** 逐連線互動狀態的單點更新（desktop-connections）。 */
     function setConnectionPhase(origin: string, phase: ConnectionPhase) {
       set({ connectionPhases: { ...get().connectionPhases, [origin]: phase } });
+    }
+
+    /** 等待授權中的輪詢排程（keyed by origin；design 決策二——節奏歸前端）：
+     * timer＝下一次單次觀測、deviceCode＝觀測把手、intervalMs＝目前間隔
+     * （slow_down 即加倍）、deadline＝授權截止時刻（以時刻判逾時，睡眠醒來
+     * 仍正確）。取消或終態即抹除該筆——Rust 側無長駐迴圈可中斷。 */
+    const pollSchedules = new Map<
+      string,
+      { timer: ReturnType<typeof setTimeout>; deviceCode: string; intervalMs: number; deadline: number }
+    >();
+
+    function stopPolling(origin: string) {
+      const schedule = pollSchedules.get(origin);
+      if (schedule) {
+        clearTimeout(schedule.timer);
+        pollSchedules.delete(origin);
+      }
+    }
+
+    /** 排下一次單次觀測；截止時刻已過即就地收為逾時（不再打 server）。 */
+    function scheduleObservation(origin: string, deviceCode: string, intervalMs: number, deadline: number) {
+      const timer = setTimeout(() => {
+        void observeOnce(origin);
+      }, intervalMs);
+      pollSchedules.set(origin, { timer, deviceCode, intervalMs, deadline });
+    }
+
+    async function observeOnce(origin: string) {
+      const schedule = pollSchedules.get(origin);
+      if (!schedule || !connectionsAdapter) return;
+      if (Date.now() >= schedule.deadline) {
+        stopPolling(origin);
+        setConnectionPhase(origin, { kind: "error", message: appT("servers.expired") });
+        return;
+      }
+      try {
+        const result = await connectionsAdapter.deviceLoginObserve(origin, schedule.deviceCode);
+        // 觀測在途時使用者按了取消：結果一律作廢，不得復活等待面或登入。
+        if (pollSchedules.get(origin) !== schedule) return;
+        if (result.status === "loggedIn") {
+          stopPolling(origin);
+          await get().refreshConnections();
+          await recoverRemoteSessions(origin);
+          setConnectionPhase(origin, { kind: "idle" });
+        } else if (result.status === "denied") {
+          stopPolling(origin);
+          setConnectionPhase(origin, { kind: "error", message: appT("servers.denied") });
+        } else if (result.status === "expired") {
+          stopPolling(origin);
+          setConnectionPhase(origin, { kind: "error", message: appT("servers.expired") });
+        } else {
+          const intervalMs = result.slowDown ? schedule.intervalMs * 2 : schedule.intervalMs;
+          scheduleObservation(origin, schedule.deviceCode, intervalMs, schedule.deadline);
+        }
+      } catch (e) {
+        stopPolling(origin);
+        setConnectionPhase(origin, { kind: "error", message: String(e) });
+      }
     }
 
     /** 登入成功後原地復活同 connection 的全部已建立 remote sessions：逐一
@@ -1069,31 +1133,45 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       }
     },
     async addConnection(baseUrl, name) {
-      if (!connectionsAdapter) return;
+      if (!connectionsAdapter) return null;
       const entry = await connectionsAdapter.add(baseUrl, name);
       // 規格「新增後清單即時反映」：條目先上清單、再進入登入流程。
       await get().refreshConnections();
       await get().loginConnection(entry.origin);
+      return entry.origin;
     },
     async loginConnection(origin) {
       if (!connectionsAdapter) return;
+      // 重按登入＝重來一次：先停掉上一輪的排程，避免兩份輪詢並行。
+      stopPolling(origin);
       setConnectionPhase(origin, { kind: "busy" });
       try {
-        const result = await connectionsAdapter.deviceLogin(origin);
+        const result = await connectionsAdapter.deviceLoginStart(origin);
         if (result.status === "loggedIn") {
           await get().refreshConnections();
           await recoverRemoteSessions(origin);
           setConnectionPhase(origin, { kind: "idle" });
         } else if (result.status === "unsupported") {
           setConnectionPhase(origin, { kind: "patInput", error: null });
-        } else if (result.status === "denied") {
-          setConnectionPhase(origin, { kind: "error", message: appT("servers.denied") });
         } else {
-          setConnectionPhase(origin, { kind: "error", message: appT("servers.expired") });
+          const auth = result.authorization;
+          const deadline = Date.now() + auth.expiresIn * 1000;
+          setConnectionPhase(origin, {
+            kind: "awaitingApproval",
+            userCode: auth.userCode,
+            verificationUri: auth.verificationUri,
+            expiresAt: deadline,
+          });
+          scheduleObservation(origin, auth.deviceCode, Math.max(auth.interval, 1) * 1000, deadline);
         }
       } catch (e) {
         setConnectionPhase(origin, { kind: "error", message: String(e) });
       }
+    },
+    cancelLogin(origin) {
+      // 取消不通知 server——授權請求自然逾期，本機不留等待狀態與 credential。
+      stopPolling(origin);
+      setConnectionPhase(origin, { kind: "idle" });
     },
     async submitPat(origin, pat) {
       if (!connectionsAdapter) return;
@@ -1127,7 +1205,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     async removeConnection(id) {
       if (!connectionsAdapter) return;
       const origin = get().connections.find((c) => c.id === id)?.origin;
-      if (origin) setConnectionPhase(origin, { kind: "busy" });
+      if (origin) {
+        stopPolling(origin); // 條目要消失了，等待中的觀測不得再回填它的狀態
+        setConnectionPhase(origin, { kind: "busy" });
+      }
       try {
         await connectionsAdapter.remove(id);
         if (origin) {

@@ -13,12 +13,24 @@ import { APP_MESSAGES } from "../i18n/messages";
 import type {
   ConnectionsAdapter,
   ConnectionView,
-  DeviceLoginResult,
+  DeviceLoginStartResult,
 } from "../adapter/connections";
 import type { UseBoundStore, StoreApi } from "zustand";
 import type { WorkspaceSession } from "../session";
 
 const DISPLAY = "Dev <dev@example.com>";
+
+/** 假 server 的授權資訊（間隔 1 秒——UI 測試不必等真實的 5 秒節奏）。 */
+const AUTH = {
+  deviceCode: "dev-code-1",
+  userCode: "ABCD-EFGH",
+  verificationUri: "http://localhost:8080/activate",
+  expiresIn: 900,
+  interval: 1,
+};
+
+const { writeText } = vi.hoisted(() => ({ writeText: vi.fn(async () => {}) }));
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText }));
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
@@ -51,12 +63,13 @@ function fakeAdapter(over: Partial<ConnectionsAdapter> = {}) {
         entries.splice(idx, 1);
       }
     },
-    deviceLogin: async (origin): Promise<DeviceLoginResult> => {
+    deviceLoginStart: async (origin): Promise<DeviceLoginStartResult> => {
       loggedIn.add(origin);
       const entry = entries.find((e) => e.origin === origin);
       if (entry) entry.lastActorDisplay = DISPLAY;
       return { status: "loggedIn", display: DISPLAY };
     },
+    deviceLoginObserve: async () => ({ status: "pending", slowDown: false }),
     patLogin: async (origin, pat) => {
       if (pat !== "spk_pat_good") throw new Error("PAT 無效或已被撤銷");
       loggedIn.add(origin);
@@ -79,7 +92,13 @@ function fakeAdapter(over: Partial<ConnectionsAdapter> = {}) {
 }
 
 /** 真 store＋面板：面板 props 全數接線 store 的 connections 分片。 */
-function Harness({ useStore }: { useStore: UseBoundStore<StoreApi<AppState>> }) {
+function Harness({
+  useStore,
+  onOpenWorkspace,
+}: {
+  useStore: UseBoundStore<StoreApi<AppState>>;
+  onOpenWorkspace?: (id: string) => void;
+}) {
   const s = useStore();
   return (
     <ServersPanel
@@ -87,10 +106,12 @@ function Harness({ useStore }: { useStore: UseBoundStore<StoreApi<AppState>> }) 
       phases={s.connectionPhases}
       onAdd={s.addConnection}
       onLogin={s.loginConnection}
+      onCancelLogin={s.cancelLogin}
       onSubmitPat={s.submitPat}
       onLogout={s.logoutConnection}
       onRemove={s.removeConnection}
       onRefresh={s.refreshConnections}
+      onOpenWorkspace={onOpenWorkspace}
     />
   );
 }
@@ -129,9 +150,9 @@ describe("ServersPanel", () => {
   it("探測不支援時就地現 PAT 輸入，有效 PAT 完成登入", async () => {
     const adapter = fakeAdapter();
     const patFallbackOnce = vi
-      .fn<() => Promise<DeviceLoginResult>>()
+      .fn<() => Promise<DeviceLoginStartResult>>()
       .mockResolvedValue({ status: "unsupported" });
-    renderPanel({ ...adapter, deviceLogin: () => patFallbackOnce() });
+    renderPanel({ ...adapter, deviceLoginStart: () => patFallbackOnce() });
     addServer("http://legacy.example", "舊機");
 
     // 明確不支援 → PAT 輸入現身（fallback 只給這個訊號，不是錯誤）。
@@ -146,7 +167,7 @@ describe("ServersPanel", () => {
     const adapter = fakeAdapter();
     renderPanel({
       ...adapter,
-      deviceLogin: async () => ({ status: "unsupported" }),
+      deviceLoginStart: async () => ({ status: "unsupported" }),
     });
     addServer("http://legacy.example", "舊機");
 
@@ -173,14 +194,89 @@ describe("ServersPanel", () => {
 
   it("瀏覽器拒絕授權呈現可讀狀態", async () => {
     const adapter = fakeAdapter();
-    renderPanel({ ...adapter, deviceLogin: async () => ({ status: "denied" }) });
+    renderPanel({
+      ...adapter,
+      deviceLoginStart: async () => ({ status: "awaitingApproval", authorization: AUTH }),
+      deviceLoginObserve: async () => ({ status: "denied" }),
+    });
     addServer("http://localhost:8080", "本地");
 
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toContain("已在瀏覽器拒絕授權"),
+    // 拒絕須經一次排程觀測才浮出（間隔 1 秒）。
+    await waitFor(
+      () => expect(screen.getByRole("alert").textContent).toContain("已在瀏覽器拒絕授權"),
+      { timeout: 3000 },
     );
     // 可讀狀態取代狀態行；絕不呈現已登入。
     expect(screen.queryByText(/已登入/)).toBeNull();
+  });
+
+  // --- 等待授權面（規格「device login 預設與 PAT fallback」的等待授權要求） ---
+
+  /** 停在等待授權的面板：啟動段回授權資訊、觀測段永遠 pending。 */
+  function renderAwaiting(over: Partial<ConnectionsAdapter> = {}) {
+    const adapter = fakeAdapter();
+    const useStore = createAppStore({
+      createSession: () => ({}) as WorkspaceSession,
+      connections: {
+        ...adapter,
+        deviceLoginStart: async () => ({ status: "awaitingApproval" as const, authorization: AUTH }),
+        deviceLoginObserve: async () => ({ status: "pending" as const, slowDown: false }),
+        ...over,
+      },
+    });
+    rtlRender(<Harness useStore={useStore} />, { wrapper: zhWrapper });
+    addServer("http://localhost:8080", "本地");
+    return useStore;
+  }
+
+  it("等待授權時顯示裝置碼、驗證網址、倒數與取消", async () => {
+    renderAwaiting();
+    const waiting = await screen.findByTestId("awaiting-approval-http://localhost:8080");
+    expect(waiting.textContent).toContain(AUTH.userCode);
+    expect(waiting.textContent).toContain(AUTH.verificationUri);
+    // 倒數（分:秒）與取消操作就在同一面。
+    expect(waiting.textContent).toMatch(/\d+:\d{2}/);
+    expect(screen.getByRole("button", { name: "取消登入" })).toBeTruthy();
+  });
+
+  it("裝置碼與驗證網址各附複製，複製後剪貼簿即為該內容", async () => {
+    writeText.mockClear();
+    renderAwaiting();
+    await screen.findByTestId("awaiting-approval-http://localhost:8080");
+
+    fireEvent.click(screen.getByRole("button", { name: "複製裝置碼" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(AUTH.userCode));
+    fireEvent.click(screen.getByRole("button", { name: "複製驗證網址" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(AUTH.verificationUri));
+  });
+
+  it("取消等待即回未登入且不再觀測", async () => {
+    const observe = vi.fn(async () => ({ status: "pending" as const, slowDown: false }));
+    renderAwaiting({ deviceLoginObserve: observe });
+    await screen.findByTestId("awaiting-approval-http://localhost:8080");
+
+    fireEvent.click(screen.getByRole("button", { name: "取消登入" }));
+    await waitFor(() => expect(screen.getByText("未登入")).toBeTruthy());
+    expect(screen.queryByTestId("awaiting-approval-http://localhost:8080")).toBeNull();
+    observe.mockClear();
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(observe).not.toHaveBeenCalled();
+  });
+
+  // --- 登入成功的行動呼籲（規格「伺服器管理最小面」：聚焦開啟工作區入口） ---
+
+  it("登入成功後開啟工作區入口取得鍵盤焦點，且不自動開啟工作區選擇器", async () => {
+    const open = vi.fn();
+    const useStore = createAppStore({
+      createSession: () => ({}) as WorkspaceSession,
+      connections: fakeAdapter(),
+    });
+    rtlRender(<Harness useStore={useStore} onOpenWorkspace={open} />, { wrapper: zhWrapper });
+    addServer("http://localhost:8080", "本地");
+
+    const entry = await screen.findByTestId("open-workspace-http://localhost:8080");
+    await waitFor(() => expect(document.activeElement).toBe(entry));
+    expect(open).not.toHaveBeenCalled();
   });
 
   it("移除連線後清單消失", async () => {

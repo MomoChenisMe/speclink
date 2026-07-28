@@ -72,6 +72,21 @@ describe("裝置核准頁", () => {
     await waitFor(() => expect(client.decideActivation).toHaveBeenCalledWith("ABCD-EFGH", "approve"));
   });
 
+  // 結果頁指引（server-device-auth「核准頁 session 保護且明確確認」）：核准與拒絕
+  // 兩種結果都要告知可返回 Speclink app 繼續，不止於單行結果。
+  it.each([
+    ["approve" as const, "approved" as const, /核准/],
+    ["deny" as const, "denied" as const, /拒絕/],
+  ])("%s 的結果頁指引返回 app 繼續", async (action, status, label) => {
+    const client = makeClient({ decideActivation: vi.fn(async () => ({ status })) });
+    renderAt("/activate?user_code=ABCD-EFGH", client);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /下一步|確認/ }));
+    await user.click(await screen.findByRole("button", { name: label }));
+    await waitFor(() => expect(client.decideActivation).toHaveBeenCalledWith("ABCD-EFGH", action));
+    expect(await screen.findByText(/回到 Speclink/)).toBeTruthy();
+  });
+
   it("未登入導向登入頁", async () => {
     renderAt("/activate?user_code=ABCD-EFGH", makeClient({ getSession: vi.fn(async () => UNAUTH) }));
     expect(await screen.findByRole("button", { name: /登入/ })).toBeTruthy();

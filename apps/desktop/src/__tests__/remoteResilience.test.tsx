@@ -362,10 +362,11 @@ describe("remote offline stale snapshot", () => {
       }),
       add: vi.fn(),
       remove: vi.fn(),
-      deviceLogin: vi.fn(async () => {
+      deviceLoginStart: vi.fn(async () => {
         order.push("login");
         return { status: "loggedIn", display: "Dev" };
       }),
+      deviceLoginObserve: vi.fn(),
       patLogin: vi.fn(),
       logout: vi.fn(),
       scopes: vi.fn(),

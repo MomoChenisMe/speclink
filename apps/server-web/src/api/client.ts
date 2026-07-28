@@ -196,9 +196,17 @@ export type DeviceFamilyMeta = {
   revokedAt: string | null;
 };
 
+/** One of the caller's own project memberships (never the whole registry). */
+export type MembershipMeta = {
+  projectKey: string;
+  projectName: string;
+  role: string;
+};
+
 /** The account self-service summary: own user plus credential metadata. */
 export type AccountSummary = {
   user: SessionUser;
+  memberships: MembershipMeta[];
   pats: PatMeta[];
   sessions: SessionMeta[];
   deviceFamilies: DeviceFamilyMeta[];

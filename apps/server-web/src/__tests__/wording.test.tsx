@@ -31,6 +31,7 @@ const MEMBER_SESSION = {
 
 const ACCOUNT = {
   user: { id: "u1", email: "member@example.com", display: "Member", admin: false },
+  memberships: [{ projectKey: "alpha", projectName: "Alpha 專案", role: "editor" }],
   pats: [
     {
       id: "p1",

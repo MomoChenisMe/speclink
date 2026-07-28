@@ -16,11 +16,31 @@ export interface ConnectionView {
   loggedIn: boolean;
 }
 
-/** device_login 的可讀結果（規格「device login 預設與 PAT fallback」）：
+/** 等待授權面所需的授權資訊（design 決策二啟動段回傳）：裝置碼與驗證網址給
+ * 使用者看、expiresIn 給倒數、interval 給排程；deviceCode 是單次觀測的把手。 */
+export interface DeviceAuthorization {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  /** 授權請求的有效秒數。 */
+  expiresIn: number;
+  /** server 指示的最短輪詢間隔（秒）。 */
+  interval: number;
+}
+
+/** device login 啟動段的可讀結果（規格「device login 預設與 PAT fallback」）：
+ * loggedIn＝靜默 refresh 成功；awaitingApproval＝已開瀏覽器、等待核准；
  * unsupported＝明確不支援（404/405），觸發 PAT fallback；連線錯誤走 reject。 */
-export type DeviceLoginResult =
+export type DeviceLoginStartResult =
   | { status: "loggedIn"; display: string }
-  | { status: "unsupported" }
+  | { status: "awaitingApproval"; authorization: DeviceAuthorization }
+  | { status: "unsupported" };
+
+/** 單次觀測段的可讀結果：pending 尚未決定（slowDown＝server 要求加大間隔）；
+ * denied／expired 是終態。 */
+export type DeviceLoginObservation =
+  | { status: "loggedIn"; display: string }
+  | { status: "pending"; slowDown: boolean }
   | { status: "denied" }
   | { status: "expired" };
 
@@ -56,7 +76,10 @@ export interface ConnectionsAdapter {
   add(baseUrl: string, name: string): Promise<ConnectionView>;
   /** 移除連線＝Rust 側先走登出語意再刪條目（決策 6）。 */
   remove(id: string): Promise<void>;
-  deviceLogin(origin: string): Promise<DeviceLoginResult>;
+  /** 啟動段：靜默 refresh 快路徑，否則初始化＋開瀏覽器並回等待授權資訊。 */
+  deviceLoginStart(origin: string): Promise<DeviceLoginStartResult>;
+  /** 單次觀測段：對授權請求輪詢一次；節奏與取消都歸呼叫端排程。 */
+  deviceLoginObserve(origin: string, deviceCode: string): Promise<DeviceLoginObservation>;
   /** PAT 單次過境：呼叫後 TS 不保留任何拷貝。 */
   patLogin(origin: string, pat: string): Promise<{ status: "loggedIn"; display: string }>;
   logout(origin: string): Promise<LogoutResult>;
@@ -86,7 +109,9 @@ export function createConnectionsAdapter(
     list: () => invoke("connection_list"),
     add: (baseUrl, name) => invoke("connection_add", { baseUrl, name }),
     remove: (id) => invoke("connection_remove", { id }),
-    deviceLogin: (origin) => invoke("device_login", { origin }),
+    deviceLoginStart: (origin) => invoke("device_login_start", { origin }),
+    deviceLoginObserve: (origin, deviceCode) =>
+      invoke("device_login_observe", { origin, deviceCode }),
     patLogin: (origin, pat) => invoke("pat_login", { origin, pat }),
     logout: (origin) => invoke("connection_logout", { origin }),
     scopes: (connectionId) => invoke("remote_scopes", { connectionId }),

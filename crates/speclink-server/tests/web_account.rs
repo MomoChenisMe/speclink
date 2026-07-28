@@ -9,8 +9,9 @@ mod common;
 
 use chrono::{Duration, Utc};
 use serde_json::{json, Value};
+use speclink_server::audit::{AuditActor, AuditSource};
 use speclink_server::identity::{
-    DevicePoll, IdentitySqlite, IdentityStore, NewInvitation, TokenPair,
+    DevicePoll, IdentitySqlite, IdentityStore, MembershipRole, NewInvitation, TokenPair,
 };
 use speclink_server::state::AppState;
 use speclink_store::memory::MemoryStore;
@@ -42,6 +43,60 @@ fn server_with_user() -> (String, Arc<IdentitySqlite>) {
         identity: identity.clone(),
     };
     (common::start(state), identity)
+}
+
+/// Start a server whose seeded user holds exactly `memberships` (project key,
+/// display name, role), with every one of those projects registered so the
+/// summary can resolve a display name. Returns the base URL, the identity store
+/// and the seeded user's id.
+fn server_with_memberships(
+    memberships: &[(&str, &str, MembershipRole)],
+    admin: bool,
+) -> (String, Arc<IdentitySqlite>, String) {
+    let identity = Arc::new(IdentitySqlite::open_memory().expect("identity store"));
+    for (key, name, _) in memberships {
+        identity.create_project(key, name).expect("register project");
+    }
+    let token = identity
+        .create_invitation(NewInvitation {
+            email: EMAIL.to_string(),
+            display: "User".to_string(),
+            memberships: memberships.iter().map(|(key, _, _)| (*key).to_string()).collect(),
+            admin,
+            expires_at: Utc::now() + Duration::days(1),
+        })
+        .expect("invite");
+    let user_id = identity.accept_invitation(&token, PASSWORD).expect("accept");
+    // An invitation grants editor; set each membership's intended role.
+    let actor = AuditActor::user(user_id.clone(), AuditSource::Web);
+    for (key, _, role) in memberships {
+        identity
+            .admin_set_membership(&actor, &user_id, key, *role, true)
+            .expect("set role");
+    }
+    let state = AppState {
+        events: common::detached_events(),
+        store: Arc::new(MemoryStore::new()),
+        config: Arc::new(common::demo_config()),
+        identity: identity.clone(),
+    };
+    (common::start(state), identity, user_id)
+}
+
+/// The summary's memberships as `(projectKey, projectName, role)` triples.
+fn membership_rows(summary: &Value) -> Vec<(String, String, String)> {
+    summary["data"]["memberships"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a memberships array: {summary}"))
+        .iter()
+        .map(|m| {
+            (
+                m["projectKey"].as_str().unwrap_or_default().to_string(),
+                m["projectName"].as_str().unwrap_or_default().to_string(),
+                m["role"].as_str().unwrap_or_default().to_string(),
+            )
+        })
+        .collect()
 }
 
 fn agent() -> ureq::Agent {
@@ -274,6 +329,67 @@ fn a_cross_origin_account_mutation_is_refused() {
         Some(&cookie),
     ));
     assert_eq!(status, 403, "a foreign-origin account mutation is refused");
+}
+
+// --- own project memberships in the summary (server-identity「帳號 browser API
+// 保持憑證祕密邊界」, 決策一) ---
+
+#[test]
+fn the_summary_lists_the_callers_own_memberships() {
+    let (base, _identity, _user_id) = server_with_memberships(
+        &[
+            ("alpha", "Alpha 專案", MembershipRole::Editor),
+            ("beta", "Beta 專案", MembershipRole::Reader),
+        ],
+        false,
+    );
+    let cookie = json_login(&base);
+    let (status, summary) = json_of(get_json(&base, "/api/speclink/v1/web/account", Some(&cookie)));
+    assert_eq!(status, 200);
+    let mut rows = membership_rows(&summary);
+    rows.sort();
+    assert_eq!(
+        rows,
+        vec![
+            ("alpha".to_string(), "Alpha 專案".to_string(), "editor".to_string()),
+            ("beta".to_string(), "Beta 專案".to_string(), "reader".to_string()),
+        ],
+        "each membership carries the project key, display name and role (camelCase)"
+    );
+    // The added section keeps the read payload's secret boundary.
+    let raw = summary.to_string();
+    for forbidden in ["hash", "refresh", "password", "secret"] {
+        assert!(!raw.contains(forbidden), "read payload must not carry `{forbidden}`: {raw}");
+    }
+}
+
+#[test]
+fn the_summary_lists_no_memberships_as_an_empty_array() {
+    let (base, _identity, _user_id) = server_with_memberships(&[], false);
+    let cookie = json_login(&base);
+    let (_s, summary) = json_of(get_json(&base, "/api/speclink/v1/web/account", Some(&cookie)));
+    assert_eq!(
+        membership_rows(&summary),
+        Vec::new(),
+        "a user with no membership gets an empty array, not a missing section"
+    );
+}
+
+#[test]
+fn an_admins_summary_lists_own_memberships_not_every_project() {
+    let (base, identity, _user_id) =
+        server_with_memberships(&[("alpha", "Alpha 專案", MembershipRole::Editor)], true);
+    // A project the admin governs but is not a member of.
+    identity.create_project("gamma", "Gamma 專案").expect("register project");
+
+    let cookie = json_login(&base);
+    let (_s, summary) = json_of(get_json(&base, "/api/speclink/v1/web/account", Some(&cookie)));
+    assert_eq!(summary["data"]["user"]["admin"], json!(true), "the caller is an admin");
+    assert_eq!(
+        membership_rows(&summary),
+        vec![("alpha".to_string(), "Alpha 專案".to_string(), "editor".to_string())],
+        "an admin sees their own membership, not the whole registry"
+    );
 }
 
 #[test]

@@ -21,6 +21,8 @@ import type {
   ScopesView,
 } from "../adapter/connections";
 import type { WorkspaceAdapter } from "../adapter/workspace";
+import type { ConnectionPhase } from "../store";
+import { AwaitingApproval, PatLoginInput } from "./connectionLogin";
 
 type Step = "source" | "server" | "scopes" | "checkout";
 
@@ -40,7 +42,14 @@ export interface WorkspaceChooserProps {
   workspace: Pick<WorkspaceAdapter, "pickFolder" | "openProject">;
   onOpenLocal: (path: string) => Promise<void>;
   onRequestMigration?: (root: string) => Promise<void>;
-  onAddServer: (baseUrl: string, name: string) => Promise<void>;
+  /** 新增並隨即登入；回傳正規化 origin 供本面追蹤該連線的互動狀態。 */
+  onAddServer: (baseUrl: string, name: string) => Promise<string | null>;
+  /** 逐連線互動狀態（keyed by origin）——登入回饋在本面就地渲染（design 決策三）。 */
+  phases: Record<string, ConnectionPhase>;
+  /** 取消等待授權：停止輪詢、回未登入。 */
+  onCancelLogin: (origin: string) => void;
+  /** PAT 單次過境提交。 */
+  onSubmitPat: (origin: string, pat: string) => void;
   onRefreshConnections: () => Promise<void>;
   onOpenRemote: (
     connectionId: string,
@@ -191,6 +200,9 @@ export function WorkspaceChooser({
   onOpenLocal,
   onRequestMigration,
   onAddServer,
+  phases,
+  onCancelLogin,
+  onSubmitPat,
   onRefreshConnections,
   onOpenRemote,
   initialConnectionId = null,
@@ -210,6 +222,8 @@ export function WorkspaceChooser({
   const [serverUrl, setServerUrl] = useState("");
   const [serverName, setServerName] = useState("");
   const [showAddServer, setShowAddServer] = useState(false);
+  /** 剛從本面發起登入的連線 origin（addConnection 回傳）；其互動狀態就地渲染。 */
+  const [pendingOrigin, setPendingOrigin] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -339,6 +353,9 @@ export function WorkspaceChooser({
     }
   }
 
+  /** 剛發起登入的連線互動狀態；等待授權／PAT／錯誤據此就地渲染。 */
+  const pendingPhase = pendingOrigin ? phases[pendingOrigin] : undefined;
+
   async function addServer() {
     const url = serverUrl.trim();
     if (!url) return;
@@ -346,9 +363,10 @@ export function WorkspaceChooser({
     setError(null);
     setNotice(null);
     try {
-      await onAddServer(url, serverName.trim() || url);
+      const origin = await onAddServer(url, serverName.trim() || url);
       await onRefreshConnections();
       setServerName("");
+      setPendingOrigin(origin ?? null);
       setNotice(t("chooser.serverAdded"));
     } catch (e) {
       setError(String(e));
@@ -553,6 +571,40 @@ export function WorkspaceChooser({
                 </Button>
               </div>
             )}
+            {/* 登入回饋跟著發起登入的介面走（design 決策三）：等待授權面／PAT
+                輸入／錯誤就地渲染，不要求使用者切到設定頁才看得到狀態。 */}
+            {pendingOrigin && pendingPhase?.kind === "awaitingApproval" && (
+              <div className="rounded-lg border border-border bg-muted/30 p-3">
+                <AwaitingApproval
+                  origin={pendingOrigin}
+                  phase={pendingPhase}
+                  onCancel={() => {
+                    onCancelLogin(pendingOrigin);
+                    setPendingOrigin(null);
+                    setNotice(null);
+                  }}
+                />
+              </div>
+            )}
+            {pendingOrigin && pendingPhase?.kind === "patInput" && (
+              <div
+                className="rounded-lg border border-border bg-muted/30 p-3"
+                data-testid={`pat-input-${pendingOrigin}`}
+              >
+                <PatLoginInput
+                  error={pendingPhase.error}
+                  onSubmit={(pat) => onSubmitPat(pendingOrigin, pat)}
+                />
+              </div>
+            )}
+            {pendingPhase?.kind === "busy" && (
+              <p className="m-0 text-xs text-muted-foreground">{t("servers.busy")}</p>
+            )}
+            {pendingPhase?.kind === "error" && (
+              <p role="alert" className="m-0 text-xs text-destructive">
+                {pendingPhase.message}
+              </p>
+            )}
           </div>
         )}
 
@@ -611,7 +663,7 @@ export function WorkspaceChooser({
           </div>
         )}
 
-        {(error || notice) && (
+        {(error || (notice && (!pendingPhase || pendingPhase.kind === "idle"))) && (
           <p
             role={error ? "alert" : "status"}
             className={cn(
