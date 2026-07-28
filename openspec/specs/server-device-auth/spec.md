@@ -53,7 +53,7 @@ code:
 ---
 ### Requirement: 核准頁 session 保護且明確確認
 
-核准頁 SHALL 要求已登入的 session。未登入瀏覽器以格式合格的 `user_code` 查詢參數開啟核准頁時，登入流程 SHALL 僅保留該裝置碼，成功登入後 SHALL 返回同一核准頁並預填該碼；缺少或格式不合的查詢值 SHALL NOT 被傳遞或反映。已登入瀏覽器以格式合格的 `user_code` 開啟核准頁時，頁面 SHALL 預填該碼，但 GET SHALL NOT 查詢授權狀態、變更授權狀態或略過下一步。使用者 SHALL 提交 user code 並得到明確的核准／拒絕確認步驟；核准或拒絕 SHALL 記錄操作者身分。核准頁的變更型 POST SHALL 沿用同源驗證。未知、已用或逾期的 user code SHALL 得到同一無效回應，SHALL NOT 區分原因。
+核准頁 SHALL 要求已登入的 session。未登入瀏覽器以格式合格的 `user_code` 查詢參數開啟核准頁時，登入流程 SHALL 僅保留該裝置碼，成功登入後 SHALL 返回同一核准頁並預填該碼；缺少或格式不合的查詢值 SHALL NOT 被傳遞或反映。已登入瀏覽器以格式合格的 `user_code` 開啟核准頁時，頁面 SHALL 預填該碼，但 GET SHALL NOT 查詢授權狀態、變更授權狀態或略過下一步。使用者 SHALL 提交 user code 並得到明確的核准／拒絕確認步驟；核准或拒絕 SHALL 記錄操作者身分。決定送出後的結果頁 SHALL 於核准與拒絕兩種結果都明示可返回 Speclink app 繼續（app 會自行取得結果），SHALL NOT 讓結果頁止於單行結果而無後續指引。核准頁的變更型 POST SHALL 沿用同源驗證。未知、已用或逾期的 user code SHALL 得到同一無效回應，SHALL NOT 區分原因。
 
 #### Scenario: 未登入不能核准
 
@@ -69,6 +69,11 @@ code:
 
 - **WHEN** 已登入使用者開啟帶有 pending user code 的核准頁
 - **THEN** 頁面只預填裝置碼並提供下一步；使用者提交下一步後才看到核准與拒絕選項
+
+#### Scenario: 結果頁指引返回 app
+
+- **WHEN** 使用者於核准頁分別完成核准與拒絕
+- **THEN** 兩種結果頁均顯示結果與可返回 Speclink app 繼續的指引文字
 
 #### Scenario: 缺少或格式不合的短碼不反映
 
@@ -87,13 +92,37 @@ code:
 
 
 <!-- @trace
-source: device-activation-query-prefill
-updated: 2026-07-22
+source: remote-login-ux-gaps
+updated: 2026-07-28
 code:
+  - apps/desktop/src-tauri/src/connections.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src-tauri/tests/common/mod.rs
+  - apps/desktop/src-tauri/tests/login_orchestration.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/remoteOpen.test.ts
+  - apps/desktop/src/__tests__/remoteResilience.test.tsx
+  - apps/desktop/src/__tests__/serversPanel.test.tsx
+  - apps/desktop/src/__tests__/store.test.ts
+  - apps/desktop/src/__tests__/workspaceChooser.test.tsx
+  - apps/desktop/src/adapter/connections.ts
+  - apps/desktop/src/components/ServersPanel.tsx
+  - apps/desktop/src/components/WorkspaceChooser.tsx
+  - apps/desktop/src/components/connectionLogin.tsx
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/store.ts
+  - apps/server-web/src/__tests__/account.test.tsx
+  - apps/server-web/src/__tests__/activate.test.tsx
+  - apps/server-web/src/__tests__/admin-console-shell.test.tsx
+  - apps/server-web/src/__tests__/app.test.tsx
+  - apps/server-web/src/__tests__/wording.test.tsx
+  - apps/server-web/src/api/client.ts
+  - apps/server-web/src/i18n/messages.ts
+  - apps/server-web/src/pages/AccountPage.tsx
+  - apps/server-web/src/pages/ActivatePage.tsx
+  - crates/speclink-server/src/admin.rs
   - crates/speclink-server/src/web.rs
-  - crates/speclink-server/tests/device_e2e.rs
   - crates/speclink-server/tests/web_account.rs
-  - crates/speclink-server/tests/web_activate.rs
 -->
 
 ---

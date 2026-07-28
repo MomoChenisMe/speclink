@@ -6,8 +6,11 @@ import { I18nProvider } from "@speclink/ui";
 import { WorkspaceChooser } from "../components/WorkspaceChooser";
 import { RemoteConflictDialog } from "../components/RemoteConflictDialog";
 import { APP_MESSAGES } from "../i18n/messages";
+import { createAppStore, type AppState } from "../store";
 import type { ConnectionsAdapter, ConnectionView } from "../adapter/connections";
 import type { WorkspaceAdapter } from "../adapter/workspace";
+import type { UseBoundStore, StoreApi } from "zustand";
+import type { WorkspaceSession } from "../session";
 
 const CONNECTION: ConnectionView = {
   id: "conn_1",
@@ -42,7 +45,8 @@ function fakeConnections(over: Partial<ConnectionsAdapter> = {}): ConnectionsAda
     list: vi.fn().mockResolvedValue([CONNECTION]),
     add: vi.fn().mockResolvedValue(CONNECTION),
     remove: vi.fn().mockResolvedValue(undefined),
-    deviceLogin: vi.fn().mockResolvedValue({ status: "loggedIn", display: "Momo" }),
+    deviceLoginStart: vi.fn().mockResolvedValue({ status: "loggedIn", display: "Momo" }),
+    deviceLoginObserve: vi.fn(),
     patLogin: vi.fn().mockResolvedValue({ status: "loggedIn", display: "Momo" }),
     logout: vi.fn().mockResolvedValue({ revokedOnServer: true, patNotice: false }),
     scopes: vi.fn().mockResolvedValue(SCOPES),
@@ -108,6 +112,9 @@ function renderChooser({
       onOpenLocal={onOpenLocal}
       onRequestMigration={onRequestMigration}
       onAddServer={onAddServer}
+      phases={{}}
+      onCancelLogin={vi.fn()}
+      onSubmitPat={vi.fn()}
       onRefreshConnections={vi.fn().mockResolvedValue(undefined)}
       onOpenRemote={onOpenRemote}
       initialConnectionId={initialConnectionId}
@@ -447,5 +454,128 @@ describe("remote marker 與本機 openspec 並存", () => {
     await waitFor(() => expect(continueLocal).toHaveBeenCalledTimes(1));
     expect(migrateLocal).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
+  });
+});
+
+// --- chooser 內就地登入回饋（規格「device login 預設與 PAT fallback」的
+// 「從工作區選擇器發起登入同樣呈現等待授權面」；design 決策三）：真 store 驅動
+// ——新增並登入後，等待授權面／PAT 輸入就在選擇器的 server 步驟渲染。 ---
+
+describe("WorkspaceChooser 登入回饋", () => {
+  const AUTH = {
+    deviceCode: "dev-code-1",
+    userCode: "ABCD-EFGH",
+    verificationUri: "http://localhost:8080/activate",
+    expiresIn: 900,
+    interval: 1,
+  };
+
+  /** 假 adapter：in-memory registry；啟動段行為由測試覆寫。 */
+  function storeAdapter(over: Partial<ConnectionsAdapter> = {}): ConnectionsAdapter {
+    const entries: Array<Omit<ConnectionView, "loggedIn">> = [];
+    const loggedIn = new Set<string>();
+    return {
+      list: async () => entries.map((e) => ({ ...e, loggedIn: loggedIn.has(e.origin) })),
+      add: async (baseUrl, name) => {
+        const origin = baseUrl.trim().replace(/\/+$/, "").toLowerCase();
+        const entry = { id: `conn_${entries.length + 1}`, origin, name };
+        entries.push(entry);
+        return { ...entry, loggedIn: false };
+      },
+      remove: async () => {},
+      deviceLoginStart: async () => ({ status: "awaitingApproval", authorization: AUTH }),
+      deviceLoginObserve: async () => ({ status: "pending", slowDown: false }),
+      patLogin: async (origin) => {
+        loggedIn.add(origin);
+        const entry = entries.find((e) => e.origin === origin);
+        if (entry) entry.lastActorDisplay = "Momo";
+        return { status: "loggedIn", display: "Momo" };
+      },
+      logout: async () => ({ revokedOnServer: true, patNotice: false }),
+      scopes: async () => SCOPES,
+      inspectCheckout: async (path) => ({ root: path, tools: [] }),
+      bindCheckout: async (path) => path,
+      ...over,
+    };
+  }
+
+  function ChooserHarness({ useStore }: { useStore: UseBoundStore<StoreApi<AppState>> }) {
+    const s = useStore();
+    return (
+      <WorkspaceChooser
+        open
+        onOpenChange={() => {}}
+        connections={s.connections}
+        phases={s.connectionPhases}
+        connectionAdapter={fakeConnections()}
+        workspace={fakeWorkspace()}
+        onOpenLocal={async () => {}}
+        onAddServer={s.addConnection}
+        onCancelLogin={s.cancelLogin}
+        onSubmitPat={s.submitPat}
+        onRefreshConnections={s.refreshConnections}
+        onOpenRemote={async () => {}}
+      />
+    );
+  }
+
+  function renderWithStore(adapter: ConnectionsAdapter) {
+    const useStore = createAppStore({
+      createSession: () => ({}) as WorkspaceSession,
+      connections: adapter,
+    });
+    render(<ChooserHarness useStore={useStore} />, { wrapper: zhWrapper });
+    return useStore;
+  }
+
+  /** 走到 server 步驟並送出新增並登入。 */
+  function addAndLogin() {
+    fireEvent.click(screen.getByRole("button", { name: /Speclink Server/ }));
+    fireEvent.click(screen.getByRole("button", { name: "新增 server" }));
+    fireEvent.change(screen.getByLabelText("伺服器位址（http://…）"), {
+      target: { value: "http://localhost:8080" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "新增並登入" }));
+  }
+
+  it("新增並登入後選擇器內就地顯示等待授權面", async () => {
+    renderWithStore(storeAdapter());
+    addAndLogin();
+
+    const waiting = await screen.findByTestId("awaiting-approval-http://localhost:8080");
+    expect(waiting.textContent).toContain(AUTH.userCode);
+    expect(waiting.textContent).toContain(AUTH.verificationUri);
+    expect(waiting.textContent).toMatch(/\d+:\d{2}/);
+    expect(screen.getByRole("button", { name: "取消登入" })).toBeTruthy();
+  });
+
+  it("取消即停止觀測、面消失且停留在 server 步驟", async () => {
+    const observe = vi.fn(async () => ({ status: "pending" as const, slowDown: false }));
+    renderWithStore(storeAdapter({ deviceLoginObserve: observe }));
+    addAndLogin();
+    await screen.findByTestId("awaiting-approval-http://localhost:8080");
+
+    fireEvent.click(screen.getByRole("button", { name: "取消登入" }));
+    await waitFor(() =>
+      expect(screen.queryByTestId("awaiting-approval-http://localhost:8080")).toBeNull(),
+    );
+    // 仍在 server 步驟（新增 server 的開關還在）。
+    expect(screen.getByRole("button", { name: "新增 server" })).toBeTruthy();
+    observe.mockClear();
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(observe).not.toHaveBeenCalled();
+  });
+
+  it("明確不支援時選擇器內就地現 PAT 輸入並可完成登入", async () => {
+    renderWithStore(
+      storeAdapter({ deviceLoginStart: async () => ({ status: "unsupported" }) }),
+    );
+    addAndLogin();
+
+    const patInput = await screen.findByPlaceholderText("spk_pat_…");
+    fireEvent.change(patInput, { target: { value: "spk_pat_good" } });
+    fireEvent.click(screen.getByRole("button", { name: "以 PAT 登入" }));
+    // 登入完成：連線出現在已登入清單（ChoiceCard 標題）。
+    await waitFor(() => expect(screen.getByText(/Momo/)).toBeTruthy());
   });
 });

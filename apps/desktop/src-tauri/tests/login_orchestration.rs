@@ -8,8 +8,8 @@
 
 use chrono::{Duration, Utc};
 use speclink_desktop_lib::connections::{
-    device_login, logout, pat_login, read_registry, refresh_connection, upsert_connection,
-    write_registry, DeviceLoginOutcome,
+    device_login_observe, device_login_start, logout, pat_login, read_registry, refresh_connection,
+    upsert_connection, write_registry, DeviceLoginObservation, DeviceLoginStart,
 };
 use speclink_desktop_lib::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
@@ -97,7 +97,259 @@ fn code_of(url: &str) -> String {
         .to_string()
 }
 
-// --- device_login 全鏈 ---
+/// 兩段編排走到終態（design 決策二）：啟動段可能靜默完成；否則依 server 指示的
+/// 間隔做單次觀測，直到終態或有效期限耗盡——即前端 store 排程在測試裡的等價物。
+#[derive(Debug)]
+enum Settled {
+    LoggedIn {
+        display: String,
+        access_token: String,
+    },
+    Unsupported,
+    Denied,
+    Expired,
+}
+
+fn login_until_settled(
+    origin: &str,
+    credentials: &dyn CredentialStore,
+    registry: &std::path::Path,
+    open_browser: &dyn Fn(&str) -> Result<(), String>,
+) -> Result<Settled, String> {
+    let auth = match device_login_start(origin, credentials, registry, open_browser)? {
+        DeviceLoginStart::LoggedIn {
+            display,
+            access_token,
+        } => {
+            return Ok(Settled::LoggedIn {
+                display,
+                access_token,
+            })
+        }
+        DeviceLoginStart::Unsupported => return Ok(Settled::Unsupported),
+        DeviceLoginStart::AwaitingApproval(auth) => auth,
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(auth.expires_in);
+    let mut interval = std::time::Duration::from_secs(auth.interval.max(1));
+    loop {
+        match device_login_observe(origin, &auth.device_code, credentials, registry)? {
+            DeviceLoginObservation::LoggedIn {
+                display,
+                access_token,
+            } => {
+                return Ok(Settled::LoggedIn {
+                    display,
+                    access_token,
+                })
+            }
+            DeviceLoginObservation::Denied => return Ok(Settled::Denied),
+            DeviceLoginObservation::Expired => return Ok(Settled::Expired),
+            DeviceLoginObservation::Pending { slow_down } => {
+                if std::time::Instant::now() >= deadline {
+                    return Ok(Settled::Expired);
+                }
+                if slow_down {
+                    interval *= 2;
+                }
+                std::thread::sleep(interval);
+            }
+        }
+    }
+}
+
+// --- 分段編排：啟動段（design 決策二） ---
+
+#[test]
+fn start_with_a_live_refresh_credential_logs_in_without_opening_the_browser() {
+    // 靜默 refresh 快路徑留在啟動段（規格「rotation 後舊 credential 失效仍可用」）：
+    // 「重啟」＝記憶體 access token 消失、只剩 Keychain 的 refresh credential，此時
+    // 按登入應直接換新回已登入，不再開瀏覽器、不進等待授權面。
+    let h = harness();
+    let store = MemoryCredentialStore::new();
+    let identity = h.identity.clone();
+    let user_id = h.user_id.clone();
+    let opener = move |url: &str| {
+        assert!(identity
+            .approve_device(&code_of(url), &user_id)
+            .expect("approve"));
+        Ok(())
+    };
+    login_until_settled(&h.origin, &store, &h.registry, &opener).expect("首次登入");
+
+    let no_browser = |_url: &str| -> Result<(), String> { panic!("靜默重登入不得開瀏覽器") };
+    let start = device_login_start(&h.origin, &store, &h.registry, &no_browser).expect("start");
+    let display = match start {
+        DeviceLoginStart::LoggedIn { display, .. } => display,
+        other => panic!("expected LoggedIn, got {other:?}"),
+    };
+    assert_eq!(display, DISPLAY, "靜默換新後身分即刻可讀");
+}
+
+#[test]
+fn start_without_a_credential_awaits_approval_with_the_codes_and_poll_metadata() {
+    let h = harness();
+    let store = MemoryCredentialStore::new();
+    let opened: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = opened.clone();
+    // 啟動段只開瀏覽器、不代替使用者核准——授權停在 pending。
+    let opener = move |url: &str| {
+        sink.lock().unwrap().push(url.to_string());
+        Ok(())
+    };
+
+    let start = device_login_start(&h.origin, &store, &h.registry, &opener).expect("start");
+    let auth = match start {
+        DeviceLoginStart::AwaitingApproval(auth) => auth,
+        other => panic!("expected AwaitingApproval, got {other:?}"),
+    };
+    assert!(!auth.device_code.is_empty(), "後續單次觀測的把手");
+    assert!(!auth.user_code.is_empty(), "等待授權面要顯示的裝置碼");
+    assert!(
+        auth.verification_uri.contains("/activate"),
+        "等待授權面要顯示的驗證網址：{}",
+        auth.verification_uri
+    );
+    assert!(auth.expires_in > 0, "倒數用的有效期限（秒）");
+    assert!(auth.interval > 0, "排程用的輪詢間隔（秒）");
+
+    // 瀏覽器開的是同一個驗證網址，且帶 user_code 預填。
+    let urls = opened.lock().unwrap();
+    assert_eq!(urls.len(), 1);
+    assert_eq!(
+        code_of(&urls[0]),
+        auth.user_code,
+        "預填的正是等待授權面顯示的碼：{}",
+        urls[0]
+    );
+    assert!(urls[0].starts_with(&auth.verification_uri), "{}", urls[0]);
+
+    // 尚未核准前不留任何 credential、不寫身分。
+    assert_eq!(
+        store.get(&h.origin, CredentialKind::Refresh).expect("get"),
+        None
+    );
+    assert!(read_registry(&h.registry)[0].last_actor_display.is_none());
+}
+
+// --- 分段編排：單次觀測段（design 決策二） ---
+
+#[test]
+fn observing_an_undecided_request_reports_pending_and_then_slow_down() {
+    let h = harness();
+    let store = MemoryCredentialStore::new();
+    let opener = |_url: &str| Ok(());
+    let auth = match device_login_start(&h.origin, &store, &h.registry, &opener).expect("start") {
+        DeviceLoginStart::AwaitingApproval(auth) => auth,
+        other => panic!("expected AwaitingApproval, got {other:?}"),
+    };
+
+    let first = device_login_observe(&h.origin, &auth.device_code, &store, &h.registry)
+        .expect("observe");
+    assert!(
+        matches!(first, DeviceLoginObservation::Pending { slow_down: false }),
+        "尚未決定＝pending，不是錯誤：{first:?}"
+    );
+    // 立刻再觀測一次比 server 指示的間隔更快——server 要求放慢。
+    let second = device_login_observe(&h.origin, &auth.device_code, &store, &h.registry)
+        .expect("observe");
+    assert!(
+        matches!(second, DeviceLoginObservation::Pending { slow_down: true }),
+        "過快的觀測回 slow_down 讓排程加大間隔：{second:?}"
+    );
+}
+
+#[test]
+fn observing_an_approved_request_stores_the_credential_and_records_the_identity() {
+    let h = harness();
+    let store = MemoryCredentialStore::new();
+    let opened: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = opened.clone();
+    let opener = move |url: &str| {
+        sink.lock().unwrap().push(url.to_string());
+        Ok(())
+    };
+    let auth = match device_login_start(&h.origin, &store, &h.registry, &opener).expect("start") {
+        DeviceLoginStart::AwaitingApproval(auth) => auth,
+        other => panic!("expected AwaitingApproval, got {other:?}"),
+    };
+    // 使用者於 /activate 核准（等同瀏覽器那一頭）。
+    assert!(h
+        .identity
+        .approve_device(&auth.user_code, &h.user_id)
+        .expect("approve"));
+
+    let observation = device_login_observe(&h.origin, &auth.device_code, &store, &h.registry)
+        .expect("observe");
+    let display = match observation {
+        DeviceLoginObservation::LoggedIn { display, .. } => display,
+        other => panic!("expected LoggedIn, got {other:?}"),
+    };
+    assert_eq!(display, DISPLAY, "/auth/whoami 的身分顯示名回來了");
+    let rt = store
+        .get(&h.origin, CredentialKind::Refresh)
+        .expect("get")
+        .expect("credential");
+    assert!(rt.starts_with("spk_rt_"), "存的是 refresh credential：{rt}");
+    assert_eq!(
+        read_registry(&h.registry)[0].last_actor_display.as_deref(),
+        Some(DISPLAY),
+        "身分寫回 registry"
+    );
+}
+
+#[test]
+fn observing_a_denied_request_is_terminal_and_leaves_no_credential() {
+    let h = harness();
+    let store = MemoryCredentialStore::new();
+    let opener = |_url: &str| Ok(());
+    let auth = match device_login_start(&h.origin, &store, &h.registry, &opener).expect("start") {
+        DeviceLoginStart::AwaitingApproval(auth) => auth,
+        other => panic!("expected AwaitingApproval, got {other:?}"),
+    };
+    assert!(h
+        .identity
+        .deny_device(&auth.user_code, &h.user_id)
+        .expect("deny"));
+
+    let observation = device_login_observe(&h.origin, &auth.device_code, &store, &h.registry)
+        .expect("observe");
+    assert!(
+        matches!(observation, DeviceLoginObservation::Denied),
+        "拒絕是可讀終態，不是 Err：{observation:?}"
+    );
+    assert_eq!(
+        store.get(&h.origin, CredentialKind::Refresh).expect("get"),
+        None,
+        "不留任何 credential"
+    );
+    assert!(read_registry(&h.registry)[0].last_actor_display.is_none());
+}
+
+#[test]
+fn observing_an_expired_request_is_terminal_and_leaves_no_credential() {
+    let h = harness();
+    let store = MemoryCredentialStore::new();
+    // 已逾期的授權請求（有效期限落在過去）——等同倒數歸零後才觀測。
+    let auth = h
+        .identity
+        .create_device_authorization(Duration::seconds(0), Duration::seconds(-1))
+        .expect("expired authorization");
+
+    let observation = device_login_observe(&h.origin, &auth.device_code, &store, &h.registry)
+        .expect("observe");
+    assert!(
+        matches!(observation, DeviceLoginObservation::Expired),
+        "逾期是可讀終態：{observation:?}"
+    );
+    assert_eq!(
+        store.get(&h.origin, CredentialKind::Refresh).expect("get"),
+        None,
+        "不留任何 credential"
+    );
+    assert!(read_registry(&h.registry)[0].last_actor_display.is_none());
+}
+
+// --- device login 全鏈（兩段組合） ---
 
 #[test]
 fn device_login_opens_the_browser_approves_and_lands_credential_and_identity() {
@@ -117,9 +369,9 @@ fn device_login_opens_the_browser_approves_and_lands_credential_and_identity() {
         Ok(())
     };
 
-    let outcome = device_login(&h.origin, &store, &h.registry, &opener).expect("device login");
+    let outcome = login_until_settled(&h.origin, &store, &h.registry, &opener).expect("device login");
     let display = match outcome {
-        DeviceLoginOutcome::LoggedIn { display, .. } => display,
+        Settled::LoggedIn { display, .. } => display,
         other => panic!("expected LoggedIn, got {other:?}"),
     };
     assert_eq!(display, DISPLAY, "/auth/whoami 的身分顯示名回來了");
@@ -156,9 +408,9 @@ fn a_browser_denial_reports_denied_and_leaves_no_credential() {
         Ok(())
     };
 
-    let outcome = device_login(&h.origin, &store, &h.registry, &opener).expect("orchestration");
+    let outcome = login_until_settled(&h.origin, &store, &h.registry, &opener).expect("orchestration");
     assert!(
-        matches!(outcome, DeviceLoginOutcome::Denied),
+        matches!(outcome, Settled::Denied),
         "拒絕是可讀狀態，不是 Err"
     );
     assert_eq!(
@@ -193,9 +445,9 @@ fn a_404_probe_reports_unsupported_without_opening_the_browser() {
     let opener = |_url: &str| -> Result<(), String> { panic!("不支援時不得開瀏覽器") };
 
     let outcome =
-        device_login(&origin, &store, &registry, &opener).expect("probe miss 是結果不是錯誤");
+        login_until_settled(&origin, &store, &registry, &opener).expect("probe miss 是結果不是錯誤");
     assert!(
-        matches!(outcome, DeviceLoginOutcome::Unsupported),
+        matches!(outcome, Settled::Unsupported),
         "404 是明確的 PAT fallback 訊號"
     );
     server.unblock();
@@ -209,7 +461,8 @@ fn a_5xx_probe_is_a_connection_error_not_a_fallback() {
     let registry = dir.path().join("connections.json");
     let opener = |_url: &str| -> Result<(), String> { panic!("連線錯誤時不得開瀏覽器") };
 
-    device_login(&origin, &store, &registry, &opener).expect_err("5xx 是錯誤、絕不進 PAT fallback");
+    login_until_settled(&origin, &store, &registry, &opener)
+        .expect_err("5xx 是錯誤、絕不進 PAT fallback");
     assert_eq!(
         store.get(&origin, CredentialKind::Refresh).expect("get"),
         None
@@ -271,7 +524,7 @@ fn rotation_overwrites_the_stored_refresh_credential() {
             .expect("approve"));
         Ok(())
     };
-    device_login(&h.origin, &store, &h.registry, &opener).expect("login");
+    login_until_settled(&h.origin, &store, &h.registry, &opener).expect("login");
     let old_rt = store
         .get(&h.origin, CredentialKind::Refresh)
         .expect("get")
@@ -294,34 +547,6 @@ fn rotation_overwrites_the_stored_refresh_credential() {
 }
 
 #[test]
-fn device_login_with_a_live_refresh_credential_relogs_in_silently() {
-    // 規格「rotation 後舊 credential 失效仍可用」：重啟後（access token 只在
-    // 記憶體、已消失）按登入，應以 Keychain 的 refresh credential 靜默換新，
-    // 不再開瀏覽器。
-    let h = harness();
-    let store = MemoryCredentialStore::new();
-    let identity = h.identity.clone();
-    let user_id = h.user_id.clone();
-    let opener = move |url: &str| {
-        assert!(identity
-            .approve_device(&code_of(url), &user_id)
-            .expect("approve"));
-        Ok(())
-    };
-    device_login(&h.origin, &store, &h.registry, &opener).expect("首次登入");
-
-    // 「重啟」＝記憶體 access token 消失、只剩 Keychain 的 refresh credential。
-    let no_browser =
-        |_url: &str| -> Result<(), String> { panic!("靜默重登入不得開瀏覽器") };
-    let outcome =
-        device_login(&h.origin, &store, &h.registry, &no_browser).expect("silent re-login");
-    assert!(
-        matches!(outcome, DeviceLoginOutcome::LoggedIn { .. }),
-        "以最新 refresh credential 取得 access token，無需重新核准"
-    );
-}
-
-#[test]
 fn a_transient_server_failure_never_discards_a_live_refresh_credential() {
     // 決策 3 的同一原則落在 rotation 上：5xx／不可達是連線錯誤，不是
     //「credential 已失效」的語意訊號——抹掉有效 credential 會讓 server 一次
@@ -336,7 +561,7 @@ fn a_transient_server_failure_never_discards_a_live_refresh_credential() {
     let registry = dir.path().join("connections.json");
     let opener = |_url: &str| -> Result<(), String> { panic!("連線錯誤時不得開瀏覽器") };
 
-    device_login(&origin, &store, &registry, &opener).expect_err("5xx 是連線錯誤");
+    login_until_settled(&origin, &store, &registry, &opener).expect_err("5xx 是連線錯誤");
     assert_eq!(
         store
             .get(&origin, CredentialKind::Refresh)
@@ -366,9 +591,9 @@ fn a_rejected_refresh_credential_is_cleared_and_the_full_device_flow_takes_over(
         Ok(())
     };
 
-    let outcome = device_login(&h.origin, &store, &h.registry, &opener).expect("device login");
+    let outcome = login_until_settled(&h.origin, &store, &h.registry, &opener).expect("device login");
     assert!(
-        matches!(outcome, DeviceLoginOutcome::LoggedIn { .. }),
+        matches!(outcome, Settled::LoggedIn { .. }),
         "殘骸不擋重新核准"
     );
     let rt = store
@@ -395,9 +620,9 @@ fn logout_revokes_the_family_and_clears_local_state() {
             .expect("approve"));
         Ok(())
     };
-    let outcome = device_login(&h.origin, &store, &h.registry, &opener).expect("login");
+    let outcome = login_until_settled(&h.origin, &store, &h.registry, &opener).expect("login");
     let access = match outcome {
-        DeviceLoginOutcome::LoggedIn { access_token, .. } => access_token,
+        Settled::LoggedIn { access_token, .. } => access_token,
         other => panic!("expected LoggedIn, got {other:?}"),
     };
 

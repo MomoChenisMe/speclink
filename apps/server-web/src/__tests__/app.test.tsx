@@ -46,6 +46,7 @@ function makeClient(overrides: Record<string, unknown> = {}) {
     })),
     getAccount: vi.fn(async () => ({
       user: { id: "u1", email: "member@example.com", display: "Member", admin: false },
+      memberships: [],
       pats: [],
       sessions: [],
       deviceFamilies: [],

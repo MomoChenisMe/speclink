@@ -64,6 +64,8 @@ export function ActivatePage() {
     }
   }
 
+  // 結果頁不止於單行結果：核准與拒絕都接一句返回 app 的收尾指引，讓使用者知道這裡
+  // 已經結束、app 會自行取得結果（server-device-auth「核准頁 session 保護且明確確認」）。
   if (phase === "done") {
     return (
       <div>
@@ -71,6 +73,7 @@ export function ActivatePage() {
         <p role="status" aria-live="polite" className="text-muted-foreground">
           {result}
         </p>
+        <p className="mt-2 text-muted-foreground">{t("activate.returnHint")}</p>
       </div>
     );
   }

@@ -26,7 +26,7 @@ import { readFormError } from "../lib/formError";
 import { Field } from "../components/Field";
 import { DetailSheet } from "../components/DetailSheet";
 import { CopyButton } from "../components/CopyButton";
-import type { DeviceFamilyMeta, PatMeta, SessionMeta } from "../api/client";
+import type { DeviceFamilyMeta, MembershipMeta, PatMeta, SessionMeta } from "../api/client";
 
 // 帳號自助頁（server-identity「帳號 browser API 保持憑證祕密邊界」, D4／D6）：使用者、
 // 存取金鑰、登入工作階段與裝置。金鑰明文只在建立時顯示一次；撤銷等破壞性操作先以
@@ -111,6 +111,8 @@ export function AccountPage() {
         </div>
       )}
 
+      <ProjectSection memberships={data.memberships} />
+
       <PatSection
         pats={data.pats}
         onRevoke={(pat) =>
@@ -158,6 +160,42 @@ export function AccountPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+// 我的專案區塊（server-web-console「帳號頁呈現我的專案」）：唯讀清單，資料只來自
+// account summary。這是個人視角——admin 與一般成員看到同一區塊、同一形狀，全部專案
+// 的治理視角在 /admin/registry。顯示名缺席時退回專案代號。
+function ProjectSection({ memberships }: { memberships: MembershipMeta[] }) {
+  const { t } = useI18n();
+  return (
+    <section className="space-y-4" aria-labelledby="account-projects">
+      <h2 id="account-projects" className="text-lg font-medium">
+        {t("account.projects")}
+      </h2>
+      {memberships.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("account.noProjects")}</p>
+      ) : (
+        <Card className="overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("field.project")}</TableHead>
+                <TableHead>{t("field.role")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {memberships.map((membership) => (
+                <TableRow key={membership.projectKey}>
+                  <TableCell>{membership.projectName || membership.projectKey}</TableCell>
+                  <TableCell>{membership.role}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+    </section>
   );
 }
 

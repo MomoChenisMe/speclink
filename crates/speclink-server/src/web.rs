@@ -552,9 +552,21 @@ fn ok_ack() -> Response {
 #[serde(rename_all = "camelCase")]
 struct AccountPayload {
     user: UserPayload,
+    memberships: Vec<MembershipPayload>,
     pats: Vec<PatPayload>,
     sessions: Vec<SessionMetaPayload>,
     device_families: Vec<DeviceFamilyPayload>,
+}
+
+/// One of the caller's own project memberships: the project's key, its display
+/// name and the caller's role there. The registry is not exposed — only the
+/// projects the caller belongs to appear, for an admin as for a member.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MembershipPayload {
+    project_key: String,
+    project_name: String,
+    role: String,
 }
 
 /// A PAT's non-secret metadata (prefix, not the plaintext or hash).
@@ -636,13 +648,54 @@ struct PatCreatedPayload {
     plaintext: String,
 }
 
-/// `GET /account` — the caller's own user, PAT metadata, Web sessions and device
-/// families. Session-protected; secrets never appear.
+/// A user's project memberships as `(project key, role)` pairs — the single
+/// query path both the account summary and the admin users view read from.
+/// A membership whose role row is unreadable degrades to an empty role rather
+/// than dropping the project from the list.
+pub(crate) fn membership_roles(state: &AppState, user_id: &str) -> Vec<(String, String)> {
+    state
+        .identity
+        .list_memberships(user_id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|key| {
+            let role = state
+                .identity
+                .membership_role(user_id, &key)
+                .ok()
+                .flatten()
+                .map(|r| r.as_str().to_string())
+                .unwrap_or_default();
+            (key, role)
+        })
+        .collect()
+}
+
+/// `GET /account` — the caller's own user, own project memberships, PAT
+/// metadata, Web sessions and device families. Session-protected; secrets never
+/// appear.
 pub async fn api_account(State(state): State<AppState>, headers: HeaderMap) -> Response {
     let user = match require_user(&state, &headers) {
         Ok(user) => user,
         Err(refused) => return refused,
     };
+    let memberships = membership_roles(&state, &user.id)
+        .into_iter()
+        .map(|(project_key, role)| {
+            let project_name = state
+                .identity
+                .get_project(&project_key)
+                .ok()
+                .flatten()
+                .map(|p| p.name)
+                .unwrap_or_default();
+            MembershipPayload {
+                project_key,
+                project_name,
+                role,
+            }
+        })
+        .collect();
     let pats = state.identity.list_pats(&user.id).unwrap_or_default();
     let sessions = state.identity.list_sessions(&user.id).unwrap_or_default();
     let families = state
@@ -651,6 +704,7 @@ pub async fn api_account(State(state): State<AppState>, headers: HeaderMap) -> R
         .unwrap_or_default();
     web_ok(AccountPayload {
         user: UserPayload::of(&user),
+        memberships,
         pats: pats.iter().map(PatPayload::of).collect(),
         sessions: sessions.iter().map(SessionMetaPayload::of).collect(),
         device_families: families.iter().map(DeviceFamilyPayload::of).collect(),

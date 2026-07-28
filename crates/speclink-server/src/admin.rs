@@ -695,21 +695,9 @@ pub async fn web_admin_users(State(state): State<AppState>, headers: HeaderMap) 
         .iter()
         .map(|u| {
             let last_active_admin = u.active && u.admin && active_admins <= 1;
-            let memberships = state
-                .identity
-                .list_memberships(&u.id)
-                .unwrap_or_default()
+            let memberships = web::membership_roles(&state, &u.id)
                 .into_iter()
-                .map(|key| {
-                    let role = state
-                        .identity
-                        .membership_role(&u.id, &key)
-                        .ok()
-                        .flatten()
-                        .map(|r| r.as_str().to_string())
-                        .unwrap_or_default();
-                    WebMembership { project_key: key, role }
-                })
+                .map(|(project_key, role)| WebMembership { project_key, role })
                 .collect();
             WebUser {
                 id: u.id.clone(),

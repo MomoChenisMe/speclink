@@ -6,9 +6,11 @@
 //! 不含 secret 且跨重啟保留」）。一 origin 一條目，重複新增即更新顯示名。
 //! 壞 JSON 歸零清單（與分頁持久化同一寬容哲學）。
 //!
-//! 編排：device_login／pat_login／logout／refresh_connection 收注入的
-//! CredentialStore 與瀏覽器開啟器、無 tauri 型別——tauri 接線在 lib.rs。
-//! secret 只在此層與 CredentialStore 之間流動，錯誤訊息不夾帶 secret。
+//! 編排：device_login_start／device_login_observe／pat_login／logout／
+//! refresh_connection 收注入的 CredentialStore 與瀏覽器開啟器、無 tauri 型別
+//! ——tauri 接線在 lib.rs。secret 只在此層與 CredentialStore 之間流動，錯誤訊息
+//! 不夾帶 secret。device login 分兩段（決策二）：每段都是純請求-回應，不睡眠、
+//! 不留跨呼叫狀態——輪詢節奏與取消都歸呼叫端排程。
 
 use crate::credentials::{CredentialKind, CredentialStore};
 use serde::{Deserialize, Serialize};
@@ -232,37 +234,67 @@ fn single_line(message: &str) -> String {
 
 // --- 登入／登出編排（決策 3、5、6） ---
 
-/// device_login 的可讀結果：Unsupported 是 PAT fallback 訊號（決策 3），
-/// denied／expired 逐一回報；連線錯誤（5xx／不可達）走 Err、絕不進 fallback。
+/// 等待授權面所需的授權資訊（決策二啟動段回傳）：裝置碼與驗證網址給使用者看、
+/// 有效期限給倒數、輪詢間隔給排程。`device_code` 是單次觀測段的把手——兩段之間
+/// 不留跨呼叫狀態，故由呼叫端持有並原樣帶回。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceAuthorization {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    /// 授權請求的有效秒數（呼叫端據此換算截止時刻）。
+    pub expires_in: u64,
+    /// server 指示的最短輪詢間隔（秒）。
+    pub interval: u64,
+}
+
+/// 啟動段的可讀結果：LoggedIn＝靜默 refresh 快路徑成功（沒開瀏覽器）；
+/// Unsupported 是 PAT fallback 訊號（決策 3）；AwaitingApproval＝已開瀏覽器、
+/// 等待使用者核准。連線錯誤（5xx／不可達）走 Err、絕不進 fallback。
 /// access token 短效、只在 Rust 記憶體——由 lib.rs 的命令層持有，不落盤。
 #[derive(Debug)]
-pub enum DeviceLoginOutcome {
+pub enum DeviceLoginStart {
     LoggedIn {
         display: String,
         access_token: String,
     },
+    AwaitingApproval(DeviceAuthorization),
     Unsupported,
+}
+
+/// 單次觀測段的可讀結果：Pending 尚未決定（slow_down＝server 要求加大間隔），
+/// denied／expired 是終態，逐一回報而非錯誤。
+#[derive(Debug)]
+pub enum DeviceLoginObservation {
+    LoggedIn {
+        display: String,
+        access_token: String,
+    },
+    Pending {
+        slow_down: bool,
+    },
     Denied,
     Expired,
 }
 
-/// device login 全鏈（決策 5）：先以 Keychain 既有 refresh credential 靜默
+/// device login 啟動段（決策二）：先以 Keychain 既有 refresh credential 靜默
 /// 換新（規格「rotation 後舊 credential 失效仍可用」——重啟後無需重新核准）；
 /// 沒有或已失效才走 device flow：initiate（兼探測，決策 3）→ 開瀏覽器至
-/// verification 頁（URL 帶 user_code 預填參數）→ 依 server interval 輪詢至
-/// 終態 → granted 即存 refresh credential、打 /auth/whoami 取身分寫回 registry。
-pub fn device_login(
+/// verification 頁（URL 帶 user_code 預填參數）→ 回等待授權資訊。輪詢節奏歸
+/// 呼叫端：此段是純請求-回應，不睡眠、不留狀態。
+pub fn device_login_start(
     origin: &str,
     credentials: &dyn CredentialStore,
     registry_path: &Path,
     open_browser: &dyn Fn(&str) -> Result<(), String>,
-) -> Result<DeviceLoginOutcome, String> {
+) -> Result<DeviceLoginStart, String> {
     // 靜默快路徑：有 refresh credential 就先試 rotation，成功即免瀏覽器。
     if credentials.get(origin, CredentialKind::Refresh)?.is_some() {
         match refresh_connection(origin, credentials) {
             Ok(access) => {
                 let display = record_identity_from_server(origin, &access, registry_path)?;
-                return Ok(DeviceLoginOutcome::LoggedIn {
+                return Ok(DeviceLoginStart::LoggedIn {
                     display,
                     access_token: access,
                 });
@@ -279,7 +311,7 @@ pub fn device_login(
 
     let auth = match device::initiate(origin).map_err(|e| e.to_string())? {
         InitiateOutcome::Supported(auth) => auth,
-        InitiateOutcome::Unsupported => return Ok(DeviceLoginOutcome::Unsupported),
+        InitiateOutcome::Unsupported => return Ok(DeviceLoginStart::Unsupported),
     };
 
     let sep = if auth.verification_uri.contains('?') {
@@ -292,34 +324,44 @@ pub fn device_login(
         auth.verification_uri, auth.user_code
     ))?;
 
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(auth.expires_in);
-    let interval = std::time::Duration::from_secs(auth.interval.max(1));
-    loop {
-        let poll = device::poll(origin, &auth.device_code).map_err(|e| e.to_string())?;
-        match poll.status {
-            DeviceTokenStatus::Approved => {
-                let access = poll
-                    .access_token
-                    .ok_or("server 未隨核准回傳 access token")?;
-                let refresh = poll
-                    .refresh_token
-                    .ok_or("server 未隨核准回傳 refresh credential")?;
-                credentials.set(origin, CredentialKind::Refresh, &refresh)?;
-                let display = record_identity_from_server(origin, &access, registry_path)?;
-                return Ok(DeviceLoginOutcome::LoggedIn {
-                    display,
-                    access_token: access,
-                });
-            }
-            DeviceTokenStatus::Denied => return Ok(DeviceLoginOutcome::Denied),
-            DeviceTokenStatus::Expired => return Ok(DeviceLoginOutcome::Expired),
-            DeviceTokenStatus::Pending | DeviceTokenStatus::SlowDown => {
-                if std::time::Instant::now() >= deadline {
-                    return Ok(DeviceLoginOutcome::Expired);
-                }
-                std::thread::sleep(interval);
-            }
+    Ok(DeviceLoginStart::AwaitingApproval(DeviceAuthorization {
+        device_code: auth.device_code,
+        user_code: auth.user_code,
+        verification_uri: auth.verification_uri,
+        expires_in: auth.expires_in,
+        interval: auth.interval,
+    }))
+}
+
+/// device login 單次觀測段（決策二）：對授權請求做一次輪詢並回報目前狀態。
+/// approved 時在此完成 credential 存入與身分寫回；其餘狀態不留任何痕跡。
+/// 取消＝呼叫端不再觀測，server 端的授權請求自然逾期——此段無取消旗標可設。
+pub fn device_login_observe(
+    origin: &str,
+    device_code: &str,
+    credentials: &dyn CredentialStore,
+    registry_path: &Path,
+) -> Result<DeviceLoginObservation, String> {
+    let poll = device::poll(origin, device_code).map_err(|e| e.to_string())?;
+    match poll.status {
+        DeviceTokenStatus::Approved => {
+            let access = poll
+                .access_token
+                .ok_or("server 未隨核准回傳 access token")?;
+            let refresh = poll
+                .refresh_token
+                .ok_or("server 未隨核准回傳 refresh credential")?;
+            credentials.set(origin, CredentialKind::Refresh, &refresh)?;
+            let display = record_identity_from_server(origin, &access, registry_path)?;
+            Ok(DeviceLoginObservation::LoggedIn {
+                display,
+                access_token: access,
+            })
         }
+        DeviceTokenStatus::Denied => Ok(DeviceLoginObservation::Denied),
+        DeviceTokenStatus::Expired => Ok(DeviceLoginObservation::Expired),
+        DeviceTokenStatus::Pending => Ok(DeviceLoginObservation::Pending { slow_down: false }),
+        DeviceTokenStatus::SlowDown => Ok(DeviceLoginObservation::Pending { slow_down: true }),
     }
 }
 

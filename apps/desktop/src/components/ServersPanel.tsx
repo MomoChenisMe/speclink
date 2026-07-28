@@ -15,6 +15,7 @@ import {
 
 import type { ConnectionView } from "../adapter/connections";
 import type { ConnectionPhase } from "../store";
+import { AwaitingApproval, PatLoginInput } from "./connectionLogin";
 
 export interface ServersPanelProps {
   connections: ConnectionView[];
@@ -23,6 +24,8 @@ export interface ServersPanelProps {
   /** 新增並隨即登入；無效輸入 reject、由表單就地呈現。 */
   onAdd: (baseUrl: string, name: string) => Promise<void>;
   onLogin: (origin: string) => void;
+  /** 取消等待授權：停止輪詢、回未登入。 */
+  onCancelLogin?: (origin: string) => void;
   /** PAT 單次過境：提交後本面即清空草稿。 */
   onSubmitPat: (origin: string, pat: string) => void;
   onLogout: (origin: string) => void;
@@ -48,6 +51,10 @@ function StatusLine({
   const { t } = useI18n();
   if (phase.kind === "busy") {
     return <span className="text-xs text-muted-foreground">{t("servers.busy")}</span>;
+  }
+  // 等待授權的細節由 AwaitingApproval 就地展開；狀態行只給一句標題。
+  if (phase.kind === "awaitingApproval") {
+    return <span className="text-xs text-muted-foreground">{t("servers.awaitingTitle")}</span>;
   }
   if (phase.kind === "error") {
     return (
@@ -82,6 +89,7 @@ export function ServersPanel({
   phases,
   onAdd,
   onLogin,
+  onCancelLogin,
   onSubmitPat,
   onLogout,
   onRemove,
@@ -95,14 +103,29 @@ export function ServersPanel({
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const reauthButton = useRef<HTMLButtonElement | null>(null);
-  /** PAT 草稿（keyed by origin）：僅存在提交前的元件狀態，提交即清空。 */
-  const [patDrafts, setPatDrafts] = useState<Record<string, string>>({});
+  /** 剛登入成功那一列的開啟工作區鈕（規格「登入成功聚焦開啟工作區」）。 */
+  const openWorkspaceButton = useRef<HTMLButtonElement | null>(null);
+  /** 上一輪已登入的 origins；null＝尚未初始化。初次渲染只記錄不聚焦——切入
+   * 頁籤看見既有已登入條目不該被搶走焦點，聚焦只給「剛完成的登入」。 */
+  const loggedInBefore = useRef<Set<string> | null>(null);
+  const [justLoggedIn, setJustLoggedIn] = useState<string | null>(null);
   useEffect(() => {
     onRefresh?.();
   }, [onRefresh]);
   useEffect(() => {
     reauthButton.current?.focus();
   }, [focusConnectionId, connections]);
+  useEffect(() => {
+    const now = new Set(connections.filter((e) => e.loggedIn).map((e) => e.origin));
+    const before = loggedInBefore.current;
+    loggedInBefore.current = now;
+    if (!before) return;
+    const fresh = [...now].find((origin) => !before.has(origin));
+    if (fresh) setJustLoggedIn(fresh);
+  }, [connections]);
+  useEffect(() => {
+    if (justLoggedIn) openWorkspaceButton.current?.focus();
+  }, [justLoggedIn]);
 
   async function submitAdd() {
     const trimmed = url.trim();
@@ -118,14 +141,6 @@ export function ServersPanel({
     } finally {
       setAdding(false);
     }
-  }
-
-  function submitPat(origin: string) {
-    const pat = (patDrafts[origin] ?? "").trim();
-    if (!pat) return;
-    // 單次過境：先清草稿再送出，元件不留任何拷貝。
-    setPatDrafts((drafts) => ({ ...drafts, [origin]: "" }));
-    onSubmitPat(origin, pat);
   }
 
   return (
@@ -162,6 +177,9 @@ export function ServersPanel({
                     <div className="flex shrink-0 items-center gap-1.5">
                       {entry.loggedIn && onOpenWorkspace && (
                         <Button
+                          ref={
+                            entry.origin === justLoggedIn ? openWorkspaceButton : undefined
+                          }
                           type="button"
                           size="sm"
                           disabled={busy}
@@ -206,30 +224,19 @@ export function ServersPanel({
                     </div>
                   </div>
                   <StatusLine entry={entry} phase={phase} needsReauth={needsReauth} />
+                  {phase.kind === "awaitingApproval" && (
+                    <AwaitingApproval
+                      origin={entry.origin}
+                      phase={phase}
+                      onCancel={() => onCancelLogin?.(entry.origin)}
+                    />
+                  )}
                   {phase.kind === "patInput" && (
-                    <div className="flex flex-col gap-1.5" data-testid={`pat-input-${entry.origin}`}>
-                      <p className="text-xs text-muted-foreground m-0">{t("servers.patHint")}</p>
-                      <div className="flex items-center gap-1.5">
-                        <Input
-                          type="password"
-                          placeholder={t("servers.patPlaceholder")}
-                          value={patDrafts[entry.origin] ?? ""}
-                          onChange={(e) =>
-                            setPatDrafts((drafts) => ({
-                              ...drafts,
-                              [entry.origin]: e.target.value,
-                            }))
-                          }
-                        />
-                        <Button type="button" size="sm" onClick={() => submitPat(entry.origin)}>
-                          {t("servers.patSubmit")}
-                        </Button>
-                      </div>
-                      {phase.error && (
-                        <span role="alert" className="text-xs text-red-600 dark:text-red-400">
-                          {phase.error}
-                        </span>
-                      )}
+                    <div data-testid={`pat-input-${entry.origin}`}>
+                      <PatLoginInput
+                        error={phase.error}
+                        onSubmit={(pat) => onSubmitPat(entry.origin, pat)}
+                      />
                     </div>
                   )}
                 </li>

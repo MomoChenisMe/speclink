@@ -417,7 +417,7 @@ code:
 ---
 ### Requirement: 帳號 browser API 保持憑證祕密邊界
 
-登入使用者 SHALL 能經 `/api/speclink/v1/web/account` 讀取 user、PAT metadata、Web sessions 與 device families，並建立／撤銷自己的 PAT、經 `POST /logout` 結束目前 Web session、撤銷 device family。Web session 清單 SHALL 為唯讀呈現，SHALL NOT 提供逐一撤銷其他 session 的操作。讀取 payload SHALL 僅含呈現與 eligibility 所需 metadata，SHALL NOT 包含 PAT hash、password hash、refresh credential 或可重播的 session secret。PAT 建立回應 SHALL 只在該次 `{data}` 內回傳 plaintext；後續讀取 SHALL 僅回 prefix、名稱、到期、撤銷時戳與 last-used。所有 mutation SHALL 驗證同源與 active session。
+登入使用者 SHALL 能經 `/api/speclink/v1/web/account` 讀取 user、自己的專案隸屬清單、PAT metadata、Web sessions 與 device families，並建立／撤銷自己的 PAT、經 `POST /logout` 結束目前 Web session、撤銷 device family。專案隸屬清單 SHALL 每項含專案 key、專案顯示名與角色（camelCase 欄位），無任何隸屬時 SHALL 為空陣列；admin 與一般成員 SHALL 得到同一形狀。Web session 清單 SHALL 為唯讀呈現，SHALL NOT 提供逐一撤銷其他 session 的操作。讀取 payload SHALL 僅含呈現與 eligibility 所需 metadata，SHALL NOT 包含 PAT hash、password hash、refresh credential 或可重播的 session secret。PAT 建立回應 SHALL 只在該次 `{data}` 內回傳 plaintext；後續讀取 SHALL 僅回 prefix、名稱、到期、撤銷時戳與 last-used。所有 mutation SHALL 驗證同源與 active session。
 
 #### Scenario: PAT 明文只在建立回應出現
 
@@ -432,107 +432,44 @@ code:
 #### Scenario: Account summary 不外洩其他使用者資料
 
 - **WHEN** 一般成員呼叫 account summary
-- **THEN** 回應只含該 session user 自己的 user、PAT、Web session 與 device family metadata
+- **THEN** 回應只含該 session user 自己的 user、專案隸屬、PAT、Web session 與 device family metadata
+
+#### Scenario: summary 回傳自己的專案隸屬
+
+- **WHEN** 隸屬兩個專案（一為 editor、一為 viewer）的成員呼叫 account summary
+- **THEN** 回應的隸屬清單恰含兩項，各含專案 key、專案顯示名與角色；無隸屬的使用者得到空陣列
+
 
 <!-- @trace
-source: web-service-navigation-redesign
-updated: 2026-07-25
+source: remote-login-ux-gaps
+updated: 2026-07-28
 code:
-  - .dockerignore
-  - .github/workflows/ci.yml
-  - .github/workflows/release.yml
-  - Cargo.lock
-  - apps/desktop/src/index.css
-  - apps/server-web/index.html
-  - apps/server-web/package.json
-  - apps/server-web/src/App.tsx
-  - apps/server-web/src/__tests__/a11y.test.tsx
+  - apps/desktop/src-tauri/src/connections.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src-tauri/tests/common/mod.rs
+  - apps/desktop/src-tauri/tests/login_orchestration.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/remoteOpen.test.ts
+  - apps/desktop/src/__tests__/remoteResilience.test.tsx
+  - apps/desktop/src/__tests__/serversPanel.test.tsx
+  - apps/desktop/src/__tests__/store.test.ts
+  - apps/desktop/src/__tests__/workspaceChooser.test.tsx
+  - apps/desktop/src/adapter/connections.ts
+  - apps/desktop/src/components/ServersPanel.tsx
+  - apps/desktop/src/components/WorkspaceChooser.tsx
+  - apps/desktop/src/components/connectionLogin.tsx
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/store.ts
   - apps/server-web/src/__tests__/account.test.tsx
   - apps/server-web/src/__tests__/activate.test.tsx
-  - apps/server-web/src/__tests__/admin.test.tsx
+  - apps/server-web/src/__tests__/admin-console-shell.test.tsx
   - apps/server-web/src/__tests__/app.test.tsx
-  - apps/server-web/src/__tests__/build.test.ts
-  - apps/server-web/src/__tests__/invite.test.tsx
-  - apps/server-web/src/__tests__/setup.test.tsx
+  - apps/server-web/src/__tests__/wording.test.tsx
   - apps/server-web/src/api/client.ts
-  - apps/server-web/src/app/context.tsx
-  - apps/server-web/src/assets/logo-mark.png
-  - apps/server-web/src/assets/speclink-wordmark.png
-  - apps/server-web/src/components/AdminNav.tsx
-  - apps/server-web/src/components/Field.tsx
-  - apps/server-web/src/components/LogoutButton.tsx
-  - apps/server-web/src/components/RouteErrorBoundary.tsx
-  - apps/server-web/src/components/SkipLink.tsx
-  - apps/server-web/src/components/Wordmark.tsx
-  - apps/server-web/src/index.css
-  - apps/server-web/src/layouts/AccountLayout.tsx
-  - apps/server-web/src/layouts/AdminLayout.tsx
-  - apps/server-web/src/layouts/FocusLayout.tsx
-  - apps/server-web/src/lib/formError.ts
-  - apps/server-web/src/lib/returnTo.ts
-  - apps/server-web/src/lib/useAsync.ts
-  - apps/server-web/src/lib/useFocusMain.ts
-  - apps/server-web/src/lib/useMediaQuery.ts
-  - apps/server-web/src/main.tsx
+  - apps/server-web/src/i18n/messages.ts
   - apps/server-web/src/pages/AccountPage.tsx
   - apps/server-web/src/pages/ActivatePage.tsx
-  - apps/server-web/src/pages/InvitePage.tsx
-  - apps/server-web/src/pages/LoginPage.tsx
-  - apps/server-web/src/pages/SetupPage.tsx
-  - apps/server-web/src/pages/admin/AdminSection.tsx
-  - apps/server-web/src/pages/admin/AuditPage.tsx
-  - apps/server-web/src/pages/admin/CredentialsPage.tsx
-  - apps/server-web/src/pages/admin/DataPage.tsx
-  - apps/server-web/src/pages/admin/OverviewPage.tsx
-  - apps/server-web/src/pages/admin/RegistryPage.tsx
-  - apps/server-web/src/pages/admin/SystemPage.tsx
-  - apps/server-web/src/pages/admin/UsersPage.tsx
-  - apps/server-web/src/pages/admin/states.tsx
-  - apps/server-web/src/pages/admin/stubs.tsx
-  - apps/server-web/src/routes/AppRoutes.tsx
-  - apps/server-web/src/vite-env.d.ts
-  - apps/server-web/tsconfig.json
-  - apps/server-web/vite.config.ts
-  - apps/server-web/vitest.config.ts
-  - apps/server-web/vitest.setup.ts
-  - crates/speclink-server/Cargo.toml
-  - crates/speclink-server/Dockerfile
   - crates/speclink-server/src/admin.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/assets.rs
-  - crates/speclink-server/src/lib.rs
-  - crates/speclink-server/src/setup.rs
   - crates/speclink-server/src/web.rs
-  - crates/speclink-server/tests/admin_api.rs
-  - crates/speclink-server/tests/admin_data.rs
-  - crates/speclink-server/tests/admin_e2e.rs
-  - crates/speclink-server/tests/admin_pages.rs
-  - crates/speclink-server/tests/admin_system.rs
-  - crates/speclink-server/tests/admin_three_entry.rs
-  - crates/speclink-server/tests/admin_web_api.rs
-  - crates/speclink-server/tests/backup_e2e.rs
-  - crates/speclink-server/tests/device_e2e.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/phase2_chain.rs
-  - crates/speclink-server/tests/setup_flow.rs
   - crates/speclink-server/tests/web_account.rs
-  - crates/speclink-server/tests/web_activate.rs
-  - crates/speclink-server/tests/web_assets.rs
-  - crates/speclink-server/tests/web_device_sessions.rs
-  - crates/speclink-server/tests/web_invite.rs
-  - crates/speclink-server/tests/web_session.rs
-  - crates/speclink-server/tests/web_setup.rs
-  - docs/remote-getting-started.md
-  - docs/remote-getting-started.zh-TW.md
-  - docs/server-deployment.zh-TW.md
-  - package-lock.json
-  - package.json
-  - packages/ui/src/__tests__/table.test.tsx
-  - packages/ui/src/__tests__/theme.test.ts
-  - packages/ui/src/components/ui/label.tsx
-  - packages/ui/src/components/ui/table.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/theme.css
-  - scripts/delivery-gate.test.mjs
-  - scripts/remote-docs.test.mjs
 -->
