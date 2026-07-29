@@ -1,0 +1,6 @@
+/* 這個檔案存在的唯一目的，是讓 zh-Hant.lproj 目錄進入 app bundle。
+
+   AppKit 依 Contents/Resources/ 底下「實際存在的 .lproj 目錄」決定系統對話框
+   （NSOpenPanel 等）用哪個語言；Info.plist 的 CFBundleLocalizations 只是宣告，
+   單獨存在不會生效。Tauri 不會自行產生任何 .lproj，故以資源複製補上。
+   內容可以是空的——目錄存在本身就是訊號。 */
