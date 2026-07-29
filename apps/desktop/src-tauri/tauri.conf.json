@@ -30,6 +30,10 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "localizations/en.lproj/InfoPlist.strings": "en.lproj/InfoPlist.strings",
+      "localizations/zh_TW.lproj/InfoPlist.strings": "zh_TW.lproj/InfoPlist.strings"
+    }
   }
 }
