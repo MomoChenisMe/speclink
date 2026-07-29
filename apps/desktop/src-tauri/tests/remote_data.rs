@@ -12,7 +12,7 @@ mod common;
 
 use chrono::{Duration, Utc};
 use common::Harness;
-use speclink_desktop_lib::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
+use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::remote::{self, RemoteWorkspace, TokenManager};
 use speclink_remote::RemoteError;
 use speclink_server::identity::{IdentityStore, NewInvitation};

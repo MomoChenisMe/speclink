@@ -10,7 +10,7 @@
 use speclink_desktop_lib::connections::{
     read_registry, upsert_connection, write_registry, ConnectionEntry,
 };
-use speclink_desktop_lib::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
+use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 
 // --- CredentialStore：逐 origin＋種類（refresh/pat）語意 ---
 

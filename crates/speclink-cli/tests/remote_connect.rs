@@ -357,6 +357,125 @@ fn auth_status_reports_the_identity() {
     assert!(stdout_of(&out).contains("xiaoming"), "stdout: {}", stdout_of(&out));
 }
 
+// --- credential source, dual-track login, logout ---
+//
+// These stay on the environment-variable and credentials-file layers. The
+// keyring layers cannot be exercised from here: this test drives the real
+// binary, which reaches for the real OS keychain — unusable on CI, and it
+// would rewrite the developer's own credentials. Their behavior is pinned in
+// `speclink-remote`'s tests with an injected in-memory store.
+
+#[test]
+fn auth_status_names_the_credential_source() {
+    let mock = whoami_server(200, WHOAMI_TWO_REPOS);
+    let env = TempEnv::new("status-source").with_connection(&mock.base, Some("backend"));
+    let out = env.run(&["auth", "status"], Some("tok"));
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(
+        stdout_of(&out).contains("SPECLINK_TOKEN"),
+        "human output names the layer the credential came from: {}",
+        stdout_of(&out)
+    );
+}
+
+#[test]
+fn auth_status_json_carries_the_credential_source() {
+    let mock = whoami_server(200, WHOAMI_TWO_REPOS);
+    let env = TempEnv::new("status-json").with_connection(&mock.base, Some("backend"));
+    let out = env.run(&["auth", "status", "--json"], Some("tok"));
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout_of(&out)).expect("--json emits parseable JSON");
+    assert_eq!(payload["credentialSource"], "env");
+    assert_eq!(payload["user"]["handle"], "xiaoming");
+    assert_eq!(payload["user"]["name"], "王小明");
+}
+
+/// The credentials file is the last layer, and it reports itself as such.
+#[test]
+fn auth_status_json_reports_the_credentials_file_layer() {
+    let mock = whoami_server(200, WHOAMI_TWO_REPOS);
+    let env = TempEnv::new("status-json-file").with_connection(&mock.base, Some("backend"));
+    let stored = env.run_stdin(&["auth", "login", "--token-stdin"], None, "pat-abc\n");
+    assert!(stored.status.success(), "stderr: {}", stderr_of(&stored));
+
+    let out = env.run(&["auth", "status", "--json"], None);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let payload: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("JSON");
+    assert_eq!(payload["credentialSource"], "credentials_file");
+}
+
+/// `--pat` is the paste-a-token track; it must land in the same place
+/// `--token-stdin` always did.
+#[test]
+fn auth_login_pat_flag_stores_a_pasted_token() {
+    let mock = whoami_server(200, WHOAMI_TWO_REPOS);
+    let env = TempEnv::new("login-pat-flag").with_connection(&mock.base, Some("backend"));
+    let out = env.run_stdin(&["auth", "login", "--pat"], None, "pat-pasted\n");
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+
+    let creds = env.credentials_file().expect("credentials file created");
+    assert!(std::fs::read_to_string(&creds).unwrap().contains("pat-pasted"));
+}
+
+#[test]
+fn auth_login_rejects_both_token_flags_together() {
+    let env = TempEnv::new("login-both-flags")
+        .with_connection("https://team.example.com/api/speclink/v1/projects/foo", None);
+    let out = env.run(&["auth", "login", "--pat", "--token-stdin"], None);
+    assert!(!out.status.success(), "mutually exclusive flags must fail");
+    assert!(
+        env.credentials_file().is_none(),
+        "a rejected invocation stores nothing"
+    );
+}
+
+/// Without a terminal there is nowhere to show a device code, so the flagless
+/// form must say so and point at the form that works in a pipeline.
+#[test]
+fn auth_login_without_a_terminal_points_at_token_stdin() {
+    let env = TempEnv::new("login-no-tty")
+        .with_connection("https://team.example.com/api/speclink/v1/projects/foo", None);
+    let out = env.run_stdin(&["auth", "login"], None, "");
+    assert!(!out.status.success(), "no terminal → non-zero exit");
+    let text = format!("{}{}", stdout_of(&out), stderr_of(&out));
+    assert!(
+        text.contains("--token-stdin"),
+        "points at the scriptable form: {text}"
+    );
+}
+
+#[test]
+fn auth_logout_without_credentials_is_nonzero() {
+    let env = TempEnv::new("logout-nologin")
+        .with_connection("https://team.example.com/api/speclink/v1/projects/foo", None);
+    let out = env.run(&["auth", "logout"], None);
+    assert!(!out.status.success(), "not logged in → non-zero exit");
+    let text = format!("{}{}", stdout_of(&out), stderr_of(&out));
+    assert!(text.contains("Not logged in"), "says so plainly: {text}");
+}
+
+/// A PAT in the credentials file is a local credential like any other: logout
+/// clears it, and the next status call says "not logged in".
+#[test]
+fn auth_logout_clears_the_credentials_file_entry() {
+    let mock = whoami_server(200, WHOAMI_TWO_REPOS);
+    let env = TempEnv::new("logout-file").with_connection(&mock.base, Some("backend"));
+    let stored = env.run_stdin(&["auth", "login", "--token-stdin"], None, "pat-abc\n");
+    assert!(stored.status.success(), "stderr: {}", stderr_of(&stored));
+
+    let out = env.run(&["auth", "logout"], None);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+
+    let creds = env.credentials_file().expect("file still exists");
+    let text = std::fs::read_to_string(&creds).unwrap();
+    assert!(!text.contains("pat-abc"), "token cleared: {text}");
+
+    let after = env.run(&["auth", "status"], None);
+    assert!(!after.status.success(), "logged out → status is non-zero");
+}
+
 // --- git remote reference warning (advisory only) ---
 
 const WHOAMI_WITH_GITURL: &str = r#"{"user":{"id":"u1","name":"王小明","handle":"xiaoming"},"project":"demo","repos":[{"name":"backend","gitUrl":"https://github.com/original/repo.git"}]}"#;

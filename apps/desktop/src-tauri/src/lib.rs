@@ -7,7 +7,6 @@
 //! 任何全域，前一分頁 in-flight 呼叫以其原 root 結算。
 
 pub mod connections;
-pub mod credentials;
 pub mod event_manager;
 pub mod remote;
 pub mod tray;
@@ -304,7 +303,7 @@ fn connections_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 /// TokenManager（access token 記憶體持有——短效、絕不落盤、絕不過境 TS，
 /// 決策 2；換發與 401 語意見 remote 模組）。
 struct ConnectionsState {
-    credentials: Box<dyn credentials::CredentialStore>,
+    credentials: Box<dyn speclink_remote::credentials::CredentialStore>,
     managers:
         std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<remote::TokenManager>>>,
     state_observer: std::sync::Arc<dyn Fn(remote::ConnectionStateEvent) + Send + Sync>,
@@ -344,13 +343,13 @@ impl ConnectionsState {
 fn entry_view(entry: &connections::ConnectionEntry, state: &ConnectionsState) -> Value {
     let logged_in = state
         .credentials
-        .get(&entry.origin, credentials::CredentialKind::Refresh)
+        .get(&entry.origin, speclink_remote::credentials::CredentialKind::Refresh)
         .ok()
         .flatten()
         .is_some()
         || state
             .credentials
-            .get(&entry.origin, credentials::CredentialKind::Pat)
+            .get(&entry.origin, speclink_remote::credentials::CredentialKind::Pat)
             .ok()
             .flatten()
             .is_some();
@@ -579,7 +578,7 @@ async fn with_remote<T, F>(
 ) -> Result<T, String>
 where
     T: Send + 'static,
-    F: FnOnce(&remote::RemoteWorkspace, &dyn credentials::CredentialStore) -> Result<T, String>
+    F: FnOnce(&remote::RemoteWorkspace, &dyn speclink_remote::credentials::CredentialStore) -> Result<T, String>
         + Send
         + 'static,
 {
@@ -610,7 +609,7 @@ where
     T: Send + 'static,
     F: FnOnce(
             &remote::RemoteWorkspace,
-            &dyn credentials::CredentialStore,
+            &dyn speclink_remote::credentials::CredentialStore,
         ) -> Result<T, remote::RemoteSettingsError>
         + Send
         + 'static,
@@ -1271,7 +1270,7 @@ pub fn run() {
             // 連線層：credential 生產出入口＝OS Keychain；access token 記憶體持有。
             let state_emitter = app.handle().clone();
             app.manage(std::sync::Arc::new(ConnectionsState {
-                credentials: Box::new(credentials::KeyringCredentialStore),
+                credentials: Box::new(speclink_remote::credentials::KeyringCredentialStore),
                 managers: std::sync::Mutex::new(std::collections::HashMap::new()),
                 state_observer: std::sync::Arc::new(move |event| {
                     let _ = state_emitter.emit(remote::REMOTE_CONNECTION_STATE_EVENT, event);

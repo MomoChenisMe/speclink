@@ -2,22 +2,32 @@
 //! Protocol (see `docs/platform-architecture.zh-TW.md` §4.5), used by the
 //! CLI's remote mode.
 //!
-//! Three concerns live here and nowhere else:
+//! These concerns live here and nowhere else:
 //! - `client`: a single request layer plus the per-verb path mapping, all
 //!   speclink-protocol DTOs — no raw JSON travels through this crate.
-//! - `auth`: credentials-file read/write and token resolution order.
+//! - `credentials`: the OS keyring store, keyed by origin and kind.
+//! - `auth`: credentials-file read/write and the resolution ladder.
+//! - `refresh`: bearer acquisition and rotation, serialized across processes.
+//! - `login`: driving a device authorization to a verdict.
 //! - the registry mapping below: every non-2xx response becomes a
 //!   single-line semantic message — a bare HTTP status code is never the
 //!   primary error output.
 //!
+//! The last four are shared with the desktop app, not CLI-only: both front
+//! ends read and write the same keyring entries, so one login on a machine
+//! covers both (cli-desktop-credential-sharing).
+//!
 //! `speclink-core` must never depend on this crate (the core keeps its
-//! "no network calls" red line); only the CLI does.
+//! "no network calls" red line).
 
 pub mod auth;
 pub mod client;
 pub mod convert;
+pub mod credentials;
 pub mod device;
 pub mod events;
+pub mod login;
+pub mod refresh;
 
 /// A translated remote failure: one semantic line for the user/agent, plus
 /// the machine-readable `reason` when the server provided one.

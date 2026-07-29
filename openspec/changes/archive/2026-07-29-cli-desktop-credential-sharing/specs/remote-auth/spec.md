@@ -1,12 +1,7 @@
-# remote-auth Specification
-
-## Purpose
-
-TBD - created by archiving change 'verb-contract-and-remote-client'. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: PAT 登入與憑證儲存
+<!-- BEFORE: 互動 auth login 即貼 PAT（無旗標）；auth status 無憑證來源層標示 -->
 speclink auth login --pat SHALL 互動接受 PAT 輸入；speclink auth login --token-stdin SHALL 自 stdin 讀取 PAT（CI／腳本用），其行為、輸出與 exit code SHALL 維持既有位元級不變。兩者 SHALL 依連接 url 的 origin 將 PAT 存入使用者層級設定目錄的憑證檔（Unix 檔案權限 0600），SHALL NOT 將憑證寫入專案 repo 內的任何檔案。--pat 與 --token-stdin 同時給定 SHALL 以非 0 exit code 拒絕。環境變數 SPECLINK_TOKEN 存在時 SHALL 優先於所有其他憑證來源。speclink auth status SHALL 查驗當前解析所得憑證並顯示身分與 repo 驗證結果，且 SHALL 標示憑證來源層：人眼輸出增列來源描述，--json 新增 credentialSource 欄位（string，值域 env、keychain_refresh、keychain_pat、credentials_file），既有欄位不變。
 
 #### Scenario: --pat 登入後憑證落於使用者目錄
@@ -29,43 +24,8 @@ speclink auth login --pat SHALL 互動接受 PAT 輸入；speclink auth login --
 - **WHEN** 執行 speclink auth login --pat --token-stdin
 - **THEN** exit code 非 0，stderr 說明兩旗標互斥，不進入任何登入流程
 
-
-<!-- @trace
-source: cli-desktop-credential-sharing
-updated: 2026-07-29
-code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/credentials.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/common/mod.rs
-  - apps/desktop/src-tauri/tests/connections.rs
-  - apps/desktop/src-tauri/tests/event_manager.rs
-  - apps/desktop/src-tauri/tests/login_orchestration.rs
-  - apps/desktop/src-tauri/tests/migration.rs
-  - apps/desktop/src-tauri/tests/phase3_chain.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src-tauri/tests/remote_runtime.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/auth.rs
-  - crates/speclink-remote/src/credentials.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/src/login.rs
-  - crates/speclink-remote/src/refresh.rs
-  - crates/speclink-remote/tests/auth_store.rs
-  - crates/speclink-remote/tests/credential_ladder.rs
-  - crates/speclink-remote/tests/device_login_flow.rs
-  - crates/speclink-remote/tests/reauth_retry.rs
-  - crates/speclink-remote/tests/refresh_lock.rs
--->
-
----
 ### Requirement: 憑證失效的處理
+<!-- BEFORE: 未授權一律直接失敗提示重登入，無換發概念 -->
 remote 動詞收到未授權回應時：憑證來源為金鑰圈 refresh 者，CLI SHALL 以同一 credential family 換發重試恰一次，換發成功即以新憑證完成該動詞、無任何使用者可見的登入提示；換發被 server 拒絕（family 已撤銷）SHALL 清除該 origin 的金鑰圈 refresh 與 access token 快取條目、以非 0 exit code 結束並提示 speclink auth login。憑證來源為其他層（環境變數、PAT）時 SHALL 維持既有行為：非 0 exit code、提示重新登入、不重試。單次動詞執行內 SHALL NOT 靜默改用其他憑證來源。
 
 #### Scenario: token 撤銷後的動詞行為
@@ -80,42 +40,8 @@ remote 動詞收到未授權回應時：憑證來源為金鑰圈 refresh 者，C
 - **WHEN** 憑證來源為金鑰圈 refresh 且其 family 已被 server 撤銷，憑證檔另存有效 PAT，執行 speclink list
 - **THEN** exit code 非 0 並提示 speclink auth login，金鑰圈 refresh 與 access token 條目被清除，該次執行不改用憑證檔 PAT；再次執行 speclink list 時以憑證檔 PAT 成功
 
+## ADDED Requirements
 
-<!-- @trace
-source: cli-desktop-credential-sharing
-updated: 2026-07-29
-code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/credentials.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/common/mod.rs
-  - apps/desktop/src-tauri/tests/connections.rs
-  - apps/desktop/src-tauri/tests/event_manager.rs
-  - apps/desktop/src-tauri/tests/login_orchestration.rs
-  - apps/desktop/src-tauri/tests/migration.rs
-  - apps/desktop/src-tauri/tests/phase3_chain.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src-tauri/tests/remote_runtime.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/auth.rs
-  - crates/speclink-remote/src/credentials.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/src/login.rs
-  - crates/speclink-remote/src/refresh.rs
-  - crates/speclink-remote/tests/auth_store.rs
-  - crates/speclink-remote/tests/credential_ladder.rs
-  - crates/speclink-remote/tests/device_login_flow.rs
-  - crates/speclink-remote/tests/reauth_retry.rs
-  - crates/speclink-remote/tests/refresh_lock.rs
--->
-
----
 ### Requirement: 裝置授權登入
 speclink auth login 於互動 TTY 且無旗標時 SHALL 走裝置授權：向 server 發起授權，stdout SHALL 印出 verification URL 與 user code（供任一裝置核准），可開啟瀏覽器的環境 SHALL 同時開啟核准頁；之後依 server 宣告的最小間隔輪詢。核准後 SHALL 將 refresh credential 與短效 access token（連同到期時刻）存入 OS 金鑰圈、顯示登入身分資訊、exit code 0，SHALL NOT 寫入憑證檔。被拒絕與逾期 SHALL 以非 0 exit code 結束且訊息可區分兩者。server 不支援裝置授權 SHALL 以非 0 exit code 結束並指引 --pat。非互動（無 TTY）且無旗標 SHALL 以非 0 exit code 結束並指引 --token-stdin。OS 金鑰圈不可用（無服務或存取被拒）時 SHALL 以非 0 exit code 結束、說明 refresh credential 不落明文檔並指引 --pat 或 SPECLINK_TOKEN。
 
@@ -135,41 +61,6 @@ speclink auth login 於互動 TTY 且無旗標時 SHALL 走裝置授權：向 se
 - **WHEN** 平台無金鑰圈服務，於互動 TTY 執行 speclink auth login
 - **THEN** exit code 非 0，stderr 說明無法安全儲存 refresh credential 並指引 --pat 或 SPECLINK_TOKEN，未發起裝置授權
 
-<!-- @trace
-source: cli-desktop-credential-sharing
-updated: 2026-07-29
-code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/credentials.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/common/mod.rs
-  - apps/desktop/src-tauri/tests/connections.rs
-  - apps/desktop/src-tauri/tests/event_manager.rs
-  - apps/desktop/src-tauri/tests/login_orchestration.rs
-  - apps/desktop/src-tauri/tests/migration.rs
-  - apps/desktop/src-tauri/tests/phase3_chain.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src-tauri/tests/remote_runtime.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/auth.rs
-  - crates/speclink-remote/src/credentials.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/src/login.rs
-  - crates/speclink-remote/src/refresh.rs
-  - crates/speclink-remote/tests/auth_store.rs
-  - crates/speclink-remote/tests/credential_ladder.rs
-  - crates/speclink-remote/tests/device_login_flow.rs
-  - crates/speclink-remote/tests/reauth_retry.rs
-  - crates/speclink-remote/tests/refresh_lock.rs
--->
-
----
 ### Requirement: 憑證解析階梯
 remote 動詞與 auth status SHALL 依固定順序解析憑證：SPECLINK_TOKEN 環境變數 → 金鑰圈 refresh credential（經 access token 快取與換發）→ 金鑰圈 PAT → 憑證檔 PAT。某層不可用（平台無金鑰圈服務、金鑰圈存取被拒、條目不存在）SHALL 靜默續探下一層，SHALL NOT 因金鑰圈不可用而使動詞失敗。四層皆無憑證 SHALL 以非 0 exit code 報未登入並指引 speclink auth login。
 
@@ -190,41 +81,6 @@ remote 動詞與 auth status SHALL 依固定順序解析憑證：SPECLINK_TOKEN 
 - **WHEN** SPECLINK_TOKEN 設為有效 token，金鑰圈同時存有另一身分的 refresh credential，執行 speclink auth status
 - **THEN** 顯示環境變數 token 的身分，credentialSource 為 env
 
-<!-- @trace
-source: cli-desktop-credential-sharing
-updated: 2026-07-29
-code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/credentials.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/common/mod.rs
-  - apps/desktop/src-tauri/tests/connections.rs
-  - apps/desktop/src-tauri/tests/event_manager.rs
-  - apps/desktop/src-tauri/tests/login_orchestration.rs
-  - apps/desktop/src-tauri/tests/migration.rs
-  - apps/desktop/src-tauri/tests/phase3_chain.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src-tauri/tests/remote_runtime.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/auth.rs
-  - crates/speclink-remote/src/credentials.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/src/login.rs
-  - crates/speclink-remote/src/refresh.rs
-  - crates/speclink-remote/tests/auth_store.rs
-  - crates/speclink-remote/tests/credential_ladder.rs
-  - crates/speclink-remote/tests/device_login_flow.rs
-  - crates/speclink-remote/tests/reauth_retry.rs
-  - crates/speclink-remote/tests/refresh_lock.rs
--->
-
----
 ### Requirement: 共用 credential family 與換發序列化
 同機同 origin 的 desktop 與 CLI SHALL 讀寫同一金鑰圈 refresh 條目（單一 credential family）。refresh 換發與裝置授權登入的 credential 寫入 SHALL 以使用者設定目錄下的獨立鎖檔跨行程序列化：併發的換發需求 SHALL 恰產生一次 server 端換發，SHALL NOT 觸發 server 的 reuse 偵測（整族撤銷）。短效 access token SHALL 連同到期時刻快取於金鑰圈；未到期時 SHALL 直接使用而不發起換發請求。取得鎖後 SHALL 重讀 access token 快取，先行者已換新時 SHALL 複用其結果而非再次換發。等待鎖 SHALL 有時間上限，逾時 SHALL 以錯誤結束並指出疑似有其他行程長時間持鎖，SHALL NOT 無限期阻塞。
 
@@ -244,41 +100,6 @@ code:
 - **WHEN** desktop 與 CLI 對同 origin 交錯執行多輪需認證的操作（各自觸發過換發）
 - **THEN** 兩端全程無認證失效錯誤，金鑰圈始終存有可用的 refresh credential
 
-<!-- @trace
-source: cli-desktop-credential-sharing
-updated: 2026-07-29
-code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/credentials.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/common/mod.rs
-  - apps/desktop/src-tauri/tests/connections.rs
-  - apps/desktop/src-tauri/tests/event_manager.rs
-  - apps/desktop/src-tauri/tests/login_orchestration.rs
-  - apps/desktop/src-tauri/tests/migration.rs
-  - apps/desktop/src-tauri/tests/phase3_chain.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src-tauri/tests/remote_runtime.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/auth.rs
-  - crates/speclink-remote/src/credentials.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/src/login.rs
-  - crates/speclink-remote/src/refresh.rs
-  - crates/speclink-remote/tests/auth_store.rs
-  - crates/speclink-remote/tests/credential_ladder.rs
-  - crates/speclink-remote/tests/device_login_flow.rs
-  - crates/speclink-remote/tests/reauth_retry.rs
-  - crates/speclink-remote/tests/refresh_lock.rs
--->
-
----
 ### Requirement: 登出
 speclink auth logout：金鑰圈存有 refresh credential 時 SHALL 呼叫 server 撤銷其 credential family，之後 SHALL 清除該 origin 的所有本機憑證——金鑰圈的 refresh、access token 快取與 PAT 條目，及憑證檔中該 origin 的條目；server 端的 PAT SHALL NOT 被撤銷。成功 SHALL exit code 0 並顯示已登出的 origin。該 origin 全無本機憑證時 SHALL 以非 0 exit code 報未登入。撤銷請求網路失敗時 SHALL 仍清除本機憑證、exit code 0，並於 stderr 警告 server 端 family 未撤銷。
 
@@ -293,37 +114,3 @@ speclink auth logout：金鑰圈存有 refresh credential 時 SHALL 呼叫 serve
 #### Scenario: 撤銷請求網路失敗
 - **WHEN** 金鑰圈存有 refresh credential 但 server 不可達，執行 speclink auth logout
 - **THEN** 本機憑證仍被清除，exit code 0，stderr 警告 server 端 credential family 未被撤銷
-
-<!-- @trace
-source: cli-desktop-credential-sharing
-updated: 2026-07-29
-code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/credentials.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/common/mod.rs
-  - apps/desktop/src-tauri/tests/connections.rs
-  - apps/desktop/src-tauri/tests/event_manager.rs
-  - apps/desktop/src-tauri/tests/login_orchestration.rs
-  - apps/desktop/src-tauri/tests/migration.rs
-  - apps/desktop/src-tauri/tests/phase3_chain.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src-tauri/tests/remote_runtime.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/auth.rs
-  - crates/speclink-remote/src/credentials.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/src/login.rs
-  - crates/speclink-remote/src/refresh.rs
-  - crates/speclink-remote/tests/auth_store.rs
-  - crates/speclink-remote/tests/credential_ladder.rs
-  - crates/speclink-remote/tests/device_login_flow.rs
-  - crates/speclink-remote/tests/reauth_retry.rs
-  - crates/speclink-remote/tests/refresh_lock.rs
--->
