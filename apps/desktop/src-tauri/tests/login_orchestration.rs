@@ -11,7 +11,7 @@ use speclink_desktop_lib::connections::{
     device_login_observe, device_login_start, logout, pat_login, read_registry, refresh_connection,
     upsert_connection, write_registry, DeviceLoginObservation, DeviceLoginStart,
 };
-use speclink_desktop_lib::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
+use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
 use speclink_server::events::{EventHub, EventSettings};
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};

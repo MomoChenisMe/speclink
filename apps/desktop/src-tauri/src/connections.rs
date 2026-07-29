@@ -12,7 +12,7 @@
 //! 不夾帶 secret。device login 分兩段（決策二）：每段都是純請求-回應，不睡眠、
 //! 不留跨呼叫狀態——輪詢節奏與取消都歸呼叫端排程。
 
-use crate::credentials::{CredentialKind, CredentialStore};
+use speclink_remote::credentials::{CredentialKind, CredentialStore};
 use serde::{Deserialize, Serialize};
 use speclink_protocol::device::DeviceTokenStatus;
 use speclink_remote::device::{self, InitiateOutcome};
@@ -418,51 +418,24 @@ pub fn logout(
     })
 }
 
-/// rotation 失敗的兩種語意——呼叫端據此決定「清掉 credential 要求重登入」
-/// 還是「原封保留、稍後再試」。決策 3 的原則不只適用於登入前探測：任何
-/// 暫時性失敗都不得被讀成「credential 已失效」。
-#[derive(Debug)]
-pub enum RefreshFailure {
-    /// server 明確拒絕（permission_denied），或本機根本沒有 credential——
-    /// 該 credential 已無用，重新登入是唯一解。
-    Rejected(String),
-    /// credential 生死未卜：網路不可達、5xx、本機 Keychain 故障——一律保留，
-    /// 回報連線錯誤讓使用者稍後再試。
-    Unavailable(String),
-}
+/// rotation 失敗的兩種語意（實作下沉至 speclink-remote，與 CLI 共用）——
+/// 呼叫端據此決定「清掉 credential 要求重登入」還是「原封保留、稍後再試」。
+/// 決策 3 的原則不只適用於登入前探測：任何暫時性失敗都不得被讀成
+/// 「credential 已失效」。
+pub use speclink_remote::refresh::RefreshFailure;
 
-impl RefreshFailure {
-    /// 給使用者看的單行訊息（兩種語意在 UI 上都只是一行錯誤）。
-    pub fn message(self) -> String {
-        match self {
-            RefreshFailure::Rejected(m) | RefreshFailure::Unavailable(m) => m,
-        }
-    }
-}
-
-/// 以 Keychain 的 refresh credential 換新一輪 token pair（rotation）：成功即以
-/// 新 refresh credential 覆寫 Keychain slot（決策 2——回寫失敗屬 corrupt 邊界，
-/// 錯誤上拋令使用者重登入），回傳新 access token。
+/// 換發全程持跨行程檔案鎖（cli-desktop-credential-sharing）：CLI 與 desktop
+/// 共用同一個 credential family，兩邊同時換發會撞上 server 的 reuse 偵測而
+/// 整族撤銷。新 refresh credential 與 access token 快取由下沉層一併回寫。
 pub fn refresh_connection(
     origin: &str,
     credentials: &dyn CredentialStore,
 ) -> Result<String, RefreshFailure> {
-    let Some(refresh) = credentials
-        .get(origin, CredentialKind::Refresh)
-        .map_err(RefreshFailure::Unavailable)?
-    else {
-        return Err(RefreshFailure::Rejected(
-            "此連線沒有 refresh credential——請重新登入".to_string(),
-        ));
-    };
-    let rotated = device::refresh(origin, &refresh).map_err(|e| match e.reason.as_deref() {
-        Some("permission_denied") => RefreshFailure::Rejected(e.message),
-        _ => RefreshFailure::Unavailable(e.message),
-    })?;
-    credentials
-        .set(origin, CredentialKind::Refresh, &rotated.refresh_token)
-        .map_err(RefreshFailure::Unavailable)?;
-    Ok(rotated.access_token)
+    speclink_remote::refresh::rotate(
+        origin,
+        credentials,
+        &speclink_remote::auth::speclink_config_dir(),
+    )
 }
 
 /// 打 /auth/whoami 取身分顯示名並寫回 registry。

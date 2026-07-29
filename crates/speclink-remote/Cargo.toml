@@ -13,6 +13,12 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 anyhow.workspace = true
 ureq = { version = "2", features = ["json"] }
+# credential 唯一落點 OS Keychain（cli-desktop-credential-sharing）：僅啟用
+# macOS/Windows 原生後端——其他平台退 keyring 內建 mock，桌面支援面即 macOS
+# Keychain／Windows Credential Manager。CLI 在無 keyring 的平台靜默下探至 PAT。
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+# 換發的跨行程序列化鎖：跨平台語意一致，勝過手寫 flock。
+fs2 = "0.4"
 
 [dev-dependencies]
 tiny_http = "0.12"

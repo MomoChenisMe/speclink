@@ -9,8 +9,8 @@
 //! access token 的過期採反應式 401 路徑處理（規格「過期自動換發、使用者無感」
 //! 的可觀察契約相同），不另外追蹤 expires_in。
 
-use crate::connections::{refresh_connection, RefreshFailure};
-use crate::credentials::{CredentialKind, CredentialStore};
+use crate::connections::RefreshFailure;
+use speclink_remote::credentials::{CredentialKind, CredentialStore};
 use serde::{Deserialize, Serialize};
 use speclink_core::model::{require_valid_meta, ChangeMeta};
 use speclink_core::store::Store;
@@ -355,20 +355,27 @@ impl TokenManager {
             }
         }
         *self.bearer.lock().expect("bearer lock") = None;
+        // 被拒的 bearer 也躺在共用快取裡——不清掉的話下一步會原樣撿回來。
+        speclink_remote::refresh::clear_cached_bearer(&self.origin, credentials);
         self.mint(credentials)
     }
 
-    /// 忽略快取取得新 bearer：refresh credential 換發（rotation 回寫在
-    /// refresh_connection）→ PAT → 兩者皆無即 needs-reauth。Unavailable
-    /// （5xx／不可達／Keychain 故障）是暫時性錯誤、不進 needs-reauth——
-    /// 與登入編排同一原則：暫時性失敗不是 credential 失效的語意訊號。
+    /// 記憶體無 bearer 時取得一個：共用的 access token 快取（CLI 可能剛換發過）
+    /// → refresh credential 換發（持跨行程鎖，回寫在下沉層）→ PAT → 皆無即
+    /// needs-reauth。Unavailable（5xx／不可達／Keychain 故障）是暫時性錯誤、
+    /// 不進 needs-reauth——與登入編排同一原則：暫時性失敗不是 credential 失效
+    /// 的語意訊號。
     fn mint(&self, credentials: &dyn CredentialStore) -> Result<String, RemoteError> {
         let has_refresh = credentials
             .get(&self.origin, CredentialKind::Refresh)
             .map_err(unavailable)?
             .is_some();
         let bearer = if has_refresh {
-            match refresh_connection(&self.origin, credentials) {
+            match speclink_remote::refresh::bearer_for(
+                &self.origin,
+                credentials,
+                &speclink_remote::auth::speclink_config_dir(),
+            ) {
                 Ok(access) => access,
                 Err(RefreshFailure::Rejected(_)) => return Err(self.flag_reauth()),
                 Err(RefreshFailure::Unavailable(message)) => return Err(unavailable(message)),

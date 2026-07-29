@@ -1,8 +1,9 @@
-//! Credential storage and token resolution order.
+//! PAT storage in the credentials file.
 //!
 //! Pinned behavior: credentials live in a YAML map keyed by URL origin in
-//! the user-level config directory (never inside a repo), the file is
-//! owner-only on Unix (0600), and SPECLINK_TOKEN always beats the file.
+//! the user-level config directory (never inside a repo), and the file is
+//! owner-only on Unix (0600). Which layer wins when several hold a credential
+//! is the resolution ladder's contract, pinned in `credential_ladder.rs`.
 
 use speclink_remote::auth;
 use std::path::PathBuf;
@@ -85,27 +86,6 @@ fn load_returns_the_saved_token_per_origin() {
 fn missing_credentials_mean_not_logged_in() {
     let tmp = TempDir::new("missing");
     assert_eq!(auth::load_token_at(&tmp.dir, ORIGIN), None);
-    assert_eq!(auth::resolve_token_at(&tmp.dir, ORIGIN, None), None);
-}
-
-#[test]
-fn env_token_beats_the_credentials_file() {
-    let tmp = TempDir::new("env-wins");
-    auth::save_token_at(&tmp.dir, ORIGIN, "pat-from-file").unwrap();
-    assert_eq!(
-        auth::resolve_token_at(&tmp.dir, ORIGIN, Some("pat-from-env".into())).as_deref(),
-        Some("pat-from-env")
-    );
-}
-
-#[test]
-fn file_token_is_used_when_env_is_absent() {
-    let tmp = TempDir::new("file-fallback");
-    auth::save_token_at(&tmp.dir, ORIGIN, "pat-from-file").unwrap();
-    assert_eq!(
-        auth::resolve_token_at(&tmp.dir, ORIGIN, None).as_deref(),
-        Some("pat-from-file")
-    );
 }
 
 #[test]

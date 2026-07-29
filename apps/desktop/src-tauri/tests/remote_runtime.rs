@@ -11,7 +11,7 @@ mod common;
 
 use common::Harness;
 use speclink_desktop_lib::connections::pat_login;
-use speclink_desktop_lib::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
+use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::remote::{
     ConnectionState, ConnectionStateEvent, RemoteWorkspace, TokenManager,
     REMOTE_CONNECTION_STATE_EVENT,

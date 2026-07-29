@@ -282,14 +282,23 @@ struct AuthArgs {
 
 #[derive(Subcommand)]
 enum AuthCommands {
-    /// Store a personal access token for the connected server
+    /// Log in to the connected server (device authorization by default)
     Login {
-        /// Read the token from stdin (CI/scripted use)
-        #[arg(long = "token-stdin")]
+        /// Read a personal access token from stdin (CI/scripted use)
+        #[arg(long = "token-stdin", conflicts_with = "pat")]
         token_stdin: bool,
+        /// Paste a personal access token instead of authorizing this device
+        #[arg(long = "pat")]
+        pat: bool,
     },
     /// Show the current identity and repo validation result
-    Status,
+    Status {
+        /// Emit the identity and credential source as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Log out: revoke this device's credential family and clear local credentials
+    Logout,
 }
 
 #[derive(Args)]

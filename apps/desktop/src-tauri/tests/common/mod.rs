@@ -349,7 +349,7 @@ impl Phase3Server {
 
     pub fn device_login_editor(
         &self,
-        store: &dyn speclink_desktop_lib::credentials::CredentialStore,
+        store: &dyn speclink_remote::credentials::CredentialStore,
     ) -> String {
         let identity = self.identity.clone();
         let user_id = self.editor_id.clone();
@@ -745,7 +745,7 @@ pub fn seed_named_change(store: &dyn TeamStore, change: &str, tasks: &str) {
 /// credential。
 pub fn device_login_approved(
     h: &Harness,
-    store: &dyn speclink_desktop_lib::credentials::CredentialStore,
+    store: &dyn speclink_remote::credentials::CredentialStore,
 ) {
     let identity = h.identity.clone();
     let user_id = h.user_id.clone();
@@ -765,7 +765,7 @@ pub fn device_login_approved(
 /// 就地核准）後，做一次觀測即得終態——測試不需要真的排程輪詢。回傳 access token。
 fn device_login_two_segments(
     origin: &str,
-    store: &dyn speclink_desktop_lib::credentials::CredentialStore,
+    store: &dyn speclink_remote::credentials::CredentialStore,
     registry: &std::path::Path,
     opener: &dyn Fn(&str) -> Result<(), String>,
 ) -> Result<String, String> {

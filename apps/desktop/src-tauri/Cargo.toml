@@ -28,10 +28,6 @@ speclink-protocol = { path = "../../../crates/speclink-protocol" }
 speclink-store = { path = "../../../crates/speclink-store" }
 notify-debouncer-mini = "0.7.0"
 ulid = { workspace = true }
-# credential 唯一落點 OS Keychain（design 決策 2）：僅啟用 macOS/Windows 原生
-# 後端——其他平台退 keyring 內建 mock，桌面支援面即 macOS Keychain／Windows
-# Credential Manager。
-keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -2,7 +2,7 @@
 
 mod common;
 
-use speclink_desktop_lib::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
+use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::remote::{self, TokenManager};
 use speclink_remote::client::Client;
 use std::collections::BTreeMap;

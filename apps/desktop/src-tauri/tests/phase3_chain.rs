@@ -3,7 +3,7 @@
 
 mod common;
 
-use speclink_desktop_lib::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
+use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::event_manager::EventManager;
 use speclink_desktop_lib::remote::{self, ConnectionState, TokenManager};
 use speclink_remote::events;
