@@ -1224,6 +1224,7 @@ The document has a fixed skeleton — like the proposal template, every discussi
 3. **Record what was ruled out, with the reason.** Rejected options are the most valuable part of the record: they stop future readers (and future you) from re-litigating settled ground.
 4. **Keep an open-questions ledger.** Each round ends with the questions still unresolved; the next round picks one of them up. The conclusion must resolve or explicitly defer every remaining one.
 5. **Position bullets over prose.** When a Position exceeds one sentence it SHALL be bulleted — a one-sentence verdict first, then `- ` points one per line. A single-line wall-of-text Position is unreadable in every viewer. Focus / Ruled out / Open stay single-line.
+6. **The rounds trace the decision tree.** The first round's Position lays out the initial decision space (an ASCII tree is welcome); each later round resolves one node; branches discovered mid-round are recorded in that round's Open. The Open ledger is thus always the exact frontier of the unexplored tree.
 
 **At the start (before Step 0):**
 
@@ -1338,6 +1339,8 @@ Pull 2-5 keywords from the user's topic. For "search should support fuzzy matchi
 
 Use Grep and Glob to find related source files (not docs, not tests — source code). Spend no more than a few seconds on this. Read up to 5 of the most relevant files found.
 
+This scout exists only to pick the mode (Step 3) — it is not the investigation. Deeper verification happens later, node by node along the decision tree (see "How to Discuss").
+
 ### Step 3: Pick a mode
 
 - **3+ related source files found** → **Assumptions mode**: you have enough context to form opinions. List your assumptions, let the user correct.
@@ -1409,7 +1412,13 @@ Surface the answers in the conclusion (or the assumptions list, if you are in as
 
 _This section applies to interview mode — either chosen automatically (insufficient code context) or switched to manually by the user._
 
-**One question at a time.** Don't dump a list of 10 questions. Ask the most important one, listen, then follow up. Let the conversation breathe. If the user's initial description or previous answers already cover a question, skip it — don't ask what you already know.
+**Open by laying out the decision space.** Before asking anything, map the decision tree: the root node is "what is this topic actually deciding?", expanded into its sub-decisions with the dependency edges between them. Present the map up front (an ASCII tree works well) so the user sees the shape of the whole problem before the first question.
+
+**Traverse in dependency order — one question at a time.** Don't dump a list of 10 questions. Ask exactly one question per exchange, picked by dependency order: resolve upstream decisions first, because the shape of downstream questions depends on the upstream answers. Listen, then move to the next node. If the user's initial description or previous answers already settle a node, mark it resolved and skip it — don't ask what you already know.
+
+**Every question MUST come with a proposed answer, and the proposal MUST cite Evidence.** This is a hard rule, not a suggestion: each question you ask carries your recommended answer, backed by Evidence — file path(s) or probe results. The user only needs to agree or correct. Never hand the user a bare open question that Evidence could have grounded first. (This is the same Evidence convention assumptions mode already uses, applied per question.)
+
+**Triage every node: fact or decision.** Before resolving a node, classify it. A **fact** is anything the environment can answer — code, file system, tool output; a **decision** is a judgment call only the user can make. Facts MUST be verified yourself with Grep/Read at the node where they arise — never ask the user for a fact, and never answer one from memory. Only genuine decisions go to the user. Verification depth follows the tree: spend deep reads on branches you will actually traverse, and don't pre-read branches that get pruned.
 
 **Propose concrete options.** When exploring approaches, present 2-3 specific options with trade-offs — not abstract possibilities. Use comparison tables when helpful:
 
@@ -1420,8 +1429,6 @@ _This section applies to interview mode — either chosen automatically (insuffi
 | SSE           | Simple, HTTP      | One-way only      |
 | Polling       | Simplest          | Latency, waste    |
 ```
-
-**Ground in reality.** Investigate the actual codebase when relevant. Map existing architecture, find integration points, surface hidden complexity. Don't just theorize.
 
 **Visualize freely.** Use ASCII diagrams when they clarify thinking:
 
@@ -1495,10 +1502,10 @@ The conclusion should be one of:
 
 **Example elicitation**: When the discussion converges on a specific requirement or behavior, propose a concrete example before capturing the decision. Instead of concluding "search should sort by relevance", propose: "So if we have items scored 0.9, 0.3, 0.7, the result order would be 0.9, 0.7, 0.3 — is that right?" This naturally produces `##### Example:` content for the spec and confirms shared understanding with real values.
 
-**If the user wants to move faster.** Sometimes the user signals impatience — "let's just go with X", "I don't want to overthink this", "can we move on?". Respect their pace:
+**If the user wants to move faster.** Sometimes the user signals impatience — "let's just go with X", "I don't want to overthink this", "can we move on?". The user owns the stopping point: the decision tree is a map, not a contract, and convergence never requires every branch to be resolved. Respect their pace:
 
 1. **First time**: Briefly flag if there's an important unresolved question — one sentence, not a lecture. "Before we commit to X, worth noting that Y could affect Z. Want to address it or move forward?"
-2. **If they push again**: Respect it. Skip remaining questions, go straight to convergence with the best conclusion you can form from what's been discussed. Don't push back a second time.
+2. **If they push again**: Respect it. Skip remaining questions, go straight to convergence with the best conclusion you can form from what's been discussed, and record the branches left untraversed under **Deferred** in the conclusion. Don't push back a second time.
 
 The goal is thoroughness, not interrogation. One nudge maximum.
 
