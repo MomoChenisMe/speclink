@@ -63,7 +63,7 @@ schema: spec-driven                tdd: true
 | Subcommand | What it does |
 |---|---|
 | `show [--json]` | Prints the four policy fields, `context` (line count) and `rules` (entries per section). Shows the **canonical values** — environment variables and deprecated keys are NOT applied (resolving effective values is `speclink instructions`' job). The `--json` payload is camelCase: `locale`, `specLocale`, `tdd`, `audit`, `context`, `rules`; unset fields are `null`, unset toggles are `false`. |
-| `set <key> <value>` | Writes one of `locale`, `spec_locale`, `tdd`, `audit`. Any other key exits non-zero; `tdd`/`audit` accept only `true`/`false`. Setting `false` (or a locale to an empty string) **removes the key**, keeping unset-means-default intact. |
+| `set <key> <value>` | Writes one of `locale`, `spec_locale`, `tdd`, `audit`. Any other key exits non-zero; `tdd`/`audit` accept only `true`/`false`. `locale` accepts only the codes `tw`/`ja`/`en` and `spec_locale` only `tw`/`ja`/`en`/`auto` (case-sensitive) — display names such as 「繁體中文」 are rejected with the accepted codes listed. Setting `false` (or a locale to an empty string) **removes the key**, keeping unset-means-default intact. |
 | `context --stdin` | Sets `context` to the full stdin text; whitespace-only input removes the key. |
 | `rules <artifact> --stdin` | Replaces that artifact's rule section wholesale (one entry per line, blank lines ignored); empty stdin removes the section. `artifact` must be an artifact id of the active schema — an unknown id exits non-zero. |
 

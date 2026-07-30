@@ -29,7 +29,7 @@ code:
 ---
 ### Requirement: policy 寫入一律 CAS 且經引擎驗證
 
-policy 寫入端點 SHALL 要求完整文件原文與 expected revision——缺 expected revision SHALL 拒收，SHALL NOT 存在無條件覆寫路徑。寫入 SHALL 依序：role 檢查（非 editor 即 403 且不觸文件）→ 引擎 WorkflowConfig fail-closed 驗證（解析失敗回 invalid_config 且不落盤）→ expected revision 的 CAS 提交（不符回 revision_conflict 且內容不變；成功回新 revision）。政策由 server 守住——client 端任何驗證僅為 UX，SHALL NOT 被信任為防線。
+policy 寫入端點 SHALL 要求完整文件原文與 expected revision——缺 expected revision SHALL 拒收，SHALL NOT 存在無條件覆寫路徑。寫入 SHALL 依序：role 檢查（非 editor 即 403 且不觸文件）→ 引擎 WorkflowConfig fail-closed 驗證（解析失敗回 invalid_config 且不落盤）→ expected revision 的 CAS 提交（不符回 revision_conflict 且內容不變；成功回新 revision）。引擎驗證 SHALL 併涵蓋政策值域：內容可解析但 locale 非 tw／ja／en、或 spec_locale 非 tw／ja／en／auto（大小寫敏感；鍵不存在即未設定，恆合法）時，SHALL 拒絕且不落盤，錯誤 message SHALL 指出欄位名與合法代碼集合；SHALL 沿用既有錯誤 envelope 結構與 reason 種類，SHALL NOT 為值域驗證新增 wire 形狀。政策由 server 守住——client 端任何驗證僅為 UX，SHALL NOT 被信任為防線。
 
 #### Scenario: revision 過期寫入被拒且無副作用
 
@@ -41,16 +41,30 @@ policy 寫入端點 SHALL 要求完整文件原文與 expected revision——缺
 - **WHEN** 以正確的 expected revision 提交無法解析的 YAML
 - **THEN** 回應 invalid_config 並指出解析錯誤，store 中文件未改變
 
+#### Scenario: 非法 locale 值不落盤
+
+- **WHEN** 以正確的 expected revision 提交可解析、但 locale 值為「繁體中文」的 config 內容
+- **THEN** 寫入被拒，錯誤 message 指出 locale 欄位與合法代碼 tw、ja、en；store 中文件內容與 revision 皆未改變
+
+
 <!-- @trace
-source: remote-workflow-policy
-updated: 2026-07-20
+source: workflow-config-locale-validation
+updated: 2026-07-30
 code:
-  - crates/speclink-protocol/src/query.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/read_api.rs
-  - crates/speclink-server/src/app.rs
+  - apps/desktop/src/__tests__/projectSettingsView.test.tsx
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/views/ProjectSettingsView.tsx
+  - crates/speclink-cli/tests/workflow_config.rs
+  - crates/speclink-core/assets/skills/config.md
+  - crates/speclink-core/src/config.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
   - crates/speclink-server/src/routes.rs
   - crates/speclink-server/tests/policy_write.rs
+  - docs/configuration.md
+  - docs/configuration.zh-TW.md
 -->
 
 ---

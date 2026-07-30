@@ -63,7 +63,7 @@ schema: spec-driven                tdd: true
 | 子指令 | 作用 |
 |---|---|
 | `show [--json]` | 顯示政策四欄、`context`（行數）與 `rules`（各節條數）。顯示**正典值**——不套用環境變數或舊鍵覆寫（有效值的四層解析屬 `speclink instructions` 的職責）。`--json` payload 欄位為 camelCase：`locale`、`specLocale`、`tdd`、`audit`、`context`、`rules`；未設定的欄位為 `null`，未設定的布林為 `false`。 |
-| `set <key> <value>` | 寫入 `locale`、`spec_locale`、`tdd`、`audit` 之一。其他鍵以非 0 exit code 拒絕；`tdd`／`audit` 僅接受 `true`／`false`。設為 `false`（或 locale 設為空字串）＝**移除該鍵**，維持「未設定＝預設」語意。 |
+| `set <key> <value>` | 寫入 `locale`、`spec_locale`、`tdd`、`audit` 之一。其他鍵以非 0 exit code 拒絕；`tdd`／`audit` 僅接受 `true`／`false`；`locale` 僅接受代碼 `tw`／`ja`／`en`、`spec_locale` 僅接受 `tw`／`ja`／`en`／`auto`（大小寫敏感）——顯示名稱（如「繁體中文」）會被拒絕並列出合法代碼。設為 `false`（或 locale 設為空字串）＝**移除該鍵**，維持「未設定＝預設」語意。 |
 | `context --stdin` | 以 stdin 全文設定 `context`；內容僅空白時移除該鍵。 |
 | `rules <artifact> --stdin` | 整節代換該 artifact 的規則（一行一條、空行忽略）；stdin 為空時移除該節。`artifact` 限目前 schema 的 artifact id，未知 id 以非 0 exit code 拒絕。 |
 

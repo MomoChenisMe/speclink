@@ -70,6 +70,8 @@ The four policy fields are the user's decision. Ask each one explicitly, one at 
 - `tdd` — whether apply enforces test-first discipline
 - `audit` — whether apply enforces sharp-edges discipline
 
+**Locale fields take locale CODES, never display names.** `locale` accepts exactly `tw`, `ja`, `en`; `spec_locale` accepts `tw`, `ja`, `en`, `auto`. Map the user's natural-language answer to its code before writing — 「繁體中文」 → `tw`, 「日本語」 → `ja`, "English" → `en` — the write verb rejects any value outside the code set, including display names.
+
 Never derive an answer from the repo (a test directory does NOT mean `tdd: true`). Leave a field alone when the user has no opinion.
 
 ## Step 4: Show the diff, then write

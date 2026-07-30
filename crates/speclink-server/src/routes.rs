@@ -440,8 +440,16 @@ pub async fn put_config(
 
     // Second defense: parse the complete document through the engine config
     // model before a write is staged. A malformed document never reaches CAS.
-    WorkflowConfig::from_text(Some(&req.content))
+    let parsed = WorkflowConfig::from_text(Some(&req.content))
         .map_err(|e| ApiError::invalid_config(e.to_string()))?;
+    // Value-domain gate shares the engine rule with every client seam; the
+    // server stays the final defense (client validation is UX only).
+    speclink_core::config::validate_policy_locales(&speclink_core::config::WorkflowPolicyFields {
+        locale: parsed.locale.clone(),
+        spec_locale: parsed.spec_locale.clone(),
+        ..Default::default()
+    })
+    .map_err(|e| ApiError::invalid_config(e.to_string()))?;
 
     let store = state.store.clone();
     let scope = verb::scope_of(&binding);

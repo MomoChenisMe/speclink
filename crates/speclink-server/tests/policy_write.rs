@@ -201,6 +201,48 @@ fn invalid_yaml_and_missing_expected_revision_are_rejected_without_writes() {
 }
 
 #[test]
+fn invalid_locale_value_is_rejected_without_writes() {
+    // Spec scenario 非法 locale 值不落盤（workflow-config-locale-validation）：
+    // 可解析但 locale 值域外的文件不得落盤，沿用 invalid_config 家族。
+    let f = fixture();
+    let (before, _) = get_json(&f, &f.editor_pat, "config");
+    let revision = before["revision"].as_u64().expect("revision");
+
+    let (status, error) = protocol_error(put_config(
+        &f,
+        &f.editor_pat,
+        "schema: spec-driven\nlocale: 繁體中文\n",
+        revision,
+    ));
+    assert_eq!(status, 422);
+    assert_eq!(error.reason, ErrorReason::InvalidConfig, "existing reason family, no new wire shape");
+    for needle in ["locale", "tw", "ja", "en"] {
+        assert!(
+            error.message.contains(needle),
+            "message names the field and codes ({needle}): {}",
+            error.message
+        );
+    }
+    assert_eq!(stored_policy(&f), (INITIAL.to_string(), revision), "nothing lands");
+
+    let (status, error) = protocol_error(put_config(
+        &f,
+        &f.editor_pat,
+        "schema: spec-driven\nspec_locale: zh-Hant\n",
+        revision,
+    ));
+    assert_eq!(status, 422);
+    assert_eq!(error.reason, ErrorReason::InvalidConfig);
+    assert!(error.message.contains("auto"), "spec_locale codes include auto: {}", error.message);
+    assert_eq!(stored_policy(&f), (INITIAL.to_string(), revision));
+
+    // 合法代碼（WINNER 為 locale: tw）照常成功並前進 revision。
+    let ok = put_config(&f, &f.editor_pat, WINNER, revision).expect("valid codes succeed");
+    let body = ok.into_json::<Value>().expect("JSON body");
+    assert!(body["revision"].as_u64().expect("new revision") > revision);
+}
+
+#[test]
 fn reader_write_is_forbidden_and_binding_capability_follows_role() {
     let f = fixture();
     let (config, _) = get_json(&f, &f.reader_pat, "config");

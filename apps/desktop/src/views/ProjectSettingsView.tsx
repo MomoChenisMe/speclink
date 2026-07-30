@@ -33,6 +33,10 @@ import type { WorkspaceSettingsProvider } from "../session";
 /** locale／spec_locale 的「未設定」在 config 裡是空字串，Radix Select 的 item 不接受空字串。 */
 const LOCALE_UNSET = "__unset__";
 
+/** 官方合法語系代碼（引擎 LOCALE_CODES／SPEC_LOCALE_CODES 的前端鏡像）。 */
+const LOCALE_OPTIONS: readonly string[] = ["tw", "ja", "en"];
+const SPEC_LOCALE_OPTIONS: readonly string[] = ["auto", "tw", "ja", "en"];
+
 type PendingRemoteWrite =
   | { kind: "policy"; fields: WorkflowFields }
   | { kind: "context"; context: string }
@@ -92,6 +96,16 @@ export interface ProjectSettingsViewProps {
 
 function FieldHelp({ children }: { children: React.ReactNode }) {
   return <p className="text-xs text-muted-foreground m-0">{children}</p>;
+}
+
+/** 選項集外儲存值的引導提示（spec 需求「設定頁政策下拉的未知值顯性呈現」）。 */
+function InvalidLocaleHint({ testId, children }: { testId: string; children: React.ReactNode }) {
+  return (
+    <p data-testid={testId} className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 m-0">
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+      {children}
+    </p>
+  );
 }
 
 function ParseErrorBanner({ message }: { message: string }) {
@@ -683,6 +697,12 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    {locale !== "" && !LOCALE_OPTIONS.includes(locale) && (
+                      <SelectItem value={locale} disabled className="text-amber-600 dark:text-amber-400">
+                        {locale}
+                        {t("settings.localeInvalid")}
+                      </SelectItem>
+                    )}
                     <SelectItem value={LOCALE_UNSET}>{t("settings.localeUnset")}</SelectItem>
                     <SelectItem value="tw">tw（繁體中文）</SelectItem>
                     <SelectItem value="ja">ja（日本語）</SelectItem>
@@ -691,6 +711,14 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
                 </Select>
                 <span />
                 <FieldHelp>{t("settings.localeHelp")}</FieldHelp>
+                {locale !== "" && !LOCALE_OPTIONS.includes(locale) && (
+                  <>
+                    <span />
+                    <InvalidLocaleHint testId="locale-invalid-hint">
+                      {t("settings.localeInvalidHint")}
+                    </InvalidLocaleHint>
+                  </>
+                )}
 
                 <label htmlFor="cfg-spec-locale" className="text-sm font-medium">spec_locale</label>
                 <Select
@@ -702,6 +730,12 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    {specLocale !== "" && !SPEC_LOCALE_OPTIONS.includes(specLocale) && (
+                      <SelectItem value={specLocale} disabled className="text-amber-600 dark:text-amber-400">
+                        {specLocale}
+                        {t("settings.localeInvalid")}
+                      </SelectItem>
+                    )}
                     <SelectItem value={LOCALE_UNSET}>{t("settings.localeUnset")}</SelectItem>
                     <SelectItem value="auto">auto</SelectItem>
                     <SelectItem value="tw">tw（繁體中文）</SelectItem>
@@ -711,6 +745,14 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
                 </Select>
                 <span />
                 <FieldHelp>{t("settings.specLocaleHelp")}</FieldHelp>
+                {specLocale !== "" && !SPEC_LOCALE_OPTIONS.includes(specLocale) && (
+                  <>
+                    <span />
+                    <InvalidLocaleHint testId="spec-locale-invalid-hint">
+                      {t("settings.specLocaleInvalidHint")}
+                    </InvalidLocaleHint>
+                  </>
+                )}
 
                 <label htmlFor="cfg-tdd" className="text-sm font-medium">tdd</label>
                 <div className="flex items-center">

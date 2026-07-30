@@ -289,6 +289,30 @@ pub fn locale_display(code: Option<&str>) -> String {
     }
 }
 
+/// Locale codes the official write paths accept for `locale` — exactly the keys of
+/// `locale_display`'s frozen mapping. Matching is case-sensitive, like the mapping.
+pub const LOCALE_CODES: [&str; 3] = ["tw", "ja", "en"];
+
+/// Codes accepted for `spec_locale`: the `locale` set plus `auto` (follow `locale`).
+pub const SPEC_LOCALE_CODES: [&str; 4] = ["tw", "ja", "en", "auto"];
+
+/// Validate the locale fields of a policy write. Write-side only: read paths stay
+/// lenient (`locale_display` echoes unknown codes verbatim), so pre-existing
+/// out-of-set values remain readable — they just can no longer be (re)written
+/// through official verbs. `None` (unset) is always valid.
+pub fn validate_policy_locales(fields: &WorkflowPolicyFields) -> anyhow::Result<()> {
+    check_locale_code("locale", fields.locale.as_deref(), &LOCALE_CODES)?;
+    check_locale_code("spec_locale", fields.spec_locale.as_deref(), &SPEC_LOCALE_CODES)
+}
+
+fn check_locale_code(key: &str, value: Option<&str>, codes: &[&str]) -> anyhow::Result<()> {
+    match value {
+        None => Ok(()),
+        Some(v) if codes.contains(&v) => Ok(()),
+        Some(v) => anyhow::bail!("Value for '{key}' must be one of {} (got '{v}')", codes.join(", ")),
+    }
+}
+
 /// `openspec/config.yaml` — workflow configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct WorkflowConfig {
@@ -505,6 +529,7 @@ pub fn update_workflow_config_text(
     context: &ContextEdit,
     rules: Option<&[(String, Vec<String>)]>,
 ) -> anyhow::Result<String> {
+    validate_policy_locales(fields)?;
     let mut doc = parse_yaml_mapping(original, "openspec/config.yaml")?;
     set_or_remove(&mut doc, "locale", fields.locale.as_deref().map(Into::into));
     set_or_remove(&mut doc, "spec_locale", fields.spec_locale.as_deref().map(Into::into));
@@ -1254,16 +1279,76 @@ mod tests {
         assert_eq!(w.rules, wf(doc).rules);
     }
 
+    // --- policy locale 值域驗證（workflow-config-locale-validation，design D1／D3）---
+
     #[test]
-    fn workflow_update_injected_special_values_round_trip_safely() {
-        // Sharp-edges audit（Scoundrel）：值含換行或 YAML 語法時不得破壞文件
-        // 結構——序列化必須 escape，輸出仍可解析且值逐字元 round-trip。
+    fn validate_policy_locales_accepts_codes_and_unset() {
+        for code in ["tw", "ja", "en"] {
+            let f = WorkflowPolicyFields { locale: Some(code.into()), ..Default::default() };
+            assert!(validate_policy_locales(&f).is_ok(), "locale {code} must pass");
+            let f = WorkflowPolicyFields { spec_locale: Some(code.into()), ..Default::default() };
+            assert!(validate_policy_locales(&f).is_ok(), "spec_locale {code} must pass");
+        }
+        // spec_locale 另接受 auto；locale 不接受 auto
+        let f = WorkflowPolicyFields { spec_locale: Some("auto".into()), ..Default::default() };
+        assert!(validate_policy_locales(&f).is_ok());
+        let f = WorkflowPolicyFields { locale: Some("auto".into()), ..Default::default() };
+        assert!(validate_policy_locales(&f).is_err(), "locale auto must be rejected");
+        // None（未設定）恆合法
+        assert!(validate_policy_locales(&WorkflowPolicyFields::default()).is_ok());
+    }
+
+    #[test]
+    fn validate_policy_locales_rejects_display_names_and_case_variants() {
+        // spec「locale 值域判定」Example 表的拒絕列
+        for bad in ["繁體中文", "TW", "Auto", ""] {
+            let f = WorkflowPolicyFields { locale: Some(bad.into()), ..Default::default() };
+            assert!(validate_policy_locales(&f).is_err(), "locale {bad:?} must be rejected");
+        }
+        for bad in ["繁體中文", "zh-Hant", "AUTO"] {
+            let f = WorkflowPolicyFields { spec_locale: Some(bad.into()), ..Default::default() };
+            assert!(validate_policy_locales(&f).is_err(), "spec_locale {bad:?} must be rejected");
+        }
+    }
+
+    #[test]
+    fn validate_policy_locales_error_names_field_value_and_codes() {
+        let f = WorkflowPolicyFields { locale: Some("繁體中文".into()), ..Default::default() };
+        let err = validate_policy_locales(&f).unwrap_err().to_string();
+        for needle in ["locale", "繁體中文", "tw", "ja", "en"] {
+            assert!(err.contains(needle), "error must contain {needle:?}, got: {err}");
+        }
+        let f = WorkflowPolicyFields { spec_locale: Some("zh-Hant".into()), ..Default::default() };
+        let err = validate_policy_locales(&f).unwrap_err().to_string();
+        for needle in ["spec_locale", "zh-Hant", "auto"] {
+            assert!(err.contains(needle), "error must contain {needle:?}, got: {err}");
+        }
+    }
+
+    #[test]
+    fn workflow_update_rejects_invalid_locale_fields_without_output() {
+        let fields = WorkflowPolicyFields { locale: Some("繁體中文".into()), ..Default::default() };
+        let err = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("locale") && err.contains("繁體中文"), "got: {err}");
+        let fields = WorkflowPolicyFields { spec_locale: Some("zh-Hant".into()), ..Default::default() };
+        assert!(
+            update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None).is_err()
+        );
+    }
+
+    #[test]
+    fn workflow_update_injected_special_values_are_rejected() {
+        // Sharp-edges audit（Scoundrel）：locale 含換行或 YAML 語法的注入向量，
+        // 自值域驗證上線後在序列化前即被拒絕——文件結構不可能被破壞。
+        // （原測試斷言 escape 後 round-trip；值域驗證使拒絕成為更強的防護。）
         for evil in ["tw\nrules: {}", "a: b", "#comment", "'quoted'", "- item"] {
             let fields = WorkflowPolicyFields { locale: Some(evil.into()), ..Default::default() };
-            let out = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None).expect("rewrite ok");
-            let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
-            assert_eq!(w.locale.as_deref(), Some(evil), "round-trip for {evil:?}");
-            assert_eq!(w.schema.as_deref(), Some("spec-driven"), "structure intact for {evil:?}");
+            assert!(
+                update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None).is_err(),
+                "injection vector must be rejected: {evil:?}"
+            );
         }
     }
 
