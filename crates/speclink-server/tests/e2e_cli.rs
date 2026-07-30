@@ -304,7 +304,7 @@ fn seed(project_url: &str, pat: &str) {
             .unwrap_or_else(|e| panic!("put {artifact}: {e:?}"));
     }
     client
-        .new_discussion("Rate limiting approach")
+        .new_discussion("Rate limiting approach", None)
         .expect("seed discussion");
 }
 

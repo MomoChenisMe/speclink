@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 struct Captured {
     method: String,
     path: String,
+    query: String,
     headers: Vec<(String, String)>, // lowercased names
     body: String,
 }
@@ -53,10 +54,13 @@ fn mock_server(mut routes: Vec<(&'static str, &'static str, u16, String)>) -> Mo
         for mut req in looper.incoming_requests() {
             let mut body = String::new();
             let _ = req.as_reader().read_to_string(&mut body);
-            let path = req.url().split('?').next().unwrap_or_default().to_string();
+            let mut parts = req.url().splitn(2, '?');
+            let path = parts.next().unwrap_or_default().to_string();
+            let query = parts.next().unwrap_or_default().to_string();
             let cap = Captured {
                 method: req.method().to_string(),
                 path: path.clone(),
+                query,
                 headers: req
                     .headers()
                     .iter()
@@ -579,6 +583,236 @@ fn discuss_conclude_posts_the_conclusion() {
     let cap = mock.find("POST", "/discussions/demo-topic/conclude");
     let body: serde_json::Value = serde_json::from_str(&cap.body).unwrap();
     assert!(body["content"].as_str().unwrap().contains("Decision"));
+}
+
+// --- discuss discard / link / seal（spec「討論動詞於 remote 模式與本機同語意」）---
+
+#[test]
+fn discuss_discard_zero_rounds_deletes_with_fs_parity_output() {
+    let mock = mock_server(vec![(
+        "DELETE",
+        "/discussions/scrap-idea",
+        200,
+        r#"{"slug":"scrap-idea"}"#.into(),
+    )]);
+    let p = TempProject::remote("disc-discard", &mock.base, "backend");
+    let out = p.run(&["discuss", "discard", "scrap-idea"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(
+        stdout_of(&out).contains("Discarded discussion: scrap-idea"),
+        "fs-parity human output: {}",
+        stdout_of(&out)
+    );
+    let cap = mock.find("DELETE", "/discussions/scrap-idea");
+    assert!(cap.query.contains("force=false"), "no --force sends force=false: {}", cap.query);
+
+    let out = p.run(&["discuss", "discard", "scrap-idea", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let payload: serde_json::Value = serde_json::from_str(stdout_of(&out).trim()).unwrap();
+    assert_eq!(
+        payload,
+        serde_json::json!({ "slug": "scrap-idea", "status": "discarded" }),
+        "--json matches the fs-mode shape"
+    );
+}
+
+#[test]
+fn discuss_discard_with_rounds_translates_the_guard_and_force_rides_the_query() {
+    let mock = mock_server(vec![(
+        "DELETE",
+        "/discussions/real-tradeoffs",
+        409,
+        r#"{"status":409,"reason":"refused","message":"discussion 'real-tradeoffs' has 2 recorded round(s) — `conclude` + `archive` keeps the reasoning; pass --force to delete anyway"}"#.into(),
+    )]);
+    let p = TempProject::remote("disc-discard-guard", &mock.base, "backend");
+    let out = p.run(&["discuss", "discard", "real-tradeoffs"]);
+    assert!(!out.status.success(), "the rounds guard must exit non-zero");
+    let stderr = stderr_of(&out);
+    assert!(stderr.contains("2 recorded round"), "engine guard message relayed: {stderr}");
+    assert!(stderr.contains("--force"), "points at --force like fs mode: {stderr}");
+    assert!(!stderr.contains("409"), "no bare status: {stderr}");
+
+    let mock2 = mock_server(vec![(
+        "DELETE",
+        "/discussions/real-tradeoffs",
+        200,
+        r#"{"slug":"real-tradeoffs"}"#.into(),
+    )]);
+    let p2 = TempProject::remote("disc-discard-force", &mock2.base, "backend");
+    let out = p2.run(&["discuss", "discard", "real-tradeoffs", "--force"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let cap = mock2.find("DELETE", "/discussions/real-tradeoffs");
+    assert!(cap.query.contains("force=true"), "--force rides the query: {}", cap.query);
+}
+
+#[test]
+fn discuss_link_posts_the_change_with_fs_parity_output() {
+    let mock = mock_server(vec![(
+        "POST",
+        "/discussions/auth-scope/link",
+        200,
+        r#"{"slug":"auth-scope","change":"add-auth"}"#.into(),
+    )]);
+    let p = TempProject::remote("disc-link", &mock.base, "backend");
+    let out = p.run(&["discuss", "link", "auth-scope", "add-auth"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(
+        stdout_of(&out).contains("Linked discussion 'auth-scope' → change 'add-auth'"),
+        "fs-parity human output: {}",
+        stdout_of(&out)
+    );
+    let cap = mock.find("POST", "/discussions/auth-scope/link");
+    let body: serde_json::Value = serde_json::from_str(&cap.body).unwrap();
+    assert_eq!(body, serde_json::json!({ "change": "add-auth" }));
+
+    let out = p.run(&["discuss", "link", "auth-scope", "add-auth", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let payload: serde_json::Value = serde_json::from_str(stdout_of(&out).trim()).unwrap();
+    assert_eq!(
+        payload,
+        serde_json::json!({ "change": "add-auth", "slug": "auth-scope", "status": "linked" }),
+        "--json matches the fs-mode shape"
+    );
+}
+
+#[test]
+fn discuss_seal_posts_the_change_and_list_reflects_promoted() {
+    let mock = mock_server(vec![
+        (
+            "POST",
+            "/discussions/auth-scope/seal",
+            200,
+            r#"{"slug":"auth-scope","change":"add-auth"}"#.into(),
+        ),
+        (
+            "GET",
+            "/discussions",
+            200,
+            r#"{"discussions":[{"slug":"auth-scope","topic":"Auth scope","status":"promoted","rounds":2,"created":"2026-07-29","path":"discussions/auth-scope.md","archived":false}]}"#.into(),
+        ),
+    ]);
+    let p = TempProject::remote("disc-seal", &mock.base, "backend");
+    let out = p.run(&["discuss", "seal", "auth-scope", "add-auth"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(
+        stdout_of(&out).contains("Sealed discussion 'auth-scope' → change 'add-auth' (marked promoted)"),
+        "fs-parity human output: {}",
+        stdout_of(&out)
+    );
+    let cap = mock.find("POST", "/discussions/auth-scope/seal");
+    let body: serde_json::Value = serde_json::from_str(&cap.body).unwrap();
+    assert_eq!(body, serde_json::json!({ "change": "add-auth" }));
+
+    let out = p.run(&["discuss", "seal", "auth-scope", "add-auth", "--json"]);
+    let payload: serde_json::Value = serde_json::from_str(stdout_of(&out).trim()).unwrap();
+    assert_eq!(
+        payload,
+        serde_json::json!({ "change": "add-auth", "slug": "auth-scope", "status": "sealed" }),
+        "--json matches the fs-mode shape"
+    );
+
+    // seal 後 discuss list --json 反映 promoted（server 狀態經清單如實呈現）。
+    let out = p.run(&["discuss", "list", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let payload: serde_json::Value = serde_json::from_str(stdout_of(&out).trim()).unwrap();
+    assert_eq!(payload["discussions"][0]["status"], "promoted");
+}
+
+#[test]
+fn discuss_parity_verbs_on_an_old_server_fail_with_a_semantic_error() {
+    // 未升級的舊 server 沒有新端點：404 → 語義化錯誤、非零 exit、不 panic。
+    let mock = mock_server(vec![]);
+    let p = TempProject::remote("disc-old-server", &mock.base, "backend");
+    for args in [
+        vec!["discuss", "discard", "any-slug"],
+        vec!["discuss", "link", "any-slug", "any-change"],
+        vec!["discuss", "seal", "any-slug", "any-change"],
+    ] {
+        let out = p.run(&args);
+        assert!(!out.status.success(), "{args:?} must exit non-zero");
+        let stderr = stderr_of(&out);
+        assert!(
+            stderr.contains("resource not found"),
+            "{args:?} presents the semantic not-found translation: {stderr}"
+        );
+        assert!(!stderr.contains("panicked"), "{args:?} never panics: {stderr}");
+    }
+}
+
+// --- in-progress 與 demo（spec「in-progress 標記經 remote 通道寫入 server meta」、「demo 於 remote 明確拒絕」）---
+
+#[test]
+fn in_progress_add_posts_to_the_server_and_stays_silent() {
+    let mock = mock_server(vec![
+        ("POST", "/changes/demo/in-progress", 200, "{}".into()),
+        ("POST", "/changes/no-such/in-progress", 200, "{}".into()),
+    ]);
+    let p = TempProject::remote("in-progress", &mock.base, "backend");
+
+    // 存在的 change：靜默 exit 0，寫入發生在 server（server 端測試釘住 meta）。
+    let out = p.run(&["in-progress", "add", "demo"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "", "in-progress add stays silent");
+    assert_eq!(stderr_of(&out), "", "no stderr on success");
+    let cap = mock.find("POST", "/changes/demo/in-progress");
+    assert_eq!(cap.header("x-speclink-repo"), Some("backend"));
+    assert_eq!(cap.body, "{}", "the marker request carries no payload");
+
+    // 不存在的 change：server 靜默成功語意 → CLI 同樣靜默 exit 0。
+    let out = p.run(&["in-progress", "add", "no-such"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "", "unknown names stay silent");
+    assert_eq!(stderr_of(&out), "");
+    mock.find("POST", "/changes/no-such/in-progress");
+    assert!(!p.dir.join("openspec").exists(), "no local store is created or read");
+}
+
+#[test]
+fn in_progress_add_fs_output_stays_frozen() {
+    // fs 模式輸出逐位元不變：靜默、exit 0，標記落本機 meta。
+    let dir = std::env::temp_dir()
+        .join(format!("speclink-cli-remote-write-inprog-fs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("openspec/changes/demo")).unwrap();
+    std::fs::write(
+        dir.join("openspec/changes/demo/.openspec.yaml"),
+        "schema: spec-driven\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_speclink"))
+        .args(["in-progress", "add", "demo"])
+        .current_dir(&dir)
+        .env_remove("SPECLINK_STORE_URL")
+        .env_remove("SPECLINK_TOKEN")
+        .output()
+        .expect("run speclink binary");
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "", "fs mode stays byte-identically silent");
+    assert_eq!(stderr_of(&out), "");
+    let meta =
+        std::fs::read_to_string(dir.join("openspec/changes/demo/.openspec.yaml")).unwrap();
+    assert!(meta.contains("started_at: "), "the fs marker still lands: {meta}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn demo_in_remote_mode_refuses_and_creates_nothing() {
+    let mock = mock_server(vec![]);
+    let p = TempProject::remote("demo-refused", &mock.base, "backend");
+    let out = p.run(&["demo"]);
+    assert!(!out.status.success(), "demo must refuse in remote mode");
+    let stderr = stderr_of(&out);
+    assert!(
+        stderr.contains("not available in remote mode"),
+        "stderr explains the local-only verb: {stderr}"
+    );
+    assert_eq!(stdout_of(&out), "", "no success output");
+    assert!(!p.dir.join("openspec").exists(), "no local demo change is created");
+    assert!(
+        mock.captured.lock().unwrap().is_empty(),
+        "no request reaches the server: {:?}",
+        mock.captured.lock().unwrap()
+    );
 }
 
 #[test]

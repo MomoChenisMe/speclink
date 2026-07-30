@@ -154,6 +154,8 @@ pub struct MoveTaskResponse {
 #[serde(rename_all = "camelCase")]
 pub struct CreateDiscussionRequest {
     pub topic: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slug: Option<String>,
 }
 
 /// `POST /discussions` response.
@@ -166,6 +168,33 @@ pub struct CreateDiscussionResponse {
     pub topic: String,
     #[serde(default)]
     pub path: String,
+}
+
+/// `DELETE /discussions/{slug}` response (`force` travels as a query
+/// parameter, mirroring the change-side DELETE).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardDiscussionResponse {
+    #[serde(default)]
+    pub slug: String,
+}
+
+/// `POST /discussions/{slug}/link` and `/seal` request body: the change side
+/// of the bind.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BindDiscussionRequest {
+    pub change: String,
+}
+
+/// `POST /discussions/{slug}/link` and `/seal` response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BindDiscussionResponse {
+    #[serde(default)]
+    pub slug: String,
+    #[serde(default)]
+    pub change: String,
 }
 
 /// `PUT /discussions/{slug}/context` request body.
@@ -347,6 +376,29 @@ mod tests {
         let promoted: PromoteDiscussionResponse =
             serde_json::from_str(r#"{"change":"add-auth"}"#).unwrap();
         assert_eq!(promoted.change, "add-auth");
+    }
+
+    #[test]
+    fn create_discussion_request_slug_is_optional_and_camel_case() {
+        let bare = CreateDiscussionRequest { topic: "看板搜尋列".into(), slug: None };
+        assert_eq!(
+            serde_json::to_string(&bare).unwrap(),
+            r#"{"topic":"看板搜尋列"}"#,
+            "absent slug is omitted so request bodies stay byte-identical to old clients'"
+        );
+
+        let with_slug = CreateDiscussionRequest {
+            topic: "看板搜尋列".into(),
+            slug: Some("board-search-bar".into()),
+        };
+        let json = serde_json::to_value(&with_slug).unwrap();
+        assert_eq!(json["slug"], "board-search-bar");
+        let back: CreateDiscussionRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(back, with_slug);
+
+        let legacy: CreateDiscussionRequest =
+            serde_json::from_str(r#"{"topic":"Auth scope"}"#).unwrap();
+        assert_eq!(legacy.slug, None, "old payloads without slug still deserialize");
     }
 
     #[test]

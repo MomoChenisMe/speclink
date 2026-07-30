@@ -257,7 +257,7 @@ fn delete_started_change_requires_force_and_refuses_with_zero_side_effects() {
 fn delete_unlinks_the_promoted_source_discussion() {
     let f = fixture(None);
     let c = client(&f, &f.editor_pat);
-    let slug = c.new_discussion("Auth flow").expect("new discussion").slug;
+    let slug = c.new_discussion("Auth flow", None).expect("new discussion").slug;
     c.discussion_conclude(&slug, "結論：做。").expect("conclude");
     let change = c.discussion_promote(&slug, Some("add-auth-change")).expect("promote").change;
     assert_eq!(change, "add-auth-change");
@@ -320,6 +320,76 @@ fn move_out_of_range_refuses_with_zero_side_effects() {
     assert_eq!(artifact_content(&f, "tasks.md").as_deref(), Some(TASKS_TWO_GROUPS));
     assert_eq!(revision(&f), before, "a refused move writes nothing");
     assert!(outbox_names(&f).is_empty(), "a refused move publishes no event");
+}
+
+// --- 規格「變更開工標記端點」---
+
+fn meta_content(f: &Fixture) -> Option<String> {
+    f.store
+        .snapshot(&scope())
+        .expect("snapshot")
+        .read(&DocumentId::ChangeMeta { change: "demo".into() })
+        .expect("read meta")
+        .map(|d| d.content)
+}
+
+#[test]
+fn in_progress_first_stamp_writes_identity_publishes_event_and_advances_revision() {
+    let f = fixture(Some("- [ ] 1.1 甲\n"));
+    let before = revision(&f);
+    let response = request("POST", &f, &f.editor_pat, "changes/demo/in-progress")
+        .call()
+        .expect("first stamp succeeds");
+    assert_eq!(response.status(), 200);
+    let meta = meta_content(&f).expect("meta exists");
+    assert!(
+        meta.starts_with("schema: spec-driven\n"),
+        "existing fields stay byte-identical: {meta}"
+    );
+    assert!(meta.contains("started_at: "), "started_at stamped: {meta}");
+    assert!(
+        meta.contains("started_by: Editor\n"),
+        "started_by is the caller's authenticated identity: {meta}"
+    );
+    assert!(revision(&f) > before, "the stamp commit advances the scope revision");
+    assert!(
+        outbox_names(&f).contains(&"change-marked-in-progress".to_string()),
+        "the stamp publishes change-marked-in-progress: {:?}",
+        outbox_names(&f)
+    );
+}
+
+#[test]
+fn in_progress_repeat_and_unknown_are_http_200_with_zero_side_effects() {
+    let f = fixture(None);
+    let response = request("POST", &f, &f.editor_pat, "changes/demo/in-progress")
+        .call()
+        .expect("first stamp succeeds");
+    assert_eq!(response.status(), 200);
+    let stamped_meta = meta_content(&f).expect("meta exists");
+    let rev = revision(&f);
+    let events = outbox_names(&f);
+
+    // 重複執行：HTTP 200、首章逐字元保留、零寫入、零事件、revision 不前進。
+    let response = request("POST", &f, &f.editor_pat, "changes/demo/in-progress")
+        .call()
+        .expect("a repeat is a silent success");
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        meta_content(&f).as_deref(),
+        Some(stamped_meta.as_str()),
+        "the first stamp is preserved verbatim"
+    );
+    assert_eq!(revision(&f), rev, "a repeat writes nothing");
+    assert_eq!(outbox_names(&f), events, "a repeat publishes no event");
+
+    // 未知 change：同樣 HTTP 200 靜默成功、零副作用。
+    let response = request("POST", &f, &f.editor_pat, "changes/no-such/in-progress")
+        .call()
+        .expect("an unknown name is a silent success");
+    assert_eq!(response.status(), 200);
+    assert_eq!(revision(&f), rev, "an unknown name writes nothing");
+    assert_eq!(outbox_names(&f), events, "an unknown name publishes no event");
 }
 
 // --- 規格「寫入動詞 editor 限定」---

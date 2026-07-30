@@ -8,7 +8,7 @@ TBD - created by archiving change 'verb-contract-and-remote-client'. Update Purp
 
 ### Requirement: 動詞契約的涵蓋面與 payload 形狀
 
-動詞契約 SHALL 涵蓋 RD 本地全流程：changes 列舉／讀取／建立／認領／歸檔／捨棄（discard，含 force 語意）、artifacts 讀取／寫入、tasks 勾選／取消勾選／搬移（1-based ordinal 定址與 before 側別）、validate 與 analyze 衍生查詢、instructions 計算、discussions 全動詞（列舉、建立、context、add-round、conclude、archive、promote）、政策讀取（workflow-config 有效值）、詞彙讀取（LANGUAGE 內容）、正典規格讀取、身分查驗。remote 模式下對應 CLI 指令的 stdout 輸出（人眼與 --json）形狀 SHALL 與 fs 模式一致（欄位 camelCase 同名）；validate 的聚合語意（無參數／--all／--changes）SHALL 由 client 以逐 change 端點呼叫組合，聚合輸出形狀與 fs 模式一致。契約的端點、payload 與錯誤形狀 SHALL 以 docs/verb-contract.md 為正典參考文件。
+動詞契約 SHALL 涵蓋 RD 本地全流程：changes 列舉／讀取／建立／認領／歸檔／捨棄（discard，含 force 語意）／開工標記（in-progress add）、artifacts 讀取／寫入、tasks 勾選／取消勾選／搬移（1-based ordinal 定址與 before 側別）、validate 與 analyze 衍生查詢、instructions 計算、discussions 全動詞（列舉、建立含 slug 覆寫、context、add-round、conclude、archive、promote、discard 含 force 語意、link、seal）、政策讀取（workflow-config 有效值）、詞彙讀取（LANGUAGE 內容）、正典規格讀取、身分查驗。remote 模式下對應 CLI 指令的 stdout 輸出（人眼與 --json）形狀 SHALL 與 fs 模式一致（欄位 camelCase 同名）；validate 的聚合語意（無參數／--all／--changes）SHALL 由 client 以逐 change 端點呼叫組合，聚合輸出形狀與 fs 模式一致；show SHALL 由 client 以讀取端點組合出與 fs 模式同形輸出，SHALL NOT 於 remote 模式讀取本機 store。本質本機動詞（demo）於 remote 模式 SHALL 明確拒絕（非零 exit code、stderr 說明僅限本機模式），SHALL NOT 靜默作用於本機 store。契約的端點、payload 與錯誤形狀 SHALL 以 docs/verb-contract.md 為正典參考文件。
 
 #### Scenario: remote 列舉輸出形狀與 fs 一致
 
@@ -30,34 +30,49 @@ TBD - created by archiving change 'verb-contract-and-remote-client'. Update Purp
 - **WHEN** 於 remote 模式對已勾選任務的 change 執行 speclink discard（無 --force）
 - **THEN** exit code 非 0，stderr 語義化訊息說明已開工需 --force（與 fs 模式同語意），server 上該 change 完整保留
 
+#### Scenario: remote 建立討論帶 slug 覆寫
+
+- **WHEN** 於 remote 模式以中文主題執行 speclink discuss new 並帶 --slug board-search-bar
+- **THEN** server 端以 board-search-bar 建立記錄，stdout 與 --json 的 slug 欄位形狀與 fs 模式一致；非法 slug 值時 exit code 非 0、stderr 說明原因、server 端不落檔
+
+#### Scenario: remote show 輸出與 fs 一致
+
+- **WHEN** 同一份 change 內容分別存在於 fs 專案與 remote server，兩模式各執行 speclink show 該 change
+- **THEN** 兩者的人眼輸出與 --json 逐欄位一致；remote 模式的結果來自 server 資料，未讀取本機 store
+
+#### Scenario: remote in-progress add 蓋章於 server
+
+- **WHEN** 於 remote 模式對 server 上存在的 change 執行 speclink in-progress add
+- **THEN** CLI 靜默結束（無輸出、exit 0），server 端該 change 的 meta 含 started_at 與 started_by（server 認證身分）
+
+#### Scenario: demo 於 remote 明確拒絕
+
+- **WHEN** 於 remote 模式執行 speclink demo
+- **THEN** exit code 非 0，stderr 說明 demo 僅限本機模式，本機與 server 均未新增任何 change
+
 
 <!-- @trace
-source: remote-verb-parity
-updated: 2026-07-23
+source: remote-cli-parity
+updated: 2026-07-31
 code:
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/src-tauri/src/lib.rs
   - apps/desktop/src-tauri/src/remote.rs
   - apps/desktop/src-tauri/tests/remote_data.rs
   - apps/desktop/src/__tests__/remoteDataSource.test.ts
-  - apps/desktop/src/adapter/remoteDataSource.ts
   - crates/speclink-cli/src/commands.rs
   - crates/speclink-cli/src/remote_commands.rs
+  - crates/speclink-cli/tests/discuss_slug.rs
   - crates/speclink-cli/tests/remote_verb_parity.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-protocol/src/binding.rs
+  - crates/speclink-cli/tests/remote_write_path.rs
   - crates/speclink-protocol/src/command.rs
   - crates/speclink-protocol/src/query.rs
   - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/src/convert.rs
-  - crates/speclink-remote/src/lib.rs
+  - crates/speclink-remote/tests/typed_client.rs
   - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/auth.rs
-  - crates/speclink-server/src/events.rs
   - crates/speclink-server/src/routes.rs
+  - crates/speclink-server/tests/backup_e2e.rs
+  - crates/speclink-server/tests/discussion_routes.rs
+  - crates/speclink-server/tests/e2e_cli.rs
+  - crates/speclink-server/tests/query_routes.rs
   - crates/speclink-server/tests/verb_api.rs
   - docs/verb-contract.md
   - docs/verb-contract.zh-TW.md

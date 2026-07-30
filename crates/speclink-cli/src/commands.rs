@@ -423,6 +423,10 @@ fn render_specs_section(specs: &serde_json::Value, json: bool) -> Result<()> {
 // --- show ---
 
 fn cmd_show(a: ShowArgs) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        let show = remote_show_outcome(&ctx, a.item.as_deref(), a.item_type.as_deref())?;
+        return render_show(show, a.json);
+    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     let outcome = run_command(
@@ -436,9 +440,14 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
     let core::command::CommandOutcome::Show(show) = outcome else {
         unreachable!("show command yields a show outcome");
     };
+    render_show(show, a.json)
+}
+
+/// fs 與 remote 共用的 show 渲染：兩模式餵進同一個 ShowOutcome，輸出逐位元一致。
+fn render_show(show: core::command::ShowOutcome, json: bool) -> Result<()> {
     match show {
         core::command::ShowOutcome::Spec { name, content } => {
-            if a.json {
+            if json {
                 return print_json(&serde_json::json!({
                     "files": [{ "content": content, "name": "spec.md" }],
                     "name": name,
@@ -456,7 +465,7 @@ fn cmd_show(a: ShowArgs) -> Result<()> {
                 .iter()
                 .map(|cap| format!("{cap}/spec.md"))
                 .collect();
-            if a.json {
+            if json {
                 return print_json(&serde_json::json!({
                     "name": c.name,
                     "schema": c.schema,
@@ -2006,6 +2015,12 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
 fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
     match a.command {
         InProgressCommands::Add { name } => {
+            // remote 模式路由至 server（started_by 由 server 認證身分蓋章）；
+            // 靜默 exit 0 的 parity 凍結形狀兩模式一致。
+            if let Some(ctx) = remote_ctx()? {
+                ctx.client.in_progress_add(&name)?;
+                return Ok(());
+            }
             let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
             run_command(store, Some(&ws), core::command::Command::InProgressAdd { name })?;
@@ -2017,6 +2032,17 @@ fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
 // --- demo ---
 
 fn cmd_demo() -> Result<()> {
+    // 本質本機動詞：remote 模式明確拒絕（design D7，比照 claim 在 fs 的
+    // fail-loud）。只判斷連線設定、不走 handshake——離線同樣拒絕、server
+    // 零請求。
+    if let Some(ws) = core::workspace::Workspace::discover_cwd()? {
+        if matches!(
+            speclink_host::context::resolve_store_mode(&ws)?.mode,
+            core::workspace::StoreMode::Remote(_)
+        ) {
+            bail!("demo is not available in remote mode — it seeds a demo change into a local openspec/ tree");
+        }
+    }
     let (ws, store) = open_project()?;
     let outcome = core::demo::generate(&store, speclink_host::context::git_identity(&ws.root).as_deref())?;
     println!("{} Created demo change: {}", color::green("✓"), outcome.name);

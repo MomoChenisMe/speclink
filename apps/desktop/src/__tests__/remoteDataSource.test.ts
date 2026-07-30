@@ -4,6 +4,7 @@
 // 不在 client 偽造）；createRemoteSession 以 handshake 結果建 session、事件面
 // 訂閱 remote-workspace-changed 並以 locator key 過濾。
 import { describe, it, expect } from "vitest";
+import { changeStage } from "@speclink/ui";
 
 import { createRemoteDataSource } from "../adapter/remoteDataSource";
 import {
@@ -258,6 +259,37 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     const discussions = await ds.listDiscussions();
     // server 不外露 promotedTo——以空清單補齊 UI 必填欄位（資料缺口，非偽造 affordance）。
     expect(discussions.active[0]).toMatchObject({ slug: "s1", promotedTo: [] });
+  });
+
+  it("wire 的 startedAt 進入 ChangeItem，changeStage 對開工零進度卡判進行中", async () => {
+    // spec desktop-app「remote 已開工零進度列於進行中」：startedAt 隨清單
+    // payload 進欄位推導，不以任務完成數替代開工判定。
+    const invoke = async <T,>(): Promise<T> =>
+      ({
+        changes: [
+          {
+            name: "started-zero",
+            summary: "",
+            status: "in-progress",
+            completedTasks: 0,
+            totalTasks: 15,
+            startedAt: "2026-07-30",
+          },
+          {
+            name: "unstarted",
+            summary: "",
+            status: "in-progress",
+            completedTasks: 0,
+            totalTasks: 15,
+          },
+        ],
+      }) as T;
+    const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
+    const changes = await ds.listChanges();
+    expect(changes[0].startedAt).toBe("2026-07-30");
+    expect(changeStage(changes[0])).toBe("in-progress");
+    expect(changes[1].startedAt).toBeUndefined();
+    expect(changeStage(changes[1])).toBe("proposed");
   });
 
   it("unsupported methods reject without ever invoking", async () => {

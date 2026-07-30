@@ -1,6 +1,6 @@
 # Verb Contract — Endpoint Reference
 
-This document is the canonical reference for the verb contract's endpoints, payloads, and error shapes, as designated by the canonical `verb-contract` spec. It currently covers the verb-parity endpoints (validate / analyze / delete change / task move); for every other verb the canonical specs remain the contract:
+This document is the canonical reference for the verb contract's endpoints, payloads, and error shapes, as designated by the canonical `verb-contract` spec. It currently covers the verb-parity endpoints (validate / analyze / delete change / task move / discussion create-with-slug / discussion discard / discussion link / discussion seal / change in-progress); for every other verb the canonical specs remain the contract:
 
 - [Canonical verb contract](../openspec/specs/verb-contract/spec.md)
 - [Client Protocol spec](../openspec/specs/client-protocol/spec.md)
@@ -95,6 +95,76 @@ Errors:
 
 - `409 refused` with a `task index out of range (1..=N)` message when `from`/`to` is out of range (a stale index under concurrent edits is an expected race; the SSE invalidation corrects the client's view). Nothing is written.
 - `404 not_found` when the change has no `tasks.md`.
+
+## POST /discussions — optional slug override
+
+The create-discussion request accepts an optional `slug` field (camelCase, omitted when absent — an old client's body stays byte-identical):
+
+```json
+{ "topic": "看板搜尋列", "slug": "board-search-bar" }
+```
+
+Validation lives in the engine only (ASCII kebab-case: lowercase letters/digits separated by single hyphens). An invalid value → `400 invalid_argument` with the engine's frozen message; nothing is written. Without `slug` the server derives one from the topic, exactly as before.
+
+Response `200` (unchanged shape; `slug` echoes the override when given):
+
+```json
+{ "slug": "board-search-bar", "topic": "看板搜尋列", "path": "discussions/board-search-bar.md" }
+```
+
+## DELETE /discussions/{slug}?force={bool}
+
+**Editor only** (reader gets `403 permission_denied`). Direct pass-through of the engine's discussion discard: a zero-round record deletes immediately; once rounds exist the engine refuses unless `force=true` — `409 refused` with the frozen needs-force text, record byte-identical. The commit publishes `discussion-discarded`.
+
+Query parameter `force` defaults to `false`. Response `200`:
+
+```json
+{ "slug": "board-search-bar" }
+```
+
+Errors: `404 not_found` when no live discussion has the slug; an archived record refuses (`409 refused` — archived records are kept, not discarded).
+
+## POST /discussions/{slug}/link
+
+Forges the change-side `from_discussion` chain (the engine's link semantics: comma-accumulating, idempotent per pair). Request / response:
+
+```json
+{ "change": "add-auth" }
+```
+
+```json
+{ "slug": "auth-scope", "change": "add-auth" }
+```
+
+The commit publishes `discussion-linked`. Errors: `404 not_found` when the discussion or the change does not exist (the engine's frozen message names the missing subject).
+
+## POST /discussions/{slug}/seal
+
+Marks the discussion promoted once content has landed (status `promoted`, `promoted_to` accumulates the change; clears the change's re-ingest flag for this slug). Same request/response shape as link. Guard: the change must already carry the `from_discussion` chain for this slug — otherwise `409 refused` with the engine's run-link-first text. The commit publishes `discussion-sealed`. Errors: `404 not_found` for a missing discussion or change.
+
+## POST /changes/{name}/in-progress
+
+Silent lifecycle stamp through the Command gateway. First call on an existing, unstarted change writes `started_at` plus `started_by` (the caller's authenticated identity — same attribution mechanism as `created_*`) into the change meta, publishes `change-marked-in-progress`, and advances the scope revision. A repeat call or an unknown change name is the engine's frozen silent success: `200` with zero writes, zero events, no revision advance. The body is the empty object both ways:
+
+```json
+{}
+```
+
+## Change-list `startedAt` field
+
+`GET /changes` list items carry an optional `startedAt` (camelCase) sourced from the change meta's `started_at`; an unstarted change omits the field. Consumers use it for stage derivation ("started ⇒ in-progress", with the completed-tasks fallback retained for tool-bypassing writes):
+
+```json
+{ "name": "demo", "status": "in-progress", "completedTasks": 0, "totalTasks": 15, "startedAt": "2026-07-30" }
+```
+
+## GET /changes/{name} — show-composition meta fields
+
+The single-change read additionally carries three optional fields feeding the CLI's remote `show` composition: `created` (present only when the meta holds the schema+created pair — the engine's report-as-one-unit rule), `fromDiscussions`, and `deltaCapabilities` (both omitted when empty). An older server simply never sends them; old clients ignore them.
+
+```json
+{ "changeName": "demo", "schemaName": "spec-driven", "…": "…", "created": "2026-07-29", "fromDiscussions": ["auth-scope"], "deltaCapabilities": ["auth"] }
+```
 
 ## Capability declaration
 

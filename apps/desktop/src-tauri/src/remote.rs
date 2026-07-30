@@ -824,12 +824,13 @@ pub(crate) fn overlay_discussions_order(items: &mut [DiscussionInfo], board: &Bo
     sort_with_ranks(items, &board.discussions, |d| &d.slug);
 }
 
-/// 變更卡所屬欄——與前端 changeStage 對 remote 清單 payload 的推導同構
-/// （wire 無 startedAt 欄，開工判定退為完成數 > 0，兩側一致）。
-fn change_stage(c: &ChangeSummary) -> u8 {
+/// 變更卡所屬欄——與前端 changeStage 的推導同構：全完成＝已就緒優先；
+/// meta 開工章（wire 的 startedAt）或任務完成數 > 0＝進行中（fallback 涵蓋
+/// 手改 tasks.md 等繞過工具的寫入路徑）；其餘＝提案中。
+pub fn change_stage(c: &ChangeSummary) -> u8 {
     if c.total_tasks > 0 && c.completed_tasks >= c.total_tasks {
         2
-    } else if c.completed_tasks > 0 {
+    } else if c.started_at.is_some() || c.completed_tasks > 0 {
         1
     } else {
         0
@@ -1689,6 +1690,7 @@ mod board_order_tests {
             repo: None,
             lifecycle: None,
             claimed_by: None,
+            started_at: None,
         }
     }
 
