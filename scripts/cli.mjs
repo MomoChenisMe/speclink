@@ -2,9 +2,11 @@
 // npm run cli -- <args>：固定執行目前 checkout 的 debug CLI。
 // 存在的理由是版本正確性——PATH 上可能沒有 speclink，或裝的是另一個 checkout 的
 // 版本；本 wrapper 讓「啟動環境」與「以同版 CLI 驗證」落在同一份原始碼上。
+// binary 不存在時先自動於 checkout root 建置再執行——仍絕不 fallback 到 PATH。
 // 需要純 machine-readable stdout 時用 npm run --silent cli -- <args>：wrapper
 // 本身不寫任何 stdout，剩下的雜訊只有 npm 的 lifecycle 訊息。
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -26,10 +28,31 @@ export function runCheckoutCli({
   env = process.env,
   platform = process.platform,
   fallbackCwd = process.cwd(),
+  exists = existsSync,
   runSync = spawnSync,
   logError = console.error,
 }) {
   const binary = checkoutCliPath(platform);
+
+  // binary 不存在：先於 checkout root 自動建置（不受呼叫端 cwd 影響），
+  // 建置失敗即收場——絕不 fallback 到 PATH 上的 speclink。build 的 stdout
+  // 導向 stderr，保證 --json 等 machine-readable 輸出不被建置進度污染。
+  if (!exists(binary)) {
+    const build = runSync('cargo', ['build', '-p', 'speclink-cli'], {
+      cwd: ROOT,
+      env,
+      stdio: ['inherit', 2, 'inherit'],
+    });
+    if (build.error) {
+      logError(`speclink cli: 無法自動建置 speclink-cli：${build.error.message}`);
+      return 1;
+    }
+    if (build.status !== 0) {
+      logError('speclink cli: 自動建置 speclink-cli 失敗（見上方 cargo 輸出），未執行任何 CLI。');
+      return build.status ?? 1;
+    }
+  }
+
   // 空的 INIT_CWD（殘留的 export、外部工具設空值）語意上就是「沒提供」；
   // 原樣傳給 spawn 只會換來一個看起來像 binary 不存在的 ENOENT。
   const cwd = env.INIT_CWD || fallbackCwd;
@@ -40,7 +63,8 @@ export function runCheckoutCli({
   // ENOENT 只會點名 binary，但 cwd 不存在時形狀一模一樣，因此兩者都印出來。
   if (result.error) {
     logError(`speclink cli: 無法執行 checkout CLI ${binary}（cwd ${cwd}）：${result.error.message}`);
-    logError('speclink cli: binary 未建置時請先執行 npm run dev 或 cargo build -p speclink-cli。');
+    // 自動建置已確保 binary 存在，走到這裡多半是 cwd 不存在或權限問題。
+    logError('speclink cli: 請確認 cwd 存在且 binary 具執行權限。');
     return 1;
   }
 

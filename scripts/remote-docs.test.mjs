@@ -48,6 +48,27 @@ test('remote getting-started guides exist with matching section order', () => {
   assert.deepEqual(h2s(zh), h2s(en));
 });
 
+test('development guides exist with matching section order', () => {
+  const zh = read('docs/development.zh-TW.md');
+  const en = read('docs/development.md');
+  assert.deepEqual(h2s(zh), h2s(en));
+
+  // 五個一鍵入口各有一節（規格「開發者入口文件雙語對」）。
+  for (const entry of [
+    'npm run dev`',
+    'npm run dev:server`',
+    'npm run dev:desktop`',
+    'npm run dev:reset`',
+    'npm run cli -- <args>`',
+  ]) {
+    assert.equal(
+      h2s(zh).some((heading) => heading.includes(entry)),
+      true,
+      `development 文件缺少 ${entry} 章節`,
+    );
+  }
+});
+
 test('both guides cover the remote setup, authorization, and recovery contract', () => {
   for (const relativePath of remoteGuides) {
     const guide = read(relativePath);
@@ -165,6 +186,8 @@ test('relative Markdown links in the changed documentation resolve', () => {
     'docs/product-status.md',
     'docs/server-deployment.zh-TW.md',
     'docs/platform-architecture.zh-TW.md',
+    'docs/development.zh-TW.md',
+    'docs/development.md',
   ];
 
   for (const relativePath of documents) {

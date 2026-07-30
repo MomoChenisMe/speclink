@@ -104,6 +104,8 @@ advanced `docs/verb-contract.md` user guide does not exist yet; canonical specs 
 
 ## Development / 開發
 
+For the one-command dev entry points (full `npm run dev`, server only, desktop only, the checkout CLI) and the unsigned-installer bypass steps, see [Development Entry Points](docs/development.md).
+
 ```bash
 cargo test --workspace
 npm --workspace @speclink/desktop test

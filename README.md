@@ -101,6 +101,8 @@ Host command。目標邊界以[平台架構藍圖](docs/platform-architecture.zh
 
 ## Development / 開發
 
+開發環境的一鍵入口（整套 `npm run dev`、只跑 server、只跑 desktop、checkout 內 CLI）與下載安裝檔的未簽章放行步驟，見[開發環境入口](docs/development.zh-TW.md)。
+
 ```bash
 cargo test --workspace
 npm --workspace @speclink/desktop test

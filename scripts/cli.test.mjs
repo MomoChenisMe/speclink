@@ -23,12 +23,14 @@ function trackedRunSync(syncResults = []) {
 }
 
 /// 沒有 stdout 斷言需求時的預設呼叫參數：不落地任何真實環境值。
+/// exists 預設 true——binary 存在路徑；自動建置測試自行注入 false。
 function baseDeps(overrides = {}) {
   return {
     args: [],
     env: { PATH: '/usr/local/bin' },
     platform: 'linux',
     fallbackCwd: '/repo/speclink',
+    exists: () => true,
     logError: () => {},
     ...overrides,
   };
@@ -156,9 +158,95 @@ test('checkout binary 無法執行時以非零狀態結束，且不改用 PATH �
   assert.equal(calls[0].cmd, path.join(ROOT, 'target', 'debug', 'speclink'));
   const stderr = errors.join('\n');
   assert.match(stderr, /target[/\\]debug[/\\]speclink/);
-  assert.match(stderr, /cargo build -p speclink-cli/);
+  // 自動建置落地後，走到這裡代表 binary 剛確認存在卻無法執行——提示應指向
+  // cwd／執行權限，而不是已過期的「先建置」指引。
+  assert.match(stderr, /執行權限/);
   // spawn 的 ENOENT 可能來自 binary 也可能來自 cwd——兩者都要點名才不會誤導。
   assert.match(stderr, /\/repo\/speclink/);
+});
+
+// --- 自動建置（規格「checkout binary 不存在時自動建置且禁止 fallback」） ---
+
+test('binary 不存在：先於 checkout root 建置 speclink-cli，再執行 debug binary', () => {
+  const { calls, runSync } = trackedRunSync();
+  const code = runCheckoutCli(baseDeps({
+    args: ['status'],
+    env: { PATH: '/opt/old-speclink/bin' },
+    exists: () => false,
+    runSync,
+  }));
+
+  assert.equal(code, 0);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].cmd, 'cargo');
+  assert.deepEqual(calls[0].args, ['build', '-p', 'speclink-cli']);
+  assert.equal(calls[0].options.cwd, ROOT, '自動建置固定於 checkout root，不受呼叫端 cwd 影響');
+  assert.equal(calls[1].cmd, path.join(ROOT, 'target', 'debug', 'speclink'));
+  assert.deepEqual(calls[1].args, ['status'], 'args 原序傳入建置出的 binary');
+  for (const call of calls) {
+    assert.notEqual(call.cmd, 'speclink', '絕不執行 PATH 中的 speclink');
+  }
+});
+
+test('存在性檢查針對 checkout binary 路徑本身', () => {
+  const seen = [];
+  const { runSync } = trackedRunSync();
+  runCheckoutCli(baseDeps({
+    exists: (p) => {
+      seen.push(p);
+      return true;
+    },
+    runSync,
+  }));
+
+  assert.deepEqual(seen, [path.join(ROOT, 'target', 'debug', 'speclink')]);
+});
+
+test('自動建置的進度輸出不寫入 stdout（build 的 stdout 導向 stderr）', () => {
+  const { calls, runSync } = trackedRunSync();
+  runCheckoutCli(baseDeps({ exists: () => false, runSync }));
+
+  assert.deepEqual(calls[0].options.stdio, ['inherit', 2, 'inherit']);
+});
+
+test('自動建置失敗：stderr 顯示原因、以建置狀態收場、不執行任何 CLI', () => {
+  const { calls, runSync } = trackedRunSync([{ status: 101 }]);
+  const errors = [];
+  const code = runCheckoutCli(baseDeps({
+    args: ['status'],
+    env: { PATH: '/opt/old-speclink/bin' },
+    exists: () => false,
+    runSync,
+    logError: (message) => errors.push(message),
+  }));
+
+  assert.equal(code, 101);
+  assert.equal(calls.length, 1, '建置失敗後不得執行任何 CLI，也不得 fallback 到 PATH');
+  assert.match(errors.join('\n'), /speclink-cli/);
+});
+
+test('自動建置無法啟動（cargo 缺席）：非零收場且不執行任何 CLI', () => {
+  const { calls, runSync } = trackedRunSync([
+    { status: null, error: new Error('spawn cargo ENOENT') },
+  ]);
+  const errors = [];
+  const code = runCheckoutCli(baseDeps({
+    exists: () => false,
+    runSync,
+    logError: (message) => errors.push(message),
+  }));
+
+  assert.notEqual(code, 0);
+  assert.equal(calls.length, 1);
+  assert.match(errors.join('\n'), /spawn cargo ENOENT/);
+});
+
+test('binary 已存在：不觸發建置，直接執行', () => {
+  const { calls, runSync } = trackedRunSync();
+  runCheckoutCli(baseDeps({ args: ['--version'], runSync }));
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].cmd, path.join(ROOT, 'target', 'debug', 'speclink'));
 });
 
 test('CLI 被 signal 收束時不當成成功', () => {
