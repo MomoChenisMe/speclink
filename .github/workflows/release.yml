@@ -1,7 +1,15 @@
 # Release: push a tag like `v0.1.0` and this builds speclink (CLI) and speclink-server
-# for Windows / Linux / macOS (x86_64 + arm64 where applicable), packages archives with
+# for Windows / Linux / macOS (x86_64 + arm64 where applicable), desktop installers
+# (macOS dmg / Windows NSIS / Linux AppImage+deb, each bundling the same-version CLI
+# as a Tauri sidecar) plus the updater manifest latest.json, packages archives with
 # SHA-256 checksums, publishes a GitHub Release with the artifacts attached, and pushes
 # the server Docker image to ghcr.
+#
+# Desktop signing (design D3/D4):
+#   - Updater packages are minisign-signed with TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)
+#     secrets — REQUIRED; the desktop build fails closed without them.
+#   - OS code signing (Apple/Windows) is env-gated: the corresponding steps run only
+#     when their secrets exist. No secrets → unsigned installers, workflow stays green.
 #
 # Usage:
 #   1. Bump `version` in crates/speclink-cli/Cargo.toml (and speclink-core), commit.
@@ -73,8 +81,8 @@ jobs:
         run: npm run build -w apps/server-web
 
       # 只建置要發布的兩支 binary。全 workspace 建置會把 tauri crate 一起拖進來，
-      # 而它需要 GTK/WebKit 系統庫與先行的 vite build（見 ci.yml），release runner
-      # 都沒有——桌面 app 不是 release 產物，不必為它付這個代價。
+      # 而它需要 GTK/WebKit 系統庫與先行的 vite build（見 ci.yml），此 job 的
+      # runner 都沒有——桌面安裝檔由獨立的 desktop job 產出。
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }} -p speclink-cli -p speclink-server
 
@@ -133,6 +141,166 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # 桌面安裝檔（desktop-release spec；design D1：沿用自組 matrix，不用 tauri-action）：
+  # macOS dmg（aarch64／x86_64）、Windows NSIS（x86_64）、Linux AppImage＋deb
+  # （x86_64／aarch64）。每個 target 上傳兩個 artifact：
+  #   - desktop-<target>：要附上 Release 的安裝檔
+  #   - updater-<platform>：更新包＋minisign 簽章（release job 據此組 latest.json；
+  #     Windows／AppImage 的更新包即安裝檔本身，重複上傳換取組裝契約單純）
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest            # Apple Silicon
+            target: aarch64-apple-darwin
+            bundles: dmg
+            platform: darwin-aarch64
+          - os: macos-latest            # Intel（交叉編譯，同 build job 前例）
+            target: x86_64-apple-darwin
+            bundles: dmg
+            platform: darwin-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            platform: windows-x86_64
+          - os: ubuntu-22.04            # older glibc baseline for wide compatibility
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+            platform: linux-x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            bundles: appimage,deb
+            platform: linux-aarch64
+    runs-on: ${{ matrix.os }}
+    env:
+      # step 的 if 不能直接讀 secrets context——先在 job env 折成布林旗標，
+      # 供 OS 簽章條件步驟（design D4）判斷 secrets 是否存在。
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # 版本閘門（fail-closed）：tag 與 tauri.conf.json 版本不一致即紅燈——否則
+      # latest.json 宣告 tag 版、安裝檔與 app 自報版本停在舊版，形成每次啟動都
+      # 勸誘安裝同一 build 的無盡更新迴圈（spec「描述檔欄位對齊發布內容」）。
+      - name: Assert tag matches desktop version
+        shell: bash
+        run: |
+          CONF_VERSION="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$CONF_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::tauri.conf.json version（$CONF_VERSION）與 tag（$TAG_VERSION）不一致——先 bump 版本再發 tag"
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop-${{ matrix.target }}
+
+      # 援引 ci.yml 的 Tauri Linux 依賴清單；另補 AppImage 打包工具所需的 FUSE
+      # （22.04 為 libfuse2、24.04 改名 libfuse2t64，擇一存在）。
+      - name: Install Tauri system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+          sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Install npm dependencies (root workspaces)
+        run: npm ci
+
+      # tauri.conf.json 無 beforeBuildCommand（專案慣例：desktop 前端手動 build），
+      # 故 dist 必須在 tauri build 之前顯式產出。
+      - name: Build desktop frontend (vite → dist)
+        run: npm run build -w apps/desktop
+
+      # CLI sidecar（design D5）：把同版 speclink CLI 佈到 externalBin 要求的
+      # target-triple 命名位置；缺檔時 tauri build 直接失敗（fail-closed）。
+      - name: Stage CLI sidecar
+        run: node scripts/desktop-sidecar.mjs --target ${{ matrix.target }}
+
+      # OS 簽章開關（design D4）：對應 secrets 存在才注入簽章環境；缺席即跳過、
+      # 產未簽章安裝檔。本步驟只落地骨架——填鑰匙即啟用，無須改管線。
+      - name: Enable macOS code signing (env-gated)
+        if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
+        shell: bash
+        run: |
+          {
+            echo "APPLE_CERTIFICATE=${{ secrets.APPLE_CERTIFICATE }}"
+            echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.APPLE_CERTIFICATE_PASSWORD }}"
+            echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}"
+          } >> "$GITHUB_ENV"
+
+      - name: Enable Windows code signing (env-gated)
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_CERT == 'true'
+        shell: bash
+        run: |
+          {
+            echo "WINDOWS_CERTIFICATE=${{ secrets.WINDOWS_CERTIFICATE }}"
+            echo "WINDOWS_CERTIFICATE_PASSWORD=${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}"
+          } >> "$GITHUB_ENV"
+
+      # 更新包簽章（design D3）：TAURI_SIGNING_* 為必要 secrets——缺席時建置以
+      # 非零結束（desktop-release spec「缺私鑰時建置失敗」），與 OS 簽章正交。
+      - name: Build desktop bundles (Tauri)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run -w apps/desktop tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      # 佈署收集：installers/ 進 Release assets；updater/<platform>/ 供 latest.json
+      # 組裝（每平台一子目錄、恰一更新包＋同名 .sig——scripts/release-latest-json.mjs
+      # 的目錄契約）。macOS 更新包原名不含架構，改名以免兩個 mac target 撞名。
+      - name: Collect installers and updater packages
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
+          BUNDLE="target/${{ matrix.target }}/release/bundle"
+          UPDATER="updater/${{ matrix.platform }}"
+          mkdir -p installers "$UPDATER"
+          case "${{ matrix.platform }}" in
+            darwin-*)
+              cp "$BUNDLE"/dmg/*.dmg installers/
+              ARCH="${{ matrix.platform }}"; ARCH="${ARCH#darwin-}"
+              cp "$BUNDLE/macos/Speclink.app.tar.gz" "$UPDATER/Speclink_${VERSION}_${ARCH}.app.tar.gz"
+              cp "$BUNDLE/macos/Speclink.app.tar.gz.sig" "$UPDATER/Speclink_${VERSION}_${ARCH}.app.tar.gz.sig"
+              ;;
+            windows-*)
+              cp "$BUNDLE"/nsis/*-setup.exe installers/
+              cp "$BUNDLE"/nsis/*-setup.exe "$UPDATER"/
+              cp "$BUNDLE"/nsis/*-setup.exe.sig "$UPDATER"/
+              ;;
+            linux-*)
+              cp "$BUNDLE"/appimage/*.AppImage installers/
+              cp "$BUNDLE"/deb/*.deb installers/
+              cp "$BUNDLE"/appimage/*.AppImage "$UPDATER"/
+              cp "$BUNDLE"/appimage/*.AppImage.sig "$UPDATER"/
+              ;;
+          esac
+          ls -R installers updater
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}
+          path: installers/*
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: updater-${{ matrix.platform }}
+          path: updater/${{ matrix.platform }}/*
+          if-no-files-found: error
+
   # server Docker image → ghcr，tag 對齊 release 版本（v0.1.0 → 0.1.0，semver
   # 亦自動附 latest）。兩架構經 qemu 模擬建置——arm64 的 Rust 編譯在模擬下偏慢，
   # 屬已知代價（設計明訂先不做多架構矩陣最佳化）。
@@ -172,17 +340,37 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  # 部署文件對使用者承諾「每個 release tag 同時產出全部四種形態」，所以映像推送
-  # 失敗時不該還發出一個少了 Docker 形態的 Release——needs 納入 docker 讓四形態
-  # 的產出是全有全無。
+  # 部署文件對使用者承諾「每個 release tag 同時產出全部形態」，所以任一形態
+  # 失敗時不該還發出一個缺形態的 Release——needs 納入 desktop 與 docker，讓
+  # 五形態（CLI／server 壓縮檔、Docker、桌面安裝檔）的產出是全有全無。
   release:
-    needs: [build, docker]
+    needs: [build, desktop, docker]
     runs-on: ubuntu-latest
     steps:
+      # 組裝腳本（scripts/release-latest-json.mjs）需要 repo 內容。
+      - uses: actions/checkout@v5
+
+      # 攤平合併：CLI／server 壓縮檔、桌面安裝檔與更新包＋簽章全部進 dist——
+      # updater-* 與 desktop-* 的重複檔案同名同內容，覆蓋無害。
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      # 保持目錄結構再下載一次 updater-*，還原組裝腳本的「每平台一子目錄」契約。
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: updater-*
+          path: updater
+
+      - name: Assemble latest.json (updater manifest)
+        run: |
+          cd updater
+          for d in updater-*; do mv "$d" "${d#updater-}"; done
+          cd ..
+          node scripts/release-latest-json.mjs --tag "$GITHUB_REF_NAME" \
+            --dir updater --repo "$GITHUB_REPOSITORY" --out dist/latest.json
+          cat dist/latest.json
 
       - name: Checksums
         run: |

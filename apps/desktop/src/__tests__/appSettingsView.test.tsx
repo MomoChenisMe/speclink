@@ -5,6 +5,7 @@ import { I18nProvider } from "@speclink/ui";
 
 import { AppSettingsView } from "../views/AppSettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
+import type { CliInstallView } from "../store";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
@@ -77,5 +78,205 @@ describe("AppSettingsView 資訊架構", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("tray panel window creation failed: boom");
     expect(screen.queryByTestId("tray-style-card")).toBeNull();
+  });
+});
+
+// --- 軟體更新卡（desktop-app「桌面自動更新」手動檢查入口） ---
+
+describe("AppSettingsView 軟體更新卡", () => {
+  it("未注入 updater 面時不出現更新卡", () => {
+    render(<AppSettingsView localePref={null} onLocalePrefChange={vi.fn()} />);
+    expect(screen.queryByTestId("updater-card")).toBeNull();
+  });
+
+  it("更新卡常駐顯示目前版本號", () => {
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={{ state: { phase: "idle" }, currentVersion: "0.1.0", onCheck: vi.fn() }}
+      />,
+    );
+    expect(screen.getByTestId("updater-card").textContent).toContain("目前版本 0.1.0");
+  });
+
+  it("檢查更新按鈕回呼 onCheck；檢查中按鈕停用", () => {
+    const onCheck = vi.fn();
+    const { unmount } = render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={{ state: { phase: "idle" }, onCheck }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
+    expect(onCheck).toHaveBeenCalledTimes(1);
+    unmount();
+
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={{ state: { phase: "checking", manual: true }, onCheck: vi.fn() }}
+      />,
+    );
+    expect(
+      (screen.getByRole("button", { name: "檢查更新" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("手動檢查已最新顯示已是最新；檢查失敗顯示無法檢查更新", () => {
+    const { unmount } = render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={{ state: { phase: "upToDate" }, onCheck: vi.fn() }}
+      />,
+    );
+    expect(screen.getByTestId("updater-card").textContent).toContain("已是最新版本");
+    unmount();
+
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn() }}
+      />,
+    );
+    expect(screen.getByTestId("updater-card").textContent).toContain("無法檢查更新");
+  });
+
+  it("發現新版時更新卡顯示目標版本", () => {
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn() }}
+      />,
+    );
+    expect(screen.getByTestId("updater-card").textContent).toContain("0.2.0");
+  });
+});
+
+// --- CLI 指令卡（desktop-app「安裝 CLI 指令到 PATH」） ---
+
+function cliView(over: Partial<CliInstallView> = {}): CliInstallView {
+  return {
+    platform: "macos",
+    status: { kind: "not-installed" },
+    canDeploy: true,
+    pathHint: false,
+    deployDir: "/Users/u/.local/bin",
+    busy: false,
+    error: null,
+    ...over,
+  };
+}
+
+describe("AppSettingsView CLI 指令卡", () => {
+  it("未注入 cliInstall 面時不出現 CLI 卡", () => {
+    render(<AppSettingsView localePref={null} onLocalePrefChange={vi.fn()} />);
+    expect(screen.queryByTestId("cli-install-card")).toBeNull();
+  });
+
+  it("未安裝且可佈署：顯示未安裝與安裝按鈕，點擊回呼 onInstall", () => {
+    const onInstall = vi.fn();
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        cliInstall={{ view: cliView(), onInstall }}
+      />,
+    );
+    expect(screen.getByTestId("cli-install-card").textContent).toContain("未安裝");
+    fireEvent.click(screen.getByRole("button", { name: "安裝 CLI 指令" }));
+    expect(onInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("已安裝同版：顯示已安裝與版本、不出現安裝按鈕", () => {
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        cliInstall={{
+          view: cliView({ status: { kind: "installed", version: "0.2.0" } }),
+          onInstall: vi.fn(),
+        }}
+      />,
+    );
+    const card = screen.getByTestId("cli-install-card");
+    expect(card.textContent).toContain("已安裝");
+    expect(card.textContent).toContain("0.2.0");
+    expect(screen.queryByRole("button", { name: "安裝 CLI 指令" })).toBeNull();
+  });
+
+  it("版本不符且可佈署：顯示版本不符與重新安裝按鈕", () => {
+    const onInstall = vi.fn();
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        cliInstall={{
+          view: cliView({ status: { kind: "version-mismatch", version: "0.1.0" } }),
+          onInstall,
+        }}
+      />,
+    );
+    expect(screen.getByTestId("cli-install-card").textContent).toContain("版本不符");
+    fireEvent.click(screen.getByRole("button", { name: "重新安裝" }));
+    expect(onInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("佈署目錄不在 PATH：提示加入方式", () => {
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        cliInstall={{
+          view: cliView({
+            status: { kind: "installed", version: "0.2.0" },
+            pathHint: true,
+          }),
+          onInstall: vi.fn(),
+        }}
+      />,
+    );
+    expect(screen.getByTestId("cli-path-hint").textContent).toContain("/Users/u/.local/bin");
+    expect(screen.getByTestId("cli-path-hint").textContent).toContain("PATH");
+  });
+
+  it("Windows 僅回報狀態：無安裝按鈕、顯示安裝器管理說明", () => {
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        cliInstall={{
+          view: cliView({
+            platform: "windows",
+            canDeploy: false,
+            deployDir: null,
+            status: { kind: "installed", version: "0.2.0" },
+          }),
+          onInstall: vi.fn(),
+        }}
+      />,
+    );
+    const card = screen.getByTestId("cli-install-card");
+    expect(card.textContent).toContain("安裝器");
+    expect(screen.queryByRole("button", { name: "安裝 CLI 指令" })).toBeNull();
+  });
+
+  it("佈署失敗錯誤浮出於卡內", () => {
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        cliInstall={{
+          view: cliView({ error: "permission denied" }),
+          onInstall: vi.fn(),
+        }}
+      />,
+    );
+    expect(screen.getByTestId("cli-install-card").textContent).toContain("permission denied");
   });
 });

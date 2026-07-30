@@ -36,6 +36,22 @@ import {
   type ProjectTab,
 } from "./tabs";
 import { detectMacOS, type TrayStyle } from "./tray";
+import {
+  initialUpdaterState,
+  reduceUpdater,
+  type UpdaterState,
+} from "./core/updater";
+import type { PendingUpdate, UpdaterAdapter } from "./adapter/updater";
+import {
+  cliDeployPlan,
+  cliInstallStatus,
+  isDirOnPath,
+  needsRedeploy,
+  parseCliVersion,
+  type CliInstallStatus,
+  type CliPlatform,
+} from "./core/cliInstall";
+import type { CliInstallAdapter } from "./adapter/cliInstall";
 
 const FAILURE_TOAST_ID = "desktop-operation-failure";
 type FailureMessageKey =
@@ -92,6 +108,22 @@ export interface WorkspaceChooserIntent {
   initialScope?: { projectKey: string; repoKey: string } | null;
   /** 既有 marker 缺工具選集時，預填 checkout 資料夾路徑（chooser 直接 inspect）。 */
   initialCheckoutPath?: string | null;
+}
+
+/** 設定頁 CLI 卡的呈現視圖（core 判定的彙整結果）。 */
+export interface CliInstallView {
+  platform: CliPlatform;
+  status: CliInstallStatus;
+  /** 平台是否支援 app 內佈署動作（macOS／AppImage）。 */
+  canDeploy: boolean;
+  /** 已佈署但佈署目錄不在 PATH——介面提示加入方式。 */
+  pathHint: boolean;
+  /** 佈署目錄（提示文案用；不支援佈署的平台為 null）。 */
+  deployDir: string | null;
+  /** 佈署動作進行中。 */
+  busy: boolean;
+  /** 佈署失敗的單行錯誤（null＝無）。 */
+  error: string | null;
 }
 
 export interface RemoteMarkerConflict {
@@ -231,6 +263,26 @@ export interface AppState {
   /** Ctrl+1..9：直達第 N 個分頁（1-based；超界不動作）。 */
   gotoTab: (n: number) => Promise<void>;
 
+  // --- 自動更新（desktop-app「桌面自動更新」；design D6） ---
+  /** 更新狀態機現值（core/updater reducer 驅動；執行期狀態、不持久化）。 */
+  updater: UpdaterState;
+  /** 檢查更新（manual＝手動入口）：自動失敗靜默、手動失敗浮出無法檢查。 */
+  checkForUpdates: (manual: boolean) => Promise<void>;
+  /** 使用者同意：下載並套用；簽章驗證失敗轉錯誤態、既有安裝不受影響。 */
+  acceptUpdate: () => Promise<void>;
+  /** 使用者稍後：回閒置、不下載。 */
+  dismissUpdate: () => void;
+  /** 套用完成後重啟為新版。 */
+  relaunchToUpdate: () => Promise<void>;
+
+  // --- 安裝 CLI 指令（desktop-app「安裝 CLI 指令到 PATH」；design D5） ---
+  /** CLI 佈署狀態視圖（null＝尚未探測或無 adapter；執行期狀態、不持久化）。 */
+  cliInstall: CliInstallView | null;
+  /** 探測狀態並執行 AppImage 版本不符的啟動自我修復；App 啟動與動作後呼叫。 */
+  refreshCliInstall: () => Promise<void>;
+  /** 顯式佈署動作（macOS symlink／AppImage 複製；其餘平台為 no-op）。 */
+  installCli: () => Promise<void>;
+
   // --- 系統匣樣式（平台決定；tray 接線層訂閱分流） ---
   /** 系統匣樣式現值：macOS＝panel、其餘＝native-menu；執行期狀態、不持久化。 */
   trayStyle: TrayStyle;
@@ -269,6 +321,34 @@ type WorkspaceSnapshot = Pick<
   "changes" | "specs" | "archived" | "discussions" | "loaded"
 >;
 
+type CliProbe = Awaited<ReturnType<CliInstallAdapter["probe"]>>;
+
+/** 探測結果 → 三態判定（版本解析與比對歸 core）。 */
+function statusFromProbe(probe: CliProbe): CliInstallStatus {
+  const deployed = probe.deployedVersionOutput
+    ? parseCliVersion(probe.deployedVersionOutput)
+    : null;
+  return cliInstallStatus(deployed, probe.appVersion);
+}
+
+/** 探測＋判定 → 設定頁 CLI 卡視圖（PATH 提示只對 ~/.local/bin 佈署平台）。 */
+function cliViewFrom(probe: CliProbe, status: CliInstallStatus): CliInstallView {
+  const deploysToLocalBin = probe.platform === "macos" || probe.platform === "linux-appimage";
+  const deployDir = deploysToLocalBin && probe.home ? `${probe.home}/.local/bin` : null;
+  return {
+    platform: probe.platform,
+    status,
+    canDeploy: deployDir !== null && probe.bundledCliPath !== null,
+    pathHint:
+      deployDir !== null &&
+      status.kind !== "not-installed" &&
+      !isDirOnPath(deployDir, probe.pathEnv, probe.pathDelimiter),
+    deployDir,
+    busy: false,
+    error: null,
+  };
+}
+
 /** createAppStore 的注入面（workspace-session 決策 6）：session 工廠取代全域
  * dataSource；workspace 為探測面（開專案／init／統計／選資料夾／監看重掛）。 */
 export interface AppStoreDeps {
@@ -288,6 +368,10 @@ export interface AppStoreDeps {
   connections?: ConnectionsAdapter;
   /** local→remote 遷移與「採用 server」本機備份面。 */
   migration?: MigrationAdapter;
+  /** 自動更新面（tauri-plugin-updater 委派）；未注入時更新入口不啟用。 */
+  updater?: UpdaterAdapter;
+  /** CLI 佈署面（探測與計畫執行）；未注入時安裝 CLI 卡不啟用。 */
+  cliInstall?: CliInstallAdapter;
 }
 
 /**
@@ -302,11 +386,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     workspace,
     connections: connectionsAdapter,
     migration,
+    updater: updaterAdapter,
+    cliInstall: cliInstallAdapter,
   } = deps;
   return create<AppState>((set, get) => {
     // 全文查詢的去抖與 latest-wins 狀態（design D6）——閉包層、不進 store state。
     let searchSeq = 0;
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
+    // check 找到的待套用更新（承載 plugin 的下載句柄）——閉包層、不進 store state。
+    let pendingUpdate: PendingUpdate | null = null;
+    // 最後一次 CLI 佈署探測（installCli 取 home 與 sidecar 路徑）——閉包層。
+    let lastCliProbe: Awaited<ReturnType<CliInstallAdapter["probe"]>> | null = null;
     // remote handshake 世代只屬目前 app 執行期；同 locator 僅最新結果可落地。
     const remoteOpenGeneration = new Map<string, number>();
     // 看板最後成功內容只活在本次 app 執行期，依 locator 隔離且不進 localStorage。
@@ -1107,6 +1197,107 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     cancelRemoteConflict() {
       set({ pendingRemoteConflict: null });
+    },
+
+    // --- 自動更新（desktop-app「桌面自動更新」；design D6） ---
+    updater: initialUpdaterState,
+    async checkForUpdates(manual) {
+      if (!updaterAdapter) return;
+      const before = get().updater;
+      const checking = reduceUpdater(before, { type: "checkStarted", manual });
+      if (checking === before) return; // 下載中／待重啟不可重檢
+      set({ updater: checking });
+      try {
+        const update = await updaterAdapter.check();
+        pendingUpdate = update;
+        set({
+          updater: reduceUpdater(
+            get().updater,
+            update ? { type: "updateFound", version: update.version } : { type: "noUpdate" },
+          ),
+        });
+      } catch {
+        // 離線／端點不可達：reducer 決定靜默（自動）或浮出（手動）。
+        set({ updater: reduceUpdater(get().updater, { type: "checkFailed" }) });
+      }
+    },
+    async acceptUpdate() {
+      const pending = pendingUpdate;
+      if (!pending) return;
+      set({ updater: reduceUpdater(get().updater, { type: "accepted" }) });
+      try {
+        await pending.downloadAndInstall();
+        set({ updater: reduceUpdater(get().updater, { type: "downloaded" }) });
+      } catch (error) {
+        // 簽章驗證失敗等：轉錯誤態、清掉待套用項；既有安裝不受影響。
+        pendingUpdate = null;
+        set({
+          updater: reduceUpdater(get().updater, {
+            type: "installFailed",
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        });
+      }
+    },
+    dismissUpdate() {
+      set({ updater: reduceUpdater(get().updater, { type: "dismissed" }) });
+    },
+    async relaunchToUpdate() {
+      await updaterAdapter?.relaunch();
+    },
+
+    // --- 安裝 CLI 指令（desktop-app「安裝 CLI 指令到 PATH」；design D5） ---
+    cliInstall: null,
+    async refreshCliInstall() {
+      if (!cliInstallAdapter) return;
+      try {
+        let probe = await cliInstallAdapter.probe();
+        let status = statusFromProbe(probe);
+        // AppImage 版本不符的啟動自我修復（spec：自動重新佈署，無需使用者操作）。
+        if (needsRedeploy(probe.platform, status) && probe.home && probe.bundledCliPath) {
+          const plan = cliDeployPlan(probe.platform, {
+            home: probe.home,
+            bundledCliPath: probe.bundledCliPath,
+          });
+          if (plan.action !== "none") {
+            await cliInstallAdapter.deploy(plan);
+            probe = await cliInstallAdapter.probe();
+            status = statusFromProbe(probe);
+          }
+        }
+        lastCliProbe = probe;
+        set({ cliInstall: cliViewFrom(probe, status) });
+      } catch {
+        // 探測失敗（殼層異常）：不顯示卡——探測是最佳努力，不擋其他設定。
+      }
+    },
+    async installCli() {
+      const view = get().cliInstall;
+      const probe = lastCliProbe;
+      if (!cliInstallAdapter || !view?.canDeploy || view.busy) return;
+      if (!probe?.home || !probe.bundledCliPath) return;
+      set({ cliInstall: { ...view, busy: true, error: null } });
+      try {
+        const plan = cliDeployPlan(probe.platform, {
+          home: probe.home,
+          bundledCliPath: probe.bundledCliPath,
+        });
+        if (plan.action === "none") return; // canDeploy 平台不會走到；供型別收窄
+        await cliInstallAdapter.deploy(plan);
+        // 重探測呈現已安裝與 PATH 提示（spec：動作後偵測 PATH）。
+        await get().refreshCliInstall();
+      } catch (error) {
+        const current = get().cliInstall;
+        if (current) {
+          set({
+            cliInstall: {
+              ...current,
+              busy: false,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
+        }
+      }
     },
 
     // --- 系統匣樣式（平台決定、不持久化） ---
