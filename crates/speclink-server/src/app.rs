@@ -61,12 +61,18 @@ pub fn router(state: AppState) -> Router {
             post(routes::task_undone),
         )
         .route("/changes/{name}/claim", post(routes::claim))
+        .route("/changes/{name}/in-progress", post(routes::in_progress))
         .route("/changes/{name}/archive", post(routes::archive))
         .route(
             "/discussions",
             get(routes::list_discussions).post(routes::create_discussion),
         )
-        .route("/discussions/{slug}", get(routes::show_discussion))
+        .route(
+            "/discussions/{slug}",
+            get(routes::show_discussion).delete(routes::delete_discussion),
+        )
+        .route("/discussions/{slug}/link", post(routes::link_discussion))
+        .route("/discussions/{slug}/seal", post(routes::seal_discussion))
         .route(
             "/discussions/{slug}/context",
             put(routes::set_discussion_context),

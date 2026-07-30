@@ -15,6 +15,7 @@ use common::Harness;
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::remote::{self, RemoteWorkspace, TokenManager};
 use speclink_remote::RemoteError;
+use speclink_protocol::query::ChangeSummary;
 use speclink_server::identity::{IdentityStore, NewInvitation};
 use speclink_store::{CommandContext, DocumentId, TeamStore};
 use std::sync::Arc;
@@ -68,6 +69,91 @@ fn seed_discussion(store: &dyn TeamStore, slug: &str, topic: &str) {
         &doc,
     );
     store.commit(uow, Vec::new()).expect("seed discussion");
+}
+
+// --- 看板欄位由生命週期標記驅動（spec desktop-app）---
+
+#[test]
+fn change_stage_matrix_follows_the_lifecycle_markers() {
+    // spec「欄位判定矩陣」Example：0=提案中、1=進行中、2=已就緒。
+    fn summary(started_at: Option<&str>, completed: usize, total: usize) -> ChangeSummary {
+        ChangeSummary {
+            name: "demo".into(),
+            summary: String::new(),
+            status: "in-progress".into(),
+            completed_tasks: completed,
+            total_tasks: total,
+            restale_from: Vec::new(),
+            meta_error: None,
+            repo: None,
+            lifecycle: None,
+            claimed_by: None,
+            started_at: started_at.map(str::to_string),
+        }
+    }
+    let cases: [(Option<&str>, usize, usize, u8); 7] = [
+        (None, 0, 0, 0),
+        (None, 0, 28, 0),
+        (None, 3, 28, 1),
+        (Some("2026-07-30"), 0, 28, 1),
+        (Some("2026-07-30"), 13, 28, 1),
+        (None, 28, 28, 2),
+        (Some("2026-07-30"), 28, 28, 2),
+    ];
+    for (started, completed, total, want) in cases {
+        assert_eq!(
+            remote::change_stage(&summary(started, completed, total)),
+            want,
+            "started={started:?} progress={completed}/{total}"
+        );
+    }
+}
+
+#[test]
+fn started_at_rides_the_remote_change_list_payload() {
+    // in-progress 蓋章後 startedAt 隨清單 payload 進桌面（系統匣與看板同源）。
+    let h = common::harness();
+    common::seed_change(h.store.as_ref(), FOUR_TASKS);
+    {
+        let mut uow = h
+            .store
+            .begin_unit_of_work(
+                &common::scope(),
+                CommandContext {
+                    command: "seed".into(),
+                    actor: "seed".into(),
+                },
+            )
+            .expect("begin uow");
+        uow.create(
+            DocumentId::ChangeMeta {
+                change: "started-zero".into(),
+            },
+            "schema: spec-driven\ncreated: 2026-07-29\nstarted_at: 2026-07-30\nstarted_by: Momo <m@example.com>\n",
+        );
+        h.store.commit(uow, Vec::new()).expect("seed started change");
+    }
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+
+    let changes = ws.list_changes(&credentials).expect("list changes").changes;
+    let started = changes
+        .iter()
+        .find(|c| c.name == "started-zero")
+        .expect("started change listed");
+    assert_eq!(
+        started.started_at.as_deref(),
+        Some("2026-07-30"),
+        "startedAt comes from the server meta"
+    );
+    assert_eq!(
+        remote::change_stage(started),
+        1,
+        "帶 startedAt 且完成數 0 判為進行中"
+    );
+    let unstarted = changes.iter().find(|c| c.name == "demo").expect("demo listed");
+    assert_eq!(unstarted.started_at, None, "未開工 change 不帶 startedAt");
+    assert_eq!(remote::change_stage(unstarted), 0, "未開工零進度停在提案中");
 }
 
 // --- 開啟入口：handshake fail-closed ---

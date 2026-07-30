@@ -207,10 +207,16 @@ pub struct ChangeSummary {
     pub lifecycle: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claimed_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
 }
 
 /// `GET /changes/{name}` response — the fs `StatusReport` shape plus the
-/// server's own fields.
+/// server's own fields. The trailing meta trio (`created`, `fromDiscussions`,
+/// `deltaCapabilities`) feeds the CLI's remote `show` composition (design D4
+/// 實作期修正): `created` appears only when the meta carries the
+/// schema+created pair (the engine ShowChange unit rule), the lists are
+/// omitted when empty, and an older server simply never sends them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangeStatus {
@@ -227,6 +233,12 @@ pub struct ChangeStatus {
     pub lifecycle: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claimed_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub from_discussions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delta_capabilities: Vec<String>,
 }
 
 /// One artifact's status inside [`ChangeStatus`].
@@ -585,6 +597,28 @@ mod tests {
         );
         let back: ChangeSummary = serde_json::from_value(json).unwrap();
         assert_eq!(back, full);
+    }
+
+    #[test]
+    fn change_summary_started_at_is_optional_and_camel_case() {
+        let started: ChangeSummary =
+            serde_json::from_str(r#"{"name":"demo","startedAt":"2026-07-30"}"#).unwrap();
+        assert_eq!(started.started_at.as_deref(), Some("2026-07-30"));
+        let json = serde_json::to_value(&started).unwrap();
+        assert_eq!(json["startedAt"], "2026-07-30", "field serializes camelCase: {json}");
+        let back: ChangeSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(back, started);
+
+        let legacy: ChangeSummary = serde_json::from_str(r#"{"name":"demo"}"#).unwrap();
+        assert_eq!(
+            legacy.started_at, None,
+            "old payloads without startedAt still deserialize"
+        );
+        let legacy_json = serde_json::to_value(&legacy).unwrap();
+        assert!(
+            legacy_json.get("startedAt").is_none(),
+            "absent startedAt is omitted: {legacy_json}"
+        );
     }
 
     #[test]

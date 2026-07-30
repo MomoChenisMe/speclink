@@ -23,11 +23,12 @@ use speclink_core::status::StatusReport;
 use speclink_host::drift as host_drift;
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, ArchiveDiscussionResponse,
-    ArchiveResponse, ArchivedSpec, ClaimResponse, ConcludeDiscussionRequest, CreateChangeRequest,
-    CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse, DiscardResponse,
-    MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
-    PutArtifactRequest, PutArtifactResponse, SetDiscussionContextRequest, TaskDoneRequest,
-    TaskDoneResponse, TaskUndoneResponse, UnlinkedDiscussion,
+    ArchiveResponse, ArchivedSpec, BindDiscussionRequest, BindDiscussionResponse, ClaimResponse,
+    ConcludeDiscussionRequest, CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest,
+    CreateDiscussionResponse, DiscardDiscussionResponse, DiscardResponse, MoveTaskRequest,
+    MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest,
+    PutArtifactResponse, SetDiscussionContextRequest, TaskDoneRequest, TaskDoneResponse,
+    TaskUndoneResponse, UnlinkedDiscussion,
 };
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::events::InvalidationEvent;
@@ -84,10 +85,62 @@ pub async fn list_changes(
         CommandOutcome::List(list) => list.changes.unwrap_or_default(),
         _ => return Err(wrong_outcome("list")),
     };
+    // started 站（change-lifecycle spec）：引擎的 list item 凍結不帶
+    // started_*（fs `list --json` parity pin），wire 的 startedAt 由這裡
+    // 讀各 change meta 組裝（design D6）。壞 meta 已由 metaError 診斷，
+    // 這裡對解析失敗維持缺席。
+    let store = state.store.clone();
+    let scope = verb::scope_of(&binding);
+    let names: Vec<String> = changes.iter().map(|c| c.name.clone()).collect();
+    let started: std::collections::HashMap<String, String> =
+        tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+            let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
+            let mut map = std::collections::HashMap::new();
+            for name in names {
+                let doc = snapshot
+                    .read(&DocumentId::ChangeMeta {
+                        change: name.clone(),
+                    })
+                    .map_err(ApiError::from)?;
+                let Some(doc) = doc else { continue };
+                if let Ok(meta) =
+                    speclink_core::model::ChangeMeta::from_text(Some(&doc.content))
+                {
+                    if let Some(at) = meta.started_at {
+                        map.insert(name, at);
+                    }
+                }
+            }
+            Ok(map)
+        })
+        .await
+        .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
     let dto = ListChangesResponse {
-        changes: changes.into_iter().map(change_summary).collect(),
+        changes: changes
+            .into_iter()
+            .map(|c| {
+                let started_at = started.get(&c.name).cloned();
+                change_summary(c, started_at)
+            })
+            .collect(),
     };
     Ok(ok(dto, &result.etag))
+}
+
+/// `POST /changes/{name}/in-progress` — Command::InProgressAdd 直通（design
+/// D5）：首蓋以呼叫者認證身分寫 started_at/started_by；重複與未知名稱維持
+/// 引擎的靜默成功語意（HTTP 200、零寫入——引擎 outcome 未蓋章時 bridge 不
+/// commit、不發事件）。
+pub async fn in_progress(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(&state, &binding, Command::InProgressAdd { name }).await?;
+    match result.execution.outcome {
+        CommandOutcome::InProgressAdd(_) => Ok(ok(Ack {}, &result.etag)),
+        _ => Err(wrong_outcome("in-progress")),
+    }
 }
 
 /// `GET /changes/{name}`
@@ -100,7 +153,7 @@ pub async fn get_change(
         &state,
         &binding,
         Command::Status {
-            change: Some(name),
+            change: Some(name.clone()),
             schema: None,
         },
     )
@@ -109,7 +162,56 @@ pub async fn get_change(
         CommandOutcome::Status(report) => report,
         _ => return Err(wrong_outcome("status")),
     };
-    Ok(ok(change_status(report), &result.etag))
+    // show 組合的 meta 欄位（design D4 實作期修正）：created 沿 ShowChange 的
+    // schema+created 成對規則、fromDiscussions 自 meta、deltaCapabilities 自
+    // scope 文件列舉（export 與每個 verb 的 bridge 物化同成本級）。
+    let store = state.store.clone();
+    let scope = verb::scope_of(&binding);
+    let (created, from_discussions, delta_capabilities) =
+        tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+            let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
+            let meta = snapshot
+                .read(&DocumentId::ChangeMeta {
+                    change: name.clone(),
+                })
+                .map_err(ApiError::from)?
+                .and_then(|doc| {
+                    speclink_core::model::ChangeMeta::from_text(Some(&doc.content)).ok()
+                });
+            let (created, from_discussions) = match meta {
+                Some(meta) => {
+                    let chain = meta.from_discussions();
+                    // 成對規則：schema 與 created 同時存在才回報 created。
+                    let created = meta.schema.is_some().then_some(meta.created).flatten();
+                    (created, chain)
+                }
+                None => (None, Vec::new()),
+            };
+            let prefix = "specs/";
+            let mut caps: Vec<String> = store
+                .export(&scope)
+                .map_err(ApiError::from)?
+                .documents
+                .iter()
+                .filter_map(|entry| match &entry.doc {
+                    DocumentId::ChangeArtifact { change, artifact } if *change == name => artifact
+                        .strip_prefix(prefix)
+                        .and_then(|rest| rest.strip_suffix("/spec.md"))
+                        .filter(|cap| !cap.is_empty() && !cap.contains('/'))
+                        .map(str::to_string),
+                    _ => None,
+                })
+                .collect();
+            caps.sort();
+            Ok((created, from_discussions, caps))
+        })
+        .await
+        .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
+    let mut dto = change_status(report);
+    dto.created = created;
+    dto.from_discussions = from_discussions;
+    dto.delta_capabilities = delta_capabilities;
+    Ok(ok(dto, &result.etag))
 }
 
 /// `GET /changes/{name}/drift` — the change's spec-side drift over one store
@@ -1105,6 +1207,30 @@ pub async fn list_discussions(
     Ok(ok(dto, &result.etag))
 }
 
+/// 討論寫入的引擎錯誤映射（design D1：驗證與 guard 的單一事實來源在引擎，
+/// 凍結文本逐字上 wire 以保 fs/remote 訊息 parity）。引擎的討論 bail 一律
+/// 歸類 `Error`（→500）；這裡按文本的語意形式改判語義化狀態碼、訊息不動：
+/// 主體不存在→404、slug 無法成立→400、既有守衛（已存在／已封存／未鑄鏈）→409。
+fn refine_discussion_write(e: ApiError) -> ApiError {
+    use speclink_protocol::error::ErrorReason;
+    if e.reason != ErrorReason::Internal {
+        return e;
+    }
+    let m = e.message;
+    if m.contains("' not found") {
+        ApiError::not_found(m)
+    } else if m.starts_with("invalid slug '") || m.starts_with("could not derive a slug") {
+        ApiError::invalid_argument(m)
+    } else if m.contains("' already exists")
+        || m.contains("' is archived")
+        || m.contains("is not linked to discussion")
+    {
+        ApiError::refused(m)
+    } else {
+        ApiError::internal(m)
+    }
+}
+
 /// `POST /discussions`
 pub async fn create_discussion(
     State(state): State<AppState>,
@@ -1116,10 +1242,11 @@ pub async fn create_discussion(
         &binding,
         Command::DiscussNew {
             topic: req.topic,
-            slug: None,
+            slug: req.slug,
         },
     )
-    .await?;
+    .await
+    .map_err(refine_discussion_write)?;
     let info = match result.execution.outcome {
         CommandOutcome::DiscussNew(info) => info,
         _ => return Err(wrong_outcome("discuss-new")),
@@ -1128,6 +1255,102 @@ pub async fn create_discussion(
         slug: info.slug,
         topic: info.topic,
         path: info.path,
+    };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `DELETE /discussions/{slug}?force=` query input; force defaults to false.
+#[derive(Deserialize)]
+pub struct DeleteDiscussionQuery {
+    #[serde(default)]
+    force: bool,
+}
+
+/// `DELETE /discussions/{slug}` — Command::DiscussDiscard 直通（design D3，
+/// 複製 change 側 DELETE 模式）：0 輪即刪、有輪無 force 拒絕（reason 機器可判
+/// 為 refused）。editor 限定比照 change 刪除。
+pub async fn delete_discussion(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, slug)): Path<(String, String)>,
+    Query(query): Query<DeleteDiscussionQuery>,
+) -> Result<Response, ApiError> {
+    if !binding.editor {
+        return Err(ApiError::forbidden(
+            "reader memberships cannot delete discussions",
+        ));
+    }
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::DiscussDiscard {
+            slug,
+            force: query.force,
+        },
+    )
+    .await
+    .map_err(refine_discussion_write)?;
+    let outcome = match result.execution.outcome {
+        CommandOutcome::DiscussDiscard(o) => o,
+        _ => return Err(wrong_outcome("discuss-discard")),
+    };
+    Ok(ok(DiscardDiscussionResponse { slug: outcome.slug }, &result.etag))
+}
+
+/// `POST /discussions/{slug}/link` — Command::DiscussLink 直通（design D3，
+/// 比照 promote 的 POST 模式）：鑄變更側 from_discussion 鏈。
+pub async fn link_discussion(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, slug)): Path<(String, String)>,
+    Json(req): Json<BindDiscussionRequest>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::DiscussLink {
+            slug,
+            change: req.change,
+        },
+    )
+    .await
+    .map_err(refine_discussion_write)?;
+    let outcome = match result.execution.outcome {
+        CommandOutcome::DiscussLink(o) => o,
+        _ => return Err(wrong_outcome("discuss-link")),
+    };
+    let dto = BindDiscussionResponse {
+        slug: outcome.slug,
+        change: outcome.change,
+    };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `POST /discussions/{slug}/seal` — Command::DiscussSeal 直通（design D3）：
+/// 內容落地後把討論標記已轉出（promoted），前置守衛（鏈須先鑄妥）在引擎。
+pub async fn seal_discussion(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, slug)): Path<(String, String)>,
+    Json(req): Json<BindDiscussionRequest>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::DiscussSeal {
+            slug,
+            change: req.change,
+        },
+    )
+    .await
+    .map_err(refine_discussion_write)?;
+    let outcome = match result.execution.outcome {
+        CommandOutcome::DiscussSeal(o) => o,
+        _ => return Err(wrong_outcome("discuss-seal")),
+    };
+    let dto = BindDiscussionResponse {
+        slug: outcome.slug,
+        change: outcome.change,
     };
     Ok(ok(dto, &result.etag))
 }
@@ -1275,7 +1498,7 @@ fn discussion_info(info: EngineDiscussionInfo) -> DiscussionInfo {
 
 // --- Engine outcome → protocol DTO (typed field mapping, no raw JSON) ---
 
-fn change_summary(change: ListChangeJson) -> ChangeSummary {
+fn change_summary(change: ListChangeJson, started_at: Option<String>) -> ChangeSummary {
     ChangeSummary {
         name: change.name,
         summary: change.summary,
@@ -1287,6 +1510,7 @@ fn change_summary(change: ListChangeJson) -> ChangeSummary {
         repo: None,
         lifecycle: None,
         claimed_by: None,
+        started_at,
     }
 }
 
@@ -1311,6 +1535,9 @@ fn change_status(report: StatusReport) -> ChangeStatus {
         repo: None,
         lifecycle: None,
         claimed_by: None,
+        created: None,
+        from_discussions: Vec::new(),
+        delta_capabilities: Vec::new(),
     }
 }
 

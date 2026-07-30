@@ -107,6 +107,23 @@ impl TempProject {
         TempProject { dir }
     }
 
+    /// 對照用 fs 沙盒：本機 openspec 樹、無 remote 連線。
+    fn fs(tag: &str) -> TempProject {
+        let dir = std::env::temp_dir().join(format!(
+            "speclink-cli-remote-parity-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("openspec")).unwrap();
+        TempProject { dir }
+    }
+
+    fn write(&self, rel: &str, content: &str) {
+        let path = self.dir.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, content).unwrap();
+    }
+
     fn run(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_speclink"))
             .args(args)
@@ -249,6 +266,176 @@ fn remote_analyze_prints_fs_parity_json() {
             "artifacts_missing": ["design.md"],
         }),
         "remote analyze --json must match the fs-mode engine serialization"
+    );
+}
+
+// --- show：CLI 端讀取組合、與 fs 模式逐位元同形（design D4）---
+
+const SHOW_META: &str = "schema: spec-driven\ncreated: 2026-07-29\nfrom_discussion: auth-scope\n";
+const SHOW_PROPOSAL: &str = "## Why\n\n看板搜尋列需要入口。\n";
+const SHOW_DESIGN: &str = "## Context\n\n設計內容。\n";
+const SHOW_TASKS: &str = "- [ ] 1.1 第一項\n";
+const SHOW_SPEC_DOC: &str = "# user-auth\n\n正典內容。\n";
+
+/// 同一份 change 內容的 remote server 路由（wire 形狀 camelCase）。
+fn show_change_routes() -> Vec<(&'static str, &'static str, u16, String)> {
+    vec![
+        ("GET", "/specs", 200, r#"{"specs":[]}"#.into()),
+        (
+            "GET",
+            "/changes",
+            200,
+            r#"{"changes":[{"name":"demo","status":"in-progress","completedTasks":0,"totalTasks":1}]}"#.into(),
+        ),
+        (
+            "GET",
+            "/changes/demo",
+            200,
+            r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":false,"applyRequires":["tasks"],"artifacts":[],"created":"2026-07-29","fromDiscussions":["auth-scope"],"deltaCapabilities":["auth"]}"#.into(),
+        ),
+        (
+            "GET",
+            "/changes/demo/artifacts/proposal",
+            200,
+            serde_json::json!({ "artifact": "proposal", "content": SHOW_PROPOSAL, "version": 1 })
+                .to_string(),
+        ),
+        (
+            "GET",
+            "/changes/demo/artifacts/design",
+            200,
+            serde_json::json!({ "artifact": "design", "content": SHOW_DESIGN, "version": 1 })
+                .to_string(),
+        ),
+        (
+            "GET",
+            "/changes/demo/artifacts/tasks",
+            200,
+            serde_json::json!({ "artifact": "tasks", "content": SHOW_TASKS, "version": 1 })
+                .to_string(),
+        ),
+    ]
+}
+
+/// 同一份內容的 fs 沙盒。
+fn show_fs_project(tag: &str) -> TempProject {
+    let p = TempProject::fs(tag);
+    p.write("openspec/changes/demo/.openspec.yaml", SHOW_META);
+    p.write("openspec/changes/demo/proposal.md", SHOW_PROPOSAL);
+    p.write("openspec/changes/demo/design.md", SHOW_DESIGN);
+    p.write("openspec/changes/demo/tasks.md", SHOW_TASKS);
+    p.write("openspec/changes/demo/specs/auth/spec.md", "## ADDED Requirements\n");
+    p
+}
+
+#[test]
+fn remote_show_change_matches_fs_output_byte_for_byte() {
+    let fs = show_fs_project("show-fs");
+    let fs_human = fs.run(&["show", "demo"]);
+    assert!(fs_human.status.success(), "fs stderr: {}", stderr_of(&fs_human));
+    let fs_json = fs.run(&["show", "demo", "--json"]);
+    assert!(fs_json.status.success(), "fs stderr: {}", stderr_of(&fs_json));
+
+    let mock = mock_server(show_change_routes());
+    let p = TempProject::remote("show-remote", &mock.base, "backend");
+    assert!(!p.dir.join("openspec").exists(), "remote sandbox has no local store");
+
+    let remote_human = p.run(&["show", "demo"]);
+    assert!(remote_human.status.success(), "remote stderr: {}", stderr_of(&remote_human));
+    assert_eq!(
+        stdout_of(&remote_human),
+        stdout_of(&fs_human),
+        "human output is byte-identical to fs mode"
+    );
+
+    let remote_json = p.run(&["show", "demo", "--json"]);
+    assert!(remote_json.status.success(), "remote stderr: {}", stderr_of(&remote_json));
+    assert_eq!(
+        stdout_of(&remote_json),
+        stdout_of(&fs_json),
+        "--json output is byte-identical to fs mode (camelCase field parity)"
+    );
+
+    // link 鑄鏈可經 show 觀察（discussion-docs spec）：payload 帶 from_discussion 鏈。
+    let payload: serde_json::Value =
+        serde_json::from_str(stdout_of(&remote_json).trim()).expect("stdout is JSON");
+    assert_eq!(payload["fromDiscussions"][0], "auth-scope");
+    assert_eq!(payload["deltaSpecs"][0], "auth/spec.md");
+    assert!(
+        !p.dir.join("openspec").exists(),
+        "the remote run never created or read a local store"
+    );
+}
+
+#[test]
+fn remote_show_spec_matches_fs_output_byte_for_byte() {
+    let fs = TempProject::fs("show-spec-fs");
+    fs.write("openspec/specs/user-auth/spec.md", SHOW_SPEC_DOC);
+    let fs_human = fs.run(&["show", "user-auth"]);
+    assert!(fs_human.status.success(), "fs stderr: {}", stderr_of(&fs_human));
+    let fs_json = fs.run(&["show", "user-auth", "--json"]);
+    assert!(fs_json.status.success(), "fs stderr: {}", stderr_of(&fs_json));
+
+    let mock = mock_server(vec![
+        (
+            "GET",
+            "/specs",
+            200,
+            r#"{"specs":[{"id":"user-auth","path":"specs/user-auth/spec.md"}]}"#.into(),
+        ),
+        (
+            "GET",
+            "/specs/user-auth/document",
+            200,
+            serde_json::json!({ "content": SHOW_SPEC_DOC }).to_string(),
+        ),
+    ]);
+    let p = TempProject::remote("show-spec-remote", &mock.base, "backend");
+
+    let remote_human = p.run(&["show", "user-auth"]);
+    assert!(remote_human.status.success(), "remote stderr: {}", stderr_of(&remote_human));
+    assert_eq!(stdout_of(&remote_human), stdout_of(&fs_human), "human output parity");
+
+    let remote_json = p.run(&["show", "user-auth", "--json"]);
+    assert!(remote_json.status.success(), "remote stderr: {}", stderr_of(&remote_json));
+    assert_eq!(stdout_of(&remote_json), stdout_of(&fs_json), "--json output parity");
+}
+
+#[test]
+fn remote_show_missing_item_is_a_semantic_error_with_engine_wording() {
+    let mock = mock_server(vec![
+        ("GET", "/specs", 200, r#"{"specs":[]}"#.into()),
+        (
+            "GET",
+            "/changes/ghost",
+            404,
+            r#"{"status":404,"reason":"not_found","message":"Change 'ghost' not found."}"#.into(),
+        ),
+    ]);
+    let p = TempProject::remote("show-missing", &mock.base, "backend");
+
+    let out = p.run(&["show", "ghost"]);
+    assert!(!out.status.success(), "a missing item must exit non-zero");
+    assert!(
+        stderr_of(&out).contains("Item 'ghost' not found as a change or spec."),
+        "the engine's frozen wording: {}",
+        stderr_of(&out)
+    );
+
+    let out = p.run(&["show", "ghost", "--item-type", "change"]);
+    assert!(!out.status.success());
+    assert!(
+        stderr_of(&out).contains("Change 'ghost' not found."),
+        "typed lookup names the type: {}",
+        stderr_of(&out)
+    );
+
+    let out = p.run(&["show", "ghost", "--item-type", "spec"]);
+    assert!(!out.status.success());
+    assert!(
+        stderr_of(&out).contains("Spec 'ghost' not found."),
+        "typed lookup names the type: {}",
+        stderr_of(&out)
     );
 }
 

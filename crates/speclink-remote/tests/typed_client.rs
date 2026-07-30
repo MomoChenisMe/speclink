@@ -6,8 +6,8 @@
 //! translation (design decision three).
 
 use speclink_protocol::command::{
-    AddDiscussionRoundRequest, CreateChangeRequest, CreateDiscussionRequest,
-    PromoteDiscussionRequest, PutArtifactRequest, TaskDoneRequest,
+    AddDiscussionRoundRequest, BindDiscussionRequest, CreateChangeRequest,
+    CreateDiscussionRequest, PromoteDiscussionRequest, PutArtifactRequest, TaskDoneRequest,
 };
 use speclink_protocol::context::ContextSnapshotRequest;
 use speclink_remote::client::{Client, ContextSnapshotOutcome};
@@ -357,13 +357,18 @@ fn discussion_writes_post_typed_bodies() {
         201,
         r#"{"slug":"auth-scope","topic":"Auth scope","path":"discussions/auth-scope.md"}"#,
     );
-    let created = client(&mock).new_discussion("Auth scope").expect("new ok");
+    let created = client(&mock).new_discussion("Auth scope", None).expect("new ok");
     assert_eq!(created.slug, "auth-scope");
     let cap = mock.last();
     assert_call(&cap, "POST", "/discussions");
     assert_eq!(
         cap.body,
-        serde_json::to_string(&CreateDiscussionRequest { topic: "Auth scope".into() }).unwrap()
+        serde_json::to_string(&CreateDiscussionRequest {
+            topic: "Auth scope".into(),
+            slug: None,
+        })
+        .unwrap(),
+        "no override keeps the body byte-identical to the pre-slug client's"
     );
 
     let mock2 = serve(200, r#"{"round":3}"#);
@@ -409,6 +414,85 @@ fn discussion_writes_post_typed_bodies() {
     let bare = client(&mock5).discussion_promote("auth-scope", None).expect("promote ok");
     assert_eq!(bare.change, "add-auth");
     assert_eq!(mock5.last().body, "{}", "no explicit name posts the bare object");
+}
+
+#[test]
+fn discussion_parity_verbs_post_typed_bodies() {
+    // new_discussion 攜帶 slug 覆寫（verb-contract：remote 建立討論帶 slug）。
+    let mock = serve(
+        201,
+        r#"{"slug":"board-search-bar","topic":"看板搜尋列","path":"discussions/board-search-bar.md"}"#,
+    );
+    let created = client(&mock)
+        .new_discussion("看板搜尋列", Some("board-search-bar"))
+        .expect("new with slug ok");
+    assert_eq!(created.slug, "board-search-bar");
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/discussions");
+    assert_eq!(
+        cap.body,
+        serde_json::to_string(&CreateDiscussionRequest {
+            topic: "看板搜尋列".into(),
+            slug: Some("board-search-bar".into()),
+        })
+        .unwrap()
+    );
+
+    // discard：force 走 query 參數（鏡射 change 側 DELETE）。
+    let mock2 = serve(200, r#"{"slug":"board-search-bar"}"#);
+    let discarded = client(&mock2)
+        .discard_discussion("board-search-bar", false)
+        .expect("discard ok");
+    assert_eq!(discarded.slug, "board-search-bar");
+    let cap2 = mock2.last();
+    assert_call(&cap2, "DELETE", "/discussions/board-search-bar?force=false");
+    assert_eq!(cap2.body, "", "force travels as the query parameter, not a body");
+    client(&mock2)
+        .discard_discussion("board-search-bar", true)
+        .expect("force discard ok");
+    assert_call(&mock2.last(), "DELETE", "/discussions/board-search-bar?force=true");
+
+    // link 與 seal：body 帶 change 名稱。
+    let mock3 = serve(200, r#"{"slug":"auth-scope","change":"add-auth"}"#);
+    let linked = client(&mock3).link_discussion("auth-scope", "add-auth").expect("link ok");
+    assert_eq!((linked.slug.as_str(), linked.change.as_str()), ("auth-scope", "add-auth"));
+    let cap3 = mock3.last();
+    assert_call(&cap3, "POST", "/discussions/auth-scope/link");
+    assert_eq!(
+        cap3.body,
+        serde_json::to_string(&BindDiscussionRequest { change: "add-auth".into() }).unwrap()
+    );
+    let sealed = client(&mock3).seal_discussion("auth-scope", "add-auth").expect("seal ok");
+    assert_eq!(sealed.change, "add-auth");
+    assert_call(&mock3.last(), "POST", "/discussions/auth-scope/seal");
+
+    // in-progress：空 body POST，回應內容無人消費。
+    let mock4 = serve(200, "{}");
+    client(&mock4).in_progress_add("demo").expect("in-progress ok");
+    let cap4 = mock4.last();
+    assert_call(&cap4, "POST", "/changes/demo/in-progress");
+    assert_eq!(cap4.body, "{}");
+}
+
+#[test]
+fn discussion_parity_verbs_map_a_404_to_the_typed_error() {
+    // 未升級的舊 server 對新動詞回 404 → 語義化 RemoteError，不 panic。
+    let mock = serve(
+        404,
+        r#"{"status":404,"reason":"not_found","message":"discussion 'no-such' not found"}"#,
+    );
+    let err = client(&mock).discard_discussion("no-such", false).unwrap_err();
+    assert_eq!(err.reason.as_deref(), Some("not_found"));
+    assert_eq!(
+        err.message, "discussion 'no-such' not found",
+        "engine-class message relayed verbatim"
+    );
+    let err = client(&mock).link_discussion("no-such", "demo").unwrap_err();
+    assert_eq!(err.reason.as_deref(), Some("not_found"));
+    let err = client(&mock).seal_discussion("no-such", "demo").unwrap_err();
+    assert_eq!(err.reason.as_deref(), Some("not_found"));
+    let err = client(&mock).in_progress_add("demo").unwrap_err();
+    assert_eq!(err.reason.as_deref(), Some("not_found"));
 }
 
 // --- the registry mapping table, byte for byte (design decision three) ---

@@ -1,6 +1,6 @@
 # 動詞契約——端點參考
 
-本文件是正典 `verb-contract` spec 指定的動詞契約端點、payload 與錯誤形狀參考。目前涵蓋動詞補全（verb-parity）端點（validate／analyze／刪除變更／任務搬移）；其餘動詞的契約仍以 canonical specs 為準：
+本文件是正典 `verb-contract` spec 指定的動詞契約端點、payload 與錯誤形狀參考。目前涵蓋動詞補全（verb-parity）端點（validate／analyze／刪除變更／任務搬移／討論建立帶 slug／討論 discard／討論 link／討論 seal／變更開工標記）；其餘動詞的契約仍以 canonical specs 為準：
 
 - [正典動詞契約](../openspec/specs/verb-contract/spec.md)
 - [Client Protocol spec](../openspec/specs/client-protocol/spec.md)
@@ -95,6 +95,76 @@ query 參數 `force` 預設 `false`。
 
 - `from`／`to` 越界時 `409 refused`，message 為 `task index out of range (1..=N)`（他人同時編輯下的過期索引是可預期的競態；SSE invalidate 會矯正 client 視圖）。零寫入。
 - 該 change 無 `tasks.md` 時 `404 not_found`。
+
+## POST /discussions——選填 slug 覆寫
+
+建立討論請求接受選填 `slug` 欄位（camelCase、缺席即省略——舊 client 的 body 逐位元不變）：
+
+```json
+{ "topic": "看板搜尋列", "slug": "board-search-bar" }
+```
+
+驗證只住在引擎（ASCII kebab-case：小寫字母／數字、單一連字號分隔）。非法值 → `400 invalid_argument`，message 為引擎凍結文本；零寫入。未帶 `slug` 時 server 照舊由 topic 推導。
+
+回應 `200`（形狀不變；帶覆寫時 `slug` 回覆寫值）：
+
+```json
+{ "slug": "board-search-bar", "topic": "看板搜尋列", "path": "discussions/board-search-bar.md" }
+```
+
+## DELETE /discussions/{slug}?force={bool}
+
+**僅 editor**（reader 收 `403 permission_denied`）。引擎討論 discard 直通：0 輪記錄直接刪除；有輪時引擎拒絕（需 `force=true`）——`409 refused`、message 為凍結的 needs-force 文本、記錄逐位元保留。commit 發布 `discussion-discarded`。
+
+query 參數 `force` 預設 `false`。回應 `200`：
+
+```json
+{ "slug": "board-search-bar" }
+```
+
+錯誤：該 slug 無 live 討論時 `404 not_found`；封存記錄拒絕刪除（`409 refused`——封存記錄留存、不 discard）。
+
+## POST /discussions/{slug}/link
+
+鑄變更側 `from_discussion` 鏈（引擎 link 語意：逗號累加、同一配對冪等）。請求／回應：
+
+```json
+{ "change": "add-auth" }
+```
+
+```json
+{ "slug": "auth-scope", "change": "add-auth" }
+```
+
+commit 發布 `discussion-linked`。錯誤：討論或 change 不存在時 `404 not_found`（引擎凍結 message 指名缺席主體）。
+
+## POST /discussions/{slug}/seal
+
+內容落地後把討論標記已轉出（status `promoted`、`promoted_to` 累加變更名；並清除該 change 對本 slug 的 re-ingest 旗標）。請求／回應形狀同 link。守衛：change 的 `from_discussion` 鏈須先含該 slug——否則 `409 refused`，message 為引擎的先跑 link 文本。commit 發布 `discussion-sealed`。錯誤：討論或 change 缺席 `404 not_found`。
+
+## POST /changes/{name}/in-progress
+
+經 Command gateway 的靜默生命週期蓋章。對存在且未開工的 change 首次呼叫：`started_at` 與 `started_by`（呼叫者認證身分——與 `created_*` 同一歸屬機制）寫進 change meta、發布 `change-marked-in-progress`、scope revision 前進。重複呼叫或未知 change 名稱維持引擎凍結的靜默成功：`200`、零寫入、零事件、revision 不前進。兩種情形 body 皆為空物件：
+
+```json
+{}
+```
+
+## 變更清單的 `startedAt` 欄位
+
+`GET /changes` 清單項攜帶選填 `startedAt`（camelCase），值來自 change meta 的 `started_at`；未開工的 change 省略該欄位。消費端以其做欄位推導（「已開工即進行中」，完成數 fallback 保留以涵蓋繞過工具的寫入路徑）：
+
+```json
+{ "name": "demo", "status": "in-progress", "completedTasks": 0, "totalTasks": 15, "startedAt": "2026-07-30" }
+```
+
+## GET /changes/{name}——show 組合的 meta 欄位
+
+單 change 讀取另攜帶三個選填欄位，餵 CLI remote `show` 的讀取組合：`created`（僅 meta 的 schema+created 成對時出現——引擎的成對回報規則）、`fromDiscussions`、`deltaCapabilities`（空清單即省略）。舊 server 不送、舊 client 忽略。
+
+```json
+{ "changeName": "demo", "schemaName": "spec-driven", "…": "…", "created": "2026-07-29", "fromDiscussions": ["auth-scope"], "deltaCapabilities": ["auth"] }
+```
 
 ## capability 宣告
 

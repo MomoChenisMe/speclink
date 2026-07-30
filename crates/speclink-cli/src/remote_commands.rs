@@ -1017,6 +1017,84 @@ fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
     Ok(())
 }
 
+// --- show ---
+
+/// remote show 的讀取組合（design D4）：以既有讀 API 組出與 fs 模式相同的
+/// ShowOutcome，交給共用的 render_show 渲染。item 與 --item-type 的判別序
+/// 對齊引擎 run_show：type==spec 直取規格；否則 change 優先、缺席時規格
+/// 遞補（type==change 不遞補）；錯誤訊息沿引擎凍結文本。
+fn remote_show_outcome(
+    ctx: &RemoteCtx,
+    item: Option<&str>,
+    item_type: Option<&str>,
+) -> Result<core::command::ShowOutcome> {
+    let Some(item) = item else {
+        bail!("Please specify an item name.");
+    };
+    if let Some(t) = item_type {
+        if t != "change" && t != "spec" {
+            bail!("Unknown type: {t}. Use 'change' or 'spec'.");
+        }
+    }
+    let is_spec = ctx.client.list_specs()?.specs.iter().any(|s| s.id == item);
+    let status = if item_type == Some("spec") {
+        None
+    } else {
+        match ctx.client.get_change(item) {
+            Ok(status) => Some(status),
+            Err(e) if e.status == Some(404) => None,
+            Err(e) => return Err(e.into()),
+        }
+    };
+    let show_spec =
+        item_type == Some("spec") || (item_type != Some("change") && status.is_none() && is_spec);
+    if show_spec {
+        if !is_spec {
+            bail!("Spec '{item}' not found.");
+        }
+        let content = ctx.client.spec_document(item)?.content;
+        return Ok(core::command::ShowOutcome::Spec { name: item.to_string(), content });
+    }
+    let Some(status) = status else {
+        if item_type == Some("change") {
+            bail!("Change '{item}' not found.");
+        }
+        bail!("Item '{item}' not found as a change or spec.");
+    };
+    // 成對規則由 server 套用：created 出現即代表 meta 的 schema+created 成對。
+    let (schema, created) = match status.created {
+        Some(created) => (Some(status.schema_name.clone()), Some(created)),
+        None => (None, None),
+    };
+    let read_artifact = |artifact: &str| -> Result<Option<String>> {
+        match ctx.client.get_artifact(item, artifact) {
+            Ok(content) => Ok(Some(content.content)),
+            Err(e) if e.status == Some(404) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    };
+    // restaleFrom 走清單摘要（設計上 show 組合的「兩份清單」之一）。
+    let restale_from = ctx
+        .client
+        .list_changes()?
+        .changes
+        .into_iter()
+        .find(|c| c.name == item)
+        .map(|c| c.restale_from)
+        .unwrap_or_default();
+    Ok(core::command::ShowOutcome::Change(core::command::ShowChange {
+        name: status.change_name,
+        schema,
+        created,
+        proposal: read_artifact("proposal")?,
+        design: read_artifact("design")?,
+        tasks: read_artifact("tasks")?,
+        delta_capabilities: status.delta_capabilities,
+        from_discussions: status.from_discussions,
+        restale_from,
+    }))
+}
+
 // --- discuss ---
 
 fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
@@ -1050,12 +1128,9 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             Ok(())
         }
         DiscussCommands::New { topic, slug, json } => {
-            // The remote API has no slug field yet — reject loudly rather than
-            // silently dropping the override.
-            if slug.is_some() {
-                anyhow::bail!("--slug is not supported for remote discussions yet");
-            }
-            let resp = ctx.client.new_discussion(&topic)?;
+            // --slug 隨請求上 wire；驗證的單一事實來源在引擎（server 端），
+            // CLI 不預驗（design D1）。
+            let resp = ctx.client.new_discussion(&topic, slug.as_deref())?;
             if json {
                 return print_json(&resp);
             }
@@ -1111,20 +1186,47 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             println!("{} Promoted discussion '{slug}' → change '{change}'", color::green("✓"));
             Ok(())
         }
-        // Destructive discussion removal stays host-governed in remote mode
-        // (contract §5.7) — the local-only verb does not cross the wire.
-        DiscussCommands::Discard { .. } => {
-            bail!("discuss discard is not available in remote mode — remove discussions in the team system")
+        DiscussCommands::Discard { slug, force, json } => {
+            let slug = ctx.client.discard_discussion(&slug, force)?.slug;
+            if json {
+                return print_json(&serde_json::json!({ "slug": slug, "status": "discarded" }));
+            }
+            println!("{} Discarded discussion: {slug}", color::green("✓"));
+            Ok(())
         }
-        // The remote verb contract has no link operation yet — the chain is
-        // local change-metadata surgery until the contract grows one.
-        DiscussCommands::Link { .. } => {
-            bail!("discuss link is not available in remote mode yet — link the discussion locally")
+        DiscussCommands::Link { slug, change, json } => {
+            let bound = ctx.client.link_discussion(&slug, &change)?;
+            if json {
+                return print_json(&serde_json::json!({
+                    "change": bound.change,
+                    "slug": bound.slug,
+                    "status": "linked",
+                }));
+            }
+            println!(
+                "{} Linked discussion '{}' → change '{}'",
+                color::green("✓"),
+                bound.slug,
+                bound.change
+            );
+            Ok(())
         }
-        // Seal marks the discussion promoted once content lands — same local
-        // change-metadata surgery as link, with no remote contract op yet.
-        DiscussCommands::Seal { .. } => {
-            bail!("discuss seal is not available in remote mode yet — seal the discussion locally")
+        DiscussCommands::Seal { slug, change, json } => {
+            let bound = ctx.client.seal_discussion(&slug, &change)?;
+            if json {
+                return print_json(&serde_json::json!({
+                    "change": bound.change,
+                    "slug": bound.slug,
+                    "status": "sealed",
+                }));
+            }
+            println!(
+                "{} Sealed discussion '{}' → change '{}' (marked promoted)",
+                color::green("✓"),
+                bound.slug,
+                bound.change
+            );
+            Ok(())
         }
     }
 }

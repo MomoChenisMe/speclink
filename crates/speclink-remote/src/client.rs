@@ -14,7 +14,8 @@ use speclink_protocol::binding::BindingResponse;
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, ArchiveDiscussionResponse,
     ArchiveResponse, ClaimResponse, ConcludeDiscussionRequest, CreateChangeRequest,
-    CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse, DiscardResponse,
+    BindDiscussionRequest, BindDiscussionResponse, CreateChangeResponse, CreateDiscussionRequest,
+    CreateDiscussionResponse, DiscardDiscussionResponse, DiscardResponse,
     MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
     PutArtifactRequest, PutArtifactResponse, SetDiscussionContextRequest, TaskDoneRequest,
     TaskDoneResponse, TaskUndoneResponse,
@@ -480,14 +481,70 @@ impl Client {
         }
     }
 
-    /// `POST /discussions`
-    pub fn new_discussion(&self, topic: &str) -> Result<CreateDiscussionResponse, RemoteError> {
+    /// `POST /discussions` — `slug` is the caller's override; `None` keeps the
+    /// body byte-identical to the pre-slug client's (server derives the slug).
+    pub fn new_discussion(
+        &self,
+        topic: &str,
+        slug: Option<&str>,
+    ) -> Result<CreateDiscussionResponse, RemoteError> {
         self.post(
             "/discussions",
             &CreateDiscussionRequest {
                 topic: topic.to_string(),
+                slug: slug.map(str::to_string),
             },
         )
+    }
+
+    /// `DELETE /discussions/{slug}?force=` — Command::DiscussDiscard 直通；
+    /// 有輪的 guard 拒絕以 `refused` 回來，由呼叫端翻譯呈現（鏡射 change 側
+    /// DELETE 的 force query 形式）。
+    pub fn discard_discussion(
+        &self,
+        slug: &str,
+        force: bool,
+    ) -> Result<DiscardDiscussionResponse, RemoteError> {
+        self.send::<DiscardDiscussionResponse, Empty>(
+            "DELETE",
+            &format!("/discussions/{slug}?force={force}"),
+            None,
+            &[],
+        )
+    }
+
+    /// `POST /discussions/{slug}/link`
+    pub fn link_discussion(
+        &self,
+        slug: &str,
+        change: &str,
+    ) -> Result<BindDiscussionResponse, RemoteError> {
+        self.post(
+            &format!("/discussions/{slug}/link"),
+            &BindDiscussionRequest { change: change.to_string() },
+        )
+    }
+
+    /// `POST /discussions/{slug}/seal`
+    pub fn seal_discussion(
+        &self,
+        slug: &str,
+        change: &str,
+    ) -> Result<BindDiscussionResponse, RemoteError> {
+        self.post(
+            &format!("/discussions/{slug}/seal"),
+            &BindDiscussionRequest { change: change.to_string() },
+        )
+    }
+
+    /// `POST /changes/{name}/in-progress` — silent parity verb: the response
+    /// body carries nothing the client consumes.
+    pub fn in_progress_add(&self, name: &str) -> Result<(), RemoteError> {
+        self.post::<serde::de::IgnoredAny, _>(
+            &format!("/changes/{name}/in-progress"),
+            &Empty {},
+        )
+        .map(|_| ())
     }
 
     /// `GET /discussions/{slug}`
