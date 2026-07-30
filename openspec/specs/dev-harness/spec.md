@@ -144,7 +144,7 @@ code:
 ---
 ### Requirement: checkout 內 CLI 測試入口
 
-repo root SHALL 提供 npm run cli -- <args>，固定執行同一 checkout 的 target/debug/speclink；Windows SHALL 使用 target/debug/speclink.exe。wrapper SHALL NOT 查詢或 fallback 到 PATH 中的 speclink，SHALL 原序轉送 `<args>`、繼承 environment 與 stdin/stdout/stderr，並回傳既有 CLI 的 exit code。child 工作目錄 SHALL 優先採用 npm 的 INIT_CWD，該值不存在時 SHALL 採用 wrapper 的 process.cwd()。wrapper 不新增子指令、旗標、stdin 格式、輸出 envelope 或檔案系統效果；既有 --json camelCase payload、--no-color 與人眼輸出行為 SHALL 保持不變。
+repo root SHALL 提供 npm run cli -- <args>，固定執行同一 checkout 的 target/debug/speclink；Windows SHALL 使用 target/debug/speclink.exe。該 binary 不存在時，wrapper SHALL 先於 checkout root 建置 speclink-cli 再執行建置產物；建置進度輸出 SHALL NOT 寫入 stdout；建置失敗時 SHALL 於 stderr 顯示原因並以非零 exit code 結束。wrapper SHALL NOT 查詢或 fallback 到 PATH 中的 speclink，SHALL 原序轉送 `<args>`、繼承 environment 與 stdin/stdout/stderr，並回傳既有 CLI 的 exit code。child 工作目錄 SHALL 優先採用 npm 的 INIT_CWD，該值不存在時 SHALL 採用 wrapper 的 process.cwd()；自動建置 SHALL 於 checkout root 執行、不受呼叫端工作目錄影響。wrapper 不新增子指令、旗標、stdin 格式、輸出 envelope 或檔案系統效果（target/debug 的建置產物除外）；既有 --json camelCase payload、--no-color 與人眼輸出行為 SHALL 保持不變。
 
 #### Scenario: PATH 中舊版 CLI 不影響 checkout binary
 
@@ -166,63 +166,106 @@ repo root SHALL 提供 npm run cli -- <args>，固定執行同一 checkout 的 t
 - **WHEN** checkout CLI 因錯誤輸入、找不到變更或驗證失敗而以非零 exit code 結束
 - **THEN** wrapper 保留 CLI 寫入 stdout/stderr 的內容並回傳相同的非零 exit code
 
-#### Scenario: checkout binary 不存在時禁止 fallback
+#### Scenario: checkout binary 不存在時自動建置且禁止 fallback
 
-- **WHEN** target/debug/speclink（Windows 為 speclink.exe）不存在或無法執行，且 PATH 中存在可執行的 speclink
-- **THEN** wrapper 在 stderr 顯示 checkout CLI 無法執行，以非零 exit code 結束，且 SHALL NOT 執行 PATH 中的 speclink
+- **WHEN** target/debug/speclink（Windows 為 speclink.exe）不存在，且 PATH 中存在可執行的 speclink，執行 npm run cli -- status
+- **THEN** wrapper 先於 checkout root 建置 speclink-cli，再執行建置出的 debug binary 並將 status 原序傳入，SHALL NOT 執行 PATH 中的 speclink
+
+#### Scenario: 自動建置失敗以非零收場
+
+- **WHEN** binary 不存在且自動建置以非零狀態結束
+- **THEN** wrapper 於 stderr 顯示建置失敗原因、以非零 exit code 結束，且 SHALL NOT 執行 PATH 中的 speclink
 
 #### Scenario: machine-readable 輸出維持既有契約
 
-- **WHEN** 使用 npm run --silent cli -- <args> 傳入既有 --json 或 --no-color 旗標
-- **THEN** wrapper 不增加 stdout 內容，CLI 的 --json camelCase payload、--no-color 人眼文字與 exit code 維持既有位元級輸出契約
+- **WHEN** 使用 npm run --silent cli -- <args> 傳入既有 --json 或 --no-color 旗標（含觸發自動建置的情況）
+- **THEN** wrapper 與自動建置皆不增加 stdout 內容，CLI 的 --json camelCase payload、--no-color 人眼文字與 exit code 維持既有位元級輸出契約
 
 
 <!-- @trace
-source: spectra-legacy-cleanup
-updated: 2026-07-27
+source: dev-quickstart-and-docs
+updated: 2026-07-30
 code:
   - README.en.md
   - README.md
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/index.css
-  - crates/speclink-cli/src/color.rs
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
-  - crates/speclink-cli/tests/task_done_stamps.rs
-  - crates/speclink-core/assets/skills/archive.md
-  - crates/speclink-core/src/analyzer.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/config.rs
-  - crates/speclink-core/src/demo.rs
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/drift.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/instructions.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/newcmd.rs
-  - crates/speclink-core/src/preflight.rs
-  - crates/speclink-core/src/schema.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/status.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-core/src/validate.rs
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-host/src/context.rs
-  - docs/platform-architecture.zh-TW.md
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/index.ts
-  - packages/ui/src/theme.css
+  - docs/development.md
+  - docs/development.zh-TW.md
+  - package.json
+  - scripts/cli.mjs
+  - scripts/cli.test.mjs
+  - scripts/dev.mjs
+  - scripts/dev.test.mjs
+  - scripts/remote-docs.test.mjs
+-->
+
+---
+### Requirement: 單獨啟動 server
+
+repo root SHALL 提供 npm run dev:server：只驗證 dev 設定並啟動 speclink-server，SHALL NOT 建置 CLI、SHALL NOT 建置 desktop 前端、SHALL NOT 啟動 desktop。設定來源與預設值（.env 合併 process env、sqlite、.dev/store.db、identity .dev/identity.db、127.0.0.1:8080）、輸出直通（server 首跑的一次性 /setup 連結原樣可見）、SIGINT/SIGTERM 收束與 .dev 持久化 SHALL 與 npm run dev 完全一致。
+
+#### Scenario: 全新 checkout 零設定啟動後端
+
+- **WHEN** 在沒有 .env、沒有 .dev/ 的全新 checkout 執行 npm run dev:server
+- **THEN** server 以全預設啟動、終端出現含 /setup?token= 的連結行，過程中沒有 CLI 建置、沒有前端建置、沒有 desktop 視窗
+
+#### Scenario: 設定不合法即拒絕啟動
+
+- **WHEN** SPECLINK_STORE_DRIVER=postgres 且未設 SPECLINK_POSTGRES_URL 時執行 npm run dev:server
+- **THEN** script 以非零 exit code 結束並顯示與 npm run dev 相同的錯誤訊息，server 未啟動
+
+#### Scenario: 中斷收束無殘留
+
+- **WHEN** npm run dev:server 執行中收到 SIGINT
+- **THEN** server process 終止且無任何 process 殘留
+
+<!-- @trace
+source: dev-quickstart-and-docs
+updated: 2026-07-30
+code:
+  - README.en.md
+  - README.md
+  - docs/development.md
+  - docs/development.zh-TW.md
+  - package.json
+  - scripts/cli.mjs
+  - scripts/cli.test.mjs
+  - scripts/dev.mjs
+  - scripts/dev.test.mjs
+  - scripts/remote-docs.test.mjs
+-->
+
+---
+### Requirement: 單獨啟動 desktop
+
+repo root SHALL 提供 npm run dev:desktop：先建置 desktop 前端（vite 產出 dist）再啟動 desktop 的 tauri dev，SHALL NOT 啟動 speclink-server、SHALL NOT 要求任何 remote 設定。設定驗證 SHALL 與 npm run dev 共用——.env 不合法時（例如 postgres 缺 SPECLINK_POSTGRES_URL）SHALL 以非零 exit code 拒絕啟動。前端建置失敗時 SHALL 以非零結束且不啟動 tauri dev——tauri dev 載入靜態 dist，跳過建置會靜默沿用過期畫面。
+
+#### Scenario: 前端先建置再啟動
+
+- **WHEN** 修改 desktop 前端原始碼後執行 npm run dev:desktop
+- **THEN** 前端建置先完成，tauri dev 開啟的視窗呈現本次修改後的畫面，而非過期 dist
+
+#### Scenario: 前端建置失敗即拒絕啟動
+
+- **WHEN** desktop 前端建置以非零狀態結束
+- **THEN** npm run dev:desktop 以非零 exit code 結束，tauri dev 未啟動
+
+#### Scenario: 無 server 亦可用
+
+- **WHEN** 機器上沒有任何 speclink-server 在跑時執行 npm run dev:desktop
+- **THEN** desktop 視窗以本地模式開啟並可瀏覽本地 openspec/ 看板，不因 remote 不可達而阻擋啟動
+
+<!-- @trace
+source: dev-quickstart-and-docs
+updated: 2026-07-30
+code:
+  - README.en.md
+  - README.md
+  - docs/development.md
+  - docs/development.zh-TW.md
+  - package.json
+  - scripts/cli.mjs
+  - scripts/cli.test.mjs
+  - scripts/dev.mjs
+  - scripts/dev.test.mjs
+  - scripts/remote-docs.test.mjs
 -->

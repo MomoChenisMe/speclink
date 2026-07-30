@@ -1,7 +1,12 @@
 // scripts/dev.mjs 純函式層的 node --test 測試（規格「env 到設定的生成邏輯可測」）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDotenv, buildDevConfig, startDevEnvironment } from './dev.mjs';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseDotenv, buildDevConfig, parseDevMode, startDevEnvironment } from './dev.mjs';
+
+const DEV_SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'dev.mjs');
 
 // --- .env 解析（design 決策 3：逐行 KEY=VALUE、跳過註解與空行、不支援展開） ---
 
@@ -205,3 +210,73 @@ test('startDevEnvironment：Windows 上只有 npm prerequisite 走 shell', () =>
   assert.equal(syncCalls[0].options.shell, false, 'cargo 是真 binary，不需要 shell');
   assert.equal(syncCalls[1].options.shell, true, 'Windows 的 npm 是 npm.cmd，需要 shell');
 });
+
+// --- 模式分流（規格「單獨啟動 server」「單獨啟動 desktop」） ---
+
+test('parseDevMode：--server → server、--desktop → desktop、無旗標 → full', () => {
+  assert.equal(parseDevMode(['node', 'scripts/dev.mjs', '--server']), 'server');
+  assert.equal(parseDevMode(['node', 'scripts/dev.mjs', '--desktop']), 'desktop');
+  assert.equal(parseDevMode(['node', 'scripts/dev.mjs']), 'full');
+});
+
+test('server 模式：不建 CLI、不建前端，只 spawn server', () => {
+  const { calls, deps } = trackedDeps();
+  const result = startDevEnvironment({ ...deps, mode: 'server' });
+
+  assert.deepEqual(
+    calls.map((call) => [call.kind, call.cmd, ...call.args]),
+    [
+      [
+        'spawn', 'cargo',
+        'run', '-p', 'speclink-server', '--',
+        '--config', '.dev/config.yaml', '--addr', '127.0.0.1:8080',
+      ],
+    ],
+  );
+  assert.equal(result.status, null);
+  assert.equal(result.children.length, 1);
+});
+
+test('desktop 模式：前端建置後只 spawn tauri dev，不建 CLI 也不含 server', () => {
+  const { calls, deps } = trackedDeps();
+  const result = startDevEnvironment({ ...deps, mode: 'desktop' });
+
+  assert.deepEqual(
+    calls.map((call) => [call.kind, call.cmd, ...call.args]),
+    [
+      ['sync', 'npm', 'run', 'build', '-w', 'apps/desktop'],
+      ['spawn', 'npm', 'run', 'tauri', '-w', 'apps/desktop', '--', 'dev'],
+    ],
+  );
+  assert.equal(result.status, null);
+  assert.equal(result.children.length, 1);
+});
+
+test('desktop 模式：前端建置失敗回傳其狀態且不 spawn tauri dev', () => {
+  const { calls, deps } = trackedDeps([{ status: 2 }]);
+  const result = startDevEnvironment({ ...deps, mode: 'desktop' });
+
+  assert.equal(result.status, 2);
+  assert.deepEqual(result.children, []);
+  assert.equal(spawnCount(calls), 0);
+});
+
+// --- 兩模式沿用既有設定驗證（規格「設定不合法即拒絕啟動」） ---
+// 黑箱子程序測試：驗證失敗發生在任何 build／spawn 之前，子程序立即以 1 收場。
+
+for (const flag of ['--server', '--desktop']) {
+  test(`dev.mjs ${flag}：postgres 缺 URL 時非零拒絕啟動，錯誤同 npm run dev`, () => {
+    const result = spawnSync(process.execPath, [DEV_SCRIPT, flag], {
+      env: {
+        ...process.env,
+        SPECLINK_STORE_DRIVER: 'postgres',
+        SPECLINK_POSTGRES_URL: '',
+      },
+      encoding: 'utf8',
+      timeout: 15_000,
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /SPECLINK_POSTGRES_URL/);
+  });
+}

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // 一鍵 remote 開發編排：讀 repo root 的 .env（若存在）與 process env 合併，
 // 插值生成 .dev/config.yaml 後同起 speclink-server 與 desktop 的 tauri dev。
+// --server／--desktop 只起單邊（dev:server、dev:desktop），設定驗證三模式共用。
 // server 的組態 YAML 不做環境變數展開——插值只發生在這一層（同 deploy compose 的決策）。
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
@@ -92,29 +93,39 @@ function spawnDevChild(cmd, args) {
   });
 }
 
+/// argv → 啟動模式。--server／--desktop 對應 package.json 的 dev:server 與
+/// dev:desktop，無旗標即整套編排（npm run dev 行為不變）。
+export function parseDevMode(argv) {
+  if (argv.includes('--server')) return 'server';
+  if (argv.includes('--desktop')) return 'desktop';
+  return 'full';
+}
+
 /// 長時間程序啟動前的同步前置條件，順序即契約：
 /// 1. 目前 checkout 的 CLI——測試者用 npm run cli 驗證的就是這顆 binary。
+///    server 單獨模式不含 CLI 建置（規格「單獨啟動 server」）。
 /// 2. Desktop 前端資產：tauri.conf.json 無 devUrl，tauri dev 直接載入
 ///    apps/desktop/dist。dist 是 gitignored 的快照，不能只在缺席時建一次，
 ///    否則後續 source 變更會讓 npm run dev 靜默載入舊 UI。
-function devPrerequisites(isWindows) {
-  return [
-    {
-      message: 'speclink dev: 建置當前 checkout 的 speclink-cli…',
-      failure: 'speclink dev: 無法建置當前 checkout 的 speclink-cli',
-      cmd: 'cargo',
-      args: ['build', '-p', 'speclink-cli'],
-      // cargo 是真 binary；Windows 的 npm 是 npm.cmd，必須走 shell。
-      shell: false,
-    },
-    {
-      message: 'speclink dev: 建置當前前端資產…',
-      failure: 'speclink dev: 無法建置 Desktop 前端資產',
-      cmd: 'npm',
-      args: ['run', 'build', '-w', 'apps/desktop'],
-      shell: isWindows,
-    },
-  ];
+function devPrerequisites(mode, isWindows) {
+  const cliBuild = {
+    message: 'speclink dev: 建置當前 checkout 的 speclink-cli…',
+    failure: 'speclink dev: 無法建置當前 checkout 的 speclink-cli',
+    cmd: 'cargo',
+    args: ['build', '-p', 'speclink-cli'],
+    // cargo 是真 binary；Windows 的 npm 是 npm.cmd，必須走 shell。
+    shell: false,
+  };
+  const frontendBuild = {
+    message: 'speclink dev: 建置當前前端資產…',
+    failure: 'speclink dev: 無法建置 Desktop 前端資產',
+    cmd: 'npm',
+    args: ['run', 'build', '-w', 'apps/desktop'],
+    shell: isWindows,
+  };
+  if (mode === 'server') return [];
+  if (mode === 'desktop') return [frontendBuild];
+  return [cliBuild, frontendBuild];
 }
 
 /// prerequisite → 長時間 child 的啟動編排。任一 prerequisite 以非零狀態結束或
@@ -122,13 +133,14 @@ function devPrerequisites(isWindows) {
 /// 成功、CLI 尚不可用」的半完成狀態。全部成功時 status 為 null。
 export function startDevEnvironment({
   addr,
+  mode = 'full',
   isWindows = IS_WINDOWS,
   runSync = spawnSync,
   spawnChild = spawnDevChild,
   log = console.log,
   logError = console.error,
 }) {
-  for (const step of devPrerequisites(isWindows)) {
+  for (const step of devPrerequisites(mode, isWindows)) {
     log(step.message);
     const result = runSync(step.cmd, step.args, {
       cwd: ROOT,
@@ -142,16 +154,19 @@ export function startDevEnvironment({
     }
   }
 
-  return {
-    status: null,
-    children: [
+  const children = [];
+  if (mode !== 'desktop') {
+    children.push(
       spawnChild('cargo', [
         'run', '-p', 'speclink-server', '--',
         '--config', '.dev/config.yaml', '--addr', addr,
       ]),
-      spawnChild('npm', ['run', 'tauri', '-w', 'apps/desktop', '--', 'dev']),
-    ],
-  };
+    );
+  }
+  if (mode !== 'server') {
+    children.push(spawnChild('npm', ['run', 'tauri', '-w', 'apps/desktop', '--', 'dev']));
+  }
+  return { status: null, children };
 }
 
 function main() {
@@ -167,7 +182,10 @@ function main() {
 
   const envPath = path.join(ROOT, '.env');
   const fileEnv = existsSync(envPath) ? parseDotenv(readFileSync(envPath, 'utf8')) : {};
+  const mode = parseDevMode(process.argv);
 
+  // 設定驗證三模式共用——壞掉的 .env 在任何入口都應立即被點名，
+  // 而不是等到唯一會用到它的入口才爆。
   let generated;
   try {
     generated = buildDevConfig(fileEnv, process.env);
@@ -176,10 +194,13 @@ function main() {
     process.exit(1);
   }
 
-  mkdirSync(devDir, { recursive: true });
-  writeFileSync(path.join(devDir, 'config.yaml'), generated.configYaml);
+  // desktop 單獨模式沒有 server 會讀 config，不落地 .dev/。
+  if (mode !== 'desktop') {
+    mkdirSync(devDir, { recursive: true });
+    writeFileSync(path.join(devDir, 'config.yaml'), generated.configYaml);
+  }
 
-  const started = startDevEnvironment({ addr: generated.addr });
+  const started = startDevEnvironment({ addr: generated.addr, mode });
   if (started.status !== null) process.exit(started.status);
   const children = started.children;
 
