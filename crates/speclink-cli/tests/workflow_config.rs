@@ -286,6 +286,59 @@ fn set_dry_run_prints_a_unified_diff_and_writes_nothing() {
 }
 
 #[test]
+fn set_rejects_a_display_name_locale_value() {
+    // Spec scenario 非法 locale 值拒絕（workflow-config-locale-validation）.
+    let p = TempProject::new("set-bad-locale", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run(&["workflow-config", "set", "locale", "繁體中文"]);
+    assert!(!out.status.success(), "display-name value must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("locale"), "stderr names the key: {err}");
+    assert!(err.contains("繁體中文"), "stderr echoes the received value: {err}");
+    for code in ["tw", "ja", "en"] {
+        assert!(err.contains(code), "stderr lists the accepted codes ({code}): {err}");
+    }
+    assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
+}
+
+#[test]
+fn set_rejects_a_case_variant_locale_code() {
+    // Spec Example 表：TW 拒絕（大小寫敏感）.
+    let p = TempProject::new("set-case-locale", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run(&["workflow-config", "set", "locale", "TW"]);
+    assert!(!out.status.success(), "case variant must exit non-zero");
+    assert_eq!(p.config_bytes(), before, "no file effect");
+}
+
+#[test]
+fn set_dry_run_rejects_an_invalid_locale_without_a_diff() {
+    // Spec scenario 非法值帶 dry-run 同樣拒絕.
+    let p = TempProject::new("set-dry-bad-locale", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run(&["workflow-config", "set", "spec_locale", "繁體中文", "--dry-run"]);
+    assert!(!out.status.success(), "invalid value must exit non-zero even with --dry-run");
+    assert!(!stdout_of(&out).contains("@@"), "no diff on stdout: {}", stdout_of(&out));
+    let err = stderr_of(&out);
+    for code in ["tw", "ja", "en", "auto"] {
+        assert!(err.contains(code), "stderr lists the spec_locale codes ({code}): {err}");
+    }
+    assert_eq!(p.config_bytes(), before, "no file effect");
+}
+
+#[test]
+fn set_accepts_auto_for_spec_locale_and_empty_removes_the_key() {
+    // Spec Example 表：spec_locale auto 成功；locale 空字串 成功（移除鍵）.
+    let p = TempProject::new("set-auto-and-empty", WF_YAML);
+    let out = p.run(&["workflow-config", "set", "spec_locale", "auto"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(p.config_text().contains("spec_locale: auto"), "got: {}", p.config_text());
+    let out = p.run(&["workflow-config", "set", "locale", ""]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(!p.config_text().contains("locale: tw"), "locale key removed: {}", p.config_text());
+}
+
+#[test]
 fn set_refuses_to_rewrite_an_unparseable_config() {
     // Spec scenario 壞 config 拒絕寫入.
     let p = TempProject::new("set-bad", BAD_YAML);

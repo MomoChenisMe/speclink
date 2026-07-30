@@ -107,6 +107,35 @@ describe("ProjectSettingsView 載入", () => {
   });
 });
 
+describe("政策下拉未知值顯性呈現", () => {
+  // spec 需求「設定頁政策下拉的未知值顯性呈現」（workflow-config-locale-validation）：
+  // 選項集外的儲存值不得靜默空白，也不得於讀取時被改寫。
+  it("儲存值不在選項集 → 下拉顯示原始值與無效標註、欄位下方浮出引導提示", async () => {
+    const ws = renderView(projectSnap({ locale: "繁體中文", specLocale: "zh-Hant" }));
+    const locale = await screen.findByLabelText("locale");
+    expect(locale.textContent).toContain("繁體中文");
+    expect(locale.textContent).toContain("無效");
+    const specLocale = screen.getByLabelText("spec_locale");
+    expect(specLocale.textContent).toContain("zh-Hant");
+    expect(specLocale.textContent).toContain("無效");
+    const localeHint = screen.getByTestId("locale-invalid-hint");
+    for (const code of ["tw", "ja", "en"]) {
+      expect(localeHint.textContent).toContain(code);
+    }
+    expect(screen.getByTestId("spec-locale-invalid-hint").textContent).toContain("auto");
+    // 讀取不改寫：未按儲存前不得有任何寫入。
+    expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
+  });
+
+  it("合法值與未設定 → 無任何無效標註或提示", async () => {
+    renderView(projectSnap({ locale: "tw", specLocale: null }));
+    expect((await screen.findByLabelText("locale")).textContent).not.toContain("無效");
+    expect(screen.getByLabelText("spec_locale").textContent).not.toContain("無效");
+    expect(screen.queryByTestId("locale-invalid-hint")).toBeNull();
+    expect(screen.queryByTestId("spec-locale-invalid-hint")).toBeNull();
+  });
+});
+
 describe("ProjectSettingsView 寫入", () => {
   it("tools 加選 codex 後儲存 → writeAppTools 收到完整選集", async () => {
     const ws = renderView(snapshot());
