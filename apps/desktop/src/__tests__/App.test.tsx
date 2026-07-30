@@ -21,6 +21,11 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 
+// app 版本查詢（側欄與設定頁的現版號）：jsdom 無 Tauri IPC，以固定版本模擬。
+vi.mock("@tauri-apps/api/app", () => ({
+  getVersion: vi.fn().mockResolvedValue("0.1.0"),
+}));
+
 // 兩個抽屜的 pass-through spy：捕捉 props（驗證刷新世代下發）後照常渲染原元件；
 // Toaster 以 marker 驗證由 App 根層掛載，行為整合由 packages/ui 測試承載。
 const { drawerSpy, toasterSpy } = vi.hoisted(() => ({
@@ -770,5 +775,26 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     fireEvent.click(within(aside).getByRole("button", { name: "設定" }));
     await waitFor(() => expect(main().className).toContain("overflow-y-auto"));
     expect(main().className).not.toContain("overflow-hidden");
+  });
+});
+
+describe("側欄版本號（desktop-app「桌面自動更新」的現版可見性）", () => {
+  it("注入 updater 面時，側欄底部顯示 v 版本號", async () => {
+    const ws = fakeWorkspace();
+    ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
+    render(
+      <App
+        createSession={makeSession(fakeDataSource())}
+        workspace={ws as never}
+        updater={{ check: vi.fn().mockResolvedValue(null), relaunch: vi.fn() }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("v0.1.0")).toBeTruthy());
+  });
+
+  it("未注入 updater 面時不顯示版本號", async () => {
+    renderApp();
+    await waitFor(() => expect(screen.getByRole("complementary")).toBeTruthy());
+    expect(screen.queryByText(/^v\d/)).toBeNull();
   });
 });

@@ -24,3 +24,4 @@ deploy/.env
 
 # macOS
 .DS_Store
+apps/desktop/src-tauri/binaries/

@@ -43,6 +43,9 @@ import { MigrationDialog } from "./components/MigrationDialog";
 import { RemoteConflictDialog } from "./components/RemoteConflictDialog";
 import { RemoteWorkspaceRecovery } from "./components/RemoteWorkspaceRecovery";
 import { AppSettingsView } from "./views/AppSettingsView";
+import { UpdateBanner } from "./components/UpdateBanner";
+import { appVersion, type UpdaterAdapter } from "./adapter/updater";
+import type { CliInstallAdapter } from "./adapter/cliInstall";
 import { ProjectSettingsView } from "./views/ProjectSettingsView";
 import type { ConnectionsAdapter } from "./adapter/connections";
 import type { WorkspaceAdapter } from "./adapter/workspace";
@@ -75,6 +78,10 @@ export interface AppProps {
   connections?: ConnectionsAdapter;
   /** 正式 local→remote 遷移命令；預設使用 Tauri adapter，測試可注入。 */
   migration?: MigrationAdapter;
+  /** 自動更新面（desktop-app「桌面自動更新」）；未注入時更新入口不啟用。 */
+  updater?: UpdaterAdapter;
+  /** CLI 佈署面（desktop-app「安裝 CLI 指令到 PATH」）；未注入時 CLI 卡不啟用。 */
+  cliInstall?: CliInstallAdapter;
 }
 
 const DEFAULT_MIGRATION_ADAPTER = createMigrationAdapter();
@@ -163,6 +170,8 @@ export function App({
   workspace,
   connections,
   migration = DEFAULT_MIGRATION_ADAPTER,
+  updater,
+  cliInstall,
 }: AppProps) {
   const [localePref, setLocalePrefState] = useState<LocalePreference>(() => readLocalePreference());
   // 切換即時生效並持久化（設定頁的 UI 語言三選接這裡）。
@@ -182,6 +191,8 @@ export function App({
         workspace={workspace}
         connections={connections}
         migration={migration}
+        updater={updater}
+        cliInstall={cliInstall}
         localePref={localePref}
         onLocalePrefChange={setLocalePref}
       />
@@ -203,12 +214,23 @@ function AppInner({
   workspace,
   connections,
   migration,
+  updater,
+  cliInstall,
   localePref,
   onLocalePrefChange,
 }: AppInnerProps) {
   const useStore = useMemo(
-    () => createAppStore({ createSession, openRemote, workspace, connections, migration }),
-    [createSession, openRemote, workspace, connections, migration],
+    () =>
+      createAppStore({
+        createSession,
+        openRemote,
+        workspace,
+        connections,
+        migration,
+        updater,
+        cliInstall,
+      }),
+    [createSession, openRemote, workspace, connections, migration, updater, cliInstall],
   );
   const s = useStore();
   // 活躍 session（workspace-session 決策 6）：詳情／規格／封存抽屜的文件載入
@@ -257,6 +279,15 @@ function AppInner({
     onOpenWorkspace:
       openRemote && ((id: string) => s.openWorkspaceChooser({ initialConnectionId: id })),
   };
+  // 設定頁軟體更新卡的常駐現版號（updater 注入時啟動取一次；非 Tauri 環境靜默）。
+  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+  useEffect(() => {
+    if (updater) {
+      appVersion()
+        .then(setCurrentVersion)
+        .catch(() => {});
+    }
+  }, [updater]);
   // 初始化確認框的工具多選（預設勾 claude）；對話框每次開啟重設。
   const [initTools, setInitTools] = useState<string[]>(["claude"]);
   useEffect(() => {
@@ -290,12 +321,16 @@ function AppInner({
     if (workspace) void useStore.getState().restoreTabs();
     else void useStore.getState().refresh();
     if (connections) void useStore.getState().refreshConnections();
+    // 啟動背景檢查更新（非阻塞；失敗靜默——desktop-app「檢查失敗靜默」）。
+    if (updater) void useStore.getState().checkForUpdates(false);
+    // CLI 佈署狀態探測（含 AppImage 版本不符的啟動自我修復）。
+    if (cliInstall) void useStore.getState().refreshCliInstall();
     return () => {
       // 卸載時取消漏出的搜尋去抖，杜絕在途 timer 於 store 卸載後才開火。
       useStore.getState().disposeSearch();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useStore, connections, workspace]);
+  }, [useStore, connections, workspace, updater, cliInstall]);
 
   // 檔案監看的宿主層 wiring（workspace-session 決策 5）：訂閱活躍 session 的
   // 事件來源（workspace-changed 以自身 root 過濾），觸發既有整批 refresh；
@@ -404,6 +439,13 @@ function AppInner({
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
+      {/* 更新通知列（徵詢／下載中／待重啟／錯誤時浮出；其餘狀態不佔畫面） */}
+      <UpdateBanner
+        state={s.updater}
+        onAccept={() => void s.acceptUpdate()}
+        onDismiss={s.dismissUpdate}
+        onRelaunch={() => void s.relaunchToUpdate()}
+      />
       {/* 頂欄 */}
       <header className="flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
         <div className="flex items-center gap-1.5 shrink-0">
@@ -521,6 +563,12 @@ function AppInner({
             onClick={() => s.setBoardView("settings")}
             className="mt-auto"
           />
+          {/* 現版號常駐側欄最底（主頁可見；詳細更新入口在設定頁軟體更新卡）。 */}
+          {currentVersion && (
+            <span className="px-3 pt-1 text-[11px] leading-none text-muted-foreground/80">
+              v{currentVersion}
+            </span>
+          )}
         </aside>
 
         {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
@@ -533,6 +581,18 @@ function AppInner({
               trayPanelError={s.trayPanelError}
               servers={servers}
               focusConnectionId={s.reauthConnectionId}
+              updater={
+                updater && {
+                  state: s.updater,
+                  currentVersion,
+                  onCheck: () => void s.checkForUpdates(true),
+                }
+              }
+              cliInstall={
+                s.cliInstall
+                  ? { view: s.cliInstall, onInstall: () => void s.installCli() }
+                  : undefined
+              }
             />
           ) : workspace !== undefined && s.tabs.length === 0 ? (
             // 零分頁（首次使用）：專案範圍頁面落入空狀態；應用程式設定已於上方先行處理。

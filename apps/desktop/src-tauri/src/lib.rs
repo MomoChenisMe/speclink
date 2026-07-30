@@ -6,6 +6,7 @@
 //! command 逐呼叫收 root，直通 desktop-core 的帶路徑函式；分頁切換不再改寫
 //! 任何全域，前一分頁 in-flight 呼叫以其原 root 結算。
 
+pub mod cli_install;
 pub mod connections;
 pub mod event_manager;
 pub mod remote;
@@ -19,6 +20,21 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 use tauri::{Emitter, Manager};
+
+#[tauri::command]
+async fn cli_install_probe(app: tauri::AppHandle) -> Result<cli_install::CliInstallProbe, String> {
+    let version = app.package_info().version.to_string();
+    tauri::async_runtime::spawn_blocking(move || cli_install::probe(version))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cli_deploy(plan: cli_install::CliDeployPlan) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || cli_install::deploy(plan))
+        .await
+        .map_err(|e| e.to_string())?
+}
 
 #[tauri::command]
 fn list_changes(root: PathBuf) -> Value {
@@ -1253,7 +1269,9 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
     // 面板樣式相依僅 macOS 註冊（design D6）：positioner 供 tray 相對定位、
     // nspanel 供不搶焦點的 NSPanel 容器。
     #[cfg(target_os = "macos")]
@@ -1287,6 +1305,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            cli_install_probe,
+            cli_deploy,
             list_changes,
             list_specs,
             status,
