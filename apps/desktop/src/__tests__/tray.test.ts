@@ -48,6 +48,7 @@ const fakeT = (key: string): string =>
     "tray.open": "開啟 Speclink",
     "tray.settings": "設定",
     "tray.quit": "結束",
+    "app.navProjectSettings": "專案設定",
     "tray.discussions": "討論 {n}",
     "tray.discussionsHeader": "討論",
     "tray.promotedHeader": "已轉出",
@@ -284,9 +285,17 @@ describe("buildTrayModel", () => {
       "discussion",
       "separator",
       "open",
+      "project-settings",
       "settings",
       "quit",
     ]);
+  });
+
+  it("動作區含專案設定項：位於開啟 Speclink 之後、label 沿用 app.navProjectSettings", () => {
+    const items = buildTrayModel(snapshot(), fakeT).items;
+    const ps = byKind(items, "project-settings");
+    expect(ps).toHaveLength(1);
+    expect(ps[0].label).toBe("專案設定");
   });
 
   it("共用狀態投影讓 restoring／error／needs-reauth 成為原生復原項，且 active error 不顯示舊資料", () => {
@@ -699,6 +708,19 @@ describe("initTray 接線（選單）", () => {
     expect(bag.setBoardView).toHaveBeenCalledWith("settings");
   });
 
+  it("點「專案設定」開主視窗、取得焦點並切換至專案設定頁", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true });
+    const ps = lastItems.find((i) => i.text === "專案設定");
+    expect(ps).toBeDefined();
+    ps.action();
+    // openMainWindow 為 async（unminimize → show → setFocus）：沖洗微任務後再斷言
+    await new Promise((r) => setTimeout(r, 0));
+    expect(win.show).toHaveBeenCalled();
+    expect(win.setFocus).toHaveBeenCalled();
+    expect(bag.setBoardView).toHaveBeenCalledWith("project-settings");
+  });
+
   it("「結束」映射為原生 predefined Quit", async () => {
     const { store } = makeStore();
     await initTray(store, { isMacOS: true });
@@ -876,6 +898,17 @@ describe("initTray 接線（選單）", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(win.show).toHaveBeenCalled();
     expect(bag.setBoardView).toHaveBeenCalledWith("settings");
+  });
+
+  it("面板動作 open-project-settings 喚起主視窗並切換至專案設定頁", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
+    (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-project-settings" } });
+    // openMainWindow 為 async：沖洗微任務後再斷言
+    await new Promise((r) => setTimeout(r, 0));
+    expect(win.show).toHaveBeenCalled();
+    expect(bag.setBoardView).toHaveBeenCalledWith("project-settings");
   });
 
   it("面板動作 quit 呼叫結束 app 的命令", async () => {

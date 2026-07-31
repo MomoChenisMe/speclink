@@ -32,17 +32,30 @@ function PanelRoot() {
       void unlisten.then((f) => f());
     };
   }, []);
-  // 視窗高度自適應內容：量測內容實高（上限 640 後由 body 捲動），失敗靜默。
+  // 視窗高度自適應內容（三段式版面）：root 以 h-screen 撐滿視窗，直接量 root
+  // 會與 setSize 形成「視窗高⇄root 高」循環——改以「root 現高 − 中段可視高 ＋
+  // 中段內容自然高」還原無約束總高（＝頁首＋中段自然內容高＋頁尾＋留白），
+  // 上限 640 後由中段內部捲動，失敗靜默。
   useEffect(() => {
-    const el = document.getElementById("root");
-    if (!el) return;
+    const root = document.getElementById("root");
+    if (!root) return;
     const win = getCurrentWindow();
     const fit = () => {
-      const h = Math.min(Math.ceil(el.getBoundingClientRect().height), PANEL_MAX_HEIGHT);
+      const scroll = root.querySelector<HTMLElement>('[data-testid="panel-scroll"]');
+      if (!scroll) return;
+      const natural =
+        root.getBoundingClientRect().height - scroll.clientHeight + scroll.scrollHeight;
+      const h = Math.min(Math.ceil(natural), PANEL_MAX_HEIGHT);
       if (h > 0) void win.setSize(new LogicalSize(PANEL_WIDTH, h)).catch(() => {});
     };
     const observer = new ResizeObserver(fit);
-    observer.observe(el);
+    // 尺寸會變的是頁首、頁尾與中段內容 wrapper——中段容器本身被 flex 約束、
+    // 內容增減不改其外框，觀察容器會漏掉內容變化；setSize 改的是 root 與
+    // 中段容器（皆未被觀察），不會自迴圈。
+    for (const testid of ["panel-header", "panel-scroll-content", "panel-footer"]) {
+      const el = root.querySelector(`[data-testid="${testid}"]`);
+      if (el) observer.observe(el);
+    }
     fit();
     return () => observer.disconnect();
   }, []);
@@ -56,6 +69,7 @@ function PanelRoot() {
       onOpenChange={(name) => act("open-change", name)}
       onOpenDiscussion={(slug) => act("open-discussion", slug)}
       onOpenApp={() => act("open-app")}
+      onOpenProjectSettings={() => act("open-project-settings")}
       onOpenSettings={() => act("open-settings")}
       onQuit={() => act("quit")}
       onAddProject={() => act("add-project")}

@@ -7,11 +7,11 @@ TBD - created by archiving change 'system-tray-status'. Update Purpose after arc
 ## Requirements
 
 ### Requirement: 系統匣圖示與原生選單
-桌面 app SHALL 於系統匣（macOS 選單列、Windows 通知區域、Linux AppIndicator）顯示 Speclink 圖示；互動樣式 SHALL 由平台決定——macOS 一律為面板（見「面板樣式（macOS）」需求）、非 macOS 平台一律為原生下拉選單（menu-first），SHALL NOT 提供樣式偏好或切換介面。圖示 SHALL 為單色 Speclink 標記（使用者提供的可辨識剪影）；macOS 上 SHALL 以 template 單色形式渲染以適應深淺色選單列。原生選單 SHALL 依序包含：專案區（已開啟的專案分頁）、生命週期分區（提案中／進行中／已就緒）、討論區、動作區（「開啟 Speclink」「設定」「結束」）。
+桌面 app SHALL 於系統匣（macOS 選單列、Windows 通知區域、Linux AppIndicator）顯示 Speclink 圖示；互動樣式 SHALL 由平台決定——macOS 一律為面板（見「面板樣式（macOS）」需求）、非 macOS 平台一律為原生下拉選單（menu-first），SHALL NOT 提供樣式偏好或切換介面。圖示 SHALL 為單色 Speclink 標記（使用者提供的可辨識剪影）；macOS 上 SHALL 以 template 單色形式渲染以適應深淺色選單列。原生選單 SHALL 依序包含：專案區（已開啟的專案分頁）、生命週期分區（提案中／進行中／已就緒）、討論區、動作區（「開啟 Speclink」「專案設定」「設定」「結束」）。
 
 #### Scenario: 非 macOS 啟動後系統匣出現圖示與完整選單
 - **WHEN** 使用者於 Windows 或 Linux 啟動桌面 app 且載入完成
-- **THEN** 系統匣出現單色 Speclink 標記圖示，展開選單依序可見專案區、生命週期分區、討論區、動作區（「開啟 Speclink」「設定」「結束」）
+- **THEN** 系統匣出現單色 Speclink 標記圖示，展開選單依序可見專案區、生命週期分區、討論區、動作區（「開啟 Speclink」「專案設定」「設定」「結束」）
 
 #### Scenario: macOS 啟動後點擊圖示即面板
 - **WHEN** 使用者於 macOS 啟動桌面 app 且載入完成，點擊系統匣圖示
@@ -23,16 +23,16 @@ TBD - created by archiving change 'system-tray-status'. Update Purpose after arc
 
 
 <!-- @trace
-source: tray-right-click
-updated: 2026-07-17
+source: tray-panel-scroll-and-vibrancy
+updated: 2026-07-31
 code:
-  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/panel.html
   - apps/desktop/src/__tests__/tray.test.ts
   - apps/desktop/src/__tests__/trayPanel.test.tsx
-  - apps/desktop/src/i18n/messages.ts
   - apps/desktop/src/panel/TrayPanel.tsx
   - apps/desktop/src/panel/main.tsx
   - apps/desktop/src/tray.ts
+  - apps/desktop/vitest.setup.ts
 -->
 
 ---
@@ -289,11 +289,15 @@ code:
 
 ---
 ### Requirement: 開啟視窗與結束動作
-選單「開啟 Speclink」SHALL 顯示主視窗並使其取得焦點；「設定」SHALL 顯示主視窗、使其取得焦點並將主頁面切換至設定頁；「結束」SHALL 結束 app——原生選單與 macOS 面板皆同（面板的「結束」SHALL 結束整個 app 行程，SHALL NOT 僅收合面板）。除「開啟 Speclink」「設定」、變更子選單動作與討論項外，選單其他操作 SHALL NOT 改變主視窗的顯示與焦點狀態。
+選單「開啟 Speclink」SHALL 顯示主視窗並使其取得焦點；「專案設定」SHALL 顯示主視窗、使其取得焦點並將主頁面切換至專案設定頁（呈現作用中專案的專案層設定；作用中 workspace 處於復原或 stale 狀態時 SHALL 照常可用，SHALL NOT 特判隱藏或停用——導覽後的呈現交由主視窗既有行為）；「設定」SHALL 顯示主視窗、使其取得焦點並將主頁面切換至設定頁；「結束」SHALL 結束 app——原生選單與 macOS 面板皆同（面板的「結束」SHALL 結束整個 app 行程，SHALL NOT 僅收合面板）。動作區順序 SHALL 為「開啟 Speclink」「專案設定」「設定」「結束」（專案層動作在前、app 層在後，與主視窗側欄層次一致）；「專案設定」文案 SHALL 與主視窗側欄「專案設定」詞條一致，macOS 面板該列圖示 SHALL 沿用側欄同款。除「開啟 Speclink」「專案設定」「設定」、變更子選單動作與討論項外，選單其他操作 SHALL NOT 改變主視窗的顯示與焦點狀態。
 
 #### Scenario: 自最小化狀態開啟主視窗
 - **WHEN** 主視窗處於最小化或被其他視窗遮蔽，使用者點選「開啟 Speclink」
 - **THEN** 主視窗顯示於前景並取得焦點
+
+#### Scenario: 專案設定動作開啟主視窗並跳至專案設定頁
+- **WHEN** 主視窗未在前景且顯示看板頁，使用者點選系統匣動作區的「專案設定」
+- **THEN** 主視窗顯示於前景並取得焦點，主頁面切換至作用中專案的專案設定頁
 
 #### Scenario: 設定動作開啟主視窗並跳至設定頁
 - **WHEN** 主視窗未在前景且顯示看板頁，使用者點選系統匣動作區的「設定」
@@ -309,16 +313,16 @@ code:
 
 
 <!-- @trace
-source: tray-right-click
-updated: 2026-07-17
+source: tray-panel-scroll-and-vibrancy
+updated: 2026-07-31
 code:
-  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/panel.html
   - apps/desktop/src/__tests__/tray.test.ts
   - apps/desktop/src/__tests__/trayPanel.test.tsx
-  - apps/desktop/src/i18n/messages.ts
   - apps/desktop/src/panel/TrayPanel.tsx
   - apps/desktop/src/panel/main.tsx
   - apps/desktop/src/tray.ts
+  - apps/desktop/vitest.setup.ts
 -->
 
 ---
@@ -326,19 +330,21 @@ code:
 
 於 macOS，點擊系統匣圖示 SHALL NOT 顯示原生下拉選單，而 SHALL 於圖示下方彈出貼齊圖示的面板視窗，再次點擊 SHALL 收合——無需任何偏好設定。點擊 SHALL 不分滑鼠按鍵：主鍵（左鍵）與次要鍵（右鍵）點擊圖示 SHALL 完全等價，皆為開閉面板。面板內容 SHALL 與原生選單同源（同一前端 store 投影：專案與復原狀態、生命週期分區的變更與進度、討論——討論比照原生選單分「討論」與「已轉出」兩分區），SHALL NOT 為面板另建第二條資料查詢路徑或狀態機。
 
+面板底 SHALL 於毛玻璃之上、內容之下鋪一層主題背景色的半透明補光層（隨系統深淺色模式切換）：深色背景下面板亮度 SHALL 錨定主題背景色、SHALL NOT 明顯偏暗；淺色背景下毛玻璃 SHALL 仍可辨（背後內容輪廓經模糊可見）。
+
 專案區 SHALL 呈現為橫向 tab 條：每個 tab SHALL 顯示專案名首字母的圓角方塊 avatar 與專案名；remote tab SHALL 另以圖示與文字可辨識 ready、restoring、offline、needs-reauth 或 error，SHALL NOT 只用顏色表意。作用中 ready 專案的 tab SHALL 以實心主色底＋反白文字標示；作用中 restoring／error 專案 SHALL 維持同等清楚的 selected 狀態且不呈 disabled 外觀。tab 總寬超出面板時 SHALL 可橫向捲動且 SHALL NOT 顯示捲軸。
 
 點擊 tab SHALL 原地切換作用中專案，SHALL NOT 喚起主視窗、SHALL NOT 收合面板；切換 SHALL 以分頁的 locator key 為把手（與「選單專案切換」需求同語意），local 與 remote 專案 tab 一視同仁，SHALL NOT 因分頁無本機路徑而靜默無反應。active remote tab 尚無 session且為 restoring／error 時，面板 SHALL 以一張精簡復原卡取代討論與生命週期分區；復原卡 SHALL 顯示 workspace、server、繁中狀態摘要及重新連線或重新登入、在 Speclink 中查看詳情／設定的動作，SHALL NOT 顯示上一個 workspace 的資料。直接重新連線 SHALL 由面板動作回流主視窗 store、面板保持開啟且 SHALL NOT 喚起主視窗；使用者明確選取詳情、設定或重新登入 SHALL 顯示主視窗並取得焦點。active remote session 為 offline 時，面板 SHALL 顯示 stale 狀態列並保留最後成功的變更與討論內容，等待既有 worker 自動收斂。
 
 tab 條尾端 SHALL 有「加入專案」動作項：點擊 SHALL 先顯示主視窗（含切換至其所在桌面——確保後續對話框於使用者眼前可見）再開啟資料夾選擇器（與主視窗「開啟專案」同語意）——選定即以分頁加入該專案並成為作用中專案，取消則無任何變化。資料夾選擇器等系統原生對話框 SHALL 跟隨系統語言呈現（app SHALL 宣告繁體中文在地化，不得固定英文介面）。
 
-active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHALL 依區塊排列：專案 tab 條之下依序為討論區塊（「討論」分區常駐呈現，其後「已轉出」分區有料才現）、生命週期區塊（提案中→進行中→已就緒）、動作區塊（「開啟 Speclink」「設定」「結束」）。專案 tab 條與討論區塊之間、討論區塊與生命週期區塊之間、生命週期區塊與動作區塊之間 SHALL 各有一條分割線（共三條）；區塊內部（分區卡之間）SHALL NOT 出現分割線。此區塊順序為面板刻意設計；原生選單的區段順序仍依「系統匣圖示與原生選單」需求（生命週期分區在前、討論區在後），不受本段影響。無 session 的 restoring／error 狀態 SHALL 以「tab 條、分割線、復原卡、分割線、動作區塊」排列，不渲染討論與生命週期空卡。
+active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHALL 依區塊排列：專案 tab 條之下依序為討論區塊（「討論」分區常駐呈現，其後「已轉出」分區有料才現）、生命週期區塊（提案中→進行中→已就緒）、動作區塊（「開啟 Speclink」「專案設定」「設定」「結束」）。面板 SHALL 為三段式版面：專案 tab 條為固定頁首、動作區塊為固定頁尾，兩者 SHALL 常駐可見、SHALL NOT 隨內容捲動；頁首與頁尾之間的內容區塊（討論、生命週期，或復原卡／stale 狀態列）同屬可捲中段。專案 tab 條與討論區塊之間、討論區塊與生命週期區塊之間、生命週期區塊與動作區塊之間 SHALL 各有一條分割線（共三條）；tab 條之下與動作區塊之上的兩條 SHALL 分別隨頁首、頁尾常駐，討論區塊與生命週期區塊之間的一條 SHALL 隨中段內容捲動；區塊內部（分區卡之間）SHALL NOT 出現分割線。此區塊順序為面板刻意設計；原生選單的區段順序仍依「系統匣圖示與原生選單」需求（生命週期分區在前、討論區在後），不受本段影響。無 session 的 restoring／error 狀態 SHALL 以「tab 條、分割線、復原卡、分割線、動作區塊」排列，不渲染討論與生命週期空卡——復原卡同屬可捲中段，頁首頁尾結構不因此分支。
 
 生命週期分區與討論分區 SHALL 各自以半透明圓角卡片容器呈現（面板毛玻璃底 SHALL 可透出），分區標題 SHALL 含主色上色的分區圖示，並 SHALL 顯示該分區的項目計數（徽章樣式與看板欄計數同語彙）。生命週期三個階段分區（提案中／進行中／已就緒）SHALL 常駐呈現：零筆階段 SHALL 以「分區標題＋計數 0」的空狀態卡呈現，SHALL NOT 因該階段無變更而整卡消失；全無變更時 SHALL NOT 顯示佔位卡（原「尚無進行中變更」），而以三張計數 0 的分區卡呈現，分區順序固定為提案中→進行中→已就緒。「已轉出」分區 SHALL 維持有料才現——零筆時 SHALL NOT 呈現（與「討論列表」需求一致）。空狀態卡（討論零筆、生命週期零筆階段）SHALL 維持最小高度、內容垂直置中，不得塌陷成細條。有任務的變更列，其進度條填色 SHALL 依階段套用與看板同源的主色深淺階梯（提案中最淺、進行中次之、已就緒最深）。
 
 變更與討論列 SHALL 於列尾常駐複製鈕（複製內容與原生選單的複製動作一致：變更為 name、討論為 slug）；複製鈕點擊後 SHALL 短暫顯示成功回饋（勾號圖示，與看板複製鈕同模式）後自行復原。點擊變更或討論列本體 SHALL 顯示主視窗並開啟對應詳情。
 
-面板開啟時 SHALL NOT 有任何互動元素自動取得焦點（不得出現系統焦點框）；複製鈕 SHALL NOT 可經 Tab 鍵取得焦點。新增的復原 tab、card 與動作 SHALL 提供語意化 label 與清楚 pointer hit area，但 SHALL NOT 將面板改為會奪取前景 app 焦點的 key window。面板高度 SHALL 自適應內容（隨內容增減貼合，達上限高度後面板內部捲動、不得於內容未超限時出現多餘捲動與空白）。面板開啟 SHALL NOT 奪取目前前景 app 的焦點；面板失焦時 SHALL 自動收合。面板視窗建立失敗時 app SHALL 以原生選單樣式運作（選單實作跨平台保留、兼作 macOS 失敗後備）並於設定頁本機設定簽浮出單行錯誤。
+面板開啟時 SHALL NOT 有任何互動元素自動取得焦點（不得出現系統焦點框）；複製鈕 SHALL NOT 可經 Tab 鍵取得焦點。新增的復原 tab、card 與動作 SHALL 提供語意化 label 與清楚 pointer hit area，但 SHALL NOT 將面板改為會奪取前景 app 焦點的 key window。面板高度 SHALL 自適應內容（隨內容增減貼合，達上限高度後 SHALL 僅由可捲中段內部捲動——固定頁首與頁尾 SHALL 全程可見；不得於內容未超限時出現多餘捲動與空白）。中段 SHALL 於捲動時浮現捲動指示、停止捲動後自動隱去，SHALL NOT 常駐顯示、SHALL NOT 完全無指示、SHALL NOT 佔用版面寬度；此浮現與隱去行為 SHALL NOT 依賴系統捲軸偏好——使用者將系統設為「總是顯示捲軸」時中段指示仍 SHALL 自動隱去。面板開啟 SHALL NOT 奪取目前前景 app 的焦點；面板失焦時 SHALL 自動收合。面板視窗建立失敗時 app SHALL 以原生選單樣式運作（選單實作跨平台保留、兼作 macOS 失敗後備）並於設定頁本機設定簽浮出單行錯誤。
 
 #### Scenario: 面板樣式下點擊圖示彈出貼齊面板
 
@@ -353,7 +359,17 @@ active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHAL
 #### Scenario: ready workspace 的區塊順序與分割線
 
 - **WHEN** 面板開啟，作用中 ready 專案存在討論中討論、已轉出討論與各階段變更
-- **THEN** 由上而下依序為：專案 tab 條、分割線、「討論」分區、「已轉出」分區、分割線、「提案中」「進行中」「已就緒」分區、分割線、「開啟 Speclink」「設定」「結束」；分割線恰為三條且僅出現於區塊之間、分區卡之間無分割線
+- **THEN** 由上而下依序為：專案 tab 條、分割線、「討論」分區、「已轉出」分區、分割線、「提案中」「進行中」「已就緒」分區、分割線、「開啟 Speclink」「專案設定」「設定」「結束」；分割線恰為三條且僅出現於區塊之間、分區卡之間無分割線
+
+#### Scenario: 內容超限時頁首頁尾常駐僅中段捲動
+
+- **WHEN** 面板內容高度超過上限，使用者於面板內向下捲動
+- **THEN** 專案 tab 條與動作區塊全程固定可見，僅中段內容分區隨捲動移動；捲動指示僅於捲動時浮現、停止後自動隱去，未見常駐捲軸，且系統設為「總是顯示捲軸」時亦然
+
+#### Scenario: 深色背景下面板亮度不明顯下沉
+
+- **WHEN** 系統為淺色模式，面板於深色背景（如全螢幕深色 IDE）之上開啟
+- **THEN** 面板底色錨定主題背景色、亮度未明顯偏暗，毛玻璃仍可辨背後內容輪廓
 
 #### Scenario: 點擊專案 tab 原地切換
 
@@ -428,7 +444,7 @@ active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHAL
 #### Scenario: 面板高度自適應內容
 
 - **WHEN** 面板開啟且正常內容或復原卡高度少於一屏
-- **THEN** 面板高度貼合內容（下方無大片空白），內容增加超過上限高度後面板內部出現捲動
+- **THEN** 面板高度貼合內容（下方無大片空白），內容增加超過上限高度後僅可捲中段出現捲動、頁首頁尾維持固定
 
 #### Scenario: 面板建立失敗退回原生選單
 
@@ -437,33 +453,16 @@ active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHAL
 
 
 <!-- @trace
-source: remote-workspace-recovery-ux
-updated: 2026-07-21
+source: tray-panel-scroll-and-vibrancy
+updated: 2026-07-31
 code:
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/src/tray.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src-tauri/tests/tray_menu.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/projectTabs.test.tsx
-  - apps/desktop/src/__tests__/remoteDataSource.test.ts
-  - apps/desktop/src/__tests__/remoteOpen.test.ts
-  - apps/desktop/src/__tests__/remoteResilience.test.tsx
-  - apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx
-  - apps/desktop/src/__tests__/session.test.ts
+  - apps/desktop/panel.html
   - apps/desktop/src/__tests__/tray.test.ts
   - apps/desktop/src/__tests__/trayPanel.test.tsx
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/components/RemoteWorkspaceRecovery.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/main.tsx
   - apps/desktop/src/panel/TrayPanel.tsx
   - apps/desktop/src/panel/main.tsx
-  - apps/desktop/src/session.ts
-  - apps/desktop/src/store.ts
   - apps/desktop/src/tray.ts
+  - apps/desktop/vitest.setup.ts
 -->
 
 ---

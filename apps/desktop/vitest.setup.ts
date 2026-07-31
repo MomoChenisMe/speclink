@@ -21,3 +21,13 @@ if (typeof window !== "undefined") {
   if (!proto.releasePointerCapture) proto.releasePointerCapture = () => {};
   if (!proto.scrollIntoView) proto.scrollIntoView = () => {};
 }
+
+// jsdom 未實作 ResizeObserver，面板捲動指示條與高度自適應會直接 new——
+// 同屬環境缺口，補 no-op stub（jsdom 無版面計算，觀察本身無從觸發）。
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}

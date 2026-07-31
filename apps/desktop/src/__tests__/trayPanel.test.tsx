@@ -44,6 +44,7 @@ function renderPanel(over: Partial<Parameters<typeof TrayPanel>[0]> = {}) {
     onOpenDiscussion: vi.fn(),
     onOpenProject: vi.fn(),
     onOpenApp: vi.fn(),
+    onOpenProjectSettings: vi.fn(),
     onOpenSettings: vi.fn(),
     onQuit: vi.fn(),
     onCopy: vi.fn(),
@@ -119,6 +120,7 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
           onOpenChange={vi.fn()}
           onOpenDiscussion={vi.fn()}
           onOpenApp={vi.fn()}
+          onOpenProjectSettings={vi.fn()}
           onOpenSettings={vi.fn()}
           onQuit={vi.fn()}
           onCopy={vi.fn()}
@@ -154,6 +156,7 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
           onOpenChange={vi.fn()}
           onOpenDiscussion={vi.fn()}
           onOpenApp={vi.fn()}
+          onOpenProjectSettings={vi.fn()}
           onOpenSettings={vi.fn()}
           onQuit={vi.fn()}
           onCopy={vi.fn()}
@@ -521,15 +524,20 @@ describe("TrayPanel 互動（開啟與 hover 複製）", () => {
     expect(h.onOpenApp).toHaveBeenCalled();
   });
 
-  it("動作區塊依序渲染「開啟 Speclink」「設定」「結束」，點擊各列觸發對應回呼", () => {
+  it("動作區塊依序渲染「開啟 Speclink」「專案設定」「設定」「結束」，點擊各列觸發對應回呼", () => {
     const h = renderPanel();
     const follows = (a: Element, b: Element) =>
       (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
     const open = screen.getByText("開啟 Speclink");
+    const projectSettings = screen.getByText("專案設定");
     const settings = screen.getByText("設定");
     const quit = screen.getByText("結束");
-    expect(follows(open, settings)).toBe(true);
+    expect(follows(open, projectSettings)).toBe(true);
+    expect(follows(projectSettings, settings)).toBe(true);
     expect(follows(settings, quit)).toBe(true);
+    fireEvent.click(projectSettings);
+    expect(h.onOpenProjectSettings).toHaveBeenCalled();
+    expect(h.onOpenSettings).not.toHaveBeenCalled();
     fireEvent.click(settings);
     expect(h.onOpenSettings).toHaveBeenCalled();
     expect(h.onOpenApp).not.toHaveBeenCalled();
@@ -567,5 +575,99 @@ describe("TrayPanel 互動（開啟與 hover 複製）", () => {
     expect(btn.querySelector("svg.lucide-check")).toBeNull();
     expect(btn.querySelector("svg.lucide-copy")).toBeTruthy();
     vi.useRealTimers();
+  });
+});
+
+describe("三段式版面（spec「面板樣式（macOS）」：固定頁首／可捲中段／固定頁尾）", () => {
+  it("頁首含 tab 條、中段含分區卡並帶縱向捲動樣式、頁尾含動作四列；分割線歸屬頁首 1／中段 1／頁尾 1", () => {
+    renderPanel();
+    const header = screen.getByTestId("panel-header");
+    const scroll = screen.getByTestId("panel-scroll");
+    const footer = screen.getByTestId("panel-footer");
+    // 頁首＝tab 條；中段＝討論與生命週期分區卡；頁尾＝動作四列
+    expect(within(header).getByTestId("panel-project-tabs")).toBeTruthy();
+    expect(within(scroll).getByTestId("panel-section-discussions")).toBeTruthy();
+    expect(within(scroll).getByTestId("panel-section-proposed")).toBeTruthy();
+    expect(within(scroll).getByTestId("panel-section-ready")).toBeTruthy();
+    expect(within(footer).getByText("開啟 Speclink")).toBeTruthy();
+    expect(within(footer).getByText("專案設定")).toBeTruthy();
+    expect(within(footer).getByText("設定")).toBeTruthy();
+    expect(within(footer).getByText("結束")).toBeTruthy();
+    // 捲動樣式只掛中段
+    expect(scroll.className).toContain("overflow-y-auto");
+    expect(header.className).not.toContain("overflow-y-auto");
+    expect(footer.className).not.toContain("overflow-y-auto");
+    // 分割線歸屬：tab 條之下隨頁首、動作區之上隨頁尾、討論與生命週期之間隨中段捲動
+    expect(within(header).getAllByTestId("panel-divider")).toHaveLength(1);
+    expect(within(scroll).getAllByTestId("panel-divider")).toHaveLength(1);
+    expect(within(footer).getAllByTestId("panel-divider")).toHaveLength(1);
+  });
+
+  it("中段隱藏原生捲軸（不佔版面寬度）——原生捲軸在此環境常駐且佔寬，改由指示條自繪", () => {
+    renderPanel();
+    const scroll = screen.getByTestId("panel-scroll");
+    expect(scroll.className).toContain("[scrollbar-width:none]");
+    expect(scroll.className).toContain("[&::-webkit-scrollbar]:hidden");
+  });
+
+  it("捲動指示條：內容未溢出不渲染；捲動時浮現，停止約 0.8 秒後淡出", () => {
+    vi.useFakeTimers();
+    renderPanel();
+    const scroll = screen.getByTestId("panel-scroll");
+    // jsdom 無版面計算：以量測值模擬「內容溢出」，指示條的幾何與顯隱皆由此推導
+    expect(screen.queryByTestId("panel-scroll-indicator")).toBeNull();
+    for (const [prop, value] of [
+      ["clientHeight", 200],
+      ["scrollHeight", 600],
+      ["scrollTop", 0],
+    ] as const) {
+      Object.defineProperty(scroll, prop, { configurable: true, value });
+    }
+    act(() => {
+      fireEvent.scroll(scroll);
+    });
+    const indicator = screen.getByTestId("panel-scroll-indicator");
+    expect(indicator.getAttribute("data-active")).toBe("true");
+    expect(indicator.className).toContain("opacity-100");
+    act(() => {
+      vi.advanceTimersByTime(900);
+    });
+    expect(screen.getByTestId("panel-scroll-indicator").getAttribute("data-active")).toBe("false");
+    expect(screen.getByTestId("panel-scroll-indicator").className).toContain("opacity-0");
+    vi.useRealTimers();
+  });
+
+  it("毛玻璃補光層：root 帶主題背景色半透明基底（隨深淺模式，亮度錨定主題色）", () => {
+    renderPanel();
+    // 濃度值由真實視窗調參定案——只斷言補光層存在（bg-background/<n>），不釘數值
+    expect(screen.getByTestId("panel-root").className).toMatch(/bg-background\/\d+/);
+  });
+
+  it("recovery 排列下復原卡歸中段、頁首頁尾結構不分支", () => {
+    const key = "remote:c1/demo/backend";
+    renderPanel({
+      snapshot: snapshot({
+        tabs: [
+          {
+            key,
+            name: "Demo/backend",
+            source: "remote",
+            status: "error",
+            connectionId: "c1",
+            serverLabel: "Team Server",
+          },
+        ],
+        activeKey: key,
+      } as unknown as Partial<TraySnapshot>),
+    });
+    const header = screen.getByTestId("panel-header");
+    const scroll = screen.getByTestId("panel-scroll");
+    const footer = screen.getByTestId("panel-footer");
+    expect(within(header).getByTestId("panel-project-tabs")).toBeTruthy();
+    expect(within(scroll).getByTestId("panel-recovery-card")).toBeTruthy();
+    expect(within(scroll).queryAllByTestId("panel-divider")).toHaveLength(0);
+    expect(within(footer).getByText("結束")).toBeTruthy();
+    expect(within(header).getAllByTestId("panel-divider")).toHaveLength(1);
+    expect(within(footer).getAllByTestId("panel-divider")).toHaveLength(1);
   });
 });
