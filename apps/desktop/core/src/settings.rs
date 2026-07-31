@@ -538,13 +538,11 @@ mod tests {
         fx.write("openspec/config.yaml", doc);
         let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
         write_workflow_fields_at(fx.root(), &fields).expect("write ok");
-        let text = read(&fx.root().join("openspec/config.yaml"));
-        let new: WorkflowConfig = serde_yaml::from_str(&text).expect("output parses");
-        let orig: WorkflowConfig = serde_yaml::from_str(doc).unwrap();
-        assert_eq!(new.tdd, Some(true));
-        assert_eq!(new.context, orig.context);
-        assert_eq!(new.rules, orig.rules);
-        assert_eq!(new.schema, orig.schema);
+        // 手術改寫：tdd 插於 schema 之下、前後恰一空行，其餘行逐位元保留（不再整檔重排）。
+        assert_eq!(
+            read(&fx.root().join("openspec/config.yaml")),
+            "schema: spec-driven\n\ntdd: true\n\ncontext: |\n  keep me\nrules:\n  proposal:\n    - keep rule\n"
+        );
     }
 
     #[test]

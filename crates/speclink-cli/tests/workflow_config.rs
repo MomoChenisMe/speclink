@@ -220,12 +220,8 @@ fn set_locale_writes_the_key_and_preserves_the_others() {
     let p = TempProject::new("set-locale", WF_YAML);
     let out = p.run(&["workflow-config", "set", "locale", "ja"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
-    let after = p.config_text();
-    assert!(after.contains("locale: ja"), "locale rewritten: {after}");
-    assert!(after.contains("schema: spec-driven"), "schema preserved: {after}");
-    assert!(after.contains("tdd: true"), "tdd preserved: {after}");
-    assert!(after.contains("Project context line one."), "context preserved: {after}");
-    assert!(after.contains("Name the crate boundary"), "rules preserved: {after}");
+    // 手術改寫：僅 locale 行變動，其餘行逐位元保留（不再整檔重排）。
+    assert_eq!(p.config_text(), WF_YAML.replace("locale: tw", "locale: ja"));
 }
 
 #[test]
@@ -264,9 +260,8 @@ fn set_false_removes_the_key() {
     let p = TempProject::new("set-false", "schema: spec-driven\naudit: true\n");
     let out = p.run(&["workflow-config", "set", "audit", "false"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
-    let after = p.config_text();
-    assert!(!after.contains("audit"), "audit key removed (unset = default off): {after}");
-    assert!(after.contains("schema: spec-driven"), "schema preserved: {after}");
+    // 手術改寫：僅 audit 鍵行被移除，其餘行逐位元保留。
+    assert_eq!(p.config_text(), "schema: spec-driven\n");
 }
 
 #[test]
@@ -282,6 +277,16 @@ fn set_dry_run_prints_a_unified_diff_and_writes_nothing() {
     assert!(diff.contains("@@"), "unified diff hunk: {diff}");
     assert!(diff.contains("-locale: tw"), "removed line: {diff}");
     assert!(diff.contains("+locale: ja"), "added line: {diff}");
+    // 手術改寫後 diff 收窄：除 locale 行外不得有其他 -/+ 變動行（不含整檔重排）。
+    let changed: Vec<&str> = diff
+        .lines()
+        .filter(|l| {
+            (l.starts_with('-') || l.starts_with('+'))
+                && !l.starts_with("---")
+                && !l.starts_with("+++")
+        })
+        .collect();
+    assert_eq!(changed, ["-locale: tw", "+locale: ja"], "only the locale line changes: {diff}");
     assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
 }
 

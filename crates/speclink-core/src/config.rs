@@ -518,11 +518,17 @@ pub enum ContextEdit {
 ///   drops the `rules` key itself. Entries starting with YAML-reserved characters
 ///   (backtick, `@`, `*`, …) are quoted by serialization and round-trip verbatim.
 ///
-/// Every other key (schema, remote, spec_dir, unknown keys) carries over through
-/// a raw-mapping read–modify–write. Template comments are lost (same trade-off as
-/// `init::write_remote_section`). Unlike `WorkflowConfig::from_text` (silent
-/// defaults), malformed input is a loud error — rewriting an unparseable document
-/// would destroy the user's content.
+/// The rewrite is line-level text surgery, not re-serialization: only the target
+/// key's line or block changes; every other line — comments, blank lines, unknown
+/// top-level keys, user content below `schema` — is preserved byte for byte.
+/// Policy keys update in place (never move); missing policy keys insert as one
+/// canonical-order block right below the `schema` key line (top of file when
+/// `schema` is absent), separated by exactly one blank line on each side.
+/// Before returning, the result is re-parsed and compared key by key against the
+/// intended state — a mismatch is a single-line error (fail-closed: a surgery bug
+/// can at worst refuse to write, never corrupt the file). Unlike
+/// `WorkflowConfig::from_text` (silent defaults), malformed input is a loud
+/// error — rewriting an unparseable document would destroy the user's content.
 pub fn update_workflow_config_text(
     original: &str,
     fields: &WorkflowPolicyFields,
@@ -530,20 +536,16 @@ pub fn update_workflow_config_text(
     rules: Option<&[(String, Vec<String>)]>,
 ) -> anyhow::Result<String> {
     validate_policy_locales(fields)?;
-    let mut doc = parse_yaml_mapping(original, "openspec/config.yaml")?;
-    set_or_remove(&mut doc, "locale", fields.locale.as_deref().map(Into::into));
-    set_or_remove(&mut doc, "spec_locale", fields.spec_locale.as_deref().map(Into::into));
-    set_or_remove(&mut doc, "tdd", fields.tdd.then(|| true.into()));
-    set_or_remove(&mut doc, "audit", fields.audit.then(|| true.into()));
-    match context {
-        ContextEdit::Keep => {}
-        ContextEdit::Set(text) if !text.trim().is_empty() => {
-            set_or_remove(&mut doc, "context", Some(text.as_str().into()));
-        }
-        // Set(blank) 與 Remove 同義：清空即移除鍵。
-        ContextEdit::Set(_) | ContextEdit::Remove => set_or_remove(&mut doc, "context", None),
-    }
-    if let Some(sections) = rules {
+    // Pure-syntax empty documents carry no user content to preserve; normalize so
+    // surgery starts from a blank page instead of appending after a `{}` line.
+    let base = match original.trim() {
+        "{}" | "null" | "~" => "",
+        _ => original,
+    };
+    let parsed = parse_yaml_mapping(base, "openspec/config.yaml")?;
+
+    // rules 的滌洗結果由手術（序列化區塊）與目標狀態（驗證基準）共用。
+    let rules_value = rules.map(|sections| {
         let mut map = serde_yaml::Mapping::new();
         for (artifact, entries) in sections {
             let cleaned: Vec<serde_yaml::Value> = entries
@@ -556,10 +558,262 @@ pub fn update_workflow_config_text(
                 map.insert(artifact.as_str().into(), serde_yaml::Value::Sequence(cleaned));
             }
         }
-        let value = (!map.is_empty()).then(|| serde_yaml::Value::Mapping(map));
-        set_or_remove(&mut doc, "rules", value);
+        map
+    });
+
+    // Target state: the mapping-level edit the old rewrite used to serialize,
+    // now demoted to the verification oracle for the text surgery.
+    let mut target = parsed;
+    set_or_remove(&mut target, "locale", fields.locale.as_deref().map(Into::into));
+    set_or_remove(&mut target, "spec_locale", fields.spec_locale.as_deref().map(Into::into));
+    set_or_remove(&mut target, "tdd", fields.tdd.then(|| true.into()));
+    set_or_remove(&mut target, "audit", fields.audit.then(|| true.into()));
+    match context {
+        ContextEdit::Keep => {}
+        ContextEdit::Set(text) if !text.trim().is_empty() => {
+            set_or_remove(&mut target, "context", Some(text.as_str().into()));
+        }
+        // Set(blank) 與 Remove 同義：清空即移除鍵。
+        ContextEdit::Set(_) | ContextEdit::Remove => set_or_remove(&mut target, "context", None),
     }
-    Ok(serde_yaml::to_string(&doc)?)
+    if let Some(map) = &rules_value {
+        let value = (!map.is_empty()).then(|| serde_yaml::Value::Mapping(map.clone()));
+        set_or_remove(&mut target, "rules", value);
+    }
+
+    let output = surgical_rewrite(base, fields, context, rules_value.as_ref())?;
+    verify_rewritten_config(&output, &target)?;
+    Ok(output)
+}
+
+/// Fail-closed guard on the surgical output: re-parse through the same path and
+/// compare against the intended state key by key. Any mismatch — including output
+/// that no longer parses — refuses the write with a single-line error, so a
+/// text-surgery bug can never reach the user's file.
+fn verify_rewritten_config(output: &str, target: &serde_yaml::Mapping) -> anyhow::Result<()> {
+    let reparsed = parse_yaml_mapping(output, "openspec/config.yaml").map_err(|e| {
+        anyhow::anyhow!("internal rewrite verification failed: rewritten config does not parse ({e})")
+    })?;
+    if &reparsed != target {
+        anyhow::bail!(
+            "internal rewrite verification failed: rewritten openspec/config.yaml does not match the intended state"
+        );
+    }
+    Ok(())
+}
+
+/// One top-level key block: `[start, end)` line range covering the key line plus
+/// its indented continuation lines. A blank line belongs to the block only when
+/// further indented content follows (a blank inside a block scalar); trailing
+/// blanks and column-zero comments between blocks stay outside every block, so
+/// surgery never deletes them alongside a key.
+struct KeyBlock {
+    key: String,
+    start: usize,
+    end: usize,
+}
+
+/// Line-level edit plan for the surgical rewrite.
+#[derive(Clone)]
+enum LineOp {
+    Keep,
+    Delete,
+    Replace(String),
+}
+
+fn replace_block(ops: &mut [LineOp], block: &KeyBlock, text: String) {
+    ops[block.start] = LineOp::Replace(text);
+    for op in &mut ops[block.start + 1..block.end] {
+        *op = LineOp::Delete;
+    }
+}
+
+fn delete_block(ops: &mut [LineOp], block: &KeyBlock) {
+    for op in &mut ops[block.start..block.end] {
+        *op = LineOp::Delete;
+    }
+}
+
+/// The line-level surgery itself (see `update_workflow_config_text` for the
+/// semantics). Pure text transform; correctness is enforced by the caller's
+/// re-parse verification, never assumed here.
+fn surgical_rewrite(
+    original: &str,
+    fields: &WorkflowPolicyFields,
+    context: &ContextEdit,
+    rules: Option<&serde_yaml::Mapping>,
+) -> anyhow::Result<String> {
+    let eol = if original.contains("\r\n") { "\r\n" } else { "\n" };
+    let lines: Vec<&str> = original.split_inclusive('\n').collect();
+    let blocks = scan_top_level_blocks(&lines);
+    let block_of = |key: &str| blocks.iter().find(|b| b.key == key);
+
+    let mut ops: Vec<LineOp> = vec![LineOp::Keep; lines.len()];
+    // 缺鍵按此陣列順序收集＝範本正典序（locale、spec_locale、tdd、audit）。
+    let desired = [
+        ("locale", fields.locale.clone()),
+        ("spec_locale", fields.spec_locale.clone()),
+        ("tdd", fields.tdd.then(|| "true".to_string())),
+        ("audit", fields.audit.then(|| "true".to_string())),
+    ];
+    let mut missing: Vec<(&str, String)> = Vec::new();
+    for (key, value) in desired {
+        match (block_of(key), value) {
+            (Some(b), Some(v)) => {
+                let line = format!("{key}: {v}{}", line_terminator(lines[b.start]));
+                replace_block(&mut ops, b, line);
+            }
+            (Some(b), None) => delete_block(&mut ops, b),
+            (None, Some(v)) => missing.push((key, v)),
+            (None, None) => {}
+        }
+    }
+
+    let mut appends: Vec<String> = Vec::new();
+    match context {
+        ContextEdit::Keep => {}
+        ContextEdit::Set(text) if !text.trim().is_empty() => {
+            let block = serialize_top_level_block("context", text.as_str().into())?;
+            match block_of("context") {
+                Some(b) => replace_block(&mut ops, b, block),
+                None => appends.push(block),
+            }
+        }
+        ContextEdit::Set(_) | ContextEdit::Remove => {
+            if let Some(b) = block_of("context") {
+                delete_block(&mut ops, b);
+            }
+        }
+    }
+    if let Some(map) = rules {
+        if map.is_empty() {
+            if let Some(b) = block_of("rules") {
+                delete_block(&mut ops, b);
+            }
+        } else {
+            let block = serialize_top_level_block("rules", serde_yaml::Value::Mapping(map.clone()))?;
+            match block_of("rules") {
+                Some(b) => replace_block(&mut ops, b, block),
+                None => appends.push(block),
+            }
+        }
+    }
+
+    let insert_at = block_of("schema").map(|b| b.end).unwrap_or(0);
+    let mut out = String::with_capacity(original.len() + 64);
+    for i in 0..=lines.len() {
+        if i == insert_at && !missing.is_empty() {
+            if !out.is_empty() && !out.ends_with('\n') {
+                out.push_str(eol);
+            }
+            if insert_at > 0 {
+                out.push_str(eol); // schema 之下：區塊前恰一空行
+            }
+            for (key, value) in &missing {
+                out.push_str(key);
+                out.push_str(": ");
+                out.push_str(value);
+                out.push_str(eol);
+            }
+            // 區塊後恰一空行：後續第一個保留行已是空行時不重複補。
+            let next = (i..lines.len()).find(|&j| !matches!(ops[j], LineOp::Delete));
+            if next.is_some_and(|j| !is_blank_line(lines[j])) {
+                out.push_str(eol);
+            }
+        }
+        if i < lines.len() {
+            match &ops[i] {
+                LineOp::Keep => out.push_str(lines[i]),
+                LineOp::Delete => {}
+                LineOp::Replace(text) => out.push_str(text),
+            }
+        }
+    }
+    for block in appends {
+        if !out.is_empty() {
+            if !out.ends_with('\n') {
+                out.push_str(eol);
+            }
+            // 附加區塊與前文之間恰一空行。
+            if !(out.ends_with("\n\n") || out.ends_with("\n\r\n")) {
+                out.push_str(eol);
+            }
+        }
+        out.push_str(&block);
+    }
+    Ok(out)
+}
+
+/// Serialize `key: value` as a standalone top-level block via serde_yaml — the
+/// exact bytes a full-document dump would produce for that one key, so the
+/// replacement block round-trips to the identical value on re-parse.
+fn serialize_top_level_block(key: &str, value: serde_yaml::Value) -> anyhow::Result<String> {
+    let mut one = serde_yaml::Mapping::new();
+    one.insert(key.into(), value);
+    Ok(serde_yaml::to_string(&one)?)
+}
+
+/// Split the document's lines into top-level key blocks. YAML's indentation
+/// rules guarantee continuation lines of a top-level value are indented, so a
+/// column-zero `key:` line always starts a new block; a misjudgment on an exotic
+/// document is caught by the re-parse verification (refuse, never corrupt).
+fn scan_top_level_blocks(lines: &[&str]) -> Vec<KeyBlock> {
+    let mut blocks = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let Some(key) = top_level_key_of(lines[i]) else {
+            i += 1;
+            continue;
+        };
+        let mut end = i + 1;
+        let mut j = i + 1;
+        while j < lines.len() {
+            if is_blank_line(lines[j]) {
+                j += 1; // 空行可能在 block scalar 中段——其後還有縮排內容才算在塊內
+            } else if lines[j].starts_with(' ') || lines[j].starts_with('\t') {
+                j += 1;
+                end = j;
+            } else {
+                break;
+            }
+        }
+        blocks.push(KeyBlock { key: key.to_string(), start: i, end });
+        i = end;
+    }
+    blocks
+}
+
+/// The top-level key a line introduces, or `None` for comments, blanks,
+/// indented continuations, and non-key lines.
+fn top_level_key_of(line: &str) -> Option<&str> {
+    let content = line.strip_suffix('\n').unwrap_or(line);
+    let content = content.strip_suffix('\r').unwrap_or(content);
+    let first = content.chars().next()?;
+    if first.is_whitespace() || first == '#' {
+        return None;
+    }
+    let colon = content.find(':')?;
+    let key = content[..colon].trim_end();
+    let rest = &content[colon + 1..];
+    if key.is_empty() || !(rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t')) {
+        return None;
+    }
+    Some(key)
+}
+
+/// Terminator bytes of a raw line as produced by `split_inclusive('\n')`.
+fn line_terminator(line: &str) -> &'static str {
+    if line.ends_with("\r\n") {
+        "\r\n"
+    } else if line.ends_with('\n') {
+        "\n"
+    } else {
+        ""
+    }
+}
+
+fn is_blank_line(line: &str) -> bool {
+    line.trim().is_empty()
 }
 
 /// Rewrite the `.speclink.yaml` tools list with the given built-in tool selection —
@@ -1261,10 +1515,9 @@ mod tests {
         let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
         let out = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None).unwrap();
         assert_eq!(WorkflowConfig::from_text(Some(&out)).expect("output parses").tdd, Some(true));
-        // tdd: true | tdd 切關閉 | tdd 鍵被移除（預設即 false）
+        // tdd: true | tdd 切關閉 | tdd 鍵被移除（預設即 false）——唯一鍵移除後輸出為空文件
         let out = update_workflow_config_text("tdd: true\n", &WorkflowPolicyFields::default(), &ContextEdit::Keep, None).unwrap();
-        let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
-        assert!(!m.contains_key("tdd"), "got: {out}");
+        assert_eq!(WorkflowConfig::from_text(Some(&out)).expect("output parses").tdd, None, "got: {out}");
         // locale: tw、含 rules | spec_locale 選 auto | 新增 spec_locale: auto，locale 與 rules 原樣保留
         let doc = "locale: tw\nrules:\n  proposal:\n    - keep\n";
         let fields = WorkflowPolicyFields {
@@ -1537,6 +1790,173 @@ mod tests {
                 "must reject {bad:?}"
             );
         }
+    }
+
+    // --- update_workflow_config_text: 文字層手術（workflow-config-surgical-write） ---
+
+    /// 只設定 locale、其餘政策欄位維持預設的縮寫。
+    fn loc(code: &str) -> WorkflowPolicyFields {
+        WorkflowPolicyFields { locale: Some(code.into()), ..Default::default() }
+    }
+
+    #[test]
+    fn surgical_missing_key_inserts_below_schema_with_single_blank_lines() {
+        // spec Scenario 缺鍵插於 schema 之下且空行區隔——相鄰處已有空行時不重複補。
+        let doc = "# 模板註解\nschema: spec-driven\n\ncontext: |\n  第一行\n\nrules:\n  proposal:\n    - 條目一\n";
+        let out = update_workflow_config_text(doc, &loc("tw"), &ContextEdit::Keep, None).expect("rewrite ok");
+        assert_eq!(
+            out,
+            "# 模板註解\nschema: spec-driven\n\nlocale: tw\n\ncontext: |\n  第一行\n\nrules:\n  proposal:\n    - 條目一\n"
+        );
+        // 相鄰處原本沒有空行時補上：插入區塊與前後內容各恰一空行。
+        let out = update_workflow_config_text(
+            "schema: spec-driven\ncontext: 說明\n",
+            &loc("tw"),
+            &ContextEdit::Keep,
+            None,
+        )
+        .expect("rewrite ok");
+        assert_eq!(out, "schema: spec-driven\n\nlocale: tw\n\ncontext: 說明\n");
+    }
+
+    #[test]
+    fn surgical_multiple_missing_keys_insert_one_canonical_block() {
+        // 多缺鍵一次寫入：正典序（locale、spec_locale、tdd、audit）成連續區塊，不分散。
+        let fields = WorkflowPolicyFields {
+            locale: Some("tw".into()),
+            spec_locale: Some("auto".into()),
+            tdd: true,
+            audit: true,
+        };
+        let out = update_workflow_config_text(
+            "schema: spec-driven\n\ncontext: 說明\n",
+            &fields,
+            &ContextEdit::Keep,
+            None,
+        )
+        .expect("rewrite ok");
+        assert_eq!(
+            out,
+            "schema: spec-driven\n\nlocale: tw\nspec_locale: auto\ntdd: true\naudit: true\n\ncontext: 說明\n"
+        );
+    }
+
+    #[test]
+    fn surgical_preserves_comments_and_blank_lines_byte_for_byte() {
+        // spec Scenario 註解與空行逐位元保留：原位改值只動目標行。
+        let doc = "# 頭註解\nschema: spec-driven\n\n# locale 註解\nlocale: tw\n\n# 尾註解\ncontext: 說明\n";
+        let out = update_workflow_config_text(doc, &loc("ja"), &ContextEdit::Keep, None).expect("rewrite ok");
+        assert_eq!(
+            out,
+            "# 頭註解\nschema: spec-driven\n\n# locale 註解\nlocale: ja\n\n# 尾註解\ncontext: 說明\n"
+        );
+    }
+
+    #[test]
+    fn surgical_tail_key_updated_in_place_never_moves() {
+        // spec Scenario 檔尾既有鍵原位改值不搬家（曾被舊版附加在 rules 之後）。
+        let doc = "schema: spec-driven\n\nrules:\n  tasks:\n    - a\n\nlocale: tw\n";
+        let out = update_workflow_config_text(doc, &loc("ja"), &ContextEdit::Keep, None).expect("rewrite ok");
+        assert_eq!(out, "schema: spec-driven\n\nrules:\n  tasks:\n    - a\n\nlocale: ja\n");
+    }
+
+    #[test]
+    fn surgical_missing_schema_inserts_at_file_top() {
+        // spec Scenario schema 缺席時插於檔案最頂端，與後續內容之間恰一空行。
+        let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
+        let out = update_workflow_config_text("context: 說明\n", &fields, &ContextEdit::Keep, None)
+            .expect("rewrite ok");
+        assert_eq!(out, "tdd: true\n\ncontext: 說明\n");
+        // 空檔案：只有插入區塊本身，無多餘空行。
+        let out = update_workflow_config_text("", &loc("tw"), &ContextEdit::Keep, None).expect("rewrite ok");
+        assert_eq!(out, "locale: tw\n");
+    }
+
+    #[test]
+    fn surgical_user_content_below_schema_shifts_down_verbatim() {
+        // schema 底下使用者自加內容：插入點仍在 schema 鍵行之後，使用者內容原樣後移。
+        let doc = "schema: spec-driven\n# 使用者自加說明\nmy_key: 自訂\n\ncontext: 說明\n";
+        let out = update_workflow_config_text(doc, &loc("tw"), &ContextEdit::Keep, None).expect("rewrite ok");
+        assert_eq!(
+            out,
+            "schema: spec-driven\n\nlocale: tw\n\n# 使用者自加說明\nmy_key: 自訂\n\ncontext: 說明\n"
+        );
+    }
+
+    #[test]
+    fn surgical_set_false_removes_key_line_keeps_comment_above() {
+        // spec Scenario 設 false 移除鍵：只刪鍵行，上方註解行仍在。
+        let doc = "schema: spec-driven\n\n# audit 開關\naudit: true\n\ncontext: 說明\n";
+        let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None)
+            .expect("rewrite ok");
+        assert_eq!(out, "schema: spec-driven\n\n# audit 開關\n\ncontext: 說明\n");
+    }
+
+    #[test]
+    fn surgical_context_replaces_only_its_block() {
+        // context 整塊替換：僅 context 區塊變動，前後註解與其他區段逐位元不變；
+        // 舊值內含空行（block scalar 中段空行）仍屬同一區塊、不誤切。
+        let doc = "schema: spec-driven\n\n# 說明區\ncontext: |\n  舊一\n\n  舊二\n\n# 規則區\nrules:\n  tasks:\n    - a\n";
+        let out = update_workflow_config_text(
+            doc,
+            &WorkflowPolicyFields::default(),
+            &ContextEdit::Set("新一\n新二\n".into()),
+            None,
+        )
+        .expect("rewrite ok");
+        assert_eq!(
+            out,
+            "schema: spec-driven\n\n# 說明區\ncontext: |\n  新一\n  新二\n\n# 規則區\nrules:\n  tasks:\n    - a\n"
+        );
+    }
+
+    #[test]
+    fn surgical_multiline_unknown_key_is_not_misjudged() {
+        // 未知頂層鍵含多行 block scalar：縮排內容行（即使含冒號）不被誤判為頂層鍵。
+        let doc = "notes: |\n  first: 看似鍵\n  second: 也是\nlocale: tw\n";
+        let out = update_workflow_config_text(doc, &loc("ja"), &ContextEdit::Keep, None).expect("rewrite ok");
+        assert_eq!(out, "notes: |\n  first: 看似鍵\n  second: 也是\nlocale: ja\n");
+    }
+
+    #[test]
+    fn surgical_no_trailing_newline_and_crlf_edges() {
+        // 結尾無換行：插入前先補行終止，插入區塊照常。
+        let out = update_workflow_config_text("schema: spec-driven", &loc("tw"), &ContextEdit::Keep, None)
+            .expect("rewrite ok");
+        assert_eq!(out, "schema: spec-driven\n\nlocale: tw\n");
+        // 結尾無換行的末行原位改值：不憑空補結尾換行。
+        let out = update_workflow_config_text("schema: spec-driven\nlocale: tw", &loc("ja"), &ContextEdit::Keep, None)
+            .expect("rewrite ok");
+        assert_eq!(out, "schema: spec-driven\nlocale: ja");
+        // CRLF 檔：未動行逐位元保留，改寫行與插入行沿用檔案的 CRLF。
+        let fields = WorkflowPolicyFields { locale: Some("ja".into()), tdd: true, ..Default::default() };
+        let out = update_workflow_config_text(
+            "schema: spec-driven\r\nlocale: tw\r\n",
+            &fields,
+            &ContextEdit::Keep,
+            None,
+        )
+        .expect("rewrite ok");
+        assert_eq!(out, "schema: spec-driven\r\n\r\ntdd: true\r\n\r\nlocale: ja\r\n");
+    }
+
+    #[test]
+    fn surgical_rewrite_verification_failure_is_fail_closed() {
+        // spec Scenario 內部改寫驗證失敗拒絕寫入：引號鍵 'locale' 對文字層手術不可見，
+        // 插入裸鍵後重新解析成重複鍵——驗證必須攔下並以單行錯誤拒寫（函式為純 text→text，
+        // 呼叫端收到 Err 即不落檔，原檔逐位元不變）。
+        let err = update_workflow_config_text("'locale': tw\n", &loc("ja"), &ContextEdit::Keep, None)
+            .expect_err("must fail closed")
+            .to_string();
+        assert!(err.contains("internal rewrite verification failed"), "got: {err}");
+        assert!(!err.contains('\n'), "error must be single-line, got: {err}");
+        // 另一分支：輸出可解析但與目標狀態不等值——同樣單行拒絕。
+        let target: serde_yaml::Mapping = serde_yaml::from_str("locale: tw\n").expect("mapping");
+        let err = verify_rewritten_config("locale: ja\n", &target)
+            .expect_err("mismatch must fail closed")
+            .to_string();
+        assert!(err.contains("internal rewrite verification failed"), "got: {err}");
+        assert!(!err.contains('\n'), "error must be single-line, got: {err}");
     }
 
     // --- update_app_config_tools_text: builtin tool selection rewrite ---
