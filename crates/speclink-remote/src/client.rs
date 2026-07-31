@@ -139,6 +139,7 @@ impl Client {
                 message: "unexpected server response — the server did not return valid JSON".into(),
                 reason: None,
                 status: None,
+                evidence: None,
             }),
             Err(ureq::Error::Status(status, resp)) => {
                 let body = resp.into_string().unwrap_or_default();
@@ -177,6 +178,7 @@ impl Client {
                         .into(),
                 reason: Some("api_version_unsupported".into()),
                 status: None,
+                evidence: None,
             });
         }
         Ok(binding)
@@ -310,6 +312,7 @@ impl Client {
                         .into(),
                     reason: None,
                     status: None,
+                    evidence: None,
                 })?;
                 Ok(ContextSnapshotOutcome::Fresh(snapshot))
             }
@@ -543,6 +546,20 @@ impl Client {
         self.post::<serde::de::IgnoredAny, _>(
             &format!("/changes/{name}/in-progress"),
             &Empty {},
+        )
+        .map(|_| ())
+    }
+
+    /// `DELETE /changes/{name}/in-progress` — the reverse verb, gated on zero
+    /// work traces. A 200 Ack covers both the actual removal and the
+    /// not-started idempotent pass; a 409 refusal carries the work-trace
+    /// evidence structurally on [`RemoteError::evidence`].
+    pub fn in_progress_remove(&self, name: &str) -> Result<(), RemoteError> {
+        self.send::<serde::de::IgnoredAny, Empty>(
+            "DELETE",
+            &format!("/changes/{name}/in-progress"),
+            None,
+            &[],
         )
         .map(|_| ())
     }

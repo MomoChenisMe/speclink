@@ -12,7 +12,102 @@
 use crate::model::ChangeMeta;
 use crate::store::Store;
 use crate::util;
+use crate::workspace::Workspace;
 use anyhow::Result;
+
+/// 守門拒絕:change 帶工作痕跡(已勾任務或 touched 記錄),in-progress 標記
+/// 不可機械移除。結構化證據隨錯誤走——CLI stderr、server 409 載荷與 desktop
+/// 對話框各自呈現;Display 即 CLI 的人眼文字。
+#[derive(Debug, Clone)]
+pub struct RevertBlocked {
+    pub change: String,
+    /// tasks.md 的已勾任務數(缺檔視為 0)。
+    pub checked_tasks: usize,
+    /// touched 記錄 v1 與 v2 兩清單的檔案聯集(去重、首見序)。
+    pub touched_files: Vec<String>,
+}
+
+impl std::fmt::Display for RevertBlocked {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "cannot remove the in-progress marker for '{}': work traces exist",
+            self.change
+        )?;
+        if self.checked_tasks > 0 {
+            write!(
+                f,
+                "\n  checked tasks: {} — uncheck them (speclink task undone) and retry",
+                self.checked_tasks
+            )?;
+        }
+        if !self.touched_files.is_empty() {
+            write!(f, "\n  touched files: {}", self.touched_files.join(", "))?;
+            write!(
+                f,
+                "\n  touched records may mix work from other changes — have an agent or a human judge them (no mechanical cleanup)"
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for RevertBlocked {}
+
+/// Remove the in-progress marker — the reverse verb of [`add`], for changes
+/// started by mistake. Gated on zero work traces; see the change-lifecycle
+/// spec「in-progress 標記可自 change meta 移除(零工作痕跡守門)」.
+///
+/// Returns whether THIS call removed the marker — `false` for the idempotent
+/// not-started success (zero writes, no event). Unknown names error loudly,
+/// deliberately asymmetric with [`add`]'s parity-frozen silence.
+pub fn remove(store: &dyn Store, ws: &Workspace, name: &str) -> Result<bool> {
+    // Same single-path-segment guard as [`add`], but loud: a name with
+    // separators is never an active change, and a correction verb aimed at the
+    // wrong name must say so instead of silently writing outside changes/.
+    let not_found = || anyhow::anyhow!("Change '{name}' not found.");
+    if name.contains(['/', '\\', ':']) || name.contains("..") {
+        return Err(not_found());
+    }
+    let Some(meta) = store.read_change_meta(name) else {
+        return Err(not_found());
+    };
+    // Fail-closed gate: a corrupt document must not read as "not started" and
+    // take the idempotent pass — refuse before any decision.
+    let parsed = ChangeMeta::from_text(Some(&meta)).map_err(|reason| crate::model::MetaError {
+        change: name.to_string(),
+        reason,
+    })?;
+    // Zero-work-trace gate, judged before idempotence: a change whose stage
+    // still derives as in-progress (checked tasks without a stamp) must hear
+    // "blocked, traces exist", not "already proposed".
+    let tasks = crate::tasks::parse(&store.read_artifact(name, "tasks.md").unwrap_or_default());
+    let checked_tasks = tasks.iter().filter(|t| t.done).count();
+    let touched_files = crate::tasks::TouchedRecord::load(ws, name).all_files();
+    if checked_tasks > 0 || !touched_files.is_empty() {
+        return Err(RevertBlocked {
+            change: name.to_string(),
+            checked_tasks,
+            touched_files,
+        }
+        .into());
+    }
+    if parsed.started_at.is_none() && parsed.started_by.is_none() && parsed.started_with.is_none() {
+        return Ok(false);
+    }
+    // Line filter, mirroring add's append: drop exactly the three started_*
+    // lines and keep every other byte as-is — never re-serialize.
+    let kept: String = meta
+        .split_inclusive('\n')
+        .filter(|line| {
+            !["started_at:", "started_by:", "started_with:"]
+                .iter()
+                .any(|field| line.starts_with(field))
+        })
+        .collect();
+    store.write_change_meta(name, &kept)?;
+    Ok(true)
+}
 
 /// Mark a change as in-progress by stamping `started_at` / `started_by` /
 /// `started_with` into its metadata document (read → append → write, never
@@ -220,5 +315,217 @@ mod tests {
         assert!(super::add(&store, "ghost", Some("T <t@example.com>"), None).is_ok());
         assert_eq!(*store.meta_writes.borrow(), 0);
         assert!(store.read_change_meta("ghost").is_none());
+    }
+
+    // --- remove:反向動詞與零工作痕跡守門 ---
+
+    use crate::tasks::{BasisDigests, EvidenceEntry, TouchedEntry, TouchedRecord};
+    use crate::workspace::Workspace;
+
+    /// 帶開工戳記的 meta:started_* 三行之後仍有欄位(board_rank),
+    /// 逼出「行過濾」而非「截尾」的實作。
+    const STARTED_META: &str = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: Base Line <base@example.com>\ncreated_with: claude\nfrom_discussion: 桌面即時刷新與封存瀏覽\nstarted_at: 2026-07-30\nstarted_by: Tester <t@example.com>\nstarted_with: claude\nboard_rank: n\n";
+
+    /// Throwaway host workspace rooted in the OS temp dir; removed on drop.
+    struct TempWs {
+        ws: Workspace,
+    }
+
+    impl TempWs {
+        fn new(tag: &str) -> TempWs {
+            let dir = std::env::temp_dir().join(format!(
+                "speclink-core-inprogress-{tag}-{}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            TempWs {
+                ws: Workspace {
+                    root: dir,
+                    spec_dir_name: "openspec".to_string(),
+                },
+            }
+        }
+    }
+
+    impl Drop for TempWs {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.ws.root);
+        }
+    }
+
+    fn v1_entry(files: &[&str]) -> TouchedEntry {
+        TouchedEntry {
+            task_id: "1".to_string(),
+            task_desc: "1.1 first task".to_string(),
+            files: files.iter().map(|f| f.to_string()).collect(),
+        }
+    }
+
+    fn v2_entry(files: &[&str]) -> EvidenceEntry {
+        EvidenceEntry {
+            task_id: "tsk_0000000000000000".to_string(),
+            task_desc: "1.1 first task".to_string(),
+            actor: None,
+            repo: None,
+            head_commit: None,
+            touched_files: files.iter().map(|f| f.to_string()).collect(),
+            basis_digests: BasisDigests {
+                spec: "sha256:0".to_string(),
+                tasks: "sha256:0".to_string(),
+                policy: "sha256:0".to_string(),
+            },
+            recorded_at: "2026-07-30T00:00:00Z".to_string(),
+        }
+    }
+
+    fn save_touched(ws: &Workspace, change: &str, v1: Vec<TouchedEntry>, v2: Vec<EvidenceEntry>) {
+        let mut rec = TouchedRecord::load(ws, change);
+        rec.change = change.to_string();
+        rec.touched = v1;
+        rec.entries = v2;
+        rec.save(ws).unwrap();
+    }
+
+    fn blocked(err: &anyhow::Error) -> &super::RevertBlocked {
+        err.downcast_ref::<super::RevertBlocked>()
+            .unwrap_or_else(|| panic!("gate refusal must carry RevertBlocked evidence, got: {err}"))
+    }
+
+    #[test]
+    fn remove_strips_started_lines_and_preserves_the_rest_verbatim() {
+        // 零痕跡:無 tasks.md(缺檔視為 0)、無 touched 記錄(缺檔視為空)。
+        let t = TempWs::new("clean");
+        let store = TestStore::with_meta("demo", STARTED_META);
+
+        let removed = super::remove(&store, &t.ws, "demo").unwrap();
+
+        assert!(removed, "a stamped change with zero traces must actually remove");
+        assert_eq!(
+            store.meta("demo"),
+            format!("{EXISTING_META}board_rank: n\n"),
+            "started_* lines removed, every other line byte-identical (no re-serialization)"
+        );
+        let parsed = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).unwrap();
+        assert!(parsed.started_at.is_none());
+        assert!(parsed.started_by.is_none());
+        assert!(parsed.started_with.is_none());
+    }
+
+    #[test]
+    fn remove_refuses_when_tasks_are_checked() {
+        let t = TempWs::new("checked");
+        let store = TestStore::with_meta("demo", STARTED_META);
+        store.put_artifact("demo", "tasks.md", "## 1. G\n\n- [x] 1.1 a\n- [x] 1.2 b\n- [ ] 1.3 c\n");
+
+        let err = super::remove(&store, &t.ws, "demo").expect_err("checked tasks must block");
+
+        let evidence = blocked(&err);
+        assert_eq!(evidence.change, "demo");
+        assert_eq!(evidence.checked_tasks, 2);
+        assert!(evidence.touched_files.is_empty());
+        assert_eq!(store.meta("demo"), STARTED_META, "refusal must not touch the meta");
+        assert_eq!(*store.meta_writes.borrow(), 0, "refusal must not write");
+    }
+
+    #[test]
+    fn remove_refuses_when_touched_v1_list_is_nonempty() {
+        let t = TempWs::new("touched-v1");
+        let store = TestStore::with_meta("demo", STARTED_META);
+        save_touched(&t.ws, "demo", vec![v1_entry(&["src/a.rs"])], vec![]);
+
+        let err = super::remove(&store, &t.ws, "demo").expect_err("v1 touched must block");
+
+        let evidence = blocked(&err);
+        assert_eq!(evidence.checked_tasks, 0);
+        assert_eq!(evidence.touched_files, vec!["src/a.rs"]);
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn remove_refuses_when_v2_evidence_entries_are_nonempty() {
+        let t = TempWs::new("touched-v2");
+        let store = TestStore::with_meta("demo", STARTED_META);
+        save_touched(&t.ws, "demo", vec![], vec![v2_entry(&["src/b.rs"])]);
+
+        let err = super::remove(&store, &t.ws, "demo").expect_err("v2 entries must block");
+
+        let evidence = blocked(&err);
+        assert_eq!(evidence.touched_files, vec!["src/b.rs"]);
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn remove_evidence_unions_and_dedupes_both_touched_lists() {
+        // spec Example「證據清單為兩版記錄的聯集去重」:v1 含 a、b,
+        // v2 含 b、c → 恰為 a、b、c 三項,首見序,無重複。
+        let t = TempWs::new("union");
+        let store = TestStore::with_meta("demo", STARTED_META);
+        save_touched(
+            &t.ws,
+            "demo",
+            vec![v1_entry(&["src/a.rs", "src/b.ts"])],
+            vec![v2_entry(&["src/b.ts", "src/c.rs"])],
+        );
+
+        let err = super::remove(&store, &t.ws, "demo").expect_err("traces must block");
+
+        assert_eq!(blocked(&err).touched_files, vec!["src/a.rs", "src/b.ts", "src/c.rs"]);
+    }
+
+    #[test]
+    fn remove_for_unknown_change_errors_loudly() {
+        // 與 add 的靜默刻意不對稱:修正動作打錯名字必須明確報錯。
+        let t = TempWs::new("unknown");
+        let store = TestStore::default();
+
+        let err = super::remove(&store, &t.ws, "ghost").expect_err("unknown change must error");
+
+        let msg = err.to_string();
+        assert!(msg.contains("ghost") && msg.contains("not found"), "error names the change: {msg}");
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn remove_refuses_to_address_outside_a_single_path_segment() {
+        // Sharp edge (Scoundrel): `in-progress remove "../evil"` must not write
+        // a metadata document outside changes/ — non-segment names are never
+        // active changes, so they take the loud not-found path.
+        let t = TempWs::new("segment");
+        let store = TestStore::with_meta("../evil", STARTED_META);
+
+        let err = super::remove(&store, &t.ws, "../evil").expect_err("non-segment name must error");
+
+        assert!(err.to_string().contains("not found"), "not-found shape: {err}");
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn remove_on_an_unstarted_change_is_idempotent_with_zero_writes() {
+        let t = TempWs::new("idempotent");
+        let store = TestStore::with_meta("demo", EXISTING_META);
+
+        let removed = super::remove(&store, &t.ws, "demo").unwrap();
+
+        assert!(!removed, "nothing to remove must report false (no event upstream)");
+        assert_eq!(store.meta("demo"), EXISTING_META, "meta byte-identical");
+        assert_eq!(*store.meta_writes.borrow(), 0, "idempotent pass must not write");
+    }
+
+    #[test]
+    fn remove_refuses_on_corrupt_meta_without_writing() {
+        // Fail-closed 與 add 同款:壞檔不得被解讀為未開工而冪等放行。
+        const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
+        let t = TempWs::new("corrupt");
+        let store = TestStore::with_meta("demo", BAD);
+
+        let err = super::remove(&store, &t.ws, "demo").expect_err("corrupt meta must refuse");
+
+        assert!(
+            err.to_string().contains("openspec/changes/demo/.openspec.yaml"),
+            "error must name the metadata file: {err}"
+        );
+        assert_eq!(store.meta("demo"), BAD, "meta byte-identical");
+        assert_eq!(*store.meta_writes.borrow(), 0, "refusal must not write");
     }
 }

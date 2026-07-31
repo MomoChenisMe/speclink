@@ -200,6 +200,7 @@ impl EventStream {
                             message: "unexpected server response — the event stream carried an unreadable invalidation".into(),
                             reason: None,
                             status: None,
+                            evidence: None,
                         })?;
                     Ok(Some(RemoteEvent::Invalidate(hint)))
                 }
@@ -260,6 +261,7 @@ fn disconnected() -> RemoteError {
         message: "event stream disconnected — resubscribe and converge via sync-state".into(),
         reason: None,
         status: None,
+        evidence: None,
     }
 }
 
@@ -270,5 +272,6 @@ fn stalled() -> RemoteError {
         message: "event stream stalled — no heartbeat within the stall limit; resubscribe and converge via sync-state".into(),
         reason: None,
         status: None,
+        evidence: None,
     }
 }

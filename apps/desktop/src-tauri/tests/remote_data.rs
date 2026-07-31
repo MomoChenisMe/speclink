@@ -291,6 +291,7 @@ fn remote_open_failure_serializes_machine_readable_fields_without_credentials() 
             message: message.to_string(),
             reason: reason.map(str::to_string),
             status,
+            evidence: None,
         });
         let value = serde_json::to_value(failure).expect("serialize remote_open failure");
         let object = value.as_object().expect("failure is an object");

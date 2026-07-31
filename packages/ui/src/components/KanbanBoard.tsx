@@ -72,6 +72,8 @@ export interface KanbanBoardProps {
   onOpenChange?: (name: string) => void;
   /** 封存請求：ready 卡的封存鈕與拖曳落點皆經此觸發（app 端接確認流程）。 */
   onArchive?: (name: string) => void;
+  /** 退回提案中請求：派生進行中卡的退回鈕經此觸發（app 端接確認流程）。 */
+  onRevert?: (name: string) => void;
   /** 討論清單；提供時看板擴為四欄，active 進第 0 欄（封存討論不上板）。 */
   discussions?: DiscussionLists;
   /** 已封存 change 清單（衍生樹細列的已封存態派生）。 */
@@ -108,16 +110,14 @@ function Column({
   children: React.ReactNode;
 }) {
   const { t } = useI18n();
-  const { setNodeRef, isOver } = useDroppable({ id: stage });
   const style = STAGE_STYLE[stage];
   const Icon = style.icon;
+  // 欄容器不作 droppable：跨欄放開為彈回＋零寫入（spec「跨欄拖曳不改變變更
+  // 階段」），isOver 高亮會假示可跨欄放置；唯一的欄外落點是封存浮層。
   return (
     <div
-      ref={setNodeRef}
       data-column={stage}
-      className={`flex h-full min-h-0 flex-1 min-w-[250px] max-w-[360px] flex-col gap-2 rounded-xl border-t-4 ${style.top} p-2 transition-colors ${
-        isOver ? "bg-accent/60 ring-2 ring-primary/50" : "bg-muted/40"
-      }`}
+      className={`flex h-full min-h-0 flex-1 min-w-[250px] max-w-[360px] flex-col gap-2 rounded-xl border-t-4 ${style.top} p-2 bg-muted/40`}
     >
       <div className="flex items-center gap-1.5 px-1.5 pt-0.5 shrink-0">
         <Icon className={`h-3.5 w-3.5 ${style.iconCls}`} />
@@ -169,7 +169,7 @@ function SortableCard({
   ...rest
 }: { change: ChangeItem; barClass: string; highlight?: string; hit?: SearchHit } & Pick<
   KanbanBoardProps,
-  "onOpenChange" | "onArchive"
+  "onOpenChange" | "onArchive" | "onRevert"
 >) {
   const { t } = useI18n();
   // 拖曳時原卡片留在原位變淡；移動的視覺由 DragOverlay 呈現（不受欄位 overflow 裁切）。
@@ -195,6 +195,7 @@ function SortableCard({
         hit={hit}
         onOpen={rest.onOpenChange}
         onArchive={rest.onArchive}
+        onRevert={rest.onRevert}
       />
     </div>
   );
@@ -208,6 +209,7 @@ export function KanbanBoard({
   changes,
   onOpenChange,
   onArchive,
+  onRevert,
   discussions,
   archivedChanges,
   onOpenDiscussion,
@@ -449,6 +451,7 @@ export function KanbanBoard({
                     hit={hitByCard.get(`change:${c.name}`)}
                     onOpenChange={onOpenChange}
                     onArchive={onArchive}
+                    onRevert={onRevert}
                   />
                 ))}
               </SortableContext>
@@ -462,6 +465,7 @@ export function KanbanBoard({
                   hit={hitByCard.get(`change:${c.name}`)}
                   onOpen={onOpenChange}
                   onArchive={onArchive}
+                  onRevert={onRevert}
                 />
               ))
             )}

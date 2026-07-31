@@ -15,6 +15,7 @@ import type {
   AnalyzeReport,
   VerbDrawerResult,
 } from "@speclink/ui";
+import { RevertBlockedError, type RevertBlockedInfo } from "@speclink/ui";
 
 import { appT } from "./i18n/runtime";
 import type { ConnectionsAdapter, ConnectionView } from "./adapter/connections";
@@ -57,6 +58,7 @@ const FAILURE_TOAST_ID = "desktop-operation-failure";
 type FailureMessageKey =
   | "store.deleteFailed"
   | "store.archiveFailed"
+  | "store.revertFailed"
   | "store.discussionArchiveFailed"
   | "store.reorderFailed"
   | "store.openProjectFailed"
@@ -162,6 +164,10 @@ export interface AppState {
 
   pendingArchive: string | null;
   pendingDelete: string | null;
+  /** 待確認的退回提案中（change 名）。 */
+  pendingRevert: string | null;
+  /** 退回被守門擋下的證據（null＝無對話框）。 */
+  revertBlocked: RevertBlockedInfo | null;
   /** 待確認的討論歸檔（slug）。 */
   pendingArchiveDiscussion: string | null;
   /** 詳情抽屜內呈現的 validate／analyze 結構化結果（keyed by change）；null=無。 */
@@ -190,6 +196,11 @@ export interface AppState {
   requestDelete: (name: string) => void;
   confirmDelete: () => Promise<void>;
   cancelDelete: () => void;
+  requestRevert: (name: string) => void;
+  confirmRevert: () => Promise<void>;
+  cancelRevert: () => void;
+  /** 關閉守門對話框（唯一出路——不提供清理或強制退回）。 */
+  dismissRevertBlocked: () => void;
   requestArchiveDiscussion: (slug: string) => void;
   confirmArchiveDiscussion: () => Promise<void>;
   cancelArchiveDiscussion: () => void;
@@ -433,6 +444,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         detailArchived: null,
         pendingArchive: null,
         pendingDelete: null,
+        pendingRevert: null,
+        revertBlocked: null,
         pendingArchiveDiscussion: null,
         drawerVerb: null,
       };
@@ -765,6 +778,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     detailArchived: null,
     pendingArchive: null,
     pendingDelete: null,
+    pendingRevert: null,
+    revertBlocked: null,
     pendingArchiveDiscussion: null,
     drawerVerb: null,
 
@@ -968,6 +983,44 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     cancelDelete() {
       set({ pendingDelete: null });
+    },
+
+    requestRevert(name) {
+      set({ pendingRevert: name });
+    },
+
+    async confirmRevert() {
+      const name = get().pendingRevert;
+      set({ pendingRevert: null });
+      if (!name) return;
+      const dataSource = activeDataSource();
+      if (!dataSource) return;
+      try {
+        // UI 不預判守門——引擎是唯一裁決點;成功後不手動搬卡,重載後
+        // startedAt 為空、勾選為 0,卡片依派生自然回提案中欄。
+        await dataSource.revertChangeToProposed(name);
+      } catch (e) {
+        if (e instanceof RevertBlockedError) {
+          set({
+            revertBlocked: {
+              change: name,
+              checkedTasks: e.checkedTasks,
+              touchedFiles: e.touchedFiles,
+            },
+          });
+        } else {
+          showFailureToast(name, "store.revertFailed", e);
+        }
+      }
+      await get().refresh();
+    },
+
+    cancelRevert() {
+      set({ pendingRevert: null });
+    },
+
+    dismissRevertBlocked() {
+      set({ revertBlocked: null });
     },
 
     requestArchiveDiscussion(slug) {

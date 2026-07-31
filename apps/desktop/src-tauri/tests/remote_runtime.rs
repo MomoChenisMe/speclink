@@ -230,6 +230,7 @@ fn needs_reauth_is_broadcast_and_wins_over_an_existing_offline_state() {
                 message: "unauthorized".into(),
                 reason: Some("permission_denied".into()),
                 status: Some(401),
+                evidence: None,
             })
         })
         .expect_err("兩次 401 進 needs-reauth");
@@ -460,6 +461,7 @@ fn concurrent_401_responses_share_the_new_bearer_without_replaying_refresh() {
                         message: "unauthorized".into(),
                         reason: Some("permission_denied".into()),
                         status: Some(401),
+                        evidence: None,
                     })
                 } else {
                     Ok(token.to_string())

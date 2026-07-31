@@ -720,7 +720,7 @@ code:
 ---
 ### Requirement: 討論抽屜檢視與轉出變更
 
-點擊討論卡或細列 SHALL 開啟討論抽屜。抽屜標題 SHALL 以討論 slug 為題（等寬字型）且帶複製 slug 鈕，topic SHALL 為標題下方副標（slug 為題屬 openspec/LANGUAGE.md 明載的受控例外）。標題區下方 SHALL 呈現生命週期階梯「討論中 → 已結論 → 轉出變更」且現站可辨識。分頁 SHALL 依序為：結論、討論過程 N、背景、衍生變更——前三者呈現記錄文件對應區段（區段缺失或格式非預期時 SHALL 整篇以單一檢視退回而非報錯）；記錄切分成功且結論區段非空時 SHALL 預設開啟「結論」分頁，結論為空時預設「背景」。衍生變更分頁 SHALL 列出各子變更現況與跳轉，且 SHALL 為唯讀——SHALL NOT 提供「轉為變更」或「再轉出一個變更」動作。concluded 卡的封存動詞 SHALL 經確認後將討論移入封存。GUI SHALL NOT 提供 conclude、add-round、new、discard、轉為變更（promote）——討論的推進、結論撰寫與轉出變更屬 agent 與 CLI。來自討論的變更卡 SHALL 帶討論徽章，其詳情抽屜 SHALL 顯示來源討論與同源變更清單並可互跳。
+點擊討論卡或細列 SHALL 開啟討論抽屜。抽屜標題 SHALL 以討論 slug 為題（等寬字型）且帶複製 slug 鈕，topic SHALL 為標題下方副標（slug 為題屬 openspec/LANGUAGE.md 明載的受控例外）。標題區下方 SHALL 呈現生命週期階梯「討論中 → 已結論 → 轉出變更」且現站可辨識。分頁 SHALL 依序為：結論、討論過程 N、背景、衍生變更——前三者呈現記錄文件對應區段（區段缺失或格式非預期時 SHALL 整篇以單一檢視退回而非報錯）；記錄切分成功且結論區段非空時 SHALL 預設開啟「結論」分頁，結論為空時預設「背景」。衍生變更分頁 SHALL 列出各子變更現況與跳轉，且 SHALL 為唯讀——SHALL NOT 提供「轉為變更」或「再轉出一個變更」動作。concluded 且未封存討論的封存動詞 SHALL 於討論卡與討論抽屜皆可及,兩處 SHALL 走同一確認流程,經確認後將討論移入封存;非 concluded 或已封存的討論,抽屜 SHALL NOT 呈現封存動詞。GUI SHALL NOT 提供 conclude、add-round、new、discard、轉為變更（promote）——討論的推進、結論撰寫與轉出變更屬 agent 與 CLI。來自討論的變更卡 SHALL 帶討論徽章，其詳情抽屜 SHALL 顯示來源討論與同源變更清單並可互跳。
 
 #### Scenario: 抽屜標題以 slug 為題且可複製
 
@@ -746,6 +746,72 @@ code:
 
 - **WHEN** 使用者開啟一個 from_discussion 非空的變更詳情抽屜
 - **THEN** 抽屜顯示來源討論 topic 與同源變更清單，點擊同源項可開啟該變更的詳情
+
+#### Scenario: 抽屜內封存 concluded 討論
+
+- **WHEN** 使用者開啟一筆已結論、未封存討論的抽屜,點抽屜的封存動作並於確認對話框確認
+- **THEN** 該討論移入封存:自討論欄消失、出現於已封存頁討論節,與自討論卡封存的效果一致
+
+
+<!-- @trace
+source: revert-in-progress-to-proposed
+updated: 2026-07-31
+code:
+  - apps/desktop/core/src/manage.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src-tauri/src/remote.rs
+  - apps/desktop/src-tauri/tests/remote_data.rs
+  - apps/desktop/src-tauri/tests/remote_runtime.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/remoteDataSource.test.ts
+  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/adapter/remoteDataSource.ts
+  - apps/desktop/src/adapter/tauriDataSource.ts
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/store.ts
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/src/remote_commands.rs
+  - crates/speclink-cli/tests/in_progress_remove.rs
+  - crates/speclink-cli/tests/remote_write_path.rs
+  - crates/speclink-core/assets/skills/apply.md
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/inprogress.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/bridge.rs
+  - crates/speclink-host/src/commit.rs
+  - crates/speclink-protocol/src/command.rs
+  - crates/speclink-protocol/src/error.rs
+  - crates/speclink-remote/src/client.rs
+  - crates/speclink-remote/src/device.rs
+  - crates/speclink-remote/src/events.rs
+  - crates/speclink-remote/src/lib.rs
+  - crates/speclink-remote/tests/reauth_retry.rs
+  - crates/speclink-remote/tests/typed_client.rs
+  - crates/speclink-server/src/app.rs
+  - crates/speclink-server/src/error.rs
+  - crates/speclink-server/src/events.rs
+  - crates/speclink-server/src/routes.rs
+  - crates/speclink-server/tests/verb_api.rs
+  - packages/ui/src/__tests__/discussionColumn.test.tsx
+  - packages/ui/src/__tests__/discussionDrawer.test.tsx
+  - packages/ui/src/__tests__/kanban.test.tsx
+  - packages/ui/src/__tests__/revertBlockedDialog.test.tsx
+  - packages/ui/src/__tests__/richDrawer.test.tsx
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ChangeCard.tsx
+  - packages/ui/src/components/DiscussionColumn.tsx
+  - packages/ui/src/components/DiscussionDrawer.tsx
+  - packages/ui/src/components/KanbanBoard.tsx
+  - packages/ui/src/components/RevertBlockedDialog.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/i18n.tsx
+  - packages/ui/src/index.ts
+-->
 
 ---
 ### Requirement: 已封存頁含討論節
@@ -2265,4 +2331,89 @@ code:
   - scripts/desktop-sidecar.mjs
   - scripts/release-latest-json.mjs
   - scripts/release-latest-json.test.mjs
+-->
+
+---
+### Requirement: 進行中變更可自看板退回提案中
+
+派生階段為進行中的變更,其看板卡片與詳情抽屜 SHALL 呈現「退回提案中」動作(樣式沿討論卡封存按鈕的動作呈現);非進行中的變更 SHALL NOT 呈現此動作。點擊 SHALL 先經確認,確認後直接呼叫引擎的退回動詞——UI SHALL NOT 預判守門條件(守門僅由引擎裁決一次)。退回成功後 SHALL NOT 手動搬移卡片:重載後開工戳記為空、已勾任務為 0,卡片依階段派生自然回到提案中欄。引擎守門拒絕時 SHALL 開啟守門對話框,列出引擎回傳的證據(已勾任務數與 touched 記錄的檔案清單)與出路說明——已勾任務可於任務分頁取消後重試,touched 需請 agent 判斷;GUI SHALL NOT 提供清理 touched 或批次取消勾選的機械出路。本地與 remote 資料模式下,動作的出現條件、確認流程、成功效果與守門對話框行為 SHALL 一致。跨欄拖曳 SHALL 維持不改變變更階段的既有行為。
+
+#### Scenario: 退回動作僅於進行中變更出現
+
+- **WHEN** 使用者檢視看板上一張提案中的變更卡與一張進行中的變更卡(含各自的詳情抽屜)
+- **THEN** 僅進行中的卡片與其抽屜呈現「退回提案中」動作,提案中的卡片與抽屜皆不呈現
+
+#### Scenario: 零痕跡變更確認後退回提案中欄
+
+- **WHEN** 使用者對一張零工作痕跡(無已勾任務、無 touched 記錄)的進行中變更卡點「退回提案中」並於確認對話框確認
+- **THEN** 退回成功,卡片自進行中欄消失並出現於提案中欄,詳情抽屜的開工歸屬顯示清空
+
+#### Scenario: 有工作痕跡時顯示守門對話框
+
+- **WHEN** 使用者對一張已有 3 個已勾任務且 touched 記錄含 2 個檔案的進行中變更點「退回提案中」並確認
+- **THEN** 出現守門對話框,列出已勾任務數 3 與該 2 個檔案的清單,並說明取消勾選可重試、touched 需請 agent 判斷;卡片停留在進行中欄,對話框內無任何清理或強制退回按鈕
+
+#### Scenario: remote 模式行為一致
+
+- **WHEN** 使用者於 remote 資料模式對零痕跡的進行中變更執行同一退回操作
+- **THEN** 動作出現條件、確認流程、成功後卡片回提案中欄、守門對話框行為皆與本地模式一致
+
+<!-- @trace
+source: revert-in-progress-to-proposed
+updated: 2026-07-31
+code:
+  - apps/desktop/core/src/manage.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src-tauri/src/remote.rs
+  - apps/desktop/src-tauri/tests/remote_data.rs
+  - apps/desktop/src-tauri/tests/remote_runtime.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/remoteDataSource.test.ts
+  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/adapter/remoteDataSource.ts
+  - apps/desktop/src/adapter/tauriDataSource.ts
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/store.ts
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/src/remote_commands.rs
+  - crates/speclink-cli/tests/in_progress_remove.rs
+  - crates/speclink-cli/tests/remote_write_path.rs
+  - crates/speclink-core/assets/skills/apply.md
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/inprogress.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/bridge.rs
+  - crates/speclink-host/src/commit.rs
+  - crates/speclink-protocol/src/command.rs
+  - crates/speclink-protocol/src/error.rs
+  - crates/speclink-remote/src/client.rs
+  - crates/speclink-remote/src/device.rs
+  - crates/speclink-remote/src/events.rs
+  - crates/speclink-remote/src/lib.rs
+  - crates/speclink-remote/tests/reauth_retry.rs
+  - crates/speclink-remote/tests/typed_client.rs
+  - crates/speclink-server/src/app.rs
+  - crates/speclink-server/src/error.rs
+  - crates/speclink-server/src/events.rs
+  - crates/speclink-server/src/routes.rs
+  - crates/speclink-server/tests/verb_api.rs
+  - packages/ui/src/__tests__/discussionColumn.test.tsx
+  - packages/ui/src/__tests__/discussionDrawer.test.tsx
+  - packages/ui/src/__tests__/kanban.test.tsx
+  - packages/ui/src/__tests__/revertBlockedDialog.test.tsx
+  - packages/ui/src/__tests__/richDrawer.test.tsx
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ChangeCard.tsx
+  - packages/ui/src/components/DiscussionColumn.tsx
+  - packages/ui/src/components/DiscussionDrawer.tsx
+  - packages/ui/src/components/KanbanBoard.tsx
+  - packages/ui/src/components/RevertBlockedDialog.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/i18n.tsx
+  - packages/ui/src/index.ts
 -->

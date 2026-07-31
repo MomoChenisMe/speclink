@@ -176,6 +176,7 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     promoteDiscussion: vi.fn().mockResolvedValue({ change: "promoted-change" }),
     archiveDiscussion: vi.fn().mockResolvedValue(undefined),
     reorderCard: vi.fn().mockResolvedValue(undefined),
+    revertChangeToProposed: vi.fn().mockResolvedValue(undefined),
     ...over,
   };
 }
@@ -218,6 +219,55 @@ describe("App (kanban primary + rich detail)", () => {
     await waitFor(() => screen.getByText("刪除變更？"));
     fireEvent.click(screen.getByRole("button", { name: "刪除" }));
     await waitFor(() => expect(ds.deleteChange).toHaveBeenCalledWith("desktop-shell-and-browser"));
+  });
+
+  it("revert flow: 進行中卡「退回提案中」→ 確認 → revertChangeToProposed called", async () => {
+    // spec Scenario「零痕跡變更確認後退回提案中欄」的前半:點擊先出確認,
+    // 確認後才呼叫 adapter(UI 不預判守門)。
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue([
+        { name: "oops-started", status: "in-progress", totalTasks: 10, completedTasks: 0, startedAt: "2026-07-30" },
+      ]),
+    });
+    renderApp(ds);
+    const card = (await screen.findByText("oops-started")).closest("[data-change]") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: /退回提案中/ }));
+    // 點擊先出確認——adapter 尚未被呼叫。
+    expect(ds.revertChangeToProposed).not.toHaveBeenCalled();
+    const confirm = await screen.findByRole("alertdialog");
+    fireEvent.click(within(confirm).getByRole("button", { name: "退回" }));
+    await waitFor(() => expect(ds.revertChangeToProposed).toHaveBeenCalledWith("oops-started"));
+  });
+
+  it("revert blocked: 守門拒絕開對話框列證據,無任何清理或強制退回按鈕", async () => {
+    // spec Scenario「有工作痕跡時顯示守門對話框」。
+    const { RevertBlockedError } = await import("@speclink/ui");
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue([
+        { name: "oops-started", status: "in-progress", totalTasks: 10, completedTasks: 3, startedAt: "2026-07-30" },
+      ]),
+      revertChangeToProposed: vi
+        .fn()
+        .mockRejectedValue(
+          new RevertBlockedError({ checkedTasks: 3, touchedFiles: ["src/a.rs", "src/b.ts"] }),
+        ),
+    });
+    renderApp(ds);
+    const card = (await screen.findByText("oops-started")).closest("[data-change]") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: /退回提案中/ }));
+    const confirm = await screen.findByRole("alertdialog");
+    fireEvent.click(within(confirm).getByRole("button", { name: "退回" }));
+    // 守門對話框:列出已勾任務數與 touched 檔案清單。
+    await waitFor(() => expect(screen.getByText(/src\/a\.rs/)).toBeTruthy());
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog.textContent).toContain("3");
+    expect(dialog.textContent).toContain("src/b.ts");
+    // 無清理/強制退回的機械出路——唯一按鈕只負責關閉。
+    expect(within(dialog).getAllByRole("button")).toHaveLength(1);
+    // 卡片停留在進行中欄。
+    expect(document.querySelector('[data-column="in-progress"]')?.textContent).toContain(
+      "oops-started",
+    );
   });
 
   it("封存失敗時確認框關閉不會連帶關閉詳情抽屜", async () => {

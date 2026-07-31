@@ -82,6 +82,18 @@ pub struct TaskUndoneResponse {
     pub already_undone: bool,
 }
 
+/// `DELETE /changes/{name}/in-progress` 409 evidence — the work traces that
+/// blocked the marker removal, flattened into the error envelope. Additive
+/// wire contract: fields only ever get added, never changed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RevertBlockedEvidence {
+    /// Checked-task count of the change's tasks.md.
+    pub checked_tasks: usize,
+    /// Union of the touched record's v1 and v2 file lists, deduplicated.
+    pub touched_files: Vec<String>,
+}
+
 /// `POST /changes/{name}/claim` response.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

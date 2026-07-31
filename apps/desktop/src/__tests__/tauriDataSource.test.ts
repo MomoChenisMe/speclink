@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 
+import { RevertBlockedError } from "@speclink/ui";
+
 import { createTauriDataSource } from "../adapter/tauriDataSource";
 
 describe("createTauriDataSource", () => {
@@ -76,6 +78,32 @@ describe("createTauriDataSource", () => {
     const doc = await ds.getDocument("chg", "proposal.md");
     expect(invoke).toHaveBeenCalledWith("document", { root: "/r", change: "chg", artifact: "proposal.md" });
     expect(doc).toBe("## Why");
+  });
+
+  it("revertChangeToProposed invokes the revert command with root and change", async () => {
+    invoke.mockResolvedValueOnce(undefined);
+    const ds = createTauriDataSource("/r");
+    await ds.revertChangeToProposed("chg");
+    expect(invoke).toHaveBeenCalledWith("revert_change_to_proposed", { root: "/r", change: "chg" });
+  });
+
+  it("revertChangeToProposed 把守門 JSON 錯誤轉為 RevertBlockedError(結構化證據)", async () => {
+    invoke.mockRejectedValueOnce(
+      '{"kind":"revertBlocked","checkedTasks":2,"touchedFiles":["src/a.rs"]}',
+    );
+    const ds = createTauriDataSource("/r");
+    const err = await ds.revertChangeToProposed("chg").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RevertBlockedError);
+    expect((err as RevertBlockedError).checkedTasks).toBe(2);
+    expect((err as RevertBlockedError).touchedFiles).toEqual(["src/a.rs"]);
+  });
+
+  it("revertChangeToProposed 非守門錯誤原樣拋出單行訊息", async () => {
+    invoke.mockRejectedValueOnce("not a speclink project: /r");
+    const ds = createTauriDataSource("/r");
+    const err = await ds.revertChangeToProposed("chg").catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(RevertBlockedError);
+    expect(String(err instanceof Error ? err.message : err)).toContain("not a speclink project");
   });
 
   it("runVerb invokes the verb command by name with the change arg", async () => {

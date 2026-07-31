@@ -392,6 +392,91 @@ fn in_progress_repeat_and_unknown_are_http_200_with_zero_side_effects() {
     assert_eq!(outbox_names(&f), events, "an unknown name publishes no event");
 }
 
+// --- 規格「in-progress 標記移除端點與加入端點成鏡像」---
+
+#[test]
+fn in_progress_remove_zero_trace_removes_marker_and_publishes_event() {
+    let f = fixture(None);
+    request("POST", &f, &f.editor_pat, "changes/demo/in-progress")
+        .call()
+        .expect("stamp first");
+    let before = revision(&f);
+    let response = request("DELETE", &f, &f.editor_pat, "changes/demo/in-progress")
+        .call()
+        .expect("zero-trace removal succeeds");
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        meta_content(&f).as_deref(),
+        Some("schema: spec-driven\n"),
+        "started_* removed, every other line byte-identical"
+    );
+    assert!(revision(&f) > before, "the removal commit advances the scope revision");
+    assert!(
+        outbox_names(&f).contains(&"change-in-progress-removed".to_string()),
+        "the removal publishes change-in-progress-removed: {:?}",
+        outbox_names(&f)
+    );
+}
+
+#[test]
+fn in_progress_remove_not_started_is_http_200_with_zero_side_effects() {
+    let f = fixture(None);
+    let before = revision(&f);
+    let events = outbox_names(&f);
+    let response = request("DELETE", &f, &f.editor_pat, "changes/demo/in-progress")
+        .call()
+        .expect("a not-started change is an idempotent success");
+    assert_eq!(response.status(), 200);
+    assert_eq!(meta_content(&f).as_deref(), Some("schema: spec-driven\n"));
+    assert_eq!(revision(&f), before, "an idempotent pass commits nothing");
+    assert_eq!(outbox_names(&f), events, "an idempotent pass publishes no event");
+}
+
+#[test]
+fn in_progress_remove_with_work_traces_is_409_with_camelcase_evidence() {
+    let f = fixture(Some("- [x] 1.1 甲\n- [x] 1.2 乙\n- [ ] 1.3 丙\n"));
+    request("POST", &f, &f.editor_pat, "changes/demo/in-progress")
+        .call()
+        .expect("stamp first");
+    let stamped = meta_content(&f);
+    let before = revision(&f);
+    let events = outbox_names(&f);
+
+    // 生 JSON 斷言 wire 形狀:證據欄位 camelCase、型別正確(D4 對外契約)。
+    let (status, body) = match request("DELETE", &f, &f.editor_pat, "changes/demo/in-progress").call() {
+        Err(ureq::Error::Status(status, response)) => {
+            (status, response.into_string().unwrap_or_default())
+        }
+        other => panic!("expected a 409 status error, got {other:?}"),
+    };
+    assert_eq!(status, 409);
+    let v: Value = serde_json::from_str(&body).expect("JSON error payload");
+    assert_eq!(v["reason"], "refused");
+    assert!(v["checkedTasks"].is_number(), "checkedTasks is a number: {v}");
+    assert_eq!(v["checkedTasks"], 2);
+    assert!(v["touchedFiles"].is_array(), "touchedFiles is an array: {v}");
+    assert!(
+        v["touchedFiles"].as_array().unwrap().iter().all(Value::is_string),
+        "touchedFiles elements are strings: {v}"
+    );
+
+    assert_eq!(meta_content(&f), stamped, "a refusal must not touch the meta");
+    assert_eq!(revision(&f), before, "a refusal writes nothing");
+    assert_eq!(outbox_names(&f), events, "a refusal publishes no event");
+}
+
+#[test]
+fn in_progress_remove_unknown_change_is_404() {
+    let f = fixture(None);
+    let before = revision(&f);
+    let (status, error) = protocol_error(
+        request("DELETE", &f, &f.editor_pat, "changes/no-such/in-progress").call(),
+    );
+    assert_eq!(status, 404);
+    assert_eq!(error.reason, ErrorReason::NotFound);
+    assert_eq!(revision(&f), before, "an unknown change writes nothing");
+}
+
 // --- 規格「寫入動詞 editor 限定」---
 
 #[test]

@@ -540,3 +540,38 @@ describe("討論抽屜閱讀欄置中", () => {
     expect(col.querySelector("[data-round]")).toBeTruthy();
   });
 });
+
+// spec「討論抽屜檢視與轉出變更」抽屜內封存場景:concluded 且未封存(宿主提供
+// handler)才出現;走與討論卡同一 onArchiveDiscussion 呼叫(確認流程在宿主)。
+describe("抽屜內封存動詞", () => {
+  it("concluded 討論顯示封存動作,點擊觸發 onArchiveDiscussion", async () => {
+    const onArchiveDiscussion = vi.fn();
+    render(<DiscussionDrawer {...(makeProps({ onArchiveDiscussion }) as never)} />);
+    const btn = await screen.findByRole("button", { name: /封存/ });
+    fireEvent.click(btn);
+    expect(onArchiveDiscussion).toHaveBeenCalledWith("alpha-search");
+  });
+
+  it("非 concluded(open/promoted)不顯示封存動作", async () => {
+    render(
+      <DiscussionDrawer
+        {...(makeProps({ discussion: openD, onArchiveDiscussion: vi.fn() }) as never)}
+      />,
+    );
+    await screen.findByText("Alpha search");
+    expect(screen.queryByRole("button", { name: /封存/ })).toBeNull();
+
+    render(
+      <DiscussionDrawer
+        {...(makeProps({ discussion: promotedD, onArchiveDiscussion: vi.fn() }) as never)}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /封存/ })).toBeNull();
+  });
+
+  it("已封存(宿主不提供 handler)不顯示封存動作", async () => {
+    render(<DiscussionDrawer {...(makeProps() as never)} />);
+    await screen.findByText("Alpha search");
+    expect(screen.queryByRole("button", { name: /封存/ })).toBeNull();
+  });
+});

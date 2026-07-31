@@ -61,7 +61,10 @@ pub fn router(state: AppState) -> Router {
             post(routes::task_undone),
         )
         .route("/changes/{name}/claim", post(routes::claim))
-        .route("/changes/{name}/in-progress", post(routes::in_progress))
+        .route(
+            "/changes/{name}/in-progress",
+            post(routes::in_progress).delete(routes::in_progress_remove),
+        )
         .route("/changes/{name}/archive", post(routes::archive))
         .route(
             "/discussions",

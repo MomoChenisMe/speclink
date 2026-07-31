@@ -4,7 +4,7 @@
 // 不在 client 偽造）；createRemoteSession 以 handshake 結果建 session、事件面
 // 訂閱 remote-workspace-changed 並以 locator key 過濾。
 import { describe, it, expect } from "vitest";
-import { changeStage } from "@speclink/ui";
+import { changeStage, RevertBlockedError } from "@speclink/ui";
 
 import { createRemoteDataSource } from "../adapter/remoteDataSource";
 import {
@@ -86,6 +86,7 @@ function fakeInvoke() {
     remote_delete_change: null,
     remote_move_task: null,
     remote_reorder_card: null,
+    remote_revert_change_to_proposed: null,
   };
   const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
     calls.push({ cmd, args });
@@ -149,6 +150,30 @@ function readerInfo(): RemoteOpenInfo {
 }
 
 describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
+  it("revertChangeToProposed maps to remote_revert_change_to_proposed and translates the blocked JSON", async () => {
+    const { calls, invoke } = fakeInvoke();
+    const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
+    await ds.revertChangeToProposed("chg");
+    const call = calls.find((c) => c.cmd === "remote_revert_change_to_proposed");
+    expect(call?.args).toMatchObject({
+      connectionId: CONN,
+      project: PROJECT,
+      repo: REPO,
+      change: "chg",
+    });
+
+    // 守門 JSON → RevertBlockedError——與本地 adapter 同一結構化錯誤形狀
+    //(spec Scenario「remote 模式行為一致」的 adapter 半邊)。
+    const blocked = async () => {
+      throw '{"kind":"revertBlocked","checkedTasks":1,"touchedFiles":["src/x.rs"]}';
+    };
+    const ds2 = createRemoteDataSource(CONN, PROJECT, REPO, blocked as never);
+    const err = await ds2.revertChangeToProposed("chg").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RevertBlockedError);
+    expect((err as RevertBlockedError).checkedTasks).toBe(1);
+    expect((err as RevertBlockedError).touchedFiles).toEqual(["src/x.rs"]);
+  });
+
   it("supported methods map to remote_* commands carrying connectionId + project + repo", async () => {
     const { calls, invoke } = fakeInvoke();
     const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);

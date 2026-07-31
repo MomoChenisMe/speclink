@@ -76,6 +76,9 @@ pub fn event_record_of(event: &DomainEvent, actor: &Actor) -> EventRecord {
         DomainEvent::ChangeMarkedInProgress { change, occurred_at } => {
             (json!({ "change": change }), *occurred_at)
         }
+        DomainEvent::ChangeInProgressRemoved { change, occurred_at } => {
+            (json!({ "change": change }), *occurred_at)
+        }
         DomainEvent::ChangeArchived { change, dated_name, occurred_at } => {
             (json!({ "change": change, "datedName": dated_name }), *occurred_at)
         }

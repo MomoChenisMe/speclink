@@ -957,6 +957,18 @@ fn remote_claim(ctx: &RemoteCtx, name: &str) -> Result<()> {
     Ok(())
 }
 
+fn remote_in_progress_remove(ctx: &RemoteCtx, name: &str) -> Result<()> {
+    // 200 Ack 涵蓋實際移除與未開工冪等(D4 契約)——remote 分不出兩者,
+    // 一律印移除確認;守門 409 與 404 的 message 為引擎凍結文字,經 `?`
+    // 轉發後 stderr 與 fs 模式逐位元一致。
+    ctx.client.in_progress_remove(name)?;
+    println!(
+        "{} Removed the in-progress marker from '{name}' — back to proposed",
+        color::green("✓")
+    );
+    Ok(())
+}
+
 // --- validate / analyze：唯讀衍生查詢的 remote 分流（remote-verb-parity）---
 
 /// 聚合語意（無參數／--all／--changes）由 client 組合：先 list 再逐 change 打

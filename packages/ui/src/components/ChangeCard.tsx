@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Archive, Check, Copy, FileText, MessageSquareText, RefreshCw } from "lucide-react";
+import { AlertTriangle, Archive, Check, Copy, FileText, MessageSquareText, RefreshCw, Undo2 } from "lucide-react";
 
 import type { ChangeItem, SearchHit } from "../adapter";
 import { useI18n } from "../i18n";
@@ -14,6 +14,8 @@ export interface ChangeCardProps {
   onOpen?: (name: string) => void;
   /** 封存請求（僅「已就緒」階段的卡片顯示封存鈕）。 */
   onArchive?: (name: string) => void;
+  /** 退回提案中請求（僅派生「進行中」的卡片顯示退回鈕；未提供時不渲染）。 */
+  onRevert?: (name: string) => void;
   /** 進度條填色 class（看板依階段配色）。 */
   barClass?: string;
   /** 搜尋字串（design D7）：名稱子字串命中時高亮命中原文。 */
@@ -27,6 +29,7 @@ export function ChangeCard({
   change,
   onOpen,
   onArchive,
+  onRevert,
   barClass = "bg-primary",
   highlight,
   hit,
@@ -132,15 +135,36 @@ export function ChangeCard({
             {change.completedTasks}/{change.totalTasks}
           </span>
         </div>
+        {/* stopPropagation 掛在按鈕自身而非整列：鈕旁空白仍冒泡開卡片詳情。 */}
         {stage === "ready" && (
-          <div onClick={(e) => e.stopPropagation()}>
+          <div>
             <Button
               variant="outline"
               size="sm"
               className="h-6 gap-1 px-2 text-xs"
-              onClick={() => onArchive?.(change.name)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onArchive?.(change.name);
+              }}
             >
               <Archive className="h-3 w-3" /> {t("common.archive")}
+            </Button>
+          </div>
+        )}
+        {/* 退回提案中（樣式沿討論卡封存鈕）：僅派生進行中呈現；點擊交宿主先確認,
+            UI 不預判守門——引擎是唯一裁決點。 */}
+        {stage === "in-progress" && onRevert && (
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 gap-1 px-2 text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRevert(change.name);
+              }}
+            >
+              <Undo2 className="h-3 w-3" /> {t("common.revert")}
             </Button>
           </div>
         )}

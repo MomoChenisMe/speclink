@@ -17,6 +17,7 @@ import {
   SpecDrawer,
   RichDetailDrawer,
   DiscussionDrawer,
+  RevertBlockedDialog,
   AlertDialog,
   AlertDialogContent,
   AlertDialogHeader,
@@ -616,6 +617,7 @@ function AppInner({
               changes={s.changes}
               onOpenChange={s.openDetail}
               onArchive={caps && !caps.archive ? undefined : s.requestArchive}
+              onRevert={s.requestRevert}
               discussions={s.discussions}
               archivedChanges={s.archived}
               onOpenDiscussion={s.openDiscussion}
@@ -673,6 +675,7 @@ function AppInner({
         drawerVerb={s.drawerVerb}
         onClearVerb={s.clearDrawerVerb}
         onDelete={s.requestDelete}
+        onRevert={s.requestRevert}
         unavailable={
           caps && {
             analyze:
@@ -747,6 +750,14 @@ function AppInner({
         changes={s.changes}
         archivedChanges={s.archived}
         onOpenChangeCard={s.openDetail}
+        onArchiveDiscussion={
+          // 已封存的討論(自來源討論 chip 開啟)與 capability 缺口不提供封存;
+          // 其餘走與討論卡同一確認流程。
+          (caps && !caps.archiveDiscussion) ||
+          s.discussions.archived.some((d) => d.slug === s.detailDiscussion?.slug)
+            ? undefined
+            : s.requestArchiveDiscussion
+        }
       />
 
       {workspace && (
@@ -876,6 +887,27 @@ function AppInner({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 退回提案中確認：確認後直接呼叫引擎動詞,UI 不預判守門。 */}
+      <AlertDialog open={s.pendingRevert !== null} onOpenChange={(o) => !o && s.cancelRevert()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("app.revertTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              <BoldName text={t("app.revertDesc")} name={s.pendingRevert ?? ""} />
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={s.cancelRevert}>{t("app.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmDetailAction(s.confirmRevert)}>
+              {t("app.revertConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 退回被守門擋下：列引擎證據與出路,無清理或強制退回的機械出路。 */}
+      <RevertBlockedDialog info={s.revertBlocked} onClose={s.dismissRevertBlocked} />
 
       {/* 刪除確認 */}
       <AlertDialog open={s.pendingDelete !== null} onOpenChange={(o) => !o && s.cancelDelete()}>

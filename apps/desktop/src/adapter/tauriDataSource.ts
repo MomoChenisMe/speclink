@@ -1,4 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { toRevertError } from "@speclink/ui";
 import type {
   SpeclinkDataSource,
   CardKind,
@@ -55,6 +56,15 @@ export function createTauriDataSource(
         root,
         change,
       });
+    },
+    async revertChangeToProposed(change: string): Promise<void> {
+      // 守門拒絕由 desktop core 以 JSON 字串回證據——經共用 toRevertError
+      // 轉為 RevertBlockedError,App 的守門對話框單一消費入口。
+      try {
+        await invoke("revert_change_to_proposed", { root, change });
+      } catch (e) {
+        throw toRevertError(e);
+      }
     },
     async deleteChange(change: string): Promise<void> {
       await invoke("delete_change", { root, change });

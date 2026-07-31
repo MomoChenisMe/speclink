@@ -63,6 +63,53 @@ describe("KanbanBoard", () => {
     expect(onArchive).toHaveBeenCalledWith("ready-z");
   });
 
+  it("shows the revert action only on in-progress cards (spec: 退回動作僅於進行中變更出現)", () => {
+    render(<KanbanBoard changes={changes} onRevert={vi.fn()} />);
+    // 蓋章的進行中卡與無章有進度的派生進行中卡皆顯示。
+    const workingCard = screen.getByText("working-y").closest("[data-change]") as HTMLElement;
+    expect(within(workingCard).getByRole("button", { name: /退回提案中/ })).toBeTruthy();
+    const progressedCard = screen.getByText("progressed-w").closest("[data-change]") as HTMLElement;
+    expect(within(progressedCard).getByRole("button", { name: /退回提案中/ })).toBeTruthy();
+    // 提案中與已就緒不顯示。
+    const proposedCard = screen.getByText("proposing-x").closest("[data-change]") as HTMLElement;
+    expect(within(proposedCard).queryByRole("button", { name: /退回提案中/ })).toBeNull();
+    const readyCard = screen.getByText("ready-z").closest("[data-change]") as HTMLElement;
+    expect(within(readyCard).queryByRole("button", { name: /退回提案中/ })).toBeNull();
+  });
+
+  it("fires onRevert from an in-progress card's revert button without opening the card", () => {
+    const onRevert = vi.fn();
+    const onOpenChange = vi.fn();
+    render(<KanbanBoard changes={changes} onRevert={onRevert} onOpenChange={onOpenChange} />);
+    const workingCard = screen.getByText("working-y").closest("[data-change]") as HTMLElement;
+    fireEvent.click(within(workingCard).getByRole("button", { name: /退回提案中/ }));
+    expect(onRevert).toHaveBeenCalledWith("working-y");
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("clicking the action row's blank area opens the card instead of being swallowed", () => {
+    const onRevert = vi.fn();
+    const onArchive = vi.fn();
+    const onOpenChange = vi.fn();
+    render(
+      <KanbanBoard changes={changes} onRevert={onRevert} onArchive={onArchive} onOpenChange={onOpenChange} />,
+    );
+    // 進行中卡退回鈕列：點按鈕旁空白 → 開卡、不觸發退回。
+    const workingCard = screen.getByText("working-y").closest("[data-change]") as HTMLElement;
+    fireEvent.click(
+      within(workingCard).getByRole("button", { name: /退回提案中/ }).parentElement as HTMLElement,
+    );
+    expect(onOpenChange).toHaveBeenCalledWith("working-y");
+    expect(onRevert).not.toHaveBeenCalled();
+    // 已就緒卡封存鈕列同理。
+    const readyCard = screen.getByText("ready-z").closest("[data-change]") as HTMLElement;
+    fireEvent.click(
+      within(readyCard).getByRole("button", { name: /封存/ }).parentElement as HTMLElement,
+    );
+    expect(onOpenChange).toHaveBeenCalledWith("ready-z");
+    expect(onArchive).not.toHaveBeenCalled();
+  });
+
   it("opens a change when its card body is clicked", () => {
     const onOpenChange = vi.fn();
     render(<KanbanBoard changes={changes} onOpenChange={onOpenChange} />);

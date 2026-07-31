@@ -166,6 +166,50 @@ export interface StatusReport {
   artifacts: ArtifactStatus[];
 }
 
+/** 退回提案中被守門擋下:引擎回傳的工作痕跡證據(守門對話框的資料源)。 */
+export interface RevertBlockedEvidence {
+  /** tasks.md 的已勾任務數。 */
+  checkedTasks: number;
+  /** touched 記錄 v1 與 v2 兩清單的檔案聯集(去重)。 */
+  touchedFiles: string[];
+}
+
+/** revertChangeToProposed 的守門拒絕:證據隨錯誤走,App 據此開守門對話框。 */
+export class RevertBlockedError extends Error {
+  checkedTasks: number;
+  touchedFiles: string[];
+  constructor(evidence: RevertBlockedEvidence) {
+    super("revert blocked: work traces exist");
+    this.name = "RevertBlockedError";
+    this.checkedTasks = evidence.checkedTasks;
+    this.touchedFiles = evidence.touchedFiles;
+  }
+}
+
+/**
+ * 兩個 desktop adapter 共用的錯誤轉譯:bridge 以 JSON 字串回守門證據
+ *(kind: "revertBlocked")——解析成功回 RevertBlockedError,否則原樣轉單行 Error。
+ */
+export function toRevertError(raw: unknown): Error {
+  const text = raw instanceof Error ? raw.message : String(raw);
+  try {
+    const parsed = JSON.parse(text) as {
+      kind?: string;
+      checkedTasks?: number;
+      touchedFiles?: string[];
+    };
+    if (parsed.kind === "revertBlocked") {
+      return new RevertBlockedError({
+        checkedTasks: parsed.checkedTasks ?? 0,
+        touchedFiles: parsed.touchedFiles ?? [],
+      });
+    }
+  } catch {
+    // 非 JSON——一般錯誤訊息。
+  }
+  return raw instanceof Error ? raw : new Error(text);
+}
+
 /** 元件透過此介面取得資料與觸發動詞——不知道背後是 Tauri 還是 HTTP。 */
 export interface SpeclinkDataSource {
   listChanges(): Promise<ChangeItem[]>;
@@ -188,6 +232,10 @@ export interface SpeclinkDataSource {
   changeMeta(change: string): Promise<ChangeMetaInfo | null>;
   /** 刪除一個 active change（破壞性；UI 需先確認）。 */
   deleteChange(change: string): Promise<void>;
+  /** 把誤開工的變更退回提案中(移除 in-progress 標記;僅零工作痕跡可行;
+   * UI 需先確認)。守門擋下時 reject RevertBlockedError(證據隨錯誤);
+   * 其餘失敗 reject 單行訊息。 */
+  revertChangeToProposed(change: string): Promise<void>;
   /** 勾選/取消任務：task 為 tsk_ stable ID 或 ordinal 字串（無 ID 相容路徑）。 */
   setTaskDone(change: string, task: string, done: boolean): Promise<void>;
   /** 批次設定全部任務完成狀態（true＝全部已完成、false＝重置任務），單次寫回。 */

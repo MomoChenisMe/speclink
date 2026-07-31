@@ -70,7 +70,14 @@ export type {
   AnalyzeDimension,
   AnalyzeReport,
   VerbDrawerResult,
+  RevertBlockedEvidence,
 } from "./adapter";
+export { RevertBlockedError, toRevertError } from "./adapter";
+export {
+  RevertBlockedDialog,
+  type RevertBlockedInfo,
+  type RevertBlockedDialogProps,
+} from "./components/RevertBlockedDialog";
 export { cardDndId, parseCardDndId, resolveCardDrop, type ColumnCards } from "./boardDnd";
 export { ChangeBoard } from "./components/ChangeBoard";
 export type { ChangeBoardProps } from "./components/ChangeBoard";

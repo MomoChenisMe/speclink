@@ -10,7 +10,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// The wire error envelope: exactly the `{ status, reason, message }` triple.
+/// The wire error envelope: the `{ status, reason, message }` triple, plus —
+/// only on the refusals that carry it — flattened structured evidence.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ErrorResponse {
@@ -19,6 +20,11 @@ pub struct ErrorResponse {
     pub status: u16,
     pub reason: ErrorReason,
     pub message: String,
+    /// Work-trace evidence of the in-progress removal gate (D4): flattened
+    /// additive camelCase fields, absent on every other error so existing
+    /// payloads stay byte-identical.
+    #[serde(flatten)]
+    pub evidence: Option<crate::command::RevertBlockedEvidence>,
 }
 
 /// The closed error reason registry. A reason string outside the registry
