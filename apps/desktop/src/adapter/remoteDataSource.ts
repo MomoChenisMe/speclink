@@ -89,9 +89,10 @@ export function createRemoteDataSource(
       return unsupported("change 詮釋資料");
     },
     async deleteChange(change: string): Promise<void> {
-      // 決策 3：桌面 remote 刪除固定帶 force=true（與本地無 guard 直刪同模式，
-      // 確認對話框在 UI 層）；server 端仍執行 discard 全語意（unlink＋原子刪除）。
-      await invoke("remote_delete_change", { ...locator, change, force: true });
+      // archive-readiness-gating D2 翻案：force=false 與本地 discard 守門語意對齊
+      // ——已開工 change 由 server 拒絕（需要強制），拒絕錯誤沿既有 deleteFailed
+      // toast 路徑呈現；server 端執行 discard 全語意（守門＋unlink＋原子刪除）。
+      await invoke("remote_delete_change", { ...locator, change, force: false });
     },
     async revertChangeToProposed(change: string): Promise<void> {
       // 守門 409 的證據由 Rust bridge 轉為與本地同形狀的 JSON 錯誤字串——

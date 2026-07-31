@@ -264,6 +264,11 @@ export function KanbanBoard({
   const sourceDiscussions = (discussions?.active ?? []).filter((d) => d.promotedTo.length > 0);
   const byStage: Record<Stage, ChangeItem[]> = { proposed: [], "in-progress": [], ready: [] };
   for (const c of visibleChanges) byStage[changeStage(c)].push(c);
+  // 就緒名單自全清單派生（不經搜尋過濾）：落點浮現與 dragEnd 的 archived 分支
+  // 共用同一判定（archive-readiness-gating D3）。
+  const readyIds: ReadonlySet<string> = new Set(
+    changes.filter((c) => changeStage(c) === "ready").map((c) => c.name),
+  );
   const dragging = activeId !== null;
   const activeCard = activeId ? parseCardDndId(activeId) : null;
   const activeChange =
@@ -299,8 +304,9 @@ export function KanbanBoard({
     const over = String(e.over.id);
     const active = String(e.active.id);
     if (over === "archived") {
+      // 落點不可見時理論上不會 over，就緒判定守住快速手勢與測試路徑（D3）。
       const card = parseCardDndId(active);
-      if (card?.kind === "change") onArchive?.(card.id);
+      if (card?.kind === "change" && readyIds.has(card.id)) onArchive?.(card.id);
       return;
     }
     // 同欄放開才寫回；跨欄、欄容器、原位一律 null → 彈回、零寫入。
@@ -472,8 +478,9 @@ export function KanbanBoard({
           </Column>
         ))}
       </div>
-      {/* 僅拖曳變更卡時浮現（archiveZoneVisible）：討論卡不可封存、不得造成佈局變動。 */}
-      {dragging && archiveZoneVisible(activeId) && <ArchiveDropZone />}
+      {/* 僅拖曳已就緒變更卡時浮現（archiveZoneVisible）：非就緒卡＝純排序、
+          討論卡不可封存，皆不得造成佈局變動。 */}
+      {dragging && archiveZoneVisible(activeId, readyIds) && <ArchiveDropZone />}
       </div>
       </div>
       {/* 拖曳浮動複本：渲染在最上層，不受欄位 overflow 裁切 */}

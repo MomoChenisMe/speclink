@@ -22,11 +22,17 @@ export function parseCardDndId(dndId: string): { kind: CardKind; id: string } | 
 }
 
 /**
- * 封存落點浮層的浮現條件（spec「拖曳封存落點以浮層呈現」）：僅拖曳變更卡時
- * 浮現——討論卡不可拖曳封存，拖曳它不得造成任何佈局變動。
+ * 封存落點浮層的浮現條件（spec「拖曳封存落點以浮層呈現」）：僅拖曳**已就緒**
+ * 變更卡（名列 `readyIds`）時浮現——非就緒變更卡的拖曳＝純排序，討論卡不可
+ * 拖曳封存，兩者皆不得造成任何佈局變動。
  */
-export function archiveZoneVisible(activeDndId: string | null): boolean {
-  return activeDndId !== null && parseCardDndId(activeDndId)?.kind === "change";
+export function archiveZoneVisible(
+  activeDndId: string | null,
+  readyIds: ReadonlySet<string>,
+): boolean {
+  if (activeDndId === null) return false;
+  const card = parseCardDndId(activeDndId);
+  return card?.kind === "change" && readyIds.has(card.id);
 }
 
 /**

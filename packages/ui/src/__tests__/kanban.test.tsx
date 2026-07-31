@@ -12,6 +12,21 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
+// 捕捉 DndContext 的接線 props（onDragStart/onDragEnd）——jsdom 無法模擬真實
+// pointer 拖曳手勢，改直接驅動接線回呼驗證落點渲染與 archived 分支守門；
+// 元件本身仍以原 DndContext 渲染，既有測試不受影響。
+const captured = vi.hoisted(() => ({ dnd: null as any }));
+vi.mock("@dnd-kit/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@dnd-kit/core")>();
+  const Wrapped = (props: any) => {
+    captured.dnd = props;
+    return <actual.DndContext {...props} />;
+  };
+  return { ...actual, DndContext: Wrapped };
+});
+
+import { act } from "@testing-library/react";
+
 import { KanbanBoard, DRAG_ACTIVATION_DISTANCE } from "../components/KanbanBoard";
 import { DetailDrawer } from "../components/DetailDrawer";
 import { archiveZoneVisible, cardDndId, resolveCardDrop, type ColumnCards } from "../boardDnd";
@@ -458,19 +473,51 @@ describe("命中高亮與 snippet（design D7）", () => {
   });
 });
 
-// spec 需求「拖曳封存落點以浮層呈現」的 jsdom 可驗部分（design D8）：浮現條件
-// 純函式＋靜態不渲染；真實拖曳的欄寬零變動與放開行為屬真視窗驗證（tasks 8.2）。
-describe("封存落點浮層（design D8）", () => {
-  it("archiveZoneVisible：變更卡拖曳才浮現、討論卡與無拖曳不浮現", () => {
-    expect(archiveZoneVisible(cardDndId("change", "engine-typed-core"))).toBe(true);
-    expect(archiveZoneVisible(cardDndId("discussion", "collab"))).toBe(false);
-    expect(archiveZoneVisible("archived")).toBe(false);
-    expect(archiveZoneVisible(null)).toBe(false);
+// spec 需求「拖曳封存落點以浮層呈現」的 jsdom 可驗部分（design D8＋
+// archive-readiness-gating D3）：浮現條件純函式＋接線經捕捉的 DndContext
+// props 驅動；真實拖曳的欄寬零變動與放開行為屬真視窗驗證。
+describe("封存落點浮層（design D8 + archive-readiness-gating D3）", () => {
+  // 就緒名單：落點僅於拖曳已就緒變更卡時浮現（fixture 中僅 ready-z 就緒）。
+  const readyIds: ReadonlySet<string> = new Set(["ready-z"]);
+
+  it("archiveZoneVisible：已就緒變更卡拖曳才浮現、非就緒與討論卡不浮現", () => {
+    expect(archiveZoneVisible(cardDndId("change", "ready-z"), readyIds)).toBe(true);
+    expect(archiveZoneVisible(cardDndId("change", "working-y"), readyIds)).toBe(false);
+    expect(archiveZoneVisible(cardDndId("discussion", "collab"), readyIds)).toBe(false);
+    expect(archiveZoneVisible("archived", readyIds)).toBe(false);
+    expect(archiveZoneVisible(null, readyIds)).toBe(false);
   });
 
   it("未拖曳時看板不渲染封存落點", () => {
     render(<KanbanBoard changes={changes} />);
     expect(document.querySelector('[data-column="archived"]')).toBeNull();
+  });
+
+  const startDrag = (id: string) => act(() => captured.dnd.onDragStart({ active: { id } }));
+  const endDrag = (id: string, overId: string | null) =>
+    act(() =>
+      captured.dnd.onDragEnd({ active: { id }, over: overId ? { id: overId } : null }),
+    );
+
+  it("拖曳進行中變更卡不渲染封存落點；已就緒卡渲染", () => {
+    render(<KanbanBoard changes={changes} onArchive={vi.fn()} />);
+    startDrag(cardDndId("change", "working-y"));
+    expect(document.querySelector('[data-column="archived"]')).toBeNull();
+    endDrag(cardDndId("change", "working-y"), null);
+    startDrag(cardDndId("change", "ready-z"));
+    expect(document.querySelector('[data-column="archived"]')).toBeTruthy();
+  });
+
+  it("dragEnd 於 over=archived 且卡非就緒時不觸發 onArchive；就緒卡照常", () => {
+    const onArchive = vi.fn();
+    render(<KanbanBoard changes={changes} onArchive={onArchive} />);
+    // 落點不可見時理論上不會 over，此守門防快速手勢與測試路徑（design D3）。
+    startDrag(cardDndId("change", "working-y"));
+    endDrag(cardDndId("change", "working-y"), "archived");
+    expect(onArchive).not.toHaveBeenCalled();
+    startDrag(cardDndId("change", "ready-z"));
+    endDrag(cardDndId("change", "ready-z"), "archived");
+    expect(onArchive).toHaveBeenCalledWith("ready-z");
   });
 });
 

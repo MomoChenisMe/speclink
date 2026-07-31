@@ -53,19 +53,19 @@ pub fn change_meta_at(root: &Path, change: &str) -> Option<Value> {
     }))
 }
 
-/// 刪除一個 active change 的目錄。不存在或名稱不安全時回 `Err`；成功後該 change 不再出現於清單。
+/// 刪除一個 active change——走引擎 discard 全語意（force=false）：開工痕跡守門、
+/// 來源討論解鏈（清單空時狀態回復）、touched 紀錄清理。desktop 不提供 force 通道；
+/// 解鏈明細不呈現，前端既有 refresh 自然反映討論狀態回復。
 pub fn delete_change_at(root: &Path, change: &str) -> Result<(), String> {
+    let _guard = write_guard();
     if !crate::query::is_safe_path_param(change) {
         return Err(format!("invalid change name: {change}"));
     }
     let ctx = init_core_context(root)
         .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
-    let found = ctx
-        .store
-        .find_change(change)
-        .ok_or_else(|| format!("change not found: {change}"))?;
-    // found.dir 來自 store 的 active change 列舉（changes/<name>），不含 archive。
-    std::fs::remove_dir_all(&found.dir).map_err(|e| format!("delete failed: {e}"))
+    speclink_core::discard::discard(&ctx.workspace, &ctx.store, change, false)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// 退回提案中(desktop 直呼引擎動詞):移除 in-progress 標記,僅零工作痕跡時
@@ -481,13 +481,75 @@ mod tests {
 
     #[test]
     fn delete_change_removes_active_change() {
+        // 無痕跡 fixture（無 started_at、零勾選）——delete 走 discard 全語意後
+        // 守門放行的基準案例。
         let root = fixture_with_change("del", "doomed-change");
+        fs::write(
+            root.join("openspec").join("changes").join("doomed-change").join("tasks.md"),
+            "- [ ] 1.1 open\n",
+        )
+        .unwrap();
         let ctx = crate::init_core_context(&root).unwrap();
         assert!(ctx.store.change_exists("doomed-change"));
         delete_change_at(&root, "doomed-change").expect("delete ok");
         let ctx2 = crate::init_core_context(&root).unwrap();
         assert!(!ctx2.store.change_exists("doomed-change"));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    // --- 刪除走 discard 全語意（spec desktop-app「桌面刪除變更走 discard 全語意」）---
+
+    const PROMOTED_D1: &str = "---\ntopic: d1\nslug: d1\nstatus: promoted\npromoted_to: cut\ncreated: 2026-07-01\n---\n\n## Conclusion\n\n**Decision**: x\n";
+
+    #[test]
+    fn delete_promoted_change_unlinks_source_discussion_and_clears_touched() {
+        // spec scenario「刪除轉出 change 連帶解鏈來源討論」：目錄消失、touched
+        // 清除；來源討論 promoted_to 移除該名，清單空時狀態回復 concluded。
+        let fx = crate::testfixture::FixtureRoot::new("del-unlink");
+        fx.add_change("cut", "schema: spec-driven\ncreated: 2026-07-05\nfrom_discussion: d1\n");
+        // add_change 預設 tasks.md 含一個已勾任務——覆寫為零痕跡。
+        fx.write("openspec/changes/cut/tasks.md", "- [ ] 1.1 open\n");
+        fx.write("openspec/discussions/d1.md", PROMOTED_D1);
+        fx.write(".speclink/touched/cut.json", "{\"change\":\"cut\",\"touched\":[]}");
+
+        delete_change_at(fx.root(), "cut").expect("trace-free delete succeeds");
+
+        assert!(!fx.root().join("openspec/changes/cut").exists(), "change directory gone");
+        assert!(
+            !fx.root().join(".speclink/touched/cut.json").exists(),
+            "touched record cleared"
+        );
+        let doc = fs::read_to_string(fx.root().join("openspec/discussions/d1.md")).unwrap();
+        assert!(!doc.contains("promoted_to"), "promoted_to entry removed: {doc}");
+        assert!(
+            doc.contains("status: concluded\n"),
+            "status reverts when the list empties: {doc}"
+        );
+    }
+
+    #[test]
+    fn delete_started_change_is_refused_with_zero_file_effects() {
+        // spec scenario「有開工痕跡的本地刪除被拒」：meta 含 started_at → Err，
+        // openspec/ 下任何檔案逐位元不變（含來源討論不解鏈）。
+        let fx = crate::testfixture::FixtureRoot::new("del-refused");
+        fx.add_change(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-07-05\nstarted_at: 2026-07-06\nfrom_discussion: d1\n",
+        );
+        fx.write("openspec/changes/cut/tasks.md", "- [ ] 1.1 open\n");
+        fx.write("openspec/discussions/d1.md", PROMOTED_D1);
+        let meta_path = fx.root().join("openspec/changes/cut/.openspec.yaml");
+        let meta_before = fs::read_to_string(&meta_path).unwrap();
+
+        delete_change_at(fx.root(), "cut").expect_err("started change must refuse delete");
+
+        assert!(fx.root().join("openspec/changes/cut").exists(), "change directory preserved");
+        assert_eq!(fs::read_to_string(&meta_path).unwrap(), meta_before, "meta byte-identical");
+        assert_eq!(
+            fs::read_to_string(fx.root().join("openspec/discussions/d1.md")).unwrap(),
+            PROMOTED_D1,
+            "discussion untouched — no unlink on a refused delete"
+        );
     }
 
     fn fixture_with_tasks(tag: &str) -> PathBuf {

@@ -210,7 +210,12 @@ describe("App (kanban primary + rich detail)", () => {
   });
 
   it("delete flow: drawer delete → confirm dialog → deleteChange called", async () => {
-    const ds = fakeDataSource();
+    // 階段守門後刪除鈕僅提案中可按（archive-readiness-gating）——改用提案中 fixture。
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue([
+        { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 0 },
+      ]),
+    });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     fireEvent.click(screen.getByText("desktop-shell-and-browser"));

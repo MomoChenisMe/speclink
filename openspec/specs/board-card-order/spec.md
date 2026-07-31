@@ -184,54 +184,49 @@ code:
 ---
 ### Requirement: 跨欄拖曳不改變變更階段
 
-變更卡的所屬欄（提案中／進行中／已就緒）SHALL 維持由任務完成度推導；把變更卡拖到另一個階段欄放開時 SHALL 彈回原位，SHALL NOT 寫入任何檔案。把變更卡拖到封存落點時 SHALL 走既有封存確認流程，行為不變。討論卡 SHALL 僅於討論欄內可拖排。位移未達拖曳啟動門檻的按放 SHALL 視為點擊並開啟卡片詳情，SHALL NOT 觸發拖排。
+變更卡的所屬欄(提案中/進行中/已就緒)SHALL 維持由任務完成度推導;把變更卡拖到另一個階段欄放開時 SHALL 彈回原位,SHALL NOT 寫入任何檔案。封存落點 SHALL 僅於拖曳已就緒變更卡時提供(浮現條件由 desktop-app 規格「拖曳封存落點以浮層呈現」所定);已就緒變更卡拖至封存落點放開時 SHALL 走既有封存確認流程;非已就緒變更卡的拖曳 SHALL 僅得欄內排序,放開於任何欄外位置 SHALL 彈回且零寫入。討論卡 SHALL 僅於討論欄內可拖排。位移未達拖曳啟動門檻的按放 SHALL 視為點擊並開啟卡片詳情,SHALL NOT 觸發拖排。
 
 #### Scenario: 跨欄放開彈回且零寫入
 
 - **WHEN** 使用者把提案中欄的變更卡拖到已就緒欄內放開
-- **THEN** 卡片回到提案中欄原位，git 工作樹無任何檔案變更
+- **THEN** 卡片回到提案中欄原位,git 工作樹無任何檔案變更
 
-#### Scenario: 封存落點行為保留
+#### Scenario: 已就緒卡的封存落點行為保留
 
-- **WHEN** 使用者拖曳變更卡到拖曳中浮現的封存落點放開
-- **THEN** 既有封存確認流程啟動，與本變更前行為一致
+- **WHEN** 使用者拖曳已就緒變更卡到拖曳中浮現的封存落點放開
+- **THEN** 既有封存確認流程啟動,與本變更前行為一致
+
+#### Scenario: 非已就緒卡拖曳僅得排序
+
+- **WHEN** 使用者拖曳進行中欄的變更卡(封存落點未浮現)並於原欄外放開
+- **THEN** 卡片彈回原位,無封存確認、無任何檔案寫入;於原欄內其他卡片上放開則僅觸發欄內排序寫回
 
 #### Scenario: 單擊仍開啟詳情
 
 - **WHEN** 使用者在卡片上按下並於拖曳啟動門檻內放開
-- **THEN** 卡片詳情開啟，無拖排發生、無檔案寫入
+- **THEN** 卡片詳情開啟,無拖排發生、無檔案寫入
 
 
 <!-- @trace
-source: desktop-card-reorder
-updated: 2026-07-08
+source: archive-readiness-gating
+updated: 2026-07-31
 code:
-  - apps/desktop/core/src/discussions.rs
-  - apps/desktop/core/src/lib.rs
   - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/rank.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src/App.tsx
+  - apps/desktop/src-tauri/tests/remote_data.rs
   - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/util.rs
-  - packages/ui/src/__tests__/discussionColumn.test.tsx
+  - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+  - apps/desktop/src/__tests__/remoteDataSource.test.ts
+  - apps/desktop/src/__tests__/remoteResilience.test.tsx
+  - apps/desktop/src/adapter/remoteDataSource.ts
+  - crates/speclink-cli/tests/archive_readiness_gate.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
   - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/adapter.ts
+  - packages/ui/src/__tests__/richDrawer.test.tsx
   - packages/ui/src/boardDnd.ts
-  - packages/ui/src/components/DiscussionColumn.tsx
   - packages/ui/src/components/KanbanBoard.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
   - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
 -->
 
 ---

@@ -64,7 +64,8 @@ const INFO: RemoteOpenInfo = {
 function remoteInvoke() {
   let reachable = true;
   let changes = [
-    { name: "remote-change", status: "in-progress", totalTasks: 2, completedTasks: 0 },
+    // 已就緒（2/2）：封存鈕的階段守門放行，離線測試聚焦連線狀態對寫入的影響。
+    { name: "remote-change", status: "in-progress", totalTasks: 2, completedTasks: 2 },
   ];
   const invoke = vi.fn(async (command: string) => {
     if (command === "remote_watch" || command === "remote_unwatch") return undefined;
@@ -214,7 +215,8 @@ describe("remote offline stale snapshot", () => {
       .mockResolvedValue({ status: "project", root: "A", name: "Local" });
     const ds = fakeRemoteDs({
       listChanges: vi.fn().mockResolvedValue([
-        { name: "local-change", status: "in-progress", totalTasks: 2, completedTasks: 0 },
+        // 已就緒（2/2）：封存鈕的階段守門放行，聚焦 remote 事件不影響本地寫入能力。
+        { name: "local-change", status: "in-progress", totalTasks: 2, completedTasks: 2 },
       ]),
       changeCapabilities: vi.fn().mockResolvedValue([]),
       changeMeta: vi.fn().mockResolvedValue(null),
