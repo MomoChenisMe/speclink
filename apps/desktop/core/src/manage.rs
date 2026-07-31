@@ -68,6 +68,35 @@ pub fn delete_change_at(root: &Path, change: &str) -> Result<(), String> {
     std::fs::remove_dir_all(&found.dir).map_err(|e| format!("delete failed: {e}"))
 }
 
+/// 退回提案中(desktop 直呼引擎動詞):移除 in-progress 標記,僅零工作痕跡時
+/// 放行。成功涵蓋實際移除與未開工冪等——前端一律重載,卡片依派生歸位。
+/// 守門拒絕回傳 [`revert_blocked_error`] 的結構化 JSON;其餘錯誤為純文字。
+pub fn revert_change_to_proposed_at(root: &Path, change: &str) -> Result<(), String> {
+    let _guard = write_guard();
+    if !crate::query::is_safe_path_param(change) {
+        return Err(format!("invalid change name: {change}"));
+    }
+    let ctx = init_core_context(root)
+        .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
+    speclink_core::inprogress::remove(&ctx.store, &ctx.workspace, change)
+        .map(|_| ())
+        .map_err(|e| match e.downcast_ref::<speclink_core::inprogress::RevertBlocked>() {
+            Some(b) => revert_blocked_error(b.checked_tasks, &b.touched_files),
+            None => e.to_string(),
+        })
+}
+
+/// 守門拒絕的結構化錯誤 JSON——本地與 remote 兩個 bridge 共用的單一轉譯,
+/// 前端守門對話框的唯一消費形狀(kind/checkedTasks/touchedFiles)。
+pub fn revert_blocked_error(checked_tasks: usize, touched_files: &[String]) -> String {
+    json!({
+        "kind": "revertBlocked",
+        "checkedTasks": checked_tasks,
+        "touchedFiles": touched_files,
+    })
+    .to_string()
+}
+
 /// 勾選/取消一個任務。`task` 雙值域（與 CLI task 動詞一致）：純數字＝1-based
 /// ordinal（僅計 checkbox 行）、tsk_ 前綴＝stable ID 定址；其餘值、定址不中
 /// 或無 tasks.md 回 `Err`。
@@ -396,6 +425,58 @@ mod tests {
         let fx = crate::testfixture::FixtureRoot::new("m-meta-unknown");
         fx.add_change("demo", "schema: spec-driven\n");
         assert!(change_meta_at(fx.root(), "no-such-change-xyz").is_none());
+    }
+
+    // --- 退回提案中:引擎動詞直呼與守門錯誤的共用轉譯 ---
+
+    const STARTED_META: &str = "schema: spec-driven\ncreated: 2026-07-05\nstarted_at: 2026-07-06\nstarted_by: Worker <w@example.com>\nstarted_with: claude\n";
+
+    #[test]
+    fn revert_zero_trace_change_removes_started_lines_verbatim() {
+        let fx = crate::testfixture::FixtureRoot::new("m-revert-ok");
+        fx.add_change("demo", STARTED_META);
+        // add_change 預設 tasks.md 含一個已勾任務——覆寫為零勾選(零痕跡)。
+        fx.write("openspec/changes/demo/tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n");
+        revert_change_to_proposed_at(fx.root(), "demo").expect("zero-trace revert succeeds");
+        let meta = fs::read_to_string(
+            fx.root().join("openspec/changes/demo/.openspec.yaml"),
+        )
+        .unwrap();
+        assert_eq!(
+            meta, "schema: spec-driven\ncreated: 2026-07-05\n",
+            "started_* lines removed, every other line byte-identical"
+        );
+    }
+
+    #[test]
+    fn revert_on_unstarted_change_is_idempotent_success() {
+        let fx = crate::testfixture::FixtureRoot::new("m-revert-idem");
+        fx.add_change("demo", "schema: spec-driven\ncreated: 2026-07-05\n");
+        fx.write("openspec/changes/demo/tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n");
+        revert_change_to_proposed_at(fx.root(), "demo").expect("idempotent success");
+    }
+
+    #[test]
+    fn revert_blocked_returns_the_shared_structured_error_json() {
+        let fx = crate::testfixture::FixtureRoot::new("m-revert-blocked");
+        fx.add_change("demo", STARTED_META); // 預設 tasks.md 含 1 個已勾任務
+        fx.write(
+            ".speclink/touched/demo.json",
+            r#"{"change":"demo","touched":[{"task_id":"2","task_desc":"1.2 Second task","files":["src/a.rs"]}]}"#,
+        );
+        let err = revert_change_to_proposed_at(fx.root(), "demo")
+            .expect_err("work traces must block the revert");
+        let v: Value = serde_json::from_str(&err).expect("structured JSON error");
+        assert_eq!(v["kind"], "revertBlocked");
+        assert_eq!(v["checkedTasks"], 1);
+        assert_eq!(v["touchedFiles"], json!(["src/a.rs"]));
+        // remote bridge 走同一轉譯函式——形狀由這條斷言釘住。
+        assert_eq!(err, revert_blocked_error(1, &["src/a.rs".to_string()]));
+        let meta = fs::read_to_string(
+            fx.root().join("openspec/changes/demo/.openspec.yaml"),
+        )
+        .unwrap();
+        assert_eq!(meta, STARTED_META, "a refusal must not touch the meta");
     }
 
     #[test]

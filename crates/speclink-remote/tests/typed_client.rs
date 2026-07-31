@@ -475,6 +475,34 @@ fn discussion_parity_verbs_post_typed_bodies() {
 }
 
 #[test]
+fn in_progress_remove_deletes_the_marker_resource() {
+    // 與 add 同資源、反向方法(D4):無 body 的 DELETE,200 Ack 無人消費。
+    let mock = serve(200, "{}");
+    client(&mock).in_progress_remove("demo").expect("in-progress remove ok");
+    assert_call(&mock.last(), "DELETE", "/changes/demo/in-progress");
+}
+
+#[test]
+fn in_progress_remove_409_evidence_deserializes_structurally() {
+    // 守門 409:flatten 進錯誤封套的 camelCase 證據欄位反序列化為
+    // RemoteError::evidence,message 逐字轉發(fs parity)。
+    let mock = serve(
+        409,
+        r#"{"status":409,"reason":"refused","message":"cannot remove the in-progress marker for 'demo': work traces exist","checkedTasks":2,"touchedFiles":["src/a.rs","src/b.ts"]}"#,
+    );
+    let err = client(&mock).in_progress_remove("demo").unwrap_err();
+    assert_eq!(err.reason.as_deref(), Some("refused"));
+    assert_eq!(
+        err.message,
+        "cannot remove the in-progress marker for 'demo': work traces exist",
+        "engine-class message relayed verbatim"
+    );
+    let evidence = err.evidence.expect("the 409 carries structured evidence");
+    assert_eq!(evidence.checked_tasks, 2);
+    assert_eq!(evidence.touched_files, vec!["src/a.rs", "src/b.ts"]);
+}
+
+#[test]
 fn discussion_parity_verbs_map_a_404_to_the_typed_error() {
     // 未升級的舊 server 對新動詞回 404 → 語義化 RemoteError，不 panic。
     let mock = serve(

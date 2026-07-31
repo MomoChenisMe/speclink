@@ -11,10 +11,12 @@ import {
   PenTool,
   Sparkles,
   Trash2,
+  Undo2,
 } from "lucide-react";
 
 import type { ChangeItem, ChangeMetaInfo, Verb, VerbDrawerResult } from "../adapter";
 import { specDeltaCounts, sumDeltaCounts } from "../delta";
+import { changeStage } from "../stage";
 import { useI18n } from "../i18n";
 import { relativeDays } from "../time";
 import { Badge } from "./ui/badge";
@@ -45,6 +47,8 @@ export interface RichDetailDrawerProps {
   /** 收合分析結果（design D2：分析鈕再點、面板關閉鈕共用此路徑）。 */
   onClearVerb?: () => void;
   onDelete?: (change: string) => void;
+  /** 退回提案中請求（僅派生進行中呈現;app 端接確認流程;未提供時不渲染）。 */
+  onRevert?: (change: string) => void;
   /** 勾選/取消任務並回寫 tasks.md；task 為 tsk_ stable ID（帶 ID 任務）或
    * ordinal 字串（無 ID 相容路徑）。重載由宿主 refresh 後的刷新世代遞增驅動（單一資料流）。 */
   onToggleTask?: (change: string, task: string, done: boolean) => Promise<void>;
@@ -104,6 +108,7 @@ export function RichDetailDrawer({
   drawerVerb,
   onClearVerb,
   onDelete,
+  onRevert,
   onToggleTask,
   onMoveTask,
   onSetAllTasks,
@@ -350,6 +355,18 @@ export function RichDetailDrawer({
                 </Button>
               </UnavailableAction>
               <div className="flex-1" />
+              {/* 退回提案中（僅派生進行中;樣式沿動作列 outline 鈕）：點擊交宿主
+                  先確認,UI 不預判守門。 */}
+              {changeStage(change) === "in-progress" && onRevert && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1"
+                  onClick={() => onRevert(change.name)}
+                >
+                  <Undo2 className="h-3.5 w-3.5" /> {t("common.revert")}
+                </Button>
+              )}
               <UnavailableAction reason={unavailable?.archive}>
                 <Button
                   variant="outline"

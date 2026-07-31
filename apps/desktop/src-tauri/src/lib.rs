@@ -82,6 +82,15 @@ fn delete_change(root: PathBuf, change: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn revert_change_to_proposed(root: PathBuf, change: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::manage::revert_change_to_proposed_at(&root, &change)
+    })
+    .await
+    .map_err(|e| format!("revert worker failed: {e}"))?
+}
+
+#[tauri::command]
 // 寫入型 command 一律 async＋spawn_blocking（design D2）：完成路徑可能秒級
 // （git spawn 在部分環境極慢），非 async command 會佔用主執行緒凍結整窗。
 // 委派移至執行緒池；並發寫回由 desktop-core 的全域寫鎖序列化。
@@ -1047,6 +1056,27 @@ async fn remote_analyze(
 }
 
 #[tauri::command]
+async fn remote_revert_change_to_proposed(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+) -> Result<(), String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        ws.revert_change_to_proposed(credentials, &change).map_err(|e| match e.evidence {
+            // 409 守門證據 → 與本地 bridge 同一轉譯(前端對話框單一消費形狀)。
+            Some(ev) => speclink_desktop_core::manage::revert_blocked_error(
+                ev.checked_tasks,
+                &ev.touched_files,
+            ),
+            None => e.message,
+        })
+    })
+    .await
+}
+
+#[tauri::command]
 async fn remote_delete_change(
     app: tauri::AppHandle,
     connection_id: String,
@@ -1316,6 +1346,7 @@ pub fn run() {
             change_capabilities,
             change_meta,
             delete_change,
+            revert_change_to_proposed,
             set_task_done,
             set_all_tasks,
             move_task,
@@ -1371,6 +1402,7 @@ pub fn run() {
             remote_validate,
             remote_analyze,
             remote_delete_change,
+            remote_revert_change_to_proposed,
             remote_move_task,
             remote_reorder_card,
             remote_list_discussions,

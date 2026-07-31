@@ -97,6 +97,7 @@ fn command_label(outcome: &CommandOutcome) -> String {
         CommandOutcome::TaskDone(_) => "task-done",
         CommandOutcome::TaskUndone(_) => "task-undone",
         CommandOutcome::InProgressAdd(_) => "in-progress-add",
+        CommandOutcome::InProgressRemove(_) => "in-progress-remove",
         CommandOutcome::Archive(_) => "archive",
         CommandOutcome::Discard(_) => "discard",
         CommandOutcome::DiscussNew(_) => "discuss-new",

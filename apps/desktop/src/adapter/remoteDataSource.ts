@@ -1,4 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { toRevertError } from "@speclink/ui";
 import type {
   SpeclinkDataSource,
   CardKind,
@@ -91,6 +92,15 @@ export function createRemoteDataSource(
       // 決策 3：桌面 remote 刪除固定帶 force=true（與本地無 guard 直刪同模式，
       // 確認對話框在 UI 層）；server 端仍執行 discard 全語意（unlink＋原子刪除）。
       await invoke("remote_delete_change", { ...locator, change, force: true });
+    },
+    async revertChangeToProposed(change: string): Promise<void> {
+      // 守門 409 的證據由 Rust bridge 轉為與本地同形狀的 JSON 錯誤字串——
+      // 同一 toRevertError 轉譯,App 的守門對話框單一消費入口。
+      try {
+        await invoke("remote_revert_change_to_proposed", { ...locator, change });
+      } catch (e) {
+        throw toRevertError(e);
+      }
     },
     async setTaskDone(change: string, task: string, done: boolean): Promise<void> {
       await invoke("remote_set_task_done", { ...locator, change, task, done });

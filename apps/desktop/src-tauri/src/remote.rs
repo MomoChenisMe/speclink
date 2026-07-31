@@ -414,6 +414,7 @@ fn rejected() -> RemoteError {
         message: REAUTH_MESSAGE.to_string(),
         reason: Some("needs_reauth".to_string()),
         status: None,
+        evidence: None,
     }
 }
 
@@ -422,6 +423,7 @@ fn offline_rejected() -> RemoteError {
         message: OFFLINE_WRITE_MESSAGE.to_string(),
         reason: Some("offline".to_string()),
         status: None,
+        evidence: None,
     }
 }
 
@@ -431,6 +433,7 @@ fn unavailable(message: String) -> RemoteError {
         message,
         reason: None,
         status: None,
+        evidence: None,
     }
 }
 
@@ -779,6 +782,7 @@ pub fn unsupported(operation: &str) -> RemoteError {
         message: format!("此 server 尚未提供「{operation}」——功能已停用"),
         reason: Some("unsupported".to_string()),
         status: None,
+        evidence: None,
     }
 }
 
@@ -872,6 +876,7 @@ fn card_not_found(id: &str) -> RemoteError {
         message: format!("查無此卡：{id}"),
         reason: Some("not_found".to_string()),
         status: None,
+        evidence: None,
     }
 }
 
@@ -924,6 +929,7 @@ pub(crate) fn reorder_full_text(
                 message: format!("無效的卡片類別：{other}"),
                 reason: Some("invalid_argument".to_string()),
                 status: None,
+                evidence: None,
             })
         }
     }
@@ -931,6 +937,7 @@ pub(crate) fn reorder_full_text(
         message: format!("board resource 序列化失敗：{error}"),
         reason: None,
         status: None,
+        evidence: None,
     })
 }
 
@@ -1429,6 +1436,17 @@ impl RemoteWorkspace {
         self.run_write(credentials, |client| client.claim(change))
     }
 
+    /// 退回提案中:打 DELETE /changes/{name}/in-progress。200 Ack 涵蓋實際
+    /// 移除與未開工冪等;守門 409 的證據落在 RemoteError::evidence,由
+    /// command 層轉為與本地 bridge 同形狀的結構化錯誤 JSON。
+    pub fn revert_change_to_proposed(
+        &self,
+        credentials: &dyn CredentialStore,
+        change: &str,
+    ) -> Result<(), RemoteError> {
+        self.run_write(credentials, |client| client.in_progress_remove(change))
+    }
+
     /// validate 動詞（唯讀衍生查詢）：wire DTO 轉回引擎型別，序列化後與本地
     /// verbs::validate_at 的 payload 同形（remote-verb-parity）。
     pub fn validate(
@@ -1795,6 +1813,7 @@ mod board_reorder_tests {
             message: "revision 衝突".into(),
             reason: Some("revision_conflict".into()),
             status: Some(409),
+            evidence: None,
         }
     }
 

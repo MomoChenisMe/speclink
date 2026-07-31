@@ -166,6 +166,24 @@ describe("DiscussionColumn（兩級呈現）", () => {
     expect(within(card).queryByRole("button", { name: /歸檔/ })).toBeNull();
   });
 
+  it("點封存鈕列的空白處開啟討論而非被吞掉", () => {
+    const onArchiveDiscussion = vi.fn();
+    const onOpenDiscussion = vi.fn();
+    render(
+      <DiscussionColumn
+        discussions={[concludedD]}
+        changes={[]}
+        archived={[]}
+        onArchiveDiscussion={onArchiveDiscussion}
+        onOpenDiscussion={onOpenDiscussion}
+      />,
+    );
+    const card = screen.getByText("Settled topic").closest("[data-discussion]") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: /封存/ }).parentElement as HTMLElement);
+    expect(onOpenDiscussion).toHaveBeenCalledWith("settled");
+    expect(onArchiveDiscussion).not.toHaveBeenCalled();
+  });
+
   it("點全卡開啟討論（動詞按鈕除外）", () => {
     const onOpenDiscussion = vi.fn();
     render(

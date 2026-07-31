@@ -143,6 +143,23 @@ pub async fn in_progress(
     }
 }
 
+/// `DELETE /changes/{name}/in-progress` — Command::InProgressRemove 直通:與
+/// POST 同資源、反向語意(D4)。零痕跡移除 200 Ack(bridge commit 發退回事
+/// 件);未開工冪等 200(引擎零寫入,bridge 不 commit、不發事件);有工作痕
+/// 跡 409,證據欄位(checkedTasks/touchedFiles)隨錯誤封套 flatten 輸出;
+/// 未知 change 404。
+pub async fn in_progress_remove(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(&state, &binding, Command::InProgressRemove { name }).await?;
+    match result.execution.outcome {
+        CommandOutcome::InProgressRemove(_) => Ok(ok(Ack {}, &result.etag)),
+        _ => Err(wrong_outcome("in-progress-remove")),
+    }
+}
+
 /// `GET /changes/{name}`
 pub async fn get_change(
     State(state): State<AppState>,

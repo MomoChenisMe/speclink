@@ -647,6 +647,12 @@ enum InProgressCommands {
         /// Change name
         name: String,
     },
+    /// Remove the in-progress marker — only when the change carries no work
+    /// traces (no checked tasks, no touched records); unknown names error
+    Remove {
+        /// Change name
+        name: String,
+    },
 }
 
 #[derive(Args)]

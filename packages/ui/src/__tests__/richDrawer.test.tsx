@@ -702,3 +702,40 @@ describe("變更抽屜來源討論標記寬度約束", () => {
     expect(onOpenDiscussion).toHaveBeenCalledWith("alpha-ux");
   });
 });
+
+// spec「進行中變更可自看板退回提案中」的抽屜半邊:退回動作僅於派生進行中出現。
+describe("退回提案中動作(抽屜動作列)", () => {
+  it("派生進行中的變更顯示退回動作,點擊觸發 onRevert", async () => {
+    const onRevert = vi.fn();
+    const inProgress: ChangeItem = {
+      name: "oops-started",
+      status: "in-progress",
+      totalTasks: 10,
+      completedTasks: 0,
+      startedAt: "2026-07-30",
+    };
+    render(<RichDetailDrawer {...(makeProps({ change: inProgress, onRevert }) as never)} />);
+    const btn = await screen.findByRole("button", { name: /退回提案中/ });
+    fireEvent.click(btn);
+    expect(onRevert).toHaveBeenCalledWith("oops-started");
+  });
+
+  it("提案中的變更不顯示退回動作", async () => {
+    const proposed: ChangeItem = {
+      name: "fresh-proposal",
+      status: "in-progress",
+      totalTasks: 10,
+      completedTasks: 0,
+    };
+    render(<RichDetailDrawer {...(makeProps({ change: proposed, onRevert: vi.fn() }) as never)} />);
+    await screen.findByRole("button", { name: /刪除/ });
+    expect(screen.queryByRole("button", { name: /退回提案中/ })).toBeNull();
+  });
+
+  it("已就緒(全完成)的變更不顯示退回動作", async () => {
+    // 既有 fixture change 為 30/30 全完成——派生已就緒。
+    render(<RichDetailDrawer {...(makeProps({ onRevert: vi.fn() }) as never)} />);
+    await screen.findByRole("button", { name: /刪除/ });
+    expect(screen.queryByRole("button", { name: /退回提案中/ })).toBeNull();
+  });
+});

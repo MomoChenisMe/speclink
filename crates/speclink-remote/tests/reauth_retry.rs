@@ -60,6 +60,7 @@ fn unauthorized() -> speclink_remote::RemoteError {
         message: "authentication failed".into(),
         reason: Some("permission_denied".into()),
         status: Some(401),
+        evidence: None,
     }
 }
 
@@ -176,6 +177,7 @@ fn a_403_does_not_trigger_a_rotation() {
             message: "access denied".into(),
             reason: Some("permission_denied".into()),
             status: Some(403),
+            evidence: None,
         })
     });
 

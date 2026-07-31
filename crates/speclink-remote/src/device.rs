@@ -59,6 +59,7 @@ fn post<T: DeserializeOwned, B: Serialize>(
                         "unexpected server response — the server did not return valid JSON".into(),
                     reason: None,
                     status: None,
+                    evidence: None,
                 },
             )
         }),
@@ -122,6 +123,7 @@ pub fn whoami(base_url: &str, bearer: &str) -> Result<AuthWhoamiResponse, Remote
             message: "unexpected server response — the server did not return valid JSON".into(),
             reason: None,
             status: None,
+            evidence: None,
         }),
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();

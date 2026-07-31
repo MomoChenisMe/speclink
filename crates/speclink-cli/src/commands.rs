@@ -2025,6 +2025,27 @@ fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
             let store: &dyn Store = &store;
             run_command(store, Some(&ws), core::command::Command::InProgressAdd { name })?;
         }
+        InProgressCommands::Remove { name } => {
+            if let Some(ctx) = remote_ctx()? {
+                return remote_in_progress_remove(&ctx, &name);
+            }
+            let (ws, store) = open_project()?;
+            let store: &dyn Store = &store;
+            let outcome =
+                run_command(store, Some(&ws), core::command::Command::InProgressRemove { name })?;
+            let core::command::CommandOutcome::InProgressRemove(o) = outcome else {
+                unreachable!("in-progress remove yields an in-progress-remove outcome");
+            };
+            if o.removed {
+                println!(
+                    "{} Removed the in-progress marker from '{}' — back to proposed",
+                    color::green("✓"),
+                    o.name
+                );
+            } else {
+                println!("Change '{}' has no in-progress marker — already proposed", o.name);
+            }
+        }
     }
     Ok(())
 }

@@ -768,6 +768,63 @@ fn in_progress_add_posts_to_the_server_and_stays_silent() {
 }
 
 #[test]
+fn in_progress_remove_deletes_on_the_server_with_fs_parity_output() {
+    let mock = mock_server(vec![(
+        "DELETE",
+        "/changes/demo/in-progress",
+        200,
+        "{}".into(),
+    )]);
+    let p = TempProject::remote("in-progress-remove", &mock.base, "backend");
+
+    let out = p.run(&["in-progress", "remove", "demo"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    // 200 Ack 涵蓋實際移除與未開工冪等(D4)——remote 一律印移除確認。
+    assert_eq!(
+        stdout_of(&out),
+        "✓ Removed the in-progress marker from 'demo' — back to proposed\n"
+    );
+    let cap = mock.find("DELETE", "/changes/demo/in-progress");
+    assert_eq!(cap.header("x-speclink-repo"), Some("backend"));
+    assert!(!p.dir.join("openspec").exists(), "no local store is created or read");
+}
+
+#[test]
+fn in_progress_remove_blocked_relays_the_evidence_stderr_verbatim() {
+    // 守門 409:message 為引擎凍結文字,stderr 與 fs 模式逐位元一致。
+    let mock = mock_server(vec![(
+        "DELETE",
+        "/changes/demo/in-progress",
+        409,
+        r#"{"status":409,"reason":"refused","message":"cannot remove the in-progress marker for 'demo': work traces exist\n  checked tasks: 2 — uncheck them (speclink task undone) and retry","checkedTasks":2,"touchedFiles":[]}"#.into(),
+    )]);
+    let p = TempProject::remote("in-progress-remove-blocked", &mock.base, "backend");
+
+    let out = p.run(&["in-progress", "remove", "demo"]);
+    assert!(!out.status.success(), "a gate refusal must exit non-zero");
+    assert_eq!(
+        stderr_of(&out),
+        "Error: cannot remove the in-progress marker for 'demo': work traces exist\n  checked tasks: 2 — uncheck them (speclink task undone) and retry\n"
+    );
+    assert_eq!(stdout_of(&out), "");
+}
+
+#[test]
+fn in_progress_remove_unknown_change_relays_not_found() {
+    let mock = mock_server(vec![(
+        "DELETE",
+        "/changes/ghost/in-progress",
+        404,
+        r#"{"status":404,"reason":"not_found","message":"Change 'ghost' not found."}"#.into(),
+    )]);
+    let p = TempProject::remote("in-progress-remove-404", &mock.base, "backend");
+
+    let out = p.run(&["in-progress", "remove", "ghost"]);
+    assert!(!out.status.success(), "an unknown change must exit non-zero");
+    assert_eq!(stderr_of(&out), "Error: Change 'ghost' not found.\n");
+}
+
+#[test]
 fn in_progress_add_fs_output_stays_frozen() {
     // fs 模式輸出逐位元不變：靜默、exit 0，標記落本機 meta。
     let dir = std::env::temp_dir()

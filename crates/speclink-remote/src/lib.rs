@@ -40,6 +40,11 @@ pub struct RemoteError {
     /// alone cannot split 401 from 403 — both are `permission_denied` — and a
     /// client's refresh-and-retry decision hinges on exactly that split.
     pub status: Option<u16>,
+    /// Structured refusal evidence when the error envelope carried it (the
+    /// in-progress removal's work-trace gate) — consumed by callers that
+    /// render evidence structurally (the desktop gate dialog) instead of
+    /// re-parsing the message text.
+    pub evidence: Option<speclink_protocol::command::RevertBlockedEvidence>,
 }
 
 impl std::fmt::Display for RemoteError {
@@ -57,6 +62,7 @@ pub fn translate_transport() -> RemoteError {
         message: "server unreachable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)".into(),
         reason: None,
         status: None,
+        evidence: None,
     }
 }
 
@@ -76,6 +82,7 @@ pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
             message: "server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)".into(),
             reason: None,
             status: Some(status),
+            evidence: None,
         };
     }
 
@@ -88,7 +95,7 @@ pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
                 "unexpected server response — update speclink or report a bug (HTTP {status})"
             ),
         };
-        return RemoteError { message, reason: None, status: Some(status) };
+        return RemoteError { message, reason: None, status: Some(status), evidence: None };
     };
 
     let reason = Some(err.reason.as_str().to_string());
@@ -118,5 +125,5 @@ pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
         ),
     };
 
-    RemoteError { message, reason, status: Some(status) }
+    RemoteError { message, reason, status: Some(status), evidence: err.evidence }
 }

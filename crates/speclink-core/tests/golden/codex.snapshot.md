@@ -226,6 +226,26 @@ If there is no AskUserQuestion tool available, present options as plain text and
    - Error or blocker encountered → report and wait for guidance
    - User interrupts
 
+   **Started the wrong change?**
+
+   If apply was run against the wrong change (or a change was marked
+   in-progress by mistake), revert it to proposed:
+
+   ```bash
+   speclink in-progress remove "<name>"
+   ```
+
+   The verb succeeds only when the change carries zero work traces; with
+   traces present it refuses and lists the evidence. Two ways out:
+
+   - Checked tasks: uncheck them with `speclink task undone`, then retry
+   - Touched records: the listed files may mix content from other changes —
+     judge and clean them up case by case (there is no force flag and no
+     mechanical cleanup), then ask the user how to proceed
+
+   Unlike `in-progress add`, an unknown change name errors loudly — check the
+   name with `speclink list` if it reports not found.
+
 ---
 
 ## Rationalization Table

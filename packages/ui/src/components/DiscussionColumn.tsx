@@ -149,13 +149,17 @@ export function DiscussionCard({
           <span className="tabular-nums">{t("common.rounds").replace("{n}", String(d.rounds))}</span>
           <span className="tabular-nums">{d.created}</span>
         </div>
+        {/* stopPropagation 掛在按鈕自身而非整列：鈕旁空白仍冒泡開討論抽屜。 */}
         {d.status === "concluded" && (
-          <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <div className="flex gap-1.5">
             <Button
               variant="outline"
               size="sm"
               className="h-6 gap-1 px-2 text-xs"
-              onClick={() => onArchiveDiscussion?.(d.slug)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onArchiveDiscussion?.(d.slug);
+              }}
             >
               <Archive className="h-3 w-3" /> {t("common.archive")}
             </Button>

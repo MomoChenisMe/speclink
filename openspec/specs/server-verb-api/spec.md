@@ -346,3 +346,94 @@ code:
   - docs/verb-contract.md
   - docs/verb-contract.zh-TW.md
 -->
+
+---
+### Requirement: in-progress 標記移除端點與加入端點成鏡像
+
+server SHALL 提供 DELETE /changes/{name}/in-progress 端點,與既有 POST /changes/{name}/in-progress 同資源、反向語意,並循既有動詞端點的認證與 binding 規則。守門 SHALL 由引擎同一裁決點執行,與本地 CLI 行為一致:零工作痕跡(已勾任務數為 0 且 touched 記錄兩清單皆空)時移除 started_* 三欄位,HTTP 200 回 Ack 並發佈變更退回事件(事件經 SSE 以 invalidation hint 流動);對未開工的 change SHALL 冪等成功——HTTP 200、零寫入、不 commit、不發事件。有工作痕跡時 SHALL 回 HTTP 409,error payload SHALL 含 camelCase 證據欄位:checkedTasks(數字,已勾任務數)與 touchedFiles(字串陣列,touched 記錄檔案清單聯集去重);不存在的 change SHALL 回 HTTP 404。既有 POST /changes/{name}/in-progress 端點的行為與回應 SHALL 不變。
+
+#### Scenario: 零痕跡變更移除成功並發事件
+
+- **WHEN** 認證通過的呼叫者對一個零工作痕跡的進行中 change 發 DELETE /changes/{name}/in-progress
+- **THEN** HTTP 200 回 Ack,該 change 的 started_* 欄位消失且其餘 meta 內容不變,SSE 串流出現對應的 invalidation hint 事件
+
+#### Scenario: 未開工變更冪等成功且不發事件
+
+- **WHEN** 對一個從未開工的 change 發 DELETE /changes/{name}/in-progress
+- **THEN** HTTP 200 回 Ack,無任何寫入與 commit,SSE 串流不出現新事件
+
+#### Scenario: 有工作痕跡時回 409 與結構化證據
+
+- **WHEN** 對一個已勾 2 個任務且 touched 記錄含 src/a.rs 的 change 發 DELETE /changes/{name}/in-progress
+- **THEN** HTTP 409,error payload 的 checkedTasks 為 2、touchedFiles 為 ["src/a.rs"],該 change 的 meta 與 touched 記錄皆不變
+
+##### Example: 證據欄位形狀
+
+- **GIVEN** 一個 change 已勾任務數 3,touched 記錄檔案清單為 src/x.rs 與 docs/y.md
+- **WHEN** 對其發 DELETE /changes/{name}/in-progress
+- **THEN** 409 的 error payload 含 "checkedTasks": 3 與 "touchedFiles": ["src/x.rs", "docs/y.md"]
+
+#### Scenario: 不存在的 change 回 404
+
+- **WHEN** 對不存在的 change 名稱發 DELETE /changes/{name}/in-progress
+- **THEN** HTTP 404,無任何寫入
+
+<!-- @trace
+source: revert-in-progress-to-proposed
+updated: 2026-07-31
+code:
+  - apps/desktop/core/src/manage.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src-tauri/src/remote.rs
+  - apps/desktop/src-tauri/tests/remote_data.rs
+  - apps/desktop/src-tauri/tests/remote_runtime.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/remoteDataSource.test.ts
+  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/adapter/remoteDataSource.ts
+  - apps/desktop/src/adapter/tauriDataSource.ts
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/store.ts
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/src/remote_commands.rs
+  - crates/speclink-cli/tests/in_progress_remove.rs
+  - crates/speclink-cli/tests/remote_write_path.rs
+  - crates/speclink-core/assets/skills/apply.md
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/inprogress.rs
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-host/src/bridge.rs
+  - crates/speclink-host/src/commit.rs
+  - crates/speclink-protocol/src/command.rs
+  - crates/speclink-protocol/src/error.rs
+  - crates/speclink-remote/src/client.rs
+  - crates/speclink-remote/src/device.rs
+  - crates/speclink-remote/src/events.rs
+  - crates/speclink-remote/src/lib.rs
+  - crates/speclink-remote/tests/reauth_retry.rs
+  - crates/speclink-remote/tests/typed_client.rs
+  - crates/speclink-server/src/app.rs
+  - crates/speclink-server/src/error.rs
+  - crates/speclink-server/src/events.rs
+  - crates/speclink-server/src/routes.rs
+  - crates/speclink-server/tests/verb_api.rs
+  - packages/ui/src/__tests__/discussionColumn.test.tsx
+  - packages/ui/src/__tests__/discussionDrawer.test.tsx
+  - packages/ui/src/__tests__/kanban.test.tsx
+  - packages/ui/src/__tests__/revertBlockedDialog.test.tsx
+  - packages/ui/src/__tests__/richDrawer.test.tsx
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ChangeCard.tsx
+  - packages/ui/src/components/DiscussionColumn.tsx
+  - packages/ui/src/components/DiscussionDrawer.tsx
+  - packages/ui/src/components/KanbanBoard.tsx
+  - packages/ui/src/components/RevertBlockedDialog.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/i18n.tsx
+  - packages/ui/src/index.ts
+-->

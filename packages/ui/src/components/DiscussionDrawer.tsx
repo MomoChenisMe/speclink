@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Check, Copy, FileText, Flag, MessagesSquare, Rocket } from "lucide-react";
+import { Archive, ArrowUpRight, Check, Copy, FileText, Flag, MessagesSquare, Rocket } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
 import { useI18n } from "../i18n";
@@ -236,6 +236,9 @@ export interface DiscussionDrawerProps {
   archivedChanges: ArchivedItem[];
   /** 衍生變更分頁「開啟卡片」跳轉。 */
   onOpenChangeCard?: (name: string) => void;
+  /** concluded 討論的封存動詞——與討論卡同一確認流程(宿主接確認對話框)。
+   * 未提供時不渲染(宿主以此表達「已封存」或 capability 缺口)。 */
+  onArchiveDiscussion?: (slug: string) => void;
 }
 
 /**
@@ -253,6 +256,7 @@ export function DiscussionDrawer({
   changes,
   archivedChanges,
   onOpenChangeCard,
+  onArchiveDiscussion,
 }: DiscussionDrawerProps) {
   const { t } = useI18n();
   const [doc, setDoc] = useState<string | null | undefined>();
@@ -400,6 +404,20 @@ export function DiscussionDrawer({
               </span>
             ))}
           </div>
+          {/* 封存動詞(spec 抽屜內封存場景):concluded 且未封存才可及,與討論卡
+              走同一確認流程——按鈕只發出請求,確認對話框在宿主。 */}
+          {discussion.status === "concluded" && onArchiveDiscussion && (
+            <div className="pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1"
+                onClick={() => onArchiveDiscussion(discussion.slug)}
+              >
+                <Archive className="h-3.5 w-3.5" /> {t("common.archive")}
+              </Button>
+            </div>
+          )}
         </SheetHeader>
 
         {sections ? (

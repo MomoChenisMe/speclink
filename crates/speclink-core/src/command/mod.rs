@@ -106,6 +106,8 @@ impl std::error::Error for Refusal {}
 fn classify(e: anyhow::Error) -> CommandError {
     let (code, message) = if let Some(r) = e.downcast_ref::<Refusal>() {
         (ErrorCode::Refused, r.0.clone())
+    } else if let Some(b) = e.downcast_ref::<crate::inprogress::RevertBlocked>() {
+        (ErrorCode::Refused, b.to_string())
     } else if let Some(m) = e.downcast_ref::<crate::model::MetaError>() {
         (ErrorCode::InvalidConfig, m.to_string())
     } else {
@@ -142,6 +144,7 @@ pub enum DomainEvent {
     /// No fs-store success path today — the mapping is contract for the remote store.
     ChangeClaimed { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeMarkedInProgress { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    ChangeInProgressRemoved { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeArchived { change: String, dated_name: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionCreated { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -166,6 +169,7 @@ impl DomainEvent {
             DomainEvent::TaskMoved { .. } => "task-moved",
             DomainEvent::ChangeClaimed { .. } => "change-claimed",
             DomainEvent::ChangeMarkedInProgress { .. } => "change-marked-in-progress",
+            DomainEvent::ChangeInProgressRemoved { .. } => "change-in-progress-removed",
             DomainEvent::ChangeArchived { .. } => "change-archived",
             DomainEvent::ChangeDiscarded { .. } => "change-discarded",
             DomainEvent::DiscussionCreated { .. } => "discussion-created",
@@ -275,6 +279,9 @@ pub enum Command {
     Claim { name: String },
     /// `in-progress add <name>` — silent and idempotent (unknown names included).
     InProgressAdd { name: String },
+    /// `in-progress remove <name>` — the reverse verb, gated on zero work
+    /// traces; unknown names error loudly (deliberately asymmetric with add).
+    InProgressRemove { name: String },
     /// `archive [change] [--skip-specs] [--no-validate] [--mark-tasks-complete]`
     /// (single change; the CLI's `--all`/bulk loop stays in the entry point).
     Archive {
@@ -413,6 +420,14 @@ pub struct InProgressOutcome {
     pub stamped: bool,
 }
 
+/// `in-progress remove` outcome: whether this call removed the marker (false
+/// for the idempotent not-started success — no event then).
+#[derive(Debug)]
+pub struct InProgressRemoveOutcome {
+    pub name: String,
+    pub removed: bool,
+}
+
 /// `discuss context` / `discuss discard` outcome (subject only).
 #[derive(Debug)]
 pub struct DiscussSubjectOutcome {
@@ -478,6 +493,7 @@ pub enum CommandOutcome {
     TaskUndone(TaskFlipOutcome),
     TaskMove(TaskMoveOutcome),
     InProgressAdd(InProgressOutcome),
+    InProgressRemove(InProgressRemoveOutcome),
     Archive(crate::archive::ArchiveOutcome),
     Discard(crate::discard::DiscardOutcome),
     DiscussNew(crate::discuss::DiscussionInfo),
@@ -577,6 +593,7 @@ pub fn execute(
             ))
         }
         Command::InProgressAdd { name } => run_in_progress_add(store, ctx.actor.as_deref(), &name),
+        Command::InProgressRemove { name } => run_in_progress_remove(store, ws, &name),
         Command::Archive { change, skip_specs, no_validate, mark_tasks_complete } => run_archive(
             store,
             ws,
@@ -679,6 +696,11 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         }],
         CommandOutcome::InProgressAdd(o) if !o.stamped => Vec::new(),
         CommandOutcome::InProgressAdd(o) => vec![DomainEvent::ChangeMarkedInProgress {
+            change: o.name.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::InProgressRemove(o) if !o.removed => Vec::new(),
+        CommandOutcome::InProgressRemove(o) => vec![DomainEvent::ChangeInProgressRemoved {
             change: o.name.clone(),
             occurred_at: at,
         }],
@@ -1283,6 +1305,27 @@ fn run_in_progress_add(
     Ok(CommandOutcome::InProgressAdd(InProgressOutcome {
         name: name.to_string(),
         stamped,
+    }))
+}
+
+fn run_in_progress_remove(
+    store: &dyn Store,
+    ws: Option<&Workspace>,
+    name: &str,
+) -> Result<CommandOutcome, CommandError> {
+    // Loud not-found before the flow (the engine errors too — this classifies
+    // it under the stable code the entry points key on).
+    if crate::model::find_change(store, name).is_none() {
+        return Err(CommandError::new(
+            ErrorCode::NotFound,
+            format!("Change '{name}' not found."),
+        ));
+    }
+    let host = host_workspace(ws);
+    let removed = crate::inprogress::remove(store, &host, name).map_err(classify)?;
+    Ok(CommandOutcome::InProgressRemove(InProgressRemoveOutcome {
+        name: name.to_string(),
+        removed,
     }))
 }
 
@@ -2110,6 +2153,75 @@ mod tests {
         assert_eq!(kinds(&events), ["change-marked-in-progress"]);
     }
 
+    // --- in-progress remove:退回動詞的 outcome、事件與守門錯誤分類 ---
+
+    /// 帶開工戳記、無任何工作痕跡的 meta。
+    const STARTED_META: &str = "schema: spec-driven\nstarted_at: 2026-07-10\nstarted_by: T <t@example.com>\n";
+
+    #[test]
+    fn in_progress_remove_reports_change_in_progress_removed() {
+        let store = TestStore::with_meta("demo", STARTED_META);
+        let (outcome, events) = ok(&store, Command::InProgressRemove { name: "demo".to_string() });
+        match outcome {
+            CommandOutcome::InProgressRemove(o) => {
+                assert_eq!(o.name, "demo");
+                assert!(o.removed, "the marker must actually be removed");
+            }
+            other => panic!("expected an in-progress-remove outcome, got {other:?}"),
+        }
+        assert_eq!(kinds(&events), ["change-in-progress-removed"]);
+        assert!(!store.meta("demo").contains("started_"), "started_* lines stripped");
+    }
+
+    #[test]
+    fn in_progress_remove_idempotent_pass_reports_no_event() {
+        let store = TestStore::with_meta("demo", META);
+        let (outcome, events) = ok(&store, Command::InProgressRemove { name: "demo".to_string() });
+        match outcome {
+            CommandOutcome::InProgressRemove(o) => {
+                assert!(!o.removed, "nothing to remove must report removed: false");
+            }
+            other => panic!("expected an in-progress-remove outcome, got {other:?}"),
+        }
+        assert!(events.is_empty(), "an idempotent pass mutates nothing — no event");
+    }
+
+    #[test]
+    fn in_progress_remove_gate_refusal_is_refused_with_evidence_on_the_error() {
+        let store = TestStore::with_meta("demo", STARTED_META);
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 a\n- [x] 1.2 b\n- [ ] 1.3 c\n");
+        let err = execute(
+            &store,
+            &ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() },
+            Command::InProgressRemove { name: "demo".to_string() },
+        )
+        .expect_err("work traces must refuse the removal");
+        assert_eq!(err.code, ErrorCode::Refused);
+        let evidence = err
+            .source
+            .as_ref()
+            .expect("the refusal keeps the flow error as source")
+            .downcast_ref::<crate::inprogress::RevertBlocked>()
+            .expect("structured evidence rides the error");
+        assert_eq!(evidence.checked_tasks, 2);
+        assert!(evidence.touched_files.is_empty());
+        assert!(store.meta("demo").contains("started_at:"), "refusal must not strip the marker");
+    }
+
+    #[test]
+    fn in_progress_remove_unknown_change_is_not_found() {
+        // 與 add 的 parity 靜默刻意不對稱:修正動作打錯名字必須明確報錯。
+        let store = TestStore::default();
+        let err = execute(
+            &store,
+            &ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() },
+            Command::InProgressRemove { name: "ghost".to_string() },
+        )
+        .expect_err("unknown change must error");
+        assert_eq!(err.code, ErrorCode::NotFound);
+        assert!(err.message.contains("ghost"), "error names the change: {}", err.message);
+    }
+
     #[test]
     fn archive_reports_change_archived() {
         let store = TestStore::with_meta("demo", META);
@@ -2452,6 +2564,7 @@ mod tests {
             Command::TaskMove { change: _, from: _, to: _, before: _ } => {}
             Command::Claim { name: _ } => {}
             Command::InProgressAdd { name: _ } => {}
+            Command::InProgressRemove { name: _ } => {}
             Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _ } => {}
             Command::Discard { change: _, force: _ } => {}
             Command::DiscussNew { topic: _, slug: _ } => {}

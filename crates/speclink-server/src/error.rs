@@ -12,15 +12,18 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use speclink_core::command::{CommandError, ErrorCode};
 use speclink_host::bridge::BridgeError;
+use speclink_protocol::command::RevertBlockedEvidence;
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_store::StoreError;
 
-/// A protocol error ready to become the `{ status, reason, message }` triple.
+/// A protocol error ready to become the `{ status, reason, message }` triple
+/// (plus flattened refusal evidence when the flow attached it).
 #[derive(Debug, Clone)]
 pub struct ApiError {
     pub status: StatusCode,
     pub reason: ErrorReason,
     pub message: String,
+    pub evidence: Option<RevertBlockedEvidence>,
 }
 
 impl ApiError {
@@ -29,6 +32,7 @@ impl ApiError {
             status,
             reason,
             message: message.into(),
+            evidence: None,
         }
     }
 
@@ -119,6 +123,7 @@ impl IntoResponse for ApiError {
             status: self.status.as_u16(),
             reason: self.reason,
             message: self.message,
+            evidence: self.evidence,
         };
         (self.status, Json(body)).into_response()
     }
@@ -131,14 +136,26 @@ impl IntoResponse for ApiError {
 /// mapping stays byte-identical to fs mode.
 impl From<CommandError> for ApiError {
     fn from(e: CommandError) -> ApiError {
+        // in-progress 移除守門的結構化證據(D4):自 CommandError 的 source
+        // 下鑽 RevertBlocked,轉為 wire 形狀隨 409 封套 flatten 輸出。
+        let evidence = e.source.as_ref().and_then(|s| {
+            s.downcast_ref::<speclink_core::inprogress::RevertBlocked>().map(|b| {
+                RevertBlockedEvidence {
+                    checked_tasks: b.checked_tasks,
+                    touched_files: b.touched_files.clone(),
+                }
+            })
+        });
         let message = e.message;
-        match e.code {
+        let mut api = match e.code {
             ErrorCode::InvalidArgv => ApiError::invalid_argument(message),
             ErrorCode::NotFound => ApiError::not_found(message),
             ErrorCode::InvalidConfig => ApiError::invalid_config(message),
             ErrorCode::Refused => ApiError::refused(message),
             ErrorCode::Error => ApiError::internal(message),
-        }
+        };
+        api.evidence = evidence;
+        api
     }
 }
 

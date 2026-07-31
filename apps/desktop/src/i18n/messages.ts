@@ -25,6 +25,10 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "app.deleteDesc":
       "將永久刪除 {name} 的整個目錄（proposal/design/specs/tasks）。此動作無法復原。",
     "app.deleteConfirm": "刪除",
+    "app.revertTitle": "退回提案中？",
+    "app.revertDesc":
+      "將 {name} 的開工標記移除——僅零工作痕跡（無已勾任務、無 touched 記錄）時可行；有痕跡會被守門擋下並列出證據。",
+    "app.revertConfirm": "退回",
     "app.closeTab": "關閉分頁",
     "app.removeTab": "自分頁移除",
     "app.checkoutTooltip": "已連接 checkout：{path}",
@@ -151,6 +155,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "store.tabInvalid": "已不是 speclink 專案",
     "store.deleteFailed": "刪除失敗",
     "store.archiveFailed": "封存失敗",
+    "store.revertFailed": "退回提案中失敗",
     "store.discussionArchiveFailed": "討論封存失敗",
     "store.reorderFailed": "排序寫回失敗",
     "store.openProjectFailed": "開啟專案失敗",
@@ -291,6 +296,10 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "app.deleteDesc":
       "Permanently deletes the whole directory of {name} (proposal/design/specs/tasks). This cannot be undone.",
     "app.deleteConfirm": "Delete",
+    "app.revertTitle": "Revert to proposed?",
+    "app.revertDesc":
+      "Removes the in-progress marker of {name} — only possible with zero work traces (no checked tasks, no touched records); otherwise the gate refuses and lists the evidence.",
+    "app.revertConfirm": "Revert",
     "app.closeTab": "Close tab",
     "app.removeTab": "Remove tab",
     "app.checkoutTooltip": "Connected checkout: {path}",
@@ -417,6 +426,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "store.tabInvalid": "no longer a speclink project",
     "store.deleteFailed": "delete failed",
     "store.archiveFailed": "archive failed",
+    "store.revertFailed": "revert to proposed failed",
     "store.discussionArchiveFailed": "discussion archive failed",
     "store.reorderFailed": "reorder failed",
     "store.openProjectFailed": "open project failed",
