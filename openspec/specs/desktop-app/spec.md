@@ -981,7 +981,7 @@ code:
 ---
 ### Requirement: 側欄導覽結構
 
-桌面 app 側欄 SHALL 呈現五個導覽項：變更、規格、已封存、專案設定 SHALL 由上而下依序位於側欄頂部；設定 SHALL 固定於側欄底部，與頂部群組之間為彈性空間。側欄 SHALL NOT 含備忘項（其 i18n 鍵自兩語系字典移除，zh-TW 與 en 鍵集合維持相等）。已封存導覽項 SHALL 帶封存變更數量徽章，數字 SHALL 隨封存清單變動即時更新；其無障礙標籤 SHALL 為「已封存」。導覽項點擊 SHALL 為單純切頁——切至對應頁並以視覺高亮標示現行項，SHALL NOT 具再次點擊返回看板的 toggle 行為；設定項沉底 SHALL NOT 改變其高亮與切頁語意。頂欄 SHALL NOT 含已封存入口。
+桌面 app 側欄 SHALL 呈現五個導覽項：變更、規格、已封存、專案設定 SHALL 由上而下依序位於側欄頂部；設定 SHALL 固定於側欄底部，與頂部群組之間為彈性空間。側欄 SHALL NOT 含備忘項（其 i18n 鍵自兩語系字典移除，zh-TW 與 en 鍵集合維持相等）。側欄 SHALL NOT 呈現常駐 app 版號文字；app 版號的呈現位置 SHALL 為應用程式設定頁的軟體更新卡。已封存導覽項 SHALL 帶封存變更數量徽章，數字 SHALL 隨封存清單變動即時更新；其無障礙標籤 SHALL 為「已封存」。導覽項點擊 SHALL 為單純切頁——切至對應頁並以視覺高亮標示現行項，SHALL NOT 具再次點擊返回看板的 toggle 行為；設定項沉底 SHALL NOT 改變其高亮與切頁語意。頂欄 SHALL NOT 含已封存入口。
 
 設定項 SHALL 開啟應用程式設定頁且 SHALL NOT 依賴任何已開啟的專案分頁——零分頁時點擊 SHALL 照常進入且頁內功能可操作。專案設定項 SHALL 開啟專案設定頁；零分頁時點擊 SHALL 呈現空狀態引導頁（與變更、規格、已封存的零分頁行為同型）。五個導覽項 SHALL 恆常渲染，SHALL NOT 依分頁狀態顯隱。
 
@@ -989,6 +989,11 @@ code:
 
 - **WHEN** 開啟任一專案進入桌面 app
 - **THEN** 側欄頂部由上而下依序為變更、規格、已封存、專案設定，設定獨立位於側欄底部（兩者之間為空白彈性區），不存在備忘項，頂欄不存在已封存鈕
+
+#### Scenario: 側欄無常駐版號
+
+- **WHEN** 開啟任一專案檢視側欄（含設定項下方區域）
+- **THEN** 側欄任何位置不存在版號文字；應用程式設定頁的軟體更新卡顯示目前版本
 
 #### Scenario: 零分頁仍可進入應用程式設定
 
@@ -1012,19 +1017,68 @@ code:
 
 
 <!-- @trace
-source: settings-ia-restructure
-updated: 2026-07-18
+source: desktop-instruction-staleness-prompt
+updated: 2026-07-31
 code:
+  - .agents/skills/speclink-apply/SKILL.md
+  - .agents/skills/speclink-archive/SKILL.md
+  - .agents/skills/speclink-audit/SKILL.md
+  - .agents/skills/speclink-commit/SKILL.md
+  - .agents/skills/speclink-config/SKILL.md
+  - .agents/skills/speclink-discuss/SKILL.md
+  - .agents/skills/speclink-drift/SKILL.md
+  - .agents/skills/speclink-ingest/SKILL.md
+  - .agents/skills/speclink-onboard/SKILL.md
+  - .agents/skills/speclink-propose/SKILL.md
+  - .claude/skills/speclink-analyze/SKILL.md
+  - .claude/skills/speclink-apply/SKILL.md
+  - .claude/skills/speclink-archive/SKILL.md
+  - .claude/skills/speclink-audit/SKILL.md
+  - .claude/skills/speclink-commit/SKILL.md
+  - .claude/skills/speclink-config/SKILL.md
+  - .claude/skills/speclink-discuss/SKILL.md
+  - .claude/skills/speclink-drift/SKILL.md
+  - .claude/skills/speclink-ingest/SKILL.md
+  - .claude/skills/speclink-onboard/SKILL.md
+  - .claude/skills/speclink-propose/SKILL.md
+  - .claude/skills/speclink-verify/SKILL.md
+  - AGENTS.md
+  - CLAUDE.md
+  - apps/desktop/core/src/manage.rs
+  - apps/desktop/core/src/project.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src-tauri/tests/remote_data.rs
   - apps/desktop/src/App.tsx
   - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/appSettingsView.test.tsx
-  - apps/desktop/src/__tests__/projectSettingsView.test.tsx
-  - apps/desktop/src/__tests__/settingsView.test.tsx
+  - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+  - apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx
+  - apps/desktop/src/__tests__/remoteDataSource.test.ts
+  - apps/desktop/src/__tests__/remoteResilience.test.tsx
+  - apps/desktop/src/__tests__/store.test.ts
+  - apps/desktop/src/adapter/remoteDataSource.ts
+  - apps/desktop/src/adapter/workspace.ts
+  - apps/desktop/src/components/InstructionUpdatePrompt.tsx
   - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/instructionPrompt.ts
   - apps/desktop/src/store.ts
-  - apps/desktop/src/views/AppSettingsView.tsx
-  - apps/desktop/src/views/ProjectSettingsView.tsx
-  - apps/desktop/src/views/SettingsView.tsx
+  - crates/speclink-cli/tests/archive_readiness_gate.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/tests/golden/assets.lock
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-core/tests/golden/remote-claude.marker.md
+  - crates/speclink-core/tests/render_golden.rs
+  - packages/ui/src/__tests__/kanban.test.tsx
+  - packages/ui/src/__tests__/richDrawer.test.tsx
+  - packages/ui/src/boardDnd.ts
+  - packages/ui/src/components/KanbanBoard.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/i18n.tsx
 -->
 
 ---
@@ -2522,6 +2576,118 @@ code:
   - crates/speclink-cli/tests/archive_readiness_gate.rs
   - crates/speclink-core/src/archive.rs
   - crates/speclink-core/src/command/mod.rs
+  - packages/ui/src/__tests__/kanban.test.tsx
+  - packages/ui/src/__tests__/richDrawer.test.tsx
+  - packages/ui/src/boardDnd.ts
+  - packages/ui/src/components/KanbanBoard.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/i18n.tsx
+-->
+
+---
+### Requirement: 指令檔過期提示
+
+桌面 app SHALL 於本地專案分頁成為活躍時執行指令檔過期探測，並於更新動作完成後與 workspace-changed 事件到達時重新探測。探測回報過期或缺失、且該專案未略過當前產物層版號時，SHALL 於分頁內容頂部呈現非阻斷提示，內容含將被新建或改寫的檔案數與主動作、「保留現狀」兩動作——過期時主動作為「更新」、缺失時主動作為「安裝」（從未安裝的專案不以「更新」稱之）；SHALL NOT 以 modal 阻斷操作，SHALL NOT 於 remote workspace 分頁觸發探測。探測回報現版或無法判定時 SHALL 無任何提示；無法判定 SHALL NOT 記入略過、SHALL NOT 視同現版。
+
+主動作（「更新」或「安裝」）SHALL 經引擎既有的指令檔再生入口整套再生受管檔，成功後提示消失；失敗時錯誤 SHALL 呈現於提示原位且可重試，SHALL NOT 阻斷專案其他功能。「保留現狀」SHALL 將該專案與當前產物層版號記入 app 本機持久化，SHALL NOT 寫入專案內任何檔案；同版不再提示（缺失與過期共用同一略過記憶），產物層版號變動後 SHALL 重新提示。提示文案 SHALL 遵循 openspec/LANGUAGE.md 詞彙原則，SHALL NOT 出現工程詞。
+
+#### Scenario: 開啟過期專案出現提示並更新
+
+- **WHEN** 以新版 desktop 開啟指令檔為舊版的本地專案分頁，於提示點「更新」
+- **THEN** 提示先於分頁內容頂部非阻斷呈現並顯示將被改寫的檔案數；更新後受管檔再生為現版、提示消失
+
+#### Scenario: 保留現狀同版不再問
+
+- **WHEN** 使用者於過期提示點「保留現狀」，其後關閉並重新開啟同一專案
+- **THEN** 提示不再出現，且專案內無任何檔案因此變動
+
+#### Scenario: 產物層版號變動後重新提示
+
+- **WHEN** 曾保留現狀的專案，在 desktop 升版且產物層版號變動後再次開啟
+- **THEN** 過期提示重新出現
+
+#### Scenario: 標記移除不提示
+
+- **WHEN** 開啟指令檔已整塊移除 SPECLINK 標記的本地專案
+- **THEN** 無任何提示
+
+#### Scenario: 從未安裝的專案提示安裝
+
+- **WHEN** 開啟 tools 清單宣告 claude 但 CLAUDE.md 不存在（如 clone 後指令檔未進版控）的本地專案分頁，於提示點「安裝」
+- **THEN** 提示以安裝語意呈現並顯示將被新建或改寫的檔案數；安裝後受管檔生成為現版、提示消失
+
+#### Scenario: 更新失敗原位呈現錯誤
+
+- **WHEN** 更新動作因受管檔無法寫入而失敗
+- **THEN** 錯誤訊息呈現於提示原位、動作可重試，專案分頁其餘功能不受影響
+
+#### Scenario: remote 分頁不觸發
+
+- **WHEN** 開啟 remote workspace 分頁
+- **THEN** 不執行過期探測、無提示
+
+#### Scenario: 外部更新自然消提示
+
+- **WHEN** 過期提示顯示期間，使用者於終端執行 speclink update 使受管檔更新為現版
+- **THEN** workspace-changed 事件觸發重新探測後提示消失，無需重開分頁
+
+<!-- @trace
+source: desktop-instruction-staleness-prompt
+updated: 2026-07-31
+code:
+  - .agents/skills/speclink-apply/SKILL.md
+  - .agents/skills/speclink-archive/SKILL.md
+  - .agents/skills/speclink-audit/SKILL.md
+  - .agents/skills/speclink-commit/SKILL.md
+  - .agents/skills/speclink-config/SKILL.md
+  - .agents/skills/speclink-discuss/SKILL.md
+  - .agents/skills/speclink-drift/SKILL.md
+  - .agents/skills/speclink-ingest/SKILL.md
+  - .agents/skills/speclink-onboard/SKILL.md
+  - .agents/skills/speclink-propose/SKILL.md
+  - .claude/skills/speclink-analyze/SKILL.md
+  - .claude/skills/speclink-apply/SKILL.md
+  - .claude/skills/speclink-archive/SKILL.md
+  - .claude/skills/speclink-audit/SKILL.md
+  - .claude/skills/speclink-commit/SKILL.md
+  - .claude/skills/speclink-config/SKILL.md
+  - .claude/skills/speclink-discuss/SKILL.md
+  - .claude/skills/speclink-drift/SKILL.md
+  - .claude/skills/speclink-ingest/SKILL.md
+  - .claude/skills/speclink-onboard/SKILL.md
+  - .claude/skills/speclink-propose/SKILL.md
+  - .claude/skills/speclink-verify/SKILL.md
+  - AGENTS.md
+  - CLAUDE.md
+  - apps/desktop/core/src/manage.rs
+  - apps/desktop/core/src/project.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src-tauri/tests/remote_data.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/App.test.tsx
+  - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+  - apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx
+  - apps/desktop/src/__tests__/remoteDataSource.test.ts
+  - apps/desktop/src/__tests__/remoteResilience.test.tsx
+  - apps/desktop/src/__tests__/store.test.ts
+  - apps/desktop/src/adapter/remoteDataSource.ts
+  - apps/desktop/src/adapter/workspace.ts
+  - apps/desktop/src/components/InstructionUpdatePrompt.tsx
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/instructionPrompt.ts
+  - apps/desktop/src/store.ts
+  - crates/speclink-cli/tests/archive_readiness_gate.rs
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/tests/golden/assets.lock
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-core/tests/golden/remote-claude.marker.md
+  - crates/speclink-core/tests/render_golden.rs
   - packages/ui/src/__tests__/kanban.test.tsx
   - packages/ui/src/__tests__/richDrawer.test.tsx
   - packages/ui/src/boardDnd.ts

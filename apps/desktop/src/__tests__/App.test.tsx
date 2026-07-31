@@ -882,8 +882,8 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
   });
 });
 
-describe("側欄版本號（desktop-app「桌面自動更新」的現版可見性）", () => {
-  it("注入 updater 面時，側欄底部顯示 v 版本號", async () => {
+describe("側欄無常駐版號（desktop-app 規格「側欄導覽結構」）", () => {
+  it("注入 updater 面時側欄任何位置仍無版號文字；app 版號唯一住所為設定頁軟體更新卡", async () => {
     const ws = fakeWorkspace();
     ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
     render(
@@ -893,10 +893,16 @@ describe("側欄版本號（desktop-app「桌面自動更新」的現版可見�
         updater={{ check: vi.fn().mockResolvedValue(null), relaunch: vi.fn() }}
       />,
     );
-    await waitFor(() => expect(screen.getByText("v0.1.0")).toBeTruthy());
+    const aside = await screen.findByRole("complementary");
+    await waitFor(() => expect(within(aside).getByRole("button", { name: "設定" })).toBeTruthy());
+    expect(aside.textContent).not.toContain("v0.1.0");
+
+    // 設定頁軟體更新卡仍顯示目前版本。
+    fireEvent.click(within(aside).getByRole("button", { name: "設定" }));
+    await waitFor(() => expect(screen.getByText(/目前版本\s*0\.1\.0/)).toBeTruthy());
   });
 
-  it("未注入 updater 面時不顯示版本號", async () => {
+  it("未注入 updater 面時同樣無版號文字", async () => {
     renderApp();
     await waitFor(() => expect(screen.getByRole("complementary")).toBeTruthy());
     expect(screen.queryByText(/^v\d/)).toBeNull();

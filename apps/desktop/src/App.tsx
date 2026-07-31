@@ -45,6 +45,7 @@ import { RemoteConflictDialog } from "./components/RemoteConflictDialog";
 import { RemoteWorkspaceRecovery } from "./components/RemoteWorkspaceRecovery";
 import { AppSettingsView } from "./views/AppSettingsView";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { InstructionUpdatePrompt } from "./components/InstructionUpdatePrompt";
 import { appVersion, type UpdaterAdapter } from "./adapter/updater";
 import type { CliInstallAdapter } from "./adapter/cliInstall";
 import { ProjectSettingsView } from "./views/ProjectSettingsView";
@@ -352,6 +353,8 @@ function AppInner({
           return;
         }
         void useStore.getState().refresh();
+        // 外部 speclink update 也要讓提示自然消失（決策 4：workspace-changed 重查）。
+        void useStore.getState().refreshInstructionPrompt();
       },
       (event) => {
         const store = useStore.getState();
@@ -363,6 +366,13 @@ function AppInner({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useStore, s.activeKey, s.sessionEpoch]);
+
+  // 指令檔過期探測（desktop-instruction-staleness-prompt 決策 4）：本地專案分頁
+  // 成為活躍時查一次；remote 分頁由 store 自行略過。
+  useEffect(() => {
+    if (workspace) void useStore.getState().refreshInstructionPrompt();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useStore, workspace, s.activeKey, s.sessionEpoch]);
 
   // 系統匣狀態選單（tray-status-menu）：訂閱同一 store 於選單列／系統匣呈現狀態並可切專案。
   // store 為本元件範圍，故於此接線（非 main.tsx）。建立失敗（如非 Tauri 環境）只靜默降級——
@@ -569,17 +579,22 @@ function AppInner({
             onClick={() => s.setBoardView("settings")}
             className="mt-auto"
           />
-          {/* 現版號常駐側欄最底（主頁可見；詳細更新入口在設定頁軟體更新卡）。 */}
-          {currentVersion && (
-            <span className="px-3 pt-1 text-[11px] leading-none text-muted-foreground/80">
-              v{currentVersion}
-            </span>
-          )}
         </aside>
 
         {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
             制列沉底常駐）；設定頁維持整頁縱向捲動 */}
         <main className={`flex-1 p-5 ${s.boardView === "settings" || s.boardView === "project-settings" ? "overflow-y-auto" : "overflow-hidden"}`}>
+          {/* 指令檔提示（決策 7）：per 專案、分頁內容頂部、非阻斷；應用程式設定
+              頁不屬專案語境故不掛。 */}
+          {s.boardView !== "settings" && (
+            <InstructionUpdatePrompt
+              prompt={s.instructionPrompt}
+              error={s.instructionUpdateError}
+              busy={s.instructionUpdating}
+              onApply={() => void s.applyInstructionUpdate()}
+              onDismiss={s.dismissInstructionPrompt}
+            />
+          )}
           {s.boardView === "settings" ? (
             <AppSettingsView
               localePref={localePref}

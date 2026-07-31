@@ -268,3 +268,144 @@ fn neutral_tool_call_wording_calls_the_speclink_tool() {
     );
     assert_matches_golden("neutral-tool-call.snapshot.md", &snap);
 }
+
+// --- embedded-asset version lock: bump discipline as a red test ---
+//
+// Spec requirement 內嵌資產版本鎖定紀律 (design 決策 8). The lock file records the
+// product-layer version and a fingerprint of every render output. Changing an asset
+// without bumping MARKER_VERSION fails here; the failure message carries the fix.
+
+const ASSETS_LOCK: &str = "assets.lock";
+const LOCK_REGEN_ENV: &str = "UPDATE_ASSETS_LOCK";
+
+/// FNV-1a 64-bit, written out here on purpose: `DefaultHasher` is not stable across
+/// Rust versions (false red), and a cryptographic hash is overkill for change detection.
+fn fingerprint(input: &str) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in input.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// Every render output the lock covers, aggregated deterministically: both marker
+/// variants (fs and remote) for each built-in tool and for a descriptor, plus the three
+/// skill render targets for every registered skill.
+///
+/// MARKER_VERSION is stamped INTO those outputs (marker header, skill frontmatter), so it
+/// is normalized out before hashing: the lock tracks asset CONTENT, and a version bump on
+/// unchanged content must stay green (spec: 僅遞增版號而 render 內容未變 SHALL 通過).
+fn render_fingerprint_input() -> String {
+    let custom = speclink_core::config::CustomTool {
+        name: "lock-harness".to_string(),
+        skills_dir: ".lock/skills".to_string(),
+        instructions_file: "LOCK.md".to_string(),
+        invocation: speclink_core::config::Invocation::Cli,
+    };
+    let mut parts = Vec::new();
+    for store in [init::StoreKind::Fs, init::StoreKind::Remote] {
+        for tool in [Tool::Claude, Tool::Codex] {
+            parts.push(init::instructions_body("openspec", tool, store));
+        }
+        parts.push(init::custom_instructions_body("openspec", &custom, store));
+    }
+    for skill in skills::registry() {
+        for target in [
+            skills::RenderTarget::Builtin(Tool::Claude),
+            skills::RenderTarget::Builtin(Tool::Codex),
+            skills::RenderTarget::Custom(&custom),
+        ] {
+            parts.push(skills::render_skill_file_for(target, &skill, "openspec"));
+        }
+    }
+    normalize_eol(&parts.join("\n")).replace(init::MARKER_VERSION, "{{PRODUCT_VERSION}}")
+}
+
+fn lock_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("golden")
+        .join(ASSETS_LOCK)
+}
+
+/// The lock file is two `key: value` lines (version, fingerprint) — the format is owned
+/// by this test alone.
+fn read_lock() -> Option<(String, String)> {
+    let text = std::fs::read_to_string(lock_path()).ok()?;
+    let mut version = None;
+    let mut hash = None;
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        match key.trim() {
+            "version" => version = Some(value.trim().to_string()),
+            "fingerprint" => hash = Some(value.trim().to_string()),
+            _ => {}
+        }
+    }
+    Some((version?, hash?))
+}
+
+fn write_lock(version: &str, hash: &str) {
+    let path = lock_path();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, format!("version: {version}\nfingerprint: {hash}\n")).unwrap();
+}
+
+/// The one message both the failure path and the regeneration guard point at, so an agent
+/// that reached for the wrong env var is told what to do instead. UPDATE_GOLDEN and
+/// UPDATE_ASSETS_LOCK are independent switches: regenerating goldens never touches the lock.
+fn lock_fix_instructions() -> String {
+    format!(
+        "fix: bump MARKER_VERSION in crates/speclink-core/src/init.rs (render content changed), \
+then regenerate the lock on a clean tree with \
+`{LOCK_REGEN_ENV}=1 cargo test -p speclink-core --test render_golden`. \
+Regenerating goldens (UPDATE_GOLDEN=1) does NOT update this lock."
+    )
+}
+
+#[test]
+fn embedded_assets_are_locked_to_the_product_version() {
+    let current_version = init::MARKER_VERSION;
+    let current_hash = fingerprint(&render_fingerprint_input());
+    let locked = read_lock();
+
+    if std::env::var(LOCK_REGEN_ENV).is_ok() {
+        // Regeneration guard: a changed fingerprint under an unchanged version must NOT
+        // be written through — that is exactly the discipline this lock exists to enforce.
+        if let Some((locked_version, locked_hash)) = &locked {
+            assert!(
+                !(locked_hash != &current_hash && locked_version == current_version),
+                "refusing to rewrite {ASSETS_LOCK}: render output changed but MARKER_VERSION is \
+still {current_version}.\n{}",
+                lock_fix_instructions()
+            );
+        }
+        write_lock(current_version, &current_hash);
+        return;
+    }
+
+    let Some((locked_version, locked_hash)) = locked else {
+        panic!(
+            "missing {ASSETS_LOCK} — generate it on a clean tree with \
+`{LOCK_REGEN_ENV}=1 cargo test -p speclink-core --test render_golden`.\n{}",
+            lock_fix_instructions()
+        );
+    };
+    if locked_hash == current_hash {
+        return;
+    }
+    assert_ne!(
+        locked_version, current_version,
+        "embedded asset render output changed while MARKER_VERSION stayed at \
+{current_version}.\n{}",
+        lock_fix_instructions()
+    );
+    panic!(
+        "MARKER_VERSION moved ({locked_version} → {current_version}) but {ASSETS_LOCK} still \
+records the old fingerprint.\n{}",
+        lock_fix_instructions()
+    );
+}
