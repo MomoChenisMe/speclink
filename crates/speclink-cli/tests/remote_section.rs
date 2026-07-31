@@ -129,7 +129,10 @@ fn init_store_remote_writes_the_remote_section() {
         env.dir.join(".claude").join("skills").join("speclink-propose").join("SKILL.md").is_file(),
         "Claude skills installed"
     );
-    assert!(env.dir.join(".claude").join("settings.json").is_file(), "Claude settings written");
+    assert!(
+        !env.dir.join(".claude").join("settings.json").exists(),
+        "user settings file must not be generated"
+    );
     assert!(env.dir.join(".gitignore").is_file(), ".gitignore written");
 }
 
