@@ -23,6 +23,7 @@ Have a focused discussion about a topic and reach a conclusion.
 - A change name: "add-dark-mode" (discuss in context of that change)
 - An architecture decision: "how to structure the plugin system"
 - A vague idea that needs sharpening: "real-time collaboration"
+- A document path: `docs/plans/realtime.md` — a plan you wrote by hand, a plan-mode output, a doc under the repo, or any readable path (see "Document input" below)
 
 **Not every topic is a discussion.** If the request is really a question — the user wants to understand how something works or whether something is feasible, and no decision hangs on the answer — answer it directly in the conversation and do not open a discussion record. A discussion exists to settle something; understanding-seeking without a verdict is ask-shaped, not discuss-shaped. When in doubt, start talking without a record: the record is only created at the first substantive round (see below), so nothing is lost by waiting.
 
@@ -74,6 +75,20 @@ What prompted this discussion, the mode chosen (assumptions | interview) and why
 and the related changes/specs found by the codebase scout.
 CTX_EOF
 ```
+
+**Source doc convention** — when the topic named a document (see "Document input" below), the Context SHALL carry one line naming it:
+
+```
+Source doc: <path>
+```
+
+That line is the mechanical marker a later `/speclink-propose --from-discussion <slug>` looks for to know there is an underlying document to read. Three rules travel with it:
+
+- **Evidence cites the document by reference, not by transcription.** When a round's Evidence points at the document, name the section heading or quote a short phrase from it.
+- **The record stores the outcome of the discussion only.** It SHALL NOT embed the planning document in full — the document stays where it is, and the record holds the decision diff against it.
+- **Never modify the user's original document.** Corrections live in the record; merging document and decisions is `propose`'s job, not yours.
+
+When the topic named no document, none of this applies: the Context has no `Source doc:` line, there is no extra file-reading step, and recording proceeds exactly as it does today.
 
 **After each round** (each Assumptions list you present, or each interview question-and-answer that moves the topic forward), persist a concise summary so the record shows how the thinking evolved:
 
@@ -168,6 +183,7 @@ This scout exists only to pick the mode (Step 3) — it is not the investigation
 
 - **3+ related source files found** → **Assumptions mode**: you have enough context to form opinions. List your assumptions, let the user correct.
 - **Fewer than 3 related source files found** → **Interview mode**: not enough code to base assumptions on. Fall through to "How to Discuss" below and ask questions one at a time.
+- **The topic is a document path** → **Document input** (below): the document supplies the tree already filled in, so skip the "list 3-5 assumptions" opening and triage its claims instead. The scout still runs — it is what you triage the claims against.
 
 Announce which mode you picked and why: "Found `search.rs`, `SearchPanel.svelte`, `search-store.ts` — I have enough context to list my assumptions." or "Didn't find much related code — I'll ask questions instead."
 
@@ -201,6 +217,25 @@ After presenting, ask: **"Which of these are wrong?"**
 
 - If the user says all are fine → proceed to Convergence with these as established context.
 - If the user flags corrections → for each one, ask ONE focused follow-up question to understand their intent, then proceed to Convergence with the corrected understanding.
+
+### Document input
+
+When the topic names a **file path** rather than a sentence — a plan the user wrote by hand, a plan-mode output, a doc under the repo, or any readable path — read that file and treat it as **someone else's assumptions list**: a decision tree that arrives pre-filled and now has to be stress-tested. The document SHALL NOT be read once as background material and then set aside; it is not colour for opinions you form independently.
+
+Extract every claim the document makes as a tree node, then triage each claim against the codebase:
+
+| Triage            | Meaning                                  | What you do with it                                                                    |
+| ----------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Confirmed**     | The codebase backs the claim             | Record it with the code evidence — file path, symbol, or probe result                   |
+| **Contradicted**  | The document says X, the code does Y     | Name the difference for that claim — doc says X, code does Y — with the evidence for Y   |
+| **Real decision** | Nothing in the environment can settle it | Send it to the user, carrying your proposed answer and its Evidence                     |
+
+- **Contradictions are itemized, one claim at a time.** For each contradicted claim, state what the document asserts, what the code actually does, and the evidence for the latter. Summarizing the document, or a blanket "parts of this are out of date", is not triage.
+- **Confirmed nodes do not need a user round.** They are settled facts — say so and move on.
+- **Only real decisions reach the user**, one at a time, in dependency order (see "How to Discuss").
+- The triage IS the first round's Position, and it replaces the "list 3-5 assumptions" opening — the document already listed them.
+
+Recording follows the **Source doc convention** above: the Context carries `Source doc: <path>`, Evidence cites the document by section heading or short phrase, and the original document is never modified.
 
 ### Mode switching
 
