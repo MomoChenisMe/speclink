@@ -42,7 +42,8 @@ export function fakeRemoteDs(over: Partial<SpeclinkDataSource> = {}): SpeclinkDa
   const refuse = () => Promise.reject(new Error("此 server 尚未提供——功能已停用"));
   return {
     listChanges: vi.fn().mockResolvedValue([
-      { name: "remote-change", status: "in-progress", totalTasks: 2, completedTasks: 0 },
+      // 已就緒（2/2）：抽屜封存鈕的階段守門放行，capability 測試聚焦能力缺口本身。
+      { name: "remote-change", status: "in-progress", totalTasks: 2, completedTasks: 2 },
     ]),
     listSpecs: vi.fn().mockResolvedValue([{ id: "auth" }]),
     listArchived: vi.fn().mockResolvedValue([

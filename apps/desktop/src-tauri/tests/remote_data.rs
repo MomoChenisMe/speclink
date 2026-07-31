@@ -544,6 +544,13 @@ fn task_flips_claim_and_archive_write_through() {
         "claim 回實際 actor"
     );
 
+    // 封存前補完任務——單筆封存的任務完成度守門（archive-readiness-gating）
+    // 一體適用 server 通道，未完成 change 會被拒絕。
+    for task in ["1", "2", "3", "4"] {
+        ws.set_task_done(&credentials, "demo", task, true)
+            .expect("complete before archive");
+    }
+
     let archived = ws.archive(&credentials, "demo").expect("archive");
     assert_eq!(archived.specs.len(), 1, "delta spec 折入正典");
     assert_eq!(archived.specs[0].capability, "auth");

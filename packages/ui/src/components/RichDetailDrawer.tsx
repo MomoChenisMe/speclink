@@ -251,6 +251,20 @@ export function RichDetailDrawer({
     }
   };
 
+  // 階段守門原因（archive-readiness-gating D4）：封存鈕非已就緒、刪除鈕非提案中
+  // 時 disabled；unavailable（remote 能力缺失）原因優先於階段原因——「這條通道
+  // 做不到」比「現在還不能」更硬。守門為呈現層過濾，引擎拒絕是最終裁決。
+  const stage = changeStage(change);
+  const archiveReason =
+    unavailable?.archive ??
+    (stage !== "ready"
+      ? t("rdrawer.archiveNotReady")
+          .replace("{done}", String(change.completedTasks))
+          .replace("{total}", String(change.totalTasks))
+      : undefined);
+  const deleteReason =
+    unavailable?.delete ?? (stage !== "proposed" ? t("rdrawer.deleteStarted") : undefined);
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -357,7 +371,7 @@ export function RichDetailDrawer({
               <div className="flex-1" />
               {/* 退回提案中（僅派生進行中;樣式沿動作列 outline 鈕）：點擊交宿主
                   先確認,UI 不預判守門。 */}
-              {changeStage(change) === "in-progress" && onRevert && (
+              {stage === "in-progress" && onRevert && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -367,24 +381,24 @@ export function RichDetailDrawer({
                   <Undo2 className="h-3.5 w-3.5" /> {t("common.revert")}
                 </Button>
               )}
-              <UnavailableAction reason={unavailable?.archive}>
+              <UnavailableAction reason={archiveReason}>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={unavailable?.archive !== undefined}
-                  title={unavailable?.archive}
+                  disabled={archiveReason !== undefined}
+                  title={archiveReason}
                   className="h-7 gap-1"
                   onClick={() => onRunVerb?.("archive", change.name)}
                 >
                   <Archive className="h-3.5 w-3.5" /> {t("common.archive")}
                 </Button>
               </UnavailableAction>
-              <UnavailableAction reason={unavailable?.delete}>
+              <UnavailableAction reason={deleteReason}>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={unavailable?.delete !== undefined}
-                  title={unavailable?.delete}
+                  disabled={deleteReason !== undefined}
+                  title={deleteReason}
                   className="h-7 gap-1 text-destructive hover:text-destructive"
                   onClick={() => onDelete?.(change.name)}
                 >

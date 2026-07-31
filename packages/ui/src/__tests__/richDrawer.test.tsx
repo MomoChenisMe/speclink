@@ -436,7 +436,10 @@ describe("RichDetailDrawer", () => {
   });
 
   it("fires onDelete when the delete action is clicked", async () => {
-    const props = makeProps();
+    // 階段守門後刪除鈕僅提案中可按（archive-readiness-gating）——改用提案中 fixture。
+    const props = makeProps({
+      change: { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 0 },
+    });
     render(<RichDetailDrawer {...(props as never)} />);
     // 先等初始 async 載入落地（loadMeta 的 MomoChen 為完成標記），避免 act 警告。
     await screen.findByText("MomoChen");
@@ -503,6 +506,91 @@ describe("RichDetailDrawer", () => {
     expect(latest.onReorder).toBeUndefined();
     expect(latest.onToggle).toBeDefined();
     expect(latest.onSetAll).toBeDefined();
+  });
+});
+
+// spec 需求「詳情抽屜的封存與刪除依階段守門」（archive-readiness-gating D4）：
+// 封存鈕僅已就緒可按、刪除鈕僅提案中可按，非法階段 disabled 並經
+// UnavailableAction 呈現原因；unavailable（remote 能力缺失）原因優先於階段原因。
+describe("抽屜封存/刪除的階段守門", () => {
+  const proposed: ChangeItem = { name: "prop-c", status: "in-progress", totalTasks: 11, completedTasks: 0 };
+  const inProgress: ChangeItem = {
+    name: "wip-c",
+    status: "in-progress",
+    totalTasks: 19,
+    completedTasks: 5,
+    startedAt: "2026-07-06",
+  };
+  const ready: ChangeItem = { name: "ready-c", status: "done", totalTasks: 30, completedTasks: 30 };
+
+  it("非已就緒的封存鈕停用附任務進度與出路；已就緒照常可按", async () => {
+    // spec scenario：提案中(0/11)與進行中(5/19)皆 disabled，tooltip 載明進度。
+    const p1 = makeProps({ change: proposed });
+    const r1 = render(<RichDetailDrawer {...(p1 as never)} />);
+    await screen.findByText("MomoChen");
+    const btn1 = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
+    expect(btn1.disabled).toBe(true);
+    expect(btn1.title).toContain("0/11");
+    expect(btn1.title).toContain("完成後才能封存");
+    r1.unmount();
+    const p2 = makeProps({ change: inProgress });
+    const r2 = render(<RichDetailDrawer {...(p2 as never)} />);
+    await screen.findByText("MomoChen");
+    const btn2 = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
+    expect(btn2.disabled).toBe(true);
+    expect(btn2.title).toContain("5/19");
+    r2.unmount();
+    const p3 = makeProps({ change: ready });
+    render(<RichDetailDrawer {...(p3 as never)} />);
+    await screen.findByText("MomoChen");
+    const btn3 = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
+    expect(btn3.disabled).toBe(false);
+    fireEvent.click(btn3);
+    expect(p3.onRunVerb).toHaveBeenCalledWith("archive", "ready-c");
+  });
+
+  it("非提案中的刪除鈕停用附開工痕跡與退回出路；提案中照常可按", async () => {
+    const p1 = makeProps({ change: inProgress });
+    const r1 = render(<RichDetailDrawer {...(p1 as never)} />);
+    await screen.findByText("MomoChen");
+    const del1 = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
+    expect(del1.disabled).toBe(true);
+    expect(del1.title).toContain("開工痕跡");
+    expect(del1.title).toContain("退回提案中");
+    r1.unmount();
+    // 已就緒（全完成＝有痕跡）同樣 disabled。
+    const p2 = makeProps({ change: ready });
+    const r2 = render(<RichDetailDrawer {...(p2 as never)} />);
+    await screen.findByText("MomoChen");
+    expect((screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement).disabled).toBe(true);
+    r2.unmount();
+    const p3 = makeProps({ change: proposed });
+    render(<RichDetailDrawer {...(p3 as never)} />);
+    await screen.findByText("MomoChen");
+    const del3 = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
+    expect(del3.disabled).toBe(false);
+    fireEvent.click(del3);
+    expect(p3.onDelete).toHaveBeenCalledWith("prop-c");
+  });
+
+  it("unavailable 原因優先於階段原因（能力缺失比階段更硬）", async () => {
+    const p = makeProps({
+      change: inProgress,
+      unavailable: {
+        archive: "此 server 尚未提供封存——功能已停用",
+        delete: "此 server 尚未提供刪除變更——功能已停用",
+      },
+    });
+    render(<RichDetailDrawer {...(p as never)} />);
+    await screen.findByText("MomoChen");
+    const arch = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
+    expect(arch.disabled).toBe(true);
+    expect(arch.title).toContain("server");
+    expect(arch.title).not.toContain("5/19");
+    const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
+    expect(del.disabled).toBe(true);
+    expect(del.title).toContain("server");
+    expect(del.title).not.toContain("開工痕跡");
   });
 });
 

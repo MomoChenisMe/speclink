@@ -102,6 +102,25 @@ pub fn archive(
     // refuse a corrupt one before any validation or file effect.
     crate::model::require_valid_meta(change)?;
 
+    // Task-readiness gate (spec「單筆封存的任務完成度守門」): an incomplete change
+    // refuses to archive unless the --mark-tasks-complete flag rides along. The
+    // exemption is the flag itself, not the runtime's pre-write — direct callers
+    // (desktop) get the same semantics without it. Condition mirrors the bulk
+    // pre-filter: only total > 0 gates, a zero-task change passes.
+    if !opts.mark_tasks_complete {
+        let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
+        let (total, complete, _) = crate::tasks::progress(&crate::tasks::parse(&tasks_md));
+        if total > 0 && complete < total {
+            return Err(crate::command::Refusal(format!(
+                "change '{}' has {complete}/{total} tasks complete — archive refuses an \
+                 incomplete change; complete the remaining tasks, or pass \
+                 --mark-tasks-complete to check them all and archive",
+                change.name
+            ))
+            .into());
+        }
+    }
+
     let date = util::today();
     let dated_name = format!("{date}-{}", change.name);
     if store.archived_change_exists(&dated_name) {
@@ -600,6 +619,66 @@ mod tests {
             outcome.archived_discussions.iter().map(|(s, _)| s.as_str()).collect();
         assert_eq!(slugs, vec!["only"]);
         assert!(store.archived_discussion_exists("only"));
+    }
+
+    // --- 單筆封存任務完成度守門（design D1；spec change-lifecycle「單筆封存的任務完成度守門」）---
+
+    fn gate_store(tasks_md: &str) -> TestStore {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        store.put_artifact("demo", "tasks.md", tasks_md);
+        store
+    }
+
+    #[test]
+    fn incomplete_tasks_refuse_archive_with_evidence_and_zero_writes() {
+        // spec Example 守門判定：3 任務僅 1 勾、未帶 --mark-tasks-complete → 拒絕，
+        // 訊息載明 1/3 與兩條出路，store 零寫入。
+        let store = gate_store("- [x] 1.1 a\n- [ ] 1.2 b\n- [ ] 1.3 c\n");
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let err = archive(&ghost_ws(), &store, &change, &skip_opts(), None)
+            .expect_err("incomplete tasks must refuse archive");
+        assert!(err.to_string().contains("1/3"), "evidence N/M in message: {err}");
+        assert!(err.to_string().contains("--mark-tasks-complete"), "exit route named: {err}");
+        assert!(
+            err.downcast_ref::<crate::command::Refusal>().is_some(),
+            "typed Refusal so the runtime classifies refused"
+        );
+        assert!(store.change_exists("demo"), "change stays in place");
+        assert!(store.archived_metas.borrow().is_empty(), "nothing archived");
+        assert!(store.canonical.borrow().is_empty(), "no canonical spec writes");
+        assert_eq!(*store.meta_writes.borrow(), 0, "zero meta writes");
+        assert_eq!(*store.artifact_writes.borrow(), 0, "zero artifact writes");
+    }
+
+    #[test]
+    fn all_tasks_complete_passes_the_gate() {
+        // spec Example 守門判定：3/3 → 照常封存。
+        let store = gate_store("- [x] 1.1 a\n- [x] 1.2 b\n- [x] 1.3 c\n");
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
+        assert!(!store.change_exists("demo"), "change moved into the archive");
+        assert!(store.archived_change_exists(&outcome.dated_name));
+    }
+
+    #[test]
+    fn zero_tasks_passes_the_gate() {
+        // spec Example 守門判定：任務總數 0 → 照常封存（條件與批次預過濾一致：總數>0 才擋）。
+        let store = gate_store("## Tasks\n\n(none)\n");
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
+        assert!(!store.change_exists("demo"), "zero-task change archives as before");
+    }
+
+    #[test]
+    fn mark_tasks_complete_flag_passes_the_gate_without_pre_write() {
+        // design D1：豁免＝旗標本身——未經 runtime pre-write 的直呼入口（desktop）
+        // 帶旗標時語意一致。
+        let store = gate_store("- [x] 1.1 a\n- [ ] 1.2 b\n- [ ] 1.3 c\n");
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let opts =
+            ArchiveOptions { skip_specs: true, no_validate: true, mark_tasks_complete: true };
+        archive(&ghost_ws(), &store, &change, &opts, None).unwrap();
+        assert!(!store.change_exists("demo"), "flag exempts the gate");
     }
 
     // --- archive trace 由 evidence 建立（spec verify-evidence）---

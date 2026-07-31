@@ -2243,6 +2243,28 @@ mod tests {
     }
 
     #[test]
+    fn archive_of_incomplete_change_is_refused() {
+        // spec change-lifecycle「單筆封存的任務完成度守門」：任務未完成的單筆
+        // Archive 經 runtime 分類為 refused，change 原地不動、無事件。
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 a\n- [ ] 1.2 b\n- [ ] 1.3 c\n");
+        let err = execute(
+            &store,
+            &ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() },
+            Command::Archive {
+                change: Some("demo".to_string()),
+                skip_specs: false,
+                no_validate: false,
+                mark_tasks_complete: false,
+            },
+        )
+        .expect_err("incomplete change must refuse archive");
+        assert_eq!(err.code, ErrorCode::Refused);
+        assert!(err.message.contains("1/3"), "evidence rides the message: {}", err.message);
+        assert!(store.change_exists("demo"), "nothing moved on refusal");
+    }
+
+    #[test]
     fn discard_reports_change_discarded() {
         let store = TestStore::with_meta("demo", META);
         let (_, events) = ok(

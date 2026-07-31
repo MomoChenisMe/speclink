@@ -241,9 +241,9 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     expect(calls[9].args).toMatchObject({ change: "chg" });
     expect(calls[10].args).toMatchObject({ change: "chg" });
     expect(calls[11].args).toMatchObject({ change: "chg" });
-    // 桌面 remote 刪除固定帶 force=true（決策 3：與本地無 guard 直刪同模式，
-    // 確認對話框在 UI 層）。
-    expect(calls[12].args).toMatchObject({ change: "chg", force: true });
+    // 桌面 remote 刪除帶 force=false（archive-readiness-gating D2 翻案）：與本地
+    // discard 守門語意對齊，已開工 change 由 server 拒絕、走既有 deleteFailed toast。
+    expect(calls[12].args).toMatchObject({ change: "chg", force: false });
     expect(calls[13].args).toMatchObject({ change: "chg", from: 1, to: 3, before: null });
     expect(calls[14].args).toMatchObject({
       datedName: "2026-01-01-old",
