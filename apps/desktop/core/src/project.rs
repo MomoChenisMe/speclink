@@ -22,6 +22,9 @@ pub enum ProjectProbe {
     },
     /// 目錄存在且可讀，但不屬於任何 speclink 專案（前端據此開初始化確認框）。
     Uninitialized { dir: String },
+    /// 向上探索命中且為本地檔案模式、但專案根無 `.speclink.yaml`——有規格資料
+    /// 但未啟用 speclink（前端據此開啟用確認框）。`root` 為命中的專案根。
+    Unadopted { root: String },
 }
 
 /// 對所選目錄做開啟專案的四態判定：以該目錄為起點沿用
@@ -44,6 +47,17 @@ pub fn open_project_at(path: &Path) -> Result<ProjectProbe, String> {
                         url: remote.url,
                         repo: remote.repo,
                         has_local_openspec: resolution.coexists,
+                    })
+                }
+                // 第四態（desktop-enable-speclink-prompt 決策 1）：Fs 模式且 root 無
+                // .speclink.yaml → 未啟用。舊版 remote 標記檔的遷移警告路徑凍結——
+                // 帶 leftover 標記者照舊判 Project，不得誤判成未啟用。
+                speclink_core::workspace::StoreMode::Fs
+                    if !ws.root.join(".speclink.yaml").is_file()
+                        && !resolution.leftover_remote_file =>
+                {
+                    Ok(ProjectProbe::Unadopted {
+                        root: ws.root.display().to_string(),
                     })
                 }
                 speclink_core::workspace::StoreMode::Fs => Ok(ProjectProbe::Project {
@@ -115,6 +129,15 @@ pub fn init_project_at(path: &Path, tools: &[String]) -> Result<ProjectProbe, St
     open_project_at(path)
 }
 
+/// 對未啟用目錄執行工作區補齊（消費 `speclink_core::init::adopt`，決策 2），
+/// 成功後重跑探測回報命中的專案。`path` 為探測回報的專案根；未知工具名在
+/// 任何寫入之前被拒，單行 Err。
+pub fn adopt_project_at(path: &Path, tools: &[String]) -> Result<ProjectProbe, String> {
+    let selected = speclink_core::init::parse_tool_names(tools).map_err(|e| e.to_string())?;
+    speclink_core::init::adopt(path, &selected).map_err(|e| e.to_string())?;
+    open_project_at(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,9 +177,16 @@ mod tests {
 
     // --- open_project_at：三態判定（spec 需求「執行期切換專案 root」） ---
 
+    /// 已啟用專案標記（spec Scenario「已啟用專案不出現啟用對話框」的判準）：
+    /// 專案根有 `.speclink.yaml` 才照舊判 Project。
+    fn mark_adopted(fx: &FixtureRoot) {
+        fx.write(".speclink.yaml", "tools:\n  - claude\n");
+    }
+
     #[test]
     fn open_project_at_project_root_reports_root_and_name() {
         let fx = FixtureRoot::new("open-root");
+        mark_adopted(&fx);
         let probe = open_project_at(fx.root()).expect("probe ok");
         match probe {
             ProjectProbe::Project { root, name } => {
@@ -171,9 +201,60 @@ mod tests {
     fn open_project_at_subdir_walks_up_to_project_root() {
         // spec Scenario「自子目錄向上探索至專案根」：子目錄本身不含 openspec/。
         let fx = FixtureRoot::new("open-subdir");
+        mark_adopted(&fx);
         let sub = fx.root().join("src").join("nested");
         std::fs::create_dir_all(&sub).unwrap();
         let probe = open_project_at(&sub).expect("probe ok");
+        match probe {
+            ProjectProbe::Project { root, .. } => {
+                assert_eq!(root, fx.root().display().to_string());
+            }
+            other => panic!("expected Project, got {other:?}"),
+        }
+    }
+
+    // --- 第四態：未啟用（spec 需求「未啟用資料夾經確認後補齊啟用」；決策 1） ---
+
+    #[test]
+    fn open_project_at_openspec_without_app_config_reports_unadopted_with_zero_writes() {
+        // 判準＝專案根 .speclink.yaml 存在與否：有 openspec/ 但無 .speclink.yaml
+        // 的資料夾（自其他體系遷移、或隊友未提交）不再靜默判 Project。
+        let fx = FixtureRoot::new("open-unadopted");
+        let before = entries(fx.root());
+        let probe = open_project_at(fx.root()).expect("probe ok");
+        assert_eq!(
+            serde_json::to_value(probe).unwrap(),
+            serde_json::json!({
+                "status": "unadopted",
+                "root": fx.root().display().to_string(),
+            })
+        );
+        assert_eq!(entries(fx.root()), before, "probe must not write anything");
+    }
+
+    #[test]
+    fn open_project_at_unadopted_subdir_anchors_the_walked_up_root() {
+        // spec Scenario「子目錄開啟錨定專案根」：判定錨在 discover 命中的 root，
+        // 非使用者所選子目錄。
+        let fx = FixtureRoot::new("open-unadopted-subdir");
+        let sub = fx.root().join("src").join("nested");
+        std::fs::create_dir_all(&sub).unwrap();
+        let probe = open_project_at(&sub).expect("probe ok");
+        match probe {
+            ProjectProbe::Unadopted { root } => {
+                assert_eq!(root, fx.root().display().to_string());
+            }
+            other => panic!("expected Unadopted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_project_at_leftover_remote_file_keeps_reporting_project() {
+        // design 風險「誤把舊 remote 標記檔資料夾判成未啟用」：舊版
+        // .speclink.remote.yaml 的遷移警告路徑凍結——不得變成 unadopted。
+        let fx = FixtureRoot::new("open-leftover-remote");
+        fx.write(".speclink.remote.yaml", "url: https://legacy.example.test\n");
+        let probe = open_project_at(fx.root()).expect("probe ok");
         match probe {
             ProjectProbe::Project { root, .. } => {
                 assert_eq!(root, fx.root().display().to_string());
@@ -347,6 +428,7 @@ mod tests {
         // 進行中／proposed 變更與 promoted／open 討論不計；inProgressChanges 欄位移除
         //（唯一消費者 store.ts 同變更內改寫）。
         let fx = FixtureRoot::new("stats-wrapup");
+        mark_adopted(&fx);
         fx.add_change("ready-a", "schema: spec-driven\ncreated: 2026-07-01\n");
         fx.write("openspec/changes/ready-a/tasks.md", "- [x] 1.1 one\n- [x] 1.2 two\n");
         fx.add_change("ready-b", "schema: spec-driven\ncreated: 2026-07-01\n");
@@ -382,6 +464,7 @@ mod tests {
     fn project_stats_pending_wrap_up_is_zero_when_nothing_awaits_the_user() {
         // 全部收尾後歸零（Implementation Contract）：只剩進行中／proposed 與 open 討論。
         let fx = FixtureRoot::new("stats-wrapup-zero");
+        mark_adopted(&fx);
         fx.add_change("proposed-a", "schema: spec-driven\ncreated: 2026-07-01\n");
         fx.write("openspec/changes/proposed-a/tasks.md", "- [ ] 1.1 one\n");
         fx.write(
@@ -421,5 +504,40 @@ mod tests {
         assert!(err.contains("vscode"), "must name the offender: {err}");
         assert!(!err.contains('\n'), "single line: {err:?}");
         assert_eq!(entries(plain.path()), before, "no writes on rejection");
+    }
+
+    // --- adopt_project_at：確認後補齊啟用的檔案效果（決策 2 消費；design 驗收） ---
+
+    #[test]
+    fn adopt_project_at_fills_workspace_and_reports_project() {
+        // 呼叫 core adopt 後重跑探測回報 Project；既有 openspec/ 文件不動。
+        let fx = FixtureRoot::new("adopt-fill");
+        fx.write("openspec/specs/auth/spec.md", "## Purpose\n既有規格。\n");
+        let probe = adopt_project_at(fx.root(), &["claude".into()]).expect("adopt ok");
+        match probe {
+            ProjectProbe::Project { root, .. } => {
+                assert_eq!(root, fx.root().display().to_string());
+            }
+            other => panic!("expected Project after adopt, got {other:?}"),
+        }
+        let p = fx.root();
+        assert!(read(&p.join(".speclink.yaml")).contains("claude"));
+        assert!(read(&p.join("CLAUDE.md")).contains("<!-- SPECLINK:START"));
+        assert!(p.join(".claude").join("skills").is_dir());
+        assert_eq!(
+            read(&p.join("openspec").join("specs").join("auth").join("spec.md")),
+            "## Purpose\n既有規格。\n"
+        );
+    }
+
+    #[test]
+    fn adopt_project_at_unknown_tool_is_rejected_with_zero_writes() {
+        let fx = FixtureRoot::new("adopt-badtool");
+        let before = entries(fx.root());
+        let err = adopt_project_at(fx.root(), &["claude".into(), "vscode".into()])
+            .expect_err("must fail");
+        assert!(err.contains("vscode"), "must name the offender: {err}");
+        assert!(!err.contains('\n'), "single line: {err:?}");
+        assert_eq!(entries(fx.root()), before, "no writes on rejection");
     }
 }
