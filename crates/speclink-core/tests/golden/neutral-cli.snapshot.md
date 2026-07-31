@@ -411,7 +411,7 @@ Archive a completed change.
    - MODIFIED requirements: does the canonical requirement contain scenarios or content the delta omits but that should survive?
    - ADDED requirements: does the requirement already exist in the canonical spec (e.g., from an earlier mid-flight sync)?
 
-   **If every delta is already complete final-state and no ADDED requirement pre-exists:** proceed directly to step 5 — no prompt needed.
+   **If every delta is already complete final-state and no ADDED requirement pre-exists:** proceed directly to the archive (step 5) — no prompt needed.
 
    **Otherwise**, show a summary of what would be lost or skipped, then use the **AskUserQuestion tool**:
    - "Normalize delta then archive (recommended)": rewrite the delta spec file(s) in place —
@@ -423,17 +423,7 @@ Archive a completed change.
 
    After normalizing, show a brief diff summary of the rewritten delta files, then continue.
 
-5. **Clean up tracking file**
-
-   Delete `.speclink/touched/<change-name>.json` if it exists. This file contains implementation tracking data that is not needed after archiving.
-
-   ```bash
-   rm -f .speclink/touched/<change-name>.json
-   ```
-
-   If the file does not exist, silently continue.
-
-6. **Perform the archive**
+5. **Perform the archive**
 
    Use the `speclink archive` CLI command which handles the full archive workflow
    (spec snapshot, delta application, @trace injection, identity recording):
@@ -449,7 +439,7 @@ Archive a completed change.
 
    **If archive fails** with "already exists" error, suggest renaming existing archive.
 
-7. **Display summary**
+6. **Display summary**
 
    Show archive completion summary including:
    - Change name
@@ -457,6 +447,27 @@ Archive a completed change.
    - Archive location
    - Spec sync status (synced / sync skipped / no delta specs)
    - Note about any warnings (incomplete artifacts/tasks)
+
+7. **Clean up tracking file** — only after the archive has been committed
+
+   `.speclink/touched/<change-name>.json` holds the change's per-task evidence. Delete it once
+   the archive is committed, never before:
+
+   ```bash
+   rm -f .speclink/touched/<change-name>.json
+   ```
+
+   Two reasons the deletion trails the archive and the commit:
+
+   - **It is the `@trace` source.** `speclink archive` builds the trace file list from this
+     record; with the record gone the list falls back to scanning the work tree's dirty files,
+     sweeping unrelated edits — a parallel session's work, an unfinished experiment — into the
+     canonical specs.
+   - **It is the commit skill's file-attribution source.** `speclink commit` reads it to decide
+     which files belong to this change, so deleting before the commit lands leaves it with no
+     file list.
+
+   If the file does not exist, silently continue.
 
 **Output On Success**
 
@@ -559,9 +570,11 @@ speclink archive --all                 # every ready change
 
 Semantics (the CLI enforces all three):
 
-1. **Clean work tree required** — the dirty code-file set is the @trace source and would be
-   injected into EVERY archived change's canonical specs. Commit first; the command refuses
-   otherwise and lists the offending files.
+1. **Clean work tree required** — a change's @trace file list is aggregated from its evidence
+   record (`.speclink/touched/<name>.json`) when one exists, and falls back to the work tree's
+   dirty code files only when it does not. That fallback would inject unrelated dirty files into
+   the archived change's canonical specs. Commit first; the command refuses otherwise and lists
+   the offending files.
 2. **Skip, never silently** — a change is archived only when it is ready: tasks complete
    (or `--mark-tasks-complete`), validation passes (or `--no-validate`), and no stale delta
    assumptions (a MODIFIED/REMOVED target another change already rewrote — run
@@ -573,7 +586,8 @@ Semantics (the CLI enforces all three):
 
 Each archived change still gets the full single-archive treatment: delta application with
 @trace, snapshot for unarchive, `.started` cleanup, and its linked discussion archived
-alongside. Delete each change's `.speclink/touched/<name>.json` afterwards as in step above.
+alongside. Delete each change's `.speclink/touched/<name>.json` only after the archive is
+committed, exactly as in the single-archive cleanup step — never before archiving.
 
 === .wad/skills/speclink-audit/SKILL.md ===
 ---
