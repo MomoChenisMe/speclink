@@ -3,7 +3,7 @@
 // 資料查詢路徑。原生質感（vibrancy、不搶焦點、失焦收合、高度自適應）由
 // Rust 側面板視窗與入口層承擔，此元件只負責結構與回呼；複製鈕常駐列尾、
 // 分區圖示沿用看板同款（KanbanBoard 的 stage 圖示）。
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   changeStage,
   STAGE_BADGE,
@@ -34,6 +34,7 @@ import {
   RefreshCw,
   Server,
   Settings,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 
@@ -53,6 +54,8 @@ export interface TrayPanelProps {
   onOpenChange: (name: string) => void;
   onOpenDiscussion: (slug: string) => void;
   onOpenApp: () => void;
+  /** 開主視窗並切至作用中專案的專案設定頁（動作區「專案設定」；與原生選單同語意）。 */
+  onOpenProjectSettings: () => void;
   /** 開主視窗並切至設定頁（動作區「設定」；與原生選單同語意）。 */
   onOpenSettings: () => void;
   /** 結束 app（動作區「結束」；面板端經 Rust 命令結束行程）。 */
@@ -161,6 +164,64 @@ const emptyCardClass = "min-h-12 justify-center";
     不加線；以 div 而非 hr 實作，面板卡片化後不使用原生分隔線元素。 */
 function Divider() {
   return <div data-testid="panel-divider" aria-hidden className="mx-1 h-px shrink-0 bg-foreground/10" />;
+}
+
+/** 捲動停止後指示條淡出的延遲（ms）——比照 macOS overlay 捲軸的滯留時間。 */
+const SCROLL_IDLE_MS = 800;
+
+/**
+ * 中段捲動指示條（spec「面板樣式（macOS）」：捲動時浮現、停止後自動隱去、
+ * 不佔版面寬度）。自繪而非用原生捲軸——index.css 的全域 `::-webkit-scrollbar`
+ * 會把 WebKit 切成自訂 legacy 捲軸（常駐且佔寬），系統「總是顯示捲軸」偏好
+ * 亦然；兩者皆使原生捲軸不可能淡出。內容未溢出時不渲染。
+ */
+function ScrollIndicator({ targetRef }: { targetRef: RefObject<HTMLDivElement | null> }) {
+  const [thumb, setThumb] = useState<{ top: number; height: number } | null>(null);
+  const [active, setActive] = useState(false);
+  useEffect(() => {
+    const el = targetRef.current;
+    if (!el) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const measure = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      if (scrollHeight <= clientHeight) {
+        setThumb(null);
+        return;
+      }
+      const height = Math.max(24, (clientHeight / scrollHeight) * clientHeight);
+      const travel = clientHeight - height;
+      const top = travel * (scrollTop / (scrollHeight - clientHeight));
+      setThumb({ top, height });
+    };
+    const onScroll = () => {
+      measure();
+      setActive(true);
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => setActive(false), SCROLL_IDLE_MS);
+    };
+    measure();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      observer.disconnect();
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [targetRef]);
+  if (!thumb) return null;
+  return (
+    <div
+      aria-hidden
+      data-testid="panel-scroll-indicator"
+      data-active={active ? "true" : "false"}
+      className={cn(
+        "pointer-events-none absolute right-0.5 w-1 rounded-full bg-foreground/35 transition-opacity duration-300",
+        active ? "opacity-100" : "opacity-0",
+      )}
+      style={{ top: thumb.top, height: thumb.height }}
+    />
+  );
 }
 
 /** 原生選單式列：hover 整列 accent 反白（含子元素經 group-hover 反白）。 */
@@ -323,6 +384,7 @@ export function TrayPanel({
   onOpenChange,
   onOpenDiscussion,
   onOpenApp,
+  onOpenProjectSettings,
   onOpenSettings,
   onQuit,
   onCopy,
@@ -333,6 +395,7 @@ export function TrayPanel({
   onReauthenticate,
 }: TrayPanelProps) {
   const { t } = useI18n();
+  const scrollRef = useRef<HTMLDivElement>(null);
   const moreLabel = (n: number) => t("tray.more").replace("{n}", String(n));
   const collapseLabel = t("tray.collapse");
   const tabs = snapshot?.tabs ?? [];
@@ -355,10 +418,16 @@ export function TrayPanel({
   return (
     // 極淡主色漸層 wash（design D3）：低透明度不遮蔽 vibrancy。圓角 13px 與
     // Rust 側 apply_vibrancy 半徑一致——wash 畫出圓角外會在頂角留下方形殘料。
+    // h-screen 撐滿視窗：三段式版面的中段（flex-1）才有約束高度，wash 隨之固定於視窗。
+    // bg-background/60 補光基底：HudWindow（NSVisualEffectView 舊世代）無亮度自適應、
+    // 深色背景會把面板整片壓暗——以主題背景色半透明層錨定亮度（隨深淺模式自動），
+    // 毛玻璃自剩餘透明度透出；濃度為真實視窗調參值。
     <div
       data-testid="panel-root"
-      className="flex flex-col gap-1.5 rounded-[13px] bg-linear-to-b from-primary/5 to-transparent p-2 text-[13px] text-foreground"
+      className="flex h-screen flex-col gap-1.5 rounded-[13px] bg-background/60 bg-linear-to-b from-primary/5 to-transparent p-2 text-[13px] text-foreground"
     >
+      {/* 固定頁首（spec 三段式版面）：tab 條＋其下分割線常駐、不隨內容捲動。 */}
+      <div data-testid="panel-header" className="flex shrink-0 flex-col gap-1.5">
       {/* 專案 tab 條（spec「面板樣式（macOS）」；design D1）：首字母 avatar＋
           專案名、作用中實心主色卡、超寬橫向捲動且隱藏捲軸；點 tab 沿用
           open-project 原地切換語意（不喚主視窗）。刻意用 div 非 button——
@@ -432,20 +501,31 @@ export function TrayPanel({
 
       {/* 區塊順序（spec「面板樣式（macOS）」區塊順序與分割線）：tab 條之下
           依序為討論區塊（討論常駐＋已轉出有料才現）、生命週期區塊、動作區塊，
-          塊間各一條分割線。 */}
+          塊間各一條分割線——首尾兩條隨頁首頁尾常駐，中段內一條隨內容捲動。 */}
       <Divider />
+      </div>
 
+      {/* 可捲中段（spec 三段式版面）：討論／生命週期分區或復原卡；捲動面自 body
+          收斂至此容器，overscroll-none 隨遷防 rubber-band。原生捲軸隱藏、改由
+          ScrollIndicator 自繪（見其註解：原生捲軸在此環境無法淡出且會佔寬）；
+          指示條為捲動容器的兄弟節點，才不會隨內容一起捲走。
+          內層 wrapper 保持自然高度——中段容器本身被 flex 約束，內容增減不改其
+          外框，入口層的 ResizeObserver 觀察的是這層 wrapper（高度量測依據）。 */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={scrollRef}
+        data-testid="panel-scroll"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+      <div data-testid="panel-scroll-content" className="flex flex-col gap-1.5">
       {activeRecovery ? (
-        <>
-          <PanelRecoveryCard
-            tab={activeRecovery}
-            onRetry={() => onRetryWorkspace(activeRecovery.key)}
-            onOpenRecovery={() => onOpenRecovery(activeRecovery.key)}
-            onOpenServerSettings={() => onOpenServerSettings(activeRecovery.connectionId)}
-            onReauthenticate={() => onReauthenticate(activeRecovery.connectionId)}
-          />
-          <Divider />
-        </>
+        <PanelRecoveryCard
+          tab={activeRecovery}
+          onRetry={() => onRetryWorkspace(activeRecovery.key)}
+          onOpenRecovery={() => onOpenRecovery(activeRecovery.key)}
+          onOpenServerSettings={() => onOpenServerSettings(activeRecovery.connectionId)}
+          onReauthenticate={() => onReauthenticate(activeRecovery.connectionId)}
+        />
       ) : (
         <>
           {activeStale && (
@@ -555,14 +635,25 @@ export function TrayPanel({
         </SectionCard>
       ))}
 
-      <Divider />
         </>
       )}
+      </div>
+      </div>
+      <ScrollIndicator targetRef={scrollRef} />
+      </div>
 
-      {/* 動作區：開啟主視窗、設定、結束（spec 動作區塊三項；與原生選單同序） */}
+      {/* 固定頁尾（spec 三段式版面）：分割線＋動作區常駐、不隨內容捲動。
+          動作區：開啟主視窗、專案設定、設定、結束（spec 動作區塊四項；與原生選單同序——
+          專案層動作在前、app 層在後，呼應主視窗側欄層次；圖示沿用側欄同款） */}
+      <div data-testid="panel-footer" className="flex shrink-0 flex-col gap-1.5">
+      <Divider />
       <div onClick={onOpenApp} className={rowClass}>
         <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary-foreground" />
         {t("tray.open")}
+      </div>
+      <div onClick={onOpenProjectSettings} className={rowClass}>
+        <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary-foreground" />
+        {t("app.navProjectSettings")}
       </div>
       <div onClick={onOpenSettings} className={rowClass}>
         <Settings className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary-foreground" />
@@ -571,6 +662,7 @@ export function TrayPanel({
       <div onClick={onQuit} className={rowClass}>
         <Power className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary-foreground" />
         {t("tray.quit")}
+      </div>
       </div>
     </div>
   );
