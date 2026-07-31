@@ -36,6 +36,10 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "app.initDesc":
       "{name} 還不是 speclink 專案。確認後會在該目錄建立 openspec/ 骨架、.speclink.yaml 與所選 AI 工具的技能檔。",
     "app.initConfirm": "建立工作區",
+    "app.adoptTitle": "啟用 speclink？",
+    "app.adoptDesc":
+      "{name} 已有規格資料，但尚未啟用 speclink。確認後會為所選 AI 工具安裝技能與指令檔，既有規格內容不會被更動。",
+    "app.adoptConfirm": "啟用",
     "app.emptyTitle": "開啟一個專案開始",
     "app.emptyDesc":
       "選擇既有的 speclink 專案目錄（或其子目錄），或選擇一般目錄並經確認初始化為新工作區。",
@@ -160,6 +164,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "store.reorderFailed": "排序寫回失敗",
     "store.openProjectFailed": "開啟專案失敗",
     "store.initFailed": "初始化失敗",
+    "store.adoptFailed": "啟用失敗",
     "tray.open": "開啟 Speclink",
     "tray.settings": "設定",
     "tray.quit": "結束",
@@ -307,6 +312,10 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "app.initDesc":
       "{name} is not a speclink project yet. Confirming creates the openspec/ skeleton, .speclink.yaml and skill files for the selected AI tools in that directory.",
     "app.initConfirm": "Create workspace",
+    "app.adoptTitle": "Enable speclink?",
+    "app.adoptDesc":
+      "{name} already has spec data but speclink is not enabled yet. Confirming installs skills and instruction files for the selected AI tools; existing spec content is left untouched.",
+    "app.adoptConfirm": "Enable",
     "app.emptyTitle": "Open a project to get started",
     "app.emptyDesc":
       "Pick an existing speclink project directory (or a subdirectory), or pick a plain directory and initialize it as a new workspace after confirming.",
@@ -431,6 +440,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "store.reorderFailed": "reorder failed",
     "store.openProjectFailed": "open project failed",
     "store.initFailed": "initialization failed",
+    "store.adoptFailed": "enabling speclink failed",
     "tray.open": "Open Speclink",
     "tray.settings": "Settings",
     "tray.quit": "Quit",

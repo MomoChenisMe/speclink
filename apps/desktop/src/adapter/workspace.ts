@@ -8,7 +8,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import type { InvokeFn, WorkspaceSettingsProvider } from "../session";
 
-/** open_project／init_project 的四態判定 payload（錯誤走 rejected Promise）。 */
+/** open_project／init_project／adopt_project 的判定 payload（錯誤走 rejected Promise）。 */
 export type ProjectProbe =
   | { status: "project"; root: string; name: string }
   | {
@@ -17,7 +17,8 @@ export type ProjectProbe =
       repo?: string | null;
       hasLocalOpenspec: boolean;
     }
-  | { status: "uninitialized"; dir: string };
+  | { status: "uninitialized"; dir: string }
+  | { status: "unadopted"; root: string };
 
 /** read_settings 的快照 payload（欄位值＋各檔可選的 parseError）。 */
 export interface SettingsSnapshot {
@@ -52,6 +53,8 @@ export interface WorkflowFields {
 export interface WorkspaceAdapter {
   openProject(path: string): Promise<ProjectProbe>;
   initProject(path: string, tools: string[]): Promise<ProjectProbe>;
+  /** 對未啟用專案根補齊工作區檔（既有規格內容零觸碰），成功回報 project。 */
+  adoptProject(path: string, tools: string[]): Promise<ProjectProbe>;
   /** 啟動語境的預設目錄（首啟無持久化分頁時據此顯式開啟）；純讀。 */
   startupDir(): Promise<string>;
   projectStats(path: string): Promise<{ pendingWrapUp: number }>;
@@ -65,6 +68,7 @@ export function createWorkspaceAdapter(): WorkspaceAdapter {
   return {
     openProject: (path) => tauriInvoke("open_project", { path }),
     initProject: (path, tools) => tauriInvoke("init_project", { path, tools }),
+    adoptProject: (path, tools) => tauriInvoke("adopt_project", { path, tools }),
     startupDir: () => tauriInvoke("startup_dir"),
     projectStats: (path) => tauriInvoke("project_stats", { path }),
     watchWorkspace: (root) => tauriInvoke("watch_workspace", { root }),

@@ -294,6 +294,11 @@ function AppInner({
   useEffect(() => {
     if (s.pendingInit) setInitTools(["claude"]);
   }, [s.pendingInit]);
+  // 啟用確認框的工具多選（決策 3：與初始化框同型、獨立狀態）。
+  const [adoptTools, setAdoptTools] = useState<string[]>(["claude"]);
+  useEffect(() => {
+    if (s.pendingAdopt) setAdoptTools(["claude"]);
+  }, [s.pendingAdopt]);
   const { t } = useI18n();
   // 同步 store 層（非 React）的 t 橋——store 組使用者可見訊息時取當前語言。
   useEffect(() => {
@@ -833,6 +838,41 @@ function AppInner({
             </AlertDialogCancel>
             <AlertDialogAction onClick={() => void s.confirmInit(initTools)}>
               {t("app.initConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 啟用確認（spec「未啟用資料夾經確認後補齊啟用」；與初始化確認框同型、獨立狀態） */}
+      <AlertDialog open={s.pendingAdopt !== null} onOpenChange={(o) => !o && s.cancelAdopt()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("app.adoptTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              <BoldName text={t("app.adoptDesc")} name={s.pendingAdopt ?? ""} />
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-4">
+            {["claude", "codex"].map((tool) => (
+              <label key={tool} className="flex items-center gap-1.5 text-sm">
+                <Checkbox
+                  checked={adoptTools.includes(tool)}
+                  onCheckedChange={(v) =>
+                    setAdoptTools((prev) =>
+                      v === true ? [...prev, tool] : prev.filter((x) => x !== tool),
+                    )
+                  }
+                />
+                {tool}
+              </label>
+            ))}
+          </div>
+          <AlertDialogFooter className="justify-between sm:justify-between">
+            <AlertDialogCancel autoFocus onClick={s.cancelAdopt}>
+              {t("app.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => void s.confirmAdopt(adoptTools)}>
+              {t("app.adoptConfirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -62,7 +62,8 @@ type FailureMessageKey =
   | "store.discussionArchiveFailed"
   | "store.reorderFailed"
   | "store.openProjectFailed"
-  | "store.initFailed";
+  | "store.initFailed"
+  | "store.adoptFailed";
 
 function showFailureToast(subject: string, messageKey: FailureMessageKey, error: unknown): void {
   toast.error(`${subject} · ${appT(messageKey)} ✗ ${String(error)}`, { id: FAILURE_TOAST_ID });
@@ -223,6 +224,8 @@ export interface AppState {
   activeKey: string | null;
   /** 待確認的初始化目錄（uninitialized 判定觸發；null＝無對話框）。 */
   pendingInit: string | null;
+  /** 待確認的啟用專案根（unadopted 判定觸發、錨定探測回報 root；null＝無對話框）。 */
+  pendingAdopt: string | null;
   /** 失效分頁錯誤（locator key → 單行訊息）。 */
   tabErrors: Record<string, string>;
   /** 尚無 session 的 remote 分頁復原狀態；執行期限定、不持久化。 */
@@ -267,6 +270,8 @@ export interface AppState {
   closeTab: (key: string) => void;
   confirmInit: (tools: string[]) => Promise<void>;
   cancelInit: () => void;
+  confirmAdopt: (tools: string[]) => Promise<void>;
+  cancelAdopt: () => void;
   /** 啟動：還原持久化分頁、依持久化 activeKey 切回最後活躍專案、背景 local 分頁各探測一次路徑有效性。 */
   restoreTabs: () => Promise<void>;
   /** Ctrl+Tab：循環切至下一分頁（走開啟專案語意）。 */
@@ -643,6 +648,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         tabErrors,
         activeKey: key,
         pendingInit: null,
+        pendingAdopt: null,
         ...workspaceActivationState(key),
       });
       persistTabs(tabs, key);
@@ -679,6 +685,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         remoteRecovery,
         activeKey: key,
         pendingInit: null,
+        pendingAdopt: null,
         ...workspaceActivationState(key),
       });
       persistTabs(tabs, key);
@@ -1159,6 +1166,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
     activeKey: null,
     pendingInit: null,
+    pendingAdopt: null,
     tabErrors: {},
     remoteRecovery: {},
     workspaceChooser: null,
@@ -1474,6 +1482,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           await enterProject(probe.root, probe.name);
         } else if (probe.status === "uninitialized") {
           set({ pendingInit: probe.dir });
+        } else if (probe.status === "unadopted") {
+          // 有規格資料但未啟用（spec「未啟用資料夾經確認後補齊啟用」）：
+          // 錨定探測回報的專案根開啟用確認框，確認前零寫入。
+          set({ pendingAdopt: probe.root });
         } else if (probe.hasLocalOpenspec) {
           set({
             pendingRemoteConflict: {
@@ -1692,6 +1704,23 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     cancelInit() {
       set({ pendingInit: null });
+    },
+
+    async confirmAdopt(tools) {
+      const root = get().pendingAdopt;
+      set({ pendingAdopt: null });
+      if (!root || !workspace) return;
+      try {
+        const probe = await workspace.adoptProject(root, tools);
+        if (probe.status === "project") await enterProject(probe.root, probe.name);
+      } catch (e) {
+        // 啟用失敗：顯示帶專案根的單行錯誤、不切換 root（spec）。
+        showFailureToast(root, "store.adoptFailed", e);
+      }
+    },
+
+    cancelAdopt() {
+      set({ pendingAdopt: null });
     },
 
     async cycleTab() {

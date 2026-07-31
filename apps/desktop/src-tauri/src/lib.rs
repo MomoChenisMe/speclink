@@ -230,6 +230,15 @@ fn init_project(path: String, tools: Vec<String>) -> Result<Value, String> {
     serde_json::to_value(&probe).map_err(|e| e.to_string())
 }
 
+/// 對未啟用資料夾補齊工作區檔（desktop-enable-speclink-prompt 決策 4：獨立
+/// command，不復用 init_project——其引擎路徑對已有 openspec/ 的目錄必然 bail）。
+#[tauri::command]
+fn adopt_project(path: String, tools: Vec<String>) -> Result<Value, String> {
+    let probe =
+        speclink_desktop_core::project::adopt_project_at(std::path::Path::new(&path), &tools)?;
+    serde_json::to_value(&probe).map_err(|e| e.to_string())
+}
+
 /// 啟動語境的預設目錄（決策 4 首啟路徑）：回傳行程啟動時的工作目錄——前端
 /// 首啟無持久化分頁時據此顯式 openProjectAt（自專案目錄啟動的自動開啟語意
 /// 凍結）。純讀、無任何可變全域。
@@ -1363,6 +1372,7 @@ pub fn run() {
             archive_discussion,
             open_project,
             init_project,
+            adopt_project,
             startup_dir,
             project_stats,
             watch_workspace,

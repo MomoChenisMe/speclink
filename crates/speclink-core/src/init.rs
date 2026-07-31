@@ -427,6 +427,28 @@ pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutc
     update(root)
 }
 
+/// Adopt speclink in a directory that already has an `openspec/` tree but no
+/// `.speclink.yaml` — the workspace backfill entry (change: desktop-enable-speclink-prompt,
+/// 決策 2). Composes [`store_init`]'s idempotent skeleton fill (directories via
+/// create_dir_all; the workflow-config template only when config.yaml is absent — an
+/// existing file with user policy is never touched) with [`reconcile_builtin_tools`]
+/// (tools recorded in `.speclink.yaml`, managed skills and marker blocks regenerated).
+/// Deliberately NOT behind `init`'s "Already initialized" guard; spec_dir is fixed to
+/// `openspec` — without a `.speclink.yaml`, discovery's fallback is exactly that.
+/// An empty selection is rejected before anything is written.
+///
+/// `.gitignore` is covered here explicitly: the `reconcile_builtin_tools` → `update`
+/// path does not touch it (only `init`'s `workspace_init` does), so without this the
+/// gitignored work directory would surface as untracked files in the user's repo.
+pub fn adopt(root: &Path, tools: &[Tool]) -> Result<UpdateOutcome> {
+    if tools.is_empty() {
+        bail!("no tools selected (supported: claude, codex)");
+    }
+    store_init(&root.join("openspec"), false)?;
+    ensure_gitignore(&root.join(".gitignore"))?;
+    reconcile_builtin_tools(root, tools)
+}
+
 /// Recorded footprint of a generated custom tool — what a later update needs in order to
 /// clean up after the descriptor disappears from `.speclink.yaml`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -961,6 +983,125 @@ mod tests {
             assert!(!text.contains("openspec/specs/"), "{md} 不得出現本機規格路徑:\n{text}");
         }
         assert!(!root.exists("openspec"), "remote 模式不得建立 openspec/");
+    }
+
+    // --- adopt：工作區補齊入口 ---
+    // Spec requirement:「工作區補齊入口」（desktop-enable-speclink-prompt）——
+    // 冪等補骨架缺件、寫 tools、生成受管檔，既有 openspec/ 內容零觸碰。
+
+    const CUSTOM_WORKFLOW_CONFIG: &str =
+        "schema: spec-driven\nlocale: tw\nrules:\n  proposal:\n    - 保持提案精簡\n";
+
+    /// 未啟用目錄：openspec/ 內有規格文件、變更、討論與自訂 config.yaml，
+    /// 但專案根無 .speclink.yaml。
+    fn seed_unadopted(root: &TempRoot) {
+        root.write("openspec/specs/auth/spec.md", "## Purpose\n既有規格文件。\n");
+        root.write("openspec/changes/add-auth/proposal.md", "## Why\n既有變更。\n");
+        root.write("openspec/discussions/auth-scope.md", "# Discussion\n既有討論。\n");
+        root.write("openspec/config.yaml", CUSTOM_WORKFLOW_CONFIG);
+    }
+
+    /// Spec Scenario「補齊工作區檔且既有內容零觸碰」：工作區檔補齊，
+    /// 既有 openspec/ 文件（含自訂 config.yaml）位元級不變。
+    #[test]
+    fn adopt_fills_workspace_files_with_existing_content_untouched() {
+        let root = TempRoot::new("adopt-fill");
+        seed_unadopted(&root);
+        let before = snapshot(&root);
+
+        adopt(&root.dir, &[Tool::Claude]).expect("adopt succeeds");
+
+        let app = root.read(".speclink.yaml");
+        assert!(app.contains("claude"), "tools 須記錄 claude：{app}");
+        assert!(root.read("CLAUDE.md").contains("<!-- SPECLINK:START"));
+        assert!(root.exists(".claude/skills/speclink-propose/SKILL.md"));
+
+        let after = snapshot(&root);
+        for entry in before.iter().filter(|(rel, _)| !rel.ends_with('/')) {
+            assert!(after.contains(entry), "既有文件必須位元級不變：{}", entry.0);
+        }
+        assert_eq!(root.read("openspec/config.yaml"), CUSTOM_WORKFLOW_CONFIG);
+    }
+
+    /// Spec Scenario「骨架缺件補齊」：缺 specs/ 與 config.yaml 時補齊目錄與範本。
+    #[test]
+    fn adopt_backfills_missing_skeleton() {
+        let root = TempRoot::new("adopt-skeleton");
+        root.write("openspec/changes/add-auth/proposal.md", "## Why\n既有變更。\n");
+
+        adopt(&root.dir, &[Tool::Claude]).expect("adopt succeeds");
+
+        assert!(root.at("openspec/specs").is_dir());
+        assert!(root.at("openspec/changes/archive").is_dir());
+        assert_eq!(root.read("openspec/config.yaml"), WORKFLOW_CONFIG_TEMPLATE);
+    }
+
+    /// Spec Scenario「工作資料夾納入版控忽略」：.gitignore 缺席時建立並涵蓋 `.speclink/`。
+    #[test]
+    fn adopt_creates_gitignore_covering_the_work_dir() {
+        let root = TempRoot::new("adopt-gitignore-new");
+        seed_unadopted(&root);
+
+        adopt(&root.dir, &[Tool::Claude]).expect("adopt succeeds");
+
+        assert!(root.read(".gitignore").contains(".speclink/"));
+    }
+
+    /// Spec Example「既有 .gitignore 追加而非覆寫」逐值：原有兩行保留，多出 `.speclink/`。
+    #[test]
+    fn adopt_appends_to_an_existing_gitignore_without_overwriting() {
+        let root = TempRoot::new("adopt-gitignore-append");
+        seed_unadopted(&root);
+        root.write(".gitignore", "node_modules/\ndist/\n");
+
+        adopt(&root.dir, &[Tool::Claude]).expect("adopt succeeds");
+
+        let text = root.read(".gitignore");
+        for line in ["node_modules/", "dist/", ".speclink/"] {
+            assert!(text.contains(line), "{line} 須存在於 .gitignore：\n{text}");
+        }
+    }
+
+    /// 已涵蓋時重跑不重複追加（檔案位元級不變）。
+    #[test]
+    fn adopt_does_not_duplicate_an_existing_work_dir_entry() {
+        let root = TempRoot::new("adopt-gitignore-idem");
+        seed_unadopted(&root);
+        adopt(&root.dir, &[Tool::Claude]).expect("first adopt");
+        let first = root.read(".gitignore");
+
+        adopt(&root.dir, &[Tool::Claude]).expect("second adopt");
+
+        assert_eq!(root.read(".gitignore"), first, "重跑不得重複追加");
+        assert_eq!(first.matches(".speclink/").count(), 1, "條目須恰有一筆：\n{first}");
+    }
+
+    /// Spec Scenario「重複執行冪等」：相同 tools 連續執行兩次，全樹位元級相同。
+    #[test]
+    fn adopt_twice_with_same_tools_is_idempotent() {
+        let root = TempRoot::new("adopt-idem");
+        seed_unadopted(&root);
+        adopt(&root.dir, &[Tool::Claude, Tool::Codex]).expect("first adopt");
+        let first = snapshot(&root);
+
+        adopt(&root.dir, &[Tool::Claude, Tool::Codex]).expect("second adopt");
+
+        assert_eq!(snapshot(&root), first, "重複執行必須收斂於相同結果");
+    }
+
+    /// Spec Scenario「tools 空清單拒絕」：回單行錯誤且目錄零寫入。
+    #[test]
+    fn adopt_rejects_empty_tools_with_zero_writes() {
+        let root = TempRoot::new("adopt-empty");
+        seed_unadopted(&root);
+        let before = snapshot(&root);
+
+        let err = adopt(&root.dir, &[]).expect_err("空 tools 必須失敗");
+
+        let message = err.to_string();
+        assert!(message.contains("claude") && message.contains("codex"), "{message}");
+        assert_eq!(message.lines().count(), 1, "錯誤須為單行：{message}");
+        assert_eq!(snapshot(&root), before, "失敗不得留下任何寫入");
     }
 
     /// 同一選集下，既有 Workspace 收斂的受管產物與 filesystem init 的產物相同。

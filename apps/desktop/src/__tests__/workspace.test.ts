@@ -41,6 +41,7 @@ function fakeWorkspace(over: Partial<WorkspaceAdapter> = {}): WorkspaceAdapter {
   return {
     openProject: vi.fn().mockResolvedValue({ status: "project", root: "C:\\proj\\alpha", name: "alpha" }),
     initProject: vi.fn().mockResolvedValue({ status: "project", root: "C:\\proj\\fresh", name: "fresh" }),
+    adoptProject: vi.fn().mockResolvedValue({ status: "project", root: "C:\\migrated", name: "migrated" }),
     // 預設非專案語境：首啟回退路徑走 catch、維持零分頁。
     startupDir: vi.fn().mockRejectedValue("startup dir unavailable in this fake"),
     projectStats: vi.fn().mockResolvedValue({ pendingWrapUp: 2 }),
@@ -152,6 +153,69 @@ describe("開啟專案 action 三態（design D3）", () => {
     expect(s.pendingInit).toBeNull();
     expect(s.activeKey).toBe("local:C:\\proj\\fresh");
     expect(keys(s.tabs)).toContain("local:C:\\proj\\fresh");
+  });
+
+  // --- 第四態：未啟用（spec 需求「未啟用資料夾經確認後補齊啟用」；決策 3） ---
+
+  it("unadopted：顯示啟用確認（pendingAdopt 錨定回報 root），分頁與資料不動", async () => {
+    const ds = fakeDataSource();
+    const ws = fakeWorkspace({
+      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated" }),
+    });
+    const store = makeStore(ds, ws);
+    // 自子目錄開啟：pendingAdopt 必須是探測回報的專案根，非使用者所選路徑。
+    await store.getState().openProjectAt("C:\\migrated\\sub");
+    const s = store.getState();
+    expect(s.pendingAdopt).toBe("C:\\migrated");
+    expect(s.tabs).toEqual([]);
+    expect(ds.listChanges).not.toHaveBeenCalled();
+  });
+
+  it("取消啟用：狀態清空、無任何寫入呼叫", async () => {
+    const ws = fakeWorkspace({
+      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated" }),
+    });
+    const store = makeStore(fakeDataSource(), ws);
+    await store.getState().openProjectAt("C:\\migrated");
+    store.getState().cancelAdopt();
+    const s = store.getState();
+    expect(s.pendingAdopt).toBeNull();
+    expect(s.tabs).toEqual([]);
+    expect(ws.adoptProject).not.toHaveBeenCalled();
+    expect(ws.initProject).not.toHaveBeenCalled();
+  });
+
+  it("確認啟用：以所選工具呼叫 adopt，成功後以回報 root 切入專案", async () => {
+    const ds = fakeDataSource();
+    const ws = fakeWorkspace({
+      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated" }),
+    });
+    const store = makeStore(ds, ws);
+    await store.getState().openProjectAt("C:\\migrated");
+    await store.getState().confirmAdopt(["claude", "codex"]);
+    const s = store.getState();
+    expect(ws.adoptProject).toHaveBeenCalledWith("C:\\migrated", ["claude", "codex"]);
+    expect(s.pendingAdopt).toBeNull();
+    expect(s.activeKey).toBe("local:C:\\migrated");
+    expect(keys(s.tabs)).toContain("local:C:\\migrated");
+  });
+
+  it("啟用失敗：單行錯誤 toast、不切換專案", async () => {
+    const ws = fakeWorkspace({
+      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated" }),
+      adoptProject: vi.fn().mockRejectedValue("cannot adopt 'C:\\migrated': permission denied"),
+    });
+    const store = makeStore(fakeDataSource(), ws);
+    await store.getState().openProjectAt("C:\\migrated");
+    await store.getState().confirmAdopt(["claude"]);
+    const s = store.getState();
+    expect(s.tabs).toEqual([]);
+    expect(s.activeKey).toBeNull();
+    expect(s.pendingAdopt).toBeNull();
+    expect(toastError).toHaveBeenCalledTimes(1);
+    const [message] = toastError.mock.calls[0] as [string];
+    expect(message).toContain("C:\\migrated");
+    expect(message).toContain("permission denied");
   });
 
   it("開啟與初始化失敗皆以相同固定 id 發出含主詞與 core 錯誤的 toast", async () => {

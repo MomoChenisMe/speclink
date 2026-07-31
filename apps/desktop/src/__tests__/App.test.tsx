@@ -68,6 +68,7 @@ function fakeWorkspace() {
   return {
     openProject: vi.fn().mockRejectedValue("not a project"),
     initProject: vi.fn(),
+    adoptProject: vi.fn(),
     startupDir: vi.fn().mockRejectedValue("startup dir unavailable in this fake"),
     projectStats: vi.fn().mockResolvedValue({ pendingWrapUp: 0 }),
     watchWorkspace: vi.fn().mockResolvedValue(undefined),
@@ -409,6 +410,54 @@ describe("App (kanban primary + rich detail)", () => {
     fireEvent.click(claude);
     expect(claude.getAttribute("aria-checked")).toBe("false");
     expect(codex.getAttribute("aria-checked")).toBe("true");
+  });
+
+  // spec「未啟用資料夾經確認後補齊啟用」：啟用確認框與初始化框同型、獨立狀態（決策 3）
+  it("啟用確認對話框：unadopted 探測開框、預設勾 claude、確認以所選工具呼叫 adopt", async () => {
+    const ws = fakeWorkspace();
+    ws.pickFolder = vi.fn().mockResolvedValue("D:/migrated");
+    ws.openProject = vi.fn().mockResolvedValue({ status: "unadopted", root: "D:/migrated" });
+    ws.adoptProject = vi
+      .fn()
+      .mockResolvedValue({ status: "project", root: "D:/migrated", name: "migrated" });
+    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
+    render(<App createSession={makeSession(ds)} workspace={ws as never} />);
+    const openButtons = await screen.findAllByText("新增 Workspace");
+    fireEvent.click(openButtons[openButtons.length - 1]);
+    const chooser = await screen.findByRole("alertdialog");
+    fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
+    // chooser 關閉有離場動畫；等待啟用框的專屬控制項。
+    const claude = await screen.findByRole("checkbox", { name: "claude" });
+    const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
+    expect(dialog).toBeTruthy();
+    // 啟用語意文案（非初始化文案）。
+    expect(within(dialog).getByText("啟用 speclink？")).toBeTruthy();
+    // 工具多選預設勾 claude、codex 未勾。
+    expect(claude.getAttribute("aria-checked")).toBe("true");
+    const codex = within(dialog).getByRole("checkbox", { name: "codex" });
+    expect(codex.getAttribute("aria-checked")).toBe("false");
+    // 確認 → 以所選工具呼叫 adopt（而非 init）。
+    fireEvent.click(within(dialog).getByRole("button", { name: "啟用" }));
+    await waitFor(() => expect(ws.adoptProject).toHaveBeenCalledWith("D:/migrated", ["claude"]));
+    expect(ws.initProject).not.toHaveBeenCalled();
+  });
+
+  it("啟用確認對話框：取消關框且零寫入呼叫", async () => {
+    const ws = fakeWorkspace();
+    ws.pickFolder = vi.fn().mockResolvedValue("D:/migrated");
+    ws.openProject = vi.fn().mockResolvedValue({ status: "unadopted", root: "D:/migrated" });
+    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
+    render(<App createSession={makeSession(ds)} workspace={ws as never} />);
+    const openButtons = await screen.findAllByText("新增 Workspace");
+    fireEvent.click(openButtons[openButtons.length - 1]);
+    const chooser = await screen.findByRole("alertdialog");
+    fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
+    const claude = await screen.findByRole("checkbox", { name: "claude" });
+    const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "claude" })).toBeNull());
+    expect(ws.adoptProject).not.toHaveBeenCalled();
+    expect(ws.initProject).not.toHaveBeenCalled();
   });
 
   it("分頁列取代頂欄「目前專案」佔位；點分頁切換後 active 標示更新", async () => {
