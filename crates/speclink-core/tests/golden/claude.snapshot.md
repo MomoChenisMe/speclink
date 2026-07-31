@@ -1294,6 +1294,7 @@ Have a focused discussion about a topic and reach a conclusion.
 - A change name: "add-dark-mode" (discuss in context of that change)
 - An architecture decision: "how to structure the plugin system"
 - A vague idea that needs sharpening: "real-time collaboration"
+- A document path: `docs/plans/realtime.md` — a plan you wrote by hand, a plan-mode output, a doc under the repo, or any readable path (see "Document input" below)
 
 **Not every topic is a discussion.** If the request is really a question — the user wants to understand how something works or whether something is feasible, and no decision hangs on the answer — answer it directly in the conversation and do not open a discussion record. A discussion exists to settle something; understanding-seeking without a verdict is ask-shaped, not discuss-shaped. When in doubt, start talking without a record: the record is only created at the first substantive round (see below), so nothing is lost by waiting.
 
@@ -1345,6 +1346,20 @@ What prompted this discussion, the mode chosen (assumptions | interview) and why
 and the related changes/specs found by the codebase scout.
 CTX_EOF
 ```
+
+**Source doc convention** — when the topic named a document (see "Document input" below), the Context SHALL carry one line naming it:
+
+```
+Source doc: <path>
+```
+
+That line is the mechanical marker a later `/speclink-propose --from-discussion <slug>` looks for to know there is an underlying document to read. Three rules travel with it:
+
+- **Evidence cites the document by reference, not by transcription.** When a round's Evidence points at the document, name the section heading or quote a short phrase from it.
+- **The record stores the outcome of the discussion only.** It SHALL NOT embed the planning document in full — the document stays where it is, and the record holds the decision diff against it.
+- **Never modify the user's original document.** Corrections live in the record; merging document and decisions is `propose`'s job, not yours.
+
+When the topic named no document, none of this applies: the Context has no `Source doc:` line, there is no extra file-reading step, and recording proceeds exactly as it does today.
 
 **After each round** (each Assumptions list you present, or each interview question-and-answer that moves the topic forward), persist a concise summary so the record shows how the thinking evolved:
 
@@ -1439,6 +1454,7 @@ This scout exists only to pick the mode (Step 3) — it is not the investigation
 
 - **3+ related source files found** → **Assumptions mode**: you have enough context to form opinions. List your assumptions, let the user correct.
 - **Fewer than 3 related source files found** → **Interview mode**: not enough code to base assumptions on. Fall through to "How to Discuss" below and ask questions one at a time.
+- **The topic is a document path** → **Document input** (below): the document supplies the tree already filled in, so skip the "list 3-5 assumptions" opening and triage its claims instead. The scout still runs — it is what you triage the claims against.
 
 Announce which mode you picked and why: "Found `search.rs`, `SearchPanel.svelte`, `search-store.ts` — I have enough context to list my assumptions." or "Didn't find much related code — I'll ask questions instead."
 
@@ -1472,6 +1488,25 @@ After presenting, ask: **"Which of these are wrong?"**
 
 - If the user says all are fine → proceed to Convergence with these as established context.
 - If the user flags corrections → for each one, ask ONE focused follow-up question to understand their intent, then proceed to Convergence with the corrected understanding.
+
+### Document input
+
+When the topic names a **file path** rather than a sentence — a plan the user wrote by hand, a plan-mode output, a doc under the repo, or any readable path — read that file and treat it as **someone else's assumptions list**: a decision tree that arrives pre-filled and now has to be stress-tested. The document SHALL NOT be read once as background material and then set aside; it is not colour for opinions you form independently.
+
+Extract every claim the document makes as a tree node, then triage each claim against the codebase:
+
+| Triage            | Meaning                                  | What you do with it                                                                    |
+| ----------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Confirmed**     | The codebase backs the claim             | Record it with the code evidence — file path, symbol, or probe result                   |
+| **Contradicted**  | The document says X, the code does Y     | Name the difference for that claim — doc says X, code does Y — with the evidence for Y   |
+| **Real decision** | Nothing in the environment can settle it | Send it to the user, carrying your proposed answer and its Evidence                     |
+
+- **Contradictions are itemized, one claim at a time.** For each contradicted claim, state what the document asserts, what the code actually does, and the evidence for the latter. Summarizing the document, or a blanket "parts of this are out of date", is not triage.
+- **Confirmed nodes do not need a user round.** They are settled facts — say so and move on.
+- **Only real decisions reach the user**, one at a time, in dependency order (see "How to Discuss").
+- The triage IS the first round's Position, and it replaces the "list 3-5 assumptions" opening — the document already listed them.
+
+Recording follows the **Source doc convention** above: the Context carries `Source doc: <path>`, Evidence cites the document by section heading or short phrase, and the original document is never modified.
 
 ### Mode switching
 
@@ -2194,11 +2229,19 @@ If no argument is provided, the workflow will extract requirements from conversa
 
 1. **Determine the requirement source**
 
-   Priority order: explicit argument → discussion document → plan file → conversation context.
+   Priority order: explicit requirement argument → `--from-doc` document → discussion document → plan file → conversation context.
 
-   a. **Argument provided** (e.g., "add dark mode") → use it as the requirement description, skip to deriving the change name below. A `--from-discussion <slug>` argument explicitly selects the discussion document in (b).
+   a. **Argument provided** (e.g., "add dark mode") → use it as the requirement description, skip to deriving the change name below. A `--from-doc <path>` argument explicitly selects the document in (b); a `--from-discussion <slug>` argument explicitly selects the discussion document in (c).
 
-   b. **Discussion document available** (speclink enhancement):
+   b. **Document supplied directly** (`--from-doc <path>`, speclink enhancement):
+   - This is a skill-text convention modelled on `--from-discussion`, NOT an engine flag — it changes no CLI syntax and requires nothing new from the engine.
+   - When the user passes it, read that document and use it as the requirement source: its title or opening statement gives the requirement description, its content feeds Why, What Changes, Capabilities, and Impact. **No existing discussion is needed** — this is the path for building a proposal straight from a plan the user brought, without going through `/speclink-discuss` first.
+   - The document is consumed, not grilled: itemized challenge of its claims belongs to `discuss`. Never edit the user's original document.
+   - **Leave a provenance line.** A proposal built from `--from-doc` SHALL carry one line `Source doc: <path>` in its Why or Impact section, naming the document it came from — a `--from-discussion` proposal gets its origin recorded by the link, and this line is the `--from-doc` counterpart. Skill-text convention only; the engine records nothing for you.
+   - `--from-doc` outranks (c) and (d): when it is present, do not go hunting for a discussion record or a plan file.
+   - When the user did NOT pass `--from-doc`, this entry does not apply at all — requirement-source determination proceeds exactly as before, with no extra file reading.
+
+   c. **Discussion document available** (speclink enhancement):
    - List recorded discussions:
      ```bash
      speclink discuss list --json
@@ -2210,9 +2253,19 @@ If no argument is provided, the workflow will extract requirements from conversa
    - If a candidate discussion exists, use the **AskUserQuestion tool** to confirm using it (Option 1: this discussion, Option 2: another source). When confirmed, extract from the discussion document (`discussions/<slug>.md`):
      - `## Conclusion` → **Decision** becomes the requirement description; **Rationale** becomes the proposal Why; **Capture to** routing guides which artifacts to emphasize.
      - The `## Context` section and the accumulated `### Round N` entries → context for What Changes, Capabilities, and Impact (the rounds' **Ruled out** lines name the alternatives already eliminated — don't re-propose them).
-   - If no discussion exists or the user declines → fall through to (c).
+   - **Follow the `Source doc:` line.** If the discussion's `## Context` carries a line `Source doc: <path>`, read that original document as well — the record stores only the decision diff, so the underlying plan lives in that file. Synthesize the two with **overlay semantics**: the document is the base layer, the discussion is the winning layer.
+     - **Decided in the discussion** → the discussion wins. It is newer and it was stress-tested against the codebase.
+     - **Untouched by the discussion** → the document's content carries over into the proposal as-is.
+     - **Ruled out in the discussion** → SHALL NOT reappear in the proposal in any form, even where the document still advocates it.
 
-   c. **Plan file available**:
+     Worked example: the document proposes SSE plus three-times retry; the discussion ruled out SSE in favour of WebSocket and never touched retry → the proposal is WebSocket plus three-times retry, and SSE appears nowhere in it.
+
+     Do NOT re-grill the document here — itemized challenge of a document's claims is `discuss`'s job; propose only consumes it, synthesizing or adopting verbatim. Never edit the user's original document.
+
+     If the Context has no `Source doc:` line, this step is skipped entirely: the from-discussion flow is exactly as before, with no extra file reading.
+   - If no discussion exists or the user declines → fall through to (d).
+
+   d. **Plan file available**:
    - Check if the conversation context mentions a plan file path (plan mode system messages include the path like `~/.claude/plans/<name>.md`)
    - If found, check if the file exists at `~/.claude/plans/`
    - If a plan file is found, use the **AskUserQuestion tool** to ask:
@@ -2224,9 +2277,9 @@ If no argument is provided, the workflow will extract requirements from conversa
      - `plan_context` (Context section) → use as proposal Why/Motivation content
      - `plan_stages` (numbered implementation stages) → use for artifact creation
      - `plan_files` (all file paths mentioned) → use for Impact section
-   - If the user picks conversation context → fall through to (d)
+   - If the user picks conversation context → fall through to (e)
 
-   d. **Conversation context** → attempt to extract requirements from conversation history
+   e. **Conversation context** → attempt to extract requirements from conversation history
    - If context is insufficient, use the **AskUserQuestion tool** to ask what they want to build
 
    From the resolved description, derive a kebab-case change name (e.g., "add dark mode" → `add-dark-mode`).
@@ -2264,7 +2317,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    speclink new change "<name>" --agent claude
    ```
 
-   When the proposal is sourced from a discussion document (path (b) in step 1), pass the link so the change records its origin and the discussion is marked `promoted` (it will be archived together with the change later):
+   When the proposal is sourced from a discussion document (path (c) in step 1), pass the link so the change records its origin and the discussion is marked `promoted` (it will be archived together with the change later):
 
    ```bash
    speclink new change "<name>" --agent claude --from-discussion <slug>

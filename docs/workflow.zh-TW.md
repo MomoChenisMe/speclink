@@ -63,7 +63,7 @@ utilities: validate / analyze / audit / commit / verify and evidence
 - **Purpose / 目的：**把需要取捨的問題逐輪收斂，保存可追溯結論。
 - **Use / 使用：**需求模糊、設計有多個合理方向、需形成決策。
 - **Skip / 跳過：**只是理解問題且沒有 verdict，或需求已明確可直接提案。
-- **Input / 輸入：**一個聚焦主題、目前 code／spec 背景與需要決定的問題。
+- **Input / 輸入：**一個聚焦主題、目前 code／spec 背景與需要決定的問題。topic 也可以是文件路徑（自寫計劃、plan mode 產出或任何可讀文件）——其主張會逐條對 codebase 分診。
 - **Outputs / 產物：**`openspec/discussions/<slug>.md` 的 Context、Rounds、Conclusion。
 - **Claude：**`/speclink-discuss <topic>`。
 - **Codex：**`$speclink-discuss <topic>`。
@@ -77,10 +77,10 @@ utilities: validate / analyze / audit / commit / verify and evidence
 - **Purpose / 目的：**建立可交付給實作者的 change 與 schema 所需 artifacts。
 - **Use / 使用：**需求已清楚的新工作，或已結論 discussion 要形成完整提案。
 - **Skip / 跳過：**純問答、只建立現況 specs，或既有 change 只需吸收新背景。
-- **Input / 輸入：**明確需求，或 concluded discussion slug。
+- **Input / 輸入：**明確需求、concluded discussion slug，或以 `--from-doc` 指定的文件路徑。
 - **Outputs / 產物：**change metadata、proposal、delta specs、tasks，以及符合條件時的 design；實際集合由 schema DAG 與 `applyRequires` 決定。
-- **Claude：**`/speclink-propose <change>` 或 `/speclink-propose --from-discussion <slug>`。
-- **Codex：**`$speclink-propose <change>` 或 `$speclink-propose --from-discussion <slug>`。
+- **Claude：**`/speclink-propose <change>`、`/speclink-propose --from-discussion <slug>` 或 `/speclink-propose --from-doc <path>`。
+- **Codex：**`$speclink-propose <change>`、`$speclink-propose --from-discussion <slug>` 或 `$speclink-propose --from-doc <path>`。
 - **CLI/Host：**`speclink new change`、`speclink instructions <artifact> --json`、`speclink new artifact ... --stdin`、`speclink analyze`、`speclink validate`。
 - **Done / 完成：**`speclink status --change <name> --json` 顯示所有 `applyRequires` artifacts 完成，analyze 無 Critical／Warning 且 validate 通過。
 - **Next / 下一步：**由使用者決定何時呼叫 `apply`。

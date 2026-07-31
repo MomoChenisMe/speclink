@@ -63,7 +63,7 @@ If an existing codebase has no canonical specs, run `onboard` once before the ch
 - **Purpose / 目的:** Converge on a trade-off and preserve the rationale round by round.
 - **Use / 使用:** Requirements are fuzzy, several designs are plausible, or a verdict is needed.
 - **Skip / 跳過:** The user only wants understanding, or requirements are already clear.
-- **Input / 輸入:** One focused topic, current code/spec context, and the decision to settle.
+- **Input / 輸入:** One focused topic, current code/spec context, and the decision to settle. The topic may also be a document path (a hand-written plan, a plan-mode output, or any readable doc) — its claims are then triaged one by one against the codebase.
 - **Outputs / 產物:** Context, Rounds, and Conclusion in `openspec/discussions/<slug>.md`.
 - **Claude:** `/speclink-discuss <topic>`.
 - **Codex:** `$speclink-discuss <topic>`.
@@ -77,10 +77,10 @@ If an existing codebase has no canonical specs, run `onboard` once before the ch
 - **Purpose / 目的:** Create a change and every artifact required by its schema for implementation.
 - **Use / 使用:** A clear new requirement, or a concluded discussion becoming a complete proposal.
 - **Skip / 跳過:** Direct questions, current-behavior onboarding, or new context for an existing change.
-- **Input / 輸入:** A clear requirement or concluded discussion slug.
+- **Input / 輸入:** A clear requirement, a concluded discussion slug, or a document path via `--from-doc`.
 - **Outputs / 產物:** Change metadata, proposal, delta specs, tasks, and design when its condition applies. The schema DAG and `applyRequires` determine the actual set.
-- **Claude:** `/speclink-propose <change>` or `/speclink-propose --from-discussion <slug>`.
-- **Codex:** `$speclink-propose <change>` or `$speclink-propose --from-discussion <slug>`.
+- **Claude:** `/speclink-propose <change>`, `/speclink-propose --from-discussion <slug>`, or `/speclink-propose --from-doc <path>`.
+- **Codex:** `$speclink-propose <change>`, `$speclink-propose --from-discussion <slug>`, or `$speclink-propose --from-doc <path>`.
 - **CLI/Host:** `speclink new change`, `speclink instructions <artifact> --json`, `speclink new artifact ... --stdin`, `speclink analyze`, and `speclink validate`.
 - **Done / 完成:** `speclink status --change <name> --json` shows all `applyRequires` artifacts complete; analyze has no Critical/Warning and validation passes.
 - **Next / 下一步:** The user decides when to invoke `apply`.

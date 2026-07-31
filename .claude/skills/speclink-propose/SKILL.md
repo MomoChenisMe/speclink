@@ -25,11 +25,19 @@ If no argument is provided, the workflow will extract requirements from conversa
 
 1. **Determine the requirement source**
 
-   Priority order: explicit argument → discussion document → plan file → conversation context.
+   Priority order: explicit requirement argument → `--from-doc` document → discussion document → plan file → conversation context.
 
-   a. **Argument provided** (e.g., "add dark mode") → use it as the requirement description, skip to deriving the change name below. A `--from-discussion <slug>` argument explicitly selects the discussion document in (b).
+   a. **Argument provided** (e.g., "add dark mode") → use it as the requirement description, skip to deriving the change name below. A `--from-doc <path>` argument explicitly selects the document in (b); a `--from-discussion <slug>` argument explicitly selects the discussion document in (c).
 
-   b. **Discussion document available** (speclink enhancement):
+   b. **Document supplied directly** (`--from-doc <path>`, speclink enhancement):
+   - This is a skill-text convention modelled on `--from-discussion`, NOT an engine flag — it changes no CLI syntax and requires nothing new from the engine.
+   - When the user passes it, read that document and use it as the requirement source: its title or opening statement gives the requirement description, its content feeds Why, What Changes, Capabilities, and Impact. **No existing discussion is needed** — this is the path for building a proposal straight from a plan the user brought, without going through `/speclink-discuss` first.
+   - The document is consumed, not grilled: itemized challenge of its claims belongs to `discuss`. Never edit the user's original document.
+   - **Leave a provenance line.** A proposal built from `--from-doc` SHALL carry one line `Source doc: <path>` in its Why or Impact section, naming the document it came from — a `--from-discussion` proposal gets its origin recorded by the link, and this line is the `--from-doc` counterpart. Skill-text convention only; the engine records nothing for you.
+   - `--from-doc` outranks (c) and (d): when it is present, do not go hunting for a discussion record or a plan file.
+   - When the user did NOT pass `--from-doc`, this entry does not apply at all — requirement-source determination proceeds exactly as before, with no extra file reading.
+
+   c. **Discussion document available** (speclink enhancement):
    - List recorded discussions:
      ```bash
      speclink discuss list --json
@@ -41,9 +49,19 @@ If no argument is provided, the workflow will extract requirements from conversa
    - If a candidate discussion exists, use the **AskUserQuestion tool** to confirm using it (Option 1: this discussion, Option 2: another source). When confirmed, extract from the discussion document (`discussions/<slug>.md`):
      - `## Conclusion` → **Decision** becomes the requirement description; **Rationale** becomes the proposal Why; **Capture to** routing guides which artifacts to emphasize.
      - The `## Context` section and the accumulated `### Round N` entries → context for What Changes, Capabilities, and Impact (the rounds' **Ruled out** lines name the alternatives already eliminated — don't re-propose them).
-   - If no discussion exists or the user declines → fall through to (c).
+   - **Follow the `Source doc:` line.** If the discussion's `## Context` carries a line `Source doc: <path>`, read that original document as well — the record stores only the decision diff, so the underlying plan lives in that file. Synthesize the two with **overlay semantics**: the document is the base layer, the discussion is the winning layer.
+     - **Decided in the discussion** → the discussion wins. It is newer and it was stress-tested against the codebase.
+     - **Untouched by the discussion** → the document's content carries over into the proposal as-is.
+     - **Ruled out in the discussion** → SHALL NOT reappear in the proposal in any form, even where the document still advocates it.
 
-   c. **Plan file available**:
+     Worked example: the document proposes SSE plus three-times retry; the discussion ruled out SSE in favour of WebSocket and never touched retry → the proposal is WebSocket plus three-times retry, and SSE appears nowhere in it.
+
+     Do NOT re-grill the document here — itemized challenge of a document's claims is `discuss`'s job; propose only consumes it, synthesizing or adopting verbatim. Never edit the user's original document.
+
+     If the Context has no `Source doc:` line, this step is skipped entirely: the from-discussion flow is exactly as before, with no extra file reading.
+   - If no discussion exists or the user declines → fall through to (d).
+
+   d. **Plan file available**:
    - Check if the conversation context mentions a plan file path (plan mode system messages include the path like `~/.claude/plans/<name>.md`)
    - If found, check if the file exists at `~/.claude/plans/`
    - If a plan file is found, use the **AskUserQuestion tool** to ask:
@@ -55,9 +73,9 @@ If no argument is provided, the workflow will extract requirements from conversa
      - `plan_context` (Context section) → use as proposal Why/Motivation content
      - `plan_stages` (numbered implementation stages) → use for artifact creation
      - `plan_files` (all file paths mentioned) → use for Impact section
-   - If the user picks conversation context → fall through to (d)
+   - If the user picks conversation context → fall through to (e)
 
-   d. **Conversation context** → attempt to extract requirements from conversation history
+   e. **Conversation context** → attempt to extract requirements from conversation history
    - If context is insufficient, use the **AskUserQuestion tool** to ask what they want to build
 
    From the resolved description, derive a kebab-case change name (e.g., "add dark mode" → `add-dark-mode`).
@@ -95,7 +113,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    speclink new change "<name>" --agent claude
    ```
 
-   When the proposal is sourced from a discussion document (path (b) in step 1), pass the link so the change records its origin and the discussion is marked `promoted` (it will be archived together with the change later):
+   When the proposal is sourced from a discussion document (path (c) in step 1), pass the link so the change records its origin and the discussion is marked `promoted` (it will be archived together with the change later):
 
    ```bash
    speclink new change "<name>" --agent claude --from-discussion <slug>
