@@ -1,6 +1,7 @@
 //! Skill registry, embedded bodies, and rendering (frontmatter + placeholder substitution).
 
 use crate::config::{CustomTool, Invocation};
+use crate::init::MARKER_VERSION;
 
 /// The three render targets: built-in claude, built-in codex, or a custom descriptor.
 /// Descriptors render the NEUTRAL body: no tool-specific slash prefix, no plan-mode
@@ -229,7 +230,7 @@ pub fn render_skill_file_custom(skill: &Skill, tool: &CustomTool, spec_dir: &str
     fm.push_str("compatibility: Requires speclink CLI.\n");
     fm.push_str("metadata:\n");
     fm.push_str("  author: speclink\n");
-    fm.push_str("  version: \"1.0\"\n");
+    fm.push_str(&format!("  version: \"{MARKER_VERSION}\"\n"));
     fm.push_str("  generatedBy: \"Speclink\"\n");
     fm.push_str("---\n\n");
     fm.push_str(invocation_note(tool.invocation));
@@ -263,7 +264,7 @@ pub fn render_skill_file(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
     fm.push_str("compatibility: Requires speclink CLI.\n");
     fm.push_str("metadata:\n");
     fm.push_str("  author: speclink\n");
-    fm.push_str("  version: \"1.0\"\n");
+    fm.push_str(&format!("  version: \"{MARKER_VERSION}\"\n"));
     fm.push_str("  generatedBy: \"Speclink\"\n");
     fm.push_str("---\n\n");
     if tool == Tool::Claude && skill.fork {
@@ -277,5 +278,68 @@ pub fn render_skill_file(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
         fm.pop();
     }
     fm
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Invocation;
+    use crate::init::MARKER_VERSION;
+
+    fn version_line(rendered: &str) -> &str {
+        rendered
+            .lines()
+            .find(|l| l.trim_start().starts_with("version:"))
+            .unwrap_or_else(|| panic!("no version line in frontmatter:\n{rendered}"))
+    }
+
+    fn custom_target() -> CustomTool {
+        CustomTool {
+            name: "my-harness".to_string(),
+            skills_dir: ".my-harness/skills".to_string(),
+            instructions_file: "HARNESS.md".to_string(),
+            invocation: Invocation::Cli,
+        }
+    }
+
+    /// Spec requirement: 產物層版本戳同源 — the skill frontmatter version is the
+    /// MARKER_VERSION string, never a hardcoded "1.0", across all three render targets.
+    #[test]
+    fn skill_frontmatter_version_is_marker_version() {
+        let expected = format!("  version: \"{MARKER_VERSION}\"");
+        let custom = custom_target();
+        for skill in registry() {
+            for rendered in [
+                render_skill_file_for(RenderTarget::Builtin(Tool::Claude), &skill, "openspec"),
+                render_skill_file_for(RenderTarget::Builtin(Tool::Codex), &skill, "openspec"),
+                render_skill_file_for(RenderTarget::Custom(&custom), &skill, "openspec"),
+            ] {
+                assert_eq!(
+                    version_line(&rendered),
+                    expected,
+                    "skill '{}' frontmatter version must equal MARKER_VERSION",
+                    skill.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn skill_frontmatter_has_no_hardcoded_version() {
+        let custom = custom_target();
+        for skill in registry() {
+            for rendered in [
+                render_skill_file_for(RenderTarget::Builtin(Tool::Claude), &skill, "openspec"),
+                render_skill_file_for(RenderTarget::Builtin(Tool::Codex), &skill, "openspec"),
+                render_skill_file_for(RenderTarget::Custom(&custom), &skill, "openspec"),
+            ] {
+                assert!(
+                    !rendered.contains("  version: \"1.0\""),
+                    "skill '{}' still carries the hardcoded \"1.0\" version stamp",
+                    skill.name
+                );
+            }
+        }
+    }
 }
 

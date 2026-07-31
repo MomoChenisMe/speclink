@@ -138,11 +138,120 @@ pub fn adopt_project_at(path: &Path, tools: &[String]) -> Result<ProjectProbe, S
     open_project_at(path)
 }
 
+/// 唯讀的指令檔過期探測（desktop-instruction-staleness-prompt 決策 4）：單行委派
+/// `speclink_core::init::probe_instructions`，回報序列化為 camelCase JSON 供前端
+/// 裁決是否顯示提示。零寫入、無 Err——探測失敗以 status=unknown 表達，開專案
+/// 不得被探測擋下。
+pub fn probe_instructions_at(path: &Path) -> serde_json::Value {
+    let probe = speclink_core::init::probe_instructions(path);
+    serde_json::to_value(probe).expect("probe payload serializes")
+}
+
+/// 指令檔整套再生（決策 5）：委派引擎既有的 `update()`——與 CLI 同一入口、冪等，
+/// 依 `.speclink.yaml` 記錄的 store mode 維持 marker 措辭。回報沿用 UpdateOutcome
+/// 形狀；失敗為單行 Err，由前端於提示原位呈現並可重試。
+pub fn update_instructions_at(path: &Path) -> Result<serde_json::Value, String> {
+    let outcome = speclink_core::init::update(path).map_err(|e| single_line(&e.to_string()))?;
+    Ok(serde_json::json!({
+        "updated": outcome.updated,
+        "pruned": outcome.pruned,
+        "notes": outcome.notes,
+    }))
+}
+
+/// 引擎錯誤壓成單行（多行時取首行），符合 Err 單行訊息契約。
+fn single_line(msg: &str) -> String {
+    msg.lines().next().unwrap_or(msg).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::testfixture::FixtureRoot;
     use std::path::{Path, PathBuf};
+
+    // --- 指令檔探測與更新包裝（desktop-instruction-staleness-prompt 決策 4、5） ---
+
+    /// 以引擎 init 生成一個現版工作區（claude 單工具）。
+    fn init_workspace(fx: &FixtureRoot, tools: &[&str]) {
+        let owned: Vec<String> = tools.iter().map(|t| (*t).to_string()).collect();
+        let selected = speclink_core::init::parse_tool_names(&owned).unwrap();
+        speclink_core::init::init(fx.root(), &selected, true, "openspec").unwrap();
+    }
+
+    #[test]
+    fn probe_instructions_serializes_camel_case_fields() {
+        // 前端消費的欄位名（決策 3 回報形狀）：currentVersion／stale／missing／
+        // differingFiles／workspaceVersion 皆為 camelCase。
+        let fx = FixtureRoot::new("probe-camel");
+        init_workspace(&fx, &["claude"]);
+        let marker = std::fs::read_to_string(fx.root().join("CLAUDE.md")).unwrap();
+        std::fs::write(
+            fx.root().join("CLAUDE.md"),
+            marker.replace(speclink_core::init::MARKER_VERSION, "v0.9.0"),
+        )
+        .unwrap();
+
+        let value = probe_instructions_at(fx.root());
+        assert_eq!(value["status"], "stale", "{value}");
+        assert_eq!(value["currentVersion"], speclink_core::init::MARKER_VERSION);
+        let tool = &value["tools"][0];
+        assert_eq!(tool["tool"], "claude");
+        assert_eq!(tool["workspaceVersion"], "v0.9.0");
+        assert_eq!(tool["stale"], true);
+        assert_eq!(tool["missing"], false);
+        assert!(
+            value["differingFiles"]
+                .as_array()
+                .expect("differingFiles 為陣列")
+                .iter()
+                .any(|f| f == "CLAUDE.md"),
+            "{value}"
+        );
+    }
+
+    #[test]
+    fn probe_instructions_reports_missing_for_an_uninstalled_tool() {
+        // 缺失態（從未安裝）也走同一形狀，前端據此改用安裝文案。
+        let fx = FixtureRoot::new("probe-camel-missing");
+        init_workspace(&fx, &["claude", "codex"]);
+        std::fs::remove_file(fx.root().join("AGENTS.md")).unwrap();
+
+        let value = probe_instructions_at(fx.root());
+        assert_eq!(value["status"], "missing", "{value}");
+        let codex = value["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["tool"] == "codex")
+            .expect("codex 在列");
+        assert_eq!(codex["missing"], true);
+        assert_eq!(codex["workspaceVersion"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn update_instructions_regenerates_and_reports_updated_tools() {
+        // 決策 5：更新委派既有 update() 整套再生；回報沿用 UpdateOutcome 形狀。
+        let fx = FixtureRoot::new("update-instructions");
+        init_workspace(&fx, &["claude"]);
+        std::fs::remove_file(fx.root().join("CLAUDE.md")).unwrap();
+
+        let outcome = update_instructions_at(fx.root()).expect("update ok");
+        assert_eq!(outcome["updated"][0], "claude", "{outcome}");
+        assert!(outcome["pruned"].as_array().unwrap().is_empty(), "{outcome}");
+        // 再生後探測回到現版。
+        assert_eq!(probe_instructions_at(fx.root())["status"], "current");
+    }
+
+    #[test]
+    fn update_instructions_on_a_broken_config_is_a_single_line_error() {
+        let fx = FixtureRoot::new("update-instructions-bad");
+        init_workspace(&fx, &["claude"]);
+        std::fs::write(fx.root().join(".speclink.yaml"), "tools: [\n").unwrap();
+
+        let err = update_instructions_at(fx.root()).expect_err("must fail");
+        assert!(!err.contains('\n'), "single line: {err:?}");
+    }
 
     /// 不含任何 speclink 標記的空目錄（自動清除）。系統 temp 目錄本身不是
     /// speclink 專案，向上探索不會誤命中。

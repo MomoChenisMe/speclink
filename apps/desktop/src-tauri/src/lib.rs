@@ -256,6 +256,24 @@ fn project_stats(path: String) -> Result<Value, String> {
     speclink_desktop_core::project::project_stats_at(std::path::Path::new(&path))
 }
 
+/// 指令檔過期探測（desktop-instruction-staleness-prompt 決策 4）：獨立唯讀
+/// command，不掛進 open_project——後者是純探測 probe，不承擔第二職責。
+#[tauri::command]
+fn probe_instructions(path: String) -> Value {
+    speclink_desktop_core::project::probe_instructions_at(std::path::Path::new(&path))
+}
+
+/// 指令檔整套再生（決策 5）：委派引擎既有 update()。寫入型 command 一律
+/// async＋spawn_blocking（design D2）——再生十餘個檔案，不得凍結主執行緒。
+#[tauri::command]
+async fn update_instructions(path: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::project::update_instructions_at(std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| format!("instruction update worker failed: {e}"))?
+}
+
 /// 監看重掛（決策 5）：顯式跟隨活躍 session——整顆替換單一 watcher 並預熱
 /// git 身分；workspace-changed 事件 payload 為被監看的 root 字串（session 的
 /// 事件來源據此過濾）。root 收字串並原樣回送，避免 PathBuf 往返改寫字面。
@@ -1375,6 +1393,8 @@ pub fn run() {
             adopt_project,
             startup_dir,
             project_stats,
+            probe_instructions,
+            update_instructions,
             watch_workspace,
             read_settings,
             write_app_tools,

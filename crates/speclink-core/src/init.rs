@@ -6,7 +6,10 @@ use crate::util;
 use anyhow::{bail, Result};
 use std::path::{Path, PathBuf};
 
-pub const MARKER_VERSION: &str = "v1.2.0";
+/// 產物層的唯一版號：指令檔 SPECLINK 標記與技能檔 frontmatter 的 version 同源於此。
+/// 僅在內嵌資產（assets/skills）或 marker 模板的 render 內容變動時遞增——與 app／CLI
+/// 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
+pub const MARKER_VERSION: &str = "v1.3.0";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -531,10 +534,7 @@ fn prune_custom(root: &Path, fp: &CustomFootprint, notes: &mut Vec<String>) -> R
 
 /// Remove the generated artifacts of a deselected built-in tool.
 fn prune_tool(root: &Path, tool: Tool) -> Result<bool> {
-    let md = root.join(match tool {
-        Tool::Claude => "CLAUDE.md",
-        Tool::Codex => "AGENTS.md",
-    });
+    let md = root.join(instructions_path(tool));
     prune_footprint(&root.join(tool.skills_dir()), &md)
 }
 
@@ -613,18 +613,9 @@ fn generate_tool(root: &Path, tool: Tool, spec_dir: &str, force: bool, store: St
     // Root instruction file (marker upsert). No other tool-level files: the tool's own
     // user settings (e.g. .claude/settings.json) are the user's data, never generated
     // (spec: 工具檔生成不寫入 AI 工具的使用者設定檔).
-    match tool {
-        Tool::Claude => {
-            let md = root.join("CLAUDE.md");
-            let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool, store));
-            util::write_file(&md, &merged)?;
-        }
-        Tool::Codex => {
-            let md = root.join("AGENTS.md");
-            let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool, store));
-            util::write_file(&md, &merged)?;
-        }
-    }
+    let md = root.join(instructions_path(tool));
+    let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool, store));
+    util::write_file(&md, &merged)?;
     // Skills: Claude gets the full registry; codex gets the command subset.
     for skill in skills::registry() {
         if tool != Tool::Claude && !skill.for_codex {
@@ -669,6 +660,185 @@ pub fn ensure_gitignore(path: &Path) -> Result<bool> {
             util::write_file(path, GITIGNORE_BLOCK)?;
             Ok(true)
         }
+    }
+}
+
+/// 指令檔過期探測的整體判定（規格「指令檔過期探測」四態）。缺失優先於過期：
+/// 「從未安裝」與「裝了但舊了」是不同的使用者情境，提示文案據此分流。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstructionStatus {
+    /// tools 清單宣告的指令檔不存在＝從未安裝（如 clone 後指令檔未進版控）。
+    Missing,
+    /// 任一工具的標記版號與現版不等。
+    Stale,
+    Current,
+    /// 設定解析失敗或指令檔存在但讀取錯誤——不得與現版混同。
+    Unknown,
+}
+
+/// 單一內建工具的探測結果。`workspaceVersion` 為 None 代表檔案不存在或標記已被
+/// 移除；兩者由 `missing` 區分（決策 2：退出受管與從未安裝意圖完全不同）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolInstructionState {
+    pub tool: String,
+    pub workspace_version: Option<String>,
+    pub stale: bool,
+    pub missing: bool,
+}
+
+/// 探測回報（決策 3）：目前引擎版本、逐工具狀態，以及「更新將新建或改寫且內容
+/// 與現版 render 不同」的受管檔清單（專案根相對路徑）。清單不區分「過期」與
+/// 「使用者自訂」——系統無歷史 render，無從分辨。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstructionProbe {
+    pub status: InstructionStatus,
+    pub current_version: String,
+    pub tools: Vec<ToolInstructionState>,
+    pub differing_files: Vec<String>,
+}
+
+/// 讀取指令檔的 SPECLINK 標記版號；無標記回 None（＝使用者已退出受管）。
+fn marker_version_of(text: &str) -> Option<&str> {
+    let start = text.find("<!-- SPECLINK:START")? + "<!-- SPECLINK:START".len();
+    let rest = &text[start..];
+    let end = rest.find("-->")?;
+    let version = rest[..end].trim();
+    (!version.is_empty()).then_some(version)
+}
+
+/// 比對前正規化換行：Windows checkout（core.autocrlf）的 CRLF 檔案不得因換行
+/// 形式被誤報為內容有異。
+fn eol_normalized(text: &str) -> String {
+    text.replace("\r\n", "\n")
+}
+
+/// 唯讀的指令檔過期探測（決策 2、3）：依 `.speclink.yaml` 的 tools 清單（與
+/// [`update`] 同一資料源）讀各內建工具的指令檔，以標記版號對 [`MARKER_VERSION`]
+/// 做字串相等比對——不解析版本語意，版本戳的唯一職責是偵測「不同」。
+///
+/// 零寫入：desktop 開專案時搭載，探測失敗不得阻斷開啟。自訂描述子第一版不涵蓋
+/// （回報結構已預留 tool 名欄位，納入時不需改形狀）。
+pub fn probe_instructions(root: &Path) -> InstructionProbe {
+    let unknown = || InstructionProbe {
+        status: InstructionStatus::Unknown,
+        current_version: MARKER_VERSION.to_string(),
+        tools: Vec::new(),
+        differing_files: Vec::new(),
+    };
+    let Ok(app) = crate::config::AppConfig::load(&root.join(".speclink.yaml")) else {
+        return unknown();
+    };
+    let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
+    let store = if app.remote.is_some() {
+        StoreKind::Remote
+    } else {
+        StoreKind::Fs
+    };
+
+    let mut selected: Vec<Tool> = Vec::new();
+    for entry in &app.tools {
+        // 未知內建名與自訂描述子皆跳過：前者 update() 只給警告，後者不在第一版範圍。
+        if let ToolEntry::Builtin(name) = entry {
+            if let Some(tool) = Tool::parse(name) {
+                if !selected.contains(&tool) {
+                    selected.push(tool);
+                }
+            }
+        }
+    }
+
+    let mut tools = Vec::new();
+    for tool in &selected {
+        let md = root.join(instructions_path(*tool));
+        if !md.is_file() {
+            tools.push(ToolInstructionState {
+                tool: tool.name().to_string(),
+                workspace_version: None,
+                stale: false,
+                missing: true,
+            });
+            continue;
+        }
+        // 檔案在但讀不出來＝無法判定（權限、編碼）；與「不存在」是不同的狀態。
+        let Ok(text) = std::fs::read_to_string(&md) else {
+            return unknown();
+        };
+        let version = marker_version_of(&text).map(str::to_string);
+        tools.push(ToolInstructionState {
+            tool: tool.name().to_string(),
+            stale: version.as_deref().is_some_and(|v| v != MARKER_VERSION),
+            missing: false,
+            workspace_version: version,
+        });
+    }
+
+    let status = if tools.iter().any(|t| t.missing) {
+        InstructionStatus::Missing
+    } else if tools.iter().any(|t| t.stale) {
+        InstructionStatus::Stale
+    } else {
+        InstructionStatus::Current
+    };
+    let differing_files = match status {
+        InstructionStatus::Missing | InstructionStatus::Stale => {
+            differing_managed_files(root, &selected, &spec_dir, store)
+        }
+        _ => Vec::new(),
+    };
+
+    InstructionProbe {
+        status,
+        current_version: MARKER_VERSION.to_string(),
+        tools,
+        differing_files,
+    }
+}
+
+/// 更新將新建或改寫、且內容與現版 render 不同的受管檔（專案根相對路徑）。
+/// 指令檔的期望內容走與 [`generate_tool`] 相同的 marker upsert——使用者寫在標記
+/// 之外的內容原樣保留，不得因此被誤列為差異。不存在的檔案內容視為空、必列入。
+fn differing_managed_files(
+    root: &Path,
+    tools: &[Tool],
+    spec_dir: &str,
+    store: StoreKind,
+) -> Vec<String> {
+    let mut differing = Vec::new();
+    let mut compare = |rel: String, expected: &str| {
+        let actual = std::fs::read_to_string(root.join(rel.split('/').collect::<PathBuf>()))
+            .unwrap_or_default();
+        if eol_normalized(&actual) != eol_normalized(expected) {
+            differing.push(rel);
+        }
+    };
+    for tool in tools {
+        let rel = instructions_path(*tool);
+        let existing = util::read_opt(&root.join(rel));
+        let expected = upsert_marker(existing, &instructions_body(spec_dir, *tool, store));
+        compare(rel.to_string(), &expected);
+        for skill in skills::registry() {
+            if *tool != Tool::Claude && !skill.for_codex {
+                continue;
+            }
+            let expected =
+                skills::render_skill_file_for(skills::RenderTarget::Builtin(*tool), &skill, spec_dir);
+            compare(
+                format!("{}/speclink-{}/SKILL.md", tool.skills_dir(), skill.name),
+                &expected,
+            );
+        }
+    }
+    differing
+}
+
+/// 內建工具的指令檔路徑（專案根相對）。
+fn instructions_path(tool: Tool) -> &'static str {
+    match tool {
+        Tool::Claude => "CLAUDE.md",
+        Tool::Codex => "AGENTS.md",
     }
 }
 
@@ -803,10 +973,7 @@ mod tests {
     const CODEX_USER_TEXT: &str = "使用者寫在 AGENTS.md 的段落";
 
     fn instructions_file(tool: Tool) -> &'static str {
-        match tool {
-            Tool::Claude => "CLAUDE.md",
-            Tool::Codex => "AGENTS.md",
-        }
+        instructions_path(tool)
     }
 
     fn user_text(tool: Tool) -> &'static str {
@@ -1163,5 +1330,131 @@ mod tests {
             assert_eq!(converged.read(&skill), fresh.read(&skill), "{skill} 須與 init 相同");
         }
         assert!(converged.exists("openspec/specs"), "既有 filesystem 規格樹須保留");
+    }
+
+    // --- 指令檔過期探測（規格「指令檔過期探測」；決策 2、3） ---
+
+    /// 把工作區的 marker 版號改成舊值（模擬以舊版引擎生成的工作區）。
+    fn downgrade_marker(root: &TempRoot, tool: Tool, old: &str) {
+        let file = instructions_file(tool);
+        let text = root.read(file).replace(MARKER_VERSION, old);
+        root.write(file, &text);
+    }
+
+    #[test]
+    fn probe_reports_stale_and_lists_differing_files() {
+        // Scenario「舊版工作區判過期並列差異檔」：標記版號不等即過期，並列出
+        // 內容與現版 render 不同的受管檔（指令檔與技能檔皆可能在列）。
+        let root = TempRoot::new("probe-stale");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        downgrade_marker(&root, Tool::Claude, "v0.9.0");
+
+        let probe = probe_instructions(&root.dir);
+        assert_eq!(probe.status, InstructionStatus::Stale, "{probe:?}");
+        assert_eq!(probe.current_version, MARKER_VERSION);
+        assert_eq!(probe.tools.len(), 1);
+        assert_eq!(probe.tools[0].tool, "claude");
+        assert_eq!(probe.tools[0].workspace_version.as_deref(), Some("v0.9.0"));
+        assert!(probe.tools[0].stale && !probe.tools[0].missing);
+        assert!(
+            probe.differing_files.contains(&"CLAUDE.md".to_string()),
+            "改動過的指令檔須列入差異清單：{:?}",
+            probe.differing_files
+        );
+    }
+
+    #[test]
+    fn probe_reports_current_for_a_freshly_generated_workspace() {
+        // Scenario「現版工作區不過期」：差異清單為空。
+        let root = TempRoot::new("probe-current");
+        init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
+
+        let probe = probe_instructions(&root.dir);
+        assert_eq!(probe.status, InstructionStatus::Current, "{probe:?}");
+        assert!(probe.differing_files.is_empty(), "{:?}", probe.differing_files);
+        assert!(probe.tools.iter().all(|t| !t.stale && !t.missing));
+    }
+
+    #[test]
+    fn probe_treats_a_removed_marker_as_opted_out() {
+        // Scenario「標記移除視為退出受管」：檔案在但整塊標記被移除＝表達過移除
+        // 意圖，回報現版、不列差異檔——提示層不得引導使用者重新植入。
+        let root = TempRoot::new("probe-optout");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write("CLAUDE.md", "只剩使用者自己的內容。\n");
+
+        let probe = probe_instructions(&root.dir);
+        assert_eq!(probe.status, InstructionStatus::Current, "{probe:?}");
+        assert!(probe.differing_files.is_empty(), "{:?}", probe.differing_files);
+        assert!(!probe.tools[0].stale && !probe.tools[0].missing);
+        assert_eq!(probe.tools[0].workspace_version, None);
+    }
+
+    #[test]
+    fn probe_reports_missing_when_an_instruction_file_does_not_exist() {
+        // Scenario「指令檔不存在判缺失」：一工具現版、另一工具檔案不存在
+        //（clone 後指令檔未進版控）→ 缺失優先於過期，且不與退出受管或無法判定混同。
+        let root = TempRoot::new("probe-missing");
+        init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
+        std::fs::remove_file(root.at("AGENTS.md")).unwrap();
+        // 另一支同時過期：缺失仍須勝出。
+        downgrade_marker(&root, Tool::Claude, "v0.9.0");
+
+        let probe = probe_instructions(&root.dir);
+        assert_eq!(probe.status, InstructionStatus::Missing, "{probe:?}");
+        let codex = probe.tools.iter().find(|t| t.tool == "codex").expect("codex 在列");
+        assert!(codex.missing && !codex.stale, "{codex:?}");
+        assert_eq!(codex.workspace_version, None);
+        assert!(
+            probe.differing_files.contains(&"AGENTS.md".to_string()),
+            "不存在的受管檔須列入（內容視為空）：{:?}",
+            probe.differing_files
+        );
+    }
+
+    #[test]
+    fn probe_reports_unknown_for_a_malformed_config() {
+        // Scenario「設定損壞回報無法判定」：不得與現版或過期混同。
+        let root = TempRoot::new("probe-badconfig");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(".speclink.yaml", "tools: [\n");
+
+        let probe = probe_instructions(&root.dir);
+        assert_eq!(probe.status, InstructionStatus::Unknown, "{probe:?}");
+        assert!(probe.tools.is_empty(), "{:?}", probe.tools);
+        assert!(probe.differing_files.is_empty(), "{:?}", probe.differing_files);
+    }
+
+    #[test]
+    fn probe_ignores_line_ending_differences() {
+        // Scenario「換行差異不誤報」：CRLF 工作區（Windows core.autocrlf）僅換行
+        // 形式不同的檔案不得列入差異清單。
+        let root = TempRoot::new("probe-crlf");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        let skill = propose_skill(Tool::Claude);
+        let crlf = root.read(&skill).replace('\n', "\r\n");
+        root.write(&skill, &crlf);
+        downgrade_marker(&root, Tool::Claude, "v0.9.0");
+
+        let probe = probe_instructions(&root.dir);
+        assert_eq!(probe.status, InstructionStatus::Stale, "{probe:?}");
+        assert!(
+            !probe.differing_files.contains(&skill),
+            "僅換行形式不同的檔案不得列入：{:?}",
+            probe.differing_files
+        );
+    }
+
+    #[test]
+    fn probe_with_an_empty_tools_list_reports_current_and_writes_nothing() {
+        // tools 空清單＝沒有受管工具可查：回報現版、零差異；且探測全程零寫入。
+        let root = TempRoot::new("probe-empty-tools");
+        init(&root.dir, &[], false, "openspec").unwrap();
+        let before = snapshot(&root);
+
+        let probe = probe_instructions(&root.dir);
+        assert_eq!(probe.status, InstructionStatus::Current, "{probe:?}");
+        assert!(probe.tools.is_empty());
+        assert_eq!(snapshot(&root), before, "探測不得寫入任何檔案");
     }
 }

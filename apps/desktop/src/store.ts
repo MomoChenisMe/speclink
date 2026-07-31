@@ -36,6 +36,12 @@ import {
   upsertTab,
   type ProjectTab,
 } from "./tabs";
+import {
+  instructionPrompt,
+  readInstructionSkips,
+  writeInstructionSkip,
+  type InstructionPromptState,
+} from "./instructionPrompt";
 import { detectMacOS, type TrayStyle } from "./tray";
 import {
   initialUpdaterState,
@@ -279,6 +285,20 @@ export interface AppState {
   /** Ctrl+1..9：直達第 N 個分頁（1-based；超界不動作）。 */
   gotoTab: (n: number) => Promise<void>;
 
+  // --- 指令檔過期提示（desktop-instruction-staleness-prompt；決策 4/6/7） ---
+  /** 活躍本地分頁的提示現值（null＝不提示：現版、無法判定或已略過同版）。 */
+  instructionPrompt: InstructionPromptState | null;
+  /** 更新失敗的單行訊息（呈現於提示原位、可重試）；成功或重查即清空。 */
+  instructionUpdateError: string | null;
+  /** 更新進行中（動作停用、避免重複觸發）。 */
+  instructionUpdating: boolean;
+  /** 對活躍本地分頁重跑探測並裁決是否提示；remote 分頁與無 adapter 時無動作。 */
+  refreshInstructionPrompt: () => Promise<void>;
+  /** 主動作（更新／安裝）：經引擎既有再生入口整套再生，成功後重查。 */
+  applyInstructionUpdate: () => Promise<void>;
+  /** 保留現狀：記下此專案已略過當前產物層版號並收合提示，不寫入專案任何檔案。 */
+  dismissInstructionPrompt: () => void;
+
   // --- 自動更新（desktop-app「桌面自動更新」；design D6） ---
   /** 更新狀態機現值（core/updater reducer 驅動；執行期狀態、不持久化）。 */
   updater: UpdaterState;
@@ -454,6 +474,14 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         pendingArchiveDiscussion: null,
         drawerVerb: null,
       };
+    }
+
+    /** 活躍分頁的本地專案根；remote 分頁與零分頁回 null（指令檔探測只對本地
+     * checkout 有意義——決策 4）。 */
+    function activeLocalRoot(): string | null {
+      const key = get().activeKey;
+      const locator = key ? get().sessions[key]?.locator : undefined;
+      return locator?.kind === "local" ? locator.root : null;
     }
 
     function workspaceActivationState(key: string): Partial<AppState> {
@@ -1735,6 +1763,56 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const target = get().tabs[n - 1];
       if (!target || locatorKey(target.locator) === get().activeKey) return;
       await get().activateTab(locatorKey(target.locator));
+    },
+
+    instructionPrompt: null,
+    instructionUpdateError: null,
+    instructionUpdating: false,
+
+    async refreshInstructionPrompt() {
+      const root = activeLocalRoot();
+      // remote 分頁無本地受管指令檔可查（決策 4）；無 adapter 時 UI 不啟用。
+      if (!workspace || !root) {
+        set({ instructionPrompt: null, instructionUpdateError: null });
+        return;
+      }
+      let probe;
+      try {
+        probe = await workspace.probeInstructions(root);
+      } catch {
+        // 探測不可用等同無法判定：靜默不提示，開專案不受影響（既有降級語意）。
+        set({ instructionPrompt: null });
+        return;
+      }
+      // 分頁在探測期間被切走：結果屬於前一個 root，不得落地。
+      if (activeLocalRoot() !== root) return;
+      set({
+        instructionPrompt: instructionPrompt(probe, root, readInstructionSkips()),
+        instructionUpdateError: null,
+      });
+    },
+
+    async applyInstructionUpdate() {
+      const root = activeLocalRoot();
+      if (!workspace || !root || get().instructionUpdating) return;
+      set({ instructionUpdating: true, instructionUpdateError: null });
+      try {
+        await workspace.updateInstructions(root);
+      } catch (error) {
+        // 失敗留在原位可重試——update() 冪等，重試即收斂（決策 5）。
+        set({ instructionUpdateError: String(error), instructionUpdating: false });
+        return;
+      }
+      set({ instructionUpdating: false });
+      await get().refreshInstructionPrompt();
+    },
+
+    dismissInstructionPrompt() {
+      const root = activeLocalRoot();
+      const prompt = get().instructionPrompt;
+      if (!root || !prompt) return;
+      writeInstructionSkip(root, prompt.version);
+      set({ instructionPrompt: null, instructionUpdateError: null });
     },
 
     async restoreTabs() {

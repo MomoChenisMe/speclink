@@ -941,3 +941,206 @@ describe("device login 分段輪詢", () => {
     vi.useRealTimers();
   });
 });
+
+// --- 指令檔過期提示（desktop-instruction-staleness-prompt；規格「指令檔過期提示」） ---
+
+const STALE_PROBE = {
+  status: "stale" as const,
+  currentVersion: "v1.3.0",
+  tools: [{ tool: "claude", workspaceVersion: "v0.9.0", stale: true, missing: false }],
+  differingFiles: ["CLAUDE.md", ".claude/skills/speclink-apply/SKILL.md"],
+};
+
+const MISSING_PROBE = {
+  ...STALE_PROBE,
+  status: "missing" as const,
+  tools: [{ tool: "claude", workspaceVersion: null, stale: false, missing: true }],
+};
+
+function fakeInstructionWorkspace(over: Partial<WorkspaceAdapter> = {}) {
+  return {
+    openProject: vi.fn().mockResolvedValue({ status: "project", root: "A", name: "a" }),
+    initProject: vi.fn(),
+    adoptProject: vi.fn(),
+    startupDir: vi.fn().mockRejectedValue("none"),
+    projectStats: vi.fn().mockResolvedValue({ pendingWrapUp: 0 }),
+    probeInstructions: vi.fn().mockResolvedValue(STALE_PROBE),
+    updateInstructions: vi.fn().mockResolvedValue(undefined),
+    watchWorkspace: vi.fn().mockResolvedValue(undefined),
+    pickFolder: vi.fn().mockResolvedValue(null),
+    ...over,
+  } as unknown as WorkspaceAdapter;
+}
+
+/** 以單一 local session 預置 store 並注入 workspace 探測面。 */
+function storeWithInstructionProbe(ws: WorkspaceAdapter, ds = fakeDataSource()) {
+  const store = createAppStore({
+    createSession: (root, name) => fakeSession(ds, root, name),
+    workspace: ws,
+  });
+  const session = fakeSession(ds);
+  store.setState({
+    tabs: [{ locator: session.locator, name: session.descriptor.name }],
+    sessions: { [session.id]: session },
+    activeKey: session.id,
+  });
+  return store;
+}
+
+describe("指令檔過期提示的顯示裁決", () => {
+  beforeEach(() => {
+    localStorage.removeItem("speclink.instructionSkips");
+  });
+
+  it("過期且未略過：以更新語意提示並帶差異檔數", async () => {
+    const store = storeWithInstructionProbe(fakeInstructionWorkspace());
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt).toEqual({
+      kind: "stale",
+      fileCount: 2,
+      version: "v1.3.0",
+    });
+  });
+
+  it("缺失且未略過：以安裝語意提示", async () => {
+    const store = storeWithInstructionProbe(
+      fakeInstructionWorkspace({ probeInstructions: vi.fn().mockResolvedValue(MISSING_PROBE) }),
+    );
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt?.kind).toBe("missing");
+  });
+
+  it("保留現狀後同版不再提示，且不寫入專案內任何檔案", async () => {
+    const ws = fakeInstructionWorkspace();
+    const store = storeWithInstructionProbe(ws);
+    await store.getState().refreshInstructionPrompt();
+    store.getState().dismissInstructionPrompt();
+    expect(store.getState().instructionPrompt).toBeNull();
+
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt).toBeNull();
+    expect(ws.updateInstructions).not.toHaveBeenCalled();
+  });
+
+  it("缺失態的保留現狀與過期共用同一略過記憶", async () => {
+    const store = storeWithInstructionProbe(
+      fakeInstructionWorkspace({ probeInstructions: vi.fn().mockResolvedValue(MISSING_PROBE) }),
+    );
+    await store.getState().refreshInstructionPrompt();
+    store.getState().dismissInstructionPrompt();
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt).toBeNull();
+  });
+
+  it("已略過舊版、產物層版號變動後重新提示", async () => {
+    const probe = vi.fn().mockResolvedValue(STALE_PROBE);
+    const store = storeWithInstructionProbe(fakeInstructionWorkspace({ probeInstructions: probe }));
+    await store.getState().refreshInstructionPrompt();
+    store.getState().dismissInstructionPrompt();
+
+    probe.mockResolvedValue({ ...STALE_PROBE, currentVersion: "v1.4.0" });
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt?.version).toBe("v1.4.0");
+  });
+
+  it("無法判定：不提示且不記入略過（後續判過期仍提示）", async () => {
+    const probe = vi.fn().mockResolvedValue({
+      status: "unknown",
+      currentVersion: "v1.3.0",
+      tools: [],
+      differingFiles: [],
+    });
+    const store = storeWithInstructionProbe(fakeInstructionWorkspace({ probeInstructions: probe }));
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt).toBeNull();
+    expect(localStorage.getItem("speclink.instructionSkips")).toBeNull();
+
+    probe.mockResolvedValue(STALE_PROBE);
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt?.kind).toBe("stale");
+  });
+
+  it("現版：不提示", async () => {
+    const store = storeWithInstructionProbe(
+      fakeInstructionWorkspace({
+        probeInstructions: vi.fn().mockResolvedValue({
+          status: "current",
+          currentVersion: "v1.3.0",
+          tools: [],
+          differingFiles: [],
+        }),
+      }),
+    );
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt).toBeNull();
+  });
+
+  it("remote 分頁不執行探測", async () => {
+    const ws = fakeInstructionWorkspace();
+    const ds = fakeDataSource();
+    const store = createAppStore({
+      createSession: () => {
+        throw new Error("remote 分頁不建 local session");
+      },
+      workspace: ws,
+    });
+    const remote = remoteSession(ds, "repo-a");
+    store.setState({
+      tabs: [{ locator: remote.locator, name: remote.descriptor.name }],
+      sessions: { [remote.id]: remote },
+      activeKey: remote.id,
+    });
+
+    await store.getState().refreshInstructionPrompt();
+    expect(ws.probeInstructions).not.toHaveBeenCalled();
+    expect(store.getState().instructionPrompt).toBeNull();
+  });
+
+  it("更新成功：整套再生後重查，提示消失", async () => {
+    const probe = vi.fn().mockResolvedValue(STALE_PROBE);
+    const ws = fakeInstructionWorkspace({ probeInstructions: probe });
+    const store = storeWithInstructionProbe(ws);
+    await store.getState().refreshInstructionPrompt();
+
+    probe.mockResolvedValue({
+      status: "current",
+      currentVersion: "v1.3.0",
+      tools: [],
+      differingFiles: [],
+    });
+    await store.getState().applyInstructionUpdate();
+
+    expect(ws.updateInstructions).toHaveBeenCalledWith("A");
+    expect(store.getState().instructionPrompt).toBeNull();
+    expect(store.getState().instructionUpdateError).toBeNull();
+  });
+
+  it("更新失敗：錯誤留在提示原位、提示保持可重試", async () => {
+    const ws = fakeInstructionWorkspace({
+      updateInstructions: vi.fn().mockRejectedValue("CLAUDE.md: permission denied"),
+    });
+    const store = storeWithInstructionProbe(ws);
+    await store.getState().refreshInstructionPrompt();
+    await store.getState().applyInstructionUpdate();
+
+    expect(store.getState().instructionUpdateError).toContain("permission denied");
+    expect(store.getState().instructionPrompt).not.toBeNull();
+  });
+
+  it("外部 speclink update 後（workspace-changed 重查）提示自然消失", async () => {
+    const probe = vi.fn().mockResolvedValue(STALE_PROBE);
+    const store = storeWithInstructionProbe(fakeInstructionWorkspace({ probeInstructions: probe }));
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt).not.toBeNull();
+
+    // 使用者於終端跑 speclink update：受管檔成為現版，重查即收合。
+    probe.mockResolvedValue({
+      status: "current",
+      currentVersion: "v1.3.0",
+      tools: [],
+      differingFiles: [],
+    });
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt).toBeNull();
+  });
+});

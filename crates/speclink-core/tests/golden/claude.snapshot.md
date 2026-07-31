@@ -1,5 +1,5 @@
 === CLAUDE.md ===
-<!-- SPECLINK:START v1.2.0 -->
+<!-- SPECLINK:START v1.3.0 -->
 
 # Speclink Instructions
 
@@ -38,7 +38,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
@@ -126,7 +126,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
@@ -451,7 +451,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
@@ -695,7 +695,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
@@ -931,7 +931,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
@@ -1199,7 +1199,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
@@ -1311,7 +1311,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
@@ -1751,7 +1751,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
@@ -1881,7 +1881,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
@@ -2149,7 +2149,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
@@ -2243,7 +2243,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
@@ -2666,7 +2666,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "1.0"
+  version: "v1.3.0"
   generatedBy: "Speclink"
 ---
 
