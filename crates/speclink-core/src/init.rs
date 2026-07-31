@@ -56,7 +56,6 @@ const WORKFLOW_CONFIG_TEMPLATE: &str = "schema: spec-driven
 ";
 
 const GITIGNORE_BLOCK: &str = "# Speclink app data\n.speclink/\n";
-const CLAUDE_SETTINGS: &str = "{\n  \"includeGitInstructions\": false\n}";
 
 /// Where the spec documents live — the second axis of the marker rendering
 /// matrix (tool target) × (fs | remote).
@@ -611,10 +610,11 @@ pub fn detect_tools(root: &Path) -> Vec<Tool> {
 }
 
 fn generate_tool(root: &Path, tool: Tool, spec_dir: &str, force: bool, store: StoreKind) -> Result<()> {
-    // Root instruction file (marker upsert) + tool-specific extras.
+    // Root instruction file (marker upsert). No other tool-level files: the tool's own
+    // user settings (e.g. .claude/settings.json) are the user's data, never generated
+    // (spec: 工具檔生成不寫入 AI 工具的使用者設定檔).
     match tool {
         Tool::Claude => {
-            write_if(&root.join(".claude").join("settings.json"), CLAUDE_SETTINGS, force)?;
             let md = root.join("CLAUDE.md");
             let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool, store));
             util::write_file(&md, &merged)?;
@@ -1074,6 +1074,47 @@ mod tests {
 
         assert_eq!(root.read(".gitignore"), first, "重跑不得重複追加");
         assert_eq!(first.matches(".speclink/").count(), 1, "條目須恰有一筆：\n{first}");
+    }
+
+    // --- 工具檔生成不寫入 AI 工具的使用者設定檔 ---
+    // Spec requirement:「工具檔生成不寫入 AI 工具的使用者設定檔」
+    // （remove-claude-settings-write）——settings.json 屬使用者資料，
+    // 任何生成路徑不得建立或改寫。
+
+    const USER_SETTINGS: &str =
+        "{\"enabledPlugins\":{\"frontend-design\":true},\"includeGitInstructions\":false}";
+
+    /// Spec Scenario「init 不產生使用者設定檔」。
+    #[test]
+    fn init_does_not_create_the_user_settings_file() {
+        let root = TempRoot::new("no-settings-init");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        assert!(root.exists(".claude/skills/speclink-propose/SKILL.md"), "技能檔照常生成");
+        assert!(!root.exists(".claude/settings.json"), "不得產生使用者設定檔");
+    }
+
+    /// Spec Scenario「既有使用者設定檔在工具同步後位元級不變」
+    /// ＋ Example「自訂外掛設定不被清空」逐值。
+    #[test]
+    fn update_leaves_an_existing_user_settings_file_untouched() {
+        let root = TempRoot::new("no-settings-update");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(".claude/settings.json", USER_SETTINGS);
+        std::fs::remove_dir_all(root.at(".claude/skills/speclink-propose")).unwrap();
+
+        update(&root.dir).expect("update succeeds");
+
+        assert_eq!(root.read(".claude/settings.json"), USER_SETTINGS, "使用者設定檔位元級不變");
+        assert!(root.exists(".claude/skills/speclink-propose/SKILL.md"), "受管技能檔照常再生");
+    }
+
+    /// Spec Scenario「工作區補齊不產生使用者設定檔」。
+    #[test]
+    fn adopt_does_not_create_the_user_settings_file() {
+        let root = TempRoot::new("no-settings-adopt");
+        seed_unadopted(&root);
+        adopt(&root.dir, &[Tool::Claude]).expect("adopt succeeds");
+        assert!(!root.exists(".claude/settings.json"), "不得產生使用者設定檔");
     }
 
     /// Spec Scenario「重複執行冪等」：相同 tools 連續執行兩次，全樹位元級相同。
