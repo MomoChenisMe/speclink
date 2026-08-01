@@ -129,3 +129,5 @@ reviewed_scope:
     hash: b7a480dd68118767c951ddd204fdb5f3ed038c505f7011207e5c3493aab817c4
   - path: packages/ui/src/index.ts
     hash: 0e2c35643a9c93d97af2928480db6e3e445e4e4df5d7531949f3defb2fae5c6c
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-02
