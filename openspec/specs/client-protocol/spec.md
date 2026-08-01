@@ -160,3 +160,170 @@ updated: 2026-07-27
 code:
   - docs/implementation-refactor-roadmap.zh-TW.md
 -->
+
+---
+### Requirement: 變更清單的審查狀態欄位
+
+desktop 協定的 change 清單項 SHALL 增列 `reviewStatus` 欄位（字串 enum：`"none"`／`"inReview"`／`"reviewed"`／`"reviewedStale"`），且於章存在時附 `reviewedAt`（字串）與 `reviewedBy`（字串）。狀態判定：工單存在 → `inReview`；章存在且任務錨與內容指紋錨皆相符 → `reviewed`；章存在而任一錨不符 → `reviewedStale`；皆無 → `none`。凍結度重算 SHALL 於有工作樹的 client 端執行。CLI `speclink list --json` SHALL NOT 包含上述任何欄位（相容性釘住歸 review-station 規格）。
+
+#### Scenario: 四態判定
+
+- **WHEN** desktop 載入變更清單
+- **THEN** 每個 change 項含 `reviewStatus`，其值依「工單存在／章存在／雙錨相符」的組合為四態之一
+
+##### Example: 章在但指紋不符
+
+- **GIVEN** 某 change 的 metadata 含全套 reviewed 欄位，且 `reviewed_scope` 中一個檔的現值雜湊與記錄不符
+- **WHEN** desktop 取得該 change 的清單項
+- **THEN** `reviewStatus` 為 `"reviewedStale"`，`reviewedAt`／`reviewedBy` 仍存在
+
+#### Scenario: 審查中的清單項
+
+- **WHEN** 某 change 有 review.md 而無章
+- **THEN** 清單項 `reviewStatus` 為 `"inReview"`，無 `reviewedAt`／`reviewedBy`
+
+<!-- @trace
+source: code-review-stage
+updated: 2026-08-02
+code:
+  - AGENTS.md
+  - CLAUDE.md
+  - README.en.md
+  - README.md
+  - apps/desktop/core/src/cache.rs
+  - apps/desktop/core/src/query.rs
+  - apps/desktop/core/src/verbs.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src-tauri/src/remote.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/store.test.ts
+  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/adapter/tauriDataSource.ts
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/store.ts
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/src/remote_commands.rs
+  - crates/speclink-cli/tests/review_verbs.rs
+  - crates/speclink-core/assets/skills/review.md
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/inprogress.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/review.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/store.rs
+  - crates/speclink-core/src/teststore.rs
+  - crates/speclink-core/src/util.rs
+  - crates/speclink-core/tests/golden/assets.lock
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-core/tests/golden/remote-claude.marker.md
+  - crates/speclink-core/tests/render_golden.rs
+  - crates/speclink-fs/src/lib.rs
+  - crates/speclink-host/src/bridge.rs
+  - crates/speclink-host/src/commit.rs
+  - crates/speclink-node/src/store_bridge.rs
+  - crates/speclink-protocol/src/command.rs
+  - crates/speclink-remote/src/client.rs
+  - crates/speclink-remote/tests/client_errors.rs
+  - crates/speclink-remote/tests/typed_client.rs
+  - crates/speclink-server/src/app.rs
+  - crates/speclink-server/src/routes.rs
+  - crates/speclink-server/tests/e2e_cli.rs
+  - crates/speclink-server/tests/read_api.rs
+  - crates/speclink-server/tests/review_api.rs
+  - packages/ui/src/__tests__/reviewBadge.test.tsx
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ArchivedDrawer.tsx
+  - packages/ui/src/components/ArchivedList.tsx
+  - packages/ui/src/components/ChangeCard.tsx
+  - packages/ui/src/components/ReviewArchiveDialog.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/components/reviewStyle.tsx
+  - packages/ui/src/i18n.tsx
+  - packages/ui/src/index.ts
+-->
+
+---
+### Requirement: 已封存清單的審查結局欄位
+
+desktop 協定的已封存清單項 SHALL 增列 `reviewStatus`（字串 enum：`"none"`／`"reviewed"`／`"reviewedNotPassed"`）：封存目錄含章 → `reviewed`；含工單而無章 → `reviewedNotPassed`；皆無 → `none`。已封存側 SHALL NOT 做凍結度重算（封存即定格）。
+
+#### Scenario: 化石工單的封存項
+
+- **WHEN** desktop 載入已封存清單且某項的封存目錄含 review.md 而 metadata 無 reviewed 欄位
+- **THEN** 該項 `reviewStatus` 為 `"reviewedNotPassed"`
+
+<!-- @trace
+source: code-review-stage
+updated: 2026-08-02
+code:
+  - AGENTS.md
+  - CLAUDE.md
+  - README.en.md
+  - README.md
+  - apps/desktop/core/src/cache.rs
+  - apps/desktop/core/src/query.rs
+  - apps/desktop/core/src/verbs.rs
+  - apps/desktop/src-tauri/src/lib.rs
+  - apps/desktop/src-tauri/src/remote.rs
+  - apps/desktop/src/App.tsx
+  - apps/desktop/src/__tests__/store.test.ts
+  - apps/desktop/src/__tests__/tauriDataSource.test.ts
+  - apps/desktop/src/adapter/tauriDataSource.ts
+  - apps/desktop/src/i18n/messages.ts
+  - apps/desktop/src/store.ts
+  - crates/speclink-cli/src/commands.rs
+  - crates/speclink-cli/src/main.rs
+  - crates/speclink-cli/src/remote_commands.rs
+  - crates/speclink-cli/tests/review_verbs.rs
+  - crates/speclink-core/assets/skills/review.md
+  - crates/speclink-core/src/archive.rs
+  - crates/speclink-core/src/command/mod.rs
+  - crates/speclink-core/src/init.rs
+  - crates/speclink-core/src/inprogress.rs
+  - crates/speclink-core/src/lib.rs
+  - crates/speclink-core/src/listing.rs
+  - crates/speclink-core/src/model.rs
+  - crates/speclink-core/src/review.rs
+  - crates/speclink-core/src/skills.rs
+  - crates/speclink-core/src/store.rs
+  - crates/speclink-core/src/teststore.rs
+  - crates/speclink-core/src/util.rs
+  - crates/speclink-core/tests/golden/assets.lock
+  - crates/speclink-core/tests/golden/claude.snapshot.md
+  - crates/speclink-core/tests/golden/codex.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+  - crates/speclink-core/tests/golden/remote-claude.marker.md
+  - crates/speclink-core/tests/render_golden.rs
+  - crates/speclink-fs/src/lib.rs
+  - crates/speclink-host/src/bridge.rs
+  - crates/speclink-host/src/commit.rs
+  - crates/speclink-node/src/store_bridge.rs
+  - crates/speclink-protocol/src/command.rs
+  - crates/speclink-remote/src/client.rs
+  - crates/speclink-remote/tests/client_errors.rs
+  - crates/speclink-remote/tests/typed_client.rs
+  - crates/speclink-server/src/app.rs
+  - crates/speclink-server/src/routes.rs
+  - crates/speclink-server/tests/e2e_cli.rs
+  - crates/speclink-server/tests/read_api.rs
+  - crates/speclink-server/tests/review_api.rs
+  - packages/ui/src/__tests__/reviewBadge.test.tsx
+  - packages/ui/src/adapter.ts
+  - packages/ui/src/components/ArchivedDrawer.tsx
+  - packages/ui/src/components/ArchivedList.tsx
+  - packages/ui/src/components/ChangeCard.tsx
+  - packages/ui/src/components/ReviewArchiveDialog.tsx
+  - packages/ui/src/components/RichDetailDrawer.tsx
+  - packages/ui/src/components/reviewStyle.tsx
+  - packages/ui/src/i18n.tsx
+  - packages/ui/src/index.ts
+-->
