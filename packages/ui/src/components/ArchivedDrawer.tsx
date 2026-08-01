@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Code2, FileText, ListChecks, Maximize2, Minimize2, PenTool } from "lucide-react";
 
+import type { ArchivedItem } from "../adapter";
 import { useI18n } from "../i18n";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
@@ -11,6 +12,7 @@ import { ConclusionView, RoundsView, splitDiscussionSections } from "./Discussio
 import { Markdown, READING_COLUMN_CLS } from "./Markdown";
 import { LABEL_CLS, SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
+import { REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
 
 /** 抽屜目標（design D1：discriminated target 兩型同檔）：封存變更或封存討論。 */
 export type ArchivedTarget =
@@ -33,6 +35,8 @@ export interface ArchivedDrawerProps {
   sourceDiscussions?: { slug: string; topic: string }[];
   /** 點來源討論 chip：宿主於同一抽屜切換至該討論的唯讀檢視。 */
   onOpenDiscussion?: (slug: string) => void;
+  /** 封存時的審查結局（清單項帶出；spec「已封存側的審查標示」）。 */
+  reviewStatus?: ArchivedItem["reviewStatus"];
 }
 
 type Doc = string | null | undefined;
@@ -51,6 +55,7 @@ export function ArchivedDrawer({
   loadDiscussionDocument,
   sourceDiscussions,
   onOpenDiscussion,
+  reviewStatus,
 }: ArchivedDrawerProps) {
   const { t } = useI18n();
   const [proposal, setProposal] = useState<Doc>();
@@ -136,6 +141,16 @@ export function ArchivedDrawer({
         </Button>
         <SheetHeader>
           <SheetTitle className="truncate pr-14">{title}</SheetTitle>
+          {/* 審查結局標示（spec「已封存側的審查標示」）：封存即定格，不重算凍結度。 */}
+          {target.kind === "change" &&
+            (reviewStatus === "reviewed" || reviewStatus === "reviewedNotPassed") && (
+              <div
+                data-review-outcome
+                className={`text-xs font-medium ${REVIEW_TONE[reviewStatus]}`}
+              >
+                {t(REVIEW_LABEL_KEY[reviewStatus])}
+              </div>
+            )}
           {/* 同源連結（design D1 增補）：點 chip 由宿主於同一抽屜切至該討論唯讀檢視。 */}
           {target.kind === "change" && (sourceDiscussions ?? []).length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">

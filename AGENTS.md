@@ -1,4 +1,4 @@
-<!-- SPECLINK:START v1.3.0 -->
+<!-- SPECLINK:START v1.4.0 -->
 
 # Speclink Instructions
 
@@ -12,12 +12,12 @@ This project uses Speclink for Spec-Driven Development(SDD). Specs live in `open
 - Tasks are ready to implement → `$speclink-apply`
 - Resuming a change that sat idle → run `$speclink-drift` first
 - Requirements change mid-work → `$speclink-ingest`
-- Implementation is done → `$speclink-archive`
+- Implementation is done, before archiving → optionally `$speclink-review` (craft quality; user's call), then `$speclink-archive`
 - Commit only files related to a specific change → `$speclink-commit`
 
 ## Workflow
 
-discuss? → propose → apply ⇄ ingest → archive
+discuss? → propose → apply ⇄ ingest → review? → archive
 
 - `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is "don't do it"
 - A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)

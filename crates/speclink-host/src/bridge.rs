@@ -109,6 +109,9 @@ fn command_label(outcome: &CommandOutcome) -> String {
         CommandOutcome::DiscussSeal(_) => "discuss-seal",
         CommandOutcome::DiscussArchive(_) => "discuss-archive",
         CommandOutcome::DiscussDiscard(_) => "discuss-discard",
+        CommandOutcome::ReviewAddRound(_) => "review-add-round",
+        CommandOutcome::ReviewStamp(_) => "review-stamp",
+        CommandOutcome::ReviewDiscard(_) => "review-discard",
         _ => "command",
     }
     .to_string()
@@ -342,6 +345,16 @@ impl Store for BridgeStore {
             change: change.to_string(),
             artifact: artifact.to_string(),
         })
+    }
+
+    fn delete_artifact(&self, change: &str, artifact: &str) -> anyhow::Result<()> {
+        // Staged Delete：與同 commit 的其他寫入原子落地——review stamp 的
+        // 「刪工單＋寫章」在 remote 因此天然無中間態（design D3）。
+        self.del(DocumentId::ChangeArtifact {
+            change: change.to_string(),
+            artifact: artifact.to_string(),
+        });
+        Ok(())
     }
 
     // --- delta specs ---

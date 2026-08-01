@@ -112,6 +112,15 @@ pub fn event_record_of(event: &DomainEvent, actor: &Actor) -> EventRecord {
         DomainEvent::DiscussionDiscarded { slug, occurred_at } => {
             (json!({ "slug": slug }), *occurred_at)
         }
+        DomainEvent::ReviewRoundAdded { change, round, occurred_at } => {
+            (json!({ "change": change, "round": round }), *occurred_at)
+        }
+        DomainEvent::ReviewStamped { change, occurred_at } => {
+            (json!({ "change": change }), *occurred_at)
+        }
+        DomainEvent::ReviewDiscarded { change, occurred_at } => {
+            (json!({ "change": change }), *occurred_at)
+        }
     };
     EventRecord {
         name: event.kind().to_string(),

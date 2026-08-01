@@ -280,6 +280,9 @@ fn change_from_value(v: &serde_json::Value) -> Option<Change> {
             started_by: get("startedBy"),
             started_with: get("startedWith"),
             board_rank: get("boardRank"),
+            // 審查章欄位不過 JS bridge（SDK 清單面不消費審查狀態；缺席讀作
+            // 未審查——與 pre-migration meta 同語意）。
+            ..Default::default()
         },
         // The host hands structured meta (already parsed on the JS side) — a
         // corrupt raw document can't reach this constructor.

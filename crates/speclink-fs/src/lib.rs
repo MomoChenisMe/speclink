@@ -191,6 +191,16 @@ impl Store for FsStore {
         Ok(path)
     }
 
+    fn delete_artifact(&self, change: &str, artifact: &str) -> Result<()> {
+        // Idempotent remove（與 delete_live_discussion 同款）：引擎在呼叫前
+        // 守存在性，缺檔視為已達成刪除。
+        let path = self.layout.artifact_path(change, artifact);
+        if path.exists() {
+            std::fs::remove_file(&path)?;
+        }
+        Ok(())
+    }
+
     fn artifact_exists(&self, change: &str, artifact: &str) -> bool {
         self.layout.artifact_path(change, artifact).is_file()
     }

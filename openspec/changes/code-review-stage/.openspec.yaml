@@ -1,0 +1,131 @@
+schema: spec-driven
+created: 2026-07-31
+created_by: MomoChen <momochenisme@gmail.com>
+from_discussion: code-review-stage, review-skill-smell-baseline, review-ticket-locale
+started_at: 2026-07-31
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-02
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 21
+reviewed_scope:
+  - path: AGENTS.md
+    hash: f44ff42878d8b708b863bc3f00656a86e4cc8dbcc436e7ecf197c772b0fe0e7b
+  - path: CLAUDE.md
+    hash: 2477ee104e3a7b5f14c928349512f2fbd276aec9cfb9ae9bdc779b6682cbe082
+  - path: README.en.md
+    hash: adc82ff96c88044ed89eaf156588ff3110eb711421050d423e749ee161b6c876
+  - path: README.md
+    hash: 9e972005469633f43c84e757dc3e7cb3dff42ff46f2dc5f7f638cc9eb656eb23
+  - path: apps/desktop/core/src/cache.rs
+    hash: 29f48dc68f26f0d2b60dea7cf08ef43cb8cffa5e3bfbbabaa2650a953a7ef31e
+  - path: apps/desktop/core/src/query.rs
+    hash: ba395d7517e743e5b047e7e5627186db95534d652df44f4862d4f3eb42353589
+  - path: apps/desktop/core/src/verbs.rs
+    hash: 95d17cbf28f4937b9d547fd02443de509633a84a40f61fab988476166773332c
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: afc50b380f730d5599d7a0547701eba03f97c535352a6197a9a8f97fcf4f8eac
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 1308499c8b1c883bdd8b9f551dc37ea3689fdc25152c073ea525d00112550747
+  - path: apps/desktop/src/App.tsx
+    hash: 7f64aa5573be97c0a9b1d6bf0d6c119541dd6e8c1e1ec374a212a008cebad41d
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 5d1a0d3d418bdf6b83be0e5e4619b87a703cb5ffc394f365e0c91fe1d0bddd6c
+  - path: apps/desktop/src/__tests__/tauriDataSource.test.ts
+    hash: 0560fd5402d959ba6b40893acd02e11dba55291a10e3240531613dd2f051c103
+  - path: apps/desktop/src/adapter/tauriDataSource.ts
+    hash: 484190751c4c5c57b2b6f31e58fa800ef4a9cfdaf55457cf0d3d9c22d459e5a3
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 30fb6628908a83d5660398501dec9c0fbd76ed46285a6b36775f9352ac52aacd
+  - path: apps/desktop/src/store.ts
+    hash: e03c3edcb7ec84b5251ddd98ca21d132ca00f2b2cacf91fc63bfe96ea86cbf6e
+  - path: crates/speclink-cli/src/commands.rs
+    hash: 83a508e9c0384ab1cad27e0ece73c75424e12f85b72d9033bedb5d3db58a530a
+  - path: crates/speclink-cli/src/main.rs
+    hash: d6c759334e2d0dea4f67ae8723c5440b415e327e033a90c1397a69bc0c754fed
+  - path: crates/speclink-cli/src/remote_commands.rs
+    hash: af708f3555a41878c91a3d5879030eeb8423276d97fcc4ec83b05d0ba774d4c7
+  - path: crates/speclink-cli/tests/review_verbs.rs
+    hash: b4d529e1b3a5600129f8335628ba38daa7c35d361efe6e9b28f72fd8af680f9e
+  - path: crates/speclink-core/assets/skills/review.md
+    hash: 0b40b16aba4c19f6e148787972c7b98f4de22e1005f5197c31fc9231dc6d7b7f
+  - path: crates/speclink-core/src/archive.rs
+    hash: 3c0cf0a0b9264b4c84524f8bc375a0dacf5c941ac9aad9940018bbfff3210bf7
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: b9176cfdfc5d99c18d919516f3d7fca6258c74fd568a6376b6ff552c4d592202
+  - path: crates/speclink-core/src/init.rs
+    hash: ae2fefa9c0ac0adac624c579be6f29adaae2552066cbde30c79c95cc20dcd77c
+  - path: crates/speclink-core/src/lib.rs
+    hash: 27dc48e5e16efe0a430ef34a1355bee9b1bc0a76ff6e5f62ce6c4e6a898d57da
+  - path: crates/speclink-core/src/listing.rs
+    hash: b6679b5a6e0706eb5fc8d5aa0c6c4c3fd753b3c93953a130ef1684cf46c874d7
+  - path: crates/speclink-core/src/model.rs
+    hash: 6d79acadecdb10ce29738ed514668e4c22e4cb497bc070e980b571c5928eb02c
+  - path: crates/speclink-core/src/review.rs
+    hash: fc3f34db4299f3fa7e08697c41b16de5ae22c127cf47bf9d5ed24288d334be90
+  - path: crates/speclink-core/src/skills.rs
+    hash: ef103aed0a56402af0b3ad65ccd250a223ddc02130e7526107ce4375811eae15
+  - path: crates/speclink-core/src/store.rs
+    hash: 7d6038c1e33f299039b0026ac6176972d0f3d0cc8cf8841f25e1e146021e18ac
+  - path: crates/speclink-core/src/teststore.rs
+    hash: 45d00586b8192ab0c4f92fd6fa13b43ec77112ca64a9ff77be3c9529ba1c7791
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 4708ad616fbdc39f97cc633f31c999ab77fe7138c8276d5629905557d92470ab
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: c89492a9a68fd1eabb5d05e976df69865a5813a6777afbfa7d99648d6559273b
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: 4d38509e6dd37470045fcf1c586ac7294836c046c8affed025a3ff3000f32f43
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: b00582be2d948d32392b7df8693e463ff4f3e5f71024f94d5afcbdb59452c1fa
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 1371b04abd187047f29beb4858261ce97b1550da29d2b84c2650a26506fd6ebf
+  - path: crates/speclink-core/tests/golden/remote-claude.marker.md
+    hash: 6fdcca9637fbb2620b12d94ca7e17f09d6dd43037932694e07f4c87bd7f55dab
+  - path: crates/speclink-core/tests/render_golden.rs
+    hash: 8d3addd0905aea7f8f9cefdf993ad1f2ee0767ac6dc59b1c7cfb50dc665459f7
+  - path: crates/speclink-fs/src/lib.rs
+    hash: a73a929f4d15dfd1a4e8a5123144b7d181bc98a9898d126bb888ae8b3cf5b282
+  - path: crates/speclink-host/src/bridge.rs
+    hash: 66ec99cf5616ae8aef0d21dba4c7917f88fdf7c5f8591d58625b5c12284802bc
+  - path: crates/speclink-host/src/commit.rs
+    hash: 842bec37fd50ab871ba0688fb91f72e13930e846faa1ef26e80f08d18059e060
+  - path: crates/speclink-node/src/store_bridge.rs
+    hash: 2f23eea8260942ce8270ef4b28cf83dd17683e319220d682da3e61389f03678f
+  - path: crates/speclink-protocol/src/command.rs
+    hash: b2802a419a07d0b450f8afbafe88e73c27a6231ae482cd1dea5fad9339f760fb
+  - path: crates/speclink-remote/src/client.rs
+    hash: 9cf4122ff76514f23218e2a90476b5836c1bc59a3765fdd571327f4ff8982463
+  - path: crates/speclink-remote/tests/client_errors.rs
+    hash: c9b8919656185f4dbcaba40bd30524187fb0c5225501783826d59644c2d8eb5a
+  - path: crates/speclink-remote/tests/typed_client.rs
+    hash: edc7b5d10c6b0938989af819cb5944f7c0b445a7fddcdd52d96dd2f4ebdb1e21
+  - path: crates/speclink-server/src/app.rs
+    hash: db1dba3a31994620aacac67a815ff86aa2472f201fda71467af2b62872194d9e
+  - path: crates/speclink-server/src/routes.rs
+    hash: e1505f7af6b0f95c27a6d17293eac6d3e7eda815709c0470b07ae392be883a4c
+  - path: crates/speclink-server/tests/e2e_cli.rs
+    hash: e45474263ca9d7217465f31240a875f33cf1005ebf1ba8291ccffb2198d46dc9
+  - path: crates/speclink-server/tests/read_api.rs
+    hash: 71626d9f2bd96e3e27695de96b44b0b6a736c8a97f42090ea6d4ff333d59c736
+  - path: crates/speclink-server/tests/review_api.rs
+    hash: 441f629120e3729778feddc91c1efa54444b6f1d3bb9fc5fb285089837b32f2e
+  - path: packages/ui/src/__tests__/reviewBadge.test.tsx
+    hash: 249daa4f5034172d03ccb563d7765852a18247a094d3198cf248fbe7f23e7727
+  - path: packages/ui/src/adapter.ts
+    hash: e51ccd8e2dbdc25a024212d5affb90a836729694d9902bb64553a1753902f988
+  - path: packages/ui/src/components/ArchivedDrawer.tsx
+    hash: dc9a7a94e774bc18aaaadd19731683f730fa358016127ef51b57e17cfaa9d149
+  - path: packages/ui/src/components/ArchivedList.tsx
+    hash: b3bfe9d12dd6cafac5d98f677e00a7df5f254c68fdfb8d1625282c180608d601
+  - path: packages/ui/src/components/ChangeCard.tsx
+    hash: 4f02abc18030eed6ef1fcbbb96a6dee2abf6621557c86a3e2e31df9e2e5fc68f
+  - path: packages/ui/src/components/ReviewArchiveDialog.tsx
+    hash: 0e31d593ba03d4a64abd04fe1432d88470cad2f2d4fe239da23d39aa6b2d4116
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: f29d7beb913f60b1ee520c62e98ae3f207ff1bf29b44b1625aa167e80123a300
+  - path: packages/ui/src/components/reviewStyle.tsx
+    hash: a816aa5e9f9301dee8573a29ac10a3b1dfbaabbab36b08ced59fc074a7fa11ad
+  - path: packages/ui/src/i18n.tsx
+    hash: b7a480dd68118767c951ddd204fdb5f3ed038c505f7011207e5c3493aab817c4
+  - path: packages/ui/src/index.ts
+    hash: 0e2c35643a9c93d97af2928480db6e3e445e4e4df5d7531949f3defb2fae5c6c

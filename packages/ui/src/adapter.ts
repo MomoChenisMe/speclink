@@ -27,6 +27,12 @@ export interface ChangeItem {
   /** `.openspec.yaml` 存在但解析失敗的原因（fail-closed 診斷）——卡片顯示最小
    * invalid 標記、變更操作由引擎錯誤拒絕；缺席＝metadata 有效或不存在。 */
   metaError?: string | null;
+  /** 審查狀態（spec client-protocol「變更清單的審查狀態欄位」）：工單存在＝
+   * inReview；章存在依雙錨凍結度分 reviewed／reviewedStale；缺席＝none。 */
+  reviewStatus?: "none" | "inReview" | "reviewed" | "reviewedStale";
+  /** 蓋章時間與審查者——章存在（reviewed／reviewedStale）時才附。 */
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
 }
 
 /** 一個 canonical spec 的清單項（CLI 同形欄位＋桌面疊加的呈現層輔助欄位）。
@@ -72,6 +78,9 @@ export interface ArchivedItem {
   createdBy?: string | null;
   /** 來源討論 slug 清單；空/缺席＝來源討論標記缺席。 */
   fromDiscussions?: string[];
+  /** 封存時的審查結局（spec client-protocol「已封存清單的審查結局欄位」）：
+   * 含章＝reviewed；含化石工單而無章＝reviewedNotPassed；缺席＝none。 */
+  reviewStatus?: "none" | "reviewed" | "reviewedNotPassed";
 }
 
 /** 一筆討論的清單項（camelCase；status: open | concluded | promoted）。 */
@@ -248,6 +257,11 @@ export interface SpeclinkDataSource {
   moveTask(change: string, from: number, to: number, before?: boolean): Promise<void>;
   /** 對選定 change 執行動詞，回傳 core 的結果 payload；失敗時 reject 附訊息。 */
   runVerb(verb: Verb, change: string): Promise<unknown>;
+  /** 放棄審查（刪工單、不蓋章）——封存入口三選項的資料面；未實作的後端
+   * （如 remote）不觸發三選項（其清單項本就不帶 inReview）。 */
+  discardReview?(change: string): Promise<void>;
+  /** 帶著未結工單封存（`--carry-review`）：封存側永久顯示「曾審查未通過」。 */
+  archiveCarryReview?(change: string): Promise<unknown>;
   /** 讀取一個已封存 change 的 artifact 原文（dated name 定址）。缺件回 null。 */
   getArchivedDocument(datedName: string, artifact: string): Promise<string | null>;
   /** 列出一個已封存 change 的 delta capability 名。 */

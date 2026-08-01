@@ -41,16 +41,34 @@ The complete matrix is maintained only in [Product Capability Status](docs/produ
 ## SDD workflow / SDD 工作流
 
 ```text
-onboard? → discuss? → propose → apply ⇄ ingest → archive
+onboard? → discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive
                          ↑
                  resume after pause: drift first
 
-utilities: validate / analyze / audit / commit / verify and evidence
+utilities: validate / analyze / audit / commit / evidence
 ```
 
 Use `discuss` only when requirements need convergence; clear requirements can go directly to `propose`. Requirement changes during
 implementation route to `ingest`, and resumed idle work starts with `drift`. See the [complete SDD workflow](docs/workflow.md) for
 complete-proposal, fast-scaffold, existing-change, and “do not implement” discussion outcomes.
+
+### Quality stations / 品質站
+
+Two optional quality stations sit between `apply` and `archive`. They run in parallel and are independent of each other —
+combine them by risk; skipping both is a legitimate choice for low-risk changes:
+
+| | `review` | `verify` |
+| --- | --- | --- |
+| Question answered | Is the code well-crafted? (craft) | Does the delivery match the specs? (compliance) |
+| Criteria | Repo convention docs + Fowler smells baseline (repo docs override) + bug hunt | The change's specs, clause by clause, three dimensions |
+| Role of artifacts | Context for judgement — no compliance verdicts | The center of the check |
+| Precondition | All tasks complete | Anytime (mid-work run = progress inventory) |
+| Output | Multi-round `review.md` ticket, stamped at zero CRITICAL | Verify report and task evidence |
+
+`/speclink-review` suits large diffs, cross-subsystem work, or code that will be maintained long-term: findings are graded
+CRITICAL/WARNING/SUGGESTION into the ticket, then fixed and re-reviewed until an empty round stamps the change. Modifying an
+in-scope file after stamping downgrades the card badge to “reviewed · changed since”; archiving with an open ticket is
+intercepted (go stamp / discard the review / carry it anyway).
 
 ## Local Repo quick start / Local Repo 快速開始
 

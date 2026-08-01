@@ -36,6 +36,7 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::InProgress(a) => cmd_in_progress(a),
         Commands::Demo => cmd_demo(),
         Commands::Discuss(a) => cmd_discuss(a),
+        Commands::Review(a) => cmd_review(a),
     }
 }
 
@@ -766,6 +767,7 @@ fn cmd_archive(a: ArchiveArgs) -> Result<()> {
             skip_specs: a.skip_specs,
             no_validate: a.no_validate,
             mark_tasks_complete: a.mark_tasks_complete,
+            carry_review: a.carry_review,
         },
     )?;
     let core::command::CommandOutcome::Archive(outcome) = outcome else {
@@ -867,6 +869,7 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
             skip_specs: a.skip_specs,
             no_validate: a.no_validate,
             mark_tasks_complete: a.mark_tasks_complete,
+            carry_review: a.carry_review,
         };
         match run_command(store, Some(ws), archive_cmd) {
             Ok(core::command::CommandOutcome::Archive(outcome)) => {
@@ -2073,6 +2076,73 @@ fn cmd_demo() -> Result<()> {
 }
 
 // --- discuss ---
+
+// --- review 品質站 ---
+
+fn cmd_review(a: ReviewArgs) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_review(&ctx, a);
+    }
+    let (ws, store) = open_project()?;
+    let store: &dyn Store = &store;
+    match a.command {
+        ReviewCommands::AddRound { change, stdin } => {
+            let content = read_stdin_content(stdin);
+            let round = core::review::add_round(store, &change, &content)?;
+            println!("{} Recorded review Round {round} for change '{change}'", color::green("✓"));
+        }
+        ReviewCommands::Show { change, json } => {
+            let ticket = core::review::show(store, &change)?;
+            if json {
+                let round_json = |r: &core::review::Round| {
+                    serde_json::json!({
+                        "index": r.index,
+                        "scope": r.scope,
+                        "findings": r
+                            .findings
+                            .iter()
+                            .map(|f| serde_json::json!({
+                                "severity": f.severity.as_str(),
+                                "path": f.path,
+                                "text": f.text,
+                            }))
+                            .collect::<Vec<_>>(),
+                    })
+                };
+                return print_json(&serde_json::json!({
+                    "change": change,
+                    "rounds": ticket.rounds.iter().map(round_json).collect::<Vec<_>>(),
+                    "lastRound": round_json(ticket.last_round()),
+                }));
+            }
+            // 人眼路徑印工單原文（show 已驗證存在與格式）。
+            let doc = store
+                .read_artifact(&change, core::review::REVIEW_DOC)
+                .expect("show verified the ticket exists");
+            print!("{doc}");
+        }
+        ReviewCommands::Stamp { change, accept, agent } => {
+            let actor = speclink_host::context::git_identity(&ws.root);
+            let read_file = |p: &str| std::fs::read_to_string(ws.root.join(p)).ok();
+            let file_exists = |p: &str| ws.root.join(p).is_file();
+            core::review::stamp(
+                store,
+                &change,
+                accept,
+                actor.as_deref(),
+                agent.as_deref(),
+                &read_file,
+                &file_exists,
+            )?;
+            println!("{} Stamped review for change '{change}'", color::green("✓"));
+        }
+        ReviewCommands::Discard { change } => {
+            core::review::discard(store, &change)?;
+            println!("{} Discarded review ticket for change '{change}'", color::green("✓"));
+        }
+    }
+    Ok(())
+}
 
 fn cmd_discuss(a: DiscussArgs) -> Result<()> {
     if let Some(ctx) = remote_ctx()? {

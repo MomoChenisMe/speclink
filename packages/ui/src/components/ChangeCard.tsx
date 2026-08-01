@@ -7,6 +7,7 @@ import { changeStage } from "../stage";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { HighlightText } from "./HighlightText";
+import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./reviewStyle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 export interface ChangeCardProps {
@@ -81,6 +82,22 @@ export function ChangeCard({
             <TooltipContent>{change.createdBy}</TooltipContent>
           </Tooltip>
         )}
+        {/* 審查章（spec「看板卡片的審查標示」）：行內小章＋tooltip 狀態詞，
+            不加文字列維持卡片極簡；none 無任何審查元素。 */}
+        {change.reviewStatus && change.reviewStatus !== "none" && (() => {
+          const status: ReviewBadgeStatus = change.reviewStatus;
+          const labelKey = REVIEW_LABEL_KEY[status];
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span aria-label={t(labelKey)} className={`shrink-0 ${REVIEW_TONE[status]}`}>
+                  {REVIEW_ICON[status]}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{t(labelKey)}</TooltipContent>
+            </Tooltip>
+          );
+        })()}
         {(change.fromDiscussions ?? []).length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>

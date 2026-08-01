@@ -263,6 +263,89 @@ pub struct PromoteDiscussionResponse {
     pub change: String,
 }
 
+/// 工單一輪的 wire 形狀——鏡射 CLI `review show --json`（審查站對外契約）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewRoundDto {
+    pub index: u64,
+    #[serde(default)]
+    pub scope: Vec<String>,
+    #[serde(default)]
+    pub findings: Vec<ReviewFindingDto>,
+}
+
+/// 工單 findings 行的 wire 形狀（severity ∈ CRITICAL／WARNING／SUGGESTION）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewFindingDto {
+    pub severity: String,
+    pub path: String,
+    pub text: String,
+}
+
+/// `GET /changes/{name}/review` response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewTicketResponse {
+    pub change: String,
+    pub rounds: Vec<ReviewRoundDto>,
+    pub last_round: ReviewRoundDto,
+}
+
+/// `POST /changes/{name}/review/rounds` request body.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AddReviewRoundRequest {
+    pub content: String,
+}
+
+/// `POST /changes/{name}/review/rounds` response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AddReviewRoundResponse {
+    #[serde(default)]
+    pub round: u64,
+}
+
+/// `POST /changes/{name}/review/stamp` request body（design D4a）：指紋由
+/// 工作樹持有者預算上 wire，server 不重算；`missing` 明示宣告聯集中已不存在
+/// 的檔（工作樹持有者才知道），server 驗「scope ∪ missing ＝工單聯集且不相交」。
+/// 欄位缺席讀作空清單——舊 client 不帶時即原本的嚴格集合相等。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StampReviewRequest {
+    #[serde(default)]
+    pub accept: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub scope: Vec<ReviewScopeEntryDto>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing: Vec<String>,
+}
+
+/// `reviewed_scope` 清單項的 wire 形狀。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewScopeEntryDto {
+    pub path: String,
+    pub hash: String,
+}
+
+/// `POST /changes/{name}/review/stamp` response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StampReviewResponse {
+    pub change: String,
+}
+
+/// `DELETE /changes/{name}/review` response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardReviewResponse {
+    pub change: String,
+}
+
 #[cfg(test)]
 mod tests {
     use crate::command::*;
@@ -414,12 +497,53 @@ mod tests {
     }
 
     #[test]
+    fn review_shapes_round_trip_in_camel_case() {
+        // D4a wire 契約：lastRound 為 camelCase；stamp 請求載明 accept／agent／scope。
+        let round = ReviewRoundDto {
+            index: 2,
+            scope: vec!["src/lib.rs".into()],
+            findings: vec![ReviewFindingDto {
+                severity: "WARNING".into(),
+                path: "src/lib.rs".into(),
+                text: "possible Feature Envy".into(),
+            }],
+        };
+        let resp =
+            ReviewTicketResponse { change: "demo".into(), rounds: vec![round.clone()], last_round: round };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert!(json.get("lastRound").is_some(), "camelCase lastRound: {json}");
+        assert_eq!(json["rounds"][0]["findings"][0]["severity"], "WARNING");
+        let back: ReviewTicketResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(back, resp);
+
+        let req = StampReviewRequest {
+            accept: true,
+            agent: Some("claude".into()),
+            scope: vec![ReviewScopeEntryDto { path: "src/lib.rs".into(), hash: "abc".into() }],
+            missing: vec!["src/gone.rs".into()],
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["scope"][0]["path"], "src/lib.rs");
+        assert_eq!(json["missing"][0], "src/gone.rs");
+        let back: StampReviewRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(back, req);
+        // 省略欄位的預設：accept=false、scope=[]、missing=[]（GET 後空輪蓋章的
+        // 最小請求；舊 client 不帶 missing 即原嚴格集合相等）。
+        let minimal: StampReviewRequest = serde_json::from_str("{}").unwrap();
+        assert!(!minimal.accept);
+        assert!(minimal.scope.is_empty());
+        assert!(minimal.missing.is_empty());
+    }
+
+    #[test]
     fn command_dtos_export_json_schema() {
         for (name, schema) in [
             ("CreateChangeRequest", schemars::schema_for!(CreateChangeRequest)),
             ("PutArtifactResponse", schemars::schema_for!(PutArtifactResponse)),
             ("TaskDoneRequest", schemars::schema_for!(TaskDoneRequest)),
             ("ArchiveResponse", schemars::schema_for!(ArchiveResponse)),
+            ("ReviewTicketResponse", schemars::schema_for!(ReviewTicketResponse)),
+            ("StampReviewRequest", schemars::schema_for!(StampReviewRequest)),
         ] {
             let text = serde_json::to_string(&schema)
                 .unwrap_or_else(|e| panic!("{name} schema must serialize: {e}"));

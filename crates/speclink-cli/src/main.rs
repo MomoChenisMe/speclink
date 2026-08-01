@@ -96,6 +96,8 @@ enum Commands {
     Demo,
     /// Discussion documents (record and evolve a discussion)
     Discuss(DiscussArgs),
+    /// Review quality station (ticket rounds, stamping)
+    Review(ReviewArgs),
 }
 
 #[derive(Args)]
@@ -215,6 +217,10 @@ struct ArchiveArgs {
     /// Mark all incomplete tasks as complete before archiving
     #[arg(long = "mark-tasks-complete")]
     mark_tasks_complete: bool,
+    /// Archive despite an open review ticket (the ticket travels with the
+    /// change and is permanently shown as reviewed-not-passed)
+    #[arg(long = "carry-review")]
+    carry_review: bool,
 }
 
 #[derive(Args)]
@@ -725,6 +731,41 @@ enum DiscussCommands {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[derive(Args)]
+struct ReviewArgs {
+    #[command(subcommand)]
+    command: ReviewCommands,
+}
+
+#[derive(Subcommand)]
+enum ReviewCommands {
+    /// Append a review round to the change's ticket (content from stdin; creates the ticket on the first round)
+    #[command(name = "add-round")]
+    AddRound {
+        change: String,
+        #[arg(long)]
+        stdin: bool,
+    },
+    /// Print the review ticket (--json for the structured payload)
+    Show {
+        change: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Stamp the review: requires all tasks done and a clean last round
+    Stamp {
+        change: String,
+        /// Stamp despite unresolved findings in the last round
+        #[arg(long)]
+        accept: bool,
+        /// Tool identity recorded as reviewed_with (mirrors `new change --agent`)
+        #[arg(long)]
+        agent: Option<String>,
+    },
+    /// Discard the review ticket without stamping
+    Discard { change: String },
 }
 
 fn main() -> ExitCode {

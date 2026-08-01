@@ -110,6 +110,25 @@ pub fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
+/// Render a string as a YAML scalar safe to append to a metadata document.
+///
+/// A newline inside an identity/agent/path string would inject arbitrary YAML
+/// fields; a bare `:`/leading indicator would break the whole document's parse
+/// (which silently falls back to defaults). Flatten control characters and
+/// double-quote values a plain scalar cannot carry.
+pub fn yaml_scalar(s: &str) -> String {
+    let flat = s.replace(|c: char| c.is_control(), " ");
+    let risky = flat.is_empty()
+        || flat.contains([':', '#', '"'])
+        || flat.ends_with(' ')
+        || flat.starts_with([' ', '[', '{', '\'', '&', '*', '!', '|', '>', '%', '@', '`', '-', '?']);
+    if risky {
+        format!("\"{}\"", flat.replace('\\', "\\\\").replace('"', "\\\""))
+    } else {
+        flat
+    }
+}
+
 /// Convert an absolute path to a forward-slash string.
 pub fn to_slash(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：指令檔 SPECLINK 標記與技能檔 frontmatter 的 version 同源於此。
 /// 僅在內嵌資產（assets/skills）或 marker 模板的 render 內容變動時遞增——與 app／CLI
 /// 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const MARKER_VERSION: &str = "v1.3.0";
+pub const MARKER_VERSION: &str = "v1.4.0";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -87,14 +87,21 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind) -> String
         Tool::Codex => ("$speclink-", "- Requirements change mid-work? `ingest` → resume `apply`"),
         _ => ("/speclink-", "- Requirements change mid-work? Plan mode → `ingest` → resume `apply`"),
     };
+    // 並行品質站（spec review-skill「審查技能的生成與正典化」）：實作完成、封存
+    // 之前，由使用者判斷是否對高風險 change 執行審查；codex 無 verify（for_codex
+    // =false），workflow 行只帶 review?。
     let (done_line, workflow) = match tool {
         Tool::Codex => (
-            format!("- Implementation is done → `{p}archive`"),
-            "discuss? → propose → apply ⇄ ingest → archive",
+            format!(
+                "- Implementation is done, before archiving → optionally `{p}review` (craft quality; user's call), then `{p}archive`"
+            ),
+            "discuss? → propose → apply ⇄ ingest → review? → archive",
         ),
         _ => (
-            format!("- Implementation is done → `{p}verify`, then `{p}archive`"),
-            "discuss? → propose → apply ⇄ ingest → verify? → archive",
+            format!(
+                "- Implementation is done, before archiving → optional quality stations `{p}review` (craft quality) ∥ `{p}verify` (spec compliance; user's call), then `{p}archive`"
+            ),
+            "discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive",
         ),
     };
     format!(
@@ -151,10 +158,10 @@ pub fn custom_instructions_body(spec_dir: &str, tool: &CustomTool, store: StoreK
 - Tasks are ready to implement → `speclink-apply`\n\
 - Resuming a change that sat idle → run `speclink-drift` first\n\
 - Requirements change mid-work → `speclink-ingest`\n\
-- Implementation is done → `speclink-archive`\n\
+- Implementation is done, before archiving → optionally `speclink-review` (craft quality; user's call), then `speclink-archive`\n\
 - Commit only files related to a specific change → `speclink-commit`\n\n\
 ## Workflow\n\n\
-discuss? → propose → apply ⇄ ingest → archive\n\n\
+discuss? → propose → apply ⇄ ingest → review? → archive\n\n\
 - `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is \"don't do it\"\n\
 - A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)\n\
 - Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`\n\
