@@ -360,6 +360,24 @@ fn run_cli(project: &Path, args: &[&str], token: Option<&str>) -> Output {
     cmd.output().expect("run speclink CLI")
 }
 
+/// `run_cli` with a piped stdin payload (the `--stdin` verbs).
+fn run_cli_stdin(project: &Path, args: &[&str], token: Option<&str>, stdin: &str) -> Output {
+    let mut cmd = Command::new(cli_bin());
+    cmd.args(args)
+        .current_dir(project)
+        .env_remove("SPECLINK_STORE_URL")
+        .env_remove("SPECLINK_TOKEN")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(t) = token {
+        cmd.env("SPECLINK_TOKEN", t);
+    }
+    let mut child = cmd.spawn().expect("spawn speclink CLI");
+    child.stdin.as_mut().expect("stdin pipe").write_all(stdin.as_bytes()).expect("write stdin");
+    child.wait_with_output().expect("run speclink CLI")
+}
+
 /// Walk the /setup flow with the one-time token: create the first admin, then
 /// register the first project (`demo`) and repo (`backend`). After this the
 /// token is consumed and /setup is closed.
@@ -459,10 +477,100 @@ fn setup_flow_onboards_a_team_and_a_restart_closes_it() {
         "remote discuss list names the seeded discussion",
     );
 
+    // Review verbs ride the store document pipeline end to end (design D4a /
+    // spec「remote 模式下的動詞行為」): the ticket and the stamp live in the
+    // remote store, the fingerprints come from this checkout's work tree.
+    for task in ["1", "2"] {
+        let done = run_cli(&remote, &["task", "done", "--change", "demo", task], Some(&pat));
+        assert!(done.status.success(), "task {task}: {}", String::from_utf8_lossy(&done.stderr));
+    }
+    std::fs::create_dir_all(remote.join("src")).unwrap();
+    std::fs::write(remote.join("src").join("demo.rs"), "fn demo() {}\n").unwrap();
+    let round = run_cli_stdin(
+        &remote,
+        &["review", "add-round", "demo", "--stdin"],
+        Some(&pat),
+        "**Scope**: src/demo.rs\n\n- [WARNING] src/demo.rs — possible Mysterious Name\n",
+    );
+    assert!(round.status.success(), "add-round: {}", String::from_utf8_lossy(&round.stderr));
+    let shown = run_cli(&remote, &["review", "show", "demo", "--json"], Some(&pat));
+    assert!(shown.status.success(), "show: {}", String::from_utf8_lossy(&shown.stderr));
+    let ticket: serde_json::Value = serde_json::from_slice(&shown.stdout).expect("ticket JSON");
+    assert_eq!(ticket["lastRound"]["scope"][0], "src/demo.rs");
+    assert_eq!(ticket["lastRound"]["findings"][0]["severity"], "WARNING");
+    let refused = run_cli(&remote, &["review", "stamp", "demo"], Some(&pat));
+    assert!(!refused.status.success(), "findings without --accept must refuse");
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("--accept"),
+        "the refusal offers --accept: {}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    let stamped = run_cli(
+        &remote,
+        &["review", "stamp", "demo", "--accept", "--agent", "claude"],
+        Some(&pat),
+    );
+    assert!(stamped.status.success(), "stamp: {}", String::from_utf8_lossy(&stamped.stderr));
+    let gone = run_cli(&remote, &["review", "show", "demo"], Some(&pat));
+    assert!(!gone.status.success(), "the ticket is deleted with the stamp");
+    assert!(
+        String::from_utf8_lossy(&gone.stderr).contains("no review ticket"),
+        "show reports the missing ticket: {}",
+        String::from_utf8_lossy(&gone.stderr)
+    );
+
     // Restart over the same database: /setup stays closed (no token printed, 404)
     // and the seeded data persists — the member's PAT still lists the change
     // (重啟確認關門且資料完整).
     drop(server);
+
+    // The server-down window doubles as the offline scenario (spec「remote 模式
+    // 下的動詞行為」Scenario「離線時追加輪次」): a review verb exits non-zero
+    // with a connection error and writes nothing anywhere.
+    let offline = run_cli_stdin(
+        &remote,
+        &["review", "add-round", "demo", "--stdin"],
+        Some(&pat),
+        "**Scope**: src/demo.rs\n",
+    );
+    assert!(!offline.status.success(), "offline add-round must fail");
+    assert!(
+        String::from_utf8_lossy(&offline.stderr).contains("server unreachable"),
+        "stderr names the connection failure: {}",
+        String::from_utf8_lossy(&offline.stderr)
+    );
+    assert!(
+        !remote.join("openspec").exists(),
+        "an offline verb never falls back to local writes"
+    );
+    // Same window, store truth: the stamp landed the five reviewed_* fields with
+    // the checkout-computed fingerprint, atomically with the ticket delete.
+    {
+        use speclink_store::{DocumentId, ProjectId, RepoId, Scope, TeamStore};
+        let store =
+            speclink_store_sqlite::SqliteTeamStore::open(&db).expect("open store for meta check");
+        let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
+        let meta = store
+            .snapshot(&scope)
+            .expect("snapshot")
+            .read(&DocumentId::ChangeMeta { change: "demo".into() })
+            .expect("read meta")
+            .expect("meta exists")
+            .content;
+        assert!(meta.contains("reviewed_at:"), "the stamp persisted: {meta}");
+        assert!(meta.contains("reviewed_with: claude"), "agent recorded: {meta}");
+        assert!(meta.contains("- path: src/demo.rs"), "work-tree fingerprint recorded: {meta}");
+        assert!(
+            store
+                .snapshot(&scope)
+                .expect("snapshot")
+                .read(&DocumentId::ChangeArtifact { change: "demo".into(), artifact: "review.md".into() })
+                .expect("read ticket")
+                .is_none(),
+            "the ticket is gone from the store"
+        );
+    }
+
     let restarted = Server::start(&config);
     assert!(!restarted.printed_setup_token(), "a restart over a completed database prints no setup token");
     assert_eq!(get_status(&format!("{}/api/speclink/v1/web/setup", restarted.base())), 404, "/setup stays closed after restart");

@@ -150,6 +150,38 @@ fn commit_skill_confirmation_gate_sees_plan_and_message() {
     }
 }
 
+// --- review skill: locale binds the whole output chain ---
+
+/// Spec requirement: 審查產出的語言綁定 — the review skill binds the resolved
+/// `locale` across the whole output chain (sub-agent briefs, the round
+/// presentation, the ticket record), keeps severity labels and axis prefixes
+/// in English, and defaults to English when `locale` is absent.
+#[test]
+fn review_skill_binds_locale_across_output_chain() {
+    let cases = [
+        ("review-locale-claude", Tool::Claude, ".claude/skills"),
+        ("review-locale-codex", Tool::Codex, ".agents/skills"),
+    ];
+    for (tag, tool, skills_dir) in cases {
+        let root = TempRoot::new(tag);
+        init::init(&root.dir, &[tool], true, "openspec").unwrap();
+        let rel = format!("{skills_dir}/speclink-review/SKILL.md");
+        let content = std::fs::read_to_string(root.dir.join(rel.split('/').collect::<PathBuf>()))
+            .expect(&rel);
+        for needle in [
+            "finding descriptions are written in that language",
+            "severity labels, the `Standards:` / `Correctness:` axis prefixes, file paths, and command lines stay in English",
+            "If `locale` is absent, everything is English",
+            "never translate",
+        ] {
+            assert!(
+                content.contains(needle),
+                "{rel}: missing locale-binding phrase {needle:?}"
+            );
+        }
+    }
+}
+
 // --- remote marker variant: (tool target) × (fs | remote) ---
 
 /// The remote marker block must not steer the agent at local spec paths that

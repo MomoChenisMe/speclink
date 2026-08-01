@@ -142,22 +142,7 @@ pub fn add(store: &dyn Store, name: &str, identity: Option<&str>, agent: Option<
     if !meta.ends_with('\n') && !meta.is_empty() {
         meta.push('\n');
     }
-    // A newline inside the identity/agent string would inject arbitrary YAML
-    // fields; a bare `:`/leading indicator would break the whole document's
-    // parse (which silently falls back to defaults). Flatten control
-    // characters and double-quote values a plain scalar cannot carry.
-    let clean = |s: &str| {
-        let flat = s.replace(|c: char| c.is_control(), " ");
-        let risky = flat.is_empty()
-            || flat.contains([':', '#', '"'])
-            || flat.ends_with(' ')
-            || flat.starts_with([' ', '[', '{', '\'', '&', '*', '!', '|', '>', '%', '@', '`', '-', '?']);
-        if risky {
-            format!("\"{}\"", flat.replace('\\', "\\\\").replace('"', "\\\""))
-        } else {
-            flat
-        }
-    };
+    let clean = util::yaml_scalar;
     meta.push_str(&format!("started_at: {}\n", util::today()));
     if let Some(id) = identity {
         meta.push_str(&format!("started_by: {}\n", clean(id)));

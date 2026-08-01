@@ -18,6 +18,7 @@ import {
   RichDetailDrawer,
   DiscussionDrawer,
   RevertBlockedDialog,
+  ReviewArchiveDialog,
   AlertDialog,
   AlertDialogContent,
   AlertDialogHeader,
@@ -260,6 +261,11 @@ function AppInner({
   const connectionState = activeSession?.connectionState;
   const remoteArchiveScope =
     activeSession?.locator.kind === "remote" ? activeSession.descriptor.name : null;
+  // 封存入口守門（spec「封存入口的未結工單三選項」）：待封存 change 審查中
+  // （工單未結）→ 以三選項對話框取代一般確認。
+  const pendingArchiveInReview =
+    s.pendingArchive !== null &&
+    s.changes.find((c) => c.name === s.pendingArchive)?.reviewStatus === "inReview";
   const stale =
     activeSession?.locator.kind === "remote" &&
     connectionState !== undefined &&
@@ -758,6 +764,11 @@ function AppInner({
         loadDiscussionDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
         sourceDiscussions={archivedSourceDiscussions}
         onOpenDiscussion={(slug) => s.openArchived({ kind: "discussion", slug })}
+        reviewStatus={
+          s.detailArchived?.kind === "change"
+            ? s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.reviewStatus
+            : undefined
+        }
       />
 
       {/* 討論抽屜（結論/討論過程/背景/衍生變更） */}
@@ -917,8 +928,27 @@ function AppInner({
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* 封存入口的未結工單三選項（spec「封存入口的未結工單三選項」）：目標
+          change 審查中時取代一般封存確認；未選擇前不執行封存。remote 清單項
+          不帶 inReview，天然走一般確認。 */}
+      <ReviewArchiveDialog
+        open={pendingArchiveInReview}
+        change={s.pendingArchive}
+        onOpenChange={(o) => !o && s.cancelArchive()}
+        onGoStamp={() => {
+          const name = s.pendingArchive;
+          s.cancelArchive();
+          if (name) s.openDetail(name);
+        }}
+        onDiscardReview={() => void s.confirmArchiveDiscardReview()}
+        onCarryReview={() => void s.confirmArchiveCarryReview()}
+      />
+
       {/* 封存確認 */}
-      <AlertDialog open={s.pendingArchive !== null} onOpenChange={(o) => !o && s.cancelArchive()}>
+      <AlertDialog
+        open={s.pendingArchive !== null && !pendingArchiveInReview}
+        onOpenChange={(o) => !o && s.cancelArchive()}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("app.archiveTitle")}</AlertDialogTitle>

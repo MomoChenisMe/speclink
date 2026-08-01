@@ -22,13 +22,15 @@ use speclink_core::listing::ListChangeJson;
 use speclink_core::status::StatusReport;
 use speclink_host::drift as host_drift;
 use speclink_protocol::command::{
-    AddDiscussionRoundRequest, AddDiscussionRoundResponse, ArchiveDiscussionResponse,
-    ArchiveResponse, ArchivedSpec, BindDiscussionRequest, BindDiscussionResponse, ClaimResponse,
-    ConcludeDiscussionRequest, CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest,
-    CreateDiscussionResponse, DiscardDiscussionResponse, DiscardResponse, MoveTaskRequest,
+    AddDiscussionRoundRequest, AddDiscussionRoundResponse, AddReviewRoundRequest,
+    AddReviewRoundResponse, ArchiveDiscussionResponse, ArchiveResponse, ArchivedSpec,
+    BindDiscussionRequest, BindDiscussionResponse, ClaimResponse, ConcludeDiscussionRequest,
+    CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
+    DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, MoveTaskRequest,
     MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest,
-    PutArtifactResponse, SetDiscussionContextRequest, TaskDoneRequest, TaskDoneResponse,
-    TaskUndoneResponse, UnlinkedDiscussion,
+    PutArtifactResponse, ReviewFindingDto, ReviewRoundDto, ReviewTicketResponse,
+    SetDiscussionContextRequest, StampReviewRequest, StampReviewResponse, TaskDoneRequest,
+    TaskDoneResponse, TaskUndoneResponse, UnlinkedDiscussion,
 };
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::events::InvalidationEvent;
@@ -1036,6 +1038,110 @@ pub async fn put_artifact(
     Ok(ok(PutArtifactResponse { artifact, version }, &etag))
 }
 
+// --- review（design D4a：動詞端點承載 remote，引擎守門與原子性隨 Command 而來）---
+
+fn review_round_dto(r: &speclink_core::review::Round) -> ReviewRoundDto {
+    ReviewRoundDto {
+        index: r.index as u64,
+        scope: r.scope.clone(),
+        findings: r
+            .findings
+            .iter()
+            .map(|f| ReviewFindingDto {
+                severity: f.severity.as_str().to_string(),
+                path: f.path.clone(),
+                text: f.text.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// `GET /changes/{name}/review`
+pub async fn review_show(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(&state, &binding, Command::ReviewShow { change: name }).await?;
+    let o = match result.execution.outcome {
+        CommandOutcome::ReviewShow(o) => o,
+        _ => return Err(wrong_outcome("review-show")),
+    };
+    let last_round = review_round_dto(o.ticket.last_round());
+    let rounds: Vec<ReviewRoundDto> = o.ticket.rounds.iter().map(review_round_dto).collect();
+    Ok(ok(ReviewTicketResponse { change: o.change, rounds, last_round }, &result.etag))
+}
+
+/// `POST /changes/{name}/review/rounds`
+pub async fn review_add_round(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+    Json(req): Json<AddReviewRoundRequest>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::ReviewAddRound { change: name, content: req.content },
+    )
+    .await?;
+    let round = match result.execution.outcome {
+        CommandOutcome::ReviewAddRound(o) => o.round,
+        _ => return Err(wrong_outcome("review-add-round")),
+    };
+    Ok(ok(AddReviewRoundResponse { round: round as u64 }, &result.etag))
+}
+
+/// `POST /changes/{name}/review/stamp` — the submitted fingerprints are the
+/// caller's work-tree truth; the engine validates the path set, never re-hashes.
+pub async fn review_stamp(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+    Json(req): Json<StampReviewRequest>,
+) -> Result<Response, ApiError> {
+    // 蓋章同樣以刪掉工單收場——editor 限定比照 discard，只擋 DELETE 守不住。
+    if !binding.editor {
+        return Err(ApiError::forbidden("reader memberships cannot stamp reviews"));
+    }
+    let scope = req
+        .scope
+        .into_iter()
+        .map(|e| speclink_core::model::ReviewedScopeEntry { path: e.path, hash: e.hash })
+        .collect();
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::ReviewStamp { change: name, accept: req.accept, tool: req.agent, scope, missing: req.missing },
+    )
+    .await?;
+    let change = match result.execution.outcome {
+        CommandOutcome::ReviewStamp(o) => o.change,
+        _ => return Err(wrong_outcome("review-stamp")),
+    };
+    Ok(ok(StampReviewResponse { change }, &result.etag))
+}
+
+/// `DELETE /changes/{name}/review` — editor 限定比照 change 刪除：工單是審查
+/// 過程的唯一紀錄，刪掉不可回復。
+pub async fn review_discard(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    if !binding.editor {
+        return Err(ApiError::forbidden(
+            "reader memberships cannot discard review tickets",
+        ));
+    }
+    let result = verb::run(&state, &binding, Command::ReviewDiscard { change: name }).await?;
+    let change = match result.execution.outcome {
+        CommandOutcome::ReviewDiscard(o) => o.change,
+        _ => return Err(wrong_outcome("review-discard")),
+    };
+    Ok(ok(DiscardReviewResponse { change }, &result.etag))
+}
+
 /// `POST /changes/{name}/tasks/{taskId}/done`
 pub async fn task_done(
     State(state): State<AppState>,
@@ -1115,11 +1221,23 @@ pub async fn claim(
     Ok(ok(dto, &etag))
 }
 
-/// `POST /changes/{name}/archive`
+/// `POST /changes/{name}/archive[?carryReview=true]` 的查詢參數——旗標比照
+/// `DELETE /discussions/{slug}?force=` 走 query（缺席＝false，既有無 body 的
+/// 呼叫端不受影響）。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveQuery {
+    #[serde(default)]
+    carry_review: bool,
+}
+
+/// `POST /changes/{name}/archive[?carryReview=true]` — 帶旗標時未結工單隨
+/// change 搬入封存區（D5 的第三處置；不接通的話 remote 只剩兩條出路）。
 pub async fn archive(
     State(state): State<AppState>,
     binding: Binding,
     Path((_key, name)): Path<(String, String)>,
+    Query(query): Query<ArchiveQuery>,
 ) -> Result<Response, ApiError> {
     let result = verb::run(
         &state,
@@ -1129,6 +1247,7 @@ pub async fn archive(
             skip_specs: false,
             no_validate: false,
             mark_tasks_complete: false,
+            carry_review: query.carry_review,
         },
     )
     .await?;

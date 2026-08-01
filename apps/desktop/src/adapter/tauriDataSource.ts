@@ -82,6 +82,12 @@ export function createTauriDataSource(
       // 動詞 command 與動詞同名（validate/analyze/archive）。
       return await invoke(verb, { root, change });
     },
+    async discardReview(change: string): Promise<void> {
+      await invoke("discard_review", { root, change });
+    },
+    async archiveCarryReview(change: string): Promise<unknown> {
+      return await invoke("archive_carry_review", { root, change });
+    },
     async getArchivedDocument(datedName: string, artifact: string): Promise<string | null> {
       return await invoke<string | null>("archived_document", { root, datedName, artifact });
     },

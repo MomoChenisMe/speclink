@@ -30,6 +30,7 @@ import { SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
 import { DeltaBadges, DeltaSpecView } from "./DeltaBadges";
 import { AnalyzePanel } from "./AnalyzePanel";
+import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./reviewStyle";
 import { setTaskMark } from "../tasks";
 
 export interface RichDetailDrawerProps {
@@ -254,6 +255,16 @@ export function RichDetailDrawer({
   // 階段守門原因（archive-readiness-gating D4）：封存鈕非已就緒、刪除鈕非提案中
   // 時 disabled；unavailable（remote 能力缺失）原因優先於階段原因——「這條通道
   // 做不到」比「現在還不能」更硬。守門為呈現層過濾，引擎拒絕是最終裁決。
+  // 審查資訊列的狀態呈現：圖示＋狀態詞依四態上色，配色與卡片章共用 REVIEW_TONE。
+  const reviewStatus: ReviewBadgeStatus | null =
+    !change.reviewStatus || change.reviewStatus === "none" ? null : change.reviewStatus;
+  const review = !reviewStatus
+    ? null
+    : {
+        key: REVIEW_LABEL_KEY[reviewStatus],
+        icon: REVIEW_ICON[reviewStatus],
+        cls: REVIEW_TONE[reviewStatus],
+      };
   const stage = changeStage(change);
   const archiveReason =
     unavailable?.archive ??
@@ -313,6 +324,25 @@ export function RichDetailDrawer({
               <span className="inline-flex items-center gap-1">
                 ⚒ {meta.startedBy ? `${meta.startedBy} · ` : ""}
                 {t("rdrawer.started").replace("{date}", meta.startedAt)}
+              </span>
+            )}
+            {/* 審查資訊列（spec「詳情抽屜的審查資訊列」）：reviewed／reviewedStale
+                帶狀態詞＋蓋章時間＋審查者；inReview 僅狀態詞；none 不渲染。 */}
+            {review && (
+              <span data-review-row className="inline-flex items-center gap-1">
+                <span
+                  data-review-tone
+                  className={`inline-flex items-center gap-1 font-medium ${review.cls}`}
+                >
+                  {review.icon}
+                  {t(review.key)}
+                </span>
+                {change.reviewStatus !== "inReview" && change.reviewedAt
+                  ? ` · ${change.reviewedAt}`
+                  : ""}
+                {change.reviewStatus !== "inReview" && change.reviewedBy
+                  ? ` · ${change.reviewedBy}`
+                  : ""}
               </span>
             )}
           </div>

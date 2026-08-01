@@ -34,14 +34,28 @@ pub fn analyze_at(root: &Path, change: &str) -> Result<Value, String> {
 /// 對應 `speclink archive <change>`：以預設選項歸檔（先驗證）。前置未滿足時回傳 `Err`
 /// 且不標記歸檔（core::archive 在失敗時不搬移 change）。
 pub fn archive_at(root: &Path, change: &str) -> Result<Value, String> {
+    archive_with(root, change, false)
+}
+
+/// 對應 `speclink archive <change> --carry-review`：帶未結工單封存（封存入口
+/// 三選項的「照樣帶走」；spec「封存入口的未結工單三選項」）。
+pub fn archive_carry_at(root: &Path, change: &str) -> Result<Value, String> {
+    archive_with(root, change, true)
+}
+
+/// 對應 `speclink review discard <change>`：刪工單、不蓋章（三選項的「放棄審查」）。
+pub fn discard_review_at(root: &Path, change: &str) -> Result<Value, String> {
+    let ctx = open(root)?;
+    let store: &dyn Store = &ctx.store;
+    speclink_core::review::discard(store, change).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "change": change, "discarded": true }))
+}
+
+fn archive_with(root: &Path, change: &str, carry_review: bool) -> Result<Value, String> {
     let ctx = open(root)?;
     let store: &dyn Store = &ctx.store;
     let change = find(store, change)?;
-    let opts = speclink_core::archive::ArchiveOptions {
-        skip_specs: false,
-        no_validate: false,
-        mark_tasks_complete: false,
-    };
+    let opts = speclink_core::archive::ArchiveOptions { carry_review, ..Default::default() };
     let actor = crate::manage::cached_git_identity(&ctx.workspace.root);
     let outcome = speclink_core::archive::archive(&ctx.workspace, store, &change, &opts, actor.as_deref())
         .map_err(|e| e.to_string())?;

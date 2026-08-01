@@ -20,6 +20,9 @@ pub(crate) struct TestStore {
     pub artifacts: RefCell<HashMap<(String, String), String>>,
     /// Archived dated name → raw `.openspec.yaml` text.
     pub archived_metas: RefCell<HashMap<String, String>>,
+    /// (archived dated name, artifact rel path) → content — populated by
+    /// `archive_change` (faithful directory move: every document travels).
+    pub archived_artifacts: RefCell<HashMap<(String, String), String>>,
     /// Capability → canonical spec content.
     pub canonical: RefCell<HashMap<String, String>>,
     /// Number of `write_change_meta` calls (idempotence assertions).
@@ -136,6 +139,14 @@ impl Store for TestStore {
             .borrow()
             .contains_key(&(change.to_string(), artifact.to_string()))
     }
+    fn delete_artifact(&self, change: &str, artifact: &str) -> Result<()> {
+        // Faithful delete（review discard/stamp 的活面）：移除紀錄；缺席為
+        // no-op——引擎在呼叫前守存在性，與 fs 端冪等刪除一致。
+        self.artifacts
+            .borrow_mut()
+            .remove(&(change.to_string(), artifact.to_string()));
+        Ok(())
+    }
     fn delta_capabilities(&self, change: &str) -> Vec<String> {
         let mut caps: Vec<String> = self
             .artifacts
@@ -186,7 +197,23 @@ impl Store for TestStore {
             .remove(name)
             .ok_or_else(|| anyhow::anyhow!("no such change: {name}"))?;
         self.archived_metas.borrow_mut().insert(dated_name.to_string(), meta);
+        // Faithful directory move（FsStore 整目錄搬移）：change 的所有文件隨行
+        // ——review.md 化石工單即由此進入封存區。
+        let mut artifacts = self.artifacts.borrow_mut();
+        let moved: Vec<(String, String)> =
+            artifacts.keys().filter(|(c, _)| c == name).cloned().collect();
+        let mut archived = self.archived_artifacts.borrow_mut();
+        for key in moved {
+            let content = artifacts.remove(&key).expect("key just enumerated");
+            archived.insert((dated_name.to_string(), key.1), content);
+        }
         Ok(())
+    }
+    fn read_archived_artifact(&self, dated_name: &str, artifact: &str) -> Option<String> {
+        self.archived_artifacts
+            .borrow()
+            .get(&(dated_name.to_string(), artifact.to_string()))
+            .cloned()
     }
     fn read_archived_meta(&self, dated_name: &str) -> Option<String> {
         self.archived_metas.borrow().get(dated_name).cloned()

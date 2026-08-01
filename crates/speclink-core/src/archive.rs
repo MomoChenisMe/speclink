@@ -34,6 +34,28 @@ pub struct ArchiveOptions {
     pub skip_specs: bool,
     pub no_validate: bool,
     pub mark_tasks_complete: bool,
+    /// 帶著未結審查工單照樣封存（spec「封存的未結工單守門」的明示帶走處置）；
+    /// 工單隨目錄搬入封存區，成為「曾審查未通過」標示的化石證據。
+    pub carry_review: bool,
+}
+
+/// 未結工單守門（design D5；spec review-station「封存的未結工單守門」）：
+/// review.md 存在且未帶 `--carry-review` → 拒絕、三處置齊列；帶旗標時工單隨
+/// 目錄搬移，成為封存側「曾審查未通過」標示的化石證據。無工單時零效果——行為
+/// 與導入前完全一致。runtime 於 `--mark-tasks-complete` 的前置寫入前先喚一次
+/// （比照 guard_meta），`archive` 內再守一次供直接呼叫的入口（desktop）。
+pub(crate) fn guard_open_review(store: &dyn Store, name: &str, carry_review: bool) -> Result<()> {
+    if carry_review || !store.artifact_exists(name, crate::review::REVIEW_DOC) {
+        return Ok(());
+    }
+    Err(crate::command::Refusal(format!(
+        "change '{name}' has an open review ticket (review.md) — settle it before archiving:\n  \
+         finish the review and stamp it:  speclink review stamp {name}\n  \
+         abandon the review:              speclink review discard {name}\n  \
+         archive it as-is:                speclink archive {name} --carry-review \
+         (permanently shown as reviewed-not-passed)"
+    ))
+    .into())
 }
 
 pub(crate) struct DeltaReq {
@@ -101,6 +123,8 @@ pub fn archive(
     // Fail-closed gate: archiving stamps and moves the metadata document —
     // refuse a corrupt one before any validation or file effect.
     crate::model::require_valid_meta(change)?;
+
+    guard_open_review(store, &change.name, opts.carry_review)?;
 
     // Task-readiness gate (spec「單筆封存的任務完成度守門」): an incomplete change
     // refuses to archive unless the --mark-tasks-complete flag rides along. The
@@ -514,6 +538,7 @@ mod tests {
             &change,
             &ArchiveOptions {
                 skip_specs: true,
+                carry_review: false,
                 no_validate: true,
                 mark_tasks_complete: false,
             },
@@ -546,7 +571,12 @@ mod tests {
     }
 
     fn skip_opts() -> ArchiveOptions {
-        ArchiveOptions { skip_specs: true, no_validate: true, mark_tasks_complete: false }
+        ArchiveOptions {
+            skip_specs: true,
+            no_validate: true,
+            mark_tasks_complete: false,
+            carry_review: false,
+        }
     }
 
     fn discussion_doc(slug: &str) -> String {
@@ -676,9 +706,67 @@ mod tests {
         let store = gate_store("- [x] 1.1 a\n- [ ] 1.2 b\n- [ ] 1.3 c\n");
         let change = crate::model::find_change(&store, "demo").unwrap();
         let opts =
-            ArchiveOptions { skip_specs: true, no_validate: true, mark_tasks_complete: true };
+            ArchiveOptions { mark_tasks_complete: true, ..skip_opts() };
         archive(&ghost_ws(), &store, &change, &opts, None).unwrap();
         assert!(!store.change_exists("demo"), "flag exempts the gate");
+    }
+
+    // --- 封存的未結工單守門（design D5；spec review-station「封存的未結工單守門」）---
+
+    const TICKET: &str = "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n\n- [WARNING] src/a.rs — possible smell\n";
+
+    #[test]
+    fn open_review_ticket_refuses_archive_with_three_disposals() {
+        // spec Scenario「有工單預設拒絕」：stderr 同列 stamp／discard／--carry-review
+        // 三處置，change 未被搬移、零寫入。
+        let store = gate_store("- [x] 1.1 a\n");
+        store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let err = archive(&ghost_ws(), &store, &change, &skip_opts(), None)
+            .expect_err("open ticket must refuse archive");
+        let msg = err.to_string();
+        assert!(msg.contains("review stamp"), "stamp disposal named: {msg}");
+        assert!(msg.contains("review discard"), "discard disposal named: {msg}");
+        assert!(msg.contains("--carry-review"), "carry disposal named: {msg}");
+        assert!(
+            err.downcast_ref::<crate::command::Refusal>().is_some(),
+            "typed Refusal so the runtime classifies refused"
+        );
+        assert!(store.change_exists("demo"), "change stays in place");
+        assert!(store.archived_metas.borrow().is_empty(), "nothing archived");
+        assert_eq!(*store.meta_writes.borrow(), 0, "zero meta writes");
+        assert_eq!(*store.artifact_writes.borrow(), 0, "zero artifact writes");
+    }
+
+    #[test]
+    fn carry_review_archives_and_the_ticket_travels() {
+        // spec Scenario「明示帶走」：--carry-review 放行，封存目錄內含 review.md
+        //（化石工單——封存側「曾審查未通過」標示的證據）。
+        let store = gate_store("- [x] 1.1 a\n");
+        store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let opts = ArchiveOptions { carry_review: true, ..skip_opts() };
+        let outcome = archive(&ghost_ws(), &store, &change, &opts, None).unwrap();
+        assert!(!store.change_exists("demo"), "change moved into the archive");
+        assert_eq!(
+            store.read_archived_artifact(&outcome.dated_name, crate::review::REVIEW_DOC).as_deref(),
+            Some(TICKET),
+            "ticket rides the directory move byte-identically"
+        );
+    }
+
+    #[test]
+    fn archive_without_ticket_is_unaffected_by_the_gate() {
+        // spec Scenario「無工單行為不變」：本檔其餘測試全數無工單、即回歸網；
+        // 此處釘住 carry_review 預設 false 下無工單照常封存、封存區無工單檔。
+        let store = gate_store("- [x] 1.1 a\n");
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
+        assert!(!store.change_exists("demo"), "change moved into the archive");
+        assert!(
+            store.read_archived_artifact(&outcome.dated_name, crate::review::REVIEW_DOC).is_none(),
+            "no fossil ticket appears out of nowhere"
+        );
     }
 
     // --- archive trace 由 evidence 建立（spec verify-evidence）---
@@ -701,7 +789,7 @@ mod tests {
     }
 
     fn apply_opts() -> ArchiveOptions {
-        ArchiveOptions { skip_specs: false, no_validate: true, mark_tasks_complete: false }
+        ArchiveOptions { skip_specs: false, ..skip_opts() }
     }
 
     fn git(root: &std::path::Path, args: &[&str]) {

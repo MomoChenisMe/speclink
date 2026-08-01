@@ -132,3 +132,15 @@
 - **definition**: TeamStore 的實作與其執行狀態——驅動（sqlite／postgres／serverfs 等）、契約版本、等級、能力與健康，統一以「儲存後端」為主詞，呈現於系統頁。
 - **avoid**: Store、Store 狀態、store driver（使用者可見文案中）
 - **why**: 「Store」單獨出現時看不出是什麼的儲存；統一主詞後，「儲存後端目前無法使用」這類降級訊息才讀得通。2026-07-25 變更「admin-console-redesign」定案。
+
+### 審查
+
+- **definition**: 對 change 實作的 code review——工藝品質檢查（repo 慣例＋code smells＋bug 獵捕），與「驗證」並行的可選品質站。對應 skill `/speclink-review` 與引擎動詞 `review`。狀態詞：審查中（工單未結）、已審查（蓋章）、已審查·其後有變動（失效降級）、曾審查未通過（封存時工單無章）。
+- **avoid**: code review、代碼審查、覆審（使用者可見文案中）
+- **why**: 「審查」單詞直說動作，與「驗證」形成對仗的兩個品質站——一管工藝、一管合規。2026-07-31 討論「code-review-stage」定案。
+
+### 驗證
+
+- **definition**: 對 change 實作的 spec 合規檢查（verify 三維度：完整、正確、一致），與「審查」並行的可選品質站。對應 skill `/speclink-verify`。狀態詞同構：驗證中、已驗證、已驗證·其後有變動、曾驗證未通過。
+- **avoid**: verify（中文散文中）、校驗
+- **why**: 與「審查」對仗；兩站在看板上的章與狀態詞必須同構，使用者才能以同一心智模型讀懂兩種標示。2026-07-31 討論「code-review-stage」定案。

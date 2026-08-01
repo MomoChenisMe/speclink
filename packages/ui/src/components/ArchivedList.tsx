@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import type { ArchivedTarget } from "./ArchivedDrawer";
 import { ListPager, PAGE_SIZE } from "./ListPager";
+import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
 
 /** 標題後緊跟的複製鈕（design D7 卡片版面）：hover 顯現、copied 打勾回饋、
  * 點擊不冒泡（不開抽屜）。 */
@@ -78,6 +79,21 @@ function ArchivedCard({ item, onOpen }: { item: ArchivedItem; onOpen: (target: A
                 </span>
               </TooltipTrigger>
               <TooltipContent>{t("archived.specCount").replace("{n}", String(specCount))}</TooltipContent>
+            </Tooltip>
+          )}
+          {/* 審查結局標示（spec「已封存側的審查標示」）：帶章＝已審查、化石工單
+              ＝曾審查未通過（永久標示）、皆無＝無元素。 */}
+          {(item.reviewStatus === "reviewed" || item.reviewStatus === "reviewedNotPassed") && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  aria-label={t(REVIEW_LABEL_KEY[item.reviewStatus])}
+                  className={`shrink-0 ${REVIEW_TONE[item.reviewStatus]}`}
+                >
+                  {REVIEW_ICON[item.reviewStatus]}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{t(REVIEW_LABEL_KEY[item.reviewStatus])}</TooltipContent>
             </Tooltip>
           )}
           {item.createdBy && (

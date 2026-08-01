@@ -1020,7 +1020,7 @@ fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
     let Some(name) = a.changes.first().cloned().map(Some).unwrap_or(None) else {
         bail!("Please specify a change to archive.");
     };
-    let resp = ctx.client.archive(&name)?;
+    let resp = ctx.client.archive(&name, a.carry_review)?;
     println!("{} Archived change: {name}", color::green("✓"));
     if !resp.specs.is_empty() {
         let caps: Vec<&str> = resp.specs.iter().map(|s| s.capability.as_str()).collect();
@@ -1105,6 +1105,67 @@ fn remote_show_outcome(
         from_discussions: status.from_discussions,
         restale_from,
     }))
+}
+
+// --- review（design D4a：動詞端點；spec「remote 模式下的動詞行為」）---
+
+fn remote_review(ctx: &RemoteCtx, a: ReviewArgs) -> Result<()> {
+    match a.command {
+        ReviewCommands::AddRound { change, stdin } => {
+            let content = read_stdin_content(stdin);
+            let round = ctx.client.review_add_round(&change, &content)?.round;
+            println!("{} Recorded review Round {round} for change '{change}'", color::green("✓"));
+            Ok(())
+        }
+        ReviewCommands::Show { change, json } => {
+            let ticket = ctx.client.review_ticket(&change)?;
+            if json {
+                return print_json(&ticket);
+            }
+            println!("Review — {}", ticket.change);
+            for r in &ticket.rounds {
+                println!("\nRound {}", r.index);
+                if !r.scope.is_empty() {
+                    println!("  Scope: {}", r.scope.join(", "));
+                }
+                for f in &r.findings {
+                    println!("  - [{}] {} — {}", f.severity, f.path, f.text);
+                }
+            }
+            Ok(())
+        }
+        ReviewCommands::Stamp { change, accept, agent } => {
+            // 指紋歸屬（design D4a）：工作樹持有者是這裡——先取工單算 Scope
+            // 聯集（鏡射引擎的正規化：`\`→`/`、去重、排序），逐檔讀 checkout
+            // 內容算雜湊，隨請求上 wire；server 驗集合相等、不重算。
+            let ticket = ctx.client.review_ticket(&change)?;
+            let Some(ws) = core::workspace::Workspace::discover_cwd()? else {
+                anyhow::bail!(
+                    "review stamp needs a workspace checkout to fingerprint scope files"
+                );
+            };
+            let paths = core::review::scope_union(
+                ticket.rounds.iter().flat_map(|r| r.scope.iter().map(String::as_str)),
+            );
+            // 修正可能刪除／改名早輪審過的檔：仍存在者算雜湊，已消失者以
+            // missing 明示宣告——server 無工作樹，分割由這裡的存在性判定。
+            let (present, missing): (Vec<String>, Vec<String>) =
+                paths.into_iter().partition(|p| ws.root.join(p).is_file());
+            let read_file = |p: &str| std::fs::read_to_string(ws.root.join(p)).ok();
+            let scope: Vec<_> = core::review::fingerprint_scope(&present, &read_file)?
+                .into_iter()
+                .map(|(path, hash)| speclink_protocol::command::ReviewScopeEntryDto { path, hash })
+                .collect();
+            ctx.client.review_stamp(&change, accept, agent.as_deref(), &scope, &missing)?;
+            println!("{} Stamped review for change '{change}'", color::green("✓"));
+            Ok(())
+        }
+        ReviewCommands::Discard { change } => {
+            ctx.client.review_discard(&change)?;
+            println!("{} Discarded review ticket for change '{change}'", color::green("✓"));
+            Ok(())
+        }
+    }
 }
 
 // --- discuss ---

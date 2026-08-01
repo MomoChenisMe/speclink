@@ -615,6 +615,99 @@ describe("app store (Zustand)", () => {
     expect(failureStore.getState().detailChange?.name).toBe("desktop-shell-and-browser");
   });
 
+  it("三選項「放棄審查」先刪工單再走既有封存流程", async () => {
+    // spec「封存入口的未結工單三選項」：等同 review discard 後封存——工單先刪，
+    // 之後照既有 archive 動詞走（含成功靜默與重載）。
+    const discardReview = vi.fn().mockResolvedValue(undefined);
+    const ds = fakeDataSource({ discardReview });
+    const store = storeWith(ds);
+    store.getState().requestArchive("desktop-shell-and-browser");
+    await store.getState().confirmArchiveDiscardReview();
+    expect(discardReview).toHaveBeenCalledWith("desktop-shell-and-browser");
+    expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
+    expect(store.getState().pendingArchive).toBeNull();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("「放棄審查」刪工單失敗即不封存，且提示說的是刪工單而非封存", async () => {
+    const ds = fakeDataSource({
+      discardReview: vi.fn().mockRejectedValue(new Error("offline")),
+    });
+    const store = storeWith(ds);
+    store.getState().requestArchive("desktop-shell-and-browser");
+    await store.getState().confirmArchiveDiscardReview();
+    expect(ds.runVerb).not.toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
+    expect(toastError).toHaveBeenCalledWith(
+      expect.stringContaining("放棄審查失敗"),
+      expect.anything(),
+    );
+  });
+
+  it("後端不支援三選項處置時出聲，不靜默吞掉", async () => {
+    // remote 等未實作的後端：對話框關掉卻什麼都沒發生，使用者無從得知。
+    for (const action of ["confirmArchiveDiscardReview", "confirmArchiveCarryReview"] as const) {
+      toastError.mockClear();
+      const store = storeWith(fakeDataSource());
+      store.getState().requestArchive("desktop-shell-and-browser");
+      await store.getState()[action]();
+      expect(store.getState().pendingArchive).toBeNull();
+      expect(toastError).toHaveBeenCalled();
+    }
+  });
+
+  it("不支援處置的提示不含工程方法名", async () => {
+    // openspec/LANGUAGE.md：工程詞不出現在使用者可見文案。
+    for (const [action, method] of [
+      ["confirmArchiveDiscardReview", "discardReview"],
+      ["confirmArchiveCarryReview", "archiveCarryReview"],
+    ] as const) {
+      toastError.mockClear();
+      const store = storeWith(fakeDataSource());
+      store.getState().requestArchive("desktop-shell-and-browser");
+      await store.getState()[action]();
+      const [message] = toastError.mock.calls[0] as [string];
+      expect(message).not.toContain(method);
+    }
+  });
+
+  it("「放棄審查」後封存失敗的提示點名審查已放棄，而非單純封存失敗", async () => {
+    // 工單在 discard 已刪；封存此後被拒時，使用者必須知道審查紀錄已不在。
+    const ds = fakeDataSource({
+      discardReview: vi.fn().mockResolvedValue(undefined),
+      runVerb: vi.fn().mockRejectedValue(new Error("tasks incomplete")),
+    });
+    const store = storeWith(ds);
+    store.getState().requestArchive("desktop-shell-and-browser");
+    await store.getState().confirmArchiveDiscardReview();
+    expect(toastError).toHaveBeenCalledWith(
+      expect.stringContaining("審查已放棄"),
+      expect.anything(),
+    );
+  });
+
+  it("「照樣帶走」封存成功會關閉抽屜，失敗則保留 change 上下文", async () => {
+    // 三選項的第三條與既有 archive 同為封存終局——抽屜不得停在已封存的 change。
+    const archiveCarryReview = vi.fn().mockResolvedValue(undefined);
+    const successStore = storeWith(fakeDataSource({ archiveCarryReview }));
+    await successStore.getState().refresh();
+    successStore.getState().openDetail("desktop-shell-and-browser");
+    successStore.getState().requestArchive("desktop-shell-and-browser");
+    await successStore.getState().confirmArchiveCarryReview();
+    expect(archiveCarryReview).toHaveBeenCalledWith("desktop-shell-and-browser");
+    expect(successStore.getState().pendingArchive).toBeNull();
+    expect(successStore.getState().detailChange).toBeNull();
+
+    const failureStore = storeWith(fakeDataSource({
+      archiveCarryReview: vi.fn().mockRejectedValue(new Error("archive refused")),
+    }));
+    await failureStore.getState().refresh();
+    failureStore.getState().openDetail("desktop-shell-and-browser");
+    failureStore.getState().requestArchive("desktop-shell-and-browser");
+    await failureStore.getState().confirmArchiveCarryReview();
+    expect(toastError).toHaveBeenCalled();
+    expect(failureStore.getState().detailChange?.name).toBe("desktop-shell-and-browser");
+  });
+
   it("reorderCard passes neighbor ids through and refreshes on success", async () => {
     // design D5：store 動作把 kind/id/prevId/nextId 原樣交給 data source，成功後整批 refresh。
     const ds = fakeDataSource();

@@ -199,28 +199,34 @@ impl ReadFixture {
                     },
                     "## Why\n\nArchived proposal truth.\n".to_string(),
                 ),
-                (
-                    DocumentId::ChangeArtifact {
-                        change: "old-feature".to_string(),
-                        artifact: "tasks.md".to_string(),
-                    },
-                    "- [x] 1.1 Completed\n- [ ] 1.2 Pending\n".to_string(),
-                ),
             ],
         );
         fixture.archive_change("demo", "backend", &pat, "old-feature");
 
+        // The live change carries no tasks.md: the archive verb refuses incomplete
+        // changes (task-readiness gate), so the 1/2 tasks document that backs the
+        // incomplete-badge assertions is seeded straight into the archived
+        // namespace — same pattern as the delta spec below.
         let dated_name = format!("{}-old-feature", chrono::Local::now().format("%Y-%m-%d"));
         fixture.seed_docs(
             "demo",
             "backend",
-            vec![(
-                DocumentId::ArchivedChange {
-                    change: dated_name.clone(),
-                    doc: "specs/payments/spec.md".to_string(),
-                },
-                "## ADDED Requirements\n\n### Requirement: Archived delta\n".to_string(),
-            )],
+            vec![
+                (
+                    DocumentId::ArchivedChange {
+                        change: dated_name.clone(),
+                        doc: "tasks.md".to_string(),
+                    },
+                    "- [x] 1.1 Completed\n- [ ] 1.2 Pending\n".to_string(),
+                ),
+                (
+                    DocumentId::ArchivedChange {
+                        change: dated_name.clone(),
+                        doc: "specs/payments/spec.md".to_string(),
+                    },
+                    "## ADDED Requirements\n\n### Requirement: Archived delta\n".to_string(),
+                ),
+            ],
         );
 
         Self {

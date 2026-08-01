@@ -17,8 +17,10 @@ use speclink_protocol::command::{
     BindDiscussionRequest, BindDiscussionResponse, CreateChangeResponse, CreateDiscussionRequest,
     CreateDiscussionResponse, DiscardDiscussionResponse, DiscardResponse,
     MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
-    PutArtifactRequest, PutArtifactResponse, SetDiscussionContextRequest, TaskDoneRequest,
-    TaskDoneResponse, TaskUndoneResponse,
+    AddReviewRoundRequest, AddReviewRoundResponse, DiscardReviewResponse, PutArtifactRequest,
+    PutArtifactResponse, ReviewScopeEntryDto, ReviewTicketResponse, SetDiscussionContextRequest,
+    StampReviewRequest, StampReviewResponse, TaskDoneRequest, TaskDoneResponse,
+    TaskUndoneResponse,
 };
 use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::drift::SpecDriftResponse;
@@ -431,9 +433,10 @@ impl Client {
         self.post(&format!("/changes/{name}/claim"), &Empty {})
     }
 
-    /// `POST /changes/{name}/archive`
-    pub fn archive(&self, name: &str) -> Result<ArchiveResponse, RemoteError> {
-        self.post(&format!("/changes/{name}/archive"), &Empty {})
+    /// `POST /changes/{name}/archive[?carryReview=true]` — 旗標帶著未結審查
+    /// 工單一起封存（D5 的第三處置）。
+    pub fn archive(&self, name: &str, carry_review: bool) -> Result<ArchiveResponse, RemoteError> {
+        self.post(&format!("/changes/{name}/archive?carryReview={carry_review}"), &Empty {})
     }
 
     /// `GET /changes/{name}/validate` — 唯讀衍生查詢；端點固定單 change，
@@ -537,6 +540,56 @@ impl Client {
         self.post(
             &format!("/discussions/{slug}/seal"),
             &BindDiscussionRequest { change: change.to_string() },
+        )
+    }
+
+    /// `GET /changes/{name}/review` — the parsed review ticket (mirrors the
+    /// CLI `review show --json` shape).
+    pub fn review_ticket(&self, name: &str) -> Result<ReviewTicketResponse, RemoteError> {
+        self.get(&format!("/changes/{name}/review"))
+    }
+
+    /// `POST /changes/{name}/review/rounds`
+    pub fn review_add_round(
+        &self,
+        name: &str,
+        content: &str,
+    ) -> Result<AddReviewRoundResponse, RemoteError> {
+        self.post(
+            &format!("/changes/{name}/review/rounds"),
+            &AddReviewRoundRequest { content: content.to_string() },
+        )
+    }
+
+    /// `POST /changes/{name}/review/stamp` — the scope fingerprints are
+    /// computed by the caller from its work tree (design D4a); the server
+    /// validates the path set against the ticket and never re-hashes.
+    pub fn review_stamp(
+        &self,
+        name: &str,
+        accept: bool,
+        agent: Option<&str>,
+        scope: &[ReviewScopeEntryDto],
+        missing: &[String],
+    ) -> Result<StampReviewResponse, RemoteError> {
+        self.post(
+            &format!("/changes/{name}/review/stamp"),
+            &StampReviewRequest {
+                accept,
+                agent: agent.map(str::to_string),
+                scope: scope.to_vec(),
+                missing: missing.to_vec(),
+            },
+        )
+    }
+
+    /// `DELETE /changes/{name}/review`
+    pub fn review_discard(&self, name: &str) -> Result<DiscardReviewResponse, RemoteError> {
+        self.send::<DiscardReviewResponse, Empty>(
+            "DELETE",
+            &format!("/changes/{name}/review"),
+            None,
+            &[],
         )
     }
 

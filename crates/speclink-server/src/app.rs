@@ -60,6 +60,12 @@ pub fn router(state: AppState) -> Router {
             "/changes/{name}/tasks/{task_id}/undone",
             post(routes::task_undone),
         )
+        .route(
+            "/changes/{name}/review",
+            get(routes::review_show).delete(routes::review_discard),
+        )
+        .route("/changes/{name}/review/rounds", post(routes::review_add_round))
+        .route("/changes/{name}/review/stamp", post(routes::review_stamp))
         .route("/changes/{name}/claim", post(routes::claim))
         .route(
             "/changes/{name}/in-progress",

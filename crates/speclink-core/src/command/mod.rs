@@ -110,6 +110,8 @@ fn classify(e: anyhow::Error) -> CommandError {
         (ErrorCode::Refused, b.to_string())
     } else if let Some(m) = e.downcast_ref::<crate::model::MetaError>() {
         (ErrorCode::InvalidConfig, m.to_string())
+    } else if let Some(n) = e.downcast_ref::<crate::review::NotFound>() {
+        (ErrorCode::NotFound, n.to_string())
     } else {
         (ErrorCode::Error, e.to_string())
     };
@@ -147,6 +149,9 @@ pub enum DomainEvent {
     ChangeInProgressRemoved { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeArchived { change: String, dated_name: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    ReviewRoundAdded { change: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
+    ReviewStamped { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    ReviewDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionCreated { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionContextSet { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionRoundAdded { slug: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -172,6 +177,9 @@ impl DomainEvent {
             DomainEvent::ChangeInProgressRemoved { .. } => "change-in-progress-removed",
             DomainEvent::ChangeArchived { .. } => "change-archived",
             DomainEvent::ChangeDiscarded { .. } => "change-discarded",
+            DomainEvent::ReviewRoundAdded { .. } => "review-round-added",
+            DomainEvent::ReviewStamped { .. } => "review-stamped",
+            DomainEvent::ReviewDiscarded { .. } => "review-discarded",
             DomainEvent::DiscussionCreated { .. } => "discussion-created",
             DomainEvent::DiscussionContextSet { .. } => "discussion-context-set",
             DomainEvent::DiscussionRoundAdded { .. } => "discussion-round-added",
@@ -289,6 +297,7 @@ pub enum Command {
         skip_specs: bool,
         no_validate: bool,
         mark_tasks_complete: bool,
+        carry_review: bool,
     },
     /// `discard <change> [--force]`
     Discard { change: String, force: bool },
@@ -314,6 +323,23 @@ pub enum Command {
     DiscussArchive { slug: String },
     /// `discuss discard <slug> [--force]`
     DiscussDiscard { slug: String, force: bool },
+    /// `review add-round <change> --stdin`
+    ReviewAddRound { change: String, content: String },
+    /// `review show <change>`（查詢——不產生事件）
+    ReviewShow { change: String },
+    /// `review stamp <change> [--accept] [--agent]`。`scope` 為工作樹持有者
+    /// 預算的指紋清單（design D4a）：server 無工作樹，唯一蓋章路徑是提交
+    /// 端算好 (path, hash) 上 wire；`missing` 明示宣告聯集中已不存在的檔，
+    /// 分割「scope ∪ missing ＝工單聯集且不相交」不成立即拒。
+    ReviewStamp {
+        change: String,
+        accept: bool,
+        tool: Option<String>,
+        scope: Vec<crate::model::ReviewedScopeEntry>,
+        missing: Vec<String>,
+    },
+    /// `review discard <change>`
+    ReviewDiscard { change: String },
 }
 
 /// `list` outcome: the changes section (sorted per the requested key, absent
@@ -472,6 +498,26 @@ pub struct DiscussArchiveOutcome {
     pub archived_file: String,
 }
 
+/// `review add-round` outcome.
+#[derive(Debug)]
+pub struct ReviewRoundOutcome {
+    pub change: String,
+    pub round: usize,
+}
+
+/// `review show` outcome.
+#[derive(Debug)]
+pub struct ReviewShowOutcome {
+    pub change: String,
+    pub ticket: crate::review::Ticket,
+}
+
+/// `review stamp` / `review discard` outcome (subject only).
+#[derive(Debug)]
+pub struct ReviewSubjectOutcome {
+    pub change: String,
+}
+
 /// Typed result of one command execution.
 #[derive(Debug)]
 pub enum CommandOutcome {
@@ -505,6 +551,10 @@ pub enum CommandOutcome {
     DiscussSeal(DiscussBindOutcome),
     DiscussArchive(DiscussArchiveOutcome),
     DiscussDiscard(DiscussSubjectOutcome),
+    ReviewAddRound(ReviewRoundOutcome),
+    ReviewShow(ReviewShowOutcome),
+    ReviewStamp(ReviewSubjectOutcome),
+    ReviewDiscard(ReviewSubjectOutcome),
 }
 
 /// The Host-resolved engine-side execution context — resolved once at the
@@ -594,12 +644,12 @@ pub fn execute(
         }
         Command::InProgressAdd { name } => run_in_progress_add(store, ctx.actor.as_deref(), &name),
         Command::InProgressRemove { name } => run_in_progress_remove(store, ws, &name),
-        Command::Archive { change, skip_specs, no_validate, mark_tasks_complete } => run_archive(
+        Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review } => run_archive(
             store,
             ws,
             ctx.actor.as_deref(),
             change.as_deref(),
-            crate::archive::ArchiveOptions { skip_specs, no_validate, mark_tasks_complete },
+            crate::archive::ArchiveOptions { skip_specs, no_validate, mark_tasks_complete, carry_review },
         ),
         Command::Discard { change, force } => run_discard(store, ws, &change, force),
         Command::DiscussNew { topic, slug } => run_discuss_new(store, ctx.actor.as_deref(), &topic, slug.as_deref()),
@@ -646,6 +696,31 @@ pub fn execute(
         Command::DiscussDiscard { slug, force } => {
             crate::discuss::discard_discussion(store, &slug, force).map_err(classify)?;
             Ok(CommandOutcome::DiscussDiscard(DiscussSubjectOutcome { slug }))
+        }
+        Command::ReviewAddRound { change, content } => {
+            let round = crate::review::add_round(store, &change, &content).map_err(classify)?;
+            Ok(CommandOutcome::ReviewAddRound(ReviewRoundOutcome { change, round }))
+        }
+        Command::ReviewShow { change } => {
+            let ticket = crate::review::show(store, &change).map_err(classify)?;
+            Ok(CommandOutcome::ReviewShow(ReviewShowOutcome { change, ticket }))
+        }
+        Command::ReviewStamp { change, accept, tool, scope, missing } => {
+            crate::review::stamp_with_scope(
+                store,
+                &change,
+                accept,
+                ctx.actor.as_deref(),
+                tool.as_deref(),
+                scope,
+                missing,
+            )
+            .map_err(classify)?;
+            Ok(CommandOutcome::ReviewStamp(ReviewSubjectOutcome { change }))
+        }
+        Command::ReviewDiscard { change } => {
+            crate::review::discard(store, &change).map_err(classify)?;
+            Ok(CommandOutcome::ReviewDiscard(ReviewSubjectOutcome { change }))
         }
     }?;
     let events = events_of(&outcome);
@@ -757,6 +832,20 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         }],
         CommandOutcome::DiscussDiscard(o) => vec![DomainEvent::DiscussionDiscarded {
             slug: o.slug.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::ReviewShow(_) => Vec::new(),
+        CommandOutcome::ReviewAddRound(o) => vec![DomainEvent::ReviewRoundAdded {
+            change: o.change.clone(),
+            round: o.round,
+            occurred_at: at,
+        }],
+        CommandOutcome::ReviewStamp(o) => vec![DomainEvent::ReviewStamped {
+            change: o.change.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::ReviewDiscard(o) => vec![DomainEvent::ReviewDiscarded {
+            change: o.change.clone(),
             occurred_at: at,
         }],
     }
@@ -1340,6 +1429,7 @@ fn run_archive(
     // Gate before --mark-tasks-complete's pre-write; the core archive flow
     // gates again for entry points that call it directly (desktop).
     guard_meta(&change)?;
+    crate::archive::guard_open_review(store, &change.name, opts.carry_review).map_err(classify)?;
     if opts.mark_tasks_complete {
         if let Some(text) = store.read_artifact(&change.name, "tasks.md") {
             // Star-bullet checkboxes are tasks too (frozen rule).
@@ -1600,6 +1690,37 @@ mod tests {
     }
 
     #[test]
+    fn archive_on_open_review_ticket_refuses_before_marking_tasks_complete() {
+        // 未結工單守門與壞 metadata 守門同級：拒絕路徑不得留下副作用。
+        // --mark-tasks-complete 的前置寫入排在守門之前的話，被拒的封存仍會把
+        // tasks.md 全勾成完成——任務狀態被污染且不回滾。
+        const TASKS: &str = "- [ ] 1.1 open\n";
+        const TICKET: &str = "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n";
+        let store = TestStore::with_meta("demo", "schema: spec-driven\n");
+        store.put_artifact("demo", "tasks.md", TASKS);
+        store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
+        let err = execute(
+            &store,
+            &ExecutionContext::default(),
+            Command::Archive {
+                change: Some("demo".to_string()),
+                skip_specs: true,
+                no_validate: true,
+                mark_tasks_complete: true,
+                carry_review: false,
+            },
+        )
+        .expect_err("open review ticket must refuse archive");
+        assert!(err.message.contains("--carry-review"), "three disposals listed: {}", err.message);
+        assert_eq!(
+            store.artifacts.borrow().get(&("demo".to_string(), "tasks.md".to_string())).unwrap(),
+            TASKS,
+            "tasks.md must stay byte-identical when the gate refuses"
+        );
+        assert_eq!(*store.artifact_writes.borrow(), 0, "refusal must not write");
+    }
+
+    #[test]
     fn archive_on_corrupt_meta_refuses_without_moving_or_merging() {
         // spec「archive 對壞 metadata 拒絕」：正典未併入、目錄未移動；
         // --mark-tasks-complete 的前置寫入也不得發生。
@@ -1615,6 +1736,7 @@ mod tests {
                     skip_specs: false,
                     no_validate: false,
                     mark_tasks_complete: mark,
+                    carry_review: false,
                 },
             )
             .expect_err("archive on corrupt meta must refuse");
@@ -2233,6 +2355,7 @@ mod tests {
                 skip_specs: false,
                 no_validate: false,
                 mark_tasks_complete: false,
+                carry_review: false,
             },
         );
         assert_eq!(kinds(&events), ["change-archived"]);
@@ -2256,6 +2379,7 @@ mod tests {
                 skip_specs: false,
                 no_validate: false,
                 mark_tasks_complete: false,
+                carry_review: false,
             },
         )
         .expect_err("incomplete change must refuse archive");
@@ -2287,6 +2411,83 @@ mod tests {
         .expect_err("started change must refuse discard");
         assert_eq!(err.code, ErrorCode::Refused);
         assert!(store.change_exists("demo"), "nothing deleted on refusal");
+    }
+
+    #[test]
+    fn review_verbs_execute_over_commands_with_events_and_actor() {
+        // design D4a：review 動詞家族經 Command 分派（server 承載的動詞契約）——
+        // 一條真實生命週期；stamp 取 ctx.actor 落 reviewed_by、scope 由提交端預算；
+        // 查無映 NotFound（server 404）。
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [x] 1 a\n");
+        let (outcome, ev) = ok(
+            &store,
+            Command::ReviewAddRound {
+                change: "demo".to_string(),
+                content: "**Scope**: src/lib.rs\n".to_string(),
+            },
+        );
+        match outcome {
+            CommandOutcome::ReviewAddRound(o) => {
+                assert_eq!((o.change.as_str(), o.round), ("demo", 1));
+            }
+            other => panic!("expected review add-round outcome, got {other:?}"),
+        }
+        assert_eq!(kinds(&ev), ["review-round-added"]);
+
+        let (outcome, ev) = ok(&store, Command::ReviewShow { change: "demo".to_string() });
+        match outcome {
+            CommandOutcome::ReviewShow(o) => {
+                assert_eq!(o.ticket.last_round().scope, ["src/lib.rs"]);
+            }
+            other => panic!("expected review show outcome, got {other:?}"),
+        }
+        assert!(ev.is_empty(), "show is a query and never produces events");
+
+        let ctx = ExecutionContext {
+            actor: Some("Rev <r@example.com>".to_string()),
+            ..Default::default()
+        };
+        let hash = crate::review::content_fingerprint("fn lib() {}\n");
+        let (_, ev) = execute(
+            &store,
+            &ctx,
+            Command::ReviewStamp {
+                change: "demo".to_string(),
+                accept: false,
+                tool: Some("claude".to_string()),
+                scope: vec![crate::model::ReviewedScopeEntry {
+                    path: "src/lib.rs".to_string(),
+                    hash,
+                }],
+                missing: vec![],
+            },
+        )
+        .expect("stamp executes");
+        assert_eq!(kinds(&ev), ["review-stamped"]);
+        let meta = crate::model::ChangeMeta::from_text(Some(&store.meta("demo")))
+            .expect("meta parses");
+        assert_eq!(meta.reviewed_by.as_deref(), Some("Rev <r@example.com>"));
+        assert_eq!(meta.reviewed_with.as_deref(), Some("claude"));
+
+        let (_, ev) = ok(
+            &store,
+            Command::ReviewAddRound {
+                change: "demo".to_string(),
+                content: "**Scope**: src/lib.rs\n".to_string(),
+            },
+        );
+        assert_eq!(kinds(&ev), ["review-round-added"]);
+        let (_, ev) = ok(&store, Command::ReviewDiscard { change: "demo".to_string() });
+        assert_eq!(kinds(&ev), ["review-discarded"]);
+
+        let err = execute(
+            &store,
+            &ExecutionContext::default(),
+            Command::ReviewShow { change: "demo".to_string() },
+        )
+        .expect_err("no ticket left after discard");
+        assert_eq!(err.code, ErrorCode::NotFound, "missing ticket maps to 404: {}", err.message);
     }
 
     #[test]
@@ -2547,8 +2748,14 @@ mod tests {
                 DomainEvent::DiscussionDiscarded { slug: s("d"), occurred_at: at },
                 "discussion-discarded",
             ),
+            (
+                DomainEvent::ReviewRoundAdded { change: s("c"), round: 1, occurred_at: at },
+                "review-round-added",
+            ),
+            (DomainEvent::ReviewStamped { change: s("c"), occurred_at: at }, "review-stamped"),
+            (DomainEvent::ReviewDiscarded { change: s("c"), occurred_at: at }, "review-discarded"),
         ];
-        assert_eq!(table.len(), 18, "the coverage table has 18 mutating verbs");
+        assert_eq!(table.len(), 21, "the coverage table has 21 mutating verbs");
         for (event, kind) in &table {
             assert_eq!(event.kind(), *kind, "for {event:?}");
         }
@@ -2587,7 +2794,7 @@ mod tests {
             Command::Claim { name: _ } => {}
             Command::InProgressAdd { name: _ } => {}
             Command::InProgressRemove { name: _ } => {}
-            Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _ } => {}
+            Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _, carry_review: _ } => {}
             Command::Discard { change: _, force: _ } => {}
             Command::DiscussNew { topic: _, slug: _ } => {}
             Command::DiscussContext { slug: _, content: _ } => {}
@@ -2598,6 +2805,12 @@ mod tests {
             Command::DiscussSeal { slug: _, change: _ } => {}
             Command::DiscussArchive { slug: _ } => {}
             Command::DiscussDiscard { slug: _, force: _ } => {}
+            Command::ReviewAddRound { change: _, content: _ } => {}
+            Command::ReviewShow { change: _ } => {}
+            // `tool` 是工具名（CLI `--agent`，同 NewChange 的 agent），非身分；
+            // 蓋章者身分仍只來自 ExecutionContext.actor。
+            Command::ReviewStamp { change: _, accept: _, tool: _, scope: _, missing: _ } => {}
+            Command::ReviewDiscard { change: _ } => {}
         }
     }
 

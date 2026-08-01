@@ -40,15 +40,31 @@ Store abstraction、Node SDK 與 Remote Platform 等延伸。
 ## SDD workflow / SDD 工作流
 
 ```text
-onboard? → discuss? → propose → apply ⇄ ingest → archive
+onboard? → discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive
                          ↑
                  resume after pause: drift first
 
-utilities: validate / analyze / audit / commit / verify and evidence
+utilities: validate / analyze / audit / commit / evidence
 ```
 
 `discuss` 只在需求需要收斂時使用；需求明確可直接 `propose`。實作途中需求改變走 `ingest`，閒置後續作先跑
 `drift`。討論結論後的完整提案、快速轉為變更、併入既有 change 與決定不做等分流，見[完整 SDD 工作流](docs/workflow.zh-TW.md)。
+
+### Quality stations / 品質站
+
+`apply` 完成後、`archive` 之前有兩個可選品質站。兩站並行、互不依賴，依風險自由組合——低風險變更兩站都跳過也是正當選擇：
+
+| | `review` 審查 | `verify` 驗證 |
+| --- | --- | --- |
+| 回答的問題 | 程式碼寫得好不好（工藝） | 交付是否符合規格（合規） |
+| 判準 | repo 慣例文件＋Fowler smells 基線（repo 文件優先）＋bug 獵捕 | change 的 specs 逐條三維度 |
+| artifacts 的角色 | 判準脈絡，不產合規裁決 | 檢查的中心 |
+| 執行前提 | 全任務完成 | 隨時可跑（中途執行＝進度盤點） |
+| 產出 | `review.md` 工單多輪，零 CRITICAL 後蓋章 | verify 報告與 task evidence |
+
+`/speclink-review` 適合改動大、跨子系統、或會被長期維護的程式碼：findings 分級 CRITICAL／WARNING／SUGGESTION
+記入工單，修正後重審至空輪蓋章。蓋章後範圍內檔案再被修改，卡片標示降級為「已審查·其後有變動」；封存時偵測到
+未結工單會被攔下（回去蓋章／放棄審查／照樣帶走）。
 
 ## Local Repo quick start / Local Repo 快速開始
 

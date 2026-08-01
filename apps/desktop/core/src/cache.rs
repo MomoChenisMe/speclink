@@ -17,7 +17,8 @@ use crate::init_core_context;
 /// 快取 schema 版本。改動快取表結構時遞增——舊版本會被丟棄重建。
 /// v2：archived_changes 加 tasks_total／tasks_done（清單徽章，首次收斂後零解析）。
 /// v3：加 spec_count／created_by／from_discussions（封存卡收合資訊，spec-archive-drawer design D5）。
-const CACHE_VERSION: i64 = 3;
+/// v4：加 review_status（封存時的審查結局，spec client-protocol「已封存清單的審查結局欄位」）。
+const CACHE_VERSION: i64 = 4;
 
 /// 回傳歸檔 change 清單：`{ "archived": [ { datedName, date, name } ] }`，按 datedName 排序。
 /// 非專案回傳 `{ "archived": [] }`。
@@ -79,8 +80,20 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
             // 歷史紀錄照舊寬鬆讀取。
             let parsed = speclink_core::model::ChangeMeta::from_text(Some(&meta)).unwrap_or_default();
             let spec_count = store.archived_delta_capabilities(name).len() as i64;
+            // 審查結局（封存即定格，不重算凍結度）：含章 → reviewed；含化石工單
+            // 而無章 → reviewedNotPassed；皆無 → none。入庫後清單讀取零解析。
+            let review_status = if parsed.reviewed_at.is_some() {
+                "reviewed"
+            } else if store
+                .read_archived_artifact(name, speclink_core::review::REVIEW_DOC)
+                .is_some()
+            {
+                "reviewedNotPassed"
+            } else {
+                "none"
+            };
             conn.execute(
-                "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done, spec_count, created_by, from_discussions) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 rusqlite::params![
                     name,
                     meta,
@@ -89,6 +102,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                     spec_count,
                     parsed.created_by,
                     parsed.from_discussions().join(","),
+                    review_status,
                 ],
             )?;
         }
@@ -109,7 +123,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
     }
 
     let mut stmt = conn.prepare(
-        "SELECT dated_name, tasks_total, tasks_done, spec_count, created_by, from_discussions FROM archived_changes ORDER BY dated_name",
+        "SELECT dated_name, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status FROM archived_changes ORDER BY dated_name",
     )?;
     let items: Vec<Value> = stmt
         .query_map([], |r| {
@@ -120,10 +134,11 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 r.get::<_, Option<i64>>(3)?,
                 r.get::<_, Option<String>>(4)?,
                 r.get::<_, Option<String>>(5)?,
+                r.get::<_, Option<String>>(6)?,
             ))
         })?
         .flatten()
-        .map(|(n, total, done, spec_count, created_by, from_discussions)| {
+        .map(|(n, total, done, spec_count, created_by, from_discussions, review_status)| {
             let mut item = item_for(&n);
             // 無 tasks.md 的封存項徽章欄位缺席（前端據此不顯示徽章）。
             if let (Some(total), Some(done)) = (total, done) {
@@ -138,6 +153,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 .map(|v| v.split(',').map(str::trim).filter(|s| !s.is_empty()).collect())
                 .unwrap_or_default();
             item["fromDiscussions"] = json!(discussions);
+            item["reviewStatus"] = json!(review_status.as_deref().unwrap_or("none"));
             item
         })
         .collect();
@@ -158,7 +174,7 @@ fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
             "DROP TABLE IF EXISTS archived_changes;
              DROP TABLE IF EXISTS schema_version;
              CREATE TABLE schema_version (version INTEGER);
-             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT);",
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT, review_status TEXT);",
         )?;
         conn.execute(
             "INSERT INTO schema_version (version) VALUES (?1)",
@@ -222,6 +238,42 @@ mod tests {
             .iter()
             .map(|i| i["datedName"].as_str().unwrap().to_string())
             .collect()
+    }
+
+    #[test]
+    fn archived_list_carries_review_outcome_three_states() {
+        // spec client-protocol「已封存清單的審查結局欄位」：封存目錄含章 → reviewed；
+        // 含（化石）工單而無章 → reviewedNotPassed；皆無 → none。已封存側不重算
+        // 凍結度（封存即定格）——此處的假 hash 不得使 reviewed 降級。
+        let root = fixture_project(
+            "review",
+            &["2026-01-01-plain", "2026-01-02-passed", "2026-01-03-carried"],
+        );
+        let archive = root.join("openspec").join("changes").join("archive");
+        fs::write(
+            archive.join("2026-01-02-passed").join(".openspec.yaml"),
+            "schema: spec-driven\ncreated: 2026-01-01\nreviewed_at: 2026-01-02\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/lib.rs\n    hash: dead\n",
+        )
+        .unwrap();
+        fs::write(
+            archive.join("2026-01-03-carried").join("review.md"),
+            "# Review — carried\n\n## Round 1\n\n**Scope**: src/lib.rs\n\n- [CRITICAL] src/lib.rs — broken\n",
+        )
+        .unwrap();
+        let v = archived_changes_at(&root);
+        let by_name = |n: &str| {
+            v["archived"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|i| i["datedName"] == n)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(by_name("2026-01-01-plain")["reviewStatus"], "none");
+        assert_eq!(by_name("2026-01-02-passed")["reviewStatus"], "reviewed");
+        assert_eq!(by_name("2026-01-03-carried")["reviewStatus"], "reviewedNotPassed");
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -402,7 +454,7 @@ mod tests {
         let version: i64 = conn
             .query_row("SELECT version FROM schema_version LIMIT 1", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 3, "schema version stamped to v3 after rebuild");
+        assert_eq!(version, CACHE_VERSION, "schema version stamped to current after rebuild");
         let _ = fs::remove_dir_all(&root);
     }
 

@@ -83,6 +83,7 @@ const B_DRIFT: &str = include_str!("../assets/skills/drift.md");
 const B_INGEST: &str = include_str!("../assets/skills/ingest.md");
 const B_ONBOARD: &str = include_str!("../assets/skills/onboard.md");
 const B_PROPOSE: &str = include_str!("../assets/skills/propose.md");
+const B_REVIEW: &str = include_str!("../assets/skills/review.md");
 const B_VERIFY: &str = include_str!("../assets/skills/verify.md");
 const B_SYNC: &str = include_str!("../assets/skills/sync.md");
 const B_CLARIFY: &str = include_str!("../assets/skills/clarify.md");
@@ -107,6 +108,9 @@ pub fn registry() -> Vec<Skill> {
         Skill { name: "ingest", description: "Update an existing Speclink change from external context", fork: false, disallow_edit: false, for_codex: true, body: B_INGEST },
         Skill { name: "onboard", description: "Adopt Speclink on an existing codebase by generating initial specs from current behavior", fork: false, disallow_edit: false, for_codex: true, body: B_ONBOARD },
         Skill { name: "propose", description: "Create a change proposal with all required artifacts", fork: false, disallow_edit: false, for_codex: true, body: B_PROPOSE },
+        // Not a fork skill（design D7 替代案否決 fork）：主線 orchestrator 要
+        // fan-out 兩個平行 sub-agent 並互動詢問三選項；修正回主線，故 Edit 不禁。
+        Skill { name: "review", description: "Review a change's implementation for craft quality — parallel standards and correctness axes, recorded to a review ticket", fork: false, disallow_edit: false, for_codex: true, body: B_REVIEW },
         Skill { name: "verify", description: "Verify implementation matches artifacts", fork: true, disallow_edit: true, for_codex: false, body: B_VERIFY },
     ]
 }
@@ -124,6 +128,7 @@ pub fn skill_body(name: &str) -> Option<&'static str> {
         "drift" => B_DRIFT,
         "ingest" => B_INGEST,
         "propose" => B_PROPOSE,
+        "review" => B_REVIEW,
         "verify" => B_VERIFY,
         "sync" => B_SYNC,
         "clarify" => B_CLARIFY,

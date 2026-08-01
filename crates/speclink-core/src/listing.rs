@@ -204,4 +204,31 @@ mod tests {
         assert_eq!(ranked_json, json_of(&bare), "board_rank must not affect list --json");
         assert!(!ranked_json.contains("board_rank") && !ranked_json.contains("boardRank"));
     }
+
+    #[test]
+    fn list_json_payload_is_unchanged_by_reviewed_fields() {
+        // spec review-station「CLI 清單輸出的相容性釘住」：帶全套 reviewed 欄位的
+        // change 與不帶者序列化同形（審查狀態僅進 desktop 協定，不進 CLI 輸出）。
+        let reviewed = TestStore::with_meta(
+            "demo",
+            "schema: spec-driven\ncreated: 2026-07-01\nreviewed_at: 2026-08-01\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 2\nreviewed_scope:\n  - path: crates/a/src/lib.rs\n    hash: 0f9c\n",
+        );
+        reviewed.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
+        reviewed.put_artifact("demo", "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
+
+        let bare = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        bare.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
+        bare.put_artifact("demo", "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
+
+        let json_of = |store: &TestStore| {
+            let changes = crate::model::list_changes(store);
+            serde_json::to_string(&changes_json(store, &changes)).unwrap()
+        };
+        let reviewed_json = json_of(&reviewed);
+        assert_eq!(reviewed_json, json_of(&bare), "reviewed_* must not affect list --json");
+        assert!(
+            !reviewed_json.contains("reviewed") && !reviewed_json.contains("reviewStatus"),
+            "no review field may leak into the CLI item: {reviewed_json}"
+        );
+    }
 }

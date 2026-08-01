@@ -17,6 +17,7 @@ pub mod listing;
 pub mod model;
 pub mod newcmd;
 pub mod preflight;
+pub mod review;
 pub mod schema;
 pub mod skills;
 pub mod status;

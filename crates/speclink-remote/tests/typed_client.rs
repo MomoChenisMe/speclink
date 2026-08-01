@@ -346,9 +346,14 @@ fn claim_and_archive_return_typed_responses() {
     assert_eq!(cap.body, "{}");
 
     let mock2 = serve(200, r#"{"specs":[{"capability":"user-auth"}]}"#);
-    let archive = client(&mock2).archive("demo").expect("archive ok");
+    let archive = client(&mock2).archive("demo", false).expect("archive ok");
     assert_eq!(archive.specs[0].capability, "user-auth");
-    assert_call(&mock2.last(), "POST", "/changes/demo/archive");
+    assert_call(&mock2.last(), "POST", "/changes/demo/archive?carryReview=false");
+
+    // 帶未結審查工單封存（D5 第三處置）：旗標須真的上 wire，否則 remote 只剩兩條出路。
+    let mock3 = serve(200, r#"{"specs":[]}"#);
+    client(&mock3).archive("demo", true).expect("carry-review archive ok");
+    assert_call(&mock3.last(), "POST", "/changes/demo/archive?carryReview=true");
 }
 
 #[test]

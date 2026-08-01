@@ -64,6 +64,9 @@ const FAILURE_TOAST_ID = "desktop-operation-failure";
 type FailureMessageKey =
   | "store.deleteFailed"
   | "store.archiveFailed"
+  | "store.archiveAfterDiscardFailed"
+  | "store.discardReviewFailed"
+  | "store.reviewActionUnsupported"
   | "store.revertFailed"
   | "store.discussionArchiveFailed"
   | "store.reorderFailed"
@@ -71,8 +74,10 @@ type FailureMessageKey =
   | "store.initFailed"
   | "store.adoptFailed";
 
-function showFailureToast(subject: string, messageKey: FailureMessageKey, error: unknown): void {
-  toast.error(`${subject} · ${appT(messageKey)} ✗ ${String(error)}`, { id: FAILURE_TOAST_ID });
+/** error 缺席時不輸出尾綴——訊息本身已完整，且錯誤細節不得夾帶工程詞給使用者。 */
+function showFailureToast(subject: string, messageKey: FailureMessageKey, error?: unknown): void {
+  const detail = error === undefined ? "" : ` ✗ ${String(error)}`;
+  toast.error(`${subject} · ${appT(messageKey)}${detail}`, { id: FAILURE_TOAST_ID });
 }
 
 /** remote 拖排放開後的暫時可見序：只按 UI 已解析好的鄰居移動，不理解 rank。 */
@@ -200,6 +205,10 @@ export interface AppState {
   requestArchive: (name: string) => void;
   confirmArchive: () => Promise<void>;
   cancelArchive: () => void;
+  /** 三選項「放棄審查」：先刪工單再照常封存（spec「封存入口的未結工單三選項」）。 */
+  confirmArchiveDiscardReview: () => Promise<void>;
+  /** 三選項「照樣帶走」：帶未結工單封存（--carry-review，永久顯示「曾審查未通過」）。 */
+  confirmArchiveCarryReview: () => Promise<void>;
   requestDelete: (name: string) => void;
   confirmDelete: () => Promise<void>;
   cancelDelete: () => void;
@@ -529,6 +538,23 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     /** 活躍 session 的 dataSource；零分頁空狀態回 null（資料操作一律早退）。 */
     function activeDataSource(): SpeclinkDataSource | null {
       return activeSession()?.dataSource ?? null;
+    }
+
+    /** 封存終局的共同收尾（D1）：成功由畫面表達（關抽屜、不發 toast），失敗以
+     * 單槽 toast 呈現 core 的訊息；兩條路都重載。`archive` 動詞與「照樣帶走」
+     * 都是封存終局，收尾只此一份。 */
+    async function settleArchive(
+      change: string,
+      run: () => Promise<unknown>,
+      failKey: FailureMessageKey = "store.archiveFailed",
+    ) {
+      try {
+        await run();
+        set({ detailChange: null });
+      } catch (e) {
+        showFailureToast(change, failKey, e);
+      }
+      await get().refresh();
     }
 
     /** 逐連線互動狀態的單點更新（desktop-connections）。 */
@@ -997,6 +1023,43 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       set({ pendingArchive: null });
     },
 
+    async confirmArchiveDiscardReview() {
+      const name = get().pendingArchive;
+      set({ pendingArchive: null });
+      if (!name) return;
+      const dataSource = activeDataSource();
+      const discardReview = dataSource?.discardReview;
+      if (!dataSource || !discardReview) {
+        showFailureToast(name, "store.reviewActionUnsupported");
+        return;
+      }
+      try {
+        await discardReview(name);
+      } catch (e) {
+        showFailureToast(name, "store.discardReviewFailed", e);
+        await get().refresh();
+        return;
+      }
+      // 工單已刪：封存此後失敗要點名審查紀錄已不在，不得只說「封存失敗」。
+      await settleArchive(
+        name,
+        () => dataSource.runVerb("archive", name),
+        "store.archiveAfterDiscardFailed",
+      );
+    },
+
+    async confirmArchiveCarryReview() {
+      const name = get().pendingArchive;
+      set({ pendingArchive: null });
+      if (!name) return;
+      const archiveCarryReview = activeDataSource()?.archiveCarryReview;
+      if (!archiveCarryReview) {
+        showFailureToast(name, "store.reviewActionUnsupported");
+        return;
+      }
+      await settleArchive(name, () => archiveCarryReview(name));
+    },
+
     requestDelete(name) {
       set({ pendingDelete: name });
     },
@@ -1086,14 +1149,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!dataSource) return;
       // archive 屬看板全域操作：成功由畫面表達，失敗以單槽 toast 呈現（D1）。
       if (verb === "archive") {
-        try {
-          await dataSource.runVerb(verb, change);
-          set({ detailChange: null });
-        } catch (e) {
-          // 失敗時呈現 core 的錯誤訊息，不靜默吞掉。
-          showFailureToast(change, "store.archiveFailed", e);
-        }
-        await get().refresh();
+        await settleArchive(change, () => dataSource.runVerb(verb, change));
         return;
       }
       // 「分析」一鍵雙動詞（design D1）：validate＋analyze 併發執行、合併為

@@ -36,6 +36,27 @@ pub fn list_changes_at(root: &Path) -> Value {
             // 變更卡描述列的資料源：恆存在 key（缺件為 null），前端對 null 隱藏描述列。
             v["whyExcerpt"] =
                 json!(store.read_artifact(&c.name, "proposal.md").as_deref().and_then(why_excerpt));
+            // 審查狀態（spec client-protocol「變更清單的審查狀態欄位」；design D6）：
+            // 工單存在 → inReview；否則以 core 失效純函式重算凍結度（有工作樹的
+            // client 端）——Fresh → reviewed、Stale → reviewedStale、Unknown（無章）
+            // → none。章存在時附 reviewedAt／reviewedBy。
+            let review = if store.artifact_exists(&c.name, speclink_core::review::REVIEW_DOC) {
+                "inReview"
+            } else {
+                let read_file =
+                    |p: &str| std::fs::read_to_string(ctx.workspace.root.join(p)).ok();
+                let (complete, total) = speclink_core::listing::task_counts(store, c);
+                match speclink_core::review::freshness(&c.meta, total, complete, &read_file) {
+                    speclink_core::review::Freshness::Fresh => "reviewed",
+                    speclink_core::review::Freshness::Stale => "reviewedStale",
+                    speclink_core::review::Freshness::Unknown => "none",
+                }
+            };
+            v["reviewStatus"] = json!(review);
+            if matches!(review, "reviewed" | "reviewedStale") {
+                v["reviewedAt"] = json!(c.meta.reviewed_at);
+                v["reviewedBy"] = json!(c.meta.reviewed_by);
+            }
             v
         })
         .collect();
@@ -342,6 +363,58 @@ mod tests {
         assert_eq!(by_name("single")["fromDiscussions"], serde_json::json!(["alpha-search"]));
         assert_eq!(by_name("plain")["fromDiscussions"], serde_json::json!([]));
         assert!(by_name("multi").get("fromDiscussion").is_none(), "old single-value key gone");
+    }
+
+    const TICKET: &str = "# Review — x\n\n## Round 1\n\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — possible smell\n";
+    const TASKS_ALL_DONE: &str = "## 1. Group\n\n- [x] 1.1 First task\n- [x] 1.2 Second task\n";
+
+    fn reviewed_meta(scope_path: &str, hash: &str) -> String {
+        format!(
+            "schema: spec-driven\ncreated: 2026-07-01\nreviewed_at: 2026-08-01\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 2\nreviewed_scope:\n  - path: {scope_path}\n    hash: {hash}\n"
+        )
+    }
+
+    #[test]
+    fn list_changes_overlays_review_status_four_states() {
+        // spec client-protocol「變更清單的審查狀態欄位」：工單存在 → inReview；
+        // 章在且雙錨符 → reviewed；章在錨不符 → reviewedStale；皆無 → none。
+        // 章存在時附 reviewedAt／reviewedBy；凍結度於有工作樹的 client 端重算。
+        let fx = FixtureRoot::new("q-review");
+        fx.add_change("plain", OLD_META);
+        fx.add_change("underway", OLD_META);
+        fx.write("openspec/changes/underway/review.md", TICKET);
+        // reviewed：任務錨（2/2 全完成、蓋章總數 2）與內容錨（現值指紋相符）皆符。
+        let content = "fn keep() {}\n";
+        fx.write("src/lib.rs", content);
+        let hash = speclink_core::review::content_fingerprint(content);
+        fx.add_change("stamped", &reviewed_meta("src/lib.rs", &hash));
+        fx.write("openspec/changes/stamped/tasks.md", TASKS_ALL_DONE);
+        // reviewedStale（spec Example「章在但指紋不符」）：scope 檔其後追加了一行。
+        let old_hash = speclink_core::review::content_fingerprint("fn keep() {}\n");
+        fx.write("src/stale.rs", "fn keep() {}\nfn extra() {}\n");
+        fx.add_change("gone-stale", &reviewed_meta("src/stale.rs", &old_hash));
+        fx.write("openspec/changes/gone-stale/tasks.md", TASKS_ALL_DONE);
+
+        let v = list_changes_at(fx.root());
+        let arr = v["changes"].as_array().expect("changes array");
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+
+        assert_eq!(by_name("plain")["reviewStatus"], "none");
+        assert!(by_name("plain").get("reviewedAt").is_none(), "no anchors without a stamp");
+        assert_eq!(by_name("underway")["reviewStatus"], "inReview");
+        assert!(by_name("underway").get("reviewedAt").is_none(), "in-review carries no stamp");
+        let stamped = by_name("stamped");
+        assert_eq!(stamped["reviewStatus"], "reviewed");
+        assert_eq!(stamped["reviewedAt"], "2026-08-01");
+        assert_eq!(stamped["reviewedBy"], "Rev <r@example.com>");
+        let stale = by_name("gone-stale");
+        assert_eq!(stale["reviewStatus"], "reviewedStale");
+        assert_eq!(stale["reviewedAt"], "2026-08-01", "anchors survive the downgrade");
+        // camelCase 邊界：snake_case 不外洩；既有 CLI 形狀欄位不動。
+        assert!(stamped.get("review_status").is_none() && stamped.get("reviewed_at").is_none());
+        for key in ["name", "status", "totalTasks", "completedTasks", "summary"] {
+            assert!(stamped.get(key).is_some(), "existing key {key} intact");
+        }
     }
 
     #[test]

@@ -35,6 +35,28 @@ pub struct ChangeMeta {
     /// 卡片置欄頂、回退現行排序。ChangeMeta 僅 Deserialize，CLI 輸出不受影響。
     #[serde(default)]
     pub board_rank: Option<String>,
+    /// The "reviewed" quality station（`review stamp` 蓋章；design D3）。全部
+    /// `#[serde(default)]`——缺席讀作未審查，pre-migration metadata 照常解析。
+    #[serde(default)]
+    pub reviewed_at: Option<String>,
+    #[serde(default)]
+    pub reviewed_by: Option<String>,
+    #[serde(default)]
+    pub reviewed_with: Option<String>,
+    /// 任務錨：蓋章時任務總數。
+    #[serde(default)]
+    pub reviewed_tasks_total: Option<usize>,
+    /// 內容指紋錨：範圍檔 path＋hash 清單（缺席讀作空）。
+    #[serde(default)]
+    pub reviewed_scope: Vec<ReviewedScopeEntry>,
+}
+
+/// `reviewed_scope` 清單項：path 為 repo-root 相對、`/` 分隔（Windows 路徑
+/// 正規化後寫入）；hash 為內容 CRLF→LF 正規化後的 SHA-256（design D3）。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ReviewedScopeEntry {
+    pub path: String,
+    pub hash: String,
 }
 
 impl ChangeMeta {

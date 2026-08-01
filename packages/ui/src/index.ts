@@ -136,6 +136,7 @@ export { TaskList, type TaskListProps } from "./components/TaskList";
 export { DeltaBadges } from "./components/DeltaBadges";
 export { ArchivedList, type ArchivedListProps } from "./components/ArchivedList";
 export { ArchivedDrawer, type ArchivedDrawerProps, type ArchivedTarget } from "./components/ArchivedDrawer";
+export { ReviewArchiveDialog, type ReviewArchiveDialogProps } from "./components/ReviewArchiveDialog";
 
 // 規格頁
 export { SpecList, type SpecListProps } from "./components/SpecList";

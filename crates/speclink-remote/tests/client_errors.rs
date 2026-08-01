@@ -147,7 +147,7 @@ fn err_409_refused_relays_the_servers_precondition_message() {
         r#"{"status":409,"reason":"refused","message":"3 task(s) still open — finish them before archiving"}"#,
     );
     let client = Client::new(&base, "tok", Some("backend"));
-    let err = client.archive("add-rate-limit").unwrap_err();
+    let err = client.archive("add-rate-limit", false).unwrap_err();
     assert_eq!(
         err.message,
         "3 task(s) still open — finish them before archiving"

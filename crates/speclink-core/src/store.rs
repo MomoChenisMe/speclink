@@ -76,6 +76,14 @@ pub trait Store {
     fn write_artifact(&self, change: &str, artifact: &str, content: &str) -> Result<PathBuf>;
     /// Whether an artifact exists (an empty document counts).
     fn artifact_exists(&self, change: &str, artifact: &str) -> bool;
+    /// Delete a document inside an active change — the storage side of the
+    /// review ticket's discard/stamp (its only current caller). The engine
+    /// guards existence before calling. Backends that cannot delete refuse
+    /// loudly via this default instead of silently keeping the document.
+    fn delete_artifact(&self, change: &str, artifact: &str) -> Result<()> {
+        let _ = (change, artifact);
+        anyhow::bail!("this store backend does not support deleting change documents")
+    }
 
     // --- delta specs ---
 
