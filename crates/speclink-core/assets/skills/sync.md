@@ -63,7 +63,7 @@ This is an **agent-driven** operation - you will read delta specs and directly e
 
 4. **Normalize the delta specs**
 
-   After the main specs are updated, rewrite each delta spec file so a later `speclink archive` re-applies it idempotently (the archive CLI wholesale-replaces MODIFIED requirements with the delta's content, and skips ADDED requirements that already exist — which would omit their `@trace` markers):
+   After the main specs are updated, rewrite each delta spec file so a later `speclink archive` accepts it (NOTE: this dormant asset predates the fail-closed merge gate — the engine now REFUSES an ADDED requirement that already exists instead of skipping it, so a delta left un-normalized fails the archive loudly):
 
    - Rewrite each MODIFIED requirement as the complete final state, matching the merged main spec content (excluding any `@trace` comments)
    - Convert each ADDED requirement to MODIFIED with complete final state (it now exists in the main spec)

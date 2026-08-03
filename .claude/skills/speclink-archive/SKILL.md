@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.5.0"
+  version: "v1.6.0"
   generatedBy: "Speclink"
 ---
 
@@ -56,7 +56,29 @@ Archive a completed change.
 
    Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, skip this step.
 
-   Background: the archive CLI applies deltas mechanically — a MODIFIED requirement **wholesale-replaces** the canonical requirement block with the delta's content, and an ADDED requirement that already exists in the canonical spec is skipped (leaving it without a `@trace` marker). A delta is therefore safe to archive only when every MODIFIED requirement contains the complete final text (including scenarios that should survive unchanged).
+   Background: the merge engine is fail-closed. It validates every capability's delta
+   against the canonical spec first and writes nothing until all of them pass, so a stale
+   or self-contradicting delta refuses the archive with zero file effect instead of
+   silently dropping content. It refuses when:
+   - an ADDED requirement name already exists in the canonical spec
+   - a MODIFIED/REMOVED/RENAMED source requirement no longer exists
+   - one requirement name appears under more than one operation section of the delta
+   - a RENAMED target name is already taken in the canonical spec
+   - a MODIFIED block drops a scenario the canonical requirement has, without declaring it
+   - a capability with no canonical spec yet carries anything other than ADDED
+
+   A MODIFIED requirement **wholesale-replaces** the canonical requirement block, so it must
+   contain the complete final text. To drop a canonical scenario on purpose, declare it
+   inside the MODIFIED block — one per line, stripped before the text reaches the canon:
+
+   ```markdown
+   ### Requirement: Retry policy
+
+   <!-- REMOVED-SCENARIO: Offline queue -->
+   ```
+
+   A delta for a capability being created may also carry a `## Purpose` section; it becomes
+   the new canonical spec's Purpose (without one, a TBD placeholder is written).
 
    **For each delta spec, compare against `openspec/specs/<capability>/spec.md`:**
    - MODIFIED requirements: does the canonical requirement contain scenarios or content the delta omits but that should survive?
@@ -64,15 +86,15 @@ Archive a completed change.
 
    **If every delta is already complete final-state and no ADDED requirement pre-exists:** proceed directly to the archive (step 5) — no prompt needed.
 
-   **Otherwise**, show a summary of what would be lost or skipped, then use the **AskUserQuestion tool**:
-   - "Normalize delta then archive (recommended)": rewrite the delta spec file(s) in place —
-     - merge the omitted canonical content into each MODIFIED requirement so it reads as the complete final state
-     - convert each pre-existing ADDED requirement to MODIFIED (complete final state) so the CLI re-applies it and injects `@trace`
+   **Otherwise**, show a summary of what the engine would refuse, then use the **AskUserQuestion tool**:
+   - "Fix the delta then archive (recommended)": rewrite the delta spec file(s) in place —
+     - merge the omitted canonical content into each MODIFIED requirement so it reads as the complete final state, or declare the drop with `<!-- REMOVED-SCENARIO: … -->`
+     - drop or retarget each pre-existing ADDED requirement (a requirement the canon already carries is edited via MODIFIED, not re-added)
      - do NOT edit the main specs — only the delta files change
-   - "Archive as-is": proceed, accepting that omitted canonical content will be lost on merge
+   - "Refresh from the codebase": run `/speclink-drift <name>` to see what moved, then `/speclink-ingest <name>` to update the delta — the route the refusal message itself points at
    - "Cancel"
 
-   After normalizing, show a brief diff summary of the rewritten delta files, then continue.
+   After fixing, show a brief diff summary of the rewritten delta files, then continue.
 
 5. **Perform the archive**
 
@@ -88,7 +110,13 @@ Archive a completed change.
    - `--mark-tasks-complete` — mark all incomplete tasks as complete before archiving
    - `--no-validate` — skip delta spec validation
 
-   **If archive fails** with "already exists" error, suggest renaming existing archive.
+   **If archive fails** because the archived name already exists, suggest renaming existing archive.
+
+   **If the merge gate refuses**, the error lists every offending operation
+   (capability / operation / requirement / reason) at once. Fix them in one round on the
+   delta files — `speclink drift <name>` shows what moved, `/speclink-ingest <name>`
+   updates the delta — then re-run the archive. `--no-validate` does not unlock the gate;
+   `--skip-specs` skips spec application entirely.
 
 6. **Display summary**
 
@@ -187,8 +215,9 @@ Target archive directory already exists.
 - Don't block archive on warnings - just inform and confirm
 - Preserve .openspec.yaml when moving to archive (it moves with the directory)
 - Show clear summary of what happened
-- Normalization rewrites delta files only — NEVER edit main specs directly; delta application is the archive CLI's job
-- If delta specs exist, always run the completeness assessment; only prompt when normalization is actually needed
+- Fixing a delta rewrites delta files only — NEVER edit main specs directly; delta application is the archive CLI's job
+- If delta specs exist, always run the completeness assessment; only prompt when a fix is actually needed
+- Never work around the merge gate — it protects the canonical specs from silent data loss; fix the delta instead
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
 
@@ -206,9 +235,9 @@ canonical spec, not merely recorded. Both documented forms work:
 
 or the header form (`### Requirement: Old Name` followed by a `TO: New Name` line). The
 canonical requirement header is rewritten, the summary counts it under `renamed:`, and a
-rename-only delta is a valid change (validates and archives). `speclink drift` checks
-RENAMED targets in `spec_assumptions`, so a stale FROM target routes to ingest before
-archiving instead of silently no-opping.
+rename-only delta is a valid change (validates and archives). A stale FROM target — or a TO
+name the canon already carries — refuses the archive; `speclink drift` surfaces the same
+verdict in `spec_assumptions` so it routes to ingest before archiving.
 
 ## Bulk archive (speclink-specific)
 
@@ -227,10 +256,12 @@ Semantics (the CLI enforces all three):
    the archived change's canonical specs. Commit first; the command refuses otherwise and lists
    the offending files.
 2. **Skip, never silently** — a change is archived only when it is ready: tasks complete
-   (or `--mark-tasks-complete`), validation passes (or `--no-validate`), and no stale delta
-   assumptions (a MODIFIED/REMOVED target another change already rewrote — run
-   `speclink drift <name>` and reconcile via ingest). Skipped changes are reported with the
-   reason and a `Bulk archive: N archived, M skipped` summary.
+   (or `--mark-tasks-complete`), validation passes (or `--no-validate`), and no delta
+   operation the merge gate would refuse (a MODIFIED/REMOVED target another change already
+   rewrote — run `speclink drift <name>` and reconcile via ingest). The pre-check reads the
+   engine's own verdict, so it never disagrees with it; it only reports the change as
+   skipped with the reason and a `Bulk archive: N archived, M skipped` summary instead of
+   aborting the run.
 3. **Fail-fast** — archives apply in created-date order; on the first hard error the run
    stops and reports archived / failed / untouched (already-archived changes cannot be
    rolled back automatically).

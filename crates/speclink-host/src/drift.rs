@@ -675,7 +675,7 @@ mod tests {
                     capability: "auth".to_string(),
                     operation: "ADDED".to_string(),
                     requirement: "Token rotation".to_string(),
-                    reason: "already exists in the canonical spec — archive would skip it"
+                    reason: "already exists in the canonical spec — archive would refuse it"
                         .to_string(),
                 },
                 drift::SpecAssumption {

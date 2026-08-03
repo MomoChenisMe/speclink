@@ -1,4 +1,4 @@
-<!-- SPECLINK:START v1.5.0 -->
+<!-- SPECLINK:START v1.6.0 -->
 
 # Speclink Instructions
 

@@ -21,7 +21,7 @@ Detect drift between a Speclink change and the current codebase state. Reports t
    - `total_score`: aggregate over Time / Structure / Tasks / Specs (Environment is display-only)
    - `dimensions`: array of `{ kind, status, score, contributes_to_total }`
    - `broken_anchors`: design.md references that no longer resolve. Only code-like tokens anchor (camelCase / snake_case / multi-hump PascalCase, plus backticked expressions); prose capitalized words never do. Backticked file paths (`hr/index.html`) are existence-checked and report as category `File`. The change's own directory is excluded from the symbol search, so a committed design does not satisfy its own anchors.
-   - `spec_assumptions`: delta-spec operations whose canonical target has drifted — a MODIFIED/REMOVED/RENAMED requirement that no longer exists, or an ADDED requirement that now already exists. **Archiving would silently skip these**; any entry here routes the recommendation to ingest.
+   - `spec_assumptions`: delta-spec operations whose canonical target has drifted — a MODIFIED/REMOVED/RENAMED requirement that no longer exists, or an ADDED requirement that now already exists. **The archive merge gate refuses these**; any entry here routes the recommendation to ingest.
    - `tasks_blocked_external`: pending tasks referencing a file that was touched by commits since `created` and no longer exists
    - `tasks_maybe_resolved`: pending tasks referencing a file that was committed since `created` and exists — the work may already be done
    - `commits_since_created` and the Environment status: commits since the created date (midnight-anchored), with a count of how many touch files this change references (touched record + task references)
@@ -67,7 +67,7 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
    Keep technical details below the plain-language conclusion. List broken anchors, stale delta assumptions, blocked tasks, and maybe-resolved tasks only when non-empty. Omit empty technical detail sections entirely. Keep the report short enough to skim; the goal is to help the user decide, not to explain the scoring model.
 
-   **Stale delta assumptions take priority in the conclusion**: they mean another change has already rewritten the canonical requirement this delta targets, and archiving as-is would silently drop or misapply the delta. Say so explicitly and lead with the ingest recommendation.
+   **Stale delta assumptions take priority in the conclusion**: they mean another change has already rewritten the canonical requirement this delta targets, and the archive merge gate will refuse the change as-is. Say so explicitly and lead with the ingest recommendation.
 
 4. **Apply the recommendation interactively**
 

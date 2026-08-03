@@ -61,7 +61,6 @@ pub(crate) fn guard_open_review(store: &dyn Store, name: &str, carry_review: boo
 pub(crate) struct DeltaReq {
     pub(crate) operation: String,
     pub(crate) name: String,
-    #[allow(dead_code)]
     pub(crate) block: String,
 }
 
@@ -98,6 +97,265 @@ pub(crate) fn parse_delta(text: &str) -> Vec<DeltaReq> {
     }
     flush(&mut cur, &mut reqs);
     reqs
+}
+
+/// A delta operation that no longer matches the canonical spec, or that contradicts
+/// another operation in the same delta. The fail-closed merge gate's unit of refusal —
+/// and the single judgement shared by drift's Specs dimension (which re-exports it as
+/// `SpecAssumption`) and bulk archive's readiness pre-check (spec archive-merge
+/// 「過期判定單源共用」). `operation` carries a comma-joined list on a multi-section
+/// collision — the one deliberate widening of its single-token value domain.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MergeViolation {
+    pub capability: String,
+    pub operation: String,
+    pub requirement: String,
+    pub reason: String,
+}
+
+/// Refusal reasons — frozen strings, rendered verbatim by archive, drift and bulk.
+const ADDED_EXISTS: &str = "already exists in the canonical spec — archive would refuse it";
+const TARGET_GONE: &str = "target requirement no longer exists in the canonical spec";
+const CANON_ABSENT: &str = "canonical spec for this capability does not exist";
+const SECTION_COLLISION: &str = "appears more than once across this delta's operation sections";
+const RENAME_TARGET_EXISTS: &str = "rename target already exists in the canonical spec";
+const NO_RENAME_TARGET: &str = "RENAMED operation names no TO: target";
+const MALFORMED_REMOVAL: &str =
+    "malformed REMOVED-SCENARIO declaration (missing `-->` on the same line)";
+const MALFORMED_BEFORE: &str = "malformed BEFORE comment (never closed with `-->`)";
+
+/// Marker declaring that a MODIFIED block drops a canonical scenario on purpose.
+/// One per line inside the block; stripped before the merged text reaches the canon.
+const REMOVED_SCENARIO: &str = "<!-- REMOVED-SCENARIO:";
+
+/// `#### Scenario:` names declared in a requirement block, trimmed — the comparison
+/// semantics of requirement names.
+fn scenario_names(block: &str) -> Vec<String> {
+    block
+        .lines()
+        .filter_map(|l| l.trim_start().strip_prefix("#### Scenario:"))
+        .map(|n| n.trim().to_string())
+        .collect()
+}
+
+/// Scenario names a MODIFIED block explicitly gives up via `<!-- REMOVED-SCENARIO: X -->`.
+/// Only same-line-terminated declarations count; a marker without its `-->` is malformed
+/// and refused by the gate — never silently accepted or stripped.
+fn declared_scenario_removals(block: &str) -> Vec<String> {
+    block
+        .lines()
+        .filter_map(|l| l.trim_start().strip_prefix(REMOVED_SCENARIO))
+        .filter_map(|rest| rest.trim_end().strip_suffix("-->"))
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .collect()
+}
+
+/// Whether the block carries a `<!-- REMOVED-SCENARIO:` marker that never closes on its
+/// own line — the note-stripper would swallow everything after it, so the gate refuses.
+fn has_malformed_removal(block: &str) -> bool {
+    block.lines().any(|l| {
+        let t = l.trim_start();
+        t.starts_with(REMOVED_SCENARIO) && !t.trim_end().ends_with("-->")
+    })
+}
+
+/// Whether the block opens a `<!-- BEFORE:` comment that never closes — the multi-line
+/// strip would swallow the rest of the block, so the gate refuses.
+fn has_unclosed_before(block: &str) -> bool {
+    let mut open = false;
+    for line in block.lines() {
+        if open {
+            if line.trim_end().ends_with("-->") {
+                open = false;
+            }
+        } else if line.trim_start().starts_with("<!-- BEFORE:")
+            && !line.trim_end().ends_with("-->")
+        {
+            open = true;
+        }
+    }
+    open
+}
+
+/// CRLF → LF, so name comparisons behave identically on Windows-authored deltas.
+fn normalize_newlines(text: &str) -> String {
+    text.replace("\r\n", "\n")
+}
+
+/// Every merge violation across the change's delta capabilities, empty when the deltas
+/// still apply cleanly. Reads only Store spec facts, so drift, the bulk pre-check and
+/// archive itself all reach the same verdict.
+pub fn merge_violations(store: &dyn Store, change: &str) -> Vec<MergeViolation> {
+    let mut out = Vec::new();
+    for cap in store.delta_capabilities(change) {
+        let delta_text = store
+            .read_artifact(change, &model::delta_spec_artifact(&cap))
+            .unwrap_or_default();
+        let canonical = store.read_canonical_spec(&cap);
+        out.extend(capability_violations(&cap, &delta_text, canonical.as_deref()));
+    }
+    out
+}
+
+/// The violation list of design「違規清單與聚合錯誤形狀」 for one capability — the six
+/// designed classes plus the malformed-note and dangling-rename guards that keep them
+/// airtight. RENAMED is judged through the shared pair scan (it covers both documented
+/// syntaxes), so `parse_delta`'s header-form RENAMED entries are skipped throughout.
+fn capability_violations(
+    cap: &str,
+    delta_text: &str,
+    canonical: Option<&str>,
+) -> Vec<MergeViolation> {
+    let delta_text = normalize_newlines(delta_text);
+    let reqs = parse_delta(&delta_text);
+    let renames = model::rename_pairs(&delta_text);
+    let mut out: Vec<MergeViolation> = Vec::new();
+    let violation = |operation: &str, requirement: &str, reason: &str| MergeViolation {
+        capability: cap.to_string(),
+        operation: operation.to_string(),
+        requirement: requirement.to_string(),
+        reason: reason.to_string(),
+    };
+
+    // (3) One requirement name mentioned more than once across the operation sections —
+    // spanning sections, duplicated inside one, or via a RENAMED endpoint. Mentions are
+    // counted (not deduped): a self-contradicting delta must refuse, and the merge
+    // relies on every cleared name being unique.
+    let mut mentions: std::collections::BTreeMap<&str, Vec<&str>> =
+        std::collections::BTreeMap::new();
+    for r in reqs.iter().filter(|r| r.operation != "RENAMED") {
+        mentions.entry(r.name.as_str()).or_default().push(r.operation.as_str());
+    }
+    for (from, to) in &renames {
+        mentions.entry(from.as_str()).or_default().push("RENAMED");
+        mentions.entry(to.as_str()).or_default().push("RENAMED");
+    }
+    for (name, ops) in &mentions {
+        if ops.len() > 1 {
+            let mut listed: Vec<&str> = ops.clone();
+            listed.sort_unstable();
+            listed.dedup();
+            out.push(violation(&listed.join(", "), name, SECTION_COLLISION));
+        }
+    }
+
+    // A rename source that never pairs with a TO: target (orphan FROM in either form,
+    // or an empty TO) would apply to nothing — under a fail-closed gate that is
+    // refused, not ignored.
+    for name in model::rename_dangling_sources(&delta_text) {
+        out.push(violation("RENAMED", &name, NO_RENAME_TARGET));
+    }
+
+    // An unclosed `<!-- BEFORE:` makes the note-stripper swallow the rest of the block —
+    // the requirement body would silently vanish from the canon, so the gate refuses.
+    for r in reqs.iter().filter(|r| matches!(r.operation.as_str(), "ADDED" | "MODIFIED")) {
+        if has_unclosed_before(&r.block) {
+            out.push(violation(&r.operation, &r.name, MALFORMED_BEFORE));
+        }
+    }
+
+    // (6) A capability with no canonical spec yet accepts ADDED only — a MODIFIED,
+    // REMOVED or RENAMED there is an assumption about text that was never written.
+    let Some(canonical) = canonical else {
+        for r in reqs.iter().filter(|r| !matches!(r.operation.as_str(), "ADDED" | "RENAMED")) {
+            out.push(violation(&r.operation, &r.name, CANON_ABSENT));
+        }
+        for (from, _) in &renames {
+            out.push(violation("RENAMED", from, CANON_ABSENT));
+        }
+        return out;
+    };
+
+    let canonical = normalize_newlines(canonical);
+    let blocks = parse_canonical(&canonical).1;
+    let names: std::collections::BTreeSet<&str> =
+        blocks.iter().map(|(n, _)| n.as_str()).collect();
+    for r in reqs.iter().filter(|r| r.operation != "RENAMED") {
+        match r.operation.as_str() {
+            // (1) ADDED colliding with a requirement the canon already carries.
+            "ADDED" if names.contains(r.name.as_str()) => {
+                out.push(violation("ADDED", &r.name, ADDED_EXISTS));
+            }
+            // (2) MODIFIED/REMOVED whose source requirement is gone.
+            "MODIFIED" | "REMOVED" if !names.contains(r.name.as_str()) => {
+                out.push(violation(&r.operation, &r.name, TARGET_GONE));
+            }
+            // (5) MODIFIED wholesale-replaces its target, so every canonical scenario
+            // must be carried over or explicitly given up. Judged on the note-stripped
+            // text — exactly what the merge would write — so a scenario line quoted
+            // inside a review comment never counts as carried.
+            "MODIFIED" => {
+                if has_malformed_removal(&r.block) {
+                    out.push(violation("MODIFIED", &r.name, MALFORMED_REMOVAL));
+                }
+                let carried = scenario_names(&strip_review_notes(&r.block));
+                let declared = declared_scenario_removals(&r.block);
+                let dropped: Vec<String> = blocks
+                    .iter()
+                    .find(|(n, _)| n == &r.name)
+                    .map(|(_, b)| scenario_names(b))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|s| !carried.contains(s) && !declared.contains(s))
+                    .collect();
+                if !dropped.is_empty() {
+                    out.push(violation(
+                        "MODIFIED",
+                        &r.name,
+                        &format!(
+                            "drops canonical scenario(s) {} — carry them over, or declare \
+                             the removal with `{REMOVED_SCENARIO} <name> -->`",
+                            dropped.join("、")
+                        ),
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    for (from, to) in &renames {
+        // (2) RENAMED source gone, or (4) rename target already taken.
+        if !names.contains(from.as_str()) {
+            out.push(violation("RENAMED", from, TARGET_GONE));
+        } else if names.contains(to.as_str()) {
+            out.push(violation("RENAMED", to, RENAME_TARGET_EXISTS));
+        }
+    }
+    out
+}
+
+/// The aggregated refusal (design「違規清單與聚合錯誤形狀」): every violation listed
+/// at once so one repair round clears them all, closing with the remediation route.
+pub(crate) fn merge_refusal(change: &str, violations: &[MergeViolation]) -> anyhow::Error {
+    let mut msg = format!(
+        "change '{change}' cannot be archived — {} delta operation(s) no longer match the \
+         canonical spec:\n",
+        violations.len()
+    );
+    for v in violations {
+        msg.push_str(&format!(
+            "  - {} / {} / {}: {}\n",
+            v.capability, v.operation, v.requirement, v.reason
+        ));
+    }
+    msg.push_str(&format!(
+        "fix the delta before archiving:\n  \
+         speclink drift {change}     — see what moved under the change\n  \
+         /speclink-ingest {change}   — update the delta to the current canonical spec"
+    ));
+    crate::command::Refusal(msg).into()
+}
+
+/// One capability's merge result, computed in the plan phase and written in the
+/// commit phase — nothing here has touched the filesystem yet.
+struct CapPlan {
+    capability: String,
+    counts: CapCounts,
+    /// The pre-apply canonical text to snapshot; `None` for a capability being created.
+    backup: Option<String>,
+    /// The merged canonical text to write.
+    content: String,
 }
 
 fn trace_block(change: &str, date: &str, files: &[String]) -> String {
@@ -185,10 +443,11 @@ pub fn archive(
         f
     };
 
-    let mut caps = Vec::new();
-    let mut created_specs: Vec<String> = Vec::new();
-    let snapshot_dir = ws.snapshots_dir().join(&dated_name);
-    let mut snapshot_created = false;
+    // --- Plan phase: read every capability, validate all of them, compute the merged
+    // text. Nothing is written here, so a violation ends the archive with zero file
+    // effect (spec archive-merge「兩階段合併計畫與零半套寫入」).
+    let mut plans: Vec<CapPlan> = Vec::new();
+    let mut violations: Vec<MergeViolation> = Vec::new();
 
     if !opts.skip_specs {
         for cap in store.delta_capabilities(&change.name) {
@@ -204,39 +463,51 @@ pub fn archive(
 at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
                 );
             }
-            let reqs = parse_delta(&delta_text);
-            let renames = model::rename_pairs(&delta_text);
 
             // Read the pre-apply canonical once: it decides fresh-vs-merge, feeds the
             // merge, and is the snapshot backup content.
             let existing = store.read_canonical_spec(&cap);
-            if let Some(existing_text) = &existing {
-                // Back up the pre-apply canonical spec for unarchive support
-                // (snapshots/<date>-<name>/specs/<cap>/spec.md holds the previous bytes).
-                let backup_path = snapshot_dir.join("specs").join(&cap).join("spec.md");
-                util::write_file(&backup_path, existing_text)
-                    .map_err(|e| anyhow::anyhow!("Failed to backup spec: {e}"))?;
-                snapshot_created = true;
+            let found = capability_violations(&cap, &delta_text, existing.as_deref());
+            if !found.is_empty() {
+                // Keep reading the remaining capabilities: the refusal reports every
+                // violation at once so one repair round clears them all.
+                violations.extend(found);
+                continue;
             }
-            let counts = apply_delta_to_canonical(
-                store,
+
+            let (content, counts) = merge_capability(
                 &cap,
                 &change.name,
                 &date,
-                &reqs,
-                &renames,
+                &delta_text,
                 &trace_files,
                 existing.as_deref(),
-            )?;
-            if existing.is_none() {
-                created_specs.push(cap.clone());
-            }
-            caps.push(counts);
+            );
+            plans.push(CapPlan { capability: cap, counts, backup: existing, content });
         }
     }
+    if !violations.is_empty() {
+        return Err(merge_refusal(&change.name, &violations));
+    }
 
+    // --- Commit phase: snapshots first, then canonical specs, then the directory move.
+    // A commit-phase I/O failure therefore always leaves a recoverable backup behind.
+    let snapshot_dir = ws.snapshots_dir().join(&dated_name);
+    let mut snapshot_created = false;
+    for plan in &plans {
+        if let Some(previous) = &plan.backup {
+            // Back up the pre-apply canonical spec for unarchive support
+            // (snapshots/<date>-<name>/specs/<cap>/spec.md holds the previous bytes).
+            let backup_path = snapshot_dir.join("specs").join(&plan.capability).join("spec.md");
+            util::write_file(&backup_path, previous)
+                .map_err(|e| anyhow::anyhow!("Failed to backup spec: {e}"))?;
+            snapshot_created = true;
+        }
+    }
     // Snapshot manifest: a bare array of created capability names, written only when a spec
     // was created (frozen byte-for-byte: `["cap-x"]`, no trailing newline).
+    let created_specs: Vec<&String> =
+        plans.iter().filter(|p| p.backup.is_none()).map(|p| &p.capability).collect();
     if !created_specs.is_empty() {
         util::write_file(
             &snapshot_dir.join("created_specs.json"),
@@ -246,6 +517,19 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         .map_err(|e| anyhow::anyhow!("Failed to write created_specs.json: {e}"))?;
         snapshot_created = true;
     }
+    for plan in &plans {
+        // A mid-commit failure names the snapshot location (design risk table):
+        // the pre-archive backups written above are the recovery path.
+        store.write_canonical_spec(&plan.capability, &plan.content).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to write canonical spec for '{}': {e} — pre-archive backups are \
+                 under {}",
+                plan.capability,
+                snapshot_dir.display()
+            )
+        })?;
+    }
+    let caps: Vec<CapCounts> = plans.into_iter().map(|p| p.counts).collect();
 
     // Move change into the archive under its dated name.
     store.archive_change(&change.name, &dated_name)?;
@@ -336,11 +620,15 @@ pub(crate) fn parse_canonical(text: &str) -> (String, Vec<(String, String)>) {
     (header, blocks)
 }
 
-/// Strip `<!-- BEFORE: … -->` review-aid comments from a delta block. Deltas may carry a
-/// short previous-value note on MODIFIED requirements (speclink convention); it is for
-/// reviewers of the change and must not survive into the canonical spec.
-fn strip_before_notes(block: &str) -> String {
-    if !block.contains("<!-- BEFORE:") {
+/// Strip the review-aid comments a delta block may carry — `<!-- BEFORE: … -->`
+/// previous-value notes and `<!-- REMOVED-SCENARIO: … -->` removal declarations. Both
+/// are for reviewers of the change and must not survive into the canonical spec.
+fn strip_review_notes(block: &str) -> String {
+    let is_note = |line: &str| {
+        let t = line.trim_start();
+        t.starts_with("<!-- BEFORE:") || t.starts_with(REMOVED_SCENARIO)
+    };
+    if !block.lines().any(is_note) {
         // No note: leave the block byte-identical (its spacing is preserved verbatim).
         return block.to_string();
     }
@@ -348,12 +636,19 @@ fn strip_before_notes(block: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     let mut i = 0;
     while i < lines.len() {
-        if lines[i].trim_start().starts_with("<!-- BEFORE:") {
-            // Skip to the end of the comment (single- or multi-line) …
-            while i < lines.len() && !lines[i].trim_end().ends_with("-->") {
+        if is_note(lines[i]) {
+            if lines[i].trim_start().starts_with(REMOVED_SCENARIO) {
+                // A removal declaration is one line by contract (the gate refuses a
+                // marker without its same-line `-->`), so strip exactly one line —
+                // a multi-line scan here could swallow the rest of the block.
+                i += 1;
+            } else {
+                // Skip to the end of the BEFORE comment (single- or multi-line) …
+                while i < lines.len() && !lines[i].trim_end().ends_with("-->") {
+                    i += 1;
+                }
                 i += 1;
             }
-            i += 1;
             // … and swallow one following blank only when the note sat between blanks
             // (avoiding a double gap). Right under a requirement header the blank after
             // the note is the header's own separator; keep it.
@@ -369,21 +664,46 @@ fn strip_before_notes(block: &str) -> String {
     out.join("\n")
 }
 
-#[allow(clippy::too_many_arguments)]
-fn apply_delta_to_canonical(
-    store: &dyn Store,
+/// The delta's own `## Purpose` section content, trimmed (design「新 capability 的
+/// Purpose 自 delta 帶入」). `parse_delta` ignores this section, so it never affects
+/// operation parsing; only a capability being created consumes it.
+fn delta_purpose(text: &str) -> Option<String> {
+    let normalized = normalize_newlines(text);
+    let mut body: Vec<&str> = Vec::new();
+    let mut inside = false;
+    for line in normalized.lines() {
+        if let Some(rest) = line.trim_start().strip_prefix("## ") {
+            if inside {
+                break;
+            }
+            inside = rest.trim() == "Purpose";
+            continue;
+        }
+        if inside {
+            body.push(line);
+        }
+    }
+    let content = body.join("\n").trim().to_string();
+    (!content.is_empty()).then_some(content)
+}
+
+/// The merged canonical text plus this capability's operation counts. Pure: the caller
+/// writes it in the commit phase, so the plan phase can be discarded without a trace.
+/// Only operations the gate already cleared reach here.
+fn merge_capability(
     cap: &str,
     change: &str,
     date: &str,
-    reqs: &[DeltaReq],
-    renames: &[(String, String)],
+    delta_text: &str,
     trace_files: &[String],
     existing: Option<&str>,
-) -> Result<CapCounts> {
+) -> (String, CapCounts) {
+    let reqs = &parse_delta(delta_text);
+    let renames = &model::rename_pairs(delta_text);
     // The @trace block is omitted entirely when there are no touched code files.
     let trace = trace_block(change, date, trace_files);
     let make_block = |r: &DeltaReq, fresh: bool| {
-        let body = strip_before_notes(&r.block);
+        let body = strip_review_notes(&r.block);
         if trace_files.is_empty() {
             body
         } else if fresh {
@@ -406,27 +726,24 @@ fn apply_delta_to_canonical(
     };
 
     let Some(existing) = existing else {
-        // Fresh canonical: ADDED and MODIFIED both become requirement sections.
+        // Fresh canonical: only ADDED reaches here — the gate refuses every other
+        // operation against a capability the canon does not carry yet.
         let mut blocks: Vec<String> = Vec::new();
         for r in reqs {
-            match r.operation.as_str() {
-                "ADDED" => {
-                    blocks.push(make_block(r, true));
-                    counts.added += 1;
-                }
-                "MODIFIED" => {
-                    blocks.push(make_block(r, true));
-                    counts.modified += 1;
-                }
-                _ => {}
+            if r.operation == "ADDED" {
+                blocks.push(make_block(r, true));
+                counts.added += 1;
             }
         }
         let mut out = String::new();
         out.push_str(&format!("# {cap} Specification\n\n"));
         out.push_str("## Purpose\n\n");
-        out.push_str(&format!(
-            "TBD - created by archiving change '{change}'. Update Purpose after archive.\n\n"
-        ));
+        out.push_str(&match delta_purpose(delta_text) {
+            Some(purpose) => format!("{purpose}\n\n"),
+            None => format!(
+                "TBD - created by archiving change '{change}'. Update Purpose after archive.\n\n"
+            ),
+        });
         out.push_str("## Requirements\n\n");
         let joined: Vec<String> = blocks.iter().map(|b| b.trim_end().to_string()).collect();
         out.push_str(&joined.join("\n\n---\n"));
@@ -435,8 +752,7 @@ fn apply_delta_to_canonical(
         if !out.ends_with('\n') && !out.ends_with("-->") {
             out.push('\n');
         }
-        store.write_canonical_spec(cap, &out)?;
-        return Ok(counts);
+        return (out, counts);
     };
 
     // Merge into an existing canonical spec.
@@ -447,15 +763,12 @@ fn apply_delta_to_canonical(
     for r in reqs {
         match r.operation.as_str() {
             "ADDED" => {
-                // Skip an ADDED requirement that already exists (no duplicate, not counted).
-                if !blocks.iter().any(|(n, _)| *n == r.name) {
-                    blocks.push((r.name.clone(), make_block(r, false)));
-                    counts.added += 1;
-                }
+                // The gate guarantees the name is free — append and count it.
+                blocks.push((r.name.clone(), make_block(r, false)));
+                counts.added += 1;
             }
             "MODIFIED" => {
-                // Only apply MODIFIED to an existing requirement; skip if absent (an absent one
-                // is flagged via analyze's gapModifiedNotFound rather than materialized).
+                // The gate guarantees the target exists.
                 if let Some(slot) = blocks.iter_mut().find(|(n, _)| *n == r.name) {
                     slot.1 = make_block(r, false);
                     counts.modified += 1;
@@ -503,8 +816,7 @@ fn apply_delta_to_canonical(
     if trace_files.is_empty() && !out.ends_with('\n') && !out.ends_with("-->") {
         out.push('\n');
     }
-    store.write_canonical_spec(cap, &out)?;
-    Ok(counts)
+    (out, counts)
 }
 
 #[cfg(test)]
@@ -841,6 +1153,413 @@ mod tests {
         assert!(canon_a.contains("  - src/b.rs\n"));
         let _ = std::fs::remove_dir_all(&root_a);
         let _ = std::fs::remove_dir_all(&root_b);
+    }
+
+    // --- 封存合併 fail-closed 守門（design「違規清單與聚合錯誤形狀」；
+    //     spec archive-merge「封存合併 fail-closed 守門」）---
+
+    const CANON_R1: &str = "# auth Specification\n\n## Purpose\n\nAuth.\n\n## Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+    const CANON_R1_R2: &str = "# auth Specification\n\n## Purpose\n\nAuth.\n\n## Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n\n---\n\n### Requirement: R2\n\nIt SHALL also work.\n\n#### Scenario: fine\n\n- **WHEN** used\n- **THEN** fine\n";
+    const ADDED_R1: &str = "## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+
+    /// 一份可封存的 change（任務全勾、無工單），delta 與正典由呼叫端指定。
+    fn merge_store(deltas: &[(&str, &str)], canon: &[(&str, &str)]) -> TestStore {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 done\n");
+        for (cap, text) in deltas {
+            store.put_artifact("demo", &crate::model::delta_spec_artifact(cap), text);
+        }
+        for (cap, text) in canon {
+            store.canonical.borrow_mut().insert((*cap).to_string(), (*text).to_string());
+        }
+        store
+    }
+
+    /// 封存必須被守門拒絕：typed Refusal、正典與 change 零效果，回傳錯誤訊息供逐條斷言。
+    fn refuse_merge(store: &TestStore) -> String {
+        let before = store.canonical.borrow().clone();
+        let change = crate::model::find_change(store, "demo").unwrap();
+        let err = archive(&ghost_ws(), store, &change, &apply_opts(), None)
+            .expect_err("a violating delta must refuse archive");
+        assert!(
+            err.downcast_ref::<crate::command::Refusal>().is_some(),
+            "typed Refusal so the runtime classifies refused: {err}"
+        );
+        assert!(store.change_exists("demo"), "change stays in place");
+        assert!(store.archived_metas.borrow().is_empty(), "nothing archived");
+        assert_eq!(*store.canonical.borrow(), before, "canonical specs untouched");
+        err.to_string()
+    }
+
+    #[test]
+    fn added_requirement_already_in_canon_refuses_archive() {
+        // spec Scenario「過期 ADDED 被拒絕」：撞名的 ADDED 不再靜默跳過。
+        let store = merge_store(&[("auth", ADDED_R1)], &[("auth", CANON_R1)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("auth"), "capability named: {msg}");
+        assert!(msg.contains("ADDED"), "operation named: {msg}");
+        assert!(msg.contains("R1"), "requirement named: {msg}");
+        assert!(msg.contains("already exists"), "reason given: {msg}");
+    }
+
+    #[test]
+    fn modified_removed_renamed_missing_target_refuses_archive() {
+        // spec Scenario「缺目標的 MODIFIED 被拒絕」：三種操作缺來源需求時一致拒絕。
+        for (op, delta) in [
+            ("MODIFIED", "## MODIFIED Requirements\n\n### Requirement: Ghost\n\nIt SHALL change.\n"),
+            ("REMOVED", "## REMOVED Requirements\n\n### Requirement: Ghost\n"),
+            (
+                "RENAMED",
+                "## RENAMED Requirements\n\n- FROM: `### Requirement: Ghost`\n- TO: `### Requirement: Spirit`\n",
+            ),
+        ] {
+            let store = merge_store(&[("auth", delta)], &[("auth", CANON_R1)]);
+            let msg = refuse_merge(&store);
+            assert!(msg.contains(op), "operation named ({op}): {msg}");
+            assert!(msg.contains("Ghost"), "requirement named ({op}): {msg}");
+            assert!(msg.contains("no longer exists"), "reason given ({op}): {msg}");
+        }
+    }
+
+    #[test]
+    fn same_requirement_in_two_operation_sections_refuses_archive() {
+        // spec Scenario「多區段互撞被拒絕」：同名需求橫跨 MODIFIED 與 REMOVED。
+        let delta = "## MODIFIED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n\n## REMOVED Requirements\n\n### Requirement: R1\n";
+        let store = merge_store(&[("auth", delta)], &[("auth", CANON_R1)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("R1"), "requirement named: {msg}");
+        assert!(
+            msg.contains("MODIFIED") && msg.contains("REMOVED"),
+            "both colliding operations listed: {msg}"
+        );
+    }
+
+    #[test]
+    fn renamed_target_name_already_in_canon_refuses_archive() {
+        // spec Scenario「多區段互撞被拒絕」之 RENAMED 目標側：改名後會撞既有需求。
+        let store = merge_store(
+            &[(
+                "auth",
+                "## RENAMED Requirements\n\n- FROM: `### Requirement: R1`\n- TO: `### Requirement: R2`\n",
+            )],
+            &[("auth", CANON_R1_R2)],
+        );
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("RENAMED"), "operation named: {msg}");
+        assert!(msg.contains("R2"), "rename target named: {msg}");
+        assert!(msg.contains("already exists"), "reason given: {msg}");
+    }
+
+    #[test]
+    fn fresh_capability_with_non_added_operation_refuses_archive() {
+        // spec Scenario「新 capability 僅接受 ADDED」：正典不存在時 MODIFIED 不再物化成新規格。
+        let store = merge_store(
+            &[("fresh", "## MODIFIED Requirements\n\n### Requirement: R1\n\nIt SHALL change.\n")],
+            &[],
+        );
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("fresh"), "capability named: {msg}");
+        assert!(msg.contains("MODIFIED"), "operation named: {msg}");
+        assert!(msg.contains("does not exist"), "reason given: {msg}");
+        assert!(store.canonical.borrow().is_empty(), "no canonical spec materialized");
+    }
+
+    #[test]
+    fn every_violation_is_reported_at_once_with_remediation_guidance() {
+        // spec Scenario「違規聚合一次回報」：跨 capability 的違規單次列齊，並附 drift → ingest 動線。
+        let store = merge_store(
+            &[
+                ("auth", ADDED_R1),
+                ("billing", "## MODIFIED Requirements\n\n### Requirement: Ghost\n\nIt SHALL change.\n"),
+            ],
+            &[("auth", CANON_R1), ("billing", CANON_R1)],
+        );
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("auth") && msg.contains("R1"), "first violation listed: {msg}");
+        assert!(
+            msg.contains("billing") && msg.contains("Ghost"),
+            "second violation listed in the same report: {msg}"
+        );
+        assert!(msg.contains("drift"), "drift remediation named: {msg}");
+        assert!(msg.contains("ingest"), "ingest remediation named: {msg}");
+    }
+
+    #[test]
+    fn no_validate_does_not_unlock_the_merge_gate() {
+        // spec Scenario「no-validate 不解鎖守門」：文件驗證略過，合併守門照常拒絕。
+        let store = merge_store(&[("auth", ADDED_R1)], &[("auth", CANON_R1)]);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let opts = ArchiveOptions { skip_specs: false, no_validate: true, ..skip_opts() };
+        let err = archive(&ghost_ws(), &store, &change, &opts, None)
+            .expect_err("--no-validate must not unlock the merge gate");
+        assert!(err.to_string().contains("already exists"), "gate still speaks: {err}");
+    }
+
+    #[test]
+    fn skip_specs_bypasses_the_merge_gate_as_before() {
+        // 既有逃生口：--skip-specs 整段跳過規格套用，守門自然不觸發。
+        let store = merge_store(&[("auth", ADDED_R1)], &[("auth", CANON_R1)]);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&ghost_ws(), &store, &change, &skip_opts(), None)
+            .expect("--skip-specs keeps its existing escape-hatch semantics");
+        assert!(!store.change_exists("demo"), "change moved into the archive");
+        assert_eq!(
+            store.read_canonical_spec("auth").as_deref(),
+            Some(CANON_R1),
+            "canonical spec untouched when spec application is skipped"
+        );
+    }
+
+    // --- 兩階段合併計畫與零半套寫入（design「兩階段合併」；
+    //     spec archive-merge「兩階段合併計畫與零半套寫入」）---
+
+    #[test]
+    fn one_violating_capability_leaves_every_capability_untouched() {
+        // spec Scenario「任一 capability 違規則全部不寫」：雙 capability 其一合法、
+        // 其一違規 → 兩正典皆未變、無 snapshot 落地、change 仍在進行區原位。
+        let root = temp_root("two-phase");
+        let ws = Workspace { root: root.clone(), spec_dir_name: "openspec".to_string() };
+        let store = merge_store(
+            &[
+                ("auth", "## ADDED Requirements\n\n### Requirement: Brand new\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n"),
+                ("billing", ADDED_R1),
+            ],
+            &[("auth", CANON_R1), ("billing", CANON_R1)],
+        );
+        let before = store.canonical.borrow().clone();
+        let change = crate::model::find_change(&store, "demo").unwrap();
+
+        let err = archive(&ws, &store, &change, &apply_opts(), None)
+            .expect_err("a single violating capability refuses the whole archive");
+
+        assert!(err.to_string().contains("billing"), "the violating capability is named: {err}");
+        assert_eq!(*store.canonical.borrow(), before, "no canonical spec was written");
+        assert!(store.change_exists("demo"), "change stays in the active area");
+        assert!(store.archived_metas.borrow().is_empty(), "nothing archived");
+        assert!(
+            !ws.snapshots_dir().exists(),
+            "zero file effect: no snapshot directory was created"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn all_snapshots_land_before_any_canonical_write() {
+        // spec Scenario「snapshot 先於正典寫入」：對第一個 capability 的正典寫入注入
+        // 失敗；順序正確時第二個 capability 的 snapshot 已在磁碟上（交錯寫入則不會）。
+        let root = temp_root("write-order");
+        let ws = Workspace { root: root.clone(), spec_dir_name: "openspec".to_string() };
+        let store = merge_store(
+            &[
+                ("auth", "## ADDED Requirements\n\n### Requirement: Fresh A\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n"),
+                ("billing", "## ADDED Requirements\n\n### Requirement: Fresh B\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n"),
+            ],
+            &[("auth", CANON_R1), ("billing", CANON_R1)],
+        );
+        *store.fail_canonical_write.borrow_mut() = Some("auth".to_string());
+        let change = crate::model::find_change(&store, "demo").unwrap();
+
+        let err = archive(&ws, &store, &change, &apply_opts(), None)
+            .expect_err("the injected canonical write failure surfaces");
+        // design 風險表：commit 階段失敗的錯誤訊息指出 snapshot 位置。
+        assert!(
+            err.to_string().contains(&ws.snapshots_dir().display().to_string()),
+            "the failure names the snapshot location: {err}"
+        );
+
+        let dated = format!("{}-demo", util::today());
+        for cap in ["auth", "billing"] {
+            assert!(
+                ws.snapshots_dir().join(&dated).join("specs").join(cap).join("spec.md").is_file(),
+                "every snapshot backup lands before the first canonical write ({cap})"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // --- MODIFIED 的 scenario 保全與明示刪除聲明（design「scenario superset check
+    //     與明示刪除聲明」；spec archive-merge 同名需求）---
+
+    /// spec Example 的正典目標需求：兩個 scenario「逾時重試」與「離線佇列」。
+    const CANON_TWO_SCENARIOS: &str = "# net Specification\n\n## Purpose\n\nNet.\n\n## Requirements\n\n### Requirement: 重試策略\n\nIt SHALL retry.\n\n#### Scenario: 逾時重試\n\n- **WHEN** timeout\n- **THEN** retry\n\n#### Scenario: 離線佇列\n\n- **WHEN** offline\n- **THEN** queue\n";
+
+    #[test]
+    fn modified_dropping_a_canonical_scenario_refuses_and_names_it() {
+        // spec Scenario「漏抄 scenario 被拒絕並點名」：delta 只留「逾時重試」、
+        // 無刪除聲明 → 拒絕並點名遺失的「離線佇列」。
+        let delta = "## MODIFIED Requirements\n\n### Requirement: 重試策略\n\nIt SHALL retry harder.\n\n#### Scenario: 逾時重試\n\n- **WHEN** timeout\n- **THEN** retry twice\n";
+        let store = merge_store(&[("net", delta)], &[("net", CANON_TWO_SCENARIOS)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("重試策略"), "requirement named: {msg}");
+        assert!(msg.contains("離線佇列"), "the dropped scenario is named: {msg}");
+        assert!(!msg.contains("逾時重試"), "the surviving scenario is not flagged: {msg}");
+    }
+
+    #[test]
+    fn declared_scenario_removal_passes_and_the_note_is_stripped() {
+        // spec Scenario「明示聲明後允許刪除」：聲明放行，合併後正典含「逾時重試」、
+        // 不含「離線佇列」、也不含聲明註解本身。
+        let delta = "## MODIFIED Requirements\n\n### Requirement: 重試策略\n\n<!-- REMOVED-SCENARIO: 離線佇列 -->\n\nIt SHALL retry harder.\n\n#### Scenario: 逾時重試\n\n- **WHEN** timeout\n- **THEN** retry twice\n";
+        let store = merge_store(&[("net", delta)], &[("net", CANON_TWO_SCENARIOS)]);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&ghost_ws(), &store, &change, &apply_opts(), None)
+            .expect("an explicit removal declaration lets the merge through");
+        let canon = store.read_canonical_spec("net").expect("canonical spec written");
+        assert!(canon.contains("#### Scenario: 逾時重試"), "kept scenario survives: {canon}");
+        assert!(!canon.contains("離線佇列"), "declared scenario is gone: {canon}");
+        assert!(!canon.contains("REMOVED-SCENARIO"), "the declaration itself is stripped: {canon}");
+    }
+
+    #[test]
+    fn crlf_authored_delta_matches_scenario_names_the_same_way() {
+        // design Risk「Windows 換行使 scenario 名比對失準」：CRLF 樣本的判定與 LF 一致
+        // ——完整抄錄放行、漏抄則拒絕並點名。
+        let complete = "## MODIFIED Requirements\r\n\r\n### Requirement: 重試策略\r\n\r\nIt SHALL retry harder.\r\n\r\n#### Scenario: 逾時重試\r\n\r\n- **WHEN** timeout\r\n- **THEN** retry twice\r\n\r\n#### Scenario: 離線佇列\r\n\r\n- **WHEN** offline\r\n- **THEN** queue\r\n";
+        let store = merge_store(&[("net", complete)], &[("net", CANON_TWO_SCENARIOS)]);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&ghost_ws(), &store, &change, &apply_opts(), None)
+            .expect("a CRLF delta carrying every scenario passes the superset check");
+
+        let partial = "## MODIFIED Requirements\r\n\r\n### Requirement: 重試策略\r\n\r\nIt SHALL retry harder.\r\n\r\n#### Scenario: 逾時重試\r\n\r\n- **WHEN** timeout\r\n- **THEN** retry twice\r\n";
+        let store = merge_store(&[("net", partial)], &[("net", CANON_TWO_SCENARIOS)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("離線佇列"), "CRLF authoring still names the dropped scenario: {msg}");
+    }
+
+    // --- 新 capability 的 Purpose 自 delta 帶入（design 同名決策；
+    //     spec archive-merge「新 capability 的 Purpose 自 delta 帶入」）---
+
+    const DELTA_WITH_PURPOSE: &str = "## Purpose\n\n本 capability 管理權杖輪替與撤銷。\n\n## ADDED Requirements\n\n### Requirement: Fresh\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+
+    #[test]
+    fn delta_purpose_becomes_the_new_canonical_purpose() {
+        // spec Scenario「delta 提供 Purpose」：新建正典的 Purpose 為 delta 區段內容，非占位文字。
+        let store = merge_store(&[("token", DELTA_WITH_PURPOSE)], &[]);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&ghost_ws(), &store, &change, &apply_opts(), None).unwrap();
+        let canon = store.read_canonical_spec("token").expect("canonical spec created");
+        assert!(
+            canon.contains("## Purpose\n\n本 capability 管理權杖輪替與撤銷。\n"),
+            "delta Purpose copied verbatim: {canon}"
+        );
+        assert!(!canon.contains("TBD"), "no placeholder skeleton remains: {canon}");
+        assert!(
+            !canon.contains("本 capability 管理權杖輪替與撤銷。\n\n## ADDED"),
+            "the delta's operation heading does not leak into the canon: {canon}"
+        );
+    }
+
+    #[test]
+    fn delta_without_purpose_keeps_the_placeholder_skeleton() {
+        // spec Scenario 反面：delta 未提供 Purpose → 沿用現行 TBD 骨架。
+        let store = merge_store(
+            &[("token", "## ADDED Requirements\n\n### Requirement: Fresh\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n")],
+            &[],
+        );
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&ghost_ws(), &store, &change, &apply_opts(), None).unwrap();
+        let canon = store.read_canonical_spec("token").expect("canonical spec created");
+        assert!(
+            canon.contains("TBD - created by archiving change 'demo'."),
+            "placeholder skeleton unchanged: {canon}"
+        );
+    }
+
+    #[test]
+    fn delta_purpose_never_rewrites_an_existing_canonical_purpose() {
+        // spec Scenario「既有正典 Purpose 不受 delta 影響」。
+        let delta = "## Purpose\n\n這段不該進正典。\n\n## ADDED Requirements\n\n### Requirement: Brand new\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+        let store = merge_store(&[("auth", delta)], &[("auth", CANON_R1)]);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&ghost_ws(), &store, &change, &apply_opts(), None).unwrap();
+        let canon = store.read_canonical_spec("auth").expect("canonical spec merged");
+        assert!(canon.contains("## Purpose\n\nAuth.\n"), "existing Purpose survives: {canon}");
+        assert!(!canon.contains("這段不該進正典"), "delta Purpose is not applied: {canon}");
+    }
+
+    // --- 自相矛盾 delta 與註解剝除的守門補強（design「違規清單與聚合錯誤形狀」）---
+
+    #[test]
+    fn duplicate_added_names_in_one_delta_refuse_archive() {
+        // 自相矛盾的 delta 必須拒絕：同一 delta 內重複 ADDED 名稱若放行，
+        // 合併端（已無去重）會在正典寫出兩個同名需求。
+        let delta = "## ADDED Requirements\n\n### Requirement: Fresh\n\nA.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n\n### Requirement: Fresh\n\nB.\n\n#### Scenario: ok2\n\n- **WHEN** used\n- **THEN** works\n";
+        let store = merge_store(&[("auth", delta)], &[("auth", CANON_R1)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("Fresh"), "requirement named: {msg}");
+        assert!(msg.contains("more than once"), "duplication reason given: {msg}");
+    }
+
+    #[test]
+    fn two_renames_to_the_same_target_refuse_archive() {
+        // A→C 與 B→C 兩對 rename 指向同一目標（C 不在正典）若放行，
+        // 合併後正典出現兩個名為 C 的需求——以 mention 計數攔下。
+        let delta = "## RENAMED Requirements\n\n- FROM: `### Requirement: R1`\n- TO: `### Requirement: C`\n\n- FROM: `### Requirement: R2`\n- TO: `### Requirement: C`\n";
+        let store = merge_store(&[("auth", delta)], &[("auth", CANON_R1_R2)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains('C'), "colliding rename target named: {msg}");
+        assert!(msg.contains("more than once"), "duplication reason given: {msg}");
+    }
+
+    #[test]
+    fn scenario_quoted_only_inside_a_before_note_is_not_carried() {
+        // 守門必須以剝除後文字判定：BEFORE 註解內引用的 scenario 行不算已抄錄，
+        // 否則寫入前剝除會整段刪掉 → 正典靜默掉 scenario。
+        let delta = "## MODIFIED Requirements\n\n### Requirement: 重試策略\n\n<!-- BEFORE:\n#### Scenario: 離線佇列\n-->\n\nIt SHALL retry harder.\n\n#### Scenario: 逾時重試\n\n- **WHEN** timeout\n- **THEN** retry twice\n";
+        let store = merge_store(&[("net", delta)], &[("net", CANON_TWO_SCENARIOS)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("離線佇列"), "the dropped scenario is named: {msg}");
+    }
+
+    #[test]
+    fn unterminated_removed_scenario_declaration_refuses_archive() {
+        // 畸形聲明必須拒絕：漏打 `-->` 的聲明若被接受，多行剝除會吞掉其後整個
+        // block → 需求本體消失。
+        let delta = "## MODIFIED Requirements\n\n### Requirement: 重試策略\n\n<!-- REMOVED-SCENARIO: 離線佇列\n\nIt SHALL retry harder.\n\n#### Scenario: 逾時重試\n\n- **WHEN** timeout\n- **THEN** retry twice\n";
+        let store = merge_store(&[("net", delta)], &[("net", CANON_TWO_SCENARIOS)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("REMOVED-SCENARIO"), "malformed declaration named: {msg}");
+    }
+
+    #[test]
+    fn renamed_header_without_to_line_refuses_archive() {
+        // fail-closed 守門：header 形式的 RENAMED 缺 TO: 行套用不到任何目標，
+        // 必須拒絕而非靜默忽略。
+        let delta = "## ADDED Requirements\n\n### Requirement: Brand new\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n\n## RENAMED Requirements\n\n### Requirement: R1\n";
+        let store = merge_store(&[("auth", delta)], &[("auth", CANON_R1)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("RENAMED") && msg.contains("R1"), "dangling rename named: {msg}");
+        assert!(msg.contains("TO:"), "missing-target reason given: {msg}");
+    }
+
+    #[test]
+    fn bullet_rename_without_to_refuses_archive() {
+        // fail-closed 守門的 bullet 形式對稱面：孤兒 `- FROM:`（無 TO 行）與
+        // 空值 TO 皆套用不到目標，必須拒絕而非靜默忽略。
+        const ADDED_OK: &str = "## ADDED Requirements\n\n### Requirement: Brand new\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n\n";
+        let orphan = format!(
+            "{ADDED_OK}## RENAMED Requirements\n\n- FROM: `### Requirement: R1`\n"
+        );
+        let store = merge_store(&[("auth", &orphan)], &[("auth", CANON_R1)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("RENAMED") && msg.contains("R1"), "orphan FROM named: {msg}");
+
+        let empty_to = format!(
+            "{ADDED_OK}## RENAMED Requirements\n\n- FROM: `### Requirement: R1`\n- TO: ``\n"
+        );
+        let store = merge_store(&[("auth", &empty_to)], &[("auth", CANON_R1)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("RENAMED") && msg.contains("R1"), "empty TO named: {msg}");
+    }
+
+    #[test]
+    fn unterminated_before_note_refuses_archive() {
+        // 註解剝除守門：未終結的 `<!-- BEFORE:` 會讓剝除吞到 block 結尾，
+        // 需求內容靜默消失——與畸形 REMOVED-SCENARIO 同類，必須拒絕。
+        let delta = "## ADDED Requirements\n\n### Requirement: Brand new\n\n<!-- BEFORE:\nold text\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+        let store = merge_store(&[("auth", delta)], &[("auth", CANON_R1)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("BEFORE"), "malformed BEFORE note named: {msg}");
     }
 
     #[test]

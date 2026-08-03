@@ -836,18 +836,23 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
     let mut archived: Vec<String> = Vec::new();
     let mut skipped: Vec<(String, String)> = Vec::new();
     for (idx, change) in changes.iter().enumerate() {
-        // Readiness: no stale delta assumptions, valid, tasks complete.
-        let stale = core::drift::spec_assumptions(store, change);
-        if !stale.is_empty() {
-            skipped.push((
-                change.name.clone(),
-                format!(
-                    "{} stale delta assumption(s) — run /speclink-drift {}",
-                    stale.len(),
-                    change.name
-                ),
-            ));
-            continue;
+        // Readiness: nothing the merge gate would refuse (the pre-check reads the
+        // engine's own judgement — spec archive-merge「過期判定單源共用」), valid,
+        // tasks complete. --skip-specs bypasses spec application, so the gate never
+        // runs there and the pre-check must not filter on it either.
+        if !a.skip_specs {
+            let refused = core::archive::merge_violations(store, &change.name);
+            if !refused.is_empty() {
+                skipped.push((
+                    change.name.clone(),
+                    format!(
+                        "{} delta operation(s) archive would refuse — run /speclink-drift {}",
+                        refused.len(),
+                        change.name
+                    ),
+                ));
+                continue;
+            }
         }
         if !a.no_validate {
             let res = core::validate::validate_change(store, change, &schema, false);

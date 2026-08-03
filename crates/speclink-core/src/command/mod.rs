@@ -1430,6 +1430,14 @@ fn run_archive(
     // gates again for entry points that call it directly (desktop).
     guard_meta(&change)?;
     crate::archive::guard_open_review(store, &change.name, opts.carry_review).map_err(classify)?;
+    // The merge gate too: a refused archive must leave tasks.md untouched
+    // (spec archive-merge「兩階段合併計畫與零半套寫入」). Pure Store reads.
+    if !opts.skip_specs {
+        let violations = crate::archive::merge_violations(store, &change.name);
+        if !violations.is_empty() {
+            return Err(classify(crate::archive::merge_refusal(&change.name, &violations)));
+        }
+    }
     if opts.mark_tasks_complete {
         if let Some(text) = store.read_artifact(&change.name, "tasks.md") {
             // Star-bullet checkboxes are tasks too (frozen rule).

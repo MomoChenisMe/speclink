@@ -36,6 +36,10 @@ pub(crate) struct TestStore {
     /// When set, `delete_change` fails — lets discard tests exercise the
     /// "directory removal failed, unlinks not rolled back" path.
     pub fail_delete_change: RefCell<bool>,
+    /// When set to a capability name, `write_canonical_spec` fails for it —
+    /// lets archive tests probe the commit-phase write order (every snapshot
+    /// must already be on disk when the first canonical write happens).
+    pub fail_canonical_write: RefCell<Option<String>>,
 }
 
 impl TestStore {
@@ -176,6 +180,9 @@ impl Store for TestStore {
         self.canonical.borrow().get(cap).cloned()
     }
     fn write_canonical_spec(&self, cap: &str, content: &str) -> Result<()> {
+        if self.fail_canonical_write.borrow().as_deref() == Some(cap) {
+            return Err(anyhow::anyhow!("injected canonical write failure for '{cap}'"));
+        }
         self.canonical.borrow_mut().insert(cap.to_string(), content.to_string());
         Ok(())
     }

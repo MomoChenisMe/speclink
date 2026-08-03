@@ -1,3 +1,4 @@
+mod archive_merge_gate;
 mod archive_readiness_gate;
 mod config_fail_closed;
 mod deprecation_warning;

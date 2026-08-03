@@ -143,11 +143,11 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     Check whether delta specs exist at `{{SPEC_DIR}}changes/<name>/specs/`.
 
     - If **no delta specs exist** (directory is empty or absent): skip to 7a-iii.
-    - If **delta specs exist**: compare each delta against `{{SPEC_DIR}}specs/<capability>/spec.md`. The archive CLI wholesale-replaces a MODIFIED requirement with the delta's content and skips an ADDED requirement that already exists in the canonical spec — so a partial delta (one that omits canonical content that should survive) loses that content on archive.
+    - If **delta specs exist**: compare each delta against `{{SPEC_DIR}}specs/<capability>/spec.md`. The archive merge engine is fail-closed: a MODIFIED requirement wholesale-replaces the canonical block, and the engine refuses the whole archive with zero file effect when an ADDED requirement already exists in the canon, a MODIFIED/REMOVED/RENAMED target is missing, or a MODIFIED block drops a canonical scenario without a `<!-- REMOVED-SCENARIO: <name> -->` declaration.
       - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 7a-iii.
-      - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs are not complete final-state. Normalize before archiving?"
-        - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements, convert pre-existing ADDED requirements to MODIFIED — then proceed. Do NOT edit main specs.
-        - **No**: proceed as-is (omitted canonical content will be lost on merge)
+      - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs would be refused by the archive merge gate. Fix them before archiving?"
+        - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
+        - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `/speclink-ingest <name>` — archiving as-is would exit non-zero
 
       If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
 

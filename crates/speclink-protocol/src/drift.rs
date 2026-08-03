@@ -104,7 +104,7 @@ mod tests {
                         capability: "billing".to_string(),
                         operation: "ADDED".to_string(),
                         requirement: "Invoice export".to_string(),
-                        reason: "already exists in the canonical spec — archive would skip it"
+                        reason: "already exists in the canonical spec — archive would refuse it"
                             .to_string(),
                     },
                 ],
