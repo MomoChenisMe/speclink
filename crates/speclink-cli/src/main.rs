@@ -202,7 +202,7 @@ struct ArchiveArgs {
     /// Changes to archive (several allowed; auto-detects when omitted and only one exists)
     #[arg(value_name = "CHANGE")]
     changes: Vec<String>,
-    /// Archive every ready change (tasks complete, valid, no stale delta assumptions)
+    /// Archive every ready change (tasks complete, valid, nothing the merge gate refuses)
     #[arg(long)]
     all: bool,
     /// Skip confirmation

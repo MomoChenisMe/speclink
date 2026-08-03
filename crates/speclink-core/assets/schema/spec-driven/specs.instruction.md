@@ -26,7 +26,10 @@ MODIFIED requirements workflow:
    `<!-- BEFORE: <one-line summary of the old behavior> -->` — reviewers see what changed
    without opening the canonical spec; archive strips the note automatically.
 
-Common pitfall: Using MODIFIED with partial content loses detail at archive time.
+Common pitfall: Using MODIFIED with partial content is REFUSED at archive time — the
+merge gate requires every canonical scenario to be carried over, or explicitly dropped
+with a one-line `<!-- REMOVED-SCENARIO: <scenario name> -->` declaration inside the
+MODIFIED block (stripped before the text reaches the canonical spec).
 If adding new concerns without changing existing behavior, use ADDED instead.
 
 Example:

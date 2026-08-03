@@ -1,6 +1,6 @@
 //! Drift detection between a change and the current codebase.
 
-use crate::model::{self, Change};
+use crate::model::Change;
 use crate::preflight::days_old;
 use crate::store::Store;
 use regex::Regex;
@@ -43,15 +43,11 @@ pub struct DriftDimension {
     pub contributes_to_total: bool,
 }
 
-/// A delta-spec operation whose target no longer matches the canonical specs — archiving the
-/// change would silently no-op or collide.
-#[derive(Debug, Serialize)]
-pub struct SpecAssumption {
-    pub capability: String,
-    pub operation: String,
-    pub requirement: String,
-    pub reason: String,
-}
+/// A delta-spec operation the archive merge gate would refuse — the engine's own
+/// `MergeViolation`, re-exported under drift's vocabulary so the two dimensions can
+/// never disagree. The serialized shape is unchanged; only `operation`'s value domain
+/// widened (a comma-joined list on a multi-section collision).
+pub use crate::archive::MergeViolation as SpecAssumption;
 
 /// Filesystem kind of a probed path (Tasks dimension & path anchors).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -329,75 +325,11 @@ fn symbol_found(ws: &Workspace, doc_contents: &[String], exclude_prefix: &str, s
     .is_some()
 }
 
-/// Delta-spec operations whose canonical targets have drifted — a MODIFIED/REMOVED/RENAMED
-/// requirement that no longer exists, or an ADDED requirement that now already exists.
-/// Archive silently skips both cases. Used by drift's Specs dimension and by bulk archive's
-/// readiness check.
+/// Delta-spec operations archive would refuse to merge — the same judgement the archive
+/// engine gates on and bulk archive pre-filters with, so drift, the pre-check and a single
+/// archive can never disagree (spec archive-merge「過期判定單源共用」).
 pub fn spec_assumptions(store: &dyn Store, change: &Change) -> Vec<SpecAssumption> {
-    let mut out: Vec<SpecAssumption> = Vec::new();
-    for cap in &store.delta_capabilities(&change.name) {
-        let delta_text = store
-            .read_artifact(&change.name, &model::delta_spec_artifact(cap))
-            .unwrap_or_default();
-        let reqs = crate::archive::parse_delta(&delta_text);
-        let canonical = store.read_canonical_spec(cap);
-        let canonical_names: Option<std::collections::BTreeSet<String>> = canonical
-            .as_deref()
-            .map(|t| crate::archive::parse_canonical(t).1.into_iter().map(|(n, _)| n).collect());
-        for r in &reqs {
-            match (r.operation.as_str(), &canonical_names) {
-                ("ADDED", Some(names)) if names.contains(&r.name) => {
-                    out.push(SpecAssumption {
-                        capability: cap.clone(),
-                        operation: r.operation.clone(),
-                        requirement: r.name.clone(),
-                        reason: "already exists in the canonical spec — archive would skip it"
-                            .to_string(),
-                    });
-                }
-                ("MODIFIED" | "REMOVED", Some(names)) if !names.contains(&r.name) => {
-                    out.push(SpecAssumption {
-                        capability: cap.clone(),
-                        operation: r.operation.clone(),
-                        requirement: r.name.clone(),
-                        reason: "target requirement no longer exists in the canonical spec"
-                            .to_string(),
-                    });
-                }
-                ("MODIFIED" | "REMOVED", None) => {
-                    out.push(SpecAssumption {
-                        capability: cap.clone(),
-                        operation: r.operation.clone(),
-                        requirement: r.name.clone(),
-                        reason: "canonical spec for this capability does not exist".to_string(),
-                    });
-                }
-                _ => {}
-            }
-        }
-        // RENAMED targets come from the shared pair parser (covers both the FROM:/TO:
-        // bullet form — which produces no DeltaReq — and the header form, without
-        // double-reporting the latter).
-        for (from, _to) in crate::model::rename_pairs(&delta_text) {
-            match &canonical_names {
-                Some(names) if names.contains(&from) => {}
-                Some(_) => out.push(SpecAssumption {
-                    capability: cap.clone(),
-                    operation: "RENAMED".to_string(),
-                    requirement: from,
-                    reason: "target requirement no longer exists in the canonical spec"
-                        .to_string(),
-                }),
-                None => out.push(SpecAssumption {
-                    capability: cap.clone(),
-                    operation: "RENAMED".to_string(),
-                    requirement: from,
-                    reason: "canonical spec for this capability does not exist".to_string(),
-                }),
-            }
-        }
-    }
-    out
+    crate::archive::merge_violations(store, &change.name)
 }
 
 /// Spec-side drift computation: consumes only Store spec facts (the change's
@@ -706,8 +638,8 @@ pub fn merge_drift_reports(
     }
     .to_string();
 
-    // Stale delta assumptions always route to ingest first: archiving (with or without
-    // --skip-specs) would silently drop or misapply the delta.
+    // Stale delta assumptions always route to ingest first: the archive merge gate
+    // refuses them (--skip-specs skips spec application entirely).
     let primary_recommendation = if !spec_assumptions.is_empty() {
         format!("/speclink-ingest {}", change.name)
     } else {
@@ -939,8 +871,8 @@ pub fn analyze(ws: &Workspace, store: &dyn Store, change: &Change) -> DriftRepor
     let tasks_score = 0;
 
     // Specs dimension (speclink-specific): do the delta's MODIFIED/REMOVED/RENAMED targets
-    // still exist in the canonical specs, and would an ADDED requirement collide? Archive
-    // silently skips both cases — drift is where they must surface.
+    // still exist in the canonical specs, and would an ADDED requirement collide? The
+    // archive merge gate refuses both cases — drift is where they surface early.
     let delta_caps = store.delta_capabilities(&change.name);
     let spec_assumptions = spec_assumptions(store, change);
     let specs_status = if delta_caps.is_empty() {
@@ -1021,8 +953,8 @@ pub fn analyze(ws: &Workspace, store: &dyn Store, change: &Change) -> DriftRepor
     }
     .to_string();
 
-    // Stale delta assumptions always route to ingest first: archiving (with or without
-    // --skip-specs) would silently drop or misapply the delta.
+    // Stale delta assumptions always route to ingest first: the archive merge gate
+    // refuses them (--skip-specs skips spec application entirely).
     let primary_recommendation = if !spec_assumptions.is_empty() {
         format!("/speclink-ingest {}", change.name)
     } else {
@@ -1114,6 +1046,76 @@ mod tests {
         assert_eq!(r.dimension.status, "delta assumptions hold");
         assert_eq!(r.dimension.score, 0);
         assert!(r.spec_assumptions.is_empty());
+    }
+
+    // --- 過期判定單源共用（design「判定共用」；spec archive-merge「過期判定單源共用」）---
+
+    #[test]
+    fn drift_bulk_precheck_and_single_archive_share_one_verdict() {
+        // spec Scenario「三處判定一致」：同一過期 MODIFIED 之下，drift 的 spec
+        // assumption、bulk 預檢讀的違規清單與單筆 archive 的拒絕逐欄指向同一
+        // capability 與需求名——三處共用 merge_violations 這一支判定。
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 done\n");
+        store.put_artifact(
+            "demo",
+            "specs/auth/spec.md",
+            "## MODIFIED Requirements\n\n### Requirement: Rotate tokens\n\nIt SHALL rotate.\n",
+        );
+        store
+            .write_canonical_spec("auth", "## Purpose\n\nAuth.\n\n### Requirement: Login\n")
+            .unwrap();
+        let change = store.find_change("demo").unwrap();
+
+        // bulk 預檢的來源＝引擎守門的來源。
+        let violations = crate::archive::merge_violations(&store, "demo");
+        assert_eq!(violations.len(), 1, "the pre-check sees exactly one violation");
+        assert_eq!(violations[0].capability, "auth");
+        assert_eq!(violations[0].operation, "MODIFIED");
+        assert_eq!(violations[0].requirement, "Rotate tokens");
+
+        // drift 的 Specs 維度逐欄同源。
+        let assumptions = spec_assumptions(&store, &change);
+        assert_eq!(assumptions.len(), violations.len(), "drift reports the same count");
+        assert_eq!(assumptions[0].capability, violations[0].capability);
+        assert_eq!(assumptions[0].operation, violations[0].operation);
+        assert_eq!(assumptions[0].requirement, violations[0].requirement);
+        assert_eq!(assumptions[0].reason, violations[0].reason, "one reason string, one source");
+
+        // 單筆 archive 拒絕，訊息指向同一 capability 與需求名。
+        let ws = Workspace {
+            root: std::env::temp_dir().join("speclink-drift-single-source-ghost-root"),
+            spec_dir_name: "openspec".to_string(),
+        };
+        let opts = crate::archive::ArchiveOptions { no_validate: true, ..Default::default() };
+        let err = crate::archive::archive(&ws, &store, &change, &opts, None)
+            .expect_err("the same stale delta refuses a single archive");
+        let msg = err.to_string();
+        assert!(msg.contains("auth"), "capability named: {msg}");
+        assert!(msg.contains("Rotate tokens"), "requirement named: {msg}");
+        assert!(msg.contains(&violations[0].reason), "the shared reason is rendered: {msg}");
+    }
+
+    #[test]
+    fn drift_reason_speaks_refusal_not_skip() {
+        // design「判定共用」：reason 文案改為拒絕語意，欄位結構不變。
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact(
+            "demo",
+            "specs/auth/spec.md",
+            "## ADDED Requirements\n\n### Requirement: Login\n",
+        );
+        store
+            .write_canonical_spec("auth", "## Purpose\n\n### Requirement: Login\n")
+            .unwrap();
+        let change = store.find_change("demo").unwrap();
+        let assumptions = spec_assumptions(&store, &change);
+        assert_eq!(assumptions.len(), 1);
+        assert!(
+            assumptions[0].reason.contains("archive would refuse it"),
+            "refusal wording, not skip: {}",
+            assumptions[0].reason
+        );
     }
 
     // --- Task 1: WorkspaceFacts 封閉結構逐欄可表達 有值／空值／不可用 ---

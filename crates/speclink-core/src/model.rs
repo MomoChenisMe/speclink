@@ -294,11 +294,25 @@ pub fn has_delta_operation(text: &str) -> bool {
 ///   (bold markers and bare names accepted)
 /// - header form: `### Requirement: Old` followed by a `TO: New` line
 pub fn rename_pairs(text: &str) -> Vec<(String, String)> {
+    rename_scan(text).0
+}
+
+/// Rename sources that never pair with a TO: target — an orphan FROM (bullet or header
+/// form), a FROM overwritten by the next one, or a TO with an empty value. The archive
+/// merge gate refuses these instead of silently dropping the operation.
+pub fn rename_dangling_sources(text: &str) -> Vec<String> {
+    rename_scan(text).1
+}
+
+/// One pass over the RENAMED sections: completed (from, to) pairs plus the sources
+/// that fell through unpaired.
+fn rename_scan(text: &str) -> (Vec<(String, String)>, Vec<String>) {
     fn req_name(raw: &str) -> String {
         let s = raw.trim().trim_matches('`').trim();
         s.strip_prefix("### Requirement:").map(str::trim).unwrap_or(s).to_string()
     }
-    let mut out = Vec::new();
+    let mut pairs = Vec::new();
+    let mut dangling = Vec::new();
     let mut in_renamed = false;
     let mut from: Option<String> = None;
     for line in text.lines() {
@@ -306,7 +320,7 @@ pub fn rename_pairs(text: &str) -> Vec<(String, String)> {
         if let Some(rest) = t.strip_prefix("## ") {
             if rest.trim_end().ends_with("Requirements") {
                 in_renamed = rest.split_whitespace().next() == Some("RENAMED");
-                from = None;
+                dangling.extend(from.take());
                 continue;
             }
         }
@@ -314,23 +328,26 @@ pub fn rename_pairs(text: &str) -> Vec<(String, String)> {
             continue;
         }
         if let Some(name) = t.strip_prefix("### Requirement:") {
-            from = Some(name.trim().to_string());
+            dangling.extend(from.replace(name.trim().to_string()));
             continue;
         }
         let norm = t.trim().trim_start_matches("- ").replace("**", "");
         if let Some(v) = norm.strip_prefix("FROM:") {
             let v = req_name(v);
             if !v.is_empty() {
-                from = Some(v);
+                dangling.extend(from.replace(v));
             }
         } else if let Some(v) = norm.strip_prefix("TO:") {
             let v = req_name(v);
-            if let (Some(f), false) = (from.take(), v.is_empty()) {
-                out.push((f, v));
+            match (from.take(), v.is_empty()) {
+                (Some(f), false) => pairs.push((f, v)),
+                (Some(f), true) => dangling.push(f),
+                (None, _) => {}
             }
         }
     }
-    out
+    dangling.extend(from);
+    (pairs, dangling)
 }
 
 /// DAG status of a single artifact.
