@@ -18,6 +18,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 /// 執行，壓低合併單 binary 後 loopback 埠競爭、free_port 的 TOCTOU 窗口與
 /// healthz／setup-token 就緒時限在高負載下被擠壓的風險；in-process 測試不取，
 /// 維持全並發（樣式同 desktop tests/it/common 的 HARNESS_GATE）。
+///
+/// 代價：it 全程約 275s（gate 前約 100s）。嫌慢的退場路徑＝縮小射程至帶硬
+/// 時限的 admin_e2e、e2e_cli、startup 三檔（依據與門檻見封存 change
+/// merge-integration-test-binaries 的 task 10.1 與 design Decisions 5）。
 static PROCESS_GATE: Mutex<()> = Mutex::new(());
 
 pub fn acquire_process_gate() -> MutexGuard<'static, ()> {
