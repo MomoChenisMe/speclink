@@ -1,5 +1,7 @@
 # Rust build artifacts
 /target/
+# napi build 的隔離 target（見 crates/speclink-node/.cargo/config.toml）
+/crates/speclink-node/target/
 
 # Legacy app data
 openspec/.vector-search.db*

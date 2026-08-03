@@ -1,0 +1,5 @@
+# napi build 在本目錄執行、就近讀取此設定：中間產物落在
+# crates/speclink-node/target/，不寫 workspace target/——否則 napi 與
+# cargo test 互踩快取指紋，零改動也整批重連結。root 執行的 cargo 不受影響。
+[build]
+target-dir = "target"
