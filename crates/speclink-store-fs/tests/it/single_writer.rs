@@ -76,7 +76,7 @@ fn a_dead_holders_lock_is_released_and_the_directory_can_be_taken_over() {
 
     // A real second process takes the lock and writes a document.
     let mut child = Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "lock_holder_child", "--ignored", "--nocapture"])
+        .args(["--exact", "single_writer::lock_holder_child", "--ignored", "--nocapture"])
         .env(DIR_ENV, dir.path())
         .stdout(Stdio::piped())
         .spawn()
