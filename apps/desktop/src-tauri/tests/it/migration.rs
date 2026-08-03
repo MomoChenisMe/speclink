@@ -1,6 +1,6 @@
 //! Local bundle → typed import → server read-surface round trip.
 
-mod common;
+use crate::common;
 
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::remote::{self, TokenManager};

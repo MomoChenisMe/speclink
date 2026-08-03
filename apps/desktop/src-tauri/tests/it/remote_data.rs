@@ -8,10 +8,10 @@
 //! 原樣回錯不建 runtime；直達類逐方法回 server 真值；組合類 set_tasks 中途
 //! 失敗中止並回報筆數；不支援類回拒絕錯誤。
 
-mod common;
+use crate::common;
 
 use chrono::{Duration, Utc};
-use common::Harness;
+use crate::common::Harness;
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::remote::{self, RemoteWorkspace, TokenManager};
 use speclink_remote::RemoteError;

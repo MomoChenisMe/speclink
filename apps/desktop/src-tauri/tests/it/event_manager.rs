@@ -8,7 +8,7 @@
 //! /sync-state ETag 收斂、退避重連並 Last-Event-ID 續傳；reset 信號發全量
 //! 重載通知後自新位點續訂。
 
-mod common;
+use crate::common;
 
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::event_manager::EventManager;
