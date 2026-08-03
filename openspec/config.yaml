@@ -32,7 +32,7 @@ context: |
   - **雙輸出路徑都是契約**：每個指令有人眼輸出（ANSI 色彩，可 `--no-color`）與 `--json`；
     `--json` 欄位一律 camelCase，欄位名本身是契約的一部分。
   - **既有輸出是回歸保護對象**：人眼輸出與 `--json` shape 都是既成契約；改動前後須以
-    golden（`cargo test -p speclink-core --test render_golden`）與 CLI 測試確認未意外變動，
+    golden（`cargo test -p speclink-core --test it render_golden::`）與 CLI 測試確認未意外變動，
     刻意變更則同批更新 golden 並在提案記載。
   - **正典 vs delta**：正典規格是現況唯一真相；變更以 delta 表述（ADDED／MODIFIED／REMOVED／
     RENAMED），archive 時併入正典並注入 `@trace`。
