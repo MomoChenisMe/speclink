@@ -20,25 +20,5 @@ speclink-store-sqlite = { path = "../speclink-store-sqlite" }
 tempfile = "3"
 
 [[test]]
-name = "infra"
-harness = false
-
-[[test]]
-name = "bundle_and_outbox"
-harness = false
-
-[[test]]
-name = "version_gate"
-harness = false
-
-[[test]]
-name = "single_writer"
-harness = false
-
-[[test]]
-name = "resilience"
-harness = false
-
-[[test]]
-name = "conformance"
+name = "it"
 harness = false

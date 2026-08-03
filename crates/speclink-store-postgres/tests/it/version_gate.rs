@@ -4,7 +4,7 @@
 //! The rule under test is fail-closed — detection is read-only, so a database
 //! the driver goes on to refuse keeps every byte it had.
 
-mod support;
+use crate::support;
 
 use postgres::{Client, NoTls};
 use speclink_store::{StoreError, TeamStore, CONTRACT_VERSION};
@@ -171,8 +171,8 @@ fn missing_database_is_a_backend_error_naming_the_cause() {
     );
 }
 
-fn main() {
-    support::run(&[
+pub fn tests() -> &'static [(&'static str, fn())] {
+    &[
         (
             "empty_schema_initializes_at_the_current_version",
             empty_schema_initializes_at_the_current_version,
@@ -201,5 +201,5 @@ fn main() {
             "missing_database_is_a_backend_error_naming_the_cause",
             missing_database_is_a_backend_error_naming_the_cause,
         ),
-    ]);
+    ]
 }

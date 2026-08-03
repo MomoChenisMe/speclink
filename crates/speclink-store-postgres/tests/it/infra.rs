@@ -4,7 +4,7 @@
 //! isolation and on `support::run` for the skip-when-unconfigured rule, so the
 //! scaffolding itself is worth holding to a test.
 
-mod support;
+use crate::support;
 
 use postgres::{Client, NoTls};
 use support::TestDb;
@@ -64,8 +64,8 @@ fn dropping_the_test_db_removes_its_schema() {
     assert!(!exists, "schema {name} survived its TestDb");
 }
 
-fn main() {
-    support::run(&[
+pub fn tests() -> &'static [(&'static str, fn())] {
+    &[
         (
             "isolated_schema_is_created_and_reachable",
             isolated_schema_is_created_and_reachable,
@@ -78,5 +78,5 @@ fn main() {
             "dropping_the_test_db_removes_its_schema",
             dropping_the_test_db_removes_its_schema,
         ),
-    ]);
+    ]
 }
