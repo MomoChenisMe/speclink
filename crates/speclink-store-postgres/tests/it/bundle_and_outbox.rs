@@ -4,7 +4,7 @@
 //! exported from any driver must digest identically, which is what makes
 //! migrating between drivers a copy rather than a conversion.
 
-mod support;
+use crate::support;
 
 use speclink_store::{
     Bundle, ImportMode, ImportOutcome, OutboxCursor, RevisionKind, StoreError, TeamStore,
@@ -241,8 +241,8 @@ fn history_records_writes_and_tombstones() {
     assert!(snapshot.read(&spec("auth")).expect("read").is_none());
 }
 
-fn main() {
-    support::run(&[
+pub fn tests() -> &'static [(&'static str, fn())] {
+    &[
         ("export_and_import_round_trip", export_and_import_round_trip),
         (
             "import_create_new_refuses_a_scope_that_holds_any_document",
@@ -268,5 +268,5 @@ fn main() {
             "history_records_writes_and_tombstones",
             history_records_writes_and_tombstones,
         ),
-    ]);
+    ]
 }

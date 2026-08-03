@@ -3,7 +3,7 @@
 //! This is the driver's acceptance surface: the same gates every other driver
 //! passes, over the same behaviour, with nothing driver-specific asserted here.
 
-mod support;
+use crate::support;
 
 use speclink_store::conformance::{run, StoreHarness};
 use speclink_store::{Capability, CapabilityLevel, FaultPoint, TeamStore, CONTRACT_VERSION};
@@ -86,9 +86,9 @@ fn postgres_driver_passes_the_full_conformance_suite() {
     );
 }
 
-fn main() {
-    support::run(&[(
+pub fn tests() -> &'static [(&'static str, fn())] {
+    &[(
         "postgres_driver_passes_the_full_conformance_suite",
         postgres_driver_passes_the_full_conformance_suite,
-    )]);
+    )]
 }

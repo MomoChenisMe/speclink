@@ -7,7 +7,7 @@
 //! advisory lock is doing the work, and it is the shape the deployment has
 //! when two server processes point at one database.
 
-mod support;
+use crate::support;
 
 use std::sync::mpsc;
 use std::thread;
@@ -219,8 +219,8 @@ fn a_snapshot_does_not_wait_for_a_scopes_lock() {
     held.rollback().expect("release the lock");
 }
 
-fn main() {
-    support::run(&[
+pub fn tests() -> &'static [(&'static str, fn())] {
+    &[
         (
             "concurrent_commits_on_the_same_revision_leave_exactly_one_winner",
             concurrent_commits_on_the_same_revision_leave_exactly_one_winner,
@@ -237,5 +237,5 @@ fn main() {
             "a_snapshot_does_not_tear_under_a_concurrent_write",
             a_snapshot_does_not_tear_under_a_concurrent_write,
         ),
-    ]);
+    ]
 }

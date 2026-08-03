@@ -10,7 +10,7 @@
 //! the store just reconnects — and there is no window in which `unavailable` is
 //! the required answer.
 
-mod support;
+use crate::support;
 
 use speclink_store::{StoreError, TeamStore};
 use speclink_store_postgres::PostgresTeamStore;
@@ -96,9 +96,9 @@ fn an_outage_reports_unavailable_and_the_store_recovers_when_it_ends() {
     );
 }
 
-fn main() {
-    support::run(&[(
+pub fn tests() -> &'static [(&'static str, fn())] {
+    &[(
         "an_outage_reports_unavailable_and_the_store_recovers_when_it_ends",
         an_outage_reports_unavailable_and_the_store_recovers_when_it_ends,
-    )]);
+    )]
 }
