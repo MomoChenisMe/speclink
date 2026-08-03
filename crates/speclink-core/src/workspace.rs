@@ -81,6 +81,11 @@ impl Workspace {
     pub fn snapshots_dir(&self) -> PathBuf {
         self.work_dir().join("snapshots")
     }
+    /// Host-local review scope sidecars (Apply baselines + frozen review
+    /// snapshots) — never touched records, never store documents.
+    pub fn review_scopes_dir(&self) -> PathBuf {
+        self.work_dir().join("review-scopes")
+    }
 
     /// The legacy remote connection file (`.speclink.remote.yaml`) location —
     /// only consulted for leftover detection, never parsed.

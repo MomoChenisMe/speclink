@@ -1,5 +1,5 @@
 === WAD.md ===
-<!-- SPECLINK:START v1.4.0 -->
+<!-- SPECLINK:START v1.5.0 -->
 
 # Speclink Instructions
 
@@ -37,7 +37,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.4.0"
+  version: "v1.5.0"
   generatedBy: "Speclink"
 ---
 
@@ -74,13 +74,14 @@ Implement tasks from a Speclink change.
 
    **If the command fails**: show the error and STOP.
 
-   **If the command succeeds**, mark the change as in-progress and proceed:
+   **If the command succeeds**, capture the review baseline, then mark the change as in-progress:
 
    ```bash
+   speclink review prepare "<name>"
    speclink in-progress add "<name>"
    ```
 
-   This is a silent operation — do not show the output to the user.
+   `review prepare` records the host-local Apply baseline (HEAD, dirty files at start) that the review station later resolves its frozen change scope against. Both are silent operations — do not show their output to the user. A stderr warning from `review prepare` (late or unavailable baseline) is fine — continue. If `speclink review prepare` fails, report the error and STOP — do NOT run `speclink in-progress add`.
 
    Parse the JSON to understand:
    - `schemaName`: The workflow being used (e.g., "spec-driven")
@@ -368,7 +369,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.4.0"
+  version: "v1.5.0"
   generatedBy: "Speclink"
 ---
 
@@ -617,7 +618,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.4.0"
+  version: "v1.5.0"
   generatedBy: "Speclink"
 ---
 
@@ -859,7 +860,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.4.0"
+  version: "v1.5.0"
   generatedBy: "Speclink"
 ---
 
@@ -1132,7 +1133,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.4.0"
+  version: "v1.5.0"
   generatedBy: "Speclink"
 ---
 
@@ -1249,7 +1250,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.4.0"
+  version: "v1.5.0"
   generatedBy: "Speclink"
 ---
 
@@ -1692,7 +1693,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.4.0"
+  version: "v1.5.0"
   generatedBy: "Speclink"
 ---
 
@@ -1820,7 +1821,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.4.0"
+  version: "v1.5.0"
   generatedBy: "Speclink"
 ---
 
@@ -2093,7 +2094,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.4.0"
+  version: "v1.5.0"
   generatedBy: "Speclink"
 ---
 
@@ -2193,7 +2194,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.4.0"
+  version: "v1.5.0"
   generatedBy: "Speclink"
 ---
 
@@ -2617,7 +2618,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.4.0"
+  version: "v1.5.0"
   generatedBy: "Speclink"
 ---
 
@@ -2627,7 +2628,7 @@ This harness executes speclink verbs by calling the speclink tool with an argv a
 
 ---
 
-Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions + a fixed code-smell baseline) and **Correctness** (bug hunting) — recorded round by round to a review ticket, closed by a stamp. Spec compliance is NOT this skill's job — that is `speclink verify`; the two quality stations run independently and either, both, or neither may be used per change.
+Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions + a fixed code-smell baseline) and **Correctness** (bug hunting) — run ONCE against a frozen change patch, then validated round by round to a review ticket, closed by a stamp. Round 1 is the only discovery pass; every later round only validates remediation. Spec compliance is NOT this skill's job — that is `speclink verify`; the two quality stations run independently and either, both, or neither may be used per change.
 
 **Input**: Optionally specify a change name after `speclink review` (e.g., `speclink review add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
@@ -2653,16 +2654,22 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    Keep the payload: `contextFiles` feeds step 4, and `locale` is the resolved language for the whole output chain — the sub-agent reports, the round presentation, the questions, and the ticket record alike (steps 5, 6 and 8).
 
-3. **Scope this round**
+3. **Check the ticket, then resolve the frozen scope**
 
    ```bash
    speclink review show "<name>" --json
    ```
 
-   - **Command succeeds** (a ticket exists) → this is a follow-up round: the scope is the union of `lastRound.findings[].path` plus any files modified while fixing them. Do NOT rescan the whole change. If the last round carries zero findings (e.g. a refused stamp left a clean round behind), take the union of every round's `scope` from the same payload instead — the already-reviewed surface, not a full rescan.
-   - **Command fails** (no ticket) → this is the first round: read the touched record `.speclink/touched/<name>.json` and collect the union of its recorded files. If the record is missing or empty (fresh clone, work done on another machine), use the **AskUserQuestion tool** (plain text + wait if unavailable) to ask for a git comparison base (e.g. `main`, a commit SHA), then scope with `git diff --name-only <base>...HEAD`.
+   - **Ticket exists and `lastRound.findings` is empty** (e.g. a refused stamp left a clean round behind) → do NOT re-review: once the external gate recovers, retry the stamp directly — `speclink review stamp "<name>" --agent wad-harness` — and report the outcome. No new discovery, no new validation.
+   - **Otherwise** (no ticket, or the last round carries findings) → resolve the frozen scope:
 
-   Keep source and test files; drop files that no longer exist. Artifact documents under `openspec/` are judging context (step 4), not review targets.
+   ```bash
+   speclink review scope "<name>" --json
+   ```
+
+   - **State `resolved`** → keep the payload. `phase` names the pass (`discovery` on a ticketless change, `validation` on a follow-up), `patchHash` is the frozen patch identity, and `patch` / `files` carry the exact hunks under review. Every later step judges THIS frozen patch — the file list is never the review surface.
+   - **State `needsInput` (non-zero exit)** → the scope is ambiguous (files dirty before Apply started, an overlapping active change, a missing or late baseline, or empty touched records). Relay the reported reasons and wait for the user to resolve it explicitly by one of: a trusted `--base <rev>`; a hash-pinned hunk selection (`--candidate-hash <sha256>` plus repeated `--include-hunk <id>`, ids from the needsInput payload); or redoing the work in an isolated worktree. Do NOT substitute the touched file list and do NOT widen to the whole worktree — commit-graph diffs and file lists both miss what the frozen patch pins.
+   - **Command fails** (legacy ticket without a snapshot, drifted candidate, missing baseline for a follow-up) → report the error verbatim and stop; the explicit way out is the user's call: keep the ticket for later, or `speclink review discard "<name>"` and re-run discovery with an explicit trusted base. NEVER fall back to re-reviewing whole files.
 
 4. **Read the change artifacts as judging context**
 
@@ -2673,22 +2680,24 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`). Read it freely, but NEVER edit projection files; spec changes go through speclink verbs.
 
-5. **Spawn the two review axes in parallel**
+5. **Branch on `phase`**
+
+   **Discovery (`phase: discovery`) — the one and only exploration pass.**
 
    Send ONE message with TWO parallel read-only sub-agent calls (e.g. the Agent tool with a read-only agent). Sub-agents MUST NOT modify any file. If your harness cannot spawn sub-agents, run the two axes yourself sequentially and keep their analyses strictly separate.
 
-   Both briefs carry: the scope file list, the relevant artifact intent, and the reporting contract — **under 400 words**, each finding on its own line as `- [SEVERITY] path — description`, SEVERITY ∈ CRITICAL / WARNING / SUGGESTION.
+   Both briefs carry the same frozen patch — step 3's `patch` text with its hunk ranges — plus the relevant artifact intent and the reporting contract: **under 400 words**, each finding on its own line as `- [SEVERITY] path — description`, SEVERITY ∈ CRITICAL / WARNING / SUGGESTION. Both axes judge only the change hunks and the callers/tests needed to judge their direct impact — the unchanged remainder of a touched file is context, not review surface.
 
    Both briefs also carry the resolved `locale` (step 2): finding descriptions are written in that language; severity labels, the `Standards:` / `Correctness:` axis prefixes, file paths, and command lines stay in English. If `locale` is absent, everything is English.
 
-   **Follow-up rounds**: when accepted findings exist — adjudicated this session (step 9) or carried in the ticket's last round with the `(accepted)` token — both briefs also carry that list with a hard instruction: do NOT re-report these items or near-variants of them — they are already adjudicated.
+   When accepted findings exist in the ticket's last round (the `(accepted)` token), both briefs also carry that list with a hard instruction: do NOT re-report these items or near-variants of them — they are already adjudicated.
 
-   **Standards axis brief** — first gather what the repo documents (CLAUDE.md / AGENTS.md, CONTRIBUTING, style docs, lint configs) and check the scope against it, citing the document for each violation. On top of whatever the repo documents, the Standards axis always carries the smell baseline below — a fixed set of Fowler code smells (Refactoring, ch.3) that applies even when a repo documents nothing. Two rules bind it:
+   **Standards axis brief** — first gather what the repo documents (CLAUDE.md / AGENTS.md, CONTRIBUTING, style docs, lint configs) and check the frozen hunks against it, citing the document for each violation. On top of whatever the repo documents, the Standards axis always carries the smell baseline below — a fixed set of Fowler code smells (Refactoring, ch.3) that applies even when a repo documents nothing. Two rules bind it:
 
    - **The repo overrides.** A documented repo standard always wins; where it endorses something the baseline would flag, suppress the smell.
    - **Always a judgement call.** Each smell is a labelled heuristic ("possible Feature Envy"), never a hard violation — and, like any standard here, skip anything tooling already enforces.
 
-   Each smell reads what it is → how to fix; match it against the diff:
+   Each smell reads what it is → how to fix; match it against the frozen hunks:
 
    - **Mysterious Name** — a function, variable, or type whose name doesn't reveal what it does or holds. → rename it; if no honest name comes, the design's murky.
    - **Duplicated Code** — the same logic shape appears in more than one hunk or file in the change. → extract the shared shape, call it from both.
@@ -2707,7 +2716,13 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    Severity mapping for this axis: smells are judgement calls — report them as WARNING or SUGGESTION with "possible X" phrasing and the offending hunk quoted; CRITICAL is reserved for unambiguous violations of a documented repo standard.
 
-   **Correctness axis brief** — hunt bugs in the scope: logic errors, boundary and edge cases, error-handling gaps, resource leaks, concurrency hazards, invariants broken between the changed files and their callers. Use the artifact intent only to understand what the code is for; report bugs, not compliance. CRITICAL = wrong behavior or data loss on a realistic path; WARNING = likely bug or fragile pattern; SUGGESTION = hardening opportunity. Quote the suspect hunk.
+   **Correctness axis brief** — hunt bugs in the frozen hunks: logic errors, boundary and edge cases, error-handling gaps, resource leaks, concurrency hazards, invariants broken between the changed hunks and their callers. Use the artifact intent only to understand what the code is for; report bugs, not compliance. CRITICAL = wrong behavior or data loss on a realistic path; WARNING = likely bug or fragile pattern; SUGGESTION = hardening opportunity. Quote the suspect hunk.
+
+   **Validation (`phase: validation`) — remediation validation, never re-discovery.**
+
+   Send the same two parallel read-only axes, but each brief carries ONLY: the last round's unresolved findings (verbatim), the accepted list, the remediation patch (step 3's frozen validation patch), and the necessary adjacent callers/tests plus artifact intent. Each axis judges, per original finding, resolved or unresolved — and reports only regressions the remediation patch directly introduces. It must NOT report new smells, SUGGESTIONs, or pre-existing issues in unchanged areas. The locale binding and the reporting contract are the same as in discovery.
+
+   **Unrelated late findings during validation**: something new that the remediation patch did not cause must NOT be added to the current round and must NOT reopen discovery. Only when it carries evidence — a realistic trigger path plus one of a reproduction, a failing test, or a clear invariant violation — AND it affects security, data loss, or wrong behavior, end this station as **scope changed / failed**: keep the ticket, do not stamp, and recommend a separate discovery or a spun-off change. Anything below that bar is a note for later, never a blocker.
 
 6. **Present both reports side by side**
 
@@ -2715,10 +2730,12 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
 7. **Triage every finding**
 
-   After the reports, classify each finding into one of two buckets and show the result as its own list. The triage drives the recommendation in step 9 — it never changes the ticket format:
+   After the reports, classify each finding into one of two buckets and show the result as its own list. The triage drives step 9 — it never changes the ticket format:
 
    - **Must-fix** — CRITICAL findings; Correctness findings with a realistic trigger path (WARNING included); unambiguous violations of a documented repo standard.
    - **Discretionary** — "possible X" smell judgements and SUGGESTION-level items. Give each one line: the cost of fixing weighed against the benefit.
+
+   The **blocking set** of a round is its must-fix findings the user has not accepted — step 9's loop rule runs on its size.
 
 8. **Record the round**
 
@@ -2726,38 +2743,50 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    speclink review add-round "<name>" --stdin
    ```
 
-   Feed via stdin:
-   - one `**Scope**:` line — this round's reviewed files, comma-separated repo-root relative paths;
+   Feed via stdin, in order:
+   - one `**Phase**:` line — step 3's `phase` (`discovery` or `validation`);
+   - one `**Patch**:` line — step 3's `patchHash` (`sha256:<hex>`);
+   - one `**Scope**:` line — this round's reviewed files, comma-separated repo-root relative paths (the frozen patch's `paths`);
    - zero or more findings lines `- [SEVERITY] path — description`, carrying both axes; start each description with its axis (`Standards:` / `Correctness:`).
 
    Findings descriptions go in exactly as the sub-agents reported them — same language, never translated by the main thread; severity labels and axis prefixes stay in English.
 
-   **Follow-up rounds**: append every accepted, still-unfixed finding verbatim to this round's findings lines, ending each with the structural token `(accepted)` — the token stays English like the severity labels; a later session rebuilds the no-re-report list from the lines carrying it. The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
+   **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
    NEVER hand-write or edit `openspec/changes/<name>/review.md` — the ticket is verb-owned; a malformed round is rejected by the verb, fix the stdin content and retry.
 
-9. **Branch on findings**
+9. **Branch on the blocking set**
 
-   - **Zero findings this round** → stamp and report:
+   Let Bn be this round's blocking set (step 7). Compare its size with the previous round's Bn-1 (a first round has nothing to compare against):
+
+   - **Bn is empty and no accepted findings remain** → stamp and report **passed clean**:
 
      ```bash
      speclink review stamp "<name>" --agent wad-harness
      ```
 
-     If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop.
+     If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop — the next session retries the stamp through step 3.
 
-   - **Findings exist** → derive the recommendation from the triage: any must-fix outstanding → recommend option 1 and list the must-fix items; only discretionary items left → recommend option 2, noting the reservations stay on record via `--accept`. Then use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)":
-     1. **Fix and re-review** — fixes happen HERE in the main thread, following the project's TDD discipline; sub-agents never edit. Fix the must-fix list; discretionary items only when the user asks — anything left unfixed is accepted and carried (steps 5 and 8). **Verification gate**: after the fixes, run the project's full build and test suite and get it green BEFORE looping back to step 3 — a fix-introduced regression must never flow into the next round. The next round's scope is the last round's findings files plus whatever the fixes touched.
+   - **Bn is empty but accepted findings remain** → recommend the user explicitly stamp with reservations — `speclink review stamp "<name>" --accept --agent wad-harness` — and report **passed with reservations**. Never run `--accept` unprompted.
+
+   - **Bn is strictly smaller than Bn-1** (or this is the first round with findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": any must-fix outstanding → recommend option 1; only discretionary left → recommend option 2.
+     1. **Fix and re-validate** — fixes happen HERE in the main thread, following the project's TDD discipline; sub-agents never edit. Fix the must-fix list; discretionary items only when the user asks — anything left unfixed is accepted and carried (step 8). **Verification gate**: after the fixes, run the project's full build and test suite and get it green BEFORE looping back to step 3 — a fix-introduced regression must never flow into the next round. Step 3 then freezes the validation patch for the next round.
      2. **Accept as-is and stamp** — `speclink review stamp "<name>" --accept --agent wad-harness` (stamps with reservations; the round's findings stay on record in the change history).
-     3. **Stop without stamping** — end the session; the ticket stays for a later session or another reviewer to pick up (`speclink review show <name> --json` hands them the last round).
+     3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another reviewer (`speclink review show <name> --json` hands them the last round).
+
+   - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do NOT start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
+
+   The shrinking blocking set only decides whether the automatic loop may continue — it is never a quality score and never described as "passed". There is no fixed maximum round count; every automatic continuation must strictly shrink the blocking set.
 
 **Guardrails**
 
 - The review station judges craft; `speclink verify` judges spec compliance — never issue compliance verdicts here
+- Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
+- The frozen patch from `speclink review scope` is the review surface; touched file lists and worktree state never substitute for it
+- needsInput and scope failures wait for an explicit disposal (trusted `--base`, hash-pinned selection, isolated worktree, or discard) — never guess past them
 - Sub-agents are read-only; every fix returns to the main thread
 - The ticket is verb-owned: create, append, and close it only through `speclink review` verbs
-- Follow-up rounds review only the last round's findings files plus fix-touched files — no full rescans (a zero-findings last round widens to the union of the ticket's round scopes, still never the whole change)
-- Triage drives the recommendation: must-fix outstanding → fix; only discretionary left → accept — never loop for taste alone
+- Unresolved findings travel verbatim between rounds — rewording fakes progress
 - The verification gate is hard: no next round starts on a failing build or test suite
 - Accepted findings are carried, never re-reported: sub-agents get the no-re-report list, the round record keeps the items
 - Thin artifacts: judge from code and tests, never invent requirements

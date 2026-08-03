@@ -2086,6 +2086,45 @@ fn cmd_review(a: ReviewArgs) -> Result<()> {
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     match a.command {
+        ReviewCommands::Prepare { change } => {
+            if !store.change_exists(&change) {
+                bail!("change not found: {change}");
+            }
+            // started 判讀走 fail-closed 解析：壞 meta 不得被讀作「未開始」。
+            let raw_meta = store.read_change_meta(&change);
+            let meta = core::model::ChangeMeta::from_text(raw_meta.as_deref())
+                .map_err(|e| anyhow::anyhow!(e))?;
+            run_review_prepare(&ws, &change, meta.started_at.is_some())?;
+        }
+        ReviewCommands::Scope { change, json, base, candidate_hash, include_hunk } => {
+            if !store.change_exists(&change) {
+                bail!("change not found: {change}");
+            }
+            let ticket = store
+                .artifact_exists(&change, core::review::REVIEW_DOC)
+                .then(|| core::review::show(store, &change))
+                .transpose()?
+                .map(|t| speclink_host::change_diff::TicketBinding {
+                    patch_hash: t.last_round().patch_hash.clone(),
+                    finding_paths: t
+                        .last_round()
+                        .findings
+                        .iter()
+                        .map(|f| f.path.clone())
+                        .collect(),
+                });
+            let names = store.list_changes().into_iter().map(|c| c.name).collect();
+            let req = build_scope_request(
+                &ws,
+                change,
+                names,
+                ticket,
+                base,
+                candidate_hash,
+                include_hunk,
+            );
+            run_review_scope(&ws, &req, json)?;
+        }
         ReviewCommands::AddRound { change, stdin } => {
             let content = read_stdin_content(stdin);
             let round = core::review::add_round(store, &change, &content)?;
@@ -2097,6 +2136,8 @@ fn cmd_review(a: ReviewArgs) -> Result<()> {
                 let round_json = |r: &core::review::Round| {
                     serde_json::json!({
                         "index": r.index,
+                        "phase": r.phase.map(|p| p.as_str()),
+                        "patchHash": r.patch_hash,
                         "scope": r.scope,
                         "findings": r
                             .findings
@@ -2135,13 +2176,192 @@ fn cmd_review(a: ReviewArgs) -> Result<()> {
                 &file_exists,
             )?;
             println!("{} Stamped review for change '{change}'", color::green("✓"));
+            clear_snapshots_warning(&ws, &change);
         }
         ReviewCommands::Discard { change } => {
             core::review::discard(store, &change)?;
             println!("{} Discarded review ticket for change '{change}'", color::green("✓"));
+            clear_snapshots_warning(&ws, &change);
         }
     }
     Ok(())
+}
+
+/// `review prepare` 的唯一實作（local／remote 共用）：sidecar 全在本地
+/// checkout，只有「是否已開工」這件事實由各自的 store 提供。
+///
+/// initial／kept 靜默（spec：stdout 為空）；late／unavailable 以 stderr 警告但
+/// 仍 exit 0，讓 apply 可以繼續。
+pub(crate) fn run_review_prepare(
+    ws: &core::workspace::Workspace,
+    change: &str,
+    started: bool,
+) -> Result<()> {
+    match speclink_host::change_diff::prepare(ws, change, started)? {
+        speclink_host::change_diff::PrepareOutcome::Captured(_)
+        | speclink_host::change_diff::PrepareOutcome::KeptExisting(_) => {}
+        speclink_host::change_diff::PrepareOutcome::Late(_) => eprintln!(
+            "Warning: baseline for '{change}' was captured late (the change already started) \
+             — review scope will need an explicit trusted --base fixed point"
+        ),
+        speclink_host::change_diff::PrepareOutcome::Unavailable(_) => eprintln!(
+            "Warning: no git checkout found — baseline recorded as unavailable; review scope \
+             will need an explicit trusted --base fixed point"
+        ),
+    }
+    Ok(())
+}
+
+/// `review scope` 的請求組裝（local／remote 共用）：touched 記錄與重疊認領都是
+/// host-local 事實，只有 change 清單與工單由各自的 store 提供。
+pub(crate) fn build_scope_request(
+    ws: &core::workspace::Workspace,
+    change: String,
+    other_change_names: Vec<String>,
+    ticket: Option<speclink_host::change_diff::TicketBinding>,
+    base: Option<String>,
+    candidate_hash: Option<String>,
+    include_hunks: Vec<String>,
+) -> speclink_host::change_diff::ScopeRequest {
+    let touched_paths = core::tasks::TouchedRecord::load(ws, &change).all_files();
+    // 其他 active change 的 host-local touched 認領（overlap 守門）。
+    let other_claims = other_change_names
+        .into_iter()
+        .filter(|name| *name != change)
+        .filter_map(|name| {
+            let paths = core::tasks::TouchedRecord::load(ws, &name).all_files();
+            (!paths.is_empty())
+                .then_some(speclink_host::change_diff::ActiveClaim { change: name, paths })
+        })
+        .collect();
+    speclink_host::change_diff::ScopeRequest {
+        change,
+        touched_paths,
+        other_claims,
+        ticket,
+        base_override: base,
+        candidate_hash,
+        include_hunks,
+    }
+}
+
+/// scope 的解析與呈現（local／remote 共用——resolved payload 逐位元同形的唯一
+/// 保證）。needsInput 印 JSON（--json 時）後以非零收場。
+fn run_review_scope(
+    ws: &core::workspace::Workspace,
+    req: &speclink_host::change_diff::ScopeRequest,
+    json: bool,
+) -> Result<()> {
+    match speclink_host::change_diff::resolve_scope(ws, req)? {
+        speclink_host::change_diff::ScopeOutcome::Resolved(r) => {
+            if json {
+                return print_json(&serde_json::json!({
+                    "change": r.change,
+                    "phase": r.phase.as_str(),
+                    "state": "resolved",
+                    "baseCommit": r.base_commit,
+                    "candidateHash": r.candidate_hash,
+                    "patchHash": r.patch_hash,
+                    "paths": r.paths,
+                    "files": r.files,
+                    "patch": r.patch,
+                }));
+            }
+            let hunk_count: usize = r.files.iter().map(|f| f.hunks.len()).sum();
+            println!(
+                "{} Frozen {} scope for change '{}'",
+                color::green("✓"),
+                r.phase.as_str(),
+                r.change
+            );
+            println!("  Patch: {}", r.patch_hash);
+            println!("  Scope: {} file(s), {} hunk(s)", r.paths.len(), hunk_count);
+            Ok(())
+        }
+        speclink_host::change_diff::ScopeOutcome::NeedsInput(n) => {
+            if json {
+                print_json(&serde_json::json!({
+                    "change": n.change,
+                    "phase": n.phase.as_str(),
+                    "state": "needsInput",
+                    "candidateHash": n.candidate_hash,
+                    "ambiguousPaths": n.ambiguous_paths,
+                    "files": n.files,
+                }))?;
+            }
+            bail!("{}", scope_needs_input_message(&n));
+        }
+    }
+}
+
+/// stamp／discard 後清 host-local review snapshots（baseline 保留）。清除失敗
+/// 僅警告——canonical 工單／metadata mutation 已完成，不回滾。
+fn clear_snapshots_warning(ws: &core::workspace::Workspace, change: &str) {
+    if let Err(e) = speclink_host::change_diff::clear_snapshots(ws, change) {
+        eprintln!("Warning: could not clear review snapshots for '{change}': {e}");
+    }
+}
+
+/// needsInput 的 stderr 說明：原因、ambiguous paths 與三種處置（可信 --base、
+/// hash-pinned --include-hunk、隔離 worktree）。
+fn scope_needs_input_message(n: &speclink_host::change_diff::ScopeNeedsInput) -> String {
+    use speclink_host::change_diff::AmbiguityReason;
+    let mut lines = vec![format!("review scope for '{}' needs input:", n.change)];
+    for reason in &n.reasons {
+        lines.push(match reason {
+            AmbiguityReason::BaselineMissing => {
+                "  - no Apply baseline was captured for this change".to_string()
+            }
+            AmbiguityReason::BaselineLate => {
+                "  - the baseline was captured late (change already started)".to_string()
+            }
+            AmbiguityReason::BaselineUnavailable => {
+                "  - the baseline has no usable git fixed point".to_string()
+            }
+            AmbiguityReason::BaseUnresolvable(e) => format!("  - {e}"),
+            AmbiguityReason::DirtyAtStart(paths) => {
+                format!("  - touched paths were already dirty at start: {}", paths.join(", "))
+            }
+            AmbiguityReason::ActiveOverlap { change, paths } => format!(
+                "  - active change '{change}' also claims: {}",
+                paths.join(", ")
+            ),
+            AmbiguityReason::EmptyTouched => {
+                "  - no touched files recorded — the whole worktree is never auto-reviewed"
+                    .to_string()
+            }
+            AmbiguityReason::PreviouslyDirtyChanged(paths) => format!(
+                "  - previously dirty files changed outside the preserved scope: {}",
+                paths.join(", ")
+            ),
+        });
+    }
+    if !n.ambiguous_paths.is_empty() {
+        lines.push(format!("  ambiguous paths: {}", n.ambiguous_paths.join(", ")));
+    }
+    lines.push("resolve it explicitly by one of:".to_string());
+    // A validation round is anchored to a frozen snapshot: neither a new base
+    // nor a hunk selection can rebuild the missing `before`, so offering them
+    // here would send the user down two paths that always fail.
+    if n.phase == speclink_host::change_diff::Phase::Validation {
+        lines.push(
+            "  1. keep the ticket and stop — the frozen snapshot waits for a later session"
+                .to_string(),
+        );
+        lines.push(format!(
+            "  2. drop the ticket with `speclink review discard {}` and start a fresh discovery \
+             from a trusted --base",
+            n.change
+        ));
+    } else {
+        lines.push("  1. pass a trusted fixed point with --base <rev>".to_string());
+        lines.push(
+            "  2. pin hunks with --candidate-hash <sha256> and --include-hunk <id> (repeatable)"
+                .to_string(),
+        );
+        lines.push("  3. redo the work in an isolated worktree".to_string());
+    }
+    lines.join("\n")
 }
 
 fn cmd_discuss(a: DiscussArgs) -> Result<()> {

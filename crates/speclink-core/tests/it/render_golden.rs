@@ -182,6 +182,169 @@ fn review_skill_binds_locale_across_output_chain() {
     }
 }
 
+// --- apply / review skills: converge-review-remediation-rounds (D6–D8) ---
+
+/// Read one generated skill for both built-in tools. `tag` keeps parallel
+/// tests in distinct sandboxes — two tests sharing a tag race on the same
+/// temp dir.
+fn skill_for_both_tools(tag: &str, skill: &str) -> Vec<(String, String)> {
+    let cases = [
+        (format!("{tag}-claude"), Tool::Claude, ".claude/skills"),
+        (format!("{tag}-codex"), Tool::Codex, ".agents/skills"),
+    ];
+    cases
+        .into_iter()
+        .map(|(tag, tool, skills_dir)| {
+            let root = TempRoot::new(&tag);
+            init::init(&root.dir, &[tool], true, "openspec").unwrap();
+            let rel = format!("{skills_dir}/speclink-{skill}/SKILL.md");
+            let content =
+                std::fs::read_to_string(root.dir.join(rel.split('/').collect::<PathBuf>()))
+                    .expect(&rel);
+            (rel, content)
+        })
+        .collect()
+}
+
+/// Spec「審查流程的技能行為」×「Apply 開始前記錄 host-local baseline」: apply
+/// captures the review baseline BEFORE the first in-progress add, and a failed
+/// prepare stops the flow.
+#[test]
+fn apply_skill_prepares_the_baseline_before_in_progress() {
+    for (rel, content) in skill_for_both_tools("apply-prepare", "apply") {
+        let prepare = content
+            .find("review prepare")
+            .unwrap_or_else(|| panic!("{rel}: missing the review prepare step"));
+        let in_progress = content
+            .find("in-progress add")
+            .unwrap_or_else(|| panic!("{rel}: missing the in-progress add step"));
+        assert!(
+            prepare < in_progress,
+            "{rel}: review prepare must run before in-progress add"
+        );
+        assert!(
+            content.contains("review prepare` fails"),
+            "{rel}: must state what happens when prepare fails"
+        );
+        assert!(
+            content.contains("do NOT run"),
+            "{rel}: a failed prepare must forbid running in-progress add"
+        );
+    }
+}
+
+/// Spec「審查流程的技能行為」: the first round is the one discovery pass — both
+/// axes receive the SAME frozen patch from review scope; needsInput waits for
+/// an explicit disposal; whole-file / commit-graph scoping is gone.
+#[test]
+fn review_skill_freezes_one_discovery_patch_for_both_axes() {
+    for (rel, content) in skill_for_both_tools("review-freeze", "review") {
+        assert!(
+            content.contains("speclink review scope"),
+            "{rel}: scope resolution must go through the review scope verb"
+        );
+        assert!(
+            content.contains("same frozen patch"),
+            "{rel}: both axes must receive the same frozen patch"
+        );
+        assert!(
+            content.contains("--candidate-hash") && content.contains("--include-hunk"),
+            "{rel}: needsInput must name the hash-pinned selection disposal"
+        );
+        assert!(
+            !content.contains("...HEAD"),
+            "{rel}: commit-graph three-dot scoping must be gone"
+        );
+        assert!(
+            !content.contains("git diff --name-only"),
+            "{rel}: whole-file name-only scoping must be gone"
+        );
+    }
+}
+
+/// Spec「審查流程的技能行為」(validation 分流): follow-up rounds judge each
+/// original finding resolved/unresolved plus direct regressions only — no new
+/// exploration of unchanged areas, unresolved findings carried verbatim.
+#[test]
+fn review_skill_validation_only_validates_findings_and_direct_regressions() {
+    for (rel, content) in skill_for_both_tools("review-validate", "review") {
+        assert!(
+            content.contains("resolved or unresolved"),
+            "{rel}: validation judges each original finding resolved/unresolved"
+        );
+        assert!(
+            content.contains("directly introduces"),
+            "{rel}: only regressions the remediation patch directly introduces are reported"
+        );
+        assert!(
+            content.contains("must NOT report new smells"),
+            "{rel}: validation never explores unchanged areas for new findings"
+        );
+        assert!(
+            content.contains("never reworded"),
+            "{rel}: unresolved findings are carried verbatim, never reworded"
+        );
+    }
+}
+
+/// Spec「審查後的迴圈與收尾」: the blocking set must strictly shrink for the
+/// loop to continue — 2→1 continues, 1→1 fails immediately, 1→0 stamps clean,
+/// accepted-only goes through an explicit --accept.
+#[test]
+fn review_skill_strict_progress_terminates_the_loop() {
+    for (rel, content) in skill_for_both_tools("review-progress", "review") {
+        assert!(
+            content.contains("strictly smaller"),
+            "{rel}: continuation requires a strictly smaller blocking set"
+        );
+        assert!(
+            content.contains("not strictly smaller") && content.contains("failed"),
+            "{rel}: the first no-progress round ends the loop as failed"
+        );
+        assert!(
+            content.contains("passed clean") && content.contains("passed with reservations"),
+            "{rel}: the two stamp outcomes are named"
+        );
+        assert!(
+            content.contains("--accept"),
+            "{rel}: accepted-only rounds stamp via an explicit --accept"
+        );
+        assert!(
+            content.contains("no fixed maximum"),
+            "{rel}: no fixed round cap — strict shrinking is the only continuation rule"
+        );
+        assert!(
+            content.contains("never a quality score"),
+            "{rel}: the shrinking set must not be described as a quality verdict"
+        );
+        assert!(
+            content.contains("retry") && content.contains("review stamp"),
+            "{rel}: a zero-findings last round retries the stamp instead of re-reviewing"
+        );
+    }
+}
+
+/// Spec「續輪重大晚發問題的安全退出」: unrelated new observations never join
+/// the current round; only evidenced, severe issues end the station as scope
+/// changed / failed.
+#[test]
+fn review_skill_late_findings_have_a_guarded_exit() {
+    for (rel, content) in skill_for_both_tools("review-late", "review") {
+        assert!(
+            content.contains("added to the current round"),
+            "{rel}: unrelated late findings must not join the current round"
+        );
+        assert!(
+            content.contains("scope changed"),
+            "{rel}: the evidenced-severe exit is named scope changed"
+        );
+        assert!(
+            content.contains("failing test") && content.contains("invariant"),
+            "{rel}: the evidence bar names reproduction/failing-test/invariant"
+        );
+    }
+}
+
 // --- remote marker variant: (tool target) × (fs | remote) ---
 
 /// The remote marker block must not steer the agent at local spec paths that

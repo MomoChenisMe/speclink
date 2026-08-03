@@ -32,6 +32,60 @@ impl TempProject {
         TempProject { dir }
     }
 
+    /// `with_change` 之上再 git init＋首次 commit：prepare／scope 的 Git 前提。
+    fn with_git_change(tag: &str, tasks: &str) -> TempProject {
+        let p = TempProject::with_change(tag, tasks);
+        p.git(&["init", "-q"]);
+        p.git(&["config", "user.name", "Sandbox Tester"]);
+        p.git(&["config", "user.email", "sandbox@example.com"]);
+        p.git(&["add", "-A"]);
+        p.git(&["commit", "-q", "-m", "init"]);
+        p
+    }
+
+    fn git(&self, args: &[&str]) {
+        let ok = Command::new("git")
+            .args(args)
+            .current_dir(&self.dir)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        assert!(ok, "git {args:?} failed");
+    }
+
+    fn write(&self, rel: &str, content: &str) {
+        let p = self.dir.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, content).unwrap();
+    }
+
+    fn baseline_path(&self) -> PathBuf {
+        self.dir.join(".speclink").join("review-scopes").join("demo").join("baseline.json")
+    }
+
+    /// 寫 host-local touched record（v1 檔案清單通道）。
+    fn touched(&self, change: &str, files: &[&str]) {
+        let dir = self.dir.join(".speclink").join("touched");
+        std::fs::create_dir_all(&dir).unwrap();
+        let files_json: Vec<String> = files.iter().map(|f| format!("\"{f}\"")).collect();
+        std::fs::write(
+            dir.join(format!("{change}.json")),
+            format!(
+                "{{\"version\":2,\"change\":\"{change}\",\"touched\":[{{\"task_id\":\"1\",\"task_desc\":\"t\",\"files\":[{}]}}]}}",
+                files_json.join(",")
+            ),
+        )
+        .unwrap();
+    }
+
+    fn snapshot_count(&self) -> usize {
+        std::fs::read_dir(
+            self.dir.join(".speclink").join("review-scopes").join("demo").join("snapshots"),
+        )
+        .map(|it| it.count())
+        .unwrap_or(0)
+    }
+
     fn cmd(&self, args: &[&str]) -> Command {
         let mut c = Command::new(env!("CARGO_BIN_EXE_speclink"));
         c.args(args)
@@ -266,4 +320,651 @@ fn archive_carry_review_moves_the_ticket_into_the_archive() {
         .find(|e| e.file_name().to_string_lossy().ends_with("-demo"))
         .expect("archived change dir");
     assert!(dated.path().join("review.md").exists(), "fossil ticket travelled");
+}
+
+// --- review prepare（change-diff-scope spec「Apply 開始前記錄 host-local baseline」）---
+
+#[test]
+fn review_prepare_initial_capture_is_silent_and_writes_the_baseline() {
+    // Scenario 首次 Apply 記錄乾淨 baseline：exit 0、stdout 為空，baseline 的
+    // baseCommit 為 HEAD SHA、dirtyFilesAtStart 為 ["notes/local.txt"]、
+    // confidence 為 initial，touched 記錄不存在。
+    let p = TempProject::with_git_change("prepare-initial", TASKS_DONE);
+    p.write("notes/local.txt", "scratch\n");
+    let out = p.run(&["review", "prepare", "demo"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(stdout_of(&out).is_empty(), "initial capture is silent: {}", stdout_of(&out));
+    let raw = std::fs::read_to_string(p.baseline_path()).expect("baseline written");
+    let v: serde_json::Value = serde_json::from_str(&raw).expect("valid JSON");
+    assert_eq!(v["change"], "demo");
+    assert_eq!(v["confidence"], "initial");
+    assert_eq!(v["dirtyFilesAtStart"], serde_json::json!(["notes/local.txt"]));
+    assert_eq!(v["baseCommit"].as_str().map(str::len), Some(40), "full HEAD SHA: {v}");
+    assert!(v["capturedAt"].is_string(), "camelCase capturedAt: {v}");
+    assert!(
+        !p.dir.join(".speclink").join("touched").join("demo.json").exists(),
+        "prepare must not create a touched record"
+    );
+}
+
+#[test]
+fn review_prepare_late_warns_on_stderr_but_exits_zero() {
+    // Scenario 已開始但 baseline 缺失：exit 0、stderr 說明 baseline 為 late、
+    // 後續審查需明示 fixed point。
+    let p = TempProject::with_git_change("prepare-late", TASKS_DONE);
+    let meta = p.dir.join("openspec").join("changes").join("demo").join(".openspec.yaml");
+    std::fs::write(
+        &meta,
+        "schema: spec-driven\ncreated: 2026-07-01\nstarted_at: 2026-07-02\n",
+    )
+    .unwrap();
+    let out = p.run(&["review", "prepare", "demo"]);
+    assert!(out.status.success(), "late is a warning, not a failure: {}", stderr_of(&out));
+    assert!(stdout_of(&out).is_empty(), "stdout stays empty: {}", stdout_of(&out));
+    assert!(stderr_of(&out).contains("late"), "stderr names late: {}", stderr_of(&out));
+    let raw = std::fs::read_to_string(p.baseline_path()).expect("late baseline written");
+    assert!(raw.contains("\"confidence\": \"late\""), "{raw}");
+}
+
+#[test]
+fn review_prepare_without_git_warns_and_records_unavailable() {
+    // spec：無 Git checkout → confidence=unavailable、baseCommit=null、
+    // stderr 警告但 exit 0（apply 可繼續）。
+    let p = TempProject::with_change("prepare-nogit", TASKS_DONE);
+    let out = p.run(&["review", "prepare", "demo"]);
+    assert!(out.status.success(), "unavailable is a warning: {}", stderr_of(&out));
+    assert!(stdout_of(&out).is_empty());
+    assert!(!stderr_of(&out).is_empty(), "stderr must warn about the missing fixed point");
+    let raw = std::fs::read_to_string(p.baseline_path()).expect("baseline written");
+    let v: serde_json::Value = serde_json::from_str(&raw).expect("valid JSON");
+    assert_eq!(v["confidence"], "unavailable");
+    assert!(v["baseCommit"].is_null(), "{v}");
+}
+
+#[test]
+fn review_prepare_write_failure_fails_nonzero_and_leaves_meta() {
+    // Scenario baseline 寫入失敗停止 Apply 起點：非零、change metadata 原狀。
+    let p = TempProject::with_git_change("prepare-fail", TASKS_DONE);
+    std::fs::create_dir_all(p.dir.join(".speclink")).unwrap();
+    std::fs::write(p.dir.join(".speclink").join("review-scopes"), "not a dir").unwrap();
+    let before = p.meta();
+    let out = p.run(&["review", "prepare", "demo"]);
+    assert!(!out.status.success(), "write failure must be non-zero");
+    assert!(!stderr_of(&out).is_empty(), "stderr explains the failure");
+    assert_eq!(p.meta(), before, "metadata must stay byte-identical");
+}
+
+#[test]
+fn review_prepare_missing_change_fails_nonzero() {
+    // spec：change 不存在 SHALL 非零結束，且不建立 sidecar。
+    let p = TempProject::with_git_change("prepare-ghost", TASKS_DONE);
+    let out = p.run(&["review", "prepare", "ghost"]);
+    assert!(!out.status.success());
+    assert!(stderr_of(&out).contains("ghost"), "stderr names it: {}", stderr_of(&out));
+    assert!(
+        !p.dir.join(".speclink").join("review-scopes").join("ghost").exists(),
+        "no sidecar for a missing change"
+    );
+}
+
+// --- review scope（change-diff-scope spec「review scope 的 human 與 JSON 契約」
+// 「歧義 scope 必須 fail closed 並以 hash-pinned selection 解鎖」）---
+
+/// 兩檔三 hunk 的可自動歸屬 fixture：乾淨 baseline 後修改 touched 檔。
+fn scope_fixture(tag: &str) -> TempProject {
+    let p = TempProject::with_change(tag, TASKS_DONE);
+    let wide: String = (1..=20).map(|i| format!("line {i}\n")).collect();
+    p.write("src/util.rs", &wide);
+    p.git(&["init", "-q"]);
+    p.git(&["config", "user.name", "Sandbox Tester"]);
+    p.git(&["config", "user.email", "sandbox@example.com"]);
+    p.git(&["add", "-A"]);
+    p.git(&["commit", "-q", "-m", "init"]);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "prepare: {}", stderr_of(&prepared));
+    p.write("src/lib.rs", "fn demo() {}\nfn added() {}\n");
+    let edited = wide
+        .replace("line 2\n", "line 2 edited\n")
+        .replace("line 18\n", "line 18 edited\n");
+    p.write("src/util.rs", &edited);
+    p.touched("demo", &["src/lib.rs", "src/util.rs"]);
+    p
+}
+
+#[test]
+fn review_scope_resolved_json_payload_is_camel_case() {
+    // spec Scenario「JSON resolved payload 可供 reviewer 使用」：exit 0、合法
+    // JSON、state=resolved、paths 兩項、hunks 合計三項、patchHash 以 sha256: 開頭。
+    let p = scope_fixture("scope-json");
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    assert_eq!(v["change"], "demo");
+    assert_eq!(v["phase"], "discovery");
+    assert_eq!(v["state"], "resolved");
+    assert_eq!(v["baseCommit"].as_str().map(str::len), Some(40), "{v}");
+    assert!(v["candidateHash"].as_str().unwrap().starts_with("sha256:"), "{v}");
+    assert!(v["patchHash"].as_str().unwrap().starts_with("sha256:"), "{v}");
+    assert_eq!(v["paths"], serde_json::json!(["src/lib.rs", "src/util.rs"]));
+    let files = v["files"].as_array().expect("files array");
+    assert_eq!(files.len(), 2);
+    let total_hunks: usize = files.iter().map(|f| f["hunks"].as_array().unwrap().len()).sum();
+    assert_eq!(total_hunks, 3, "{v}");
+    for f in files {
+        assert!(f["oldPath"].is_string() || f["oldPath"].is_null(), "{f}");
+        assert!(f["newPath"].is_string() || f["newPath"].is_null(), "{f}");
+        assert!(f["kind"].is_string(), "{f}");
+        assert!(f["beforeHash"].is_string() || f["beforeHash"].is_null(), "{f}");
+        assert!(f["afterHash"].is_string() || f["afterHash"].is_null(), "{f}");
+        for h in f["hunks"].as_array().unwrap() {
+            assert!(h["id"].is_string(), "{h}");
+            for k in ["oldStart", "oldLines", "newStart", "newLines"] {
+                assert!(h[k].is_number(), "range {k} is a number: {h}");
+            }
+        }
+    }
+    assert!(v["patch"].as_str().unwrap().contains("+fn added() {}"), "{v}");
+}
+
+#[test]
+fn review_scope_human_output_has_no_ansi_under_no_color() {
+    // spec：human 成功路徑將 phase、patchHash、路徑數與 hunk 數寫至 stdout，
+    // `--no-color` 下不含 ANSI。
+    let p = scope_fixture("scope-human");
+    let out = p.run(&["--no-color", "review", "scope", "demo"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let text = stdout_of(&out);
+    assert!(text.contains("discovery"), "phase shown: {text}");
+    assert!(text.contains("sha256:"), "patchHash shown: {text}");
+    // 數字必須連著它的單位一起斷言：光找 '2'／'3' 會被 64 字元 hex digest 命中。
+    assert!(text.contains("2 file(s)"), "path count shown: {text}");
+    assert!(text.contains("3 hunk(s)"), "hunk count shown: {text}");
+    assert!(!text.contains('\u{1b}'), "--no-color must strip ANSI: {text:?}");
+}
+
+#[test]
+fn review_scope_dirty_at_start_needs_input_nonzero_with_zero_snapshot_effects() {
+    // spec Scenario「開始前已髒的 touched file 不被靜默認領」：非零、JSON state
+    // 為 needsInput、ambiguousPaths 含該檔、snapshots 目錄不新增檔案。
+    let p = TempProject::with_change("scope-dirty", TASKS_DONE);
+    p.git(&["init", "-q"]);
+    p.git(&["config", "user.name", "Sandbox Tester"]);
+    p.git(&["config", "user.email", "sandbox@example.com"]);
+    p.git(&["add", "-A"]);
+    p.git(&["commit", "-q", "-m", "init"]);
+    p.write("src/lib.rs", "fn demo() { dirty_before_start(); }\n");
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "prepare: {}", stderr_of(&prepared));
+    p.write("src/lib.rs", "fn demo() { dirty_before_start(); more(); }\n");
+    p.touched("demo", &["src/lib.rs"]);
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(!out.status.success(), "needsInput must exit non-zero");
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("JSON on stdout");
+    assert_eq!(v["state"], "needsInput");
+    assert!(v["candidateHash"].is_string() || v["candidateHash"].is_null(), "{v}");
+    assert_eq!(v["ambiguousPaths"], serde_json::json!(["src/lib.rs"]));
+    assert!(v["files"].is_array(), "{v}");
+    assert_eq!(p.snapshot_count(), 0, "zero snapshot effects");
+    // human 路徑：stderr 列 ambiguous paths 與三種處置。
+    let human = p.run(&["--no-color", "review", "scope", "demo"]);
+    assert!(!human.status.success());
+    let stderr = stderr_of(&human);
+    assert!(stderr.contains("src/lib.rs"), "{stderr}");
+    assert!(stderr.contains("--base"), "{stderr}");
+    assert!(stderr.contains("--include-hunk"), "{stderr}");
+    assert!(stderr.contains("worktree"), "{stderr}");
+    assert!(!stderr.contains('\u{1b}'), "--no-color strips ANSI on stderr too: {stderr:?}");
+}
+
+#[test]
+fn review_scope_empty_touched_needs_input_and_never_reviews_the_worktree() {
+    // spec：touchedFiles 缺失或為空 SHALL NOT 自動審查全 worktree。
+    let p = TempProject::with_git_change("scope-empty", TASKS_DONE);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success());
+    p.write("src/lib.rs", "fn demo() { changed(); }\n");
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(!out.status.success(), "empty touched must fail closed");
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("JSON on stdout");
+    assert_eq!(v["state"], "needsInput");
+    assert_eq!(p.snapshot_count(), 0);
+}
+
+#[test]
+fn review_scope_active_overlap_needs_input() {
+    // spec：另一 active change 的 touched record 認領同一路徑 → needsInput。
+    let p = scope_fixture("scope-overlap");
+    let other = p.dir.join("openspec").join("changes").join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    std::fs::write(other.join(".openspec.yaml"), "schema: spec-driven\ncreated: 2026-07-01\n")
+        .unwrap();
+    p.touched("other", &["src/lib.rs"]);
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(!out.status.success(), "active overlap must fail closed");
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("JSON on stdout");
+    assert_eq!(v["state"], "needsInput");
+    assert!(
+        v["ambiguousPaths"].as_array().unwrap().contains(&serde_json::json!("src/lib.rs")),
+        "{v}"
+    );
+    assert_eq!(p.snapshot_count(), 0);
+}
+
+#[test]
+fn review_scope_candidate_drift_rejects_the_stale_selection() {
+    // spec Scenario「candidate 漂移拒絕舊選擇」：帶舊 candidateHash 重試 →
+    // 非零、stderr 說明漂移、不建立 snapshot。
+    let p = TempProject::with_change("scope-drift", TASKS_DONE);
+    p.git(&["init", "-q"]);
+    p.git(&["config", "user.name", "Sandbox Tester"]);
+    p.git(&["config", "user.email", "sandbox@example.com"]);
+    p.git(&["add", "-A"]);
+    p.git(&["commit", "-q", "-m", "init"]);
+    p.write("src/lib.rs", "fn demo() { dirty_before_start(); }\n");
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success());
+    p.write("src/lib.rs", "fn demo() { dirty_before_start(); more(); }\n");
+    p.touched("demo", &["src/lib.rs"]);
+    let first = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(!first.status.success(), "fixture must be ambiguous");
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&first)).expect("JSON");
+    let stale = v["candidateHash"].as_str().expect("candidate anchor").to_string();
+    let hunk = v["files"][0]["hunks"][0]["id"].as_str().expect("hunk id").to_string();
+    p.write("src/lib.rs", "fn demo() { dirty_before_start(); more(); drifted(); }\n");
+    let out = p.run(&[
+        "review",
+        "scope",
+        "demo",
+        "--candidate-hash",
+        &stale,
+        "--include-hunk",
+        &hunk,
+    ]);
+    assert!(!out.status.success(), "drifted candidate must be rejected");
+    assert!(stderr_of(&out).contains("drift"), "{}", stderr_of(&out));
+    assert_eq!(p.snapshot_count(), 0);
+}
+
+#[test]
+fn review_scope_selection_without_candidate_hash_fails() {
+    // spec：人工 selection SHALL 同時提供前次 candidateHash 與至少一個
+    // include-hunk——單獨 --include-hunk 拒絕。
+    let p = scope_fixture("scope-lonely-hunk");
+    let out = p.run(&["review", "scope", "demo", "--include-hunk", &"a".repeat(64)]);
+    assert!(!out.status.success(), "selection without --candidate-hash must be rejected");
+    assert!(stderr_of(&out).contains("--candidate-hash"), "{}", stderr_of(&out));
+    assert_eq!(p.snapshot_count(), 0);
+}
+
+#[test]
+fn review_scope_missing_change_fails_nonzero() {
+    // spec Scenario「找不到 change」：非零、stderr 說明、stdout 為空、不建立
+    // baseline 或 snapshot。
+    let p = TempProject::with_git_change("scope-ghost", TASKS_DONE);
+    let out = p.run(&["review", "scope", "ghost", "--json"]);
+    assert!(!out.status.success());
+    assert!(stderr_of(&out).contains("ghost"), "{}", stderr_of(&out));
+    assert!(stdout_of(&out).is_empty(), "stdout stays empty on not-found");
+    assert!(
+        !p.dir.join(".speclink").join("review-scopes").join("ghost").exists(),
+        "no sidecar for a missing change"
+    );
+}
+
+// --- snapshot cleanup（change-diff-scope spec「frozen snapshot 綁定 discovery
+// 與 validation patch」：stamp／discard 清 snapshots、保留 baseline）---
+
+#[test]
+fn stamp_clears_review_snapshots_and_keeps_the_baseline() {
+    // spec Scenario「成功蓋章後清除 snapshots」。
+    let p = TempProject::with_git_change("stamp-snapclean", TASKS_DONE);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success());
+    let snapdir = p.dir.join(".speclink").join("review-scopes").join("demo").join("snapshots");
+    std::fs::create_dir_all(&snapdir).unwrap();
+    std::fs::write(snapdir.join(format!("{}.json", "a".repeat(64))), "{}").unwrap();
+    p.run_stdin(&["review", "add-round", "demo", "--stdin"], CLEAN_ROUND);
+    let out = p.run(&["review", "stamp", "demo"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(p.snapshot_count(), 0, "snapshots cleared by the stamp");
+    assert!(p.baseline_path().exists(), "baseline survives the stamp");
+    assert!(p.meta().contains("reviewed_at"), "canonical stamp landed");
+}
+
+#[test]
+fn discard_clears_review_snapshots_and_keeps_the_baseline() {
+    let p = TempProject::with_git_change("discard-snapclean", TASKS_DONE);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success());
+    let snapdir = p.dir.join(".speclink").join("review-scopes").join("demo").join("snapshots");
+    std::fs::create_dir_all(&snapdir).unwrap();
+    std::fs::write(snapdir.join(format!("{}.json", "b".repeat(64))), "{}").unwrap();
+    p.run_stdin(&["review", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS);
+    let out = p.run(&["review", "discard", "demo"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(p.snapshot_count(), 0, "snapshots cleared by the discard");
+    assert!(p.baseline_path().exists(), "baseline survives the discard");
+    assert!(!p.ticket_path().exists());
+}
+
+#[test]
+fn stamp_warns_but_succeeds_when_snapshot_cleanup_fails() {
+    // spec：清除失敗 SHALL 以 stderr warning 回報，且 SHALL NOT 回滾已完成的
+    // canonical 工單／metadata mutation。
+    let p = TempProject::with_git_change("stamp-snapwarn", TASKS_DONE);
+    let scopes = p.dir.join(".speclink").join("review-scopes").join("demo");
+    std::fs::create_dir_all(&scopes).unwrap();
+    // snapshots 路徑是「檔案」：remove_dir_all 必然失敗。
+    std::fs::write(scopes.join("snapshots"), "not a dir").unwrap();
+    p.run_stdin(&["review", "add-round", "demo", "--stdin"], CLEAN_ROUND);
+    let out = p.run(&["review", "stamp", "demo"]);
+    assert!(out.status.success(), "cleanup failure must not fail the stamp: {}", stderr_of(&out));
+    assert!(
+        stderr_of(&out).to_lowercase().contains("snapshot"),
+        "stderr warns about the cleanup: {}",
+        stderr_of(&out)
+    );
+    assert!(p.meta().contains("reviewed_at"), "canonical stamp landed anyway");
+}
+
+// --- structured rounds（review-station spec「審查工單的建立與追加／讀取」）---
+
+#[test]
+fn show_json_carries_nullable_phase_and_patch_hash() {
+    // spec Scenario「讀取 structured 兩輪 JSON」＋「legacy JSON 使用 null」：
+    // rounds[].phase／patchHash 為 string|null，欄位集合 local 契約。
+    let p = TempProject::with_change("show-structured", TASKS_DONE);
+    let hex = "a".repeat(64);
+    let structured = format!(
+        "**Phase**: discovery\n**Patch**: sha256:{hex}\n**Scope**: src/lib.rs\n\n- [CRITICAL] src/lib.rs — unwrap on user input\n"
+    );
+    let out = p.run_stdin(&["review", "add-round", "demo", "--stdin"], &structured);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let validation = format!(
+        "**Phase**: validation\n**Patch**: sha256:{}\n**Scope**: src/lib.rs\n",
+        "b".repeat(64)
+    );
+    let out = p.run_stdin(&["review", "add-round", "demo", "--stdin"], &validation);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let out = p.run(&["review", "show", "demo", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    let rounds = v["rounds"].as_array().expect("rounds");
+    assert_eq!(rounds[0]["phase"], "discovery");
+    assert_eq!(rounds[0]["patchHash"], format!("sha256:{hex}"));
+    assert_eq!(v["lastRound"]["phase"], "validation");
+    assert_eq!(v["lastRound"]["index"], 2);
+    // 欄位集合釘死（local／remote 同構的 local 半邊）。
+    let mut keys: Vec<&str> = rounds[0].as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort();
+    assert_eq!(keys, ["findings", "index", "patchHash", "phase", "scope"]);
+}
+
+#[test]
+fn show_json_legacy_round_emits_explicit_nulls() {
+    let p = TempProject::with_change("show-legacy-null", TASKS_DONE);
+    p.run_stdin(&["review", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS);
+    let out = p.run(&["review", "show", "demo", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    let round = v["rounds"][0].as_object().expect("round object");
+    assert!(
+        round.get("phase").is_some_and(serde_json::Value::is_null),
+        "phase key present and null: {round:?}"
+    );
+    assert!(
+        round.get("patchHash").is_some_and(serde_json::Value::is_null),
+        "patchHash key present and null: {round:?}"
+    );
+}
+
+// --- 6.1 完整 fixture：prepare → touched → discovery → structured Round 1 →
+// remediation validation（2→1／1→1／1→0／accepted）＋ sharp-edges audit ---
+
+/// 取 scope --json 的 resolved payload（斷言 state 並回傳）。
+fn scope_json(p: &TempProject) -> serde_json::Value {
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(out.status.success(), "scope stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    assert_eq!(v["state"], "resolved");
+    v
+}
+
+fn add_structured_round(p: &TempProject, phase: &str, patch_hash: &str, scope: &str, findings: &str) {
+    let content = format!("**Phase**: {phase}\n**Patch**: {patch_hash}\n**Scope**: {scope}\n\n{findings}");
+    let out = p.run_stdin(&["review", "add-round", "demo", "--stdin"], &content);
+    assert!(out.status.success(), "add-round stderr: {}", stderr_of(&out));
+}
+
+#[test]
+fn validation_needs_input_only_offers_disposals_that_can_work() {
+    // validation 不吃 --base，也對 --candidate-hash／--include-hunk 直接拒絕；
+    // 照列 discovery 的三種處置會把使用者送進兩條必然失敗的路。
+    let p = TempProject::with_change("scope-validation-help", TASKS_DONE);
+    p.write("src/a.rs", "alpha\n");
+    p.write("notes/d.txt", "scratch\n");
+    p.git(&["init", "-q"]);
+    p.git(&["config", "user.name", "Sandbox Tester"]);
+    p.git(&["config", "user.email", "sandbox@example.com"]);
+    p.git(&["add", "src/a.rs"]);
+    p.git(&["commit", "-q", "-m", "init"]);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "prepare: {}", stderr_of(&prepared));
+    p.write("src/a.rs", "alpha\nbad_a\n");
+    p.touched("demo", &["src/a.rs"]);
+    let r1 = scope_json(&p);
+    let p1 = r1["patchHash"].as_str().unwrap().to_string();
+    add_structured_round(
+        &p,
+        "discovery",
+        &p1,
+        "src/a.rs",
+        "- [CRITICAL] src/a.rs — Correctness: bad_a breaks the invariant\n",
+    );
+    // 保存面外、開工前就髒的檔案又變了 → validation fail closed。
+    p.write("src/a.rs", "alpha\ngood_a\n");
+    p.write("notes/d.txt", "scratch changed\n");
+    let human = p.run(&["--no-color", "review", "scope", "demo"]);
+    assert!(!human.status.success(), "validation must fail closed");
+    let stderr = stderr_of(&human);
+    assert!(stderr.contains("notes/d.txt"), "{stderr}");
+    assert!(
+        stderr.contains("review discard"),
+        "the only real way out must be named: {stderr}"
+    );
+    assert!(
+        !stderr.contains("--include-hunk"),
+        "hunk pinning is rejected outright in validation: {stderr}"
+    );
+    assert_eq!(p.snapshot_count(), 1, "zero new snapshot effects");
+}
+
+#[test]
+fn review_full_remediation_loop_end_to_end() {
+    // 完整迴圈：discovery 兩筆必修 → 修一筆（2→1 驗證只出 remediation patch）
+    // → 修最後一筆（1→0）→ 乾淨蓋章；snapshots 清除、baseline 保留。
+    let p = TempProject::with_change("e2e-loop", TASKS_DONE);
+    p.write("src/a.rs", "alpha\n");
+    p.write("src/b.rs", "beta\n");
+    p.git(&["init", "-q"]);
+    p.git(&["config", "user.name", "Sandbox Tester"]);
+    p.git(&["config", "user.email", "sandbox@example.com"]);
+    p.git(&["add", "-A"]);
+    p.git(&["commit", "-q", "-m", "init"]);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "prepare: {}", stderr_of(&prepared));
+
+    // Apply 期間的修改與 touched 記錄。
+    p.write("src/a.rs", "alpha\nbad_a\n");
+    p.write("src/b.rs", "beta\nbad_b\n");
+    p.touched("demo", &["src/a.rs", "src/b.rs"]);
+
+    // Round 1：discovery，兩筆必修。
+    let r1 = scope_json(&p);
+    assert_eq!(r1["phase"], "discovery");
+    let p1 = r1["patchHash"].as_str().unwrap().to_string();
+    add_structured_round(
+        &p,
+        "discovery",
+        &p1,
+        "src/a.rs, src/b.rs",
+        "- [CRITICAL] src/a.rs — Correctness: bad_a breaks the invariant\n- [CRITICAL] src/b.rs — Correctness: bad_b breaks the invariant\n",
+    );
+
+    // Round 2（2→1）：只修 a；validation patch 只含 a 的 remediation，不重播
+    // Round 1、不含未修改的 b。
+    p.write("src/a.rs", "alpha\ngood_a\n");
+    let r2 = scope_json(&p);
+    assert_eq!(r2["phase"], "validation");
+    let p2 = r2["patchHash"].as_str().unwrap().to_string();
+    assert_ne!(p2, p1);
+    let patch2 = r2["patch"].as_str().unwrap();
+    assert!(patch2.contains("+good_a"), "remediation in: {patch2}");
+    assert!(!patch2.contains("bad_b"), "unchanged finding file not re-emitted: {patch2}");
+    assert_eq!(r2["paths"], serde_json::json!(["src/a.rs"]));
+    add_structured_round(
+        &p,
+        "validation",
+        &p2,
+        "src/a.rs",
+        "- [CRITICAL] src/b.rs — Correctness: bad_b breaks the invariant\n",
+    );
+
+    // Round 3（1→0）：修 b → 乾淨輪 → 蓋章。
+    p.write("src/b.rs", "beta\ngood_b\n");
+    let r3 = scope_json(&p);
+    assert_eq!(r3["phase"], "validation");
+    let p3 = r3["patchHash"].as_str().unwrap().to_string();
+    let patch3 = r3["patch"].as_str().unwrap();
+    assert!(patch3.contains("+good_b"), "final remediation in: {patch3}");
+    assert!(!patch3.contains("good_a"), "resolved finding not re-validated: {patch3}");
+    add_structured_round(&p, "validation", &p3, "src/b.rs", "");
+    let stamped = p.run(&["review", "stamp", "demo"]);
+    assert!(stamped.status.success(), "stamp: {}", stderr_of(&stamped));
+    assert!(p.meta().contains("reviewed_at"), "canonical stamp landed");
+    assert_eq!(p.snapshot_count(), 0, "snapshots cleared by the stamp");
+    assert!(p.baseline_path().exists(), "baseline survives");
+    assert!(!p.ticket_path().exists(), "ticket deleted by the stamp");
+}
+
+#[test]
+fn review_no_progress_round_keeps_the_ticket_and_stamp_still_refuses() {
+    // 1→1：remediation 什麼都沒修——validation 輪記錄原 finding 原文後，未帶
+    // --accept 的 stamp 仍拒絕（工單保留；failed 是技能層決策，動詞不蓋章）。
+    let p = TempProject::with_change("e2e-noprogress", TASKS_DONE);
+    p.git(&["init", "-q"]);
+    p.git(&["config", "user.name", "Sandbox Tester"]);
+    p.git(&["config", "user.email", "sandbox@example.com"]);
+    p.git(&["add", "-A"]);
+    p.git(&["commit", "-q", "-m", "init"]);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success());
+    p.write("src/lib.rs", "fn demo() { bad(); }\n");
+    p.touched("demo", &["src/lib.rs"]);
+    let r1 = scope_json(&p);
+    let p1 = r1["patchHash"].as_str().unwrap().to_string();
+    const FINDING: &str = "- [CRITICAL] src/lib.rs — Correctness: bad() panics on empty input\n";
+    add_structured_round(&p, "discovery", &p1, "src/lib.rs", FINDING);
+    // 無修改的 validation：空 remediation patch，原 finding 原文續記。
+    let r2 = scope_json(&p);
+    assert_eq!(r2["phase"], "validation");
+    let p2 = r2["patchHash"].as_str().unwrap().to_string();
+    assert_eq!(r2["patch"], "", "nothing was remediated");
+    add_structured_round(&p, "validation", &p2, "src/lib.rs", FINDING);
+    let refused = p.run(&["review", "stamp", "demo"]);
+    assert!(!refused.status.success(), "unresolved finding must refuse the stamp");
+    assert!(stderr_of(&refused).contains("--accept"), "{}", stderr_of(&refused));
+    assert!(p.ticket_path().exists(), "ticket survives the refusal");
+
+    // accepted 帶保留：使用者明示 --accept 才蓋章。
+    let accepted = p.run(&["review", "stamp", "demo", "--accept"]);
+    assert!(accepted.status.success(), "stderr: {}", stderr_of(&accepted));
+    assert!(p.meta().contains("reviewed_at"));
+    assert_eq!(p.snapshot_count(), 0, "snapshots cleared");
+    assert!(p.baseline_path().exists(), "baseline survives");
+}
+
+#[test]
+fn review_scope_flag_sharp_edges_fail_closed() {
+    // sharp-edges audit：--base／--candidate-hash／--include-hunk 的空值、
+    // 重複、漂移與路徑穿越全部 fail closed，零 snapshot effects。
+    let p = TempProject::with_change("edges", TASKS_DONE);
+    p.git(&["init", "-q"]);
+    p.git(&["config", "user.name", "Sandbox Tester"]);
+    p.git(&["config", "user.email", "sandbox@example.com"]);
+    p.git(&["add", "-A"]);
+    p.git(&["commit", "-q", "-m", "init"]);
+    // dirty-at-start 讓 scope 落在 needsInput，取得合法 candidate anchor。
+    p.write("src/lib.rs", "fn demo() { dirty(); }\n");
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success());
+    p.write("src/lib.rs", "fn demo() { dirty(); more(); }\n");
+    p.touched("demo", &["src/lib.rs"]);
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(!out.status.success());
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("JSON");
+    let anchor = v["candidateHash"].as_str().expect("anchor").to_string();
+    let hunk = v["files"][0]["hunks"][0]["id"].as_str().expect("hunk id").to_string();
+
+    let cases: Vec<Vec<&str>> = vec![
+        // 空 --base：無效 rev。
+        vec!["review", "scope", "demo", "--base", ""],
+        // 亂 --base。
+        vec!["review", "scope", "demo", "--base", "not-a-rev"],
+        // 空 candidate hash＋合法 hunk：anchor 不符。
+        vec!["review", "scope", "demo", "--candidate-hash", "", "--include-hunk", &hunk],
+        // 合法 anchor＋空 hunk id：不存在。
+        vec!["review", "scope", "demo", "--candidate-hash", &anchor, "--include-hunk", ""],
+        // 重複 hunk id。
+        vec![
+            "review", "scope", "demo", "--candidate-hash", &anchor, "--include-hunk", &hunk,
+            "--include-hunk", &hunk,
+        ],
+    ];
+    for args in cases {
+        let out = p.run(&args);
+        assert!(!out.status.success(), "args {args:?} must fail closed");
+        assert!(!stderr_of(&out).is_empty(), "args {args:?} explain on stderr");
+        assert_eq!(p.snapshot_count(), 0, "args {args:?} leave zero snapshot effects");
+    }
+
+    // 路徑穿越：touched 夾帶 repo 外路徑——git 拒絕、scope 非零、零 effects。
+    for evil in ["../outside.txt", "/etc/passwd"] {
+        let q = TempProject::with_git_change(&format!("edges-{}", evil.len()), TASKS_DONE);
+        let prepared = q.run(&["review", "prepare", "demo"]);
+        assert!(prepared.status.success());
+        q.touched("demo", &[evil]);
+        let out = q.run(&["review", "scope", "demo", "--json"]);
+        assert!(!out.status.success(), "traversal {evil} must fail closed");
+        assert_eq!(q.snapshot_count(), 0, "traversal {evil} leaves zero snapshot effects");
+    }
+
+    // binary：dirty-at-start 的 binary candidate 沒有可選 hunk，選擇一律拒絕。
+    let b = TempProject::with_change("edges-bin", TASKS_DONE);
+    b.git(&["init", "-q"]);
+    b.git(&["config", "user.name", "Sandbox Tester"]);
+    b.git(&["config", "user.email", "sandbox@example.com"]);
+    b.git(&["add", "-A"]);
+    b.git(&["commit", "-q", "-m", "init"]);
+    std::fs::create_dir_all(b.dir.join("assets")).unwrap();
+    std::fs::write(b.dir.join("assets/logo.bin"), [0u8, 1, 2]).unwrap();
+    let prepared = b.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success());
+    std::fs::write(b.dir.join("assets/logo.bin"), [0u8, 9, 9]).unwrap();
+    b.touched("demo", &["assets/logo.bin"]);
+    let out = b.run(&["review", "scope", "demo", "--json"]);
+    assert!(!out.status.success(), "dirty binary is ambiguous");
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("JSON");
+    let bin_anchor = v["candidateHash"].as_str().expect("anchor").to_string();
+    assert_eq!(
+        v["files"][0]["hunks"].as_array().map(Vec::len),
+        Some(0),
+        "binary exposes no selectable hunks: {v}"
+    );
+    let out = b.run(&[
+        "review", "scope", "demo", "--candidate-hash", &bin_anchor, "--include-hunk",
+        &"f".repeat(64),
+    ]);
+    assert!(!out.status.success(), "binary can never be hunk-selected");
+    assert_eq!(b.snapshot_count(), 0);
 }

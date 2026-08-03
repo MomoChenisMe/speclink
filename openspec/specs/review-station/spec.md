@@ -8,179 +8,140 @@ TBD - created by archiving change 'code-review-stage'. Update Purpose after arch
 
 ### Requirement: 審查工單的建立與追加
 
-系統 SHALL 提供 `speclink review add-round <change> --stdin` 子指令：自 stdin 讀入一輪審查內容，於 `openspec/changes/<change>/review.md` 追加 `## Round N` 區段（工單不存在時建立並自 Round 1 起算）。每輪內容 SHALL 含 `**Scope**:` 檔案清單（repo-root 相對路徑）與零或多行分級 findings（severity ∈ CRITICAL／WARNING／SUGGESTION）。工單 SHALL 為 append-only：既有輪次不因追加而改寫。工單檔 SHALL NOT 註冊進 workflow schema（`speclink status`／`speclink validate` 輸出不因工單存在而改變）。
+系統 SHALL 提供 speclink review add-round <change> --stdin：自 stdin 讀入一輪審查內容，於 `openspec/changes/<change>/review.md` 追加 `## Round N` 區段（工單不存在時建立並自 Round 1 起算）。每輪內容 SHALL 含 `**Scope**:` repo-root 相對路徑清單與零或多行分級 findings（severity ∈ CRITICAL／WARNING／SUGGESTION）。
 
-#### Scenario: 首輪建立工單
+結構化新輪次 SHALL 同時含 `**Phase**: discovery|validation` 與 `**Patch**: sha256:<64 lowercase hex>`；兩欄只出現其一、phase token 無效或 hash 格式無效時 SHALL 非零拒絕且工單零寫入。工單首個結構化 round SHALL 為 discovery；已有結構化 round 後追加者 SHALL 為 validation。既有兩欄皆缺席的 legacy round SHALL 保持可建立、追加與解析；legacy ticket 後 SHALL 能追加 validation round。
 
-- **WHEN** 對無工單的 change 執行 `review add-round` 且 stdin 含合法的 Scope 與 findings
-- **THEN** exit code 0，`review.md` 被建立且含 `## Round 1`，stdout 確認訊息
+工單 SHALL 為 append-only：既有輪次不因追加而改寫。工單檔 SHALL NOT 註冊進 workflow schema，speclink status／validate 輸出 SHALL 不因工單存在而改變。
 
-#### Scenario: 追加輪次不改寫既有輪
+#### Scenario: 首輪建立 structured discovery 工單
 
-- **WHEN** 對已有 Round 1 的工單再次執行 `review add-round`
-- **THEN** exit code 0，`review.md` 新增 `## Round 2` 且 Round 1 內容位元級不變
+- **WHEN** 對無工單的 change 執行 review add-round，stdin 含 Phase=discovery、合法 Patch、Scope 與 findings
+- **THEN** exit code 0，`review.md` 建立且含 `## Round 1`、phase／patch 原文與 stdout 確認訊息
+
+#### Scenario: 追加 validation 不改寫既有輪
+
+- **WHEN** 對已有 structured Round 1 的工單追加 Phase=validation 的合法 Round 2
+- **THEN** exit code 0，`review.md` 新增 `## Round 2` 且 Round 1 位元級不變
+
+#### Scenario: 第二個 discovery 被拒絕
+
+- **WHEN** structured Round 1 已是 discovery，又追加 Phase=discovery
+- **THEN** exit code 非零、stderr 說明後續輪只能是 validation，工單位元級不變
+
+#### Scenario: phase 與 patch 必須成對
+
+- **WHEN** stdin 只有 Phase 沒有 Patch
+- **THEN** exit code 非零、stderr 說明兩欄必須同時存在，工單零寫入
+
+#### Scenario: legacy round 保持相容
+
+- **WHEN** stdin 只含既有 Scope 與 findings，不含 Phase／Patch
+- **THEN** add-round 維持既有成功行為，該輪 phase 與 patchHash 解析為 null
 
 #### Scenario: change 不存在
 
-- **WHEN** 對不存在的 change 執行 `review add-round`
+- **WHEN** 對不存在的 change 執行 review add-round
 - **THEN** exit code 非零，stderr 說明找不到變更，無檔案建立
 
 #### Scenario: 內容缺少 Scope
 
-- **WHEN** stdin 內容不含 `**Scope**:` 行
+- **WHEN** stdin 不含 `**Scope**:` 行
 - **THEN** exit code 非零，stderr 說明格式要求，工單不變
 
 
 <!-- @trace
-source: code-review-stage
-updated: 2026-08-02
+source: converge-review-remediation-rounds
+updated: 2026-08-03
 code:
   - AGENTS.md
   - CLAUDE.md
-  - README.en.md
-  - README.md
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
   - crates/speclink-cli/src/commands.rs
   - crates/speclink-cli/src/main.rs
   - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/review_verbs.rs
+  - crates/speclink-cli/tests/it/remote_verb_parity.rs
+  - crates/speclink-cli/tests/it/review_verbs.rs
+  - crates/speclink-core/assets/skills/apply.md
   - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
   - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
   - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/src/util.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/workspace.rs
   - crates/speclink-core/tests/golden/assets.lock
   - crates/speclink-core/tests/golden/claude.snapshot.md
   - crates/speclink-core/tests/golden/codex.snapshot.md
   - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
   - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
   - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-node/src/store_bridge.rs
+  - crates/speclink-core/tests/it/render_golden.rs
+  - crates/speclink-host/src/change_diff.rs
+  - crates/speclink-host/src/lib.rs
   - crates/speclink-protocol/src/command.rs
   - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
+  - crates/speclink-remote/tests/it/typed_client.rs
   - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/read_api.rs
-  - crates/speclink-server/tests/review_api.rs
-  - packages/ui/src/__tests__/reviewBadge.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ReviewArchiveDialog.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/reviewStyle.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+  - crates/speclink-server/tests/it/review_api.rs
 -->
 
 ---
 ### Requirement: 審查工單的讀取
 
-系統 SHALL 提供 `speclink review show <change> [--json]`：人眼路徑將工單內容印至 stdout（`--no-color` 下不含 ANSI 控制碼）；`--json` 路徑輸出 payload：`change`（字串）、`rounds`（陣列，每項含 `index` 數字、`scope` 字串陣列、`findings` 陣列——每項含 `severity`、`path`、`text` 字串）、`lastRound`（末輪物件，供續輪取待辦）。
+系統 SHALL 提供 speclink review show <change> [--json]。人眼路徑 SHALL 將工單原文印至 stdout，`--no-color` 下不含 ANSI。`--json` payload SHALL 含 change:string、rounds:array、lastRound:object；rounds 每項 SHALL 含 index:number、phase:string|null、patchHash:string|null、scope:string[]、findings:array；findings 每項 SHALL 維持 severity:string、path:string、text:string。lastRound SHALL 與 rounds 末項同形。
 
-#### Scenario: 讀取既有工單的 JSON
+Local fs、remote CLI、typed client 與 server response SHALL 輸出相同 camelCase 欄位與 null 語意。phase／patchHash 是刻意的 additive shape change；既有欄位名稱、型別與 findings 順序 SHALL 維持。
 
-- **WHEN** 對有兩輪的工單執行 `review show <change> --json`
-- **THEN** exit code 0，stdout 為合法 JSON，`rounds` 長度 2，`lastRound.index` 為 2
+#### Scenario: 讀取 structured 兩輪 JSON
+
+- **WHEN** 工單含 discovery Round 1 與 validation Round 2，執行 review show <change> --json
+- **THEN** exit code 0、stdout 為合法 JSON、rounds 長度為 2、lastRound.index 為 2、lastRound.phase 為 validation、lastRound.patchHash 為 `sha256:` digest
+
+#### Scenario: legacy JSON 使用 null
+
+- **WHEN** legacy 工單 round 不含 Phase／Patch，執行 review show --json
+- **THEN** phase 與 patchHash 明確輸出 null，既有 index、scope、findings 內容不變
+
+#### Scenario: local 與 remote payload 同構
+
+- **WHEN** 同一 structured ticket 分別經 local fs 與 remote server 讀取
+- **THEN** 兩份 rounds／lastRound 的欄位集合、camelCase 名稱、null 與值逐項相同
 
 #### Scenario: 無工單
 
-- **WHEN** 對無工單的 change 執行 `review show`
+- **WHEN** 對無工單的 change 執行 review show
 - **THEN** exit code 非零，stderr 說明該 change 無審查工單
 
 
 <!-- @trace
-source: code-review-stage
-updated: 2026-08-02
+source: converge-review-remediation-rounds
+updated: 2026-08-03
 code:
   - AGENTS.md
   - CLAUDE.md
-  - README.en.md
-  - README.md
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
   - crates/speclink-cli/src/commands.rs
   - crates/speclink-cli/src/main.rs
   - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/review_verbs.rs
+  - crates/speclink-cli/tests/it/remote_verb_parity.rs
+  - crates/speclink-cli/tests/it/review_verbs.rs
+  - crates/speclink-core/assets/skills/apply.md
   - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
   - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
   - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/src/util.rs
+  - crates/speclink-core/src/tasks.rs
+  - crates/speclink-core/src/workspace.rs
   - crates/speclink-core/tests/golden/assets.lock
   - crates/speclink-core/tests/golden/claude.snapshot.md
   - crates/speclink-core/tests/golden/codex.snapshot.md
   - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
   - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
   - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-node/src/store_bridge.rs
+  - crates/speclink-core/tests/it/render_golden.rs
+  - crates/speclink-host/src/change_diff.rs
+  - crates/speclink-host/src/lib.rs
   - crates/speclink-protocol/src/command.rs
   - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
+  - crates/speclink-remote/tests/it/typed_client.rs
   - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/read_api.rs
-  - crates/speclink-server/tests/review_api.rs
-  - packages/ui/src/__tests__/reviewBadge.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ReviewArchiveDialog.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/reviewStyle.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+  - crates/speclink-server/tests/it/review_api.rs
 -->
 
 ---

@@ -1111,6 +1111,44 @@ fn remote_show_outcome(
 
 fn remote_review(ctx: &RemoteCtx, a: ReviewArgs) -> Result<()> {
     match a.command {
+        ReviewCommands::Prepare { change } => {
+            // Remote workspace 的 prepare 仍在本地 checkout 建 sidecar：先做
+            // remote read（存在＋startedAt），失敗即零 sidecar effects。listing 的
+            // status 只由任務完成度推導，不能當「已開工」讀。
+            let summary = ctx
+                .client
+                .list_changes()?
+                .changes
+                .into_iter()
+                .find(|c| c.name == change)
+                .ok_or_else(|| anyhow::anyhow!("change not found: {change}"))?;
+            let ws = require_workspace()?;
+            run_review_prepare(&ws, &change, summary.started_at.is_some())
+        }
+        ReviewCommands::Scope { change, json, base, candidate_hash, include_hunk } => {
+            // 同一 Host resolver：remote 只提供 active changes 與 ticket 事實，
+            // Git、baseline、touched、snapshot 全在本地 checkout。
+            let changes = ctx.client.list_changes()?.changes;
+            if !changes.iter().any(|c| c.name == change) {
+                anyhow::bail!("change not found: {change}");
+            }
+            let ws = require_workspace()?;
+            let ticket = ctx.client.review_ticket_if_any(&change)?.map(|t| {
+                speclink_host::change_diff::TicketBinding {
+                    patch_hash: t.last_round.patch_hash.clone(),
+                    finding_paths: t
+                        .last_round
+                        .findings
+                        .iter()
+                        .map(|f| f.path.clone())
+                        .collect(),
+                }
+            });
+            let names = changes.into_iter().map(|c| c.name).collect();
+            let req =
+                build_scope_request(&ws, change, names, ticket, base, candidate_hash, include_hunk);
+            run_review_scope(&ws, &req, json)
+        }
         ReviewCommands::AddRound { change, stdin } => {
             let content = read_stdin_content(stdin);
             let round = ctx.client.review_add_round(&change, &content)?.round;
@@ -1125,6 +1163,12 @@ fn remote_review(ctx: &RemoteCtx, a: ReviewArgs) -> Result<()> {
             println!("Review — {}", ticket.change);
             for r in &ticket.rounds {
                 println!("\nRound {}", r.index);
+                if let Some(phase) = &r.phase {
+                    println!("  Phase: {phase}");
+                }
+                if let Some(hash) = &r.patch_hash {
+                    println!("  Patch: {hash}");
+                }
                 if !r.scope.is_empty() {
                     println!("  Scope: {}", r.scope.join(", "));
                 }

@@ -11,6 +11,7 @@
 
 pub mod binding;
 pub mod bridge;
+pub mod change_diff;
 pub mod commit;
 pub mod context;
 pub mod drift;
