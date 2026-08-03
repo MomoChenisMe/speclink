@@ -5,7 +5,7 @@
 //! the pre-existing output BIT-FOR-BIT — the neutral work must not drift them. The
 //! neutral snapshots pin the cli and tool-call wordings.
 //!
-//! Regenerate goldens deliberately with: UPDATE_GOLDEN=1 cargo test -p speclink-core --test render_golden
+//! Regenerate goldens deliberately with: UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::
 
 use speclink_core::init;
 use speclink_core::skills::{self, Tool};
@@ -393,7 +393,7 @@ fn lock_fix_instructions() -> String {
     format!(
         "fix: bump MARKER_VERSION in crates/speclink-core/src/init.rs (render content changed), \
 then regenerate the lock on a clean tree with \
-`{LOCK_REGEN_ENV}=1 cargo test -p speclink-core --test render_golden`. \
+`{LOCK_REGEN_ENV}=1 cargo test -p speclink-core --test it render_golden::`. \
 Regenerating goldens (UPDATE_GOLDEN=1) does NOT update this lock."
     )
 }
@@ -422,7 +422,7 @@ still {current_version}.\n{}",
     let Some((locked_version, locked_hash)) = locked else {
         panic!(
             "missing {ASSETS_LOCK} — generate it on a clean tree with \
-`{LOCK_REGEN_ENV}=1 cargo test -p speclink-core --test render_golden`.\n{}",
+`{LOCK_REGEN_ENV}=1 cargo test -p speclink-core --test it render_golden::`.\n{}",
             lock_fix_instructions()
         );
     };
