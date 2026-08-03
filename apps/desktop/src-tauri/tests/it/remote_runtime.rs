@@ -7,9 +7,9 @@
 //! 狀態且後續操作回拒絕錯誤。token 只存在 Rust——測試面沒有任何 secret 出境
 //! 斷言對象。
 
-mod common;
+use crate::common;
 
-use common::Harness;
+use crate::common::Harness;
 use speclink_desktop_lib::connections::pat_login;
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::remote::{

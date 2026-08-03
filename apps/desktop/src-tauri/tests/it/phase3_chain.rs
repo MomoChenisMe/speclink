@@ -1,7 +1,7 @@
 //! Phase 3 收官驗收：desktop remote 資料面、真實 CLI 與兩個隔離 server 的
 //! 單一連續劇本（phase3-acceptance spec）。
 
-mod common;
+use crate::common;
 
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::event_manager::EventManager;
