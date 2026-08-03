@@ -11,6 +11,9 @@
 //! one, it must report `skipped` rather than the `passed` that libtest's only
 //! runtime outcome would give it.
 
+// common 實體隨 libtest 合併住進 tests/it/common/（見 tests/it/main.rs）；本目標
+// 維持獨立 binary，以 #[path] 續用同一份。
+#[path = "it/common/mod.rs"]
 mod common;
 mod pg;
 
