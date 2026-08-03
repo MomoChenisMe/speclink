@@ -257,6 +257,7 @@ fn run_cli(project: &Path, args: &[&str], token: &str) -> Output {
 
 #[test]
 fn the_admin_manages_a_team_end_to_end_over_the_real_binaries() {
+    let _gate = crate::common::acquire_process_gate();
     let workdir = tempfile::tempdir().expect("workdir");
     let db = workdir.path().join("store.db");
     let config = write_config(workdir.path(), &db);

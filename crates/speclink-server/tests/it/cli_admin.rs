@@ -38,6 +38,7 @@ fn run(config: &Path, args: &[&str]) -> Output {
 
 #[test]
 fn the_management_subcommands_run_headless_and_record_source_cli() {
+    let _gate = crate::common::acquire_process_gate();
     let dir = tempfile::tempdir().expect("tempdir");
     let identity_db = dir.path().join("identity.db");
     let config = write_config(dir.path(), &identity_db);

@@ -133,6 +133,7 @@ fn drive(store: SharedStore) -> Outcome {
 
 #[test]
 fn a_serverfs_config_serves_the_verb_flow_exactly_as_sqlite_does() {
+    let _gate = crate::common::acquire_process_gate();
     let fs_dir = tempfile::tempdir().expect("tempdir");
     let fs_store = build_store(&StoreConfig::ServerFs {
         path: fs_dir.path().join("store"),
@@ -165,6 +166,7 @@ fn a_serverfs_config_serves_the_verb_flow_exactly_as_sqlite_does() {
 
 #[test]
 fn a_serverfs_store_serves_the_same_data_after_a_server_restart() {
+    let _gate = crate::common::acquire_process_gate();
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("store");
 
@@ -251,6 +253,7 @@ fn serverfs_verb_flow_child() {
 
 #[test]
 fn a_second_server_on_the_same_data_directory_is_refused() {
+    let _gate = crate::common::acquire_process_gate();
     // Two servers pointed at one directory is a misconfiguration; the driver
     // is single-node by design, so the second must fail to start rather than
     // interleave writes into the first one's data.

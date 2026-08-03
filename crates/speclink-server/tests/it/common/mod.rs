@@ -12,7 +12,18 @@ use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::{AppState, SharedIdentity, SharedStore};
 use speclink_store::memory::MemoryStore;
 use std::net::TcpListener as StdListener;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
+/// 重量級測試閘門：spawn 真實子程序（server／CLI binary）的測試取此鎖互斥
+/// 執行，壓低合併單 binary 後 loopback 埠競爭、free_port 的 TOCTOU 窗口與
+/// healthz／setup-token 就緒時限在高負載下被擠壓的風險；in-process 測試不取，
+/// 維持全並發（樣式同 desktop tests/it/common 的 HARNESS_GATE）。
+static PROCESS_GATE: Mutex<()> = Mutex::new(());
+
+pub fn acquire_process_gate() -> MutexGuard<'static, ()> {
+    // 前一個測試 panic 只代表該測試失敗，poison 不該連坐後續測試。
+    PROCESS_GATE.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// The display identity the seeded test user authenticates as.
 pub const SEED_DISPLAY: &str = "Tester <tester@example.com>";

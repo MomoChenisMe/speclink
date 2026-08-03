@@ -24,6 +24,7 @@ fn run_with_contents(contents: &str) -> (std::process::Output, tempfile::NamedTe
 
 #[test]
 fn a_missing_config_exits_non_zero_naming_the_file() {
+    let _gate = crate::common::acquire_process_gate();
     let path = "/no/such/speclink-server-config.yaml";
     let out = run_with_config(path);
     assert!(!out.status.success(), "a missing config must fail startup");
@@ -33,6 +34,7 @@ fn a_missing_config_exits_non_zero_naming_the_file() {
 
 #[test]
 fn an_unparseable_config_exits_non_zero_with_the_reason() {
+    let _gate = crate::common::acquire_process_gate();
     let (out, _file) = run_with_contents("store: : : not yaml\n  - broken");
     assert!(!out.status.success(), "unparseable YAML must fail startup");
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -44,6 +46,7 @@ fn an_unparseable_config_exits_non_zero_with_the_reason() {
 
 #[test]
 fn an_unknown_driver_exits_non_zero_listing_supported_drivers() {
+    let _gate = crate::common::acquire_process_gate();
     let (out, _file) = run_with_contents("store:\n  driver: mysql\n");
     assert!(!out.status.success(), "an unsupported driver must fail startup");
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -59,6 +62,7 @@ fn an_unknown_driver_exits_non_zero_listing_supported_drivers() {
 
 #[test]
 fn a_serverfs_store_pointed_at_a_foreign_directory_exits_non_zero_and_touches_nothing() {
+    let _gate = crate::common::acquire_process_gate();
     // The operator mistypes a path and lands on a directory that is already
     // someone's data. Starting here would mean writing a store's marker and
     // scope tree into it; the server refuses instead, and — the part that
@@ -105,6 +109,7 @@ fn a_serverfs_store_pointed_at_a_foreign_directory_exits_non_zero_and_touches_no
 
 #[test]
 fn a_residual_tokens_section_exits_non_zero_naming_its_replacement() {
+    let _gate = crate::common::acquire_process_gate();
     let (out, _file) = run_with_contents(
         "store:\n  driver: memory\nidentity:\n  driver: memory\ntokens:\n  - token: x\n    actor:\n      display: A\n",
     );
@@ -118,6 +123,7 @@ fn a_residual_tokens_section_exits_non_zero_naming_its_replacement() {
 
 #[test]
 fn a_residual_projects_section_exits_non_zero_naming_its_replacement() {
+    let _gate = crate::common::acquire_process_gate();
     let (out, _file) = run_with_contents(
         "store:\n  driver: memory\nidentity:\n  driver: memory\nprojects:\n  - key: demo\n    repos:\n      - backend\n",
     );
