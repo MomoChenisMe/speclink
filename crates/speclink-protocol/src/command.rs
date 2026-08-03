@@ -268,6 +268,13 @@ pub struct PromoteDiscussionResponse {
 #[serde(rename_all = "camelCase")]
 pub struct ReviewRoundDto {
     pub index: u64,
+    /// 結構化輪次的 phase token（discovery|validation）；legacy round 為 null。
+    /// 刻意的 additive shape change——欄位恆出現、缺席以明確 null 表示。
+    #[serde(default)]
+    pub phase: Option<String>,
+    /// 結構化輪次綁定的 frozen patch identity（`sha256:<hex>`）；legacy 為 null。
+    #[serde(default)]
+    pub patch_hash: Option<String>,
     #[serde(default)]
     pub scope: Vec<String>,
     #[serde(default)]
@@ -386,6 +393,31 @@ mod tests {
     }
 
     #[test]
+    fn review_round_dto_carries_nullable_phase_and_patch_hash() {
+        // review-station spec「審查工單的讀取」：rounds[] 增列 phase／patchHash
+        // string|null；legacy payload（無兩欄）解析為 None、序列化為明確 null。
+        let structured: ReviewRoundDto = serde_json::from_str(
+            r#"{"index":1,"scope":["src/lib.rs"],"findings":[],"phase":"discovery","patchHash":"sha256:aa"}"#,
+        )
+        .unwrap();
+        let json = serde_json::to_value(&structured).unwrap();
+        assert_eq!(json["phase"], "discovery");
+        assert_eq!(json["patchHash"], "sha256:aa");
+
+        let legacy: ReviewRoundDto =
+            serde_json::from_str(r#"{"index":1,"scope":[],"findings":[]}"#).unwrap();
+        let json = serde_json::to_value(&legacy).unwrap();
+        assert!(
+            json.as_object().unwrap().get("phase").is_some_and(serde_json::Value::is_null),
+            "phase must serialize as explicit null: {json}"
+        );
+        assert!(
+            json.as_object().unwrap().get("patchHash").is_some_and(serde_json::Value::is_null),
+            "patchHash must serialize as explicit null: {json}"
+        );
+    }
+
+    #[test]
     fn put_artifact_shapes_round_trip() {
         let req = PutArtifactRequest { content: "## Why\n".into() };
         assert_eq!(
@@ -501,6 +533,8 @@ mod tests {
         // D4a wire 契約：lastRound 為 camelCase；stamp 請求載明 accept／agent／scope。
         let round = ReviewRoundDto {
             index: 2,
+            phase: Some("validation".into()),
+            patch_hash: Some(format!("sha256:{}", "a".repeat(64))),
             scope: vec!["src/lib.rs".into()],
             findings: vec![ReviewFindingDto {
                 severity: "WARNING".into(),

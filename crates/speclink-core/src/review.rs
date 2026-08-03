@@ -48,10 +48,37 @@ pub struct Finding {
     pub text: String,
 }
 
-/// 一輪審查：`## Round N` 區段的解析結果。
+/// 結構化輪次的 phase token（spec「審查工單的建立與追加」：discovery|validation）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoundPhase {
+    Discovery,
+    Validation,
+}
+
+impl RoundPhase {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RoundPhase::Discovery => "discovery",
+            RoundPhase::Validation => "validation",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<RoundPhase> {
+        match s {
+            "discovery" => Some(RoundPhase::Discovery),
+            "validation" => Some(RoundPhase::Validation),
+            _ => None,
+        }
+    }
+}
+
+/// 一輪審查：`## Round N` 區段的解析結果。`phase`／`patch_hash` 為結構化輪次
+/// 的 frozen patch identity；legacy 輪次兩欄皆 None。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Round {
     pub index: usize,
+    pub phase: Option<RoundPhase>,
+    pub patch_hash: Option<String>,
     pub scope: Vec<String>,
     pub findings: Vec<Finding>,
 }
@@ -91,11 +118,33 @@ pub fn add_round(store: &dyn Store, change: &str, content: &str) -> Result<usize
         bail!(NotFound(format!("change not found: {change}")));
     }
     // 寫入前先驗證（系統邊界：stdin 為外部輸入）——拒絕路徑零寫入。
-    parse_round_body(content)?;
-    let (mut text, next) = match store.read_artifact(change, REVIEW_DOC) {
-        // 追加前解析既有工單：壞檔 fail-closed，不得在其上疊寫。
+    let body = parse_round_body(content)?;
+    // 追加前解析既有工單：壞檔 fail-closed，不得在其上疊寫。
+    let existing = store.read_artifact(change, REVIEW_DOC);
+    let ticket = existing.as_deref().map(parse_ticket).transpose()?;
+    // Sequence guard（spec「審查工單的建立與追加」）：工單首個結構化 round 是
+    // discovery；已有結構化 round 後只能追加 validation；validation 必須有可
+    // 驗收的既有輪次（legacy ticket 也算）。
+    match body.phase {
+        Some(RoundPhase::Discovery)
+            if ticket.as_ref().is_some_and(|t| t.rounds.iter().any(|r| r.phase.is_some())) =>
+        {
+            bail!(
+                "the ticket already carries a structured round — subsequent structured \
+                 rounds must be validation"
+            );
+        }
+        Some(RoundPhase::Validation) if ticket.is_none() => {
+            bail!(
+                "a validation round needs an existing ticket to validate — the first \
+                 structured round is discovery"
+            );
+        }
+        _ => {}
+    }
+    let (mut text, next) = match existing {
         Some(existing) => {
-            let next = parse_ticket(&existing)?.last_round().index + 1;
+            let next = ticket.expect("existing document parsed above").last_round().index + 1;
             (existing, next)
         }
         None => (format!("# Review — {change}\n"), 1),
@@ -455,14 +504,25 @@ fn ensure_repo_relative(path: &str) -> Result<()> {
     Ok(())
 }
 
-/// 解析並驗證一輪內容：非空 `**Scope**:` 清單＋合法 findings 行。
+/// 一輪內容的解析結果（stdin 驗證與 show 的輪次解析共用）。
+struct RoundBody {
+    scope: Vec<String>,
+    findings: Vec<Finding>,
+    phase: Option<RoundPhase>,
+    patch_hash: Option<String>,
+}
+
+/// 解析並驗證一輪內容：非空 `**Scope**:` 清單＋合法 findings 行；結構化輪次
+/// 另帶成對的 `**Phase**:` 與 `**Patch**:`（spec「審查工單的建立與追加」）。
 /// stdin 驗證與 show 的輪次解析共用同一文法——動詞產生的格式即動詞驗證的格式。
-fn parse_round_body(content: &str) -> Result<(Vec<String>, Vec<Finding>)> {
+fn parse_round_body(content: &str) -> Result<RoundBody> {
     if content.trim().is_empty() {
         bail!("round content is empty — a round must carry a `**Scope**:` line");
     }
     let mut scope: Option<Vec<String>> = None;
     let mut findings = Vec::new();
+    let mut phase: Option<RoundPhase> = None;
+    let mut patch_hash: Option<String> = None;
     for line in content.lines() {
         let t = line.trim_start();
         if let Some(rest) = t.strip_prefix("**Scope**:") {
@@ -482,6 +542,19 @@ fn parse_round_body(content: &str) -> Result<(Vec<String>, Vec<Finding>)> {
                 ensure_repo_relative(path)?;
             }
             scope = Some(list);
+        } else if let Some(rest) = t.strip_prefix("**Phase**:") {
+            if phase.is_some() {
+                bail!("multiple `**Phase**:` lines in one round");
+            }
+            let token = rest.trim();
+            phase = Some(RoundPhase::parse(token).ok_or_else(|| {
+                anyhow!("unknown phase '{token}' — expected discovery or validation")
+            })?);
+        } else if let Some(rest) = t.strip_prefix("**Patch**:") {
+            if patch_hash.is_some() {
+                bail!("multiple `**Patch**:` lines in one round");
+            }
+            patch_hash = Some(ensure_patch_hash(rest.trim())?);
         } else if t.starts_with("##") && !t.starts_with("###") {
             // `## Round N` 是輪次分隔符——內容夾帶二級標題會偽造輪次結構。
             bail!("round content must not contain `## ` headings (round delimiter): {t}");
@@ -489,10 +562,25 @@ fn parse_round_body(content: &str) -> Result<(Vec<String>, Vec<Finding>)> {
             findings.push(parse_finding(t)?);
         }
     }
+    if phase.is_some() != patch_hash.is_some() {
+        bail!("`**Phase**:` and `**Patch**:` must appear together — a structured round \
+               binds its phase to a frozen patch hash");
+    }
     let Some(scope) = scope else {
         bail!("round content must contain a `**Scope**:` line listing the files reviewed");
     };
-    Ok((scope, findings))
+    Ok(RoundBody { scope, findings, phase, patch_hash })
+}
+
+/// Patch 行的格式守門：`sha256:` ＋恰好 64 個小寫十六進位字元。
+fn ensure_patch_hash(s: &str) -> Result<String> {
+    let hex = s
+        .strip_prefix("sha256:")
+        .ok_or_else(|| anyhow!("malformed patch hash '{s}' — expected `sha256:<64 hex>`"))?;
+    if hex.len() != 64 || !hex.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()) {
+        bail!("malformed patch hash '{s}' — expected exactly 64 lowercase hex digits");
+    }
+    Ok(s.to_string())
 }
 
 /// 解析一行 finding：`- [severity] path — 描述`。
@@ -543,8 +631,14 @@ fn parse_ticket(text: &str) -> Result<Ticket> {
 }
 
 fn build_round(index: usize, body: &str) -> Result<Round> {
-    let (scope, findings) = parse_round_body(body)?;
-    Ok(Round { index, scope, findings })
+    let body = parse_round_body(body)?;
+    Ok(Round {
+        index,
+        phase: body.phase,
+        patch_hash: body.patch_hash,
+        scope: body.scope,
+        findings: body.findings,
+    })
 }
 
 #[cfg(test)]
@@ -1146,6 +1240,105 @@ mod tests {
             );
         }
         assert_eq!(*store.artifact_writes.borrow(), 0, "refusal must not write");
+    }
+
+    // --- spec「審查工單的建立與追加」：structured rounds（Phase／Patch 成對）---
+
+    fn structured_round(phase: &str, hex: &str) -> String {
+        format!(
+            "**Phase**: {phase}\n**Patch**: sha256:{hex}\n**Scope**: src/lib.rs\n\n- [CRITICAL] src/lib.rs — unwrap on user input\n"
+        )
+    }
+
+    #[test]
+    fn structured_discovery_round_parses_phase_and_patch_hash() {
+        // spec Scenario「首輪建立 structured discovery 工單」的解析核心。
+        let store = store_with_change();
+        let hex = "a".repeat(64);
+        add_round(&store, "demo", &structured_round("discovery", &hex)).expect("structured round");
+        let ticket = show(&store, "demo").expect("ticket parses");
+        let round = &ticket.rounds[0];
+        assert_eq!(round.phase, Some(RoundPhase::Discovery));
+        assert_eq!(round.patch_hash.as_deref(), Some(format!("sha256:{hex}").as_str()));
+        // 原文帶 phase／patch 行（人眼工單）。
+        let doc = store.read_artifact("demo", REVIEW_DOC).expect("ticket doc");
+        assert!(doc.contains("**Phase**: discovery"), "{doc}");
+        assert!(doc.contains(&format!("**Patch**: sha256:{hex}")), "{doc}");
+    }
+
+    #[test]
+    fn structured_round_rejects_unpaired_or_malformed_fields_without_writing() {
+        // spec Scenario「phase 與 patch 必須成對」＋格式驗證：兩欄只出現其一、
+        // phase token 無效、hash 非 64 lowercase hex → 非零拒絕且工單零寫入。
+        let store = store_with_change();
+        let hex = "a".repeat(64);
+        for bad in [
+            format!("**Phase**: discovery\n**Scope**: src/lib.rs\n"),
+            format!("**Patch**: sha256:{hex}\n**Scope**: src/lib.rs\n"),
+            structured_round("exploration", &hex),
+            structured_round("discovery", "zz"),
+            structured_round("discovery", &"A".repeat(64)),
+            format!("**Phase**: discovery\n**Patch**: {hex}\n**Scope**: src/lib.rs\n"),
+        ] {
+            assert!(add_round(&store, "demo", &bad).is_err(), "content {bad:?} must be rejected");
+        }
+        assert_eq!(*store.artifact_writes.borrow(), 0, "refusals must not write");
+        assert!(!store.artifact_exists("demo", REVIEW_DOC));
+    }
+
+    #[test]
+    fn second_discovery_is_rejected_after_a_structured_round() {
+        // spec Scenario「第二個 discovery 被拒絕」：後續輪只能是 validation，
+        // 工單位元級不變。
+        let store = store_with_change();
+        let hex = "a".repeat(64);
+        add_round(&store, "demo", &structured_round("discovery", &hex)).expect("round 1");
+        let before = store.read_artifact("demo", REVIEW_DOC).expect("ticket");
+        let err = add_round(&store, "demo", &structured_round("discovery", &"b".repeat(64)))
+            .expect_err("a second discovery must be rejected");
+        assert!(err.to_string().contains("validation"), "error explains the sequence: {err}");
+        assert_eq!(store.read_artifact("demo", REVIEW_DOC).as_deref(), Some(before.as_str()));
+    }
+
+    #[test]
+    fn validation_appends_after_structured_and_legacy_tickets() {
+        // spec Scenario「追加 validation 不改寫既有輪」＋「legacy ticket 後 SHALL
+        // 能追加 validation round」。
+        let store = store_with_change();
+        add_round(&store, "demo", &structured_round("discovery", &"a".repeat(64))).expect("r1");
+        let before = store.read_artifact("demo", REVIEW_DOC).expect("ticket");
+        let round =
+            add_round(&store, "demo", &structured_round("validation", &"b".repeat(64))).expect("r2");
+        assert_eq!(round, 2);
+        let after = store.read_artifact("demo", REVIEW_DOC).expect("ticket");
+        assert!(after.starts_with(&before), "append-only across structured rounds");
+        let ticket = show(&store, "demo").expect("parses");
+        assert_eq!(ticket.last_round().phase, Some(RoundPhase::Validation));
+
+        let legacy_store = store_with_change();
+        add_round(&legacy_store, "demo", ROUND_1).expect("legacy r1");
+        add_round(&legacy_store, "demo", &structured_round("validation", &"c".repeat(64)))
+            .expect("validation may follow a legacy ticket");
+    }
+
+    #[test]
+    fn validation_is_rejected_on_a_fresh_ticket() {
+        // 無任何輪次可驗收：首輪 validation 拒絕、零寫入。
+        let store = store_with_change();
+        let err = add_round(&store, "demo", &structured_round("validation", &"a".repeat(64)))
+            .expect_err("fresh-ticket validation must be rejected");
+        assert!(err.to_string().contains("discovery"), "error names the required phase: {err}");
+        assert_eq!(*store.artifact_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn legacy_round_parses_with_null_phase_and_patch() {
+        // spec Scenario「legacy round 保持相容」：兩欄缺席解析為 None，既有行為不變。
+        let store = store_with_change();
+        add_round(&store, "demo", ROUND_1).expect("legacy round");
+        let ticket = show(&store, "demo").expect("parses");
+        assert_eq!(ticket.rounds[0].phase, None);
+        assert_eq!(ticket.rounds[0].patch_hash, None);
     }
 
     // --- spec「內容指紋錨與失效判定」---

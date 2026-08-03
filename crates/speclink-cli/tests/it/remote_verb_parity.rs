@@ -495,3 +495,228 @@ fn remote_discard_with_force_succeeds_with_fs_parity_json() {
     let cap = mock.find("DELETE", "/changes/demo");
     assert!(cap.query.contains("force=true"), "--force rides the query: {}", cap.query);
 }
+
+// --- review prepare／scope：remote workspace 使用同一 host resolver
+//（change-diff-scope spec「remote workspace 使用同一 host resolver」）---
+
+/// 在沙盒目錄跑 git（可帶固定日期 env，讓 commit SHA 決定性）。
+fn run_git(dir: &std::path::Path, args: &[&str]) {
+    let ok = Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_AUTHOR_DATE", "2026-01-02T03:04:05Z")
+        .env("GIT_COMMITTER_DATE", "2026-01-02T03:04:05Z")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    assert!(ok, "git {args:?} failed");
+}
+
+/// git init＋固定身分＋只 commit `src/`（兩個沙盒得到相同 SHA 的前提）。
+fn seed_git_src(p: &TempProject) {
+    p.write("src/lib.rs", "fn demo() {}\n");
+    run_git(&p.dir, &["init", "-q"]);
+    run_git(&p.dir, &["config", "user.name", "Sandbox Tester"]);
+    run_git(&p.dir, &["config", "user.email", "sandbox@example.com"]);
+    run_git(&p.dir, &["add", "src"]);
+    run_git(&p.dir, &["commit", "-q", "-m", "init"]);
+}
+
+/// host-local touched record（v1 通道）。
+fn write_touched(p: &TempProject, change: &str, files: &[&str]) {
+    let list: Vec<String> = files.iter().map(|f| format!("\"{f}\"")).collect();
+    p.write(
+        &format!(".speclink/touched/{change}.json"),
+        &format!(
+            "{{\"version\":2,\"change\":\"{change}\",\"touched\":[{{\"task_id\":\"1\",\"task_desc\":\"t\",\"files\":[{}]}}]}}",
+            list.join(",")
+        ),
+    );
+}
+
+/// listing 的 `status` 只由任務完成度推導（未全完成即 `in-progress`），沒有
+/// `proposed` 這個值；`startedAt` 才是「已開工」的事實來源。這裡刻意用未開工
+/// 但任務未完成的真實形狀。
+fn review_scope_routes() -> Vec<(&'static str, &'static str, u16, String)> {
+    vec![
+        (
+            "GET",
+            "/changes",
+            200,
+            r#"{"changes":[{"name":"demo","status":"in-progress","completedTasks":0,"totalTasks":2}]}"#.into(),
+        ),
+        (
+            "GET",
+            "/changes/demo/review",
+            404,
+            r#"{"status":404,"reason":"not_found","message":"no review ticket for change 'demo'"}"#.into(),
+        ),
+    ]
+}
+
+#[test]
+fn remote_review_prepare_writes_the_local_sidecar_and_posts_nothing() {
+    // spec Scenario「remote scope 仍使用 local checkout」的 prepare 面：baseline
+    // 建在本地 checkout 的 .speclink，server 只被讀、不收 sidecar。
+    let mock = mock_server(review_scope_routes());
+    let p = TempProject::remote("review-prepare", &mock.base, "backend");
+    seed_git_src(&p);
+    p.write("notes/local.txt", "scratch\n");
+    let out = p.run(&["review", "prepare", "demo"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(stdout_of(&out).is_empty(), "initial capture is silent");
+    let baseline = p.dir.join(".speclink").join("review-scopes").join("demo").join("baseline.json");
+    let raw = std::fs::read_to_string(&baseline).expect("baseline written locally");
+    assert!(raw.contains("\"confidence\": \"initial\""), "{raw}");
+    let caps = mock.captured.lock().unwrap();
+    assert!(
+        caps.iter().all(|c| c.method == "GET"),
+        "prepare must not upload anything: {caps:?}"
+    );
+}
+
+#[test]
+fn remote_review_prepare_reads_started_from_started_at_not_task_progress() {
+    // listing 的 status 在任務未全完成時一律是 in-progress，拿它當「已開工」會
+    // 讓 Apply 前的 prepare 永遠記成 late；已開工的事實只在 startedAt。
+    let started = vec![
+        (
+            "GET",
+            "/changes",
+            200,
+            r#"{"changes":[{"name":"demo","status":"in-progress","completedTasks":0,"totalTasks":2,"startedAt":"2026-01-02"}]}"#.to_string(),
+        ),
+        (
+            "GET",
+            "/changes/demo/review",
+            404,
+            r#"{"status":404,"reason":"not_found","message":"no review ticket for change 'demo'"}"#.to_string(),
+        ),
+    ];
+    let mock = mock_server(started);
+    let p = TempProject::remote("review-prepare-started", &mock.base, "backend");
+    seed_git_src(&p);
+    let out = p.run(&["review", "prepare", "demo"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let baseline = p.dir.join(".speclink").join("review-scopes").join("demo").join("baseline.json");
+    let raw = std::fs::read_to_string(&baseline).expect("baseline written locally");
+    assert!(raw.contains("\"confidence\": \"late\""), "startedAt present ⇒ late: {raw}");
+    assert!(
+        stderr_of(&out).contains("captured late"),
+        "late capture warns: {}",
+        stderr_of(&out)
+    );
+}
+
+#[test]
+fn remote_review_scope_uses_local_git_and_uploads_nothing() {
+    // spec Scenario「remote scope 仍使用 local checkout」：resolved payload 用
+    // local Git 產生、server 不收到 patch 或 snapshot。
+    let mock = mock_server(review_scope_routes());
+    let p = TempProject::remote("review-scope", &mock.base, "backend");
+    seed_git_src(&p);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "stderr: {}", stderr_of(&prepared));
+    p.write("src/lib.rs", "fn demo() { changed(); }\n");
+    write_touched(&p, "demo", &["src/lib.rs"]);
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    assert_eq!(v["state"], "resolved");
+    // baseCommit 是本地 checkout 的 HEAD。
+    let head = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&p.dir)
+        .output()
+        .expect("git rev-parse");
+    let head = String::from_utf8_lossy(&head.stdout).trim().to_string();
+    assert_eq!(v["baseCommit"].as_str(), Some(head.as_str()), "local Git is the source");
+    // 本地 snapshot 凍結；server 全程只被 GET。
+    let snapdir = p.dir.join(".speclink").join("review-scopes").join("demo").join("snapshots");
+    assert_eq!(std::fs::read_dir(&snapdir).map(|it| it.count()).unwrap_or(0), 1);
+    let caps = mock.captured.lock().unwrap();
+    assert!(
+        caps.iter().all(|c| c.method == "GET"),
+        "scope must not upload the patch or snapshot: {caps:?}"
+    );
+}
+
+#[test]
+fn remote_review_scope_json_matches_fs_mode_field_for_field() {
+    // spec：local／remote resolved payload 欄位同構——同內容、決定性 commit 下
+    // 逐位元相同。
+    let fs = TempProject::fs("review-scope-fs");
+    fs.write(
+        "openspec/changes/demo/.openspec.yaml",
+        "schema: spec-driven\ncreated: 2026-07-01\n",
+    );
+    fs.write("openspec/changes/demo/tasks.md", "- [x] 1.1 first\n");
+    seed_git_src(&fs);
+    let prepared = fs.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "fs prepare: {}", stderr_of(&prepared));
+    fs.write("src/lib.rs", "fn demo() { changed(); }\n");
+    write_touched(&fs, "demo", &["src/lib.rs"]);
+    let fs_out = fs.run(&["review", "scope", "demo", "--json"]);
+    assert!(fs_out.status.success(), "fs scope: {}", stderr_of(&fs_out));
+
+    let mock = mock_server(review_scope_routes());
+    let p = TempProject::remote("review-scope-parity", &mock.base, "backend");
+    seed_git_src(&p);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "remote prepare: {}", stderr_of(&prepared));
+    p.write("src/lib.rs", "fn demo() { changed(); }\n");
+    write_touched(&p, "demo", &["src/lib.rs"]);
+    let remote_out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(remote_out.status.success(), "remote scope: {}", stderr_of(&remote_out));
+
+    assert_eq!(
+        stdout_of(&remote_out),
+        stdout_of(&fs_out),
+        "resolved payload must be byte-identical across local and remote entry points"
+    );
+}
+
+#[test]
+fn remote_review_scope_offline_leaves_zero_sidecar_effects() {
+    // spec Scenario「remote 離線時零 sidecar effects」：連線失敗 → 非零、
+    // baseline 與 snapshots 內容不變。
+    let port = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("probe port");
+        listener.local_addr().expect("addr").port()
+    }; // listener dropped — the port now refuses connections
+    let url = format!("http://127.0.0.1:{port}/api/speclink/v1/projects/demo");
+    let p = TempProject::remote("review-offline", &url, "backend");
+    seed_git_src(&p);
+    write_touched(&p, "demo", &["src/lib.rs"]);
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(!out.status.success(), "offline must be non-zero");
+    assert!(
+        !p.dir.join(".speclink").join("review-scopes").exists(),
+        "no sidecar effects on the offline path"
+    );
+    let out = p.run(&["review", "prepare", "demo"]);
+    assert!(!out.status.success(), "offline prepare must be non-zero");
+    assert!(
+        !p.dir.join(".speclink").join("review-scopes").exists(),
+        "prepare writes nothing when the remote read fails"
+    );
+}
+
+#[test]
+fn remote_review_prepare_auth_failure_leaves_zero_sidecar_effects() {
+    // spec：認證失效 → 非零且不寫 baseline／snapshot。
+    let mock = mock_server(vec![(
+        "GET",
+        "/changes",
+        401,
+        r#"{"status":401,"reason":"unauthenticated","message":"token expired"}"#.into(),
+    )]);
+    let p = TempProject::remote("review-auth", &mock.base, "backend");
+    seed_git_src(&p);
+    let out = p.run(&["review", "prepare", "demo"]);
+    assert!(!out.status.success(), "auth failure must be non-zero");
+    assert!(
+        !p.dir.join(".speclink").join("review-scopes").exists(),
+        "zero sidecar effects on auth failure"
+    );
+}

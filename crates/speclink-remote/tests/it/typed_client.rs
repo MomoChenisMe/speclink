@@ -670,3 +670,37 @@ fn context_snapshot_translates_a_503_like_any_verb() {
         "a 5xx collapses to the frozen unavailable message"
     );
 }
+
+// --- review scope 組裝的 ticket 讀取（change-diff-scope spec「remote workspace
+// 使用同一 host resolver」）：404＝無工單是 scope 的正常 discovery 分支 ---
+
+#[test]
+fn review_ticket_if_any_maps_not_found_to_none_and_ok_to_some() {
+    let mock = serve(
+        404,
+        r#"{"status":404,"reason":"not_found","message":"no review ticket for change 'demo'"}"#,
+    );
+    let got = client(&mock).review_ticket_if_any("demo").expect("a 404 reads as no ticket");
+    assert!(got.is_none(), "not_found must become a clean None");
+    assert_call(&mock.last(), "GET", "/changes/demo/review");
+
+    let mock2 = serve(
+        200,
+        r#"{"change":"demo","rounds":[{"index":1,"scope":["src/lib.rs"],"findings":[]}],"lastRound":{"index":1,"scope":["src/lib.rs"],"findings":[]}}"#,
+    );
+    let got = client(&mock2).review_ticket_if_any("demo").expect("200 parses");
+    assert_eq!(got.expect("some ticket").change, "demo");
+}
+
+#[test]
+fn review_ticket_if_any_still_surfaces_non_404_errors() {
+    // 離線／認證失效不得被吞成「無工單」——那會讓 scope 假裝 discovery。
+    let mock = serve(
+        401,
+        r#"{"status":401,"reason":"permission_denied","message":"token expired"}"#,
+    );
+    let err = client(&mock)
+        .review_ticket_if_any("demo")
+        .expect_err("auth failure must stay an error");
+    assert_eq!(err.reason.as_deref(), Some("permission_denied"), "typed reason survives: {err}");
+}

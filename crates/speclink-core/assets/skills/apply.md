@@ -25,13 +25,14 @@ Implement tasks from a Speclink change.
 
    **If the command fails**: show the error and STOP.
 
-   **If the command succeeds**, mark the change as in-progress and proceed:
+   **If the command succeeds**, capture the review baseline, then mark the change as in-progress:
 
    ```bash
+   speclink review prepare "<name>"
    speclink in-progress add "<name>"
    ```
 
-   This is a silent operation — do not show the output to the user.
+   `review prepare` records the host-local Apply baseline (HEAD, dirty files at start) that the review station later resolves its frozen change scope against. Both are silent operations — do not show their output to the user. A stderr warning from `review prepare` (late or unavailable baseline) is fine — continue. If `speclink review prepare` fails, report the error and STOP — do NOT run `speclink in-progress add`.
 
    Parse the JSON to understand:
    - `schemaName`: The workflow being used (e.g., "spec-driven")

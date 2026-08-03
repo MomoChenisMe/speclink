@@ -637,6 +637,51 @@ fn head_commit(root: &Path) -> Option<String> {
     util::git(root, &["rev-parse", "HEAD"]).filter(|s| !s.is_empty())
 }
 
+/// Decode porcelain's C-style quoting. Even with `core.quotepath=false` git
+/// still quotes a path containing `"`, `\`, or a control character, escaping
+/// the offending bytes as `\"`, `\\`, `\t` or three-digit octal. An unquoted
+/// path is already literal and comes back untouched.
+fn unquote_porcelain_path(raw: &str) -> String {
+    if raw.len() < 2 || !raw.starts_with('"') || !raw.ends_with('"') {
+        return raw.to_string();
+    }
+    let src = raw[1..raw.len() - 1].as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(src.len());
+    let mut i = 0;
+    while i < src.len() {
+        if src[i] != b'\\' {
+            out.push(src[i]);
+            i += 1;
+            continue;
+        }
+        i += 1;
+        let Some(&c) = src.get(i) else { break };
+        i += 1;
+        match c {
+            b'n' => out.push(b'\n'),
+            b't' => out.push(b'\t'),
+            b'r' => out.push(b'\r'),
+            b'0'..=b'7' => {
+                // One raw byte, written as up to three octal digits.
+                let mut v = u16::from(c - b'0');
+                for _ in 0..2 {
+                    match src.get(i) {
+                        Some(&d) if (b'0'..=b'7').contains(&d) => {
+                            v = v * 8 + u16::from(d - b'0');
+                            i += 1;
+                        }
+                        _ => break,
+                    }
+                }
+                out.push(v as u8);
+            }
+            // `\"`, `\\`, and anything unexpected stand for themselves.
+            _ => out.push(c),
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// Files changed in the git work tree, relative to root, forward-slashed.
 ///
 /// Untracked directories are expanded to individual files (`-uall`). The spec directory and
@@ -650,7 +695,12 @@ pub fn git_changed_files(root: &Path) -> Vec<String> {
     }
     // NB: use the RAW (untrimmed) output — porcelain's first column is a significant leading space
     // for work-tree-modified files (" M path"); trimming it shifts the path by one character.
-    let Some(out) = util::git_raw(root, &["status", "--porcelain", "-uall"]) else {
+    // `core.quotepath=false` keeps non-ASCII paths raw, matching every other
+    // git call in the codebase; without it these paths arrive octal-escaped and
+    // never compare equal to a path read from anywhere else.
+    let Some(out) =
+        util::git_raw(root, &["-c", "core.quotepath=false", "status", "--porcelain", "-uall"])
+    else {
         return Vec::new();
     };
     let mut files = Vec::new();
@@ -666,7 +716,7 @@ pub fn git_changed_files(root: &Path) -> Vec<String> {
         } else {
             path_part
         };
-        let path = path.trim_matches('"').replace('\\', "/");
+        let path = unquote_porcelain_path(path).replace('\\', "/");
         if path.is_empty() || path.ends_with('/') {
             continue; // skip directory entries
         }
@@ -1080,6 +1130,25 @@ mod tests {
             std::fs::write(&p, "dirty\n").unwrap();
             t
         }
+    }
+
+    #[test]
+    fn git_changed_files_decodes_quoted_non_ascii_paths() {
+        // `git status --porcelain` C-quotes any non-ASCII path unless
+        // core.quotepath=false. The change-diff resolver already passes that
+        // flag, so an escaped path here would never compare equal to the
+        // resolver's — silently opening the dirty-at-start fail-closed guard.
+        let t = TempWs::with_commit_and_dirty("quotepath", "src/app.rs");
+        std::fs::write(t.ws.root.join("規格.md"), "內容\n").unwrap();
+        let files = git_changed_files(&t.ws.root);
+        assert!(
+            files.contains(&"規格.md".to_string()),
+            "non-ASCII path must come back decoded: {files:?}"
+        );
+        assert!(
+            !files.iter().any(|f| f.contains('\\')),
+            "no octal escapes may survive: {files:?}"
+        );
     }
 
     #[test]

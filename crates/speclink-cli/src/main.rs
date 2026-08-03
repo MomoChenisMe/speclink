@@ -741,6 +741,23 @@ struct ReviewArgs {
 
 #[derive(Subcommand)]
 enum ReviewCommands {
+    /// Capture the Apply baseline sidecar before the change is marked in-progress
+    Prepare { change: String },
+    /// Resolve and freeze the review scope (--json for the structured payload)
+    Scope {
+        change: String,
+        #[arg(long)]
+        json: bool,
+        /// Trusted fixed point overriding the Apply baseline
+        #[arg(long)]
+        base: Option<String>,
+        /// Candidate identity a hash-pinned hunk selection is anchored to
+        #[arg(long = "candidate-hash")]
+        candidate_hash: Option<String>,
+        /// Hunk id to include (repeatable; requires --candidate-hash)
+        #[arg(long = "include-hunk")]
+        include_hunk: Vec<String>,
+    },
     /// Append a review round to the change's ticket (content from stdin; creates the ticket on the first round)
     #[command(name = "add-round")]
     AddRound {

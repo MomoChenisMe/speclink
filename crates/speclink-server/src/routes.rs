@@ -1043,6 +1043,8 @@ pub async fn put_artifact(
 fn review_round_dto(r: &speclink_core::review::Round) -> ReviewRoundDto {
     ReviewRoundDto {
         index: r.index as u64,
+        phase: r.phase.map(|p| p.as_str().to_string()),
+        patch_hash: r.patch_hash.clone(),
         scope: r.scope.clone(),
         findings: r
             .findings

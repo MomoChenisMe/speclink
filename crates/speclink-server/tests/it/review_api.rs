@@ -307,3 +307,58 @@ fn carry_review_rides_the_wire_so_remote_keeps_all_three_disposals() {
     c.archive("demo-change", true).expect("carry-review archives over the wire");
     assert!(ticket_doc(&f).is_none(), "the change (with its ticket) left the active area");
 }
+
+// --- structured rounds（review-station spec：phase／patchHash 過 wire 同構）---
+
+#[test]
+fn structured_round_phase_and_patch_survive_the_wire() {
+    // spec Scenario「local 與 remote payload 同構」：server 端 rounds[] 與
+    // lastRound 帶 phase／patchHash，legacy round 明確輸出 null，欄位集合與
+    // local CLI 完全一致。
+    let f = fixture();
+    let c = client(&f.base, &f.pat);
+    let hex = "a".repeat(64);
+    let structured = format!(
+        "**Phase**: discovery\n**Patch**: sha256:{hex}\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — possible Feature Envy\n"
+    );
+    c.review_add_round("demo-change", &structured).expect("structured round");
+    let body = raw("GET", &f, "changes/demo-change/review")
+        .call()
+        .expect("get ticket")
+        .into_string()
+        .expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("valid JSON");
+    assert_eq!(v["rounds"][0]["phase"], "discovery");
+    assert_eq!(v["rounds"][0]["patchHash"], format!("sha256:{hex}"));
+    assert_eq!(v["lastRound"]["phase"], "discovery");
+    let mut keys: Vec<&str> =
+        v["rounds"][0].as_object().expect("round object").keys().map(String::as_str).collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        ["findings", "index", "patchHash", "phase", "scope"],
+        "field set matches the local CLI payload"
+    );
+}
+
+#[test]
+fn legacy_round_emits_explicit_nulls_on_the_wire() {
+    let f = fixture();
+    let c = client(&f.base, &f.pat);
+    c.review_add_round("demo-change", ROUND_WITH_FINDING).expect("legacy round");
+    let body = raw("GET", &f, "changes/demo-change/review")
+        .call()
+        .expect("get ticket")
+        .into_string()
+        .expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("valid JSON");
+    let round = v["rounds"][0].as_object().expect("round object");
+    assert!(
+        round.get("phase").is_some_and(serde_json::Value::is_null),
+        "phase key present and null: {round:?}"
+    );
+    assert!(
+        round.get("patchHash").is_some_and(serde_json::Value::is_null),
+        "patchHash key present and null: {round:?}"
+    );
+}

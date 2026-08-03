@@ -549,6 +549,20 @@ impl Client {
         self.get(&format!("/changes/{name}/review"))
     }
 
+    /// [`review_ticket`](Self::review_ticket) for scope assembly: a 404 is
+    /// the normal "no ticket → discovery" branch, every other error stays an
+    /// error (offline must never read as "no ticket").
+    pub fn review_ticket_if_any(
+        &self,
+        name: &str,
+    ) -> Result<Option<ReviewTicketResponse>, RemoteError> {
+        match self.review_ticket(name) {
+            Ok(ticket) => Ok(Some(ticket)),
+            Err(e) if e.reason.as_deref() == Some("not_found") => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     /// `POST /changes/{name}/review/rounds`
     pub fn review_add_round(
         &self,
