@@ -112,7 +112,7 @@ jobs:
         run: |
           mkdir -p "$PHASE3_E2E_ARTIFACT_DIR"
           set -o pipefail
-          cargo test --locked -p speclink-desktop --test phase3_chain -- --nocapture 2>&1 \
+          cargo test --locked -p speclink-desktop --test it -- phase3_chain:: --nocapture 2>&1 \
             | tee "$PHASE3_E2E_ARTIFACT_DIR/test-output.log"
 
       - name: Upload Phase 3 failure diagnostics
