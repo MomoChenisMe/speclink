@@ -298,6 +298,7 @@ fn audit_actions(identity_db: &Path) -> Vec<String> {
 
 #[test]
 fn disaster_recovery_round_trip_preserves_everything() {
+    let _gate = crate::common::acquire_process_gate();
     let workdir = tempfile::tempdir().expect("workdir");
     let src_store = workdir.path().join("store.db");
     let src_identity = workdir.path().join("identity.db");

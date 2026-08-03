@@ -54,6 +54,7 @@ fn token_from(stdout: &str) -> String {
 
 #[test]
 fn invite_mints_a_usable_one_time_url() {
+    let _gate = crate::common::acquire_process_gate();
     let dir = tempfile::tempdir().expect("tempdir");
     let identity_db = dir.path().join("identity.db");
     let config = write_config(dir.path(), &identity_db);
@@ -77,6 +78,7 @@ fn invite_mints_a_usable_one_time_url() {
 
 #[test]
 fn a_duplicate_email_is_refused_non_zero() {
+    let _gate = crate::common::acquire_process_gate();
     let dir = tempfile::tempdir().expect("tempdir");
     let identity_db = dir.path().join("identity.db");
     let config = write_config(dir.path(), &identity_db);
@@ -94,6 +96,7 @@ fn a_duplicate_email_is_refused_non_zero() {
 
 #[test]
 fn an_unregistered_project_is_refused_and_lists_the_registered_keys() {
+    let _gate = crate::common::acquire_process_gate();
     let dir = tempfile::tempdir().expect("tempdir");
     let identity_db = dir.path().join("identity.db");
     let config = write_config(dir.path(), &identity_db);

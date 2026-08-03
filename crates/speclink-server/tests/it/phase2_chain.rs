@@ -817,11 +817,13 @@ fn sync_state_etag(base: &str, token: &str) -> String {
 
 #[test]
 fn phase2_chain_walks_all_stages_with_resume_recovery() {
+    let _gate = crate::common::acquire_process_gate();
     run_chain(Recovery::Resume);
 }
 
 #[test]
 fn phase2_chain_walks_all_stages_with_reset_recovery() {
+    let _gate = crate::common::acquire_process_gate();
     run_chain(Recovery::Reset);
 }
 
@@ -836,6 +838,7 @@ fn phase2_chain_walks_all_stages_with_reset_recovery() {
 #[test]
 #[ignore = "劇本揭露缺陷：server 丟棄 task done 的 touchedFiles，無 evidence 可查 — 待開 change 'remote-task-evidence'"]
 fn task_done_with_touched_files_leaves_queryable_evidence_on_the_server() {
+    let _gate = crate::common::acquire_process_gate();
     use speclink_store::{CommandContext, DocumentId, OutboxCursor, TeamStore};
     let store = std::sync::Arc::new(speclink_store::memory::MemoryStore::new());
     let mut uow = store

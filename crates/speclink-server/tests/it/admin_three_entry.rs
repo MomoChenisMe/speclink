@@ -75,6 +75,7 @@ fn binding_status(base: &str, pat: &str) -> u16 {
 
 #[test]
 fn suspension_is_equivalent_across_api_web_and_cli() {
+    let _gate = crate::common::acquire_process_gate();
     let dir = tempfile::tempdir().expect("tempdir");
     let identity_db = dir.path().join("identity.db");
     let config = write_config(dir.path(), &identity_db);

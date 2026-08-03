@@ -413,6 +413,7 @@ fn get_status(url: &str) -> u16 {
 
 #[test]
 fn setup_flow_onboards_a_team_and_a_restart_closes_it() {
+    let _gate = crate::common::acquire_process_gate();
     let workdir = tempfile::tempdir().expect("workdir");
     let db = workdir.path().join("store.db");
     let config = write_config(workdir.path(), &db);
@@ -628,6 +629,7 @@ fn manifest_snapshot_id(projection: &Path) -> String {
 
 #[test]
 fn remote_apply_materializes_a_consistent_context_projection_from_the_real_server() {
+    let _gate = crate::common::acquire_process_gate();
     let workdir = tempfile::tempdir().expect("workdir");
     let db = workdir.path().join("store.db");
 
