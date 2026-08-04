@@ -18,3 +18,4 @@ pub mod drift;
 pub mod gate;
 pub mod policy;
 pub mod projection;
+pub mod worktree;

@@ -74,6 +74,15 @@ pub struct Skill {
 // Embedded bodies.
 const B_ANALYZE: &str = include_str!("../assets/skills/analyze.md");
 const B_APPLY: &str = include_str!("../assets/skills/apply.md");
+/// Composed at COMPILE TIME so the body stays a `&'static str` and the apply
+/// flow keeps a single source: the worktree preamble, the whole apply body
+/// (same asset the plain apply skill embeds), then the worktree wrap-up.
+const B_APPLY_WITH_WORKTREE: &str = concat!(
+    include_str!("../assets/skills/apply-worktree-pre.md"),
+    include_str!("../assets/skills/apply.md"),
+    include_str!("../assets/skills/apply-worktree-post.md"),
+);
+const B_WORKTREE_MERGE: &str = include_str!("../assets/skills/worktree-merge.md");
 const B_ARCHIVE: &str = include_str!("../assets/skills/archive.md");
 const B_AUDIT: &str = include_str!("../assets/skills/audit.md");
 const B_COMMIT: &str = include_str!("../assets/skills/commit.md");
@@ -94,6 +103,9 @@ pub fn registry() -> Vec<Skill> {
     vec![
         Skill { name: "analyze", description: "Analyze artifact consistency for a change", fork: true, disallow_edit: true, for_codex: false, body: B_ANALYZE },
         Skill { name: "apply", description: "Implement or resume tasks from a Speclink change", fork: false, disallow_edit: false, for_codex: true, body: B_APPLY },
+        // Same permissions as `apply` — it IS apply, wrapped in worktree setup
+        // and hand-off; the extra steps are git commands, not a narrower role.
+        Skill { name: "apply-with-worktree", description: "Implement tasks from a Speclink change inside an isolated git worktree, for parallel work", fork: false, disallow_edit: false, for_codex: true, body: B_APPLY_WITH_WORKTREE },
         Skill { name: "archive", description: "Archive a completed change", fork: false, disallow_edit: false, for_codex: true, body: B_ARCHIVE },
         // Not a fork skill: the rewritten standalone mode fans out three
         // parallel audit agents, which the fork's Explore agent cannot spawn.
@@ -112,6 +124,9 @@ pub fn registry() -> Vec<Skill> {
         // fan-out 兩個平行 sub-agent 並互動詢問三選項；修正回主線，故 Edit 不禁。
         Skill { name: "review", description: "Review a change's implementation for craft quality — parallel standards and correctness axes, recorded to a review ticket", fork: false, disallow_edit: false, for_codex: true, body: B_REVIEW },
         Skill { name: "verify", description: "Verify implementation matches artifacts", fork: true, disallow_edit: true, for_codex: false, body: B_VERIFY },
+        // Runs git commands only — a conflict stops the flow for the user to
+        // resolve, so the agent never edits a file: Edit/Write stay disallowed.
+        Skill { name: "worktree-merge", description: "Merge a finished Speclink worktree branch back into the main branch, then clean up", fork: false, disallow_edit: true, for_codex: true, body: B_WORKTREE_MERGE },
     ]
 }
 
@@ -120,6 +135,8 @@ pub fn skill_body(name: &str) -> Option<&'static str> {
     Some(match name {
         "analyze" => B_ANALYZE,
         "apply" => B_APPLY,
+        "apply-with-worktree" => B_APPLY_WITH_WORKTREE,
+        "worktree-merge" => B_WORKTREE_MERGE,
         "archive" => B_ARCHIVE,
         "audit" => B_AUDIT,
         "commit" => B_COMMIT,

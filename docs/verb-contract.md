@@ -158,6 +158,19 @@ Silent lifecycle stamp through the Command gateway. First call on an existing, u
 { "name": "demo", "status": "in-progress", "completedTasks": 0, "totalTasks": 15, "startedAt": "2026-07-30" }
 ```
 
+## `speclink list --json` — local-only `worktree` field
+
+`list --json` change items may carry an optional `worktree` object — the local observation surface for a change being implemented in a linked git worktree:
+
+```json
+{ "name": "add-dark-mode", "completedTasks": 3, "totalTasks": 5, "worktree": { "path": "/repos/speclink.worktrees/add-dark-mode", "branch": "speclink/add-dark-mode" } }
+```
+
+- `path` — string, absolute path of the worktree directory. `branch` — string, full branch name (`speclink/<change>`).
+- Present **only** in fs mode, from the **main checkout** (the workspace root's `.git` is a directory), with the `worktree` workflow policy on, and only for changes whose mapping holds. Absent in every other case, and **never serialized** when absent.
+- Remote-mode `list` items **always** omit the field: it describes the caller's local checkout, of which the server knows nothing. With no worktree present, the fs and remote payloads are therefore field-for-field identical.
+- When the field is present, the item's `completedTasks` / `totalTasks` / `status` / `metaError` values come from that worktree's copy of the change, not the main checkout's. Field names and types are unchanged.
+
 ## GET /changes/{name} — show-composition meta fields
 
 The single-change read additionally carries three optional fields feeding the CLI's remote `show` composition: `created` (present only when the meta holds the schema+created pair — the engine's report-as-one-unit rule), `fromDiscussions`, and `deltaCapabilities` (both omitted when empty). An older server simply never sends them; old clients ignore them.

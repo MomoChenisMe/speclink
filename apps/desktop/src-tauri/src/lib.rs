@@ -333,6 +333,8 @@ fn write_workflow_config(
         spec_locale,
         tdd,
         audit,
+        // 設定頁沒有 worktree 開關；實際寫入值由 desktop-core 從原檔回填。
+        ..Default::default()
     };
     speclink_desktop_core::settings::write_workflow_fields_at(&root, &fields)
 }
@@ -754,6 +756,8 @@ async fn remote_write_workflow_config(
         spec_locale,
         tdd,
         audit,
+        // 設定頁沒有 worktree 開關；實際寫入值由 desktop-core 從原檔回填。
+        ..Default::default()
     };
     with_remote_settings(app, connection_id, project, repo, move |ws, credentials| {
         ws.write_workflow_fields(credentials, &fields, expected_revision)

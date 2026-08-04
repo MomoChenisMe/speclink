@@ -81,6 +81,9 @@ fn remote_list(ctx: &RemoteCtx, a: &ListArgs) -> Result<()> {
                 total_tasks: c.total_tasks,
                 restale_from: c.restale_from.clone(),
                 meta_error: c.meta_error.clone(),
+                // remote 恆缺席：worktree 是本機主 checkout 的觀察面，
+                // server 端沒有這回事（spec scenario remote list 恆無 worktree 欄位）。
+                worktree: None,
             })
             .collect();
         if a.specs {

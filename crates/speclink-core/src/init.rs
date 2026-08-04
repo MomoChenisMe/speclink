@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：指令檔 SPECLINK 標記與技能檔 frontmatter 的 version 同源於此。
 /// 僅在內嵌資產（assets/skills）或 marker 模板的 render 內容變動時遞增——與 app／CLI
 /// 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const MARKER_VERSION: &str = "v1.8.0";
+pub const MARKER_VERSION: &str = "v1.9.0";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -26,7 +26,7 @@ const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 const WORKFLOW_CONFIG_TEMPLATE: &str = "schema: spec-driven
 
 # Workflow policy (optional)
-# Personal/CI overrides: SPECLINK_LOCALE, SPECLINK_SPEC_LOCALE, SPECLINK_TDD, SPECLINK_AUDIT
+# Personal/CI overrides: SPECLINK_LOCALE, SPECLINK_SPEC_LOCALE, SPECLINK_TDD, SPECLINK_AUDIT, SPECLINK_WORKTREE
 #
 # Language for AI-generated artifacts (default: English)
 # locale: tw
@@ -37,6 +37,7 @@ const WORKFLOW_CONFIG_TEMPLATE: &str = "schema: spec-driven
 # Workflow toggles (default: off)
 # tdd: true
 # audit: true
+# worktree: true
 
 # Project context (optional)
 # This is shown to AI when creating artifacts.
@@ -113,6 +114,8 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind) -> String
 - User wants to plan, propose, or design a change → `{p}propose` (`--from-discussion <slug>` seeds it from a concluded discussion)\n\
 - Adopting Speclink on an existing codebase → `{p}onboard`\n\
 - Tasks are ready to implement → `{p}apply`\n\
+- Implementing several independent changes at once → `{p}apply-with-worktree` (one git worktree per change)\n\
+- A worktree change is committed and ready to land → `{p}worktree-merge` (merge back, then clean up)\n\
 - Resuming a change that sat idle → run `{p}drift` first\n\
 - Requirements change mid-work → `{p}ingest`\n\
 {done_line}\n\

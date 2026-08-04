@@ -10,6 +10,7 @@
 - 工程詞（meta 欄位名、kebab-case、slug 等）不出現在使用者可見文案，只出現在給 agent 的文件。
   - **明文例外**：設定檔檔名（config.yaml、.speclink.yaml）得直出作為設定頁的頁簽標籤——與本原則刻意抵觸，經使用者裁定：開發者工具中檔案即最直觀的心智模型，人話標籤（如「專案設定／整合」）反而多一層對應。僅限頁簽標籤；其他使用者可見文案仍禁工程詞（desktop-window-and-settings-polish，2026-07-08）。
   - **明文例外**：討論（discuss）的識別錨點得以 slug（kebab-case 檔名）直出——與本原則刻意抵觸，經使用者裁定：slug 是執行 CLI 動詞（如 `--from-discussion <slug>`）的把手，開發者工具中檔名即最直觀且可複製的識別，與 change 卡以名稱為題對稱；topic 一律降為描述／副標。僅限討論識別錨點（討論全卡標題、已轉出細列首行、討論抽屜標題、系統匣討論項父標籤、變更詳情抽屜與已封存抽屜的來源討論籤及其溢出浮層）與其複製鈕／複製動作（含系統匣的「複製 slug」）；其他使用者可見文案仍禁工程詞（desktop-card-identity，2026-07-09；範圍擴充：desktop-ux-polish，2026-07-11；範圍擴充：tray-copy-and-panel-mode，2026-07-16；範圍擴充：change-drawer-header-redesign，2026-08-04）。
+  - **明文例外**：「worktree」得直出於 worktree 流程的使用者可見文案——與本原則刻意抵觸，經使用者裁定：worktree 是 git 的原生概念，本專案的使用者就是 git 使用者，直出即最短且無歧義的心智模型；任何中譯（「工作樹」「副本工作區」）都要多一層對應，且與使用者實際輸入的 `git worktree` 指令對不上。先例為 config.yaml 頁簽與討論 slug（同一條「開發者工具中原生詞即最直觀」的裁定線）。適用範圍：worktree 流程的使用者可見文案，含 `speclink list` 的 `[worktree]` 標示、兩個 worktree 技能的說明與輸出，以及後續 desktop 的卡片 worktree 標示與抽屜分支資訊；其他使用者可見文案仍禁工程詞（討論 worktree-parallel-apply，2026-08-04）。
 
 ## 詞彙
 

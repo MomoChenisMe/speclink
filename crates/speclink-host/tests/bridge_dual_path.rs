@@ -51,6 +51,7 @@ fn host_ctx() -> SpeclinkExecutionContext {
                 spec_locale: None,
                 tdd: false,
                 audit: false,
+                worktree: false,
             },
             "",
         ),
@@ -129,6 +130,7 @@ fn query_verbs_yield_the_same_outcome_on_both_paths() {
         sort: "name".to_string(),
         specs: false,
         changes: false,
+        worktrees: Default::default(),
     };
     let (fs_out, fs_events) =
         engine_execute(&fs, &fs_engine_ctx(), list_cmd()).expect("fs list");
