@@ -2374,6 +2374,28 @@ mod tests {
     }
 
     #[test]
+    fn archive_never_consults_evidence_wherever_it_runs() {
+        // 討論 evidence-gate-false-blocks：封存不再讀證據判生死,所以有沒有 host
+        // workspace 都一樣通過——server bridge／Node SDK 的合成 workspace 曾是
+        // 「一律判缺席」的地雷,現在連判的動作都不存在。
+        let cmd = Command::Archive {
+            change: Some("demo".to_string()),
+            skip_specs: false,
+            no_validate: false,
+            mark_tasks_complete: false,
+            carry_review: false,
+        };
+
+        for workspace in [None, Some(ghost_ws())] {
+            let store = TestStore::with_meta("demo", META);
+            store.put_artifact("demo", "tasks.md", "- [x] 1.1 done\n");
+            execute(&store, &ExecutionContext { workspace, ..Default::default() }, cmd.clone())
+                .expect("an evidence-less change archives with or without a host workspace");
+            assert!(!store.change_exists("demo"), "the change moved into the archive");
+        }
+    }
+
+    #[test]
     fn archive_of_incomplete_change_is_refused() {
         // spec change-lifecycle「單筆封存的任務完成度守門」：任務未完成的單筆
         // Archive 經 runtime 分類為 refused，change 原地不動、無事件。

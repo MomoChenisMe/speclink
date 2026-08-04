@@ -1,10 +1,16 @@
-# archive-skill Specification
+## REMOVED Requirements
 
-## Purpose
+### Requirement: touched 記錄的刪除排在封存與提交之後
 
-TBD - created by archiving change 'archive-skill-touched-cleanup-order'. Update Purpose after archive.
+**Reason**: evidence 記錄改寫入 change 目錄、隨目錄提交與封存移動後，技能流程不再存在任何刪除步驟——原需求規範的時序對象消失。
+**Migration**: 技能檔移除刪除指示；記錄的耐久保存與生命週期由 verify-evidence 的「task done 寫入逐任務 evidence」（change 目錄新 home）承接。
 
-## Requirements
+### Requirement: @trace 來源敘述與引擎行為一致
+
+**Reason**: 敘述對象——@trace 檔案清單、其 evidence 優先與髒檔退路的來源優先序、bulk 封存的整潔工作樹要求——已全數自引擎移除。
+**Migration**: 由本 delta 新增的「trace 與 evidence 的技能敘述」承接技能檔對新引擎行為的敘述義務。
+
+## ADDED Requirements
 
 ### Requirement: trace 與 evidence 的技能敘述
 
@@ -19,10 +25,3 @@ TBD - created by archiving change 'archive-skill-touched-cleanup-order'. Update 
 
 - **WHEN** 檢視渲染產出的 speclink-archive 技能檔對 @trace 與零證據提示的敘述
 - **THEN** @trace 敘述為 source 與 updated 兩欄一律注入、無檔案清單；零證據提示段敘明提示出現的條件與應對（確認是否漏走 apply；純規格變更屬正常）
-
-<!-- @trace
-source: evidence-home-and-trace-slim
-updated: 2026-08-04
--->
-
----

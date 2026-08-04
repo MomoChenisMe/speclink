@@ -206,7 +206,7 @@ pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), Str
         let mut record = speclink_core::tasks::TouchedRecord::load(&ctx.workspace, change);
         record.change = change.to_string();
         let seen = record.all_files();
-        let files: Vec<String> = speclink_core::tasks::git_changed_files(&ctx.workspace.root)
+        let files: Vec<String> = speclink_core::tasks::git_changed_files(&ctx.workspace)
             .into_iter()
             .filter(|f| !seen.contains(f))
             .collect();
@@ -948,9 +948,14 @@ mod tests {
         fs::read_to_string(change_file(fx, name, ".openspec.yaml")).unwrap()
     }
 
+    /// 證據記錄的家：change 目錄的 `.evidence.json`（隨 change 提交與封存移動）。
     fn touched_of(fx: &crate::testfixture::FixtureRoot, name: &str) -> Option<String> {
         fs::read_to_string(
-            fx.root().join(".speclink").join("touched").join(format!("{name}.json")),
+            fx.root()
+                .join("openspec")
+                .join("changes")
+                .join(name)
+                .join(".evidence.json"),
         )
         .ok()
     }
@@ -1012,7 +1017,7 @@ mod tests {
         // dirty 檔在場更能證明「不記 touched」是行為而非碰巧無料可記。
         giterize(fx.root(), Some("src/lib.rs"));
         let touched_before = "{\n  \"change\": \"demo\",\n  \"touched\": []\n}";
-        fx.write(".speclink/touched/demo.json", touched_before);
+        fx.write("openspec/changes/demo/.evidence.json", touched_before);
 
         set_task_done_at(fx.root(), "demo", "2", false).expect("uncheck ok");
         move_task_at(fx.root(), "demo", 1, 2, None).expect("move ok");

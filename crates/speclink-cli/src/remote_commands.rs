@@ -898,7 +898,7 @@ fn remote_task_done(
     // unreachable; an empty set is the existing no-workspace behavior.
     let ws = core::workspace::Workspace::discover_cwd().ok().flatten();
     let touched: Vec<String> = ws
-        .map(|w| core::tasks::git_changed_files(&w.root))
+        .map(|w| core::tasks::git_changed_files(&w))
         .unwrap_or_default();
     let resp = ctx.client.task_done(&change, task_id, &touched)?;
     if resp.already_done {

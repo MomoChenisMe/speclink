@@ -17,9 +17,11 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
    Always announce: "Committing for change: <name>"
 
-2. **Read tracking file**
+2. **Read the evidence record**
 
-   Check for `.speclink/touched/<change-name>.json`. If it exists, parse it to get source files grouped by task.
+   Check for `{{SPEC_DIR}}changes/<change-name>/.evidence.json` — the change's completion
+   evidence, written by `speclink task done`. If it exists, parse it to get source files
+   grouped by task.
 
    Expected format:
 
@@ -36,15 +38,17 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    }
    ```
 
-   If the file does not exist, proceed without source file data — only artifact files will be included.
+   If the file does not exist, check the pre-move location `.speclink/touched/<change-name>.json`
+   (read-only compatibility for records written before the move). If neither exists, proceed
+   without source file data — only artifact files will be included.
 
 3. **Collect artifact files**
 
-   Run `git status --porcelain` and filter the output to files under `{{SPEC_DIR}}changes/<name>/`. These are the change's artifact files (proposal, design, tasks, specs, etc.).
+   Run `git status --porcelain` and filter the output to files under `{{SPEC_DIR}}changes/<name>/`. These are the change's artifact files (proposal, design, tasks, specs, etc.) — including `.evidence.json` itself, which is version-controlled and belongs to this change's commit.
 
 4. **Identify unrelated dirty files**
 
-   From the full `git status --porcelain` output, any dirty files NOT in the artifact set and NOT in the tracking file are "unrelated changes."
+   From the full `git status --porcelain` output, any dirty files NOT in the artifact set and NOT in the evidence record are "unrelated changes."
 
 5. **Generate commit message**
 
@@ -95,7 +99,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    Tasks: <completed>/<total> complete
    ```
 
-   If no tracking file was found, show a warning instead of the Source Files section:
+   If no evidence record was found, show a warning instead of the Source Files section:
 
    ```
    ### Source Files
@@ -249,7 +253,7 @@ No dirty files found for this change (no modified artifacts, no tracked source f
 - **NEVER commit files the user hasn't confirmed** — always show the file list and get explicit confirmation first
 - **Always show the full file list before committing** — no silent staging
 - **NEVER ask for confirmation before the commit plan and the full commit message have been output as visible message text** — the confirmation question must not reference content that was never displayed in the conversation (e.g., "the plan above" when no plan was shown). This applies equally to the plain-text fallback: display first, then ask
-- If the tracking file is missing, warn but don't block — artifact-only commits are valid
+- If the evidence record is missing, warn but don't block — artifact-only commits are valid
 - The "Unrelated Changes" section is informational only — these files are excluded by default
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 

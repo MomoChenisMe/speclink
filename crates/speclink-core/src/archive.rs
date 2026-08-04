@@ -2,7 +2,6 @@
 
 use crate::model::{self, Change};
 use crate::store::Store;
-use crate::tasks::TouchedRecord;
 use crate::util;
 use crate::workspace::Workspace;
 use anyhow::{bail, Result};
@@ -27,6 +26,10 @@ pub struct ArchiveOutcome {
     /// A change can carry several source discussions (`from_discussion` is a comma
     /// accumulator), so each is judged independently — empty when none co-travel.
     pub archived_discussions: Vec<(String, String)>,
+    /// Whether the change carried any per-task evidence. A reported fact, never a
+    /// gate: archiving without evidence is legitimate (a spec-only change earns
+    /// none by construction), so the caller decides whether to say anything.
+    pub evidence_recorded: bool,
 }
 
 #[derive(Debug, Default)]
@@ -358,16 +361,11 @@ struct CapPlan {
     content: String,
 }
 
-fn trace_block(change: &str, date: &str, files: &[String]) -> String {
-    let mut s = String::from("<!-- @trace\n");
-    s.push_str(&format!("source: {change}\n"));
-    s.push_str(&format!("updated: {date}\n"));
-    s.push_str("code:\n");
-    for f in files {
-        s.push_str(&format!("  - {f}\n"));
-    }
-    s.push_str("-->");
-    s
+/// The canonical @trace block: where a requirement came from and when it last
+/// landed. Nothing else — the canon carries no file list, so nothing here ever
+/// depends on the work tree's state at archive time.
+fn trace_block(change: &str, date: &str) -> String {
+    format!("<!-- @trace\nsource: {change}\nupdated: {date}\n-->")
 }
 
 /// `actor` is the Host-resolved display identity — None stamps no archived_by.
@@ -425,23 +423,10 @@ pub fn archive(
         }
     }
 
-    // The @trace `code:` list (spec verify-evidence「archive trace 由 evidence
-    // 建立」): a change with v2 evidence aggregates its recorded entries; a
-    // v1-only (or absent) record keeps the current producer — the work tree's
-    // git state at archive time. Sorted either way; an
-    // empty list omits the @trace block entirely. The output format is frozen.
-    // touched.json itself remains in place for the commit skill.
-    let record = TouchedRecord::load(ws, &change.name);
-    let trace_files = {
-        let mut f = if record.entries.is_empty() {
-            crate::tasks::git_changed_files(&ws.root)
-        } else {
-            record.all_files()
-        };
-        f.sort();
-        f.dedup();
-        f
-    };
+    // Evidence is reported, never judged (discussion evidence-gate-false-blocks):
+    // read once here so the outcome carries the fact even though the change
+    // directory moves out from under this path below.
+    let evidence_recorded = !crate::tasks::TouchedRecord::load(ws, &change.name).entries.is_empty();
 
     // --- Plan phase: read every capability, validate all of them, compute the merged
     // text. Nothing is written here, so a violation ends the archive with zero file
@@ -475,14 +460,8 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
                 continue;
             }
 
-            let (content, counts) = merge_capability(
-                &cap,
-                &change.name,
-                &date,
-                &delta_text,
-                &trace_files,
-                existing.as_deref(),
-            );
+            let (content, counts) =
+                merge_capability(&cap, &change.name, &date, &delta_text, existing.as_deref());
             plans.push(CapPlan { capability: cap, counts, backup: existing, content });
         }
     }
@@ -540,6 +519,10 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
             .join("changes")
             .join(format!("{}.started", change.name)),
     );
+    // The legacy touched record dies with the change: its fact was read into the
+    // outcome above, and a leftover would be read back as evidence for a future
+    // change reusing this name.
+    let _ = util::remove_file(&ws.legacy_touched_file(&change.name));
 
     // Stamp archived_by / archived_at into the archived change metadata.
     if let Some(mut meta) = store.read_archived_meta(&dated_name) {
@@ -583,6 +566,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         snapshot_created,
         skipped_specs: opts.skip_specs,
         archived_discussions,
+        evidence_recorded,
     })
 }
 
@@ -695,18 +679,16 @@ fn merge_capability(
     change: &str,
     date: &str,
     delta_text: &str,
-    trace_files: &[String],
     existing: Option<&str>,
 ) -> (String, CapCounts) {
     let reqs = &parse_delta(delta_text);
     let renames = &model::rename_pairs(delta_text);
-    // The @trace block is omitted entirely when there are no touched code files.
-    let trace = trace_block(change, date, trace_files);
+    // Every materialized ADDED/MODIFIED requirement gets the block — injection
+    // no longer hinges on a file list that no longer exists.
+    let trace = trace_block(change, date);
     let make_block = |r: &DeltaReq, fresh: bool| {
         let body = strip_review_notes(&r.block);
-        if trace_files.is_empty() {
-            body
-        } else if fresh {
+        if fresh {
             // A fresh canonical keeps the delta's own trailing spacing before @trace
             // (an inter-block blank line therefore yields two blanks — probed).
             format!("{body}\n\n{trace}")
@@ -810,10 +792,12 @@ fn merge_capability(
     if last_removed && !blocks.is_empty() {
         out.push_str("\n\n---\n");
     }
-    // Trailing newline (frozen): ensured only when no @trace was injected this run —
-    // with injection the file stays exactly as joined (no newline even when the last
-    // requirement is not the traced one), and never one after `-->`.
-    if trace_files.is_empty() && !out.ends_with('\n') && !out.ends_with("-->") {
+    // Trailing newline: a merge that materialized no @trace (a pure REMOVED or
+    // RENAMED delta never calls make_block) ends with the text-file newline;
+    // once a trace was injected the file stays exactly as joined — no newline
+    // even when the last requirement is not the traced one. Never one after
+    // `-->`, even when the tail trace came from an earlier archive.
+    if counts.added == 0 && counts.modified == 0 && !out.ends_with('\n') && !out.ends_with("-->") {
         out.push('\n');
     }
     (out, counts)
@@ -823,6 +807,7 @@ fn merge_capability(
 mod tests {
     use super::{archive, ArchiveOptions};
     use crate::store::Store;
+    use crate::tasks::TouchedRecord;
     use crate::teststore::TestStore;
     use crate::util;
     use crate::workspace::Workspace;
@@ -1104,55 +1089,196 @@ mod tests {
         ArchiveOptions { skip_specs: false, ..skip_opts() }
     }
 
-    fn git(root: &std::path::Path, args: &[&str]) {
-        let ok = std::process::Command::new("git")
-            .arg("-C")
-            .arg(root)
-            .args(args)
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        assert!(ok, "git {args:?} failed");
+    /// A workspace whose root exists on disk, so evidence can be written under it.
+    struct TraceWs {
+        ws: Workspace,
+    }
+
+    impl TraceWs {
+        fn new(tag: &str) -> TraceWs {
+            TraceWs {
+                ws: Workspace { root: temp_root(tag), spec_dir_name: "openspec".to_string() },
+            }
+        }
+
+        /// Record one v2 evidence entry for "demo" — the record's mere presence
+        /// is all archive reads now.
+        fn record_evidence(&self) {
+            let record = TouchedRecord {
+                version: Some(2),
+                change: "demo".to_string(),
+                touched: Vec::new(),
+                entries: vec![crate::tasks::EvidenceEntry {
+                    task_id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_string(),
+                    task_desc: "1.1 done".to_string(),
+                    actor: Some("Tester <t@example.com>".to_string()),
+                    repo: None,
+                    head_commit: None,
+                    touched_files: vec!["src/a.rs".to_string()],
+                    recorded_at: "2026-07-13T00:00:00Z".to_string(),
+                }],
+            };
+            record.save(&self.ws).unwrap();
+        }
+    }
+
+    impl Drop for TraceWs {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.ws.root);
+        }
     }
 
     #[test]
-    fn trace_from_v2_evidence_is_byte_isomorphic_with_the_current_producer() {
-        // 甲：v2 evidence 記錄檔案清單、workspace 無 git（現行產生者拿不到檔案）；
-        // 乙：無記錄、git 工作樹髒同一組檔案（現行產生者）。相同檔案清單 →
-        // 封存後正典 spec 逐位元一致。甲的 basis digest 為捏造（必然 stale），
-        // 本地 archive 不受 gate 阻擋（gate 檢查僅供遠端 Host）。
-        let root_a = temp_root("v2");
-        let ws_a = Workspace { root: root_a.clone(), spec_dir_name: "openspec".to_string() };
-        std::fs::create_dir_all(ws_a.touched_dir()).unwrap();
-        std::fs::write(
-            ws_a.touched_dir().join("demo.json"),
-            "{\n  \"version\": 2,\n  \"change\": \"demo\",\n  \"entries\": [\n    {\n      \"taskId\": \"tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV\",\n      \"taskDesc\": \"1.1 done\",\n      \"touchedFiles\": [\"src/b.rs\", \"src/a.rs\"],\n      \"basisDigests\": { \"spec\": \"sha256:0\", \"tasks\": \"sha256:0\", \"policy\": \"sha256:0\" },\n      \"recordedAt\": \"2026-07-13T00:00:00Z\"\n    }\n  ]\n}",
+    fn trace_carries_only_source_and_updated_on_a_fresh_canonical() {
+        // spec Scenario「trace 兩欄一律注入」：ADDED 物化到新正典，trace 僅兩欄、無 code 清單。
+        let t = TraceWs::new("fresh");
+        let store = trace_store();
+        t.record_evidence();
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let outcome = archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
+
+        assert!(outcome.evidence_recorded, "a change with a v2 entry reports evidence recorded");
+        let canon = store.read_canonical_spec("auth").unwrap();
+        assert!(
+            canon.contains(&format!("<!-- @trace\nsource: demo\nupdated: {}\n-->", util::today())),
+            "trace block is exactly source + updated: {canon}"
+        );
+        assert!(!canon.contains("code:"), "no file list may survive: {canon}");
+        assert!(!canon.contains("  - src/a.rs"), "no file list may survive: {canon}");
+    }
+
+    #[test]
+    fn trace_is_injected_for_modified_even_with_a_clean_work_tree() {
+        // spec Scenario「trace 兩欄一律注入」：注入不再依檔案清單有無決定——
+        // 乾淨工作樹、無任何髒檔的 MODIFIED 一樣拿到 trace。
+        let t = TraceWs::new("modified");
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 done\n");
+        store.put_artifact(
+            "demo",
+            "specs/auth/spec.md",
+            "## MODIFIED Requirements\n\n### Requirement: R1\n\nIt SHALL work harder.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
+        );
+        store.canonical.borrow_mut().insert("auth".to_string(), CANON_R1.to_string());
+        t.record_evidence();
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
+
+        let canon = store.read_canonical_spec("auth").unwrap();
+        assert!(canon.contains("<!-- @trace"), "MODIFIED gets a trace block: {canon}");
+        assert!(canon.contains("source: demo"), "{canon}");
+        assert!(!canon.contains("code:"), "no file list may survive: {canon}");
+    }
+
+    #[test]
+    fn a_change_without_evidence_archives_and_reports_it() {
+        // spec Scenario「零證據照常封存並提示」的引擎面：無任何 v2 entry 不再是拒絕
+        // 理由——封存照常完成，outcome 帶著「沒有證據」這個事實供 CLI 呈現。
+        let t = TraceWs::new("no-evidence");
+        let store = trace_store();
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let outcome = archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
+
+        assert!(!outcome.evidence_recorded, "zero entries is reported, not refused");
+        assert!(!store.change_exists("demo"), "the change still archives");
+        let canon = store.read_canonical_spec("auth").unwrap();
+        assert!(
+            canon.contains(&format!("<!-- @trace\nsource: demo\nupdated: {}\n-->", util::today())),
+            "an evidence-less archive injects the same two-field trace: {canon}"
+        );
+    }
+
+    #[test]
+    fn evidence_content_never_blocks_the_archive() {
+        // 討論 evidence-gate-false-blocks：記錄的內容（含前版寫入的 basis digests）
+        // 不再被判讀——只要記錄在，封存就通過,連「過期」這個概念都不存在了。
+        let t = TraceWs::new("stale-shaped");
+        let store = trace_store();
+        // 前一版格式：帶 basisDigests 且必然對不上當前基準。
+        util::write_file(
+            &t.ws.change_evidence_file("demo"),
+            r#"{"version":2,"change":"demo","entries":[{"taskId":"tsk_LEGACY","taskDesc":"1.1 done","touchedFiles":["src/a.rs"],"basisDigests":{"spec":"sha256:0","tasks":"sha256:0","policy":"sha256:0"},"recordedAt":"2026-07-13T00:00:00Z"}]}"#,
         )
         .unwrap();
-        let store_a = trace_store();
-        let change_a = crate::model::find_change(&store_a, "demo").unwrap();
-        archive(&ws_a, &store_a, &change_a, &apply_opts(), None).unwrap();
-        let canon_a = store_a.read_canonical_spec("auth").unwrap();
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let outcome = archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
 
-        let root_b = temp_root("git");
-        git(&root_b, &["init", "-q"]);
-        for rel in ["src/a.rs", "src/b.rs"] {
-            let p = root_b.join(rel);
-            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-            std::fs::write(&p, "content\n").unwrap();
-        }
-        let ws_b = Workspace { root: root_b.clone(), spec_dir_name: "openspec".to_string() };
-        let store_b = trace_store();
-        let change_b = crate::model::find_change(&store_b, "demo").unwrap();
-        archive(&ws_b, &store_b, &change_b, &apply_opts(), None).unwrap();
-        let canon_b = store_b.read_canonical_spec("auth").unwrap();
+        assert!(outcome.evidence_recorded, "the entry counts however its basis reads");
+        assert!(!store.change_exists("demo"), "no staleness judgment stands in the way");
+    }
 
-        assert_eq!(canon_a, canon_b, "same file list → byte-identical canonical output");
-        assert!(canon_a.contains("<!-- @trace"), "trace block injected: {canon_a}");
-        assert!(canon_a.contains("  - src/a.rs\n"), "aggregated files listed sorted: {canon_a}");
-        assert!(canon_a.contains("  - src/b.rs\n"));
-        let _ = std::fs::remove_dir_all(&root_a);
-        let _ = std::fs::remove_dir_all(&root_b);
+    #[test]
+    fn archive_sweeps_the_legacy_touched_record_with_the_change() {
+        // 舊路徑殘檔不得比 change 活得久：留著的話，同名新 change 的第一次 load
+        // 會把死帳讀成活帳（seen 汙染、零證據提示被吞）。封存比照 `.started`
+        // 標記順手帶走；事實（evidence_recorded）在清除前讀取，不受影響。
+        let t = TraceWs::new("legacy-sweep");
+        let store = trace_store();
+        let legacy = t.ws.legacy_touched_file("demo");
+        util::write_file(
+            &legacy,
+            r#"{"version":2,"change":"demo","entries":[{"taskId":"tsk_LEGACY","taskDesc":"1.1 done","touchedFiles":["src/a.rs"],"recordedAt":"2026-07-13T00:00:00Z"}]}"#,
+        )
+        .unwrap();
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let outcome = archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
+
+        assert!(outcome.evidence_recorded, "the legacy record still counts as this change's fact");
+        assert!(!legacy.exists(), "the legacy touched record dies with the change");
+    }
+
+    #[test]
+    fn a_pure_removed_merge_keeps_the_trailing_newline() {
+        // 純 REMOVED（或純 RENAMED）的合併不注入任何 @trace——這種輸出維持文字檔
+        // 的結尾換行；以 `-->` 收尾者除外（不論來自本輪注入或前次封存的殘尾，
+        // 見下一測試），凍結為無結尾換行的形狀。
+        let t = TraceWs::new("removed-newline");
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 done\n");
+        store.put_artifact(
+            "demo",
+            "specs/auth/spec.md",
+            "## REMOVED Requirements\n\n### Requirement: R1\n\n**Reason**: retired.\n**Migration**: none.\n",
+        );
+        store.canonical.borrow_mut().insert("auth".to_string(), CANON_R1_R2.to_string());
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
+
+        let canon = store.read_canonical_spec("auth").unwrap();
+        assert!(!canon.contains("@trace"), "a pure REMOVED merge injects nothing: {canon}");
+        assert!(
+            canon.ends_with('\n') && !canon.ends_with("\n\n"),
+            "a trace-less merge ends with exactly one trailing newline: {:?}",
+            &canon[canon.len().saturating_sub(20)..]
+        );
+    }
+
+    #[test]
+    fn a_trace_tailed_canon_keeps_its_frozen_tail_through_a_pure_removed_merge() {
+        // 補結尾換行的規則有一道例外，與 fresh 路徑同規則：末塊以先前封存注入的
+        // `-->` 收尾的正典維持凍結形狀——`-->` 之後永不補換行。
+        let t = TraceWs::new("trace-tail");
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 done\n");
+        store.put_artifact(
+            "demo",
+            "specs/auth/spec.md",
+            "## REMOVED Requirements\n\n### Requirement: R1\n\n**Reason**: retired.\n**Migration**: none.\n",
+        );
+        let traced_tail_canon = format!(
+            "{}\n\n<!-- @trace\nsource: earlier\nupdated: 2026-07-01\n-->",
+            CANON_R1_R2.trim_end()
+        );
+        store.canonical.borrow_mut().insert("auth".to_string(), traced_tail_canon);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
+
+        let canon = store.read_canonical_spec("auth").unwrap();
+        assert!(
+            canon.ends_with("-->"),
+            "no newline may ever follow a trailing `-->`: {:?}",
+            &canon[canon.len().saturating_sub(20)..]
+        );
     }
 
     // --- 封存合併 fail-closed 守門（design「違規清單與聚合錯誤形狀」；
@@ -1562,34 +1688,4 @@ mod tests {
         assert!(msg.contains("BEFORE"), "malformed BEFORE note named: {msg}");
     }
 
-    #[test]
-    fn v1_only_record_keeps_the_current_producer_without_error() {
-        // v1 舊檔（無 entries）沿現行路徑：trace 仍取 archive 當下的 git 工作樹
-        // 狀態，v1 檔案清單不取代之；全程無錯誤。
-        let root = temp_root("v1");
-        git(&root, &["init", "-q"]);
-        let p = root.join("src").join("current.rs");
-        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(&p, "content\n").unwrap();
-        let ws = Workspace { root: root.clone(), spec_dir_name: "openspec".to_string() };
-        std::fs::create_dir_all(ws.touched_dir()).unwrap();
-        std::fs::write(
-            ws.touched_dir().join("demo.json"),
-            "{\"change\":\"demo\",\"touched\":[{\"task_id\":\"1\",\"task_desc\":\"1.1 done\",\"files\":[\"src/recorded.rs\"]}]}",
-        )
-        .unwrap();
-        let store = trace_store();
-        let change = crate::model::find_change(&store, "demo").unwrap();
-        archive(&ws, &store, &change, &apply_opts(), None).unwrap();
-        let canon = store.read_canonical_spec("auth").unwrap();
-        assert!(
-            canon.contains("  - src/current.rs\n"),
-            "v1-only record keeps the git-state producer: {canon}"
-        );
-        assert!(
-            !canon.contains("src/recorded.rs"),
-            "v1 file list must not replace the current producer: {canon}"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
 }

@@ -1,10 +1,4 @@
-# verify-evidence Specification
-
-## Purpose
-
-TBD - created by archiving change 'stable-task-and-evidence'. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: task done 寫入逐任務 evidence
 
@@ -25,13 +19,25 @@ task done 成功且本次有可歸屬的 touched files（未被先前任務認�
 - **WHEN** 對含 `.evidence.json` 的 change 執行封存或 discard
 - **THEN** 封存後記錄位於封存 change 目錄內；discard 後記錄隨目錄一併消失；兩者皆不留下舊路徑的孤兒檔
 
+## REMOVED Requirements
 
-<!-- @trace
-source: evidence-home-and-trace-slim
-updated: 2026-08-04
--->
+### Requirement: archive trace 由 evidence 建立
 
----
+**Reason**: trace 不再承載檔案清單，「由 evidence 記錄聚合 trace 檔案清單」的規範對象消失；Host gate 檢查函式隨帳瘦身一併退場（見同批 REMOVED）。
+**Migration**: 由本 delta 新增的「archive trace 注入與零證據提示」承接 trace 形狀；檔案歸屬的耐久保存改由 evidence 記錄隨 change 目錄移動承接。
+
+### Requirement: VerifyBundle 固定驗證基準
+
+**Reason**: 討論 evidence-gate-false-blocks 裁決帳瘦身——entry 不再記 basis digests，bundle 的比對對象消失；全 repo 亦無生產呼叫端。遠端 Phase 2 應由 server 自記自判，不以本機自報指紋為地基。
+**Migration**: 模組刪除、無承接。drift 的現場基準計算（current_basis_digests）非本需求範疇，保留不動。
+
+### Requirement: evidence 的 stale 判定
+
+**Reason**: 同上——比對的兩端（entry 的 basis digests 與 VerifyBundle）皆退場，判定失去對象。實證（討論探針）顯示其在本機場景誤擋正常流程且無有效補救路徑。
+**Migration**: 模組刪除、無承接。
+
+## ADDED Requirements
+
 ### Requirement: archive trace 注入與零證據提示
 
 archive 於 ADDED／MODIFIED 物化正典需求時 SHALL 一律注入 trace 區塊，內容 SHALL 僅含 source（change 名）與 updated（封存日期）兩欄；SHALL NOT 含檔案清單，SHALL NOT 掃描工作樹髒檔產生任何 trace 內容。archive SHALL NOT 因 evidence 缺席或內容拒絕封存。本機 fs 模式下，change 無任何 v2 evidence entry 時 CLI SHALL 於 stderr 印恰一行提示（點名 change 名、說明無任務證據記錄），exit code 與封存結果 SHALL 不受影響；有任一 entry 時 SHALL NOT 印出提示。引擎 SHALL 以結構化事實（ArchiveOutcome 的 evidence_recorded）回報有無證據，呈現歸呼叫端。遠端 store 模式不在本需求範圍：證據的記錄與提示應由 server 端自記自判（Phase 2 另行設計），wire 契約 SHALL NOT 為此攜帶欄位。
@@ -50,10 +56,3 @@ archive 於 ADDED／MODIFIED 物化正典需求時 SHALL 一律注入 trace 區�
 
 - **WHEN** 對含任一 v2 entry 的 change 執行 speclink archive
 - **THEN** 封存成功且 stderr 無任何 evidence 相關提示
-
-<!-- @trace
-source: evidence-home-and-trace-slim
-updated: 2026-08-04
--->
-
----
