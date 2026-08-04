@@ -1,11 +1,11 @@
-import { useState } from "react";
-import { AlertTriangle, Archive, Check, Copy, FileText, MessageSquareText, RefreshCw, Undo2 } from "lucide-react";
+import { AlertTriangle, Archive, FileText, MessageSquareText, RefreshCw, Undo2 } from "lucide-react";
 
 import type { ChangeItem, SearchHit } from "../adapter";
 import { useI18n } from "../i18n";
 import { changeStage } from "../stage";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
+import { CardNameRow } from "./CardNameRow";
 import { HighlightText } from "./HighlightText";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./reviewStyle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -39,13 +39,6 @@ export function ChangeCard({
   const pct =
     change.totalTasks > 0 ? Math.round((change.completedTasks / change.totalTasks) * 100) : 0;
   const stage = changeStage(change);
-  const [copied, setCopied] = useState(false);
-  const copyName = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    void navigator.clipboard?.writeText(change.name);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
-  };
   return (
     <TooltipProvider>
     <Card
@@ -54,21 +47,7 @@ export function ChangeCard({
       onClick={() => onOpen?.(change.name)}
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
-        {/* 複製鈕行內尾隨（design D4 複製鈕位置規則）：緊跟名稱最後一個字元後
-            流動，不以 flex 推至卡片右緣。 */}
-        <span className="font-mono font-semibold text-sm leading-tight min-w-0 flex-1">
-          <HighlightText text={change.name} query={highlight} />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={t("common.copyName")}
-            className={`ml-1 inline-flex h-4 w-4 align-text-bottom text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-            onClick={copyName}
-          >
-            {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
-          </Button>
-        </span>
+        <CardNameRow text={change.name} copyLabel={t("common.copyName")} highlight={highlight} />
         {change.createdBy && (
           <Tooltip>
             <TooltipTrigger asChild>

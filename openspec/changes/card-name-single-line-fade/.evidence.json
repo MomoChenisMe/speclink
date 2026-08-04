@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "change": "card-name-single-line-fade",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 抽出看板卡片統一解剖學的名稱列共用元件 CardNameRow：名稱恆單行、溢出時尾端漸層淡出、未溢出時不套遮罩（末尾字元不被誤淡），複製鈕與名稱同列且不被壓縮。驗證：packages/ui/src/__tests__/cardNameRow.test.tsx 的「名稱不換行，複製鈕與名稱在同一列容器內」「名稱溢出時尾端套漸層淡出遮罩」「名稱未溢出時不套遮罩」三條通過",
+      "files": [
+        "packages/ui/src/components/CardNameRow.tsx",
+        "packages/ui/src/__tests__/cardNameRow.test.tsx",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/DiscussionColumn.tsx",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/__tests__/discussionColumn.test.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZ5RHDB0SNETH9FY1T2BGYRY",
+      "taskDesc": "1.1 抽出看板卡片統一解剖學的名稱列共用元件 CardNameRow：名稱恆單行、溢出時尾端漸層淡出、未溢出時不套遮罩（末尾字元不被誤淡），複製鈕與名稱同列且不被壓縮。驗證：packages/ui/src/__tests__/cardNameRow.test.tsx 的「名稱不換行，複製鈕與名稱在同一列容器內」「名稱溢出時尾端套漸層淡出遮罩」「名稱未溢出時不套遮罩」三條通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "96d11029465cb1c1666b4ac4677ffc466674a75b",
+      "touchedFiles": [
+        "packages/ui/src/components/CardNameRow.tsx",
+        "packages/ui/src/__tests__/cardNameRow.test.tsx",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/DiscussionColumn.tsx",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/__tests__/discussionColumn.test.tsx"
+      ],
+      "recordedAt": "2026-08-04T06:50:40Z"
+    }
+  ]
+}
