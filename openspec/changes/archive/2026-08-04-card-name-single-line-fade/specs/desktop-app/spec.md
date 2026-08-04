@@ -3,6 +3,7 @@
 ### Requirement: 看板卡片統一解剖學
 
 <!-- BEFORE: 標題不截斷、過長時自然折行，複製鈕行內尾隨於標題末行最後一個字元後 -->
+<!-- REMOVED-SCENARIO: 長標題折行時複製鈕仍緊跟末字元 -->
 
 看板全尺寸卡（變更卡與討論卡）SHALL 採統一三列骨架：識別列（標題＋複製鈕＋右端 meta icons）、描述列（一行截斷，無內容時缺席）、meta 列。標題 SHALL 以等寬字型呈現（變更名稱與討論 slug 同為可複製把手）。標題 SHALL 恆為單行——長於可用寬度時 SHALL 就地截斷，SHALL NOT 折行、SHALL NOT 強制斷字；截斷處 SHALL 以尾端漸層淡出呈現，SHALL NOT 以省略號或硬切收尾；標題未被截斷時 SHALL NOT 套用淡出，末尾字元不得被誤淡。複製鈕 SHALL 與標題同列尾隨於標題文字之後，SHALL NOT 因標題過長而落至次行、SHALL NOT 被壓縮，meta icons 維持靠右；SHALL NOT 將複製鈕推至列右緣。變更卡描述列 SHALL 顯示 proposal Why 首句（一行截斷）；proposal 缺席、Why 區段缺席或為空時描述列 SHALL 缺席。描述資料 SHALL 由變更清單 payload 一次帶出，SHALL NOT 逐卡讀取 proposal 全文；該欄位屬呈現層輔助欄位，不屬 CLI --json 對齊範圍。建立者 SHALL 以頭像圓點呈現且 hover 顯示全名，SHALL NOT 於卡面直出全名文字；createdBy 缺席時圓點缺席。狀態 chip SHALL 僅在所在位置無法表達狀態時出現：討論卡（討論欄一欄兩態）帶狀態 chip，變更卡（所在欄即階段）SHALL NOT 帶狀態 chip。
 
