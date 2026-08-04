@@ -1,0 +1,206 @@
+{
+  "version": 2,
+  "change": "worktree-parallel-apply",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 worktree 政策欄位進入四層解析（對應需求：工作流政策的正典歸屬與四層解析順序）：`crates/speclink-core/src/config.rs` 的政策欄位結構與環境覆寫增加 worktree（可空布林，內建預設 false；環境變數 SPECLINK_WORKTREE 沿用既有布林解析，非法值落到下一層；.speclink.yaml 的 worktree 鍵不生效且無 deprecation 警告——不進舊鍵相容清單）。先以 #[cfg(test)] 落測試再實作：涵蓋「config.yaml 值生效」「SPECLINK_WORKTREE 覆寫」「非法環境值落下一層」「.speclink.yaml 鍵不生效」四情境。驗證：cargo test -p speclink-core 通過。",
+      "files": [
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "crates/speclink-cli/src/commands.rs",
+        "crates/speclink-core/src/config.rs",
+        "crates/speclink-server/src/auth.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 workflow-config 動詞受理 worktree 鍵（對應需求：工作流政策的正典歸屬與四層解析順序）：`crates/speclink-cli/src/commands.rs` 的正典鍵清單增 worktree，speclink workflow-config set worktree true|false 寫入 openspec/config.yaml（走既有 yaml_scalar 跳脫路徑），非法值以非零 exit code 失敗且檔案不動；workflow-config show 人眼輸出與 --json 呈現 worktree 欄位（camelCase，布林）。先落 CLI 整合測試（crates/speclink-cli/tests/ 既有 workflow-config 測試檔）再實作：斷言 set→show 往返、--json payload 含 \"worktree\": true、非法值報錯。驗證：cargo test -p speclink-cli 對應測試通過，既有 workflow-config 測試不因新欄位而破（show 輸出屬刻意變更者同批更新斷言）。",
+      "files": [
+        "crates/speclink-cli/tests/it/workflow_config.rs",
+        "crates/speclink-host/src/commit.rs",
+        "crates/speclink-host/src/context.rs",
+        "crates/speclink-host/tests/bridge_dual_path.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 host worktree discovery（對應需求：worktree discovery 與映射慣例）：新增 `crates/speclink-host/src/worktree.rs`（`crates/speclink-host/src/lib.rs` 掛模組），對 git worktree list --porcelain 輸出解析出 linked worktree 的絕對路徑與分支，依三條件（分支 speclink/<change名>、同名未封存 change 存在、worktree 內 openspec/changes/<change名>/ 可讀）產出 change→{path, branch} 映射；detached HEAD 與 prunable 條目略過；git 失敗回空映射不報錯。先以 #[cfg(test)] 落 porcelain 解析與條件判定測試（正常、detached、prunable、不合慣例、change 缺席）再實作。驗證：cargo test -p speclink-host 通過。",
+      "files": [
+        "crates/speclink-host/src/lib.rs",
+        "crates/speclink-host/src/worktree.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.3 core listing 的 facts 變體與 worktree 欄位（對應需求：list 的 worktree 觀察面輸出）：`crates/speclink-core/src/listing.rs` 的 list JSON 條目增可空 worktree 物件欄位（path、branch，缺席不序列化），並提供帶 facts 的組裝變體；既有組裝函式簽名與行為不動。先落測試再實作：斷言「facts 空表時變體輸出與既有組裝位元級相同」與「有 facts 時該條目含 camelCase 的 path／branch 欄位」。驗證：cargo test -p speclink-core 通過，server 與 remote parity 呼叫端零改動仍編譯通過。",
+      "files": [
+        "crates/speclink-cli/src/remote_commands.rs",
+        "crates/speclink-core/src/listing.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.4 CLI list 組裝與人眼標示（對應需求：worktree discovery 與映射慣例；list 的 worktree 觀察面輸出）：`crates/speclink-cli/src/commands.rs` 的 speclink list——僅 local 主 checkout（workspace 根 .git 為目錄）且有效 worktree 政策為 true 時執行 discovery、以裝飾器包 Store、facts 進組裝變體；映射成立的 change 人眼行尾追加固定字面「 [worktree]」（--no-color 同字面）；政策關閉或非主 checkout 時完全不 spawn git、輸出位元級不變。驗證：任務 2.6 的整合測試涵蓋，且既有 list 相關 CLI 測試全數通過。",
+      "files": [
+        "crates/speclink-cli/tests/it/main.rs",
+        "crates/speclink-core/src/command/mod.rs",
+        "crates/speclink-node/src/lib.rs",
+        "crates/speclink-server/src/routes.rs",
+        "crates/speclink-cli/tests/it/worktree_overlay.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "2.7 契約文件同步（對應需求：動詞契約的涵蓋面與 payload 形狀）：docs/verb-contract.md 增列 list --json 的可空 worktree 欄位（僅 fs 模式主 checkout 且政策開啟時出現、remote 恆缺席）。驗證：內容審閱——欄位名、型別、出現條件與 spec delta 一致。",
+      "files": [
+        "docs/verb-contract.md"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "3.1 apply-with-worktree 模板資產（對應需求：apply-with-worktree 技能的前置指示；apply-with-worktree 技能的收尾指示）：新增 `crates/speclink-core/assets/skills/apply-worktree-pre.md`（讀取有效 worktree 政策、非 true 即拒跑並指示 workflow-config set worktree true、確認 change 存在未封存、以分支 speclink/<change名> 於 sibling 巢 <repo資料夾名>.worktrees/<change名>/ 建立或沿用 worktree、印建置成本提示、其後流程於 worktree 內執行）與 `crates/speclink-core/assets/skills/apply-worktree-post.md`（於 worktree 內完成 commit、不合併不移除 worktree、點名 worktree-merge 技能交棒）。驗證：內容審閱對照 worktree-apply-skill spec 的三需求，字面含指定指示。",
+      "files": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/src/skills.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md",
+        "crates/speclink-core/tests/it/render_golden.rs",
+        "crates/speclink-core/assets/skills/apply-worktree-post.md",
+        "crates/speclink-core/assets/skills/apply-worktree-pre.md",
+        "crates/speclink-core/assets/skills/worktree-merge.md"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "3.4 注入區塊清單：`crates/speclink-core/src/init.rs` 的 CLAUDE.md／AGENTS.md 注入區塊「Use /speclink-* skills when:」清單增兩條（並行實作 change → /speclink-apply-with-worktree；worktree 完工收尾 → /speclink-worktree-merge），版本 marker 隨既有機制遞增；於本 repo 執行技能再生使 CLAUDE.md 與 AGENTS.md 實際更新。驗證：注入區塊相關的既有測試同批更新且通過；再生後本 repo CLAUDE.md 可見兩條目。",
+      "files": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "openspec/LANGUAGE.md",
+        "crates/speclink-cli/tests/it/remote_read_path.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZ5KCS34TEYAR0BF5QYCHH6M",
+      "taskDesc": "1.1 worktree 政策欄位進入四層解析（對應需求：工作流政策的正典歸屬與四層解析順序）：`crates/speclink-core/src/config.rs` 的政策欄位結構與環境覆寫增加 worktree（可空布林，內建預設 false；環境變數 SPECLINK_WORKTREE 沿用既有布林解析，非法值落到下一層；.speclink.yaml 的 worktree 鍵不生效且無 deprecation 警告——不進舊鍵相容清單）。先以 #[cfg(test)] 落測試再實作：涵蓋「config.yaml 值生效」「SPECLINK_WORKTREE 覆寫」「非法環境值落下一層」「.speclink.yaml 鍵不生效」四情境。驗證：cargo test -p speclink-core 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "96d11029465cb1c1666b4ac4677ffc466674a75b",
+      "touchedFiles": [
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "crates/speclink-cli/src/commands.rs",
+        "crates/speclink-core/src/config.rs",
+        "crates/speclink-server/src/auth.rs"
+      ],
+      "recordedAt": "2026-08-04T06:36:20Z"
+    },
+    {
+      "taskId": "tsk_01KZ5KCS34PWH6N6NYQ0183N5C",
+      "taskDesc": "1.2 workflow-config 動詞受理 worktree 鍵（對應需求：工作流政策的正典歸屬與四層解析順序）：`crates/speclink-cli/src/commands.rs` 的正典鍵清單增 worktree，speclink workflow-config set worktree true|false 寫入 openspec/config.yaml（走既有 yaml_scalar 跳脫路徑），非法值以非零 exit code 失敗且檔案不動；workflow-config show 人眼輸出與 --json 呈現 worktree 欄位（camelCase，布林）。先落 CLI 整合測試（crates/speclink-cli/tests/ 既有 workflow-config 測試檔）再實作：斷言 set→show 往返、--json payload 含 \"worktree\": true、非法值報錯。驗證：cargo test -p speclink-cli 對應測試通過，既有 workflow-config 測試不因新欄位而破（show 輸出屬刻意變更者同批更新斷言）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "96d11029465cb1c1666b4ac4677ffc466674a75b",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/workflow_config.rs",
+        "crates/speclink-host/src/commit.rs",
+        "crates/speclink-host/src/context.rs",
+        "crates/speclink-host/tests/bridge_dual_path.rs"
+      ],
+      "recordedAt": "2026-08-04T06:48:37Z"
+    },
+    {
+      "taskId": "tsk_01KZ5KCS34EDBFYX2V5X0A7EM2",
+      "taskDesc": "2.1 host worktree discovery（對應需求：worktree discovery 與映射慣例）：新增 `crates/speclink-host/src/worktree.rs`（`crates/speclink-host/src/lib.rs` 掛模組），對 git worktree list --porcelain 輸出解析出 linked worktree 的絕對路徑與分支，依三條件（分支 speclink/<change名>、同名未封存 change 存在、worktree 內 openspec/changes/<change名>/ 可讀）產出 change→{path, branch} 映射；detached HEAD 與 prunable 條目略過；git 失敗回空映射不報錯。先以 #[cfg(test)] 落 porcelain 解析與條件判定測試（正常、detached、prunable、不合慣例、change 缺席）再實作。驗證：cargo test -p speclink-host 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "96d11029465cb1c1666b4ac4677ffc466674a75b",
+      "touchedFiles": [
+        "crates/speclink-host/src/lib.rs",
+        "crates/speclink-host/src/worktree.rs"
+      ],
+      "recordedAt": "2026-08-04T07:03:19Z"
+    },
+    {
+      "taskId": "tsk_01KZ5KCS34D4T9EFTQMDJBFYC8",
+      "taskDesc": "2.3 core listing 的 facts 變體與 worktree 欄位（對應需求：list 的 worktree 觀察面輸出）：`crates/speclink-core/src/listing.rs` 的 list JSON 條目增可空 worktree 物件欄位（path、branch，缺席不序列化），並提供帶 facts 的組裝變體；既有組裝函式簽名與行為不動。先落測試再實作：斷言「facts 空表時變體輸出與既有組裝位元級相同」與「有 facts 時該條目含 camelCase 的 path／branch 欄位」。驗證：cargo test -p speclink-core 通過，server 與 remote parity 呼叫端零改動仍編譯通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1a1b51d323a1fd7dba7e6fba2c9a245d9d8a912f",
+      "touchedFiles": [
+        "crates/speclink-cli/src/remote_commands.rs",
+        "crates/speclink-core/src/listing.rs"
+      ],
+      "recordedAt": "2026-08-04T07:17:28Z"
+    },
+    {
+      "taskId": "tsk_01KZ5KCS34JQD2WYC41R23EXDS",
+      "taskDesc": "2.4 CLI list 組裝與人眼標示（對應需求：worktree discovery 與映射慣例；list 的 worktree 觀察面輸出）：`crates/speclink-cli/src/commands.rs` 的 speclink list——僅 local 主 checkout（workspace 根 .git 為目錄）且有效 worktree 政策為 true 時執行 discovery、以裝飾器包 Store、facts 進組裝變體；映射成立的 change 人眼行尾追加固定字面「 [worktree]」（--no-color 同字面）；政策關閉或非主 checkout 時完全不 spawn git、輸出位元級不變。驗證：任務 2.6 的整合測試涵蓋，且既有 list 相關 CLI 測試全數通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1a1b51d323a1fd7dba7e6fba2c9a245d9d8a912f",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/main.rs",
+        "crates/speclink-core/src/command/mod.rs",
+        "crates/speclink-node/src/lib.rs",
+        "crates/speclink-server/src/routes.rs",
+        "crates/speclink-cli/tests/it/worktree_overlay.rs"
+      ],
+      "recordedAt": "2026-08-04T07:25:48Z"
+    },
+    {
+      "taskId": "tsk_01KZ5KCS34R2J52XVXKDGK8H1W",
+      "taskDesc": "2.7 契約文件同步（對應需求：動詞契約的涵蓋面與 payload 形狀）：docs/verb-contract.md 增列 list --json 的可空 worktree 欄位（僅 fs 模式主 checkout 且政策開啟時出現、remote 恆缺席）。驗證：內容審閱——欄位名、型別、出現條件與 spec delta 一致。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1a1b51d323a1fd7dba7e6fba2c9a245d9d8a912f",
+      "touchedFiles": [
+        "docs/verb-contract.md"
+      ],
+      "recordedAt": "2026-08-04T07:29:25Z"
+    },
+    {
+      "taskId": "tsk_01KZ5KCS345J62GW8SS5VD8BTQ",
+      "taskDesc": "3.1 apply-with-worktree 模板資產（對應需求：apply-with-worktree 技能的前置指示；apply-with-worktree 技能的收尾指示）：新增 `crates/speclink-core/assets/skills/apply-worktree-pre.md`（讀取有效 worktree 政策、非 true 即拒跑並指示 workflow-config set worktree true、確認 change 存在未封存、以分支 speclink/<change名> 於 sibling 巢 <repo資料夾名>.worktrees/<change名>/ 建立或沿用 worktree、印建置成本提示、其後流程於 worktree 內執行）與 `crates/speclink-core/assets/skills/apply-worktree-post.md`（於 worktree 內完成 commit、不合併不移除 worktree、點名 worktree-merge 技能交棒）。驗證：內容審閱對照 worktree-apply-skill spec 的三需求，字面含指定指示。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1a1b51d323a1fd7dba7e6fba2c9a245d9d8a912f",
+      "touchedFiles": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/src/skills.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md",
+        "crates/speclink-core/tests/it/render_golden.rs",
+        "crates/speclink-core/assets/skills/apply-worktree-post.md",
+        "crates/speclink-core/assets/skills/apply-worktree-pre.md",
+        "crates/speclink-core/assets/skills/worktree-merge.md"
+      ],
+      "recordedAt": "2026-08-04T07:37:43Z"
+    },
+    {
+      "taskId": "tsk_01KZ5KCS34533K8E1RWE7TWQ0N",
+      "taskDesc": "3.4 注入區塊清單：`crates/speclink-core/src/init.rs` 的 CLAUDE.md／AGENTS.md 注入區塊「Use /speclink-* skills when:」清單增兩條（並行實作 change → /speclink-apply-with-worktree；worktree 完工收尾 → /speclink-worktree-merge），版本 marker 隨既有機制遞增；於本 repo 執行技能再生使 CLAUDE.md 與 AGENTS.md 實際更新。驗證：注入區塊相關的既有測試同批更新且通過；再生後本 repo CLAUDE.md 可見兩條目。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1a1b51d323a1fd7dba7e6fba2c9a245d9d8a912f",
+      "touchedFiles": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "openspec/LANGUAGE.md",
+        "crates/speclink-cli/tests/it/remote_read_path.rs"
+      ],
+      "recordedAt": "2026-08-04T07:49:33Z"
+    }
+  ]
+}

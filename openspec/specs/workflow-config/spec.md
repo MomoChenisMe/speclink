@@ -8,7 +8,9 @@ TBD - created by archiving change 'config-system-rework'. Update Purpose after a
 
 ### Requirement: 工作流政策的正典歸屬與四層解析順序
 
-工作流政策欄位（locale、spec_locale、tdd、audit）的正典值 SHALL 儲存於 openspec/config.yaml（經儲存介面讀取）。有效值 SHALL 依下列順序解析，先命中者勝：SPECLINK_LOCALE／SPECLINK_SPEC_LOCALE／SPECLINK_TDD／SPECLINK_AUDIT 環境變數 ＞ .speclink.yaml 的同名舊鍵（相容層）＞ openspec/config.yaml ＞ 內建預設（locale 未設定＝English、tdd 與 audit＝false）。布林環境變數僅接受 true 或 false，其他值 SHALL 視為未設定並落到下一層。
+工作流政策欄位（locale、spec_locale、tdd、audit、worktree）的正典值 SHALL 儲存於 openspec/config.yaml（經儲存介面讀取）。有效值 SHALL 依下列順序解析，先命中者勝：SPECLINK_LOCALE／SPECLINK_SPEC_LOCALE／SPECLINK_TDD／SPECLINK_AUDIT／SPECLINK_WORKTREE 環境變數 ＞ .speclink.yaml 的同名舊鍵（相容層，僅限 locale、spec_locale、tdd、audit 四鍵——worktree 無歷史舊鍵，.speclink.yaml 的 worktree 鍵 SHALL 不生效且不產生警告）＞ openspec/config.yaml ＞ 內建預設（locale 未設定＝English、tdd 與 audit 與 worktree＝false）。布林環境變數僅接受 true 或 false，其他值 SHALL 視為未設定並落到下一層。
+
+workflow-config set SHALL 接受 worktree 鍵（值 true 或 false，非法值的錯誤行為與既有政策鍵一致：非零 exit code、stderr 說明）；workflow-config show 的人眼輸出與 --json payload SHALL 呈現 worktree 欄位（camelCase 欄位名 worktree，布林）。
 
 openspec/config.yaml 檔案存在但無法解析（YAML 語法錯誤或型別不符）時，讀取政策的指令 SHALL 以非零 exit code 失敗，stderr SHALL 指出該檔的 workspace 相對路徑與解析原因；SHALL NOT 以內建預設或解析順序中其他層的值繼續執行。檔案不存在時 SHALL 沿用內建預設。此 fail-closed 行為為刻意設計。
 
@@ -47,55 +49,30 @@ openspec/config.yaml 檔案存在但無法解析（YAML 語法錯誤或型別不
 - **WHEN** openspec/config.yaml 不存在，執行 speclink instructions proposal --change 某 change --json
 - **THEN** payload 以內建預設政策生成，exit code 為 0
 
+#### Scenario: worktree 欄位寫入與呈現
+
+- **WHEN** 執行 speclink workflow-config set worktree true 後執行 speclink workflow-config show --json
+- **THEN** set 以 exit code 0 結束且 openspec/config.yaml 含 worktree: true；show 的 payload 含 "worktree": true
+
+#### Scenario: worktree 非法值報錯
+
+- **WHEN** 執行 speclink workflow-config set worktree yes
+- **THEN** exit code 非 0，stderr 說明合法值為 true 或 false，openspec/config.yaml 未被改動
+
+#### Scenario: SPECLINK_WORKTREE 覆寫檔案值
+
+- **WHEN** openspec/config.yaml 設定 worktree: false，設定環境變數 SPECLINK_WORKTREE=true，執行讀取政策的指令
+- **THEN** 有效 worktree 值為 true
+
+#### Scenario: .speclink.yaml 的 worktree 鍵不生效
+
+- **WHEN** .speclink.yaml 設定 worktree: true 而 openspec/config.yaml 未設定 worktree，執行讀取政策的指令
+- **THEN** 有效 worktree 值為 false（內建預設），stderr 無 deprecation 警告
+
 
 <!-- @trace
-source: spectra-legacy-cleanup
-updated: 2026-07-27
-code:
-  - README.en.md
-  - README.md
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/index.css
-  - crates/speclink-cli/src/color.rs
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
-  - crates/speclink-cli/tests/task_done_stamps.rs
-  - crates/speclink-core/assets/skills/archive.md
-  - crates/speclink-core/src/analyzer.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/config.rs
-  - crates/speclink-core/src/demo.rs
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/drift.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/instructions.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/newcmd.rs
-  - crates/speclink-core/src/preflight.rs
-  - crates/speclink-core/src/schema.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/status.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-core/src/validate.rs
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-host/src/context.rs
-  - docs/platform-architecture.zh-TW.md
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/index.ts
-  - packages/ui/src/theme.css
+source: worktree-parallel-apply
+updated: 2026-08-04
 -->
 
 ---
