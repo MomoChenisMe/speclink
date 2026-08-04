@@ -27,3 +27,4 @@ mod task_stable_id;
 mod task_undone;
 mod tools_descriptor;
 mod workflow_config;
+mod worktree_overlay;

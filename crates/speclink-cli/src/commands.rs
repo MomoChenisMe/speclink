@@ -338,8 +338,23 @@ fn cmd_list(a: ListArgs) -> Result<()> {
     if let Some(ctx) = remote_ctx()? {
         return remote_list(&ctx, &a);
     }
-    let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
+    let (ws, fs_store) = open_project()?;
+    // Worktree overlay (D3): only a local MAIN checkout with the policy on gets
+    // here — everywhere else `facts` is empty, git is never spawned, and both
+    // the store and the payload are exactly what they were before this feature.
+    let facts = worktree_facts(&ws, &fs_store);
+    let overlaid = speclink_host::worktree::WorktreeOverlay::new(
+        &fs_store,
+        facts
+            .iter()
+            .map(|(name, e)| {
+                let store: Box<dyn Store> =
+                    Box::new(speclink_fs::FsStore::new(&e.path, &ws.spec_dir_name));
+                (name.clone(), store)
+            })
+            .collect(),
+    );
+    let store: &dyn Store = if facts.is_empty() { &fs_store } else { &overlaid };
     let outcome = run_command(
         store,
         Some(&ws),
@@ -347,6 +362,18 @@ fn cmd_list(a: ListArgs) -> Result<()> {
             sort: a.sort.clone(),
             specs: a.specs,
             changes: a.changes,
+            worktrees: facts
+                .iter()
+                .map(|(name, e)| {
+                    (
+                        name.clone(),
+                        core::listing::ListWorktreeJson {
+                            path: e.path.to_string_lossy().to_string(),
+                            branch: e.branch.clone(),
+                        },
+                    )
+                })
+                .collect(),
         },
     )?;
     let core::command::CommandOutcome::List(list) = outcome else {
@@ -395,13 +422,49 @@ fn cmd_list(a: ListArgs) -> Result<()> {
         } else {
             String::new()
         };
-        println!("  {} {}{marker}{}{invalid}", color::cyan("•"), c.name, color::dim(&suffix));
+        // Fixed literal, no color: `--no-color` must read exactly the same.
+        let worktree = if c.worktree.is_some() { " [worktree]" } else { "" };
+        println!(
+            "  {} {}{marker}{}{invalid}{worktree}",
+            color::cyan("•"),
+            c.name,
+            color::dim(&suffix)
+        );
     }
     if let Some(specs) = &list.specs {
         println!();
         render_specs_section(specs, false)?;
     }
     Ok(())
+}
+
+/// The local worktree observation facts for `list`, or an empty map.
+///
+/// Three gates, all of which must hold before git is spawned at all (D3):
+/// the workspace root's `.git` is a DIRECTORY (a main checkout — inside a
+/// linked worktree it is a file), `.speclink.yaml` loads, and the effective
+/// `worktree` policy is true. A config that cannot load or parse counts as
+/// "off" here: `list` has never read the policy, and the observation surface
+/// must not start failing a command that used to succeed.
+fn worktree_facts(
+    ws: &core::workspace::Workspace,
+    store: &dyn Store,
+) -> speclink_host::worktree::WorktreeFacts {
+    if !ws.root.join(".git").is_dir() {
+        return Default::default();
+    }
+    let Ok(app) = core::config::AppConfig::load(&ws.app_config()) else {
+        return Default::default();
+    };
+    let policy = speclink_host::policy::resolve_effective_policy(
+        |key| std::env::var(key).ok(),
+        &app,
+        store.read_workflow_config().as_deref(),
+    );
+    match policy {
+        Ok(p) if p.resolved().worktree => speclink_host::worktree::discover(ws, store),
+        _ => Default::default(),
+    }
 }
 
 /// Render the specs section from the outcome's `{id, path}` items.
@@ -1474,7 +1537,7 @@ fn save_global_map(path: &std::path::Path, map: &serde_yaml::Mapping) -> Result<
 // --- workflow-config (openspec/config.yaml) ---
 
 /// The policy keys `workflow-config set` accepts, in canonical order.
-const POLICY_KEYS: [&str; 4] = ["locale", "spec_locale", "tdd", "audit"];
+const POLICY_KEYS: [&str; 5] = ["locale", "spec_locale", "tdd", "audit", "worktree"];
 
 /// `workflow-config show --json` payload. camelCase field names are the contract;
 /// the values are CANONICAL (what the document says), never the four-layer
@@ -1486,6 +1549,7 @@ struct WorkflowConfigJson {
     spec_locale: Option<String>,
     tdd: bool,
     audit: bool,
+    worktree: bool,
     context: Option<String>,
     rules: std::collections::BTreeMap<String, Vec<String>>,
 }
@@ -1573,6 +1637,7 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
             spec_locale: cfg.spec_locale.clone(),
             tdd: cfg.tdd.unwrap_or(false),
             audit: cfg.audit.unwrap_or(false),
+            worktree: cfg.worktree.unwrap_or(false),
             context: cfg.context_text(),
             rules: cfg.rules.clone(),
         });
@@ -1591,6 +1656,7 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
     println!("  {:<13}{spec_locale}", "spec_locale");
     println!("  {:<13}{}", "tdd", toggle_display(cfg.tdd));
     println!("  {:<13}{}", "audit", toggle_display(cfg.audit));
+    println!("  {:<13}{}", "worktree", toggle_display(cfg.worktree));
     let context = match cfg.context_text() {
         Some(text) => format!("{} lines", text.lines().count()),
         None => "none".to_string(),
@@ -1635,6 +1701,7 @@ fn plan_workflow_config_edit(
         spec_locale: current.spec_locale.clone(),
         tdd: current.tdd.unwrap_or(false),
         audit: current.audit.unwrap_or(false),
+        worktree: current.worktree.unwrap_or(false),
     };
     let mut context = core::config::ContextEdit::Keep;
     let mut rules: Option<Vec<(String, Vec<String>)>> = None;
@@ -1700,6 +1767,7 @@ fn set_policy_field(
         "spec_locale" => fields.spec_locale = text(),
         "tdd" => fields.tdd = policy_bool(key, value)?,
         "audit" => fields.audit = policy_bool(key, value)?,
+        "worktree" => fields.worktree = policy_bool(key, value)?,
         _ => bail!("Unknown key '{key}'. Use one of: {}", POLICY_KEYS.join(", ")),
     }
     Ok(())

@@ -118,6 +118,7 @@ mod tests {
                 spec_locale: None,
                 tdd: true,
                 audit: false,
+                worktree: false,
             },
             "tdd: true\n",
         )

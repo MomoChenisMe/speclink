@@ -152,8 +152,9 @@ fn schema_artifact_ids(ws: Option<&Workspace>, cfg: &WorkflowConfig) -> Vec<Stri
     }
 }
 
-/// 純文字政策欄位改寫 seam。只代換 locale/spec_locale/tdd/audit，其他鍵的
-/// parsed value 保持不變；設回預設值時移除鍵。輸出在回傳前再經 typed 驗證。
+/// 純文字政策欄位改寫 seam。代換 locale/spec_locale/tdd/audit（worktree 無設定頁
+/// 控制項，一律從原文回填現值），其他鍵的 parsed value 保持不變；設回預設值時
+/// 移除鍵。輸出在回傳前再經 typed 驗證。
 pub fn rewrite_workflow_fields_text(
     original: &str,
     fields: &WorkflowPolicyFields,
@@ -166,6 +167,7 @@ fn rewrite_workflow_fields_text_for(
     fields: &WorkflowPolicyFields,
     file: &str,
 ) -> Result<String, String> {
+    let fields = &carry_over_worktree(original, fields);
     let new_text = speclink_core::config::update_workflow_config_text(
         original,
         fields,
@@ -177,13 +179,25 @@ fn rewrite_workflow_fields_text_for(
     Ok(new_text)
 }
 
+/// 設定頁沒有 worktree 開關，呼叫端送來的目標狀態該欄位恆為預設 false。原文的值
+/// 在此回填，讓「完整目標狀態」不至於在設定頁存檔時吃掉 CLI 寫入的 worktree 鍵。
+/// 壞檔交給後續的 core 改寫 loud 失敗，這裡不代為報錯。
+fn carry_over_worktree(original: &str, fields: &WorkflowPolicyFields) -> WorkflowPolicyFields {
+    let current = WorkflowConfig::from_text(Some(original))
+        .ok()
+        .and_then(|c| c.worktree)
+        .unwrap_or(false);
+    WorkflowPolicyFields { worktree: current, ..fields.clone() }
+}
+
 /// 寫入 `openspec/config.yaml` 的政策欄位（design D5 雙重驗證）：core 純函式
 /// 改寫（寫前解析原文失敗即中止）→ 驗證新文字可解析且目標欄位值正確 →
 /// 寫檔 → 回讀再驗。任一步失敗回指明檔案與階段的單行 Err，磁碟檔案維持原內容
 /// ——絕不留下不可解析的設定檔。
 ///
-/// `fields` 是四欄位的完整目標狀態（非 patch）：呼叫端必須先以
-/// `read_settings_at` 取得現值再改寫，否則留在預設的欄位會被清掉。
+/// `fields` 是設定頁可編輯欄位的完整目標狀態（非 patch）：呼叫端必須先以
+/// `read_settings_at` 取得現值再改寫，否則留在預設的欄位會被清掉。設定頁沒有
+/// 控制項的 worktree 是例外，其值由 `carry_over_worktree` 從原檔回填。
 pub fn write_workflow_fields_at(
     root: &Path,
     fields: &speclink_core::config::WorkflowPolicyFields,
@@ -196,7 +210,7 @@ pub fn write_workflow_fields_at(
     std::fs::write(&path, &new_text).map_err(|e| format!("{file}: write failed: {e}"))?;
     let reread = read_opt(&path)
         .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
-    verify_workflow_text(&reread, fields, &file, "verify after write")
+    verify_workflow_text(&reread, &carry_over_worktree(&original, fields), &file, "verify after write")
 }
 
 /// 寫入 `openspec/config.yaml` 的「專案說明」與「產出規則」（design D4：與政策
@@ -292,6 +306,9 @@ fn workflow_policy_fields(config: &WorkflowConfig) -> WorkflowPolicyFields {
         spec_locale: config.spec_locale.clone(),
         tdd: config.tdd.unwrap_or(false),
         audit: config.audit.unwrap_or(false),
+        // 讀回現值而非留 default：目標狀態是「完整」的，漏帶會讓設定頁的任一次存檔
+        // 靜默刪掉使用者的 worktree 鍵。桌面尚無此欄位的 UI（屬第二刀），這裡只保值。
+        worktree: config.worktree.unwrap_or(false),
     }
 }
 
@@ -312,6 +329,7 @@ fn verify_workflow_content_text(
         && cfg.spec_locale == fields.spec_locale
         && cfg.tdd.unwrap_or(false) == fields.tdd
         && cfg.audit.unwrap_or(false) == fields.audit
+        && cfg.worktree.unwrap_or(false) == fields.worktree
     {
         Ok(())
     } else {
@@ -332,6 +350,7 @@ fn verify_workflow_text(
         && cfg.spec_locale == fields.spec_locale
         && cfg.tdd.unwrap_or(false) == fields.tdd
         && cfg.audit.unwrap_or(false) == fields.audit
+        && cfg.worktree.unwrap_or(false) == fields.worktree
     {
         Ok(())
     } else {
@@ -496,6 +515,20 @@ mod tests {
         assert_eq!(after.spec_locale.as_deref(), Some("auto"));
         assert_eq!(after.locale, before.locale);
         assert_eq!(after.rules, before.rules);
+    }
+
+    #[test]
+    fn text_rewrite_preserves_worktree_which_has_no_settings_page_control() {
+        // 設定頁沒有 worktree 開關，送來的 fields 恆為 false。若原樣當成目標狀態，
+        // 任一次存檔都會靜默刪掉使用者以 CLI 寫入的 worktree: true。
+        let output = rewrite_workflow_fields_text(
+            "schema: spec-driven\nworktree: true\n",
+            &WorkflowPolicyFields { tdd: true, ..Default::default() },
+        )
+        .expect("rewrite");
+        let parsed = WorkflowConfig::from_text(Some(&output)).expect("parse output");
+        assert_eq!(parsed.worktree, Some(true), "worktree must survive: {output}");
+        assert_eq!(parsed.tdd, Some(true));
     }
 
     #[test]

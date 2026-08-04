@@ -331,6 +331,12 @@ fn list_json_field_names_match_fs_mode() {
     let f = fs.run(&["list", "--json"], None);
     assert!(f.status.success());
     assert_same_keys(&stdout_json(&r), &stdout_json(&f), "list --json");
+    // Spec scenario remote list 恆無 worktree 欄位：那是本機主 checkout 的觀察面，
+    // server 端不存在此概念，缺席即維持與 fs 無 worktree 情境的逐欄位一致。
+    let payload = stdout_json(&r);
+    for item in payload["changes"].as_array().expect("changes array") {
+        assert!(item.get("worktree").is_none(), "remote item carries worktree: {item}");
+    }
 }
 
 #[test]

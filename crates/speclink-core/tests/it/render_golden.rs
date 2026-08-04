@@ -674,3 +674,142 @@ records the old fingerprint.\n{}",
         lock_fix_instructions()
     );
 }
+
+// --- worktree skills: generation, composition and the stop points ---
+
+/// Spec「apply-with-worktree 技能的生成與組合」: both tool targets generate the
+/// composed skill, and its body carries the WHOLE apply body verbatim (not a
+/// summary, not a reference).
+#[test]
+fn apply_with_worktree_embeds_the_entire_apply_body() {
+    for (rel, content) in skill_for_both_tools("apply-wt-compose", "apply-with-worktree") {
+        let tool = if rel.starts_with(".claude") { Tool::Claude } else { Tool::Codex };
+        let apply_body = skills::substitute(
+            skills::skill_body("apply").expect("apply body"),
+            tool,
+            "openspec",
+        );
+        assert!(
+            normalize_eol(&content).contains(normalize_eol(apply_body.trim_end()).as_str()),
+            "{rel}: the apply body must appear verbatim, not paraphrased"
+        );
+    }
+}
+
+/// Spec「apply-with-worktree 技能的前置指示」: the policy gate refuses to run and
+/// names the enabling command; the branch and nest conventions are stated, with
+/// reuse over recreation.
+#[test]
+fn apply_with_worktree_states_the_policy_gate_and_the_creation_convention() {
+    for (rel, content) in skill_for_both_tools("apply-wt-pre", "apply-with-worktree") {
+        assert!(
+            content.contains("workflow-config set worktree true"),
+            "{rel}: must name the enabling command"
+        );
+        // The gate reads the EFFECTIVE policy: the SPECLINK_WORKTREE env layer
+        // must be honored, matching the CLI's own resolution.
+        assert!(
+            content.contains("SPECLINK_WORKTREE"),
+            "{rel}: the policy gate must honor the env override layer"
+        );
+        // The change's artifacts must reach HEAD before the worktree is created
+        // — a worktree materialized from a HEAD without them is a dead end.
+        let commit_step = content
+            .find("into HEAD")
+            .unwrap_or_else(|| panic!("{rel}: missing the commit-artifacts-into-HEAD step"));
+        let worktree_add = content
+            .find("git worktree add")
+            .unwrap_or_else(|| panic!("{rel}: missing the worktree add step"));
+        assert!(
+            commit_step < worktree_add,
+            "{rel}: artifacts must be committed before the worktree is created"
+        );
+        assert!(
+            content.contains("本專案未啟用 worktree 流程"),
+            "{rel}: must state the refusal in the user's terms"
+        );
+        assert!(
+            content.contains("speclink/<change-name>"),
+            "{rel}: must state the branch convention"
+        );
+        assert!(
+            content.contains(".worktrees/<change-name>/"),
+            "{rel}: must state the sibling nest convention"
+        );
+        assert!(
+            content.contains("reuse it and continue there"),
+            "{rel}: an existing worktree must be reused, not recreated"
+        );
+    }
+}
+
+/// Spec「apply-with-worktree 技能的收尾指示」: commit inside the worktree, stop
+/// before merging, keep the worktree, and hand off by name.
+#[test]
+fn apply_with_worktree_stops_before_the_merge_and_hands_off() {
+    for (rel, content) in skill_for_both_tools("apply-wt-post", "apply-with-worktree") {
+        assert!(
+            content.contains("Do NOT** merge") && content.contains("Do NOT** run `git worktree remove`"),
+            "{rel}: must forbid both merging and removing the worktree"
+        );
+        assert!(
+            content.contains("worktree-merge"),
+            "{rel}: must name the follow-up skill"
+        );
+    }
+}
+
+/// Spec「worktree-merge 技能的生成」＋「收尾流程指示」: a standalone template whose
+/// preflight, conflict and cleanup stop points are all stated.
+#[test]
+fn worktree_merge_skill_states_preflight_conflict_and_cleanup() {
+    for (rel, content) in skill_for_both_tools("wt-merge", "worktree-merge") {
+        // preflight: both trees clean, and never acting on the user's behalf
+        assert!(
+            content.contains("Main tree not clean") && content.contains("Worktree not fully committed"),
+            "{rel}: both preflight conditions must be stated"
+        );
+        // preflight: the merge target is verified, not assumed — merging while
+        // parked on another speclink/* branch must stop, and the target branch
+        // is announced so a wrong destination is visible before the merge.
+        assert!(
+            content.contains("branch --show-current"),
+            "{rel}: preflight must check which branch the main checkout is on"
+        );
+        assert!(
+            content.contains("Do **NOT** stash on their behalf"),
+            "{rel}: must forbid stashing for the user"
+        );
+        assert!(
+            content.contains("Do **NOT** commit on their behalf"),
+            "{rel}: must forbid committing for the user"
+        );
+        // conflict: abort, report, never edit
+        assert!(
+            content.contains("merge --abort"),
+            "{rel}: a conflict must abort rather than leave a half-merge"
+        );
+        assert!(
+            content.contains("do **NOT** commit a partial merge"),
+            "{rel}: must forbid committing a partial merge"
+        );
+        // cleanup and hand-off
+        assert!(
+            content.contains("worktree remove") && content.contains("branch -d"),
+            "{rel}: a successful merge must remove the worktree and delete the branch"
+        );
+        // Prefix-agnostic: the slash token renders as `/speclink-` for Claude
+        // and `$speclink-` for codex, so match the skill names themselves.
+        assert!(
+            content.contains("speclink-review")
+                && content.contains("speclink-verify")
+                && content.contains("speclink-archive"),
+            "{rel}: must point at the quality stations and archive"
+        );
+        // standalone: it must NOT drag the apply body along
+        assert!(
+            !content.contains("Rationalization Table"),
+            "{rel}: worktree-merge is a standalone template, not a composition"
+        );
+    }
+}

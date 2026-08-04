@@ -204,6 +204,10 @@ pub enum Command {
         sort: String,
         specs: bool,
         changes: bool,
+        /// Local worktree observation facts, keyed by change name. Only the CLI's
+        /// fs main-checkout path ever fills this; every other entry point passes
+        /// an empty map, whose output is byte-identical to the frozen baseline.
+        worktrees: std::collections::BTreeMap<String, crate::listing::ListWorktreeJson>,
     },
     /// `show <item> [--item-type change|spec]`
     Show {
@@ -594,7 +598,9 @@ pub fn execute(
 ) -> Result<(CommandOutcome, Vec<DomainEvent>), CommandError> {
     let ws = ctx.workspace.as_ref();
     let outcome = match cmd {
-        Command::List { sort, specs, changes } => run_list(store, &sort, specs, changes),
+        Command::List { sort, specs, changes, worktrees } => {
+            run_list(store, &sort, specs, changes, &worktrees)
+        }
         Command::Show { item, item_type } => run_show(store, item.as_deref(), item_type.as_deref()),
         Command::Status { change, schema } => {
             run_status(store, ws, ctx.user_config_dir.as_deref(), change.as_deref(), schema.as_deref())
@@ -919,6 +925,7 @@ fn run_list(
     sort: &str,
     specs: bool,
     changes_flag: bool,
+    worktrees: &std::collections::BTreeMap<String, crate::listing::ListWorktreeJson>,
 ) -> Result<CommandOutcome, CommandError> {
     // --specs alone omits the changes section; combined with --changes both appear.
     let changes = if specs && !changes_flag {
@@ -926,7 +933,7 @@ fn run_list(
     } else {
         let mut changes = crate::model::list_changes(store);
         crate::listing::sort_changes(store, &mut changes, sort);
-        Some(crate::listing::changes_json(store, &changes))
+        Some(crate::listing::changes_json_with(store, &changes, worktrees))
     };
     let specs = specs.then(|| crate::listing::specs_json_items(store));
     Ok(CommandOutcome::List(ListOutcome { changes, specs }))
@@ -1497,6 +1504,7 @@ mod tests {
             sort: "name".to_string(),
             specs: false,
             changes: false,
+            worktrees: Default::default(),
         }
     }
 
@@ -2800,7 +2808,7 @@ mod tests {
         // 來自 ExecutionContext，呼叫端與模型無從經 command 參數覆寫。
         let probe = list_cmd();
         match probe {
-            Command::List { sort: _, specs: _, changes: _ } => {}
+            Command::List { sort: _, specs: _, changes: _, worktrees: _ } => {}
             Command::Show { item: _, item_type: _ } => {}
             Command::Status { change: _, schema: _ } => {}
             Command::Instructions { artifact: _, change: _, schema: _ } => {}

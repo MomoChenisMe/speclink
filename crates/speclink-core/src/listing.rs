@@ -5,6 +5,7 @@
 use crate::model::Change;
 use crate::store::Store;
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 /// One change entry of `list --json` (frozen field order).
 #[derive(Debug, Serialize)]
@@ -27,6 +28,22 @@ pub struct ListChangeJson {
     /// consumer's payload shape is untouched.
     #[serde(rename = "metaError", skip_serializing_if = "Option::is_none")]
     pub meta_error: Option<String>,
+    /// The linked worktree this change is being implemented in (local main
+    /// checkout only, worktree policy on). Last in the field order and omitted
+    /// when absent, so every existing consumer's payload stays byte-identical.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<ListWorktreeJson>,
+}
+
+/// The `worktree` object of a `list --json` entry: where the change is being
+/// implemented and on which branch. Both field names are already camelCase.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ListWorktreeJson {
+    /// Absolute path of the worktree directory, rendered by the assembly point
+    /// (the engine never handles a storage path itself).
+    pub path: String,
+    /// Full branch name, e.g. `speclink/add-dark-mode`.
+    pub branch: String,
 }
 
 /// Order changes for listing (frozen ordering contract):
@@ -106,6 +123,18 @@ pub fn task_counts(store: &dyn Store, change: &Change) -> (usize, usize) {
 
 /// The `changes` items of `list --json`, in the given (already sorted) order.
 pub fn changes_json(store: &dyn Store, changes: &[Change]) -> Vec<ListChangeJson> {
+    changes_json_with(store, changes, &BTreeMap::new())
+}
+
+/// `changes_json` plus the local worktree observation surface: entries named in
+/// `worktrees` gain the `worktree` object. Callers without worktree facts use
+/// [`changes_json`] — an empty map is byte-for-byte the frozen output, by
+/// construction rather than by convention.
+pub fn changes_json_with(
+    store: &dyn Store,
+    changes: &[Change],
+    worktrees: &BTreeMap<String, ListWorktreeJson>,
+) -> Vec<ListChangeJson> {
     changes
         .iter()
         .map(|c| {
@@ -123,6 +152,7 @@ pub fn changes_json(store: &dyn Store, changes: &[Change]) -> Vec<ListChangeJson
                 total_tasks: total,
                 restale_from: c.meta.restale_from(),
                 meta_error: c.meta_error.clone(),
+                worktree: worktrees.get(&c.name).cloned(),
             }
         })
         .collect()
@@ -153,8 +183,60 @@ pub fn specs_json_items(store: &dyn Store) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
-    use super::changes_json;
+    use super::{changes_json, changes_json_with, ListWorktreeJson};
     use crate::teststore::TestStore;
+    use std::collections::BTreeMap;
+
+    fn demo_store(tag: &str) -> TestStore {
+        let store = TestStore::with_meta(tag, "schema: spec-driven\ncreated: 2026-07-01\n");
+        store.put_artifact(tag, "proposal.md", "## Why\n\nDemo.\n");
+        store.put_artifact(tag, "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
+        store
+    }
+
+    #[test]
+    fn empty_worktree_facts_serialize_bit_identically_to_the_frozen_assembly() {
+        // D5「加法、缺席即位元級不變」的釘子：沒有 facts 時新變體不得改動任何位元。
+        let store = demo_store("demo");
+        let changes = crate::model::list_changes(&store);
+        assert_eq!(
+            serde_json::to_string(&changes_json_with(&store, &changes, &BTreeMap::new())).unwrap(),
+            serde_json::to_string(&changes_json(&store, &changes)).unwrap(),
+        );
+    }
+
+    #[test]
+    fn worktree_facts_add_a_camel_case_path_and_branch_object() {
+        // Spec Example「計數與欄位形狀」的欄位面。
+        let store = demo_store("add-dark-mode");
+        let changes = crate::model::list_changes(&store);
+        let facts = BTreeMap::from([(
+            "add-dark-mode".to_string(),
+            ListWorktreeJson {
+                path: "/repos/speclink.worktrees/add-dark-mode".to_string(),
+                branch: "speclink/add-dark-mode".to_string(),
+            },
+        )]);
+        let json = serde_json::to_string(&changes_json_with(&store, &changes, &facts)).unwrap();
+        assert!(
+            json.contains(
+                r#""worktree":{"path":"/repos/speclink.worktrees/add-dark-mode","branch":"speclink/add-dark-mode"}"#
+            ),
+            "got: {json}"
+        );
+    }
+
+    #[test]
+    fn an_unmapped_change_omits_the_worktree_key_entirely() {
+        let store = demo_store("demo");
+        let changes = crate::model::list_changes(&store);
+        let facts = BTreeMap::from([(
+            "other".to_string(),
+            ListWorktreeJson { path: "/x".into(), branch: "speclink/other".into() },
+        )]);
+        let json = serde_json::to_string(&changes_json_with(&store, &changes, &facts)).unwrap();
+        assert!(!json.contains("worktree"), "absent means not serialized: {json}");
+    }
 
     #[test]
     fn list_json_payload_shape_is_unchanged_by_the_lifecycle_fields() {

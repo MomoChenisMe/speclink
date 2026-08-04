@@ -282,6 +282,7 @@ fn verb_list(backend: &Backend, args: &[String]) -> DispatchResult {
             sort: a.options.get("sort").copied().unwrap_or("modified").to_string(),
             specs: a.flags.contains("specs"),
             changes: a.flags.contains("changes"),
+            worktrees: Default::default(),
         },
     )?;
     let core::command::CommandOutcome::List(list) = outcome else {

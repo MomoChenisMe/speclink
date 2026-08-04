@@ -353,6 +353,7 @@ fn placeholder_policy() -> EffectiveWorkflowPolicy {
             spec_locale: None,
             tdd: false,
             audit: false,
+            worktree: false,
         },
         "",
     )

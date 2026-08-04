@@ -80,6 +80,7 @@ pub async fn list_changes(
             sort: "name".to_string(),
             specs: false,
             changes: false,
+            worktrees: Default::default(),
         },
     )
     .await?;
@@ -489,6 +490,7 @@ pub async fn list_specs(
             sort: "name".to_string(),
             specs: true,
             changes: false,
+            worktrees: Default::default(),
         },
     )
     .await?;

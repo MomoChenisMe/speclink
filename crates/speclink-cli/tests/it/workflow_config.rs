@@ -70,6 +70,7 @@ impl TempProject {
             "SPECLINK_SPEC_LOCALE",
             "SPECLINK_TDD",
             "SPECLINK_AUDIT",
+            "SPECLINK_WORKTREE",
             "SPECLINK_STORE_URL",
         ] {
             cmd.env_remove(key);
@@ -148,6 +149,11 @@ fn show_prints_canonical_policy_context_and_rules() {
         audit_line.contains("unset") && audit_line.contains("off"),
         "audit shown as unset with its default: {text}"
     );
+    let worktree_line = text.lines().find(|l| l.contains("worktree")).unwrap_or_default();
+    assert!(
+        worktree_line.contains("unset") && worktree_line.contains("off"),
+        "worktree shown as unset with its default: {text}"
+    );
     let context_line = text.lines().find(|l| l.contains("context")).unwrap_or_default();
     assert!(context_line.contains('2'), "context line count shown: {text}");
     let rules_line = text.lines().find(|l| l.contains("rules")).unwrap_or_default();
@@ -169,6 +175,7 @@ fn show_json_payload_is_camel_case_with_null_for_unset() {
     assert!(payload["specLocale"].is_null(), "unset specLocale is null: {payload}");
     assert_eq!(payload["tdd"], true);
     assert_eq!(payload["audit"], false, "unset tdd/audit read as false");
+    assert_eq!(payload["worktree"], false, "unset worktree reads as false");
     assert!(
         payload["context"].as_str().unwrap().contains("Project context line one."),
         "context text carried: {payload}"
@@ -232,7 +239,7 @@ fn set_rejects_an_unknown_key_without_touching_the_file() {
     let out = p.run(&["workflow-config", "set", "theme", "dark"]);
     assert!(!out.status.success(), "unknown key must exit non-zero");
     let err = stderr_of(&out);
-    for key in ["locale", "spec_locale", "tdd", "audit"] {
+    for key in ["locale", "spec_locale", "tdd", "audit", "worktree"] {
         assert!(err.contains(key), "stderr lists the accepted keys ({key}): {err}");
     }
     assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
@@ -262,6 +269,51 @@ fn set_false_removes_the_key() {
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     // 手術改寫：僅 audit 鍵行被移除，其餘行逐位元保留。
     assert_eq!(p.config_text(), "schema: spec-driven\n");
+}
+
+#[test]
+fn set_worktree_true_lands_in_the_file_and_in_show() {
+    // Spec scenario worktree 欄位寫入與呈現.
+    let p = TempProject::new("set-worktree", WF_YAML);
+    let out = p.run(&["workflow-config", "set", "worktree", "true"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(
+        p.config_text().contains("worktree: true"),
+        "config.yaml carries the key: {}",
+        p.config_text()
+    );
+    let payload = json_of(&p.run(&["workflow-config", "show", "--json"]));
+    assert_eq!(payload["worktree"], true, "show reflects the write: {payload}");
+    let text = stdout_of(&p.run(&["workflow-config", "show"]));
+    let line = text.lines().find(|l| l.contains("worktree")).unwrap_or_default();
+    assert!(line.contains("on"), "human output shows worktree on: {text}");
+}
+
+#[test]
+fn set_worktree_rejects_a_non_boolean_value() {
+    // Spec scenario worktree 非法值報錯.
+    let p = TempProject::new("set-worktree-bad", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run(&["workflow-config", "set", "worktree", "yes"]);
+    assert!(!out.status.success(), "non-boolean value must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("worktree"), "stderr names the key: {err}");
+    assert!(
+        err.contains("true") && err.contains("false"),
+        "stderr states the accepted values: {err}"
+    );
+    assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
+}
+
+#[test]
+fn set_another_key_preserves_an_existing_worktree_value() {
+    // 完整目標狀態的回填缺口：編輯任一政策鍵都不得吃掉 worktree。
+    let p = TempProject::new("set-keeps-worktree", "schema: spec-driven\nworktree: true\n");
+    let out = p.run(&["workflow-config", "set", "audit", "true"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let after = p.config_text();
+    assert!(after.contains("worktree: true"), "worktree survives: {after}");
+    assert!(after.contains("audit: true"), "the edit landed: {after}");
 }
 
 #[test]
@@ -600,6 +652,7 @@ impl RemoteProject {
             "SPECLINK_SPEC_LOCALE",
             "SPECLINK_TDD",
             "SPECLINK_AUDIT",
+            "SPECLINK_WORKTREE",
             "SPECLINK_STORE_URL",
         ] {
             cmd.env_remove(key);

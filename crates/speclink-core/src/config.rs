@@ -326,6 +326,11 @@ pub struct WorkflowConfig {
     pub tdd: Option<bool>,
     #[serde(default)]
     pub audit: Option<bool>,
+    /// Parallel-apply worktree flow. Unlike the other toggles this key has no
+    /// `.speclink.yaml` compat layer — it is new, so there are no historical files
+    /// to be compatible with.
+    #[serde(default)]
+    pub worktree: Option<bool>,
     #[serde(default)]
     pub rules: BTreeMap<String, Vec<String>>,
 }
@@ -338,6 +343,7 @@ pub struct EnvOverrides {
     pub spec_locale: Option<String>,
     pub tdd: Option<bool>,
     pub audit: Option<bool>,
+    pub worktree: Option<bool>,
 }
 
 impl EnvOverrides {
@@ -350,6 +356,7 @@ impl EnvOverrides {
             spec_locale: get("SPECLINK_SPEC_LOCALE").and_then(non_empty),
             tdd: get("SPECLINK_TDD").as_deref().and_then(parse_env_bool),
             audit: get("SPECLINK_AUDIT").as_deref().and_then(parse_env_bool),
+            worktree: get("SPECLINK_WORKTREE").as_deref().and_then(parse_env_bool),
         }
     }
 }
@@ -387,6 +394,7 @@ pub struct ResolvedPolicy {
     pub spec_locale: Option<String>,
     pub tdd: bool,
     pub audit: bool,
+    pub worktree: bool,
 }
 
 /// Four-layer policy resolution — the single entry point for effective policy values.
@@ -396,6 +404,8 @@ pub fn resolve_policy(env: &EnvOverrides, app: &AppConfig, wf: &WorkflowConfig) 
         spec_locale: spec_locale_code(env, app, wf),
         tdd: env.tdd.or(app.tdd).or(wf.tdd).unwrap_or(false),
         audit: env.audit.or(app.audit).or(wf.audit).unwrap_or(false),
+        // Three layers, not four: `.speclink.yaml` is skipped on purpose (no compat layer).
+        worktree: env.worktree.or(wf.worktree).unwrap_or(false),
     }
 }
 
@@ -479,7 +489,7 @@ impl WorkflowConfig {
     }
 }
 
-/// Target state of the four workflow-policy fields for a settings-page write.
+/// Target state of the workflow-policy fields for a settings-page write.
 /// `None` / `false` means "back to default": the key is REMOVED from the document
 /// (preserving unset-means-default semantics) instead of writing an explicit value.
 ///
@@ -491,6 +501,7 @@ pub struct WorkflowPolicyFields {
     pub spec_locale: Option<String>,
     pub tdd: bool,
     pub audit: bool,
+    pub worktree: bool,
 }
 
 /// Context edit for a settings-page write: leave the key untouched, set it to a
@@ -568,6 +579,7 @@ pub fn update_workflow_config_text(
     set_or_remove(&mut target, "spec_locale", fields.spec_locale.as_deref().map(Into::into));
     set_or_remove(&mut target, "tdd", fields.tdd.then(|| true.into()));
     set_or_remove(&mut target, "audit", fields.audit.then(|| true.into()));
+    set_or_remove(&mut target, "worktree", fields.worktree.then(|| true.into()));
     match context {
         ContextEdit::Keep => {}
         ContextEdit::Set(text) if !text.trim().is_empty() => {
@@ -649,12 +661,13 @@ fn surgical_rewrite(
     let block_of = |key: &str| blocks.iter().find(|b| b.key == key);
 
     let mut ops: Vec<LineOp> = vec![LineOp::Keep; lines.len()];
-    // 缺鍵按此陣列順序收集＝範本正典序（locale、spec_locale、tdd、audit）。
+    // 缺鍵按此陣列順序收集＝範本正典序（locale、spec_locale、tdd、audit、worktree）。
     let desired = [
         ("locale", fields.locale.clone()),
         ("spec_locale", fields.spec_locale.clone()),
         ("tdd", fields.tdd.then(|| "true".to_string())),
         ("audit", fields.audit.then(|| "true".to_string())),
+        ("worktree", fields.worktree.then(|| "true".to_string())),
     ];
     let mut missing: Vec<(&str, String)> = Vec::new();
     for (key, value) in desired {
@@ -1066,6 +1079,64 @@ mod tests {
         assert!(!p.audit);
     }
 
+    // --- worktree: env > config.yaml > default (NO `.speclink.yaml` compat layer) ---
+
+    #[test]
+    fn worktree_canonical_value_applies_without_upper_layers() {
+        // Spec scenario worktree 欄位寫入與呈現 (read side): config.yaml alone turns it on.
+        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("worktree: true"));
+        assert!(p.worktree);
+    }
+
+    #[test]
+    fn worktree_env_var_wins_over_canonical() {
+        // Spec scenario SPECLINK_WORKTREE 覆寫檔案值.
+        let p = resolve_policy(
+            &env_of(&[("SPECLINK_WORKTREE", "true")]),
+            &app("{}"),
+            &wf("worktree: false"),
+        );
+        assert!(p.worktree);
+        let p = resolve_policy(
+            &env_of(&[("SPECLINK_WORKTREE", "false")]),
+            &app("{}"),
+            &wf("worktree: true"),
+        );
+        assert!(!p.worktree);
+    }
+
+    #[test]
+    fn worktree_invalid_env_var_falls_to_next_layer() {
+        let p = resolve_policy(
+            &env_of(&[("SPECLINK_WORKTREE", "yes")]),
+            &app("{}"),
+            &wf("worktree: true"),
+        );
+        assert!(p.worktree);
+    }
+
+    #[test]
+    fn worktree_app_key_is_inert() {
+        // Spec scenario .speclink.yaml 的 worktree 鍵不生效: the new field has no
+        // historical files to be compatible with, so it never joins the compat layer.
+        let p = resolve_policy(&env_of(NO_ENV), &app("worktree: true"), &wf("{}"));
+        assert!(!p.worktree, "the .speclink.yaml worktree key must not take effect");
+        // ...and it must not raise a deprecation warning either.
+        assert!(
+            !app("worktree: true").deprecated_policy_keys().contains(&"worktree"),
+            "worktree is not a deprecated key — no warning"
+        );
+        // An app-level key still cannot shadow a canonical `false`.
+        let p = resolve_policy(&env_of(NO_ENV), &app("worktree: true"), &wf("worktree: false"));
+        assert!(!p.worktree);
+    }
+
+    #[test]
+    fn worktree_defaults_to_false() {
+        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("{}"));
+        assert!(!p.worktree);
+    }
+
     // --- boolean env vars: only true/false are accepted; anything else is unset ---
 
     #[test]
@@ -1137,7 +1208,14 @@ mod tests {
         let w = WorkflowConfig::from_text(Some("schema: spec-driven\nlocale: tw")).expect("parses");
         assert_eq!(w.tdd, None);
         assert_eq!(w.audit, None);
+        assert_eq!(w.worktree, None);
         assert_eq!(w.locale.as_deref(), Some("tw"));
+    }
+
+    #[test]
+    fn workflow_config_parses_worktree() {
+        assert_eq!(wf("worktree: true").worktree, Some(true));
+        assert_eq!(wf("worktree: false").worktree, Some(false));
     }
 
     #[test]
@@ -1445,6 +1523,7 @@ mod tests {
             spec_locale: Some("auto".into()),
             tdd: true,
             audit: true,
+            worktree: true,
         };
         let out = update_workflow_config_text(WF_DOC, &fields, &ContextEdit::Keep, None).expect("rewrite ok");
         let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
@@ -1452,6 +1531,7 @@ mod tests {
         assert_eq!(w.spec_locale.as_deref(), Some("auto"));
         assert_eq!(w.tdd, Some(true));
         assert_eq!(w.audit, Some(true));
+        assert_eq!(w.worktree, Some(true));
     }
 
     #[test]
@@ -1483,6 +1563,25 @@ mod tests {
         for key in ["locale", "spec_locale", "tdd", "audit"] {
             assert!(!m.contains_key(key), "key '{key}' must be removed, got: {out}");
         }
+        assert!(m.contains_key("schema"));
+    }
+
+    #[test]
+    fn workflow_update_writes_and_removes_worktree() {
+        // Spec scenario worktree 欄位寫入與呈現: `set worktree true` lands `worktree: true`.
+        let fields = WorkflowPolicyFields { worktree: true, ..Default::default() };
+        let out = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None)
+            .expect("rewrite ok");
+        assert_eq!(
+            WorkflowConfig::from_text(Some(&out)).expect("output parses").worktree,
+            Some(true),
+            "got: {out}"
+        );
+        // Back to default removes the key, like the other toggles.
+        let out = update_workflow_config_text(&out, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None)
+            .expect("rewrite ok");
+        let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+        assert!(!m.contains_key("worktree"), "worktree must be removed, got: {out}");
         assert!(m.contains_key("schema"));
     }
 
@@ -1624,6 +1723,7 @@ mod tests {
             spec_locale: w.spec_locale.clone(),
             tdd: w.tdd.unwrap_or(false),
             audit: w.audit.unwrap_or(false),
+            worktree: w.worktree.unwrap_or(false),
         }
     }
 
@@ -1821,12 +1921,13 @@ mod tests {
 
     #[test]
     fn surgical_multiple_missing_keys_insert_one_canonical_block() {
-        // 多缺鍵一次寫入：正典序（locale、spec_locale、tdd、audit）成連續區塊，不分散。
+        // 多缺鍵一次寫入：正典序（locale、spec_locale、tdd、audit、worktree）成連續區塊，不分散。
         let fields = WorkflowPolicyFields {
             locale: Some("tw".into()),
             spec_locale: Some("auto".into()),
             tdd: true,
             audit: true,
+            worktree: true,
         };
         let out = update_workflow_config_text(
             "schema: spec-driven\n\ncontext: 說明\n",
@@ -1837,7 +1938,7 @@ mod tests {
         .expect("rewrite ok");
         assert_eq!(
             out,
-            "schema: spec-driven\n\nlocale: tw\nspec_locale: auto\ntdd: true\naudit: true\n\ncontext: 說明\n"
+            "schema: spec-driven\n\nlocale: tw\nspec_locale: auto\ntdd: true\naudit: true\nworktree: true\n\ncontext: 說明\n"
         );
     }
 

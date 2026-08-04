@@ -1,0 +1,134 @@
+---
+name: speclink-worktree-merge
+description: "Merge a finished Speclink worktree branch back into the main branch, then clean up"
+license: MIT
+compatibility: Requires speclink CLI.
+metadata:
+  author: speclink
+  version: "v1.9.0"
+  generatedBy: "Speclink"
+---
+
+Merge a finished Speclink worktree branch back into the main branch, then clean up.
+
+This is the wrap-up half of `$speclink-apply-with-worktree`. That skill stops right after committing inside the worktree; this one takes it from there. It is **human-triggered**: merging is a decision, and a conflict is the user's call.
+
+**Input**: Optionally specify a change name (e.g., `$speclink-worktree-merge add-auth`). If omitted, run `git worktree list --porcelain` and offer the `speclink/*` branches found. If more than one is a candidate you MUST ask which one — never guess.
+
+**Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available, report it and STOP. Every step below runs in the **main checkout**, not in the worktree.
+
+**Steps**
+
+1. **Identify the worktree**
+
+   ```bash
+   git worktree list --porcelain
+   ```
+
+   Find the entry whose branch is `speclink/<change-name>`. If there is none, STOP and tell the user no worktree exists for that change — nothing to merge.
+
+   Announce: "Merging worktree for change: <name>" plus the worktree path and branch.
+
+2. **Preflight — all three conditions must hold**
+
+   Check which branch the main checkout is on:
+
+   ```bash
+   git -C <main-checkout> branch --show-current
+   ```
+
+   - **A `speclink/*` branch, or empty output (detached HEAD)** — STOP. The main checkout is parked somewhere a merge must never land; tell the user to switch it back to the main branch first. Do **NOT** switch branches on their behalf.
+   - **Anything else** — that branch is the merge target. Announce it (it appears again in step 3 and in the success output), so a wrong destination is visible BEFORE the merge, not after.
+
+   Check the main checkout's working tree:
+
+   ```bash
+   git -C <main-checkout> status --porcelain
+   ```
+
+   Check the worktree's:
+
+   ```bash
+   git -C <worktree-path> status --porcelain
+   ```
+
+   - **Main tree not clean** (any uncommitted change) — STOP. List the dirty files and tell the user to commit or stash them first. Do **NOT** stash on their behalf. Do **NOT** commit their unrelated work for them.
+   - **Worktree not fully committed** (any uncommitted change) — STOP. List the dirty files and tell the user the change's work must be committed inside the worktree first (`$speclink-apply-with-worktree` does this at its wrap-up). Do **NOT** commit on their behalf.
+
+   Only when all three hold, continue.
+
+3. **Merge into the main branch**
+
+   In the main checkout, on the target branch verified in step 2:
+
+   ```bash
+   git -C <main-checkout> merge "speclink/<change-name>"
+   ```
+
+4. **Conflict — stop immediately**
+
+   If the merge reports conflicts:
+
+   - Abort so nothing half-merged is left behind:
+
+     ```bash
+     git -C <main-checkout> merge --abort
+     ```
+
+   - Report the conflicting file list to the user, verbatim.
+   - Do **NOT** edit conflict markers, do **NOT** pick a side, do **NOT** commit a partial merge.
+   - STOP and wait for the user to decide how to resolve it.
+
+   The main checkout must end up exactly as it was before step 3.
+
+5. **Clean up after a successful merge**
+
+   ```bash
+   git -C <main-checkout> worktree remove "<worktree-path>"
+   git -C <main-checkout> branch -d "speclink/<change-name>"
+   ```
+
+   If `worktree remove` refuses because the worktree is dirty, do NOT force it — report what is uncommitted there and STOP. If `branch -d` refuses, report it and STOP: an unmerged commit means step 3 did not carry everything.
+
+   After removal the main checkout's `speclink list` no longer shows the `[worktree]` marker for this change, and its task counts read from the main copy again.
+
+6. **Confirm and hand off**
+
+   Tell the user the wrap-up is done: the branch is merged, the worktree is removed, and the branch is deleted. Then point at what comes next for this change:
+
+   > 這個 change 已合併回主分支。接下來可以跑品質站（`$speclink-review` 看工藝品質、`$speclink-verify` 看規格符合度），或直接 `$speclink-archive` 封存。
+
+**Output On Success**
+
+```
+## Worktree merged
+
+**Change:** <change-name>
+**Branch:** speclink/<change-name> → <main-branch> ✓
+**Worktree:** <path> (removed)
+**Branch deleted:** ✓
+
+接下來：品質站（$speclink-review、$speclink-verify）或 $speclink-archive
+```
+
+**Output On Stop**
+
+```
+## Merge stopped
+
+**Change:** <change-name>
+**Reason:** <preflight failure or conflict>
+
+<dirty file list, or conflicting file list>
+
+**What you need to do:**
+<the specific action — commit/stash in the main tree, commit in the worktree, or resolve the conflict>
+```
+
+**Guardrails**
+
+- Never stash or commit on the user's behalf — in the main checkout or in the worktree
+- Never resolve merge conflicts yourself; abort the merge and report
+- Never leave a half-finished merge state behind
+- Never force-remove a worktree that still has uncommitted work
+- Never merge a change whose worktree you did not verify is fully committed

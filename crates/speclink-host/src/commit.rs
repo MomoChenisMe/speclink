@@ -157,6 +157,7 @@ mod tests {
                     spec_locale: None,
                     tdd: false,
                     audit: false,
+                    worktree: false,
                 },
                 "",
             ),
