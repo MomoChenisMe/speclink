@@ -299,7 +299,7 @@ pub fn complete(
     let mut record = TouchedRecord::load(ws, change);
     record.change = change.to_string();
     let seen = record.all_files();
-    let files: Vec<String> = git_changed_files(&ws.root)
+    let files: Vec<String> = git_changed_files(ws)
         .into_iter()
         .filter(|f| !seen.contains(f))
         .collect();
@@ -316,9 +316,6 @@ pub fn complete(
             repo: attr.repo.map(str::to_string),
             head_commit: head_commit(&ws.root),
             touched_files: files,
-            // tasks.md was written above, so the current basis IS this
-            // completion's post-write basis.
-            basis_digests: current_basis_digests(store, change),
             recorded_at: chrono::Utc::now()
                 .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         });
@@ -512,8 +509,11 @@ pub struct BasisDigests {
     pub policy: String,
 }
 
-/// Per-task completion evidence (v2): who, where, against which basis
-/// (spec verify-evidence). Unattributable fields are absent, not defaulted.
+/// Per-task completion evidence (v2): who, when, on which commit, over which
+/// files (spec verify-evidence). Every field is a historical fact — nothing
+/// here is judged, so nothing here can go stale.
+/// Unattributable fields are absent, not defaulted; unknown fields on existing
+/// records (a `basisDigests` from an earlier format) are ignored on read.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EvidenceEntry {
@@ -527,7 +527,6 @@ pub struct EvidenceEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_commit: Option<String>,
     pub touched_files: Vec<String>,
-    pub basis_digests: BasisDigests,
     /// UTC RFC3339 timestamp of the recording.
     pub recorded_at: String,
 }
@@ -549,9 +548,14 @@ pub struct TouchedRecord {
 }
 
 impl TouchedRecord {
+    /// Read the change's record: the change directory's `.evidence.json` is
+    /// the home, and only when it is absent does the pre-move
+    /// `.speclink/touched/<change>.json` get consulted (read-only bridge for
+    /// records written before the move). Absent everywhere = empty record.
     pub fn load(ws: &Workspace, change: &str) -> TouchedRecord {
-        let p = ws.touched_dir().join(format!("{change}.json"));
-        match util::read_opt(&p) {
+        let text = util::read_opt(&ws.change_evidence_file(change))
+            .or_else(|| util::read_opt(&ws.legacy_touched_file(change)));
+        match text {
             Some(s) => serde_json::from_str(&s).unwrap_or(TouchedRecord {
                 change: change.to_string(),
                 ..Default::default()
@@ -563,13 +567,19 @@ impl TouchedRecord {
         }
     }
 
+    /// Writes always land in the change directory. The legacy bridge file is
+    /// removed once the new home is written: its content was already carried
+    /// forward by the fallback read, and a leftover would be read back as
+    /// evidence for a future change reusing this name.
     pub fn save(&self, ws: &Workspace) -> std::io::Result<()> {
-        let p = ws.touched_dir().join(format!("{}.json", self.change));
+        let p = ws.change_evidence_file(&self.change);
         // Writes are always v2, whatever version was read.
         let mut rec = self.clone();
         rec.version = Some(2);
         let json = serde_json::to_string_pretty(&rec).unwrap_or_default();
-        util::write_file(&p, &json)
+        util::write_file(&p, &json)?;
+        let _ = util::remove_file(&ws.legacy_touched_file(&self.change));
+        Ok(())
     }
 
     /// Union of all files across v1 and v2 entries (for @trace), in
@@ -599,8 +609,9 @@ fn sha256_digest(bytes: &[u8]) -> String {
 }
 
 /// The three basis digests of a change's current state (spec / tasks /
-/// policy) — the single computation shared by evidence recording (task done)
-/// and the Host's VerifyBundle, so recorded and judged bases always agree.
+/// policy). Computed on demand by drift, which compares a bundle's expected
+/// basis against the change as it stands right now — never stored, so there is
+/// nothing to fall out of date.
 pub fn current_basis_digests(store: &dyn Store, change: &str) -> BasisDigests {
     BasisDigests {
         spec: spec_basis_digest(store, change),
@@ -682,17 +693,21 @@ fn unquote_porcelain_path(raw: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Files changed in the git work tree, relative to root, forward-slashed.
+/// Files changed in the git work tree, relative to the workspace root,
+/// forward-slashed.
 ///
-/// Untracked directories are expanded to individual files (`-uall`). The spec directory and
-/// speclink work directory are excluded, since @trace records *code* changes, not spec artifacts.
-pub fn git_changed_files(root: &Path) -> Vec<String> {
+/// Untracked directories are expanded to individual files (`-uall`). The workspace's spec
+/// directory (whatever it is named) and the speclink work directory are excluded, since
+/// evidence records *code* changes, not spec artifacts.
+pub fn git_changed_files(ws: &Workspace) -> Vec<String> {
+    let root = &ws.root;
     // Only when the project root is itself the git root: a project
     // nested inside an ancestor repo records nothing, instead of walking up and
     // capturing dirty files from outside the project.
     if !root.join(".git").exists() {
         return Vec::new();
     }
+    let spec_prefix = format!("{}/", ws.spec_dir_name);
     // NB: use the RAW (untrimmed) output — porcelain's first column is a significant leading space
     // for work-tree-modified files (" M path"); trimming it shifts the path by one character.
     // `core.quotepath=false` keeps non-ASCII paths raw, matching every other
@@ -722,7 +737,7 @@ pub fn git_changed_files(root: &Path) -> Vec<String> {
         }
         // Exclude spec artifacts, work files, and tool-scaffolding dirs from the code trace
         // (CLAUDE.md / config are recorded, .claude/.agents/.cursor/.gemini and .gitignore are not).
-        if path.starts_with("openspec/")
+        if path.starts_with(&spec_prefix)
             || path.starts_with(".speclink/")
             || path.starts_with(".git/")
             || path.starts_with(".claude/")
@@ -744,6 +759,7 @@ mod tests {
     use crate::store::Store;
     use crate::teststore::TestStore;
     use crate::workspace::Workspace;
+    use std::path::PathBuf;
 
     const META_UNSTARTED: &str = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: Base Line <base@example.com>\ncreated_with: claude\n";
     const TASKS_TWO_OPEN: &str = "## 1. Group\n\n- [ ] 1.1 first task\n- [ ] 1.2 second task\n";
@@ -786,8 +802,33 @@ mod tests {
             t
         }
 
-        fn touched_json(&self, change: &str) -> Option<String> {
+        /// The evidence record's home: the change directory's `.evidence.json`,
+        /// spelled out literally so the test pins the on-disk location rather
+        /// than trusting the path helper it verifies.
+        fn evidence_json(&self, change: &str) -> Option<String> {
+            util::read_opt(
+                &self
+                    .ws
+                    .root
+                    .join("openspec")
+                    .join("changes")
+                    .join(change)
+                    .join(".evidence.json"),
+            )
+        }
+
+        /// The legacy `.speclink/touched/<change>.json` location — read-only
+        /// compatibility, never a write target.
+        fn legacy_json(&self, change: &str) -> Option<String> {
             util::read_opt(&self.ws.touched_dir().join(format!("{change}.json")))
+        }
+
+        /// Seed a record at the legacy location (the pre-move on-disk shape).
+        fn seed_legacy(&self, change: &str, json: &str) -> PathBuf {
+            let p = self.ws.touched_dir().join(format!("{change}.json"));
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, json).unwrap();
+            p
         }
     }
 
@@ -816,7 +857,7 @@ mod tests {
         assert!(tasks.contains("- [x] 1.1 first task"), "task 1 must be checked: {tasks}");
         assert!(tasks.contains("- [ ] 1.2 second task"), "task 2 must stay open: {tasks}");
         // Touched record gains this task's entry with the unclaimed dirty file.
-        let json = t.touched_json("demo").expect("touched record written");
+        let json = t.evidence_json("demo").expect("touched record written");
         let rec: TouchedRecord = serde_json::from_str(&json).unwrap();
         assert_eq!(rec.change, "demo");
         assert_eq!(rec.touched.len(), 1);
@@ -842,7 +883,7 @@ mod tests {
         let store = store_with(META_UNSTARTED, TASKS_TWO_OPEN);
         let out = complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution::default()).unwrap();
         assert!(!out.already);
-        assert_eq!(t.touched_json("demo"), None, "no unclaimed dirty files must append nothing");
+        assert_eq!(t.evidence_json("demo"), None, "no unclaimed dirty files must append nothing");
     }
 
     #[test]
@@ -869,7 +910,7 @@ mod tests {
         assert_eq!(store.read_artifact("demo", "tasks.md").unwrap(), tasks_md);
         assert_eq!(*store.artifact_writes.borrow(), 0, "already-done must not rewrite tasks.md");
         assert_eq!(*store.meta_writes.borrow(), 0, "already-done must not stamp meta");
-        assert_eq!(t.touched_json("demo"), None, "already-done must not record touched files");
+        assert_eq!(t.evidence_json("demo"), None, "already-done must not record touched files");
     }
 
     #[test]
@@ -1140,7 +1181,7 @@ mod tests {
         // resolver's — silently opening the dirty-at-start fail-closed guard.
         let t = TempWs::with_commit_and_dirty("quotepath", "src/app.rs");
         std::fs::write(t.ws.root.join("規格.md"), "內容\n").unwrap();
-        let files = git_changed_files(&t.ws.root);
+        let files = git_changed_files(&t.ws);
         assert!(
             files.contains(&"規格.md".to_string()),
             "non-ASCII path must come back decoded: {files:?}"
@@ -1152,7 +1193,26 @@ mod tests {
     }
 
     #[test]
-    fn complete_writes_v2_evidence_entry_with_attribution_and_basis() {
+    fn the_spec_dir_exclusion_follows_the_workspace_name() {
+        // 排除的是「這個 workspace 的 spec 目錄」，不是字面上的 openspec/——
+        // 自訂目錄名的專案裡，`.evidence.json` 落在 `<custom>/changes/<name>/` 之下，
+        // 寫死字串會讓第二次 task done 把證據檔自己記成碰過的程式檔。
+        let mut t = TempWs::with_dirty_file("customdir", "src/app.rs");
+        t.ws.spec_dir_name = "customspec".to_string();
+        let ev = t.ws.root.join("customspec/changes/demo/.evidence.json");
+        std::fs::create_dir_all(ev.parent().unwrap()).unwrap();
+        std::fs::write(&ev, "{}\n").unwrap();
+
+        let files = git_changed_files(&t.ws);
+        assert_eq!(
+            files,
+            vec!["src/app.rs".to_string()],
+            "spec artifacts under the workspace's own dir name stay out: {files:?}"
+        );
+    }
+
+    #[test]
+    fn complete_writes_v2_evidence_entry_with_attribution_and_no_basis() {
         let t = TempWs::with_commit_and_dirty("evidence", "src/app.rs");
         let store = store_with(
             META_UNSTARTED,
@@ -1166,7 +1226,7 @@ mod tests {
         };
         complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &attr).unwrap();
 
-        let json = t.touched_json("demo").expect("evidence record written");
+        let json = t.evidence_json("demo").expect("evidence record written");
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["version"], 2, "writes are always v2: {json}");
         assert_eq!(v["change"], "demo");
@@ -1179,10 +1239,7 @@ mod tests {
         let files: Vec<&str> =
             e["touchedFiles"].as_array().unwrap().iter().filter_map(|f| f.as_str()).collect();
         assert!(files.contains(&"src/app.rs"), "dirty file recorded: {files:?}");
-        for k in ["spec", "tasks", "policy"] {
-            let d = e["basisDigests"][k].as_str().unwrap_or_default();
-            assert!(d.starts_with("sha256:"), "basis digest {k} must be sha256-form, got '{d}'");
-        }
+        assert!(e.get("basisDigests").is_none(), "the entry records no verification basis: {json}");
         let at = e["recordedAt"].as_str().expect("recordedAt present");
         assert!(at.ends_with('Z'), "recordedAt is UTC: {at}");
         chrono::DateTime::parse_from_rfc3339(at).expect("recordedAt parses as RFC3339");
@@ -1190,14 +1247,12 @@ mod tests {
 
     #[test]
     fn v1_record_reads_with_unchanged_file_list_semantics() {
+        // spec Scenario「舊格式記錄可讀」：change 目錄缺席時回退舊路徑，v1 語意不變。
         let t = TempWs::new("v1compat");
-        let p = t.ws.touched_dir().join("demo.json");
-        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(
-            &p,
+        t.seed_legacy(
+            "demo",
             "{\n  \"change\": \"demo\",\n  \"touched\": [\n    {\n      \"task_id\": \"1\",\n      \"task_desc\": \"1.1 legacy\",\n      \"files\": [\"src/a.rs\", \"src/b.rs\"]\n    }\n  ]\n}",
-        )
-        .unwrap();
+        );
         let rec = TouchedRecord::load(&t.ws, "demo");
         assert_eq!(
             rec.all_files(),
@@ -1207,12 +1262,108 @@ mod tests {
     }
 
     #[test]
+    fn a_record_carrying_basis_digests_still_reads_and_new_writes_omit_them() {
+        // spec Scenario「舊格式記錄可讀」：前一版寫入的 basisDigests 是未知欄位——
+        // 讀取端忽略它、all_files 不變；本次寫入的 entry 不再帶該欄位。
+        let t = TempWs::with_commit_and_dirty("basis-compat", "src/app.rs");
+        util::write_file(
+            &t.ws.change_evidence_file("demo"),
+            r#"{"version":2,"change":"demo","entries":[{"taskId":"tsk_OLD","taskDesc":"1.1 old","touchedFiles":["src/old.rs"],"basisDigests":{"spec":"sha256:0","tasks":"sha256:0","policy":"sha256:0"},"recordedAt":"2026-07-13T00:00:00Z"}]}"#,
+        )
+        .unwrap();
+
+        let rec = TouchedRecord::load(&t.ws, "demo");
+        assert_eq!(rec.entries.len(), 1, "the legacy-shaped entry survives the read");
+        assert_eq!(rec.entries[0].task_id, "tsk_OLD");
+        assert_eq!(rec.all_files(), vec!["src/old.rs".to_string()], "all_files unchanged");
+
+        let store = store_with(META_UNSTARTED, "- [ ] 1.1 new\n");
+        complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution::default())
+            .unwrap();
+        let json = t.evidence_json("demo").expect("record rewritten");
+        assert!(
+            !json.contains("basisDigests"),
+            "writes no longer record a verification basis: {json}"
+        );
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["entries"].as_array().unwrap().len(), 2, "the old entry is carried forward");
+    }
+
+    #[test]
+    fn v2_record_at_the_legacy_path_reads_back_through_the_fallback() {
+        // spec Scenario「舊格式記錄可讀」：v1 與 v2 皆可自舊路徑讀回。
+        let t = TempWs::new("v2compat");
+        t.seed_legacy(
+            "demo",
+            r#"{"version":2,"change":"demo","entries":[{"taskId":"tsk_LEGACY","taskDesc":"1.1 legacy","touchedFiles":["src/legacy.rs"],"basisDigests":{"spec":"sha256:aa","tasks":"sha256:bb","policy":"sha256:cc"},"recordedAt":"2026-07-01T00:00:00Z"}]}"#,
+        );
+        let rec = TouchedRecord::load(&t.ws, "demo");
+        assert_eq!(rec.version, Some(2));
+        assert_eq!(rec.entries.len(), 1, "v2 entries must survive the fallback read");
+        assert_eq!(rec.entries[0].task_id, "tsk_LEGACY");
+        assert_eq!(rec.all_files(), vec!["src/legacy.rs".to_string()]);
+    }
+
+    #[test]
+    fn evidence_lands_in_the_change_directory_not_the_legacy_path() {
+        // spec Scenario「完成任務後證據齊全」：記錄的家是 change 目錄的 `.evidence.json`。
+        let t = TempWs::with_commit_and_dirty("home", "src/app.rs");
+        let store = store_with(
+            META_UNSTARTED,
+            "- [ ] 1.1 first <!-- speclink-task:tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV -->\n",
+        );
+        complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution::default())
+            .unwrap();
+
+        let json = t.evidence_json("demo").expect("evidence written to the change directory");
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["version"], 2);
+        assert_eq!(v["change"], "demo");
+        assert_eq!(v["entries"][0]["taskId"], "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV");
+        assert_eq!(
+            t.legacy_json("demo"),
+            None,
+            "the legacy path must never be a write target again"
+        );
+    }
+
+    #[test]
+    fn a_legacy_record_is_read_back_then_rewritten_to_the_change_directory() {
+        // spec Scenario「舊格式記錄可讀」的後半：下一次 task done 寫入後，新位置成為讀取來源。
+        // 舊檔隨之移除——留著的話，這個名字日後重建 change 時，第一次 load 會把
+        // 死帳讀成活帳（seen 汙染、零證據提示被吞）。
+        let t = TempWs::with_commit_and_dirty("migrate", "src/app.rs");
+        let seeded = "{\"change\":\"demo\",\"touched\":[{\"task_id\":\"1\",\"task_desc\":\"1.1 legacy\",\"files\":[\"src/legacy.rs\"]}]}";
+        let legacy = t.seed_legacy("demo", seeded);
+        let store = store_with(META_UNSTARTED, "- [ ] 1.1 first\n- [ ] 1.2 second\n");
+
+        complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution::default())
+            .unwrap();
+
+        let rec: TouchedRecord =
+            serde_json::from_str(&t.evidence_json("demo").expect("new home written")).unwrap();
+        assert!(
+            rec.all_files().contains(&"src/legacy.rs".to_string()),
+            "the legacy record must be carried forward, not dropped: {:?}",
+            rec.all_files()
+        );
+        assert!(rec.all_files().contains(&"src/app.rs".to_string()));
+        assert!(
+            !legacy.exists(),
+            "the legacy bridge file is removed once the record lands in the change directory"
+        );
+        assert_eq!(
+            TouchedRecord::load(&t.ws, "demo").all_files(),
+            rec.all_files(),
+            "the change directory is now the read source"
+        );
+    }
+
+    #[test]
     fn uncomplete_never_writes_or_alters_evidence() {
         let t = TempWs::new("undone-evidence");
-        let p = t.ws.touched_dir().join("demo.json");
-        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         let seeded = "{\"change\":\"demo\",\"touched\":[{\"task_id\":\"1\",\"task_desc\":\"1.1 a\",\"files\":[\"src/a.rs\"]}]}";
-        std::fs::write(&p, seeded).unwrap();
+        let p = t.seed_legacy("demo", seeded);
         let store = store_with(META_UNSTARTED, "- [x] 1.1 a\n");
         uncomplete(&store, "demo", &TaskAddr::Ordinal(1)).unwrap();
         assert_eq!(
@@ -1220,6 +1371,7 @@ mod tests {
             seeded,
             "undone must not write or alter any evidence record"
         );
+        assert_eq!(t.evidence_json("demo"), None, "undone must not create the new-home record");
     }
 
     // --- 任務搬移＋重編號（自 desktop core 遷入；spec「任務搬移端點與重編號效果」）---

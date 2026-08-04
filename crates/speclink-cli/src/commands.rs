@@ -796,21 +796,22 @@ fn print_archive_outcome(outcome: &core::archive::ArchiveOutcome) {
     for (slug, file) in &outcome.archived_discussions {
         println!("Discussion archived: {slug} → discussions/archive/{file}");
     }
-}
-
-/// Bulk archive (speclink-specific). Semantics: requires a clean code work tree (the dirty
-/// file set is the @trace source and would be injected into EVERY archived change), archives
-/// in created-date order, skips not-ready changes with a reason (never silently), and
-/// fail-fasts on the first actual archive error with a three-part report.
-fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Result<()> {
-    let dirty = core::tasks::git_changed_files(&ws.root);
-    if !dirty.is_empty() {
-        bail!(
-            "bulk archive requires a clean work tree — these files would be injected into every change's @trace:\n  {}",
-            dirty.join("\n  ")
+    // 零證據提示（spec verify-evidence「archive trace 注入與零證據提示」）：一行、
+    // 不擋人、不影響 exit code——純規格變更本來就掙不到證據，這行只是讓代理回頭
+    // 確認是不是漏走了 apply。
+    if !outcome.evidence_recorded {
+        eprintln!(
+            "note: no task evidence recorded for change '{}' — fine for spec-only changes; otherwise check that tasks went through apply",
+            outcome.change_name
         );
     }
+}
 
+/// Bulk archive (speclink-specific). Semantics: archives in created-date order, skips
+/// not-ready changes with a reason (never silently), and fail-fasts on the first actual
+/// archive error with a three-part report. The work tree's state is irrelevant — @trace
+/// no longer carries a file list, so a dirty file cannot leak into any archived change.
+fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Result<()> {
     let mut changes: Vec<core::model::Change> = if a.all {
         core::model::list_changes(store)
     } else {

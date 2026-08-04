@@ -101,7 +101,7 @@ pub fn prepare(ws: &Workspace, change: &str, started: bool) -> Result<PrepareOut
     let (base_commit, dirty, confidence) = match head {
         None => (None, Vec::new(), Confidence::Unavailable),
         Some(sha) => {
-            let mut dirty = speclink_core::tasks::git_changed_files(&ws.root);
+            let mut dirty = speclink_core::tasks::git_changed_files(ws);
             dirty.sort();
             dirty.dedup();
             let confidence = if started { Confidence::Late } else { Confidence::Initial };
@@ -701,7 +701,7 @@ fn resolve_validation_scope(
     // Paths that first became dirty after the capture join the validation
     // patch via the same D2 resolver, anchored at the frozen base commit.
     let captured: Vec<&str> = snap.dirty_files_at_capture.iter().map(|e| e.path.as_str()).collect();
-    let new_dirty: Vec<String> = speclink_core::tasks::git_changed_files(&ws.root)
+    let new_dirty: Vec<String> = speclink_core::tasks::git_changed_files(ws)
         .into_iter()
         .filter(|p| !captured.contains(&p.as_str()) && !finding_paths.contains(p))
         .collect();
@@ -934,7 +934,7 @@ fn write_scope_snapshot(
             .context("cannot clear orphan review snapshots")?;
     }
     let mut dirty_files_at_capture = Vec::new();
-    for path in speclink_core::tasks::git_changed_files(&ws.root) {
+    for path in speclink_core::tasks::git_changed_files(ws) {
         // A dirty-deleted file has no bytes to hash; it re-enters review as a
         // fresh path if it ever reappears.
         if let Ok(bytes) = std::fs::read(ws.root.join(&path)) {

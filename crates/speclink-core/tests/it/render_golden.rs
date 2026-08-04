@@ -150,6 +150,76 @@ fn commit_skill_confirmation_gate_sees_plan_and_message() {
     }
 }
 
+// --- archive / commit skills: trace 與 evidence gate 的技能敘述 ---
+
+/// Spec archive-skill「trace 與 evidence 的技能敘述」Scenario「技能檔無刪除
+/// 步驟、整潔要求與守門敘述殘留」: the rendered archive skill must not instruct
+/// anyone to delete the evidence record, demand a clean work tree before a bulk
+/// archive, or describe an evidence gate — all three obligations are retired.
+#[test]
+fn archive_skill_has_no_deletion_clean_tree_or_evidence_gate_residue() {
+    for (rel, content) in skill_for_both_tools("archive-residue", "archive") {
+        for forbidden in [
+            "rm -f .speclink/touched",
+            "Clean up tracking file",
+            "Clean work tree required",
+            "requires a clean work tree",
+            "--waive-evidence",
+            "evidence gate",
+            "Evidence stale",
+        ] {
+            assert!(
+                !content.contains(forbidden),
+                "{rel}: retired instruction still present: {forbidden:?}"
+            );
+        }
+    }
+}
+
+/// Same requirement, Scenario「trace 與提示敘述到位」: @trace is described as two
+/// fields injected unconditionally with no file list, and the zero-evidence note
+/// is described as a note (not a refusal) with when to act on it.
+#[test]
+fn archive_skill_describes_two_field_trace_and_the_zero_evidence_note() {
+    for (rel, content) in skill_for_both_tools("archive-trace-note", "archive") {
+        for needle in [
+            // @trace: 兩欄、一律注入、無檔案清單
+            "`source` (the change\n   name) and `updated` (the archive date)",
+            "Injection is unconditional",
+            "the canon carries no file list",
+            // 零證據提示：出現條件、非拒絕、應對
+            "no task evidence recorded for change",
+            "It is a note, not a refusal",
+            "spec-only or docs-only change earns no code evidence",
+            "speclink-apply` before archiving",
+        ] {
+            assert!(
+                content.contains(needle),
+                "{rel}: missing trace/note phrase {needle:?}"
+            );
+        }
+    }
+}
+
+/// Spec verify-evidence「task done 寫入逐任務 evidence」的技能面: the commit
+/// skill's file attribution reads the change directory's record, falls back to
+/// the pre-move path, and treats the record itself as part of the commit.
+#[test]
+fn commit_skill_attributes_files_from_the_change_directory_record() {
+    for (rel, content) in skill_for_both_tools("commit-evidence", "commit") {
+        for needle in [
+            "openspec/changes/<change-name>/.evidence.json",
+            "the pre-move location `.speclink/touched/<change-name>.json`",
+            "belongs to this change's commit",
+        ] {
+            assert!(
+                content.contains(needle),
+                "{rel}: missing evidence-record phrase {needle:?}"
+            );
+        }
+    }
+}
+
 // --- review skill: locale binds the whole output chain ---
 
 /// Spec requirement: 審查產出的語言綁定 — the review skill binds the resolved

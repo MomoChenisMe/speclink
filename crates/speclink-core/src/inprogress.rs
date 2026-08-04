@@ -304,7 +304,7 @@ mod tests {
 
     // --- remove:反向動詞與零工作痕跡守門 ---
 
-    use crate::tasks::{BasisDigests, EvidenceEntry, TouchedEntry, TouchedRecord};
+    use crate::tasks::{EvidenceEntry, TouchedEntry, TouchedRecord};
     use crate::workspace::Workspace;
 
     /// 帶開工戳記的 meta:started_* 三行之後仍有欄位(board_rank),
@@ -355,11 +355,6 @@ mod tests {
             repo: None,
             head_commit: None,
             touched_files: files.iter().map(|f| f.to_string()).collect(),
-            basis_digests: BasisDigests {
-                spec: "sha256:0".to_string(),
-                tasks: "sha256:0".to_string(),
-                policy: "sha256:0".to_string(),
-            },
             recorded_at: "2026-07-30T00:00:00Z".to_string(),
         }
     }

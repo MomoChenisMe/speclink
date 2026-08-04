@@ -496,6 +496,28 @@ fn remote_discard_with_force_succeeds_with_fs_parity_json() {
     assert!(cap.query.contains("force=true"), "--force rides the query: {}", cap.query);
 }
 
+// --- archive 的 wire 形狀（spec verify-evidence「archive trace 注入與零證據
+// 提示」的介面面：封存不因 evidence 被擋，wire 上也就沒有放行參數）---
+
+#[test]
+fn remote_archive_query_carries_no_evidence_waiver() {
+    let mock = mock_server(vec![(
+        "POST",
+        "/changes/demo/archive",
+        200,
+        r#"{"specs":[{"capability":"user-auth"}]}"#.to_string(),
+    )]);
+    let p = TempProject::remote("archive-no-waiver", &mock.base, "backend");
+    assert!(p.run(&["archive", "demo"]).status.success());
+    let cap = mock.find("POST", "/changes/demo/archive");
+    assert!(
+        !cap.query.contains("waive"),
+        "the waiver parameter is gone from the wire: {}",
+        cap.query
+    );
+    assert!(cap.query.contains("carryReview"), "carryReview still rides: {}", cap.query);
+}
+
 // --- review prepare／scope：remote workspace 使用同一 host resolver
 //（change-diff-scope spec「remote workspace 使用同一 host resolver」）---
 

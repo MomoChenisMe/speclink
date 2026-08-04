@@ -1,5 +1,5 @@
 === AGENTS.md ===
-<!-- SPECLINK:START v1.6.0 -->
+<!-- SPECLINK:START v1.8.0 -->
 
 # Speclink Instructions
 
@@ -35,7 +35,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.6.0"
+  version: "v1.8.0"
   generatedBy: "Speclink"
 ---
 
@@ -361,7 +361,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.6.0"
+  version: "v1.8.0"
   generatedBy: "Speclink"
 ---
 
@@ -466,6 +466,12 @@ Archive a completed change.
    - `--mark-tasks-complete` — mark all incomplete tasks as complete before archiving
    - `--no-validate` — skip delta spec validation
 
+   **@trace**: every ADDED and MODIFIED requirement the archive materializes into a
+   canonical spec gets a `@trace` block carrying exactly two fields — `source` (the change
+   name) and `updated` (the archive date). Injection is unconditional: it does not depend on
+   what the work tree looks like, and the canon carries no file list. Which files a change
+   touched lives in its evidence record, not in the specs.
+
    **If archive fails** because the archived name already exists, suggest renaming existing archive.
 
    **If the merge gate refuses**, the error lists every offending operation
@@ -473,6 +479,21 @@ Archive a completed change.
    delta files — `speclink drift <name>` shows what moved, `/speclink-ingest <name>`
    updates the delta — then re-run the archive. `--no-validate` does not unlock the gate;
    `--skip-specs` skips spec application entirely.
+
+   **The zero-evidence note.** A change accumulates completion evidence in
+   `openspec/changes/<name>/.evidence.json` as `speclink task done` records which code
+   files each task touched. When a change carries none, the archive still succeeds and
+   stderr gains one line:
+
+   ```
+   note: no task evidence recorded for change '<name>' — fine for spec-only changes;
+   otherwise check that tasks went through apply
+   ```
+
+   It is a note, not a refusal — nothing to waive, no flag to pass, exit code unchanged. A
+   spec-only or docs-only change earns no code evidence by construction, so the note is
+   expected there. Anywhere else, read it as a prompt to check whether the work actually
+   went through `/speclink-apply` before archiving.
 
 6. **Display summary**
 
@@ -482,27 +503,6 @@ Archive a completed change.
    - Archive location
    - Spec sync status (synced / sync skipped / no delta specs)
    - Note about any warnings (incomplete artifacts/tasks)
-
-7. **Clean up tracking file** — only after the archive has been committed
-
-   `.speclink/touched/<change-name>.json` holds the change's per-task evidence. Delete it once
-   the archive is committed, never before:
-
-   ```bash
-   rm -f .speclink/touched/<change-name>.json
-   ```
-
-   Two reasons the deletion trails the archive and the commit:
-
-   - **It is the `@trace` source.** `speclink archive` builds the trace file list from this
-     record; with the record gone the list falls back to scanning the work tree's dirty files,
-     sweeping unrelated edits — a parallel session's work, an unfinished experiment — into the
-     canonical specs.
-   - **It is the commit skill's file-attribution source.** `$speclink-commit` reads it to decide
-     which files belong to this change, so deleting before the commit lands leaves it with no
-     file list.
-
-   If the file does not exist, silently continue.
 
 **Output On Success**
 
@@ -604,28 +604,28 @@ speclink archive <name-a> <name-b>     # explicit set
 speclink archive --all                 # every ready change
 ```
 
-Semantics (the CLI enforces all three):
+Semantics (the CLI enforces both):
 
-1. **Clean work tree required** — a change's @trace file list is aggregated from its evidence
-   record (`.speclink/touched/<name>.json`) when one exists, and falls back to the work tree's
-   dirty code files only when it does not. That fallback would inject unrelated dirty files into
-   the archived change's canonical specs. Commit first; the command refuses otherwise and lists
-   the offending files.
-2. **Skip, never silently** — a change is archived only when it is ready: tasks complete
+1. **Skip, never silently** — a change is archived only when it is ready: tasks complete
    (or `--mark-tasks-complete`), validation passes (or `--no-validate`), and no delta
    operation the merge gate would refuse (a MODIFIED/REMOVED target another change already
    rewrote — run `speclink drift <name>` and reconcile via ingest). The pre-check reads the
    engine's own verdict, so it never disagrees with it; it only reports the change as
    skipped with the reason and a `Bulk archive: N archived, M skipped` summary instead of
    aborting the run.
-3. **Fail-fast** — archives apply in created-date order; on the first hard error the run
+2. **Fail-fast** — archives apply in created-date order; on the first hard error the run
    stops and reports archived / failed / untouched (already-archived changes cannot be
    rolled back automatically).
 
+The work tree's state is not one of them: @trace carries no file list, so an uncommitted
+edit cannot leak into any archived change's specs. The zero-evidence note is per change,
+exactly as in a single archive — one line per change that carries no evidence, never a
+reason to stop the run.
+
 Each archived change still gets the full single-archive treatment: delta application with
 @trace, snapshot for unarchive, `.started` cleanup, and its linked discussion archived
-alongside. Delete each change's `.speclink/touched/<name>.json` only after the archive is
-committed, exactly as in the single-archive cleanup step — never before archiving.
+alongside. The evidence record rides along inside the change directory — nothing to clean
+up, nothing to delete.
 
 === .agents/skills/speclink-audit/SKILL.md ===
 ---
@@ -635,7 +635,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.6.0"
+  version: "v1.8.0"
   generatedBy: "Speclink"
 ---
 
@@ -871,7 +871,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.6.0"
+  version: "v1.8.0"
   generatedBy: "Speclink"
 ---
 
@@ -894,9 +894,11 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
    Always announce: "Committing for change: <name>"
 
-2. **Read tracking file**
+2. **Read the evidence record**
 
-   Check for `.speclink/touched/<change-name>.json`. If it exists, parse it to get source files grouped by task.
+   Check for `openspec/changes/<change-name>/.evidence.json` — the change's completion
+   evidence, written by `speclink task done`. If it exists, parse it to get source files
+   grouped by task.
 
    Expected format:
 
@@ -913,15 +915,17 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    }
    ```
 
-   If the file does not exist, proceed without source file data — only artifact files will be included.
+   If the file does not exist, check the pre-move location `.speclink/touched/<change-name>.json`
+   (read-only compatibility for records written before the move). If neither exists, proceed
+   without source file data — only artifact files will be included.
 
 3. **Collect artifact files**
 
-   Run `git status --porcelain` and filter the output to files under `openspec/changes/<name>/`. These are the change's artifact files (proposal, design, tasks, specs, etc.).
+   Run `git status --porcelain` and filter the output to files under `openspec/changes/<name>/`. These are the change's artifact files (proposal, design, tasks, specs, etc.) — including `.evidence.json` itself, which is version-controlled and belongs to this change's commit.
 
 4. **Identify unrelated dirty files**
 
-   From the full `git status --porcelain` output, any dirty files NOT in the artifact set and NOT in the tracking file are "unrelated changes."
+   From the full `git status --porcelain` output, any dirty files NOT in the artifact set and NOT in the evidence record are "unrelated changes."
 
 5. **Generate commit message**
 
@@ -972,7 +976,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    Tasks: <completed>/<total> complete
    ```
 
-   If no tracking file was found, show a warning instead of the Source Files section:
+   If no evidence record was found, show a warning instead of the Source Files section:
 
    ```
    ### Source Files
@@ -1126,7 +1130,7 @@ No dirty files found for this change (no modified artifacts, no tracked source f
 - **NEVER commit files the user hasn't confirmed** — always show the file list and get explicit confirmation first
 - **Always show the full file list before committing** — no silent staging
 - **NEVER ask for confirmation before the commit plan and the full commit message have been output as visible message text** — the confirmation question must not reference content that was never displayed in the conversation (e.g., "the plan above" when no plan was shown). This applies equally to the plain-text fallback: display first, then ask
-- If the tracking file is missing, warn but don't block — artifact-only commits are valid
+- If the evidence record is missing, warn but don't block — artifact-only commits are valid
 - The "Unrelated Changes" section is informational only — these files are excluded by default
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
@@ -1138,7 +1142,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.6.0"
+  version: "v1.8.0"
   generatedBy: "Speclink"
 ---
 
@@ -1249,7 +1253,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.6.0"
+  version: "v1.8.0"
   generatedBy: "Speclink"
 ---
 
@@ -1686,7 +1690,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.6.0"
+  version: "v1.8.0"
   generatedBy: "Speclink"
 ---
 
@@ -1808,7 +1812,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.6.0"
+  version: "v1.8.0"
   generatedBy: "Speclink"
 ---
 
@@ -2076,7 +2080,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.6.0"
+  version: "v1.8.0"
   generatedBy: "Speclink"
 ---
 
@@ -2170,7 +2174,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.6.0"
+  version: "v1.8.0"
   generatedBy: "Speclink"
 ---
 
@@ -2590,7 +2594,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.6.0"
+  version: "v1.8.0"
   generatedBy: "Speclink"
 ---
 

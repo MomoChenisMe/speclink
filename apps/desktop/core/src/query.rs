@@ -668,6 +668,53 @@ mod tests {
     }
 
     #[test]
+    fn evidence_record_never_shows_up_as_a_change_artifact() {
+        // design Risk「.evidence.json 意外出現在桌面 artifact 清單」：證據記錄是
+        // 機器寫入的 dot 檔，與 `.openspec.yaml` 同待遇——不進 artifact 清單、
+        // 不進規格分頁的 capability 清單、不成為搜尋命中的 artifact 名。
+        // 三個面在固定 schema 清單下對 dot 檔永真，所以再放一個非 dot 的 stray
+        // 檔當判別器：哪天清單改成掃目錄，stray 檔會現形、此測試才會真的失敗。
+        let fx = FixtureRoot::new("q-evidence-hidden");
+        fx.add_change("demo", OLD_META);
+        fx.write(
+            "openspec/changes/demo/.evidence.json",
+            r#"{"version":2,"change":"demo","entries":[{"taskId":"1","taskDesc":"1.1 a","touchedFiles":["src/searchable-token.rs"],"basisDigests":{"spec":"sha256:0","tasks":"sha256:0","policy":"sha256:0"},"recordedAt":"2026-07-13T00:00:00Z"}]}"#,
+        );
+        fx.write("openspec/changes/demo/stray-notes.md", "searchable-token stray notes\n");
+
+        let v = status_at(fx.root(), "demo").expect("status ok");
+        let paths: Vec<&str> = v["artifacts"]
+            .as_array()
+            .expect("artifacts array")
+            .iter()
+            .filter_map(|a| a["outputPath"].as_str())
+            .collect();
+        assert!(!paths.is_empty(), "the schema's own artifacts are still listed: {paths:?}");
+        for p in &paths {
+            assert!(
+                !p.starts_with('.'),
+                "machine-written dot files stay out of the artifact list: {paths:?}"
+            );
+        }
+        assert!(
+            !paths.contains(&"stray-notes.md"),
+            "the artifact list comes from the schema, not a directory scan: {paths:?}"
+        );
+
+        assert!(
+            !change_capabilities_at(fx.root(), "demo").iter().any(|c| c.starts_with('.')),
+            "the record is not a capability"
+        );
+        // 搜尋掃的是固定 artifact 序，證據記錄的內容不會成為命中來源。
+        let hits = crate::search::search_workspace_at(fx.root(), "searchable-token");
+        assert_eq!(
+            hits["hits"].as_array().map(|a| a.len()),
+            Some(0),
+            "evidence content is not searchable change text: {hits}"
+        );
+    }
+
+    #[test]
     fn status_unknown_change_errors() {
         let fx = FixtureRoot::new("q-status-unknown");
         fx.add_change("demo", OLD_META);
