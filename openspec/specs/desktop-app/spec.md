@@ -720,32 +720,32 @@ code:
 ---
 ### Requirement: 討論抽屜檢視與轉出變更
 
-點擊討論卡或細列 SHALL 開啟討論抽屜。抽屜標題 SHALL 以討論 slug 為題（等寬字型）且帶複製 slug 鈕，topic SHALL 為標題下方副標（slug 為題屬 openspec/LANGUAGE.md 明載的受控例外）。標題區下方 SHALL 呈現生命週期階梯「討論中 → 已結論 → 轉出變更」且現站可辨識。分頁 SHALL 依序為：結論、討論過程 N、背景、衍生變更——前三者呈現記錄文件對應區段（區段缺失或格式非預期時 SHALL 整篇以單一檢視退回而非報錯）；記錄切分成功且結論區段非空時 SHALL 預設開啟「結論」分頁，結論為空時預設「背景」。衍生變更分頁 SHALL 列出各子變更現況與跳轉，且 SHALL 為唯讀——SHALL NOT 提供「轉為變更」或「再轉出一個變更」動作。concluded 且未封存討論的封存動詞 SHALL 於討論卡與討論抽屜皆可及,兩處 SHALL 走同一確認流程,經確認後將討論移入封存;非 concluded 或已封存的討論,抽屜 SHALL NOT 呈現封存動詞。GUI SHALL NOT 提供 conclude、add-round、new、discard、轉為變更（promote）——討論的推進、結論撰寫與轉出變更屬 agent 與 CLI。來自討論的變更卡 SHALL 帶討論徽章，其詳情抽屜 SHALL 顯示來源討論與同源變更清單並可互跳。
+點擊討論卡或細列 SHALL 開啟討論抽屜。抽屜標題 SHALL 以討論 slug 為題(等寬字型)且帶複製 slug 鈕,topic SHALL 為標題下方副標(slug 為題屬 openspec/LANGUAGE.md 明載的受控例外)。標題區下方 SHALL 呈現生命週期階梯「討論中 → 已結論 → 轉出變更」且現站可辨識。分頁 SHALL 依序為:結論、討論過程 N、背景、衍生變更——前三者呈現記錄文件對應區段(區段缺失或格式非預期時 SHALL 整篇以單一檢視退回而非報錯);記錄切分成功且結論區段非空時 SHALL 預設開啟「結論」分頁,結論為空時預設「背景」。衍生變更分頁 SHALL 列出各子變更現況與跳轉,且 SHALL 為唯讀——SHALL NOT 提供「轉為變更」或「再轉出一個變更」動作。concluded 且未封存討論的封存動詞 SHALL 於討論卡與討論抽屜皆可及,兩處 SHALL 走同一確認流程,經確認後將討論移入封存;非 concluded 或已封存的討論,抽屜 SHALL NOT 呈現封存動詞。GUI SHALL NOT 提供 conclude、add-round、new、discard、轉為變更(promote)——討論的推進、結論撰寫與轉出變更屬 agent 與 CLI。來自討論的變更卡 SHALL 帶討論徽章,其詳情抽屜 SHALL 顯示來源討論與同源變更清單並可互跳。
 
 #### Scenario: 抽屜標題以 slug 為題且可複製
 
 - **WHEN** 使用者開啟任一討論的抽屜並點按標題旁的複製鈕
-- **THEN** 抽屜標題呈現該討論的 slug（等寬字型）、其下副標呈現 topic；slug 寫入剪貼簿並短暫顯示已複製回饋
+- **THEN** 抽屜標題呈現該討論的 slug(等寬字型)、其下副標呈現 topic;slug 寫入剪貼簿並短暫顯示已複製回饋
 
 #### Scenario: 有結論的討論預設開啟結論分頁
 
-- **WHEN** 使用者開啟一筆已結論（結論區段非空）討論的抽屜
-- **THEN** 抽屜顯示分頁 結論／討論過程 N／背景／衍生變更，且預設呈現結論內容；階梯顯示「已結論」為現站
+- **WHEN** 使用者開啟一筆已結論(結論區段非空)討論的抽屜
+- **THEN** 抽屜顯示分頁 結論/討論過程 N/背景/衍生變更,且預設呈現結論內容;階梯顯示「已結論」為現站
 
 #### Scenario: 衍生變更分頁唯讀且無轉出動作
 
 - **WHEN** 使用者開啟一筆已結論或已轉出討論的抽屜衍生變更分頁
-- **THEN** 分頁列出各子變更現況與跳轉按鈕，但不呈現「轉為變更」或「再轉出一個變更」按鈕
+- **THEN** 分頁列出各子變更現況與跳轉按鈕,但不呈現「轉為變更」或「再轉出一個變更」按鈕
 
 #### Scenario: GUI 不提供轉出等寫入動詞
 
 - **WHEN** 使用者檢視任一討論抽屜或討論卡
-- **THEN** 介面不提供 conclude、add-round、轉為變更等寫入動作，轉出變更改由 CLI 或 agent 執行
+- **THEN** 介面不提供 conclude、add-round、轉為變更等寫入動作,轉出變更改由 CLI 或 agent 執行
 
 #### Scenario: 同源 change 互跳
 
 - **WHEN** 使用者開啟一個 from_discussion 非空的變更詳情抽屜
-- **THEN** 抽屜顯示來源討論 topic 與同源變更清單，點擊同源項可開啟該變更的詳情
+- **THEN** 抽屜顯示來源討論的 slug 籤(topic 於提示呈現)與同源變更清單,點擊同源項可開啟該變更的詳情
 
 #### Scenario: 抽屜內封存 concluded 討論
 
@@ -754,63 +754,8 @@ code:
 
 
 <!-- @trace
-source: revert-in-progress-to-proposed
-updated: 2026-07-31
-code:
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src-tauri/tests/remote_runtime.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/remoteDataSource.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/remoteDataSource.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/in_progress_remove.rs
-  - crates/speclink-cli/tests/remote_write_path.rs
-  - crates/speclink-core/assets/skills/apply.md
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-protocol/src/error.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/src/device.rs
-  - crates/speclink-remote/src/events.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/tests/reauth_retry.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/error.rs
-  - crates/speclink-server/src/events.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/verb_api.rs
-  - packages/ui/src/__tests__/discussionColumn.test.tsx
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/revertBlockedDialog.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/DiscussionColumn.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/RevertBlockedDialog.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+source: change-drawer-header-redesign
+updated: 2026-08-04
 -->
 
 ---
@@ -1776,22 +1721,22 @@ code:
 ---
 ### Requirement: 變更的來源討論多值呈現
 
-變更連結多份討論時（meta 的 from_discussion 為逗號清單），變更卡 SHALL 維持單一討論徽章、以清單第一個（出身）討論為代表，徽章提示 SHALL 列出全部來源討論；變更詳情抽屜 SHALL 列出全部來源討論並可互跳至各討論的抽屜；同源變更清單 SHALL 以「雙方來源討論集合交集非空」判定收錄。單一來源討論的變更，其徽章、抽屜來源討論與同源變更清單的呈現 SHALL 與本變更前一致。
+變更連結多份討論時(meta 的 from_discussion 為逗號清單),變更卡 SHALL 維持單一討論徽章、以清單第一個(出身)討論為代表,徽章提示 SHALL 列出全部來源討論;變更詳情抽屜的來源討論籤 SHALL 固定顯示清單第一個(出身)討論,其餘 SHALL 收進「+N」數字籤(N 為未直接顯示的數量),點擊 +N SHALL 開啟浮層列出其餘全部來源討論——浮層項 SHALL 呈現該討論的 slug 與 topic,點擊任一項 SHALL 開啟該討論的抽屜;全部來源討論 SHALL 經直接顯示的籤或浮層可及並可互跳。同源變更清單 SHALL 以「雙方來源討論集合交集非空」判定收錄,其呈現 SHALL 比照來源討論籤(顯示第一顆,其餘收「+N」浮層,點擊浮層項開啟該變更的詳情)。僅一份來源討論的變更 SHALL NOT 出現來源討論的「+N」籤。
 
 #### Scenario: 多來源徽章以出身討論為代表
 
-- **WHEN** 看板呈現來源討論清單為兩份（出身在前）的變更卡
-- **THEN** 卡片帶單一討論徽章、代表清單第一份（出身）討論，徽章提示列出全部兩份來源討論
+- **WHEN** 看板呈現來源討論清單為兩份(出身在前)的變更卡
+- **THEN** 卡片帶單一討論徽章、代表清單第一份(出身)討論,徽章提示列出全部兩份來源討論
 
 #### Scenario: 詳情抽屜列出全部來源討論
 
 - **WHEN** 開啟該變更的詳情抽屜
-- **THEN** 來源討論區列出全部來源討論，點擊任一項開啟該討論的抽屜
+- **THEN** 來源討論區直接顯示出身討論籤與「+N」籤;點擊 +N 開啟浮層,列出其餘來源討論(各項含 slug 與 topic),點擊任一項開啟該討論的抽屜
 
 #### Scenario: 同源以來源討論交集判定
 
 - **WHEN** 變更 A 的來源討論清單為 d1, d2、變更 B 的來源討論清單僅含 d2
-- **THEN** A 與 B 互為同源變更，出現在彼此詳情抽屜的同源變更清單
+- **THEN** A 與 B 互為同源變更,出現在彼此詳情抽屜的同源變更清單
 
 ##### Example: 交集判定表
 
@@ -1800,32 +1745,17 @@ code:
 | d1, d2      | d2          | 是       |
 | d1          | d1          | 是       |
 | d1, d2      | d3          | 否       |
-| （無）      | d1          | 否       |
+| (無)        | d1          | 否       |
 
-#### Scenario: 單一來源呈現不變
+#### Scenario: 單一來源無溢出籤
 
 - **WHEN** 看板呈現僅一份來源討論的變更卡並開啟其詳情抽屜
-- **THEN** 徽章、抽屜來源討論與同源變更清單的呈現與本變更前一致
+- **THEN** 卡片維持單一討論徽章;抽屜來源討論區僅顯示該討論的籤,無「+N」籤
+
 
 <!-- @trace
-source: rediscuss-promoted-change
-updated: 2026-07-09
-code:
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/src/App.tsx
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/teststore.rs
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/siblings.test.ts
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/siblings.ts
+source: change-drawer-header-redesign
+updated: 2026-08-04
 -->
 
 ---
@@ -2252,49 +2182,42 @@ code:
 ---
 ### Requirement: 抽屜標頭標記受寬度約束且抽屜不產生水平捲軸
 
-變更詳情抽屜與已封存抽屜的標頭中，承載自由文字的標記（來源討論的 topic）SHALL 受抽屜可用寬度約束：文字超出可用寬度時 SHALL 以截斷呈現，SHALL NOT 使該標記的寬度超出抽屜內容區。被截斷的標記 SHALL 以原生提示（`title`）保留完整文字，使用者 SHALL 能取得未截斷的原始內容。抽屜面板 SHALL NOT 於水平方向產生捲軸——不論標頭標記、動作列或內文包含多長的單一元素，抽屜的標頭、動作列與內文 SHALL 維持在可視寬度內。此約束 SHALL 同時套用於變更詳情抽屜與已封存抽屜，SHALL NOT 只在其中一處成立。
+變更詳情抽屜與已封存抽屜的標頭中,來源討論標記 SHALL 以討論 slug 直出(等寬字型),topic SHALL NOT 於標記面直出。標記 SHALL 設寬度上限:slug 超出上限時 SHALL 以截斷呈現,SHALL NOT 使標記寬度超出抽屜內容區。標記 SHALL 以主題化提示呈現完整 slug 與 topic,使用者 SHALL 能取得未截斷的原始內容。多份來源討論 SHALL NOT 各自換行——僅第一份直接顯示,其餘收進「+N」數字籤與其浮層(呈現規則見「變更的來源討論多值呈現」)。抽屜面板 SHALL NOT 於水平方向產生捲軸——不論標頭標記、動作列或內文包含多長的單一元素,抽屜的標頭、動作列與內文 SHALL 維持在可視寬度內。此約束 SHALL 同時套用於變更詳情抽屜與已封存抽屜,SHALL NOT 只在其中一處成立。
 
-來源討論標記的資料來源、數量、排序，以及點擊後開啟對應討論的行為 SHALL 維持不變。
+來源討論標記的資料來源、數量、排序,以及點擊(標記或浮層項)後開啟對應討論的行為 SHALL 維持不變。
 
 #### Scenario: 長討論 topic 不撐寬抽屜
 
-- **WHEN** 使用者開啟一個來源討論的 topic 長度遠超過抽屜寬度的變更，其詳情抽屜
-- **THEN** 該來源討論標記以截斷呈現且寬度不超出抽屜內容區，抽屜沒有水平捲軸，標頭、動作列與內文皆維持在可視寬度內
+- **WHEN** 使用者開啟一個來源討論的 topic 長度遠超過抽屜寬度的變更,其詳情抽屜
+- **THEN** 該來源討論標記顯示 slug 而非 topic,寬度不超出抽屜內容區,抽屜沒有水平捲軸,標頭、動作列與內文皆維持在可視寬度內
 
 #### Scenario: 截斷後仍可取得完整 topic
 
-- **WHEN** 使用者將指標停留在被截斷的來源討論標記上
-- **THEN** 原生提示呈現該討論完整的 topic 文字
+- **WHEN** 使用者將指標停留在來源討論標記上
+- **THEN** 主題化提示呈現該討論完整的 slug 與 topic 文字
 
 #### Scenario: 已封存抽屜適用同一約束
 
 - **WHEN** 使用者於已封存頁開啟同一個變更的抽屜
-- **THEN** 來源討論標記同樣以截斷呈現，抽屜沒有水平捲軸
+- **THEN** 來源討論標記同樣以 slug 直出、多份時溢出收「+N」籤,抽屜沒有水平捲軸
 
-#### Scenario: 短 topic 呈現不變
+#### Scenario: 超長 slug 截斷呈現
 
-- **WHEN** 使用者開啟來源討論 topic 短於抽屜可用寬度的變更，其詳情抽屜
-- **THEN** 該標記完整呈現不截斷，點擊後開啟對應討論的抽屜，行為與本變更前一致
+- **WHEN** 使用者開啟來源討論 slug 長於標記寬度上限的變更,其詳情抽屜
+- **THEN** 該標記以截斷呈現且寬度不超出上限,提示保有完整 slug 與 topic;點擊標記開啟對應討論的抽屜
 
-##### Example: 截斷判定與抽屜捲軸
+##### Example: 標記呈現與抽屜捲軸
 
-| 來源討論 topic 長度 | 標記呈現 | 原生提示 | 抽屜水平捲軸 |
-| ------------------- | -------- | -------- | ------------ |
-| 短於可用寬度        | 完整     | 有       | 無           |
-| 恰等於可用寬度      | 完整     | 有       | 無           |
-| 遠超過可用寬度      | 截斷     | 有，含全文 | 無         |
-| 多份且合計超過寬度  | 各自換行，過長者截斷 | 有 | 無 |
+| 情境                 | 標記面呈現                  | 提示           | 抽屜水平捲軸 |
+| -------------------- | --------------------------- | -------------- | ------------ |
+| slug 短於寬度上限    | slug 完整                   | slug 與 topic  | 無           |
+| slug 超過寬度上限    | slug 截斷                   | slug 與 topic  | 無           |
+| 多份來源討論         | 首份 slug+「+N」籤,單行     | 各籤 slug 與 topic | 無       |
+
 
 <!-- @trace
-source: drawer-source-chip-overflow
-updated: 2026-07-25
-code:
-  - packages/ui/src/__tests__/archivedDrawer.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/SourceDiscussionChip.tsx
-  - packages/ui/src/components/ui/sheet.tsx
+source: change-drawer-header-redesign
+updated: 2026-08-04
 -->
 
 ---
@@ -2787,84 +2710,22 @@ code:
 ---
 ### Requirement: 詳情抽屜的審查資訊列
 
-change 詳情抽屜 SHALL 於審查狀態非 `none` 時顯示審查資訊列：狀態詞、蓋章時間與審查者（`inReview` 時僅顯示狀態詞）。狀態為 `none` 時 SHALL 不渲染該區塊。
+change 詳情抽屜 SHALL 於審查狀態非 `none` 時,在狀態列(與進度條同列)顯示審查資訊:狀態詞、蓋章時間與審查者(`inReview` 時僅顯示狀態詞)。狀態為 `none` 時 SHALL 不渲染審查資訊,狀態列僅呈現進度條與完成百分比。
 
 #### Scenario: 已審查抽屜
 
 - **WHEN** 開啟 `reviewStatus: "reviewed"` 的 change 抽屜
-- **THEN** 資訊列顯示「已審查」與 reviewedAt／reviewedBy 內容
+- **THEN** 狀態列於進度條同列顯示「已審查」與 reviewedAt/reviewedBy 內容
 
 #### Scenario: 審查中抽屜
 
 - **WHEN** 開啟 `reviewStatus: "inReview"` 的 change 抽屜
-- **THEN** 資訊列顯示「審查中」，無時間與審查者
+- **THEN** 狀態列顯示「審查中」,無時間與審查者
+
 
 <!-- @trace
-source: code-review-stage
-updated: 2026-08-02
-code:
-  - AGENTS.md
-  - CLAUDE.md
-  - README.en.md
-  - README.md
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/review_verbs.rs
-  - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/src/util.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/read_api.rs
-  - crates/speclink-server/tests/review_api.rs
-  - packages/ui/src/__tests__/reviewBadge.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ReviewArchiveDialog.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/reviewStyle.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+source: change-drawer-header-redesign
+updated: 2026-08-04
 -->
 
 ---
@@ -3026,4 +2887,29 @@ code:
   - packages/ui/src/components/reviewStyle.tsx
   - packages/ui/src/i18n.tsx
   - packages/ui/src/index.ts
+-->
+
+---
+### Requirement: 變更詳情抽屜標頭的四層結構
+
+變更詳情抽屜的標頭 SHALL 由上而下為四層固定結構:標題列(變更名+複製名稱鈕)、狀態列(進度條+完成百分比;審查狀態非 `none` 時同列呈現審查資訊)、出身列、動作列。標頭 SHALL NOT 顯示任務計數字樣——任務數由任務分頁徽章與進度條承載。出身列 SHALL 為單行,依序呈現:建立者頭像+名字、產生工具、建立相對時間、開工日期(有開工戳記時)、「來自」與來源討論籤(有來源討論時)、「同源」與同源變更籤(有同源變更時);缺席的資訊段 SHALL 整段缺席而非留白。建立者與開工者的完整識別(含 email)SHALL 收進主題化提示,標頭可視文字 SHALL NOT 直出 email。出身列於任何資料組合下 SHALL 維持單行,SHALL NOT 折行,SHALL NOT 撐寬抽屜。
+
+#### Scenario: 四層結構與任務計數缺席
+
+- **WHEN** 使用者開啟任一變更的詳情抽屜
+- **THEN** 標頭由上而下依序為標題列、狀態列、出身列、動作列;標頭可視文字不含任務計數字樣,任務分頁徽章與進度條仍呈現任務進度
+
+#### Scenario: email 收進提示
+
+- **WHEN** 使用者開啟 created_by 含 email 的變更詳情抽屜,並將指標停留於建立者名字
+- **THEN** 標頭可視文字僅顯示頭像與名字,主題化提示呈現含 email 的完整識別;開工者的完整識別亦僅於提示呈現
+
+#### Scenario: 出身列恆定單行
+
+- **WHEN** 使用者開啟一個有 4 份來源討論、有開工戳記且有同源變更的變更詳情抽屜
+- **THEN** 出身列維持單行——直接顯示出身討論籤與「+N」籤,不折行,抽屜無水平捲軸
+
+<!-- @trace
+source: change-drawer-header-redesign
+updated: 2026-08-04
 -->

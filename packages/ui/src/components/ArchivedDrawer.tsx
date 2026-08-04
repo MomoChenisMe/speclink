@@ -5,7 +5,7 @@ import type { ArchivedItem } from "../adapter";
 import { useI18n } from "../i18n";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
-import { SourceDiscussionChip } from "./SourceDiscussionChip";
+import { SourceChipRow } from "./SourceDiscussionChip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { DeltaSpecView } from "./DeltaBadges";
 import { ConclusionView, RoundsView, splitDiscussionSections } from "./DiscussionDrawer";
@@ -151,17 +151,15 @@ export function ArchivedDrawer({
                 {t(REVIEW_LABEL_KEY[reviewStatus])}
               </div>
             )}
-          {/* 同源連結（design D1 增補）：點 chip 由宿主於同一抽屜切至該討論唯讀檢視。 */}
+          {/* 同源連結（design D1 增補）：點 chip 由宿主於同一抽屜切至該討論唯讀檢視。
+              呈現與變更詳情抽屜同構——首籤直出、其餘收 +N 浮層（SourceChipRow 共用）。 */}
           {target.kind === "change" && (sourceDiscussions ?? []).length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
-              <span>{t("rdrawer.fromDiscussion")}</span>
-              {(sourceDiscussions ?? []).map((src) => (
-                <SourceDiscussionChip
-                  key={src.slug}
-                  topic={src.topic}
-                  onClick={() => onOpenDiscussion?.(src.slug)}
-                />
-              ))}
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <SourceChipRow
+                label={t("rdrawer.fromDiscussion")}
+                items={sourceDiscussions ?? []}
+                onOpen={(slug) => onOpenDiscussion?.(slug)}
+              />
             </div>
           )}
         </SheetHeader>

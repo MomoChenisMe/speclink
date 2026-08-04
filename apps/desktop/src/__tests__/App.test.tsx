@@ -810,8 +810,8 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     await waitFor(() => screen.getByText("old"));
     fireEvent.click(screen.getByText("old"));
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
-    // chip 以 topic 顯示（自 discussions 兩節解析）。
-    fireEvent.click(screen.getByRole("button", { name: "Old topic" }));
+    // chip 以 slug 直出（change-drawer-header-redesign；topic 降為提示）。
+    fireEvent.click(screen.getByRole("button", { name: /old-topic/ }));
     await waitFor(() => expect(screen.getByText("封存背景內文。")).toBeTruthy());
     expect(ds.getDiscussionDocument).toHaveBeenCalledWith("old-topic");
     expect(screen.getByText("討論過程")).toBeTruthy();

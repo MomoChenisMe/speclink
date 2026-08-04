@@ -24,7 +24,7 @@ import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
-import { SourceDiscussionChip } from "./SourceDiscussionChip";
+import { SourceChipRow } from "./SourceDiscussionChip";
 import { READING_COLUMN_CLS } from "./Markdown";
 import { SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
@@ -80,6 +80,12 @@ export interface RichDetailDrawerProps {
 }
 
 type Doc = string | null | undefined;
+
+/** 出身列僅顯示名字：去除 email 尖括號段（無尖括號時整串直出），完整識別由提示承載。 */
+function displayName(identity: string): string {
+  const name = identity.replace(/\s*<[^>]*>\s*/g, " ").trim();
+  return name || identity;
+}
 
 /** disabled 元素不可靠地接收 hover；用可互動 wrapper 承接 tooltip trigger。 */
 function UnavailableAction({ reason, children }: { reason?: string; children: ReactElement }) {
@@ -307,29 +313,23 @@ export function RichDetailDrawer({
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             </Button>
           </div>
-          {/* metadata 列 */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-            {meta?.createdBy && (
-              <span className="inline-flex items-center gap-1">
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold">
-                  {meta.createdBy.charAt(0).toUpperCase()}
-                </span>
-                {meta.createdBy}
-              </span>
-            )}
-            {meta?.createdWith && <span>✳ {meta.createdWith}</span>}
-            {rel && <span>{rel}</span>}
-            <span>{t("common.tasksCount").replace("{n}", taskBadge)}</span>
-            {meta?.startedAt && (
-              <span className="inline-flex items-center gap-1">
-                ⚒ {meta.startedBy ? `${meta.startedBy} · ` : ""}
-                {t("rdrawer.started").replace("{date}", meta.startedAt)}
-              </span>
-            )}
-            {/* 審查資訊列（spec「詳情抽屜的審查資訊列」）：reviewed／reviewedStale
-                帶狀態詞＋蓋章時間＋審查者；inReview 僅狀態詞；none 不渲染。 */}
+          {/* 狀態列（spec「變更詳情抽屜標頭的四層結構」「詳情抽屜的審查資訊列」）：
+              進度條＋百分比；審查狀態非 none 時審查章同列——reviewed／reviewedStale
+              帶狀態詞＋蓋章時間＋審查者，inReview 僅狀態詞。任務計數不再上標頭
+              （任務分頁徽章與進度條已承載）。 */}
+          <div data-status-row className="flex items-center gap-2">
+            <div
+              data-progress-track
+              className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden"
+            >
+              <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="text-xs text-muted-foreground tabular-nums">{pct}%</span>
             {review && (
-              <span data-review-row className="inline-flex items-center gap-1">
+              <span
+                data-review-row
+                className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+              >
                 <span
                   data-review-tone
                   className={`inline-flex items-center gap-1 font-medium ${review.cls}`}
@@ -346,42 +346,59 @@ export function RichDetailDrawer({
               </span>
             )}
           </div>
-          {/* 同源連結：來源討論（可多份）＋同源刀（fromDiscussions 帶出）。 */}
-          {(sourceDiscussions ?? []).length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
-              <span>{t("rdrawer.fromDiscussion")}</span>
-              {(sourceDiscussions ?? []).map((src) => (
-                <SourceDiscussionChip
-                  key={src.slug}
-                  topic={src.topic}
-                  onClick={() => onOpenDiscussion?.(src.slug)}
+          {/* 出身列（spec「變更詳情抽屜標頭的四層結構」）：恆定單行——不折行、
+              溢出裁切兜底；email 與開工者完整識別收進提示，可視文字僅名字／日期。 */}
+          <TooltipProvider delayDuration={0}>
+            <div
+              data-provenance-row
+              className="flex min-w-0 items-center gap-2 whitespace-nowrap overflow-hidden text-xs text-muted-foreground"
+            >
+              {meta?.createdBy && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex shrink-0 items-center gap-1">
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold">
+                        {meta.createdBy.charAt(0).toUpperCase()}
+                      </span>
+                      {displayName(meta.createdBy)}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{meta.createdBy}</TooltipContent>
+                </Tooltip>
+              )}
+              {meta?.createdWith && <span className="shrink-0">✳ {meta.createdWith}</span>}
+              {rel && <span className="shrink-0">{rel}</span>}
+              {meta?.startedAt &&
+                (meta.startedBy ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex shrink-0 items-center gap-1">
+                        ⚒ {t("rdrawer.started").replace("{date}", meta.startedAt)}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>{meta.startedBy}</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <span className="inline-flex shrink-0 items-center gap-1">
+                    ⚒ {t("rdrawer.started").replace("{date}", meta.startedAt)}
+                  </span>
+                ))}
+              {(sourceDiscussions ?? []).length > 0 && (
+                <SourceChipRow
+                  label={t("rdrawer.fromDiscussion")}
+                  items={sourceDiscussions ?? []}
+                  onOpen={(slug) => onOpenDiscussion?.(slug)}
                 />
-              ))}
+              )}
               {(siblingChanges ?? []).length > 0 && (
-                <>
-                  <span>{t("rdrawer.siblings")}</span>
-                  {(siblingChanges ?? []).map((sib) => (
-                    <Button
-                      key={sib}
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-auto rounded-full bg-muted px-2 py-0.5 font-medium hover:bg-accent"
-                      onClick={() => onOpenSibling?.(sib)}
-                    >
-                      {sib}
-                    </Button>
-                  ))}
-                </>
+                <SourceChipRow
+                  label={t("rdrawer.siblings")}
+                  items={(siblingChanges ?? []).map((name) => ({ slug: name }))}
+                  onOpen={(name) => onOpenSibling?.(name)}
+                />
               )}
             </div>
-          )}
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-            </div>
-            <span className="text-xs text-muted-foreground tabular-nums">{pct}%</span>
-          </div>
+          </TooltipProvider>
           {/* 動作列 */}
           <TooltipProvider delayDuration={0}>
             <div className="flex items-center gap-1.5 pt-1">
