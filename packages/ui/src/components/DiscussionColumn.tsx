@@ -17,6 +17,7 @@ import { useI18n } from "../i18n";
 import { changeStage, STAGE_BADGE } from "../stage";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
+import { CardNameRow } from "./CardNameRow";
 import { HighlightText } from "./HighlightText";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
@@ -90,13 +91,6 @@ export function DiscussionCard({
 >) {
   const { t } = useI18n();
   const badge = STATUS_BADGE[d.status] ?? STATUS_BADGE.open;
-  const [copied, setCopied] = useState(false);
-  const copySlug = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    void navigator.clipboard?.writeText(d.slug);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
-  };
   return (
     <Card
       data-discussion={d.slug}
@@ -105,21 +99,8 @@ export function DiscussionCard({
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
         {/* slug（檔名）為標題——CLI 動詞把手，等寬強調；topic 降為卡身描述（LANGUAGE.md
-            受控例外）。複製鈕行內尾隨（design D4 複製鈕位置規則）：緊跟 slug 最後
-            一個字元後流動，不以 flex 推至卡片右緣。 */}
-        <span className="font-mono font-semibold text-sm leading-tight min-w-0 flex-1 break-all">
-          <HighlightText text={d.slug} query={highlight} />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={t("discussion.copySlug")}
-            className={`ml-1 inline-flex h-4 w-4 align-text-bottom text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-            onClick={copySlug}
-          >
-            {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
-          </Button>
-        </span>
+            受控例外）。名稱列與變更卡共用（骨架統一）。 */}
+        <CardNameRow text={d.slug} copyLabel={t("discussion.copySlug")} highlight={highlight} />
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${badge.cls}`}>
           {t(badge.labelKey)}
         </span>

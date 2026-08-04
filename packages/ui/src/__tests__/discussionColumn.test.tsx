@@ -111,9 +111,10 @@ describe("DiscussionColumn（兩級呈現）", () => {
   it("識別列與 meta 列（看板卡片統一解剖學）：複製鈕行內尾隨、圓點 hover 全名、輪數與建立時間並排", () => {
     render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
     const card = screen.getByText("open-topic").closest("[data-discussion]") as HTMLElement;
-    // 行內尾隨（釘住 desktop-ux-polish 落地的位置）：複製鈕在 slug 標題容器內。
+    // 行內尾隨（釘住 desktop-ux-polish 落地的位置）：複製鈕與 slug 同在名稱列容器內。
     const title = within(card).getByText("open-topic");
-    expect(within(title).getByRole("button", { name: /複製/ })).toBeTruthy();
+    const nameRow = title.parentElement as HTMLElement;
+    expect(within(nameRow).getByRole("button", { name: /複製/ })).toBeTruthy();
     // 建立者圓點缺席時不渲染（createdBy 為 undefined 的卡）。
     // meta 列：輪數與建立時間並排。
     expect(within(card).getByText(/3 輪/)).toBeTruthy();

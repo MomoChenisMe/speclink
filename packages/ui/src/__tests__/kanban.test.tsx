@@ -522,7 +522,7 @@ describe("封存落點浮層（design D8 + archive-readiness-gating D3）", () =
 });
 
 // spec「看板卡片統一解剖學」的變更卡（board-card-anatomy design D1/D2）：
-// 等寬標題折行不截斷、複製鈕行內尾隨（釘住 desktop-ux-polish 落地的位置不回退）、
+// 等寬標題單行截斷淡出、複製鈕行內尾隨（釘住 desktop-ux-polish 落地的位置不回退）、
 // whyExcerpt 描述列、變更卡無狀態 chip（所在欄即階段）。
 describe("看板卡片統一解剖學（變更卡）", () => {
   const anatomyChanges: ChangeItem[] = [
@@ -537,13 +537,15 @@ describe("看板卡片統一解剖學（變更卡）", () => {
     { name: "no-desc", status: "in-progress", totalTasks: 4, completedTasks: 1, whyExcerpt: null },
   ];
 
-  it("標題等寬字型、折行不截斷、複製鈕為標題容器的行內子元素", () => {
+  it("標題等寬字型、單行不折行、複製鈕與標題同列尾隨", () => {
     render(<KanbanBoard changes={anatomyChanges} />);
     const title = screen.getByText("with-desc");
     expect(title.className).toContain("font-mono");
-    expect(title.className).not.toContain("truncate");
-    // 行內尾隨：複製鈕在標題容器內（跟著文字流動），不是被推到右緣的兄弟元素。
-    expect(within(title).getByLabelText("複製名稱")).toBeTruthy();
+    // 名稱恆單行：過長就地截斷（尾端漸層淡出），不折到次行把複製鈕帶下去。
+    expect(title.className).toContain("whitespace-nowrap");
+    // 行內尾隨：複製鈕與標題同在名稱列容器內，不是被推到卡片右緣的兄弟元素。
+    const nameRow = title.parentElement as HTMLElement;
+    expect(within(nameRow).getByLabelText("複製名稱")).toBeTruthy();
   });
 
   it("whyExcerpt 渲染為一行截斷描述列，null 時整列缺席", () => {
