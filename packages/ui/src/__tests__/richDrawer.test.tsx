@@ -413,7 +413,8 @@ describe("RichDetailDrawer", () => {
     });
   });
 
-  it("shows who started the work and when, once the change is started", async () => {
+  it("shows the started date once the change is started; starter identity lives in the tooltip", async () => {
+    // change-drawer-header-redesign：出身列單行讓位——開工僅顯日期，開工者（含 email）收提示。
     const props = makeProps({
       loadMeta: vi.fn(async () => ({
         created: "2026-07-05",
@@ -425,8 +426,8 @@ describe("RichDetailDrawer", () => {
       })),
     });
     render(<RichDetailDrawer {...(props as never)} />);
-    await waitFor(() => expect(screen.getByText(/Worker <w@example\.com>/)).toBeTruthy());
-    expect(screen.getByText(/2026-07-06 開工/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/2026-07-06 開工/)).toBeTruthy());
+    expect(screen.queryByText(/w@example\.com/)).toBeNull();
   });
 
   it("hides the started row when the change has not been started", async () => {
@@ -738,30 +739,47 @@ describe("變更抽屜閱讀欄置中", () => {
   });
 });
 
-// spec 需求「抽屜標頭標記受寬度約束且抽屜不產生水平捲軸」：長 topic 的來源討論標記
-// 不得撐寬抽屜——標記受寬度上限約束並截斷、title 保留全文、抽屜面板關閉水平捲動。
-describe("變更抽屜來源討論標記寬度約束", () => {
+// spec 需求「抽屜標頭標記受寬度約束且抽屜不產生水平捲軸」（change-drawer-header-redesign
+// 改寫）：來源討論標記以 slug 直出（等寬字型、寬度上限截斷）、topic 降為主題化提示、
+// 抽屜面板關閉水平捲動。
+describe("變更抽屜來源討論標記（slug 直出）", () => {
   const LONG_TOPIC =
     "目前前端專案的設計，是完全純文字的web服務，我希望可以設計一下，因為有好幾個端點都要自己打URL才能夠進去，完全不符合人性，所以請你幫我重新設計一下";
 
-  it("長 topic 標記受寬度上限約束並截斷，title 保留完整 topic", async () => {
+  it("標記面為 slug 而非 topic：等寬字型、寬度上限、截斷", async () => {
     const props = makeProps({
       sourceDiscussions: [{ slug: "web-service-navigation-redesign", topic: LONG_TOPIC }],
       onOpenDiscussion: vi.fn(),
     });
     render(<RichDetailDrawer {...(props as never)} />);
-    await screen.findByText("來自討論：");
-    const chip = screen.getByRole("button", { name: LONG_TOPIC });
-    // 可收縮且不超出抽屜內容區寬度。
-    expect(chip.className).toContain("max-w-full");
-    expect(chip.className).toContain("min-w-0");
-    // 完整 topic 由原生提示保留。
-    expect(chip.getAttribute("title")).toBe(LONG_TOPIC);
-    // 文字本身以截斷樣式呈現（Button 為 inline-flex，截斷需落在內層區塊子項）。
-    const label = chip.querySelector("[data-source-discussion-label]") as HTMLElement | null;
-    expect(label).toBeTruthy();
-    expect(label!.className).toContain("truncate");
-    expect(label!.textContent).toBe(LONG_TOPIC);
+    const label = await waitFor(() => {
+      const el = document.querySelector("[data-source-discussion-label]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    // 籤面文字是 slug，topic 全文不出現在可視文字。
+    expect(label.textContent).toBe("web-service-navigation-redesign");
+    expect(screen.queryByText(LONG_TOPIC)).toBeNull();
+    expect(label.className).toContain("truncate");
+    const chip = label.closest("button") as HTMLElement;
+    expect(chip.className).toContain("font-mono");
+    expect(chip.className).toContain("max-w-[140px]");
+  });
+
+  it("主題化提示呈現 slug 與 topic（取代原生 title）", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const props = makeProps({
+      sourceDiscussions: [{ slug: "alpha-ux", topic: "Alpha UX 討論" }],
+      onOpenDiscussion: vi.fn(),
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    const chip = await screen.findByRole("button", { name: /alpha-ux/ });
+    await user.hover(chip);
+    await waitFor(() => {
+      const tip = document.querySelector("[data-radix-popper-content-wrapper]");
+      expect(tip?.textContent).toContain("alpha-ux");
+      expect(tip?.textContent).toContain("Alpha UX 討論");
+    });
   });
 
   it("抽屜面板關閉水平捲動（垂直自動捲動不連帶開啟水平）", async () => {
@@ -769,25 +787,184 @@ describe("變更抽屜來源討論標記寬度約束", () => {
       sourceDiscussions: [{ slug: "web-service-navigation-redesign", topic: LONG_TOPIC }],
     });
     const { baseElement } = render(<RichDetailDrawer {...(props as never)} />);
-    await screen.findByText("來自討論：");
+    await waitFor(() =>
+      expect(document.querySelector("[data-source-discussion-label]")).toBeTruthy(),
+    );
     const panel = baseElement.querySelector('[role="dialog"]') as HTMLElement;
     expect(panel).toBeTruthy();
     expect(panel.className).toContain("overflow-y-auto");
     expect(panel.className).toContain("overflow-x-hidden");
   });
 
-  it("短 topic 呈現與點擊行為不變", async () => {
+  it("點擊籤開啟對應討論", async () => {
     const onOpenDiscussion = vi.fn();
     const props = makeProps({
       sourceDiscussions: [{ slug: "alpha-ux", topic: "Alpha UX 討論" }],
       onOpenDiscussion,
     });
     render(<RichDetailDrawer {...(props as never)} />);
-    await screen.findByText("來自討論：");
-    const chip = screen.getByRole("button", { name: "Alpha UX 討論" });
-    expect(chip.textContent).toBe("Alpha UX 討論");
+    const chip = await screen.findByRole("button", { name: /alpha-ux/ });
     fireEvent.click(chip);
     expect(onOpenDiscussion).toHaveBeenCalledWith("alpha-ux");
+  });
+});
+
+// spec 需求「變更的來源討論多值呈現」（change-drawer-header-redesign 改寫）：
+// 固定顯示出身（清單第一份）討論籤，其餘收「+N」數字籤，點擊開浮層（slug 主行＋
+// topic 副行）可跳討論；同源籤比照；單筆無 +N。
+describe("來源討論多值呈現（+N 浮層）", () => {
+  const FOUR = [
+    { slug: "code-review-stage", topic: "審查站落地" },
+    { slug: "tray-station-badges", topic: "系統匣站章" },
+    { slug: "code-review-convergence-boundary", topic: "審查收斂邊界" },
+    { slug: "apply-provenance-scope", topic: "apply 溯源範圍" },
+  ];
+
+  it("四筆來源討論：僅出身籤直出，+3 籤呈現溢出數，其餘 slug 不直出", async () => {
+    const props = makeProps({ sourceDiscussions: FOUR, onOpenDiscussion: vi.fn() });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByRole("button", { name: /code-review-stage/ });
+    const overflow = screen.getByRole("button", { name: /其餘 3 份/ });
+    expect(overflow.getAttribute("data-source-overflow")).not.toBeNull();
+    expect(overflow.textContent).toBe("+3");
+    // 其餘三筆不直接渲染於標頭。
+    expect(screen.queryByRole("button", { name: /tray-station-badges/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /apply-provenance-scope/ })).toBeNull();
+  });
+
+  it("點 +N 浮層列出其餘討論（slug 主行＋topic 副行），點項目跳討論並關閉浮層", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const onOpenDiscussion = vi.fn();
+    const props = makeProps({ sourceDiscussions: FOUR, onOpenDiscussion });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByRole("button", { name: /code-review-stage/ });
+    await user.click(screen.getByRole("button", { name: /其餘 3 份/ }));
+    const popover = await waitFor(() => {
+      const el = document.querySelector("[data-source-overflow-list]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    // slug 主行＋topic 副行。
+    expect(popover.textContent).toContain("tray-station-badges");
+    expect(popover.textContent).toContain("系統匣站章");
+    expect(popover.textContent).toContain("code-review-convergence-boundary");
+    expect(popover.textContent).toContain("apply-provenance-scope");
+    await user.click(within(popover).getByRole("button", { name: /tray-station-badges/ }));
+    expect(onOpenDiscussion).toHaveBeenCalledWith("tray-station-badges");
+    await waitFor(() =>
+      expect(document.querySelector("[data-source-overflow-list]")).toBeNull(),
+    );
+  });
+
+  it("單筆來源討論無 +N 籤", async () => {
+    const props = makeProps({
+      sourceDiscussions: [{ slug: "alpha-ux", topic: "Alpha UX 討論" }],
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByRole("button", { name: /alpha-ux/ });
+    expect(document.querySelector("[data-source-overflow]")).toBeNull();
+  });
+
+  it("同源籤比照：首籤直出、其餘收 +N，浮層項點擊互跳", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const onOpenSibling = vi.fn();
+    const props = makeProps({
+      sourceDiscussions: [{ slug: "alpha-ux", topic: "Alpha UX 討論" }],
+      siblingChanges: ["sib-one", "sib-two", "sib-three"],
+      onOpenSibling,
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByRole("button", { name: /sib-one/ });
+    expect(screen.queryByRole("button", { name: /sib-two/ })).toBeNull();
+    await user.click(screen.getByRole("button", { name: /其餘 2 份/ }));
+    const popover = await waitFor(() => {
+      const el = document.querySelector("[data-source-overflow-list]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    await user.click(within(popover).getByRole("button", { name: /sib-two/ }));
+    expect(onOpenSibling).toHaveBeenCalledWith("sib-two");
+  });
+});
+
+// spec 需求「變更詳情抽屜標頭的四層結構」與「詳情抽屜的審查資訊列」（change-drawer-
+// header-redesign）：標題列／狀態列（進度＋審查章）／出身列（單行）／動作列。
+describe("標頭四層結構", () => {
+  it("標頭可視文字無任務計數字樣（任務數由分頁徽章與進度條承載）", async () => {
+    render(<RichDetailDrawer {...(makeProps() as never)} />);
+    await screen.findByText("MomoChen");
+    expect(screen.queryByText(/30\/30 任務/)).toBeNull();
+    // 分頁徽章仍呈現計數。
+    expect(screen.getAllByText(/30\/30/).length).toBeGreaterThan(0);
+  });
+
+  it("審查資訊列與進度條同在狀態列", async () => {
+    const reviewed: ChangeItem = {
+      ...change,
+      reviewStatus: "reviewed",
+      reviewedAt: "2026-08-04",
+      reviewedBy: "MomoChen",
+    };
+    const { baseElement } = render(
+      <RichDetailDrawer {...(makeProps({ change: reviewed }) as never)} />,
+    );
+    await screen.findByText("MomoChen");
+    const statusRow = baseElement.querySelector("[data-status-row]") as HTMLElement;
+    expect(statusRow).toBeTruthy();
+    // 進度軌與審查資訊同一容器。
+    expect(statusRow.querySelector("[data-progress-track]")).toBeTruthy();
+    expect(statusRow.querySelector("[data-review-row]")).toBeTruthy();
+  });
+
+  it("建立者 email 不直出，僅顯名字；提示保完整識別", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const props = makeProps({
+      loadMeta: vi.fn(async () => ({
+        created: "2026-07-05",
+        createdBy: "MomoChen <momochenisme@gmail.com>",
+        createdWith: "claude",
+      })),
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    expect(screen.queryByText(/momochenisme@gmail\.com/)).toBeNull();
+    await user.hover(screen.getByText("MomoChen"));
+    await waitFor(() => {
+      const tip = document.querySelector("[data-radix-popper-content-wrapper]");
+      expect(tip?.textContent).toContain("momochenisme@gmail.com");
+    });
+  });
+
+  it("出身列為不折行單行容器（4 筆來源討論＋開工＋同源）", async () => {
+    const props = makeProps({
+      loadMeta: vi.fn(async () => ({
+        created: "2026-07-05",
+        createdBy: "MomoChen <momochenisme@gmail.com>",
+        createdWith: "claude",
+        startedAt: "2026-08-03",
+        startedBy: "MomoChen <momochenisme@gmail.com>",
+      })),
+      sourceDiscussions: [
+        { slug: "code-review-stage", topic: "審查站落地" },
+        { slug: "tray-station-badges", topic: "系統匣站章" },
+        { slug: "code-review-convergence-boundary", topic: "審查收斂邊界" },
+        { slug: "apply-provenance-scope", topic: "apply 溯源範圍" },
+      ],
+      siblingChanges: ["sib-one", "sib-two"],
+    });
+    const { baseElement } = render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    const row = baseElement.querySelector("[data-provenance-row]") as HTMLElement;
+    expect(row).toBeTruthy();
+    // 恆定單行：不折行、溢出裁切兜底。
+    expect(row.className).not.toContain("flex-wrap");
+    expect(row.className).toContain("overflow-hidden");
+    expect(row.className).toContain("whitespace-nowrap");
+    // 出身資訊全在此列：建立者、開工、來自首籤、同源首籤與各自 +N。
+    expect(within(row).getByText("MomoChen")).toBeTruthy();
+    expect(within(row).getByText(/2026-08-03 開工/)).toBeTruthy();
+    expect(within(row).getByRole("button", { name: /code-review-stage/ })).toBeTruthy();
+    expect(within(row).getByRole("button", { name: /sib-one/ })).toBeTruthy();
   });
 });
 

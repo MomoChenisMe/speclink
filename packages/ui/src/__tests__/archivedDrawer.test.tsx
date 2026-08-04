@@ -3,7 +3,7 @@
 // 封存討論「背景」「討論過程」「結論」區段、缺件文件空狀態、無任何寫入動詞、
 // 寬度與全螢幕切換與變更詳情抽屜一致、開啟期間外部變更反映。
 import { describe, it, expect, vi } from "vitest";
-import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -120,8 +120,8 @@ describe("ArchivedDrawer（封存變更 target）", () => {
     expect(drawerEl()!.className).toContain("w-[max(720px,42vw)]");
   });
 
-  it("sourceDiscussions 顯示可點 topic chips，點擊以 slug 呼叫 onOpenDiscussion（design D1 增補）", async () => {
-    // spec Scenario「自封存變更抽屜跳轉來源討論」的元件面。
+  it("sourceDiscussions 以 slug 籤呈現，首籤直出、其餘收 +N 浮層，點擊以 slug 呼叫 onOpenDiscussion", async () => {
+    // spec Scenario「自封存變更抽屜跳轉來源討論」的元件面（change-drawer-header-redesign 同構改寫）。
     const props = makeProps({
       sourceDiscussions: [
         { slug: "alpha-ux", topic: "Alpha UX 討論" },
@@ -131,15 +131,25 @@ describe("ArchivedDrawer（封存變更 target）", () => {
     });
     render(<ArchivedDrawer {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
-    expect(screen.getByText("來自討論：")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Alpha UX 討論" }));
+    // 首籤（出身）slug 直出；topic 全文不在可視文字。
+    fireEvent.click(screen.getByRole("button", { name: /alpha-ux/ }));
     expect(props.onOpenDiscussion).toHaveBeenCalledWith("alpha-ux");
-    // 多來源全列（topic 解析缺席時退回 slug 由宿主處理，元件原樣顯示）。
-    expect(screen.getByRole("button", { name: "beta-flow" })).toBeTruthy();
+    expect(screen.queryByText("Alpha UX 討論")).toBeNull();
+    // 第二筆收進 +1 浮層，不直接渲染。
+    expect(screen.queryByRole("button", { name: /beta-flow/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /其餘 1 份/ }));
+    const popover = await waitFor(() => {
+      const el = document.querySelector("[data-source-overflow-list]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    fireEvent.click(within(popover).getByRole("button", { name: /beta-flow/ }));
+    expect(props.onOpenDiscussion).toHaveBeenCalledWith("beta-flow");
   });
 
-  // spec 需求「抽屜標頭標記受寬度約束且抽屜不產生水平捲軸」：同一約束須於已封存抽屜成立。
-  it("長 topic 來源討論標記受寬度上限約束並截斷，title 保留全文，面板關閉水平捲動", async () => {
+  // spec 需求「抽屜標頭標記受寬度約束且抽屜不產生水平捲軸」：同一約束須於已封存抽屜成立
+  // （change-drawer-header-redesign 改寫：籤面 slug、寬度上限、topic 降提示）。
+  it("籤面為 slug（等寬、寬度上限、截斷），面板關閉水平捲動", async () => {
     const LONG_TOPIC =
       "目前前端專案的設計，是完全純文字的web服務，我希望可以設計一下，因為有好幾個端點都要自己打URL才能夠進去，完全不符合人性，所以請你幫我重新設計一下";
     const props = makeProps({
@@ -148,14 +158,14 @@ describe("ArchivedDrawer（封存變更 target）", () => {
     });
     render(<ArchivedDrawer {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
-    const chip = screen.getByRole("button", { name: LONG_TOPIC });
-    expect(chip.className).toContain("max-w-full");
-    expect(chip.className).toContain("min-w-0");
-    expect(chip.getAttribute("title")).toBe(LONG_TOPIC);
+    const chip = screen.getByRole("button", { name: /web-service-navigation-redesign/ });
+    expect(chip.className).toContain("font-mono");
+    expect(chip.className).toContain("max-w-[140px]");
+    expect(screen.queryByText(LONG_TOPIC)).toBeNull();
     const label = chip.querySelector("[data-source-discussion-label]") as HTMLElement | null;
     expect(label).toBeTruthy();
     expect(label!.className).toContain("truncate");
-    expect(label!.textContent).toBe(LONG_TOPIC);
+    expect(label!.textContent).toBe("web-service-navigation-redesign");
     const panel = drawerEl();
     expect(panel!.className).toContain("overflow-y-auto");
     expect(panel!.className).toContain("overflow-x-hidden");
@@ -164,11 +174,11 @@ describe("ArchivedDrawer（封存變更 target）", () => {
   it("sourceDiscussions 缺席或空陣列時來源討論區塊不渲染", async () => {
     const { unmount } = render(<ArchivedDrawer {...(makeProps() as never)} />);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
-    expect(screen.queryByText("來自討論：")).toBeNull();
+    expect(document.querySelector("[data-source-discussion-label]")).toBeNull();
     unmount();
     render(<ArchivedDrawer {...(makeProps({ sourceDiscussions: [] }) as never)} />);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
-    expect(screen.queryByText("來自討論：")).toBeNull();
+    expect(document.querySelector("[data-source-discussion-label]")).toBeNull();
   });
 
   it("refreshGen 遞增時就地重載至磁碟現況（開啟期間外部變更反映）", async () => {
@@ -218,7 +228,7 @@ describe("ArchivedDrawer（封存討論 target）", () => {
     });
     render(<ArchivedDrawer {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("討論背景內文。")).toBeTruthy());
-    expect(screen.queryByText("來自討論：")).toBeNull();
+    expect(document.querySelector("[data-source-discussion-label]")).toBeNull();
   });
 });
 

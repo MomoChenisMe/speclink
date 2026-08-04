@@ -471,11 +471,17 @@ describe("change 側同源連結", () => {
         onOpenSibling={onOpenSibling}
       />,
     );
-    await waitFor(() => expect(screen.getByText(/來自討論/)).toBeTruthy());
-    // 兩份來源討論各自可點、互跳到對應討論。
-    fireEvent.click(screen.getByRole("button", { name: /Alpha search/ }));
+    await waitFor(() => expect(screen.getByText("來自")).toBeTruthy());
+    // 全部來源討論可及並互跳（change-drawer-header-redesign：首籤 slug 直出、其餘經 +N 浮層）。
+    fireEvent.click(screen.getByRole("button", { name: /alpha-search/ }));
     expect(onOpenDiscussion).toHaveBeenCalledWith("alpha-search");
-    fireEvent.click(screen.getByRole("button", { name: /Beta cache/ }));
+    fireEvent.click(screen.getByRole("button", { name: /其餘 1 份/ }));
+    const popover = await waitFor(() => {
+      const el = document.querySelector("[data-source-overflow-list]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    fireEvent.click(within(popover).getByRole("button", { name: /beta-cache/ }));
     expect(onOpenDiscussion).toHaveBeenCalledWith("beta-cache");
     fireEvent.click(screen.getByRole("button", { name: /cut-b/ }));
     expect(onOpenSibling).toHaveBeenCalledWith("cut-b");
