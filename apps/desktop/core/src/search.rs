@@ -25,12 +25,11 @@ pub fn search_workspace_at(root: &Path, query: &str) -> Value {
         return json!({ "hits": [] });
     };
     // 掃的全是 artifact，overlay 即足夠（design D2）——有 worktree 映射的 change
-    // 命中其副本現值，其餘直通主 checkout。facts 為空時就是主 store 本身。
-    let facts = speclink_host::worktree::observed_facts(&ctx.workspace, &ctx.store, |key| {
-        std::env::var(key).ok()
-    });
+    // 命中其副本現值，其餘直通主 checkout；facts 為空時 overlay 全數直通，即主
+    // store 本身，毋須另設守門。
+    let facts = crate::facts_for(&ctx);
     let overlaid = crate::query::overlay_store(&ctx, &facts);
-    let store: &dyn Store = if facts.is_empty() { &ctx.store } else { &overlaid };
+    let store: &dyn Store = &overlaid;
     let mut hits: Vec<Value> = Vec::new();
 
     // active 變更：artifacts 依固定序掃描，首個命中即代表該卡。
@@ -183,7 +182,7 @@ mod tests {
         fx.write("openspec/changes/add-auth/design.md", "## Context\n\n主 checkout 的舊設計。\n");
         let wt = fx.attach_worktree("add-auth");
         std::fs::write(
-            FixtureRoot::worktree_change_dir(&wt, "add-auth").join("design.md"),
+            wt.change_dir("add-auth").join("design.md"),
             "## Context\n\n只在 worktree 的 zebra-token 段落。\n",
         )
         .unwrap();

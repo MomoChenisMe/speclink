@@ -12,7 +12,7 @@ use crate::init_core_context;
 
 /// 對應 `speclink validate <change>`：回傳該 change 的 `ValidationResult`（valid/errors/warnings）。
 pub fn validate_at(root: &Path, change: &str) -> Result<Value, String> {
-    let ctx = open_for(root, change)?;
+    let ctx = crate::require_context_for_change(root, change)?;
     let store: &dyn Store = &ctx.store;
     let change = find(store, change)?;
     // 與 CLI 一致：validate 不解析 change 的 schema，一律用 spec_driven。
@@ -23,7 +23,7 @@ pub fn validate_at(root: &Path, change: &str) -> Result<Value, String> {
 
 /// 對應 `speclink analyze <change> --json`：回傳 `AnalyzeReport`（含 findings 與各維度狀態）。
 pub fn analyze_at(root: &Path, change: &str) -> Result<Value, String> {
-    let ctx = open_for(root, change)?;
+    let ctx = crate::require_context_for_change(root, change)?;
     let store: &dyn Store = &ctx.store;
     let change = find(store, change)?;
     let schema = speclink_core::schema::spec_driven();
@@ -45,7 +45,7 @@ pub fn archive_carry_at(root: &Path, change: &str) -> Result<Value, String> {
 
 /// 對應 `speclink review discard <change>`：刪工單、不蓋章（三選項的「放棄審查」）。
 pub fn discard_review_at(root: &Path, change: &str) -> Result<Value, String> {
-    let ctx = open_for(root, change)?;
+    let ctx = crate::require_context_for_change(root, change)?;
     let store: &dyn Store = &ctx.store;
     speclink_core::review::discard(store, change).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({ "change": change, "discarded": true }))
@@ -71,13 +71,6 @@ fn archive_with(root: &Path, change: &str, carry_review: bool) -> Result<Value, 
 
 pub(crate) fn open(root: &Path) -> Result<crate::ProjectContext, String> {
     init_core_context(root).ok_or_else(|| format!("not a speclink project: {}", root.display()))
-}
-
-/// 單一 change 的執行語境（design D1）：有 worktree 映射時解析到該副本，
-/// 否則同 [`open`]。
-fn open_for(root: &Path, change: &str) -> Result<crate::ProjectContext, String> {
-    crate::context_for_change(root, change)
-        .ok_or_else(|| format!("not a speclink project: {}", root.display()))
 }
 
 fn find(store: &dyn Store, change: &str) -> Result<speclink_core::model::Change, String> {
@@ -172,7 +165,7 @@ mod tests {
         );
         let wt = fx.attach_worktree("demo");
         std::fs::write(
-            FixtureRoot::worktree_change_dir(&wt, "demo")
+            wt.change_dir("demo")
                 .join("specs")
                 .join("cap-x")
                 .join("spec.md"),
