@@ -2917,3 +2917,28 @@ code:
 source: change-drawer-header-redesign
 updated: 2026-08-04
 -->
+
+---
+### Requirement: 品質站蓋章配色與主色分離
+
+品質站狀態標示的配色 SHALL 與主題主色分離:「已審查」蓋章 SHALL 以紫色系呈現,SHALL NOT 引用主題主色 token;「審查中」「已審查·其後有變動」「曾審查未通過」三態維持藍/琥珀/紅系不變。紫色系 SHALL 為品質站蓋章專屬——品質站標示以外的介面元素 SHALL NOT 使用紫色系。此約束 SHALL 套用於呈現審查標示的全部表面——「已審查」蓋章出現於看板卡片、變更詳情抽屜、已封存清單、已封存抽屜四處;封存對話框共用同一份配色對照,但僅取用「曾審查未通過」,不呈現已審查蓋章。各表面 SHALL 引用同一份配色對照,SHALL NOT 各自定義。
+
+#### Scenario: 已審查蓋章與主色可區辨
+
+- **WHEN** 使用者開啟 reviewStatus 為 reviewed 的變更卡片與其詳情抽屜
+- **THEN** 「已審查」蓋章以紫色系呈現,與同視野的主色元素(進度條、分頁、連結籤)可區辨;深淺主題下皆然
+
+#### Scenario: 其餘三態配色不變
+
+- **WHEN** 使用者分別檢視 inReview、reviewedStale、reviewedNotPassed 的審查標示
+- **THEN** 三態仍以藍、琥珀、紅系呈現,詞條與圖示與本變更前一致
+
+#### Scenario: 紫色系為蓋章專屬
+
+- **WHEN** 使用者檢視看板、抽屜與已封存各表面
+- **THEN** 紫色系僅出現於品質站蓋章,不出現在其他介面元素
+
+<!-- @trace
+source: review-stamp-violet
+updated: 2026-08-05
+-->
