@@ -111,6 +111,27 @@ fn codex_rendering_is_bit_identical_to_golden() {
     );
 }
 
+/// The second policy dimension. The snapshots above lock the DEFAULT generation set
+/// (worktree off), which contains neither gated skill — without this, their rendered
+/// content is locked nowhere. One tool target is enough: the gate adds the same two
+/// skills either way, and the codex wording is already covered by the content tests
+/// and the neutral snapshots.
+#[test]
+fn claude_rendering_with_the_worktree_policy_on_is_bit_identical_to_golden() {
+    let root = TempRoot::new("claude-worktree");
+    init::init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
+    std::fs::write(
+        root.dir.join("openspec").join("config.yaml"),
+        "schema: spec-driven\nworktree: true\n",
+    )
+    .unwrap();
+    init::update(&root.dir).unwrap();
+    assert_matches_golden(
+        "claude-worktree.snapshot.md",
+        &snapshot(&root.dir, "CLAUDE.md", ".claude/skills"),
+    );
+}
+
 // --- commit skill: confirmation gate requires visible plan + message ---
 
 /// Spec requirement commit 確認閘門所見即所簽: the rendered commit skill must
@@ -258,6 +279,16 @@ fn review_skill_binds_locale_across_output_chain() {
 /// tests in distinct sandboxes — two tests sharing a tag race on the same
 /// temp dir.
 fn skill_for_both_tools(tag: &str, skill: &str) -> Vec<(String, String)> {
+    generated_skill_for_both_tools(tag, skill, false)
+}
+
+/// [`skill_for_both_tools`] for the skills gated behind the worktree policy: their
+/// fixture must turn the policy on, or they are not in the generation set at all.
+fn worktree_skill_for_both_tools(tag: &str, skill: &str) -> Vec<(String, String)> {
+    generated_skill_for_both_tools(tag, skill, true)
+}
+
+fn generated_skill_for_both_tools(tag: &str, skill: &str, worktree: bool) -> Vec<(String, String)> {
     let cases = [
         (format!("{tag}-claude"), Tool::Claude, ".claude/skills"),
         (format!("{tag}-codex"), Tool::Codex, ".agents/skills"),
@@ -267,6 +298,14 @@ fn skill_for_both_tools(tag: &str, skill: &str) -> Vec<(String, String)> {
         .map(|(tag, tool, skills_dir)| {
             let root = TempRoot::new(&tag);
             init::init(&root.dir, &[tool], true, "openspec").unwrap();
+            if worktree {
+                std::fs::write(
+                    root.dir.join("openspec").join("config.yaml"),
+                    "schema: spec-driven\nworktree: true\n",
+                )
+                .unwrap();
+                init::update(&root.dir).unwrap();
+            }
             let rel = format!("{skills_dir}/speclink-{skill}/SKILL.md");
             let content =
                 std::fs::read_to_string(root.dir.join(rel.split('/').collect::<PathBuf>()))
@@ -571,7 +610,11 @@ fn render_fingerprint_input() -> String {
     let mut parts = Vec::new();
     for store in [init::StoreKind::Fs, init::StoreKind::Remote] {
         for tool in [Tool::Claude, Tool::Codex] {
-            parts.push(init::instructions_body("openspec", tool, store));
+            // Both worktree variants: the policy chooses between two marker
+            // renderings, so the lock must cover the content of each.
+            for worktree in [false, true] {
+                parts.push(init::instructions_body("openspec", tool, store, worktree));
+            }
         }
         parts.push(init::custom_instructions_body("openspec", &custom, store));
     }
@@ -682,7 +725,7 @@ records the old fingerprint.\n{}",
 /// summary, not a reference).
 #[test]
 fn apply_with_worktree_embeds_the_entire_apply_body() {
-    for (rel, content) in skill_for_both_tools("apply-wt-compose", "apply-with-worktree") {
+    for (rel, content) in worktree_skill_for_both_tools("apply-wt-compose", "apply-with-worktree") {
         let tool = if rel.starts_with(".claude") { Tool::Claude } else { Tool::Codex };
         let apply_body = skills::substitute(
             skills::skill_body("apply").expect("apply body"),
@@ -701,7 +744,7 @@ fn apply_with_worktree_embeds_the_entire_apply_body() {
 /// reuse over recreation.
 #[test]
 fn apply_with_worktree_states_the_policy_gate_and_the_creation_convention() {
-    for (rel, content) in skill_for_both_tools("apply-wt-pre", "apply-with-worktree") {
+    for (rel, content) in worktree_skill_for_both_tools("apply-wt-pre", "apply-with-worktree") {
         assert!(
             content.contains("workflow-config set worktree true"),
             "{rel}: must name the enabling command"
@@ -743,11 +786,76 @@ fn apply_with_worktree_states_the_policy_gate_and_the_creation_convention() {
     }
 }
 
+/// Same requirement, the multi-change guard: more than one change name stops the
+/// run for the user to pick one, batching is forbidden in so many words, and the
+/// guard sits ahead of the policy gate (nothing else should run first).
+#[test]
+fn apply_with_worktree_refuses_more_than_one_change() {
+    for (rel, content) in worktree_skill_for_both_tools("apply-wt-multi", "apply-with-worktree") {
+        let guard = content
+            .find("One change per run")
+            .unwrap_or_else(|| panic!("{rel}: missing the one-change-per-run guard"));
+        let policy_gate = content
+            .find("Check the worktree policy")
+            .unwrap_or_else(|| panic!("{rel}: missing the policy gate"));
+        assert!(guard < policy_gate, "{rel}: the multi-change guard must precede the policy gate");
+        assert!(
+            content.contains("AskUserQuestion"),
+            "{rel}: the user must pick which change to run"
+        );
+        assert!(
+            content.contains("Do **NOT** run them one after another"),
+            "{rel}: silent sequential batching must be forbidden"
+        );
+        assert!(
+            content.contains("一個 change 一個 session"),
+            "{rel}: must print the multi-session recipe in the user's terms"
+        );
+    }
+}
+
+/// Same requirement, the progress-vs-code guard: the evidence record is checked
+/// against the main tree between the artifact commit and worktree creation, and a
+/// dirty path stops for a three-way choice led by the commit route.
+#[test]
+fn apply_with_worktree_detects_progress_parted_from_code() {
+    for (rel, content) in worktree_skill_for_both_tools("apply-wt-split", "apply-with-worktree") {
+        let check = content
+            .find(".evidence.json")
+            .unwrap_or_else(|| panic!("{rel}: missing the evidence-record check"));
+        let commit_step = content.find("into HEAD").expect("commit step");
+        let worktree_add = content.find("git worktree add").expect("worktree add step");
+        assert!(
+            commit_step < check && check < worktree_add,
+            "{rel}: the split check belongs after the artifact commit and before worktree creation"
+        );
+        // Absent or empty record: nothing was implemented, so the run continues.
+        assert!(
+            content.contains("Continue to P4 silently"),
+            "{rel}: an empty or absent record must pass silently"
+        );
+        // Dirty: stop, and lead with the route that actually fixes it.
+        let commit_route = content
+            .find("先收程式碼再開 worktree")
+            .unwrap_or_else(|| panic!("{rel}: missing the recommended commit route"));
+        let carry_on = content.find("照樣繼續").expect("carry-on option");
+        let stop = content.find("停止").expect("stop option");
+        assert!(
+            commit_route < carry_on && carry_on < stop,
+            "{rel}: the three options must be offered in recommendation order"
+        );
+        assert!(
+            content.contains("Do NOT create the worktree before the user has chosen"),
+            "{rel}: worktree creation must wait for the user's choice"
+        );
+    }
+}
+
 /// Spec「apply-with-worktree 技能的收尾指示」: commit inside the worktree, stop
 /// before merging, keep the worktree, and hand off by name.
 #[test]
 fn apply_with_worktree_stops_before_the_merge_and_hands_off() {
-    for (rel, content) in skill_for_both_tools("apply-wt-post", "apply-with-worktree") {
+    for (rel, content) in worktree_skill_for_both_tools("apply-wt-post", "apply-with-worktree") {
         assert!(
             content.contains("Do NOT** merge") && content.contains("Do NOT** run `git worktree remove`"),
             "{rel}: must forbid both merging and removing the worktree"
@@ -763,7 +871,7 @@ fn apply_with_worktree_stops_before_the_merge_and_hands_off() {
 /// preflight, conflict and cleanup stop points are all stated.
 #[test]
 fn worktree_merge_skill_states_preflight_conflict_and_cleanup() {
-    for (rel, content) in skill_for_both_tools("wt-merge", "worktree-merge") {
+    for (rel, content) in worktree_skill_for_both_tools("wt-merge", "worktree-merge") {
         // preflight: both trees clean, and never acting on the user's behalf
         assert!(
             content.contains("Main tree not clean") && content.contains("Worktree not fully committed"),

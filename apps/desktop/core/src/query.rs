@@ -3,7 +3,7 @@
 //! 每個函式吃專案 `root`，經內嵌 core 回傳與對應 CLI `--json` 同形狀的 payload。
 //! 非 speclink 專案目錄時回傳明確的空狀態（空清單／None），不 panic。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 use speclink_core::store::Store;
@@ -15,12 +15,33 @@ pub fn list_changes_at(root: &Path) -> Value {
     let Some(ctx) = init_core_context(root) else {
         return json!({ "changes": [] });
     };
-    let store: &dyn Store = &ctx.store;
+    // Worktree 觀察面：與 CLI list 同一組閘門與 payload 落點（design D6）。
+    // 政策關、非主 checkout、git 不可用 → facts 為空，讀寫與 payload 與此功能
+    // 出現前完全相同。
+    let facts = speclink_host::worktree::observed_facts(&ctx.workspace, &ctx.store, |key| {
+        std::env::var(key).ok()
+    });
+    let overlaid = speclink_host::worktree::WorktreeOverlay::new(
+        &ctx.store,
+        facts
+            .iter()
+            .map(|(name, e)| {
+                let store: Box<dyn Store> =
+                    Box::new(speclink_fs::FsStore::new(&e.path, &ctx.workspace.spec_dir_name));
+                (name.clone(), store)
+            })
+            .collect(),
+    );
+    let store: &dyn Store = if facts.is_empty() { &ctx.store } else { &overlaid };
     let changes = board_sorted_changes(store);
     // 桌面 payload 在 CLI 同形項上疊加生命週期標記欄位（parity 紅線：CLI 的
     // changes_json 本身不動）。meta 類欄位取自 list_changes 已解析的 meta；
     // whyExcerpt 例外——另讀各 change 的 proposal.md 首段（描述列資料源）。
-    let items: Vec<Value> = speclink_core::listing::changes_json(store, &changes)
+    let items: Vec<Value> = speclink_core::listing::changes_json_with(
+        store,
+        &changes,
+        &speclink_host::worktree::payload_objects(&facts),
+    )
         .iter()
         .zip(changes.iter())
         .map(|(item, c)| {
@@ -61,6 +82,61 @@ pub fn list_changes_at(root: &Path) -> Value {
         })
         .collect();
     json!({ "changes": items })
+}
+
+/// worktree 掛著時，這個 change 的破壞性動詞要擋下來（design D7）。
+///
+/// 封存或退回會動主 checkout 的 change 目錄，但真正的工作在 worktree 副本裡——
+/// 擋下比事後對帳便宜。唯讀面（抽屜、檢視、diff）不經此關。政策關閉、非主
+/// checkout 或 git 不可用時無映射，一律放行。
+pub(crate) fn refuse_if_worktree_is_open(
+    ctx: &crate::ProjectContext,
+    change: &str,
+) -> Result<(), String> {
+    let facts = speclink_host::worktree::observed_facts(&ctx.workspace, &ctx.store, |key| {
+        std::env::var(key).ok()
+    });
+    match facts.get(change) {
+        None => Ok(()),
+        Some(entry) => Err(format!(
+            "{change} 正在 worktree（{}）中進行，請先執行 speclink-worktree-merge 收尾再操作。",
+            entry.branch
+        )),
+    }
+}
+
+/// 看板要跟著動的所有路徑，第一項恆為 spec 目錄本身（既有監看目標）。
+///
+/// worktree 流程下，進度寫在別的資料夾：各 worktree 副本的 change 目錄。再加上
+/// 主 repo 的 `.git/worktrees/`，worktree 的增減本身也會觸發刷新，卡片標示才會
+/// 隨 merge 收尾退場。登記簿要到第一個 worktree 建立才存在，此前以 `.git`
+/// 目錄本身代位（監看層對它非遞迴掛載）——等登記簿出生的事件驅動重掛。
+/// 非專案或非 git repo 時只回 spec 目錄一項——監看範圍與此功能出現前相同。
+pub fn watch_targets_at(root: &Path) -> Vec<PathBuf> {
+    let Some(ctx) = init_core_context(root) else {
+        return Vec::new();
+    };
+    let mut targets = vec![ctx.workspace.spec_dir()];
+    let facts = speclink_host::worktree::observed_facts(&ctx.workspace, &ctx.store, |key| {
+        std::env::var(key).ok()
+    });
+    for (change, entry) in &facts {
+        targets.push(
+            entry
+                .path
+                .join(&ctx.workspace.spec_dir_name)
+                .join("changes")
+                .join(change),
+        );
+    }
+    let git_dir = ctx.workspace.root.join(".git");
+    let registry = git_dir.join("worktrees");
+    if registry.is_dir() {
+        targets.push(registry);
+    } else if git_dir.is_dir() {
+        targets.push(git_dir);
+    }
+    targets
 }
 
 /// 看板顯示序的變更清單（design D2）：先取 CLI 預設 modified 序當回退，再以穩定
@@ -294,6 +370,137 @@ mod tests {
         assert_eq!(item["name"], "demo");
         assert_eq!(item["totalTasks"], 2);
         assert_eq!(item["completedTasks"], 1);
+    }
+
+    /// 主 checkout ＋ 一個 speclink/<change> worktree，change 兩份副本皆在——
+    /// 探索成立映射的三個條件。回傳 worktree 路徑。
+    fn attach_worktree(fx: &FixtureRoot, change: &str) -> std::path::PathBuf {
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(fx.root())
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@example.test")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@example.test")
+                .output()
+                .expect("run git");
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        fx.write(".speclink.yaml", "tools:\n  - claude\n");
+        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
+        git(&["init", "-q", "-b", "main"]);
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "seed"]);
+        let wt = fx.root().join("wt");
+        git(&["worktree", "add", "-q", "-b", &format!("speclink/{change}"), wt.to_str().unwrap()]);
+        // git 回報的是正規化路徑；macOS 的 /var 是 /private/var 的 symlink，
+        // 不正規化就會拿 symlink 路徑去比對 git 的實體路徑。
+        wt.canonicalize().expect("worktree path")
+    }
+
+    #[test]
+    fn list_changes_carries_the_worktree_object_for_a_mapped_change() {
+        // spec worktree-overlay「desktop 看板的 worktree 呈現」Scenario「卡片標示
+        // 與抽屜資訊」：payload 帶 camelCase 的 path 與 branch（皆為字串）。
+        let fx = FixtureRoot::new("q-list-wt");
+        fx.add_change("add-auth", OLD_META);
+        let wt = attach_worktree(&fx, "add-auth");
+
+        let v = list_changes_at(fx.root());
+        let item = &v["changes"].as_array().expect("changes")[0];
+
+        let worktree = item.get("worktree").expect("mapped change carries a worktree object");
+        assert_eq!(worktree["branch"], "speclink/add-auth");
+        assert_eq!(worktree["path"], wt.to_string_lossy().to_string());
+        assert!(worktree["branch"].is_string() && worktree["path"].is_string());
+    }
+
+    #[test]
+    fn watch_targets_cover_each_worktree_copy_and_the_worktree_registry() {
+        // 進度寫在 worktree 副本裡，worktree 的增減寫在 .git/worktrees/——兩者都
+        // 要監看，否則看板不會自動更新。
+        let fx = FixtureRoot::new("q-watch-wt");
+        fx.add_change("add-auth", OLD_META);
+        let wt = attach_worktree(&fx, "add-auth");
+
+        let targets = watch_targets_at(fx.root());
+
+        assert_eq!(targets[0], fx.root().join("openspec"), "第一項恆為 spec 目錄");
+        let want_copy = wt.join("openspec").join("changes").join("add-auth");
+        assert!(targets.contains(&want_copy), "須監看 worktree 副本的 change 目錄: {targets:?}");
+        let want_registry = fx.root().join(".git").join("worktrees");
+        assert!(targets.contains(&want_registry), "須監看 worktree 登記簿: {targets:?}");
+        assert!(
+            !targets.contains(&fx.root().join(".git")),
+            "登記簿已存在時不需 .git 哨兵（避免多吞 git 雜訊）: {targets:?}"
+        );
+    }
+
+    #[test]
+    fn watch_targets_include_the_git_sentinel_before_the_first_worktree() {
+        // 登記簿 .git/worktrees/ 要到第一個 worktree 建立才存在，而監看層會濾掉
+        // 不存在的目錄——推導須以 .git（非遞迴哨兵）代位，等登記簿出生的事件
+        // 驅動重掛，否則第一個 worktree 的新增永遠不會觸發看板刷新。
+        let fx = FixtureRoot::new("q-watch-git-sentinel");
+        fx.add_change("demo", OLD_META);
+        let out = std::process::Command::new("git")
+            .current_dir(fx.root())
+            .args(["init", "-q", "-b", "main"])
+            .output()
+            .expect("run git");
+        assert!(out.status.success(), "git init: {}", String::from_utf8_lossy(&out.stderr));
+
+        let targets = watch_targets_at(fx.root());
+
+        assert_eq!(targets[0], fx.root().join("openspec"), "第一項恆為 spec 目錄");
+        assert!(
+            targets.contains(&fx.root().join(".git")),
+            "git repo 無 worktree 時須含 .git 哨兵: {targets:?}"
+        );
+        assert!(
+            !targets.contains(&fx.root().join(".git").join("worktrees")),
+            "登記簿尚不存在，不推導死路徑: {targets:?}"
+        );
+    }
+
+    #[test]
+    fn watch_targets_are_just_the_spec_dir_without_worktrees() {
+        let fx = FixtureRoot::new("q-watch-plain");
+        fx.add_change("demo", OLD_META);
+        assert_eq!(watch_targets_at(fx.root()), vec![fx.root().join("openspec")]);
+    }
+
+    #[test]
+    fn watch_targets_are_empty_outside_a_project() {
+        assert!(watch_targets_at(&fresh_non_project_dir()).is_empty());
+    }
+
+    #[test]
+    fn list_changes_omits_the_worktree_object_without_a_mapping() {
+        let fx = FixtureRoot::new("q-list-no-wt");
+        fx.add_change("demo", OLD_META);
+        let v = list_changes_at(fx.root());
+        let item = &v["changes"].as_array().expect("changes")[0];
+        assert!(item.get("worktree").is_none_or(Value::is_null), "無映射時不帶 worktree: {item}");
+    }
+
+    #[test]
+    fn list_changes_counts_tasks_from_the_worktree_copy() {
+        // Scenario「worktree 內進度即時反映」：勾選發生在 worktree 副本，主看板
+        // 的計數要跟著動（讀經 overlay，而非主 checkout 的舊值）。
+        let fx = FixtureRoot::new("q-list-wt-progress");
+        fx.add_change("add-auth", OLD_META);
+        let wt = attach_worktree(&fx, "add-auth");
+        let tasks = wt.join("openspec").join("changes").join("add-auth").join("tasks.md");
+        std::fs::write(&tasks, "## 1. Group\n\n- [x] 1.1 First task\n- [x] 1.2 Second task\n")
+            .unwrap();
+
+        let v = list_changes_at(fx.root());
+        let item = &v["changes"].as_array().expect("changes")[0];
+
+        assert_eq!(item["completedTasks"], 2, "計數須來自 worktree 副本: {item}");
+        assert_eq!(item["totalTasks"], 2);
     }
 
     #[test]

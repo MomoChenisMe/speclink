@@ -354,6 +354,9 @@ function AppInner({
     if (!session) return;
     return session.events.subscribe(
       () => {
+        // 監看重掛先於刷新（worktree 增減會改變監看拓撲；目標不變時 Rust 端
+        // 沿用原監看）——拖曳手勢只暫緩畫面刷新，不暫緩重掛。
+        void useStore.getState().rearmWatch();
         if (boardDragActive.current) {
           pendingRefresh.current = true;
           return;

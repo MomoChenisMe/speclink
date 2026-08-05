@@ -114,6 +114,8 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.specLocaleHelp": "spec 檔散文的語言；auto＝跟隨 locale，未設定＝English。",
     "settings.tddHelp": "開啟後實作全程紅→綠 TDD（先寫失敗測試再實作）。",
     "settings.auditHelp": "開啟後對新 API 與參數處理執行 sharp-edges 安全檢查。",
+    "settings.worktreeHelp":
+      "開啟後注入 worktree 流程的兩個技能，可把多個變更各自放進獨立的 worktree 平行實作；關閉即移除。",
     "settings.localeUnset": "未設定（English）",
     "settings.localeInvalid": "（無效值）",
     "settings.localeInvalidHint": "儲存的 locale 不是有效語系代碼，請改選 tw／ja／en 後儲存。",
@@ -402,6 +404,8 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.specLocaleHelp": "Language of spec prose; auto = follow locale, unset = English.",
     "settings.tddHelp": "When on, implementation runs red→green TDD (failing test first).",
     "settings.auditHelp": "When on, new APIs and parameter handling get a sharp-edges security check.",
+    "settings.worktreeHelp":
+      "When on, the two worktree skills are installed so several changes can be applied in parallel, each in its own worktree; turning it off removes them.",
     "settings.localeUnset": "Unset (English)",
     "settings.localeInvalid": " (invalid value)",
     "settings.localeInvalidHint": "The stored locale is not a valid code — choose tw / ja / en and save.",

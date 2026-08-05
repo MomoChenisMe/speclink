@@ -43,6 +43,7 @@ pub struct WorkflowSettings {
     pub spec_locale: Option<String>,
     pub tdd: bool,
     pub audit: bool,
+    pub worktree: bool,
     pub context: Option<String>,
     pub rules: BTreeMap<String, Vec<String>>,
     pub schema_artifacts: Vec<String>,
@@ -120,6 +121,7 @@ fn workflow_settings_from_text(
             spec_locale: cfg.spec_locale.clone(),
             tdd: cfg.tdd.unwrap_or(false),
             audit: cfg.audit.unwrap_or(false),
+            worktree: cfg.worktree.unwrap_or(false),
             context: cfg.context.clone(),
             rules: cfg.rules.clone(),
             schema_artifacts: schema_artifact_ids(workspace, &cfg),
@@ -130,6 +132,7 @@ fn workflow_settings_from_text(
             spec_locale: None,
             tdd: false,
             audit: false,
+            worktree: false,
             context: None,
             rules: Default::default(),
             // 壞檔無從得知活躍 schema——不呈現猜測的分節（表單一併停用）。
@@ -152,9 +155,8 @@ fn schema_artifact_ids(ws: Option<&Workspace>, cfg: &WorkflowConfig) -> Vec<Stri
     }
 }
 
-/// 純文字政策欄位改寫 seam。代換 locale/spec_locale/tdd/audit（worktree 無設定頁
-/// 控制項，一律從原文回填現值），其他鍵的 parsed value 保持不變；設回預設值時
-/// 移除鍵。輸出在回傳前再經 typed 驗證。
+/// 純文字政策欄位改寫 seam。代換 locale/spec_locale/tdd/audit/worktree，其他鍵的
+/// parsed value 保持不變；設回預設值時移除鍵。輸出在回傳前再經 typed 驗證。
 pub fn rewrite_workflow_fields_text(
     original: &str,
     fields: &WorkflowPolicyFields,
@@ -167,7 +169,6 @@ fn rewrite_workflow_fields_text_for(
     fields: &WorkflowPolicyFields,
     file: &str,
 ) -> Result<String, String> {
-    let fields = &carry_over_worktree(original, fields);
     let new_text = speclink_core::config::update_workflow_config_text(
         original,
         fields,
@@ -179,25 +180,16 @@ fn rewrite_workflow_fields_text_for(
     Ok(new_text)
 }
 
-/// 設定頁沒有 worktree 開關，呼叫端送來的目標狀態該欄位恆為預設 false。原文的值
-/// 在此回填，讓「完整目標狀態」不至於在設定頁存檔時吃掉 CLI 寫入的 worktree 鍵。
-/// 壞檔交給後續的 core 改寫 loud 失敗，這裡不代為報錯。
-fn carry_over_worktree(original: &str, fields: &WorkflowPolicyFields) -> WorkflowPolicyFields {
-    let current = WorkflowConfig::from_text(Some(original))
-        .ok()
-        .and_then(|c| c.worktree)
-        .unwrap_or(false);
-    WorkflowPolicyFields { worktree: current, ..fields.clone() }
-}
-
 /// 寫入 `openspec/config.yaml` 的政策欄位（design D5 雙重驗證）：core 純函式
 /// 改寫（寫前解析原文失敗即中止）→ 驗證新文字可解析且目標欄位值正確 →
 /// 寫檔 → 回讀再驗。任一步失敗回指明檔案與階段的單行 Err，磁碟檔案維持原內容
 /// ——絕不留下不可解析的設定檔。
 ///
 /// `fields` 是設定頁可編輯欄位的完整目標狀態（非 patch）：呼叫端必須先以
-/// `read_settings_at` 取得現值再改寫，否則留在預設的欄位會被清掉。設定頁沒有
-/// 控制項的 worktree 是例外，其值由 `carry_over_worktree` 從原檔回填。
+/// `read_settings_at` 取得現值再改寫，否則留在預設的欄位會被清掉。
+///
+/// worktree 牽動技能足跡，故與 CLI 的 `workflow-config set` 同序（design D2）：
+/// 開→關先查活躍 worktree（有則整體不動），寫入成功後同步足跡。
 pub fn write_workflow_fields_at(
     root: &Path,
     fields: &speclink_core::config::WorkflowPolicyFields,
@@ -207,10 +199,45 @@ pub fn write_workflow_fields_at(
     let path = workflow_config_path(&ws);
     let original = read_opt(&path).unwrap_or_default();
     let new_text = rewrite_workflow_fields_text_for(&original, fields, &file)?;
+    let worktree_was_on = WorkflowConfig::from_text(Some(&original))
+        .ok()
+        .and_then(|c| c.worktree)
+        .unwrap_or(false);
+    if worktree_was_on && !fields.worktree {
+        refuse_teardown_with_active_worktrees(&ws)?;
+    }
     std::fs::write(&path, &new_text).map_err(|e| format!("{file}: write failed: {e}"))?;
     let reread = read_opt(&path)
         .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
-    verify_workflow_text(&reread, &carry_over_worktree(&original, fields), &file, "verify after write")
+    verify_workflow_text(&reread, fields, &file, "verify after write")?;
+    if worktree_was_on != fields.worktree {
+        speclink_core::init::update(&ws.root).map_err(|e| {
+            format!(
+                "{file} written, but the skill footprint did not sync: {} — re-run `speclink update` to rebuild it",
+                single_line(&e.to_string())
+            )
+        })?;
+    }
+    Ok(())
+}
+
+/// 關閉 worktree 政策會連 merge 技能一起收走，掛著的 worktree 就沒有收尾工具了。
+/// 與 CLI 走同一個 host 判定，訊息列出每個 worktree 的 change 名、分支與路徑。
+/// git 不可用時判定回空清單（fail-open），不擋。
+fn refuse_teardown_with_active_worktrees(ws: &Workspace) -> Result<(), String> {
+    let store = speclink_fs::FsStore::new(&ws.root, &ws.spec_dir_name);
+    let blockers = speclink_host::worktree::teardown_blockers(ws, &store);
+    if blockers.is_empty() {
+        return Ok(());
+    }
+    let list: Vec<String> = blockers
+        .iter()
+        .map(|b| format!("{} ({}) at {}", b.change, b.branch, b.path.display()))
+        .collect();
+    Err(format!(
+        "worktree 仍在使用中，關閉後將移除收尾用的 merge 技能：{}。請先對每個 worktree 執行 speclink-worktree-merge 收尾，再關閉此開關。",
+        list.join("；")
+    ))
 }
 
 /// 寫入 `openspec/config.yaml` 的「專案說明」與「產出規則」（design D4：與政策
@@ -518,17 +545,25 @@ mod tests {
     }
 
     #[test]
-    fn text_rewrite_preserves_worktree_which_has_no_settings_page_control() {
-        // 設定頁沒有 worktree 開關，送來的 fields 恆為 false。若原樣當成目標狀態，
-        // 任一次存檔都會靜默刪掉使用者以 CLI 寫入的 worktree: true。
-        let output = rewrite_workflow_fields_text(
+    fn text_rewrite_writes_the_worktree_value_the_page_sent() {
+        // 設定頁有了 worktree 開關，送來的值就是目標狀態（不再從原檔回填）：
+        // 開→關要真的把鍵拿掉，否則畫面上關了、檔案裡還開著。
+        let off = rewrite_workflow_fields_text(
             "schema: spec-driven\nworktree: true\n",
             &WorkflowPolicyFields { tdd: true, ..Default::default() },
         )
         .expect("rewrite");
-        let parsed = WorkflowConfig::from_text(Some(&output)).expect("parse output");
-        assert_eq!(parsed.worktree, Some(true), "worktree must survive: {output}");
+        let parsed = WorkflowConfig::from_text(Some(&off)).expect("parse output");
+        assert_eq!(parsed.worktree, None, "關閉時鍵應被移除（false＝預設）：{off}");
         assert_eq!(parsed.tdd, Some(true));
+
+        let on = rewrite_workflow_fields_text(
+            "schema: spec-driven\n",
+            &WorkflowPolicyFields { worktree: true, ..Default::default() },
+        )
+        .expect("rewrite");
+        let parsed = WorkflowConfig::from_text(Some(&on)).expect("parse output");
+        assert_eq!(parsed.worktree, Some(true), "開啟時鍵應寫入：{on}");
     }
 
     #[test]
@@ -576,6 +611,59 @@ mod tests {
             read(&fx.root().join("openspec/config.yaml")),
             "schema: spec-driven\n\ntdd: true\n\ncontext: |\n  keep me\nrules:\n  proposal:\n    - keep rule\n"
         );
+    }
+
+    /// 把 fixture 變成真的 git 主 checkout，並掛上一個 speclink/<change> 的 worktree。
+    fn attach_worktree(fx: &FixtureRoot, change: &str) -> PathBuf {
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(fx.root())
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@example.test")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@example.test")
+                .output()
+                .expect("run git");
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        fx.add_change(change, "");
+        git(&["init", "-q", "-b", "main"]);
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "seed"]);
+        let wt = fx.root().join("wt");
+        git(&["worktree", "add", "-q", "-b", &format!("speclink/{change}"), wt.to_str().unwrap()]);
+        wt
+    }
+
+    #[test]
+    fn write_refuses_to_turn_worktree_off_while_one_is_active() {
+        // spec Scenario「關閉遇活躍 worktree 浮出擋下」：訊息列出 change 名、分支
+        // 與路徑並指出收尾方式，config 檔逐位元不變。
+        let fx = FixtureRoot::new("wf-write-wt-block");
+        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
+        let wt = attach_worktree(&fx, "add-auth");
+        let before = read(&fx.root().join("openspec/config.yaml"));
+
+        let err = write_workflow_fields_at(fx.root(), &WorkflowPolicyFields::default())
+            .expect_err("有活躍 worktree 時必須拒絕");
+
+        assert!(err.contains("add-auth"), "須列 change 名: {err}");
+        assert!(err.contains("speclink/add-auth"), "須列分支: {err}");
+        assert!(err.contains(wt.to_str().unwrap()), "須列路徑: {err}");
+        assert!(err.contains("worktree-merge"), "須指出收尾方式: {err}");
+        assert_eq!(read(&fx.root().join("openspec/config.yaml")), before, "檔案不得變動");
+    }
+
+    #[test]
+    fn write_turns_worktree_off_when_none_is_active() {
+        // 無活躍 worktree（此 fixture 連 git repo 都不是）＝ fail-open，照常寫入。
+        let fx = FixtureRoot::new("wf-write-wt-free");
+        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
+        write_workflow_fields_at(fx.root(), &WorkflowPolicyFields::default()).expect("write ok");
+        let text = read(&fx.root().join("openspec/config.yaml"));
+        let parsed = WorkflowConfig::from_text(Some(&text)).expect("parse");
+        assert_eq!(parsed.worktree, None, "關閉後鍵應被移除: {text}");
     }
 
     #[test]

@@ -33,6 +33,9 @@ export interface ChangeItem {
   /** 蓋章時間與審查者——章存在（reviewed／reviewedStale）時才附。 */
   reviewedAt?: string | null;
   reviewedBy?: string | null;
+  /** 這個 change 正在其中實作的 linked worktree（僅本機主 checkout、政策開啟時
+   * 才有）；缺席＝在主資料夾裡做。 */
+  worktree?: { branch: string; path: string } | null;
 }
 
 /** 一個 canonical spec 的清單項（CLI 同形欄位＋桌面疊加的呈現層輔助欄位）。

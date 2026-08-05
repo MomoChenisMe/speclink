@@ -1,4 +1,4 @@
-<!-- SPECLINK:START v1.9.0 -->
+<!-- SPECLINK:START v1.10.0 -->
 
 # Speclink Instructions
 
@@ -10,8 +10,6 @@ This project uses Speclink for Spec-Driven Development(SDD). Specs, change propo
 - User wants to plan, propose, or design a change → `/speclink-propose` (`--from-discussion <slug>` seeds it from a concluded discussion)
 - Adopting Speclink on an existing codebase → `/speclink-onboard`
 - Tasks are ready to implement → `/speclink-apply`
-- Implementing several independent changes at once → `/speclink-apply-with-worktree` (one git worktree per change)
-- A worktree change is committed and ready to land → `/speclink-worktree-merge` (merge back, then clean up)
 - Resuming a change that sat idle → run `/speclink-drift` first
 - Requirements change mid-work → `/speclink-ingest`
 - Implementation is done, before archiving → optional quality stations `/speclink-review` (craft quality) ∥ `/speclink-verify` (spec compliance; user's call), then `/speclink-archive`

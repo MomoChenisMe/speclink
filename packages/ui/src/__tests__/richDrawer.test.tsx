@@ -935,6 +935,28 @@ describe("標頭四層結構", () => {
     });
   });
 
+  it("worktree 映射時出身列顯示分支與路徑，無映射時整段缺席", async () => {
+    // spec worktree-overlay「desktop 看板的 worktree 呈現」：抽屜顯示分支名與
+    // worktree 路徑（OS 原生形式）。
+    const wtChange: ChangeItem = {
+      ...change,
+      worktree: { branch: "speclink/demo", path: "/work/speclink.worktrees/demo" },
+    };
+    const { baseElement, unmount } = render(
+      <RichDetailDrawer {...(makeProps({ change: wtChange }) as never)} />,
+    );
+    await screen.findByText("MomoChen");
+    const row = baseElement.querySelector("[data-provenance-row]") as HTMLElement;
+    expect(within(row).getByText(/speclink\/demo/)).toBeTruthy();
+    expect(within(row).getByTitle("/work/speclink.worktrees/demo")).toBeTruthy();
+    unmount();
+
+    const plain = render(<RichDetailDrawer {...(makeProps() as never)} />);
+    await screen.findByText("MomoChen");
+    const plainRow = plain.baseElement.querySelector("[data-provenance-row]") as HTMLElement;
+    expect(within(plainRow).queryByText(/speclink\//)).toBeNull();
+  });
+
   it("出身列為不折行單行容器（4 筆來源討論＋開工＋同源）", async () => {
     const props = makeProps({
       loadMeta: vi.fn(async () => ({

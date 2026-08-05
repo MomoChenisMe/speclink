@@ -44,6 +44,92 @@ pub fn discover(ws: &Workspace, store: &dyn Store) -> WorktreeFacts {
     facts_from_porcelain(&text, &ws.spec_dir_name, &|name| store.change_exists(name))
 }
 
+/// The observation facts for a main checkout, or an empty map.
+///
+/// Three gates, all of which must hold before git is spawned at all (D3): the
+/// workspace root's `.git` is a DIRECTORY (a main checkout — inside a linked
+/// worktree it is a file), `.speclink.yaml` loads, and the effective `worktree`
+/// policy is true. A config that cannot load or parse counts as "off": the
+/// observation surface must never start failing a read that used to succeed.
+///
+/// Every local surface that shows worktree facts (the CLI's `list`, the desktop
+/// board) goes through this one gate, so they can never disagree about when the
+/// overlay is in play. `get_env` is injected — the process-env read stays at the
+/// caller's boundary.
+pub fn observed_facts(
+    ws: &Workspace,
+    store: &dyn Store,
+    get_env: impl Fn(&str) -> Option<String>,
+) -> WorktreeFacts {
+    if !ws.root.join(".git").is_dir() {
+        return WorktreeFacts::new();
+    }
+    let Ok(app) = speclink_core::config::AppConfig::load(&ws.app_config()) else {
+        return WorktreeFacts::new();
+    };
+    let policy =
+        crate::policy::resolve_effective_policy(get_env, &app, store.read_workflow_config().as_deref());
+    match policy {
+        Ok(p) if p.resolved().worktree => discover(ws, store),
+        _ => WorktreeFacts::new(),
+    }
+}
+
+/// The per-change `worktree` objects a change listing attaches — the payload
+/// half of the observation surface, shared so the CLI and the desktop board
+/// describe a worktree with the same fields.
+pub fn payload_objects(
+    facts: &WorktreeFacts,
+) -> BTreeMap<String, speclink_core::listing::ListWorktreeJson> {
+    facts
+        .iter()
+        .map(|(name, e)| {
+            (
+                name.clone(),
+                speclink_core::listing::ListWorktreeJson {
+                    path: e.path.to_string_lossy().to_string(),
+                    branch: e.branch.clone(),
+                },
+            )
+        })
+        .collect()
+}
+
+/// One worktree standing in the way of turning the worktree policy off.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeardownBlocker {
+    pub change: String,
+    pub branch: String,
+    pub path: PathBuf,
+}
+
+/// The worktrees that must be wrapped up before the worktree policy can be turned off.
+///
+/// Turning the policy off retires the whole worktree footprint — including the merge
+/// skill — so a live worktree would be stranded with no wrap-up tool. Both write paths
+/// (the CLI's `workflow-config set` and the desktop settings page) consult this one
+/// answer, and both present it in the same order: by change name, as discovery keys it.
+///
+/// Empty means nothing blocks, which includes every fail-open case discovery already
+/// covers (no git, unparseable records) — an environment without git must not become
+/// one where the policy can never be turned off.
+pub fn teardown_blockers(ws: &Workspace, store: &dyn Store) -> Vec<TeardownBlocker> {
+    blockers_from_facts(discover(ws, store))
+}
+
+/// The facts → blockers step, split from the git call so it is testable without
+/// spawning git (same split as [`facts_from_porcelain`]).
+fn blockers_from_facts(facts: WorktreeFacts) -> Vec<TeardownBlocker> {
+    facts
+        .into_iter()
+        .map(|(change, entry)| TeardownBlocker {
+            change,
+            branch: entry.branch,
+            path: entry.path,
+        })
+        .collect()
+}
+
 /// The mapping step, split from the git call so the three conditions are
 /// testable without spawning git.
 fn facts_from_porcelain(
@@ -674,6 +760,41 @@ bare
         let tree = TempTree::with_changes("bare-prefix", &[]);
         let facts = facts_from_porcelain(&tree.porcelain("speclink/"), "openspec", &always);
         assert!(facts.is_empty(), "got: {facts:?}");
+    }
+
+    // --- teardown blockers: what stands in the way of turning the policy off ---
+
+    #[test]
+    fn every_mapped_worktree_blocks_teardown_in_change_order() {
+        let tree = TempTree::with_changes("blockers", &["add-dark-mode"]);
+        let facts =
+            facts_from_porcelain(&tree.porcelain("speclink/add-dark-mode"), "openspec", &always);
+
+        let blockers = blockers_from_facts(facts);
+
+        assert_eq!(blockers.len(), 1, "got: {blockers:?}");
+        assert_eq!(blockers[0].change, "add-dark-mode");
+        assert_eq!(blockers[0].branch, "speclink/add-dark-mode");
+        assert_eq!(blockers[0].path, tree.dir);
+    }
+
+    #[test]
+    fn no_mapping_means_nothing_blocks_teardown() {
+        assert!(blockers_from_facts(WorktreeFacts::new()).is_empty());
+    }
+
+    #[test]
+    fn teardown_is_unblocked_outside_a_git_repo() {
+        // fail-open 沿用 discovery：git 不可用時不擋，否則沒有 git 的環境將永遠
+        // 關不掉政策。
+        let dir = std::env::temp_dir()
+            .join(format!("speclink-host-wt-teardown-nogit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ws = Workspace { root: dir.clone(), spec_dir_name: "openspec".to_string() };
+        let store = FsStore::new(&dir, "openspec");
+        assert!(teardown_blockers(&ws, &store).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

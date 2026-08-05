@@ -342,7 +342,7 @@ fn cmd_list(a: ListArgs) -> Result<()> {
     // Worktree overlay (D3): only a local MAIN checkout with the policy on gets
     // here — everywhere else `facts` is empty, git is never spawned, and both
     // the store and the payload are exactly what they were before this feature.
-    let facts = worktree_facts(&ws, &fs_store);
+    let facts = speclink_host::worktree::observed_facts(&ws, &fs_store, |key| std::env::var(key).ok());
     let overlaid = speclink_host::worktree::WorktreeOverlay::new(
         &fs_store,
         facts
@@ -362,18 +362,7 @@ fn cmd_list(a: ListArgs) -> Result<()> {
             sort: a.sort.clone(),
             specs: a.specs,
             changes: a.changes,
-            worktrees: facts
-                .iter()
-                .map(|(name, e)| {
-                    (
-                        name.clone(),
-                        core::listing::ListWorktreeJson {
-                            path: e.path.to_string_lossy().to_string(),
-                            branch: e.branch.clone(),
-                        },
-                    )
-                })
-                .collect(),
+            worktrees: speclink_host::worktree::payload_objects(&facts),
         },
     )?;
     let core::command::CommandOutcome::List(list) = outcome else {
@@ -436,35 +425,6 @@ fn cmd_list(a: ListArgs) -> Result<()> {
         render_specs_section(specs, false)?;
     }
     Ok(())
-}
-
-/// The local worktree observation facts for `list`, or an empty map.
-///
-/// Three gates, all of which must hold before git is spawned at all (D3):
-/// the workspace root's `.git` is a DIRECTORY (a main checkout — inside a
-/// linked worktree it is a file), `.speclink.yaml` loads, and the effective
-/// `worktree` policy is true. A config that cannot load or parse counts as
-/// "off" here: `list` has never read the policy, and the observation surface
-/// must not start failing a command that used to succeed.
-fn worktree_facts(
-    ws: &core::workspace::Workspace,
-    store: &dyn Store,
-) -> speclink_host::worktree::WorktreeFacts {
-    if !ws.root.join(".git").is_dir() {
-        return Default::default();
-    }
-    let Ok(app) = core::config::AppConfig::load(&ws.app_config()) else {
-        return Default::default();
-    };
-    let policy = speclink_host::policy::resolve_effective_policy(
-        |key| std::env::var(key).ok(),
-        &app,
-        store.read_workflow_config().as_deref(),
-    );
-    match policy {
-        Ok(p) if p.resolved().worktree => speclink_host::worktree::discover(ws, store),
-        _ => Default::default(),
-    }
 }
 
 /// Render the specs section from the outcome's `{id, path}` items.
@@ -1587,9 +1547,60 @@ fn cmd_workflow_config(a: WorkflowConfigArgs) -> Result<()> {
         print!("{}", unified_diff(&label, &original, &edit.new_text));
         return Ok(());
     }
+    // worktree 的寫入牽動技能足跡，故三步有序（design D2）：先擋、再寫、後同步。
+    // 擋下時整體不動；同步失敗時 config 已是正典，錯誤浮出並指向重跑 update。
+    // 擋下只在「由 true 改 false」（政策已關時技能本就不在，殘留的 worktree
+    // 沒有收尾工具被抽走的風險，那個 no-op 寫入不該被拒）。
+    let worktree_target = worktree_write_target(&write);
+    let worktree_was_on = serde_yaml::from_str::<core::config::WorkflowConfig>(&original)
+        .map(|c| c.worktree.unwrap_or(false))
+        .unwrap_or(false);
+    if worktree_target == Some(false) && worktree_was_on {
+        refuse_teardown_with_active_worktrees(&ws)?;
+    }
     std::fs::write(&path, &edit.new_text).map_err(|e| anyhow::anyhow!("{label}: write failed: {e}"))?;
     println!("{} {}", color::green("✓"), edit.summary);
+    if worktree_target.is_some() {
+        let outcome = core::init::update(&ws.root).map_err(|e| {
+            anyhow::anyhow!("{label} written, but the skill footprint did not sync: {e} — re-run `speclink update` to rebuild it")
+        })?;
+        println!(
+            "{} skills synced ({})",
+            color::green("✓"),
+            if outcome.updated.is_empty() { "no tools configured".to_string() } else { outcome.updated.join(", ") }
+        );
+    }
     Ok(())
+}
+
+/// The `worktree` value a write is steering towards, or None when the write does
+/// not touch that key — the trigger for both the teardown check and the sync.
+fn worktree_write_target(write: &WorkflowConfigWrite) -> Option<bool> {
+    match write {
+        WorkflowConfigWrite::Policy { key, value } if key == "worktree" => {
+            Some(matches!(value.trim(), "true"))
+        }
+        _ => None,
+    }
+}
+
+/// Refuse to turn the policy off while linked worktrees are still open: doing so
+/// would retire the merge skill they depend on. Fail-open cases (no git) list
+/// nothing and let the write through.
+fn refuse_teardown_with_active_worktrees(ws: &core::workspace::Workspace) -> Result<()> {
+    let store = speclink_fs::FsStore::new(&ws.root, &ws.spec_dir_name);
+    let blockers = speclink_host::worktree::teardown_blockers(ws, &store);
+    if blockers.is_empty() {
+        return Ok(());
+    }
+    let list: String = blockers
+        .iter()
+        .map(|b| format!("\n  - {} ({}) at {}", b.change, b.branch, b.path.display()))
+        .collect();
+    bail!(
+        "worktree is still in use — turning the policy off would remove the merge skill these worktrees need:{list}\n\
+Wrap each one up with `speclink-worktree-merge` first, then set worktree false."
+    )
 }
 
 /// Split the parsed subcommand into `show` (None) or a resolved write plus its

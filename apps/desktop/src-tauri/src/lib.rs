@@ -212,8 +212,8 @@ fn archive_discussion(root: PathBuf, slug: String) -> Result<Value, String> {
     speclink_desktop_core::discussions::archive_discussion_at(&root, &slug)
 }
 
-/// 監看器槽位：重掛時整顆替換（drop 舊監看即停止）。
-type WatcherState = std::sync::Mutex<Option<watch::WorkspaceWatcher>>;
+/// 監看器槽位：目標集合不變時沿用原監看，改變時整顆替換（drop 舊監看即停止）。
+type WatcherState = std::sync::Mutex<watch::WatchSlot>;
 
 /// git 身分預熱（design D1）：首抓可能秒級（GUI 進程 spawn git 極慢的環境），
 /// 掛監看（＝專案成為活躍）時背景執行緒先填快取——首次勾選不再付這筆成本。
@@ -284,28 +284,29 @@ async fn update_instructions(path: String) -> Result<Value, String> {
     .map_err(|e| format!("instruction update worker failed: {e}"))?
 }
 
-/// 監看重掛（決策 5）：顯式跟隨活躍 session——整顆替換單一 watcher 並預熱
-/// git 身分；workspace-changed 事件 payload 為被監看的 root 字串（session 的
-/// 事件來源據此過濾）。root 收字串並原樣回送，避免 PathBuf 往返改寫字面。
+/// 監看重掛（決策 5）：顯式跟隨活躍 session。前端於每次 workspace-changed
+/// 後也會重掛（worktree 增減會改變監看拓撲）——槽位比對目標集合，不變即
+/// 沿用原監看，真的重建時才預熱 git 身分。workspace-changed 事件 payload 為
+/// 被監看的 root 字串（session 的事件來源據此過濾）。root 收字串並原樣回送，
+/// 避免 PathBuf 往返改寫字面。
 /// 監看不可用僅記錄、不回錯——app 照常、僅失去自動刷新（既有降級語意）。
 #[tauri::command]
 fn watch_workspace(app: tauri::AppHandle, root: String) {
     let root_path = PathBuf::from(&root);
-    prewarm_identity(root_path.clone());
     let emitter = app.clone();
-    let watcher = watch::resolve_watch_target(&root_path).and_then(|target| {
-        watch::watch_openspec(&target, std::time::Duration::from_millis(400), move || {
-            let _ = emitter.emit("workspace-changed", root.clone());
-        })
-    });
     if let Some(slot) = app.try_state::<WatcherState>() {
-        *slot.lock().expect("watcher lock poisoned") = match watcher {
-            Ok(w) => Some(w),
-            Err(e) => {
-                eprintln!("speclink-desktop: file watching unavailable: {e}");
-                None
-            }
-        };
+        let rearmed = slot.lock().expect("watcher lock poisoned").rearm(
+            &root_path,
+            std::time::Duration::from_millis(400),
+            move || {
+                let _ = emitter.emit("workspace-changed", root.clone());
+            },
+        );
+        match rearmed {
+            Ok(true) => prewarm_identity(root_path),
+            Ok(false) => {}
+            Err(e) => eprintln!("speclink-desktop: file watching unavailable: {e}"),
+        }
     }
 }
 
@@ -327,14 +328,14 @@ fn write_workflow_config(
     spec_locale: Option<String>,
     tdd: bool,
     audit: bool,
+    worktree: bool,
 ) -> Result<(), String> {
     let fields = speclink_desktop_core::settings::WorkflowPolicyFields {
         locale,
         spec_locale,
         tdd,
         audit,
-        // 設定頁沒有 worktree 開關；實際寫入值由 desktop-core 從原檔回填。
-        ..Default::default()
+        worktree,
     };
     speclink_desktop_core::settings::write_workflow_fields_at(&root, &fields)
 }
@@ -1354,7 +1355,7 @@ pub fn run() {
             // 監看槽位（決策 5）：啟動僅註冊空槽——前端還原分頁後以
             // watch_workspace 顯式掛上活躍專案（監看與資料載入同由前端
             // session 驅動；建立失敗僅記錄，app 照常、只失去自動刷新）。
-            let slot: WatcherState = std::sync::Mutex::new(None);
+            let slot: WatcherState = std::sync::Mutex::new(watch::WatchSlot::new());
             app.manage(slot);
             // 連線層：credential 生產出入口＝OS Keychain；access token 記憶體持有。
             let state_emitter = app.handle().clone();

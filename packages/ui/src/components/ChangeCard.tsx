@@ -1,4 +1,4 @@
-import { AlertTriangle, Archive, FileText, MessageSquareText, RefreshCw, Undo2 } from "lucide-react";
+import { AlertTriangle, Archive, FileText, GitBranch, MessageSquareText, RefreshCw, Undo2 } from "lucide-react";
 
 import type { ChangeItem, SearchHit } from "../adapter";
 import { useI18n } from "../i18n";
@@ -86,6 +86,18 @@ export function ChangeCard({
             </TooltipTrigger>
             <TooltipContent>
               {t("card.fromDiscussionTitle").replace("{name}", (change.fromDiscussions ?? []).join(", "))}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {change.worktree && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span aria-label={t("card.worktree")} className="shrink-0 text-primary/60">
+                <GitBranch className="h-3.5 w-3.5" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t("card.worktreeTitle").replace("{branch}", change.worktree.branch)}
             </TooltipContent>
           </Tooltip>
         )}

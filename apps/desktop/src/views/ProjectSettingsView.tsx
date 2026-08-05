@@ -203,6 +203,7 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
   const [specLocale, setSpecLocale] = useState("");
   const [tdd, setTdd] = useState(false);
   const [audit, setAudit] = useState(false);
+  const [worktree, setWorktree] = useState(false);
   const [contextText, setContextText] = useState("");
   /** 產出規則現值：schemaArtifacts 固定鍵 → 條目清單（清單順序即檔案順序）。 */
   const [rules, setRules] = useState<Record<string, string[]>>({});
@@ -226,6 +227,7 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
     setSpecLocale(next.workflow.specLocale ?? "");
     setTdd(next.workflow.tdd);
     setAudit(next.workflow.audit);
+    setWorktree(next.workflow.worktree);
     setContextText(next.workflow.context ?? "");
     const nextRules = Object.fromEntries(
       next.workflow.schemaArtifacts.map((id) => [id, next.workflow.rules[id] ?? []]),
@@ -292,6 +294,7 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
             specLocale: specLocale || null,
             tdd,
             audit,
+            worktree,
           };
     const mineContext =
       pending.kind === "context" ? pending.context : ctxEditing ? draftContext : contextText;
@@ -369,6 +372,7 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
       specLocale: specLocale || null,
       tdd,
       audit,
+      worktree,
     };
     try {
       const next = await settings.writeWorkflowConfig(fields);
@@ -376,7 +380,25 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
       setWfMsg(t("settings.saved"));
     } catch (e) {
       if (await handleWriteError(e, { kind: "policy", fields })) setWfMsg(null);
-      else setWfMsg(errorMessage(e));
+      else if (!isRemote) {
+        // local 失敗有兩種身分：被拒（例如 worktree 掛著時關不掉，檔案沒變）
+        // 或技能同步失敗（config 已寫入、新值為正典）。重讀檔案現值——開關與
+        // 快照都以檔案為準，才不會在下次儲存時靜默把政策寫回舊值。
+        try {
+          const fresh = await settings.readSettings();
+          setSnap(fresh);
+          setWorktree(fresh.workflow.worktree);
+        } catch {
+          setWorktree(snap?.workflow.worktree ?? false);
+        }
+        setWfMsg(errorMessage(e));
+      } else {
+        // remote 不重讀：adapter 的 readSettings 會靜默採納最新 revision，
+        // 之後再存等於帶新 revision 提交過期欄位值、繞過 409 衝突對照。
+        // 維持舊 revision，讓併發修改照常走 revision_conflict 對話框。
+        setWorktree(snap?.workflow.worktree ?? false);
+        setWfMsg(errorMessage(e));
+      }
     }
   };
 
@@ -777,6 +799,22 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
                 </div>
                 <span />
                 <FieldHelp>{t("settings.auditHelp")}</FieldHelp>
+
+                {!isRemote && (
+                  <>
+                    <label htmlFor="cfg-worktree" className="text-sm font-medium">worktree</label>
+                    <div className="flex items-center">
+                      <Checkbox
+                        id="cfg-worktree"
+                        checked={worktree}
+                        disabled={wfDisabled}
+                        onCheckedChange={(v) => setWorktree(v === true)}
+                      />
+                    </div>
+                    <span />
+                    <FieldHelp>{t("settings.worktreeHelp")}</FieldHelp>
+                  </>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Button

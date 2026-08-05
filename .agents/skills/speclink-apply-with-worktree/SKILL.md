@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -20,6 +20,18 @@ Implement tasks from a Speclink change in an isolated git worktree, so several c
 ## Worktree preflight
 
 Complete these steps **before** any of the apply flow below. Each one can stop the run.
+
+### P0. One change per run
+
+This skill takes **exactly one** change. Parallel work means one session per change, each in its own worktree — not one session cycling through several.
+
+If the input names more than one change (e.g. `$speclink-apply-with-worktree add-auth add-billing add-search`), STOP and use the **AskUserQuestion tool** to have the user pick the one to run here. Then print the recipe for the rest, naming them:
+
+> 平行做法是一個 change 一個 session：另外開視窗，各自執行 `$speclink-apply-with-worktree <change-name>`。主資料夾的看板會同時顯示每個 worktree 的進度。
+
+Do **NOT** run them one after another in this session. A single session working through several changes serializes what the user asked to parallelize, and its context is spent on the wrong change by the time the second one starts.
+
+If there is no AskUserQuestion tool available, list the names as plain text, ask which one to run, and wait for the answer.
 
 ### P1. Check the worktree policy
 
@@ -68,6 +80,26 @@ git status --porcelain -- "openspec/changes/<change-name>/"
   ```
 
   Never sweep other dirty files into this commit. If the directory cannot be committed cleanly (e.g. merge conflict markers), STOP and report.
+
+### P3.5. Check whether progress and code have come apart
+
+P3 commits the change's **artifacts**. Its **source changes** are a separate matter: when this change was already applied in the main folder, its task checkboxes went into HEAD just now while the code that satisfies them may still be sitting dirty in the main tree. The worktree would then carry tasks marked done with no implementation behind them.
+
+Read the change's evidence record and check those files against the main tree:
+
+```bash
+cat "openspec/changes/<change-name>/.evidence.json"
+git status --porcelain -- <each touched path from that record>
+```
+
+- **No record, or it lists no touched files** — nothing was implemented here yet. Continue to P4 silently.
+- **Every listed path is clean** — the code is already in HEAD and travels with the worktree. Continue to P4 silently.
+- **Any listed path is dirty** — STOP and show the user the dirty paths, then use the **AskUserQuestion tool**:
+  - **先收程式碼再開 worktree**（recommended） — run `$speclink-commit <change-name>` to get this change's source into HEAD, then come back and re-run this skill.
+  - **照樣繼續** — create the worktree knowing it will not contain those edits; the tasks they belong to will read as done with nothing behind them.
+  - **停止** — end the run and leave everything as it is.
+
+Do NOT create the worktree before the user has chosen. If there is no AskUserQuestion tool available, present the same three options as plain text and wait for the answer.
 
 ### P4. Create or reuse the worktree
 

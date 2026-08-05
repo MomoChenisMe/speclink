@@ -29,6 +29,7 @@ function snapshot(over: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
       specLocale: null,
       tdd: true,
       audit: false,
+      worktree: false,
       context: null,
       rules: {},
       schemaArtifacts: ["proposal", "design", "specs", "tasks"],
@@ -68,6 +69,7 @@ function projectSnap(over: Partial<SettingsSnapshot["workflow"]> = {}) {
       specLocale: null,
       tdd: true,
       audit: false,
+      worktree: false,
       context: "# 專案簡介\n\n這是一段說明",
       rules: { proposal: ["提案必須列出影響的 crates"], tasks: ["先寫失敗測試", "更新文件"] },
       schemaArtifacts: ["proposal", "design", "specs", "tasks"],
@@ -156,8 +158,93 @@ describe("ProjectSettingsView 寫入", () => {
         specLocale: null,
         tdd: true,
         audit: true,
+        worktree: false,
       }),
     );
+  });
+
+  it("worktree 開關切開後儲存 → writeWorkflowConfig 收到實值（不再恆為 false）", async () => {
+    const ws = renderView(snapshot());
+    fireEvent.click(await screen.findByLabelText("worktree"));
+    fireEvent.click(screen.getByTestId("save-workflow"));
+    await waitFor(() =>
+      expect(ws.writeWorkflowConfig).toHaveBeenCalledWith({
+        locale: "tw",
+        specLocale: null,
+        tdd: true,
+        audit: false,
+        worktree: true,
+      }),
+    );
+  });
+
+  it("worktree 開關載入時反映 config 現值", async () => {
+    renderView(snapshot({ workflow: { worktree: true } } as Partial<SettingsSnapshot>));
+    const box = (await screen.findByLabelText("worktree")) as HTMLElement;
+    await waitFor(() => expect(box.getAttribute("data-state")).toBe("checked"));
+  });
+
+  it("關閉遇活躍 worktree → 擋下訊息浮出且開關回復開啟", async () => {
+    const ws = renderView(snapshot({ workflow: { worktree: true } } as Partial<SettingsSnapshot>));
+    const blocked =
+      "add-auth 正在 worktree（speclink/add-auth）中進行，請先執行 speclink-worktree-merge 收尾再操作。";
+    (ws.writeWorkflowConfig as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error(blocked));
+
+    const box = (await screen.findByLabelText("worktree")) as HTMLElement;
+    fireEvent.click(box);
+    fireEvent.click(screen.getByTestId("save-workflow"));
+
+    expect(await screen.findByText(new RegExp("speclink-worktree-merge"))).toBeTruthy();
+    await waitFor(() => expect(box.getAttribute("data-state")).toBe("checked"));
+  });
+
+  it("技能同步失敗（config 已寫入）→ 開關維持新值，再存不回寫舊值", async () => {
+    // 同步失敗的半套狀態：config 為正典（新值已落檔）、技能足跡過期。畫面
+    // 不得退回舊快照——否則下次儲存會靜默把政策寫回去（連技能一起收走）。
+    const ws = renderView(snapshot());
+    (ws.writeWorkflowConfig as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("workflow config written, but the skill footprint did not sync — run `speclink update` to rebuild"),
+    );
+    (ws.readSettings as ReturnType<typeof vi.fn>).mockResolvedValue(
+      snapshot({ workflow: { worktree: true } } as Partial<SettingsSnapshot>),
+    );
+
+    const box = (await screen.findByLabelText("worktree")) as HTMLElement;
+    fireEvent.click(box);
+    fireEvent.click(screen.getByTestId("save-workflow"));
+
+    expect(await screen.findByText(/did not sync/)).toBeTruthy();
+    await waitFor(() => expect(box.getAttribute("data-state")).toBe("checked"));
+
+    fireEvent.click(screen.getByTestId("save-workflow"));
+    await waitFor(() =>
+      expect(ws.writeWorkflowConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({ worktree: true }),
+      ),
+    );
+  });
+
+  it("remote 存檔失敗（非 conflict）→ 不重讀設定，revision 維持舊值", async () => {
+    // remote adapter 的 readSettings 會靜默採納最新 revision；失敗後重讀等於
+    // 讓下一次儲存帶最新 revision 提交過期欄位值，繞過 409 衝突對話框靜默
+    // 覆蓋他人併發修改。失敗重讀是 local 的 worktree 半套語意，remote 不適用。
+    const snap = snapshot();
+    const ws = {
+      kind: "remote",
+      policyWrite: true,
+      readSettings: vi.fn().mockResolvedValue(snap),
+      writeAppTools: vi.fn().mockResolvedValue(undefined),
+      writeWorkflowConfig: vi.fn().mockRejectedValueOnce(new Error("server unreachable")),
+      writeWorkflowContext: vi.fn().mockResolvedValue(undefined),
+      writeWorkflowRules: vi.fn().mockResolvedValue(undefined),
+    } as unknown as WorkspaceSettingsProvider;
+    render(<ProjectSettingsView settings={ws} />);
+
+    fireEvent.click(await screen.findByLabelText("audit"));
+    fireEvent.click(screen.getByTestId("save-workflow"));
+
+    expect(await screen.findByText(/server unreachable/)).toBeTruthy();
+    expect(ws.readSettings).toHaveBeenCalledTimes(1);
   });
 
   it("locale 下拉改值後儲存 → 新值進完整目標狀態；設回未設定送 null", async () => {
@@ -172,6 +259,7 @@ describe("ProjectSettingsView 寫入", () => {
         specLocale: null,
         tdd: true,
         audit: false,
+        worktree: false,
       }),
     );
   });
@@ -551,9 +639,22 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
         specLocale: null,
         tdd: true,
         audit: true,
+        worktree: false,
       }),
     );
     await waitFor(() => expect(screen.getByTestId("policy-revision").textContent).toContain("42"));
+  });
+
+  it("remote 工作區不顯示 worktree 開關（worktree facts 是 host-local 觀察）", async () => {
+    // spec desktop-config「產出政策的 worktree 開關」Scenario「remote 工作區
+    // 不顯示開關」：其餘政策欄位照常。
+    const ws = remoteSettings(projectSnap({ revision: 7 } as Partial<SettingsSnapshot["workflow"]>));
+    render(<ProjectSettingsView settings={ws} />);
+
+    await screen.findByRole("tab", { name: "Workflow" });
+    expect(screen.queryByLabelText("worktree")).toBeNull();
+    expect(screen.getByLabelText("tdd")).toBeTruthy();
+    expect(screen.getByLabelText("audit")).toBeTruthy();
   });
 
   it("reader 看得到三卡現值但全唯讀，存檔停用並附繁中角色說明", async () => {
