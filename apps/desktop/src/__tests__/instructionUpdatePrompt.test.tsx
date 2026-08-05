@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
-import { I18nProvider } from "@speclink/ui";
+import { I18nProvider, SEMANTIC_TONE } from "@speclink/ui";
 
 import { InstructionUpdatePrompt } from "../components/InstructionUpdatePrompt";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -88,6 +88,23 @@ describe("InstructionUpdatePrompt", () => {
 
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByTestId("instruction-prompt").getAttribute("role")).toBe("status");
+  });
+
+  it("底色中性、狀態由圖示語意色承載：過期為琥珀警示、套用失敗為紅", () => {
+    const h = handlers();
+    const { unmount } = render(
+      <InstructionUpdatePrompt prompt={STALE} error={null} busy={false} {...h} />,
+    );
+    const stale = screen.getByTestId("instruction-prompt");
+    expect(stale.className).not.toContain("bg-primary");
+    expect(stale.querySelector("svg")?.getAttribute("class")).toContain(SEMANTIC_TONE.warning);
+    unmount();
+
+    render(<InstructionUpdatePrompt prompt={STALE} error={"寫入失敗"} busy={false} {...h} />);
+    // 套用失敗是錯誤，不是警示——與過期提示分色才看得出嚴重度差別。
+    const failed = screen.getByTestId("instruction-prompt");
+    expect(failed.querySelector("svg")?.getAttribute("class")).toContain("destructive");
+    expect(screen.getByText(/寫入失敗/).className).toContain("destructive");
   });
 
   it("無提示時不渲染任何內容", () => {

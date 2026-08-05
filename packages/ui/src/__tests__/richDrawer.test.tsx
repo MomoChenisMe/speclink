@@ -926,8 +926,13 @@ describe("標頭四層結構", () => {
       })),
     });
     render(<RichDetailDrawer {...(props as never)} />);
-    await screen.findByText("MomoChen");
+    const name = await screen.findByText("MomoChen");
     expect(screen.queryByText(/momochenisme@gmail\.com/)).toBeNull();
+    // 首字母圓標為靜態 metadata：走中性（五處頭像同款）。
+    const avatar = name.querySelector("span") as HTMLElement;
+    expect(avatar.textContent).toBe("M");
+    expect(avatar.className).toContain("bg-muted");
+    expect(avatar.className).not.toContain("bg-primary");
     await user.hover(screen.getByText("MomoChen"));
     await waitFor(() => {
       const tip = document.querySelector("[data-radix-popper-content-wrapper]");
@@ -947,8 +952,13 @@ describe("標頭四層結構", () => {
     );
     await screen.findByText("MomoChen");
     const row = baseElement.querySelector("[data-provenance-row]") as HTMLElement;
-    expect(within(row).getByText(/speclink\/demo/)).toBeTruthy();
+    const branch = within(row).getByText(/speclink\/demo/);
+    expect(branch).toBeTruthy();
     expect(within(row).getByTitle("/work/speclink.worktrees/demo")).toBeTruthy();
+    // spec「worktree 標示以藍呈現」下半句：抽屜的分支與路徑維持中性——掃視層
+    // （卡片）搶眼、閱讀層（抽屜出身列）安靜。
+    expect(row.className).toContain("text-muted-foreground");
+    expect(branch.className).not.toContain("sky");
     unmount();
 
     const plain = render(<RichDetailDrawer {...(makeProps() as never)} />);

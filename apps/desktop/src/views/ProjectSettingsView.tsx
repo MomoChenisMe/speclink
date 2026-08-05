@@ -23,6 +23,8 @@ import {
   TabsList,
   TabsTrigger,
   Textarea,
+  SEMANTIC_SURFACE,
+  SEMANTIC_TONE,
   cn,
   useI18n,
 } from "@speclink/ui";
@@ -101,7 +103,7 @@ function FieldHelp({ children }: { children: React.ReactNode }) {
 /** 選項集外儲存值的引導提示（spec 需求「設定頁政策下拉的未知值顯性呈現」）。 */
 function InvalidLocaleHint({ testId, children }: { testId: string; children: React.ReactNode }) {
   return (
-    <p data-testid={testId} className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 m-0">
+    <p data-testid={testId} className={`flex items-start gap-1.5 text-xs m-0 ${SEMANTIC_TONE.warning}`}>
       <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
       {children}
     </p>
@@ -111,7 +113,7 @@ function InvalidLocaleHint({ testId, children }: { testId: string; children: Rea
 function ParseErrorBanner({ message }: { message: string }) {
   const { t } = useI18n();
   return (
-    <p role="alert" className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 m-0">
+    <p role="alert" className={`flex items-start gap-1.5 text-xs m-0 ${SEMANTIC_TONE.danger}`}>
       <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
       <span>
         {t("settings.parseErrorHint")} {message}
@@ -126,7 +128,7 @@ function TabWarningDot() {
     <span
       data-testid="tab-warning"
       aria-hidden="true"
-      className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+      className={cn("ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-current", SEMANTIC_TONE.warning)}
     />
   );
 }
@@ -540,7 +542,10 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
           )}
           {snap.workflow.parseError !== null && <ParseErrorBanner message={snap.workflow.parseError} />}
           {conflict !== null && (
-            <Card data-testid="policy-conflict-panel" className="border-primary/30 bg-muted/20">
+            <Card
+              data-testid="policy-conflict-panel"
+              className={cn(SEMANTIC_SURFACE.warning, "bg-muted/20")}
+            >
               <CardHeader className="gap-1">
                 <CardTitle className="text-base">{t("remote.conflictTitle")}</CardTitle>
                 <p className="m-0 text-xs text-muted-foreground">{t("remote.conflictHint")}</p>
@@ -720,7 +725,7 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
                   </SelectTrigger>
                   <SelectContent>
                     {locale !== "" && !LOCALE_OPTIONS.includes(locale) && (
-                      <SelectItem value={locale} disabled className="text-amber-600 dark:text-amber-400">
+                      <SelectItem value={locale} disabled className="text-muted-foreground">
                         {locale}
                         {t("settings.localeInvalid")}
                       </SelectItem>
@@ -753,7 +758,7 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
                   </SelectTrigger>
                   <SelectContent>
                     {specLocale !== "" && !SPEC_LOCALE_OPTIONS.includes(specLocale) && (
-                      <SelectItem value={specLocale} disabled className="text-amber-600 dark:text-amber-400">
+                      <SelectItem value={specLocale} disabled className="text-muted-foreground">
                         {specLocale}
                         {t("settings.localeInvalid")}
                       </SelectItem>

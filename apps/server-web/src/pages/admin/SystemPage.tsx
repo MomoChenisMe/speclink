@@ -18,6 +18,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  SEMANTIC_SURFACE,
+  SEMANTIC_TONE,
   useI18n,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
@@ -79,7 +81,14 @@ export function SystemPage() {
 
           <Section id="storage" title={t("system.storage")} icon={Database}>
             <div className="flex flex-wrap items-center gap-3">
-              <Badge variant={data.storeHealthy ? "secondary" : "outline"}>
+              <Badge
+                variant="outline"
+                className={
+                  data.storeHealthy
+                    ? `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
+                    : `${SEMANTIC_SURFACE.danger} ${SEMANTIC_TONE.danger}`
+                }
+              >
                 {data.storeHealthy ? t("common.normal") : t("common.abnormal")}
               </Badge>
               {!data.storeHealthy && data.storeHealthError && (

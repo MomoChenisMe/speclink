@@ -59,6 +59,7 @@ export {
 export type {
   SpeclinkDataSource,
   CardKind,
+  ListView,
   ChangeItem,
   SpecItem,
   ArchivedItem,
@@ -79,12 +80,13 @@ export {
   type RevertBlockedDialogProps,
 } from "./components/RevertBlockedDialog";
 export { cardDndId, parseCardDndId, resolveCardDrop, type ColumnCards } from "./boardDnd";
-export { ChangeBoard } from "./components/ChangeBoard";
-export type { ChangeBoardProps } from "./components/ChangeBoard";
 export { DocumentTree } from "./components/DocumentTree";
 export type { DocumentTreeProps, TreeSelection } from "./components/DocumentTree";
 export { DocumentViewer } from "./components/DocumentViewer";
 export type { DocumentViewerProps } from "./components/DocumentViewer";
+
+// 狀態語意色（單一來源；三紅分工見 tone.ts 表頭）
+export { SEMANTIC_TONE, SEMANTIC_SURFACE, type SemanticTone } from "./tone";
 
 // 看板
 export { changeStage, STAGE_BADGE, STAGE_BAR, STAGE_ICON, STAGES, type Stage } from "./stage";
@@ -104,12 +106,9 @@ export {
   type DiscussionDrawerProps,
   type DiscussionSections,
 } from "./components/DiscussionDrawer";
-export { DetailDrawer, type DetailDrawerProps } from "./components/DetailDrawer";
 
 // 清單 + 分頁 + 富文本
 export { Markdown, type MarkdownProps } from "./components/Markdown";
-export { ChangeListItem, type ChangeListItemProps } from "./components/ChangeListItem";
-export { ChangeList, type ChangeListProps, type ListView } from "./components/ChangeList";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 export { Input } from "./components/ui/input";
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./components/ui/tooltip";

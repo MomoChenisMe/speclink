@@ -122,8 +122,19 @@ describe("帳號自助頁", () => {
     expect(client.createPat).toHaveBeenCalledWith(expect.objectContaining({ name: "laptop" }));
     // 送出成功後抽屜關閉，明文出現在頁面的一次性回饋中並附複製鈕。
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(await screen.findByText(/slk_new_SECRETPLAINTEXT/)).toBeTruthy();
+    const plaintext = await screen.findByText(/slk_new_SECRETPLAINTEXT/);
     expect(screen.getByRole("button", { name: /複製/ })).toBeTruthy();
+    // spec「揭示橫幅為成功語意」：一次性明碼是「建好了」的回饋，走綠系而非主色。
+    const notice = plaintext.closest("[role='status']") as HTMLElement;
+    expect(notice.className).toContain("emerald");
+    expect(notice.className).not.toContain("border-primary");
+  });
+
+  it("工作階段狀態徽章：有效為綠系、已撤銷為中性", async () => {
+    // spec「憑證狀態徽章」：帳號頁與後台憑證頁講同一件事，色彩層級也要一致。
+    renderAt("/account", makeClient());
+    const valid = await screen.findAllByText("有效");
+    expect(valid[0].className).toContain("emerald");
   });
 
   // 我的專案區塊（server-web-console「帳號頁呈現我的專案」）：資料來自 account

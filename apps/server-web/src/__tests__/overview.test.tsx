@@ -161,5 +161,14 @@ describe("總覽的歡迎區塊與儲存後端健康", () => {
     );
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("store unreachable");
+    // spec「儲存健康徽章」：徽章與同頁的降級警示語意一致——異常為紅系，
+    // 不能與正常一樣壓成灰（同頁上下文一紅一灰講同一件事，讀起來自相矛盾）。
+    expect(screen.getByText("異常").className).toContain("destructive");
+  });
+
+  it("儲存健康徽章：正常為綠系，與異常的紅系一眼可辨", async () => {
+    renderAt("/admin", makeAdminClient({ getAdminOverview: vi.fn(async () => HEALTHY) }));
+    const badge = await screen.findByText("正常");
+    expect(badge.className).toContain("emerald");
   });
 });

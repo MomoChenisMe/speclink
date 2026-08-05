@@ -1,4 +1,4 @@
-import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@speclink/ui";
@@ -122,5 +122,44 @@ describe("RemoteWorkspaceRecovery", () => {
     expect(screen.getByRole("status").textContent).toContain("正在連線");
     expect(screen.queryByRole("button", { name: "重新連線" })).toBeNull();
     expect(screen.queryByText("previous-workspace-change")).toBeNull();
+  });
+
+  it("狀態語意色：還原中為藍、存取遭拒為紅、需重新登入維持琥珀", () => {
+    // spec「進行中以藍呈現」「錯誤態以紅呈現」：舊版一律塗琥珀，「等一下就好」
+    // 與「這個工作區你進不去」看起來同一級。
+    const { unmount } = render(
+      <RemoteWorkspaceRecovery
+        tab={tab}
+        recovery={{ status: "restoring", failure: null }}
+        connection={connection}
+        onRetry={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onReauthenticate={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const spinner = screen.getByRole("status").querySelector("div") as HTMLElement;
+    expect(spinner.className).toContain("sky");
+    expect(spinner.className).not.toContain("primary");
+    unmount();
+
+    const renderFailure = (kind: "access-denied" | "needs-reauth") => {
+      render(
+        <RemoteWorkspaceRecovery
+          tab={tab}
+          recovery={errorRecovery(kind)}
+          connection={connection}
+          onRetry={vi.fn()}
+          onOpenSettings={vi.fn()}
+          onReauthenticate={vi.fn()}
+          onRemove={vi.fn()}
+        />,
+      );
+      return screen.getByRole("alert").querySelector("div") as HTMLElement;
+    };
+
+    expect(renderFailure("access-denied").className).toContain("destructive");
+    cleanup();
+    expect(renderFailure("needs-reauth").className).toContain("amber");
   });
 });

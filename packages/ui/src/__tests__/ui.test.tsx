@@ -14,6 +14,7 @@ function render(ui: ReactElement) {
 
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 
 describe("shadcn 設計系統原語", () => {
@@ -39,5 +40,25 @@ describe("shadcn 設計系統原語", () => {
 
   it("cn merges and de-duplicates tailwind classes", () => {
     expect(cn("p-2", "p-4")).toBe("p-4");
+  });
+
+  it("Tooltip 氣泡為反色中性（深底淺字），不借主色", () => {
+    // spec「介面狀態語意色分層」：主色實心氣泡與「已就緒」徽章撞色，改 shadcn
+    // 傳統深底氣泡；全域 tooltip 一次生效。
+    render(
+      <TooltipProvider>
+        <Tooltip defaultOpen>
+          <TooltipTrigger asChild>
+            <button>觸發</button>
+          </TooltipTrigger>
+          <TooltipContent>提示內容</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+    const bubble = document.querySelector("[data-side]") as HTMLElement;
+    expect(bubble.textContent).toContain("提示內容");
+    expect(bubble.className).toContain("bg-foreground");
+    expect(bubble.className).toContain("text-background");
+    expect(bubble.className).not.toContain("bg-primary");
   });
 });

@@ -12,7 +12,6 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
-import { ChangeBoard } from "../components/ChangeBoard";
 import { DocumentTree } from "../components/DocumentTree";
 import { DocumentViewer } from "../components/DocumentViewer";
 import { Markdown } from "../components/Markdown";
@@ -24,21 +23,6 @@ const changes: ChangeItem[] = [
   { name: "web-server-postgres", status: "pending", totalTasks: 0, completedTasks: 0 },
 ];
 const specs: SpecItem[] = [{ id: "verb-contract" }, { id: "desktop-app" }];
-
-describe("ChangeBoard", () => {
-  it("renders each change with its name and task progress", () => {
-    render(<ChangeBoard changes={changes} />);
-    expect(screen.getByText("desktop-shell-and-browser")).toBeTruthy();
-    expect(screen.getByText(/11\s*\/\s*17/)).toBeTruthy();
-  });
-
-  it("invokes onRunVerb with the verb and change name when a verb button is clicked", () => {
-    const onRunVerb = vi.fn();
-    render(<ChangeBoard changes={changes} onRunVerb={onRunVerb} />);
-    fireEvent.click(screen.getAllByRole("button", { name: /validate/i })[0]);
-    expect(onRunVerb).toHaveBeenCalledWith("validate", "desktop-shell-and-browser");
-  });
-});
 
 describe("DocumentTree", () => {
   it("renders changes and specs, and calls onSelect on click", () => {

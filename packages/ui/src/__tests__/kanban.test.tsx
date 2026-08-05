@@ -28,10 +28,10 @@ vi.mock("@dnd-kit/core", async (importOriginal) => {
 import { act } from "@testing-library/react";
 
 import { KanbanBoard, DRAG_ACTIVATION_DISTANCE } from "../components/KanbanBoard";
-import { DetailDrawer } from "../components/DetailDrawer";
 import { archiveZoneVisible, cardDndId, resolveCardDrop, type ColumnCards } from "../boardDnd";
 import { parseTasks } from "../tasks";
-import type { ChangeItem, ArtifactStatus, DiscussionLists } from "../adapter";
+import { SEMANTIC_TONE } from "../tone";
+import type { ChangeItem, DiscussionLists } from "../adapter";
 
 const changes: ChangeItem[] = [
   // 欄位由生命週期標記驅動——全完成＝已就緒 ＞ started_at 或任務完成數>0＝進行中
@@ -164,7 +164,10 @@ describe("KanbanBoard", () => {
     ];
     render(<KanbanBoard changes={withFlag} />);
     const staleCard = screen.getByText("stale-a").closest("[data-change]") as HTMLElement;
-    expect(within(staleCard).getByLabelText("待重新反映")).toBeTruthy();
+    const restale = within(staleCard).getByLabelText("待重新反映");
+    expect(restale).toBeTruthy();
+    // 警示語意走語意色表（含深色變體）——舊實作只有單一 amber-500，深色底下偏暗。
+    expect(restale.className).toContain(SEMANTIC_TONE.warning);
     const freshCard = screen.getByText("fresh-b").closest("[data-change]") as HTMLElement;
     expect(within(freshCard).queryByLabelText("待重新反映")).toBeNull();
     // 兩張皆在進行中欄——徽章與欄位歸屬正交。
@@ -187,7 +190,12 @@ describe("KanbanBoard", () => {
     ];
     render(<KanbanBoard changes={withWorktree} />);
     const wtCard = screen.getByText("wt-a").closest("[data-change]") as HTMLElement;
-    expect(within(wtCard).getByLabelText("worktree")).toBeTruthy();
+    const marker = within(wtCard).getByLabelText("worktree");
+    expect(marker).toBeTruthy();
+    // spec「worktree 標示以藍呈現」：worktree 掛著＝工作正於副本進行中，屬狀態
+    // 而非靜態 metadata，走「進行中」語意色，不用主色淡化。
+    expect(marker.className).toContain(SEMANTIC_TONE.inProgress);
+    expect(marker.className).not.toContain("text-primary/60");
     const plainCard = screen.getByText("plain-b").closest("[data-change]") as HTMLElement;
     expect(within(plainCard).queryByLabelText("worktree")).toBeNull();
     expect(within(column("in-progress")).getByText("wt-a")).toBeTruthy();
@@ -219,6 +227,9 @@ describe("KanbanBoard", () => {
     const authCard = screen.getByText("auth-a").closest("[data-change]") as HTMLElement;
     const avatar = within(authCard).getByLabelText("Momo Chen <momo@example.com>");
     expect(avatar.textContent).toBe("M");
+    // 建立者是靜態 metadata，走中性；主色留給連結／互動／進度。
+    expect(avatar.className).toContain("bg-muted");
+    expect(avatar.className).not.toContain("bg-primary");
     const anonCard = screen.getByText("anon-b").closest("[data-change]") as HTMLElement;
     expect(within(anonCard).queryByLabelText(/@/)).toBeNull();
   });
@@ -422,30 +433,6 @@ describe("parseTasks", () => {
   });
 });
 
-describe("DetailDrawer", () => {
-  const artifacts: ArtifactStatus[] = [
-    { id: "proposal", outputPath: "proposal.md", status: "done" },
-    { id: "tasks", outputPath: "tasks.md", status: "ready" },
-  ];
-  it("renders artifacts and a task checklist when open", () => {
-    render(
-      <DetailDrawer
-        open
-        onOpenChange={() => {}}
-        changeName="working-y"
-        artifacts={artifacts}
-        tasksMarkdown={"- [x] a\n- [ ] b\n"}
-        doc={"## Why\nbody"}
-      />,
-    );
-    expect(screen.getByText("working-y")).toBeTruthy();
-    expect(screen.getByText("proposal")).toBeTruthy();
-    expect(screen.getByText("a")).toBeTruthy();
-    expect(screen.getByText("b")).toBeTruthy();
-    expect(screen.getByText(/1\/2/)).toBeTruthy();
-  });
-});
-
 // spec 需求「看板搜尋過濾卡片」的命中呈現（design D7）：子字串命中高亮、
 // 僅模糊命中不高亮、全文命中卡片呈 snippet 行。
 describe("命中高亮與 snippet（design D7）", () => {
@@ -460,6 +447,9 @@ describe("命中高亮與 snippet（design D7）", () => {
     const mark = cardEl().querySelector("mark");
     expect(mark).toBeTruthy();
     expect(mark!.textContent).toBe("engine");
+    // 搜尋高亮是「注意這裡」的警示層級，不是互動——改琥珀 mark，不佔用主色。
+    expect(mark!.className).toContain("amber");
+    expect(mark!.className).not.toContain("primary");
   });
 
   it("僅模糊命中（無連續子字串）顯示卡片但不高亮", () => {

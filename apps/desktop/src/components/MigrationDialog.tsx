@@ -14,6 +14,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Button,
+  SEMANTIC_SURFACE,
+  SEMANTIC_TONE,
   cn,
   useI18n,
 } from "@speclink/ui";
@@ -131,7 +133,7 @@ export function MigrationDialog({
     >
       <AlertDialogContent className="max-w-xl gap-4" data-testid="migration-dialog">
         <AlertDialogHeader>
-          <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+          <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             <CloudUpload className="h-3.5 w-3.5" />
             {t("migration.eyebrow")}
           </div>
@@ -211,16 +213,18 @@ export function MigrationDialog({
                 <span className="block font-mono text-xs">{target}</span>
               </div>
             </div>
-            <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-xs leading-5 text-amber-950 dark:text-amber-100">
+            <div className={`rounded-lg border px-3 py-2.5 text-xs leading-5 ${SEMANTIC_SURFACE.warning}`}>
               <strong className="block text-sm">{target}</strong>
               {t("migration.backupWarning")}
             </div>
             {step === "running" && (
               <p
                 role="status"
-                className="m-0 flex items-center gap-2 rounded-md bg-primary/8 px-3 py-2 text-xs text-muted-foreground"
+                className={`m-0 flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground ${SEMANTIC_SURFACE.inProgress}`}
               >
-                <LoaderCircle className="h-4 w-4 animate-spin text-primary motion-reduce:animate-none" />
+                <LoaderCircle
+                  className={`h-4 w-4 animate-spin motion-reduce:animate-none ${SEMANTIC_TONE.inProgress}`}
+                />
                 {t("migration.running")}
               </p>
             )}
@@ -229,8 +233,10 @@ export function MigrationDialog({
 
         {step === "success" && result && (
           <div className="flex flex-col gap-3">
-            <div className="flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/8 p-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <div className={`flex items-start gap-3 rounded-lg border p-3 ${SEMANTIC_SURFACE.success}`}>
+              <span
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`}
+              >
                 <Check className="h-4 w-4" />
               </span>
               <div className="min-w-0">

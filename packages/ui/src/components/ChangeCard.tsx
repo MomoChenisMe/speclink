@@ -3,6 +3,7 @@ import { AlertTriangle, Archive, FileText, GitBranch, MessageSquareText, Refresh
 import type { ChangeItem, SearchHit } from "../adapter";
 import { useI18n } from "../i18n";
 import { changeStage } from "../stage";
+import { SEMANTIC_TONE } from "../tone";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { CardNameRow } from "./CardNameRow";
@@ -53,7 +54,7 @@ export function ChangeCard({
             <TooltipTrigger asChild>
               <span
                 aria-label={change.createdBy}
-                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground"
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-muted-foreground"
               >
                 {change.createdBy.charAt(0).toUpperCase()}
               </span>
@@ -92,7 +93,11 @@ export function ChangeCard({
         {change.worktree && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span aria-label={t("card.worktree")} className="shrink-0 text-primary/60">
+              {/* worktree 掛著＝工作正於副本進行中，屬狀態非靜態 metadata。 */}
+              <span
+                aria-label={t("card.worktree")}
+                className={`shrink-0 ${SEMANTIC_TONE.inProgress}`}
+              >
                 <GitBranch className="h-3.5 w-3.5" />
               </span>
             </TooltipTrigger>
@@ -104,7 +109,7 @@ export function ChangeCard({
         {(change.restaleFrom ?? []).length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span aria-label={t("card.restale")} className="shrink-0 text-amber-500">
+              <span aria-label={t("card.restale")} className={`shrink-0 ${SEMANTIC_TONE.warning}`}>
                 <RefreshCw className="h-3.5 w-3.5" />
               </span>
             </TooltipTrigger>
