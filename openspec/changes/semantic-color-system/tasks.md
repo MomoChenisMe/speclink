@@ -9,6 +9,7 @@
 
 - [x] 2.1 [測試先行] 更新 packages/ui 斷言錨定新契約:AnalyzePanel Warning 徽章=amber(同檔維度摘要同語意同色)、「驗證通過/零問題」=中性;tooltip 氣泡=bg-foreground text-background;HighlightText 搜尋高亮=琥珀 mark;討論抽屜輪次籤=中性;五處頭像=bg-muted;ChangeCard restale=amber-600+dark 變體;ChangeCard worktree 標示=sky(kanban.test.tsx 的 worktree marker 案例加色彩斷言:圖示帶 SEMANTIC_TONE.inProgress、不帶 text-primary/60);ReviewArchiveDialog「照樣帶走」=destructive——契約:新斷言紅燈;驗證:npm test -w @speclink/ui 顯示上述案例失敗。 <!-- speclink-task:tsk_01KZ5P0WAAHVV5K8BPYDCMHNKY -->
 - [x] 2.2 實作 packages/ui 修正批(AnalyzePanel、ui/tooltip.tsx、HighlightText、DiscussionDrawer 輪次籤、DiscussionColumn 欄頭圖示/色條/計數收斂至 stage.ts 或中性、ReviewArchiveDialog、ChangeCard/RichDetailDrawer/DiscussionColumn/ArchivedList/DiscussionDrawer 頭像、ChangeCard worktree 標示由 text-primary/60 改 SEMANTIC_TONE.inProgress——抽屜分支+路徑維持中性不動),語意色一律 import tone.ts——契約:任務 2.1 轉綠、守門測試對 packages/ui 檔案零違規;驗證:npm test -w @speclink/ui 全綠(theme 守門除 desktop/server-web 殘留)。 <!-- speclink-task:tsk_01KZ5P0WAA6SW6VZXEK7Q84CTC -->
+  ↳ 落地記錄:守門收緊後另掃出兩處提案盤點未列的既有違規,同批改走常數表(同語意、外觀不變):SpecList.tsx 的 purposeTbd 琥珀提示、ArchivedList.tsx 的未完成任務徽章。
 
 ## 3. desktop 殼層修正批
 
@@ -23,6 +24,7 @@
 ## 5. 死碼清理
 
 - [x] 5.1 移除 ChangeBoard.tsx/ChangeList.tsx/ChangeListItem.tsx/DetailDrawer.tsx、index.ts 對應匯出(含 ListView 型別,移除前 grep 確認零消費端,有消費端則保留型別並記錄)、changeListItem.test.tsx 整檔、components.test.tsx 的 ChangeBoard 區塊、kanban.test.tsx 的 DetailDrawer 區塊——契約:@speclink/ui 匯出面無四元件、全套測試不因缺檔失敗;驗證:npm test -w @speclink/ui 全綠、grep 全 repo 無殘留 import。 <!-- speclink-task:tsk_01KZ5P0WAA27HGKP71R9VW2DSE -->
+  ↳ 落地記錄(design D6「有消費端則保留型別並記錄」):`ListView` 有消費端(apps/desktop/src/store.ts 的 view 狀態與 setView),故保留型別、改由 packages/ui/src/adapter.ts 定義並匯出;四個元件本體與其匯出照刪。
 
 ## 6. 整體驗證
 
