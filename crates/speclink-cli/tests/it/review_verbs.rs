@@ -736,47 +736,86 @@ fn add_structured_round(p: &TempProject, phase: &str, patch_hash: &str, scope: &
     assert!(out.status.success(), "add-round stderr: {}", stderr_of(&out));
 }
 
-#[test]
-fn validation_needs_input_only_offers_disposals_that_can_work() {
-    // validation 不吃 --base，也對 --candidate-hash／--include-hunk 直接拒絕；
-    // 照列 discovery 的三種處置會把使用者送進兩條必然失敗的路。
-    let p = TempProject::with_change("scope-validation-help", TASKS_DONE);
+/// 驗證輪 fixture：A（findings 點名）、B（未點名候選檔）、notes/d.txt（開工前
+/// 就髒、從未進審查面）。回傳的專案停在「Round 1 已記錄、修復已完成」的狀態。
+fn validation_fixture(tag: &str) -> TempProject {
+    let p = TempProject::with_change(tag, TASKS_DONE);
     p.write("src/a.rs", "alpha\n");
+    p.write("src/b.rs", "beta\n");
     p.write("notes/d.txt", "scratch\n");
     p.git(&["init", "-q"]);
     p.git(&["config", "user.name", "Sandbox Tester"]);
     p.git(&["config", "user.email", "sandbox@example.com"]);
-    p.git(&["add", "src/a.rs"]);
+    p.git(&["add", "src/a.rs", "src/b.rs"]);
     p.git(&["commit", "-q", "-m", "init"]);
     let prepared = p.run(&["review", "prepare", "demo"]);
     assert!(prepared.status.success(), "prepare: {}", stderr_of(&prepared));
     p.write("src/a.rs", "alpha\nbad_a\n");
-    p.touched("demo", &["src/a.rs"]);
+    p.write("src/b.rs", "beta\nround_one_b\n");
+    p.touched("demo", &["src/a.rs", "src/b.rs"]);
     let r1 = scope_json(&p);
     let p1 = r1["patchHash"].as_str().unwrap().to_string();
     add_structured_round(
         &p,
         "discovery",
         &p1,
-        "src/a.rs",
+        "src/a.rs, src/b.rs",
         "- [CRITICAL] src/a.rs — Correctness: bad_a breaks the invariant\n",
     );
-    // 保存面外、開工前就髒的檔案又變了 → validation fail closed。
+    // 修復：點名的 A、未點名的鄰居 B，外加審查面外的 notes/d.txt 也動了。
     p.write("src/a.rs", "alpha\ngood_a\n");
+    p.write("src/b.rs", "beta\nround_one_b\nneighbour_fix\n");
     p.write("notes/d.txt", "scratch changed\n");
+    p
+}
+
+#[test]
+fn review_scope_validation_payload_carries_attribution_and_out_of_scope() {
+    // spec Scenario「validation payload 帶出身標記與範圍外註記」：files 分別帶
+    // attribution "finding"／"adjacent"，outOfScopeChanged 含被排除檔的路徑且該
+    // 檔不在 files 中；discovery payload 的 files 則缺席 attribution。
+    let p = validation_fixture("scope-attribution");
+    let v = scope_json(&p);
+    assert_eq!(v["phase"], "validation");
+    let attribution = |path: &str| {
+        v["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["newPath"] == path)
+            .map(|f| f["attribution"].clone())
+    };
+    assert_eq!(attribution("src/a.rs"), Some(serde_json::json!("finding")), "{v}");
+    assert_eq!(attribution("src/b.rs"), Some(serde_json::json!("adjacent")), "{v}");
+    assert_eq!(v["outOfScopeChanged"], serde_json::json!(["notes/d.txt"]), "{v}");
+    assert_eq!(v["paths"], serde_json::json!(["src/a.rs", "src/b.rs"]), "{v}");
+    assert!(!v["patch"].as_str().unwrap().contains("notes/d.txt"), "{v}");
+    assert!(v["patch"].as_str().unwrap().contains("+neighbour_fix"), "{v}");
+
+    // discovery：無上輪可歸因 → attribution 缺席，清單欄位仍恆存在。
+    let d = scope_json(&scope_fixture("scope-attribution-discovery"));
+    assert_eq!(d["phase"], "discovery");
+    for f in d["files"].as_array().unwrap() {
+        assert!(f.get("attribution").is_none(), "discovery 不帶出身標記: {f}");
+    }
+    assert_eq!(d["outOfScopeChanged"], serde_json::json!([]), "{d}");
+}
+
+#[test]
+fn validation_annotates_out_of_scope_movement_instead_of_needing_input() {
+    // spec Scenario「範圍外變動註記不擋凍結」＋「needsInput 僅發生於 discovery」：
+    // 保存面外、開工前就髒的檔案又變了 → 照常 exit 0 resolved，human 多一行
+    // 範圍外變動 FYI，該檔不進審查面。
+    let p = validation_fixture("scope-validation-fyi");
     let human = p.run(&["--no-color", "review", "scope", "demo"]);
-    assert!(!human.status.success(), "validation must fail closed");
-    let stderr = stderr_of(&human);
-    assert!(stderr.contains("notes/d.txt"), "{stderr}");
-    assert!(
-        stderr.contains("review discard"),
-        "the only real way out must be named: {stderr}"
-    );
-    assert!(
-        !stderr.contains("--include-hunk"),
-        "hunk pinning is rejected outright in validation: {stderr}"
-    );
-    assert_eq!(p.snapshot_count(), 1, "zero new snapshot effects");
+    assert!(human.status.success(), "validation must not need input: {}", stderr_of(&human));
+    let text = stdout_of(&human);
+    assert!(text.contains("validation"), "phase shown: {text}");
+    assert!(text.contains("1 finding, 1 adjacent, 0 new"), "三類出身計數列出: {text}");
+    assert!(text.contains("notes/d.txt"), "範圍外變動路徑列出: {text}");
+    assert!(!text.contains('\u{1b}'), "--no-color must strip ANSI: {text:?}");
+    assert!(!stderr_of(&human).contains("needs input"), "{}", stderr_of(&human));
+    assert_eq!(p.snapshot_count(), 2, "驗證輪快照照常寫入");
 }
 
 #[test]

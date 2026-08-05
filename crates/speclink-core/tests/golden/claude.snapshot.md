@@ -1,5 +1,5 @@
 === CLAUDE.md ===
-<!-- SPECLINK:START v1.10.0 -->
+<!-- SPECLINK:START v1.11.0 -->
 
 # Speclink Instructions
 
@@ -38,7 +38,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -126,7 +126,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -452,7 +452,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -727,7 +727,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -963,7 +963,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -1235,7 +1235,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -1347,7 +1347,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -1787,7 +1787,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -1917,7 +1917,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -2185,7 +2185,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -2279,7 +2279,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -2699,7 +2699,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 
@@ -2742,8 +2742,8 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    speclink review scope "<name>" --json
    ```
 
-   - **State `resolved`** → keep the payload. `phase` names the pass (`discovery` on a ticketless change, `validation` on a follow-up), `patchHash` is the frozen patch identity, and `patch` / `files` carry the exact hunks under review. Every later step judges THIS frozen patch — the file list is never the review surface.
-   - **State `needsInput` (non-zero exit)** → the scope is ambiguous (files dirty before Apply started, an overlapping active change, a missing or late baseline, or empty touched records). Relay the reported reasons and wait for the user to resolve it explicitly by one of: a trusted `--base <rev>`; a hash-pinned hunk selection (`--candidate-hash <sha256>` plus repeated `--include-hunk <id>`, ids from the needsInput payload); or redoing the work in an isolated worktree. Do NOT substitute the touched file list and do NOT widen to the whole worktree — commit-graph diffs and file lists both miss what the frozen patch pins.
+   - **State `resolved`** → keep the payload. `phase` names the pass (`discovery` on a ticketless change, `validation` on a follow-up), `patchHash` is the frozen patch identity, and `patch` / `files` carry the exact hunks under review. Every later step judges THIS frozen patch — the file list is never the review surface. `outOfScopeChanged` lists candidate files that moved but no round ever captured (the user excluded them at discovery): relay them verbatim when you present the results and keep them OUT of the review surface and the ticket's findings.
+   - **State `needsInput` (non-zero exit — discovery only)** → the scope is ambiguous (files dirty before Apply started, an overlapping active change, a missing or late baseline, or empty touched records). Relay the reported reasons and wait for the user to resolve it explicitly by one of: a trusted `--base <rev>`; a hash-pinned hunk selection (`--candidate-hash <sha256>` plus repeated `--include-hunk <id>`, ids from the needsInput payload); or redoing the work in an isolated worktree. Do NOT substitute the touched file list and do NOT widen to the whole worktree — commit-graph diffs and file lists both miss what the frozen patch pins. A validation pass never reports `needsInput`: it resolves its scope by content movement against the frozen snapshot chain.
    - **Command fails** (legacy ticket without a snapshot, drifted candidate, missing baseline for a follow-up) → report the error verbatim and stop; the explicit way out is the user's call: keep the ticket for later, or `speclink review discard "<name>"` and re-run discovery with an explicit trusted base. NEVER fall back to re-reviewing whole files.
 
 4. **Read the change artifacts as judging context**
@@ -2796,6 +2796,8 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    **Validation (`phase: validation`) — remediation validation, never re-discovery.**
 
    Send the same two parallel read-only axes, but each brief carries ONLY: the last round's unresolved findings (verbatim), the accepted list, the remediation patch (step 3's frozen validation patch), and the necessary adjacent callers/tests plus artifact intent. Each axis judges, per original finding, resolved or unresolved — and reports only regressions the remediation patch directly introduces. It must NOT report new smells, SUGGESTIONs, or pre-existing issues in unchanged areas. The locale binding and the reporting contract are the same as in discovery.
+
+   **Segments marked `attribution: "adjacent"`** are files the remediation moved that no finding named — a caller, a test, a regenerated artifact, or a parallel session's edit leaking in. State this in both briefs: each axis MUST confirm segment by segment that an adjacent segment genuinely belongs to THIS remediation, and report anything that does not as a regression. Never adopt an adjacent segment silently.
 
    **Unrelated late findings during validation**: something new that the remediation patch did not cause must NOT be added to the current round and must NOT reopen discovery. Only when it carries evidence — a realistic trigger path plus one of a reproduction, a failing test, or a clear invariant violation — AND it affects security, data loss, or wrong behavior, end this station as **scope changed / failed**: keep the ticket, do not stamp, and recommend a separate discovery or a spun-off change. Anything below that bar is a note for later, never a blocker.
 
@@ -2878,7 +2880,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.10.0"
+  version: "v1.11.0"
   generatedBy: "Speclink"
 ---
 

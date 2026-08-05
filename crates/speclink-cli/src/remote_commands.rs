@@ -1138,7 +1138,9 @@ fn remote_review(ctx: &RemoteCtx, a: ReviewArgs) -> Result<()> {
             let ws = require_workspace()?;
             let ticket = ctx.client.review_ticket_if_any(&change)?.map(|t| {
                 speclink_host::change_diff::TicketBinding {
-                    patch_hash: t.last_round.patch_hash.clone(),
+                    patch_hash_chain: patch_hash_chain(
+                        t.rounds.iter().map(|r| r.patch_hash.as_deref()),
+                    ),
                     finding_paths: t
                         .last_round
                         .findings
