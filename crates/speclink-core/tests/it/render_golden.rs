@@ -867,6 +867,53 @@ fn apply_with_worktree_stops_before_the_merge_and_hands_off() {
     }
 }
 
+// --- config skill: criterion 1 disproves engine injection AND station canon ---
+
+/// Spec config-skill「技能規定固定輸入來源與四條內容判準」Scenario「渲染產物含四條
+/// 判準與反證步驟」/「品質站正典不得重述進 rules」: criterion 1 carries two
+/// disproof routes — the instructions payload for injected content, and the
+/// generated quality-station skill for the canon it holds (the review station's
+/// smell baseline reaches no payload, so the first route cannot see it).
+#[test]
+fn config_skill_criterion_one_disproves_station_canon_too() {
+    for (rel, content) in skill_for_both_tools("config-station-canon", "config") {
+        let start = content
+            .find("### Criterion 1")
+            .unwrap_or_else(|| panic!("{rel}: missing the criterion 1 section"));
+        let end = content
+            .find("### Criterion 2")
+            .unwrap_or_else(|| panic!("{rel}: missing the criterion 2 section"));
+        let criterion_one = &content[start..end];
+        for needle in [
+            // route (a): engine-injected content, disproved per line by payload
+            "speclink instructions <artifact> --json",
+            // route (b): station canon, disproved against the generated skill file
+            "Quality-station canon: disprove against the generated station skill, never from memory.",
+            "same skills directory",
+            "speclink-review",
+            "the station skill is its single home",
+            "a second canon",
+        ] {
+            assert!(
+                criterion_one.contains(needle),
+                "{rel}: criterion 1 is missing the disproof phrase {needle:?}"
+            );
+        }
+    }
+}
+
+/// Same requirement, the guardrail restatement: the one-line summary of criterion
+/// 1 must forbid restating station canon, not only injected instructions.
+#[test]
+fn config_skill_guardrails_forbid_restating_station_canon() {
+    for (rel, content) in skill_for_both_tools("config-station-guardrail", "config") {
+        assert!(
+            content.contains("**Don't restate quality-station canon**"),
+            "{rel}: guardrails must forbid restating quality-station canon"
+        );
+    }
+}
+
 /// Spec「worktree-merge 技能的生成」＋「收尾流程指示」: a standalone template whose
 /// preflight, conflict and cleanup stop points are all stated.
 #[test]
