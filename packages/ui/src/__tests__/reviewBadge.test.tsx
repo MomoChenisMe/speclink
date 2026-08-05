@@ -179,10 +179,10 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
     },
   ];
 
-  it("卡片章：審查中＝藍、已審查＝主色、其後有變動＝琥珀", () => {
+  it("卡片章：審查中＝藍、已審查＝紫（深淺主題皆非主色）、其後有變動＝琥珀", () => {
     const tones: Array<[ChangeItem["reviewStatus"], string, string]> = [
       ["inReview", "審查中", "text-sky-600"],
-      ["reviewed", "已審查", "text-primary"],
+      ["reviewed", "已審查", "text-violet-600 dark:text-violet-400"],
       ["reviewedStale", "已審查·其後有變動", "text-amber-600"],
     ];
     for (const [reviewStatus, label, cls] of tones) {
@@ -197,7 +197,7 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
   it("抽屜資訊列：狀態詞依狀態上色", () => {
     const tones: Array<[ChangeItem["reviewStatus"], string]> = [
       ["inReview", "text-sky-600"],
-      ["reviewed", "text-primary"],
+      ["reviewed", "text-violet-600 dark:text-violet-400"],
       ["reviewedStale", "text-amber-600"],
     ];
     for (const [reviewStatus, cls] of tones) {
@@ -211,7 +211,7 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
     }
   });
 
-  it("已封存清單：已審查＝主色、曾審查未通過＝紅", () => {
+  it("已封存清單：已審查＝紫、曾審查未通過＝紅", () => {
     render(
       <ArchivedList
         archived={archivedItems}
@@ -221,13 +221,15 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
         onOpen={() => {}}
       />,
     );
-    expect(screen.getByLabelText("已審查").className).toContain("text-primary");
+    expect(screen.getByLabelText("已審查").className).toContain(
+      "text-violet-600 dark:text-violet-400",
+    );
     expect(screen.getByLabelText("曾審查未通過").className).toContain("text-rose-600");
   });
 
-  it("已封存抽屜：已審查＝主色、曾審查未通過＝紅", () => {
+  it("已封存抽屜：已審查＝紫、曾審查未通過＝紅", () => {
     for (const [reviewStatus, cls] of [
-      ["reviewed", "text-primary"],
+      ["reviewed", "text-violet-600 dark:text-violet-400"],
       ["reviewedNotPassed", "text-rose-600"],
     ] as const) {
       const { unmount } = render(
