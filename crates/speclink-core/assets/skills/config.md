@@ -26,17 +26,19 @@ State which of the five you actually found. A missing source is a fact to report
 
 Every candidate line — for `context` and for `rules` alike — must survive all four. A line that fails any one of them is dropped, not softened.
 
-### Criterion 1 — Never restate what the engine already injects
+### Criterion 1 — Never restate what the engine injects or a quality station already carries
 
-Policy toggles and the schema's built-in artifact instructions are injected automatically. Anything they already say is noise in this document.
+Policy toggles and the schema's built-in artifact instructions are injected automatically; the quality stations carry their own standards inside their skills. Anything either of them already says is noise in this document.
 
-**Disprove by payload, never from memory.** For each artifact of the active schema:
+**Injected content: disprove by payload, never from memory.** For each artifact of the active schema:
 
 ```bash
 speclink instructions <artifact> --json
 ```
 
 Read the returned instruction text and check your candidate line against it, one line at a time. If the payload already carries the requirement, drop the candidate. Do this for every artifact you intend to write rules for — an untested claim of "the engine doesn't say this" is exactly how duplicates got in before.
+
+**Quality-station canon: disprove against the generated station skill, never from memory.** A station's standards live in its own generated skill file, in the same skills directory as this one — the review station's code-smell baseline sits in `speclink-review`, and no instructions payload carries it, so the payload check above cannot see it. Open whichever station skills are present in that directory and could overlap with a candidate line (which stations generate varies by tool), and read the passage each would duplicate. If a station already carries the standard, drop the candidate: the station skill is its single home, and a copy here is a second canon that drifts away from it.
 
 ### Criterion 2 — Artifact-specific content belongs in rules
 
@@ -91,6 +93,7 @@ Report at the end: which of the five sources were read, what was added, what was
 
 - **Don't scan the source tree** — the fixed input set is the whole input.
 - **Don't restate injected instructions** — disprove with `speclink instructions <artifact> --json`, per line.
+- **Don't restate quality-station canon** — read the generated station skill; a copy here is a second canon that drifts.
 - **Don't write anything that can go stale** — no versions, counts, or dates.
 - **Don't reference what doesn't exist** — verify every command, test, and path, every run.
 - **Don't infer the policy fields** — ask for all four.
