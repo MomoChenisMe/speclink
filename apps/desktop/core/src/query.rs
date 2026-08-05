@@ -103,6 +103,9 @@ pub(crate) fn overlay_store<'a>(
 /// 封存或退回會動主 checkout 的 change 目錄，但真正的工作在 worktree 副本裡——
 /// 擋下比事後對帳便宜。唯讀面（抽屜、檢視、diff）不經此關。政策關閉、非主
 /// checkout 或 git 不可用時無映射，一律放行。
+///
+/// 守門有意採 facts 原值、不跟隨 `worktree_root_for` 的存在性回退：副本目錄
+/// 剛消失的競態窗口內，對破壞性動詞寧可多擋一次，也不放行。
 pub(crate) fn refuse_if_worktree_is_open(
     ctx: &crate::ProjectContext,
     change: &str,

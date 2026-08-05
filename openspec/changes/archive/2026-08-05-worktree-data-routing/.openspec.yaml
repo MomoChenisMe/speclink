@@ -22,3 +22,5 @@ reviewed_scope:
     hash: 8dd415407cac6b150fc691a479f6d6548b9fe4d46dfe11d699100709f48573c0
   - path: apps/desktop/core/src/verbs.rs
     hash: 77c3734c940e838be4d3403ec4d0f60519d4f220358a45c934bf51ff359d43cc
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-05
