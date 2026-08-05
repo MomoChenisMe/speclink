@@ -24,7 +24,13 @@ pub fn search_workspace_at(root: &Path, query: &str) -> Value {
     let Some(ctx) = init_core_context(root) else {
         return json!({ "hits": [] });
     };
-    let store: &dyn Store = &ctx.store;
+    // 掃的全是 artifact，overlay 即足夠（design D2）——有 worktree 映射的 change
+    // 命中其副本現值，其餘直通主 checkout。facts 為空時就是主 store 本身。
+    let facts = speclink_host::worktree::observed_facts(&ctx.workspace, &ctx.store, |key| {
+        std::env::var(key).ok()
+    });
+    let overlaid = crate::query::overlay_store(&ctx, &facts);
+    let store: &dyn Store = if facts.is_empty() { &ctx.store } else { &overlaid };
     let mut hits: Vec<Value> = Vec::new();
 
     // active 變更：artifacts 依固定序掃描，首個命中即代表該卡。
@@ -165,6 +171,32 @@ mod tests {
         assert_eq!(hits[0]["artifact"], "specs/some-cap/spec.md");
         assert_eq!(hits[1]["kind"], "discussion");
         assert_eq!(hits[1]["id"], "talk");
+    }
+
+    #[test]
+    fn hits_content_that_only_exists_in_the_worktree_copy() {
+        // spec worktree-overlay Scenario「全文搜尋命中 worktree 內容」：某字串僅存在
+        // 於 worktree 副本的 design.md、不存在於主 checkout，仍須命中該卡且 snippet
+        // 取自副本內容。
+        let fx = FixtureRoot::new("s-worktree");
+        fx.add_change("add-auth", META);
+        fx.write("openspec/changes/add-auth/design.md", "## Context\n\n主 checkout 的舊設計。\n");
+        let wt = fx.attach_worktree("add-auth");
+        std::fs::write(
+            FixtureRoot::worktree_change_dir(&wt, "add-auth").join("design.md"),
+            "## Context\n\n只在 worktree 的 zebra-token 段落。\n",
+        )
+        .unwrap();
+
+        let v = search_workspace_at(fx.root(), "zebra-token");
+        let hits = v["hits"].as_array().expect("hits array");
+        assert_eq!(hits.len(), 1, "僅存在於 worktree 的字串須命中: {v}");
+        assert_eq!(hits[0]["id"], "add-auth");
+        assert_eq!(hits[0]["artifact"], "design.md");
+        assert!(
+            hits[0]["snippet"].as_str().unwrap().contains("只在 worktree"),
+            "snippet 取自 worktree 副本: {v}"
+        );
     }
 
     #[test]

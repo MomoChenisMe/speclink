@@ -39,7 +39,7 @@ pub fn cached_git_identity(root: &Path) -> Option<String> {
 
 /// 回傳 change 的 metadata（camelCase：createdBy/createdWith/created）。無此 change 回 `None`。
 pub fn change_meta_at(root: &Path, change: &str) -> Option<Value> {
-    let ctx = init_core_context(root)?;
+    let ctx = crate::context_for_change(root, change)?;
     let change = ctx.store.find_change(change)?;
     Some(json!({
         "schema": change.meta.schema,
@@ -56,6 +56,9 @@ pub fn change_meta_at(root: &Path, change: &str) -> Option<Value> {
 /// 刪除一個 active change——走引擎 discard 全語意（force=false）：開工痕跡守門、
 /// 來源討論解鏈（清單空時狀態回復）、touched 紀錄清理。desktop 不提供 force 通道；
 /// 解鏈明細不呈現，前端既有 refresh 自然反映討論狀態回復。
+///
+/// worktree 掛著時拒絕（design D3）：刪除與封存、退回同屬破壞性生命週期動詞——
+/// 它動的是主 checkout 的 change 目錄存廢，路由進 worktree 沒有意義。
 pub fn delete_change_at(root: &Path, change: &str) -> Result<(), String> {
     let _guard = write_guard();
     if !crate::query::is_safe_path_param(change) {
@@ -63,6 +66,7 @@ pub fn delete_change_at(root: &Path, change: &str) -> Result<(), String> {
     }
     let ctx = init_core_context(root)
         .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
+    crate::query::refuse_if_worktree_is_open(&ctx, change)?;
     speclink_core::discard::discard(&ctx.workspace, &ctx.store, change, false)
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -121,7 +125,9 @@ pub fn set_task_done_at(root: &Path, change: &str, task: &str, done: bool) -> Re
             .map_err(|_| format!("invalid task id: {task}"))?;
         speclink_core::tasks::TaskAddr::Ordinal(ordinal)
     };
-    let ctx = init_core_context(root)
+    // 定根到該 change 的所在（design D1）：勾章、touched 記錄、git 髒檔歸因與
+    // 開工章全部落在同一份副本——內容在哪裡，寫入就在哪裡。
+    let ctx = crate::context_for_change(root, change)
         .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
     if done {
         let identity = cached_git_identity(&ctx.workspace.root);
@@ -155,7 +161,7 @@ pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), Str
     if !crate::query::is_safe_path_param(change) {
         return Err(format!("invalid change name: {change}"));
     }
-    let ctx = init_core_context(root)
+    let ctx = crate::context_for_change(root, change)
         .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
     let text = ctx
         .store
@@ -240,7 +246,7 @@ pub fn move_task_at(
     if !crate::query::is_safe_path_param(change) {
         return Err(format!("invalid change name: {change}"));
     }
-    let ctx = init_core_context(root)
+    let ctx = crate::context_for_change(root, change)
         .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
     speclink_core::tasks::move_task(&ctx.store, change, from, to, before)
         .map(|_| ())
@@ -266,8 +272,13 @@ pub fn reorder_card_at(
             return Err(format!("invalid neighbor id: {n}"));
         }
     }
-    let ctx = init_core_context(root)
-        .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
+    // 變更卡定根到該 change 的所在（design D1），rank 才與看板讀取同源；討論卡
+    // 沒有 worktree 映射，且 slug 可能與某個 change 撞名——落點只由 kind 決定。
+    let ctx = match kind {
+        "change" => crate::context_for_change(root, id),
+        _ => init_core_context(root),
+    }
+    .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
     let store: &dyn Store = &ctx.store;
     match kind {
         "change" => reorder_change(store, id, prev_id, next_id),
@@ -419,6 +430,27 @@ mod tests {
         assert!(m.get("fromDiscussion").is_none(), "old single-value key gone");
         let p = change_meta_at(fx.root(), "plain").expect("meta exists");
         assert_eq!(p["fromDiscussions"], json!([]));
+    }
+
+    #[test]
+    fn change_meta_comes_from_the_worktree_copy() {
+        // spec worktree-overlay「desktop 看板的 worktree 呈現」：抽屜的 metadata
+        // 欄位（建立與開工資訊）對有映射的 change 須讀 worktree 副本——開工章是
+        // 在 worktree 內蓋的，讀主 checkout 會顯示成從未開工。
+        let fx = crate::testfixture::FixtureRoot::new("m-meta-wt");
+        fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
+        let wt = fx.attach_worktree("add-auth");
+        fs::write(
+            crate::testfixture::FixtureRoot::worktree_change_dir(&wt, "add-auth")
+                .join(".openspec.yaml"),
+            "schema: spec-driven\ncreated: 2026-07-05\nstarted_at: 2026-07-06\nstarted_by: Worker <w@example.com>\nstarted_with: claude\n",
+        )
+        .unwrap();
+
+        let meta = change_meta_at(fx.root(), "add-auth").expect("meta exists");
+        assert_eq!(meta["startedAt"], "2026-07-06", "開工章須讀 worktree 副本: {meta}");
+        assert_eq!(meta["startedBy"], "Worker <w@example.com>");
+        assert_eq!(meta["startedWith"], "claude");
     }
 
     #[test]
@@ -583,6 +615,173 @@ mod tests {
             PROMOTED_D1,
             "discussion untouched — no unlink on a refused delete"
         );
+    }
+
+    // --- 寫入面路由（spec worktree-overlay「worktree 掛著時的 desktop 動詞防護」
+    // 的粒度寫入動詞：檔案效果與側效落在 worktree 副本）---
+
+    #[test]
+    fn set_task_done_writes_into_the_worktree_copy() {
+        // Scenario「任務勾選寫入 worktree」：勾章落在副本的 tasks.md，touched 記錄
+        // 同落副本（歸因掃的是副本的髒檔），主 checkout 的 tasks.md 位元級不變。
+        let fx = crate::testfixture::FixtureRoot::new("m-task-wt");
+        fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
+        fx.write("openspec/changes/add-auth/tasks.md", "## 1. Group\n\n- [ ] 1.1 first\n");
+        let wt = fx.attach_worktree("add-auth");
+        let main_tasks = fx.root().join("openspec/changes/add-auth/tasks.md");
+        let main_before = fs::read_to_string(&main_tasks).unwrap();
+        // 副本內的未認領髒檔——勾選的歸因來源。
+        fs::write(wt.join("src.rs"), "fn implemented_in_the_worktree() {}\n").unwrap();
+
+        set_task_done_at(fx.root(), "add-auth", "1", true).expect("勾選成功");
+
+        let wt_change = crate::testfixture::FixtureRoot::worktree_change_dir(&wt, "add-auth");
+        let wt_tasks = fs::read_to_string(wt_change.join("tasks.md")).unwrap();
+        assert!(wt_tasks.contains("- [x] 1.1 first"), "勾章須落在 worktree 副本: {wt_tasks}");
+        assert_eq!(
+            fs::read_to_string(&main_tasks).unwrap(),
+            main_before,
+            "主 checkout 的 tasks.md 位元級不變"
+        );
+        let record = fs::read_to_string(wt_change.join(".evidence.json"))
+            .expect("touched 記錄落在 worktree 副本");
+        assert!(record.contains("src.rs"), "歸因掃的是副本的髒檔: {record}");
+        assert!(
+            !fx.root().join("openspec/changes/add-auth/.evidence.json").exists(),
+            "主 checkout 不留記錄"
+        );
+        // 首次完成的開工章同樣落在副本。
+        let wt_meta = fs::read_to_string(wt_change.join(".openspec.yaml")).unwrap();
+        assert!(wt_meta.contains("started_at:"), "開工章須落在副本: {wt_meta}");
+        assert!(
+            !fs::read_to_string(fx.root().join("openspec/changes/add-auth/.openspec.yaml"))
+                .unwrap()
+                .contains("started_at:"),
+            "主 checkout 的 metadata 不被寫入"
+        );
+    }
+
+    #[test]
+    fn bulk_check_and_task_move_write_into_the_worktree_copy() {
+        // 粒度寫入動詞同一落點：全部勾選與任務拖排也寫副本的 tasks.md
+        // （全勾自行寫回、拖排走引擎，兩條路徑都要跟著定根）。
+        let fx = crate::testfixture::FixtureRoot::new("m-bulk-wt");
+        fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
+        fx.write(
+            "openspec/changes/add-auth/tasks.md",
+            "## 1. Group\n\n- [ ] 1.1 first\n- [ ] 1.2 second\n",
+        );
+        let wt = fx.attach_worktree("add-auth");
+        let main_tasks = fx.root().join("openspec/changes/add-auth/tasks.md");
+        let main_before = fs::read_to_string(&main_tasks).unwrap();
+        let wt_tasks = crate::testfixture::FixtureRoot::worktree_change_dir(&wt, "add-auth")
+            .join("tasks.md");
+
+        set_all_tasks_at(fx.root(), "add-auth", true).expect("全勾成功");
+        let after_bulk = fs::read_to_string(&wt_tasks).unwrap();
+        assert!(
+            after_bulk.contains("- [x] 1.1 first") && after_bulk.contains("- [x] 1.2 second"),
+            "全勾須落在 worktree 副本: {after_bulk}"
+        );
+        assert_eq!(fs::read_to_string(&main_tasks).unwrap(), main_before, "主 checkout 不動");
+
+        move_task_at(fx.root(), "add-auth", 2, 1, None).expect("拖排成功");
+        let after_move = fs::read_to_string(&wt_tasks).unwrap();
+        assert!(after_move.contains("- [x] 1.1 second"), "拖排須落在副本: {after_move}");
+        assert_eq!(fs::read_to_string(&main_tasks).unwrap(), main_before, "主 checkout 仍不動");
+    }
+
+    #[test]
+    fn discarding_the_review_ticket_targets_the_worktree_copy() {
+        // 放棄審查工單同屬粒度寫入動詞：刪的是副本的工單，主 checkout 的同名檔不動。
+        let fx = crate::testfixture::FixtureRoot::new("m-discard-wt");
+        fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
+        fx.write("openspec/changes/add-auth/review.md", "# Review — 主 checkout 的舊工單\n");
+        let wt = fx.attach_worktree("add-auth");
+        let wt_ticket = crate::testfixture::FixtureRoot::worktree_change_dir(&wt, "add-auth")
+            .join("review.md");
+
+        crate::verbs::discard_review_at(fx.root(), "add-auth").expect("放棄工單成功");
+
+        assert!(!wt_ticket.exists(), "副本的工單須被刪除");
+        assert!(
+            fx.root().join("openspec/changes/add-auth/review.md").is_file(),
+            "主 checkout 的工單不受影響"
+        );
+    }
+
+    #[test]
+    fn reorder_card_writes_the_rank_into_the_worktree_copy() {
+        // Scenario「卡片拖排位置保持」：rank 寫入 worktree 副本的 change metadata，
+        // 與看板讀取（走 overlay）同源——寫主 checkout 會在下次刷新被覆蓋回原位。
+        let fx = crate::testfixture::FixtureRoot::new("m-rank-wt");
+        fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
+        let wt = fx.attach_worktree("add-auth");
+
+        reorder_card_at(fx.root(), "change", "add-auth", None, None).expect("拖排成功");
+
+        let wt_meta = fs::read_to_string(
+            crate::testfixture::FixtureRoot::worktree_change_dir(&wt, "add-auth")
+                .join(".openspec.yaml"),
+        )
+        .unwrap();
+        assert!(wt_meta.contains("board_rank:"), "rank 須寫入 worktree 副本: {wt_meta}");
+        assert!(
+            !fs::read_to_string(fx.root().join("openspec/changes/add-auth/.openspec.yaml"))
+                .unwrap()
+                .contains("board_rank:"),
+            "主 checkout 的 metadata 不被寫入"
+        );
+    }
+
+    #[test]
+    fn delete_is_refused_while_the_change_has_a_worktree() {
+        // Scenario「刪除被擋」：刪除是破壞性生命週期動詞，與封存、退回同一級——
+        // 拒絕並提示先收尾，兩份 change 目錄均不變。
+        let fx = crate::testfixture::FixtureRoot::new("m-del-wt");
+        fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
+        // 零痕跡：守門之外的既有前置都會放行，拒絕只可能來自 worktree 守門。
+        fx.write("openspec/changes/add-auth/tasks.md", "- [ ] 1.1 open\n");
+        let wt = fx.attach_worktree("add-auth");
+
+        let err = delete_change_at(fx.root(), "add-auth").expect_err("有 worktree 映射時必須拒絕");
+
+        assert!(err.contains("worktree-merge"), "須指出收尾方式: {err}");
+        assert!(err.contains("add-auth"), "須指名 change: {err}");
+        assert!(
+            fx.root().join("openspec/changes/add-auth").is_dir(),
+            "主 checkout 的 change 目錄不變"
+        );
+        assert!(
+            crate::testfixture::FixtureRoot::worktree_change_dir(&wt, "add-auth").is_dir(),
+            "worktree 副本的 change 目錄不變"
+        );
+    }
+
+    #[test]
+    fn writes_land_in_the_main_checkout_when_the_policy_is_off() {
+        // design D4 紅線：worktree 政策關閉 → facts 為空 → 寫入面全部回到主
+        // checkout、守門退場，與 worktree 功能出現前完全相同。
+        let fx = crate::testfixture::FixtureRoot::new("m-policy-off");
+        fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
+        fx.write("openspec/changes/add-auth/tasks.md", "## 1. Group\n\n- [ ] 1.1 first\n");
+        let wt = fx.attach_worktree("add-auth");
+        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: false\n");
+
+        set_task_done_at(fx.root(), "add-auth", "1", true).expect("勾選成功");
+
+        let main_tasks =
+            fs::read_to_string(fx.root().join("openspec/changes/add-auth/tasks.md")).unwrap();
+        assert!(main_tasks.contains("- [x] 1.1 first"), "勾章落在主 checkout: {main_tasks}");
+        let wt_tasks = fs::read_to_string(
+            crate::testfixture::FixtureRoot::worktree_change_dir(&wt, "add-auth").join("tasks.md"),
+        )
+        .unwrap();
+        assert!(wt_tasks.contains("- [ ] 1.1 first"), "副本不被寫入: {wt_tasks}");
+
+        // 刪除守門同樣退場——這次擋下來的是既有的開工痕跡，不是 worktree。
+        let err = delete_change_at(fx.root(), "add-auth").expect_err("已有痕跡，刪除仍被擋");
+        assert!(!err.contains("worktree-merge"), "worktree 守門須已退場: {err}");
     }
 
     fn fixture_with_tasks(tag: &str) -> PathBuf {

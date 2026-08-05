@@ -12,7 +12,7 @@ use crate::init_core_context;
 
 /// 對應 `speclink validate <change>`：回傳該 change 的 `ValidationResult`（valid/errors/warnings）。
 pub fn validate_at(root: &Path, change: &str) -> Result<Value, String> {
-    let ctx = open(root)?;
+    let ctx = open_for(root, change)?;
     let store: &dyn Store = &ctx.store;
     let change = find(store, change)?;
     // 與 CLI 一致：validate 不解析 change 的 schema，一律用 spec_driven。
@@ -23,7 +23,7 @@ pub fn validate_at(root: &Path, change: &str) -> Result<Value, String> {
 
 /// 對應 `speclink analyze <change> --json`：回傳 `AnalyzeReport`（含 findings 與各維度狀態）。
 pub fn analyze_at(root: &Path, change: &str) -> Result<Value, String> {
-    let ctx = open(root)?;
+    let ctx = open_for(root, change)?;
     let store: &dyn Store = &ctx.store;
     let change = find(store, change)?;
     let schema = speclink_core::schema::spec_driven();
@@ -45,7 +45,7 @@ pub fn archive_carry_at(root: &Path, change: &str) -> Result<Value, String> {
 
 /// 對應 `speclink review discard <change>`：刪工單、不蓋章（三選項的「放棄審查」）。
 pub fn discard_review_at(root: &Path, change: &str) -> Result<Value, String> {
-    let ctx = open(root)?;
+    let ctx = open_for(root, change)?;
     let store: &dyn Store = &ctx.store;
     speclink_core::review::discard(store, change).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({ "change": change, "discarded": true }))
@@ -71,6 +71,13 @@ fn archive_with(root: &Path, change: &str, carry_review: bool) -> Result<Value, 
 
 pub(crate) fn open(root: &Path) -> Result<crate::ProjectContext, String> {
     init_core_context(root).ok_or_else(|| format!("not a speclink project: {}", root.display()))
+}
+
+/// 單一 change 的執行語境（design D1）：有 worktree 映射時解析到該副本，
+/// 否則同 [`open`]。
+fn open_for(root: &Path, change: &str) -> Result<crate::ProjectContext, String> {
+    crate::context_for_change(root, change)
+        .ok_or_else(|| format!("not a speclink project: {}", root.display()))
 }
 
 fn find(store: &dyn Store, change: &str) -> Result<speclink_core::model::Change, String> {
@@ -115,35 +122,12 @@ mod tests {
         assert!(v["findings"].is_array(), "report exposes findings array");
     }
 
-    /// 主 checkout ＋ 一個 speclink/<change> worktree（探索成立映射的三個條件）。
-    fn attach_worktree(fx: &FixtureRoot, change: &str) {
-        let git = |args: &[&str]| {
-            let out = std::process::Command::new("git")
-                .args(args)
-                .current_dir(fx.root())
-                .env("GIT_AUTHOR_NAME", "t")
-                .env("GIT_AUTHOR_EMAIL", "t@example.test")
-                .env("GIT_COMMITTER_NAME", "t")
-                .env("GIT_COMMITTER_EMAIL", "t@example.test")
-                .output()
-                .expect("run git");
-            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
-        };
-        fx.write(".speclink.yaml", "tools:\n  - claude\n");
-        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
-        git(&["init", "-q", "-b", "main"]);
-        git(&["add", "-A"]);
-        git(&["commit", "-qm", "seed"]);
-        let wt = fx.root().join("wt");
-        git(&["worktree", "add", "-q", "-b", &format!("speclink/{change}"), wt.to_str().unwrap()]);
-    }
-
     #[test]
     fn archive_is_refused_while_the_change_has_a_worktree() {
         // spec worktree-overlay「worktree 掛著時的 desktop 動詞防護」Scenario
         // 「封存被擋」：動詞拒絕、訊息指出收尾方式、change 仍在原處。
         let fx = valid_fixture("v-archive-wt");
-        attach_worktree(&fx, "demo");
+        fx.attach_worktree("demo");
 
         let err = archive_at(fx.root(), "demo").expect_err("有 worktree 映射時必須拒絕");
         assert!(err.contains("worktree-merge"), "須指出收尾方式: {err}");
@@ -162,7 +146,7 @@ mod tests {
     fn the_guard_lifts_once_the_worktree_is_removed() {
         // Scenario「收尾後解禁」：worktree 移除後守門退場，動詞照常走既有前置。
         let fx = valid_fixture("v-archive-wt-gone");
-        attach_worktree(&fx, "demo");
+        fx.attach_worktree("demo");
         assert!(archive_at(fx.root(), "demo").is_err());
 
         let out = std::process::Command::new("git")
@@ -177,10 +161,43 @@ mod tests {
     }
 
     #[test]
+    fn validate_and_analyze_read_the_worktree_copy() {
+        // spec worktree-overlay Scenario「分析報告反映 worktree 現值」：驗證與分析
+        // 吃的是 worktree 副本的 artifact——主 checkout 的舊內容不該左右結果。
+        let fx = valid_fixture("v-analyze-wt");
+        // 主 checkout 的 delta spec 退化成無場景版（validate 判不合格、零 Ambiguity）。
+        fx.write(
+            "openspec/changes/demo/specs/cap-x/spec.md",
+            "## ADDED Requirements\n\n### Requirement: Demo works\n\nIt SHALL work.\n",
+        );
+        let wt = fx.attach_worktree("demo");
+        std::fs::write(
+            FixtureRoot::worktree_change_dir(&wt, "demo")
+                .join("specs")
+                .join("cap-x")
+                .join("spec.md"),
+            "## ADDED Requirements\n\n### Requirement: Demo works\n\nIt SHALL work.\n\n#### Scenario: works\n\n- **WHEN** used\n- **THEN** it works\n\n#### Scenario: also works\n\n- **WHEN** used again\n- **THEN** it still works\n",
+        )
+        .unwrap();
+
+        let v = validate_at(fx.root(), "demo").expect("validate ok");
+        assert_eq!(v["valid"], true, "驗證須讀副本的合格版本: {v}");
+
+        let report = analyze_at(fx.root(), "demo").expect("analyze ok");
+        let ambiguity = report["findings"]
+            .as_array()
+            .expect("findings array")
+            .iter()
+            .filter(|f| f["dimension"] == "Ambiguity")
+            .count();
+        assert_eq!(ambiguity, 2, "分析報告須依副本的兩個場景產出: {report}");
+    }
+
+    #[test]
     fn read_only_verbs_are_unaffected_by_a_worktree() {
         // 唯讀面不擋：抽屜與檢視在 worktree 掛著時照常。
         let fx = valid_fixture("v-readonly-wt");
-        attach_worktree(&fx, "demo");
+        fx.attach_worktree("demo");
         assert!(validate_at(fx.root(), "demo").is_ok());
         assert!(analyze_at(fx.root(), "demo").is_ok());
     }

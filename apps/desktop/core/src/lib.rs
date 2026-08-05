@@ -36,6 +36,28 @@ pub fn init_core_context(root: &Path) -> Option<ProjectContext> {
     Some(ProjectContext { workspace, store })
 }
 
+/// 單一 change 的執行語境（design D1）：該 change 有 worktree 映射時，以那份
+/// worktree 副本為根重建 [`ProjectContext`]；否則沿用主 checkout。
+///
+/// worktree 是完整 checkout，Workspace 與 store 在其中天然成立，因此讀與寫共用
+/// 同一機制：任務完成的側效（touched 記錄、git 髒檔歸因、head commit、開工章）
+/// 隨定根一併落在 worktree 內。每次呼叫現取 observed_facts、不快取——映射條件
+/// 已含「worktree 內 change 目錄可讀」，資料夾被移除的下一次呼叫自然回讀主
+/// checkout，沒有 stale 視窗。政策關、非主 checkout、git 不可用時 facts 為空，
+/// 回傳的就是主 checkout context（行為與本函式出現前完全相同）。
+pub(crate) fn context_for_change(root: &Path, change: &str) -> Option<ProjectContext> {
+    let ctx = init_core_context(root)?;
+    let facts = speclink_host::worktree::observed_facts(&ctx.workspace, &ctx.store, |key| {
+        std::env::var(key).ok()
+    });
+    match facts.get(change) {
+        // worktree 副本自身探索不成立（.speclink.yaml 損壞等）時靜默回讀主副本，
+        // 沿用 discovery 的 fail-open 慣例。
+        Some(entry) => Some(init_core_context(&entry.path).unwrap_or(ctx)),
+        None => Some(ctx),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,0 +1,84 @@
+{
+  "version": 2,
+  "change": "worktree-data-routing",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 [測試先行] 於 apps/desktop/core/src/query.rs 測試模組沿用 verbs.rs 的 attach_worktree fixture，補「變更清單的審查狀態欄位」的 worktree 正反例：worktree 內 scope 檔現值與蓋章雜湊相符、主 checkout 同名檔為舊內容 → 清單項 reviewStatus == \"reviewed\"（欄位存在、camelCase）；worktree 內再改該檔 → \"reviewedStale\"。驗證：cargo test -p speclink-desktop-core 兩測試紅燈（現行實作誤判 stale）。",
+      "files": [
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/core/src/testfixture.rs",
+        "apps/desktop/core/src/verbs.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 [測試先行] 讀取面紅燈：worktree 副本 tasks.md 已勾、metadata 有開工章、主 checkout 皆為舊內容時，document_at 回傳內容 SHALL 含已勾任務行、change_meta_at 的 startedAt 非 null、status_at 反映 worktree 副本。檔案：apps/desktop/core/src/query.rs、apps/desktop/core/src/manage.rs。驗證：cargo test -p speclink-desktop-core 新測試紅燈。",
+      "files": [
+        "apps/desktop/core/src/manage.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 依 design「D1 per-change 入口以重新定根的 worktree context 執行」於 apps/desktop/core/src/lib.rs 新增 crate 內部 helper（每次現取 observed_facts，該 change 有映射即以 worktree 路徑重建 ProjectContext），並將 document_at、status_at、change_capabilities_at（apps/desktop/core/src/query.rs）、change_meta_at（apps/desktop/core/src/manage.rs）、validate_at、analyze_at（apps/desktop/core/src/verbs.rs）切至 helper。行為：「desktop 看板的 worktree 呈現」的抽屜文件、meta、狀態、驗證與分析全數同源 worktree。驗證：1.2 測試轉綠且既有測試不破。",
+      "files": [
+        "apps/desktop/core/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 依 design「D2 批次入口維持 overlay、凍結度指紋逐 change 解析讀檔根」修 apps/desktop/core/src/query.rs 的 list_changes_at：內容指紋的檔案讀取逐 change 解析根目錄（facts 有映射用該 worktree 路徑，否則主 checkout）；apps/desktop/core/src/search.rs 的 search_workspace_at 改以 overlay store 掃描 artifacts。行為：凍結度判定與全文搜尋命中 worktree 現值。驗證：1.1 測試轉綠；新增「搜尋命中僅存在於 worktree 的字串」測試綠燈。",
+      "files": [
+        "apps/desktop/core/src/search.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZ929S2DS9X9VZPBN58DVMZM",
+      "taskDesc": "1.1 [測試先行] 於 apps/desktop/core/src/query.rs 測試模組沿用 verbs.rs 的 attach_worktree fixture，補「變更清單的審查狀態欄位」的 worktree 正反例：worktree 內 scope 檔現值與蓋章雜湊相符、主 checkout 同名檔為舊內容 → 清單項 reviewStatus == \"reviewed\"（欄位存在、camelCase）；worktree 內再改該檔 → \"reviewedStale\"。驗證：cargo test -p speclink-desktop-core 兩測試紅燈（現行實作誤判 stale）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "19d0b2d5d87e605ef6d33f417c0b969bce67c263",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/core/src/testfixture.rs",
+        "apps/desktop/core/src/verbs.rs"
+      ],
+      "recordedAt": "2026-08-05T14:00:15Z"
+    },
+    {
+      "taskId": "tsk_01KZ929S2DCZKFWY5WNHE68JMK",
+      "taskDesc": "1.2 [測試先行] 讀取面紅燈：worktree 副本 tasks.md 已勾、metadata 有開工章、主 checkout 皆為舊內容時，document_at 回傳內容 SHALL 含已勾任務行、change_meta_at 的 startedAt 非 null、status_at 反映 worktree 副本。檔案：apps/desktop/core/src/query.rs、apps/desktop/core/src/manage.rs。驗證：cargo test -p speclink-desktop-core 新測試紅燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "19d0b2d5d87e605ef6d33f417c0b969bce67c263",
+      "touchedFiles": [
+        "apps/desktop/core/src/manage.rs"
+      ],
+      "recordedAt": "2026-08-05T14:01:11Z"
+    },
+    {
+      "taskId": "tsk_01KZ929S2DGFARFSNW674SHCK6",
+      "taskDesc": "2.1 依 design「D1 per-change 入口以重新定根的 worktree context 執行」於 apps/desktop/core/src/lib.rs 新增 crate 內部 helper（每次現取 observed_facts，該 change 有映射即以 worktree 路徑重建 ProjectContext），並將 document_at、status_at、change_capabilities_at（apps/desktop/core/src/query.rs）、change_meta_at（apps/desktop/core/src/manage.rs）、validate_at、analyze_at（apps/desktop/core/src/verbs.rs）切至 helper。行為：「desktop 看板的 worktree 呈現」的抽屜文件、meta、狀態、驗證與分析全數同源 worktree。驗證：1.2 測試轉綠且既有測試不破。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "19d0b2d5d87e605ef6d33f417c0b969bce67c263",
+      "touchedFiles": [
+        "apps/desktop/core/src/lib.rs"
+      ],
+      "recordedAt": "2026-08-05T14:02:49Z"
+    },
+    {
+      "taskId": "tsk_01KZ929S2DE8PVZ5DQK790KV5A",
+      "taskDesc": "2.2 依 design「D2 批次入口維持 overlay、凍結度指紋逐 change 解析讀檔根」修 apps/desktop/core/src/query.rs 的 list_changes_at：內容指紋的檔案讀取逐 change 解析根目錄（facts 有映射用該 worktree 路徑，否則主 checkout）；apps/desktop/core/src/search.rs 的 search_workspace_at 改以 overlay store 掃描 artifacts。行為：凍結度判定與全文搜尋命中 worktree 現值。驗證：1.1 測試轉綠；新增「搜尋命中僅存在於 worktree 的字串」測試綠燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "19d0b2d5d87e605ef6d33f417c0b969bce67c263",
+      "touchedFiles": [
+        "apps/desktop/core/src/search.rs"
+      ],
+      "recordedAt": "2026-08-05T14:04:11Z"
+    }
+  ]
+}

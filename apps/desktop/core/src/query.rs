@@ -21,17 +21,7 @@ pub fn list_changes_at(root: &Path) -> Value {
     let facts = speclink_host::worktree::observed_facts(&ctx.workspace, &ctx.store, |key| {
         std::env::var(key).ok()
     });
-    let overlaid = speclink_host::worktree::WorktreeOverlay::new(
-        &ctx.store,
-        facts
-            .iter()
-            .map(|(name, e)| {
-                let store: Box<dyn Store> =
-                    Box::new(speclink_fs::FsStore::new(&e.path, &ctx.workspace.spec_dir_name));
-                (name.clone(), store)
-            })
-            .collect(),
-    );
+    let overlaid = overlay_store(&ctx, &facts);
     let store: &dyn Store = if facts.is_empty() { &ctx.store } else { &overlaid };
     let changes = board_sorted_changes(store);
     // 桌面 payload 在 CLI 同形項上疊加生命週期標記欄位（parity 紅線：CLI 的
@@ -64,8 +54,14 @@ pub fn list_changes_at(root: &Path) -> Value {
             let review = if store.artifact_exists(&c.name, speclink_core::review::REVIEW_DOC) {
                 "inReview"
             } else {
-                let read_file =
-                    |p: &str| std::fs::read_to_string(ctx.workspace.root.join(p)).ok();
+                // 內容指紋錨讀的是 repo 任意程式檔、不是 artifact——overlay 幫不上，
+                // 逐 change 解析讀取根（design D2）：有 worktree 映射讀該副本，
+                // 否則讀主 checkout。任務錨已走 overlay，兩錨自此同源。
+                let scope_root = match facts.get(&c.name) {
+                    Some(entry) => entry.path.as_path(),
+                    None => ctx.workspace.root.as_path(),
+                };
+                let read_file = |p: &str| std::fs::read_to_string(scope_root.join(p)).ok();
                 let (complete, total) = speclink_core::listing::task_counts(store, c);
                 match speclink_core::review::freshness(&c.meta, total, complete, &read_file) {
                     speclink_core::review::Freshness::Fresh => "reviewed",
@@ -82,6 +78,27 @@ pub fn list_changes_at(root: &Path) -> Value {
         })
         .collect();
     json!({ "changes": items })
+}
+
+/// 批次入口的讀取 store（design D2）：每個有映射的 change，其 artifact 讀取轉向
+/// 該 worktree 副本，其餘讀取與全部寫入直通主 store。一次處理全部 change 的入口
+/// （看板清單、全文搜尋）共用這一組裝，不逐 change 重建 context——那會對每個
+/// change 各 spawn 一次 git，刷新代價過高。
+pub(crate) fn overlay_store<'a>(
+    ctx: &'a crate::ProjectContext,
+    facts: &speclink_host::worktree::WorktreeFacts,
+) -> speclink_host::worktree::WorktreeOverlay<'a> {
+    speclink_host::worktree::WorktreeOverlay::new(
+        &ctx.store,
+        facts
+            .iter()
+            .map(|(name, e)| {
+                let store: Box<dyn Store> =
+                    Box::new(speclink_fs::FsStore::new(&e.path, &ctx.workspace.spec_dir_name));
+                (name.clone(), store)
+            })
+            .collect(),
+    )
 }
 
 /// worktree 掛著時，這個 change 的破壞性動詞要擋下來（design D7）。
@@ -255,7 +272,7 @@ pub(crate) fn modified_date(path: &Path) -> Option<String> {
 /// 對應 `speclink status --change <name> --json`（`StatusReport` 序列化）。
 /// change 不存在或非專案時回傳 `Err` 附訊息。
 pub fn status_at(root: &Path, change: &str) -> Result<Value, String> {
-    let ctx = init_core_context(root)
+    let ctx = crate::context_for_change(root, change)
         .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
     let store: &dyn Store = &ctx.store;
     let change = store
@@ -275,7 +292,7 @@ pub fn document_at(root: &Path, change: &str, artifact: &str) -> Option<String> 
     if !is_safe_path_param(change) || !is_safe_path_param(artifact) {
         return None;
     }
-    let ctx = init_core_context(root)?;
+    let ctx = crate::context_for_change(root, change)?;
     ctx.store.read_artifact(change, artifact)
 }
 
@@ -293,7 +310,7 @@ pub fn change_capabilities_at(root: &Path, change: &str) -> Vec<String> {
     if !is_safe_path_param(change) {
         return Vec::new();
     }
-    match init_core_context(root) {
+    match crate::context_for_change(root, change) {
         Some(ctx) => ctx.store.delta_capabilities(change),
         None => Vec::new(),
     }
@@ -372,40 +389,13 @@ mod tests {
         assert_eq!(item["completedTasks"], 1);
     }
 
-    /// 主 checkout ＋ 一個 speclink/<change> worktree，change 兩份副本皆在——
-    /// 探索成立映射的三個條件。回傳 worktree 路徑。
-    fn attach_worktree(fx: &FixtureRoot, change: &str) -> std::path::PathBuf {
-        let git = |args: &[&str]| {
-            let out = std::process::Command::new("git")
-                .args(args)
-                .current_dir(fx.root())
-                .env("GIT_AUTHOR_NAME", "t")
-                .env("GIT_AUTHOR_EMAIL", "t@example.test")
-                .env("GIT_COMMITTER_NAME", "t")
-                .env("GIT_COMMITTER_EMAIL", "t@example.test")
-                .output()
-                .expect("run git");
-            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
-        };
-        fx.write(".speclink.yaml", "tools:\n  - claude\n");
-        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
-        git(&["init", "-q", "-b", "main"]);
-        git(&["add", "-A"]);
-        git(&["commit", "-qm", "seed"]);
-        let wt = fx.root().join("wt");
-        git(&["worktree", "add", "-q", "-b", &format!("speclink/{change}"), wt.to_str().unwrap()]);
-        // git 回報的是正規化路徑；macOS 的 /var 是 /private/var 的 symlink，
-        // 不正規化就會拿 symlink 路徑去比對 git 的實體路徑。
-        wt.canonicalize().expect("worktree path")
-    }
-
     #[test]
     fn list_changes_carries_the_worktree_object_for_a_mapped_change() {
         // spec worktree-overlay「desktop 看板的 worktree 呈現」Scenario「卡片標示
         // 與抽屜資訊」：payload 帶 camelCase 的 path 與 branch（皆為字串）。
         let fx = FixtureRoot::new("q-list-wt");
         fx.add_change("add-auth", OLD_META);
-        let wt = attach_worktree(&fx, "add-auth");
+        let wt = fx.attach_worktree("add-auth");
 
         let v = list_changes_at(fx.root());
         let item = &v["changes"].as_array().expect("changes")[0];
@@ -422,7 +412,7 @@ mod tests {
         // 要監看，否則看板不會自動更新。
         let fx = FixtureRoot::new("q-watch-wt");
         fx.add_change("add-auth", OLD_META);
-        let wt = attach_worktree(&fx, "add-auth");
+        let wt = fx.attach_worktree("add-auth");
 
         let targets = watch_targets_at(fx.root());
 
@@ -477,6 +467,135 @@ mod tests {
     }
 
     #[test]
+    fn drawer_documents_come_from_the_worktree_copy() {
+        // spec worktree-overlay「desktop 看板的 worktree 呈現」：抽屜各分頁的文件
+        // 原文與計數同源——計數已走 overlay，原文也必須來自同一份副本。
+        let fx = FixtureRoot::new("q-doc-wt");
+        fx.add_change("add-auth", OLD_META);
+        let wt = fx.attach_worktree("add-auth");
+        let wt_change = FixtureRoot::worktree_change_dir(&wt, "add-auth");
+        std::fs::write(wt_change.join("tasks.md"), TASKS_ALL_DONE).unwrap();
+        std::fs::write(wt_change.join("design.md"), "## Context\n\nworktree 版設計。\n").unwrap();
+        std::fs::create_dir_all(wt_change.join("specs").join("cap-wt")).unwrap();
+        std::fs::write(
+            wt_change.join("specs").join("cap-wt").join("spec.md"),
+            "## ADDED Requirements\n",
+        )
+        .unwrap();
+
+        let tasks = document_at(fx.root(), "add-auth", "tasks.md").expect("tasks.md 可讀");
+        assert!(tasks.contains("- [x] 1.1"), "任務分頁原文須取 worktree 現值: {tasks}");
+        assert_eq!(
+            document_at(fx.root(), "add-auth", "design.md").as_deref(),
+            Some("## Context\n\nworktree 版設計。\n"),
+            "只存在於 worktree 的文件也要讀得到"
+        );
+        assert_eq!(
+            change_capabilities_at(fx.root(), "add-auth"),
+            vec!["cap-wt"],
+            "規格分頁清單同源 worktree"
+        );
+    }
+
+    #[test]
+    fn status_report_comes_from_the_worktree_copy() {
+        // 同一需求的狀態報告面：design.md 只存在於 worktree 副本時，該 artifact
+        // 的狀態為 done（讀主 checkout 會停在未完成）。
+        let fx = FixtureRoot::new("q-status-wt");
+        fx.add_change("add-auth", OLD_META);
+        let wt = fx.attach_worktree("add-auth");
+        std::fs::write(
+            FixtureRoot::worktree_change_dir(&wt, "add-auth").join("design.md"),
+            "## Context\n\nworktree 版設計。\n",
+        )
+        .unwrap();
+
+        let report = status_at(fx.root(), "add-auth").expect("status ok");
+        let design = report["artifacts"]
+            .as_array()
+            .expect("artifacts array")
+            .iter()
+            .find(|a| a["id"] == "design")
+            .expect("design artifact listed")
+            .clone();
+        assert_eq!(design["status"], "done", "狀態報告須反映 worktree 副本: {report}");
+        assert!(
+            !fx.root().join("openspec/changes/add-auth/design.md").exists(),
+            "主 checkout 確實沒有這份文件（測試前提）"
+        );
+    }
+
+    #[test]
+    fn every_read_entry_falls_back_to_the_main_checkout_when_the_policy_is_off() {
+        // design D4 紅線：三道閘門任一不成立時 facts 為空——這裡關掉 worktree 政策，
+        // worktree 副本明明有更新的內容，全部讀取面仍須讀主 checkout（＝此功能出現
+        // 前的行為）。
+        let fx = FixtureRoot::new("q-policy-off");
+        fx.add_change("add-auth", OLD_META);
+        let wt = fx.attach_worktree("add-auth");
+        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: false\n");
+        let wt_change = FixtureRoot::worktree_change_dir(&wt, "add-auth");
+        std::fs::write(wt_change.join("tasks.md"), TASKS_ALL_DONE).unwrap();
+        std::fs::write(wt_change.join("design.md"), "## Context\n\n只在 worktree。\n").unwrap();
+
+        let v = list_changes_at(fx.root());
+        let item = &v["changes"].as_array().expect("changes")[0];
+        assert_eq!(item["completedTasks"], 1, "計數回到主 checkout: {item}");
+        assert!(item.get("worktree").is_none_or(Value::is_null), "政策關則無標示: {item}");
+        assert!(
+            document_at(fx.root(), "add-auth", "tasks.md").unwrap().contains("- [ ] 1.1"),
+            "文件回到主 checkout"
+        );
+        assert!(document_at(fx.root(), "add-auth", "design.md").is_none(), "副本的新檔不外露");
+        let report = status_at(fx.root(), "add-auth").expect("status ok");
+        let design = report["artifacts"]
+            .as_array()
+            .expect("artifacts")
+            .iter()
+            .find(|a| a["id"] == "design")
+            .expect("design listed")
+            .clone();
+        assert_ne!(design["status"], "done", "狀態報告回到主 checkout: {report}");
+        assert!(
+            crate::search::search_workspace_at(fx.root(), "只在 worktree")["hits"]
+                .as_array()
+                .expect("hits")
+                .is_empty(),
+            "搜尋不掃副本"
+        );
+    }
+
+    #[test]
+    fn reads_fall_back_to_the_main_checkout_once_the_worktree_is_removed() {
+        // design D4：facts 每次現取、不快取——worktree 移除後的下一次呼叫即回讀
+        // 主 checkout，沒有 stale 視窗。
+        let fx = FixtureRoot::new("q-wt-removed");
+        fx.add_change("add-auth", OLD_META);
+        let wt = fx.attach_worktree("add-auth");
+        std::fs::write(
+            FixtureRoot::worktree_change_dir(&wt, "add-auth").join("tasks.md"),
+            TASKS_ALL_DONE,
+        )
+        .unwrap();
+        assert!(
+            document_at(fx.root(), "add-auth", "tasks.md").unwrap().contains("- [x] 1.1"),
+            "移除前讀副本"
+        );
+
+        let out = std::process::Command::new("git")
+            .args(["worktree", "remove", "--force", "wt"])
+            .current_dir(fx.root())
+            .output()
+            .expect("run git");
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+
+        assert!(
+            document_at(fx.root(), "add-auth", "tasks.md").unwrap().contains("- [ ] 1.1"),
+            "移除後的下一次呼叫即回讀主 checkout"
+        );
+    }
+
+    #[test]
     fn list_changes_omits_the_worktree_object_without_a_mapping() {
         let fx = FixtureRoot::new("q-list-no-wt");
         fx.add_change("demo", OLD_META);
@@ -491,7 +610,7 @@ mod tests {
         // 的計數要跟著動（讀經 overlay，而非主 checkout 的舊值）。
         let fx = FixtureRoot::new("q-list-wt-progress");
         fx.add_change("add-auth", OLD_META);
-        let wt = attach_worktree(&fx, "add-auth");
+        let wt = fx.attach_worktree("add-auth");
         let tasks = wt.join("openspec").join("changes").join("add-auth").join("tasks.md");
         std::fs::write(&tasks, "## 1. Group\n\n- [x] 1.1 First task\n- [x] 1.2 Second task\n")
             .unwrap();
@@ -622,6 +741,53 @@ mod tests {
         for key in ["name", "status", "totalTasks", "completedTasks", "summary"] {
             assert!(stamped.get(key).is_some(), "existing key {key} intact");
         }
+    }
+
+    /// 蓋章時 scope 檔的內容——指紋錨記的就是它的雜湊。
+    const STAMPED_SCOPE: &str = "fn keep() {}\n";
+
+    /// 蓋章 change ＋ worktree 映射：主 checkout 與 worktree 副本的 scope 檔內容
+    /// 分別指定，兩份相異才看得出凍結度到底讀了哪一份。
+    fn stamped_change_with_worktree(tag: &str, main: &str, worktree: &str) -> FixtureRoot {
+        let fx = FixtureRoot::new(tag);
+        let hash = speclink_core::review::content_fingerprint(STAMPED_SCOPE);
+        fx.write("src/auth.rs", main);
+        fx.add_change("fix-auth", &reviewed_meta("src/auth.rs", &hash));
+        fx.write("openspec/changes/fix-auth/tasks.md", TASKS_ALL_DONE);
+        let wt = fx.attach_worktree("fix-auth");
+        std::fs::write(wt.join("src").join("auth.rs"), worktree).unwrap();
+        fx
+    }
+
+    #[test]
+    fn review_freshness_reads_the_scope_file_from_the_worktree_copy() {
+        // spec client-protocol Scenario「worktree 中蓋章的凍結度以 worktree 現值
+        // 判定」＋ Example 第一列：worktree 副本與蓋章時一致、主 checkout 仍是
+        // 未實作的舊內容 → reviewed。
+        let fx = stamped_change_with_worktree(
+            "q-review-wt-fresh",
+            "fn unimplemented_yet() {}\n",
+            STAMPED_SCOPE,
+        );
+        let v = list_changes_at(fx.root());
+        assert_eq!(v["changes"][0]["reviewStatus"], "reviewed", "指紋錨須讀 worktree 現值: {v}");
+        assert_eq!(v["changes"][0]["reviewedAt"], "2026-08-01", "章的欄位照常附帶");
+    }
+
+    #[test]
+    fn review_freshness_turns_stale_when_the_worktree_copy_drifts() {
+        // 同 Example 第二列：worktree 內於蓋章後再改該檔 → reviewedStale。主
+        // checkout 這次反而相符——讀錯一份就會停在 reviewed。
+        let fx = stamped_change_with_worktree(
+            "q-review-wt-stale",
+            STAMPED_SCOPE,
+            "fn keep() {}\nfn drifted() {}\n",
+        );
+        let v = list_changes_at(fx.root());
+        assert_eq!(
+            v["changes"][0]["reviewStatus"], "reviewedStale",
+            "worktree 內變動後須轉 stale: {v}"
+        );
     }
 
     #[test]
