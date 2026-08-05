@@ -8,7 +8,7 @@
 
 - packages/ui/src/components/reviewStyle.tsx 的 REVIEW_TONE.reviewed 由 text-primary 改為 text-violet-600 dark:text-violet-400(與既有 tone 家族的 -600/dark:-400 階梯模式一致);其餘三態(inReview sky、reviewedStale amber、reviewedNotPassed rose)不動。
 - 同檔注解更新:記載「紫=品質站蓋章專屬」分工(一般成功/新增語意由 emerald 承載,屬後續全域色彩系統變更),與後續驗證站(verify-station-parity)共用同一張 tone 表的約定。
-- 消費端零改動:卡片、詳情抽屜、已封存清單、已封存抽屜、封存對話框五個表面引用同一份 REVIEW_TONE,自動生效。
+- 消費端零改動:卡片、詳情抽屜、已封存清單、已封存抽屜、封存對話框五個表面引用同一份 REVIEW_TONE。其中前四處會呈現「已審查」蓋章,換色自動生效;封存對話框只取用「曾審查未通過」,不受本次換色影響。
 - packages/ui/src/__tests__/reviewBadge.test.tsx 四處 text-primary 斷言(卡片章、抽屜資訊列、已封存清單、已封存抽屜)改為新色契約——四個表面共用同一份 REVIEW_TONE,換色會一起變動。
 
 ## Non-Goals
