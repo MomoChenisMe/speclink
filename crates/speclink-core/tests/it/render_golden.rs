@@ -953,6 +953,23 @@ fn worktree_merge_skill_states_preflight_conflict_and_cleanup() {
             content.contains("Do **NOT** commit on their behalf"),
             "{rel}: must forbid committing for the user"
         );
+        // merge ladder: rebase the branch onto the verified target inside the
+        // worktree first, then land it as a fast-forward so the graph stays a
+        // straight line instead of collecting a merge node per parallel change.
+        assert!(
+            content.contains("rebase \"<target-branch>\""),
+            "{rel}: the ladder must rebase the branch onto the verified merge target"
+        );
+        assert!(
+            content.contains("merge --ff-only"),
+            "{rel}: a successful rebase must land as a fast-forward"
+        );
+        // ladder fallback: a rebase conflict restores the branch untouched and
+        // drops back to the plain merge, so the worst case equals the old flow.
+        assert!(
+            content.contains("rebase --abort") && content.contains("fall back to a plain merge"),
+            "{rel}: a rebase conflict must restore the branch and fall back to the plain merge"
+        );
         // conflict: abort, report, never edit
         assert!(
             content.contains("merge --abort"),
