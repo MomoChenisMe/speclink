@@ -324,6 +324,12 @@ describe("專案設定頁兩頁簽組織（spec Scenario「兩頁分工與預設
     expect(
       within(screen.getByRole("tab", { name: ".speclink.yaml" })).queryByTestId("tab-warning"),
     ).toBeNull();
+    // spec「錯誤態以紅呈現」：解析失敗是錯誤（表單因此停用），不是琥珀提醒；
+    // 頁簽警示點仍是琥珀——它只說「這裡有事」，嚴重度由簽內橫幅承載。
+    const banner = (await screen.findByText(/invalid yaml at line 3/)).closest("p") as HTMLElement;
+    expect(banner.className).toContain("destructive");
+    expect(banner.className).not.toContain("amber");
+    expect(within(configTab).getByTestId("tab-warning").className).toContain("amber");
   });
 
   it(".speclink.yaml 解析失敗：其頁簽帶警示點、AI 工具表單停用；config.yaml 簽表單照常可用", async () => {
@@ -704,6 +710,9 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     fireEvent.click(within(contextCard).getByTestId("context-save"));
 
     const panel = await screen.findByTestId("policy-conflict-panel");
+    // 政策衝突是警示（要人決定，不是壞掉）：琥珀邊框，不用主色（主色＝可點的東西）。
+    expect(panel.className).toContain("amber");
+    expect(panel.className).not.toContain("border-primary");
     expect((within(contextCard).getByTestId("context-input") as HTMLTextAreaElement).value).toBe(
       "我的原始輸入\n保留換行",
     );

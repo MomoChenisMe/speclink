@@ -45,6 +45,17 @@ describe("憑證頁", () => {
     expect(screen.getByText("slk_abc")).toBeTruthy();
   });
 
+  it("憑證狀態徽章：有效為綠系、已撤銷為中性，兩態可區辨", async () => {
+    // spec「憑證狀態徽章」：撤銷是不可逆的事，得一眼看出哪把還活著。
+    renderAt("/admin/credentials", makeAdminClient());
+    const table = await screen.findByRole("table");
+    const valid = within(table).getAllByText("有效")[0];
+    const revoked = within(table).getByText("已撤銷");
+    expect(valid.className).toContain("emerald");
+    expect(revoked.className).not.toContain("emerald");
+    expect(revoked.className).toContain("text-muted-foreground");
+  });
+
   // 空狀態的建立入口不能只在「一個憑證都沒有」時存在——建完第一把之後就再也找不到
   // 新增的地方了。primary action 常駐頁首。
   it("已有憑證時仍提供建立存取金鑰的入口", async () => {

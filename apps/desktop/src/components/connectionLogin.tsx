@@ -3,7 +3,7 @@
 // 兩處無重複實作。credential 不經此層：PAT 僅單次過境 onSubmit。
 import { useEffect, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { Button, Input, useI18n } from "@speclink/ui";
+import { Button, Input, SEMANTIC_TONE, useI18n } from "@speclink/ui";
 
 import type { ConnectionPhase } from "../store";
 
@@ -117,7 +117,7 @@ export function PatLoginInput({
         </Button>
       </div>
       {error && (
-        <span role="alert" className="text-xs text-red-600 dark:text-red-400">
+        <span role="alert" className={`text-xs ${SEMANTIC_TONE.danger}`}>
           {error}
         </span>
       )}

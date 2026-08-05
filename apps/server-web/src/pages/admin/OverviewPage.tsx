@@ -11,7 +11,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { Badge, Button, Card, useI18n } from "@speclink/ui";
+import { Badge, Button, Card, SEMANTIC_SURFACE, SEMANTIC_TONE, useI18n } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { AdminError, AdminLoading } from "./states";
@@ -102,7 +102,14 @@ export function OverviewPage() {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
               <span className="flex items-center gap-2">
                 {t("overview.healthLabel")}
-                <Badge variant={data.storeHealthy ? "secondary" : "outline"}>
+                <Badge
+                  variant="outline"
+                  className={
+                    data.storeHealthy
+                      ? `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
+                      : `${SEMANTIC_SURFACE.danger} ${SEMANTIC_TONE.danger}`
+                  }
+                >
                   {data.storeHealthy ? t("common.normal") : t("common.abnormal")}
                 </Badge>
               </span>

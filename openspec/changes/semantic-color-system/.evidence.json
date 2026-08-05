@@ -1,0 +1,274 @@
+{
+  "version": 2,
+  "change": "semantic-color-system",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 新增 packages/ui/src/tone.ts:SEMANTIC_TONE(inProgress=sky、success=emerald、warning=amber -600/dark 變體、danger=destructive)與 SEMANTIC_SURFACE(對應 border+bg 淡色組),表頭註記三紅分工(訊息與按鈕=destructive、品質站章=rose、delta=red);自 packages/ui/src/index.ts 匯出——契約:兩 app 可 import 取色;驗證:npm test -w @speclink/ui 全綠(消費落地由後續任務驗)。",
+      "files": [
+        "packages/ui/src/index.ts",
+        "packages/ui/src/tone.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 [測試先行] packages/ui/src/__tests__/theme.test.ts 守門收緊(規格「介面狀態語意色分層」的守門場景):掃描 packages/ui/src、apps/desktop/src、apps/server-web/src 的 .ts/.tsx(排除 __tests__/dist),原生語意色階字面僅允許白名單檔(tone.ts、reviewStyle.tsx、DeltaBadges.tsx、stage.ts),違規失敗並列出檔名+class——契約:紅燈即現存違規清單(TrayPanel/App/ProjectTabs/RemoteWorkspaceRecovery/RemoteConflictDialog/InstructionUpdatePrompt/兩設定頁的 amber、ServersPanel teal-700 與 red-600、connectionLogin red-600、ChangeCard amber-500 等);驗證:該測試紅、其餘綠。",
+      "files": [
+        "packages/ui/src/__tests__/theme.test.ts"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 [測試先行] 更新 packages/ui 斷言錨定新契約:AnalyzePanel Warning 徽章=amber(同檔維度摘要同語意同色)、「驗證通過/零問題」=中性;tooltip 氣泡=bg-foreground text-background;HighlightText 搜尋高亮=琥珀 mark;討論抽屜輪次籤=中性;五處頭像=bg-muted;ChangeCard restale=amber-600+dark 變體;ChangeCard worktree 標示=sky(kanban.test.tsx 的 worktree marker 案例加色彩斷言:圖示帶 SEMANTIC_TONE.inProgress、不帶 text-primary/60);ReviewArchiveDialog「照樣帶走」=destructive——契約:新斷言紅燈;驗證:npm test -w @speclink/ui 顯示上述案例失敗。",
+      "files": [
+        "packages/ui/src/__tests__/analyzePanel.test.tsx",
+        "packages/ui/src/__tests__/archivedList.test.tsx",
+        "packages/ui/src/__tests__/discussionColumn.test.tsx",
+        "packages/ui/src/__tests__/discussionDrawer.test.tsx",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/__tests__/reviewBadge.test.tsx",
+        "packages/ui/src/__tests__/richDrawer.test.tsx",
+        "packages/ui/src/__tests__/ui.test.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 實作 packages/ui 修正批(AnalyzePanel、ui/tooltip.tsx、HighlightText、DiscussionDrawer 輪次籤、DiscussionColumn 欄頭圖示/色條/計數收斂至 stage.ts 或中性、ReviewArchiveDialog、ChangeCard/RichDetailDrawer/DiscussionColumn/ArchivedList/DiscussionDrawer 頭像、ChangeCard worktree 標示由 text-primary/60 改 SEMANTIC_TONE.inProgress——抽屜分支+路徑維持中性不動),語意色一律 import tone.ts——契約:任務 2.1 轉綠、守門測試對 packages/ui 檔案零違規;驗證:npm test -w @speclink/ui 全綠(theme 守門除 desktop/server-web 殘留)。",
+      "files": [
+        "packages/ui/src/components/AnalyzePanel.tsx",
+        "packages/ui/src/components/ArchivedList.tsx",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/DiscussionColumn.tsx",
+        "packages/ui/src/components/DiscussionDrawer.tsx",
+        "packages/ui/src/components/HighlightText.tsx",
+        "packages/ui/src/components/ReviewArchiveDialog.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/components/SpecList.tsx",
+        "packages/ui/src/components/ui/tooltip.tsx"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 [測試先行+實作] 系統匣面板(apps/desktop/src/panel/TrayPanel.tsx):討論/已轉出分區標題圖示與計數徽章轉中性(生命週期三分區維持 STAGE_* 階梯)、recovery 卡依狀態分色(restoring=sky、error=destructive)、作用中非 ready 分頁改「主色外框表選取+列內語意色表狀態」、根層漸層轉中性、stale 列「重新登入」鈕改中性 outline——契約:規格「生命週期階梯與互動回饋豁免」場景成立;驗證:npm test -w apps/desktop 對應斷言先紅後綠。",
+      "files": [
+        "apps/desktop/src/__tests__/trayPanel.test.tsx",
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 [測試先行+實作] 對話框與設定面(MigrationDialog 成功=emerald/進行=sky/eyebrow 中性;WorkspaceChooser 步驟標籤與 notice 中性;UpdateBanner 與 InstructionUpdatePrompt 底色中性+圖示語意色;ProjectTabs error=destructive/spinner=sky/ready 圖示中性;RemoteWorkspaceRecovery 還原=sky/失敗=destructive/needs-reauth 維持 amber;AppSettingsView 與 ProjectSettingsView 錯誤=destructive、有新版=sky、停用選項中性、政策衝突=amber 邊框;App.tsx stale 鈕中性 outline;RemoteConflictDialog 兩選項語彙統一)——契約:規格「錯誤紅/進行藍/成功綠」三場景成立;驗證:npm test -w apps/desktop 全綠。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx",
+        "apps/desktop/src/__tests__/migrationDialog.test.tsx",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/projectTabs.test.tsx",
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx",
+        "apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx",
+        "apps/desktop/src/__tests__/updateBanner.test.tsx",
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx",
+        "apps/desktop/src/components/InstructionUpdatePrompt.tsx",
+        "apps/desktop/src/components/MigrationDialog.tsx",
+        "apps/desktop/src/components/ProjectTabs.tsx",
+        "apps/desktop/src/components/RemoteConflictDialog.tsx",
+        "apps/desktop/src/components/RemoteWorkspaceRecovery.tsx",
+        "apps/desktop/src/components/UpdateBanner.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/views/AppSettingsView.tsx",
+        "apps/desktop/src/views/ProjectSettingsView.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.3 ServersPanel 與 connectionLogin 的原生色階改 token(text-teal-700 已登入改中性、三處 text-red-600 改 text-destructive)——契約:守門測試對 apps/desktop 零違規;驗證:npx vitest run src/__tests__/theme.test.ts --root packages/ui 綠(desktop 部分)。",
+      "files": [
+        "apps/desktop/src/components/ServersPanel.tsx",
+        "apps/desktop/src/components/connectionLogin.tsx"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 [測試先行+實作] 狀態徽章語意色(OverviewPage/SystemPage 儲存健康、UsersPage 成員狀態與抽屜內憑證、CredentialsPage、AccountPage 工作階段)與揭示橫幅改 emerald(AccountPage PAT、UsersPage 邀請連結)——契約:規格「後台狀態徽章語意色」四場景成立、守門對 apps/server-web 零違規;驗證:npm test -w apps/server-web 全綠、npm run build -w apps/server-web 通過。",
+      "files": [
+        "apps/server-web/src/__tests__/account.test.tsx",
+        "apps/server-web/src/__tests__/credentials.test.tsx",
+        "apps/server-web/src/__tests__/overview.test.tsx",
+        "apps/server-web/src/__tests__/system.test.tsx",
+        "apps/server-web/src/__tests__/users.test.tsx",
+        "apps/server-web/src/pages/AccountPage.tsx",
+        "apps/server-web/src/pages/admin/CredentialsPage.tsx",
+        "apps/server-web/src/pages/admin/OverviewPage.tsx",
+        "apps/server-web/src/pages/admin/SystemPage.tsx",
+        "apps/server-web/src/pages/admin/UsersPage.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "5.1 移除 ChangeBoard.tsx/ChangeList.tsx/ChangeListItem.tsx/DetailDrawer.tsx、index.ts 對應匯出(含 ListView 型別,移除前 grep 確認零消費端,有消費端則保留型別並記錄)、changeListItem.test.tsx 整檔、components.test.tsx 的 ChangeBoard 區塊、kanban.test.tsx 的 DetailDrawer 區塊——契約:@speclink/ui 匯出面無四元件、全套測試不因缺檔失敗;驗證:npm test -w @speclink/ui 全綠、grep 全 repo 無殘留 import。",
+      "files": [
+        "packages/ui/src/__tests__/changeListItem.test.tsx",
+        "packages/ui/src/__tests__/components.test.tsx",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/ChangeBoard.tsx",
+        "packages/ui/src/components/ChangeList.tsx",
+        "packages/ui/src/components/ChangeListItem.tsx",
+        "packages/ui/src/components/DetailDrawer.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZ5P0WAAZCJR5VRN5MM2WR2G",
+      "taskDesc": "1.1 新增 packages/ui/src/tone.ts:SEMANTIC_TONE(inProgress=sky、success=emerald、warning=amber -600/dark 變體、danger=destructive)與 SEMANTIC_SURFACE(對應 border+bg 淡色組),表頭註記三紅分工(訊息與按鈕=destructive、品質站章=rose、delta=red);自 packages/ui/src/index.ts 匯出——契約:兩 app 可 import 取色;驗證:npm test -w @speclink/ui 全綠(消費落地由後續任務驗)。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ee847873235ee41f4dadb8558812ae9f9f318974",
+      "touchedFiles": [
+        "packages/ui/src/index.ts",
+        "packages/ui/src/tone.ts"
+      ],
+      "recordedAt": "2026-08-05T09:00:34Z"
+    },
+    {
+      "taskId": "tsk_01KZ5P0WAABDSJS19PNXR965SX",
+      "taskDesc": "1.2 [測試先行] packages/ui/src/__tests__/theme.test.ts 守門收緊(規格「介面狀態語意色分層」的守門場景):掃描 packages/ui/src、apps/desktop/src、apps/server-web/src 的 .ts/.tsx(排除 __tests__/dist),原生語意色階字面僅允許白名單檔(tone.ts、reviewStyle.tsx、DeltaBadges.tsx、stage.ts),違規失敗並列出檔名+class——契約:紅燈即現存違規清單(TrayPanel/App/ProjectTabs/RemoteWorkspaceRecovery/RemoteConflictDialog/InstructionUpdatePrompt/兩設定頁的 amber、ServersPanel teal-700 與 red-600、connectionLogin red-600、ChangeCard amber-500 等);驗證:該測試紅、其餘綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ee847873235ee41f4dadb8558812ae9f9f318974",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/theme.test.ts"
+      ],
+      "recordedAt": "2026-08-05T09:02:48Z"
+    },
+    {
+      "taskId": "tsk_01KZ5P0WAAHVV5K8BPYDCMHNKY",
+      "taskDesc": "2.1 [測試先行] 更新 packages/ui 斷言錨定新契約:AnalyzePanel Warning 徽章=amber(同檔維度摘要同語意同色)、「驗證通過/零問題」=中性;tooltip 氣泡=bg-foreground text-background;HighlightText 搜尋高亮=琥珀 mark;討論抽屜輪次籤=中性;五處頭像=bg-muted;ChangeCard restale=amber-600+dark 變體;ChangeCard worktree 標示=sky(kanban.test.tsx 的 worktree marker 案例加色彩斷言:圖示帶 SEMANTIC_TONE.inProgress、不帶 text-primary/60);ReviewArchiveDialog「照樣帶走」=destructive——契約:新斷言紅燈;驗證:npm test -w @speclink/ui 顯示上述案例失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ee847873235ee41f4dadb8558812ae9f9f318974",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/analyzePanel.test.tsx",
+        "packages/ui/src/__tests__/archivedList.test.tsx",
+        "packages/ui/src/__tests__/discussionColumn.test.tsx",
+        "packages/ui/src/__tests__/discussionDrawer.test.tsx",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/__tests__/reviewBadge.test.tsx",
+        "packages/ui/src/__tests__/richDrawer.test.tsx",
+        "packages/ui/src/__tests__/ui.test.tsx"
+      ],
+      "recordedAt": "2026-08-05T09:09:57Z"
+    },
+    {
+      "taskId": "tsk_01KZ5P0WAA6SW6VZXEK7Q84CTC",
+      "taskDesc": "2.2 實作 packages/ui 修正批(AnalyzePanel、ui/tooltip.tsx、HighlightText、DiscussionDrawer 輪次籤、DiscussionColumn 欄頭圖示/色條/計數收斂至 stage.ts 或中性、ReviewArchiveDialog、ChangeCard/RichDetailDrawer/DiscussionColumn/ArchivedList/DiscussionDrawer 頭像、ChangeCard worktree 標示由 text-primary/60 改 SEMANTIC_TONE.inProgress——抽屜分支+路徑維持中性不動),語意色一律 import tone.ts——契約:任務 2.1 轉綠、守門測試對 packages/ui 檔案零違規;驗證:npm test -w @speclink/ui 全綠(theme 守門除 desktop/server-web 殘留)。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ee847873235ee41f4dadb8558812ae9f9f318974",
+      "touchedFiles": [
+        "packages/ui/src/components/AnalyzePanel.tsx",
+        "packages/ui/src/components/ArchivedList.tsx",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/DiscussionColumn.tsx",
+        "packages/ui/src/components/DiscussionDrawer.tsx",
+        "packages/ui/src/components/HighlightText.tsx",
+        "packages/ui/src/components/ReviewArchiveDialog.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/components/SpecList.tsx",
+        "packages/ui/src/components/ui/tooltip.tsx"
+      ],
+      "recordedAt": "2026-08-05T09:14:05Z"
+    },
+    {
+      "taskId": "tsk_01KZ5P0WAAQCZMSSSGSW152RC1",
+      "taskDesc": "3.1 [測試先行+實作] 系統匣面板(apps/desktop/src/panel/TrayPanel.tsx):討論/已轉出分區標題圖示與計數徽章轉中性(生命週期三分區維持 STAGE_* 階梯)、recovery 卡依狀態分色(restoring=sky、error=destructive)、作用中非 ready 分頁改「主色外框表選取+列內語意色表狀態」、根層漸層轉中性、stale 列「重新登入」鈕改中性 outline——契約:規格「生命週期階梯與互動回饋豁免」場景成立;驗證:npm test -w apps/desktop 對應斷言先紅後綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ee847873235ee41f4dadb8558812ae9f9f318974",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/trayPanel.test.tsx",
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ],
+      "recordedAt": "2026-08-05T09:18:14Z"
+    },
+    {
+      "taskId": "tsk_01KZ5P0WAAFFWX8VGHS1XFDB50",
+      "taskDesc": "3.2 [測試先行+實作] 對話框與設定面(MigrationDialog 成功=emerald/進行=sky/eyebrow 中性;WorkspaceChooser 步驟標籤與 notice 中性;UpdateBanner 與 InstructionUpdatePrompt 底色中性+圖示語意色;ProjectTabs error=destructive/spinner=sky/ready 圖示中性;RemoteWorkspaceRecovery 還原=sky/失敗=destructive/needs-reauth 維持 amber;AppSettingsView 與 ProjectSettingsView 錯誤=destructive、有新版=sky、停用選項中性、政策衝突=amber 邊框;App.tsx stale 鈕中性 outline;RemoteConflictDialog 兩選項語彙統一)——契約:規格「錯誤紅/進行藍/成功綠」三場景成立;驗證:npm test -w apps/desktop 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ee847873235ee41f4dadb8558812ae9f9f318974",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx",
+        "apps/desktop/src/__tests__/migrationDialog.test.tsx",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/projectTabs.test.tsx",
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx",
+        "apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx",
+        "apps/desktop/src/__tests__/updateBanner.test.tsx",
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx",
+        "apps/desktop/src/components/InstructionUpdatePrompt.tsx",
+        "apps/desktop/src/components/MigrationDialog.tsx",
+        "apps/desktop/src/components/ProjectTabs.tsx",
+        "apps/desktop/src/components/RemoteConflictDialog.tsx",
+        "apps/desktop/src/components/RemoteWorkspaceRecovery.tsx",
+        "apps/desktop/src/components/UpdateBanner.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/views/AppSettingsView.tsx",
+        "apps/desktop/src/views/ProjectSettingsView.tsx"
+      ],
+      "recordedAt": "2026-08-05T09:28:33Z"
+    },
+    {
+      "taskId": "tsk_01KZ5P0WAA33CKSD470TAAKP36",
+      "taskDesc": "3.3 ServersPanel 與 connectionLogin 的原生色階改 token(text-teal-700 已登入改中性、三處 text-red-600 改 text-destructive)——契約:守門測試對 apps/desktop 零違規;驗證:npx vitest run src/__tests__/theme.test.ts --root packages/ui 綠(desktop 部分)。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ee847873235ee41f4dadb8558812ae9f9f318974",
+      "touchedFiles": [
+        "apps/desktop/src/components/ServersPanel.tsx",
+        "apps/desktop/src/components/connectionLogin.tsx"
+      ],
+      "recordedAt": "2026-08-05T09:29:43Z"
+    },
+    {
+      "taskId": "tsk_01KZ5P0WAAWPARTWZXCDH1QD2F",
+      "taskDesc": "4.1 [測試先行+實作] 狀態徽章語意色(OverviewPage/SystemPage 儲存健康、UsersPage 成員狀態與抽屜內憑證、CredentialsPage、AccountPage 工作階段)與揭示橫幅改 emerald(AccountPage PAT、UsersPage 邀請連結)——契約:規格「後台狀態徽章語意色」四場景成立、守門對 apps/server-web 零違規;驗證:npm test -w apps/server-web 全綠、npm run build -w apps/server-web 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ee847873235ee41f4dadb8558812ae9f9f318974",
+      "touchedFiles": [
+        "apps/server-web/src/__tests__/account.test.tsx",
+        "apps/server-web/src/__tests__/credentials.test.tsx",
+        "apps/server-web/src/__tests__/overview.test.tsx",
+        "apps/server-web/src/__tests__/system.test.tsx",
+        "apps/server-web/src/__tests__/users.test.tsx",
+        "apps/server-web/src/pages/AccountPage.tsx",
+        "apps/server-web/src/pages/admin/CredentialsPage.tsx",
+        "apps/server-web/src/pages/admin/OverviewPage.tsx",
+        "apps/server-web/src/pages/admin/SystemPage.tsx",
+        "apps/server-web/src/pages/admin/UsersPage.tsx"
+      ],
+      "recordedAt": "2026-08-05T09:35:34Z"
+    },
+    {
+      "taskId": "tsk_01KZ5P0WAA27HGKP71R9VW2DSE",
+      "taskDesc": "5.1 移除 ChangeBoard.tsx/ChangeList.tsx/ChangeListItem.tsx/DetailDrawer.tsx、index.ts 對應匯出(含 ListView 型別,移除前 grep 確認零消費端,有消費端則保留型別並記錄)、changeListItem.test.tsx 整檔、components.test.tsx 的 ChangeBoard 區塊、kanban.test.tsx 的 DetailDrawer 區塊——契約:@speclink/ui 匯出面無四元件、全套測試不因缺檔失敗;驗證:npm test -w @speclink/ui 全綠、grep 全 repo 無殘留 import。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ee847873235ee41f4dadb8558812ae9f9f318974",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/changeListItem.test.tsx",
+        "packages/ui/src/__tests__/components.test.tsx",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/ChangeBoard.tsx",
+        "packages/ui/src/components/ChangeList.tsx",
+        "packages/ui/src/components/ChangeListItem.tsx",
+        "packages/ui/src/components/DetailDrawer.tsx"
+      ],
+      "recordedAt": "2026-08-05T09:37:34Z"
+    }
+  ]
+}

@@ -18,6 +18,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  SEMANTIC_SURFACE,
+  SEMANTIC_TONE,
   useI18n,
 } from "@speclink/ui";
 import { useClient } from "../app/context";
@@ -101,7 +103,7 @@ export function AccountPage() {
         <div
           role="status"
           aria-live="polite"
-          className="rounded-md border border-primary bg-primary/5 p-4"
+          className={`rounded-md border p-4 ${SEMANTIC_SURFACE.success}`}
         >
           <p className="text-sm font-medium">{t("account.newKeyNotice")}</p>
           <div className="mt-1 flex items-start gap-3">
@@ -234,7 +236,7 @@ function PatSection({
                   <TableCell>{fmtDate(pat.lastUsedAt, t("common.never"))}</TableCell>
                   <TableCell>
                     {pat.revokedAt ? (
-                      <Badge variant="outline">{t("common.revoked")}</Badge>
+                      <Badge variant="outline" className="text-muted-foreground">{t("common.revoked")}</Badge>
                     ) : (
                       <Button
                         type="button"
@@ -357,7 +359,14 @@ function SessionSection({ sessions }: { sessions: SessionMeta[] }) {
                   <TableCell>{fmtDate(session.createdAt, t("common.dash"))}</TableCell>
                   <TableCell>{fmtDate(session.expiresAt, t("common.dash"))}</TableCell>
                   <TableCell>
-                    <Badge variant={session.revokedAt ? "outline" : "secondary"}>
+                    <Badge
+                      variant="outline"
+                      className={
+                        session.revokedAt
+                          ? "text-muted-foreground"
+                          : `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
+                      }
+                    >
                       {session.revokedAt ? t("common.revoked") : t("common.active")}
                     </Badge>
                   </TableCell>
@@ -406,7 +415,7 @@ function DeviceSection({
                   <TableCell>{fmtDate(family.lastRefreshAt, t("common.dash"))}</TableCell>
                   <TableCell>
                     {family.revokedAt ? (
-                      <Badge variant="outline">{t("common.revoked")}</Badge>
+                      <Badge variant="outline" className="text-muted-foreground">{t("common.revoked")}</Badge>
                     ) : (
                       <Button
                         type="button"

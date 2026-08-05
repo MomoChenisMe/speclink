@@ -454,7 +454,7 @@ export function WorkspaceChooser({
       <AlertDialogContent className="max-w-xl gap-4" data-testid="workspace-chooser">
         <AlertDialogHeader>
           <div className="mb-1 flex items-center justify-between gap-4">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               {t("chooser.step")
                 .replace("{current}", String(STEP_NUMBER[step]))
                 .replace("{total}", "4")}
@@ -670,7 +670,7 @@ export function WorkspaceChooser({
               "m-0 rounded-md px-3 py-2 text-xs",
               error
                 ? "bg-destructive/10 text-destructive"
-                : "bg-primary/8 text-muted-foreground",
+                : "bg-muted text-muted-foreground",
             )}
           >
             {error ?? notice}

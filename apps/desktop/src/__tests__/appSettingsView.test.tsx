@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
-import { I18nProvider } from "@speclink/ui";
+import { I18nProvider, SEMANTIC_TONE } from "@speclink/ui";
 
 import { AppSettingsView } from "../views/AppSettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -155,6 +155,28 @@ describe("AppSettingsView 軟體更新卡", () => {
       />,
     );
     expect(screen.getByTestId("updater-card").textContent).toContain("0.2.0");
+  });
+
+  it("更新狀態語意色：檢查失敗與錯誤為紅、有新版為藍", () => {
+    // spec「錯誤態以紅呈現」：更新檢查失敗是錯誤，不是待辦提醒。
+    const { unmount } = render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn() }}
+      />,
+    );
+    expect(screen.getByText("無法檢查更新").className).toContain("destructive");
+    unmount();
+
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn() }}
+      />,
+    );
+    expect(screen.getByText(/有新版本/).className).toContain(SEMANTIC_TONE.inProgress);
   });
 });
 

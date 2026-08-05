@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
   Input,
+  SEMANTIC_TONE,
   useI18n,
 } from "@speclink/ui";
 
@@ -58,7 +59,7 @@ function StatusLine({
   }
   if (phase.kind === "error") {
     return (
-      <span role="alert" className="text-xs text-red-600 dark:text-red-400">
+      <span role="alert" className={`text-xs ${SEMANTIC_TONE.danger}`}>
         {phase.message}
       </span>
     );
@@ -68,14 +69,14 @@ function StatusLine({
   }
   if (needsReauth) {
     return (
-      <span className="text-xs text-amber-700 dark:text-amber-300">
+      <span className={`text-xs ${SEMANTIC_TONE.warning}`}>
         {t("remote.reauthTitle")}
       </span>
     );
   }
   if (entry.loggedIn) {
     return (
-      <span className="text-xs text-teal-700 dark:text-teal-400">
+      <span className="text-xs text-muted-foreground">
         {t("servers.loggedIn")}
         {entry.lastActorDisplay ? ` · ${entry.lastActorDisplay}` : ""}
       </span>
@@ -263,7 +264,7 @@ export function ServersPanel({
             </Button>
           </div>
           {addError && (
-            <span role="alert" className="text-xs text-red-600 dark:text-red-400">
+            <span role="alert" className={`text-xs ${SEMANTIC_TONE.danger}`}>
               {addError}
             </span>
           )}

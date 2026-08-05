@@ -2,9 +2,16 @@
 // TraySnapshot 薄渲染——分區與內容和原生選單同源；jsdom 只測結構與回呼，
 // 原生質感（不搶焦點、貼齊、失焦收合）由 4.4 真視窗手動驗證。
 import { describe, it, expect, vi } from "vitest";
-import { act, render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
+import { act, cleanup, render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
-import { I18nProvider, STAGE_BADGE, STAGE_BAR, STAGE_ICON, type ChangeItem } from "@speclink/ui";
+import {
+  I18nProvider,
+  SEMANTIC_TONE,
+  STAGE_BADGE,
+  STAGE_BAR,
+  STAGE_ICON,
+  type ChangeItem,
+} from "@speclink/ui";
 
 import { TrayPanel } from "../panel/TrayPanel";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -425,21 +432,33 @@ describe("TrayPanel 分區卡片化與主色（spec「面板樣式（macOS）」
     expect(document.querySelector("hr")).toBeNull();
   });
 
-  it("分區標題圖示帶主色（生命週期依階段階梯、討論分區主色）", () => {
+  it("生命週期分區圖示維持主色階梯，討論／已轉出分區圖示為中性", () => {
+    // spec「生命週期階梯與互動回饋豁免」：主色階梯是三個生命週期分區的語彙；
+    // 討論與已轉出不在該階梯上，借穿階梯樣式會讓「顏色＝階段」的讀法失準。
     renderPanel({ snapshot: snapshot({ discussions: discBoth }) });
     const iconClasses = (id: string) =>
       (screen.getByTestId(id).querySelector("svg")?.getAttribute("class") ?? "").split(/\s+/);
     expect(iconClasses("panel-section-proposed")).toContain(STAGE_ICON.proposed);
     expect(iconClasses("panel-section-in-progress")).toContain(STAGE_ICON["in-progress"]);
     expect(iconClasses("panel-section-ready")).toContain(STAGE_ICON.ready);
-    expect(iconClasses("panel-section-discussions")).toContain("text-primary");
-    expect(iconClasses("panel-section-promoted")).toContain("text-primary");
+    for (const id of ["panel-section-discussions", "panel-section-promoted"]) {
+      expect(iconClasses(id).join(" ")).not.toContain("primary");
+      expect(iconClasses(id).join(" ")).toContain("muted-foreground");
+    }
   });
 
   it("根容器以毛玻璃同半徑圓角裁切（wash 不得畫出 vibrancy 圓角外）", () => {
     renderPanel();
     const root = screen.getByTestId("panel-root");
     expect(root.className.split(/\s+/)).toContain("rounded-[13px]");
+  });
+
+  it("根層裝飾漸層為中性，不以主色鋪底", () => {
+    // 裝飾面屬靜態層，主色留給連結／互動／進度。
+    renderPanel();
+    const root = screen.getByTestId("panel-root");
+    expect(root.className).not.toContain("from-primary");
+    expect(root.className).toContain("from-foreground/5");
   });
 
   it("進度條填色依階段套用共用色階（STAGE_BAR）", () => {
@@ -483,9 +502,66 @@ describe("TrayPanel 分區計數（spec「面板樣式（macOS）」；design D8
     expect(count("panel-section-ready").className.split(/\s+/)).toEqual(
       expect.arrayContaining(STAGE_BADGE.ready.split(/\s+/)),
     );
-    expect(count("panel-section-discussions").className.split(/\s+/)).toEqual(
-      expect.arrayContaining(STAGE_BADGE.proposed.split(/\s+/)),
-    );
+    // 討論／已轉出不在生命週期階梯上：計數徽章轉中性（與欄頭圖示同一判斷）。
+    for (const id of ["panel-section-discussions", "panel-section-promoted"]) {
+      const cls = count(id).className;
+      expect(cls).toContain("bg-muted");
+      expect(cls).not.toContain("primary");
+    }
+  });
+});
+
+describe("TrayPanel 狀態語意色（spec「介面狀態語意色分層」）", () => {
+  const remoteTab = (over: Record<string, unknown>) => ({
+    key: "remote:c1/demo/backend",
+    name: "Demo/backend",
+    source: "remote",
+    connectionId: "c1",
+    serverLabel: "Team Server",
+    ...over,
+  });
+
+  const renderTab = (over: Record<string, unknown>) =>
+    renderPanel({
+      snapshot: snapshot({
+        tabs: [remoteTab(over)],
+        activeKey: "remote:c1/demo/backend",
+      } as unknown as Partial<TraySnapshot>),
+    });
+
+  it("復原卡依狀態分色：還原中為藍、錯誤為紅、需重新登入維持琥珀", () => {
+    const iconWrap = () =>
+      screen.getByTestId("panel-recovery-card").querySelector("span") as HTMLElement;
+
+    renderTab({ status: "restoring" });
+    expect(iconWrap().className).toContain(SEMANTIC_TONE.inProgress);
+    cleanup();
+
+    renderTab({ status: "error", failureKind: "unreachable" });
+    expect(iconWrap().className).toContain("destructive");
+    cleanup();
+
+    renderTab({ status: "error", failureKind: "needs-reauth" });
+    expect(iconWrap().className).toContain("amber");
+  });
+
+  it("作用中非 ready 分頁：選取以主色外框表達，狀態由列內語意色承載", () => {
+    renderTab({ status: "restoring" });
+    const tab = screen.getByTestId("panel-project-remote:c1/demo/backend");
+    // 選取＝主色外框（不是琥珀底，琥珀是警示語意，兩者混用會誤讀為「這個分頁有問題」）。
+    expect(tab.className).toContain("border-primary");
+    expect(tab.className).not.toContain("amber");
+    // 狀態文字自己帶語意色：還原中＝藍。
+    const status = within(tab).getByText("正在連線");
+    expect(status.className).toContain(SEMANTIC_TONE.inProgress);
+  });
+
+  it("stale 列的「重新登入」鈕為中性 outline，不與琥珀警示搶注意力", () => {
+    renderTab({ status: "needs-reauth" });
+    const stale = screen.getByTestId("panel-stale-status");
+    const button = within(stale).getByRole("button", { name: "重新登入" });
+    expect(button.className).toContain("border");
+    expect(button.className).not.toContain("amber");
   });
 });
 

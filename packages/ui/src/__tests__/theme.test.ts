@@ -72,9 +72,6 @@ const componentSources = () => {
     }
   };
   walk(dir);
-  // 註解裡提到某個 class 名稱（例如解釋為什麼不用它）不該被當成用到了它。
-  const stripComments = (source: string) =>
-    source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
   return files.map((f) => [f, stripComments(readFileSync(f, "utf8"))] as const);
 };
 
@@ -82,6 +79,57 @@ const componentSources = () => {
 const PALETTE =
   /^(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}$/;
 const BUILTIN = new Set(["black", "white", "transparent", "current", "inherit"]);
+
+// 狀態語意色守門（spec desktop-app「原生色階守門」場景）：原生語意色階字面只能
+// 出現在集中常數檔，其餘元件一律經常數表或設計 token 取色。掃描範圍涵蓋共用套件
+// 與兩個 app 的元件原始碼——漂移多半發生在 app 側，只掃 packages/ui 擋不住。
+const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
+
+/** 掃描根（相對 repo root）。 */
+const SCAN_ROOTS = ["packages/ui/src", "apps/desktop/src", "apps/server-web/src"];
+
+/**
+ * 白名單：集中常數檔——語意色表、審查樣式表、delta 徽章表、生命週期表。
+ * 三紅分工（destructive／rose／red）就是靠這三張表各自持有色階字面來維持。
+ * stage.ts 現況只用 primary，列入為防未來階梯改用原生色階時無處可放。
+ */
+const TONE_SOURCES = new Set([
+  "packages/ui/src/tone.ts",
+  "packages/ui/src/components/reviewStyle.tsx",
+  "packages/ui/src/components/DeltaBadges.tsx",
+  "packages/ui/src/stage.ts",
+]);
+
+/**
+ * 語意色階字面。錨定 Tailwind class 型式（utility 前綴＋色名＋階）以免撞到
+ * 一般字串（例如 "to-do-red-1" 這種非 class 文字不會有 utility 前綴）。
+ * 中性色階（slate/gray/zinc/neutral/stone）不在此列——中性用 token 表達，
+ * 但既有中性字面不是本規則的糾察對象。
+ */
+const SEMANTIC_SCALE =
+  /\b(?:text|bg|border|ring|from|to)-(?:sky|amber|emerald|rose|red|teal|green|violet|purple|orange|yellow|fuchsia)-\d{2,3}\b/g;
+
+// 註解裡提到某個 class 名稱（例如解釋為什麼不用它）不該被當成用到了它。
+const stripComments = (source: string) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+
+/** 掃描範圍內的 .ts/.tsx 原始碼（排除 __tests__ 與 dist）。 */
+const scannedSources = () => {
+  const files: string[] = [];
+  const walk = (path: string) => {
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      if (entry.name === "__tests__" || entry.name === "dist" || entry.name === "node_modules")
+        continue;
+      const child = `${path}/${entry.name}`;
+      if (entry.isDirectory()) walk(child);
+      else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) files.push(child);
+    }
+  };
+  for (const root of SCAN_ROOTS) walk(`${REPO_ROOT}${root}`);
+  return files.map(
+    (f) => [f.slice(REPO_ROOT.length), stripComments(readFileSync(f, "utf8"))] as const,
+  );
+};
 
 describe("共用 semantic theme 抽取", () => {
   it("元件用到的 bg-* 語意色都在 theme.css 有對應 token", () => {
@@ -95,6 +143,19 @@ describe("共用 semantic theme 抽取", () => {
       }
     }
     expect(unmapped).toEqual([]);
+  });
+});
+
+describe("狀態語意色守門", () => {
+  it("原生語意色階字面只出現在集中常數檔", () => {
+    const violations: string[] = [];
+    for (const [file, source] of scannedSources()) {
+      if (TONE_SOURCES.has(file)) continue;
+      for (const match of source.matchAll(SEMANTIC_SCALE)) {
+        violations.push(`${file}: ${match[0]}`);
+      }
+    }
+    expect(violations).toEqual([]);
   });
 });
 

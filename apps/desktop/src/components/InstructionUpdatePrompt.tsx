@@ -3,7 +3,7 @@
 // （阻斷開啟違反溫和定位）。主動作依探測態分文案（過期→更新、缺失→安裝），
 // 兩者呼叫同一個再生入口。
 import { AlertTriangle, FileWarning } from "lucide-react";
-import { Button, useI18n } from "@speclink/ui";
+import { Button, SEMANTIC_TONE, useI18n } from "@speclink/ui";
 
 import type { InstructionPromptState } from "../instructionPrompt";
 
@@ -36,18 +36,19 @@ export function InstructionUpdatePrompt({
     <div
       data-testid="instruction-prompt"
       role="status"
-      className="mb-4 flex items-start gap-2.5 rounded-md border border-border bg-primary/8 px-3 py-2 text-sm"
+      className="mb-4 flex items-start gap-2.5 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm"
     >
+      {/* 底色中性、狀態交給圖示：過期＝琥珀警示、套用失敗＝紅。 */}
       {error ? (
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${SEMANTIC_TONE.danger}`} />
       ) : (
-        <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <FileWarning className={`mt-0.5 h-4 w-4 shrink-0 ${SEMANTIC_TONE.warning}`} />
       )}
       <div className="min-w-0 flex-1">
         <div className="font-medium">{title}</div>
         <div className="text-muted-foreground">{desc}</div>
         {error && (
-          <div className="mt-1 text-amber-700 dark:text-amber-400">
+          <div className={`mt-1 ${SEMANTIC_TONE.danger}`}>
             {t("instructions.errorPrefix")}
             {error}
           </div>

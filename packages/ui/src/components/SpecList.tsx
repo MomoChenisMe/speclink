@@ -5,6 +5,7 @@ import type { SpecItem } from "../adapter";
 import { useI18n } from "../i18n";
 import { matchesQuery } from "../search";
 import { relativeDays } from "../time";
+import { SEMANTIC_TONE } from "../tone";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { ListPager, PAGE_SIZE } from "./ListPager";
@@ -81,7 +82,7 @@ function SpecCard({ item, onOpen }: { item: SpecItem; onOpen: (capability: strin
         </div>
         {/* 描述列：purposeTbd 以琥珀警示取代摘要，否則 Purpose 首行一行截斷；皆缺席時整列缺席。 */}
         {item.purposeTbd ? (
-          <div className="mt-1 text-[11px] font-medium text-amber-600 dark:text-amber-500">
+          <div className={`mt-1 text-[11px] font-medium ${SEMANTIC_TONE.warning}`}>
             {t("specs.purposeTbd")}
           </div>
         ) : (

@@ -113,6 +113,8 @@ describe("系統頁", () => {
     );
     const storage = screen.getByRole("region", { name: "儲存狀態" });
     expect(storage.textContent).toContain("store unreachable");
+    // spec「儲存健康徽章」：徽章與同區的錯誤訊息同語意色層級。
+    expect(within(storage).getByText("異常").className).toContain("destructive");
   });
 
   it("舊的 /admin/data 連結導向系統頁", async () => {
