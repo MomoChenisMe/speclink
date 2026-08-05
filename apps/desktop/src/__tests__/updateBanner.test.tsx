@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
-import { I18nProvider } from "@speclink/ui";
+import { I18nProvider, SEMANTIC_TONE } from "@speclink/ui";
 
 import { UpdateBanner } from "../components/UpdateBanner";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -59,6 +59,25 @@ describe("UpdateBanner", () => {
     expect(screen.getByTestId("update-banner").textContent).toContain("invalid signature");
     fireEvent.click(screen.getByRole("button", { name: "關閉" }));
     expect(h.onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("底色中性、狀態由圖示語意色承載：更新失敗為紅、有新版為藍", () => {
+    // spec「錯誤態以紅呈現」：更新失敗是錯誤，不能穿琥珀；整片底色上色會壓過
+    // 分頁內容的層級，改為中性底＋語意色圖示。
+    const h = handlers();
+    const { unmount } = render(
+      <UpdateBanner state={{ phase: "error", message: "invalid signature" }} {...h} />,
+    );
+    const errorBanner = screen.getByTestId("update-banner");
+    expect(errorBanner.className).not.toContain("amber");
+    expect(errorBanner.className).not.toContain("bg-primary");
+    expect(errorBanner.querySelector("svg")?.getAttribute("class")).toContain("destructive");
+    unmount();
+
+    render(<UpdateBanner state={{ phase: "available", version: "0.2.0" }} {...h} />);
+    const banner = screen.getByTestId("update-banner");
+    expect(banner.className).not.toContain("bg-primary");
+    expect(banner.querySelector("svg")?.getAttribute("class")).toContain(SEMANTIC_TONE.inProgress);
   });
 
   it("閒置與檢查結果狀態不渲染任何內容", () => {

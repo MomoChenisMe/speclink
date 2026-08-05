@@ -86,10 +86,10 @@ export function RemoteConflictDialog({
           <button
             type="button"
             disabled={busy}
-            className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/8 p-3 text-left transition-colors hover:bg-amber-500/15 disabled:opacity-50"
+            className="flex items-start gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/60 disabled:opacity-50"
             onClick={() => void useServer()}
           >
-            <Cloud className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+            <Cloud className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <span>
               <span className="block text-sm font-semibold">{t("chooser.useServer")}</span>
               <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
@@ -100,10 +100,10 @@ export function RemoteConflictDialog({
           <button
             type="button"
             disabled={busy}
-            className="flex items-start gap-3 rounded-lg border border-primary/40 bg-primary/8 p-3 text-left transition-colors hover:bg-primary/12 disabled:opacity-50"
+            className="flex items-start gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/60 disabled:opacity-50"
             onClick={() => void migrateLocal()}
           >
-            <FolderUp className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <FolderUp className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <span>
               <span className="block text-sm font-semibold">{t("chooser.migrateLocal")}</span>
               <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">

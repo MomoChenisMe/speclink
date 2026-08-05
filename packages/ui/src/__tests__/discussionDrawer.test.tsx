@@ -198,9 +198,13 @@ describe("輪卡片渲染（討論輪以卡片呈現）", () => {
       expect(baseElement.querySelectorAll("[data-round]").length).toBe(2),
     );
     const card1 = baseElement.querySelector('[data-round="1"]') as HTMLElement;
-    expect(within(card1).getByText("Round 1")).toBeTruthy();
+    const roundChip = within(card1).getByText("Round 1");
+    expect(roundChip).toBeTruthy();
     expect(within(card1).getByText("assumptions")).toBeTruthy();
     expect(within(card1).getByText("2026-07-08")).toBeTruthy();
+    // 輪次籤是靜態編號，與同列 mode／日期同層級：走中性，不佔用主色。
+    expect(roundChip.className).toContain("bg-muted");
+    expect(roundChip.className).not.toContain("primary");
   });
 
   it("欄位以標籤區塊呈現，「**Focus**:」粗體前綴原文不出現", async () => {
@@ -336,6 +340,20 @@ describe("DiscussionDrawer", () => {
     expect(screen.getByText(/框架脈絡內容/)).toBeTruthy();
     expect(screen.queryByRole("tab", { name: /脈絡/ })).toBeNull();
     expect(screen.queryByRole("tab", { name: /^促轉$/ })).toBeNull();
+  });
+
+  it("建立者圓標為中性，不佔用主色（五處頭像同款）", async () => {
+    const withAuthor = { ...concludedD, createdBy: "Momo Chen" };
+    render(<DiscussionDrawer {...(makeProps({ discussion: withAuthor }) as never)} />);
+    const avatar = await waitFor(() => {
+      const el = Array.from(document.querySelectorAll("span")).find(
+        (s) => s.textContent === "M" && s.className.includes("rounded-full"),
+      );
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    expect(avatar.className).toContain("bg-muted");
+    expect(avatar.className).not.toContain("bg-primary");
   });
 
   it("結論為空（僅鷹架註解）時預設呈現背景", async () => {

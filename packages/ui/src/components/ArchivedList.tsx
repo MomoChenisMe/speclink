@@ -4,6 +4,7 @@ import { Check, Code2, Copy, GitFork, MessageSquareText } from "lucide-react";
 import type { ArchivedItem, DiscussionItem } from "../adapter";
 import { useI18n } from "../i18n";
 import { matchesQuery } from "../search";
+import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -62,7 +63,9 @@ function ArchivedCard({ item, onOpen }: { item: ArchivedItem; onOpen: (target: A
           {badge && (
             <Badge
               variant="secondary"
-              className={`shrink-0 tabular-nums ${incomplete ? "bg-amber-500/15 text-amber-600 dark:text-amber-500" : ""}`}
+              className={`shrink-0 tabular-nums ${
+                incomplete ? `${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}` : ""
+              }`}
             >
               {badge}
             </Badge>
@@ -101,7 +104,7 @@ function ArchivedCard({ item, onOpen }: { item: ArchivedItem; onOpen: (target: A
               <TooltipTrigger asChild>
                 <span
                   aria-label={item.createdBy}
-                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground"
+                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-muted-foreground"
                 >
                   {item.createdBy.charAt(0).toUpperCase()}
                 </span>

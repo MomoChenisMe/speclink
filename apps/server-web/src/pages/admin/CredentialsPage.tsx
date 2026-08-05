@@ -17,6 +17,8 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  SEMANTIC_SURFACE,
+  SEMANTIC_TONE,
   useI18n,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
@@ -45,7 +47,14 @@ function patColumns(t: T): Column<AdminPat>[] {
     {
       header: t("field.status"),
       cell: (p) => (
-        <Badge variant={p.revokedAt ? "outline" : "secondary"}>
+        <Badge
+          variant="outline"
+          className={
+            p.revokedAt
+              ? "text-muted-foreground"
+              : `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
+          }
+        >
           {p.revokedAt ? t("common.revoked") : t("common.active")}
         </Badge>
       ),
@@ -62,7 +71,14 @@ function deviceColumns(t: T): Column<AdminCredFamily>[] {
     {
       header: t("field.status"),
       cell: (f) => (
-        <Badge variant={f.revokedAt ? "outline" : "secondary"}>
+        <Badge
+          variant="outline"
+          className={
+            f.revokedAt
+              ? "text-muted-foreground"
+              : `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
+          }
+        >
           {f.revokedAt ? t("common.revoked") : t("common.active")}
         </Badge>
       ),

@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { useId, useState } from "react";
-import { Button, useI18n } from "@speclink/ui";
+import { Button, SEMANTIC_SURFACE, SEMANTIC_TONE, cn, useI18n } from "@speclink/ui";
 
 import type { ConnectionView } from "../adapter/connections";
 import type { RemoteWorkspaceRecoveryState } from "../session";
@@ -50,7 +50,13 @@ export function RemoteWorkspaceRecovery({
         data-testid="remote-workspace-recovery"
         className="mx-auto flex h-full max-w-xl flex-col items-center justify-center gap-5 px-8 text-center"
       >
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/8 text-primary">
+        <div
+          className={cn(
+            "flex h-12 w-12 items-center justify-center rounded-2xl border",
+            SEMANTIC_SURFACE.inProgress,
+            SEMANTIC_TONE.inProgress,
+          )}
+        >
           <LoaderCircle className="h-6 w-6 animate-spin motion-reduce:animate-none" />
         </div>
         <div className="space-y-1.5">
@@ -70,6 +76,9 @@ export function RemoteWorkspaceRecovery({
   const title = t(`remote.recovery.${failure.kind}Title`);
   const description = t(`remote.recovery.${failure.kind}Desc`);
   const needsReauth = failure.kind === "needs-reauth";
+  // 需重新登入是警示（登入過期、重登即可）；其餘失敗（連不上、無權限、找不到）
+  // 是錯誤——舊版全塗琥珀，看不出哪個自己能解決。
+  const tone = needsReauth ? "warning" : "danger";
 
   return (
     <section
@@ -79,13 +88,20 @@ export function RemoteWorkspaceRecovery({
       data-recovery-kind={failure.kind}
       className="mx-auto flex h-full max-w-2xl flex-col justify-center px-8 py-10"
     >
-      <div className="rounded-2xl border border-amber-500/35 bg-card shadow-sm">
+      {/* 卡底維持 bg-card（內容要讀得清楚），只借語意色的邊框。 */}
+      <div className={cn("rounded-2xl border shadow-sm", SEMANTIC_SURFACE[tone], "bg-card")}>
         <div className="flex gap-4 border-b border-border px-6 py-5">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/12 text-amber-700 dark:text-amber-300">
+          <div
+            className={cn(
+              "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+              SEMANTIC_SURFACE[tone],
+              SEMANTIC_TONE[tone],
+            )}
+          >
             <AlertTriangle className="h-5 w-5" />
           </div>
           <div className="min-w-0 space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+            <p className={cn("text-xs font-semibold uppercase tracking-[0.14em]", SEMANTIC_TONE[tone])}>
               {t("remote.recovery.eyebrow")}
             </p>
             <h1 className="text-xl font-semibold tracking-tight">{title}</h1>

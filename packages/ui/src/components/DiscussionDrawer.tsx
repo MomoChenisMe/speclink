@@ -145,7 +145,8 @@ export function RoundsView({ text, empty }: { text: string; empty?: string }) {
       {rounds.map((r, i) => (
         <section key={i} data-round={r.round} className="rounded-lg border border-border bg-card p-4">
           <header className="flex items-center gap-2">
-            <span className="rounded-full bg-primary/12 px-2 py-0.5 text-xs font-semibold text-primary">
+            {/* 輪次籤是靜態編號，與同列 mode／日期同層級——走中性，不佔用主色。 */}
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
               {t("rounds.roundN").replace("{n}", String(r.round))}
             </span>
             <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -376,7 +377,7 @@ export function DiscussionDrawer({
             {discussion.created && <span>{discussion.created}</span>}
             {discussion.createdBy && (
               <span className="inline-flex items-center gap-1">
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-muted-foreground">
                   {discussion.createdBy.charAt(0).toUpperCase()}
                 </span>
                 {discussion.createdBy}

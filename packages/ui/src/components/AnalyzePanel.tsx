@@ -2,15 +2,16 @@ import { Check, X } from "lucide-react";
 
 import type { AnalyzeReport } from "../adapter";
 import { useI18n } from "../i18n";
+import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import { Button } from "./ui/button";
 
 /** 分析維度（固定四維，順序對應 speclink analyze 的 --json 輸出）。 */
 const DIMENSIONS = ["Coverage", "Consistency", "Ambiguity", "Gaps"] as const;
 
-/** 嚴重度配色——Critical 破壞色、Warning 主色、Suggestion 中性。 */
+/** 嚴重度配色——Critical 破壞色、Warning 琥珀警示（與維度摘要同語意同色）、Suggestion 中性。 */
 const SEVERITY_CLS: Record<string, string> = {
   Critical: "bg-destructive/15 text-destructive",
-  Warning: "bg-primary/15 text-primary",
+  Warning: `${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}`,
   Suggestion: "bg-muted text-muted-foreground",
 };
 
@@ -45,7 +46,10 @@ export function AnalyzePanel({
           {/* 結構驗證列：通過單列帶過、失敗呈錯誤數並逐條列出（與 speclink validate 一致）。 */}
           {validate &&
             (validate.valid ? (
-              <div data-validate-row className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+              <div
+                data-validate-row
+                className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground"
+              >
                 <Check className="h-3.5 w-3.5" /> {t("analyze.validatePass")}
               </div>
             ) : (
@@ -64,12 +68,13 @@ export function AnalyzePanel({
           <div className="grid grid-cols-4 gap-1.5">
             {DIMENSIONS.map((d) => {
               const n = count(d);
+              // 「沒問題」是靜態結果，走中性；有問題才上語意色（含 Critical 的紅）。
               const tone =
                 n === 0
-                  ? "text-primary"
+                  ? "text-muted-foreground"
                   : hasCritical(d)
-                    ? "text-destructive"
-                    : "text-amber-600 dark:text-amber-500";
+                    ? SEMANTIC_TONE.danger
+                    : SEMANTIC_TONE.warning;
               return (
                 <div
                   key={d}

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WebApiError } from "../api/client";
-import { makeAdminClient, renderAt, setViewport } from "./helpers/adminHarness";
+import { makeAdminClient, renderAt, setViewport, USERS } from "./helpers/adminHarness";
 
 // 管理使用者頁（server-web-console「管理列表以抽屜承載建立與編輯」）：列表為主體，
 // 列內不含任何輸入控制項；建立與編輯一律進抽屜；破壞性動作維持 AlertDialog 確認。
@@ -200,6 +200,24 @@ describe("使用者列表", () => {
     const notice = link.closest("[role='status']") as HTMLElement;
     expect(notice, "邀請連結以 aria-live 區塊回饋").toBeTruthy();
     expect(within(notice).getByRole("button", { name: /複製/ })).toBeTruthy();
+    // spec「揭示橫幅為成功語意」：主色是連結／互動的顏色，用在這裡讀不出「成功了」。
+    expect(notice.className).toContain("emerald");
+    expect(notice.className).not.toContain("border-primary");
+  });
+
+  it("成員狀態徽章：有效為綠系、已停權為琥珀系", async () => {
+    // spec「成員狀態徽章」：兩態壓成同一種灰，掃視清單時分不出誰被停權。
+    const suspended = {
+      ...USERS,
+      users: [USERS.users[0], { ...USERS.users[1], active: false }],
+    };
+    renderAt(
+      "/admin/users",
+      makeAdminClient({ getAdminUsers: vi.fn(async () => suspended) }),
+    );
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("有效").className).toContain("emerald");
+    expect(within(table).getByText("已停權").className).toContain("amber");
   });
 
   // 邀請寄錯人或寄錯權限時要收得回來——連結一旦流出去，唯一的止血就是讓它失效。

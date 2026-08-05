@@ -2,7 +2,7 @@
 // （顯示版本、同意／稍後）、downloading 進度提示、restartPending 重啟提示、
 // error 呈現錯誤。其餘狀態不佔畫面——檢查結果的行內呈現歸設定頁軟體更新卡。
 import { AlertTriangle, ArrowUpCircle } from "lucide-react";
-import { Button, useI18n } from "@speclink/ui";
+import { Button, SEMANTIC_TONE, useI18n } from "@speclink/ui";
 
 import type { UpdaterState } from "../core/updater";
 
@@ -24,18 +24,17 @@ export function UpdateBanner({ state, onAccept, onDismiss, onRelaunch }: UpdateB
     return null;
   }
   const isError = state.phase === "error";
+  // 底色中性、狀態交給圖示：橫幅橫跨整個視窗寬，整片上色會壓過分頁內容。
   return (
     <div
       data-testid="update-banner"
       role="status"
-      className={`flex items-center gap-2.5 px-4 py-1.5 text-sm border-b border-border shrink-0 ${
-        isError ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-primary/8"
-      }`}
+      className="flex items-center gap-2.5 border-b border-border bg-muted/40 px-4 py-1.5 text-sm shrink-0"
     >
       {isError ? (
-        <AlertTriangle className="h-4 w-4 shrink-0" />
+        <AlertTriangle className={`h-4 w-4 shrink-0 ${SEMANTIC_TONE.danger}`} />
       ) : (
-        <ArrowUpCircle className="h-4 w-4 shrink-0 text-primary" />
+        <ArrowUpCircle className={`h-4 w-4 shrink-0 ${SEMANTIC_TONE.inProgress}`} />
       )}
       {state.phase === "available" && (
         <>

@@ -30,7 +30,10 @@ import {
   Button,
   Checkbox,
   I18nProvider,
+  SEMANTIC_SURFACE,
+  SEMANTIC_TONE,
   Toaster,
+  cn,
   useI18n,
   siblingChangesOf,
   type Verb,
@@ -515,20 +518,23 @@ function AppInner({
           role="status"
           data-testid="remote-stale-banner"
           data-connection-state={connectionState.state}
-          className="flex min-h-10 shrink-0 items-center gap-2 border-b border-amber-500/35 bg-amber-500/10 px-4 py-2 text-amber-950 dark:text-amber-100"
+          className={cn(
+            "flex min-h-10 shrink-0 items-center gap-2 border-b px-4 py-2",
+            SEMANTIC_SURFACE.warning,
+          )}
         >
-          <CloudOff className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+          <CloudOff className={cn("h-4 w-4 shrink-0", SEMANTIC_TONE.warning)} />
           <div className="min-w-0 text-xs">
             <span className="font-semibold">
               {connectionState.state === "needs-reauth"
                 ? t("remote.reauthTitle")
                 : t("remote.offlineTitle")}
             </span>
-            <span className="ml-2 text-amber-900/75 dark:text-amber-100/75">
+            <span className="ml-2 text-muted-foreground">
               {connectionState.message ?? t("remote.staleHint")}
             </span>
           </div>
-          <span className="ml-auto rounded border border-amber-600/30 bg-background/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-800 dark:text-amber-200">
+          <span className="ml-auto rounded border border-border bg-background/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             stale
           </span>
           {connectionState.state === "needs-reauth" && (
@@ -536,7 +542,7 @@ function AppInner({
               type="button"
               variant="outline"
               size="sm"
-              className="h-7 border-amber-600/40 bg-background/80 text-xs text-amber-900 hover:bg-amber-500/15 dark:text-amber-100"
+              className="h-7 bg-background/80 text-xs"
               onClick={() => s.openConnectionReauth(connectionState.connectionId)}
             >
               {t("remote.reauthAction")}
