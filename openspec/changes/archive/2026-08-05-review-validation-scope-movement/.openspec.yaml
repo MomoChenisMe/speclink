@@ -1,0 +1,40 @@
+schema: spec-driven
+created: 2026-08-05
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: review-validation-scope-movement
+started_at: 2026-08-05
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-05
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 7
+reviewed_scope:
+  - path: crates/speclink-cli/src/commands.rs
+    hash: fde07066f03b7a108f77d9cc2c31eebe2a8e2cbc3c6ef4fd8e3059a8952d6e7b
+  - path: crates/speclink-cli/src/remote_commands.rs
+    hash: 231fd4bda5c1773ab6ddaf2c218b6126a6fff7ed21fd7b917208291027221a7c
+  - path: crates/speclink-cli/tests/it/review_verbs.rs
+    hash: 5302b8771c98494881a7324efcc80d7b76d0316f959b419ba44b0560bf9760e0
+  - path: crates/speclink-core/assets/skills/review.md
+    hash: c90244694486c7184674d93eb6e3b110db9b5dfbf111853129378f7de38df0d0
+  - path: crates/speclink-core/src/init.rs
+    hash: e6ae65bdd4283d325fa14aa19c3ee2d1071e3826db94a5f5a42ec7a59fc859d4
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: fc036201dcf4d11a005a1c8c344e9b0f4127d89cfb5fc869a9cdae821e8b5e63
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: f4200bf9df40f8f584003ce96487231dcfbd1c22cba9f72fc634615065963a1c
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 6f6dea6323e4c7c23175cb249cb9b827b8eb04f27ec23dcb7fe63d400a623e81
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: 41808721bad6672e8c31e172d626b39c88734a8bc7b08a278b0ff2a5f77fe2d5
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: a90fd59d78fc787916ffd79331b7ed2de26225f0cd208f51374f8d12d2b94f75
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 3254bfdb8f9f9ce16a5b5e2c969735574e171c95828b8b300cf5e1f2ef71b8d3
+  - path: crates/speclink-core/tests/golden/remote-claude.marker.md
+    hash: d01d9c2954c35fbc88f444c9b870592c4e6208a03fbb2c4fbe8a170856aa84a5
+  - path: crates/speclink-host/src/change_diff.rs
+    hash: 01acf5e325eabb619b4454d952cfa74451eb2c034082df7050d1e9363a546f2c
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-05

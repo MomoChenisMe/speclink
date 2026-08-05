@@ -164,6 +164,19 @@ pub struct Hunk {
     pub new_lines: u32,
 }
 
+/// Where a validation round's file delta came from (design D4). Discovery has
+/// no previous round to attribute against, so its deltas carry None.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Attribution {
+    /// Named by the previous round's unresolved findings.
+    Finding,
+    /// A candidate file the remediation moved without a finding naming it.
+    Adjacent,
+    /// First became dirty after the previous round's capture.
+    New,
+}
+
 /// One file's delta between the base commit tree and the current worktree.
 /// `before_hash`／`after_hash` are `sha256:<hex>` over the raw bytes of each
 /// side; the missing side of an addition／deletion is None. Binary deltas
@@ -177,6 +190,9 @@ pub struct FileDelta {
     pub before_hash: Option<String>,
     pub after_hash: Option<String>,
     pub hunks: Vec<Hunk>,
+    /// Validation-only origin marker — absent from discovery payloads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<Attribution>,
 }
 
 /// The resolved discovery candidate: the canonical patch from `base_commit`
@@ -407,8 +423,11 @@ pub struct ActiveClaim {
 /// present ⇒ the next scope is a validation pass.
 #[derive(Debug, Clone)]
 pub struct TicketBinding {
-    /// The last round's frozen patch identity (None on legacy rounds).
-    pub patch_hash: Option<String>,
+    /// Every round's frozen patch identity, newest first — the chain a
+    /// validation pass walks back to rebuild a candidate file's frozen state.
+    /// Empty when the last round is legacy (carries no patch hash); the
+    /// validation pass then fails closed instead of guessing.
+    pub patch_hash_chain: Vec<String>,
     /// Paths of the last round's unresolved findings.
     pub finding_paths: Vec<String>,
 }
@@ -448,9 +467,6 @@ pub enum AmbiguityReason {
     ActiveOverlap { change: String, paths: Vec<String> },
     /// touchedFiles missing or empty — never auto-review the whole worktree.
     EmptyTouched,
-    /// Files dirty before the last capture, not in the preserved scope, and
-    /// changed again — their `before` cannot be reconstructed.
-    PreviouslyDirtyChanged(Vec<String>),
 }
 
 /// The fail-closed half of scope resolution: ambiguous, nothing frozen.
@@ -481,6 +497,10 @@ pub struct ResolvedScope {
     pub paths: Vec<String>,
     pub files: Vec<FileDelta>,
     pub patch: String,
+    /// Candidate files that moved but no round ever captured — annotated for
+    /// the user, deliberately outside the review face (design D3). Always
+    /// empty in discovery.
+    pub out_of_scope_changed: Vec<String>,
 }
 
 /// Outcome of scope resolution: frozen or fail-closed.
@@ -604,6 +624,7 @@ pub fn resolve_scope(ws: &Workspace, req: &ScopeRequest) -> Result<ScopeOutcome>
             paths: delta_paths(&candidate.files),
             files: candidate.files,
             patch: candidate.patch,
+            out_of_scope_changed: Vec::new(),
         };
         let texts = discovery_texts(ws, &resolved.base_commit, &resolved.files)?;
         write_scope_snapshot(ws, &resolved, texts, true)?;
@@ -621,11 +642,13 @@ pub fn resolve_scope(ws: &Workspace, req: &ScopeRequest) -> Result<ScopeOutcome>
     }))
 }
 
-/// Validation scope (design D4): a follow-up round rebuilds the remediation
-/// delta from the frozen snapshot — never from touched files or the current
-/// worktree. The patch covers exactly the last round's unresolved finding
-/// paths (frozen afterText → current content) plus paths that first became
-/// dirty after the capture.
+/// Validation scope (design D1–D3): a follow-up round rebuilds the remediation
+/// delta from the frozen snapshots — never from touched files or the current
+/// worktree. Attribution is by *content movement*, not by which files the
+/// findings named: every candidate file whose content moved since the last
+/// capture enters the patch, rebuilt against the most recent round that
+/// captured it. Files no round ever captured are annotated and let through;
+/// paths that first became dirty after the capture join as `new`.
 fn resolve_validation_scope(
     ws: &Workspace,
     req: &ScopeRequest,
@@ -634,7 +657,7 @@ fn resolve_validation_scope(
     if req.candidate_hash.is_some() || !req.include_hunks.is_empty() {
         anyhow::bail!("hunk selection applies to discovery scope only — a validation pass is bound to the frozen snapshot");
     }
-    let Some(patch_hash) = &ticket.patch_hash else {
+    let Some(patch_hash) = ticket.patch_hash_chain.first() else {
         anyhow::bail!(
             "the ticket's last round carries no patch hash — the remediation delta cannot \
              be reconstructed precisely; discard the ticket and re-run discovery explicitly"
@@ -647,35 +670,6 @@ fn resolve_validation_scope(
              re-run discovery explicitly"
         );
     };
-    // The preserved scope is everything the snapshot can rebase precisely:
-    // its patch deltas AND its carried frozen texts (an unchanged unresolved
-    // finding path travels via texts without a delta).
-    let mut preserved = delta_paths(&snap.files);
-    preserved.extend(snap.texts.iter().map(|t| t.path.clone()));
-    preserved.sort();
-    preserved.dedup();
-    // Files dirty before the capture and outside the preserved scope: their
-    // `before` was never saved — another change to them cannot be attributed.
-    let mut changed_unsaved: Vec<String> = Vec::new();
-    for entry in &snap.dirty_files_at_capture {
-        if preserved.contains(&entry.path) {
-            continue;
-        }
-        let now = std::fs::read(ws.root.join(&entry.path)).ok().map(|b| sha256_prefixed(&b));
-        if now.as_deref() != Some(entry.hash.as_str()) {
-            changed_unsaved.push(entry.path.clone());
-        }
-    }
-    if !changed_unsaved.is_empty() {
-        return Ok(ScopeOutcome::NeedsInput(ScopeNeedsInput {
-            change: req.change.clone(),
-            phase: Phase::Validation,
-            ambiguous_paths: changed_unsaved.clone(),
-            reasons: vec![AmbiguityReason::PreviouslyDirtyChanged(changed_unsaved)],
-            candidate_hash: None,
-            files: Vec::new(),
-        }));
-    }
 
     let finding_paths = normalize_targets(ws, &ticket.finding_paths);
     // (sort key, segment text, delta, texts entry)
@@ -686,7 +680,9 @@ fn resolve_validation_scope(
     let mut carried_texts: Vec<SnapshotText> = Vec::new();
     for path in &finding_paths {
         match remediation_segment(ws, &snap, path)? {
-            Some((seg, delta, text)) => entries.push((path.clone(), seg, delta, text)),
+            Some((seg, delta, text)) => {
+                entries.push((path.clone(), seg, attributed(delta, Attribution::Finding), text))
+            }
             None => {
                 if let Some(t) = snap.texts.iter().find(|t| &t.path == path) {
                     carried_texts.push(SnapshotText {
@@ -698,13 +694,76 @@ fn resolve_validation_scope(
             }
         }
     }
+    // Every other captured candidate file whose content moved: the remediation
+    // touched a neighbour the findings never named. The last round's snapshot
+    // rebases most of them; the rest need an older round walked back to.
+    let mut pending: Vec<String> = Vec::new();
+    for entry in &snap.dirty_files_at_capture {
+        if finding_paths.contains(&entry.path) {
+            continue;
+        }
+        let now = std::fs::read(ws.root.join(&entry.path)).ok().map(|b| sha256_prefixed(&b));
+        if now.as_deref() == Some(entry.hash.as_str()) {
+            continue; // content did not move — nothing to review
+        }
+        if snapshot_preserves(&snap, &entry.path) {
+            push_adjacent(ws, &snap, &entry.path, Some(&entry.hash), &mut entries)?;
+        } else {
+            pending.push(entry.path.clone());
+        }
+    }
+    // Walk the ticket's rounds newest→oldest, loading each snapshot at most
+    // once, until every pending path found the round that last captured it.
+    for older_hash in ticket.patch_hash_chain.iter().skip(1) {
+        if pending.is_empty() {
+            break;
+        }
+        let Some(older) = load_snapshot(ws, &req.change, older_hash) else {
+            anyhow::bail!(
+                "frozen snapshot for {older_hash} is missing — the ticket's round chain \
+                 cannot be walked back to rebuild {}; keep the ticket and stop, or discard \
+                 it and re-run discovery explicitly",
+                pending.join(", ")
+            );
+        };
+        let mut still_pending = Vec::new();
+        for path in pending {
+            if snapshot_preserves(&older, &path) {
+                push_adjacent(ws, &older, &path, None, &mut entries)?;
+            } else {
+                still_pending.push(path);
+            }
+        }
+        pending = still_pending;
+    }
+    // What survives the walk was never captured by any round — the user
+    // excluded it at discovery, and a re-review does not relitigate that.
+    let out_of_scope_changed = pending;
     // Paths that first became dirty after the capture join the validation
     // patch via the same D2 resolver, anchored at the frozen base commit.
+    // A dirty-deleted path never enters the capture ledger (no bytes to
+    // hash), so `git status` would re-offer it every round — but when the
+    // last snapshot already froze its deletion and it is still absent, its
+    // content has not moved and it must not re-enter the patch. The frozen
+    // "absent" state travels forward as a carried text (after None) so the
+    // suppression survives its own round's snapshot.
     let captured: Vec<&str> = snap.dirty_files_at_capture.iter().map(|e| e.path.as_str()).collect();
-    let new_dirty: Vec<String> = speclink_core::tasks::git_changed_files(ws)
-        .into_iter()
-        .filter(|p| !captured.contains(&p.as_str()) && !finding_paths.contains(p))
-        .collect();
+    let deletion_frozen = |p: &str| {
+        (snap.files.iter().any(|f| f.old_path.as_deref() == Some(p) && f.new_path.is_none())
+            || snap.texts.iter().any(|t| t.path == p && t.after_text.is_none()))
+            && !ws.root.join(p).exists()
+    };
+    let mut new_dirty: Vec<String> = Vec::new();
+    for p in speclink_core::tasks::git_changed_files(ws) {
+        if captured.contains(&p.as_str()) || finding_paths.contains(&p) {
+            continue;
+        }
+        if deletion_frozen(&p) {
+            carried_texts.push(SnapshotText { path: p, before_text: None, after_text: None });
+        } else {
+            new_dirty.push(p);
+        }
+    }
     if !new_dirty.is_empty() {
         let candidate = resolve_candidate(ws, &snap.base_commit, &new_dirty)?;
         let texts = discovery_texts(ws, &candidate.base_commit, &candidate.files)?;
@@ -715,7 +774,7 @@ fn resolve_validation_scope(
                 .chain(part.hunk_texts.iter().map(String::as_str))
                 .collect();
             let text = texts.iter().find(|t| Some(&t.path) == delta.new_path.as_ref()).cloned();
-            entries.push((key, seg, delta.clone(), text));
+            entries.push((key, seg, attributed(delta.clone(), Attribution::New), text));
         }
     }
     entries.sort_by(|a, b| a.0.cmp(&b.0));
@@ -735,6 +794,7 @@ fn resolve_validation_scope(
         paths: delta_paths(&files),
         files,
         patch,
+        out_of_scope_changed,
     };
     // The discovery snapshot stays (the ticket references it); only stamp／
     // discard clear snapshots.
@@ -742,7 +802,52 @@ fn resolve_validation_scope(
     Ok(ScopeOutcome::Resolved(resolved))
 }
 
-/// Build one finding path's remediation segment: frozen afterText → current
+fn attributed(delta: FileDelta, attribution: Attribution) -> FileDelta {
+    FileDelta { attribution: Some(attribution), ..delta }
+}
+
+/// Whether a snapshot can rebase `path` precisely — it carries the path's
+/// frozen text, or a file delta whose AFTER side is the path (its after_hash
+/// is the rebuild anchor). An old_path-only match (a rename source) has no
+/// frozen `before` for the path and must not claim otherwise.
+fn snapshot_preserves(snap: &Snapshot, path: &str) -> bool {
+    snap.texts.iter().any(|t| t.path == path)
+        || snap.files.iter().any(|f| f.new_path.as_deref() == Some(path))
+}
+
+/// Append one adjacent segment rebuilt from `origin` — the most recent round
+/// that captured the path. A None segment means the content came back to that
+/// round's frozen state; there is nothing to review.
+///
+/// `expect_before` pins the rebuilt `before` against the ledger hash the SAME
+/// round recorded for the path — they were read from one file at one freeze,
+/// so a disagreement means a parallel writer slipped between the two reads and
+/// the snapshot now contradicts itself. Walked-back rounds pass None: an older
+/// round's frozen state is supposed to differ from the last round's ledger.
+fn push_adjacent(
+    ws: &Workspace,
+    origin: &Snapshot,
+    path: &str,
+    expect_before: Option<&str>,
+    entries: &mut Vec<(String, String, FileDelta, Option<SnapshotText>)>,
+) -> Result<()> {
+    if let Some((seg, delta, text)) = remediation_segment(ws, origin, path)? {
+        if let Some(expected) = expect_before {
+            if delta.before_hash.as_deref() != Some(expected) {
+                anyhow::bail!(
+                    "the frozen snapshot contradicts its own dirty-file ledger for '{path}' \
+                     (rebuilt {}, recorded {expected}) — the remediation delta cannot be \
+                     rebuilt precisely; discard the ticket and re-run discovery explicitly",
+                    delta.before_hash.as_deref().unwrap_or("nothing")
+                );
+            }
+        }
+        entries.push((path.to_string(), seg, attributed(delta, Attribution::Adjacent), text));
+    }
+    Ok(())
+}
+
+/// Build one scope path's remediation segment: frozen afterText → current
 /// content. Returns None when the path is unchanged since the capture.
 fn remediation_segment(
     ws: &Workspace,
@@ -759,7 +864,7 @@ fn remediation_segment(
         // No frozen text: the path was binary (or absent) in the frozen scope.
         let Some(frozen) = frozen_delta else {
             anyhow::bail!(
-                "finding path '{path}' is not part of the frozen snapshot — the ticket and \
+                "scope path '{path}' is not part of the frozen snapshot — the ticket and \
                  the snapshot disagree; discard the ticket and re-run discovery explicitly"
             );
         };
@@ -778,6 +883,7 @@ fn remediation_segment(
             before_hash,
             after_hash,
             hunks: Vec::new(),
+            attribution: None,
         };
         return Ok(Some((seg, delta, None)));
     };
@@ -812,6 +918,7 @@ fn remediation_segment(
                 before_hash,
                 after_hash,
                 hunks,
+                attribution: None,
             };
             let text = SnapshotText {
                 path: path.to_string(),
@@ -888,6 +995,7 @@ fn synthesize_deletion_from_text(path: &str, text: &str) -> (String, FileDelta) 
         before_hash: Some(sha256_prefixed(text.as_bytes())),
         after_hash: None,
         hunks,
+        attribution: None,
     };
     (seg, delta)
 }
@@ -1039,6 +1147,7 @@ fn apply_selection(
         paths: delta_paths(&files),
         files,
         patch,
+        out_of_scope_changed: Vec::new(),
     })
 }
 
@@ -1233,7 +1342,7 @@ fn parse_segment(seg: &str, root: &std::path::Path, base: &str) -> Result<FileDe
         }
         None => None,
     };
-    Ok(FileDelta { old_path, new_path, kind, before_hash, after_hash, hunks })
+    Ok(FileDelta { old_path, new_path, kind, before_hash, after_hash, hunks, attribution: None })
 }
 
 /// Strip the diff prefix (`a/`／`b/`) and a possible trailing tab git adds
@@ -1344,6 +1453,7 @@ fn synthesize_addition(root: &std::path::Path, path: &str) -> Result<(String, Fi
             before_hash: None,
             after_hash,
             hunks: Vec::new(),
+            attribution: None,
         };
         return Ok((seg, delta));
     }
@@ -1378,6 +1488,7 @@ fn synthesize_addition(root: &std::path::Path, path: &str) -> Result<(String, Fi
         before_hash: None,
         after_hash,
         hunks,
+        attribution: None,
     };
     Ok((seg, delta))
 }
@@ -2206,6 +2317,10 @@ mod tests {
         }
     }
 
+    fn attribution_of(r: &ResolvedScope, path: &str) -> Option<Attribution> {
+        r.files.iter().find(|f| f.new_path.as_deref() == Some(path)).and_then(|f| f.attribution)
+    }
+
     fn snapshot_files(ws: &Workspace, change: &str) -> Vec<String> {
         std::fs::read_dir(snapshots_dir(ws, change))
             .map(|it| {
@@ -2303,7 +2418,7 @@ mod tests {
         repo.write("src/c.rs", "gamma\nc-fix\n");
         let mut req = scope_req(&["src/a.rs", "src/b.rs"]);
         req.ticket = Some(TicketBinding {
-            patch_hash: Some(r1.patch_hash.clone()),
+            patch_hash_chain: vec![r1.patch_hash.clone()],
             finding_paths: vec!["src/a.rs".to_string()],
         });
         let r2 = resolved(&ws, &req);
@@ -2316,6 +2431,8 @@ mod tests {
         );
         assert!(r2.patch.contains("+c-fix"), "新髒檔 C 的差異在場: {}", r2.patch);
         assert!(!r2.patch.contains("src/b.rs"), "未修改的 B 不重新輸出: {}", r2.patch);
+        assert_eq!(attribution_of(&r2, "src/a.rs"), Some(Attribution::Finding));
+        assert_eq!(attribution_of(&r2, "src/c.rs"), Some(Attribution::New));
         assert_ne!(r2.patch_hash, r1.patch_hash);
         // validation snapshot 也凍結，discovery snapshot 因工單引用而保留。
         let names = snapshot_files(&ws, "demo");
@@ -2323,36 +2440,279 @@ mod tests {
     }
 
     #[test]
-    fn review_snapshot_previously_dirty_unsaved_file_changing_fails_closed() {
-        // spec：上輪已髒、未在保存 scope 且內容又改變的路徑 SHALL needsInput。
-        let repo = TempRepo::new("snap-prevdirty");
+    fn review_snapshot_validation_emits_unnamed_candidate_movement_as_adjacent() {
+        // spec Scenario「未點名候選檔的修復以 adjacent 段進驗證 patch」：Round 1
+        // 收錄 A、B、C，findings 只點名 A，修復同時動 A 與 B → Round 2 resolved，
+        // patch 含 A（finding）與 B（adjacent，自 B 的凍結後狀態起算）；未動的
+        // 候選檔 C 不進 patch。
+        let repo = TempRepo::new("snap-adjacent");
+        repo.write("src/a.rs", "alpha\n");
+        repo.write("src/b.rs", "beta\n");
+        repo.write("src/c.rs", "gamma\n");
+        repo.git(&["add", "-A"]);
+        repo.git(&["commit", "-q", "-m", "seed"]);
+        let ws = repo.ws();
+        prepare(&ws, "demo", false).expect("clean baseline");
+        repo.write("src/a.rs", "alpha\nround-one-a\n");
+        repo.write("src/b.rs", "beta\nround-one-b\n");
+        repo.write("src/c.rs", "gamma\nround-one-c\n");
+        let touched = ["src/a.rs", "src/b.rs", "src/c.rs"];
+        let r1 = resolved(&ws, &scope_req(&touched));
+        // 修復：findings 點名的 A 之外，鄰居 B 也被動到；C 原封不動。
+        repo.write("src/a.rs", "alpha\nround-one-a\nthe-fix\n");
+        repo.write("src/b.rs", "beta\nround-one-b\nneighbour-fix\n");
+        let mut req = scope_req(&touched);
+        req.ticket = Some(TicketBinding {
+            patch_hash_chain: vec![r1.patch_hash.clone()],
+            finding_paths: vec!["src/a.rs".to_string()],
+        });
+        let r2 = resolved(&ws, &req);
+        assert_eq!(r2.phase, Phase::Validation);
+        assert!(r2.patch.contains("+the-fix"), "findings 檔的修復在場: {}", r2.patch);
+        assert!(r2.patch.contains("+neighbour-fix"), "鄰居檔的修復也在場: {}", r2.patch);
+        assert!(
+            !r2.patch.contains("+round-one-b"),
+            "B 自凍結後狀態起算，不重播 Round 1: {}",
+            r2.patch
+        );
+        assert!(!r2.patch.contains("src/c.rs"), "內容未動的候選檔不進 patch: {}", r2.patch);
+        assert_eq!(attribution_of(&r2, "src/a.rs"), Some(Attribution::Finding));
+        assert_eq!(attribution_of(&r2, "src/b.rs"), Some(Attribution::Adjacent));
+        assert!(r2.out_of_scope_changed.is_empty(), "{:?}", r2.out_of_scope_changed);
+    }
+
+    #[test]
+    fn review_snapshot_validation_walks_the_hash_chain_to_the_latest_capture() {
+        // spec Scenario「連續多輪修復未點名檔沿雜湊鏈回走」：B 在 Round 2 沒被
+        // 動到（不進 Round 2 快照的保存面），Round 2 的修復才動 B → Round 3 沿
+        // patchHash 鏈回走取最近收錄 B 的快照重建凍結後狀態，正常 resolved。
+        let repo = TempRepo::new("snap-chain");
+        repo.write("src/a.rs", "alpha\n");
+        repo.write("src/b.rs", "beta\n");
+        repo.git(&["add", "-A"]);
+        repo.git(&["commit", "-q", "-m", "seed"]);
+        let ws = repo.ws();
+        prepare(&ws, "demo", false).expect("clean baseline");
+        repo.write("src/a.rs", "alpha\nround-one-a\n");
+        repo.write("src/b.rs", "beta\nround-one-b\n");
+        let touched = ["src/a.rs", "src/b.rs"];
+        let r1 = resolved(&ws, &scope_req(&touched));
+        // Round 2：只修 A —— B 不動，因而不進 Round 2 快照的保存面。
+        repo.write("src/a.rs", "alpha\nround-one-a\nfix-one\n");
+        let mut req = scope_req(&touched);
+        req.ticket = Some(TicketBinding {
+            patch_hash_chain: vec![r1.patch_hash.clone()],
+            finding_paths: vec!["src/a.rs".to_string()],
+        });
+        let r2 = resolved(&ws, &req);
+        assert!(!r2.patch.contains("src/b.rs"), "B 未動，不進 Round 2 patch: {}", r2.patch);
+        // Round 3：這回動到 B —— 上輪快照沒有它，須沿鏈回走 Round 1。
+        repo.write("src/b.rs", "beta\nround-one-b\nlate-neighbour-fix\n");
+        req.ticket = Some(TicketBinding {
+            patch_hash_chain: vec![r2.patch_hash.clone(), r1.patch_hash.clone()],
+            finding_paths: vec!["src/a.rs".to_string()],
+        });
+        let r3 = resolved(&ws, &req);
+        assert!(
+            r3.patch.contains("+late-neighbour-fix"),
+            "回走重建後 B 的新差異在場: {}",
+            r3.patch
+        );
+        assert!(
+            !r3.patch.contains("+round-one-b"),
+            "自最近收錄輪的凍結後狀態起算: {}",
+            r3.patch
+        );
+        assert_eq!(attribution_of(&r3, "src/b.rs"), Some(Attribution::Adjacent));
+        assert!(r3.out_of_scope_changed.is_empty(), "回走成功不得誤判為範圍外: {:?}", r3.out_of_scope_changed);
+    }
+
+    #[test]
+    fn review_snapshot_never_captured_dirty_file_is_annotated_not_blocked() {
+        // spec Scenario「範圍外變動註記不擋凍結」：discovery 時未被收錄的髒檔於
+        // 驗證期間變動 → 照常 resolved、列入 outOfScopeChanged、不進 patch。
+        let repo = TempRepo::new("snap-outofscope");
         repo.write("src/a.rs", "alpha\n");
         repo.write("notes/d.txt", "scratch\n");
         repo.git(&["add", "src/a.rs"]);
         repo.git(&["commit", "-q", "-m", "seed"]);
-        // D 在 Apply 開始前就髒（untracked），但不屬 touched scope。
+        // D 在 Apply 開始前就髒（untracked），且不屬 touched scope。
         let ws = repo.ws();
         prepare(&ws, "demo", false).expect("baseline");
         repo.write("src/a.rs", "alpha\nround-one-change\n");
         let r1 = resolved(&ws, &scope_req(&["src/a.rs"]));
-        // 修正 A 的同時 D 又變了——D 的 before 無從重建。
+        // 修正 A 的同時 D 又變了——D 從未進任何快照的保存面。
         repo.write("src/a.rs", "alpha\nround-one-change\nthe-fix\n");
         repo.write("notes/d.txt", "scratch changed\n");
         let mut req = scope_req(&["src/a.rs"]);
         req.ticket = Some(TicketBinding {
-            patch_hash: Some(r1.patch_hash.clone()),
+            patch_hash_chain: vec![r1.patch_hash.clone()],
             finding_paths: vec!["src/a.rs".to_string()],
         });
-        let outcome = resolve_scope(&ws, &req).expect("adjudication runs");
-        let ScopeOutcome::NeedsInput(n) = outcome else {
-            panic!("previously dirty unsaved change must fail closed, got {outcome:?}");
+        let r2 = resolved(&ws, &req);
+        assert_eq!(r2.out_of_scope_changed, vec!["notes/d.txt".to_string()]);
+        assert!(!r2.patch.contains("notes/d.txt"), "範圍外的檔不進 patch: {}", r2.patch);
+        assert!(r2.patch.contains("+the-fix"), "凍結照常進行: {}", r2.patch);
+        assert_eq!(snapshot_files(&ws, "demo").len(), 2, "validation snapshot 照常寫入");
+    }
+
+    #[test]
+    fn snapshot_preserves_only_rebuildable_paths_never_rename_sources() {
+        // Round 1 C1：preserved 判定必須與 remediation_segment 的重建能力一致
+        // ——texts 精確命中或 delta 的 new_path 命中。rename 來源只在 old_path
+        // 出現，texts 的鍵是 new_path，重建必然拿錯 before，不得聲稱保存。
+        let snap = Snapshot {
+            version: SNAPSHOT_VERSION,
+            change: "demo".to_string(),
+            phase: Phase::Discovery,
+            candidate_hash: "sha256:c".to_string(),
+            patch_hash: "sha256:p".to_string(),
+            base_commit: "b".to_string(),
+            created_at: "2026-08-05T00:00:00Z".to_string(),
+            dirty_files_at_capture: Vec::new(),
+            patch: String::new(),
+            files: vec![FileDelta {
+                old_path: Some("src/old.rs".to_string()),
+                new_path: Some("src/new.rs".to_string()),
+                kind: DeltaKind::Renamed,
+                before_hash: Some("sha256:x".to_string()),
+                after_hash: Some("sha256:y".to_string()),
+                hunks: Vec::new(),
+                attribution: None,
+            }],
+            texts: vec![SnapshotText {
+                path: "src/new.rs".to_string(),
+                before_text: Some("a\n".to_string()),
+                after_text: Some("b\n".to_string()),
+            }],
         };
+        assert!(snapshot_preserves(&snap, "src/new.rs"), "rename 目標可精確重建");
         assert!(
-            n.reasons.iter().any(|r| matches!(r, AmbiguityReason::PreviouslyDirtyChanged(p) if p.contains(&"notes/d.txt".to_string()))),
-            "{:?}",
-            n.reasons
+            !snapshot_preserves(&snap, "src/old.rs"),
+            "rename 來源無 before 可重建，不得聲稱保存"
         );
-        assert_eq!(snapshot_files(&ws, "demo").len(), 1, "no validation snapshot appears");
+    }
+
+    #[test]
+    fn review_snapshot_frozen_deletion_is_not_reemitted_every_round() {
+        // Round 1 C2：修復期間刪除的候選檔，其刪除凍結進驗證快照後，之後的輪
+        // 次不得再被 git_changed_files 撿回當「首次變髒」重播整份刪除——內容
+        // 沒動（仍然是刪除狀態）就不進 patch。
+        let repo = TempRepo::new("snap-del-once");
+        repo.write("src/a.rs", "alpha\n");
+        repo.write("src/b.rs", "beta\n");
+        repo.git(&["add", "-A"]);
+        repo.git(&["commit", "-q", "-m", "seed"]);
+        let ws = repo.ws();
+        prepare(&ws, "demo", false).expect("clean baseline");
+        repo.write("src/a.rs", "alpha\nround-one-a\n");
+        repo.write("src/b.rs", "beta\nround-one-b\n");
+        let touched = ["src/a.rs", "src/b.rs"];
+        let r1 = resolved(&ws, &scope_req(&touched));
+        // 修復判定 B 該整個刪掉。
+        std::fs::remove_file(repo.root.join("src/b.rs")).unwrap();
+        let mut req = scope_req(&touched);
+        req.ticket = Some(TicketBinding {
+            patch_hash_chain: vec![r1.patch_hash.clone()],
+            finding_paths: vec!["src/b.rs".to_string()],
+        });
+        let r2 = resolved(&ws, &req);
+        assert!(r2.patch.contains("deleted file"), "刪除進 Round 2 驗證面: {}", r2.patch);
+        // Round 3：什麼都沒再動 → 驗證 patch 必須為空，B 不得重播。
+        req.ticket = Some(TicketBinding {
+            patch_hash_chain: vec![r2.patch_hash.clone(), r1.patch_hash.clone()],
+            finding_paths: vec![],
+        });
+        let r3 = resolved(&ws, &req);
+        assert_eq!(r3.patch, "", "凍結過的刪除不重播");
+        assert!(r3.out_of_scope_changed.is_empty(), "{:?}", r3.out_of_scope_changed);
+        // Round 4（Round 2 驗證輪抓到的殘留）：抑制輪自己的快照必須繼續攜帶
+        // 「凍結狀態＝已刪除」的紀錄，否則隔一輪 deletion_frozen 失去依據、
+        // 又把整份刪除當首次變髒重播。
+        req.ticket = Some(TicketBinding {
+            patch_hash_chain: vec![
+                r3.patch_hash.clone(),
+                r2.patch_hash.clone(),
+                r1.patch_hash.clone(),
+            ],
+            finding_paths: vec![],
+        });
+        let r4 = resolved(&ws, &req);
+        assert_eq!(r4.patch, "", "抑制紀錄逐輪傳遞，隔輪也不重播");
+        assert!(r4.out_of_scope_changed.is_empty(), "{:?}", r4.out_of_scope_changed);
+    }
+
+    #[test]
+    fn review_snapshot_contradicting_its_own_dirty_ledger_fails_closed() {
+        // design 失敗模式：重建後雜湊與 dirtyFilesAtCapture 記錄不符 → 硬錯誤。
+        // 現實觸發路徑＝凍結當下另一個 session 寫了同一個候選檔，兩次讀之間內容
+        // 換了；快照自相矛盾時 before 無從信任，不得靜默產出錯誤的 diff。
+        let repo = TempRepo::new("snap-ledger-skew");
+        repo.write("src/a.rs", "alpha\n");
+        repo.write("src/b.rs", "beta\n");
+        repo.git(&["add", "-A"]);
+        repo.git(&["commit", "-q", "-m", "seed"]);
+        let ws = repo.ws();
+        prepare(&ws, "demo", false).expect("clean baseline");
+        repo.write("src/a.rs", "alpha\nround-one-a\n");
+        repo.write("src/b.rs", "beta\nround-one-b\n");
+        let r1 = resolved(&ws, &scope_req(&["src/a.rs", "src/b.rs"]));
+        // 竄改帳本：B 的記錄雜湊與快照凍結的 afterText 對不上。
+        let path = snapshot_path(&ws, "demo", &r1.patch_hash);
+        let mut snap: Snapshot = serde_json::from_str(&std::fs::read_to_string(&path).unwrap())
+            .expect("snapshot parses");
+        let entry = snap
+            .dirty_files_at_capture
+            .iter_mut()
+            .find(|e| e.path == "src/b.rs")
+            .expect("B 在帳本裡");
+        entry.hash = format!("sha256:{}", "e".repeat(64));
+        std::fs::write(&path, serde_json::to_string_pretty(&snap).unwrap()).unwrap();
+        repo.write("src/b.rs", "beta\nround-one-b\nneighbour-fix\n");
+        let mut req = scope_req(&["src/a.rs", "src/b.rs"]);
+        req.ticket = Some(TicketBinding {
+            patch_hash_chain: vec![r1.patch_hash.clone()],
+            finding_paths: vec!["src/a.rs".to_string()],
+        });
+        let err = resolve_scope(&ws, &req).expect_err("a self-contradicting snapshot must bail");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("src/b.rs"), "訊息點名對不上的路徑: {msg}");
+        assert!(msg.contains("discard"), "指出明示的出路: {msg}");
+    }
+
+    #[test]
+    fn review_snapshot_missing_link_in_the_hash_chain_fails_closed() {
+        // spec：回走鏈中任一輪快照缺失 SHALL 非零硬錯誤且訊息點名該 patchHash
+        //（不得退回 discovery，也不得當成範圍外變動放行）。
+        let repo = TempRepo::new("snap-chain-gap");
+        repo.write("src/a.rs", "alpha\n");
+        repo.write("src/b.rs", "beta\n");
+        repo.git(&["add", "-A"]);
+        repo.git(&["commit", "-q", "-m", "seed"]);
+        let ws = repo.ws();
+        prepare(&ws, "demo", false).expect("clean baseline");
+        repo.write("src/a.rs", "alpha\nround-one-a\n");
+        repo.write("src/b.rs", "beta\nround-one-b\n");
+        let touched = ["src/a.rs", "src/b.rs"];
+        let r1 = resolved(&ws, &scope_req(&touched));
+        repo.write("src/a.rs", "alpha\nround-one-a\nfix-one\n");
+        let mut req = scope_req(&touched);
+        req.ticket = Some(TicketBinding {
+            patch_hash_chain: vec![r1.patch_hash.clone()],
+            finding_paths: vec!["src/a.rs".to_string()],
+        });
+        let r2 = resolved(&ws, &req);
+        // Round 1 的快照被移除後，B 的凍結後狀態再也無從重建。
+        std::fs::remove_file(snapshot_path(&ws, "demo", &r1.patch_hash)).unwrap();
+        repo.write("src/b.rs", "beta\nround-one-b\nlate-neighbour-fix\n");
+        req.ticket = Some(TicketBinding {
+            patch_hash_chain: vec![r2.patch_hash.clone(), r1.patch_hash.clone()],
+            finding_paths: vec!["src/a.rs".to_string()],
+        });
+        let err = resolve_scope(&ws, &req).expect_err("a gap in the chain must fail closed");
+        let msg = format!("{err:#}");
+        assert!(msg.contains(&r1.patch_hash), "訊息點名缺失的 patchHash: {msg}");
+        assert!(msg.contains("discard"), "指出明示的出路: {msg}");
     }
 
     #[test]
@@ -2365,7 +2725,7 @@ mod tests {
         repo.write("src/lib.rs", "fn demo() { changed(); }\n");
         let mut req = scope_req(&["src/lib.rs"]);
         req.ticket = Some(TicketBinding {
-            patch_hash: Some(format!("sha256:{}", "d".repeat(64))),
+            patch_hash_chain: vec![format!("sha256:{}", "d".repeat(64))],
             finding_paths: vec!["src/lib.rs".to_string()],
         });
         let err = resolve_scope(&ws, &req).expect_err("missing snapshot must fail closed");
@@ -2373,7 +2733,7 @@ mod tests {
         assert!(msg.contains("snapshot"), "error names the missing snapshot: {msg}");
         assert!(!msg.contains("falling back"), "no fallback happens: {msg}");
         // legacy 工單（無 patchHash）同樣不得假裝精確驗收。
-        req.ticket = Some(TicketBinding { patch_hash: None, finding_paths: vec![] });
+        req.ticket = Some(TicketBinding { patch_hash_chain: vec![], finding_paths: vec![] });
         let err = resolve_scope(&ws, &req).expect_err("legacy ticket must fail closed");
         assert!(format!("{err:#}").contains("discard"), "points at the explicit way out: {err:#}");
     }

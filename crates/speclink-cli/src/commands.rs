@@ -2190,7 +2190,9 @@ fn cmd_review(a: ReviewArgs) -> Result<()> {
                 .then(|| core::review::show(store, &change))
                 .transpose()?
                 .map(|t| speclink_host::change_diff::TicketBinding {
-                    patch_hash: t.last_round().patch_hash.clone(),
+                    patch_hash_chain: patch_hash_chain(
+                        t.rounds.iter().map(|r| r.patch_hash.as_deref()),
+                    ),
                     finding_paths: t
                         .last_round()
                         .findings
@@ -2297,6 +2299,21 @@ pub(crate) fn run_review_prepare(
     Ok(())
 }
 
+/// 工單各輪的 patchHash 鏈（新→舊）——validation 回走重建 adjacent 段的依據。
+/// 末輪沒有 patchHash（legacy 輪）時回空鏈：驗證輪據此 fail closed，不拿更早
+/// 一輪的快照冒充末輪。
+pub(crate) fn patch_hash_chain<'a>(
+    rounds: impl DoubleEndedIterator<Item = Option<&'a str>>,
+) -> Vec<String> {
+    let mut newest_first = rounds.rev();
+    match newest_first.next() {
+        Some(Some(last)) => {
+            std::iter::once(last).chain(newest_first.flatten()).map(str::to_string).collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// `review scope` 的請求組裝（local／remote 共用）：touched 記錄與重疊認領都是
 /// host-local 事實，只有 change 清單與工單由各自的 store 提供。
 pub(crate) fn build_scope_request(
@@ -2350,6 +2367,7 @@ fn run_review_scope(
                     "paths": r.paths,
                     "files": r.files,
                     "patch": r.patch,
+                    "outOfScopeChanged": r.out_of_scope_changed,
                 }));
             }
             let hunk_count: usize = r.files.iter().map(|f| f.hunks.len()).sum();
@@ -2360,7 +2378,16 @@ fn run_review_scope(
                 r.change
             );
             println!("  Patch: {}", r.patch_hash);
-            println!("  Scope: {} file(s), {} hunk(s)", r.paths.len(), hunk_count);
+            println!(
+                "  Scope: {} file(s), {} hunk(s){}",
+                r.paths.len(),
+                hunk_count,
+                attribution_breakdown(&r.files)
+            );
+            // 範圍外變動＝從未進審查面的候選檔又動了：轉知使用者，不入審查面。
+            if !r.out_of_scope_changed.is_empty() {
+                println!("  Changed outside the review scope: {}", r.out_of_scope_changed.join(", "));
+            }
             Ok(())
         }
         speclink_host::change_diff::ScopeOutcome::NeedsInput(n) => {
@@ -2377,6 +2404,18 @@ fn run_review_scope(
             bail!("{}", scope_needs_input_message(&n));
         }
     }
+}
+
+/// 驗證輪計數行的三類出身補述（design D4）：discovery 沒有上輪可歸因，回空字串。
+fn attribution_breakdown(files: &[speclink_host::change_diff::FileDelta]) -> String {
+    use speclink_host::change_diff::Attribution;
+    let count = |a: Attribution| files.iter().filter(|f| f.attribution == Some(a)).count();
+    let (finding, adjacent, new) =
+        (count(Attribution::Finding), count(Attribution::Adjacent), count(Attribution::New));
+    if finding + adjacent + new == 0 {
+        return String::new();
+    }
+    format!(" — {finding} finding, {adjacent} adjacent, {new} new")
 }
 
 /// stamp／discard 後清 host-local review snapshots（baseline 保留）。清除失敗
@@ -2415,37 +2454,21 @@ fn scope_needs_input_message(n: &speclink_host::change_diff::ScopeNeedsInput) ->
                 "  - no touched files recorded — the whole worktree is never auto-reviewed"
                     .to_string()
             }
-            AmbiguityReason::PreviouslyDirtyChanged(paths) => format!(
-                "  - previously dirty files changed outside the preserved scope: {}",
-                paths.join(", ")
-            ),
         });
     }
     if !n.ambiguous_paths.is_empty() {
         lines.push(format!("  ambiguous paths: {}", n.ambiguous_paths.join(", ")));
     }
     lines.push("resolve it explicitly by one of:".to_string());
-    // A validation round is anchored to a frozen snapshot: neither a new base
-    // nor a hunk selection can rebuild the missing `before`, so offering them
-    // here would send the user down two paths that always fail.
-    if n.phase == speclink_host::change_diff::Phase::Validation {
-        lines.push(
-            "  1. keep the ticket and stop — the frozen snapshot waits for a later session"
-                .to_string(),
-        );
-        lines.push(format!(
-            "  2. drop the ticket with `speclink review discard {}` and start a fresh discovery \
-             from a trusted --base",
-            n.change
-        ));
-    } else {
-        lines.push("  1. pass a trusted fixed point with --base <rev>".to_string());
-        lines.push(
-            "  2. pin hunks with --candidate-hash <sha256> and --include-hunk <id> (repeatable)"
-                .to_string(),
-        );
-        lines.push("  3. redo the work in an isolated worktree".to_string());
-    }
+    // Only discovery ever needs input: a validation round resolves its scope by
+    // content movement against the frozen snapshot chain, so all three
+    // disposals here address a discovery fixed point.
+    lines.push("  1. pass a trusted fixed point with --base <rev>".to_string());
+    lines.push(
+        "  2. pin hunks with --candidate-hash <sha256> and --include-hunk <id> (repeatable)"
+            .to_string(),
+    );
+    lines.push("  3. redo the work in an isolated worktree".to_string());
     lines.join("\n")
 }
 
@@ -2674,6 +2697,40 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod patch_hash_chain_tests {
+    //! Ticket→TicketBinding 的 patchHash 鏈組裝（spec「frozen snapshot 綁定
+    //! discovery 與 validation patch」的回走鏈輸入）：新→舊、legacy 空洞跳過、
+    //! 末輪 legacy＝空鏈（驗證輪據此 fail closed，不拿舊輪冒充末輪）。
+    use super::patch_hash_chain;
+
+    #[test]
+    fn newest_first_and_legacy_gaps_skipped() {
+        let rounds = [Some("sha256:r1"), None, Some("sha256:r3")];
+        assert_eq!(
+            patch_hash_chain(rounds.iter().map(|h| *h)),
+            vec!["sha256:r3".to_string(), "sha256:r1".to_string()],
+            "鏈序新→舊，中段 legacy 輪跳過"
+        );
+    }
+
+    #[test]
+    fn legacy_last_round_yields_an_empty_chain_even_with_older_hashes() {
+        let rounds = [Some("sha256:r1"), Some("sha256:r2"), None];
+        assert_eq!(
+            patch_hash_chain(rounds.iter().map(|h| *h)),
+            Vec::<String>::new(),
+            "末輪無 hash 時不得拿舊輪快照冒充末輪"
+        );
+        assert_eq!(patch_hash_chain([None].iter().map(|h| *h)), Vec::<String>::new());
+        assert_eq!(
+            patch_hash_chain(std::iter::empty::<Option<&str>>()),
+            Vec::<String>::new(),
+            "空工單＝空鏈"
+        );
+    }
 }
 
 #[cfg(test)]
