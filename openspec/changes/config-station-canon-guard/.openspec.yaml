@@ -33,4 +33,4 @@ reviewed_scope:
   - path: crates/speclink-core/tests/golden/remote-claude.marker.md
     hash: 73718172367fbb844d75e9f2ebc6bddd69784aba86ca59bcfacb96cefb2748f7
   - path: crates/speclink-core/tests/it/render_golden.rs
-    hash: 27050083e0a4d9418899245ec21a2ba0b87a00d1c4106a115838d226aa7c7e3a
+    hash: 872c89b4984e5ce3628b18e55c666a11e8fd7ad8b20a99136dd532b5dc48b7e6
