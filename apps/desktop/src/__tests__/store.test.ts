@@ -1080,6 +1080,40 @@ function storeWithInstructionProbe(ws: WorkspaceAdapter, ds = fakeDataSource()) 
   return store;
 }
 
+describe("監看重掛（rearmWatch）", () => {
+  // worktree 增減會改變監看拓撲（副本 change 目錄、.git/worktrees 登記簿）；
+  // workspace-changed 後由前端順手重掛，Rust 端目標集合不變時沿用原監看。
+  it("活躍 local session → 對其 root 重掛監看", async () => {
+    const ws = fakeInstructionWorkspace();
+    const store = storeWithInstructionProbe(ws);
+    await store.getState().rearmWatch();
+    expect(ws.watchWorkspace).toHaveBeenCalledWith("A");
+  });
+
+  it("無活躍 session → 不動", async () => {
+    const ws = fakeInstructionWorkspace();
+    const store = createAppStore({
+      createSession: (root, name) => fakeSession(fakeDataSource(), root, name),
+      workspace: ws,
+    });
+    await store.getState().rearmWatch();
+    expect(ws.watchWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("活躍 session 非 local → 不動", async () => {
+    const ws = fakeInstructionWorkspace();
+    const store = storeWithInstructionProbe(ws);
+    const remote = {
+      ...fakeSession(fakeDataSource(), "R", "r"),
+      id: "remote:R",
+      locator: { kind: "remote", server: "s", projectKey: "p", repoKey: "r" },
+    } as unknown as WorkspaceSession;
+    store.setState({ sessions: { [remote.id]: remote }, activeKey: remote.id });
+    await store.getState().rearmWatch();
+    expect(ws.watchWorkspace).not.toHaveBeenCalled();
+  });
+});
+
 describe("指令檔過期提示的顯示裁決", () => {
   beforeEach(() => {
     localStorage.removeItem("speclink.instructionSkips");

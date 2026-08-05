@@ -53,6 +53,7 @@ pub fn discard_review_at(root: &Path, change: &str) -> Result<Value, String> {
 
 fn archive_with(root: &Path, change: &str, carry_review: bool) -> Result<Value, String> {
     let ctx = open(root)?;
+    crate::query::refuse_if_worktree_is_open(&ctx, change)?;
     let store: &dyn Store = &ctx.store;
     let change = find(store, change)?;
     let opts = speclink_core::archive::ArchiveOptions { carry_review, ..Default::default() };
@@ -112,6 +113,76 @@ mod tests {
         let fx = valid_fixture("v-analyze");
         let v = analyze_at(fx.root(), "demo").expect("analyze ok");
         assert!(v["findings"].is_array(), "report exposes findings array");
+    }
+
+    /// 主 checkout ＋ 一個 speclink/<change> worktree（探索成立映射的三個條件）。
+    fn attach_worktree(fx: &FixtureRoot, change: &str) {
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(fx.root())
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@example.test")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@example.test")
+                .output()
+                .expect("run git");
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        fx.write(".speclink.yaml", "tools:\n  - claude\n");
+        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
+        git(&["init", "-q", "-b", "main"]);
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "seed"]);
+        let wt = fx.root().join("wt");
+        git(&["worktree", "add", "-q", "-b", &format!("speclink/{change}"), wt.to_str().unwrap()]);
+    }
+
+    #[test]
+    fn archive_is_refused_while_the_change_has_a_worktree() {
+        // spec worktree-overlay「worktree 掛著時的 desktop 動詞防護」Scenario
+        // 「封存被擋」：動詞拒絕、訊息指出收尾方式、change 仍在原處。
+        let fx = valid_fixture("v-archive-wt");
+        attach_worktree(&fx, "demo");
+
+        let err = archive_at(fx.root(), "demo").expect_err("有 worktree 映射時必須拒絕");
+        assert!(err.contains("worktree-merge"), "須指出收尾方式: {err}");
+        assert!(err.contains("demo"), "須指名 change: {err}");
+
+        let ctx = crate::init_core_context(fx.root()).unwrap();
+        assert!(
+            speclink_core::store::Store::change_exists(&ctx.store, "demo"),
+            "拒絕時 change 不得被搬走"
+        );
+        // 「照樣帶走」入口走同一守門。
+        assert!(archive_carry_at(fx.root(), "demo").is_err());
+    }
+
+    #[test]
+    fn the_guard_lifts_once_the_worktree_is_removed() {
+        // Scenario「收尾後解禁」：worktree 移除後守門退場，動詞照常走既有前置。
+        let fx = valid_fixture("v-archive-wt-gone");
+        attach_worktree(&fx, "demo");
+        assert!(archive_at(fx.root(), "demo").is_err());
+
+        let out = std::process::Command::new("git")
+            .args(["worktree", "remove", "--force", "wt"])
+            .current_dir(fx.root())
+            .output()
+            .expect("run git");
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+
+        let err = archive_at(fx.root(), "demo").expect_err("仍受既有前置擋（任務未完成）");
+        assert!(!err.contains("worktree-merge"), "worktree 守門須已退場: {err}");
+    }
+
+    #[test]
+    fn read_only_verbs_are_unaffected_by_a_worktree() {
+        // 唯讀面不擋：抽屜與檢視在 worktree 掛著時照常。
+        let fx = valid_fixture("v-readonly-wt");
+        attach_worktree(&fx, "demo");
+        assert!(validate_at(fx.root(), "demo").is_ok());
+        assert!(analyze_at(fx.root(), "demo").is_ok());
     }
 
     #[test]

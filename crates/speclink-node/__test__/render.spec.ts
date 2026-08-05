@@ -82,4 +82,24 @@ describe('instructions.render — render matrix', () => {
     const rendered = instructions.render({ target: 'claude', invocation: 'cli', store: 'fs' })
     expect(normalize(generated)).toBe(normalize(rendered))
   })
+
+  it('the worktree axis toggles exactly the two worktree skill lines', () => {
+    const on = instructions.render({ target: 'claude', store: 'fs', worktree: true })
+    const off = instructions.render({ target: 'claude', store: 'fs', worktree: false })
+    expect(on).toContain('apply-with-worktree')
+    expect(on).toContain('worktree-merge')
+    expect(off).not.toContain('apply-with-worktree')
+    expect(off).not.toContain('worktree-merge')
+    const offLines = new Set(normalize(off).split('\n'))
+    const added = normalize(on)
+      .split('\n')
+      .filter((line) => !offLines.has(line))
+    expect(added).toHaveLength(2)
+  })
+
+  it('an omitted worktree option renders the policy-off block', () => {
+    const omitted = instructions.render({ target: 'claude', store: 'fs' })
+    const explicit = instructions.render({ target: 'claude', store: 'fs', worktree: false })
+    expect(normalize(omitted)).toBe(normalize(explicit))
+  })
 })

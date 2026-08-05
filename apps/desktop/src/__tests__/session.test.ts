@@ -115,7 +115,13 @@ describe("createLocalSession（spec「每個 session 自帶 dataSource 且 Rust 
     const settings = createLocalSession(ROOT, { invoke }).settings;
     await settings.readSettings();
     await settings.writeAppTools(["claude"]);
-    await settings.writeWorkflowConfig({ locale: null, specLocale: null, tdd: false, audit: false });
+    await settings.writeWorkflowConfig({
+      locale: null,
+      specLocale: null,
+      tdd: false,
+      audit: false,
+      worktree: false,
+    });
     await settings.writeWorkflowContext("ctx");
     await settings.writeWorkflowRules([["proposal", ["rule"]]]);
     expect(calls).toHaveLength(5);

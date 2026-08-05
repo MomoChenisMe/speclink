@@ -1,5 +1,5 @@
 === AGENTS.md ===
-<!-- SPECLINK:START v1.9.0 -->
+<!-- SPECLINK:START v1.10.0 -->
 
 # Speclink Instructions
 
@@ -11,8 +11,6 @@ This project uses Speclink for Spec-Driven Development(SDD). Specs live in `open
 - User wants to plan, propose, or design a change → `$speclink-propose` (`--from-discussion <slug>` seeds it from a concluded discussion)
 - Adopting Speclink on an existing codebase → `$speclink-onboard`
 - Tasks are ready to implement → `$speclink-apply`
-- Implementing several independent changes at once → `$speclink-apply-with-worktree` (one git worktree per change)
-- A worktree change is committed and ready to land → `$speclink-worktree-merge` (merge back, then clean up)
 - Resuming a change that sat idle → run `$speclink-drift` first
 - Requirements change mid-work → `$speclink-ingest`
 - Implementation is done, before archiving → optionally `$speclink-review` (craft quality; user's call), then `$speclink-archive`
@@ -37,7 +35,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -354,476 +352,6 @@ This skill supports the "actions on a change" model:
 
 - **Can be invoked anytime**: Before all artifacts are done (if tasks exist), after partial implementation, interleaved with other actions
 - **Allows artifact updates**: If implementation reveals design issues, suggest updating artifacts - not phase-locked, work fluidly
-
-=== .agents/skills/speclink-apply-with-worktree/SKILL.md ===
----
-name: speclink-apply-with-worktree
-description: "Implement tasks from a Speclink change inside an isolated git worktree, for parallel work"
-license: MIT
-compatibility: Requires speclink CLI.
-metadata:
-  author: speclink
-  version: "v1.9.0"
-  generatedBy: "Speclink"
----
-
-Implement tasks from a Speclink change in an isolated git worktree, so several changes can be applied in parallel without stepping on each other.
-
-**Input**: Optionally specify a change name (e.g., `$speclink-apply-with-worktree add-auth`). Everything the plain apply skill accepts applies here too.
-
-**Prerequisites**: This skill requires the `speclink` CLI and `git`. If any command fails with "command not found" or similar, report the error and STOP.
-
----
-
-## Worktree preflight
-
-Complete these steps **before** any of the apply flow below. Each one can stop the run.
-
-### P1. Check the worktree policy
-
-Read the EFFECTIVE value, the same way the CLI resolves it — the env layer wins over the file:
-
-1. If the environment variable `SPECLINK_WORKTREE` is set to `true` or `false` (case-insensitive), that IS the effective value — do not consult the file.
-2. Otherwise read the canonical value:
-
-   ```bash
-   speclink workflow-config show --json
-   ```
-
-   and use its `worktree` field.
-
-- **effective value `true`** — continue to P2.
-- **anything else (`false` or absent)** — STOP. Tell the user, in these terms:
-
-  > 本專案未啟用 worktree 流程。要啟用請執行：`speclink workflow-config set worktree true`
-
-  Do **NOT** fall back to running the apply flow in the main folder. Enabling the policy is the user's decision, not yours — offer to run `speclink workflow-config set worktree true` and wait for their answer.
-
-### P2. Confirm the change exists and is not archived
-
-```bash
-speclink list --json
-```
-
-The change must appear among the active changes. If it does not (unknown name, or already archived), STOP and report which change names are available.
-
-### P3. Get the change's artifacts into HEAD
-
-A worktree is materialized from HEAD. If the change's artifacts (`openspec/changes/<change-name>/`) are not committed yet — which is the normal state right after `$speclink-propose` — the new worktree simply will not contain the change, and every later step dead-ends.
-
-Check:
-
-```bash
-git status --porcelain -- "openspec/changes/<change-name>/"
-```
-
-- **Output empty** (artifacts already committed, unchanged) — continue to P4.
-- **Output non-empty** — commit exactly that directory, nothing else:
-
-  ```bash
-  git add "openspec/changes/<change-name>"
-  git commit -m "<a conventional-commit message for the change's spec artifacts, in the project's language>"
-  ```
-
-  Never sweep other dirty files into this commit. If the directory cannot be committed cleanly (e.g. merge conflict markers), STOP and report.
-
-### P4. Create or reuse the worktree
-
-The convention is fixed — do not invent paths or branch names:
-
-- **Branch**: `speclink/<change-name>`
-- **Location**: a sibling nest beside the repo, `<repo-folder-name>.worktrees/<change-name>/`
-
-  For a repo at `/work/speclink` and change `add-auth`, that is `/work/speclink.worktrees/add-auth/`. The nest sits *outside* the repo so it is never picked up by the repo's own tooling.
-
-Check what already exists:
-
-```bash
-git worktree list --porcelain
-git branch --list "speclink/<change-name>"
-```
-
-- **Worktree already present at that path** — reuse it and continue there. Do NOT create a second one, and do NOT remove and recreate it: it may hold work in progress.
-- **Branch exists but no worktree** — attach a worktree to the existing branch:
-
-  ```bash
-  git worktree add "<repo-parent>/<repo-folder-name>.worktrees/<change-name>" "speclink/<change-name>"
-  ```
-
-- **Neither exists** — create both:
-
-  ```bash
-  git worktree add -b "speclink/<change-name>" "<repo-parent>/<repo-folder-name>.worktrees/<change-name>"
-  ```
-
-If `git worktree add` fails, report the error verbatim and STOP.
-
-### P5. Tell the user what this costs
-
-Print a short note before starting work:
-
-> worktree 是一份完整的原始碼副本。相依套件與建置產物不會跟著複製過去——第一次在裡面跑測試或建置，要自己重新安裝相依並重新建置，會花上一段時間。
-
-### P6. Work inside the worktree from here on
-
-Every step of the apply flow below runs **inside the worktree folder**, not the main checkout:
-
-- `cd` into the worktree, or pass it explicitly to every command.
-- File reads and edits target the worktree copy.
-- `speclink` verbs run with the worktree as the working directory, so task checkboxes and stamps land in that copy.
-
-The main checkout stays untouched. Its `speclink list` will show this change with a `[worktree]` marker and reflect the worktree's task progress live — that is how the user watches parallel work from one place.
-
----
-
-以下為 apply 本體流程，於上述 worktree 資料夾內執行。
-
----
-
-Implement tasks from a Speclink change.
-
-**Input**: Optionally specify a change name (e.g., `$speclink-apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
-
-**Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do NOT use any external task management system, built-in task tracker, or todo tool. When a task is done, edit the checkbox in the tasks file — that is the only way to record progress.
-
-**Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
-
-**Steps**
-
-1. **Select the change**
-
-   If a name is provided, use it. Otherwise:
-   - Infer from conversation context if the user mentioned a change
-   - Auto-select if only one active change exists
-   - If ambiguous, run `speclink list --json` to get all available changes. Use the **AskUserQuestion tool** to let the user select
-
-   Always announce: "Using change: <name>" and how to override (e.g., `$speclink-apply <other>`).
-
-2. **Check status to understand the schema**
-
-   ```bash
-   speclink status --change "<name>" --json
-   ```
-
-   **If the command fails**: show the error and STOP.
-
-   **If the command succeeds**, capture the review baseline, then mark the change as in-progress:
-
-   ```bash
-   speclink review prepare "<name>"
-   speclink in-progress add "<name>"
-   ```
-
-   `review prepare` records the host-local Apply baseline (HEAD, dirty files at start) that the review station later resolves its frozen change scope against. Both are silent operations — do not show their output to the user. A stderr warning from `review prepare` (late or unavailable baseline) is fine — continue. If `speclink review prepare` fails, report the error and STOP — do NOT run `speclink in-progress add`.
-
-   Parse the JSON to understand:
-   - `schemaName`: The workflow being used (e.g., "spec-driven")
-   - Which artifact contains the tasks (typically "tasks" for spec-driven, check status for others)
-
-3. **Get apply instructions**
-
-   ```bash
-   speclink instructions apply --change "<name>" --json
-   ```
-
-   This returns:
-   - Context file paths (varies by schema)
-   - Progress (total, complete, remaining)
-   - Task list with status
-   - Dynamic instruction based on current state
-
-   **Handle states:**
-   - If `state: "blocked"` (missing artifacts): show message, suggest using `$speclink-propose` to create the change artifacts first
-   - If `state: "all_done"`: congratulate, suggest archive
-   - Otherwise: proceed to implementation
-
-3b. **Preflight check**
-
-If the apply instructions JSON includes a `preflight` field, act on its `status`:
-
-- **`"clean"`**: silently continue — no output needed.
-- **`"warnings"`**: display a brief summary, then continue automatically:
-  ```
-  ⚠ Preflight warnings:
-  - Drifted files (modified after change was created): <list paths>
-  - Change is <N> days old
-  Continuing...
-  ```
-  Only show the lines that are relevant (skip drifted if none, skip staleness if not stale).
-- **`"critical"`**: display missing files with their source artifact, then use the **AskUserQuestion tool** to ask the user:
-
-  ```
-  ⚠ Preflight: missing files detected
-  - <path> (referenced in <source artifact>)
-  - ...
-  These files are referenced in the change artifacts but no longer exist on disk.
-  ```
-
-  Options: "Continue anyway" / "Stop"
-  If the user chooses "Stop", end the workflow.
-
-  If there is no AskUserQuestion tool available:
-  Display the same information as plain text and ask whether to continue or stop.
-  Wait for the user's response.
-
-If the `preflight` field is absent (blocked or all_done states), skip this step.
-
-3c. **Artifact quality check**
-
-Run `speclink analyze <change-name> --json` to check cross-artifact consistency (Coverage, Consistency, Ambiguity, Gaps).
-
-- **Zero findings**: silently continue.
-- **Warning/Suggestion only**: display a one-line summary (e.g., "⚠ Artifact analysis: 2 warnings found") and continue automatically.
-- **Critical findings**: display each Critical finding (summary + location + recommendation), then use the **AskUserQuestion tool**:
-  - **Fix and continue** — fix the artifact issues inline, then proceed
-  - **Continue anyway** — skip fixes and start implementation
-  - **Stop** — end the workflow
-
-  If there is no AskUserQuestion tool available, present options as plain text and wait for the user's response.
-
-3d. **Drift dormancy check** (passive trigger for stale changes)
-
-When the change has been dormant for more than 5 days AND the change directory has had zero commits in the past 3 days, surface a drift report before tasks begin — the change is likely out-of-sync with the current codebase.
-
-Detect dormancy from `.openspec.yaml` `created` and `git log -1 --format=%at -- openspec/changes/<name>/`:
-
-- **Both conditions met**: run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
-  - **Continue with apply** — proceed to tasks (recommended for Light drift)
-  - **Refresh first** — pause apply, run `/speclink-ingest <change-name>` to update artifacts, then resume
-  - **Stop** — end the workflow
-- **Either condition not met**: silently continue, no output.
-
-The trigger is guidance only — it MUST NOT block apply from proceeding when the user chooses to continue. Hard-blocking on dormancy would punish legitimate "I came back after a long weekend" cases.
-
-(Threshold reasoning: AI-assisted commits are daily-cadence. ≥5 days dormant + ≥3 days no commit ≈ genuine stagnation, not normal pacing.)
-
-If there is no AskUserQuestion tool available, present options as plain text and wait for the user's response.
-
-4. **Read context files**
-
-   Read the files listed in `contextFiles` from the apply instructions output.
-   The files depend on the schema being used:
-   - **spec-driven**: proposal, specs, design, tasks
-   - Other schemas: follow the contextFiles from CLI output
-
-   **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`) — a local snapshot of the remote canon. Read, search, and grep it freely, but NEVER edit projection files: a direct edit is not a remote write and the next command will reject the projection as modified. Any spec or artifact change goes through speclink verbs. If a `STALE` marker file exists at the projection root or a command reports the projection as modified, re-run `speclink instructions apply` to refresh it.
-
-5. **Check project preferences**
-
-   Read `.speclink.yaml` in the project root.
-   If `tdd: true` is set, apply TDD discipline throughout implementation:
-   - For each task, write a failing test FIRST, then implement to make it pass
-   - Fetch TDD instructions by running `speclink instructions --skill tdd`, then follow the Red-Green-Refactor cycle
-   - For bug fixes, reproduce the bug with a failing test before fixing
-
-   If `audit: true` is set, apply sharp-edges discipline throughout implementation:
-   - When designing APIs or interfaces, evaluate through 3 adversary lenses (Scoundrel, Lazy Developer, Confused Developer)
-   - When adding configuration options, verify defaults are secure and zero/empty values are safe
-   - When accepting parameters, check for type confusion and silent failures
-   - Fetch audit instructions by running `speclink instructions --skill audit`, follow the discipline checklist (not the standalone 3-agent workflow)
-
-6. **Show current progress**
-
-   Display:
-   - Schema being used
-   - Progress: "N/M tasks complete"
-   - Remaining tasks overview
-   - Dynamic instruction from CLI
-
-7. **Implement tasks (loop until done or blocked)**
-
-   **Reminder: Track progress by editing checkboxes in the tasks file only. Do not use any built-in task tracker.**
-
-   For each pending task:
-   - Show which task is being worked on
-   - Re-read the sections of design and spec files that are relevant to this task's scope — do not rely on memory from earlier in the conversation, as context may have been compressed
-   - **Read the Implementation Contract for this task before editing any source file.** If `design.md` exists and contains an `## Implementation Contract` section (or contract content under another heading the design uses), read the part of it that covers this task's scope. The contract names the observable behavior, interface or data shape, failure modes, acceptance criteria, and scope boundaries you must satisfy. Treat the contract as the durable handoff — it is what the task will be measured against, regardless of who started the change.
-   - **Detect unclear or path-only tasks before writing code.** A task is unclear if it:
-     - only names files to edit ("edit `foo.rs`", "update `bar.svelte`") with no behavior, contract, or verification target;
-     - is vague ("handle edge cases", "wire it up", "make it work");
-     - conflicts with the implementation contract (asks for behavior the contract excludes, or omits behavior the contract requires).
-       When this happens, pause. Either update the artifact (design or tasks) so the task names a concrete behavior and verification target, or report the blocker and wait for guidance. Do NOT silently guess against unclear requirements.
-   - Before writing code, check:
-     1. **Reuse** — search adjacent modules and shared utilities for existing implementations before writing new code
-     2. **Quality** — derive values from existing state instead of duplicating; use existing types and constants over new literals
-     3. **Efficiency** — parallelize independent async operations; avoid unnecessary awaits; match operation scope to actual need
-     4. **No Placeholders in artifacts** — if the design or spec for this task contains placeholder language (TBD, TODO, "add appropriate handling"), pause and fix the artifact first or flag to the user. Do not implement against vague requirements.
-     5. **Examples as verification** — if the spec for this task's scope includes `##### Example:` blocks, use them as concrete test cases:
-        - When TDD is enabled: derive the first failing test directly from the example's GIVEN/WHEN/THEN values
-        - When TDD is not enabled: after implementing, verify the code handles the example's input→output correctly
-        - Example tables map to parameterized tests — one test per row
-          Do NOT invent additional test values beyond what the spec examples provide without reason. The examples ARE the agreed specification.
-   - Make the code changes required
-   - Keep changes minimal and focused
-   - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
-   - Mark task complete by running: `speclink task done --change "<name>" <task-id>`
-     This command marks the checkbox in tasks.md AND records which files were modified for this task.
-   - If a task was checked by mistake or its implementation is rolled back, run: `speclink task undone --change "<name>" <task-id>`
-     Do NOT edit tasks.md directly to uncheck a task.
-   - Continue to next task
-
-   **Pause if:**
-   - Task is unclear → ask for clarification
-   - Implementation reveals a design issue → suggest updating artifacts
-   - Error or blocker encountered → report and wait for guidance
-   - User interrupts
-
-   **Started the wrong change?**
-
-   If apply was run against the wrong change (or a change was marked
-   in-progress by mistake), revert it to proposed:
-
-   ```bash
-   speclink in-progress remove "<name>"
-   ```
-
-   The verb succeeds only when the change carries zero work traces; with
-   traces present it refuses and lists the evidence. Two ways out:
-
-   - Checked tasks: uncheck them with `speclink task undone`, then retry
-   - Touched records: the listed files may mix content from other changes —
-     judge and clean them up case by case (there is no force flag and no
-     mechanical cleanup), then ask the user how to proceed
-
-   Unlike `in-progress add`, an unknown change name errors loudly — check the
-   name with `speclink list` if it reports not found.
-
----
-
-## Rationalization Table
-
-| What You're Thinking                                               | What You Should Do                                                                                                                            |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| "This task looks done, I'll mark it complete"                      | Re-read the task description first. Check whether your diff covers every part of it. Incomplete tasks marked done are the #1 source of rework |
-| "This task is trivial, I don't need to re-read the design"         | Re-read. Context compression loses details. 30s of reading saves 30min of rework                                                              |
-| "I already know how this works, skip the code search"              | Search anyway. Someone may have added a utility since you last looked                                                                         |
-| "The test is obvious, I'll add it after implementation"            | If TDD is enabled, test first. If not, still write it before marking done                                                                     |
-| "This is just a small refactor, no test needed"                    | Small refactors are how regressions sneak in. Write the test                                                                                  |
-| "The artifact says X but Y makes more sense"                       | Pause and suggest updating the artifact. Don't silently deviate                                                                               |
-| "I'll fix this other thing I noticed while I'm here"               | Finish current task first. Address the other thing separately                                                                                 |
-| "The example values are just illustrations, I'll pick better ones" | Use the spec example values exactly. They were chosen deliberately                                                                            |
-
----
-
-8. **Final check**
-
-   After completing all tasks, re-run:
-
-   ```bash
-   speclink instructions apply --change "<name>" --json
-   ```
-
-   Confirm `state: "all_done"`. If not, review remaining tasks and complete them.
-
-9. **On completion or pause, show status**
-
-   Display:
-   - Tasks completed this session
-   - Overall progress: "N/M tasks complete"
-   - If all done: suggest archive
-   - If paused: explain why and wait for guidance
-
-**Output During Implementation**
-
-```
-## Implementing: <change-name> (schema: <schema-name>)
-
-Working on task 3/7: <task description>
-[...implementation happening...]
-✓ Task complete
-
-Working on task 4/7: <task description>
-[...implementation happening...]
-✓ Task complete
-```
-
-**Output On Completion**
-
-```
-## Implementation Complete
-
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Progress:** 7/7 tasks complete ✓
-
-### Completed This Session
-- [x] Task 1
-- [x] Task 2
-...
-
-All tasks complete! You can archive this change with `$speclink-archive`.
-```
-
-**Output On Pause (Issue Encountered)**
-
-```
-## Implementation Paused
-
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Progress:** 4/7 tasks complete
-
-### Issue Encountered
-<description of the issue>
-
-**Options:**
-1. <option 1>
-2. <option 2>
-3. Other approach
-
-What would you like to do?
-```
-
-**Guardrails**
-
-- Keep going through tasks until done or blocked
-- Always read context files before starting (from the apply instructions output)
-- If task is ambiguous, pause and ask before implementing
-- If implementation reveals issues, pause and suggest artifact updates
-- Keep code changes minimal and scoped to each task
-- Update task checkbox immediately after completing each task
-- Pause on errors, blockers, or unclear requirements - don't guess
-- Use contextFiles from CLI output, don't assume specific file names
-- **No external task tracking** — do not use any built-in task management, todo list, or progress tracking tool; the tasks file is the only system
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
-
-**Fluid Workflow Integration**
-
-This skill supports the "actions on a change" model:
-
-- **Can be invoked anytime**: Before all artifacts are done (if tasks exist), after partial implementation, interleaved with other actions
-- **Allows artifact updates**: If implementation reveals design issues, suggest updating artifacts - not phase-locked, work fluidly
-
-
----
-
-## Worktree wrap-up
-
-Once the apply flow above has finished (all tasks complete, or the user stopped you at a good point), do these — still **inside the worktree**.
-
-### W1. Commit the change in the worktree
-
-Follow the `$speclink-commit` skill's attribution convention: stage only the files belonging to this change (its artifacts under `openspec/changes/<change-name>/` plus the source files recorded in the change's evidence record), leave unrelated dirty files alone, and write the commit message in the project's language.
-
-The commit lands on branch `speclink/<change-name>` inside the worktree. Nothing reaches the main branch yet.
-
-### W2. Stop here — do not merge, do not remove the worktree
-
-This skill's job ends at the commit. Explicitly:
-
-- **Do NOT** merge `speclink/<change-name>` back into the main branch.
-- **Do NOT** run `git worktree remove`, and do NOT delete the branch.
-- **Do NOT** switch the main checkout to another branch or touch it in any way.
-
-Merging is a separate, human-triggered step: it needs a clean main tree, and a conflict there is the user's call, not yours. Leaving the worktree in place also means the main checkout's `speclink list` keeps showing this change with its `[worktree]` marker until the merge happens.
-
-### W3. Hand off
-
-Tell the user, plainly:
-
-> 這個 change 已在 worktree 內完成並提交，尚未合併回主分支。要收尾請執行 `$speclink-worktree-merge <change-name>`——它會檢查主樹是否乾淨、把分支合併回去，成功後移除 worktree 並刪掉分支。
-
-Report alongside it: the worktree path, the branch name, and the tasks completed this session.
 
 === .agents/skills/speclink-archive/SKILL.md ===
 ---
@@ -833,7 +361,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -1107,7 +635,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -1343,7 +871,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -1614,7 +1142,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -1725,7 +1253,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -2162,7 +1690,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -2284,7 +1812,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -2552,7 +2080,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -2646,7 +2174,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -3066,7 +2594,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.9.0"
+  version: "v1.10.0"
   generatedBy: "Speclink"
 ---
 
@@ -3233,139 +2761,3 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 - Accepted findings are carried, never re-reported: sub-agents get the no-re-report list, the round record keeps the items
 - Thin artifacts: judge from code and tests, never invent requirements
 - Stop on errors and report — don't guess past a failing verb
-
-=== .agents/skills/speclink-worktree-merge/SKILL.md ===
----
-name: speclink-worktree-merge
-description: "Merge a finished Speclink worktree branch back into the main branch, then clean up"
-license: MIT
-compatibility: Requires speclink CLI.
-metadata:
-  author: speclink
-  version: "v1.9.0"
-  generatedBy: "Speclink"
----
-
-Merge a finished Speclink worktree branch back into the main branch, then clean up.
-
-This is the wrap-up half of `$speclink-apply-with-worktree`. That skill stops right after committing inside the worktree; this one takes it from there. It is **human-triggered**: merging is a decision, and a conflict is the user's call.
-
-**Input**: Optionally specify a change name (e.g., `$speclink-worktree-merge add-auth`). If omitted, run `git worktree list --porcelain` and offer the `speclink/*` branches found. If more than one is a candidate you MUST ask which one — never guess.
-
-**Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available, report it and STOP. Every step below runs in the **main checkout**, not in the worktree.
-
-**Steps**
-
-1. **Identify the worktree**
-
-   ```bash
-   git worktree list --porcelain
-   ```
-
-   Find the entry whose branch is `speclink/<change-name>`. If there is none, STOP and tell the user no worktree exists for that change — nothing to merge.
-
-   Announce: "Merging worktree for change: <name>" plus the worktree path and branch.
-
-2. **Preflight — all three conditions must hold**
-
-   Check which branch the main checkout is on:
-
-   ```bash
-   git -C <main-checkout> branch --show-current
-   ```
-
-   - **A `speclink/*` branch, or empty output (detached HEAD)** — STOP. The main checkout is parked somewhere a merge must never land; tell the user to switch it back to the main branch first. Do **NOT** switch branches on their behalf.
-   - **Anything else** — that branch is the merge target. Announce it (it appears again in step 3 and in the success output), so a wrong destination is visible BEFORE the merge, not after.
-
-   Check the main checkout's working tree:
-
-   ```bash
-   git -C <main-checkout> status --porcelain
-   ```
-
-   Check the worktree's:
-
-   ```bash
-   git -C <worktree-path> status --porcelain
-   ```
-
-   - **Main tree not clean** (any uncommitted change) — STOP. List the dirty files and tell the user to commit or stash them first. Do **NOT** stash on their behalf. Do **NOT** commit their unrelated work for them.
-   - **Worktree not fully committed** (any uncommitted change) — STOP. List the dirty files and tell the user the change's work must be committed inside the worktree first (`$speclink-apply-with-worktree` does this at its wrap-up). Do **NOT** commit on their behalf.
-
-   Only when all three hold, continue.
-
-3. **Merge into the main branch**
-
-   In the main checkout, on the target branch verified in step 2:
-
-   ```bash
-   git -C <main-checkout> merge "speclink/<change-name>"
-   ```
-
-4. **Conflict — stop immediately**
-
-   If the merge reports conflicts:
-
-   - Abort so nothing half-merged is left behind:
-
-     ```bash
-     git -C <main-checkout> merge --abort
-     ```
-
-   - Report the conflicting file list to the user, verbatim.
-   - Do **NOT** edit conflict markers, do **NOT** pick a side, do **NOT** commit a partial merge.
-   - STOP and wait for the user to decide how to resolve it.
-
-   The main checkout must end up exactly as it was before step 3.
-
-5. **Clean up after a successful merge**
-
-   ```bash
-   git -C <main-checkout> worktree remove "<worktree-path>"
-   git -C <main-checkout> branch -d "speclink/<change-name>"
-   ```
-
-   If `worktree remove` refuses because the worktree is dirty, do NOT force it — report what is uncommitted there and STOP. If `branch -d` refuses, report it and STOP: an unmerged commit means step 3 did not carry everything.
-
-   After removal the main checkout's `speclink list` no longer shows the `[worktree]` marker for this change, and its task counts read from the main copy again.
-
-6. **Confirm and hand off**
-
-   Tell the user the wrap-up is done: the branch is merged, the worktree is removed, and the branch is deleted. Then point at what comes next for this change:
-
-   > 這個 change 已合併回主分支。接下來可以跑品質站（`$speclink-review` 看工藝品質、`$speclink-verify` 看規格符合度），或直接 `$speclink-archive` 封存。
-
-**Output On Success**
-
-```
-## Worktree merged
-
-**Change:** <change-name>
-**Branch:** speclink/<change-name> → <main-branch> ✓
-**Worktree:** <path> (removed)
-**Branch deleted:** ✓
-
-接下來：品質站（$speclink-review、$speclink-verify）或 $speclink-archive
-```
-
-**Output On Stop**
-
-```
-## Merge stopped
-
-**Change:** <change-name>
-**Reason:** <preflight failure or conflict>
-
-<dirty file list, or conflicting file list>
-
-**What you need to do:**
-<the specific action — commit/stash in the main tree, commit in the worktree, or resolve the conflict>
-```
-
-**Guardrails**
-
-- Never stash or commit on the user's behalf — in the main checkout or in the worktree
-- Never resolve merge conflicts yourself; abort the merge and report
-- Never leave a half-finished merge state behind
-- Never force-remove a worktree that still has uncommitted work
-- Never merge a change whose worktree you did not verify is fully committed

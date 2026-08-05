@@ -11,4 +11,11 @@ describe("APP_MESSAGES", () => {
     expect(zh).toEqual(en);
     expect(zh.length).toBeGreaterThan(0);
   });
+
+  it("zh-TW 文案不得含工程詞 change——LANGUAGE.md 正典詞是「變更」（worktree 為明文例外，change 不是）", () => {
+    const offenders = Object.entries(APP_MESSAGES["zh-TW"])
+      .filter(([, value]) => /\bchanges?\b/.test(value))
+      .map(([key]) => key);
+    expect(offenders).toEqual([]);
+  });
 });

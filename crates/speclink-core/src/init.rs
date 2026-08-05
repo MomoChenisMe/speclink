@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：指令檔 SPECLINK 標記與技能檔 frontmatter 的 version 同源於此。
 /// 僅在內嵌資產（assets/skills）或 marker 模板的 render 內容變動時遞增——與 app／CLI
 /// 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const MARKER_VERSION: &str = "v1.9.0";
+pub const MARKER_VERSION: &str = "v1.10.0";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -82,7 +82,12 @@ fn store_paragraph(spec_dir: &str, store: StoreKind) -> String {
 
 /// The SPECLINK marker block for a built-in tool — pub so the SDK's
 /// `instructions.render` shares this exact generation path with `init`/`update`.
-pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind) -> String {
+///
+/// `worktree` mirrors the generation gate: the two worktree skill lines appear only
+/// when the policy is on, because a marker that points at a skill the policy just
+/// pruned tells the agent to invoke something that no longer exists. Same principle
+/// as the codex target omitting `verify` (that skill is not generated for codex).
+pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree: bool) -> String {
     // Codex differs: `$speclink-` prefix, no plan mode, and no verify skill (for_codex=false).
     let (p, plan_line) = match tool {
         Tool::Codex => ("$speclink-", "- Requirements change mid-work? `ingest` → resume `apply`"),
@@ -105,6 +110,15 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind) -> String
             "discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive",
         ),
     };
+    // 兩行 worktree 指引隨政策進出；其餘內容不受影響。
+    let worktree_lines = if worktree {
+        format!(
+            "- Implementing several independent changes at once → `{p}apply-with-worktree` (one git worktree per change)\n\
+- A worktree change is committed and ready to land → `{p}worktree-merge` (merge back, then clean up)\n"
+        )
+    } else {
+        String::new()
+    };
     format!(
         "<!-- SPECLINK:START {ver} -->\n\n\
 # Speclink Instructions\n\n\
@@ -114,8 +128,7 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind) -> String
 - User wants to plan, propose, or design a change → `{p}propose` (`--from-discussion <slug>` seeds it from a concluded discussion)\n\
 - Adopting Speclink on an existing codebase → `{p}onboard`\n\
 - Tasks are ready to implement → `{p}apply`\n\
-- Implementing several independent changes at once → `{p}apply-with-worktree` (one git worktree per change)\n\
-- A worktree change is committed and ready to land → `{p}worktree-merge` (merge back, then clean up)\n\
+{worktree_lines}\
 - Resuming a change that sat idle → run `{p}drift` first\n\
 - Requirements change mid-work → `{p}ingest`\n\
 {done_line}\n\
@@ -130,6 +143,7 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind) -> String
         ver = MARKER_VERSION,
         store_paragraph = store_paragraph(spec_dir, store),
         p = p,
+        worktree_lines = worktree_lines,
         done_line = done_line,
         workflow = workflow,
         plan_line = plan_line,
@@ -507,22 +521,54 @@ fn save_custom_state(root: &Path, customs: &[CustomTool]) -> Result<()> {
     Ok(())
 }
 
+/// Whether worktree-gated skills belong in the generation set.
+///
+/// Reads `openspec/config.yaml`'s `worktree` key DIRECTLY rather than through the
+/// four-layer policy resolution: injection is the project's persistent state, while
+/// `SPECLINK_WORKTREE` is a per-run escape hatch for the skill's own runtime check.
+///
+/// A config that exists but cannot be parsed keeps the skills. Pruning is the
+/// irreversible direction — a user who broke their config mid-flight must not lose the
+/// merge skill their open worktree depends on; the skill's runtime check still refuses
+/// to run under an off policy.
+fn worktree_skills_enabled(root: &Path, spec_dir: &str) -> bool {
+    let text = util::read_opt(&root.join(spec_dir).join("config.yaml"));
+    match crate::config::WorkflowConfig::from_text(text.as_deref()) {
+        Ok(cfg) => cfg.worktree.unwrap_or(false),
+        Err(_) => true,
+    }
+}
+
+/// Apply the worktree gate to one skill's target directory: `Ok(true)` means "skip it",
+/// and any directory a previous policy-on generation left behind is removed first, so
+/// flipping the policy off converges in a single run.
+fn skip_gated_skill(skill: &skills::Skill, worktree_on: bool, dir: &Path) -> Result<bool> {
+    if !skill.worktree_gated || worktree_on {
+        return Ok(false);
+    }
+    if dir.is_dir() {
+        std::fs::remove_dir_all(dir)?;
+    }
+    Ok(true)
+}
+
 /// Generate a custom tool's artifacts: skills under `<skills_dir>/speclink-*/SKILL.md`
 /// (the non-Claude command subset) and the SPECLINK marker block in its instructions file.
 fn generate_custom(root: &Path, tool: &CustomTool, spec_dir: &str, store: StoreKind) -> Result<()> {
     let md = root.join(&tool.instructions_file);
     let merged = upsert_marker(util::read_opt(&md), &custom_instructions_body(spec_dir, tool, store));
     util::write_file(&md, &merged)?;
+    let worktree_on = worktree_skills_enabled(root, spec_dir);
     for skill in skills::registry() {
         if !skill.for_codex {
             continue;
         }
+        let dir = root.join(&tool.skills_dir).join(format!("speclink-{}", skill.name));
+        if skip_gated_skill(&skill, worktree_on, &dir)? {
+            continue;
+        }
         let content = skills::render_skill_file_for(skills::RenderTarget::Custom(tool), &skill, spec_dir);
-        let path = root
-            .join(&tool.skills_dir)
-            .join(format!("speclink-{}", skill.name))
-            .join("SKILL.md");
-        util::write_file(&path, &content)?;
+        util::write_file(&dir.join("SKILL.md"), &content)?;
     }
     Ok(())
 }
@@ -623,20 +669,24 @@ fn generate_tool(root: &Path, tool: Tool, spec_dir: &str, force: bool, store: St
     // Root instruction file (marker upsert). No other tool-level files: the tool's own
     // user settings (e.g. .claude/settings.json) are the user's data, never generated
     // (spec: 工具檔生成不寫入 AI 工具的使用者設定檔).
+    let worktree_on = worktree_skills_enabled(root, spec_dir);
     let md = root.join(instructions_path(tool));
-    let merged = upsert_marker(util::read_opt(&md), &instructions_body(spec_dir, tool, store));
+    let merged = upsert_marker(
+        util::read_opt(&md),
+        &instructions_body(spec_dir, tool, store, worktree_on),
+    );
     util::write_file(&md, &merged)?;
     // Skills: Claude gets the full registry; codex gets the command subset.
     for skill in skills::registry() {
         if tool != Tool::Claude && !skill.for_codex {
             continue;
         }
+        let dir = root.join(tool.skills_dir()).join(format!("speclink-{}", skill.name));
+        if skip_gated_skill(&skill, worktree_on, &dir)? {
+            continue;
+        }
         let content = skills::render_skill_file_for(skills::RenderTarget::Builtin(tool), &skill, spec_dir);
-        let path = root
-            .join(tool.skills_dir())
-            .join(format!("speclink-{}", skill.name))
-            .join("SKILL.md");
-        write_if(&path, &content, force)?;
+        write_if(&dir.join("SKILL.md"), &content, force)?;
     }
     Ok(())
 }
@@ -824,13 +874,22 @@ fn differing_managed_files(
             differing.push(rel);
         }
     };
+    // 被政策排除的技能不屬於預期生成集合——否則政策關閉的專案會永遠被報成
+    // 「檔案缺失」而過期；marker 的兩行 worktree 指引同理。
+    let worktree_on = worktree_skills_enabled(root, spec_dir);
     for tool in tools {
         let rel = instructions_path(*tool);
         let existing = util::read_opt(&root.join(rel));
-        let expected = upsert_marker(existing, &instructions_body(spec_dir, *tool, store));
+        let expected = upsert_marker(
+            existing,
+            &instructions_body(spec_dir, *tool, store, worktree_on),
+        );
         compare(rel.to_string(), &expected);
         for skill in skills::registry() {
             if *tool != Tool::Claude && !skill.for_codex {
+                continue;
+            }
+            if skill.worktree_gated && !worktree_on {
                 continue;
             }
             let expected =
@@ -1466,5 +1525,126 @@ mod tests {
         assert_eq!(probe.status, InstructionStatus::Current, "{probe:?}");
         assert!(probe.tools.is_empty());
         assert_eq!(snapshot(&root), before, "探測不得寫入任何檔案");
+    }
+
+    // --- worktree 政策閘：生成集合隨 openspec/config.yaml 的 worktree 檔值 ---
+    // Spec requirement「worktree 技能的政策條件式生成」。
+
+    /// 兩顆受閘控技能於某工具 skills 目錄下的相對路徑。
+    fn worktree_skill_dirs(tool: Tool) -> [String; 2] {
+        [
+            format!("{}/speclink-apply-with-worktree", tool.skills_dir()),
+            format!("{}/speclink-worktree-merge", tool.skills_dir()),
+        ]
+    }
+
+    /// 覆寫 workflow config 的 worktree 政策（其餘欄位不留，測試只關心這一鍵）。
+    fn set_worktree_policy(root: &TempRoot, on: bool) {
+        root.write("openspec/config.yaml", &format!("schema: spec-driven\nworktree: {on}\n"));
+    }
+
+    #[test]
+    fn generation_omits_worktree_skills_when_the_policy_key_is_absent() {
+        // Scenario「政策關閉時生成集合不含 worktree 技能」的鍵缺席分支：init 範本
+        // 只留註解示例，等同未設＝關。
+        let root = TempRoot::new("gate-absent");
+        init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
+
+        for dir in worktree_skill_dirs(Tool::Claude) {
+            assert!(!root.exists(&dir), "政策未設時不得生成 {dir}");
+        }
+        // 其餘技能照常生成。
+        assert!(root.exists(".claude/skills/speclink-apply"), "非閘控技能須照常生成");
+    }
+
+    #[test]
+    fn generation_omits_worktree_skills_when_the_policy_is_false() {
+        let root = TempRoot::new("gate-false");
+        init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
+        set_worktree_policy(&root, false);
+
+        update(&root.dir).unwrap();
+
+        for dir in worktree_skill_dirs(Tool::Claude) {
+            assert!(!root.exists(&dir), "政策為 false 時不得生成 {dir}");
+        }
+        assert!(root.exists(".claude/skills/speclink-apply"));
+    }
+
+    #[test]
+    fn generation_includes_worktree_skills_when_the_policy_is_on() {
+        // Scenario「政策開啟時注入兩顆技能」。
+        let root = TempRoot::new("gate-on");
+        init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
+        set_worktree_policy(&root, true);
+
+        update(&root.dir).unwrap();
+
+        for dir in worktree_skill_dirs(Tool::Claude) {
+            assert!(root.exists(&format!("{dir}/SKILL.md")), "政策為 true 時須生成 {dir}");
+        }
+    }
+
+    #[test]
+    fn the_gate_applies_to_codex_and_custom_descriptors_alike() {
+        // 需求句「此過濾對 claude、codex 與自訂描述子工具一視同仁」。
+        let root = TempRoot::new("gate-all-targets");
+        init(&root.dir, &[Tool::Claude, Tool::Codex], true, "openspec").unwrap();
+        root.write(
+            ".speclink.yaml",
+            &format!("tools:\n  - claude\n  - codex\n{CUSTOM_DESCRIPTOR}"),
+        );
+
+        update(&root.dir).unwrap();
+        for dir in worktree_skill_dirs(Tool::Codex) {
+            assert!(!root.exists(&dir), "政策關閉時 codex 不得生成 {dir}");
+        }
+        assert!(!root.exists(".wad/skills/speclink-apply-with-worktree"), "描述子亦受閘控");
+        assert!(root.exists(".wad/skills/speclink-apply"), "描述子的非閘控技能照常生成");
+
+        set_worktree_policy(&root, true);
+        update(&root.dir).unwrap();
+        for dir in worktree_skill_dirs(Tool::Codex) {
+            assert!(root.exists(&dir), "政策開啟時 codex 須生成 {dir}");
+        }
+        assert!(root.exists(".wad/skills/speclink-apply-with-worktree/SKILL.md"));
+    }
+
+    #[test]
+    fn the_marker_lists_worktree_skills_only_when_the_policy_is_on() {
+        // Spec requirement「marker 技能指引跟隨 worktree 政策」：技能檔被政策清掉而
+        // marker 仍指路，等於叫代理呼叫不存在的技能。
+        let root = TempRoot::new("marker-gate");
+        init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
+        let off = root.read("CLAUDE.md");
+        assert!(!off.contains("apply-with-worktree"), "政策關閉時 marker 不得提 apply-with-worktree:\n{off}");
+        assert!(!off.contains("worktree-merge"), "政策關閉時 marker 不得提 worktree-merge:\n{off}");
+        assert!(off.contains("/speclink-apply`"), "其餘技能指引須照舊:\n{off}");
+
+        set_worktree_policy(&root, true);
+        update(&root.dir).unwrap();
+        let on = root.read("CLAUDE.md");
+
+        let added: Vec<&str> = on.lines().filter(|l| !off.lines().any(|o| o == *l)).collect();
+        assert_eq!(added.len(), 2, "兩版 marker 應僅差兩行 worktree 指引，實得：{added:?}");
+        assert!(added.iter().any(|l| l.contains("apply-with-worktree")));
+        assert!(added.iter().any(|l| l.contains("worktree-merge")));
+    }
+
+    #[test]
+    fn an_unparseable_workflow_config_keeps_the_worktree_skills() {
+        // 刪除是不可逆方向：政策讀不出來時（使用者手改壞了 config.yaml）一律保留
+        // 技能，由技能內的執行期政策檢查兜底，絕不以「讀不到＝關」為由清掉檔案。
+        let root = TempRoot::new("gate-broken-config");
+        init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
+        set_worktree_policy(&root, true);
+        update(&root.dir).unwrap();
+
+        root.write("openspec/config.yaml", "schema: [unterminated\n");
+        update(&root.dir).unwrap();
+
+        for dir in worktree_skill_dirs(Tool::Claude) {
+            assert!(root.exists(&dir), "政策文件壞掉時不得清掉 {dir}");
+        }
     }
 }

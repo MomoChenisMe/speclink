@@ -1,4 +1,7 @@
 schema: spec-driven
+
+worktree: true
+
 locale: tw
 spec_locale: tw
 tdd: true

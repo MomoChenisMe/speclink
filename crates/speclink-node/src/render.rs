@@ -17,13 +17,16 @@ pub struct SkillInfo {
 
 /// Options of `skills.render` / `instructions.render` — the render matrix:
 /// target (claude | codex | neutral), invocation (cli | tool-call, default
-/// cli), store (fs | remote, default fs), plus the spec directory name and
-/// the neutral target's tool name ({{TOOL}} substitution, default "speclink").
+/// cli), store (fs | remote, default fs), worktree (whether the instructions
+/// block lists the worktree skills, default false — matching the workflow
+/// config's own default), plus the spec directory name and the neutral
+/// target's tool name ({{TOOL}} substitution, default "speclink").
 #[napi(object)]
 pub struct RenderOptions {
     pub target: String,
     pub invocation: Option<String>,
     pub store: Option<String>,
+    pub worktree: Option<bool>,
     pub spec_dir: Option<String>,
     pub tool_name: Option<String>,
 }
@@ -32,6 +35,7 @@ pub struct RenderOptions {
 struct Matrix {
     target: TargetKind,
     store: StoreKind,
+    worktree: bool,
     spec_dir: String,
 }
 
@@ -80,6 +84,7 @@ fn resolve_matrix(opts: &RenderOptions) -> Result<Matrix> {
     Ok(Matrix {
         target,
         store,
+        worktree: opts.worktree.unwrap_or(false),
         spec_dir: opts.spec_dir.clone().unwrap_or_else(|| "openspec".to_string()),
     })
 }
@@ -105,8 +110,9 @@ pub fn skills_render(name: String, opts: RenderOptions) -> Result<String> {
         .find(|s| s.name == name)
         .ok_or_else(|| Error::from_reason(format!("Unknown skill: {name}")))?;
     // Skill bodies are store-mode independent (they reach documents through
-    // speclink verbs); the store axis only shapes the instructions block.
-    let _ = matrix.store;
+    // speclink verbs), and the worktree policy only decides whether a skill is
+    // GENERATED, never what it contains; both axes shape the instructions block only.
+    let _ = (matrix.store, matrix.worktree);
     let target = match &matrix.target {
         TargetKind::Builtin(tool) => RenderTarget::Builtin(*tool),
         TargetKind::Neutral(custom) => RenderTarget::Custom(custom),
@@ -122,7 +128,12 @@ pub fn instructions_render(opts: RenderOptions) -> Result<String> {
     let matrix = resolve_matrix(&opts)?;
     Ok(match &matrix.target {
         TargetKind::Builtin(tool) => {
-            speclink_core::init::instructions_body(&matrix.spec_dir, *tool, matrix.store)
+            speclink_core::init::instructions_body(
+                &matrix.spec_dir,
+                *tool,
+                matrix.store,
+                matrix.worktree,
+            )
         }
         TargetKind::Neutral(custom) => {
             speclink_core::init::custom_instructions_body(&matrix.spec_dir, custom, matrix.store)

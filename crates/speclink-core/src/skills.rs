@@ -68,6 +68,10 @@ pub struct Skill {
     /// Part of the command subset generated for non-Claude tools (codex/cursor/gemini/windsurf
     /// skills, and the cursor/gemini/windsurf command files).
     pub for_codex: bool,
+    /// Generated only when the workflow config's `worktree` policy is on. The registry
+    /// itself stays complete regardless — the gate applies to the GENERATION set, so
+    /// `skill_body`, the SDK's render API and the golden locks keep seeing every skill.
+    pub worktree_gated: bool,
     pub body: &'static str,
 }
 
@@ -101,32 +105,32 @@ const B_TDD: &str = include_str!("../assets/skills/tdd.md");
 /// The skills that generate SKILL.md files.
 pub fn registry() -> Vec<Skill> {
     vec![
-        Skill { name: "analyze", description: "Analyze artifact consistency for a change", fork: true, disallow_edit: true, for_codex: false, body: B_ANALYZE },
-        Skill { name: "apply", description: "Implement or resume tasks from a Speclink change", fork: false, disallow_edit: false, for_codex: true, body: B_APPLY },
+        Skill { name: "analyze", description: "Analyze artifact consistency for a change", fork: true, disallow_edit: true, for_codex: false, worktree_gated: false, body: B_ANALYZE },
+        Skill { name: "apply", description: "Implement or resume tasks from a Speclink change", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_APPLY },
         // Same permissions as `apply` — it IS apply, wrapped in worktree setup
         // and hand-off; the extra steps are git commands, not a narrower role.
-        Skill { name: "apply-with-worktree", description: "Implement tasks from a Speclink change inside an isolated git worktree, for parallel work", fork: false, disallow_edit: false, for_codex: true, body: B_APPLY_WITH_WORKTREE },
-        Skill { name: "archive", description: "Archive a completed change", fork: false, disallow_edit: false, for_codex: true, body: B_ARCHIVE },
+        Skill { name: "apply-with-worktree", description: "Implement tasks from a Speclink change inside an isolated git worktree, for parallel work", fork: false, disallow_edit: false, for_codex: true, worktree_gated: true, body: B_APPLY_WITH_WORKTREE },
+        Skill { name: "archive", description: "Archive a completed change", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ARCHIVE },
         // Not a fork skill: the rewritten standalone mode fans out three
         // parallel audit agents, which the fork's Explore agent cannot spawn.
-        Skill { name: "audit", description: "Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures", fork: false, disallow_edit: true, for_codex: true, body: B_AUDIT },
-        Skill { name: "commit", description: "Commit files related to a specific Speclink change", fork: false, disallow_edit: false, for_codex: true, body: B_COMMIT },
+        Skill { name: "audit", description: "Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_AUDIT },
+        Skill { name: "commit", description: "Commit files related to a specific Speclink change", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_COMMIT },
         // Writes only through `speclink workflow-config` (never a direct file
         // edit), so Edit/Write stay disallowed; not a fork skill because the
         // policy fields must be asked for interactively.
-        Skill { name: "config", description: "Compose the workflow config's context and rules from the codebase, landed through an approved diff", fork: false, disallow_edit: true, for_codex: true, body: B_CONFIG },
-        Skill { name: "discuss", description: "Have a focused discussion that is recorded to a discussion document", fork: false, disallow_edit: true, for_codex: true, body: B_DISCUSS },
-        Skill { name: "drift", description: "Detect drift between a Speclink change and the current codebase state", fork: true, disallow_edit: true, for_codex: true, body: B_DRIFT },
-        Skill { name: "ingest", description: "Update an existing Speclink change from external context", fork: false, disallow_edit: false, for_codex: true, body: B_INGEST },
-        Skill { name: "onboard", description: "Adopt Speclink on an existing codebase by generating initial specs from current behavior", fork: false, disallow_edit: false, for_codex: true, body: B_ONBOARD },
-        Skill { name: "propose", description: "Create a change proposal with all required artifacts", fork: false, disallow_edit: false, for_codex: true, body: B_PROPOSE },
+        Skill { name: "config", description: "Compose the workflow config's context and rules from the codebase, landed through an approved diff", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_CONFIG },
+        Skill { name: "discuss", description: "Have a focused discussion that is recorded to a discussion document", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_DISCUSS },
+        Skill { name: "drift", description: "Detect drift between a Speclink change and the current codebase state", fork: true, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_DRIFT },
+        Skill { name: "ingest", description: "Update an existing Speclink change from external context", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_INGEST },
+        Skill { name: "onboard", description: "Adopt Speclink on an existing codebase by generating initial specs from current behavior", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ONBOARD },
+        Skill { name: "propose", description: "Create a change proposal with all required artifacts", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_PROPOSE },
         // Not a fork skill（design D7 替代案否決 fork）：主線 orchestrator 要
         // fan-out 兩個平行 sub-agent 並互動詢問三選項；修正回主線，故 Edit 不禁。
-        Skill { name: "review", description: "Review a change's implementation for craft quality — parallel standards and correctness axes, recorded to a review ticket", fork: false, disallow_edit: false, for_codex: true, body: B_REVIEW },
-        Skill { name: "verify", description: "Verify implementation matches artifacts", fork: true, disallow_edit: true, for_codex: false, body: B_VERIFY },
+        Skill { name: "review", description: "Review a change's implementation for craft quality — parallel standards and correctness axes, recorded to a review ticket", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_REVIEW },
+        Skill { name: "verify", description: "Verify implementation matches artifacts", fork: true, disallow_edit: true, for_codex: false, worktree_gated: false, body: B_VERIFY },
         // Runs git commands only — a conflict stops the flow for the user to
         // resolve, so the agent never edits a file: Edit/Write stay disallowed.
-        Skill { name: "worktree-merge", description: "Merge a finished Speclink worktree branch back into the main branch, then clean up", fork: false, disallow_edit: true, for_codex: true, body: B_WORKTREE_MERGE },
+        Skill { name: "worktree-merge", description: "Merge a finished Speclink worktree branch back into the main branch, then clean up", fork: false, disallow_edit: true, for_codex: true, worktree_gated: true, body: B_WORKTREE_MERGE },
     ]
 }
 

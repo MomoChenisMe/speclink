@@ -372,6 +372,8 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
         specLocale: "auto",
         tdd: true,
         audit: false,
+        // remote 無 worktree 軸；欄位存在於完整目標狀態，寫入端忽略。
+        worktree: false,
       }),
     ).resolves.toBe(8);
     await session.settings.writeWorkflowContext("updated");

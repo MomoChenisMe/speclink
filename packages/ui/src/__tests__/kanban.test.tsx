@@ -172,6 +172,27 @@ describe("KanbanBoard", () => {
     expect(within(column("in-progress")).getByText("fresh-b")).toBeTruthy();
   });
 
+  it("shows the worktree marker only on cards whose change is mapped to a worktree", () => {
+    // spec worktree-overlay「desktop 看板的 worktree 呈現」：有映射的卡片帶標示，
+    // 無映射不帶——標示與欄位歸屬正交。
+    const withWorktree: ChangeItem[] = [
+      {
+        name: "wt-a",
+        status: "in-progress",
+        totalTasks: 4,
+        completedTasks: 1,
+        worktree: { branch: "speclink/wt-a", path: "/work/speclink.worktrees/wt-a" },
+      },
+      { name: "plain-b", status: "in-progress", totalTasks: 4, completedTasks: 1 },
+    ];
+    render(<KanbanBoard changes={withWorktree} />);
+    const wtCard = screen.getByText("wt-a").closest("[data-change]") as HTMLElement;
+    expect(within(wtCard).getByLabelText("worktree")).toBeTruthy();
+    const plainCard = screen.getByText("plain-b").closest("[data-change]") as HTMLElement;
+    expect(within(plainCard).queryByLabelText("worktree")).toBeNull();
+    expect(within(column("in-progress")).getByText("wt-a")).toBeTruthy();
+  });
+
   it("shows the invalid-metadata marker only on cards whose change carries metaError", () => {
     // spec「看板照常開啟並標記損壞卡」：metaError 卡帶最小 invalid 標記
     // （tooltip 載解析原因），有效卡不帶；兩張卡照常列於看板。

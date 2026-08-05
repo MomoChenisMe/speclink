@@ -78,6 +78,7 @@ pub fn revert_change_to_proposed_at(root: &Path, change: &str) -> Result<(), Str
     }
     let ctx = init_core_context(root)
         .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
+    crate::query::refuse_if_worktree_is_open(&ctx, change)?;
     speclink_core::inprogress::remove(&ctx.store, &ctx.workspace, change)
         .map(|_| ())
         .map_err(|e| match e.downcast_ref::<speclink_core::inprogress::RevertBlocked>() {
@@ -446,6 +447,38 @@ mod tests {
             meta, "schema: spec-driven\ncreated: 2026-07-05\n",
             "started_* lines removed, every other line byte-identical"
         );
+    }
+
+    #[test]
+    fn revert_is_refused_while_the_change_has_a_worktree() {
+        // spec worktree-overlay「worktree 掛著時的 desktop 動詞防護」：退回提案中
+        // 與封存同一條紅線——工作在 worktree 副本裡，主 checkout 不該擅自退回。
+        let fx = crate::testfixture::FixtureRoot::new("m-revert-wt");
+        fx.add_change("demo", STARTED_META);
+        fx.write("openspec/changes/demo/tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n");
+        fx.write(".speclink.yaml", "tools:\n  - claude\n");
+        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(fx.root())
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@example.test")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@example.test")
+                .output()
+                .expect("run git");
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "seed"]);
+        git(&["worktree", "add", "-q", "-b", "speclink/demo", fx.root().join("wt").to_str().unwrap()]);
+
+        let err = revert_change_to_proposed_at(fx.root(), "demo").expect_err("必須拒絕");
+        assert!(err.contains("worktree-merge"), "須指出收尾方式: {err}");
+        let meta = fs::read_to_string(fx.root().join("openspec/changes/demo/.openspec.yaml")).unwrap();
+        assert!(meta.contains("started_at"), "拒絕時開工戳記不得被移除: {meta}");
     }
 
     #[test]

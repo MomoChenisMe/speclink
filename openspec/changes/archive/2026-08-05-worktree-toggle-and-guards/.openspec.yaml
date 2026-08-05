@@ -1,0 +1,90 @@
+schema: spec-driven
+created: 2026-08-04
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: worktree-toggle-and-guards
+started_at: 2026-08-04
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-05
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 17
+reviewed_scope:
+  - path: apps/desktop/core/src/manage.rs
+    hash: 6c98999e5c2b3ce102bc459061a3c234bbe2d89b7282fa84edce059a2c6a3497
+  - path: apps/desktop/core/src/query.rs
+    hash: 06a7305029f2aa62b2ac2ed7a918bfadff5772498d4b250d82da576ac8d83433
+  - path: apps/desktop/core/src/settings.rs
+    hash: 39acb147023ce8e2537e995b21c52438f45716491d5a217f64ef90356c19c91b
+  - path: apps/desktop/core/src/verbs.rs
+    hash: f5e144dfc9df38dd17621c6fbc0c8301813b0d62aeeb0169168d79a6b1634559
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 3d92238ce64105b85341f190c498c3fe1526399e56c693e3bc7b260529d54daa
+  - path: apps/desktop/src-tauri/src/watch.rs
+    hash: 11bcd7f060dcf92e795ec0cfdb3ea950753daba621b95e0b24ce92b8cf575062
+  - path: apps/desktop/src/App.tsx
+    hash: 0daa9b06cc77cebb0dd56e23296ea71b03e93578ffa3e6832362dd2498af4e9b
+  - path: apps/desktop/src/__tests__/messages.test.ts
+    hash: 60a6c984b0d551b3b981c4a7615c919462b8f8b80875003cf376f827bc71cfbf
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: 6d8f4c03e4fc727b545ce2465bf24908415c2abb7f3de447f6e949187d58b31a
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: 2fd945dc1ffcfe56f0010db10ab4eaaaa7a8cbc23cd92e02f5f3d3b1f71abbd0
+  - path: apps/desktop/src/__tests__/session.test.ts
+    hash: 729e9a87a6b71e9b7222f6dae74b7dd60c5743ab46f5c4fe8f752751ef738abd
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 7deff81d02c0b4e08466b6780a23b7950fff1f89f65911f8d97f3e177273f76a
+  - path: apps/desktop/src/adapter/workspace.ts
+    hash: abd0d1f0444e5b2afe5656c8be206df27fc1047ecc84325382fcd4a4f3125701
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: afb547f5953a4fb79833532ef0bc0dd219eee07d475cd7889b9c7ff77c36f6d8
+  - path: apps/desktop/src/store.ts
+    hash: 335aa1271db99dc9a03cf8a70b197a70a6b0fbcf71e0f9d58048a77424d6baf9
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: a2e81a36f3f1e39a20090c1b17db407a5b5c9ab662d1942c47e0f16a32b74c94
+  - path: crates/speclink-cli/src/commands.rs
+    hash: b1cd6b684c2e06f6e53236bb543b09480b035da294b4160b2e7557f80d1e6999
+  - path: crates/speclink-cli/tests/it/workflow_config.rs
+    hash: 33e83a2255aea48ce37531501282cffc0864877ff2205fc30a5e64aa35780377
+  - path: crates/speclink-core/assets/skills/apply-worktree-pre.md
+    hash: 6495c84435d0c03bae558e7c1e326e67604b98439e273e806f458a62e0cb9128
+  - path: crates/speclink-core/src/init.rs
+    hash: 239ef55d0de334a3fd03848fe4fedb1e82809be265a662f81768a45574afbac0
+  - path: crates/speclink-core/src/skills.rs
+    hash: 707e84d7f31a1258956807c60ea807ecc0cd782c2e9fb55a2d636b452e81e2af
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 47c9752fb1c866bfb73f8c83d9ae623f06fc93ae10f6aed93737120e679e31e6
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 2a904a82a93f17705a6be7ad34a5b29944380f7d8fd80edae95171273d688e66
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 14bbfce8cdc6124cddc59c3fef8b7d44640b2ff35f183ee2ad852052a8909196
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: a9f24f9c5dedcc6783779e9eec337fc8239d0af3de3b1ce43a9bb0dff22e56f0
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 636fd6afe3063f1b42f2d6c25bef7f0a8caebe80aa186db5cbf0331abb447679
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 37eb2cd9aaee1f02f171356bfb6589621ffd1c9f482aee14ffe5f906f32169c5
+  - path: crates/speclink-core/tests/golden/remote-claude.marker.md
+    hash: f2c6283db06351ba261ce2bcaa52626936c201cd502955489ede9f12a7270ed7
+  - path: crates/speclink-core/tests/it/render_golden.rs
+    hash: 6ebc6e514d0bf4ef0821beab589bac934112e5965461175dc375e87f9a475c90
+  - path: crates/speclink-host/src/worktree.rs
+    hash: e5826e0662ea2b0c2feb8a3fbefe5bfe4b23b3c8e1d777dcc00552376090647e
+  - path: crates/speclink-node/__test__/render.spec.ts
+    hash: 3e7d4bd3ee5f0d699dfd37d049c79c7743b453e94ce7a96b6a018efa571a1bd5
+  - path: crates/speclink-node/src/render.rs
+    hash: 42cd67d9a8426ba364e0c8833268f5a2de7c34468e767f9c4bf952722a14381d
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: 99cb2fb5001077bef94f8f7268aced7b2b4ce3af8cc6fc6548154c6d8eecb938
+  - path: packages/ui/src/__tests__/richDrawer.test.tsx
+    hash: 53b851486800d8e8d15e75f840a186286eab72b0de70b61a79e923c1c52e1e30
+  - path: packages/ui/src/adapter.ts
+    hash: a080c181038ff5b8d8036e089409507ef34e66bb39991f28da8d2d0647455f07
+  - path: packages/ui/src/components/ChangeCard.tsx
+    hash: 716f5905af901e1396a81a1155d55611008d2df768ebbb3b4130e09cd2826cdf
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: 0c3d2fb19c8375f465fe244c0b831db3cfc69f321993fa78dd410dfd4d57d8c4
+  - path: packages/ui/src/i18n.tsx
+    hash: 9397461fc9dcb6186a83ee49dcce658d1dcdc08520949c838dd81e27601f4091
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-05

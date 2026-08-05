@@ -28,6 +28,8 @@ export interface SettingsSnapshot {
     specLocale: string | null;
     tdd: boolean;
     audit: boolean;
+    /** worktree 政策現值；remote 快照恆為 false（該面不支援此軸）。 */
+    worktree: boolean;
     /** 專案說明現值（config.yaml 的 context；null＝未設定）。 */
     context: string | null;
     /** 產出規則現值（依 artifact id 分組；條目順序即檔案順序）。 */
@@ -46,6 +48,8 @@ export interface WorkflowFields {
   specLocale: string | null;
   tdd: boolean;
   audit: boolean;
+  /** 並行 apply 的 worktree 流程；remote 無此軸（寫入時忽略）。 */
+  worktree: boolean;
 }
 
 /** probe_instructions 的回報（引擎 InstructionProbe 的 camelCase 序列化）：
@@ -117,6 +121,7 @@ export function createWorkspaceSettings(
         specLocale: fields.specLocale,
         tdd: fields.tdd,
         audit: fields.audit,
+        worktree: fields.worktree,
       }),
     writeWorkflowContext: (context) =>
       invoke("write_workflow_content", { root, context, rules: null }),

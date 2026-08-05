@@ -800,3 +800,203 @@ fn remote_offline_fails_semantically_without_queueing() {
         "nothing is queued or spooled locally"
     );
 }
+
+// --- worktree 政策閘：技能足跡隨政策進出 ---
+// Spec workspace-tools「worktree 技能的政策條件式生成」。
+
+/// 受閘控技能於 claude 足跡下的目錄（跨平台以分段 join，不寫死分隔符）。
+const GATED_SKILLS: [&str; 2] = [
+    ".claude/skills/speclink-apply-with-worktree",
+    ".claude/skills/speclink-worktree-merge",
+];
+
+fn dir_exists(p: &TempProject, rel: &str) -> bool {
+    p.dir.join(rel.split('/').collect::<PathBuf>()).is_dir()
+}
+
+#[test]
+fn update_generates_worktree_skills_only_while_the_policy_is_on() {
+    // Scenario「政策開啟時注入兩顆技能」＋「政策由開改關後再生即清理」：同一個
+    // fixture 走完開→關，證明 update 是收斂的（不是只在初次生成時判斷）。
+    let p = TempProject::new("gate-flip", "schema: spec-driven\nworktree: true\n");
+
+    let out = p.run(&["update"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    for rel in GATED_SKILLS {
+        assert!(dir_exists(&p, rel), "政策開啟時須生成 {rel}");
+    }
+
+    std::fs::write(p.config_path(), "schema: spec-driven\n").unwrap();
+    let out = p.run(&["update"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    for rel in GATED_SKILLS {
+        assert!(!dir_exists(&p, rel), "政策關閉後須清理 {rel}");
+    }
+    // 其餘技能與 marker 區塊不受影響。
+    assert!(dir_exists(&p, ".claude/skills/speclink-apply"), "非閘控技能須保留");
+    let md = std::fs::read_to_string(p.dir.join("CLAUDE.md")).expect("CLAUDE.md");
+    assert!(md.contains("<!-- SPECLINK:START"), "marker 區塊須保留: {md}");
+}
+
+#[test]
+fn the_worktree_env_override_does_not_affect_generation() {
+    // Scenario「環境變數不影響生成」：env 是執行期逃生口，注入只跟檔值走。
+    let p = TempProject::new("gate-env", "schema: spec-driven\n");
+    let out = p.run_env(&["update"], &[("SPECLINK_WORKTREE", "true")]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    for rel in GATED_SKILLS {
+        assert!(!dir_exists(&p, rel), "env 不得使 {rel} 被生成");
+    }
+}
+
+// --- set worktree：寫入後同步足跡，關閉前先擋活躍 worktree ---
+// Spec workflow-config「worktree 欄位寫入的技能同步與關閉擋下」。
+
+/// 把 fixture 變成一個真的 git 主 checkout（worktree 探索的前提）。
+fn git_init(p: &TempProject) {
+    let git = |args: &[&str]| {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(&p.dir)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.test")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.test")
+            .output()
+            .expect("run git");
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    };
+    git(&["init", "-q", "-b", "main"]);
+    git(&["add", "-A"]);
+    git(&["commit", "-qm", "seed"]);
+}
+
+/// Attach a linked worktree on `speclink/<change>` with that change present in
+/// both copies — the three conditions discovery requires for a mapping.
+fn attach_worktree(p: &TempProject, change: &str) -> PathBuf {
+    let change_dir = p.dir.join("openspec").join("changes").join(change);
+    std::fs::create_dir_all(&change_dir).unwrap();
+    std::fs::write(change_dir.join("proposal.md"), "## Why\n\nseed\n").unwrap();
+    let git = |args: &[&str]| {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(&p.dir)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.test")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.test")
+            .output()
+            .expect("run git");
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    };
+    git(&["add", "-A"]);
+    git(&["commit", "-qm", "change"]);
+    let wt = p.dir.join("wt");
+    git(&[
+        "worktree",
+        "add",
+        "-q",
+        "-b",
+        &format!("speclink/{change}"),
+        wt.to_str().unwrap(),
+    ]);
+    wt
+}
+
+#[test]
+fn set_worktree_true_then_false_moves_the_skill_footprint_with_it() {
+    // Scenario「set true 寫入並注入技能」＋「set false 無活躍 worktree 時寫入並清理」。
+    let p = TempProject::new("set-wt-sync", "schema: spec-driven\n");
+
+    let out = p.run(&["workflow-config", "set", "worktree", "true"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    for rel in GATED_SKILLS {
+        assert!(dir_exists(&p, rel), "set true 後須注入 {rel}");
+    }
+
+    let out = p.run(&["workflow-config", "set", "worktree", "false"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    for rel in GATED_SKILLS {
+        assert!(!dir_exists(&p, rel), "set false 後須清理 {rel}");
+    }
+}
+
+#[test]
+fn setting_another_policy_key_does_not_touch_the_skill_footprint() {
+    // 同步只綁 worktree 鍵：改 locale 不該重寫技能檔（其他鍵的寫入語意不變）。
+    let p = TempProject::new("set-wt-scope", "schema: spec-driven\n");
+    let out = p.run(&["workflow-config", "set", "locale", "ja"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(
+        !dir_exists(&p, ".claude/skills/speclink-apply"),
+        "非 worktree 鍵的寫入不觸發足跡生成"
+    );
+}
+
+#[test]
+fn set_worktree_false_is_refused_while_a_linked_worktree_is_active() {
+    // Scenario「set false 遇活躍 worktree 拒絕」：非零 exit、stderr 列 change 名／
+    // 分支／路徑、config 位元組不變、足跡不動。
+    let p = TempProject::new("set-wt-blocked", "schema: spec-driven\n");
+    git_init(&p);
+    let out = p.run(&["workflow-config", "set", "worktree", "true"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let wt = attach_worktree(&p, "add-auth");
+    let before = p.config_bytes();
+
+    let out = p.run(&["workflow-config", "set", "worktree", "false"]);
+
+    assert!(!out.status.success(), "有活躍 worktree 時須以非零 exit 拒絕");
+    let err = stderr_of(&out);
+    assert!(err.contains("add-auth"), "stderr 須列 change 名: {err}");
+    assert!(err.contains("speclink/add-auth"), "stderr 須列分支: {err}");
+    assert!(err.contains(wt.to_str().unwrap()), "stderr 須列 worktree 路徑: {err}");
+    assert!(err.contains("worktree-merge"), "stderr 須指出收尾方式: {err}");
+    assert_eq!(p.config_bytes(), before, "拒絕時 config.yaml 位元組不得變");
+    for rel in GATED_SKILLS {
+        assert!(dir_exists(&p, rel), "拒絕時足跡不得變動：{rel} 須仍在");
+    }
+}
+
+#[test]
+fn set_worktree_false_is_allowed_when_the_policy_is_already_off() {
+    // 擋下的條件是「由 true 改 false」（spec 字面）——政策本來就關著時，
+    // 技能本來就不在，殘留的 worktree 沒有「會被抽走收尾工具」的風險，
+    // 這個 no-op 寫入不得被擋。
+    let p = TempProject::new("set-wt-noop", "schema: spec-driven\n");
+    git_init(&p);
+    attach_worktree(&p, "add-auth");
+
+    let out = p.run(&["workflow-config", "set", "worktree", "false"]);
+
+    assert!(
+        out.status.success(),
+        "政策已關時 set false 為 no-op，不得被擋：{}",
+        stderr_of(&out)
+    );
+    // 寫入預設值不落鍵（缺席＝false，既有政策寫入語意），故看 show 的正典值。
+    let payload = json_of(&p.run(&["workflow-config", "show", "--json"]));
+    assert_eq!(payload["worktree"], false, "值仍為 false: {payload}");
+}
+
+#[test]
+fn a_failed_skill_sync_keeps_the_config_write_and_points_at_update() {
+    // Scenario「技能同步失敗時 config 寫入仍成立」（design D2 的半套語意）：
+    // config 為正典、exit code 非 0、stderr 指向重跑 speclink update。
+    let p = TempProject::new("set-wt-sync-fail", "schema: spec-driven\n");
+    // 技能目錄的位置擺一個同名檔案，讓足跡生成必敗。
+    let blocker = p.dir.join(".claude").join("skills");
+    std::fs::create_dir_all(blocker.parent().unwrap()).unwrap();
+    std::fs::write(&blocker, "not a directory").unwrap();
+
+    let out = p.run(&["workflow-config", "set", "worktree", "true"]);
+
+    assert!(!out.status.success(), "同步失敗須以非零 exit 回報");
+    let err = stderr_of(&out);
+    assert!(err.contains("speclink update"), "stderr 須指向重跑 update: {err}");
+    assert!(
+        p.config_text().contains("worktree: true"),
+        "config 已寫入為正典：{}",
+        p.config_text()
+    );
+}

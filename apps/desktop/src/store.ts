@@ -186,6 +186,9 @@ export interface AppState {
   drawerVerb: VerbDrawerResult | null;
 
   refresh: () => Promise<void>;
+  /** 監看重掛（事件驅動）：workspace-changed 後重解析監看目標——worktree 增減
+   * 會改變監看拓撲；Rust 端目標集合不變時沿用原監看，故可放心每次事件都叫。 */
+  rearmWatch: () => Promise<void>;
   setBoardView: (v: BoardView) => void;
   setView: (v: ListView) => void;
   setQuery: (q: string) => void;
@@ -891,6 +894,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       }
       // 清單就緒後遞增刷新世代——開著的內容檢視據此重載至磁碟現況。
       set((st) => ({ refreshGen: st.refreshGen + 1 }));
+    },
+
+    async rearmWatch() {
+      const st = get();
+      const session = st.activeKey ? st.sessions[st.activeKey] : undefined;
+      if (session?.locator.kind !== "local") return;
+      try {
+        await workspace?.watchWorkspace(session.locator.root);
+      } catch {
+        /* 降級：無自動刷新 */
+      }
     },
 
     setBoardView(boardView) {

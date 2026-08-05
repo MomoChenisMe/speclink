@@ -1,0 +1,236 @@
+{
+  "version": 2,
+  "change": "worktree-toggle-and-guards",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 技能生成依 worktree 政策過濾：Skill 註冊表新增政策閘欄位（僅兩顆 worktree 技能為閘控），`crates/speclink-core/src/init.rs` 的生成迴圈讀 openspec/config.yaml 的 worktree 檔值（不走含 env 的四層解析）決定是否輸出，SPECLINK_WORKTREE 環境變數不影響生成（涵蓋 spec 需求「worktree 技能的政策條件式生成」）。先寫紅測：政策關（鍵缺席與 false 兩例）生成集合不含兩顆技能、政策開含之、env=true 且鍵缺席仍不含；再實作至綠。檔案：`crates/speclink-core/src/skills.rs`、`crates/speclink-core/src/init.rs`。驗證：cargo test -p speclink-core 新增單元測試通過。",
+      "files": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/src/skills.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md",
+        "crates/speclink-core/tests/it/render_golden.rs",
+        "crates/speclink-node/__test__/render.spec.ts",
+        "crates/speclink-node/src/render.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 政策由開改關後再生即清理：worktree: true 下 update 生成兩顆技能，改 false 再 update 後兩顆技能目錄被 prune、其餘技能與 marker 保留（沿用既有清理生命週期）。以整合測試覆蓋 speclink update 的可觀察檔案效果。檔案：`crates/speclink-core/src/init.rs`、`crates/speclink-cli/tests/it/workflow_config.rs`。驗證：cargo test 整合案例通過。",
+      "files": [
+        "crates/speclink-cli/tests/it/workflow_config.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 host 提供「可否關閉 worktree 政策」判定：以既有 discover 事實回傳擋下清單（change 名、分支、路徑），git 不可用時回空清單（fail-open）。先寫紅測（有映射→非空清單；無 git→空），再實作。檔案：`crates/speclink-host/src/worktree.rs`。驗證：cargo test -p speclink-host 通過。",
+      "files": [
+        "crates/speclink-host/src/worktree.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 speclink workflow-config set worktree 寫入成功後同步技能足跡（重用 update 的生成與清理入口）：set true 後技能檔出現、set false（無活躍 worktree）後技能檔移除；同步失敗時 config 寫入保留、exit code 非 0 且 stderr 提示重跑 speclink update（與 2.3 合力涵蓋 spec 需求「worktree 欄位寫入的技能同步與關閉擋下」）。檔案：`crates/speclink-cli/src/commands.rs`、`crates/speclink-cli/tests/it/workflow_config.rs`。驗證：整合測試斷言檔案效果、exit code 與 stderr 內容。",
+      "files": [
+        "crates/speclink-cli/src/commands.rs",
+        "crates/speclink-core/assets/skills/apply-worktree-pre.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 apply-with-worktree 前置新增 P0「多 change 輸入拒收」段：偵測多個 change 名→請使用者擇一並印多 session 配方，明文禁止靜默依序批次，位置在政策檢查（P1）之前（與 3.2 合力涵蓋 spec 需求「apply-with-worktree 技能的前置指示」）。檔案：`crates/speclink-core/assets/skills/apply-worktree-pre.md`。驗證：render_golden 斷言生成的 SKILL.md 含該段字面且順序正確。",
+      "files": [
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.1 settings 寫入含 worktree 實值且 carry_over 退役：存檔以 UI 實值寫入 worktree 鍵（yaml 純量走既有跳脫 seam）、寫入成功後觸發與 CLI 同一技能同步、由開改關遇活躍 worktree 回拒絕錯誤（含擋下清單）；carry_over_worktree 函式與其「UI 無此欄位」前提的測試汰換為實值寫入測試。檔案：`apps/desktop/core/src/settings.rs`。驗證：cargo test -p speclink-desktop-core 通過。",
+      "files": [
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src-tauri/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.2 看板查詢接 worktree facts：卡片 JSON 對有映射的 change 帶 worktree 物件（camelCase 欄位 path 與 branch，型別均為字串），無映射時欄位缺席；組裝走與 CLI list 同一 listing 落點，facts 由 host discover 取得（與 4.3、5.2 合力涵蓋 spec 需求「desktop 看板的 worktree 呈現」）。檔案：`apps/desktop/core/src/query.rs`。驗證：desktop-core 測試斷言 payload 欄位存在、命名與型別。",
+      "files": [
+        "apps/desktop/core/src/query.rs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "4.3 監看路徑推導與 watcher 擴充：自 worktree facts 導出監看清單（各 worktree 的 openspec/changes/<change名>/ 與主 repo 的 .git/worktrees/），推導函式歸 desktop-core 並含跨平台路徑單元測試；`apps/desktop/src-tauri/src/watch.rs` 只接上清單與事件轉發（單行委派）。檔案：`apps/desktop/core/src/query.rs`、`apps/desktop/src-tauri/src/watch.rs`。驗證：desktop-core 單元測試通過；手動確認 worktree 增減觸發看板更新。",
+      "files": [
+        "apps/desktop/core/src/manage.rs",
+        "apps/desktop/core/src/verbs.rs",
+        "apps/desktop/src-tauri/src/watch.rs"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.1 設定頁產出政策區新增 worktree 開關：僅 local workspace 顯示（remote 隱藏）、載入反映 config 現值、存檔送畫面實值、關閉遇活躍 worktree 時浮出擋下訊息（列 change 名、分支、路徑與收尾指引）；zh-TW 與 en 文案均直出 worktree（涵蓋 spec 需求「產出政策的 worktree 開關」）。檔案：`apps/desktop/src/views/ProjectSettingsView.tsx`、`apps/desktop/src/i18n/messages.ts`、`apps/desktop/src/__tests__/projectSettingsView.test.tsx`。驗證：前端測試覆蓋顯示、存檔與 remote 隱藏三例。",
+      "files": [
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/adapter/workspace.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/views/ProjectSettingsView.tsx"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "5.2 卡片 worktree 標示與抽屜分支路徑：有映射的 change 卡片帶 worktree 標示，變更抽屜顯示分支名與 worktree 路徑（OS 原生形式），worktree 移除後標示與資訊退場；zh-TW 與 en 文案直出 worktree。檔案：`apps/desktop/src/App.tsx`、`apps/desktop/src/i18n/messages.ts`。驗證：前端測試斷言標示與抽屜欄位隨 worktree 物件出現與消失。",
+      "files": [
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "apps/desktop/src/__tests__/session.test.ts",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/__tests__/richDrawer.test.tsx",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/i18n.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZ6GTRZ6Z2P60SZME58P9PXP",
+      "taskDesc": "1.1 技能生成依 worktree 政策過濾：Skill 註冊表新增政策閘欄位（僅兩顆 worktree 技能為閘控），`crates/speclink-core/src/init.rs` 的生成迴圈讀 openspec/config.yaml 的 worktree 檔值（不走含 env 的四層解析）決定是否輸出，SPECLINK_WORKTREE 環境變數不影響生成（涵蓋 spec 需求「worktree 技能的政策條件式生成」）。先寫紅測：政策關（鍵缺席與 false 兩例）生成集合不含兩顆技能、政策開含之、env=true 且鍵缺席仍不含；再實作至綠。檔案：`crates/speclink-core/src/skills.rs`、`crates/speclink-core/src/init.rs`。驗證：cargo test -p speclink-core 新增單元測試通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3da82d0fb162104a87a8821bd66f0783ad48eb23",
+      "touchedFiles": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/src/skills.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md",
+        "crates/speclink-core/tests/it/render_golden.rs",
+        "crates/speclink-node/__test__/render.spec.ts",
+        "crates/speclink-node/src/render.rs"
+      ],
+      "recordedAt": "2026-08-04T14:31:48Z"
+    },
+    {
+      "taskId": "tsk_01KZ6GTRZ6THNVF05611ERTKP5",
+      "taskDesc": "1.2 政策由開改關後再生即清理：worktree: true 下 update 生成兩顆技能，改 false 再 update 後兩顆技能目錄被 prune、其餘技能與 marker 保留（沿用既有清理生命週期）。以整合測試覆蓋 speclink update 的可觀察檔案效果。檔案：`crates/speclink-core/src/init.rs`、`crates/speclink-cli/tests/it/workflow_config.rs`。驗證：cargo test 整合案例通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3da82d0fb162104a87a8821bd66f0783ad48eb23",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/workflow_config.rs"
+      ],
+      "recordedAt": "2026-08-04T14:34:09Z"
+    },
+    {
+      "taskId": "tsk_01KZ6GTRZ62N16YCVR2HVYNYEH",
+      "taskDesc": "2.1 host 提供「可否關閉 worktree 政策」判定：以既有 discover 事實回傳擋下清單（change 名、分支、路徑），git 不可用時回空清單（fail-open）。先寫紅測（有映射→非空清單；無 git→空），再實作。檔案：`crates/speclink-host/src/worktree.rs`。驗證：cargo test -p speclink-host 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3da82d0fb162104a87a8821bd66f0783ad48eb23",
+      "touchedFiles": [
+        "crates/speclink-host/src/worktree.rs"
+      ],
+      "recordedAt": "2026-08-04T14:40:28Z"
+    },
+    {
+      "taskId": "tsk_01KZ6GTRZ6C8WRC0ABMT3K2T1A",
+      "taskDesc": "2.2 speclink workflow-config set worktree 寫入成功後同步技能足跡（重用 update 的生成與清理入口）：set true 後技能檔出現、set false（無活躍 worktree）後技能檔移除；同步失敗時 config 寫入保留、exit code 非 0 且 stderr 提示重跑 speclink update（與 2.3 合力涵蓋 spec 需求「worktree 欄位寫入的技能同步與關閉擋下」）。檔案：`crates/speclink-cli/src/commands.rs`、`crates/speclink-cli/tests/it/workflow_config.rs`。驗證：整合測試斷言檔案效果、exit code 與 stderr 內容。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3da82d0fb162104a87a8821bd66f0783ad48eb23",
+      "touchedFiles": [
+        "crates/speclink-cli/src/commands.rs",
+        "crates/speclink-core/assets/skills/apply-worktree-pre.md"
+      ],
+      "recordedAt": "2026-08-04T14:44:22Z"
+    },
+    {
+      "taskId": "tsk_01KZ6GTRZ6TTY4YP304QB44KG2",
+      "taskDesc": "3.1 apply-with-worktree 前置新增 P0「多 change 輸入拒收」段：偵測多個 change 名→請使用者擇一並印多 session 配方，明文禁止靜默依序批次，位置在政策檢查（P1）之前（與 3.2 合力涵蓋 spec 需求「apply-with-worktree 技能的前置指示」）。檔案：`crates/speclink-core/assets/skills/apply-worktree-pre.md`。驗證：render_golden 斷言生成的 SKILL.md 含該段字面且順序正確。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3da82d0fb162104a87a8821bd66f0783ad48eb23",
+      "touchedFiles": [
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md"
+      ],
+      "recordedAt": "2026-08-04T14:52:46Z"
+    },
+    {
+      "taskId": "tsk_01KZ6GTRZ6TXXNAW4B267NFMS7",
+      "taskDesc": "4.1 settings 寫入含 worktree 實值且 carry_over 退役：存檔以 UI 實值寫入 worktree 鍵（yaml 純量走既有跳脫 seam）、寫入成功後觸發與 CLI 同一技能同步、由開改關遇活躍 worktree 回拒絕錯誤（含擋下清單）；carry_over_worktree 函式與其「UI 無此欄位」前提的測試汰換為實值寫入測試。檔案：`apps/desktop/core/src/settings.rs`。驗證：cargo test -p speclink-desktop-core 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3da82d0fb162104a87a8821bd66f0783ad48eb23",
+      "touchedFiles": [
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src-tauri/src/lib.rs"
+      ],
+      "recordedAt": "2026-08-04T15:01:03Z"
+    },
+    {
+      "taskId": "tsk_01KZ6GTRZ6Y5VPE8PFS9BF0B75",
+      "taskDesc": "4.2 看板查詢接 worktree facts：卡片 JSON 對有映射的 change 帶 worktree 物件（camelCase 欄位 path 與 branch，型別均為字串），無映射時欄位缺席；組裝走與 CLI list 同一 listing 落點，facts 由 host discover 取得（與 4.3、5.2 合力涵蓋 spec 需求「desktop 看板的 worktree 呈現」）。檔案：`apps/desktop/core/src/query.rs`。驗證：desktop-core 測試斷言 payload 欄位存在、命名與型別。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3da82d0fb162104a87a8821bd66f0783ad48eb23",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs"
+      ],
+      "recordedAt": "2026-08-04T15:10:02Z"
+    },
+    {
+      "taskId": "tsk_01KZ6GTRZ6QSS47J521Q205Z0X",
+      "taskDesc": "4.3 監看路徑推導與 watcher 擴充：自 worktree facts 導出監看清單（各 worktree 的 openspec/changes/<change名>/ 與主 repo 的 .git/worktrees/），推導函式歸 desktop-core 並含跨平台路徑單元測試；`apps/desktop/src-tauri/src/watch.rs` 只接上清單與事件轉發（單行委派）。檔案：`apps/desktop/core/src/query.rs`、`apps/desktop/src-tauri/src/watch.rs`。驗證：desktop-core 單元測試通過；手動確認 worktree 增減觸發看板更新。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3da82d0fb162104a87a8821bd66f0783ad48eb23",
+      "touchedFiles": [
+        "apps/desktop/core/src/manage.rs",
+        "apps/desktop/core/src/verbs.rs",
+        "apps/desktop/src-tauri/src/watch.rs"
+      ],
+      "recordedAt": "2026-08-04T15:19:09Z"
+    },
+    {
+      "taskId": "tsk_01KZ6GTRZ692SP5QMTSBWYWGV2",
+      "taskDesc": "5.1 設定頁產出政策區新增 worktree 開關：僅 local workspace 顯示（remote 隱藏）、載入反映 config 現值、存檔送畫面實值、關閉遇活躍 worktree 時浮出擋下訊息（列 change 名、分支、路徑與收尾指引）；zh-TW 與 en 文案均直出 worktree（涵蓋 spec 需求「產出政策的 worktree 開關」）。檔案：`apps/desktop/src/views/ProjectSettingsView.tsx`、`apps/desktop/src/i18n/messages.ts`、`apps/desktop/src/__tests__/projectSettingsView.test.tsx`。驗證：前端測試覆蓋顯示、存檔與 remote 隱藏三例。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3da82d0fb162104a87a8821bd66f0783ad48eb23",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/adapter/workspace.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/views/ProjectSettingsView.tsx"
+      ],
+      "recordedAt": "2026-08-05T00:36:08Z"
+    },
+    {
+      "taskId": "tsk_01KZ6GTRZ628802TF6RXPPZNQV",
+      "taskDesc": "5.2 卡片 worktree 標示與抽屜分支路徑：有映射的 change 卡片帶 worktree 標示，變更抽屜顯示分支名與 worktree 路徑（OS 原生形式），worktree 移除後標示與資訊退場；zh-TW 與 en 文案直出 worktree。檔案：`apps/desktop/src/App.tsx`、`apps/desktop/src/i18n/messages.ts`。驗證：前端測試斷言標示與抽屜欄位隨 worktree 物件出現與消失。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3da82d0fb162104a87a8821bd66f0783ad48eb23",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "apps/desktop/src/__tests__/session.test.ts",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/__tests__/richDrawer.test.tsx",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-08-05T00:40:13Z"
+    }
+  ]
+}

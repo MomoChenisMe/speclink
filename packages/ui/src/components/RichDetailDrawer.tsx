@@ -5,6 +5,7 @@ import {
   Code2,
   Copy,
   FileText,
+  GitBranch,
   ListChecks,
   Maximize2,
   Minimize2,
@@ -383,6 +384,20 @@ export function RichDetailDrawer({
                     ⚒ {t("rdrawer.started").replace("{date}", meta.startedAt)}
                   </span>
                 ))}
+              {change.worktree && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="inline-flex shrink-0 items-center gap-1"
+                      title={change.worktree.path}
+                    >
+                      <GitBranch className="h-3 w-3" />
+                      {change.worktree.branch}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{change.worktree.path}</TooltipContent>
+                </Tooltip>
+              )}
               {(sourceDiscussions ?? []).length > 0 && (
                 <SourceChipRow
                   label={t("rdrawer.fromDiscussion")}
