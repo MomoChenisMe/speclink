@@ -1,5 +1,5 @@
 === CLAUDE.md ===
-<!-- SPECLINK:START v1.13.0 -->
+<!-- SPECLINK:START v1.14.0 -->
 
 # Speclink Instructions
 
@@ -40,7 +40,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -128,7 +128,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -454,7 +454,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -956,7 +956,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -1231,7 +1231,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -1467,7 +1467,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -1739,7 +1739,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -1854,7 +1854,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -2294,7 +2294,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -2424,7 +2424,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -2692,7 +2692,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -2786,7 +2786,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -3206,7 +3206,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -3387,7 +3387,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -3582,7 +3582,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.13.0"
+  version: "v1.14.0"
   generatedBy: "Speclink"
 ---
 
@@ -3592,7 +3592,7 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
 **Input**: Optionally specify a change name (e.g., `/speclink-worktree-merge add-auth`). If omitted, run `git worktree list --porcelain` and offer the `speclink/*` branches found. If more than one is a candidate you MUST ask which one — never guess.
 
-**Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available, report it and STOP. Every step below runs in the **main checkout**, not in the worktree.
+**Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available, report it and STOP. Every step below is driven from the **main checkout**; the steps that act on the worktree — its status check and the rebase — reach it with `git -C <worktree-path>` rather than moving you there.
 
 **Steps**
 
@@ -3634,17 +3634,39 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
    Only when all three hold, continue.
 
-3. **Merge into the main branch**
+3. **Merge into the main branch — rebase first, fast-forward second**
 
-   In the main checkout, on the target branch verified in step 2:
+   `speclink/*` branches are local and never pushed, so rewriting their history costs nothing. Replaying the branch onto the target first lets the merge be a fast-forward, which keeps the main branch a straight line instead of collecting one merge node per parallel change.
+
+   In the worktree, replay the branch onto the target branch verified in step 2:
 
    ```bash
-   git -C <main-checkout> merge "speclink/<change-name>"
+   git -C <worktree-path> rebase "<target-branch>"
    ```
+
+   - **Rebase succeeds** — in the main checkout, land it without a merge node:
+
+     ```bash
+     git -C <main-checkout> merge --ff-only "speclink/<change-name>"
+     ```
+
+     If the fast-forward is refused, the target branch moved on between the rebase and the merge — another worktree landed first. Take the same exit as a rebase conflict below: fall back to a plain merge, and tell the user this one lands as a merge node.
+
+   - **Rebase reports conflicts** — do **NOT** resolve them. Abort, which restores the branch exactly as it was:
+
+     ```bash
+     git -C <worktree-path> rebase --abort
+     ```
+
+     Then fall back to a plain merge in the main checkout, and tell the user this one lands as a merge node:
+
+     ```bash
+     git -C <main-checkout> merge "speclink/<change-name>"
+     ```
 
 4. **Conflict — stop immediately**
 
-   If the merge reports conflicts:
+   If the fallback merge reports conflicts:
 
    - Abort so nothing half-merged is left behind:
 
@@ -3682,6 +3704,7 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
 **Change:** <change-name>
 **Branch:** speclink/<change-name> → <main-branch> ✓
+**Landed as:** fast-forward (straight line) — or "merge node (rebase fell back)" when step 3 took the fallback
 **Worktree:** <path> (removed)
 **Branch deleted:** ✓
 
@@ -3706,6 +3729,7 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
 - Never stash or commit on the user's behalf — in the main checkout or in the worktree
 - Never resolve merge conflicts yourself; abort the merge and report
+- Never resolve rebase conflicts yourself; `rebase --abort` and fall back to the plain merge
 - Never leave a half-finished merge state behind
 - Never force-remove a worktree that still has uncommitted work
 - Never merge a change whose worktree you did not verify is fully committed
