@@ -118,6 +118,9 @@ describe("ArchivedList（封存變更卡）", () => {
     // createdBy 頭像圓點（與 ChangeCard 同款：首字母圓標、aria-label 全名）。
     const avatar = within(warn).getByLabelText("MomoChen <momo@example.com>");
     expect(avatar.textContent).toBe("M");
+    // 靜態 metadata 走中性（與變更卡、討論卡同款）。
+    expect(avatar.className).toContain("bg-muted");
+    expect(avatar.className).not.toContain("bg-primary");
     // 來源討論 icon（tooltip 列 slug）。
     expect(within(warn).getByLabelText("來自討論")).toBeTruthy();
     // 缺席語意：無 createdBy／無來源討論的卡不顯示對應標記。

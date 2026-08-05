@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
-import { I18nProvider } from "@speclink/ui";
+import { I18nProvider, SEMANTIC_TONE } from "@speclink/ui";
 
 import { ProjectTabs } from "../components/ProjectTabs";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -108,8 +108,9 @@ describe("ProjectTabs", () => {
     const remote = screen.getByText("Demo/backend").closest("[data-tab]") as HTMLElement;
     const cloud = remote.querySelector("[data-cloud]") as HTMLElement;
     expect(cloud).toBeTruthy();
-    // cloud 以主色加深——與 local 的 folder 圖示形成視覺區分。
-    expect(cloud.getAttribute("class")).toContain("text-primary");
+    // ready 是「沒事」，不是狀態告知：圖示走中性，顏色留給真的有狀態的分頁。
+    expect(cloud.getAttribute("class")).not.toContain("text-primary");
+    expect(cloud.getAttribute("class")).toContain("text-muted-foreground");
     expect(remote.getAttribute("title")).toBe("已連接 checkout：/work/backend");
     expect(remote.querySelector("[data-folder]")).toBeNull();
     // local 分頁長 folder 圖示、不長 cloud。
@@ -153,6 +154,11 @@ describe("ProjectTabs", () => {
     expect(tab.getAttribute("title")).not.toContain("technical detail");
     expect(tab.querySelectorAll("[data-tab-status]")).toHaveLength(1);
     expect(tab.getAttribute("class")).not.toContain("opacity-60");
+    // spec「錯誤態以紅呈現」：連不上是錯誤，不能與 offline／需重新登入的琥珀同色。
+    expect(tab.querySelector('[data-tab-status="error"]')?.getAttribute("class")).toContain(
+      "destructive",
+    );
+    expect(tab.getAttribute("class")).not.toContain("amber");
   });
 
   it("background recovery tab supports mouse and keyboard activation", () => {
@@ -180,5 +186,9 @@ describe("ProjectTabs", () => {
     expect(onActivate).toHaveBeenCalledTimes(2);
     expect(tab.getAttribute("data-status")).toBe("restoring");
     expect(tab.querySelectorAll("[data-tab-status]")).toHaveLength(1);
+    // spec「進行中以藍呈現」：還原 spinner 是進行中，不是主色互動元素。
+    expect(tab.querySelector('[data-tab-status="restoring"]')?.getAttribute("class")).toContain(
+      SEMANTIC_TONE.inProgress,
+    );
   });
 });

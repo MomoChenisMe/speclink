@@ -401,7 +401,11 @@ describe("remote offline stale snapshot", () => {
         message: "登入已失效",
       });
     });
-    fireEvent.click(await screen.findByRole("button", { name: "重新登入" }));
+    const reauth = await screen.findByRole("button", { name: "重新登入" });
+    // stale 橫幅整條已是琥珀警示；按鈕再塗琥珀只會兩片顏色互搶，改中性 outline。
+    expect(reauth.className).not.toContain("amber");
+    expect(reauth.className).toContain("border");
+    fireEvent.click(reauth);
     const login = await screen.findByTestId("reauth-login-c1");
     await waitFor(() => expect(document.activeElement).toBe(login));
     expect(document.querySelectorAll("[data-tab]")).toHaveLength(2);

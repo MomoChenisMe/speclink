@@ -9,6 +9,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  SEMANTIC_TONE,
   cn,
   useI18n,
 } from "@speclink/ui";
@@ -56,13 +57,13 @@ function UpdaterInlineStatus({ state }: { state: UpdaterState }) {
       return <span className="text-xs text-muted-foreground">{t("updater.upToDate")}</span>;
     case "checkFailed":
       return (
-        <span className="text-xs text-amber-600 dark:text-amber-400">
+        <span className={`text-xs ${SEMANTIC_TONE.danger}`}>
           {t("updater.checkFailed")}
         </span>
       );
     case "available":
       return (
-        <span className="text-xs text-primary">
+        <span className={`text-xs ${SEMANTIC_TONE.inProgress}`}>
           {t("updater.available")} {state.version}
         </span>
       );
@@ -76,7 +77,7 @@ function UpdaterInlineStatus({ state }: { state: UpdaterState }) {
       return <span className="text-xs text-primary">{t("updater.restartPending")}</span>;
     case "error":
       return (
-        <span className="text-xs text-amber-600 dark:text-amber-400">
+        <span className={`text-xs ${SEMANTIC_TONE.danger}`}>
           {t("updater.errorPrefix")}
           {state.message}
         </span>
@@ -100,7 +101,7 @@ function CliInstallStatusLine({ view }: { view: CliInstallView }) {
       );
     case "version-mismatch":
       return (
-        <span className="text-xs text-amber-600 dark:text-amber-400">
+        <span className={`text-xs ${SEMANTIC_TONE.warning}`}>
           {t("cliInstall.mismatch")}（{view.status.version}）
         </span>
       );
@@ -110,7 +111,7 @@ function CliInstallStatusLine({ view }: { view: CliInstallView }) {
 function TrayPanelError({ message }: { message: string }) {
   const { t } = useI18n();
   return (
-    <p role="alert" className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 m-0">
+    <p role="alert" className={`flex items-start gap-1.5 text-xs m-0 ${SEMANTIC_TONE.danger}`}>
       <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
       <span>
         {t("settings.parseErrorHint")} {message}
@@ -241,7 +242,7 @@ export function AppSettingsView({
                 {cliInstall.view.pathHint && cliInstall.view.deployDir && (
                   <p
                     data-testid="cli-path-hint"
-                    className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 m-0"
+                    className={`flex items-start gap-1.5 text-xs m-0 ${SEMANTIC_TONE.warning}`}
                   >
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                     <span>

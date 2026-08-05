@@ -6,6 +6,8 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   changeStage,
+  SEMANTIC_SURFACE,
+  SEMANTIC_TONE,
   STAGE_BADGE,
   STAGE_BAR,
   STAGE_ICON,
@@ -112,11 +114,11 @@ function SectionHeader({
 }: {
   icon: LucideIcon;
   label: string;
-  /** 分區圖示主色（生命週期依 STAGE_ICON 階梯、討論分區 text-primary）。 */
+  /** 分區圖示色（生命週期依 STAGE_ICON 階梯、討論／已轉出分區中性）。 */
   iconCls: string;
   /** 分區項目計數（design D8）：徽章與看板欄計數同語彙。 */
   count: number;
-  /** 計數徽章配色：生命週期取 STAGE_BADGE[stage]、討論分區取看板討論欄同款。 */
+  /** 計數徽章配色：生命週期取 STAGE_BADGE[stage]、討論／已轉出分區中性。 */
   badgeCls: string;
 }) {
   return (
@@ -267,6 +269,21 @@ function tabStatusLabel(tab: TrayTabSnapshot, t: (key: string) => string): strin
   return "";
 }
 
+/**
+ * 分頁狀態文字的語意色（spec「介面狀態語意色分層」）：選取由分頁外框表達，
+ * 狀態則由列內這行文字承載——還原中＝藍、離線／需重新登入＝琥珀警示、
+ * 連不上＝紅。無狀態文字的本機分頁走中性。
+ */
+function tabStatusTone(tab: TrayTabSnapshot): string {
+  if (tab.source === "local") return "text-muted-foreground";
+  if (tab.status === "restoring") return SEMANTIC_TONE.inProgress;
+  if (tab.status === "offline" || tab.status === "needs-reauth" || tab.failureKind === "needs-reauth") {
+    return SEMANTIC_TONE.warning;
+  }
+  if (tab.status === "error") return SEMANTIC_TONE.danger;
+  return "text-muted-foreground";
+}
+
 function RemoteTabIcon({ tab }: { tab: Extract<TrayTabSnapshot, { source: "remote" }> }) {
   if (tab.status === "restoring") {
     return <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />;
@@ -296,16 +313,27 @@ function PanelRecoveryCard({
   const restoring = tab.status === "restoring";
   const needsReauth = tab.failureKind === "needs-reauth";
   const summary = tabStatusLabel(tab, t);
+  // 卡面依狀態分色：還原中＝進行中的藍、需重新登入＝警示琥珀、其餘失敗＝錯誤紅。
+  // （舊版一律塗琥珀，連不上與「等一下就好」看起來一樣嚴重。）
+  const tone = restoring ? "inProgress" : needsReauth ? "warning" : "danger";
   return (
     <section
       data-testid="panel-recovery-card"
       data-status={tab.status}
       role="status"
       aria-live="polite"
-      className="rounded-xl border border-amber-500/30 bg-foreground/5 p-3"
+      // 卡底維持 bg-foreground/5（毛玻璃透出），只借語意色的邊框——故 surface 之後
+      // 再蓋回底色。
+      className={cn("rounded-xl border p-3", SEMANTIC_SURFACE[tone], "bg-foreground/5")}
     >
       <div className="flex items-start gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300">
+        <span
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+            SEMANTIC_SURFACE[tone],
+            SEMANTIC_TONE[tone],
+          )}
+        >
           {restoring ? (
             <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" />
           ) : needsReauth ? (
@@ -424,7 +452,7 @@ export function TrayPanel({
     // 毛玻璃自剩餘透明度透出；濃度為真實視窗調參值。
     <div
       data-testid="panel-root"
-      className="flex h-screen flex-col gap-1.5 rounded-[13px] bg-background/60 bg-linear-to-b from-primary/5 to-transparent p-2 text-[13px] text-foreground"
+      className="flex h-screen flex-col gap-1.5 rounded-[13px] bg-background/60 bg-linear-to-b from-foreground/5 to-transparent p-2 text-[13px] text-foreground"
     >
       {/* 固定頁首（spec 三段式版面）：tab 條＋其下分割線常駐、不隨內容捲動。 */}
       <div data-testid="panel-header" className="flex shrink-0 flex-col gap-1.5">
@@ -455,10 +483,12 @@ export function TrayPanel({
                 onClick={() => onOpenProject(tab.key)}
                 className={cn(
                   "flex min-h-14 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border px-2.5 py-1.5",
+                  // 選取一律由主色外框表達；狀態交給列內狀態文字的語意色。
+                  // （舊版非 ready 的作用中分頁塗琥珀，選取與警示混成同一片顏色。）
                   active && tab.status === "ready"
                     ? "border-primary bg-primary text-primary-foreground"
                     : active
-                      ? "border-amber-500/60 bg-amber-500/15 text-foreground"
+                      ? "border-primary/60 text-foreground"
                       : "border-transparent hover:bg-primary/10",
                 )}
               >
@@ -477,7 +507,7 @@ export function TrayPanel({
                 </span>
                 <span className="max-w-24 truncate text-[11px] leading-none">{tab.name}</span>
                 {tab.source === "remote" && tab.status !== "ready" && (
-                  <span className="max-w-24 truncate text-[9px] leading-none text-muted-foreground">
+                  <span className={cn("max-w-24 truncate text-[9px] leading-none", tabStatusTone(tab))}>
                     {tabStatusLabel(tab, t)}
                   </span>
                 )}
@@ -532,9 +562,12 @@ export function TrayPanel({
             <div
               data-testid="panel-stale-status"
               role="status"
-              className="flex min-h-8 items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px]"
+              className={cn(
+                "flex min-h-8 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px]",
+                SEMANTIC_SURFACE.warning,
+              )}
             >
-              <CloudOff className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-300" />
+              <CloudOff className={cn("h-3.5 w-3.5 shrink-0", SEMANTIC_TONE.warning)} />
               <span className="font-medium">{tabStatusLabel(activeStale, t)}</span>
               <span className="ml-auto text-muted-foreground">{t("tray.recovery.stale")}</span>
               {activeStale.status === "needs-reauth" && (
@@ -542,7 +575,8 @@ export function TrayPanel({
                   type="button"
                   tabIndex={-1}
                   onClick={() => onReauthenticate(activeStale.connectionId)}
-                  className="rounded bg-amber-500/15 px-2 py-1 font-medium hover:bg-amber-500/25"
+                  // 中性 outline：警示由整列的琥珀底承載，按鈕再塗琥珀只會兩片顏色互搶。
+                  className="rounded border border-border bg-background/60 px-2 py-1 font-medium hover:bg-foreground/10"
                 >
                   {t("tray.recovery.reauthenticate")}
                 </button>
@@ -556,10 +590,10 @@ export function TrayPanel({
         <SectionCard testid="panel-section-discussions">
           <SectionHeader
             icon={MessageSquareText}
-            iconCls="text-primary"
+            iconCls="text-muted-foreground/70"
             label={t("tray.discussionsHeader")}
             count={openDiscussions.length}
-            badgeCls={STAGE_BADGE.proposed}
+            badgeCls="bg-muted text-muted-foreground"
           />
           <OverflowGroup
             moreLabel={moreLabel}
@@ -574,10 +608,10 @@ export function TrayPanel({
         <SectionCard testid="panel-section-discussions" className={emptyCardClass}>
           <SectionHeader
             icon={MessageSquareText}
-            iconCls="text-primary"
+            iconCls="text-muted-foreground/70"
             label={t("tray.discussionsHeader")}
             count={0}
-            badgeCls={STAGE_BADGE.proposed}
+            badgeCls="bg-muted text-muted-foreground"
           />
         </SectionCard>
       )}
@@ -585,10 +619,10 @@ export function TrayPanel({
         <SectionCard testid="panel-section-promoted">
           <SectionHeader
             icon={ArrowUpRight}
-            iconCls="text-primary"
+            iconCls="text-muted-foreground/70"
             label={t("tray.promotedHeader")}
             count={promotedDiscussions.length}
-            badgeCls={STAGE_BADGE.proposed}
+            badgeCls="bg-muted text-muted-foreground"
           />
           <OverflowGroup
             moreLabel={moreLabel}

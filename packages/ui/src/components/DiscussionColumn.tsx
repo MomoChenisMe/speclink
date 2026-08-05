@@ -111,7 +111,7 @@ export function DiscussionCard({
               <TooltipTrigger asChild>
                 <span
                   aria-label={d.createdBy}
-                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground"
+                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-muted-foreground"
                 >
                   {d.createdBy.charAt(0).toUpperCase()}
                 </span>
@@ -302,20 +302,22 @@ export function DiscussionColumn({
       />
     ),
   );
+  // 欄頭（色條／圖示／計數）一律中性：討論欄不是生命週期階段，主色深淺階梯是
+  // 看板三欄的語彙，照抄會讓「顏色＝階段」的讀法失準（系統匣的討論分區同樣中性）。
   return (
     <div
       data-column="discussions"
-      className="flex h-full min-h-0 flex-1 min-w-[250px] max-w-[360px] flex-col gap-2 rounded-xl border-t-4 border-t-primary/15 bg-muted/40 p-2"
+      className="flex h-full min-h-0 flex-1 min-w-[250px] max-w-[360px] flex-col gap-2 rounded-xl border-t-4 border-t-border bg-muted/40 p-2"
     >
       <div className="flex items-center gap-1.5 px-1.5 pt-0.5 shrink-0">
-        <MessageSquareText className="h-3.5 w-3.5 text-primary/40" />
+        <MessageSquareText className="h-3.5 w-3.5 text-muted-foreground/60" />
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           {t("discussion.heading")}
         </h2>
         <div className="flex-1" />
         <span
           data-testid="column-count"
-          className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-primary/8 text-primary/70"
+          className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-muted text-muted-foreground"
         >
           {full.length}
         </span>

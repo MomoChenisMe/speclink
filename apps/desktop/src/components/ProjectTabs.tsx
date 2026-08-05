@@ -5,6 +5,8 @@
 import { AlertTriangle, Cloud, CloudOff, Folder, LoaderCircle, LogIn, Plus, X } from "lucide-react";
 import {
   Button,
+  SEMANTIC_SURFACE,
+  SEMANTIC_TONE,
   cn,
   useI18n,
 } from "@speclink/ui";
@@ -86,30 +88,30 @@ export function ProjectTabs({
           status === "restoring" ? (
             <LoaderCircle
               data-tab-status="restoring"
-              className="h-3 w-3 shrink-0 animate-spin text-primary motion-reduce:animate-none"
+              className={cn("h-3 w-3 shrink-0 animate-spin motion-reduce:animate-none", SEMANTIC_TONE.inProgress)}
             />
           ) : status === "offline" ? (
             <CloudOff
               data-tab-status="offline"
               data-cloud-off={key}
-              className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400"
+              className={cn("h-3 w-3 shrink-0", SEMANTIC_TONE.warning)}
               strokeWidth={2.5}
             />
           ) : status === "needs-reauth" ? (
             <LogIn
               data-tab-status="needs-reauth"
-              className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400"
+              className={cn("h-3 w-3 shrink-0", SEMANTIC_TONE.warning)}
             />
           ) : status === "error" ? (
             <AlertTriangle
               data-tab-status="error"
-              className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400"
+              className={cn("h-3 w-3 shrink-0", SEMANTIC_TONE.danger)}
             />
           ) : remote ? (
             <Cloud
               data-tab-status="ready"
               data-cloud={key}
-              className="h-3 w-3 shrink-0 text-primary"
+              className="h-3 w-3 shrink-0 text-muted-foreground"
               strokeWidth={2.5}
             />
           ) : (
@@ -130,7 +132,7 @@ export function ProjectTabs({
               active
                 ? "border-2 border-primary bg-primary/8 font-semibold"
                 : "border-border text-muted-foreground hover:text-foreground hover:bg-muted",
-              error && "border-amber-500/50 bg-amber-500/5",
+              error && SEMANTIC_SURFACE.danger,
             )}
           >
             <button

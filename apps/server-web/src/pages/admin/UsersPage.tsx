@@ -23,6 +23,8 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  SEMANTIC_SURFACE,
+  SEMANTIC_TONE,
   useI18n,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
@@ -63,7 +65,14 @@ function userColumns(t: (key: string) => string): Column<AdminUser>[] {
     {
       header: t("field.status"),
       cell: (u) => (
-        <Badge variant={u.active ? "secondary" : "outline"}>
+        <Badge
+          variant="outline"
+          className={
+            u.active
+              ? `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
+              : `${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}`
+          }
+        >
           {u.active ? t("common.active") : t("common.suspended")}
         </Badge>
       ),
@@ -159,7 +168,7 @@ export function UsersPage() {
         <div
           role="status"
           aria-live="polite"
-          className="rounded-md border border-primary bg-primary/5 p-4"
+          className={`rounded-md border p-4 ${SEMANTIC_SURFACE.success}`}
         >
           <p className="text-sm font-medium">{t("users.inviteLinkNotice")}</p>
           {/* 給受邀者的是可直接開啟的連結，不是要他自己拼網址的 token。 */}
@@ -552,7 +561,14 @@ function UserCredentials({ userId }: { userId: string }) {
         <li key={p.id} className="flex items-center gap-2">
           <span className="font-mono">{p.prefix}</span>
           <span className="min-w-0 flex-1 truncate">{p.name}</span>
-          <Badge variant={p.revokedAt ? "outline" : "secondary"}>
+          <Badge
+          variant="outline"
+          className={
+            p.revokedAt
+              ? "text-muted-foreground"
+              : `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
+          }
+        >
             {p.revokedAt ? t("common.revoked") : t("common.active")}
           </Badge>
         </li>
@@ -560,7 +576,14 @@ function UserCredentials({ userId }: { userId: string }) {
       {devices.map((f) => (
         <li key={f.id} className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate">{f.source}</span>
-          <Badge variant={f.revokedAt ? "outline" : "secondary"}>
+          <Badge
+          variant="outline"
+          className={
+            f.revokedAt
+              ? "text-muted-foreground"
+              : `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
+          }
+        >
             {f.revokedAt ? t("common.revoked") : t("common.active")}
           </Badge>
         </li>

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { I18nProvider } from "@speclink/ui";
+import { I18nProvider, SEMANTIC_TONE } from "@speclink/ui";
 
 import { MigrationDialog } from "../components/MigrationDialog";
 import type { MigrationAdapter, MigrationResult } from "../adapter/migration";
@@ -106,6 +106,33 @@ describe("MigrationDialog", () => {
     expect(connectionAdapter.scopes).toHaveBeenCalledWith("conn_1");
     expect(screen.getByText(/已遷移 14 份文件/)).toBeTruthy();
     expect(screen.getByText(RESULT.backupPath)).toBeTruthy();
+  });
+
+  it("狀態語意色：eyebrow 中性、備份警語琥珀、進行中為藍、成功為綠", async () => {
+    // spec「進行中以藍呈現」「成功以綠呈現」：主色同時當「進行中」與「成功」，
+    // 兩個結局長得一樣，使用者分不出遷移跑完沒。
+    let resolveMigration: (result: MigrationResult) => void = () => {};
+    const migrate = vi.fn(
+      () => new Promise<MigrationResult>((resolve) => { resolveMigration = resolve; }),
+    );
+    renderDialog(migrate);
+    await reachConfirmation();
+
+    const dialog = screen.getByTestId("migration-dialog");
+    const eyebrow = screen.getByText("Local → Remote").closest("div") as HTMLElement;
+    expect(eyebrow.className).not.toContain("text-primary");
+    expect(screen.getByText(/openspec\/.*改名備份/).closest("div")!.className).toContain("amber");
+
+    fireEvent.click(screen.getByRole("button", { name: "開始遷移" }));
+    const running = screen.getByRole("status");
+    expect(running.className).toContain("sky");
+    expect(running.querySelector("svg")?.getAttribute("class")).toContain(SEMANTIC_TONE.inProgress);
+
+    resolveMigration(RESULT);
+    await screen.findByText(/已遷移 14 份文件/);
+    const check = dialog.querySelector(".rounded-full") as HTMLElement;
+    expect(check.className).toContain("emerald");
+    expect(check.className).not.toContain("bg-primary");
   });
 
   it("server 拒絕時原樣呈現錯誤且不轉換分頁", async () => {

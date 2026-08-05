@@ -41,6 +41,14 @@ const report: AnalyzeReport = {
       summary: "Scenario 'foo' has no concrete examples",
       recommendation: "add example",
     },
+    {
+      id: "AMB-2",
+      dimension: "Ambiguity",
+      severity: "Warning",
+      location: "specs/desktop-app/spec.md",
+      summary: "Scenario 'bar' mixes two behaviors",
+      recommendation: "split the scenario",
+    },
   ],
   artifacts_analyzed: ["proposal", "specs", "tasks"],
   artifacts_missing: [],
@@ -62,10 +70,32 @@ describe("AnalyzePanel（結構驗證列＋維度摘要卡＋發現卡）", () =
     expect(within(dim("Gaps")).getByText("無問題")).toBeTruthy();
   });
 
+  it("Warning 嚴重度徽章為琥珀警示，與同維度摘要同語意同色（不借主色表狀態）", () => {
+    // spec「介面狀態語意色分層」：警示＝琥珀。徽章與 Ambiguity 維度摘要講同一件事，
+    // 兩處必須同色——舊實作徽章走主色、摘要走琥珀，同頁自相矛盾。
+    render(<AnalyzePanel report={report} validate={ok} />);
+    const warn = document.querySelector('[data-finding="AMB-2"]') as HTMLElement;
+    const badge = within(warn).getByText("Warning");
+    expect(badge.className).toContain("amber");
+    expect(badge.className).not.toContain("primary");
+    expect(within(dim("Ambiguity")).getByText("18 個問題").className).toContain("amber");
+  });
+
+  it("驗證通過列與零問題維度為中性，不以主色表達狀態", () => {
+    // 主色保留給連結／互動／進度；「沒問題」是靜態結果，走中性。
+    render(<AnalyzePanel report={report} validate={ok} />);
+    const row = document.querySelector("[data-validate-row]") as HTMLElement;
+    expect(row.className).toContain("text-muted-foreground");
+    expect(row.className).not.toContain("text-primary");
+    const zero = within(dim("Consistency")).getByText("無問題");
+    expect(zero.className).toContain("text-muted-foreground");
+    expect(zero.className).not.toContain("text-primary");
+  });
+
   it("發現卡呈現嚴重度徽章、來源檔、摘要與建議行", () => {
     render(<AnalyzePanel report={report} validate={ok} />);
     const cards = document.querySelectorAll("[data-finding]");
-    expect(cards.length).toBe(2);
+    expect(cards.length).toBe(3);
     const first = cards[0] as HTMLElement;
     expect(within(first).getByText("Critical")).toBeTruthy();
     expect(within(first).getByText("tasks.md")).toBeTruthy();

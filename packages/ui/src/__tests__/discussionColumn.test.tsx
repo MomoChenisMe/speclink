@@ -115,6 +115,10 @@ describe("DiscussionColumn（兩級呈現）", () => {
     const title = within(card).getByText("open-topic");
     const nameRow = title.parentElement as HTMLElement;
     expect(within(nameRow).getByRole("button", { name: /複製/ })).toBeTruthy();
+    // 建立者圓點為靜態 metadata：走中性，不佔用主色（與變更卡同款）。
+    const avatar = within(card).getByLabelText("Momo Chen <momo@example.com>");
+    expect(avatar.className).toContain("bg-muted");
+    expect(avatar.className).not.toContain("bg-primary");
     // 建立者圓點缺席時不渲染（createdBy 為 undefined 的卡）。
     // meta 列：輪數與建立時間並排。
     expect(within(card).getByText(/3 輪/)).toBeTruthy();
@@ -332,6 +336,20 @@ describe("DiscussionColumn 計數只算 active 與空狀態（design D3）", () 
     );
     expect(screen.queryByText("尚無討論")).toBeNull();
     expect(screen.getByTestId("column-count").textContent).toBe("0");
+  });
+
+  it("欄頭圖示、頂部色條與計數徽章為中性，不自建平行主色階梯", () => {
+    // 討論欄不是生命週期階段：主色深淺階梯是看板三欄的語彙，討論欄照抄會讓
+    // 「顏色＝階段」的讀法失準（系統匣的討論分區同樣走中性）。
+    render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
+    const col = document.querySelector('[data-column="discussions"]') as HTMLElement;
+    expect(col.className).not.toContain("border-t-primary");
+    const count = screen.getByTestId("column-count");
+    expect(count.className).toContain("bg-muted");
+    expect(count.className).not.toContain("primary");
+    const heading = screen.getByText("討論");
+    const icon = heading.previousElementSibling as HTMLElement;
+    expect(icon.getAttribute("class")).not.toContain("primary");
   });
 });
 

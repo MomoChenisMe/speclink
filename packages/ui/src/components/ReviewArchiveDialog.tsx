@@ -8,8 +8,8 @@ import {
   AlertDialogTitle,
   AlertDialogCancel,
 } from "./ui/alert-dialog";
+import { SEMANTIC_TONE } from "../tone";
 import { Button } from "./ui/button";
-import { REVIEW_TONE } from "./reviewStyle";
 
 export interface ReviewArchiveDialogProps {
   open: boolean;
@@ -50,11 +50,8 @@ export function ReviewArchiveDialog({
           <Button variant="outline" onClick={onDiscardReview}>
             {t("review.discardReview")}
           </Button>
-          <Button
-            variant="outline"
-            className={REVIEW_TONE.reviewedNotPassed}
-            onClick={onCarryReview}
-          >
+          {/* 危險動作走 destructive；rose 專屬「曾審查未通過」的永久標示（三紅分工）。 */}
+          <Button variant="outline" className={SEMANTIC_TONE.danger} onClick={onCarryReview}>
             {t("review.carryReview")}
           </Button>
           <AlertDialogCancel>{t("review.cancel")}</AlertDialogCancel>

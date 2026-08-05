@@ -441,6 +441,13 @@ describe("remote marker 與本機 openspec 並存", () => {
     );
 
     expect(screen.getByText(/備份後棄用本機內容.*不會上傳或合併/)).toBeTruthy();
+    // 三個出口是平等的選擇，不是狀態：語彙統一為中性卡，顏色不暗示「哪個比較對」。
+    for (const name of [/^繼續本機/, /^以 Server 為準/, /^遷移本機內容/]) {
+      const cls = screen.getByRole("button", { name }).className;
+      expect(cls).toContain("border-border");
+      expect(cls).not.toContain("amber");
+      expect(cls).not.toContain("bg-primary");
+    }
     fireEvent.click(screen.getByRole("button", { name: /^繼續本機/ }));
     fireEvent.click(screen.getByRole("button", { name: /^以 Server 為準/ }));
     await waitFor(() => expect(useServer).toHaveBeenCalledTimes(1));

@@ -248,7 +248,7 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
     }
   });
 
-  it("「照樣帶走」按鈕用未通過的紅（與其永久標示同語意）", () => {
+  it("「照樣帶走」按鈕用危險動作的紅（destructive；未通過章的 rose 只屬標示）", () => {
     render(
       <ReviewArchiveDialog
         open
@@ -259,7 +259,10 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
         onCarryReview={vi.fn()}
       />,
     );
-    expect(screen.getByText("照樣帶走").className).toContain("text-rose-600");
+    // 危險動作（按鈕）走 destructive；rose 專屬「曾審查未通過」的永久標示，
+    // 兩者分工才不會讓同一片紅同時代表「按下去會怎樣」與「結果是什麼」。
+    expect(screen.getByText("照樣帶走").className).toContain("text-destructive");
+    expect(screen.getByText("照樣帶走").className).not.toContain("rose");
   });
 });
 
