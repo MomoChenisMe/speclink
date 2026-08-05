@@ -6,6 +6,22 @@ use std::path::{Path, PathBuf};
 
 pub(crate) struct FixtureRoot(PathBuf);
 
+/// [`FixtureRoot::attach_worktree`] 建立的 worktree 副本：路徑帶著往 change
+/// 目錄的導航，測試不再以裸 `PathBuf` 流轉、逐處手拼 `openspec/changes/<名>`。
+pub(crate) struct WorktreeCopy(PathBuf);
+
+impl WorktreeCopy {
+    /// worktree 根（git 回報的正規化路徑）。
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+
+    /// 一個 change 在這份副本內的目錄——寫入「只存在於 worktree」的內容用。
+    pub fn change_dir(&self, change: &str) -> PathBuf {
+        self.0.join("openspec").join("changes").join(change)
+    }
+}
+
 impl FixtureRoot {
     pub fn new(tag: &str) -> FixtureRoot {
         let dir = std::env::temp_dir().join(format!(
@@ -28,11 +44,11 @@ impl FixtureRoot {
     }
 
     /// 主 checkout ＋ 一個 speclink/<change> worktree，change 兩份副本皆在——
-    /// 探索成立映射的三個條件。回傳 worktree 路徑（正規化）。
+    /// 探索成立映射的三個條件。
     ///
     /// 呼叫前寫入的檔案都會進 seed commit，因此也存在於 worktree 副本；之後兩邊
     /// 各自改檔即可製造「主 checkout 與 worktree 相異」的情境。
-    pub fn attach_worktree(&self, change: &str) -> PathBuf {
+    pub fn attach_worktree(&self, change: &str) -> WorktreeCopy {
         let git = |args: &[&str]| {
             let out = std::process::Command::new("git")
                 .args(args)
@@ -54,12 +70,7 @@ impl FixtureRoot {
         git(&["worktree", "add", "-q", "-b", &format!("speclink/{change}"), wt.to_str().unwrap()]);
         // git 回報的是正規化路徑；macOS 的 /var 是 /private/var 的 symlink，
         // 不正規化就會拿 symlink 路徑去比對 git 的實體路徑。
-        wt.canonicalize().expect("worktree path")
-    }
-
-    /// 一個 change 在 worktree 副本內的目錄——寫入「只存在於 worktree」的內容用。
-    pub fn worktree_change_dir(wt: &Path, change: &str) -> PathBuf {
-        wt.join("openspec").join("changes").join(change)
+        WorktreeCopy(wt.canonicalize().expect("worktree path"))
     }
 
     /// 建一個含 proposal 與 tasks 的 change；meta 原文由呼叫端給（測 started_* 疊加）。

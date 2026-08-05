@@ -18,9 +18,7 @@ pub fn list_changes_at(root: &Path) -> Value {
     // Worktree 觀察面：與 CLI list 同一組閘門與 payload 落點（design D6）。
     // 政策關、非主 checkout、git 不可用 → facts 為空，讀寫與 payload 與此功能
     // 出現前完全相同。
-    let facts = speclink_host::worktree::observed_facts(&ctx.workspace, &ctx.store, |key| {
-        std::env::var(key).ok()
-    });
+    let facts = crate::facts_for(&ctx);
     let overlaid = overlay_store(&ctx, &facts);
     let store: &dyn Store = if facts.is_empty() { &ctx.store } else { &overlaid };
     let changes = board_sorted_changes(store);
@@ -56,11 +54,10 @@ pub fn list_changes_at(root: &Path) -> Value {
             } else {
                 // 內容指紋錨讀的是 repo 任意程式檔、不是 artifact——overlay 幫不上，
                 // 逐 change 解析讀取根（design D2）：有 worktree 映射讀該副本，
-                // 否則讀主 checkout。任務錨已走 overlay，兩錨自此同源。
-                let scope_root = match facts.get(&c.name) {
-                    Some(entry) => entry.path.as_path(),
-                    None => ctx.workspace.root.as_path(),
-                };
+                // 否則讀主 checkout。任務錨已走 overlay，兩錨自此同源；解析含
+                // 存在性回退（worktree_root_for），與 overlay 的 of() 同步。
+                let scope_root = crate::worktree_root_for(&ctx, &facts, &c.name)
+                    .unwrap_or(ctx.workspace.root.as_path());
                 let read_file = |p: &str| std::fs::read_to_string(scope_root.join(p)).ok();
                 let (complete, total) = speclink_core::listing::task_counts(store, c);
                 match speclink_core::review::freshness(&c.meta, total, complete, &read_file) {
@@ -110,9 +107,7 @@ pub(crate) fn refuse_if_worktree_is_open(
     ctx: &crate::ProjectContext,
     change: &str,
 ) -> Result<(), String> {
-    let facts = speclink_host::worktree::observed_facts(&ctx.workspace, &ctx.store, |key| {
-        std::env::var(key).ok()
-    });
+    let facts = crate::facts_for(ctx);
     match facts.get(change) {
         None => Ok(()),
         Some(entry) => Err(format!(
@@ -134,9 +129,7 @@ pub fn watch_targets_at(root: &Path) -> Vec<PathBuf> {
         return Vec::new();
     };
     let mut targets = vec![ctx.workspace.spec_dir()];
-    let facts = speclink_host::worktree::observed_facts(&ctx.workspace, &ctx.store, |key| {
-        std::env::var(key).ok()
-    });
+    let facts = crate::facts_for(&ctx);
     for (change, entry) in &facts {
         targets.push(
             entry
@@ -402,7 +395,7 @@ mod tests {
 
         let worktree = item.get("worktree").expect("mapped change carries a worktree object");
         assert_eq!(worktree["branch"], "speclink/add-auth");
-        assert_eq!(worktree["path"], wt.to_string_lossy().to_string());
+        assert_eq!(worktree["path"], wt.path().to_string_lossy().to_string());
         assert!(worktree["branch"].is_string() && worktree["path"].is_string());
     }
 
@@ -417,7 +410,7 @@ mod tests {
         let targets = watch_targets_at(fx.root());
 
         assert_eq!(targets[0], fx.root().join("openspec"), "第一項恆為 spec 目錄");
-        let want_copy = wt.join("openspec").join("changes").join("add-auth");
+        let want_copy = wt.change_dir("add-auth");
         assert!(targets.contains(&want_copy), "須監看 worktree 副本的 change 目錄: {targets:?}");
         let want_registry = fx.root().join(".git").join("worktrees");
         assert!(targets.contains(&want_registry), "須監看 worktree 登記簿: {targets:?}");
@@ -473,7 +466,7 @@ mod tests {
         let fx = FixtureRoot::new("q-doc-wt");
         fx.add_change("add-auth", OLD_META);
         let wt = fx.attach_worktree("add-auth");
-        let wt_change = FixtureRoot::worktree_change_dir(&wt, "add-auth");
+        let wt_change = wt.change_dir("add-auth");
         std::fs::write(wt_change.join("tasks.md"), TASKS_ALL_DONE).unwrap();
         std::fs::write(wt_change.join("design.md"), "## Context\n\nworktree 版設計。\n").unwrap();
         std::fs::create_dir_all(wt_change.join("specs").join("cap-wt")).unwrap();
@@ -498,6 +491,26 @@ mod tests {
     }
 
     #[test]
+    fn worktree_context_is_built_directly_without_discovery() {
+        // 審查 finding（Round 1）：定根不得走 discovery——向上探索在極端情境會走出
+        // worktree、落到祖先目錄的別的專案；副本的 .speclink.yaml 損壞時也不得靜默
+        // 回讀主 checkout。映射條件只看「change 目錄可讀」，成立就以 worktree 路徑
+        // ＋主 checkout 的 spec 目錄名直接建構（與 overlay 的組裝同款）。
+        let fx = FixtureRoot::new("q-wt-direct");
+        fx.add_change("add-auth", OLD_META);
+        let wt = fx.attach_worktree("add-auth");
+        std::fs::write(wt.path().join(".speclink.yaml"), ": : broken [yaml\n").unwrap();
+        std::fs::write(
+            wt.change_dir("add-auth").join("tasks.md"),
+            TASKS_ALL_DONE,
+        )
+        .unwrap();
+
+        let doc = document_at(fx.root(), "add-auth", "tasks.md").expect("tasks.md 可讀");
+        assert!(doc.contains("- [x] 1.1"), "直接組裝、不受副本 app config 影響: {doc}");
+    }
+
+    #[test]
     fn status_report_comes_from_the_worktree_copy() {
         // 同一需求的狀態報告面：design.md 只存在於 worktree 副本時，該 artifact
         // 的狀態為 done（讀主 checkout 會停在未完成）。
@@ -505,7 +518,7 @@ mod tests {
         fx.add_change("add-auth", OLD_META);
         let wt = fx.attach_worktree("add-auth");
         std::fs::write(
-            FixtureRoot::worktree_change_dir(&wt, "add-auth").join("design.md"),
+            wt.change_dir("add-auth").join("design.md"),
             "## Context\n\nworktree 版設計。\n",
         )
         .unwrap();
@@ -534,7 +547,7 @@ mod tests {
         fx.add_change("add-auth", OLD_META);
         let wt = fx.attach_worktree("add-auth");
         fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: false\n");
-        let wt_change = FixtureRoot::worktree_change_dir(&wt, "add-auth");
+        let wt_change = wt.change_dir("add-auth");
         std::fs::write(wt_change.join("tasks.md"), TASKS_ALL_DONE).unwrap();
         std::fs::write(wt_change.join("design.md"), "## Context\n\n只在 worktree。\n").unwrap();
 
@@ -573,7 +586,7 @@ mod tests {
         fx.add_change("add-auth", OLD_META);
         let wt = fx.attach_worktree("add-auth");
         std::fs::write(
-            FixtureRoot::worktree_change_dir(&wt, "add-auth").join("tasks.md"),
+            wt.change_dir("add-auth").join("tasks.md"),
             TASKS_ALL_DONE,
         )
         .unwrap();
@@ -611,7 +624,7 @@ mod tests {
         let fx = FixtureRoot::new("q-list-wt-progress");
         fx.add_change("add-auth", OLD_META);
         let wt = fx.attach_worktree("add-auth");
-        let tasks = wt.join("openspec").join("changes").join("add-auth").join("tasks.md");
+        let tasks = wt.change_dir("add-auth").join("tasks.md");
         std::fs::write(&tasks, "## 1. Group\n\n- [x] 1.1 First task\n- [x] 1.2 Second task\n")
             .unwrap();
 
@@ -755,7 +768,7 @@ mod tests {
         fx.add_change("fix-auth", &reviewed_meta("src/auth.rs", &hash));
         fx.write("openspec/changes/fix-auth/tasks.md", TASKS_ALL_DONE);
         let wt = fx.attach_worktree("fix-auth");
-        std::fs::write(wt.join("src").join("auth.rs"), worktree).unwrap();
+        std::fs::write(wt.path().join("src").join("auth.rs"), worktree).unwrap();
         fx
     }
 
