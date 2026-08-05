@@ -103,13 +103,13 @@ export function OverviewPage() {
               <span className="flex items-center gap-2">
                 {t("overview.healthLabel")}
                 <Badge
-                variant="outline"
-                className={
-                  data.storeHealthy
-                    ? `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
-                    : `${SEMANTIC_SURFACE.danger} ${SEMANTIC_TONE.danger}`
-                }
-              >
+                  variant="outline"
+                  className={
+                    data.storeHealthy
+                      ? `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
+                      : `${SEMANTIC_SURFACE.danger} ${SEMANTIC_TONE.danger}`
+                  }
+                >
                   {data.storeHealthy ? t("common.normal") : t("common.abnormal")}
                 </Badge>
               </span>

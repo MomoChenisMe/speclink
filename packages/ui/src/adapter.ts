@@ -148,10 +148,10 @@ export interface VerbDrawerResult {
   error?: string;
 }
 
-/** 看板卡片種類（拖排寫回的目標）：變更卡或討論卡。 */
 /** 清單檢視模式（作用中／已封存）——桌面 store 的檢視狀態沿用此型別。 */
 export type ListView = "active" | "archived";
 
+/** 看板卡片種類（拖排寫回的目標）：變更卡或討論卡。 */
 export type CardKind = "change" | "discussion";
 
 /** workspace 全文查詢的一筆命中（design D6）：卡片識別＋命中 artifact＋snippet。 */
