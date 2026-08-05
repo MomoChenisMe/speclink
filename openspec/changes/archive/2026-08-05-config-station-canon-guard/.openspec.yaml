@@ -34,3 +34,5 @@ reviewed_scope:
     hash: 73718172367fbb844d75e9f2ebc6bddd69784aba86ca59bcfacb96cefb2748f7
   - path: crates/speclink-core/tests/it/render_golden.rs
     hash: 872c89b4984e5ce3628b18e55c666a11e8fd7ad8b20a99136dd532b5dc48b7e6
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-05
