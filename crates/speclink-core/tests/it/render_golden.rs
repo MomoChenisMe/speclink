@@ -964,6 +964,20 @@ fn worktree_merge_skill_states_preflight_conflict_and_cleanup() {
             content.contains("merge --ff-only"),
             "{rel}: a successful rebase must land as a fast-forward"
         );
+        // the rebase runs inside the worktree, so the prerequisite must not
+        // claim otherwise — a reader who believes it stops or rebases in the
+        // wrong tree.
+        assert!(
+            !content.contains("not in the worktree"),
+            "{rel}: the prerequisite contradicts step 3, which rebases inside the worktree"
+        );
+        // a fast-forward can be refused when the target moved on mid-flight —
+        // with parallel worktrees that is a live race, and leaving it unstated
+        // strands the agent on a mutating step.
+        assert!(
+            content.contains("If the fast-forward is refused"),
+            "{rel}: a refused fast-forward must have a stated exit"
+        );
         // ladder fallback: a rebase conflict restores the branch untouched and
         // drops back to the plain merge, so the worst case equals the old flow.
         assert!(
@@ -978,6 +992,17 @@ fn worktree_merge_skill_states_preflight_conflict_and_cleanup() {
         assert!(
             content.contains("do **NOT** commit a partial merge"),
             "{rel}: must forbid committing a partial merge"
+        );
+        // the guardrail list must carry the rebase red line too, not just merge
+        assert!(
+            content.contains("Never resolve rebase conflicts"),
+            "{rel}: the guardrails must forbid resolving rebase conflicts"
+        );
+        // both ladder exits reach the success output, so it has to say which
+        // one was taken — a merge node the user was not told about is a surprise
+        assert!(
+            content.contains("Landed as"),
+            "{rel}: the success output must state whether it landed as a fast-forward"
         );
         // cleanup and hand-off
         assert!(

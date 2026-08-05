@@ -4,7 +4,7 @@ worktree 平行開發的合併收尾走一般 git merge，主分支在 worktree 
 
 ## What Changes
 
-- worktree-merge 技能正典模板（crates/speclink-core/assets/skills/worktree-merge.md）的合併步驟改為 rebase-first 階梯：先於 worktree 內把 speclink/<change名> rebase 到合併目標分支，成功後於主資料夾以 fast-forward 限定方式合併（線圖成直線）；rebase 衝突時中止 rebase（分支完整復原）並退回現行的一般 merge；merge 仍衝突時維持既有守則——中止、回報衝突檔案、絕不代解。最壞情況行為等於現狀。
+- worktree-merge 技能正典模板（crates/speclink-core/assets/skills/worktree-merge.md）的合併步驟改為 rebase-first 階梯：先於 worktree 內把 speclink/<change名> rebase 到合併目標分支，成功後於主資料夾以 fast-forward 限定方式合併（線圖成直線）；rebase 衝突、或 fast-forward 因合併目標期間前進而被拒時，都退回現行的一般 merge 並告知使用者本次留下合併節點；merge 仍衝突時維持既有守則——中止、回報衝突檔案、絕不代解。最壞情況行為等於現狀。
 - 釘住技能內文的一致性測試（crates/speclink-core/tests/it/render_golden.rs 的 worktree-merge 測試）同批補上 rebase-first 與 fallback 階梯的斷言；既有 merge --abort 斷言因 fallback 保留而繼續成立。
 - 內嵌 asset 內容一變就要同批推進版本鎖：crates/speclink-core/src/init.rs 的 MARKER_VERSION 由 v1.13.0 推進為 v1.14.0（本 repo 慣例：內容變動即 minor +1），並重生 crates/speclink-core/tests/golden/ 下的快照與 assets.lock 指紋。
 - 以引擎再生機制更新本 repo 的生成產物：.claude/skills/ 與 .agents/skills/ 的 speclink-worktree-merge/SKILL.md，以及版本戳波及的 CLAUDE.md、AGENTS.md 與兩處全部技能檔 frontmatter 版號（本 repo 的 tools 為 claude 與 codex，兩者模板同源同批更新）。
@@ -27,7 +27,7 @@ worktree 平行開發的合併收尾走一般 git merge，主分支在 worktree 
 
 ### Modified Capabilities
 
-- `worktree-merge-skill`: 「worktree-merge 技能的收尾流程指示」的合併步驟由一般 merge 改為 rebase-first 階梯（worktree 內 rebase 目標分支 → 主資料夾 fast-forward 限定合併；rebase 衝突中止後退回一般 merge；merge 衝突維持中止回報），其餘 preflight、清理與交棒指示不變。
+- `worktree-merge-skill`: 「worktree-merge 技能的收尾流程指示」的合併步驟由一般 merge 改為 rebase-first 階梯（worktree 內 rebase 目標分支 → 主資料夾 fast-forward 限定合併；rebase 衝突或 fast-forward 被拒時退回一般 merge 並標示留下合併節點；merge 衝突維持中止回報），守則清單加入 rebase 紅線、成功輸出標示落地方式，其餘 preflight、清理與交棒指示不變。
 
 ## Impact
 
