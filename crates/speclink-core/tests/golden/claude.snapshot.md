@@ -1,5 +1,5 @@
 === CLAUDE.md ===
-<!-- SPECLINK:START v1.12.0 -->
+<!-- SPECLINK:START v1.13.0 -->
 
 # Speclink Instructions
 
@@ -38,7 +38,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -126,7 +126,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -452,7 +452,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -727,7 +727,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -963,7 +963,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -1235,7 +1235,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -1279,7 +1279,7 @@ speclink instructions <artifact> --json
 
 Read the returned instruction text and check your candidate line against it, one line at a time. If the payload already carries the requirement, drop the candidate. Do this for every artifact you intend to write rules for — an untested claim of "the engine doesn't say this" is exactly how duplicates got in before.
 
-**Quality-station canon: disprove against the generated station skill, never from memory.** A station's standards live in its own generated skill file, in the same skills directory as this one — the review station's code-smell baseline sits in `speclink-review`, and no instructions payload carries it, so the payload check above cannot see it. Open the station skills a candidate line could overlap with and read the passage it would duplicate. If a station already carries the standard, drop the candidate: the station skill is its single home, and a copy here is a second canon that drifts away from it.
+**Quality-station canon: disprove against the generated station skill, never from memory.** A station's standards live in its own generated skill file, in the same skills directory as this one — the review station's code-smell baseline sits in `speclink-review`, and no instructions payload carries it, so the payload check above cannot see it. Open whichever station skills are present in that directory and could overlap with a candidate line (which stations generate varies by tool), and read the passage each would duplicate. If a station already carries the standard, drop the candidate: the station skill is its single home, and a copy here is a second canon that drifts away from it.
 
 ### Criterion 2 — Artifact-specific content belongs in rules
 
@@ -1350,7 +1350,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -1790,7 +1790,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -1920,7 +1920,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -2188,7 +2188,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -2282,7 +2282,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -2702,7 +2702,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 
@@ -2883,7 +2883,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.12.0"
+  version: "v1.13.0"
   generatedBy: "Speclink"
 ---
 

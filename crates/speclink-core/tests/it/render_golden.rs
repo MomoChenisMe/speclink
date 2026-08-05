@@ -289,6 +289,20 @@ fn worktree_skill_for_both_tools(tag: &str, skill: &str) -> Vec<(String, String)
 }
 
 fn generated_skill_for_both_tools(tag: &str, skill: &str, worktree: bool) -> Vec<(String, String)> {
+    generated_skills_for_both_tools(tag, &[skill], worktree)
+        .into_iter()
+        .map(|mut skills| skills.remove(0))
+        .collect()
+}
+
+/// [`generated_skill_for_both_tools`] reading SEVERAL skills from the SAME
+/// rendered root — one inner Vec per tool, in the order requested. For tests
+/// that assert a relationship between two generated skills.
+fn generated_skills_for_both_tools(
+    tag: &str,
+    skills: &[&str],
+    worktree: bool,
+) -> Vec<Vec<(String, String)>> {
     let cases = [
         (format!("{tag}-claude"), Tool::Claude, ".claude/skills"),
         (format!("{tag}-codex"), Tool::Codex, ".agents/skills"),
@@ -306,11 +320,17 @@ fn generated_skill_for_both_tools(tag: &str, skill: &str, worktree: bool) -> Vec
                 .unwrap();
                 init::update(&root.dir).unwrap();
             }
-            let rel = format!("{skills_dir}/speclink-{skill}/SKILL.md");
-            let content =
-                std::fs::read_to_string(root.dir.join(rel.split('/').collect::<PathBuf>()))
+            skills
+                .iter()
+                .map(|skill| {
+                    let rel = format!("{skills_dir}/speclink-{skill}/SKILL.md");
+                    let content = std::fs::read_to_string(
+                        root.dir.join(rel.split('/').collect::<PathBuf>()),
+                    )
                     .expect(&rel);
-            (rel, content)
+                    (rel, content)
+                })
+                .collect()
         })
         .collect()
 }
@@ -873,24 +893,32 @@ fn apply_with_worktree_stops_before_the_merge_and_hands_off() {
 /// 判準與反證步驟」/「品質站正典不得重述進 rules」: criterion 1 carries two
 /// disproof routes — the instructions payload for injected content, and the
 /// generated quality-station skill for the canon it holds (the review station's
-/// smell baseline reaches no payload, so the first route cannot see it).
+/// smell baseline reaches no payload, so the first route cannot see it) — and
+/// the guardrail list restates the prohibition. The `speclink-review` reference
+/// is kept honest by asserting the generated review skill still carries the
+/// smell baseline the criterion points at.
 #[test]
 fn config_skill_criterion_one_disproves_station_canon_too() {
-    for (rel, content) in skill_for_both_tools("config-station-canon", "config") {
-        let start = content
+    for tool_skills in generated_skills_for_both_tools("config-station-canon", &["config", "review"], false)
+    {
+        let [(rel, config), (review_rel, review)]: [(String, String); 2] =
+            tool_skills.try_into().unwrap();
+        let start = config
             .find("### Criterion 1")
             .unwrap_or_else(|| panic!("{rel}: missing the criterion 1 section"));
-        let end = content
+        let len = config[start..]
             .find("### Criterion 2")
             .unwrap_or_else(|| panic!("{rel}: missing the criterion 2 section"));
-        let criterion_one = &content[start..end];
+        let criterion_one = &config[start..start + len];
         for needle in [
             // route (a): engine-injected content, disproved per line by payload
             "speclink instructions <artifact> --json",
-            // route (b): station canon, disproved against the generated skill file
-            "Quality-station canon: disprove against the generated station skill, never from memory.",
+            // route (b): station canon, disproved against the generated station
+            // skills — only the ones present in the tool's skills directory
+            "Quality-station canon",
             "same skills directory",
-            "speclink-review",
+            "`speclink-review`",
+            "present in that directory",
             "the station skill is its single home",
             "a second canon",
         ] {
@@ -899,18 +927,23 @@ fn config_skill_criterion_one_disproves_station_canon_too() {
                 "{rel}: criterion 1 is missing the disproof phrase {needle:?}"
             );
         }
-    }
-}
-
-/// Same requirement, the guardrail restatement: the one-line summary of criterion
-/// 1 must forbid restating station canon, not only injected instructions.
-#[test]
-fn config_skill_guardrails_forbid_restating_station_canon() {
-    for (rel, content) in skill_for_both_tools("config-station-guardrail", "config") {
+        // the guardrail restatement lives in the Guardrails section itself
+        let guard = config
+            .find("## Guardrails")
+            .unwrap_or_else(|| panic!("{rel}: missing the guardrails section"));
         assert!(
-            content.contains("**Don't restate quality-station canon**"),
+            config[guard..].contains("**Don't restate quality-station canon**"),
             "{rel}: guardrails must forbid restating quality-station canon"
         );
+        // the reference target must still carry the canon it is named for — if
+        // the smell baseline ever moves out of the review skill, this goes red
+        // instead of criterion 1 pointing at an empty home
+        for needle in ["Fowler code smells", "**Mysterious Name**"] {
+            assert!(
+                review.contains(needle),
+                "{review_rel}: the smell baseline criterion 1 points at is no longer here ({needle:?} missing) — move the criterion's reference with it"
+            );
+        }
     }
 }
 
