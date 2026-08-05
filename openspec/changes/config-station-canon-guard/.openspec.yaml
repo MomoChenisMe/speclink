@@ -3,3 +3,34 @@ created: 2026-08-02
 created_by: MomoChen <momochenisme@gmail.com>
 created_with: claude
 board_rank: m
+started_at: 2026-08-05
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-05
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 3
+reviewed_scope:
+  - path: AGENTS.md
+    hash: 24bffec67ff86c9bf136eeb60630ca3f28c6a3142c1844ca9efea69b61ac3048
+  - path: CLAUDE.md
+    hash: 55a049cb0e8cddfbc4ad7e9d17796db437f175136e1cdd4a132c30f259afee1f
+  - path: crates/speclink-core/assets/skills/config.md
+    hash: 86c1ad06e1ad798bcb10dd8bda81c29f2a740aa87ed6e567db0640c1ce619044
+  - path: crates/speclink-core/src/init.rs
+    hash: 59d650d724d2c05b751b11c44be3e8492a9bb6c8335ed306b186eb447b550329
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: c59141043ed9872cccaf14dcadb7a63458f9cc39452c85da06f3dd0d551e5d1c
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 8b47eb1abf7b85818042b57a65293ea4adaa48a18c5b826bd684e2019a8c95a4
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: febb78c886a3d9e79d62987331e023453dee8197cd97a09b047b86fb9d6eb5f6
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: e43c106a2462dbd726bc11972f7c8c9003e38d3abedf1dc5d5ce4c4438104b0e
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: f1173348670df2e169bc7e7eb2382a2183731e506c1b05f76bbddfba4da090c9
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 8c2ac4509a6add697b35a554a5a686d656170f7887d246549b8e9e5b017105ba
+  - path: crates/speclink-core/tests/golden/remote-claude.marker.md
+    hash: 73718172367fbb844d75e9f2ebc6bddd69784aba86ca59bcfacb96cefb2748f7
+  - path: crates/speclink-core/tests/it/render_golden.rs
+    hash: 872c89b4984e5ce3628b18e55c666a11e8fd7ad8b20a99136dd532b5dc48b7e6

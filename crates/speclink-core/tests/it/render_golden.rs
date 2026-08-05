@@ -867,6 +867,67 @@ fn apply_with_worktree_stops_before_the_merge_and_hands_off() {
     }
 }
 
+// --- config skill: criterion 1 disproves engine injection AND station canon ---
+
+/// Spec config-skill「技能規定固定輸入來源與四條內容判準」Scenario「渲染產物含四條
+/// 判準與反證步驟」/「品質站正典不得重述進 rules」: criterion 1 carries two
+/// disproof routes — the instructions payload for injected content, and the
+/// generated quality-station skill for the canon it holds (the review station's
+/// smell baseline reaches no payload, so the first route cannot see it) — and
+/// the guardrail list restates the prohibition. The `speclink-review` reference
+/// is kept honest by asserting the generated review skill still carries the
+/// smell baseline the criterion points at.
+#[test]
+fn config_skill_criterion_one_disproves_station_canon_too() {
+    for (rel, config) in skill_for_both_tools("config-station-canon", "config") {
+        let start = config
+            .find("### Criterion 1")
+            .unwrap_or_else(|| panic!("{rel}: missing the criterion 1 section"));
+        let len = config[start..]
+            .find("### Criterion 2")
+            .unwrap_or_else(|| panic!("{rel}: missing the criterion 2 section"));
+        let criterion_one = &config[start..start + len];
+        for needle in [
+            // route (a): engine-injected content, disproved per line by payload
+            "speclink instructions <artifact> --json",
+            // route (b): station canon, disproved against the generated station
+            // skills — only the ones present in the tool's skills directory
+            "Quality-station canon",
+            "same skills directory",
+            "`speclink-review`",
+            "present in that directory",
+            "the station skill is its single home",
+            "a second canon",
+        ] {
+            assert!(
+                criterion_one.contains(needle),
+                "{rel}: criterion 1 is missing the disproof phrase {needle:?}"
+            );
+        }
+        // the guardrail restatement lives in the Guardrails section itself
+        let guard = config
+            .find("## Guardrails")
+            .unwrap_or_else(|| panic!("{rel}: missing the guardrails section"));
+        assert!(
+            config[guard..].contains("**Don't restate quality-station canon**"),
+            "{rel}: guardrails must forbid restating quality-station canon"
+        );
+    }
+    // the reference target must still carry the canon it is named for — if the
+    // smell baseline ever moves out of the review skill, this goes red instead
+    // of criterion 1 pointing at an empty home. Rendering is deterministic per
+    // tool, so a separate render pins the same content the criterion's reader
+    // would open.
+    for (review_rel, review) in skill_for_both_tools("config-station-review-home", "review") {
+        for needle in ["Fowler code smells", "**Mysterious Name**"] {
+            assert!(
+                review.contains(needle),
+                "{review_rel}: the smell baseline criterion 1 points at is no longer here ({needle:?} missing) — move the criterion's reference with it"
+            );
+        }
+    }
+}
+
 /// Spec「worktree-merge 技能的生成」＋「收尾流程指示」: a standalone template whose
 /// preflight, conflict and cleanup stop points are all stated.
 #[test]
