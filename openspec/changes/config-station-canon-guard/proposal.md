@@ -29,6 +29,7 @@
 - Affected specs: `config-skill`（修改）
 - Affected code:
   - Modified: crates/speclink-core/assets/skills/config.md、crates/speclink-core/src/init.rs、crates/speclink-core/tests/it/render_golden.rs、crates/speclink-core/tests/golden/assets.lock、crates/speclink-core/tests/golden/claude.snapshot.md、crates/speclink-core/tests/golden/codex.snapshot.md、crates/speclink-core/tests/golden/neutral-cli.snapshot.md、crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md、.claude/skills/speclink-config/SKILL.md、.agents/skills/speclink-config/SKILL.md
+  - Modified（MARKER_VERSION 版本戳的機械後果，非本 change 的文字改動）: 其餘帶版號戳記的生成檔與 golden——兩工具的所有 SKILL.md、AGENTS.md、CLAUDE.md、crates/speclink-core/tests/golden/claude-worktree.snapshot.md、crates/speclink-core/tests/golden/remote-claude.marker.md
   - New: 無
   - Removed: 無
 
