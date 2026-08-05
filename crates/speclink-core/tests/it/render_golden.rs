@@ -289,20 +289,6 @@ fn worktree_skill_for_both_tools(tag: &str, skill: &str) -> Vec<(String, String)
 }
 
 fn generated_skill_for_both_tools(tag: &str, skill: &str, worktree: bool) -> Vec<(String, String)> {
-    generated_skills_for_both_tools(tag, &[skill], worktree)
-        .into_iter()
-        .map(|mut skills| skills.remove(0))
-        .collect()
-}
-
-/// [`generated_skill_for_both_tools`] reading SEVERAL skills from the SAME
-/// rendered root — one inner Vec per tool, in the order requested. For tests
-/// that assert a relationship between two generated skills.
-fn generated_skills_for_both_tools(
-    tag: &str,
-    skills: &[&str],
-    worktree: bool,
-) -> Vec<Vec<(String, String)>> {
     let cases = [
         (format!("{tag}-claude"), Tool::Claude, ".claude/skills"),
         (format!("{tag}-codex"), Tool::Codex, ".agents/skills"),
@@ -320,17 +306,11 @@ fn generated_skills_for_both_tools(
                 .unwrap();
                 init::update(&root.dir).unwrap();
             }
-            skills
-                .iter()
-                .map(|skill| {
-                    let rel = format!("{skills_dir}/speclink-{skill}/SKILL.md");
-                    let content = std::fs::read_to_string(
-                        root.dir.join(rel.split('/').collect::<PathBuf>()),
-                    )
+            let rel = format!("{skills_dir}/speclink-{skill}/SKILL.md");
+            let content =
+                std::fs::read_to_string(root.dir.join(rel.split('/').collect::<PathBuf>()))
                     .expect(&rel);
-                    (rel, content)
-                })
-                .collect()
+            (rel, content)
         })
         .collect()
 }
@@ -899,10 +879,7 @@ fn apply_with_worktree_stops_before_the_merge_and_hands_off() {
 /// smell baseline the criterion points at.
 #[test]
 fn config_skill_criterion_one_disproves_station_canon_too() {
-    for tool_skills in generated_skills_for_both_tools("config-station-canon", &["config", "review"], false)
-    {
-        let [(rel, config), (review_rel, review)]: [(String, String); 2] =
-            tool_skills.try_into().unwrap();
+    for (rel, config) in skill_for_both_tools("config-station-canon", "config") {
         let start = config
             .find("### Criterion 1")
             .unwrap_or_else(|| panic!("{rel}: missing the criterion 1 section"));
@@ -935,9 +912,13 @@ fn config_skill_criterion_one_disproves_station_canon_too() {
             config[guard..].contains("**Don't restate quality-station canon**"),
             "{rel}: guardrails must forbid restating quality-station canon"
         );
-        // the reference target must still carry the canon it is named for — if
-        // the smell baseline ever moves out of the review skill, this goes red
-        // instead of criterion 1 pointing at an empty home
+    }
+    // the reference target must still carry the canon it is named for — if the
+    // smell baseline ever moves out of the review skill, this goes red instead
+    // of criterion 1 pointing at an empty home. Rendering is deterministic per
+    // tool, so a separate render pins the same content the criterion's reader
+    // would open.
+    for (review_rel, review) in skill_for_both_tools("config-station-review-home", "review") {
         for needle in ["Fowler code smells", "**Mysterious Name**"] {
             assert!(
                 review.contains(needle),
