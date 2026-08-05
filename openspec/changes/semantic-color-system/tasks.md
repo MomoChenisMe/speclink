@@ -28,4 +28,4 @@
 
 ## 6. 整體驗證
 
-- [ ] 6.1 全套驗證與手動走查:npm test -w @speclink/ui、npm test -w apps/desktop、npm test -w apps/server-web 全綠;npm run build -w apps/desktop 與 npm run build -w apps/server-web 通過;手動於深淺主題走查桌面 app(含系統匣 vibrancy 底的對比)與後台各狀態徽章——契約:design Implementation Contract 觀察行為清單全數成立;驗證:逐條核對。 <!-- speclink-task:tsk_01KZ5P0WAA4DDMAQMG8XBH1M56 -->
+- [x] 6.1 全套驗證與手動走查:npm test -w @speclink/ui、npm test -w apps/desktop、npm test -w apps/server-web 全綠;npm run build -w apps/desktop 與 npm run build -w apps/server-web 通過;手動於深淺主題走查桌面 app(含系統匣 vibrancy 底的對比)與後台各狀態徽章——契約:design Implementation Contract 觀察行為清單全數成立;驗證:逐條核對。 <!-- speclink-task:tsk_01KZ5P0WAA4DDMAQMG8XBH1M56 -->
