@@ -5,3 +5,20 @@ created_with: claude
 from_discussion: worktree-flow-gaps
 started_at: 2026-08-05
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-05
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_scope:
+  - path: apps/desktop/core/src/lib.rs
+    hash: 55c8d01db4a337e5c3b767dd817716549fb3dc4cf5e6db236b6b9e9856c524e5
+  - path: apps/desktop/core/src/manage.rs
+    hash: df00b345b5ff02ff8a2643b853461ddfb2839825a4e678be34d53274f90fb71d
+  - path: apps/desktop/core/src/query.rs
+    hash: c642ad54dfed970b0eebba3701fb864b8b7543a86a7490590a688b62072e6ab5
+  - path: apps/desktop/core/src/search.rs
+    hash: 79f3aa37d820aa87620b5a0639d25977c9eddf83fd320ce4ac24a0e18bcfa253
+  - path: apps/desktop/core/src/testfixture.rs
+    hash: 8dd415407cac6b150fc691a479f6d6548b9fe4d46dfe11d699100709f48573c0
+  - path: apps/desktop/core/src/verbs.rs
+    hash: 77c3734c940e838be4d3403ec4d0f60519d4f220358a45c934bf51ff359d43cc
