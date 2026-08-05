@@ -163,11 +163,15 @@ fn change_dir(worktree: &Path, spec_dir_name: &str, change: &str) -> PathBuf {
 
 /// A read-redirecting decorator over the main checkout's store.
 ///
-/// **Read-only observation surface.** Every read scoped to a MAPPED change is
+/// **Read-redirecting only.** Every read scoped to a MAPPED change is
 /// answered by that change's worktree copy; every other read and *every* write
-/// passes straight through to the main store. Handing this to a write flow
-/// would read one copy and write another — `list` is its only intended caller,
-/// and the decorator is built fresh per invocation.
+/// passes straight through to the main store. Its intended callers are batch
+/// read surfaces (the CLI's `list`, the desktop board's listing and search),
+/// and the decorator is built fresh per invocation. A write flow may READ
+/// through it only when it also resolves a per-change write destination of its
+/// own (the desktop board's reorder does) — writing through the overlay itself
+/// always lands on the main copy, silently splitting a mapped change's read
+/// and write.
 pub struct WorktreeOverlay<'a> {
     inner: &'a dyn Store,
     overlays: BTreeMap<String, Box<dyn Store + 'a>>,

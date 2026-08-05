@@ -36,6 +36,6 @@ worktree 平行開發流程中，desktop core 對同一個 change 的資料路�
 
 - Affected specs: worktree-overlay、client-protocol
 - Affected code:
-  - Modified: apps/desktop/core/src/query.rs、apps/desktop/core/src/manage.rs、apps/desktop/core/src/verbs.rs、apps/desktop/core/src/search.rs、apps/desktop/core/src/lib.rs
+  - Modified: apps/desktop/core/src/query.rs、apps/desktop/core/src/manage.rs、apps/desktop/core/src/verbs.rs、apps/desktop/core/src/search.rs、apps/desktop/core/src/lib.rs、apps/desktop/core/src/testfixture.rs
   - New: (none)
   - Removed: (none)
