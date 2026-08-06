@@ -59,9 +59,9 @@
 
 ## ADDED Requirements
 
-### Requirement: update 動詞的降級守門
+### Requirement: 受管檔再生的降級守門
 
-`speclink update` SHALL 於任何寫入之前執行過期探測：整體判「較新」時 SHALL 拒絕執行——stderr 輸出單行英文說明（含工作區領先的版號與引擎現版版號）、exit code 非零、SHALL NOT 寫入任何檔案。旗標 `--allow-downgrade` SHALL 越過守門照常再生受管檔。缺失、過期、現版與無法判定情境下 update 的既有行為 SHALL 不變。守門訊息 SHALL 為英文單行（與 update 既有輸出語言一致），不隨 locale 設定變化。
+引擎的受管檔再生 SHALL 於任何寫入之前判定方向：即將被新建或改寫的指令檔中，任一檔的標記版號數值領先當前產物層版號時 SHALL 拒絕執行——輸出單行英文說明（含工作區領先的版號與引擎現版版號）、exit code 非零、SHALL NOT 寫入任何檔案（含設定檔）。判定目標 SHALL 取自該次再生的實際寫入集（tools 清單選集、無清單時的目錄偵測、自訂描述子的指令檔），SHALL NOT 僅取內建工具。守門 SHALL 一體適用於所有經再生入口的路徑：`speclink update`、`speclink init --force` 的重建、工具選集收斂、`workflow-config` 寫入後的技能足跡同步（CLI 與桌面設定頁）、桌面的指令檔更新動作。旗標 `--allow-downgrade`（`speclink update`）SHALL 為唯一的明示越過入口；`--force` SHALL NOT 被視為同意降級。缺失、過期、現版與無法判定情境下的既有行為 SHALL 不變。守門訊息 SHALL 為英文單行（與 update 既有輸出語言一致），不隨 locale 設定變化。
 
 #### Scenario: 較新工作區拒絕 update
 
@@ -77,6 +77,26 @@
 
 - **WHEN** 工作區標記版號舊於引擎現版，執行 speclink update（不帶旗標）
 - **THEN** 受管檔照常再生、exit code 0，行為與守門引入前相同
+
+#### Scenario: --force 重建不等於同意降級
+
+- **WHEN** 工作區標記版號新於引擎現版，執行 speclink init --force
+- **THEN** 單行說明含兩個版號、exit code 非零、工作區零檔案變動；`--force` SHALL NOT 越過守門
+
+#### Scenario: 無 tools 清單的工作區同受守門
+
+- **WHEN** `.speclink.yaml` 未記錄 tools 清單（再生走目錄偵測），而既有指令檔的標記版號新於引擎現版，執行 speclink update
+- **THEN** 拒絕執行、零檔案變動；SHALL NOT 因判定面只看內建清單而放行
+
+#### Scenario: 自訂描述子的指令檔同受守門
+
+- **WHEN** tools 清單只含自訂描述子，其指令檔的標記版號新於引擎現版，執行 speclink update
+- **THEN** 拒絕執行、零檔案變動
+
+#### Scenario: 技能足跡同步被拒時的失敗形狀
+
+- **WHEN** 工作區標記版號新於引擎現版，執行 speclink workflow-config set worktree true
+- **THEN** 設定檔已寫入新值，技能足跡同步被守門拒絕——單行說明含兩個版號、exit code 非零、受管檔零變動（沿用同步失敗的既有形狀）
 
 ### Requirement: 引擎版號查詢面
 

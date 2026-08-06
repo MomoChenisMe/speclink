@@ -18,6 +18,10 @@
 
 - [x] 4.1 「本機安裝的新鮮度斷言」——新增 scripts/desktop-install.mjs 斷言鏈：印 HEAD／分支／dirty 與源碼 MARKER_VERSION → 執行 scripts/desktop-sidecar.mjs（永遠重建）→ 前端建置與 tauri bundle（簽章 env 缺失單行錯誤停止）→ 斷言 bundle 內 sidecar CLI 的 --version engine 版號等於源碼版號；帶 --install 續行：app 執行中單行錯誤（不代關）、覆蓋 /Applications、斷言安裝版同版；非 macOS 帶 --install 單行錯誤；任一步失敗非零結束不續行。驗證：本機實跑 node scripts/desktop-install.mjs 通過 bundle 斷言（exit 0）；以過期 binary 模擬（暫時替換 src-tauri/binaries/ 內檔案後跳過 sidecar 重跑斷言段）確認斷言非零並印出兩邊版號。 <!-- speclink-task:tsk_01KZ99P1E6VXPQZGN82K1MQ9VP -->
 
-## 5. 回歸收尾
+## 5. 審查後的守門範圍收斂
+
+- [x] 5.0 守門下沉至引擎再生入口並與寫入集同源（crates/speclink-core/src/init.rs）：`update(root, allow_downgrade)` 與 init 的兩個進入點於任何寫入前呼叫 `refuse_downgrade`，判定目標取自實際寫入集（tools 選集／無清單時的目錄偵測／自訂描述子指令檔）；工具選集收斂的檢查提前到 `.speclink.yaml` 寫入前；`init --force` 一併受守門（`--force` 不等於同意降級）。波及呼叫端 crates/speclink-cli/src/commands.rs、apps/desktop/core/src/project.rs 與 settings.rs、crates/speclink-core/tests/it/render_golden.rs 的簽名對齊。驗證：cargo test -p speclink-core 的 legacy／描述子／reconcile／init --force 四案綠、cargo test -p speclink-cli 的 workflow-config 同步被拒案綠。 <!-- speclink-task:tsk_01KZAEN4T2SDJQ6QJ98XZMK2TZ -->
+
+## 6. 回歸收尾
 
 - [x] 5.1 全量回歸：cargo test -p speclink-core --test it render_golden:: 全綠且 golden 與 assets.lock 零變動（本 change 不動 assets 與 marker render）；cargo test -p speclink-core、-p speclink-cli、npm test -w apps/desktop 全綠；確認除 --version 之外無 CLI 人眼或 --json 輸出波及、git status 無非預期檔案變動。驗證：上述指令全數通過。 <!-- speclink-task:tsk_01KZ99P1E6G2V764NGQ34ACRBC -->
