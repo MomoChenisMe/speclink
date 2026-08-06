@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -495,6 +495,10 @@ Merging is a separate, human-triggered step: it needs a clean main tree, and a c
 
 Tell the user, plainly:
 
-> 這個 change 已在 worktree 內完成並提交，尚未合併回主分支。要收尾請執行 `$speclink-worktree-merge <change-name>`——它會檢查主樹是否乾淨、把分支合併回去，成功後移除 worktree 並刪掉分支。
+> 這個 change 已在 worktree 內完成並提交，尚未合併回主分支。
+>
+> 建議先在這個 worktree 內跑品質站——`$speclink-review`（工藝品質）∥ `$speclink-verify`（規格符合度），是否要跑由你決定。品質站的 Apply baseline 就在這個 worktree 裡，離開就沒有了。蓋章會寫進 change 的 meta，記得補一次提交。
+>
+> 品質站跑完（或決定略過）後執行 `$speclink-worktree-merge <change-name>` 收尾——它會檢查主樹是否乾淨、把分支合併回去，成功後移除 worktree 並刪掉分支。
 
 Report alongside it: the worktree path, the branch name, and the tasks completed this session.

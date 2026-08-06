@@ -1,11 +1,16 @@
-//! `speclink archive` 單筆封存的任務完成度守門 — fs 模式契約
-//! (change-lifecycle spec「單筆封存的任務完成度守門」)。
+//! `speclink archive` 單筆封存的兩道環境／狀態守門 — fs 模式契約
+//! (change-lifecycle spec「單筆封存的任務完成度守門」與「封存的 linked
+//! worktree 環境守門」)。
 //!
 //! 任務未完成(總數>0 且未全勾)的單筆封存拒絕:非零 exit code、stderr 載明
 //! N/M 證據與兩條出路、零檔案效果。--mark-tasks-complete 維持既有語意:
 //! 先全勾再封存。成功路徑(全完成/0 任務/批次)的既有測試不在此檔、不修改。
+//!
+//! linked worktree 守門走真實 git repo ＋ `git worktree add`:`.git` 是檔案
+//! 這個判準無法以捏造檔案取代(分支事實仍得由 git 回報)。主 checkout 的行為
+//! 不變由本檔上半部與 archive_merge_gate／archive_evidence_gate 的既有綠燈確認。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
@@ -105,4 +110,139 @@ fn mark_tasks_complete_archives_and_checks_every_task() {
     let tasks = std::fs::read_to_string(archived.join("tasks.md")).unwrap();
     assert!(!tasks.contains("- [ ]"), "every task checked after archive: {tasks}");
     assert_eq!(tasks.matches("- [x]").count(), 3, "all three tasks present and checked: {tasks}");
+}
+
+/// 真實 git repo ＋ sibling linked worktree 的沙盒。change `demo` 任務全勾，
+/// 所以任何拒絕都只可能來自環境守門,不會與完成度守門混淆。
+struct GitProject {
+    root: PathBuf,
+    repo: PathBuf,
+}
+
+impl GitProject {
+    fn new(tag: &str) -> GitProject {
+        let root = std::env::temp_dir()
+            .join(format!("speclink-cli-archive-worktree-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let repo = root.join("repo");
+        let change = repo.join("openspec").join("changes").join("demo");
+        std::fs::create_dir_all(change.join("specs").join("demo-cap")).unwrap();
+        std::fs::write(repo.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
+        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
+        std::fs::write(change.join("tasks.md"), "- [x] 1.1 a\n").unwrap();
+        std::fs::write(change.join("specs").join("demo-cap").join("spec.md"), DELTA_SPEC).unwrap();
+
+        let p = GitProject { root, repo };
+        p.git(&["init", "-q", "-b", "main"]);
+        p.git(&["config", "user.name", "Sandbox Tester"]);
+        p.git(&["config", "user.email", "sandbox@example.com"]);
+        p.git(&["add", "-A"]);
+        p.git(&["commit", "-q", "-m", "init"]);
+        p
+    }
+
+    fn git(&self, args: &[&str]) {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(&self.repo)
+            .output()
+            .expect("run git");
+        assert!(
+            out.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// 在 sibling 巢建立指定分支的 linked worktree(其 `.git` 為檔案)。
+    fn add_worktree(&self, dir: &str, branch: &str) -> PathBuf {
+        let path = self.root.join("repo.worktrees").join(dir);
+        self.git(&["worktree", "add", "-q", "-b", branch, path.to_str().expect("utf-8 path")]);
+        path
+    }
+
+    fn run_in(&self, cwd: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_speclink"));
+        cmd.args(args).current_dir(cwd);
+        for key in ["SPECLINK_STORE_URL", "SPECLINK_TOKEN", "NO_COLOR"] {
+            cmd.env_remove(key);
+        }
+        for (k, v) in envs {
+            cmd.env(k, v);
+        }
+        cmd.output().expect("run speclink binary")
+    }
+}
+
+impl Drop for GitProject {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+#[test]
+fn archive_inside_a_speclink_worktree_refuses_with_zero_file_effects() {
+    // spec scenario「worktree 內封存被拒且零檔案效果」:非零 exit,stderr 同時
+    // 帶 worktree 事實與 worktree-merge 指路,change 原地不動、正典無寫入、
+    // 解封存備份目錄不生成。
+    let p = GitProject::new("refuse");
+    let wt = p.add_worktree("demo", "speclink/demo");
+
+    let out = p.run_in(&wt, &["archive", "demo"], &[("NO_COLOR", "1")]);
+    assert!(!out.status.success(), "archiving inside a linked worktree must refuse");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("worktree"), "worktree fact on stderr: {stderr}");
+    assert!(stderr.contains("worktree-merge"), "worktree-merge route named: {stderr}");
+    assert!(
+        wt.join("openspec").join("changes").join("demo").join("tasks.md").is_file(),
+        "change stays in place"
+    );
+    assert!(
+        !wt.join("openspec").join("changes").join("archive").exists(),
+        "no archive directory appears"
+    );
+    assert!(
+        !wt.join("openspec").join("specs").exists(),
+        "no canonical spec is written"
+    );
+    assert!(!wt.join(".speclink").join("snapshots").exists(), "no unarchive backup is written");
+}
+
+#[test]
+fn archive_inside_a_non_speclink_branch_worktree_behaves_like_a_main_checkout() {
+    // spec scenario「非 speclink 分支的 worktree 放行」:`.git` 同樣是檔案,
+    // 但分支不合慣例 → 封存照常成功。
+    let p = GitProject::new("passthrough");
+    let wt = p.add_worktree("feature", "feature/anything");
+
+    let out = p.run_in(&wt, &["archive", "demo"], &[("NO_COLOR", "1")]);
+    assert!(
+        out.status.success(),
+        "a non-speclink branch must archive: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !wt.join("openspec").join("changes").join("demo").exists(),
+        "active change moved into the archive"
+    );
+}
+
+#[test]
+fn archive_inside_a_worktree_without_git_fails_open() {
+    // spec scenario「git 不可用時 fail-open」:PATH 清空後分支事實取不到,
+    // 守門放行——無 git 的環境不得因此永遠無法封存。
+    let p = GitProject::new("no-git");
+    let wt = p.add_worktree("demo", "speclink/demo");
+
+    let out = p.run_in(&wt, &["archive", "demo"], &[("NO_COLOR", "1"), ("PATH", "")]);
+    assert!(
+        out.status.success(),
+        "git being unavailable must not block archive: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !wt.join("openspec").join("changes").join("demo").exists(),
+        "active change moved into the archive"
+    );
 }

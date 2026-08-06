@@ -1,5 +1,5 @@
 === CLAUDE.md ===
-<!-- SPECLINK:START v1.14.0 -->
+<!-- SPECLINK:START v1.15.0 -->
 
 # Speclink Instructions
 
@@ -22,9 +22,12 @@ This project uses Speclink for Spec-Driven Development(SDD). Specs live in `open
 
 discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive
 
+worktree: apply-with-worktree ⇄ ingest → (review? ∥ verify?) → worktree-merge → archive (main checkout)
+
 - `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is "don't do it"
 - A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)
 - Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`
+- Quality stations belong inside the worktree (the Apply baseline lives there); archive runs only from the main checkout — archiving inside a linked worktree is refused by the engine
 - Requirements change mid-work? Plan mode → `ingest` → resume `apply`
 
 <!-- SPECLINK:END -->
@@ -40,7 +43,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -128,7 +131,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -454,7 +457,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -944,7 +947,11 @@ Merging is a separate, human-triggered step: it needs a clean main tree, and a c
 
 Tell the user, plainly:
 
-> 這個 change 已在 worktree 內完成並提交，尚未合併回主分支。要收尾請執行 `/speclink-worktree-merge <change-name>`——它會檢查主樹是否乾淨、把分支合併回去，成功後移除 worktree 並刪掉分支。
+> 這個 change 已在 worktree 內完成並提交，尚未合併回主分支。
+>
+> 建議先在這個 worktree 內跑品質站——`/speclink-review`（工藝品質）∥ `/speclink-verify`（規格符合度），是否要跑由你決定。品質站的 Apply baseline 就在這個 worktree 裡，離開就沒有了。蓋章會寫進 change 的 meta，記得補一次提交。
+>
+> 品質站跑完（或決定略過）後執行 `/speclink-worktree-merge <change-name>` 收尾——它會檢查主樹是否乾淨、把分支合併回去，成功後移除 worktree 並刪掉分支。
 
 Report alongside it: the worktree path, the branch name, and the tasks completed this session.
 
@@ -956,7 +963,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -965,6 +972,8 @@ Archive a completed change.
 **Input**: Optionally specify a change name after `/speclink-archive` (e.g., `/speclink-archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `/speclink-worktree-merge` skill first, then archive from the main checkout.
 
 **Steps**
 
@@ -1231,7 +1240,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -1467,7 +1476,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -1739,7 +1748,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -1854,7 +1863,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -2294,7 +2303,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -2424,7 +2433,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -2692,7 +2701,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -2786,7 +2795,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -3206,7 +3215,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -3387,7 +3396,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -3582,7 +3591,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -3693,9 +3702,11 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
 6. **Confirm and hand off**
 
-   Tell the user the wrap-up is done: the branch is merged, the worktree is removed, and the branch is deleted. Then point at what comes next for this change:
+   Tell the user the wrap-up is done: the branch is merged, the worktree is removed, and the branch is deleted. Then point at what comes next in canonical order — the quality stations belong inside the worktree, so by this point they are either done or deliberately skipped, and the next step is archiving from the main checkout:
 
-   > 這個 change 已合併回主分支。接下來可以跑品質站（`/speclink-review` 看工藝品質、`/speclink-verify` 看規格符合度），或直接 `/speclink-archive` 封存。
+   > 這個 change 已合併回主分支。品質站建議在 worktree 內就跑完；跑過或使用者決定略過的話，下一步是在主 checkout `/speclink-archive` 封存。
+   >
+   > 還沒跑品質站的話，仍可在主 checkout 補跑 `/speclink-review`、`/speclink-verify` —— 但那是降級路徑：主 checkout 沒有 Apply baseline，審查凍結面會退回較粗的判定。
 
 **Output On Success**
 
@@ -3708,7 +3719,7 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 **Worktree:** <path> (removed)
 **Branch deleted:** ✓
 
-接下來：品質站（/speclink-review、/speclink-verify）或 /speclink-archive
+接下來：主 checkout 封存 /speclink-archive（品質站建議已在 worktree 內完成；未跑則主 checkout 補跑屬降級路徑）
 ```
 
 **Output On Stop**

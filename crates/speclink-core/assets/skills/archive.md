@@ -4,6 +4,8 @@ Archive a completed change.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
+**Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `/speclink:worktree-merge` skill first, then archive from the main checkout.
+
 **Steps**
 
 1. **If no change name provided, prompt for selection**

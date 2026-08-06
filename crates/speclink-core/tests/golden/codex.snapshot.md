@@ -1,5 +1,5 @@
 === AGENTS.md ===
-<!-- SPECLINK:START v1.14.0 -->
+<!-- SPECLINK:START v1.15.0 -->
 
 # Speclink Instructions
 
@@ -35,7 +35,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -361,7 +361,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -370,6 +370,8 @@ Archive a completed change.
 **Input**: Optionally specify a change name after `$speclink-archive` (e.g., `$speclink-archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `$speclink-worktree-merge` skill first, then archive from the main checkout.
 
 **Steps**
 
@@ -635,7 +637,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -871,7 +873,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -1142,7 +1144,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -1256,7 +1258,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -1693,7 +1695,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -1815,7 +1817,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -2083,7 +2085,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -2177,7 +2179,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
@@ -2597,7 +2599,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.14.0"
+  version: "v1.15.0"
   generatedBy: "Speclink"
 ---
 
