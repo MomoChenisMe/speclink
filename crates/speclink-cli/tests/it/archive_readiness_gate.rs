@@ -112,34 +112,51 @@ fn mark_tasks_complete_archives_and_checks_every_task() {
     assert_eq!(tasks.matches("- [x]").count(), 3, "all three tasks present and checked: {tasks}");
 }
 
-/// 真實 git repo ＋ sibling linked worktree 的沙盒。change `demo` 任務全勾，
-/// 所以任何拒絕都只可能來自環境守門,不會與完成度守門混淆。
+/// 真實 git repo ＋ sibling linked worktree 的沙盒。change `demo` 的 tasks.md
+/// 由呼叫端給定:全勾時任何拒絕都只可能來自環境守門,不會與完成度守門混淆。
 struct GitProject {
     root: PathBuf,
     repo: PathBuf,
 }
 
 impl GitProject {
-    fn new(tag: &str) -> GitProject {
+    fn new(tag: &str, tasks_md: &str) -> GitProject {
         let root = std::env::temp_dir()
             .join(format!("speclink-cli-archive-worktree-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let repo = root.join("repo");
-        let change = repo.join("openspec").join("changes").join("demo");
-        std::fs::create_dir_all(change.join("specs").join("demo-cap")).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
         std::fs::write(repo.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
-        std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
-        std::fs::write(change.join("tasks.md"), "- [x] 1.1 a\n").unwrap();
-        std::fs::write(change.join("specs").join("demo-cap").join("spec.md"), DELTA_SPEC).unwrap();
 
         let p = GitProject { root, repo };
+        p.write_change("demo", tasks_md);
         p.git(&["init", "-q", "-b", "main"]);
         p.git(&["config", "user.name", "Sandbox Tester"]);
         p.git(&["config", "user.email", "sandbox@example.com"]);
         p.git(&["add", "-A"]);
         p.git(&["commit", "-q", "-m", "init"]);
         p
+    }
+
+    /// 再寫一個結構完整的 change(未提交)。worktree 內要看得到的話,呼叫端得
+    /// 接著 `commit_all` —— `git worktree add` 只帶得走已提交的內容。每個
+    /// change 各配一個 capability,同一沙盒裡連續封存兩筆才不會撞正典。
+    fn write_change(&self, name: &str, tasks_md: &str) {
+        let change = self.repo.join("openspec").join("changes").join(name);
+        std::fs::create_dir_all(change.join("specs").join(format!("{name}-cap"))).unwrap();
+        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
+        std::fs::write(change.join("tasks.md"), tasks_md).unwrap();
+        std::fs::write(
+            change.join("specs").join(format!("{name}-cap")).join("spec.md"),
+            DELTA_SPEC,
+        )
+        .unwrap();
+    }
+
+    fn commit_all(&self) {
+        self.git(&["add", "-A"]);
+        self.git(&["commit", "-q", "-m", "more changes"]);
     }
 
     fn git(&self, args: &[&str]) {
@@ -186,7 +203,7 @@ fn archive_inside_a_speclink_worktree_refuses_with_zero_file_effects() {
     // spec scenario「worktree 內封存被拒且零檔案效果」:非零 exit,stderr 同時
     // 帶 worktree 事實與 worktree-merge 指路,change 原地不動、正典無寫入、
     // 解封存備份目錄不生成。
-    let p = GitProject::new("refuse");
+    let p = GitProject::new("refuse", "- [x] 1.1 a\n");
     let wt = p.add_worktree("demo", "speclink/demo");
 
     let out = p.run_in(&wt, &["archive", "demo"], &[("NO_COLOR", "1")]);
@@ -213,7 +230,7 @@ fn archive_inside_a_speclink_worktree_refuses_with_zero_file_effects() {
 fn archive_inside_a_non_speclink_branch_worktree_behaves_like_a_main_checkout() {
     // spec scenario「非 speclink 分支的 worktree 放行」:`.git` 同樣是檔案,
     // 但分支不合慣例 → 封存照常成功。
-    let p = GitProject::new("passthrough");
+    let p = GitProject::new("passthrough", "- [x] 1.1 a\n");
     let wt = p.add_worktree("feature", "feature/anything");
 
     let out = p.run_in(&wt, &["archive", "demo"], &[("NO_COLOR", "1")]);
@@ -232,7 +249,7 @@ fn archive_inside_a_non_speclink_branch_worktree_behaves_like_a_main_checkout() 
 fn archive_inside_a_worktree_without_git_fails_open() {
     // spec scenario「git 不可用時 fail-open」:PATH 清空後分支事實取不到,
     // 守門放行——無 git 的環境不得因此永遠無法封存。
-    let p = GitProject::new("no-git");
+    let p = GitProject::new("no-git", "- [x] 1.1 a\n");
     let wt = p.add_worktree("demo", "speclink/demo");
 
     let out = p.run_in(&wt, &["archive", "demo"], &[("NO_COLOR", "1"), ("PATH", "")]);
@@ -244,5 +261,95 @@ fn archive_inside_a_worktree_without_git_fails_open() {
     assert!(
         !wt.join("openspec").join("changes").join("demo").exists(),
         "active change moved into the archive"
+    );
+}
+
+#[test]
+fn archive_from_a_main_checkout_on_a_speclink_branch_passes_through() {
+    // spec scenario「主 checkout 零額外開銷」的反向案例:`.git` 是目錄,分支名
+    // 卻恰為 speclink/demo。兩次執行分工明確——
+    //  (a) git 正常可用:守門的 fs 短路若被拿掉,分支事實取得到就會誤拒,這是
+    //      本測試的紅燈來源;
+    //  (b) PATH 清空:主 checkout 路徑完全不依賴 git。
+    // 兩者不能併成一次:守門 fail-open,PATH 清空時分支必然取不到,單靠清空
+    // PATH 觀察不到 fs 短路還在不在。
+    let p = GitProject::new("main-checkout", "- [x] 1.1 a\n");
+    p.write_change("demo2", "- [x] 1.1 a\n");
+    p.git(&["checkout", "-q", "-b", "speclink/demo"]);
+    let archived = |name: &str| {
+        std::fs::read_dir(p.repo.join("openspec").join("changes").join("archive")).is_ok_and(
+            |entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .any(|e| e.file_name().to_string_lossy().ends_with(&format!("-{name}")))
+            },
+        )
+    };
+
+    let out = p.run_in(&p.repo, &["archive", "demo"], &[("NO_COLOR", "1")]);
+    assert!(
+        out.status.success(),
+        "a main checkout must archive even on a speclink/ branch: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !p.repo.join("openspec").join("changes").join("demo").exists(),
+        "active change moved into the archive"
+    );
+    assert!(archived("demo"), "dated archive directory for demo exists");
+
+    let out = p.run_in(&p.repo, &["archive", "demo2"], &[("NO_COLOR", "1"), ("PATH", "")]);
+    assert!(
+        out.status.success(),
+        "a main checkout must not depend on git: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(archived("demo2"), "dated archive directory for demo2 exists");
+}
+
+#[test]
+fn refused_archive_leaves_the_mark_tasks_complete_pre_write_undone() {
+    // spec scenario「拒絕時 --mark-tasks-complete 前置寫入零效果」:守門排在
+    // 前置全勾寫入之前,被拒的封存不得留下一份已被全勾的 tasks.md。守門若被
+    // 挪到前置寫入之後,exit code 依舊非零,只有這份逐位元比對會轉紅。
+    const TASKS: &str = "- [x] 1.1 a\n- [ ] 1.2 b\n- [ ] 1.3 c\n";
+    let p = GitProject::new("pre-write", TASKS);
+    let wt = p.add_worktree("demo", "speclink/demo");
+
+    let out = p.run_in(&wt, &["archive", "demo", "--mark-tasks-complete"], &[("NO_COLOR", "1")]);
+    assert!(!out.status.success(), "archiving inside a linked worktree must refuse");
+    let tasks =
+        std::fs::read_to_string(wt.join("openspec").join("changes").join("demo").join("tasks.md"))
+            .unwrap();
+    assert_eq!(tasks, TASKS, "tasks.md byte-identical — the pre-write never happened");
+}
+
+#[test]
+fn bulk_archive_inside_a_speclink_worktree_refuses_too() {
+    // spec scenario「bulk 封存同受守門」:多個 change 名即 bulk 路徑。中止報告
+    // 走 stdout、bulk 失敗摘要走 stderr,故合併兩者後比對指路字樣。
+    let p = GitProject::new("bulk", "- [x] 1.1 a\n");
+    p.write_change("demo2", "- [x] 1.1 a\n");
+    p.commit_all();
+    let wt = p.add_worktree("demo", "speclink/demo");
+
+    let out = p.run_in(&wt, &["archive", "demo", "demo2"], &[("NO_COLOR", "1")]);
+    assert!(!out.status.success(), "bulk archive inside a linked worktree must refuse");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let output = format!("{stdout}{}", String::from_utf8_lossy(&out.stderr));
+    assert!(output.contains("worktree"), "worktree fact reported: {output}");
+    assert!(output.contains("worktree-merge"), "worktree-merge route named: {output}");
+    // 中止報告只有 bulk 路徑會印:少了這句,多 change 名若被改回單筆路徑,
+    // 上面兩個斷言仍會綠,bulk 就悄悄失去覆蓋。
+    assert!(stdout.contains("Bulk archive aborted at 'demo'"), "the bulk path ran: {stdout}");
+    for name in ["demo", "demo2"] {
+        assert!(
+            wt.join("openspec").join("changes").join(name).join("tasks.md").is_file(),
+            "{name} stays in place"
+        );
+    }
+    assert!(
+        !wt.join("openspec").join("changes").join("archive").exists(),
+        "no archive directory appears"
     );
 }
