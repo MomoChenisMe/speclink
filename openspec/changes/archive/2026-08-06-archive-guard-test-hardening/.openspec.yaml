@@ -11,3 +11,5 @@ reviewed_tasks_total: 4
 reviewed_scope:
   - path: crates/speclink-cli/tests/it/archive_readiness_gate.rs
     hash: ea9d9d7e15e93f05d07ed137ab99e8c2f82373ddfc5aacc622b088014e2e925b
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-06
