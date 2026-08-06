@@ -4,3 +4,10 @@ created_by: MomoChen <momochenisme@gmail.com>
 created_with: claude
 started_at: 2026-08-06
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-06
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 4
+reviewed_scope:
+  - path: crates/speclink-cli/tests/it/archive_readiness_gate.rs
+    hash: ea9d9d7e15e93f05d07ed137ab99e8c2f82373ddfc5aacc622b088014e2e925b
