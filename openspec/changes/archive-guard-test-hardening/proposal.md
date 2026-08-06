@@ -14,9 +14,9 @@ change worktree-flow-guards-and-guidance（2026-08-06 封存）落地封存守�
 
 在既有的 crates/speclink-cli/tests/it/archive_readiness_gate.rs 的 GitProject fixture 上補三個整合測試（不新增 fixture、不動任何產品程式碼）：
 
-1. **主 checkout 放行**：GitProject 建好後於 repo 本體以 git 切出 speclink/demo 分支，執行封存 → 成功；同時清空 PATH 佐證主 checkout 完全不依賴 git（等價於「不 spawn git」的可觀察斷言）。
+1. **主 checkout 放行**：GitProject 建好後於 repo 本體以 git 切出 speclink/demo 分支，於 repo 本體分兩段跑——git 可用時執行封存 → 成功（fs 短路的紅燈來源：短路被拿掉、分支取得到即誤拒），另以 PATH 清空重跑第二筆 change 佐證主 checkout 不依賴 git。兩段不能併成一次：守門 fail-open，PATH 清空時分支取不到必然放行，單靠清空 PATH 觀察不到 fs 短路是否還在。
 2. **前置寫入零效果**：worktree 內、tasks.md 含未勾任務、帶 --mark-tasks-complete 執行封存 → 非零 exit，且 tasks.md 逐位元不變（前置全勾寫入未發生）。
-3. **bulk 同受守門**：worktree 內執行 speclink archive --all（或多 change 名）→ 非零 exit、stderr 指路 worktree-merge，所有 change 目錄原地不動。
+3. **bulk 同受守門**：worktree 內執行 speclink archive --all（或多 change 名）→ 非零 exit，中止報告走 stdout（含守門全文與 worktree-merge 指路）、stderr 為 bulk 失敗摘要，所有 change 目錄原地不動。
 
 ## Non-Goals
 
