@@ -5,3 +5,42 @@ created_with: claude
 from_discussion: instruction-downgrade-guard
 started_at: 2026-08-06
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-06
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_scope:
+  - path: apps/desktop/core/src/project.rs
+    hash: a06f93ac4a09ed3e0ee6c101d52cd969f0965175befa82b8926235c93be6587f
+  - path: apps/desktop/src/__tests__/cliInstall.test.ts
+    hash: d3f02616cee10ddbb1e26d870079a4362738a10a7db55d1b6dcba59565485ad2
+  - path: apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx
+    hash: 8af6ba2e6e5bb7cf131cfd3b3f7d8fc73e5f129308b9074acd5dbae422236da3
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 66e366d425c5f8b4bc739c70f8d1aa0ce60a42605581a136bb71616f0498ea40
+  - path: apps/desktop/src/adapter/workspace.ts
+    hash: f19738c58b25b3ca1169145ef06cc66342d68d0f453e8adbe9427c6f7c122afe
+  - path: apps/desktop/src/components/InstructionUpdatePrompt.tsx
+    hash: 2f2656c667c8645c5e5118b0cc3f884c984f8bd81f09260f092dc9d8ac546d99
+  - path: apps/desktop/src/core/cliInstall.ts
+    hash: 687788025fd8d1602d9f5603383005f94a530e16edb50e95408820cf478636c4
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 1e131ca0c1f33a54129e3a6fab9802dece3e5190e9734b10cbb15239a705aeec
+  - path: apps/desktop/src/instructionPrompt.ts
+    hash: 61049910b66286757b59bae94379ba95e0bc798fb05496f384eb8a4292c219d4
+  - path: crates/speclink-cli/src/commands.rs
+    hash: 899f0213b409cd8f25305d5a6325ca221862963e92616e1e07e1b8bcdf6e6252
+  - path: crates/speclink-cli/src/main.rs
+    hash: 34c9c65d3c36a47159e7c9a43d98bac55ba763b2d90c069ef79ed5f2565558ff
+  - path: crates/speclink-cli/tests/it/engine_version.rs
+    hash: 15aefaceb537c207c154d31690d317238554d1dc4274bf89d5a196ca80491b88
+  - path: crates/speclink-cli/tests/it/main.rs
+    hash: 74a2d603cca3070b56d333de6b90c0a43102ac4a36d927c3f53b0e415b2ffb2f
+  - path: crates/speclink-cli/tests/it/update_downgrade_guard.rs
+    hash: 77509c722591d7437495e8589780e823f6ca270b90118b5b8e9bfa175be04f4e
+  - path: crates/speclink-core/src/init.rs
+    hash: 003077f5fcc7cb3805c0b94d90ca71efe42bb0e767554449c73a9cf196edf5ef
+  - path: scripts/desktop-install.mjs
+    hash: c6b9ce1fa255ae868f353f80fe9a933745269dbf9fe09540afa7942416005865
+  - path: scripts/desktop-install.test.mjs
+    hash: b9320040aafc663b865ecf66398fc9196f8ed8a8f94fe14138e7a9dddd5f80a9
