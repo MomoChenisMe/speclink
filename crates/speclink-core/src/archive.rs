@@ -61,6 +61,48 @@ pub(crate) fn guard_open_review(store: &dyn Store, name: &str, carry_review: boo
     .into())
 }
 
+/// linked worktree 的分支慣例前綴（speclink-host 的 worktree discovery 同字面；
+/// 那份常數活在 host，core 取用不到，故在此獨立持有）。
+const WORKTREE_BRANCH_PREFIX: &str = "speclink/";
+
+/// linked worktree 環境守門（design D2；spec change-lifecycle「封存的 linked
+/// worktree 環境守門」）：worktree 內封存會把解封存備份寫進 gitignored 的
+/// `.speclink/snapshots/`，隨 `git worktree remove` 一併蒸發，且 delta 套的是
+/// 分支點的過期正典——資料遺失級，故 fail-closed。
+///
+/// 兩條件同時成立才拒絕：workspace root 的 `.git` 是檔案（linked worktree 特徵，
+/// 與 worktree overlay 的主副本判準同源），且當前分支具 `speclink/` 前綴。主
+/// checkout 在第一個條件即短路，不 spawn git。git 不可用、指令失敗或輸出為空
+/// （detached HEAD）→ 放行，沿 worktree discovery 的 fail-open 慣例。
+///
+/// runtime 於 `--mark-tasks-complete` 的前置寫入前先喚一次（比照 guard_meta 與
+/// guard_open_review），`archive` 內再守一次供直接呼叫的入口（desktop）。
+pub(crate) fn guard_linked_worktree(ws: &Workspace) -> Result<()> {
+    // 無 host workspace 的派發（Node host store）拿到的是空 root 的合成
+    // Workspace——沒有本地環境可判；空 root 接上 ".git" 會變成以行程 cwd
+    // 判定，cwd 恰在任何 speclink worktree 內就會誤拒不相干 store 的封存。
+    if ws.root.as_os_str().is_empty() {
+        return Ok(());
+    }
+    if !ws.root.join(".git").is_file() {
+        return Ok(());
+    }
+    let Some(branch) = util::git(&ws.root, &["branch", "--show-current"]) else {
+        return Ok(());
+    };
+    if !branch.starts_with(WORKTREE_BRANCH_PREFIX) {
+        return Ok(());
+    }
+    Err(crate::command::Refusal(format!(
+        "archive must not run inside a linked worktree — this checkout is on branch \
+         '{branch}', and archiving here writes the unarchive backup into the worktree's \
+         gitignored .speclink/snapshots/ (gone with the worktree) while merging deltas \
+         onto the branch point's stale canon;\n  \
+         land the branch first:  speclink-worktree-merge, then archive from the main checkout"
+    ))
+    .into())
+}
+
 pub(crate) struct DeltaReq {
     pub(crate) operation: String,
     pub(crate) name: String,
@@ -376,6 +418,10 @@ pub fn archive(
     opts: &ArchiveOptions,
     actor: Option<&str>,
 ) -> Result<ArchiveOutcome> {
+    // Environment gate, ahead of every file effect: a linked worktree is the
+    // wrong place to archive from at all (see guard_linked_worktree).
+    guard_linked_worktree(ws)?;
+
     // Fail-closed gate: archiving stamps and moves the metadata document —
     // refuse a corrupt one before any validation or file effect.
     crate::model::require_valid_meta(change)?;

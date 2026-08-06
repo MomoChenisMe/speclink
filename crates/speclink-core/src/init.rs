@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：指令檔 SPECLINK 標記與技能檔 frontmatter 的 version 同源於此。
 /// 僅在內嵌資產（assets/skills）或 marker 模板的 render 內容變動時遞增——與 app／CLI
 /// 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const MARKER_VERSION: &str = "v1.14.0";
+pub const MARKER_VERSION: &str = "v1.15.0";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -96,18 +96,20 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree:
     // 並行品質站（spec review-skill「審查技能的生成與正典化」）：實作完成、封存
     // 之前，由使用者判斷是否對高風險 change 執行審查；codex 無 verify（for_codex
     // =false），workflow 行只帶 review?。
-    let (done_line, workflow) = match tool {
+    let (done_line, workflow, worktree_workflow) = match tool {
         Tool::Codex => (
             format!(
                 "- Implementation is done, before archiving → optionally `{p}review` (craft quality; user's call), then `{p}archive`"
             ),
             "discuss? → propose → apply ⇄ ingest → review? → archive",
+            "worktree: apply-with-worktree ⇄ ingest → review? → worktree-merge → archive (main checkout)",
         ),
         _ => (
             format!(
                 "- Implementation is done, before archiving → optional quality stations `{p}review` (craft quality) ∥ `{p}verify` (spec compliance; user's call), then `{p}archive`"
             ),
             "discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive",
+            "worktree: apply-with-worktree ⇄ ingest → (review? ∥ verify?) → worktree-merge → archive (main checkout)",
         ),
     };
     // 兩行 worktree 指引隨政策進出；其餘內容不受影響。
@@ -118,6 +120,17 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree:
         )
     } else {
         String::new()
+    };
+    // 同一政策閘的另外兩項（spec workspace-tools「marker 技能指引跟隨 worktree
+    // 政策」）：主流程線之下的 worktree 流程線，與載明正典順序的品質站 bullet。
+    // 政策關閉時兩者皆為空字串——輸出與導入前逐位元一致。
+    let (worktree_flow, worktree_bullet) = if worktree {
+        (
+            format!("\n\n{worktree_workflow}"),
+            "- Quality stations belong inside the worktree (the Apply baseline lives there); archive runs only from the main checkout — archiving inside a linked worktree is refused by the engine\n",
+        )
+    } else {
+        (String::new(), "")
     };
     format!(
         "<!-- SPECLINK:START {ver} -->\n\n\
@@ -134,10 +147,11 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree:
 {done_line}\n\
 - Commit only files related to a specific change → `{p}commit`\n\n\
 ## Workflow\n\n\
-{workflow}\n\n\
+{workflow}{worktree_flow}\n\n\
 - `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is \"don't do it\"\n\
 - A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)\n\
 - Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`\n\
+{worktree_bullet}\
 {plan_line}\n\n\
 <!-- SPECLINK:END -->\n",
         ver = MARKER_VERSION,
@@ -146,6 +160,8 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree:
         worktree_lines = worktree_lines,
         done_line = done_line,
         workflow = workflow,
+        worktree_flow = worktree_flow,
+        worktree_bullet = worktree_bullet,
         plan_line = plan_line,
     )
 }
@@ -1910,12 +1926,14 @@ mod tests {
     #[test]
     fn the_marker_lists_worktree_skills_only_when_the_policy_is_on() {
         // Spec requirement「marker 技能指引跟隨 worktree 政策」：技能檔被政策清掉而
-        // marker 仍指路，等於叫代理呼叫不存在的技能。
+        // marker 仍指路，等於叫代理呼叫不存在的技能。政策閘涵蓋三項——兩行技能
+        // 指引、Workflow 段的 worktree 流程線、品質站指引 bullet。
         let root = TempRoot::new("marker-gate");
         init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
         let off = root.read("CLAUDE.md");
         assert!(!off.contains("apply-with-worktree"), "政策關閉時 marker 不得提 apply-with-worktree:\n{off}");
         assert!(!off.contains("worktree-merge"), "政策關閉時 marker 不得提 worktree-merge:\n{off}");
+        assert!(!off.contains("Quality stations"), "政策關閉時不得有品質站指引 bullet:\n{off}");
         assert!(off.contains("/speclink-apply`"), "其餘技能指引須照舊:\n{off}");
 
         set_worktree_policy(&root, true);
@@ -1923,9 +1941,25 @@ mod tests {
         let on = root.read("CLAUDE.md");
 
         let added: Vec<&str> = on.lines().filter(|l| !off.lines().any(|o| o == *l)).collect();
-        assert_eq!(added.len(), 2, "兩版 marker 應僅差兩行 worktree 指引，實得：{added:?}");
-        assert!(added.iter().any(|l| l.contains("apply-with-worktree")));
-        assert!(added.iter().any(|l| l.contains("worktree-merge")));
+        assert_eq!(added.len(), 4, "兩版 marker 應僅差四行 worktree 指引，實得：{added:?}");
+        assert!(added.iter().any(|l| l.contains("apply-with-worktree` (one git worktree per change)")));
+        assert!(added.iter().any(|l| l.contains("worktree-merge` (merge back, then clean up)")));
+        // 流程線依序含四個階段；bullet 敘明主 checkout 限定與引擎拒絕。
+        let flow = added
+            .iter()
+            .find(|l| l.starts_with("worktree: "))
+            .unwrap_or_else(|| panic!("Workflow 段須有 worktree 流程線：{added:?}"));
+        assert_eq!(
+            *flow,
+            "worktree: apply-with-worktree ⇄ ingest → (review? ∥ verify?) → worktree-merge → archive (main checkout)",
+            "流程線須依序載明四個階段"
+        );
+        let bullet = added
+            .iter()
+            .find(|l| l.starts_with("- Quality stations"))
+            .unwrap_or_else(|| panic!("Workflow 段須有品質站指引 bullet：{added:?}"));
+        assert!(bullet.contains("main checkout"), "bullet 須敘明封存僅在主 checkout：{bullet}");
+        assert!(bullet.contains("refused by the engine"), "bullet 須敘明引擎拒絕：{bullet}");
     }
 
     #[test]

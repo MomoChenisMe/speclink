@@ -1,4 +1,4 @@
-<!-- SPECLINK:START v1.14.0 -->
+<!-- SPECLINK:START v1.15.0 -->
 
 # Speclink Instructions
 
@@ -21,9 +21,12 @@ This project uses Speclink for Spec-Driven Development(SDD). Specs live in `open
 
 discuss? → propose → apply ⇄ ingest → review? → archive
 
+worktree: apply-with-worktree ⇄ ingest → review? → worktree-merge → archive (main checkout)
+
 - `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is "don't do it"
 - A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)
 - Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`
+- Quality stations belong inside the worktree (the Apply baseline lives there); archive runs only from the main checkout — archiving inside a linked worktree is refused by the engine
 - Requirements change mid-work? `ingest` → resume `apply`
 
 <!-- SPECLINK:END -->

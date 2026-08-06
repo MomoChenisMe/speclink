@@ -1,0 +1,168 @@
+{
+  "version": 2,
+  "change": "worktree-flow-guards-and-guidance",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 於 crates/speclink-cli/tests/it/archive_readiness_gate.rs 新增整合測試（先紅）：(a) 在分支 speclink/<name> 的 linked worktree 內執行封存 → exit code 非零、stderr 同時含 worktree 事實與 worktree-merge 指路、change 目錄仍在原位且無正典規格寫入與備份目錄；(b) .git 為檔案但分支為 feature/x → 封存成功（與主 checkout 同行為）；(c) 主 checkout 封存行為不變（沿用既有測試綠燈確認）。驗證：cargo test --test it 顯示新測試失敗、既有測試通過",
+      "files": [
+        "crates/speclink-cli/tests/it/archive_readiness_gate.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 落實 change-lifecycle 需求「封存的 linked worktree 環境守門」：在 crates/speclink-core/src/archive.rs 的 archive() 入口（任何檔案效果之前）實作守門：先以 fs 判定 workspace root 的 .git 是否為檔案（目錄即短路、不 spawn git），是檔案時以 util::git 取 branch --show-current，具 speclink/ 前綴即回傳 Refusal（訊息含 worktree 事實與 worktree-merge 指路）；git 不可用、指令失敗或輸出空 → 放行。驗證：1.1 全部轉綠、既有 archive 相關測試（archive_merge_gate、archive_evidence_gate）維持綠燈",
+      "files": [
+        "crates/speclink-core/src/archive.rs",
+        "crates/speclink-core/src/command/mod.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 落實 workspace-tools 需求「marker 技能指引跟隨 worktree 政策」：於 crates/speclink-core/src/init.rs 的 instructions_body 加入政策閘內容：Workflow 段主流程線之下新增 worktree 流程線（claude／neutral 目標為 apply-with-worktree ⇄ ingest → (review? ∥ verify?) → worktree-merge → archive 於 main checkout；codex 目標沿既有分支慣例以 review? 取代並列站），Workflow bullet 清單新增品質站指引（品質站建議於 worktree 內完成、Apply baseline 在 worktree、封存僅在主 checkout、worktree 內封存會被引擎拒絕），兩者僅於 worktree 參數為 true 時輸出；同步提升 MARKER_VERSION 一個 minor 版位。驗證：render_golden 測試對 worktree 開啟變體顯示預期差異（此時 golden 未再生、紅燈屬預期）",
+      "files": [
+        "crates/speclink-core/src/init.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "3.1 落實 worktree-merge-skill 需求「worktree-merge 技能的收尾流程指示」：crates/speclink-core/assets/skills/worktree-merge.md 的合併成功交棒段改為正典順序——下一步為主 checkout 封存（品質站建議已於 worktree 內完成）；補一句品質站未完成時仍得於主 checkout 補跑、惟無 Apply baseline 屬降級路徑。流程步驟、preflight 與守則清單零變動。驗證：內容審視對照 worktree-merge-skill delta 的「內文含清理與正典順序交棒指示」scenario",
+      "files": [
+        "crates/speclink-core/assets/skills/worktree-merge.md"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.2 落實 worktree-apply-skill 需求「apply-with-worktree 技能的收尾指示」：crates/speclink-core/assets/skills/apply-worktree-post.md 的收尾交棒自僅點名 worktree-merge 擴充為「建議先於 worktree 內執行品質站（review ∥ verify，由使用者判斷；蓋章寫入 meta 後提示補提交），再走 worktree-merge」；不合併、不移除 worktree 的停點文字不變。驗證：內容審視對照 worktree-apply-skill delta 的 scenario",
+      "files": [
+        "crates/speclink-core/assets/skills/apply-worktree-post.md"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.3 落實 archive-skill 需求「worktree 環境的技能敘述」：crates/speclink-core/assets/skills/archive.md 補一段 worktree 提示——封存於主 checkout 執行，linked worktree（speclink/ 分支）內封存會被引擎拒絕，先以 worktree-merge 收尾。驗證：內容審視對照 archive-skill delta 的 scenario",
+      "files": [
+        "crates/speclink-core/assets/skills/archive.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.1 再生 golden 快照與 assets.lock：crates/speclink-core/tests/golden/ 之 claude.snapshot.md、claude-worktree.snapshot.md、codex.snapshot.md、neutral-cli.snapshot.md、neutral-tool-call.snapshot.md 與 assets.lock 依 2.1／3.x 的內容變更再生。驗證：render_golden 與技能同步測試全綠；人工 diff 確認 worktree 政策關閉變體與現行輸出僅差 MARKER_VERSION、開啟變體僅多 worktree 指引內容",
+      "files": [
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "5.1 以 ./target/debug/speclink update 刷新本 repo 生成物：CLAUDE.md、AGENTS.md、.claude/skills/speclink-worktree-merge/SKILL.md、.claude/skills/speclink-apply-with-worktree/SKILL.md、.claude/skills/speclink-archive/SKILL.md。驗證：git diff 僅上述生成物；CLAUDE.md 的 Workflow 段含 worktree 流程線與品質站指引 bullet",
+      "files": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZAHB6VB98WMYZXFNPW1W32R",
+      "taskDesc": "1.1 於 crates/speclink-cli/tests/it/archive_readiness_gate.rs 新增整合測試（先紅）：(a) 在分支 speclink/<name> 的 linked worktree 內執行封存 → exit code 非零、stderr 同時含 worktree 事實與 worktree-merge 指路、change 目錄仍在原位且無正典規格寫入與備份目錄；(b) .git 為檔案但分支為 feature/x → 封存成功（與主 checkout 同行為）；(c) 主 checkout 封存行為不變（沿用既有測試綠燈確認）。驗證：cargo test --test it 顯示新測試失敗、既有測試通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "151cf38322cd00ccd23d8f62a6ba709e34ec4873",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/archive_readiness_gate.rs"
+      ],
+      "recordedAt": "2026-08-06T03:32:51Z"
+    },
+    {
+      "taskId": "tsk_01KZAHB6VC9C40GVGY4HXRNZZA",
+      "taskDesc": "1.2 落實 change-lifecycle 需求「封存的 linked worktree 環境守門」：在 crates/speclink-core/src/archive.rs 的 archive() 入口（任何檔案效果之前）實作守門：先以 fs 判定 workspace root 的 .git 是否為檔案（目錄即短路、不 spawn git），是檔案時以 util::git 取 branch --show-current，具 speclink/ 前綴即回傳 Refusal（訊息含 worktree 事實與 worktree-merge 指路）；git 不可用、指令失敗或輸出空 → 放行。驗證：1.1 全部轉綠、既有 archive 相關測試（archive_merge_gate、archive_evidence_gate）維持綠燈",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "151cf38322cd00ccd23d8f62a6ba709e34ec4873",
+      "touchedFiles": [
+        "crates/speclink-core/src/archive.rs",
+        "crates/speclink-core/src/command/mod.rs"
+      ],
+      "recordedAt": "2026-08-06T03:38:19Z"
+    },
+    {
+      "taskId": "tsk_01KZAHB6VCVM712RCZNVKEPNN3",
+      "taskDesc": "2.1 落實 workspace-tools 需求「marker 技能指引跟隨 worktree 政策」：於 crates/speclink-core/src/init.rs 的 instructions_body 加入政策閘內容：Workflow 段主流程線之下新增 worktree 流程線（claude／neutral 目標為 apply-with-worktree ⇄ ingest → (review? ∥ verify?) → worktree-merge → archive 於 main checkout；codex 目標沿既有分支慣例以 review? 取代並列站），Workflow bullet 清單新增品質站指引（品質站建議於 worktree 內完成、Apply baseline 在 worktree、封存僅在主 checkout、worktree 內封存會被引擎拒絕），兩者僅於 worktree 參數為 true 時輸出；同步提升 MARKER_VERSION 一個 minor 版位。驗證：render_golden 測試對 worktree 開啟變體顯示預期差異（此時 golden 未再生、紅燈屬預期）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "151cf38322cd00ccd23d8f62a6ba709e34ec4873",
+      "touchedFiles": [
+        "crates/speclink-core/src/init.rs"
+      ],
+      "recordedAt": "2026-08-06T03:45:26Z"
+    },
+    {
+      "taskId": "tsk_01KZAHB6VCJW3JXYMEGKVXYKYZ",
+      "taskDesc": "3.1 落實 worktree-merge-skill 需求「worktree-merge 技能的收尾流程指示」：crates/speclink-core/assets/skills/worktree-merge.md 的合併成功交棒段改為正典順序——下一步為主 checkout 封存（品質站建議已於 worktree 內完成）；補一句品質站未完成時仍得於主 checkout 補跑、惟無 Apply baseline 屬降級路徑。流程步驟、preflight 與守則清單零變動。驗證：內容審視對照 worktree-merge-skill delta 的「內文含清理與正典順序交棒指示」scenario",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "151cf38322cd00ccd23d8f62a6ba709e34ec4873",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/worktree-merge.md"
+      ],
+      "recordedAt": "2026-08-06T03:47:07Z"
+    },
+    {
+      "taskId": "tsk_01KZAHB6VCBTHGCZFZJ9Q9MSH1",
+      "taskDesc": "3.2 落實 worktree-apply-skill 需求「apply-with-worktree 技能的收尾指示」：crates/speclink-core/assets/skills/apply-worktree-post.md 的收尾交棒自僅點名 worktree-merge 擴充為「建議先於 worktree 內執行品質站（review ∥ verify，由使用者判斷；蓋章寫入 meta 後提示補提交），再走 worktree-merge」；不合併、不移除 worktree 的停點文字不變。驗證：內容審視對照 worktree-apply-skill delta 的 scenario",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "151cf38322cd00ccd23d8f62a6ba709e34ec4873",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/apply-worktree-post.md"
+      ],
+      "recordedAt": "2026-08-06T03:47:26Z"
+    },
+    {
+      "taskId": "tsk_01KZAHB6VCP9BT72GJGH3C11M8",
+      "taskDesc": "3.3 落實 archive-skill 需求「worktree 環境的技能敘述」：crates/speclink-core/assets/skills/archive.md 補一段 worktree 提示——封存於主 checkout 執行，linked worktree（speclink/ 分支）內封存會被引擎拒絕，先以 worktree-merge 收尾。驗證：內容審視對照 archive-skill delta 的 scenario",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "151cf38322cd00ccd23d8f62a6ba709e34ec4873",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/archive.md"
+      ],
+      "recordedAt": "2026-08-06T03:47:47Z"
+    },
+    {
+      "taskId": "tsk_01KZAHB6VCADVCTXK2RA4TM8RG",
+      "taskDesc": "4.1 再生 golden 快照與 assets.lock：crates/speclink-core/tests/golden/ 之 claude.snapshot.md、claude-worktree.snapshot.md、codex.snapshot.md、neutral-cli.snapshot.md、neutral-tool-call.snapshot.md 與 assets.lock 依 2.1／3.x 的內容變更再生。驗證：render_golden 與技能同步測試全綠；人工 diff 確認 worktree 政策關閉變體與現行輸出僅差 MARKER_VERSION、開啟變體僅多 worktree 指引內容",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "151cf38322cd00ccd23d8f62a6ba709e34ec4873",
+      "touchedFiles": [
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ],
+      "recordedAt": "2026-08-06T03:52:30Z"
+    },
+    {
+      "taskId": "tsk_01KZAHB6VC5ZC9DPVM3NQ0SYS3",
+      "taskDesc": "5.1 以 ./target/debug/speclink update 刷新本 repo 生成物：CLAUDE.md、AGENTS.md、.claude/skills/speclink-worktree-merge/SKILL.md、.claude/skills/speclink-apply-with-worktree/SKILL.md、.claude/skills/speclink-archive/SKILL.md。驗證：git diff 僅上述生成物；CLAUDE.md 的 Workflow 段含 worktree 流程線與品質站指引 bullet",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "151cf38322cd00ccd23d8f62a6ba709e34ec4873",
+      "touchedFiles": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ],
+      "recordedAt": "2026-08-06T03:56:18Z"
+    }
+  ]
+}

@@ -1435,6 +1435,8 @@ fn run_archive(
     let change = resolve_change(store, change, SPECIFY_FLAG)?;
     // Gate before --mark-tasks-complete's pre-write; the core archive flow
     // gates again for entry points that call it directly (desktop).
+    let host = host_workspace(ws);
+    crate::archive::guard_linked_worktree(&host).map_err(classify)?;
     guard_meta(&change)?;
     crate::archive::guard_open_review(store, &change.name, opts.carry_review).map_err(classify)?;
     // The merge gate too: a refused archive must leave tasks.md untouched
@@ -1458,7 +1460,6 @@ fn run_archive(
                 .map_err(classify)?;
         }
     }
-    let host = host_workspace(ws);
     // The in-progress marker stays untouched on archive (frozen behavior).
     let outcome = crate::archive::archive(&host, store, &change, &opts, actor).map_err(classify)?;
     Ok(CommandOutcome::Archive(outcome))
