@@ -37,6 +37,7 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Demo => cmd_demo(),
         Commands::Discuss(a) => cmd_discuss(a),
         Commands::Review(a) => cmd_review(a),
+        Commands::Verify(a) => cmd_verify(a),
     }
 }
 
@@ -792,6 +793,7 @@ fn cmd_archive(a: ArchiveArgs) -> Result<()> {
             no_validate: a.no_validate,
             mark_tasks_complete: a.mark_tasks_complete,
             carry_review: a.carry_review,
+            carry_verify: a.carry_verify,
         },
     )?;
     let core::command::CommandOutcome::Archive(outcome) = outcome else {
@@ -900,6 +902,7 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
             no_validate: a.no_validate,
             mark_tasks_complete: a.mark_tasks_complete,
             carry_review: a.carry_review,
+            carry_verify: a.carry_verify,
         };
         match run_command(store, Some(ws), archive_cmd) {
             Ok(core::command::CommandOutcome::Archive(outcome)) => {
@@ -2165,30 +2168,115 @@ fn cmd_demo() -> Result<()> {
 
 // --- review 品質站 ---
 
+/// 兩個品質站共用的動詞形狀（design D1 的 CLI 面）：clap 的兩個子命令 enum
+/// 各自保留自己的說明文字與旗標可用性（verify 無 `prepare`），在此正規化為
+/// 同一組動詞，往下只有一份實作。
+pub(crate) enum StationVerb {
+    Scope {
+        change: String,
+        json: bool,
+        base: Option<String>,
+        candidate_hash: Option<String>,
+        include_hunk: Vec<String>,
+    },
+    AddRound {
+        change: String,
+        stdin: bool,
+    },
+    Show {
+        change: String,
+        json: bool,
+    },
+    Stamp {
+        change: String,
+        accept: bool,
+        agent: Option<String>,
+    },
+    Discard {
+        change: String,
+    },
+}
+
+/// 一個品質站在 CLI 這層的全部站別差異：引擎常數組（工單檔名、meta 前綴、
+/// 訊息用詞）與 host-local snapshot namespace。
+pub(crate) struct StationCli {
+    pub station: &'static core::station::Station,
+    pub ns: speclink_host::change_diff::StationNs,
+}
+
+pub(crate) const REVIEW_CLI: StationCli = StationCli {
+    station: &core::review::STATION,
+    ns: speclink_host::change_diff::StationNs::Review,
+};
+
+pub(crate) const VERIFY_CLI: StationCli = StationCli {
+    station: &core::verify::STATION,
+    ns: speclink_host::change_diff::StationNs::Verify,
+};
+
 fn cmd_review(a: ReviewArgs) -> Result<()> {
+    let verb = match a.command {
+        ReviewCommands::Prepare { change } => return review_prepare(change),
+        ReviewCommands::Scope { change, json, base, candidate_hash, include_hunk } => {
+            StationVerb::Scope { change, json, base, candidate_hash, include_hunk }
+        }
+        ReviewCommands::AddRound { change, stdin } => StationVerb::AddRound { change, stdin },
+        ReviewCommands::Show { change, json } => StationVerb::Show { change, json },
+        ReviewCommands::Stamp { change, accept, agent } => {
+            StationVerb::Stamp { change, accept, agent }
+        }
+        ReviewCommands::Discard { change } => StationVerb::Discard { change },
+    };
+    run_station(&REVIEW_CLI, verb)
+}
+
+fn cmd_verify(a: VerifyArgs) -> Result<()> {
+    let verb = match a.command {
+        VerifyCommands::Scope { change, json, base, candidate_hash, include_hunk } => {
+            StationVerb::Scope { change, json, base, candidate_hash, include_hunk }
+        }
+        VerifyCommands::AddRound { change, stdin } => StationVerb::AddRound { change, stdin },
+        VerifyCommands::Show { change, json } => StationVerb::Show { change, json },
+        VerifyCommands::Stamp { change, accept, agent } => {
+            StationVerb::Stamp { change, accept, agent }
+        }
+        VerifyCommands::Discard { change } => StationVerb::Discard { change },
+    };
+    run_station(&VERIFY_CLI, verb)
+}
+
+/// `review prepare` 的入口（驗證站無此動詞：Apply baseline 兩站共用）。
+fn review_prepare(change: String) -> Result<()> {
     if let Some(ctx) = remote_ctx()? {
-        return remote_review(&ctx, a);
+        return remote_review_prepare(&ctx, change);
     }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
-    match a.command {
-        ReviewCommands::Prepare { change } => {
-            if !store.change_exists(&change) {
-                bail!("change not found: {change}");
-            }
-            // started 判讀走 fail-closed 解析：壞 meta 不得被讀作「未開始」。
-            let raw_meta = store.read_change_meta(&change);
-            let meta = core::model::ChangeMeta::from_text(raw_meta.as_deref())
-                .map_err(|e| anyhow::anyhow!(e))?;
-            run_review_prepare(&ws, &change, meta.started_at.is_some())?;
-        }
-        ReviewCommands::Scope { change, json, base, candidate_hash, include_hunk } => {
+    if !store.change_exists(&change) {
+        bail!("change not found: {change}");
+    }
+    // started 判讀走 fail-closed 解析：壞 meta 不得被讀作「未開始」。
+    let raw_meta = store.read_change_meta(&change);
+    let meta = core::model::ChangeMeta::from_text(raw_meta.as_deref())
+        .map_err(|e| anyhow::anyhow!(e))?;
+    run_review_prepare(&ws, &change, meta.started_at.is_some())
+}
+
+fn run_station(cli: &StationCli, verb: StationVerb) -> Result<()> {
+    if let Some(ctx) = remote_ctx()? {
+        return remote_station(&ctx, cli, verb);
+    }
+    let (ws, store) = open_project()?;
+    let store: &dyn Store = &store;
+    let st = cli.station;
+    match verb {
+        StationVerb::Scope { change, json, base, candidate_hash, include_hunk } => {
             if !store.change_exists(&change) {
                 bail!("change not found: {change}");
             }
             let ticket = store
-                .artifact_exists(&change, core::review::REVIEW_DOC)
-                .then(|| core::review::show(store, &change))
+                .artifact_exists(&change, st.doc)
+                .then(|| core::station::show(st, store, &change))
                 .transpose()?
                 .map(|t| speclink_host::change_diff::TicketBinding {
                     patch_hash_chain: patch_hash_chain(
@@ -2210,51 +2298,36 @@ fn cmd_review(a: ReviewArgs) -> Result<()> {
                 base,
                 candidate_hash,
                 include_hunk,
+                cli.ns,
             );
-            run_review_scope(&ws, &req, json)?;
+            run_station_scope(&ws, st, &req, json)?;
         }
-        ReviewCommands::AddRound { change, stdin } => {
+        StationVerb::AddRound { change, stdin } => {
             let content = read_stdin_content(stdin);
-            let round = core::review::add_round(store, &change, &content)?;
-            println!("{} Recorded review Round {round} for change '{change}'", color::green("✓"));
+            let round = core::station::add_round(st, store, &change, &content)?;
+            println!(
+                "{} Recorded {} Round {round} for change '{change}'",
+                color::green("✓"),
+                st.noun_phrase
+            );
         }
-        ReviewCommands::Show { change, json } => {
-            let ticket = core::review::show(store, &change)?;
+        StationVerb::Show { change, json } => {
+            let ticket = core::station::show(st, store, &change)?;
             if json {
-                let round_json = |r: &core::review::Round| {
-                    serde_json::json!({
-                        "index": r.index,
-                        "phase": r.phase.map(|p| p.as_str()),
-                        "patchHash": r.patch_hash,
-                        "scope": r.scope,
-                        "findings": r
-                            .findings
-                            .iter()
-                            .map(|f| serde_json::json!({
-                                "severity": f.severity.as_str(),
-                                "path": f.path,
-                                "text": f.text,
-                            }))
-                            .collect::<Vec<_>>(),
-                    })
-                };
-                return print_json(&serde_json::json!({
-                    "change": change,
-                    "rounds": ticket.rounds.iter().map(round_json).collect::<Vec<_>>(),
-                    "lastRound": round_json(ticket.last_round()),
-                }));
+                return print_json(&ticket_json(&change, &ticket));
             }
             // 人眼路徑印工單原文（show 已驗證存在與格式）。
             let doc = store
-                .read_artifact(&change, core::review::REVIEW_DOC)
+                .read_artifact(&change, st.doc)
                 .expect("show verified the ticket exists");
             print!("{doc}");
         }
-        ReviewCommands::Stamp { change, accept, agent } => {
+        StationVerb::Stamp { change, accept, agent } => {
             let actor = speclink_host::context::git_identity(&ws.root);
             let read_file = |p: &str| std::fs::read_to_string(ws.root.join(p)).ok();
             let file_exists = |p: &str| ws.root.join(p).is_file();
-            core::review::stamp(
+            core::station::stamp(
+                st,
                 store,
                 &change,
                 accept,
@@ -2263,16 +2336,51 @@ fn cmd_review(a: ReviewArgs) -> Result<()> {
                 &read_file,
                 &file_exists,
             )?;
-            println!("{} Stamped review for change '{change}'", color::green("✓"));
-            clear_snapshots_warning(&ws, &change);
+            println!(
+                "{} Stamped {} for change '{change}'",
+                color::green("✓"),
+                st.noun_phrase
+            );
+            clear_snapshots_warning(&ws, st, cli.ns, &change);
         }
-        ReviewCommands::Discard { change } => {
-            core::review::discard(store, &change)?;
-            println!("{} Discarded review ticket for change '{change}'", color::green("✓"));
-            clear_snapshots_warning(&ws, &change);
+        StationVerb::Discard { change } => {
+            core::station::discard(st, store, &change)?;
+            println!(
+                "{} Discarded {} ticket for change '{change}'",
+                color::green("✓"),
+                st.noun_phrase
+            );
+            clear_snapshots_warning(&ws, st, cli.ns, &change);
         }
     }
     Ok(())
+}
+
+/// 工單的 `--json` payload（local／remote 之外，兩站也共用同一份組裝——欄位集合
+/// 與 null 語意是對外契約）。
+pub(crate) fn ticket_json(change: &str, ticket: &core::station::Ticket) -> serde_json::Value {
+    let round_json = |r: &core::station::Round| {
+        serde_json::json!({
+            "index": r.index,
+            "phase": r.phase.map(|p| p.as_str()),
+            "patchHash": r.patch_hash,
+            "scope": r.scope,
+            "findings": r
+                .findings
+                .iter()
+                .map(|f| serde_json::json!({
+                    "severity": f.severity.as_str(),
+                    "path": f.path,
+                    "text": f.text,
+                }))
+                .collect::<Vec<_>>(),
+        })
+    };
+    serde_json::json!({
+        "change": change,
+        "rounds": ticket.rounds.iter().map(round_json).collect::<Vec<_>>(),
+        "lastRound": round_json(ticket.last_round()),
+    })
 }
 
 /// `review prepare` 的唯一實作（local／remote 共用）：sidecar 全在本地
@@ -2317,6 +2425,7 @@ pub(crate) fn patch_hash_chain<'a>(
 
 /// `review scope` 的請求組裝（local／remote 共用）：touched 記錄與重疊認領都是
 /// host-local 事實，只有 change 清單與工單由各自的 store 提供。
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_scope_request(
     ws: &core::workspace::Workspace,
     change: String,
@@ -2325,6 +2434,7 @@ pub(crate) fn build_scope_request(
     base: Option<String>,
     candidate_hash: Option<String>,
     include_hunks: Vec<String>,
+    station: speclink_host::change_diff::StationNs,
 ) -> speclink_host::change_diff::ScopeRequest {
     let touched_paths = core::tasks::TouchedRecord::load(ws, &change).all_files();
     // 其他 active change 的 host-local touched 認領（overlap 守門）。
@@ -2345,13 +2455,15 @@ pub(crate) fn build_scope_request(
         base_override: base,
         candidate_hash,
         include_hunks,
+        station,
     }
 }
 
-/// scope 的解析與呈現（local／remote 共用——resolved payload 逐位元同形的唯一
-/// 保證）。needsInput 印 JSON（--json 時）後以非零收場。
-fn run_review_scope(
+/// scope 的解析與呈現（local／remote／兩站共用——resolved payload 逐位元同形的
+/// 唯一保證）。needsInput 印 JSON（--json 時）後以非零收場。
+pub(crate) fn run_station_scope(
     ws: &core::workspace::Workspace,
+    st: &core::station::Station,
     req: &speclink_host::change_diff::ScopeRequest,
     json: bool,
 ) -> Result<()> {
@@ -2385,9 +2497,13 @@ fn run_review_scope(
                 hunk_count,
                 attribution_breakdown(&r.files)
             );
-            // 範圍外變動＝從未進審查面的候選檔又動了：轉知使用者，不入審查面。
+            // 範圍外變動＝從未進本站檢查面的候選檔又動了：轉知使用者，不入檢查面。
             if !r.out_of_scope_changed.is_empty() {
-                println!("  Changed outside the review scope: {}", r.out_of_scope_changed.join(", "));
+                println!(
+                    "  Changed outside the {} scope: {}",
+                    st.noun_phrase,
+                    r.out_of_scope_changed.join(", ")
+                );
             }
             Ok(())
         }
@@ -2402,7 +2518,7 @@ fn run_review_scope(
                     "files": n.files,
                 }))?;
             }
-            bail!("{}", scope_needs_input_message(&n));
+            bail!("{}", scope_needs_input_message(st, &n));
         }
     }
 }
@@ -2419,19 +2535,28 @@ fn attribution_breakdown(files: &[speclink_host::change_diff::FileDelta]) -> Str
     format!(" — {finding} finding, {adjacent} adjacent, {new} new")
 }
 
-/// stamp／discard 後清 host-local review snapshots（baseline 保留）。清除失敗
-/// 僅警告——canonical 工單／metadata mutation 已完成，不回滾。
-fn clear_snapshots_warning(ws: &core::workspace::Workspace, change: &str) {
-    if let Err(e) = speclink_host::change_diff::clear_snapshots(ws, change) {
-        eprintln!("Warning: could not clear review snapshots for '{change}': {e}");
+/// stamp／discard 後清本站的 host-local snapshots（Apply baseline 與另一站的
+/// snapshots 保留——design D8）。清除失敗僅警告——canonical 工單／metadata
+/// mutation 已完成，不回滾。
+fn clear_snapshots_warning(
+    ws: &core::workspace::Workspace,
+    st: &core::station::Station,
+    ns: speclink_host::change_diff::StationNs,
+    change: &str,
+) {
+    if let Err(e) = speclink_host::change_diff::clear_snapshots(ws, change, ns) {
+        eprintln!("Warning: could not clear {} snapshots for '{change}': {e}", st.noun_phrase);
     }
 }
 
 /// needsInput 的 stderr 說明：原因、ambiguous paths 與三種處置（可信 --base、
 /// hash-pinned --include-hunk、隔離 worktree）。
-fn scope_needs_input_message(n: &speclink_host::change_diff::ScopeNeedsInput) -> String {
+fn scope_needs_input_message(
+    st: &core::station::Station,
+    n: &speclink_host::change_diff::ScopeNeedsInput,
+) -> String {
     use speclink_host::change_diff::AmbiguityReason;
-    let mut lines = vec![format!("review scope for '{}' needs input:", n.change)];
+    let mut lines = vec![format!("{} scope for '{}' needs input:", st.noun, n.change)];
     for reason in &n.reasons {
         lines.push(match reason {
             AmbiguityReason::BaselineMissing => {

@@ -313,4 +313,39 @@ mod tests {
             "no review field may leak into the CLI item: {reviewed_json}"
         );
     }
+
+    #[test]
+    fn list_json_payload_is_unchanged_by_verified_fields() {
+        // spec verify-station「CLI 清單輸出的驗證欄位釘住」：帶全套 verified 欄位
+        // （單獨，以及與 reviewed 欄位並存）的 change 與不帶者序列化同形——驗證
+        // 狀態同樣只進 desktop 協定，不進 CLI 輸出。
+        const VERIFIED: &str = "verified_at: 2026-08-02\nverified_by: Ver <v@example.com>\nverified_with: claude\nverified_tasks_total: 2\nverified_scope:\n  - path: crates/a/src/lib.rs\n    hash: 0f9c\n";
+        const REVIEWED: &str = "reviewed_at: 2026-08-01\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 2\nreviewed_scope:\n  - path: crates/a/src/lib.rs\n    hash: 0f9c\n";
+        let stamped = |extra: &str| {
+            let store = TestStore::with_meta(
+                "demo",
+                &format!("schema: spec-driven\ncreated: 2026-07-01\n{extra}"),
+            );
+            store.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
+            store.put_artifact(
+                "demo",
+                "tasks.md",
+                "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n",
+            );
+            store
+        };
+        let json_of = |store: &TestStore| {
+            let changes = crate::model::list_changes(store);
+            serde_json::to_string(&changes_json(store, &changes)).unwrap()
+        };
+        let bare_json = json_of(&stamped(""));
+        for extra in [VERIFIED, &format!("{REVIEWED}{VERIFIED}")] {
+            let json = json_of(&stamped(extra));
+            assert_eq!(json, bare_json, "verified_* must not affect list --json");
+            assert!(
+                !json.contains("verified") && !json.contains("verifyStatus"),
+                "no verify field may leak into the CLI item: {json}"
+            );
+        }
+    }
 }

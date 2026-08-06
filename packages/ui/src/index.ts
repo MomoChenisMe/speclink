@@ -136,6 +136,8 @@ export { DeltaBadges } from "./components/DeltaBadges";
 export { ArchivedList, type ArchivedListProps } from "./components/ArchivedList";
 export { ArchivedDrawer, type ArchivedDrawerProps, type ArchivedTarget } from "./components/ArchivedDrawer";
 export { ReviewArchiveDialog, type ReviewArchiveDialogProps } from "./components/ReviewArchiveDialog";
+export { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./components/reviewStyle";
+export { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE, type VerifyBadgeStatus } from "./components/verifyStyle";
 
 // 規格頁
 export { SpecList, type SpecListProps } from "./components/SpecList";

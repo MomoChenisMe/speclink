@@ -140,6 +140,24 @@ describe("buildTrayModel", () => {
     // 進行中 3/12 → 進度條＋n/m
     const inprog = changes.find((c) => c.name === "inprog")!;
     expect(inprog.label).toBe("inprog  ▓▓░░░░░░ 3/12");
+    // spec tray-status-menu Scenario「原生選單不受影響」：站章不進純文字 label
+    // ——單一字元承載四態、無 tooltip 無色彩，不可辨識（design D7 已否決）。
+    const stamped = buildTrayModel(
+      snapshot({
+        changes: [
+          change({
+            name: "inprog",
+            totalTasks: 12,
+            completedTasks: 3,
+            reviewStatus: "reviewed",
+            verifyStatus: "verifiedStale",
+          }),
+        ],
+      }),
+      fakeT,
+    );
+    const stampedRow = byKind(stamped.items, "change").find((c) => c.name === "inprog")!;
+    expect(stampedRow.label).toBe("inprog  ▓▓░░░░░░ 3/12");
     expect(inprog.actions).toEqual([
       { kind: "open-change", label: "開啟此變更" },
       { kind: "copy-name", label: "複製名稱" },

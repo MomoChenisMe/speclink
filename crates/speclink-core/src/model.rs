@@ -49,6 +49,21 @@ pub struct ChangeMeta {
     /// 內容指紋錨：範圍檔 path＋hash 清單（缺席讀作空）。
     #[serde(default)]
     pub reviewed_scope: Vec<ReviewedScopeEntry>,
+    /// The "verified" quality station（`verify stamp` 蓋章；design D2）。與
+    /// `reviewed_*` 同形、同錨、同失效規則，兩站互不遮蔽；全部
+    /// `#[serde(default)]`——缺席讀作未驗證，pre-migration metadata 照常解析。
+    #[serde(default)]
+    pub verified_at: Option<String>,
+    #[serde(default)]
+    pub verified_by: Option<String>,
+    #[serde(default)]
+    pub verified_with: Option<String>,
+    /// 任務錨：蓋章時任務總數。
+    #[serde(default)]
+    pub verified_tasks_total: Option<usize>,
+    /// 內容指紋錨：範圍檔 path＋hash 清單（缺席讀作空）。
+    #[serde(default)]
+    pub verified_scope: Vec<ReviewedScopeEntry>,
 }
 
 /// `reviewed_scope` 清單項：path 為 repo-root 相對、`/` 分隔（Windows 路徑

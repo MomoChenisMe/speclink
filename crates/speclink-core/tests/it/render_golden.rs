@@ -454,6 +454,151 @@ fn review_skill_late_findings_have_a_guarded_exit() {
     }
 }
 
+/// Spec verify-skill「驗證技能的工單落地」: the verify station's fork結束後由
+/// 主線落工單 — frozen scope first, then a structured round through the verb.
+/// 中途盤點（任務未全完成）維持對話報告，不碰 scope 也不落工單。
+#[test]
+fn verify_skill_lands_a_structured_ticket_only_for_finished_work() {
+    for (rel, content) in skill_for_both_tools("verify-ticket", "verify") {
+        assert!(
+            content.contains("speclink verify scope"),
+            "{rel}: scope resolution must go through the verify scope verb"
+        );
+        assert!(
+            content.contains("speclink verify add-round"),
+            "{rel}: the round is recorded through the verb, never hand-written"
+        );
+        assert!(
+            content.contains("**Phase**:")
+                && content.contains("**Patch**:")
+                && content.contains("**Scope**:"),
+            "{rel}: the round carries the structured phase/patch/scope trio"
+        );
+        assert!(
+            content.contains("mid-flight") || content.contains("progress check-in"),
+            "{rel}: the mid-flight check-in branch must stay a conversation report"
+        );
+        assert!(
+            content.contains("Completeness")
+                && content.contains("Correctness")
+                && content.contains("Coherence"),
+            "{rel}: the three dimensions are unchanged"
+        );
+        assert!(
+            content.contains("CRITICAL")
+                && content.contains("WARNING")
+                && content.contains("SUGGESTION"),
+            "{rel}: the severity ladder is unchanged"
+        );
+    }
+}
+
+/// Spec verify-skill「驗證續輪只驗收修正」: one discovery over the frozen change
+/// patch plus every artifact; validation judges only the prior findings and the
+/// remediation patch's direct regressions, and fails closed without a snapshot.
+#[test]
+fn verify_skill_has_one_discovery_and_validation_only_validates() {
+    for (rel, content) in skill_for_both_tools("verify-rounds", "verify") {
+        assert!(
+            content.contains("one and only") || content.contains("only discovery"),
+            "{rel}: discovery happens exactly once"
+        );
+        assert!(
+            content.contains("frozen patch") || content.contains("frozen change patch"),
+            "{rel}: the code evidence is the frozen patch, not touched whole files"
+        );
+        assert!(
+            content.contains("verbatim"),
+            "{rel}: unresolved findings travel verbatim between rounds"
+        );
+        assert!(
+            content.contains("unchanged areas") || content.contains("unmodified"),
+            "{rel}: validation must not re-scan unchanged areas"
+        );
+        assert!(
+            content.contains("discard") && content.contains("re-run discovery"),
+            "{rel}: a missing snapshot fails closed and waits for an explicit discard"
+        );
+        assert!(
+            content.contains("Never fall back"),
+            "{rel}: whole-file re-verification is explicitly forbidden, not merely unmentioned"
+        );
+    }
+}
+
+/// Spec verify-skill「驗證收尾迴圈」: the blocking set must strictly shrink for
+/// the loop to continue — 2→1 continues, 1→1 fails immediately, 1→0 stamps
+/// clean, accepted-only goes through an explicit --accept.
+#[test]
+fn verify_skill_strict_progress_terminates_the_loop() {
+    for (rel, content) in skill_for_both_tools("verify-progress", "verify") {
+        assert!(
+            content.contains("strictly smaller"),
+            "{rel}: continuation requires a strictly smaller blocking set"
+        );
+        assert!(
+            content.contains("not strictly smaller") && content.contains("failed"),
+            "{rel}: the first no-progress round ends the loop as failed"
+        );
+        assert!(
+            content.contains("passed clean") && content.contains("passed with reservations"),
+            "{rel}: the two stamp outcomes are named"
+        );
+        assert!(
+            content.contains("speclink verify stamp") && content.contains("--accept"),
+            "{rel}: accepted-only rounds stamp via an explicit --accept"
+        );
+        assert!(
+            content.contains("no fixed maximum"),
+            "{rel}: no fixed round cap — strict shrinking is the only continuation rule"
+        );
+        assert!(
+            content.contains("never a quality score"),
+            "{rel}: the shrinking set must not be described as a quality verdict"
+        );
+        assert!(
+            content.contains("Stop without stamping"),
+            "{rel}: the three-option interaction keeps the leave-unstamped exit"
+        );
+    }
+}
+
+/// Spec verify-skill「驗證續輪重大晚發問題的安全退出」: unrelated new
+/// observations never join the current round; only evidenced, severe issues end
+/// the station as scope changed / failed.
+#[test]
+fn verify_skill_late_findings_have_a_guarded_exit() {
+    for (rel, content) in skill_for_both_tools("verify-late", "verify") {
+        assert!(
+            content.contains("added to the current round"),
+            "{rel}: unrelated late findings must not join the current round"
+        );
+        assert!(
+            content.contains("scope changed"),
+            "{rel}: the evidenced-severe exit is named scope changed"
+        );
+        assert!(
+            content.contains("failing test") && content.contains("invariant"),
+            "{rel}: the evidence bar names reproduction/failing-test/invariant"
+        );
+    }
+}
+
+/// Spec verify-skill：fork 只讀不改，修正一律回主線依 TDD 慣例執行。
+#[test]
+fn verify_skill_keeps_fixes_on_the_main_thread() {
+    for (rel, content) in skill_for_both_tools("verify-fixes", "verify") {
+        assert!(
+            content.contains("main thread"),
+            "{rel}: fixes happen in the main thread, never in the fork"
+        );
+        assert!(
+            content.contains("TDD"),
+            "{rel}: fixes follow the project's TDD discipline"
+        );
+    }
+}
+
 // --- remote marker variant: (tool target) × (fs | remote) ---
 
 /// The remote marker block must not steer the agent at local spec paths that

@@ -53,6 +53,7 @@ fn a_hostless_archive_ignores_the_processes_cwd() {
             no_validate: true,
             mark_tasks_complete: false,
             carry_review: false,
+            carry_verify: false,
         },
     );
 

@@ -411,6 +411,30 @@ impl Phase {
     }
 }
 
+/// Which quality station a scope resolution belongs to (design D8). The two
+/// stations share the Apply baseline and this resolver but keep separate
+/// remediation snapshot namespaces: either can stamp or discard on its own,
+/// and a shared namespace would let one station's cleanup break the other's
+/// follow-up validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StationNs {
+    #[default]
+    Review,
+    Verify,
+}
+
+impl StationNs {
+    /// Sidecar sub-directory under `.speclink/review-scopes/<change>/`.
+    /// Review keeps the original `snapshots` name — renaming it would orphan
+    /// every in-flight review ticket on upgrade.
+    pub fn dir_name(&self) -> &'static str {
+        match self {
+            StationNs::Review => "snapshots",
+            StationNs::Verify => "verify-snapshots",
+        }
+    }
+}
+
 /// Another active change's host-local touched claim (assembled by the CLI
 /// adapter — local from fs records, remote from the same local checkout).
 #[derive(Debug, Clone)]
@@ -449,6 +473,8 @@ pub struct ScopeRequest {
     pub candidate_hash: Option<String>,
     /// Selected hunk ids (each must exist; duplicates rejected).
     pub include_hunks: Vec<String>,
+    /// Which station's snapshot namespace this resolution reads and writes.
+    pub station: StationNs,
 }
 
 /// Why the scope is ambiguous. The CLI renders these on stderr together with
@@ -609,7 +635,7 @@ pub fn resolve_scope(ws: &Workspace, req: &ScopeRequest) -> Result<ScopeOutcome>
         };
         let resolved = apply_selection(&candidate, anchor, &req.include_hunks, req, phase)?;
         let texts = discovery_texts(ws, &resolved.base_commit, &resolved.files)?;
-        write_scope_snapshot(ws, &resolved, texts, true)?;
+        write_scope_snapshot(ws, &resolved, req.station, texts, true)?;
         return Ok(ScopeOutcome::Resolved(resolved));
     }
 
@@ -627,7 +653,7 @@ pub fn resolve_scope(ws: &Workspace, req: &ScopeRequest) -> Result<ScopeOutcome>
             out_of_scope_changed: Vec::new(),
         };
         let texts = discovery_texts(ws, &resolved.base_commit, &resolved.files)?;
-        write_scope_snapshot(ws, &resolved, texts, true)?;
+        write_scope_snapshot(ws, &resolved, req.station, texts, true)?;
         return Ok(ScopeOutcome::Resolved(resolved));
     }
     ambiguous.sort();
@@ -663,7 +689,7 @@ fn resolve_validation_scope(
              be reconstructed precisely; discard the ticket and re-run discovery explicitly"
         );
     };
-    let Some(snap) = load_snapshot(ws, &req.change, patch_hash) else {
+    let Some(snap) = load_snapshot(ws, &req.change, req.station, patch_hash) else {
         anyhow::bail!(
             "frozen snapshot for {patch_hash} is missing — cannot validate precisely and \
              will not fall back to discovery; keep the ticket and stop, or discard it and \
@@ -718,7 +744,7 @@ fn resolve_validation_scope(
         if pending.is_empty() {
             break;
         }
-        let Some(older) = load_snapshot(ws, &req.change, older_hash) else {
+        let Some(older) = load_snapshot(ws, &req.change, req.station, older_hash) else {
             anyhow::bail!(
                 "frozen snapshot for {older_hash} is missing — the ticket's round chain \
                  cannot be walked back to rebuild {}; keep the ticket and stop, or discard \
@@ -798,7 +824,7 @@ fn resolve_validation_scope(
     };
     // The discovery snapshot stays (the ticket references it); only stamp／
     // discard clear snapshots.
-    write_scope_snapshot(ws, &resolved, texts, false)?;
+    write_scope_snapshot(ws, &resolved, req.station, texts, false)?;
     Ok(ScopeOutcome::Resolved(resolved))
 }
 
@@ -1034,12 +1060,13 @@ fn discovery_texts(
 fn write_scope_snapshot(
     ws: &Workspace,
     resolved: &ResolvedScope,
+    ns: StationNs,
     texts: Vec<SnapshotText>,
     clear_first: bool,
 ) -> Result<()> {
     if clear_first {
-        clear_snapshots(ws, &resolved.change)
-            .context("cannot clear orphan review snapshots")?;
+        clear_snapshots(ws, &resolved.change, ns)
+            .context("cannot clear orphan snapshots")?;
     }
     let mut dirty_files_at_capture = Vec::new();
     for path in speclink_core::tasks::git_changed_files(ws) {
@@ -1063,13 +1090,13 @@ fn write_scope_snapshot(
         files: resolved.files.clone(),
         texts,
     };
-    let dir = snapshots_dir(ws, &resolved.change);
+    let dir = snapshots_dir(ws, &resolved.change, ns);
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("cannot create snapshot dir {}", dir.display()))?;
     let json = serde_json::to_string_pretty(&snapshot)?;
     let tmp = sidecar_tmp_path(&dir, "snapshot.json");
     std::fs::write(&tmp, &json).context("cannot write snapshot temp file")?;
-    std::fs::rename(&tmp, snapshot_path(ws, &resolved.change, &resolved.patch_hash))
+    std::fs::rename(&tmp, snapshot_path(ws, &resolved.change, ns, &resolved.patch_hash))
         .context("cannot finalize the snapshot")?;
     Ok(())
 }
@@ -1196,28 +1223,35 @@ pub struct Snapshot {
     pub texts: Vec<SnapshotText>,
 }
 
-/// Snapshot directory for one change.
-pub fn snapshots_dir(ws: &Workspace, change: &str) -> PathBuf {
-    scope_dir(ws, change).join("snapshots")
+/// Snapshot directory for one change and one quality station.
+pub fn snapshots_dir(ws: &Workspace, change: &str, ns: StationNs) -> PathBuf {
+    scope_dir(ws, change).join(ns.dir_name())
 }
 
 /// Digest-only, Windows-safe snapshot filename: the hex digest without the
 /// `sha256:` prefix (a `:` is illegal in NTFS filenames).
-pub fn snapshot_path(ws: &Workspace, change: &str, patch_hash: &str) -> PathBuf {
+pub fn snapshot_path(ws: &Workspace, change: &str, ns: StationNs, patch_hash: &str) -> PathBuf {
     let digest = patch_hash.strip_prefix("sha256:").unwrap_or(patch_hash);
-    snapshots_dir(ws, change).join(format!("{digest}.json"))
+    snapshots_dir(ws, change, ns).join(format!("{digest}.json"))
 }
 
 /// Load the snapshot frozen for `patch_hash`, if present and parseable.
-pub fn load_snapshot(ws: &Workspace, change: &str, patch_hash: &str) -> Option<Snapshot> {
-    let text = std::fs::read_to_string(snapshot_path(ws, change, patch_hash)).ok()?;
+pub fn load_snapshot(
+    ws: &Workspace,
+    change: &str,
+    ns: StationNs,
+    patch_hash: &str,
+) -> Option<Snapshot> {
+    let text = std::fs::read_to_string(snapshot_path(ws, change, ns, patch_hash)).ok()?;
     serde_json::from_str(&text).ok()
 }
 
-/// Remove every review snapshot of a change, keeping the Apply baseline —
-/// the stamp／discard cleanup (design D4).
-pub fn clear_snapshots(ws: &Workspace, change: &str) -> std::io::Result<()> {
-    match std::fs::remove_dir_all(snapshots_dir(ws, change)) {
+/// Remove one station's snapshots of a change, keeping the Apply baseline and
+/// the other station's snapshots — the stamp／discard cleanup (design D4／D8).
+/// The stations resolve and stamp independently, so either one clearing the
+/// other's snapshots would break its follow-up validation.
+pub fn clear_snapshots(ws: &Workspace, change: &str, ns: StationNs) -> std::io::Result<()> {
+    match std::fs::remove_dir_all(snapshots_dir(ws, change, ns)) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),
     }
@@ -2322,7 +2356,7 @@ mod tests {
     }
 
     fn snapshot_files(ws: &Workspace, change: &str) -> Vec<String> {
-        std::fs::read_dir(snapshots_dir(ws, change))
+        std::fs::read_dir(snapshots_dir(ws, change, StationNs::Review))
             .map(|it| {
                 it.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string()).collect()
             })
@@ -2342,7 +2376,7 @@ mod tests {
         let digest = r.patch_hash.strip_prefix("sha256:").unwrap();
         assert_eq!(names, vec![format!("{digest}.json")], "digest-only filename");
         assert!(!names[0].contains(':'), "no colon in the filename");
-        let snap = load_snapshot(&ws, "demo", &r.patch_hash).expect("snapshot parses");
+        let snap = load_snapshot(&ws, "demo", StationNs::Review, &r.patch_hash).expect("snapshot parses");
         assert_eq!(snap.version, SNAPSHOT_VERSION);
         assert_eq!(snap.change, "demo");
         assert_eq!(snap.phase, Phase::Discovery);
@@ -2353,7 +2387,7 @@ mod tests {
         assert_utc_rfc3339(&snap.created_at);
         // camelCase JSON 對外契約。
         let raw: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(snapshot_path(&ws, "demo", &r.patch_hash)).unwrap(),
+            &std::fs::read_to_string(snapshot_path(&ws, "demo", StationNs::Review, &r.patch_hash)).unwrap(),
         )
         .unwrap();
         for key in ["candidateHash", "patchHash", "baseCommit", "createdAt", "dirtyFilesAtCapture", "texts"] {
@@ -2380,7 +2414,7 @@ mod tests {
         repo.write("src/lib.rs", "fn demo() { changed(); }\n");
         std::fs::write(repo.root.join("assets/logo.bin"), [0u8, 9, 9]).unwrap();
         let r = resolved(&ws, &scope_req(&["src/lib.rs", "assets/logo.bin"]));
-        let snap = load_snapshot(&ws, "demo", &r.patch_hash).expect("snapshot parses");
+        let snap = load_snapshot(&ws, "demo", StationNs::Review, &r.patch_hash).expect("snapshot parses");
         let lib = snap
             .texts
             .iter()
@@ -2658,7 +2692,7 @@ mod tests {
         repo.write("src/b.rs", "beta\nround-one-b\n");
         let r1 = resolved(&ws, &scope_req(&["src/a.rs", "src/b.rs"]));
         // 竄改帳本：B 的記錄雜湊與快照凍結的 afterText 對不上。
-        let path = snapshot_path(&ws, "demo", &r1.patch_hash);
+        let path = snapshot_path(&ws, "demo", StationNs::Review, &r1.patch_hash);
         let mut snap: Snapshot = serde_json::from_str(&std::fs::read_to_string(&path).unwrap())
             .expect("snapshot parses");
         let entry = snap
@@ -2703,7 +2737,7 @@ mod tests {
         });
         let r2 = resolved(&ws, &req);
         // Round 1 的快照被移除後，B 的凍結後狀態再也無從重建。
-        std::fs::remove_file(snapshot_path(&ws, "demo", &r1.patch_hash)).unwrap();
+        std::fs::remove_file(snapshot_path(&ws, "demo", StationNs::Review, &r1.patch_hash)).unwrap();
         repo.write("src/b.rs", "beta\nround-one-b\nlate-neighbour-fix\n");
         req.ticket = Some(TicketBinding {
             patch_hash_chain: vec![r2.patch_hash.clone(), r1.patch_hash.clone()],

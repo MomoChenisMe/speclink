@@ -85,8 +85,15 @@ export function createTauriDataSource(
     async discardReview(change: string): Promise<void> {
       await invoke("discard_review", { root, change });
     },
-    async archiveCarryReview(change: string): Promise<unknown> {
-      return await invoke("archive_carry_review", { root, change });
+    async discardVerify(change: string): Promise<void> {
+      await invoke("discard_verify", { root, change });
+    },
+    async archiveCarry(
+      change: string,
+      carryReview: boolean,
+      carryVerify: boolean,
+    ): Promise<unknown> {
+      return await invoke("archive_carry", { root, change, carryReview, carryVerify });
     },
     async getArchivedDocument(datedName: string, artifact: string): Promise<string | null> {
       return await invoke<string | null>("archived_document", { root, datedName, artifact });

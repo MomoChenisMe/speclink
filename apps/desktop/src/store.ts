@@ -66,6 +66,8 @@ type FailureMessageKey =
   | "store.archiveFailed"
   | "store.archiveAfterDiscardFailed"
   | "store.discardReviewFailed"
+  | "store.archiveAfterDiscardVerifyFailed"
+  | "store.discardVerifyFailed"
   | "store.reviewActionUnsupported"
   | "store.revertFailed"
   | "store.discussionArchiveFailed"
@@ -175,6 +177,12 @@ export interface AppState {
   detailArchived: ArchivedTarget | null;
 
   pendingArchive: string | null;
+  /** 封存守門已處置完的品質站（spec「封存入口三選項擴及驗證工單」）：雙工單
+   * 並存時使用者須對兩站分別處置，處置完的站記在這裡，才不會再彈一次。
+   * 「照樣帶走」的站同時記進 `pendingArchiveCarry`。 */
+  pendingArchiveSettled: { review: boolean; verify: boolean };
+  /** 已選擇「照樣帶走」的站——全部處置完後一次隨封存上路。 */
+  pendingArchiveCarry: { review: boolean; verify: boolean };
   pendingDelete: string | null;
   /** 待確認的退回提案中（change 名）。 */
   pendingRevert: string | null;
@@ -208,10 +216,11 @@ export interface AppState {
   requestArchive: (name: string) => void;
   confirmArchive: () => Promise<void>;
   cancelArchive: () => void;
-  /** 三選項「放棄審查」：先刪工單再照常封存（spec「封存入口的未結工單三選項」）。 */
-  confirmArchiveDiscardReview: () => Promise<void>;
-  /** 三選項「照樣帶走」：帶未結工單封存（--carry-review，永久顯示「曾審查未通過」）。 */
-  confirmArchiveCarryReview: () => Promise<void>;
+  /** 三選項「放棄審查／放棄驗證」：先刪該站工單，再處置下一站或封存。 */
+  confirmArchiveDiscardTicket: (station: "review" | "verify") => Promise<void>;
+  /** 三選項「照樣帶走」：記下該站的帶走決定，再處置下一站或封存
+   * （--carry-review／--carry-verify，永久顯示「曾審查／曾驗證未通過」）。 */
+  confirmArchiveCarryTicket: (station: "review" | "verify") => Promise<void>;
   requestDelete: (name: string) => void;
   confirmDelete: () => Promise<void>;
   cancelDelete: () => void;
@@ -427,6 +436,23 @@ export interface AppStoreDeps {
  * （packages/ui）不依賴 store，仍經 props 取資料——守住資料源解耦。資料載入
  * 一律經活躍 session 的 dataSource（單活躍載入語意不變）。
  */
+/**
+ * 待封存 change 上還沒處置的品質站工單（spec「封存入口三選項擴及驗證工單」）。
+ * 順序固定：審查站在前、驗證站在後——雙工單並存時彈框順序不隨資料抖動。
+ * 兩站都已處置、或本就無未結工單時回 null（走一般封存確認）。
+ */
+export function openTicketStation(
+  changes: ChangeItem[],
+  change: string,
+  settled: { review: boolean; verify: boolean },
+): "review" | "verify" | null {
+  const item = changes.find((c) => c.name === change);
+  if (!item) return null;
+  if (!settled.review && item.reviewStatus === "inReview") return "review";
+  if (!settled.verify && item.verifyStatus === "inVerify") return "verify";
+  return null;
+}
+
 export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppState>> {
   const {
     createSession,
@@ -480,6 +506,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         detailSpec: null,
         detailArchived: null,
         pendingArchive: null,
+        pendingArchiveSettled: { review: false, verify: false },
+        pendingArchiveCarry: { review: false, verify: false },
         pendingDelete: null,
         pendingRevert: null,
         revertBlocked: null,
@@ -558,6 +586,42 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         showFailureToast(change, failKey, e);
       }
       await get().refresh();
+    }
+
+    /**
+     * 封存守門的一站處置收尾（spec「封存入口三選項擴及驗證工單」）：記下本站
+     * 已處置與是否帶走，另一站仍有未結工單就留在守門流程（App 會彈該站的對話
+     * 框），否則帶著累積的旗標真正封存。
+     */
+    async function settleStation(
+      change: string,
+      station: "review" | "verify",
+      carry: boolean,
+      failKey: FailureMessageKey = "store.archiveFailed",
+    ) {
+      const settled = { ...get().pendingArchiveSettled, [station]: true };
+      const carried = { ...get().pendingArchiveCarry, [station]: carry };
+      set({ pendingArchiveSettled: settled, pendingArchiveCarry: carried });
+      if (openTicketStation(get().changes, change, settled)) {
+        return; // 另一站的工單還沒處置——守門流程繼續。
+      }
+      set({ pendingArchive: null });
+      const dataSource = activeDataSource();
+      const archiveCarry = dataSource?.archiveCarry;
+      if (!dataSource) return;
+      if (!carried.review && !carried.verify) {
+        await settleArchive(change, () => dataSource.runVerb("archive", change), failKey);
+        return;
+      }
+      if (!archiveCarry) {
+        showFailureToast(change, "store.reviewActionUnsupported");
+        return;
+      }
+      await settleArchive(
+        change,
+        () => archiveCarry(change, carried.review, carried.verify),
+        failKey,
+      );
     }
 
     /** 逐連線互動狀態的單點更新（desktop-connections）。 */
@@ -841,6 +905,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     detailSpec: null,
     detailArchived: null,
     pendingArchive: null,
+    pendingArchiveSettled: { review: false, verify: false },
+    pendingArchiveCarry: { review: false, verify: false },
     pendingDelete: null,
     pendingRevert: null,
     revertBlocked: null,
@@ -1024,7 +1090,11 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     requestArchive(name) {
-      set({ pendingArchive: name });
+      set({
+        pendingArchive: name,
+        pendingArchiveSettled: { review: false, verify: false },
+        pendingArchiveCarry: { review: false, verify: false },
+      });
     },
 
     async confirmArchive() {
@@ -1037,41 +1107,43 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       set({ pendingArchive: null });
     },
 
-    async confirmArchiveDiscardReview() {
+    async confirmArchiveDiscardTicket(station) {
       const name = get().pendingArchive;
-      set({ pendingArchive: null });
       if (!name) return;
       const dataSource = activeDataSource();
-      const discardReview = dataSource?.discardReview;
-      if (!dataSource || !discardReview) {
+      const discard = station === "review" ? dataSource?.discardReview : dataSource?.discardVerify;
+      if (!dataSource || !discard) {
+        set({ pendingArchive: null });
         showFailureToast(name, "store.reviewActionUnsupported");
         return;
       }
       try {
-        await discardReview(name);
+        await discard(name);
       } catch (e) {
-        showFailureToast(name, "store.discardReviewFailed", e);
+        set({ pendingArchive: null });
+        showFailureToast(
+          name,
+          station === "review" ? "store.discardReviewFailed" : "store.discardVerifyFailed",
+          e,
+        );
         await get().refresh();
         return;
       }
-      // 工單已刪：封存此後失敗要點名審查紀錄已不在，不得只說「封存失敗」。
-      await settleArchive(
+      // 工單已刪：封存此後失敗要點名該站紀錄已不在，不得只說「封存失敗」。
+      await settleStation(
         name,
-        () => dataSource.runVerb("archive", name),
-        "store.archiveAfterDiscardFailed",
+        station,
+        false,
+        station === "review"
+          ? "store.archiveAfterDiscardFailed"
+          : "store.archiveAfterDiscardVerifyFailed",
       );
     },
 
-    async confirmArchiveCarryReview() {
+    async confirmArchiveCarryTicket(station) {
       const name = get().pendingArchive;
-      set({ pendingArchive: null });
       if (!name) return;
-      const archiveCarryReview = activeDataSource()?.archiveCarryReview;
-      if (!archiveCarryReview) {
-        showFailureToast(name, "store.reviewActionUnsupported");
-        return;
-      }
-      await settleArchive(name, () => archiveCarryReview(name));
+      await settleStation(name, station, true);
     },
 
     requestDelete(name) {

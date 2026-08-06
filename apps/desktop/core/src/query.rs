@@ -49,27 +49,44 @@ pub fn list_changes_at(root: &Path) -> Value {
             // 工單存在 → inReview；否則以 core 失效純函式重算凍結度（有工作樹的
             // client 端）——Fresh → reviewed、Stale → reviewedStale、Unknown（無章）
             // → none。章存在時附 reviewedAt／reviewedBy。
+            // 內容指紋錨讀的是 repo 任意程式檔、不是 artifact——overlay 幫不上，
+            // 逐 change 解析讀取根（design D2）：有 worktree 映射讀該副本，
+            // 否則讀主 checkout。任務錨已走 overlay，兩錨自此同源；解析含
+            // 存在性回退（worktree_root_for），與 overlay 的 of() 同步。
+            let scope_root = crate::worktree_root_for(&ctx, &facts, &c.name)
+                .unwrap_or(ctx.workspace.root.as_path());
+            let read_file = |p: &str| std::fs::read_to_string(scope_root.join(p)).ok();
+            let (complete, total) = speclink_core::listing::task_counts(store, c);
             let review = if store.artifact_exists(&c.name, speclink_core::review::REVIEW_DOC) {
                 "inReview"
             } else {
-                // 內容指紋錨讀的是 repo 任意程式檔、不是 artifact——overlay 幫不上，
-                // 逐 change 解析讀取根（design D2）：有 worktree 映射讀該副本，
-                // 否則讀主 checkout。任務錨已走 overlay，兩錨自此同源；解析含
-                // 存在性回退（worktree_root_for），與 overlay 的 of() 同步。
-                let scope_root = crate::worktree_root_for(&ctx, &facts, &c.name)
-                    .unwrap_or(ctx.workspace.root.as_path());
-                let read_file = |p: &str| std::fs::read_to_string(scope_root.join(p)).ok();
-                let (complete, total) = speclink_core::listing::task_counts(store, c);
                 match speclink_core::review::freshness(&c.meta, total, complete, &read_file) {
-                    speclink_core::review::Freshness::Fresh => "reviewed",
-                    speclink_core::review::Freshness::Stale => "reviewedStale",
-                    speclink_core::review::Freshness::Unknown => "none",
+                    speclink_core::station::Freshness::Fresh => "reviewed",
+                    speclink_core::station::Freshness::Stale => "reviewedStale",
+                    speclink_core::station::Freshness::Unknown => "none",
                 }
             };
             v["reviewStatus"] = json!(review);
             if matches!(review, "reviewed" | "reviewedStale") {
                 v["reviewedAt"] = json!(c.meta.reviewed_at);
                 v["reviewedBy"] = json!(c.meta.reviewed_by);
+            }
+            // 驗證狀態（spec client-protocol「變更清單的驗證狀態欄位」；design
+            // D5）：與審查狀態同構且互不遮蔽——兩站可各自獨立進行與蓋章，故
+            // 各判各的，共用同一份失效純函式與同一個讀取根。
+            let verify = if store.artifact_exists(&c.name, speclink_core::verify::VERIFY_DOC) {
+                "inVerify"
+            } else {
+                match speclink_core::verify::freshness(&c.meta, total, complete, &read_file) {
+                    speclink_core::station::Freshness::Fresh => "verified",
+                    speclink_core::station::Freshness::Stale => "verifiedStale",
+                    speclink_core::station::Freshness::Unknown => "none",
+                }
+            };
+            v["verifyStatus"] = json!(verify);
+            if matches!(verify, "verified" | "verifiedStale") {
+                v["verifiedAt"] = json!(c.meta.verified_at);
+                v["verifiedBy"] = json!(c.meta.verified_by);
             }
             v
         })
@@ -757,6 +774,71 @@ mod tests {
         for key in ["name", "status", "totalTasks", "completedTasks", "summary"] {
             assert!(stamped.get(key).is_some(), "existing key {key} intact");
         }
+    }
+
+    /// 帶完整驗證章的 meta（任務錨 2、內容錨 scope_path＋hash）。
+    fn verified_meta(scope_path: &str, hash: &str) -> String {
+        format!(
+            "schema: spec-driven\ncreated: 2026-07-01\nverified_at: 2026-08-02\nverified_by: Ver <v@example.com>\nverified_with: claude\nverified_tasks_total: 2\nverified_scope:\n  - path: {scope_path}\n    hash: {hash}\n"
+        )
+    }
+
+    #[test]
+    fn list_changes_overlays_verify_status_four_states() {
+        // spec client-protocol「變更清單的驗證狀態欄位」：verify.md 存在 →
+        // inVerify；章在且雙錨符 → verified；章在錨不符 → verifiedStale；
+        // 皆無 → none。章存在時附 verifiedAt／verifiedBy。
+        let fx = FixtureRoot::new("q-verify");
+        fx.add_change("plain", OLD_META);
+        fx.add_change("underway", OLD_META);
+        fx.write("openspec/changes/underway/verify.md", TICKET);
+        let content = "fn keep() {}\n";
+        fx.write("src/lib.rs", content);
+        let hash = speclink_core::verify::content_fingerprint(content);
+        fx.add_change("stamped", &verified_meta("src/lib.rs", &hash));
+        fx.write("openspec/changes/stamped/tasks.md", TASKS_ALL_DONE);
+        let old_hash = speclink_core::verify::content_fingerprint("fn keep() {}\n");
+        fx.write("src/stale.rs", "fn keep() {}\nfn extra() {}\n");
+        fx.add_change("gone-stale", &verified_meta("src/stale.rs", &old_hash));
+        fx.write("openspec/changes/gone-stale/tasks.md", TASKS_ALL_DONE);
+
+        let v = list_changes_at(fx.root());
+        let arr = v["changes"].as_array().expect("changes array");
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+
+        assert_eq!(by_name("plain")["verifyStatus"], "none");
+        assert!(by_name("plain").get("verifiedAt").is_none(), "no anchors without a stamp");
+        assert_eq!(by_name("underway")["verifyStatus"], "inVerify");
+        assert!(by_name("underway").get("verifiedAt").is_none(), "in-verify carries no stamp");
+        let stamped = by_name("stamped");
+        assert_eq!(stamped["verifyStatus"], "verified");
+        assert_eq!(stamped["verifiedAt"], "2026-08-02");
+        assert_eq!(stamped["verifiedBy"], "Ver <v@example.com>");
+        let stale = by_name("gone-stale");
+        assert_eq!(stale["verifyStatus"], "verifiedStale");
+        assert_eq!(stale["verifiedAt"], "2026-08-02", "anchors survive the downgrade");
+        assert!(stamped.get("verify_status").is_none() && stamped.get("verified_at").is_none());
+    }
+
+    #[test]
+    fn the_two_stations_are_judged_independently() {
+        // 討論 code-review-stage 定案：兩站互不遮蔽。審查章＋未結驗證工單並存
+        // 時，reviewStatus 仍是 reviewed、verifyStatus 是 inVerify——任一站的
+        // 狀態不得被另一站蓋掉。
+        let fx = FixtureRoot::new("q-both");
+        let content = "fn keep() {}\n";
+        fx.write("src/lib.rs", content);
+        let hash = speclink_core::review::content_fingerprint(content);
+        fx.add_change("mixed", &reviewed_meta("src/lib.rs", &hash));
+        fx.write("openspec/changes/mixed/tasks.md", TASKS_ALL_DONE);
+        fx.write("openspec/changes/mixed/verify.md", TICKET);
+
+        let v = list_changes_at(fx.root());
+        let item = v["changes"].as_array().unwrap()[0].clone();
+        assert_eq!(item["reviewStatus"], "reviewed", "{item}");
+        assert_eq!(item["verifyStatus"], "inVerify", "{item}");
+        assert_eq!(item["reviewedBy"], "Rev <r@example.com>");
+        assert!(item.get("verifiedAt").is_none(), "an open verify ticket carries no stamp");
     }
 
     /// 蓋章時 scope 檔的內容——指紋錨記的就是它的雜湊。

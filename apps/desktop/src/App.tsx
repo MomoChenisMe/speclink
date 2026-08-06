@@ -39,7 +39,7 @@ import {
   type Verb,
 } from "@speclink/ui";
 
-import { createAppStore } from "./store";
+import { createAppStore, openTicketStation } from "./store";
 import { locatorKey, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
 import { ProjectTabs } from "./components/ProjectTabs";
@@ -264,11 +264,13 @@ function AppInner({
   const connectionState = activeSession?.connectionState;
   const remoteArchiveScope =
     activeSession?.locator.kind === "remote" ? activeSession.descriptor.name : null;
-  // 封存入口守門（spec「封存入口的未結工單三選項」）：待封存 change 審查中
-  // （工單未結）→ 以三選項對話框取代一般確認。
-  const pendingArchiveInReview =
-    s.pendingArchive !== null &&
-    s.changes.find((c) => c.name === s.pendingArchive)?.reviewStatus === "inReview";
+  // 封存入口守門（spec「封存入口三選項擴及驗證工單」）：待封存 change 仍有
+  // 未結工單的站 → 以該站的三選項對話框取代一般確認；雙工單並存時依序各彈
+  // 一次，全部處置完才走一般封存。
+  const pendingArchiveStation =
+    s.pendingArchive === null
+      ? null
+      : openTicketStation(s.changes, s.pendingArchive, s.pendingArchiveSettled);
   const stale =
     activeSession?.locator.kind === "remote" &&
     connectionState !== undefined &&
@@ -778,6 +780,11 @@ function AppInner({
             ? s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.reviewStatus
             : undefined
         }
+        verifyStatus={
+          s.detailArchived?.kind === "change"
+            ? s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.verifyStatus
+            : undefined
+        }
       />
 
       {/* 討論抽屜（結論/討論過程/背景/衍生變更） */}
@@ -937,25 +944,28 @@ function AppInner({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* 封存入口的未結工單三選項（spec「封存入口的未結工單三選項」）：目標
-          change 審查中時取代一般封存確認；未選擇前不執行封存。remote 清單項
-          不帶 inReview，天然走一般確認。 */}
+      {/* 封存入口的未結工單三選項（spec「封存入口三選項擴及驗證工單」）：目標
+          change 該站工單未結時取代一般封存確認；未選擇前不執行封存。remote
+          清單項不帶 inReview／inVerify，天然走一般確認。 */}
       <ReviewArchiveDialog
-        open={pendingArchiveInReview}
+        open={pendingArchiveStation !== null}
         change={s.pendingArchive}
+        station={pendingArchiveStation ?? "review"}
         onOpenChange={(o) => !o && s.cancelArchive()}
         onGoStamp={() => {
           const name = s.pendingArchive;
           s.cancelArchive();
           if (name) s.openDetail(name);
         }}
-        onDiscardReview={() => void s.confirmArchiveDiscardReview()}
-        onCarryReview={() => void s.confirmArchiveCarryReview()}
+        onDiscardReview={() =>
+          void s.confirmArchiveDiscardTicket(pendingArchiveStation ?? "review")
+        }
+        onCarryReview={() => void s.confirmArchiveCarryTicket(pendingArchiveStation ?? "review")}
       />
 
       {/* 封存確認 */}
       <AlertDialog
-        open={s.pendingArchive !== null && !pendingArchiveInReview}
+        open={s.pendingArchive !== null && pendingArchiveStation === null}
         onOpenChange={(o) => !o && s.cancelArchive()}
       >
         <AlertDialogContent>

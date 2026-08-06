@@ -433,10 +433,21 @@ impl Client {
         self.post(&format!("/changes/{name}/claim"), &Empty {})
     }
 
-    /// `POST /changes/{name}/archive[?carryReview=true]` — 旗標帶著未結審查
-    /// 工單一起封存（D5 的第三處置）。
-    pub fn archive(&self, name: &str, carry_review: bool) -> Result<ArchiveResponse, RemoteError> {
-        self.post(&format!("/changes/{name}/archive?carryReview={carry_review}"), &Empty {})
+    /// `POST /changes/{name}/archive?carryReview=<bool>&carryVerify=<bool>` —
+    /// 兩個旗標各自帶著該站的未結工單一起封存（design D4／D5 的第三處置）。
+    /// 帶走哪種工單是兩個獨立決定，故兩個參數恆上 wire。
+    pub fn archive(
+        &self,
+        name: &str,
+        carry_review: bool,
+        carry_verify: bool,
+    ) -> Result<ArchiveResponse, RemoteError> {
+        self.post(
+            &format!(
+                "/changes/{name}/archive?carryReview={carry_review}&carryVerify={carry_verify}"
+            ),
+            &Empty {},
+        )
     }
 
     /// `GET /changes/{name}/validate` — 唯讀衍生查詢；端點固定單 change，
@@ -543,43 +554,53 @@ impl Client {
         )
     }
 
-    /// `GET /changes/{name}/review` — the parsed review ticket (mirrors the
-    /// CLI `review show --json` shape).
-    pub fn review_ticket(&self, name: &str) -> Result<ReviewTicketResponse, RemoteError> {
-        self.get(&format!("/changes/{name}/review"))
+    /// `GET /changes/{name}/{station}` — the parsed ticket of one quality
+    /// station (`station` ∈ review｜verify), mirroring the CLI
+    /// `<station> show --json` shape. The wire shape is station-agnostic: the
+    /// two stations differ only in which document the engine reads.
+    pub fn station_ticket(
+        &self,
+        station: &str,
+        name: &str,
+    ) -> Result<ReviewTicketResponse, RemoteError> {
+        self.get(&format!("/changes/{name}/{station}"))
     }
 
-    /// [`review_ticket`](Self::review_ticket) for scope assembly: a 404 is
+    /// [`station_ticket`](Self::station_ticket) for scope assembly: a 404 is
     /// the normal "no ticket → discovery" branch, every other error stays an
     /// error (offline must never read as "no ticket").
-    pub fn review_ticket_if_any(
+    pub fn station_ticket_if_any(
         &self,
+        station: &str,
         name: &str,
     ) -> Result<Option<ReviewTicketResponse>, RemoteError> {
-        match self.review_ticket(name) {
+        match self.station_ticket(station, name) {
             Ok(ticket) => Ok(Some(ticket)),
             Err(e) if e.reason.as_deref() == Some("not_found") => Ok(None),
             Err(e) => Err(e),
         }
     }
 
-    /// `POST /changes/{name}/review/rounds`
-    pub fn review_add_round(
+    /// `POST /changes/{name}/{station}/rounds`
+    pub fn station_add_round(
         &self,
+        station: &str,
         name: &str,
         content: &str,
     ) -> Result<AddReviewRoundResponse, RemoteError> {
         self.post(
-            &format!("/changes/{name}/review/rounds"),
+            &format!("/changes/{name}/{station}/rounds"),
             &AddReviewRoundRequest { content: content.to_string() },
         )
     }
 
-    /// `POST /changes/{name}/review/stamp` — the scope fingerprints are
+    /// `POST /changes/{name}/{station}/stamp` — the scope fingerprints are
     /// computed by the caller from its work tree (design D4a); the server
     /// validates the path set against the ticket and never re-hashes.
-    pub fn review_stamp(
+    #[allow(clippy::too_many_arguments)]
+    pub fn station_stamp(
         &self,
+        station: &str,
         name: &str,
         accept: bool,
         agent: Option<&str>,
@@ -587,7 +608,7 @@ impl Client {
         missing: &[String],
     ) -> Result<StampReviewResponse, RemoteError> {
         self.post(
-            &format!("/changes/{name}/review/stamp"),
+            &format!("/changes/{name}/{station}/stamp"),
             &StampReviewRequest {
                 accept,
                 agent: agent.map(str::to_string),
@@ -597,11 +618,15 @@ impl Client {
         )
     }
 
-    /// `DELETE /changes/{name}/review`
-    pub fn review_discard(&self, name: &str) -> Result<DiscardReviewResponse, RemoteError> {
+    /// `DELETE /changes/{name}/{station}`
+    pub fn station_discard(
+        &self,
+        station: &str,
+        name: &str,
+    ) -> Result<DiscardReviewResponse, RemoteError> {
         self.send::<DiscardReviewResponse, Empty>(
             "DELETE",
-            &format!("/changes/{name}/review"),
+            &format!("/changes/{name}/{station}"),
             None,
             &[],
         )

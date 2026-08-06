@@ -346,14 +346,42 @@ fn claim_and_archive_return_typed_responses() {
     assert_eq!(cap.body, "{}");
 
     let mock2 = serve(200, r#"{"specs":[{"capability":"user-auth"}]}"#);
-    let archive = client(&mock2).archive("demo", false).expect("archive ok");
+    let archive = client(&mock2).archive("demo", false, false).expect("archive ok");
     assert_eq!(archive.specs[0].capability, "user-auth");
-    assert_call(&mock2.last(), "POST", "/changes/demo/archive?carryReview=false");
+    assert_call(&mock2.last(), "POST", "/changes/demo/archive?carryReview=false&carryVerify=false");
 
-    // 帶未結審查工單封存（D5 第三處置）：旗標須真的上 wire，否則 remote 只剩兩條出路。
+    // 帶未結工單封存（design D4／D5 第三處置）：兩個旗標都須真的上 wire，
+    // 否則該站在遠端只剩兩條出路、帶未結工單的 change 永遠封存不了。
     let mock3 = serve(200, r#"{"specs":[]}"#);
-    client(&mock3).archive("demo", true).expect("carry-review archive ok");
-    assert_call(&mock3.last(), "POST", "/changes/demo/archive?carryReview=true");
+    client(&mock3).archive("demo", true, false).expect("carry-review archive ok");
+    assert_call(&mock3.last(), "POST", "/changes/demo/archive?carryReview=true&carryVerify=false");
+
+    let mock4 = serve(200, r#"{"specs":[]}"#);
+    client(&mock4).archive("demo", false, true).expect("carry-verify archive ok");
+    assert_call(&mock4.last(), "POST", "/changes/demo/archive?carryReview=false&carryVerify=true");
+}
+
+#[test]
+fn station_verbs_address_each_station_endpoint() {
+    // spec verify-station「驗證動詞的 remote 模式行為」：驗證工單走自己的
+    // 端點家族，wire shape 與審查站同構（同一組 DTO）。
+    let ticket = r#"{"change":"demo","rounds":[{"index":1,"phase":null,"patchHash":null,"scope":["src/lib.rs"],"findings":[]}],"lastRound":{"index":1,"phase":null,"patchHash":null,"scope":["src/lib.rs"],"findings":[]}}"#;
+    let mock = serve(200, ticket);
+    let t = client(&mock).station_ticket("verify", "demo").expect("verify ticket");
+    assert_eq!(t.change, "demo");
+    assert_call(&mock.last(), "GET", "/changes/demo/verify");
+
+    let mock2 = serve(200, r#"{"round":1}"#);
+    client(&mock2).station_add_round("verify", "demo", "**Scope**: src/lib.rs\n").expect("round");
+    assert_call(&mock2.last(), "POST", "/changes/demo/verify/rounds");
+
+    let mock3 = serve(200, r#"{"change":"demo"}"#);
+    client(&mock3).station_stamp("verify", "demo", false, None, &[], &[]).expect("stamp");
+    assert_call(&mock3.last(), "POST", "/changes/demo/verify/stamp");
+
+    let mock4 = serve(200, r#"{"change":"demo"}"#);
+    client(&mock4).station_discard("verify", "demo").expect("discard");
+    assert_call(&mock4.last(), "DELETE", "/changes/demo/verify");
 }
 
 #[test]
@@ -680,7 +708,7 @@ fn review_ticket_if_any_maps_not_found_to_none_and_ok_to_some() {
         404,
         r#"{"status":404,"reason":"not_found","message":"no review ticket for change 'demo'"}"#,
     );
-    let got = client(&mock).review_ticket_if_any("demo").expect("a 404 reads as no ticket");
+    let got = client(&mock).station_ticket_if_any("review", "demo").expect("a 404 reads as no ticket");
     assert!(got.is_none(), "not_found must become a clean None");
     assert_call(&mock.last(), "GET", "/changes/demo/review");
 
@@ -688,7 +716,7 @@ fn review_ticket_if_any_maps_not_found_to_none_and_ok_to_some() {
         200,
         r#"{"change":"demo","rounds":[{"index":1,"scope":["src/lib.rs"],"findings":[]}],"lastRound":{"index":1,"scope":["src/lib.rs"],"findings":[]}}"#,
     );
-    let got = client(&mock2).review_ticket_if_any("demo").expect("200 parses");
+    let got = client(&mock2).station_ticket_if_any("review", "demo").expect("200 parses");
     assert_eq!(got.expect("some ticket").change, "demo");
 }
 
@@ -700,7 +728,7 @@ fn review_ticket_if_any_still_surfaces_non_404_errors() {
         r#"{"status":401,"reason":"permission_denied","message":"token expired"}"#,
     );
     let err = client(&mock)
-        .review_ticket_if_any("demo")
+        .station_ticket_if_any("review", "demo")
         .expect_err("auth failure must stay an error");
     assert_eq!(err.reason.as_deref(), Some("permission_denied"), "typed reason survives: {err}");
 }

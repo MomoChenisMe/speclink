@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/t
 import type { ArchivedTarget } from "./ArchivedDrawer";
 import { ListPager, PAGE_SIZE } from "./ListPager";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
+import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
 
 /** 標題後緊跟的複製鈕（design D7 卡片版面）：hover 顯現、copied 打勾回饋、
  * 點擊不冒泡（不開抽屜）。 */
@@ -97,6 +98,21 @@ function ArchivedCard({ item, onOpen }: { item: ArchivedItem; onOpen: (target: A
                 </span>
               </TooltipTrigger>
               <TooltipContent>{t(REVIEW_LABEL_KEY[item.reviewStatus])}</TooltipContent>
+            </Tooltip>
+          )}
+          {/* 驗證結局標示（spec「已封存側的驗證標示」）：與審查結局並存，順序
+              固定在其後。 */}
+          {(item.verifyStatus === "verified" || item.verifyStatus === "verifiedNotPassed") && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  aria-label={t(VERIFY_LABEL_KEY[item.verifyStatus])}
+                  className={`shrink-0 ${VERIFY_TONE[item.verifyStatus]}`}
+                >
+                  {VERIFY_ICON[item.verifyStatus]}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{t(VERIFY_LABEL_KEY[item.verifyStatus])}</TooltipContent>
             </Tooltip>
           )}
           {item.createdBy && (

@@ -18,7 +18,8 @@ use crate::init_core_context;
 /// v2：archived_changes 加 tasks_total／tasks_done（清單徽章，首次收斂後零解析）。
 /// v3：加 spec_count／created_by／from_discussions（封存卡收合資訊，spec-archive-drawer design D5）。
 /// v4：加 review_status（封存時的審查結局，spec client-protocol「已封存清單的審查結局欄位」）。
-const CACHE_VERSION: i64 = 4;
+/// v5：加 verify_status（封存時的驗證結局，spec client-protocol「已封存清單的驗證結局欄位」）。
+const CACHE_VERSION: i64 = 5;
 
 /// 回傳歸檔 change 清單：`{ "archived": [ { datedName, date, name } ] }`，按 datedName 排序。
 /// 非專案回傳 `{ "archived": [] }`。
@@ -92,8 +93,19 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
             } else {
                 "none"
             };
+            // 驗證結局同構且獨立判定：同一項可以是「審查通過」卻「曾驗證未通過」。
+            let verify_status = if parsed.verified_at.is_some() {
+                "verified"
+            } else if store
+                .read_archived_artifact(name, speclink_core::verify::VERIFY_DOC)
+                .is_some()
+            {
+                "verifiedNotPassed"
+            } else {
+                "none"
+            };
             conn.execute(
-                "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status, verify_status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 rusqlite::params![
                     name,
                     meta,
@@ -103,6 +115,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                     parsed.created_by,
                     parsed.from_discussions().join(","),
                     review_status,
+                    verify_status,
                 ],
             )?;
         }
@@ -123,7 +136,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
     }
 
     let mut stmt = conn.prepare(
-        "SELECT dated_name, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status FROM archived_changes ORDER BY dated_name",
+        "SELECT dated_name, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status, verify_status FROM archived_changes ORDER BY dated_name",
     )?;
     let items: Vec<Value> = stmt
         .query_map([], |r| {
@@ -135,10 +148,13 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 r.get::<_, Option<String>>(4)?,
                 r.get::<_, Option<String>>(5)?,
                 r.get::<_, Option<String>>(6)?,
+                r.get::<_, Option<String>>(7)?,
             ))
         })?
         .flatten()
-        .map(|(n, total, done, spec_count, created_by, from_discussions, review_status)| {
+        .map(|row| {
+            let (n, total, done, spec_count, created_by, from_discussions, review_status, verify_status) =
+                row;
             let mut item = item_for(&n);
             // 無 tasks.md 的封存項徽章欄位缺席（前端據此不顯示徽章）。
             if let (Some(total), Some(done)) = (total, done) {
@@ -154,6 +170,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 .unwrap_or_default();
             item["fromDiscussions"] = json!(discussions);
             item["reviewStatus"] = json!(review_status.as_deref().unwrap_or("none"));
+            item["verifyStatus"] = json!(verify_status.as_deref().unwrap_or("none"));
             item
         })
         .collect();
@@ -174,7 +191,7 @@ fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
             "DROP TABLE IF EXISTS archived_changes;
              DROP TABLE IF EXISTS schema_version;
              CREATE TABLE schema_version (version INTEGER);
-             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT, review_status TEXT);",
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT, review_status TEXT, verify_status TEXT);",
         )?;
         conn.execute(
             "INSERT INTO schema_version (version) VALUES (?1)",
@@ -273,6 +290,50 @@ mod tests {
         assert_eq!(by_name("2026-01-01-plain")["reviewStatus"], "none");
         assert_eq!(by_name("2026-01-02-passed")["reviewStatus"], "reviewed");
         assert_eq!(by_name("2026-01-03-carried")["reviewStatus"], "reviewedNotPassed");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn archived_list_carries_verify_outcome_three_states() {
+        // spec client-protocol「已封存清單的驗證結局欄位」：封存目錄含章 →
+        // verified；含（化石）工單而無章 → verifiedNotPassed；皆無 → none。
+        // 已封存側不重算凍結度（封存即定格）——假 hash 不得使 verified 降級。
+        // 兩站在同一項上獨立判定：末項同時是「審查通過」與「曾驗證未通過」。
+        let root = fixture_project(
+            "verify",
+            &["2026-02-01-plain", "2026-02-02-passed", "2026-02-03-carried"],
+        );
+        let archive = root.join("openspec").join("changes").join("archive");
+        fs::write(
+            archive.join("2026-02-02-passed").join(".openspec.yaml"),
+            "schema: spec-driven\ncreated: 2026-02-01\nverified_at: 2026-02-02\nverified_by: Ver <v@example.com>\nverified_with: claude\nverified_tasks_total: 1\nverified_scope:\n  - path: src/lib.rs\n    hash: dead\n",
+        )
+        .unwrap();
+        fs::write(
+            archive.join("2026-02-03-carried").join(".openspec.yaml"),
+            "schema: spec-driven\ncreated: 2026-02-01\nreviewed_at: 2026-02-02\nreviewed_by: Rev <r@example.com>\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/lib.rs\n    hash: dead\n",
+        )
+        .unwrap();
+        fs::write(
+            archive.join("2026-02-03-carried").join("verify.md"),
+            "# Verify — carried\n\n## Round 1\n\n**Scope**: src/lib.rs\n\n- [CRITICAL] src/lib.rs — requirement R2 has no implementation\n",
+        )
+        .unwrap();
+        let v = archived_changes_at(&root);
+        let by_name = |n: &str| {
+            v["archived"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|i| i["datedName"] == n)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(by_name("2026-02-01-plain")["verifyStatus"], "none");
+        assert_eq!(by_name("2026-02-02-passed")["verifyStatus"], "verified");
+        let carried = by_name("2026-02-03-carried");
+        assert_eq!(carried["verifyStatus"], "verifiedNotPassed");
+        assert_eq!(carried["reviewStatus"], "reviewed", "the two outcomes stay independent");
         let _ = fs::remove_dir_all(&root);
     }
 

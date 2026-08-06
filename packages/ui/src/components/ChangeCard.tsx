@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from "./ui/card";
 import { CardNameRow } from "./CardNameRow";
 import { HighlightText } from "./HighlightText";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./reviewStyle";
+import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE, type VerifyBadgeStatus } from "./verifyStyle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 export interface ChangeCardProps {
@@ -72,6 +73,22 @@ export function ChangeCard({
               <TooltipTrigger asChild>
                 <span aria-label={t(labelKey)} className={`shrink-0 ${REVIEW_TONE[status]}`}>
                   {REVIEW_ICON[status]}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{t(labelKey)}</TooltipContent>
+            </Tooltip>
+          );
+        })()}
+        {/* 驗證章（spec「看板卡片的驗證標示」）：與審查章同構、順序固定在其後
+            ——兩章位置每次刷新都一樣，掃視才有意義。 */}
+        {change.verifyStatus && change.verifyStatus !== "none" && (() => {
+          const status: VerifyBadgeStatus = change.verifyStatus;
+          const labelKey = VERIFY_LABEL_KEY[status];
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span aria-label={t(labelKey)} className={`shrink-0 ${VERIFY_TONE[status]}`}>
+                  {VERIFY_ICON[status]}
                 </span>
               </TooltipTrigger>
               <TooltipContent>{t(labelKey)}</TooltipContent>

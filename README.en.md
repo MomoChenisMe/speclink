@@ -62,13 +62,25 @@ combine them by risk; skipping both is a legitimate choice for low-risk changes:
 | Question answered | Is the code well-crafted? (craft) | Does the delivery match the specs? (compliance) |
 | Criteria | Repo convention docs + Fowler smells baseline (repo docs override) + bug hunt | The change's specs, clause by clause, three dimensions |
 | Role of artifacts | Context for judgement — no compliance verdicts | The center of the check |
-| Precondition | All tasks complete | Anytime (mid-work run = progress inventory) |
-| Output | Multi-round `review.md` ticket, stamped at zero CRITICAL | Verify report and task evidence |
+| Precondition | All tasks complete | The check runs anytime (mid-work run = progress inventory); landing a ticket requires all tasks complete |
+| Output | Multi-round `review.md` ticket, stamped at zero CRITICAL | Multi-round `verify.md` ticket, stamped at zero must-fix |
+
+Stamping order when you run both stations: leave each station's check unstamped, fix all findings together, re-validate each
+station, then stamp the two badges back to back. A station badge freezes the content fingerprints of its scope files, so the
+badge stamped first would otherwise be knocked to “changed since” by the other station's fixes.
 
 `/speclink-review` suits large diffs, cross-subsystem work, or code that will be maintained long-term: findings are graded
 CRITICAL/WARNING/SUGGESTION into the ticket, then fixed and re-reviewed until an empty round stamps the change. Modifying an
 in-scope file after stamping downgrades the card badge to “reviewed · changed since”; archiving with an open ticket is
 intercepted (go stamp / discard the review / carry it anyway).
+
+`/speclink-verify` closes the same way: once every task is done, round 1 is the one and only discovery (it reads every
+artifact, with the frozen change patch as the code evidence); every round after that only judges the previous round's
+unresolved findings and the regressions the remediation patch directly introduces — it never re-scans unchanged areas. The
+must-fix set has to shrink strictly each round to earn another fix pass; the first round with no progress ends as “failed”,
+keeping the ticket and leaving it unstamped. Cards and the macOS tray panel show the verify badge next to the review one
+(review first, verify second), and archiving with an open verify ticket is intercepted the same way (go stamp / discard the
+verification / carry it anyway); with both tickets open you settle each station before the change archives.
 
 ## Local Repo quick start / Local Repo 快速開始
 

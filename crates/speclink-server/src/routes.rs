@@ -1040,9 +1040,9 @@ pub async fn put_artifact(
     Ok(ok(PutArtifactResponse { artifact, version }, &etag))
 }
 
-// --- review（design D4a：動詞端點承載 remote，引擎守門與原子性隨 Command 而來）---
+// --- 品質站（design D4a：動詞端點承載 remote，引擎守門與原子性隨 Command 而來）---
 
-fn review_round_dto(r: &speclink_core::review::Round) -> ReviewRoundDto {
+fn review_round_dto(r: &speclink_core::station::Round) -> ReviewRoundDto {
     ReviewRoundDto {
         index: r.index as u64,
         phase: r.phase.map(|p| p.as_str().to_string()),
@@ -1146,6 +1146,90 @@ pub async fn review_discard(
     Ok(ok(DiscardReviewResponse { change }, &result.etag))
 }
 
+/// `GET /changes/{name}/verify`
+pub async fn verify_show(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(&state, &binding, Command::VerifyShow { change: name }).await?;
+    let o = match result.execution.outcome {
+        CommandOutcome::VerifyShow(o) => o,
+        _ => return Err(wrong_outcome("verify-show")),
+    };
+    let last_round = review_round_dto(o.ticket.last_round());
+    let rounds: Vec<ReviewRoundDto> = o.ticket.rounds.iter().map(review_round_dto).collect();
+    Ok(ok(ReviewTicketResponse { change: o.change, rounds, last_round }, &result.etag))
+}
+
+/// `POST /changes/{name}/verify/rounds` — 任務未全數完成時引擎拒絕（design D3）。
+pub async fn verify_add_round(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+    Json(req): Json<AddReviewRoundRequest>,
+) -> Result<Response, ApiError> {
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::VerifyAddRound { change: name, content: req.content },
+    )
+    .await?;
+    let round = match result.execution.outcome {
+        CommandOutcome::VerifyAddRound(o) => o.round,
+        _ => return Err(wrong_outcome("verify-add-round")),
+    };
+    Ok(ok(AddReviewRoundResponse { round: round as u64 }, &result.etag))
+}
+
+/// `POST /changes/{name}/verify/stamp` — 指紋歸屬與審查站同一條（design D4a）。
+pub async fn verify_stamp(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+    Json(req): Json<StampReviewRequest>,
+) -> Result<Response, ApiError> {
+    if !binding.editor {
+        return Err(ApiError::forbidden("reader memberships cannot stamp verifications"));
+    }
+    let scope = req
+        .scope
+        .into_iter()
+        .map(|e| speclink_core::model::ReviewedScopeEntry { path: e.path, hash: e.hash })
+        .collect();
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::VerifyStamp { change: name, accept: req.accept, tool: req.agent, scope, missing: req.missing },
+    )
+    .await?;
+    let change = match result.execution.outcome {
+        CommandOutcome::VerifyStamp(o) => o.change,
+        _ => return Err(wrong_outcome("verify-stamp")),
+    };
+    Ok(ok(StampReviewResponse { change }, &result.etag))
+}
+
+/// `DELETE /changes/{name}/verify` — editor 限定比照審查站：工單是驗證過程的
+/// 唯一紀錄，刪掉不可回復。
+pub async fn verify_discard(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    if !binding.editor {
+        return Err(ApiError::forbidden(
+            "reader memberships cannot discard verify tickets",
+        ));
+    }
+    let result = verb::run(&state, &binding, Command::VerifyDiscard { change: name }).await?;
+    let change = match result.execution.outcome {
+        CommandOutcome::VerifyDiscard(o) => o.change,
+        _ => return Err(wrong_outcome("verify-discard")),
+    };
+    Ok(ok(DiscardReviewResponse { change }, &result.etag))
+}
+
 /// `POST /changes/{name}/tasks/{taskId}/done`
 pub async fn task_done(
     State(state): State<AppState>,
@@ -1233,10 +1317,13 @@ pub async fn claim(
 pub struct ArchiveQuery {
     #[serde(default)]
     carry_review: bool,
+    #[serde(default)]
+    carry_verify: bool,
 }
 
-/// `POST /changes/{name}/archive[?carryReview=true]` — 帶旗標時未結工單隨
-/// change 搬入封存區（D5 的第三處置；不接通的話 remote 只剩兩條出路）。
+/// `POST /changes/{name}/archive[?carryReview=true][&carryVerify=true]` — 帶旗標
+/// 時該站的未結工單隨 change 搬入封存區（design D4／D5 的第三處置；不接通的話
+/// remote 只剩兩條出路）。兩個旗標各自獨立，可同時帶。
 pub async fn archive(
     State(state): State<AppState>,
     binding: Binding,
@@ -1252,6 +1339,7 @@ pub async fn archive(
             no_validate: false,
             mark_tasks_complete: false,
             carry_review: query.carry_review,
+            carry_verify: query.carry_verify,
         },
     )
     .await?;
