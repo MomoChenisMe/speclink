@@ -148,10 +148,12 @@ pub fn probe_instructions_at(path: &Path) -> serde_json::Value {
 }
 
 /// 指令檔整套再生（決策 5）：委派引擎既有的 `update()`——與 CLI 同一入口、冪等，
-/// 依 `.speclink.yaml` 記錄的 store mode 維持 marker 措辭。回報沿用 UpdateOutcome
-/// 形狀；失敗為單行 Err，由前端於提示原位呈現並可重試。
+/// 依 `.speclink.yaml` 記錄的 store mode 維持 marker 措辭。引擎在寫入前重探測方向，
+/// 工作區領先時拒絕（desktop 無越過入口——降級只走 CLI 的 --allow-downgrade）。
+/// 回報沿用 UpdateOutcome 形狀；失敗為單行 Err，由前端於提示原位呈現並可重試。
 pub fn update_instructions_at(path: &Path) -> Result<serde_json::Value, String> {
-    let outcome = speclink_core::init::update(path).map_err(|e| single_line(&e.to_string()))?;
+    let outcome =
+        speclink_core::init::update(path, false).map_err(|e| single_line(&e.to_string()))?;
     Ok(serde_json::json!({
         "updated": outcome.updated,
         "pruned": outcome.pruned,
@@ -177,6 +179,17 @@ mod tests {
         let owned: Vec<String> = tools.iter().map(|t| (*t).to_string()).collect();
         let selected = speclink_core::init::parse_tool_names(&owned).unwrap();
         speclink_core::init::init(fx.root(), &selected, true, "openspec").unwrap();
+    }
+
+    /// 比現版領先一個主版號的標記版號（模擬工作區由更新的引擎生成）。
+    fn ahead_of_current() -> String {
+        let major: u64 = speclink_core::init::MARKER_VERSION
+            .trim_start_matches('v')
+            .split('.')
+            .next()
+            .and_then(|s| s.parse().ok())
+            .expect("MARKER_VERSION 主版號可解析");
+        format!("v{}.0.0", major + 1)
     }
 
     #[test]
@@ -217,13 +230,7 @@ mod tests {
         // ——前端不重算方向，橫幅據此拿掉所有改寫動作。
         let fx = FixtureRoot::new("probe-camel-newer");
         init_workspace(&fx, &["claude"]);
-        let major: u64 = speclink_core::init::MARKER_VERSION
-            .trim_start_matches('v')
-            .split('.')
-            .next()
-            .and_then(|s| s.parse().ok())
-            .expect("MARKER_VERSION 主版號可解析");
-        let ahead = format!("v{}.0.0", major + 1);
+        let ahead = ahead_of_current();
         let marker = std::fs::read_to_string(fx.root().join("CLAUDE.md")).unwrap();
         std::fs::write(
             fx.root().join("CLAUDE.md"),
@@ -256,6 +263,27 @@ mod tests {
             .expect("codex 在列");
         assert_eq!(codex["missing"], true);
         assert_eq!(codex["workspaceVersion"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn update_instructions_refuses_a_newer_workspace_with_zero_writes() {
+        // 引擎端守門（不是 UI 狀態）：橫幅算出 stale 後檔案才變新（git pull）、
+        // 使用者再按「更新」的 TOCTOU 視窗，也會在寫入前被引擎重探測擋下。
+        let fx = FixtureRoot::new("update-refuses-newer");
+        init_workspace(&fx, &["claude"]);
+        let ahead = ahead_of_current();
+        let marker = std::fs::read_to_string(fx.root().join("CLAUDE.md")).unwrap();
+        let leading = marker.replace(speclink_core::init::MARKER_VERSION, &ahead);
+        std::fs::write(fx.root().join("CLAUDE.md"), &leading).unwrap();
+
+        let err = update_instructions_at(fx.root()).expect_err("領先的工作區必須被拒");
+        assert!(!err.contains('\n'), "單行錯誤：{err}");
+        assert!(err.contains(&ahead) && err.contains(speclink_core::init::MARKER_VERSION), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(fx.root().join("CLAUDE.md")).unwrap(),
+            leading,
+            "拒絕＝零寫入"
+        );
     }
 
     #[test]

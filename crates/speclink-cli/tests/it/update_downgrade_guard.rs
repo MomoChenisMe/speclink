@@ -145,6 +145,35 @@ fn allow_downgrade_regenerates_at_the_engine_version() {
     assert_eq!(env.marker_version(), MARKER_VERSION, "受管檔須再生為引擎現版");
 }
 
+/// 守門對所有再生路徑一體適用：workflow-config 寫入後的技能同步同樣經過引擎
+/// 的 update，領先的工作區在該步被拒——config 已寫入（既有的同步失敗形狀），
+/// 但受管檔零改寫。
+#[test]
+fn workflow_config_worktree_sync_refuses_a_newer_workspace() {
+    let env = TempEnv::new("wfconfig");
+    let ahead = ahead_of_current();
+    env.set_marker(&ahead);
+    let before = std::fs::read_to_string(env.dir.join("CLAUDE.md")).unwrap();
+
+    let out = env.run(&["workflow-config", "set", "worktree", "true"]);
+
+    assert!(!out.status.success(), "sync 必須被拒，exit 非零");
+    let stderr = stderr_of(&out);
+    assert!(
+        stderr.contains(&ahead) && stderr.contains(MARKER_VERSION),
+        "stderr 須含兩版號：{stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(env.dir.join("CLAUDE.md")).unwrap(),
+        before,
+        "領先的受管檔不得被改寫"
+    );
+    // 釘住既有的同步失敗形狀：config 本體已寫入（半狀態是此路徑的文件化行為），
+    // 只有技能足跡同步被守門擋下。
+    let config = std::fs::read_to_string(env.dir.join("openspec/config.yaml")).unwrap();
+    assert!(config.contains("worktree: true"), "config 須已寫入 worktree: true：{config}");
+}
+
 /// Scenario「過期工作區照常更新」：守門引入前後行為相同。
 #[test]
 fn a_stale_workspace_still_updates_without_the_flag() {

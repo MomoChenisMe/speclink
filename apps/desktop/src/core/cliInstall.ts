@@ -23,7 +23,8 @@ export function cliInstallStatus(
   return { kind: "version-mismatch", version: deployedVersion };
 }
 
-/** 解析 `speclink --version` 輸出（如「speclink 0.1.0 (arm64)」）；不合形回 null。 */
+/** 解析 `speclink --version` 輸出的套件版號（如「speclink 0.1.0 (arm64, engine
+ * v1.14.0)」取 0.1.0；括號內的引擎版號不參與佈署判定）；不合形回 null。 */
 export function parseCliVersion(output: string): string | null {
   return output.match(/^speclink (\S+)/)?.[1] ?? null;
 }

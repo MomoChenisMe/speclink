@@ -350,7 +350,17 @@ pub struct UpdateOutcome {
 /// from the instruction file). Unknown built-in names produce a warning note; an invalid
 /// descriptor is an error. Without a recorded list, built-ins fall back to legacy
 /// behavior: regenerate the tools whose dot-directories exist (codex excluded).
-pub fn update(root: &Path) -> Result<UpdateOutcome> {
+///
+/// Downgrade guard (change instruction-downgrade-guard): before any write, every
+/// instruction file this call is ABOUT to regenerate is checked for direction — a
+/// marker version leading this engine means regenerating would silently rewrite the
+/// file back to older content, the 2026-08-05 incident. The check is sourced from the
+/// write set itself (tools list, legacy directory detection, custom descriptors), not
+/// from the builtin-only probe, so no regeneration corner escapes it. Every
+/// regeneration path (CLI update, workflow-config sync on both CLI and desktop, the
+/// desktop update entry, tool reconciliation) funnels through here, so the guard lives
+/// here and nowhere else; `allow_downgrade` is the single explicit override.
+pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
     let app = crate::config::AppConfig::load(&root.join(".speclink.yaml"))?;
     let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
     // The remote section's presence is the mode signal — regenerated markers
@@ -386,6 +396,26 @@ pub fn update(root: &Path) -> Result<UpdateOutcome> {
                 customs.push(custom);
             }
         }
+    }
+
+    // 降級守門：對即將再生的每個指令檔逐檔判方向，任何寫入之前拒絕。
+    if !allow_downgrade {
+        let mut targets: Vec<PathBuf> = Vec::new();
+        if app.tools.is_empty() {
+            if root.join(".claude").is_dir() {
+                targets.push(root.join(instructions_path(Tool::Claude)));
+            }
+        } else {
+            for tool in [Tool::Claude, Tool::Codex] {
+                if selected.contains(&tool) {
+                    targets.push(root.join(instructions_path(tool)));
+                }
+            }
+        }
+        for custom in &customs {
+            targets.push(root.join(&custom.instructions_file));
+        }
+        refuse_downgrade(&targets)?;
     }
 
     if app.tools.is_empty() {
@@ -449,8 +479,24 @@ pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutc
     let path = root.join(".speclink.yaml");
     let original = util::read_opt(&path).unwrap_or_default();
     let rewritten = crate::config::update_app_config_tools_text(&original, tools)?;
+    // 降級守門提前到 config 寫入之前：拒絕＝整體零寫入，不留「config 已改、
+    // 受管檔未同步」的半狀態。檢查目標與其後 update 的寫入集同源（新選集的
+    // builtin 指令檔＋原 config 延續的描述子），故 update 內的守門不會在
+    // config 寫入後才第一次拒絕。
+    let mut guard_targets: Vec<PathBuf> =
+        tools.iter().map(|t| root.join(instructions_path(*t))).collect();
+    if let Ok(app) = crate::config::AppConfig::load(&path) {
+        for entry in &app.tools {
+            if let ToolEntry::Descriptor(d) = entry {
+                if let Ok(custom) = d.validate() {
+                    guard_targets.push(root.join(&custom.instructions_file));
+                }
+            }
+        }
+    }
+    refuse_downgrade(&guard_targets)?;
     util::write_file(&path, &rewritten)?;
-    update(root)
+    update(root, false)
 }
 
 /// Adopt speclink in a directory that already has an `openspec/` tree but no
@@ -808,6 +854,24 @@ fn workspace_is_newer(workspace: &str, engine: &str) -> bool {
     false
 }
 
+/// 降級守門的拒絕判定：`files` 中任一指令檔的標記版號數值領先引擎時，以單行
+/// 英文錯誤拒絕（含兩邊版號）。讀不到的檔案與無標記的檔案不擋——守門只在
+/// 「可證明較新」時觸發（決策 3 的安全預設）。
+fn refuse_downgrade(files: &[PathBuf]) -> Result<()> {
+    for md in files {
+        let Some(text) = util::read_opt(md) else { continue };
+        if let Some(v) = marker_version_of(&text) {
+            if workspace_is_newer(v, MARKER_VERSION) {
+                bail!(
+                    "Workspace instruction files ({v}) are newer than this engine ({MARKER_VERSION}). \
+                     Update Speclink first, or run `speclink update --allow-downgrade` to rewrite them anyway."
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 /// 唯讀的指令檔過期探測（決策 2、3）：依 `.speclink.yaml` 的 tools 清單（與
 /// [`update`] 同一資料源）讀各內建工具的指令檔，以標記版號對 [`MARKER_VERSION`]
 /// 判方向——數值領先現版為較新，其餘退回字串相等判定（不等即過期）。方向是唯一
@@ -1110,7 +1174,7 @@ mod tests {
                 "tools:\n{listed}{CUSTOM_DESCRIPTOR}remote:\n  url: {REMOTE_URL}\n  repo: desktop\nfuture_top_level: keep me\n"
             ),
         );
-        update(&root.dir).expect("seed update");
+        update(&root.dir, false).expect("seed update");
     }
 
     fn builtin_names(root: &TempRoot) -> Vec<String> {
@@ -1380,7 +1444,7 @@ mod tests {
         root.write(".claude/settings.json", USER_SETTINGS);
         std::fs::remove_dir_all(root.at(".claude/skills/speclink-propose")).unwrap();
 
-        update(&root.dir).expect("update succeeds");
+        update(&root.dir, false).expect("update succeeds");
 
         assert_eq!(root.read(".claude/settings.json"), USER_SETTINGS, "使用者設定檔位元級不變");
         assert!(root.exists(".claude/skills/speclink-propose/SKILL.md"), "受管技能檔照常再生");
@@ -1556,6 +1620,92 @@ mod tests {
     }
 
     #[test]
+    fn update_refuses_a_workspace_that_leads_the_engine_with_zero_writes() {
+        // 降級守門落在引擎的 update 本體：cmd_update、workflow-config 的技能同步
+        //（CLI 與 desktop 設定頁）、desktop 更新入口與 reconcile 全都經過這裡——
+        // 守門只此一處，任何再生路徑都不可能靜默降級。
+        let root = TempRoot::new("update-guard-refuse");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        let ahead = ahead_of_current();
+        set_marker(&root, Tool::Claude, &ahead);
+        let before = snapshot(&root);
+
+        let err = update(&root.dir, false).expect_err("領先的工作區必須被拒");
+        let msg = err.to_string();
+        assert!(msg.contains(&ahead) && msg.contains(MARKER_VERSION), "訊息須含兩版號：{msg}");
+        assert_eq!(msg.lines().count(), 1, "單行錯誤：{msg}");
+        assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
+    }
+
+    #[test]
+    fn update_with_allow_downgrade_regenerates_at_the_engine_version() {
+        // 唯一的越過入口：明示同意降級後照常再生為引擎現版。
+        let root = TempRoot::new("update-guard-allow");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        set_marker(&root, Tool::Claude, &ahead_of_current());
+
+        update(&root.dir, true).expect("明示越過後照常再生");
+        assert!(
+            root.read("CLAUDE.md").contains(MARKER_VERSION),
+            "受管檔須再生為引擎現版"
+        );
+    }
+
+    #[test]
+    fn the_guard_covers_the_legacy_fallback_without_a_tools_list() {
+        // 守門與寫入集同源：無 tools: 鍵的工作區走 .claude/ 目錄偵測再生，
+        // 探測卻因選集為空判現版——這類 legacy 工作區同樣必須拒絕降級。
+        let root = TempRoot::new("guard-legacy");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        // 模擬 legacy 工作區：config 沒有 tools 清單，但 .claude/ 目錄在。
+        root.write(".speclink.yaml", "# Speclink application config\n");
+        let ahead = ahead_of_current();
+        set_marker(&root, Tool::Claude, &ahead);
+        let before = snapshot(&root);
+
+        let err = update(&root.dir, false).expect_err("legacy fallback 同樣必須被拒");
+        let msg = err.to_string();
+        assert!(msg.contains(&ahead) && msg.contains(MARKER_VERSION), "{msg}");
+        assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
+
+        update(&root.dir, true).expect("明示越過照常再生");
+        assert!(root.read("CLAUDE.md").contains(MARKER_VERSION));
+    }
+
+    #[test]
+    fn the_guard_covers_custom_descriptor_instruction_files() {
+        // 描述子的指令檔同樣帶標記、同樣由 update 再生——守門一體適用，
+        // 只用描述子的工作區不得因探測面只收 builtin 而被降級。
+        let root = TempRoot::new("guard-descriptor");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(".speclink.yaml", &format!("tools:\n{CUSTOM_DESCRIPTOR}"));
+        update(&root.dir, false).expect("先生成描述子受管檔");
+        let ahead = ahead_of_current();
+        let text = root.read("WAD.md").replace(MARKER_VERSION, &ahead);
+        root.write("WAD.md", &text);
+        let before = snapshot(&root);
+
+        let err = update(&root.dir, false).expect_err("領先的描述子指令檔必須被拒");
+        assert!(err.to_string().contains(&ahead), "{err}");
+        assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
+    }
+
+    #[test]
+    fn reconcile_refuses_a_leading_workspace_before_touching_the_config() {
+        // 方向檢查在 .speclink.yaml 寫入之前：拒絕＝整體零寫入，不留
+        // 「config 已改、受管檔未同步」的半狀態。
+        let root = TempRoot::new("reconcile-guard");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        set_marker(&root, Tool::Claude, &ahead_of_current());
+        let before = snapshot(&root);
+
+        let err = reconcile_builtin_tools(&root.dir, &[Tool::Claude, Tool::Codex])
+            .expect_err("領先的工作區必須在寫入 config 前被拒");
+        assert!(err.to_string().contains(MARKER_VERSION), "{err}");
+        assert_eq!(snapshot(&root), before, "拒絕＝零寫入（含 .speclink.yaml）");
+    }
+
+    #[test]
     fn probe_reports_current_for_a_freshly_generated_workspace() {
         // Scenario「現版工作區不過期」：差異清單為空。
         let root = TempRoot::new("probe-current");
@@ -1686,7 +1836,7 @@ mod tests {
         init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
         set_worktree_policy(&root, false);
 
-        update(&root.dir).unwrap();
+        update(&root.dir, false).unwrap();
 
         for dir in worktree_skill_dirs(Tool::Claude) {
             assert!(!root.exists(&dir), "政策為 false 時不得生成 {dir}");
@@ -1701,7 +1851,7 @@ mod tests {
         init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
         set_worktree_policy(&root, true);
 
-        update(&root.dir).unwrap();
+        update(&root.dir, false).unwrap();
 
         for dir in worktree_skill_dirs(Tool::Claude) {
             assert!(root.exists(&format!("{dir}/SKILL.md")), "政策為 true 時須生成 {dir}");
@@ -1718,7 +1868,7 @@ mod tests {
             &format!("tools:\n  - claude\n  - codex\n{CUSTOM_DESCRIPTOR}"),
         );
 
-        update(&root.dir).unwrap();
+        update(&root.dir, false).unwrap();
         for dir in worktree_skill_dirs(Tool::Codex) {
             assert!(!root.exists(&dir), "政策關閉時 codex 不得生成 {dir}");
         }
@@ -1726,7 +1876,7 @@ mod tests {
         assert!(root.exists(".wad/skills/speclink-apply"), "描述子的非閘控技能照常生成");
 
         set_worktree_policy(&root, true);
-        update(&root.dir).unwrap();
+        update(&root.dir, false).unwrap();
         for dir in worktree_skill_dirs(Tool::Codex) {
             assert!(root.exists(&dir), "政策開啟時 codex 須生成 {dir}");
         }
@@ -1745,7 +1895,7 @@ mod tests {
         assert!(off.contains("/speclink-apply`"), "其餘技能指引須照舊:\n{off}");
 
         set_worktree_policy(&root, true);
-        update(&root.dir).unwrap();
+        update(&root.dir, false).unwrap();
         let on = root.read("CLAUDE.md");
 
         let added: Vec<&str> = on.lines().filter(|l| !off.lines().any(|o| o == *l)).collect();
@@ -1761,10 +1911,10 @@ mod tests {
         let root = TempRoot::new("gate-broken-config");
         init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
         set_worktree_policy(&root, true);
-        update(&root.dir).unwrap();
+        update(&root.dir, false).unwrap();
 
         root.write("openspec/config.yaml", "schema: [unterminated\n");
-        update(&root.dir).unwrap();
+        update(&root.dir, false).unwrap();
 
         for dir in worktree_skill_dirs(Tool::Claude) {
             assert!(root.exists(&dir), "政策文件壞掉時不得清掉 {dir}");
