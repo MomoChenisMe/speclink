@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "change": "archive-guard-test-hardening",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 主 checkout 放行測試：GitProject 建好後於 repo 本體執行 git checkout -b speclink/demo（主 checkout 的 .git 仍為目錄），於同一 repo 本體跑兩次封存——(a) git 正常可用時 speclink archive demo → 斷言 exit 0、change 目錄移入 archive（此為釘住 fs 短路的紅燈來源：短路若被移除，分支事實取得到即誤拒）；(b) 同 repo 第二個 change 以 PATH 清空的環境 speclink archive demo2 → 斷言 exit 0、目錄移入 archive（主 checkout 路徑不依賴 git）。兩次分開跑是必要的：守門 fail-open，PATH 清空時分支取不到必然放行，單靠清空 PATH 無法觀察 fs 短路是否還在。驗證：cargo test -p speclink-cli --test it archive_readiness_gate 新測試綠、既有測試不破",
+      "files": [
+        "crates/speclink-cli/tests/it/archive_readiness_gate.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZAYGZE7TBKAG3ZK1TYG08Z6",
+      "taskDesc": "1.1 主 checkout 放行測試：GitProject 建好後於 repo 本體執行 git checkout -b speclink/demo（主 checkout 的 .git 仍為目錄），於同一 repo 本體跑兩次封存——(a) git 正常可用時 speclink archive demo → 斷言 exit 0、change 目錄移入 archive（此為釘住 fs 短路的紅燈來源：短路若被移除，分支事實取得到即誤拒）；(b) 同 repo 第二個 change 以 PATH 清空的環境 speclink archive demo2 → 斷言 exit 0、目錄移入 archive（主 checkout 路徑不依賴 git）。兩次分開跑是必要的：守門 fail-open，PATH 清空時分支取不到必然放行，單靠清空 PATH 無法觀察 fs 短路是否還在。驗證：cargo test -p speclink-cli --test it archive_readiness_gate 新測試綠、既有測試不破",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "131e5bfa28b48a169131a60090a587a849cdb8d1",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/archive_readiness_gate.rs"
+      ],
+      "recordedAt": "2026-08-06T07:24:20Z"
+    }
+  ]
+}
