@@ -143,6 +143,9 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
       "更新會新建或覆蓋 {count} 個檔案；若你曾手動調整過這些檔案，調整會被覆蓋。",
     "instructions.missingTitle": "這個專案還沒安裝 Speclink 的技能與指令檔",
     "instructions.missingDesc": "安裝會新建或覆蓋 {count} 個檔案。",
+    "instructions.newerTitle": "這個專案的技能與指令檔比你的 Speclink 新",
+    "instructions.newerDesc":
+      "先更新 Speclink 再回來——現在改寫會把 {count} 個檔案換回舊內容。",
     "instructions.update": "更新",
     "instructions.install": "安裝",
     "instructions.keep": "保留現狀",
@@ -433,6 +436,9 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
       "Updating creates or overwrites {count} files; any manual edits to them will be overwritten.",
     "instructions.missingTitle": "This project has no Speclink skills or instruction files yet",
     "instructions.missingDesc": "Installing creates or overwrites {count} files.",
+    "instructions.newerTitle": "This project's Speclink skills and instruction files are newer than your Speclink",
+    "instructions.newerDesc":
+      "Update Speclink first — rewriting now would put {count} files back to older content.",
     "instructions.update": "Update",
     "instructions.install": "Install",
     "instructions.keep": "Keep as is",

@@ -7,25 +7,38 @@ use std::io::{BufRead, IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-/// Version string with the frozen architecture suffix (e.g. "2.3.1 (x64)").
-const VERSION: &str = {
+/// The frozen architecture suffix, absent on architectures we do not ship.
+const ARCH: Option<&str> = {
     #[cfg(target_arch = "x86_64")]
     {
-        concat!(env!("CARGO_PKG_VERSION"), " (x64)")
+        Some("x64")
     }
     #[cfg(target_arch = "aarch64")]
     {
-        concat!(env!("CARGO_PKG_VERSION"), " (arm64)")
+        Some("arm64")
     }
     #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
     {
-        env!("CARGO_PKG_VERSION")
+        None
     }
 };
 
+/// Version string with the architecture suffix and the engine (artifact layer)
+/// version, e.g. "2.3.1 (arm64, engine v1.14.0)". Built at runtime because
+/// `MARKER_VERSION` lives in another crate and cannot be `concat!`ed here — it
+/// is what makes "which engine is this binary" a one-command question.
+static VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    let pkg = env!("CARGO_PKG_VERSION");
+    let engine = core::init::MARKER_VERSION;
+    match ARCH {
+        Some(arch) => format!("{pkg} ({arch}, engine {engine})"),
+        None => format!("{pkg} (engine {engine})"),
+    }
+});
+
 /// Speclink — spec management CLI
 #[derive(Parser)]
-#[command(name = "speclink", version = VERSION, about = "Speclink — spec management CLI", disable_help_subcommand = false)]
+#[command(name = "speclink", version = VERSION.as_str(), about = "Speclink — spec management CLI", disable_help_subcommand = false)]
 struct Cli {
     /// Disable colored output
     #[arg(long, global = true)]
@@ -131,6 +144,9 @@ struct UpdateArgs {
     /// Overwrite existing files
     #[arg(long)]
     force: bool,
+    /// Rewrite instruction files even when the workspace is newer than this engine
+    #[arg(long)]
+    allow_downgrade: bool,
 }
 
 #[derive(Args)]

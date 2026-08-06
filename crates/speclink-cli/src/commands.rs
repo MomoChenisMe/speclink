@@ -312,6 +312,24 @@ fn cmd_update(a: UpdateArgs) -> Result<()> {
         bail!("Not initialized. Run 'speclink init' to initialize.");
     }
     let _ = a.force;
+    // 降級守門：探測在任何寫入之前，工作區領先引擎時拒絕——按下「更新」把新版
+    // 檔案改寫回舊內容是 2026-08-05 事故的形狀。--allow-downgrade 明示越過。
+    if !a.allow_downgrade {
+        let probe = core::init::probe_instructions(&root);
+        if probe.status == core::init::InstructionStatus::Newer {
+            let workspace = probe
+                .tools
+                .iter()
+                .find(|t| t.newer)
+                .and_then(|t| t.workspace_version.clone())
+                .unwrap_or_default();
+            bail!(
+                "Workspace instruction files ({workspace}) are newer than this engine ({}). \
+                 Update Speclink, or pass --allow-downgrade to rewrite them anyway.",
+                probe.current_version
+            );
+        }
+    }
     let outcome = core::init::update(&root)?;
     for note in &outcome.notes {
         println!("! {note}");
