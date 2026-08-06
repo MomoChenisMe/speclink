@@ -2514,14 +2514,26 @@ code:
 ---
 ### Requirement: 指令檔過期提示
 
-桌面 app SHALL 於本地專案分頁成為活躍時執行指令檔過期探測，並於更新動作完成後與 workspace-changed 事件到達時重新探測。探測回報過期或缺失、且該專案未略過當前產物層版號時，SHALL 於分頁內容頂部呈現非阻斷提示，內容含將被新建或改寫的檔案數與主動作、「保留現狀」兩動作——過期時主動作為「更新」、缺失時主動作為「安裝」（從未安裝的專案不以「更新」稱之）；SHALL NOT 以 modal 阻斷操作，SHALL NOT 於 remote workspace 分頁觸發探測。探測回報現版或無法判定時 SHALL 無任何提示；無法判定 SHALL NOT 記入略過、SHALL NOT 視同現版。
+桌面 app SHALL 於本地專案分頁成為活躍時執行指令檔過期探測，並於更新動作完成後與 workspace-changed 事件到達時重新探測。探測回報過期、缺失或較新、且該專案未略過當前產物層版號時，SHALL 於分頁內容頂部呈現非阻斷提示；SHALL NOT 以 modal 阻斷操作，SHALL NOT 於 remote workspace 分頁觸發探測。探測回報現版或無法判定時 SHALL 無任何提示；無法判定 SHALL NOT 記入略過、SHALL NOT 視同現版。
 
-主動作（「更新」或「安裝」）SHALL 經引擎既有的指令檔再生入口整套再生受管檔，成功後提示消失；失敗時錯誤 SHALL 呈現於提示原位且可重試，SHALL NOT 阻斷專案其他功能。「保留現狀」SHALL 將該專案與當前產物層版號記入 app 本機持久化，SHALL NOT 寫入專案內任何檔案；同版不再提示（缺失與過期共用同一略過記憶），產物層版號變動後 SHALL 重新提示。提示文案 SHALL 遵循 openspec/LANGUAGE.md 詞彙原則，SHALL NOT 出現工程詞。
+提示形態依探測狀態分三種：過期時主動作為「更新」、缺失時主動作為「安裝」（從未安裝的專案不以「更新」稱之），兩者內容含將被新建或改寫的檔案數；較新時提示 SHALL 以「app 本體是舊版、專案檔案較新」語意呈現並引導使用者更新 app，SHALL NOT 提供任何改寫專案檔案的動作——「更新」與「安裝」動作皆不出現，僅保留「保留現狀」。
+
+主動作（「更新」或「安裝」）SHALL 經引擎既有的指令檔再生入口整套再生受管檔，成功後提示消失；失敗時錯誤 SHALL 呈現於提示原位且可重試，SHALL NOT 阻斷專案其他功能。「保留現狀」SHALL 將該專案與當前產物層版號記入 app 本機持久化，SHALL NOT 寫入專案內任何檔案；同版不再提示（缺失、過期與較新共用同一略過記憶），產物層版號變動後 SHALL 重新提示。提示文案 SHALL 遵循 openspec/LANGUAGE.md 詞彙原則，SHALL NOT 出現工程詞。
 
 #### Scenario: 開啟過期專案出現提示並更新
 
 - **WHEN** 以新版 desktop 開啟指令檔為舊版的本地專案分頁，於提示點「更新」
 - **THEN** 提示先於分頁內容頂部非阻斷呈現並顯示將被改寫的檔案數；更新後受管檔再生為現版、提示消失
+
+#### Scenario: 檔案領先 app 時不提供改寫動作
+
+- **WHEN** 以舊版 desktop（引擎產物層版號舊於專案指令檔標記版號）開啟該本地專案分頁
+- **THEN** 提示以「app 本體是舊版」語意呈現、引導更新 app；提示上無「更新」與「安裝」動作，僅「保留現狀」；專案內無任何檔案因此變動
+
+#### Scenario: 較新提示保留現狀後同版不再問
+
+- **WHEN** 使用者於較新提示點「保留現狀」，其後關閉並重新開啟同一專案
+- **THEN** 提示不再出現；app 升版使產物層版號變動後重新探測、依新狀態重新裁決
 
 #### Scenario: 保留現狀同版不再問
 
@@ -2558,69 +2570,10 @@ code:
 - **WHEN** 過期提示顯示期間，使用者於終端執行 speclink update 使受管檔更新為現版
 - **THEN** workspace-changed 事件觸發重新探測後提示消失，無需重開分頁
 
+
 <!-- @trace
-source: desktop-instruction-staleness-prompt
-updated: 2026-07-31
-code:
-  - .agents/skills/speclink-apply/SKILL.md
-  - .agents/skills/speclink-archive/SKILL.md
-  - .agents/skills/speclink-audit/SKILL.md
-  - .agents/skills/speclink-commit/SKILL.md
-  - .agents/skills/speclink-config/SKILL.md
-  - .agents/skills/speclink-discuss/SKILL.md
-  - .agents/skills/speclink-drift/SKILL.md
-  - .agents/skills/speclink-ingest/SKILL.md
-  - .agents/skills/speclink-onboard/SKILL.md
-  - .agents/skills/speclink-propose/SKILL.md
-  - .claude/skills/speclink-analyze/SKILL.md
-  - .claude/skills/speclink-apply/SKILL.md
-  - .claude/skills/speclink-archive/SKILL.md
-  - .claude/skills/speclink-audit/SKILL.md
-  - .claude/skills/speclink-commit/SKILL.md
-  - .claude/skills/speclink-config/SKILL.md
-  - .claude/skills/speclink-discuss/SKILL.md
-  - .claude/skills/speclink-drift/SKILL.md
-  - .claude/skills/speclink-ingest/SKILL.md
-  - .claude/skills/speclink-onboard/SKILL.md
-  - .claude/skills/speclink-propose/SKILL.md
-  - .claude/skills/speclink-verify/SKILL.md
-  - AGENTS.md
-  - CLAUDE.md
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
-  - apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx
-  - apps/desktop/src/__tests__/remoteDataSource.test.ts
-  - apps/desktop/src/__tests__/remoteResilience.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/adapter/remoteDataSource.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/components/InstructionUpdatePrompt.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/instructionPrompt.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/tests/archive_readiness_gate.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/render_golden.rs
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/boardDnd.ts
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/i18n.tsx
+source: instruction-downgrade-guard
+updated: 2026-08-06
 -->
 
 ---
