@@ -211,9 +211,9 @@ pub fn write_workflow_fields_at(
         .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
     verify_workflow_text(&reread, fields, &file, "verify after write")?;
     if worktree_was_on != fields.worktree {
-        speclink_core::init::update(&ws.root).map_err(|e| {
+        speclink_core::init::update(&ws.root, false).map_err(|e| {
             format!(
-                "{file} written, but the skill footprint did not sync: {} — re-run `speclink update` to rebuild it",
+                "{file} written, but the skill footprint did not sync: {} — fix the cause above, then re-run `speclink update` to rebuild it",
                 single_line(&e.to_string())
             )
         })?;

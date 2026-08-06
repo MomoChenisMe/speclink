@@ -36,6 +36,10 @@ describe("CLI --version 輸出解析", () => {
     expect(parseCliVersion("speclink 0.1.0 (arm64)\n")).toBe("0.1.0");
   });
 
+  it("帶 engine 版號的現行格式同樣解析出套件版號（instruction-downgrade-guard 的刻意變更）", () => {
+    expect(parseCliVersion("speclink 0.1.0 (arm64, engine v1.14.0)\n")).toBe("0.1.0");
+  });
+
   it("無法解析時回 null", () => {
     expect(parseCliVersion("garbage")).toBeNull();
   });

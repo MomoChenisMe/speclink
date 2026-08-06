@@ -11,8 +11,14 @@ import {
   assertSameEngineVersion,
   engineVersionOf,
   missingSigningEnv,
+  preflight,
   sourceMarkerVersion,
 } from './desktop-install.mjs';
+
+const SIGNED = {
+  TAURI_SIGNING_PRIVATE_KEY: 'k',
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: 'p',
+};
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -62,11 +68,23 @@ test('簽章環境變數缺失時點名缺的變數，齊備時回空', () => {
   );
 });
 
-test('--install 只支援 macOS：非 macOS 於任何建置之前即單行錯誤', () => {
-  const source = readFileSync(path.join(root, 'scripts/desktop-install.mjs'), 'utf8');
-  assert.match(source, /darwin/, '腳本須檢查平台');
-  assert.ok(
-    source.indexOf("'darwin'") < source.indexOf('desktop-sidecar.mjs'),
-    '平台檢查須排在 sidecar 建置之前',
+test('preflight：非 macOS 帶 --install 即拒絕，點名平台', () => {
+  assert.throws(() => preflight({ env: SIGNED, platform: 'linux', install: true }), /macOS/);
+  assert.throws(() => preflight({ env: SIGNED, platform: 'win32', install: true }), /win32/);
+});
+
+test('preflight：簽章環境變數缺失即拒絕並點名變數', () => {
+  assert.throws(
+    () => preflight({ env: {}, platform: 'darwin', install: false }),
+    /TAURI_SIGNING_PRIVATE_KEY/,
   );
+});
+
+test('preflight：macOS 且簽章 env 齊備即通過（帶不帶 --install 皆然）', () => {
+  assert.doesNotThrow(() => preflight({ env: SIGNED, platform: 'darwin', install: false }));
+  assert.doesNotThrow(() => preflight({ env: SIGNED, platform: 'darwin', install: true }));
+});
+
+test('preflight：不帶 --install 時平台不設限（建置步驟平台中立）', () => {
+  assert.doesNotThrow(() => preflight({ env: SIGNED, platform: 'linux', install: false }));
 });

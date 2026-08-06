@@ -125,7 +125,7 @@ fn claude_rendering_with_the_worktree_policy_on_is_bit_identical_to_golden() {
         "schema: spec-driven\nworktree: true\n",
     )
     .unwrap();
-    init::update(&root.dir).unwrap();
+    init::update(&root.dir, false).unwrap();
     assert_matches_golden(
         "claude-worktree.snapshot.md",
         &snapshot(&root.dir, "CLAUDE.md", ".claude/skills"),
@@ -304,7 +304,7 @@ fn generated_skill_for_both_tools(tag: &str, skill: &str, worktree: bool) -> Vec
                     "schema: spec-driven\nworktree: true\n",
                 )
                 .unwrap();
-                init::update(&root.dir).unwrap();
+                init::update(&root.dir, false).unwrap();
             }
             let rel = format!("{skills_dir}/speclink-{skill}/SKILL.md");
             let content =
@@ -517,7 +517,7 @@ fn neutral_project(tag: &str, invocation: &str) -> TempRoot {
         ),
     )
     .unwrap();
-    init::update(&root.dir).unwrap();
+    init::update(&root.dir, false).unwrap();
     root
 }
 

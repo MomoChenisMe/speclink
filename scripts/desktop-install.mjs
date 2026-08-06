@@ -8,7 +8,7 @@
 //   無旗標：建置並斷言 bundle 內 CLI 的引擎版號等於源碼版號
 //   --install：續行覆蓋安裝 /Applications/Speclink.app 並再斷言一次（僅 macOS）
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -50,18 +50,38 @@ export function missingSigningEnv(env) {
   );
 }
 
+/// 進入任何建置之前的一次性把關：非 macOS 帶 --install 不該先花十分鐘建置才發現
+/// 裝不了；簽章 env 缺失時 tauri 會在最後一步才失敗，同樣白等整趟。
+export function preflight({ env, platform, install }) {
+  if (install && platform !== 'darwin') {
+    throw new Error(`--install 僅支援 macOS，目前平台為 ${platform}`);
+  }
+  const missing = missingSigningEnv(env);
+  if (missing.length > 0) {
+    throw new Error(`簽章環境變數未設定：${missing.join('、')}——bundle 會在簽章步驟失敗`);
+  }
+}
+
+/// spawnSync 的失敗形狀收攏：spawn 本身失敗（ENOENT、權限）與被訊號收束時
+/// status 為 null，不能一律報成「非零結束（null）」而丟掉真正的原因。
+function checkSpawn(result, command, args) {
+  if (result.error) {
+    throw new Error(`${command} ${args.join(' ')} 無法執行：${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const how = result.status === null ? `signal ${result.signal}` : result.status;
+    throw new Error(`${command} ${args.join(' ')} 以非零結束（${how}）`);
+  }
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { cwd: ROOT, stdio: 'inherit', ...options });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(' ')} 以非零結束（${result.status}）`);
-  }
+  checkSpawn(result, command, args);
 }
 
 function capture(command, args) {
   const result = spawnSync(command, args, { cwd: ROOT, encoding: 'utf8' });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(' ')} 以非零結束（${result.status}）`);
-  }
+  checkSpawn(result, command, args);
   return result.stdout ?? '';
 }
 
@@ -73,10 +93,8 @@ function engineVersionOfBinary(binary) {
 
 function main(argv) {
   const install = argv.includes('--install');
-  // 平台限定先攔：非 macOS 帶 --install 不該先花十分鐘建置才發現裝不了。
-  if (install && process.platform !== 'darwin') {
-    throw new Error(`--install 僅支援 macOS，目前平台為 ${process.platform}`);
-  }
+  // (0) 進任何建置之前把關：平台限定與簽章 env 一次驗完。
+  preflight({ env: process.env, platform: process.platform, install });
 
   // (1) 這棵樹是什麼——安裝版只保證等於這棵樹，不保證等於 origin 最新。
   const head = capture('git', ['rev-parse', '--short', 'HEAD']).trim();
@@ -92,11 +110,7 @@ function main(argv) {
   // 打包，那正是 2026-08-05 裝進 v1.11 引擎的路徑。
   run('node', ['scripts/desktop-sidecar.mjs']);
 
-  // (3) 前端建置與 bundle。簽章 env 缺失時 tauri 會在最後一步才失敗，白等整趟。
-  const missing = missingSigningEnv(process.env);
-  if (missing.length > 0) {
-    throw new Error(`簽章環境變數未設定：${missing.join('、')}——bundle 會在簽章步驟失敗`);
-  }
+  // (3) 前端建置與 bundle（簽章 env 已於 preflight 驗過）。
   run('npm', ['run', 'build', '-w', 'apps/desktop']);
   run('npm', ['run', '-w', 'apps/desktop', 'tauri', '--', 'build', '--bundles', 'app']);
 
@@ -113,14 +127,31 @@ function main(argv) {
     return;
   }
 
-  // (5) 執行中的 app 不代關：使用者可能正在裡面工作。
-  if (spawnSync('pgrep', ['-f', 'Speclink.app']).status === 0) {
+  // (5) 執行中的 app 不代關：使用者可能正在裡面工作。pattern 錨定安裝版的
+  // 執行檔路徑，避免 argv 恰含「Speclink.app」的無關程序（tail、grep）誤攔。
+  // pgrep 的 exit code 語意：0＝有符合、1＝沒有符合、其餘＝pgrep 本身失敗——
+  // 失敗不能當成「沒在跑」。
+  const pg = spawnSync('pgrep', ['-f', `${APP}/Contents/MacOS/speclink-desktop`]);
+  if (pg.error || (pg.status !== 0 && pg.status !== 1)) {
+    throw new Error(`無法確認 app 是否執行中（pgrep：${pg.error?.message ?? `exit ${pg.status}`}）`);
+  }
+  if (pg.status === 0) {
     throw new Error('Speclink 正在執行——請先結束 app 再重跑（不代為結束程序）');
   }
 
-  // (6) 覆蓋安裝。
+  // (6) 覆蓋安裝：先整份拷到暫存路徑，cp 失敗時既有的 app 原封不動；成功後
+  // 才刪舊換新，把「app 消失」的視窗縮到 rm＋rename 兩步。
+  const staging = `${APP}.new`;
+  rmSync(staging, { recursive: true, force: true });
+  run('cp', ['-R', BUNDLE_APP, staging]);
   rmSync(APP, { recursive: true, force: true });
-  run('cp', ['-R', BUNDLE_APP, APP]);
+  try {
+    renameSync(staging, APP);
+  } catch (error) {
+    throw new Error(
+      `舊版已移除但改名失敗（${error.message}）——新版完整保留在 ${staging}，手動改名為 ${APP} 即可完成安裝`,
+    );
+  }
 
   // (7) 第二道斷言：裝進去的才算數。
   assertSameEngineVersion(
