@@ -44,3 +44,5 @@ reviewed_scope:
     hash: c6b9ce1fa255ae868f353f80fe9a933745269dbf9fe09540afa7942416005865
   - path: scripts/desktop-install.test.mjs
     hash: b9320040aafc663b865ecf66398fc9196f8ed8a8f94fe14138e7a9dddd5f80a9
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-06
