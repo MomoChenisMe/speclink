@@ -25,6 +25,7 @@ function handlers() {
 
 const STALE = { kind: "stale" as const, fileCount: 3, version: "v1.3.0" };
 const MISSING = { kind: "missing" as const, fileCount: 12, version: "v1.3.0" };
+const NEWER = { kind: "newer" as const, fileCount: 2, version: "v1.3.0" };
 
 describe("InstructionUpdatePrompt", () => {
   it("過期態：顯示將被改寫的檔案數，主動作為「更新」", () => {
@@ -44,6 +45,20 @@ describe("InstructionUpdatePrompt", () => {
     expect(screen.queryByRole("button", { name: "更新" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "安裝" }));
     expect(h.onApply).toHaveBeenCalledTimes(1);
+  });
+
+  it("較新態：以「app 是舊版」語意呈現，只留保留現狀、無任何改寫動作", () => {
+    const h = handlers();
+    render(<InstructionUpdatePrompt prompt={NEWER} error={null} busy={false} {...h} />);
+
+    const banner = screen.getByTestId("instruction-prompt");
+    expect(banner.textContent).toContain("比你的 Speclink 新");
+    expect(screen.queryByRole("button", { name: "更新" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "安裝" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "保留現狀" }));
+    expect(h.onDismiss).toHaveBeenCalledTimes(1);
+    expect(h.onApply).not.toHaveBeenCalled();
   });
 
   it("保留現狀：回呼 dismiss、不觸發再生", () => {

@@ -723,15 +723,19 @@ pub fn ensure_gitignore(path: &Path) -> Result<bool> {
     }
 }
 
-/// 指令檔過期探測的整體判定（規格「指令檔過期探測」四態）。缺失優先於過期：
-/// 「從未安裝」與「裝了但舊了」是不同的使用者情境，提示文案據此分流。
+/// 指令檔過期探測的整體判定（規格「指令檔過期探測」五態）。聚合優先序
+/// 較新 > 缺失 > 過期 > 現版：較新排最前，只要有任何檔案領先引擎，就不提供
+/// 任何會改寫它的動作；缺失優先於過期，因為「從未安裝」與「裝了但舊了」是不同
+/// 的使用者情境，提示文案據此分流。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum InstructionStatus {
     /// tools 清單宣告的指令檔不存在＝從未安裝（如 clone 後指令檔未進版控）。
     Missing,
-    /// 任一工具的標記版號與現版不等。
+    /// 任一工具的標記版號與現版不等且不領先現版。
     Stale,
+    /// 任一工具的標記版號數值新於現版＝工作區檔案領先引擎（本體是舊版）。
+    Newer,
     Current,
     /// 設定解析失敗或指令檔存在但讀取錯誤——不得與現版混同。
     Unknown,
@@ -739,12 +743,14 @@ pub enum InstructionStatus {
 
 /// 單一內建工具的探測結果。`workspaceVersion` 為 None 代表檔案不存在或標記已被
 /// 移除；兩者由 `missing` 區分（決策 2：退出受管與從未安裝意圖完全不同）。
+/// `stale` 與 `newer` 互斥：方向由引擎判定，消費端不重算。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolInstructionState {
     pub tool: String,
     pub workspace_version: Option<String>,
     pub stale: bool,
+    pub newer: bool,
     pub missing: bool,
 }
 
@@ -775,9 +781,37 @@ fn eol_normalized(text: &str) -> String {
     text.replace("\r\n", "\n")
 }
 
+/// 版號拆段：去 v 前綴、以點號拆段、逐段解析為數字；任一段非純數字即回 None
+///（不排序無法解析的版號）。
+fn version_parts(version: &str) -> Option<Vec<u64>> {
+    version
+        .trim()
+        .trim_start_matches('v')
+        .split('.')
+        .map(|seg| seg.parse::<u64>().ok())
+        .collect()
+}
+
+/// 工作區標記版號是否數值領先引擎版號（決策 3）：段數不足補零後逐段比較。
+/// 任一邊無法完整解析為數字段時回 false——手改壞的標記寧可誤報過期（改寫即恢復
+/// 受管狀態），不可誤報較新（那會封鎖 update）。
+fn workspace_is_newer(workspace: &str, engine: &str) -> bool {
+    let (Some(a), Some(b)) = (version_parts(workspace), version_parts(engine)) else {
+        return false;
+    };
+    for i in 0..a.len().max(b.len()) {
+        let (l, r) = (a.get(i).copied().unwrap_or(0), b.get(i).copied().unwrap_or(0));
+        if l != r {
+            return l > r;
+        }
+    }
+    false
+}
+
 /// 唯讀的指令檔過期探測（決策 2、3）：依 `.speclink.yaml` 的 tools 清單（與
 /// [`update`] 同一資料源）讀各內建工具的指令檔，以標記版號對 [`MARKER_VERSION`]
-/// 做字串相等比對——不解析版本語意，版本戳的唯一職責是偵測「不同」。
+/// 判方向——數值領先現版為較新，其餘退回字串相等判定（不等即過期）。方向是唯一
+/// 判準來源：desktop 與 CLI 共用同一裁決，領先時兩個出口都不提供改寫動作。
 ///
 /// 零寫入：desktop 開專案時搭載，探測失敗不得阻斷開啟。自訂描述子第一版不涵蓋
 /// （回報結構已預留 tool 名欄位，納入時不需改形狀）。
@@ -818,6 +852,7 @@ pub fn probe_instructions(root: &Path) -> InstructionProbe {
                 tool: tool.name().to_string(),
                 workspace_version: None,
                 stale: false,
+                newer: false,
                 missing: true,
             });
             continue;
@@ -827,15 +862,22 @@ pub fn probe_instructions(root: &Path) -> InstructionProbe {
             return unknown();
         };
         let version = marker_version_of(&text).map(str::to_string);
+        // 方向優先於相等判定：領先現版的標記是「較新」，不得再算成過期。
+        let newer = version
+            .as_deref()
+            .is_some_and(|v| workspace_is_newer(v, MARKER_VERSION));
         tools.push(ToolInstructionState {
             tool: tool.name().to_string(),
-            stale: version.as_deref().is_some_and(|v| v != MARKER_VERSION),
+            stale: !newer && version.as_deref().is_some_and(|v| v != MARKER_VERSION),
+            newer,
             missing: false,
             workspace_version: version,
         });
     }
 
-    let status = if tools.iter().any(|t| t.missing) {
+    let status = if tools.iter().any(|t| t.newer) {
+        InstructionStatus::Newer
+    } else if tools.iter().any(|t| t.missing) {
         InstructionStatus::Missing
     } else if tools.iter().any(|t| t.stale) {
         InstructionStatus::Stale
@@ -843,7 +885,7 @@ pub fn probe_instructions(root: &Path) -> InstructionProbe {
         InstructionStatus::Current
     };
     let differing_files = match status {
-        InstructionStatus::Missing | InstructionStatus::Stale => {
+        InstructionStatus::Missing | InstructionStatus::Stale | InstructionStatus::Newer => {
             differing_managed_files(root, &selected, &spec_dir, store)
         }
         _ => Vec::new(),
@@ -1403,11 +1445,23 @@ mod tests {
 
     // --- 指令檔過期探測（規格「指令檔過期探測」；決策 2、3） ---
 
-    /// 把工作區的 marker 版號改成舊值（模擬以舊版引擎生成的工作區）。
-    fn downgrade_marker(root: &TempRoot, tool: Tool, old: &str) {
+    /// 把工作區的 marker 版號改成指定值（模擬以別版引擎生成的工作區——舊值模擬
+    /// 落後、新值模擬領先）。
+    fn set_marker(root: &TempRoot, tool: Tool, version: &str) {
         let file = instructions_file(tool);
-        let text = root.read(file).replace(MARKER_VERSION, old);
+        let text = root.read(file).replace(MARKER_VERSION, version);
         root.write(file, &text);
+    }
+
+    /// 比現版領先一個主版號的標記版號：工作區檔案由更新的引擎生成的情境。
+    fn ahead_of_current() -> String {
+        let major: u64 = MARKER_VERSION
+            .trim_start_matches('v')
+            .split('.')
+            .next()
+            .and_then(|s| s.parse().ok())
+            .expect("MARKER_VERSION 主版號可解析");
+        format!("v{}.0.0", major + 1)
     }
 
     #[test]
@@ -1416,7 +1470,7 @@ mod tests {
         // 內容與現版 render 不同的受管檔（指令檔與技能檔皆可能在列）。
         let root = TempRoot::new("probe-stale");
         init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
-        downgrade_marker(&root, Tool::Claude, "v0.9.0");
+        set_marker(&root, Tool::Claude, "v0.9.0");
 
         let probe = probe_instructions(&root.dir);
         assert_eq!(probe.status, InstructionStatus::Stale, "{probe:?}");
@@ -1430,6 +1484,75 @@ mod tests {
             "改動過的指令檔須列入差異清單：{:?}",
             probe.differing_files
         );
+        assert!(!probe.tools[0].newer, "落後的工作區不得判較新");
+    }
+
+    #[test]
+    fn workspace_version_direction_only_orders_parsable_versions() {
+        // 決策 3：去 v 前綴、以點拆段、逐段數值比較、段數不足補零；任一邊無法
+        // 完整解析為數字段時不排序方向——寧可誤報過期，不可誤報較新（會封鎖 update）。
+        // spec Example「引擎 v1.11.0 探測 v1.14.0 工作區」的字面值：
+        assert!(workspace_is_newer("v1.14.0", "v1.11.0"), "工作區領先引擎");
+        assert!(!workspace_is_newer("v1.11.0", "v1.14.0"), "工作區落後引擎");
+        assert!(!workspace_is_newer("v1.14.0", "v1.14.0"), "同版不算領先");
+        // 逐段數值（非字典序）：v1.9.0 < v1.10.0
+        assert!(workspace_is_newer("v1.10.0", "v1.9.0"), "以數值而非字典序比較");
+        // 段數不足補零
+        assert!(workspace_is_newer("v1.14.1", "v1.14"), "缺段視為 0");
+        assert!(!workspace_is_newer("v1.14", "v1.14.0"), "補零後相等不算領先");
+        // 無法解析：兩個方向都不判較新
+        assert!(!workspace_is_newer("bogus", "v1.14.0"), "無法解析不得判較新");
+        assert!(!workspace_is_newer("v1.14.0-beta", "v1.14.0"), "非純數字段不得判較新");
+        assert!(!workspace_is_newer("v1.14.0", "bogus"), "引擎端無法解析亦不判較新");
+    }
+
+    #[test]
+    fn probe_reports_newer_when_the_workspace_leads_the_engine() {
+        // Scenario「工作區檔案領先引擎判較新」＋ Example「引擎 v1.11.0 探測 v1.14.0
+        // 工作區」：2026-08-05 事故情境——舊判準回報「過期」，按「更新」即降級。
+        let root = TempRoot::new("probe-newer");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        let ahead = ahead_of_current();
+        set_marker(&root, Tool::Claude, &ahead);
+
+        let probe = probe_instructions(&root.dir);
+        assert_eq!(probe.status, InstructionStatus::Newer, "{probe:?}");
+        assert_eq!(probe.current_version, MARKER_VERSION);
+        assert_eq!(probe.tools[0].workspace_version.as_deref(), Some(ahead.as_str()));
+        assert!(probe.tools[0].newer && !probe.tools[0].stale && !probe.tools[0].missing);
+        assert!(
+            probe.differing_files.contains(&"CLAUDE.md".to_string()),
+            "較新時仍須回報差異檔清單：{:?}",
+            probe.differing_files
+        );
+    }
+
+    #[test]
+    fn probe_prefers_newer_over_missing_and_stale() {
+        // Scenario「較新優先於缺失與過期」：任一工具領先即整體較新——任何會改寫
+        // 領先檔案的動作都不該被提供。
+        let root = TempRoot::new("probe-newer-wins");
+        init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
+        set_marker(&root, Tool::Claude, &ahead_of_current());
+        std::fs::remove_file(root.at("AGENTS.md")).unwrap();
+
+        let probe = probe_instructions(&root.dir);
+        assert_eq!(probe.status, InstructionStatus::Newer, "{probe:?}");
+        let codex = probe.tools.iter().find(|t| t.tool == "codex").expect("codex 在列");
+        assert!(codex.missing && !codex.newer, "缺失的工具不得被標成較新：{codex:?}");
+    }
+
+    #[test]
+    fn probe_falls_back_to_equality_for_an_unparsable_marker_version() {
+        // Scenario「無法解析的版號退回相等判定」：手改壞的標記判過期（改寫即恢復
+        // 受管狀態），絕不判較新（那會封鎖 update）。
+        let root = TempRoot::new("probe-unparsable");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        set_marker(&root, Tool::Claude, "v-not-a-version");
+
+        let probe = probe_instructions(&root.dir);
+        assert_eq!(probe.status, InstructionStatus::Stale, "{probe:?}");
+        assert!(probe.tools[0].stale && !probe.tools[0].newer, "{:?}", probe.tools[0]);
     }
 
     #[test]
@@ -1467,7 +1590,7 @@ mod tests {
         init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
         std::fs::remove_file(root.at("AGENTS.md")).unwrap();
         // 另一支同時過期：缺失仍須勝出。
-        downgrade_marker(&root, Tool::Claude, "v0.9.0");
+        set_marker(&root, Tool::Claude, "v0.9.0");
 
         let probe = probe_instructions(&root.dir);
         assert_eq!(probe.status, InstructionStatus::Missing, "{probe:?}");
@@ -1503,7 +1626,7 @@ mod tests {
         let skill = propose_skill(Tool::Claude);
         let crlf = root.read(&skill).replace('\n', "\r\n");
         root.write(&skill, &crlf);
-        downgrade_marker(&root, Tool::Claude, "v0.9.0");
+        set_marker(&root, Tool::Claude, "v0.9.0");
 
         let probe = probe_instructions(&root.dir);
         assert_eq!(probe.status, InstructionStatus::Stale, "{probe:?}");

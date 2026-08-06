@@ -199,6 +199,7 @@ mod tests {
         assert_eq!(tool["tool"], "claude");
         assert_eq!(tool["workspaceVersion"], "v0.9.0");
         assert_eq!(tool["stale"], true);
+        assert_eq!(tool["newer"], false);
         assert_eq!(tool["missing"], false);
         assert!(
             value["differingFiles"]
@@ -208,6 +209,34 @@ mod tests {
                 .any(|f| f == "CLAUDE.md"),
             "{value}"
         );
+    }
+
+    #[test]
+    fn probe_instructions_reports_newer_when_the_workspace_leads_the_engine() {
+        // 較新態（app 本體是舊版）：status 值與 per-tool 的 newer 布林都是前端契約
+        // ——前端不重算方向，橫幅據此拿掉所有改寫動作。
+        let fx = FixtureRoot::new("probe-camel-newer");
+        init_workspace(&fx, &["claude"]);
+        let major: u64 = speclink_core::init::MARKER_VERSION
+            .trim_start_matches('v')
+            .split('.')
+            .next()
+            .and_then(|s| s.parse().ok())
+            .expect("MARKER_VERSION 主版號可解析");
+        let ahead = format!("v{}.0.0", major + 1);
+        let marker = std::fs::read_to_string(fx.root().join("CLAUDE.md")).unwrap();
+        std::fs::write(
+            fx.root().join("CLAUDE.md"),
+            marker.replace(speclink_core::init::MARKER_VERSION, &ahead),
+        )
+        .unwrap();
+
+        let value = probe_instructions_at(fx.root());
+        assert_eq!(value["status"], "newer", "{value}");
+        let tool = &value["tools"][0];
+        assert_eq!(tool["newer"], true);
+        assert_eq!(tool["stale"], false);
+        assert_eq!(tool["workspaceVersion"], ahead);
     }
 
     #[test]

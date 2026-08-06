@@ -53,14 +53,16 @@ export interface WorkflowFields {
 }
 
 /** probe_instructions 的回報（引擎 InstructionProbe 的 camelCase 序列化）：
- * 四態判定、目前產物層版號、逐工具狀態與將被新建或改寫的受管檔清單。 */
+ * 五態判定、目前產物層版號、逐工具狀態與將被新建或改寫的受管檔清單。 */
 export interface InstructionProbeResult {
-  status: "missing" | "stale" | "current" | "unknown";
+  status: "missing" | "stale" | "newer" | "current" | "unknown";
   currentVersion: string;
   tools: Array<{
     tool: string;
     workspaceVersion: string | null;
     stale: boolean;
+    /** 此工具的檔案領先引擎（app 本體是舊版）；與 stale 互斥。 */
+    newer: boolean;
     missing: boolean;
   }>;
   differingFiles: string[];

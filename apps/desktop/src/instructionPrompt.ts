@@ -3,9 +3,9 @@
 // 持久化（專案路徑 → 已略過的產物層版號），不進 .speclink.yaml、不進任何 repo 檔案。
 import type { InstructionProbeResult } from "./adapter/workspace";
 
-/** 提示的呈現態：主動作依此分文案（過期→更新、缺失→安裝）。 */
+/** 提示的呈現態：主動作依此分文案（過期→更新、缺失→安裝、較新→無改寫動作）。 */
 export interface InstructionPromptState {
-  kind: "stale" | "missing";
+  kind: "stale" | "missing" | "newer";
   /** 將被新建或改寫且內容有異的受管檔數。 */
   fileCount: number;
   /** 此提示對應的產物層版號（「保留現狀」記的就是它）。 */
@@ -41,14 +41,16 @@ export function writeInstructionSkip(
   storage.setItem(STORAGE_KEY, JSON.stringify(skips));
 }
 
-/** 顯示裁決（規格「指令檔過期提示」）：僅過期或缺失才提示，且該專案未略過當前
- * 版號；現版與無法判定一律不提示——無法判定不記入略過、也不視同現版。 */
+/** 顯示裁決（規格「指令檔過期提示」）：僅過期、缺失或較新才提示，且該專案未略過
+ * 當前版號；現版與無法判定一律不提示——無法判定不記入略過、也不視同現版。 */
 export function instructionPrompt(
   probe: InstructionProbeResult,
   root: string,
   skips: Record<string, string>,
 ): InstructionPromptState | null {
-  if (probe.status !== "stale" && probe.status !== "missing") return null;
+  if (probe.status !== "stale" && probe.status !== "missing" && probe.status !== "newer") {
+    return null;
+  }
   if (skips[root] === probe.currentVersion) return null;
   return {
     kind: probe.status,

@@ -1040,14 +1040,21 @@ describe("device login 分段輪詢", () => {
 const STALE_PROBE = {
   status: "stale" as const,
   currentVersion: "v1.3.0",
-  tools: [{ tool: "claude", workspaceVersion: "v0.9.0", stale: true, missing: false }],
+  tools: [{ tool: "claude", workspaceVersion: "v0.9.0", stale: true, newer: false, missing: false }],
   differingFiles: ["CLAUDE.md", ".claude/skills/speclink-apply/SKILL.md"],
 };
 
 const MISSING_PROBE = {
   ...STALE_PROBE,
   status: "missing" as const,
-  tools: [{ tool: "claude", workspaceVersion: null, stale: false, missing: true }],
+  tools: [{ tool: "claude", workspaceVersion: null, stale: false, newer: false, missing: true }],
+};
+
+/** 專案檔案領先引擎：app 本體是舊版，任何改寫動作都不該被提供。 */
+const NEWER_PROBE = {
+  ...STALE_PROBE,
+  status: "newer" as const,
+  tools: [{ tool: "claude", workspaceVersion: "v1.4.0", stale: false, newer: true, missing: false }],
 };
 
 function fakeInstructionWorkspace(over: Partial<WorkspaceAdapter> = {}) {
@@ -1147,6 +1154,28 @@ describe("指令檔過期提示的顯示裁決", () => {
     await store.getState().refreshInstructionPrompt();
     expect(store.getState().instructionPrompt).toBeNull();
     expect(ws.updateInstructions).not.toHaveBeenCalled();
+  });
+
+  it("領先引擎且未略過：以較新語意提示並帶差異檔數", async () => {
+    const store = storeWithInstructionProbe(
+      fakeInstructionWorkspace({ probeInstructions: vi.fn().mockResolvedValue(NEWER_PROBE) }),
+    );
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt).toEqual({
+      kind: "newer",
+      fileCount: 2,
+      version: "v1.3.0",
+    });
+  });
+
+  it("較新態的保留現狀與過期共用同一略過記憶", async () => {
+    const store = storeWithInstructionProbe(
+      fakeInstructionWorkspace({ probeInstructions: vi.fn().mockResolvedValue(NEWER_PROBE) }),
+    );
+    await store.getState().refreshInstructionPrompt();
+    store.getState().dismissInstructionPrompt();
+    await store.getState().refreshInstructionPrompt();
+    expect(store.getState().instructionPrompt).toBeNull();
   });
 
   it("缺失態的保留現狀與過期共用同一略過記憶", async () => {
