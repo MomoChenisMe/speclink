@@ -454,7 +454,7 @@ fn review_skill_late_findings_have_a_guarded_exit() {
     }
 }
 
-/// Spec verify-skill「驗證技能的工單落地」: the verify station's fork結束後由
+/// Spec verify-skill「驗證技能的工單落地」: 檢查段（唯讀 sub-agent）收束後由
 /// 主線落工單 — frozen scope first, then a structured round through the verb.
 /// 中途盤點（任務未全完成）維持對話報告，不碰 scope 也不落工單。
 #[test]
@@ -584,13 +584,13 @@ fn verify_skill_late_findings_have_a_guarded_exit() {
     }
 }
 
-/// Spec verify-skill：fork 只讀不改，修正一律回主線依 TDD 慣例執行。
+/// Spec verify-skill：檢查段的 sub-agent 只讀不改，修正一律在主線依 TDD 慣例執行。
 #[test]
 fn verify_skill_keeps_fixes_on_the_main_thread() {
     for (rel, content) in skill_for_both_tools("verify-fixes", "verify") {
         assert!(
             content.contains("main thread"),
-            "{rel}: fixes happen in the main thread, never in the fork"
+            "{rel}: fixes happen in the main thread, never in the checking sub-agent"
         );
         assert!(
             content.contains("TDD"),

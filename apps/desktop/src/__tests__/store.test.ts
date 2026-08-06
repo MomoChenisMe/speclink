@@ -17,6 +17,16 @@ const STATUS: StatusReport = {
   artifacts: [],
 };
 
+/** 兩站工單並存的 change——封存守門要連過兩站的測試共用這筆。 */
+const BOTH_TICKETS_CHANGE = {
+  name: "desktop-shell-and-browser",
+  status: "in-progress",
+  totalTasks: 26,
+  completedTasks: 26,
+  reviewStatus: "inReview" as const,
+  verifyStatus: "inVerify" as const,
+};
+
 function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSource {
   return {
     listChanges: vi.fn().mockResolvedValue([
@@ -683,6 +693,72 @@ describe("app store (Zustand)", () => {
       expect.stringContaining("審查已放棄"),
       expect.anything(),
     );
+  });
+
+  it("處置按鈕連點只發一次處置，不重複封存也不誤報失敗", async () => {
+    // 對話框在 await 期間保持開啟且按鈕未鎖——連點的第二擊必須被忽略，否則
+    // 第二次 discard 對已刪的工單失敗，錯誤提示配上「其實已封存」的矛盾。
+    const discardReview = vi.fn().mockResolvedValue(undefined);
+    const ds = fakeDataSource({ discardReview });
+    const store = storeWith(ds);
+    store.getState().requestArchive("desktop-shell-and-browser");
+    await Promise.all([
+      store.getState().confirmArchiveDiscardTicket("review"),
+      store.getState().confirmArchiveDiscardTicket("review"),
+    ]);
+    expect(discardReview).toHaveBeenCalledTimes(1);
+    const archiveCalls = (ds.runVerb as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([verb]) => verb === "archive",
+    );
+    expect(archiveCalls).toHaveLength(1);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("先放棄審查、驗證照樣帶走：封存失敗仍點名審查紀錄已不在", async () => {
+    // 混合處置：review.md 已刪且不可回復——最終封存無論由哪站收尾，失敗提示
+    // 都不得退化成單純「封存失敗」。
+    const ds = fakeDataSource({
+      discardReview: vi.fn().mockResolvedValue(undefined),
+      archiveCarry: vi.fn().mockRejectedValue(new Error("refused")),
+      listChanges: vi.fn().mockResolvedValue([BOTH_TICKETS_CHANGE]),
+    });
+    const store = storeWith(ds);
+    await store.getState().refresh();
+    store.getState().requestArchive("desktop-shell-and-browser");
+    await store.getState().confirmArchiveDiscardTicket("review");
+    await store.getState().confirmArchiveCarryTicket("verify");
+    expect(toastError).toHaveBeenCalledWith(
+      expect.stringContaining("審查已放棄"),
+      expect.anything(),
+    );
+  });
+
+  it("兩站都放棄後封存失敗：提示點名兩站紀錄都已不在", async () => {
+    const ds = fakeDataSource({
+      discardReview: vi.fn().mockResolvedValue(undefined),
+      discardVerify: vi.fn().mockResolvedValue(undefined),
+      runVerb: vi.fn().mockRejectedValue(new Error("refused")),
+      listChanges: vi.fn().mockResolvedValue([BOTH_TICKETS_CHANGE]),
+    });
+    const store = storeWith(ds);
+    await store.getState().refresh();
+    store.getState().requestArchive("desktop-shell-and-browser");
+    await store.getState().confirmArchiveDiscardTicket("review");
+    await store.getState().confirmArchiveDiscardTicket("verify");
+    expect(toastError).toHaveBeenCalledWith(
+      expect.stringContaining("審查與驗證已放棄"),
+      expect.anything(),
+    );
+  });
+
+  it("處置途中工作區分頁已關閉：出聲而非靜默結束", async () => {
+    // settleStation 的 dataSource 早退不得靜默——其他處置路徑此情境都會出聲。
+    const store = storeWith(fakeDataSource());
+    store.getState().requestArchive("desktop-shell-and-browser");
+    store.setState({ sessions: {}, activeKey: null });
+    await store.getState().confirmArchiveCarryTicket("review");
+    expect(store.getState().pendingArchive).toBeNull();
+    expect(toastError).toHaveBeenCalled();
   });
 
   it("「照樣帶走」封存成功會關閉抽屜，失敗則保留 change 上下文", async () => {

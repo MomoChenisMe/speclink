@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：指令檔 SPECLINK 標記與技能檔 frontmatter 的 version 同源於此。
 /// 僅在內嵌資產（assets/skills）或 marker 模板的 render 內容變動時遞增——與 app／CLI
 /// 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const MARKER_VERSION: &str = "v1.16.0";
+pub const MARKER_VERSION: &str = "v1.16.1";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -85,33 +85,22 @@ fn store_paragraph(spec_dir: &str, store: StoreKind) -> String {
 ///
 /// `worktree` mirrors the generation gate: the two worktree skill lines appear only
 /// when the policy is on, because a marker that points at a skill the policy just
-/// pruned tells the agent to invoke something that no longer exists. Same principle
-/// as the codex target omitting `verify` (that skill is not generated for codex).
+/// pruned tells the agent to invoke something that no longer exists.
 pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree: bool) -> String {
-    // Codex differs: `$speclink-` prefix, no plan mode, and no verify skill (for_codex=false).
+    // Codex differs: `$speclink-` prefix and no plan mode.
     let (p, plan_line) = match tool {
         Tool::Codex => ("$speclink-", "- Requirements change mid-work? `ingest` → resume `apply`"),
         _ => ("/speclink-", "- Requirements change mid-work? Plan mode → `ingest` → resume `apply`"),
     };
-    // 並行品質站（spec review-skill「審查技能的生成與正典化」）：實作完成、封存
-    // 之前，由使用者判斷是否對高風險 change 執行審查；codex 無 verify（for_codex
-    // =false），workflow 行只帶 review?。
-    let (done_line, workflow, worktree_workflow) = match tool {
-        Tool::Codex => (
-            format!(
-                "- Implementation is done, before archiving → optionally `{p}review` (craft quality; user's call), then `{p}archive`"
-            ),
-            "discuss? → propose → apply ⇄ ingest → review? → archive",
-            "worktree: apply-with-worktree ⇄ ingest → review? → worktree-merge → archive (main checkout)",
-        ),
-        _ => (
-            format!(
-                "- Implementation is done, before archiving → optional quality stations `{p}review` (craft quality) ∥ `{p}verify` (spec compliance; user's call), then `{p}archive`"
-            ),
-            "discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive",
-            "worktree: apply-with-worktree ⇄ ingest → (review? ∥ verify?) → worktree-merge → archive (main checkout)",
-        ),
-    };
+    // 並行品質站（spec review-skill「審查技能的生成與正典化」、verify-skill「驗證
+    // 技能的工單落地」）：實作完成、封存之前，由使用者決定跑哪站或都不跑。verify
+    // 對所有工具生成（skills.rs for_codex=true），路由行不分工具、只差前綴。
+    let done_line = format!(
+        "- Implementation is done, before archiving → optional quality stations `{p}review` (craft quality) ∥ `{p}verify` (spec compliance; user's call), then `{p}archive`"
+    );
+    let workflow = "discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive";
+    let worktree_workflow =
+        "worktree: apply-with-worktree ⇄ ingest → (review? ∥ verify?) → worktree-merge → archive (main checkout)";
     // 兩行 worktree 指引隨政策進出；其餘內容不受影響。
     let worktree_lines = if worktree {
         format!(
@@ -191,10 +180,10 @@ pub fn custom_instructions_body(spec_dir: &str, tool: &CustomTool, store: StoreK
 - Tasks are ready to implement → `speclink-apply`\n\
 - Resuming a change that sat idle → run `speclink-drift` first\n\
 - Requirements change mid-work → `speclink-ingest`\n\
-- Implementation is done, before archiving → optionally `speclink-review` (craft quality; user's call), then `speclink-archive`\n\
+- Implementation is done, before archiving → optional quality stations `speclink-review` (craft quality) ∥ `speclink-verify` (spec compliance; user's call), then `speclink-archive`\n\
 - Commit only files related to a specific change → `speclink-commit`\n\n\
 ## Workflow\n\n\
-discuss? → propose → apply ⇄ ingest → review? → archive\n\n\
+discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive\n\n\
 - `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is \"don't do it\"\n\
 - A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)\n\
 - Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`\n\
@@ -1157,6 +1146,45 @@ mod tests {
         for word in ["locale", "tdd", "audit"] {
             assert!(!app.contains(word), "no policy key {word} expected:\n{app}");
         }
+    }
+
+    // verify 站對所有工具生成（skills.rs for_codex=true）後，每個工具的 marker
+    // 都必須路由它——生成了技能檔卻不在 marker 提及，等於指引不可達。
+
+    #[test]
+    fn codex_marker_routes_verify_alongside_review() {
+        let body = instructions_body("openspec", Tool::Codex, StoreKind::Fs, true);
+        assert!(
+            body.contains("`$speclink-verify` (spec compliance; user's call)"),
+            "codex done-line must route verify:\n{body}"
+        );
+        assert!(
+            body.contains("(review? ∥ verify?) → archive"),
+            "codex workflow line must carry verify:\n{body}"
+        );
+        assert!(
+            body.contains("(review? ∥ verify?) → worktree-merge"),
+            "codex worktree workflow line must carry verify:\n{body}"
+        );
+    }
+
+    #[test]
+    fn custom_marker_routes_verify_alongside_review() {
+        let tool = CustomTool {
+            name: "wad".into(),
+            skills_dir: ".wad/skills".into(),
+            instructions_file: "WAD.md".into(),
+            invocation: crate::config::Invocation::Cli,
+        };
+        let body = custom_instructions_body("openspec", &tool, StoreKind::Fs);
+        assert!(
+            body.contains("`speclink-verify` (spec compliance; user's call)"),
+            "custom done-line must route verify:\n{body}"
+        );
+        assert!(
+            body.contains("(review? ∥ verify?) → archive"),
+            "custom workflow line must carry verify:\n{body}"
+        );
     }
 
     // --- 共用 built-in tools reconciliation ---

@@ -1,5 +1,5 @@
 === WAD.md ===
-<!-- SPECLINK:START v1.16.0 -->
+<!-- SPECLINK:START v1.16.1 -->
 
 # Speclink Instructions
 
@@ -15,12 +15,12 @@ Speclink verbs are shell commands: run `speclink <verb> [arguments]`.
 - Tasks are ready to implement → `speclink-apply`
 - Resuming a change that sat idle → run `speclink-drift` first
 - Requirements change mid-work → `speclink-ingest`
-- Implementation is done, before archiving → optionally `speclink-review` (craft quality; user's call), then `speclink-archive`
+- Implementation is done, before archiving → optional quality stations `speclink-review` (craft quality) ∥ `speclink-verify` (spec compliance; user's call), then `speclink-archive`
 - Commit only files related to a specific change → `speclink-commit`
 
 ## Workflow
 
-discuss? → propose → apply ⇄ ingest → review? → archive
+discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive
 
 - `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is "don't do it"
 - A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)
@@ -37,7 +37,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 
@@ -369,7 +369,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 
@@ -651,7 +651,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 
@@ -893,7 +893,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 
@@ -1170,7 +1170,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 
@@ -1290,7 +1290,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 
@@ -1733,7 +1733,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 
@@ -1861,7 +1861,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 
@@ -2134,7 +2134,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 
@@ -2234,7 +2234,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 
@@ -2658,7 +2658,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 
@@ -2842,7 +2842,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.0"
+  version: "v1.16.1"
   generatedBy: "Speclink"
 ---
 

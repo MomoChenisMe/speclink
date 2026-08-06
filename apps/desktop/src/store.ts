@@ -67,6 +67,7 @@ type FailureMessageKey =
   | "store.archiveAfterDiscardFailed"
   | "store.discardReviewFailed"
   | "store.archiveAfterDiscardVerifyFailed"
+  | "store.archiveAfterDiscardBothFailed"
   | "store.discardVerifyFailed"
   | "store.reviewActionUnsupported"
   | "store.revertFailed"
@@ -432,11 +433,6 @@ export interface AppStoreDeps {
 }
 
 /**
- * 建立 app 狀態 store（Zustand）。狀態集中此處、留在 apps/desktop；共用元件
- * （packages/ui）不依賴 store，仍經 props 取資料——守住資料源解耦。資料載入
- * 一律經活躍 session 的 dataSource（單活躍載入語意不變）。
- */
-/**
  * 待封存 change 上還沒處置的品質站工單（spec「封存入口三選項擴及驗證工單」）。
  * 順序固定：審查站在前、驗證站在後——雙工單並存時彈框順序不隨資料抖動。
  * 兩站都已處置、或本就無未結工單時回 null（走一般封存確認）。
@@ -453,6 +449,11 @@ export function openTicketStation(
   return null;
 }
 
+/**
+ * 建立 app 狀態 store（Zustand）。狀態集中此處、留在 apps/desktop；共用元件
+ * （packages/ui）不依賴 store，仍經 props 取資料——守住資料源解耦。資料載入
+ * 一律經活躍 session 的 dataSource（單活躍載入語意不變）。
+ */
 export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppState>> {
   const {
     createSession,
@@ -588,17 +589,16 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       await get().refresh();
     }
 
+    /** 三選項處置進行中——連點守門（對話框按鈕未鎖，await 期間再點直接忽略）。 */
+    let ticketSettling = false;
+
     /**
      * 封存守門的一站處置收尾（spec「封存入口三選項擴及驗證工單」）：記下本站
      * 已處置與是否帶走，另一站仍有未結工單就留在守門流程（App 會彈該站的對話
-     * 框），否則帶著累積的旗標真正封存。
+     * 框），否則帶著累積的旗標真正封存。工單在 discard 已刪且不可回復——封存
+     * 此後失敗的提示由「已放棄了哪些站」導出，不得退化成單純「封存失敗」。
      */
-    async function settleStation(
-      change: string,
-      station: "review" | "verify",
-      carry: boolean,
-      failKey: FailureMessageKey = "store.archiveFailed",
-    ) {
+    async function settleStation(change: string, station: "review" | "verify", carry: boolean) {
       const settled = { ...get().pendingArchiveSettled, [station]: true };
       const carried = { ...get().pendingArchiveCarry, [station]: carry };
       set({ pendingArchiveSettled: settled, pendingArchiveCarry: carried });
@@ -607,12 +607,25 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       }
       set({ pendingArchive: null });
       const dataSource = activeDataSource();
-      const archiveCarry = dataSource?.archiveCarry;
-      if (!dataSource) return;
+      if (!dataSource) {
+        showFailureToast(change, "store.reviewActionUnsupported");
+        return;
+      }
+      const discardedReview = settled.review && !carried.review;
+      const discardedVerify = settled.verify && !carried.verify;
+      const failKey: FailureMessageKey =
+        discardedReview && discardedVerify
+          ? "store.archiveAfterDiscardBothFailed"
+          : discardedReview
+            ? "store.archiveAfterDiscardFailed"
+            : discardedVerify
+              ? "store.archiveAfterDiscardVerifyFailed"
+              : "store.archiveFailed";
       if (!carried.review && !carried.verify) {
         await settleArchive(change, () => dataSource.runVerb("archive", change), failKey);
         return;
       }
+      const archiveCarry = dataSource.archiveCarry;
       if (!archiveCarry) {
         showFailureToast(change, "store.reviewActionUnsupported");
         return;
@@ -1109,7 +1122,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     async confirmArchiveDiscardTicket(station) {
       const name = get().pendingArchive;
-      if (!name) return;
+      if (!name || ticketSettling) return;
       const dataSource = activeDataSource();
       const discard = station === "review" ? dataSource?.discardReview : dataSource?.discardVerify;
       if (!dataSource || !discard) {
@@ -1117,33 +1130,35 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         showFailureToast(name, "store.reviewActionUnsupported");
         return;
       }
+      ticketSettling = true;
       try {
-        await discard(name);
-      } catch (e) {
-        set({ pendingArchive: null });
-        showFailureToast(
-          name,
-          station === "review" ? "store.discardReviewFailed" : "store.discardVerifyFailed",
-          e,
-        );
-        await get().refresh();
-        return;
+        try {
+          await discard(name);
+        } catch (e) {
+          set({ pendingArchive: null });
+          showFailureToast(
+            name,
+            station === "review" ? "store.discardReviewFailed" : "store.discardVerifyFailed",
+            e,
+          );
+          await get().refresh();
+          return;
+        }
+        await settleStation(name, station, false);
+      } finally {
+        ticketSettling = false;
       }
-      // 工單已刪：封存此後失敗要點名該站紀錄已不在，不得只說「封存失敗」。
-      await settleStation(
-        name,
-        station,
-        false,
-        station === "review"
-          ? "store.archiveAfterDiscardFailed"
-          : "store.archiveAfterDiscardVerifyFailed",
-      );
     },
 
     async confirmArchiveCarryTicket(station) {
       const name = get().pendingArchive;
-      if (!name) return;
-      await settleStation(name, station, true);
+      if (!name || ticketSettling) return;
+      ticketSettling = true;
+      try {
+        await settleStation(name, station, true);
+      } finally {
+        ticketSettling = false;
+      }
     },
 
     requestDelete(name) {
