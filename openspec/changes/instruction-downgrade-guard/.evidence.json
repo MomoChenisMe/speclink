@@ -58,6 +58,17 @@
         "scripts/desktop-install.mjs",
         "scripts/desktop-install.test.mjs"
       ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "5.0 守門下沉至引擎再生入口並與寫入集同源（crates/speclink-core/src/init.rs）：`update(root, allow_downgrade)` 與 init 的兩個進入點於任何寫入前呼叫 `refuse_downgrade`，判定目標取自實際寫入集（tools 選集／無清單時的目錄偵測／自訂描述子指令檔）；工具選集收斂的檢查提前到 `.speclink.yaml` 寫入前；`init --force` 一併受守門（`--force` 不等於同意降級）。波及呼叫端 crates/speclink-cli/src/commands.rs、apps/desktop/core/src/project.rs 與 settings.rs、crates/speclink-core/tests/it/render_golden.rs 的簽名對齊。驗證：cargo test -p speclink-core 的 legacy／描述子／reconcile／init --force 四案綠、cargo test -p speclink-cli 的 workflow-config 同步被拒案綠。",
+      "files": [
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src/__tests__/cliInstall.test.ts",
+        "apps/desktop/src/core/cliInstall.ts",
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/it/render_golden.rs"
+      ]
     }
   ],
   "entries": [
@@ -143,6 +154,21 @@
       "touchedFiles": [
         "scripts/desktop-install.mjs",
         "scripts/desktop-install.test.mjs"
+      ],
+      "recordedAt": "2026-08-06T00:50:54Z"
+    },
+    {
+      "taskId": "tsk_01KZAEN4T2SDJQ6QJ98XZMK2TZ",
+      "taskDesc": "5.0 守門下沉至引擎再生入口並與寫入集同源（crates/speclink-core/src/init.rs）：`update(root, allow_downgrade)` 與 init 的兩個進入點於任何寫入前呼叫 `refuse_downgrade`，判定目標取自實際寫入集（tools 選集／無清單時的目錄偵測／自訂描述子指令檔）；工具選集收斂的檢查提前到 `.speclink.yaml` 寫入前；`init --force` 一併受守門（`--force` 不等於同意降級）。波及呼叫端 crates/speclink-cli/src/commands.rs、apps/desktop/core/src/project.rs 與 settings.rs、crates/speclink-core/tests/it/render_golden.rs 的簽名對齊。驗證：cargo test -p speclink-core 的 legacy／描述子／reconcile／init --force 四案綠、cargo test -p speclink-cli 的 workflow-config 同步被拒案綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "fcbea79ee89d60464957031a3b9a6e779c4984c9",
+      "touchedFiles": [
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src/__tests__/cliInstall.test.ts",
+        "apps/desktop/src/core/cliInstall.ts",
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/it/render_golden.rs"
       ],
       "recordedAt": "2026-08-06T00:50:54Z"
     }

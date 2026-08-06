@@ -25,7 +25,9 @@
 2. **InstructionStatus 加變體 Newer，不改既有變體語意**。序列化沿用現行小寫慣例（"newer"）；欄位名與既有值不動，屬向後相容擴充。消費端僅 desktop，前端與引擎同 bundle 出貨、無版本錯開。ToolInstructionState 同步加 per-tool 的方向資訊（布林 newer，serde rename camelCase），聚合與呈現都取自引擎、前端不重算。
 3. **版號比較：去 v 前綴、以點拆段、逐段數值比較**。段數不等時缺段補零。任一邊無法完整解析為數字段時，該工具退回現行字串相等判定（不等即 Stale），SHALL NOT 硬排序——手改壞的標記寧可誤報過期（改寫即恢復受管狀態），不可誤報較新（會封鎖 update）。這是 audit 視角的安全預設：守門只在「可證明較新」時觸發。
 4. **聚合優先序 Newer > Missing > Stale > Current**。任一工具較新即整體 Newer——與既有「缺失與過期並存回報缺失」同一種一錘定音式聚合，但 Newer 插在最前：只要有任何檔案領先引擎，就不提供任何會改寫它的動作。差異檔清單（differing files）在 Newer 時照常回報（語意不變：update 若執行將改寫的檔案），desktop 用它顯示數字但不掛動作。
-5. **update 守門用專屬旗標 --allow-downgrade，不共用 --force**。--force 現語意是「覆蓋既有檔案」，慣性帶它的使用者不應被靜默視為同意降級；降級是獨立決定，旗標名直說結果（kebab-case 慣例）。守門時序：探測在任何寫入之前，拒絕即零寫入、單行英文錯誤（含工作區版號與引擎版號）、非零 exit code——無半套狀態問題。
+5. **守門用專屬旗標 --allow-downgrade，不共用 --force**。--force 現語意是「覆蓋既有檔案」，慣性帶它的使用者不應被靜默視為同意降級；降級是獨立決定，旗標名直說結果（kebab-case 慣例）。同一條理由使 `init --force` 的重建也受守門——把「覆蓋」讀成「同意降級」正是要避免的事。守門時序：判定在任何寫入之前，拒絕即零寫入、單行英文錯誤（含工作區版號與引擎版號）、非零 exit code——無半套狀態問題。
+
+   審查修正（2026-08-06）：守門下沉到引擎的受管檔再生入口（`init::update` 與各 init 進入點），不再只掛在 CLI 動詞——`workflow-config` 的技能足跡同步（CLI 與桌面設定頁）、桌面更新入口、工具選集收斂原本都繞得過。判定目標改取自該次的**實際寫入集**（tools 選集、無清單時的目錄偵測、自訂描述子指令檔），不再依賴只看內建工具的探測面，否則 legacy 與描述子工作區完全不設防。工具選集收斂的方向檢查提前到 `.speclink.yaml` 寫入之前，避免「config 已改、受管檔未同步」的半狀態；`workflow-config` 路徑則沿用其既有的同步失敗形狀（設定已寫入、足跡未同步）。
 6. **--version 執行期組字串**。MARKER_VERSION 是 speclink-core 的 const，跨 crate 無法 concat! 進 CLI 的 VERSION 字面量；改為執行期組合（std::sync::LazyLock<String>，clap 的 version 屬性吃表達式），不引新依賴。格式 `<pkg-version> (<arch>, engine <marker-version>)`。
 7. **安裝腳本斷言鏈**：scripts/desktop-install.mjs 依序（a）印 HEAD、分支、dirty 狀態與源碼 MARKER_VERSION（從 crates/speclink-core/src/init.rs 的 const 行讀出）；（b）跑既有 scripts/desktop-sidecar.mjs（永遠重建，堵住 src-tauri/binaries/ 殘留舊 CLI 被 externalBin 靜默打包的洞）；（c）vite 建置與 tauri bundle（簽章 env 缺失時單行錯誤停止）；（d）斷言 bundle 內 sidecar CLI 的 --version engine 版號等於源碼 MARKER_VERSION；（e）帶 --install 時確認 app 未執行（執行中則單行錯誤，不代關）、覆蓋 /Applications/Speclink.app、再斷言安裝版 CLI 同版。GUI binary 的內嵌引擎與 sidecar CLI 分開編譯，但同一次執行同一棵樹，斷言 sidecar 即涵蓋樹狀態。安裝步驟僅支援 macOS，非 macOS 帶 --install 即單行錯誤；建置階段平台中立。
 8. **desktop 較新提示沿用既有提示骨架**：instructionPrompt.ts 的 kind 加 "newer"，略過記憶同鍵值（專案路徑 → 產物層版號）照用——app 升版後 MARKER_VERSION 變動自然重新探測，提示自然消失或轉為 stale。i18n 新增 newer 標題與描述鍵（apps/desktop/src/i18n/messages.ts），文案遵循 LANGUAGE.md、不出現工程詞。
@@ -33,7 +35,7 @@
 ## Implementation Contract
 
 - **行為**：
-  - 工作區任一工具檔案的標記版號數值大於引擎版號時，探測回報整體 "newer"；desktop 顯示「你的 app 是舊版」語意的非阻斷提示，僅「保留現狀」一個動作，無任何改寫檔案的動作；`speclink update` 拒絕執行（stderr 單行含兩個版號、exit code 非零、零檔案寫入），`speclink update --allow-downgrade` 照常再生。
+  - 工作區任一工具檔案的標記版號數值大於引擎版號時，探測回報整體 "newer"；desktop 顯示「你的 app 是舊版」語意的非阻斷提示，僅「保留現狀」一個動作，無任何改寫檔案的動作；經引擎再生入口的每一條路徑（`speclink update`、`speclink init --force`、工具選集收斂、`workflow-config` 的技能足跡同步、桌面更新動作）皆拒絕執行（單行含兩個版號、exit code 非零、零檔案寫入），`speclink update --allow-downgrade` 照常再生。
   - `speclink --version` 輸出 `<pkg-version> (<arch>, engine <marker-version>)`；stale／missing／current／unknown 的既有行為與輸出不變。
   - `node scripts/desktop-install.mjs` 建置並斷言；`--install` 附加安裝與安裝後斷言；任一斷言失敗印出兩邊版號並以非零結束。
 - **介面／資料形狀**：InstructionStatus 序列化值集合擴為 "missing" | "stale" | "current" | "unknown" | "newer"；ToolInstructionState 增 `newer: bool`（camelCase JSON）；UpdateArgs 增 `--allow-downgrade` 旗標；VERSION 改為執行期組字串。均為擴充，不改既有欄位名與值。

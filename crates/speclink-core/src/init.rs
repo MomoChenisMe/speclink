@@ -222,6 +222,7 @@ pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<
     if !force && (spec_root.exists() || root.join(".speclink.yaml").is_file()) {
         bail!("Already initialized. Use --force to reinitialize.");
     }
+    refuse_downgrade(&instruction_targets(root, tools))?;
 
     store_init(&spec_root, force)?;
     workspace_init(root, tools, force, spec_dir, StoreKind::Fs)?;
@@ -245,6 +246,7 @@ pub fn init_remote(
     if !force && root.join(".speclink.yaml").is_file() {
         bail!("Already initialized. Use --force to reinitialize.");
     }
+    refuse_downgrade(&instruction_targets(root, tools))?;
     workspace_init(root, tools, force, "openspec", StoreKind::Remote)?;
     write_remote_section(root, url, repo)
 }
@@ -483,8 +485,7 @@ pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutc
     // 受管檔未同步」的半狀態。檢查目標與其後 update 的寫入集同源（新選集的
     // builtin 指令檔＋原 config 延續的描述子），故 update 內的守門不會在
     // config 寫入後才第一次拒絕。
-    let mut guard_targets: Vec<PathBuf> =
-        tools.iter().map(|t| root.join(instructions_path(*t))).collect();
+    let mut guard_targets = instruction_targets(root, tools);
     if let Ok(app) = crate::config::AppConfig::load(&path) {
         for entry in &app.tools {
             if let ToolEntry::Descriptor(d) = entry {
@@ -852,6 +853,11 @@ fn workspace_is_newer(workspace: &str, engine: &str) -> bool {
         }
     }
     false
+}
+
+/// 一組內建工具的指令檔絕對路徑（守門的檢查目標）。
+fn instruction_targets(root: &Path, tools: &[Tool]) -> Vec<PathBuf> {
+    tools.iter().map(|t| root.join(instructions_path(*t))).collect()
 }
 
 /// 降級守門的拒絕判定：`files` 中任一指令檔的標記版號數值領先引擎時，以單行
@@ -1620,10 +1626,28 @@ mod tests {
     }
 
     #[test]
+    fn init_force_refuses_a_workspace_that_leads_the_engine() {
+        // `--force` 的語意是「覆蓋既有檔案」，不是「同意降級」（決策 5 拒絕共用
+        // --force 的同一條理由）——重新初始化同樣不得把領先的指令檔改寫回舊內容。
+        let root = TempRoot::new("init-force-guard");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        let ahead = ahead_of_current();
+        set_marker(&root, Tool::Claude, &ahead);
+        let before = snapshot(&root);
+
+        let Err(err) = init(&root.dir, &[Tool::Claude], true, "openspec") else {
+            panic!("領先的工作區不得被 --force 重建改寫");
+        };
+        let msg = err.to_string();
+        assert!(msg.contains(&ahead) && msg.contains(MARKER_VERSION), "訊息須含兩版號：{msg}");
+        assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
+    }
+
+    #[test]
     fn update_refuses_a_workspace_that_leads_the_engine_with_zero_writes() {
-        // 降級守門落在引擎的 update 本體：cmd_update、workflow-config 的技能同步
-        //（CLI 與 desktop 設定頁）、desktop 更新入口與 reconcile 全都經過這裡——
-        // 守門只此一處，任何再生路徑都不可能靜默降級。
+        // 降級守門落在引擎的受管檔再生入口：cmd_update、workflow-config 的技能
+        // 同步（CLI 與 desktop 設定頁）、desktop 更新入口、reconcile 與 init 的
+        // 重建全都經過守門，領先的指令檔不會被任何一條路徑靜默改寫。
         let root = TempRoot::new("update-guard-refuse");
         init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
         let ahead = ahead_of_current();
