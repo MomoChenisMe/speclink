@@ -6,10 +6,12 @@ import { act, cleanup, render as rtlRender, screen, fireEvent, within } from "@t
 import type { ReactElement, ReactNode } from "react";
 import {
   I18nProvider,
+  REVIEW_TONE,
   SEMANTIC_TONE,
   STAGE_BADGE,
   STAGE_BAR,
   STAGE_ICON,
+  VERIFY_TONE,
   type ChangeItem,
 } from "@speclink/ui";
 
@@ -745,5 +747,112 @@ describe("三段式版面（spec「面板樣式（macOS）」：固定頁首／�
     expect(within(footer).getByText("結束")).toBeTruthy();
     expect(within(header).getAllByTestId("panel-divider")).toHaveLength(1);
     expect(within(footer).getAllByTestId("panel-divider")).toHaveLength(1);
+  });
+});
+
+// --- 面板變更列的品質站章（spec tray-status-menu「面板變更列的品質站章」；
+// design D7）：兩章並排、順序固定，圖示／色調／tooltip 與看板卡片共用同一組
+// 樣式表與 i18n 詞條；非站章的行內符號不進 tray。
+describe("面板變更列的品質站章", () => {
+  function rowOf(name: string): HTMLElement {
+    return screen.getByTestId(`panel-change-${name}`);
+  }
+
+  it("兩章並排且順序固定（審查章在前、驗證章在後）", () => {
+    // spec Scenario「面板兩章並排」。
+    renderPanel({
+      snapshot: snapshot({
+        changes: [
+          change({
+            name: "inprog",
+            totalTasks: 12,
+            completedTasks: 3,
+            reviewStatus: "reviewed",
+            verifyStatus: "verified",
+          }),
+        ],
+      }),
+    });
+    const row = rowOf("inprog");
+    const review = within(row).getByLabelText("已審查");
+    const verify = within(row).getByLabelText("已驗證");
+    expect(review.compareDocumentPosition(verify) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 章落在名稱與任務數之間。
+    const count = within(row).getByText("3/12");
+    expect(verify.compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("單章情境只渲染該站的章", () => {
+    // spec Scenario「僅驗證章」。
+    renderPanel({
+      snapshot: snapshot({
+        changes: [
+          change({
+            name: "inprog",
+            totalTasks: 12,
+            completedTasks: 3,
+            reviewStatus: "none",
+            verifyStatus: "inVerify",
+          }),
+        ],
+      }),
+    });
+    const row = rowOf("inprog");
+    expect(within(row).getByLabelText("驗證中")).toBeTruthy();
+    for (const label of ["審查中", "已審查", "已審查·其後有變動"]) {
+      expect(within(row).queryByLabelText(label)).toBeNull();
+    }
+  });
+
+  it("兩站皆 none 時零站章，且列不長出其他行內符號", () => {
+    // spec Scenario「無章時列組成不變」＋design D7：頭像／討論泡／restale／
+    // metaError 明文不進 tray——那是看板的閱讀脈絡，一瞥介面上是雜訊。
+    renderPanel({
+      snapshot: snapshot({
+        changes: [
+          change({
+            name: "inprog",
+            totalTasks: 12,
+            completedTasks: 3,
+            reviewStatus: "none",
+            verifyStatus: "none",
+            createdBy: "Someone <s@example.com>",
+            fromDiscussions: ["alpha"],
+            restaleFrom: ["alpha"],
+            metaError: "bad yaml",
+          }),
+        ],
+      }),
+    });
+    const row = rowOf("inprog");
+    for (const label of ["審查中", "已審查", "已審查·其後有變動", "驗證中", "已驗證", "已驗證·其後有變動"]) {
+      expect(within(row).queryByLabelText(label)).toBeNull();
+    }
+    expect(row.textContent).not.toContain("Someone");
+    expect(row.textContent).not.toContain("alpha");
+    expect(row.textContent).not.toContain("bad yaml");
+    expect(within(row).queryByLabelText("S")).toBeNull();
+  });
+
+  it("章的樣式與詞條與看板卡片同源（不另建第二份對照）", () => {
+    renderPanel({
+      snapshot: snapshot({
+        changes: [
+          change({
+            name: "inprog",
+            totalTasks: 12,
+            completedTasks: 3,
+            reviewStatus: "reviewedStale",
+            verifyStatus: "verifiedStale",
+          }),
+        ],
+      }),
+    });
+    const row = rowOf("inprog");
+    const review = within(row).getByLabelText("已審查·其後有變動");
+    const verify = within(row).getByLabelText("已驗證·其後有變動");
+    expect(review.className).toContain(REVIEW_TONE.reviewedStale);
+    expect(verify.className).toContain(VERIFY_TONE.verifiedStale);
+    expect(VERIFY_TONE.verifiedStale).toBe(REVIEW_TONE.reviewedStale);
   });
 });

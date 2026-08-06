@@ -1023,7 +1023,7 @@ fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
     let Some(name) = a.changes.first().cloned().map(Some).unwrap_or(None) else {
         bail!("Please specify a change to archive.");
     };
-    let resp = ctx.client.archive(&name, a.carry_review)?;
+    let resp = ctx.client.archive(&name, a.carry_review, a.carry_verify)?;
     println!("{} Archived change: {name}", color::green("✓"));
     if !resp.specs.is_empty() {
         let caps: Vec<&str> = resp.specs.iter().map(|s| s.capability.as_str()).collect();
@@ -1110,25 +1110,31 @@ fn remote_show_outcome(
     }))
 }
 
-// --- review（design D4a：動詞端點；spec「remote 模式下的動詞行為」）---
+// --- 品質站（design D4a：動詞端點；spec「remote 模式下的動詞行為」）---
 
-fn remote_review(ctx: &RemoteCtx, a: ReviewArgs) -> Result<()> {
-    match a.command {
-        ReviewCommands::Prepare { change } => {
-            // Remote workspace 的 prepare 仍在本地 checkout 建 sidecar：先做
-            // remote read（存在＋startedAt），失敗即零 sidecar effects。listing 的
-            // status 只由任務完成度推導，不能當「已開工」讀。
-            let summary = ctx
-                .client
-                .list_changes()?
-                .changes
-                .into_iter()
-                .find(|c| c.name == change)
-                .ok_or_else(|| anyhow::anyhow!("change not found: {change}"))?;
-            let ws = require_workspace()?;
-            run_review_prepare(&ws, &change, summary.started_at.is_some())
-        }
-        ReviewCommands::Scope { change, json, base, candidate_hash, include_hunk } => {
+/// `review prepare` 的 remote 面：sidecar 仍在本地 checkout，先做 remote read
+/// （存在＋startedAt），失敗即零 sidecar effects。listing 的 status 只由任務
+/// 完成度推導，不能當「已開工」讀。
+fn remote_review_prepare(ctx: &RemoteCtx, change: String) -> Result<()> {
+    let summary = ctx
+        .client
+        .list_changes()?
+        .changes
+        .into_iter()
+        .find(|c| c.name == change)
+        .ok_or_else(|| anyhow::anyhow!("change not found: {change}"))?;
+    let ws = require_workspace()?;
+    run_review_prepare(&ws, &change, summary.started_at.is_some())
+}
+
+/// 兩個品質站的 remote 動詞（唯一實作落點）：工單經 typed client 的站別端點
+/// 讀寫，scope 仍由本地 checkout 的 Host resolver 解析——server 不收 patch、
+/// 不收 snapshot，也沒有 Git endpoint。
+fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Result<()> {
+    let st = cli.station;
+    let noun = st.noun;
+    match verb {
+        StationVerb::Scope { change, json, base, candidate_hash, include_hunk } => {
             // 同一 Host resolver：remote 只提供 active changes 與 ticket 事實，
             // Git、baseline、touched、snapshot 全在本地 checkout。
             let changes = ctx.client.list_changes()?.changes;
@@ -1136,7 +1142,7 @@ fn remote_review(ctx: &RemoteCtx, a: ReviewArgs) -> Result<()> {
                 anyhow::bail!("change not found: {change}");
             }
             let ws = require_workspace()?;
-            let ticket = ctx.client.review_ticket_if_any(&change)?.map(|t| {
+            let ticket = ctx.client.station_ticket_if_any(noun, &change)?.map(|t| {
                 speclink_host::change_diff::TicketBinding {
                     patch_hash_chain: patch_hash_chain(
                         t.rounds.iter().map(|r| r.patch_hash.as_deref()),
@@ -1150,22 +1156,34 @@ fn remote_review(ctx: &RemoteCtx, a: ReviewArgs) -> Result<()> {
                 }
             });
             let names = changes.into_iter().map(|c| c.name).collect();
-            let req =
-                build_scope_request(&ws, change, names, ticket, base, candidate_hash, include_hunk);
-            run_review_scope(&ws, &req, json)
+            let req = build_scope_request(
+                &ws,
+                change,
+                names,
+                ticket,
+                base,
+                candidate_hash,
+                include_hunk,
+                cli.ns,
+            );
+            run_station_scope(&ws, st, &req, json)
         }
-        ReviewCommands::AddRound { change, stdin } => {
+        StationVerb::AddRound { change, stdin } => {
             let content = read_stdin_content(stdin);
-            let round = ctx.client.review_add_round(&change, &content)?.round;
-            println!("{} Recorded review Round {round} for change '{change}'", color::green("✓"));
+            let round = ctx.client.station_add_round(noun, &change, &content)?.round;
+            println!(
+                "{} Recorded {} Round {round} for change '{change}'",
+                color::green("✓"),
+                st.noun_phrase
+            );
             Ok(())
         }
-        ReviewCommands::Show { change, json } => {
-            let ticket = ctx.client.review_ticket(&change)?;
+        StationVerb::Show { change, json } => {
+            let ticket = ctx.client.station_ticket(noun, &change)?;
             if json {
                 return print_json(&ticket);
             }
-            println!("Review — {}", ticket.change);
+            println!("{} — {}", st.title, ticket.change);
             for r in &ticket.rounds {
                 println!("\nRound {}", r.index);
                 if let Some(phase) = &r.phase {
@@ -1183,35 +1201,43 @@ fn remote_review(ctx: &RemoteCtx, a: ReviewArgs) -> Result<()> {
             }
             Ok(())
         }
-        ReviewCommands::Stamp { change, accept, agent } => {
+        StationVerb::Stamp { change, accept, agent } => {
             // 指紋歸屬（design D4a）：工作樹持有者是這裡——先取工單算 Scope
             // 聯集（鏡射引擎的正規化：`\`→`/`、去重、排序），逐檔讀 checkout
             // 內容算雜湊，隨請求上 wire；server 驗集合相等、不重算。
-            let ticket = ctx.client.review_ticket(&change)?;
+            let ticket = ctx.client.station_ticket(noun, &change)?;
             let Some(ws) = core::workspace::Workspace::discover_cwd()? else {
                 anyhow::bail!(
-                    "review stamp needs a workspace checkout to fingerprint scope files"
+                    "{noun} stamp needs a workspace checkout to fingerprint scope files"
                 );
             };
-            let paths = core::review::scope_union(
+            let paths = core::station::scope_union(
                 ticket.rounds.iter().flat_map(|r| r.scope.iter().map(String::as_str)),
             );
-            // 修正可能刪除／改名早輪審過的檔：仍存在者算雜湊，已消失者以
+            // 修正可能刪除／改名早輪檢查過的檔：仍存在者算雜湊，已消失者以
             // missing 明示宣告——server 無工作樹，分割由這裡的存在性判定。
             let (present, missing): (Vec<String>, Vec<String>) =
                 paths.into_iter().partition(|p| ws.root.join(p).is_file());
             let read_file = |p: &str| std::fs::read_to_string(ws.root.join(p)).ok();
-            let scope: Vec<_> = core::review::fingerprint_scope(&present, &read_file)?
+            let scope: Vec<_> = core::station::fingerprint_scope(&present, &read_file)?
                 .into_iter()
                 .map(|(path, hash)| speclink_protocol::command::ReviewScopeEntryDto { path, hash })
                 .collect();
-            ctx.client.review_stamp(&change, accept, agent.as_deref(), &scope, &missing)?;
-            println!("{} Stamped review for change '{change}'", color::green("✓"));
+            ctx.client.station_stamp(noun, &change, accept, agent.as_deref(), &scope, &missing)?;
+            println!(
+                "{} Stamped {} for change '{change}'",
+                color::green("✓"),
+                st.noun_phrase
+            );
             Ok(())
         }
-        ReviewCommands::Discard { change } => {
-            ctx.client.review_discard(&change)?;
-            println!("{} Discarded review ticket for change '{change}'", color::green("✓"));
+        StationVerb::Discard { change } => {
+            ctx.client.station_discard(noun, &change)?;
+            println!(
+                "{} Discarded {} ticket for change '{change}'",
+                color::green("✓"),
+                st.noun_phrase
+            );
             Ok(())
         }
     }

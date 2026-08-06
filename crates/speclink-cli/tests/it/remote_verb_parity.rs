@@ -698,6 +698,88 @@ fn remote_review_scope_json_matches_fs_mode_field_for_field() {
     );
 }
 
+fn verify_scope_routes() -> Vec<(&'static str, &'static str, u16, String)> {
+    vec![
+        (
+            "GET",
+            "/changes",
+            200,
+            r#"{"changes":[{"name":"demo","status":"in-progress","completedTasks":0,"totalTasks":2}]}"#.into(),
+        ),
+        (
+            "GET",
+            "/changes/demo/verify",
+            404,
+            r#"{"status":404,"reason":"not_found","message":"no verify ticket for change 'demo'"}"#.into(),
+        ),
+    ]
+}
+
+#[test]
+fn remote_verify_scope_json_matches_fs_mode_field_for_field() {
+    // spec verify-station Scenario「remote scope 仍使用 local checkout」＋
+    // 「local 與 remote payload 同構」：同內容、決定性 commit 下逐位元相同，
+    // 且 server 收不到 patch 或 snapshot。
+    let fs = TempProject::fs("verify-scope-fs");
+    fs.write(
+        "openspec/changes/demo/.openspec.yaml",
+        "schema: spec-driven\ncreated: 2026-07-01\n",
+    );
+    fs.write("openspec/changes/demo/tasks.md", "- [x] 1.1 first\n");
+    seed_git_src(&fs);
+    let prepared = fs.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "fs prepare: {}", stderr_of(&prepared));
+    fs.write("src/lib.rs", "fn demo() { changed(); }\n");
+    write_touched(&fs, "demo", &["src/lib.rs"]);
+    let fs_out = fs.run(&["verify", "scope", "demo", "--json"]);
+    assert!(fs_out.status.success(), "fs scope: {}", stderr_of(&fs_out));
+
+    let mock = mock_server(verify_scope_routes());
+    let p = TempProject::remote("verify-scope-parity", &mock.base, "backend");
+    seed_git_src(&p);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "remote prepare: {}", stderr_of(&prepared));
+    p.write("src/lib.rs", "fn demo() { changed(); }\n");
+    write_touched(&p, "demo", &["src/lib.rs"]);
+    let remote_out = p.run(&["verify", "scope", "demo", "--json"]);
+    assert!(remote_out.status.success(), "remote scope: {}", stderr_of(&remote_out));
+
+    assert_eq!(
+        stdout_of(&remote_out),
+        stdout_of(&fs_out),
+        "resolved payload must be byte-identical across local and remote entry points"
+    );
+    let caps = mock.captured.lock().unwrap();
+    assert!(
+        caps.iter().all(|c| c.method == "GET"),
+        "verify scope must not upload the patch or snapshot: {caps:?}"
+    );
+}
+
+#[test]
+fn remote_verify_add_round_offline_changes_nothing() {
+    // spec Scenario「離線時追加驗證輪」：連線錯誤 → 非零，遠端與本地投影皆不變。
+    let port = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("probe port");
+        listener.local_addr().expect("addr").port()
+    }; // listener dropped — the port now refuses connections
+    let url = format!("http://127.0.0.1:{port}/api/speclink/v1/projects/demo");
+    let p = TempProject::remote("verify-offline", &url, "backend");
+    seed_git_src(&p);
+    let out = p.run(&["verify", "show", "demo", "--json"]);
+    assert!(!out.status.success(), "offline read must be non-zero");
+    assert!(
+        !p.dir.join("openspec").join("changes").join("demo").join("verify.md").exists(),
+        "no local projection effects on the offline path"
+    );
+    let out = p.run(&["verify", "scope", "demo", "--json"]);
+    assert!(!out.status.success(), "offline scope must be non-zero");
+    assert!(
+        !p.dir.join(".speclink").join("review-scopes").exists(),
+        "no sidecar effects on the offline path"
+    );
+}
+
 #[test]
 fn remote_review_scope_offline_leaves_zero_sidecar_effects() {
     // spec Scenario「remote 離線時零 sidecar effects」：連線失敗 → 非零、

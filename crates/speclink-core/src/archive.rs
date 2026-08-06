@@ -40,25 +40,38 @@ pub struct ArchiveOptions {
     /// 帶著未結審查工單照樣封存（spec「封存的未結工單守門」的明示帶走處置）；
     /// 工單隨目錄搬入封存區，成為「曾審查未通過」標示的化石證據。
     pub carry_review: bool,
+    /// 帶著未結驗證工單照樣封存（spec verify-station「封存的驗證工單守門與雙
+    /// 工單並存」）；工單隨目錄搬入封存區，成為「曾驗證未通過」標示的化石證據。
+    /// 與 `carry_review` 各自獨立——帶走哪種工單是兩個決定，可同時帶。
+    pub carry_verify: bool,
 }
 
-/// 未結工單守門（design D5；spec review-station「封存的未結工單守門」）：
-/// review.md 存在且未帶 `--carry-review` → 拒絕、三處置齊列；帶旗標時工單隨
-/// 目錄搬移，成為封存側「曾審查未通過」標示的化石證據。無工單時零效果——行為
+/// 未結工單守門（design D4／D5；spec review-station「封存的未結工單守門」與
+/// verify-station「封存的驗證工單守門與雙工單並存」）：任一站工單存在且未帶
+/// 對應的 `--carry-*` → 拒絕、該站三處置齊列；兩站工單並存時兩組處置並列
+/// （只報一站會讓使用者處理完一張再撞一次同樣的牆）。帶旗標時工單隨目錄搬移，
+/// 成為封存側「曾審查／曾驗證未通過」標示的化石證據。皆無工單時零效果——行為
 /// 與導入前完全一致。runtime 於 `--mark-tasks-complete` 的前置寫入前先喚一次
 /// （比照 guard_meta），`archive` 內再守一次供直接呼叫的入口（desktop）。
-pub(crate) fn guard_open_review(store: &dyn Store, name: &str, carry_review: bool) -> Result<()> {
-    if carry_review || !store.artifact_exists(name, crate::review::REVIEW_DOC) {
+pub(crate) fn guard_open_tickets(
+    store: &dyn Store,
+    name: &str,
+    carry_review: bool,
+    carry_verify: bool,
+) -> Result<()> {
+    let stations = [
+        (&crate::review::STATION, carry_review),
+        (&crate::verify::STATION, carry_verify),
+    ];
+    let blocks: Vec<String> = stations
+        .iter()
+        .filter(|(st, carry)| !carry && store.artifact_exists(name, st.doc))
+        .map(|(st, _)| crate::station::open_ticket_disposal(st, name))
+        .collect();
+    if blocks.is_empty() {
         return Ok(());
     }
-    Err(crate::command::Refusal(format!(
-        "change '{name}' has an open review ticket (review.md) — settle it before archiving:\n  \
-         finish the review and stamp it:  speclink review stamp {name}\n  \
-         abandon the review:              speclink review discard {name}\n  \
-         archive it as-is:                speclink archive {name} --carry-review \
-         (permanently shown as reviewed-not-passed)"
-    ))
-    .into())
+    Err(crate::command::Refusal(blocks.join("\n")).into())
 }
 
 /// linked worktree 的分支慣例前綴（speclink-host 的 worktree discovery 同字面；
@@ -426,7 +439,7 @@ pub fn archive(
     // refuse a corrupt one before any validation or file effect.
     crate::model::require_valid_meta(change)?;
 
-    guard_open_review(store, &change.name, opts.carry_review)?;
+    guard_open_tickets(store, &change.name, opts.carry_review, opts.carry_verify)?;
 
     // Task-readiness gate (spec「單筆封存的任務完成度守門」): an incomplete change
     // refuses to archive unless the --mark-tasks-complete flag rides along. The
@@ -882,6 +895,7 @@ mod tests {
             &ArchiveOptions {
                 skip_specs: true,
                 carry_review: false,
+                carry_verify: false,
                 no_validate: true,
                 mark_tasks_complete: false,
             },
@@ -919,6 +933,7 @@ mod tests {
             no_validate: true,
             mark_tasks_complete: false,
             carry_review: false,
+            carry_verify: false,
         }
     }
 
@@ -1108,6 +1123,120 @@ mod tests {
         assert!(!store.change_exists("demo"), "change moved into the archive");
         assert!(
             store.read_archived_artifact(&outcome.dated_name, crate::review::REVIEW_DOC).is_none(),
+            "no fossil ticket appears out of nowhere"
+        );
+    }
+
+    // --- 封存的驗證工單守門與雙工單並存（design D4；spec verify-station）---
+
+    const VERIFY_TICKET: &str = "# Verify — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n\n- [CRITICAL] src/a.rs — requirement R2 has no implementation\n";
+
+    #[test]
+    fn open_verify_ticket_refuses_archive_with_three_disposals() {
+        // spec Scenario「僅驗證工單時拒絕」：stderr 同列 stamp／discard／--carry-verify
+        // 三處置，change 未被搬移、零寫入。
+        let store = gate_store("- [x] 1.1 a\n");
+        store.put_artifact("demo", crate::verify::VERIFY_DOC, VERIFY_TICKET);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let err = archive(&ghost_ws(), &store, &change, &skip_opts(), None)
+            .expect_err("open verify ticket must refuse archive");
+        let msg = err.to_string();
+        assert!(msg.contains("verify stamp"), "stamp disposal named: {msg}");
+        assert!(msg.contains("verify discard"), "discard disposal named: {msg}");
+        assert!(msg.contains("--carry-verify"), "carry disposal named: {msg}");
+        assert!(
+            err.downcast_ref::<crate::command::Refusal>().is_some(),
+            "typed Refusal so the runtime classifies refused"
+        );
+        assert!(store.change_exists("demo"), "change stays in place");
+        assert!(store.archived_metas.borrow().is_empty(), "nothing archived");
+        assert_eq!(*store.meta_writes.borrow(), 0, "zero meta writes");
+        assert_eq!(*store.artifact_writes.borrow(), 0, "zero artifact writes");
+    }
+
+    #[test]
+    fn both_open_tickets_list_both_disposal_groups() {
+        // spec Scenario「雙工單並存」：兩站處置並列——只報一站會讓使用者處理完
+        // 一張工單再撞一次同樣的牆。
+        let store = gate_store("- [x] 1.1 a\n");
+        store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
+        store.put_artifact("demo", crate::verify::VERIFY_DOC, VERIFY_TICKET);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let err = archive(&ghost_ws(), &store, &change, &skip_opts(), None)
+            .expect_err("two open tickets must refuse archive");
+        let msg = err.to_string();
+        for needle in [
+            "review stamp",
+            "review discard",
+            "--carry-review",
+            "verify stamp",
+            "verify discard",
+            "--carry-verify",
+        ] {
+            assert!(msg.contains(needle), "both disposal groups listed, missing {needle}: {msg}");
+        }
+        assert!(store.change_exists("demo"), "change stays in place");
+    }
+
+    #[test]
+    fn carry_verify_archives_and_the_ticket_travels() {
+        // spec Scenario「明示帶走驗證工單」：--carry-verify 放行，封存目錄內含
+        // verify.md（化石工單——封存側「曾驗證未通過」標示的證據）。
+        let store = gate_store("- [x] 1.1 a\n");
+        store.put_artifact("demo", crate::verify::VERIFY_DOC, VERIFY_TICKET);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let opts = ArchiveOptions { carry_verify: true, ..skip_opts() };
+        let outcome = archive(&ghost_ws(), &store, &change, &opts, None).unwrap();
+        assert!(!store.change_exists("demo"), "change moved into the archive");
+        assert_eq!(
+            store.read_archived_artifact(&outcome.dated_name, crate::verify::VERIFY_DOC).as_deref(),
+            Some(VERIFY_TICKET),
+            "ticket rides the directory move byte-identically"
+        );
+    }
+
+    #[test]
+    fn the_two_carry_flags_are_independent_and_combine() {
+        // spec「`--carry-review` 與 `--carry-verify` 可同時帶」：單帶一支仍被
+        // 另一站擋下（帶走哪種工單是兩個獨立決定），兩支齊帶才放行。
+        let one_flag_still_refuses = |carry_review: bool, carry_verify: bool, expect: &str| {
+            let store = gate_store("- [x] 1.1 a\n");
+            store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
+            store.put_artifact("demo", crate::verify::VERIFY_DOC, VERIFY_TICKET);
+            let change = crate::model::find_change(&store, "demo").unwrap();
+            let opts = ArchiveOptions { carry_review, carry_verify, ..skip_opts() };
+            let err = archive(&ghost_ws(), &store, &change, &opts, None)
+                .expect_err("the other station's ticket must still refuse");
+            assert!(err.to_string().contains(expect), "names the remaining station: {err}");
+        };
+        one_flag_still_refuses(true, false, "--carry-verify");
+        one_flag_still_refuses(false, true, "--carry-review");
+
+        let store = gate_store("- [x] 1.1 a\n");
+        store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
+        store.put_artifact("demo", crate::verify::VERIFY_DOC, VERIFY_TICKET);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let opts = ArchiveOptions { carry_review: true, carry_verify: true, ..skip_opts() };
+        let outcome = archive(&ghost_ws(), &store, &change, &opts, None).unwrap();
+        assert!(!store.change_exists("demo"), "both flags archive the change");
+        assert!(store
+            .read_archived_artifact(&outcome.dated_name, crate::review::REVIEW_DOC)
+            .is_some());
+        assert!(store
+            .read_archived_artifact(&outcome.dated_name, crate::verify::VERIFY_DOC)
+            .is_some());
+    }
+
+    #[test]
+    fn archive_without_a_verify_ticket_is_unaffected_by_the_gate() {
+        // spec「皆無工單時 archive 行為 SHALL 維持不變」的回歸斷言：本檔其餘測試
+        // 全數無工單即回歸網；此處釘住封存區不會憑空長出 verify.md。
+        let store = gate_store("- [x] 1.1 a\n");
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
+        assert!(!store.change_exists("demo"), "change moved into the archive");
+        assert!(
+            store.read_archived_artifact(&outcome.dated_name, crate::verify::VERIFY_DOC).is_none(),
             "no fossil ticket appears out of nowhere"
         );
     }

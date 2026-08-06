@@ -152,6 +152,9 @@ pub enum DomainEvent {
     ReviewRoundAdded { change: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
     ReviewStamped { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ReviewDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    VerifyRoundAdded { change: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
+    VerifyStamped { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    VerifyDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionCreated { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionContextSet { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionRoundAdded { slug: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -180,6 +183,9 @@ impl DomainEvent {
             DomainEvent::ReviewRoundAdded { .. } => "review-round-added",
             DomainEvent::ReviewStamped { .. } => "review-stamped",
             DomainEvent::ReviewDiscarded { .. } => "review-discarded",
+            DomainEvent::VerifyRoundAdded { .. } => "verify-round-added",
+            DomainEvent::VerifyStamped { .. } => "verify-stamped",
+            DomainEvent::VerifyDiscarded { .. } => "verify-discarded",
             DomainEvent::DiscussionCreated { .. } => "discussion-created",
             DomainEvent::DiscussionContextSet { .. } => "discussion-context-set",
             DomainEvent::DiscussionRoundAdded { .. } => "discussion-round-added",
@@ -302,6 +308,7 @@ pub enum Command {
         no_validate: bool,
         mark_tasks_complete: bool,
         carry_review: bool,
+        carry_verify: bool,
     },
     /// `discard <change> [--force]`
     Discard { change: String, force: bool },
@@ -344,6 +351,21 @@ pub enum Command {
     },
     /// `review discard <change>`
     ReviewDiscard { change: String },
+    /// `verify add-round <change> --stdin`（引擎守門：任務未全完成即拒絕）
+    VerifyAddRound { change: String, content: String },
+    /// `verify show <change>`（查詢——不產生事件）
+    VerifyShow { change: String },
+    /// `verify stamp <change> [--accept] [--agent]`：`scope`／`missing` 的分割
+    /// 語意與 [`Command::ReviewStamp`] 完全相同（design D4a 的驗證面）。
+    VerifyStamp {
+        change: String,
+        accept: bool,
+        tool: Option<String>,
+        scope: Vec<crate::model::ReviewedScopeEntry>,
+        missing: Vec<String>,
+    },
+    /// `verify discard <change>`
+    VerifyDiscard { change: String },
 }
 
 /// `list` outcome: the changes section (sorted per the requested key, absent
@@ -559,6 +581,12 @@ pub enum CommandOutcome {
     ReviewShow(ReviewShowOutcome),
     ReviewStamp(ReviewSubjectOutcome),
     ReviewDiscard(ReviewSubjectOutcome),
+    /// 驗證站的四個結果沿用審查站的 outcome 型別——工單形狀站別無關，
+    /// 差異只在寫哪份文件（[`crate::station`] 的常數組承載）。
+    VerifyAddRound(ReviewRoundOutcome),
+    VerifyShow(ReviewShowOutcome),
+    VerifyStamp(ReviewSubjectOutcome),
+    VerifyDiscard(ReviewSubjectOutcome),
 }
 
 /// The Host-resolved engine-side execution context — resolved once at the
@@ -650,12 +678,12 @@ pub fn execute(
         }
         Command::InProgressAdd { name } => run_in_progress_add(store, ctx.actor.as_deref(), &name),
         Command::InProgressRemove { name } => run_in_progress_remove(store, ws, &name),
-        Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review } => run_archive(
+        Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify } => run_archive(
             store,
             ws,
             ctx.actor.as_deref(),
             change.as_deref(),
-            crate::archive::ArchiveOptions { skip_specs, no_validate, mark_tasks_complete, carry_review },
+            crate::archive::ArchiveOptions { skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify },
         ),
         Command::Discard { change, force } => run_discard(store, ws, &change, force),
         Command::DiscussNew { topic, slug } => run_discuss_new(store, ctx.actor.as_deref(), &topic, slug.as_deref()),
@@ -727,6 +755,31 @@ pub fn execute(
         Command::ReviewDiscard { change } => {
             crate::review::discard(store, &change).map_err(classify)?;
             Ok(CommandOutcome::ReviewDiscard(ReviewSubjectOutcome { change }))
+        }
+        Command::VerifyAddRound { change, content } => {
+            let round = crate::verify::add_round(store, &change, &content).map_err(classify)?;
+            Ok(CommandOutcome::VerifyAddRound(ReviewRoundOutcome { change, round }))
+        }
+        Command::VerifyShow { change } => {
+            let ticket = crate::verify::show(store, &change).map_err(classify)?;
+            Ok(CommandOutcome::VerifyShow(ReviewShowOutcome { change, ticket }))
+        }
+        Command::VerifyStamp { change, accept, tool, scope, missing } => {
+            crate::verify::stamp_with_scope(
+                store,
+                &change,
+                accept,
+                ctx.actor.as_deref(),
+                tool.as_deref(),
+                scope,
+                missing,
+            )
+            .map_err(classify)?;
+            Ok(CommandOutcome::VerifyStamp(ReviewSubjectOutcome { change }))
+        }
+        Command::VerifyDiscard { change } => {
+            crate::verify::discard(store, &change).map_err(classify)?;
+            Ok(CommandOutcome::VerifyDiscard(ReviewSubjectOutcome { change }))
         }
     }?;
     let events = events_of(&outcome);
@@ -851,6 +904,20 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
             occurred_at: at,
         }],
         CommandOutcome::ReviewDiscard(o) => vec![DomainEvent::ReviewDiscarded {
+            change: o.change.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::VerifyShow(_) => Vec::new(),
+        CommandOutcome::VerifyAddRound(o) => vec![DomainEvent::VerifyRoundAdded {
+            change: o.change.clone(),
+            round: o.round,
+            occurred_at: at,
+        }],
+        CommandOutcome::VerifyStamp(o) => vec![DomainEvent::VerifyStamped {
+            change: o.change.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::VerifyDiscard(o) => vec![DomainEvent::VerifyDiscarded {
             change: o.change.clone(),
             occurred_at: at,
         }],
@@ -1438,7 +1505,8 @@ fn run_archive(
     let host = host_workspace(ws);
     crate::archive::guard_linked_worktree(&host).map_err(classify)?;
     guard_meta(&change)?;
-    crate::archive::guard_open_review(store, &change.name, opts.carry_review).map_err(classify)?;
+    crate::archive::guard_open_tickets(store, &change.name, opts.carry_review, opts.carry_verify)
+        .map_err(classify)?;
     // The merge gate too: a refused archive must leave tasks.md untouched
     // (spec archive-merge「兩階段合併計畫與零半套寫入」). Pure Store reads.
     if !opts.skip_specs {
@@ -1725,6 +1793,7 @@ mod tests {
                 no_validate: true,
                 mark_tasks_complete: true,
                 carry_review: false,
+                carry_verify: false,
             },
         )
         .expect_err("open review ticket must refuse archive");
@@ -1754,6 +1823,7 @@ mod tests {
                     no_validate: false,
                     mark_tasks_complete: mark,
                     carry_review: false,
+                carry_verify: false,
                 },
             )
             .expect_err("archive on corrupt meta must refuse");
@@ -2373,6 +2443,7 @@ mod tests {
                 no_validate: false,
                 mark_tasks_complete: false,
                 carry_review: false,
+                carry_verify: false,
             },
         );
         assert_eq!(kinds(&events), ["change-archived"]);
@@ -2393,6 +2464,7 @@ mod tests {
             no_validate: false,
             mark_tasks_complete: false,
             carry_review: false,
+                carry_verify: false,
         };
 
         for workspace in [None, Some(ghost_ws())] {
@@ -2419,6 +2491,7 @@ mod tests {
                 no_validate: false,
                 mark_tasks_complete: false,
                 carry_review: false,
+                carry_verify: false,
             },
         )
         .expect_err("incomplete change must refuse archive");
@@ -2793,8 +2866,14 @@ mod tests {
             ),
             (DomainEvent::ReviewStamped { change: s("c"), occurred_at: at }, "review-stamped"),
             (DomainEvent::ReviewDiscarded { change: s("c"), occurred_at: at }, "review-discarded"),
+            (
+                DomainEvent::VerifyRoundAdded { change: s("c"), round: 1, occurred_at: at },
+                "verify-round-added",
+            ),
+            (DomainEvent::VerifyStamped { change: s("c"), occurred_at: at }, "verify-stamped"),
+            (DomainEvent::VerifyDiscarded { change: s("c"), occurred_at: at }, "verify-discarded"),
         ];
-        assert_eq!(table.len(), 21, "the coverage table has 21 mutating verbs");
+        assert_eq!(table.len(), 24, "the coverage table has 24 mutating verbs");
         for (event, kind) in &table {
             assert_eq!(event.kind(), *kind, "for {event:?}");
         }
@@ -2833,7 +2912,7 @@ mod tests {
             Command::Claim { name: _ } => {}
             Command::InProgressAdd { name: _ } => {}
             Command::InProgressRemove { name: _ } => {}
-            Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _, carry_review: _ } => {}
+            Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _, carry_review: _, carry_verify: _ } => {}
             Command::Discard { change: _, force: _ } => {}
             Command::DiscussNew { topic: _, slug: _ } => {}
             Command::DiscussContext { slug: _, content: _ } => {}
@@ -2850,6 +2929,16 @@ mod tests {
             // 蓋章者身分仍只來自 ExecutionContext.actor。
             Command::ReviewStamp { change: _, accept: _, tool: _, scope: _, missing: _ } => {}
             Command::ReviewDiscard { change: _ } => {}
+            Command::VerifyAddRound { change: _, content: _ } => {}
+            Command::VerifyShow { change: _ } => {}
+            Command::VerifyStamp {
+                change: _,
+                accept: _,
+                tool: _,
+                scope: _,
+                missing: _,
+            } => {}
+            Command::VerifyDiscard { change: _ } => {}
         }
     }
 

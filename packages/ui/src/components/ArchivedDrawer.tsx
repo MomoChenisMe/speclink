@@ -13,6 +13,7 @@ import { Markdown, READING_COLUMN_CLS } from "./Markdown";
 import { LABEL_CLS, SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
 import { REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
+import { VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
 
 /** 抽屜目標（design D1：discriminated target 兩型同檔）：封存變更或封存討論。 */
 export type ArchivedTarget =
@@ -37,6 +38,8 @@ export interface ArchivedDrawerProps {
   onOpenDiscussion?: (slug: string) => void;
   /** 封存時的審查結局（清單項帶出；spec「已封存側的審查標示」）。 */
   reviewStatus?: ArchivedItem["reviewStatus"];
+  /** 封存時的驗證結局（spec「已封存側的驗證標示」）；與審查結局並存。 */
+  verifyStatus?: ArchivedItem["verifyStatus"];
 }
 
 type Doc = string | null | undefined;
@@ -56,6 +59,7 @@ export function ArchivedDrawer({
   sourceDiscussions,
   onOpenDiscussion,
   reviewStatus,
+  verifyStatus,
 }: ArchivedDrawerProps) {
   const { t } = useI18n();
   const [proposal, setProposal] = useState<Doc>();
@@ -149,6 +153,15 @@ export function ArchivedDrawer({
                 className={`text-xs font-medium ${REVIEW_TONE[reviewStatus]}`}
               >
                 {t(REVIEW_LABEL_KEY[reviewStatus])}
+              </div>
+            )}
+          {target.kind === "change" &&
+            (verifyStatus === "verified" || verifyStatus === "verifiedNotPassed") && (
+              <div
+                data-verify-outcome
+                className={`text-xs font-medium ${VERIFY_TONE[verifyStatus]}`}
+              >
+                {t(VERIFY_LABEL_KEY[verifyStatus])}
               </div>
             )}
           {/* 同源連結（design D1 增補）：點 chip 由宿主於同一抽屜切至該討論唯讀檢視。

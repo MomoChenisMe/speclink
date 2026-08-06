@@ -6,12 +6,18 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   changeStage,
+  REVIEW_ICON,
+  REVIEW_LABEL_KEY,
+  REVIEW_TONE,
   SEMANTIC_SURFACE,
   SEMANTIC_TONE,
   STAGE_BADGE,
   STAGE_BAR,
   STAGE_ICON,
   STAGES,
+  VERIFY_ICON,
+  VERIFY_LABEL_KEY,
+  VERIFY_TONE,
   cn,
   useI18n,
   type ChangeItem,
@@ -730,6 +736,44 @@ function DiscussionRow({
   );
 }
 
+/**
+ * 變更列的品質站章（spec tray-status-menu「面板變更列的品質站章」；design D7）：
+ * 站章直接影響收尾動作（未結工單擋封存、降級章提示留意），所以進 tray；建立者
+ * 頭像、來源討論標記、restale 與 metaError 是閱讀脈絡，留在看板。
+ *
+ * 圖示、色調與 tooltip 詞條全部取自 packages/ui 匯出的兩張站別樣式表——面板不
+ * 另建第二份對照，否則卡片改了色、tray 不會跟著改。tooltip 以 `title` 承載：
+ * 面板是無焦點的一瞥介面，掛 Radix Tooltip 會多一層 portal 與焦點管理。
+ */
+function StationBadges({ c }: { c: ChangeItem }) {
+  const { t } = useI18n();
+  const review = c.reviewStatus && c.reviewStatus !== "none" ? c.reviewStatus : null;
+  const verify = c.verifyStatus && c.verifyStatus !== "none" ? c.verifyStatus : null;
+  if (!review && !verify) return null;
+  return (
+    <>
+      {review && (
+        <span
+          aria-label={t(REVIEW_LABEL_KEY[review])}
+          title={t(REVIEW_LABEL_KEY[review])}
+          className={cn("shrink-0", REVIEW_TONE[review])}
+        >
+          {REVIEW_ICON[review]}
+        </span>
+      )}
+      {verify && (
+        <span
+          aria-label={t(VERIFY_LABEL_KEY[verify])}
+          title={t(VERIFY_LABEL_KEY[verify])}
+          className={cn("shrink-0", VERIFY_TONE[verify])}
+        >
+          {VERIFY_ICON[verify]}
+        </span>
+      )}
+    </>
+  );
+}
+
 function ChangeRow({
   c,
   stage,
@@ -750,6 +794,7 @@ function ChangeRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span className="truncate">{c.name}</span>
+          <StationBadges c={c} />
           {c.totalTasks > 0 && (
             <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground group-hover:text-primary-foreground/80">
               {`${c.completedTasks}/${c.totalTasks}`}

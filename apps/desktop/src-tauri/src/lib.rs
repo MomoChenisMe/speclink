@@ -168,13 +168,23 @@ fn archive(root: PathBuf, change: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
-fn archive_carry_review(root: PathBuf, change: String) -> Result<Value, String> {
-    speclink_desktop_core::verbs::archive_carry_at(&root, &change)
+fn archive_carry(
+    root: PathBuf,
+    change: String,
+    carry_review: bool,
+    carry_verify: bool,
+) -> Result<Value, String> {
+    speclink_desktop_core::verbs::archive_carry_at(&root, &change, carry_review, carry_verify)
 }
 
 #[tauri::command]
 fn discard_review(root: PathBuf, change: String) -> Result<Value, String> {
     speclink_desktop_core::verbs::discard_review_at(&root, &change)
+}
+
+#[tauri::command]
+fn discard_verify(root: PathBuf, change: String) -> Result<Value, String> {
+    speclink_desktop_core::verbs::discard_verify_at(&root, &change)
 }
 
 #[tauri::command]
@@ -1396,7 +1406,8 @@ pub fn run() {
             validate,
             analyze,
             archive,
-            archive_carry_review,
+            archive_carry,
+            discard_verify,
             discard_review,
             archived_changes,
             archived_document,

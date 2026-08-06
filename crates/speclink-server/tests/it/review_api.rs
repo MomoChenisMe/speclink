@@ -140,7 +140,7 @@ fn reader_cannot_settle_a_review_ticket() {
     // stamp 都以刪掉工單收場——只擋 DELETE 而放行 stamp 等於守門沒守到。
     let f = fixture();
     let c = client(&f.base, &f.pat);
-    c.review_add_round("demo-change", CLEAN_ROUND).expect("round");
+    c.station_add_round("review", "demo-change", CLEAN_ROUND).expect("round");
     let before = ticket_doc(&f).expect("ticket exists");
 
     for (method, tail, body) in [
@@ -175,11 +175,11 @@ fn review_loop_rides_the_verb_contract_end_to_end() {
     let f = fixture();
     let c = client(&f.base, &f.pat);
 
-    let added = c.review_add_round("demo-change", ROUND_WITH_FINDING).expect("add round");
+    let added = c.station_add_round("review", "demo-change", ROUND_WITH_FINDING).expect("add round");
     assert_eq!(added.round, 1);
     assert!(ticket_doc(&f).is_some(), "the ticket document landed in the store");
 
-    let ticket = c.review_ticket("demo-change").expect("get ticket");
+    let ticket = c.station_ticket("review", "demo-change").expect("get ticket");
     assert_eq!(ticket.change, "demo-change");
     assert_eq!(ticket.rounds.len(), 1);
     assert_eq!(ticket.last_round.index, 1);
@@ -196,7 +196,7 @@ fn review_loop_rides_the_verb_contract_end_to_end() {
     assert_eq!(error.reason, ErrorReason::Refused);
     assert!(ticket_doc(&f).is_some(), "a refused stamp keeps the ticket");
 
-    c.review_stamp("demo-change", true, Some("claude"), &scope_entries, &[]).expect("accept stamp");
+    c.station_stamp("review", "demo-change", true, Some("claude"), &scope_entries, &[]).expect("accept stamp");
     let meta = meta_doc(&f);
     assert!(meta.contains("reviewed_at:"), "the stamp landed: {meta}");
     assert!(meta.contains("reviewed_with: claude"), "agent recorded: {meta}");
@@ -217,7 +217,7 @@ fn stamp_rejects_a_scope_set_that_does_not_match_the_ticket() {
     // 指名差集；工單與 meta 皆不動。
     let f = fixture();
     let c = client(&f.base, &f.pat);
-    c.review_add_round("demo-change", CLEAN_ROUND).expect("clean round");
+    c.station_add_round("review", "demo-change", CLEAN_ROUND).expect("clean round");
 
     let (status, error) = protocol_error(
         raw("POST", &f, "changes/demo-change/review/stamp").send_json(serde_json::json!({
@@ -240,7 +240,7 @@ fn stamp_accepts_a_declared_missing_partition_and_rejects_a_bad_one() {
     // 成立（重疊）即拒且不動任何檔。
     let f = fixture();
     let c = client(&f.base, &f.pat);
-    c.review_add_round("demo-change", "**Scope**: src/lib.rs, src/gone.rs\n")
+    c.station_add_round("review", "demo-change", "**Scope**: src/lib.rs, src/gone.rs\n")
         .expect("round with a soon-dead file");
 
     let (status, error) = protocol_error(
@@ -257,7 +257,7 @@ fn stamp_accepts_a_declared_missing_partition_and_rejects_a_bad_one() {
 
     let scope_entries =
         vec![ReviewScopeEntryDto { path: "src/lib.rs".into(), hash: fingerprint(FILE_A) }];
-    c.review_stamp("demo-change", false, Some("claude"), &scope_entries, &["src/gone.rs".into()])
+    c.station_stamp("review", "demo-change", false, Some("claude"), &scope_entries, &["src/gone.rs".into()])
         .expect("declared-missing partition stamps");
     let meta = meta_doc(&f);
     assert!(meta.contains("- path: src/lib.rs"), "surviving file anchored: {meta}");
@@ -270,9 +270,9 @@ fn discard_deletes_the_ticket_and_show_then_404s() {
     // spec「放棄審查」remote 面：DELETE 刪工單、不寫 metadata；之後 GET 404。
     let f = fixture();
     let c = client(&f.base, &f.pat);
-    c.review_add_round("demo-change", CLEAN_ROUND).expect("round");
+    c.station_add_round("review", "demo-change", CLEAN_ROUND).expect("round");
 
-    c.review_discard("demo-change").expect("discard");
+    c.station_discard("review", "demo-change").expect("discard");
     assert!(ticket_doc(&f).is_none(), "the ticket document is deleted");
     assert!(!meta_doc(&f).contains("reviewed"), "discard writes no metadata");
 
@@ -287,7 +287,7 @@ fn archive_with_an_open_ticket_refuses_over_http() {
     // D5 的守門經 server archive 路由同樣生效：三處置訊息完整上 wire。
     let f = fixture();
     let c = client(&f.base, &f.pat);
-    c.review_add_round("demo-change", CLEAN_ROUND).expect("round");
+    c.station_add_round("review", "demo-change", CLEAN_ROUND).expect("round");
 
     let (status, error) =
         protocol_error(raw("POST", &f, "changes/demo-change/archive").send_json(serde_json::json!({})));
@@ -302,9 +302,9 @@ fn carry_review_rides_the_wire_so_remote_keeps_all_three_disposals() {
     // 否則三處置在遠端只剩兩條、帶未結工單的 change 永遠封存不了。
     let f = fixture();
     let c = client(&f.base, &f.pat);
-    c.review_add_round("demo-change", CLEAN_ROUND).expect("round");
+    c.station_add_round("review", "demo-change", CLEAN_ROUND).expect("round");
 
-    c.archive("demo-change", true).expect("carry-review archives over the wire");
+    c.archive("demo-change", true, false).expect("carry-review archives over the wire");
     assert!(ticket_doc(&f).is_none(), "the change (with its ticket) left the active area");
 }
 
@@ -321,7 +321,7 @@ fn structured_round_phase_and_patch_survive_the_wire() {
     let structured = format!(
         "**Phase**: discovery\n**Patch**: sha256:{hex}\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — possible Feature Envy\n"
     );
-    c.review_add_round("demo-change", &structured).expect("structured round");
+    c.station_add_round("review", "demo-change", &structured).expect("structured round");
     let body = raw("GET", &f, "changes/demo-change/review")
         .call()
         .expect("get ticket")
@@ -345,7 +345,7 @@ fn structured_round_phase_and_patch_survive_the_wire() {
 fn legacy_round_emits_explicit_nulls_on_the_wire() {
     let f = fixture();
     let c = client(&f.base, &f.pat);
-    c.review_add_round("demo-change", ROUND_WITH_FINDING).expect("legacy round");
+    c.station_add_round("review", "demo-change", ROUND_WITH_FINDING).expect("legacy round");
     let body = raw("GET", &f, "changes/demo-change/review")
         .call()
         .expect("get ticket")

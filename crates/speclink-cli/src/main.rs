@@ -111,6 +111,8 @@ enum Commands {
     Discuss(DiscussArgs),
     /// Review quality station (ticket rounds, stamping)
     Review(ReviewArgs),
+    /// Verify quality station (ticket rounds, stamping)
+    Verify(VerifyArgs),
 }
 
 #[derive(Args)]
@@ -237,6 +239,10 @@ struct ArchiveArgs {
     /// change and is permanently shown as reviewed-not-passed)
     #[arg(long = "carry-review")]
     carry_review: bool,
+    /// Archive despite an open verify ticket (the ticket travels with the
+    /// change and is permanently shown as verified-not-passed)
+    #[arg(long = "carry-verify")]
+    carry_verify: bool,
 }
 
 #[derive(Args)]
@@ -798,6 +804,58 @@ enum ReviewCommands {
         agent: Option<String>,
     },
     /// Discard the review ticket without stamping
+    Discard { change: String },
+}
+
+#[derive(Args)]
+struct VerifyArgs {
+    #[command(subcommand)]
+    command: VerifyCommands,
+}
+
+/// 驗證站沒有 `prepare`：Apply baseline 由 apply 流程一次錄下、兩站共用
+/// （design D8），第二個 prepare 只會覆蓋同一份 sidecar。
+#[derive(Subcommand)]
+enum VerifyCommands {
+    /// Resolve and freeze the verify scope (--json for the structured payload)
+    Scope {
+        change: String,
+        #[arg(long)]
+        json: bool,
+        /// Trusted fixed point overriding the Apply baseline
+        #[arg(long)]
+        base: Option<String>,
+        /// Candidate identity a hash-pinned hunk selection is anchored to
+        #[arg(long = "candidate-hash")]
+        candidate_hash: Option<String>,
+        /// Hunk id to include (repeatable; requires --candidate-hash)
+        #[arg(long = "include-hunk")]
+        include_hunk: Vec<String>,
+    },
+    /// Append a verify round to the change's ticket (content from stdin; requires every task done)
+    #[command(name = "add-round")]
+    AddRound {
+        change: String,
+        #[arg(long)]
+        stdin: bool,
+    },
+    /// Print the verify ticket (--json for the structured payload)
+    Show {
+        change: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Stamp the verification: requires all tasks done and a clean last round
+    Stamp {
+        change: String,
+        /// Stamp despite unresolved findings in the last round
+        #[arg(long)]
+        accept: bool,
+        /// Tool identity recorded as verified_with (mirrors `new change --agent`)
+        #[arg(long)]
+        agent: Option<String>,
+    },
+    /// Discard the verify ticket without stamping
     Discard { change: String },
 }
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import type { ChangeItem, SearchHit, SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
-import { createAppStore } from "../store";
+import { createAppStore, openTicketStation } from "../store";
 import type { ConnectionsAdapter } from "../adapter/connections";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
@@ -622,7 +622,7 @@ describe("app store (Zustand)", () => {
     const ds = fakeDataSource({ discardReview });
     const store = storeWith(ds);
     store.getState().requestArchive("desktop-shell-and-browser");
-    await store.getState().confirmArchiveDiscardReview();
+    await store.getState().confirmArchiveDiscardTicket("review");
     expect(discardReview).toHaveBeenCalledWith("desktop-shell-and-browser");
     expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
     expect(store.getState().pendingArchive).toBeNull();
@@ -635,7 +635,7 @@ describe("app store (Zustand)", () => {
     });
     const store = storeWith(ds);
     store.getState().requestArchive("desktop-shell-and-browser");
-    await store.getState().confirmArchiveDiscardReview();
+    await store.getState().confirmArchiveDiscardTicket("review");
     expect(ds.runVerb).not.toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
     expect(toastError).toHaveBeenCalledWith(
       expect.stringContaining("放棄審查失敗"),
@@ -645,11 +645,11 @@ describe("app store (Zustand)", () => {
 
   it("後端不支援三選項處置時出聲，不靜默吞掉", async () => {
     // remote 等未實作的後端：對話框關掉卻什麼都沒發生，使用者無從得知。
-    for (const action of ["confirmArchiveDiscardReview", "confirmArchiveCarryReview"] as const) {
+    for (const action of ["confirmArchiveDiscardTicket", "confirmArchiveCarryTicket"] as const) {
       toastError.mockClear();
       const store = storeWith(fakeDataSource());
       store.getState().requestArchive("desktop-shell-and-browser");
-      await store.getState()[action]();
+      await store.getState()[action]("review");
       expect(store.getState().pendingArchive).toBeNull();
       expect(toastError).toHaveBeenCalled();
     }
@@ -658,13 +658,13 @@ describe("app store (Zustand)", () => {
   it("不支援處置的提示不含工程方法名", async () => {
     // openspec/LANGUAGE.md：工程詞不出現在使用者可見文案。
     for (const [action, method] of [
-      ["confirmArchiveDiscardReview", "discardReview"],
-      ["confirmArchiveCarryReview", "archiveCarryReview"],
+      ["confirmArchiveDiscardTicket", "discardReview"],
+      ["confirmArchiveCarryTicket", "archiveCarry"],
     ] as const) {
       toastError.mockClear();
       const store = storeWith(fakeDataSource());
       store.getState().requestArchive("desktop-shell-and-browser");
-      await store.getState()[action]();
+      await store.getState()[action]("review");
       const [message] = toastError.mock.calls[0] as [string];
       expect(message).not.toContain(method);
     }
@@ -678,7 +678,7 @@ describe("app store (Zustand)", () => {
     });
     const store = storeWith(ds);
     store.getState().requestArchive("desktop-shell-and-browser");
-    await store.getState().confirmArchiveDiscardReview();
+    await store.getState().confirmArchiveDiscardTicket("review");
     expect(toastError).toHaveBeenCalledWith(
       expect.stringContaining("審查已放棄"),
       expect.anything(),
@@ -687,25 +687,108 @@ describe("app store (Zustand)", () => {
 
   it("「照樣帶走」封存成功會關閉抽屜，失敗則保留 change 上下文", async () => {
     // 三選項的第三條與既有 archive 同為封存終局——抽屜不得停在已封存的 change。
-    const archiveCarryReview = vi.fn().mockResolvedValue(undefined);
-    const successStore = storeWith(fakeDataSource({ archiveCarryReview }));
+    const archiveCarry = vi.fn().mockResolvedValue(undefined);
+    const successStore = storeWith(fakeDataSource({ archiveCarry }));
     await successStore.getState().refresh();
     successStore.getState().openDetail("desktop-shell-and-browser");
     successStore.getState().requestArchive("desktop-shell-and-browser");
-    await successStore.getState().confirmArchiveCarryReview();
-    expect(archiveCarryReview).toHaveBeenCalledWith("desktop-shell-and-browser");
+    await successStore.getState().confirmArchiveCarryTicket("review");
+    expect(archiveCarry).toHaveBeenCalledWith("desktop-shell-and-browser", true, false);
     expect(successStore.getState().pendingArchive).toBeNull();
     expect(successStore.getState().detailChange).toBeNull();
 
     const failureStore = storeWith(fakeDataSource({
-      archiveCarryReview: vi.fn().mockRejectedValue(new Error("archive refused")),
+      archiveCarry: vi.fn().mockRejectedValue(new Error("archive refused")),
     }));
     await failureStore.getState().refresh();
     failureStore.getState().openDetail("desktop-shell-and-browser");
     failureStore.getState().requestArchive("desktop-shell-and-browser");
-    await failureStore.getState().confirmArchiveCarryReview();
+    await failureStore.getState().confirmArchiveCarryTicket("review");
     expect(toastError).toHaveBeenCalled();
     expect(failureStore.getState().detailChange?.name).toBe("desktop-shell-and-browser");
+  });
+
+  it("雙工單並存時兩站分別處置後才封存（旗標一次帶齊）", async () => {
+    // spec desktop-app Scenario「雙工單並存的封存」：處置第一站不封存，兩站
+    // 都處置完才真的封存，且兩個帶走旗標一起上路。
+    const archiveCarry = vi.fn().mockResolvedValue(undefined);
+    const ds = fakeDataSource({
+      archiveCarry,
+      listChanges: vi.fn().mockResolvedValue([
+        {
+          name: "desktop-shell-and-browser",
+          status: "in-progress",
+          totalTasks: 26,
+          completedTasks: 26,
+          reviewStatus: "inReview",
+          verifyStatus: "inVerify",
+        },
+      ]),
+    });
+    const store = storeWith(ds);
+    await store.getState().refresh();
+    store.getState().requestArchive("desktop-shell-and-browser");
+
+    await store.getState().confirmArchiveCarryTicket("review");
+    expect(archiveCarry).not.toHaveBeenCalled();
+    expect(store.getState().pendingArchive).toBe("desktop-shell-and-browser");
+    expect(
+      openTicketStation(
+        store.getState().changes,
+        "desktop-shell-and-browser",
+        store.getState().pendingArchiveSettled,
+      ),
+    ).toBe("verify");
+
+    await store.getState().confirmArchiveCarryTicket("verify");
+    expect(archiveCarry).toHaveBeenCalledWith("desktop-shell-and-browser", true, true);
+    expect(store.getState().pendingArchive).toBeNull();
+  });
+
+  it("兩站都選「放棄」時不帶旗標，走一般封存動詞", async () => {
+    const discardReview = vi.fn().mockResolvedValue(undefined);
+    const discardVerify = vi.fn().mockResolvedValue(undefined);
+    const ds = fakeDataSource({
+      discardReview,
+      discardVerify,
+      listChanges: vi.fn().mockResolvedValue([
+        {
+          name: "desktop-shell-and-browser",
+          status: "in-progress",
+          totalTasks: 26,
+          completedTasks: 26,
+          reviewStatus: "inReview",
+          verifyStatus: "inVerify",
+        },
+      ]),
+    });
+    const store = storeWith(ds);
+    await store.getState().refresh();
+    store.getState().requestArchive("desktop-shell-and-browser");
+    await store.getState().confirmArchiveDiscardTicket("review");
+    expect(ds.runVerb).not.toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
+    await store.getState().confirmArchiveDiscardTicket("verify");
+    expect(discardReview).toHaveBeenCalledWith("desktop-shell-and-browser");
+    expect(discardVerify).toHaveBeenCalledWith("desktop-shell-and-browser");
+    expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
+  });
+
+  it("openTicketStation 的順序固定：審查站在前、驗證站在後", () => {
+    const both = [
+      {
+        name: "c",
+        status: "in-progress",
+        totalTasks: 1,
+        completedTasks: 1,
+        reviewStatus: "inReview" as const,
+        verifyStatus: "inVerify" as const,
+      },
+    ];
+    const none = { review: false, verify: false };
+    expect(openTicketStation(both, "c", none)).toBe("review");
+    expect(openTicketStation(both, "c", { review: true, verify: false })).toBe("verify");
+    expect(openTicketStation(both, "c", { review: true, verify: true })).toBeNull();
+    expect(openTicketStation(both, "ghost", none)).toBeNull();
   });
 
   it("reorderCard passes neighbor ids through and refreshes on success", async () => {

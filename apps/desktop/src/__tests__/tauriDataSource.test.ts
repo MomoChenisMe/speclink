@@ -115,13 +115,20 @@ describe("createTauriDataSource", () => {
 
   it("三選項的兩條處置各走自己的 command", async () => {
     // spec「封存入口的未結工單三選項」：放棄審查＝discard_review（不封存），
-    // 照樣帶走＝archive_carry_review（等同 CLI --carry-review）。
+    // 照樣帶走＝archive_carry（等同 CLI --carry-review／--carry-verify）。
     invoke.mockResolvedValue(undefined);
     const ds = createTauriDataSource("/r");
     await ds.discardReview?.("chg");
     expect(invoke).toHaveBeenCalledWith("discard_review", { root: "/r", change: "chg" });
-    await ds.archiveCarryReview?.("chg");
-    expect(invoke).toHaveBeenCalledWith("archive_carry_review", { root: "/r", change: "chg" });
+    await ds.archiveCarry?.("chg", true, false);
+    expect(invoke).toHaveBeenCalledWith("archive_carry", {
+      root: "/r",
+      change: "chg",
+      carryReview: true,
+      carryVerify: false,
+    });
+    await ds.discardVerify?.("chg");
+    expect(invoke).toHaveBeenCalledWith("discard_verify", { root: "/r", change: "chg" });
   });
 
   it("setAllTasks invokes set_all_tasks with change and done", async () => {

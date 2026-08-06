@@ -33,6 +33,13 @@ export interface ChangeItem {
   /** 蓋章時間與審查者——章存在（reviewed／reviewedStale）時才附。 */
   reviewedAt?: string | null;
   reviewedBy?: string | null;
+  /** 驗證狀態（spec client-protocol「變更清單的驗證狀態欄位」）：工單存在＝
+   * inVerify；章存在依雙錨凍結度分 verified／verifiedStale；缺席＝none。
+   * 與 reviewStatus 各自獨立——兩站互不遮蔽。 */
+  verifyStatus?: "none" | "inVerify" | "verified" | "verifiedStale";
+  /** 蓋章時間與驗證者——章存在（verified／verifiedStale）時才附。 */
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
   /** 這個 change 正在其中實作的 linked worktree（僅本機主 checkout、政策開啟時
    * 才有）；缺席＝在主資料夾裡做。 */
   worktree?: { branch: string; path: string } | null;
@@ -84,6 +91,10 @@ export interface ArchivedItem {
   /** 封存時的審查結局（spec client-protocol「已封存清單的審查結局欄位」）：
    * 含章＝reviewed；含化石工單而無章＝reviewedNotPassed；缺席＝none。 */
   reviewStatus?: "none" | "reviewed" | "reviewedNotPassed";
+  /** 封存時的驗證結局（spec client-protocol「已封存清單的驗證結局欄位」）：
+   * 含章＝verified；含化石工單而無章＝verifiedNotPassed；缺席＝none。
+   * 與審查結局並存——同一項可以「審查通過」卻「曾驗證未通過」。 */
+  verifyStatus?: "none" | "verified" | "verifiedNotPassed";
 }
 
 /** 一筆討論的清單項（camelCase；status: open | concluded | promoted）。 */
@@ -266,8 +277,11 @@ export interface SpeclinkDataSource {
   /** 放棄審查（刪工單、不蓋章）——封存入口三選項的資料面；未實作的後端
    * （如 remote）不觸發三選項（其清單項本就不帶 inReview）。 */
   discardReview?(change: string): Promise<void>;
-  /** 帶著未結工單封存（`--carry-review`）：封存側永久顯示「曾審查未通過」。 */
-  archiveCarryReview?(change: string): Promise<unknown>;
+  /** 放棄驗證（刪工單、不蓋章）——驗證站的同一面。 */
+  discardVerify?(change: string): Promise<void>;
+  /** 帶著未結工單封存（`--carry-review`／`--carry-verify`）：該站封存側永久顯示
+   * 「曾審查／曾驗證未通過」。兩個旗標各自獨立，雙工單並存時可同時帶。 */
+  archiveCarry?(change: string, carryReview: boolean, carryVerify: boolean): Promise<unknown>;
   /** 讀取一個已封存 change 的 artifact 原文（dated name 定址）。缺件回 null。 */
   getArchivedDocument(datedName: string, artifact: string): Promise<string | null>;
   /** 列出一個已封存 change 的 delta capability 名。 */

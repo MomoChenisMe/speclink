@@ -28,5 +28,6 @@ mod task_stable_id;
 mod task_undone;
 mod tools_descriptor;
 mod update_downgrade_guard;
+mod verify_verbs;
 mod workflow_config;
 mod worktree_overlay;

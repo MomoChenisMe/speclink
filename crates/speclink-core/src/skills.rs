@@ -127,7 +127,10 @@ pub fn registry() -> Vec<Skill> {
         // Not a fork skill（design D7 替代案否決 fork）：主線 orchestrator 要
         // fan-out 兩個平行 sub-agent 並互動詢問三選項；修正回主線，故 Edit 不禁。
         Skill { name: "review", description: "Review a change's implementation for craft quality — parallel standards and correctness axes, recorded to a review ticket", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_REVIEW },
-        Skill { name: "verify", description: "Verify implementation matches artifacts", fork: true, disallow_edit: true, for_codex: false, worktree_gated: false, body: B_VERIFY },
+        // Not a fork skill any more（design D6）：主線要取得 frozen scope、落
+        // structured 工單、互動詢問三選項並在本地依 TDD 修正；檢查段本身仍以
+        // 單一唯讀 sub-agent 隔離。codex 變體以純文字詢問，兩工具同步生成。
+        Skill { name: "verify", description: "Verify implementation matches artifacts", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_VERIFY },
         // Runs git commands only — a conflict stops the flow for the user to
         // resolve, so the agent never edits a file: Edit/Write stay disallowed.
         Skill { name: "worktree-merge", description: "Merge a finished Speclink worktree branch back into the main branch, then clean up", fork: false, disallow_edit: true, for_codex: true, worktree_gated: true, body: B_WORKTREE_MERGE },

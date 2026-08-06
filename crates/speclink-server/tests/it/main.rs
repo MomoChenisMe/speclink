@@ -36,6 +36,7 @@ mod query_routes;
 mod read_api;
 mod refresh_rotation;
 mod review_api;
+mod verify_api;
 mod serverfs_store;
 mod sse_events;
 mod startup;

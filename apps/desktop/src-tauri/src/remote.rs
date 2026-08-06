@@ -1498,9 +1498,10 @@ impl RemoteWorkspace {
         credentials: &dyn CredentialStore,
         change: &str,
     ) -> Result<ArchiveResponse, RemoteError> {
-        // carry_review 恆 false：remote 清單項不帶 reviewStatus，UI 不會判到
-        // inReview、封存三選項對話框在 remote 不出現（design「Out of scope」）。
-        self.run_write(credentials, |client| client.archive(change, false))
+        // 兩個 carry 旗標恆 false：remote 清單項不帶 reviewStatus／verifyStatus，
+        // UI 不會判到 inReview／inVerify、封存三選項對話框在 remote 不出現
+        //（design「Out of scope」）。
+        self.run_write(credentials, |client| client.archive(change, false, false))
     }
 
     /// active 討論同樣疊 board resource 排序 overlay（決策 4）；archived 清單

@@ -1,6 +1,17 @@
+---
+name: speclink-verify
+description: "Verify implementation matches artifacts"
+license: MIT
+compatibility: Requires speclink CLI.
+metadata:
+  author: speclink
+  version: "v1.16.0"
+  generatedBy: "Speclink"
+---
+
 Verify that an implementation matches the change artifacts (specs, tasks, design).
 
-**Input**: Optionally specify a change name after `/speclink:verify` (e.g., `/speclink:verify add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `$speclink-verify` (e.g., `$speclink-verify add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -79,7 +90,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
      - Recommendation: "Complete task: <description>" or "Mark as done if already implemented"
 
    **Spec Coverage**:
-   - If delta specs exist in `{{SPEC_DIR}}changes/<name>/specs/`:
+   - If delta specs exist in `openspec/changes/<name>/specs/`:
      - Extract all requirements (marked with "### Requirement:")
      - For each requirement:
        - Search codebase for keywords related to the requirement
@@ -192,7 +203,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
     **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Resolved findings are dropped. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
-    NEVER hand-write or edit `{{SPEC_DIR}}changes/<name>/verify.md` — the ticket is verb-owned; a malformed round is rejected by the verb, fix the stdin content and retry.
+    NEVER hand-write or edit `openspec/changes/<name>/verify.md` — the ticket is verb-owned; a malformed round is rejected by the verb, fix the stdin content and retry.
 
 13. **Branch on the blocking set**
 
@@ -201,16 +212,16 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
     - **Bn is empty and no accepted findings remain** → stamp and report **passed clean**:
 
       ```bash
-      speclink verify stamp "<name>" --agent {{TOOL}}
+      speclink verify stamp "<name>" --agent codex
       ```
 
       If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop — the next session retries the stamp through step 5.
 
-    - **Bn is empty but accepted findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept --agent {{TOOL}}` — and report **passed with reservations**. Never run `--accept` unprompted.
+    - **Bn is empty but accepted findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept --agent codex` — and report **passed with reservations**. Never run `--accept` unprompted.
 
     - **Bn is strictly smaller than Bn-1** (or this is the first round with findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": any must-fix outstanding → recommend option 1; only discretionary left → recommend option 2.
       1. **Fix and re-verify** — fixes happen HERE in the main thread, following the project's TDD discipline; the checking pass never edits files. Fix the must-fix list; discretionary items only when the user asks — anything left unfixed is accepted and carried (step 12). **Verification gate**: after the fixes, run the project's full build and test suite and get it green BEFORE looping back to step 5 — a fix-introduced regression must never flow into the next round. Step 5 then freezes the validation patch for the next round.
-      2. **Accept as-is and stamp** — `speclink verify stamp "<name>" --accept --agent {{TOOL}}` (stamps with reservations; the round's findings stay on record in the change history).
+      2. **Accept as-is and stamp** — `speclink verify stamp "<name>" --accept --agent codex` (stamps with reservations; the round's findings stay on record in the change history).
       3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another verifier (`speclink verify show <name> --json` hands them the last round).
 
     - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do NOT start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
@@ -245,7 +256,7 @@ Use clear markdown with:
 
 **Guardrails**
 
-- `/speclink:verify` judges spec compliance; the review station judges craft — never issue craft verdicts here
+- `$speclink-verify` judges spec compliance; the review station judges craft — never issue craft verdicts here
 - The mid-flight check-in never touches the ticket: no `verify scope`, no `verify add-round`, no stamp
 - Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
 - The frozen patch from `speclink verify scope` is the code evidence; touched file lists and worktree state never substitute for it

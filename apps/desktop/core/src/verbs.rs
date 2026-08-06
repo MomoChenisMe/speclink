@@ -34,13 +34,19 @@ pub fn analyze_at(root: &Path, change: &str) -> Result<Value, String> {
 /// 對應 `speclink archive <change>`：以預設選項歸檔（先驗證）。前置未滿足時回傳 `Err`
 /// 且不標記歸檔（core::archive 在失敗時不搬移 change）。
 pub fn archive_at(root: &Path, change: &str) -> Result<Value, String> {
-    archive_with(root, change, false)
+    archive_with(root, change, false, false)
 }
 
-/// 對應 `speclink archive <change> --carry-review`：帶未結工單封存（封存入口
-/// 三選項的「照樣帶走」；spec「封存入口的未結工單三選項」）。
-pub fn archive_carry_at(root: &Path, change: &str) -> Result<Value, String> {
-    archive_with(root, change, true)
+/// 對應 `speclink archive <change> [--carry-review] [--carry-verify]`：帶未結
+/// 工單封存（封存入口三選項的「照樣帶走」；spec「封存入口三選項擴及驗證工單」）。
+/// 兩個旗標各自獨立——雙工單並存時使用者對兩站分別處置，決定在此匯合。
+pub fn archive_carry_at(
+    root: &Path,
+    change: &str,
+    carry_review: bool,
+    carry_verify: bool,
+) -> Result<Value, String> {
+    archive_with(root, change, carry_review, carry_verify)
 }
 
 /// 對應 `speclink review discard <change>`：刪工單、不蓋章（三選項的「放棄審查」）。
@@ -51,12 +57,26 @@ pub fn discard_review_at(root: &Path, change: &str) -> Result<Value, String> {
     Ok(serde_json::json!({ "change": change, "discarded": true }))
 }
 
-fn archive_with(root: &Path, change: &str, carry_review: bool) -> Result<Value, String> {
+/// 對應 `speclink verify discard <change>`：刪工單、不蓋章（三選項的「放棄驗證」）。
+pub fn discard_verify_at(root: &Path, change: &str) -> Result<Value, String> {
+    let ctx = crate::require_context_for_change(root, change)?;
+    let store: &dyn Store = &ctx.store;
+    speclink_core::verify::discard(store, change).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "change": change, "discarded": true }))
+}
+
+fn archive_with(
+    root: &Path,
+    change: &str,
+    carry_review: bool,
+    carry_verify: bool,
+) -> Result<Value, String> {
     let ctx = open(root)?;
     crate::query::refuse_if_worktree_is_open(&ctx, change)?;
     let store: &dyn Store = &ctx.store;
     let change = find(store, change)?;
-    let opts = speclink_core::archive::ArchiveOptions { carry_review, ..Default::default() };
+    let opts =
+        speclink_core::archive::ArchiveOptions { carry_review, carry_verify, ..Default::default() };
     let actor = crate::manage::cached_git_identity(&ctx.workspace.root);
     let outcome = speclink_core::archive::archive(&ctx.workspace, store, &change, &opts, actor.as_deref())
         .map_err(|e| e.to_string())?;
@@ -132,7 +152,7 @@ mod tests {
             "拒絕時 change 不得被搬走"
         );
         // 「照樣帶走」入口走同一守門。
-        assert!(archive_carry_at(fx.root(), "demo").is_err());
+        assert!(archive_carry_at(fx.root(), "demo", true, true).is_err());
     }
 
     #[test]

@@ -32,6 +32,7 @@ import { TaskList } from "./TaskList";
 import { DeltaBadges, DeltaSpecView } from "./DeltaBadges";
 import { AnalyzePanel } from "./AnalyzePanel";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./reviewStyle";
+import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE, type VerifyBadgeStatus } from "./verifyStyle";
 import { setTaskMark } from "../tasks";
 
 export interface RichDetailDrawerProps {
@@ -272,6 +273,16 @@ export function RichDetailDrawer({
         icon: REVIEW_ICON[reviewStatus],
         cls: REVIEW_TONE[reviewStatus],
       };
+  // 驗證資訊列：與審查資訊列同構（同一組欄位、同一套版面），只換站別對照表。
+  const verifyStatus: VerifyBadgeStatus | null =
+    !change.verifyStatus || change.verifyStatus === "none" ? null : change.verifyStatus;
+  const verify = !verifyStatus
+    ? null
+    : {
+        key: VERIFY_LABEL_KEY[verifyStatus],
+        icon: VERIFY_ICON[verifyStatus],
+        cls: VERIFY_TONE[verifyStatus],
+      };
   const stage = changeStage(change);
   const archiveReason =
     unavailable?.archive ??
@@ -343,6 +354,26 @@ export function RichDetailDrawer({
                   : ""}
                 {change.reviewStatus !== "inReview" && change.reviewedBy
                   ? ` · ${change.reviewedBy}`
+                  : ""}
+              </span>
+            )}
+            {verify && (
+              <span
+                data-verify-row
+                className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+              >
+                <span
+                  data-verify-tone
+                  className={`inline-flex items-center gap-1 font-medium ${verify.cls}`}
+                >
+                  {verify.icon}
+                  {t(verify.key)}
+                </span>
+                {change.verifyStatus !== "inVerify" && change.verifiedAt
+                  ? ` · ${change.verifiedAt}`
+                  : ""}
+                {change.verifyStatus !== "inVerify" && change.verifiedBy
+                  ? ` · ${change.verifiedBy}`
                   : ""}
               </span>
             )}
