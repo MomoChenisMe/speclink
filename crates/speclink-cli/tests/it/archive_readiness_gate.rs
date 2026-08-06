@@ -129,7 +129,7 @@ impl GitProject {
         std::fs::write(repo.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
 
         let p = GitProject { root, repo };
-        p.write_change("demo", tasks_md);
+        p.add_change("demo", tasks_md);
         p.git(&["init", "-q", "-b", "main"]);
         p.git(&["config", "user.name", "Sandbox Tester"]);
         p.git(&["config", "user.email", "sandbox@example.com"]);
@@ -139,9 +139,9 @@ impl GitProject {
     }
 
     /// 再寫一個結構完整的 change(未提交)。worktree 內要看得到的話,呼叫端得
-    /// 接著 `commit_all` —— `git worktree add` 只帶得走已提交的內容。每個
+    /// 自行 git add ＋ commit —— `git worktree add` 只帶得走已提交的內容。每個
     /// change 各配一個 capability,同一沙盒裡連續封存兩筆才不會撞正典。
-    fn write_change(&self, name: &str, tasks_md: &str) {
+    fn add_change(&self, name: &str, tasks_md: &str) {
         let change = self.repo.join("openspec").join("changes").join(name);
         std::fs::create_dir_all(change.join("specs").join(format!("{name}-cap"))).unwrap();
         std::fs::write(change.join(".openspec.yaml"), META).unwrap();
@@ -154,9 +154,16 @@ impl GitProject {
         .unwrap();
     }
 
-    fn commit_all(&self) {
-        self.git(&["add", "-A"]);
-        self.git(&["commit", "-q", "-m", "more changes"]);
+    /// 封存後的日期目錄(`<date>-<name>`)是否已出現在 repo 本體(比照
+    /// `TempProject::archived_demo`,多帶 change 名以支援同沙盒兩筆)。
+    fn archived(&self, name: &str) -> bool {
+        let Ok(entries) = std::fs::read_dir(self.repo.join("openspec").join("changes").join("archive"))
+        else {
+            return false;
+        };
+        entries
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().ends_with(&format!("-{name}")))
     }
 
     fn git(&self, args: &[&str]) {
@@ -274,17 +281,8 @@ fn archive_from_a_main_checkout_on_a_speclink_branch_passes_through() {
     // 兩者不能併成一次:守門 fail-open,PATH 清空時分支必然取不到,單靠清空
     // PATH 觀察不到 fs 短路還在不在。
     let p = GitProject::new("main-checkout", "- [x] 1.1 a\n");
-    p.write_change("demo2", "- [x] 1.1 a\n");
+    p.add_change("demo2", "- [x] 1.1 a\n");
     p.git(&["checkout", "-q", "-b", "speclink/demo"]);
-    let archived = |name: &str| {
-        std::fs::read_dir(p.repo.join("openspec").join("changes").join("archive")).is_ok_and(
-            |entries| {
-                entries
-                    .filter_map(|e| e.ok())
-                    .any(|e| e.file_name().to_string_lossy().ends_with(&format!("-{name}")))
-            },
-        )
-    };
 
     let out = p.run_in(&p.repo, &["archive", "demo"], &[("NO_COLOR", "1")]);
     assert!(
@@ -296,7 +294,7 @@ fn archive_from_a_main_checkout_on_a_speclink_branch_passes_through() {
         !p.repo.join("openspec").join("changes").join("demo").exists(),
         "active change moved into the archive"
     );
-    assert!(archived("demo"), "dated archive directory for demo exists");
+    assert!(p.archived("demo"), "dated archive directory for demo exists");
 
     let out = p.run_in(&p.repo, &["archive", "demo2"], &[("NO_COLOR", "1"), ("PATH", "")]);
     assert!(
@@ -304,7 +302,7 @@ fn archive_from_a_main_checkout_on_a_speclink_branch_passes_through() {
         "a main checkout must not depend on git: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert!(archived("demo2"), "dated archive directory for demo2 exists");
+    assert!(p.archived("demo2"), "dated archive directory for demo2 exists");
 }
 
 #[test]
@@ -318,6 +316,10 @@ fn refused_archive_leaves_the_mark_tasks_complete_pre_write_undone() {
 
     let out = p.run_in(&wt, &["archive", "demo", "--mark-tasks-complete"], &[("NO_COLOR", "1")]);
     assert!(!out.status.success(), "archiving inside a linked worktree must refuse");
+    // 釘住拒絕來源:TASKS 本來就 1/3,若旗標失效改由完成度守門拒絕,exit 同樣
+    // 非零、tasks.md 同樣不動——只有這句能分辨拒絕真的來自 worktree 守門。
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("worktree-merge"), "the worktree gate did the refusing: {stderr}");
     let tasks =
         std::fs::read_to_string(wt.join("openspec").join("changes").join("demo").join("tasks.md"))
             .unwrap();
@@ -326,22 +328,26 @@ fn refused_archive_leaves_the_mark_tasks_complete_pre_write_undone() {
 
 #[test]
 fn bulk_archive_inside_a_speclink_worktree_refuses_too() {
-    // spec scenario「bulk 封存同受守門」:多個 change 名即 bulk 路徑。中止報告
-    // 走 stdout、bulk 失敗摘要走 stderr,故合併兩者後比對指路字樣。
+    // spec scenario「bulk 封存同受守門」:多個 change 名即 bulk 路徑。輸出去向
+    // 是契約——中止報告(含守門全文)走 stdout,bulk 失敗摘要走 stderr,分流斷言。
     let p = GitProject::new("bulk", "- [x] 1.1 a\n");
-    p.write_change("demo2", "- [x] 1.1 a\n");
-    p.commit_all();
+    p.add_change("demo2", "- [x] 1.1 a\n");
+    p.git(&["add", "-A"]);
+    p.git(&["commit", "-q", "-m", "add demo2"]);
     let wt = p.add_worktree("demo", "speclink/demo");
 
     let out = p.run_in(&wt, &["archive", "demo", "demo2"], &[("NO_COLOR", "1")]);
     assert!(!out.status.success(), "bulk archive inside a linked worktree must refuse");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let output = format!("{stdout}{}", String::from_utf8_lossy(&out.stderr));
-    assert!(output.contains("worktree"), "worktree fact reported: {output}");
-    assert!(output.contains("worktree-merge"), "worktree-merge route named: {output}");
+    let stderr = String::from_utf8_lossy(&out.stderr);
     // 中止報告只有 bulk 路徑會印:少了這句,多 change 名若被改回單筆路徑,
-    // 上面兩個斷言仍會綠,bulk 就悄悄失去覆蓋。
+    // 後面的斷言仍會綠,bulk 就悄悄失去覆蓋。
     assert!(stdout.contains("Bulk archive aborted at 'demo'"), "the bulk path ran: {stdout}");
+    // "linked worktree" 而非裸 "worktree":fixture 路徑 repo.worktrees/ 本身
+    // 就含後者,裸字比對零資訊。
+    assert!(stdout.contains("linked worktree"), "worktree fact on stdout: {stdout}");
+    assert!(stdout.contains("worktree-merge"), "worktree-merge route on stdout: {stdout}");
+    assert!(stderr.contains("bulk archive failed at 'demo'"), "bulk summary on stderr: {stderr}");
     for name in ["demo", "demo2"] {
         assert!(
             wt.join("openspec").join("changes").join(name).join("tasks.md").is_file(),
@@ -352,4 +358,6 @@ fn bulk_archive_inside_a_speclink_worktree_refuses_too() {
         !wt.join("openspec").join("changes").join("archive").exists(),
         "no archive directory appears"
     );
+    assert!(!wt.join("openspec").join("specs").exists(), "no canonical spec is written");
+    assert!(!wt.join(".speclink").join("snapshots").exists(), "no unarchive backup is written");
 }
