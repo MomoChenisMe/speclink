@@ -125,9 +125,10 @@ pub fn registry() -> Vec<Skill> {
         Skill { name: "ingest", description: "Update an existing Speclink change from external context", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_INGEST },
         Skill { name: "onboard", description: "Adopt Speclink on an existing codebase by generating initial specs from current behavior", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ONBOARD },
         Skill { name: "propose", description: "Create a change proposal with all required artifacts", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_PROPOSE },
-        // Pure ordering over the two stations（design D1）：不是 fork——它要在主線
-        // 依序呼叫兩站技能，且步驟 3 的統一修正就在主線改檔，故 Edit 不禁。
-        Skill { name: "quality", description: "Run both quality stations over one change: both checks first without stamping, findings fixed together, then each station re-validates and the two stamps land back to back", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_QUALITY },
+        // Pure ordering over the two stations plus the per-round pause（design
+        // D1）：不是 fork——它要在主線依序呼叫兩站技能、停下問使用者，且步驟 4
+        // 的修正就在主線改檔，故 Edit 不禁。
+        Skill { name: "quality", description: "Run both quality stations over one change, pausing after every round for the user's call: both checks first without stamping, then both stations' findings are reported together and the skill stops — nothing is fixed, stamped or archived without the user's answer", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_QUALITY },
         // Not a fork skill（design D7 替代案否決 fork）：主線 orchestrator 要
         // fan-out 兩個平行 sub-agent 並互動詢問三選項；修正回主線，故 Edit 不禁。
         Skill { name: "review", description: "Review a change's implementation for craft quality — parallel standards and correctness axes, recorded to a review ticket", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_REVIEW },

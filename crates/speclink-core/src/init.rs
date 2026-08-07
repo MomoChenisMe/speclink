@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：指令檔 SPECLINK 標記與技能檔 frontmatter 的 version 同源於此。
 /// 僅在內嵌資產（assets/skills）或 marker 模板的 render 內容變動時遞增——與 app／CLI
 /// 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const MARKER_VERSION: &str = "v1.17.4";
+pub const MARKER_VERSION: &str = "v1.18.0";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -101,7 +101,7 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree:
     // 兩站都跑時的時序編排入口（spec quality-skill「品質關卡技能的生成與正典化」）：
     // 只跑一站不經它，直接呼叫該站技能——條目本身要載明這個分岔。
     let quality_line = format!(
-        "- Both quality stations over one change → `{p}quality` (both checks first without stamping, fixes together, then the review and verify stamps land back to back); only one station → call `{p}review` or `{p}verify` directly"
+        "- Both quality stations over one change → `{p}quality` (both checks first without stamping, then it stops after every round for your call on what to fix and when to stamp); only one station → call `{p}review` or `{p}verify` directly"
     );
     let workflow = "discuss? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive";
     // 品質站段與主流程行同步（spec workspace-tools「marker 技能指引跟隨 worktree
@@ -191,7 +191,7 @@ pub fn custom_instructions_body(spec_dir: &str, tool: &CustomTool, store: StoreK
 - Resuming a change that sat idle → run `speclink-drift` first\n\
 - Requirements change mid-work → `speclink-ingest`\n\
 - Implementation is done, before archiving → optional quality stations `speclink-review` (craft quality) ∥ `speclink-verify` (spec compliance; user's call), then `speclink-archive`\n\
-- Both quality stations over one change → `speclink-quality` (both checks first without stamping, fixes together, then the review and verify stamps land back to back); only one station → call `speclink-review` or `speclink-verify` directly\n\
+- Both quality stations over one change → `speclink-quality` (both checks first without stamping, then it stops after every round for your call on what to fix and when to stamp); only one station → call `speclink-review` or `speclink-verify` directly\n\
 - Commit only files related to a specific change → `speclink-commit`\n\n\
 ## Workflow\n\n\
 discuss? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive\n\n\
