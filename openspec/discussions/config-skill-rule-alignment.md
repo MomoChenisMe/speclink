@@ -49,11 +49,22 @@ Document rules:
 **Ruled out**: 來源註記機制（config.yaml 重寫掉註解，標記活不過下次落地）；討論鏈結機制（config.yaml 無 meta 欄位）；判準四維持字面執行指令（貴測試一跑數分鐘，與 scoped 精神抵觸）
 **Open**: 落地路由（promote 或 propose）
 
+### Round 3 — interview (2026-08-07)
+
+**Focus**: 新增第四條（D）——config 工具主動詢問任務驗證的測試範圍
+**Position**: 使用者提出、經設計岔路收斂為「技能加第五問」：
+- 動機：大型專案全量測試昂貴（如 Speclink 一輪 20 分鐘級），tasks.md 驗證含全量會拉長每個 change 的收尾時間
+- Step 3 政策提問增列第五問：「task 驗證步驟要全量測試，或只跑受影響面？」——與四個政策欄位同性質（answers not findings，不得自 repo 推斷），現行文件已有測試範圍規則時提問帶現值
+- 答「受影響面」→ 技能自 Step 1 已讀的 dependency manifests 組出專案客製的對應規則落 rules.tasks（如 Speclink 的 cargo test -p／npm test -w 對應表）；答「全量」→ 不寫規則，維持現狀
+- 落地面不變：仍是 config.md 正典資產的技能文字調整，與 A/B/C 併同一筆 change
+**Ruled out**: 引擎新政策欄位（如 test_scope，仿 tdd/audit 注入）——設定三層解析、指示注入、desktop 設定頁、remote 可編輯欄位全要動；且引擎不識專案結構、只能注入抽象原則，對應表仍得靠 rules 補——rules 管道已存在且剛驗證有效，新欄位是重複管道（YAGNI）
+**Open**: 無
+
 ## Conclusion
 
-**Decision**: 調整 config 技能正典（crates/speclink-core/assets/skills/config.md）三處：(A) 判準四的引用驗證改為靜態便宜手段——路徑查檔案系統、測試名 grep 原始碼、npm script 查 package.json 宣告、CLI 子指令對 --help 面，SHALL NOT 執行被引用的測試或建置指令（判準一的 speclink instructions --json 探針不在此限）；(B) 增列原則句「一條 rule 只因不過四判準而被刪，SHALL NOT 因『無法自固定輸入集導出』而被刪」，保障使用者裁決型 rule（討論結論落地者）不被 convergence 判掉；(C) 明文化 scope hint 語意——收窄判準一～三的全面重審至範圍內 artifacts，判準四恆為全文件掃描，無 hint 維持全文件。
-**Rationale**: 實跑 change-scoped-test-policy 落地時暴露字面與實務脫節（判準四字面要求執行指令，實跑用 ls/grep）；貴指令的執行本屬 CI 與 apply 驗證步驟，技能內執行與 scoped 精神抵觸。A 使判準四變便宜，才讓 C 的「全文件引用掃描」在收窄重審下仍可負擔——兩條互相成立。
-**Rejected alternatives**: 來源註記機制（config.yaml 重寫掉註解，標記活不過下次落地）；討論鏈結機制（config.yaml 無 meta 欄位承載）；判準四維持字面執行（golden 測試一跑數分鐘）；「C 不必改、技能本意已允許」（使用者裁定要明文化，隱含解讀不足恃）。
+**Decision**: 調整 config 技能正典（crates/speclink-core/assets/skills/config.md）四處：(A) 判準四的引用驗證改為靜態便宜手段——路徑查檔案系統、測試名 grep 原始碼、npm script 查 package.json 宣告、CLI 子指令對 --help 面，SHALL NOT 執行被引用的測試或建置指令（判準一的 speclink instructions --json 探針不在此限）；(B) 增列原則句「一條 rule 只因不過四判準而被刪，SHALL NOT 因『無法自固定輸入集導出』而被刪」，保障使用者裁決型 rule 不被 convergence 判掉；(C) 明文化 scope hint 語意——收窄判準一～三的全面重審至範圍內 artifacts，判準四恆為全文件掃描，無 hint 維持全文件；(D) Step 3 政策提問增列第五問「task 驗證步驟要全量測試或只跑受影響面」——答受影響面則技能自已讀的 manifests 組出專案客製對應規則落 rules.tasks，答全量則不寫規則；現行文件已有測試範圍規則時提問帶現值。
+**Rationale**: 實跑 change-scoped-test-policy 落地時暴露字面與實務脫節（判準四字面要求執行指令，實跑用 ls/grep）；貴指令的執行本屬 CI 與 apply 驗證步驟。A 使判準四變便宜，才讓 C 的全文件引用掃描在收窄重審下仍可負擔。D 把「測試範圍是使用者的答案」制度化——大型專案全量昂貴，rules 管道已存在且驗證有效，缺的只是工具主動問。
+**Rejected alternatives**: 來源註記機制（config.yaml 重寫掉註解，標記活不過下次落地）；討論鏈結機制（config.yaml 無 meta 欄位承載）；判準四維持字面執行（golden 測試一跑數分鐘）；「C 不必改、技能本意已允許」（使用者裁定要明文化）；引擎新政策欄位 test_scope（設定三層、注入、desktop 與 remote 面全要動，且引擎不識專案結構、對應表仍靠 rules 補——重複管道，YAGNI）。
 **Deferred**: none
-**Capture to**: 新變更（引擎變更：asset＋MARKER_VERSION＋golden＋assets.lock 三連動；生成技能檔隨 update 再生；排隊於平行 session 未提交的 v1.18.1 之後）
+**Capture to**: 新變更（引擎變更：asset＋MARKER_VERSION＋golden＋assets.lock 三連動；生成技能檔隨 update 再生；排隊於 v1.18.1 之後）
 **Next**: /speclink-propose --from-discussion config-skill-rule-alignment
