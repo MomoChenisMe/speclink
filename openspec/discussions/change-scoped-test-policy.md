@@ -1,7 +1,8 @@
 ---
 topic: change 驗證只跑受影響面的測試，全量 test:all 交給 CI
 slug: change-scoped-test-policy
-status: concluded
+status: promoted
+promoted_to: add-improve-flow
 created: 2026-08-07
 created_by: MomoChen <momochenisme@gmail.com>
 ---
