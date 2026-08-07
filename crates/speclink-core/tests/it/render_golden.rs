@@ -1073,6 +1073,150 @@ fn config_skill_criterion_one_disproves_station_canon_too() {
     }
 }
 
+/// Spec config-skill「技能規定固定輸入來源與四條內容判準」Scenario「判準四核實不
+/// 執行引用指令」: criterion 4 names the static means of verification, forbids
+/// running what it verifies, and exempts criterion 1's own payload probe.
+#[test]
+fn config_skill_criterion_four_verifies_statically() {
+    for (rel, config) in skill_for_both_tools("config-criterion-four", "config") {
+        let start = config
+            .find("### Criterion 4")
+            .unwrap_or_else(|| panic!("{rel}: missing the criterion 4 section"));
+        let criterion_four = &config[start..];
+        for needle in [
+            // the four static means, one per reference kind
+            "look it up on the filesystem",
+            "text-search the source tree",
+            "`package.json`",
+            "`--help`",
+            // the prohibition itself
+            "Do NOT execute the referenced test or build commands",
+            // the exemption: this skill's own probe stays allowed
+            "Criterion 1's `speclink instructions <artifact> --json` probe is exempt",
+        ] {
+            assert!(
+                criterion_four.contains(needle),
+                "{rel}: criterion 4 is missing the static-verification phrase {needle:?}"
+            );
+        }
+        assert!(
+            !config.contains("Run the command; check the path"),
+            "{rel}: the literal run-the-command instruction must be gone"
+        );
+        let guard = config
+            .find("## Guardrails")
+            .unwrap_or_else(|| panic!("{rel}: missing the guardrails section"));
+        assert!(
+            config[guard..].contains("never run what you are verifying"),
+            "{rel}: guardrails must forbid running the referenced commands"
+        );
+    }
+}
+
+/// Spec config-skill「技能規定固定輸入來源與四條內容判準」Scenario「使用者裁決型
+/// rule 不因來源被刪」: the four criteria are the only grounds for dropping an
+/// existing line — provenance outside the fixed input set is not one of them.
+#[test]
+fn config_skill_limits_the_reason_for_deleting_a_line() {
+    for (rel, config) in skill_for_both_tools("config-delete-reason", "config") {
+        let start = config
+            .find("### The only reason to delete a line")
+            .unwrap_or_else(|| panic!("{rel}: missing the deletion-reason section"));
+        let section = &config[start..];
+        for needle in [
+            "fails one of the four criteria",
+            "cannot be derived from the fixed input set",
+            "is NOT a reason to delete",
+            "a user's ruling",
+        ] {
+            assert!(
+                section.contains(needle),
+                "{rel}: the deletion-reason limit is missing {needle:?}"
+            );
+        }
+        let guard = config
+            .find("## Guardrails")
+            .unwrap_or_else(|| panic!("{rel}: missing the guardrails section"));
+        assert!(
+            config[guard..].contains("**Don't delete for the wrong reason**"),
+            "{rel}: guardrails must carry the deletion-reason limit"
+        );
+    }
+}
+
+/// Spec config-skill「技能規定固定輸入來源與四條內容判準」Scenario「scope hint 收窄
+/// 語意」: a hint narrows criteria 1–3 to the artifacts in scope, criterion 4's
+/// reference check stays whole-document, and no hint means whole-document
+/// throughout.
+#[test]
+fn config_skill_states_what_a_scope_hint_narrows() {
+    for (rel, config) in skill_for_both_tools("config-scope-hint", "config") {
+        let start = config
+            .find("### What a scope hint narrows")
+            .unwrap_or_else(|| panic!("{rel}: missing the scope-hint section"));
+        let section = &config[start..];
+        for needle in [
+            "criteria 1–3 are re-judged only over the artifacts in scope",
+            "Criterion 4's reference check always covers the whole document",
+            "Without a hint",
+        ] {
+            assert!(
+                section.contains(needle),
+                "{rel}: the scope-hint semantics are missing {needle:?}"
+            );
+        }
+    }
+}
+
+/// Spec config-skill「技能規定任務驗證測試範圍的第五問」: the policy interview
+/// carries a fifth question about how much testing a task's verification runs —
+/// asked, never inferred, quoting the current value — and each answer has its
+/// own landing route.
+#[test]
+fn config_skill_asks_the_test_scope_question() {
+    for (rel, config) in skill_for_both_tools("config-fifth-question", "config") {
+        let audit_field = config
+            .find("- `audit`")
+            .unwrap_or_else(|| panic!("{rel}: missing the audit policy field"));
+        let fifth = config
+            .find("### The fifth question")
+            .unwrap_or_else(|| panic!("{rel}: missing the fifth question section"));
+        let step_four = config.find("## Step 4").expect("step 4");
+        assert!(
+            audit_field < fifth && fifth < step_four,
+            "{rel}: the fifth question belongs after the four policy fields and inside step 3"
+        );
+        let section = &config[fifth..step_four];
+        for needle in [
+            // same nature as the four fields: an answer, never a finding
+            "an answer, not a finding",
+            "Never infer it from the repo",
+            // the question itself, both answers named
+            "run the full test suite, or only the tests for the surfaces",
+            // current value carried into the question
+            "quote its current value",
+            // answer A: build the mapping from what step 1 already read
+            "dependency manifests you already read in Step 1",
+            "`tasks` rules",
+            "`--dry-run` approval",
+            // answer B: write nothing
+            "write no test-scope rule at all",
+        ] {
+            assert!(
+                section.contains(needle),
+                "{rel}: the fifth question is missing {needle:?}"
+            );
+        }
+        let guard = config
+            .find("## Guardrails")
+            .unwrap_or_else(|| panic!("{rel}: missing the guardrails section"));
+        assert!(
+            config[guard..].contains("plus the test-scope question"),
+            "{rel}: guardrails must name the fifth question alongside the four fields"
+        );
+    }
+}
+
 // --- quality skill: generation and the instructions-file routing ---
 
 /// Spec「品質關卡技能的生成與正典化」: `speclink update` generates the
