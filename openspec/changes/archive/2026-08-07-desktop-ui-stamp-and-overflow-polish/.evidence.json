@@ -69,6 +69,20 @@
       "files": [
         "apps/desktop/src/components/InstructionUpdatePrompt.tsx"
       ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "6.1 撰寫省略號字形紅測（規格「截斷省略號的統一字形」；design「D6 省略號字形統一」）：於 packages/ui/src/__tests__/theme.test.ts 加斷言——theme.css 含 family 為 `EllipsisLatin`、`unicode-range: U+2026` 的 @font-face 宣告，其 src 以 local() 涵蓋三平台拉丁字型（Helvetica Neue／Arial、Segoe UI、DejaVu Sans），且 body 的 font-family 以 `EllipsisLatin` 為首、其後既有堆疊順序不變。驗證：vitest 新斷言紅燈",
+      "files": [
+        "packages/ui/src/__tests__/theme.test.ts"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "6.2 省略號字形層實作（同規格；design「D6 省略號字形統一」）：packages/ui/src/theme.css 新增該 @font-face 並將 `EllipsisLatin` 插入 body 字型堆疊最前；行為——同一畫面上等寬把手與中文文字的截斷省略號為同一字形（拉丁半形貼基線），兩者文字本身字型不變，`font-mono` 元素不受影響。驗證：6.1 轉綠；packages/ui 與 apps/desktop 全套測試維持綠燈",
+      "files": [
+        "packages/ui/src/theme.css"
+      ]
     }
   ],
   "entries": [
@@ -175,6 +189,28 @@
         "apps/desktop/src/components/InstructionUpdatePrompt.tsx"
       ],
       "recordedAt": "2026-08-07T03:09:48Z"
+    },
+    {
+      "taskId": "tsk_01KZDDDPA8W96S1CVEVP28TSAD",
+      "taskDesc": "6.1 撰寫省略號字形紅測（規格「截斷省略號的統一字形」；design「D6 省略號字形統一」）：於 packages/ui/src/__tests__/theme.test.ts 加斷言——theme.css 含 family 為 `EllipsisLatin`、`unicode-range: U+2026` 的 @font-face 宣告，其 src 以 local() 涵蓋三平台拉丁字型（Helvetica Neue／Arial、Segoe UI、DejaVu Sans），且 body 的 font-family 以 `EllipsisLatin` 為首、其後既有堆疊順序不變。驗證：vitest 新斷言紅燈",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "739429bc1581e1ec0f1c2a9cd30e7deb6f8eb87e",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/theme.test.ts"
+      ],
+      "recordedAt": "2026-08-07T06:09:01Z"
+    },
+    {
+      "taskId": "tsk_01KZDDFFSF9JN9P94PNPQV32J7",
+      "taskDesc": "6.2 省略號字形層實作（同規格；design「D6 省略號字形統一」）：packages/ui/src/theme.css 新增該 @font-face 並將 `EllipsisLatin` 插入 body 字型堆疊最前；行為——同一畫面上等寬把手與中文文字的截斷省略號為同一字形（拉丁半形貼基線），兩者文字本身字型不變，`font-mono` 元素不受影響。驗證：6.1 轉綠；packages/ui 與 apps/desktop 全套測試維持綠燈",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "739429bc1581e1ec0f1c2a9cd30e7deb6f8eb87e",
+      "touchedFiles": [
+        "packages/ui/src/theme.css"
+      ],
+      "recordedAt": "2026-08-07T06:10:00Z"
     }
   ]
 }

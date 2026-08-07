@@ -70,8 +70,19 @@
   --color-ring: var(--ring);
 }
 
+/* 截斷省略號的統一字形（spec desktop-app「截斷省略號的統一字形」）：省略號長什麼
+   樣由該處字型決定——等寬把手（font-mono → SF Mono）畫半形貼基線、一般中文文字
+   （Noto Sans TC）畫全形置中，同一張卡上兩種收尾。unicode-range 讓這層只接管
+   U+2026 一個碼位，其餘字元照舊落到下一個字型：沒有任何一段文字換字型。三平台
+   各列一個常駐拉丁字型，全數落空時整層無效、退回既有堆疊（維持現狀，不破圖）。 */
+@font-face {
+  font-family: "EllipsisLatin";
+  src: local("Helvetica Neue"), local("Arial"), local("Segoe UI"), local("DejaVu Sans");
+  unicode-range: U+2026;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: "Noto Sans TC Variable", "Noto Sans TC", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: "EllipsisLatin", "Noto Sans TC Variable", "Noto Sans TC", "Segoe UI", system-ui, -apple-system, sans-serif;
 }

@@ -1,0 +1,48 @@
+schema: spec-driven
+created: 2026-08-07
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: quality-skill-pause-and-ui-polish
+started_at: 2026-08-07
+started_by: MomoChen <momochenisme@gmail.com>
+verified_at: 2026-08-07
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 13
+verified_scope:
+  - path: apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx
+    hash: 23317d1c3dbe54d8113329a419f73fbca58332ca0e75e83f870aa80626ab4c2e
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 791ebd50891bbfc6dca11f47d6451032e71608a38840fd2dd6d6f21d5ef5178e
+  - path: apps/desktop/src/components/InstructionUpdatePrompt.tsx
+    hash: b2aee6bec28bb54a1d026cb2b79addf6b47a9c913a2abe0f3d2e53f41cdcd7c4
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: 03270bc2f65956467e29bd8475a75259134558f1adb6ee92a915eb386d597b51
+  - path: openspec/changes/desktop-ui-stamp-and-overflow-polish/specs/desktop-app/spec.md
+    hash: e39bd56e05ad6110ce2e42cfca6f44ffa352f4066812bdfaa9d057ade50b1d3e
+  - path: packages/ui/src/__tests__/cardNameRow.test.tsx
+    hash: 3a8692f8697ad1fbfadac49af77856c4200c3024c6df6d7bf62253148ed57264
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: 6848914b35e6d2aad32ab292540bf0a3d5937dfb6f92bce5f4fc359562d6b2dc
+  - path: packages/ui/src/__tests__/reviewBadge.test.tsx
+    hash: ebc3ad928abece7f9f8744da33ee17e02463314f152520ea5b29c6931a694157
+  - path: packages/ui/src/__tests__/richDrawer.test.tsx
+    hash: 588bf5b69789ac9752caccbd1ffad9ef4c60d2af05e77dece5ccc57d5988204a
+  - path: packages/ui/src/__tests__/theme.test.ts
+    hash: 6621208fbb656cfb1560036aba6951d28f6291dc192e5fd98e0b99f9c4a4fff0
+  - path: packages/ui/src/__tests__/tooltipDelay.test.tsx
+    hash: 61675990cfef3cb2bb8c324fd8ad483803360f8b9e601f00ada77af3a917ce11
+  - path: packages/ui/src/__tests__/verifyBadge.test.tsx
+    hash: 4820904c57a8faa63c8e733daa9409b2c0b4c4fbc8c778a3282b74dcdaa016c5
+  - path: packages/ui/src/components/CardNameRow.tsx
+    hash: 2b82afb4ab2dae2ef38f770361c7002572c729c831de5a8ff5ec8df4d1227ead
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: 5156530d1e9a932c28c9916c2efab4117bbbff217bf66b2769dd70b709a5d2ed
+  - path: packages/ui/src/components/SourceDiscussionChip.tsx
+    hash: 6a3530dcdbdd3811368a1918793252cc6348e13f663d8b632f09f8172a6fbf78
+  - path: packages/ui/src/components/ui/tooltip.tsx
+    hash: b72687e160fbb5a93815de29182a9c2f3b56db242cd7e2f90fd3b388527a7c6c
+  - path: packages/ui/src/theme.css
+    hash: 74169960b9211d107a2bf5acf80575943a989c80e1bb135766d7f4ef5270a98d
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-07

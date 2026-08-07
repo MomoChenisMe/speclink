@@ -159,6 +159,34 @@ describe("狀態語意色守門", () => {
   });
 });
 
+// spec desktop-app「截斷省略號的統一字形」（design D6）：省略號長什麼樣由該處字型
+// 決定——等寬把手畫半形貼基線、中文文字畫全形置中，同一畫面兩種收尾。以限定
+// U+2026 的字型層統一，其餘字元照原字型解析（不換任何一段文字的字型）。
+describe("截斷省略號的統一字形", () => {
+  const ELLIPSIS_FALLBACKS = ["Helvetica Neue", "Arial", "Segoe UI", "DejaVu Sans"];
+  /** 既有 body 堆疊——省略號層插在最前，其後必須原封不動。 */
+  const EXISTING_STACK =
+    '"Noto Sans TC Variable", "Noto Sans TC", "Segoe UI", system-ui, -apple-system, sans-serif';
+
+  it("theme.css 宣告只接管 U+2026 的拉丁字型層", () => {
+    const face = themeCss().match(/@font-face\s*\{[^}]*EllipsisLatin[^}]*\}/)?.[0];
+    expect(face).toBeTruthy();
+    // 限定單一碼位：沒有 unicode-range 這層會接管整段文字，把中文換成拉丁字型。
+    expect(face).toContain("unicode-range: U+2026;");
+    // 三平台各有一個常駐拉丁字型；全數落空時整層無效、退回既有字型（不破圖）。
+    for (const font of ELLIPSIS_FALLBACKS) {
+      expect(face).toContain(`local("${font}")`);
+    }
+  });
+
+  it("body 字型堆疊以省略號層為首，其後既有順序不變", () => {
+    const family = themeCss().match(/body\s*\{[^}]*font-family:\s*([^;]+);/)?.[1]?.trim();
+    expect(family).toBeTruthy();
+    expect(family!.startsWith('"EllipsisLatin"')).toBe(true);
+    expect(family).toContain(EXISTING_STACK);
+  });
+});
+
 describe("共用 semantic theme 抽取（既有）", () => {
   it("packages/ui/src/theme.css 保留全部 canonical light token 值", () => {
     const css = themeCss();
