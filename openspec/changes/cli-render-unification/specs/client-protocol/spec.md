@@ -1,0 +1,29 @@
+## ADDED Requirements
+
+### Requirement: 封存回應的完整結果欄位
+
+封存端點的回應 payload SHALL 增列下列欄位（camelCase，皆帶序列化預設值以向後相容）：datedName（字串，選填——封存目的地的 dated 名稱）、specs 清單各項的 added／modified／removed／renamed（整數，預設 0）、snapshotCreated（布林，選填）、archivedDiscussions（物件清單，各項含 slug 與 file 字串，預設空清單）、evidenceRecorded（布林，選填）。datedName 是新舊 server 的哨兵欄位：讀取方 SHALL 以其在場與否判定回應是否攜帶完整封存結果。
+
+#### Scenario: 缺新欄位的回應可反序列化
+
+- **WHEN** 以不含任何新欄位的既有形狀 JSON（僅 specs 清單）反序列化封存回應
+- **THEN** 反序列化成功，datedName 缺席、各計數為 0、archivedDiscussions 為空清單——與既有 server 的回應相容
+
+#### Scenario: 新 server 回應攜帶完整結果
+
+- **WHEN** 新版 server 完成一筆會改動規格與封存來源討論的封存
+- **THEN** 回應含 datedName、各 capability 的四項計數、archivedDiscussions 清單與 evidenceRecorded
+
+### Requirement: 工單回應的原文欄位
+
+review 與 verify 兩站共用的工單讀取回應 SHALL 增列 content 欄位（字串，選填，帶序列化預設值）攜帶工單文件原文全文。content 是工單人眼輸出的哨兵欄位：讀取方 SHALL 以其在場與否判定 server 新舊，缺席時 SHALL 退回既有的結構化摘要呈現。
+
+#### Scenario: 缺 content 的工單回應可反序列化
+
+- **WHEN** 以不含 content 的既有形狀 JSON 反序列化工單讀取回應
+- **THEN** 反序列化成功且 content 缺席——與既有 server 的回應相容
+
+#### Scenario: 新 server 工單回應攜帶原文
+
+- **WHEN** 新版 server 回應一筆存在工單的變更的工單讀取請求
+- **THEN** content 等於 store 中工單文件的原文全文，結構化欄位（rounds、lastRound）同時照舊在場
