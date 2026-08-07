@@ -11,7 +11,8 @@
   - 修正落地後的每一輪兩站複驗完成後，同樣停下詢問
   - 乾淨輪（兩站零 findings）也停：報告兩站皆綠，由使用者決定是否進入收尾補蓋與封存；蓋章與封存建議不再自動發生
   - 兩站的收尾補蓋機制（明示收尾補蓋呼叫、兩章接連落、中間零編輯）原樣保留，僅改為在使用者裁示後觸發
-- `crates/speclink-core/src/skills.rs` 的 quality 技能條目 description 同步改寫為每輪暫停語意
+- `crates/speclink-core/src/skills.rs` 的 quality 技能條目 description（渲染成兩 target 的技能檔 frontmatter）同步改寫為每輪暫停語意
+- `crates/speclink-core/src/init.rs` 的兩處 quality 技能清單條目（內建工具版與 custom 中性版）括號內的舊時序敘述同步改寫；觸發時機兩半（兩站都跑時使用／單站直接呼叫該站）原樣保留
 - golden 斷言釘住暫停語意（`crates/speclink-core/tests/it/render_golden.rs`）
 - MARKER_VERSION v1.17.4 → v1.18.0，乾淨樹再生 golden snapshots 與 assets.lock，並以 speclink update 落地本 repo 生成物
 - README.md 與 README.en.md 分工表的 quality 時序一句同步改寫
@@ -37,7 +38,7 @@
 
 - Affected specs: `quality-skill`（modified）
 - Affected code:
-  - Modified: crates/speclink-core/assets/skills/quality.md、crates/speclink-core/src/skills.rs、crates/speclink-core/src/init.rs、crates/speclink-core/tests/it/render_golden.rs、crates/speclink-core/tests/golden/assets.lock、crates/speclink-core/tests/golden/claude.snapshot.md、crates/speclink-core/tests/golden/codex.snapshot.md、crates/speclink-core/tests/golden/neutral-cli.snapshot.md、crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md、README.md、README.en.md
+  - Modified: crates/speclink-core/assets/skills/quality.md、crates/speclink-core/src/skills.rs、crates/speclink-core/src/init.rs、crates/speclink-core/tests/it/render_golden.rs、crates/speclink-core/tests/golden/assets.lock、crates/speclink-core/tests/golden/claude.snapshot.md、crates/speclink-core/tests/golden/claude-worktree.snapshot.md、crates/speclink-core/tests/golden/codex.snapshot.md、crates/speclink-core/tests/golden/neutral-cli.snapshot.md、crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md、crates/speclink-core/tests/golden/remote-claude.marker.md、README.md、README.en.md
   - Modified（speclink update 落地生成物）: .claude/skills/speclink-quality/SKILL.md、.agents/skills/speclink-quality/SKILL.md；版號波及——.claude/skills/ 與 .agents/skills/ 全部 SKILL.md 的 frontmatter 版號、CLAUDE.md 與 AGENTS.md 的 SPECLINK 標記版號
   - New: (none)
   - Removed: (none)

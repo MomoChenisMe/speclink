@@ -1,4 +1,4 @@
-<!-- SPECLINK:START v1.17.4 -->
+<!-- SPECLINK:START v1.18.0 -->
 
 # Speclink Instructions
 
@@ -13,7 +13,7 @@ This project uses Speclink for Spec-Driven Development(SDD). Specs, change propo
 - Resuming a change that sat idle → run `/speclink-drift` first
 - Requirements change mid-work → `/speclink-ingest`
 - Implementation is done, before archiving → optional quality stations `/speclink-review` (craft quality) ∥ `/speclink-verify` (spec compliance; user's call), then `/speclink-archive`
-- Both quality stations over one change → `/speclink-quality` (both checks first without stamping, fixes together, then the review and verify stamps land back to back); only one station → call `/speclink-review` or `/speclink-verify` directly
+- Both quality stations over one change → `/speclink-quality` (both checks first without stamping, then it stops after every round for your call on what to fix and when to stamp); only one station → call `/speclink-review` or `/speclink-verify` directly
 - Commit only files related to a specific change → `/speclink-commit`
 
 ## Workflow

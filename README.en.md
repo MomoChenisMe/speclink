@@ -66,8 +66,10 @@ combine them by risk; skipping both is a legitimate choice for low-risk changes:
 | Output | Multi-round `review.md` ticket, stamped at zero CRITICAL | Multi-round `verify.md` ticket, stamped at zero must-fix |
 | Running both | Via `/speclink-quality` (order below), stamped first | Same, stamped second |
 
-Running both stations goes through `/speclink-quality`: leave each station's check unstamped, fix all findings together,
-re-validate each station, then stamp the two badges back to back. A station badge freezes the content fingerprints of its scope
+Running both stations goes through `/speclink-quality`: leave each station's check unstamped, then stop after every round for your
+call (fix everything / fix a selection / fix nothing and stop). The fixes you picked land together, both stations re-validate, and
+it stops again — the two badges are stamped back to back only once you say so. A clean round pauses the same way: nothing is
+stamped or archived on the skill's own initiative. A station badge freezes the content fingerprints of its scope
 files, so the badge stamped first would otherwise be knocked to “changed since” by the other station's fixes. Running a single
 station skips this skill — call `/speclink-review` or `/speclink-verify` directly and keep its stamp-when-done default.
 

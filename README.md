@@ -63,7 +63,7 @@ utilities: validate / analyze / audit / commit / evidence
 | 產出 | `review.md` 工單多輪，零 CRITICAL 後蓋章 | `verify.md` 工單多輪，零必修後蓋章 |
 | 兩站都跑 | 同走 `/speclink-quality`（時序見下段），蓋章順序在前 | 同左，蓋章順序在後 |
 
-兩站都跑時走 `/speclink-quality`：兩站檢查都先不蓋章 → findings 統一修正 → 各自複驗 → 兩章接連蓋。
+兩站都跑時走 `/speclink-quality`：兩站檢查都先不蓋章 → 每輪停下待你裁示（全修／挑著修／不修就停）→ 裁示的修正統一落地、兩站複驗、再停 → 你說可以了，兩章才接連蓋。乾淨輪也停，不會自己蓋章或封存。
 站章凍結的是範圍內檔案的內容指紋，先蓋的章會被另一站的修正打成「其後有變動」——先修完再一起蓋就沒這個問題。
 只跑一站不經這個技能，直接呼叫 `/speclink-review` 或 `/speclink-verify`，維持該站修完即蓋的預設。
 

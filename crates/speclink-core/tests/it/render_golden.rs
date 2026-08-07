@@ -1136,6 +1136,58 @@ fn quality_skill_and_its_routing_are_generated_for_both_tools() {
             bullet.contains("only one station"),
             "{instructions_file}: the quality entry must state the single-station branch: {bullet}"
         );
+        // The entry's parenthetical is the only timeline description an agent
+        // reads before opening the skill — it must say the skill hands every
+        // round back, or the timeline looks automatic from the outside.
+        assert!(
+            bullet.contains("stops after every round"),
+            "{instructions_file}: the quality entry must state the per-round pause: {bullet}"
+        );
+    }
+}
+
+/// Spec「兩站時序的編排行為」: the skill hands every round back to the user —
+/// both stations check without stamping, the round ends in a pause, and nothing
+/// is fixed, stamped or archived without the user's answer. Pinned as literals
+/// so a later rewrite cannot quietly slide back to fixing and stamping on its own.
+#[test]
+fn quality_skill_pauses_after_every_round_for_the_user() {
+    for (rel, content) in skill_for_both_tools("quality-pause", "quality") {
+        // The frontmatter description travels into the tool's skill list, so
+        // the pause has to be stated there too, not only in the body.
+        let description = content
+            .lines()
+            .find(|l| l.starts_with("description:"))
+            .unwrap_or_else(|| panic!("{rel}: no frontmatter description"));
+        assert!(
+            description.contains("pausing after every round"),
+            "{rel}: the description must state the per-round pause: {description}"
+        );
+        assert!(
+            content.contains("pauses after every round"),
+            "{rel}: the opening must state that every round ends in a pause"
+        );
+        // The pause is a step of its own, not a footnote inside another step.
+        assert!(
+            content.contains("**Stop and ask"),
+            "{rel}: the round's pause must be a step of its own"
+        );
+        // The three exits that make the pause a real decision point: the
+        // fix-nothing one is the one a drift back to auto-fixing would drop.
+        assert!(
+            content.contains("Fix nothing and stop"),
+            "{rel}: the pause must offer the fix-nothing exit"
+        );
+        // A clean round is the tempting one to auto-close — it pauses too.
+        assert!(
+            content.contains("A clean round pauses too"),
+            "{rel}: a clean round must pause like every other round"
+        );
+        // The stamps are the user's call, not the skill's initiative.
+        assert!(
+            content.contains("Only on the user's say-so"),
+            "{rel}: the closing stamps must wait for the user's answer"
+        );
     }
 }
 

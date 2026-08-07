@@ -32,9 +32,11 @@
 
 替代方案「只在開修前停一次」與「乾淨輪自動補蓋」皆於討論由使用者否決（破壞「技能不自作主張」的單一心智模型）。
 
-### D3 skills.rs 條目描述與 golden 斷言同步釘住暫停語意
+### D3 生成物兩處敘述與 golden 斷言同步釘住暫停語意
 
-crates/speclink-core/src/skills.rs 的 quality 技能條目 description 改寫為每輪暫停語意（生成之 CLAUDE.md／AGENTS.md 技能清單條目與技能檔 frontmatter description 同源）。crates/speclink-core/tests/it/render_golden.rs 既有 quality 斷言（workflow 行、兩站觸發、單站分岔）維持，另釘住每輪暫停子句與「不修就停」選項字樣，防止未來改寫悄悄退回自動修。紅測先行、asset 改寫後轉綠。
+技能檔 frontmatter description 與 CLAUDE.md／AGENTS.md 技能清單條目**並非同源**，是兩處獨立文字，且都在括號裡帶著舊時序（「兩站檢查先不蓋章、統一修正、兩章接連蓋」），必須各自改寫：crates/speclink-core/src/skills.rs 的 quality 條目 description（渲染成兩 render target 的 frontmatter），以及 crates/speclink-core/src/init.rs 的兩處 quality 清單條目（`instructions_body` 的內建工具版、`custom_instructions_body` 的中性版）。正典 requirement「品質關卡技能的生成與正典化」只要求條目敘明觸發時機（兩站都跑時使用／單站直接呼叫該站），時序括號屬額外敘述——改寫只換括號內容，觸發時機兩半原樣留著。
+
+crates/speclink-core/tests/it/render_golden.rs 既有 quality 斷言（workflow 行、兩站觸發、單站分岔）維持，另釘住三處暫停語意：技能檔內文的每輪暫停子句與「不修就停」選項字樣、frontmatter description、清單條目括號，防止未來改寫悄悄退回自動修。紅測先行、asset 改寫後轉綠。
 
 ### D4 MARKER_VERSION v1.18.0 與乾淨樹三連動
 
@@ -50,7 +52,7 @@ README.md 與 README.en.md 分工表「兩站都跑 → /speclink-quality」列�
 - **介面／資料形狀**：無 CLI、無 --json、無設定欄位變更。對外形狀是生成物文字：speclink-quality 技能檔（claude／codex 兩 render target）、CLAUDE.md／AGENTS.md 技能清單條目、四份 golden snapshot、assets.lock 指紋、SPECLINK 標記版號 v1.18.0。
 - **失敗模式**：兩站的拒絕或錯誤照站內正典原樣呈報並停流程（技能不吞錯、不繞站內守門）；必修未清時無補蓋選項可選。
 - **驗收**：cargo test --workspace 全綠（含 render_golden 新增的暫停語意斷言）；golden diff 審閱僅含 quality 相關區段與版號欄位；人工核對 .claude/skills/speclink-quality/SKILL.md 與 .agents/skills/speclink-quality/SKILL.md 內文含每輪暫停時序、frontmatter 版號 v1.18.0，CLAUDE.md／AGENTS.md 標記版號同步。
-- **範圍界線**：in——quality asset、skills.rs quality 條目 description、init.rs 版號、render_golden 斷言、四 snapshot、assets.lock、README 兩檔、speclink update 落地生成物。out——review／verify 兩站 asset 與 spec、引擎狀態與 CLI、桌面前端。
+- **範圍界線**：in——quality asset、skills.rs quality 條目 description、init.rs 的兩處 quality 清單條目與版號、render_golden 斷言、四 snapshot、assets.lock、README 兩檔、speclink update 落地生成物。out——review／verify 兩站 asset 與 spec、引擎狀態與 CLI、桌面前端。
 
 ## Risks / Trade-offs
 
