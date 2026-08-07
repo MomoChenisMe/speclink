@@ -11,12 +11,14 @@ semantic-color-system（2026-08-05）與 verify-station-parity（2026-08-06）�
 - **系統匣變更列 hover 章色**：列 hover 反白（主色底）時站章隨列改前景色，與同列其他元素一致；站別由圖示形狀承辨
 - **看板卡片標題截斷改省略號收尾**——此為對 2026-08-04 card-name-single-line-fade 規格決定的刻意翻案：使用者裁定淡出被讀成破圖，且全系統其餘截斷皆省略號，統一為省略號並移除 CardNameRow 的漸層遮罩與寬度量測邏輯
 - **指令檔過期提示捲動釘選**：提示於分頁內容捲動時釘選於可視區頂部、以不透明底呈現
+- **截斷省略號字形統一**（實機走查追加）：截斷收尾改省略號後浮現第二層不一致——等寬把手（`font-mono`，SF Mono）的省略號為半形貼基線、一般中文文字（Noto Sans TC）為全形置中，同一畫面兩種收尾。使用者裁定統一為拉丁半形貼底：共用 theme 以 `unicode-range` 限定的 `@font-face` 讓 U+2026 一律由拉丁字型渲染，其餘字元照原字型解析
 
 ## Non-Goals
 
 - 不動兩站章的紫色配色本身——「品質站蓋章配色與主色分離」維持；hover 前景色僅適用系統匣列反白瞬間
 - 不動系統匣的原生 title 提示機制（其刻意不用主題化提示的既有決定不變）
 - 不動看板卡片其他解剖（描述列、meta 列、複製鈕行為、頭像與各行內符號的組成）
+- 不動任何字型堆疊本身——等寬把手（變更名稱、slug、分支、路徑）維持等寬、markdown 程式碼區塊維持等寬、一般文字維持 Noto Sans TC；省略號統一只借一個字元（U+2026）的字形，不改任何一段文字用什麼字型
 - 不含 quality skill 每輪暫停制——同討論轉出的另一變更 quality-skill-round-pause
 - 無 CLI、協定或 i18n 詞條變更
 
@@ -28,14 +30,14 @@ semantic-color-system（2026-08-05）與 verify-station-parity（2026-08-06）�
 
 ### Modified Capabilities
 
-- `desktop-app`: 「變更詳情抽屜標頭的四層結構」狀態列章籤化＋單行不溢出；「看板卡片統一解剖學」截斷收尾由漸層淡出改為省略號；另新增「主題化提示統一延遲」與「指令檔過期提示捲動釘選」兩條 requirement
+- `desktop-app`: 「變更詳情抽屜標頭的四層結構」狀態列章籤化＋單行不溢出；「看板卡片統一解剖學」截斷收尾由漸層淡出改為省略號；另新增「主題化提示統一延遲」「指令檔過期提示捲動釘選」「截斷省略號的統一字形」三條 requirement
 - `tray-status-menu`: 「面板變更列的品質站章」補列 hover 反白時章色隨列改前景色
 
 ## Impact
 
 - Affected specs: `desktop-app`、`tray-status-menu`
 - Affected code:
-  - Modified: packages/ui/src/components/ui/tooltip.tsx、packages/ui/src/components/RichDetailDrawer.tsx、packages/ui/src/components/CardNameRow.tsx、apps/desktop/src/panel/TrayPanel.tsx、apps/desktop/src/components/InstructionUpdatePrompt.tsx、packages/ui/src/__tests__/richDrawer.test.tsx、packages/ui/src/__tests__/cardNameRow.test.tsx、packages/ui/src/__tests__/kanban.test.tsx、apps/desktop/src/__tests__/trayPanel.test.tsx、apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx
+  - Modified: packages/ui/src/components/ui/tooltip.tsx、packages/ui/src/components/RichDetailDrawer.tsx、packages/ui/src/components/CardNameRow.tsx、packages/ui/src/components/SourceDiscussionChip.tsx、packages/ui/src/theme.css、apps/desktop/src/panel/TrayPanel.tsx、apps/desktop/src/components/InstructionUpdatePrompt.tsx、packages/ui/src/__tests__/richDrawer.test.tsx、packages/ui/src/__tests__/cardNameRow.test.tsx、packages/ui/src/__tests__/kanban.test.tsx、packages/ui/src/__tests__/reviewBadge.test.tsx、packages/ui/src/__tests__/verifyBadge.test.tsx、packages/ui/src/__tests__/theme.test.ts、apps/desktop/src/__tests__/trayPanel.test.tsx、apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx
   - New: packages/ui/src/__tests__/tooltipDelay.test.tsx
   - Removed: (none)
 - 相容性影響：純前端呈現層變更；CLI 人眼輸出與 --json 皆不受影響，無協定欄位變動；i18n 詞條沿用既有 key，無新增

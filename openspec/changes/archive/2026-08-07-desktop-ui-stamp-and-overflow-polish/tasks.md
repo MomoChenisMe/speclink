@@ -23,6 +23,11 @@
 - [x] 5.1 撰寫釘選紅測（規格「指令檔過期提示捲動釘選」；design「D5 過期提示捲動釘選」）：斷言提示根元素帶頂部釘選與不透明底樣式。檔案 apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx。驗證：vitest 新斷言紅燈 <!-- speclink-task:tsk_01KZD1NW44AFCB47BF559NF1AW -->
 - [x] 5.2 釘選實作（同規格；design「D5 過期提示捲動釘選」）：apps/desktop/src/components/InstructionUpdatePrompt.tsx 根元素改 sticky 頂部釘選＋不透明底＋高於內容的層級；行為——專案設定頁捲動時提示固定於可視區頂部持續可見、下層內容不透出，未捲動時版面與現行一致。驗證：5.1 轉綠；實機於專案設定頁捲動確認，深淺主題各查一次 <!-- speclink-task:tsk_01KZD1NW446FVGPHD1D2MFYG3X -->
 
-## 6. 全套驗證
+## 6. 省略號字形統一
 
-- [ ] 6.1 全套測試與實機走查（design「D1 主題化提示延遲下沉共用元件」至「D5 過期提示捲動釘選」全項）：workspace 前端測試全綠；實機走查五項行為——卡片與抽屜提示延遲一致、抽屜狀態列無裁切、系統匣 hover 章色、卡片標題省略號收尾、設定頁提示釘選（先重建 desktop 前端）。檔案 packages/ui/src/__tests__/tooltipDelay.test.tsx、packages/ui/src/__tests__/richDrawer.test.tsx、packages/ui/src/__tests__/cardNameRow.test.tsx、apps/desktop/src/__tests__/trayPanel.test.tsx、apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx。驗證：npm test 全綠、五項走查通過 <!-- speclink-task:tsk_01KZD1NW44KR8C1ZTVV56DNRN0 -->
+- [x] 6.1 撰寫省略號字形紅測（規格「截斷省略號的統一字形」；design「D6 省略號字形統一」）：於 packages/ui/src/__tests__/theme.test.ts 加斷言——theme.css 含 family 為 `EllipsisLatin`、`unicode-range: U+2026` 的 @font-face 宣告，其 src 以 local() 涵蓋三平台拉丁字型（Helvetica Neue／Arial、Segoe UI、DejaVu Sans），且 body 的 font-family 以 `EllipsisLatin` 為首、其後既有堆疊順序不變。驗證：vitest 新斷言紅燈 <!-- speclink-task:tsk_01KZDDDPA8W96S1CVEVP28TSAD -->
+- [x] 6.2 省略號字形層實作（同規格；design「D6 省略號字形統一」）：packages/ui/src/theme.css 新增該 @font-face 並將 `EllipsisLatin` 插入 body 字型堆疊最前；行為——同一畫面上等寬把手與中文文字的截斷省略號為同一字形（拉丁半形貼基線），兩者文字本身字型不變，`font-mono` 元素不受影響。驗證：6.1 轉綠；packages/ui 與 apps/desktop 全套測試維持綠燈 <!-- speclink-task:tsk_01KZDDFFSF9JN9P94PNPQV32J7 -->
+
+## 7. 全套驗證
+
+- [x] 7.1 全套測試與實機走查（design「D1 主題化提示延遲下沉共用元件」至「D6 省略號字形統一」全項）：workspace 前端測試全綠；實機走查六項行為——卡片與抽屜提示延遲一致、抽屜狀態列無裁切、系統匣 hover 章色、卡片標題省略號收尾、設定頁提示釘選、等寬把手與中文文字的省略號同形（先重建 desktop 前端）。檔案 packages/ui/src/__tests__/tooltipDelay.test.tsx、packages/ui/src/__tests__/richDrawer.test.tsx、packages/ui/src/__tests__/cardNameRow.test.tsx、packages/ui/src/__tests__/theme.test.ts、apps/desktop/src/__tests__/trayPanel.test.tsx、apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx。驗證：npm test 全綠、六項走查通過 <!-- speclink-task:tsk_01KZD1NW44KR8C1ZTVV56DNRN0 -->
