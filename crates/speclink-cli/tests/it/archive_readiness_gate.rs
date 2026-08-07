@@ -133,6 +133,11 @@ impl GitProject {
         p.git(&["init", "-q", "-b", "main"]);
         p.git(&["config", "user.name", "Sandbox Tester"]);
         p.git(&["config", "user.email", "sandbox@example.com"]);
+        // Windows 的 git 預設 core.autocrlf=true,`git worktree add` 會在 checkout
+        // 時把 LF 換成 CRLF——沙盒裡的 tasks.md 於是與寫進去的位元不同,逐位元
+        // 比對(前置寫入未發生)便會誤紅。沙盒的行尾由測試自己決定,不隨機器的
+        // git 設定漂移。
+        p.git(&["config", "core.autocrlf", "false"]);
         p.git(&["add", "-A"]);
         p.git(&["commit", "-q", "-m", "init"]);
         p

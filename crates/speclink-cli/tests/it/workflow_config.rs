@@ -950,7 +950,13 @@ fn set_worktree_false_is_refused_while_a_linked_worktree_is_active() {
     let err = stderr_of(&out);
     assert!(err.contains("add-auth"), "stderr 須列 change 名: {err}");
     assert!(err.contains("speclink/add-auth"), "stderr 須列分支: {err}");
-    assert!(err.contains(wt.to_str().unwrap()), "stderr 須列 worktree 路徑: {err}");
+    // 路徑來自 `git worktree list`，git 在 Windows 以正斜線回報（C:/Users/…），
+    // 測試手上的 PathBuf 是反斜線。分隔字元不是契約，指到同一個 worktree 才是。
+    let slashed = |s: &str| s.replace('\\', "/");
+    assert!(
+        slashed(&err).contains(&slashed(wt.to_str().unwrap())),
+        "stderr 須列 worktree 路徑: {err}"
+    );
     assert!(err.contains("worktree-merge"), "stderr 須指出收尾方式: {err}");
     assert_eq!(p.config_bytes(), before, "拒絕時 config.yaml 位元組不得變");
     for rel in GATED_SKILLS {
