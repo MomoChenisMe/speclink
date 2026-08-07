@@ -8,6 +8,9 @@ description = "Speclink 本地桌面 app（情境 4）"
 [lib]
 name = "speclink_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+# 沒有任何文件範例可跑，但 rustdoc 仍會把整個 Tauri app 連結成 doc-test
+# 測試殼——這一步在 macOS 上會間歇性掛死（0% CPU 等待），故關閉。
+doctest = false
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
