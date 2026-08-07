@@ -135,8 +135,9 @@ describe("兩站同狀態同色、異形可辨（design D5）", () => {
 });
 
 describe("RichDetailDrawer 驗證資訊列", () => {
-  it("verified 顯示狀態詞、蓋章時間與驗證者", () => {
-    // spec Scenario「已驗證抽屜」。
+  it("verified 章籤可視僅狀態詞——蓋章時間與驗證者收進提示", () => {
+    // spec Scenario「已驗證抽屜」＋「狀態列章籤與提示」：日期與含 email 的完整
+    // 識別不再直出（提示內容由 richDrawer.test.tsx 驗）。
     render(
       <RichDetailDrawer
         {...(drawerProps({
@@ -150,8 +151,8 @@ describe("RichDetailDrawer 驗證資訊列", () => {
     const row = document.querySelector("[data-verify-row]") as HTMLElement;
     expect(row).toBeTruthy();
     expect(within(row).getByText(/已驗證/)).toBeTruthy();
-    expect(row.textContent).toContain("2026-08-02");
-    expect(row.textContent).toContain("Ver <v@example.com>");
+    expect(row.textContent).not.toContain("2026-08-02");
+    expect(row.textContent).not.toContain("v@example.com");
   });
 
   it("inVerify 僅顯示狀態詞，無時間與驗證者", () => {

@@ -745,6 +745,11 @@ function DiscussionRow({
  * 另建第二份對照，否則卡片改了色、tray 不會跟著改。tooltip 以 `title` 承載：
  * 面板是無焦點的一瞥介面，掛 Radix Tooltip 會多一層 portal 與焦點管理。
  */
+/** 列 hover 反白（主色底）時站章隨列改前景色（spec tray-status-menu「面板變更列的
+    品質站章」）：紫章壓在主色底上對比不足，反白期間與同列名稱、任務數、進度條一致，
+    站別改由圖示形狀承辨；指標離開即回復共用色調表。 */
+const STAMP_HOVER = "group-hover:text-primary-foreground";
+
 function StationBadges({ c }: { c: ChangeItem }) {
   const { t } = useI18n();
   const review = c.reviewStatus && c.reviewStatus !== "none" ? c.reviewStatus : null;
@@ -756,7 +761,7 @@ function StationBadges({ c }: { c: ChangeItem }) {
         <span
           aria-label={t(REVIEW_LABEL_KEY[review])}
           title={t(REVIEW_LABEL_KEY[review])}
-          className={cn("shrink-0", REVIEW_TONE[review])}
+          className={cn("shrink-0", REVIEW_TONE[review], STAMP_HOVER)}
         >
           {REVIEW_ICON[review]}
         </span>
@@ -765,7 +770,7 @@ function StationBadges({ c }: { c: ChangeItem }) {
         <span
           aria-label={t(VERIFY_LABEL_KEY[verify])}
           title={t(VERIFY_LABEL_KEY[verify])}
-          className={cn("shrink-0", VERIFY_TONE[verify])}
+          className={cn("shrink-0", VERIFY_TONE[verify], STAMP_HOVER)}
         >
           {VERIFY_ICON[verify]}
         </span>

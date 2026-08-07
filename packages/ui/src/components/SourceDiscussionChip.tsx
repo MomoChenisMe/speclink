@@ -70,7 +70,7 @@ export function SourceChipRow({
   if (items.length === 0) return null;
   const [first, ...rest] = items;
   return (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider>
       <span className="inline-flex min-w-0 items-center gap-1">
         <span className="shrink-0">{label}</span>
         <SourceDiscussionChip

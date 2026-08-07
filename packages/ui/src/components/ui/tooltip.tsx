@@ -4,7 +4,14 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 
 import { cn } from "../../lib/utils";
 
-const TooltipProvider = TooltipPrimitive.Provider;
+// spec「主題化提示統一延遲」：停留延遲的單一預設在此，個別介面不再自訂。
+// skipDelay 沿用 Radix 既有行為——連續於多個觸發點間移動時第二個起立即顯示。
+const TooltipProvider = ({
+  delayDuration = 300,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Provider>) => (
+  <TooltipPrimitive.Provider delayDuration={delayDuration} {...props} />
+);
 
 const Tooltip = TooltipPrimitive.Root;
 

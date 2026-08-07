@@ -104,6 +104,47 @@ function UnavailableAction({ reason, children }: { reason?: string; children: Re
   );
 }
 
+/** 狀態列的站章籤：可視只有圖示＋狀態詞，蓋章日期與蓋章者完整識別（含 email）
+    收進提示。兩站同構，只換站別——資料缺席（進行中、無戳記）時整個提示缺席。 */
+function StationStamp({
+  station,
+  tone,
+  icon,
+  label,
+  at,
+  by,
+}: {
+  station: "review" | "verify";
+  tone: string;
+  icon: ReactElement;
+  label: string;
+  at?: string | null;
+  by?: string | null;
+}) {
+  // 既有 data 標記維持站別各一份（回歸對照沿用 data-review-row／data-verify-row）。
+  const rowMark = station === "review" ? { "data-review-row": "" } : { "data-verify-row": "" };
+  const toneMark = station === "review" ? { "data-review-tone": "" } : { "data-verify-tone": "" };
+  const chip = (
+    <span
+      {...rowMark}
+      className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+    >
+      <span {...toneMark} className={`inline-flex items-center gap-1 font-medium ${tone}`}>
+        {icon}
+        {label}
+      </span>
+    </span>
+  );
+  const detail = [at, by].filter(Boolean).join(" · ");
+  if (!detail) return chip;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{chip}</TooltipTrigger>
+      <TooltipContent>{detail}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** 富詳情抽屜：metadata、進度、動作列、icon 分頁（提案/設計/互動任務/彩色規格）。 */
 export function RichDetailDrawer({
   open,
@@ -325,62 +366,47 @@ export function RichDetailDrawer({
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             </Button>
           </div>
-          {/* 狀態列（spec「變更詳情抽屜標頭的四層結構」「詳情抽屜的審查資訊列」）：
-              進度條＋百分比；審查狀態非 none 時審查章同列——reviewed／reviewedStale
-              帶狀態詞＋蓋章時間＋審查者，inReview 僅狀態詞。任務計數不再上標頭
+          {/* 狀態列（spec「變更詳情抽屜標頭的四層結構」）：進度條＋百分比；兩站狀態
+              非 none 時同列呈章籤（圖示＋狀態詞），蓋章日期與蓋章者完整識別收進提示
+              ——與出身列的 email 收納同構。恆定單行、不撐寬抽屜。任務計數不上標頭
               （任務分頁徽章與進度條已承載）。 */}
-          <div data-status-row className="flex items-center gap-2">
+          <TooltipProvider>
             <div
-              data-progress-track
-              className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden"
+              data-status-row
+              className="flex min-w-0 items-center gap-2 whitespace-nowrap overflow-hidden"
             >
-              <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+              <div
+                data-progress-track
+                className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden"
+              >
+                <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+              </div>
+              <span className="text-xs text-muted-foreground tabular-nums">{pct}%</span>
+              {review && (
+                <StationStamp
+                  station="review"
+                  tone={review.cls}
+                  icon={review.icon}
+                  label={t(review.key)}
+                  at={change.reviewStatus === "inReview" ? undefined : change.reviewedAt}
+                  by={change.reviewStatus === "inReview" ? undefined : change.reviewedBy}
+                />
+              )}
+              {verify && (
+                <StationStamp
+                  station="verify"
+                  tone={verify.cls}
+                  icon={verify.icon}
+                  label={t(verify.key)}
+                  at={change.verifyStatus === "inVerify" ? undefined : change.verifiedAt}
+                  by={change.verifyStatus === "inVerify" ? undefined : change.verifiedBy}
+                />
+              )}
             </div>
-            <span className="text-xs text-muted-foreground tabular-nums">{pct}%</span>
-            {review && (
-              <span
-                data-review-row
-                className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
-              >
-                <span
-                  data-review-tone
-                  className={`inline-flex items-center gap-1 font-medium ${review.cls}`}
-                >
-                  {review.icon}
-                  {t(review.key)}
-                </span>
-                {change.reviewStatus !== "inReview" && change.reviewedAt
-                  ? ` · ${change.reviewedAt}`
-                  : ""}
-                {change.reviewStatus !== "inReview" && change.reviewedBy
-                  ? ` · ${change.reviewedBy}`
-                  : ""}
-              </span>
-            )}
-            {verify && (
-              <span
-                data-verify-row
-                className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
-              >
-                <span
-                  data-verify-tone
-                  className={`inline-flex items-center gap-1 font-medium ${verify.cls}`}
-                >
-                  {verify.icon}
-                  {t(verify.key)}
-                </span>
-                {change.verifyStatus !== "inVerify" && change.verifiedAt
-                  ? ` · ${change.verifiedAt}`
-                  : ""}
-                {change.verifyStatus !== "inVerify" && change.verifiedBy
-                  ? ` · ${change.verifiedBy}`
-                  : ""}
-              </span>
-            )}
-          </div>
+          </TooltipProvider>
           {/* 出身列（spec「變更詳情抽屜標頭的四層結構」）：恆定單行——不折行、
               溢出裁切兜底；email 與開工者完整識別收進提示，可視文字僅名字／日期。 */}
-          <TooltipProvider delayDuration={0}>
+          <TooltipProvider>
             <div
               data-provenance-row
               className="flex min-w-0 items-center gap-2 whitespace-nowrap overflow-hidden text-xs text-muted-foreground"
@@ -446,7 +472,7 @@ export function RichDetailDrawer({
             </div>
           </TooltipProvider>
           {/* 動作列 */}
-          <TooltipProvider delayDuration={0}>
+          <TooltipProvider>
             <div className="flex items-center gap-1.5 pt-1">
               <UnavailableAction reason={unavailable?.analyze}>
                 <Button

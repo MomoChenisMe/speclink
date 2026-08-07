@@ -1,6 +1,7 @@
-// 卡片名稱列（spec「看板卡片統一解剖學」，取代 design D4 的折行版本）：名稱恆
-// 單行不換行，複製鈕與名稱同一列尾隨不被擠到次行；名稱過長截斷時尾端漸層淡出
-// （取代硬切）。變更卡與討論卡共用同一列，兩者行為必須一致。
+// 卡片名稱列（spec「看板卡片統一解剖學」）：名稱恆單行不換行，複製鈕與名稱同一
+// 列尾隨不被擠到次行；名稱過長截斷時以省略號收尾——淡出被讀成破圖，且全系統其餘
+// 截斷皆省略號，統一為單一收尾（翻案 card-name-single-line-fade，2026-08-04）。
+// 變更卡與討論卡共用同一列，兩者行為必須一致。
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render as rtlRender, screen, cleanup } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
@@ -24,10 +25,23 @@ const base: ChangeItem = {
   completedTasks: 0,
 };
 
-/** jsdom 的 scrollWidth/clientWidth 恆為 0：以 getter stub 假造「名稱溢出與否」。 */
+/**
+ * jsdom 的 scrollWidth/clientWidth 恆為 0：以 getter stub 假造「名稱溢出」。
+ * 收尾改省略號後這裡不再驅動任何條件樣式——留著正是為了證明「就算量到溢出，
+ * 也不得再長出遮罩或量測標記」。
+ */
 function stubWidths(scroll: number, client: number) {
   vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(scroll);
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(client);
+}
+
+/** 省略號收尾＋無淡出殘跡：長短名稱、變更卡與討論卡共用同一組斷言。 */
+function expectEllipsisTruncation(name: HTMLElement) {
+  // Tailwind truncate＝overflow-hidden + text-ellipsis + whitespace-nowrap。
+  expect(name.className).toContain("truncate");
+  expect(name.dataset.fade).toBeUndefined();
+  expect(name.style.maskImage).toBe("");
+  expect(name.style.webkitMaskImage ?? "").toBe("");
 }
 
 afterEach(() => {
@@ -40,28 +54,30 @@ describe("ChangeCard 名稱列", () => {
     render(<ChangeCard change={base} />);
     const name = document.querySelector("[data-name]") as HTMLElement;
     const copy = screen.getByLabelText("複製名稱");
-    expect(name.className).toContain("whitespace-nowrap");
+    // truncate 一併帶入 white-space: nowrap——單行由它保證。
+    expect(name.className).toContain("truncate");
     expect(name.parentElement).toBe(copy.parentElement);
     // 名稱被壓縮、複製鈕保持原寬（不被擠到次行的必要條件）。
     expect(name.className).toContain("min-w-0");
     expect(copy.className).toContain("shrink-0");
   });
 
-  it("名稱溢出時尾端套漸層淡出遮罩", () => {
+  it("名稱溢出時以省略號收尾，不再套漸層淡出遮罩", () => {
     stubWidths(320, 160);
     render(<ChangeCard change={base} />);
     const name = document.querySelector("[data-name]") as HTMLElement;
-    expect(name.dataset.fade).toBe("true");
-    expect(name.style.maskImage).toContain("linear-gradient");
+    expectEllipsisTruncation(name);
+    // 複製鈕仍同列尾隨。
+    expect(name.parentElement).toBe(screen.getByLabelText("複製名稱").parentElement);
   });
 
-  it("名稱未溢出時不套遮罩（不誤淡末尾字元）", () => {
+  it("名稱未溢出時完整顯示，同樣無遮罩與量測標記", () => {
     stubWidths(120, 160);
     render(<ChangeCard change={{ ...base, name: "short" }} />);
     const name = document.querySelector("[data-name]") as HTMLElement;
-    expect(name.dataset.fade).toBeUndefined();
-    expect(name.style.maskImage).toBe("");
-    // 短名稱路徑也釘住同列關係（長名稱由第一條驗）。
+    expect(name.textContent).toBe("short");
+    expectEllipsisTruncation(name);
+    // 短名稱路徑也釘住同列關係（長名稱由上一條驗）。
     expect(name.parentElement).toBe(screen.getByLabelText("複製名稱").parentElement);
   });
 
@@ -96,17 +112,17 @@ describe("DiscussionColumn 全卡的 slug 列（與變更卡同骨架）", () =>
     render(<DiscussionColumn discussions={[discussion]} changes={[]} archived={[]} />);
     const name = document.querySelector("[data-name]") as HTMLElement;
     const copy = screen.getByLabelText("複製 slug");
-    expect(name.className).toContain("whitespace-nowrap");
+    expect(name.className).toContain("truncate");
     // slug 過長不再 break-all 折行——單行截斷才留得住尾隨的複製鈕。
     expect(name.className).not.toContain("break-all");
     expect(name.parentElement).toBe(copy.parentElement);
   });
 
-  it("slug 溢出時尾端套漸層淡出遮罩", () => {
+  it("slug 溢出時與變更卡同一收尾：省略號，不套遮罩", () => {
     stubWidths(320, 160);
     render(<DiscussionColumn discussions={[discussion]} changes={[]} archived={[]} />);
     const name = document.querySelector("[data-name]") as HTMLElement;
-    expect(name.dataset.fade).toBe("true");
-    expect(name.style.maskImage).toContain("linear-gradient");
+    expectEllipsisTruncation(name);
+    expect(name.parentElement).toBe(screen.getByLabelText("複製 slug").parentElement);
   });
 });

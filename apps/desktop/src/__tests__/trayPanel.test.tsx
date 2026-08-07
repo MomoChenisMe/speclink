@@ -834,6 +834,33 @@ describe("面板變更列的品質站章", () => {
     expect(within(row).queryByLabelText("S")).toBeNull();
   });
 
+  it("列 hover 反白時兩章隨列改前景色，本色仍取共用色調表", () => {
+    // spec Scenario「hover 反白時章隨列改前景色」：主色底上紫章對比不足，
+    // 反白期間與同列名稱、任務數、進度條一致改前景色，站別由圖示形狀承辨。
+    renderPanel({
+      snapshot: snapshot({
+        changes: [
+          change({
+            name: "inprog",
+            totalTasks: 12,
+            completedTasks: 3,
+            reviewStatus: "reviewed",
+            verifyStatus: "verified",
+          }),
+        ],
+      }),
+    });
+    const row = rowOf("inprog");
+    const review = within(row).getByLabelText("已審查");
+    const verify = within(row).getByLabelText("已驗證");
+    for (const badge of [review, verify]) {
+      expect(badge.className).toContain("group-hover:text-primary-foreground");
+    }
+    // 非 hover 色調不動——共用色調表仍是本色來源。
+    expect(review.className).toContain(REVIEW_TONE.reviewed);
+    expect(verify.className).toContain(VERIFY_TONE.verified);
+  });
+
   it("章的樣式與詞條與看板卡片同源（不另建第二份對照）", () => {
     renderPanel({
       snapshot: snapshot({

@@ -105,6 +105,21 @@ describe("InstructionUpdatePrompt", () => {
     expect(screen.getByTestId("instruction-prompt").getAttribute("role")).toBe("status");
   });
 
+  it("捲動釘選：黏在可視區頂部、底不透明、層級高於捲過的內容", () => {
+    // spec「指令檔過期提示捲動釘選」：一捲動就消失等於沒提示；釘住的同時底必須
+    // 不透明，否則下層內容會透出來疊字。
+    const h = handlers();
+    render(<InstructionUpdatePrompt prompt={STALE} error={null} busy={false} {...h} />);
+
+    const banner = screen.getByTestId("instruction-prompt");
+    expect(banner.className).toContain("sticky");
+    expect(banner.className).toContain("top-0");
+    expect(banner.className).toMatch(/\bz-\d+\b/);
+    // 不透明底：半透明（bg-muted/40 之類的 /透明度 後綴）會透字。
+    expect(banner.className).toContain("bg-muted");
+    expect(banner.className).not.toMatch(/bg-muted\//);
+  });
+
   it("底色中性、狀態由圖示語意色承載：過期為琥珀警示、套用失敗為紅", () => {
     const h = handlers();
     const { unmount } = render(
