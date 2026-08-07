@@ -246,6 +246,25 @@ fn discussion_reads_are_typed() {
     assert_eq!(show.info.topic, "Demo topic");
     assert_eq!(show.content, "# Discussion: Demo topic\n");
     assert_call(&mock2.last(), "GET", "/discussions/demo-topic");
+    assert_eq!(show.info.kind, None, "一般討論的 kind 缺席");
+}
+
+#[test]
+fn improve_discussion_reads_carry_the_kind() {
+    // add-improve-flow：kind 經同一 wire contract 流到型別化 client。
+    let mock = serve(
+        200,
+        r#"{"discussions":[{"slug":"improve-core","topic":"核心結構改進","status":"open","rounds":1,"created":"2026-08-07","kind":"improve","path":"discussions/improve-core.md","archived":false}]}"#,
+    );
+    let list = client(&mock).list_discussions(false).expect("list ok");
+    assert_eq!(list.discussions[0].kind.as_deref(), Some("improve"));
+
+    let mock2 = serve(
+        200,
+        r###"{"info":{"slug":"improve-core","topic":"核心結構改進","status":"open","rounds":1,"created":"2026-08-07","kind":"improve","path":"discussions/improve-core.md","archived":false},"content":"# Discussion: 核心結構改進\n"}"###,
+    );
+    let show = client(&mock2).show_discussion("improve-core").expect("show ok");
+    assert_eq!(show.info.kind.as_deref(), Some("improve"));
 }
 
 // --- write verbs: bodies are exactly the protocol DTO serializations ---
@@ -390,7 +409,7 @@ fn discussion_writes_post_typed_bodies() {
         201,
         r#"{"slug":"auth-scope","topic":"Auth scope","path":"discussions/auth-scope.md"}"#,
     );
-    let created = client(&mock).new_discussion("Auth scope", None).expect("new ok");
+    let created = client(&mock).new_discussion("Auth scope", None, None).expect("new ok");
     assert_eq!(created.slug, "auth-scope");
     let cap = mock.last();
     assert_call(&cap, "POST", "/discussions");
@@ -399,6 +418,7 @@ fn discussion_writes_post_typed_bodies() {
         serde_json::to_string(&CreateDiscussionRequest {
             topic: "Auth scope".into(),
             slug: None,
+            kind: None,
         })
         .unwrap(),
         "no override keeps the body byte-identical to the pre-slug client's"
@@ -457,7 +477,7 @@ fn discussion_parity_verbs_post_typed_bodies() {
         r#"{"slug":"board-search-bar","topic":"看板搜尋列","path":"discussions/board-search-bar.md"}"#,
     );
     let created = client(&mock)
-        .new_discussion("看板搜尋列", Some("board-search-bar"))
+        .new_discussion("看板搜尋列", Some("board-search-bar"), None)
         .expect("new with slug ok");
     assert_eq!(created.slug, "board-search-bar");
     let cap = mock.last();
@@ -467,6 +487,7 @@ fn discussion_parity_verbs_post_typed_bodies() {
         serde_json::to_string(&CreateDiscussionRequest {
             topic: "看板搜尋列".into(),
             slug: Some("board-search-bar".into()),
+            kind: None,
         })
         .unwrap()
     );

@@ -41,9 +41,9 @@ The complete matrix is maintained only in [Product Capability Status](docs/produ
 ## SDD workflow / SDD 工作流
 
 ```text
-onboard? → discuss? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
-                         ↑
-                 resume after pause: drift first
+onboard? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
+                                 ↑
+                         resume after pause: drift first
 
 utilities: validate / analyze / audit / commit / evidence
 ```
@@ -51,6 +51,22 @@ utilities: validate / analyze / audit / commit / evidence
 Use `discuss` only when requirements need convergence; clear requirements can go directly to `propose`. Requirement changes during
 implementation route to `ingest`, and resumed idle work starts with `drift`. See the [complete SDD workflow](docs/workflow.md) for
 complete-proposal, fast-scaffold, existing-change, and “do not implement” discussion outcomes.
+
+### improve / 改進討論
+
+`/speclink-improve` is the mirror image of `discuss` — **bring your own topic to `discuss`; ask `improve` when you want the model to
+find the topics**. It scans the codebase, proposes structural-improvement candidates, and writes them into the same discussion record
+(marked with `--kind improve`; the board card and the discussion drawer show a badge). Rounds, conclusion, promotion into a change,
+and archiving are then exactly as in `discuss`.
+
+When to use it: you want the codebase improved but cannot name what to change. The scope is converged before scanning (a direction you
+name wins; otherwise git-log hotspots are inferred), and the opening pass reads archived discussions' `Ruled out` lines and the
+in-flight changes so nothing already rejected or already under way is re-proposed. Each candidate carries Files / Problem / Solution /
+Wins / recommendation strength, and you pick the one to grill.
+
+Two limits: it is user-initiated only — the model never starts it by itself — and it only produces a discussion record, never code.
+Landing an improvement still goes through `propose` → `apply`. When every candidate is rejected, the record is still concluded and
+archived: those rejections are what stops the next scan from proposing the same thing.
 
 ### Quality stations / 品質站
 

@@ -530,6 +530,25 @@ fn discuss_new_posts_the_topic() {
     let cap = mock.find("POST", "/discussions");
     let body: serde_json::Value = serde_json::from_str(&cap.body).unwrap();
     assert_eq!(body["topic"], "Demo topic");
+    assert!(body.get("kind").is_none(), "no kind key without the flag: {body}");
+}
+
+#[test]
+fn discuss_new_with_kind_posts_the_kind() {
+    // add-improve-flow risk：remote 模式建檔不得繞過 kind——旗標隨請求上 wire，
+    // 驗證的單一事實來源仍在引擎（server 端）。
+    let mock = mock_server(vec![(
+        "POST",
+        "/discussions",
+        201,
+        r#"{"slug":"improve-core","topic":"核心結構改進","path":"discussions/improve-core.md"}"#.into(),
+    )]);
+    let p = TempProject::remote("disc-new-kind", &mock.base, "backend");
+    let out = p.run(&["discuss", "new", "核心結構改進", "--slug", "improve-core", "--kind", "improve"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let cap = mock.find("POST", "/discussions");
+    let body: serde_json::Value = serde_json::from_str(&cap.body).unwrap();
+    assert_eq!(body["kind"], "improve", "the flag rides the create request");
 }
 
 #[test]

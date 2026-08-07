@@ -26,6 +26,10 @@ fn entry(store: &dyn Store, info: &DiscussionInfo) -> Value {
     if let Some(cb) = &info.created_by {
         v["createdBy"] = json!(cb);
     }
+    // 討論型別（改進標示的來源）——同樣缺席即省略。
+    if let Some(kind) = &info.kind {
+        v["kind"] = json!(kind);
+    }
     v
 }
 
@@ -196,6 +200,26 @@ mod tests {
         assert!(by("with-author").get("created_by").is_none(), "camelCase only");
         // 無 created_by → 省略該鍵。
         assert!(by("no-author").get("createdBy").is_none(), "omit when absent");
+    }
+
+    #[test]
+    fn list_discussions_exposes_kind_when_present() {
+        // change add-improve-flow：改進標示要能在桌面顯示，kind 必須流過橋接層；
+        // 一般討論省略該鍵（既有 payload 形狀不變）。
+        let fx = FixtureRoot::new("d-kind");
+        fx.write(
+            "openspec/discussions/improve-store.md",
+            &discussion_doc("improve-store", "Store 層改進", "open", "kind: improve\n", 1, "<!-- x -->"),
+        );
+        fx.write(
+            "openspec/discussions/plain-topic.md",
+            &discussion_doc("plain-topic", "Plain topic", "open", "", 1, "<!-- x -->"),
+        );
+        let v = super::list_discussions_at(fx.root());
+        let active = v["active"].as_array().expect("active array");
+        let by = |slug: &str| active.iter().find(|d| d["slug"] == slug).unwrap();
+        assert_eq!(by("improve-store")["kind"], "improve");
+        assert!(by("plain-topic").get("kind").is_none(), "omit when absent");
     }
 
     #[test]

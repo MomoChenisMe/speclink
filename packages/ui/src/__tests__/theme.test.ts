@@ -96,6 +96,7 @@ const SCAN_ROOTS = ["packages/ui/src", "apps/desktop/src", "apps/server-web/src"
 const TONE_SOURCES = new Set([
   "packages/ui/src/tone.ts",
   "packages/ui/src/components/reviewStyle.tsx",
+  "packages/ui/src/components/improveStyle.tsx",
   "packages/ui/src/components/DeltaBadges.tsx",
   "packages/ui/src/stage.ts",
 ]);
@@ -107,7 +108,7 @@ const TONE_SOURCES = new Set([
  * 但既有中性字面不是本規則的糾察對象。
  */
 const SEMANTIC_SCALE =
-  /\b(?:text|bg|border|ring|from|to)-(?:sky|amber|emerald|rose|red|teal|green|violet|purple|orange|yellow|fuchsia)-\d{2,3}\b/g;
+  /\b(?:text|bg|border|ring|from|to)-(?:sky|amber|emerald|rose|red|teal|green|violet|purple|orange|yellow|fuchsia|indigo)-\d{2,3}\b/g;
 
 // 註解裡提到某個 class 名稱（例如解釋為什麼不用它）不該被當成用到了它。
 const stripComments = (source: string) =>

@@ -10,6 +10,8 @@ import { Input } from "./ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import type { ArchivedTarget } from "./ArchivedDrawer";
+import { ImproveStamp } from "./ImproveStamp";
+import { isImproveKind } from "./improveStyle";
 import { ListPager, PAGE_SIZE } from "./ListPager";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
@@ -167,6 +169,8 @@ function ArchivedDiscussionCard({
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{item.created}</span>
         <span data-title-group className="flex min-w-0 flex-1 items-center gap-1">
           <span className="min-w-0 truncate text-sm font-medium">{item.topic}</span>
+          {/* 改進小章：封存後標示不變（spec「已封存的改進討論維持標示」）。 */}
+          {isImproveKind(item.kind) && <ImproveStamp />}
           <CopyButton value={item.slug} label={t("discussion.copySlug")} />
         </span>
         <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">

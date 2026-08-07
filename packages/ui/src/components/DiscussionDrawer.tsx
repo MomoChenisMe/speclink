@@ -9,6 +9,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Markdown, READING_COLUMN_CLS } from "./Markdown";
 import { LABEL_CLS } from "./SectionedDoc";
 import { discussionChipStage } from "./DiscussionColumn";
+import { ImproveChip } from "./ImproveStamp";
+import { isImproveKind } from "./improveStyle";
 
 /** 討論記錄的三個標準區段。 */
 export interface DiscussionSections {
@@ -373,6 +375,9 @@ export function DiscussionDrawer({
           </div>
           <div className="text-sm leading-snug text-foreground/80">{discussion.topic}</div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {/* 改進標示（spec「討論抽屜的改進標示」）：與卡片小章同一詞條，
+                抽屜有空間故以章籤直出狀態詞。 */}
+            {isImproveKind(discussion.kind) && <ImproveChip />}
             <span className="tabular-nums">{t("common.rounds").replace("{n}", String(discussion.rounds))}</span>
             {discussion.created && <span>{discussion.created}</span>}
             {discussion.createdBy && (

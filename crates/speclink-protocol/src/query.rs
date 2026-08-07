@@ -504,6 +504,9 @@ pub struct DiscussionInfo {
     pub created: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_by: Option<String>,
+    /// 討論型別（目前唯一合法值 `improve`）；一般討論缺席時省略。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
     pub path: String,
     pub archived: bool,
 }
@@ -759,6 +762,41 @@ mod tests {
             Some("Ming <m@example.com>")
         );
         assert_eq!(show.content, "# Discussion\n");
+    }
+
+    #[test]
+    fn discussion_kind_is_optional_and_camel_case() {
+        // add-improve-flow：kind 有值時以單字 camelCase 曝露、無值時整個鍵省略，
+        // 既有 payload 形狀逐位元不變。
+        let marked: ListDiscussionsResponse = serde_json::from_str(
+            r#"{"discussions":[{"slug":"improve-core","topic":"核心結構改進","status":"open","rounds":1,"created":"2026-08-07","kind":"improve","path":"discussions/improve-core.md","archived":false}]}"#,
+        )
+        .unwrap();
+        let info = &marked.discussions[0];
+        assert_eq!(info.kind.as_deref(), Some("improve"));
+        assert_eq!(serde_json::to_value(info).unwrap()["kind"], "improve");
+
+        let plain: ListDiscussionsResponse = serde_json::from_str(
+            r#"{"discussions":[{"slug":"demo-topic","topic":"Demo topic","status":"open","rounds":0,"created":"2026-07-01","path":"discussions/demo-topic.md","archived":false}]}"#,
+        )
+        .unwrap();
+        let info = &plain.discussions[0];
+        assert_eq!(info.kind, None, "舊 payload 無 kind 仍可解析");
+        let json = serde_json::to_value(info).unwrap();
+        assert!(json.get("kind").is_none(), "absent kind is omitted: {json}");
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "slug": "demo-topic",
+                "topic": "Demo topic",
+                "status": "open",
+                "rounds": 0,
+                "path": "discussions/demo-topic.md",
+                "created": "2026-07-01",
+                "archived": false,
+            }),
+            "既有形狀不因新欄位改變"
+        );
     }
 
     #[test]

@@ -1275,10 +1275,10 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             print!("{}", payload.content);
             Ok(())
         }
-        DiscussCommands::New { topic, slug, json } => {
-            // --slug 隨請求上 wire；驗證的單一事實來源在引擎（server 端），
+        DiscussCommands::New { topic, slug, kind, json } => {
+            // --slug 與 --kind 隨請求上 wire；驗證的單一事實來源在引擎（server 端），
             // CLI 不預驗（design D1）。
-            let resp = ctx.client.new_discussion(&topic, slug.as_deref())?;
+            let resp = ctx.client.new_discussion(&topic, slug.as_deref(), kind.as_deref())?;
             if json {
                 return print_json(&resp);
             }

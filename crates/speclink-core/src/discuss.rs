@@ -22,9 +22,16 @@ pub struct DiscussionInfo {
     /// 建立者（"Name <email>"），discuss new 由 git 身分蓋章；缺席時省略。
     #[serde(rename = "createdBy", skip_serializing_if = "Option::is_none", default)]
     pub created_by: Option<String>,
+    /// 討論型別（目前唯一合法值 `improve`）；一般討論缺席時省略。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub kind: Option<String>,
     pub path: String,
     pub archived: bool,
 }
+
+/// `discuss new --kind` 的白名單——驗證與拒絕訊息的單一事實來源。
+/// CLI `--kind` 的 help 字面（clap 靜態字串）另行點名合法值，擴充時同步。
+pub const DISCUSSION_KINDS: &[&str] = &["improve"];
 
 fn frontmatter_value(text: &str, key: &str) -> Option<String> {
     let mut in_fm = false;
@@ -106,6 +113,8 @@ fn info_from_doc(doc: &DiscussionDoc) -> DiscussionInfo {
         rounds: count_rounds(&doc.text),
         created: frontmatter_value(&doc.text, "created").unwrap_or_default(),
         created_by: frontmatter_value(&doc.text, "created_by"),
+        // 空值 `kind:`（手改記錄）正規化為缺席，維持「缺席即省略」的 payload 形狀。
+        kind: frontmatter_value(&doc.text, "kind").filter(|v| !v.is_empty()),
         path: util::to_slash(&doc.path),
         archived: doc.archived,
     }
@@ -137,13 +146,28 @@ fn is_valid_slug_override(s: &str) -> bool {
 
 /// Create a new discussion document. Errors if a live one already exists.
 /// `slug_override` names the record file directly (validated ASCII kebab-case);
-/// without it the slug falls back to deriving from the topic.
+/// without it the slug falls back to deriving from the topic. `kind` marks the
+/// record's type (whitelist [`DISCUSSION_KINDS`]); absent means a plain discussion.
 pub fn new_discussion(
     store: &dyn Store,
     topic: &str,
     slug_override: Option<&str>,
     created_by: Option<&str>,
+    kind: Option<&str>,
 ) -> Result<DiscussionInfo> {
+    if let Some(k) = kind {
+        if !DISCUSSION_KINDS.contains(&k) {
+            bail!(
+                "invalid kind '{k}' — --kind accepts only: {}",
+                DISCUSSION_KINDS.join(", ")
+            );
+        }
+    }
+    // topic 逐字寫入 frontmatter，夾帶換行可注入偽造的 kind:/status: 行——
+    // 在系統邊界一次擋下整類注入。
+    if topic.contains(['\n', '\r']) {
+        bail!("invalid topic '{}' — must be a single line", topic.escape_debug());
+    }
     let slug = match slug_override {
         Some(s) => {
             if !is_valid_slug_override(s) {
@@ -170,6 +194,8 @@ pub fn new_discussion(
     let created_by_line = created_by
         .map(|id| format!("created_by: {id}\n"))
         .unwrap_or_default();
+    // kind 已過白名單，寫出的必是常數字串（無 YAML 跳脫顧慮）；缺席時整行不存在。
+    let kind_line = kind.map(|k| format!("kind: {k}\n")).unwrap_or_default();
     let content = format!(
         "---\n\
          topic: {topic}\n\
@@ -177,6 +203,7 @@ pub fn new_discussion(
          status: open\n\
          created: {created}\n\
          {created_by_line}\
+         {kind_line}\
          ---\n\
          \n\
          # Discussion: {topic}\n\
@@ -211,6 +238,7 @@ pub fn new_discussion(
         rounds: 0,
         created,
         created_by: created_by.map(str::to_string),
+        kind: kind.map(str::to_string),
         path: util::to_slash(&path),
         archived: false,
     })
@@ -1481,7 +1509,7 @@ mod tests {
             "board--search",
             "",
         ] {
-            let err = super::new_discussion(&store, "看板搜尋列", Some(bad), None).unwrap_err();
+            let err = super::new_discussion(&store, "看板搜尋列", Some(bad), None, None).unwrap_err();
             assert!(err.to_string().contains("kebab-case"), "slug {bad:?} err: {err}");
         }
         assert!(store.list_live_discussions().is_empty(), "invalid slug must not create files");
@@ -1490,7 +1518,7 @@ mod tests {
     #[test]
     fn new_discussion_accepts_valid_slug_override_and_keeps_topic() {
         let store = TestStore::default();
-        let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-2"), None).unwrap();
+        let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-2"), None, None).unwrap();
         assert_eq!(info.slug, "board-search-2");
         assert_eq!(info.topic, "看板搜尋列");
         let text = store
@@ -1504,7 +1532,7 @@ mod tests {
     fn new_discussion_slug_override_conflicts_with_existing() {
         let store = TestStore::with_live_discussion("taken", &open_doc("taken", "Taken"));
         let before = store.discussion("taken");
-        let err = super::new_discussion(&store, "另一個主題", Some("taken"), None).unwrap_err();
+        let err = super::new_discussion(&store, "另一個主題", Some("taken"), None, None).unwrap_err();
         assert!(err.to_string().contains("already exists"), "err: {err}");
         assert_eq!(store.discussion("taken"), before, "existing record must not be overwritten");
     }
@@ -1518,14 +1546,14 @@ mod tests {
             ("看板 搜尋列", "看板-搜尋列"),
         ] {
             let store = TestStore::default();
-            let info = super::new_discussion(&store, topic, None, None).unwrap();
+            let info = super::new_discussion(&store, topic, None, None, None).unwrap();
             assert_eq!(info.slug, want, "topic: {topic}");
             assert_eq!(info.topic, topic);
             assert!(store.read_live_discussion(want).is_some(), "file under derived slug");
         }
         // 純 ASCII 標點主題衍生為空 → 報錯。
         let store = TestStore::default();
-        let err = super::new_discussion(&store, "!?!", None, None).unwrap_err();
+        let err = super::new_discussion(&store, "!?!", None, None, None).unwrap_err();
         assert!(err.to_string().contains("could not derive"), "err: {err}");
     }
 
@@ -1535,7 +1563,7 @@ mod tests {
     fn new_discussion_stamps_created_by_when_identity_present() {
         let store = TestStore::default();
         let id = "Base Line <base@example.com>";
-        let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-3"), Some(id)).unwrap();
+        let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-3"), Some(id), None).unwrap();
         // frontmatter 蓋 created_by、且 DiscussionInfo（→ --json createdBy）帶同值。
         let text = store.read_live_discussion("board-search-3").expect("record stored");
         assert!(text.contains(&format!("created_by: {id}\n")), "frontmatter: {text}");
@@ -1545,7 +1573,7 @@ mod tests {
     #[test]
     fn new_discussion_omits_created_by_when_identity_absent() {
         let store = TestStore::default();
-        let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-4"), None).unwrap();
+        let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-4"), None, None).unwrap();
         // 無身分：frontmatter 不含 created_by、createdBy 缺席。
         let text = store.read_live_discussion("board-search-4").expect("record stored");
         assert!(!text.contains("created_by:"), "frontmatter should omit created_by: {text}");
@@ -1691,5 +1719,74 @@ mod tests {
         );
         super::seal(&store, "alpha", "cut-a").unwrap();
         assert!(!store.meta("cut-a").contains("restale_from"), "no restale_from introduced");
+    }
+
+    // --- kind 標記（add-improve-flow；規格「討論記錄以 --kind 標記改進討論」） ---
+
+    #[test]
+    fn new_discussion_with_kind_writes_frontmatter_and_reports_it() {
+        let store = TestStore::default();
+        let info =
+            super::new_discussion(&store, "核心結構改進", Some("improve-core"), None, Some("improve"))
+                .unwrap();
+        assert_eq!(info.kind.as_deref(), Some("improve"));
+        let text = store.discussion("improve-core");
+        assert!(text.contains("\nkind: improve\n"), "frontmatter 應含 kind: {text}");
+    }
+
+    #[test]
+    fn new_discussion_rejects_kind_outside_the_whitelist_without_writing() {
+        for bad in ["refactor", "IMPROVE", "", "improve\nstatus: forged"] {
+            let store = TestStore::default();
+            let err = super::new_discussion(&store, "主題", Some("alpha"), None, Some(bad))
+                .expect_err("非白名單 kind 必須拒絕")
+                .to_string();
+            assert!(err.contains("improve"), "訊息須說明僅接受 improve：{err}");
+            assert!(store.discussions.borrow().is_empty(), "拒絕時不得落檔（kind={bad:?}）");
+        }
+    }
+
+    #[test]
+    fn new_discussion_without_kind_leaves_frontmatter_unchanged() {
+        let store = TestStore::default();
+        let info = super::new_discussion(&store, "主題", Some("alpha"), None, None).unwrap();
+        assert!(info.kind.is_none(), "無 kind 時欄位缺席");
+        assert!(!store.discussion("alpha").contains("kind:"), "不得寫入 kind 行");
+    }
+
+    #[test]
+    fn new_discussion_rejects_multiline_topic_without_writing() {
+        // topic 逐字寫入 frontmatter——夾帶換行可注入偽造的 kind:/status: 行
+        // （frontmatter_value 取第一個命中），必須在系統邊界擋下。
+        for bad in ["x\nkind: improve\nstatus: promoted", "x\rkind: improve", "x\r\ny"] {
+            let store = TestStore::default();
+            let err = super::new_discussion(&store, bad, Some("plain-a"), None, None)
+                .expect_err("多行 topic 必須拒絕")
+                .to_string();
+            assert!(err.contains("invalid topic"), "訊息須點名 topic：{err}");
+            assert!(store.discussions.borrow().is_empty(), "拒絕時不得落檔（topic={bad:?}）");
+        }
+    }
+
+    #[test]
+    fn empty_kind_frontmatter_reads_as_plain() {
+        // 手改記錄寫出空值 `kind:` 不得讓 payload 冒出 "kind": ""——
+        // 讀取端正規化為缺席，維持「缺席即省略」的形狀不變量。
+        let doc = open_doc("gamma", "Gamma").replacen("status: open\n", "status: open\nkind:\n", 1);
+        let store = TestStore::with_live_discussion("gamma", &doc);
+        assert!(super::info(&store, "gamma").unwrap().kind.is_none(), "空值 kind 視為一般討論");
+    }
+
+    #[test]
+    fn kind_is_read_from_frontmatter_and_absent_records_are_plain() {
+        let plain = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
+        assert!(super::info(&plain, "alpha").unwrap().kind.is_none(), "舊記錄視為一般討論");
+
+        let marked = open_doc("beta", "Beta")
+            .replacen("status: open\n", "status: open\nkind: improve\n", 1);
+        let store = TestStore::with_live_discussion("beta", &marked);
+        // info 與 list 共用 info_from_doc；list 面的曝露由 CLI 整合測試把關
+        // （TestStore 不供列表）。
+        assert_eq!(super::info(&store, "beta").unwrap().kind.as_deref(), Some("improve"));
     }
 }
