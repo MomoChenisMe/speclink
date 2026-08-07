@@ -168,6 +168,9 @@ pub struct CreateDiscussionRequest {
     pub topic: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slug: Option<String>,
+    /// 討論型別（白名單由引擎裁決）；缺席時省略，舊 client 的請求體逐位元不變。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 /// `POST /discussions` response.
@@ -507,7 +510,7 @@ mod tests {
 
     #[test]
     fn create_discussion_request_slug_is_optional_and_camel_case() {
-        let bare = CreateDiscussionRequest { topic: "看板搜尋列".into(), slug: None };
+        let bare = CreateDiscussionRequest { topic: "看板搜尋列".into(), slug: None, kind: None };
         assert_eq!(
             serde_json::to_string(&bare).unwrap(),
             r#"{"topic":"看板搜尋列"}"#,
@@ -517,6 +520,7 @@ mod tests {
         let with_slug = CreateDiscussionRequest {
             topic: "看板搜尋列".into(),
             slug: Some("board-search-bar".into()),
+            kind: None,
         };
         let json = serde_json::to_value(&with_slug).unwrap();
         assert_eq!(json["slug"], "board-search-bar");

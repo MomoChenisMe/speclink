@@ -1104,9 +1104,11 @@ fn quality_skill_and_its_routing_are_generated_for_both_tools() {
         let instructions = std::fs::read_to_string(root.dir.join(instructions_file)).unwrap();
         // review-skill spec pins the whole line; here only the quality entry is
         // asserted, so the two specs do not nail down the same literal.
+        // 起手式只認 `discuss?`——入口段會隨新流程加項（add-improve-flow 的
+        // improve），釘死整個前綴會讓每次加入口都誤紅。
         let workflow_line = instructions
             .lines()
-            .find(|l| l.starts_with("discuss? → propose"))
+            .find(|l| l.starts_with("discuss?"))
             .unwrap_or_else(|| panic!("{instructions_file}: no workflow line"));
         assert!(
             workflow_line.contains("quality?"),

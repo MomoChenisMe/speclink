@@ -35,15 +35,42 @@ fn create_and_show_round_trip_a_discussion() {
     let base = common::start(state);
     let client = client(&base, &pat);
 
-    let created = client.new_discussion("Rate limiting", None).expect("create discussion");
+    let created = client.new_discussion("Rate limiting", None, None).expect("create discussion");
     assert!(!created.slug.is_empty(), "a slug is derived from the topic");
 
     let shown = client.show_discussion(&created.slug).expect("show discussion");
     assert_eq!(shown.info.slug, created.slug);
     assert_eq!(shown.info.topic, "Rate limiting");
+    assert_eq!(shown.info.kind, None, "一般討論的 kind 缺席");
 
     let listed = client.list_discussions(false).expect("list discussions");
     assert!(listed.discussions.iter().any(|d| d.slug == created.slug), "the discussion is listed");
+}
+
+#[test]
+fn improve_discussion_is_created_and_read_back_with_its_kind() {
+    // add-improve-flow：--kind 上 wire → 引擎寫入 frontmatter → 讀取路徑曝露。
+    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
+    let state = common::state_with(store);
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
+
+    let created = client
+        .new_discussion("核心結構改進", Some("improve-core"), Some("improve"))
+        .expect("create improve discussion");
+    assert_eq!(created.slug, "improve-core");
+
+    let shown = client.show_discussion("improve-core").expect("show discussion");
+    assert_eq!(shown.info.kind.as_deref(), Some("improve"));
+
+    let listed = client.list_discussions(false).expect("list discussions");
+    let info = listed
+        .discussions
+        .iter()
+        .find(|d| d.slug == "improve-core")
+        .expect("the improve discussion is listed");
+    assert_eq!(info.kind.as_deref(), Some("improve"));
 }
 
 #[test]
@@ -54,7 +81,7 @@ fn promote_returns_the_change_and_lands_both_events() {
     let base = common::start(state);
     let client = client(&base, &pat);
 
-    let created = client.new_discussion("Auth scope", None).expect("create discussion");
+    let created = client.new_discussion("Auth scope", None, None).expect("create discussion");
     let promoted = client
         .discussion_promote(&created.slug, None)
         .expect("promote discussion");
@@ -200,10 +227,26 @@ fn create_with_an_invalid_slug_refuses_without_writing() {
 }
 
 #[test]
+fn create_with_an_unknown_kind_refuses_with_the_engine_message() {
+    // 白名單的單一事實來源在引擎；server 逐字轉述拒絕訊息。
+    let f = fixture();
+    let before = revision(&f);
+    let (status, error) = protocol_error(
+        request("POST", &f, &f.editor_pat, "discussions")
+            .send_json(json!({ "topic": "主題", "slug": "alpha", "kind": "refactor" })),
+    );
+    assert_eq!(status, 400);
+    assert_eq!(error.reason, ErrorReason::InvalidArgument, "semantic kind refusal");
+    assert!(error.message.contains("improve"), "訊息點名唯一合法值：{}", error.message);
+    assert_eq!(revision(&f), before, "a refused create writes nothing");
+    assert!(outbox_names(&f).is_empty(), "a refused create publishes no event");
+}
+
+#[test]
 fn delete_zero_round_discussion_removes_it_and_advances_revision() {
     let f = fixture();
     let slug = client(&f.base, &f.editor_pat)
-        .new_discussion("Scrap idea", None)
+        .new_discussion("Scrap idea", None, None)
         .expect("create discussion")
         .slug;
     let before = revision(&f);
@@ -224,7 +267,7 @@ fn delete_zero_round_discussion_removes_it_and_advances_revision() {
 fn delete_with_rounds_requires_force_and_preserves_the_record() {
     let f = fixture();
     let c = client(&f.base, &f.editor_pat);
-    let slug = c.new_discussion("Real tradeoffs", None).expect("create discussion").slug;
+    let slug = c.new_discussion("Real tradeoffs", None, None).expect("create discussion").slug;
     c.discussion_add_round(&slug, "assumptions", "第一輪紀錄")
         .expect("add a round");
     let doc_before = live_discussion(&f, &slug).expect("record exists");
@@ -255,7 +298,7 @@ fn delete_with_rounds_requires_force_and_preserves_the_record() {
 fn reader_discussion_delete_is_forbidden_with_intact_record() {
     let f = fixture();
     let slug = client(&f.base, &f.editor_pat)
-        .new_discussion("Reader target", None)
+        .new_discussion("Reader target", None, None)
         .expect("create discussion")
         .slug;
     let before = revision(&f);
@@ -273,7 +316,7 @@ fn link_forges_the_meta_chain_and_seal_marks_promoted() {
     let f = fixture();
     seed_change(&f);
     let c = client(&f.base, &f.editor_pat);
-    let slug = c.new_discussion("Auth scope", None).expect("create discussion").slug;
+    let slug = c.new_discussion("Auth scope", None, None).expect("create discussion").slug;
 
     let response = request("POST", &f, &f.editor_pat, &format!("discussions/{slug}/link"))
         .send_json(json!({ "change": "demo" }))
@@ -307,7 +350,7 @@ fn discussion_writes_on_missing_subjects_are_404_with_engine_messages() {
     let f = fixture();
     seed_change(&f);
     let slug = client(&f.base, &f.editor_pat)
-        .new_discussion("Exists", None)
+        .new_discussion("Exists", None, None)
         .expect("create discussion")
         .slug;
 

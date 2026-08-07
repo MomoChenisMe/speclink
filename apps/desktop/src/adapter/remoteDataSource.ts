@@ -34,6 +34,8 @@ interface RemoteDiscussionInfo {
   rounds: number;
   created: string;
   createdBy?: string | null;
+  /** 討論型別（目前唯一值 "improve"）——一般討論缺席。 */
+  kind?: string | null;
 }
 
 /** server 不外露 promotedTo——以空清單補齊 UI 必填欄位（資料缺口，非偽造 affordance）。 */

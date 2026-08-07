@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：指令檔 SPECLINK 標記與技能檔 frontmatter 的 version 同源於此。
 /// 僅在內嵌資產（assets/skills）或 marker 模板的 render 內容變動時遞增——與 app／CLI
 /// 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const MARKER_VERSION: &str = "v1.18.1";
+pub const MARKER_VERSION: &str = "v1.19.2";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -103,7 +103,10 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree:
     let quality_line = format!(
         "- Both quality stations over one change → `{p}quality` (both checks first without stamping, then it stops after every round for your call on what to fix and when to stamp); only one station → call `{p}review` or `{p}verify` directly"
     );
-    let workflow = "discuss? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive";
+    // discuss 與 improve 同層（change add-improve-flow）：兩個入口都可選、都收斂到
+    // 同一份討論記錄，差別只在誰帶題目——流程線並列才看得出這個對稱。
+    let workflow =
+        "discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive";
     // 品質站段與主流程行同步（spec workspace-tools「marker 技能指引跟隨 worktree
     // 政策」）：quality 不受 worktree 閘（worktree_gated: false），worktree 專案
     // 同樣生成該技能，流程行不同步即指引缺口。
@@ -135,6 +138,7 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree:
 {store_paragraph}\n\n\
 ## Use `{p}*` skills when:\n\n\
 - Requirements are fuzzy or worth debating → `{p}discuss` (recorded as a document; promote turns it into a change)\n\
+- User asks for improvements without naming a topic → `{p}improve` (user-initiated only; scans the codebase and records the candidates as a discussion)\n\
 - User wants to plan, propose, or design a change → `{p}propose` (`--from-discussion <slug>` seeds it from a concluded discussion)\n\
 - Adopting Speclink on an existing codebase → `{p}onboard`\n\
 - Tasks are ready to implement → `{p}apply`\n\
@@ -185,6 +189,7 @@ pub fn custom_instructions_body(spec_dir: &str, tool: &CustomTool, store: StoreK
 {invocation_line}\n\n\
 ## Use the `speclink-*` skills when:\n\n\
 - Requirements are fuzzy or worth debating → `speclink-discuss` (recorded as a document; promote turns it into a change)\n\
+- User asks for improvements without naming a topic → `speclink-improve` (user-initiated only; scans the codebase and records the candidates as a discussion)\n\
 - User wants to plan, propose, or design a change → `speclink-propose` (`--from-discussion <slug>` seeds it from a concluded discussion)\n\
 - Adopting Speclink on an existing codebase → `speclink-onboard`\n\
 - Tasks are ready to implement → `speclink-apply`\n\
@@ -194,7 +199,7 @@ pub fn custom_instructions_body(spec_dir: &str, tool: &CustomTool, store: StoreK
 - Both quality stations over one change → `speclink-quality` (both checks first without stamping, then it stops after every round for your call on what to fix and when to stamp); only one station → call `speclink-review` or `speclink-verify` directly\n\
 - Commit only files related to a specific change → `speclink-commit`\n\n\
 ## Workflow\n\n\
-discuss? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive\n\n\
+discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive\n\n\
 - `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is \"don't do it\"\n\
 - A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)\n\
 - Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`\n\

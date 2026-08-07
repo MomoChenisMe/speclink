@@ -697,6 +697,9 @@ enum DiscussCommands {
         /// Override the record slug (ASCII kebab-case); the topic stays verbatim
         #[arg(long)]
         slug: Option<String>,
+        /// Mark the record's type (only: improve)
+        #[arg(long)]
+        kind: Option<String>,
         #[arg(long)]
         json: bool,
     },
