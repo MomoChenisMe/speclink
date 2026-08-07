@@ -56,7 +56,7 @@ rules:
   - 若涉及技能或注入區塊（CLAUDE.md / AGENTS.md），必須說明影響哪些技能與哪些工具（claude / codex）
   design:
   - 必須指明變更落在哪個 crate 與其邊界：領域演算法歸 speclink-core（不得含 ANSI 或寫死儲存媒介）、Local Repo I/O 歸 speclink-fs、TeamStore contract 與 driver 歸 store crates、應用層裁決歸 speclink-host；CLI / Server / Node / Desktop 只經穩定 Host 或 Protocol contract 組裝輸入與呈現
-  - 同一對外契約同時落 local 與 remote（CLI／server／desktop）路徑時，必須指明唯一實作落點與各端共用方式，不得平行實作兩套（回歸對照：crates/speclink-cli/tests/remote_verb_parity.rs）
+  - 同一對外契約同時落 local 與 remote（CLI／server／desktop）路徑時，必須指明唯一實作落點與各端共用方式，不得平行實作兩套（回歸對照：crates/speclink-cli/tests/it/remote_verb_parity.rs）
   - 以文字手術改寫 YAML（.openspec.yaml、openspec/config.yaml）的設計，純量寫出必須走 crates/speclink-core/src/util.rs 的 yaml_scalar 跳脫，不得手拼未跳脫純量
   - 動詞觸發多筆寫入或刪除時，必須敘明寫入順序與任一步失敗後的可觀察狀態（不得留下半套狀態，或明確記載接受哪種半套及其理由）
   - 桌面的邏輯與測試歸 speclink-desktop-core（不依賴 Tauri、可獨立 cargo test）；Tauri 殼的每個 command 只做單行委派
@@ -83,3 +83,4 @@ rules:
   - 每個 task 必須標註影響的檔案路徑（從 crates/ 或 apps/ 開始），檔名遵循 design 命名慣例並點名對應的 CLI 指令
   - 動到既有輸出的 task，驗證步驟須確認 golden 與 CLI 測試仍通過，或已在同批刻意更新 golden
   - 涉及 `--json` 的 task，須斷言 payload 結構（欄位存在、camelCase 命名與型別）
+  - task 的驗證步驟只跑受影響面的測試：動 crates/<x> 用 `cargo test -p <x>`（整合測試面加 `--test it`），動前端 workspace 用 `npm test -w <該 workspace>`，動 crates/speclink-node 用其 napi build 與 `npm test`，動 scripts/ 用 `node --test`；全量 `npm run test:all` 由 CI（.github/workflows/ci.yml）守門，不寫進 task 驗證步驟——change 橫跨多面時得於收尾 task 自行加跑一次

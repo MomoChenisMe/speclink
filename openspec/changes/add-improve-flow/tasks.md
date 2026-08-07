@@ -26,4 +26,4 @@
 
 ## 6. 端到端與收尾驗證
 
-- [ ] 6.1 E2E 走查:speclink discuss new 帶 --kind improve 建立改進討論 → discuss list --json 與 show --json 曝露 kind → dev harness 或 desktop 確認卡片小章與抽屜標示(tw 文案「改進討論」)→ 未帶 --kind 的既有流程輸出不變。驗證:npm run test:all 與 cargo test --workspace 全綠、speclink validate add-improve-flow 通過 <!-- speclink-task:tsk_01KYWGZ9WKXHJYX686EYAB3QEA -->
+- [ ] 6.1 E2E 走查:speclink discuss new 帶 --kind improve 建立改進討論 → discuss list --json 與 show --json 曝露 kind → dev harness 或 desktop 確認卡片小章與抽屜標示(tw 文案「改進討論」)→ 未帶 --kind 的既有流程輸出不變。驗證(只跑受影響面):cargo test -p speclink-core -p speclink-cli -p speclink-protocol -p speclink-remote -p speclink-desktop-core 全綠、cargo test -p speclink-server --test it discussion_routes:: 全綠(server 讀取面)、npm test -w packages/ui 與 npm test -w apps/desktop 全綠、crates/speclink-node 的 napi build 與 npm test 全綠(skill registry 與注入區塊渲染面)、speclink validate add-improve-flow 通過;全量 npm run test:all 由 CI 守門 <!-- speclink-task:tsk_01KYWGZ9WKXHJYX686EYAB3QEA -->
