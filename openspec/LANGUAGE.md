@@ -145,3 +145,9 @@
 - **definition**: 對 change 實作的 spec 合規檢查（verify 三維度：完整、正確、一致），與「審查」並行的可選品質站。對應 skill `/speclink-verify`。狀態詞同構：驗證中、已驗證、已驗證·其後有變動、曾驗證未通過。
 - **avoid**: verify（中文散文中）、校驗
 - **why**: 與「審查」對仗；兩站在看板上的章與狀態詞必須同構，使用者才能以同一心智模型讀懂兩種標示。2026-07-31 討論「code-review-stage」定案。
+
+### 改進討論
+
+- **definition**: kind 為 improve 的討論——由 `/speclink-improve` 掃描 codebase 主動提出 candidates 的討論記錄。與一般討論的差別只在誰帶題目：一般討論由使用者帶題，改進討論由模型提案；下游的輪、結論、轉出、封存完全相同。看板卡片與討論抽屜以小章標示。
+- **avoid**: improve 討論、架構討論
+- **why**: 名詞直說內容——「改進」點出討論在談什麼，「討論」點出它是哪種記錄；與卡片 tooltip 及抽屜標示文案一致。2026-08-01 討論「architecture-improve-flow」定案。

@@ -254,7 +254,7 @@ fn seed(project_url: &str, pat: &str) {
     {
         client.put_artifact("demo", artifact, content, 0).unwrap_or_else(|e| panic!("put {artifact}: {e:?}"));
     }
-    client.new_discussion("Rate limiting approach", None).expect("seed discussion");
+    client.new_discussion("Rate limiting approach", None, None).expect("seed discussion");
 }
 
 fn remote_project(dir: &Path, name: &str, project_url: &str) -> PathBuf {

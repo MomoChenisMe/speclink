@@ -35,10 +35,11 @@ speclink 的討論入口目前只有使用者發起——discuss 由使用者帶
 - `discussion-docs`: discuss new 新增 --kind 旗標(白名單驗證)與 kind frontmatter 欄位;未帶旗標輸出不變
 - `client-protocol`: DiscussionInfo 增選填 kind 欄位,list/show 的 --json 曝露
 - `desktop-app`: 改進討論的看板卡片小章與討論抽屜標示
+- `review-skill`: 需求敘述引用的 workflow 行字面同步為含 improve 入口的版本（Scenario 不變）
 
 ## Impact
 
-- Affected specs: improve-skill(新增)、discussion-docs、client-protocol、desktop-app
+- Affected specs: improve-skill(新增)、discussion-docs、client-protocol、desktop-app、review-skill(workflow 行字面同步)
 - Affected code:
   - New: crates/speclink-core/assets/skills/improve.md
   - Modified: crates/speclink-core/src/discuss.rs、crates/speclink-cli/src/main.rs、crates/speclink-protocol/src/query.rs、crates/speclink-core/tests/golden(乾淨樹再生)、packages/ui/src/adapter.ts、packages/ui/src/components/DiscussionColumn.tsx、packages/ui/src/components/DiscussionDrawer.tsx、packages/ui/src/i18n.tsx、apps/desktop/src/i18n/messages.ts、openspec/LANGUAGE.md、README.md、README.en.md、CLAUDE.md(注入區塊,經 speclink update 再生)、AGENTS.md(同前)

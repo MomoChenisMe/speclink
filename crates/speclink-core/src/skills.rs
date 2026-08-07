@@ -93,6 +93,7 @@ const B_COMMIT: &str = include_str!("../assets/skills/commit.md");
 const B_CONFIG: &str = include_str!("../assets/skills/config.md");
 const B_DISCUSS: &str = include_str!("../assets/skills/discuss.md");
 const B_DRIFT: &str = include_str!("../assets/skills/drift.md");
+const B_IMPROVE: &str = include_str!("../assets/skills/improve.md");
 const B_INGEST: &str = include_str!("../assets/skills/ingest.md");
 const B_ONBOARD: &str = include_str!("../assets/skills/onboard.md");
 const B_PROPOSE: &str = include_str!("../assets/skills/propose.md");
@@ -122,6 +123,10 @@ pub fn registry() -> Vec<Skill> {
         Skill { name: "config", description: "Compose the workflow config's context and rules from the codebase, landed through an approved diff", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_CONFIG },
         Skill { name: "discuss", description: "Have a focused discussion that is recorded to a discussion document", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_DISCUSS },
         Skill { name: "drift", description: "Detect drift between a Speclink change and the current codebase state", fork: true, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_DRIFT },
+        // discuss 的鏡像入口（模型帶 candidates），權限比照 discuss：記錄一律
+        // 經 CLI 寫入，技能本身不得實作程式碼，故 Edit/Write 禁用；要互動挑
+        // candidate 並逐輪 grill，不是 fork。
+        Skill { name: "improve", description: "Scan the codebase for architectural improvements and record the candidates as a discussion", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_IMPROVE },
         Skill { name: "ingest", description: "Update an existing Speclink change from external context", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_INGEST },
         Skill { name: "onboard", description: "Adopt Speclink on an existing codebase by generating initial specs from current behavior", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ONBOARD },
         Skill { name: "propose", description: "Create a change proposal with all required artifacts", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_PROPOSE },
@@ -155,6 +160,7 @@ pub fn skill_body(name: &str) -> Option<&'static str> {
         "config" => B_CONFIG,
         "discuss" => B_DISCUSS,
         "drift" => B_DRIFT,
+        "improve" => B_IMPROVE,
         "ingest" => B_INGEST,
         "propose" => B_PROPOSE,
         "quality" => B_QUALITY,

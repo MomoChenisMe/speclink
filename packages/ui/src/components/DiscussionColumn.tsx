@@ -19,6 +19,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { CardNameRow } from "./CardNameRow";
 import { HighlightText } from "./HighlightText";
+import { ImproveStamp, isImproveKind } from "./ImproveStamp";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 /**
@@ -104,6 +105,9 @@ export function DiscussionCard({
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${badge.cls}`}>
           {t(badge.labelKey)}
         </span>
+        {/* 改進小章（spec「看板討論卡片的改進標示」）：隨 kind 恆定——已轉出與
+            已封存側同樣顯示，不隨生命週期狀態變化或消失。 */}
+        {isImproveKind(d.kind) && <ImproveStamp />}
         {/* 建立者圓點（anatomy 識別列右端）：全名進 tooltip、卡面不直出——與變更卡同款。 */}
         {d.createdBy && (
           <TooltipProvider>

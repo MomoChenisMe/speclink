@@ -2605,9 +2605,12 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     match a.command {
-        DiscussCommands::New { topic, slug, json } => {
-            let outcome =
-                run_command(store, Some(&ws), core::command::Command::DiscussNew { topic, slug })?;
+        DiscussCommands::New { topic, slug, kind, json } => {
+            let outcome = run_command(
+                store,
+                Some(&ws),
+                core::command::Command::DiscussNew { topic, slug, kind },
+            )?;
             let core::command::CommandOutcome::DiscussNew(info) = outcome else {
                 unreachable!("discuss new yields a discussion info");
             };

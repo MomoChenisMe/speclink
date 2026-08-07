@@ -312,8 +312,8 @@ pub enum Command {
     },
     /// `discard <change> [--force]`
     Discard { change: String, force: bool },
-    /// `discuss new <topic> [--slug <slug>]`
-    DiscussNew { topic: String, slug: Option<String> },
+    /// `discuss new <topic> [--slug <slug>] [--kind <kind>]`
+    DiscussNew { topic: String, slug: Option<String>, kind: Option<String> },
     /// `discuss context <slug>` with stdin content
     DiscussContext { slug: String, content: String },
     /// `discuss add-round <slug> --mode <mode>` with stdin content
@@ -686,7 +686,9 @@ pub fn execute(
             crate::archive::ArchiveOptions { skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify },
         ),
         Command::Discard { change, force } => run_discard(store, ws, &change, force),
-        Command::DiscussNew { topic, slug } => run_discuss_new(store, ctx.actor.as_deref(), &topic, slug.as_deref()),
+        Command::DiscussNew { topic, slug, kind } => {
+            run_discuss_new(store, ctx.actor.as_deref(), &topic, slug.as_deref(), kind.as_deref())
+        }
         Command::DiscussContext { slug, content } => {
             crate::discuss::set_context(store, &slug, &content).map_err(classify)?;
             Ok(CommandOutcome::DiscussContext(DiscussSubjectOutcome { slug }))
@@ -1555,8 +1557,9 @@ fn run_discuss_new(
     actor: Option<&str>,
     topic: &str,
     slug: Option<&str>,
+    kind: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
-    let info = crate::discuss::new_discussion(store, topic, slug, actor).map_err(classify)?;
+    let info = crate::discuss::new_discussion(store, topic, slug, actor, kind).map_err(classify)?;
     Ok(CommandOutcome::DiscussNew(info))
 }
 
@@ -2612,6 +2615,7 @@ mod tests {
             Command::DiscussNew {
                 topic: "API auth".to_string(),
                 slug: Some("api-auth".to_string()),
+                kind: None,
             },
         );
         assert_eq!(kinds(&ev), ["discussion-created"]);
@@ -2704,6 +2708,7 @@ mod tests {
             Command::DiscussNew {
                 topic: "API auth".to_string(),
                 slug: Some("api-auth".to_string()),
+                kind: None,
             },
         );
         ok(
@@ -2914,7 +2919,7 @@ mod tests {
             Command::InProgressRemove { name: _ } => {}
             Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _, carry_review: _, carry_verify: _ } => {}
             Command::Discard { change: _, force: _ } => {}
-            Command::DiscussNew { topic: _, slug: _ } => {}
+            Command::DiscussNew { topic: _, slug: _, kind: _ } => {}
             Command::DiscussContext { slug: _, content: _ } => {}
             Command::DiscussAddRound { slug: _, mode: _, content: _ } => {}
             Command::DiscussConclude { slug: _, content: _ } => {}
@@ -3007,7 +3012,7 @@ mod tests {
         let (outcome, _) = execute(
             &store,
             &actor_ctx(Some("Ctx Actor <ctx@example.com>")),
-            Command::DiscussNew { topic: "Identity probe".to_string(), slug: None },
+            Command::DiscussNew { topic: "Identity probe".to_string(), slug: None, kind: None },
         )
         .expect("discuss new succeeds");
         match outcome {

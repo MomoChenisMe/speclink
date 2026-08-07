@@ -1447,7 +1447,10 @@ fn refine_discussion_write(e: ApiError) -> ApiError {
     let m = e.message;
     if m.contains("' not found") {
         ApiError::not_found(m)
-    } else if m.starts_with("invalid slug '") || m.starts_with("could not derive a slug") {
+    } else if m.starts_with("invalid slug '")
+        || m.starts_with("invalid kind '")
+        || m.starts_with("could not derive a slug")
+    {
         ApiError::invalid_argument(m)
     } else if m.contains("' already exists")
         || m.contains("' is archived")
@@ -1471,6 +1474,7 @@ pub async fn create_discussion(
         Command::DiscussNew {
             topic: req.topic,
             slug: req.slug,
+            kind: req.kind,
         },
     )
     .await
@@ -1719,6 +1723,7 @@ fn discussion_info(info: EngineDiscussionInfo) -> DiscussionInfo {
         rounds: info.rounds,
         created: info.created,
         created_by: info.created_by,
+        kind: info.kind,
         path: info.path,
         archived: info.archived,
     }
