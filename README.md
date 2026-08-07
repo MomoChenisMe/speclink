@@ -40,15 +40,28 @@ Store abstraction、Node SDK 與 Remote Platform 等延伸。
 ## SDD workflow / SDD 工作流
 
 ```text
-onboard? → discuss? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
-                         ↑
-                 resume after pause: drift first
+onboard? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
+                                 ↑
+                         resume after pause: drift first
 
 utilities: validate / analyze / audit / commit / evidence
 ```
 
 `discuss` 只在需求需要收斂時使用；需求明確可直接 `propose`。實作途中需求改變走 `ingest`，閒置後續作先跑
 `drift`。討論結論後的完整提案、快速轉為變更、併入既有 change 與決定不做等分流，見[完整 SDD 工作流](docs/workflow.zh-TW.md)。
+
+### improve / 改進討論
+
+`/speclink-improve` 是 `discuss` 的鏡像入口——**你帶題目走 `discuss`，要模型幫你找題目走 `improve`**。它掃描
+codebase、提出結構改進的 candidates，寫進同一套討論記錄（以 `--kind improve` 標記，看板卡片與討論抽屜顯示
+小章）；之後的輪、結論、轉為變更、封存流程與 `discuss` 完全相同。
+
+什麼時候用：想改善 codebase 但講不出具體要改哪裡的時候。掃描前先收斂範圍（你點名方向優先，否則以 git log
+熱點推斷）；開場會讀已封存討論的 Ruled out 與 in-flight 變更，避免重提已否決或正在做的事。每個 candidate 附
+Files／Problem／Solution／Wins／建議強度，由你挑一個深入盤問。
+
+兩條限制：它只由你發起，模型不會自己跑；它只產討論記錄，不寫程式碼——改進要落地一樣走 `propose` → `apply`。
+候選全數不採納時也會寫結論並封存（否決理由本身就是下次掃描的防重提依據）。
 
 ### Quality stations / 品質站
 

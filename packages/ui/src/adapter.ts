@@ -106,6 +106,8 @@ export interface DiscussionItem {
   created: string;
   /** 建立者（"Name <email>"）——discuss new 由 git 身分蓋章；缺席時省略。 */
   createdBy?: string | null;
+  /** 討論型別（目前唯一值 "improve"）——一般討論缺席；標示隨此欄恆定。 */
+  kind?: string | null;
   /** 轉出（扇出）的 change 名累積清單；未轉出為空陣列。 */
   promotedTo: string[];
 }

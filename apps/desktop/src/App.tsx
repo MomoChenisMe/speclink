@@ -785,6 +785,11 @@ function AppInner({
             ? s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.verifyStatus
             : undefined
         }
+        discussionKind={
+          s.detailArchived?.kind === "discussion"
+            ? s.discussions.archived.find((d) => d.slug === s.detailArchived?.slug)?.kind
+            : undefined
+        }
       />
 
       {/* 討論抽屜（結論/討論過程/背景/衍生變更） */}

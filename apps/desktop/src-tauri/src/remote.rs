@@ -1723,6 +1723,7 @@ mod board_order_tests {
             rounds: 1,
             created: "2026-01-02".into(),
             created_by: None,
+            kind: None,
             path: format!("openspec/discussions/{slug}.md"),
             archived: false,
         }

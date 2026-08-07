@@ -4,6 +4,7 @@ mod archive_readiness_gate;
 mod config_fail_closed;
 mod deprecation_warning;
 mod discuss_content_guard;
+mod discuss_kind;
 mod discuss_promote_snapshot;
 mod discuss_seal;
 mod discuss_slug;

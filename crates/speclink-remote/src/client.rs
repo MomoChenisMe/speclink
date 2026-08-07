@@ -500,16 +500,19 @@ impl Client {
 
     /// `POST /discussions` — `slug` is the caller's override; `None` keeps the
     /// body byte-identical to the pre-slug client's (server derives the slug).
+    /// `kind` rides the same way; the engine owns its whitelist.
     pub fn new_discussion(
         &self,
         topic: &str,
         slug: Option<&str>,
+        kind: Option<&str>,
     ) -> Result<CreateDiscussionResponse, RemoteError> {
         self.post(
             "/discussions",
             &CreateDiscussionRequest {
                 topic: topic.to_string(),
                 slug: slug.map(str::to_string),
+                kind: kind.map(str::to_string),
             },
         )
     }

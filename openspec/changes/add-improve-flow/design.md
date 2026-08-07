@@ -32,7 +32,7 @@ crates/speclink-protocol 的 DiscussionInfo 增 Option 欄位,--json 以 camelCa
 
 ### desktop 小章鏡像審查章樣式
 
-DiscussionColumn 卡片行內小章:lucide 既有 icon 家族＋Tooltip,不加文字列維持卡片極簡;DiscussionDrawer 同步顯示標示。狀態模型單純二值:kind 為 improve 顯示、否則無元素(含已轉出與已封存側,標示隨 kind 恆定,不隨生命週期變化)。i18n 詞條 tw「改進討論」(入 LANGUAGE.md 正典詞)、en 對應詞條,落 packages/ui/src/i18n.tsx 與 apps/desktop/src/i18n/messages.ts。
+DiscussionColumn 卡片行內小章:lucide 既有 icon 家族＋Tooltip,不加文字列維持卡片極簡;DiscussionDrawer 同步顯示標示。狀態模型單純二值:kind 為 improve 顯示、否則無元素(含已轉出與已封存側,標示隨 kind 恆定,不隨生命週期變化)。i18n 詞條 tw「改進討論」(入 LANGUAGE.md 正典詞)、en 對應詞條,落 packages/ui/src/i18n.tsx(內建字典;apps/desktop 的 messages.ts 為 App 層字典、兩字典合併,詞條不重複落點)。
 替代方案:卡片加文字列(違反極簡慣例,與審查章樣式不一致,不取)。
 
 ### 文件同步經 speclink update 落地,README 手改
