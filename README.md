@@ -40,7 +40,7 @@ Store abstraction、Node SDK 與 Remote Platform 等延伸。
 ## SDD workflow / SDD 工作流
 
 ```text
-onboard? → discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive
+onboard? → discuss? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
                          ↑
                  resume after pause: drift first
 
@@ -61,9 +61,11 @@ utilities: validate / analyze / audit / commit / evidence
 | artifacts 的角色 | 判準脈絡，不產合規裁決 | 檢查的中心 |
 | 執行前提 | 全任務完成 | 檢查隨時可跑（中途執行＝進度盤點）；收尾落工單要求全任務完成 |
 | 產出 | `review.md` 工單多輪，零 CRITICAL 後蓋章 | `verify.md` 工單多輪，零必修後蓋章 |
+| 兩站都跑 | 同走 `/speclink-quality`（時序見下段），蓋章順序在前 | 同左，蓋章順序在後 |
 
-兩站都跑時的蓋章時序慣例：兩站檢查都先以「先不蓋章」離場 → findings 統一修正 → 各自複驗 → 兩章接連蓋。
+兩站都跑時走 `/speclink-quality`：兩站檢查都先不蓋章 → findings 統一修正 → 各自複驗 → 兩章接連蓋。
 站章凍結的是範圍內檔案的內容指紋，先蓋的章會被另一站的修正打成「其後有變動」——先修完再一起蓋就沒這個問題。
+只跑一站不經這個技能，直接呼叫 `/speclink-review` 或 `/speclink-verify`，維持該站修完即蓋的預設。
 
 `/speclink-review` 適合改動大、跨子系統、或會被長期維護的程式碼：findings 分級 CRITICAL／WARNING／SUGGESTION
 記入工單，修正後重審至空輪蓋章。蓋章後範圍內檔案再被修改，卡片標示降級為「已審查·其後有變動」；封存時偵測到

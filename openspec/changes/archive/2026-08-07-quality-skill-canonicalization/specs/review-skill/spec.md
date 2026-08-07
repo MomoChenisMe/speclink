@@ -4,7 +4,7 @@
 
 <!-- BEFORE: 零 findings 的 discovery 一律當場自動蓋章（乾淨首輪自動蓋章），無 quality 時序區分 -->
 
-Discovery 呈現與 triage 後，技能 SHALL 沿既有三選項讓使用者選擇：修正後重審／接受現狀蓋章／先不蓋章。修正 SHALL 一律由主線依專案 TDD 慣例執行，sub-agent 不得修改檔案；修正後 SHALL 先通過「修復迴圈的驗證門」，再開始 validation。於 quality 時序中（由 /speclink-quality 依序呼叫時），零 findings 的 discovery SHALL NOT 當場蓋章，SHALL 改走既有「先不蓋章」離場，蓋章延至 quality 的複驗階段；單站直接呼叫時行為不變。
+Discovery 呈現與 triage 後，技能 SHALL 沿既有三選項讓使用者選擇：修正後重審／接受現狀蓋章／先不蓋章。修正 SHALL 一律由主線依專案 TDD 慣例執行，sub-agent 不得修改檔案；修正後 SHALL 先通過「修復迴圈的驗證門」，再開始 validation。於 quality 時序中（由 /speclink-quality 依序呼叫時），零 findings 的 discovery 與必修集合淨空的 validation 輪皆 SHALL NOT 當場蓋章，SHALL 改走既有「先不蓋章」離場，蓋章延至 quality 的收尾補蓋；惟編排方明示本次呼叫為收尾補蓋時，此禁蓋例外 SHALL NOT 適用——該呼叫中淨空的輪即蓋。quality 收尾補蓋 SHALL 區分乾淨末輪的來源：外部守門失敗留下者沿既有路徑直接重試 stamp；quality 時序刻意留下者 SHALL 僅於收尾補蓋呼叫中蓋章——該呼叫先以 review scope 確認凍結點後內容未再移動，無移動即重試 stamp，有移動則於同一呼叫內先跑 validation 輪至必修淨空再蓋，SHALL NOT 對未驗證的移動直接補蓋；同一乾淨末輪若由非收尾補蓋的呼叫進入，無論凍結點後有無移動皆 SHALL NOT 蓋章。單站直接呼叫時行為不變。
 
 每輪 validation 後，技能 SHALL 以未接受的必修集合 Bn 與上輪 Bn-1 比較：
 
@@ -24,6 +24,21 @@ blocking set 的縮小只決定能否繼續自動修正，SHALL NOT 被描述為
 
 - **WHEN** 於 quality 時序中 discovery 的兩軸皆零 findings
 - **THEN** 技能記錄零 findings 的 discovery round，以「先不蓋章」離場，工單與 host-local snapshot 保留，不執行 review stamp
+
+#### Scenario: quality 時序中複驗淨空仍先不蓋章
+
+- **WHEN** 於 quality 時序中（本次呼叫非收尾補蓋）validation 輪後必修集合為空且無 accepted findings
+- **THEN** 技能記錄該輪後以「先不蓋章」離場，不執行 review stamp，蓋章延至 quality 的收尾補蓋
+
+#### Scenario: 非收尾呼叫進入乾淨末輪不蓋章
+
+- **WHEN** quality 時序中非收尾補蓋的呼叫進入已存在的乾淨未蓋章末輪，且 review scope 顯示凍結點後無內容移動
+- **THEN** 技能回報無新內容可判並結束，不執行 review stamp、不動工單
+
+#### Scenario: quality 收尾補蓋前內容再移動則先驗後蓋
+
+- **WHEN** quality 收尾補蓋時 review scope 顯示乾淨末輪凍結點後仍有內容移動
+- **THEN** 技能於同一呼叫內先執行 validation 輪，必修淨空後即執行 review stamp（收尾補蓋呼叫不受禁蓋例外攔截），不對未驗證的移動直接補蓋
 
 #### Scenario: 有進展時允許再驗收
 

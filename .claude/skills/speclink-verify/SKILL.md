@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -49,9 +49,11 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    The payload also carries `locale` — the resolved language for AI output (e.g., "Traditional Chinese (繁體中文)"). Remember it: the verification report is written in this language (see Output Format).
 
-4. **Branch on task progress: mid-flight check-in vs finished-work verification**
+4. **Branch on the call: mid-flight check-in, closing stamp re-entry, or finished-work verification**
 
    **Not every task is done → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do NOT run `speclink verify scope`, do NOT run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
+
+   **The `/speclink-quality` timeline's closing stamp call, and the ticket's last round is clean** (`speclink verify show "<name>" --json` — `lastRound.findings` empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that clean round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent claude` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
 
    **Every task is done → finished-work verification.** Continue to step 5.
 
@@ -216,6 +218,8 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
       ```
 
       If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop — the next session retries the stamp through step 5.
+
+      **Exception — inside the `/speclink-quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `/speclink-quality`, do NOT stamp on a cleared round — neither a zero-findings DISCOVERY round nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 12); take the **stop without stamping** ending (the same exit as option 3 below: the verification ticket and its snapshot stay). The stamp lands at that skill's **closing stamp call**, which enters through step 4's closing-stamp branch — and on that call this exception is OFF: an untouched clean round stamps directly without a new round, a moved one clears its validation pass and stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
 
     - **Bn is empty but accepted findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept --agent claude` — and report **passed with reservations**. Never run `--accept` unprompted.
 

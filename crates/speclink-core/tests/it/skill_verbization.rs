@@ -6,6 +6,9 @@
 //! word followed (same line) by a spec-document path — `specs/`, `changes/`,
 //! `discussions/` under the spec dir, or the LANGUAGE document. Writing
 //! paths (capture targets, git-status filters, archive layouts) stay legal.
+//!
+//! This file also pins per-skill registry contracts (flags a generated skill
+//! must carry) when a spec requires them — see the quality case below.
 
 use regex::Regex;
 use speclink_core::init;
@@ -32,6 +35,28 @@ impl Drop for TempRoot {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.dir);
     }
+}
+
+/// Spec「品質關卡技能的生成與正典化」: quality is a registered canon skill, not a
+/// hand-written local one. It orchestrates on the main thread (no fork), the unified
+/// fix step edits files (Edit/Write stay allowed), and codex generates it too.
+#[test]
+fn quality_is_a_registered_canon_skill() {
+    let registry = skills::registry();
+    let quality = registry
+        .iter()
+        .find(|s| s.name == "quality")
+        .expect("the registry must carry the quality skill");
+    assert!(!quality.fork, "quality orchestrates on the main thread");
+    assert!(
+        !quality.disallow_edit,
+        "the unified fix step edits files on the main thread"
+    );
+    assert!(quality.for_codex, "quality is generated for codex too");
+    assert!(
+        !quality.body.trim().is_empty(),
+        "the quality skill body must not be empty"
+    );
 }
 
 #[test]
