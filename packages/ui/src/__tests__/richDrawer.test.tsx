@@ -916,6 +916,86 @@ describe("標頭四層結構", () => {
     expect(statusRow.querySelector("[data-review-row]")).toBeTruthy();
   });
 
+  // spec「變更詳情抽屜標頭的四層結構」Scenario「狀態列章籤與提示」：兩站改章籤，
+  // 蓋章日期與含 email 完整識別收進提示（與出身列同構），狀態列恆定單行不被裁切。
+  it("狀態列兩站章籤：可視僅狀態詞，日期與完整識別在提示內", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const stamped: ChangeItem = {
+      ...change,
+      reviewStatus: "reviewed",
+      reviewedAt: "2026-08-04",
+      reviewedBy: "MomoChen <momochenisme@gmail.com>",
+      verifyStatus: "verified",
+      verifiedAt: "2026-08-06",
+      verifiedBy: "MomoChen <momochenisme@gmail.com>",
+    };
+    const { baseElement } = render(
+      <RichDetailDrawer {...(makeProps({ change: stamped }) as never)} />,
+    );
+    await screen.findByText("MomoChen");
+    const statusRow = baseElement.querySelector("[data-status-row]") as HTMLElement;
+
+    // 兩枚章籤（圖示＋狀態詞），審查在前、驗證在後。
+    const text = statusRow.textContent ?? "";
+    expect(text).toContain("已審查");
+    expect(text).toContain("已驗證");
+    expect(text.indexOf("已審查")).toBeLessThan(text.indexOf("已驗證"));
+    // 可視文字不直出 email 與蓋章日期。
+    expect(text).not.toContain("momochenisme@gmail.com");
+    expect(text).not.toContain("2026-08-04");
+    expect(text).not.toContain("2026-08-06");
+    // 恆定單行：可壓縮、不折行、溢出裁切兜底（不撐寬抽屜）。
+    expect(statusRow.className).toContain("min-w-0");
+    expect(statusRow.className).toContain("whitespace-nowrap");
+    expect(statusRow.className).toContain("overflow-hidden");
+
+    await user.hover(within(statusRow).getByText("已審查"));
+    await waitFor(() => {
+      const tip = document.querySelector("[data-radix-popper-content-wrapper]");
+      expect(tip?.textContent).toContain("2026-08-04");
+      expect(tip?.textContent).toContain("momochenisme@gmail.com");
+    });
+  });
+
+  it("驗證章籤的提示帶該站自己的蓋章日期與完整識別", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const stamped: ChangeItem = {
+      ...change,
+      reviewStatus: "reviewed",
+      reviewedAt: "2026-08-04",
+      reviewedBy: "MomoChen <momochenisme@gmail.com>",
+      verifyStatus: "verified",
+      verifiedAt: "2026-08-06",
+      verifiedBy: "Reviewer Two <two@example.com>",
+    };
+    const { baseElement } = render(
+      <RichDetailDrawer {...(makeProps({ change: stamped }) as never)} />,
+    );
+    await screen.findByText("MomoChen");
+    const statusRow = baseElement.querySelector("[data-status-row]") as HTMLElement;
+    await user.hover(within(statusRow).getByText("已驗證"));
+    await waitFor(() => {
+      const tip = document.querySelector("[data-radix-popper-content-wrapper]");
+      expect(tip?.textContent).toContain("2026-08-06");
+      expect(tip?.textContent).toContain("two@example.com");
+    });
+  });
+
+  it("進行中兩站（inReview／inVerify）僅狀態詞、無日期提示成分", async () => {
+    const running: ChangeItem = {
+      ...change,
+      reviewStatus: "inReview",
+      verifyStatus: "inVerify",
+    };
+    const { baseElement } = render(
+      <RichDetailDrawer {...(makeProps({ change: running }) as never)} />,
+    );
+    await screen.findByText("MomoChen");
+    const statusRow = baseElement.querySelector("[data-status-row]") as HTMLElement;
+    expect(statusRow.textContent).toContain("審查中");
+    expect(statusRow.textContent).toContain("驗證中");
+  });
+
   it("建立者 email 不直出，僅顯名字；提示保完整識別", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const props = makeProps({

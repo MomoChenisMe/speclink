@@ -82,7 +82,9 @@ describe("ChangeCard 審查章（四態）", () => {
 });
 
 describe("RichDetailDrawer 審查資訊列", () => {
-  it("reviewed 顯示狀態詞、蓋章時間與審查者", () => {
+  it("reviewed 章籤可視僅狀態詞——蓋章時間與審查者收進提示", () => {
+    // 狀態列改章籤（spec「變更詳情抽屜標頭的四層結構」）：日期與含 email 的完整
+    // 識別不再直出，收進主題化提示（提示內容由 richDrawer.test.tsx 驗）。
     render(
       <RichDetailDrawer
         {...(drawerProps({
@@ -96,8 +98,8 @@ describe("RichDetailDrawer 審查資訊列", () => {
     const row = document.querySelector("[data-review-row]") as HTMLElement;
     expect(row).toBeTruthy();
     expect(within(row).getByText(/已審查/)).toBeTruthy();
-    expect(row.textContent).toContain("2026-08-01");
-    expect(row.textContent).toContain("Rev <r@example.com>");
+    expect(row.textContent).not.toContain("2026-08-01");
+    expect(row.textContent).not.toContain("r@example.com");
   });
 
   it("inReview 僅顯示狀態詞，無時間與審查者", () => {

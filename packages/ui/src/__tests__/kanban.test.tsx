@@ -533,8 +533,8 @@ describe("封存落點浮層（design D8 + archive-readiness-gating D3）", () =
 });
 
 // spec「看板卡片統一解剖學」的變更卡（board-card-anatomy design D1/D2）：
-// 等寬標題單行截斷淡出、複製鈕行內尾隨（釘住 desktop-ux-polish 落地的位置不回退）、
-// whyExcerpt 描述列、變更卡無狀態 chip（所在欄即階段）。
+// 等寬標題單行截斷、省略號收尾、複製鈕行內尾隨（釘住 desktop-ux-polish 落地的位置
+// 不回退）、whyExcerpt 描述列、變更卡無狀態 chip（所在欄即階段）。
 describe("看板卡片統一解剖學（變更卡）", () => {
   const anatomyChanges: ChangeItem[] = [
     {
@@ -552,8 +552,9 @@ describe("看板卡片統一解剖學（變更卡）", () => {
     render(<KanbanBoard changes={anatomyChanges} />);
     const title = screen.getByText("with-desc");
     expect(title.className).toContain("font-mono");
-    // 名稱恆單行：過長就地截斷（尾端漸層淡出），不折到次行把複製鈕帶下去。
-    expect(title.className).toContain("whitespace-nowrap");
+    // 名稱恆單行：過長就地截斷、以省略號收尾（truncate 一併帶入 nowrap），
+    // 不折到次行把複製鈕帶下去。
+    expect(title.className).toContain("truncate");
     // 行內尾隨：複製鈕與標題同在名稱列容器內，不是被推到卡片右緣的兄弟元素。
     const nameRow = title.parentElement as HTMLElement;
     expect(within(nameRow).getByLabelText("複製名稱")).toBeTruthy();
