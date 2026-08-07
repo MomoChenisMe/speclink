@@ -88,6 +88,90 @@ test('ci.yml 三平台跑三個 React workspace 測試、server-web build 先於
   );
 });
 
+/// 把 ci.yml 依頂層 job 切段（`jobs:` 底下的兩空格 key）。前置產物的順序必須逐
+/// job 檢查——用全檔 indexOf 會讓 A job 的建置步驟冒充 B job 的前置，斷言看起來
+/// 通過、CI 上該 job 仍因缺產物而編不動。
+function ciJobs() {
+  const ci = read('.github/workflows/ci.yml');
+  const body = ci.slice(requireIndex(ci, '\njobs:', 'ci.yml'));
+  const jobs = new Map();
+  let current = null;
+  for (const line of body.split('\n')) {
+    const header = line.match(/^ {2}([\w-]+):\s*$/);
+    if (header) {
+      current = header[1];
+      jobs.set(current, []);
+    } else if (current) {
+      jobs.get(current).push(line);
+    }
+  }
+  return [...jobs].map(([name, lines]) => [name, lines.join('\n')]);
+}
+
+/// job 內每個會編到該 crate 的 cargo 指令之前，都必須先備好指定產物。
+function assertStagedBeforeCargo(job, body, prerequisite, cargoPatterns, artifact) {
+  for (const pattern of cargoPatterns) {
+    const hit = body.match(pattern);
+    if (!hit) continue;
+    const stagedAt = body.indexOf(prerequisite);
+    assert.notEqual(
+      stagedAt,
+      -1,
+      `ci.yml job ${job}：「${hit[0]}」會編到需要${artifact}的 crate，但 job 內沒有 ${prerequisite}`,
+    );
+    assert.ok(
+      stagedAt < body.indexOf(hit[0]),
+      `ci.yml job ${job}：${prerequisite} 必須排在「${hit[0]}」之前`,
+    );
+  }
+}
+
+// speclink-desktop 的 build script 於編譯期檢查 tauri.conf.json 的 externalBin
+// 是否存在，而 binaries/ 是 gitignored——CI 沒佈就不是測試紅字，是 build script
+// 直接讓整個 job 掛掉。
+const COMPILES_DESKTOP = [/cargo test --workspace/, /cargo test\b[^\n]*-p speclink-desktop/];
+
+// speclink-server 的 lib 以 RustEmbed 內嵌 apps/server-web/dist（同樣 gitignored），
+// 缺資料夾則 derive 於編譯期失敗。desktop 的 dev-dependencies 帶 speclink-server，
+// 所以編 desktop 的 job 也吃這份前置。
+const COMPILES_SERVER = [...COMPILES_DESKTOP, /cargo test\b[^\n]*-p speclink-server/];
+
+test('ci.yml：凡編譯 speclink-desktop 的 job，都在 cargo 之前佈好 CLI sidecar', () => {
+  for (const [job, body] of ciJobs()) {
+    assertStagedBeforeCargo(
+      job,
+      body,
+      'node scripts/desktop-sidecar.mjs',
+      COMPILES_DESKTOP,
+      ' CLI sidecar',
+    );
+  }
+});
+
+test('ci.yml：凡編譯 speclink-server 的 job，都在 cargo 之前建好 server-web dist', () => {
+  for (const [job, body] of ciJobs()) {
+    assertStagedBeforeCargo(
+      job,
+      body,
+      'npm run build -w apps/server-web',
+      COMPILES_SERVER,
+      ' server-web dist',
+    );
+  }
+});
+
+test('ci.yml：每個跑 vite build 的 job 都先以 lockfile 安裝依賴', () => {
+  for (const [job, body] of ciJobs()) {
+    for (const build of ['npm run build -w apps/server-web', 'npm run build -w apps/desktop']) {
+      const buildAt = body.indexOf(build);
+      if (buildAt === -1) continue;
+      const installAt = body.indexOf('npm ci');
+      assert.notEqual(installAt, -1, `ci.yml job ${job}：有 ${build} 卻沒有 npm ci`);
+      assert.ok(installAt < buildAt, `ci.yml job ${job}：npm ci 必須排在 ${build} 之前`);
+    }
+  }
+});
+
 // --- Release（server-release） ---
 
 test('release.yml 每個 server artifact 先建 apps/server-web 再 cargo build，並有無-dist 的 /login＋JSON-404 smoke', () => {
