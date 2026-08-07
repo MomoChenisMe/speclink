@@ -101,31 +101,25 @@ export function parseDevMode(argv) {
   return 'full';
 }
 
-/// 長時間程序啟動前的同步前置條件，順序即契約：
-/// 1. 目前 checkout 的 CLI——測試者用 npm run cli 驗證的就是這顆 binary。
-///    server 單獨模式不含 CLI 建置（規格「單獨啟動 server」）。
-/// 2. Desktop 前端資產：tauri.conf.json 無 devUrl，tauri dev 直接載入
-///    apps/desktop/dist。dist 是 gitignored 的快照，不能只在缺席時建一次，
-///    否則後續 source 變更會讓 npm run dev 靜默載入舊 UI。
-function devPrerequisites(mode, isWindows) {
-  const cliBuild = {
-    message: 'speclink dev: 建置當前 checkout 的 speclink-cli…',
-    failure: 'speclink dev: 無法建置當前 checkout 的 speclink-cli',
-    cmd: 'cargo',
-    args: ['build', '-p', 'speclink-cli'],
-    // cargo 是真 binary；Windows 的 npm 是 npm.cmd，必須走 shell。
-    shell: false,
-  };
-  const frontendBuild = {
-    message: 'speclink dev: 建置當前前端資產…',
-    failure: 'speclink dev: 無法建置 Desktop 前端資產',
-    cmd: 'npm',
-    args: ['run', 'build', '-w', 'apps/desktop'],
-    shell: isWindows,
-  };
-  if (mode === 'server') return [];
-  if (mode === 'desktop') return [frontendBuild];
-  return [cliBuild, frontendBuild];
+/// 長時間程序啟動前的同步前置條件：只有目前 checkout 的 CLI——測試者用
+/// npm run cli 驗證的就是這顆 binary。server 與 desktop 單獨模式皆不含前置
+/// 條件（規格「單獨啟動 server」「單獨啟動 desktop」）。
+///
+/// 此處不建 Desktop 前端：前端由 tauri dev 依 tauri.conf.json 的
+/// beforeDevCommand 起 vite dev server 供應（devUrl）。在此預先建置只是白費一趟
+/// ——dev 視窗載入的是 dev server，不是 apps/desktop/dist。
+function devPrerequisites(mode) {
+  if (mode !== 'full') return [];
+  return [
+    {
+      message: 'speclink dev: 建置當前 checkout 的 speclink-cli…',
+      failure: 'speclink dev: 無法建置當前 checkout 的 speclink-cli',
+      cmd: 'cargo',
+      args: ['build', '-p', 'speclink-cli'],
+      // cargo 是真 binary，不需要 shell。
+      shell: false,
+    },
+  ];
 }
 
 /// prerequisite → 長時間 child 的啟動編排。任一 prerequisite 以非零狀態結束或
@@ -134,13 +128,12 @@ function devPrerequisites(mode, isWindows) {
 export function startDevEnvironment({
   addr,
   mode = 'full',
-  isWindows = IS_WINDOWS,
   runSync = spawnSync,
   spawnChild = spawnDevChild,
   log = console.log,
   logError = console.error,
 }) {
-  for (const step of devPrerequisites(mode, isWindows)) {
+  for (const step of devPrerequisites(mode)) {
     log(step.message);
     const result = runSync(step.cmd, step.args, {
       cwd: ROOT,

@@ -1,0 +1,80 @@
+{
+  "version": 2,
+  "change": "desktop-dev-frontend-hmr",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 [Red] 於 scripts/dev.test.mjs 新增失敗測試：讀取 apps/desktop/src-tauri/tauri.conf.json 與 apps/desktop/vite.config.ts，斷言 build.devUrl 的埠號與 vite server.port 為同一個值，且 strictPort 為 true。此測試守的是「兩份設定各改一邊」這個真實回歸風險——埠號不一致時 dev 視窗會載入失敗而非明確報錯。驗證：node --test scripts/dev.test.mjs 於設定尚未加入時失敗，且失敗訊息指出缺少 devUrl。",
+      "files": [
+        "scripts/dev.test.mjs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 [Green] 落實「決策二：固定 Vite dev server 連接埠並開啟嚴格模式」：於 apps/desktop/vite.config.ts 的匯出設定新增 server 區塊（port 為 1420、strictPort 為 true），既有 base、build.outDir、build.emptyOutDir 與多頁入口設定不變。行為契約：連接埠被占用時 Vite 以非零狀態結束並輸出錯誤，不靜默改用其他埠。驗證：node --test scripts/dev.test.mjs 中 1.1 的埠號一致性斷言轉為通過。",
+      "files": [
+        "apps/desktop/vite.config.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 [Red] 更新 scripts/dev.test.mjs 中現有兩處斷言前置步驟包含 desktop 前端建置指令的測試，改為斷言「一鍵啟動 remote 開發環境」的完整模式前置步驟僅含 speclink-cli 建置、「單獨啟動 desktop」模式的前置步驟為空陣列。同時確認 CLI build 失敗即拒絕啟動、Ctrl+C 同殺兩個 child 的既有測試維持不變。驗證：node --test scripts/dev.test.mjs 於 dev.mjs 尚未修改時，新斷言失敗而既有守門測試仍通過。",
+      "files": [
+        "apps/desktop/src-tauri/tauri.conf.json"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 [Green] 落實「決策三：從 dev.mjs 前置步驟移除 desktop 前端建置」：修改 scripts/dev.mjs 的 devPrerequisites，使其在完整模式僅回傳 CLI 建置步驟、單獨 desktop 與單獨 server 模式皆回傳空陣列。行為契約：npm run dev 啟動至視窗開啟之間的終端輸出不再含編排 script 發起的前端建置，前端改由 tauri dev 啟動的 dev server 供應；CLI 建置失敗即拒絕啟動的守門不得弱化。驗證：node --test scripts/dev.test.mjs 全數通過。",
+      "files": [
+        "scripts/dev.mjs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZEADWWJ2TDFPN8NGBV7J162",
+      "taskDesc": "1.1 [Red] 於 scripts/dev.test.mjs 新增失敗測試：讀取 apps/desktop/src-tauri/tauri.conf.json 與 apps/desktop/vite.config.ts，斷言 build.devUrl 的埠號與 vite server.port 為同一個值，且 strictPort 為 true。此測試守的是「兩份設定各改一邊」這個真實回歸風險——埠號不一致時 dev 視窗會載入失敗而非明確報錯。驗證：node --test scripts/dev.test.mjs 於設定尚未加入時失敗，且失敗訊息指出缺少 devUrl。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c1b93c9ef0a8cb2dfe6cebab6913ba792639a337",
+      "touchedFiles": [
+        "scripts/dev.test.mjs"
+      ],
+      "recordedAt": "2026-08-07T14:45:42Z"
+    },
+    {
+      "taskId": "tsk_01KZEADWWJH3WPSAKCQPBBK8RE",
+      "taskDesc": "1.2 [Green] 落實「決策二：固定 Vite dev server 連接埠並開啟嚴格模式」：於 apps/desktop/vite.config.ts 的匯出設定新增 server 區塊（port 為 1420、strictPort 為 true），既有 base、build.outDir、build.emptyOutDir 與多頁入口設定不變。行為契約：連接埠被占用時 Vite 以非零狀態結束並輸出錯誤，不靜默改用其他埠。驗證：node --test scripts/dev.test.mjs 中 1.1 的埠號一致性斷言轉為通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c1b93c9ef0a8cb2dfe6cebab6913ba792639a337",
+      "touchedFiles": [
+        "apps/desktop/vite.config.ts"
+      ],
+      "recordedAt": "2026-08-07T14:46:24Z"
+    },
+    {
+      "taskId": "tsk_01KZEADWWJJV0YXBMNSXKSZZ6B",
+      "taskDesc": "2.1 [Red] 更新 scripts/dev.test.mjs 中現有兩處斷言前置步驟包含 desktop 前端建置指令的測試，改為斷言「一鍵啟動 remote 開發環境」的完整模式前置步驟僅含 speclink-cli 建置、「單獨啟動 desktop」模式的前置步驟為空陣列。同時確認 CLI build 失敗即拒絕啟動、Ctrl+C 同殺兩個 child 的既有測試維持不變。驗證：node --test scripts/dev.test.mjs 於 dev.mjs 尚未修改時，新斷言失敗而既有守門測試仍通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c1b93c9ef0a8cb2dfe6cebab6913ba792639a337",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/tauri.conf.json"
+      ],
+      "recordedAt": "2026-08-07T14:48:44Z"
+    },
+    {
+      "taskId": "tsk_01KZEADWWJX8EV8BAJ6S8FJD7C",
+      "taskDesc": "2.2 [Green] 落實「決策三：從 dev.mjs 前置步驟移除 desktop 前端建置」：修改 scripts/dev.mjs 的 devPrerequisites，使其在完整模式僅回傳 CLI 建置步驟、單獨 desktop 與單獨 server 模式皆回傳空陣列。行為契約：npm run dev 啟動至視窗開啟之間的終端輸出不再含編排 script 發起的前端建置，前端改由 tauri dev 啟動的 dev server 供應；CLI 建置失敗即拒絕啟動的守門不得弱化。驗證：node --test scripts/dev.test.mjs 全數通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c1b93c9ef0a8cb2dfe6cebab6913ba792639a337",
+      "touchedFiles": [
+        "scripts/dev.mjs"
+      ],
+      "recordedAt": "2026-08-07T14:49:41Z"
+    }
+  ]
+}
