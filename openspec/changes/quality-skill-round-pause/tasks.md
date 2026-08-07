@@ -1,0 +1,13 @@
+## 1. 紅測與正典改寫
+
+- [ ] 1.1 撰寫 render_golden 暫停語意紅測（規格「兩站時序的編排行為」；design「D3 skills.rs 條目描述與 golden 斷言同步釘住暫停語意」）：斷言 claude 與 codex snapshot 的 speclink-quality 技能檔含每輪暫停子句（兩站檢查完停下待使用者裁示）與「不修就停」選項字樣，並斷言技能清單條目 description 為每輪暫停語意；既有 workflow 行、兩站觸發與單站分岔斷言維持不動。檔案 crates/speclink-core/tests/it/render_golden.rs。驗證：cargo test -p speclink-core --test it 中新增斷言紅燈 <!-- speclink-task:tsk_01KZD189PD4BA2W3V3QSK0YTFP -->
+- [ ] 1.2 quality asset 與條目描述改寫為每輪暫停制（規格「兩站時序的編排行為」；design「D1 暫停制只落在 quality 正典 asset，不新增引擎狀態」「D2 暫停協定——每輪一停、選項固定、蓋章走使用者裁示」）：檢查輪（兩站皆先不蓋章）完成後彙整兩站 findings 以 AskUserQuestion 停下詢問（全修／挑選部分修正／不修就停；無此工具則純文字詢問並等待）、每輪複驗完成後同樣停、乾淨輪停下報告兩站皆綠由使用者決定收尾補蓋、裁示後以明示的收尾補蓋呼叫接連補蓋兩章且中間零編輯、封存以建議形式提出；必修未淨空時不提供補蓋選項；「不修就停」走兩站既有「先不蓋章」出口、工單與凍結快照留存；review／verify 兩站 asset 零改動。skills.rs 的 quality 條目 description 同步改寫為每輪暫停語意。檔案 crates/speclink-core/assets/skills/quality.md、crates/speclink-core/src/skills.rs。驗證：1.1 斷言於 2.1 snapshot 再生後轉綠 <!-- speclink-task:tsk_01KZD189PDAQQ0TXGKHB82P35X -->
+
+## 2. 版號三連動與 golden 落地
+
+- [ ] 2.1 MARKER_VERSION v1.17.4 → v1.18.0 並乾淨樹再生 golden（design「D4 MARKER_VERSION v1.18.0 與乾淨樹三連動」）：順序固定不可換——init.rs 版號提升 → UPDATE_GOLDEN 旗標再生四份 snapshot → UPDATE_ASSETS_LOCK 旗標再生 assets.lock（lock 守門：指紋變而版號未動拒寫）；再生前 git status 確認除本變更的 assets 編輯外樹乾淨，再生後審視 diff 僅含 quality 相關區段與版號欄位，並不帶旗標重跑確認。檔案 crates/speclink-core/src/init.rs、crates/speclink-core/tests/golden/assets.lock、crates/speclink-core/tests/golden/claude.snapshot.md、crates/speclink-core/tests/golden/codex.snapshot.md、crates/speclink-core/tests/golden/neutral-cli.snapshot.md、crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md。驗證：cargo test --workspace 全綠 <!-- speclink-task:tsk_01KZD189PDX9NVBDVA2JSFY7A6 -->
+- [ ] 2.2 speclink update 落地本 repo 生成物（design「D4 MARKER_VERSION v1.18.0 與乾淨樹三連動」）：本 repo 執行 speclink update，speclink-quality 兩實例內文更新為每輪暫停時序，.claude/skills/ 與 .agents/skills/ 全部技能檔 frontmatter 版號與 CLAUDE.md／AGENTS.md 的 SPECLINK 標記版號升至 v1.18.0，與 asset 編輯同批提交。檔案 .claude/skills/speclink-quality/SKILL.md、.agents/skills/speclink-quality/SKILL.md、CLAUDE.md、AGENTS.md（其餘技能檔僅版號欄位變動）。驗證：人工核對兩實例內文含每輪暫停時序、frontmatter version 為 v1.18.0、內容與 asset 一致（僅工具殼前綴差異） <!-- speclink-task:tsk_01KZD189PDH17GP0125HV2RW4K -->
+
+## 3. README 對齊
+
+- [ ] 3.1 README 分工表時序句改寫（規格「兩站時序的編排行為」；design「D5 README 分工表時序句對齊」）：README.md 與 README.en.md 分工表「兩站都跑 → /speclink-quality」列的時序一句改為每輪暫停語意（兩站檢查先不蓋章 → 每輪停下待裁示 → 裁示後統一修正、兩站複驗 → 使用者裁示後兩章接連蓋），中英兩版語意對齊。檔案 README.md、README.en.md。驗證：內容審閱——與 quality-skill 規格及討論 quality-skill-pause-and-ui-polish 結論一致 <!-- speclink-task:tsk_01KZD189PD3KXHM768Z4FEXWFZ -->
