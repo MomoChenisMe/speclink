@@ -1,5 +1,5 @@
 === CLAUDE.md ===
-<!-- SPECLINK:START v1.18.1 -->
+<!-- SPECLINK:START v1.18.2 -->
 
 # Speclink Instructions
 
@@ -44,7 +44,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -132,7 +132,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -458,7 +458,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -964,7 +964,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -1241,7 +1241,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -1477,7 +1477,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -1749,7 +1749,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -1805,7 +1805,26 @@ No version numbers, no counts, no percentages, no "currently N crates", no test 
 
 ### Criterion 4 — Every reference must exist
 
-`context` and `rules` may name commands, test names, file paths, and documents as the means of verification. **Verify each one exists, every run** — a rule pointing at a deleted test is worse than no rule, because it reads as satisfied. Run the command; check the path. Anything that no longer resolves is removed in this pass, even if you did not add it.
+`context` and `rules` may name commands, test names, file paths, and documents as the means of verification. **Verify each one exists, every run** — a rule pointing at a deleted test is worse than no rule, because it reads as satisfied.
+
+**Check existence statically.** Each kind of reference has a cheap way to resolve it:
+
+- a file path → look it up on the filesystem;
+- a test name → text-search the source tree for it;
+- an npm script → read its declaration in `package.json`;
+- a CLI subcommand → check it against the command's `--help` output.
+
+**Do NOT execute the referenced test or build commands.** A referenced suite can run for minutes; that cost belongs to CI and to apply's own verification steps, not to a document review that re-checks every line on every run. Criterion 1's `speclink instructions <artifact> --json` probe is exempt — that is this skill's own probe, cheap and required.
+
+Anything that no longer resolves is removed in this pass, even if you did not add it.
+
+### The only reason to delete a line
+
+An existing line is dropped ONLY when it fails one of the four criteria. **"It cannot be derived from the fixed input set" is NOT a reason to delete.** A rule that came from a user's ruling — a discussion conclusion landed into this document — is invisible in manifests and READMEs by nature, and nothing in the file marks it as such, because a rewrite drops comments. So judge every existing line against the four criteria alone: if it survives all four, it stays, whatever produced it.
+
+### What a scope hint narrows
+
+With a scope hint, criteria 1–3 are re-judged only over the artifacts in scope — a hint of "rules for specs" re-judges the specs rules and leaves the tasks rules alone. **Criterion 4's reference check always covers the whole document**, in scope or out: it is static and cheap, and a dangling reference anywhere is a rule that reads as satisfied. Without a hint, everything is re-judged over the whole document.
 
 ## Step 3: Ask for the policy fields — do not infer them
 
@@ -1819,6 +1838,17 @@ The four policy fields are the user's decision. Ask each one explicitly, one at 
 **Locale fields take locale CODES, never display names.** `locale` accepts exactly `tw`, `ja`, `en`; `spec_locale` accepts `tw`, `ja`, `en`, `auto`. Map the user's natural-language answer to its code before writing — 「繁體中文」 → `tw`, 「日本語」 → `ja`, "English" → `en` — the write verb rejects any value outside the code set, including display names.
 
 Never derive an answer from the repo (a test directory does NOT mean `tdd: true`). Leave a field alone when the user has no opinion.
+
+### The fifth question — how much testing a task's verification runs
+
+Same nature as the four fields above: an answer, not a finding. Ask it explicitly, the same way:
+
+> Should a task's verification step run the full test suite, or only the tests for the surfaces the task touched?
+
+Never infer it from the repo. When the current document already carries a test-scope rule, quote its current value in the question, so the user confirms or revises what is there instead of answering blind.
+
+- **"Only the affected surfaces"** — build the project's own mapping from the dependency manifests you already read in Step 1 (which component is verified by which test command), write it as a rule under the `tasks` rules, and land it through the same `--dry-run` approval as everything else.
+- **"The full suite"** — write no test-scope rule at all, and leave the current document as it is.
 
 ## Step 4: Show the diff, then write
 
@@ -1850,8 +1880,9 @@ Report at the end: which of the five sources were read, what was added, what was
 - **Don't restate injected instructions** — disprove with `speclink instructions <artifact> --json`, per line.
 - **Don't restate quality-station canon** — read the generated station skill; a copy here is a second canon that drifts.
 - **Don't write anything that can go stale** — no versions, counts, or dates.
-- **Don't reference what doesn't exist** — verify every command, test, and path, every run.
-- **Don't infer the policy fields** — ask for all four.
+- **Don't reference what doesn't exist** — verify every command, test, and path statically, every run; never run what you are verifying.
+- **Don't delete for the wrong reason** — the four criteria are the only grounds; "not derivable from the fixed input set" is not one of them.
+- **Don't infer the policy fields** — ask all four, plus the test-scope question.
 - **Don't write without approval** — `--dry-run` first, always.
 - **Don't land a non-empty second run** — that is a signal to re-judge, not to write.
 
@@ -1864,7 +1895,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -2304,7 +2335,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -2434,7 +2465,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -2702,7 +2733,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -2796,7 +2827,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -3216,7 +3247,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -3303,7 +3334,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -3487,7 +3518,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
@@ -3764,7 +3795,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.1"
+  version: "v1.18.2"
   generatedBy: "Speclink"
 ---
 
