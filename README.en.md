@@ -41,7 +41,7 @@ The complete matrix is maintained only in [Product Capability Status](docs/produ
 ## SDD workflow / SDD 工作流
 
 ```text
-onboard? → discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive
+onboard? → discuss? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
                          ↑
                  resume after pause: drift first
 
@@ -64,10 +64,12 @@ combine them by risk; skipping both is a legitimate choice for low-risk changes:
 | Role of artifacts | Context for judgement — no compliance verdicts | The center of the check |
 | Precondition | All tasks complete | The check runs anytime (mid-work run = progress inventory); landing a ticket requires all tasks complete |
 | Output | Multi-round `review.md` ticket, stamped at zero CRITICAL | Multi-round `verify.md` ticket, stamped at zero must-fix |
+| Running both | Via `/speclink-quality` (order below), stamped first | Same, stamped second |
 
-Stamping order when you run both stations: leave each station's check unstamped, fix all findings together, re-validate each
-station, then stamp the two badges back to back. A station badge freezes the content fingerprints of its scope files, so the
-badge stamped first would otherwise be knocked to “changed since” by the other station's fixes.
+Running both stations goes through `/speclink-quality`: leave each station's check unstamped, fix all findings together,
+re-validate each station, then stamp the two badges back to back. A station badge freezes the content fingerprints of its scope
+files, so the badge stamped first would otherwise be knocked to “changed since” by the other station's fixes. Running a single
+station skips this skill — call `/speclink-review` or `/speclink-verify` directly and keep its stamp-when-done default.
 
 `/speclink-review` suits large diffs, cross-subsystem work, or code that will be maintained long-term: findings are graded
 CRITICAL/WARNING/SUGGESTION into the ticket, then fixed and re-reviewed until an empty round stamps the change. Modifying an

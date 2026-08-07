@@ -96,6 +96,7 @@ const B_DRIFT: &str = include_str!("../assets/skills/drift.md");
 const B_INGEST: &str = include_str!("../assets/skills/ingest.md");
 const B_ONBOARD: &str = include_str!("../assets/skills/onboard.md");
 const B_PROPOSE: &str = include_str!("../assets/skills/propose.md");
+const B_QUALITY: &str = include_str!("../assets/skills/quality.md");
 const B_REVIEW: &str = include_str!("../assets/skills/review.md");
 const B_VERIFY: &str = include_str!("../assets/skills/verify.md");
 const B_SYNC: &str = include_str!("../assets/skills/sync.md");
@@ -124,6 +125,9 @@ pub fn registry() -> Vec<Skill> {
         Skill { name: "ingest", description: "Update an existing Speclink change from external context", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_INGEST },
         Skill { name: "onboard", description: "Adopt Speclink on an existing codebase by generating initial specs from current behavior", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ONBOARD },
         Skill { name: "propose", description: "Create a change proposal with all required artifacts", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_PROPOSE },
+        // Pure ordering over the two stations（design D1）：不是 fork——它要在主線
+        // 依序呼叫兩站技能，且步驟 3 的統一修正就在主線改檔，故 Edit 不禁。
+        Skill { name: "quality", description: "Run both quality stations over one change: both checks first without stamping, findings fixed together, then each station re-validates and the two stamps land back to back", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_QUALITY },
         // Not a fork skill（design D7 替代案否決 fork）：主線 orchestrator 要
         // fan-out 兩個平行 sub-agent 並互動詢問三選項；修正回主線，故 Edit 不禁。
         Skill { name: "review", description: "Review a change's implementation for craft quality — parallel standards and correctness axes, recorded to a review ticket", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_REVIEW },
@@ -152,6 +156,7 @@ pub fn skill_body(name: &str) -> Option<&'static str> {
         "drift" => B_DRIFT,
         "ingest" => B_INGEST,
         "propose" => B_PROPOSE,
+        "quality" => B_QUALITY,
         "review" => B_REVIEW,
         "verify" => B_VERIFY,
         "sync" => B_SYNC,

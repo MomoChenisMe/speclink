@@ -1,5 +1,5 @@
 === WAD.md ===
-<!-- SPECLINK:START v1.16.1 -->
+<!-- SPECLINK:START v1.17.4 -->
 
 # Speclink Instructions
 
@@ -16,11 +16,12 @@ Speclink verbs are executed by calling the speclink tool with an argv array (e.g
 - Resuming a change that sat idle → run `speclink-drift` first
 - Requirements change mid-work → `speclink-ingest`
 - Implementation is done, before archiving → optional quality stations `speclink-review` (craft quality) ∥ `speclink-verify` (spec compliance; user's call), then `speclink-archive`
+- Both quality stations over one change → `speclink-quality` (both checks first without stamping, fixes together, then the review and verify stamps land back to back); only one station → call `speclink-review` or `speclink-verify` directly
 - Commit only files related to a specific change → `speclink-commit`
 
 ## Workflow
 
-discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive
+discuss? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
 
 - `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is "don't do it"
 - A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)
@@ -37,7 +38,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -369,7 +370,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -651,7 +652,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -893,7 +894,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -1170,7 +1171,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -1290,7 +1291,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -1733,7 +1734,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -1861,7 +1862,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -2134,7 +2135,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -2234,7 +2235,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -2650,6 +2651,86 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** invoke `speclink apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
+=== .wad/skills/speclink-quality/SKILL.md ===
+---
+name: speclink-quality
+description: "Run both quality stations over one change: both checks first without stamping, findings fixed together, then each station re-validates and the two stamps land back to back"
+license: MIT
+compatibility: Requires speclink CLI.
+metadata:
+  author: speclink
+  version: "v1.17.4"
+  generatedBy: "Speclink"
+---
+
+## Invocation
+
+This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
+
+---
+
+Run both quality stations over one change as a single pass: `speclink review` and `speclink verify` each do their checking WITHOUT stamping, the findings from both are fixed together, each station re-validates — still without stamping — and only after one full pass lands zero new edits do the two stamps land back to back, followed by archive. Use this when both stations are known up front to be in play. Running only one station does NOT go through this skill — call that station directly and let it keep its own stamp-when-clean default.
+
+**Input**: Optionally specify a change name after `speclink quality` (e.g., `speclink quality add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous, resolve it BEFORE step 1: run `speclink list --json` and prompt with the available changes (the AskUserQuestion tool, or plain text + wait if unavailable), then pass the same name to every station call.
+
+**Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**What this skill owns**
+
+The ORDER of the two stations, and nothing else. What each station checks, how it freezes its scope, how it records its ticket, how it triages findings and what its stamp means all belong to `speclink review` and `speclink verify` — this document never restates them, and when it appears to disagree with a station's own instructions, the station wins. Follow each station's skill as written; this skill only decides when each one runs and which of its exits to take.
+
+**Why the order matters**
+
+A station's stamp freezes the content fingerprint of the files in its scope. Every edit after that — including the fix for the OTHER station's findings — turns the stamp stale ("done, but changed since"). Holding BOTH stamps until every fix has landed and been re-validated keeps both green all the way to archive: no stamp exists yet when a fix lands, so no stamp can go stale.
+
+**Entry condition**: the change's tasks are all complete. That is the stations' own precondition — when it is not met, each station shows its own behavior (review refuses and stops; verify reports a mid-flight check-in instead of landing a ticket): relay that outcome verbatim. This skill adds no gate of its own, never pre-checks on the stations' behalf, and never swallows a station's error.
+
+**Steps**
+
+1. **Review check, no stamp**
+
+   Run `speclink review` for the change. At its closing question, take the **stop without stamping** exit — the ticket and its frozen snapshot stay for step 4. A clean pass takes the same exit; the station's own quality-timeline exception covers it.
+
+2. **Verify check, no stamp**
+
+   Run `speclink verify` for the same change and take the same **stop without stamping** exit, clean pass included.
+
+3. **Fix everything, once**
+
+   Triage both stations' findings together and fix them in one go. Fixes happen HERE in the main thread following the project's TDD discipline — the stations' checking passes never edit files. Get the project's full build and test suite green before moving on.
+
+4. **Review re-validation, still no stamp**
+
+   Run `speclink review` again. Its validation pass covers every fix made since its frozen point — including the ones the verify findings asked for. Keep fixing and re-validating until its must-fix set is empty, then take the **stop without stamping** exit again; the station's quality-timeline exception defers the stamp.
+
+5. **Verify re-validation, still no stamp**
+
+   Run `speclink verify` again the same way: re-validate until its must-fix set is empty, exit without stamping.
+
+6. **Converge before stamping**
+
+   If step 4 or step 5 landed ANY new fix since the previous full pass, return to step 4 — the other station must validate those fixes too. The stamps wait until one full pass through both stations lands zero new edits.
+
+7. **Stamp both, back to back**
+
+   Re-enter review, then verify, telling each station explicitly that this is the quality timeline's **closing stamp call** — that phrase switches off their defer-the-stamp exception for this one call. Each station's own rules then decide the mechanics: an untouched clean last round stamps directly; content that moved since gets one validation pass in the same call, and the cleared round stamps immediately. Do NOT edit anything from here to archive — with zero edits between them, both stamps stay green.
+
+8. **Archive**
+
+   Both stamps are green — recommend `speclink archive`.
+
+**Edge cases**
+
+- **Changed your mind after a stamp** (one station already stamped, and only then the other is wanted): do NOT redo the stamped station. Run the new station, accept that the earlier stamp shows as changed-since in the meantime, and let archive settle it back to done — archive records that a stamp exists, it does not recompute freshness. Re-running a stamped station means a fresh full discovery pass for no gain.
+- **One station only, or neither**: this skill does not apply. Call the station directly; its stamp-when-done default is already correct when no other station's fixes are coming.
+
+**Guardrails**
+
+- Never restate or override a station's checking, ticket or stamping rules — route to the station and follow what it says
+- Both checking passes finish before any fixing starts; neither stamp lands before both stations' re-validations are clean
+- No edits between the two stamps, and none between them and archive
+- A station's refusal or error stops this flow and is reported as-is — do not work around it
+
 === .wad/skills/speclink-review/SKILL.md ===
 ---
 name: speclink-review
@@ -2658,7 +2739,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -2700,7 +2781,11 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    speclink review show "<name>" --json
    ```
 
-   - **Ticket exists and `lastRound.findings` is empty** (e.g. a refused stamp left a clean round behind) → do NOT re-review: once the external gate recovers, retry the stamp directly — `speclink review stamp "<name>" --agent wad-harness` — and report the outcome. No new discovery, no new validation.
+   - **Ticket exists and `lastRound.findings` is empty** → how the clean round got there decides the path:
+     - **A refused stamp left it behind** (an external gate turned the stamp away) → do NOT re-review: once the gate recovers, retry the stamp directly — `speclink review stamp "<name>" --agent wad-harness` — and report the outcome. No new discovery, no new validation.
+     - **The `speclink quality` timeline left it unstamped on purpose** → do NOT stamp blindly. Only the timeline's **closing stamp call** may stamp here; any earlier call in that timeline (a re-validation step) must leave without stamping, whatever the scope says. Resolve `speclink review scope "<name>" --json` first:
+       - **This IS the closing stamp call** → an empty validation patch (nothing moved since the clean round) means retry the stamp directly as above. A non-empty patch means the movement gets validated first: continue from step 4 with this frozen patch and let step 9 close the round — on this call step 9's defer exception is off, so a cleared round stamps in this same call.
+       - **This is NOT the closing stamp call** → an empty patch means there is nothing new to judge: report that and end without stamping, ticket untouched. A non-empty patch goes through step 4 as a normal validation pass, and step 9's defer exception keeps the stamp for later.
    - **Otherwise** (no ticket, or the last round carries findings) → resolve the frozen scope:
 
    ```bash
@@ -2809,6 +2894,8 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
      If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop — the next session retries the stamp through step 3.
 
+     **Exception — inside the `speclink quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `speclink quality`, do NOT stamp on a cleared round — neither a zero-findings DISCOVERY round nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 8); take the **stop without stamping** ending (the same exit as option 3 below: the ticket and its frozen snapshot stay). The stamp lands at that skill's **closing stamp call**, after every fix from both stations has been validated — that call re-enters through step 3's clean-ticket branch, and on it this exception is OFF: a cleared round stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
+
    - **Bn is empty but accepted findings remain** → recommend the user explicitly stamp with reservations — `speclink review stamp "<name>" --accept --agent wad-harness` — and report **passed with reservations**. Never run `--accept` unprompted.
 
    - **Bn is strictly smaller than Bn-1** (or this is the first round with findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": any must-fix outstanding → recommend option 1; only discretionary left → recommend option 2.
@@ -2842,7 +2929,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -2892,9 +2979,11 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    The payload also carries `locale` — the resolved language for AI output (e.g., "Traditional Chinese (繁體中文)"). Remember it: the verification report is written in this language (see Output Format).
 
-4. **Branch on task progress: mid-flight check-in vs finished-work verification**
+4. **Branch on the call: mid-flight check-in, closing stamp re-entry, or finished-work verification**
 
    **Not every task is done → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do NOT run `speclink verify scope`, do NOT run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
+
+   **The `speclink quality` timeline's closing stamp call, and the ticket's last round is clean** (`speclink verify show "<name>" --json` — `lastRound.findings` empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that clean round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent wad-harness` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
 
    **Every task is done → finished-work verification.** Continue to step 5.
 
@@ -3059,6 +3148,8 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
       ```
 
       If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop — the next session retries the stamp through step 5.
+
+      **Exception — inside the `speclink quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `speclink quality`, do NOT stamp on a cleared round — neither a zero-findings DISCOVERY round nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 12); take the **stop without stamping** ending (the same exit as option 3 below: the verification ticket and its snapshot stay). The stamp lands at that skill's **closing stamp call**, which enters through step 4's closing-stamp branch — and on that call this exception is OFF: an untouched clean round stamps directly without a new round, a moved one clears its validation pass and stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
 
     - **Bn is empty but accepted findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept --agent wad-harness` — and report **passed with reservations**. Never run `--accept` unprompted.
 

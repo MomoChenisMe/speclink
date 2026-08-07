@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：指令檔 SPECLINK 標記與技能檔 frontmatter 的 version 同源於此。
 /// 僅在內嵌資產（assets/skills）或 marker 模板的 render 內容變動時遞增——與 app／CLI
 /// 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const MARKER_VERSION: &str = "v1.16.1";
+pub const MARKER_VERSION: &str = "v1.17.4";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -98,9 +98,17 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree:
     let done_line = format!(
         "- Implementation is done, before archiving → optional quality stations `{p}review` (craft quality) ∥ `{p}verify` (spec compliance; user's call), then `{p}archive`"
     );
-    let workflow = "discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive";
+    // 兩站都跑時的時序編排入口（spec quality-skill「品質關卡技能的生成與正典化」）：
+    // 只跑一站不經它，直接呼叫該站技能——條目本身要載明這個分岔。
+    let quality_line = format!(
+        "- Both quality stations over one change → `{p}quality` (both checks first without stamping, fixes together, then the review and verify stamps land back to back); only one station → call `{p}review` or `{p}verify` directly"
+    );
+    let workflow = "discuss? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive";
+    // 品質站段與主流程行同步（spec workspace-tools「marker 技能指引跟隨 worktree
+    // 政策」）：quality 不受 worktree 閘（worktree_gated: false），worktree 專案
+    // 同樣生成該技能，流程行不同步即指引缺口。
     let worktree_workflow =
-        "worktree: apply-with-worktree ⇄ ingest → (review? ∥ verify?) → worktree-merge → archive (main checkout)";
+        "worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive (main checkout)";
     // 兩行 worktree 指引隨政策進出；其餘內容不受影響。
     let worktree_lines = if worktree {
         format!(
@@ -134,6 +142,7 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree:
 - Resuming a change that sat idle → run `{p}drift` first\n\
 - Requirements change mid-work → `{p}ingest`\n\
 {done_line}\n\
+{quality_line}\n\
 - Commit only files related to a specific change → `{p}commit`\n\n\
 ## Workflow\n\n\
 {workflow}{worktree_flow}\n\n\
@@ -148,6 +157,7 @@ pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree:
         p = p,
         worktree_lines = worktree_lines,
         done_line = done_line,
+        quality_line = quality_line,
         workflow = workflow,
         worktree_flow = worktree_flow,
         worktree_bullet = worktree_bullet,
@@ -181,9 +191,10 @@ pub fn custom_instructions_body(spec_dir: &str, tool: &CustomTool, store: StoreK
 - Resuming a change that sat idle → run `speclink-drift` first\n\
 - Requirements change mid-work → `speclink-ingest`\n\
 - Implementation is done, before archiving → optional quality stations `speclink-review` (craft quality) ∥ `speclink-verify` (spec compliance; user's call), then `speclink-archive`\n\
+- Both quality stations over one change → `speclink-quality` (both checks first without stamping, fixes together, then the review and verify stamps land back to back); only one station → call `speclink-review` or `speclink-verify` directly\n\
 - Commit only files related to a specific change → `speclink-commit`\n\n\
 ## Workflow\n\n\
-discuss? → propose → apply ⇄ ingest → (review? ∥ verify?) → archive\n\n\
+discuss? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive\n\n\
 - `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is \"don't do it\"\n\
 - A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)\n\
 - Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`\n\
@@ -1159,12 +1170,16 @@ mod tests {
             "codex done-line must route verify:\n{body}"
         );
         assert!(
-            body.contains("(review? ∥ verify?) → archive"),
-            "codex workflow line must carry verify:\n{body}"
+            body.contains("(quality? | review? ∥ verify?) → archive"),
+            "codex workflow line must carry quality and verify:\n{body}"
         );
         assert!(
-            body.contains("(review? ∥ verify?) → worktree-merge"),
-            "codex worktree workflow line must carry verify:\n{body}"
+            body.contains("(quality? | review? ∥ verify?) → worktree-merge"),
+            "codex worktree workflow line must carry quality and verify:\n{body}"
+        );
+        assert!(
+            body.contains("`$speclink-quality`"),
+            "codex skill list must route the two-station orchestration:\n{body}"
         );
     }
 
@@ -1182,8 +1197,13 @@ mod tests {
             "custom done-line must route verify:\n{body}"
         );
         assert!(
-            body.contains("(review? ∥ verify?) → archive"),
-            "custom workflow line must carry verify:\n{body}"
+            body.contains("(quality? | review? ∥ verify?) → archive"),
+            "custom workflow line must carry quality and verify:\n{body}"
+        );
+        // 生成了 speclink-quality 技能檔卻不在 marker 提及，等於指引不可達。
+        assert!(
+            body.contains("`speclink-quality`"),
+            "custom skill list must route the two-station orchestration:\n{body}"
         );
     }
 
@@ -1979,7 +1999,7 @@ mod tests {
             .unwrap_or_else(|| panic!("Workflow 段須有 worktree 流程線：{added:?}"));
         assert_eq!(
             *flow,
-            "worktree: apply-with-worktree ⇄ ingest → (review? ∥ verify?) → worktree-merge → archive (main checkout)",
+            "worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive (main checkout)",
             "流程線須依序載明四個階段"
         );
         let bullet = added

@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.16.1"
+  version: "v1.17.4"
   generatedBy: "Speclink"
 ---
 
@@ -41,7 +41,11 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    speclink review show "<name>" --json
    ```
 
-   - **Ticket exists and `lastRound.findings` is empty** (e.g. a refused stamp left a clean round behind) → do NOT re-review: once the external gate recovers, retry the stamp directly — `speclink review stamp "<name>" --agent claude` — and report the outcome. No new discovery, no new validation.
+   - **Ticket exists and `lastRound.findings` is empty** → how the clean round got there decides the path:
+     - **A refused stamp left it behind** (an external gate turned the stamp away) → do NOT re-review: once the gate recovers, retry the stamp directly — `speclink review stamp "<name>" --agent claude` — and report the outcome. No new discovery, no new validation.
+     - **The `/speclink-quality` timeline left it unstamped on purpose** → do NOT stamp blindly. Only the timeline's **closing stamp call** may stamp here; any earlier call in that timeline (a re-validation step) must leave without stamping, whatever the scope says. Resolve `speclink review scope "<name>" --json` first:
+       - **This IS the closing stamp call** → an empty validation patch (nothing moved since the clean round) means retry the stamp directly as above. A non-empty patch means the movement gets validated first: continue from step 4 with this frozen patch and let step 9 close the round — on this call step 9's defer exception is off, so a cleared round stamps in this same call.
+       - **This is NOT the closing stamp call** → an empty patch means there is nothing new to judge: report that and end without stamping, ticket untouched. A non-empty patch goes through step 4 as a normal validation pass, and step 9's defer exception keeps the stamp for later.
    - **Otherwise** (no ticket, or the last round carries findings) → resolve the frozen scope:
 
    ```bash
@@ -149,6 +153,8 @@ Review a change's implementation for craft quality: two parallel read-only axes 
      ```
 
      If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop — the next session retries the stamp through step 3.
+
+     **Exception — inside the `/speclink-quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `/speclink-quality`, do NOT stamp on a cleared round — neither a zero-findings DISCOVERY round nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 8); take the **stop without stamping** ending (the same exit as option 3 below: the ticket and its frozen snapshot stay). The stamp lands at that skill's **closing stamp call**, after every fix from both stations has been validated — that call re-enters through step 3's clean-ticket branch, and on it this exception is OFF: a cleared round stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
 
    - **Bn is empty but accepted findings remain** → recommend the user explicitly stamp with reservations — `speclink review stamp "<name>" --accept --agent claude` — and report **passed with reservations**. Never run `--accept` unprompted.
 

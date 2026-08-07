@@ -1073,6 +1073,72 @@ fn config_skill_criterion_one_disproves_station_canon_too() {
     }
 }
 
+// --- quality skill: generation and the instructions-file routing ---
+
+/// Spec「品質關卡技能的生成與正典化」: `speclink update` generates the
+/// speclink-quality skill file for both built-in tools, and the SAME run puts the
+/// quality entry on the instructions file's workflow line and in its skill list,
+/// stating the trigger (both stations up front; a single station calls that station
+/// directly).
+#[test]
+fn quality_skill_and_its_routing_are_generated_for_both_tools() {
+    // The skill file itself: the shared fixture already generates and reads it
+    // for both tools — its `expect` is the presence assertion.
+    for (rel, content) in skill_for_both_tools("quality-gen", "quality") {
+        assert!(
+            !content.trim().is_empty(),
+            "{rel}: the generated quality skill must not be empty"
+        );
+    }
+
+    // The routing lives in the instructions file, which the fixture does not
+    // cover — a dedicated pass per tool.
+    let cases = [
+        ("quality-route-claude", Tool::Claude, "CLAUDE.md"),
+        ("quality-route-codex", Tool::Codex, "AGENTS.md"),
+    ];
+    for (tag, tool, instructions_file) in cases {
+        let root = TempRoot::new(tag);
+        init::init(&root.dir, &[tool], true, "openspec").unwrap();
+        let instructions = std::fs::read_to_string(root.dir.join(instructions_file)).unwrap();
+        // review-skill spec pins the whole line; here only the quality entry is
+        // asserted, so the two specs do not nail down the same literal.
+        let workflow_line = instructions
+            .lines()
+            .find(|l| l.starts_with("discuss? → propose"))
+            .unwrap_or_else(|| panic!("{instructions_file}: no workflow line"));
+        assert!(
+            workflow_line.contains("quality?"),
+            "{instructions_file}: the workflow line must carry the quality entry: {workflow_line}"
+        );
+        // The entry must carry the tool's own slash prefix (`/speclink-` for
+        // Claude, `$speclink-` for codex) — a wrong prefix is an unreachable
+        // instruction, not a cosmetic slip.
+        let prefix = match tool {
+            Tool::Claude => "`/speclink-quality`",
+            Tool::Codex => "`$speclink-quality`",
+        };
+        let bullet = instructions
+            .lines()
+            .find(|l| l.starts_with("- ") && l.contains(prefix))
+            .unwrap_or_else(|| {
+                panic!("{instructions_file}: the skill list must carry a quality entry as {prefix}")
+            });
+        // Both halves of the trigger: when to use it (both stations up front)
+        // and the single-station branch that bypasses it. The literal phrases
+        // pin the semantics — `contains("review")` alone would be satisfied by
+        // the stamp-order clause and prove nothing.
+        assert!(
+            bullet.contains("Both quality stations"),
+            "{instructions_file}: the quality entry must state the both-stations trigger: {bullet}"
+        );
+        assert!(
+            bullet.contains("only one station"),
+            "{instructions_file}: the quality entry must state the single-station branch: {bullet}"
+        );
+    }
+}
+
 /// Spec「worktree-merge 技能的生成」＋「收尾流程指示」: a standalone template whose
 /// preflight, conflict and cleanup stop points are all stated.
 #[test]

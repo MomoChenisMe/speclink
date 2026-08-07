@@ -9,15 +9,15 @@ metadata:
   generatedBy: "Speclink"
 ---
 
-Run both quality stations over one change as a single pass: `/speclink-review` and `/speclink-verify` each do their checking WITHOUT stamping, the findings from both are fixed together, each station re-validates — still without stamping — and only after one full pass lands zero new edits do the two stamps land back to back, followed by archive. Use this when both stations are known up front to be in play. Running only one station does NOT go through this skill — call that station directly and let it keep its own stamp-when-clean default.
+Run both quality stations over one change as a single pass: `$speclink-review` and `$speclink-verify` each do their checking WITHOUT stamping, the findings from both are fixed together, each station re-validates — still without stamping — and only after one full pass lands zero new edits do the two stamps land back to back, followed by archive. Use this when both stations are known up front to be in play. Running only one station does NOT go through this skill — call that station directly and let it keep its own stamp-when-clean default.
 
-**Input**: Optionally specify a change name after `/speclink-quality` (e.g., `/speclink-quality add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous, resolve it BEFORE step 1: run `speclink list --json` and prompt with the available changes (the AskUserQuestion tool, or plain text + wait if unavailable), then pass the same name to every station call.
+**Input**: Optionally specify a change name after `$speclink-quality` (e.g., `$speclink-quality add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous, resolve it BEFORE step 1: run `speclink list --json` and prompt with the available changes (the AskUserQuestion tool, or plain text + wait if unavailable), then pass the same name to every station call.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
 **What this skill owns**
 
-The ORDER of the two stations, and nothing else. What each station checks, how it freezes its scope, how it records its ticket, how it triages findings and what its stamp means all belong to `/speclink-review` and `/speclink-verify` — this document never restates them, and when it appears to disagree with a station's own instructions, the station wins. Follow each station's skill as written; this skill only decides when each one runs and which of its exits to take.
+The ORDER of the two stations, and nothing else. What each station checks, how it freezes its scope, how it records its ticket, how it triages findings and what its stamp means all belong to `$speclink-review` and `$speclink-verify` — this document never restates them, and when it appears to disagree with a station's own instructions, the station wins. Follow each station's skill as written; this skill only decides when each one runs and which of its exits to take.
 
 **Why the order matters**
 
@@ -29,11 +29,11 @@ A station's stamp freezes the content fingerprint of the files in its scope. Eve
 
 1. **Review check, no stamp**
 
-   Run `/speclink-review` for the change. At its closing question, take the **stop without stamping** exit — the ticket and its frozen snapshot stay for step 4. A clean pass takes the same exit; the station's own quality-timeline exception covers it.
+   Run `$speclink-review` for the change. At its closing question, take the **stop without stamping** exit — the ticket and its frozen snapshot stay for step 4. A clean pass takes the same exit; the station's own quality-timeline exception covers it.
 
 2. **Verify check, no stamp**
 
-   Run `/speclink-verify` for the same change and take the same **stop without stamping** exit, clean pass included.
+   Run `$speclink-verify` for the same change and take the same **stop without stamping** exit, clean pass included.
 
 3. **Fix everything, once**
 
@@ -41,11 +41,11 @@ A station's stamp freezes the content fingerprint of the files in its scope. Eve
 
 4. **Review re-validation, still no stamp**
 
-   Run `/speclink-review` again. Its validation pass covers every fix made since its frozen point — including the ones the verify findings asked for. Keep fixing and re-validating until its must-fix set is empty, then take the **stop without stamping** exit again; the station's quality-timeline exception defers the stamp.
+   Run `$speclink-review` again. Its validation pass covers every fix made since its frozen point — including the ones the verify findings asked for. Keep fixing and re-validating until its must-fix set is empty, then take the **stop without stamping** exit again; the station's quality-timeline exception defers the stamp.
 
 5. **Verify re-validation, still no stamp**
 
-   Run `/speclink-verify` again the same way: re-validate until its must-fix set is empty, exit without stamping.
+   Run `$speclink-verify` again the same way: re-validate until its must-fix set is empty, exit without stamping.
 
 6. **Converge before stamping**
 
@@ -57,7 +57,7 @@ A station's stamp freezes the content fingerprint of the files in its scope. Eve
 
 8. **Archive**
 
-   Both stamps are green — recommend `/speclink-archive`.
+   Both stamps are green — recommend `$speclink-archive`.
 
 **Edge cases**
 
