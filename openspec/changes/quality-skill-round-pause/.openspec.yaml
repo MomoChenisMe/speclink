@@ -5,3 +5,135 @@ created_with: claude
 from_discussion: quality-skill-pause-and-ui-polish
 started_at: 2026-08-07
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-07
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 5
+reviewed_scope:
+  - path: AGENTS.md
+    hash: 064329da9a6b5bbb1633a800925043337e7b60ccc2484dddca973926c4b9c4c4
+  - path: CLAUDE.md
+    hash: b260c5a4d0f969bafc93b383fcbb109f81e7b52bf643b9319f9c3161ed59a0df
+  - path: README.en.md
+    hash: 363517698ccf75a50d4b64657a369446c0610b86c2dec6f30a349e8b2d2b508e
+  - path: README.md
+    hash: 23c637e0c233a0e0094d40efe7425a4802cd73b6b470b3c4ce02627a353ec5e4
+  - path: crates/speclink-core/assets/skills/quality.md
+    hash: 02f84341fa652a8d7e4de2e96243981cfdecdb08c568bccab991d0f8b9ffcc0e
+  - path: crates/speclink-core/src/init.rs
+    hash: de8679efe3071296f659598165791eacb934b9df0bd7332a5389969924e22579
+  - path: crates/speclink-core/src/skills.rs
+    hash: 3e3b4ace512df23004b4932908ebb6edd7c50b870c5a066ed321607e21124128
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 5fa4ad56db3c8d31d4b859bdbfed8dfae1d15d7d0253456b9421d4b048515fd7
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 23fc379290ea6c5636d1376591693da986d3046e16268d5b1046c06931d6ff95
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 7efb4d140adb4107a870165f6f8a7931b7911787d98a8ed35efe7efd4c1c4234
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: e417db694432e9ce946496cfb95a80063cc32ae3a002a19732d483d4852d813f
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 7505f520632c318e9ddf81a98099d85422d9a0349fd5c19817b613a5e0cc46b3
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: d81fb93e49dc3fad1edf22c0175ff4bce6cf5ec7426fd62397d7c4f6afc493b8
+  - path: crates/speclink-core/tests/golden/remote-claude.marker.md
+    hash: 7b61b2200cdd998c958a231473704a49340d46221451ed8dda01c57062c4855b
+  - path: crates/speclink-core/tests/it/render_golden.rs
+    hash: 114c428cc2121ea327cf5e890dcc792d7bd3472346ca4abdd1763fa0f15b21ed
+verified_at: 2026-08-07
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 5
+verified_scope:
+  - path: .agents/skills/speclink-apply-with-worktree/SKILL.md
+    hash: ed4dcf69fa8a7aecf6297b8f3cd18c40914327244eb343a651850abd1bd20bb3
+  - path: .agents/skills/speclink-apply/SKILL.md
+    hash: 6f4e4f473012fbb99253d4cea34c7f06d9ecfab09ee0697419041162fe5b6ecf
+  - path: .agents/skills/speclink-archive/SKILL.md
+    hash: 9a688a42d3fd7db4845d6e2e2e3a126e1a392cb8e185863bb90bb3ee5136f592
+  - path: .agents/skills/speclink-audit/SKILL.md
+    hash: 9af16104cb448ae9e0a6b95829a6bed412482f03a6189693610825c98deda97c
+  - path: .agents/skills/speclink-commit/SKILL.md
+    hash: c190b9a431b966494d6e7e82f9eaa7479612fc283ad71edd0d283f1de21b1eda
+  - path: .agents/skills/speclink-config/SKILL.md
+    hash: 3051a84b8ff18917df81048bb2370a36cb969282e61317fba84cfeca5b5484c4
+  - path: .agents/skills/speclink-discuss/SKILL.md
+    hash: 579f1ca1c7e9da850e92bed1d2b66c03eb3d3d90e91e79ab1815ecabb853dfb6
+  - path: .agents/skills/speclink-drift/SKILL.md
+    hash: 52e5fbde8cc53e554522d98e2da32ea2935f8a82c8c8a4593d246051546de1b0
+  - path: .agents/skills/speclink-ingest/SKILL.md
+    hash: 2734125ff332b8577b55ce9ae155e219be116ec1c7020de192d053bafb9a0642
+  - path: .agents/skills/speclink-onboard/SKILL.md
+    hash: 681202bfdd0ca1922837eb9bf62db439c504952eb41945750e9ec19b48adb9e4
+  - path: .agents/skills/speclink-propose/SKILL.md
+    hash: 5a355b60dbfba319756f4ad71c378fea37fb142f64694a74fe38b9ed6e13bc33
+  - path: .agents/skills/speclink-quality/SKILL.md
+    hash: 2a0ee4d0fde32fece65230779bfa30963f2b2b84c86e699d9b18637a3a8a0b60
+  - path: .agents/skills/speclink-review/SKILL.md
+    hash: 74590cb0722daeba105b99563366045b47fcb32d047a80325b56050585bd7d76
+  - path: .agents/skills/speclink-verify/SKILL.md
+    hash: 8e5f06259fb80e33e99fa5fdd536780b62111aa7aff98591125388678702ebd0
+  - path: .agents/skills/speclink-worktree-merge/SKILL.md
+    hash: a4c506e4fc9b7a74eeb77d986eb73b04ae85998fb5e42cd8072c2e615e13d325
+  - path: .claude/skills/speclink-analyze/SKILL.md
+    hash: ade01eefeaca1296cdc7b7ba769ac5fab5eee085d57614e3684dbe4d59b6fe4b
+  - path: .claude/skills/speclink-apply-with-worktree/SKILL.md
+    hash: 78566fa61e747cdd902bbad3fc1b42ebe10b2f79e488539c6f3fc915a7751f5f
+  - path: .claude/skills/speclink-apply/SKILL.md
+    hash: 0c2a2a14251ec9210760e482f1e0192e5949ccde869831594e38eed556a72dc6
+  - path: .claude/skills/speclink-archive/SKILL.md
+    hash: 0d059d89c50ea6d04a23edaacf6cc2192deb92262d2005e2b066c830d96d55b1
+  - path: .claude/skills/speclink-audit/SKILL.md
+    hash: 478248498d1cb0368a9a429bef6b4ea90abdf2044672b790d9dc94bb300662e0
+  - path: .claude/skills/speclink-commit/SKILL.md
+    hash: 1364d49dff0537765917eabe8daf06587265ee4863b279e65c4c0fca6a458228
+  - path: .claude/skills/speclink-config/SKILL.md
+    hash: 32d99b4b6672b34e921a2b715ef228e0736941e553811fff23668ca2351c3144
+  - path: .claude/skills/speclink-discuss/SKILL.md
+    hash: c7f867e45365dd09391c7e17d65719512c893b645fc85d5672670c1a44c88e4a
+  - path: .claude/skills/speclink-drift/SKILL.md
+    hash: 9141de60ee953ba883010218da552006a691ae55a0d416e6d13ae117719c6085
+  - path: .claude/skills/speclink-ingest/SKILL.md
+    hash: 71b2ecc2aaa8f9f586e2c83edafe103cded178932c8e10586bf9afc18d765c75
+  - path: .claude/skills/speclink-onboard/SKILL.md
+    hash: 89d942efa05aaf086ab79496a694eb0884812c9b9232b9e2ab1d0fee0f7f4052
+  - path: .claude/skills/speclink-propose/SKILL.md
+    hash: b176345bd0e0f2304b57b4dbf3b1329322b828e84051816157546692cab9893d
+  - path: .claude/skills/speclink-quality/SKILL.md
+    hash: c056d552bf83dfb8684978d3934e9b79a38e6e062ae102e39410cf06fe2b88b2
+  - path: .claude/skills/speclink-review/SKILL.md
+    hash: d61ef0a8bc7393374fbd7925117bd46b5a75e78094ef00717c0119b243726889
+  - path: .claude/skills/speclink-verify/SKILL.md
+    hash: 70376ad876c79000a45157f5564d6ede64258e597c5515610b458c202cdfac54
+  - path: .claude/skills/speclink-worktree-merge/SKILL.md
+    hash: 7a7c1a7ad5cf6f2384dd91855551f52a954648db695515c8cba244be64184085
+  - path: AGENTS.md
+    hash: 064329da9a6b5bbb1633a800925043337e7b60ccc2484dddca973926c4b9c4c4
+  - path: CLAUDE.md
+    hash: b260c5a4d0f969bafc93b383fcbb109f81e7b52bf643b9319f9c3161ed59a0df
+  - path: README.en.md
+    hash: 363517698ccf75a50d4b64657a369446c0610b86c2dec6f30a349e8b2d2b508e
+  - path: README.md
+    hash: 23c637e0c233a0e0094d40efe7425a4802cd73b6b470b3c4ce02627a353ec5e4
+  - path: crates/speclink-core/assets/skills/quality.md
+    hash: 02f84341fa652a8d7e4de2e96243981cfdecdb08c568bccab991d0f8b9ffcc0e
+  - path: crates/speclink-core/src/init.rs
+    hash: de8679efe3071296f659598165791eacb934b9df0bd7332a5389969924e22579
+  - path: crates/speclink-core/src/skills.rs
+    hash: 3e3b4ace512df23004b4932908ebb6edd7c50b870c5a066ed321607e21124128
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 5fa4ad56db3c8d31d4b859bdbfed8dfae1d15d7d0253456b9421d4b048515fd7
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 23fc379290ea6c5636d1376591693da986d3046e16268d5b1046c06931d6ff95
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 7efb4d140adb4107a870165f6f8a7931b7911787d98a8ed35efe7efd4c1c4234
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: e417db694432e9ce946496cfb95a80063cc32ae3a002a19732d483d4852d813f
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 7505f520632c318e9ddf81a98099d85422d9a0349fd5c19817b613a5e0cc46b3
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: d81fb93e49dc3fad1edf22c0175ff4bce6cf5ec7426fd62397d7c4f6afc493b8
+  - path: crates/speclink-core/tests/golden/remote-claude.marker.md
+    hash: 7b61b2200cdd998c958a231473704a49340d46221451ed8dda01c57062c4855b
+  - path: crates/speclink-core/tests/it/render_golden.rs
+    hash: 114c428cc2121ea327cf5e890dcc792d7bd3472346ca4abdd1763fa0f15b21ed

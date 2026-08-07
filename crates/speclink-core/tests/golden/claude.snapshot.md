@@ -1,5 +1,5 @@
 === CLAUDE.md ===
-<!-- SPECLINK:START v1.18.0 -->
+<!-- SPECLINK:START v1.18.1 -->
 
 # Speclink Instructions
 
@@ -39,7 +39,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -127,7 +127,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -453,7 +453,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -730,7 +730,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -966,7 +966,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -1238,7 +1238,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -1353,7 +1353,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -1793,7 +1793,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -1923,7 +1923,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -2191,7 +2191,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -2285,7 +2285,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -2705,7 +2705,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -2748,7 +2748,7 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
    - **Fix everything** — every finding from both stations.
    - **Fix a selection** — the user names which ones; the rest stay in the tickets, unfixed.
    - **Fix nothing and stop** — end the pass right here. Both stations already left through their **stop without stamping** exit, so both tickets and their frozen snapshots stay on disk, no stamp lands, and nothing is archived.
-   - **Go to the closing stamps** — offer this option ONLY when both stations' must-fix sets are empty. While any must-fix is outstanding it is not on the menu: must-fix-cleared-before-the-stamp is the stations' rule and this skill does not route around it.
+   - **Go to the closing stamps** — offer this option ONLY when both stations' must-fix sets are empty. While any must-fix is outstanding it is not on the menu: must-fix-cleared-before-the-stamp is the stations' rule and this skill does not route around it. When findings the user passed on still sit in a ticket, the option must say so up front: that station's stamp lands **with reservations** (the station's `--accept`), and choosing the option here IS the explicit say-so the stations require — never presume it from anything less.
 
    Options with nothing to act on simply do not appear — a round where both stations found nothing offers the last two.
 
@@ -2764,7 +2764,7 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 6. **Closing stamps, back to back**
 
-   Only on the user's say-so. Re-enter review, then verify, telling each station explicitly that this is the quality timeline's **closing stamp call** — that phrase switches off their defer-the-stamp exception for this one call. Each station's own rules then decide the mechanics: an untouched clean last round stamps directly; content that moved since gets one validation pass in the same call, and the cleared round stamps immediately. Do NOT edit anything from here to archive — with zero edits between them, both stamps stay green.
+   Only on the user's say-so. Re-enter review, then verify, telling each station explicitly that this is the quality timeline's **closing stamp call** — that phrase switches off their defer-the-stamp exception for this one call. Where a ticket still carries findings the user chose to leave, relay their step-3 answer as the explicit authorization to stamp **with reservations** (the station's `--accept`) — a reservation stamp never lands unannounced. Each station's own rules then decide the mechanics: an untouched clean last round stamps directly; content that moved since gets one validation pass in the same call, and the cleared round stamps immediately. Do NOT edit anything from here to archive — with zero edits between them, both stamps stay green.
 
 7. **Archive — a recommendation**
 
@@ -2792,7 +2792,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 
@@ -2976,7 +2976,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.0"
+  version: "v1.18.1"
   generatedBy: "Speclink"
 ---
 

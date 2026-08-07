@@ -1079,7 +1079,8 @@ fn config_skill_criterion_one_disproves_station_canon_too() {
 /// speclink-quality skill file for both built-in tools, and the SAME run puts the
 /// quality entry on the instructions file's workflow line and in its skill list,
 /// stating the trigger (both stations up front; a single station calls that station
-/// directly).
+/// directly) — and, since the per-round-pause rewrite, that the entry states the
+/// pause instead of the old fix-then-stamp timeline.
 #[test]
 fn quality_skill_and_its_routing_are_generated_for_both_tools() {
     // The skill file itself: the shared fixture already generates and reads it
@@ -1144,6 +1145,26 @@ fn quality_skill_and_its_routing_are_generated_for_both_tools() {
             "{instructions_file}: the quality entry must state the per-round pause: {bullet}"
         );
     }
+
+    // The custom-descriptor list entry is a THIRD hand-written literal (neutral
+    // wording, no slash prefix) — pin its pause clause too, or a drift there
+    // hides behind the two builtin assertions and only the neutral goldens
+    // would notice, one regeneration too late.
+    let custom = speclink_core::config::CustomTool {
+        name: "quality-route-custom".to_string(),
+        skills_dir: ".x/skills".to_string(),
+        instructions_file: "X.md".to_string(),
+        invocation: speclink_core::config::Invocation::Cli,
+    };
+    let neutral = init::custom_instructions_body("openspec", &custom, init::StoreKind::Fs);
+    let bullet = neutral
+        .lines()
+        .find(|l| l.starts_with("- ") && l.contains("`speclink-quality`"))
+        .expect("custom instructions must carry a quality entry");
+    assert!(
+        bullet.contains("stops after every round"),
+        "custom instructions: the quality entry must state the per-round pause: {bullet}"
+    );
 }
 
 /// Spec「兩站時序的編排行為」: the skill hands every round back to the user —
@@ -1172,8 +1193,9 @@ fn quality_skill_pauses_after_every_round_for_the_user() {
             content.contains("**Stop and ask"),
             "{rel}: the round's pause must be a step of its own"
         );
-        // The three exits that make the pause a real decision point: the
-        // fix-nothing one is the one a drift back to auto-fixing would drop.
+        // Three exits are always on the menu plus a conditional fourth (the
+        // closing stamps, must-fix sets empty only): the fix-nothing one is
+        // the one a drift back to auto-fixing would drop.
         assert!(
             content.contains("Fix nothing and stop"),
             "{rel}: the pause must offer the fix-nothing exit"
@@ -1187,6 +1209,14 @@ fn quality_skill_pauses_after_every_round_for_the_user() {
         assert!(
             content.contains("Only on the user's say-so"),
             "{rel}: the closing stamps must wait for the user's answer"
+        );
+        // Findings the user passed on ride into the closing stamps as
+        // reservations — the closing path must say so, or the agent stalls at
+        // the stations' never-`--accept`-unprompted rule (or worse, presumes
+        // the authorization).
+        assert!(
+            content.contains("with reservations"),
+            "{rel}: the closing path must name the reservation stamp for carried findings"
         );
     }
 }
