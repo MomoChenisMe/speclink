@@ -1082,7 +1082,10 @@ fn config_skill_criterion_four_verifies_statically() {
         let start = config
             .find("### Criterion 4")
             .unwrap_or_else(|| panic!("{rel}: missing the criterion 4 section"));
-        let criterion_four = &config[start..];
+        let len = config[start..]
+            .find("### The only reason to delete a line")
+            .unwrap_or_else(|| panic!("{rel}: missing the deletion-reason section after criterion 4"));
+        let criterion_four = &config[start..start + len];
         for needle in [
             // the four static means, one per reference kind
             "look it up on the filesystem",
@@ -1091,8 +1094,10 @@ fn config_skill_criterion_four_verifies_statically() {
             "`--help`",
             // the prohibition itself
             "Do NOT execute the referenced test or build commands",
-            // the exemption: this skill's own probe stays allowed
+            // the exemption: this skill's own probe stays allowed, and the ban
+            // never reaches the skill's own verbs
             "Criterion 1's `speclink instructions <artifact> --json` probe is exempt",
+            "the ban binds only the commands the document references",
         ] {
             assert!(
                 criterion_four.contains(needle),
@@ -1103,12 +1108,15 @@ fn config_skill_criterion_four_verifies_statically() {
             !config.contains("Run the command; check the path"),
             "{rel}: the literal run-the-command instruction must be gone"
         );
+        // the guardrail restates the prohibition with the same narrow scope as
+        // the criterion body — an unconditional "never run anything" reading
+        // would ban the skill's own probes
         let guard = config
             .find("## Guardrails")
             .unwrap_or_else(|| panic!("{rel}: missing the guardrails section"));
         assert!(
-            config[guard..].contains("never run what you are verifying"),
-            "{rel}: guardrails must forbid running the referenced commands"
+            config[guard..].contains("the referenced test and build commands themselves are never executed"),
+            "{rel}: guardrails must forbid executing the referenced commands, and only those"
         );
     }
 }
@@ -1122,24 +1130,35 @@ fn config_skill_limits_the_reason_for_deleting_a_line() {
         let start = config
             .find("### The only reason to delete a line")
             .unwrap_or_else(|| panic!("{rel}: missing the deletion-reason section"));
-        let section = &config[start..];
+        let len = config[start..]
+            .find("### What a scope hint narrows")
+            .unwrap_or_else(|| panic!("{rel}: missing the scope-hint section after the deletion-reason one"));
+        let section = &config[start..start + len];
         for needle in [
             "fails one of the four criteria",
             "cannot be derived from the fixed input set",
             "is NOT a reason to delete",
             "a user's ruling",
+            // the user's own answer is the one ground beyond the four criteria
+            "withdraws it",
         ] {
             assert!(
                 section.contains(needle),
                 "{rel}: the deletion-reason limit is missing {needle:?}"
             );
         }
+        // the guardrail carries the limit with the SAME phrasing as the body,
+        // so a future edit cannot drift one copy away from the other
         let guard = config
             .find("## Guardrails")
             .unwrap_or_else(|| panic!("{rel}: missing the guardrails section"));
         assert!(
             config[guard..].contains("**Don't delete for the wrong reason**"),
             "{rel}: guardrails must carry the deletion-reason limit"
+        );
+        assert!(
+            config[guard..].contains("cannot be derived from the fixed input set"),
+            "{rel}: the guardrail must reuse the body's exact non-derivable phrasing"
         );
     }
 }
@@ -1154,11 +1173,23 @@ fn config_skill_states_what_a_scope_hint_narrows() {
         let start = config
             .find("### What a scope hint narrows")
             .unwrap_or_else(|| panic!("{rel}: missing the scope-hint section"));
-        let section = &config[start..];
+        // the semantics belong to step 2 (the criteria they narrow), not to the
+        // interview or the write path
+        let step_two = config
+            .find("## Step 2")
+            .unwrap_or_else(|| panic!("{rel}: missing the step 2 heading"));
+        let step_three = config
+            .find("## Step 3")
+            .unwrap_or_else(|| panic!("{rel}: missing the step 3 heading"));
+        assert!(
+            step_two < start && start < step_three,
+            "{rel}: the scope-hint section belongs inside step 2"
+        );
+        let section = &config[start..step_three];
         for needle in [
             "criteria 1–3 are re-judged only over the artifacts in scope",
             "Criterion 4's reference check always covers the whole document",
-            "Without a hint",
+            "Without a hint, everything is re-judged over the whole document",
         ] {
             assert!(
                 section.contains(needle),
@@ -1181,7 +1212,9 @@ fn config_skill_asks_the_test_scope_question() {
         let fifth = config
             .find("### The fifth question")
             .unwrap_or_else(|| panic!("{rel}: missing the fifth question section"));
-        let step_four = config.find("## Step 4").expect("step 4");
+        let step_four = config
+            .find("## Step 4")
+            .unwrap_or_else(|| panic!("{rel}: missing the step 4 heading"));
         assert!(
             audit_field < fifth && fifth < step_four,
             "{rel}: the fifth question belongs after the four policy fields and inside step 3"
@@ -1199,8 +1232,11 @@ fn config_skill_asks_the_test_scope_question() {
             "dependency manifests you already read in Step 1",
             "`tasks` rules",
             "`--dry-run` approval",
-            // answer B: write nothing
+            // answer B: write nothing new — and an existing rule is withdrawn by
+            // this answer, not orphaned behind it
             "write no test-scope rule at all",
+            "ruling to withdraw",
+            "leave the current document as it is",
         ] {
             assert!(
                 section.contains(needle),
