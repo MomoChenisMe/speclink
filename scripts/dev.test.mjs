@@ -2,11 +2,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseDotenv, buildDevConfig, parseDevMode, startDevEnvironment } from './dev.mjs';
 
-const DEV_SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'dev.mjs');
+const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const DEV_SCRIPT = path.resolve(SCRIPTS_DIR, 'dev.mjs');
+const ROOT = path.resolve(SCRIPTS_DIR, '..');
 
 // --- .env 解析（design 決策 3：逐行 KEY=VALUE、跳過註解與空行、不支援展開） ---
 
@@ -121,7 +124,6 @@ function trackedDeps(syncResults = []) {
     errors,
     deps: {
       addr: '127.0.0.1:8080',
-      isWindows: false,
       runSync: (cmd, args, options) => {
         calls.push({ kind: 'sync', cmd, args, options });
         return syncResults[syncCount++] ?? { status: 0 };
@@ -140,7 +142,7 @@ function spawnCount(calls) {
   return calls.filter((call) => call.kind === 'spawn').length;
 }
 
-test('startDevEnvironment：CLI build 先於前端 build，兩者都成功才 spawn 長時間 child', () => {
+test('startDevEnvironment：CLI build 成功後直接 spawn 長時間 child，不另建前端', () => {
   const { calls, deps } = trackedDeps();
   const result = startDevEnvironment(deps);
 
@@ -148,7 +150,6 @@ test('startDevEnvironment：CLI build 先於前端 build，兩者都成功才 sp
     calls.map((call) => [call.kind, call.cmd, ...call.args]),
     [
       ['sync', 'cargo', 'build', '-p', 'speclink-cli'],
-      ['sync', 'npm', 'run', 'build', '-w', 'apps/desktop'],
       [
         'spawn', 'cargo',
         'run', '-p', 'speclink-server', '--',
@@ -193,22 +194,13 @@ test('startDevEnvironment：CLI build 無法啟動時以 1 退出並點名 specl
   assert.match(errors.join('\n'), /speclink-cli/);
 });
 
-test('startDevEnvironment：前端 build 失敗回傳其狀態且長時間 child 數為零', () => {
-  const { calls, deps } = trackedDeps([{ status: 0 }, { status: 2 }]);
-  const result = startDevEnvironment(deps);
-
-  assert.equal(result.status, 2);
-  assert.deepEqual(result.children, []);
-  assert.equal(spawnCount(calls), 0);
-});
-
-test('startDevEnvironment：Windows 上只有 npm prerequisite 走 shell', () => {
+test('startDevEnvironment：prerequisite 只有 cargo，不走 shell', () => {
   const { calls, deps } = trackedDeps();
-  startDevEnvironment({ ...deps, isWindows: true });
+  startDevEnvironment(deps);
 
   const syncCalls = calls.filter((call) => call.kind === 'sync');
+  assert.equal(syncCalls.length, 1, 'full 模式的 prerequisite 只剩 CLI build');
   assert.equal(syncCalls[0].options.shell, false, 'cargo 是真 binary，不需要 shell');
-  assert.equal(syncCalls[1].options.shell, true, 'Windows 的 npm 是 npm.cmd，需要 shell');
 });
 
 // --- 模式分流（規格「單獨啟動 server」「單獨啟動 desktop」） ---
@@ -237,28 +229,87 @@ test('server 模式：不建 CLI、不建前端，只 spawn server', () => {
   assert.equal(result.children.length, 1);
 });
 
-test('desktop 模式：前端建置後只 spawn tauri dev，不建 CLI 也不含 server', () => {
+test('desktop 模式：無任何 prerequisite，只 spawn tauri dev，不建 CLI 也不含 server', () => {
   const { calls, deps } = trackedDeps();
   const result = startDevEnvironment({ ...deps, mode: 'desktop' });
 
+  // 前端由 tauri dev 的 beforeDevCommand 起 vite dev server 供應，編排層不再預先建置。
   assert.deepEqual(
     calls.map((call) => [call.kind, call.cmd, ...call.args]),
-    [
-      ['sync', 'npm', 'run', 'build', '-w', 'apps/desktop'],
-      ['spawn', 'npm', 'run', 'tauri', '-w', 'apps/desktop', '--', 'dev'],
-    ],
+    [['spawn', 'npm', 'run', 'tauri', '-w', 'apps/desktop', '--', 'dev']],
   );
   assert.equal(result.status, null);
   assert.equal(result.children.length, 1);
 });
 
-test('desktop 模式：前端建置失敗回傳其狀態且不 spawn tauri dev', () => {
-  const { calls, deps } = trackedDeps([{ status: 2 }]);
-  const result = startDevEnvironment({ ...deps, mode: 'desktop' });
+// --- dev server 設定一致性（規格「dev 模式前端由 dev server 供應且變更免重編」） ---
+// tauri.conf.json 的 devUrl 是寫死字串，vite 的 server.port 決定實際監聽埠——兩份設定
+// 各改一邊時 dev 視窗只會載入失敗，沒有任何錯誤指向真正的原因。此測試把兩者釘在一起。
 
-  assert.equal(result.status, 2);
-  assert.deepEqual(result.children, []);
-  assert.equal(spawnCount(calls), 0);
+/// vite.config.ts 是 TypeScript，無法 import；以 server 區塊為界抓設定值。
+function viteServerBlock() {
+  const source = readFileSync(path.join(ROOT, 'apps/desktop/vite.config.ts'), 'utf8');
+  return source.match(/server:\s*\{[\s\S]*?\}/)?.[0] ?? '';
+}
+
+function tauriBuildConfig() {
+  const source = readFileSync(
+    path.join(ROOT, 'apps/desktop/src-tauri/tauri.conf.json'),
+    'utf8',
+  );
+  return JSON.parse(source).build ?? {};
+}
+
+test('tauri devUrl 的埠號與 vite server.port 相同', () => {
+  const { devUrl } = tauriBuildConfig();
+  assert.ok(
+    devUrl,
+    'tauri.conf.json 缺少 build.devUrl——沒有它 tauri dev 會載入編譯期嵌入的靜態 dist，前端改動不重編 Rust 就進不了視窗',
+  );
+
+  const vitePort = viteServerBlock().match(/port:\s*(\d+)/)?.[1];
+  assert.ok(vitePort, 'apps/desktop/vite.config.ts 的 server 區塊未固定 port');
+  assert.equal(
+    new URL(devUrl).port,
+    vitePort,
+    `devUrl（${devUrl}）與 vite server.port（${vitePort}）不一致，dev 視窗會載入失敗`,
+  );
+});
+
+test('devUrl 指向本機 loopback：dev 視窗不得載入外部來源', () => {
+  const { devUrl } = tauriBuildConfig();
+  assert.ok(
+    ['localhost', '127.0.0.1', '[::1]'].includes(new URL(devUrl).hostname),
+    `devUrl（${devUrl}）指向非本機位址——dev 視窗會載入遠端內容並以 webview 的權限執行`,
+  );
+});
+
+test('vite dev server 啟用 strictPort：埠被占用時明確失敗而非靜默改埠', () => {
+  assert.match(
+    viteServerBlock(),
+    /strictPort:\s*true/,
+    'strictPort 未啟用——vite 會在埠被占用時自動換埠，devUrl 隨即指向錯誤位址，視窗開出空白頁而無錯誤訊息',
+  );
+});
+
+test('tauri.conf.json 設定 beforeDevCommand 以啟動 vite dev server', () => {
+  const { beforeDevCommand } = tauriBuildConfig();
+  assert.ok(
+    beforeDevCommand,
+    'tauri.conf.json 缺少 build.beforeDevCommand——devUrl 指向的 dev server 不會有人啟動',
+  );
+  // Tauri 於 apps/desktop（tauri.conf.json 所屬的 npm 專案）執行此指令，不是 repo root：
+  // 帶 -w／--workspace 會以「No workspaces found」收場，且只有實際啟動才看得出來。
+  assert.doesNotMatch(
+    beforeDevCommand,
+    /\s(-w|--workspace)[\s=]/,
+    `beforeDevCommand（${beforeDevCommand}）帶了 workspace 旗標——其 cwd 已是 apps/desktop，該旗標會讓 npm 找不到 workspace 而中止啟動`,
+  );
+});
+
+test('tauri.conf.json 保留 frontendDist：release 與 bundle 仍讀靜態產物', () => {
+  const { frontendDist } = tauriBuildConfig();
+  assert.equal(frontendDist, '../dist', 'frontendDist 遭改動會影響 release bundle 的前端來源');
 });
 
 // --- 兩模式沿用既有設定驗證（規格「設定不合法即拒絕啟動」） ---
