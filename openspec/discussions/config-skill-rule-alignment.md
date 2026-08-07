@@ -1,7 +1,8 @@
 ---
 topic: config 技能規則的調整——驗證成本、rule 來源正當性、重審範圍
 slug: config-skill-rule-alignment
-status: concluded
+status: promoted
+promoted_to: config-skill-rule-alignment
 created: 2026-08-07
 created_by: MomoChen <momochenisme@gmail.com>
 ---
