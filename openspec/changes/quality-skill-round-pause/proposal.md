@@ -14,7 +14,7 @@
 - `crates/speclink-core/src/skills.rs` 的 quality 技能條目 description（渲染成兩 target 的技能檔 frontmatter）同步改寫為每輪暫停語意
 - `crates/speclink-core/src/init.rs` 的兩處 quality 技能清單條目（內建工具版與 custom 中性版）括號內的舊時序敘述同步改寫；觸發時機兩半（兩站都跑時使用／單站直接呼叫該站）原樣保留
 - golden 斷言釘住暫停語意（`crates/speclink-core/tests/it/render_golden.rs`）
-- MARKER_VERSION v1.17.4 → v1.18.0，乾淨樹再生 golden snapshots 與 assets.lock，並以 speclink update 落地本 repo 生成物
+- MARKER_VERSION v1.17.4 → v1.18.0，乾淨樹再生 golden snapshots 與 assets.lock，並以 speclink update 落地本 repo 生成物（審查修正輪：收尾保留章補句再推 v1.18.1，同批重跑三連動與 update）
 - README.md 與 README.en.md 分工表的 quality 時序一句同步改寫
 
 ## Non-Goals

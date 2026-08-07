@@ -29,6 +29,7 @@
 - 每輪複驗完成 → 同樣停：報告殘餘必修與新發現，選項同上。
 - 乾淨輪（兩站零 findings，或必修淨空且該輪零新修正）→ 停下報告兩站皆綠，選項：進收尾補蓋（補蓋後建議封存）／先不蓋、維持現狀離場。
 - 「不修就停」＝兩站以既有「先不蓋章」出口離場，工單與凍結快照留存。必修未清時不提供補蓋選項——站內「必修淨空才蓋章」正典不被繞過，技能亦不代使用者決定蓋章。
+- 裁量 findings 留票未修進收尾時，該站補蓋＝帶保留章（站內 `--accept`）——補蓋選項預先載明，以停下時的裁示為明示授權；技能不得未經明示逕自蓋保留章（審查修正輪補述：站內「Never run --accept unprompted」正典同樣不被繞過）。
 
 替代方案「只在開修前停一次」與「乾淨輪自動補蓋」皆於討論由使用者否決（破壞「技能不自作主張」的單一心智模型）。
 
@@ -40,7 +41,7 @@ crates/speclink-core/tests/it/render_golden.rs 既有 quality 斷言（workflow 
 
 ### D4 MARKER_VERSION v1.18.0 與乾淨樹三連動
 
-asset 內文變更依慣例 minor +1：v1.17.4 → v1.18.0（crates/speclink-core/src/init.rs）。順序固定不可換：版號提升 → 以 UPDATE_GOLDEN 環境旗標再生四份 snapshot → 以 UPDATE_ASSETS_LOCK 環境旗標再生 crates/speclink-core/tests/golden/assets.lock（lock 再生有守門：指紋變而版號未動會拒寫）。golden 必須在乾淨樹再生：再生前確認除本變更的 assets 編輯外無其他影響渲染輸入的改動，再生後審視 diff 僅含 quality 相關區段與版號欄位，並不帶環境旗標重跑綠燈。最後執行 speclink update 落地本 repo 生成物（.claude/skills/ 與 .agents/skills/ 全部技能檔的 frontmatter 版號、CLAUDE.md／AGENTS.md 的 SPECLINK 標記版號、speclink-quality 兩實例內文），與 asset 編輯同批提交——golden 測試只比對照檔、測不到安裝檔漏同步。
+asset 內文變更依慣例 minor +1：v1.17.4 → v1.18.0（crates/speclink-core/src/init.rs）。（審查修正輪補述：收尾保留章補句再動 asset 內文，版號依 lock 守門再推 v1.18.0 → v1.18.1，三連動與 update 落地同批重跑。）順序固定不可換：版號提升 → 以 UPDATE_GOLDEN 環境旗標再生四份 snapshot → 以 UPDATE_ASSETS_LOCK 環境旗標再生 crates/speclink-core/tests/golden/assets.lock（lock 再生有守門：指紋變而版號未動會拒寫）。golden 必須在乾淨樹再生：再生前確認除本變更的 assets 編輯外無其他影響渲染輸入的改動，再生後審視 diff 僅含 quality 相關區段與版號欄位，並不帶環境旗標重跑綠燈。最後執行 speclink update 落地本 repo 生成物（.claude/skills/ 與 .agents/skills/ 全部技能檔的 frontmatter 版號、CLAUDE.md／AGENTS.md 的 SPECLINK 標記版號、speclink-quality 兩實例內文），與 asset 編輯同批提交——golden 測試只比對照檔、測不到安裝檔漏同步。
 
 ### D5 README 分工表時序句對齊
 
