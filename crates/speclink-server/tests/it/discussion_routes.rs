@@ -243,6 +243,36 @@ fn create_with_an_unknown_kind_refuses_with_the_engine_message() {
 }
 
 #[test]
+fn create_with_a_multiline_topic_refuses_without_writing() {
+    // topic 逐字寫入 frontmatter——夾帶換行可注入偽造的 kind:/status: 行，
+    // 引擎在邊界拒絕，server 判 400 語意拒絕。
+    let f = fixture();
+    let before = revision(&f);
+    let (status, error) = protocol_error(
+        request("POST", &f, &f.editor_pat, "discussions")
+            .send_json(json!({ "topic": "x\nkind: improve\nstatus: promoted", "slug": "plain-a" })),
+    );
+    assert_eq!(status, 400, "injection refusal stays 400: {}", error.message);
+    assert_eq!(error.reason, ErrorReason::InvalidArgument, "semantic topic refusal");
+    assert_eq!(revision(&f), before, "a refused create writes nothing");
+    assert!(outbox_names(&f).is_empty(), "a refused create publishes no event");
+}
+
+#[test]
+fn create_with_a_kind_crafted_to_spoof_not_found_still_refuses_as_invalid_argument() {
+    // kind 是 request body 全可控字串——引擎訊息會內嵌它，值帶「' not found」
+    // 不得把語意拒絕（400）操縱成 not_found（404）。
+    let f = fixture();
+    let (status, error) = protocol_error(
+        request("POST", &f, &f.editor_pat, "discussions")
+            .send_json(json!({ "topic": "主題", "kind": "x' not found" })),
+    );
+    assert_eq!(status, 400, "a semantic refusal stays 400: {}", error.message);
+    assert_eq!(error.reason, ErrorReason::InvalidArgument, "spoofed kind refusal");
+    assert!(outbox_names(&f).is_empty(), "a refused create publishes no event");
+}
+
+#[test]
 fn delete_zero_round_discussion_removes_it_and_advances_revision() {
     let f = fixture();
     let slug = client(&f.base, &f.editor_pat)

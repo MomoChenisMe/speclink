@@ -126,7 +126,7 @@ pub fn registry() -> Vec<Skill> {
         // discuss 的鏡像入口（模型帶 candidates），權限比照 discuss：記錄一律
         // 經 CLI 寫入，技能本身不得實作程式碼，故 Edit/Write 禁用；要互動挑
         // candidate 並逐輪 grill，不是 fork。
-        Skill { name: "improve", description: "Scan the codebase for architectural improvements and record the candidates as a discussion", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_IMPROVE },
+        Skill { name: "improve", description: "Scan the codebase for architectural improvements and record the candidates as a discussion — user-initiated only, never triggered by the model on its own", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_IMPROVE },
         Skill { name: "ingest", description: "Update an existing Speclink change from external context", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_INGEST },
         Skill { name: "onboard", description: "Adopt Speclink on an existing codebase by generating initial specs from current behavior", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ONBOARD },
         Skill { name: "propose", description: "Create a change proposal with all required artifacts", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_PROPOSE },

@@ -12,6 +12,8 @@ import { ConclusionView, RoundsView, splitDiscussionSections } from "./Discussio
 import { Markdown, READING_COLUMN_CLS } from "./Markdown";
 import { LABEL_CLS, SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
+import { ImproveChip } from "./ImproveStamp";
+import { isImproveKind } from "./improveStyle";
 import { REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
 import { VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
 
@@ -40,6 +42,8 @@ export interface ArchivedDrawerProps {
   reviewStatus?: ArchivedItem["reviewStatus"];
   /** 封存時的驗證結局（spec「已封存側的驗證標示」）；與審查結局並存。 */
   verifyStatus?: ArchivedItem["verifyStatus"];
+  /** 封存討論的 kind（App 端由封存清單帶出；標示隨 kind 恆定，不隨生命週期變化）。 */
+  discussionKind?: string | null;
 }
 
 type Doc = string | null | undefined;
@@ -60,6 +64,7 @@ export function ArchivedDrawer({
   onOpenDiscussion,
   reviewStatus,
   verifyStatus,
+  discussionKind,
 }: ArchivedDrawerProps) {
   const { t } = useI18n();
   const [proposal, setProposal] = useState<Doc>();
@@ -145,6 +150,12 @@ export function ArchivedDrawer({
         </Button>
         <SheetHeader>
           <SheetTitle className="truncate pr-14">{title}</SheetTitle>
+          {/* 改進標示（spec「討論抽屜的改進標示」）：與活討論抽屜同一章籤。 */}
+          {target.kind === "discussion" && isImproveKind(discussionKind) && (
+            <div>
+              <ImproveChip />
+            </div>
+          )}
           {/* 審查結局標示（spec「已封存側的審查標示」）：封存即定格，不重算凍結度。 */}
           {target.kind === "change" &&
             (reviewStatus === "reviewed" || reviewStatus === "reviewedNotPassed") && (

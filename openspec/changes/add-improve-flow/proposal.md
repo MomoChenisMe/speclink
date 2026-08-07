@@ -42,7 +42,7 @@ speclink 的討論入口目前只有使用者發起——discuss 由使用者帶
 - Affected specs: improve-skill(新增)、discussion-docs、client-protocol、desktop-app、review-skill(workflow 行字面同步)
 - Affected code:
   - New: crates/speclink-core/assets/skills/improve.md
-  - Modified: crates/speclink-core/src/discuss.rs、crates/speclink-cli/src/main.rs、crates/speclink-protocol/src/query.rs、crates/speclink-core/tests/golden(乾淨樹再生)、packages/ui/src/adapter.ts、packages/ui/src/components/DiscussionColumn.tsx、packages/ui/src/components/DiscussionDrawer.tsx、packages/ui/src/i18n.tsx、apps/desktop/src/i18n/messages.ts、openspec/LANGUAGE.md、README.md、README.en.md、CLAUDE.md(注入區塊,經 speclink update 再生)、AGENTS.md(同前)
+  - Modified: crates/speclink-core/src/discuss.rs、crates/speclink-cli/src/main.rs、crates/speclink-protocol/src/query.rs、crates/speclink-core/tests/golden(乾淨樹再生)、packages/ui/src/adapter.ts、packages/ui/src/components/DiscussionColumn.tsx、packages/ui/src/components/DiscussionDrawer.tsx、packages/ui/src/i18n.tsx、openspec/LANGUAGE.md、README.md、README.en.md、CLAUDE.md(注入區塊,經 speclink update 再生)、AGENTS.md(同前)
   - Removed: (none)
 - 相容性影響:discuss new 未帶 --kind 時人眼輸出與 --json 逐位元不變;DiscussionInfo 的 kind 為選填且無值省略,既有 client 不受影響;舊討論記錄無 kind 欄位即一般討論,零遷移
 - 影響的 crate 與 app:speclink-core、speclink-cli、speclink-protocol、packages/ui、apps/desktop

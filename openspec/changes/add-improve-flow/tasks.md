@@ -16,7 +16,7 @@
 
 - [x] 4.1 撰寫 UI 測試(規格「看板討論卡片的改進標示」「討論抽屜的改進標示」):kind 為 improve 的討論卡片渲染行內小章且 tooltip 為「改進討論」(tw)、一般討論無新增元素、已封存側維持標示;DiscussionDrawer 於 improve 顯示標示、一般討論不顯示;en 詞條對應。檔案 packages/ui/src/__tests__/。驗證:npm test -w packages/ui 新測試全紅 <!-- speclink-task:tsk_01KYWGZ9WKGS0HKE8A5SPP86MS -->
 - [x] 4.2 實作 design 決策「desktop 小章鏡像審查章樣式」:packages/ui/src/adapter.ts 增列 kind 欄位,DiscussionColumn 卡片行內小章(lucide 既有 icon 家族＋Tooltip,不加文字列),DiscussionDrawer 同步標示,標示隨 kind 恆定不隨生命週期變化。檔案 packages/ui/src/adapter.ts、packages/ui/src/components/DiscussionColumn.tsx、packages/ui/src/components/DiscussionDrawer.tsx。驗證:4.1 測試全綠 <!-- speclink-task:tsk_01KYWGZ9WKA469J4BW7BDN6H73 -->
-- [x] 4.3 增列 i18n 詞條:tw「改進討論」、en 對應詞條。檔案 packages/ui/src/i18n.tsx、apps/desktop/src/i18n/messages.ts。驗證:npm test -w packages/ui 與 npm test -w apps/desktop 全綠 <!-- speclink-task:tsk_01KYWGZ9WKB5J2NR5X1Y9WMGMT -->
+- [x] 4.3 增列 i18n 詞條:tw「改進討論」、en 對應詞條。檔案 packages/ui/src/i18n.tsx(詞條歸屬 packages/ui 內建字典;apps/desktop 的 messages.ts 為 App 層字典,兩字典合併,不需重複詞條)。驗證:npm test -w packages/ui 與 npm test -w apps/desktop 全綠 <!-- speclink-task:tsk_01KYWGZ9WKB5J2NR5X1Y9WMGMT -->
 
 ## 5. 詞彙與文件同步
 

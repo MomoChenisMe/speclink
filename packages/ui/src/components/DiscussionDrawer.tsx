@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Archive, ArrowUpRight, Check, Copy, FileText, Flag, MessagesSquare, Rocket, Sparkles } from "lucide-react";
+import { Archive, ArrowUpRight, Check, Copy, FileText, Flag, MessagesSquare, Rocket } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
 import { useI18n } from "../i18n";
@@ -9,7 +9,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Markdown, READING_COLUMN_CLS } from "./Markdown";
 import { LABEL_CLS } from "./SectionedDoc";
 import { discussionChipStage } from "./DiscussionColumn";
-import { IMPROVE_LABEL_KEY, isImproveKind } from "./ImproveStamp";
+import { ImproveChip } from "./ImproveStamp";
+import { isImproveKind } from "./improveStyle";
 
 /** 討論記錄的三個標準區段。 */
 export interface DiscussionSections {
@@ -376,15 +377,7 @@ export function DiscussionDrawer({
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {/* 改進標示（spec「討論抽屜的改進標示」）：與卡片小章同一詞條，
                 抽屜有空間故以章籤直出狀態詞。 */}
-            {isImproveKind(discussion.kind) && (
-              <span
-                data-discussion-kind="improve"
-                className="inline-flex items-center gap-1 rounded-full bg-indigo-500/12 px-2 py-0.5 font-semibold text-indigo-600 dark:text-indigo-400"
-              >
-                <Sparkles className="h-3 w-3" />
-                {t(IMPROVE_LABEL_KEY)}
-              </span>
-            )}
+            {isImproveKind(discussion.kind) && <ImproveChip />}
             <span className="tabular-nums">{t("common.rounds").replace("{n}", String(discussion.rounds))}</span>
             {discussion.created && <span>{discussion.created}</span>}
             {discussion.createdBy && (

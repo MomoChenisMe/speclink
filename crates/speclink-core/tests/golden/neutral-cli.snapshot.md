@@ -1,5 +1,5 @@
 === WAD.md ===
-<!-- SPECLINK:START v1.19.2 -->
+<!-- SPECLINK:START v1.19.3 -->
 
 # Speclink Instructions
 
@@ -39,7 +39,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -371,7 +371,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -653,7 +653,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -895,7 +895,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -1172,7 +1172,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -1292,7 +1292,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -1735,7 +1735,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -1858,12 +1858,12 @@ When `speclink-apply` is invoked on a change whose `.openspec.yaml created` date
 === .wad/skills/speclink-improve/SKILL.md ===
 ---
 name: speclink-improve
-description: "Scan the codebase for architectural improvements and record the candidates as a discussion"
+description: "Scan the codebase for architectural improvements and record the candidates as a discussion — user-initiated only, never triggered by the model on its own"
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -2044,7 +2044,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -2317,7 +2317,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -2417,7 +2417,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -2841,7 +2841,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -2934,7 +2934,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
@@ -3124,7 +3124,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
