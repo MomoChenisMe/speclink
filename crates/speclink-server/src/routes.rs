@@ -1445,13 +1445,16 @@ fn refine_discussion_write(e: ApiError) -> ApiError {
         return e;
     }
     let m = e.message;
-    if m.contains("' not found") {
-        ApiError::not_found(m)
-    } else if m.starts_with("invalid slug '")
+    // 語意拒絕（前綴判定）先於 not_found（子字串判定）：slug／kind 是請求可控
+    // 字串，會被引擎訊息內嵌，值帶「' not found」不得把 400 操縱成 404。
+    if m.starts_with("invalid slug '")
         || m.starts_with("invalid kind '")
+        || m.starts_with("invalid topic '")
         || m.starts_with("could not derive a slug")
     {
         ApiError::invalid_argument(m)
+    } else if m.contains("' not found") {
+        ApiError::not_found(m)
     } else if m.contains("' already exists")
         || m.contains("' is archived")
         || m.contains("is not linked to discussion")

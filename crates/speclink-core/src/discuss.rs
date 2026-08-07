@@ -29,7 +29,8 @@ pub struct DiscussionInfo {
     pub archived: bool,
 }
 
-/// `discuss new --kind` 的白名單——單點定義，CLI 與拒絕訊息共用。
+/// `discuss new --kind` 的白名單——驗證與拒絕訊息的單一事實來源。
+/// CLI `--kind` 的 help 字面（clap 靜態字串）另行點名合法值，擴充時同步。
 pub const DISCUSSION_KINDS: &[&str] = &["improve"];
 
 fn frontmatter_value(text: &str, key: &str) -> Option<String> {
@@ -112,7 +113,8 @@ fn info_from_doc(doc: &DiscussionDoc) -> DiscussionInfo {
         rounds: count_rounds(&doc.text),
         created: frontmatter_value(&doc.text, "created").unwrap_or_default(),
         created_by: frontmatter_value(&doc.text, "created_by"),
-        kind: frontmatter_value(&doc.text, "kind"),
+        // 空值 `kind:`（手改記錄）正規化為缺席，維持「缺席即省略」的 payload 形狀。
+        kind: frontmatter_value(&doc.text, "kind").filter(|v| !v.is_empty()),
         path: util::to_slash(&doc.path),
         archived: doc.archived,
     }
@@ -160,6 +162,11 @@ pub fn new_discussion(
                 DISCUSSION_KINDS.join(", ")
             );
         }
+    }
+    // topic 逐字寫入 frontmatter，夾帶換行可注入偽造的 kind:/status: 行——
+    // 在系統邊界一次擋下整類注入。
+    if topic.contains(['\n', '\r']) {
+        bail!("invalid topic '{}' — must be a single line", topic.escape_debug());
     }
     let slug = match slug_override {
         Some(s) => {
@@ -1745,6 +1752,29 @@ mod tests {
         let info = super::new_discussion(&store, "主題", Some("alpha"), None, None).unwrap();
         assert!(info.kind.is_none(), "無 kind 時欄位缺席");
         assert!(!store.discussion("alpha").contains("kind:"), "不得寫入 kind 行");
+    }
+
+    #[test]
+    fn new_discussion_rejects_multiline_topic_without_writing() {
+        // topic 逐字寫入 frontmatter——夾帶換行可注入偽造的 kind:/status: 行
+        // （frontmatter_value 取第一個命中），必須在系統邊界擋下。
+        for bad in ["x\nkind: improve\nstatus: promoted", "x\rkind: improve", "x\r\ny"] {
+            let store = TestStore::default();
+            let err = super::new_discussion(&store, bad, Some("plain-a"), None, None)
+                .expect_err("多行 topic 必須拒絕")
+                .to_string();
+            assert!(err.contains("invalid topic"), "訊息須點名 topic：{err}");
+            assert!(store.discussions.borrow().is_empty(), "拒絕時不得落檔（topic={bad:?}）");
+        }
+    }
+
+    #[test]
+    fn empty_kind_frontmatter_reads_as_plain() {
+        // 手改記錄寫出空值 `kind:` 不得讓 payload 冒出 "kind": ""——
+        // 讀取端正規化為缺席，維持「缺席即省略」的形狀不變量。
+        let doc = open_doc("gamma", "Gamma").replacen("status: open\n", "status: open\nkind:\n", 1);
+        let store = TestStore::with_live_discussion("gamma", &doc);
+        assert!(super::info(&store, "gamma").unwrap().kind.is_none(), "空值 kind 視為一般討論");
     }
 
     #[test]

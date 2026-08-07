@@ -2,7 +2,8 @@
 // change add-improve-flow）：kind 為 improve 的討論在卡片、已封存側與抽屜各顯示
 // 同一枚小章，一般討論不長出任何新元素；標示隨 kind 恆定，不隨生命週期變化。
 import { describe, it, expect, vi } from "vitest";
-import { render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider, MESSAGES } from "../i18n";
@@ -15,9 +16,10 @@ function render(ui: ReactElement, locale: "zh-TW" | "en" = "zh-TW") {
   return rtlRender(ui, { wrapper: wrapWith(locale) });
 }
 
-import { DiscussionCard } from "../components/DiscussionColumn";
+import { DiscussionCard, DiscussionColumn } from "../components/DiscussionColumn";
 import { DiscussionDrawer } from "../components/DiscussionDrawer";
 import { ArchivedList } from "../components/ArchivedList";
+import { ArchivedDrawer } from "../components/ArchivedDrawer";
 import type { DiscussionItem } from "../adapter";
 
 const IMPROVE_TW = "改進討論";
@@ -65,14 +67,37 @@ describe("看板討論卡片的改進標示", () => {
   });
 
   it("已轉出的改進討論維持標示（標示隨 kind 恆定，不隨生命週期變化）", () => {
-    render(<DiscussionCard d={{ ...improve, status: "promoted", promotedTo: ["cut-a"] }} />);
-    expect(screen.getByLabelText(IMPROVE_TW)).toBeTruthy();
+    // 走真實路徑：promoted 討論被 DiscussionColumn 分流到收合列（PromotedRow），
+    // 不會經過 DiscussionCard——展開收合列後小章必須在列上。
+    render(
+      <DiscussionColumn
+        discussions={[{ ...improve, status: "promoted", promotedTo: ["cut-a"] }]}
+        changes={[]}
+        archived={[]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
+    const row = document.querySelector('[data-discussion="improve-store-layer"]') as HTMLElement;
+    expect(within(row).getByLabelText(IMPROVE_TW)).toBeTruthy();
   });
 
   it("en 介面使用對應英文詞條，不落回中文", () => {
     render(<DiscussionCard d={improve} />, "en");
     expect(screen.getByLabelText(IMPROVE_EN)).toBeTruthy();
     expect(screen.queryByLabelText(IMPROVE_TW)).toBeNull();
+  });
+
+  it("小章 tooltip 開啟後顯示「改進討論」狀態詞", async () => {
+    // Scenario 說 tooltip SHALL 顯示狀態詞——aria-label 之外，把 TooltipContent
+    // 這一半也實際打開驗掉（模式同 richDrawer 的可見 tooltip 測試）。
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(<DiscussionCard d={improve} />);
+    const trigger = screen.getByLabelText(IMPROVE_TW);
+    await user.hover(trigger);
+    await waitFor(() => expect(trigger.getAttribute("data-state")).toContain("open"));
+    expect(document.querySelector("[data-radix-popper-content-wrapper]")?.textContent).toContain(
+      IMPROVE_TW,
+    );
   });
 });
 
@@ -93,6 +118,39 @@ describe("已封存側的改進標示", () => {
       document.querySelector(`[data-archived-discussion="${slug}"]`) as HTMLElement;
     expect(within(card("improve-store-layer")).getByLabelText(IMPROVE_TW)).toBeTruthy();
     expect(within(card("board-search-bar")).queryByLabelText(IMPROVE_TW)).toBeNull();
+  });
+});
+
+describe("已封存討論抽屜的改進標示", () => {
+  const archivedDrawerBase = {
+    open: true,
+    onOpenChange: vi.fn(),
+    loadDocument: vi.fn(async () => null),
+    loadCapabilities: vi.fn(async () => []),
+    loadDiscussionDocument: vi.fn(async () => null),
+  };
+
+  it("discussionKind 為 improve 時顯示標示", () => {
+    render(
+      <ArchivedDrawer
+        {...archivedDrawerBase}
+        target={{ kind: "discussion", slug: "improve-store-layer" }}
+        discussionKind="improve"
+      />,
+    );
+    const badge = document.querySelector("[data-discussion-kind]") as HTMLElement;
+    expect(badge).toBeTruthy();
+    expect(badge.textContent).toContain(IMPROVE_TW);
+  });
+
+  it("一般封存討論不顯示標示", () => {
+    render(
+      <ArchivedDrawer
+        {...archivedDrawerBase}
+        target={{ kind: "discussion", slug: "board-search-bar" }}
+      />,
+    );
+    expect(document.querySelector("[data-discussion-kind]")).toBeNull();
   });
 });
 

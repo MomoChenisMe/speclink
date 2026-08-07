@@ -1,12 +1,12 @@
 ---
 name: speclink-improve
-description: "Scan the codebase for architectural improvements and record the candidates as a discussion"
+description: "Scan the codebase for architectural improvements and record the candidates as a discussion — user-initiated only, never triggered by the model on its own"
 disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.2"
+  version: "v1.19.3"
   generatedBy: "Speclink"
 ---
 
