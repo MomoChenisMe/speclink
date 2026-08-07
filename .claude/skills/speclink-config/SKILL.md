@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.18.2"
+  version: "v1.18.3"
   generatedBy: "Speclink"
 ---
 
@@ -71,13 +71,13 @@ No version numbers, no counts, no percentages, no "currently N crates", no test 
 - an npm script → read its declaration in `package.json`;
 - a CLI subcommand → check it against the command's `--help` output.
 
-**Do NOT execute the referenced test or build commands.** A referenced suite can run for minutes; that cost belongs to CI and to apply's own verification steps, not to a document review that re-checks every line on every run. Criterion 1's `speclink instructions <artifact> --json` probe is exempt — that is this skill's own probe, cheap and required.
+**Do NOT execute the referenced test or build commands.** A referenced suite can run for minutes; that cost belongs to CI and to apply's own verification steps, not to a document review that re-checks every line on every run. Criterion 1's `speclink instructions <artifact> --json` probe is exempt — that is this skill's own probe, cheap and required. More broadly, the ban binds only the commands the document references: the skill's own verbs — Step 1's reads, Step 4's `--dry-run` previews — were never in it.
 
 Anything that no longer resolves is removed in this pass, even if you did not add it.
 
 ### The only reason to delete a line
 
-An existing line is dropped ONLY when it fails one of the four criteria. **"It cannot be derived from the fixed input set" is NOT a reason to delete.** A rule that came from a user's ruling — a discussion conclusion landed into this document — is invisible in manifests and READMEs by nature, and nothing in the file marks it as such, because a rewrite drops comments. So judge every existing line against the four criteria alone: if it survives all four, it stays, whatever produced it.
+An existing line is dropped ONLY when it fails one of the four criteria, or when the user's own answer in Step 3 withdraws it — the authority that lands a ruling is the same one that can take it back. **"It cannot be derived from the fixed input set" is NOT a reason to delete.** A rule that came from a user's ruling — a discussion conclusion landed into this document — is invisible in manifests and READMEs by nature, and nothing in the file marks it as such, because a rewrite drops comments. So outside an explicit withdrawal, judge every existing line against the four criteria alone: if it survives all four, it stays, whatever produced it.
 
 ### What a scope hint narrows
 
@@ -105,7 +105,7 @@ Same nature as the four fields above: an answer, not a finding. Ask it explicitl
 Never infer it from the repo. When the current document already carries a test-scope rule, quote its current value in the question, so the user confirms or revises what is there instead of answering blind.
 
 - **"Only the affected surfaces"** — build the project's own mapping from the dependency manifests you already read in Step 1 (which component is verified by which test command), write it as a rule under the `tasks` rules, and land it through the same `--dry-run` approval as everything else.
-- **"The full suite"** — write no test-scope rule at all, and leave the current document as it is.
+- **"The full suite"** — write no test-scope rule at all. When the current document already carries a test-scope rule, this answer is the user's ruling to withdraw it: remove that rule through the same `--dry-run` approval. Otherwise leave the current document as it is.
 
 ## Step 4: Show the diff, then write
 
@@ -137,8 +137,8 @@ Report at the end: which of the five sources were read, what was added, what was
 - **Don't restate injected instructions** — disprove with `speclink instructions <artifact> --json`, per line.
 - **Don't restate quality-station canon** — read the generated station skill; a copy here is a second canon that drifts.
 - **Don't write anything that can go stale** — no versions, counts, or dates.
-- **Don't reference what doesn't exist** — verify every command, test, and path statically, every run; never run what you are verifying.
-- **Don't delete for the wrong reason** — the four criteria are the only grounds; "not derivable from the fixed input set" is not one of them.
+- **Don't reference what doesn't exist** — verify every command, test, and path statically, every run; the referenced test and build commands themselves are never executed.
+- **Don't delete for the wrong reason** — a line falls only to the four criteria or to the user's own withdrawal; "cannot be derived from the fixed input set" is never a reason.
 - **Don't infer the policy fields** — ask all four, plus the test-scope question.
 - **Don't write without approval** — `--dry-run` first, always.
 - **Don't land a non-empty second run** — that is a signal to re-judge, not to write.

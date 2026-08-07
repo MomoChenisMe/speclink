@@ -7,10 +7,10 @@
 調整 config 技能正典資產（速記 A–D，後續 artifacts 沿用此對照）：
 
 - **A 判準四改靜態驗證**：驗引用「存在且可解析」一律用靜態便宜手段——路徑查檔案系統、測試名 grep 原始碼、npm script 查 package.json 宣告、CLI 子指令對 --help 面；不得執行被引用的測試或建置指令（判準一的 speclink instructions payload 探測不在此限）
-- **B 刪除理由限定原則**：rule 只因不過四判準而被刪，不得因「無法自固定輸入集導出」而被刪——保障使用者裁決型 rule（討論結論落地者）免標記即受保護
+- **B 刪除理由限定原則**：rule 只因不過四判準、或使用者本人於政策詢問中明確撤回而被刪，不得因「無法自固定輸入集導出」而被刪——保障使用者裁決型 rule（討論結論落地者）免標記即受保護，落地裁決與撤回裁決同源
 - **C scope hint 收窄語意明文化**：scope hint 收窄判準一至三的全面重審至範圍內 artifacts；判準四的引用核實恆為全文件掃描；無 hint 維持全文件
-- **D 政策提問增列第五問**：任務驗證步驟要全量測試或只跑受影響面——答受影響面則技能自已讀的 dependency manifests 組出專案客製的對應規則落 rules 的 tasks 段（沿既有 dry-run 核准流程落地）；答全量則不寫規則；現行文件已有測試範圍規則時提問帶現值
-- 隨動：產物層版號 MARKER_VERSION 升版（v1.18.1 → v1.18.2）、golden 快照與 assets.lock 同批再生、兩工具（claude／codex）生成技能檔隨 update 再生
+- **D 政策提問增列第五問**：任務驗證步驟要全量測試或只跑受影響面——答受影響面則技能自已讀的 dependency manifests 組出專案客製的對應規則落 rules 的 tasks 段（沿既有 dry-run 核准流程落地）；答全量則不寫新規則，現行文件已有測試範圍規則時該答案視為明確撤回、經 dry-run 核准移除之；現行文件已有測試範圍規則時提問帶現值
+- 隨動：產物層版號 MARKER_VERSION 升版（v1.18.1 → v1.18.3，品質站修復輪再遞增一次）、golden 快照與 assets.lock 同批再生、兩工具（claude／codex）生成技能檔隨 update 再生
 
 相容性影響:渲染輸出屬刻意變更——speclink-config 技能檔（兩 tool flavor）內容更新、其餘生成技能檔僅 frontmatter 版號隨升版變動,golden 同批刻意更新並於本提案記載;CLI 人眼輸出與 --json 契約無任何變動;既有 workspace 於 speclink update 時取得新版技能檔,未更新者僅版本探測報 stale,行為不變。
 
