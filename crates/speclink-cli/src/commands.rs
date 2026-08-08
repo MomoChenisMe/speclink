@@ -6,53 +6,117 @@ use core::workspace::Workspace;
 fn dispatch(cli: Cli) -> Result<()> {
     warn_deprecated_policy_keys();
     warn_leftover_remote_file();
+    // 31 個頂層動詞的模式形狀宣告（design D5 分類表）：ModeFree 直呼、Dual
+    // 兩臂必填、FsOnly／RemoteOnly 明寫拒絕。分岔決策只活在這一層。
     match cli.command {
+        // --- ModeFree：dispatch 不做模式判定；link／unlink／auth 是連線管理，
+        // 不消費模式而是改模式，連線解析自理 ---
         Commands::Init(a) => cmd_init(a),
         Commands::Update(a) => cmd_update(a),
-        Commands::List(a) => cmd_list(a),
-        Commands::Show(a) => cmd_show(a),
-        Commands::Validate(a) => cmd_validate(a),
-        Commands::Analyze(a) => cmd_analyze(a),
-        Commands::Drift(a) => cmd_drift(a),
-        Commands::Archive(a) => cmd_archive(a),
-        Commands::Discard(a) => cmd_discard(a),
-        Commands::Claim(a) => cmd_claim(a),
         Commands::Link(a) => cmd_link(a),
         Commands::Unlink => cmd_unlink(),
         Commands::Auth(a) => cmd_auth(a),
-        Commands::Artifact(a) => cmd_artifact(a),
-        Commands::Language(a) => cmd_language(a),
-        Commands::Status(a) => cmd_status(a),
-        Commands::Instructions(a) => cmd_instructions(a),
-        Commands::New(a) => cmd_new(a),
         Commands::Schemas(a) => cmd_schemas(a),
         Commands::Templates(a) => cmd_templates(a),
         Commands::Feedback(a) => cmd_feedback(a),
         Commands::Schema(a) => cmd_schema(a),
         Commands::Config(a) => cmd_config(a),
-        Commands::WorkflowConfig(a) => cmd_workflow_config(a),
         Commands::Completion(a) => cmd_completion(a),
-        Commands::Task(a) => cmd_task(a),
-        Commands::InProgress(a) => cmd_in_progress(a),
-        Commands::Demo => cmd_demo(),
-        Commands::Discuss(a) => cmd_discuss(a),
+        // --- Dual：本機臂與 remote 臂皆為必填參數 ---
+        Commands::List(a) => dual(a, cmd_list, |ctx, a| remote_list(ctx, &a)),
+        Commands::Show(a) => dual(a, cmd_show, |ctx, a| {
+            render_show(remote_show_outcome(ctx, a.item.as_deref(), a.item_type.as_deref())?, a.json)
+        }),
+        Commands::Validate(a) => dual(a, cmd_validate, |ctx, a| remote_validate(ctx, &a)),
+        Commands::Analyze(a) => dual(a, cmd_analyze, |ctx, a| remote_analyze(ctx, &a)),
+        Commands::Drift(a) => dual(a, cmd_drift, |ctx, a| remote_drift(ctx, &a)),
+        Commands::Archive(a) => dual(a, cmd_archive, |ctx, a| remote_archive(ctx, &a)),
+        Commands::Discard(a) => dual(a, cmd_discard, |ctx, a| remote_discard(ctx, &a)),
+        Commands::Artifact(a) => dual(a, cmd_artifact, remote_artifact),
+        Commands::Language(a) => dual(a, cmd_language, remote_language),
+        Commands::Status(a) => dual(a, cmd_status, |ctx, a| remote_status(ctx, &a)),
+        Commands::Instructions(a) => {
+            // `--skill` 印常數技能文本、不消費 store——檢查先於模式解析（凍結行為）。
+            if a.skill.is_some() {
+                cmd_instructions_skill(a)
+            } else {
+                dual(a, cmd_instructions, |ctx, a| remote_instructions(ctx, &a))
+            }
+        }
+        Commands::New(a) => dual(a, cmd_new, remote_new),
+        Commands::WorkflowConfig(a) => {
+            // stdin 於 argv 層一次消費（兩模式共用的正規化），先於模式解析——凍結行為。
+            let json = matches!(a.command, WorkflowConfigCommands::Show { json: true });
+            let write = workflow_config_write(&a.command)?;
+            dual((write, json), workflow_config_fs, |ctx, (w, j)| remote_workflow_config(ctx, w, j))
+        }
+        Commands::Task(a) => dual(a, cmd_task, remote_task),
+        Commands::InProgress(a) => dual(a, cmd_in_progress, remote_in_progress),
+        Commands::Discuss(a) => dual(a, cmd_discuss, remote_discuss),
+        // review／verify 為 Dual 家族：clap → StationVerb 正規化先行，雙臂
+        // 宣告在家族函式尾端（station_dual；review 的 prepare 自成雙臂）。
         Commands::Review(a) => cmd_review(a),
         Commands::Verify(a) => cmd_verify(a),
+        // --- FsOnly：只解析模式、不握手，remote 明寫拒絕 ---
+        Commands::Demo => fs_only(DEMO_REMOTE_REFUSAL, cmd_demo),
+        // --- RemoteOnly：fs 明寫拒絕 ---
+        Commands::Claim(a) => remote_only(a, CLAIM_FS_REFUSAL, |ctx, a| remote_claim(ctx, &a.name)),
+    }
+}
+
+// --- 模式形狀組合子（dispatch 宣告層）---
+//
+// 每個頂層動詞在 dispatch 表態四種形狀之一（design D1/D2）：ModeFree 直呼
+// （模式解析不觸發）、Dual 兩臂皆為必填參數（缺一臂是編譯錯誤，不是執行期
+// 靜默回退）、FsOnly 只解析模式不握手、RemoteOnly fs 即拒。模式判定惰性
+// 執行：解析與握手都由形狀觸發，remote_ctx() 只從這一層呼叫。
+
+/// Dual：模式解析一次——remote 模式握手後派 remote 臂，fs 模式派本機臂。
+fn dual<A>(
+    a: A,
+    fs_arm: impl FnOnce(A) -> Result<()>,
+    remote_arm: impl FnOnce(&RemoteCtx, A) -> Result<()>,
+) -> Result<()> {
+    match remote_ctx()? {
+        Some(ctx) => remote_arm(&ctx, a),
+        None => fs_arm(a),
+    }
+}
+
+/// FsOnly：只解析 store 模式、不建立連線——remote 即拒絕（離線同拒、
+/// server 零請求），fs 派本機臂。
+fn fs_only(refusal: &'static str, fs_arm: impl FnOnce() -> Result<()>) -> Result<()> {
+    if let Some(ws) = core::workspace::Workspace::discover_cwd()? {
+        if matches!(
+            speclink_host::context::resolve_store_mode(&ws)?.mode,
+            core::workspace::StoreMode::Remote(_)
+        ) {
+            bail!("{refusal}");
+        }
+    }
+    fs_arm()
+}
+
+/// RemoteOnly：fs 模式即拒絕、不觸 Store（在非專案目錄也同一句）；remote
+/// 模式握手後派 remote 臂。
+fn remote_only<A>(
+    a: A,
+    refusal: &'static str,
+    remote_arm: impl FnOnce(&RemoteCtx, A) -> Result<()>,
+) -> Result<()> {
+    match remote_ctx()? {
+        Some(ctx) => remote_arm(&ctx, a),
+        None => bail!("{refusal}"),
     }
 }
 
 // --- claim ---
 
-/// Claiming is an ownership concept of the remote lifecycle; the local fs
-/// store has no claim state, so fs mode fails loud instead of pretending.
-fn cmd_claim(a: ClaimArgs) -> Result<()> {
-    match remote_ctx()? {
-        Some(ctx) => remote_claim(&ctx, &a.name),
-        // fs 模式是純拒絕、不觸 Store（在非專案目錄也同一句）——訊息與
-        // runtime 的 Claim 分支共用同一份 frozen 文字（node dispatch 經該分支）。
-        None => bail!("claim requires a remote store — this project uses the local fs store"),
-    }
-}
+// claim 是 remote 生命週期的所有權概念，本機 fs store 沒有 claim 狀態——
+// fs 模式 fail-loud。訊息與 runtime 的 Claim 分支共用同一份 frozen 文字
+// （node dispatch 經該分支）。
+const CLAIM_FS_REFUSAL: &str =
+    "claim requires a remote store — this project uses the local fs store";
 
 // --- artifact cat / language show (dual-mode document reads) ---
 
@@ -77,9 +141,6 @@ fn artifact_rel_path(artifact: &str) -> Result<String> {
 fn cmd_artifact(a: ArtifactArgs) -> Result<()> {
     match a.command {
         ArtifactCommands::Cat { artifact, change } => {
-            if let Some(ctx) = remote_ctx()? {
-                return remote_artifact_cat(&ctx, &artifact, change.as_deref());
-            }
             let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
             let outcome = run_command(
@@ -99,10 +160,6 @@ fn cmd_artifact(a: ArtifactArgs) -> Result<()> {
 fn cmd_language(a: LanguageArgs) -> Result<()> {
     match a.command {
         LanguageCommands::Show => {
-            if let Some(ctx) = remote_ctx()? {
-                print!("{}", ctx.client.language()?.content);
-                return Ok(());
-            }
             let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
             let outcome = run_command(store, Some(&ws), core::command::Command::LanguageShow)?;
@@ -337,9 +394,6 @@ fn cmd_update(a: UpdateArgs) -> Result<()> {
 // --- list ---
 
 fn cmd_list(a: ListArgs) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_list(&ctx, &a);
-    }
     let (ws, fs_store) = open_project()?;
     // Worktree overlay (D3): only a local MAIN checkout with the policy on gets
     // here — everywhere else `facts` is empty, git is never spawned, and both
@@ -467,10 +521,6 @@ fn render_specs_section(specs: &serde_json::Value, json: bool) -> Result<()> {
 // --- show ---
 
 fn cmd_show(a: ShowArgs) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        let show = remote_show_outcome(&ctx, a.item.as_deref(), a.item_type.as_deref())?;
-        return render_show(show, a.json);
-    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     let outcome = run_command(
@@ -563,9 +613,6 @@ fn render_show(show: core::command::ShowOutcome, json: bool) -> Result<()> {
 // --- validate ---
 
 fn cmd_validate(a: ValidateArgs) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_validate(&ctx, &a);
-    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     let outcome = run_command(
@@ -617,9 +664,6 @@ fn render_validate_results(results: &[core::validate::ValidationResult], json: b
 // --- analyze ---
 
 fn cmd_analyze(a: ChangeArg) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_analyze(&ctx, &a);
-    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     if info_if_no_changes(store, a.change.as_deref()) {
@@ -690,9 +734,6 @@ fn render_analyze(report: &core::analyzer::AnalyzeReport) {
 // --- drift ---
 
 fn cmd_drift(a: ChangeArg) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_drift(&ctx, &a);
-    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     if info_if_no_changes(store, a.change.as_deref()) {
@@ -793,9 +834,6 @@ fn render_drift(report: &core::drift::DriftReport) {
 // --- archive ---
 
 fn cmd_archive(a: ArchiveArgs) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_archive(&ctx, &a);
-    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     if a.all || a.changes.len() > 1 {
@@ -960,9 +998,6 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
 // --- discard ---
 
 fn cmd_discard(a: DiscardArgs) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_discard(&ctx, &a);
-    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     let cmd_outcome = run_command(
@@ -999,9 +1034,6 @@ fn render_discard(change: &str, unlinked: &[(String, String)], json: bool) -> Re
 // --- status ---
 
 fn cmd_status(a: StatusArgs) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_status(&ctx, &a);
-    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     if info_if_no_changes(store, a.change.as_deref()) {
@@ -1054,16 +1086,16 @@ fn render_status_human(report: &core::status::StatusReport) {
 
 // --- instructions ---
 
+/// `instructions --skill` 的 ModeFree 路徑：常數技能文本，dispatch 已分流。
+fn cmd_instructions_skill(a: InstructionsArgs) -> Result<()> {
+    let skill = a.skill.as_deref().expect("dispatch routes only --skill here");
+    let body = core::skills::skill_body(skill)
+        .ok_or_else(|| anyhow::anyhow!("Unknown skill: {skill}"))?;
+    print!("{body}");
+    Ok(())
+}
+
 fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
-    if let Some(skill) = a.skill.as_deref() {
-        let body = core::skills::skill_body(skill)
-            .ok_or_else(|| anyhow::anyhow!("Unknown skill: {skill}"))?;
-        print!("{body}");
-        return Ok(());
-    }
-    if let Some(ctx) = remote_ctx()? {
-        return remote_instructions(&ctx, &a);
-    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     if info_if_no_changes(store, a.change.as_deref()) {
@@ -1176,9 +1208,6 @@ fn cmd_new(a: NewArgs) -> Result<()> {
 }
 
 fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_new_change(&ctx, &a);
-    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     let outcome = run_command(
@@ -1229,9 +1258,6 @@ fn render_new_change(name: &str, lines: NewChangeLines<'_>) {
 }
 
 fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_new_artifact(&ctx, &a);
-    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     let content = if a.stdin {
@@ -1575,12 +1601,9 @@ struct WorkflowConfigEdit {
     summary: String,
 }
 
-fn cmd_workflow_config(a: WorkflowConfigArgs) -> Result<()> {
-    let json = matches!(a.command, WorkflowConfigCommands::Show { json: true });
-    let write = workflow_config_write(&a.command)?;
-    if let Some(ctx) = remote_ctx()? {
-        return remote_workflow_config(&ctx, write, json);
-    }
+/// workflow-config 的本機臂：dispatch 正規化後的寫入計畫（或 show）作用於
+/// `<spec_dir>/config.yaml`。
+fn workflow_config_fs((write, json): (Option<(WorkflowConfigWrite, bool)>, bool)) -> Result<()> {
     let ws = require_workspace()?;
     let label = format!("{}/config.yaml", ws.spec_dir_name);
     let path = ws.spec_dir().join("config.yaml");
@@ -2079,9 +2102,6 @@ fn bash_inject_positionals(script: &str, root: &clap::Command) -> String {
 fn cmd_task(a: TaskArgs) -> Result<()> {
     match a.command {
         TaskCommands::Done { task_id, change, json } => {
-            if let Some(ctx) = remote_ctx()? {
-                return remote_task_done(&ctx, &task_id, change.as_deref(), json);
-            }
             let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
             let outcome = run_command(
@@ -2102,9 +2122,6 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
             )?;
         }
         TaskCommands::Undone { task_id, change, json } => {
-            if let Some(ctx) = remote_ctx()? {
-                return remote_task_undone(&ctx, &task_id, change.as_deref(), json);
-            }
             let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
             let outcome = run_command(
@@ -2200,20 +2217,11 @@ fn render_in_progress_remove(name: &str, removed: bool) {
 fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
     match a.command {
         InProgressCommands::Add { name } => {
-            // remote 模式路由至 server（started_by 由 server 認證身分蓋章）；
-            // 靜默 exit 0 的 parity 凍結形狀兩模式一致。
-            if let Some(ctx) = remote_ctx()? {
-                ctx.client.in_progress_add(&name)?;
-                return Ok(());
-            }
             let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
             run_command(store, Some(&ws), core::command::Command::InProgressAdd { name })?;
         }
         InProgressCommands::Remove { name } => {
-            if let Some(ctx) = remote_ctx()? {
-                return remote_in_progress_remove(&ctx, &name);
-            }
             let (ws, store) = open_project()?;
             let store: &dyn Store = &store;
             let outcome =
@@ -2229,18 +2237,12 @@ fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
 
 // --- demo ---
 
+// 本質本機動詞：remote 模式明確拒絕（比照 claim 在 fs 的 fail-loud），
+// 由 dispatch 的 fs_only 形狀執行——只判斷連線設定、不走 handshake。
+const DEMO_REMOTE_REFUSAL: &str =
+    "demo is not available in remote mode — it seeds a demo change into a local openspec/ tree";
+
 fn cmd_demo() -> Result<()> {
-    // 本質本機動詞：remote 模式明確拒絕（design D7，比照 claim 在 fs 的
-    // fail-loud）。只判斷連線設定、不走 handshake——離線同樣拒絕、server
-    // 零請求。
-    if let Some(ws) = core::workspace::Workspace::discover_cwd()? {
-        if matches!(
-            speclink_host::context::resolve_store_mode(&ws)?.mode,
-            core::workspace::StoreMode::Remote(_)
-        ) {
-            bail!("demo is not available in remote mode — it seeds a demo change into a local openspec/ tree");
-        }
-    }
     let (ws, store) = open_project()?;
     let outcome = core::demo::generate(&store, speclink_host::context::git_identity(&ws.root).as_deref())?;
     println!("{} Created demo change: {}", color::green("✓"), outcome.name);
@@ -2301,7 +2303,10 @@ pub(crate) const VERIFY_CLI: StationCli = StationCli {
 
 fn cmd_review(a: ReviewArgs) -> Result<()> {
     let verb = match a.command {
-        ReviewCommands::Prepare { change } => return review_prepare(change),
+        // prepare：Apply baseline 的兩站共用入口（verify 無此子指令），自成雙臂。
+        ReviewCommands::Prepare { change } => {
+            return dual(change, review_prepare_fs, |ctx, c| remote_review_prepare(ctx, c));
+        }
         ReviewCommands::Scope { change, json, base, candidate_hash, include_hunk } => {
             StationVerb::Scope { change, json, base, candidate_hash, include_hunk }
         }
@@ -2312,7 +2317,7 @@ fn cmd_review(a: ReviewArgs) -> Result<()> {
         }
         ReviewCommands::Discard { change } => StationVerb::Discard { change },
     };
-    run_station(&REVIEW_CLI, verb)
+    station_dual(&REVIEW_CLI, verb)
 }
 
 fn cmd_verify(a: VerifyArgs) -> Result<()> {
@@ -2327,14 +2332,17 @@ fn cmd_verify(a: VerifyArgs) -> Result<()> {
         }
         VerifyCommands::Discard { change } => StationVerb::Discard { change },
     };
-    run_station(&VERIFY_CLI, verb)
+    station_dual(&VERIFY_CLI, verb)
 }
 
-/// `review prepare` 的入口（驗證站無此動詞：Apply baseline 兩站共用）。
-fn review_prepare(change: String) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_review_prepare(&ctx, change);
-    }
+/// 兩站共用的 Dual 宣告：正規化後的 StationVerb 派給本機／remote 站臂——
+/// 站別差異只剩 StationCli 常數組，正規化邏輯不進臂內。
+fn station_dual(cli: &StationCli, verb: StationVerb) -> Result<()> {
+    dual(verb, |v| station_fs(cli, v), |ctx, v| remote_station(ctx, cli, v))
+}
+
+/// `review prepare` 的本機臂（驗證站無此動詞：Apply baseline 兩站共用）。
+fn review_prepare_fs(change: String) -> Result<()> {
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     if !store.change_exists(&change) {
@@ -2347,10 +2355,7 @@ fn review_prepare(change: String) -> Result<()> {
     run_review_prepare(&ws, &change, meta.started_at.is_some())
 }
 
-fn run_station(cli: &StationCli, verb: StationVerb) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_station(&ctx, cli, verb);
-    }
+fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     let st = cli.station;
@@ -2726,9 +2731,6 @@ fn scope_needs_input_message(
 }
 
 fn cmd_discuss(a: DiscussArgs) -> Result<()> {
-    if let Some(ctx) = remote_ctx()? {
-        return remote_discuss(&ctx, a);
-    }
     let (ws, store) = open_project()?;
     let store: &dyn Store = &store;
     match a.command {

@@ -12,7 +12,7 @@ CLI 的本機（fs）/remote 模式分岔決策目前散在 22 個函式開頭�
 - **散佈分岔移除**：22 處各動詞函式開頭的 remote_ctx() 檢查，加上 demo 函式內的 remote 拒絕檢查，全數移除；模式判定改由 dispatch 依宣告執行——Dual／FsOnly／RemoteOnly 動詞判定一次後派給對應臂或拒絕，ModeFree 動詞永不觸發判定。
 - **動詞分類全盤表態（31 個頂層動詞）**：ModeFree 11（init、update、link、unlink、auth、schemas、templates、feedback、schema、config、completion——其中 link／unlink／auth 是連線管理，不消費模式而是改模式，連線解析自理）；Dual 18（list、show、validate、analyze、drift、archive、discard、artifact、language、status、instructions、new、workflow-config、task、in-progress、discuss、review、verify）；FsOnly 1（demo——正典 verb-contract 已以 SHALL 要求其 remote 拒絕，現行實作寫在函式內，收進宣告層）；RemoteOnly 1（claim）。
 - **家族臂維持**：discuss 與 review／verify 兩站的 Dual 兩臂即既有家族函式（本機家族函式 vs remote 家族函式），子指令層的窮盡性由 clap enum 的窮盡 match 承擔（remote 家族函式無 catch-all，新增子指令兩臂皆編譯不過）。
-- **新增凍結對照**：宣告層三類邊界行為首度入測試與正典——ModeFree 動詞於壞 .speclink.yaml 目錄下仍正常執行、FsOnly（demo）的 remote 拒絕（離線同拒、server 零請求、文案不變）、RemoteOnly（claim）的 fs 拒絕（文案不變）；既有 Dual 動詞的 fail-closed 對照不動。
+- **新增凍結對照**：宣告層三類邊界行為首度入測試與正典——不讀取專案設定的 ModeFree 代表動詞（completion、config）於壞 .speclink.yaml 目錄下仍正常執行（schemas／templates／update 因 workspace 探索讀檔的既有失敗維持現狀，不在凍結對照內）、FsOnly（demo）的 remote 拒絕（離線同拒、server 零請求、文案不變）、RemoteOnly（claim）的 fs 拒絕（文案不變）；既有 Dual 動詞的 fail-closed 對照不動。
 - 不新增任何子指令或旗標；兩模式的人眼輸出、--json 形狀、exit code、拒絕文案全數不變（純結構重構，行為凍結）。
 
 **相容性影響**：
@@ -45,7 +45,7 @@ CLI 的本機（fs）/remote 模式分岔決策目前散在 22 個函式開頭�
 - Affected specs: verb-contract
 - Affected code:
   - New:
-    - crates/speclink-cli/tests/it/mode_dispatch.rs（宣告層三類邊界行為的凍結對照：ModeFree 壞 yaml 可執行、demo remote 拒絕、claim fs 拒絕）
+    - crates/speclink-cli/tests/it/mode_dispatch.rs（宣告層三類邊界行為的凍結對照：ModeFree（completion、config）壞 yaml 可執行、demo remote 拒絕、claim fs 拒絕）
   - Modified:
     - crates/speclink-cli/src/commands.rs（dispatch 改表驅動模式宣告、移除各函式的 remote_ctx 與 demo 的模式檢查分岔）
     - crates/speclink-cli/src/remote_commands.rs（remote_ctx 的呼叫端收斂到 dispatch，remote 臂函式簽名隨宣告微調）

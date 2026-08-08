@@ -14,6 +14,7 @@ mod in_progress_remove;
 mod init_tools;
 mod instructions_policy;
 mod meta_fail_closed;
+mod mode_dispatch;
 mod no_raw_wire_json;
 mod reconclude_restale;
 mod remote_connect;
