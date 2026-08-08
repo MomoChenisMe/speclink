@@ -52,8 +52,8 @@ pub fn discard(store: &dyn Store, change: &str) -> Result<()> {
 }
 
 /// 蓋章（spec「驗證蓋章守門與蓋章效果」）：守門與審查站同一條——任務全完成＋
-/// 末輪零未解 findings（`accept` 僅豁免後者）；通過時於同一原子寫入內落五個
-/// `verified_*` 欄位並刪除工單。
+/// 末輪零未解必修（CRITICAL／WARNING）findings，SUGGESTION 不擋章（`accept` 僅
+/// 豁免必修條件）；通過時於同一原子寫入內落五個 `verified_*` 欄位並刪除工單。
 pub fn stamp(
     store: &dyn Store,
     change: &str,
@@ -111,6 +111,8 @@ mod tests {
 
     const ROUND_1: &str = "**Scope**: crates/a/src/lib.rs, crates/b/src/util.rs\n\n- [CRITICAL] crates/a/src/lib.rs — requirement R2 has no implementation\n- [SUGGESTION] crates/b/src/util.rs — design says otherwise\n";
     const ROUND_2: &str = "**Scope**: crates/a/src/lib.rs\n\n- [WARNING] crates/a/src/lib.rs — scenario 3 untested\n";
+    const SUGGESTION_ROUND: &str =
+        "**Scope**: crates/b/src/util.rs\n\n- [SUGGESTION] crates/b/src/util.rs — design says otherwise\n";
 
     /// 任務全數完成的 change——驗證工單的前提（design D3）。
     fn finished_change() -> TestStore {
@@ -488,6 +490,40 @@ mod tests {
         assert!(!store.artifact_exists("demo", VERIFY_DOC), "ticket must be deleted");
         let meta = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).expect("parses");
         assert!(meta.verified_at.is_some());
+    }
+
+    #[test]
+    fn stamp_allows_a_suggestion_only_last_round() {
+        // spec Scenario「僅 SUGGESTION 的末輪乾淨蓋章」：SUGGESTION 不是必修，
+        // 無 `--accept` 也放行——五欄寫入且工單刪除。
+        let store = finished_change();
+        add_round(&store, "demo", SUGGESTION_ROUND).expect("suggestion-only round");
+        stamp_demo(&store, false).expect("suggestion-only round must stamp clean");
+        assert!(!store.artifact_exists("demo", VERIFY_DOC), "ticket must be deleted");
+        let meta = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).expect("parses");
+        assert!(meta.verified_at.is_some());
+    }
+
+    #[test]
+    fn stamp_refusal_names_the_must_fix_count() {
+        // spec Scenario「末輪有未解 findings 且未帶 --accept」（delta）：stderr 點名
+        // 未解必修數——ROUND_1 含 CRITICAL＋SUGGESTION，必修數為 1、SUGGESTION 不計入。
+        let store = finished_change();
+        add_round(&store, "demo", ROUND_1).expect("round with findings");
+        let err = stamp_demo(&store, false).expect_err("must-fix findings must refuse");
+        let msg = err.to_string();
+        assert!(msg.contains("1 unresolved must-fix"), "must name the must-fix count: {msg}");
+        assert!(msg.contains("CRITICAL/WARNING"), "must name the blocking severities: {msg}");
+    }
+
+    #[test]
+    fn stamp_refuses_a_warning_only_last_round() {
+        // WARNING 是必修級：僅 WARNING 的末輪照樣擋乾淨章。
+        let store = finished_change();
+        add_round(&store, "demo", ROUND_2).expect("warning-only round");
+        let err = stamp_demo(&store, false).expect_err("warning must refuse");
+        assert!(err.to_string().contains("--accept"), "error must offer --accept: {err}");
+        assert!(store.artifact_exists("demo", VERIFY_DOC), "ticket must survive refusal");
     }
 
     #[test]

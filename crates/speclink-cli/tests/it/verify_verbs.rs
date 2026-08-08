@@ -12,6 +12,8 @@ use std::process::{Command, Output, Stdio};
 
 const ROUND_WITH_FINDINGS: &str =
     "**Scope**: src/lib.rs\n\n- [CRITICAL] src/lib.rs — requirement R2 has no implementation\n";
+const SUGGESTION_ROUND: &str =
+    "**Scope**: src/lib.rs\n\n- [SUGGESTION] src/lib.rs — design says otherwise\n";
 const CLEAN_ROUND: &str = "**Scope**: src/lib.rs\n";
 const TASKS_DONE: &str = "- [x] 1.1 first\n- [x] 1.2 second\n";
 const TASKS_PARTIAL: &str = "- [x] 1.1 first\n- [ ] 1.2 second\n";
@@ -321,10 +323,24 @@ fn stamp_refuses_findings_without_accept_then_accepts() {
     let err = stderr_of(&refused);
     assert!(err.contains("--accept"), "stderr offers --accept: {err}");
     assert!(err.contains("re-verify"), "station word is the verify one: {err}");
+    assert!(err.contains("1 unresolved must-fix"), "stderr names the must-fix count: {err}");
+    assert!(err.contains("CRITICAL/WARNING"), "stderr names the blocking severities: {err}");
     assert!(p.ticket_path().exists(), "ticket survives the refusal");
 
     let ok = p.run(&["verify", "stamp", "demo", "--accept"]);
     assert!(ok.status.success(), "stderr: {}", stderr_of(&ok));
+    assert!(!p.ticket_path().exists(), "ticket deleted by the stamp");
+    assert!(p.meta().contains("verified_at"), "{}", p.meta());
+}
+
+#[test]
+fn stamp_allows_a_suggestion_only_round() {
+    // spec Scenario「僅 SUGGESTION 的末輪乾淨蓋章」：SUGGESTION 不是必修，
+    // 無 --accept 也放行——exit 0、五欄寫入、工單刪除。
+    let p = TempProject::with_change("stamp-suggestion", TASKS_DONE);
+    p.run_stdin(&["verify", "add-round", "demo", "--stdin"], SUGGESTION_ROUND);
+    let out = p.run(&["verify", "stamp", "demo"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert!(!p.ticket_path().exists(), "ticket deleted by the stamp");
     assert!(p.meta().contains("verified_at"), "{}", p.meta());
 }
