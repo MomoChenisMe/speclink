@@ -415,12 +415,18 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
             st.noun
         )));
     }
-    // 守門 (2)：末輪零未解 findings；`--accept` 僅豁免此條。
-    let unresolved = ticket.last_round().findings.len();
+    // 守門 (2)：末輪零未解必修（CRITICAL／WARNING）findings；SUGGESTION 不擋章；
+    // `--accept` 僅豁免此條。
+    let unresolved = ticket
+        .last_round()
+        .findings
+        .iter()
+        .filter(|f| f.severity != Severity::Suggestion)
+        .count();
     if unresolved > 0 && !accept {
         bail!(crate::command::Refusal(format!(
-            "the last round has {unresolved} unresolved finding(s) — fix and {}, \
-             or pass --accept to stamp with reservations",
+            "the last round has {unresolved} unresolved must-fix finding(s) (CRITICAL/WARNING) \
+             — fix and {}, or pass --accept to stamp with reservations",
             st.recheck
         )));
     }

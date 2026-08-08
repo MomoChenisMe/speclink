@@ -42,7 +42,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    **Not every task is done → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do NOT run `speclink verify scope`, do NOT run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
 
-   **The `/speclink:quality` timeline's closing stamp call, and the ticket's last round is clean** (`speclink verify show "<name>" --json` — `lastRound.findings` empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that clean round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent {{TOOL}}` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
+   **The `/speclink:quality` timeline's closing stamp call, and the ticket's last round is must-fix-clear** (`speclink verify show "<name>" --json` — `lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as clear) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent {{TOOL}}` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
 
    **Every task is done → finished-work verification.** Continue to step 5.
 
@@ -154,12 +154,12 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
        - Missing requirement implementations
        - Each with specific, actionable recommendation
 
-    2. **WARNING** (Should fix):
+    2. **WARNING** (Must fix — blocks the stamp):
        - Spec/design divergences
        - Missing scenario coverage
        - Each with specific recommendation
 
-    3. **SUGGESTION** (Nice to fix):
+    3. **SUGGESTION** (Nice to fix — never blocks the stamp):
        - Pattern inconsistencies
        - Minor improvements
        - Each with specific recommendation
@@ -174,7 +174,9 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
     Classify each finding into one of two buckets and show the result as its own list. The triage drives step 13 — it never changes the ticket format:
 
     - **Must-fix** — CRITICAL findings; Correctness findings with a realistic trigger path (WARNING included); requirements or scenarios with no implementation at all.
-    - **Discretionary** — pattern-consistency observations and SUGGESTION-level items. Give each one line: the cost of fixing weighed against the benefit.
+    - **Discretionary** — pattern-consistency observations and other nice-to-fix items. Give each one line: the cost of fixing weighed against the benefit.
+
+    Severity IS the blocking boundary: must-fix findings are recorded as CRITICAL or WARNING; discretionary findings are ALWAYS recorded as SUGGESTION — never WARNING. SUGGESTION-level findings do not block the stamp, need nobody's approval, and never enter the acceptance mechanism.
 
     The **blocking set** of a round is its must-fix findings the user has not accepted — step 13's loop rule runs on its size.
 
@@ -192,7 +194,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
     Findings descriptions go in as reported — same language, never translated by the main thread; severity labels and dimension prefixes stay in English.
 
-    **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Resolved findings are dropped. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
+    **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Resolved findings are dropped. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed **must-fix** finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. Unfixed SUGGESTIONs carry forward as plain unresolved lines without the token — they never need acceptance and never block. The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
     NEVER hand-write or edit `{{SPEC_DIR}}changes/<name>/verify.md` — the ticket is verb-owned; a malformed round is rejected by the verb, fix the stdin content and retry.
 
@@ -200,7 +202,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
     Let Bn be this round's blocking set (step 11). Compare its size with the previous round's Bn-1 (a first round has nothing to compare against):
 
-    - **Bn is empty and no accepted findings remain** → stamp and report **passed clean**:
+    - **Bn is empty and no accepted must-fix findings remain** → stamp and report **passed clean** (leftover SUGGESTION-level findings do not block and need no approval — list them in the report):
 
       ```bash
       speclink verify stamp "<name>" --agent {{TOOL}}
@@ -208,12 +210,12 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
       If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop — the next session retries the stamp through step 5.
 
-      **Exception — inside the `/speclink:quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `/speclink:quality`, do NOT stamp on a cleared round — neither a zero-findings DISCOVERY round nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 12); take the **stop without stamping** ending (the same exit as option 3 below: the verification ticket and its snapshot stay). The stamp lands at that skill's **closing stamp call**, which enters through step 4's closing-stamp branch — and on that call this exception is OFF: an untouched clean round stamps directly without a new round, a moved one clears its validation pass and stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
+      **Exception — inside the `/speclink:quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `/speclink:quality`, do NOT stamp on a cleared round — neither a DISCOVERY round with no must-fix findings nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 12); take the **stop without stamping** ending (the same exit as option 3 below: the verification ticket and its snapshot stay). The stamp lands at that skill's **closing stamp call**, which enters through step 4's closing-stamp branch — and on that call this exception is OFF: an untouched must-fix-clear round stamps directly without a new round, a moved one clears its validation pass and stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
 
-    - **Bn is empty but accepted findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept --agent {{TOOL}}` — and report **passed with reservations**. Never run `--accept` unprompted.
+    - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept --agent {{TOOL}}` — and report **passed with reservations**. Never run `--accept` unprompted.
 
-    - **Bn is strictly smaller than Bn-1** (or this is the first round with findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": any must-fix outstanding → recommend option 1; only discretionary left → recommend option 2.
-      1. **Fix and re-verify** — fixes happen HERE in the main thread, following the project's TDD discipline; the checking pass never edits files. Fix the must-fix list; discretionary items only when the user asks — anything left unfixed is accepted and carried (step 12). **Verification gate**: after the fixes, run the project's full build and test suite and get it green BEFORE looping back to step 5 — a fix-introduced regression must never flow into the next round. Step 5 then freezes the validation patch for the next round.
+    - **Bn is strictly smaller than Bn-1** (or this is the first round with must-fix findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": recommend option 1 — outstanding must-fix findings are what brought the loop here. SUGGESTION-only rounds never reach this menu: they stamp directly through the first bullet.
+      1. **Fix and re-verify** — fixes happen HERE in the main thread, following the project's TDD discipline; the checking pass never edits files. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 12); unfixed SUGGESTIONs just carry forward — they never need acceptance. **Verification gate**: after the fixes, run the project's full build and test suite and get it green BEFORE looping back to step 5 — a fix-introduced regression must never flow into the next round. Step 5 then freezes the validation patch for the next round.
       2. **Accept as-is and stamp** — `speclink verify stamp "<name>" --accept --agent {{TOOL}}` (stamps with reservations; the round's findings stay on record in the change history).
       3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another verifier (`speclink verify show <name> --json` hands them the last round).
 
