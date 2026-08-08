@@ -48,7 +48,7 @@ remote_ctx() 現況把解析與握手綁在一起；本設計把觸發權交給�
 | Dual | 觸發 | 僅 Remote 模式 |
 | RemoteOnly | 觸發——Fs 即拒絕 | 僅 Remote 模式 |
 
-否決「dispatch 無條件先判再派」：ModeFree 動詞（completion、schemas 等）在壞 .speclink.yaml 目錄下會從能跑變炸——行為回歸，且多付握手（討論已裁定）。
+否決「dispatch 無條件先判再派」：ModeFree 動詞（completion、config 等）在壞 .speclink.yaml 目錄下會從能跑變炸——行為回歸，且多付握手（討論已裁定）。
 
 **D3：宣告粒度為頂層動詞；多子指令動詞以家族臂滿足**
 
@@ -62,7 +62,7 @@ remote_ctx() 現況把解析與握手綁在一起；本設計把觸發權交給�
 
 **D5：動詞分類全表（31 個，實作時照表宣告）**
 
-- **ModeFree 11**：init、update、link、unlink、auth、schemas、templates、feedback、schema、config、completion。link／unlink／auth 是連線管理——不消費模式而是改模式，其內部的連線解析自理，dispatch 不介入。
+- **ModeFree 11**：init、update、link、unlink、auth、schemas、templates、feedback、schema、config、completion。link／unlink／auth 是連線管理——不消費模式而是改模式，其內部的連線解析自理，dispatch 不介入。注意：ModeFree 指「dispatch 不做 store 模式判定」，不等於「不讀 .speclink.yaml」——schemas／templates／update 等的 workspace 探索本就解析該檔（取 spec_dir），壞檔下的既有失敗維持現狀（實測 2026-08-09：schemas 於壞 yaml exit 1；completion、config 免疫）。
 - **Dual 18**：list、show、validate、analyze、drift、archive、discard、artifact、language、status、instructions、new、workflow-config、task、in-progress、discuss、review、verify。
 - **FsOnly 1**：demo。
 - **RemoteOnly 1**：claim。
@@ -73,7 +73,7 @@ remote_ctx() 現況把解析與握手綁在一起；本設計把觸發權交給�
 
 - 兩模式所有動詞的 stdout／stderr／exit code 逐位元不變；既有整合測試（remote_verb_parity、remote_read_path、remote_write_path、config_fail_closed、no_raw_wire_json 等）零修改全綠。
 - claim 於 fs 模式、demo 於 remote 模式的拒絕文案逐字不變；demo 拒絕不發任何 server 請求。
-- ModeFree 動詞於壞 .speclink.yaml 目錄下正常執行（如 completion、schemas 印出內容、exit 0）；Dual 動詞於同環境維持 fail-closed（config_fail_closed 既有對照）。
+- 不讀取專案設定的 ModeFree 動詞於壞 .speclink.yaml 目錄下正常執行（completion、config 印出內容、exit 0）；schemas／templates／update 因 workspace 探索讀檔的既有失敗行為不變；Dual 動詞於同環境維持 fail-closed（config_fail_closed 既有對照）。
 
 **結構保證（編譯期）**
 
@@ -82,7 +82,7 @@ remote_ctx() 現況把解析與握手綁在一起；本設計把觸發權交給�
 
 **新增測試（crates/speclink-cli/tests/it/mode_dispatch.rs）**
 
-- ModeFree 於壞 yaml 可執行：BAD_YAML 專案下跑 completion 與 schemas，斷言 exit 0 且 stderr 不含 .speclink.yaml。
+- ModeFree 於壞 yaml 可執行：BAD_YAML 專案下跑 completion 與 config，斷言 exit 0 且 stderr 不含 .speclink.yaml。
 - FsOnly 拒絕：remote 設定的專案（不啟 server）跑 demo，斷言非零 exit、stderr 含現行文案、無網路請求發出。
 - RemoteOnly 拒絕：fs 專案跑 claim，斷言非零 exit、stderr 含現行文案。
 

@@ -1,11 +1,11 @@
 // Included into main.rs. Remote-mode detection and remote verb handlers.
 //
-// Routing rule: each dual-mode command checks `remote_ctx()` first; `None`
-// falls through to the existing fs body untouched (fs behavior is the
-// regression-protected baseline). Handlers here are a thin translation:
-// argv → typed protocol client → the same rendering fs mode uses. Server
-// extras (`repo`/`lifecycle`) live on the protocol DTOs and never leak into
-// the parity view.
+// Routing rule: dispatch declares every verb's mode shape (the combinators in
+// commands.rs); `remote_ctx()` is called only from that layer, and the fs
+// bodies stay untouched (fs behavior is the regression-protected baseline).
+// Handlers here are a thin translation: argv → typed protocol client → the
+// same rendering fs mode uses. Server extras (`repo`/`lifecycle`) live on the
+// protocol DTOs and never leak into the parity view.
 
 use speclink_protocol::command::CreateChangeRequest;
 use speclink_protocol::query as protocol_query;
@@ -737,6 +737,26 @@ fn remote_drift(ctx: &RemoteCtx, a: &ChangeArg) -> Result<()> {
 
 // --- artifact cat (remote) ---
 
+/// artifact 的 remote 家族臂：子指令 enum 窮盡 match、無 catch-all——新增
+/// 子指令時本機與 remote 兩臂皆編譯不過。
+fn remote_artifact(ctx: &RemoteCtx, a: ArtifactArgs) -> Result<()> {
+    match a.command {
+        ArtifactCommands::Cat { artifact, change } => {
+            remote_artifact_cat(ctx, &artifact, change.as_deref())
+        }
+    }
+}
+
+/// language 的 remote 家族臂。
+fn remote_language(ctx: &RemoteCtx, a: LanguageArgs) -> Result<()> {
+    match a.command {
+        LanguageCommands::Show => {
+            print!("{}", ctx.client.language()?.content);
+            Ok(())
+        }
+    }
+}
+
 fn remote_artifact_cat(ctx: &RemoteCtx, artifact: &str, change: Option<&str>) -> Result<()> {
     // Validate the id shape locally so both modes reject the same inputs.
     let _ = artifact_rel_path(artifact)?;
@@ -752,6 +772,14 @@ fn remote_artifact_cat(ctx: &RemoteCtx, artifact: &str, change: Option<&str>) ->
 }
 
 // --- write path: changes ---
+
+/// new 的 remote 家族臂：子指令 enum 窮盡 match、無 catch-all。
+fn remote_new(ctx: &RemoteCtx, a: NewArgs) -> Result<()> {
+    match a.command {
+        NewCommands::Change(c) => remote_new_change(ctx, &c),
+        NewCommands::Artifact(c) => remote_new_artifact(ctx, &c),
+    }
+}
 
 fn remote_new_change(ctx: &RemoteCtx, a: &NewChangeArgs) -> Result<()> {
     let resp = ctx.client.create_change(CreateChangeRequest {
@@ -897,6 +925,31 @@ fn remote_task_undone(
         resp.already_undone,
         json,
     )
+}
+
+/// task 的 remote 家族臂：子指令 enum 窮盡 match、無 catch-all。
+fn remote_task(ctx: &RemoteCtx, a: TaskArgs) -> Result<()> {
+    match a.command {
+        TaskCommands::Done { task_id, change, json } => {
+            remote_task_done(ctx, &task_id, change.as_deref(), json)
+        }
+        TaskCommands::Undone { task_id, change, json } => {
+            remote_task_undone(ctx, &task_id, change.as_deref(), json)
+        }
+    }
+}
+
+/// in-progress 的 remote 家族臂：子指令 enum 窮盡 match、無 catch-all。
+fn remote_in_progress(ctx: &RemoteCtx, a: InProgressArgs) -> Result<()> {
+    match a.command {
+        InProgressCommands::Add { name } => {
+            // 路由至 server（started_by 由 server 認證身分蓋章）；靜默 exit 0
+            // 的 parity 凍結形狀兩模式一致。
+            ctx.client.in_progress_add(&name)?;
+            Ok(())
+        }
+        InProgressCommands::Remove { name } => remote_in_progress_remove(ctx, &name),
+    }
 }
 
 fn remote_claim(ctx: &RemoteCtx, name: &str) -> Result<()> {
