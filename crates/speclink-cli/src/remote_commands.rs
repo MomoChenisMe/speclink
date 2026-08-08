@@ -89,11 +89,17 @@ fn remote_list(ctx: &RemoteCtx, a: &ListArgs) -> Result<()> {
     let changes = if specs_only {
         None
     } else {
-        Some(ctx.client.list_changes()?.changes.iter().map(to_list_change_json).collect())
+        let mut items: Vec<ListChangeJson> =
+            ctx.client.list_changes()?.changes.iter().map(to_list_change_json).collect();
+        // `--sort name` 在本地重排對齊 fs；`created`／`modified` 的排序鍵
+        // （meta created、store mtime）不在 wire 上，維持 server 回傳序。
+        if a.sort == "name" {
+            items.sort_by(|x, y| x.name.cmp(&y.name));
+        }
+        Some(items)
     };
-    let specs =
-        if a.specs { Some(wire_specs_payload(ctx.client.list_specs()?.specs)?) } else { None };
-    render_list(&core::command::ListOutcome { changes, specs }, a.json)
+    let specs = if a.specs { Some(ctx.client.list_specs()?.specs) } else { None };
+    render_list(&remote_list_outcome(changes, specs)?, a.json)
 }
 
 // --- change resolution (mirrors the fs wording) ---
@@ -758,9 +764,11 @@ fn remote_new_change(ctx: &RemoteCtx, a: &NewChangeArgs) -> Result<()> {
     // Path 行是明文分歧（design D5）：server 端目錄對本機使用者無意義。
     render_new_change(
         &a.name,
-        None,
-        resp.schema.as_deref().filter(|s| !s.is_empty()),
-        a.from_discussion.as_deref(),
+        NewChangeLines {
+            path: None,
+            schema: resp.schema.as_deref().filter(|s| !s.is_empty()),
+            from_discussion: a.from_discussion.as_deref(),
+        },
     );
     Ok(())
 }
@@ -860,8 +868,7 @@ fn remote_task_done(
     render_task_flip(
         TaskFlip::Done,
         &change,
-        task_id,
-        task_id,
+        TaskIdentity { refused: task_id, arg: task_id },
         &resp.task_desc,
         resp.already_done,
         json,
@@ -885,8 +892,7 @@ fn remote_task_undone(
     render_task_flip(
         TaskFlip::Undone,
         &change,
-        task_id,
-        task_id,
+        TaskIdentity { refused: task_id, arg: task_id },
         &resp.task_desc,
         resp.already_undone,
         json,
@@ -962,16 +968,35 @@ fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
     let resp = ctx.client.archive(&name, a.carry_review, a.carry_verify)?;
     // datedName 是哨兵：新 server 給得出完整封存結果，就走 fs 同一支渲染；
     // 舊 server 什麼都沒帶，退回既有的兩行輸出而不是半套。
-    let Some(dated_name) = resp.dated_name else {
-        println!("{} Archived change: {name}", color::green("✓"));
-        if !resp.specs.is_empty() {
-            let caps: Vec<&str> = resp.specs.iter().map(|s| s.capability.as_str()).collect();
-            println!("  Specs updated: {}", caps.join(", "));
+    match to_archive_outcome(name, resp) {
+        Ok(outcome) => print_archive_outcome(&outcome),
+        Err((name, resp)) => {
+            println!("{} Archived change: {name}", color::green("✓"));
+            if !resp.specs.is_empty() {
+                let caps: Vec<&str> = resp.specs.iter().map(|s| s.capability.as_str()).collect();
+                println!("  Specs updated: {}", caps.join(", "));
+            }
         }
-        return Ok(());
+    }
+    Ok(())
+}
+
+/// The wire archive response reshaped into the engine's outcome, so the fs
+/// rendering path prints it as-is. `Err` hands back the inputs when the
+/// sentinel (`datedName`) is absent — an old server whose response cannot
+/// honestly fill the outcome.
+fn to_archive_outcome(
+    change_name: String,
+    resp: speclink_protocol::command::ArchiveResponse,
+) -> std::result::Result<
+    core::archive::ArchiveOutcome,
+    (String, speclink_protocol::command::ArchiveResponse),
+> {
+    let Some(dated_name) = resp.dated_name.clone() else {
+        return Err((change_name, resp));
     };
-    print_archive_outcome(&core::archive::ArchiveOutcome {
-        change_name: name,
+    Ok(core::archive::ArchiveOutcome {
+        change_name,
         dated_name,
         caps: resp
             .specs
@@ -994,8 +1019,7 @@ fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
             .collect(),
         // 缺席讀作「有證據」，零證據提示因此不會憑空冒出來。
         evidence_recorded: resp.evidence_recorded.unwrap_or(true),
-    });
-    Ok(())
+    })
 }
 
 // --- show ---
@@ -1137,14 +1161,23 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
         StationVerb::AddRound { change, stdin } => {
             let content = read_stdin_content(stdin);
             let round = ctx.client.station_add_round(noun, &change, &content)?.round;
+            // u64→usize：支援平台皆 64-bit，無損（不為不可能的情境設防）。
             render_station_action(st, StationAction::AddRound(round as usize), &change);
             Ok(())
         }
         StationVerb::Show { change, json } => {
             let resp = ctx.client.station_ticket(noun, &change)?;
-            let content = resp.content.clone();
+            // 人眼＋有原文＝純轉印，不碰結構化欄位——這正是原文上 wire 的目的：
+            // server 詞彙比 CLI 新（未知 token、新形狀）也不影響印出工單本文。
+            // 解析（與其 fail-loud）只留給真正讀 token 的兩條路：--json 與退化摘要。
+            if !json {
+                if let Some(doc) = &resp.content {
+                    print!("{doc}");
+                    return Ok(());
+                }
+            }
             let ticket = to_station_ticket(resp)?;
-            render_station_show(st, &change, &ticket, content.as_deref(), json)
+            render_station_show(st, &change, &ticket, None, json)
         }
         StationVerb::Stamp { change, accept, agent } => {
             // 指紋歸屬（design D4a）：工作樹持有者是這裡——先取工單算 Scope
@@ -1190,6 +1223,14 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
 fn to_station_ticket(
     resp: speclink_protocol::command::ReviewTicketResponse,
 ) -> Result<core::station::Ticket> {
+    // 引擎工單的不變量是至少一輪；wire 形狀上允許空陣列，所以這裡是明確
+    // 錯誤，不是留給 last_round() 的 expect 去炸。
+    if resp.rounds.is_empty() {
+        anyhow::bail!(
+            "the server returned a ticket with no rounds for change '{}' — cannot render it",
+            resp.change
+        );
+    }
     let rounds = resp
         .rounds
         .into_iter()
@@ -1198,27 +1239,29 @@ fn to_station_ticket(
     Ok(core::station::Ticket { rounds })
 }
 
+/// server 端詞彙比這支 CLI 新——靜默吞掉會渲染出錯誤事實，一律報錯。
+fn unknown_ticket_token(kind: &str, token: &str) -> anyhow::Error {
+    anyhow::anyhow!(
+        "unknown {kind} '{token}' from the server — this CLI is older than the server's ticket format"
+    )
+}
+
 fn to_station_round(
     r: speclink_protocol::command::ReviewRoundDto,
 ) -> Result<core::station::Round> {
     let phase = match r.phase.as_deref() {
         None => None,
-        Some(token) => Some(core::station::RoundPhase::parse(token).ok_or_else(|| {
-            anyhow::anyhow!(
-                "unknown round phase '{token}' from the server — this CLI is older than the server's ticket format"
-            )
-        })?),
+        Some(token) => Some(
+            core::station::RoundPhase::parse(token)
+                .ok_or_else(|| unknown_ticket_token("round phase", token))?,
+        ),
     };
     let findings = r
         .findings
         .into_iter()
         .map(|f| {
-            let severity = core::station::Severity::parse(&f.severity).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "unknown finding severity '{}' from the server — this CLI is older than the server's ticket format",
-                    f.severity
-                )
-            })?;
+            let severity = core::station::Severity::parse(&f.severity)
+                .ok_or_else(|| unknown_ticket_token("finding severity", &f.severity))?;
             Ok(core::station::Finding { severity, path: f.path, text: f.text })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -1259,7 +1302,17 @@ fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             // --slug 與 --kind 隨請求上 wire；驗證的單一事實來源在引擎（server 端），
             // CLI 不預驗（design D1）。
             let resp = ctx.client.new_discussion(&topic, slug.as_deref(), kind.as_deref())?;
-            render_discuss_new(&created_discussion_info(&resp), json)
+            if json {
+                // remote 的 --json 契約是 wire 回應原樣（slug／topic／path）——
+                // 組 core 型別會捏造 server 沒說的欄位，形狀凍結不允許。
+                return print_json(&resp);
+            }
+            render_discuss_new_human(NewDiscussionLines {
+                slug: &resp.slug,
+                topic: &resp.topic,
+                path: &resp.path,
+            });
+            Ok(())
         }
         DiscussCommands::Context { slug, stdin, json } => {
             let content = read_stdin_content(stdin);
@@ -1308,30 +1361,12 @@ fn to_discussion_info(d: &protocol_query::DiscussionInfo) -> core::discuss::Disc
         slug: d.slug.clone(),
         topic: d.topic.clone(),
         status: d.status.clone(),
-        rounds: d.rounds as usize,
+        rounds: d.rounds,
         created: d.created.clone(),
         created_by: d.created_by.clone(),
         kind: d.kind.clone(),
         path: d.path.clone(),
         archived: d.archived,
-    }
-}
-
-/// `discuss new` answers with the created discussion's identity only; the rest
-/// of the info fields take the freshly-created state a new record always has.
-fn created_discussion_info(
-    resp: &speclink_protocol::command::CreateDiscussionResponse,
-) -> core::discuss::DiscussionInfo {
-    core::discuss::DiscussionInfo {
-        slug: resp.slug.clone(),
-        topic: resp.topic.clone(),
-        status: "open".to_string(),
-        rounds: 0,
-        created: String::new(),
-        created_by: None,
-        kind: None,
-        path: resp.path.clone(),
-        archived: false,
     }
 }
 

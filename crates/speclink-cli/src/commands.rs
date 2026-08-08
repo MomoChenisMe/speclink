@@ -435,12 +435,16 @@ fn render_list(list: &core::command::ListOutcome, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// The engine's specs payload built from the typed wire summaries. The
-/// conversion belongs on this side of the include: the remote intercept layer
-/// speaks protocol DTOs only (tests/it/no_raw_wire_json.rs), while the engine's
-/// `ListOutcome` carries its specs section as an opaque payload.
-fn wire_specs_payload(specs: Vec<protocol_query::SpecSummary>) -> Result<serde_json::Value> {
-    Ok(serde_json::to_value(specs)?)
+/// The remote list's engine-shaped outcome, assembled from typed wire pieces.
+/// The assembly lives on this side of the include because the remote intercept
+/// layer speaks protocol DTOs only (tests/it/no_raw_wire_json.rs), while the
+/// engine's `ListOutcome` carries its specs section as an opaque payload.
+fn remote_list_outcome(
+    changes: Option<Vec<ListChangeJson>>,
+    specs: Option<Vec<protocol_query::SpecSummary>>,
+) -> Result<core::command::ListOutcome> {
+    let specs = specs.map(serde_json::to_value).transpose()?;
+    Ok(core::command::ListOutcome { changes, specs })
 }
 
 /// Render the specs section from the outcome's `{id, path}` items.
@@ -1193,30 +1197,33 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     };
     render_new_change(
         &o.name,
-        Some(&o.dir.to_string_lossy()),
-        Some(&o.schema),
-        a.from_discussion.as_deref(),
+        NewChangeLines {
+            path: Some(&o.dir.to_string_lossy()),
+            schema: Some(&o.schema),
+            from_discussion: a.from_discussion.as_deref(),
+        },
     );
     Ok(())
 }
 
-/// `path` absent is the remote mode's declared divergence (design D5): the
-/// change's directory is a store-side location with no meaning on the caller's
-/// machine. `schema` is likewise only printed when the answer carries one.
-fn render_new_change(
-    name: &str,
-    path: Option<&str>,
-    schema: Option<&str>,
-    from_discussion: Option<&str>,
-) {
+/// `new change` 成功輸出的選印行，具名綁定——三個相鄰同型參數寫反不會被
+/// 編譯器擋，具名欄位會。`path` 缺席是 remote 的明文分歧（design D5）：
+/// server 端目錄對本機使用者無意義；`schema` 同樣只在來源給得出時印。
+struct NewChangeLines<'a> {
+    path: Option<&'a str>,
+    schema: Option<&'a str>,
+    from_discussion: Option<&'a str>,
+}
+
+fn render_new_change(name: &str, lines: NewChangeLines<'_>) {
     println!("{} Created change: {name}", color::green("✓"));
-    if let Some(path) = path {
+    if let Some(path) = lines.path {
         println!("  Path: {path}");
     }
-    if let Some(schema) = schema {
+    if let Some(schema) = lines.schema {
         println!("  Schema: {schema}");
     }
-    if let Some(slug) = from_discussion {
+    if let Some(slug) = lines.from_discussion {
         println!("  From discussion: {slug}");
     }
 }
@@ -2088,8 +2095,7 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
             render_task_flip(
                 TaskFlip::Done,
                 &o.change,
-                &o.task_id.to_string(),
-                &o.task_id_arg,
+                TaskIdentity { refused: &o.task_id.to_string(), arg: &o.task_id_arg },
                 &o.description,
                 o.already,
                 json,
@@ -2112,8 +2118,7 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
             render_task_flip(
                 TaskFlip::Undone,
                 &o.change,
-                &o.task_id.to_string(),
-                &o.task_id_arg,
+                TaskIdentity { refused: &o.task_id.to_string(), arg: &o.task_id_arg },
                 &o.description,
                 o.already,
                 json,
@@ -2130,55 +2135,55 @@ enum TaskFlip {
     Undone,
 }
 
-impl TaskFlip {
-    fn status(self) -> &'static str {
-        match self {
-            TaskFlip::Done => "done",
-            TaskFlip::Undone => "undone",
-        }
-    }
+/// 同一個任務的兩種識別，具名綁在一起——兩個相鄰同型 `&str` 位置參數
+/// 寫反不會被編譯器擋，具名欄位會。
+struct TaskIdentity<'a> {
+    /// 拒絕訊息用的識別：fs 給引擎解析出的序號，remote 只有 argv。
+    refused: &'a str,
+    /// 原始 argv——stdout 的人眼行與 `--json` 都用它。
+    arg: &'a str,
+}
 
-    /// 已是該狀態時的拒絕文字，與成功行的動詞片語。
-    fn phrases(self) -> (&'static str, &'static str) {
+impl TaskFlip {
+    /// 一次給齊三段文字：--json 的 status、已是該狀態時的拒絕片語、成功行的
+    /// 動詞片語——單一 match，不重複分派。
+    fn parts(self) -> (&'static str, &'static str, &'static str) {
         match self {
-            TaskFlip::Done => ("is already done", "marked as done"),
-            TaskFlip::Undone => ("is already not done", "marked as not done"),
+            TaskFlip::Done => ("done", "is already done", "marked as done"),
+            TaskFlip::Undone => ("undone", "is already not done", "marked as not done"),
         }
     }
 }
 
 /// `already` 維持現行錯誤結束（引擎已保證零檔案效果）。`--json` 是緊湊單行，
-/// 欄位順序凍結，兩種翻轉對稱。
-///
-/// 兩個 id 不是同一個東西，也不能互相取代：`refused` 是拒絕訊息用的識別（fs
-/// 給引擎解析出的序號），`arg` 是原始 argv，走 stdout 的兩條路都用它。remote
-/// 只有 argv 一種，兩處都餵它。
+/// 欄位順序凍結，兩種翻轉對稱。remote 只有 argv 一種識別，兩個欄位都餵它。
 fn render_task_flip(
     flip: TaskFlip,
     change: &str,
-    refused: &str,
-    arg: &str,
+    id: TaskIdentity<'_>,
     description: &str,
     already: bool,
     json: bool,
 ) -> Result<()> {
-    let (already_phrase, verb_phrase) = flip.phrases();
+    let (status, already_phrase, verb_phrase) = flip.parts();
     if already {
-        bail!("Task {refused} {already_phrase}");
+        bail!("Task {} {already_phrase}", id.refused);
     }
     if json {
         let v = serde_json::json!({
             "change": change,
-            "status": flip.status(),
+            "status": status,
             "task_desc": description,
-            "task_id": arg,
+            "task_id": id.arg,
         });
         println!("{}", serde_json::to_string(&v)?);
         return Ok(());
     }
-    println!("{} Task {arg} {verb_phrase}: {description}", color::green("✓"));
+    println!("{} Task {} {verb_phrase}: {description}", color::green("✓"), id.arg);
     Ok(())
 }
+
+// --- in-progress ---
 
 /// 實際移除與「本來就沒開工」印不同的行——引擎與 wire 都據實回報，渲染只讀事實。
 fn render_in_progress_remove(name: &str, removed: bool) {
@@ -2191,8 +2196,6 @@ fn render_in_progress_remove(name: &str, removed: bool) {
         println!("Change '{name}' has no in-progress marker — already proposed");
     }
 }
-
-// --- in-progress ---
 
 fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
     match a.command {
@@ -2390,12 +2393,16 @@ fn run_station(cli: &StationCli, verb: StationVerb) -> Result<()> {
             render_station_action(st, StationAction::AddRound(round), &change);
         }
         StationVerb::Show { change, json } => {
-            let ticket = core::station::show(st, store, &change)?;
+            // `--json` 只要解析後的工單，不碰原文——與導入共用渲染前的行為一致
+            // （多讀一次是多一個失敗面）。
+            if json {
+                let ticket = core::station::show(st, store, &change)?;
+                return render_station_show(st, &change, &ticket, None, true);
+            }
             // 人眼路徑印工單原文（show 已驗證存在與格式）。
-            let doc = store
-                .read_artifact(&change, st.doc)
-                .expect("show verified the ticket exists");
-            return render_station_show(st, &change, &ticket, Some(&doc), json);
+            let (ticket, doc) = core::station::show_with_content(st, store, &change)?;
+            let doc = doc.expect("show verified the ticket exists");
+            return render_station_show(st, &change, &ticket, Some(&doc), false);
         }
         StationVerb::Stamp { change, accept, agent } => {
             let actor = speclink_host::context::git_identity(&ws.root);
@@ -2425,19 +2432,13 @@ fn run_station(cli: &StationCli, verb: StationVerb) -> Result<()> {
 
 /// 兩站三個「動作完成」動詞的成功行——只差站名片語，共用一支渲染。
 fn render_station_action(st: &core::station::Station, action: StationAction, change: &str) {
-    let (verb, tail) = match action {
-        StationAction::AddRound(round) => {
-            println!(
-                "{} Recorded {} Round {round} for change '{change}'",
-                color::green("✓"),
-                st.noun_phrase
-            );
-            return;
-        }
-        StationAction::Stamp => ("Stamped", ""),
-        StationAction::Discard => ("Discarded", " ticket"),
+    // 動作片語不同、外框相同——三臂共用同一行輸出。
+    let did = match action {
+        StationAction::AddRound(round) => format!("Recorded {} Round {round}", st.noun_phrase),
+        StationAction::Stamp => format!("Stamped {}", st.noun_phrase),
+        StationAction::Discard => format!("Discarded {} ticket", st.noun_phrase),
     };
-    println!("{} {verb} {}{tail} for change '{change}'", color::green("✓"), st.noun_phrase);
+    println!("{} {did} for change '{change}'", color::green("✓"));
 }
 
 enum StationAction {
@@ -2740,7 +2741,14 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussNew(info) = outcome else {
                 unreachable!("discuss new yields a discussion info");
             };
-            render_discuss_new(&info, json)?;
+            if json {
+                return print_json(&info);
+            }
+            render_discuss_new_human(NewDiscussionLines {
+                slug: &info.slug,
+                topic: &info.topic,
+                path: &info.path,
+            });
         }
         DiscussCommands::List { archived, json } => {
             let outcome =
@@ -2871,29 +2879,28 @@ enum DiscussBind {
 }
 
 impl DiscussBind {
-    fn status(self) -> &'static str {
+    /// 一次給齊三段文字：--json 的 status、成功行動詞、尾註——單一 match。
+    fn parts(self) -> (&'static str, &'static str, &'static str) {
         match self {
-            DiscussBind::Link => "linked",
-            DiscussBind::Seal => "sealed",
-        }
-    }
-
-    fn line(self) -> (&'static str, &'static str) {
-        match self {
-            DiscussBind::Link => ("Linked", ""),
-            DiscussBind::Seal => ("Sealed", " (marked promoted)"),
+            DiscussBind::Link => ("linked", "Linked", ""),
+            DiscussBind::Seal => ("sealed", "Sealed", " (marked promoted)"),
         }
     }
 }
 
-fn render_discuss_new(info: &core::discuss::DiscussionInfo, json: bool) -> Result<()> {
-    if json {
-        return print_json(info);
-    }
-    println!("{} Created discussion: {}", color::green("✓"), info.slug);
-    println!("  Topic: {}", info.topic);
-    println!("  Path: {}", info.path);
-    Ok(())
+/// 人眼三行是兩模式共用的文本；`--json` 不進這裡——兩模式各有既定形狀
+/// （fs 印完整 DiscussionInfo、remote 印 wire 回應原樣），組另一邊的型別
+/// 會捏造來源沒說的欄位。三行具名綁定，杜絕相鄰同型參數寫反。
+struct NewDiscussionLines<'a> {
+    slug: &'a str,
+    topic: &'a str,
+    path: &'a str,
+}
+
+fn render_discuss_new_human(lines: NewDiscussionLines<'_>) {
+    println!("{} Created discussion: {}", color::green("✓"), lines.slug);
+    println!("  Topic: {}", lines.topic);
+    println!("  Path: {}", lines.path);
 }
 
 fn render_discuss_list(
@@ -2983,10 +2990,10 @@ struct PromotedPath<'a> {
     wire: &'a str,
 }
 
-/// `path` absent is the remote mode's declared divergence (design D5): the new
-/// change's directory is a store-side location with no meaning on the caller's
-/// machine, so the Path line is dropped rather than invented. The follow-up
-/// hint applies to both modes and always prints.
+/// `path` absent is the remote mode's declared divergence (design D5 #5): the
+/// new change's directory is a store-side location with no meaning on the
+/// caller's machine, so the Path line AND the follow-up hint after it are both
+/// dropped together — the two lines share one fate.
 fn render_discuss_promote(
     slug: &str,
     change: &str,
@@ -3013,14 +3020,14 @@ fn render_discuss_promote(
 }
 
 fn render_discuss_bind(slug: &str, change: &str, bind: DiscussBind, json: bool) -> Result<()> {
+    let (status, verb, suffix) = bind.parts();
     if json {
         return print_json(&serde_json::json!({
             "change": change,
             "slug": slug,
-            "status": bind.status(),
+            "status": status,
         }));
     }
-    let (verb, suffix) = bind.line();
     println!("{} {verb} discussion '{slug}' → change '{change}'{suffix}", color::green("✓"));
     Ok(())
 }

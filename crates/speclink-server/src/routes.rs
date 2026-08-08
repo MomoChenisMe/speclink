@@ -24,15 +24,14 @@ use speclink_host::drift as host_drift;
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, AddReviewRoundRequest,
     AddReviewRoundResponse, ArchiveDiscussionResponse, ArchiveResponse, ArchivedDiscussion,
-    ArchivedSpec,
-    BindDiscussionRequest, BindDiscussionResponse, ClaimResponse, ConcludeDiscussionRequest,
-    ConcludeDiscussionResponse, InProgressRemoveResponse,
-    CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
-    DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, MoveTaskRequest,
-    MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest,
-    PutArtifactResponse, ReviewFindingDto, ReviewRoundDto, ReviewTicketResponse,
-    SetDiscussionContextRequest, StampReviewRequest, StampReviewResponse, TaskDoneRequest,
-    TaskDoneResponse, TaskUndoneResponse, UnlinkedDiscussion,
+    ArchivedSpec, BindDiscussionRequest, BindDiscussionResponse, ClaimResponse,
+    ConcludeDiscussionRequest, ConcludeDiscussionResponse, CreateChangeRequest,
+    CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
+    DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
+    MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
+    PutArtifactRequest, PutArtifactResponse, ReviewFindingDto, ReviewRoundDto,
+    ReviewTicketResponse, SetDiscussionContextRequest, StampReviewRequest, StampReviewResponse,
+    TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse, UnlinkedDiscussion,
 };
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::events::InvalidationEvent;

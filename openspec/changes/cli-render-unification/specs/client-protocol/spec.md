@@ -14,6 +14,20 @@
 - **WHEN** 新版 server 完成一筆會改動規格與封存來源討論的封存
 - **THEN** 回應含 datedName、各 capability 的四項計數、archivedDiscussions 清單與 evidenceRecorded
 
+### Requirement: 開工標記移除回應的移除旗標
+
+開工標記移除端點 SHALL 有具名回應型別，攜帶 removed 欄位（布林，帶序列化預設值 true）——區分實際移除與「本來就沒開工」的冪等 no-op，兩者的人眼輸出是不同的行。缺席讀作 true：既有 server 的裸確認回應對呼叫端一律代表已移除，語意不變，因此不需哨兵欄位。
+
+#### Scenario: 缺欄位的移除回應可反序列化
+
+- **WHEN** 以空物件反序列化開工標記移除回應
+- **THEN** 反序列化成功且 removed 為 true——與既有 server 的裸確認回應同義
+
+#### Scenario: 冪等 no-op 可辨識
+
+- **WHEN** 以 removed 為 false 的 JSON 反序列化開工標記移除回應
+- **THEN** removed 讀出 false，呼叫端得以印出「本來就沒開工」的行
+
 ### Requirement: 工單回應的原文欄位
 
 review 與 verify 兩站共用的工單讀取回應 SHALL 增列 content 欄位（字串，選填，帶序列化預設值）攜帶工單文件原文全文。content 是工單人眼輸出的哨兵欄位：讀取方 SHALL 以其在場與否判定 server 新舊，缺席時 SHALL 退回既有的結構化摘要呈現。

@@ -743,8 +743,8 @@ pub fn execute(
             Ok(CommandOutcome::ReviewAddRound(ReviewRoundOutcome { change, round }))
         }
         Command::ReviewShow { change } => {
-            let ticket = crate::review::show(store, &change).map_err(classify)?;
-            let content = store.read_artifact(&change, crate::review::REVIEW_DOC);
+            let (ticket, content) =
+                crate::review::show_with_content(store, &change).map_err(classify)?;
             Ok(CommandOutcome::ReviewShow(ReviewShowOutcome { change, ticket, content }))
         }
         Command::ReviewStamp { change, accept, tool, scope, missing } => {
@@ -769,8 +769,8 @@ pub fn execute(
             Ok(CommandOutcome::VerifyAddRound(ReviewRoundOutcome { change, round }))
         }
         Command::VerifyShow { change } => {
-            let ticket = crate::verify::show(store, &change).map_err(classify)?;
-            let content = store.read_artifact(&change, crate::verify::VERIFY_DOC);
+            let (ticket, content) =
+                crate::verify::show_with_content(store, &change).map_err(classify)?;
             Ok(CommandOutcome::VerifyShow(ReviewShowOutcome { change, ticket, content }))
         }
         Command::VerifyStamp { change, accept, tool, scope, missing } => {
