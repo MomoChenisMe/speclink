@@ -613,36 +613,15 @@ mod tests {
         );
     }
 
-    /// 把 fixture 變成真的 git 主 checkout，並掛上一個 speclink/<change> 的 worktree。
-    fn attach_worktree(fx: &FixtureRoot, change: &str) -> PathBuf {
-        let git = |args: &[&str]| {
-            let out = std::process::Command::new("git")
-                .args(args)
-                .current_dir(fx.root())
-                .env("GIT_AUTHOR_NAME", "t")
-                .env("GIT_AUTHOR_EMAIL", "t@example.test")
-                .env("GIT_COMMITTER_NAME", "t")
-                .env("GIT_COMMITTER_EMAIL", "t@example.test")
-                .output()
-                .expect("run git");
-            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
-        };
-        fx.add_change(change, "");
-        git(&["init", "-q", "-b", "main"]);
-        git(&["add", "-A"]);
-        git(&["commit", "-qm", "seed"]);
-        let wt = fx.root().join("wt");
-        git(&["worktree", "add", "-q", "-b", &format!("speclink/{change}"), wt.to_str().unwrap()]);
-        wt
-    }
-
     #[test]
     fn write_refuses_to_turn_worktree_off_while_one_is_active() {
         // spec Scenario「關閉遇活躍 worktree 浮出擋下」：訊息列出 change 名、分支
         // 與路徑並指出收尾方式，config 檔逐位元不變。
+        // fixture 的 attach_worktree 會寫入 worktree: true 的 config 並回報 git
+        // 拼法的路徑——訊息裡的路徑同樣來自 git，期望與其同源才對得上。
         let fx = FixtureRoot::new("wf-write-wt-block");
-        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
-        let wt = attach_worktree(&fx, "add-auth");
+        fx.add_change("add-auth", "");
+        let wt = fx.attach_worktree("add-auth");
         let before = read(&fx.root().join("openspec/config.yaml"));
 
         let err = write_workflow_fields_at(fx.root(), &WorkflowPolicyFields::default())
@@ -650,7 +629,7 @@ mod tests {
 
         assert!(err.contains("add-auth"), "須列 change 名: {err}");
         assert!(err.contains("speclink/add-auth"), "須列分支: {err}");
-        assert!(err.contains(wt.to_str().unwrap()), "須列路徑: {err}");
+        assert!(err.contains(wt.path().to_str().unwrap()), "須列路徑: {err}");
         assert!(err.contains("worktree-merge"), "須指出收尾方式: {err}");
         assert_eq!(read(&fx.root().join("openspec/config.yaml")), before, "檔案不得變動");
     }

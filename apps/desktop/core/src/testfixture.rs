@@ -68,9 +68,22 @@ impl FixtureRoot {
         git(&["commit", "-qm", "seed"]);
         let wt = self.0.join("wt");
         git(&["worktree", "add", "-q", "-b", &format!("speclink/{change}"), wt.to_str().unwrap()]);
-        // git 回報的是正規化路徑；macOS 的 /var 是 /private/var 的 symlink，
-        // 不正規化就會拿 symlink 路徑去比對 git 的實體路徑。
-        WorktreeCopy(wt.canonicalize().expect("worktree path"))
+        // 期望值與產品同源：產品逐字取 `git worktree list --porcelain` 的路徑，這裡
+        // 也拿 git 回報的拼法。自行 canonicalize 逼近不了——macOS 它解 /var symlink
+        // 剛好一致，Windows 卻會加上 \\?\ 前綴，而 git 回報的是正斜線＋8.3 短名
+        // （RUNNER~1）展開後的長名，兩種拼法指同一目錄仍對不上。
+        let out = std::process::Command::new("git")
+            .args(["worktree", "list", "--porcelain"])
+            .current_dir(self.root())
+            .output()
+            .expect("git worktree list");
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        let reported = text
+            .lines()
+            .filter_map(|line| line.strip_prefix("worktree "))
+            .next_back()
+            .expect("porcelain lists the new worktree");
+        WorktreeCopy(PathBuf::from(reported))
     }
 
     /// 建一個含 proposal 與 tasks 的 change；meta 原文由呼叫端給（測 started_* 疊加）。
