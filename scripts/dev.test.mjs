@@ -312,6 +312,38 @@ test('tauri.conf.json 保留 frontendDist：release 與 bundle 仍讀靜態產�
   assert.equal(frontendDist, '../dist', 'frontendDist 遭改動會影響 release bundle 的前端來源');
 });
 
+// --- sidecar 佈署掛載點（規格「dev 啟動自動佈署當前 checkout 的 sidecar」，決策一） ---
+// predev 是三個 dev 入口的共同前置：tauri dev 的 beforeDevCommand 是於 apps/desktop
+// 執行的 npm run dev，npm 對 dev 會自動先跑 predev。這個 hook 被刪掉只會表現為
+// 「全新 checkout 編譯失敗」或「dev 用著過期 sidecar」，沒有訊息指向真正的原因。
+
+function desktopScripts() {
+  const source = readFileSync(path.join(ROOT, 'apps/desktop/package.json'), 'utf8');
+  return JSON.parse(source).scripts ?? {};
+}
+
+test('apps/desktop 有 predev script 佈署 sidecar：dev 啟動前必經此步', () => {
+  const { predev } = desktopScripts();
+  assert.ok(
+    predev,
+    'apps/desktop/package.json 缺少 predev——沒有它，全新 checkout 會因缺 binaries/speclink-<triple> 編譯失敗，既有 checkout 則以過期 sidecar 蓋掉 target/debug/speclink',
+  );
+  assert.match(
+    predev,
+    /desktop-sidecar\.mjs/,
+    `predev（${predev}）未呼叫 desktop-sidecar.mjs——sidecar 佈署已不在 dev 啟動路徑上`,
+  );
+});
+
+test('predev 佈 debug profile：與 npm run cli 驗證所用同一顆 CLI', () => {
+  const { predev } = desktopScripts();
+  assert.match(
+    predev,
+    /--profile\s+debug/,
+    `predev（${predev}）未帶 --profile debug——退回預設 release 後，dev 佈的 sidecar 與 target/debug/speclink 內容不同，tauri-build 會拿 release 蓋掉 npm run cli 用的 debug CLI`,
+  );
+});
+
 // --- 兩模式沿用既有設定驗證（規格「設定不合法即拒絕啟動」） ---
 // 黑箱子程序測試：驗證失敗發生在任何 build／spawn 之前，子程序立即以 1 收場。
 
