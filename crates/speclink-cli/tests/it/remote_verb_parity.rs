@@ -124,16 +124,32 @@ impl TempProject {
         std::fs::write(path, content).unwrap();
     }
 
-    fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_speclink"))
-            .args(args)
+    fn cmd(&self, args: &[&str]) -> Command {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_speclink"));
+        cmd.args(args)
             .current_dir(&self.dir)
             .env_remove("SPECLINK_LOCALE")
             .env_remove("SPECLINK_SPEC_LOCALE")
             .env_remove("SPECLINK_STORE_URL")
-            .env("SPECLINK_TOKEN", "tok")
-            .output()
-            .expect("run speclink binary")
+            .env("SPECLINK_TOKEN", "tok");
+        cmd
+    }
+
+    fn run(&self, args: &[&str]) -> Output {
+        self.cmd(args).output().expect("run speclink binary")
+    }
+
+    fn run_stdin(&self, args: &[&str], input: &str) -> Output {
+        use std::io::Write;
+        let mut child = self
+            .cmd(args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn speclink binary");
+        child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+        child.wait_with_output().expect("wait speclink binary")
     }
 }
 
@@ -435,6 +451,344 @@ fn remote_show_missing_item_is_a_semantic_error_with_engine_wording() {
     assert!(
         stderr_of(&out).contains("Spec 'ghost' not found."),
         "typed lookup names the type: {}",
+        stderr_of(&out)
+    );
+}
+
+// --- list：人眼渲染兩模式同形（invalid 標記一度只在 fs 側渲染）---
+
+const LIST_GOOD_META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
+const LIST_BAD_META: &str = ": : :\n\t bad yaml [unclosed\n";
+const LIST_PROPOSAL: &str = "## Why\n\nDemo.\n";
+const LIST_TASKS: &str = "- [ ] 1.1 Do the thing\n";
+
+/// 一份含壞 metadata 的 fs 沙盒，與 list_routes 的 wire payload 同內容。
+fn list_fs_project(tag: &str) -> TempProject {
+    let p = TempProject::fs(tag);
+    for (name, meta) in [("good-change", LIST_GOOD_META), ("broken-change", LIST_BAD_META)] {
+        p.write(&format!("openspec/changes/{name}/.openspec.yaml"), meta);
+        p.write(&format!("openspec/changes/{name}/proposal.md"), LIST_PROPOSAL);
+        p.write(&format!("openspec/changes/{name}/tasks.md"), LIST_TASKS);
+    }
+    p
+}
+
+/// server 依 fs 的 name 排序回傳，兩模式因此逐行對得上。
+fn list_routes() -> Vec<(&'static str, &'static str, u16, String)> {
+    vec![(
+        "GET",
+        "/changes",
+        200,
+        serde_json::json!({
+            "changes": [
+                {
+                    "name": "broken-change",
+                    "status": "in-progress",
+                    "summary": "Demo.",
+                    "completedTasks": 0,
+                    "totalTasks": 1,
+                    "metaError": "did not find expected key, while parsing a block mapping",
+                },
+                {
+                    "name": "good-change",
+                    "status": "in-progress",
+                    "summary": "Demo.",
+                    "completedTasks": 0,
+                    "totalTasks": 1,
+                },
+            ]
+        })
+        .to_string(),
+    )]
+}
+
+#[test]
+fn remote_list_matches_fs_output_byte_for_byte_including_the_invalid_marker() {
+    // wire 一直帶著 metaError，只有 fs 側渲染 `(invalid .openspec.yaml)`——
+    // 同一份事實兩種輸出，正是渲染寫兩份養出來的漂移。
+    let fs = list_fs_project("list-fs");
+    let args = ["list", "--sort", "name", "--no-color"];
+    let fs_human = fs.run(&args);
+    assert!(fs_human.status.success(), "fs stderr: {}", stderr_of(&fs_human));
+
+    let mock = mock_server(list_routes());
+    let p = TempProject::remote("list-remote", &mock.base, "backend");
+    let remote_human = p.run(&args);
+    assert!(remote_human.status.success(), "remote stderr: {}", stderr_of(&remote_human));
+
+    assert_eq!(
+        stdout_of(&remote_human),
+        stdout_of(&fs_human),
+        "human output is byte-identical to fs mode, invalid marker included"
+    );
+    assert!(
+        !p.dir.join("openspec").exists(),
+        "the remote run never created or read a local store"
+    );
+}
+
+// --- discuss：全家的成功訊息兩模式同形（conclude 的重收清單曾只在 fs 側可見）---
+
+const CONCLUSION: &str = "**Decision**: ship it\n";
+
+/// 一份已轉出變更的討論——re-conclude 會把該變更打回重收。
+fn conclude_fs_project(tag: &str) -> TempProject {
+    let p = TempProject::fs(tag);
+    p.write(
+        "openspec/discussions/auth-scope.md",
+        "---\ntopic: Auth scope\nslug: auth-scope\nstatus: promoted\npromoted_to: add-auth\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\nold\n",
+    );
+    p.write(
+        "openspec/changes/add-auth/.openspec.yaml",
+        "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: auth-scope\n",
+    );
+    p
+}
+
+#[test]
+fn remote_discuss_conclude_matches_fs_output_byte_for_byte() {
+    // 重收清單（restaleFlagged）一度只有 fs 端算得出來，remote 端整個回應被丟棄，
+    // 於是「這次結論打回了哪些變更」在遠端完全看不到。
+    let fs = conclude_fs_project("conclude-fs");
+    let args = ["discuss", "conclude", "auth-scope", "--stdin"];
+    let fs_human = fs.run_stdin(&args, CONCLUSION);
+    assert!(fs_human.status.success(), "fs stderr: {}", stderr_of(&fs_human));
+    assert!(
+        stdout_of(&fs_human).contains("add-auth"),
+        "the fs baseline names the flagged change: {}",
+        stdout_of(&fs_human)
+    );
+
+    let mock = mock_server(vec![(
+        "POST",
+        "/discussions/auth-scope/conclude",
+        200,
+        r#"{"restaleFlagged":["add-auth"]}"#.to_string(),
+    )]);
+    let p = TempProject::remote("conclude-remote", &mock.base, "backend");
+    let remote_human = p.run_stdin(&args, CONCLUSION);
+    assert!(remote_human.status.success(), "remote stderr: {}", stderr_of(&remote_human));
+
+    assert_eq!(
+        stdout_of(&remote_human),
+        stdout_of(&fs_human),
+        "human output is byte-identical to fs mode, flagged changes included"
+    );
+
+    let fs_json = fs.run_stdin(&["discuss", "conclude", "auth-scope", "--stdin", "--json"], CONCLUSION);
+    let mock2 = mock_server(vec![(
+        "POST",
+        "/discussions/auth-scope/conclude",
+        200,
+        r#"{"restaleFlagged":["add-auth"]}"#.to_string(),
+    )]);
+    let p2 = TempProject::remote("conclude-remote-json", &mock2.base, "backend");
+    let remote_json =
+        p2.run_stdin(&["discuss", "conclude", "auth-scope", "--stdin", "--json"], CONCLUSION);
+    assert_eq!(
+        stdout_of(&remote_json),
+        stdout_of(&fs_json),
+        "--json output is byte-identical to fs mode"
+    );
+}
+
+#[test]
+fn remote_in_progress_remove_reports_the_idempotent_noop_like_fs_mode() {
+    // 未開工的 change 被要求退回時，fs 說「本來就沒開工」，remote 一度只會
+    // 說「已移除」——同一個引擎結果，兩種說法。
+    let fs = TempProject::fs("inprogress-fs");
+    fs.write(
+        "openspec/changes/add-auth/.openspec.yaml",
+        "schema: spec-driven\ncreated: 2026-07-01\n",
+    );
+    let args = ["in-progress", "remove", "add-auth"];
+    let fs_human = fs.run(&args);
+    assert!(fs_human.status.success(), "fs stderr: {}", stderr_of(&fs_human));
+    assert!(
+        stdout_of(&fs_human).contains("already proposed"),
+        "the fs baseline reports the no-op: {}",
+        stdout_of(&fs_human)
+    );
+
+    let mock = mock_server(vec![(
+        "DELETE",
+        "/changes/add-auth/in-progress",
+        200,
+        r#"{"removed":false}"#.to_string(),
+    )]);
+    let p = TempProject::remote("inprogress-remote", &mock.base, "backend");
+    let remote_human = p.run(&args);
+    assert!(remote_human.status.success(), "remote stderr: {}", stderr_of(&remote_human));
+    assert_eq!(
+        stdout_of(&remote_human),
+        stdout_of(&fs_human),
+        "human output is byte-identical to fs mode"
+    );
+}
+
+// --- archive：新 server 走 fs 同一支渲染，舊 server 整體退化 ---
+
+/// 一份可封存的 fs 沙盒：任務全勾、一份 delta spec、一個來源討論。
+fn archive_fs_project(tag: &str) -> TempProject {
+    let p = TempProject::fs(tag);
+    p.write(
+        "openspec/changes/add-auth/.openspec.yaml",
+        "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: auth-scope\n",
+    );
+    p.write("openspec/changes/add-auth/tasks.md", "- [x] 1.1 done\n");
+    p.write(
+        "openspec/changes/add-auth/specs/user-auth/spec.md",
+        "## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
+    );
+    p.write(
+        "openspec/discussions/auth-scope.md",
+        "---\ntopic: Auth scope\nslug: auth-scope\nstatus: promoted\npromoted_to: add-auth\n---\n\n## Conclusion\n\nGo.\n",
+    );
+    p
+}
+
+#[test]
+fn remote_archive_matches_fs_output_byte_for_byte() {
+    // 封存目的地、規格計數、封存的來源討論、零證據提示——fs 全印，remote 一度
+    // 只有一行「Archived change」。
+    let fs = archive_fs_project("archive-fs");
+    let fs_out = fs.run(&["archive", "add-auth", "--no-color"]);
+    assert!(fs_out.status.success(), "fs stderr: {}", stderr_of(&fs_out));
+    let fs_stdout = stdout_of(&fs_out);
+    assert!(fs_stdout.contains("Specs applied"), "fs baseline lists counts: {fs_stdout}");
+    assert!(
+        fs_stdout.contains("Discussion archived"),
+        "fs baseline names the co-travelled discussion: {fs_stdout}"
+    );
+
+    // wire 回報同一份引擎結果。dated 名稱取自 fs 那一輪，兩邊才對得起來。
+    let dated = fs_stdout
+        .lines()
+        .next()
+        .and_then(|l| l.rsplit(" → ").next())
+        .expect("the fs line names the destination")
+        .to_string();
+    let archived_file = format!("{}-auth-scope.md", &dated[..10]);
+    let mock = mock_server(vec![(
+        "POST",
+        "/changes/add-auth/archive",
+        200,
+        serde_json::json!({
+            "specs": [{ "capability": "user-auth", "added": 1, "modified": 0, "removed": 0, "renamed": 0 }],
+            "datedName": dated,
+            "snapshotCreated": true,
+            "archivedDiscussions": [{ "slug": "auth-scope", "file": archived_file }],
+            "evidenceRecorded": false,
+        })
+        .to_string(),
+    )]);
+    let p = TempProject::remote("archive-remote", &mock.base, "backend");
+    let remote_out = p.run(&["archive", "add-auth", "--no-color"]);
+    assert!(remote_out.status.success(), "remote stderr: {}", stderr_of(&remote_out));
+
+    assert_eq!(
+        stdout_of(&remote_out),
+        fs_stdout,
+        "human output is byte-identical to fs mode"
+    );
+    assert_eq!(
+        stderr_of(&remote_out),
+        stderr_of(&fs_out),
+        "the zero-evidence note travels too"
+    );
+}
+
+#[test]
+fn remote_archive_falls_back_whole_for_an_old_server() {
+    // 舊 server 沒有哨兵：退回既有兩行輸出，不做半新半舊的混合渲染。
+    let mock = mock_server(vec![(
+        "POST",
+        "/changes/add-auth/archive",
+        200,
+        r#"{"specs":[{"capability":"user-auth"}]}"#.to_string(),
+    )]);
+    let p = TempProject::remote("archive-legacy", &mock.base, "backend");
+    let out = p.run(&["archive", "add-auth", "--no-color"]);
+    assert!(out.status.success(), "remote stderr: {}", stderr_of(&out));
+    assert_eq!(
+        stdout_of(&out),
+        "✓ Archived change: add-auth\n  Specs updated: user-auth\n",
+        "the old-server output is unchanged"
+    );
+}
+
+// --- 品質站工單閱讀：原文走人眼、--json 形狀不因原文上 wire 而變 ---
+
+const TICKET_DOC: &str = "# Review — demo\n\n## Round 1\n\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — possible Feature Envy\n";
+
+fn ticket_routes(content: Option<&str>) -> Vec<(&'static str, &'static str, u16, String)> {
+    let mut body = serde_json::json!({
+        "change": "demo",
+        "rounds": [{
+            "index": 1, "phase": null, "patchHash": null,
+            "scope": ["src/lib.rs"],
+            "findings": [{ "severity": "WARNING", "path": "src/lib.rs", "text": "possible Feature Envy" }],
+        }],
+        "lastRound": {
+            "index": 1, "phase": null, "patchHash": null,
+            "scope": ["src/lib.rs"],
+            "findings": [{ "severity": "WARNING", "path": "src/lib.rs", "text": "possible Feature Envy" }],
+        },
+    });
+    if let Some(content) = content {
+        body["content"] = serde_json::json!(content);
+    }
+    vec![("GET", "/changes/demo/review", 200, body.to_string())]
+}
+
+#[test]
+fn remote_review_show_prints_the_document_and_keeps_json_free_of_it() {
+    // 原文上 wire 是為了人眼路徑；`--json` 的欄位集合是對外契約，原文不屬於它。
+    let mock = mock_server(ticket_routes(Some(TICKET_DOC)));
+    let p = TempProject::remote("ticket-remote", &mock.base, "backend");
+
+    let human = p.run(&["review", "show", "demo"]);
+    assert!(human.status.success(), "remote stderr: {}", stderr_of(&human));
+    assert_eq!(stdout_of(&human), TICKET_DOC, "the human path prints the ticket verbatim");
+
+    let mock2 = mock_server(ticket_routes(Some(TICKET_DOC)));
+    let p2 = TempProject::remote("ticket-remote-json", &mock2.base, "backend");
+    let json = p2.run(&["review", "show", "demo", "--json"]);
+    assert!(json.status.success(), "remote stderr: {}", stderr_of(&json));
+    let payload: serde_json::Value =
+        serde_json::from_str(stdout_of(&json).trim()).expect("stdout is JSON");
+    assert!(
+        payload.get("content").is_none(),
+        "the document body must not leak into the --json contract: {payload}"
+    );
+    assert_eq!(payload["change"], "demo");
+    assert_eq!(payload["lastRound"]["findings"][0]["severity"], "WARNING");
+}
+
+#[test]
+fn remote_review_show_falls_back_to_the_summary_without_a_document() {
+    // 舊 server 不帶原文：印結構化摘要，不拿結構化欄位反推一份假原文。
+    let mock = mock_server(ticket_routes(None));
+    let p = TempProject::remote("ticket-legacy", &mock.base, "backend");
+    let human = p.run(&["review", "show", "demo"]);
+    assert!(human.status.success(), "remote stderr: {}", stderr_of(&human));
+    let out = stdout_of(&human);
+    assert!(out.starts_with("Review — demo"), "summary header: {out}");
+    assert!(out.contains("[WARNING] src/lib.rs"), "summary lists findings: {out}");
+}
+
+#[test]
+fn remote_review_show_refuses_an_unknown_round_phase() {
+    // server 比 CLI 新：未知 phase 靜默當 legacy 會讓輸出宣稱錯誤的事實。
+    let mut routes = ticket_routes(None);
+    routes[0].3 = routes[0].3.replace("\"phase\":null", "\"phase\":\"triage\"");
+    let mock = mock_server(routes);
+    let p = TempProject::remote("ticket-phase", &mock.base, "backend");
+    let out = p.run(&["review", "show", "demo"]);
+    assert!(!out.status.success(), "an unknown phase token must fail loud");
+    assert!(
+        stderr_of(&out).contains("triage"),
+        "the refusal names the token: {}",
         stderr_of(&out)
     );
 }

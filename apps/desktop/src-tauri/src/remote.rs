@@ -1444,7 +1444,8 @@ impl RemoteWorkspace {
         credentials: &dyn CredentialStore,
         change: &str,
     ) -> Result<(), RemoteError> {
-        self.run_write(credentials, |client| client.in_progress_remove(change))
+        // 回應的 removed 旗標 desktop 用不到——看板靠重讀清單刷新，不看這句回報。
+        self.run_write(credentials, |client| client.in_progress_remove(change)).map(|_| ())
     }
 
     /// validate 動詞（唯讀衍生查詢）：wire DTO 轉回引擎型別，序列化後與本地

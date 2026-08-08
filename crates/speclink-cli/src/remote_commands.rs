@@ -65,83 +65,35 @@ fn remote_ctx() -> Result<Option<RemoteCtx>> {
 
 // --- list ---
 
+/// The wire summary reshaped into the core listing item — the same rendering
+/// path then keeps stdout byte-identical to fs mode.
+fn to_list_change_json(c: &protocol_query::ChangeSummary) -> ListChangeJson {
+    ListChangeJson {
+        completed_tasks: c.completed_tasks,
+        name: c.name.clone(),
+        status: c.status.clone(),
+        summary: c.summary.clone(),
+        total_tasks: c.total_tasks,
+        restale_from: c.restale_from.clone(),
+        meta_error: c.meta_error.clone(),
+        // remote 恆缺席：worktree 是本機主 checkout 的觀察面，
+        // server 端沒有這回事（spec scenario remote list 恆無 worktree 欄位）。
+        worktree: None,
+    }
+}
+
 fn remote_list(ctx: &RemoteCtx, a: &ListArgs) -> Result<()> {
-    if a.specs && !a.changes {
-        return remote_list_specs(ctx, a.json);
-    }
-    let items = ctx.client.list_changes()?.changes;
-    if a.json {
-        let parity: Vec<ListChangeJson> = items
-            .iter()
-            .map(|c| ListChangeJson {
-                completed_tasks: c.completed_tasks,
-                name: c.name.clone(),
-                status: c.status.clone(),
-                summary: c.summary.clone(),
-                total_tasks: c.total_tasks,
-                restale_from: c.restale_from.clone(),
-                meta_error: c.meta_error.clone(),
-                // remote 恆缺席：worktree 是本機主 checkout 的觀察面，
-                // server 端沒有這回事（spec scenario remote list 恆無 worktree 欄位）。
-                worktree: None,
-            })
-            .collect();
-        if a.specs {
-            return print_json(&serde_json::json!({
-                "changes": parity,
-                "specs": remote_specs_parity(ctx)?,
-            }));
-        }
-        return print_json(&serde_json::json!({ "changes": parity }));
-    }
-    if items.is_empty() {
-        println!("No active changes.");
-        if a.specs {
-            println!();
-            remote_list_specs(ctx, false)?;
-        }
-        return Ok(());
-    }
-    println!("{}", color::bold("Changes:"));
-    for c in &items {
-        let marker = if c.total_tasks > 0 {
-            format!(" [{}/{}]", c.completed_tasks, c.total_tasks)
-        } else {
-            String::new()
-        };
-        let suffix = if c.summary.is_empty() {
-            String::new()
-        } else {
-            format!(" — {}", c.summary)
-        };
-        println!("  {} {}{marker}{}", color::cyan("•"), c.name, color::dim(&suffix));
-    }
-    if a.specs {
-        println!();
-        remote_list_specs(ctx, false)?;
-    }
-    Ok(())
-}
-
-/// The parity view of the spec listing: id and path only.
-fn remote_specs_parity(ctx: &RemoteCtx) -> Result<Vec<protocol_query::SpecSummary>> {
-    Ok(ctx.client.list_specs()?.specs)
-}
-
-fn remote_list_specs(ctx: &RemoteCtx, json: bool) -> Result<()> {
-    let specs = remote_specs_parity(ctx)?;
-    if json {
-        return print_json(&serde_json::json!({ "specs": specs }));
-    }
-    if specs.is_empty() {
-        println!("No specs.");
-        return Ok(());
-    }
-    println!("{}", color::bold("Specs:"));
-    for s in &specs {
-        println!("  {} {}", color::cyan("•"), s.id);
-    }
-    Ok(())
+    // 組出 fs 模式同一個 ListOutcome 再交給共用渲染：`--specs` 單獨給定時
+    // changes 為 None，與引擎的 List outcome 同構。
+    let specs_only = a.specs && !a.changes;
+    let changes = if specs_only {
+        None
+    } else {
+        Some(ctx.client.list_changes()?.changes.iter().map(to_list_change_json).collect())
+    };
+    let specs =
+        if a.specs { Some(wire_specs_payload(ctx.client.list_specs()?.specs)?) } else { None };
+    render_list(&core::command::ListOutcome { changes, specs }, a.json)
 }
 
 // --- change resolution (mirrors the fs wording) ---
@@ -803,13 +755,13 @@ fn remote_new_change(ctx: &RemoteCtx, a: &NewChangeArgs) -> Result<()> {
         agent: a.agent.clone(),
         from_discussion: a.from_discussion.clone(),
     })?;
-    println!("{} Created change: {}", color::green("✓"), a.name);
-    if let Some(schema) = resp.schema.filter(|s| !s.is_empty()) {
-        println!("  Schema: {schema}");
-    }
-    if let Some(slug) = &a.from_discussion {
-        println!("  From discussion: {slug}");
-    }
+    // Path 行是明文分歧（design D5）：server 端目錄對本機使用者無意義。
+    render_new_change(
+        &a.name,
+        None,
+        resp.schema.as_deref().filter(|s| !s.is_empty()),
+        a.from_discussion.as_deref(),
+    );
     Ok(())
 }
 
@@ -904,22 +856,16 @@ fn remote_task_done(
         .map(|w| core::tasks::git_changed_files(&w))
         .unwrap_or_default();
     let resp = ctx.client.task_done(&change, task_id, &touched)?;
-    if resp.already_done {
-        bail!("Task {task_id} is already done");
-    }
-    if json {
-        // Compact single-line JSON with the fs-mode keys.
-        let v = serde_json::json!({
-            "change": change,
-            "status": "done",
-            "task_desc": resp.task_desc,
-            "task_id": task_id,
-        });
-        println!("{}", serde_json::to_string(&v)?);
-        return Ok(());
-    }
-    println!("{} Task {task_id} marked as done: {}", color::green("✓"), resp.task_desc);
-    Ok(())
+    // remote 只有 argv 一種識別，拒絕訊息與 stdout 兩處都餵它。
+    render_task_flip(
+        TaskFlip::Done,
+        &change,
+        task_id,
+        task_id,
+        &resp.task_desc,
+        resp.already_done,
+        json,
+    )
 }
 
 fn remote_task_undone(
@@ -936,22 +882,15 @@ fn remote_task_undone(
         },
     };
     let resp = ctx.client.task_undone(&change, task_id)?;
-    if resp.already_undone {
-        bail!("Task {task_id} is already not done");
-    }
-    if json {
-        // Compact single-line JSON with the fs-mode keys.
-        let v = serde_json::json!({
-            "change": change,
-            "status": "undone",
-            "task_desc": resp.task_desc,
-            "task_id": task_id,
-        });
-        println!("{}", serde_json::to_string(&v)?);
-        return Ok(());
-    }
-    println!("{} Task {task_id} marked as not done: {}", color::green("✓"), resp.task_desc);
-    Ok(())
+    render_task_flip(
+        TaskFlip::Undone,
+        &change,
+        task_id,
+        task_id,
+        &resp.task_desc,
+        resp.already_undone,
+        json,
+    )
 }
 
 fn remote_claim(ctx: &RemoteCtx, name: &str) -> Result<()> {
@@ -961,14 +900,11 @@ fn remote_claim(ctx: &RemoteCtx, name: &str) -> Result<()> {
 }
 
 fn remote_in_progress_remove(ctx: &RemoteCtx, name: &str) -> Result<()> {
-    // 200 Ack 涵蓋實際移除與未開工冪等(D4 契約)——remote 分不出兩者,
-    // 一律印移除確認;守門 409 與 404 的 message 為引擎凍結文字,經 `?`
-    // 轉發後 stderr 與 fs 模式逐位元一致。
-    ctx.client.in_progress_remove(name)?;
-    println!(
-        "{} Removed the in-progress marker from '{name}' — back to proposed",
-        color::green("✓")
-    );
+    // 回應的 removed 區分實際移除與未開工冪等,兩者印不同的行(舊 server 的
+    // 裸 Ack 讀作已移除,即其原本的意思);守門 409 與 404 的 message 為引擎
+    // 凍結文字,經 `?` 轉發後 stderr 與 fs 模式逐位元一致。
+    let removed = ctx.client.in_progress_remove(name)?.removed;
+    render_in_progress_remove(name, removed);
     Ok(())
 }
 
@@ -1024,11 +960,41 @@ fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
         bail!("Please specify a change to archive.");
     };
     let resp = ctx.client.archive(&name, a.carry_review, a.carry_verify)?;
-    println!("{} Archived change: {name}", color::green("✓"));
-    if !resp.specs.is_empty() {
-        let caps: Vec<&str> = resp.specs.iter().map(|s| s.capability.as_str()).collect();
-        println!("  Specs updated: {}", caps.join(", "));
-    }
+    // datedName 是哨兵：新 server 給得出完整封存結果，就走 fs 同一支渲染；
+    // 舊 server 什麼都沒帶，退回既有的兩行輸出而不是半套。
+    let Some(dated_name) = resp.dated_name else {
+        println!("{} Archived change: {name}", color::green("✓"));
+        if !resp.specs.is_empty() {
+            let caps: Vec<&str> = resp.specs.iter().map(|s| s.capability.as_str()).collect();
+            println!("  Specs updated: {}", caps.join(", "));
+        }
+        return Ok(());
+    };
+    print_archive_outcome(&core::archive::ArchiveOutcome {
+        change_name: name,
+        dated_name,
+        caps: resp
+            .specs
+            .into_iter()
+            .map(|s| core::archive::CapCounts {
+                capability: s.capability,
+                added: s.added,
+                modified: s.modified,
+                removed: s.removed,
+                renamed: s.renamed,
+            })
+            .collect(),
+        snapshot_created: resp.snapshot_created.unwrap_or(false),
+        // remote 的封存永遠不跳過 specs（端點無此旗標）——欄位對渲染無影響。
+        skipped_specs: false,
+        archived_discussions: resp
+            .archived_discussions
+            .into_iter()
+            .map(|d| (d.slug, d.file))
+            .collect(),
+        // 缺席讀作「有證據」，零證據提示因此不會憑空冒出來。
+        evidence_recorded: resp.evidence_recorded.unwrap_or(true),
+    });
     Ok(())
 }
 
@@ -1171,35 +1137,14 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
         StationVerb::AddRound { change, stdin } => {
             let content = read_stdin_content(stdin);
             let round = ctx.client.station_add_round(noun, &change, &content)?.round;
-            println!(
-                "{} Recorded {} Round {round} for change '{change}'",
-                color::green("✓"),
-                st.noun_phrase
-            );
+            render_station_action(st, StationAction::AddRound(round as usize), &change);
             Ok(())
         }
         StationVerb::Show { change, json } => {
-            let ticket = ctx.client.station_ticket(noun, &change)?;
-            if json {
-                return print_json(&ticket);
-            }
-            println!("{} — {}", st.title, ticket.change);
-            for r in &ticket.rounds {
-                println!("\nRound {}", r.index);
-                if let Some(phase) = &r.phase {
-                    println!("  Phase: {phase}");
-                }
-                if let Some(hash) = &r.patch_hash {
-                    println!("  Patch: {hash}");
-                }
-                if !r.scope.is_empty() {
-                    println!("  Scope: {}", r.scope.join(", "));
-                }
-                for f in &r.findings {
-                    println!("  - [{}] {} — {}", f.severity, f.path, f.text);
-                }
-            }
-            Ok(())
+            let resp = ctx.client.station_ticket(noun, &change)?;
+            let content = resp.content.clone();
+            let ticket = to_station_ticket(resp)?;
+            render_station_show(st, &change, &ticket, content.as_deref(), json)
         }
         StationVerb::Stamp { change, accept, agent } => {
             // 指紋歸屬（design D4a）：工作樹持有者是這裡——先取工單算 Scope
@@ -1224,23 +1169,66 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
                 .map(|(path, hash)| speclink_protocol::command::ReviewScopeEntryDto { path, hash })
                 .collect();
             ctx.client.station_stamp(noun, &change, accept, agent.as_deref(), &scope, &missing)?;
-            println!(
-                "{} Stamped {} for change '{change}'",
-                color::green("✓"),
-                st.noun_phrase
-            );
+            render_station_action(st, StationAction::Stamp, &change);
             Ok(())
         }
         StationVerb::Discard { change } => {
             ctx.client.station_discard(noun, &change)?;
-            println!(
-                "{} Discarded {} ticket for change '{change}'",
-                color::green("✓"),
-                st.noun_phrase
-            );
+            render_station_action(st, StationAction::Discard, &change);
             Ok(())
         }
     }
+}
+
+/// The wire ticket reshaped into the engine's ticket, so `--json` goes through
+/// the one payload assembly whose field set is the public contract (and the
+/// document body, which is not part of that contract, cannot leak into it).
+///
+/// An unrecognized phase token is an error, not a silent `None`: it means the
+/// server speaks a round vocabulary this CLI does not, and rendering it as a
+/// legacy round would state something false about the ticket.
+fn to_station_ticket(
+    resp: speclink_protocol::command::ReviewTicketResponse,
+) -> Result<core::station::Ticket> {
+    let rounds = resp
+        .rounds
+        .into_iter()
+        .map(to_station_round)
+        .collect::<Result<Vec<_>>>()?;
+    Ok(core::station::Ticket { rounds })
+}
+
+fn to_station_round(
+    r: speclink_protocol::command::ReviewRoundDto,
+) -> Result<core::station::Round> {
+    let phase = match r.phase.as_deref() {
+        None => None,
+        Some(token) => Some(core::station::RoundPhase::parse(token).ok_or_else(|| {
+            anyhow::anyhow!(
+                "unknown round phase '{token}' from the server — this CLI is older than the server's ticket format"
+            )
+        })?),
+    };
+    let findings = r
+        .findings
+        .into_iter()
+        .map(|f| {
+            let severity = core::station::Severity::parse(&f.severity).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "unknown finding severity '{}' from the server — this CLI is older than the server's ticket format",
+                    f.severity
+                )
+            })?;
+            Ok(core::station::Finding { severity, path: f.path, text: f.text })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(core::station::Round {
+        index: r.index as usize,
+        phase,
+        patch_hash: r.patch_hash,
+        scope: r.scope,
+        findings,
+    })
 }
 
 // --- discuss ---
@@ -1248,134 +1236,102 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
 fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
     match a.command {
         DiscussCommands::List { archived, json } => {
-            let items = ctx.client.list_discussions(archived)?.discussions;
-            if json {
-                return print_json(&serde_json::json!({ "discussions": items }));
-            }
-            if items.is_empty() {
-                let what = if archived { "archived discussions" } else { "discussions" };
-                println!("No {what} found.");
-                return Ok(());
-            }
-            let heading = if archived { "Archived discussions:" } else { "Discussions:" };
-            println!("{heading}");
-            for d in &items {
-                println!("  • {} [{}] ({} rounds) — {}", d.slug, d.status, d.rounds, d.topic);
-            }
-            Ok(())
+            let items: Vec<_> = ctx
+                .client
+                .list_discussions(archived)?
+                .discussions
+                .iter()
+                .map(to_discussion_info)
+                .collect();
+            render_discuss_list(&items, archived, json)
         }
         DiscussCommands::Show { slug, json } => {
             let payload = ctx.client.show_discussion(&slug)?;
-            if json {
-                return print_json(&serde_json::json!({
-                    "info": payload.info,
-                    "content": payload.content,
-                }));
-            }
-            print!("{}", payload.content);
-            Ok(())
+            render_discuss_show(
+                &core::command::DiscussShowOutcome {
+                    info: Some(to_discussion_info(&payload.info)),
+                    content: payload.content,
+                },
+                json,
+            )
         }
         DiscussCommands::New { topic, slug, kind, json } => {
             // --slug 與 --kind 隨請求上 wire；驗證的單一事實來源在引擎（server 端），
             // CLI 不預驗（design D1）。
             let resp = ctx.client.new_discussion(&topic, slug.as_deref(), kind.as_deref())?;
-            if json {
-                return print_json(&resp);
-            }
-            println!("{} Created discussion: {}", color::green("✓"), resp.slug);
-            println!("  Topic: {}", resp.topic);
-            println!("  Path: {}", resp.path);
-            Ok(())
+            render_discuss_new(&created_discussion_info(&resp), json)
         }
         DiscussCommands::Context { slug, stdin, json } => {
             let content = read_stdin_content(stdin);
             ctx.client.discussion_context(&slug, &content)?;
-            if json {
-                return print_json(&serde_json::json!({ "slug": slug, "context": "set" }));
-            }
-            println!("{} Set context for discussion '{slug}'", color::green("✓"));
-            Ok(())
+            render_discuss_context(&slug, json)
         }
         DiscussCommands::AddRound { slug, mode, stdin, json } => {
             let content = read_stdin_content(stdin);
             let round = ctx.client.discussion_add_round(&slug, &mode, &content)?.round;
-            if json {
-                return print_json(&serde_json::json!({ "slug": slug, "round": round, "mode": mode }));
-            }
-            println!("{} Recorded round {round} ({mode}) to discussion '{slug}'", color::green("✓"));
-            Ok(())
+            render_discuss_add_round(&slug, round as usize, &mode, json)
         }
         DiscussCommands::Conclude { slug, stdin, json } => {
             let content = read_stdin_content(stdin);
-            ctx.client.discussion_conclude(&slug, &content)?;
-            if json {
-                return print_json(&serde_json::json!({ "slug": slug, "status": "concluded" }));
-            }
-            println!("{} Concluded discussion '{slug}'", color::green("✓"));
-            Ok(())
+            let flagged = ctx.client.discussion_conclude(&slug, &content)?.restale_flagged;
+            render_discuss_conclude(&slug, &flagged, json)
         }
         DiscussCommands::Archive { slug, json } => {
             let archived_to = ctx.client.discussion_archive(&slug)?.archived_to;
-            if json {
-                return print_json(&serde_json::json!({ "slug": slug, "archived_to": archived_to }));
-            }
-            println!("{} Archived discussion: {slug} → {archived_to}", color::green("✓"));
-            Ok(())
+            render_discuss_archive(&slug, &archived_to, json)
         }
         DiscussCommands::Promote { slug, name, json } => {
             let change = ctx.client.discussion_promote(&slug, name.as_deref())?.change;
-            if json {
-                return print_json(&serde_json::json!({
-                    "change": change,
-                    "slug": slug,
-                    "status": "promoted",
-                }));
-            }
-            println!("{} Promoted discussion '{slug}' → change '{change}'", color::green("✓"));
-            Ok(())
+            // 明文分歧（design D5）：新變更目錄是 store 端位置，remote 不印，
+            // 與 `new change` 的 Path 行同一條裁定。
+            render_discuss_promote(&slug, &change, None, json)
         }
         DiscussCommands::Discard { slug, force, json } => {
             let slug = ctx.client.discard_discussion(&slug, force)?.slug;
-            if json {
-                return print_json(&serde_json::json!({ "slug": slug, "status": "discarded" }));
-            }
-            println!("{} Discarded discussion: {slug}", color::green("✓"));
-            Ok(())
+            render_discuss_discard(&slug, json)
         }
         DiscussCommands::Link { slug, change, json } => {
             let bound = ctx.client.link_discussion(&slug, &change)?;
-            if json {
-                return print_json(&serde_json::json!({
-                    "change": bound.change,
-                    "slug": bound.slug,
-                    "status": "linked",
-                }));
-            }
-            println!(
-                "{} Linked discussion '{}' → change '{}'",
-                color::green("✓"),
-                bound.slug,
-                bound.change
-            );
-            Ok(())
+            render_discuss_bind(&bound.slug, &bound.change, DiscussBind::Link, json)
         }
         DiscussCommands::Seal { slug, change, json } => {
             let bound = ctx.client.seal_discussion(&slug, &change)?;
-            if json {
-                return print_json(&serde_json::json!({
-                    "change": bound.change,
-                    "slug": bound.slug,
-                    "status": "sealed",
-                }));
-            }
-            println!(
-                "{} Sealed discussion '{}' → change '{}' (marked promoted)",
-                color::green("✓"),
-                bound.slug,
-                bound.change
-            );
-            Ok(())
+            render_discuss_bind(&bound.slug, &bound.change, DiscussBind::Seal, json)
         }
+    }
+}
+
+/// The wire discussion summary reshaped into the engine's info type, so both
+/// modes render (and serialize) it through one path.
+fn to_discussion_info(d: &protocol_query::DiscussionInfo) -> core::discuss::DiscussionInfo {
+    core::discuss::DiscussionInfo {
+        slug: d.slug.clone(),
+        topic: d.topic.clone(),
+        status: d.status.clone(),
+        rounds: d.rounds as usize,
+        created: d.created.clone(),
+        created_by: d.created_by.clone(),
+        kind: d.kind.clone(),
+        path: d.path.clone(),
+        archived: d.archived,
+    }
+}
+
+/// `discuss new` answers with the created discussion's identity only; the rest
+/// of the info fields take the freshly-created state a new record always has.
+fn created_discussion_info(
+    resp: &speclink_protocol::command::CreateDiscussionResponse,
+) -> core::discuss::DiscussionInfo {
+    core::discuss::DiscussionInfo {
+        slug: resp.slug.clone(),
+        topic: resp.topic.clone(),
+        status: "open".to_string(),
+        rounds: 0,
+        created: String::new(),
+        created_by: None,
+        kind: None,
+        path: resp.path.clone(),
+        archived: false,
     }
 }
 

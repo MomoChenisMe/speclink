@@ -370,11 +370,17 @@ fn cmd_list(a: ListArgs) -> Result<()> {
     let core::command::CommandOutcome::List(list) = outcome else {
         unreachable!("list command yields a list outcome");
     };
+    render_list(&list, a.json)
+}
+
+/// fs 與 remote 共用的 list 渲染：兩模式各自組出同一個 ListOutcome，輸出逐位元
+/// 一致。模式差異只活在上游的資料組裝——remote 恆無 worktree 事實，其餘欄位同形。
+fn render_list(list: &core::command::ListOutcome, json: bool) -> Result<()> {
     // --specs alone omits the changes section (outcome.changes is None).
     let Some(items) = &list.changes else {
-        return render_specs_section(list.specs.as_ref().expect("specs requested"), a.json);
+        return render_specs_section(list.specs.as_ref().expect("specs requested"), json);
     };
-    if a.json {
+    if json {
         if let Some(specs) = &list.specs {
             let mut payload = serde_json::Map::new();
             payload.insert("changes".into(), serde_json::to_value(items)?);
@@ -427,6 +433,14 @@ fn cmd_list(a: ListArgs) -> Result<()> {
         render_specs_section(specs, false)?;
     }
     Ok(())
+}
+
+/// The engine's specs payload built from the typed wire summaries. The
+/// conversion belongs on this side of the include: the remote intercept layer
+/// speaks protocol DTOs only (tests/it/no_raw_wire_json.rs), while the engine's
+/// `ListOutcome` carries its specs section as an opaque payload.
+fn wire_specs_payload(specs: Vec<protocol_query::SpecSummary>) -> Result<serde_json::Value> {
+    Ok(serde_json::to_value(specs)?)
 }
 
 /// Render the specs section from the outcome's `{id, path}` items.
@@ -1177,13 +1191,34 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     let core::command::CommandOutcome::NewChange(o) = outcome else {
         unreachable!("new change yields a new-change outcome");
     };
-    println!("{} Created change: {}", color::green("✓"), o.name);
-    println!("  Path: {}", o.dir.to_string_lossy());
-    println!("  Schema: {}", o.schema);
-    if let Some(slug) = a.from_discussion.as_deref() {
+    render_new_change(
+        &o.name,
+        Some(&o.dir.to_string_lossy()),
+        Some(&o.schema),
+        a.from_discussion.as_deref(),
+    );
+    Ok(())
+}
+
+/// `path` absent is the remote mode's declared divergence (design D5): the
+/// change's directory is a store-side location with no meaning on the caller's
+/// machine. `schema` is likewise only printed when the answer carries one.
+fn render_new_change(
+    name: &str,
+    path: Option<&str>,
+    schema: Option<&str>,
+    from_discussion: Option<&str>,
+) {
+    println!("{} Created change: {name}", color::green("✓"));
+    if let Some(path) = path {
+        println!("  Path: {path}");
+    }
+    if let Some(schema) = schema {
+        println!("  Schema: {schema}");
+    }
+    if let Some(slug) = from_discussion {
         println!("  From discussion: {slug}");
     }
-    Ok(())
 }
 
 fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
@@ -2050,22 +2085,15 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
             let core::command::CommandOutcome::TaskDone(o) = outcome else {
                 unreachable!("task done yields a task-flip outcome");
             };
-            // 呈現：already 維持現行錯誤結束（引擎已保證零檔案效果）。
-            if o.already {
-                bail!("Task {} is already done", o.task_id);
-            }
-            if json {
-                // Compact single-line JSON, frozen shape.
-                let v = serde_json::json!({
-                    "change": o.change,
-                    "status": "done",
-                    "task_desc": o.description,
-                    "task_id": o.task_id_arg,
-                });
-                println!("{}", serde_json::to_string(&v)?);
-                return Ok(());
-            }
-            println!("{} Task {task_id} marked as done: {}", color::green("✓"), o.description);
+            render_task_flip(
+                TaskFlip::Done,
+                &o.change,
+                &o.task_id.to_string(),
+                &o.task_id_arg,
+                &o.description,
+                o.already,
+                json,
+            )?;
         }
         TaskCommands::Undone { task_id, change, json } => {
             if let Some(ctx) = remote_ctx()? {
@@ -2081,25 +2109,87 @@ fn cmd_task(a: TaskArgs) -> Result<()> {
             let core::command::CommandOutcome::TaskUndone(o) = outcome else {
                 unreachable!("task undone yields a task-flip outcome");
             };
-            // already 對稱 done 以錯誤結束（引擎已保證零檔案效果）。
-            if o.already {
-                bail!("Task {} is already not done", o.task_id);
-            }
-            if json {
-                // Compact single-line JSON, key order symmetric with `done`.
-                let v = serde_json::json!({
-                    "change": o.change,
-                    "status": "undone",
-                    "task_desc": o.description,
-                    "task_id": o.task_id_arg,
-                });
-                println!("{}", serde_json::to_string(&v)?);
-                return Ok(());
-            }
-            println!("{} Task {task_id} marked as not done: {}", color::green("✓"), o.description);
+            render_task_flip(
+                TaskFlip::Undone,
+                &o.change,
+                &o.task_id.to_string(),
+                &o.task_id_arg,
+                &o.description,
+                o.already,
+                json,
+            )?;
         }
     }
     Ok(())
+}
+
+/// `task done` 與 `task undone` 的輸出只差狀態字與動詞片語，共用一支渲染。
+#[derive(Clone, Copy)]
+enum TaskFlip {
+    Done,
+    Undone,
+}
+
+impl TaskFlip {
+    fn status(self) -> &'static str {
+        match self {
+            TaskFlip::Done => "done",
+            TaskFlip::Undone => "undone",
+        }
+    }
+
+    /// 已是該狀態時的拒絕文字，與成功行的動詞片語。
+    fn phrases(self) -> (&'static str, &'static str) {
+        match self {
+            TaskFlip::Done => ("is already done", "marked as done"),
+            TaskFlip::Undone => ("is already not done", "marked as not done"),
+        }
+    }
+}
+
+/// `already` 維持現行錯誤結束（引擎已保證零檔案效果）。`--json` 是緊湊單行，
+/// 欄位順序凍結，兩種翻轉對稱。
+///
+/// 兩個 id 不是同一個東西，也不能互相取代：`refused` 是拒絕訊息用的識別（fs
+/// 給引擎解析出的序號），`arg` 是原始 argv，走 stdout 的兩條路都用它。remote
+/// 只有 argv 一種，兩處都餵它。
+fn render_task_flip(
+    flip: TaskFlip,
+    change: &str,
+    refused: &str,
+    arg: &str,
+    description: &str,
+    already: bool,
+    json: bool,
+) -> Result<()> {
+    let (already_phrase, verb_phrase) = flip.phrases();
+    if already {
+        bail!("Task {refused} {already_phrase}");
+    }
+    if json {
+        let v = serde_json::json!({
+            "change": change,
+            "status": flip.status(),
+            "task_desc": description,
+            "task_id": arg,
+        });
+        println!("{}", serde_json::to_string(&v)?);
+        return Ok(());
+    }
+    println!("{} Task {arg} {verb_phrase}: {description}", color::green("✓"));
+    Ok(())
+}
+
+/// 實際移除與「本來就沒開工」印不同的行——引擎與 wire 都據實回報，渲染只讀事實。
+fn render_in_progress_remove(name: &str, removed: bool) {
+    if removed {
+        println!(
+            "{} Removed the in-progress marker from '{name}' — back to proposed",
+            color::green("✓")
+        );
+    } else {
+        println!("Change '{name}' has no in-progress marker — already proposed");
+    }
 }
 
 // --- in-progress ---
@@ -2128,15 +2218,7 @@ fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
             let core::command::CommandOutcome::InProgressRemove(o) = outcome else {
                 unreachable!("in-progress remove yields an in-progress-remove outcome");
             };
-            if o.removed {
-                println!(
-                    "{} Removed the in-progress marker from '{}' — back to proposed",
-                    color::green("✓"),
-                    o.name
-                );
-            } else {
-                println!("Change '{}' has no in-progress marker — already proposed", o.name);
-            }
+            render_in_progress_remove(&o.name, o.removed);
         }
     }
     Ok(())
@@ -2305,22 +2387,15 @@ fn run_station(cli: &StationCli, verb: StationVerb) -> Result<()> {
         StationVerb::AddRound { change, stdin } => {
             let content = read_stdin_content(stdin);
             let round = core::station::add_round(st, store, &change, &content)?;
-            println!(
-                "{} Recorded {} Round {round} for change '{change}'",
-                color::green("✓"),
-                st.noun_phrase
-            );
+            render_station_action(st, StationAction::AddRound(round), &change);
         }
         StationVerb::Show { change, json } => {
             let ticket = core::station::show(st, store, &change)?;
-            if json {
-                return print_json(&ticket_json(&change, &ticket));
-            }
             // 人眼路徑印工單原文（show 已驗證存在與格式）。
             let doc = store
                 .read_artifact(&change, st.doc)
                 .expect("show verified the ticket exists");
-            print!("{doc}");
+            return render_station_show(st, &change, &ticket, Some(&doc), json);
         }
         StationVerb::Stamp { change, accept, agent } => {
             let actor = speclink_host::context::git_identity(&ws.root);
@@ -2336,21 +2411,72 @@ fn run_station(cli: &StationCli, verb: StationVerb) -> Result<()> {
                 &read_file,
                 &file_exists,
             )?;
-            println!(
-                "{} Stamped {} for change '{change}'",
-                color::green("✓"),
-                st.noun_phrase
-            );
+            render_station_action(st, StationAction::Stamp, &change);
             clear_snapshots_warning(&ws, st, cli.ns, &change);
         }
         StationVerb::Discard { change } => {
             core::station::discard(st, store, &change)?;
+            render_station_action(st, StationAction::Discard, &change);
+            clear_snapshots_warning(&ws, st, cli.ns, &change);
+        }
+    }
+    Ok(())
+}
+
+/// 兩站三個「動作完成」動詞的成功行——只差站名片語，共用一支渲染。
+fn render_station_action(st: &core::station::Station, action: StationAction, change: &str) {
+    let (verb, tail) = match action {
+        StationAction::AddRound(round) => {
             println!(
-                "{} Discarded {} ticket for change '{change}'",
+                "{} Recorded {} Round {round} for change '{change}'",
                 color::green("✓"),
                 st.noun_phrase
             );
-            clear_snapshots_warning(&ws, st, cli.ns, &change);
+            return;
+        }
+        StationAction::Stamp => ("Stamped", ""),
+        StationAction::Discard => ("Discarded", " ticket"),
+    };
+    println!("{} {verb} {}{tail} for change '{change}'", color::green("✓"), st.noun_phrase);
+}
+
+enum StationAction {
+    AddRound(usize),
+    Stamp,
+    Discard,
+}
+
+/// 工單閱讀的共用渲染。`--json` 一律走 `ticket_json`——payload 的欄位集合是
+/// 對外契約，工單原文不屬於它，所以原文只走人眼路徑。`doc` 缺席是 remote 對
+/// 舊 server 的退化：印結構化摘要，而不是拿結構化欄位反推一份假原文。
+fn render_station_show(
+    st: &core::station::Station,
+    change: &str,
+    ticket: &core::station::Ticket,
+    doc: Option<&str>,
+    json: bool,
+) -> Result<()> {
+    if json {
+        return print_json(&ticket_json(change, ticket));
+    }
+    if let Some(doc) = doc {
+        print!("{doc}");
+        return Ok(());
+    }
+    println!("{} — {change}", st.title);
+    for r in &ticket.rounds {
+        println!("\nRound {}", r.index);
+        if let Some(phase) = &r.phase {
+            println!("  Phase: {}", phase.as_str());
+        }
+        if let Some(hash) = &r.patch_hash {
+            println!("  Patch: {hash}");
+        }
+        if !r.scope.is_empty() {
+            println!("  Scope: {}", r.scope.join(", "));
+        }
+        for f in &r.findings {
+            println!("  - [{}] {} — {}", f.severity.as_str(), f.path, f.text);
         }
     }
     Ok(())
@@ -2614,12 +2740,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussNew(info) = outcome else {
                 unreachable!("discuss new yields a discussion info");
             };
-            if json {
-                return print_json(&info);
-            }
-            println!("{} Created discussion: {}", color::green("✓"), info.slug);
-            println!("  Topic: {}", info.topic);
-            println!("  Path: {}", info.path);
+            render_discuss_new(&info, json)?;
         }
         DiscussCommands::List { archived, json } => {
             let outcome =
@@ -2627,19 +2748,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussList(items) = outcome else {
                 unreachable!("discuss list yields a discussion list");
             };
-            if json {
-                return print_json(&serde_json::json!({ "discussions": items }));
-            }
-            if items.is_empty() {
-                let what = if archived { "archived discussions" } else { "discussions" };
-                println!("No {what} found.");
-                return Ok(());
-            }
-            let heading = if archived { "Archived discussions:" } else { "Discussions:" };
-            println!("{heading}");
-            for d in &items {
-                println!("  • {} [{}] ({} rounds) — {}", d.slug, d.status, d.rounds, d.topic);
-            }
+            render_discuss_list(&items, archived, json)?;
         }
         DiscussCommands::Show { slug, json } => {
             let outcome =
@@ -2647,10 +2756,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussShow(show) = outcome else {
                 unreachable!("discuss show yields a discussion document");
             };
-            if json {
-                return print_json(&serde_json::json!({ "info": show.info, "content": show.content }));
-            }
-            print!("{}", show.content);
+            render_discuss_show(&show, json)?;
         }
         DiscussCommands::Context { slug, stdin, json } => {
             let content = read_stdin_content(stdin);
@@ -2662,10 +2768,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussContext(o) = outcome else {
                 unreachable!("discuss context yields a subject outcome");
             };
-            if json {
-                return print_json(&serde_json::json!({ "slug": o.slug, "context": "set" }));
-            }
-            println!("{} Set context for discussion '{}'", color::green("✓"), o.slug);
+            render_discuss_context(&o.slug, json)?;
         }
         DiscussCommands::AddRound { slug, mode, stdin, json } => {
             let content = read_stdin_content(stdin);
@@ -2677,18 +2780,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussAddRound(o) = outcome else {
                 unreachable!("discuss add-round yields a round outcome");
             };
-            if json {
-                return print_json(
-                    &serde_json::json!({ "slug": o.slug, "round": o.round, "mode": o.mode }),
-                );
-            }
-            println!(
-                "{} Recorded round {} ({}) to discussion '{}'",
-                color::green("✓"),
-                o.round,
-                o.mode,
-                o.slug
-            );
+            render_discuss_add_round(&o.slug, o.round, &o.mode, json)?;
         }
         DiscussCommands::Conclude { slug, stdin, json } => {
             let content = read_stdin_content(stdin);
@@ -2700,24 +2792,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussConclude(o) = outcome else {
                 unreachable!("discuss conclude yields a conclude outcome");
             };
-            let (slug, flagged) = (o.slug, o.restale_flagged);
-            if json {
-                // Byte-identical to before when nothing was flagged (promoted_to empty);
-                // the array appears only when a re-conclude actually staled changes.
-                let mut payload = serde_json::json!({ "slug": slug, "status": "concluded" });
-                if !flagged.is_empty() {
-                    payload["restaleFlagged"] = serde_json::json!(flagged);
-                }
-                return print_json(&payload);
-            }
-            println!("{} Concluded discussion '{slug}'", color::green("✓"));
-            if !flagged.is_empty() {
-                println!(
-                    "  Flagged {} change(s) for re-ingest: {}",
-                    flagged.len(),
-                    flagged.join(", ")
-                );
-            }
+            render_discuss_conclude(&o.slug, &o.restale_flagged, json)?;
         }
         DiscussCommands::Archive { slug, json } => {
             let outcome =
@@ -2725,18 +2800,11 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussArchive(o) = outcome else {
                 unreachable!("discuss archive yields an archive outcome");
             };
-            if json {
-                return print_json(&serde_json::json!({
-                    "slug": o.slug,
-                    "archived_to": format!("discussions/archive/{}", o.archived_file),
-                }));
-            }
-            println!(
-                "{} Archived discussion: {} → discussions/archive/{}",
-                color::green("✓"),
-                o.slug,
-                o.archived_file
-            );
+            render_discuss_archive(
+                &o.slug,
+                &format!("discussions/archive/{}", o.archived_file),
+                json,
+            )?;
         }
         DiscussCommands::Discard { slug, force, json } => {
             let outcome = run_command(
@@ -2747,10 +2815,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussDiscard(o) = outcome else {
                 unreachable!("discuss discard yields a subject outcome");
             };
-            if json {
-                return print_json(&serde_json::json!({ "slug": o.slug, "status": "discarded" }));
-            }
-            println!("{} Discarded discussion: {}", color::green("✓"), o.slug);
+            render_discuss_discard(&o.slug, json)?;
         }
         DiscussCommands::Promote { slug, name, json } => {
             let outcome = run_command(
@@ -2761,22 +2826,14 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussPromote(o) = outcome else {
                 unreachable!("discuss promote yields a promote outcome");
             };
-            if json {
-                return print_json(&serde_json::json!({
-                    "change": o.change,
-                    "path": core::util::to_slash(&o.path),
-                    "slug": o.slug,
-                    "status": "promoted",
-                }));
-            }
-            println!(
-                "{} Promoted discussion '{}' → change '{}'",
-                color::green("✓"),
-                o.slug,
-                o.change
-            );
-            println!("  Path: {}", o.path.to_string_lossy());
-            println!("  Proposal prefilled from the conclusion — run /speclink-propose to complete the artifacts");
+            let shown = o.path.to_string_lossy();
+            let wire = core::util::to_slash(&o.path);
+            render_discuss_promote(
+                &o.slug,
+                &o.change,
+                Some(PromotedPath { shown: &shown, wire: &wire }),
+                json,
+            )?;
         }
         DiscussCommands::Link { slug, change, json } => {
             let outcome = run_command(
@@ -2787,19 +2844,7 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussLink(o) = outcome else {
                 unreachable!("discuss link yields a bind outcome");
             };
-            if json {
-                return print_json(&serde_json::json!({
-                    "change": o.change,
-                    "slug": o.slug,
-                    "status": "linked",
-                }));
-            }
-            println!(
-                "{} Linked discussion '{}' → change '{}'",
-                color::green("✓"),
-                o.slug,
-                o.change
-            );
+            render_discuss_bind(&o.slug, &o.change, DiscussBind::Link, json)?;
         }
         DiscussCommands::Seal { slug, change, json } => {
             let outcome = run_command(
@@ -2810,21 +2855,173 @@ fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussSeal(o) = outcome else {
                 unreachable!("discuss seal yields a bind outcome");
             };
-            if json {
-                return print_json(&serde_json::json!({
-                    "change": o.change,
-                    "slug": o.slug,
-                    "status": "sealed",
-                }));
-            }
-            println!(
-                "{} Sealed discussion '{}' → change '{}' (marked promoted)",
-                color::green("✓"),
-                o.slug,
-                o.change
-            );
+            render_discuss_bind(&o.slug, &o.change, DiscussBind::Seal, json)?;
         }
     }
+    Ok(())
+}
+
+// --- discuss 的共用渲染：每個子指令一支，fs 與 remote 餵同一份事實 ---
+
+/// `link` 與 `seal` 的輸出只差動詞與尾註，共用一支渲染。
+#[derive(Clone, Copy)]
+enum DiscussBind {
+    Link,
+    Seal,
+}
+
+impl DiscussBind {
+    fn status(self) -> &'static str {
+        match self {
+            DiscussBind::Link => "linked",
+            DiscussBind::Seal => "sealed",
+        }
+    }
+
+    fn line(self) -> (&'static str, &'static str) {
+        match self {
+            DiscussBind::Link => ("Linked", ""),
+            DiscussBind::Seal => ("Sealed", " (marked promoted)"),
+        }
+    }
+}
+
+fn render_discuss_new(info: &core::discuss::DiscussionInfo, json: bool) -> Result<()> {
+    if json {
+        return print_json(info);
+    }
+    println!("{} Created discussion: {}", color::green("✓"), info.slug);
+    println!("  Topic: {}", info.topic);
+    println!("  Path: {}", info.path);
+    Ok(())
+}
+
+fn render_discuss_list(
+    items: &[core::discuss::DiscussionInfo],
+    archived: bool,
+    json: bool,
+) -> Result<()> {
+    if json {
+        return print_json(&serde_json::json!({ "discussions": items }));
+    }
+    if items.is_empty() {
+        let what = if archived { "archived discussions" } else { "discussions" };
+        println!("No {what} found.");
+        return Ok(());
+    }
+    let heading = if archived { "Archived discussions:" } else { "Discussions:" };
+    println!("{heading}");
+    for d in items {
+        println!("  • {} [{}] ({} rounds) — {}", d.slug, d.status, d.rounds, d.topic);
+    }
+    Ok(())
+}
+
+fn render_discuss_show(show: &core::command::DiscussShowOutcome, json: bool) -> Result<()> {
+    if json {
+        return print_json(&serde_json::json!({ "info": show.info, "content": show.content }));
+    }
+    print!("{}", show.content);
+    Ok(())
+}
+
+fn render_discuss_context(slug: &str, json: bool) -> Result<()> {
+    if json {
+        return print_json(&serde_json::json!({ "slug": slug, "context": "set" }));
+    }
+    println!("{} Set context for discussion '{slug}'", color::green("✓"));
+    Ok(())
+}
+
+fn render_discuss_add_round(slug: &str, round: usize, mode: &str, json: bool) -> Result<()> {
+    if json {
+        return print_json(&serde_json::json!({ "slug": slug, "round": round, "mode": mode }));
+    }
+    println!("{} Recorded round {round} ({mode}) to discussion '{slug}'", color::green("✓"));
+    Ok(())
+}
+
+fn render_discuss_conclude(slug: &str, flagged: &[String], json: bool) -> Result<()> {
+    if json {
+        // Byte-identical to before when nothing was flagged (promoted_to empty);
+        // the array appears only when a re-conclude actually staled changes.
+        let mut payload = serde_json::json!({ "slug": slug, "status": "concluded" });
+        if !flagged.is_empty() {
+            payload["restaleFlagged"] = serde_json::json!(flagged);
+        }
+        return print_json(&payload);
+    }
+    println!("{} Concluded discussion '{slug}'", color::green("✓"));
+    if !flagged.is_empty() {
+        println!("  Flagged {} change(s) for re-ingest: {}", flagged.len(), flagged.join(", "));
+    }
+    Ok(())
+}
+
+fn render_discuss_archive(slug: &str, archived_to: &str, json: bool) -> Result<()> {
+    if json {
+        return print_json(&serde_json::json!({ "slug": slug, "archived_to": archived_to }));
+    }
+    println!("{} Archived discussion: {slug} → {archived_to}", color::green("✓"));
+    Ok(())
+}
+
+fn render_discuss_discard(slug: &str, json: bool) -> Result<()> {
+    if json {
+        return print_json(&serde_json::json!({ "slug": slug, "status": "discarded" }));
+    }
+    println!("{} Discarded discussion: {slug}", color::green("✓"));
+    Ok(())
+}
+
+/// The new change's directory in both spellings: the human line keeps the
+/// platform separators the fs path was built with, while `--json` (and the
+/// wire) is always slashed. On Unix the two are identical; on Windows they
+/// are not, and the frozen fs output depends on the difference.
+struct PromotedPath<'a> {
+    shown: &'a str,
+    wire: &'a str,
+}
+
+/// `path` absent is the remote mode's declared divergence (design D5): the new
+/// change's directory is a store-side location with no meaning on the caller's
+/// machine, so the Path line is dropped rather than invented. The follow-up
+/// hint applies to both modes and always prints.
+fn render_discuss_promote(
+    slug: &str,
+    change: &str,
+    path: Option<PromotedPath<'_>>,
+    json: bool,
+) -> Result<()> {
+    if json {
+        let mut payload = serde_json::json!({
+            "change": change,
+            "slug": slug,
+            "status": "promoted",
+        });
+        if let Some(path) = &path {
+            payload["path"] = serde_json::json!(path.wire);
+        }
+        return print_json(&payload);
+    }
+    println!("{} Promoted discussion '{slug}' → change '{change}'", color::green("✓"));
+    if let Some(path) = &path {
+        println!("  Path: {}", path.shown);
+        println!("  Proposal prefilled from the conclusion — run /speclink-propose to complete the artifacts");
+    }
+    Ok(())
+}
+
+fn render_discuss_bind(slug: &str, change: &str, bind: DiscussBind, json: bool) -> Result<()> {
+    if json {
+        return print_json(&serde_json::json!({
+            "change": change,
+            "slug": slug,
+            "status": bind.status(),
+        }));
+    }
+    let (verb, suffix) = bind.line();
+    println!("{} {verb} discussion '{slug}' → change '{change}'{suffix}", color::green("✓"));
     Ok(())
 }
 

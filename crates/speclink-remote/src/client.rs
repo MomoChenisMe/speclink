@@ -12,15 +12,15 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use speclink_protocol::binding::BindingResponse;
 use speclink_protocol::command::{
-    AddDiscussionRoundRequest, AddDiscussionRoundResponse, ArchiveDiscussionResponse,
-    ArchiveResponse, ClaimResponse, ConcludeDiscussionRequest, CreateChangeRequest,
-    BindDiscussionRequest, BindDiscussionResponse, CreateChangeResponse, CreateDiscussionRequest,
-    CreateDiscussionResponse, DiscardDiscussionResponse, DiscardResponse,
+    AddDiscussionRoundRequest, AddDiscussionRoundResponse, AddReviewRoundRequest,
+    AddReviewRoundResponse, ArchiveDiscussionResponse, ArchiveResponse, BindDiscussionRequest,
+    BindDiscussionResponse, ClaimResponse, ConcludeDiscussionRequest, ConcludeDiscussionResponse,
+    CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
+    DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
     MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
-    AddReviewRoundRequest, AddReviewRoundResponse, DiscardReviewResponse, PutArtifactRequest,
-    PutArtifactResponse, ReviewScopeEntryDto, ReviewTicketResponse, SetDiscussionContextRequest,
-    StampReviewRequest, StampReviewResponse, TaskDoneRequest, TaskDoneResponse,
-    TaskUndoneResponse,
+    PutArtifactRequest, PutArtifactResponse, ReviewScopeEntryDto, ReviewTicketResponse,
+    SetDiscussionContextRequest, StampReviewRequest, StampReviewResponse, TaskDoneRequest,
+    TaskDoneResponse, TaskUndoneResponse,
 };
 use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::drift::SpecDriftResponse;
@@ -649,14 +649,16 @@ impl Client {
     /// work traces. A 200 Ack covers both the actual removal and the
     /// not-started idempotent pass; a 409 refusal carries the work-trace
     /// evidence structurally on [`RemoteError::evidence`].
-    pub fn in_progress_remove(&self, name: &str) -> Result<(), RemoteError> {
-        self.send::<serde::de::IgnoredAny, Empty>(
+    pub fn in_progress_remove(
+        &self,
+        name: &str,
+    ) -> Result<InProgressRemoveResponse, RemoteError> {
+        self.send::<InProgressRemoveResponse, Empty>(
             "DELETE",
             &format!("/changes/{name}/in-progress"),
             None,
             &[],
         )
-        .map(|_| ())
     }
 
     /// `GET /discussions/{slug}`
@@ -694,16 +696,19 @@ impl Client {
         )
     }
 
-    /// `POST /discussions/{slug}/conclude` — the response body carries
-    /// nothing the client consumes.
-    pub fn discussion_conclude(&self, slug: &str, content: &str) -> Result<(), RemoteError> {
-        self.post::<serde::de::IgnoredAny, _>(
+    /// `POST /discussions/{slug}/conclude` — the response names the changes a
+    /// re-conclude flagged for re-ingest.
+    pub fn discussion_conclude(
+        &self,
+        slug: &str,
+        content: &str,
+    ) -> Result<ConcludeDiscussionResponse, RemoteError> {
+        self.post(
             &format!("/discussions/{slug}/conclude"),
             &ConcludeDiscussionRequest {
                 content: content.to_string(),
             },
         )
-        .map(|_| ())
     }
 
     /// `POST /discussions/{slug}/archive`

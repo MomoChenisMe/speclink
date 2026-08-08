@@ -531,11 +531,16 @@ pub struct ReviewRoundOutcome {
     pub round: usize,
 }
 
-/// `review show` outcome.
+/// `review show` outcome. `content` is the ticket document verbatim — the
+/// human-readable path prints it, so every caller renders the same text
+/// instead of reassembling it from the structured rounds. `show` has already
+/// verified the ticket exists, so it is only ever absent for a store that
+/// dropped the document between the two reads.
 #[derive(Debug)]
 pub struct ReviewShowOutcome {
     pub change: String,
     pub ticket: crate::review::Ticket,
+    pub content: Option<String>,
 }
 
 /// `review stamp` / `review discard` outcome (subject only).
@@ -739,7 +744,8 @@ pub fn execute(
         }
         Command::ReviewShow { change } => {
             let ticket = crate::review::show(store, &change).map_err(classify)?;
-            Ok(CommandOutcome::ReviewShow(ReviewShowOutcome { change, ticket }))
+            let content = store.read_artifact(&change, crate::review::REVIEW_DOC);
+            Ok(CommandOutcome::ReviewShow(ReviewShowOutcome { change, ticket, content }))
         }
         Command::ReviewStamp { change, accept, tool, scope, missing } => {
             crate::review::stamp_with_scope(
@@ -764,7 +770,8 @@ pub fn execute(
         }
         Command::VerifyShow { change } => {
             let ticket = crate::verify::show(store, &change).map_err(classify)?;
-            Ok(CommandOutcome::VerifyShow(ReviewShowOutcome { change, ticket }))
+            let content = store.read_artifact(&change, crate::verify::VERIFY_DOC);
+            Ok(CommandOutcome::VerifyShow(ReviewShowOutcome { change, ticket, content }))
         }
         Command::VerifyStamp { change, accept, tool, scope, missing } => {
             crate::verify::stamp_with_scope(

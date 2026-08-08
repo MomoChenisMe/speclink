@@ -35,6 +35,7 @@ wire→core 轉接維持在 speclink-cli 的 remote 路徑內（既有 to_* 樣�
 
 - ArchiveResponse 補：datedName（選填字串）、specs 各項補 added／modified／removed／renamed 計數、snapshotCreated（選填布林）、archivedDiscussions（slug 與檔名的清單，預設空）、evidenceRecorded（選填布林）
 - ReviewTicketResponse 補：content（選填字串，工單原文全文）——review 與 verify 兩站共用同一 DTO，一次補齊兩站
+- ConcludeDiscussionResponse 補：restaleFlagged（字串清單，預設空）——fs 側 conclude 會列出被 re-conclude 打回重收的變更，wire 原本整個回應都丟棄。這是實作期（任務 4.2）盤點 discuss 全家時發現的同類缺口，非新決策：變更名對遠端使用者同樣有意義，且規格「動詞人眼輸出的兩模式同形」要求分歧清單以外一律逐位元一致。不需哨兵——空清單即「無變更被打回」，與舊 server 的沉默同義。
 - 混版退化採**單一哨兵欄位**：archive 以 datedName 是否在場判定 server 新舊——在場走完整渲染（與本機同形），缺席整體退回現行簡短輸出，不做半新半舊的混合渲染；station show 人眼路徑以 content 在場印原文、缺席退回現行結構化摘要。單一哨兵避免「計數有、名稱沒有」的碎片狀態
 - evidenceRecorded 缺席不印零證據提示（不憑空捏造 stderr 提示）
 - server 端 routes 從引擎 outcome 回填新欄位（server 跑的就是引擎，資料現成）；remote client 方法隨 DTO 更新
@@ -49,6 +50,7 @@ wire→core 轉接維持在 speclink-cli 的 remote 路徑內（既有 to_* 樣�
 2. list 的 worktree 標示——remote 恆缺席：worktree 是本機主 checkout 的觀察面，server 沒有這回事
 3. status 的 schema 覆寫旗標在 remote 明確拒絕——server 的 workflow config 決定 schema（remote-verb-parity C 類裁定）
 4. workflow-config 的文件標籤——remote 以 config.yaml 為標籤：server 端沒有本機路徑可印
+5. discuss promote 的 Path 行與其後的 propose 提示行——本機印、remote 不印：新變更目錄是 store 端的檔案系統位置，與第 1 項（new change 的 Path 行）同一條裁定。實作期（任務 4.2）補列：兩行綁在一起去留，remote 保持既有的單行輸出
 
 清單之外的一切人眼輸出，兩模式 SHALL 逐位元一致。
 
