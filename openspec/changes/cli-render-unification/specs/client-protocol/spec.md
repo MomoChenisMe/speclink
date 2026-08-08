@@ -18,6 +18,20 @@
 
 review 與 verify 兩站共用的工單讀取回應 SHALL 增列 content 欄位（字串，選填，帶序列化預設值）攜帶工單文件原文全文。content 是工單人眼輸出的哨兵欄位：讀取方 SHALL 以其在場與否判定 server 新舊，缺席時 SHALL 退回既有的結構化摘要呈現。
 
+### Requirement: 討論結論回應的重收清單
+
+討論結論端點 SHALL 有具名回應型別，攜帶 restaleFlagged 欄位（字串清單，帶序列化預設值）——re-conclude 打回重收的變更名。空清單即「無變更被打回」，與既有 server 不回報此事實時的讀取結果相同，因此不需哨兵欄位。
+
+#### Scenario: 缺欄位的結論回應可反序列化
+
+- **WHEN** 以空物件反序列化討論結論回應
+- **THEN** 反序列化成功且 restaleFlagged 為空清單
+
+#### Scenario: 結論回應攜帶被打回的變更名
+
+- **WHEN** 以含 restaleFlagged 兩筆變更名的 JSON 反序列化討論結論回應
+- **THEN** 兩筆變更名依序讀出
+
 #### Scenario: 缺 content 的工單回應可反序列化
 
 - **WHEN** 以不含 content 的既有形狀 JSON 反序列化工單讀取回應

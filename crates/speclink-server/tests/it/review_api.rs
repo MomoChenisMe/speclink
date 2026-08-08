@@ -185,6 +185,12 @@ fn review_loop_rides_the_verb_contract_end_to_end() {
     assert_eq!(ticket.last_round.index, 1);
     assert_eq!(ticket.last_round.scope, ["src/lib.rs"]);
     assert_eq!(ticket.last_round.findings[0].severity, "WARNING");
+    assert_eq!(
+        ticket.content.as_deref(),
+        ticket_doc(&f).as_deref(),
+        "the ticket response carries the document verbatim, so the remote human \
+         path prints what fs mode prints"
+    );
 
     let scope_entries =
         vec![ReviewScopeEntryDto { path: "src/lib.rs".into(), hash: fingerprint(FILE_A) }];

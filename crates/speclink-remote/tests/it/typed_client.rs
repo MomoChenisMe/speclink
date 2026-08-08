@@ -364,10 +364,34 @@ fn claim_and_archive_return_typed_responses() {
     assert_call(&cap, "POST", "/changes/demo/claim");
     assert_eq!(cap.body, "{}");
 
+    // 舊 server 的回應：新欄位全數缺席，datedName 的缺席即哨兵。
     let mock2 = serve(200, r#"{"specs":[{"capability":"user-auth"}]}"#);
     let archive = client(&mock2).archive("demo", false, false).expect("archive ok");
     assert_eq!(archive.specs[0].capability, "user-auth");
+    assert_eq!(archive.dated_name, None, "an old server's payload has no sentinel");
+    assert_eq!(archive.specs[0].added, 0, "absent counts read as zero");
+    assert!(archive.archived_discussions.is_empty());
+    assert_eq!(archive.evidence_recorded, None);
     assert_call(&mock2.last(), "POST", "/changes/demo/archive?carryReview=false&carryVerify=false");
+
+    // 新 server 的回應：完整封存結果讀得到，供 remote 端渲染與 fs 同形的文本。
+    let mock_full = serve(
+        200,
+        r#"{"specs":[{"capability":"user-auth","added":2,"modified":1,"removed":0,"renamed":3}],
+            "datedName":"2026-08-07-demo","snapshotCreated":true,
+            "archivedDiscussions":[{"slug":"scope-talk","file":"2026-08-07-scope-talk.md"}],
+            "evidenceRecorded":false}"#,
+    );
+    let full = client(&mock_full).archive("demo", false, false).expect("archive ok");
+    assert_eq!(full.dated_name.as_deref(), Some("2026-08-07-demo"));
+    assert_eq!(
+        (full.specs[0].added, full.specs[0].modified, full.specs[0].removed, full.specs[0].renamed),
+        (2, 1, 0, 3)
+    );
+    assert_eq!(full.snapshot_created, Some(true));
+    assert_eq!(full.archived_discussions[0].slug, "scope-talk");
+    assert_eq!(full.archived_discussions[0].file, "2026-08-07-scope-talk.md");
+    assert_eq!(full.evidence_recorded, Some(false));
 
     // 帶未結工單封存（design D4／D5 第三處置）：兩個旗標都須真的上 wire，
     // 否則該站在遠端只剩兩條出路、帶未結工單的 change 永遠封存不了。
@@ -388,7 +412,16 @@ fn station_verbs_address_each_station_endpoint() {
     let mock = serve(200, ticket);
     let t = client(&mock).station_ticket("verify", "demo").expect("verify ticket");
     assert_eq!(t.change, "demo");
+    assert_eq!(t.content, None, "an old server sends no document, and that is the sentinel");
     assert_call(&mock.last(), "GET", "/changes/demo/verify");
+
+    // 新 server 額外帶工單原文，供人眼路徑印出與 fs 相同的文本。
+    let with_doc = serve(
+        200,
+        r##"{"change":"demo","rounds":[],"lastRound":{"index":1,"phase":null,"patchHash":null,"scope":[],"findings":[]},"content":"# Verify — demo\n"}"##,
+    );
+    let doc = client(&with_doc).station_ticket("verify", "demo").expect("verify ticket");
+    assert_eq!(doc.content.as_deref(), Some("# Verify — demo\n"));
 
     let mock2 = serve(200, r#"{"round":1}"#);
     client(&mock2).station_add_round("verify", "demo", "**Scope**: src/lib.rs\n").expect("round");

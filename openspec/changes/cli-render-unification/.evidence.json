@@ -1,0 +1,128 @@
+{
+  "version": 2,
+  "change": "cli-render-unification",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 依規格「封存回應的完整結果欄位」「工單回應的原文欄位」擴充 crates/speclink-protocol/src/command.rs 的 ArchiveResponse（datedName 選填、ArchivedSpec 四項計數預設 0、snapshotCreated 選填、archivedDiscussions 預設空、evidenceRecorded 選填）與 ReviewTicketResponse（content 選填）。先寫紅測試再實作：空物件與既有形狀 JSON 反序列化成功、新欄位取預設缺席值、schema 匯出含新欄位（camelCase 命名斷言）。驗證：`cargo test -p speclink-protocol` 全綠",
+      "files": [
+        "crates/speclink-protocol/src/command.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "2.1 依規格「archive 與工單讀取端點回填完整結果」讓 crates/speclink-server/src/routes.rs 的封存端點自引擎封存結果回填全部新欄位、review 與 verify 工單讀取端點回填 content 為工單原文全文；既有欄位、狀態碼與 404 語意不變。先寫紅整合測試：封存改動規格時回應含 datedName 與四項計數；封存帶來源討論且無證據時 archivedDiscussions 與 evidenceRecorded=false；工單在場時 content 等於原文；工單缺席維持 404。驗證：`cargo test -p speclink-server --test it` 全綠",
+      "files": [
+        "crates/speclink-core/src/command/mod.rs",
+        "crates/speclink-server/src/routes.rs",
+        "crates/speclink-server/tests/it/command_routes.rs",
+        "crates/speclink-server/tests/it/review_api.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "3.1 crates/speclink-remote/src/client.rs 的 archive 與 station_ticket 方法隨 DTO 擴充讀取新欄位（typed client 不走 raw JSON 旁路）。先寫紅測試：typed_client 測試面斷言新欄位可讀、缺席時為預設值。驗證：`cargo test -p speclink-remote --test it` 全綠",
+      "files": [
+        "crates/speclink-remote/tests/it/typed_client.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "4.1 依規格「動詞人眼輸出的兩模式同形」做 `speclink list` 渲染收斂：把本機人眼渲染抽為單一函式（吃 core 清單型別），remote 路徑經欄位轉接餵同一支；remote 輸出開始渲染 invalid 標記（漂移修正，兩模式文本逐位元一致，worktree 標示維持 remote 恆缺席的明文分歧）。先更新 crates/speclink-cli/tests/it/remote_verb_parity.rs 對照為本機文本（先紅），實作至綠；確認本機既有對照零改動。驗證：`cargo test -p speclink-cli --test it` 全綠",
+      "files": [
+        "crates/speclink-cli/src/commands.rs",
+        "crates/speclink-cli/src/remote_commands.rs",
+        "crates/speclink-cli/tests/it/remote_verb_parity.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "4.2 [P] discuss 全家（new／list／show／context／add-round／conclude／archive／promote／discard／link／seal）成功訊息與清單渲染收斂為每子指令單一函式，crates/speclink-cli/src/remote_commands.rs 對應重複文本刪除；兩模式文本逐位元一致。驗證：`cargo test -p speclink-cli --test it` 全綠（discuss 相關對照更新在同批）",
+      "files": [
+        "crates/speclink-remote/src/client.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "6.1 殘留盤點與跨面驗證：人工確認 crates/speclink-cli/src/remote_commands.rs 不再存在與本機重複的人眼渲染文本（守門 bail 與 design D5 分歧清單四項除外），本機模式人眼與 --json 輸出零變更（既有本機對照零改動佐證）；跨面收尾驗證依 change-scoped-test-policy 逐 crate 執行：`cargo test -p speclink-protocol`、`cargo test -p speclink-server --test it`、`cargo test -p speclink-remote --test it`、`cargo test -p speclink-cli --test it` 全綠",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/speclink-server/tests/it/phase2_chain.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZE8B03VZQPZTZZ1RBA0BAAQ",
+      "taskDesc": "1.1 依規格「封存回應的完整結果欄位」「工單回應的原文欄位」擴充 crates/speclink-protocol/src/command.rs 的 ArchiveResponse（datedName 選填、ArchivedSpec 四項計數預設 0、snapshotCreated 選填、archivedDiscussions 預設空、evidenceRecorded 選填）與 ReviewTicketResponse（content 選填）。先寫紅測試再實作：空物件與既有形狀 JSON 反序列化成功、新欄位取預設缺席值、schema 匯出含新欄位（camelCase 命名斷言）。驗證：`cargo test -p speclink-protocol` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "e603063a7c6d009a2ec5d39e22dd02342ba113fa",
+      "touchedFiles": [
+        "crates/speclink-protocol/src/command.rs"
+      ],
+      "recordedAt": "2026-08-07T14:47:00Z"
+    },
+    {
+      "taskId": "tsk_01KZE8B03V9EJC6RE17R1PTTS2",
+      "taskDesc": "2.1 依規格「archive 與工單讀取端點回填完整結果」讓 crates/speclink-server/src/routes.rs 的封存端點自引擎封存結果回填全部新欄位、review 與 verify 工單讀取端點回填 content 為工單原文全文；既有欄位、狀態碼與 404 語意不變。先寫紅整合測試：封存改動規格時回應含 datedName 與四項計數；封存帶來源討論且無證據時 archivedDiscussions 與 evidenceRecorded=false；工單在場時 content 等於原文；工單缺席維持 404。驗證：`cargo test -p speclink-server --test it` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "e603063a7c6d009a2ec5d39e22dd02342ba113fa",
+      "touchedFiles": [
+        "crates/speclink-core/src/command/mod.rs",
+        "crates/speclink-server/src/routes.rs",
+        "crates/speclink-server/tests/it/command_routes.rs",
+        "crates/speclink-server/tests/it/review_api.rs"
+      ],
+      "recordedAt": "2026-08-07T14:56:32Z"
+    },
+    {
+      "taskId": "tsk_01KZE8B03VB52ARRYWFT8T29R5",
+      "taskDesc": "3.1 crates/speclink-remote/src/client.rs 的 archive 與 station_ticket 方法隨 DTO 擴充讀取新欄位（typed client 不走 raw JSON 旁路）。先寫紅測試：typed_client 測試面斷言新欄位可讀、缺席時為預設值。驗證：`cargo test -p speclink-remote --test it` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "e603063a7c6d009a2ec5d39e22dd02342ba113fa",
+      "touchedFiles": [
+        "crates/speclink-remote/tests/it/typed_client.rs"
+      ],
+      "recordedAt": "2026-08-07T14:58:17Z"
+    },
+    {
+      "taskId": "tsk_01KZE8B03VE1FZA37S10GQJAW6",
+      "taskDesc": "4.1 依規格「動詞人眼輸出的兩模式同形」做 `speclink list` 渲染收斂：把本機人眼渲染抽為單一函式（吃 core 清單型別），remote 路徑經欄位轉接餵同一支；remote 輸出開始渲染 invalid 標記（漂移修正，兩模式文本逐位元一致，worktree 標示維持 remote 恆缺席的明文分歧）。先更新 crates/speclink-cli/tests/it/remote_verb_parity.rs 對照為本機文本（先紅），實作至綠；確認本機既有對照零改動。驗證：`cargo test -p speclink-cli --test it` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "e603063a7c6d009a2ec5d39e22dd02342ba113fa",
+      "touchedFiles": [
+        "crates/speclink-cli/src/commands.rs",
+        "crates/speclink-cli/src/remote_commands.rs",
+        "crates/speclink-cli/tests/it/remote_verb_parity.rs"
+      ],
+      "recordedAt": "2026-08-07T15:04:18Z"
+    },
+    {
+      "taskId": "tsk_01KZE8B03VWS703YEQ7AHFS19Y",
+      "taskDesc": "4.2 [P] discuss 全家（new／list／show／context／add-round／conclude／archive／promote／discard／link／seal）成功訊息與清單渲染收斂為每子指令單一函式，crates/speclink-cli/src/remote_commands.rs 對應重複文本刪除；兩模式文本逐位元一致。驗證：`cargo test -p speclink-cli --test it` 全綠（discuss 相關對照更新在同批）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "e603063a7c6d009a2ec5d39e22dd02342ba113fa",
+      "touchedFiles": [
+        "crates/speclink-remote/src/client.rs"
+      ],
+      "recordedAt": "2026-08-08T13:25:18Z"
+    },
+    {
+      "taskId": "tsk_01KZE8B03V5S07900PFMT0XNN5",
+      "taskDesc": "6.1 殘留盤點與跨面驗證：人工確認 crates/speclink-cli/src/remote_commands.rs 不再存在與本機重複的人眼渲染文本（守門 bail 與 design D5 分歧清單四項除外），本機模式人眼與 --json 輸出零變更（既有本機對照零改動佐證）；跨面收尾驗證依 change-scoped-test-policy 逐 crate 執行：`cargo test -p speclink-protocol`、`cargo test -p speclink-server --test it`、`cargo test -p speclink-remote --test it`、`cargo test -p speclink-cli --test it` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "e603063a7c6d009a2ec5d39e22dd02342ba113fa",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/speclink-server/tests/it/phase2_chain.rs"
+      ],
+      "recordedAt": "2026-08-08T13:43:06Z"
+    }
+  ]
+}

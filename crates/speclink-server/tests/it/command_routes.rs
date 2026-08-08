@@ -80,6 +80,75 @@ fn competing_writers_on_the_same_version_leave_a_distinguishable_conflict() {
     );
 }
 
+/// A store seeded with an archive-ready change: tasks all done, one delta spec
+/// so the archive reports capability counts, and a source discussion linked
+/// both ways so it co-travels into the archive.
+fn archive_ready_store() -> Arc<MemoryStore> {
+    let store = Arc::new(MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed-archive".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::ChangeMeta { change: "demo-archive".into() },
+        "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: scope-talk\n",
+    );
+    uow.create(
+        DocumentId::ChangeArtifact { change: "demo-archive".into(), artifact: "tasks.md".into() },
+        "- [x] 1.1 done\n",
+    );
+    uow.create(
+        DocumentId::ChangeArtifact {
+            change: "demo-archive".into(),
+            artifact: "specs/user-auth/spec.md".into(),
+        },
+        "## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
+    );
+    uow.create(
+        DocumentId::Discussion { slug: "scope-talk".into(), archived: false },
+        "---\ntopic: Scope talk\nslug: scope-talk\nstatus: promoted\npromoted_to: demo-archive\n---\n\n## Conclusion\n\nGo.\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed commit");
+    store
+}
+
+#[test]
+fn archive_reports_the_full_engine_outcome_over_the_wire() {
+    let store = archive_ready_store();
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
+
+    let resp = client.archive("demo-archive", false, false).expect("archive over the wire");
+
+    let dated = resp.dated_name.as_deref().expect("datedName is the sentinel for a new server");
+    assert!(
+        dated.ends_with("demo-archive"),
+        "datedName carries the archive destination: {dated}"
+    );
+    let spec = resp.specs.iter().find(|s| s.capability == "user-auth").expect("capability listed");
+    assert_eq!(spec.added, 1, "the delta's one ADDED requirement is counted: {spec:?}");
+    assert_eq!((spec.modified, spec.removed, spec.renamed), (0, 0, 0));
+    let discussion = resp
+        .archived_discussions
+        .iter()
+        .find(|d| d.slug == "scope-talk")
+        .expect("the source discussion co-travels");
+    assert!(
+        discussion.file.ends_with("scope-talk.md"),
+        "the archived file name travels: {}",
+        discussion.file
+    );
+    assert_eq!(
+        resp.evidence_recorded,
+        Some(false),
+        "a change with no per-task evidence reports the fact"
+    );
+}
+
 #[test]
 fn a_completed_task_lands_a_task_completed_event_in_the_outbox() {
     let store = seeded_store();

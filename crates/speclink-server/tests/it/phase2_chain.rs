@@ -690,7 +690,12 @@ fn run_chain(recovery: Recovery) {
         sub.await_teardown(Duration::from_secs(5));
         std::thread::sleep(Duration::from_millis(1500));
         let out = cli(&project, &["archive", CHANGE], &pat);
-        assert!(out.contains("Archived change"), "the archive verb reports: {out}");
+        // remote 走 fs 同一支渲染（cli-render-unification）：報的是封存目的地，
+        // 不再是舊 remote 專屬的 "Archived change" 短句。
+        assert!(
+            out.contains(&format!("Archived: {CHANGE} →")),
+            "the archive verb reports the destination: {out}"
+        );
         assert!(out.contains(CAP), "the promoted capability is named: {out}");
         let list = cli(&project, &["list", "--json"], &pat);
         assert!(!list.contains(CHANGE), "the archived change leaves the active list: {list}");

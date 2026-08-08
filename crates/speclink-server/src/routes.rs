@@ -23,8 +23,10 @@ use speclink_core::status::StatusReport;
 use speclink_host::drift as host_drift;
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, AddReviewRoundRequest,
-    AddReviewRoundResponse, ArchiveDiscussionResponse, ArchiveResponse, ArchivedSpec,
+    AddReviewRoundResponse, ArchiveDiscussionResponse, ArchiveResponse, ArchivedDiscussion,
+    ArchivedSpec,
     BindDiscussionRequest, BindDiscussionResponse, ClaimResponse, ConcludeDiscussionRequest,
+    ConcludeDiscussionResponse, InProgressRemoveResponse,
     CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, MoveTaskRequest,
     MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest,
@@ -158,7 +160,10 @@ pub async fn in_progress_remove(
 ) -> Result<Response, ApiError> {
     let result = verb::run(&state, &binding, Command::InProgressRemove { name }).await?;
     match result.execution.outcome {
-        CommandOutcome::InProgressRemove(_) => Ok(ok(Ack {}, &result.etag)),
+        // `removed` 區分實際移除與未開工冪等——兩者印不同的行，遠端也該分得出。
+        CommandOutcome::InProgressRemove(o) => {
+            Ok(ok(InProgressRemoveResponse { removed: o.removed }, &result.etag))
+        }
         _ => Err(wrong_outcome("in-progress-remove")),
     }
 }
@@ -1073,7 +1078,10 @@ pub async fn review_show(
     };
     let last_round = review_round_dto(o.ticket.last_round());
     let rounds: Vec<ReviewRoundDto> = o.ticket.rounds.iter().map(review_round_dto).collect();
-    Ok(ok(ReviewTicketResponse { change: o.change, rounds, last_round }, &result.etag))
+    Ok(ok(
+        ReviewTicketResponse { change: o.change, rounds, last_round, content: o.content },
+        &result.etag,
+    ))
 }
 
 /// `POST /changes/{name}/review/rounds`
@@ -1159,7 +1167,10 @@ pub async fn verify_show(
     };
     let last_round = review_round_dto(o.ticket.last_round());
     let rounds: Vec<ReviewRoundDto> = o.ticket.rounds.iter().map(review_round_dto).collect();
-    Ok(ok(ReviewTicketResponse { change: o.change, rounds, last_round }, &result.etag))
+    Ok(ok(
+        ReviewTicketResponse { change: o.change, rounds, last_round, content: o.content },
+        &result.etag,
+    ))
 }
 
 /// `POST /changes/{name}/verify/rounds` — 任務未全數完成時引擎拒絕（design D3）。
@@ -1353,8 +1364,22 @@ pub async fn archive(
             .into_iter()
             .map(|c| ArchivedSpec {
                 capability: c.capability,
+                added: c.added,
+                modified: c.modified,
+                removed: c.removed,
+                renamed: c.renamed,
             })
             .collect(),
+        // datedName is the sentinel the remote caller keys its full rendering
+        // on, so it travels whenever the engine produced an outcome at all.
+        dated_name: Some(outcome.dated_name),
+        snapshot_created: Some(outcome.snapshot_created),
+        archived_discussions: outcome
+            .archived_discussions
+            .into_iter()
+            .map(|(slug, file)| ArchivedDiscussion { slug, file })
+            .collect(),
+        evidence_recorded: Some(outcome.evidence_recorded),
     };
     Ok(ok(dto, &result.etag))
 }
@@ -1675,7 +1700,11 @@ pub async fn conclude_discussion(
         },
     )
     .await?;
-    Ok(ok(Ack {}, &result.etag))
+    let restale_flagged = match result.execution.outcome {
+        CommandOutcome::DiscussConclude(o) => o.restale_flagged,
+        _ => return Err(wrong_outcome("discuss-conclude")),
+    };
+    Ok(ok(ConcludeDiscussionResponse { restale_flagged }, &result.etag))
 }
 
 /// `POST /discussions/{slug}/archive`
@@ -1715,6 +1744,8 @@ pub async fn promote_discussion(
         CommandOutcome::DiscussPromote(o) => o.change,
         _ => return Err(wrong_outcome("discuss-promote")),
     };
+    // 新變更的目錄刻意不上 wire：那是 store 端的檔案系統位置，對本機使用者
+    // 無意義——與 `new change` 的 Path 行同一條裁定（design D5）。
     Ok(ok(PromoteDiscussionResponse { change }, &result.etag))
 }
 

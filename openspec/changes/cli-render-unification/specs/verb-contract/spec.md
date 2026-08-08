@@ -8,6 +8,7 @@ CLI 動詞的人眼輸出（stdout 文本，含 --no-color 模式）在本機與
 2. list 的 worktree 標示——remote 恆缺席（worktree 是本機主 checkout 的觀察面）
 3. status 的 schema 覆寫旗標——remote 以固定訊息明確拒絕（server 的 workflow config 決定 schema）
 4. workflow-config 的文件標籤——remote 以 config.yaml 為標籤（server 端無本機路徑可印）
+5. discuss promote 的 Path 行與其後的 propose 提示行——本機印、remote 不印（新變更目錄是 store 端的檔案系統位置，同第 1 項的裁定；兩行綁在一起去留）
 
 同形範圍涵蓋 list、discuss 全部子指令、task done 與 task undone、in-progress remove、discard、archive、review 與 verify 的 add-round／stamp／discard／show。模式差異 SHALL 只存在於資料取得與守門拒絕，SHALL NOT 存在於輸出文本的組版。
 
