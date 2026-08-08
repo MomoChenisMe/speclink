@@ -17,3 +17,5 @@ verified_scope:
     hash: 8273ca8c273dadbf2f149fd155b9a8a1da0780f0e009fe058aba7732f24db125
   - path: scripts/dev.test.mjs
     hash: add98d2815147658dc92b80d3db574ca969cd8584a9722fda470002be8161786
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-08
