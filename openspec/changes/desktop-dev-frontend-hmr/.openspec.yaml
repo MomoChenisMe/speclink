@@ -4,3 +4,16 @@ created_by: MomoChen <momochenisme@gmail.com>
 created_with: claude
 started_at: 2026-08-07
 started_by: MomoChen <momochenisme@gmail.com>
+verified_at: 2026-08-08
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 12
+verified_scope:
+  - path: apps/desktop/src-tauri/tauri.conf.json
+    hash: 5e3d2284563e12537f6311dd4a63b9ed3669fda37a223750ce3ca688c6e1c065
+  - path: apps/desktop/vite.config.ts
+    hash: 629f1dd11b58e82fb486f83707d3ac33c4dfda5fd935111dd32470bfd0a11dd0
+  - path: scripts/dev.mjs
+    hash: 8273ca8c273dadbf2f149fd155b9a8a1da0780f0e009fe058aba7732f24db125
+  - path: scripts/dev.test.mjs
+    hash: add98d2815147658dc92b80d3db574ca969cd8584a9722fda470002be8161786
