@@ -1,0 +1,80 @@
+{
+  "version": 2,
+  "change": "dev-sidecar-freshness",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 [Red] 新增 scripts/desktop-sidecar.test.mjs（node:test，慣例同 scripts/desktop-install.test.mjs）：斷言「決策二：dev 佈 debug profile，--profile 參數白名單驗證」與「決策四：desktop-sidecar.mjs 重構為可測形狀」的契約——參數解析（無旗標預設 release、--profile debug 合法、白名單外的值拋出點名該值與合法值的錯誤）、建置產物來源路徑推導（profile × --target × Windows .exe 四種組合）、跳過複製判定（目的檔不存在 → 複製；內容相同 → 跳過；內容相異 → 複製）。驗證：node --test scripts/desktop-sidecar.test.mjs 於重構前因無匯出而失敗。",
+      "files": [
+        "scripts/desktop-sidecar.test.mjs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 [Green] 重構 scripts/desktop-sidecar.mjs：匯出 1.1 所列純函式，main 以 import.meta.url 執行判斷薄委派（同 scripts/desktop-install.mjs 模式，匯入不執行佈署）；實作 --profile 參數與內容相同即跳過。行為契約：無參數執行仍為 release 建置與佈署（保護 scripts/desktop-install.mjs 與 CI --target 兩個既有呼叫者）；來源檔缺失時明確報錯非零，不靜默跳過。驗證：node --test scripts/desktop-sidecar.test.mjs 全數通過。",
+      "files": [
+        "scripts/desktop-sidecar.mjs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 [Red] 於 scripts/dev.test.mjs 的設定守門區新增斷言：apps/desktop/package.json 的 scripts SHALL 含 predev、其內容呼叫 desktop-sidecar.mjs 且帶 --profile debug——守「決策一：掛載點為 apps/desktop 的 npm predev hook」，防 hook 被移除或改成 release 而靜默退化。驗證：node --test scripts/dev.test.mjs 於 predev 尚未加入時新斷言失敗、既有測試維持通過。",
+      "files": [
+        "scripts/dev.test.mjs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 [Green] 於 apps/desktop/package.json 的 scripts 新增 predev（以 node 呼叫 ../../scripts/desktop-sidecar.mjs 帶 --profile debug），既有 dev、build、test、tauri scripts 不變。行為契約：npm 對 run dev 自動先跑 predev，三個 dev 入口（npm run dev、npm run dev:desktop、apps/desktop 內 tauri dev）皆於編譯前佈署 sidecar。驗證：node --test scripts/dev.test.mjs 全數通過；npm test -w apps/desktop 通過，確認 package.json 變動未擾動測試 harness。",
+      "files": [
+        "apps/desktop/package.json"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZGTV9GQG1EK4GGTBG8HMZGA",
+      "taskDesc": "1.1 [Red] 新增 scripts/desktop-sidecar.test.mjs（node:test，慣例同 scripts/desktop-install.test.mjs）：斷言「決策二：dev 佈 debug profile，--profile 參數白名單驗證」與「決策四：desktop-sidecar.mjs 重構為可測形狀」的契約——參數解析（無旗標預設 release、--profile debug 合法、白名單外的值拋出點名該值與合法值的錯誤）、建置產物來源路徑推導（profile × --target × Windows .exe 四種組合）、跳過複製判定（目的檔不存在 → 複製；內容相同 → 跳過；內容相異 → 複製）。驗證：node --test scripts/desktop-sidecar.test.mjs 於重構前因無匯出而失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b69f73077f6eea9e4f807207c10c99fc8940593d",
+      "touchedFiles": [
+        "scripts/desktop-sidecar.test.mjs"
+      ],
+      "recordedAt": "2026-08-08T15:15:38Z"
+    },
+    {
+      "taskId": "tsk_01KZGTV9GQ2J5H72WKV02QYPD1",
+      "taskDesc": "1.2 [Green] 重構 scripts/desktop-sidecar.mjs：匯出 1.1 所列純函式，main 以 import.meta.url 執行判斷薄委派（同 scripts/desktop-install.mjs 模式，匯入不執行佈署）；實作 --profile 參數與內容相同即跳過。行為契約：無參數執行仍為 release 建置與佈署（保護 scripts/desktop-install.mjs 與 CI --target 兩個既有呼叫者）；來源檔缺失時明確報錯非零，不靜默跳過。驗證：node --test scripts/desktop-sidecar.test.mjs 全數通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b69f73077f6eea9e4f807207c10c99fc8940593d",
+      "touchedFiles": [
+        "scripts/desktop-sidecar.mjs"
+      ],
+      "recordedAt": "2026-08-08T15:16:20Z"
+    },
+    {
+      "taskId": "tsk_01KZGTV9GQTGGWZCBX6XPHCQVM",
+      "taskDesc": "2.1 [Red] 於 scripts/dev.test.mjs 的設定守門區新增斷言：apps/desktop/package.json 的 scripts SHALL 含 predev、其內容呼叫 desktop-sidecar.mjs 且帶 --profile debug——守「決策一：掛載點為 apps/desktop 的 npm predev hook」，防 hook 被移除或改成 release 而靜默退化。驗證：node --test scripts/dev.test.mjs 於 predev 尚未加入時新斷言失敗、既有測試維持通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b69f73077f6eea9e4f807207c10c99fc8940593d",
+      "touchedFiles": [
+        "scripts/dev.test.mjs"
+      ],
+      "recordedAt": "2026-08-08T15:16:58Z"
+    },
+    {
+      "taskId": "tsk_01KZGTV9GQ64S5YQ477J2BW1CH",
+      "taskDesc": "2.2 [Green] 於 apps/desktop/package.json 的 scripts 新增 predev（以 node 呼叫 ../../scripts/desktop-sidecar.mjs 帶 --profile debug），既有 dev、build、test、tauri scripts 不變。行為契約：npm 對 run dev 自動先跑 predev，三個 dev 入口（npm run dev、npm run dev:desktop、apps/desktop 內 tauri dev）皆於編譯前佈署 sidecar。驗證：node --test scripts/dev.test.mjs 全數通過；npm test -w apps/desktop 通過，確認 package.json 變動未擾動測試 harness。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b69f73077f6eea9e4f807207c10c99fc8940593d",
+      "touchedFiles": [
+        "apps/desktop/package.json"
+      ],
+      "recordedAt": "2026-08-08T15:17:26Z"
+    }
+  ]
+}

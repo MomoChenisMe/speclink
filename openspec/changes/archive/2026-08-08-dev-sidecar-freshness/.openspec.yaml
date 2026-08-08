@@ -1,0 +1,22 @@
+schema: spec-driven
+created: 2026-08-08
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: dev-sidecar-freshness
+started_at: 2026-08-08
+started_by: MomoChen <momochenisme@gmail.com>
+verified_at: 2026-08-08
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 10
+verified_scope:
+  - path: apps/desktop/package.json
+    hash: c775be6902b9c600861649eb514dbc7aae61c167bc2e86ad697a345aac159b87
+  - path: scripts/desktop-sidecar.mjs
+    hash: bfe4c9ff5b7e08d0329d48119f7aa877f1b0607e32a4eeac44c43fbc6c7ac526
+  - path: scripts/desktop-sidecar.test.mjs
+    hash: dec6210ff37e5dee5906cf170c68642c4f6ae1f41523e6b27283310ec68a6f88
+  - path: scripts/dev.test.mjs
+    hash: fabac3fdd673bdf14c620a9427032cc09b7e76aaf5f196f36c811557ae3de204
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-08
