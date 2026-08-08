@@ -39,8 +39,11 @@ pub fn add_round(store: &dyn Store, change: &str, content: &str) -> Result<usize
 }
 
 /// 讀取並解析工單（spec「驗證工單的讀取」）。無工單回錯誤。
-pub fn show(store: &dyn Store, change: &str) -> Result<Ticket> {
-    station::show(&STATION, store, change)
+/// `show` 加帶工單原文（供人眼輸出與 wire 的 content 欄位）——同站其餘動詞
+/// 一樣經本門面走 station，維持 command 層只認站別門面的分層。純解析版
+/// 直接用 `station::show(&STATION, ..)`。
+pub fn show_with_content(store: &dyn Store, change: &str) -> Result<(Ticket, Option<String>)> {
+    station::show_with_content(&STATION, store, change)
 }
 
 /// 放棄驗證：刪除工單、不寫任何 metadata（spec「放棄驗證」）。無工單回錯誤。
@@ -224,7 +227,7 @@ mod tests {
         let store = finished_change();
         let hex = "a".repeat(64);
         add_round(&store, "demo", &structured_round("discovery", &hex)).expect("structured round");
-        let ticket = show(&store, "demo").expect("ticket parses");
+        let ticket = station::show(&STATION, &store, "demo").expect("ticket parses");
         assert_eq!(ticket.rounds[0].phase, Some(RoundPhase::Discovery));
         assert_eq!(ticket.rounds[0].patch_hash.as_deref(), Some(format!("sha256:{hex}").as_str()));
         let doc = store.read_artifact("demo", VERIFY_DOC).expect("ticket doc");
@@ -250,7 +253,7 @@ mod tests {
         assert_eq!(round, 2);
         let after = store.read_artifact("demo", VERIFY_DOC).expect("ticket");
         assert!(after.starts_with(&before), "append-only across structured rounds");
-        assert_eq!(show(&store, "demo").expect("parses").last_round().phase, Some(RoundPhase::Validation));
+        assert_eq!(station::show(&STATION, &store, "demo").expect("parses").last_round().phase, Some(RoundPhase::Validation));
     }
 
     #[test]
@@ -268,7 +271,7 @@ mod tests {
         // spec Scenario「legacy round 保持相容」：兩欄缺席解析為 None，行為不變。
         let store = finished_change();
         add_round(&store, "demo", ROUND_1).expect("legacy round");
-        let ticket = show(&store, "demo").expect("parses");
+        let ticket = station::show(&STATION, &store, "demo").expect("parses");
         assert_eq!(ticket.rounds[0].phase, None);
         assert_eq!(ticket.rounds[0].patch_hash, None);
     }
@@ -303,7 +306,7 @@ mod tests {
         let store = finished_change();
         add_round(&store, "demo", ROUND_1).expect("round 1");
         add_round(&store, "demo", ROUND_2).expect("round 2");
-        let ticket = show(&store, "demo").expect("ticket parses");
+        let ticket = station::show(&STATION, &store, "demo").expect("ticket parses");
         assert_eq!(ticket.rounds.len(), 2);
         let r1 = &ticket.rounds[0];
         assert_eq!(r1.index, 1);
@@ -339,7 +342,7 @@ mod tests {
         // spec Scenario「無工單」：錯誤說明該 change 無「驗證」工單——站別詞不得
         // 說成 review，否則使用者被送去看另一個站的工單。
         let store = finished_change();
-        let err = show(&store, "demo").expect_err("no ticket must error");
+        let err = station::show(&STATION, &store, "demo").expect_err("no ticket must error");
         assert!(err.to_string().contains("no verify ticket"), "error must say so: {err}");
         assert!(
             err.downcast_ref::<NotFound>().is_some(),

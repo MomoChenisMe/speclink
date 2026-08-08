@@ -115,6 +115,41 @@ fn archive_ready_store() -> Arc<MemoryStore> {
 }
 
 #[test]
+fn conclude_reports_the_restale_flagged_changes_over_the_wire() {
+    // spec server-verb-api「結論端點回填被打回的變更」：對已轉出且進行中的
+    // 討論 re-conclude，回應點名被打回重收的變更。
+    let store = Arc::new(MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed-conclude".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::ChangeMeta { change: "add-auth".into() },
+        "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: auth-scope\n",
+    );
+    uow.create(
+        DocumentId::Discussion { slug: "auth-scope".into(), archived: false },
+        "---\ntopic: Auth scope\nslug: auth-scope\nstatus: promoted\npromoted_to: add-auth\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\nold\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
+
+    let resp = client
+        .discussion_conclude("auth-scope", "**Decision**: revised\n")
+        .expect("conclude over the wire");
+    assert_eq!(
+        resp.restale_flagged,
+        ["add-auth"],
+        "the re-conclude names the in-flight derived change"
+    );
+}
+
+#[test]
 fn archive_reports_the_full_engine_outcome_over_the_wire() {
     let store = archive_ready_store();
     let state = common::state_with(store.clone());

@@ -148,7 +148,14 @@ impl TempProject {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .expect("spawn speclink binary");
-        child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+        // 被測指令提早失敗時 stdin 是 broken pipe——吞掉它，讓斷言看到真正
+        // 的 stderr 而不是 helper 的 panic。其他寫入錯誤照炸。
+        if let Err(e) = child.stdin.take().unwrap().write_all(input.as_bytes()) {
+            assert!(
+                e.kind() == std::io::ErrorKind::BrokenPipe,
+                "write stdin failed: {e}"
+            );
+        }
         child.wait_with_output().expect("wait speclink binary")
     }
 }
@@ -593,6 +600,142 @@ fn remote_discuss_conclude_matches_fs_output_byte_for_byte() {
 }
 
 #[test]
+fn remote_discuss_new_json_prints_the_wire_response_verbatim() {
+    // remote 的 --json 契約是 wire 回應原樣（slug／topic／path 三欄）——組 core
+    // 型別會捏造 server 沒說的欄位（status、rounds、空 created），形狀凍結不允許。
+    let mock = mock_server(vec![(
+        "POST",
+        "/discussions",
+        201,
+        r#"{"slug":"auth-scope","topic":"Auth scope","path":"discussions/auth-scope.md"}"#
+            .to_string(),
+    )]);
+    let p = TempProject::remote("discuss-new-json", &mock.base, "backend");
+    let out = p.run(&["discuss", "new", "Auth scope", "--slug", "auth-scope", "--json"]);
+    assert!(out.status.success(), "remote stderr: {}", stderr_of(&out));
+    let payload: serde_json::Value =
+        serde_json::from_str(stdout_of(&out).trim()).expect("stdout is JSON");
+    let keys: Vec<&str> = payload.as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(keys, ["path", "slug", "topic"], "the wire three-field shape, nothing invented");
+}
+
+#[test]
+fn remote_discuss_new_and_add_round_and_archive_match_fs_human_output() {
+    // spec scenario「discuss 動詞成功訊息兩模式同形」點名的動詞逐位元對照。
+    let fs = TempProject::fs("discuss-human-fs");
+    let fs_new = fs.run(&["discuss", "new", "Auth scope", "--slug", "auth-scope"]);
+    assert!(fs_new.status.success(), "fs stderr: {}", stderr_of(&fs_new));
+    let fs_round = fs.run_stdin(
+        &["discuss", "add-round", "auth-scope", "--mode", "assumptions", "--stdin"],
+        "**Focus**: x\n**Position**: y\n",
+    );
+    assert!(fs_round.status.success(), "fs stderr: {}", stderr_of(&fs_round));
+    let fs_conclude = fs.run_stdin(
+        &["discuss", "conclude", "auth-scope", "--stdin"],
+        "**Decision**: go\n",
+    );
+    assert!(fs_conclude.status.success(), "fs stderr: {}", stderr_of(&fs_conclude));
+    let fs_archive = fs.run(&["discuss", "archive", "auth-scope"]);
+    assert!(fs_archive.status.success(), "fs stderr: {}", stderr_of(&fs_archive));
+
+    // discuss new 的 Path 行兩模式同為 store 相對路徑（引擎的 path 欄位）；
+    // mock 回 fs 輸出裡的同一字串，兩模式即同文本。
+    let fs_new_stdout = stdout_of(&fs_new);
+    let fs_path_line = fs_new_stdout
+        .lines()
+        .find(|l| l.trim_start().starts_with("Path: "))
+        .expect("fs discuss new prints a Path line");
+    let wire_path = fs_path_line.trim_start().trim_start_matches("Path: ").to_string();
+    // fs 的封存檔名帶日期前綴，wire 值取自 fs 實際輸出才對得起來。
+    let wire_archived_to = stdout_of(&fs_archive)
+        .lines()
+        .next()
+        .and_then(|l| l.rsplit(" → ").next().map(str::to_string))
+        .expect("fs discuss archive names the destination");
+
+    let mock = mock_server(vec![
+        (
+            "POST",
+            "/discussions",
+            201,
+            serde_json::json!({
+                "slug": "auth-scope",
+                "topic": "Auth scope",
+                "path": wire_path,
+            })
+            .to_string(),
+        ),
+        (
+            "POST",
+            "/discussions/auth-scope/rounds",
+            200,
+            r#"{"round":1}"#.to_string(),
+        ),
+        (
+            "POST",
+            "/discussions/auth-scope/archive",
+            200,
+            serde_json::json!({ "archivedTo": wire_archived_to }).to_string(),
+        ),
+    ]);
+    let p = TempProject::remote("discuss-human-remote", &mock.base, "backend");
+
+    let remote_new = p.run(&["discuss", "new", "Auth scope", "--slug", "auth-scope"]);
+    assert!(remote_new.status.success(), "remote stderr: {}", stderr_of(&remote_new));
+    assert_eq!(stdout_of(&remote_new), fs_new_stdout, "discuss new human parity");
+
+    let remote_round = p.run_stdin(
+        &["discuss", "add-round", "auth-scope", "--mode", "assumptions", "--stdin"],
+        "**Focus**: x\n**Position**: y\n",
+    );
+    assert!(remote_round.status.success(), "remote stderr: {}", stderr_of(&remote_round));
+    assert_eq!(stdout_of(&remote_round), stdout_of(&fs_round), "add-round human parity");
+
+    let remote_archive = p.run(&["discuss", "archive", "auth-scope"]);
+    assert!(remote_archive.status.success(), "remote stderr: {}", stderr_of(&remote_archive));
+    assert_eq!(
+        stdout_of(&remote_archive),
+        stdout_of(&fs_archive),
+        "discuss archive human parity"
+    );
+}
+
+#[test]
+fn remote_discuss_promote_prints_one_line_and_drops_the_path_pair() {
+    // 明文分歧（design D5 第 5 項）：fs 印 Path 行＋propose 提示行，remote 兩行
+    // 一起不印——首行則兩模式同文本。
+    let fs = TempProject::fs("discuss-promote-fs");
+    fs.write(
+        "openspec/discussions/auth-scope.md",
+        "---\ntopic: Auth scope\nslug: auth-scope\nstatus: concluded\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n**Decision**: go\n",
+    );
+    let fs_out = fs.run(&["discuss", "promote", "auth-scope"]);
+    assert!(fs_out.status.success(), "fs stderr: {}", stderr_of(&fs_out));
+    let fs_stdout = stdout_of(&fs_out);
+    let fs_first = fs_stdout.lines().next().expect("fs prints the promoted line");
+    assert!(fs_stdout.contains("  Path: "), "fs prints the Path line: {fs_stdout}");
+    assert!(
+        fs_stdout.contains("Proposal prefilled"),
+        "fs prints the follow-up hint: {fs_stdout}"
+    );
+
+    let mock = mock_server(vec![(
+        "POST",
+        "/discussions/auth-scope/promote",
+        200,
+        r#"{"change":"auth-scope"}"#.to_string(),
+    )]);
+    let p = TempProject::remote("discuss-promote-remote", &mock.base, "backend");
+    let remote_out = p.run(&["discuss", "promote", "auth-scope"]);
+    assert!(remote_out.status.success(), "remote stderr: {}", stderr_of(&remote_out));
+    assert_eq!(
+        stdout_of(&remote_out),
+        format!("{fs_first}\n"),
+        "remote prints the same first line and nothing else — the Path pair stays fs-only"
+    );
+}
+
+#[test]
 fn remote_in_progress_remove_reports_the_idempotent_noop_like_fs_mode() {
     // 未開工的 change 被要求退回時，fs 說「本來就沒開工」，remote 一度只會
     // 說「已移除」——同一個引擎結果，兩種說法。
@@ -790,6 +933,78 @@ fn remote_review_show_refuses_an_unknown_round_phase() {
         stderr_of(&out).contains("triage"),
         "the refusal names the token: {}",
         stderr_of(&out)
+    );
+}
+
+#[test]
+fn remote_review_show_refuses_an_unknown_finding_severity() {
+    // phase 的對稱路徑：severity 也是 server 端詞彙，未知值不得靜默吞掉。
+    let mut routes = ticket_routes(None);
+    routes[0].3 = routes[0].3.replace("\"severity\":\"WARNING\"", "\"severity\":\"BLOCKER\"");
+    let mock = mock_server(routes);
+    let p = TempProject::remote("ticket-severity", &mock.base, "backend");
+    let out = p.run(&["review", "show", "demo"]);
+    assert!(!out.status.success(), "an unknown severity must fail loud");
+    assert!(
+        stderr_of(&out).contains("BLOCKER"),
+        "the refusal names the token: {}",
+        stderr_of(&out)
+    );
+}
+
+#[test]
+fn remote_review_show_refuses_an_empty_rounds_ticket() {
+    // wire 允許 rounds:[] 搭配獨立 lastRound；核心工單不變量是至少一輪——空
+    // 陣列必須是明確錯誤，不是 panic。
+    let body = r#"{"change":"demo","rounds":[],"lastRound":{"index":1,"phase":null,"patchHash":null,"scope":[],"findings":[]}}"#;
+    let mock = mock_server(vec![("GET", "/changes/demo/review", 200, body.to_string())]);
+    let p = TempProject::remote("ticket-empty", &mock.base, "backend");
+    let out = p.run(&["review", "show", "demo"]);
+    assert!(!out.status.success(), "an empty rounds list must be a clean error");
+    let err = stderr_of(&out);
+    assert!(err.starts_with("Error:"), "a clean error, not a panic: {err}");
+    assert!(err.contains("no rounds"), "the refusal explains the shape: {err}");
+}
+
+#[test]
+fn remote_review_show_json_matches_fs_key_set() {
+    // spec scenario「工單 --json 兩模式同形且無原文欄位」：payload 欄位集合對照
+    // fs 模式逐 key 相等。
+    let fs = TempProject::fs("ticket-json-fs");
+    fs.write(
+        "openspec/changes/demo/.openspec.yaml",
+        "schema: spec-driven\ncreated: 2026-07-01\n",
+    );
+    fs.write("openspec/changes/demo/tasks.md", "- [x] 1.1 done\n");
+    fs.write(
+        "openspec/changes/demo/review.md",
+        "# Review — demo\n\n## Round 1\n\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — possible Feature Envy\n",
+    );
+    let fs_json = fs.run(&["review", "show", "demo", "--json"]);
+    assert!(fs_json.status.success(), "fs stderr: {}", stderr_of(&fs_json));
+
+    let mock = mock_server(ticket_routes(Some(TICKET_DOC)));
+    let p = TempProject::remote("ticket-json-remote", &mock.base, "backend");
+    let remote_json = p.run(&["review", "show", "demo", "--json"]);
+    assert!(remote_json.status.success(), "remote stderr: {}", stderr_of(&remote_json));
+
+    let fs_payload: serde_json::Value =
+        serde_json::from_str(stdout_of(&fs_json).trim()).expect("fs stdout is JSON");
+    let remote_payload: serde_json::Value =
+        serde_json::from_str(stdout_of(&remote_json).trim()).expect("remote stdout is JSON");
+    let keys = |v: &serde_json::Value| -> Vec<String> {
+        v.as_object().unwrap().keys().cloned().collect()
+    };
+    assert_eq!(keys(&fs_payload), keys(&remote_payload), "top-level key sets match");
+    assert_eq!(
+        keys(&fs_payload["lastRound"]),
+        keys(&remote_payload["lastRound"]),
+        "round key sets match"
+    );
+    assert_eq!(
+        keys(&fs_payload["lastRound"]["findings"][0]),
+        keys(&remote_payload["lastRound"]["findings"][0]),
+        "finding key sets match"
     );
 }
 

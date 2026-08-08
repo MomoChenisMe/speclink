@@ -5,3 +5,67 @@ created_with: claude
 from_discussion: improve-cli-command-layer
 started_at: 2026-08-07
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-08
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 10
+reviewed_scope:
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 3fb496aba31e0717ae3445f7783d1dc4ae293d701aae62d8fcf1e17df57a8549
+  - path: crates/speclink-cli/src/commands.rs
+    hash: bc36fa9159d4e2c42ab5a5b201a4800ce9eca65990c5598c43359b2a9604722e
+  - path: crates/speclink-cli/src/remote_commands.rs
+    hash: 38cea5ad97b35327d9225bda889d6983abb2a56cd40769e8dde9928221266172
+  - path: crates/speclink-cli/tests/it/remote_verb_parity.rs
+    hash: 626c180f00e2aabb8f72464aabd4f17d204c8ed937ae8d874e937ed78671a006
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: 8b0ba3677dfc298ca8415b44ca5b3e697db341866138d9c0dd6a6e5feab5cd23
+  - path: crates/speclink-protocol/src/command.rs
+    hash: 60016b17b75eccf928818064da5ba6f072ecdbaddc17e54705fce8035c09da60
+  - path: crates/speclink-remote/src/client.rs
+    hash: 979ccf6d720f8bfa877fd3f4264291a4608115ef112a4e1aab4c9a197f27fc23
+  - path: crates/speclink-remote/tests/it/typed_client.rs
+    hash: 119146c107279d96edb8ab7e8c1b9ff42db381a1752dcc3645919162f82859ce
+  - path: crates/speclink-server/src/routes.rs
+    hash: 01f7fc1b950eeb763d852f8fd9947be7934d0da318e7acca1e76ed27629998d8
+  - path: crates/speclink-server/tests/it/command_routes.rs
+    hash: 5764b3f40a52235b3ff5b8265751db20189e30a23052569324202f7ca5b818c2
+  - path: crates/speclink-server/tests/it/phase2_chain.rs
+    hash: da5d6a36bffacd5a873e682880e9e24d76faf4939c68f0b2d7db0b037238d7e5
+  - path: crates/speclink-server/tests/it/review_api.rs
+    hash: c78b5d03769dbf3e5195e3d058788e48593492064c2ae2dc1fc805332ebd22c5
+verified_at: 2026-08-08
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 10
+verified_scope:
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 3fb496aba31e0717ae3445f7783d1dc4ae293d701aae62d8fcf1e17df57a8549
+  - path: crates/speclink-cli/src/commands.rs
+    hash: bc36fa9159d4e2c42ab5a5b201a4800ce9eca65990c5598c43359b2a9604722e
+  - path: crates/speclink-cli/src/remote_commands.rs
+    hash: 38cea5ad97b35327d9225bda889d6983abb2a56cd40769e8dde9928221266172
+  - path: crates/speclink-cli/tests/it/remote_verb_parity.rs
+    hash: 626c180f00e2aabb8f72464aabd4f17d204c8ed937ae8d874e937ed78671a006
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: 8b0ba3677dfc298ca8415b44ca5b3e697db341866138d9c0dd6a6e5feab5cd23
+  - path: crates/speclink-core/src/review.rs
+    hash: f2c9de3c2664c93143cbc97b368ad42eafa853b0f81c81308a56507f2d18c399
+  - path: crates/speclink-core/src/station.rs
+    hash: f12ca8bdbf20e374fb708f9d6576269301b049f57c69cfdc186256c07059395e
+  - path: crates/speclink-core/src/verify.rs
+    hash: 08f72bc2fd11049d3f49ba1d744e09150ee5697478f7e3de9f4567bd181c2b18
+  - path: crates/speclink-protocol/src/command.rs
+    hash: 60016b17b75eccf928818064da5ba6f072ecdbaddc17e54705fce8035c09da60
+  - path: crates/speclink-remote/src/client.rs
+    hash: 979ccf6d720f8bfa877fd3f4264291a4608115ef112a4e1aab4c9a197f27fc23
+  - path: crates/speclink-remote/tests/it/typed_client.rs
+    hash: 119146c107279d96edb8ab7e8c1b9ff42db381a1752dcc3645919162f82859ce
+  - path: crates/speclink-server/src/routes.rs
+    hash: 01f7fc1b950eeb763d852f8fd9947be7934d0da318e7acca1e76ed27629998d8
+  - path: crates/speclink-server/tests/it/command_routes.rs
+    hash: 5764b3f40a52235b3ff5b8265751db20189e30a23052569324202f7ca5b818c2
+  - path: crates/speclink-server/tests/it/phase2_chain.rs
+    hash: da5d6a36bffacd5a873e682880e9e24d76faf4939c68f0b2d7db0b037238d7e5
+  - path: crates/speclink-server/tests/it/review_api.rs
+    hash: c78b5d03769dbf3e5195e3d058788e48593492064c2ae2dc1fc805332ebd22c5

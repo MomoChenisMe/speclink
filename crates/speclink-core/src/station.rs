@@ -209,6 +209,18 @@ pub fn add_round(st: &Station, store: &dyn Store, change: &str, content: &str) -
 
 /// 讀取並解析工單（spec「工單的讀取」）。無工單回錯誤。
 pub fn show(st: &Station, store: &dyn Store, change: &str) -> Result<Ticket> {
+    show_with_content(st, store, change).map(|(ticket, _)| ticket)
+}
+
+/// `show` 加帶工單原文：同一次讀取同時給出解析結果與文件文本，讓人眼路徑
+/// （印原文）與 wire 回應（content 欄位）不必各自再讀一次同一份文件。
+/// 原文恆為 `Some`——工單缺席在這裡就是錯誤，`Option` 只為呼叫端與 wire 的
+/// 選填欄位同形。
+pub fn show_with_content(
+    st: &Station,
+    store: &dyn Store,
+    change: &str,
+) -> Result<(Ticket, Option<String>)> {
     ensure_single_segment(change)?;
     if !store.change_exists(change) {
         bail!(NotFound(format!("change not found: {change}")));
@@ -216,7 +228,8 @@ pub fn show(st: &Station, store: &dyn Store, change: &str) -> Result<Ticket> {
     let Some(text) = store.read_artifact(change, st.doc) else {
         bail!(NotFound(format!("no {} ticket for change '{change}'", st.noun)));
     };
-    parse_ticket(st, &text)
+    let ticket = parse_ticket(st, &text)?;
+    Ok((ticket, Some(text)))
 }
 
 /// 放棄本站：刪除工單、不寫任何 metadata（spec「放棄審查／放棄驗證」）。
