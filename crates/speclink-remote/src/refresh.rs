@@ -176,10 +176,14 @@ fn acquire(
     wait: std::time::Duration,
 ) -> Result<(), RefreshFailure> {
     let deadline = std::time::Instant::now() + wait;
+    // 「搶不到鎖」的錯誤碼因平台而異：Unix 的 flock 回 EWOULDBLOCK（kind 是
+    // WouldBlock），Windows 的 LockFileEx 回 ERROR_LOCK_VIOLATION（os error 33，
+    // kind 不是 WouldBlock）——以 fs2 的競爭錯誤碼判別，兩平台才都會走重試。
+    let contended = fs2::lock_contended_error().raw_os_error();
     loop {
         match file.try_lock_exclusive() {
             Ok(()) => return Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            Err(e) if e.raw_os_error() == contended => {
                 if std::time::Instant::now() >= deadline {
                     return Err(RefreshFailure::Unavailable(format!(
                         "等待換發鎖 {} 逾時——可能有其他 speclink 行程長時間持鎖",
