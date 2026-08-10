@@ -63,7 +63,7 @@ remote_ctx() 現況把解析與握手綁在一起；本設計把觸發權交給�
 **D5：動詞分類全表（31 個，實作時照表宣告）**
 
 - **ModeFree 11**：init、update、link、unlink、auth、schemas、templates、feedback、schema、config、completion。link／unlink／auth 是連線管理——不消費模式而是改模式，其內部的連線解析自理，dispatch 不介入。注意：ModeFree 指「dispatch 不做 store 模式判定」，不等於「不讀 .speclink.yaml」——schemas／templates／update 等的 workspace 探索本就解析該檔（取 spec_dir），壞檔下的既有失敗維持現狀（實測 2026-08-09：schemas 於壞 yaml exit 1；completion、config 免疫）。
-- **Dual 18**：list、show、validate、analyze、drift、archive、discard、artifact、language、status、instructions、new、workflow-config、task、in-progress、discuss、review、verify。
+- **Dual 18**：list、show、validate、analyze、drift、archive、discard、artifact、language、status、instructions、new、workflow-config、task、in-progress、discuss、review、verify。部分 Dual 動詞於模式解析前保留不消費 store 的前置步驟（凍結既有順序）：instructions 的 `--skill` 分流走 ModeFree 路徑、workflow-config 的 argv／stdin 正規化先於模式解析、review／verify 的 clap → StationVerb 正規化先行（雙臂宣告於 station_dual）。
 - **FsOnly 1**：demo。
 - **RemoteOnly 1**：claim。
 

@@ -40,9 +40,12 @@ impl TempProject {
         ] {
             cmd.env_remove(key);
         }
-        // Hermetic global config: point the home lookup at the temp dir so the
+        // Hermetic global config: point every home lookup (macOS HOME, Windows
+        // USERPROFILE, Linux XDG_CONFIG_HOME) at the temp dir so the
         // developer's real global config never leaks into assertions.
-        cmd.env("HOME", &self.dir).env("USERPROFILE", &self.dir);
+        cmd.env("HOME", &self.dir)
+            .env("USERPROFILE", &self.dir)
+            .env("XDG_CONFIG_HOME", &self.dir);
         cmd.output().expect("run speclink binary")
     }
 }
@@ -124,6 +127,30 @@ fn fs_only_demo_rejects_remote_mode_without_any_server_request() {
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
         other => panic!("no server request may be emitted, got {other:?}"),
     }
+}
+
+#[test]
+fn fs_only_demo_rejects_remote_mode_when_no_server_listens() {
+    // Spec scenario FsOnly 動詞於 remote 模式零請求拒絕（離線變體）: bind then
+    // drop to get a port nobody listens on — the refusal must still be the
+    // mode-resolution text, never a connection error.
+    let port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+    let p = TempProject::new(
+        "fsonly-demo-offline",
+        &format!("remote:\n  url: http://127.0.0.1:{port}/api/speclink/v1/projects/demo\n"),
+    );
+    let out = p.run(&["demo"]);
+    assert!(!out.status.success(), "demo must refuse remote mode while offline");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains(
+            "demo is not available in remote mode — it seeds a demo change into a local openspec/ tree"
+        ),
+        "frozen refusal text: {err}"
+    );
 }
 
 // --- RemoteOnly: claim refuses fs mode with the frozen message ---

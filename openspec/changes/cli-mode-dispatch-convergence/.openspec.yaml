@@ -5,3 +5,29 @@ created_with: claude
 from_discussion: cli-mode-dispatch-convergence
 started_at: 2026-08-09
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-10
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 6
+reviewed_scope:
+  - path: crates/speclink-cli/src/commands.rs
+    hash: 63a7f8581d3659b30cba94c34174b4116d878326aa7c5a5fe017a7e3dd0bb7af
+  - path: crates/speclink-cli/src/remote_commands.rs
+    hash: 59a636dbb7ec2f6c8e1f66b4e6a806b6d481a0f4ce1912e3491a5a2095ffa3e4
+  - path: crates/speclink-cli/tests/it/main.rs
+    hash: fec08f1b3b2c7d602a21586521f469e261ebf81d1a67fb7def2efb84b8b0a12b
+  - path: crates/speclink-cli/tests/it/mode_dispatch.rs
+    hash: 2ec2f07becfabc40161c42d190ab74f3a7319ebf42605eac4f4c94aae6fc5f1e
+verified_at: 2026-08-10
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 6
+verified_scope:
+  - path: crates/speclink-cli/src/commands.rs
+    hash: 63a7f8581d3659b30cba94c34174b4116d878326aa7c5a5fe017a7e3dd0bb7af
+  - path: crates/speclink-cli/src/remote_commands.rs
+    hash: 59a636dbb7ec2f6c8e1f66b4e6a806b6d481a0f4ce1912e3491a5a2095ffa3e4
+  - path: crates/speclink-cli/tests/it/main.rs
+    hash: fec08f1b3b2c7d602a21586521f469e261ebf81d1a67fb7def2efb84b8b0a12b
+  - path: crates/speclink-cli/tests/it/mode_dispatch.rs
+    hash: 2ec2f07becfabc40161c42d190ab74f3a7319ebf42605eac4f4c94aae6fc5f1e
