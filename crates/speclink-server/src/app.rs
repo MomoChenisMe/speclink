@@ -6,13 +6,17 @@ use crate::assets;
 use crate::auth::Binding;
 use crate::context;
 use crate::device;
+use crate::error::ApiError;
 use crate::read_api;
 use crate::routes;
 use crate::setup;
 use crate::state::AppState;
 use crate::web;
-use axum::extract::{DefaultBodyLimit, State};
+use axum::body::{to_bytes, Body};
+use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::StatusCode;
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use speclink_protocol::binding::BindingResponse;
@@ -135,7 +139,8 @@ pub fn router(state: AppState) -> Router {
         .route("/whoami", get(routes::whoami))
         .route("/sync-state", get(routes::sync_state))
         .route("/context", post(context::snapshot))
-        .route("/events", get(routes::events));
+        .route("/events", get(routes::events))
+        .layer(middleware::from_fn(read_body_before_routing));
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
@@ -165,6 +170,26 @@ pub fn router(state: AppState) -> Router {
         .route("/assets/{*path}", get(assets::asset))
         .fallback(assets::spa_fallback)
         .with_state(state)
+}
+
+/// 進路由前先把 request body 收滿再放行（project API 家族）。
+///
+/// `Binding` 這類 `FromRequestParts` extractor 跑在 body extractor 之前，401/403
+/// 的早回應會讓 hyper 對還沒到的 body close_read；晚到的 body 段使 kernel 以
+/// RST 收線，已送出的錯誤回應在對端緩衝區被整包丟棄——客戶端間歇讀到空 body
+///（高負載下 context_api 測試 403 envelope 斷言的間歇紅）。body 先收滿，早回應
+/// 永遠走在 body 之後，連線以 FIN 收場。
+///
+/// 收滿上限取本 route 家族的最大允量（`/import` 的 32MB）；各 route 的實際內容
+/// 上限仍由其 `DefaultBodyLimit` 在 extractor 層把關，不因此放寬。
+async fn read_body_before_routing(req: Request, next: Next) -> Response {
+    let (parts, body) = req.into_parts();
+    match to_bytes(body, IMPORT_BODY_LIMIT_BYTES).await {
+        Ok(bytes) => next.run(Request::from_parts(parts, Body::from(bytes))).await,
+        Err(e) => {
+            ApiError::payload_too_large(format!("request body unreadable: {e}")).into_response()
+        }
+    }
 }
 
 /// `GET /healthz` — process liveness. Answers as long as the process serves,

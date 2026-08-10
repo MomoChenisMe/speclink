@@ -358,3 +358,64 @@ fn an_unreachable_store_is_503_unavailable() {
     let err: ErrorResponse = serde_json::from_str(&body).expect("an ErrorResponse envelope");
     assert_eq!(err.reason, ErrorReason::Unavailable);
 }
+
+#[test]
+fn an_error_reply_is_not_sent_before_the_request_body_completes() {
+    // 締約行為：錯誤回應（此處 403）必須等 request body 收完才發出。body 未讀
+    // 就早回應時，hyper 會對還沒到的 body close_read，晚到的 body 段使 kernel
+    // 以 RST 收線——已寫出的錯誤回應在對端緩衝區被整包丟棄，客戶端間歇讀到
+    // 空 body（macOS CI 高負載下本套件 403 envelope 斷言的間歇紅）。以「body
+    // 未完成前不得有回應位元組」為可觀測面釘住修法（app.rs 進路由前先收滿
+    // body）。
+    use std::io::{Read, Write};
+
+    let store = Arc::new(MemoryStore::new());
+    seed_full(&store, true);
+    let state = state_over(store);
+    common::seed_multi_project(&*state.identity);
+    let (pat_other, _) =
+        common::seed_named_pat(&state.identity, "other@example.com", "Other <o@example.com>", &["multi"]);
+    let base = common::start(state);
+    let authority = base.strip_prefix("http://").expect("http base url").to_string();
+
+    let body = serde_json::to_vec(&for_change("demo")).expect("serialize request");
+    let (head, tail) = body.split_at(body.len() / 2);
+    let mut sock = std::net::TcpStream::connect(&authority).expect("connect");
+    let headers = format!(
+        "POST /api/speclink/v1/projects/demo/context HTTP/1.1\r\n\
+         host: {authority}\r\n\
+         authorization: Bearer {pat_other}\r\n\
+         x-speclink-api-version: 1\r\n\
+         x-speclink-repo: backend\r\n\
+         content-type: application/json\r\n\
+         content-length: {}\r\n\
+         connection: close\r\n\r\n",
+        body.len()
+    );
+    sock.write_all(headers.as_bytes()).expect("write headers");
+    sock.write_all(head).expect("write body head");
+    sock.flush().expect("flush");
+
+    // 觀察窗：body 還缺一半的期間，不得有任何回應位元組。
+    sock.set_read_timeout(Some(std::time::Duration::from_millis(200))).expect("set timeout");
+    let mut probe = [0u8; 1];
+    match sock.read(&mut probe) {
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+            ) => {}
+        other => panic!("回應不得先於 request body 完成: {other:?}"),
+    }
+
+    sock.write_all(tail).expect("write body tail");
+    sock.set_read_timeout(Some(std::time::Duration::from_secs(10))).expect("set timeout");
+    let mut raw = Vec::new();
+    sock.read_to_end(&mut raw).expect("read response");
+    let text = String::from_utf8_lossy(&raw);
+    assert!(text.starts_with("HTTP/1.1 403"), "status line: {text}");
+    let body_off = text.find("\r\n\r\n").expect("header terminator") + 4;
+    let err: ErrorResponse =
+        serde_json::from_str(&text[body_off..]).expect("an ErrorResponse envelope");
+    assert_eq!(err.reason, ErrorReason::PermissionDenied);
+}
