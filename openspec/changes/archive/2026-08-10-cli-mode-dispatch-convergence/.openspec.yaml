@@ -31,3 +31,5 @@ verified_scope:
     hash: fec08f1b3b2c7d602a21586521f469e261ebf81d1a67fb7def2efb84b8b0a12b
   - path: crates/speclink-cli/tests/it/mode_dispatch.rs
     hash: 2ec2f07becfabc40161c42d190ab74f3a7319ebf42605eac4f4c94aae6fc5f1e
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-10
