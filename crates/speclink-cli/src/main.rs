@@ -1,11 +1,45 @@
 use anyhow::{bail, Result};
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use speclink_core as core;
 
 mod color;
-use std::io::{BufRead, IsTerminal, Read, Write};
-use std::path::PathBuf;
+mod common;
+mod remote_base;
+mod verbs;
+use common::{warn_deprecated_policy_keys, warn_leftover_remote_file};
+use remote_base::{remote_ctx, RemoteCtx};
 use std::process::ExitCode;
+use verbs::checks::{
+    cmd_analyze, cmd_drift, cmd_validate, remote_analyze, remote_drift, remote_validate, ChangeArg,
+    ValidateArgs,
+};
+use verbs::config::{cmd_config, cmd_workflow_config, ConfigArgs, WorkflowConfigArgs};
+use verbs::connection::{cmd_auth, cmd_link, cmd_unlink, AuthArgs, LinkArgs};
+use verbs::discuss::{cmd_discuss, remote_discuss, DiscussArgs};
+use verbs::documents::{
+    cmd_artifact, cmd_language, remote_artifact, remote_language, ArtifactArgs, LanguageArgs,
+};
+use verbs::init::{cmd_init, cmd_update, InitArgs, UpdateArgs};
+use verbs::instructions::{
+    cmd_instructions, cmd_instructions_skill, remote_instructions, InstructionsArgs,
+};
+use verbs::lifecycle::{
+    cmd_archive, cmd_discard, remote_archive, remote_claim, remote_discard, ArchiveArgs, ClaimArgs,
+    DiscardArgs,
+};
+use verbs::new::{cmd_new, remote_new, NewArgs};
+use verbs::progress::{
+    cmd_in_progress, cmd_task, remote_in_progress, remote_task, InProgressArgs, TaskArgs,
+};
+use verbs::query::{
+    cmd_list, cmd_show, cmd_status, remote_list, remote_show, remote_status, ListArgs, ShowArgs,
+    StatusArgs,
+};
+use verbs::station::{cmd_review, cmd_verify, ReviewArgs, VerifyArgs};
+use verbs::toolchain::{
+    cmd_completion, cmd_demo, cmd_feedback, cmd_schema, cmd_schemas, cmd_templates, CompletionArgs,
+    FeedbackArgs, JsonFlag, SchemaArgs, TemplatesArgs,
+};
 
 /// The frozen architecture suffix, absent on architectures we do not ship.
 const ARCH: Option<&str> = {
@@ -115,753 +149,6 @@ enum Commands {
     Verify(VerifyArgs),
 }
 
-#[derive(Args)]
-struct InitArgs {
-    /// Project path (defaults to current directory)
-    path: Option<String>,
-    /// AI tools to generate files for (e.g., claude, codex)
-    #[arg(long)]
-    tools: Option<String>,
-    /// Overwrite existing files
-    #[arg(long)]
-    force: bool,
-    /// Custom openspec directory path (default: openspec)
-    #[arg(long)]
-    dir: Option<String>,
-    /// Store backend: fs (default) or remote
-    #[arg(long, default_value = "fs")]
-    store: String,
-    /// Remote store connection URL (required with --store remote)
-    #[arg(long)]
-    url: Option<String>,
-    /// This repo's registered name in the remote project
-    #[arg(long)]
-    repo: Option<String>,
-}
-
-#[derive(Args)]
-struct UpdateArgs {
-    /// Project path (defaults to current directory)
-    path: Option<PathBuf>,
-    /// Overwrite existing files
-    #[arg(long)]
-    force: bool,
-    /// Rewrite instruction files even when the workspace is newer than this engine
-    #[arg(long)]
-    allow_downgrade: bool,
-}
-
-#[derive(Args)]
-struct ListArgs {
-    /// Show only specs
-    #[arg(long)]
-    specs: bool,
-    /// Show only changes
-    #[arg(long)]
-    changes: bool,
-    /// Sort by: name, modified, created
-    #[arg(long, default_value = "modified")]
-    sort: String,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Args)]
-struct ShowArgs {
-    /// Item to show (change or spec name)
-    item: Option<String>,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-    /// Item type: change, spec
-    #[arg(long = "item-type", value_name = "type")]
-    item_type: Option<String>,
-    /// Show only delta specs
-    #[arg(long = "deltas-only")]
-    deltas_only: bool,
-    /// Show requirements
-    #[arg(short = 'r', long)]
-    requirements: bool,
-}
-
-#[derive(Args)]
-struct ValidateArgs {
-    /// Item to validate
-    item: Option<String>,
-    /// Validate all items
-    #[arg(long)]
-    all: bool,
-    /// Validate only changes
-    #[arg(long)]
-    changes: bool,
-    /// Validate only specs
-    #[arg(long)]
-    specs: bool,
-    /// Strict mode
-    #[arg(long)]
-    strict: bool,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Args)]
-struct ChangeArg {
-    /// Change name (auto-detects if only one exists)
-    change: Option<String>,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Args)]
-struct ArchiveArgs {
-    /// Changes to archive (several allowed; auto-detects when omitted and only one exists)
-    #[arg(value_name = "CHANGE")]
-    changes: Vec<String>,
-    /// Archive every ready change (tasks complete, valid, nothing the merge gate refuses)
-    #[arg(long)]
-    all: bool,
-    /// Skip confirmation
-    #[arg(short = 'y', long)]
-    yes: bool,
-    /// Skip spec updates
-    #[arg(long = "skip-specs")]
-    skip_specs: bool,
-    /// Skip validation before archiving
-    #[arg(long = "no-validate")]
-    no_validate: bool,
-    /// Mark all incomplete tasks as complete before archiving
-    #[arg(long = "mark-tasks-complete")]
-    mark_tasks_complete: bool,
-    /// Archive despite an open review ticket (the ticket travels with the
-    /// change and is permanently shown as reviewed-not-passed)
-    #[arg(long = "carry-review")]
-    carry_review: bool,
-    /// Archive despite an open verify ticket (the ticket travels with the
-    /// change and is permanently shown as verified-not-passed)
-    #[arg(long = "carry-verify")]
-    carry_verify: bool,
-}
-
-#[derive(Args)]
-struct DiscardArgs {
-    /// Change to discard
-    change: String,
-    /// Discard even when the change has started work (started_at or checked tasks)
-    #[arg(long)]
-    force: bool,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Args)]
-struct ClaimArgs {
-    /// Change name
-    name: String,
-}
-
-#[derive(Args)]
-struct LinkArgs {
-    /// Project-scoped connection URL
-    url: String,
-    /// This repo's registered name in the remote project
-    #[arg(long)]
-    repo: Option<String>,
-}
-
-#[derive(Args)]
-struct ArtifactArgs {
-    #[command(subcommand)]
-    command: ArtifactCommands,
-}
-
-#[derive(Subcommand)]
-enum ArtifactCommands {
-    /// Print an artifact's content (proposal | design | tasks | specs/<capability>)
-    Cat {
-        /// Artifact id
-        artifact: String,
-        /// Change name
-        #[arg(long)]
-        change: Option<String>,
-    },
-}
-
-#[derive(Args)]
-struct LanguageArgs {
-    #[command(subcommand)]
-    command: LanguageCommands,
-}
-
-#[derive(Subcommand)]
-enum LanguageCommands {
-    /// Print the project's shared vocabulary (LANGUAGE document)
-    Show,
-}
-
-#[derive(Args)]
-struct AuthArgs {
-    #[command(subcommand)]
-    command: AuthCommands,
-}
-
-#[derive(Subcommand)]
-enum AuthCommands {
-    /// Log in to the connected server (device authorization by default)
-    Login {
-        /// Read a personal access token from stdin (CI/scripted use)
-        #[arg(long = "token-stdin", conflicts_with = "pat")]
-        token_stdin: bool,
-        /// Paste a personal access token instead of authorizing this device
-        #[arg(long = "pat")]
-        pat: bool,
-    },
-    /// Show the current identity and repo validation result
-    Status {
-        /// Emit the identity and credential source as JSON
-        #[arg(long)]
-        json: bool,
-    },
-    /// Log out: revoke this device's credential family and clear local credentials
-    Logout,
-}
-
-#[derive(Args)]
-struct StatusArgs {
-    /// Change name
-    #[arg(long)]
-    change: Option<String>,
-    /// Schema name
-    #[arg(long)]
-    schema: Option<String>,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Args)]
-struct InstructionsArgs {
-    /// Artifact ID or "apply"
-    artifact: Option<String>,
-    /// Change name
-    #[arg(long)]
-    change: Option<String>,
-    /// Schema name
-    #[arg(long)]
-    schema: Option<String>,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-    /// Embedded skill name (outputs skill body directly)
-    #[arg(long)]
-    skill: Option<String>,
-}
-
-#[derive(Args)]
-struct NewArgs {
-    #[command(subcommand)]
-    command: NewCommands,
-}
-
-#[derive(Subcommand)]
-enum NewCommands {
-    /// Create a new change
-    Change(NewChangeArgs),
-    /// Create a new artifact file for a change
-    Artifact(NewArtifactArgs),
-}
-
-#[derive(Args)]
-struct NewChangeArgs {
-    /// Change name (kebab-case)
-    name: String,
-    /// Description
-    #[arg(long)]
-    description: Option<String>,
-    /// Workflow schema to use
-    #[arg(long)]
-    schema: Option<String>,
-    /// AI agent that created this change (e.g., claude, codex, gemini)
-    #[arg(long)]
-    agent: Option<String>,
-    /// Link this change to a discussion document (writes from_discussion metadata)
-    #[arg(long = "from-discussion")]
-    from_discussion: Option<String>,
-}
-
-#[derive(Args)]
-struct NewArtifactArgs {
-    /// Artifact type: proposal, design, tasks, spec
-    #[arg(name = "TYPE")]
-    artifact_type: String,
-    /// Capability name (required for spec type)
-    capability: Option<String>,
-    /// Change name
-    #[arg(long)]
-    change: Option<String>,
-    /// Read content from stdin instead of using empty template
-    #[arg(long)]
-    stdin: bool,
-    /// Overwrite existing artifact
-    #[arg(long)]
-    force: bool,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Args)]
-struct JsonFlag {
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Args)]
-struct TemplatesArgs {
-    /// Schema name
-    #[arg(long)]
-    schema: Option<String>,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Args)]
-struct FeedbackArgs {
-    /// Feedback message
-    message: String,
-    /// Detailed body
-    #[arg(long)]
-    body: Option<String>,
-}
-
-#[derive(Args)]
-struct SchemaArgs {
-    #[command(subcommand)]
-    command: SchemaCommands,
-}
-
-#[derive(Subcommand)]
-enum SchemaCommands {
-    /// Show where a schema is resolved from
-    Which {
-        /// Schema name
-        name: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-        /// Show all resolution paths
-        #[arg(long)]
-        all: bool,
-    },
-    /// Validate a schema
-    Validate {
-        /// Schema name
-        name: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-        /// Verbose output
-        #[arg(long)]
-        verbose: bool,
-    },
-    /// Fork (copy) a schema
-    Fork {
-        /// Source schema
-        source: String,
-        /// New schema name
-        name: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-        /// Overwrite if exists
-        #[arg(long)]
-        force: bool,
-    },
-    /// Create a new custom schema
-    Init {
-        /// Schema name
-        name: String,
-        /// Description
-        #[arg(long)]
-        description: Option<String>,
-        /// Artifact IDs (comma-separated)
-        #[arg(long)]
-        artifacts: Option<String>,
-        /// Set as default schema
-        #[arg(long)]
-        default: bool,
-        /// Overwrite if exists
-        #[arg(long)]
-        force: bool,
-    },
-}
-
-#[derive(Args)]
-struct ConfigArgs {
-    #[command(subcommand)]
-    command: ConfigCommands,
-}
-
-#[derive(Subcommand)]
-enum ConfigCommands {
-    /// Show config file path
-    Path,
-    /// List all settings
-    List {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-    /// Get a config value
-    Get {
-        /// Config key
-        key: String,
-    },
-    /// Set a config value
-    Set {
-        /// Config key
-        key: String,
-        /// Config value
-        value: String,
-        /// Treat value as string
-        #[arg(long)]
-        string: bool,
-        /// Allow unknown keys
-        #[arg(long = "allow-unknown")]
-        allow_unknown: bool,
-    },
-    /// Remove a config key
-    Unset {
-        /// Config key
-        key: String,
-    },
-    /// Reset config
-    Reset {
-        /// Reset all settings
-        #[arg(long)]
-        all: bool,
-        /// Skip confirmation
-        #[arg(short = 'y', long)]
-        yes: bool,
-    },
-    /// Edit config in $EDITOR
-    Edit,
-}
-
-#[derive(Args)]
-struct WorkflowConfigArgs {
-    #[command(subcommand)]
-    command: WorkflowConfigCommands,
-}
-
-#[derive(Subcommand)]
-enum WorkflowConfigCommands {
-    /// Show the canonical workflow config (policy fields, context, rules)
-    Show {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-    /// Set a policy field: locale, spec_locale, tdd, audit
-    Set {
-        /// Policy key
-        key: String,
-        /// Policy value (tdd/audit take true or false)
-        value: String,
-        /// Print the unified diff instead of writing
-        #[arg(long = "dry-run")]
-        dry_run: bool,
-    },
-    /// Replace the project context from stdin (blank input removes it)
-    Context {
-        /// Read the content from stdin
-        #[arg(long)]
-        stdin: bool,
-        /// Print the unified diff instead of writing
-        #[arg(long = "dry-run")]
-        dry_run: bool,
-    },
-    /// Replace one artifact's rule section from stdin (empty input removes it)
-    Rules {
-        /// Artifact id of the active schema (proposal, design, specs, tasks, ...)
-        artifact: String,
-        /// Read the rules from stdin (one per line)
-        #[arg(long)]
-        stdin: bool,
-        /// Print the unified diff instead of writing
-        #[arg(long = "dry-run")]
-        dry_run: bool,
-    },
-}
-
-#[derive(Args)]
-struct CompletionArgs {
-    #[command(subcommand)]
-    command: CompletionCommands,
-}
-
-#[derive(Subcommand)]
-enum CompletionCommands {
-    /// Generate completion script
-    Generate {
-        /// Shell type
-        shell: Option<String>,
-    },
-    /// Install completion
-    Install {
-        /// Shell type
-        shell: Option<String>,
-        /// Verbose output
-        #[arg(long)]
-        verbose: bool,
-    },
-    /// Uninstall completion
-    Uninstall {
-        /// Shell type
-        shell: Option<String>,
-        /// Skip confirmation
-        #[arg(short = 'y', long)]
-        yes: bool,
-    },
-}
-
-#[derive(Args)]
-struct TaskArgs {
-    #[command(subcommand)]
-    command: TaskCommands,
-}
-
-#[derive(Subcommand)]
-enum TaskCommands {
-    /// Mark a task as done and record touched files
-    Done {
-        /// Task ID (1-based sequential index)
-        task_id: String,
-        /// Change name
-        #[arg(long)]
-        change: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-    /// Mark a task as not done (pure state flip, no side effects)
-    Undone {
-        /// Task ID (1-based sequential index)
-        task_id: String,
-        /// Change name
-        #[arg(long)]
-        change: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-}
-
-#[derive(Args)]
-struct InProgressArgs {
-    #[command(subcommand)]
-    command: InProgressCommands,
-}
-
-#[derive(Subcommand)]
-enum InProgressCommands {
-    /// Mark a change as in-progress
-    Add {
-        /// Change name
-        name: String,
-    },
-    /// Remove the in-progress marker — only when the change carries no work
-    /// traces (no checked tasks, no touched records); unknown names error
-    Remove {
-        /// Change name
-        name: String,
-    },
-}
-
-#[derive(Args)]
-struct DiscussArgs {
-    #[command(subcommand)]
-    command: DiscussCommands,
-}
-
-#[derive(Subcommand)]
-enum DiscussCommands {
-    /// Create a new discussion document
-    New {
-        topic: String,
-        /// Override the record slug (ASCII kebab-case); the topic stays verbatim
-        #[arg(long)]
-        slug: Option<String>,
-        /// Mark the record's type (only: improve)
-        #[arg(long)]
-        kind: Option<String>,
-        #[arg(long)]
-        json: bool,
-    },
-    /// List discussions
-    List {
-        /// Show archived discussions instead of live ones
-        #[arg(long)]
-        archived: bool,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Show a discussion document
-    Show { slug: String, #[arg(long)] json: bool },
-    /// Set the discussion's Context section (content from stdin)
-    Context { slug: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
-    /// Append a round to a discussion (content from stdin)
-    #[command(name = "add-round")]
-    AddRound { slug: String, #[arg(long, default_value = "interview")] mode: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
-    /// Conclude a discussion (content from stdin)
-    Conclude { slug: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
-    /// Archive a discussion (move to discussions/archive/<created>-<slug>.md)
-    Archive { slug: String, #[arg(long)] json: bool },
-    /// Discard a live discussion (delete the file; --force required once rounds exist)
-    Discard {
-        slug: String,
-        /// Delete even when the discussion has recorded rounds
-        #[arg(long)]
-        force: bool,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Promote a discussion into a change scaffold (proposal prefilled from the conclusion)
-    Promote {
-        slug: String,
-        /// Change name (defaults to the discussion slug)
-        #[arg(long)]
-        name: Option<String>,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Link a discussion to an existing change (forges the from_discussion chain)
-    Link {
-        slug: String,
-        /// Existing change name to link the discussion to
-        change: String,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Seal a discussion→change reflection: mark the discussion promoted once content has landed
-    Seal {
-        slug: String,
-        /// Change whose from_discussion already includes this discussion
-        change: String,
-        #[arg(long)]
-        json: bool,
-    },
-}
-
-#[derive(Args)]
-struct ReviewArgs {
-    #[command(subcommand)]
-    command: ReviewCommands,
-}
-
-#[derive(Subcommand)]
-enum ReviewCommands {
-    /// Capture the Apply baseline sidecar before the change is marked in-progress
-    Prepare { change: String },
-    /// Resolve and freeze the review scope (--json for the structured payload)
-    Scope {
-        change: String,
-        #[arg(long)]
-        json: bool,
-        /// Trusted fixed point overriding the Apply baseline
-        #[arg(long)]
-        base: Option<String>,
-        /// Candidate identity a hash-pinned hunk selection is anchored to
-        #[arg(long = "candidate-hash")]
-        candidate_hash: Option<String>,
-        /// Hunk id to include (repeatable; requires --candidate-hash)
-        #[arg(long = "include-hunk")]
-        include_hunk: Vec<String>,
-    },
-    /// Append a review round to the change's ticket (content from stdin; creates the ticket on the first round)
-    #[command(name = "add-round")]
-    AddRound {
-        change: String,
-        #[arg(long)]
-        stdin: bool,
-    },
-    /// Print the review ticket (--json for the structured payload)
-    Show {
-        change: String,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Stamp the review: requires all tasks done and an empty must-fix set in the last round (SUGGESTION never blocks)
-    Stamp {
-        change: String,
-        /// Stamp despite outstanding must-fix (CRITICAL/WARNING) findings in the last round
-        #[arg(long)]
-        accept: bool,
-        /// Tool identity recorded as reviewed_with (mirrors `new change --agent`)
-        #[arg(long)]
-        agent: Option<String>,
-    },
-    /// Discard the review ticket without stamping
-    Discard { change: String },
-}
-
-#[derive(Args)]
-struct VerifyArgs {
-    #[command(subcommand)]
-    command: VerifyCommands,
-}
-
-/// 驗證站沒有 `prepare`：Apply baseline 由 apply 流程一次錄下、兩站共用
-/// （design D8），第二個 prepare 只會覆蓋同一份 sidecar。
-#[derive(Subcommand)]
-enum VerifyCommands {
-    /// Resolve and freeze the verify scope (--json for the structured payload)
-    Scope {
-        change: String,
-        #[arg(long)]
-        json: bool,
-        /// Trusted fixed point overriding the Apply baseline
-        #[arg(long)]
-        base: Option<String>,
-        /// Candidate identity a hash-pinned hunk selection is anchored to
-        #[arg(long = "candidate-hash")]
-        candidate_hash: Option<String>,
-        /// Hunk id to include (repeatable; requires --candidate-hash)
-        #[arg(long = "include-hunk")]
-        include_hunk: Vec<String>,
-    },
-    /// Append a verify round to the change's ticket (content from stdin; requires every task done)
-    #[command(name = "add-round")]
-    AddRound {
-        change: String,
-        #[arg(long)]
-        stdin: bool,
-    },
-    /// Print the verify ticket (--json for the structured payload)
-    Show {
-        change: String,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Stamp the verification: requires all tasks done and an empty must-fix set in the last round (SUGGESTION never blocks)
-    Stamp {
-        change: String,
-        /// Stamp despite outstanding must-fix (CRITICAL/WARNING) findings in the last round
-        #[arg(long)]
-        accept: bool,
-        /// Tool identity recorded as verified_with (mirrors `new change --agent`)
-        #[arg(long)]
-        agent: Option<String>,
-    },
-    /// Discard the verify ticket without stamping
-    Discard { change: String },
-}
-
 fn main() -> ExitCode {
     let cli = Cli::parse();
     color::init(cli.no_color);
@@ -874,44 +161,115 @@ fn main() -> ExitCode {
     }
 }
 
-fn read_stdin() -> String {
-    let mut buf = String::new();
-    let _ = std::io::stdin().read_to_string(&mut buf);
-    buf
-}
-
-/// Read stdin for a content-taking discuss verb. Reads when the caller passed `--stdin`
-/// OR stdin is piped/redirected (not an interactive terminal) — so a forgotten `--stdin`
-/// with piped content still lands instead of silently becoming empty. An interactive
-/// terminal with no pipe yields an empty string, which the core content guard rejects
-/// with a helpful message. `--stdin` is kept for back-compat but is no longer required.
-fn read_stdin_content(flag: bool) -> String {
-    if flag || !std::io::stdin().is_terminal() {
-        read_stdin()
-    } else {
-        String::new()
+fn dispatch(cli: Cli) -> Result<()> {
+    warn_deprecated_policy_keys();
+    warn_leftover_remote_file();
+    // 31 個頂層動詞的模式形狀宣告（design D5 分類表）：ModeFree 直呼、Dual
+    // 兩臂必填、FsOnly／RemoteOnly 明寫拒絕。分岔決策只活在這一層。
+    match cli.command {
+        // --- ModeFree：dispatch 不做模式判定；link／unlink／auth 是連線管理，
+        // 不消費模式而是改模式，連線解析自理 ---
+        Commands::Init(a) => cmd_init(a),
+        Commands::Update(a) => cmd_update(a),
+        Commands::Link(a) => cmd_link(a),
+        Commands::Unlink => cmd_unlink(),
+        Commands::Auth(a) => cmd_auth(a),
+        Commands::Schemas(a) => cmd_schemas(a),
+        Commands::Templates(a) => cmd_templates(a),
+        Commands::Feedback(a) => cmd_feedback(a),
+        Commands::Schema(a) => cmd_schema(a),
+        Commands::Config(a) => cmd_config(a),
+        Commands::Completion(a) => cmd_completion(a),
+        // --- Dual：本機臂與 remote 臂皆為必填參數 ---
+        Commands::List(a) => dual(a, cmd_list, |ctx, a| remote_list(ctx, &a)),
+        Commands::Show(a) => dual(a, cmd_show, remote_show),
+        Commands::Validate(a) => dual(a, cmd_validate, |ctx, a| remote_validate(ctx, &a)),
+        Commands::Analyze(a) => dual(a, cmd_analyze, |ctx, a| remote_analyze(ctx, &a)),
+        Commands::Drift(a) => dual(a, cmd_drift, |ctx, a| remote_drift(ctx, &a)),
+        Commands::Archive(a) => dual(a, cmd_archive, |ctx, a| remote_archive(ctx, &a)),
+        Commands::Discard(a) => dual(a, cmd_discard, |ctx, a| remote_discard(ctx, &a)),
+        Commands::Artifact(a) => dual(a, cmd_artifact, remote_artifact),
+        Commands::Language(a) => dual(a, cmd_language, remote_language),
+        Commands::Status(a) => dual(a, cmd_status, |ctx, a| remote_status(ctx, &a)),
+        Commands::Instructions(a) => {
+            // `--skill` 印常數技能文本、不消費 store——檢查先於模式解析（凍結行為）。
+            if let Some(skill) = a.skill.clone() {
+                cmd_instructions_skill(&skill)
+            } else {
+                dual(a, cmd_instructions, |ctx, a| remote_instructions(ctx, &a))
+            }
+        }
+        Commands::New(a) => dual(a, cmd_new, remote_new),
+        Commands::WorkflowConfig(a) => cmd_workflow_config(a), // Dual（宣告於 cmd_workflow_config）
+        Commands::Task(a) => dual(a, cmd_task, remote_task),
+        Commands::InProgress(a) => dual(a, cmd_in_progress, remote_in_progress),
+        Commands::Discuss(a) => dual(a, cmd_discuss, remote_discuss),
+        // review／verify 為 Dual 家族：clap → StationVerb 正規化先行，雙臂
+        // 宣告在家族函式尾端（station_dual；review 的 prepare 自成雙臂）。
+        Commands::Review(a) => cmd_review(a), // Dual（宣告於 station_dual）
+        Commands::Verify(a) => cmd_verify(a), // Dual（宣告於 station_dual）
+        // --- FsOnly：只解析模式、不握手，remote 明寫拒絕 ---
+        Commands::Demo => fs_only(DEMO_REMOTE_REFUSAL, cmd_demo),
+        // --- RemoteOnly：fs 明寫拒絕 ---
+        Commands::Claim(a) => remote_only(a, CLAIM_FS_REFUSAL, |ctx, a| remote_claim(ctx, &a.name)),
     }
 }
 
-fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
-    println!("{}", serde_json::to_string_pretty(v)?);
-    Ok(())
+// --- 模式形狀組合子（dispatch 宣告層）---
+//
+// 每個頂層動詞在 dispatch 表態四種形狀之一（design D1/D2）：ModeFree 直呼
+// （模式解析不觸發）、Dual 兩臂皆為必填參數（缺一臂是編譯錯誤，不是執行期
+// 靜默回退）、FsOnly 只解析模式不握手、RemoteOnly fs 即拒。模式判定惰性
+// 執行：解析與握手都由形狀觸發，remote_ctx() 只從這一層呼叫。
+
+/// Dual：模式解析一次——remote 模式握手後派 remote 臂，fs 模式派本機臂。
+fn dual<A>(
+    a: A,
+    fs_arm: impl FnOnce(A) -> Result<()>,
+    remote_arm: impl FnOnce(&RemoteCtx, A) -> Result<()>,
+) -> Result<()> {
+    match remote_ctx()? {
+        Some(ctx) => remote_arm(&ctx, a),
+        None => fs_arm(a),
+    }
 }
 
-/// Discover the host workspace, or fail with the standard not-initialized error.
-/// A `.speclink.yaml` that exists but cannot parse is its own (fail-closed) error.
-fn require_workspace() -> Result<core::workspace::Workspace> {
-    core::workspace::Workspace::discover_cwd()?
-        .ok_or_else(|| anyhow::anyhow!("Not initialized. Run 'speclink init' to initialize."))
+/// FsOnly：只解析 store 模式、不建立連線——remote 即拒絕（離線同拒、
+/// server 零請求），fs 派本機臂。
+fn fs_only(refusal: &'static str, fs_arm: impl FnOnce() -> Result<()>) -> Result<()> {
+    if let Some(ws) = core::workspace::Workspace::discover_cwd()? {
+        if matches!(
+            speclink_host::context::resolve_store_mode(&ws)?.mode,
+            core::workspace::StoreMode::Remote(_)
+        ) {
+            bail!("{refusal}");
+        }
+    }
+    fs_arm()
 }
 
-/// The CLI assembly point: discover the workspace and build the filesystem
-/// storage adapter for it. Core flows receive the store as `&dyn Store`.
-fn open_project() -> Result<(core::workspace::Workspace, speclink_fs::FsStore)> {
-    let ws = require_workspace()?;
-    let store = speclink_fs::FsStore::new(&ws.root, &ws.spec_dir_name);
-    Ok((ws, store))
+/// RemoteOnly：fs 模式即拒絕、不觸 Store（在非專案目錄也同一句）；remote
+/// 模式握手後派 remote 臂。
+fn remote_only<A>(
+    a: A,
+    refusal: &'static str,
+    remote_arm: impl FnOnce(&RemoteCtx, A) -> Result<()>,
+) -> Result<()> {
+    match remote_ctx()? {
+        Some(ctx) => remote_arm(&ctx, a),
+        None => bail!("{refusal}"),
+    }
 }
 
-include!("commands.rs");
-include!("remote_commands.rs");
+// --- claim ---
+
+// claim 是 remote 生命週期的所有權概念，本機 fs store 沒有 claim 狀態——
+// fs 模式 fail-loud。訊息與 runtime 的 Claim 分支共用同一份 frozen 文字
+// （node dispatch 經該分支）。
+const CLAIM_FS_REFUSAL: &str =
+    "claim requires a remote store — this project uses the local fs store";
+
+// 本質本機動詞：remote 模式明確拒絕（比照 claim 在 fs 的 fail-loud），
+// 由 dispatch 的 fs_only 形狀執行——只判斷連線設定、不走 handshake。
+const DEMO_REMOTE_REFUSAL: &str =
+    "demo is not available in remote mode — it seeds a demo change into a local openspec/ tree";
