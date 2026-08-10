@@ -796,10 +796,10 @@ enum ReviewCommands {
         #[arg(long)]
         json: bool,
     },
-    /// Stamp the review: requires all tasks done and a clean last round
+    /// Stamp the review: requires all tasks done and an empty must-fix set in the last round (SUGGESTION never blocks)
     Stamp {
         change: String,
-        /// Stamp despite unresolved findings in the last round
+        /// Stamp despite outstanding must-fix (CRITICAL/WARNING) findings in the last round
         #[arg(long)]
         accept: bool,
         /// Tool identity recorded as reviewed_with (mirrors `new change --agent`)
@@ -848,10 +848,10 @@ enum VerifyCommands {
         #[arg(long)]
         json: bool,
     },
-    /// Stamp the verification: requires all tasks done and a clean last round
+    /// Stamp the verification: requires all tasks done and an empty must-fix set in the last round (SUGGESTION never blocks)
     Stamp {
         change: String,
-        /// Stamp despite unresolved findings in the last round
+        /// Stamp despite outstanding must-fix (CRITICAL/WARNING) findings in the last round
         #[arg(long)]
         accept: bool,
         /// Tool identity recorded as verified_with (mirrors `new change --agent`)
