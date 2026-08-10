@@ -37,8 +37,8 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Status(a) => dual(a, cmd_status, |ctx, a| remote_status(ctx, &a)),
         Commands::Instructions(a) => {
             // `--skill` 印常數技能文本、不消費 store——檢查先於模式解析（凍結行為）。
-            if a.skill.is_some() {
-                cmd_instructions_skill(a)
+            if let Some(skill) = a.skill.clone() {
+                cmd_instructions_skill(&skill)
             } else {
                 dual(a, cmd_instructions, |ctx, a| remote_instructions(ctx, &a))
             }
@@ -46,17 +46,19 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::New(a) => dual(a, cmd_new, remote_new),
         Commands::WorkflowConfig(a) => {
             // stdin 於 argv 層一次消費（兩模式共用的正規化），先於模式解析——凍結行為。
-            let json = matches!(a.command, WorkflowConfigCommands::Show { json: true });
-            let write = workflow_config_write(&a.command)?;
-            dual((write, json), workflow_config_fs, |ctx, (w, j)| remote_workflow_config(ctx, w, j))
+            let plan = WorkflowConfigPlan {
+                json: matches!(a.command, WorkflowConfigCommands::Show { json: true }),
+                write: workflow_config_write(&a.command)?,
+            };
+            dual(plan, workflow_config_fs, |ctx, p| remote_workflow_config(ctx, p.write, p.json))
         }
         Commands::Task(a) => dual(a, cmd_task, remote_task),
         Commands::InProgress(a) => dual(a, cmd_in_progress, remote_in_progress),
         Commands::Discuss(a) => dual(a, cmd_discuss, remote_discuss),
         // review／verify 為 Dual 家族：clap → StationVerb 正規化先行，雙臂
         // 宣告在家族函式尾端（station_dual；review 的 prepare 自成雙臂）。
-        Commands::Review(a) => cmd_review(a),
-        Commands::Verify(a) => cmd_verify(a),
+        Commands::Review(a) => cmd_review(a), // Dual（宣告於 station_dual）
+        Commands::Verify(a) => cmd_verify(a), // Dual（宣告於 station_dual）
         // --- FsOnly：只解析模式、不握手，remote 明寫拒絕 ---
         Commands::Demo => fs_only(DEMO_REMOTE_REFUSAL, cmd_demo),
         // --- RemoteOnly：fs 明寫拒絕 ---
@@ -1087,8 +1089,7 @@ fn render_status_human(report: &core::status::StatusReport) {
 // --- instructions ---
 
 /// `instructions --skill` 的 ModeFree 路徑：常數技能文本，dispatch 已分流。
-fn cmd_instructions_skill(a: InstructionsArgs) -> Result<()> {
-    let skill = a.skill.as_deref().expect("dispatch routes only --skill here");
+fn cmd_instructions_skill(skill: &str) -> Result<()> {
     let body = core::skills::skill_body(skill)
         .ok_or_else(|| anyhow::anyhow!("Unknown skill: {skill}"))?;
     print!("{body}");
@@ -1601,9 +1602,16 @@ struct WorkflowConfigEdit {
     summary: String,
 }
 
-/// workflow-config 的本機臂：dispatch 正規化後的寫入計畫（或 show）作用於
-/// `<spec_dir>/config.yaml`。
-fn workflow_config_fs((write, json): (Option<(WorkflowConfigWrite, bool)>, bool)) -> Result<()> {
+/// dispatch 正規化後、兩臂共同消費的 workflow-config 執行計畫：`write` 為
+/// 解析完的寫入意圖與其 `--dry-run` 旗標（None＝show），`json` 只屬 show。
+struct WorkflowConfigPlan {
+    write: Option<(WorkflowConfigWrite, bool)>,
+    json: bool,
+}
+
+/// workflow-config 的本機臂：執行計畫作用於 `<spec_dir>/config.yaml`。
+fn workflow_config_fs(plan: WorkflowConfigPlan) -> Result<()> {
+    let WorkflowConfigPlan { write, json } = plan;
     let ws = require_workspace()?;
     let label = format!("{}/config.yaml", ws.spec_dir_name);
     let path = ws.spec_dir().join("config.yaml");
