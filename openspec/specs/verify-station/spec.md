@@ -127,12 +127,17 @@ updated: 2026-08-06
 ---
 ### Requirement: 驗證蓋章守門與蓋章效果
 
-系統 SHALL 提供 `speclink verify stamp <change> [--accept]`，守門與審查站同一條：任務全數完成＋工單末輪零未解 findings，`--accept` SHALL 僅豁免後者。通過時 SHALL 於同一原子寫入內：將 `verified_at`／`verified_by`／`verified_with`／`verified_tasks_total`／`verified_scope` 寫入 `.openspec.yaml` 並刪除 `verify.md`，不得出現「章已寫而工單仍在」的中間狀態；canonical mutation 成功後 SHALL 依「驗證 frozen scope 與續輪 snapshot」清理 verify snapshots。
+系統 SHALL 提供 `speclink verify stamp <change> [--accept]`，守門與審查站同一條：任務全數完成＋工單末輪零未解必修 findings。必修 SHALL 以嚴重度界定：CRITICAL 與 WARNING 級為必修、擋乾淨蓋章；SUGGESTION 級 SHALL NOT 擋章——末輪僅含 SUGGESTION 級 findings 時蓋章照常放行。`--accept` SHALL 僅豁免必修條件。通過時 SHALL 於同一原子寫入內：將 `verified_at`／`verified_by`／`verified_with`／`verified_tasks_total`／`verified_scope` 寫入 `.openspec.yaml` 並刪除 `verify.md`，不得出現「章已寫而工單仍在」的中間狀態；canonical mutation 成功後 SHALL 依「驗證 frozen scope 與續輪 snapshot」清理 verify snapshots。
 
 #### Scenario: 末輪有未解 findings 且未帶 --accept
 
-- **WHEN** 驗證工單末輪含 findings 時執行 `verify stamp`
-- **THEN** exit code 非零，stderr 提示 `--accept` 或先修正重驗
+- **WHEN** 驗證工單末輪含至少一筆 CRITICAL 或 WARNING 級 findings 時執行 `verify stamp`
+- **THEN** exit code 非零，stderr 點名未解必修數並提示 `--accept` 或先修正重驗
+
+#### Scenario: 僅 SUGGESTION 的末輪乾淨蓋章
+
+- **WHEN** 任務全數完成且驗證工單末輪僅含 SUGGESTION 級 findings 時執行 `verify stamp`（無 `--accept`）
+- **THEN** exit code 0，五個 verified 欄位寫入且 `verify.md` 刪除，SUGGESTION 紀錄留在工單的 git 歷史
 
 #### Scenario: 乾淨蓋章
 
@@ -147,8 +152,8 @@ updated: 2026-08-06
 
 
 <!-- @trace
-source: verify-station-parity
-updated: 2026-08-06
+source: stamp-blocking-set-alignment
+updated: 2026-08-10
 -->
 
 ---

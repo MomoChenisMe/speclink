@@ -147,7 +147,7 @@ code:
 ---
 ### Requirement: 蓋章守門與蓋章效果
 
-系統 SHALL 提供 `speclink review stamp <change> [--accept]`。守門條件：(1) change 的任務全數完成；(2) 工單末輪零未解 findings——`--accept` SHALL 僅豁免條件 (2)。守門通過時系統 SHALL 於同一原子寫入內：將 `reviewed_at`／`reviewed_by`／`reviewed_with`／`reviewed_tasks_total`（蓋章時任務總數）／`reviewed_scope`（指紋清單）寫入該 change 的 `.openspec.yaml`，並刪除 `review.md`。不得出現「章已寫入而工單仍存在」的中間狀態。
+系統 SHALL 提供 `speclink review stamp <change> [--accept]`。守門條件：(1) change 的任務全數完成；(2) 工單末輪零未解必修 findings。必修 SHALL 以嚴重度界定：CRITICAL 與 WARNING 級為必修、擋乾淨蓋章；SUGGESTION 級 SHALL NOT 擋章——末輪僅含 SUGGESTION 級 findings 時蓋章照常放行。`--accept` SHALL 僅豁免條件 (2) 的必修部分。守門通過時系統 SHALL 於同一原子寫入內：將 `reviewed_at`／`reviewed_by`／`reviewed_with`／`reviewed_tasks_total`（蓋章時任務總數）／`reviewed_scope`（指紋清單）寫入該 change 的 `.openspec.yaml`，並刪除 `review.md`。不得出現「章已寫入而工單仍存在」的中間狀態。
 
 #### Scenario: 任務未全完成即拒絕
 
@@ -156,12 +156,17 @@ code:
 
 #### Scenario: 末輪有未解 findings 且未帶 --accept
 
-- **WHEN** 工單末輪含至少一筆 findings 且執行 `review stamp`（無 `--accept`）
-- **THEN** exit code 非零，stderr 說明有未解事項並提示 `--accept` 或先修正重審
+- **WHEN** 工單末輪含至少一筆 CRITICAL 或 WARNING 級 findings 且執行 `review stamp`（無 `--accept`）
+- **THEN** exit code 非零，stderr 點名未解必修數並提示 `--accept` 或先修正重審
+
+#### Scenario: 僅 SUGGESTION 的末輪乾淨蓋章
+
+- **WHEN** 任務全數完成且工單末輪僅含 SUGGESTION 級 findings 時執行 `review stamp`（無 `--accept`）
+- **THEN** exit code 0，五個 reviewed 欄位寫入且 `review.md` 刪除，SUGGESTION 紀錄留在工單的 git 歷史
 
 #### Scenario: 帶保留蓋章
 
-- **WHEN** 同上情境但帶 `--accept`
+- **WHEN** 工單末輪含必修 findings 且執行 `review stamp --accept`
 - **THEN** exit code 0，章寫入且工單刪除
 
 #### Scenario: 乾淨蓋章
@@ -177,71 +182,8 @@ code:
 
 
 <!-- @trace
-source: code-review-stage
-updated: 2026-08-02
-code:
-  - AGENTS.md
-  - CLAUDE.md
-  - README.en.md
-  - README.md
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/review_verbs.rs
-  - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/src/util.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/read_api.rs
-  - crates/speclink-server/tests/review_api.rs
-  - packages/ui/src/__tests__/reviewBadge.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ReviewArchiveDialog.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/reviewStyle.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+source: stamp-blocking-set-alignment
+updated: 2026-08-10
 -->
 
 ---
