@@ -30,9 +30,11 @@ pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, str
             .read_artifact(&change.name, &model::delta_spec_artifact(cap))
             .unwrap_or_default();
         if !model::has_delta_operation(&text) {
+            // 訊息裡的路徑是邏輯路徑（openspec 相對），凍結的正典形式是正斜線；
+            // Windows 的 PathBuf::join 會補反斜線，渲染時統一回正斜線。
             errors.push(format!(
                 "{}: Parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)",
-                spec_path.to_string_lossy()
+                spec_path.to_string_lossy().replace('\\', "/")
             ));
         }
         // Duplicate requirement names are hard errors: the same
@@ -41,7 +43,8 @@ pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, str
         let rel = spec_path
             .strip_prefix(&change.dir)
             .map(|p| p.display().to_string())
-            .unwrap_or_else(|_| spec_path.to_string_lossy().to_string());
+            .unwrap_or_else(|_| spec_path.to_string_lossy().to_string())
+            .replace('\\', "/");
         let mut section = "";
         let mut seen_in: Vec<(String, Vec<&str>)> = Vec::new(); // name -> sections (ordered)
         let mut reported_dup: Vec<(String, &str)> = Vec::new();
