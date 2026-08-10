@@ -11,6 +11,7 @@ import { LABEL_CLS } from "./SectionedDoc";
 import { discussionChipStage } from "./DiscussionColumn";
 import { ImproveChip } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
+import { useCopied } from "./useCopied";
 
 /** 討論記錄的三個標準區段。 */
 export interface DiscussionSections {
@@ -263,13 +264,12 @@ export function DiscussionDrawer({
 }: DiscussionDrawerProps) {
   const { t } = useI18n();
   const [doc, setDoc] = useState<string | null | undefined>();
-  const [copied, setCopied] = useState(false);
+  const [copied, markCopied] = useCopied();
   const slug = discussion?.slug ?? null;
   const copySlug = () => {
     if (!slug) return;
     void navigator.clipboard?.writeText(slug);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+    markCopied();
   };
   const gen = refreshGen ?? 0;
   // latest-wins：回應帶發起序號，落後即丟棄（涵蓋世代與換討論的交錯）。

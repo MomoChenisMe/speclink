@@ -1,8 +1,8 @@
-import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
 import { Button } from "./ui/button";
 import { HighlightText } from "./HighlightText";
+import { useCopied } from "./useCopied";
 
 /**
  * 看板全尺寸卡的識別列名稱＋複製鈕（spec「看板卡片統一解剖學」：標題恆單行、
@@ -19,12 +19,11 @@ export function CardNameRow({
   copyLabel: string;
   highlight?: string;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, markCopied] = useCopied();
   const copy = (e: React.MouseEvent) => {
     e.stopPropagation();
     void navigator.clipboard?.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+    markCopied();
   };
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1">
