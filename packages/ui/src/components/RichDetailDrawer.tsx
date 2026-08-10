@@ -34,6 +34,7 @@ import { AnalyzePanel } from "./AnalyzePanel";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./reviewStyle";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE, type VerifyBadgeStatus } from "./verifyStyle";
 import { setTaskMark } from "../tasks";
+import { useCopied } from "./useCopied";
 
 export interface RichDetailDrawerProps {
   open: boolean;
@@ -174,7 +175,7 @@ export function RichDetailDrawer({
   const [design, setDesign] = useState<Doc>();
   const [tasksMd, setTasksMd] = useState<Doc>();
   const [specDocs, setSpecDocs] = useState<Record<string, string | null>>({});
-  const [copied, setCopied] = useState(false);
+  const [copied, markCopied] = useCopied();
   const [full, setFull] = useState(false);
   // 批次操作／拖放寫回進行中——鎖工具列與清單（design D4 例外）。單發勾選不設此旗標。
   const [taskBusy, setTaskBusy] = useState(false);
@@ -249,8 +250,7 @@ export function RichDetailDrawer({
 
   const copyName = () => {
     void navigator.clipboard?.writeText(change.name);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+    markCopied();
   };
 
   // 勾選走樂觀更新（design D3）：本地先翻轉 tasksMd 立即反映，再發寫回；失敗

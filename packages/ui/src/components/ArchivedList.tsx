@@ -13,6 +13,7 @@ import type { ArchivedTarget } from "./ArchivedDrawer";
 import { ImproveStamp } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { ListPager, PAGE_SIZE } from "./ListPager";
+import { useCopied } from "./useCopied";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
 
@@ -20,12 +21,11 @@ import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
  * 點擊不冒泡（不開抽屜）。 */
 function CopyButton({ value, label }: { value: string; label: string }) {
   const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
+  const [copied, markCopied] = useCopied();
   const copy = (e: React.MouseEvent) => {
     e.stopPropagation();
     void navigator.clipboard?.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+    markCopied();
   };
   return (
     <span

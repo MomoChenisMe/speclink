@@ -22,6 +22,7 @@ import { HighlightText } from "./HighlightText";
 import { ImproveStamp } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { useCopied } from "./useCopied";
 
 /**
  * promoted_to 子變更的階段標示（純前端由清單存在性派生）——active 清單命中
@@ -205,12 +206,11 @@ function PromotedRow({
   onOpenDiscussion,
 }: { d: DiscussionItem } & Pick<DiscussionColumnProps, "changes" | "archived" | "onOpenDiscussion">) {
   const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
+  const [copied, markCopied] = useCopied();
   const copySlug = (e: React.MouseEvent) => {
     e.stopPropagation();
     void navigator.clipboard?.writeText(d.slug);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+    markCopied();
   };
   // 衍生樹細列：slug（檔名）為首行錨點——CLI 動詞把手，帶複製鈕（LANGUAGE.md
   // 受控例外，desktop-ux-polish 擴充）；topic 降為次行描述；子變更以樹狀前綴

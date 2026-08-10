@@ -9,19 +9,19 @@ import { SEMANTIC_TONE } from "../tone";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { ListPager, PAGE_SIZE } from "./ListPager";
+import { useCopied } from "./useCopied";
 
 /** 規格卡（spec-archive-drawer design D7）：標題＋複製鈕成群組、meta（需求數、
  * 溯源變更數、相對修改時間）靠右；第二列 Purpose 摘要一行截斷，佔位時改顯
  * 琥珀「Purpose 待補」警示。點整列開唯讀規格抽屜，無行內展開。 */
 function SpecCard({ item, onOpen }: { item: SpecItem; onOpen: (capability: string) => void }) {
   const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
+  const [copied, markCopied] = useCopied();
 
   const copy = (e: React.MouseEvent) => {
     e.stopPropagation();
     void navigator.clipboard?.writeText(item.id);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+    markCopied();
   };
 
   const rel = relativeDays(item.modifiedAt, t);
