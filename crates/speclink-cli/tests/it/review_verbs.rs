@@ -249,7 +249,7 @@ fn stamp_refuses_findings_without_accept_then_accepts() {
     assert!(!refused.status.success());
     let err = stderr_of(&refused);
     assert!(err.contains("--accept"), "hint: {err}");
-    assert!(err.contains("1 unresolved must-fix"), "stderr names the must-fix count: {err}");
+    assert!(err.contains("1 outstanding must-fix"), "stderr names the must-fix count: {err}");
     assert!(err.contains("CRITICAL/WARNING"), "stderr names the blocking severities: {err}");
     let accepted = p.run(&["review", "stamp", "demo", "--accept"]);
     assert!(accepted.status.success(), "stderr: {}", stderr_of(&accepted));
@@ -263,10 +263,13 @@ fn stamp_allows_a_suggestion_only_round() {
     // 無 --accept 也放行——exit 0、五欄寫入、工單刪除。
     let p = TempProject::with_change("stamp-suggestion", TASKS_DONE);
     p.run_stdin(&["review", "add-round", "demo", "--stdin"], SUGGESTION_ROUND);
-    let out = p.run(&["review", "stamp", "demo"]);
+    let out = p.run(&["review", "stamp", "demo", "--agent", "claude"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert!(!p.ticket_path().exists(), "ticket deleted by the stamp");
-    assert!(p.meta().contains("reviewed_at: "), "meta: {}", p.meta());
+    let meta = p.meta();
+    for key in ["reviewed_at: ", "reviewed_tasks_total: ", "reviewed_scope:", "reviewed_with: "] {
+        assert!(meta.contains(key), "missing {key}: {meta}");
+    }
 }
 
 #[test]

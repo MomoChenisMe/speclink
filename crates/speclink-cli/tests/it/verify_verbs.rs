@@ -323,7 +323,7 @@ fn stamp_refuses_findings_without_accept_then_accepts() {
     let err = stderr_of(&refused);
     assert!(err.contains("--accept"), "stderr offers --accept: {err}");
     assert!(err.contains("re-verify"), "station word is the verify one: {err}");
-    assert!(err.contains("1 unresolved must-fix"), "stderr names the must-fix count: {err}");
+    assert!(err.contains("1 outstanding must-fix"), "stderr names the must-fix count: {err}");
     assert!(err.contains("CRITICAL/WARNING"), "stderr names the blocking severities: {err}");
     assert!(p.ticket_path().exists(), "ticket survives the refusal");
 
@@ -339,10 +339,13 @@ fn stamp_allows_a_suggestion_only_round() {
     // 無 --accept 也放行——exit 0、五欄寫入、工單刪除。
     let p = TempProject::with_change("stamp-suggestion", TASKS_DONE);
     p.run_stdin(&["verify", "add-round", "demo", "--stdin"], SUGGESTION_ROUND);
-    let out = p.run(&["verify", "stamp", "demo"]);
+    let out = p.run(&["verify", "stamp", "demo", "--agent", "claude"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert!(!p.ticket_path().exists(), "ticket deleted by the stamp");
-    assert!(p.meta().contains("verified_at"), "{}", p.meta());
+    let meta = p.meta();
+    for key in ["verified_at:", "verified_tasks_total:", "verified_scope:", "verified_with:"] {
+        assert!(meta.contains(key), "missing {key}: {meta}");
+    }
 }
 
 #[test]

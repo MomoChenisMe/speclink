@@ -23,7 +23,7 @@
 
 **D2 — 守門計數改為過濾 SUGGESTION，落點只在 station.rs 的共用 gate。** 兩站共用同一段守門（stamp gate 的條件 (2)），改一處兩站同時生效；local 與 remote 路徑都經同一引擎函式，無平行實作（回歸對照 crates/speclink-cli/tests/it/remote_verb_parity.rs 不受影響——動詞介面與 `--json` shape 皆不變）。帶 `(accepted)` token 的行不另設豁免：它的 severity 是必修級就照樣擋、要 `--accept`；是 SUGGESTION 級就本來不擋（新流程下 SUGGESTION 不再進入接受機制，此情況僅出現於舊工單）。
 
-**D3 — 拒絕訊息點名必修數量。** stderr 從「N unresolved finding(s)」改為點名未解必修數（例：`the last round has N unresolved must-fix finding(s) (CRITICAL/WARNING)`），提示語維持「先修正重驗或 `--accept`」。SUGGESTION 不再出現在拒絕理由裡。
+**D3 — 拒絕訊息點名必修數量。** stderr 從「N unresolved finding(s)」改為點名待處理必修數（例：`the last round has N outstanding must-fix finding(s) (CRITICAL/WARNING)`），提示語維持「先修正重驗或 `--accept`」。SUGGESTION 不再出現在拒絕理由裡。用 outstanding 而非 unresolved：計數含帶 `(accepted)` 的必修行（D2——接受不豁免守門），已裁決未修者不宜稱 unresolved。
 
 **D4 — 技能側的詢問門檻同步收窄。** 三選項詢問（修正後重審／接受現狀蓋章／先不蓋章）僅在必修 findings 存在時觸發；僅 SUGGESTION 的輪由技能直接乾淨蓋章（單站直接呼叫）或照舊「先不蓋章」離場（quality 時序中）。接受機制（`(accepted)` token＋`--accept`）收窄為必修級專用。quality 的帶保留章定義同步收窄：僅使用者裁示不修的必修構成保留。
 

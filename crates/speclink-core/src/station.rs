@@ -319,9 +319,10 @@ pub fn stamp_with_scope(
     write_stamp(st, store, change, &gate, actor, tool, &entries)
 }
 
-/// 蓋章（spec「蓋章守門與蓋章效果」）：守門＝任務全完成＋末輪零未解 findings
-/// （`accept` 僅豁免後者）；通過時以工單各輪 Scope 聯集計算指紋，於同一原子
-/// 寫入內落五個站別欄位並刪除工單。`read_file` 供指紋計算讀取 repo-root 相對
+/// 蓋章（spec「蓋章守門與蓋章效果」）：守門＝任務全完成＋末輪零待處理必修
+/// （CRITICAL／WARNING）findings，SUGGESTION 不擋章（`accept` 僅豁免必修條件）；
+/// 通過時以工單各輪 Scope 聯集計算指紋，於同一原子寫入內落五個站別欄位並刪除
+/// 工單。`read_file` 供指紋計算讀取 repo-root 相對
 /// 路徑的檔案內容（remote 模式亦讀本地工作樹）；`file_exists` 判定聯集檔案是否
 /// 仍在工作樹——修正可能刪除／改名早輪檢查過的檔，死檔跳過不入錨（無從指紋也
 /// 無從再變動），存在但讀不到者仍 fail-closed。
@@ -415,17 +416,18 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
             st.noun
         )));
     }
-    // 守門 (2)：末輪零未解必修（CRITICAL／WARNING）findings；SUGGESTION 不擋章；
-    // `--accept` 僅豁免此條。
-    let unresolved = ticket
+    // 守門 (2)：末輪零待處理必修（CRITICAL／WARNING）findings；SUGGESTION 不擋章；
+    // `--accept` 僅豁免此條。計數含帶 `(accepted)` 的必修行（design D2：接受不豁免
+    // 守門，只改走 `--accept`），故訊息用 outstanding 而非 unresolved。
+    let outstanding = ticket
         .last_round()
         .findings
         .iter()
         .filter(|f| f.severity != Severity::Suggestion)
         .count();
-    if unresolved > 0 && !accept {
+    if outstanding > 0 && !accept {
         bail!(crate::command::Refusal(format!(
-            "the last round has {unresolved} unresolved must-fix finding(s) (CRITICAL/WARNING) \
+            "the last round has {outstanding} outstanding must-fix finding(s) (CRITICAL/WARNING) \
              — fix and {}, or pass --accept to stamp with reservations",
             st.recheck
         )));
@@ -737,4 +739,67 @@ fn build_round(st: &Station, index: usize, body: &str) -> Result<Round> {
         scope: body.scope,
         findings: body.findings,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    //! 共用蓋章守門的分界測試（design D2：改一處兩站同時生效）——站別 wiring
+    //! 與五欄寫入由 review／verify 各自的測試模組覆蓋。
+    use super::*;
+    use crate::teststore::TestStore;
+    use crate::verify::STATION;
+
+    const META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
+    const REPO: &[(&str, &str)] = &[("crates/a/src/lib.rs", "fn a() {}\n")];
+
+    fn store_with_round(round: &str) -> TestStore {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [x] 1 a\n");
+        add_round(&STATION, &store, "demo", round).expect("round recorded");
+        store
+    }
+
+    fn stamp_demo(store: &TestStore, accept: bool) -> Result<()> {
+        let files = |p: &str| REPO.iter().find(|(k, _)| *k == p).map(|(_, v)| v.to_string());
+        let present = |p: &str| REPO.iter().any(|(k, _)| *k == p);
+        stamp(&STATION, store, "demo", accept, None, None, &files, &present)
+    }
+
+    #[test]
+    fn gate_ignores_suggestion_findings() {
+        // 守門 (2) 的分界：SUGGESTION 不是必修，僅 SUGGESTION 的末輪放行。
+        let store = store_with_round(
+            "**Scope**: crates/a/src/lib.rs\n\n- [SUGGESTION] crates/a/src/lib.rs — nit\n",
+        );
+        stamp_demo(&store, false).expect("suggestion-only last round must pass the gate");
+    }
+
+    #[test]
+    fn gate_counts_only_must_fix_and_names_the_count() {
+        // 混合輪：CRITICAL＋WARNING＋SUGGESTION → 計數 2（SUGGESTION 不計），
+        // 訊息點名數量與阻斷級別。
+        let store = store_with_round(
+            "**Scope**: crates/a/src/lib.rs\n\n\
+             - [CRITICAL] crates/a/src/lib.rs — broken\n\
+             - [WARNING] crates/a/src/lib.rs — fragile\n\
+             - [SUGGESTION] crates/a/src/lib.rs — nit\n",
+        );
+        let err = stamp_demo(&store, false).expect_err("must-fix findings must refuse");
+        let msg = err.to_string();
+        assert!(msg.contains("2 outstanding must-fix"), "count skips SUGGESTION: {msg}");
+        assert!(msg.contains("(CRITICAL/WARNING)"), "names the blocking severities: {msg}");
+    }
+
+    #[test]
+    fn gate_counts_accepted_must_fix_lines_too() {
+        // design D2：`(accepted)` 不另設豁免——已受理必修照樣擋乾淨章、`--accept`
+        // 才放行；訊息以 outstanding（而非 unresolved）涵蓋已裁決未修者。
+        let store = store_with_round(
+            "**Scope**: crates/a/src/lib.rs\n\n\
+             - [WARNING] crates/a/src/lib.rs — fragile (accepted)\n",
+        );
+        let err = stamp_demo(&store, false).expect_err("accepted must-fix still blocks");
+        assert!(err.to_string().contains("1 outstanding must-fix"), "{err}");
+        stamp_demo(&store, true).expect("--accept stamps over accepted must-fix");
+    }
 }

@@ -331,38 +331,19 @@ mod tests {
     #[test]
     fn stamp_allows_a_suggestion_only_last_round() {
         // spec Scenario「僅 SUGGESTION 的末輪乾淨蓋章」：SUGGESTION 不是必修，
-        // 無 --accept 也放行——五欄寫入且工單刪除。
+        // 無 --accept 也放行——五欄寫入且工單刪除。分界計數本身歸
+        // station.rs 的守門測試；這裡釘站別 wiring 與蓋章效果。
         let store = store_with_change();
         store.put_artifact("demo", "tasks.md", TASKS_5_DONE);
         add_round(&store, "demo", SUGGESTION_ROUND).expect("suggestion-only round");
         stamp_demo(&store, false).expect("suggestion-only round must stamp clean");
         assert!(!store.artifact_exists("demo", REVIEW_DOC), "ticket must be deleted");
         let meta = ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta parses");
-        assert!(meta.reviewed_at.is_some());
-    }
-
-    #[test]
-    fn stamp_refusal_names_the_must_fix_count() {
-        // spec Scenario「末輪有未解 findings 且未帶 --accept」（delta）：stderr 點名
-        // 未解必修數——ROUND_1 含 CRITICAL＋SUGGESTION，必修數為 1、SUGGESTION 不計入。
-        let store = store_with_change();
-        store.put_artifact("demo", "tasks.md", TASKS_5_DONE);
-        add_round(&store, "demo", ROUND_1).expect("round with findings");
-        let err = stamp_demo(&store, false).expect_err("must-fix findings must refuse");
-        let msg = err.to_string();
-        assert!(msg.contains("1 unresolved must-fix"), "must name the must-fix count: {msg}");
-        assert!(msg.contains("CRITICAL/WARNING"), "must name the blocking severities: {msg}");
-    }
-
-    #[test]
-    fn stamp_refuses_a_warning_only_last_round() {
-        // WARNING 是必修級：僅 WARNING 的末輪照樣擋乾淨章。
-        let store = store_with_change();
-        store.put_artifact("demo", "tasks.md", TASKS_5_DONE);
-        add_round(&store, "demo", ROUND_2).expect("warning-only round");
-        let err = stamp_demo(&store, false).expect_err("warning must refuse");
-        assert!(err.to_string().contains("--accept"), "error must offer --accept: {err}");
-        assert!(store.artifact_exists("demo", REVIEW_DOC), "ticket must survive refusal");
+        assert_eq!(meta.reviewed_at.as_deref(), Some(crate::util::today().as_str()));
+        assert_eq!(meta.reviewed_by.as_deref(), Some("Rev <r@example.com>"));
+        assert_eq!(meta.reviewed_with.as_deref(), Some("claude"));
+        assert_eq!(meta.reviewed_tasks_total, Some(5));
+        assert!(!meta.reviewed_scope.is_empty(), "scope fingerprints must be recorded");
     }
 
     #[test]
