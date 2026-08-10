@@ -4,7 +4,7 @@
 //! filesystem 與 Remote Store 兩條 init 共用同一個工具解析入口：顯式 `--tools`
 //! 直接採用，缺旗標且 stdin 非互動終端時在任何寫入之前以非零 exit code 失敗。
 //! `Command::output()` 的 stdin 是 /dev/null（非終端），因此本檔覆蓋的正是非互動
-//! 路徑；互動 prompt 的單選／雙選／全否重試由 `commands.rs` 的單元測試覆蓋。
+//! 路徑；互動 prompt 的單選／雙選／全否重試由 `verbs/init.rs` 的單元測試覆蓋。
 //!
 //! Credential isolation: 每次執行都把 USERPROFILE/HOME/XDG_CONFIG_HOME 指到
 //! 拋棄式 "home"，測試絕不碰到真實使用者的憑證檔。

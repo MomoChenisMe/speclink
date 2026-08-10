@@ -1,0 +1,162 @@
+{
+  "version": 2,
+  "change": "cli-verb-family-modules",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 新增 `crates/speclink-cli/src/common.rs`：自 commands.rs 與 main.rs 遷入 run_command、print_json、read_stdin、read_stdin_content、require_workspace、open_project、info_if_no_changes、warn_deprecated_policy_keys、warn_leftover_remote_file；main.rs 宣告 mod common 並暫掛 use common::* 過渡（讓仍在 include! 內的呼叫點不需逐點改路徑，收官任務移除）。行為：無任何輸出變化。驗證：cargo build -p speclink-cli 零 warning，cargo test -p speclink-cli --test it 全綠且 crates/speclink-cli/tests/ 零修改。",
+      "files": [
+        "crates/speclink-cli/src/commands.rs",
+        "crates/speclink-cli/src/main.rs",
+        "crates/speclink-cli/src/common.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 新增 `crates/speclink-cli/src/remote_base.rs`：自 remote_commands.rs 遷入 RemoteCtx、remote_ctx、remote_resolve_change；main.rs 宣告 mod remote_base 並暫掛過渡 use。驗證：同 1.1 三項。",
+      "files": [
+        "crates/speclink-cli/src/remote_commands.rs",
+        "crates/speclink-cli/src/remote_base.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 新增 `crates/speclink-cli/src/verbs/mod.rs`（依 repo 目錄模組慣例）與 `crates/speclink-cli/src/verbs/toolchain.rs`、`crates/speclink-cli/src/verbs/documents.rs`、`crates/speclink-cli/src/verbs/checks.rs`。每族同式：自 main.rs 遷該族 clap Args／Subcommand 型別，自 commands.rs 遷 cmd_* fs 臂、渲染與族內私有 helper（toolchain 收 completion_shell、bash_inject_positionals、cmd_demo；documents 收 artifact_rel_path；checks 收 render_validate_results、render_analyze、render_drift），自 remote_commands.rs 遷 remote_* 臂（documents 另收 remote_artifact_cat）；main.rs 的 Commands enum 與 dispatch 表改以 verbs:: 路徑引用；族檔對外僅 pub(crate) 臂函式與 clap 型別，其餘私有。行為：無任何輸出變化。驗證：cargo build -p speclink-cli 零 warning，cargo test -p speclink-cli --test it 全綠且 crates/speclink-cli/tests/ 零修改。",
+      "files": [
+        "crates/speclink-cli/src/verbs/checks.rs",
+        "crates/speclink-cli/src/verbs/documents.rs",
+        "crates/speclink-cli/src/verbs/mod.rs",
+        "crates/speclink-cli/src/verbs/toolchain.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "3.1 新增 `crates/speclink-cli/src/verbs/query.rs`（list、show、status：收 render_list 與 invalid 標記渲染、render_specs_section、to_list_change_json、remote_list_outcome、render_show、remote_show_outcome、to_status_report、render_status_human）、`crates/speclink-cli/src/verbs/lifecycle.rs`（archive、discard、claim：收 print_archive_outcome、cmd_archive_bulk、to_archive_outcome、render_discard、remote_claim；claim 與 demo 的拒絕常數屬 dispatch 宣告層，不入族檔，由 6.1 遷 main.rs）、`crates/speclink-cli/src/verbs/progress.rs`（task、in-progress：收 TaskFlip、TaskIdentity、render_task_flip、render_in_progress_remove、remote_task_done、remote_task_undone）。遷移步驟與可見性規則同 2.1。驗證：同 2.1 三項。",
+      "files": [
+        "crates/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/speclink-cli/src/verbs/progress.rs",
+        "crates/speclink-cli/src/verbs/query.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "4.1 新增 `crates/speclink-cli/src/verbs/init.rs`（收 cmd_init、resolve_init_tools、prompt_for_tools、ask_yes_no、cmd_update、cmd_init_remote 與內嵌測試模組 init_tools_tests——use super 語意隨真模組指向族檔，符號集不變）、`crates/speclink-cli/src/verbs/connection.rs`（收現住 remote_commands.rs 的 cmd_link、cmd_unlink、cmd_auth、login_with_pat、login_with_device、CliDeviceIo、cmd_auth_logout、print_identity、ensure_repo_registered、validate_or_defer、git_reference_warning 全段）、`crates/speclink-cli/src/verbs/new.rs`（收 cmd_new、cmd_new_change、NewChangeLines、render_new_change、cmd_new_artifact、remote_new、remote_new_change、remote_new_artifact、remote_artifact_path）、`crates/speclink-cli/src/verbs/instructions.rs`（收 cmd_instructions、cmd_instructions_skill、render_artifact_human、render_apply_human、remote_instructions、to_apply_instructions、to_artifact_instructions、VerbContextProvider、point_context_files_at_projection）。遷移步驟與可見性規則同 2.1。驗證：同 2.1 三項。",
+      "files": [
+        "crates/speclink-cli/src/verbs/connection.rs",
+        "crates/speclink-cli/src/verbs/init.rs",
+        "crates/speclink-cli/src/verbs/instructions.rs",
+        "crates/speclink-cli/src/verbs/new.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "5.1 新增 `crates/speclink-cli/src/verbs/config.rs`（config、workflow-config：收 cmd_config、global_config_path、load_global_map、save_global_map、scalar_str、WorkflowConfig 系列型別、workflow_config_fs、workflow_config_write、plan_workflow_config_edit、require_stdin_flag、print_workflow_config、unified_diff、hunk_range、remote_workflow_config、REMOTE_CONFIG_LABEL、remote_config_write_error）、`crates/speclink-cli/src/verbs/discuss.rs`（收 cmd_discuss、DiscussBind、NewDiscussionLines、render_discuss_new_human、render_discuss_list、render_discuss_show、remote_discuss、to_discussion_info）、`crates/speclink-cli/src/verbs/station.rs`（review、verify：收 cmd_review、cmd_verify、station_dual、review_prepare_fs、station_fs、StationAction、render_station_action、render_station_show、attribution_breakdown、clear_snapshots_warning、scope_needs_input_message、patch_hash_chain 與內嵌測試模組 patch_hash_chain_tests、remote_review_prepare、remote_station、to_station_ticket、to_station_round、unknown_ticket_token）。遷移步驟與可見性規則同 2.1。驗證：同 2.1 三項。",
+      "files": [
+        "crates/speclink-cli/src/verbs/config.rs",
+        "crates/speclink-cli/src/verbs/discuss.rs",
+        "crates/speclink-cli/src/verbs/station.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "6.1 dispatch 表、dual／fs_only／remote_only 模式組合子與宣告層拒絕常數（CLAIM_FS_REFUSAL、DEMO_REMOTE_REFUSAL）自 commands.rs 遷入 main.rs；刪除 `crates/speclink-cli/src/commands.rs`、`crates/speclink-cli/src/remote_commands.rs` 與 main.rs 尾端兩行 include!；移除 1.1／1.2 的過渡 use common::* 型 glob import，main.rs 與各族檔全部改明確 use 路徑。行為：無任何輸出變化。驗證：cargo build -p speclink-cli 零 warning，cargo test -p speclink-cli --test it 全綠。",
+      "files": [
+        "crates/speclink-cli/tests/it/init_tools.rs",
+        "crates/speclink-cli/tests/it/no_raw_wire_json.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZMRXK3D82AEW4R8097XSHKD",
+      "taskDesc": "1.1 新增 `crates/speclink-cli/src/common.rs`：自 commands.rs 與 main.rs 遷入 run_command、print_json、read_stdin、read_stdin_content、require_workspace、open_project、info_if_no_changes、warn_deprecated_policy_keys、warn_leftover_remote_file；main.rs 宣告 mod common 並暫掛 use common::* 過渡（讓仍在 include! 內的呼叫點不需逐點改路徑，收官任務移除）。行為：無任何輸出變化。驗證：cargo build -p speclink-cli 零 warning，cargo test -p speclink-cli --test it 全綠且 crates/speclink-cli/tests/ 零修改。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b067c9d02d22ec2f88a67025f182c221bb7205ba",
+      "touchedFiles": [
+        "crates/speclink-cli/src/commands.rs",
+        "crates/speclink-cli/src/main.rs",
+        "crates/speclink-cli/src/common.rs"
+      ],
+      "recordedAt": "2026-08-10T03:00:48Z"
+    },
+    {
+      "taskId": "tsk_01KZMRXK3EZE6GBSREAPHG188F",
+      "taskDesc": "1.2 新增 `crates/speclink-cli/src/remote_base.rs`：自 remote_commands.rs 遷入 RemoteCtx、remote_ctx、remote_resolve_change；main.rs 宣告 mod remote_base 並暫掛過渡 use。驗證：同 1.1 三項。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b067c9d02d22ec2f88a67025f182c221bb7205ba",
+      "touchedFiles": [
+        "crates/speclink-cli/src/remote_commands.rs",
+        "crates/speclink-cli/src/remote_base.rs"
+      ],
+      "recordedAt": "2026-08-10T03:02:13Z"
+    },
+    {
+      "taskId": "tsk_01KZMRXK3EQDHGF6X34VTSVERY",
+      "taskDesc": "2.1 新增 `crates/speclink-cli/src/verbs/mod.rs`（依 repo 目錄模組慣例）與 `crates/speclink-cli/src/verbs/toolchain.rs`、`crates/speclink-cli/src/verbs/documents.rs`、`crates/speclink-cli/src/verbs/checks.rs`。每族同式：自 main.rs 遷該族 clap Args／Subcommand 型別，自 commands.rs 遷 cmd_* fs 臂、渲染與族內私有 helper（toolchain 收 completion_shell、bash_inject_positionals、cmd_demo；documents 收 artifact_rel_path；checks 收 render_validate_results、render_analyze、render_drift），自 remote_commands.rs 遷 remote_* 臂（documents 另收 remote_artifact_cat）；main.rs 的 Commands enum 與 dispatch 表改以 verbs:: 路徑引用；族檔對外僅 pub(crate) 臂函式與 clap 型別，其餘私有。行為：無任何輸出變化。驗證：cargo build -p speclink-cli 零 warning，cargo test -p speclink-cli --test it 全綠且 crates/speclink-cli/tests/ 零修改。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b067c9d02d22ec2f88a67025f182c221bb7205ba",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/checks.rs",
+        "crates/speclink-cli/src/verbs/documents.rs",
+        "crates/speclink-cli/src/verbs/mod.rs",
+        "crates/speclink-cli/src/verbs/toolchain.rs"
+      ],
+      "recordedAt": "2026-08-10T03:07:30Z"
+    },
+    {
+      "taskId": "tsk_01KZMRXK3ERWQGAV81PJHBJKP1",
+      "taskDesc": "3.1 新增 `crates/speclink-cli/src/verbs/query.rs`（list、show、status：收 render_list 與 invalid 標記渲染、render_specs_section、to_list_change_json、remote_list_outcome、render_show、remote_show_outcome、to_status_report、render_status_human）、`crates/speclink-cli/src/verbs/lifecycle.rs`（archive、discard、claim：收 print_archive_outcome、cmd_archive_bulk、to_archive_outcome、render_discard、remote_claim；claim 與 demo 的拒絕常數屬 dispatch 宣告層，不入族檔，由 6.1 遷 main.rs）、`crates/speclink-cli/src/verbs/progress.rs`（task、in-progress：收 TaskFlip、TaskIdentity、render_task_flip、render_in_progress_remove、remote_task_done、remote_task_undone）。遷移步驟與可見性規則同 2.1。驗證：同 2.1 三項。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b067c9d02d22ec2f88a67025f182c221bb7205ba",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/speclink-cli/src/verbs/progress.rs",
+        "crates/speclink-cli/src/verbs/query.rs"
+      ],
+      "recordedAt": "2026-08-10T03:10:29Z"
+    },
+    {
+      "taskId": "tsk_01KZMRXK3EFZ63G19MS049D067",
+      "taskDesc": "4.1 新增 `crates/speclink-cli/src/verbs/init.rs`（收 cmd_init、resolve_init_tools、prompt_for_tools、ask_yes_no、cmd_update、cmd_init_remote 與內嵌測試模組 init_tools_tests——use super 語意隨真模組指向族檔，符號集不變）、`crates/speclink-cli/src/verbs/connection.rs`（收現住 remote_commands.rs 的 cmd_link、cmd_unlink、cmd_auth、login_with_pat、login_with_device、CliDeviceIo、cmd_auth_logout、print_identity、ensure_repo_registered、validate_or_defer、git_reference_warning 全段）、`crates/speclink-cli/src/verbs/new.rs`（收 cmd_new、cmd_new_change、NewChangeLines、render_new_change、cmd_new_artifact、remote_new、remote_new_change、remote_new_artifact、remote_artifact_path）、`crates/speclink-cli/src/verbs/instructions.rs`（收 cmd_instructions、cmd_instructions_skill、render_artifact_human、render_apply_human、remote_instructions、to_apply_instructions、to_artifact_instructions、VerbContextProvider、point_context_files_at_projection）。遷移步驟與可見性規則同 2.1。驗證：同 2.1 三項。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b067c9d02d22ec2f88a67025f182c221bb7205ba",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/connection.rs",
+        "crates/speclink-cli/src/verbs/init.rs",
+        "crates/speclink-cli/src/verbs/instructions.rs",
+        "crates/speclink-cli/src/verbs/new.rs"
+      ],
+      "recordedAt": "2026-08-10T03:13:56Z"
+    },
+    {
+      "taskId": "tsk_01KZMRXK3E6VXGT2FY164QSP75",
+      "taskDesc": "5.1 新增 `crates/speclink-cli/src/verbs/config.rs`（config、workflow-config：收 cmd_config、global_config_path、load_global_map、save_global_map、scalar_str、WorkflowConfig 系列型別、workflow_config_fs、workflow_config_write、plan_workflow_config_edit、require_stdin_flag、print_workflow_config、unified_diff、hunk_range、remote_workflow_config、REMOTE_CONFIG_LABEL、remote_config_write_error）、`crates/speclink-cli/src/verbs/discuss.rs`（收 cmd_discuss、DiscussBind、NewDiscussionLines、render_discuss_new_human、render_discuss_list、render_discuss_show、remote_discuss、to_discussion_info）、`crates/speclink-cli/src/verbs/station.rs`（review、verify：收 cmd_review、cmd_verify、station_dual、review_prepare_fs、station_fs、StationAction、render_station_action、render_station_show、attribution_breakdown、clear_snapshots_warning、scope_needs_input_message、patch_hash_chain 與內嵌測試模組 patch_hash_chain_tests、remote_review_prepare、remote_station、to_station_ticket、to_station_round、unknown_ticket_token）。遷移步驟與可見性規則同 2.1。驗證：同 2.1 三項。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b067c9d02d22ec2f88a67025f182c221bb7205ba",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/config.rs",
+        "crates/speclink-cli/src/verbs/discuss.rs",
+        "crates/speclink-cli/src/verbs/station.rs"
+      ],
+      "recordedAt": "2026-08-10T03:16:56Z"
+    },
+    {
+      "taskId": "tsk_01KZMRXK3EWDZBCEE4HFRMR8BE",
+      "taskDesc": "6.1 dispatch 表、dual／fs_only／remote_only 模式組合子與宣告層拒絕常數（CLAIM_FS_REFUSAL、DEMO_REMOTE_REFUSAL）自 commands.rs 遷入 main.rs；刪除 `crates/speclink-cli/src/commands.rs`、`crates/speclink-cli/src/remote_commands.rs` 與 main.rs 尾端兩行 include!；移除 1.1／1.2 的過渡 use common::* 型 glob import，main.rs 與各族檔全部改明確 use 路徑。行為：無任何輸出變化。驗證：cargo build -p speclink-cli 零 warning，cargo test -p speclink-cli --test it 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b067c9d02d22ec2f88a67025f182c221bb7205ba",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/init_tools.rs",
+        "crates/speclink-cli/tests/it/no_raw_wire_json.rs"
+      ],
+      "recordedAt": "2026-08-10T03:24:43Z"
+    }
+  ]
+}
