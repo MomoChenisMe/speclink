@@ -91,3 +91,5 @@ verified_scope:
     hash: 720a6eca84bca278b3c6f213973eb3c09b8cb1d849ebd5090641f50677a0e536
   - path: crates/speclink-core/tests/golden/remote-claude.marker.md
     hash: 00c2bf69f1bf640e7e47d29c34c0acc16e95ea7eecf392e4fe7c597b606fb50c
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-10
