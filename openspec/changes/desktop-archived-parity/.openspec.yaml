@@ -5,3 +5,57 @@ created_with: claude
 from_discussion: archived-parity-and-spec-purpose
 started_at: 2026-08-11
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-11
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 14
+reviewed_scope:
+  - path: apps/desktop/core/src/cache.rs
+    hash: b58d1fbb9a7ef5ab3a64fea0a0501e5c6bb3d438b495e3003419a528bb3c3edf
+  - path: apps/desktop/src/App.tsx
+    hash: d1477cea674b77a773d9cee536f412f0da51a9e422d705c5ca9343762e5edcbd
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 20e28a03b888b27940e6fb108692f29b961665735cfe5e8548bed7eb516f7600
+  - path: apps/desktop/src/store.ts
+    hash: 146e329c8c3248d2377257fbdd44c14912b9a693551cb36915f742ac9217b3a7
+  - path: packages/ui/src/__tests__/archivedDrawer.test.tsx
+    hash: e10c6976e4439870dbc8190e67d91b79d7992c529b37b0bc65dff8ed2589288d
+  - path: packages/ui/src/__tests__/archivedList.test.tsx
+    hash: 74b3b13f32cb273de7dad57193b17eb8ac10b2da5f11819a0219fbdf34051032
+  - path: packages/ui/src/adapter.ts
+    hash: 96cda16aaacd537afb5b2cb690db6f9c59f4757b034f9eec7f63668570abbee9
+  - path: packages/ui/src/components/ArchivedDrawer.tsx
+    hash: ff1b265dd7a28514c7dac13b3ea66f084a3a7a2ea5d73413a45ea275a9b1d55a
+  - path: packages/ui/src/components/ArchivedList.tsx
+    hash: 93234426f07fbaa2ad86d722715a63a40f96b72efd6d36fb0238f6144450713c
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: da0757e6695a3ced6be91dc908f53f5b15938e6b9727ba88e0dbf41f4131d948
+  - path: packages/ui/src/i18n.tsx
+    hash: 690705bb1669a02b99ca20639004edbc2708fddb290f5f1ba59eee5bbcea0e36
+verified_at: 2026-08-11
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 14
+verified_scope:
+  - path: apps/desktop/core/src/cache.rs
+    hash: b58d1fbb9a7ef5ab3a64fea0a0501e5c6bb3d438b495e3003419a528bb3c3edf
+  - path: apps/desktop/src/App.tsx
+    hash: d1477cea674b77a773d9cee536f412f0da51a9e422d705c5ca9343762e5edcbd
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 20e28a03b888b27940e6fb108692f29b961665735cfe5e8548bed7eb516f7600
+  - path: apps/desktop/src/store.ts
+    hash: 146e329c8c3248d2377257fbdd44c14912b9a693551cb36915f742ac9217b3a7
+  - path: packages/ui/src/__tests__/archivedDrawer.test.tsx
+    hash: e10c6976e4439870dbc8190e67d91b79d7992c529b37b0bc65dff8ed2589288d
+  - path: packages/ui/src/__tests__/archivedList.test.tsx
+    hash: 74b3b13f32cb273de7dad57193b17eb8ac10b2da5f11819a0219fbdf34051032
+  - path: packages/ui/src/adapter.ts
+    hash: 96cda16aaacd537afb5b2cb690db6f9c59f4757b034f9eec7f63668570abbee9
+  - path: packages/ui/src/components/ArchivedDrawer.tsx
+    hash: ff1b265dd7a28514c7dac13b3ea66f084a3a7a2ea5d73413a45ea275a9b1d55a
+  - path: packages/ui/src/components/ArchivedList.tsx
+    hash: 93234426f07fbaa2ad86d722715a63a40f96b72efd6d36fb0238f6144450713c
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: da0757e6695a3ced6be91dc908f53f5b15938e6b9727ba88e0dbf41f4131d948
+  - path: packages/ui/src/i18n.tsx
+    hash: 690705bb1669a02b99ca20639004edbc2708fddb290f5f1ba59eee5bbcea0e36
