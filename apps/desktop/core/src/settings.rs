@@ -600,13 +600,12 @@ mod tests {
         std::fs::set_permissions(path, perms).unwrap();
     }
 
-    /// 讓寫檔階段必定失敗。原子寫（同目錄暫存檔＋rename）在 unix 看的是目錄權限，
-    /// 唯讀的目的檔擋不住覆寫，故改鎖父目錄——暫存檔建不出來；Windows 的 rename
-    /// 覆蓋唯讀檔會被拒，維持鎖檔案。
+    /// 讓寫檔階段必定失敗。unix 上原子寫的暫存檔看目錄權限、退回的直寫看檔案
+    /// 權限——兩者都鎖才逼得出失敗；Windows 的 rename 覆蓋唯讀檔與直寫唯讀檔
+    /// 都會被拒，鎖檔案即可。
     fn block_writes(path: &Path, blocked: bool) {
         #[cfg(unix)]
         set_readonly(path.parent().unwrap(), blocked);
-        #[cfg(windows)]
         set_readonly(path, blocked);
     }
 
@@ -622,6 +621,28 @@ mod tests {
         assert_eq!(
             read(&fx.root().join("openspec/config.yaml")),
             "schema: spec-driven\n\ntdd: true\n\ncontext: |\n  keep me\nrules:\n  proposal:\n    - keep rule\n"
+        );
+    }
+
+    #[test]
+    fn write_workflow_fields_leaves_no_temp_residue() {
+        // spec Scenario「設定寫入走同一原子入口」的觀察面：寫入成功後目錄無暫存
+        // 殘留、內容為完整全文（收編一旦回歸普通 fs::write 前者仍綠，但殘留斷言
+        // 釘住原子入口的成功路徑契約）。
+        let fx = FixtureRoot::new("wf-write-atomic-face");
+        fx.write("openspec/config.yaml", "schema: spec-driven\n");
+        let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
+        write_workflow_fields_at(fx.root(), &fields).expect("write ok");
+        let residue: Vec<String> = std::fs::read_dir(fx.root().join("openspec"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect();
+        assert!(residue.is_empty(), "temp residue left behind: {residue:?}");
+        let text = read(&fx.root().join("openspec/config.yaml"));
+        assert!(
+            text.contains("schema: spec-driven") && text.contains("tdd: true"),
+            "content is the complete new document: {text}"
         );
     }
 

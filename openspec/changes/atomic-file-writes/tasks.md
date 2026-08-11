@@ -12,4 +12,4 @@
 ## 3. 驗證
 
 - [x] 3.1 受影響 crates 全量：cargo test -p speclink-core -p speclink-cli -p speclink-desktop-core 全綠；cargo clippy 零新警告。 <!-- speclink-task:tsk_01KZQ8VZSAHXCZJEWJCDFK1ASV -->
-- [ ] 3.2 跨平台：推上 CI 確認 Windows 全綠——重點看 rename 覆蓋語意與退回路徑；若 Windows 首跑轉紅，先以「新測試第一次在 Windows 跑」歸因（期望值同源分流），再判斷是否為實作缺陷。 <!-- speclink-task:tsk_01KZQ8VZSAF1CJ594F9HH987FZ -->
+- [ ] [M] 3.2 跨平台：合併回主分支後於 CI 確認 Windows 全綠——重點看 rename 覆蓋語意與退回路徑；若 Windows 首跑轉紅，先以「新測試第一次在 Windows 跑」歸因（期望值同源分流），再判斷是否為實作缺陷。確認綠燈後勾掉本任務。 <!-- speclink-task:tsk_01KZQ8VZSAF1CJ594F9HH987FZ -->

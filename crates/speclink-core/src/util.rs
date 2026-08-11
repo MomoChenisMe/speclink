@@ -35,25 +35,61 @@ fn write_file_with_rename(
     content: &str,
     rename: impl Fn(&Path, &Path) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
+    let target = resolve_symlink_target(path);
+    let target = target.as_path();
+    if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let tmp = temp_write_path(path);
+    let tmp = temp_write_path(target);
     if let Err(e) = std::fs::write(&tmp, content) {
         let _ = std::fs::remove_file(&tmp);
+        // 只有權限類失敗（父目錄不可寫但目的檔可寫）退回直寫——行為不劣於
+        // 原子化前。其他失敗（磁碟滿、暫存名過長）直接浮出且目的檔不變：
+        // 退回的直寫多半同樣會失敗，卻已先 truncate 把目的檔清空。
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            return std::fs::write(target, content);
+        }
         return Err(e);
     }
-    if rename(&tmp, path).is_err() {
-        let direct = std::fs::write(path, content);
+    // 目的檔既有 mode 套回暫存檔（best-effort），rename 後才不會被重設成 umask
+    // 預設（0600 的設定檔不該被放寬成 0644）。Windows 不做：唯讀屬性複製到暫存
+    // 檔會反過來擋掉失敗路徑上的清理，且該平台無 umask 重設問題（ACL 隨目錄繼承）。
+    #[cfg(unix)]
+    if let Ok(meta) = std::fs::metadata(target) {
+        let _ = std::fs::set_permissions(&tmp, meta.permissions());
+    }
+    if rename(&tmp, target).is_err() {
+        let direct = std::fs::write(target, content);
         let _ = std::fs::remove_file(&tmp);
         return direct;
     }
     Ok(())
 }
 
+/// Follow a symlinked destination to its final target. The pre-atomic direct write
+/// wrote through the link; the atomic replacement must land on the same target, or
+/// the link would silently become a regular file and the topology be lost. Bounded
+/// walk; on a cycle the last path wins and gets replaced like any file.
+fn resolve_symlink_target(path: &Path) -> PathBuf {
+    let mut target = path.to_path_buf();
+    for _ in 0..8 {
+        let Ok(link) = std::fs::read_link(&target) else {
+            break;
+        };
+        target = if link.is_absolute() {
+            link
+        } else {
+            target.parent().map(|p| p.join(&link)).unwrap_or(link)
+        };
+    }
+    target
+}
+
 /// Temp path beside `path`: same directory (so the rename stays within one filesystem
 /// and thus atomic), unique per process and per call so concurrent writers never collide
-/// on one temp name. The `.tmp` tail keeps it out of the `*.md` globs that collect specs.
+/// on one temp name. Directory enumerators (e.g. `walk_files`) may glimpse the entry in
+/// the write-to-rename window; only a crash inside that window leaves one behind, and
+/// the `.tmp` tail marks such a leftover for what it is.
 fn temp_write_path(path: &Path) -> PathBuf {
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -291,6 +327,85 @@ mod tests {
         assert_eq!(dir_entries(&d.path), vec!["note.md".to_string()]);
         write_file(&path, "second").unwrap();
         assert_eq!(dir_entries(&d.path), vec!["note.md".to_string()]);
+    }
+
+    /// Symlinked destination keeps its topology: the write lands on the link's
+    /// target (as the pre-atomic direct write did), and the link itself survives
+    /// instead of being replaced by a regular file.
+    #[cfg(unix)]
+    #[test]
+    fn write_file_writes_through_a_symlinked_destination() {
+        let d = TempDir::new("symlink");
+        let target = d.path.join("target.md");
+        let link = d.path.join("link.md");
+        write_file(&target, "old").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        write_file(&link, "new").unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink(),
+            "link must stay a symlink"
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
+        assert_eq!(std::fs::read_to_string(&link).unwrap(), "new");
+    }
+
+    /// Overwriting keeps the destination's permission bits (best-effort): a 0600
+    /// config must not silently relax to the umask default after the rename.
+    #[cfg(unix)]
+    #[test]
+    fn write_file_preserves_destination_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = TempDir::new("mode");
+        let path = d.path.join("secret.yaml");
+        write_file(&path, "old").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        write_file(&path, "new").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "mode must survive the atomic replace");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+    }
+
+    /// Spec `本地檔案寫入原子落盤`: when the temp file cannot even be created (an
+    /// unwritable parent dir with a writable destination inside), fall back to the
+    /// direct write — behavior no worse than before atomicity.
+    #[cfg(unix)]
+    #[test]
+    fn write_file_falls_back_to_direct_write_when_temp_cannot_be_created() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = TempDir::new("locked-dir");
+        let path = d.path.join("note.md");
+        write_file(&path, "old").unwrap();
+        std::fs::set_permissions(&d.path, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let res = write_file(&path, "new");
+        std::fs::set_permissions(&d.path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        res.unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(dir_entries(&d.path), vec!["note.md".to_string()]);
+    }
+
+    /// Spec `本地檔案寫入原子落盤`: only a permission-class temp failure may fall
+    /// back to the direct write. Any other temp-write failure (disk full, a temp
+    /// name past NAME_MAX) must surface the error with the destination untouched —
+    /// falling back would truncate the destination before failing.
+    #[cfg(unix)]
+    #[test]
+    fn write_file_surfaces_non_permission_temp_failure_without_touching_dest() {
+        let d = TempDir::new("temp-name-too-long");
+        // 250 bytes: legal for the file itself, but + ".<pid>.<n>.tmp" the temp
+        // name passes NAME_MAX (255) and its creation fails with ENAMETOOLONG.
+        let long_name = format!("{}.md", "n".repeat(247));
+        let path = d.path.join(&long_name);
+        // Setup bypasses write_file: its temp name would hit the same limit.
+        std::fs::write(&path, "old").unwrap();
+        assert!(
+            write_file(&path, "new").is_err(),
+            "non-permission temp failure must surface"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "old",
+            "destination must stay untouched"
+        );
     }
 
     /// Spec `本地檔案寫入原子落盤`: when the rename cannot complete (Windows refuses
