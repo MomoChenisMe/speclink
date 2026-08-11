@@ -1,0 +1,216 @@
+{
+  "version": 2,
+  "change": "manual-task-marker-gates",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 依 design D1、D2 以 TDD 落實「任務行的手動測試標記與解析」與「寫碼任務全完成預測子」:crates/speclink-core/src/tasks.rs 的前綴剝除迴圈同時接受 `[P]` 與 `[M]`(順序不敏感、各至多一次)、Task 增 manual 旗標、描述剝除標記;進度統計同時回傳全量與寫碼兩組計數(寫碼任務全完成預測子的單一實作)。行為結果:manual-task-marker spec 的解析 Example 表逐列成立;無標記任務行為逐位元不變。驗證:cargo test -p speclink-core 之 tasks 單元測試綠燈(含 [M]/[P] 組合、剝離、空真計數案例)。",
+      "files": [
+        "crates/speclink-core/src/tasks.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 依 design D6 以 TDD 落實「任務 payload 的 manual 欄位與寫碼進度」,並以 verb-contract「動詞 --json 輸出形狀凍結」的加欄基線釘住形狀:crates/speclink-core/src/instructions.rs 任務項增 manual 欄位,progress 增 codeTotal/codeComplete/codeRemaining;crates/speclink-protocol/src/query.rs 的 wire 形狀同步(加欄不改名)。行為結果:instructions apply --json 對含 `[M]` 的 change 輸出 manual=true 與三個 code 欄位;無 `[M]` 時 code 欄位值與全量一致、既有欄位逐位元不變。驗證:cargo test -p speclink-core 與 -p speclink-protocol 的 payload 形狀測試綠燈。",
+      "files": [
+        "crates/speclink-cli/src/verbs/instructions.rs",
+        "crates/speclink-core/src/instructions.rs",
+        "crates/speclink-protocol/src/query.rs",
+        "crates/speclink-server/src/routes.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 依 design D3 以 TDD 改判「驗證工單的建立與追加」的落工單守門:crates/speclink-core/src/station.rs 的 add-round 任務守門改用寫碼任務全完成預測子,拒絕訊息點名寫碼任務計數。行為結果:寫碼任務未完成拒絕(stderr 述寫碼計數)、僅餘 `[M]` 未勾放行落工單。驗證:cargo test -p speclink-core 之 station/verify 單元測試綠燈(新增僅餘手動任務放行案例)。",
+      "files": [
+        "crates/speclink-core/src/review.rs",
+        "crates/speclink-core/src/station.rs",
+        "crates/speclink-core/src/verify.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.4 依 design D5 以 TDD 實作封存的章失效守門:crates/speclink-core/src/archive.rs 於任務完成度守門之後對兩章各判 freshness(本機讀工作樹算內容錨;remote 通道僅判任務錨),stale 拒絕並點名站別與破錨原因、指路重跑該站;Unknown 與無章放行且行為逐位元不變;批次封存以 stale 章為跳過原因。行為結果:change-lifecycle delta 的守門判定 Example 表逐列成立。驗證:cargo test -p speclink-core 之 archive 守門測試綠燈(stale 拒絕/放行/順序/remote 各案例)。",
+      "files": [
+        "apps/desktop/core/src/query.rs",
+        "crates/speclink-core/src/archive.rs",
+        "crates/speclink-core/src/listing.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 依 design D7 更新五技能 asset 文字(crates/speclink-core/assets/skills 下 claude 與 codex 兩形):review 開跑守門讀 codeRemaining、僅餘 `[M]` 時繼續並點名手測與時序;verify 分流改判 codeRemaining;quality 前提句改寫碼任務全完成;propose 起草教 `[M]` 前綴;apply 不代勾 `[M]`、寫碼任務全勾即回報完成。行為結果:「審查流程的技能行為」「驗證技能的工單落地」「兩站時序的編排行為」「手動測試任務的起草標記」「apply 技能的手動任務處理」五條文的技能文字情境一致。驗證:對照各 delta spec 逐項核讀;golden 於 3.2 收斂。",
+      "files": [
+        "crates/speclink-core/assets/skills/apply.md",
+        "crates/speclink-core/assets/skills/propose.md",
+        "crates/speclink-core/assets/skills/quality.md",
+        "crates/speclink-core/assets/skills/review.md",
+        "crates/speclink-core/assets/skills/verify.md"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.2 完成技能衍生物三連動:crates/speclink-core/src/skills.rs 的 MARKER_VERSION 提升、.claude/skills 五個 SKILL.md 與 assets 同步、golden snapshot 再生與 crates/speclink-core/tests/golden/assets.lock 更新。行為結果:speclink update 產出的技能檔與 golden 一致。驗證:cargo test -p speclink-core 之 render_golden 綠燈。",
+      "files": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 新增 CLI 整合測試 crates/speclink-cli/tests/it/manual_task_gates.rs,覆蓋 design Implementation Contract 行為 1–5:payload 曝光、verify add-round 放行/拒絕、兩站 stamp 放行/拒絕、freshness 四情境、archive 章失效守門(含任務守門先拒的順序)。驗證:cargo test -p speclink-cli --test it manual_task_gates 全綠。",
+      "files": [
+        "crates/speclink-cli/tests/it/main.rs",
+        "crates/speclink-cli/tests/it/manual_task_gates.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.2 調整既有守門測試至新訊息與新條件:crates/speclink-cli/tests/it/review_verbs.rs、verify_verbs.rs、archive_readiness_gate.rs 中引用「任務全數完成」訊息與 4/5 拒絕條件的案例改判寫碼任務。行為結果:既有測試反映新守門語意、無殘留舊訊息斷言。驗證:cargo test -p speclink-cli --test it 全綠。",
+      "files": [
+        "crates/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/speclink-cli/tests/it/review_verbs.rs",
+        "crates/speclink-cli/tests/it/verify_verbs.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.3 全套回歸與收尾:workspace 全測試與 lint,確認無因本 change 孤兒化的 imports 或死碼。驗證:cargo test 與 cargo clippy 全綠。",
+      "files": [
+        "crates/speclink-remote/tests/it/typed_client.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZN47CJN7AR5CMDM406YSJKV",
+      "taskDesc": "1.1 依 design D1、D2 以 TDD 落實「任務行的手動測試標記與解析」與「寫碼任務全完成預測子」:crates/speclink-core/src/tasks.rs 的前綴剝除迴圈同時接受 `[P]` 與 `[M]`(順序不敏感、各至多一次)、Task 增 manual 旗標、描述剝除標記;進度統計同時回傳全量與寫碼兩組計數(寫碼任務全完成預測子的單一實作)。行為結果:manual-task-marker spec 的解析 Example 表逐列成立;無標記任務行為逐位元不變。驗證:cargo test -p speclink-core 之 tasks 單元測試綠燈(含 [M]/[P] 組合、剝離、空真計數案例)。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6cc579b4083aaffe346b368cfd796ef366403fe5",
+      "touchedFiles": [
+        "crates/speclink-core/src/tasks.rs"
+      ],
+      "recordedAt": "2026-08-10T06:12:39Z"
+    },
+    {
+      "taskId": "tsk_01KZN47CJN53GD5F0C6WEXHA56",
+      "taskDesc": "1.2 依 design D6 以 TDD 落實「任務 payload 的 manual 欄位與寫碼進度」,並以 verb-contract「動詞 --json 輸出形狀凍結」的加欄基線釘住形狀:crates/speclink-core/src/instructions.rs 任務項增 manual 欄位,progress 增 codeTotal/codeComplete/codeRemaining;crates/speclink-protocol/src/query.rs 的 wire 形狀同步(加欄不改名)。行為結果:instructions apply --json 對含 `[M]` 的 change 輸出 manual=true 與三個 code 欄位;無 `[M]` 時 code 欄位值與全量一致、既有欄位逐位元不變。驗證:cargo test -p speclink-core 與 -p speclink-protocol 的 payload 形狀測試綠燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6cc579b4083aaffe346b368cfd796ef366403fe5",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/instructions.rs",
+        "crates/speclink-core/src/instructions.rs",
+        "crates/speclink-protocol/src/query.rs",
+        "crates/speclink-server/src/routes.rs"
+      ],
+      "recordedAt": "2026-08-10T06:23:23Z"
+    },
+    {
+      "taskId": "tsk_01KZN47CJN58W0RR9EAQW714Q7",
+      "taskDesc": "2.1 依 design D3 以 TDD 改判「驗證工單的建立與追加」的落工單守門:crates/speclink-core/src/station.rs 的 add-round 任務守門改用寫碼任務全完成預測子,拒絕訊息點名寫碼任務計數。行為結果:寫碼任務未完成拒絕(stderr 述寫碼計數)、僅餘 `[M]` 未勾放行落工單。驗證:cargo test -p speclink-core 之 station/verify 單元測試綠燈(新增僅餘手動任務放行案例)。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6cc579b4083aaffe346b368cfd796ef366403fe5",
+      "touchedFiles": [
+        "crates/speclink-core/src/review.rs",
+        "crates/speclink-core/src/station.rs",
+        "crates/speclink-core/src/verify.rs"
+      ],
+      "recordedAt": "2026-08-10T06:28:49Z"
+    },
+    {
+      "taskId": "tsk_01KZN47CJN0F7V9DNXT35XMPDZ",
+      "taskDesc": "2.4 依 design D5 以 TDD 實作封存的章失效守門:crates/speclink-core/src/archive.rs 於任務完成度守門之後對兩章各判 freshness(本機讀工作樹算內容錨;remote 通道僅判任務錨),stale 拒絕並點名站別與破錨原因、指路重跑該站;Unknown 與無章放行且行為逐位元不變;批次封存以 stale 章為跳過原因。行為結果:change-lifecycle delta 的守門判定 Example 表逐列成立。驗證:cargo test -p speclink-core 之 archive 守門測試綠燈(stale 拒絕/放行/順序/remote 各案例)。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6cc579b4083aaffe346b368cfd796ef366403fe5",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs",
+        "crates/speclink-core/src/archive.rs",
+        "crates/speclink-core/src/listing.rs"
+      ],
+      "recordedAt": "2026-08-10T06:49:38Z"
+    },
+    {
+      "taskId": "tsk_01KZN47CJNK06YT3R52F5NENKY",
+      "taskDesc": "3.1 依 design D7 更新五技能 asset 文字(crates/speclink-core/assets/skills 下 claude 與 codex 兩形):review 開跑守門讀 codeRemaining、僅餘 `[M]` 時繼續並點名手測與時序;verify 分流改判 codeRemaining;quality 前提句改寫碼任務全完成;propose 起草教 `[M]` 前綴;apply 不代勾 `[M]`、寫碼任務全勾即回報完成。行為結果:「審查流程的技能行為」「驗證技能的工單落地」「兩站時序的編排行為」「手動測試任務的起草標記」「apply 技能的手動任務處理」五條文的技能文字情境一致。驗證:對照各 delta spec 逐項核讀;golden 於 3.2 收斂。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6cc579b4083aaffe346b368cfd796ef366403fe5",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/apply.md",
+        "crates/speclink-core/assets/skills/propose.md",
+        "crates/speclink-core/assets/skills/quality.md",
+        "crates/speclink-core/assets/skills/review.md",
+        "crates/speclink-core/assets/skills/verify.md"
+      ],
+      "recordedAt": "2026-08-10T06:53:55Z"
+    },
+    {
+      "taskId": "tsk_01KZN47CJN0NAGJC7JG9JNH1EG",
+      "taskDesc": "3.2 完成技能衍生物三連動:crates/speclink-core/src/skills.rs 的 MARKER_VERSION 提升、.claude/skills 五個 SKILL.md 與 assets 同步、golden snapshot 再生與 crates/speclink-core/tests/golden/assets.lock 更新。行為結果:speclink update 產出的技能檔與 golden 一致。驗證:cargo test -p speclink-core 之 render_golden 綠燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6cc579b4083aaffe346b368cfd796ef366403fe5",
+      "touchedFiles": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ],
+      "recordedAt": "2026-08-10T07:00:44Z"
+    },
+    {
+      "taskId": "tsk_01KZN47CJN9B2KGEJC8R4A2TAR",
+      "taskDesc": "4.1 新增 CLI 整合測試 crates/speclink-cli/tests/it/manual_task_gates.rs,覆蓋 design Implementation Contract 行為 1–5:payload 曝光、verify add-round 放行/拒絕、兩站 stamp 放行/拒絕、freshness 四情境、archive 章失效守門(含任務守門先拒的順序)。驗證:cargo test -p speclink-cli --test it manual_task_gates 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6cc579b4083aaffe346b368cfd796ef366403fe5",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/main.rs",
+        "crates/speclink-cli/tests/it/manual_task_gates.rs"
+      ],
+      "recordedAt": "2026-08-10T07:05:08Z"
+    },
+    {
+      "taskId": "tsk_01KZN47CJN9NBSYNCPBF7HFGZP",
+      "taskDesc": "4.2 調整既有守門測試至新訊息與新條件:crates/speclink-cli/tests/it/review_verbs.rs、verify_verbs.rs、archive_readiness_gate.rs 中引用「任務全數完成」訊息與 4/5 拒絕條件的案例改判寫碼任務。行為結果:既有測試反映新守門語意、無殘留舊訊息斷言。驗證:cargo test -p speclink-cli --test it 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6cc579b4083aaffe346b368cfd796ef366403fe5",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/speclink-cli/tests/it/review_verbs.rs",
+        "crates/speclink-cli/tests/it/verify_verbs.rs"
+      ],
+      "recordedAt": "2026-08-10T07:10:14Z"
+    },
+    {
+      "taskId": "tsk_01KZN47CJNDYVG8S2MQFRKEEZH",
+      "taskDesc": "4.3 全套回歸與收尾:workspace 全測試與 lint,確認無因本 change 孤兒化的 imports 或死碼。驗證:cargo test 與 cargo clippy 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6cc579b4083aaffe346b368cfd796ef366403fe5",
+      "touchedFiles": [
+        "crates/speclink-remote/tests/it/typed_client.rs"
+      ],
+      "recordedAt": "2026-08-10T07:49:58Z"
+    }
+  ]
+}

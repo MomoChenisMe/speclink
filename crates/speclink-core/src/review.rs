@@ -83,8 +83,7 @@ pub fn stamp(
 /// 失效判定純函式（design D3）：任務錨＋內容錨（見 [`station::freshness`]）。
 pub fn freshness(
     meta: &ChangeMeta,
-    tasks_total: usize,
-    tasks_complete: usize,
+    counts: &crate::tasks::Counts,
     read_file: &dyn Fn(&str) -> Option<String>,
 ) -> Freshness {
     station::freshness(
@@ -93,8 +92,7 @@ pub fn freshness(
             tasks_total: meta.reviewed_tasks_total,
             scope: &meta.reviewed_scope,
         },
-        tasks_total,
-        tasks_complete,
+        counts,
         read_file,
     )
 }
@@ -113,6 +111,13 @@ mod tests {
 
     fn store_with_change() -> TestStore {
         TestStore::with_meta("demo", META)
+    }
+
+    /// total 個寫碼任務、前 done 個已勾（無 `[M]`）——失效判定的計數輸入。
+    fn code_counts(total: usize, done: usize) -> crate::tasks::Counts {
+        let md: String =
+            (0..total).map(|i| if i < done { "- [x] t\n" } else { "- [ ] t\n" }).collect();
+        crate::tasks::counts(&crate::tasks::parse(&md))
     }
 
     // --- spec「審查工單的建立與追加」---
@@ -261,6 +266,9 @@ mod tests {
 
     const TASKS_5_DONE: &str = "- [x] 1 a\n- [x] 2 b\n- [x] 3 c\n- [x] 4 d\n- [x] 5 e\n";
     const TASKS_4_OF_5: &str = "- [x] 1 a\n- [x] 2 b\n- [x] 3 c\n- [x] 4 d\n- [ ] 5 e\n";
+    /// 四個寫碼任務全勾、第五個是未勾的 `[M]` 手測——寫碼任務全完成預測子成立。
+    const TASKS_CODE_DONE_MANUAL_OPEN: &str =
+        "- [x] 1 a\n- [x] 2 b\n- [x] 3 c\n- [x] 4 d\n- [ ] [M] 5 手測\n";
     const CLEAN_ROUND: &str = "**Scope**: crates/a/src/lib.rs\n";
 
     const FILE_A: &str = "fn a() {}\n";
@@ -302,6 +310,31 @@ mod tests {
         assert_eq!(store.meta("demo"), META, "metadata must stay byte-identical");
         assert_eq!(*store.meta_writes.borrow(), 0);
         assert!(store.artifact_exists("demo", REVIEW_DOC), "ticket must survive refusal");
+    }
+
+    #[test]
+    fn stamp_lands_when_only_manual_tasks_remain_and_anchors_the_full_total() {
+        // spec Scenario「僅餘手動任務可蓋章」＋Example「蓋章寫入的任務錨」：
+        // 寫碼 4/4 全勾、一個 [M] 未勾 → 蓋章成功，錨為全任務總數 5（含 [M]）。
+        let store = store_with_change();
+        store.put_artifact("demo", "tasks.md", TASKS_CODE_DONE_MANUAL_OPEN);
+        add_round(&store, "demo", CLEAN_ROUND).expect("round 1");
+        stamp_demo(&store, false).expect("manual-only remainder must stamp");
+        let meta = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta");
+        assert_eq!(meta.reviewed_tasks_total, Some(5), "anchor counts the [M] task too");
+        assert!(!store.artifact_exists("demo", REVIEW_DOC), "ticket must be deleted");
+    }
+
+    #[test]
+    fn stamp_refusal_names_the_code_task_counts() {
+        // 拒絕訊息點名寫碼任務——手測任務不計入計數。
+        let store = store_with_change();
+        store.put_artifact("demo", "tasks.md", "- [x] a\n- [ ] b\n- [ ] [M] 手測\n");
+        add_round(&store, "demo", CLEAN_ROUND).expect("round 1");
+        let err = stamp_demo(&store, false).expect_err("open code task must refuse");
+        let msg = err.to_string();
+        assert!(msg.contains("1/2"), "counts must exclude the [M] task: {msg}");
+        assert!(msg.contains("code task"), "message must name code tasks: {msg}");
     }
 
     #[test]
@@ -846,7 +879,7 @@ mod tests {
     fn freshness_all_anchors_match_is_fresh() {
         let h = content_fingerprint(FILE_A);
         let meta = stamped_meta(5, &[("crates/a/src/lib.rs", h.as_str())]);
-        assert_eq!(freshness(&meta, 5, 5, &files(REPO)), Freshness::Fresh);
+        assert_eq!(freshness(&meta, &code_counts(5, 5), &files(REPO)), Freshness::Fresh);
     }
 
     #[test]
@@ -856,7 +889,7 @@ mod tests {
         let meta = stamped_meta(5, &[("crates/a/src/lib.rs", h1.as_str())]);
         let grown = format!("{FILE_A}fn extra() {{}}\n");
         let now = [("crates/a/src/lib.rs", grown.as_str())];
-        assert_eq!(freshness(&meta, 5, 5, &files(&now)), Freshness::Stale);
+        assert_eq!(freshness(&meta, &code_counts(5, 5), &files(&now)), Freshness::Stale);
     }
 
     #[test]
@@ -864,7 +897,7 @@ mod tests {
         // spec：任一 scope 檔內容雜湊不符「含檔案已不存在」→ stale。
         let h = content_fingerprint(FILE_A);
         let meta = stamped_meta(5, &[("crates/a/src/lib.rs", h.as_str())]);
-        assert_eq!(freshness(&meta, 5, 5, &files(&[])), Freshness::Stale);
+        assert_eq!(freshness(&meta, &code_counts(5, 5), &files(&[])), Freshness::Stale);
     }
 
     #[test]
@@ -874,7 +907,7 @@ mod tests {
         let meta = stamped_meta(5, &[("crates/a/src/lib.rs", h.as_str())]);
         let crlf = FILE_A.replace('\n', "\r\n");
         let now = [("crates/a/src/lib.rs", crlf.as_str())];
-        assert_eq!(freshness(&meta, 5, 5, &files(&now)), Freshness::Fresh);
+        assert_eq!(freshness(&meta, &code_counts(5, 5), &files(&now)), Freshness::Fresh);
     }
 
     #[test]
@@ -883,14 +916,27 @@ mod tests {
         //（總數變）與退勾（未全完成）皆觸發。
         let h = content_fingerprint(FILE_A);
         let meta = stamped_meta(5, &[("crates/a/src/lib.rs", h.as_str())]);
-        assert_eq!(freshness(&meta, 6, 6, &files(REPO)), Freshness::Stale, "task count grew");
-        assert_eq!(freshness(&meta, 5, 4, &files(REPO)), Freshness::Stale, "task unchecked");
+        assert_eq!(freshness(&meta, &code_counts(6, 6), &files(REPO)), Freshness::Stale, "task count grew");
+        assert_eq!(freshness(&meta, &code_counts(5, 4), &files(REPO)), Freshness::Stale, "task unchecked");
+    }
+
+    #[test]
+    fn freshness_ignores_manual_task_toggles() {
+        // spec Scenario「蓋章後補勾手動任務不失效」：蓋章當時 5 個任務（4 寫碼全勾
+        // ＋1 個未勾 [M]），事後補勾該 [M] → 兩種狀態都 fresh。
+        let h = content_fingerprint(FILE_A);
+        let meta = stamped_meta(5, &[("crates/a/src/lib.rs", h.as_str())]);
+        let counts = |md: &str| crate::tasks::counts(&crate::tasks::parse(md));
+        let open = "- [x] a\n- [x] b\n- [x] c\n- [x] d\n- [ ] [M] 手測\n";
+        let checked = "- [x] a\n- [x] b\n- [x] c\n- [x] d\n- [x] [M] 手測\n";
+        assert_eq!(freshness(&meta, &counts(open), &files(REPO)), Freshness::Fresh, "手測未勾");
+        assert_eq!(freshness(&meta, &counts(checked), &files(REPO)), Freshness::Fresh, "手測補勾");
     }
 
     #[test]
     fn freshness_unstamped_meta_is_unknown() {
         // 缺席讀作未審查：無章的 meta 沒有可判定的錨。
         let meta = ChangeMeta::from_text(Some(META)).expect("meta parses");
-        assert_eq!(freshness(&meta, 5, 5, &files(REPO)), Freshness::Unknown);
+        assert_eq!(freshness(&meta, &code_counts(5, 5), &files(REPO)), Freshness::Unknown);
     }
 }

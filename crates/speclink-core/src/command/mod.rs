@@ -1525,6 +1525,10 @@ fn run_archive(
         }
     }
     if opts.mark_tasks_complete {
+        // 章失效守門先於前置全勾寫入(同上方諸守門的拒絕路徑零寫入):stale
+        // 拒絕不得留下被代勾的 [M] 任務。無旗標路徑不在此判——維持任務完成度
+        // 守門先拒的順序契約;核心 archive 內的同一守門供直接呼叫的入口沿用。
+        crate::archive::guard_stale_stamps(&host, store, &change).map_err(classify)?;
         if let Some(text) = store.read_artifact(&change.name, "tasks.md") {
             // Star-bullet checkboxes are tasks too (frozen rule).
             let done = text

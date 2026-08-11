@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -332,6 +332,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
    - Mark task complete by running: `speclink task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
+   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual verification the user performs — you cannot observe the result, so you cannot attest to it. Skip it and move on. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`$speclink-review`, `$speclink-verify`) can run now while archive waits for the manual runs.
    - If a task was checked by mistake or its implementation is rolled back, run: `speclink task undone --change "<name>" <task-id>`
      Do NOT edit tasks.md directly to uncheck a task.
    - Continue to next task

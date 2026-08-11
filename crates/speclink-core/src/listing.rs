@@ -115,10 +115,8 @@ pub fn proposal_summary(store: &dyn Store, change: &Change) -> String {
 
 /// (complete, total) checkbox counts of a change's tasks.md.
 pub fn task_counts(store: &dyn Store, change: &Change) -> (usize, usize) {
-    let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
-    let tasks = crate::tasks::parse(&tasks_md);
-    let (total, complete, _) = crate::tasks::progress(&tasks);
-    (complete, total)
+    let c = crate::tasks::counts_for(store, &change.name);
+    (c.complete, c.total)
 }
 
 /// The `changes` items of `list --json`, in the given (already sorted) order.

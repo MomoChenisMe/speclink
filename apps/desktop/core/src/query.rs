@@ -56,11 +56,12 @@ pub fn list_changes_at(root: &Path) -> Value {
             let scope_root = crate::worktree_root_for(&ctx, &facts, &c.name)
                 .unwrap_or(ctx.workspace.root.as_path());
             let read_file = |p: &str| std::fs::read_to_string(scope_root.join(p)).ok();
-            let (complete, total) = speclink_core::listing::task_counts(store, c);
+            // 失效判定吃兩組計數（寫碼任務錨）——`[M]` 手測任務的勾選不打黃卡片。
+            let counts = speclink_core::tasks::counts_for(store, &c.name);
             let review = if store.artifact_exists(&c.name, speclink_core::review::REVIEW_DOC) {
                 "inReview"
             } else {
-                match speclink_core::review::freshness(&c.meta, total, complete, &read_file) {
+                match speclink_core::review::freshness(&c.meta, &counts, &read_file) {
                     speclink_core::station::Freshness::Fresh => "reviewed",
                     speclink_core::station::Freshness::Stale => "reviewedStale",
                     speclink_core::station::Freshness::Unknown => "none",
@@ -77,7 +78,7 @@ pub fn list_changes_at(root: &Path) -> Value {
             let verify = if store.artifact_exists(&c.name, speclink_core::verify::VERIFY_DOC) {
                 "inVerify"
             } else {
-                match speclink_core::verify::freshness(&c.meta, total, complete, &read_file) {
+                match speclink_core::verify::freshness(&c.meta, &counts, &read_file) {
                     speclink_core::station::Freshness::Fresh => "verified",
                     speclink_core::station::Freshness::Stale => "verifiedStale",
                     speclink_core::station::Freshness::Unknown => "none",

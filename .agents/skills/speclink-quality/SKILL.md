@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -27,7 +27,7 @@ A station's stamp freezes the content fingerprint of the files in its scope. Eve
 
 Which findings are worth fixing, and whether the change is ready to stamp, are the user's calls — not this skill's. So every round ends the same way: report both stations, then stop and ask. Never fix a finding, stamp a station or recommend your way past a decision on your own initiative. A clean round is not an exception: "both stations green" is something to report and wait on, like everything else.
 
-**Entry condition**: the change's tasks are all complete. That is the stations' own precondition — when it is not met, each station shows its own behavior (review refuses and stops; verify reports a mid-flight check-in instead of landing a ticket): relay that outcome verbatim. This skill adds no gate of its own, never pre-checks on the stations' behalf, and never swallows a station's error.
+**Entry condition**: the change's code tasks are all complete (`codeRemaining` is 0 in the apply payload; `[M]` manual-verification tasks are excluded and may still be open — say so in the report when they are). That is the stations' own precondition — when it is not met, each station shows its own behavior (review refuses and stops; verify reports a mid-flight check-in instead of landing a ticket): relay that outcome verbatim. This skill adds no gate of its own, never pre-checks on the stations' behalf, and never swallows a station's error.
 
 **Steps**
 
@@ -68,11 +68,11 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 7. **Archive — a recommendation**
 
-   Both stamps are green: recommend `$speclink-archive` and leave the run to the user.
+   Both stamps are green: recommend `$speclink-archive` and leave the run to the user. When the change still carries unchecked `[M]` manual-verification tasks, the recommendation MUST say so: the manual runs have to be completed and their tasks checked off before archive will let the change through.
 
 **Edge cases**
 
-- **Changed your mind after a stamp** (one station already stamped, and only then the other is wanted): do NOT redo the stamped station. Run the new station, accept that the earlier stamp shows as changed-since in the meantime, and let archive settle it back to done — archive records that a stamp exists, it does not recompute freshness. Re-running a stamped station means a fresh full discovery pass for no gain.
+- **Changed your mind after a stamp** (one station already stamped, and only then the other is wanted): run the new station. If its rounds end without touching any code, the earlier stamp still holds and archive proceeds. But every fix that lands turns the earlier stamp stale, and archive's stale-stamp gate then refuses until that station is re-run — a fresh discovery pass and a new stamp. That re-run is the cost of editing after a stamp; running both stations through this skill's hold-both-stamps timeline is what avoids it.
 - **One station only, or neither**: this skill does not apply. Call the station directly; its stamp-when-done default is already correct when no other station's fixes are coming.
 
 **Guardrails**

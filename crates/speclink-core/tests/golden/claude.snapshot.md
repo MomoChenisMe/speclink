@@ -1,5 +1,5 @@
 === CLAUDE.md ===
-<!-- SPECLINK:START v1.19.7 -->
+<!-- SPECLINK:START v1.19.10 -->
 
 # Speclink Instructions
 
@@ -40,7 +40,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -128,7 +128,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -310,6 +310,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
    - Mark task complete by running: `speclink task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
+   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual verification the user performs — you cannot observe the result, so you cannot attest to it. Skip it and move on. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`/speclink-review`, `/speclink-verify`) can run now while archive waits for the manual runs.
    - If a task was checked by mistake or its implementation is rolled back, run: `speclink task undone --change "<name>" <task-id>`
      Do NOT edit tasks.md directly to uncheck a task.
    - Continue to next task
@@ -454,7 +455,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -731,7 +732,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -967,7 +968,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -1239,7 +1240,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -1385,7 +1386,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -1825,7 +1826,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -1956,7 +1957,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -2131,7 +2132,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -2399,7 +2400,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -2493,7 +2494,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -2762,6 +2763,7 @@ If no argument is provided, the workflow will extract requirements from conversa
      - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `.speclink.yaml` or `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
    - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` (never open artifact files by path — the documents may live in a remote store)
    - Generate the artifact content using `template` as the structure
+   - **Mark manual-verification tasks with `[M]`** (tasks artifact only): a task the agent cannot run itself — the user has to operate the product and confirm the result by hand — gets an `[M]` prefix after the checkbox, e.g. `- [ ] [M] 3.2 Open the imported document and confirm the list stays one list`. Code tasks and automated tests never carry it. The marker is what lets the quality stations judge "the code is finished" separately from "a human accepted it": they run once every non-`[M]` task is checked, while archive still waits for all of them.
    - Apply `context` and `rules` as constraints - but do NOT copy them into the file
    - Write the artifact via CLI (the CLI handles directory creation and format validation):
 
@@ -2913,7 +2915,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -2935,7 +2937,7 @@ A station's stamp freezes the content fingerprint of the files in its scope. Eve
 
 Which findings are worth fixing, and whether the change is ready to stamp, are the user's calls — not this skill's. So every round ends the same way: report both stations, then stop and ask. Never fix a finding, stamp a station or recommend your way past a decision on your own initiative. A clean round is not an exception: "both stations green" is something to report and wait on, like everything else.
 
-**Entry condition**: the change's tasks are all complete. That is the stations' own precondition — when it is not met, each station shows its own behavior (review refuses and stops; verify reports a mid-flight check-in instead of landing a ticket): relay that outcome verbatim. This skill adds no gate of its own, never pre-checks on the stations' behalf, and never swallows a station's error.
+**Entry condition**: the change's code tasks are all complete (`codeRemaining` is 0 in the apply payload; `[M]` manual-verification tasks are excluded and may still be open — say so in the report when they are). That is the stations' own precondition — when it is not met, each station shows its own behavior (review refuses and stops; verify reports a mid-flight check-in instead of landing a ticket): relay that outcome verbatim. This skill adds no gate of its own, never pre-checks on the stations' behalf, and never swallows a station's error.
 
 **Steps**
 
@@ -2976,11 +2978,11 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 7. **Archive — a recommendation**
 
-   Both stamps are green: recommend `/speclink-archive` and leave the run to the user.
+   Both stamps are green: recommend `/speclink-archive` and leave the run to the user. When the change still carries unchecked `[M]` manual-verification tasks, the recommendation MUST say so: the manual runs have to be completed and their tasks checked off before archive will let the change through.
 
 **Edge cases**
 
-- **Changed your mind after a stamp** (one station already stamped, and only then the other is wanted): do NOT redo the stamped station. Run the new station, accept that the earlier stamp shows as changed-since in the meantime, and let archive settle it back to done — archive records that a stamp exists, it does not recompute freshness. Re-running a stamped station means a fresh full discovery pass for no gain.
+- **Changed your mind after a stamp** (one station already stamped, and only then the other is wanted): run the new station. If its rounds end without touching any code, the earlier stamp still holds and archive proceeds. But every fix that lands turns the earlier stamp stale, and archive's stale-stamp gate then refuses until that station is re-run — a fresh discovery pass and a new stamp. That re-run is the cost of editing after a stamp; running both stations through this skill's hold-both-stamps timeline is what avoids it.
 - **One station only, or neither**: this skill does not apply. Call the station directly; its stamp-when-done default is already correct when no other station's fixes are coming.
 
 **Guardrails**
@@ -3000,7 +3002,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -3020,13 +3022,15 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
 
-2. **Gate: all tasks must be complete**
+2. **Gate: all code tasks must be complete**
 
    ```bash
    speclink instructions apply --change "<name>" --json
    ```
 
-   Read `progress`. If `remaining > 0`, STOP and explain: the review station requires every task complete before reviewing — finish `/speclink-apply` first. Do NOT spawn sub-agents and do NOT write the ticket.
+   Read `progress`. If `codeRemaining > 0`, STOP and explain: the review station requires every code task complete before reviewing — finish `/speclink-apply` first. Do NOT spawn sub-agents and do NOT write the ticket.
+
+   `[M]` manual-verification tasks are deliberately excluded from `codeRemaining`: they are human acceptance work, and reviewing before them is the point — a review that changes code would void a manual test run earlier. When `codeRemaining` is 0 but `remaining` is not, continue with the review and tell the user in the result presentation which manual tasks are still open, plus the sequence that follows: the stamp can land now, the manual tasks are checked off afterwards, and archive is what waits for them.
 
    Keep the payload: `contextFiles` feeds step 4, and `locale` is the resolved language for the whole output chain — the sub-agent reports, the round presentation, the questions, and the ticket record alike (steps 5, 6 and 8).
 
@@ -3186,7 +3190,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -3232,11 +3236,11 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
 4. **Branch on the call: mid-flight check-in, closing stamp re-entry, or finished-work verification**
 
-   **Not every task is done → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do NOT run `speclink verify scope`, do NOT run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
+   **Not every code task is done (`codeRemaining > 0`) → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do NOT run `speclink verify scope`, do NOT run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
 
    **The `/speclink-quality` timeline's closing stamp call, and the ticket's last round's must-fix set is empty** (`speclink verify show "<name>" --json` — `lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent claude` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
 
-   **Every task is done → finished-work verification.** Continue to step 5.
+   **Every code task is done (`codeRemaining` is 0) → finished-work verification.** Continue to step 5. `[M]` manual-verification tasks do not hold this back — they are human acceptance work the stamp deliberately does not wait for. When `remaining` is still above 0, name the open manual tasks in the report: the verification covers the code, and archive is what waits for the manual runs.
 
 5. **Freeze the verification scope**
 

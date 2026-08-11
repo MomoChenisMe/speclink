@@ -150,6 +150,9 @@ fn to_apply_instructions(
             total: p.progress.total,
             complete: p.progress.complete,
             remaining: p.progress.remaining,
+            code_total: p.progress.code_total,
+            code_complete: p.progress.code_complete,
+            code_remaining: p.progress.code_remaining,
         },
         tasks: p
             .tasks
@@ -159,6 +162,7 @@ fn to_apply_instructions(
                 description: t.description,
                 done: t.done,
                 parallel: t.parallel,
+                manual: t.manual,
             })
             .collect(),
         state: p.state,

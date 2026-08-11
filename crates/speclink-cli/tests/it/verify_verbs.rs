@@ -148,14 +148,16 @@ fn stderr_of(out: &Output) -> String {
 // --- verify add-round（design D3：引擎守門）---
 
 #[test]
-fn add_round_refuses_until_every_task_is_done() {
-    // spec Scenario「任務未全完成即拒絕落工單」：4/5 式的部分完成 → 非零、
-    // stderr 說明驗證工單要求任務全數完成、無檔案建立。
+fn add_round_refuses_until_every_code_task_is_done() {
+    // spec Scenario「寫碼任務未完成即拒絕落工單」：部分完成 → 非零、stderr 說明
+    // 驗證工單要求寫碼任務全數完成、無檔案建立。（`[M]` 放行的一面在
+    // manual_task_gates 釘住。）
     let p = TempProject::with_change("addround-partial", TASKS_PARTIAL);
     let out = p.run_stdin(&["verify", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS);
-    assert!(!out.status.success(), "incomplete tasks → non-zero");
+    assert!(!out.status.success(), "incomplete code tasks → non-zero");
     let err = stderr_of(&out);
     assert!(err.contains("1/2"), "stderr shows the count: {err}");
+    assert!(err.contains("code task"), "message names code tasks: {err}");
     assert!(!p.ticket_path().exists(), "refusal must not create the ticket");
     assert!(stdout_of(&out).is_empty(), "errors go to stderr only");
 }

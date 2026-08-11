@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -25,13 +25,15 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
 
-2. **Gate: all tasks must be complete**
+2. **Gate: all code tasks must be complete**
 
    ```bash
    speclink instructions apply --change "<name>" --json
    ```
 
-   Read `progress`. If `remaining > 0`, STOP and explain: the review station requires every task complete before reviewing — finish `$speclink-apply` first. Do NOT spawn sub-agents and do NOT write the ticket.
+   Read `progress`. If `codeRemaining > 0`, STOP and explain: the review station requires every code task complete before reviewing — finish `$speclink-apply` first. Do NOT spawn sub-agents and do NOT write the ticket.
+
+   `[M]` manual-verification tasks are deliberately excluded from `codeRemaining`: they are human acceptance work, and reviewing before them is the point — a review that changes code would void a manual test run earlier. When `codeRemaining` is 0 but `remaining` is not, continue with the review and tell the user in the result presentation which manual tasks are still open, plus the sequence that follows: the stamp can land now, the manual tasks are checked off afterwards, and archive is what waits for them.
 
    Keep the payload: `contextFiles` feeds step 4, and `locale` is the resolved language for the whole output chain — the sub-agent reports, the round presentation, the questions, and the ticket record alike (steps 5, 6 and 8).
 

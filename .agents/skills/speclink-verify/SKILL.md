@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.7"
+  version: "v1.19.10"
   generatedBy: "Speclink"
 ---
 
@@ -51,11 +51,11 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
 4. **Branch on the call: mid-flight check-in, closing stamp re-entry, or finished-work verification**
 
-   **Not every task is done → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do NOT run `speclink verify scope`, do NOT run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
+   **Not every code task is done (`codeRemaining > 0`) → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do NOT run `speclink verify scope`, do NOT run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
 
    **The `$speclink-quality` timeline's closing stamp call, and the ticket's last round's must-fix set is empty** (`speclink verify show "<name>" --json` — `lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent codex` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
 
-   **Every task is done → finished-work verification.** Continue to step 5.
+   **Every code task is done (`codeRemaining` is 0) → finished-work verification.** Continue to step 5. `[M]` manual-verification tasks do not hold this back — they are human acceptance work the stamp deliberately does not wait for. When `remaining` is still above 0, name the open manual tasks in the report: the verification covers the code, and archive is what waits for the manual runs.
 
 5. **Freeze the verification scope**
 

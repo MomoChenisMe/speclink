@@ -84,8 +84,7 @@ pub fn stamp_with_scope(
 /// 位元級同構（共用 [`station::freshness`]）。
 pub fn freshness(
     meta: &ChangeMeta,
-    tasks_total: usize,
-    tasks_complete: usize,
+    counts: &crate::tasks::Counts,
     read_file: &dyn Fn(&str) -> Option<String>,
 ) -> Freshness {
     station::freshness(
@@ -94,8 +93,7 @@ pub fn freshness(
             tasks_total: meta.verified_tasks_total,
             scope: &meta.verified_scope,
         },
-        tasks_total,
-        tasks_complete,
+        counts,
         read_file,
     )
 }
@@ -108,11 +106,21 @@ mod tests {
     const META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
     const TASKS_5_DONE: &str = "- [x] 1 a\n- [x] 2 b\n- [x] 3 c\n- [x] 4 d\n- [x] 5 e\n";
     const TASKS_4_OF_5: &str = "- [x] 1 a\n- [x] 2 b\n- [x] 3 c\n- [x] 4 d\n- [ ] 5 e\n";
+    /// 四個寫碼任務全勾、第五個是未勾的 `[M]` 手測——寫碼任務全完成預測子成立。
+    const TASKS_CODE_DONE_MANUAL_OPEN: &str =
+        "- [x] 1 a\n- [x] 2 b\n- [x] 3 c\n- [x] 4 d\n- [ ] [M] 5 手測\n";
 
     const ROUND_1: &str = "**Scope**: crates/a/src/lib.rs, crates/b/src/util.rs\n\n- [CRITICAL] crates/a/src/lib.rs — requirement R2 has no implementation\n- [SUGGESTION] crates/b/src/util.rs — design says otherwise\n";
     const ROUND_2: &str = "**Scope**: crates/a/src/lib.rs\n\n- [WARNING] crates/a/src/lib.rs — scenario 3 untested\n";
     const SUGGESTION_ROUND: &str =
         "**Scope**: crates/b/src/util.rs\n\n- [SUGGESTION] crates/b/src/util.rs — design says otherwise\n";
+
+    /// total 個寫碼任務、前 done 個已勾（無 `[M]`）——失效判定的計數輸入。
+    fn code_counts(total: usize, done: usize) -> crate::tasks::Counts {
+        let md: String =
+            (0..total).map(|i| if i < done { "- [x] t\n" } else { "- [ ] t\n" }).collect();
+        crate::tasks::counts(&crate::tasks::parse(&md))
+    }
 
     /// 任務全數完成的 change——驗證工單的前提（design D3）。
     fn finished_change() -> TestStore {
@@ -144,6 +152,26 @@ mod tests {
         );
         assert_eq!(*store.artifact_writes.borrow(), 0, "refusal must not write");
         assert!(!store.artifact_exists("demo", VERIFY_DOC), "no ticket may appear");
+    }
+
+    #[test]
+    fn add_round_lands_the_ticket_when_only_manual_tasks_remain() {
+        // spec Scenario「僅餘手動任務可落工單」：寫碼 4/4 全勾、一個 [M] 未勾 → 放行。
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", TASKS_CODE_DONE_MANUAL_OPEN);
+        assert_eq!(add_round(&store, "demo", ROUND_1).expect("manual-only remainder lands"), 1);
+        assert!(store.artifact_exists("demo", VERIFY_DOC), "ticket must be created");
+    }
+
+    #[test]
+    fn add_round_refusal_names_the_code_task_counts() {
+        // spec「驗證工單的建立與追加」：拒絕訊息點名寫碼任務——手測任務不計入。
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [x] a\n- [ ] b\n- [ ] [M] 手測\n");
+        let err = add_round(&store, "demo", ROUND_1).expect_err("open code task must refuse");
+        let msg = err.to_string();
+        assert!(msg.contains("1/2"), "counts must exclude the [M] task: {msg}");
+        assert!(msg.contains("code task"), "message must name code tasks: {msg}");
     }
 
     #[test]
@@ -451,6 +479,19 @@ mod tests {
     }
 
     #[test]
+    fn stamp_lands_when_only_manual_tasks_remain_and_anchors_the_full_total() {
+        // spec Scenario「僅餘手動任務可蓋章」：寫碼全勾、[M] 未勾 → 蓋章成功，
+        // verified_tasks_total 記全任務總數（含 [M]）。
+        let store = finished_change();
+        add_round(&store, "demo", CLEAN_ROUND).expect("round 1");
+        store.put_artifact("demo", "tasks.md", TASKS_CODE_DONE_MANUAL_OPEN);
+        stamp_demo(&store, false).expect("manual-only remainder must stamp");
+        let meta = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta");
+        assert_eq!(meta.verified_tasks_total, Some(5), "anchor counts the [M] task too");
+        assert!(!store.artifact_exists("demo", VERIFY_DOC), "ticket must be deleted");
+    }
+
+    #[test]
     fn stamp_clean_round_writes_five_fields_and_deletes_the_ticket() {
         // spec Scenario「乾淨蓋章」：五個 verified 欄位齊備、`verify.md` 不存在。
         let store = finished_change();
@@ -470,10 +511,11 @@ mod tests {
 
     #[test]
     fn stamp_writes_the_task_anchor_from_the_ticket_moment() {
-        // spec Example「蓋章寫入的任務錨」：8 個任務全數勾選、Round 1 findings 為空
-        // → `verified_tasks_total` 為 8。
+        // spec Example「蓋章寫入的任務錨」：8 個任務、7 個寫碼任務全勾、1 個
+        // `[M]` 未勾 → `verified_tasks_total` 為 8（未勾的 [M] 也計入錨）。
         let store = TestStore::with_meta("demo", META);
-        let tasks: String = (1..=8).map(|i| format!("- [x] {i} t\n")).collect();
+        let tasks: String = (1..=7).map(|i| format!("- [x] {i} t\n")).collect::<String>()
+            + "- [ ] [M] 8 hand check\n";
         store.put_artifact("demo", "tasks.md", &tasks);
         add_round(&store, "demo", CLEAN_ROUND).expect("clean round 1");
         stamp_demo(&store, false).expect("stamp");
@@ -658,7 +700,7 @@ mod tests {
                 .collect();
             let verified = stamped_meta(5, &[(path, h.as_str())]);
             assert_eq!(
-                freshness(&verified, *total, *complete, &files(&repo)),
+                freshness(&verified, &code_counts(*total, *complete), &files(&repo)),
                 *want,
                 "verify station, case: {label}"
             );
@@ -669,7 +711,7 @@ mod tests {
                 ..Default::default()
             };
             assert_eq!(
-                crate::review::freshness(&reviewed, *total, *complete, &files(&repo)),
+                crate::review::freshness(&reviewed, &code_counts(*total, *complete), &files(&repo)),
                 *want,
                 "review station must agree, case: {label}"
             );
@@ -677,7 +719,14 @@ mod tests {
         // spec Scenario「行尾差異不觸發失效」：LF → CRLF 仍 fresh。
         let now = [(path, crlf.as_str())];
         let meta = stamped_meta(5, &[(path, h.as_str())]);
-        assert_eq!(freshness(&meta, 5, 5, &files(&now)), Freshness::Fresh);
+        assert_eq!(freshness(&meta, &code_counts(5, 5), &files(&now)), Freshness::Fresh);
+
+        // spec Scenario「蓋章後補勾手動任務不失效」：勾 [M] 前後皆 fresh。
+        let counts = |md: &str| crate::tasks::counts(&crate::tasks::parse(md));
+        let open = "- [x] a\n- [x] b\n- [x] c\n- [x] d\n- [ ] [M] 手測\n";
+        let checked = "- [x] a\n- [x] b\n- [x] c\n- [x] d\n- [x] [M] 手測\n";
+        assert_eq!(freshness(&meta, &counts(open), &files(REPO)), Freshness::Fresh, "手測未勾");
+        assert_eq!(freshness(&meta, &counts(checked), &files(REPO)), Freshness::Fresh, "手測補勾");
     }
 
     #[test]
@@ -685,6 +734,6 @@ mod tests {
         // 缺席讀作未驗證：無驗證章的 meta 沒有可判定的錨，即使審查章齊備。
         const REVIEWED_ONLY: &str = "schema: spec-driven\nreviewed_at: 2026-08-01\nreviewed_tasks_total: 5\nreviewed_scope:\n  - path: crates/a/src/lib.rs\n    hash: dead\n";
         let meta = crate::model::ChangeMeta::from_text(Some(REVIEWED_ONLY)).expect("parses");
-        assert_eq!(freshness(&meta, 5, 5, &files(REPO)), Freshness::Unknown);
+        assert_eq!(freshness(&meta, &code_counts(5, 5), &files(REPO)), Freshness::Unknown);
     }
 }

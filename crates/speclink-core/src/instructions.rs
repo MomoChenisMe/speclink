@@ -192,10 +192,27 @@ audit checklist (fetch it with `speclink instructions --skill audit`).",
 }
 
 #[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Progress {
     pub total: usize,
     pub complete: usize,
     pub remaining: usize,
+    pub code_total: usize,
+    pub code_complete: usize,
+    pub code_remaining: usize,
+}
+
+impl From<&tasks::Counts> for Progress {
+    fn from(c: &tasks::Counts) -> Self {
+        Progress {
+            total: c.total,
+            complete: c.complete,
+            remaining: c.remaining,
+            code_total: c.code_total,
+            code_complete: c.code_complete,
+            code_remaining: c.code_remaining,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, serde::Deserialize)]
@@ -204,6 +221,7 @@ pub struct TaskJson {
     pub description: String,
     pub done: bool,
     pub parallel: bool,
+    pub manual: bool,
 }
 
 impl From<&Task> for TaskJson {
@@ -213,6 +231,7 @@ impl From<&Task> for TaskJson {
             description: t.description.clone(),
             done: t.done,
             parallel: t.parallel,
+            manual: t.manual,
         }
     }
 }
@@ -296,7 +315,7 @@ pub fn build_apply(
     let policy = crate::config::resolve_policy(env, &app, &wf);
     let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
     let parsed = tasks::parse(&tasks_md);
-    let (total, complete, remaining) = tasks::progress(&parsed);
+    let counts = tasks::counts(&parsed);
 
     // contextFiles includes artifacts whose files exist (empty files count) — frozen output shape.
     let mut context_files = std::collections::BTreeMap::new();
@@ -350,11 +369,7 @@ pub fn build_apply(
         change_dir: change.dir.to_string_lossy().to_string(),
         schema_name: schema.display_name.clone(),
         context_files,
-        progress: Progress {
-            total,
-            complete,
-            remaining,
-        },
+        progress: Progress::from(&counts),
         tasks: parsed.iter().map(TaskJson::from).collect(),
         state,
         missing_artifacts,
@@ -399,5 +414,49 @@ mod tests {
         for v in files.values() {
             assert!(v.starts_with(&root.to_string_lossy().to_string()), "{v} under projection");
         }
+    }
+
+    // --- spec「任務 payload 的 manual 欄位與寫碼進度」---
+
+    #[test]
+    fn task_json_carries_the_manual_flag() {
+        let parsed = tasks::parse("- [ ] [M] 手測匯入\n- [x] [P] 寫解析器\n");
+        let json: Vec<TaskJson> = parsed.iter().map(TaskJson::from).collect();
+        assert!(json[0].manual && !json[0].parallel, "[M] 任務 manual=true");
+        assert_eq!(json[0].description, "手測匯入", "描述不含標記");
+        assert!(!json[1].manual && json[1].parallel, "[P] 任務 manual=false");
+    }
+
+    #[test]
+    fn progress_carries_code_counts_beside_the_full_ones() {
+        // 九個已勾寫碼任務 + 一個未勾 [M]：total=10/complete=9/remaining=1，code 三欄 9/9/0。
+        let mut md = String::new();
+        for i in 1..=9 {
+            md.push_str(&format!("- [x] task {i}\n"));
+        }
+        md.push_str("- [ ] [M] 手測\n");
+        let p = Progress::from(&tasks::counts(&tasks::parse(&md)));
+        assert_eq!((p.total, p.complete, p.remaining), (10, 9, 1));
+        assert_eq!((p.code_total, p.code_complete, p.code_remaining), (9, 9, 0));
+    }
+
+    #[test]
+    fn code_counts_mirror_full_counts_without_manual_tasks() {
+        let p = Progress::from(&tasks::counts(&tasks::parse("- [x] a\n- [ ] b\n")));
+        assert_eq!((p.code_total, p.code_complete, p.code_remaining), (2, 1, 1));
+        assert_eq!((p.total, p.complete, p.remaining), (2, 1, 1));
+    }
+
+    #[test]
+    fn apply_payload_serializes_new_fields_in_camel_case() {
+        let p = Progress::from(&tasks::counts(&tasks::parse("- [x] a\n- [ ] [M] m\n")));
+        let v = serde_json::to_value(&p).expect("progress serializes");
+        assert_eq!(v["codeTotal"], 1);
+        assert_eq!(v["codeComplete"], 1);
+        assert_eq!(v["codeRemaining"], 0);
+        assert_eq!(v["total"], 2, "既有欄位不變");
+
+        let t = TaskJson::from(&tasks::parse("- [ ] [M] m\n")[0]);
+        assert_eq!(serde_json::to_value(&t).expect("task serializes")["manual"], true);
     }
 }
