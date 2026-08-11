@@ -638,9 +638,16 @@ pub fn merge_drift_reports(
     }
     .to_string();
 
-    // Stale delta assumptions always route to ingest first: the archive merge gate
-    // refuses them (--skip-specs skips spec application entirely).
-    let primary_recommendation = if !spec_assumptions.is_empty() {
+    // Stale delta assumptions route to ingest first: the archive merge gate
+    // refuses them (--skip-specs skips spec application entirely). 純 Purpose
+    // 違規例外——正典不存在、ingest 修不了它，改指向補寫 `## Purpose` 的
+    // validate 指引（spec archive-merge「新 capability 缺 Purpose 的違規呈現
+    // 三處一致」）。
+    let purpose_only =
+        !spec_assumptions.is_empty() && spec_assumptions.iter().all(|a| a.is_purpose_gate());
+    let primary_recommendation = if purpose_only {
+        format!("speclink validate {} — the new capability's delta needs a `## Purpose`", change.name)
+    } else if !spec_assumptions.is_empty() {
         format!("/speclink-ingest {}", change.name)
     } else {
         match severity.as_str() {
@@ -953,9 +960,16 @@ pub fn analyze(ws: &Workspace, store: &dyn Store, change: &Change) -> DriftRepor
     }
     .to_string();
 
-    // Stale delta assumptions always route to ingest first: the archive merge gate
-    // refuses them (--skip-specs skips spec application entirely).
-    let primary_recommendation = if !spec_assumptions.is_empty() {
+    // Stale delta assumptions route to ingest first: the archive merge gate
+    // refuses them (--skip-specs skips spec application entirely). 純 Purpose
+    // 違規例外——正典不存在、ingest 修不了它，改指向補寫 `## Purpose` 的
+    // validate 指引（spec archive-merge「新 capability 缺 Purpose 的違規呈現
+    // 三處一致」）。
+    let purpose_only =
+        !spec_assumptions.is_empty() && spec_assumptions.iter().all(|a| a.is_purpose_gate());
+    let primary_recommendation = if purpose_only {
+        format!("speclink validate {} — the new capability's delta needs a `## Purpose`", change.name)
+    } else if !spec_assumptions.is_empty() {
         format!("/speclink-ingest {}", change.name)
     } else {
         match severity.as_str() {
@@ -1372,6 +1386,54 @@ mod tests {
         assert!(!obj.contains_key("stale"), "stale omitted when not stale");
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn purpose_only_assumptions_route_the_recommendation_to_the_delta_not_ingest() {
+        // Purpose 違規的正典不存在，ingest 修不了它——主建議改指向補寫
+        // `## Purpose` 的 validate 指引（spec archive-merge「新 capability 缺
+        // Purpose 的違規呈現三處一致」）。
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact(
+            "demo",
+            "specs/auth/spec.md",
+            "## ADDED Requirements\n\n### Requirement: Login\n",
+        );
+        let change = store.find_change("demo").unwrap();
+        let spec = compute_spec_drift(&store, &change);
+        assert_eq!(spec.spec_assumptions.len(), 1, "premise: the purpose gate fires");
+        let workspace = compute_workspace_drift(&store, &change, None);
+        let combined = merge_drift_reports(&change, spec, workspace, None);
+        let rec = &combined.report.primary_recommendation;
+        assert!(rec.contains("## Purpose"), "recommendation names the missing section: {rec}");
+        assert!(!rec.contains("ingest"), "ingest cannot fix a missing Purpose: {rec}");
+    }
+
+    #[test]
+    fn mixed_assumptions_still_route_to_ingest() {
+        // 摻雜過期操作時 ingest 仍是對的第一步——只有純 Purpose 違規才改道。
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact(
+            "demo",
+            "specs/auth/spec.md",
+            "## MODIFIED Requirements\n\n### Requirement: Gone\n",
+        );
+        store.put_artifact(
+            "demo",
+            "specs/token/spec.md",
+            "## ADDED Requirements\n\n### Requirement: Fresh\n",
+        );
+        store.write_canonical_spec("auth", "## Purpose\n\n### Requirement: Other\n").unwrap();
+        let change = store.find_change("demo").unwrap();
+        let spec = compute_spec_drift(&store, &change);
+        assert!(spec.spec_assumptions.len() >= 2, "premise: stale + purpose both fire");
+        let workspace = compute_workspace_drift(&store, &change, None);
+        let combined = merge_drift_reports(&change, spec, workspace, None);
+        assert!(
+            combined.report.primary_recommendation.contains("ingest"),
+            "mixed violations keep the ingest route: {}",
+            combined.report.primary_recommendation
+        );
     }
 
     #[test]

@@ -83,6 +83,14 @@
         "crates/speclink-server/tests/it/phase2_chain.rs",
         "crates/speclink-server/tests/it/verb_api.rs"
       ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "7.1 實作 archive-merge 需求「封存合併 fail-closed 守門」的 (7) Purpose 類與需求「新 capability 缺 Purpose 的違規呈現三處一致」場景：reason 帶「archive would refuse it」、merge_refusal 分流補救動線、bulk 預檢點名 capability、drift 主建議改道 validate；validate --specs 與名稱同傳以參數錯誤拒絕",
+      "files": [
+        "crates/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/speclink-cli/tests/it/archive_merge_gate.rs"
+      ]
     }
   ],
   "entries": [
@@ -203,6 +211,18 @@
         "crates/speclink-server/tests/it/verb_api.rs"
       ],
       "recordedAt": "2026-08-11T14:28:12Z"
+    },
+    {
+      "taskId": "tsk_01KZRP63PK9BJVHGNAJ6HCD9GA",
+      "taskDesc": "7.1 實作 archive-merge 需求「封存合併 fail-closed 守門」的 (7) Purpose 類與需求「新 capability 缺 Purpose 的違規呈現三處一致」場景：reason 帶「archive would refuse it」、merge_refusal 分流補救動線、bulk 預檢點名 capability、drift 主建議改道 validate；validate --specs 與名稱同傳以參數錯誤拒絕",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c56992d3f140880ec088dc122c42c69c22391a3c",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/speclink-cli/tests/it/archive_merge_gate.rs"
+      ],
+      "recordedAt": "2026-08-11T15:13:48Z"
     }
   ]
 }

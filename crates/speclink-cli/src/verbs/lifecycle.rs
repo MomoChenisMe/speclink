@@ -149,14 +149,26 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
         if !a.skip_specs {
             let refused = core::archive::merge_violations(store, &change.name);
             if !refused.is_empty() {
-                skipped.push((
-                    change.name.clone(),
-                    format!(
-                        "{} delta operation(s) archive would refuse — run /speclink-drift {}",
-                        refused.len(),
-                        change.name
-                    ),
-                ));
+                let mut reason = format!(
+                    "{} delta operation(s) archive would refuse — run /speclink-drift {}",
+                    refused.len(),
+                    change.name
+                );
+                // Purpose 守門的違規點名到 capability（spec archive-merge「新
+                // capability 缺 Purpose 的違規呈現三處一致」）：只給計數會讓
+                // 使用者以為是過期 delta，走錯 drift → ingest 的修法。
+                let purpose_caps: Vec<&str> = refused
+                    .iter()
+                    .filter(|v| v.is_purpose_gate())
+                    .map(|v| v.capability.as_str())
+                    .collect();
+                if !purpose_caps.is_empty() {
+                    reason.push_str(&format!(
+                        " (new capability {} lacks a qualifying `## Purpose`)",
+                        purpose_caps.join(", ")
+                    ));
+                }
+                skipped.push((change.name.clone(), reason));
                 continue;
             }
         }

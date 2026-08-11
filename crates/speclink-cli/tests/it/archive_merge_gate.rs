@@ -128,6 +128,19 @@ fn bulk_archive_prefilters_with_the_same_verdict_in_refusal_wording() {
 }
 
 #[test]
+fn bulk_archive_names_the_missing_purpose_in_the_skip_reason() {
+    // spec archive-merge「新 capability 缺 Purpose 的違規呈現三處一致」的批次面：
+    // 略過原因不只給計數，點名缺 `## Purpose` 的 capability。
+    const NO_PURPOSE_DELTA: &str = "## ADDED Requirements\n\n### Requirement: Fresh\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+    let p = TempProject::new("bulk-purpose", NO_PURPOSE_DELTA, None);
+    let out = p.run(&["archive", "--all", "--no-color"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("Skipped: demo"), "the change is pre-filtered: {stdout}");
+    assert!(stdout.contains("## Purpose"), "the real cause is named: {stdout}");
+    assert!(stdout.contains("demo-cap"), "the offending capability is named: {stdout}");
+}
+
+#[test]
 fn a_refused_archive_leaves_tasks_untouched_even_with_mark_tasks_complete() {
     // 零檔案效果涵蓋 --mark-tasks-complete 的前置全勾:守門拒絕時 tasks.md
     // 必須逐位元不變——runtime 的守門順序與 guard_meta 同(先守門、後預寫)。

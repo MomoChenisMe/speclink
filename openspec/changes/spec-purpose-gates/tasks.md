@@ -30,3 +30,7 @@
 
 - [x] 6.1 全量：cargo test --workspace 通過（含 CLI 整合測試） <!-- speclink-task:tsk_01KZNE6PBCNXX8K34Z0H3ZTN1S -->
 - [x] 6.2 實測本專案：./target/debug/speclink validate --specs 對 66 份佔位規格輸出 66 筆 warning、archive-merge 一份通過；validate --all 聯集正常 <!-- speclink-task:tsk_01KZNE6PBCW4F18NPN781DGGQ9 -->
+
+## 7. 品質站修復（兩站 must-fix）
+
+- [x] 7.1 實作 archive-merge 需求「封存合併 fail-closed 守門」的 (7) Purpose 類與需求「新 capability 缺 Purpose 的違規呈現三處一致」場景：reason 帶「archive would refuse it」、merge_refusal 分流補救動線、bulk 預檢點名 capability、drift 主建議改道 validate；validate --specs 與名稱同傳以參數錯誤拒絕 <!-- speclink-task:tsk_01KZRP63PK9BJVHGNAJ6HCD9GA -->
