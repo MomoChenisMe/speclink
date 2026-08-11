@@ -39,3 +39,5 @@ verified_scope:
     hash: df5a235c3fdc89761edc42d90121d4bcf2ad67afd0b26129d121a75551a91c80
   - path: apps/desktop/src-tauri/tests/it/event_manager.rs
     hash: 1806ab8f7e80e7d2c6a56105b118e72c284f1f9a4da7fa718d48c5b36957cb5f
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-11
