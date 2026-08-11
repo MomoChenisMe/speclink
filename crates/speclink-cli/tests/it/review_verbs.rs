@@ -229,13 +229,15 @@ fn show_without_ticket_fails_semantically() {
 // --- review stamp ---
 
 #[test]
-fn stamp_refuses_incomplete_tasks() {
-    // spec「蓋章守門與蓋章效果」Scenario 任務未全完成即拒絕。
+fn stamp_refuses_incomplete_code_tasks() {
+    // spec「蓋章守門與蓋章效果」Scenario 寫碼任務未全完成即拒絕。（`[M]` 未勾
+    // 仍可蓋章的一面在 manual_task_gates 釘住。）
     let p = TempProject::with_change("stamp-tasks", TASKS_PARTIAL);
     p.run_stdin(&["review", "add-round", "demo", "--stdin"], CLEAN_ROUND);
     let out = p.run(&["review", "stamp", "demo"]);
     assert!(!out.status.success());
     assert!(stderr_of(&out).contains("1/2"), "counts named: {}", stderr_of(&out));
+    assert!(stderr_of(&out).contains("code task"), "message names code tasks: {}", stderr_of(&out));
     assert!(p.ticket_path().exists(), "ticket survives refusal");
     assert!(!p.meta().contains("reviewed_at"), "no stamp on refusal");
 }

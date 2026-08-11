@@ -74,6 +74,83 @@ pub(crate) fn guard_open_tickets(
     Err(crate::command::Refusal(blocks.join("\n")).into())
 }
 
+/// 章失效守門（design D5；spec change-lifecycle「封存的章失效守門」）：兩站
+/// 各判一次，章齊備且判 stale → 拒絕並點名站別與破錨原因，指路重跑該站；兩章
+/// 皆 stale 時並列。無章與章欄位不全（Unknown）零效果——行為與導入前一致。
+/// 空 root＝無本地工作樹（remote 封存通道，沿 guard_linked_worktree 的慣例）：
+/// 內容錨無從判定，只判任務錨。
+pub(crate) fn guard_stale_stamps(ws: &Workspace, store: &dyn Store, change: &Change) -> Result<()> {
+    let counts = crate::tasks::counts_for(store, &change.name);
+    // 內容錨讀的是 repo 程式檔（host 側檔案，非 spec 文件）——沿 guard_linked_worktree
+    // 的作法走 util 的通用檔案 helper，引擎流程模組本身不直接呼叫檔案 API。
+    let read_file = |p: &str| util::read_opt(&ws.root.join(p));
+    let read_file: crate::station::ScopeReader<'_> =
+        if ws.root.as_os_str().is_empty() { None } else { Some(&read_file) };
+
+    let meta = &change.meta;
+    let stations = [
+        (
+            &crate::review::STATION,
+            crate::station::StampAnchors {
+                stamped_at: meta.reviewed_at.as_deref(),
+                tasks_total: meta.reviewed_tasks_total,
+                scope: &meta.reviewed_scope,
+            },
+        ),
+        (
+            &crate::verify::STATION,
+            crate::station::StampAnchors {
+                stamped_at: meta.verified_at.as_deref(),
+                tasks_total: meta.verified_tasks_total,
+                scope: &meta.verified_scope,
+            },
+        ),
+    ];
+    let blocks: Vec<String> = stations
+        .iter()
+        // 工單開立中的站不入失效判定:其舊章已被重開的工單取代,該站的封存
+        // 處置(擋下或 --carry-* 帶走)由未結工單守門承載——舊章在此攔路會把
+        // carry 處置堵成死路。
+        .filter(|(st, _)| !store.artifact_exists(&change.name, st.doc))
+        .filter(|(_, anchors)| crate::station::is_stamped(*anchors))
+        .filter_map(|(st, anchors)| {
+            crate::station::stale_reason(*anchors, &counts, read_file)
+                .map(|reason| stale_stamp_block(st, &change.name, &reason))
+        })
+        .collect();
+    if blocks.is_empty() {
+        return Ok(());
+    }
+    Err(crate::command::Refusal(blocks.join("\n")).into())
+}
+
+/// 一站的失效拒絕段落：點名站別、破錨原因與出路。
+fn stale_stamp_block(
+    st: &crate::station::Station,
+    name: &str,
+    reason: &crate::station::StaleReason,
+) -> String {
+    let why = match reason {
+        crate::station::StaleReason::ContentAnchor { path } => {
+            format!("'{path}' changed after the stamp")
+        }
+        crate::station::StaleReason::TaskAnchor {
+            stamped_total,
+            total,
+            code_complete,
+            code_total,
+        } => format!(
+            "tasks moved after the stamp ({stamped_total} at stamp time, {total} now; \
+             {code_complete}/{code_total} code tasks complete)"
+        ),
+    };
+    format!(
+        "change '{name}' carries a {} stamp that no longer holds — {why}; re-run the {} \
+         station to {}, then archive",
+        st.noun, st.noun, st.recheck
+    )
+}
+
 /// linked worktree 的分支慣例前綴（speclink-host 的 worktree discovery 同字面；
 /// 那份常數活在 host，core 取用不到，故在此獨立持有）。
 const WORKTREE_BRANCH_PREFIX: &str = "speclink/";
@@ -459,6 +536,10 @@ pub fn archive(
             .into());
         }
     }
+
+    // 章失效守門（design D5）：任務守門之後、任何檔案效果之前——任務未完成與
+    // 章失效並存時，任務守門先拒且訊息不變。
+    guard_stale_stamps(ws, store, change)?;
 
     let date = util::today();
     let dated_name = format!("{date}-{}", change.name);
@@ -916,6 +997,141 @@ mod tests {
             assert!(archived.contains(field), "missing station field {field}");
         }
         assert!(!store.change_exists("demo"), "active change moved into the archive");
+    }
+
+    // --- spec change-lifecycle「封存的章失效守門」（design D5）---
+
+    mod stale_stamp_gate {
+        use super::*;
+        use crate::station::content_fingerprint;
+
+        const SCOPE_PATH: &str = "crates/a/src/lib.rs";
+        const FILE_A: &str = "fn a() {}\n";
+        /// 全任務完成（含 `[M]`）——封存的任務完成度守門要求全勾，手測強制力保留。
+        const TASKS_ALL_DONE: &str = "- [x] a\n- [x] b\n- [x] c\n- [x] d\n- [x] [M] 手測\n";
+
+        /// 有工作樹的 workspace：scope 檔以 `content` 寫入真實暫存目錄。
+        fn ws_with_scope_file(tag: &str, content: &str) -> Workspace {
+            let root = std::env::temp_dir().join(format!("speclink-stale-stamp-{tag}"));
+            let file = root.join(SCOPE_PATH);
+            std::fs::create_dir_all(file.parent().expect("scope parent")).expect("mkdir");
+            std::fs::write(&file, content).expect("write scope file");
+            Workspace { root, spec_dir_name: "openspec".to_string() }
+        }
+
+        /// remote 封存通道：空 root＝無本地工作樹（沿 guard_linked_worktree 的慣例）。
+        fn remote_ws() -> Workspace {
+            Workspace { root: std::path::PathBuf::new(), spec_dir_name: "openspec".to_string() }
+        }
+
+        /// 帶指定站別章的 meta：錨記全任務總數 5、scope 為 FILE_A 的現值指紋。
+        fn meta_with_stamps(prefixes: &[&str]) -> String {
+            let hash = content_fingerprint(FILE_A);
+            let mut meta = "schema: spec-driven\ncreated: 2026-07-01\n".to_string();
+            for p in prefixes {
+                meta.push_str(&format!(
+                    "{p}_at: 2026-08-01\n{p}_by: R <r@example.com>\n{p}_with: claude\n\
+                     {p}_tasks_total: 5\n{p}_scope:\n  - path: {SCOPE_PATH}\n    hash: {hash}\n"
+                ));
+            }
+            meta
+        }
+
+        fn try_archive(
+            ws: &Workspace,
+            store: &TestStore,
+            opts: ArchiveOptions,
+        ) -> anyhow::Result<()> {
+            let change = crate::model::find_change(store, "demo").expect("change");
+            archive(ws, store, &change, &opts, None).map(|_| ())
+        }
+
+        #[test]
+        fn stale_content_anchor_refuses_and_names_the_station() {
+            // Example 表第一列：review 章齊備、scope 檔內容改變 → 拒絕、點名 review。
+            let ws = ws_with_scope_file("content", &format!("{FILE_A}fn extra() {{}}\n"));
+            let store = TestStore::with_meta("demo", &meta_with_stamps(&["reviewed"]));
+            store.put_artifact("demo", "tasks.md", TASKS_ALL_DONE);
+            let err = try_archive(&ws, &store, skip_opts()).expect_err("stale stamp must refuse");
+            let msg = err.to_string();
+            assert!(msg.contains("review"), "must name the station: {msg}");
+            assert!(msg.contains(SCOPE_PATH), "must name the changed file: {msg}");
+            assert!(store.change_exists("demo"), "refusal must not move the change");
+        }
+
+        #[test]
+        fn checking_a_manual_task_after_the_stamp_still_archives() {
+            // Example 表第二列：兩章齊備、補勾 [M]、scope 檔零改動 → 放行。
+            let ws = ws_with_scope_file("manual", FILE_A);
+            let store =
+                TestStore::with_meta("demo", &meta_with_stamps(&["reviewed", "verified"]));
+            store.put_artifact("demo", "tasks.md", TASKS_ALL_DONE);
+            try_archive(&ws, &store, skip_opts()).expect("manual toggle must not stale the stamp");
+            assert!(!store.change_exists("demo"), "change must be archived");
+        }
+
+        #[test]
+        fn a_new_task_after_the_stamp_breaks_the_task_anchor() {
+            // Example 表第三列：兩章齊備、任務總數自 5 變 6 → 拒絕（任務錨破）。
+            let ws = ws_with_scope_file("recount", FILE_A);
+            let store =
+                TestStore::with_meta("demo", &meta_with_stamps(&["reviewed", "verified"]));
+            store.put_artifact("demo", "tasks.md", &format!("{TASKS_ALL_DONE}- [x] f\n"));
+            let err = try_archive(&ws, &store, skip_opts()).expect_err("task anchor must refuse");
+            let msg = err.to_string();
+            assert!(msg.contains("review") && msg.contains("verify"), "both stamps: {msg}");
+            assert!(store.change_exists("demo"), "refusal must not move the change");
+        }
+
+        #[test]
+        fn no_stamp_and_unknown_stamp_both_pass_through() {
+            // Example 表第四、五列：無章與章欄位不全 → 放行，行為與守門引入前一致。
+            for (tag, meta) in [
+                ("nostamp", "schema: spec-driven\ncreated: 2026-07-01\n".to_string()),
+                // 章欄位不全（缺 scope）→ Unknown，視同無章。
+                (
+                    "partial",
+                    "schema: spec-driven\ncreated: 2026-07-01\nreviewed_at: 2026-08-01\n\
+                     reviewed_tasks_total: 5\n"
+                        .to_string(),
+                ),
+            ] {
+                let ws = ws_with_scope_file(tag, &format!("{FILE_A}changed\n"));
+                let store = TestStore::with_meta("demo", &meta);
+                store.put_artifact("demo", "tasks.md", TASKS_ALL_DONE);
+                try_archive(&ws, &store, skip_opts()).unwrap_or_else(|e| panic!("{tag}: {e}"));
+                assert!(!store.change_exists("demo"), "{tag}: change must be archived");
+            }
+        }
+
+        #[test]
+        fn the_task_readiness_gate_refuses_first() {
+            // Example 表之外的順序契約：寫碼任務未完成＋章已失效 → 任務守門先拒，
+            // 訊息維持既有樣式、不提章失效。
+            let ws = ws_with_scope_file("order", &format!("{FILE_A}changed\n"));
+            let store = TestStore::with_meta("demo", &meta_with_stamps(&["reviewed"]));
+            store.put_artifact("demo", "tasks.md", "- [x] a\n- [ ] b\n");
+            let err = try_archive(&ws, &store, skip_opts()).expect_err("task gate must refuse");
+            let msg = err.to_string();
+            assert!(msg.contains("1/2 tasks complete"), "既有任務守門訊息: {msg}");
+            assert!(!msg.contains("stamp"), "任務守門訊息不得提及章失效: {msg}");
+        }
+
+        #[test]
+        fn the_remote_channel_judges_only_the_task_anchor() {
+            // spec Scenario「remote 通道僅判任務錨」：無工作樹 → 內容錨跳過（放行），
+            // 任務錨破仍拒絕。scope 檔在 remote 側根本讀不到，等同「改過」。
+            let store = TestStore::with_meta("demo", &meta_with_stamps(&["reviewed"]));
+            store.put_artifact("demo", "tasks.md", TASKS_ALL_DONE);
+            try_archive(&remote_ws(), &store, skip_opts())
+                .expect("no work tree → content anchor is not judged");
+
+            let store = TestStore::with_meta("demo", &meta_with_stamps(&["reviewed"]));
+            store.put_artifact("demo", "tasks.md", &format!("{TASKS_ALL_DONE}- [x] f\n"));
+            let err = try_archive(&remote_ws(), &store, skip_opts())
+                .expect_err("task anchor still refuses on the remote channel");
+            assert!(err.to_string().contains("review"), "{err}");
+        }
     }
 
     // --- 封存共行逐 slug（design D3；spec「多來源討論的變更封存逐一共行」）---

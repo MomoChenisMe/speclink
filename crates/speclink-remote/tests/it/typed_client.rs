@@ -129,7 +129,7 @@ fn get_change_returns_the_typed_status() {
 fn instructions_split_into_apply_and_artifact_typed_calls() {
     let mock = serve(
         200,
-        r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"tasks":"tasks.md"},"progress":{"total":2,"complete":2,"remaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"parallel":false}],"state":"all_done","locale":"English","instruction":"Work through the tasks.\n"}"#,
+        r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"tasks":"tasks.md"},"progress":{"total":2,"complete":2,"remaining":0,"codeTotal":2,"codeComplete":2,"codeRemaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"parallel":false,"manual":false}],"state":"all_done","locale":"English","instruction":"Work through the tasks.\n"}"#,
     );
     let apply = client(&mock).apply_instructions("demo").expect("apply ok");
     assert_eq!(apply.state, "all_done");

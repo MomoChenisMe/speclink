@@ -139,7 +139,21 @@ pub enum Freshness {
     Unknown,
 }
 
+/// 內容錨的讀取器：repo-root 相對路徑 → 檔案內容。None 代表沒有工作樹可讀
+/// （remote 封存通道），內容錨因此不判定。
+pub type ScopeReader<'a> = Option<&'a dyn Fn(&str) -> Option<String>>;
+
+/// 章失效的原因——封存守門的拒絕訊息素材（design D5）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StaleReason {
+    /// 任務錨破：總數已非蓋章時的數，或仍有寫碼任務未完成。
+    TaskAnchor { stamped_total: usize, total: usize, code_complete: usize, code_total: usize },
+    /// 內容錨破：這個 scope 檔的現值指紋不符（含檔案已不存在）。
+    ContentAnchor { path: String },
+}
+
 /// 章的雙錨原料（自站別 meta 欄位取出後交給共用判定）。
+#[derive(Clone, Copy)]
 pub struct StampAnchors<'a> {
     pub stamped_at: Option<&'a str>,
     pub tasks_total: Option<usize>,
@@ -159,13 +173,12 @@ pub fn add_round(st: &Station, store: &dyn Store, change: &str, content: &str) -
     // 刻意不對稱（design D3）：驗證工單語意限定為成品驗證，中途盤點輪不落工單
     // ——誤落的盤點輪會讓「未結工單」失去語意，還會誤觸 archive 守門。
     if st.round_requires_tasks_complete {
-        let tasks_md = store.read_artifact(change, "tasks.md").unwrap_or_default();
-        let (total, complete, _) = crate::tasks::progress(&crate::tasks::parse(&tasks_md));
-        if total > 0 && complete < total {
+        let counts = crate::tasks::counts_for(store, change);
+        if !counts.code_done() {
             bail!(crate::command::Refusal(format!(
-                "change '{change}' has {complete}/{total} tasks complete — a {} ticket \
+                "change '{change}' has {}/{} code tasks complete — a {} ticket \
                  records the finished work; mid-flight check-ins stay in the conversation",
-                st.noun
+                counts.code_complete, counts.code_total, st.noun
             )));
         }
     }
@@ -406,14 +419,14 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
     };
     let ticket = parse_ticket(st, &ticket_text)?;
 
-    // 守門 (1)：任務全數完成（零任務 change 比照 archive gate 放行）。
-    let tasks_md = store.read_artifact(change, "tasks.md").unwrap_or_default();
-    let (total, complete, _) = crate::tasks::progress(&crate::tasks::parse(&tasks_md));
-    if total > 0 && complete < total {
+    // 守門 (1)：寫碼任務全數完成——`[M]` 手測任務不計（章＝驗證過，成品定案的
+    // 語意由封存承接）。零寫碼任務比照 archive gate 放行。
+    let counts = crate::tasks::counts_for(store, change);
+    if !counts.code_done() {
         bail!(crate::command::Refusal(format!(
-            "change '{change}' has {complete}/{total} tasks complete — {} stamp \
-             requires all tasks done",
-            st.noun
+            "change '{change}' has {}/{} code tasks complete — {} stamp \
+             requires every code task done ([M] manual-verification tasks excluded)",
+            counts.code_complete, counts.code_total, st.noun
         )));
     }
     // 守門 (2)：末輪零待處理必修（CRITICAL／WARNING）findings；SUGGESTION 不擋章；
@@ -435,7 +448,8 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
 
     let paths =
         scope_union(ticket.rounds.iter().flat_map(|r| r.scope.iter().map(String::as_str)));
-    Ok(StampGate { raw_meta, paths, tasks_total: total })
+    // 錨記全任務總數（含 `[M]`）——欄位形狀不變，舊章資料相容。
+    Ok(StampGate { raw_meta, paths, tasks_total: counts.total })
 }
 
 fn write_stamp(
@@ -491,31 +505,51 @@ pub fn content_fingerprint(text: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// 失效判定純函式（design D3）：任務錨＝當前任務仍是「蓋章當時總數的全完成」；
-/// 內容錨＝全部 scope 檔的現值指紋相符（缺檔即不符）。任一錨破 → Stale；
-/// 全符 → Fresh；meta 未帶完整章 → Unknown。
+/// 失效判定純函式（design D3、D4）：任務錨＝當前全任務總數仍等於蓋章時總數，
+/// 且寫碼任務全完成——`[M]` 手測任務的勾選狀態不影響章（章＝驗證過，手測是
+/// 封存的事）；內容錨＝全部 scope 檔的現值指紋相符（缺檔即不符）。任一錨破 →
+/// Stale；全符 → Fresh；meta 未帶完整章 → Unknown。
 pub fn freshness(
     anchors: StampAnchors<'_>,
-    tasks_total: usize,
-    tasks_complete: usize,
+    counts: &crate::tasks::Counts,
     read_file: &dyn Fn(&str) -> Option<String>,
 ) -> Freshness {
-    let Some(stamped_total) = anchors.tasks_total else {
-        return Freshness::Unknown;
-    };
-    if anchors.stamped_at.is_none() || anchors.scope.is_empty() {
+    if !is_stamped(anchors) {
         return Freshness::Unknown;
     }
-    if tasks_total != stamped_total || tasks_complete != tasks_total {
-        return Freshness::Stale;
+    match stale_reason(anchors, counts, Some(read_file)) {
+        Some(_) => Freshness::Stale,
+        None => Freshness::Fresh,
     }
-    for entry in anchors.scope {
-        match read_file(&entry.path) {
-            Some(content) if content_fingerprint(&content) == entry.hash => {}
-            _ => return Freshness::Stale,
-        }
+}
+
+/// meta 是否帶了可判定的完整章（缺席讀作未蓋章）。
+pub fn is_stamped(anchors: StampAnchors<'_>) -> bool {
+    anchors.tasks_total.is_some() && anchors.stamped_at.is_some() && !anchors.scope.is_empty()
+}
+
+/// [`freshness`] 的判定本體，附破錨原因。未蓋章（見 [`is_stamped`]）與兩錨皆符
+/// 都回 None——呼叫端先以 `is_stamped` 分辨。`read_file` 為 None 時只判任務錨：
+/// remote 封存通道無工作樹可讀，內容錨無從判定（design D5 的已知非對稱）。
+pub fn stale_reason(
+    anchors: StampAnchors<'_>,
+    counts: &crate::tasks::Counts,
+    read_file: ScopeReader<'_>,
+) -> Option<StaleReason> {
+    let stamped_total = anchors.tasks_total?;
+    if counts.total != stamped_total || !counts.code_done() {
+        return Some(StaleReason::TaskAnchor {
+            stamped_total,
+            total: counts.total,
+            code_complete: counts.code_complete,
+            code_total: counts.code_total,
+        });
     }
-    Freshness::Fresh
+    let read_file = read_file?;
+    anchors.scope.iter().find_map(|entry| match read_file(&entry.path) {
+        Some(content) if content_fingerprint(&content) == entry.hash => None,
+        _ => Some(StaleReason::ContentAnchor { path: entry.path.clone() }),
+    })
 }
 
 /// 未結工單的處置說明（design D4／D5）——archive 守門對每個有未結工單的站別

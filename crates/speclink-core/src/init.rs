@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：指令檔 SPECLINK 標記與技能檔 frontmatter 的 version 同源於此。
 /// 僅在內嵌資產（assets/skills）或 marker 模板的 render 內容變動時遞增——與 app／CLI
 /// 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const MARKER_VERSION: &str = "v1.19.7";
+pub const MARKER_VERSION: &str = "v1.19.10";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink

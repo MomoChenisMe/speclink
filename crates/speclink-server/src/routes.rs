@@ -1817,6 +1817,9 @@ fn apply_instructions(apply: engine::ApplyInstructions) -> ApplyInstructions {
             total: apply.progress.total,
             complete: apply.progress.complete,
             remaining: apply.progress.remaining,
+            code_total: apply.progress.code_total,
+            code_complete: apply.progress.code_complete,
+            code_remaining: apply.progress.code_remaining,
         },
         tasks: apply.tasks.into_iter().map(task_entry).collect(),
         state: apply.state,
@@ -1859,6 +1862,7 @@ fn task_entry(task: engine::TaskJson) -> TaskEntry {
         description: task.description,
         done: task.done,
         parallel: task.parallel,
+        manual: task.manual,
     }
 }
 

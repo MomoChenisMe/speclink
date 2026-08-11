@@ -15,6 +15,9 @@ pub struct Task {
     pub description: String,
     pub done: bool,
     pub parallel: bool,
+    /// Manual-verification task (`[M]`): human acceptance work the gates exclude
+    /// from their "code tasks all complete" predicate.
+    pub manual: bool,
     /// Immutable identity from the line's trailing speclink-task comment; None on unstamped lines.
     pub stable_id: Option<String>,
 }
@@ -92,6 +95,26 @@ pub fn duplicate_stable_ids(tasks: &[Task]) -> Vec<String> {
     dups
 }
 
+/// Strip the marker slot that follows a checkbox: `[P]` and `[M]` in either
+/// order, each at most once. Returns (parallel, manual, remaining body).
+fn strip_markers(rest: &str) -> (bool, bool, &str) {
+    let (mut parallel, mut manual) = (false, false);
+    let mut body = rest;
+    loop {
+        if let (false, Some(d)) = (parallel, body.strip_prefix("[P] ")) {
+            parallel = true;
+            body = d;
+            continue;
+        }
+        if let (false, Some(d)) = (manual, body.strip_prefix("[M] ")) {
+            manual = true;
+            body = d;
+            continue;
+        }
+        return (parallel, manual, body);
+    }
+}
+
 /// Parse tasks.md into an ordered list of checkbox tasks. Dash and star bullets both
 /// count (`* [ ]` is a task).
 pub fn parse(tasks_md: &str) -> Vec<Task> {
@@ -108,27 +131,72 @@ pub fn parse(tasks_md: &str) -> Vec<Task> {
             _ => continue,
         };
         id += 1;
-        let (parallel, desc) = match rest.strip_prefix("[P] ") {
-            Some(d) => (true, d),
-            None => (false, rest),
-        };
+        let (parallel, manual, desc) = strip_markers(rest);
         let (display, stable_id) = split_stable_id(desc);
         out.push(Task {
             id,
             description: display.trim().to_string(),
             done,
             parallel,
+            manual,
             stable_id: stable_id.map(str::to_string),
         });
     }
     out
 }
 
+/// Task counts in two groups: every task, and code tasks alone (`[M]` excluded).
+/// The single source both the station gates and the stamp freshness anchors read
+/// — no caller filters manual tasks on its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Counts {
+    pub total: usize,
+    pub complete: usize,
+    pub remaining: usize,
+    pub code_total: usize,
+    pub code_complete: usize,
+    pub code_remaining: usize,
+}
+
+impl Counts {
+    /// The "code tasks all complete" predicate. Vacuously true with no code
+    /// tasks — a zero-task change and an all-`[M]` change both pass.
+    pub fn code_done(&self) -> bool {
+        self.code_remaining == 0
+    }
+}
+
+/// Count tasks in both groups (see [`Counts`]).
+pub fn counts(tasks: &[Task]) -> Counts {
+    let (mut complete, mut code_total, mut code_complete) = (0, 0, 0);
+    for t in tasks {
+        complete += usize::from(t.done);
+        if !t.manual {
+            code_total += 1;
+            code_complete += usize::from(t.done);
+        }
+    }
+    let total = tasks.len();
+    Counts {
+        total,
+        complete,
+        remaining: total - complete,
+        code_total,
+        code_complete,
+        code_remaining: code_total - code_complete,
+    }
+}
+
+/// Read a change's tasks.md and count both groups — the one entry point the
+/// station gates, the stamp freshness anchors and the listings all read.
+pub fn counts_for(store: &dyn Store, change: &str) -> Counts {
+    counts(&parse(&store.read_artifact(change, "tasks.md").unwrap_or_default()))
+}
+
 /// Progress tuple: (total, complete, remaining).
 pub fn progress(tasks: &[Task]) -> (usize, usize, usize) {
-    let total = tasks.len();
-    let complete = tasks.iter().filter(|t| t.done).count();
-    (total, complete, total - complete)
+    let c = counts(tasks);
+    (c.total, c.complete, c.remaining)
 }
 
 /// How a task verb addresses its target: 1-based ordinal (display/compat)
@@ -1020,6 +1088,80 @@ mod tests {
         // sharp-edge：空 ID 註解不是身分——空字串 ID 會讓 key/定址靜默歧義。
         let empty = parse("- [ ] 1.1 x <!-- speclink-task: -->\n");
         assert!(empty[0].stable_id.is_none(), "empty marker id must not count as identity");
+    }
+
+    // --- spec「任務行的手動測試標記與解析」---
+
+    #[test]
+    fn parse_reads_manual_marker_and_strips_it_from_description() {
+        let tasks = parse("- [ ] [M] 手測匯入\n- [ ] 寫解析器\n");
+        assert!(tasks[0].manual, "[M] 前綴須解析為 manual");
+        assert!(!tasks[0].parallel);
+        assert_eq!(tasks[0].description, "手測匯入", "描述須剝除標記");
+        assert!(!tasks[1].manual, "無標記任務不得為 manual");
+        assert_eq!(tasks[1].description, "寫解析器");
+    }
+
+    #[test]
+    fn parse_accepts_both_markers_in_either_order() {
+        for line in ["- [x] [M] [P] 手測匯入\n", "- [x] [P] [M] 手測匯入\n"] {
+            let t = &parse(line)[0];
+            assert!(t.manual && t.parallel, "兩標記須順序不敏感：{line}");
+            assert_eq!(t.description, "手測匯入", "兩標記皆須剝除：{line}");
+        }
+    }
+
+    #[test]
+    fn parse_leaves_unmarked_lines_untouched() {
+        let tasks = parse(TASKS_WITH_IDS);
+        assert!(tasks.iter().all(|t| !t.manual && !t.parallel));
+        assert_eq!(tasks[0].description, "1.1 first task");
+        assert_eq!(tasks[0].stable_id.as_deref(), Some("tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV"));
+    }
+
+    // --- spec「寫碼任務全完成預測子」---
+
+    #[test]
+    fn counts_split_code_tasks_from_manual_ones() {
+        // spec Example 表逐列：全量(完成/總數) → 寫碼(完成/總數) → 預測子
+        let rows: [(&str, (usize, usize), (usize, usize), bool); 4] = [
+            // 9/10 全量、9/9 寫碼 → 成立
+            (
+                "- [x] a\n- [x] b\n- [x] c\n- [x] d\n- [x] e\n\
+                 - [x] f\n- [x] g\n- [x] h\n- [x] i\n- [ ] [M] 手測\n",
+                (9, 10),
+                (9, 9),
+                true,
+            ),
+            // 7/10 全量、7/8 寫碼 → 不成立
+            (
+                "- [x] a\n- [x] b\n- [x] c\n- [x] d\n- [x] e\n\
+                 - [x] f\n- [x] g\n- [ ] h\n- [ ] [M] m1\n- [ ] [M] m2\n",
+                (7, 10),
+                (7, 8),
+                false,
+            ),
+            // 0/0 → 空真成立
+            ("", (0, 0), (0, 0), true),
+            // 全為 [M]：0/2 全量、0/0 寫碼 → 空真成立
+            ("- [ ] [M] m1\n- [ ] [M] m2\n", (0, 2), (0, 0), true),
+        ];
+        for (md, (complete, total), (code_complete, code_total), predicate) in rows {
+            let c = counts(&parse(md));
+            assert_eq!((c.complete, c.total), (complete, total), "全量計數：{md}");
+            assert_eq!(
+                (c.code_complete, c.code_total),
+                (code_complete, code_total),
+                "寫碼計數：{md}"
+            );
+            assert_eq!(c.code_done(), predicate, "預測子：{md}");
+        }
+    }
+
+    #[test]
+    fn progress_tuple_stays_on_full_counts() {
+        let tasks = parse("- [x] a\n- [ ] [M] 手測\n");
+        assert_eq!(progress(&tasks), (2, 1, 1), "既有 progress 契約仍為全量計數");
     }
 
     #[test]

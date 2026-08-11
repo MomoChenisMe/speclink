@@ -280,6 +280,13 @@ pub struct Progress {
     pub total: usize,
     pub complete: usize,
     pub remaining: usize,
+    /// Code tasks alone (`[M]` manual-verification tasks excluded) — what the
+    /// station gates judge against. Deliberately NOT `serde(default)`: a
+    /// defaulted 0/0/0 from an old server would read as "code work finished"
+    /// and let the gates pass — fail closed on version skew instead.
+    pub code_total: usize,
+    pub code_complete: usize,
+    pub code_remaining: usize,
 }
 
 /// One task inside [`ApplyInstructions`].
@@ -290,6 +297,10 @@ pub struct TaskEntry {
     pub description: String,
     pub done: bool,
     pub parallel: bool,
+    /// No `serde(default)` for the same reason as [`Progress`]'s code counts:
+    /// a silent `false` from an old server would hide manual tasks from the
+    /// gates — fail closed on version skew instead.
+    pub manual: bool,
 }
 
 /// `GET /changes/{name}/instructions/{artifact}` response for a schema
@@ -647,16 +658,21 @@ mod tests {
     #[test]
     fn apply_instructions_round_trip_without_a_preflight_field() {
         let apply: ApplyInstructions = serde_json::from_str(
-            r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"design":"design.md","proposal":"proposal.md","specs":"specs/**/*.md","tasks":"tasks.md"},"progress":{"total":2,"complete":2,"remaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"parallel":false}],"state":"all_done","locale":"English","instruction":"Work through the tasks.\n"}"#,
+            r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"design":"design.md","proposal":"proposal.md","specs":"specs/**/*.md","tasks":"tasks.md"},"progress":{"total":3,"complete":3,"remaining":0,"codeTotal":2,"codeComplete":2,"codeRemaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"parallel":false,"manual":false},{"id":"3","description":"1.3 Hand check","done":true,"parallel":false,"manual":true}],"state":"all_done","locale":"English","instruction":"Work through the tasks.\n"}"#,
         )
         .unwrap();
         assert_eq!(apply.change_name, "demo");
-        assert_eq!(apply.progress.total, 2);
+        assert_eq!(apply.progress.total, 3);
+        assert_eq!(apply.progress.code_total, 2, "manual tasks stay out of the code counts");
         assert_eq!(apply.tasks[0].description, "1.1 First");
+        assert!(!apply.tasks[0].manual);
+        assert!(apply.tasks[1].manual, "[M] task rides the wire as manual");
         assert_eq!(apply.state, "all_done");
 
         let json = serde_json::to_value(&apply).unwrap();
         assert_eq!(json["contextFiles"]["design"], "design.md");
+        assert_eq!(json["progress"]["codeRemaining"], 0, "camelCase on the new counters");
+        assert_eq!(json["tasks"][1]["manual"], true);
         assert!(
             json.get("preflight").is_none(),
             "preflight is deliberately fs-only — the wire contract omits it"
