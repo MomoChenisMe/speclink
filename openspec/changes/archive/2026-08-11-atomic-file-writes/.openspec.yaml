@@ -31,3 +31,5 @@ verified_scope:
     hash: c4acf89bf9d7e1d482eac20a9e75c2cb41bf82cf48a48fac4df5acbae66b7a38
   - path: crates/speclink-core/src/util.rs
     hash: 42517718a1c5194292fed12d5484d2f3988aba274f061ac90d14541fd542482d
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-11
