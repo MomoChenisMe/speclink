@@ -27,4 +27,4 @@
 ## 5. 收尾驗證
 
 - [x] 5.1 全量前端測試：npm test -w packages/ui && npm test -w apps/desktop 通過 <!-- speclink-task:tsk_01KZNE0N9E2XAMS8FHK5BSAA3N -->
-- [ ] 5.2 [M] 桌面 app 實機驗收：已封存頁點卡開抽屜（標頭有複製鈕與出身列）；系統匣在已封存頁開啟某變更 → 底層回看板；封存討論卡雙行（slug 標題＋topic 描述）；封存變更卡描述列顯示 Why 首句 <!-- speclink-task:tsk_01KZNE0N9EFH9PT5GXM2TFZ70J -->
+- [x] 5.2 [M] 桌面 app 實機驗收：已封存頁點卡開抽屜（標頭有複製鈕與出身列）；系統匣在已封存頁開啟某變更 → 底層回看板；封存討論卡雙行（slug 標題＋topic 描述）；封存變更卡描述列顯示 Why 首句 <!-- speclink-task:tsk_01KZNE0N9EFH9PT5GXM2TFZ70J -->
