@@ -5,10 +5,18 @@ export interface TaskLine {
 }
 
 /** 任務文件的一個節點：群組標題或任務（帶 1-based 序數，供寫回 tasks.md 定位；
- * stableId＝行尾 speclink-task 註解的不可變身分，無註解舊檔缺席）。 */
+ * stableId＝行尾 speclink-task 註解的不可變身分，無註解舊檔缺席；manual＝行首
+ * `[M]` 標記的手動測試任務，無標記時缺席）。 */
 export type TaskDocItem =
   | { kind: "group"; text: string }
-  | { kind: "task"; ordinal: number; done: boolean; text: string; stableId?: string };
+  | {
+      kind: "task";
+      ordinal: number;
+      done: boolean;
+      text: string;
+      stableId?: string;
+      manual?: true;
+    };
 
 /** 行尾 speclink-task ID 註解（spec task-identity）——顯示一律剝離。 */
 const TASK_ID_RE = /\s*<!--\s*speclink-task:\s*(\S+?)\s*-->\s*$/;
@@ -17,6 +25,29 @@ const TASK_ID_RE = /\s*<!--\s*speclink-task:\s*(\S+?)\s*-->\s*$/;
 function splitStableId(text: string): { text: string; stableId?: string } {
   const m = text.match(TASK_ID_RE);
   return m ? { text: text.slice(0, m.index).trimEnd(), stableId: m[1] } : { text };
+}
+
+/** 剝離 checkbox 後的行首標記槽（spec manual-task-marker，與引擎
+ * crates/speclink-core/src/tasks.rs 的 strip_markers 同構——動標記規則兩處要
+ * 一起改，案例表也對齊同一份）：`[M]` 承載手動測試身分，歷史遺留的 `[P]` 只剝
+ * 不承載任何旗標；順序不敏感、各至多一次。 */
+function stripMarkers(text: string): { text: string; manual: boolean } {
+  let manual = false;
+  let legacyParallel = false;
+  let body = text;
+  for (;;) {
+    if (!legacyParallel && body.startsWith("[P] ")) {
+      legacyParallel = true;
+      body = body.slice(4);
+      continue;
+    }
+    if (!manual && body.startsWith("[M] ")) {
+      manual = true;
+      body = body.slice(4);
+      continue;
+    }
+    return { text: body, manual };
+  }
 }
 
 /** 清單項呈現 key：stable ID 第一、無 ID 舊檔退回 ordinal（spec task-identity）。 */
@@ -35,16 +66,21 @@ export function parseTaskDoc(markdown: string | null | undefined): TaskDocItem[]
       items.push({ kind: "group", text: g[1] });
       continue;
     }
-    const t = line.match(/^\s*-\s*\[([ xX])\]\s+(.*\S)\s*$/);
+    // checkbox 後恰一個空格才進標記槽（`\] ` 非 `\]\s+`）——與引擎的
+    // `&r[4..]` 同構：多餘空白留在描述裡，標記就不成立，UI 與計數/閘門
+    // 才不會對同一行給出相反的 manual 判定。
+    const t = line.match(/^\s*-\s*\[([ xX])\] (.*)$/);
     if (t) {
       ordinal += 1;
       const done = t[1].toLowerCase() === "x";
-      const { text, stableId } = splitStableId(t[2]);
-      items.push(
-        stableId
-          ? { kind: "task", ordinal, done, text, stableId }
-          : { kind: "task", ordinal, done, text },
-      );
+      const { text: unmarked, manual } = stripMarkers(t[2]);
+      const { text: unstamped, stableId } = splitStableId(unmarked);
+      // 前後修剪與引擎 display.trim() 同構。
+      const text = unstamped.trim();
+      const item: Extract<TaskDocItem, { kind: "task" }> = { kind: "task", ordinal, done, text };
+      if (stableId) item.stableId = stableId;
+      if (manual) item.manual = true;
+      items.push(item);
     }
   }
   return items;
@@ -56,7 +92,9 @@ export function setTaskMark(markdown: string, ordinal: number, done: boolean): s
   let n = 0;
   let hit = false;
   const lines = markdown.split(/\r?\n/).map((line) => {
-    const m = line.match(/^(\s*-\s*\[)[ xX](\]\s+.*\S\s*)$/);
+    // 任務行判定與 parseTaskDoc 同一形狀（`\] ` 恰一個空格）——讀寫兩側的
+    // 序數計數必須同構，否則樂觀改寫會翻錯行。
+    const m = line.match(/^(\s*-\s*\[)[ xX](\] .*)$/);
     if (!m) return line;
     n += 1;
     if (n !== ordinal) return line;
@@ -113,13 +151,17 @@ export function resolveDropTarget(
 }
 
 /** 解析 tasks.md 的 checkbox 行（`- [ ]` / `- [x]`）為任務清單。非 checkbox 行忽略；
- * 顯示文字剝離行尾 ID 註解。 */
+ * 顯示文字剝離行首標記前綴與行尾 ID 註解。 */
 export function parseTasks(markdown: string | null | undefined): TaskLine[] {
   if (!markdown) return [];
   const out: TaskLine[] = [];
   for (const line of markdown.split(/\r?\n/)) {
-    const m = line.match(/^\s*-\s*\[([ xX])\]\s+(.*\S)\s*$/);
-    if (m) out.push({ done: m[1].toLowerCase() === "x", text: splitStableId(m[2]).text });
+    // 與 parseTaskDoc 同一行判定（checkbox 後恰一個空格）。
+    const m = line.match(/^\s*-\s*\[([ xX])\] (.*)$/);
+    if (m) {
+      const text = splitStableId(stripMarkers(m[2]).text).text.trim();
+      out.push({ done: m[1].toLowerCase() === "x", text });
+    }
   }
   return out;
 }

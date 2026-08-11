@@ -1,7 +1,7 @@
 // spec 需求「看板欄位由生命週期標記驅動」：全完成＝已就緒 ＞ started_at 或任務
 // 完成數>0＝進行中 ＞ 其餘＝提案中。矩陣值取自 spec 的 Example「欄位判定矩陣」表。
 import { describe, it, expect } from "vitest";
-import { changeStage, STAGE_BAR, STAGE_ICON } from "../stage";
+import { awaitingManualCount, changeStage, STAGE_BAR, STAGE_ICON } from "../stage";
 import type { ChangeItem } from "../adapter";
 
 function ci(total: number, done: number, startedAt?: string): ChangeItem {
@@ -41,5 +41,37 @@ describe("STAGE_BAR / STAGE_ICON（單一 teal 深淺階梯）", () => {
       "in-progress": "text-primary/75",
       ready: "text-primary",
     });
+  });
+});
+
+// spec desktop-app「看板卡片的待手測標示」:判定收斂於階段派生模組單一入口。
+describe("awaitingManualCount(待手測判定)", () => {
+  const c = (codeTotal: number | undefined, codeRemaining: number | undefined, remaining: number): ChangeItem => ({
+    name: "c",
+    status: "in-progress",
+    totalTasks: 10,
+    completedTasks: 10 - remaining,
+    ...(codeTotal !== undefined ? { codeTotal, codeComplete: codeTotal - (codeRemaining ?? 0), codeRemaining } : {}),
+  });
+
+  it("spec Example「浮現判定」表逐列", () => {
+    // | codeTotal | codeRemaining | remaining | 待手測章 |
+    const rows: [number, number, number, number][] = [
+      [9, 0, 1, 1],
+      [7, 0, 3, 3],
+      [8, 2, 3, 0],
+      [10, 0, 0, 0],
+      [0, 0, 2, 0], // 尚無寫碼任務:空真值不浮現
+    ];
+    for (const [codeTotal, codeRemaining, remaining, want] of rows) {
+      expect(
+        awaitingManualCount(c(codeTotal, codeRemaining, remaining)),
+        `codeTotal=${codeTotal} codeRemaining=${codeRemaining} remaining=${remaining}`,
+      ).toBe(want);
+    }
+  });
+
+  it("remote 缺寫碼進度欄位一律 0(章缺席)", () => {
+    expect(awaitingManualCount(c(undefined, undefined, 1))).toBe(0);
   });
 });

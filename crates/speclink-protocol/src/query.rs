@@ -296,7 +296,6 @@ pub struct TaskEntry {
     pub id: String,
     pub description: String,
     pub done: bool,
-    pub parallel: bool,
     /// No `serde(default)` for the same reason as [`Progress`]'s code counts:
     /// a silent `false` from an old server would hide manual tasks from the
     /// gates — fail closed on version skew instead.
@@ -658,7 +657,7 @@ mod tests {
     #[test]
     fn apply_instructions_round_trip_without_a_preflight_field() {
         let apply: ApplyInstructions = serde_json::from_str(
-            r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"design":"design.md","proposal":"proposal.md","specs":"specs/**/*.md","tasks":"tasks.md"},"progress":{"total":3,"complete":3,"remaining":0,"codeTotal":2,"codeComplete":2,"codeRemaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"parallel":false,"manual":false},{"id":"3","description":"1.3 Hand check","done":true,"parallel":false,"manual":true}],"state":"all_done","locale":"English","instruction":"Work through the tasks.\n"}"#,
+            r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"design":"design.md","proposal":"proposal.md","specs":"specs/**/*.md","tasks":"tasks.md"},"progress":{"total":3,"complete":3,"remaining":0,"codeTotal":2,"codeComplete":2,"codeRemaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"manual":false},{"id":"3","description":"1.3 Hand check","done":true,"manual":true}],"state":"all_done","locale":"English","instruction":"Work through the tasks.\n"}"#,
         )
         .unwrap();
         assert_eq!(apply.change_name, "demo");

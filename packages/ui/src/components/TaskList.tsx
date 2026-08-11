@@ -17,9 +17,10 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CheckCheck, GripVertical, LocateFixed, RotateCcw } from "lucide-react";
+import { CheckCheck, GripVertical, Hand, LocateFixed, RotateCcw } from "lucide-react";
 
 import { useI18n } from "../i18n";
+import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import { SUB_LABEL_CLS } from "./SectionedDoc";
 import { parseTaskDoc, resolveDropTarget, taskKey, type TaskDocItem } from "../tasks";
 import { Button } from "./ui/button";
@@ -69,13 +70,30 @@ function TaskRowBody({
         disabled={readOnly}
         onCheckedChange={(v) => onToggle?.(item.ordinal, v === true, item.stableId)}
       />
-      <span
-        className={`flex-1 text-base leading-relaxed ${
-          item.done ? "text-muted-foreground line-through decoration-muted-foreground/50" : ""
-        }`}
-      >
-        {item.text}
-      </span>
+      {/* 描述欄（spec desktop-app「任務列的手動測試徽章」；design D4）：徽章與
+          描述縱向堆疊，徽章獨佔描述正上方那一行、左緣與描述切齊——讀者視線的
+          起點就在這條左緣，行尾右對齊的版本實測讀不出來。無徽章時容器只有描述
+          一個子元素，不留空行，編號起始欄與無徽章列同位。 */}
+      <div className="flex flex-1 flex-col gap-1">
+        {item.manual && (
+          <span
+            aria-label={t("tasks.manual")}
+            // 語意色票的進行中藍（面色＋文字色），與看板「待手測」章同一族——
+            // 灰底灰字在滿頁灰階任務文字裡沒有辨識度。
+            className={`inline-flex w-fit shrink-0 self-start items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] leading-none ${SEMANTIC_SURFACE.inProgress} ${SEMANTIC_TONE.inProgress}`}
+          >
+            <Hand className="h-3 w-3" />
+            {t("tasks.manual")}
+          </span>
+        )}
+        <span
+          className={`text-base leading-relaxed ${
+            item.done ? "text-muted-foreground line-through decoration-muted-foreground/50" : ""
+          }`}
+        >
+          {item.text}
+        </span>
+      </div>
     </>
   );
 }
