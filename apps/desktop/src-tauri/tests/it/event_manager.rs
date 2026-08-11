@@ -67,6 +67,113 @@ fn repeated_sync_state_failures_during_backoff_drive_the_connection_offline() {
     events.unregister(KEY);
 }
 
+// --- async 化後 IPC 順序不再保證：先到的 unregister 抵銷在途的 register ---
+
+#[test]
+fn an_unregister_arriving_before_its_register_cancels_that_subscription() {
+    let (notify, _rx) = sink();
+    let events = EventManager::new(notify);
+    let attempts = Arc::new(AtomicUsize::new(0));
+
+    // 快速 mount/unmount 下 cleanup 的 unregister 可先於 register 抵達。
+    events.unregister(KEY);
+
+    let sub_attempts = attempts.clone();
+    events.register(
+        KEY,
+        move |_| {
+            sub_attempts.fetch_add(1, Ordering::SeqCst);
+            Err(speclink_remote::translate_transport())
+        },
+        || Err(speclink_remote::translate_transport()),
+        vec![Duration::from_millis(5)],
+    );
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        0,
+        "先到的 unregister 必須抵銷這次 register——不得開出沒人退訂的 worker"
+    );
+
+    // 抵銷是一次性的：下一個 register 照常開訂閱。
+    let sub_attempts = attempts.clone();
+    events.register(
+        KEY,
+        move |_| {
+            sub_attempts.fetch_add(1, Ordering::SeqCst);
+            Err(speclink_remote::translate_transport())
+        },
+        || Err(speclink_remote::translate_transport()),
+        vec![Duration::from_millis(5)],
+    );
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    while attempts.load(Ordering::SeqCst) == 0 && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        attempts.load(Ordering::SeqCst) > 0,
+        "抵銷額度用掉後，新 register 必須照常開 worker"
+    );
+    events.unregister(KEY);
+}
+
+#[test]
+fn a_failed_watch_neutralizes_its_paired_unwatch() {
+    let (notify, _rx) = sink();
+    let events = EventManager::new(notify);
+    let attempts = Arc::new(AtomicUsize::new(0));
+
+    // remote_watch 於註冊前失敗（如 registry 壞讀）＝沒有 register 入帳，
+    // 但前端 unmount 照樣發 unregister——這筆退訂不得毒害之後的訂閱。
+    events.register_failed(KEY);
+    events.unregister(KEY);
+
+    let sub_attempts = attempts.clone();
+    events.register(
+        KEY,
+        move |_| {
+            sub_attempts.fetch_add(1, Ordering::SeqCst);
+            Err(speclink_remote::translate_transport())
+        },
+        || Err(speclink_remote::translate_transport()),
+        vec![Duration::from_millis(5)],
+    );
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    while attempts.load(Ordering::SeqCst) == 0 && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        attempts.load(Ordering::SeqCst) > 0,
+        "失敗註冊的配對退訂被中和後，新 register 必須照常開 worker"
+    );
+    events.unregister(KEY);
+
+    // 反向交錯：unregister 先到（記額度）、失敗註冊後到（消額度）——
+    // 同樣不得留下毒藥。
+    events.unregister(KEY);
+    events.register_failed(KEY);
+    let sub_attempts = attempts.clone();
+    attempts.store(0, Ordering::SeqCst);
+    events.register(
+        KEY,
+        move |_| {
+            sub_attempts.fetch_add(1, Ordering::SeqCst);
+            Err(speclink_remote::translate_transport())
+        },
+        || Err(speclink_remote::translate_transport()),
+        vec![Duration::from_millis(5)],
+    );
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    while attempts.load(Ordering::SeqCst) == 0 && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        attempts.load(Ordering::SeqCst) > 0,
+        "先到的退訂被後到的失敗註冊消帳後，新 register 必須照常開 worker"
+    );
+    events.unregister(KEY);
+}
+
 #[test]
 fn a_restarted_server_recovers_online_and_invalidates_without_user_action() {
     let h = common::harness_with_events(common::fast_events());

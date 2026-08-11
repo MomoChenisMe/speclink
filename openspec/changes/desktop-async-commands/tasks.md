@@ -15,4 +15,4 @@
 
 - [x] 3.1 全量編譯與測試：cargo clippy -p speclink-desktop 零新警告；cargo test -p speclink-desktop-core 與 speclink-desktop 既有測試全綠（測試前依慣例確認 sidecar 與 server-web dist 已備妥）。 <!-- speclink-task:tsk_01KZQ8M58PZEZXNDF56ZJQA7Z6 -->
 - [x] 3.2 前端行為驗證：npm test（desktop 面 vitest）全綠——command 名稱、參數、回傳形狀不變，前端零改動即通過。 <!-- speclink-task:tsk_01KZQ8M58PS1ZFD97QN0B8WS33 -->
-- [ ] 3.3 [M] 手動驗證卡死消失：讓 agent 於同一 workspace 高頻操作（跑動詞、寫檔）時，自主視窗分頁與 tray 面板兩條入口切換 workspace——視窗與 tray 圖示全程可互動，資料延後出現但不凍結。 <!-- speclink-task:tsk_01KZQ8M58PQME1R6TPC9PR66Z5 -->
+- [x] 3.3 [M] 手動驗證卡死消失：讓 agent 於同一 workspace 高頻操作（跑動詞、寫檔）時，自主視窗分頁與 tray 面板兩條入口切換 workspace——視窗與 tray 圖示全程可互動，資料延後出現但不凍結。 <!-- speclink-task:tsk_01KZQ8M58PQME1R6TPC9PR66Z5 -->

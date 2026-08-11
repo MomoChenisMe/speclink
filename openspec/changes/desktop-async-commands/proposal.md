@@ -16,7 +16,7 @@ Tauri 的非 async command 在 app 唯一的主執行緒上執行。寫入型 co
 
 純記憶體或純視窗操作的 command 維持同步，不在改動範圍：startup_dir（讀行程環境）、connection_state（讀記憶體健康狀態）、toggle_tray_panel、quit_app、tray recovery 轉發。
 
-前端契約零影響：command 名稱、參數、回傳形狀完全不變（前端 invoke 本就 await Promise，Rust 側同步改 async 對 TS 側不可見）。
+前端契約零影響：command 名稱、參數、成功路徑回傳形狀完全不變（前端 invoke 本就 await Promise，Rust 側同步改 async 對 TS 側不可見）。原 infallible 簽名一律改回 `Result`——背景 worker 本身失敗（閉包 panic、關閉期取消）以 invoke 錯誤回報而非讓 promise 懸置；同步時代這條路徑是整窗 panic，現在是單一呼叫可見的錯誤。
 
 ## Non-Goals
 

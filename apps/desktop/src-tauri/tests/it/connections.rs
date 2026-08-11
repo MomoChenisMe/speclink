@@ -8,7 +8,8 @@
 //! 釘死：無任何 token 欄位是規格鐵律。
 
 use speclink_desktop_lib::connections::{
-    read_registry, upsert_connection, write_registry, ConnectionEntry,
+    add_connection, read_registry, remove_connection, upsert_connection, write_registry,
+    ConnectionEntry,
 };
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 
@@ -168,6 +169,48 @@ fn an_invalid_base_url_is_refused() {
     let mut entries = Vec::new();
     upsert_connection(&mut entries, "not-a-url", "壞").expect_err("無 scheme 的輸入被拒");
     assert!(entries.is_empty());
+}
+
+#[test]
+fn concurrent_adds_serialize_and_lose_no_entries() {
+    // async 化後 connection_add 不再由主執行緒天然序列化：無鎖的
+    // read→upsert→write 併行時會互相蓋寫。add_connection 的行程內鎖必須
+    // 讓每一筆都留下來。
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("connections.json");
+    let handles: Vec<_> = (0..8)
+        .map(|i| {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                add_connection(&path, &format!("http://host{i}.example:8080"), &format!("c{i}"))
+                    .expect("add")
+            })
+        })
+        .collect();
+    for h in handles {
+        h.join().expect("add thread");
+    }
+    assert_eq!(
+        read_registry(&path).len(),
+        8,
+        "併行 add 一筆都不得丟失"
+    );
+}
+
+#[test]
+fn remove_connection_deletes_the_entry_and_is_idempotent() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("connections.json");
+    let entry = add_connection(&path, "http://gone.example:8080", "要移除").expect("add");
+    let credentials = MemoryCredentialStore::new();
+
+    let removed = remove_connection(&path, &entry.id, &credentials).expect("remove");
+    assert_eq!(removed.as_deref(), Some("http://gone.example:8080"));
+    assert!(read_registry(&path).is_empty(), "條目已刪");
+
+    // 冪等：不存在的 id 是 no-op。
+    let missing = remove_connection(&path, &entry.id, &credentials).expect("idempotent");
+    assert_eq!(missing, None);
 }
 
 #[test]
