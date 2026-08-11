@@ -135,3 +135,5 @@ verified_scope:
     hash: 7754e4bd50f7fbe9fe576c482920f3f033c36ab2023adadba5d07f41e00a6ca5
   - path: crates/speclink-server/tests/it/verb_api.rs
     hash: c92d427cb780c1253e843e51a34f0399603d00d7bb1a146cbc14a8462b85a2d2
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-11
