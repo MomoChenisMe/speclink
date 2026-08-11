@@ -19,7 +19,9 @@ use crate::init_core_context;
 /// v3：加 spec_count／created_by／from_discussions（封存卡收合資訊，spec-archive-drawer design D5）。
 /// v4：加 review_status（封存時的審查結局，spec client-protocol「已封存清單的審查結局欄位」）。
 /// v5：加 verify_status（封存時的驗證結局，spec client-protocol「已封存清單的驗證結局欄位」）。
-const CACHE_VERSION: i64 = 5;
+/// v6：加 why_excerpt／created（封存卡描述列與抽屜出身列，spec client-protocol
+///     「已封存清單的呈現輔助欄位」）。
+const CACHE_VERSION: i64 = 6;
 
 /// 回傳歸檔 change 清單：`{ "archived": [ { datedName, date, name } ] }`，按 datedName 排序。
 /// 非專案回傳 `{ "archived": [] }`。
@@ -104,8 +106,14 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
             } else {
                 "none"
             };
+            // 呈現輔助欄位（desktop-archived-parity D2）：封存卡描述列的 Why 首句與
+            // 抽屜出身列的建立日期。來源不可讀／缺席時存 NULL，讀出時不插 key。
+            let why_excerpt = store
+                .read_archived_artifact(name, "proposal.md")
+                .as_deref()
+                .and_then(crate::query::why_excerpt);
             conn.execute(
-                "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status, verify_status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status, verify_status, why_excerpt, created) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 rusqlite::params![
                     name,
                     meta,
@@ -116,6 +124,8 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                     parsed.from_discussions().join(","),
                     review_status,
                     verify_status,
+                    why_excerpt,
+                    parsed.created,
                 ],
             )?;
         }
@@ -136,7 +146,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
     }
 
     let mut stmt = conn.prepare(
-        "SELECT dated_name, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status, verify_status FROM archived_changes ORDER BY dated_name",
+        "SELECT dated_name, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status, verify_status, why_excerpt, created FROM archived_changes ORDER BY dated_name",
     )?;
     let items: Vec<Value> = stmt
         .query_map([], |r| {
@@ -149,12 +159,24 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 r.get::<_, Option<String>>(5)?,
                 r.get::<_, Option<String>>(6)?,
                 r.get::<_, Option<String>>(7)?,
+                r.get::<_, Option<String>>(8)?,
+                r.get::<_, Option<String>>(9)?,
             ))
         })?
         .flatten()
         .map(|row| {
-            let (n, total, done, spec_count, created_by, from_discussions, review_status, verify_status) =
-                row;
+            let (
+                n,
+                total,
+                done,
+                spec_count,
+                created_by,
+                from_discussions,
+                review_status,
+                verify_status,
+                why_excerpt,
+                created,
+            ) = row;
             let mut item = item_for(&n);
             // 無 tasks.md 的封存項徽章欄位缺席（前端據此不顯示徽章）。
             if let (Some(total), Some(done)) = (total, done) {
@@ -171,6 +193,13 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
             item["fromDiscussions"] = json!(discussions);
             item["reviewStatus"] = json!(review_status.as_deref().unwrap_or("none"));
             item["verifyStatus"] = json!(verify_status.as_deref().unwrap_or("none"));
+            // 呈現輔助欄位缺席時不插 key（spec：不以空字串或 null 佔位）。
+            if let Some(excerpt) = why_excerpt {
+                item["whyExcerpt"] = json!(excerpt);
+            }
+            if let Some(created) = created {
+                item["created"] = json!(created);
+            }
             item
         })
         .collect();
@@ -191,7 +220,7 @@ fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
             "DROP TABLE IF EXISTS archived_changes;
              DROP TABLE IF EXISTS schema_version;
              CREATE TABLE schema_version (version INTEGER);
-             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT, review_status TEXT, verify_status TEXT);",
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT, review_status TEXT, verify_status TEXT, why_excerpt TEXT, created TEXT);",
         )?;
         conn.execute(
             "INSERT INTO schema_version (version) VALUES (?1)",
@@ -516,6 +545,80 @@ mod tests {
             .query_row("SELECT version FROM schema_version LIMIT 1", [], |r| r.get(0))
             .unwrap();
         assert_eq!(version, CACHE_VERSION, "schema version stamped to current after rebuild");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn archived_items_carry_why_excerpt_and_created() {
+        // spec client-protocol「已封存清單的呈現輔助欄位」：whyExcerpt 為封存
+        // proposal.md 的 Why 區段首個非空行、created 取 metadata 的建立日期；
+        // 來源不可讀或缺席時該欄位不插 key（不以空字串或 null 佔位），
+        // 清單其餘欄位照常回傳。
+        let root = fixture_project(
+            "whyexcerpt",
+            &["2026-07-01-nu", "2026-07-02-xi", "2026-07-03-omicron"],
+        );
+        let archive = root.join("openspec").join("changes").join("archive");
+        // 兩欄位俱在。
+        fs::write(
+            archive.join("2026-07-01-nu").join("proposal.md"),
+            "## Why\n\n看板搜尋列缺席，跨卡找東西只能逐欄翻。\n\n## What Changes\n\n- 補搜尋列\n",
+        )
+        .unwrap();
+        fs::write(
+            archive.join("2026-07-01-nu").join(".openspec.yaml"),
+            "schema: spec-driven\ncreated: 2026-06-20\narchived_at: 2026-07-01\n",
+        )
+        .unwrap();
+        // proposal 缺席（fixture 預設會寫一份，此處移除）——metadata 仍可得。
+        fs::remove_file(archive.join("2026-07-02-xi").join("proposal.md")).unwrap();
+        fs::write(
+            archive.join("2026-07-02-xi").join(".openspec.yaml"),
+            "schema: spec-driven\ncreated: 2026-06-21\n",
+        )
+        .unwrap();
+        // proposal 在但無 Why 區段，且 metadata 全缺席。
+        fs::write(
+            archive.join("2026-07-03-omicron").join("proposal.md"),
+            "## What Changes\n\n只有這段。\n",
+        )
+        .unwrap();
+
+        let v = archived_changes_at(&root);
+        let arr = v["archived"].as_array().unwrap();
+        let by_name = |n: &str| arr.iter().find(|i| i["datedName"] == n).unwrap().clone();
+
+        let nu = by_name("2026-07-01-nu");
+        assert_eq!(nu["whyExcerpt"], "看板搜尋列缺席，跨卡找東西只能逐欄翻。");
+        assert_eq!(nu["created"], "2026-06-20");
+
+        let xi = by_name("2026-07-02-xi");
+        assert!(xi.get("whyExcerpt").is_none(), "proposal 缺席 → 不插 key: {xi}");
+        assert_eq!(xi["created"], "2026-06-21", "另一欄位照常");
+        assert_eq!(xi["datedName"], "2026-07-02-xi", "既有欄位照常回傳");
+
+        let omicron = by_name("2026-07-03-omicron");
+        assert!(omicron.get("whyExcerpt").is_none(), "無 Why 區段 → 不插 key: {omicron}");
+        assert!(omicron.get("created").is_none(), "metadata 無建立日期 → 不插 key");
+
+        // 首次收斂後零解析：改動 proposal 不影響已快取的欄位。
+        fs::write(
+            archive.join("2026-07-01-nu").join("proposal.md"),
+            "## Why\n\n改過的內容。\n",
+        )
+        .unwrap();
+        let v2 = archived_changes_at(&root);
+        let nu2 = v2["archived"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["datedName"] == "2026-07-01-nu")
+            .unwrap()
+            .clone();
+        assert_eq!(
+            nu2["whyExcerpt"], "看板搜尋列缺席，跨卡找東西只能逐欄翻。",
+            "cached excerpt served without re-parsing"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 

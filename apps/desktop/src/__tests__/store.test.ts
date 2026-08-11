@@ -1005,6 +1005,49 @@ describe("app store (Zustand)", () => {
     expect(store.getState().drawerVerb).toBeNull();
   });
 
+  it("openDetail 於已封存頁把底層頁面切回看板（規格「變更與討論抽屜開啟時底層落回看板」）", async () => {
+    const store = storeWith(fakeDataSource());
+    await store.getState().refresh();
+    store.getState().setBoardView("archived");
+
+    store.getState().openDetail("desktop-shell-and-browser");
+
+    expect(store.getState().boardView).toBe("board");
+    expect(store.getState().detailChange?.name).toBe("desktop-shell-and-browser");
+  });
+
+  it("openDiscussion 於規格頁把底層頁面切回看板", async () => {
+    const ds = fakeDataSource({
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [
+          { slug: "topic-a", topic: "t", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
+        ],
+        archived: [],
+      }),
+    });
+    const store = storeWith(ds);
+    await store.getState().refresh();
+    store.getState().setBoardView("specs");
+
+    store.getState().openDiscussion("topic-a");
+
+    expect(store.getState().boardView).toBe("board");
+    expect(store.getState().detailDiscussion?.slug).toBe("topic-a");
+  });
+
+  it("openSpec 與 openArchived 不切頁——宿主頁面即規格頁與已封存頁", async () => {
+    const store = storeWith(fakeDataSource());
+    await store.getState().refresh();
+
+    store.getState().setBoardView("specs");
+    store.getState().openSpec("desktop-app");
+    expect(store.getState().boardView).toBe("specs");
+
+    store.getState().setBoardView("archived");
+    store.getState().openArchived({ kind: "change", datedName: "2026-07-04-x" });
+    expect(store.getState().boardView).toBe("archived");
+  });
+
 });
 
 // ---- 系統匣樣式由平台決定（tray-macos-panel-only：規格「系統匣圖示與原生選單」平台分流） ----
