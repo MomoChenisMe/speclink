@@ -22,12 +22,26 @@ pub struct ValidateTargets {
 
 /// 旗標組合 → 目標集的單一定義：`--specs` 單獨＝只驗規格；`--all`＝兩邊都驗；
 /// `--specs --changes` 同傳＝聯集（與 `--all` 等效）；兩旗標皆缺席＝只驗 changes
-/// （現行行為不變）。fs 與 remote 兩條路徑讀同一支，旗標語意不會各自漂移。
-pub fn validate_targets(item: Option<&str>, all: bool, changes: bool, specs: bool) -> ValidateTargets {
-    ValidateTargets {
+/// （現行行為不變）。`--specs` 與 item 同傳是參數錯誤：--specs 驗的是全部正典
+/// 規格、無法指定單一份，聯集語意只會讓人以為指定生效了——大聲拒絕。fs 與
+/// remote 兩條路徑讀同一支，旗標語意與錯誤措辭不會各自漂移。
+pub fn validate_targets(
+    item: Option<&str>,
+    all: bool,
+    changes: bool,
+    specs: bool,
+) -> Result<ValidateTargets, String> {
+    if item.is_some() && specs {
+        return Err(
+            "--specs validates the canonical specs and cannot be combined with a name; \
+run `speclink validate --specs` alone, or `speclink validate --all` for both sides"
+                .to_string(),
+        );
+    }
+    Ok(ValidateTargets {
         changes: !specs || changes || all || item.is_some(),
         specs: specs || all,
-    }
+    })
 }
 
 /// 一份正典規格的驗證（design D4）：缺 `## Purpose` 區段或內容為空＝error；

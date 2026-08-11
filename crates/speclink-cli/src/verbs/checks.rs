@@ -254,8 +254,10 @@ fn render_drift(report: &core::drift::DriftReport) {
 /// 聚合語意（無參數／--all／--changes）由 client 組合：先 list 再逐 change 打
 /// 單 change 端點（design 決策 2）；DTO 轉回本地型別後走 fs 同一渲染（決策 6）。
 pub(crate) fn remote_validate(ctx: &RemoteCtx, a: &ValidateArgs) -> Result<()> {
-    // 目標集的旗標語意由引擎單一定義，fs 與 remote 兩條路徑共用（design D4）。
-    let targets = core::validate::validate_targets(a.item.as_deref(), a.all, a.changes, a.specs);
+    // 目標集的旗標語意由引擎單一定義，fs 與 remote 兩條路徑共用（design D4）；
+    // --specs 與 item 同傳的拒絕措辭也因此兩模式同字。
+    let targets = core::validate::validate_targets(a.item.as_deref(), a.all, a.changes, a.specs)
+        .map_err(anyhow::Error::msg)?;
     let mut results: Vec<core::validate::ValidationResult> = Vec::new();
     if targets.changes {
         let names: Vec<String> = if let Some(item) = &a.item {

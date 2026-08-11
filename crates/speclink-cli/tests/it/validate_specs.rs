@@ -104,6 +104,18 @@ fn a_missing_purpose_section_fails_the_command() {
 }
 
 #[test]
+fn specs_flag_with_an_item_name_is_rejected() {
+    // spec Scenario「--specs 與 change 名稱同傳被拒」：組合語意不連貫（--specs
+    // 無法指定單一規格），大聲拒絕並指路 --specs 單獨或 --all。
+    let p = TempProject::new("conflict", &[("search", Some(GOOD_PURPOSE))]);
+    let out = p.run(&["validate", "demo", "--specs", "--no-color"]);
+    assert!(!out.status.success(), "the combination must refuse");
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(stderr.contains("--specs"), "the flag is named: {stderr}");
+    assert!(stderr.contains("--all"), "the way out is named: {stderr}");
+}
+
+#[test]
 fn specs_flag_alone_does_not_validate_changes() {
     // spec：`--specs` 單獨傳入時僅驗規格；預設（皆缺席）維持只驗 changes。
     let p = TempProject::new("scope", &[("search", Some(GOOD_PURPOSE))]);

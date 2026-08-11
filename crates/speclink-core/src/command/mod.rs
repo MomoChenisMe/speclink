@@ -1150,8 +1150,10 @@ fn run_validate(
     specs_flag: bool,
     strict: bool,
 ) -> Result<CommandOutcome, CommandError> {
-    // 目標集由 validate 的單一旗標語意解出（design D4），remote 分流讀同一支。
-    let targets = crate::validate::validate_targets(item, all, changes_flag, specs_flag);
+    // 目標集由 validate 的單一旗標語意解出（design D4），remote 分流讀同一支；
+    // --specs 與 item 同傳在此以參數錯誤拒絕。
+    let targets = crate::validate::validate_targets(item, all, changes_flag, specs_flag)
+        .map_err(|m| CommandError::new(ErrorCode::InvalidArgv, m))?;
     if !targets.changes {
         return Ok(CommandOutcome::Validate(ValidateOutcome {
             results: crate::validate::validate_specs(store, strict),
@@ -1724,6 +1726,28 @@ mod tests {
         let store = validate_flags_store();
         assert_eq!(validated_names(&store, false, false, false), vec!["demo".to_string()]);
         assert_eq!(validated_names(&store, false, true, false), vec!["demo".to_string()]);
+    }
+
+    #[test]
+    fn validate_item_with_specs_flag_is_rejected() {
+        // spec Scenario「--specs 與 change 名稱同傳被拒」：--specs 驗的是正典
+        // 規格、無法指定單一規格，與名稱同傳是參數錯誤——大聲拒絕，不做聯集。
+        let store = validate_flags_store();
+        let err = execute(
+            &store,
+            &ExecutionContext::default(),
+            Command::Validate {
+                item: Some("demo".to_string()),
+                all: false,
+                changes: false,
+                specs: true,
+                strict: false,
+            },
+        )
+        .expect_err("--specs with an item must refuse");
+        assert_eq!(err.code, ErrorCode::InvalidArgv);
+        assert!(err.message.contains("--specs"), "the flag is named: {}", err.message);
+        assert!(err.message.contains("--all"), "the way out is named: {}", err.message);
     }
 
     // --- 壞 metadata 的查詢群 fail closed 與 list 診斷（spec command-runtime）---

@@ -248,6 +248,15 @@ pub struct MergeViolation {
     pub reason: String,
 }
 
+impl MergeViolation {
+    /// 這筆違規是否出自新 capability 的 Purpose 守門（operation 恆為
+    /// [`PURPOSE_OP`]）。drift 的建議改道、bulk 預檢的點名與 merge_refusal 的
+    /// 補救分流都問這一個判別，Purpose 類的呈現不會與過期類混同。
+    pub fn is_purpose_gate(&self) -> bool {
+        self.operation == PURPOSE_OP
+    }
+}
+
 /// Refusal reasons — frozen strings, rendered verbatim by archive, drift and bulk.
 const ADDED_EXISTS: &str = "already exists in the canonical spec — archive would refuse it";
 const TARGET_GONE: &str = "target requirement no longer exists in the canonical spec";
@@ -400,8 +409,11 @@ fn capability_violations(
     let Some(canonical) = canonical else {
         // 新開 capability 的 Purpose 硬擋（design D3）：不合格就拒絕放行，取代
         // 「靜默寫佔位」。判準與 change 驗證共用單一定義，兩道防線不會漂移。
+        // reason 帶「archive would refuse it」拒絕語意（比照 ADDED_EXISTS）——
+        // drift 假設清單與 bulk 預檢轉載同一字串時，讀者直接看得出後果。
         if let Some(defect) = model::purpose_defect(&delta_text) {
-            out.push(violation(PURPOSE_OP, PURPOSE_SECTION, &defect.reason()));
+            let reason = format!("{} — archive would refuse it", defect.reason());
+            out.push(violation(PURPOSE_OP, PURPOSE_SECTION, &reason));
         }
         for r in reqs.iter().filter(|r| !matches!(r.operation.as_str(), "ADDED" | "RENAMED")) {
             out.push(violation(&r.operation, &r.name, CANON_ABSENT));
@@ -472,23 +484,54 @@ fn capability_violations(
 
 /// The aggregated refusal (design「違規清單與聚合錯誤形狀」): every violation listed
 /// at once so one repair round clears them all, closing with the remediation route.
+/// Purpose 守門的違規自成一類（spec archive-merge 守門清單第 (7) 項）：它不是
+/// 「delta 與正典對不上」，drift → ingest 也修不了它——原因與補救各自分流，
+/// 純過期清單的輸出逐位元維持原樣。
 pub(crate) fn merge_refusal(change: &str, violations: &[MergeViolation]) -> anyhow::Error {
-    let mut msg = format!(
-        "change '{change}' cannot be archived — {} delta operation(s) no longer match the \
-         canonical spec:\n",
-        violations.len()
-    );
-    for v in violations {
+    let (purpose, stale): (Vec<&MergeViolation>, Vec<&MergeViolation>) =
+        violations.iter().partition(|v| v.is_purpose_gate());
+    let list = |out: &mut String, vs: &[&MergeViolation]| {
+        for v in vs {
+            out.push_str(&format!(
+                "  - {} / {} / {}: {}\n",
+                v.capability, v.operation, v.requirement, v.reason
+            ));
+        }
+    };
+
+    let mut msg = format!("change '{change}' cannot be archived — ");
+    if !stale.is_empty() {
         msg.push_str(&format!(
-            "  - {} / {} / {}: {}\n",
-            v.capability, v.operation, v.requirement, v.reason
+            "{} delta operation(s) no longer match the canonical spec:\n",
+            stale.len()
+        ));
+        list(&mut msg, &stale);
+    }
+    if !purpose.is_empty() {
+        if !stale.is_empty() {
+            msg.push_str("and ");
+        }
+        msg.push_str(&format!(
+            "{} new capability(ies) lack a qualifying `## Purpose`:\n",
+            purpose.len()
+        ));
+        list(&mut msg, &purpose);
+    }
+    msg.push_str("fix the delta before archiving:");
+    if !stale.is_empty() {
+        msg.push_str(&format!(
+            "\n  \
+             speclink drift {change}     — see what moved under the change\n  \
+             /speclink-ingest {change}   — update the delta to the current canonical spec"
         ));
     }
-    msg.push_str(&format!(
-        "fix the delta before archiving:\n  \
-         speclink drift {change}     — see what moved under the change\n  \
-         /speclink-ingest {change}   — update the delta to the current canonical spec"
-    ));
+    if !purpose.is_empty() {
+        msg.push_str(&format!(
+            "\n  open the named delta spec with a `## Purpose` section (one or two sentences, \
+             {} characters or more) — `speclink validate {change}` shows the full guidance",
+            crate::model::MIN_PURPOSE_LENGTH
+        ));
+    }
     crate::command::Refusal(msg).into()
 }
 
@@ -935,7 +978,7 @@ fn merge_capability(
 
 #[cfg(test)]
 mod tests {
-    use super::{archive, merge_capability, ArchiveOptions};
+    use super::{archive, merge_capability, merge_violations, ArchiveOptions};
     use crate::store::Store;
     use crate::tasks::TouchedRecord;
     use crate::teststore::TestStore;
@@ -2007,6 +2050,53 @@ mod tests {
         archive(&ghost_ws(), &store, &change, &skip_opts(), None)
             .expect("--skip-specs 不套用 delta，也就不驗 Purpose");
         assert!(store.read_canonical_spec("token").is_none(), "正典未被建立");
+    }
+
+    #[test]
+    fn purpose_reason_carries_the_refusal_wording() {
+        // spec archive-merge「新 capability 缺 Purpose 的違規呈現三處一致」：
+        // 三處（drift／bulk 預檢／單筆 archive）共用同一 reason 字串，語意比照
+        // ADDED_EXISTS 的「archive would refuse it」。
+        let store = merge_store(&[("token", ADDED_ONLY)], &[]);
+        let violations = merge_violations(&store, "demo");
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].is_purpose_gate(), "the purpose violation self-identifies");
+        assert!(
+            violations[0].reason.contains("archive would refuse it"),
+            "refusal wording travels in the shared reason: {}",
+            violations[0].reason
+        );
+    }
+
+    #[test]
+    fn purpose_only_refusal_names_the_remedy_not_drift_ingest() {
+        // 純 Purpose 違規的拒絕訊息：說對原因（缺 `## Purpose`）、給對修法
+        // （補區段＋validate 指引），不再指向修不了它的 drift → ingest。
+        let store = merge_store(&[("token", ADDED_ONLY)], &[]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("## Purpose"), "the real cause is named: {msg}");
+        assert!(
+            msg.contains(&crate::model::MIN_PURPOSE_LENGTH.to_string()),
+            "the remedy names the threshold: {msg}"
+        );
+        assert!(msg.contains("speclink validate"), "the remedy points at validate: {msg}");
+        assert!(!msg.contains("/speclink-ingest"), "ingest cannot fix this: {msg}");
+        assert!(
+            !msg.contains("no longer match the canonical spec"),
+            "the stale preamble does not misdescribe a purpose violation: {msg}"
+        );
+    }
+
+    #[test]
+    fn mixed_refusal_lists_both_classes_with_both_remedies() {
+        // 過期操作與 Purpose 違規並存：兩類各自列明、兩套補救動線並列。
+        let stale = "## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+        let store = merge_store(&[("auth", stale), ("token", ADDED_ONLY)], &[("auth", CANON_R1)]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("no longer match the canonical spec"), "stale class kept: {msg}");
+        assert!(msg.contains("/speclink-ingest"), "stale remedy kept: {msg}");
+        assert!(msg.contains("## Purpose"), "purpose class listed: {msg}");
+        assert!(msg.contains("speclink validate"), "purpose remedy listed: {msg}");
     }
 
     #[test]

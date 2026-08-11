@@ -39,7 +39,7 @@ change 驗證 SHALL 對每個 delta capability 判斷正典是否已存在該 ca
 
 ### Requirement: validate --specs 驗證正典規格
 
-CLI validate 動詞的 `--specs` 旗標 SHALL 對正典規格逐份驗證並依既有 validate 渲染呈現（逐項通過／不通過與訊息清單，任一 invalid 非零收尾）：缺 `## Purpose` 區段或內容為空 SHALL 報 error；內容 trim 後不足 50 字元 SHALL 於 strict 模式報 warning；內容以 archive 佔位前綴開頭 SHALL 報 warning（不依附 strict）。`--specs` 單獨傳入時 SHALL 僅驗規格；`--all` SHALL 同時驗 changes 與 specs；兩旗標皆缺席時行為 SHALL 維持現行 change 驗證不變。remote 模式下 `--specs` SHALL 由 client 以既有正典規格讀取動詞取得內容並本地執行同一驗證器，輸出形狀 SHALL 與 fs 模式一致，SHALL NOT 新開 server 端點。
+CLI validate 動詞的 `--specs` 旗標 SHALL 對正典規格逐份驗證並依既有 validate 渲染呈現（逐項通過／不通過與訊息清單，任一 invalid 非零收尾）：缺 `## Purpose` 區段或內容為空 SHALL 報 error；內容 trim 後不足 50 字元 SHALL 於 strict 模式報 warning；內容以 archive 佔位前綴開頭 SHALL 報 warning（不依附 strict）。`--specs` 單獨傳入時 SHALL 僅驗規格；`--all` SHALL 同時驗 changes 與 specs；兩旗標皆缺席時行為 SHALL 維持現行 change 驗證不變；`--specs` 與名稱（item）同傳 SHALL 以參數錯誤拒絕（--specs 驗全部正典規格、無法指定單一份），錯誤訊息 SHALL 指路單獨 `--specs` 或 `--all`，SHALL NOT 靜默作聯集或忽略旗標。remote 模式下 `--specs` SHALL 由 client 以既有正典規格讀取動詞取得內容並本地執行同一驗證器，輸出形狀 SHALL 與 fs 模式一致，SHALL NOT 新開 server 端點。
 
 #### Scenario: 佔位 Purpose 以 warning 顯形
 
@@ -60,3 +60,8 @@ CLI validate 動詞的 `--specs` 旗標 SHALL 對正典規格逐份驗證並依�
 
 - **WHEN** 執行 validate（無 --specs 無 --all）
 - **THEN** 僅驗 changes，輸出與旗標接線前一致
+
+#### Scenario: --specs 與 change 名稱同傳被拒
+
+- **WHEN** 執行 validate <change-name> --specs
+- **THEN** 命令以非零收尾，錯誤說明 --specs 不能與名稱同傳，並指路單獨 --specs 或 --all
