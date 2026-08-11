@@ -210,18 +210,17 @@ pub fn list_specs_at(root: &Path) -> Value {
             let doc = store.read_canonical_spec(&id);
             let purpose = doc.as_deref().and_then(purpose_excerpt);
             item["requirementCount"] = json!(doc.as_deref().map_or(0, requirement_count));
-            item["purposeTbd"] =
-                json!(purpose.as_deref().is_some_and(|p| p.starts_with(PURPOSE_TBD_PREFIX)));
+            // 佔位前綴的單一定義在 speclink-core（design D5）：產生器與偵測共用
+            // 同一常數，兩處字串再也不會各自漂移。
+            item["purposeTbd"] = json!(purpose
+                .as_deref()
+                .is_some_and(|p| p.starts_with(speclink_core::model::PURPOSE_TBD_PREFIX)));
             item["purposeExcerpt"] = json!(purpose);
             item["traceCount"] = json!(doc.as_deref().map_or(0, trace_count));
         }
     }
     json!({ "specs": specs })
 }
-
-/// archive 產生新正典 spec 時的 Purpose 佔位文案前綴（speclink-core archive.rs）；
-/// 偵測一致性由 list_specs_purpose_tbd_flags_archive_placeholder 以真實 archive 釘住。
-const PURPOSE_TBD_PREFIX: &str = "TBD - created by archiving";
 
 /// 正典 spec 的 `### Requirement:` 標題數。
 fn requirement_count(doc: &str) -> usize {
@@ -1083,27 +1082,20 @@ mod tests {
 
     #[test]
     fn list_specs_purpose_tbd_flags_archive_placeholder() {
-        // 佔位偵測與封存產生器文案的一致性以同一測試釘住（design 風險項）：
-        // 經真實 archive 動詞為新 capability 產生正典 spec，其 Purpose 即佔位文案，
-        // purposeTbd 必為 true。speclink-core 的佔位文案若變動，此測試即紅。
+        // 佔位偵測釘的是 speclink-core 的公開常數（design D5）：產生器與偵測共用
+        // 同一份字串，所以殘留佔位的正典規格必被標為 purposeTbd。核心常數若變動，
+        // 這份 fixture 隨之變動，偵測不需要跟著改。
         let fx = FixtureRoot::new("q-spec-tbd");
         fx.write(
-            "openspec/changes/demo/.openspec.yaml",
-            "schema: spec-driven\ncreated: 2026-07-01\n",
+            "openspec/specs/cap-new/spec.md",
+            &format!(
+                "# cap-new Specification\n\n## Purpose\n\n{} change 'demo'. Update Purpose after archive.\n\n## Requirements\n\n### Requirement: Fresh works\n\nIt SHALL work.\n",
+                speclink_core::model::PURPOSE_TBD_PREFIX
+            ),
         );
-        fx.write(
-            "openspec/changes/demo/proposal.md",
-            "## Why\n\nDemo.\n\n## What Changes\n\n- something\n",
-        );
-        fx.write("openspec/changes/demo/tasks.md", "- [x] 1.1 done\n");
-        fx.write(
-            "openspec/changes/demo/specs/cap-new/spec.md",
-            "## ADDED Requirements\n\n### Requirement: Fresh works\n\nIt SHALL work.\n\n#### Scenario: works\n\n- **WHEN** used\n- **THEN** it works\n",
-        );
-        crate::verbs::archive_at(fx.root(), "demo").expect("archive ok");
         let v = list_specs_at(fx.root());
         let arr = v["specs"].as_array().expect("specs array");
-        let item = arr.iter().find(|s| s["id"] == "cap-new").expect("cap-new created by archive");
+        let item = arr.iter().find(|s| s["id"] == "cap-new").expect("cap-new listed");
         assert_eq!(item["purposeTbd"], true);
         assert_eq!(item["requirementCount"], 1);
     }

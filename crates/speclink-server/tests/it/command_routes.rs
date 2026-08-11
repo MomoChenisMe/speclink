@@ -104,7 +104,7 @@ fn archive_ready_store() -> Arc<MemoryStore> {
             change: "demo-archive".into(),
             artifact: "specs/user-auth/spec.md".into(),
         },
-        "## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
+        "## Purpose\n\n本 capability 是測試用的示範能力，涵蓋一個可觀察行為與其成功路徑，專供伺服端的測試取用。\n\n## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
     );
     uow.create(
         DocumentId::Discussion { slug: "scope-talk".into(), archived: false },

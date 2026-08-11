@@ -51,6 +51,7 @@ pub(crate) fn cmd_validate(a: ValidateArgs) -> Result<()> {
             item: a.item.clone(),
             all: a.all,
             changes: a.changes,
+            specs: a.specs,
             strict: a.strict,
         },
     )?;
@@ -253,17 +254,34 @@ fn render_drift(report: &core::drift::DriftReport) {
 /// 聚合語意（無參數／--all／--changes）由 client 組合：先 list 再逐 change 打
 /// 單 change 端點（design 決策 2）；DTO 轉回本地型別後走 fs 同一渲染（決策 6）。
 pub(crate) fn remote_validate(ctx: &RemoteCtx, a: &ValidateArgs) -> Result<()> {
-    let names: Vec<String> = if let Some(item) = &a.item {
-        vec![item.clone()]
-    } else {
-        // 無參數與 --all/--changes 的目標集在 remote 皆為 scope 的全部
-        // changes（fs 的「恰一個 active change 單驗」是同集合的特例）。
-        ctx.client.list_changes()?.changes.into_iter().map(|c| c.name).collect()
-    };
-    let results: Vec<core::validate::ValidationResult> = names
-        .iter()
-        .map(|n| ctx.client.validate_change(n).map(speclink_remote::convert::validation_result))
-        .collect::<Result<Vec<_>, _>>()?;
+    // 目標集的旗標語意由引擎單一定義，fs 與 remote 兩條路徑共用（design D4）。
+    let targets = core::validate::validate_targets(a.item.as_deref(), a.all, a.changes, a.specs);
+    let mut results: Vec<core::validate::ValidationResult> = Vec::new();
+    if targets.changes {
+        let names: Vec<String> = if let Some(item) = &a.item {
+            vec![item.clone()]
+        } else {
+            // 無參數與 --all/--changes 的目標集在 remote 皆為 scope 的全部
+            // changes（fs 的「恰一個 active change 單驗」是同集合的特例）。
+            ctx.client.list_changes()?.changes.into_iter().map(|c| c.name).collect()
+        };
+        for n in &names {
+            results.push(speclink_remote::convert::validation_result(
+                ctx.client.validate_change(n)?,
+            ));
+        }
+    }
+    if targets.specs {
+        // 正典規格沒有 server 端驗證端點，也不新開一個：以既有的規格讀取動詞
+        // 取回內容，本地跑 fs 模式同一支驗證器——輸出因此同形。
+        let mut caps: Vec<String> =
+            ctx.client.list_specs()?.specs.into_iter().map(|s| s.id).collect();
+        caps.sort();
+        for cap in &caps {
+            let content = ctx.client.spec_document(cap)?.content;
+            results.push(core::validate::validate_canonical_spec(cap, &content, a.strict));
+        }
+    }
     render_validate_results(&results, a.json)
 }
 pub(crate) fn remote_analyze(ctx: &RemoteCtx, a: &ChangeArg) -> Result<()> {

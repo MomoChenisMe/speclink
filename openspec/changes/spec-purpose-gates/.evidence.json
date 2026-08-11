@@ -1,0 +1,208 @@
+{
+  "version": 2,
+  "change": "spec-purpose-gates",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 實作需求「Purpose 合格判準單一定義」：crates/speclink-core 新增公開的 Purpose 合格判準函式（存在 ## Purpose 區段、內容非空、trim 後 chars().count() >= 50）與常數 MIN_PURPOSE_LENGTH = 50。先寫單元測試：合格、缺段、空內容、49 字元、50 個中文字元五個 case",
+      "files": [
+        "crates/speclink-core/src/model.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 佔位前綴「TBD - created by archiving」上移為 speclink-core 公開常數；archive.rs 佔位產生處與 apps/desktop/core/src/query.rs 的 PURPOSE_TBD_PREFIX 改引用同一常數，desktop 既有一致性測試（list_specs_purpose_tbd_flags_archive_placeholder）改釘 core 常數後仍綠",
+      "files": [
+        "apps/desktop/core/src/query.rs",
+        "crates/speclink-core/src/archive.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 實作需求「新開 capability 的 change 驗證早期檢查」：crates/speclink-core/src/validate.rs 的 validate_change 對每個 delta capability 查正典存在性，新開且 Purpose 不合格 → error；既有 capability 零報。先寫測試：新開缺 Purpose 報 error、新開合格通過、既有 capability 無 Purpose 零報三個 case",
+      "files": [
+        "crates/speclink-core/src/validate.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 實作 archive-merge 需求「新 capability 的 Purpose 自 delta 帶入」的守門面：crates/speclink-core/src/archive.rs 的 merge_violations 對「正典尚無此 capability 且 delta Purpose 不合格」回 violation（沿用 D1 判準），拒絕時零檔案效果。先寫測試：缺 Purpose 拒絕、過短拒絕、合格帶入、既有 capability 帶 Purpose 忽略不拒、skip_specs 不觸發五個 case",
+      "files": [
+        "crates/speclink-core/src/drift.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.1 實作需求「validate --specs 驗證正典規格」的 core 面：新增正典規格驗證函式（缺段／空＝error；不足 50 字元＝strict 下 warning；佔位前綴開頭＝warning），Command::Validate 增 specs 分支。先寫測試：四種分級各一 case、--specs 單獨僅驗規格、--all 聯集、預設不變",
+      "files": [
+        "crates/speclink-cli/src/verbs/checks.rs",
+        "crates/speclink-cli/tests/it/main.rs",
+        "crates/speclink-core/src/command/mod.rs",
+        "crates/speclink-server/src/routes.rs",
+        "crates/speclink-cli/tests/it/validate_specs.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.3 remote 模式的 --specs：client 以既有正典規格讀取動詞取內容、本地跑同一驗證器，輸出與 fs 模式同形；補兩模式同形測試（比照既有 Dual 動詞測試風格）",
+      "files": [
+        "crates/speclink-cli/tests/it/remote_verb_parity.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "5.1 crates/speclink-core/assets/schema/spec-driven/specs.instruction.md 於 Format requirements 與 MODIFIED workflow 之間補 Purpose 規則段：新 capability 的 delta 以 ## Purpose 開頭（一兩句、50 字元以上，validate 會擋）；既有 capability 的 delta 不要加（會被忽略）；要改既有 Purpose（含殘留佔位）直接編輯正典檔；附範例（對齊上游 schema.yaml 同段落、融入現有行文）",
+      "files": [
+        "crates/speclink-core/assets/schema/spec-driven/specs.instruction.md"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.2 asset 三連動：MARKER_VERSION 遞增、golden 快照再生（crates/speclink-core/tests/golden/*.snapshot.md 與 marker）、assets.lock 更新；cargo test -p speclink-core render_golden 綠",
+      "files": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "6.1 全量：cargo test --workspace 通過（含 CLI 整合測試）",
+      "files": [
+        "apps/desktop/core/src/verbs.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "crates/speclink-cli/tests/it/archive_evidence_gate.rs",
+        "crates/speclink-cli/tests/it/archive_readiness_gate.rs",
+        "crates/speclink-cli/tests/it/manual_task_gates.rs",
+        "crates/speclink-server/tests/it/command_routes.rs",
+        "crates/speclink-server/tests/it/phase2_chain.rs",
+        "crates/speclink-server/tests/it/verb_api.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZNE6PBCD68DR8GFMN4CS9AH",
+      "taskDesc": "1.1 實作需求「Purpose 合格判準單一定義」：crates/speclink-core 新增公開的 Purpose 合格判準函式（存在 ## Purpose 區段、內容非空、trim 後 chars().count() >= 50）與常數 MIN_PURPOSE_LENGTH = 50。先寫單元測試：合格、缺段、空內容、49 字元、50 個中文字元五個 case",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "touchedFiles": [
+        "crates/speclink-core/src/model.rs"
+      ],
+      "recordedAt": "2026-08-11T13:54:00Z"
+    },
+    {
+      "taskId": "tsk_01KZNE6PBCEX5HQ500F4JFK616",
+      "taskDesc": "1.2 佔位前綴「TBD - created by archiving」上移為 speclink-core 公開常數；archive.rs 佔位產生處與 apps/desktop/core/src/query.rs 的 PURPOSE_TBD_PREFIX 改引用同一常數，desktop 既有一致性測試（list_specs_purpose_tbd_flags_archive_placeholder）改釘 core 常數後仍綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs",
+        "crates/speclink-core/src/archive.rs"
+      ],
+      "recordedAt": "2026-08-11T13:55:49Z"
+    },
+    {
+      "taskId": "tsk_01KZNE6PBCRWGRN6VQGZKGWWBR",
+      "taskDesc": "2.1 實作需求「新開 capability 的 change 驗證早期檢查」：crates/speclink-core/src/validate.rs 的 validate_change 對每個 delta capability 查正典存在性，新開且 Purpose 不合格 → error；既有 capability 零報。先寫測試：新開缺 Purpose 報 error、新開合格通過、既有 capability 無 Purpose 零報三個 case",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "touchedFiles": [
+        "crates/speclink-core/src/validate.rs"
+      ],
+      "recordedAt": "2026-08-11T13:57:28Z"
+    },
+    {
+      "taskId": "tsk_01KZNE6PBCWATZZ0A3VZMFP06R",
+      "taskDesc": "3.1 實作 archive-merge 需求「新 capability 的 Purpose 自 delta 帶入」的守門面：crates/speclink-core/src/archive.rs 的 merge_violations 對「正典尚無此 capability 且 delta Purpose 不合格」回 violation（沿用 D1 判準），拒絕時零檔案效果。先寫測試：缺 Purpose 拒絕、過短拒絕、合格帶入、既有 capability 帶 Purpose 忽略不拒、skip_specs 不觸發五個 case",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "touchedFiles": [
+        "crates/speclink-core/src/drift.rs"
+      ],
+      "recordedAt": "2026-08-11T14:03:28Z"
+    },
+    {
+      "taskId": "tsk_01KZNE6PBCQ6ZY0AETTZKAW7JT",
+      "taskDesc": "4.1 實作需求「validate --specs 驗證正典規格」的 core 面：新增正典規格驗證函式（缺段／空＝error；不足 50 字元＝strict 下 warning；佔位前綴開頭＝warning），Command::Validate 增 specs 分支。先寫測試：四種分級各一 case、--specs 單獨僅驗規格、--all 聯集、預設不變",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/checks.rs",
+        "crates/speclink-cli/tests/it/main.rs",
+        "crates/speclink-core/src/command/mod.rs",
+        "crates/speclink-server/src/routes.rs",
+        "crates/speclink-cli/tests/it/validate_specs.rs"
+      ],
+      "recordedAt": "2026-08-11T14:10:27Z"
+    },
+    {
+      "taskId": "tsk_01KZNE6PBCQTMCZMH66F3CNCZM",
+      "taskDesc": "4.3 remote 模式的 --specs：client 以既有正典規格讀取動詞取內容、本地跑同一驗證器，輸出與 fs 模式同形；補兩模式同形測試（比照既有 Dual 動詞測試風格）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/remote_verb_parity.rs"
+      ],
+      "recordedAt": "2026-08-11T14:13:32Z"
+    },
+    {
+      "taskId": "tsk_01KZNE6PBCK299K06GZFY0XAWP",
+      "taskDesc": "5.1 crates/speclink-core/assets/schema/spec-driven/specs.instruction.md 於 Format requirements 與 MODIFIED workflow 之間補 Purpose 規則段：新 capability 的 delta 以 ## Purpose 開頭（一兩句、50 字元以上，validate 會擋）；既有 capability 的 delta 不要加（會被忽略）；要改既有 Purpose（含殘留佔位）直接編輯正典檔；附範例（對齊上游 schema.yaml 同段落、融入現有行文）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "touchedFiles": [
+        "crates/speclink-core/assets/schema/spec-driven/specs.instruction.md"
+      ],
+      "recordedAt": "2026-08-11T14:14:01Z"
+    },
+    {
+      "taskId": "tsk_01KZNE6PBCFFWTXDE2DS8MDCC2",
+      "taskDesc": "5.2 asset 三連動：MARKER_VERSION 遞增、golden 快照再生（crates/speclink-core/tests/golden/*.snapshot.md 與 marker）、assets.lock 更新；cargo test -p speclink-core render_golden 綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "touchedFiles": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ],
+      "recordedAt": "2026-08-11T14:15:10Z"
+    },
+    {
+      "taskId": "tsk_01KZNE6PBCNXX8K34Z0H3ZTN1S",
+      "taskDesc": "6.1 全量：cargo test --workspace 通過（含 CLI 整合測試）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "touchedFiles": [
+        "apps/desktop/core/src/verbs.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "crates/speclink-cli/tests/it/archive_evidence_gate.rs",
+        "crates/speclink-cli/tests/it/archive_readiness_gate.rs",
+        "crates/speclink-cli/tests/it/manual_task_gates.rs",
+        "crates/speclink-server/tests/it/command_routes.rs",
+        "crates/speclink-server/tests/it/phase2_chain.rs",
+        "crates/speclink-server/tests/it/verb_api.rs"
+      ],
+      "recordedAt": "2026-08-11T14:28:12Z"
+    }
+  ]
+}

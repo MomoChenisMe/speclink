@@ -151,11 +151,18 @@ fn validate_reports_the_engines_frozen_errors_without_advancing_revision() {
         let errors: Vec<&str> =
             body["errors"].as_array().expect("errors array").iter().filter_map(|e| e.as_str()).collect();
         assert_eq!(
-            errors,
-            vec![
-                "openspec/changes/demo/specs/auth/spec.md: Parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
-            ],
+            errors.first().copied(),
+            Some("openspec/changes/demo/specs/auth/spec.md: Parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"),
             "the endpoint relays the engine's fs-mode frozen error verbatim"
+        );
+        // 同一份 delta 也是「正典尚無的 capability 缺 Purpose」——引擎的第二條
+        // error 一併原樣轉載（spec spec-validation「新開 capability 的 change
+        // 驗證早期檢查」）。
+        assert_eq!(errors.len(), 2, "兩條 error 都到端點: {errors:?}");
+        assert!(
+            errors[1].contains("## Purpose") && errors[1].contains("auth"),
+            "Purpose 早期檢查的訊息原樣轉載: {}",
+            errors[1]
         );
         assert!(body["warnings"].as_array().expect("warnings array").is_empty());
         assert_eq!(etag.as_deref(), Some(format!("\"{before}\"").as_str()), "scope ETag attached");

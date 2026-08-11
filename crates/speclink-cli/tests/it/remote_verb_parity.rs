@@ -424,6 +424,64 @@ fn remote_show_spec_matches_fs_output_byte_for_byte() {
     assert_eq!(stdout_of(&remote_json), stdout_of(&fs_json), "--json output parity");
 }
 
+// --- validate --specs：規格內容由既有讀取端點取得、本地跑同一驗證器（design D4）---
+
+/// 殘留佔位（warning）與缺 Purpose 區段（error）各一份，覆蓋兩種嚴重度。
+const PARITY_SPEC_TBD: &str = "# alpha Specification\n\n## Purpose\n\nTBD - created by archiving change 'old'. Update Purpose after archive.\n\n## Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n";
+const PARITY_SPEC_BARE: &str =
+    "# beta Specification\n\n## Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n";
+
+#[test]
+fn remote_validate_specs_matches_fs_output_byte_for_byte() {
+    let fs = TempProject::fs("validate-specs-fs");
+    fs.write("openspec/specs/alpha/spec.md", PARITY_SPEC_TBD);
+    fs.write("openspec/specs/beta/spec.md", PARITY_SPEC_BARE);
+    let fs_human = fs.run(&["validate", "--specs"]);
+    let fs_json = fs.run(&["validate", "--specs", "--json"]);
+    assert!(!fs_human.status.success(), "缺 Purpose 的規格使 fs 模式非零收尾");
+
+    let mock = mock_server(vec![
+        (
+            "GET",
+            "/specs",
+            200,
+            r#"{"specs":[{"id":"beta","path":"specs/beta/spec.md"},{"id":"alpha","path":"specs/alpha/spec.md"}]}"#.into(),
+        ),
+        (
+            "GET",
+            "/specs/alpha/document",
+            200,
+            serde_json::json!({ "content": PARITY_SPEC_TBD }).to_string(),
+        ),
+        (
+            "GET",
+            "/specs/beta/document",
+            200,
+            serde_json::json!({ "content": PARITY_SPEC_BARE }).to_string(),
+        ),
+    ]);
+    let p = TempProject::remote("validate-specs-remote", &mock.base, "backend");
+
+    let remote_human = p.run(&["validate", "--specs"]);
+    assert_eq!(stdout_of(&remote_human), stdout_of(&fs_human), "human output parity");
+    assert_eq!(
+        remote_human.status.success(),
+        fs_human.status.success(),
+        "exit code parity: {}",
+        stderr_of(&remote_human)
+    );
+    let remote_json = p.run(&["validate", "--specs", "--json"]);
+    assert_eq!(stdout_of(&remote_json), stdout_of(&fs_json), "--json output parity");
+
+    // 讀取走既有的規格端點，沒有新開 server 端驗證端點。
+    mock.find("GET", "/specs");
+    mock.find("GET", "/specs/alpha/document");
+    assert!(
+        !p.dir.join("openspec").exists(),
+        "the remote run never created or read a local store"
+    );
+}
+
 #[test]
 fn remote_show_missing_item_is_a_semantic_error_with_engine_wording() {
     let mock = mock_server(vec![
@@ -781,7 +839,8 @@ fn archive_fs_project(tag: &str) -> TempProject {
     p.write("openspec/changes/add-auth/tasks.md", "- [x] 1.1 done\n");
     p.write(
         "openspec/changes/add-auth/specs/user-auth/spec.md",
-        "## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
+        // 新開 capability 的 delta 自帶合格 Purpose，否則封存被 Purpose 守門擋下。
+        "## Purpose\n\n本 capability 負責使用者登入與登出的可觀察行為，涵蓋工作階段的建立、續期與撤銷三段流程。\n\n## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
     );
     p.write(
         "openspec/discussions/auth-scope.md",

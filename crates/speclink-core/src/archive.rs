@@ -259,6 +259,11 @@ const MALFORMED_REMOVAL: &str =
     "malformed REMOVED-SCENARIO declaration (missing `-->` on the same line)";
 const MALFORMED_BEFORE: &str = "malformed BEFORE comment (never closed with `-->`)";
 
+/// 新 capability 的 Purpose 守門在違規列裡的座標：它不屬於任何需求操作，
+/// 以固定的操作名與區段名指認自己（`<cap> / PURPOSE / ## Purpose: <原因>`）。
+const PURPOSE_OP: &str = "PURPOSE";
+const PURPOSE_SECTION: &str = "## Purpose";
+
 /// Marker declaring that a MODIFIED block drops a canonical scenario on purpose.
 /// One per line inside the block; stripped before the merged text reaches the canon.
 const REMOVED_SCENARIO: &str = "<!-- REMOVED-SCENARIO:";
@@ -393,6 +398,11 @@ fn capability_violations(
     // (6) A capability with no canonical spec yet accepts ADDED only — a MODIFIED,
     // REMOVED or RENAMED there is an assumption about text that was never written.
     let Some(canonical) = canonical else {
+        // 新開 capability 的 Purpose 硬擋（design D3）：不合格就拒絕放行，取代
+        // 「靜默寫佔位」。判準與 change 驗證共用單一定義，兩道防線不會漂移。
+        if let Some(defect) = model::purpose_defect(&delta_text) {
+            out.push(violation(PURPOSE_OP, PURPOSE_SECTION, &defect.reason()));
+        }
         for r in reqs.iter().filter(|r| !matches!(r.operation.as_str(), "ADDED" | "RENAMED")) {
             out.push(violation(&r.operation, &r.name, CANON_ABSENT));
         }
@@ -788,29 +798,6 @@ fn strip_review_notes(block: &str) -> String {
     out.join("\n")
 }
 
-/// The delta's own `## Purpose` section content, trimmed (design「新 capability 的
-/// Purpose 自 delta 帶入」). `parse_delta` ignores this section, so it never affects
-/// operation parsing; only a capability being created consumes it.
-fn delta_purpose(text: &str) -> Option<String> {
-    let normalized = normalize_newlines(text);
-    let mut body: Vec<&str> = Vec::new();
-    let mut inside = false;
-    for line in normalized.lines() {
-        if let Some(rest) = line.trim_start().strip_prefix("## ") {
-            if inside {
-                break;
-            }
-            inside = rest.trim() == "Purpose";
-            continue;
-        }
-        if inside {
-            body.push(line);
-        }
-    }
-    let content = body.join("\n").trim().to_string();
-    (!content.is_empty()).then_some(content)
-}
-
 /// The merged canonical text plus this capability's operation counts. Pure: the caller
 /// writes it in the commit phase, so the plan phase can be discarded without a trace.
 /// Only operations the gate already cleared reach here.
@@ -860,10 +847,13 @@ fn merge_capability(
         let mut out = String::new();
         out.push_str(&format!("# {cap} Specification\n\n"));
         out.push_str("## Purpose\n\n");
-        out.push_str(&match delta_purpose(delta_text) {
+        // 新正典的 Purpose 取自 delta 的同名區段（design「新 capability 的 Purpose
+        // 自 delta 帶入」）；`parse_delta` 不看這個區段，所以它從不影響操作解析。
+        out.push_str(&match model::purpose_content(delta_text) {
             Some(purpose) => format!("{purpose}\n\n"),
             None => format!(
-                "TBD - created by archiving change '{change}'. Update Purpose after archive.\n\n"
+                "{} change '{change}'. Update Purpose after archive.\n\n",
+                model::PURPOSE_TBD_PREFIX
             ),
         });
         out.push_str("## Requirements\n\n");
@@ -945,7 +935,7 @@ fn merge_capability(
 
 #[cfg(test)]
 mod tests {
-    use super::{archive, ArchiveOptions};
+    use super::{archive, merge_capability, ArchiveOptions};
     use crate::store::Store;
     use crate::tasks::TouchedRecord;
     use crate::teststore::TestStore;
@@ -1459,7 +1449,9 @@ mod tests {
 
     // --- archive trace 由 evidence 建立（spec verify-evidence）---
 
-    const DELTA_SPEC: &str = "## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+    /// 新開 capability 的 delta：Purpose 守門（design D3）要求它自帶合格 Purpose，
+    /// 否則封存被拒——這裡帶著，讓測試專注在 trace 與 evidence 面。
+    const DELTA_SPEC: &str = "## Purpose\n\n本 capability 負責身分驗證的簽發與撤銷，涵蓋權杖生命週期各階段的可觀察行為、失敗處置與稽核紀錄。\n\n## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
 
     fn temp_root(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir()
@@ -1946,7 +1938,7 @@ mod tests {
     // --- 新 capability 的 Purpose 自 delta 帶入（design 同名決策；
     //     spec archive-merge「新 capability 的 Purpose 自 delta 帶入」）---
 
-    const DELTA_WITH_PURPOSE: &str = "## Purpose\n\n本 capability 管理權杖輪替與撤銷。\n\n## ADDED Requirements\n\n### Requirement: Fresh\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+    const DELTA_WITH_PURPOSE: &str = "## Purpose\n\n本 capability 管理權杖的輪替與撤銷，涵蓋簽發、驗證與失效三段生命週期的可觀察行為與清理時機。\n\n## ADDED Requirements\n\n### Requirement: Fresh\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
 
     #[test]
     fn delta_purpose_becomes_the_new_canonical_purpose() {
@@ -1955,30 +1947,79 @@ mod tests {
         let change = crate::model::find_change(&store, "demo").unwrap();
         archive(&ghost_ws(), &store, &change, &apply_opts(), None).unwrap();
         let canon = store.read_canonical_spec("token").expect("canonical spec created");
+        let purpose = crate::model::purpose_content(DELTA_WITH_PURPOSE).expect("fixture purpose");
         assert!(
-            canon.contains("## Purpose\n\n本 capability 管理權杖輪替與撤銷。\n"),
+            canon.contains(&format!("## Purpose\n\n{purpose}\n")),
             "delta Purpose copied verbatim: {canon}"
         );
         assert!(!canon.contains("TBD"), "no placeholder skeleton remains: {canon}");
         assert!(
-            !canon.contains("本 capability 管理權杖輪替與撤銷。\n\n## ADDED"),
+            !canon.contains(&format!("{purpose}\n\n## ADDED")),
             "the delta's operation heading does not leak into the canon: {canon}"
         );
     }
 
+    const ADDED_ONLY: &str = "## ADDED Requirements\n\n### Requirement: Fresh\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+
     #[test]
-    fn delta_without_purpose_keeps_the_placeholder_skeleton() {
-        // spec Scenario 反面：delta 未提供 Purpose → 沿用現行 TBD 骨架。
-        let store = merge_store(
-            &[("token", "## ADDED Requirements\n\n### Requirement: Fresh\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n")],
-            &[],
-        );
-        let change = crate::model::find_change(&store, "demo").unwrap();
-        archive(&ghost_ws(), &store, &change, &apply_opts(), None).unwrap();
-        let canon = store.read_canonical_spec("token").expect("canonical spec created");
+    fn new_capability_without_purpose_refuses_archive() {
+        // spec Scenario「新 capability 缺 Purpose 封存被拒」：守門取代靜默寫佔位，
+        // 拒絕時零檔案效果（refuse_merge 逐項斷言）。
+        let store = merge_store(&[("token", ADDED_ONLY)], &[]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("token"), "不合格的 capability 被點名: {msg}");
+        assert!(msg.contains("Purpose"), "不合格原因指向 Purpose: {msg}");
+    }
+
+    #[test]
+    fn new_capability_with_a_too_short_purpose_refuses_archive() {
+        // spec Scenario「新 capability 的 Purpose 過短封存被拒」。
+        let short = format!("## Purpose\n\n管權杖。\n\n{ADDED_ONLY}");
+        let store = merge_store(&[("token", &short)], &[]);
+        let msg = refuse_merge(&store);
+        assert!(msg.contains("token"), "capability 被點名: {msg}");
         assert!(
-            canon.contains("TBD - created by archiving change 'demo'."),
-            "placeholder skeleton unchanged: {canon}"
+            msg.contains(&crate::model::MIN_PURPOSE_LENGTH.to_string()),
+            "回報不足門檻的原因: {msg}"
+        );
+    }
+
+    #[test]
+    fn an_existing_capability_never_hits_the_purpose_gate() {
+        // 既有 capability 的 delta 無論帶不帶 Purpose 都不構成封存拒絕理由
+        // （spec：忽略不報錯）——正典已有 Purpose，守門只管新開的。
+        for delta in [
+            ADDED_R1.replace("R1", "Brand new"),
+            format!("## Purpose\n\n短。\n\n{}", ADDED_R1.replace("R1", "Brand new")),
+        ] {
+            let store = merge_store(&[("auth", &delta)], &[("auth", CANON_R1)]);
+            let change = crate::model::find_change(&store, "demo").unwrap();
+            archive(&ghost_ws(), &store, &change, &apply_opts(), None)
+                .expect("既有 capability 不受 Purpose 守門影響");
+        }
+    }
+
+    #[test]
+    fn skip_specs_archive_does_not_trigger_the_purpose_gate() {
+        // spec：skip_specs 封存不觸發此守門（無 delta 可驗）。
+        let store = merge_store(&[("token", ADDED_ONLY)], &[]);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        archive(&ghost_ws(), &store, &change, &skip_opts(), None)
+            .expect("--skip-specs 不套用 delta，也就不驗 Purpose");
+        assert!(store.read_canonical_spec("token").is_none(), "正典未被建立");
+    }
+
+    #[test]
+    fn the_placeholder_skeleton_survives_as_an_unreachable_branch() {
+        // 守門上線後 delta 缺 Purpose 走不到合併，佔位分支成為理論不可達的
+        // 死路防禦（design D3）——分支本身仍在，且文案仍取自單一常數。
+        let (canon, _) = merge_capability("token", "demo", "2026-08-11", ADDED_ONLY, None);
+        assert!(
+            canon.contains(&format!(
+                "{} change 'demo'. Update Purpose after archive.",
+                crate::model::PURPOSE_TBD_PREFIX
+            )),
+            "佔位文案沿用 core 常數: {canon}"
         );
     }
 

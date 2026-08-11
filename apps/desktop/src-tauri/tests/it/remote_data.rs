@@ -508,7 +508,10 @@ fn task_flips_claim_and_archive_write_through() {
                 change: "demo".into(),
                 artifact: "specs/auth/spec.md".into(),
             },
-            "## ADDED Requirements\n\n### Requirement: Login\n\nUsers SHALL log in.\n\n\
+            // 新開 capability 的 delta 自帶合格 Purpose，否則封存被 Purpose 守門擋下
+            // （spec archive-merge「新 capability 的 Purpose 自 delta 帶入」）。
+            "## Purpose\n\n本 capability 負責使用者登入與登出的可觀察行為，涵蓋工作階段的建立、續期與撤銷三段流程。\n\n\
+             ## ADDED Requirements\n\n### Requirement: Login\n\nUsers SHALL log in.\n\n\
              #### Scenario: ok\n\n- **WHEN** login\n- **THEN** ok\n",
         );
         h.store.commit(uow, Vec::new()).expect("seed delta spec");
