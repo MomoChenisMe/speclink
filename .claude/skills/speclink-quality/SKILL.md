@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.10"
+  version: "v1.19.11"
   generatedBy: "Speclink"
 ---
 
