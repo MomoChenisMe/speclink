@@ -2,7 +2,7 @@
 
 ### Requirement: 本地檔案寫入原子落盤
 
-引擎對 workspace 共享真相檔案（openspec/ 樹、.speclink.yaml、openspec/config.yaml）的寫入 SHALL 經單一寫檔入口以原子方式落盤：先寫同目錄暫存檔、再 rename 至目的路徑，使並行讀者於任一時點讀到的都是舊全文或新全文，SHALL NOT 觀察到空檔或部分內容。rename 因平台限制失敗（如 Windows sharing violation）時 SHALL 退回直接寫入並清理暫存檔——行為不劣於原子化前；成功路徑 SHALL NOT 於目的目錄殘留暫存檔。原子保證於 unix SHALL 全額成立，Windows 為 best-effort（退回路徑存在即可）。
+引擎對 workspace 共享真相檔案（openspec/ 樹、.speclink.yaml、openspec/config.yaml）的寫入 SHALL 經單一寫檔入口以原子方式落盤：先寫同目錄暫存檔、再 rename 至目的路徑，使並行讀者於任一時點讀到的都是舊全文或新全文，SHALL NOT 觀察到空檔或部分內容。rename 因平台限制失敗（如 Windows sharing violation）時 SHALL 退回直接寫入並清理暫存檔——行為不劣於原子化前；暫存檔因權限限制建不出來（如父目錄不可寫而目的檔可寫）時 SHALL 同樣退回直接寫入，其他原因的暫存檔寫入失敗（如磁碟已滿）SHALL 浮出錯誤且目的檔內容不變。成功路徑 SHALL NOT 於目的目錄殘留暫存檔。原子保證於 unix SHALL 於暫存檔可建立時全額成立，Windows 為 best-effort（退回路徑存在即可）。
 
 #### Scenario: 並行讀者不見半份內容
 

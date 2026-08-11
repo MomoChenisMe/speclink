@@ -232,6 +232,22 @@ fn set_locale_writes_the_key_and_preserves_the_others() {
 }
 
 #[test]
+fn set_leaves_no_temp_residue_beside_the_config() {
+    // Spec scenario 設定寫入走同一原子入口——觀察面：寫入成功後 openspec/ 無暫存
+    // 殘留、config.yaml 為完整全文。
+    let p = TempProject::new("set-atomic-face", WF_YAML);
+    let out = p.run(&["workflow-config", "set", "locale", "ja"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let residue: Vec<String> = std::fs::read_dir(p.dir.join("openspec"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".tmp"))
+        .collect();
+    assert!(residue.is_empty(), "temp residue left behind: {residue:?}");
+    assert_eq!(p.config_text(), WF_YAML.replace("locale: tw", "locale: ja"));
+}
+
+#[test]
 fn set_rejects_an_unknown_key_without_touching_the_file() {
     // Spec scenario 未知 key 拒絕.
     let p = TempProject::new("set-unknown", WF_YAML);

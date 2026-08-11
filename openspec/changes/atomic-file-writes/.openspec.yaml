@@ -5,3 +5,29 @@ created_with: claude
 from_discussion: desktop-cli-multi-workspace-concurrency
 started_at: 2026-08-11
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-11
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 7
+reviewed_scope:
+  - path: apps/desktop/core/src/settings.rs
+    hash: df7e8d2bc2f3455e180eb0a0435b815dceba56005f3b79ae294f93ee6102de7c
+  - path: crates/speclink-cli/src/verbs/config.rs
+    hash: 0b3bd5372eb61bde16893d0913d329e916cff60ab73b311783fb617ad3781856
+  - path: crates/speclink-cli/tests/it/workflow_config.rs
+    hash: c4acf89bf9d7e1d482eac20a9e75c2cb41bf82cf48a48fac4df5acbae66b7a38
+  - path: crates/speclink-core/src/util.rs
+    hash: 42517718a1c5194292fed12d5484d2f3988aba274f061ac90d14541fd542482d
+verified_at: 2026-08-11
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 7
+verified_scope:
+  - path: apps/desktop/core/src/settings.rs
+    hash: df7e8d2bc2f3455e180eb0a0435b815dceba56005f3b79ae294f93ee6102de7c
+  - path: crates/speclink-cli/src/verbs/config.rs
+    hash: 0b3bd5372eb61bde16893d0913d329e916cff60ab73b311783fb617ad3781856
+  - path: crates/speclink-cli/tests/it/workflow_config.rs
+    hash: c4acf89bf9d7e1d482eac20a9e75c2cb41bf82cf48a48fac4df5acbae66b7a38
+  - path: crates/speclink-core/src/util.rs
+    hash: 42517718a1c5194292fed12d5484d2f3988aba274f061ac90d14541fd542482d

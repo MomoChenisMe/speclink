@@ -25,13 +25,20 @@
 ## 相容性影響
 
 - 人眼輸出與 `--json` 皆不變，無使用者遷移動作。
-- 唯一可觀察的行為變化：unix 上「目的檔被設為唯讀」不再擋下寫入——rename 看的是所在
-  目錄的權限而非檔案本身的權限，唯讀的 openspec/config.yaml 會被直接覆蓋。原先的失敗
-  是普通 fs::write 的附帶效果，並非任何規格所要求的保護。Windows 不受影響：rename 覆蓋
+- unix 上「目的檔被設為唯讀」不再擋下寫入——rename 看的是所在目錄的權限而非檔案本身
+  的權限，唯讀的 openspec/config.yaml 會被覆蓋（既有 mode 保留，見下）。原先的失敗是
+  普通 fs::write 的附帶效果，並非任何規格所要求的保護。Windows 不受影響：rename 覆蓋
   唯讀檔會被拒，退回的直接寫入同樣被拒，仍為錯誤。
+- symlink 目的檔：寫入前追蹤連結至最終目標，temp＋rename 落在目標上——連結拓撲與
+  原本 fs::write 穿透寫入一致。hard link 是已知界限：rename 產生新 inode，其他連結名
+  留在舊內容上（原地覆寫與原子替換本質互斥），接受此界限。
+- 檔案權限：unix 上覆寫前以 `fs::metadata` 取目的檔既有 mode 套回暫存檔（best-effort），
+  0600 的設定檔不會被放寬成 umask 預設；owner／ACL 不在保留範圍。
+- 暫存檔建不出來（如父目錄不可寫但目的檔可寫）時退回直接寫入——「行為不劣於原子化前」
+  對暫存檔建立與 rename 兩步全額成立。
 - 回歸對照連帶：apps/desktop/core/src/settings.rs 兩個「寫檔階段失敗」測試原以唯讀目的檔
-  製造失敗，改以唯讀父目錄（unix）／唯讀檔（Windows）製造，錯誤訊息與「原檔不變」四項
-  斷言全數保留。
+  製造失敗，改為 unix 鎖父目錄＋檔案（暫存與退回直寫兩路都擋）／Windows 鎖檔案，錯誤
+  訊息與「原檔不變」四項斷言全數保留。
 
 ## Alternatives Considered
 
