@@ -761,7 +761,7 @@ updated: 2026-08-04
 ---
 ### Requirement: 已封存頁含討論節
 
-已封存頁 SHALL 以頁內子頁籤呈現「變更」與「討論」兩節，預設顯示「變更」子頁籤；子頁籤標籤 SHALL 各帶該節目前（搜尋過濾後）筆數徽章。兩節皆為卡片清單，點擊卡片開啟唯讀抽屜（檢視行為見「已封存項目以抽屜檢視」）；討論節 SHALL 列出封存討論（日期＋topic），SHALL NOT 提供任何寫入動詞。搜尋框 SHALL 位於子頁籤之上並同時過濾兩節——身處任一子頁籤時，另一子頁籤的徽章 SHALL 反映其命中數。兩子頁籤的換頁頁碼 SHALL 互相獨立。討論清單資料缺席（向後相容路徑）時子頁籤列 SHALL 缺席、僅顯示變更清單。隨最後一個子變更歸檔而自動封存的討論、與經 GUI 或 CLI 手動封存的討論 SHALL 一致地出現於討論節。抽屜檢視的區段標題 SHALL 使用「背景」「討論過程」「結論」。
+已封存頁 SHALL 以頁內子頁籤呈現「變更」與「討論」兩節，預設顯示「變更」子頁籤；子頁籤標籤 SHALL 各帶該節目前（搜尋過濾後）筆數徽章。兩節皆為卡片清單，點擊卡片開啟唯讀抽屜（檢視行為見「已封存項目以抽屜檢視」）；討論節 SHALL 列出封存討論（日期＋slug 標題＋topic 描述，卡片 anatomy 見「規格與封存卡片收合資訊」），SHALL NOT 提供任何寫入動詞。搜尋框 SHALL 位於子頁籤之上並同時過濾兩節——身處任一子頁籤時，另一子頁籤的徽章 SHALL 反映其命中數。兩子頁籤的換頁頁碼 SHALL 互相獨立。討論清單資料缺席（向後相容路徑）時子頁籤列 SHALL 缺席、僅顯示變更清單。隨最後一個子變更歸檔而自動封存的討論、與經 GUI 或 CLI 手動封存的討論 SHALL 一致地出現於討論節。抽屜檢視的區段標題 SHALL 使用「背景」「討論過程」「結論」。
 
 #### Scenario: 切換子頁籤直達討論清單
 
@@ -780,26 +780,8 @@ updated: 2026-08-04
 
 
 <!-- @trace
-source: specs-archive-pagination
-updated: 2026-07-12
-code:
-  - packages/ui/src/__tests__/archivedDrawer.test.tsx
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/listPager.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/specDrawer.test.tsx
-  - packages/ui/src/__tests__/specList.test.tsx
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/ListPager.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/SpecDrawer.tsx
-  - packages/ui/src/components/SpecList.tsx
-  - packages/ui/src/i18n.tsx
+source: desktop-archived-parity
+updated: 2026-08-11
 -->
 
 ---
@@ -1922,7 +1904,7 @@ updated: 2026-08-07
 ---
 ### Requirement: 已封存項目以抽屜檢視
 
-已封存頁的變更列與討論列 SHALL 以卡片清單呈現，點擊卡片 SHALL 開啟唯讀抽屜，SHALL NOT 提供行內展開。封存變更抽屜 SHALL 至少含提案、設計、任務、規格分頁，內容來自封存目錄的實體文件；任務分頁的核取方塊不可點擊且無批次工具列；有來源討論的封存變更 SHALL 於標題下方顯示可點的來源討論標記，點擊 SHALL 於同一抽屜切換至該討論的唯讀檢視（記錄以 live 優先、封存後備載入），無來源討論時該標記 SHALL 缺席。封存討論抽屜 SHALL 呈現「背景」「討論過程」「結論」區段。兩抽屜 SHALL 為唯讀——SHALL NOT 提供任務勾選、動詞執行或任何寫入操作；寬度與全螢幕切換 SHALL 與變更詳情抽屜一致；開啟期間內容 SHALL 隨外部檔案變更反映。所請求的文件不存在時對應分頁或區段 SHALL 顯示空狀態而非錯誤。
+已封存頁的變更列與討論列 SHALL 以卡片清單呈現，點擊卡片 SHALL 開啟唯讀抽屜，SHALL NOT 提供行內展開。封存變更抽屜 SHALL 至少含提案、設計、任務、規格分頁，內容來自封存目錄的實體文件；任務分頁的核取方塊不可點擊且無批次工具列；有來源討論的封存變更 SHALL 於標題下方顯示可點的來源討論標記，點擊 SHALL 於同一抽屜切換至該討論的唯讀檢視（記錄以 live 優先、封存後備載入），無來源討論時該標記 SHALL 缺席。封存討論抽屜 SHALL 呈現「背景」「討論過程」「結論」區段。兩抽屜的標頭 SHALL 於標題文字後緊跟複製鈕——封存變更複製含日期前綴的封存目錄名、封存討論複製 slug，複製後 SHALL 有已複製回饋；標題之下 SHALL 有出身列，顯示建立者（首字母圓標＋名字，完整識別收 hover 提示）、建立日期與封存日期，恆定單行、溢出裁切——與變更詳情抽屜的出身列同構；出身列的任一欄位資料缺席時該欄位 SHALL 缺席、其餘欄位照常呈現。封存抽屜標頭 SHALL NOT 呈現進度條與動詞動作列——封存是唯讀定格。兩抽屜 SHALL 為唯讀——SHALL NOT 提供任務勾選、動詞執行或任何寫入操作；寬度與全螢幕切換 SHALL 與變更詳情抽屜一致；開啟期間內容 SHALL 隨外部檔案變更反映。所請求的文件不存在時對應分頁或區段 SHALL 顯示空狀態而非錯誤。
 
 #### Scenario: 點擊封存變更卡開啟四分頁抽屜
 
@@ -1944,40 +1926,26 @@ updated: 2026-08-07
 - **WHEN** 使用者開啟一個帶來源討論的封存變更抽屜，點擊標題下方的來源討論標記
 - **THEN** 同一抽屜切換為該討論的唯讀檢視（背景／討論過程／結論），記錄以 live 優先、封存後備載入；無來源討論的封存變更抽屜不顯示此標記
 
+#### Scenario: 封存變更抽屜標頭的複製鈕與出身列
+
+- **WHEN** 使用者開啟一筆建立者與建立日期俱在的封存變更抽屜並點擊標題旁的複製鈕
+- **THEN** 剪貼簿寫入含日期前綴的封存目錄名並顯示已複製回饋；標題下方的出身列顯示建立者首字母圓標＋名字、建立日期與封存日期，無進度條與動詞動作列
+
+#### Scenario: 出身列欄位缺席時其餘照常
+
+- **WHEN** 使用者開啟一筆建立日期不可得、建立者可得的封存變更抽屜
+- **THEN** 出身列顯示建立者與封存日期，建立日期欄位缺席，無錯誤與空欄佔位
+
+
 <!-- @trace
-source: spec-archive-drawer
-updated: 2026-07-11
-code:
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/tabs.ts
-  - packages/ui/src/__tests__/archivedDrawer.test.tsx
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/specDrawer.test.tsx
-  - packages/ui/src/__tests__/specList.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/SpecDrawer.tsx
-  - packages/ui/src/components/SpecList.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+source: desktop-archived-parity
+updated: 2026-08-11
 -->
 
 ---
 ### Requirement: 規格與封存卡片收合資訊
 
-規格卡 SHALL 於標題文字後緊跟複製名稱鈕，並顯示需求數、溯源變更數與相對修改時間；Purpose 摘要 SHALL 取正典 Purpose 區段首個非空行一行截斷顯示，當 Purpose 為封存流程產生的佔位文字時 SHALL 改顯「Purpose 待補」警示樣式而非佔位原文。封存變更卡 SHALL 顯示日期、標題後緊跟複製鈕、任務數徽章（未全完成 SHALL 以警示樣式呈現，與全完成可辨；無 tasks.md 者不顯示徽章）、觸及規格數、建立者標記（hover 顯示全名）與來源討論標記（無來源討論時缺席）。封存討論卡 SHALL 顯示日期、topic、複製 slug 鈕、輪數與衍生變更數。三種卡片的計數 meta（需求數、溯源變更數、觸及規格數、衍生變更數）SHALL 以一致的「icon＋數字」樣式呈現——SHALL NOT 混用 pill 底色或無 icon 的圓圈數字；任務數徽章 SHALL 維持 pill 樣式與配色分級（狀態語意例外）。上述資訊 SHALL 於收合狀態（未開啟任何抽屜）即可見，資料 SHALL 由清單載入一次帶出，SHALL NOT 逐卡讀取文件全文。
+規格卡 SHALL 於標題文字後緊跟複製名稱鈕，並顯示需求數、溯源變更數與相對修改時間；Purpose 摘要 SHALL 取正典 Purpose 區段首個非空行一行截斷顯示，當 Purpose 為封存流程產生的佔位文字時 SHALL 改顯「Purpose 待補」警示樣式而非佔位原文。封存變更卡 SHALL 顯示日期、標題（change 名）後緊跟複製鈕、任務數徽章（未全完成 SHALL 以警示樣式呈現，與全完成可辨；無 tasks.md 者不顯示徽章）、觸及規格數、建立者標記（hover 顯示全名）與來源討論標記（無來源討論時缺席）；標題下方 SHALL 有描述列，一行截斷顯示封存 proposal 的 Why 首句（清單資料的 Why 首句欄位缺席時描述列 SHALL 缺席、卡片退回單行）——與看板變更卡的描述列同構。封存討論卡 SHALL 以 slug 為標題（等寬強調、緊跟複製 slug 鈕），topic SHALL 降為標題下方的描述列一行截斷顯示，並顯示日期、輪數與衍生變更數——與看板討論卡的 slug 標題＋topic 描述同構（slug 作為討論識別錨點屬 LANGUAGE.md 受控例外的既有適用範圍）。三種卡片的計數 meta（需求數、溯源變更數、觸及規格數、衍生變更數）SHALL 以一致的「icon＋數字」樣式呈現——SHALL NOT 混用 pill 底色或無 icon 的圓圈數字；任務數徽章 SHALL 維持 pill 樣式與配色分級（狀態語意例外）。上述資訊 SHALL 於收合狀態（未開啟任何抽屜）即可見，資料 SHALL 由清單載入一次帶出，SHALL NOT 逐卡讀取文件全文。
 
 #### Scenario: 規格卡收合資訊
 
@@ -1999,34 +1967,20 @@ code:
 - **WHEN** 已封存頁討論節含一筆轉出 2 個變更的封存討論
 - **THEN** 該卡顯示衍生變更數 2 與複製 slug 鈕，點擊複製鈕將 slug 寫入剪貼簿且不開啟抽屜
 
+#### Scenario: 封存變更卡顯示 Why 首句描述列
+
+- **WHEN** 已封存頁載入一筆封存 proposal 的 Why 首句可得的封存變更、與一筆 proposal 缺席的封存變更
+- **THEN** 前者於標題下方一行截斷顯示該 Why 首句；後者描述列缺席、卡片退回單行；全程未逐卡讀取文件全文（描述資料由清單載入一次帶出）
+
+#### Scenario: 封存討論卡以 slug 為標題
+
+- **WHEN** 已封存頁討論節載入一筆 slug 為 board-search-bar、topic 為「看板搜尋列」的封存討論
+- **THEN** 該卡標題以等寬強調顯示 board-search-bar 並緊跟複製 slug 鈕，「看板搜尋列」於標題下方以描述列一行截斷顯示
+
+
 <!-- @trace
-source: spec-archive-drawer
-updated: 2026-07-11
-code:
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/tabs.ts
-  - packages/ui/src/__tests__/archivedDrawer.test.tsx
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/specDrawer.test.tsx
-  - packages/ui/src/__tests__/specList.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/SpecDrawer.tsx
-  - packages/ui/src/components/SpecList.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+source: desktop-archived-parity
+updated: 2026-08-11
 -->
 
 ---
@@ -3199,5 +3153,30 @@ updated: 2026-08-11
 
 <!-- @trace
 source: desktop-async-commands
+updated: 2026-08-11
+-->
+
+---
+### Requirement: 變更與討論抽屜開啟時底層落回看板
+
+變更詳情抽屜與討論抽屜的開啟動作 SHALL 於設定抽屜選定狀態的同一次狀態更新內，把底層頁面切回看板——不論開啟入口（看板卡片、系統匣選單與面板、抽屜內跳轉、封存前確認對話框的「去蓋章」）與開啟當下所在頁面（規格頁、已封存頁、專案設定頁、應用程式設定頁）。此歸位 SHALL 由狀態層的開啟動作保證，SHALL NOT 依賴各呼叫端入口自行切頁。規格抽屜與封存抽屜 SHALL NOT 在此列——其宿主頁面即規格頁與已封存頁，開啟時底層頁面 SHALL 維持不變。
+
+#### Scenario: 已封存頁自系統匣開啟變更詳情
+
+- **WHEN** 使用者身處已封存頁，自系統匣點擊某活躍 change 的「開啟此變更」
+- **THEN** 主視窗前置、底層頁面切回看板、該 change 的詳情抽屜開啟——關閉抽屜後所見為看板而非已封存頁
+
+#### Scenario: 規格頁開啟討論抽屜落回看板
+
+- **WHEN** 使用者身處規格頁，經任一入口開啟某活躍討論的討論抽屜
+- **THEN** 底層頁面切回看板、討論抽屜開啟
+
+#### Scenario: 已封存頁開啟封存抽屜不切頁
+
+- **WHEN** 使用者於已封存頁點擊一筆封存變更卡
+- **THEN** 封存抽屜開啟，底層頁面維持已封存頁
+
+<!-- @trace
+source: desktop-archived-parity
 updated: 2026-08-11
 -->

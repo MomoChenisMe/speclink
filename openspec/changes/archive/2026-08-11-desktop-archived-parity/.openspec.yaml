@@ -59,3 +59,5 @@ verified_scope:
     hash: da0757e6695a3ced6be91dc908f53f5b15938e6b9727ba88e0dbf41f4131d948
   - path: packages/ui/src/i18n.tsx
     hash: 690705bb1669a02b99ca20639004edbc2708fddb290f5f1ba59eee5bbcea0e36
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-11
