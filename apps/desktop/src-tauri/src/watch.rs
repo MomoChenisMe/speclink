@@ -112,23 +112,36 @@ pub fn watch_openspec(
 /// 重掛由 workspace-changed 事件驅動（前端每次刷新順手重掛），而 Linux
 /// inotify 的掛載走訪本身會變成一批事件——每次都整顆重建就是事件迴圈。
 /// 比對後只在拓撲真的改變（worktree 增減、登記簿出生）時重建。
+///
+/// async 化後重掛跑在執行緒池，兩條鏈（activation 與事件驅動重掛）可交錯：
+/// 呼叫端取號後傳入 `ticket`，序號較小的慢工視為陳舊、直接略過，不得反超
+/// 較新的掛載。
 pub struct WatchSlot {
     current: Option<(Vec<PathBuf>, WorkspaceWatcher)>,
+    last_ticket: u64,
 }
 
 impl WatchSlot {
     pub fn new() -> WatchSlot {
-        WatchSlot { current: None }
+        WatchSlot {
+            current: None,
+            last_ticket: 0,
+        }
     }
 
-    /// 解析 `start` 的監看目標並視需要重掛；回傳是否重建。解析或掛載失敗時
-    /// 清空槽位並回 `Err`——呼叫端記錄後照常運作，僅失去自動刷新。
+    /// 解析 `start` 的監看目標並視需要重掛；回傳是否重建。陳舊序號略過並回
+    /// `Ok(false)`。解析或掛載失敗時清空槽位並回 `Err`——呼叫端記錄後照常
+    /// 運作，僅失去自動刷新。
     pub fn rearm(
         &mut self,
+        ticket: u64,
         start: &Path,
         debounce: Duration,
         on_change: impl Fn() + Send + 'static,
     ) -> Result<bool, String> {
+        if ticket < self.last_ticket {
+            return Ok(false);
+        }
         let targets = match resolve_watch_targets(start) {
             Ok(t) => t,
             Err(e) => {
@@ -136,7 +149,7 @@ impl WatchSlot {
                 return Err(e);
             }
         };
-        self.rearm_with_targets(targets, debounce, on_change)
+        self.rearm_with_targets(ticket, targets, debounce, on_change)
     }
 
     /// 判等基準是「可掛載集合」（首項＋其餘存在的目錄），不是解析集合——
@@ -144,10 +157,15 @@ impl WatchSlot {
     /// 之後出現必須觸發重建補掛，否則它永久失去監看。
     fn rearm_with_targets(
         &mut self,
+        ticket: u64,
         targets: Vec<PathBuf>,
         debounce: Duration,
         on_change: impl Fn() + Send + 'static,
     ) -> Result<bool, String> {
+        if ticket < self.last_ticket {
+            return Ok(false);
+        }
+        self.last_ticket = ticket;
         let mountable: Vec<PathBuf> = targets
             .iter()
             .enumerate()
@@ -330,21 +348,21 @@ mod tests {
         let targets = vec![root.0.join("openspec"), late.clone()];
         let mut slot = WatchSlot::new();
         let rebuilt = slot
-            .rearm_with_targets(targets.clone(), Duration::from_millis(200), || {})
+            .rearm_with_targets(1, targets.clone(), Duration::from_millis(200), || {})
             .expect("first mount");
         assert!(rebuilt, "首次必為重建");
         let rebuilt = slot
-            .rearm_with_targets(targets.clone(), Duration::from_millis(200), || {})
+            .rearm_with_targets(2, targets.clone(), Duration::from_millis(200), || {})
             .expect("same targets resolve");
         assert!(!rebuilt, "目錄仍缺席、可掛載集合不變須沿用");
 
         std::fs::create_dir_all(&late).unwrap();
         let rebuilt = slot
-            .rearm_with_targets(targets.clone(), Duration::from_millis(200), || {})
+            .rearm_with_targets(3, targets.clone(), Duration::from_millis(200), || {})
             .expect("rearm after the dir appears");
         assert!(rebuilt, "晚出生的目錄出現＝可掛載集合改變，須重建補掛");
         let rebuilt = slot
-            .rearm_with_targets(targets, Duration::from_millis(200), || {})
+            .rearm_with_targets(4, targets, Duration::from_millis(200), || {})
             .expect("stable targets resolve");
         assert!(!rebuilt, "補掛後無變化須沿用");
     }
@@ -356,20 +374,42 @@ mod tests {
         let root = TempRoot::new("rearm");
         let mut slot = WatchSlot::new();
         let rebuilt = slot
-            .rearm(&root.0, Duration::from_millis(200), || {})
+            .rearm(1, &root.0, Duration::from_millis(200), || {})
             .expect("first rearm mounts");
         assert!(rebuilt, "首次必為重建");
         let rebuilt = slot
-            .rearm(&root.0, Duration::from_millis(200), || {})
+            .rearm(2, &root.0, Duration::from_millis(200), || {})
             .expect("second rearm resolves");
         assert!(!rebuilt, "目標集合不變須沿用原監看");
 
         // 拓撲改變（git repo 出生 → 哨兵進場）→ 重建。
         std::fs::create_dir_all(root.0.join(".git")).unwrap();
         let rebuilt = slot
-            .rearm(&root.0, Duration::from_millis(200), || {})
+            .rearm(3, &root.0, Duration::from_millis(200), || {})
             .expect("rearm after topology change");
         assert!(rebuilt, "目標集合改變須重建監看");
+    }
+
+    #[test]
+    fn a_stale_ticket_never_overrides_a_newer_rearm() {
+        // async 化後 activation 與事件驅動重掛是兩條可交錯的鏈：舊 root 的慢
+        // 掛載後完成時不得反超新 root——序號較小＝陳舊，直接略過。
+        let root_new = TempRoot::new("ticket-new");
+        let root_old = TempRoot::new("ticket-old");
+        let mut slot = WatchSlot::new();
+        let newer = slot
+            .rearm(2, &root_new.0, Duration::from_millis(200), || {})
+            .expect("newer rearm mounts");
+        assert!(newer, "新 root 掛載必為重建");
+        let stale = slot
+            .rearm(1, &root_old.0, Duration::from_millis(200), || {})
+            .expect("stale rearm is a no-op, not an error");
+        assert!(!stale, "陳舊序號不得重建");
+        // 槽位仍在新 root 上：同 root 再掛（新序號）應回報「未重建」。
+        let unchanged = slot
+            .rearm(3, &root_new.0, Duration::from_millis(200), || {})
+            .expect("re-rearm on the current root");
+        assert!(!unchanged, "槽位必須仍監看較新的 root");
     }
 
     #[test]

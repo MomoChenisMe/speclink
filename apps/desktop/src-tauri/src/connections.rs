@@ -44,6 +44,57 @@ pub fn read_registry(path: &Path) -> Vec<ConnectionEntry> {
         .unwrap_or_default()
 }
 
+/// registry 檔的行程內互斥：command async 化後 add／remove 的
+/// read→modify→write 不再由主執行緒天然序列化，跨執行緒併行的整檔覆寫會
+/// 互相蓋掉——所有 mutation 先取這把鎖（跨行程仍無鎖，屬既有邊界）。
+static REGISTRY_MUTATION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// 取得 registry mutation 鎖；poisoned（前一持有者 panic）照常放行——
+/// registry 操作間無跨呼叫的記憶體不變量，鎖只管檔案序列化。
+pub fn registry_guard() -> std::sync::MutexGuard<'static, ()> {
+    REGISTRY_MUTATION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// 新增連線的完整交易（鎖內 read→upsert→write）：併行呼叫不互相蓋寫。
+/// 回傳剛落地的條目。
+pub fn add_connection(
+    path: &Path,
+    base_url: &str,
+    name: &str,
+) -> Result<ConnectionEntry, String> {
+    let _guard = registry_guard();
+    let mut entries = read_registry(path);
+    let id = upsert_connection(&mut entries, base_url, name)?;
+    write_registry(path, &entries)?;
+    Ok(entries
+        .into_iter()
+        .find(|e| e.id == id)
+        .expect("剛 upsert 的條目存在"))
+}
+
+/// 移除連線的完整交易（鎖內 read→logout→write）：先走登出語意（撤銷＋刪
+/// Keychain entry）再刪條目；登出的本機刪除失敗上拋、不刪條目——避免留下
+/// 孤兒 credential。回傳被移除條目的 origin（無此 id＝`Ok(None)`，冪等）。
+pub fn remove_connection(
+    path: &Path,
+    id: &str,
+    credentials: &dyn CredentialStore,
+) -> Result<Option<String>, String> {
+    let _guard = registry_guard();
+    let mut entries = read_registry(path);
+    let Some(entry) = entries.iter().find(|e| e.id == id) else {
+        return Ok(None);
+    };
+    let origin = entry.origin.clone();
+    logout(&origin, credentials, path)?;
+    entries = read_registry(path); // logout 剛清了身分欄位
+    entries.retain(|e| e.id != id);
+    write_registry(path, &entries)?;
+    Ok(Some(origin))
+}
+
 /// 寫 registry：建父目錄後整檔覆寫。
 pub fn write_registry(path: &Path, entries: &[ConnectionEntry]) -> Result<(), String> {
     if let Some(parent) = path.parent() {

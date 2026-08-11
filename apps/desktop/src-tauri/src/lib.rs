@@ -53,20 +53,23 @@ async fn cli_deploy(plan: cli_install::CliDeployPlan) -> Result<(), String> {
         .map_err(|e| e.to_string())?
 }
 
+// 讀取型 command 一律回 Result：worker 失敗（JoinError——閉包 panic 或
+// 關閉期取消）轉為 invoke 錯誤回報。留 .expect 會在 tokio task 內 panic 被
+// 吞掉，前端 promise 永不 settle；成功路徑的回傳形狀不變。
 #[tauri::command]
-async fn list_changes(root: PathBuf) -> Value {
+async fn list_changes(root: PathBuf) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::query::list_changes_at(&root)
     })
     .await
-    .expect("list_changes worker failed")
+    .map_err(|e| format!("list_changes worker failed: {e}"))
 }
 
 #[tauri::command]
-async fn list_specs(root: PathBuf) -> Value {
+async fn list_specs(root: PathBuf) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || speclink_desktop_core::query::list_specs_at(&root))
         .await
-        .expect("list_specs worker failed")
+        .map_err(|e| format!("list_specs worker failed: {e}"))
 }
 
 #[tauri::command]
@@ -79,48 +82,48 @@ async fn status(root: PathBuf, change: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
-async fn document(root: PathBuf, change: String, artifact: String) -> Option<String> {
+async fn document(root: PathBuf, change: String, artifact: String) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::query::document_at(&root, &change, &artifact)
     })
     .await
-    .expect("document worker failed")
+    .map_err(|e| format!("document worker failed: {e}"))
 }
 
 #[tauri::command]
-async fn spec_document(root: PathBuf, capability: String) -> Option<String> {
+async fn spec_document(root: PathBuf, capability: String) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::query::spec_document_at(&root, &capability)
     })
     .await
-    .expect("spec_document worker failed")
+    .map_err(|e| format!("spec_document worker failed: {e}"))
 }
 
 #[tauri::command]
-async fn search_workspace(root: PathBuf, query: String) -> Value {
+async fn search_workspace(root: PathBuf, query: String) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::search::search_workspace_at(&root, &query)
     })
     .await
-    .expect("search_workspace worker failed")
+    .map_err(|e| format!("search_workspace worker failed: {e}"))
 }
 
 #[tauri::command]
-async fn change_capabilities(root: PathBuf, change: String) -> Vec<String> {
+async fn change_capabilities(root: PathBuf, change: String) -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::query::change_capabilities_at(&root, &change)
     })
     .await
-    .expect("change_capabilities worker failed")
+    .map_err(|e| format!("change_capabilities worker failed: {e}"))
 }
 
 #[tauri::command]
-async fn change_meta(root: PathBuf, change: String) -> Option<Value> {
+async fn change_meta(root: PathBuf, change: String) -> Result<Option<Value>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::manage::change_meta_at(&root, &change)
     })
     .await
-    .expect("change_meta worker failed")
+    .map_err(|e| format!("change_meta worker failed: {e}"))
 }
 
 #[tauri::command]
@@ -241,7 +244,7 @@ async fn archive_carry(
         speclink_desktop_core::verbs::archive_carry_at(&root, &change, carry_review, carry_verify)
     })
     .await
-    .map_err(|e| format!("archive worker failed: {e}"))?
+    .map_err(|e| format!("archive_carry worker failed: {e}"))?
 }
 
 #[tauri::command]
@@ -263,48 +266,52 @@ async fn discard_verify(root: PathBuf, change: String) -> Result<Value, String> 
 }
 
 #[tauri::command]
-async fn archived_changes(root: PathBuf) -> Value {
+async fn archived_changes(root: PathBuf) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::cache::archived_changes_at(&root)
     })
     .await
-    .expect("archived_changes worker failed")
+    .map_err(|e| format!("archived_changes worker failed: {e}"))
 }
 
 #[tauri::command]
-async fn archived_document(root: PathBuf, dated_name: String, artifact: String) -> Option<String> {
+async fn archived_document(
+    root: PathBuf,
+    dated_name: String,
+    artifact: String,
+) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::query::archived_document_at(&root, &dated_name, &artifact)
     })
     .await
-    .expect("archived_document worker failed")
+    .map_err(|e| format!("archived_document worker failed: {e}"))
 }
 
 #[tauri::command]
-async fn archived_capabilities(root: PathBuf, dated_name: String) -> Vec<String> {
+async fn archived_capabilities(root: PathBuf, dated_name: String) -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::query::archived_capabilities_at(&root, &dated_name)
     })
     .await
-    .expect("archived_capabilities worker failed")
+    .map_err(|e| format!("archived_capabilities worker failed: {e}"))
 }
 
 #[tauri::command]
-async fn list_discussions(root: PathBuf) -> Value {
+async fn list_discussions(root: PathBuf) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::discussions::list_discussions_at(&root)
     })
     .await
-    .expect("list_discussions worker failed")
+    .map_err(|e| format!("list_discussions worker failed: {e}"))
 }
 
 #[tauri::command]
-async fn discussion_document(root: PathBuf, slug: String) -> Option<String> {
+async fn discussion_document(root: PathBuf, slug: String) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::discussions::discussion_document_at(&root, &slug)
     })
     .await
-    .expect("discussion_document worker failed")
+    .map_err(|e| format!("discussion_document worker failed: {e}"))
 }
 
 #[tauri::command]
@@ -330,7 +337,12 @@ async fn archive_discussion(root: PathBuf, slug: String) -> Result<Value, String
 }
 
 /// 監看器槽位：目標集合不變時沿用原監看，改變時整顆替換（drop 舊監看即停止）。
-type WatcherState = std::sync::Mutex<watch::WatchSlot>;
+/// `tickets` 於 command 進 pool 前取號——兩條重掛鏈（activation 與
+/// workspace-changed 驅動）交錯時，槽位以序號拒絕陳舊的慢工反超。
+struct WatcherState {
+    tickets: std::sync::atomic::AtomicU64,
+    slot: std::sync::Mutex<watch::WatchSlot>,
+}
 
 /// git 身分預熱（design D1）：首抓可能秒級（GUI 進程 spawn git 極慢的環境），
 /// 掛監看（＝專案成為活躍）時背景執行緒先填快取——首次勾選不再付這筆成本。
@@ -402,12 +414,12 @@ async fn project_stats(path: String) -> Result<Value, String> {
 /// 指令檔過期探測（desktop-instruction-staleness-prompt 決策 4）：獨立唯讀
 /// command，不掛進 open_project——後者是純探測 probe，不承擔第二職責。
 #[tauri::command]
-async fn probe_instructions(path: String) -> Value {
+async fn probe_instructions(path: String) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::project::probe_instructions_at(std::path::Path::new(&path))
     })
     .await
-    .expect("probe_instructions worker failed")
+    .map_err(|e| format!("probe_instructions worker failed: {e}"))
 }
 
 /// 指令檔整套再生（決策 5）：委派引擎既有 update()。寫入型 command 一律
@@ -428,16 +440,24 @@ async fn update_instructions(path: String) -> Result<Value, String> {
 /// 避免 PathBuf 往返改寫字面。
 /// 監看不可用僅記錄、不回錯——app 照常、僅失去自動刷新（既有降級語意）。
 /// 掛載大樹（遞迴走訪）屬 IO，整段重掛移至 spawn_blocking——槽位鎖在背景
-/// 執行緒取得，主執行緒不等待掛載完成。
+/// 執行緒取得，主執行緒不等待掛載完成。序號在進 pool 前取（取號是純記憶體
+/// 操作）：pool 內完成順序不定，槽位據此拒絕陳舊的慢工反超。
 #[tauri::command]
 async fn watch_workspace(app: tauri::AppHandle, root: String) {
+    let ticket = match app.try_state::<WatcherState>() {
+        Some(state) => state
+            .tickets
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+        None => return,
+    };
     let root_path = PathBuf::from(&root);
     let emitter = app.clone();
     let joined = tauri::async_runtime::spawn_blocking(move || {
-        let Some(slot) = app.try_state::<WatcherState>() else {
+        let Some(state) = app.try_state::<WatcherState>() else {
             return;
         };
-        let rearmed = slot.lock().expect("watcher lock poisoned").rearm(
+        let rearmed = state.slot.lock().expect("watcher lock poisoned").rearm(
+            ticket,
             &root_path,
             std::time::Duration::from_millis(400),
             move || {
@@ -599,7 +619,7 @@ async fn connection_list(app: tauri::AppHandle) -> Result<Vec<Value>, String> {
             .collect())
     })
     .await
-    .map_err(|e| format!("connection worker failed: {e}"))?
+    .map_err(|e| format!("connection_list worker failed: {e}"))?
 }
 
 #[tauri::command]
@@ -614,17 +634,11 @@ async fn connection_add(
         .inner()
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mut entries = connections::read_registry(&path);
-        let id = connections::upsert_connection(&mut entries, &base_url, &name)?;
-        connections::write_registry(&path, &entries)?;
-        let entry = entries
-            .iter()
-            .find(|e| e.id == id)
-            .expect("剛 upsert 的條目存在");
-        Ok(entry_view(entry, &state))
+        let entry = connections::add_connection(&path, &base_url, &name)?;
+        Ok(entry_view(&entry, &state))
     })
     .await
-    .map_err(|e| format!("connection worker failed: {e}"))?
+    .map_err(|e| format!("connection_add worker failed: {e}"))?
 }
 
 /// chooser 的 checkout 先檢查階段（零寫入）：驗證資料夾與 marker 一致性，
@@ -660,8 +674,8 @@ async fn bind_checkout(
     .map_err(|e| format!("bind_checkout worker failed: {e}"))?
 }
 
-/// 移除連線＝先走登出語意（撤銷＋刪 Keychain entry）再刪 registry 條目
-/// （決策 6）。登出的本機刪除失敗會上拋、不刪條目——避免留下孤兒 credential。
+/// 移除連線（決策 6）：登出與刪條目的交易語意在 connections::remove_connection
+/// （鎖內執行）；此處只補 in-memory TokenManager 的清理。
 #[tauri::command]
 async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let path = connections_path(&app)?;
@@ -670,19 +684,13 @@ async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), Stri
         .inner()
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mut entries = connections::read_registry(&path);
-        if let Some(entry) = entries.iter().find(|e| e.id == id) {
-            let origin = entry.origin.clone();
-            connections::logout(&origin, &*state.credentials, &path)?;
+        if let Some(origin) = connections::remove_connection(&path, &id, &*state.credentials)? {
             state.managers.lock().expect("manager lock").remove(&origin);
-            entries = connections::read_registry(&path); // logout 剛清了身分欄位
-            entries.retain(|e| e.id != id);
-            connections::write_registry(&path, &entries)?;
         }
         Ok(())
     })
     .await
-    .map_err(|e| format!("connection worker failed: {e}"))?
+    .map_err(|e| format!("connection_remove worker failed: {e}"))?
 }
 
 /// device login 啟動段（決策二）：網路在 blocking pool 執行；瀏覽器開啟走
@@ -1465,16 +1473,24 @@ async fn remote_watch(
     repo: String,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let origin = connection_origin(&app, &connection_id)?;
-        let state = app
-            .state::<std::sync::Arc<ConnectionsState>>()
-            .inner()
-            .clone();
         let events = app
             .state::<std::sync::Arc<event_manager::EventManager>>()
             .inner()
             .clone();
         let key = remote_locator_key(&connection_id, &project, &repo);
+        // 註冊前的失敗要入帳（register_failed）：前端 unmount 照樣退訂，
+        // 沒入帳的失敗會讓那筆退訂毒害同 key 的下一次訂閱。
+        let origin = match connection_origin(&app, &connection_id) {
+            Ok(origin) => origin,
+            Err(e) => {
+                events.register_failed(&key);
+                return Err(e);
+            }
+        };
+        let state = app
+            .state::<std::sync::Arc<ConnectionsState>>()
+            .inner()
+            .clone();
         let base = format!("{origin}/api/speclink/v1/projects/{project}");
         let manager = state.manager_for_connection(&connection_id, &origin);
         let sub_state = state.clone();
@@ -1549,8 +1565,10 @@ pub fn run() {
             // 監看槽位（決策 5）：啟動僅註冊空槽——前端還原分頁後以
             // watch_workspace 顯式掛上活躍專案（監看與資料載入同由前端
             // session 驅動；建立失敗僅記錄，app 照常、只失去自動刷新）。
-            let slot: WatcherState = std::sync::Mutex::new(watch::WatchSlot::new());
-            app.manage(slot);
+            app.manage(WatcherState {
+                tickets: std::sync::atomic::AtomicU64::new(0),
+                slot: std::sync::Mutex::new(watch::WatchSlot::new()),
+            });
             // 連線層：credential 生產出入口＝OS Keychain；access token 記憶體持有。
             let state_emitter = app.handle().clone();
             app.manage(std::sync::Arc::new(ConnectionsState {

@@ -12,4 +12,4 @@
 #### Scenario: async 化不改變 command 對外契約
 
 - **WHEN** 前端以既有名稱與參數 invoke 任一改為 async 的 command
-- **THEN** 回傳資料形狀與錯誤語意與同步時代完全一致，前端無需任何配合改動
+- **THEN** 成功路徑的回傳資料形狀與同步時代完全一致，前端無需任何配合改動；回傳資料的 command 於背景執行本身失敗（如關閉期取消）時 SHALL 以 invoke 錯誤回報，不得讓呼叫懸置不決（fire-and-forget 的監看類 command 維持既有降級語意：失敗僅記錄、呼叫正常結束）

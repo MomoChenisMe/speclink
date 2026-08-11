@@ -33,17 +33,37 @@ struct SubEntry {
     stream_abort: Arc<Mutex<Option<speclink_remote::events::AbortHandle>>>,
 }
 
+/// 訂閱表：共用訂閱之外，另記兩種帳目，讓 register／unregister 在任何抵達
+/// 順序下總帳都平（async IPC 後順序不再保證，cleanup 可先於 subscribe 抵達）：
+///
+/// - `debts`——先到的 unregister：對不存在的 key 退訂＝記一筆額度，該 key 的
+///   下一個 register（或失敗註冊的入帳）直接被抵銷、不開 worker。
+/// - `credits`——註冊失敗的入帳（[`EventManager::register_failed`]）：註冊沒
+///   發生但前端 unmount 照樣退訂，先到的失敗額度讓那筆退訂變 no-op，不毒害
+///   之後的訂閱。
+///
+/// 每筆 register（成功、失敗皆入帳）＋1、每筆 unregister −1，兩種額度互不
+/// 共存（入帳先消 debt、退訂先消 credit）——收斂後帳目歸零：不會留下沒人
+/// 退訂的孤兒 worker，也不會留下吃掉未來訂閱的毒藥額度（代價是罕見交錯下
+/// 訂閱短暫斷開重建，可接受）。
+#[derive(Default)]
+struct Subs {
+    entries: HashMap<String, SubEntry>,
+    debts: HashMap<String, usize>,
+    credits: HashMap<String, usize>,
+}
+
 /// remote 事件的分發中樞：tauri 接線注入 notify（emit remote-workspace-changed），
 /// 測試注入 channel 水槽。
 pub struct EventManager {
     notify: Arc<dyn Fn(String) + Send + Sync>,
-    subs: Mutex<HashMap<String, SubEntry>>,
+    subs: Mutex<Subs>,
 }
 
 impl Drop for EventManager {
     fn drop(&mut self) {
         let mut subs = self.subs.lock().expect("subs lock");
-        for (_, entry) in subs.drain() {
+        for (_, entry) in subs.entries.drain() {
             entry.shutdown.store(true, Ordering::Relaxed);
             if let Some(abort) = entry.stream_abort.lock().expect("abort lock").take() {
                 abort.abort();
@@ -56,11 +76,12 @@ impl EventManager {
     pub fn new(notify: impl Fn(String) + Send + Sync + 'static) -> EventManager {
         EventManager {
             notify: Arc::new(notify),
-            subs: Mutex::new(HashMap::new()),
+            subs: Mutex::new(Subs::default()),
         }
     }
 
-    /// 註冊一個 session：同 key 已有訂閱即共用（參照計數＋1，閉包棄用），
+    /// 註冊一個 session：先消掉先到的 unregister 額度（見 [`Subs`]），
+    /// 其次同 key 已有訂閱即共用（參照計數＋1，閉包棄用），
     /// 否則以給定的訂閱／sync-state 閉包與退避序列開 worker 執行緒。
     pub fn register<S, P>(&self, key: &str, subscribe: S, sync_state: P, backoff: Vec<Duration>)
     where
@@ -68,14 +89,21 @@ impl EventManager {
         P: Fn() -> Result<String, RemoteError> + Send + 'static,
     {
         let mut subs = self.subs.lock().expect("subs lock");
-        if let Some(entry) = subs.get_mut(key) {
+        if let Some(debt) = subs.debts.get_mut(key) {
+            *debt -= 1;
+            if *debt == 0 {
+                subs.debts.remove(key);
+            }
+            return;
+        }
+        if let Some(entry) = subs.entries.get_mut(key) {
             entry.count += 1;
             return;
         }
         let shutdown = Arc::new(AtomicBool::new(false));
         let stream_abort: Arc<Mutex<Option<speclink_remote::events::AbortHandle>>> =
             Arc::new(Mutex::new(None));
-        subs.insert(
+        subs.entries.insert(
             key.to_string(),
             SubEntry {
                 count: 1,
@@ -98,15 +126,40 @@ impl EventManager {
         });
     }
 
-    /// 退出一個 session：參照計數歸零時收束訂閱（中止流、worker 退場）。
+    /// 註冊失敗的入帳：command 在 register 之前失敗（如 registry 壞讀）時
+    /// 呼叫——沒有訂閱入帳，但前端 unmount 照樣退訂，這筆額度讓配對的
+    /// unregister 變 no-op。先消先到的退訂額度（反向交錯）。
+    pub fn register_failed(&self, key: &str) {
+        let mut subs = self.subs.lock().expect("subs lock");
+        if let Some(debt) = subs.debts.get_mut(key) {
+            *debt -= 1;
+            if *debt == 0 {
+                subs.debts.remove(key);
+            }
+            return;
+        }
+        *subs.credits.entry(key.to_string()).or_insert(0) += 1;
+    }
+
+    /// 退出一個 session：先消失敗註冊的額度（該筆退訂沒有對應的訂閱）；
+    /// 其次參照計數歸零時收束訂閱（中止流、worker 退場）；
+    /// key 不存在＝這筆退訂先於它的 register 抵達，記一筆抵銷額度。
     pub fn unregister(&self, key: &str) {
         let mut subs = self.subs.lock().expect("subs lock");
-        let Some(entry) = subs.get_mut(key) else {
+        if let Some(credit) = subs.credits.get_mut(key) {
+            *credit -= 1;
+            if *credit == 0 {
+                subs.credits.remove(key);
+            }
+            return;
+        }
+        let Some(entry) = subs.entries.get_mut(key) else {
+            *subs.debts.entry(key.to_string()).or_insert(0) += 1;
             return;
         };
         entry.count = entry.count.saturating_sub(1);
         if entry.count == 0 {
-            let entry = subs.remove(key).expect("entry exists");
+            let entry = subs.entries.remove(key).expect("entry exists");
             entry.shutdown.store(true, Ordering::Relaxed);
             let abort = entry.stream_abort.lock().expect("abort lock").take();
             if let Some(abort) = abort {
