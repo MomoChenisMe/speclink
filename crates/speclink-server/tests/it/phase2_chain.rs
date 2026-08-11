@@ -28,7 +28,7 @@ const PROPOSAL: &str = "## Why\n\n八環節劇本的示範 change。\n\n## What 
 // workspace side stats it against real code.
 const DESIGN: &str = "## Context\n\n實作落在 `src/app.rs`。\n";
 const TASKS: &str = "## 1. Work\n\n- [ ] 1.1 First\n- [ ] 1.2 Second\n";
-const DELTA_SPEC: &str = "## ADDED Requirements\n\n### Requirement: Checkout works\nCheckout SHALL work.\n\n#### Scenario: pays\n- **WHEN** paying\n- **THEN** ok\n";
+const DELTA_SPEC: &str = "## Purpose\n\n本 capability 是測試用的示範能力，涵蓋一個可觀察行為與其成功路徑，專供伺服端的測試取用。\n\n## ADDED Requirements\n\n### Requirement: Checkout works\nCheckout SHALL work.\n\n#### Scenario: pays\n- **WHEN** paying\n- **THEN** ok\n";
 const POST_SPEC: &str = "## ADDED Requirements\n\n### Requirement: Refunds work\nRefunds SHALL work.\n\n#### Scenario: refunds\n- **WHEN** refunding\n- **THEN** ok\n";
 
 const EMAIL: &str = "dev@example.com";

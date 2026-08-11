@@ -14,7 +14,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
-const DELTA_SPEC: &str = "## ADDED Requirements\n\n### Requirement: Demo works\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+/// 新開 capability 的 delta 自帶合格 Purpose——缺席會被封存的 Purpose 守門擋下
+/// （spec archive-merge「新 capability 的 Purpose 自 delta 帶入」）。
+const DELTA_SPEC: &str = "## Purpose\n\n本 capability 是測試用的示範能力，涵蓋一個可觀察行為與其成功路徑，供封存流程的守門測試取用。\n\n## ADDED Requirements\n\n### Requirement: Demo works\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
 
 struct TempProject {
     dir: PathBuf,

@@ -17,6 +17,30 @@ Format requirements:
 - **CRITICAL**: Scenarios MUST use exactly 4 hashtags (`####`). Using 3 hashtags or bullets will fail silently.
 - Every requirement MUST have at least one scenario.
 
+Purpose section (new capabilities only):
+- A capability the canonical specs do not carry yet MUST open its delta file with a
+  `## Purpose` section: one or two sentences (50 characters or more) saying what the
+  capability covers and where its boundary lies. It becomes the new canonical spec's
+  Purpose at archive — `validate` reports a missing, empty or too-short one as an error,
+  and archive refuses the change.
+- Do NOT add `## Purpose` to the delta of an existing capability — it is ignored there
+  and never rewrites the canonical Purpose.
+- To change an existing capability's Purpose (including a leftover
+  `TBD - created by archiving ...` placeholder), edit
+  openspec/specs/<capability>/spec.md directly. It is not a delta operation.
+
+Example (new capability):
+
+    ## Purpose
+
+    Token rotation and revocation for API clients: issuing, verifying and expiring
+    credentials, plus the audit trail each step leaves behind.
+
+    ## ADDED Requirements
+
+    ### Requirement: Tokens expire on rotation
+    ...
+
 MODIFIED requirements workflow:
 1. Locate the existing requirement in openspec/specs/<capability>/spec.md
 2. Copy the ENTIRE requirement block (from `### Requirement:` through all scenarios)

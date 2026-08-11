@@ -275,7 +275,13 @@ pub async fn validate_change(
     let result = verb::run(
         &state,
         &binding,
-        Command::Validate { item: Some(name), all: false, changes: false, strict: false },
+        Command::Validate {
+            item: Some(name),
+            all: false,
+            changes: false,
+            specs: false,
+            strict: false,
+        },
     )
     .await?;
     let mut results = match result.execution.outcome {

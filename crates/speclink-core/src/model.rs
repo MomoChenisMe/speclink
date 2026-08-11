@@ -303,6 +303,74 @@ pub fn has_delta_operation(text: &str) -> bool {
     op_requirement_count(text) > 0 || !rename_pairs(text).is_empty()
 }
 
+/// Purpose 內容的最低字元門檻（design D1）。長度以字元計（`chars().count()`，
+/// 非 bytes）——中文 Purpose 不因 UTF-8 多位元組被高估。
+pub const MIN_PURPOSE_LENGTH: usize = 50;
+
+/// archive 建立新正典規格時、delta 未提供 Purpose 所寫入的佔位文案前綴
+/// （design D5）。佔位產生器、正典規格驗證與桌面清單的佔位偵測共用這一份。
+pub const PURPOSE_TBD_PREFIX: &str = "TBD - created by archiving";
+
+/// Purpose 不合格的兩種樣態（design D1）。合格＝`purpose_defect` 回 `None`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PurposeDefect {
+    /// 缺 `## Purpose` 區段，或區段存在但內容為空。
+    Missing,
+    /// 內容非空但不足 [`MIN_PURPOSE_LENGTH`]，帶實際字元數。
+    TooShort(usize),
+}
+
+impl PurposeDefect {
+    /// 供守門訊息逐字轉載的原因句（archive 違規列與 validate 錯誤共用一份措辭）。
+    pub fn reason(&self) -> String {
+        match self {
+            PurposeDefect::Missing => {
+                "no `## Purpose` section, or its content is empty".to_string()
+            }
+            PurposeDefect::TooShort(n) => format!(
+                "Purpose content is {n} characters — below the \
+{MIN_PURPOSE_LENGTH}-character minimum"
+            ),
+        }
+    }
+}
+
+/// A spec document's own `## Purpose` section content, trimmed — `None` when the
+/// section is absent or holds nothing but whitespace. The section ends at the next
+/// `## ` heading, so an operation section never leaks into it.
+pub fn purpose_content(text: &str) -> Option<String> {
+    let normalized = text.replace("\r\n", "\n");
+    let mut body: Vec<&str> = Vec::new();
+    let mut inside = false;
+    for line in normalized.lines() {
+        if let Some(rest) = line.trim_start().strip_prefix("## ") {
+            if inside {
+                break;
+            }
+            inside = rest.trim() == "Purpose";
+            continue;
+        }
+        if inside {
+            body.push(line);
+        }
+    }
+    let content = body.join("\n").trim().to_string();
+    (!content.is_empty()).then_some(content)
+}
+
+/// 合格判準的單一定義（design D1）：存在 `## Purpose` 區段、內容非空、且
+/// trim 後達 [`MIN_PURPOSE_LENGTH`] 字元。change 驗證的早期檢查、封存守門與
+/// 正典規格驗證都問這一個函式，不合格的定義只有一份。
+pub fn purpose_defect(text: &str) -> Option<PurposeDefect> {
+    match purpose_content(text) {
+        None => Some(PurposeDefect::Missing),
+        Some(content) => {
+            let len = content.chars().count();
+            (len < MIN_PURPOSE_LENGTH).then_some(PurposeDefect::TooShort(len))
+        }
+    }
+}
+
 /// Rename pairs from `## RENAMED Requirements` sections (speclink divergence #4 —
 /// renames are actually applied). Both documented syntaxes:
 /// - bullet form: `- FROM: `### Requirement: Old`` / `- TO: `### Requirement: New``
@@ -640,5 +708,69 @@ mod tests {
             meta.restale_from(),
             vec!["alpha-search".to_string(), "beta-cache".to_string()]
         );
+    }
+
+    // --- Purpose 合格判準（design D1；spec spec-validation
+    //     「Purpose 合格判準單一定義」）---
+
+    use super::{purpose_content, purpose_defect, PurposeDefect, MIN_PURPOSE_LENGTH};
+
+    /// 一份帶指定 Purpose 內容的 delta 文字（後接一個操作區段，證明判準只看
+    /// Purpose 區段、不被其後標題干擾）。
+    fn delta_with_purpose(purpose: &str) -> String {
+        format!("## Purpose\n\n{purpose}\n\n## ADDED Requirements\n\n### Requirement: R\n\nIt SHALL work.\n")
+    }
+
+    #[test]
+    fn qualified_purpose_has_no_defect() {
+        let text = delta_with_purpose(
+            "本 capability 管理權杖的輪替與撤銷，涵蓋簽發、驗證與失效三段生命週期的可觀察行為，以及逾期權杖的清理時機。",
+        );
+        assert!(purpose_defect(&text).is_none(), "合格 Purpose 不得回報缺陷");
+        assert!(
+            purpose_content(&text).is_some_and(|p| p.starts_with("本 capability")),
+            "區段內容以 trim 後原文回傳，且不吞入其後的操作標題"
+        );
+    }
+
+    #[test]
+    fn missing_purpose_section_is_a_defect() {
+        let text = "## ADDED Requirements\n\n### Requirement: R\n\nIt SHALL work.\n";
+        assert!(matches!(purpose_defect(text), Some(PurposeDefect::Missing)));
+        assert!(purpose_content(text).is_none());
+    }
+
+    #[test]
+    fn empty_purpose_section_is_a_defect() {
+        // 區段在、內容空（只有空白行）＝與缺席同級：判準不接受空段。
+        let text = "## Purpose\n\n   \n\n## ADDED Requirements\n\n### Requirement: R\n\nIt SHALL work.\n";
+        assert!(matches!(purpose_defect(text), Some(PurposeDefect::Missing)));
+        assert!(purpose_content(text).is_none());
+    }
+
+    #[test]
+    fn purpose_one_char_below_the_threshold_is_too_short() {
+        let text = delta_with_purpose(&"a".repeat(MIN_PURPOSE_LENGTH - 1));
+        assert!(matches!(
+            purpose_defect(&text),
+            Some(PurposeDefect::TooShort(n)) if n == MIN_PURPOSE_LENGTH - 1
+        ));
+    }
+
+    #[test]
+    fn fifty_chinese_characters_qualify() {
+        // spec Scenario「中文內容以字元計長」：50 個中文字元恰達門檻，
+        // 不因 UTF-8 多位元組被計為超過或不足。
+        let purpose = "字".repeat(MIN_PURPOSE_LENGTH);
+        assert!(purpose.len() > MIN_PURPOSE_LENGTH, "前提：中文的 bytes 數遠大於字元數");
+        assert!(
+            purpose_defect(&delta_with_purpose(&purpose)).is_none(),
+            "50 個中文字元達標"
+        );
+        let one_short = "字".repeat(MIN_PURPOSE_LENGTH - 1);
+        assert!(matches!(
+            purpose_defect(&delta_with_purpose(&one_short)),
+            Some(PurposeDefect::TooShort(n)) if n == MIN_PURPOSE_LENGTH - 1
+        ));
     }
 }

@@ -232,14 +232,15 @@ pub enum Command {
         change: Option<String>,
         schema: Option<String>,
     },
-    /// `validate [item] [--all] [--changes] [--strict]`. The CLI's `--specs`
-    /// flag is accepted-and-ignored there (frozen CLI surface) and deliberately has
-    /// no field here — carrying a dead input would read as if it selected
-    /// spec validation.
+    /// `validate [item] [--all] [--changes] [--specs] [--strict]`. Target selection
+    /// is a union: `--specs` alone validates only the canonical specs, `--all`
+    /// validates both sides, and both flags absent keeps the frozen change-only
+    /// behavior.
     Validate {
         item: Option<String>,
         all: bool,
         changes: bool,
+        specs: bool,
         strict: bool,
     },
     /// `analyze [change]`
@@ -641,8 +642,8 @@ pub fn execute(
         Command::Instructions { artifact, change, schema } => {
             run_instructions(store, ws, ctx.user_config_dir.as_deref(), &ctx.env, artifact.as_deref(), change.as_deref(), schema.as_deref())
         }
-        Command::Validate { item, all, changes, strict } => {
-            run_validate(store, item.as_deref(), all, changes, strict)
+        Command::Validate { item, all, changes, specs, strict } => {
+            run_validate(store, item.as_deref(), all, changes, specs, strict)
         }
         Command::Analyze { change } => run_analyze(store, change.as_deref()),
         Command::ArtifactCat { artifact, change } => {
@@ -1146,8 +1147,16 @@ fn run_validate(
     item: Option<&str>,
     all: bool,
     changes_flag: bool,
+    specs_flag: bool,
     strict: bool,
 ) -> Result<CommandOutcome, CommandError> {
+    // 目標集由 validate 的單一旗標語意解出（design D4），remote 分流讀同一支。
+    let targets = crate::validate::validate_targets(item, all, changes_flag, specs_flag);
+    if !targets.changes {
+        return Ok(CommandOutcome::Validate(ValidateOutcome {
+            results: crate::validate::validate_specs(store, strict),
+        }));
+    }
     // The fail-closed gate covers the single-change target paths only — a
     // multi-change sweep must not die on one corrupt item (mirrors list).
     let mut changes = if let Some(item) = item {
@@ -1174,10 +1183,13 @@ fn run_validate(
     // validate never resolves the change's schema (an unresolvable
     // one still validates).
     let schema = crate::schema::spec_driven();
-    let results = changes
+    let mut results: Vec<crate::validate::ValidationResult> = changes
         .iter()
         .map(|c| crate::validate::validate_change(store, c, &schema, strict))
         .collect();
+    if targets.specs {
+        results.extend(crate::validate::validate_specs(store, strict));
+    }
     Ok(CommandOutcome::Validate(ValidateOutcome { results }))
 }
 
@@ -1643,6 +1655,7 @@ mod tests {
                 item: Some("demo".to_string()),
                 all: false,
                 changes: false,
+                specs: false,
                 strict: false,
             },
         )
@@ -1655,6 +1668,62 @@ mod tests {
             other => panic!("expected a validate outcome, got {other:?}"),
         }
         assert!(events.is_empty(), "queries never produce events");
+    }
+
+    // --- validate 的 --specs／--all 旗標語意（design D4；spec spec-validation
+    //     「validate --specs 驗證正典規格」）---
+
+    /// 一個 change（demo）＋一份 Purpose 缺席的正典規格（auth）的專案。
+    fn validate_flags_store() -> TestStore {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n");
+        store.canonical.borrow_mut().insert(
+            "auth".to_string(),
+            "# auth Specification\n\n## Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n"
+                .to_string(),
+        );
+        store
+    }
+
+    fn validated_names(store: &TestStore, all: bool, changes: bool, specs: bool) -> Vec<String> {
+        let (outcome, _) = execute(
+            store,
+            &ExecutionContext::default(),
+            Command::Validate { item: None, all, changes, specs, strict: false },
+        )
+        .expect("validate executes");
+        let CommandOutcome::Validate(v) = outcome else { panic!("expected a validate outcome") };
+        v.results.iter().map(|r| r.change.clone()).collect()
+    }
+
+    #[test]
+    fn validate_specs_flag_alone_validates_only_specs() {
+        // spec：`--specs` 單獨傳入時僅驗規格。
+        let store = validate_flags_store();
+        assert_eq!(validated_names(&store, false, false, true), vec!["auth".to_string()]);
+    }
+
+    #[test]
+    fn validate_all_validates_changes_and_specs() {
+        // spec：`--all` 同時驗 changes 與 specs。
+        let store = validate_flags_store();
+        assert_eq!(
+            validated_names(&store, true, false, false),
+            vec!["demo".to_string(), "auth".to_string()]
+        );
+        // `--specs --changes` 同傳的聯集語意與 `--all` 等效（design 風險項）。
+        assert_eq!(
+            validated_names(&store, false, true, true),
+            vec!["demo".to_string(), "auth".to_string()]
+        );
+    }
+
+    #[test]
+    fn validate_without_flags_still_validates_only_changes() {
+        // spec Scenario「預設行為不變」：兩旗標皆缺席時只驗 changes。
+        let store = validate_flags_store();
+        assert_eq!(validated_names(&store, false, false, false), vec!["demo".to_string()]);
+        assert_eq!(validated_names(&store, false, true, false), vec!["demo".to_string()]);
     }
 
     // --- 壞 metadata 的查詢群 fail closed 與 list 診斷（spec command-runtime）---
@@ -1678,6 +1747,7 @@ mod tests {
                     item: Some("demo".to_string()),
                     all: false,
                     changes: false,
+                    specs: false,
                     strict: false,
                 },
             ),
@@ -1912,6 +1982,7 @@ mod tests {
                 item: Some("ghost".to_string()),
                 all: false,
                 changes: false,
+                specs: false,
                 strict: false,
             },
         )
@@ -2908,7 +2979,7 @@ mod tests {
             Command::Show { item: _, item_type: _ } => {}
             Command::Status { change: _, schema: _ } => {}
             Command::Instructions { artifact: _, change: _, schema: _ } => {}
-            Command::Validate { item: _, all: _, changes: _, strict: _ } => {}
+            Command::Validate { item: _, all: _, changes: _, specs: _, strict: _ } => {}
             Command::Analyze { change: _ } => {}
             Command::ArtifactCat { artifact: _, change: _ } => {}
             Command::LanguageShow => {}

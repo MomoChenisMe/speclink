@@ -11,7 +11,9 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 
 const META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
-const DELTA_SPEC: &str = "## ADDED Requirements\n\n### Requirement: Demo works\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+/// 新開 capability 的 delta 自帶合格 Purpose——缺席會被封存的 Purpose 守門擋下
+/// （spec archive-merge「新 capability 的 Purpose 自 delta 帶入」）。
+const DELTA_SPEC: &str = "## Purpose\n\n本 capability 是測試用的示範能力，涵蓋一個可觀察行為與其成功路徑，供封存流程的守門測試取用。\n\n## ADDED Requirements\n\n### Requirement: Demo works\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
 /// 兩個寫碼任務全勾＋一個未勾的 `[M]`:寫碼任務全完成、全量 2/3。
 const CODE_DONE_MANUAL_OPEN: &str = "- [x] 1.1 a\n- [x] 1.2 b\n- [ ] [M] 1.3 手動驗證\n";
 /// 一個寫碼任務未勾＋一個未勾的 `[M]`:寫碼任務 1/2,守門該拒。

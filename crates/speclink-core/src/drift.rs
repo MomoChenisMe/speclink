@@ -1035,11 +1035,13 @@ mod tests {
     #[test]
     fn spec_drift_holds_when_delta_targets_are_consistent() {
         // delta 有 ADDED 且正典尚無該需求 → 假設成立、零分。
+        // 新開 capability 的 delta 自帶合格 Purpose：Purpose 守門與 archive 共用
+        // 同一支判定（spec archive-merge「過期判定單源共用」），缺席會在這裡記一筆。
         let store = TestStore::with_meta("demo", META);
         store.put_artifact(
             "demo",
             "specs/auth/spec.md",
-            "## ADDED Requirements\n\n### Requirement: Logout\n",
+            "## Purpose\n\n本 capability 負責登入與登出的可觀察行為，涵蓋工作階段的建立、續期與撤銷三段流程及其失敗處置。\n\n## ADDED Requirements\n\n### Requirement: Logout\n",
         );
         let change = store.find_change("demo").unwrap();
         let r = compute_spec_drift(&store, &change);
