@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "change": "atomic-file-writes",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 crates/speclink-core/src/util.rs 測試模組先寫測試：既有行為不變面——寫入內容正確、自動建父目錄、覆寫既有檔；原子面——寫入成功後目的目錄無暫存檔殘留；並行壓力面（#[cfg(unix)]，落實 spec「本地檔案寫入原子落盤」的「並行讀者不見半份內容」）——寫者執行緒交替寫入兩份等長全文、讀者執行緒迴圈讀取，斷言每次讀到的內容恆等於其中一份完整全文，絕無空檔或混合內容。此時測試對現行實作紅燈（普通 fs::write 會讓讀者讀到截斷內容）。",
+      "files": [
+        "crates/speclink-core/src/util.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 crates/speclink-cli/src/verbs/config.rs：設定檔編輯的直接 fs::write 改走 speclink_core util::write_file，錯誤訊息維持既有 label 語境；既有 config 動詞測試全綠。",
+      "files": [
+        "crates/speclink-cli/src/verbs/config.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 apps/desktop/core/src/settings.rs：兩處 config.yaml 寫入（政策欄位與 context/rules）改走 util::write_file；speclink-desktop-core 既有 settings 測試全綠。",
+      "files": [
+        "apps/desktop/core/src/settings.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZQ8VZSAT04D41BVB1ST6XSD",
+      "taskDesc": "1.1 crates/speclink-core/src/util.rs 測試模組先寫測試：既有行為不變面——寫入內容正確、自動建父目錄、覆寫既有檔；原子面——寫入成功後目的目錄無暫存檔殘留；並行壓力面（#[cfg(unix)]，落實 spec「本地檔案寫入原子落盤」的「並行讀者不見半份內容」）——寫者執行緒交替寫入兩份等長全文、讀者執行緒迴圈讀取，斷言每次讀到的內容恆等於其中一份完整全文，絕無空檔或混合內容。此時測試對現行實作紅燈（普通 fs::write 會讓讀者讀到截斷內容）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "292e8cd050cf92130263ba750bc548e5c47a5922",
+      "touchedFiles": [
+        "crates/speclink-core/src/util.rs"
+      ],
+      "recordedAt": "2026-08-11T06:00:32Z"
+    },
+    {
+      "taskId": "tsk_01KZQ8VZSA1A9GCRK7F6X1TDN6",
+      "taskDesc": "2.1 crates/speclink-cli/src/verbs/config.rs：設定檔編輯的直接 fs::write 改走 speclink_core util::write_file，錯誤訊息維持既有 label 語境；既有 config 動詞測試全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "292e8cd050cf92130263ba750bc548e5c47a5922",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/config.rs"
+      ],
+      "recordedAt": "2026-08-11T06:02:55Z"
+    },
+    {
+      "taskId": "tsk_01KZQ8VZSA01HZ54HTBWH8KM68",
+      "taskDesc": "2.2 apps/desktop/core/src/settings.rs：兩處 config.yaml 寫入（政策欄位與 context/rules）改走 util::write_file；speclink-desktop-core 既有 settings 測試全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "292e8cd050cf92130263ba750bc548e5c47a5922",
+      "touchedFiles": [
+        "apps/desktop/core/src/settings.rs"
+      ],
+      "recordedAt": "2026-08-11T06:14:07Z"
+    }
+  ]
+}

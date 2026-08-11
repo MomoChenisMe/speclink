@@ -15,11 +15,51 @@ pub(crate) fn is_valid_board_rank(s: &str) -> bool {
 }
 
 /// Write a file, creating parent directories as needed. Content is written verbatim.
+///
+/// The write lands atomically: content goes to a temp file in the destination's own
+/// directory, which is then renamed onto the destination. A concurrent reader therefore
+/// observes either the old document or the new one — never an empty or half-written file.
+/// If the rename fails (Windows can refuse it while another process holds the destination
+/// open), fall back to writing the destination directly: no worse than before atomicity,
+/// rather than turning a platform limit into a failed verb.
 pub fn write_file(path: &Path, content: &str) -> std::io::Result<()> {
+    // A bare `std::fs::rename` cannot be passed here: its inferred lifetimes are not
+    // general enough for the higher-ranked bound the injection point needs.
+    write_file_with_rename(path, content, |from, to| std::fs::rename(from, to))
+}
+
+/// `write_file` with the rename step injected, so the fallback path can be exercised
+/// without a platform that actually refuses the rename.
+fn write_file_with_rename(
+    path: &Path,
+    content: &str,
+    rename: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, content)
+    let tmp = temp_write_path(path);
+    if let Err(e) = std::fs::write(&tmp, content) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    if rename(&tmp, path).is_err() {
+        let direct = std::fs::write(path, content);
+        let _ = std::fs::remove_file(&tmp);
+        return direct;
+    }
+    Ok(())
+}
+
+/// Temp path beside `path`: same directory (so the rename stays within one filesystem
+/// and thus atomic), unique per process and per call so concurrent writers never collide
+/// on one temp name. The `.tmp` tail keeps it out of the `*.md` globs that collect specs.
+fn temp_write_path(path: &Path) -> PathBuf {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".{}.{n}.tmp", std::process::id()));
+    path.with_file_name(name)
 }
 
 /// Recursively collect all files under `dir` (relative paths are not resolved; returns absolute-ish
@@ -177,4 +217,154 @@ pub fn slugify(input: &str) -> String {
         out.pop();
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Throwaway directory in the OS temp dir; removed on drop.
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(tag: &str) -> TempDir {
+            let path = std::env::temp_dir().join(format!(
+                "speclink-core-util-{tag}-{}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            TempDir { path }
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    /// File names present in a directory, sorted.
+    fn dir_entries(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn write_file_writes_content_verbatim() {
+        let d = TempDir::new("verbatim");
+        let path = d.path.join("note.md");
+        write_file(&path, "line one\nline two\n").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "line one\nline two\n");
+    }
+
+    #[test]
+    fn write_file_creates_parent_dirs() {
+        let d = TempDir::new("parents");
+        let path = d.path.join("a").join("b").join("c.md");
+        write_file(&path, "deep").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "deep");
+    }
+
+    #[test]
+    fn write_file_overwrites_existing() {
+        let d = TempDir::new("overwrite");
+        let path = d.path.join("note.md");
+        write_file(&path, "old content that is longer").unwrap();
+        write_file(&path, "new").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+    }
+
+    /// Spec `本地檔案寫入原子落盤`: the success path leaves no temp file in the
+    /// destination directory.
+    #[test]
+    fn write_file_leaves_no_temp_file_behind() {
+        let d = TempDir::new("no-residue");
+        let path = d.path.join("note.md");
+        write_file(&path, "first").unwrap();
+        assert_eq!(dir_entries(&d.path), vec!["note.md".to_string()]);
+        write_file(&path, "second").unwrap();
+        assert_eq!(dir_entries(&d.path), vec!["note.md".to_string()]);
+    }
+
+    /// Spec `本地檔案寫入原子落盤`: when the rename cannot complete (Windows refuses
+    /// it while another process holds the destination open), the content still lands
+    /// and the temp file is cleaned up.
+    #[test]
+    fn write_file_falls_back_to_direct_write_when_rename_fails() {
+        let d = TempDir::new("rename-fails");
+        let path = d.path.join("note.md");
+        write_file(&path, "old").unwrap();
+
+        write_file_with_rename(&path, "new", |_, _| {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "sharing violation",
+            ))
+        })
+        .unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(dir_entries(&d.path), vec!["note.md".to_string()]);
+    }
+
+    /// Spec `本地檔案寫入原子落盤` / scenario `並行讀者不見半份內容`: while one
+    /// thread rewrites the file, a concurrent reader only ever observes one of
+    /// the two complete documents — never an empty, truncated, or mixed read.
+    /// Unix only: the atomic guarantee is best-effort on Windows.
+    #[cfg(unix)]
+    #[test]
+    fn write_file_concurrent_reader_never_sees_partial_content() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let d = TempDir::new("concurrent");
+        let path = d.path.join("shared.md");
+        let doc_a = "a".repeat(64 * 1024);
+        let doc_b = "b".repeat(64 * 1024);
+        write_file(&path, &doc_a).unwrap();
+
+        let done = Arc::new(AtomicBool::new(false));
+
+        let writer = {
+            let path = path.clone();
+            let (doc_a, doc_b) = (doc_a.clone(), doc_b.clone());
+            let done = Arc::clone(&done);
+            std::thread::spawn(move || {
+                for i in 0..200 {
+                    let doc = if i % 2 == 0 { &doc_b } else { &doc_a };
+                    write_file(&path, doc).unwrap();
+                }
+                done.store(true, Ordering::Relaxed);
+            })
+        };
+
+        let reader = {
+            let path = path.clone();
+            let done = Arc::clone(&done);
+            std::thread::spawn(move || {
+                while !done.load(Ordering::Relaxed) {
+                    let got = std::fs::read_to_string(&path).unwrap_or_default();
+                    if got != doc_a && got != doc_b {
+                        return Some(got.len());
+                    }
+                }
+                None
+            })
+        };
+
+        writer.join().unwrap();
+        let torn = reader.join().unwrap();
+        assert!(
+            torn.is_none(),
+            "reader observed a partial document of {} bytes",
+            torn.unwrap_or(0)
+        );
+    }
 }

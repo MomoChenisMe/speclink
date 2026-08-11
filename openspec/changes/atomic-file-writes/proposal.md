@@ -22,6 +22,17 @@
 - 不動 speclink-remote 的 credentials 寫入：已有 rotation lock 序列化寫入者，且檔案在 user-level 目錄，屬另一個 seam。
 - 不動測試碼中的直接 fs::write：fixture 建置非共享真相。
 
+## 相容性影響
+
+- 人眼輸出與 `--json` 皆不變，無使用者遷移動作。
+- 唯一可觀察的行為變化：unix 上「目的檔被設為唯讀」不再擋下寫入——rename 看的是所在
+  目錄的權限而非檔案本身的權限，唯讀的 openspec/config.yaml 會被直接覆蓋。原先的失敗
+  是普通 fs::write 的附帶效果，並非任何規格所要求的保護。Windows 不受影響：rename 覆蓋
+  唯讀檔會被拒，退回的直接寫入同樣被拒，仍為錯誤。
+- 回歸對照連帶：apps/desktop/core/src/settings.rs 兩個「寫檔階段失敗」測試原以唯讀目的檔
+  製造失敗，改以唯讀父目錄（unix）／唯讀檔（Windows）製造，錯誤訊息與「原檔不變」四項
+  斷言全數保留。
+
 ## Alternatives Considered
 
 - 跨 process 檔案鎖：能一併解遺失更新，但要付鎖粒度選擇與平台差異的複雜度，且該風險未曾實際發生——延後而非排除。
