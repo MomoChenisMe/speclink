@@ -58,6 +58,12 @@ pub fn list_changes_at(root: &Path) -> Value {
             let read_file = |p: &str| std::fs::read_to_string(scope_root.join(p)).ok();
             // 失效判定吃兩組計數（寫碼任務錨）——`[M]` 手測任務的勾選不打黃卡片。
             let counts = speclink_core::tasks::counts_for(store, &c.name);
+            // 寫碼進度三欄（spec client-protocol「變更清單的寫碼進度欄位」）：
+            // 「待手測」章的資料源，與失效判定共用這一份雙組計數——呈現層不另
+            // 行過濾 `[M]`。CLI 的 changes_json 不含這三欄。
+            v["codeTotal"] = json!(counts.code_total);
+            v["codeComplete"] = json!(counts.code_complete);
+            v["codeRemaining"] = json!(counts.code_remaining);
             let review = if store.artifact_exists(&c.name, speclink_core::review::REVIEW_DOC) {
                 "inReview"
             } else {
@@ -401,6 +407,39 @@ mod tests {
         assert_eq!(item["name"], "demo");
         assert_eq!(item["totalTasks"], 2);
         assert_eq!(item["completedTasks"], 1);
+    }
+
+    // --- spec client-protocol「變更清單的寫碼進度欄位」---
+
+    #[test]
+    fn list_changes_carries_code_progress_beside_the_full_counts() {
+        // Scenario「清單項帶寫碼進度」：九個已勾寫碼任務＋一個未勾 `[M]`。
+        let fx = FixtureRoot::new("q-code-progress");
+        fx.add_change("demo", OLD_META);
+        let mut md = String::from("## 1. Group\n\n");
+        for i in 1..=9 {
+            md.push_str(&format!("- [x] 1.{i} task\n"));
+        }
+        md.push_str("- [ ] [M] 手動驗證\n");
+        fx.write("openspec/changes/demo/tasks.md", &md);
+        let v = list_changes_at(fx.root());
+        let item = &v["changes"][0];
+        assert_eq!(item["codeTotal"], 9, "{item}");
+        assert_eq!(item["codeComplete"], 9, "{item}");
+        assert_eq!(item["codeRemaining"], 0, "{item}");
+        // 既有欄位不變（`[M]` 仍計入全量）。
+        assert_eq!(item["totalTasks"], 10);
+        assert_eq!(item["completedTasks"], 9);
+    }
+
+    #[test]
+    fn code_progress_mirrors_full_counts_without_manual_tasks() {
+        let fx = FixtureRoot::new("q-code-progress-plain");
+        fx.add_change("demo", OLD_META);
+        let item = &list_changes_at(fx.root())["changes"][0];
+        assert_eq!(item["codeTotal"], 2, "{item}");
+        assert_eq!(item["codeComplete"], 1, "{item}");
+        assert_eq!(item["codeRemaining"], 1, "{item}");
     }
 
     #[test]

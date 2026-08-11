@@ -9,7 +9,7 @@ Guidelines:
 - Use the instructions JSON `locale` for human-readable task group headings
   and task descriptions.
 - Preserve machine-readable syntax and technical tokens exactly: markdown
-  headings, checkbox markers, task numbers, `[P]` markers, file paths,
+  headings, checkbox markers, task numbers, `[M]` markers, file paths,
   symbol names, commands, API names, and code identifiers MUST NOT be
   translated or localized.
 - Tasks should be small enough to complete in one session

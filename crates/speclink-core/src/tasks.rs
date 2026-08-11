@@ -14,7 +14,6 @@ pub struct Task {
     pub id: usize,
     pub description: String,
     pub done: bool,
-    pub parallel: bool,
     /// Manual-verification task (`[M]`): human acceptance work the gates exclude
     /// from their "code tasks all complete" predicate.
     pub manual: bool,
@@ -95,14 +94,16 @@ pub fn duplicate_stable_ids(tasks: &[Task]) -> Vec<String> {
     dups
 }
 
-/// Strip the marker slot that follows a checkbox: `[P]` and `[M]` in either
-/// order, each at most once. Returns (parallel, manual, remaining body).
-fn strip_markers(rest: &str) -> (bool, bool, &str) {
-    let (mut parallel, mut manual) = (false, false);
+/// Strip the marker slot that follows a checkbox: `[M]` and the legacy `[P]` in
+/// either order, each at most once. Only `[M]` carries meaning — `[P]` is
+/// stripped for display tolerance of archived and external files, and yields no
+/// flag. Returns (manual, remaining body).
+fn strip_markers(rest: &str) -> (bool, &str) {
+    let (mut legacy_parallel, mut manual) = (false, false);
     let mut body = rest;
     loop {
-        if let (false, Some(d)) = (parallel, body.strip_prefix("[P] ")) {
-            parallel = true;
+        if let (false, Some(d)) = (legacy_parallel, body.strip_prefix("[P] ")) {
+            legacy_parallel = true;
             body = d;
             continue;
         }
@@ -111,7 +112,7 @@ fn strip_markers(rest: &str) -> (bool, bool, &str) {
             body = d;
             continue;
         }
-        return (parallel, manual, body);
+        return (manual, body);
     }
 }
 
@@ -131,13 +132,12 @@ pub fn parse(tasks_md: &str) -> Vec<Task> {
             _ => continue,
         };
         id += 1;
-        let (parallel, manual, desc) = strip_markers(rest);
+        let (manual, desc) = strip_markers(rest);
         let (display, stable_id) = split_stable_id(desc);
         out.push(Task {
             id,
             description: display.trim().to_string(),
             done,
-            parallel,
             manual,
             stable_id: stable_id.map(str::to_string),
         });
@@ -276,7 +276,9 @@ fn flip_task(
                 let indent = &line[..line.len() - trimmed.len()];
                 let rest = &body[4..];
                 already = if to_done { is_done } else { is_open };
-                let clean = rest.strip_prefix("[P] ").unwrap_or(rest);
+                // 顯示描述剝除全部前綴標記——與 parse() 共用 strip_markers,
+                // 剝離規則只有一份真相(spec「任務行的手動測試標記與解析」)。
+                let (_, clean) = strip_markers(rest);
                 let (display, stable) = split_stable_id(clean);
                 desc = display.trim().to_string();
                 stable_id = stable.map(str::to_string);
@@ -1096,7 +1098,6 @@ mod tests {
     fn parse_reads_manual_marker_and_strips_it_from_description() {
         let tasks = parse("- [ ] [M] 手測匯入\n- [ ] 寫解析器\n");
         assert!(tasks[0].manual, "[M] 前綴須解析為 manual");
-        assert!(!tasks[0].parallel);
         assert_eq!(tasks[0].description, "手測匯入", "描述須剝除標記");
         assert!(!tasks[1].manual, "無標記任務不得為 manual");
         assert_eq!(tasks[1].description, "寫解析器");
@@ -1106,15 +1107,58 @@ mod tests {
     fn parse_accepts_both_markers_in_either_order() {
         for line in ["- [x] [M] [P] 手測匯入\n", "- [x] [P] [M] 手測匯入\n"] {
             let t = &parse(line)[0];
-            assert!(t.manual && t.parallel, "兩標記須順序不敏感：{line}");
+            assert!(t.manual, "[M] 須順序不敏感：{line}");
             assert_eq!(t.description, "手測匯入", "兩標記皆須剝除：{line}");
+        }
+    }
+
+    #[test]
+    fn parse_strips_legacy_parallel_marker_without_carrying_a_flag() {
+        // spec Example「前綴解析」表逐列：任務行 → (manual, 描述)。
+        // 案例表與 packages/ui/src/tasks.ts 的 stripMarkers 測試對齊——UI 解析
+        // 與引擎同構,動標記規則兩處要一起改。
+        let rows: [(&str, bool, &str); 6] = [
+            ("- [ ] [M] 手測匯入\n", true, "手測匯入"),
+            ("- [x] [P] 舊任務\n", false, "舊任務"),
+            ("- [x] [P] [M] 混用\n", true, "混用"),
+            ("- [ ] 寫解析器\n", false, "寫解析器"),
+            // checkbox 後恰一個空格才進標記槽:兩空格＝標記不成立、字面留在描述。
+            ("- [ ]  [M] 手測\n", false, "[M] 手測"),
+            // 標記後多餘空白剝除後修剪(display.trim())。
+            ("- [ ] [M]  雙空格描述\n", true, "雙空格描述"),
+        ];
+        for (line, manual, desc) in rows {
+            let t = &parse(line)[0];
+            assert_eq!(t.manual, manual, "manual 判定：{line}");
+            assert_eq!(t.description, desc, "描述須剝除全部前綴標記：{line}");
+        }
+        // 舊 `[P]` 只剝不承載——與同內容的無標記行解析結果全等
+        let legacy = &parse("- [x] [P] 舊任務\n")[0];
+        let plain = &parse("- [x] 舊任務\n")[0];
+        assert_eq!((legacy.manual, &legacy.description), (plain.manual, &plain.description));
+        // 至多一次：第二個 [P] 留在描述裡,不被吃掉
+        assert_eq!(parse("- [ ] [P] [P] 兩個\n")[0].description, "[P] 兩個");
+    }
+
+    #[test]
+    fn flip_task_reports_marker_free_description() {
+        // spec「任務行的手動測試標記與解析」:顯示描述 SHALL 剝除全部前綴標記——
+        // 勾選回報的 desc 與 parse() 的乾淨描述必須同一份真相。
+        let rows: [(&str, &str); 3] = [
+            ("- [ ] [M] 手測匯入\n", "手測匯入"),
+            ("- [ ] [P] 舊任務\n", "舊任務"),
+            ("- [ ] [P] [M] 混用\n", "混用"),
+        ];
+        for (md, want) in rows {
+            let (_, desc, _, _) = mark_done(md, 1).expect("task found");
+            assert_eq!(desc, want, "flip 回報描述須剝除標記:{md}");
         }
     }
 
     #[test]
     fn parse_leaves_unmarked_lines_untouched() {
         let tasks = parse(TASKS_WITH_IDS);
-        assert!(tasks.iter().all(|t| !t.manual && !t.parallel));
+        assert!(tasks.iter().all(|t| !t.manual));
         assert_eq!(tasks[0].description, "1.1 first task");
         assert_eq!(tasks[0].stable_id.as_deref(), Some("tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV"));
     }

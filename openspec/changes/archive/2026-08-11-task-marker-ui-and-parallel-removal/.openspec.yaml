@@ -1,0 +1,99 @@
+schema: spec-driven
+created: 2026-08-10
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: task-marker-ui-and-parallel-removal
+started_at: 2026-08-11
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-11
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 11
+reviewed_scope:
+  - path: apps/desktop/core/src/query.rs
+    hash: bb2ca5847dfaf3e6044bf440f9e4e1b6c9f344a20299e81ab625a81dceb43e90
+  - path: crates/speclink-cli/src/verbs/instructions.rs
+    hash: 9382f6d3d455584bc9db93dfef85969d627c3e19496afe96c58f41bd76deeb52
+  - path: crates/speclink-cli/tests/it/remote_read_path.rs
+    hash: f7fc1fa1579d1ca6e7899d73310fb8bdc5ed1d567d8241468017099177358607
+  - path: crates/speclink-core/assets/schema/spec-driven/fork.schema.yaml
+    hash: b35548d94859e252002e13c964f8c4357e2cf16210fd3f348c7c19ab0ffc321b
+  - path: crates/speclink-core/assets/schema/spec-driven/tasks.instruction.md
+    hash: 4c8112d3d860a64b9ac74c3fb6533f41c701e549d4cd654e12683f9848464a40
+  - path: crates/speclink-core/src/instructions.rs
+    hash: b932587fe0090701d6d06b2ceda72b377ad5d43b6c1ca8c8d853c3caf2679008
+  - path: crates/speclink-core/src/schema.rs
+    hash: 9704952c33be34ebab115634e33f589c1f6ac23c764583629acc4edf663b77ff
+  - path: crates/speclink-core/src/tasks.rs
+    hash: bf4a3915b2e29b312ed09d8f45e832713139651f2090e9d1b0b66ecda9103c77
+  - path: crates/speclink-protocol/src/query.rs
+    hash: 523f57f88993622406a5cec98f24dac6f5b2cdff0a5f71ca3829742a4b2fcbcc
+  - path: crates/speclink-remote/tests/it/typed_client.rs
+    hash: 03cff64d8d20df8d8e1fb3bf414d5b666e6630e22c4040d0583f647c18a3e5b2
+  - path: crates/speclink-server/src/routes.rs
+    hash: 7f0b85dfc6f6f0c30f873066136b3201537c87f6bed1854d29d1468e0ff4f323
+  - path: packages/ui/src/__tests__/awaitingManualBadge.test.tsx
+    hash: f717adeb6de9b05d6432d0083329e4c721c67c77882c357c66377688bd8c023b
+  - path: packages/ui/src/__tests__/stage.test.ts
+    hash: cf978e334530764d6bf5519a95f2a7923c76130686b48b62dde47571717257f6
+  - path: packages/ui/src/__tests__/taskList.test.tsx
+    hash: 38952ec84d391185dab8b8d5e92b9642acc1d4deed0086f422564923f7398aec
+  - path: packages/ui/src/adapter.ts
+    hash: ec884c8d971ba00886a3817f8b75555ef151c28a60efc529420f8977b7ff389e
+  - path: packages/ui/src/components/ChangeCard.tsx
+    hash: 858760e472a167609a5d2b81a268543eb2493e8282c80ddc84a1bd242ea8c588
+  - path: packages/ui/src/components/TaskList.tsx
+    hash: d47bebcd32d64e1c679a2816223f23532eb0530c41a32a61c260104855c97d95
+  - path: packages/ui/src/i18n.tsx
+    hash: 21ea12cab8534e4c346bb4bdb636343a76d6fb33cc119afc3e48c9f1a727d8e4
+  - path: packages/ui/src/stage.ts
+    hash: 7733c0321182b4b4175fa58c1650417a24c482b0565219c3d74ff228c201b5ee
+  - path: packages/ui/src/tasks.ts
+    hash: 526616721ce09cfaeb50a3fe649bcb7daf12c92a73037dbcd3b2aa286569ce13
+verified_at: 2026-08-11
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 11
+verified_scope:
+  - path: apps/desktop/core/src/query.rs
+    hash: bb2ca5847dfaf3e6044bf440f9e4e1b6c9f344a20299e81ab625a81dceb43e90
+  - path: crates/speclink-cli/src/verbs/instructions.rs
+    hash: 9382f6d3d455584bc9db93dfef85969d627c3e19496afe96c58f41bd76deeb52
+  - path: crates/speclink-cli/tests/it/remote_read_path.rs
+    hash: f7fc1fa1579d1ca6e7899d73310fb8bdc5ed1d567d8241468017099177358607
+  - path: crates/speclink-core/assets/schema/spec-driven/fork.schema.yaml
+    hash: b35548d94859e252002e13c964f8c4357e2cf16210fd3f348c7c19ab0ffc321b
+  - path: crates/speclink-core/assets/schema/spec-driven/tasks.instruction.md
+    hash: 4c8112d3d860a64b9ac74c3fb6533f41c701e549d4cd654e12683f9848464a40
+  - path: crates/speclink-core/src/instructions.rs
+    hash: b932587fe0090701d6d06b2ceda72b377ad5d43b6c1ca8c8d853c3caf2679008
+  - path: crates/speclink-core/src/schema.rs
+    hash: 9704952c33be34ebab115634e33f589c1f6ac23c764583629acc4edf663b77ff
+  - path: crates/speclink-core/src/tasks.rs
+    hash: bf4a3915b2e29b312ed09d8f45e832713139651f2090e9d1b0b66ecda9103c77
+  - path: crates/speclink-protocol/src/query.rs
+    hash: 523f57f88993622406a5cec98f24dac6f5b2cdff0a5f71ca3829742a4b2fcbcc
+  - path: crates/speclink-remote/tests/it/typed_client.rs
+    hash: 03cff64d8d20df8d8e1fb3bf414d5b666e6630e22c4040d0583f647c18a3e5b2
+  - path: crates/speclink-server/src/routes.rs
+    hash: 7f0b85dfc6f6f0c30f873066136b3201537c87f6bed1854d29d1468e0ff4f323
+  - path: packages/ui/src/__tests__/awaitingManualBadge.test.tsx
+    hash: f717adeb6de9b05d6432d0083329e4c721c67c77882c357c66377688bd8c023b
+  - path: packages/ui/src/__tests__/stage.test.ts
+    hash: cf978e334530764d6bf5519a95f2a7923c76130686b48b62dde47571717257f6
+  - path: packages/ui/src/__tests__/taskList.test.tsx
+    hash: 38952ec84d391185dab8b8d5e92b9642acc1d4deed0086f422564923f7398aec
+  - path: packages/ui/src/adapter.ts
+    hash: ec884c8d971ba00886a3817f8b75555ef151c28a60efc529420f8977b7ff389e
+  - path: packages/ui/src/components/ChangeCard.tsx
+    hash: 858760e472a167609a5d2b81a268543eb2493e8282c80ddc84a1bd242ea8c588
+  - path: packages/ui/src/components/TaskList.tsx
+    hash: d47bebcd32d64e1c679a2816223f23532eb0530c41a32a61c260104855c97d95
+  - path: packages/ui/src/i18n.tsx
+    hash: 21ea12cab8534e4c346bb4bdb636343a76d6fb33cc119afc3e48c9f1a727d8e4
+  - path: packages/ui/src/stage.ts
+    hash: 7733c0321182b4b4175fa58c1650417a24c482b0565219c3d74ff228c201b5ee
+  - path: packages/ui/src/tasks.ts
+    hash: 526616721ce09cfaeb50a3fe649bcb7daf12c92a73037dbcd3b2aa286569ce13
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-11

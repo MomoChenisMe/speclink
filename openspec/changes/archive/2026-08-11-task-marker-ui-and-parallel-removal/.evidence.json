@@ -1,0 +1,140 @@
+{
+  "version": 2,
+  "change": "task-marker-ui-and-parallel-removal",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 依 design D1 以 TDD 落實修訂後的「任務行的手動測試標記與解析」:crates/speclink-core/src/tasks.rs 移除 Task 的 parallel 旗標,前綴剝除迴圈保留對 `[P] ` 的剝離但不落旗標。行為結果:delta 的前綴解析 Example 表逐列成立([P] 行描述乾淨、無旗標;[M] 行為不變);無標記任務逐位元不變。驗證:cargo test -p speclink-core 之 tasks 單元測試綠燈(含 [P] 只剝不承載、[P][M] 混用案例)。",
+      "files": [
+        "crates/speclink-core/src/instructions.rs",
+        "crates/speclink-core/src/tasks.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 依 design D3 以 TDD 落實修訂後的「UI 剝離 ID 註解並以 stable ID 操作」:packages/ui/src/tasks.ts 的任務行解析增行首標記剝離(`[M]`/`[P]`,順序不敏感、各至多一次)與 manual 旗標,`[P]` 剝離後無任何旗標;勾選與拖放寫回維持行級改寫、前綴原樣保留。行為結果:delta 的「標記前綴剝離且寫回保留」情境成立。驗證:pnpm -C packages/ui test 之 tasks 解析測試綠燈(先寫紅測試再實作)。",
+      "files": [
+        "crates/speclink-cli/src/verbs/instructions.rs",
+        "crates/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/speclink-protocol/src/query.rs",
+        "crates/speclink-remote/tests/it/typed_client.rs",
+        "crates/speclink-server/src/routes.rs",
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/tasks.ts"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 依 design D6 以 TDD 落實「變更清單的寫碼進度欄位」:apps/desktop/core/src/query.rs 的變更清單項增 codeTotal/codeComplete/codeRemaining(取自引擎任務雙組計數入口),packages/ui/src/adapter.ts 與 apps/desktop/src/adapter/tauriDataSource.ts 的清單項型別同步。行為結果:desktop 協定清單項帶三欄且既有欄位不變;CLI list --json 不含三欄(輸出逐位元不變)。驗證:cargo test -p speclink-desktop-core 綠燈;cargo test -p speclink-cli --test it 之 list 相關測試綠燈。",
+      "files": [
+        "apps/desktop/core/src/query.rs",
+        "packages/ui/src/adapter.ts"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.3 依 design D4 以 TDD 落實「任務列的手動測試徽章」:packages/ui/src/components/TaskList.tsx 對 manual 任務於該列行尾右對齊渲染「✋ 圖示+手動測試」次要色小 chip(圖示取 lucide 手部同義圖示),編號起始欄與無徽章列同位、長文字換行徽章錨定首行行尾;勾完文字劃線、徽章保留不劃線;packages/ui/src/i18n.tsx 增「手動測試」詞條(tw/en)。行為結果:delta 三個 Scenario(徽章呈現/勾完保留/舊 [P] 行無徽章)成立。驗證:pnpm -C packages/ui test 之 taskList 測試綠燈(斷言徽章存在、位置容器與編號欄結構、[P] 列無徽章)。",
+      "files": [
+        "packages/ui/src/components/TaskList.tsx",
+        "packages/ui/src/i18n.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.4 依 design D5 以 TDD 落實「看板卡片的待手測標示」:packages/ui/src/components/ChangeCard.tsx 於 codeRemaining=0 且 remaining>0 時渲染「待手測」行內小章(沿審查標示家族樣式,tooltip「待手測·剩 N 項」),其他狀態與資料源缺欄位(remote)時無章且呈現逐位元不變;packages/ui/src/i18n.tsx 增「待手測」詞條(tw/en)。行為結果:delta 的浮現判定 Example 表逐列成立。驗證:pnpm -C packages/ui test 之卡片測試綠燈(四態各一案例)。",
+      "files": [
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/__tests__/awaitingManualBadge.test.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 起草指引的翻譯保留規則改點名 `[M]`:crates/speclink-core/assets/schema/spec-driven/tasks.instruction.md 與 crates/speclink-core/assets/schema/spec-driven/fork.schema.yaml 中「`[P]` markers」改為「`[M]` markers」;asset 內文變動依三連動慣例收斂——跑 render_golden,紅燈即提升 crates/speclink-core/src/init.rs 的 MARKER_VERSION 並再生 golden 與 crates/speclink-core/tests/golden/assets.lock,綠燈即證免除。行為結果:speclink update 產出的指引檔點名 `[M]`、不再提及 `[P]`。驗證:cargo test -p speclink-core --test it 全綠。",
+      "files": [
+        "crates/speclink-core/assets/schema/spec-driven/fork.schema.yaml",
+        "crates/speclink-core/assets/schema/spec-driven/tasks.instruction.md",
+        "crates/speclink-core/src/schema.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZND8ZPPS53KF056A3PREG4S",
+      "taskDesc": "1.1 依 design D1 以 TDD 落實修訂後的「任務行的手動測試標記與解析」:crates/speclink-core/src/tasks.rs 移除 Task 的 parallel 旗標,前綴剝除迴圈保留對 `[P] ` 的剝離但不落旗標。行為結果:delta 的前綴解析 Example 表逐列成立([P] 行描述乾淨、無旗標;[M] 行為不變);無標記任務逐位元不變。驗證:cargo test -p speclink-core 之 tasks 單元測試綠燈(含 [P] 只剝不承載、[P][M] 混用案例)。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b2d0f84a1296719881d42a2124cc4571de700c8b",
+      "touchedFiles": [
+        "crates/speclink-core/src/instructions.rs",
+        "crates/speclink-core/src/tasks.rs"
+      ],
+      "recordedAt": "2026-08-11T01:38:35Z"
+    },
+    {
+      "taskId": "tsk_01KZND8ZPP60A43JX95PDAP4PM",
+      "taskDesc": "2.2 依 design D3 以 TDD 落實修訂後的「UI 剝離 ID 註解並以 stable ID 操作」:packages/ui/src/tasks.ts 的任務行解析增行首標記剝離(`[M]`/`[P]`,順序不敏感、各至多一次)與 manual 旗標,`[P]` 剝離後無任何旗標;勾選與拖放寫回維持行級改寫、前綴原樣保留。行為結果:delta 的「標記前綴剝離且寫回保留」情境成立。驗證:pnpm -C packages/ui test 之 tasks 解析測試綠燈(先寫紅測試再實作)。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b2d0f84a1296719881d42a2124cc4571de700c8b",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/instructions.rs",
+        "crates/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/speclink-protocol/src/query.rs",
+        "crates/speclink-remote/tests/it/typed_client.rs",
+        "crates/speclink-server/src/routes.rs",
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/tasks.ts"
+      ],
+      "recordedAt": "2026-08-11T01:48:51Z"
+    },
+    {
+      "taskId": "tsk_01KZND8ZPPV8MGM4EXHCQBBSCF",
+      "taskDesc": "2.1 依 design D6 以 TDD 落實「變更清單的寫碼進度欄位」:apps/desktop/core/src/query.rs 的變更清單項增 codeTotal/codeComplete/codeRemaining(取自引擎任務雙組計數入口),packages/ui/src/adapter.ts 與 apps/desktop/src/adapter/tauriDataSource.ts 的清單項型別同步。行為結果:desktop 協定清單項帶三欄且既有欄位不變;CLI list --json 不含三欄(輸出逐位元不變)。驗證:cargo test -p speclink-desktop-core 綠燈;cargo test -p speclink-cli --test it 之 list 相關測試綠燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b2d0f84a1296719881d42a2124cc4571de700c8b",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs",
+        "packages/ui/src/adapter.ts"
+      ],
+      "recordedAt": "2026-08-11T01:53:45Z"
+    },
+    {
+      "taskId": "tsk_01KZND8ZPPDAYXMJNNJPYGPWSE",
+      "taskDesc": "2.3 依 design D4 以 TDD 落實「任務列的手動測試徽章」:packages/ui/src/components/TaskList.tsx 對 manual 任務於該列行尾右對齊渲染「✋ 圖示+手動測試」次要色小 chip(圖示取 lucide 手部同義圖示),編號起始欄與無徽章列同位、長文字換行徽章錨定首行行尾;勾完文字劃線、徽章保留不劃線;packages/ui/src/i18n.tsx 增「手動測試」詞條(tw/en)。行為結果:delta 三個 Scenario(徽章呈現/勾完保留/舊 [P] 行無徽章)成立。驗證:pnpm -C packages/ui test 之 taskList 測試綠燈(斷言徽章存在、位置容器與編號欄結構、[P] 列無徽章)。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b2d0f84a1296719881d42a2124cc4571de700c8b",
+      "touchedFiles": [
+        "packages/ui/src/components/TaskList.tsx",
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-08-11T01:55:14Z"
+    },
+    {
+      "taskId": "tsk_01KZND8ZPPQ7Z24K0SD7BD2C4F",
+      "taskDesc": "2.4 依 design D5 以 TDD 落實「看板卡片的待手測標示」:packages/ui/src/components/ChangeCard.tsx 於 codeRemaining=0 且 remaining>0 時渲染「待手測」行內小章(沿審查標示家族樣式,tooltip「待手測·剩 N 項」),其他狀態與資料源缺欄位(remote)時無章且呈現逐位元不變;packages/ui/src/i18n.tsx 增「待手測」詞條(tw/en)。行為結果:delta 的浮現判定 Example 表逐列成立。驗證:pnpm -C packages/ui test 之卡片測試綠燈(四態各一案例)。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b2d0f84a1296719881d42a2124cc4571de700c8b",
+      "touchedFiles": [
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/__tests__/awaitingManualBadge.test.tsx"
+      ],
+      "recordedAt": "2026-08-11T01:57:11Z"
+    },
+    {
+      "taskId": "tsk_01KZND8ZPP5SV5C265NGSYZ53R",
+      "taskDesc": "3.1 起草指引的翻譯保留規則改點名 `[M]`:crates/speclink-core/assets/schema/spec-driven/tasks.instruction.md 與 crates/speclink-core/assets/schema/spec-driven/fork.schema.yaml 中「`[P]` markers」改為「`[M]` markers」;asset 內文變動依三連動慣例收斂——跑 render_golden,紅燈即提升 crates/speclink-core/src/init.rs 的 MARKER_VERSION 並再生 golden 與 crates/speclink-core/tests/golden/assets.lock,綠燈即證免除。行為結果:speclink update 產出的指引檔點名 `[M]`、不再提及 `[P]`。驗證:cargo test -p speclink-core --test it 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b2d0f84a1296719881d42a2124cc4571de700c8b",
+      "touchedFiles": [
+        "crates/speclink-core/assets/schema/spec-driven/fork.schema.yaml",
+        "crates/speclink-core/assets/schema/spec-driven/tasks.instruction.md",
+        "crates/speclink-core/src/schema.rs"
+      ],
+      "recordedAt": "2026-08-11T02:03:51Z"
+    }
+  ]
+}

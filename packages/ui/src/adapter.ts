@@ -9,6 +9,12 @@ export interface ChangeItem {
   status: string;
   totalTasks: number;
   completedTasks: number;
+  /** 寫碼任務的總數／完成數／剩餘數（`[M]` 手動測試任務不計；spec client-protocol
+   * 「變更清單的寫碼進度欄位」）——「待手測」章的資料源。remote 變更摘要不帶此
+   * 三欄，缺席時章缺席。 */
+  codeTotal?: number;
+  codeComplete?: number;
+  codeRemaining?: number;
   summary?: string;
   /** 開工站標記（in-progress add 蓋章）；null/缺席＝未開工。 */
   startedAt?: string | null;

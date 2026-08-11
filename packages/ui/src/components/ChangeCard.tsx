@@ -1,8 +1,8 @@
-import { AlertTriangle, Archive, FileText, GitBranch, MessageSquareText, RefreshCw, Undo2 } from "lucide-react";
+import { AlertTriangle, Archive, FileText, GitBranch, Hand, MessageSquareText, RefreshCw, Undo2 } from "lucide-react";
 
 import type { ChangeItem, SearchHit } from "../adapter";
 import { useI18n } from "../i18n";
-import { changeStage } from "../stage";
+import { awaitingManualCount, changeStage } from "../stage";
 import { SEMANTIC_TONE } from "../tone";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
@@ -95,6 +95,25 @@ export function ChangeCard({
             </Tooltip>
           );
         })()}
+        {/* 待手測章（spec「看板卡片的待手測標示」；design D5）：寫碼任務全完成、
+            尚有未勾 `[M]` 時浮現——判定歸 stage.ts 的 awaitingManualCount 單一
+            入口（含 remote 缺欄位與 codeTotal=0 空真值兩個不浮現邊界），元件
+            只讀結果。沿審查章的行內小章家族，不增加文字列。 */}
+        {awaitingManualCount(change) > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                aria-label={t("card.awaitingManual")}
+                className={`shrink-0 ${SEMANTIC_TONE.inProgress}`}
+              >
+                <Hand className="h-3.5 w-3.5" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t("card.awaitingManualTitle").replace("{n}", String(awaitingManualCount(change)))}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {(change.fromDiscussions ?? []).length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>

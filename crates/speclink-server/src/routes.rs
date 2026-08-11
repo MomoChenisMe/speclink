@@ -1861,7 +1861,6 @@ fn task_entry(task: engine::TaskJson) -> TaskEntry {
         id: task.id,
         description: task.description,
         done: task.done,
-        parallel: task.parallel,
         manual: task.manual,
     }
 }

@@ -161,7 +161,6 @@ fn to_apply_instructions(
                 id: t.id,
                 description: t.description,
                 done: t.done,
-                parallel: t.parallel,
                 manual: t.manual,
             })
             .collect(),

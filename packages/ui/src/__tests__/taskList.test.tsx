@@ -15,7 +15,7 @@ function render(ui: ReactElement) {
 
 import { TaskList } from "../components/TaskList";
 import { SUB_LABEL_CLS } from "../components/SectionedDoc";
-import { parseTaskDoc, resolveDropTarget } from "../tasks";
+import { parseTaskDoc, parseTasks, resolveDropTarget } from "../tasks";
 
 const MD = "## 1. Group A\n\n- [ ] 1.1 first\n- [x] 1.2 second\n\n## 2. Group B\n\n- [ ] 2.1 third\n";
 
@@ -29,6 +29,64 @@ describe("parseTaskDoc", () => {
       { kind: "group", text: "2. Group B" },
       { kind: "task", ordinal: 3, done: false, text: "2.1 third" },
     ]);
+  });
+
+  // spec task-identity「UI 剝離 ID 註解並以 stable ID 操作」：行首標記前綴剝離,
+  // `[M]` 落 manual 旗標、歷史遺留的 `[P]` 只剝不承載。
+  it("strips leading markers and flags only [M] as manual", () => {
+    const items = parseTaskDoc(
+      "- [ ] [M] 手動驗證匯入結果\n- [x] [P] 舊任務\n- [x] [P] [M] 混用\n- [ ] 無標記\n",
+    );
+    expect(items).toEqual([
+      { kind: "task", ordinal: 1, done: false, text: "手動驗證匯入結果", manual: true },
+      { kind: "task", ordinal: 2, done: true, text: "舊任務" },
+      { kind: "task", ordinal: 3, done: true, text: "混用", manual: true },
+      { kind: "task", ordinal: 4, done: false, text: "無標記" },
+    ]);
+  });
+
+  // 與引擎同構(crates/speclink-core/src/tasks.rs 的 parse/strip_markers 案例表
+  // 對齊):checkbox 後恰一個空格才進標記槽,多餘空白不被吃掉;剝離後修剪與
+  // display.trim() 一致。
+  it("checkbox 後多一個空格不進標記槽——與引擎同構", () => {
+    // `- [ ]  [M] x`(兩空格):引擎判非 manual、描述帶字面 [M],UI 必須一致,
+    // 否則徽章與計數/閘門互相矛盾。
+    expect(parseTaskDoc("- [ ]  [M] 手測\n")[0]).toEqual({
+      kind: "task",
+      ordinal: 1,
+      done: false,
+      text: "[M] 手測",
+    });
+    expect(parseTasks("- [ ]  [M] 手測\n")[0]).toEqual({ done: false, text: "[M] 手測" });
+  });
+
+  it("標記剝離後修剪前後空白——與引擎 display.trim() 同構", () => {
+    expect(parseTaskDoc("- [ ] [M]  雙空格描述\n")[0]).toEqual({
+      kind: "task",
+      ordinal: 1,
+      done: false,
+      text: "雙空格描述",
+      manual: true,
+    });
+  });
+
+  it("strips each marker at most once and keeps ID comments out of the text", () => {
+    // 至多一次：第二個 [P] 是描述的一部分,不被吃掉。
+    expect(parseTaskDoc("- [ ] [P] [P] 兩個\n")[0]).toEqual({
+      kind: "task",
+      ordinal: 1,
+      done: false,
+      text: "[P] 兩個",
+    });
+    // 前綴剝離與行尾 ID 註解剝離兩者並存。
+    expect(parseTaskDoc("- [ ] [M] 手測 <!-- speclink-task:tsk_A -->\n")[0]).toEqual({
+      kind: "task",
+      ordinal: 1,
+      done: false,
+      text: "手測",
+      stableId: "tsk_A",
+      manual: true,
+    });
   });
 });
 
@@ -73,6 +131,78 @@ describe("TaskList", () => {
     }
     // 標題文字照來源，不翻譯不改寫。
     expect(heading.textContent).toBe("1. Group A");
+  });
+
+  // spec desktop-app「任務列的手動測試徽章」
+  describe("手動測試徽章", () => {
+    const MARKED = "- [ ] [M] 3.2 手動驗證匯入結果\n- [x] 3.1 跑全套測試\n";
+
+    it("`[M]` 列於描述上方獨立一行顯示徽章、左緣與描述切齊", () => {
+      // Scenario「手動任務列的徽章呈現」。
+      render(<TaskList markdown={MARKED} />);
+      const badge = screen.getByLabelText("手動測試");
+      expect(badge.textContent).toContain("手動測試");
+      expect(screen.getAllByLabelText("手動測試")).toHaveLength(1);
+      const marked = screen.getByText("3.2 手動驗證匯入結果");
+      const plain = screen.getByText("3.1 跑全套測試");
+      // 徽章與描述同屬一個直列容器，且徽章是首子元素＝描述正上方那一行；
+      // 兩者左緣同欄（容器本身即該欄），描述左緣不因徽章位移。
+      const col = marked.parentElement as HTMLElement;
+      expect(badge.parentElement).toBe(col);
+      expect(col.className).toContain("flex-col");
+      expect(col.firstElementChild).toBe(badge);
+      expect(col.children[1]).toBe(marked);
+      // 編號起始欄同位：兩列的描述欄容器都緊接 checkbox。
+      expect(col.previousElementSibling?.getAttribute("role")).toBe("checkbox");
+      const plainCol = plain.parentElement as HTMLElement;
+      expect(plainCol.previousElementSibling?.getAttribute("role")).toBe("checkbox");
+      // 徽章不得再置於行尾。
+      expect(badge.className).not.toContain("ml-auto");
+    });
+
+    it("徽章配色取語意色票，不是 muted 灰階", () => {
+      // 實測回饋：灰底灰字在滿頁灰階任務文字裡讀不出來。
+      render(<TaskList markdown={MARKED} />);
+      const badge = screen.getByLabelText("手動測試");
+      expect(badge.className).not.toContain("bg-muted");
+      expect(badge.className).not.toContain("text-muted-foreground");
+      expect(badge.className).toContain("sky");
+    });
+
+    it("長描述換行時徽章仍獨佔描述上方那一行", () => {
+      // Scenario「長描述換行不動徽章」：徽章與描述是直列的兩個區塊，描述換幾行
+      // 都不影響徽章所在的行——jsdom 量不到實際換行，以結構為準。
+      const long = `- [ ] [M] ${"很長的描述".repeat(40)}\n`;
+      render(<TaskList markdown={long} />);
+      const badge = screen.getByLabelText("手動測試");
+      const col = badge.parentElement as HTMLElement;
+      expect(col.className).toContain("flex-col");
+      expect(col.firstElementChild).toBe(badge);
+      // 徽章自身不撐滿整列寬（self-start），描述才貼得住同一條左緣。
+      expect(badge.className).toContain("self-start");
+    });
+
+    it("勾完文字劃線、徽章保留且不劃線", () => {
+      // Scenario「勾完徽章保留」。
+      render(<TaskList markdown={"- [x] [M] 3.2 手動驗證匯入結果\n"} />);
+      expect(screen.getByText("3.2 手動驗證匯入結果").className).toContain("line-through");
+      const badge = screen.getByLabelText("手動測試");
+      expect(badge.className).not.toContain("line-through");
+    });
+
+    it("舊 `[P]` 行剝離後不長徽章行，也不留空行", () => {
+      // Scenario「舊 [P] 行無徽章」。
+      render(<TaskList markdown={"- [x] [P] 舊任務\n"} />);
+      const text = screen.getByText("舊任務");
+      expect(screen.queryByLabelText("手動測試")).toBeNull();
+      // 描述欄容器只有描述一個子元素——沒有徽章預留的空槽。
+      expect((text.parentElement as HTMLElement).children).toHaveLength(1);
+    });
+
+    it("無 `[M]` 任務的清單不長徽章", () => {
+      render(<TaskList markdown={MD} />);
+      expect(screen.queryByLabelText("手動測試")).toBeNull();
+    });
   });
 
   it("readOnly renders neither handles nor interactive checkboxes", () => {
@@ -283,5 +413,14 @@ describe("stable task IDs", () => {
   it("setTaskMark 樂觀就地改寫保留行尾註解原文", () => {
     const next = setTaskMark(`- [ ] 1.1 first <!-- speclink-task:${TID_A} -->\n`, 1, true);
     expect(next).toBe(`- [x] 1.1 first <!-- speclink-task:${TID_A} -->\n`);
+  });
+
+  // spec task-identity Scenario「標記前綴剝離且寫回保留」：顯示剝離只影響呈現,
+  // 寫回是行級改寫——`[M] ` 前綴在檔案裡原樣留著。
+  it("setTaskMark 保留行首標記前綴原文", () => {
+    expect(setTaskMark("- [ ] [M] 手動驗證匯入結果\n", 1, true)).toBe(
+      "- [x] [M] 手動驗證匯入結果\n",
+    );
+    expect(setTaskMark("- [x] [P] 舊任務\n", 1, false)).toBe("- [ ] [P] 舊任務\n");
   });
 });

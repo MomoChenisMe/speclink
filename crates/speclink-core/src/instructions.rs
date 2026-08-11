@@ -220,7 +220,6 @@ pub struct TaskJson {
     pub id: String,
     pub description: String,
     pub done: bool,
-    pub parallel: bool,
     pub manual: bool,
 }
 
@@ -230,7 +229,6 @@ impl From<&Task> for TaskJson {
             id: t.id.to_string(),
             description: t.description.clone(),
             done: t.done,
-            parallel: t.parallel,
             manual: t.manual,
         }
     }
@@ -422,9 +420,21 @@ mod tests {
     fn task_json_carries_the_manual_flag() {
         let parsed = tasks::parse("- [ ] [M] 手測匯入\n- [x] [P] 寫解析器\n");
         let json: Vec<TaskJson> = parsed.iter().map(TaskJson::from).collect();
-        assert!(json[0].manual && !json[0].parallel, "[M] 任務 manual=true");
+        assert!(json[0].manual, "[M] 任務 manual=true");
         assert_eq!(json[0].description, "手測匯入", "描述不含標記");
-        assert!(!json[1].manual && json[1].parallel, "[P] 任務 manual=false");
+        assert!(!json[1].manual, "[P] 任務 manual=false");
+        assert_eq!(json[1].description, "寫解析器", "[P] 前綴須剝除");
+    }
+
+    #[test]
+    fn task_json_field_set_is_frozen_without_parallel() {
+        // verb-contract「動詞 --json 輸出形狀凍結」：任務項欄位集合為 id/description/done/manual
+        let json = TaskJson::from(&tasks::parse("- [ ] [M] 手測匯入\n")[0]);
+        let value = serde_json::to_value(&json).expect("TaskJson 可序列化");
+        let mut keys: Vec<&str> =
+            value.as_object().expect("物件").keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["description", "done", "id", "manual"], "欄位集合凍結、無 parallel");
     }
 
     #[test]

@@ -408,3 +408,20 @@ pub fn init_schema(
     crate::util::write_file(&target.join("schema.yaml"), &y).map_err(|e| e.to_string())?;
     Ok(target)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{A_TASKS_INSTR, FORK_SCHEMA_YAML};
+
+    #[test]
+    fn tasks_drafting_guidance_names_the_manual_marker_only() {
+        // `[P]` 語意已移除——翻譯保留規則點名的是唯一承載語意的 `[M]`；起草指引
+        // 與 fork schema 內嵌的同一段規則必須同步，否則 fork 出去的專案落差。
+        for (label, asset) in [("tasks.instruction.md", A_TASKS_INSTR), ("fork.schema.yaml", FORK_SCHEMA_YAML)] {
+            assert!(asset.contains("`[M]` markers"), "{label} 須點名 `[M]` markers");
+            // 斷言面只釘翻譯保留規則那一句的舊 token——全文否定「[P]」會把
+            // 日後任何合法提及(如遷移說明)一併打死。
+            assert!(!asset.contains("`[P]` markers"), "{label} 不得再點名 `[P]` markers");
+        }
+    }
+}
