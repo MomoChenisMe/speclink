@@ -269,7 +269,8 @@ fn workflow_config_fs(plan: WorkflowConfigPlan) -> Result<()> {
     if worktree_target == Some(false) && worktree_was_on {
         refuse_teardown_with_active_worktrees(&ws)?;
     }
-    std::fs::write(&path, &edit.new_text).map_err(|e| anyhow::anyhow!("{label}: write failed: {e}"))?;
+    core::util::write_file(&path, &edit.new_text)
+        .map_err(|e| anyhow::anyhow!("{label}: write failed: {e}"))?;
     println!("{} {}", color::green("✓"), edit.summary);
     if worktree_target.is_some() {
         let outcome = core::init::update(&ws.root, false).map_err(|e| {

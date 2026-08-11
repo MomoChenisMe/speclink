@@ -206,7 +206,8 @@ pub fn write_workflow_fields_at(
     if worktree_was_on && !fields.worktree {
         refuse_teardown_with_active_worktrees(&ws)?;
     }
-    std::fs::write(&path, &new_text).map_err(|e| format!("{file}: write failed: {e}"))?;
+    speclink_core::util::write_file(&path, &new_text)
+        .map_err(|e| format!("{file}: write failed: {e}"))?;
     let reread = read_opt(&path)
         .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
     verify_workflow_text(&reread, fields, &file, "verify after write")?;
@@ -261,7 +262,8 @@ pub fn write_workflow_content_at(
         format!("{file}: pre-write verification failed: {}", single_line(&e.reason))
     })?;
     let fields = workflow_policy_fields(&expected);
-    std::fs::write(&path, &new_text).map_err(|e| format!("{file}: write failed: {e}"))?;
+    speclink_core::util::write_file(&path, &new_text)
+        .map_err(|e| format!("{file}: write failed: {e}"))?;
     let reread = read_opt(&path)
         .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
     verify_workflow_content_text(
@@ -598,6 +600,16 @@ mod tests {
         std::fs::set_permissions(path, perms).unwrap();
     }
 
+    /// 讓寫檔階段必定失敗。原子寫（同目錄暫存檔＋rename）在 unix 看的是目錄權限，
+    /// 唯讀的目的檔擋不住覆寫，故改鎖父目錄——暫存檔建不出來；Windows 的 rename
+    /// 覆蓋唯讀檔會被拒，維持鎖檔案。
+    fn block_writes(path: &Path, blocked: bool) {
+        #[cfg(unix)]
+        set_readonly(path.parent().unwrap(), blocked);
+        #[cfg(windows)]
+        set_readonly(path, blocked);
+    }
+
     #[test]
     fn write_workflow_fields_replaces_targets_and_keeps_untouched_keys() {
         // spec Scenario「寫入政策欄位且未觸及鍵原樣保留」。
@@ -670,15 +682,15 @@ mod tests {
 
     #[test]
     fn write_workflow_fields_surfaces_write_failure_with_file_and_stage() {
-        // readonly 檔案觸發寫檔階段失敗：Err 指明檔案與階段、內容逐字元不變。
+        // 擋下寫入觸發寫檔階段失敗：Err 指明檔案與階段、內容逐字元不變。
         let fx = FixtureRoot::new("wf-write-ro");
         let doc = "locale: tw\n";
         fx.write("openspec/config.yaml", doc);
         let path = fx.root().join("openspec/config.yaml");
-        set_readonly(&path, true);
+        block_writes(&path, true);
         let err = write_workflow_fields_at(fx.root(), &WorkflowPolicyFields::default())
             .expect_err("must fail");
-        set_readonly(&path, false);
+        block_writes(&path, false);
         assert!(err.contains("config.yaml"), "must name the file: {err}");
         assert!(err.contains("write"), "must name the stage: {err}");
         assert!(!err.contains('\n'), "single line: {err:?}");
@@ -868,10 +880,10 @@ mod tests {
         let doc = "context: old\n";
         fx.write("openspec/config.yaml", doc);
         let path = fx.root().join("openspec/config.yaml");
-        set_readonly(&path, true);
+        block_writes(&path, true);
         let err = write_workflow_content_at(fx.root(), &ContextEdit::Set("new".into()), None)
             .expect_err("must fail");
-        set_readonly(&path, false);
+        block_writes(&path, false);
         assert!(err.contains("config.yaml"), "must name the file: {err}");
         assert!(err.contains("write"), "must name the stage: {err}");
         assert!(!err.contains('\n'), "single line: {err:?}");
