@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "change": "desktop-async-commands",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 apps/desktop/src-tauri/src/lib.rs：將 list_changes、list_specs、status、document、spec_document、search_workspace、change_capabilities、change_meta 改為 async fn＋tauri::async_runtime::spawn_blocking 委派，落實 spec「觸及檔案系統的 command 不佔用主執行緒」；樣板照既有寫入側（set_task_done 等，design D2）：閉包 move 收 root 與參數、錯誤訊息帶 command 語境。回傳型別與 serde 形狀不變。",
+      "files": [
+        "apps/desktop/src-tauri/src/lib.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZQ8M58N87551Y0QC5BHW48M",
+      "taskDesc": "1.1 apps/desktop/src-tauri/src/lib.rs：將 list_changes、list_specs、status、document、spec_document、search_workspace、change_capabilities、change_meta 改為 async fn＋tauri::async_runtime::spawn_blocking 委派，落實 spec「觸及檔案系統的 command 不佔用主執行緒」；樣板照既有寫入側（set_task_done 等，design D2）：閉包 move 收 root 與參數、錯誤訊息帶 command 語境。回傳型別與 serde 形狀不變。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "292e8cd050cf92130263ba750bc548e5c47a5922",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/lib.rs"
+      ],
+      "recordedAt": "2026-08-11T06:44:17Z"
+    }
+  ]
+}
