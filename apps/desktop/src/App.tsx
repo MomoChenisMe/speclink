@@ -466,6 +466,20 @@ function AppInner({
     slug,
     topic: allDiscussions.find((d) => d.slug === slug)?.topic ?? slug,
   }));
+  // 封存抽屜出身列的三欄（desktop-archived-parity D4）：一律自封存清單項帶入，
+  // 抽屜零新查詢。封存討論無封存日期欄位——該欄自然缺席。
+  const archivedProvenance = (() => {
+    const target = s.detailArchived;
+    if (target?.kind === "change") {
+      const item = s.archived.find((a) => a.datedName === target.datedName);
+      return { createdBy: item?.createdBy, created: item?.created, archivedDate: item?.date };
+    }
+    if (target?.kind === "discussion") {
+      const item = s.discussions.archived.find((d) => d.slug === target.slug);
+      return { createdBy: item?.createdBy, created: item?.created };
+    }
+    return {};
+  })();
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -790,6 +804,7 @@ function AppInner({
             ? s.discussions.archived.find((d) => d.slug === s.detailArchived?.slug)?.kind
             : undefined
         }
+        {...archivedProvenance}
       />
 
       {/* 討論抽屜（結論/討論過程/背景/衍生變更） */}

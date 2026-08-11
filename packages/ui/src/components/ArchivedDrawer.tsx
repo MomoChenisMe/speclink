@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState } from "react";
-import { Code2, FileText, ListChecks, Maximize2, Minimize2, PenTool } from "lucide-react";
+import { Check, Code2, Copy, FileText, ListChecks, Maximize2, Minimize2, PenTool } from "lucide-react";
 
 import type { ArchivedItem } from "../adapter";
 import { useI18n } from "../i18n";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { SourceChipRow } from "./SourceDiscussionChip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { DeltaSpecView } from "./DeltaBadges";
 import { ConclusionView, RoundsView, splitDiscussionSections } from "./DiscussionDrawer";
 import { Markdown, READING_COLUMN_CLS } from "./Markdown";
+import { displayName } from "./RichDetailDrawer";
 import { LABEL_CLS, SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
 import { ImproveChip } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
+import { useCopied } from "./useCopied";
 import { VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
 
 /** 抽屜目標（design D1：discriminated target 兩型同檔）：封存變更或封存討論。 */
@@ -44,6 +47,12 @@ export interface ArchivedDrawerProps {
   verifyStatus?: ArchivedItem["verifyStatus"];
   /** 封存討論的 kind（App 端由封存清單帶出；標示隨 kind 恆定，不隨生命週期變化）。 */
   discussionKind?: string | null;
+  /** 出身列的建立者（"Name <email>"；清單項帶出）；缺席＝該欄缺席。 */
+  createdBy?: string | null;
+  /** 出身列的建立日期 YYYY-MM-DD（清單項帶出）；缺席＝該欄缺席。 */
+  created?: string;
+  /** 出身列的封存日期 YYYY-MM-DD（清單項的 date）；缺席＝該欄缺席。 */
+  archivedDate?: string;
 }
 
 type Doc = string | null | undefined;
@@ -65,8 +74,12 @@ export function ArchivedDrawer({
   reviewStatus,
   verifyStatus,
   discussionKind,
+  createdBy,
+  created,
+  archivedDate,
 }: ArchivedDrawerProps) {
   const { t } = useI18n();
+  const [copied, markCopied] = useCopied();
   const [proposal, setProposal] = useState<Doc>();
   const [design, setDesign] = useState<Doc>();
   const [tasksMd, setTasksMd] = useState<Doc>();
@@ -131,6 +144,15 @@ export function ArchivedDrawer({
   const title = target.kind === "change" ? target.datedName : target.slug;
   const specCount = Object.keys(specDocs).length;
   const sections = discussionDoc ? splitDiscussionSections(discussionDoc) : null;
+  // 複製鈕（spec「已封存項目以抽屜檢視」）：封存變更複製含日期前綴的封存目錄名、
+  // 封存討論複製 slug——標題文字本身即複製值。
+  const copyTitle = () => {
+    void navigator.clipboard?.writeText(title);
+    markCopied();
+  };
+  const copyLabel = target.kind === "change" ? t("archived.copyName") : t("discussion.copySlug");
+  // 出身列：三欄各自缺席獨立——任一欄資料不可得時該欄缺席，其餘照常。
+  const hasProvenance = Boolean(createdBy || created || archivedDate);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -149,7 +171,54 @@ export function ArchivedDrawer({
           {full ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </Button>
         <SheetHeader>
-          <SheetTitle className="truncate pr-14">{title}</SheetTitle>
+          <div className="flex items-center gap-2 pr-14">
+            <SheetTitle className="truncate">{title}</SheetTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={copied ? t("specs.copied") : copyLabel}
+              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={copyTitle}
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
+          {/* 出身列（spec「已封存項目以抽屜檢視」）：建立者（首字母圓標＋名字，
+              完整識別收提示）、建立日期、封存日期；恆定單行、溢出裁切——與變更
+              詳情抽屜出身列同構。無進度條與動詞動作列：封存是唯讀定格。 */}
+          {hasProvenance && (
+            <TooltipProvider>
+              <div
+                data-provenance-row
+                className="flex min-w-0 items-center gap-2 whitespace-nowrap overflow-hidden text-xs text-muted-foreground"
+              >
+                {createdBy && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex shrink-0 items-center gap-1">
+                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-muted text-muted-foreground text-[9px] font-bold">
+                          {createdBy.charAt(0).toUpperCase()}
+                        </span>
+                        {displayName(createdBy)}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>{createdBy}</TooltipContent>
+                  </Tooltip>
+                )}
+                {created && (
+                  <span className="shrink-0">
+                    {t("archived.createdOn").replace("{date}", created)}
+                  </span>
+                )}
+                {archivedDate && (
+                  <span className="shrink-0">
+                    {t("archived.archivedOn").replace("{date}", archivedDate)}
+                  </span>
+                )}
+              </div>
+            </TooltipProvider>
+          )}
           {/* 改進標示（spec「討論抽屜的改進標示」）：與活討論抽屜同一章籤。 */}
           {target.kind === "discussion" && isImproveKind(discussionKind) && (
             <div>

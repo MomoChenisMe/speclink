@@ -101,6 +101,12 @@ export interface ArchivedItem {
    * 含章＝verified；含化石工單而無章＝verifiedNotPassed；缺席＝none。
    * 與審查結局並存——同一項可以「審查通過」卻「曾驗證未通過」。 */
   verifyStatus?: "none" | "verified" | "verifiedNotPassed";
+  /** 封存 proposal.md 的 Why 區段首個非空行（spec client-protocol「已封存清單的
+   * 呈現輔助欄位」）；缺席＝卡片描述列不顯示、退回單行。 */
+  whyExcerpt?: string;
+  /** 建立日期 YYYY-MM-DD（封存目錄 metadata 的 created）；缺席＝抽屜出身列的
+   * 建立日期欄位不顯示。 */
+  created?: string;
 }
 
 /** 一筆討論的清單項（camelCase；status: open | concluded | promoted）。 */

@@ -1037,12 +1037,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     // detail 抽屜互斥（drawer-exclusivity）：每個 open* 清除其他三個 detail 欄位，
     // 後開者取代先開者；互斥由此層保證，呼叫端入口不需自行先關再開。
+    // 落頁歸位（desktop-archived-parity D1）：變更詳情與討論抽屜的宿主頁面是看板，
+    // 開啟時同一次 set 內把底層切回看板，一個落點涵蓋全部入口（系統匣、抽屜內
+    // 跳轉、封存前「去蓋章」）；openSpec／openArchived 不在此列——其宿主頁面
+    // 本就是規格頁與已封存頁。
     openDetail(name) {
       const c = get().changes.find((x) => x.name === name);
       // 換 change 清掉上一個 change 的動詞結果（drawerVerb keyed by change）。
       if (c)
         set({
           detailChange: c,
+          boardView: "board",
           drawerVerb: null,
           detailDiscussion: null,
           detailSpec: null,
@@ -1063,6 +1068,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (d)
         set({
           detailDiscussion: d,
+          boardView: "board",
           detailChange: null,
           drawerVerb: null,
           detailSpec: null,

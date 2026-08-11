@@ -27,6 +27,7 @@ const WARN: ArchivedItem = {
   specCount: 3,
   createdBy: "MomoChen <momo@example.com>",
   fromDiscussions: ["alpha-ux", "beta-flow"],
+  whyExcerpt: "已封存頁停留在舊設計，與看板既有的呈現脫節。",
 };
 
 const FULL: ArchivedItem = {
@@ -143,6 +144,20 @@ describe("ArchivedList（封存變更卡）", () => {
     expect(writeText).toHaveBeenCalledWith("2026-07-05-desktop-shell-and-browser");
     expect(onOpen).not.toHaveBeenCalled();
   });
+
+  it("描述列顯示 Why 首句一行截斷；whyExcerpt 缺席時整列缺席（與看板變更卡同構）", () => {
+    // spec Example「封存變更卡顯示 Why 首句描述列」：可得者標題下方一行截斷，
+    // 缺席者描述列整列缺席、卡片退回單行。
+    renderList();
+    const warn = card('[data-archived="2026-07-03-incomplete-change"]');
+    const desc = warn.querySelector("[data-desc]") as HTMLElement;
+    expect(desc).toBeTruthy();
+    expect(desc.textContent).toBe("已封存頁停留在舊設計，與看板既有的呈現脫節。");
+    expect(desc.className).toContain("truncate");
+
+    const full = card('[data-archived="2026-07-05-desktop-shell-and-browser"]');
+    expect(full.querySelector("[data-desc]")).toBeNull();
+  });
 });
 
 // 討論卡活在「討論」子頁籤下（design D3）——先切子頁籤（Radix TabsTrigger 以
@@ -151,7 +166,7 @@ const toDiscussionsTab = () =>
   fireEvent.mouseDown(screen.getByRole("tab", { name: /已封存的討論/ }));
 
 describe("ArchivedList（封存討論卡）", () => {
-  it("點卡觸發 onOpen（discussion target）；卡顯示日期＋topic＋輪數＋衍生變更數", () => {
+  it("點卡觸發 onOpen（discussion target）；卡顯示日期＋slug 標題＋topic 描述＋輪數＋衍生變更數", () => {
     const onOpen = renderList();
     toDiscussionsTab();
     const disc = card('[data-archived-discussion="old-topic"]');
@@ -180,6 +195,27 @@ describe("ArchivedList（封存討論卡）", () => {
     expect(writeText).toHaveBeenCalledWith("old-topic");
     expect(onOpen).not.toHaveBeenCalled();
     await waitFor(() => expect(within(disc).queryByLabelText("已複製")).toBeTruthy());
+  });
+
+  it("slug 為等寬強調標題、topic 降為描述列一行截斷（與看板討論卡同構）", () => {
+    // spec Example「封存討論卡以 slug 為標題」：slug 於標題位等寬強調、緊跟複製鈕；
+    // topic 於標題下方的描述列一行截斷。
+    renderList();
+    toDiscussionsTab();
+    const disc = card('[data-archived-discussion="old-topic"]');
+    const group = disc.querySelector("[data-title-group]") as HTMLElement;
+    expect(group).toBeTruthy();
+    const title = within(group).getByText("old-topic");
+    expect(title.className).toContain("font-mono");
+    expect(title.className).toContain("truncate");
+    // 複製鈕緊跟標題（同一群組內）。
+    expect(within(group).getByLabelText("複製 slug")).toBeTruthy();
+    // topic 降為描述列——不再位於標題群組內。
+    expect(within(group).queryByText("Old settled topic")).toBeNull();
+    const desc = disc.querySelector("[data-desc]") as HTMLElement;
+    expect(desc).toBeTruthy();
+    expect(desc.textContent).toBe("Old settled topic");
+    expect(desc.className).toContain("truncate");
   });
 });
 

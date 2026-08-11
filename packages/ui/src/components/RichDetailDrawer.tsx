@@ -84,8 +84,9 @@ export interface RichDetailDrawerProps {
 
 type Doc = string | null | undefined;
 
-/** 出身列僅顯示名字：去除 email 尖括號段（無尖括號時整串直出），完整識別由提示承載。 */
-function displayName(identity: string): string {
+/** 出身列僅顯示名字：去除 email 尖括號段（無尖括號時整串直出），完整識別由提示承載。
+ * 封存抽屜的出身列共用此處（同構呈現的單一實作落點）。 */
+export function displayName(identity: string): string {
   const name = identity.replace(/\s*<[^>]*>\s*/g, " ").trim();
   return name || identity;
 }

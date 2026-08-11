@@ -39,9 +39,19 @@ function CopyButton({ value, label }: { value: string; label: string }) {
   );
 }
 
+/** 描述列（封存卡雙行 anatomy）：一行截斷、與看板卡片描述列同款字級與色調。 */
+function CardDescription({ text }: { text: string }) {
+  return (
+    <div data-desc className="mt-1 truncate text-[11px] text-muted-foreground">
+      {text}
+    </div>
+  );
+}
+
 /** 封存變更卡（design D7）：日期＋標題＋複製鈕成群組、meta 靠右——任務徽章
  *（全完成靜默、未全完成琥珀警示：「沒做完就封存」才是需要被看見的異常）、
  * 觸及規格數、createdBy 頭像圓點（與 ChangeCard 同款）、來源討論標記。
+ * 標題下方為 Why 首句描述列（whyExcerpt 缺席時整列缺席、卡片退回單行）。
  * 點整列開唯讀抽屜，無行內展開。 */
 function ArchivedCard({ item, onOpen }: { item: ArchivedItem; onOpen: (target: ArchivedTarget) => void }) {
   const { t } = useI18n();
@@ -144,12 +154,15 @@ function ArchivedCard({ item, onOpen }: { item: ArchivedItem; onOpen: (target: A
           )}
         </span>
       </div>
+      {item.whyExcerpt && <CardDescription text={item.whyExcerpt} />}
     </div>
   );
 }
 
-/** 封存討論卡（design D7）：日期＋topic＋複製 slug 鈕成群組、meta＝「N 輪」＋
- * 衍生變更數徽章（自既有 promotedTo 長度派生）。點整列開唯讀抽屜。 */
+/** 封存討論卡（design D7）：日期＋slug 標題＋複製 slug 鈕成群組、meta＝「N 輪」＋
+ * 衍生變更數徽章（自既有 promotedTo 長度派生）；topic 降為標題下方的描述列——
+ * 與看板討論卡同構（slug 為 CLI 動詞把手，等寬強調；LANGUAGE.md 受控例外）。
+ * 點整列開唯讀抽屜。 */
 function ArchivedDiscussionCard({
   item,
   onOpen,
@@ -168,7 +181,9 @@ function ArchivedDiscussionCard({
       <div className="flex items-center gap-2.5">
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{item.created}</span>
         <span data-title-group className="flex min-w-0 flex-1 items-center gap-1">
-          <span className="min-w-0 truncate text-sm font-medium">{item.topic}</span>
+          <span className="min-w-0 truncate font-mono text-sm font-semibold leading-tight">
+            {item.slug}
+          </span>
           {/* 改進小章：封存後標示不變（spec「已封存的改進討論維持標示」）。 */}
           {isImproveKind(item.kind) && <ImproveStamp />}
           <CopyButton value={item.slug} label={t("discussion.copySlug")} />
@@ -193,6 +208,7 @@ function ArchivedDiscussionCard({
           )}
         </span>
       </div>
+      <CardDescription text={item.topic} />
     </div>
   );
 }

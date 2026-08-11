@@ -102,7 +102,8 @@ describe("ArchivedDrawer（封存變更 target）", () => {
   it("無任何寫入動詞（封存／刪除／分析／轉為變更皆缺席）", async () => {
     render(<ArchivedDrawer {...(makeProps() as never)} />);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
-    for (const name of [/封存/, /刪除/, /分析/, /轉為變更/]) {
+    // 動詞名精確比對——標頭的「複製封存名稱」鈕不是寫入動詞，不得被寬鬆正則誤判。
+    for (const name of ["封存", "刪除", "分析", "轉為變更"]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
   });
@@ -210,7 +211,7 @@ describe("ArchivedDrawer（封存討論 target）", () => {
     expect(screen.getByText("結論")).toBeTruthy();
     expect(screen.getByText(/就這麼辦/)).toBeTruthy();
     // 無轉為變更、封存或任何寫入按鈕（spec Scenario「點擊封存討論卡開啟唯讀抽屜」）。
-    for (const name of [/轉為變更/, /封存/, /刪除/] as RegExp[]) {
+    for (const name of ["轉為變更", "封存", "刪除"]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
   });
@@ -229,6 +230,84 @@ describe("ArchivedDrawer（封存討論 target）", () => {
     render(<ArchivedDrawer {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("討論背景內文。")).toBeTruthy());
     expect(document.querySelector("[data-source-discussion-label]")).toBeNull();
+  });
+});
+
+// spec 需求「已封存項目以抽屜檢視」的標頭：標題後緊跟複製鈕（封存變更複製
+// datedName、封存討論複製 slug）＋標題下方出身列（建立者／建立日期／封存日期），
+// 無進度條與動詞動作列——封存是唯讀定格。
+describe("ArchivedDrawer（標頭複製鈕與出身列）", () => {
+  const clipboard = () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    return writeText;
+  };
+
+  it("封存變更標頭的複製鈕寫入含日期前綴的封存目錄名並顯示已複製回饋", async () => {
+    const writeText = clipboard();
+    render(<ArchivedDrawer {...(makeProps() as never)} />);
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("複製封存名稱"));
+    expect(writeText).toHaveBeenCalledWith("2026-07-04-old-change");
+    await waitFor(() => expect(screen.queryByLabelText("已複製")).toBeTruthy());
+  });
+
+  it("封存討論標頭的複製鈕寫入 slug", async () => {
+    const writeText = clipboard();
+    render(
+      <ArchivedDrawer
+        {...(makeProps({ target: { kind: "discussion", slug: "alpha-search" } }) as never)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("討論背景內文。")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("複製 slug"));
+    expect(writeText).toHaveBeenCalledWith("alpha-search");
+  });
+
+  it("出身列顯示建立者首字母圓標＋名字、建立日期與封存日期；無進度條與動詞動作列", async () => {
+    // spec Example「封存變更抽屜標頭的複製鈕與出身列」。
+    render(
+      <ArchivedDrawer
+        {...(makeProps({
+          createdBy: "MomoChen <momo@example.com>",
+          created: "2026-06-20",
+          archivedDate: "2026-07-04",
+        }) as never)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    const row = document.querySelector("[data-provenance-row]") as HTMLElement;
+    expect(row).toBeTruthy();
+    // 恆定單行溢出裁切（與變更詳情抽屜出身列同構）。
+    expect(row.className).toContain("whitespace-nowrap");
+    expect(row.className).toContain("overflow-hidden");
+    // 建立者：首字母圓標＋名字，完整識別收 tooltip。
+    const avatar = within(row).getByText("M");
+    expect(avatar.className).toContain("rounded-full");
+    expect(within(row).getByText("MomoChen")).toBeTruthy();
+    expect(row.textContent).toContain("2026-06-20 建立");
+    expect(row.textContent).toContain("2026-07-04 封存");
+    // 封存是唯讀定格：無進度條、無動詞動作列。
+    expect(document.querySelector("[data-progress-track]")).toBeNull();
+    expect(document.querySelector("[data-status-row]")).toBeNull();
+  });
+
+  it("出身列欄位缺席時該欄缺席、其餘照常（建立日期不可得）", async () => {
+    // spec Example「出身列欄位缺席時其餘照常」。
+    render(
+      <ArchivedDrawer
+        {...(makeProps({
+          createdBy: "MomoChen <momo@example.com>",
+          archivedDate: "2026-07-04",
+        }) as never)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    const row = document.querySelector("[data-provenance-row]") as HTMLElement;
+    expect(row).toBeTruthy();
+    expect(within(row).getByText("MomoChen")).toBeTruthy();
+    expect(row.textContent).toContain("2026-07-04 封存");
+    expect(row.textContent).not.toContain("建立");
   });
 });
 
