@@ -60,17 +60,46 @@ fn first_asset(html: &str, ext: &str) -> Option<String> {
     None
 }
 
-/// A Vite content-hashed asset filename is `<name>-<hash>.<ext>` with a hash
-/// segment of 8+ url-safe base64-ish chars — the guarantee immutable caching
-/// and binary embedding rely on.
+/// A Vite content-hashed asset filename is `<name>-<hash>.<ext>` — the guarantee
+/// immutable caching and binary embedding rely on.
+///
+/// The hash is 8 url-safe base64 chars, so it may itself contain `-` or `_`
+/// (`index-B-SmT0iW.css`), and the name may contain `-` too
+/// (`noto-sans-tc-103-wght-normal-tcQ1zu-u.woff2`). Splitting on a `-` therefore
+/// cannot tell the two apart; anchor on the fixed hash width instead.
+const HASH_LEN: usize = 8;
+
 fn is_hashed(path: &str) -> bool {
     let file = path.rsplit('/').next().unwrap_or(path);
     let stem = file.rsplit_once('.').map(|(s, _)| s).unwrap_or(file);
-    stem.rsplit_once('-')
-        .map(|(_, h)| {
-            h.len() >= 8 && h.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        })
-        .unwrap_or(false)
+    let Some(cut) = stem.len().checked_sub(HASH_LEN) else {
+        return false;
+    };
+    let (name, hash) = stem.split_at(cut);
+    // A bare hash with no name in front is not the `<name>-<hash>` shape.
+    name.strip_suffix('-').is_some_and(|n| !n.is_empty())
+        && hash
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+#[test]
+fn is_hashed_accepts_a_hash_containing_url_safe_punctuation() {
+    // 內容雜湊為 base64url，本身可含 `-`／`_`；檔名前綴同樣可含 `-`。
+    assert!(is_hashed("/assets/index-B-SmT0iW.css"), "hash carrying a dash");
+    assert!(is_hashed("/assets/index-97WcX3eF.css"), "plain alphanumeric hash");
+    assert!(is_hashed("/assets/AdminSection-CyElZmvx.js"), "camel-case name");
+    assert!(
+        is_hashed("/assets/noto-sans-tc-103-wght-normal-tcQ1zu-u.woff2"),
+        "dashes in both the name and the hash"
+    );
+}
+
+#[test]
+fn is_hashed_rejects_names_without_a_content_hash() {
+    assert!(!is_hashed("/assets/index.css"), "no hash segment at all");
+    assert!(!is_hashed("/assets/app-1234.js"), "hash segment too short");
+    assert!(!is_hashed("/assets/B-SmT0iW.css"), "hash with no name in front");
 }
 
 #[test]
