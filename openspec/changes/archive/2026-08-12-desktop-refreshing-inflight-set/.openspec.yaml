@@ -74,3 +74,5 @@ verified_scope:
     hash: 326f4b391c5fbac2406bcb2cc85b89a1ecd4fd17b67fca2392459501c66597c1
   - path: packages/ui/src/index.ts
     hash: b332aee708e0ce1b0c36e31afc0a167a1bc9195754eab2a4584600b029c31507
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-12

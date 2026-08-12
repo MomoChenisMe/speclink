@@ -17,4 +17,4 @@
 
 - [x] 4.1 全 repo grep 確認 refreshing／willRefresh／workspaceRefreshing／workspaceLoaded 識別字零殘留（含註解與 design 引文之外的程式碼），孤兒化的測試 helper 與 i18n 鍵一併清除。驗證：grep 零命中，npm test -w @speclink/ui 與 npm test -w @speclink/desktop 全綠。 <!-- speclink-task:tsk_01KZT5YDDGWG2FAC5ARAJVN8FN -->
 - [x] 4.2 同步 desktop-loading-skeleton-ux 既有正典描述：本案 archive 時 tray-status-menu「面板分區首訪 skeleton」的「載入中狀態 SHALL 經 TraySnapshot 導出」語意不變，無需 delta；確認本案 design D3 已載明取代 desktop-loading-skeleton-ux design D5 去抖例外。驗證：speclink validate desktop-refreshing-inflight-set 通過。 <!-- speclink-task:tsk_01KZT5YDDG4TZRPY38ES3S3KJC -->
-- [ ] [M] 4.3 手動驗收 design 的 Behavior 契約：斷網（或指向不可達的 remote）後首訪一個 workspace——看板與 tray 面板骨架收掉並顯示載入失敗提示、與空 workspace 呈現可區分；恢復連線後重切分頁或等 watcher 重載，提示消失顯示真資料；已訪 workspace 重載失敗仍靜默沿用舊快照。 <!-- speclink-task:tsk_01KZT5YDDGKYW6N66XK27F62A4 -->
+- [x] [M] 4.3 手動驗收 design 的 Behavior 契約：斷網（或指向不可達的 remote）後首訪一個 workspace——看板與 tray 面板骨架收掉並顯示載入失敗提示、與空 workspace 呈現可區分；恢復連線後重切分頁或等 watcher 重載，提示消失顯示真資料；已訪 workspace 重載失敗仍靜默沿用舊快照。 <!-- speclink-task:tsk_01KZT5YDDGKYW6N66XK27F62A4 -->
