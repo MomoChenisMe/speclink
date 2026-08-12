@@ -921,6 +921,38 @@ describe("app store (Zustand)", () => {
     expect(toastError).toHaveBeenCalledTimes(1);
   });
 
+  // 回退 fallback 快照必須是完整的 WorkspaceSnapshot：缺 loadFailed 鍵的快照
+  // 進了 Map，之後的翻頁 spread 不會覆蓋該欄位，前一個 workspace 的失敗記號
+  // 就漏進來——沒失敗過的 workspace 顯示失敗提示。
+  it("remote reorder 寫回失敗的回退快照保留 loadFailed 欄位，不受他 workspace 汙染", async () => {
+    const gate = deferred<ChangeItem[]>();
+    const dsA = fakeDataSource({
+      listChanges: vi.fn(() => gate.promise),
+      reorderCard: vi.fn().mockRejectedValue(new Error("write failed")),
+    });
+    const dsB = fakeDataSource({
+      listChanges: vi.fn().mockRejectedValue(new Error("offline")),
+    });
+    const a = remoteSession(dsA, "repo-a");
+    const b = remoteSession(dsB, "repo-b");
+    const store = storeWithRemoteSessions(a, b);
+
+    // A 的首批載入在途（尚無快照）時拖排失敗 → 回退走 fallback 字面量。
+    void store.getState().refresh();
+    const saving = store.getState().reorderCard("change", "alpha", null, null);
+
+    // 翻到 B 且 B 載入失敗 → 現任 loadFailed 為 true。
+    await store.getState().activateTab(b.id);
+    expect(store.getState().loadFailed).toBe(true);
+
+    // 切回 A：A 從未失敗過，翻頁當下不得顯示失敗記號。
+    const back = store.getState().activateTab(a.id);
+    expect(store.getState().loadFailed).toBe(false);
+
+    gate.resolve([]);
+    await Promise.all([saving, back]);
+  });
+
   it("local reorder 維持既有流程，不在資料源寫回前改動可見順序", async () => {
     const writing = deferred<void>();
     const listed: ChangeItem[] = [
@@ -1950,5 +1982,45 @@ describe("翻頁與載入中標記同批", () => {
     load.resolve([]);
     await activation;
     expect(store.getState().loadingActive).toBe(false);
+  });
+
+  // 首批載入先於監看掛載起跑（消滅空窗）的代價：掛載完成前的檔案變動既無事件
+  // 也不在首批結果內。掛載成功後必須補一發整批載入，蓋掉這個靜默過時窗口。
+  it("監看掛載完成後補一發整批載入，涵蓋掛載窗口內的變動", async () => {
+    const stale: ChangeItem[] = [];
+    const fresh: ChangeItem[] = [
+      { name: "landed-during-mount", status: "proposed", totalTasks: 0, completedTasks: 0 },
+    ];
+    const listChanges = vi
+      .fn()
+      .mockResolvedValueOnce(stale)
+      .mockResolvedValue(fresh);
+    const ds = fakeDataSource({ listChanges });
+    let resolveWatch!: () => void;
+    const watchGate = new Promise<void>((r) => {
+      resolveWatch = r;
+    });
+    const ws = fakeInstructionWorkspace({
+      openProject: vi.fn().mockResolvedValue({ status: "project", root: "B", name: "b" }),
+      watchWorkspace: vi.fn(() => watchGate),
+    } as Partial<WorkspaceAdapter>);
+    const store = createAppStore({
+      createSession: (root, name) => fakeSession(ds, root, name),
+      workspace: ws,
+    });
+    const b = fakeSession(ds, "B", "b");
+    store.setState({
+      tabs: [{ locator: b.locator, name: b.descriptor.name }],
+      sessions: {},
+      activeKey: null,
+    });
+
+    const activation = store.getState().activateTab(b.id);
+    await new Promise((r) => setTimeout(r, 0));
+    // 首批（過時）已在途；此刻監看才掛載完成——窗口內的變動只有補讀看得到。
+    resolveWatch();
+    await activation;
+    expect(listChanges.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(store.getState().changes.map((c) => c.name)).toEqual(["landed-during-mount"]);
   });
 });

@@ -836,13 +836,19 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       // 整批載入在翻頁的同一同步段內起跑（其計數 +1 在第一個 await 之前）——
       // 監看掛載可達秒級，先等它就會留下「已翻頁、尚未起載入」的空窗假空態。
       const loading = get().refresh();
+      // 佔位 handler：await 之前的拒絕不觸發 unhandledrejection（下方 await 照樣取得結果）。
+      loading.catch(() => {});
       // 監看顯式跟隨活躍 session（決策 5）；不可用僅失去自動刷新、app 照常。
+      let watched = true;
       try {
         await workspace?.watchWorkspace(root);
       } catch {
-        /* 降級：無自動刷新 */
+        watched = false; /* 降級：無自動刷新 */
       }
       await loading;
+      // 首批讀取先於掛載完成，窗口內的變動無事件也不在首批結果內——掛載成功後
+      // 補一發蓋掉靜默過時窗口（降級模式本就無自動刷新，不補）。
+      if (watched && get().activeKey === key) await get().refresh();
     }
 
     /** remote session 的入列尾聲（remote-data-source 決策 6）：upsert 分頁與
@@ -983,65 +989,66 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const session = sourceKey ? get().sessions[sourceKey] : null;
       if (!sourceKey || !session) return;
       const generation = beginRefresh(sourceKey);
-      // 在途 +1 在第一個 await 之前；三條離開路徑（成功、失敗、世代過期）共用
-      // 同一個 finally 遞減——沒有任何出口需要判斷「這面旗標歸不歸我收」。
-      beginInflight(sourceKey);
       try {
-      const dataSource = session.dataSource;
-      // capability 驅動（remote-data-source 決策 2）：server 未提供的讀取跳過、
-      // 以空集呈現（archived 頁另有提示卡），不讓整批 refresh 失敗。
-      let loaded: [ChangeItem[], SpecItem[], ArchivedItem[], DiscussionLists];
-      try {
-        loaded = await Promise.all([
-          dataSource.listChanges(),
-          dataSource.listSpecs(),
-          session.capabilities.listArchived ? dataSource.listArchived() : Promise.resolve([]),
-          dataSource.listDiscussions(),
-        ]);
-      } catch {
-        // remote 壞天氣：最後一次成功 snapshot 是唯讀真值；任一 reload 失敗
-        // 都不得用空集或部分結果覆蓋。連線呈現只由 Rust 狀態事件決定。
-        // loaded 維持 false——讀不到不等於「確認是空的」；骨架的終止由在途計數負責。
-        // 失敗終態隨快照存續（切走再切回仍記得）；只有現任世代寫得進去——
-        // 先發的失敗不得蓋掉後發剛落地的成功。
-        if (isCurrentRefresh(sourceKey, generation)) {
-          workspaceSnapshots.set(sourceKey, {
-            ...visibleWorkspaceSnapshot(sourceKey),
-            loadFailed: true,
-          });
-          set((state) => (state.activeKey === sourceKey ? { loadFailed: true } : {}));
+        // 在途 +1 在第一個 await 之前；三條離開路徑（成功、失敗、世代過期）共用
+        // 同一個 finally 遞減——沒有任何出口需要判斷「這面旗標歸不歸我收」。
+        // +1 先落 Map 再重算導出值：重算的 set 即使被訂閱者炸掉，finally 仍會遞減。
+        beginInflight(sourceKey);
+        const dataSource = session.dataSource;
+        // capability 驅動（remote-data-source 決策 2）：server 未提供的讀取跳過、
+        // 以空集呈現（archived 頁另有提示卡），不讓整批 refresh 失敗。
+        let loaded: [ChangeItem[], SpecItem[], ArchivedItem[], DiscussionLists];
+        try {
+          loaded = await Promise.all([
+            dataSource.listChanges(),
+            dataSource.listSpecs(),
+            session.capabilities.listArchived ? dataSource.listArchived() : Promise.resolve([]),
+            dataSource.listDiscussions(),
+          ]);
+        } catch {
+          // remote 壞天氣：最後一次成功 snapshot 是唯讀真值；任一 reload 失敗
+          // 都不得用空集或部分結果覆蓋。連線呈現只由 Rust 狀態事件決定。
+          // loaded 維持 false——讀不到不等於「確認是空的」；骨架的終止由在途計數負責。
+          // 失敗終態隨快照存續（切走再切回仍記得）；只有現任世代寫得進去——
+          // 先發的失敗不得蓋掉後發剛落地的成功。
+          if (isCurrentRefresh(sourceKey, generation)) {
+            workspaceSnapshots.set(sourceKey, {
+              ...visibleWorkspaceSnapshot(sourceKey),
+              loadFailed: true,
+            });
+            set((state) => (state.activeKey === sourceKey ? { loadFailed: true } : {}));
+          }
+          return;
         }
-        return;
-      }
-      const [changes, specs, archived, discussions] = loaded;
-      const snapshot: WorkspaceSnapshot = {
-        changes,
-        specs,
-        archived,
-        discussions,
-        loaded: true,
-        loadFailed: false,
-      };
-      if (!isCurrentRefresh(sourceKey, generation)) {
-        // 世代過期＝同 key 有更新的 refresh 在途（或已自行收尾）——先發的資料已
-        // 過時，不得覆蓋後發的結果。
-        return;
-      }
-      workspaceSnapshots.set(sourceKey, snapshot);
-      set((state) => (state.activeKey === sourceKey ? snapshot : {}));
-      if (get().activeKey !== sourceKey) return;
-      // 詳情開著時同步其資料（如任務數更新）
-      const cur = get().detailChange;
-      if (cur) {
-        set({ detailChange: changes.find((c) => c.name === cur.name) ?? null });
-      }
-      // 討論抽屜開著時同步（輪數更新、轉出後 promotedTo 增長；封存則關閉）
-      const curD = get().detailDiscussion;
-      if (curD) {
-        set({ detailDiscussion: discussions.active.find((d) => d.slug === curD.slug) ?? null });
-      }
-      // 清單就緒後遞增刷新世代——開著的內容檢視據此重載至磁碟現況。
-      set((st) => ({ refreshGen: st.refreshGen + 1 }));
+        const [changes, specs, archived, discussions] = loaded;
+        const snapshot: WorkspaceSnapshot = {
+          changes,
+          specs,
+          archived,
+          discussions,
+          loaded: true,
+          loadFailed: false,
+        };
+        if (!isCurrentRefresh(sourceKey, generation)) {
+          // 世代過期＝同 key 有更新的 refresh 在途（或已自行收尾）——先發的資料已
+          // 過時，不得覆蓋後發的結果。
+          return;
+        }
+        workspaceSnapshots.set(sourceKey, snapshot);
+        set((state) => (state.activeKey === sourceKey ? snapshot : {}));
+        if (get().activeKey !== sourceKey) return;
+        // 詳情開著時同步其資料（如任務數更新）
+        const cur = get().detailChange;
+        if (cur) {
+          set({ detailChange: changes.find((c) => c.name === cur.name) ?? null });
+        }
+        // 討論抽屜開著時同步（輪數更新、轉出後 promotedTo 增長；封存則關閉）
+        const curD = get().detailDiscussion;
+        if (curD) {
+          set({ detailDiscussion: discussions.active.find((d) => d.slug === curD.slug) ?? null });
+        }
+        // 清單就緒後遞增刷新世代——開著的內容檢視據此重載至磁碟現況。
+        set((st) => ({ refreshGen: st.refreshGen + 1 }));
       } finally {
         endInflight(sourceKey);
       }
@@ -1370,6 +1377,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           archived: current.archived,
           discussions: current.discussions,
           loaded: current.loaded,
+          loadFailed: current.loadFailed,
         };
         const optimistic: WorkspaceSnapshot =
           kind === "change"

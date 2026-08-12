@@ -355,6 +355,14 @@ export function detectMacOS(): boolean {
   return /Macintosh|Mac OS/i.test(ua);
 }
 
+/** 面板骨架條件（design D3）：探測中或整批載入在途，且尚無真值。與 App.tsx
+ * 傳給看板的 loading 同式——快照導出與即推面共用這一份，不會各算各的。 */
+function workspaceLoadingOf(
+  state: Pick<ReturnType<TrayStoreApi["getState"]>, "pendingTabKey" | "loadingActive" | "loaded">,
+): boolean {
+  return (state.pendingTabKey !== null || state.loadingActive) && !state.loaded;
+}
+
 /** store 狀態 → 模型快照（與看板同源）。 */
 export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>): TraySnapshot {
   return {
@@ -391,9 +399,8 @@ export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>): 
       promoted: d.promotedTo.length > 0,
     })),
     pendingTabKey: state.pendingTabKey,
-    // 骨架條件在此收斂成一欄（design D3）：探測中或整批載入在途，且尚無真值。
-    // 與 App.tsx 傳給看板的 loading 同式——面板與主視窗不會各自算出不同答案。
-    workspaceLoading: (state.pendingTabKey !== null || state.loadingActive) && !state.loaded,
+    // 骨架條件在此收斂成一欄（design D3）——面板與主視窗不會各自算出不同答案。
+    workspaceLoading: workspaceLoadingOf(state),
     // 首訪失敗才是終態提示；有舊快取時照舊沿用最後成功資料，不提示。
     workspaceLoadFailed: state.loadFailed && !state.loaded,
   };
@@ -595,15 +602,24 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   // 已訪 workspace 的週期性刷新恆為 false（有真值即非骨架），不會每輪翻兩次。
   const surfaceKey = () => {
     const s = store.getState();
-    const loading = (s.pendingTabKey !== null || s.loadingActive) && !s.loaded;
-    return JSON.stringify([s.pendingTabKey, s.activeKey, loading]);
+    return JSON.stringify([s.pendingTabKey, s.activeKey, workspaceLoadingOf(s)]);
   };
   let lastSurface = surfaceKey();
+  // 即推以 microtask 合併：翻頁入口在同一同步段內連續兩次 set（先翻 activeKey、
+  // 再由 refresh 的計數翻真），逐次即推會把中間那份「已翻頁、尚未起載入」的
+  // 假空態推給面板。同段變動只推一份最終快照；跨段（真正的先後事件）仍逐次即推。
+  let pushQueued = false;
   const unsubscribe = store.subscribe(() => {
     const surface = surfaceKey();
     if (surface !== lastSurface) {
       lastSurface = surface;
-      pushSnapshot();
+      if (!pushQueued) {
+        pushQueued = true;
+        queueMicrotask(() => {
+          pushQueued = false;
+          pushSnapshot();
+        });
+      }
     }
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {

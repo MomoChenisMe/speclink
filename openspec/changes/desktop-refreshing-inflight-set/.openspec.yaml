@@ -4,3 +4,73 @@ created_by: MomoChen <momochenisme@gmail.com>
 created_with: claude
 started_at: 2026-08-12
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-12
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 5e07defc66affcf9acd2288740b0785d74464541f981739b413975d28e0f15f8
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 1cadd13b6b78de25b3b04e5d7389dfccd9ecdec4fc738d9b5bff31a3fb45cc8b
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: b22d6b3bd40f6d7a280b392ca444ef5ba9e77c3d809fc33643c216d259f7f53b
+  - path: apps/desktop/src/__tests__/tray.test.ts
+    hash: 86d580f771fdd0907f9c588981f8b80e0781e10e16e128dfffff926c3d7c5a98
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: aa9a554521b04ccf5f1de0e8eccccbac2be646bb367b64ee2cea5e21199df04f
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: cd1390b294c68d11fb12124c698cda46491f97597ba4db8102e96b6a9d705a3d
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: f3e352bfaec81d34f21611252622c21be9dc7fcc4520271e9968c5dc64bd53d0
+  - path: apps/desktop/src/store.ts
+    hash: bce6cd57caa56d59ee49856a11d8ccfafc7cf96b0481844d796e7d444de9a78f
+  - path: apps/desktop/src/tray.ts
+    hash: 49a4e63dbd6e00f90852aa2995598cbf9d4a42f164b5128aefa6b4d53c34cfbc
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: 4a173f247aae12d82d1bc8cbc748dce5879365c96d2269b75b127a8a6e52e9f6
+  - path: packages/ui/src/components/DiscussionColumn.tsx
+    hash: 0c1017030163d9085433dcae3573ec87a5c18ed323572011e150084aafe6dd4d
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: aab034089179ae6e0c1398ab399bfb10b48520bafebbfb65b31872421daab904
+  - path: packages/ui/src/components/skeletons.tsx
+    hash: f4ee14e784d66824d3e175be465d42807dd87bb7427d43a4bb2f7b220ac089bf
+  - path: packages/ui/src/i18n.tsx
+    hash: 326f4b391c5fbac2406bcb2cc85b89a1ecd4fd17b67fca2392459501c66597c1
+  - path: packages/ui/src/index.ts
+    hash: b332aee708e0ce1b0c36e31afc0a167a1bc9195754eab2a4584600b029c31507
+verified_at: 2026-08-12
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 9
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 5e07defc66affcf9acd2288740b0785d74464541f981739b413975d28e0f15f8
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 1cadd13b6b78de25b3b04e5d7389dfccd9ecdec4fc738d9b5bff31a3fb45cc8b
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: b22d6b3bd40f6d7a280b392ca444ef5ba9e77c3d809fc33643c216d259f7f53b
+  - path: apps/desktop/src/__tests__/tray.test.ts
+    hash: 86d580f771fdd0907f9c588981f8b80e0781e10e16e128dfffff926c3d7c5a98
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: aa9a554521b04ccf5f1de0e8eccccbac2be646bb367b64ee2cea5e21199df04f
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: cd1390b294c68d11fb12124c698cda46491f97597ba4db8102e96b6a9d705a3d
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: f3e352bfaec81d34f21611252622c21be9dc7fcc4520271e9968c5dc64bd53d0
+  - path: apps/desktop/src/store.ts
+    hash: bce6cd57caa56d59ee49856a11d8ccfafc7cf96b0481844d796e7d444de9a78f
+  - path: apps/desktop/src/tray.ts
+    hash: 49a4e63dbd6e00f90852aa2995598cbf9d4a42f164b5128aefa6b4d53c34cfbc
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: 4a173f247aae12d82d1bc8cbc748dce5879365c96d2269b75b127a8a6e52e9f6
+  - path: packages/ui/src/components/DiscussionColumn.tsx
+    hash: 0c1017030163d9085433dcae3573ec87a5c18ed323572011e150084aafe6dd4d
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: aab034089179ae6e0c1398ab399bfb10b48520bafebbfb65b31872421daab904
+  - path: packages/ui/src/components/skeletons.tsx
+    hash: f4ee14e784d66824d3e175be465d42807dd87bb7427d43a4bb2f7b220ac089bf
+  - path: packages/ui/src/i18n.tsx
+    hash: 326f4b391c5fbac2406bcb2cc85b89a1ecd4fd17b67fca2392459501c66597c1
+  - path: packages/ui/src/index.ts
+    hash: b332aee708e0ce1b0c36e31afc0a167a1bc9195754eab2a4584600b029c31507
