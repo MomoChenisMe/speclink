@@ -42,7 +42,7 @@ activateTab 本地路徑進 probe 前設 pendingTabKey 為目標分頁 key；**p
 替代方案：把載入態下沉到 SectionedDoc——被淘汰（SectionedDoc 是純內容渲染器，感知載入態會讓資料源語意滲入渲染層，違反前端元件庫與資料源解耦要求）。
 
 **D4. skeleton 基元落 packages/ui 的 shadcn 基元群**
-新增 packages/ui/src/components/ui/skeleton.tsx（shadcn Skeleton：圓角灰塊＋pulse 動畫，尊重 prefers-reduced-motion 時停用動畫）；三種佔位組件——看板佔位卡（卡形）、面板佔位列（列形）、DocSkeleton（標題條＋數行內文條）——以基元組合，集中於 packages/ui/src/components/skeletons.tsx 並自 packages/ui/src/index.ts 匯出，供兩端共用。
+新增 packages/ui/src/components/ui/skeleton.tsx（shadcn Skeleton：圓角灰塊＋pulse 動畫，尊重 prefers-reduced-motion 時停用動畫）；三種佔位組件——看板佔位卡（卡形）、面板佔位列（列形）、DocSkeleton（標題條＋數行內文條）——以基元組合，集中於 packages/ui/src/components/skeletons.tsx 並自 packages/ui/src/index.ts 匯出，供兩端共用。佔位卡的**外框沿用 Card 基元、不自刻描邊**：佔位卡是「還沒到的那張真卡片」，手刻表面樣式遲早與真實卡片分歧——本專案為 Tailwind v4，裸寫 `border` 的顏色落到 currentColor（近黑描邊），2026-08-12 手動驗收抓到的正是這個。
 替代方案：放 apps/desktop——被淘汰（server-web 共用不到）。
 
 **D5. tray 面板狀態經 TraySnapshot 同源**

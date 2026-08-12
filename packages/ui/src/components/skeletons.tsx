@@ -1,15 +1,16 @@
 // 載入中佔位組件（design D4）：以 Skeleton 基元組合出三種形狀，模仿其所替代的
 // 真實內容輪廓——首訪空窗期看得出「有東西正在載」，與真空態文案可區分。
 // 全數 aria-busy，且不含任何文字（載入中不冒充空態文案）。
+import { Card } from "./ui/card";
 import { Skeleton } from "./ui/skeleton";
 
-/** 看板佔位卡：模仿 ChangeCard 的名稱列＋進度條輪廓。 */
+/** 看板佔位卡：模仿 ChangeCard 的名稱列＋進度條輪廓。外框直接用 Card 而非自刻。 */
 export function CardSkeleton() {
   return (
-    <div aria-busy="true" className="rounded-xl border bg-card p-3 flex flex-col gap-2">
+    <Card aria-busy="true" className="p-3 flex flex-col gap-2">
       <Skeleton className="h-3.5 w-2/3" />
       <Skeleton className="h-2 w-full" />
-    </div>
+    </Card>
   );
 }
 
