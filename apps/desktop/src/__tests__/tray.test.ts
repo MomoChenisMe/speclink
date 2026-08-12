@@ -1040,6 +1040,25 @@ describe("TraySnapshot 的載入態導出", () => {
     expect(pushed[0][1]).toEqual(expect.objectContaining({ workspaceLoading: false }));
   });
 
+  // 翻頁入口是同一同步段內的兩次 set：先翻 activeKey（載入態尚未翻真）、再由
+  // refresh() 的計數 +1 翻真。逐次即推會把中間那份「已翻頁、尚未起載入」的
+  // 假空態推給面板——同段變動必須合併成一份最終快照。
+  it("同一同步段的連續變動 → 只推最終快照，不推中間假空態", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    vi.mocked(tauriEmit).mockClear();
+    vi.useFakeTimers();
+    bag.emit({ activeKey: "local:/proj/two", loaded: false, changes: [] });
+    bag.emit({ loadingActive: true });
+    await vi.advanceTimersByTimeAsync(0);
+    const pushed = vi.mocked(tauriEmit).mock.calls.filter((c) => c[0] === "tray-snapshot");
+    vi.useRealTimers();
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0][1]).toEqual(
+      expect.objectContaining({ activeKey: "local:/proj/two", workspaceLoading: true }),
+    );
+  });
+
   // 失敗時 loaded 維持 false，翻的是載入態——它若不在即推面，面板要等一個去抖
   // 週期才收掉骨架（desktop-loading-skeleton-ux design D5 的例外，本案取代之）。
   it("首訪載入失敗（載入態翻假）→ 即時推送，骨架當下收掉", async () => {

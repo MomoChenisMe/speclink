@@ -921,3 +921,36 @@ describe("看板骨架的終止條件", () => {
     await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
   });
 });
+
+// 看板失敗終態的接線閘門 loadFailed={!s.loaded && s.loadFailed}：首訪失敗顯示
+// 提示；已有真值的重載失敗維持舊快照靜默呈現，不得誤掛提示。
+describe("看板首訪失敗終態的接線", () => {
+  it("首訪整批載入失敗 → 骨架收掉，卡片區顯示載入失敗提示", async () => {
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockRejectedValue(new Error("offline")),
+    });
+    renderApp(ds);
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-testid="column-load-failed"]').length).toBeGreaterThan(0),
+    );
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+    expect(screen.queryByText("尚無討論")).toBeNull();
+  });
+
+  it("已有舊快取的重載失敗 → 照常顯示舊資料，無失敗提示", async () => {
+    const ds = fakeDataSource({
+      listChanges: vi
+        .fn()
+        .mockResolvedValueOnce([
+          { name: "kept-change", status: "in-progress", totalTasks: 2, completedTasks: 1 },
+        ])
+        .mockRejectedValue(new Error("offline")),
+    });
+    renderApp(ds);
+    await waitFor(() => expect(screen.getByText("kept-change")).toBeTruthy());
+    // 掛載後補讀那一發以失敗收場——舊快照仍在，不得出現失敗提示。
+    await waitFor(() => expect(vi.mocked(ds.listChanges).mock.calls.length).toBeGreaterThan(1));
+    expect(screen.getByText("kept-change")).toBeTruthy();
+    expect(document.querySelector('[data-testid="column-load-failed"]')).toBeNull();
+  });
+});
