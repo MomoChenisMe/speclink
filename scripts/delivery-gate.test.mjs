@@ -111,6 +111,15 @@ test('release.yml 每個桌面平台都建置至少一個 updater-enabled bundle
   }
 });
 
+test('release.yml 的 Linux 桌面建置安裝 AppImage 打包所需的 xdg-utils 與 FUSE', () => {
+  const release = read('.github/workflows/release.yml');
+
+  // AppImage 的 bundler 會呼叫 xdg-open；ubuntu-24.04-arm 映像未內建 xdg-utils
+  // （22.04 有），只裝 FUSE 會讓 arm64 的桌面 job 在打包最後一步才炸。
+  assert.match(release, /xdg-utils/, 'release.yml：Linux 依賴缺 xdg-utils（AppImage 需要 xdg-open）');
+  assert.match(release, /libfuse2/, 'release.yml：Linux 依賴缺 FUSE（AppImage 打包需要）');
+});
+
 test('ci.yml 跑 scripts 測試面，且以 bash 展開 glob 以相容 CI 釘選的 Node 版本', () => {
   const ci = read('.github/workflows/ci.yml');
 

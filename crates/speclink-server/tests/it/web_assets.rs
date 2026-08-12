@@ -43,6 +43,19 @@ fn status_body(result: Result<ureq::Response, ureq::Error>) -> (u16, String) {
     }
 }
 
+/// Status, `Content-Type`, and body — the content type is what separates a JSON
+/// error from a bare status-only response, and only the header carries it.
+fn status_type_body(result: Result<ureq::Response, ureq::Error>) -> (u16, String, String) {
+    let resp = match result {
+        Ok(resp) => resp,
+        Err(ureq::Error::Status(_, resp)) => resp,
+        Err(e) => panic!("transport error: {e}"),
+    };
+    let status = resp.status();
+    let content_type = resp.content_type().to_string();
+    (status, content_type, resp.into_string().unwrap_or_default())
+}
+
 /// The first `/assets/…<ext>` reference in the SPA shell HTML.
 fn first_asset(html: &str, ext: &str) -> Option<String> {
     let mut search = html;
@@ -185,6 +198,28 @@ fn misspelled_browser_api_returns_404_not_shell() {
     assert!(
         !body.contains("id=\"root\""),
         "the SPA fallback must not swallow /api/* paths"
+    );
+}
+
+/// The spec says the misspelled API path answers with a *JSON* 404. Asserting only
+/// the status code and "not the shell" leaves the JSON half untested, which is how a
+/// bare `StatusCode::NOT_FOUND` — no body, no content type — passed for so long.
+#[test]
+fn misspelled_browser_api_404_is_json_enveloped() {
+    let base = server();
+    let (code, content_type, body) = status_type_body(get(&base, "/api/speclink/v1/web/unknown"));
+
+    assert_eq!(code, 404, "a misspelled API path is a real 404");
+    assert!(
+        content_type.starts_with("application/json"),
+        "the 404 must be JSON, got content type {content_type:?}"
+    );
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&body).unwrap_or_else(|e| panic!("404 body is not JSON: {e}; {body}"));
+    assert!(
+        parsed.get("error").and_then(|e| e.get("code")).is_some(),
+        "the 404 body must use the {{error:{{code,message}}}} envelope, got {body}"
     );
 }
 

@@ -115,6 +115,12 @@ function runInstall(box, { unameS, unameM, args = [], env = {} } = {}) {
   return { ...result, curlCalls };
 }
 
+// install.sh 只出貨給 macOS 與 Linux；Windows 的對應是 install.ps1。Git Bash 下
+// 以假的 curl／uname 驗 sh 版並不對應任何出貨路徑（Windows 不會解析無副檔名的
+// 假指令），故 Windows 上整組跳過，由 ps1 那組接手。
+const isWindows = process.platform === 'win32';
+const shTest = isWindows ? test.skip : test;
+
 // --- 平台對映矩陣（dry-run，不碰網路） ---
 
 const MATRIX = [
@@ -125,7 +131,7 @@ const MATRIX = [
 ];
 
 for (const { unameS, unameM, target } of MATRIX) {
-  test(`dry-run 對映 ${unameS}/${unameM} 為 ${target} 並組出 Release 資產 URL`, (t) => {
+  shTest(`dry-run 對映 ${unameS}/${unameM} 為 ${target} 並組出 Release 資產 URL`, (t) => {
     const box = sandbox(t);
 
     const result = runInstall(box, {
@@ -145,7 +151,7 @@ for (const { unameS, unameM, target } of MATRIX) {
   });
 }
 
-test('不支援的平台以非零結束並說明', (t) => {
+shTest('不支援的平台以非零結束並說明', (t) => {
   const box = sandbox(t);
 
   const result = runInstall(box, { unameS: 'Linux', unameM: 'i686', args: ['--dry-run'] });
@@ -154,7 +160,7 @@ test('不支援的平台以非零結束並說明', (t) => {
   assert.match(result.stderr, /i686/, '錯誤訊息應點名偵測到的架構');
 });
 
-test('Windows 上以非零結束並導向 PowerShell 版腳本', (t) => {
+shTest('Windows 上以非零結束並導向 PowerShell 版腳本', (t) => {
   const box = sandbox(t);
 
   const result = runInstall(box, { unameS: 'MINGW64_NT-10.0', unameM: 'x86_64', args: ['--dry-run'] });
@@ -165,7 +171,7 @@ test('Windows 上以非零結束並導向 PowerShell 版腳本', (t) => {
 
 // --- dry-run 的兩條保證 ---
 
-test('dry-run 不發出任何網路請求也不寫入檔案', (t) => {
+shTest('dry-run 不發出任何網路請求也不寫入檔案', (t) => {
   const box = sandbox(t);
 
   const result = runInstall(box, {
@@ -180,7 +186,7 @@ test('dry-run 不發出任何網路請求也不寫入檔案', (t) => {
   assert.deepEqual(readdirSync(box.installDir), [], 'dry-run 不得寫入安裝目錄');
 });
 
-test('dry-run 未釘選版本時標示將於安裝時查詢，仍不呼叫 curl', (t) => {
+shTest('dry-run 未釘選版本時標示將於安裝時查詢，仍不呼叫 curl', (t) => {
   const box = sandbox(t);
 
   const result = runInstall(box, { unameS: 'Linux', unameM: 'x86_64', args: ['--dry-run'] });
@@ -192,7 +198,7 @@ test('dry-run 未釘選版本時標示將於安裝時查詢，仍不呼叫 curl'
 
 // --- 環境變數覆寫 ---
 
-test('SPECLINK_INSTALL_DIR 覆寫安裝目錄', (t) => {
+shTest('SPECLINK_INSTALL_DIR 覆寫安裝目錄', (t) => {
   const box = sandbox(t);
 
   const result = runInstall(box, {
@@ -206,7 +212,7 @@ test('SPECLINK_INSTALL_DIR 覆寫安裝目錄', (t) => {
   assert.match(result.stdout, new RegExp(box.installDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
-test('未覆寫時安裝目錄預設為 ~/.local/bin', (t) => {
+shTest('未覆寫時安裝目錄預設為 ~/.local/bin', (t) => {
   const box = sandbox(t);
 
   const result = runInstall(box, {
@@ -220,7 +226,7 @@ test('未覆寫時安裝目錄預設為 ~/.local/bin', (t) => {
   assert.match(result.stdout, /\.local\/bin/, '預設安裝目錄應為 ~/.local/bin');
 });
 
-test('釘選版本時不查詢 latest API', (t) => {
+shTest('釘選版本時不查詢 latest API', (t) => {
   const box = sandbox(t);
   stageRelease(box, { target: 'aarch64-apple-darwin' });
 
@@ -240,7 +246,7 @@ test('釘選版本時不查詢 latest API', (t) => {
 
 // --- 實際安裝路徑 ---
 
-test('安裝完成後 binary 落在安裝目錄且可執行', (t) => {
+shTest('安裝完成後 binary 落在安裝目錄且可執行', (t) => {
   const box = sandbox(t);
   stageRelease(box, { target: 'x86_64-unknown-linux-gnu' });
 
@@ -257,7 +263,7 @@ test('安裝完成後 binary 落在安裝目錄且可執行', (t) => {
   assert.match(run.stdout, /speclink-fixture/, '安裝的應是壓縮檔中解出的那一份');
 });
 
-test('未釘選版本時經 latest API 解析出版本再下載', (t) => {
+shTest('未釘選版本時經 latest API 解析出版本再下載', (t) => {
   const box = sandbox(t);
   stageRelease(box, { target: 'aarch64-apple-darwin' });
 
@@ -277,7 +283,7 @@ test('未釘選版本時經 latest API 解析出版本再下載', (t) => {
 
 // --- checksum 驗證 ---
 
-test('checksum 不符時以非零結束且安裝目錄不留任何檔案', (t) => {
+shTest('checksum 不符時以非零結束且安裝目錄不留任何檔案', (t) => {
   const box = sandbox(t);
   stageRelease(box, { target: 'x86_64-unknown-linux-gnu', badChecksum: true });
 
@@ -292,7 +298,7 @@ test('checksum 不符時以非零結束且安裝目錄不留任何檔案', (t) =
   assert.deepEqual(readdirSync(box.installDir), [], 'checksum 不符時安裝目錄不得留下任何檔案');
 });
 
-test('SHA256SUMS.txt 缺少該資產條目時以非零結束', (t) => {
+shTest('SHA256SUMS.txt 缺少該資產條目時以非零結束', (t) => {
   const box = sandbox(t);
   stageRelease(box, { target: 'x86_64-unknown-linux-gnu' });
   // 覆寫成只含別的平台條目，模擬資產缺漏。
@@ -313,7 +319,7 @@ test('SHA256SUMS.txt 缺少該資產條目時以非零結束', (t) => {
 
 // --- PATH 提示 ---
 
-test('安裝目錄不在 PATH 時提示使用者', (t) => {
+shTest('安裝目錄不在 PATH 時提示使用者', (t) => {
   const box = sandbox(t);
   stageRelease(box, { target: 'x86_64-unknown-linux-gnu' });
 
@@ -336,9 +342,15 @@ test('安裝目錄不在 PATH 時提示使用者', (t) => {
 // 契約與 install.sh 相同，只是平台偵測與解壓走 .NET API。無 pwsh 的環境自動跳過；
 // Windows CI 的 runner 一定有，該面在那裡才真的跑得到。
 const ps1 = path.join(root, 'scripts/install.ps1');
-const pwsh = ['pwsh', 'powershell'].find(
-  (candidate) => spawnSync(candidate, ['-NoProfile', '-Command', 'exit 0']).status === 0,
-);
+// 只在 Windows 上驗：pwsh 在 macOS 與 Linux runner 上也預裝，但 install.ps1 是
+// Windows 專用出貨路徑——拿它去跑 arm64 mac 只會撞上「不支援的架構」，驗不到
+// 任何真實情境。
+const pwsh =
+  process.platform === 'win32'
+    ? ['pwsh', 'powershell'].find(
+        (candidate) => spawnSync(candidate, ['-NoProfile', '-Command', 'exit 0']).status === 0,
+      )
+    : undefined;
 
 function runInstallPs1(box, { args = [], env = {} } = {}) {
   return spawnSync(pwsh, ['-NoProfile', '-File', ps1, ...args], {
@@ -351,7 +363,7 @@ function runInstallPs1(box, { args = [], env = {} } = {}) {
   });
 }
 
-test('install.ps1 的 dry-run 印出 Windows target 與 zip 資產 URL', { skip: !pwsh && '本機無 pwsh' }, (t) => {
+test('install.ps1 的 dry-run 印出 Windows target 與 zip 資產 URL', { skip: !pwsh && '非 Windows 或無 pwsh' }, (t) => {
   const box = sandbox(t);
 
   const result = runInstallPs1(box, {
@@ -368,7 +380,7 @@ test('install.ps1 的 dry-run 印出 Windows target 與 zip 資產 URL', { skip:
   );
 });
 
-test('install.ps1 的 dry-run 不寫入安裝目錄', { skip: !pwsh && '本機無 pwsh' }, (t) => {
+test('install.ps1 的 dry-run 不寫入安裝目錄', { skip: !pwsh && '非 Windows 或無 pwsh' }, (t) => {
   const box = sandbox(t);
 
   const result = runInstallPs1(box, {
@@ -380,7 +392,7 @@ test('install.ps1 的 dry-run 不寫入安裝目錄', { skip: !pwsh && '本機�
   assert.deepEqual(readdirSync(box.installDir), [], 'dry-run 不得寫入安裝目錄');
 });
 
-test('install.ps1 支援 SPECLINK_INSTALL_DIR 覆寫，未設時落在使用者層級目錄', { skip: !pwsh && '本機無 pwsh' }, (t) => {
+test('install.ps1 支援 SPECLINK_INSTALL_DIR 覆寫，未設時落在使用者層級目錄', { skip: !pwsh && '非 Windows 或無 pwsh' }, (t) => {
   const box = sandbox(t);
 
   const overridden = runInstallPs1(box, {
@@ -396,7 +408,7 @@ test('install.ps1 支援 SPECLINK_INSTALL_DIR 覆寫，未設時落在使用者�
   assert.match(defaulted.stdout, /Speclink/, '未覆寫時應落在使用者層級的 Speclink 目錄');
 });
 
-test('install.ps1 未釘選版本時標示為 latest', { skip: !pwsh && '本機無 pwsh' }, (t) => {
+test('install.ps1 未釘選版本時標示為 latest', { skip: !pwsh && '非 Windows 或無 pwsh' }, (t) => {
   const box = sandbox(t);
 
   const result = runInstallPs1(box, { args: ['-DryRun'] });

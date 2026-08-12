@@ -74,6 +74,21 @@
         "docs/sdk-node.md",
         "docs/sdk-node.zh-TW.md"
       ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "2.4 修正未知 API 路徑回裸 404 的規格違反（首發實跑於四個 smoke target 同時紅燈）：正典 server-web-console 的 scenario「拼錯 API 不被 SPA fallback 吞掉」要求回 JSON 404，但 `crates/speclink-server/src/assets.rs` 的 spa_fallback 回 `StatusCode::NOT_FOUND` 裸回應（無 body、無 content type），而既有整合測試只斷言狀態碼與「body 不含 SPA shell」，漏掉 JSON 那一半，實作因此長期偏離而未被察覺；改為沿用既有 `{error:{code,message}}` 外殼，並在 `crates/speclink-server/tests/it/web_assets.rs` 新增斷言 content type 為 application/json 且 body 具該外殼的測試。驗證：新測試對修正前的實作為紅；`cargo test -p speclink-server --test it` 全綠且無回歸",
+      "files": [
+        "crates/speclink-server/src/assets.rs",
+        "crates/speclink-server/tests/it/web_assets.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "2.6 修正 scripts 測試面首次在 CI 三平台執行時暴露的三處環境假設（任務 2.2 只在本機驗過，CI 上三平台全紅）：(a) `scripts/remote-docs.test.mjs` 以 `spawnSync('speclink')` 從 PATH 取 CLI——本機因有安裝版而通過、CI 無安裝版即 ENOENT，且比對到的可能是過期安裝版的 help surface；改為解析本 repo 的 `target/debug` 或 `target/release` binary（debug 優先，對齊專案慣例），皆不存在時跳過。(b) install.ps1 測試的跳過條件寫成「無 pwsh 才跳」，但 macOS 與 Linux runner 皆預裝 pwsh，於是拿 Windows 專用腳本去跑 arm64 mac 而撞上「不支援的架構」；改為僅在 Windows 執行。(c) install.sh 測試在 Windows 的 Git Bash 下無法解析無副檔名的假 curl／uname，且 sh 版不出貨到 Windows；改為 Windows 上整組跳過，由 ps1 那組接手。驗證：node --test scripts/*.test.mjs 本機全綠；三處閘門各自對應到平台而非工具是否存在",
+      "files": [
+        "scripts/remote-docs.test.mjs"
+      ]
     }
   ],
   "entries": [
@@ -177,6 +192,29 @@
         "docs/sdk-node.zh-TW.md"
       ],
       "recordedAt": "2026-08-12T14:36:21Z"
+    },
+    {
+      "taskId": "tsk_01KZV8J6HSKC5JPMNDG9M75EPJ",
+      "taskDesc": "2.4 修正未知 API 路徑回裸 404 的規格違反（首發實跑於四個 smoke target 同時紅燈）：正典 server-web-console 的 scenario「拼錯 API 不被 SPA fallback 吞掉」要求回 JSON 404，但 `crates/speclink-server/src/assets.rs` 的 spa_fallback 回 `StatusCode::NOT_FOUND` 裸回應（無 body、無 content type），而既有整合測試只斷言狀態碼與「body 不含 SPA shell」，漏掉 JSON 那一半，實作因此長期偏離而未被察覺；改為沿用既有 `{error:{code,message}}` 外殼，並在 `crates/speclink-server/tests/it/web_assets.rs` 新增斷言 content type 為 application/json 且 body 具該外殼的測試。驗證：新測試對修正前的實作為紅；`cargo test -p speclink-server --test it` 全綠且無回歸",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ecbd61531ca429e96e2473160e98dbd82c37fdce",
+      "touchedFiles": [
+        "crates/speclink-server/src/assets.rs",
+        "crates/speclink-server/tests/it/web_assets.rs"
+      ],
+      "recordedAt": "2026-08-12T15:13:28Z"
+    },
+    {
+      "taskId": "tsk_01KZV91YZHZK33W09KMQRJMAK0",
+      "taskDesc": "2.6 修正 scripts 測試面首次在 CI 三平台執行時暴露的三處環境假設（任務 2.2 只在本機驗過，CI 上三平台全紅）：(a) `scripts/remote-docs.test.mjs` 以 `spawnSync('speclink')` 從 PATH 取 CLI——本機因有安裝版而通過、CI 無安裝版即 ENOENT，且比對到的可能是過期安裝版的 help surface；改為解析本 repo 的 `target/debug` 或 `target/release` binary（debug 優先，對齊專案慣例），皆不存在時跳過。(b) install.ps1 測試的跳過條件寫成「無 pwsh 才跳」，但 macOS 與 Linux runner 皆預裝 pwsh，於是拿 Windows 專用腳本去跑 arm64 mac 而撞上「不支援的架構」；改為僅在 Windows 執行。(c) install.sh 測試在 Windows 的 Git Bash 下無法解析無副檔名的假 curl／uname，且 sh 版不出貨到 Windows；改為 Windows 上整組跳過，由 ps1 那組接手。驗證：node --test scripts/*.test.mjs 本機全綠；三處閘門各自對應到平台而非工具是否存在",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ecbd61531ca429e96e2473160e98dbd82c37fdce",
+      "touchedFiles": [
+        "scripts/remote-docs.test.mjs"
+      ],
+      "recordedAt": "2026-08-12T15:22:04Z"
     }
   ]
 }

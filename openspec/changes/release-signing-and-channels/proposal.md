@@ -12,6 +12,7 @@
 - sdk-node 文件（中英）將 npm install 說明改標「尚未發布至 npm」，改教 repo 內建置路徑
 - product-status 查核日與相關列刷新
 - 主 CI 納入 `scripts` 測試面：本 change 新增的閘門、安裝腳本與 formula 產生器測試原本只在本機 `test:all` 跑得到，CI 三平台皆未涵蓋，等於這批設定契約無人看守
+- 首發實跑暴露並修掉兩個潛在缺陷：未知 API 路徑回裸 404 而非正典要求的 JSON 404（四個 smoke target 同時紅燈，既有測試漏驗 JSON 那一半）、Linux arm64 桌面建置缺 AppImage 所需的 xdg-utils
 - 首發演練：確認版號同版、推 v0.1.0 tag、驗證 Release 產物（含簽章與公證結果）與各平台安裝實測
 
 ## Capabilities
@@ -31,6 +32,6 @@
 - Affected specs: `cli-distribution`（新增）、`desktop-release`、`user-documentation`、`delivery-baseline`
 - Affected code:
   - New: `scripts/signing-gate.mjs`、`scripts/signing-gate.test.mjs`、`scripts/install.sh`、`scripts/install.ps1`、`scripts/install.test.mjs`、`scripts/homebrew-formula.mjs`、`scripts/homebrew-formula.test.mjs`、`scripts/signpath-sign.ps1`、`scripts/signpath-sign.test.mjs`
-  - Modified: `.github/workflows/release.yml`、`.github/workflows/ci.yml`、`scripts/delivery-gate.test.mjs`、`README.md`、`README.en.md`、`docs/getting-started.zh-TW.md`、`docs/getting-started.md`、`docs/sdk-node.zh-TW.md`、`docs/sdk-node.md`、`docs/product-status.zh-TW.md`
+  - Modified: `.github/workflows/release.yml`、`.github/workflows/ci.yml`、`scripts/delivery-gate.test.mjs`、`crates/speclink-server/src/assets.rs`、`crates/speclink-server/tests/it/web_assets.rs`、`README.md`、`README.en.md`、`docs/getting-started.zh-TW.md`、`docs/getting-started.md`、`docs/sdk-node.zh-TW.md`、`docs/sdk-node.md`、`docs/product-status.zh-TW.md`
   - Removed: 無
 - repo 之外（不產生本 repo 檔案）：新建 GitHub tap repo（homebrew-tap，含 formula）；GitHub Actions secrets 新增 Apple 公證三項與 SignPath 四項——皆以手動教學任務執行
