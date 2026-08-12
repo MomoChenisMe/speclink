@@ -2,7 +2,7 @@
 
 [繁體中文](product-status.zh-TW.md) · **English**
 
-Last verified: **2026-07-17**. This document is the canonical answer to “can I use this now?” The [platform architecture blueprint](platform-architecture.zh-TW.md) defines the sole target architecture, while the [implementation refactoring roadmap](implementation-refactor-roadmap.zh-TW.md) sequences delivery beneath it. A file, crate, or canonical spec is not sufficient evidence of a complete product path.
+Last verified: **2026-08-12**. This document is the canonical answer to “can I use this now?” The [platform architecture blueprint](platform-architecture.zh-TW.md) defines the sole target architecture, while the [implementation refactoring roadmap](implementation-refactor-roadmap.zh-TW.md) sequences delivery beneath it. A file, crate, or canonical spec is not sufficient evidence of a complete product path.
 
 To exercise Remote Server, Desktop, and CLI from clean local data, follow
 [Remote Server, Desktop, and CLI Getting Started](remote-getting-started.md) through setup, membership, sign-in, workspace, and recovery checks.
@@ -21,7 +21,7 @@ To exercise Remote Server, Desktop, and CLI from clean local data, follow
 | Local Repo CLI | Available（可用） | `speclink init`, `list`, `show`, `status`, `validate`, `analyze`, `drift`, `archive`, and discussion verbs | [`speclink-cli` entry](../crates/speclink-cli/src/main.rs)<br>[CLI integration tests](../crates/speclink-cli/tests/it/doc_verbs.rs) | Local Repo needs no server. Check each subcommand's `--help` before using advanced flags. | 2026-07-17 |
 | Generated Agent Skills | Partial（部分可用） | Claude `/speclink-*`; Codex `$speclink-*` | [Generated apply skill](../.agents/skills/speclink-apply/SKILL.md)<br>[Engine skill assets](../crates/speclink-core/assets/skills/verify.md) | The generated surface includes onboard/discuss/propose/apply/ingest/drift/audit/commit/archive. Assets such as `verify.md` exist in the engine, but this repository has no generated `$speclink-verify`; it must not be documented as callable. | 2026-07-17 |
 | Local Desktop | Available（可用） | Tauri/React changes, specs, discussions, archives, tasks, settings, and tray UI | [Desktop scripts](../apps/desktop/package.json)<br>[Desktop UI tests](../apps/desktop/src/__tests__/App.test.tsx) | Local workspaces are usable; Remote Workspace completeness is listed separately. | 2026-07-17 |
-| Node N-API SDK | Available（可用） | `@speclink/engine` Store bridge, rendering, and `dispatch` | [Node package entry](../crates/speclink-node/package.json)<br>[Dispatch contract tests](../crates/speclink-node/__test__/dispatch-contract.spec.ts) | This is the Engine/Store bridge. The full Phase 4 Node Host and Copilot Tool packages are not delivered. | 2026-07-17 |
+| Node N-API SDK | Partial（部分可用） | Build `crates/speclink-node` from this repository and load it by path | [Node package entry](../crates/speclink-node/package.json)<br>[Dispatch contract tests](../crates/speclink-node/__test__/dispatch-contract.spec.ts) | **Not published to npm**: `npm install @speclink/engine` resolves to nothing; the only route today is building from this repository (Rust toolchain required). The Engine/Store bridge itself works. The full Phase 4 Node Host and Copilot Tool packages are not delivered. | 2026-08-12 |
 | Command Runtime, Host and Protocol | Available（可用） | Shared Rust crates used by CLI, Server, and Node adapters | [Host dual-path tests](../crates/speclink-host/tests/bridge_dual_path.rs)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | Typed command/query/context foundations exist. Agent-ecosystem packaging and some advanced gates remain Partial or Planned. | 2026-07-17 |
 | SQLite TeamStore | Available（可用） | Default `sqlite` driver for `speclink-server` | [SQLite conformance tests](../crates/speclink-store-sqlite/tests/conformance.rs)<br>[Driver guide](server-store-drivers.zh-TW.md) | Single-instance positioning; cluster is not a current capability. | 2026-07-17 |
 | Server FS TeamStore | Available（可用） | `serverfs` driver in server configuration | [Server FS conformance tests](../crates/speclink-store-fs/tests/it/conformance.rs)<br>[Atomic publish tests](../crates/speclink-store-fs/tests/it/atomic_publish.rs) | Requires reliable OS advisory-lock/flock semantics; one server per data directory. | 2026-07-17 |
@@ -36,7 +36,7 @@ To exercise Remote Server, Desktop, and CLI from clean local data, follow
 | MCP and Copilot in-process tools | Planned（規劃中） | No installable `@speclink/copilot-tools` or MCP adapter yet | [Current workspace package inventory](../package.json)<br>[Phase 4 target](implementation-refactor-roadmap.zh-TW.md) | The README architecture sketch is not a current package. A later change must deliver tool adapters, identity closure, and E2E tests. | 2026-07-17 |
 | SSO, runtime plugins and cluster mode | Planned（規劃中） | No product entry point yet | [Platform architecture blueprint](platform-architecture.zh-TW.md)<br>[Implementation refactoring roadmap](implementation-refactor-roadmap.zh-TW.md) | These are later platform/ecosystem capabilities. Server and drivers are currently positioned for one instance. | 2026-07-17 |
 | Legacy remote REST v1 | Deprecated（已棄用） | Historical remote-client prototype | [Legacy-path inventory](implementation-refactor-roadmap.zh-TW.md)<br>[README architecture statement](../README.md) | It is not a compatibility burden or formal contract for the new Client Protocol. New guides provide migration direction, not usage instructions for this path. | 2026-07-17 |
-| Advanced verb-contract user guide | Planned（規劃中） | No standalone user guide yet | [Canonical verb contract](../openspec/specs/verb-contract/spec.md)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | `docs/verb-contract.md` does not exist. This change records the gap without creating an empty file or broken link. | 2026-07-17 |
+| Advanced verb-contract user guide | Available（可用） | [Verb contract guide](verb-contract.md) (both languages) | [Canonical verb contract](../openspec/specs/verb-contract/spec.md)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | The guide exists and covers verb and flag contracts; the specs remain canonical and the guide follows them. | 2026-08-12 |
 
 ## Verification baseline / 查核基線
 
@@ -51,7 +51,7 @@ Before this change, three documentation failures were directly reproducible: bot
 
 ## Known documentation gap / 已知文件缺口
 
-The advanced verb/Protocol contract currently has canonical specs but no standalone `docs/verb-contract.md` user guide. This is a recorded documentation gap, not a clickable document and not an absence of the underlying contract. A later change should derive the advanced guide from the canonical `verb-contract` and `client-protocol` specs.
+`@speclink/engine` is not published to npm. The documentation demonstrates the build-from-repository load path instead (see [Node SDK](sdk-node.md)); the npm channel and its timing are later work.
 
 ## Target references / 目標參考
 

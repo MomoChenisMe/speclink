@@ -20,10 +20,22 @@ Choose one Agent syntax for your Host. CLI blocks can be run directly in a shell
 
 ## 1. Install / 安裝
 
-Install from the Speclink source repository with a stable Rust toolchain:
+Install the CLI — pick one:
 
 ```bash
-cargo install --path crates/speclink-cli
+# Install script (macOS/Linux)
+curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
+
+# Install script (Windows PowerShell)
+irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.ps1 | iex
+
+# Homebrew (macOS/Linux)
+brew install MomoChenisMe/tap/speclink
+```
+
+If you prefer the graphical interface, [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) carries desktop installers for macOS, Windows, and Linux, each bundling the matching CLI. Building from source (`cargo install --path crates/speclink-cli`) is covered in the [README](../README.en.md#development--開發).
+
+```bash
 speclink --version
 ```
 

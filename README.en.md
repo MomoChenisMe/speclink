@@ -102,14 +102,36 @@ keeping the ticket and leaving it unstamped. Cards and the macOS tray panel show
 (review first, verify second), and archiving with an open verify ticket is intercepted the same way (go stamp / discard the
 verification / carry it anyway); with both tickets open you settle each station before the change archives.
 
-## Local Repo quick start / Local Repo 快速開始
+## Install / 安裝
 
-A stable Rust toolchain is required:
+**Desktop app** — download the installer for your platform from [Releases](https://github.com/MomoChenisMe/speclink/releases/latest):
+
+| Platform | Installer |
+| --- | --- |
+| macOS | `Speclink_<version>_aarch64.dmg` (Apple Silicon), `Speclink_<version>_x64.dmg` (Intel) |
+| Windows | `Speclink_<version>_x64-setup.exe` |
+| Linux | `.AppImage` (no install required) or `.deb`, each for x86_64 and aarch64 |
+
+Every desktop installer bundles the matching CLI, installable to PATH from the app settings.
+
+**CLI** — pick one:
 
 ```bash
-cargo install --path crates/speclink-cli
-speclink --version
+# Install script (macOS/Linux)
+curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
+
+# Install script (Windows PowerShell)
+irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.ps1 | iex
+
+# Homebrew (macOS/Linux)
+brew install MomoChenisMe/tap/speclink
 ```
+
+The install script detects your platform, verifies the SHA-256 checksum, and places `speclink` in `~/.local/bin` (a user-level directory on Windows). Set `SPECLINK_INSTALL_DIR` to change the location or `SPECLINK_INSTALL_VERSION` to pin a version.
+
+Windows installers are not code-signed yet, so SmartScreen warns on first run — choose "More info" → "Run anyway".
+
+## Local Repo quick start / Local Repo 快速開始
 
 Inside the repository adopting Speclink:
 
@@ -153,6 +175,13 @@ Current Server operations are documented in [deployment](docs/server-deployment.
 advanced `docs/verb-contract.md` user guide does not exist yet; canonical specs remain the contract and product-status records the gap.
 
 ## Development / 開發
+
+Building the CLI from source (a stable Rust toolchain is required):
+
+```bash
+cargo install --path crates/speclink-cli
+speclink --version
+```
 
 For the one-command dev entry points (full `npm run dev`, server only, desktop only, the checkout CLI) and the unsigned-installer bypass steps, see [Development Entry Points](docs/development.md).
 

@@ -12,24 +12,35 @@ not re-implemented — so verb behavior, `--json` payload shapes, and rendered
 content are identical by construction. (The Rust SDK is simply the
 `speclink-core` crate.)
 
-## Installation and platform notes
+## Obtaining the package and platform notes
+
+> **Not published to npm yet.** `@speclink/engine` is currently available only
+> by building it from this repository; the package does not exist on the npm
+> registry. Publication is tracked alongside the other directions in
+> [Product Capability Status](product-status.md).
+
+Build from the repository and load it:
 
 ```bash
-npm install @speclink/engine
+git clone https://github.com/MomoChenisMe/speclink.git
+cd speclink/crates/speclink-node
+npm ci
+npm run build          # napi builds the .node for your current platform
+```
+
+Reference the build output from your project by path:
+
+```js
+const { createEngine } = require('/path/to/speclink/crates/speclink-node')
 ```
 
 - This is a **native module**: the engine is compiled Rust, loaded as a Node
-  addon. Prebuilt binaries ship as platform sub-packages
-  (`optionalDependencies`), so **`npm install` just works — no system
-  dependencies, no toolchain** on the five supported targets:
-  - Windows x64 (`win32-x64-msvc`)
-  - macOS x64 (`darwin-x64`) and arm64 (`darwin-arm64`)
-  - Linux x64 glibc (`linux-x64-gnu`) and arm64 glibc (`linux-arm64-gnu`)
-- Deploying to a Linux server means the **linux-x64-gnu (or arm64) binary is
-  installed on that platform** — run `npm install` on (or for) the deploy
-  target, as with any native module.
-- On any other platform npm falls back to building from source, which
-  requires a Rust toolchain (`rustup`).
+  addon. The `npm run build` above produces a binary for the **current
+  platform**, so run it on (or cross-build it for) your deploy target.
+- Building requires a Rust toolchain (`rustup`).
+- The engine itself supports Windows x64, macOS x64 and arm64, and Linux x64
+  and arm64 (glibc). Once published to npm these ship as prebuilt
+  sub-packages and the toolchain is no longer required.
 
 ## createEngine — two storage forms
 

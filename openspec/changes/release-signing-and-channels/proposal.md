@@ -11,6 +11,7 @@
 - README（中英）新增安裝區塊：桌面三平台下載表、CLI 安裝腳本與 Homebrew 指令；cargo install 從原始碼安裝降為開發者段落；getting-started（中英）安裝節同步改寫
 - sdk-node 文件（中英）將 npm install 說明改標「尚未發布至 npm」，改教 repo 內建置路徑
 - product-status 查核日與相關列刷新
+- 主 CI 納入 `scripts` 測試面：本 change 新增的閘門、安裝腳本與 formula 產生器測試原本只在本機 `test:all` 跑得到，CI 三平台皆未涵蓋，等於這批設定契約無人看守
 - 首發演練：確認版號同版、推 v0.1.0 tag、驗證 Release 產物（含簽章與公證結果）與各平台安裝實測
 
 ## Capabilities
@@ -23,12 +24,13 @@
 
 - `desktop-release`: 「OS 程式碼簽章為可插鑰匙開關」requirement 擴充——macOS 簽章 secrets 存在時同時執行公證；Windows 新增 SignPath signCommand 路徑；開關語意與 updater 簽章正交性維持不變
 - `user-documentation`: 新增安裝通路文件 requirement——README 安裝區塊（中英對等）、sdk-node 發布狀態誠實化
+- `delivery-baseline`: 「CI 執行完整測試」requirement 擴充——測試面納入 `scripts`，並要求其執行方式相容於 workflow 釘選的 Node 版本與三平台預設 shell
 
 ## Impact
 
-- Affected specs: `cli-distribution`（新增）、`desktop-release`、`user-documentation`
+- Affected specs: `cli-distribution`（新增）、`desktop-release`、`user-documentation`、`delivery-baseline`
 - Affected code:
-  - New: `scripts/install.sh`、`scripts/install.ps1`、`scripts/install.test.mjs`、`scripts/homebrew-formula.mjs`、`scripts/homebrew-formula.test.mjs`、`scripts/signpath-sign.ps1`、`scripts/signpath-sign.test.mjs`
-  - Modified: `.github/workflows/release.yml`、`README.md`、`README.en.md`、`docs/getting-started.zh-TW.md`、`docs/getting-started.md`、`docs/sdk-node.zh-TW.md`、`docs/sdk-node.md`、`docs/product-status.zh-TW.md`
+  - New: `scripts/signing-gate.mjs`、`scripts/signing-gate.test.mjs`、`scripts/install.sh`、`scripts/install.ps1`、`scripts/install.test.mjs`、`scripts/homebrew-formula.mjs`、`scripts/homebrew-formula.test.mjs`、`scripts/signpath-sign.ps1`、`scripts/signpath-sign.test.mjs`
+  - Modified: `.github/workflows/release.yml`、`.github/workflows/ci.yml`、`scripts/delivery-gate.test.mjs`、`README.md`、`README.en.md`、`docs/getting-started.zh-TW.md`、`docs/getting-started.md`、`docs/sdk-node.zh-TW.md`、`docs/sdk-node.md`、`docs/product-status.zh-TW.md`
   - Removed: 無
 - repo 之外（不產生本 repo 檔案）：新建 GitHub tap repo（homebrew-tap，含 formula）；GitHub Actions secrets 新增 Apple 公證三項與 SignPath 四項——皆以手動教學任務執行

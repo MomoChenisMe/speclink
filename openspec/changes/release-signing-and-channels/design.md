@@ -32,6 +32,8 @@ release 管線（`.github/workflows/release.yml`）已於 push v* tag 時產出�
 
 理由：「已簽章但未公證」的產物對使用者與未簽章幾乎等價（照樣被攔），卻讓維護者誤以為已完成——這是設定錯誤，不是合法中間態，與專案「壞設定不得靜默降級」的既有原則一致。替代方案「警告後繼續產出半套」被否決。
 
+閘門邏輯抽成可獨立執行的 `scripts/signing-gate.mjs`（沿用 `scripts/release-latest-json.mjs` 把 workflow 邏輯外置以取得單元測試的既有作法）：讀各 secret 是否非空、絕不讀取或輸出其值，把決策 `SPECLINK_MACOS_SIGNING`（full／none）與 `SPECLINK_WINDOWS_SIGNING`（signpath／certificate／none）寫入 `GITHUB_ENV` 供後續步驟判斷，兩處不再各自推導；部分存在時不寫出任何決策即非零結束，下游無從沿用半套設定。內嵌於 workflow 的 bash 條件無法以三種 secrets 組合實測，故不採。
+
 ### D2：Windows SignPath 以 signCommand 接入，CI 專用 config overlay，PFX 路徑保留為後備
 
 - Tauri 的 bundle.windows.signCommand 指向 repo 內的送簽腳本：收到待簽檔路徑後，呼叫 SignPath API 建立 signing request、等候完成、以簽回的檔案原地覆蓋
@@ -65,7 +67,7 @@ README（中英）安裝區塊：桌面三平台下載表（連到 Releases 頁�
 
 **Behavior（發版後可觀察）：**
 
-- 五項 Apple secrets 齊備時，push tag 產出的 dmg 內 app 通過 Gatekeeper 評估（spctl 評估通過、公證票證已 staple），使用者雙擊即開
+- 六項 Apple secrets（憑證半組與公證半組）齊備時，push tag 產出的 dmg 內 app 通過 Gatekeeper 評估（spctl 評估通過、公證票證已 staple），使用者雙擊即開
 - SignPath secrets 齊備時，NSIS 安裝檔帶有效 Authenticode 簽章（簽發者為 SignPath Foundation）；secrets 全缺時產物與現況一致
 - 任一簽章 secrets 組「部分存在」時 workflow 紅燈，錯誤訊息列出缺項
 - curl 安裝腳本一行完成後，speclink --version 輸出該 Release 版號；checksum 不符時腳本非零退出且安裝目錄無殘留

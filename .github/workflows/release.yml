@@ -152,13 +152,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macOS 兩個 target 都要帶 app：Tauri 只為 app／appimage／msi／nsis 產出
+          # 更新包，dmg 不在其列。只建 dmg 時 bundler 印一行警告就跳過更新包，且把
+          # 中間產物 Speclink.app 清掉——下方收集步驟的 cp 隨即找不到 app.tar.gz。
+          # 附帶效果：app 成為正式目標後不再被清除，dmg 內容不變。
           - os: macos-latest            # Apple Silicon
             target: aarch64-apple-darwin
-            bundles: dmg
+            bundles: app,dmg
             platform: darwin-aarch64
           - os: macos-latest            # Intel（交叉編譯，同 build job 前例）
             target: x86_64-apple-darwin
-            bundles: dmg
+            bundles: app,dmg
             platform: darwin-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -173,11 +177,6 @@ jobs:
             bundles: appimage,deb
             platform: linux-aarch64
     runs-on: ${{ matrix.os }}
-    env:
-      # step 的 if 不能直接讀 secrets context——先在 job env 折成布林旗標，
-      # 供 OS 簽章條件步驟（design D4）判斷 secrets 是否存在。
-      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
-      HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -193,6 +192,27 @@ jobs:
             echo "::error::tauri.conf.json version（$CONF_VERSION）與 tag（$TAG_VERSION）不一致——先 bump 版本再發 tag"
             exit 1
           fi
+
+      # 簽章 secrets 閘門（design D1）：每組 secrets 全有全無——全無即跳過該路徑、
+      # workflow 照常全綠；部分存在即以列出缺項名稱的錯誤失敗，不產出半套簽章的
+      # 安裝檔（「已簽章但未公證」照樣被 Gatekeeper 攔，卻讓人誤以為已完成）。
+      # 決策寫入 GITHUB_ENV 供下方簽章步驟判斷，兩處不再各自推導 secrets 是否存在。
+      # 排在昂貴步驟之前：設定錯誤要在建置前就紅燈，而非跑完五個 target 才發現。
+      - name: Signing secrets gate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_POLICY_SLUG: ${{ secrets.SIGNPATH_POLICY_SLUG }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: node scripts/signing-gate.mjs
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -229,20 +249,26 @@ jobs:
       - name: Stage CLI sidecar
         run: node scripts/desktop-sidecar.mjs --target ${{ matrix.target }}
 
-      # OS 簽章開關（design D4）：對應 secrets 存在才注入簽章環境；缺席即跳過、
-      # 產未簽章安裝檔。本步驟只落地骨架——填鑰匙即啟用，無須改管線。
-      - name: Enable macOS code signing (env-gated)
-        if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
+      # OS 簽章開關（design D1／D4）：條件來自上方閘門的決策，填鑰匙即啟用、
+      # 無須改管線。macOS 六項一次注入——憑證三項讓 Tauri 簽章，公證三項讓它在
+      # 簽章後送 Apple 公證並 staple 票證；少了公證，簽過的 app 一樣被 Gatekeeper 攔。
+      - name: Enable macOS code signing and notarization (env-gated)
+        if: runner.os == 'macOS' && env.SPECLINK_MACOS_SIGNING == 'full'
         shell: bash
         run: |
           {
             echo "APPLE_CERTIFICATE=${{ secrets.APPLE_CERTIFICATE }}"
             echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.APPLE_CERTIFICATE_PASSWORD }}"
             echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}"
+            echo "APPLE_ID=${{ secrets.APPLE_ID }}"
+            echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}"
+            echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
           } >> "$GITHUB_ENV"
 
+      # SignPath 路徑（決策 signpath）的 signCommand 接線屬後續工作；此處只保留
+      # 本機憑證後備路徑。
       - name: Enable Windows code signing (env-gated)
-        if: runner.os == 'Windows' && env.HAS_WINDOWS_CERT == 'true'
+        if: runner.os == 'Windows' && env.SPECLINK_WINDOWS_SIGNING == 'certificate'
         shell: bash
         run: |
           {

@@ -20,10 +20,22 @@ Speclink 有三個呼叫層級：
 
 ## 1. Install / 安裝
 
-在 Speclink 原始碼 repo，以 stable Rust toolchain 安裝 CLI：
+安裝 CLI，擇一：
 
 ```bash
-cargo install --path crates/speclink-cli
+# 安裝腳本（macOS／Linux）
+curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
+
+# 安裝腳本（Windows PowerShell）
+irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.ps1 | iex
+
+# Homebrew（macOS／Linux）
+brew install MomoChenisMe/tap/speclink
+```
+
+想要圖形介面的話，[Releases](https://github.com/MomoChenisMe/speclink/releases/latest) 有 macOS、Windows 與 Linux 的桌面安裝檔，內含同版 CLI。從原始碼建置（`cargo install --path crates/speclink-cli`）見 [README](../README.md#development--開發)。
+
+```bash
 speclink --version
 ```
 
