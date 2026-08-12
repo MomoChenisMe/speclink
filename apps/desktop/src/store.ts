@@ -156,10 +156,15 @@ export interface AppState {
   /** 討論兩節（active 進看板第 0 欄、archived 進已封存頁討論節）。 */
   discussions: DiscussionLists;
   loaded: boolean;
-  /** 整批 refresh 進行中。與 loaded 搭配才是骨架的條件：loaded 只說「有沒有真值」，
-   * 讀取失敗時它維持 false（讀不到 ≠ 確認是空的），骨架的終止由此旗標負責。
+  /** 活躍 workspace 有整批 refresh 在途——由在途計數導出，不手動記帳（design D2）。
+   * 與 loaded 搭配才是骨架的條件：loaded 只說「有沒有真值」，讀取失敗時它維持
+   * false（讀不到 ≠ 確認是空的），骨架的終止由此旗標負責。
    * 首訪後 loaded 恆為 true，故監看觸發的週期性刷新不會再讓骨架閃現。 */
-  refreshing: boolean;
+  loadingActive: boolean;
+  /** 活躍 workspace 最近一次整批載入以失敗收場（design D4）。與 loaded 搭配才是
+   * 首訪失敗終態：`!loaded && loadFailed` 才顯示載入失敗提示——已有舊快取的
+   * workspace 重載失敗照舊靜默沿用最後成功快照。成功載入即歸 false。 */
+  loadFailed: boolean;
   /** 刷新世代——每次整批 refresh 完成後遞增；內容元件據此重載已載入的文件。 */
   refreshGen: number;
 
@@ -383,7 +388,7 @@ export interface AppState {
 
 type WorkspaceSnapshot = Pick<
   AppState,
-  "changes" | "specs" | "archived" | "discussions" | "loaded"
+  "changes" | "specs" | "archived" | "discussions" | "loaded" | "loadFailed"
 >;
 
 type CliProbe = Awaited<ReturnType<CliInstallAdapter["probe"]>>;
@@ -485,6 +490,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     const workspaceSnapshots = new Map<string, WorkspaceSnapshot>();
     const latestRefreshGeneration = new Map<string, number>();
     let nextRefreshGeneration = 0;
+    // 每個 workspace 的整批載入在途筆數（design D1）：refresh 進場 +1、settle -1，
+    // 歸零即刪 key。「載入中」由這裡導出，沒有任何入口／出口需要自己記帳。
+    // 非 React 狀態——讀取端一律看導出的 loadingActive。
+    const inflightRefreshes = new Map<string, number>();
 
     function emptyWorkspaceSnapshot(): WorkspaceSnapshot {
       return {
@@ -493,6 +502,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         archived: [],
         discussions: { active: [], archived: [] },
         loaded: false,
+        loadFailed: false,
       };
     }
 
@@ -507,8 +517,6 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       }
       searchSeq++;
       return {
-        // 在途載入屬前一個 workspace；新 workspace 的旗標由它自己的 refresh 重設。
-        refreshing: false,
         searchHits: [],
         expandedName: null,
         detailChange: null,
@@ -534,15 +542,40 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       return locator?.kind === "local" ? locator.root : null;
     }
 
-    /** willRefresh：這次翻頁後面會不會接整批載入。會接的入口在翻頁當下即標載入中，
-     * 消滅「已翻頁、尚未開跑」的空窗假空態；不接的入口（開修復頁、重連 handshake——
-     * 連線中由 recovery 狀態機遮罩）必須傳 false——標了沒人收，骨架就永久掛著。 */
-    function workspaceActivationState(key: string, willRefresh: boolean): Partial<AppState> {
+    /** 指定 workspace 是否有整批載入在途（loadingActive 的唯一真相）。 */
+    function loadingActiveFor(key: string | null): boolean {
+      return key !== null && (inflightRefreshes.get(key) ?? 0) > 0;
+    }
+
+    /** refresh 進場：在第一個 await 前 +1，並重算導出旗標。 */
+    function beginInflight(key: string): void {
+      inflightRefreshes.set(key, (inflightRefreshes.get(key) ?? 0) + 1);
+      syncLoadingActive();
+    }
+
+    /** refresh settle（成功、失敗、世代過期皆同一條路）：-1，歸零即刪 key。 */
+    function endInflight(key: string): void {
+      const next = (inflightRefreshes.get(key) ?? 1) - 1;
+      if (next > 0) inflightRefreshes.set(key, next);
+      else inflightRefreshes.delete(key);
+      syncLoadingActive();
+    }
+
+    /** 計數變動後重算導出值；未變動不寫 state（避免無謂重渲染）。 */
+    function syncLoadingActive(): void {
+      const next = loadingActiveFor(get().activeKey);
+      if (get().loadingActive !== next) set({ loadingActive: next });
+    }
+
+    /** 翻頁到某 workspace 時的可見狀態：其快照＋（換 workspace 時）暫態重置。
+     * 載入中不由入口表態——導出自該 key 的在途計數，接載入的入口在同一同步段內
+     * 起 refresh（計數 +1）故與 activeKey 同批落下，不接載入的入口天然為 false。 */
+    function workspaceActivationState(key: string): Partial<AppState> {
       const snapshot = visibleWorkspaceSnapshot(key);
       return {
         ...snapshot,
         ...(get().activeKey === key ? {} : resetWorkspaceTransientState()),
-        refreshing: willRefresh && !snapshot.loaded,
+        loadingActive: loadingActiveFor(key),
       };
     }
 
@@ -797,16 +830,19 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         activeKey: key,
         pendingInit: null,
         pendingAdopt: null,
-        ...workspaceActivationState(key, true),
+        ...workspaceActivationState(key),
       });
       persistTabs(tabs, key);
+      // 整批載入在翻頁的同一同步段內起跑（其計數 +1 在第一個 await 之前）——
+      // 監看掛載可達秒級，先等它就會留下「已翻頁、尚未起載入」的空窗假空態。
+      const loading = get().refresh();
       // 監看顯式跟隨活躍 session（決策 5）；不可用僅失去自動刷新、app 照常。
       try {
         await workspace?.watchWorkspace(root);
       } catch {
         /* 降級：無自動刷新 */
       }
-      await get().refresh();
+      await loading;
     }
 
     /** remote session 的入列尾聲（remote-data-source 決策 6）：upsert 分頁與
@@ -834,7 +870,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         activeKey: key,
         pendingInit: null,
         pendingAdopt: null,
-        ...workspaceActivationState(key, true),
+        ...workspaceActivationState(key),
       });
       persistTabs(tabs, key);
       await get().refresh();
@@ -856,7 +892,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
             ? {
                 activeKey: key,
                 boardView: "board" as const,
-                ...workspaceActivationState(key, false),
+                ...workspaceActivationState(key),
               }
             : {}),
           tabErrors,
@@ -920,7 +956,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     archived: [],
     discussions: { active: [], archived: [] },
     loaded: false,
-    refreshing: false,
+    loadingActive: false,
+    loadFailed: false,
     refreshGen: 0,
     boardView: "board",
     view: "active",
@@ -946,7 +983,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const session = sourceKey ? get().sessions[sourceKey] : null;
       if (!sourceKey || !session) return;
       const generation = beginRefresh(sourceKey);
-      set({ refreshing: true });
+      // 在途 +1 在第一個 await 之前；三條離開路徑（成功、失敗、世代過期）共用
+      // 同一個 finally 遞減——沒有任何出口需要判斷「這面旗標歸不歸我收」。
+      beginInflight(sourceKey);
+      try {
       const dataSource = session.dataSource;
       // capability 驅動（remote-data-source 決策 2）：server 未提供的讀取跳過、
       // 以空集呈現（archived 頁另有提示卡），不讓整批 refresh 失敗。
@@ -961,11 +1001,15 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       } catch {
         // remote 壞天氣：最後一次成功 snapshot 是唯讀真值；任一 reload 失敗
         // 都不得用空集或部分結果覆蓋。連線呈現只由 Rust 狀態事件決定。
-        // loaded 維持 false——讀不到不等於「確認是空的」；骨架的終止由 refreshing 負責。
-        // 旗標只歸現任世代的 refresh 收：世代過期代表同 key 有更新的在途，
-        // 先發不得把後發剛標上的旗標歸零；activeKey 守衛防跨 workspace 互清。
-        if (isCurrentRefresh(sourceKey, generation) && get().activeKey === sourceKey) {
-          set({ refreshing: false });
+        // loaded 維持 false——讀不到不等於「確認是空的」；骨架的終止由在途計數負責。
+        // 失敗終態隨快照存續（切走再切回仍記得）；只有現任世代寫得進去——
+        // 先發的失敗不得蓋掉後發剛落地的成功。
+        if (isCurrentRefresh(sourceKey, generation)) {
+          workspaceSnapshots.set(sourceKey, {
+            ...visibleWorkspaceSnapshot(sourceKey),
+            loadFailed: true,
+          });
+          set((state) => (state.activeKey === sourceKey ? { loadFailed: true } : {}));
         }
         return;
       }
@@ -976,16 +1020,15 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         archived,
         discussions,
         loaded: true,
+        loadFailed: false,
       };
       if (!isCurrentRefresh(sourceKey, generation)) {
-        // 世代過期＝同 key 有更新的 refresh 在途（或已自行收尾）——旗標不歸先發管。
+        // 世代過期＝同 key 有更新的 refresh 在途（或已自行收尾）——先發的資料已
+        // 過時，不得覆蓋後發的結果。
         return;
       }
       workspaceSnapshots.set(sourceKey, snapshot);
-      set((state) => ({
-        ...(state.activeKey === sourceKey ? snapshot : {}),
-        ...(get().activeKey === sourceKey ? { refreshing: false } : {}),
-      }));
+      set((state) => (state.activeKey === sourceKey ? snapshot : {}));
       if (get().activeKey !== sourceKey) return;
       // 詳情開著時同步其資料（如任務數更新）
       const cur = get().detailChange;
@@ -999,6 +1042,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       }
       // 清單就緒後遞增刷新世代——開著的內容檢視據此重載至磁碟現況。
       set((st) => ({ refreshGen: st.refreshGen + 1 }));
+      } finally {
+        endInflight(sourceKey);
+      }
     },
 
     async rearmWatch() {
@@ -1817,7 +1863,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         activeKey: remoteKey,
         boardView: "board",
         workspaceChooser: null,
-        ...workspaceActivationState(remoteKey, true),
+        ...workspaceActivationState(remoteKey),
       });
       persistTabs(tabs, remoteKey);
       await get().refresh();
@@ -1839,7 +1885,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
             activeKey: key,
             tabErrors,
             remoteRecovery,
-            ...workspaceActivationState(key, true),
+            ...workspaceActivationState(key),
           });
           persistTabs(get().tabs, key);
           await get().refresh();
@@ -1884,7 +1930,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       set({
         activeKey: key,
         boardView: "board",
-        ...workspaceActivationState(key, false),
+        ...workspaceActivationState(key),
       });
       persistTabs(get().tabs, key);
     },
@@ -1909,7 +1955,13 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         remoteRecovery,
         activeKey,
         ...(wasActive
-          ? { ...emptyWorkspaceSnapshot(), ...resetWorkspaceTransientState() }
+          ? {
+              ...emptyWorkspaceSnapshot(),
+              ...resetWorkspaceTransientState(),
+              // 關掉的分頁若還有在途載入，它會自行 settle；此刻的載入中看新的
+              // activeKey（零分頁即 null）——不是清誰的旗標，是重算導出值。
+              loadingActive: loadingActiveFor(activeKey),
+            }
           : {}),
       });
       persistTabs(tabs, activeKey);

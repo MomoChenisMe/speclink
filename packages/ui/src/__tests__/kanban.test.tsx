@@ -619,3 +619,40 @@ describe("看板首訪 skeleton", () => {
     expect(document.querySelector("[data-change]")).toBeNull();
   });
 });
+
+// spec「首訪載入失敗終態呈現」：讀不到 ≠ 確認是空的——失敗要與真空 workspace
+// 可區分，且不得停在 skeleton（載入已經結束了）。
+describe("看板首訪載入失敗終態", () => {
+  const emptyDiscussions: DiscussionLists = { active: [], archived: [] };
+
+  it("載入失敗 → 四欄卡片區顯示失敗提示，欄名照常", () => {
+    render(<KanbanBoard changes={[]} discussions={emptyDiscussions} loadFailed />);
+    expect(screen.getByText("提案中")).toBeTruthy();
+    for (const id of ["discussions", "proposed", "in-progress", "ready"]) {
+      expect(within(column(id)).getByTestId("column-load-failed")).toBeTruthy();
+    }
+  });
+
+  it("載入失敗 → 不顯示空態文案、不留佔位卡", () => {
+    render(<KanbanBoard changes={[]} discussions={emptyDiscussions} loadFailed />);
+    expect(screen.queryByText("尚無討論")).toBeNull();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it("載入失敗 → 不顯示計數徽章（不謊報 0 筆）", () => {
+    render(<KanbanBoard changes={[]} discussions={emptyDiscussions} loadFailed />);
+    expect(document.querySelector('[data-testid="column-count"]')).toBeNull();
+  });
+
+  it("載入中優先於失敗提示（重試在途時不留舊提示）", () => {
+    render(<KanbanBoard changes={[]} discussions={emptyDiscussions} loading loadFailed />);
+    expect(document.querySelectorAll('[aria-busy="true"]').length).toBeGreaterThan(0);
+    expect(document.querySelector('[data-testid="column-load-failed"]')).toBeNull();
+  });
+
+  it("成功載入後 → 失敗提示消失，回到既有呈現", () => {
+    render(<KanbanBoard changes={changes} discussions={emptyDiscussions} />);
+    expect(document.querySelector('[data-testid="column-load-failed"]')).toBeNull();
+    expect(within(column("ready")).getByText("ready-z")).toBeTruthy();
+  });
+});

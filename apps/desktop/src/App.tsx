@@ -692,9 +692,12 @@ function AppInner({
               }
               onDragActiveChange={handleBoardDragActive}
               // 骨架的前提是「首訪的載入正在進行」：探測中（pendingTabKey）或整批
-              // 載入中（refreshing），且尚無真值。只看 loaded 會讓探測失敗或讀取
+              // 載入中（loadingActive），且尚無真值。只看 loaded 會讓探測失敗或讀取
               // 失敗的 workspace 永遠停在載入中——讀不到不等於還在讀。
-              loading={(s.pendingTabKey !== null || s.refreshing) && !s.loaded}
+              loading={(s.pendingTabKey !== null || s.loadingActive) && !s.loaded}
+              // 首訪失敗的終態：讀不到 ≠ 確認是空的，故不落回空態文案。已有舊
+              // 快取（loaded）時照舊靜默沿用最後成功快照，不顯示提示。
+              loadFailed={!s.loaded && s.loadFailed}
             />
           ) : (
             <ArchivedList

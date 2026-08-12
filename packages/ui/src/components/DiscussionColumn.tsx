@@ -16,7 +16,7 @@ import { cardDndId } from "../boardDnd";
 import { useI18n } from "../i18n";
 import { changeStage, STAGE_BADGE } from "../stage";
 import { Button } from "./ui/button";
-import { ColumnSkeleton } from "./skeletons";
+import { ColumnLoadFailed, ColumnSkeleton } from "./skeletons";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { CardNameRow } from "./CardNameRow";
 import { HighlightText } from "./HighlightText";
@@ -78,6 +78,8 @@ export interface DiscussionColumnProps {
   fulltextHits?: SearchHit[];
   /** 首訪載入中：以佔位卡呈現，欄名照常、不出空態文案與計數（design D2）。 */
   loading?: boolean;
+  /** 首訪載入失敗：卡片區顯示載入失敗提示，取代空態文案（呼叫端已排除 loading）。 */
+  loadFailed?: boolean;
 }
 
 const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
@@ -287,6 +289,7 @@ export function DiscussionColumn({
   highlight,
   fulltextHits,
   loading,
+  loadFailed,
 }: DiscussionColumnProps) {
   const { t } = useI18n();
   const full = discussions.filter((d) => d.status !== "promoted");
@@ -330,7 +333,7 @@ export function DiscussionColumn({
           {t("discussion.heading")}
         </h2>
         <div className="flex-1" />
-        {!loading && (
+        {!loading && !loadFailed && (
           <span
             data-testid="column-count"
             className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-muted text-muted-foreground"
@@ -342,6 +345,8 @@ export function DiscussionColumn({
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
         {loading ? (
           <ColumnSkeleton />
+        ) : loadFailed ? (
+          <ColumnLoadFailed />
         ) : (
           <>
             {full.length === 0 && promoted.length === 0 && (

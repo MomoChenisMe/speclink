@@ -1,0 +1,84 @@
+{
+  "version": 2,
+  "change": "desktop-refreshing-inflight-set",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 store 內部新增 inflightRefreshes: Map<string, number> 與導出旗標 loadingActive: boolean（＝activeKey 的在途計數 > 0）：refresh() 於第一個 await 前對 sourceKey 計數 +1，settle（成功、失敗、世代過期）於單一 finally 遞減、歸零刪 key，計數或 activeKey 變動時重算 loadingActive。刪除 refreshing 布林、refresh() 出口的 activeKey 與世代守衛。先改寫既有「整批載入的進行中旗標」「整批載入旗標的記帳邊界」測試群的斷言對象為 loadingActive（五類情境語意不變：關閉在途分頁、跨 workspace 不互清、同 key 重疊不早收、翻頁與標記同批、不接載入的入口不標），跑紅後實作至綠。檔案：apps/desktop/src/store.ts、apps/desktop/src/__tests__/store.test.ts。驗證：npm test -w @speclink/desktop 通過。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/tray.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 TraySnapshot 刪 workspaceLoaded／workspaceRefreshing、增 workspaceLoading: boolean（＝loadingActive && !loaded）與 workspaceLoadFailed: boolean；surfaceKey 改 [pendingTabKey, activeKey, workspaceLoading]。先改寫 tray 既有欄位導出與即推測試、補「失敗當下 workspaceLoading 翻 false 即時推送」案，跑紅後實作。檔案：apps/desktop/src/tray.ts、apps/desktop/src/__tests__/tray.test.ts。驗證：npm test -w @speclink/desktop 通過。",
+      "files": [
+        "apps/desktop/src/__tests__/trayPanel.test.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 KanbanBoard 與 DiscussionColumn 增可選 loadFailed prop，落實 desktop-app spec「首訪載入失敗終態呈現」：loadFailed 且非 loading 時卡片區顯示載入失敗提示文案（i18n 新鍵）、不顯示空態文案；App.tsx 接線 loadFailed={!s.loaded && 活躍快照.loadFailed}、骨架條件改 (s.pendingTabKey !== null || s.loadingActive) && !s.loaded。先寫 kanban 測試斷言失敗提示／空態互斥與 loading 優先，跑紅後實作。檔案：packages/ui/src/components/KanbanBoard.tsx、packages/ui/src/components/DiscussionColumn.tsx、packages/ui/src/i18n.tsx、apps/desktop/src/App.tsx、packages/ui/src/__tests__/kanban.test.tsx。驗證：npm test -w @speclink/ui 與 npm test -w @speclink/desktop 通過。",
+      "files": [
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/components/DiscussionColumn.tsx",
+        "packages/ui/src/components/KanbanBoard.tsx",
+        "packages/ui/src/components/skeletons.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/index.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZT5YDDFY5RH5BXY6PRGBQNK",
+      "taskDesc": "1.1 store 內部新增 inflightRefreshes: Map<string, number> 與導出旗標 loadingActive: boolean（＝activeKey 的在途計數 > 0）：refresh() 於第一個 await 前對 sourceKey 計數 +1，settle（成功、失敗、世代過期）於單一 finally 遞減、歸零刪 key，計數或 activeKey 變動時重算 loadingActive。刪除 refreshing 布林、refresh() 出口的 activeKey 與世代守衛。先改寫既有「整批載入的進行中旗標」「整批載入旗標的記帳邊界」測試群的斷言對象為 loadingActive（五類情境語意不變：關閉在途分頁、跨 workspace 不互清、同 key 重疊不早收、翻頁與標記同批、不接載入的入口不標），跑紅後實作至綠。檔案：apps/desktop/src/store.ts、apps/desktop/src/__tests__/store.test.ts。驗證：npm test -w @speclink/desktop 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "abe5fd701bcc4ef43c3fb732fca417726baef1e7",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/tray.ts"
+      ],
+      "recordedAt": "2026-08-12T05:57:28Z"
+    },
+    {
+      "taskId": "tsk_01KZT5YDDGM7YEWYS3TXFNM65Q",
+      "taskDesc": "2.1 TraySnapshot 刪 workspaceLoaded／workspaceRefreshing、增 workspaceLoading: boolean（＝loadingActive && !loaded）與 workspaceLoadFailed: boolean；surfaceKey 改 [pendingTabKey, activeKey, workspaceLoading]。先改寫 tray 既有欄位導出與即推測試、補「失敗當下 workspaceLoading 翻 false 即時推送」案，跑紅後實作。檔案：apps/desktop/src/tray.ts、apps/desktop/src/__tests__/tray.test.ts。驗證：npm test -w @speclink/desktop 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "abe5fd701bcc4ef43c3fb732fca417726baef1e7",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/trayPanel.test.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ],
+      "recordedAt": "2026-08-12T06:04:37Z"
+    },
+    {
+      "taskId": "tsk_01KZT5YDDGPP6Z91787QSS9JK3",
+      "taskDesc": "3.1 KanbanBoard 與 DiscussionColumn 增可選 loadFailed prop，落實 desktop-app spec「首訪載入失敗終態呈現」：loadFailed 且非 loading 時卡片區顯示載入失敗提示文案（i18n 新鍵）、不顯示空態文案；App.tsx 接線 loadFailed={!s.loaded && 活躍快照.loadFailed}、骨架條件改 (s.pendingTabKey !== null || s.loadingActive) && !s.loaded。先寫 kanban 測試斷言失敗提示／空態互斥與 loading 優先，跑紅後實作。檔案：packages/ui/src/components/KanbanBoard.tsx、packages/ui/src/components/DiscussionColumn.tsx、packages/ui/src/i18n.tsx、apps/desktop/src/App.tsx、packages/ui/src/__tests__/kanban.test.tsx。驗證：npm test -w @speclink/ui 與 npm test -w @speclink/desktop 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "abe5fd701bcc4ef43c3fb732fca417726baef1e7",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/components/DiscussionColumn.tsx",
+        "packages/ui/src/components/KanbanBoard.tsx",
+        "packages/ui/src/components/skeletons.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/index.ts"
+      ],
+      "recordedAt": "2026-08-12T06:08:39Z"
+    }
+  ]
+}

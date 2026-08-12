@@ -1685,26 +1685,26 @@ describe("切換中分頁（pendingTabKey）", () => {
   });
 });
 
-// 骨架的終止條件是 refreshing，不是 loaded：讀不到不等於「確認是空的」，
-// 所以失敗時 loaded 維持 false，但 refreshing 必須落回 false 讓骨架收掉。
+// 骨架的終止條件是 loadingActive，不是 loaded：讀不到不等於「確認是空的」，
+// 所以失敗時 loaded 維持 false，但在途計數必須歸零讓骨架收掉。
 describe("整批載入的進行中旗標", () => {
-  it("載入進行中 → refreshing 為 true；完成後落回 false", async () => {
+  it("載入進行中 → loadingActive 為 true；完成後落回 false", async () => {
     const d = deferred<ChangeItem[]>();
     const store = storeWith(fakeDataSource({ listChanges: vi.fn(() => d.promise) }));
     const pending = store.getState().refresh();
-    expect(store.getState().refreshing).toBe(true);
+    expect(store.getState().loadingActive).toBe(true);
     d.resolve([]);
     await pending;
-    expect(store.getState().refreshing).toBe(false);
+    expect(store.getState().loadingActive).toBe(false);
     expect(store.getState().loaded).toBe(true);
   });
 
-  it("首訪無快取且讀取失敗 → refreshing 落回 false，loaded 維持 false", async () => {
+  it("首訪無快取且讀取失敗 → loadingActive 落回 false，loaded 維持 false", async () => {
     const store = storeWith(
       fakeDataSource({ listChanges: vi.fn().mockRejectedValue(new Error("offline")) }),
     );
     await store.getState().refresh();
-    expect(store.getState().refreshing).toBe(false);
+    expect(store.getState().loadingActive).toBe(false);
     expect(store.getState().loaded).toBe(false);
   });
 
@@ -1723,8 +1723,79 @@ describe("整批載入的進行中旗標", () => {
   });
 });
 
-// refreshing 的記帳必須跟著活躍 workspace 走：旗標是全域的，守衛卻按 key，
-// 一旦錯位就會卡在 true——那正是骨架永久掛著的老問題復發。
+// 讀不到 ≠ 確認是空的：首訪失敗要留下終態記號，看板與面板才能顯示「載入失敗」
+// 而不是與真空 workspace 同貌的空態。記號隨快照走，切走再切回仍記得。
+describe("首訪載入失敗終態", () => {
+  it("首訪載入失敗 → loadFailed 為 true、loaded 維持 false", async () => {
+    const store = storeWith(
+      fakeDataSource({ listChanges: vi.fn().mockRejectedValue(new Error("offline")) }),
+    );
+    await store.getState().refresh();
+    expect(store.getState().loadFailed).toBe(true);
+    expect(store.getState().loaded).toBe(false);
+  });
+
+  it("失敗後成功載入 → loadFailed 落回 false", async () => {
+    const listChanges = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue([]);
+    const store = storeWith(fakeDataSource({ listChanges }));
+    await store.getState().refresh();
+    expect(store.getState().loadFailed).toBe(true);
+
+    await store.getState().refresh();
+    expect(store.getState().loadFailed).toBe(false);
+    expect(store.getState().loaded).toBe(true);
+  });
+
+  it("過期世代的失敗回來 → 不得覆寫後發的成功", async () => {
+    const first = deferred<ChangeItem[]>();
+    const second = deferred<ChangeItem[]>();
+    const listChanges = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const store = storeWith(fakeDataSource({ listChanges }));
+
+    const p1 = store.getState().refresh();
+    const p2 = store.getState().refresh();
+    second.resolve([]);
+    await p2;
+    first.reject(new Error("offline"));
+    await p1;
+    expect(store.getState().loadFailed).toBe(false);
+    expect(store.getState().loaded).toBe(true);
+  });
+
+  it("切走再切回 → 失敗記錄隨快照存續（不重回骨架、不顯示空態）", async () => {
+    const gate = deferred<ChangeItem[]>();
+    const dsA = fakeDataSource({
+      listChanges: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockReturnValueOnce(gate.promise),
+    });
+    const a = remoteSession(dsA, "repo-a");
+    const b = remoteSession(fakeDataSource(), "repo-b");
+    const store = storeWithRemoteSessions(a, b);
+
+    await store.getState().refresh();
+    expect(store.getState().loadFailed).toBe(true);
+
+    await store.getState().activateTab(b.id);
+    expect(store.getState().loadFailed).toBe(false);
+
+    // 切回 A：重載才剛起跑，此刻的失敗記號來自快照而非這一發的結果。
+    const back = store.getState().activateTab(a.id);
+    expect(store.getState().loadFailed).toBe(true);
+    expect(store.getState().loaded).toBe(false);
+
+    gate.resolve([]);
+    await back;
+    expect(store.getState().loadFailed).toBe(false);
+  });
+});
+
+// loadingActive 由 activeKey 的在途計數導出：計數按 key 記，導出值跟著活躍
+// workspace 走。一旦兩者錯位就會卡在 true——那正是骨架永久掛著的老問題復發。
 describe("整批載入旗標的記帳邊界", () => {
   it("載入途中關掉該分頁 → 旗標不卡在 true", async () => {
     const d = deferred<ChangeItem[]>();
@@ -1738,11 +1809,11 @@ describe("整批載入旗標的記帳邊界", () => {
     });
 
     const pending = store.getState().refresh();
-    expect(store.getState().refreshing).toBe(true);
+    expect(store.getState().loadingActive).toBe(true);
     store.getState().closeTab(a.id);
     d.resolve([]);
     await pending;
-    expect(store.getState().refreshing).toBe(false);
+    expect(store.getState().loadingActive).toBe(false);
   });
 
   it("別的 workspace 的在途載入結束 → 不得清掉現任的旗標", async () => {
@@ -1766,16 +1837,16 @@ describe("整批載入旗標的記帳邊界", () => {
     // 翻到 B 並起 B 自己的載入：此時畫面上「正在載」的是 B。
     store.setState({ activeKey: b.id, loaded: false });
     const bPending = store.getState().refresh();
-    expect(store.getState().refreshing).toBe(true);
+    expect(store.getState().loadingActive).toBe(true);
 
     // A 的在途載入這時才回來——它已不是現任，不得把 B 的旗標收掉。
     aLoad.resolve([]);
     await aPending;
-    expect(store.getState().refreshing).toBe(true);
+    expect(store.getState().loadingActive).toBe(true);
 
     bLoad.resolve([]);
     await bPending;
-    expect(store.getState().refreshing).toBe(false);
+    expect(store.getState().loadingActive).toBe(false);
   });
 
   it("同 key 重疊載入：先發成功回來 → 不得清掉後發在途的旗標", async () => {
@@ -1789,16 +1860,16 @@ describe("整批載入旗標的記帳邊界", () => {
 
     const p1 = store.getState().refresh();
     const p2 = store.getState().refresh();
-    expect(store.getState().refreshing).toBe(true);
+    expect(store.getState().loadingActive).toBe(true);
 
     // 先發此刻已是過期世代——回來時後發還在載，旗標不得歸零。
     first.resolve([]);
     await p1;
-    expect(store.getState().refreshing).toBe(true);
+    expect(store.getState().loadingActive).toBe(true);
 
     second.resolve([]);
     await p2;
-    expect(store.getState().refreshing).toBe(false);
+    expect(store.getState().loadingActive).toBe(false);
   });
 
   it("同 key 重疊載入：先發失敗 → 不得清掉後發在途的旗標", async () => {
@@ -1815,11 +1886,11 @@ describe("整批載入旗標的記帳邊界", () => {
 
     first.reject(new Error("offline"));
     await p1;
-    expect(store.getState().refreshing).toBe(true);
+    expect(store.getState().loadingActive).toBe(true);
 
     second.resolve([]);
     await p2;
-    expect(store.getState().refreshing).toBe(false);
+    expect(store.getState().loadingActive).toBe(false);
   });
 
   it("開修復頁（後面不接整批載入）→ 不得標載入中", () => {
@@ -1833,13 +1904,14 @@ describe("整批載入旗標的記帳邊界", () => {
 
     store.getState().showRemoteWorkspaceRecovery(b.id);
     expect(store.getState().activeKey).toBe(b.id);
-    // 這條翻頁路徑不會起整批載入——標了沒人收，骨架就永久掛著。
-    expect(store.getState().refreshing).toBe(false);
+    // 這條翻頁路徑不會起整批載入——沒有在途就沒有載入中，入口無須表態。
+    expect(store.getState().loadingActive).toBe(false);
   });
 });
 
-// 翻頁到首訪 workspace 的那一刻起就算載入中：activeKey 與旗標同批落下，
-// 中間不得有「已翻頁、尚未標記載入」的空窗——那個窗口渲染的正是假空態。
+// 翻頁到首訪 workspace 的那一刻起就算載入中：翻頁入口不再自行表態，改由它
+// 同步接上的 refresh() 計數 +1 導出——中間不得有「已翻頁、尚未起載入」的空窗，
+// 那個窗口渲染的正是假空態。監看掛載慢時尤其明顯，故以卡住的 watch 把關。
 describe("翻頁與載入中標記同批", () => {
   it("翻到首訪 workspace → activeKey 翻轉當下即為載入中", async () => {
     const load = deferred<ChangeItem[]>();
@@ -1872,11 +1944,11 @@ describe("翻頁與載入中標記同批", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(store.getState().activeKey).toBe(b.id);
     expect(store.getState().loaded).toBe(false);
-    expect(store.getState().refreshing).toBe(true);
+    expect(store.getState().loadingActive).toBe(true);
 
     resolveWatch();
     load.resolve([]);
     await activation;
-    expect(store.getState().refreshing).toBe(false);
+    expect(store.getState().loadingActive).toBe(false);
   });
 });
