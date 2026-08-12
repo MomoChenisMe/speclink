@@ -45,6 +45,7 @@ function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
     discussions: [{ slug: "d1", topic: "討論一", promoted: false }],
     pendingTabKey: null,
     workspaceLoaded: true,
+    workspaceRefreshing: false,
     ...over,
   };
 }
@@ -909,19 +910,19 @@ describe("面板載入回饋", () => {
   });
 
   it("首訪未載入 → 分區標題照常、內容為佔位列", () => {
-    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, changes: [], discussions: [] }) });
+    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, workspaceRefreshing: true, changes: [], discussions: [] }) });
     expect(screen.getByText("進行中")).toBeTruthy();
     expect(screen.getByText("討論")).toBeTruthy();
     expect(document.querySelectorAll('[aria-busy="true"]').length).toBeGreaterThan(0);
   });
 
   it("首訪未載入 → 不顯示分區計數（不謊報 0 筆）", () => {
-    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, changes: [], discussions: [] }) });
+    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, workspaceRefreshing: true, changes: [], discussions: [] }) });
     expect(document.querySelector('[data-testid="panel-section-count"]')).toBeNull();
   });
 
   it("首訪未載入 → 不顯示空狀態文案", () => {
-    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, changes: [], discussions: [] }) });
+    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, workspaceRefreshing: true, changes: [], discussions: [] }) });
     expect(screen.queryByText("尚無進行中變更")).toBeNull();
   });
 
@@ -945,6 +946,20 @@ describe("面板載入回饋", () => {
     });
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
     expect(screen.getByTestId("panel-section-discussions")).toBeTruthy();
+  });
+
+  // 有分頁但探測失敗（資料夾被搬走／改名）：activeKey 恆 null、loaded 恆 false，
+  // 整批載入根本不會發生——只擋零分頁不夠，骨架照樣永久掛著。
+  it("有分頁但無活躍 workspace → 不出佔位列", () => {
+    renderPanel({
+      snapshot: snapshot({
+        activeKey: null,
+        workspaceLoaded: false,
+        changes: [],
+        discussions: [],
+      }),
+    });
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 
   it("remote 復原態遮蔽資料時 → 不出佔位列（復原呈現優先）", () => {

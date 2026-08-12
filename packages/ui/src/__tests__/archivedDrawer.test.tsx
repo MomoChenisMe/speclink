@@ -378,4 +378,43 @@ describe("已封存抽屜文件三態", () => {
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
+
+  it("封存變更文件首載失敗 → 空態文案，不停在骨架", async () => {
+    render(
+      <ArchivedDrawer
+        {...(makeProps({ loadDocument: vi.fn().mockRejectedValue(new Error("offline")) }) as never)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("（無提案文件）")).toBeTruthy());
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it("封存討論首載失敗 → 空態文案，不停在骨架", async () => {
+    render(
+      <ArchivedDrawer
+        {...(makeProps({
+          target: { kind: "discussion", slug: "some-topic" },
+          loadDiscussionDocument: vi.fn().mockRejectedValue(new Error("offline")),
+        }) as never)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("（無內容）")).toBeTruthy());
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+});
+
+// 三態的 undefined 是「還在載」，不是「載不到」。capability 載入失敗時若停在
+// undefined，規格分頁會永久掛骨架（與 RichDetailDrawer 同一收斂）。
+describe("已封存抽屜規格分頁載入失敗的收斂", () => {
+  it("loadCapabilities 失敗 → 收斂為空態文案，不永久掛骨架", async () => {
+    render(
+      <ArchivedDrawer
+        {...(makeProps({ loadCapabilities: vi.fn(async () => Promise.reject("讀不到")) }) as never)}
+      />,
+    );
+    await waitFor(() => screen.getByRole("tab", { name: /規格/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
+    await waitFor(() => expect(screen.getByText("（此變更無 delta 規格）")).toBeTruthy());
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
 });

@@ -908,3 +908,16 @@ describe("側欄無常駐版號（desktop-app 規格「側欄導覽結構」）"
     expect(screen.queryByText(/^v\d/)).toBeNull();
   });
 });
+
+// 看板骨架只在「活躍 workspace 正在載入」時出現。持久化分頁探測失敗時
+// activeKey 恆 null、loaded 恆 false，整批載入根本不會發生——若只看 loaded，
+// 看板會永久停在骨架卡，比改動前可辨識的空看板更糟。
+describe("看板骨架的終止條件", () => {
+  it("有分頁但探測失敗（無活躍 workspace）→ 不出骨架卡", async () => {
+    const ws = fakeWorkspace();
+    ws.openProject = vi.fn().mockRejectedValue("目錄已不存在");
+    renderApp(fakeDataSource(), { ws });
+    await waitFor(() => expect(ws.openProject).toHaveBeenCalled());
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
+  });
+});

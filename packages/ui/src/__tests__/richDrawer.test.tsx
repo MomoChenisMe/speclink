@@ -1178,3 +1178,49 @@ describe("變更抽屜文件三態", () => {
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 });
+
+// 三態的 undefined 是「還在載」，不是「載不到」。capability 載入失敗時若停在
+// undefined，規格分頁會永久掛骨架——改動前停在 {} 至少會誠實說「無 delta 規格」。
+describe("規格分頁載入失敗的收斂", () => {
+  it("loadCapabilities 失敗 → 收斂為空態文案，不永久掛骨架", async () => {
+    render(
+      <RichDetailDrawer
+        {...(makeProps({ loadCapabilities: vi.fn(async () => Promise.reject("讀不到")) }) as never)}
+      />,
+    );
+    await waitFor(() => screen.getByRole("tab", { name: /規格/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
+    await waitFor(() => expect(screen.getByText("（此 change 無 delta 規格）")).toBeTruthy());
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it("文件首載失敗 → 落到既有空態文案，不停在骨架", async () => {
+    render(
+      <RichDetailDrawer
+        {...(makeProps({ loadDocument: vi.fn().mockRejectedValue(new Error("offline")) }) as never)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("（此 change 尚無提案內容）")).toBeTruthy());
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it("規格分頁重載失敗 → 保留已載內容，不抹成假空態", async () => {
+    let fail = false;
+    const loadCapabilities = vi.fn(async () => {
+      if (fail) throw new Error("offline");
+      return ["desktop-app"];
+    });
+    const props = makeProps({ loadCapabilities });
+    const { rerender } = render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+    await waitFor(() => screen.getByRole("tab", { name: /規格/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
+    await waitFor(() => expect(screen.getByText(/Requirement: a/)).toBeTruthy());
+
+    fail = true;
+    rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+    await new Promise((r) => setTimeout(r, 25));
+    // 抽屜開著時一次短暫失敗不得把已載好的內容抹成「無 delta 規格」。
+    expect(screen.getByText(/Requirement: a/)).toBeTruthy();
+    expect(screen.queryByText("（此 change 無 delta 規格）")).toBeNull();
+  });
+});

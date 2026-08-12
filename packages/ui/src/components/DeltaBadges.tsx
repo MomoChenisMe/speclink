@@ -50,9 +50,9 @@ export function DeltaBadges({ counts }: { counts: DeltaCounts }) {
  * 區段內文交給共用 Markdown 照排。無 delta 標題的文件整篇照常渲染。
  * RichDetailDrawer 規格分頁與 ArchivedList 規格分頁共用。
  */
-export function DeltaSpecView({ markdown, empty }: { markdown: string | null; empty?: string }) {
+export function DeltaSpecView({ markdown }: { markdown: string | null }) {
   const { t } = useI18n();
-  if (!markdown || !markdown.trim()) return <Markdown content={markdown} empty={empty} />;
+  if (!markdown || !markdown.trim()) return <Markdown content={markdown} />;
   return (
     <div>
       {splitDeltaSections(markdown).map((s, i) =>

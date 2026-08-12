@@ -110,20 +110,34 @@ export function ArchivedDrawer({
     const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
       if (requestSeq.current === seq) apply(v);
     };
+    // 失敗收斂：還沒有東西可顯示才落終態空文案（undefined 停著＝永久骨架）；
+    // 已有內容維持前值——重載的短暫失敗不得抹成假空態。
+    const settled = (apply: typeof setProposal) => () => {
+      if (requestSeq.current === seq) apply((prev) => (prev === undefined ? null : prev));
+    };
     if (tgt.kind === "discussion") {
-      void loadDiscussionDocument(tgt.slug).then(fresh(setDiscussionDoc));
+      void loadDiscussionDocument(tgt.slug)
+        .then(fresh(setDiscussionDoc))
+        .catch(settled(setDiscussionDoc));
       return;
     }
     const name = tgt.datedName;
-    void loadDocument(name, "proposal.md").then(fresh(setProposal));
-    void loadDocument(name, "design.md").then(fresh(setDesign));
-    void loadDocument(name, "tasks.md").then(fresh(setTasksMd));
-    void loadCapabilities(name).then(async (caps) => {
-      const entries = await Promise.all(
-        caps.map(async (cap) => [cap, await loadDocument(name, `specs/${cap}/spec.md`)] as const),
-      );
-      if (requestSeq.current === seq) setSpecDocs(Object.fromEntries(entries));
-    });
+    void loadDocument(name, "proposal.md").then(fresh(setProposal)).catch(settled(setProposal));
+    void loadDocument(name, "design.md").then(fresh(setDesign)).catch(settled(setDesign));
+    void loadDocument(name, "tasks.md").then(fresh(setTasksMd)).catch(settled(setTasksMd));
+    void loadCapabilities(name)
+      .then(async (caps) => {
+        const entries = await Promise.all(
+          caps.map(async (cap) => [cap, await loadDocument(name, `specs/${cap}/spec.md`)] as const),
+        );
+        if (requestSeq.current === seq) setSpecDocs(Object.fromEntries(entries));
+      })
+      // 首載失敗收斂為空集（undefined 停著＝永久骨架）；重載失敗維持前值，不抹成假空態。
+      .catch(() => {
+        if (requestSeq.current === seq) {
+          setSpecDocs((prev) => (prev === undefined ? {} : prev));
+        }
+      });
   };
 
   // 開啟／換目標：清空後全量載入（載入中狀態屬新內容的正確呈現）。

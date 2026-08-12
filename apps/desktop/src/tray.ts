@@ -63,8 +63,10 @@ export interface TraySnapshot {
   discussions: Array<{ slug: string; topic: string; promoted: boolean }>;
   /** 探測進行中的目標分頁 key（null＝無切換）：面板據此在該分頁出 spinner。 */
   pendingTabKey: string | null;
-  /** 活躍 workspace 的整批載入是否已完成——false 時面板分區以佔位列呈現。 */
+  /** 活躍 workspace 的整批載入是否已完成（已有真值）。 */
   workspaceLoaded: boolean;
+  /** 整批載入是否正在進行——與 workspaceLoaded 搭配才是骨架條件（讀不到 ≠ 還在讀）。 */
+  workspaceRefreshing: boolean;
 }
 
 /** 變更子選單的動作項。 */
@@ -302,6 +304,8 @@ export interface TrayStoreApi {
     pendingTabKey: string | null;
     /** 活躍 workspace 快照是否已完成首次載入。 */
     loaded: boolean;
+    /** 整批載入是否正在進行。 */
+    refreshing: boolean;
     changes: ChangeItem[];
     discussions: { active: Array<{ slug: string; topic: string; promotedTo: string[] }> };
     sessions: Record<string, WorkspaceSession>;
@@ -384,6 +388,7 @@ export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>): 
     })),
     pendingTabKey: state.pendingTabKey,
     workspaceLoaded: state.loaded,
+    workspaceRefreshing: state.refreshing,
   };
 }
 
@@ -574,11 +579,15 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   let timer: ReturnType<typeof setTimeout> | null = null;
   // 面板的「我在看哪個 workspace、它載完了沒」走即時推送，不進去抖：spec 要求
   // 點下分頁當下就出 spinner，且 spinner 消失與高亮移轉須同批抵達。去抖每次 store
-  // 變動都重設計時器——這三個欄位若跟著去抖，面板會閃一下 spinner 就回到切換前的
+  // 變動都重設計時器——這些欄位若跟著去抖，面板會閃一下 spinner 就回到切換前的
   // 樣子。清單內容變動仍走去抖（原生選單重建的成本在那裡）。
+  // JSON 序列化而非字串拼接：locator key 內含路徑（可能有空白），拼接的欄位
+  // 邊界不明確，不同狀態組合能拼出同一字串而漏掉推送。
+  // refreshing 刻意不進此面：它每次監看觸發的刷新都會翻兩次，納入等於讓清單
+  // 內容整個繞過去抖；面板的骨架收掉晚一個去抖週期是可接受的代價。
   const surfaceKey = () => {
     const s = store.getState();
-    return `${s.pendingTabKey} ${s.activeKey} ${s.loaded}`;
+    return JSON.stringify([s.pendingTabKey, s.activeKey, s.loaded]);
   };
   let lastSurface = surfaceKey();
   const unsubscribe = store.subscribe(() => {
