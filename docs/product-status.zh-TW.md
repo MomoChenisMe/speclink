@@ -2,7 +2,7 @@
 
 **繁體中文** · [English](product-status.md)
 
-最後查核日期：**2026-07-17**。本文是「目前能不能用」的正典；[平台架構藍圖](platform-architecture.zh-TW.md)描述唯一目標架構，[實作重構路線圖](implementation-refactor-roadmap.zh-TW.md)描述其下的交付順序。檔案、crate 或正典 spec 單獨存在不代表產品路徑已完整交付。
+最後查核日期：**2026-08-12**。本文是「目前能不能用」的正典；[平台架構藍圖](platform-architecture.zh-TW.md)描述唯一目標架構，[實作重構路線圖](implementation-refactor-roadmap.zh-TW.md)描述其下的交付順序。檔案、crate 或正典 spec 單獨存在不代表產品路徑已完整交付。
 
 要從全新本地資料實際操作 Remote Server、Desktop 與 CLI，請依
 [Remote 入門教學](remote-getting-started.zh-TW.md)完成 setup、membership、登入、workspace 與恢復測試。
@@ -21,7 +21,7 @@
 | Local Repo CLI | Available（可用） | `speclink init`、`list`、`show`、`status`、`validate`、`analyze`、`drift`、`archive` 與 discussion verbs | [`speclink-cli` 入口](../crates/speclink-cli/src/main.rs)<br>[CLI 整合測試](../crates/speclink-cli/tests/it/doc_verbs.rs) | Local Repo 完全不需要 server；進階使用時仍須依各子指令 `--help` 判斷旗標。 | 2026-07-17 |
 | Generated Agent Skills | Partial（部分可用） | Claude `/speclink-*`、Codex `$speclink-*` | [目前生成的 apply skill](../.agents/skills/speclink-apply/SKILL.md)<br>[引擎內建 skill assets](../crates/speclink-core/assets/skills/verify.md) | 目前生成面有 onboard／discuss／propose／apply／ingest／drift／audit／commit／archive；`verify.md` 等 asset 存在於引擎，但此 repo 未生成 `$speclink-verify`，不得把它寫成可直接呼叫入口。 | 2026-07-17 |
 | Local Desktop | Available（可用） | Tauri/React change 看板、spec、discussion、archive、tasks、設定與 tray | [Desktop scripts](../apps/desktop/package.json)<br>[Desktop UI tests](../apps/desktop/src/__tests__/App.test.tsx) | Local workspace 可用；Remote Workspace 的完成度另見本表。 | 2026-07-17 |
-| Node N-API SDK | Available（可用） | `@speclink/engine` 的 Store bridge、render 與 `dispatch` | [Node 套件入口](../crates/speclink-node/package.json)<br>[dispatch contract tests](../crates/speclink-node/__test__/dispatch-contract.spec.ts) | 目前是 Engine／Store bridge；Phase 4 的完整 Node Host 與 Copilot Tool 套件尚未交付。 | 2026-07-17 |
+| Node N-API SDK | Partial（部分可用） | 自本 repo 建置 `crates/speclink-node` 後以路徑載入 | [Node 套件入口](../crates/speclink-node/package.json)<br>[dispatch contract tests](../crates/speclink-node/__test__/dispatch-contract.spec.ts) | **尚未發布至 npm**：`npm install @speclink/engine` 取不到套件，目前只能自 repo 建置（需 Rust 工具鏈）。Engine／Store bridge 本身可用；Phase 4 的完整 Node Host 與 Copilot Tool 套件尚未交付。 | 2026-08-12 |
 | Command Runtime, Host and Protocol | Available（可用） | Rust crates 供 CLI、Server 與 Node adapter 共用 | [Host 雙路徑測試](../crates/speclink-host/tests/bridge_dual_path.rs)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | 基礎 typed command/query/context 路徑已存在；Agent 生態包裝與部分進階 gate 仍分列為 Partial／Planned。 | 2026-07-17 |
 | SQLite TeamStore | Available（可用） | `speclink-server` 的預設 `sqlite` driver | [SQLite conformance tests](../crates/speclink-store-sqlite/tests/conformance.rs)<br>[driver 選型文件](server-store-drivers.zh-TW.md) | 單一 instance 定位；cluster 不在目前能力內。 | 2026-07-17 |
 | Server FS TeamStore | Available（可用） | server config 的 `serverfs` driver | [Server FS conformance tests](../crates/speclink-store-fs/tests/it/conformance.rs)<br>[atomic publish tests](../crates/speclink-store-fs/tests/it/atomic_publish.rs) | 需要可靠的 OS advisory lock／flock 語意，單一資料目錄只允許一個 server。 | 2026-07-17 |
@@ -36,7 +36,7 @@
 | MCP and Copilot in-process tools | Planned（規劃中） | 尚無可安裝的 `@speclink/copilot-tools` 或 MCP adapter | [目前 workspace package inventory](../package.json)<br>[Phase 4 目標](implementation-refactor-roadmap.zh-TW.md) | 不得把 README 的架構示意當成目前套件；後續需完成 tool adapter、identity closure 與端到端測試。 | 2026-07-17 |
 | SSO, runtime plugins and cluster mode | Planned（規劃中） | 尚無產品入口 | [平台架構藍圖](platform-architecture.zh-TW.md)<br>[實作重構路線圖](implementation-refactor-roadmap.zh-TW.md) | 屬後續平台／生態能力；目前 Server 與 drivers 的正式定位仍是單一 instance。 | 2026-07-17 |
 | Legacy remote REST v1 | Deprecated（已棄用） | 歷史 remote client prototype | [舊路徑盤點](implementation-refactor-roadmap.zh-TW.md)<br>[README 架構聲明](../README.md) | 不作為新 Client Protocol 的相容負擔或正式 Server contract；新文件只說明遷移方向，不教學此路徑。 | 2026-07-17 |
-| Advanced verb-contract user guide | Planned（規劃中） | 尚無獨立使用者指南 | [Canonical verb contract](../openspec/specs/verb-contract/spec.md)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | `docs/verb-contract.md` 目前不存在；本 change 只誠實記錄缺口，不建立空檔或失效連結。 | 2026-07-17 |
+| Advanced verb-contract user guide | Available（可用） | [動詞契約指南](verb-contract.zh-TW.md)（中英兩版） | [Canonical verb contract](../openspec/specs/verb-contract/spec.md)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | 指南已建立，涵蓋動詞與旗標契約；正典仍以 specs 為準，指南隨其更新。 | 2026-08-12 |
 
 ## Verification baseline / 查核基線
 
@@ -51,7 +51,7 @@
 
 ## Known documentation gap / 已知文件缺口
 
-進階 verb／Protocol 契約目前只有 canonical specs，沒有獨立的 `docs/verb-contract.md` 使用者指南。這是公開記錄的文件缺口，不是可點擊文件，也不代表契約不存在；後續 change 應從 canonical `verb-contract` 與 `client-protocol` specs 產生可維護的進階指南。
+`@speclink/engine` 尚未發布至 npm。文件示範的是自 repo 建置的載入路徑（見 [Node SDK](sdk-node.zh-TW.md)）；npm 通路與其發布時程屬後續工作。
 
 ## Target references / 目標參考
 

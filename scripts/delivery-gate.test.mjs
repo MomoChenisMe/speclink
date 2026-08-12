@@ -88,6 +88,45 @@ test('ci.yml 三平台跑三個 React workspace 測試、server-web build 先於
   );
 });
 
+// --- release.yml 桌面 bundle 目標（desktop-release「更新描述檔隨 release 發布」） ---
+
+test('release.yml 每個桌面平台都建置至少一個 updater-enabled bundle 目標', () => {
+  const release = read('.github/workflows/release.yml');
+
+  // Tauri 只為 app／appimage／msi／nsis 這幾個目標產出更新包；dmg 與 deb 不在其中。
+  // macOS 若只建 dmg，bundler 會印警告並且不產出 Speclink.app.tar.gz——收集步驟的
+  // cp 隨即找不到檔案，desktop job 紅燈，Release 全有全無的閘門讓整次發版落空。
+  const UPDATER_ENABLED = ['app', 'appimage', 'msi', 'nsis'];
+
+  const declared = [...release.matchAll(/^\s*bundles:\s*(\S+)\s*$/gm)].map((m) => m[1]);
+  assert.ok(declared.length > 0, 'release.yml：找不到任何 bundles 宣告');
+
+  for (const entry of declared) {
+    const targets = entry.split(',');
+    assert.ok(
+      targets.some((t) => UPDATER_ENABLED.includes(t)),
+      `release.yml：bundles「${entry}」不含任何 updater-enabled 目標（${UPDATER_ENABLED.join('／')}），` +
+        '該平台不會產出更新包，收集步驟會找不到檔案',
+    );
+  }
+});
+
+test('ci.yml 跑 scripts 測試面，且以 bash 展開 glob 以相容 CI 釘選的 Node 版本', () => {
+  const ci = read('.github/workflows/ci.yml');
+
+  const step = requireIndex(ci, 'node --test scripts/*.test.mjs', 'ci.yml');
+
+  // Node 20 的 --test 不自行展開 glob（該能力 Node 21 才有），Windows runner 的
+  // 預設 shell 也不展開——兩者相加會讓步驟以「找不到檔案」失敗而非跑測試。
+  // 指定 shell: bash 讓 glob 在傳給 node 之前就被展開，三平台與釘選版本都成立。
+  const shellDecl = ci.lastIndexOf('shell: bash', step);
+  assert.notEqual(shellDecl, -1, 'ci.yml：scripts 測試步驟必須指定 shell: bash');
+  assert.ok(
+    ci.slice(shellDecl, step).split('\n').length <= 3,
+    'ci.yml：shell: bash 必須屬於 scripts 測試步驟本身，而非更上面的其他步驟',
+  );
+});
+
 /// 把 ci.yml 依頂層 job 切段（`jobs:` 底下的兩空格 key）。前置產物的順序必須逐
 /// job 檢查——用全檔 indexOf 會讓 A job 的建置步驟冒充 B job 的前置，斷言看起來
 /// 通過、CI 上該 job 仍因缺產物而編不動。

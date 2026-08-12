@@ -6,18 +6,28 @@
 
 它就是 CLI 隨附的那顆 Rust 引擎——以 [napi-rs](https://napi.rs) 綁定，而非重新實作——所以動詞行為、`--json` payload 形狀、渲染內容從結構上就保證一致。（Rust SDK 即 `speclink-core` crate 本身。）
 
-## 安裝與平台注意事項
+## 取得方式與平台注意事項
+
+> **尚未發布至 npm。**`@speclink/engine` 目前只能從本 repo 建置取得，npm registry 上沒有這個套件。發布時程與其他方向一併記錄在[產品能力狀態](product-status.zh-TW.md)。
+
+從 repo 建置並載入：
 
 ```bash
-npm install @speclink/engine
+git clone https://github.com/MomoChenisMe/speclink.git
+cd speclink/crates/speclink-node
+npm ci
+npm run build          # napi 建置出本機平台的 .node
 ```
 
-- 這是一個 **native module**：引擎是編譯後的 Rust，以 Node addon 載入。預編譯二進位以平台子套件（`optionalDependencies`）發佈，因此在五個支援平台上 **`npm install` 即用——無系統依賴、不需工具鏈**：
-  - Windows x64（`win32-x64-msvc`）
-  - macOS x64（`darwin-x64`）與 arm64（`darwin-arm64`）
-  - Linux x64 glibc（`linux-x64-gnu`）與 arm64 glibc（`linux-arm64-gnu`）
-- 部署到 Linux 伺服器時，表示**該平台要裝到 linux-x64-gnu（或 arm64）的二進位**——如同任何 native module，請在部署目標上（或針對部署目標）執行 `npm install`。
-- 其他平台 npm 會退回原始碼編譯，需要 Rust 工具鏈（`rustup`）。
+在你的專案中以路徑引用建置產物：
+
+```js
+const { createEngine } = require('/path/to/speclink/crates/speclink-node')
+```
+
+- 這是一個 **native module**：引擎是編譯後的 Rust，以 Node addon 載入。上述 `npm run build` 會產出**當前平台**的二進位，因此要在部署目標平台上（或針對該平台交叉建置）執行。
+- 建置需要 Rust 工具鏈（`rustup`）。
+- 引擎本身支援的平台為：Windows x64、macOS x64 與 arm64、Linux x64 與 arm64（皆為 glibc）。發布至 npm 後這些平台會以預編譯子套件提供，屆時不再需要工具鏈。
 
 ## createEngine——兩種儲存形式
 

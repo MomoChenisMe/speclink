@@ -58,6 +58,16 @@ jobs:
       - name: Install npm dependencies (root workspaces)
         run: npm ci
 
+      # scripts/ 的測試面守的是「設定本身」的契約——workflow 步驟順序、release
+      # 產物組裝、簽章閘門、交付 gate。它零外部依賴且不到一秒，排在其他測試面之前
+      # 就能在跑滿建置前先擋下設定破損。
+      #
+      # 這裡用 bash 展開 glob 而非交給 node：--test 的 glob 展開是 Node 21 才有的
+      # 能力，本 job 釘選 Node 20；Windows runner 的預設 shell 也不展開 glob。
+      - name: Test (scripts)
+        shell: bash
+        run: node --test scripts/*.test.mjs
+
       - name: Test (UI)
         run: npm test -w packages/ui
 

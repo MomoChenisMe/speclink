@@ -1,0 +1,182 @@
+{
+  "version": 2,
+  "change": "release-signing-and-channels",
+  "touched": [
+    {
+      "task_id": "4",
+      "task_desc": "2.1 在 release.yml 的 desktop job 落實 spec「OS 程式碼簽章為可插鑰匙開關」與設計「D1：macOS 公證接在既有簽章開關上，部分設定 fail-closed」——簽章組閘門與公證環境注入：macOS 憑證半組與公證半組六項齊備時，於 Tauri 建置步驟注入公證三項環境變數（Tauri 簽章後自動公證並 staple）；任一平台簽章組「部分存在」時，前置檢查步驟以列出缺項 secrets 名稱的錯誤讓 job 失敗；全缺時維持現行跳過且全綠。驗證：以 bash 條件模擬三種 secrets 組合（全有、全無、缺一）的檢查邏輯正確，workflow 通過 repo 既有的 CI workflow 檢查",
+      "files": [
+        ".github/workflows/release.yml",
+        "scripts/signing-gate.mjs",
+        "scripts/signing-gate.test.mjs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 主 CI 納入 scripts 測試面，落實 spec「CI 執行完整測試」的擴充：ci.yml 的 build-and-smoke job 在其他測試面之前加入 scripts 測試步驟；執行方式須相容 job 釘選的 Node 版本與三平台預設 shell（Node 20 的 --test 不自行展開 glob、Windows runner 預設 shell 也不展開，故指定 shell: bash 讓 glob 先展開）；delivery-gate.test.mjs 補靜態契約斷言守住此步驟與其 shell 宣告。驗證：以 CI 釘選的 Node 版本在 bash 下實跑該指令，全部 scripts 測試檔確實載入且全綠；node --test scripts/*.test.mjs 全綠；actionlint 對 ci.yml 零問題",
+      "files": [
+        ".github/workflows/ci.yml",
+        "scripts/delivery-gate.test.mjs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 先寫 scripts/install.test.mjs 再實作 scripts/install.sh，落實 spec「安裝腳本一行安裝對應平台 CLI」與設計「D3：安裝腳本以 dry-run 與環境變數覆寫換取可測性」：測試覆蓋 dry-run 的五 target 平台對映矩陣與資產 URL 組裝、SPECLINK_INSTALL_VERSION 釘選、SPECLINK_INSTALL_DIR 覆寫、checksum 不符時非零退出且不落檔（以本地 fixture 檔模擬下載內容）。驗證：node --test scripts/install.test.mjs 全綠",
+      "files": [
+        "docs/assets/screenshots/desktop-archived.png",
+        "docs/assets/screenshots/desktop-board.png",
+        "docs/assets/screenshots/desktop-change-drawer.png",
+        "docs/assets/screenshots/desktop-discussion.png",
+        "docs/assets/screenshots/desktop-settings.png",
+        "docs/assets/screenshots/desktop-spec.png",
+        "docs/assets/screenshots/server-members.png",
+        "docs/assets/screenshots/server-overview.png",
+        "docs/assets/screenshots/server-setup.png",
+        "scripts/docs-links.mjs",
+        "scripts/docs-links.test.mjs",
+        "scripts/docs-screenshots.mjs",
+        "scripts/docs-screenshots.test.mjs",
+        "scripts/install.sh",
+        "scripts/install.test.mjs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.2 補 PowerShell 版：在 scripts/install.test.mjs 增加 pwsh 案例（無 pwsh 環境自動跳過）再實作 scripts/install.ps1，行為契約與 install.sh 一致（dry-run、版本釘選、目錄覆寫、checksum 驗證、PATH 提示）。驗證：本機（若有 pwsh）與 Windows CI 測試綠",
+      "files": [
+        "scripts/install.ps1"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.1 先寫 scripts/homebrew-formula.test.mjs 再實作 scripts/homebrew-formula.mjs，落實 spec「Homebrew formula 產生器」與設計「D4：Homebrew formula 由腳本產生，tap repo 手動維護」：輸入 --tag 與 --sums（SHA256SUMS.txt 路徑），stdout 輸出含 on_macos／on_linux × arm64／x86_64 四組 url＋sha256 的 formula；fixture 驗證四組對應正確、缺任一平台條目時非零退出並指出缺項。驗證：node --test scripts/homebrew-formula.test.mjs 全綠",
+      "files": [
+        "scripts/homebrew-formula.mjs",
+        "scripts/homebrew-formula.test.mjs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "6.1 README（中英）新增安裝區塊並同步 getting-started（中英）安裝節，落實 spec「安裝通路文件與發布狀態誠實化」與設計「D5：文件的「誠實入口」原則落到安裝面」：桌面三平台下載表（macOS dmg／Windows 安裝器／Linux AppImage 與 deb，連到 GitHub Releases）、CLI 一行安裝（curl 安裝腳本與 brew install tap 指令）、cargo install 從原始碼建置移到開發者導向段落；中英結構與事實對等。驗證：對照 user-documentation 規格的安裝區塊 scenario 逐項自查",
+      "files": [
+        "README.en.md",
+        "README.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "6.2 sdk-node（中英）改標尚未發布至 npm 並改教 repo 內建置載入路徑，全文移除 npm install @speclink/engine 指示；docs/product-status.zh-TW.md 刷新查核日期並在 Node N-API SDK 列的限制欄補「尚未發布至 npm」。驗證：兩語 sdk-node 全文搜尋無 npm install @speclink/engine 字樣",
+      "files": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZTBCFP4PHJXM6YB7XKX212Z",
+      "taskDesc": "2.1 在 release.yml 的 desktop job 落實 spec「OS 程式碼簽章為可插鑰匙開關」與設計「D1：macOS 公證接在既有簽章開關上，部分設定 fail-closed」——簽章組閘門與公證環境注入：macOS 憑證半組與公證半組六項齊備時，於 Tauri 建置步驟注入公證三項環境變數（Tauri 簽章後自動公證並 staple）；任一平台簽章組「部分存在」時，前置檢查步驟以列出缺項 secrets 名稱的錯誤讓 job 失敗；全缺時維持現行跳過且全綠。驗證：以 bash 條件模擬三種 secrets 組合（全有、全無、缺一）的檢查邏輯正確，workflow 通過 repo 既有的 CI workflow 檢查",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "touchedFiles": [
+        ".github/workflows/release.yml",
+        "scripts/signing-gate.mjs",
+        "scripts/signing-gate.test.mjs"
+      ],
+      "recordedAt": "2026-08-12T08:04:16Z"
+    },
+    {
+      "taskId": "tsk_01KZTGD45N5QSPERZGA9VPSRH7",
+      "taskDesc": "2.2 主 CI 納入 scripts 測試面，落實 spec「CI 執行完整測試」的擴充：ci.yml 的 build-and-smoke job 在其他測試面之前加入 scripts 測試步驟；執行方式須相容 job 釘選的 Node 版本與三平台預設 shell（Node 20 的 --test 不自行展開 glob、Windows runner 預設 shell 也不展開，故指定 shell: bash 讓 glob 先展開）；delivery-gate.test.mjs 補靜態契約斷言守住此步驟與其 shell 宣告。驗證：以 CI 釘選的 Node 版本在 bash 下實跑該指令，全部 scripts 測試檔確實載入且全綠；node --test scripts/*.test.mjs 全綠；actionlint 對 ci.yml 零問題",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "touchedFiles": [
+        ".github/workflows/ci.yml",
+        "scripts/delivery-gate.test.mjs"
+      ],
+      "recordedAt": "2026-08-12T08:11:16Z"
+    },
+    {
+      "taskId": "tsk_01KZTBCFP48V3585R0EF1G9NT4",
+      "taskDesc": "4.1 先寫 scripts/install.test.mjs 再實作 scripts/install.sh，落實 spec「安裝腳本一行安裝對應平台 CLI」與設計「D3：安裝腳本以 dry-run 與環境變數覆寫換取可測性」：測試覆蓋 dry-run 的五 target 平台對映矩陣與資產 URL 組裝、SPECLINK_INSTALL_VERSION 釘選、SPECLINK_INSTALL_DIR 覆寫、checksum 不符時非零退出且不落檔（以本地 fixture 檔模擬下載內容）。驗證：node --test scripts/install.test.mjs 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "touchedFiles": [
+        "docs/assets/screenshots/desktop-archived.png",
+        "docs/assets/screenshots/desktop-board.png",
+        "docs/assets/screenshots/desktop-change-drawer.png",
+        "docs/assets/screenshots/desktop-discussion.png",
+        "docs/assets/screenshots/desktop-settings.png",
+        "docs/assets/screenshots/desktop-spec.png",
+        "docs/assets/screenshots/server-members.png",
+        "docs/assets/screenshots/server-overview.png",
+        "docs/assets/screenshots/server-setup.png",
+        "scripts/docs-links.mjs",
+        "scripts/docs-links.test.mjs",
+        "scripts/docs-screenshots.mjs",
+        "scripts/docs-screenshots.test.mjs",
+        "scripts/install.sh",
+        "scripts/install.test.mjs"
+      ],
+      "recordedAt": "2026-08-12T14:28:29Z"
+    },
+    {
+      "taskId": "tsk_01KZTBCFP4JH6T70AREQB6EY0A",
+      "taskDesc": "4.2 補 PowerShell 版：在 scripts/install.test.mjs 增加 pwsh 案例（無 pwsh 環境自動跳過）再實作 scripts/install.ps1，行為契約與 install.sh 一致（dry-run、版本釘選、目錄覆寫、checksum 驗證、PATH 提示）。驗證：本機（若有 pwsh）與 Windows CI 測試綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "touchedFiles": [
+        "scripts/install.ps1"
+      ],
+      "recordedAt": "2026-08-12T14:30:10Z"
+    },
+    {
+      "taskId": "tsk_01KZTBCFP47BQ62X51YNMZYGQ6",
+      "taskDesc": "5.1 先寫 scripts/homebrew-formula.test.mjs 再實作 scripts/homebrew-formula.mjs，落實 spec「Homebrew formula 產生器」與設計「D4：Homebrew formula 由腳本產生，tap repo 手動維護」：輸入 --tag 與 --sums（SHA256SUMS.txt 路徑），stdout 輸出含 on_macos／on_linux × arm64／x86_64 四組 url＋sha256 的 formula；fixture 驗證四組對應正確、缺任一平台條目時非零退出並指出缺項。驗證：node --test scripts/homebrew-formula.test.mjs 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "touchedFiles": [
+        "scripts/homebrew-formula.mjs",
+        "scripts/homebrew-formula.test.mjs"
+      ],
+      "recordedAt": "2026-08-12T14:32:06Z"
+    },
+    {
+      "taskId": "tsk_01KZTBCFP4P7SXKR3NV35FKQB2",
+      "taskDesc": "6.1 README（中英）新增安裝區塊並同步 getting-started（中英）安裝節，落實 spec「安裝通路文件與發布狀態誠實化」與設計「D5：文件的「誠實入口」原則落到安裝面」：桌面三平台下載表（macOS dmg／Windows 安裝器／Linux AppImage 與 deb，連到 GitHub Releases）、CLI 一行安裝（curl 安裝腳本與 brew install tap 指令）、cargo install 從原始碼建置移到開發者導向段落；中英結構與事實對等。驗證：對照 user-documentation 規格的安裝區塊 scenario 逐項自查",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "touchedFiles": [
+        "README.en.md",
+        "README.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-12T14:33:58Z"
+    },
+    {
+      "taskId": "tsk_01KZTBCFP4REZEMG1Y2NM78MWB",
+      "taskDesc": "6.2 sdk-node（中英）改標尚未發布至 npm 並改教 repo 內建置載入路徑，全文移除 npm install @speclink/engine 指示；docs/product-status.zh-TW.md 刷新查核日期並在 Node N-API SDK 列的限制欄補「尚未發布至 npm」。驗證：兩語 sdk-node 全文搜尋無 npm install @speclink/engine 字樣",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "touchedFiles": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-12T14:36:21Z"
+    }
+  ]
+}

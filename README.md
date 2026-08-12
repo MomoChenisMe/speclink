@@ -90,14 +90,36 @@ Files／Problem／Solution／Wins／建議強度，由你挑一個深入盤問�
 的驗證章與審查章並排（審查在前、驗證在後），封存時偵測到未結驗證工單同樣被攔下（回去蓋章／放棄驗證／照樣帶走）；
 兩張工單並存時要對兩站分別處置才封存得掉。
 
-## Local Repo quick start / Local Repo 快速開始
+## Install / 安裝
 
-需要 stable Rust toolchain：
+**桌面 app**——到 [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) 下載對應平台的安裝檔：
+
+| 平台 | 安裝檔 |
+| --- | --- |
+| macOS | `Speclink_<版本>_aarch64.dmg`（Apple Silicon）、`Speclink_<版本>_x64.dmg`（Intel） |
+| Windows | `Speclink_<版本>_x64-setup.exe` |
+| Linux | `.AppImage`（免安裝）或 `.deb`，各有 x86_64 與 aarch64 |
+
+桌面安裝檔內含同版 CLI，可於 app 設定中一鍵安裝到 PATH。
+
+**CLI**——擇一：
 
 ```bash
-cargo install --path crates/speclink-cli
-speclink --version
+# 安裝腳本（macOS／Linux）
+curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
+
+# 安裝腳本（Windows PowerShell）
+irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.ps1 | iex
+
+# Homebrew（macOS／Linux）
+brew install MomoChenisMe/tap/speclink
 ```
+
+安裝腳本會偵測平台、驗證 SHA-256 後把 `speclink` 放進 `~/.local/bin`（Windows 為使用者層級目錄）；以 `SPECLINK_INSTALL_DIR` 可改安裝位置、`SPECLINK_INSTALL_VERSION` 可釘選版本。
+
+Windows 的安裝檔目前未經程式碼簽章，首次執行時 SmartScreen 會出現警告——點「其他資訊」→「仍要執行」即可。
+
+## Local Repo quick start / Local Repo 快速開始
 
 在要導入 Speclink 的 repo：
 
@@ -140,6 +162,13 @@ Host command。目標邊界以[平台架構藍圖](docs/platform-architecture.zh
 `docs/verb-contract.md` 使用者指南尚未建立；目前契約以 canonical specs 為準，缺口記錄於 product-status。
 
 ## Development / 開發
+
+從原始碼建置 CLI（需要 stable Rust toolchain）：
+
+```bash
+cargo install --path crates/speclink-cli
+speclink --version
+```
 
 開發環境的一鍵入口（整套 `npm run dev`、只跑 server、只跑 desktop、checkout 內 CLI）與下載安裝檔的未簽章放行步驟，見[開發環境入口](docs/development.zh-TW.md)。
 
