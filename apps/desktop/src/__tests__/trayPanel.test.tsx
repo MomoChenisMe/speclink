@@ -44,8 +44,8 @@ function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
     ],
     discussions: [{ slug: "d1", topic: "討論一", promoted: false }],
     pendingTabKey: null,
-    workspaceLoaded: true,
-    workspaceRefreshing: false,
+    workspaceLoading: false,
+    workspaceLoadFailed: false,
     ...over,
   };
 }
@@ -910,19 +910,19 @@ describe("面板載入回饋", () => {
   });
 
   it("首訪未載入 → 分區標題照常、內容為佔位列", () => {
-    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, workspaceRefreshing: true, changes: [], discussions: [] }) });
+    renderPanel({ snapshot: snapshot({ workspaceLoading: true, changes: [], discussions: [] }) });
     expect(screen.getByText("進行中")).toBeTruthy();
     expect(screen.getByText("討論")).toBeTruthy();
     expect(document.querySelectorAll('[aria-busy="true"]').length).toBeGreaterThan(0);
   });
 
   it("首訪未載入 → 不顯示分區計數（不謊報 0 筆）", () => {
-    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, workspaceRefreshing: true, changes: [], discussions: [] }) });
+    renderPanel({ snapshot: snapshot({ workspaceLoading: true, changes: [], discussions: [] }) });
     expect(document.querySelector('[data-testid="panel-section-count"]')).toBeNull();
   });
 
   it("首訪未載入 → 不顯示空狀態文案", () => {
-    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, workspaceRefreshing: true, changes: [], discussions: [] }) });
+    renderPanel({ snapshot: snapshot({ workspaceLoading: true, changes: [], discussions: [] }) });
     expect(screen.queryByText("尚無進行中變更")).toBeNull();
   });
 
@@ -932,14 +932,14 @@ describe("面板載入回饋", () => {
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 
-  // 零分頁時 store 的 loaded 恆為 false（refresh 無 activeKey 直接 return）——
-  // 若只看 workspaceLoaded，面板會永久掛骨架，退化成「永遠在載」。
+  // 骨架條件整條由 store 導出（design D3）：零分頁、探測失敗、讀取失敗等
+  // 「不會有載入發生」的情境一律為 false，面板不必自行辨識——舊版面板自組
+  // 三欄旗標時，正是這幾條讓骨架永久掛著。
   it("零分頁 → 不出佔位列，走既有空狀態卡", () => {
     renderPanel({
       snapshot: snapshot({
         tabs: [],
         activeKey: null,
-        workspaceLoaded: false,
         changes: [],
         discussions: [],
       }),
@@ -948,13 +948,10 @@ describe("面板載入回饋", () => {
     expect(screen.getByTestId("panel-section-discussions")).toBeTruthy();
   });
 
-  // 有分頁但探測失敗（資料夾被搬走／改名）：activeKey 恆 null、loaded 恆 false，
-  // 整批載入根本不會發生——只擋零分頁不夠，骨架照樣永久掛著。
   it("有分頁但無活躍 workspace → 不出佔位列", () => {
     renderPanel({
       snapshot: snapshot({
         activeKey: null,
-        workspaceLoaded: false,
         changes: [],
         discussions: [],
       }),
@@ -978,11 +975,59 @@ describe("面板載入回饋", () => {
           },
         ],
         activeKey: key,
-        workspaceLoaded: false,
+        workspaceLoading: true,
         changes: [],
         discussions: [],
       }),
     });
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  // spec「面板分區載入失敗終態」：讀不到 ≠ 確認是空的，兩者不得同貌。
+  it("首訪載入失敗 → 分區顯示失敗提示，非骨架、非空態", () => {
+    renderPanel({
+      snapshot: snapshot({ workspaceLoadFailed: true, changes: [], discussions: [] }),
+    });
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+    expect(screen.queryByText("尚無進行中變更")).toBeNull();
+    expect(screen.getAllByTestId("panel-section-load-failed").length).toBeGreaterThan(0);
+  });
+
+  it("載入中優先於失敗提示（重試在途時不留舊提示）", () => {
+    renderPanel({
+      snapshot: snapshot({
+        workspaceLoading: true,
+        workspaceLoadFailed: true,
+        changes: [],
+        discussions: [],
+      }),
+    });
+    expect(document.querySelectorAll('[aria-busy="true"]').length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("panel-section-load-failed")).toBeNull();
+  });
+
+  it("remote 復原態遮蔽資料時 → 不顯示失敗提示（復原呈現優先）", () => {
+    const key = "remote:c1/demo/backend";
+    renderPanel({
+      snapshot: snapshot({
+        tabs: [
+          {
+            key,
+            name: "Demo/backend",
+            source: "remote",
+            status: "error",
+            failureKind: "unreachable",
+            connectionId: "c1",
+            serverLabel: "Team Server",
+          },
+        ],
+        activeKey: key,
+        workspaceLoadFailed: true,
+        changes: [],
+        discussions: [],
+      }),
+    });
+    expect(screen.queryByTestId("panel-section-load-failed")).toBeNull();
+    expect(screen.getByTestId("panel-recovery-card")).toBeTruthy();
   });
 });

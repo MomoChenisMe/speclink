@@ -1,6 +1,10 @@
 // 載入中佔位組件（design D4）：以 Skeleton 基元組合出三種形狀，模仿其所替代的
 // 真實內容輪廓——首訪空窗期看得出「有東西正在載」，與真空態文案可區分。
 // 全數 aria-busy，且不含任何文字（載入中不冒充空態文案）。
+// 同檔另收「載入失敗」的終態列：它替代的是同一塊卡片區，差別在載入已經結束。
+import { CloudOff } from "lucide-react";
+
+import { useI18n } from "../i18n";
 import { Card } from "./ui/card";
 import { Skeleton } from "./ui/skeleton";
 
@@ -21,6 +25,22 @@ export function ColumnSkeleton() {
       <CardSkeleton />
       <CardSkeleton />
     </>
+  );
+}
+
+/** 看板欄內的載入失敗終態列（spec「首訪載入失敗終態呈現」）：讀不到 ≠ 確認是
+    空的，故取代空態文案；載入已結束，故不是 skeleton（無 aria-busy）。 */
+export function ColumnLoadFailed() {
+  const { t } = useI18n();
+  return (
+    <div
+      data-testid="column-load-failed"
+      role="status"
+      className="flex items-start gap-1.5 px-1.5 pt-2 text-xs text-muted-foreground"
+    >
+      <CloudOff className="h-3.5 w-3.5 shrink-0" />
+      <span>{t("kanban.loadFailed")}</span>
+    </div>
   );
 }
 

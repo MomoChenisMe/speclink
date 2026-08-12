@@ -94,8 +94,8 @@ function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
       { slug: "d2", topic: "討論二", promoted: false },
     ],
     pendingTabKey: null,
-    workspaceLoaded: true,
-    workspaceRefreshing: false,
+    workspaceLoading: false,
+    workspaceLoadFailed: false,
     ...over,
   };
 }
@@ -406,7 +406,8 @@ function makeStore(
     activeKey: "local:/proj/one",
     pendingTabKey: null as string | null,
     loaded: true,
-    refreshing: false,
+    loadingActive: false,
+    loadFailed: false,
     changes: [
       change({ name: "alpha", totalTasks: 12, completedTasks: 3 }),
       change({ name: "gamma", totalTasks: 5, completedTasks: 0 }),
@@ -1010,28 +1011,51 @@ describe("TraySnapshot 的載入態導出", () => {
     await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
     vi.mocked(tauriEmit).mockClear();
     vi.useFakeTimers();
-    bag.emit({ activeKey: "local:/proj/two", pendingTabKey: null, loaded: false });
+    bag.emit({
+      activeKey: "local:/proj/two",
+      pendingTabKey: null,
+      loaded: false,
+      loadingActive: true,
+    });
     await vi.advanceTimersByTimeAsync(0);
     const pushed = vi.mocked(tauriEmit).mock.calls.filter((c) => c[0] === "tray-snapshot");
     vi.useRealTimers();
     expect(pushed.length).toBeGreaterThan(0);
     expect(pushed[0][1]).toEqual(
-      expect.objectContaining({ activeKey: "local:/proj/two", workspaceLoaded: false }),
+      expect.objectContaining({ activeKey: "local:/proj/two", workspaceLoading: true }),
     );
   });
 
-  it("整批載入完成（loaded 翻真）→ 一併即時推送", async () => {
+  it("整批載入完成（載入態翻假）→ 一併即時推送", async () => {
     const bag = makeStore();
-    bag.emit({ loaded: false });
+    bag.emit({ loaded: false, loadingActive: true });
     await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
     vi.mocked(tauriEmit).mockClear();
     vi.useFakeTimers();
-    bag.emit({ loaded: true });
+    bag.emit({ loaded: true, loadingActive: false });
     await vi.advanceTimersByTimeAsync(0);
     const pushed = vi.mocked(tauriEmit).mock.calls.filter((c) => c[0] === "tray-snapshot");
     vi.useRealTimers();
     expect(pushed.length).toBeGreaterThan(0);
-    expect(pushed[0][1]).toEqual(expect.objectContaining({ workspaceLoaded: true }));
+    expect(pushed[0][1]).toEqual(expect.objectContaining({ workspaceLoading: false }));
+  });
+
+  // 失敗時 loaded 維持 false，翻的是載入態——它若不在即推面，面板要等一個去抖
+  // 週期才收掉骨架（desktop-loading-skeleton-ux design D5 的例外，本案取代之）。
+  it("首訪載入失敗（載入態翻假）→ 即時推送，骨架當下收掉", async () => {
+    const bag = makeStore();
+    bag.emit({ loaded: false, loadingActive: true });
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    vi.mocked(tauriEmit).mockClear();
+    vi.useFakeTimers();
+    bag.emit({ loadingActive: false, loadFailed: true });
+    await vi.advanceTimersByTimeAsync(0);
+    const pushed = vi.mocked(tauriEmit).mock.calls.filter((c) => c[0] === "tray-snapshot");
+    vi.useRealTimers();
+    expect(pushed.length).toBeGreaterThan(0);
+    expect(pushed[0][1]).toEqual(
+      expect.objectContaining({ workspaceLoading: false, workspaceLoadFailed: true }),
+    );
   });
 
   it("只有清單內容變動（活躍分頁與載入態不變）→ 維持去抖", async () => {
@@ -1052,26 +1076,42 @@ describe("TraySnapshot 的載入態導出", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("首訪未載入 → workspaceLoaded 為 false", () => {
+  // 面板骨架的條件整條由 store 導出（design D3）：面板不再自行組合旗標，
+  // 導出值即主視窗看板的骨架條件——兩處呈現不會各自算出不同答案。
+  it("首訪整批載入中 → workspaceLoading 為 true", () => {
     const bag = makeStore();
-    bag.emit({ loaded: false });
-    expect(buildTraySnapshot(bag.store.getState()).workspaceLoaded).toBe(false);
+    bag.emit({ loaded: false, loadingActive: true });
+    expect(buildTraySnapshot(bag.store.getState()).workspaceLoading).toBe(true);
   });
 
-  it("整批載入進行中 → workspaceRefreshing 為 true", () => {
+  it("首訪探測中（尚未起整批載入）→ workspaceLoading 為 true", () => {
     const bag = makeStore();
-    bag.emit({ refreshing: true });
-    expect(buildTraySnapshot(bag.store.getState()).workspaceRefreshing).toBe(true);
+    bag.emit({ loaded: false, pendingTabKey: "local:/proj/two" });
+    expect(buildTraySnapshot(bag.store.getState()).workspaceLoading).toBe(true);
   });
 
-  it("無載入進行中 → workspaceRefreshing 為 false", () => {
+  it("已有真值的重載 → workspaceLoading 為 false（不重回骨架）", () => {
     const bag = makeStore();
-    expect(buildTraySnapshot(bag.store.getState()).workspaceRefreshing).toBe(false);
+    bag.emit({ loaded: true, loadingActive: true });
+    expect(buildTraySnapshot(bag.store.getState()).workspaceLoading).toBe(false);
   });
 
-  it("已載入 → workspaceLoaded 為 true", () => {
+  it("無載入亦無探測 → workspaceLoading 為 false", () => {
     const bag = makeStore();
-    bag.emit({ loaded: true });
-    expect(buildTraySnapshot(bag.store.getState()).workspaceLoaded).toBe(true);
+    expect(buildTraySnapshot(bag.store.getState()).workspaceLoading).toBe(false);
+  });
+
+  it("首訪載入失敗 → workspaceLoadFailed 為 true、workspaceLoading 為 false", () => {
+    const bag = makeStore();
+    bag.emit({ loaded: false, loadingActive: false, loadFailed: true });
+    const snapshot = buildTraySnapshot(bag.store.getState());
+    expect(snapshot.workspaceLoadFailed).toBe(true);
+    expect(snapshot.workspaceLoading).toBe(false);
+  });
+
+  it("已有舊快取的重載失敗 → workspaceLoadFailed 為 false（照舊沿用舊資料）", () => {
+    const bag = makeStore();
+    bag.emit({ loaded: true, loadFailed: true });
+    expect(buildTraySnapshot(bag.store.getState()).workspaceLoadFailed).toBe(false);
   });
 });

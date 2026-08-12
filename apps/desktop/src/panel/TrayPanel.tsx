@@ -118,7 +118,7 @@ function SectionHeader({
   iconCls,
   count,
   badgeCls,
-  loading,
+  countUnknown,
 }: {
   icon: LucideIcon;
   label: string;
@@ -128,14 +128,14 @@ function SectionHeader({
   count: number;
   /** 計數徽章配色：生命週期取 STAGE_BADGE[stage]、討論／已轉出分區中性。 */
   badgeCls: string;
-  /** 首訪載入中：計數未知，顯示 0 會謊報空——徽章整個不出。 */
-  loading?: boolean;
+  /** 計數未知（首訪載入中或載入失敗）：顯示 0 會謊報空——徽章整個不出。 */
+  countUnknown?: boolean;
 }) {
   return (
     <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-1 text-xs font-semibold text-muted-foreground">
       <Icon className={cn("h-3.5 w-3.5", iconCls)} />
       {label}
-      {!loading && (
+      {!countUnknown && (
         <span
           data-testid="panel-section-count"
           className={cn(
@@ -172,6 +172,21 @@ function SectionCard({
 /** 空狀態分區卡附加樣式（design D8）：最小高度＋內容垂直置中——生命週期
     零筆階段卡與討論零筆卡共用，維持空狀態同構。 */
 const emptyCardClass = "min-h-12 justify-center";
+
+/** 分區載入失敗的終態列（spec「面板分區載入失敗終態」）：讀不到 ≠ 確認是空的，
+    故不走空狀態文案；亦不留骨架——載入已經結束了。 */
+function SectionLoadFailed({ label }: { label: string }) {
+  return (
+    <div
+      data-testid="panel-section-load-failed"
+      role="status"
+      className="flex min-h-8 items-center gap-2 px-2 py-1 text-[11px] text-muted-foreground"
+    >
+      <CloudOff className="h-3.5 w-3.5 shrink-0" />
+      <span>{label}</span>
+    </div>
+  );
+}
 
 /** 分區載入中的佔位列組（design D5）：兩列即讀得出「有內容正在載」。 */
 function SectionSkeleton() {
@@ -458,15 +473,13 @@ export function TrayPanel({
     items: changes.filter((c) => changeStage(c) === stage),
   }));
   const pendingTabKey = snapshot?.pendingTabKey ?? null;
-  // 首訪載入中：分區以佔位列呈現。快照未到（null）同樣算載入中——面板剛開、
-  // 主視窗尚未推第一份快照，此時畫空分區與畫佔位列是同一個問題。
-  // 骨架的前提是「首訪的載入正在進行」：探測中或整批載入中，且尚無真值。
-  // 只看 workspaceLoaded 會讓探測失敗或讀取失敗的 workspace 永遠停在載入中
-  // ——讀不到不等於還在讀；那些情境走既有空狀態卡，與主視窗對齊。
-  const loading =
-    !snapshot ||
-    ((snapshot.pendingTabKey !== null || snapshot.workspaceRefreshing) &&
-      !snapshot.workspaceLoaded);
+  // 首訪載入中：分區以佔位列呈現。條件整條由 store 導出（design D3）——面板
+  // 不自行組合旗標，與主視窗看板恆為同一個答案。快照未到（null）同樣算載入
+  // 中——面板剛開、主視窗尚未推第一份快照，此時畫空分區與畫佔位列是同一個問題。
+  const loading = !snapshot || snapshot.workspaceLoading;
+  // 首訪載入失敗的終態：載入已結束（故不與骨架並存），但沒有真值可畫——
+  // 顯示失敗提示而非空態文案。
+  const loadFailed = !loading && snapshot.workspaceLoadFailed;
   const activeTab = tabs.find((tab) => tab.key === snapshot?.activeKey);
   const activeRecovery =
     activeTab?.status === "restoring" || activeTab?.status === "error" ? activeTab : null;
@@ -639,9 +652,22 @@ export function TrayPanel({
             label={t("tray.discussionsHeader")}
             count={0}
             badgeCls="bg-muted text-muted-foreground"
-            loading
+            countUnknown
           />
           <SectionSkeleton />
+        </SectionCard>
+      ) : loadFailed ? (
+        /* 首訪載入失敗：計數未知（不謊報 0），內容為失敗提示而非空態文案。 */
+        <SectionCard testid="panel-section-discussions">
+          <SectionHeader
+            icon={MessageSquareText}
+            iconCls="text-muted-foreground/70"
+            label={t("tray.discussionsHeader")}
+            count={0}
+            badgeCls="bg-muted text-muted-foreground"
+            countUnknown
+          />
+          <SectionLoadFailed label={t("tray.loadFailed")} />
         </SectionCard>
       ) : openDiscussions.length > 0 ? (
         <SectionCard testid="panel-section-discussions">
@@ -700,7 +726,7 @@ export function TrayPanel({
         <SectionCard
           key={stage}
           testid={`panel-section-${stage}`}
-          className={!loading && items.length === 0 ? emptyCardClass : undefined}
+          className={!loading && !loadFailed && items.length === 0 ? emptyCardClass : undefined}
         >
           <SectionHeader
             icon={STAGE_ICONS[stage]}
@@ -708,10 +734,12 @@ export function TrayPanel({
             label={t(`stage.${stage}`)}
             count={items.length}
             badgeCls={STAGE_BADGE[stage]}
-            loading={loading}
+            countUnknown={loading || loadFailed}
           />
           {loading ? (
             <SectionSkeleton />
+          ) : loadFailed ? (
+            <SectionLoadFailed label={t("tray.loadFailed")} />
           ) : (
           <OverflowGroup
             moreLabel={moreLabel}

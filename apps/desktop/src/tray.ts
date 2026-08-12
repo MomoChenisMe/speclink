@@ -63,10 +63,12 @@ export interface TraySnapshot {
   discussions: Array<{ slug: string; topic: string; promoted: boolean }>;
   /** 探測進行中的目標分頁 key（null＝無切換）：面板據此在該分頁出 spinner。 */
   pendingTabKey: string | null;
-  /** 活躍 workspace 的整批載入是否已完成（已有真值）。 */
-  workspaceLoaded: boolean;
-  /** 整批載入是否正在進行——與 workspaceLoaded 搭配才是骨架條件（讀不到 ≠ 還在讀）。 */
-  workspaceRefreshing: boolean;
+  /** 活躍 workspace 的首訪載入進行中（design D3）：整條骨架條件由 store 導出，
+   * 與主視窗看板同一個值——面板純渲染，不自行組合旗標。 */
+  workspaceLoading: boolean;
+  /** 活躍 workspace 首訪載入以失敗收場：分區顯示載入失敗提示（非空態、非骨架）。
+   * 已有舊快取的重載失敗為 false——那條照舊沿用最後成功資料，不提示。 */
+  workspaceLoadFailed: boolean;
 }
 
 /** 變更子選單的動作項。 */
@@ -304,8 +306,10 @@ export interface TrayStoreApi {
     pendingTabKey: string | null;
     /** 活躍 workspace 快照是否已完成首次載入。 */
     loaded: boolean;
-    /** 整批載入是否正在進行。 */
-    refreshing: boolean;
+    /** 活躍 workspace 有整批載入在途（store 導出，非手動記帳）。 */
+    loadingActive: boolean;
+    /** 活躍 workspace 最近一次整批載入以失敗收場。 */
+    loadFailed: boolean;
     changes: ChangeItem[];
     discussions: { active: Array<{ slug: string; topic: string; promotedTo: string[] }> };
     sessions: Record<string, WorkspaceSession>;
@@ -387,8 +391,11 @@ export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>): 
       promoted: d.promotedTo.length > 0,
     })),
     pendingTabKey: state.pendingTabKey,
-    workspaceLoaded: state.loaded,
-    workspaceRefreshing: state.refreshing,
+    // 骨架條件在此收斂成一欄（design D3）：探測中或整批載入在途，且尚無真值。
+    // 與 App.tsx 傳給看板的 loading 同式——面板與主視窗不會各自算出不同答案。
+    workspaceLoading: (state.pendingTabKey !== null || state.loadingActive) && !state.loaded,
+    // 首訪失敗才是終態提示；有舊快取時照舊沿用最後成功資料，不提示。
+    workspaceLoadFailed: state.loadFailed && !state.loaded,
   };
 }
 
@@ -583,11 +590,13 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   // 樣子。清單內容變動仍走去抖（原生選單重建的成本在那裡）。
   // JSON 序列化而非字串拼接：locator key 內含路徑（可能有空白），拼接的欄位
   // 邊界不明確，不同狀態組合能拼出同一字串而漏掉推送。
-  // refreshing 刻意不進此面：它每次監看觸發的刷新都會翻兩次，納入等於讓清單
-  // 內容整個繞過去抖；面板的骨架收掉晚一個去抖週期是可接受的代價。
+  // 載入態納入此面（design D3，取代 desktop-loading-skeleton-ux D5 的去抖例外）：
+  // 首訪失敗時翻的是載入態而非 loaded，不納入就得等一個去抖週期才收掉骨架。
+  // 已訪 workspace 的週期性刷新恆為 false（有真值即非骨架），不會每輪翻兩次。
   const surfaceKey = () => {
     const s = store.getState();
-    return JSON.stringify([s.pendingTabKey, s.activeKey, s.loaded]);
+    const loading = (s.pendingTabKey !== null || s.loadingActive) && !s.loaded;
+    return JSON.stringify([s.pendingTabKey, s.activeKey, loading]);
   };
   let lastSurface = surfaceKey();
   const unsubscribe = store.subscribe(() => {

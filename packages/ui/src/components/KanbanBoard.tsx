@@ -32,7 +32,7 @@ import {
 import { changeStage, STAGE_BADGE, STAGE_BAR, STAGE_ICON, STAGES, type Stage } from "../stage";
 import { BoardSearchBar } from "./BoardSearchBar";
 import { ChangeCard } from "./ChangeCard";
-import { ColumnSkeleton } from "./skeletons";
+import { ColumnLoadFailed, ColumnSkeleton } from "./skeletons";
 import { DiscussionCard, DiscussionColumn } from "./DiscussionColumn";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -102,18 +102,21 @@ export interface KanbanBoardProps {
   /** 首訪 workspace 的整批載入未完成：各欄以佔位卡呈現，欄名照常、不出空態文案。
    * 已有舊快取時為 false——舊資料照常顯示、刷新完成靜默換新（design D2）。 */
   loading?: boolean;
+  /** 首訪整批載入以失敗收場：各欄卡片區顯示載入失敗提示，取代空態文案。
+   * 讀不到 ≠ 確認是空的；loading 為真時不生效（重試在途，先畫骨架）。 */
+  loadFailed?: boolean;
 }
 
 function Column({
   stage,
   count,
-  loading,
+  countUnknown,
   children,
 }: {
   stage: Stage;
   count: number;
-  /** 首訪載入中：計數未知（顯示 0 會謊報空），卡片區由呼叫端塞佔位卡。 */
-  loading?: boolean;
+  /** 計數未知（首訪載入中或載入失敗）：顯示 0 會謊報空，徽章整個不出。 */
+  countUnknown?: boolean;
   children: React.ReactNode;
 }) {
   const { t } = useI18n();
@@ -132,7 +135,7 @@ function Column({
           {t(`stage.${stage}`)}
         </h2>
         <div className="flex-1" />
-        {!loading && (
+        {!countUnknown && (
           <span
             data-testid="column-count"
             className={`inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums ${style.badge}`}
@@ -231,9 +234,12 @@ export function KanbanBoard({
   reorderUnavailableReason,
   onDragActiveChange,
   loading,
+  loadFailed,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const { t } = useI18n();
+  // 載入中優先於失敗提示：重試在途時先畫骨架，不留上一輪的失敗殘影。
+  const failed = !loading && !!loadFailed;
   // 搜尋過濾（spec「看板搜尋過濾卡片」）：變更卡以名稱與摘要、討論卡以主題與
   // slug 比對；比對規則共用 matchesQuery（與已封存頁一致）。空（或僅空白）即全量。
   // 篩選 chips（design D5）：元件 local、不持久化；與搜尋字串 AND 交集。
@@ -450,12 +456,20 @@ export function KanbanBoard({
             highlight={q}
             fulltextHits={fulltextHits}
             loading={loading}
+            loadFailed={failed}
           />
         )}
         {STAGES.map((stage) => (
-          <Column key={stage} stage={stage} count={byStage[stage].length} loading={loading}>
+          <Column
+            key={stage}
+            stage={stage}
+            count={byStage[stage].length}
+            countUnknown={loading || failed}
+          >
             {loading ? (
               <ColumnSkeleton />
+            ) : failed ? (
+              <ColumnLoadFailed />
             ) : onReorder ? (
               <SortableContext
                 items={byStage[stage].map((c) => cardDndId("change", c.name))}
