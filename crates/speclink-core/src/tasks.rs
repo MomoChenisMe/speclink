@@ -145,6 +145,48 @@ pub fn parse(tasks_md: &str) -> Vec<Task> {
     out
 }
 
+/// How a `[M]` marker missed the prefix slot [`strip_markers`] reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MisplacedMarker {
+    /// `- [ ] 3.2 [M] …` — the task number took the slot, pushing the marker past it.
+    AfterNumber,
+    /// `- [ ]  [M] …` — extra space after the checkbox, so the slot never matched.
+    PrefixSlotMissed,
+}
+
+/// A task whose `[M]` marker sits outside the prefix slot, so the parser read it
+/// as description text and counted the task as code work.
+#[derive(Debug, Clone)]
+pub struct Misplaced {
+    pub task_id: usize,
+    pub description: String,
+    pub kind: MisplacedMarker,
+}
+
+/// Find tasks that meant to carry `[M]` but wrote it where the parser cannot see it.
+/// Only the start of the description is examined — a `[M]` further in is prose, and
+/// task lists that discuss the marker are full of those.
+pub fn misplaced_markers(tasks: &[Task]) -> Vec<Misplaced> {
+    tasks
+        .iter()
+        .filter_map(|t| {
+            let mut tokens = t.description.split_whitespace();
+            let first = tokens.next()?;
+            let kind = if first == "[M]" {
+                MisplacedMarker::PrefixSlotMissed
+            } else if tokens.next() == Some("[M]")
+                && first.chars().any(|c| c.is_ascii_digit())
+                && first.chars().all(|c| c.is_ascii_digit() || c == '.')
+            {
+                MisplacedMarker::AfterNumber
+            } else {
+                return None;
+            };
+            Some(Misplaced { task_id: t.id, description: t.description.clone(), kind })
+        })
+        .collect()
+}
+
 /// Task counts in two groups: every task, and code tasks alone (`[M]` excluded).
 /// The single source both the station gates and the stamp freshness anchors read
 /// — no caller filters manual tasks on its own.
@@ -1161,6 +1203,58 @@ mod tests {
         assert!(tasks.iter().all(|t| !t.manual));
         assert_eq!(tasks[0].description, "1.1 first task");
         assert_eq!(tasks[0].stable_id.as_deref(), Some("tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV"));
+    }
+
+    // --- spec「標記位置的 change 驗證檢查」---
+
+    #[test]
+    fn misplaced_markers_follow_the_spec_example_table() {
+        // spec Example「誤置判定」表逐列：任務行 → 判定。
+        let rows: [(&str, Option<MisplacedMarker>); 5] = [
+            ("- [ ] [M] 3.2 手測匯入\n", None),
+            ("- [ ] 3.2 [M] 手測匯入\n", Some(MisplacedMarker::AfterNumber)),
+            ("- [ ] 1.10 [M] 手測\n", Some(MisplacedMarker::AfterNumber)),
+            ("- [ ]  [M] 手測\n", Some(MisplacedMarker::PrefixSlotMissed)),
+            ("- [ ] 說明 `[M]` 剝除規則\n", None),
+        ];
+        for (line, want) in rows {
+            let found = misplaced_markers(&parse(line));
+            assert_eq!(found.first().map(|m| m.kind), want, "誤置判定：{line}");
+        }
+    }
+
+    #[test]
+    fn misplaced_markers_report_task_id_and_description() {
+        let md = "- [x] 1.1 寫解析器\n- [ ] 6.2 [M] 手動驗收\n";
+        let found = misplaced_markers(&parse(md));
+        assert_eq!(found.len(), 1, "只有第二行誤置");
+        assert_eq!(found[0].task_id, 2, "序號須為全檔 checkbox 順序");
+        assert_eq!(found[0].description, "6.2 [M] 手動驗收", "描述原樣回報供訊息引文");
+    }
+
+    #[test]
+    fn misplaced_markers_ignore_mid_description_mentions() {
+        // 反引號包裹或行文中段提及 [M] 不構成違規——本 repo 既有 tasks.md 大量存在。
+        let md = "- [x] 1.1 前綴剝除迴圈同時接受 `[P]` 與 `[M]` 的說明文字\n\
+                  - [ ] 2.1 改寫 [M] 起草指引\n\
+                  - [ ] [M] 手測匯入\n";
+        assert!(misplaced_markers(&parse(md)).is_empty(), "中段提及與正確前綴皆不得命中");
+    }
+
+    #[test]
+    fn misplaced_markers_check_done_tasks_alike() {
+        // 誤置是格式錯誤,與完成狀態無關。
+        let found = misplaced_markers(&parse("- [x] 3.3 [M] 已勾的手測\n"));
+        assert_eq!(found.len(), 1, "已勾任務同等檢查");
+        assert_eq!(found[0].kind, MisplacedMarker::AfterNumber);
+    }
+
+    #[test]
+    fn misplaced_markers_stay_silent_on_clean_task_lists() {
+        // 無命中時零輸出——validate 既有輸出逐位元不變的前提。
+        for md in ["", "- [ ] 1.1 寫解析器\n- [x] [M] 手測\n- [ ] [P] [M] 混用\n"] {
+            assert!(misplaced_markers(&parse(md)).is_empty(), "乾淨清單須零回報：{md:?}");
+        }
     }
 
     // --- spec「寫碼任務全完成預測子」---

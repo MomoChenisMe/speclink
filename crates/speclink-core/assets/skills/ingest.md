@@ -124,6 +124,18 @@ Update an existing Speclink change — from a plan file or conversation context.
    - Add new tasks from plan stages or conversation, **preserve completed `[x]` items**
    - Do NOT remove existing content
 
+   **Mark manual-verification tasks with `[M]`**: a task the agent cannot run itself — the user has to operate the product and confirm the result by hand — carries an `[M]` marker, so the quality stations can judge "the code is finished" separately from "a human accepted it". Code tasks and automated tests never carry it.
+
+   **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, never before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
+
+   ```
+   Write:  - [ ] [M] 3.2 Open the imported document and confirm the list stays one list
+   Not:    - [ ] 3.2 [M] Open the imported document and confirm the list stays one list
+   Not:    - [ ]  [M] 3.2 Open the imported document …   (two spaces after the checkbox)
+   ```
+
+   A misplaced marker is read as ordinary description text: the task silently counts as code work, "code tasks all complete" never becomes true, and apply stalls on a task no agent may check off. `speclink validate` reports it as an error.
+
    After creating each artifact, re-check status:
 
    ```bash

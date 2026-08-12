@@ -1,5 +1,5 @@
 === CLAUDE.md ===
-<!-- SPECLINK:START v1.19.11 -->
+<!-- SPECLINK:START v1.19.12 -->
 
 # Speclink Instructions
 
@@ -45,7 +45,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -133,7 +133,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -460,7 +460,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -967,7 +967,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -1244,7 +1244,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -1480,7 +1480,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -1752,7 +1752,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -1898,7 +1898,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -2338,7 +2338,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -2469,7 +2469,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -2644,7 +2644,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -2773,6 +2773,18 @@ Update an existing Speclink change — from a plan file or conversation context.
    - Merge new context into existing proposal (don't replace)
    - Add new tasks from plan stages or conversation, **preserve completed `[x]` items**
    - Do NOT remove existing content
+
+   **Mark manual-verification tasks with `[M]`**: a task the agent cannot run itself — the user has to operate the product and confirm the result by hand — carries an `[M]` marker, so the quality stations can judge "the code is finished" separately from "a human accepted it". Code tasks and automated tests never carry it.
+
+   **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, never before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
+
+   ```
+   Write:  - [ ] [M] 3.2 Open the imported document and confirm the list stays one list
+   Not:    - [ ] 3.2 [M] Open the imported document and confirm the list stays one list
+   Not:    - [ ]  [M] 3.2 Open the imported document …   (two spaces after the checkbox)
+   ```
+
+   A misplaced marker is read as ordinary description text: the task silently counts as code work, "code tasks all complete" never becomes true, and apply stalls on a task no agent may check off. `speclink validate` reports it as an error.
 
    After creating each artifact, re-check status:
 
@@ -2912,7 +2924,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -3006,7 +3018,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -3275,7 +3287,17 @@ If no argument is provided, the workflow will extract requirements from conversa
      - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `.speclink.yaml` or `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
    - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` (never open artifact files by path — the documents may live in a remote store)
    - Generate the artifact content using `template` as the structure
-   - **Mark manual-verification tasks with `[M]`** (tasks artifact only): a task the agent cannot run itself — the user has to operate the product and confirm the result by hand — gets an `[M]` prefix after the checkbox, e.g. `- [ ] [M] 3.2 Open the imported document and confirm the list stays one list`. Code tasks and automated tests never carry it. The marker is what lets the quality stations judge "the code is finished" separately from "a human accepted it": they run once every non-`[M]` task is checked, while archive still waits for all of them.
+   - **Mark manual-verification tasks with `[M]`** (tasks artifact only): a task the agent cannot run itself — the user has to operate the product and confirm the result by hand — carries an `[M]` marker. Code tasks and automated tests never carry it. The marker is what lets the quality stations judge "the code is finished" separately from "a human accepted it": they run once every non-`[M]` task is checked, while archive still waits for all of them.
+
+     **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, never before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
+
+     ```
+     Write:  - [ ] [M] 3.2 Open the imported document and confirm the list stays one list
+     Not:    - [ ] 3.2 [M] Open the imported document and confirm the list stays one list
+     Not:    - [ ]  [M] 3.2 Open the imported document …   (two spaces after the checkbox)
+     ```
+
+     A misplaced marker is read as ordinary description text: the task silently counts as code work, "code tasks all complete" never becomes true, and apply stalls on a task no agent may check off. `speclink validate` reports it as an error.
    - Apply `context` and `rules` as constraints - but do NOT copy them into the file
    - Write the artifact via CLI (the CLI handles directory creation and format validation):
 
@@ -3427,7 +3449,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -3514,7 +3536,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -3702,7 +3724,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 
@@ -3981,7 +4003,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.11"
+  version: "v1.19.12"
   generatedBy: "Speclink"
 ---
 

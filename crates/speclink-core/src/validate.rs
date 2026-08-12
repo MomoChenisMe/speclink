@@ -3,6 +3,7 @@
 use crate::model::{self, Change};
 use crate::schema::Schema;
 use crate::store::Store;
+use crate::tasks;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -104,6 +105,36 @@ Add this above the first operation section:\n      ## Purpose\n\n      \
     )
 }
 
+fn misplaced_marker_guidance(path: &str, m: &tasks::Misplaced) -> String {
+    // The description reaches us already trimmed, so the "wrong" line is rebuilt from the
+    // defect rather than quoted — a double space would otherwise be invisible in the example.
+    // Drop the marker's own trailing space too, or the repaired line shows a doubled gap.
+    let body = match m.description.replacen("[M] ", "", 1) {
+        stripped if stripped != m.description => stripped,
+        _ => m.description.replacen("[M]", "", 1),
+    };
+    let body = body.trim();
+    let (cause, wrong) = match m.kind {
+        tasks::MisplacedMarker::AfterNumber => (
+            "the task number took the marker slot",
+            format!("- [ ] {}", m.description),
+        ),
+        tasks::MisplacedMarker::PrefixSlotMissed => (
+            "the marker slot takes exactly one space after the checkbox",
+            format!("- [ ]  [M] {body}"),
+        ),
+    };
+    format!(
+        "{path}: Task {id} (\"{desc}\"): misplaced `[M]` marker — {cause}, so the engine reads \
+`[M]` as description text and counts the task as code work that never completes.\n    \
+Write:  {right}\n    \
+Not:    {wrong}",
+        id = m.task_id,
+        desc = m.description,
+        right = format!("- [ ] [M] {body}"),
+    )
+}
+
 /// Validate a change's artifacts structurally.
 pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, strict: bool) -> ValidationResult {
     let mut errors = Vec::new();
@@ -196,6 +227,12 @@ pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, str
             }
         }
     }
+    // 手動標記位置檢查（design D3）：`[M]` 寫在前綴槽外時解析不到,任務被靜默算成
+    // 寫碼任務。既有錯誤先列,這條後補,凍結項的順序不動。
+    let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
+    let misplaced = tasks::misplaced_markers(&tasks::parse(&tasks_md));
+    errors.extend(misplaced.iter().map(|m| misplaced_marker_guidance("tasks.md", m)));
+
     let has_cap_dirs = store.has_capability_dirs(&change.name);
     if caps.is_empty() && !has_cap_dirs {
         warnings.push("No delta specs found".to_string());
@@ -359,6 +396,78 @@ mod tests {
             joined.lines().count() > 1,
             "範例骨架應以獨立行呈現，而非塞成一行: {joined}"
         );
+    }
+
+    // --- 手動標記位置檢查（design D3；spec manual-task-marker
+    //     「標記位置的 change 驗證檢查」）---
+
+    fn result_with_tasks(tasks_md: &str) -> ValidationResult {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-08-12\n");
+        store.put_artifact("demo", "tasks.md", tasks_md);
+        store.put_artifact("demo", &crate::model::delta_spec_artifact("auth"), MODIFIED);
+        store.canonical.borrow_mut().insert("auth".to_string(), CANON.to_string());
+        let change = crate::model::find_change(&store, "demo").expect("change resolves");
+        validate_change(&store, &change, &crate::schema::spec_driven(), false)
+    }
+
+    #[test]
+    fn task_number_before_the_marker_is_an_error() {
+        // spec Scenario「編號在前報 error」。
+        let r = result_with_tasks("- [ ] 6.2 [M] 手動驗收\n");
+        assert!(!r.valid, "誤置必須使驗證 invalid: {r:?}");
+        let joined = r.errors.join("\n");
+        // 路徑為 change 相對的邏輯路徑,與 Purpose／重複需求兩條既有錯誤同慣例。
+        for key in ["tasks.md", "Task 1", "6.2 [M] 手動驗收", "- [ ] [M] 6.2 手動驗收"] {
+            assert!(joined.contains(key), "error 缺 {key:?}: {joined}");
+        }
+    }
+
+    #[test]
+    fn marker_that_missed_the_prefix_slot_names_the_single_space_rule() {
+        // spec Scenario「行首殘留報 error」：checkbox 後兩個空格,前綴槽漏接。
+        let r = result_with_tasks("- [ ]  [M] 手測匯入\n");
+        assert!(!r.valid, "誤置必須使驗證 invalid: {r:?}");
+        let joined = r.errors.join("\n");
+        assert!(joined.contains("exactly one space"), "error 須點名恰一個空格: {joined}");
+    }
+
+    #[test]
+    fn correct_prefix_and_mid_description_mentions_report_nothing() {
+        // spec Scenario「正確前綴與中段字面提及不報」。
+        let r = result_with_tasks(
+            "- [ ] [M] 手測匯入\n- [x] 1.1 前綴剝除迴圈同時接受 `[P]` 與 `[M]` 的說明文字\n",
+        );
+        assert!(r.valid, "正確寫法不得報 error: {:?}", r.errors);
+        assert!(r.warnings.is_empty(), "也不得報 warning: {:?}", r.warnings);
+    }
+
+    #[test]
+    fn a_change_without_tasks_validates_exactly_as_before() {
+        // tasks.md 缺席時本檢查零輸出——既有驗證結果逐位元不變。
+        let with_empty = result_with_tasks("");
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-08-12\n");
+        store.put_artifact("demo", &crate::model::delta_spec_artifact("auth"), MODIFIED);
+        store.canonical.borrow_mut().insert("auth".to_string(), CANON.to_string());
+        let change = crate::model::find_change(&store, "demo").expect("change resolves");
+        let absent = validate_change(&store, &change, &crate::schema::spec_driven(), false);
+        assert_eq!(
+            (absent.valid, absent.errors, absent.warnings),
+            (with_empty.valid, with_empty.errors, with_empty.warnings),
+            "有無 tasks.md 的驗證結果須全等"
+        );
+    }
+
+    #[test]
+    fn existing_errors_are_listed_before_the_marker_ones() {
+        // 凍結順序慣例同 Purpose 檢查：既有錯誤先列,本檢查後附。
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-08-12\n");
+        store.put_artifact("demo", "tasks.md", "- [ ] 6.2 [M] 手動驗收\n");
+        store.put_artifact("demo", &crate::model::delta_spec_artifact("token"), &delta(None, ADDED));
+        let change = crate::model::find_change(&store, "demo").expect("change resolves");
+        let r = validate_change(&store, &change, &crate::schema::spec_driven(), false);
+        assert_eq!(r.errors.len(), 2, "兩類錯誤各一筆: {:?}", r.errors);
+        assert!(r.errors[0].contains("## Purpose"), "既有 Purpose 錯誤在前: {:?}", r.errors);
+        assert!(r.errors[1].contains("tasks.md"), "標記錯誤在後: {:?}", r.errors);
     }
 }
 
