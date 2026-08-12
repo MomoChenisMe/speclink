@@ -18,4 +18,4 @@
 
 - [x] 3.1 全量驗收：./target/debug/speclink validate --specs --strict 全綠——零 error、零佔位 warning、零過短 warning（67 份全數合格，archive-merge 與 spec-validation 原樣未動） <!-- speclink-task:tsk_01KZNFGDHH1SX8SZ6H6M0N4EWB -->
 - [x] 3.2 抽樣清單：自六批各抽至少 1 份、共 10 份（含 manual-task-marker、desktop-app、verb-contract、change-lifecycle、server-verb-api、review-station 六份必抽＋隨機 4 份），列出清單與各份 Purpose 全文供過目 <!-- speclink-task:tsk_01KZNFGDHHPFE3FK6WHBW00YE4 -->
-- [ ] [M] 3.3 使用者抽審：過目 3.2 的 10 份 Purpose，不準處提出後逐份修正；抽審通過即驗收完成（其餘 57 份以 validate 全綠承保，日後用到覺得不準隨手修） <!-- speclink-task:tsk_01KZNFGDHH29F5BVBW9N9H8QV0 -->
+- [x] [M] 3.3 使用者抽審：過目 3.2 的 10 份 Purpose，不準處提出後逐份修正；抽審通過即驗收完成（其餘 57 份以 validate 全綠承保，日後用到覺得不準隨手修） <!-- speclink-task:tsk_01KZNFGDHH29F5BVBW9N9H8QV0 -->
