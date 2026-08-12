@@ -6,6 +6,7 @@ import { parseTraceSources } from "../trace";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Markdown, READING_COLUMN_CLS } from "./Markdown";
+import { DocSkeleton } from "./skeletons";
 
 export interface SpecDrawerProps {
   open: boolean;
@@ -85,10 +86,12 @@ export function SpecDrawer({ open, onOpenChange, capability, refreshGen, loadDoc
         <div className="flex-1 min-h-0 overflow-y-auto">
           {/* 共用置中容器——正典內文與溯源 footer 同欄（design D4）。 */}
           <div data-reading-column className={READING_COLUMN_CLS}>
-            <Markdown
-              content={doc ?? null}
-              empty={doc === undefined ? t("common.loading") : t("common.noContent")}
-            />
+            {/* 載入中畫骨架；空態文案只在載入完成後出（spec「抽屜文件載入以 skeleton 呈現」）。 */}
+            {doc === undefined ? (
+              <DocSkeleton />
+            ) : (
+              <Markdown content={doc} empty={t("common.noContent")} />
+            )}
             {traceSources.length > 0 && (
               <div className="mt-4 pt-3 border-t border-border/60 text-xs text-muted-foreground">
                 {t("specs.sourceChanges") + traceSources.join(t("specs.sourceSep"))}

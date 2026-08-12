@@ -123,6 +123,8 @@ export {
 } from "./components/ui/select";
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox";
 export { Textarea, type TextareaProps } from "./components/ui/textarea";
+export { Skeleton } from "./components/ui/skeleton";
+export { CardSkeleton, ColumnSkeleton, RowSkeleton, DocSkeleton } from "./components/skeletons";
 
 // 富詳情
 export type { ChangeMetaInfo } from "./adapter";

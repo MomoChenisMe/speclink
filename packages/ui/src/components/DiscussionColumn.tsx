@@ -16,6 +16,7 @@ import { cardDndId } from "../boardDnd";
 import { useI18n } from "../i18n";
 import { changeStage, STAGE_BADGE } from "../stage";
 import { Button } from "./ui/button";
+import { ColumnSkeleton } from "./skeletons";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { CardNameRow } from "./CardNameRow";
 import { HighlightText } from "./HighlightText";
@@ -75,6 +76,8 @@ export interface DiscussionColumnProps {
   highlight?: string;
   /** 全文命中（design D6）：命中的討論卡呈 snippet 行。 */
   fulltextHits?: SearchHit[];
+  /** 首訪載入中：以佔位卡呈現，欄名照常、不出空態文案與計數（design D2）。 */
+  loading?: boolean;
 }
 
 const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
@@ -283,6 +286,7 @@ export function DiscussionColumn({
   sortable,
   highlight,
   fulltextHits,
+  loading,
 }: DiscussionColumnProps) {
   const { t } = useI18n();
   const full = discussions.filter((d) => d.status !== "promoted");
@@ -326,29 +330,37 @@ export function DiscussionColumn({
           {t("discussion.heading")}
         </h2>
         <div className="flex-1" />
-        <span
-          data-testid="column-count"
-          className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-muted text-muted-foreground"
-        >
-          {full.length}
-        </span>
+        {!loading && (
+          <span
+            data-testid="column-count"
+            className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-muted text-muted-foreground"
+          >
+            {full.length}
+          </span>
+        )}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
-        {full.length === 0 && promoted.length === 0 && (
-          <p className="px-1.5 pt-2 text-xs text-muted-foreground">{t("discussion.none")}</p>
-        )}
-        {sortable ? (
-          <SortableContext
-            items={full.map((d) => cardDndId("discussion", d.slug))}
-            strategy={verticalListSortingStrategy}
-          >
-            {fullCards}
-          </SortableContext>
+        {loading ? (
+          <ColumnSkeleton />
         ) : (
-          fullCards
+          <>
+            {full.length === 0 && promoted.length === 0 && (
+              <p className="px-1.5 pt-2 text-xs text-muted-foreground">{t("discussion.none")}</p>
+            )}
+            {sortable ? (
+              <SortableContext
+                items={full.map((d) => cardDndId("discussion", d.slug))}
+                strategy={verticalListSortingStrategy}
+              >
+                {fullCards}
+              </SortableContext>
+            ) : (
+              fullCards
+            )}
+          </>
         )}
       </div>
-      {promoted.length > 0 && (
+      {!loading && promoted.length > 0 && (
         <div className="shrink-0 flex flex-col gap-1.5 border-t border-border/60 pt-1.5">
           <Button
             type="button"

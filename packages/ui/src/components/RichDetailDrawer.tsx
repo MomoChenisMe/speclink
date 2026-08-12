@@ -28,6 +28,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { SourceChipRow } from "./SourceDiscussionChip";
 import { READING_COLUMN_CLS } from "./Markdown";
 import { SectionedDoc } from "./SectionedDoc";
+import { DocSkeleton } from "./skeletons";
 import { TaskList } from "./TaskList";
 import { DeltaBadges, DeltaSpecView } from "./DeltaBadges";
 import { AnalyzePanel } from "./AnalyzePanel";
@@ -175,7 +176,8 @@ export function RichDetailDrawer({
   const [proposal, setProposal] = useState<Doc>();
   const [design, setDesign] = useState<Doc>();
   const [tasksMd, setTasksMd] = useState<Doc>();
-  const [specDocs, setSpecDocs] = useState<Record<string, string | null>>({});
+  // undefined＝capability 清單與其規格文件尚未載完（與「無 delta 規格」的空物件分流）。
+  const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
   const [copied, markCopied] = useCopied();
   const [full, setFull] = useState(false);
   // 批次操作／拖放寫回進行中——鎖工具列與清單（design D4 例外）。單發勾選不設此旗標。
@@ -202,7 +204,7 @@ export function RichDetailDrawer({
       setProposal(undefined);
       setDesign(undefined);
       setTasksMd(undefined);
-      setSpecDocs({});
+      setSpecDocs(undefined);
     }
     const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
       if (requestSeq.current === seq) apply(v);
@@ -246,7 +248,7 @@ export function RichDetailDrawer({
   const verbOpen = !!(drawerVerb && drawerVerb.change === change.name);
   const pct = change.totalTasks > 0 ? Math.round((change.completedTasks / change.totalTasks) * 100) : 0;
   const taskBadge = `${change.completedTasks}/${change.totalTasks}`;
-  const delta = sumDeltaCounts(Object.values(specDocs).map(specDeltaCounts));
+  const delta = sumDeltaCounts(Object.values(specDocs ?? {}).map(specDeltaCounts));
   const rel = relativeDays(meta?.created, t);
 
   const copyName = () => {
@@ -563,36 +565,52 @@ export function RichDetailDrawer({
           <div className="flex-1 overflow-y-auto pt-3">
             {/* 共用置中容器包住分頁全部內容——區段標籤、任務清單與內文同欄（design D4）。 */}
             <div data-reading-column className={READING_COLUMN_CLS}>
-            {/* undefined＝載入在途、null＝文件不存在（空殼 change）——兩態文案分流，
-                不存在不得掛「載入中」（remote 空 change 曾長駐載入中）。 */}
+            {/* undefined＝載入在途、null＝文件不存在（空殼 change）——載入中畫骨架，
+                空態文案只在載入完成後出：不存在不得掛「載入中」（remote 空 change 曾長駐
+                載入中），載入中也不得謊稱「無文件」。 */}
             <TabsContent value="proposal">
-              <SectionedDoc
-                content={proposal ?? null}
-                empty={proposal === undefined ? t("common.loading") : t("list.noProposalDoc")}
-              />
+              {proposal === undefined ? (
+                <DocSkeleton />
+              ) : (
+                <SectionedDoc content={proposal} empty={t("list.noProposalDoc")} />
+              )}
             </TabsContent>
-            <TabsContent value="design"><SectionedDoc content={design ?? null} empty={t("list.noDesignDoc")} /></TabsContent>
+            <TabsContent value="design">
+              {design === undefined ? (
+                <DocSkeleton />
+              ) : (
+                <SectionedDoc content={design} empty={t("list.noDesignDoc")} />
+              )}
+            </TabsContent>
             <TabsContent value="tasks">
               {taskError && (
                 <div className="mb-2 text-sm text-destructive">
                   {t("tasks.writeFailed").replace("{msg}", taskError)}
                 </div>
               )}
-              <TaskList
-                markdown={tasksMd ?? null}
-                busy={taskBusy}
-                readOnly={unavailable?.tasks !== undefined}
-                onDragActiveChange={setDragActive}
-                onToggle={(ordinal, done, stableId) => void handleToggle(ordinal, done, stableId)}
-                // 拖排寫回未提供（remote capability 缺口）即整段停用——把手不渲染。
-                onReorder={
-                  onMoveTask ? (from, to, before) => void handleReorder(from, to, before) : undefined
-                }
-                onSetAll={(done) => void handleSetAll(done)}
-              />
+              {tasksMd === undefined ? (
+                <DocSkeleton />
+              ) : (
+                <TaskList
+                  markdown={tasksMd}
+                  busy={taskBusy}
+                  readOnly={unavailable?.tasks !== undefined}
+                  onDragActiveChange={setDragActive}
+                  onToggle={(ordinal, done, stableId) => void handleToggle(ordinal, done, stableId)}
+                  // 拖排寫回未提供（remote capability 缺口）即整段停用——把手不渲染。
+                  onReorder={
+                    onMoveTask
+                      ? (from, to, before) => void handleReorder(from, to, before)
+                      : undefined
+                  }
+                  onSetAll={(done) => void handleSetAll(done)}
+                />
+              )}
             </TabsContent>
             <TabsContent value="specs">
-              {Object.keys(specDocs).length === 0 ? (
+              {specDocs === undefined ? (
+                <DocSkeleton />
+              ) : Object.keys(specDocs).length === 0 ? (
                 <div className="text-muted-foreground text-sm py-6">{t("list.noDeltaSpecs")}</div>
               ) : (
                 Object.entries(specDocs).map(([cap, doc]) => (
@@ -600,7 +618,7 @@ export function RichDetailDrawer({
                     <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-2">
                       {cap} <DeltaBadges counts={specDeltaCounts(doc)} />
                     </div>
-                    <DeltaSpecView markdown={doc} empty={t("common.loading")} />
+                    <DeltaSpecView markdown={doc} empty={t("list.noDeltaSpecs")} />
                   </div>
                 ))
               )}

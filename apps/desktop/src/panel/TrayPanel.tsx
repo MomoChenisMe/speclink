@@ -9,6 +9,7 @@ import {
   REVIEW_ICON,
   REVIEW_LABEL_KEY,
   REVIEW_TONE,
+  RowSkeleton,
   SEMANTIC_SURFACE,
   SEMANTIC_TONE,
   STAGE_BADGE,
@@ -117,6 +118,7 @@ function SectionHeader({
   iconCls,
   count,
   badgeCls,
+  loading,
 }: {
   icon: LucideIcon;
   label: string;
@@ -126,20 +128,24 @@ function SectionHeader({
   count: number;
   /** 計數徽章配色：生命週期取 STAGE_BADGE[stage]、討論／已轉出分區中性。 */
   badgeCls: string;
+  /** 首訪載入中：計數未知，顯示 0 會謊報空——徽章整個不出。 */
+  loading?: boolean;
 }) {
   return (
     <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-1 text-xs font-semibold text-muted-foreground">
       <Icon className={cn("h-3.5 w-3.5", iconCls)} />
       {label}
-      <span
-        data-testid="panel-section-count"
-        className={cn(
-          "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
-          badgeCls,
-        )}
-      >
-        {count}
-      </span>
+      {!loading && (
+        <span
+          data-testid="panel-section-count"
+          className={cn(
+            "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
+            badgeCls,
+          )}
+        >
+          {count}
+        </span>
+      )}
     </div>
   );
 }
@@ -166,6 +172,16 @@ function SectionCard({
 /** 空狀態分區卡附加樣式（design D8）：最小高度＋內容垂直置中——生命週期
     零筆階段卡與討論零筆卡共用，維持空狀態同構。 */
 const emptyCardClass = "min-h-12 justify-center";
+
+/** 分區載入中的佔位列組（design D5）：兩列即讀得出「有內容正在載」。 */
+function SectionSkeleton() {
+  return (
+    <>
+      <RowSkeleton />
+      <RowSkeleton />
+    </>
+  );
+}
 
 /** 區塊分割線（spec「面板樣式（macOS）」區塊順序與分割線）：低透明度細線
     疊在毛玻璃上，僅出現於 tab 條後與內容區塊之間——區塊內部（分區卡之間）
@@ -441,6 +457,10 @@ export function TrayPanel({
     stage,
     items: changes.filter((c) => changeStage(c) === stage),
   }));
+  const pendingTabKey = snapshot?.pendingTabKey ?? null;
+  // 首訪載入中：分區以佔位列呈現。快照未到（null）同樣算載入中——面板剛開、
+  // 主視窗尚未推第一份快照，此時畫空分區與畫佔位列是同一個問題。
+  const loading = !snapshot || !snapshot.workspaceLoaded;
   const activeTab = tabs.find((tab) => tab.key === snapshot?.activeKey);
   const activeRecovery =
     activeTab?.status === "restoring" || activeTab?.status === "error" ? activeTab : null;
@@ -484,7 +504,13 @@ export function TrayPanel({
                 data-status={tab.status}
                 role="tab"
                 aria-selected={active}
-                aria-label={`${tab.name}${tabStatusLabel(tab, t) ? `，${tabStatusLabel(tab, t)}` : ""}`}
+                aria-label={`${tab.name}${
+                  tab.key === pendingTabKey
+                    ? `，${t("app.tabSwitching")}`
+                    : tabStatusLabel(tab, t)
+                      ? `，${tabStatusLabel(tab, t)}`
+                      : ""
+                }`}
                 tabIndex={-1}
                 onClick={() => onOpenProject(tab.key)}
                 className={cn(
@@ -505,7 +531,13 @@ export function TrayPanel({
                     active ? "bg-primary-foreground/20" : "bg-primary/10 text-primary",
                   )}
                 >
-                  {tab.source === "remote" ? (
+                  {/* 切換中蓋過 avatar：探測擋在翻頁前，此處是使用者唯一的「有在動」訊號。 */}
+                  {tab.key === pendingTabKey ? (
+                    <LoaderCircle
+                      data-tab-pending="true"
+                      className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+                    />
+                  ) : tab.source === "remote" ? (
                     <RemoteTabIcon tab={tab} />
                   ) : (
                     tab.name.charAt(0).toUpperCase()
@@ -592,7 +624,20 @@ export function TrayPanel({
 
       {/* 討論區分流（spec「討論列表」）：「討論」列討論中、「已轉出」列已轉出；
           slug 為題、topic 為描述（識別錨點慣例，與看板討論卡一致） */}
-      {openDiscussions.length > 0 ? (
+      {loading ? (
+        /* 首訪載入中（design D5）：標題照常、內容為佔位列——與計數 0 的空狀態卡可區分。 */
+        <SectionCard testid="panel-section-discussions">
+          <SectionHeader
+            icon={MessageSquareText}
+            iconCls="text-muted-foreground/70"
+            label={t("tray.discussionsHeader")}
+            count={0}
+            badgeCls="bg-muted text-muted-foreground"
+            loading
+          />
+          <SectionSkeleton />
+        </SectionCard>
+      ) : openDiscussions.length > 0 ? (
         <SectionCard testid="panel-section-discussions">
           <SectionHeader
             icon={MessageSquareText}
@@ -621,7 +666,7 @@ export function TrayPanel({
           />
         </SectionCard>
       )}
-      {promotedDiscussions.length > 0 && (
+      {!loading && promotedDiscussions.length > 0 && (
         <SectionCard testid="panel-section-promoted">
           <SectionHeader
             icon={ArrowUpRight}
@@ -649,7 +694,7 @@ export function TrayPanel({
         <SectionCard
           key={stage}
           testid={`panel-section-${stage}`}
-          className={items.length === 0 ? emptyCardClass : undefined}
+          className={!loading && items.length === 0 ? emptyCardClass : undefined}
         >
           <SectionHeader
             icon={STAGE_ICONS[stage]}
@@ -657,7 +702,11 @@ export function TrayPanel({
             label={t(`stage.${stage}`)}
             count={items.length}
             badgeCls={STAGE_BADGE[stage]}
+            loading={loading}
           />
+          {loading ? (
+            <SectionSkeleton />
+          ) : (
           <OverflowGroup
             moreLabel={moreLabel}
             collapseLabel={collapseLabel}
@@ -672,6 +721,7 @@ export function TrayPanel({
               />
             ))}
           />
+          )}
         </SectionCard>
       ))}
 

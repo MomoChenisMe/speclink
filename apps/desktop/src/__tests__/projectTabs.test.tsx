@@ -192,3 +192,71 @@ describe("ProjectTabs", () => {
     );
   });
 });
+
+// spec「分頁切換中即時回饋」（design D1）：探測擋在翻頁前，目標分頁先出 spinner。
+describe("切換中分頁 spinner", () => {
+  const KEY_BETA = "local:C:\\proj\\beta";
+
+  it("pendingKey 指向的分頁出 spinner，且仍只有一個狀態圖示", () => {
+    render(
+      <ProjectTabs
+        tabs={tabs}
+        activeKey="local:C:\proj\alpha"
+        tabErrors={{}}
+        pendingKey={KEY_BETA}
+      />,
+    );
+    const beta = screen.getByText("beta").closest("[data-tab]") as HTMLElement;
+    expect(beta.querySelectorAll("[data-tab-status]")).toHaveLength(1);
+    expect(beta.querySelector('[data-tab-status="pending"]')).toBeTruthy();
+    expect(beta.querySelector('[data-tab-status="pending"]')?.getAttribute("class")).toContain(
+      "animate-spin",
+    );
+  });
+
+  it("spinner 帶切換中語意的無障礙標籤", () => {
+    render(
+      <ProjectTabs
+        tabs={tabs}
+        activeKey="local:C:\proj\alpha"
+        tabErrors={{}}
+        pendingKey={KEY_BETA}
+      />,
+    );
+    expect(screen.getByLabelText(APP_MESSAGES["zh-TW"]["app.tabSwitching"])).toBeTruthy();
+  });
+
+  it("非 pending 的分頁不出 spinner", () => {
+    render(
+      <ProjectTabs
+        tabs={tabs}
+        activeKey="local:C:\proj\alpha"
+        tabErrors={{}}
+        pendingKey={KEY_BETA}
+      />,
+    );
+    const alpha = screen.getByText("alpha").closest("[data-tab]") as HTMLElement;
+    expect(alpha.querySelector('[data-tab-status="pending"]')).toBeNull();
+  });
+
+  it("未給 pendingKey → 全部分頁照舊，無 spinner", () => {
+    render(<ProjectTabs tabs={tabs} activeKey="local:C:\proj\alpha" tabErrors={{}} />);
+    expect(document.querySelector('[data-tab-status="pending"]')).toBeNull();
+  });
+
+  // 錯誤分頁重試：仍在錯誤態但正在重探，切換中回饋優先於錯誤圖示。
+  it("重試錯誤分頁時 spinner 蓋過錯誤圖示，錯誤樣式照舊", () => {
+    render(
+      <ProjectTabs
+        tabs={tabs}
+        activeKey="local:C:\proj\alpha"
+        tabErrors={{ [KEY_BETA]: "目錄不存在" }}
+        pendingKey={KEY_BETA}
+      />,
+    );
+    const beta = screen.getByText("beta").closest("[data-tab]") as HTMLElement;
+    expect(beta.querySelectorAll("[data-tab-status]")).toHaveLength(1);
+    expect(beta.querySelector('[data-tab-status="pending"]')).toBeTruthy();
+    expect(beta.getAttribute("data-error")).toBe("true");
+  });
+});

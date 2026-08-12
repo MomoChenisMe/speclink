@@ -139,14 +139,16 @@ describe("提案分頁載入中／不存在分流", () => {
     expect(screen.queryByText("載入中…")).toBeNull();
   });
 
-  it("載入未完成（promise 未解決）時顯示載入中", async () => {
+  // 原意圖不變（載入中 ≠ 不存在）；呈現面自「載入中…」文字改為文件骨架
+  // （spec「抽屜文件載入以 skeleton 呈現」，desktop-loading-skeleton-ux）。
+  it("載入未完成（promise 未解決）時顯示文件骨架", async () => {
     const props = makeProps({
       loadDocument: vi.fn(() => new Promise<string>(() => {})),
       loadCapabilities: vi.fn(async () => []),
       loadMeta: vi.fn(() => new Promise<never>(() => {})),
     });
     render(<RichDetailDrawer {...(props as never)} />);
-    await waitFor(() => expect(screen.getByText("載入中…")).toBeTruthy());
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeTruthy());
     expect(screen.queryByText("（此 change 尚無提案內容）")).toBeNull();
   });
 });
@@ -1114,5 +1116,65 @@ describe("退回提案中動作(抽屜動作列)", () => {
     render(<RichDetailDrawer {...(makeProps({ onRevert: vi.fn() }) as never)} />);
     await screen.findByRole("button", { name: /刪除/ });
     expect(screen.queryByRole("button", { name: /退回提案中/ })).toBeNull();
+  });
+});
+
+// spec「抽屜文件載入以 skeleton 呈現」（design D3）：三態分流——載入中畫骨架、
+// 檔案不存在才出空態文案、有內容走既有渲染。載入中不得顯示「沒有文件」。
+describe("變更抽屜文件三態", () => {
+  /** 永不完成的載入：停在「載入中」態供斷言。 */
+  const pending = () => new Promise<never>(() => {});
+
+  async function openTab(name: RegExp) {
+    await waitFor(() => screen.getByRole("tab", { name }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name }));
+  }
+
+  it("載入中 → 四個分頁皆為文件骨架，且無任何空態文案", async () => {
+    render(
+      <RichDetailDrawer
+        {...(makeProps({
+          loadDocument: vi.fn(pending),
+          loadCapabilities: vi.fn(pending),
+        }) as never)}
+      />,
+    );
+    // 提案分頁（預設）
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeTruthy());
+    expect(screen.queryByText("（此 change 尚無提案內容）")).toBeNull();
+
+    for (const [tab, emptyText] of [
+      [/設計/, "（此 change 無設計文件）"],
+      [/規格/, "（此 change 無 delta 規格）"],
+    ] as const) {
+      await openTab(tab);
+      expect(document.querySelector('[aria-busy="true"]')).toBeTruthy();
+      expect(screen.queryByText(emptyText)).toBeNull();
+    }
+  });
+
+  it("載入完成且檔案不存在 → 各分頁顯示既有空態文案，無骨架", async () => {
+    render(
+      <RichDetailDrawer
+        {...(makeProps({
+          loadDocument: vi.fn(async () => null),
+          loadCapabilities: vi.fn(async () => []),
+        }) as never)}
+      />,
+    );
+    await screen.findByText("（此 change 尚無提案內容）");
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+
+    await openTab(/設計/);
+    expect(screen.getByText("（此 change 無設計文件）")).toBeTruthy();
+
+    await openTab(/規格/);
+    expect(screen.getByText("（此 change 無 delta 規格）")).toBeTruthy();
+  });
+
+  it("載入完成且有內容 → 顯示內容，無骨架", async () => {
+    render(<RichDetailDrawer {...(makeProps() as never)} />);
+    await screen.findByText(/doc for proposal.md/);
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 });

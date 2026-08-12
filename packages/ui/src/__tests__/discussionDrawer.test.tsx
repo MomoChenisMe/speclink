@@ -599,3 +599,22 @@ describe("抽屜內封存動詞", () => {
     expect(screen.queryByRole("button", { name: /封存/ })).toBeNull();
   });
 });
+
+// spec「抽屜文件載入以 skeleton 呈現」（design D3）：討論抽屜載入中畫骨架。
+describe("討論抽屜文件三態", () => {
+  it("載入中 → 文件骨架，不出空態文案", async () => {
+    render(
+      <DiscussionDrawer
+        {...(makeProps({ loadDocument: vi.fn(() => new Promise<never>(() => {})) }) as never)}
+      />,
+    );
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeTruthy());
+    expect(screen.queryByText("（無內容）")).toBeNull();
+  });
+
+  it("載入完成且記錄不存在 → 空態文案，無骨架", async () => {
+    render(<DiscussionDrawer {...(makeProps({ loadDocument: vi.fn(async () => null) }) as never)} />);
+    await waitFor(() => expect(screen.getByText("（無內容）")).toBeTruthy());
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+});

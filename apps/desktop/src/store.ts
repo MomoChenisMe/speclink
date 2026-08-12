@@ -250,6 +250,9 @@ export interface AppState {
   sessionEpoch: number;
   /** 目前 active 分頁的 locator key（null＝零分頁空狀態）。 */
   activeKey: string | null;
+  /** 探測進行中的目標分頁 key（design D1）：本地分頁的 openProject 擋在翻頁前，
+   * 期間畫面仍停在原 workspace——此鍵讓分頁列標出「正在切過去」。null＝無切換。 */
+  pendingTabKey: string | null;
   /** 待確認的初始化目錄（uninitialized 判定觸發；null＝無對話框）。 */
   pendingInit: string | null;
   /** 待確認的啟用專案根（unadopted 判定觸發、錨定探測回報 root；null＝無對話框）。 */
@@ -1356,6 +1359,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (changed) set({ sessions });
     },
     activeKey: null,
+    pendingTabKey: null,
     pendingInit: null,
     pendingAdopt: null,
     tabErrors: {},
@@ -1821,6 +1825,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         }
         return;
       }
+      // 探測擋在翻頁前（可達秒級）：標出切換中，畫面留在原 workspace 且照常可互動。
+      set({ pendingTabKey: key });
       try {
         const probe = await workspace.openProject(tab.locator.root);
         if (probe.status === "project") {
@@ -1831,6 +1837,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         }
       } catch (e) {
         set({ tabErrors: { ...get().tabErrors, [key]: String(e) } });
+      } finally {
+        // 後發切換覆寫先發時，先發的收尾不得清掉後發的標記。
+        if (get().pendingTabKey === key) set({ pendingTabKey: null });
       }
     },
 

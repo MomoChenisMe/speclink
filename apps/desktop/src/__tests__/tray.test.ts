@@ -93,6 +93,8 @@ function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
       { slug: "d1", topic: "討論一", promoted: false },
       { slug: "d2", topic: "討論二", promoted: false },
     ],
+    pendingTabKey: null,
+    workspaceLoaded: true,
     ...over,
   };
 }
@@ -401,6 +403,8 @@ function makeStore(
       { locator: { kind: "local", root: "/proj/two" } as const, name: "two" },
     ] as Array<{ locator: WorkspaceLocator; name: string }>,
     activeKey: "local:/proj/one",
+    pendingTabKey: null as string | null,
+    loaded: true,
     changes: [
       change({ name: "alpha", totalTasks: 12, completedTasks: 3 }),
       change({ name: "gamma", totalTasks: 5, completedTasks: 0 }),
@@ -960,5 +964,32 @@ describe("initTray 接線（選單）", () => {
     await vi.advanceTimersByTimeAsync(50);
     vi.useRealTimers();
     expect(trayObj.setMenu).not.toHaveBeenCalled();
+  });
+});
+
+// spec「面板分頁切換中回饋」「面板分區首訪 skeleton」（design D5）：面板是薄渲染層，
+// 兩個載入態欄位自主視窗 store 導出，面板不自建狀態。
+describe("TraySnapshot 的載入態導出", () => {
+  it("切換中 → pendingTabKey 帶出目標分頁 key", () => {
+    const bag = makeStore();
+    bag.emit({ pendingTabKey: "local:/proj/two" });
+    expect(buildTraySnapshot(bag.store.getState()).pendingTabKey).toBe("local:/proj/two");
+  });
+
+  it("無切換 → pendingTabKey 為 null", () => {
+    const bag = makeStore();
+    expect(buildTraySnapshot(bag.store.getState()).pendingTabKey).toBeNull();
+  });
+
+  it("首訪未載入 → workspaceLoaded 為 false", () => {
+    const bag = makeStore();
+    bag.emit({ loaded: false });
+    expect(buildTraySnapshot(bag.store.getState()).workspaceLoaded).toBe(false);
+  });
+
+  it("已載入 → workspaceLoaded 為 true", () => {
+    const bag = makeStore();
+    bag.emit({ loaded: true });
+    expect(buildTraySnapshot(bag.store.getState()).workspaceLoaded).toBe(true);
   });
 });

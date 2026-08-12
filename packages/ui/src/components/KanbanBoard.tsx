@@ -32,6 +32,7 @@ import {
 import { changeStage, STAGE_BADGE, STAGE_BAR, STAGE_ICON, STAGES, type Stage } from "../stage";
 import { BoardSearchBar } from "./BoardSearchBar";
 import { ChangeCard } from "./ChangeCard";
+import { ColumnSkeleton } from "./skeletons";
 import { DiscussionCard, DiscussionColumn } from "./DiscussionColumn";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -98,15 +99,21 @@ export interface KanbanBoardProps {
   reorderUnavailableReason?: string;
   /** 拖曳手勢期間（按住～放開）回報 true——宿主據此讓外部刷新讓路（任務列同款）。 */
   onDragActiveChange?: (active: boolean) => void;
+  /** 首訪 workspace 的整批載入未完成：各欄以佔位卡呈現，欄名照常、不出空態文案。
+   * 已有舊快取時為 false——舊資料照常顯示、刷新完成靜默換新（design D2）。 */
+  loading?: boolean;
 }
 
 function Column({
   stage,
   count,
+  loading,
   children,
 }: {
   stage: Stage;
   count: number;
+  /** 首訪載入中：計數未知（顯示 0 會謊報空），卡片區由呼叫端塞佔位卡。 */
+  loading?: boolean;
   children: React.ReactNode;
 }) {
   const { t } = useI18n();
@@ -125,12 +132,14 @@ function Column({
           {t(`stage.${stage}`)}
         </h2>
         <div className="flex-1" />
-        <span
-          data-testid="column-count"
-          className={`inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums ${style.badge}`}
-        >
-          {count}
-        </span>
+        {!loading && (
+          <span
+            data-testid="column-count"
+            className={`inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums ${style.badge}`}
+          >
+            {count}
+          </span>
+        )}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">{children}</div>
     </div>
@@ -221,6 +230,7 @@ export function KanbanBoard({
   onReorder,
   reorderUnavailableReason,
   onDragActiveChange,
+  loading,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const { t } = useI18n();
@@ -439,11 +449,14 @@ export function KanbanBoard({
             sortable={!!onReorder}
             highlight={q}
             fulltextHits={fulltextHits}
+            loading={loading}
           />
         )}
         {STAGES.map((stage) => (
-          <Column key={stage} stage={stage} count={byStage[stage].length}>
-            {onReorder ? (
+          <Column key={stage} stage={stage} count={byStage[stage].length} loading={loading}>
+            {loading ? (
+              <ColumnSkeleton />
+            ) : onReorder ? (
               <SortableContext
                 items={byStage[stage].map((c) => cardDndId("change", c.name))}
                 strategy={verticalListSortingStrategy}

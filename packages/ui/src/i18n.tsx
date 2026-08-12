@@ -14,7 +14,6 @@ type Dict = Record<string, string>;
  */
 export const MESSAGES: Record<UiLocale, Dict> = {
   "zh-TW": {
-    "common.loading": "載入中…",
     "common.archive": "封存",
     "common.revert": "退回提案中",
     "common.copyName": "複製名稱",
@@ -212,7 +211,6 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "pager.page": "第 {n}／{m} 頁",
   },
   en: {
-    "common.loading": "Loading…",
     "common.archive": "Archive",
     "common.revert": "Revert to proposed",
     "common.copyName": "Copy name",

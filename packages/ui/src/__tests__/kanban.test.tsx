@@ -575,3 +575,47 @@ describe("看板卡片統一解剖學（變更卡）", () => {
     expect(within(card).queryByText(/提案中|進行中|已就緒/)).toBeNull();
   });
 });
+
+// spec「看板首訪以 skeleton 佔位」（design D2）：首訪 workspace 的整批載入未完成前，
+// 空清單與「真的沒東西」無法區分——以佔位卡明示「有東西正在載」。
+describe("看板首訪 skeleton", () => {
+  const emptyDiscussions: DiscussionLists = { active: [], archived: [] };
+
+  it("載入中 → 四欄欄名照常，卡片區為佔位卡", () => {
+    render(<KanbanBoard changes={[]} discussions={emptyDiscussions} loading />);
+    expect(screen.getByText("提案中")).toBeTruthy();
+    expect(screen.getByText("進行中")).toBeTruthy();
+    expect(screen.getByText("已就緒")).toBeTruthy();
+    for (const id of ["discussions", "proposed", "in-progress", "ready"]) {
+      expect(column(id).querySelectorAll('[aria-busy="true"]').length).toBeGreaterThan(0);
+    }
+  });
+
+  it("載入中 → 不顯示討論欄空態文案（載入中不冒充空）", () => {
+    render(<KanbanBoard changes={[]} discussions={emptyDiscussions} loading />);
+    expect(screen.queryByText("尚無討論")).toBeNull();
+  });
+
+  it("載入中 → 不顯示計數徽章（不謊報 0 筆）", () => {
+    render(<KanbanBoard changes={[]} discussions={emptyDiscussions} loading />);
+    expect(document.querySelector('[data-testid="column-count"]')).toBeNull();
+  });
+
+  it("載入完成且真的沒東西 → 既有空態照舊，無佔位卡", () => {
+    render(<KanbanBoard changes={[]} discussions={emptyDiscussions} />);
+    expect(screen.getByText("尚無討論")).toBeTruthy();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid="column-count"]').length).toBeGreaterThan(0);
+  });
+
+  it("載入完成且有資料 → 顯示卡片，無佔位卡", () => {
+    render(<KanbanBoard changes={changes} discussions={emptyDiscussions} />);
+    expect(within(column("ready")).getByText("ready-z")).toBeTruthy();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it("載入中 → 不渲染任何變更卡（舊資料不與佔位卡並存）", () => {
+    render(<KanbanBoard changes={changes} discussions={emptyDiscussions} loading />);
+    expect(document.querySelector("[data-change]")).toBeNull();
+  });
+});
