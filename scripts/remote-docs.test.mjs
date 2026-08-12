@@ -159,22 +159,40 @@ test('platform architecture records the dev CLI build gate', () => {
   assert.match(doc, literal('npm run cli'));
 });
 
-test('documented CLI commands are present in the current help surface', () => {
-  const cases = [
-    [[], /Commands:[\s\S]*\blink\b[\s\S]*\bauth\b/],
-    [['link', '--help'], /Usage: speclink link \[OPTIONS\] <URL>[\s\S]*--repo <REPO>/],
-    [['auth', 'login', '--help'], /Usage: speclink auth login \[OPTIONS\][\s\S]*--token-stdin/],
-  ];
-
-  for (const [args, expected] of cases) {
-    const result = spawnSync('speclink', args.length === 0 ? ['--help'] : args, {
-      cwd: root,
-      encoding: 'utf8',
-    });
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, expected);
+/// 這個 repo 建出來的 CLI。刻意不走 PATH 上的 `speclink`：那可能是使用者安裝的舊版
+/// （於是文件比對的是過期的 help surface），而 CI 上根本沒有，spawn 直接 ENOENT。
+/// debug 優先——本機開發者用的就是它；CI 只建 release，於是落到第二順位。
+function builtCli() {
+  const exe = process.platform === 'win32' ? 'speclink.exe' : 'speclink';
+  for (const profile of ['debug', 'release']) {
+    const candidate = path.join(root, 'target', profile, exe);
+    if (existsSync(candidate)) return candidate;
   }
-});
+  return null;
+}
+
+const cli = builtCli();
+
+test(
+  'documented CLI commands are present in the current help surface',
+  { skip: !cli && '尚未建置 CLI（target/{debug,release} 皆無）' },
+  () => {
+    const cases = [
+      [[], /Commands:[\s\S]*\blink\b[\s\S]*\bauth\b/],
+      [['link', '--help'], /Usage: speclink link \[OPTIONS\] <URL>[\s\S]*--repo <REPO>/],
+      [['auth', 'login', '--help'], /Usage: speclink auth login \[OPTIONS\][\s\S]*--token-stdin/],
+    ];
+
+    for (const [args, expected] of cases) {
+      const result = spawnSync(cli, args.length === 0 ? ['--help'] : args, {
+        cwd: root,
+        encoding: 'utf8',
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, expected);
+    }
+  },
+);
 
 test('relative Markdown links in the changed documentation resolve', () => {
   const documents = [

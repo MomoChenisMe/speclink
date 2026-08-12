@@ -114,10 +114,14 @@ pub async fn asset(Path(path): Path<String>) -> Response {
 /// Router fallback——只對 allowlist 的 browser GET route 回 shell，其餘回真 404。
 /// 只在無明確 route 命中時執行，故 `/api/*`、`/auth/*`、`/healthz`、`/readyz` 與
 /// 下載 route 永不到此。
+///
+/// 404 走與其他 API 錯誤同一個 `{error:{code,message}}` JSON 外殼（spec「拼錯 API
+/// 不被 SPA fallback 吞掉」要求 JSON 404）——裸的 `StatusCode::NOT_FOUND` 不帶
+/// body 也不帶 content type，client 無從分辨「路徑不存在」與「代理層吞掉了回應」。
 pub async fn spa_fallback(method: Method, uri: Uri) -> Response {
     if method == Method::GET && is_browser_route(uri.path()) {
         serve_shell()
     } else {
-        StatusCode::NOT_FOUND.into_response()
+        crate::web::web_err(StatusCode::NOT_FOUND, "not_found", "找不到該路徑")
     }
 }
