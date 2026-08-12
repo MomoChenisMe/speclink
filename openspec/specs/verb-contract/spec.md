@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'verb-contract-and-remote-client'. Update Purpose after archive.
+動詞在 remote 通道上的對外契約：涵蓋面與 payload 形狀、樂觀並行控制與 409 語意、API 版本協商與錯誤翻譯紅線、change 的 repo 歸屬規則，以及 store 文件讀取與任務取消勾選等動詞。本 capability 保證同一動詞在本機與 remote 兩模式下人眼輸出同形、--json 輸出形狀凍結，且兩模式之間的行為分岔只在單一處宣告，不散落到各動詞實作。
 
 ## Requirements
 

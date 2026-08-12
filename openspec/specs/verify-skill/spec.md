@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'verify-station-parity'. Update Purpose after archive.
+/speclink-verify 技能的內容與行為：把規格符合度的檢查結果落成驗證工單、續輪只驗收前一輪的修正而不重跑全面檢查，以及收尾迴圈。本 capability 保證驗證每一輪都往收斂走而不是漫無邊際重來，續輪冒出重大晚發問題時有安全退出。
 
 ## Requirements
 

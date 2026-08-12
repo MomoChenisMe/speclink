@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'server-scope-read-api'. Update Purpose after archive.
+server 的唯讀查詢面：scopes 清單依 membership 過濾、正典 spec 內文的讀取、已封存內容的瀏覽端點，以及 workspace 全文搜尋。本 capability 保證任何具身分者都能取得自己可見的 scope 清單、搜尋語意與桌面端對齊，且已封存內容的列舉是 Store 契約的一部分而非各端自行拼裝。
 
 ## Requirements
 

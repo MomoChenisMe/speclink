@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'host-runtime-binding-policy'. Update Purpose after archive.
+應用層 Host 作為引擎唯一邊界的語意：ExecutionContext 由 Host 解析且不可被呼叫端覆寫、Project 與 Repo binding 的驗證、lifecycle gate 作為單一裁決點，以及 TeamStore 的 unit of work 與事件提交歸屬。本 capability 保證引擎規格面不讀 process 環境變數、不讀 git 身分——這些一律由 Host 注入，且組裝點遷移不改變任何對外輸出。
 
 ## Requirements
 

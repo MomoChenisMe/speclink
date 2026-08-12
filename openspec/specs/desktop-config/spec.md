@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'desktop-config-multiproject'. Update Purpose after archive.
+桌面 app 的專案與設定管理面：執行期切換專案 root、未初始化或未啟用的資料夾經確認後補齊、專案分頁列存於 app 本機，以及設定頁對工作流政策、專案說明與產出規則兩層設定的圖形化讀寫。本 capability 保證設定寫入前先做解析驗證、失敗明確浮出，政策下拉遇到未知值時顯性呈現而非靜默改寫，且介面語言支援 zh-TW 與 en。
 
 ## Requirements
 

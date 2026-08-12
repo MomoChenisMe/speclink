@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'workflow-config-verb-and-skill'. Update Purpose after archive.
+/speclink-config 技能的內容：技能檔的渲染與保護、撰寫工作流 context 與 rules 時的固定輸入來源與四條內容判準、diff 先行再收斂驗收的落地方式、政策語系欄位的寫入代碼，以及任務驗證測試範圍的第五問。本 capability 保證設定內容由程式碼實況推導而非憑印象撰寫，且任何寫入都先讓使用者過一次 diff 才落地。
 
 ## Requirements
 

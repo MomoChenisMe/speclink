@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'desktop-card-reorder'. Update Purpose after archive.
+看板卡片順序的持久化語意：順序以 change meta 的 board_rank 欄位為唯一真相、欄內拖排以中點 rank 只寫回單一檔案、欄內出現缺 rank 的卡時整欄補章，且跨欄拖曳只改順序不改變更階段。本 capability 保證 board_rank 不外洩到 CLI 輸出（既有輸出逐位元不變）、與其他 meta 寫入路徑互不破壞，壞 metadata 的變更不參與排序寫入。
 
 ## Requirements
 

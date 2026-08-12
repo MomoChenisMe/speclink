@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'add-improve-flow'. Update Purpose after archive.
+/speclink-improve 技能的內容：以六步骨架渲染到 claude 與 codex 兩種工具、掃描精髓段在渲染時逐字保留，以及掃描出的改進候選以討論記錄承載。本 capability 保證改進掃描的結果落成可繼續討論的文件而非一次性輸出，且兩種工具拿到的指引內容一致。
 
 ## Requirements
 

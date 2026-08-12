@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'server-sse-events'. Update Purpose after archive.
+server 的事件推送：SSE 串流自 transactional outbox 讀取、事件只作為 invalidation hint（提示重查，不搬運資料）、斷線 resume 續傳不漏不重、保留政策與超出保留範圍時的 reset 訊號，以及慢消費者的有界處置。本 capability 保證 client 不會因錯過事件而停在過期畫面，也不會讓一個讀不動的連線拖垮伺服器；transport 由 binding 明確宣告。
 
 ## Requirements
 

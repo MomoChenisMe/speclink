@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'postgres-team-store'. Update Purpose after archive.
+TeamStore 的 PostgreSQL driver：transaction 的原子性、以 advisory lock 維持單寫者、連線失敗的分類與 schema 版本守門。本 capability 保證此 driver 通過共用的 TeamStore conformance suite，且測試基建在資料庫不可用時明確失敗，不會靜默跳過而呈現假綠。
 
 ## Requirements
 

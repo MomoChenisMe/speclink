@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'node-sdk'. Update Purpose after archive.
+Node 綁定對外的 SDK 契約：createEngine 的兩種儲存建構形式、dispatch 的輸入與輸出契約，以及把引擎人眼輸出取回 JS 端的渲染 API（含 worktree 軸）。本 capability 保證 JS 端不必自行拼裝引擎內部結構，且渲染結果與 CLI 同源、不另立一套。
 
 ## Requirements
 

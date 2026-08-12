@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'discuss-decision-tree-interview'. Update Purpose after archive.
+/speclink-discuss 技能的訪談行為：以決策樹遍歷提問、每題附上建議答案與支持它的 Evidence、把輸入分診為事實或決策並逐節點查證，以及外部文件作為預填樹來源時的逐條分診與 Source doc 記錄慣例。本 capability 保證討論記錄維持既有的樹狀慣例與格式，使用者面對的是有依據的具體選項而不是空白提問。
 
 ## Requirements
 

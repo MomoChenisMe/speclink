@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'manual-task-marker-gates'. Update Purpose after archive.
+任務行 [M] 手動測試標記的語意：標記的解析與顯示剝離、把任務分成寫碼與手動兩類後的寫碼完成度預測子，以及任務 payload 的 manual 欄位。本 capability 保證代理不會替使用者勾掉自己無法觀察的驗證項——apply 在寫碼任務全數完成時即回報完成，並把手動項明列給使用者親自執行。
 
 ## Requirements
 

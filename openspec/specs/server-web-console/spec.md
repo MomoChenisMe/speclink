@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'web-service-navigation-redesign'. Update Purpose after archive.
+server 的瀏覽器後台：全部 browser route 由單一 SPA 提供且導覽可被發現、導向遵守伺服器裁決與安全優先序、SPA 資產與 fallback 的安全邊界，以及管理列表的抽屜式建立編輯、搜尋篩選分頁與具引導的空狀態、總覽的待辦與行動入口、首次進入的可略過導覽。本 capability 保證後台在共用設計系統下維持高密度且可存取的體驗、互動狀態一致可恢復、不可變識別欄位唯讀（更名是顯式動作），介面語言支援中文與英文。
 
 ## Requirements
 

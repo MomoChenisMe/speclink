@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'config-system-rework'. Update Purpose after archive.
+AI 工具指令檔在工作區的生成與維護：內建與自訂 tools 描述子的接受與驗證、描述子的同步與清理生命週期、中性渲染目標，以及 init 時的工具選擇與事後的工作區補齊入口。本 capability 保證生成只寫入工作區內的受管檔——不碰 AI 工具的使用者設定檔，產物層版本戳與內嵌資產同源因而可探測指令檔過期，且技能內容隨 worktree 等政策條件式生成、受管檔再生帶降級守門。
 
 ## Requirements
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'worktree-parallel-apply'. Update Purpose after archive.
+/speclink-worktree-merge 技能的內容：技能檔的生成，以及收尾流程的指示——確認主樹乾淨、把 worktree 分支合併回主分支，成功後移除 worktree 並刪掉分支。本 capability 保證合併是使用者顯式觸發的一步，衝突時停下來交回給人判斷而不自行裁決。
 
 ## Requirements
 

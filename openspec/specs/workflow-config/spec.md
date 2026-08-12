@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'config-system-rework'. Update Purpose after archive.
+工作流政策設定的語意：locale、spec_locale、tdd、audit、worktree 五個欄位以 openspec/config.yaml 為正典，有效值依環境變數 ＞ .speclink.yaml 舊鍵 ＞ 正典檔 ＞ 內建預設四層解析，並由 workflow-config show／set 讀寫政策欄位與 context、rules。本 capability 保證政策值有唯一可預期的解析結果、舊鍵命中時出 deprecation 警告，正典檔無法解析時 fail closed 而非退回預設。
 
 ## Requirements
 

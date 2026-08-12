@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'commit-plan-visibility'. Update Purpose after archive.
+/speclink-commit 技能的確認閘門：提交前把實際要進這次 commit 的檔案清單攤給使用者過目，使用者看到的就是最後簽下去的那一份。本 capability 保證跨變更混改的工作樹裡，不會有無關檔案被順手掃進某個變更的提交。
 
 ## Requirements
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'stable-task-and-evidence'. Update Purpose after archive.
+任務行穩定識別的語意：在任務行內嵌不可變的 stable ID、對尚無 ID 的目標行單行補章，並讓定址同時接受序號與 stable ID 兩種值域。本 capability 保證任務在增刪與重排之後仍能被同一個 ID 指到，重複 ID 時動詞拒絕執行，事件載荷攜帶 stable ID，UI 則剝離 ID 註解後仍以 stable ID 操作。
 
 ## Requirements
 

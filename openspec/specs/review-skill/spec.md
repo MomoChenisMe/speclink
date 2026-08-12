@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'code-review-stage'. Update Purpose after archive.
+/speclink-review 技能的內容與行為：技能檔的生成與正典化、審查流程怎麼跑（Standards 與 Correctness 兩軸與 Standards 軸的 smell baseline）、審查結果的裁量分類，以及修復迴圈的驗證門與收尾。本 capability 保證審查產出跟隨專案語系、續輪把已接受事項前饋以免反覆爭同一點，且續輪冒出重大晚發問題時有安全退出而非硬蓋章了事。
 
 ## Requirements
 

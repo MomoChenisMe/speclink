@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'workspace-session-model'. Update Purpose after archive.
+桌面 app 多分頁的 session 模型：分頁身分是 WorkspaceLocator 而非 root 路徑、每個 session 自帶 dataSource（Rust 側不留 current-root 全域）、watcher 顯式跟隨活躍 session 且事件攜帶 root，以及分頁持久化 v2 與 v1 的靜默遷移。本 capability 保證多個分頁同時開著時資料源互不污染、remote 分頁可選取復原，且此模型的引入不改變任何既有可觀察行為。
 
 ## Requirements
 

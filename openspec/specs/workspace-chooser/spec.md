@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'workspace-chooser-onboarding'. Update Purpose after archive.
+新增 workspace 時的來源選擇流程：本機資料夾與 remote scope 兩種來源的分流、以 scopes 清單選擇取代文字輸入，以及把 checkout 綁定到 remote scope 時的驗證與 marker 寫入。本 capability 保證使用者用選的而不必背識別字串，且已帶 remote marker 的資料夾在探測時被正確分流。
 
 ## Requirements
 

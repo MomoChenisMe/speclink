@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'engine-typed-core'. Update Purpose after archive.
+動詞執行期的跨入口共通語意：動詞覆蓋範圍與 CLI／server／node／desktop 之間的行為一致性、穩定錯誤碼註冊表、變更型動詞發出的領域事件，以及壞 change metadata 的統一處置。本 capability 保證同一動詞不論由哪個入口呼叫都得到相同結果與錯誤碼，且本地檔案寫入一律原子落盤。
 
 ## Requirements
 

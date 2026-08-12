@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'remote-data-source'. Update Purpose after archive.
+桌面 app 在 remote 模式下的資料取得：handshake 成功後才建立 remote session、以 Query 加 ETag 重讀為正典而 push 事件只負責 invalidate、斷線期間改以 Polling 加 ETag 收斂後再續訂，以及依 server 宣告的 capability 停用對應功能。本 capability 保證資料面永遠有一條可重讀的正典路徑，不偽造能力缺口，token 換發全程留在 Rust 側且 401 語意固定，remote_open 失敗保留機器可讀的原因。
 
 ## Requirements
 

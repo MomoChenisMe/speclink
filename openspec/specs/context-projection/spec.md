@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'context-materializer'. Update Purpose after archive.
+remote 模式下遠端正典在本機唯讀投影的語意：投影佈局與 manifest、staging 產生後的原子切換、完整性驗證、stale 標記與 refresh，以及依流程階段縮小投影內容。本 capability 保證投影必被 gitignore 涵蓋、技能只讀不寫回，投影來源為 Context API，任何被改動或不完整的投影一律 fail closed。
 
 ## Requirements
 

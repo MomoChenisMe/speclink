@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'sqlite-team-store'. Update Purpose after archive.
+TeamStore 的 SQLite driver：commit 的原子性與崩潰後復原、重開資料庫後的持久化一致性，以及 schema 版本守門。本 capability 保證此 driver 通過共用的 TeamStore conformance suite，且版本不符時 fail closed——拒絕在未知 schema 上繼續讀寫。
 
 ## Requirements
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'desktop-board-parity'. Update Purpose after archive.
+變更自開工到封存的生命週期狀態語意：in-progress 標記、任務完成蘊含開工、以 discard 廢棄變更、restale_from 記錄待重新反映的討論，以及封存前的任務完成度、linked worktree 環境與品質章有效性三道守門。狀態真相一律以 change 目錄的 .openspec.yaml 為準。本 capability 保證各狀態轉換在本機與 remote 通道同語意、壞 metadata 一律 fail closed，且僅在零工作痕跡時才准回退開工標記。
 
 ## Requirements
 

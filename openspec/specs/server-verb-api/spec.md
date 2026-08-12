@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'remote-verb-parity'. Update Purpose after archive.
+動詞在 server 側的 HTTP 端點面：validate 與 analyze 作為唯讀衍生查詢、DELETE change 走 discard 全語意、任務搬移與其重編號效果、討論寫入端點，以及開工標記的加入與成鏡像的移除、archive 與品質站工單讀取的完整結果回填。本 capability 保證寫入動詞限定於 editor 以上角色，且單一 change 的讀取回應攜帶 show 所需的組合欄位——remote 端不必靠多次請求拼湊。
 
 ## Requirements
 

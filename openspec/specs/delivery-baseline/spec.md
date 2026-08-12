@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'delivery-baseline-and-node-packaging'. Update Purpose after archive.
+專案交付與驗證基線：Node 套件安裝的確定性、root 一道指令跑完的全量驗證、CI 必跑的完整測試面，以及 Node native 套件的全平台交付驗證。本 capability 保證任何人在乾淨環境下都能重現同一組綠燈——含桌面測試套件全綠與測試輸出零 React act 警告。
 
 ## Requirements
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'server-release-packaging'. Update Purpose after archive.
+Speclink server 的交付與部署形式：Docker 映像可起且帶健康檢查、SQLite compose 一行開箱、PostgreSQL profile 的 secret 紀律，以及 release 產物涵蓋 server 與部署文件。本 capability 保證交付物內嵌的 SPA 資產與 server 同版本，不會出現前後端版本錯開的部署。
 
 ## Requirements
 

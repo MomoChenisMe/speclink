@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'remote-workflow-policy'. Update Purpose after archive.
+工作流政策在 remote 側的讀寫與授權模型：config 內容連同 revision 一起下發、政策寫入一律以 CAS 進行並先經引擎驗證，以及 membership role 的最小模型與 role 經 capabilities 的傳播。本 capability 保證併發寫入不互相覆蓋，且 client 端的 capabilities 只是提示——server 才是授權的最終防線。
 
 ## Requirements
 

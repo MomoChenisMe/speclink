@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'discuss-propose-from-docs'. Update Purpose after archive.
+/speclink-propose 技能的輸入來源處理：--from-discussion 時跟隨討論的 Source doc 引用與疊加語意、--from-doc 以文件為直接輸入的入口，以及起草任務時替需人工執行的驗證標上手動測試標記。本 capability 保證提案能完整承接討論或文件裡已經談定的內容，不必使用者重述一遍。
 
 ## Requirements
 

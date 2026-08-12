@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'discuss-english-slug'. Update Purpose after archive.
+討論記錄文件的語意：檔名 slug 的指定與自主題衍生、以 link 動詞併入既有變更、以 seal 標記內容已轉出、重新結論時把變更標為待重新反映，以及 from_discussion 鏈的可觀測性與隨變更廢棄時的解鏈。本 capability 保證討論與變更之間的鏈結雙向可查、討論記錄蓋建立者章，空內容與壞 change metadata 一律拒絕寫入，且動詞在 remote 模式與本機同語意。
 
 ## Requirements
 
