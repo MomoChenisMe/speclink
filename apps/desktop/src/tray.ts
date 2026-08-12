@@ -572,7 +572,21 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   // 去抖訂閱：資料或樣式變動後依樣式分流——native 重建選單；panel 卸選單；
   // 兩樣式皆推送快照給面板（面板未開時為無害廣播）。
   let timer: ReturnType<typeof setTimeout> | null = null;
+  // 面板的「我在看哪個 workspace、它載完了沒」走即時推送，不進去抖：spec 要求
+  // 點下分頁當下就出 spinner，且 spinner 消失與高亮移轉須同批抵達。去抖每次 store
+  // 變動都重設計時器——這三個欄位若跟著去抖，面板會閃一下 spinner 就回到切換前的
+  // 樣子。清單內容變動仍走去抖（原生選單重建的成本在那裡）。
+  const surfaceKey = () => {
+    const s = store.getState();
+    return `${s.pendingTabKey} ${s.activeKey} ${s.loaded}`;
+  };
+  let lastSurface = surfaceKey();
   const unsubscribe = store.subscribe(() => {
+    const surface = surfaceKey();
+    if (surface !== lastSurface) {
+      lastSurface = surface;
+      pushSnapshot();
+    }
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {
       void (async () => {

@@ -981,6 +981,75 @@ describe("TraySnapshot 的載入態導出", () => {
     expect(buildTraySnapshot(bag.store.getState()).pendingTabKey).toBeNull();
   });
 
+  // spec「面板點擊分頁立即回饋」：切換中要「立即」出 spinner。走去抖（400ms 且每次
+  // store 變動都重設）等於探測快時 spinner 根本不出現——正是本變更要解決的情境。
+  it("切換中標記不等去抖 → 即時推送快照給面板", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    vi.mocked(tauriEmit).mockClear();
+    vi.useFakeTimers();
+    bag.emit({ pendingTabKey: "local:/proj/two" });
+    // 去抖時間尚未到，快照就該已經送出。
+    await vi.advanceTimersByTimeAsync(0);
+    const pushed = vi
+      .mocked(tauriEmit)
+      .mock.calls.filter((c) => c[0] === "tray-snapshot");
+    vi.useRealTimers();
+    expect(pushed.length).toBeGreaterThan(0);
+    expect(pushed[0][1]).toEqual(
+      expect.objectContaining({ pendingTabKey: "local:/proj/two" }),
+    );
+  });
+
+  // spec「切換完成後高亮更新」：spinner 消失與高亮移轉須同批抵達。只即時推
+  // pendingTabKey 會讓面板在 spinner 消失後仍停在切換前的高亮與資料。
+  it("活躍分頁翻轉 → 一併即時推送，不落後於 spinner 消失", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    vi.mocked(tauriEmit).mockClear();
+    vi.useFakeTimers();
+    bag.emit({ activeKey: "local:/proj/two", pendingTabKey: null, loaded: false });
+    await vi.advanceTimersByTimeAsync(0);
+    const pushed = vi.mocked(tauriEmit).mock.calls.filter((c) => c[0] === "tray-snapshot");
+    vi.useRealTimers();
+    expect(pushed.length).toBeGreaterThan(0);
+    expect(pushed[0][1]).toEqual(
+      expect.objectContaining({ activeKey: "local:/proj/two", workspaceLoaded: false }),
+    );
+  });
+
+  it("整批載入完成（loaded 翻真）→ 一併即時推送", async () => {
+    const bag = makeStore();
+    bag.emit({ loaded: false });
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    vi.mocked(tauriEmit).mockClear();
+    vi.useFakeTimers();
+    bag.emit({ loaded: true });
+    await vi.advanceTimersByTimeAsync(0);
+    const pushed = vi.mocked(tauriEmit).mock.calls.filter((c) => c[0] === "tray-snapshot");
+    vi.useRealTimers();
+    expect(pushed.length).toBeGreaterThan(0);
+    expect(pushed[0][1]).toEqual(expect.objectContaining({ workspaceLoaded: true }));
+  });
+
+  it("只有清單內容變動（活躍分頁與載入態不變）→ 維持去抖", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    vi.mocked(tauriEmit).mockClear();
+    vi.useFakeTimers();
+    bag.emit({ changes: [change({ name: "delta", totalTasks: 3, completedTasks: 1 })] });
+    await vi.advanceTimersByTimeAsync(0);
+    const immediate = vi
+      .mocked(tauriEmit)
+      .mock.calls.filter((c) => c[0] === "tray-snapshot");
+    expect(immediate).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(50);
+    vi.useRealTimers();
+    expect(
+      vi.mocked(tauriEmit).mock.calls.filter((c) => c[0] === "tray-snapshot").length,
+    ).toBeGreaterThan(0);
+  });
+
   it("首訪未載入 → workspaceLoaded 為 false", () => {
     const bag = makeStore();
     bag.emit({ loaded: false });
