@@ -23,3 +23,5 @@ verified_scope:
     hash: 26d1298c837dbda2c026cc9f071b08a8769ca8b7e1df098ea0a1fb4b9bc94c28
   - path: packages/ui/src/components/skeletons.tsx
     hash: 75b012d383150ae794235af8c1b75e5430dde8a53c9c10f0c1d428fdd6886d47
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-12
