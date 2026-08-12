@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'verb-contract-and-remote-client'. Update Purpose after archive.
+CLI 對 remote server 的認證：PAT 登入與裝置授權登入兩條路徑、憑證的儲存與四層解析階梯（SPECLINK_TOKEN 環境變數 → 金鑰圈 refresh credential → 金鑰圈 PAT → 憑證檔 PAT）、憑證失效時的處理，以及登出。本 capability 保證某一層不可用時靜默續探下一層而非讓動詞失敗，且同機共用 credential family 的多個程序在換發 token 時序列化進行、不會互相把對方的憑證換掉。
 
 ## Requirements
 

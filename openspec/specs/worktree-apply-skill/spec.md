@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'worktree-parallel-apply'. Update Purpose after archive.
+/speclink-apply-with-worktree 技能的內容：技能檔如何由 apply 本體加上 worktree 前後段組合生成、前置指示（政策檢查、變更存在性、產物入 HEAD、worktree 路徑與分支慣例），以及收尾指示（在 worktree 內提交、不自行合併、交棒給 worktree-merge）。本 capability 保證平行作業的每個變更各自待在自己的 worktree 裡，主 checkout 全程不被動到。
 
 ## Requirements
 

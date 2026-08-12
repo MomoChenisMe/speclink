@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'store-trait-and-fs-adapter'. Update Purpose after archive.
+規格儲存介面抽象化的相容性語意：把直接檔案存取換成儲存介面之後，既有指令的行為與 openspec/ 的預設檔案系統佈局皆保持不變，工作區建置預設即帶檔案系統實作。本 capability 保證這層抽象化是純內部重構——對使用者端零可觀察差異。
 
 ## Requirements
 

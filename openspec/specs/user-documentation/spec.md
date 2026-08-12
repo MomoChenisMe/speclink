@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'unify-user-documentation'. Update Purpose after archive.
+面向使用者的文件集：以漸進揭露編排、每份文件單一責任，涵蓋完整工作流指南、本地與 remote 兩條 Getting Started、產品狀態與目標架構的邊界，以及帳號、PAT 與 membership 的操作邊界。本 capability 保證文件只寫已驗證可走的入口、產品狀態依證據分成目前能力與規劃能力，中英兩語版本在結構與事實上對等，且準確性有一份可重複執行的查核清單。
 
 ## Requirements
 

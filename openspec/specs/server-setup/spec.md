@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'server-setup-registry'. Update Purpose after archive.
+全新 server 的開箱流程：以一次性 bootstrap token 門禁（且僅在尚無 admin 時可用），依序完成建立第一位 Admin、顯示 Store 狀態、建立第一組 Project 與 Repo、顯示初始連線資訊四個節點，registry 持久化後由 binding 直接讀庫。本 capability 保證流程冪等可續作、token 在最後節點於同一交易邊界內耗用並入 audit，且 public URL 只來自部署組態、不由 setup 寫入。
 
 ## Requirements
 

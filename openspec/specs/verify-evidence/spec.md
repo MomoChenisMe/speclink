@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'stable-task-and-evidence'. Update Purpose after archive.
+實作證據的記錄與消費：task done 時把該任務可歸屬的 touched files 連同 actor、repo、head commit 與時間寫成逐任務證據，存於 change 目錄的 .evidence.json、隨 change 同生命週期；封存時則一律注入僅含 source 與 updated 兩欄的 trace 區塊。本 capability 保證正典需求能回溯到把它做出來的那個 change，而證據缺席不擋封存——只以一行提示點名。
 
 ## Requirements
 

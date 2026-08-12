@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'connection-registry-keychain'. Update Purpose after archive.
+桌面 app 對 Speclink server 連線的管理：不含 secret 且跨重啟保留的 connection registry、以 device login 為預設並保留 PAT fallback 的登入路徑、登出時的憑證撤銷與連帶清理，以及伺服器管理的最小操作面。本 capability 保證 credential 的唯一落點是 OS Keychain——不落在設定檔或 registry 裡。
 
 ## Requirements
 

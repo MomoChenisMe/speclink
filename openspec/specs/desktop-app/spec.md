@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'desktop-shell-and-browser'. Update Purpose after archive.
+Speclink 桌面 app 的圖形操作面：直嵌引擎、以本地檔案為真相，呈現變更看板、規格、討論與已封存的清單與內容，並提供動詞操作、任務勾選與拖放排序、搜尋與抽屜檢視、品質站蓋章與驗證標示、自動更新與 CLI 安裝等互動。本 capability 保證圖形介面與 CLI 對同一份資料同語意——GUI 勾任務與 CLI 完成一致、外部變更即時反映——且介面呈現（看板欄位、卡片解剖學、狀態語意色、字型與 markdown 渲染）有統一規則，觸及檔案系統的操作不佔用主執行緒。
 
 ## Requirements
 

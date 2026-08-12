@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'server-device-flow'. Update Purpose after archive.
+device 授權登入流程：授權發起與輪詢的狀態機、核准頁的 session 保護與明確確認、短效 access token 併入 bearer 前置檢查，以及 refresh rotation 與 device family 撤銷。本 capability 保證沒有瀏覽器的裝置也能安全取得憑證——核准必須由已登入的人在瀏覽器上顯式做出，撤銷以 family 為單位一次生效。
 
 ## Requirements
 

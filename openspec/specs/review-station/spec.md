@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'code-review-stage'. Update Purpose after archive.
+審查工單這個資料站的引擎語意：工單的建立與逐輪追加、讀取、蓋章的守門條件與效果、以內容指紋錨判定章是否失效，以及放棄審查與封存時的未結工單守門。本 capability 保證章綁在被審查的內容上——內容一動章即失效，未結工單擋在封存前面，CLI 清單輸出的審查欄位形狀被釘住，動詞在 remote 模式與本機同語意。
 
 ## Requirements
 

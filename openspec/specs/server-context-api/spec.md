@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'server-context-api'. Update Purpose after archive.
+remote 模式下 context 投影的來源端點：以一致快照回傳工作區的規格與變更內容、依指定 change 縮小範圍並透傳 flow，以及 typed client 對應的 context snapshot 方法。本 capability 保證投影拿到的是同一時點的完整視圖，而非多次請求拼湊出的混合狀態。
 
 ## Requirements
 

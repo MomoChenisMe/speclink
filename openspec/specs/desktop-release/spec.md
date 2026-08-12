@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'desktop-installer-and-updater'. Update Purpose after archive.
+桌面 app 的發版與更新交付：release 產出三平台安裝檔、隨版發布的更新描述檔與更新包簽章，以及 OS 程式碼簽章這把可插可拔的鑰匙開關。本 capability 保證自動更新的來源可驗證，且本機安裝帶版號新鮮度斷言——裝到舊版會當場被擋下，而非默默沿用。
 
 ## Requirements
 

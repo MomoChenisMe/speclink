@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'worktree-parallel-apply'. Update Purpose after archive.
+平行 worktree 疊在主 checkout 上的觀察語意：worktree 的探測與 change 對應慣例、list 的 worktree 觀察面輸出，以及桌面看板對 worktree 卡片的呈現。本 capability 保證使用者能在主資料夾一處看到各 worktree 的即時進度，並在 worktree 仍掛著時擋下會踩到它的桌面動詞。
 
 ## Requirements
 

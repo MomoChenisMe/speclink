@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'converge-review-remediation-rounds'. Update Purpose after archive.
+品質站審查面的界定語意：Apply 開始前記錄的 host-local baseline、以 git 解析完整 worktree patch 的 discovery scope、把 discovery 與 validation 綁在一起的凍結快照，以及 review scope 的人眼與 --json 兩路契約。本 capability 保證審查面可重現且範圍歧義時 fail closed——只能以 hash-pinned selection 解鎖，remote workspace 與本機共用同一 resolver。
 
 ## Requirements
 

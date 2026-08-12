@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'server-drift-api'. Update Purpose after archive.
+remote 模式下 drift 的取得方式：server 只提供規格面 drift 端點、工作區面事實不進 wire，由 client 在本機合併兩側後輸出，並以單點函式負責 wire 與引擎型別的往返映射。本 capability 保證 remote drift 的輸出與本地路徑逐字凍結一致，且伺服器不需要、也拿不到使用者的本機工作區狀態。
 
 ## Requirements
 

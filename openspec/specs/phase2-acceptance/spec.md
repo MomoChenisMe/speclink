@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'phase2-e2e-chain'. Update Purpose after archive.
+Phase 2 的驗收劇本語意：setup、invite、propose、policy、task done、context、drift、archive 八個環節串成單一連續劇本，對真 server 共用同一資料庫與帳號依序走完，並涵蓋 event recovery 的收斂。本 capability 保證 Phase 2 的完成宣稱有一條 CI 必跑的端到端劇本背書，而非各環節分別綠燈的拼湊，失敗時現場資訊可讀。
 
 ## Requirements
 

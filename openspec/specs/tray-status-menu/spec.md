@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'system-tray-status'. Update Purpose after archive.
+桌面 app 的系統匣狀態選單：原生選單依生命週期分區呈現變更與進度、變更子選單的快捷動作、討論列表、專案切換與開啟視窗／結束，以及 macOS 的面板樣式與分區溢出摺疊。本 capability 保證選單內容與看板同源、不另建一條資料路徑，並在面板的變更列上帶出品質站蓋章狀態。
 
 ## Requirements
 

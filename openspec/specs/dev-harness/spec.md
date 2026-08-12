@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'remote-dev-harness'. Update Purpose after archive.
+本機開發環境的啟動工具：一鍵拉起 remote 開發環境、以 env 驅動 dev 設定並與 .env.example 對照、dev 資料的持久化與顯式重置，以及單獨啟動 server 或 desktop、在 checkout 內跑 CLI 的入口。本 capability 保證開發時跑到的是當前 checkout 的東西——sidecar 於啟動時自動佈署、前端由 dev server 供應改了免重編——且 env 到設定的生成邏輯本身可被測試。
 
 ## Requirements
 

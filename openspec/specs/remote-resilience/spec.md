@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'offline-stale-reauth'. Update Purpose after archive.
+remote 模式失聯與恢復的行為：離線狀態機為單一真相且明確呈現給使用者、離線時最後一份 snapshot 唯讀而寫入即拒（不做離線佇列）、連線恢復後自動收斂並清除 stale 標記，以及重新認證後原地復活。本 capability 保證失聯不會退回 local 模式、不會累積之後才發現衝突的離線寫入，破壞性操作的確認在各處一致。
 
 ## Requirements
 

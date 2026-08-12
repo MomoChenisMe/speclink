@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'local-remote-migration'. Update Purpose after archive.
+本地 workspace 遷移到 remote store 的語意：bundle 組裝涵蓋本地 workspace 全集、import 端點僅接受 CreateNew 且整批原子，以及遷移成功之後才把本地轉為 remote 模式並一律先備份。本 capability 保證遷移不會停在半套狀態，也不走本地與遠端並存後再合併那條路——兩個遷移入口都是如此。
 
 ## Requirements
 

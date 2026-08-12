@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'remote-board-order'. Update Purpose after archive.
+remote 模式下看板卡片順序的存放方式：排序以 scope 層的單一 board resource 文件承載、server 不解析其內容，client 端的排序 overlay 與本地 board_rank 語意同構。本 capability 保證拖排寫回以全文 CAS 加一次重試收斂，文件損壞或殘留已不存在變更的孤兒條目時能容錯並修剪，而不是讓看板整個排不出來。
 
 ## Requirements
 

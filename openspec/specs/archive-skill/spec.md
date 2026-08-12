@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'archive-skill-touched-cleanup-order'. Update Purpose after archive.
+/speclink-archive 技能的敘述內容：封存時 trace 與 evidence 如何運作的說明，以及在 linked worktree 環境下封存會被引擎拒絕、必須回主 checkout 執行的指示。本 capability 保證技能文字與引擎的實際行為一致，使用者不會照著技能跑出當場被擋下的動作。
 
 ## Requirements
 

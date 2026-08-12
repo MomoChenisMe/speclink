@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'server-admin-audit'. Update Purpose after archive.
+Speclink server 的管理面：admin 門禁作為前置檢查、管理動作在 CLI／Browser API／SPA 三個入口共用同一份實作、系統資訊的唯讀聚合，以及管理頁面所需的最小 view model。本 capability 保證非 admin 一律 403、憑證只能監督不能讀回明文，且每個管理動作都落進只增不改的 audit log。
 
 ## Requirements
 

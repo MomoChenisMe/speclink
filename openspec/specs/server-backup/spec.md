@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'server-backup-restore'. Update Purpose after archive.
+Speclink server 的備份與還原：備份檔自描述且逐項可驗證、verify-backup 攔截竄改與未知格式，以及 restore 只進空目標並把驗證當成還原的一部分。本 capability 保證還原不會覆蓋既有資料、竄改過的備份不會被吃下去，且 admin 的資料操作一律入 audit。
 
 ## Requirements
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'verb-contract-and-remote-client'. Update Purpose after archive.
+把本機 checkout 接上 remote server 的連接語意：remote 初始化與連接指令、repo 身分的攜帶與歸屬防呆、remote 區段與模式的解析，以及指令檔中 remote 變體區塊的生成。本 capability 保證 remote 動詞一律在 handshake 建立的連線語境下執行、Remote Workspace 的 bootstrap 在各入口一致，並對 git remote 對不上、殘留舊連接檔等情形給出輔助警告而非默默照做。
 
 ## Requirements
 

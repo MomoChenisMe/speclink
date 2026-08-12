@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'server-identity-pat'. Update Purpose after archive.
+server 的身分與憑證：邀請的一次性與到期失效、本機密碼登入與 session 的安全屬性、PAT 的自助生命週期、bearer 的逐請求驗證與失敗分類，以及 identity 儲存的獨立與版本守門。本 capability 保證憑證的祕密邊界不被帳號 browser API 穿透——建立時給一次，之後只能監督與撤銷。
 
 ## Requirements
 

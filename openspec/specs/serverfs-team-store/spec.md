@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'serverfs-team-store'. Update Purpose after archive.
+TeamStore 的檔案系統 driver：索引的原子發布與崩潰復原、以檔案鎖維持單寫者並處理持鎖者失聯後的恢復，以及 schema 版本守門與組態接線。本 capability 保證此 driver 通過共用的 TeamStore conformance suite，語意與其他 driver 一致，不因存於檔案系統而放寬原子性。
 
 ## Requirements
 

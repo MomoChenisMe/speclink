@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'quality-skill-canonicalization'. Update Purpose after archive.
+/speclink-quality 技能的內容與行為：技能檔的生成與正典化，以及審查與驗證兩站的時序編排。本 capability 保證技能只承載時序、不重述兩站各自的檢查與蓋章語意——兩站先都跑完檢查而不蓋章，findings 一起回報後每輪暫停，修什麼、何時蓋章由使用者決定。
 
 ## Requirements
 

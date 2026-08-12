@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'phase3-e2e'. Update Purpose after archive.
+Phase 3 的驗收劇本語意：PM 無 checkout、RD 有 checkout、多 server、多 tab、失聯恢復五個情境串成單一連續劇本，前幕產物即後幕前提，不各幕獨立播種。本 capability 保證每條 gate 條目都能逐一錨定到劇本中的具體斷言——自動面由 CI 必跑的劇本背書，GUI 面則明列為手動鐵律清單對照。
 
 ## Requirements
 

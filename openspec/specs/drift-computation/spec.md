@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'drift-client-server-split'. Update Purpose after archive.
+變更與現況之間漂移的運算語意：五個維度拆成規格面與工作區面兩段無副作用的純函式，以 DriftBundle 固定檢查基準，並由單一 merger 裁決合併、coverage 與 stale 三類判定。本 capability 保證運算本身不碰 git、不讀環境變數，工作區事實取不到時四個工作區維度標為 unavailable 而非猜測，且本地 drift 路徑的輸出維持凍結。
 
 ## Requirements
 

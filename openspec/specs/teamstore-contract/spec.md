@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'teamstore-contract-v2'. Update Purpose after archive.
+TeamStore 的儲存契約：manifest 宣告契約版本、能力與等級，讀取以 typed Result 區分失敗類別，文件以 Project 與 Repo scope 的邏輯 locator 定址，consistent snapshot 提供固定時點視圖，Unit of Work 為唯一寫入路徑且 commit 原子，並含不可變歷史、transactional outbox 與 versioned bundle 的匯出匯入。本 capability 保證任意實作都以同一套可重用的 conformance suite 驗證——契約由測試釘死，不靠文件口頭約定。
 
 ## Requirements
 

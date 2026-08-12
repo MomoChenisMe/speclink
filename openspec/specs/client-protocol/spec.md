@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'protocol-typed-client'. Update Purpose after archive.
+client 與 server 之間 wire contract 的定義：以 Rust protocol 型別為唯一正典（JSON Schema 是匯出）、標準 error reason registry，以及變更清單、已封存清單、討論、封存結果與品質站工單等 payload 的欄位形狀。本 capability 保證 binding handshake 為前置且 fail closed，所有呼叫走 typed client——不留 raw JSON 旁路。
 
 ## Requirements
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'server-http-adapter'. Update Purpose after archive.
+Speclink Host 的參考 server 實作：路由一律服務 protocol DTO、錯誤取自封閉的 reason registry、binding 與認證作為前置且 fail closed、寫入原子提交且 CAS 衝突可辨，以及健康檢查與 ETag 輪詢的地基。本 capability 保證這個實作是 wire contract 的活基準——由真實 CLI 端到端跑過驗證，且啟動組態不齊時直接拒絕啟動而非帶著預設值上線。
 
 ## Requirements
 

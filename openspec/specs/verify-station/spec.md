@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'verify-station-parity'. Update Purpose after archive.
+驗證工單這個資料站的引擎語意：工單的建立與逐輪追加、讀取、frozen scope 與續輪 snapshot 的界定、蓋章守門與效果、以指紋錨判定章失效，以及放棄驗證與封存時的工單守門。本 capability 保證驗證章與審查章各自獨立、兩份工單可並存於同一 change，CLI 清單輸出的驗證欄位形狀被釘住，動詞在 remote 模式與本機同語意。
 
 ## Requirements
 
