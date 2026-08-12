@@ -177,10 +177,12 @@ test(
   'documented CLI commands are present in the current help surface',
   { skip: !cli && '尚未建置 CLI（target/{debug,release} 皆無）' },
   () => {
+    // clap 的 Usage 行用的是執行檔名——Windows 上是 speclink.exe，故程式名後
+    // 容許 .exe 尾碼；文件教的指令寫法不受影響。
     const cases = [
       [[], /Commands:[\s\S]*\blink\b[\s\S]*\bauth\b/],
-      [['link', '--help'], /Usage: speclink link \[OPTIONS\] <URL>[\s\S]*--repo <REPO>/],
-      [['auth', 'login', '--help'], /Usage: speclink auth login \[OPTIONS\][\s\S]*--token-stdin/],
+      [['link', '--help'], /Usage: speclink(?:\.exe)? link \[OPTIONS\] <URL>[\s\S]*--repo <REPO>/],
+      [['auth', 'login', '--help'], /Usage: speclink(?:\.exe)? auth login \[OPTIONS\][\s\S]*--token-stdin/],
     ];
 
     for (const [args, expected] of cases) {
