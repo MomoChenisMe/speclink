@@ -19,7 +19,7 @@ import { RevertBlockedError, type RevertBlockedInfo } from "@speclink/ui";
 
 import { appT } from "./i18n/runtime";
 import type { ConnectionsAdapter, ConnectionView } from "./adapter/connections";
-import type { WorkspaceAdapter } from "./adapter/workspace";
+import type { ProjectProbe, WorkspaceAdapter } from "./adapter/workspace";
 import type { MigrationAdapter } from "./adapter/migration";
 import {
   applyRemoteConnectionState,
@@ -1826,9 +1826,20 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         return;
       }
       // 探測擋在翻頁前（可達秒級）：標出切換中，畫面留在原 workspace 且照常可互動。
+      // 切換中只涵蓋探測本身——翻頁後的整批載入由清單 skeleton 承擔，兩者並存會讓
+      // 已切換完成的分頁持續掛「正在切換」。
       set({ pendingTabKey: key });
+      let probe: ProjectProbe | null = null;
       try {
-        const probe = await workspace.openProject(tab.locator.root);
+        probe = await workspace.openProject(tab.locator.root);
+      } catch (e) {
+        set({ tabErrors: { ...get().tabErrors, [key]: String(e) } });
+      } finally {
+        // 後發切換覆寫先發時，先發的收尾不得清掉後發的標記。
+        if (get().pendingTabKey === key) set({ pendingTabKey: null });
+      }
+      if (!probe) return;
+      try {
         if (probe.status === "project") {
           await enterProject(probe.root, probe.name);
         } else {
@@ -1837,9 +1848,6 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         }
       } catch (e) {
         set({ tabErrors: { ...get().tabErrors, [key]: String(e) } });
-      } finally {
-        // 後發切換覆寫先發時，先發的收尾不得清掉後發的標記。
-        if (get().pendingTabKey === key) set({ pendingTabKey: null });
       }
     },
 

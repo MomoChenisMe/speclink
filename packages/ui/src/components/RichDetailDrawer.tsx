@@ -618,7 +618,9 @@ export function RichDetailDrawer({
                     <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-2">
                       {cap} <DeltaBadges counts={specDeltaCounts(doc)} />
                     </div>
-                    <DeltaSpecView markdown={doc} empty={t("list.noDeltaSpecs")} />
+                    {/* 逐項空態（capability 有列出、其 spec.md 為空）不套整體性
+                        文案——與已封存抽屜同一位置的處置一致。 */}
+                    <DeltaSpecView markdown={doc} />
                   </div>
                 ))
               )}

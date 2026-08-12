@@ -931,6 +931,22 @@ describe("面板載入回饋", () => {
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 
+  // 零分頁時 store 的 loaded 恆為 false（refresh 無 activeKey 直接 return）——
+  // 若只看 workspaceLoaded，面板會永久掛骨架，退化成「永遠在載」。
+  it("零分頁 → 不出佔位列，走既有空狀態卡", () => {
+    renderPanel({
+      snapshot: snapshot({
+        tabs: [],
+        activeKey: null,
+        workspaceLoaded: false,
+        changes: [],
+        discussions: [],
+      }),
+    });
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+    expect(screen.getByTestId("panel-section-discussions")).toBeTruthy();
+  });
+
   it("remote 復原態遮蔽資料時 → 不出佔位列（復原呈現優先）", () => {
     const key = "remote:c1/demo/backend";
     renderPanel({

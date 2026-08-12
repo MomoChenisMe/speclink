@@ -26,4 +26,4 @@
 ## 6. 收尾驗證
 
 - [x] 6.1 受影響面測試全綠且無既有測試語意變動：npm test -w @speclink/ui 與 npm test -w @speclink/desktop 全數通過，diff 檢視確認未修改任何既有測試的斷言語意（僅允許新增測試與必要的 fixture 擴充）。 <!-- speclink-task:tsk_01KZSPGSH4YECB0M2B2M9YXDVH -->
-- [ ] 6.2 [M] 手動驗收 design 的 Behavior 契約：以 tray 切換至一個 agent 正在操作的忙碌 repo workspace——目標分頁 spinner 立即出現且期間 UI 可互動；首訪 workspace 看板與面板出現 skeleton、載入完成換真資料；切回已訪 workspace 全程不閃 skeleton；開啟變更抽屜各分頁確認載入中為文件 skeleton、不再出現「沒有文件」假空態；系統設定開啟減少動態效果後 skeleton 為靜態灰塊。 <!-- speclink-task:tsk_01KZSPGSH4BPHVG6THN17V6E5N -->
+- [ ] [M] 6.2 手動驗收 design 的 Behavior 契約：以 tray 切換至一個 agent 正在操作的忙碌 repo workspace——目標分頁 spinner 立即出現且期間 UI 可互動；首訪 workspace 看板與面板出現 skeleton、載入完成換真資料；切回已訪 workspace 全程不閃 skeleton；開啟變更抽屜各分頁確認載入中為文件 skeleton、不再出現「沒有文件」假空態；系統設定開啟減少動態效果後 skeleton 為靜態灰塊。 <!-- speclink-task:tsk_01KZSPGSH4BPHVG6THN17V6E5N -->

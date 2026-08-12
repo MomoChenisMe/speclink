@@ -1555,6 +1555,43 @@ describe("切換中分頁（pendingTabKey）", () => {
     expect(store.getState().activeKey).toBe(keyB);
   });
 
+  // spec「探測成功後切頁」：spinner 只涵蓋探測本身。翻頁後的整批載入由 skeleton
+  // 承擔——兩者並存會讓已切換完成的分頁持續掛「正在切換」。
+  it("探測完成即清除 → 後續整批載入期間不再掛切換中", async () => {
+    const probe = deferred<unknown>();
+    const load = deferred<ChangeItem[]>();
+    const ds = fakeDataSource({ listChanges: vi.fn(() => load.promise) });
+    const ws = fakeInstructionWorkspace({
+      openProject: vi.fn().mockReturnValue(probe.promise),
+    } as Partial<WorkspaceAdapter>);
+    const store = createAppStore({
+      createSession: (root, name) => fakeSession(ds, root, name),
+      workspace: ws,
+    });
+    const a = fakeSession(ds, "A", "a");
+    const b = fakeSession(ds, "B", "b");
+    store.setState({
+      tabs: [
+        { locator: a.locator, name: a.descriptor.name },
+        { locator: b.locator, name: b.descriptor.name },
+      ],
+      sessions: { [a.id]: a },
+      activeKey: a.id,
+    });
+
+    const activation = store.getState().activateTab(b.id);
+    probe.resolve({ status: "project", root: "B", name: "b" });
+    // 讓 enterProject 推進到整批載入的 await（清單仍未回）。
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(store.getState().activeKey).toBe(b.id);
+    expect(store.getState().loaded).toBe(false);
+    expect(store.getState().pendingTabKey).toBeNull();
+
+    load.resolve([]);
+    await activation;
+  });
+
   it("探測回非專案 → 清為 null，分頁錯誤照舊寫入", async () => {
     const d = deferred<unknown>();
     const { store, keyB } = storeWithTwoLocalTabs(d.promise);
@@ -1574,6 +1611,35 @@ describe("切換中分頁（pendingTabKey）", () => {
     await activation;
     expect(store.getState().pendingTabKey).toBeNull();
     expect(store.getState().tabErrors[keyB]).toBeTruthy();
+  });
+
+  // 翻頁階段拋錯仍須轉分頁錯誤態——不得因 spinner 清除時機的重構而變成未處理的
+  // rejection（呼叫端多為 void activateTab(...)，逸出即靜默）。
+  it("翻頁階段拋錯 → 轉分頁錯誤態，不逸出", async () => {
+    const ds = fakeDataSource();
+    const ws = fakeInstructionWorkspace({
+      openProject: vi.fn().mockResolvedValue({ status: "project", root: "B", name: "b" }),
+    } as Partial<WorkspaceAdapter>);
+    const store = createAppStore({
+      createSession: () => {
+        throw new Error("翻頁失敗");
+      },
+      workspace: ws,
+    });
+    const a = fakeSession(ds, "A", "a");
+    const b = fakeSession(ds, "B", "b");
+    store.setState({
+      tabs: [
+        { locator: a.locator, name: a.descriptor.name },
+        { locator: b.locator, name: b.descriptor.name },
+      ],
+      sessions: { [a.id]: a },
+      activeKey: a.id,
+    });
+
+    await expect(store.getState().activateTab(b.id)).resolves.toBeUndefined();
+    expect(store.getState().tabErrors[b.id]).toBeTruthy();
+    expect(store.getState().pendingTabKey).toBeNull();
   });
 
   // 快速連點兩個分頁：先發的收尾不得清掉後發的標記，否則後發切換全程無回饋。
