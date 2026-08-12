@@ -106,33 +106,43 @@ Add this above the first operation section:\n      ## Purpose\n\n      \
 }
 
 fn misplaced_marker_guidance(path: &str, m: &tasks::Misplaced) -> String {
-    // The description reaches us already trimmed, so the "wrong" line is rebuilt from the
-    // defect rather than quoted — a double space would otherwise be invisible in the example.
-    // Drop the marker's own trailing space too, or the repaired line shows a doubled gap.
-    let body = match m.description.replacen("[M] ", "", 1) {
-        stripped if stripped != m.description => stripped,
-        _ => m.description.replacen("[M]", "", 1),
+    let marker = tasks::MANUAL_MARKER;
+    let cause = match m.kind {
+        tasks::MisplacedMarker::AfterNumber => "the task number took the marker slot",
+        tasks::MisplacedMarker::PrefixSlotMissed => {
+            "the marker slot takes exactly one space after the checkbox"
+        }
     };
-    let body = body.trim();
-    let (cause, wrong) = match m.kind {
-        tasks::MisplacedMarker::AfterNumber => (
-            "the task number took the marker slot",
-            format!("- [ ] {}", m.description),
-        ),
-        tasks::MisplacedMarker::PrefixSlotMissed => (
-            "the marker slot takes exactly one space after the checkbox",
-            format!("- [ ]  [M] {body}"),
-        ),
-    };
-    format!(
-        "{path}: Task {id} (\"{desc}\"): misplaced `[M]` marker — {cause}, so the engine reads \
-`[M]` as description text and counts the task as code work that never completes.\n    \
-Write:  {right}\n    \
-Not:    {wrong}",
+    let mut msg = format!(
+        "{path}: Task {id} (\"{desc}\"): misplaced `{marker}` marker — {cause}, so the engine \
+reads `{marker}` as description text and counts the task as code work that never completes.",
         id = m.task_id,
         desc = m.description,
-        right = format!("- [ ] [M] {body}"),
-    )
+    );
+    // The repair examples reproduce the original line faithfully — checkbox state and
+    // trailing stable-ID comment included — so following them verbatim cannot uncheck a
+    // done task or sever its identity. A description that is nothing but the marker has
+    // no line worth rebuilding; the rule sentence above already says it all.
+    let body = m.description.replacen(marker, "", 1);
+    let body = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    if !body.is_empty() {
+        let check = if m.done { 'x' } else { ' ' };
+        let tail = m
+            .stable_id
+            .as_deref()
+            .map(|id| format!(" <!-- speclink-task:{id} -->"))
+            .unwrap_or_default();
+        // The wrong line is rebuilt rather than quoted — the double space of a missed
+        // prefix slot would otherwise be invisible in the example.
+        let wrong = match m.kind {
+            tasks::MisplacedMarker::AfterNumber => m.description.clone(),
+            tasks::MisplacedMarker::PrefixSlotMissed => format!(" {}", m.description),
+        };
+        msg.push_str(&format!(
+            "\n    Write:  - [{check}] {marker} {body}{tail}\n    Not:    - [{check}] {wrong}{tail}"
+        ));
+    }
+    msg
 }
 
 /// Validate a change's artifacts structurally.
@@ -228,10 +238,14 @@ pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, str
         }
     }
     // 手動標記位置檢查（design D3）：`[M]` 寫在前綴槽外時解析不到,任務被靜默算成
-    // 寫碼任務。既有錯誤先列,這條後補,凍結項的順序不動。
+    // 寫碼任務。既有錯誤先列,這條後補,凍結項的順序不動。路徑與零操作 parse error
+    // 同慣例:含 change 目錄的邏輯路徑,渲染統一正斜線。
     let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
     let misplaced = tasks::misplaced_markers(&tasks::parse(&tasks_md));
-    errors.extend(misplaced.iter().map(|m| misplaced_marker_guidance("tasks.md", m)));
+    if !misplaced.is_empty() {
+        let path = change.dir.join("tasks.md").to_string_lossy().replace('\\', "/");
+        errors.extend(misplaced.iter().map(|m| misplaced_marker_guidance(&path, m)));
+    }
 
     let has_cap_dirs = store.has_capability_dirs(&change.name);
     if caps.is_empty() && !has_cap_dirs {
@@ -416,10 +430,41 @@ mod tests {
         let r = result_with_tasks("- [ ] 6.2 [M] 手動驗收\n");
         assert!(!r.valid, "誤置必須使驗證 invalid: {r:?}");
         let joined = r.errors.join("\n");
-        // 路徑為 change 相對的邏輯路徑,與 Purpose／重複需求兩條既有錯誤同慣例。
-        for key in ["tasks.md", "Task 1", "6.2 [M] 手動驗收", "- [ ] [M] 6.2 手動驗收"] {
+        // design D3:路徑是含 change 目錄的邏輯路徑(正斜線),與零操作 parse error
+        // 的 spec_path 同慣例——TestStore 的 change.dir 為 changes/demo。
+        for key in ["changes/demo/tasks.md", "Task 1", "6.2 [M] 手動驗收", "- [ ] [M] 6.2 手動驗收"]
+        {
             assert!(joined.contains(key), "error 缺 {key:?}: {joined}");
         }
+    }
+
+    #[test]
+    fn guidance_keeps_the_checkbox_state_and_stable_id_of_the_original_line() {
+        // 已勾誤置行的修復例須忠實重建原行:`- [x]` 不得退成 `- [ ]`,尾部
+        // ID 註解不得被抹掉——照訊息逐字改行是代理的常態。
+        let r = result_with_tasks(
+            "- [x] 5.2 [M] 手動驗收 <!-- speclink-task:tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV -->\n",
+        );
+        assert!(!r.valid);
+        let joined = r.errors.join("\n");
+        for key in [
+            "- [x] [M] 5.2 手動驗收 <!-- speclink-task:tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV -->",
+            "- [x] 5.2 [M] 手動驗收 <!-- speclink-task:tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV -->",
+        ] {
+            assert!(joined.contains(key), "修復例缺 {key:?}: {joined}");
+        }
+        assert!(!joined.contains("- [ ]"), "不得出現退勾的 checkbox: {joined}");
+    }
+
+    #[test]
+    fn guidance_for_a_bare_marker_skips_the_example_lines() {
+        // 描述僅為 [M](無內文)時,正誤例兩行重建不出有意義的內容——
+        // 略去兩行,留下規則句本身。
+        let r = result_with_tasks("- [ ]  [M]\n");
+        assert!(!r.valid, "空內文的行首殘留仍須報 error: {r:?}");
+        let joined = r.errors.join("\n");
+        assert!(joined.contains("exactly one space"), "規則句仍在: {joined}");
+        assert!(!joined.contains("Write:"), "空內文不給重建例: {joined}");
     }
 
     #[test]
