@@ -337,3 +337,44 @@ fn bulk_archive_fails_fast_on_a_stale_stamp() {
     assert!(!p.archived_demo_exists(), "demo stays active");
     assert!(later.join("tasks.md").is_file(), "the later change stays untouched");
 }
+
+// --- 標記位置的 change 驗證檢查(manual-task-marker spec)---
+
+#[test]
+fn validate_refuses_a_task_whose_marker_sits_after_the_number() {
+    // spec Scenario「編號在前報 error」:誤置在 validate 就顯形,不必等 station
+    // 守門卡死才發現。
+    let p = TempProject::new("lint-after-number", "- [x] 1.1 a\n- [ ] 6.2 [M] 手動驗收\n");
+    let out = p.run(&["validate", "demo", "--no-color"]);
+    assert!(!out.status.success(), "誤置必須讓 validate 失敗");
+    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    for key in ["tasks.md", "Task 2", "6.2 [M] 手動驗收", "- [ ] [M] 6.2 手動驗收"] {
+        assert!(text.contains(key), "訊息缺 {key:?}: {text}");
+    }
+}
+
+#[test]
+fn validate_names_the_single_space_rule_when_the_prefix_slot_was_missed() {
+    // spec Scenario「行首殘留報 error」:checkbox 後兩個空格。
+    let p = TempProject::new("lint-slot-missed", "- [x] 1.1 a\n- [ ]  [M] 手測匯入\n");
+    let out = p.run(&["validate", "demo", "--no-color"]);
+    assert!(!out.status.success(), "誤置必須讓 validate 失敗");
+    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    assert!(text.contains("exactly one space"), "訊息須點名恰一個空格: {text}");
+}
+
+#[test]
+fn validate_output_is_unchanged_for_correctly_marked_tasks() {
+    // spec Scenario「正確前綴與中段字面提及不報」:無誤置時輸出逐位元不變。
+    let p = TempProject::new(
+        "lint-clean",
+        "- [ ] [M] 手測匯入\n- [x] 1.1 前綴剝除迴圈同時接受 `[P]` 與 `[M]` 的說明文字\n",
+    );
+    let out = p.run(&["validate", "demo", "--no-color"]);
+    assert!(out.status.success(), "正確寫法不得失敗: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "✓ demo — valid",
+        "乾淨 change 的輸出維持既有單行"
+    );
+}
