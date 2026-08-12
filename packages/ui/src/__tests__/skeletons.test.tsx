@@ -18,6 +18,18 @@ describe("CardSkeleton（看板佔位卡）", () => {
     const { container } = render(<CardSkeleton />);
     expect(container.textContent).toBe("");
   });
+
+  // 佔位卡是「還沒到的那張真卡片」，外框自刻就會與真實卡片分歧：裸寫 border 在
+  // Tailwind v4 落到 currentColor（近黑描邊），正是這樣飄掉的。鎖的是 Card 的三個
+  // 表面值——Card 換了樣式，這裡就該紅一次讓人回來看骨架還像不像真卡片。
+  it("外框帶 Card 的表面樣式，不自刻描邊", () => {
+    const { container } = render(<CardSkeleton />);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.className).toContain("border-border");
+    expect(el.className).toContain("rounded-lg");
+    expect(el.className).toContain("shadow-sm");
+    expect(el.className).toContain("bg-card");
+  });
 });
 
 describe("RowSkeleton（面板佔位列）", () => {

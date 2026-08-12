@@ -26,4 +26,4 @@
 ## 6. 收尾驗證
 
 - [x] 6.1 受影響面測試全綠：npm test -w @speclink/ui 與 npm test -w @speclink/desktop 全數通過。既有測試僅允許隨本變更的語意汰換同步改寫（「顯示載入中文字」的斷言改為 aria-busy 骨架斷言，原意圖不變）與必要的 fixture 擴充，其餘斷言語意不動，diff 檢視確認。 <!-- speclink-task:tsk_01KZSPGSH4YECB0M2B2M9YXDVH -->
-- [ ] [M] 6.2 手動驗收 design 的 Behavior 契約：以 tray 切換至一個 agent 正在操作的忙碌 repo workspace——目標分頁 spinner 立即出現且期間 UI 可互動；首訪 workspace 看板與面板出現 skeleton、載入完成換真資料；切回已訪 workspace 全程不閃 skeleton；開啟變更抽屜各分頁確認載入中為文件 skeleton、不再出現「沒有文件」假空態；系統設定開啟減少動態效果後 skeleton 為靜態灰塊。 <!-- speclink-task:tsk_01KZSPGSH4BPHVG6THN17V6E5N -->
+- [x] [M] 6.2 手動驗收 design 的 Behavior 契約：以 tray 切換至一個 agent 正在操作的忙碌 repo workspace——目標分頁 spinner 立即出現且期間 UI 可互動；首訪 workspace 看板與面板出現 skeleton、載入完成換真資料；切回已訪 workspace 全程不閃 skeleton；開啟變更抽屜各分頁確認載入中為文件 skeleton、不再出現「沒有文件」假空態；系統設定開啟減少動態效果後 skeleton 為靜態灰塊。 <!-- speclink-task:tsk_01KZSPGSH4BPHVG6THN17V6E5N -->
