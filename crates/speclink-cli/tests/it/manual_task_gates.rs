@@ -348,7 +348,9 @@ fn validate_refuses_a_task_whose_marker_sits_after_the_number() {
     let out = p.run(&["validate", "demo", "--no-color"]);
     assert!(!out.status.success(), "誤置必須讓 validate 失敗");
     let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-    for key in ["tasks.md", "Task 2", "6.2 [M] 手動驗收", "- [ ] [M] 6.2 手動驗收"] {
+    // design D3:路徑是含 change 目錄的邏輯路徑,渲染統一正斜線(Windows 亦然)。
+    for key in ["openspec/changes/demo/tasks.md", "Task 2", "6.2 [M] 手動驗收", "- [ ] [M] 6.2 手動驗收"]
+    {
         assert!(text.contains(key), "訊息缺 {key:?}: {text}");
     }
 }

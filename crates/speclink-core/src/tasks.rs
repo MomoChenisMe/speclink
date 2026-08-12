@@ -154,13 +154,21 @@ pub enum MisplacedMarker {
     PrefixSlotMissed,
 }
 
+/// The manual-verification marker literal. The prefix-slot stripping, the
+/// misplacement detection, and validate's repair examples all build on this one
+/// string — the slot syntax has no second definition site.
+pub const MANUAL_MARKER: &str = "[M]";
+
 /// A task whose `[M]` marker sits outside the prefix slot, so the parser read it
-/// as description text and counted the task as code work.
+/// as description text and counted the task as code work. Carries the checkbox
+/// state and stable ID so a repair example can reproduce the line faithfully.
 #[derive(Debug, Clone)]
 pub struct Misplaced {
     pub task_id: usize,
     pub description: String,
     pub kind: MisplacedMarker,
+    pub done: bool,
+    pub stable_id: Option<String>,
 }
 
 /// Find tasks that meant to carry `[M]` but wrote it where the parser cannot see it.
@@ -172,9 +180,9 @@ pub fn misplaced_markers(tasks: &[Task]) -> Vec<Misplaced> {
         .filter_map(|t| {
             let mut tokens = t.description.split_whitespace();
             let first = tokens.next()?;
-            let kind = if first == "[M]" {
+            let kind = if first == MANUAL_MARKER {
                 MisplacedMarker::PrefixSlotMissed
-            } else if tokens.next() == Some("[M]")
+            } else if tokens.next() == Some(MANUAL_MARKER)
                 && first.chars().any(|c| c.is_ascii_digit())
                 && first.chars().all(|c| c.is_ascii_digit() || c == '.')
             {
@@ -182,7 +190,13 @@ pub fn misplaced_markers(tasks: &[Task]) -> Vec<Misplaced> {
             } else {
                 return None;
             };
-            Some(Misplaced { task_id: t.id, description: t.description.clone(), kind })
+            Some(Misplaced {
+                task_id: t.id,
+                description: t.description.clone(),
+                kind,
+                done: t.done,
+                stable_id: t.stable_id.clone(),
+            })
         })
         .collect()
 }
@@ -1230,6 +1244,24 @@ mod tests {
         assert_eq!(found.len(), 1, "只有第二行誤置");
         assert_eq!(found[0].task_id, 2, "序號須為全檔 checkbox 順序");
         assert_eq!(found[0].description, "6.2 [M] 手動驗收", "描述原樣回報供訊息引文");
+        assert!(!found[0].done, "未勾任務回報 done=false");
+        assert_eq!(found[0].stable_id, None, "無 ID 註解回報 None");
+    }
+
+    #[test]
+    fn misplaced_markers_carry_checkbox_state_and_stable_id() {
+        // 修復例要能忠實重建原行:勾選狀態與尾部 ID 註解都得跟著回報,
+        // 否則照訊息逐字改行會退勾、斷任務身分。
+        let md = "- [x] 5.2 [M] 手動驗收 <!-- speclink-task:tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV -->\n";
+        let found = misplaced_markers(&parse(md));
+        assert_eq!(found.len(), 1);
+        assert!(found[0].done, "已勾任務回報 done=true");
+        assert_eq!(
+            found[0].stable_id.as_deref(),
+            Some("tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV"),
+            "ID 註解須原樣攜帶"
+        );
+        assert_eq!(found[0].description, "5.2 [M] 手動驗收", "描述仍為去尾顯示文字");
     }
 
     #[test]
