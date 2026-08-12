@@ -7,6 +7,7 @@ import { Button } from "./ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Markdown, READING_COLUMN_CLS } from "./Markdown";
+import { DocSkeleton } from "./skeletons";
 import { LABEL_CLS } from "./SectionedDoc";
 import { discussionChipStage } from "./DiscussionColumn";
 import { ImproveChip } from "./ImproveStamp";
@@ -471,7 +472,14 @@ export function DiscussionDrawer({
             <div className="flex-1 overflow-y-auto pt-3">
               {/* 區段缺失或格式非預期：整篇以單一檢視退回（不報錯）。 */}
               <div data-reading-column className={READING_COLUMN_CLS}>
-                <TabsContent value="record"><Markdown content={doc ?? null} empty={t("common.loading")} /></TabsContent>
+                {/* 載入中畫骨架；空態文案只在載入完成後出（spec「抽屜文件載入以 skeleton 呈現」）。 */}
+                <TabsContent value="record">
+                  {doc === undefined ? (
+                    <DocSkeleton />
+                  ) : (
+                    <Markdown content={doc} empty={t("common.noContent")} />
+                  )}
+                </TabsContent>
                 <TabsContent value="promote">{promotePane}</TabsContent>
               </div>
             </div>

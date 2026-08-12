@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { DeltaSpecView } from "./DeltaBadges";
 import { ConclusionView, RoundsView, splitDiscussionSections } from "./DiscussionDrawer";
 import { Markdown, READING_COLUMN_CLS } from "./Markdown";
+import { DocSkeleton } from "./skeletons";
 import { displayName } from "./RichDetailDrawer";
 import { LABEL_CLS, SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
@@ -83,7 +84,8 @@ export function ArchivedDrawer({
   const [proposal, setProposal] = useState<Doc>();
   const [design, setDesign] = useState<Doc>();
   const [tasksMd, setTasksMd] = useState<Doc>();
-  const [specDocs, setSpecDocs] = useState<Record<string, string | null>>({});
+  // undefined＝capability 清單與其規格文件尚未載完（與「無規格差異」的空物件分流）。
+  const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
   const [discussionDoc, setDiscussionDoc] = useState<Doc>();
   const [full, setFull] = useState(false);
 
@@ -102,7 +104,7 @@ export function ArchivedDrawer({
       setProposal(undefined);
       setDesign(undefined);
       setTasksMd(undefined);
-      setSpecDocs({});
+      setSpecDocs(undefined);
       setDiscussionDoc(undefined);
     }
     const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
@@ -142,7 +144,7 @@ export function ArchivedDrawer({
   if (!target) return null;
 
   const title = target.kind === "change" ? target.datedName : target.slug;
-  const specCount = Object.keys(specDocs).length;
+  const specCount = Object.keys(specDocs ?? {}).length;
   const sections = discussionDoc ? splitDiscussionSections(discussionDoc) : null;
   // 複製鈕（spec「已封存項目以抽屜檢視」）：封存變更複製含日期前綴的封存目錄名、
   // 封存討論複製 slug——標題文字本身即複製值。
@@ -276,18 +278,30 @@ export function ArchivedDrawer({
             <div className="flex-1 overflow-y-auto pt-3">
               {/* 共用置中容器包住分頁全部內容——區段標籤、任務清單與內文同欄（design D4）。 */}
               <div data-reading-column className={READING_COLUMN_CLS}>
+              {/* 各分頁三態分流：載入中畫骨架，空態文案只在載入完成後出
+                  （spec「抽屜文件載入以 skeleton 呈現」）。 */}
               <TabsContent value="proposal">
-                <SectionedDoc content={proposal ?? null} empty={t("archived.noProposal")} />
+                {proposal === undefined ? (
+                  <DocSkeleton />
+                ) : (
+                  <SectionedDoc content={proposal} empty={t("archived.noProposal")} />
+                )}
               </TabsContent>
               <TabsContent value="design">
-                <SectionedDoc content={design ?? null} empty={t("archived.noDesign")} />
+                {design === undefined ? (
+                  <DocSkeleton />
+                ) : (
+                  <SectionedDoc content={design} empty={t("archived.noDesign")} />
+                )}
               </TabsContent>
               <TabsContent value="tasks">
                 {/* 封存檢視唯讀：不接 onToggle/onMove，核取方塊 disabled、無批次工具列。 */}
-                <TaskList markdown={tasksMd ?? null} readOnly />
+                {tasksMd === undefined ? <DocSkeleton /> : <TaskList markdown={tasksMd} readOnly />}
               </TabsContent>
               <TabsContent value="specs">
-                {specCount === 0 ? (
+                {specDocs === undefined ? (
+                  <DocSkeleton />
+                ) : specCount === 0 ? (
                   <div className="text-muted-foreground text-sm py-6">{t("archived.noSpecs")}</div>
                 ) : (
                   Object.entries(specDocs).map(([cap, doc]) => (
@@ -317,11 +331,13 @@ export function ArchivedDrawer({
                   <ConclusionView text={sections.conclusion} empty={t("archived.noConclusion")} />
                 </>
               ) : (
-                // 區段缺失或格式非預期：整篇單一檢視退回；缺件顯示空狀態。
-                <Markdown
-                  content={discussionDoc ?? null}
-                  empty={discussionDoc === undefined ? t("common.loading") : t("common.noContent")}
-                />
+                // 區段缺失或格式非預期：整篇單一檢視退回。載入中畫骨架，
+                // 空態文案只在載入完成後出（spec「抽屜文件載入以 skeleton 呈現」）。
+                discussionDoc === undefined ? (
+                  <DocSkeleton />
+                ) : (
+                  <Markdown content={discussionDoc} empty={t("common.noContent")} />
+                )
               )}
             </div>
           </div>

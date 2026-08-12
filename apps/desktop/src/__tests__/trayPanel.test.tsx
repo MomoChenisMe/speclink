@@ -43,6 +43,8 @@ function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
       change({ name: "rdy", totalTasks: 4, completedTasks: 4 }), // ready
     ],
     discussions: [{ slug: "d1", topic: "討論一", promoted: false }],
+    pendingTabKey: null,
+    workspaceLoaded: true,
     ...over,
   };
 }
@@ -881,5 +883,75 @@ describe("面板變更列的品質站章", () => {
     expect(review.className).toContain(REVIEW_TONE.reviewedStale);
     expect(verify.className).toContain(VERIFY_TONE.verifiedStale);
     expect(VERIFY_TONE.verifiedStale).toBe(REVIEW_TONE.reviewedStale);
+  });
+});
+
+// spec「面板分頁切換中回饋」「面板分區首訪 skeleton」（design D5）：
+// 兩個狀態自 TraySnapshot 導出，面板純渲染。
+describe("面板載入回饋", () => {
+  it("切換中 → 目標分頁出 spinner，分區維持原 workspace 內容", () => {
+    renderPanel({ snapshot: snapshot({ pendingTabKey: "local:/proj/two" }) });
+    const target = screen.getByTestId("panel-project-local:/proj/two");
+    expect(target.querySelector('[data-tab-pending="true"]')).toBeTruthy();
+    // 分區照常顯示既有資料——切換尚未發生。
+    expect(screen.getByText("inprog")).toBeTruthy();
+  });
+
+  it("切換中 → 非目標分頁不出 spinner", () => {
+    renderPanel({ snapshot: snapshot({ pendingTabKey: "local:/proj/two" }) });
+    const other = screen.getByTestId("panel-project-local:/proj/one");
+    expect(other.querySelector('[data-tab-pending="true"]')).toBeNull();
+  });
+
+  it("無切換 → 全部分頁無 spinner", () => {
+    renderPanel();
+    expect(document.querySelector('[data-tab-pending="true"]')).toBeNull();
+  });
+
+  it("首訪未載入 → 分區標題照常、內容為佔位列", () => {
+    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, changes: [], discussions: [] }) });
+    expect(screen.getByText("進行中")).toBeTruthy();
+    expect(screen.getByText("討論")).toBeTruthy();
+    expect(document.querySelectorAll('[aria-busy="true"]').length).toBeGreaterThan(0);
+  });
+
+  it("首訪未載入 → 不顯示分區計數（不謊報 0 筆）", () => {
+    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, changes: [], discussions: [] }) });
+    expect(document.querySelector('[data-testid="panel-section-count"]')).toBeNull();
+  });
+
+  it("首訪未載入 → 不顯示空狀態文案", () => {
+    renderPanel({ snapshot: snapshot({ workspaceLoaded: false, changes: [], discussions: [] }) });
+    expect(screen.queryByText("尚無進行中變更")).toBeNull();
+  });
+
+  it("已載入 → 照常顯示資料，無佔位列", () => {
+    renderPanel();
+    expect(screen.getByText("inprog")).toBeTruthy();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it("remote 復原態遮蔽資料時 → 不出佔位列（復原呈現優先）", () => {
+    const key = "remote:c1/demo/backend";
+    renderPanel({
+      snapshot: snapshot({
+        tabs: [
+          {
+            key,
+            name: "Demo/backend",
+            source: "remote",
+            status: "error",
+            failureKind: "unreachable",
+            connectionId: "c1",
+            serverLabel: "Team Server",
+          },
+        ],
+        activeKey: key,
+        workspaceLoaded: false,
+        changes: [],
+        discussions: [],
+      }),
+    });
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 });

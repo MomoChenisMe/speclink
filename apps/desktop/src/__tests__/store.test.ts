@@ -1502,3 +1502,119 @@ describe("指令檔過期提示的顯示裁決", () => {
     expect(store.getState().instructionPrompt).toBeNull();
   });
 });
+
+// spec「分頁切換中即時回饋」（design D1）：本地分頁的專案探測擋在翻頁之前，
+// 期間 pendingTabKey 指向目標分頁——探測成功翻頁、失敗轉錯誤態，兩條路都清空。
+describe("切換中分頁（pendingTabKey）", () => {
+  /** 兩個本地分頁（活躍 A、待切 B），B 的探測以 deferred 控制完成時機。 */
+  function storeWithTwoLocalTabs(probe: Promise<unknown>) {
+    const ds = fakeDataSource();
+    const ws = fakeInstructionWorkspace({
+      openProject: vi.fn().mockReturnValue(probe),
+    } as Partial<WorkspaceAdapter>);
+    const store = createAppStore({
+      createSession: (root, name) => fakeSession(ds, root, name),
+      workspace: ws,
+    });
+    const a = fakeSession(ds, "A", "a");
+    const b = fakeSession(ds, "B", "b");
+    store.setState({
+      tabs: [
+        { locator: a.locator, name: a.descriptor.name },
+        { locator: b.locator, name: b.descriptor.name },
+      ],
+      sessions: { [a.id]: a },
+      activeKey: a.id,
+    });
+    return { store, ws, keyB: b.id };
+  }
+
+  it("初值為 null", () => {
+    const store = storeWithInstructionProbe(fakeInstructionWorkspace());
+    expect(store.getState().pendingTabKey).toBeNull();
+  });
+
+  it("探測進行中 → 指向目標分頁，活躍分頁不變", async () => {
+    const d = deferred<unknown>();
+    const { store, keyB } = storeWithTwoLocalTabs(d.promise);
+    const activeBefore = store.getState().activeKey;
+    const activation = store.getState().activateTab(keyB);
+    expect(store.getState().pendingTabKey).toBe(keyB);
+    expect(store.getState().activeKey).toBe(activeBefore);
+    d.resolve({ status: "project", root: "B", name: "b" });
+    await activation;
+  });
+
+  it("探測成功翻頁後 → 清為 null", async () => {
+    const d = deferred<unknown>();
+    const { store, keyB } = storeWithTwoLocalTabs(d.promise);
+    const activation = store.getState().activateTab(keyB);
+    d.resolve({ status: "project", root: "B", name: "b" });
+    await activation;
+    expect(store.getState().pendingTabKey).toBeNull();
+    expect(store.getState().activeKey).toBe(keyB);
+  });
+
+  it("探測回非專案 → 清為 null，分頁錯誤照舊寫入", async () => {
+    const d = deferred<unknown>();
+    const { store, keyB } = storeWithTwoLocalTabs(d.promise);
+    const activation = store.getState().activateTab(keyB);
+    d.resolve({ status: "uninitialized", dir: "B" });
+    await activation;
+    expect(store.getState().pendingTabKey).toBeNull();
+    expect(store.getState().tabErrors[keyB]).toBeTruthy();
+    expect(store.getState().activeKey).not.toBe(keyB);
+  });
+
+  it("探測上拋 → 清為 null，分頁錯誤照舊寫入", async () => {
+    const d = deferred<unknown>();
+    const { store, keyB } = storeWithTwoLocalTabs(d.promise);
+    const activation = store.getState().activateTab(keyB);
+    d.reject("boom");
+    await activation;
+    expect(store.getState().pendingTabKey).toBeNull();
+    expect(store.getState().tabErrors[keyB]).toBeTruthy();
+  });
+
+  // 快速連點兩個分頁：先發的收尾不得清掉後發的標記，否則後發切換全程無回饋。
+  it("先發切換收尾 → 不清掉後發切換的標記", async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    const ds = fakeDataSource();
+    const ws = fakeInstructionWorkspace({
+      openProject: vi
+        .fn()
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise),
+    } as Partial<WorkspaceAdapter>);
+    const store = createAppStore({
+      createSession: (root, name) => fakeSession(ds, root, name),
+      workspace: ws,
+    });
+    const a = fakeSession(ds, "A", "a");
+    const b = fakeSession(ds, "B", "b");
+    const c = fakeSession(ds, "C", "c");
+    store.setState({
+      tabs: [
+        { locator: a.locator, name: a.descriptor.name },
+        { locator: b.locator, name: b.descriptor.name },
+        { locator: c.locator, name: c.descriptor.name },
+      ],
+      sessions: { [a.id]: a },
+      activeKey: a.id,
+    });
+
+    const toB = store.getState().activateTab(b.id);
+    const toC = store.getState().activateTab(c.id);
+    expect(store.getState().pendingTabKey).toBe(c.id);
+
+    first.reject("B 探測失敗");
+    await toB;
+    // B 的收尾走完，標記仍指向 C——C 的切換還在進行中。
+    expect(store.getState().pendingTabKey).toBe(c.id);
+
+    second.resolve({ status: "project", root: "C", name: "c" });
+    await toC;
+    expect(store.getState().pendingTabKey).toBeNull();
+  });
+});

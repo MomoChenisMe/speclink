@@ -6,6 +6,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
   "zh-TW": {
     "app.currentProject": "目前專案",
     "app.workspaceTabs": "Workspace 分頁",
+    "app.tabSwitching": "正在切換",
     "app.archived": "已封存",
     "app.openProject": "開啟專案",
     "app.addWorkspace": "新增 Workspace",
@@ -301,6 +302,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
   en: {
     "app.currentProject": "Current project",
     "app.workspaceTabs": "Workspace tabs",
+    "app.tabSwitching": "Switching",
     "app.archived": "Archived",
     "app.openProject": "Open Project",
     "app.addWorkspace": "Add Workspace",

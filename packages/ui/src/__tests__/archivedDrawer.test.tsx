@@ -345,3 +345,37 @@ describe("ArchivedDrawer（閱讀欄置中）", () => {
     expect(col.textContent).toContain("就這麼辦");
   });
 });
+
+// spec「抽屜文件載入以 skeleton 呈現」（design D3）：已封存抽屜各分頁載入中畫骨架。
+describe("已封存抽屜文件三態", () => {
+  const pending = () => new Promise<never>(() => {});
+
+  it("封存變更載入中 → 骨架，且不出「無設計文件」等假空態", async () => {
+    render(
+      <ArchivedDrawer
+        {...(makeProps({ loadDocument: vi.fn(pending), loadCapabilities: vi.fn(pending) }) as never)}
+      />,
+    );
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeTruthy());
+    expect(screen.queryByText("（此變更無設計文件）")).toBeNull();
+  });
+
+  it("封存討論載入中 → 骨架，不出空態文案", async () => {
+    render(
+      <ArchivedDrawer
+        {...(makeProps({
+          target: { kind: "discussion", slug: "some-topic" },
+          loadDiscussionDocument: vi.fn(pending),
+        }) as never)}
+      />,
+    );
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeTruthy());
+    expect(screen.queryByText("（無內容）")).toBeNull();
+  });
+
+  it("載入完成 → 內容照常，無骨架", async () => {
+    render(<ArchivedDrawer {...(makeProps() as never)} />);
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+});

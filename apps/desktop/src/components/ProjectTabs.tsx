@@ -26,6 +26,8 @@ export interface ProjectTabsProps {
   tabErrors: Record<string, string>;
   recoveryStates?: Record<string, RemoteWorkspaceRecoveryState>;
   connectionStates?: Record<string, RemoteConnectionStateEvent | undefined>;
+  /** 探測進行中的目標分頁（store 的 pendingTabKey）：該分頁以 spinner 標出正在切過去。 */
+  pendingKey?: string | null;
   onActivate?: (key: string) => void;
   onClose?: (key: string) => void;
   /** 「＋」入口：開新增 Workspace chooser。 */
@@ -38,6 +40,7 @@ export function ProjectTabs({
   tabErrors,
   recoveryStates = {},
   connectionStates = {},
+  pendingKey = null,
   onActivate,
   onClose,
   onOpen,
@@ -84,7 +87,20 @@ export function ProjectTabs({
                     : t("remote.recovery.unknownShort")
                   : "";
         const title = status === "ready" ? path : statusLabel;
-        const statusIcon =
+        // 切換中優先於狀態圖示：重試錯誤分頁時「正在重探」比殘留的錯誤圖示有用，
+        // 錯誤底色仍留著——分頁尚未離開錯誤態。
+        const pending = key === pendingKey;
+        const statusIcon = pending ? (
+          <LoaderCircle
+            data-tab-status="pending"
+            role="img"
+            aria-label={t("app.tabSwitching")}
+            className={cn(
+              "h-3 w-3 shrink-0 animate-spin motion-reduce:animate-none",
+              SEMANTIC_TONE.inProgress,
+            )}
+          />
+        ) : (
           status === "restoring" ? (
             <LoaderCircle
               data-tab-status="restoring"
@@ -116,7 +132,8 @@ export function ProjectTabs({
             />
           ) : (
             <Folder data-tab-status="ready" data-folder={key} className="h-3 w-3 shrink-0" />
-          );
+          )
+        );
         return (
           <div
             key={key}

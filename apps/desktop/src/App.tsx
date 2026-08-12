@@ -509,6 +509,7 @@ function AppInner({
             tabErrors={s.tabErrors}
             recoveryStates={s.remoteRecovery}
             connectionStates={sessionConnectionStates}
+            pendingKey={s.pendingTabKey}
             onActivate={(key) => void s.activateTab(key)}
             onClose={s.closeTab}
             onOpen={() => s.openWorkspaceChooser()}
@@ -690,6 +691,7 @@ function AppInner({
                 caps && !caps.reorderCard ? t("remote.reorderUnavailable") : undefined
               }
               onDragActiveChange={handleBoardDragActive}
+              loading={!s.loaded}
             />
           ) : (
             <ArchivedList

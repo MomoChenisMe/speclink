@@ -61,6 +61,10 @@ export interface TraySnapshot {
   changes: ChangeItem[];
   /** 進看板的 active 討論（slug 供點擊開啟；promoted＝已轉出變更，分流至「已轉出」分區）。 */
   discussions: Array<{ slug: string; topic: string; promoted: boolean }>;
+  /** 探測進行中的目標分頁 key（null＝無切換）：面板據此在該分頁出 spinner。 */
+  pendingTabKey: string | null;
+  /** 活躍 workspace 的整批載入是否已完成——false 時面板分區以佔位列呈現。 */
+  workspaceLoaded: boolean;
 }
 
 /** 變更子選單的動作項。 */
@@ -294,6 +298,10 @@ export interface TrayStoreApi {
   getState: () => {
     tabs: Array<{ locator: WorkspaceLocator; name: string }>;
     activeKey: string | null;
+    /** 探測進行中的目標分頁 key（store 的切換中標記）。 */
+    pendingTabKey: string | null;
+    /** 活躍 workspace 快照是否已完成首次載入。 */
+    loaded: boolean;
     changes: ChangeItem[];
     discussions: { active: Array<{ slug: string; topic: string; promotedTo: string[] }> };
     sessions: Record<string, WorkspaceSession>;
@@ -374,6 +382,8 @@ export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>): 
       topic: d.topic,
       promoted: d.promotedTo.length > 0,
     })),
+    pendingTabKey: state.pendingTabKey,
+    workspaceLoaded: state.loaded,
   };
 }
 
