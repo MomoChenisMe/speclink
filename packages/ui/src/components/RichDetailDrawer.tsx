@@ -209,10 +209,15 @@ export function RichDetailDrawer({
     const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
       if (requestSeq.current === seq) apply(v);
     };
+    // 失敗收斂：還沒有東西可顯示才落終態空文案（undefined 停著＝永久骨架）；
+    // 已有內容維持前值——重載的短暫失敗不得抹成假空態。
+    const settled = (apply: typeof setProposal) => () => {
+      if (requestSeq.current === seq) apply((prev) => (prev === undefined ? null : prev));
+    };
     void loadMeta(target).then(fresh(setMeta)).catch(() => undefined);
-    void loadDocument(target, "proposal.md").then(fresh(setProposal)).catch(() => undefined);
-    void loadDocument(target, "design.md").then(fresh(setDesign)).catch(() => undefined);
-    void loadDocument(target, "tasks.md").then(fresh(setTasksMd)).catch(() => undefined);
+    void loadDocument(target, "proposal.md").then(fresh(setProposal)).catch(settled(setProposal));
+    void loadDocument(target, "design.md").then(fresh(setDesign)).catch(settled(setDesign));
+    void loadDocument(target, "tasks.md").then(fresh(setTasksMd)).catch(settled(setTasksMd));
     void loadCapabilities(target)
       .then(async (caps) => {
         const entries = await Promise.all(
@@ -222,7 +227,12 @@ export function RichDetailDrawer({
         );
         if (requestSeq.current === seq) setSpecDocs(Object.fromEntries(entries));
       })
-      .catch(() => undefined);
+      // 首載失敗收斂為空集（undefined 停著＝永久骨架）；重載失敗維持前值，不抹成假空態。
+      .catch(() => {
+        if (requestSeq.current === seq) {
+          setSpecDocs((prev) => (prev === undefined ? {} : prev));
+        }
+      });
   };
 
   // 開啟／換 change：清空後全量載入（載入中狀態屬新內容的正確呈現）。

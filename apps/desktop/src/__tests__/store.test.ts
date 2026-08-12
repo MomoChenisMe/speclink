@@ -1684,3 +1684,199 @@ describe("切換中分頁（pendingTabKey）", () => {
     expect(store.getState().pendingTabKey).toBeNull();
   });
 });
+
+// 骨架的終止條件是 refreshing，不是 loaded：讀不到不等於「確認是空的」，
+// 所以失敗時 loaded 維持 false，但 refreshing 必須落回 false 讓骨架收掉。
+describe("整批載入的進行中旗標", () => {
+  it("載入進行中 → refreshing 為 true；完成後落回 false", async () => {
+    const d = deferred<ChangeItem[]>();
+    const store = storeWith(fakeDataSource({ listChanges: vi.fn(() => d.promise) }));
+    const pending = store.getState().refresh();
+    expect(store.getState().refreshing).toBe(true);
+    d.resolve([]);
+    await pending;
+    expect(store.getState().refreshing).toBe(false);
+    expect(store.getState().loaded).toBe(true);
+  });
+
+  it("首訪無快取且讀取失敗 → refreshing 落回 false，loaded 維持 false", async () => {
+    const store = storeWith(
+      fakeDataSource({ listChanges: vi.fn().mockRejectedValue(new Error("offline")) }),
+    );
+    await store.getState().refresh();
+    expect(store.getState().refreshing).toBe(false);
+    expect(store.getState().loaded).toBe(false);
+  });
+
+  it("已有快取時讀取失敗 → 沿用最後一次成功快照，不覆蓋", async () => {
+    const listChanges = vi
+      .fn()
+      .mockResolvedValue([{ name: "kept", status: "in-progress", totalTasks: 1, completedTasks: 0 }]);
+    const store = storeWith(fakeDataSource({ listChanges }));
+    await store.getState().refresh();
+    expect(store.getState().changes.map((c) => c.name)).toEqual(["kept"]);
+
+    listChanges.mockRejectedValue(new Error("offline"));
+    await store.getState().refresh();
+    expect(store.getState().changes.map((c) => c.name)).toEqual(["kept"]);
+    expect(store.getState().loaded).toBe(true);
+  });
+});
+
+// refreshing 的記帳必須跟著活躍 workspace 走：旗標是全域的，守衛卻按 key，
+// 一旦錯位就會卡在 true——那正是骨架永久掛著的老問題復發。
+describe("整批載入旗標的記帳邊界", () => {
+  it("載入途中關掉該分頁 → 旗標不卡在 true", async () => {
+    const d = deferred<ChangeItem[]>();
+    const ds = fakeDataSource({ listChanges: vi.fn(() => d.promise) });
+    const store = createAppStore({ createSession: (root, name) => fakeSession(ds, root, name) });
+    const a = fakeSession(ds, "A", "a");
+    store.setState({
+      tabs: [{ locator: a.locator, name: a.descriptor.name }],
+      sessions: { [a.id]: a },
+      activeKey: a.id,
+    });
+
+    const pending = store.getState().refresh();
+    expect(store.getState().refreshing).toBe(true);
+    store.getState().closeTab(a.id);
+    d.resolve([]);
+    await pending;
+    expect(store.getState().refreshing).toBe(false);
+  });
+
+  it("別的 workspace 的在途載入結束 → 不得清掉現任的旗標", async () => {
+    const aLoad = deferred<ChangeItem[]>();
+    const bLoad = deferred<ChangeItem[]>();
+    const dsA = fakeDataSource({ listChanges: vi.fn(() => aLoad.promise) });
+    const dsB = fakeDataSource({ listChanges: vi.fn(() => bLoad.promise) });
+    const a = fakeSession(dsA, "A", "a");
+    const b = fakeSession(dsB, "B", "b");
+    const store = createAppStore({ createSession: () => a });
+    store.setState({
+      tabs: [
+        { locator: a.locator, name: a.descriptor.name },
+        { locator: b.locator, name: b.descriptor.name },
+      ],
+      sessions: { [a.id]: a, [b.id]: b },
+      activeKey: a.id,
+    });
+
+    const aPending = store.getState().refresh();
+    // 翻到 B 並起 B 自己的載入：此時畫面上「正在載」的是 B。
+    store.setState({ activeKey: b.id, loaded: false });
+    const bPending = store.getState().refresh();
+    expect(store.getState().refreshing).toBe(true);
+
+    // A 的在途載入這時才回來——它已不是現任，不得把 B 的旗標收掉。
+    aLoad.resolve([]);
+    await aPending;
+    expect(store.getState().refreshing).toBe(true);
+
+    bLoad.resolve([]);
+    await bPending;
+    expect(store.getState().refreshing).toBe(false);
+  });
+
+  it("同 key 重疊載入：先發成功回來 → 不得清掉後發在途的旗標", async () => {
+    const first = deferred<ChangeItem[]>();
+    const second = deferred<ChangeItem[]>();
+    const listChanges = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const store = storeWith(fakeDataSource({ listChanges }));
+
+    const p1 = store.getState().refresh();
+    const p2 = store.getState().refresh();
+    expect(store.getState().refreshing).toBe(true);
+
+    // 先發此刻已是過期世代——回來時後發還在載，旗標不得歸零。
+    first.resolve([]);
+    await p1;
+    expect(store.getState().refreshing).toBe(true);
+
+    second.resolve([]);
+    await p2;
+    expect(store.getState().refreshing).toBe(false);
+  });
+
+  it("同 key 重疊載入：先發失敗 → 不得清掉後發在途的旗標", async () => {
+    const first = deferred<ChangeItem[]>();
+    const second = deferred<ChangeItem[]>();
+    const listChanges = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const store = storeWith(fakeDataSource({ listChanges }));
+
+    const p1 = store.getState().refresh();
+    const p2 = store.getState().refresh();
+
+    first.reject(new Error("offline"));
+    await p1;
+    expect(store.getState().refreshing).toBe(true);
+
+    second.resolve([]);
+    await p2;
+    expect(store.getState().refreshing).toBe(false);
+  });
+
+  it("開修復頁（後面不接整批載入）→ 不得標載入中", () => {
+    const ds = fakeDataSource();
+    const a = remoteSession(ds, "repo-a");
+    const b = remoteSession(ds, "repo-b");
+    const store = storeWithRemoteSessions(a, b);
+    store.setState({
+      remoteRecovery: { [b.id]: { status: "restoring", failure: null } },
+    });
+
+    store.getState().showRemoteWorkspaceRecovery(b.id);
+    expect(store.getState().activeKey).toBe(b.id);
+    // 這條翻頁路徑不會起整批載入——標了沒人收，骨架就永久掛著。
+    expect(store.getState().refreshing).toBe(false);
+  });
+});
+
+// 翻頁到首訪 workspace 的那一刻起就算載入中：activeKey 與旗標同批落下，
+// 中間不得有「已翻頁、尚未標記載入」的空窗——那個窗口渲染的正是假空態。
+describe("翻頁與載入中標記同批", () => {
+  it("翻到首訪 workspace → activeKey 翻轉當下即為載入中", async () => {
+    const load = deferred<ChangeItem[]>();
+    const ds = fakeDataSource({ listChanges: vi.fn(() => load.promise) });
+    let resolveWatch!: () => void;
+    const watchGate = new Promise<void>((r) => {
+      resolveWatch = r;
+    });
+    const ws = fakeInstructionWorkspace({
+      openProject: vi.fn().mockResolvedValue({ status: "project", root: "B", name: "b" }),
+      watchWorkspace: vi.fn(() => watchGate),
+    } as Partial<WorkspaceAdapter>);
+    const store = createAppStore({
+      createSession: (root, name) => fakeSession(ds, root, name),
+      workspace: ws,
+    });
+    const a = fakeSession(ds, "A", "a");
+    const b = fakeSession(ds, "B", "b");
+    store.setState({
+      tabs: [
+        { locator: a.locator, name: a.descriptor.name },
+        { locator: b.locator, name: b.descriptor.name },
+      ],
+      sessions: { [a.id]: a },
+      activeKey: a.id,
+    });
+
+    const activation = store.getState().activateTab(b.id);
+    // 監看掛載卡住：此刻已翻頁但整批載入尚未開跑——不得出現三訊號全滅的空窗。
+    await new Promise((r) => setTimeout(r, 0));
+    expect(store.getState().activeKey).toBe(b.id);
+    expect(store.getState().loaded).toBe(false);
+    expect(store.getState().refreshing).toBe(true);
+
+    resolveWatch();
+    load.resolve([]);
+    await activation;
+    expect(store.getState().refreshing).toBe(false);
+  });
+});

@@ -186,4 +186,12 @@ describe("規格抽屜文件三態", () => {
     await waitFor(() => expect(screen.getByText("清單內文。")).toBeTruthy());
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
+
+  it("首載失敗 → 落到空態文案，不停在骨架", async () => {
+    const props = makeProps({ loadDocument: vi.fn().mockRejectedValue(new Error("offline")) });
+    render(<SpecDrawer {...(props as never)} />);
+    // 失敗停在 undefined 就是永久骨架——必須收斂到終態。
+    await waitFor(() => expect(screen.getByText("（無內容）")).toBeTruthy());
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
 });

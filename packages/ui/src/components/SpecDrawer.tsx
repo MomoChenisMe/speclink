@@ -39,9 +39,15 @@ export function SpecDrawer({ open, onOpenChange, capability, refreshGen, loadDoc
     const seq = ++requestSeq.current;
     loadedGen.current = g;
     if (clear) setDoc(undefined);
-    void loadDocument(target).then((v) => {
-      if (requestSeq.current === seq) setDoc(v);
-    });
+    void loadDocument(target)
+      .then((v) => {
+        if (requestSeq.current === seq) setDoc(v);
+      })
+      // 失敗收斂：還沒有東西可顯示才落終態空文案（undefined 停著＝永久骨架）；
+      // 已有內容維持前值——重載的短暫失敗不得抹成假空態。
+      .catch(() => {
+        if (requestSeq.current === seq) setDoc((prev) => (prev === undefined ? null : prev));
+      });
   };
 
   // 開啟／換目標：清空後全量載入（載入中狀態屬新內容的正確呈現）。

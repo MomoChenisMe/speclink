@@ -5,62 +5,123 @@ created_with: claude
 from_discussion: desktop-loading-skeleton-ux
 started_at: 2026-08-12
 started_by: MomoChen <momochenisme@gmail.com>
-verified_at: 2026-08-12
-verified_by: MomoChen <momochenisme@gmail.com>
-verified_with: claude
-verified_tasks_total: 12
-verified_scope:
+reviewed_at: 2026-08-12
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 12
+reviewed_scope:
   - path: apps/desktop/src/App.tsx
-    hash: 66a0a807b84b8fbcdd294edb329060e8b87ab17e2f74ac8a78bee44943605bc8
+    hash: d4a9eff7ab7cc6dfe3c6a8f007605d84efe9bc29a31a9ce5dcb2d64c7a9bdded
   - path: apps/desktop/src/__tests__/projectTabs.test.tsx
     hash: e0d0e52aa06da4cade6b94b45c5d802d4666c920d32e819839f1c2eb2ff3680e
   - path: apps/desktop/src/__tests__/store.test.ts
-    hash: b5d9ad8d9c8291683da08aa561cc4d0c15f998428b5759c86bec14b4474d8cc2
+    hash: 5f54a14c5e0cb5f2ada865e032b15027626855f778552664b1a2eb2a68f6b365
   - path: apps/desktop/src/__tests__/tray.test.ts
-    hash: 530d1ea9c3149d643c18ace0eeaa3186f9daf88b2d15b861e4737c42564a6167
+    hash: 16b4e4bf9670be1eb767c3f0342ad765177e5f441b7dc89289494b55d5f53ee7
   - path: apps/desktop/src/__tests__/trayPanel.test.tsx
-    hash: b4236dfcb6f539c32213b2d5c2ddfa3ac2f0d44b496e8ca2fe9c6102a5e4314b
+    hash: f18604427dbf8269cf98f76f7e361f2b42d2d010ecdfb15d5ec87370aa63e0b3
   - path: apps/desktop/src/components/ProjectTabs.tsx
     hash: 878ab84c3fbf4f365a0a6c52abcd52b25fbc9f8378627e7355d43192c334ec58
   - path: apps/desktop/src/i18n/messages.ts
     hash: 0b26eb3d756a0ed5b0dae79b72caed68a2f629dc044f56517b71058df16fc236
   - path: apps/desktop/src/panel/TrayPanel.tsx
-    hash: 6f580bebafbc1487ecc881b3b0661974c2933ba4c24310a5b01c45afce4d62f7
+    hash: a588ec5d1c960d5b4eb758488e85df177e7d16a859dc6624c3912cd3e8d4c966
   - path: apps/desktop/src/store.ts
-    hash: 99ef8bafbb79022abdd63a5f13cff445d92f54aca643e192b5691f611514541a
+    hash: 88118c26d0a212f711d6fac6ac4a915efe92878c968e2222d7e7045a3e077966
   - path: apps/desktop/src/tray.ts
-    hash: 81c0d2f6f3bf669d307fdc784e47029af2c38579dfcb8c1d06bce171e542775e
+    hash: f7e897b411a87bc1db8cf558fd643f9cd343fa8b5ae1bee7fac0f90fdaabeafb
   - path: packages/ui/src/__tests__/archivedDrawer.test.tsx
-    hash: a421e6387b99b6691d97dedd09dbebe5a2d7d1a7bb0c56630983b720b1959319
+    hash: 21c79497ac0ffc338c6b886938f9699c302f8964bfc96cae460caac433a95ba1
   - path: packages/ui/src/__tests__/discussionDrawer.test.tsx
-    hash: 6435dc347a7d158bbc6183df1347f81d043fc63048c19ff8d6438b0f7163e6a9
+    hash: 8389d9f6304ed9831648ca9d92aea6f3e9d304413388ca7c878fe23ad75ac035
   - path: packages/ui/src/__tests__/kanban.test.tsx
     hash: 65ffc4fadd3dc9577f78a7bae5c77326fe626412207eb5124e9bbbfeb5820657
   - path: packages/ui/src/__tests__/richDrawer.test.tsx
-    hash: b0986dcc1aeee38546c22879dd75df33b0128111426940062f578d1ce02a940f
+    hash: a1e4fc22e808d4f4779b8cd23a7d147be95154d4dbbb02a2d40f78e10675c6af
   - path: packages/ui/src/__tests__/skeleton.test.tsx
     hash: 589fcdc976923b552c93218d40f4d78f1d79d4681b75ac241041c06f1eea48f9
   - path: packages/ui/src/__tests__/skeletons.test.tsx
     hash: 6e22fd9c7787aff43c6a1cff522accb7bf0689d1fa8b4a9a7793a68b7cd4576a
   - path: packages/ui/src/__tests__/specDrawer.test.tsx
-    hash: 839bcea07dffd546cae043443581c816b651a85483e3b48834d80fa66aa56869
+    hash: 182c6759949e229b95e5dcc1d901086ddf9eba1fc1164eb751168ca12a730579
   - path: packages/ui/src/components/ArchivedDrawer.tsx
-    hash: 0f1a222dbb66e06c6a65c8259efd2941ac32f03a942a69ebc444c9439dfe5e97
+    hash: bdebe73821d629c5f7cd98d3e95b465218c38fb499fd050a377a130fdc7dd654
+  - path: packages/ui/src/components/DeltaBadges.tsx
+    hash: eaf240c5a151982a7ecf8609bf010658b426d53f176a2bef075f0e5dd0b1c4f9
   - path: packages/ui/src/components/DiscussionColumn.tsx
     hash: c6bb67de8d71568c89daf929e80db41666e10aa84dccc281eb82237e0de1c26c
   - path: packages/ui/src/components/DiscussionDrawer.tsx
-    hash: 80283648acebbc0618f79a8ea8f6a69e174d44d8751ba8be5826f3f36b7740bd
+    hash: 79b78fdae77bb00a17017b993eab766001cab677ba8346c527e6aeffe290c284
   - path: packages/ui/src/components/KanbanBoard.tsx
     hash: 4aeed1ee62645fba4df6f8b69253d8a5512711855ab8b5109a0d4bc2d8b08613
   - path: packages/ui/src/components/RichDetailDrawer.tsx
-    hash: 26076c8513142c1c5d35e923d1b4913e14fee12ee5b6c6f2a13871f4991c4179
+    hash: 2c911b144490c9a49d8d6b0fcab117319bf5f882142a76879d3a9039de9d5e0b
   - path: packages/ui/src/components/SpecDrawer.tsx
-    hash: 23489d095a1373d0b4f625ad5fdc654761ad8e19a1785daf627948b58640273e
+    hash: 9172f5732f0fb38f8b734a9a8d8837fa6cd5db813f462d76a1cc266bf1a57526
   - path: packages/ui/src/components/skeletons.tsx
-    hash: ee25389fbc5128d04f86b8cfecfdd656f2f46fad37ba52438a82cdc59e52d6e7
+    hash: 54ee503f57c9a48a0048f060e61fa92cbb44a136db4a7557091bda4df17cc0c8
   - path: packages/ui/src/components/ui/skeleton.tsx
     hash: beba962370286161185064002fc8fdb5e4518fec84140db6212113a21a15936f
   - path: packages/ui/src/i18n.tsx
     hash: e0b104e93ffba32b7bf545f742c522fc41a53992b3e653207732a1ce895c1a03
   - path: packages/ui/src/index.ts
     hash: 7d0ab3ff493f60b0c9a7a39ae6483c36c25823d4224a94ccfcda874d701623e0
+verified_at: 2026-08-12
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 12
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: d4a9eff7ab7cc6dfe3c6a8f007605d84efe9bc29a31a9ce5dcb2d64c7a9bdded
+  - path: apps/desktop/src/__tests__/projectTabs.test.tsx
+    hash: e0d0e52aa06da4cade6b94b45c5d802d4666c920d32e819839f1c2eb2ff3680e
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 5f54a14c5e0cb5f2ada865e032b15027626855f778552664b1a2eb2a68f6b365
+  - path: apps/desktop/src/__tests__/tray.test.ts
+    hash: 16b4e4bf9670be1eb767c3f0342ad765177e5f441b7dc89289494b55d5f53ee7
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: f18604427dbf8269cf98f76f7e361f2b42d2d010ecdfb15d5ec87370aa63e0b3
+  - path: apps/desktop/src/components/ProjectTabs.tsx
+    hash: 878ab84c3fbf4f365a0a6c52abcd52b25fbc9f8378627e7355d43192c334ec58
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 0b26eb3d756a0ed5b0dae79b72caed68a2f629dc044f56517b71058df16fc236
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: a588ec5d1c960d5b4eb758488e85df177e7d16a859dc6624c3912cd3e8d4c966
+  - path: apps/desktop/src/store.ts
+    hash: 88118c26d0a212f711d6fac6ac4a915efe92878c968e2222d7e7045a3e077966
+  - path: apps/desktop/src/tray.ts
+    hash: f7e897b411a87bc1db8cf558fd643f9cd343fa8b5ae1bee7fac0f90fdaabeafb
+  - path: packages/ui/src/__tests__/archivedDrawer.test.tsx
+    hash: 21c79497ac0ffc338c6b886938f9699c302f8964bfc96cae460caac433a95ba1
+  - path: packages/ui/src/__tests__/discussionDrawer.test.tsx
+    hash: 8389d9f6304ed9831648ca9d92aea6f3e9d304413388ca7c878fe23ad75ac035
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: 65ffc4fadd3dc9577f78a7bae5c77326fe626412207eb5124e9bbbfeb5820657
+  - path: packages/ui/src/__tests__/richDrawer.test.tsx
+    hash: a1e4fc22e808d4f4779b8cd23a7d147be95154d4dbbb02a2d40f78e10675c6af
+  - path: packages/ui/src/__tests__/skeleton.test.tsx
+    hash: 589fcdc976923b552c93218d40f4d78f1d79d4681b75ac241041c06f1eea48f9
+  - path: packages/ui/src/__tests__/skeletons.test.tsx
+    hash: 6e22fd9c7787aff43c6a1cff522accb7bf0689d1fa8b4a9a7793a68b7cd4576a
+  - path: packages/ui/src/__tests__/specDrawer.test.tsx
+    hash: 182c6759949e229b95e5dcc1d901086ddf9eba1fc1164eb751168ca12a730579
+  - path: packages/ui/src/components/ArchivedDrawer.tsx
+    hash: bdebe73821d629c5f7cd98d3e95b465218c38fb499fd050a377a130fdc7dd654
+  - path: packages/ui/src/components/DeltaBadges.tsx
+    hash: eaf240c5a151982a7ecf8609bf010658b426d53f176a2bef075f0e5dd0b1c4f9
+  - path: packages/ui/src/components/DiscussionColumn.tsx
+    hash: c6bb67de8d71568c89daf929e80db41666e10aa84dccc281eb82237e0de1c26c
+  - path: packages/ui/src/components/DiscussionDrawer.tsx
+    hash: 79b78fdae77bb00a17017b993eab766001cab677ba8346c527e6aeffe290c284
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: 4aeed1ee62645fba4df6f8b69253d8a5512711855ab8b5109a0d4bc2d8b08613
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: 2c911b144490c9a49d8d6b0fcab117319bf5f882142a76879d3a9039de9d5e0b
+  - path: packages/ui/src/components/SpecDrawer.tsx
+    hash: 9172f5732f0fb38f8b734a9a8d8837fa6cd5db813f462d76a1cc266bf1a57526
+  - path: packages/ui/src/components/skeletons.tsx
+    hash: 54ee503f57c9a48a0048f060e61fa92cbb44a136db4a7557091bda4df17cc0c8
+  - path: packages/ui/src/components/ui/skeleton.tsx
+    hash: beba962370286161185064002fc8fdb5e4518fec84140db6212113a21a15936f
+  - path: packages/ui/src/i18n.tsx
+    hash: e0b104e93ffba32b7bf545f742c522fc41a53992b3e653207732a1ce895c1a03

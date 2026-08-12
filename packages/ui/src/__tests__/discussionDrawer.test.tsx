@@ -617,4 +617,14 @@ describe("討論抽屜文件三態", () => {
     await waitFor(() => expect(screen.getByText("（無內容）")).toBeTruthy());
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
+
+  it("首載失敗 → 落到空態文案，不停在骨架", async () => {
+    render(
+      <DiscussionDrawer
+        {...(makeProps({ loadDocument: vi.fn().mockRejectedValue(new Error("offline")) }) as never)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("（無內容）")).toBeTruthy());
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
 });

@@ -95,6 +95,7 @@ function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
     ],
     pendingTabKey: null,
     workspaceLoaded: true,
+    workspaceRefreshing: false,
     ...over,
   };
 }
@@ -405,6 +406,7 @@ function makeStore(
     activeKey: "local:/proj/one",
     pendingTabKey: null as string | null,
     loaded: true,
+    refreshing: false,
     changes: [
       change({ name: "alpha", totalTasks: 12, completedTasks: 3 }),
       change({ name: "gamma", totalTasks: 5, completedTasks: 0 }),
@@ -1054,6 +1056,17 @@ describe("TraySnapshot 的載入態導出", () => {
     const bag = makeStore();
     bag.emit({ loaded: false });
     expect(buildTraySnapshot(bag.store.getState()).workspaceLoaded).toBe(false);
+  });
+
+  it("整批載入進行中 → workspaceRefreshing 為 true", () => {
+    const bag = makeStore();
+    bag.emit({ refreshing: true });
+    expect(buildTraySnapshot(bag.store.getState()).workspaceRefreshing).toBe(true);
+  });
+
+  it("無載入進行中 → workspaceRefreshing 為 false", () => {
+    const bag = makeStore();
+    expect(buildTraySnapshot(bag.store.getState()).workspaceRefreshing).toBe(false);
   });
 
   it("已載入 → workspaceLoaded 為 true", () => {

@@ -460,9 +460,13 @@ export function TrayPanel({
   const pendingTabKey = snapshot?.pendingTabKey ?? null;
   // 首訪載入中：分區以佔位列呈現。快照未到（null）同樣算載入中——面板剛開、
   // 主視窗尚未推第一份快照，此時畫空分區與畫佔位列是同一個問題。
-  // 零分頁除外：無活躍 workspace 時整批載入根本不會發生（loaded 恆為 false），
-  // 掛骨架會退化成「永遠在載」；此情境走既有空狀態卡，與主視窗的空狀態對齊。
-  const loading = !snapshot || (tabs.length > 0 && !snapshot.workspaceLoaded);
+  // 骨架的前提是「首訪的載入正在進行」：探測中或整批載入中，且尚無真值。
+  // 只看 workspaceLoaded 會讓探測失敗或讀取失敗的 workspace 永遠停在載入中
+  // ——讀不到不等於還在讀；那些情境走既有空狀態卡，與主視窗對齊。
+  const loading =
+    !snapshot ||
+    ((snapshot.pendingTabKey !== null || snapshot.workspaceRefreshing) &&
+      !snapshot.workspaceLoaded);
   const activeTab = tabs.find((tab) => tab.key === snapshot?.activeKey);
   const activeRecovery =
     activeTab?.status === "restoring" || activeTab?.status === "error" ? activeTab : null;
