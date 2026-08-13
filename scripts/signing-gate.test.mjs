@@ -30,6 +30,7 @@ const MACOS_NAMES = [
   'APPLE_PASSWORD',
   'APPLE_TEAM_ID',
 ];
+// SIGNPATH_*：裁定不採用後不再受管，保留清單只為抹除環境與「被忽略」斷言。
 const SIGNPATH_NAMES = [
   'SIGNPATH_API_TOKEN',
   'SIGNPATH_ORGANIZATION_ID',
@@ -89,11 +90,20 @@ test('macOS 六項齊備時決策為 full（憑證半組＋公證半組）', (t)
   assert.equal(envValue(result.githubEnv, 'SPECLINK_MACOS_SIGNING'), 'full');
 });
 
-test('SignPath 四項齊備時 Windows 決策為 signpath', (t) => {
+// SignPath 裁定不採用（design D2）：SIGNPATH_* 不再是受管簽章組——存在、部分
+// 存在都不影響決策，也不觸發 fail-closed。
+test('SIGNPATH_* 即使齊備也不影響決策（裁定不採用）', (t) => {
   const result = runGate(filled(SIGNPATH_NAMES), t);
 
-  assert.equal(result.status, 0, `四項齊備應成功結束\nstderr: ${result.stderr}`);
-  assert.equal(envValue(result.githubEnv, 'SPECLINK_WINDOWS_SIGNING'), 'signpath');
+  assert.equal(result.status, 0, `SIGNPATH_* 不應觸發任何閘門行為\nstderr: ${result.stderr}`);
+  assert.equal(envValue(result.githubEnv, 'SPECLINK_WINDOWS_SIGNING'), 'none');
+});
+
+test('SIGNPATH_* 與本機憑證並存時決策仍為 certificate', (t) => {
+  const result = runGate({ ...filled(SIGNPATH_NAMES), ...filled(WINDOWS_CERT_NAMES) }, t);
+
+  assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+  assert.equal(envValue(result.githubEnv, 'SPECLINK_WINDOWS_SIGNING'), 'certificate');
 });
 
 test('僅本機憑證兩項齊備時 Windows 決策為 certificate', (t) => {
@@ -101,13 +111,6 @@ test('僅本機憑證兩項齊備時 Windows 決策為 certificate', (t) => {
 
   assert.equal(result.status, 0, `兩項齊備應成功結束\nstderr: ${result.stderr}`);
   assert.equal(envValue(result.githubEnv, 'SPECLINK_WINDOWS_SIGNING'), 'certificate');
-});
-
-test('SignPath 與本機憑證都齊備時 SignPath 優先', (t) => {
-  const result = runGate({ ...filled(SIGNPATH_NAMES), ...filled(WINDOWS_CERT_NAMES) }, t);
-
-  assert.equal(result.status, 0, `兩路徑齊備應成功結束\nstderr: ${result.stderr}`);
-  assert.equal(envValue(result.githubEnv, 'SPECLINK_WINDOWS_SIGNING'), 'signpath');
 });
 
 // --- 缺一：fail-closed 並點名缺項 ---
@@ -132,16 +135,6 @@ test('macOS 只設公證半組時非零結束並列出憑證半組三項缺項',
   for (const name of ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY']) {
     assert.match(result.stderr, new RegExp(name), `錯誤訊息應點名缺少的 ${name}`);
   }
-});
-
-test('SignPath 四項缺一時非零結束並點名該項', (t) => {
-  const overrides = filled(SIGNPATH_NAMES);
-  delete overrides.SIGNPATH_POLICY_SLUG;
-
-  const result = runGate(overrides, t);
-
-  assert.notEqual(result.status, 0, 'SignPath 組部分存在時應非零結束');
-  assert.match(result.stderr, /SIGNPATH_POLICY_SLUG/, '錯誤訊息應點名缺少的 SIGNPATH_POLICY_SLUG');
 });
 
 test('本機憑證只設憑證而缺密碼時非零結束並點名密碼', (t) => {

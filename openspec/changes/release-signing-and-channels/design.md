@@ -7,7 +7,7 @@ release 管線（`.github/workflows/release.yml`）已於 push v* tag 時產出�
 **Goals:**
 
 - macOS 安裝檔在簽章 secrets 齊備時自動完成 Developer ID 簽章＋公證，使用者下載後直接開啟、無 Gatekeeper 攔阻
-- Windows 安裝檔在 SignPath secrets 齊備時經 SignPath 服務簽章；未過件前維持未簽章路徑，不阻塞發版
+- Windows 安裝檔維持未簽章路徑（README 附 SmartScreen 放行說明）；本機憑證 secrets 存在時走既有 PFX 路徑——SignPath 裁定不採用（D2）
 - 使用者能以一行指令安裝 CLI（安裝腳本或 Homebrew tap），並能從 README 快速找到三平台桌面安裝檔
 - 文件不再宣稱不存在的入口（sdk-node 的 npm install 說明改標尚未發布）
 
@@ -32,16 +32,13 @@ release 管線（`.github/workflows/release.yml`）已於 push v* tag 時產出�
 
 理由：「已簽章但未公證」的產物對使用者與未簽章幾乎等價（照樣被攔），卻讓維護者誤以為已完成——這是設定錯誤，不是合法中間態，與專案「壞設定不得靜默降級」的既有原則一致。替代方案「警告後繼續產出半套」被否決。
 
-閘門邏輯抽成可獨立執行的 `scripts/signing-gate.mjs`（沿用 `scripts/release-latest-json.mjs` 把 workflow 邏輯外置以取得單元測試的既有作法）：讀各 secret 是否非空、絕不讀取或輸出其值，把決策 `SPECLINK_MACOS_SIGNING`（full／none）與 `SPECLINK_WINDOWS_SIGNING`（signpath／certificate／none）寫入 `GITHUB_ENV` 供後續步驟判斷，兩處不再各自推導；部分存在時不寫出任何決策即非零結束，下游無從沿用半套設定。內嵌於 workflow 的 bash 條件無法以三種 secrets 組合實測，故不採。
+閘門邏輯抽成可獨立執行的 `scripts/signing-gate.mjs`（沿用 `scripts/release-latest-json.mjs` 把 workflow 邏輯外置以取得單元測試的既有作法）：讀各 secret 是否非空、絕不讀取或輸出其值，把決策 `SPECLINK_MACOS_SIGNING`（full／none）與 `SPECLINK_WINDOWS_SIGNING`（certificate／none）寫入 `GITHUB_ENV` 供後續步驟判斷，兩處不再各自推導；部分存在時不寫出任何決策即非零結束，下游無從沿用半套設定。內嵌於 workflow 的 bash 條件無法以三種 secrets 組合實測，故不採。
 
-### D2：Windows SignPath 以 signCommand 接入，CI 專用 config overlay，PFX 路徑保留為後備
+### D2：Windows 簽章裁定走未簽章後備路徑，SignPath 不採用
 
-- Tauri 的 bundle.windows.signCommand 指向 repo 內的送簽腳本：收到待簽檔路徑後，呼叫 SignPath API 建立 signing request、等候完成、以簽回的檔案原地覆蓋
-- signCommand 不寫入 `apps/desktop/src-tauri/tauri.conf.json` 主設定檔，而是 CI 在 SignPath secrets 齊備時以 tauri build 的 config 合併參數注入——本機與開發建置完全不受影響
-- 優先序：SignPath secrets 齊備 → SignPath 路徑；否則 WINDOWS_CERTIFICATE 存在 → 現行 PFX 骨架；否則未簽章。SignPath secrets 不全（部分存在）比照 D1 fail-closed
-- 簽章順序保證：signCommand 在 Tauri 打包期間執行，updater 的 minisign 簽章在打包完成後產生，因此 .sig 涵蓋的是已簽章的安裝檔，latest.json 的簽章驗證不會失效
+原方案為 SignPath 開源免費簽章（以 Tauri signCommand 接入、CI config overlay）。v0.1.2 發布後裁定**不採用**：SignPath 免費方案要求**每個 release 人工登入後台核准**，與本 change 建成的全自動發版管線（tag → 簽章／公證／Release／brew／npm 全零人工）根本相斥，會成為整條管線唯一的人工卡點；而 SmartScreen 警告可經「其他資訊→仍要執行」通過、README 已附說明，在 Windows 使用者量明朗前不值得引入持續性人工成本。
 
-理由：signCommand 是 Tauri 官方支援雲端簽章服務的縫；config overlay 讓「簽章屬 CI 發版能力、非開發環境義務」的邊界乾淨。SignPath 需 OSS 申請過件（OSI 授權、CI 建置來源），過件時程不可控，故未過件路徑必須照常可發版。
+現行 Windows 簽章語意：本機憑證 secrets（WINDOWS_CERTIFICATE 組）存在走既有 PFX 路徑，否則未簽章——開關語意與 macOS 側一致。未來需要簽章時偏好 Azure Trusted Signing（月費制、CI 全自動、與管線哲學一致），屆時另立 change。簽章閘門（signing-gate.mjs）中為 SignPath 預留的偵測分支隨本裁定移除——保留只會造成「secrets 齊備卻靜默不簽」的誤導狀態。
 
 ### D3：安裝腳本以 dry-run 與環境變數覆寫換取可測性
 
@@ -100,7 +97,7 @@ macOS 的 CLI 佈署從「使用者顯式動作」改為啟動自動化：app �
 **Behavior（發版後可觀察）：**
 
 - 六項 Apple secrets（憑證半組與公證半組）齊備時，push tag 產出的 dmg 內 app 通過 Gatekeeper 評估（spctl 評估通過、公證票證已 staple），使用者雙擊即開
-- SignPath secrets 齊備時，NSIS 安裝檔帶有效 Authenticode 簽章（簽發者為 SignPath Foundation）；secrets 全缺時產物與現況一致
+- Windows 安裝檔：本機憑證 secrets 存在時帶 Authenticode 簽章、否則未簽章與現況一致；SIGNPATH_* secrets 不再被閘門讀取
 - 任一簽章 secrets 組「部分存在」時 workflow 紅燈，錯誤訊息列出缺項
 - curl 安裝腳本一行完成後，speclink --version 輸出該 Release 版號；checksum 不符時腳本非零退出且安裝目錄無殘留
 - brew install 自有 tap 的 speclink 後，speclink --version 同上
@@ -117,7 +114,7 @@ macOS 的 CLI 佈署從「使用者顯式動作」改為啟動自動化：app �
 - scripts/release-notes.mjs：參數 --tag（vX.Y.Z 格式，不符即非零退出），下載指南 markdown 輸出至 stdout；release job 落檔後以 body_path 傳入 action-gh-release
 - scripts/npm-server-package.mjs：參數 --version、--binaries（五平台 binary 目錄）、--scope（預設 @speclink）、--out；物化主套件與五平台子套件目錄（name／version／os／cpu／optionalDependencies／bin 欄位齊備）
 - packages/server-npm/bin/speclink-server.mjs（launcher）：環境變數 SPECLINK_STORE、SPECLINK_DATA_DIR、SPECLINK_PUBLIC_URL、SPECLINK_PORT、SPECLINK_POSTGRES_URL、SPECLINK_CONFIG；參數與 exit code 對 binary 透傳
-- release.yml 新增 secrets 契約：APPLE_ID、APPLE_PASSWORD、APPLE_TEAM_ID（公證）；SIGNPATH_API_TOKEN、SIGNPATH_ORGANIZATION_ID、SIGNPATH_PROJECT_SLUG、SIGNPATH_POLICY_SLUG（Windows 簽章）；TAP_PUSH_TOKEN（tap 推送）；NPM_TOKEN（npm 發布）
+- release.yml 新增 secrets 契約：APPLE_ID、APPLE_PASSWORD、APPLE_TEAM_ID（公證）；TAP_PUSH_TOKEN（tap 推送）；NPM_TOKEN（npm 發布）
 
 **Verification：**
 
@@ -128,4 +125,3 @@ macOS 的 CLI 佈署從「使用者顯式動作」改為啟動自動化：app �
 **風險與緩解：**
 
 - Apple Developer 審核需 1～2 天、公證首跑常因 hardened runtime 或 sidecar 簽章細節失敗——教學任務附公證失敗排查步驟（讀公證 log、確認 sidecar CLI 與 app 同鏈簽章）
-- SignPath 過件不可控——D2 的後備路徑保證不阻塞；過件後補插 secrets 即生效，無管線改動

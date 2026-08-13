@@ -5,7 +5,7 @@
 ## What Changes
 
 - release 管線補 macOS 公證（notarization）接線：以 Apple ID 三項 secrets 為條件的 env-gated 步驟，與既有憑證開關同一模式；secrets 缺席時維持現行未簽章路徑、workflow 照常全綠
-- Windows 簽章接 SignPath 開源簽章服務：桌面建置時以 Tauri signCommand 呼叫 SignPath 送簽（CI 專用 config overlay，SignPath secrets 存在才啟用）；申請未過件的退路是維持未簽章＋文件放行說明
+- Windows 簽章：v0.1.2 後裁定不採用 SignPath（其免費方案每個 release 須人工核准，與全自動發版管線相斥），維持未簽章＋README 的 SmartScreen 放行說明；本機憑證 secrets 路徑保留，未來需簽章時偏好可全自動的 Azure Trusted Signing 另立 change
 - 新增 CLI 安裝腳本：scripts/install.sh（macOS／Linux）與 scripts/install.ps1（Windows），偵測平台、解析最新 Release、驗證 SHA-256、安裝至使用者 PATH 目錄；支援 dry-run 與環境變數覆寫以利測試
 - 新增 Homebrew formula 產生器：讀取 Release 的版號與 checksums、輸出 formula 內容；配套建立自有 tap repo（外部 repo，手動任務）
 - README（中英）新增安裝區塊：桌面三平台下載表、CLI 安裝腳本與 Homebrew 指令；cargo install 從原始碼安裝降為開發者段落；getting-started（中英）安裝節同步改寫
@@ -29,7 +29,7 @@
 
 ### Modified Capabilities
 
-- `desktop-release`: 「OS 程式碼簽章為可插鑰匙開關」requirement 擴充——macOS 簽章 secrets 存在時同時執行公證；Windows 新增 SignPath signCommand 路徑；開關語意與 updater 簽章正交性維持不變。「Release 產出三平台桌面安裝檔」requirement 修改——assets 不再含 server 壓縮檔、NSIS 安裝器內建繁中英文語系與 Speclink 圖示；新增「Release 說明含下載指南」requirement——release job 產生各平台下載對照表前置於 Release 說明
+- `desktop-release`: 「OS 程式碼簽章為可插鑰匙開關」requirement 擴充——macOS 簽章 secrets 存在時同時執行公證；Windows 維持本機憑證路徑與未簽章後備（SignPath 裁定不採用，見設計 D2）；開關語意與 updater 簽章正交性維持不變。「Release 產出三平台桌面安裝檔」requirement 修改——assets 不再含 server 壓縮檔、NSIS 安裝器內建繁中英文語系與 Speclink 圖示；新增「Release 說明含下載指南」requirement——release job 產生各平台下載對照表前置於 Release 說明
 - `desktop-app`: 「安裝 CLI 指令到 PATH」requirement 修改——macOS 啟動自動佈署與自我修復、PATH 冪等追加至 ~/.zprofile；Windows／Linux 行為不變
 - `server-release`: 「release 產物含 server 與部署文件」requirement 修改——server binary 仍建置與冒煙但不打包上 Release，官方發布通路為 Docker image 與 npm 套件；新增「npm 套件一行啟動 server」requirement——平台子套件解析、環境變數插值組態的快速啟動契約；部署文件的 native binary 形態改教從原始碼建置
 - `user-documentation`: 新增安裝通路文件 requirement——README 安裝區塊（中英對等）、sdk-node 發布狀態誠實化
@@ -39,7 +39,7 @@
 
 - Affected specs: `cli-distribution`（新增）、`desktop-release`、`user-documentation`、`delivery-baseline`、`server-release`、`desktop-app`
 - Affected code:
-  - New: `scripts/signing-gate.mjs`、`scripts/signing-gate.test.mjs`、`scripts/install.sh`、`scripts/install.ps1`、`scripts/install.test.mjs`、`scripts/homebrew-formula.mjs`、`scripts/homebrew-formula.test.mjs`、`scripts/signpath-sign.ps1`、`scripts/signpath-sign.test.mjs`、`scripts/release-notes.mjs`、`scripts/release-notes.test.mjs`、`packages/server-npm/package.json`、`packages/server-npm/bin/speclink-server.mjs`、`scripts/npm-server-package.mjs`、`scripts/npm-server-package.test.mjs`、`scripts/npm-server-launcher.test.mjs`
+  - New: `scripts/signing-gate.mjs`、`scripts/signing-gate.test.mjs`、`scripts/install.sh`、`scripts/install.ps1`、`scripts/install.test.mjs`、`scripts/homebrew-formula.mjs`、`scripts/homebrew-formula.test.mjs`、`scripts/release-notes.mjs`、`scripts/release-notes.test.mjs`、`packages/server-npm/package.json`、`packages/server-npm/bin/speclink-server.mjs`、`scripts/npm-server-package.mjs`、`scripts/npm-server-package.test.mjs`、`scripts/npm-server-launcher.test.mjs`
   - Modified: `.github/workflows/release.yml`、`.github/workflows/ci.yml`、`scripts/delivery-gate.test.mjs`、`crates/speclink-server/src/assets.rs`、`crates/speclink-server/tests/it/web_assets.rs`、`crates/speclink-server/Dockerfile`、`apps/desktop/src-tauri/tauri.conf.json`、`apps/desktop/src/core/cliInstall.ts`、`apps/desktop/src/adapter/cliInstall.ts`、`apps/desktop/src/__tests__/cliInstall.test.ts`、`README.md`、`README.en.md`、`docs/getting-started.zh-TW.md`、`docs/getting-started.md`、`docs/sdk-node.zh-TW.md`、`docs/sdk-node.md`、`docs/product-status.zh-TW.md`、`docs/server-deployment.zh-TW.md`
   - Removed: 無
-- repo 之外（不產生本 repo 檔案）：新建 GitHub tap repo（homebrew-tap，含 formula）；GitHub Actions secrets 新增 Apple 公證三項、SignPath 四項、TAP_PUSH_TOKEN（tap 推送 PAT）與 NPM_TOKEN（npm 發布）；npm 帳號與 scope（偏好 @speclink，占用時採替代並記錄）——皆以手動教學任務執行
+- repo 之外（不產生本 repo 檔案）：新建 GitHub tap repo（homebrew-tap，含 formula）；GitHub Actions secrets 新增 Apple 公證三項、TAP_PUSH_TOKEN（tap 推送 PAT）與 NPM_TOKEN（npm 發布）；npm 帳號與 scope（偏好 @speclink，占用時採替代並記錄）——皆以手動教學任務執行
