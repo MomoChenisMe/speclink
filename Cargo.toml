@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/speclink-core", "crates/speclink-fs", "crates/speclink-protocol", "crates/speclink-remote", "crates/speclink-cli", "crates/speclink-node", "crates/speclink-store", "crates/speclink-store-sqlite", "crates/speclink-store-fs", "crates/speclink-store-postgres", "crates/speclink-host", "crates/speclink-server", "apps/desktop/core", "apps/desktop/src-tauri"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 
