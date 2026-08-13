@@ -1,4 +1,4 @@
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import type { ChangeItem, SearchHit, SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 import { createAppStore, openTicketStation } from "../store";
@@ -78,7 +78,7 @@ function fakeSession(ds: SpeclinkDataSource, root = "A", name = "a"): WorkspaceS
 
 /** 以活躍 session 預置 store（注入 session 工廠、無 workspace 探測面）。 */
 function storeWith(ds: SpeclinkDataSource) {
-  const store = createAppStore({ createSession: (root, name) => fakeSession(ds, root, name) });
+  const store = trackedAppStore({ createSession: (root, name) => fakeSession(ds, root, name) });
   const session = fakeSession(ds);
   store.setState({ sessions: { [session.id]: session }, activeKey: session.id });
   return store;
@@ -106,7 +106,7 @@ function remoteSession(ds: SpeclinkDataSource, repoId: string): WorkspaceSession
 }
 
 function storeWithRemoteSessions(a: WorkspaceSession, b: WorkspaceSession) {
-  const store = createAppStore({
+  const store = trackedAppStore({
     createSession: () => {
       throw new Error("remote session 測試不得建立 local session");
     },
@@ -136,6 +136,19 @@ function deferred<T>() {
 beforeEach(() => {
   toastError.mockClear();
   localStorage.clear();
+});
+
+// 追蹤本檔建立的每個 store，測後統一清掉搜尋去抖計時器：測試結束後才開火的
+// 200ms 計時器會打在已拆除的 mock 上（searchWorkspace 回 undefined），成為整包
+// 測試的 unhandled error flake——535 全過仍紅整個 run。
+const trackedStores: ReturnType<typeof createAppStore>[] = [];
+function trackedAppStore(...args: Parameters<typeof createAppStore>) {
+  const store = createAppStore(...args);
+  trackedStores.push(store);
+  return store;
+}
+afterEach(() => {
+  for (const store of trackedStores.splice(0)) store.getState().disposeSearch();
 });
 
 describe("app store (Zustand)", () => {
@@ -229,7 +242,7 @@ describe("app store (Zustand)", () => {
       }),
       "alpha",
     );
-    const store = createAppStore({
+    const store = trackedAppStore({
       createSession: () => {
         throw new Error("remote session 測試不得建立 local session");
       },
@@ -1145,7 +1158,7 @@ describe("device login 分段輪詢", () => {
   }
 
   function storeWithConnections(adapter: ConnectionsAdapter) {
-    return createAppStore({
+    return trackedAppStore({
       createSession: () => ({}) as WorkspaceSession,
       connections: adapter,
     });
@@ -1308,7 +1321,7 @@ function fakeInstructionWorkspace(over: Partial<WorkspaceAdapter> = {}) {
 
 /** 以單一 local session 預置 store 並注入 workspace 探測面。 */
 function storeWithInstructionProbe(ws: WorkspaceAdapter, ds = fakeDataSource()) {
-  const store = createAppStore({
+  const store = trackedAppStore({
     createSession: (root, name) => fakeSession(ds, root, name),
     workspace: ws,
   });
@@ -1333,7 +1346,7 @@ describe("監看重掛（rearmWatch）", () => {
 
   it("無活躍 session → 不動", async () => {
     const ws = fakeInstructionWorkspace();
-    const store = createAppStore({
+    const store = trackedAppStore({
       createSession: (root, name) => fakeSession(fakeDataSource(), root, name),
       workspace: ws,
     });
@@ -1468,7 +1481,7 @@ describe("指令檔過期提示的顯示裁決", () => {
   it("remote 分頁不執行探測", async () => {
     const ws = fakeInstructionWorkspace();
     const ds = fakeDataSource();
-    const store = createAppStore({
+    const store = trackedAppStore({
       createSession: () => {
         throw new Error("remote 分頁不建 local session");
       },
@@ -1544,7 +1557,7 @@ describe("切換中分頁（pendingTabKey）", () => {
     const ws = fakeInstructionWorkspace({
       openProject: vi.fn().mockReturnValue(probe),
     } as Partial<WorkspaceAdapter>);
-    const store = createAppStore({
+    const store = trackedAppStore({
       createSession: (root, name) => fakeSession(ds, root, name),
       workspace: ws,
     });
@@ -1596,7 +1609,7 @@ describe("切換中分頁（pendingTabKey）", () => {
     const ws = fakeInstructionWorkspace({
       openProject: vi.fn().mockReturnValue(probe.promise),
     } as Partial<WorkspaceAdapter>);
-    const store = createAppStore({
+    const store = trackedAppStore({
       createSession: (root, name) => fakeSession(ds, root, name),
       workspace: ws,
     });
@@ -1652,7 +1665,7 @@ describe("切換中分頁（pendingTabKey）", () => {
     const ws = fakeInstructionWorkspace({
       openProject: vi.fn().mockResolvedValue({ status: "project", root: "B", name: "b" }),
     } as Partial<WorkspaceAdapter>);
-    const store = createAppStore({
+    const store = trackedAppStore({
       createSession: () => {
         throw new Error("翻頁失敗");
       },
@@ -1685,7 +1698,7 @@ describe("切換中分頁（pendingTabKey）", () => {
         .mockReturnValueOnce(first.promise)
         .mockReturnValueOnce(second.promise),
     } as Partial<WorkspaceAdapter>);
-    const store = createAppStore({
+    const store = trackedAppStore({
       createSession: (root, name) => fakeSession(ds, root, name),
       workspace: ws,
     });
@@ -1832,7 +1845,7 @@ describe("整批載入旗標的記帳邊界", () => {
   it("載入途中關掉該分頁 → 旗標不卡在 true", async () => {
     const d = deferred<ChangeItem[]>();
     const ds = fakeDataSource({ listChanges: vi.fn(() => d.promise) });
-    const store = createAppStore({ createSession: (root, name) => fakeSession(ds, root, name) });
+    const store = trackedAppStore({ createSession: (root, name) => fakeSession(ds, root, name) });
     const a = fakeSession(ds, "A", "a");
     store.setState({
       tabs: [{ locator: a.locator, name: a.descriptor.name }],
@@ -1855,7 +1868,7 @@ describe("整批載入旗標的記帳邊界", () => {
     const dsB = fakeDataSource({ listChanges: vi.fn(() => bLoad.promise) });
     const a = fakeSession(dsA, "A", "a");
     const b = fakeSession(dsB, "B", "b");
-    const store = createAppStore({ createSession: () => a });
+    const store = trackedAppStore({ createSession: () => a });
     store.setState({
       tabs: [
         { locator: a.locator, name: a.descriptor.name },
@@ -1956,7 +1969,7 @@ describe("翻頁與載入中標記同批", () => {
       openProject: vi.fn().mockResolvedValue({ status: "project", root: "B", name: "b" }),
       watchWorkspace: vi.fn(() => watchGate),
     } as Partial<WorkspaceAdapter>);
-    const store = createAppStore({
+    const store = trackedAppStore({
       createSession: (root, name) => fakeSession(ds, root, name),
       workspace: ws,
     });
@@ -2004,7 +2017,7 @@ describe("翻頁與載入中標記同批", () => {
       openProject: vi.fn().mockResolvedValue({ status: "project", root: "B", name: "b" }),
       watchWorkspace: vi.fn(() => watchGate),
     } as Partial<WorkspaceAdapter>);
-    const store = createAppStore({
+    const store = trackedAppStore({
       createSession: (root, name) => fakeSession(ds, root, name),
       workspace: ws,
     });
