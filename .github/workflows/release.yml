@@ -218,10 +218,6 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
-          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
-          SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
-          SIGNPATH_POLICY_SLUG: ${{ secrets.SIGNPATH_POLICY_SLUG }}
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: node scripts/signing-gate.mjs
@@ -280,8 +276,8 @@ jobs:
             echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
           } >> "$GITHUB_ENV"
 
-      # SignPath 路徑（決策 signpath）的 signCommand 接線屬後續工作；此處只保留
-      # 本機憑證後備路徑。
+      # Windows 僅本機憑證路徑（SignPath 裁定不採用，design D2）；secrets 缺席
+      # 即產出未簽章安裝檔。
       - name: Enable Windows code signing (env-gated)
         if: runner.os == 'Windows' && env.SPECLINK_WINDOWS_SIGNING == 'certificate'
         shell: bash

@@ -10,7 +10,7 @@
 //
 // 決策寫入 $GITHUB_ENV 供後續步驟以 env.<鍵> 判斷，不讓各步驟各自重推：
 //   SPECLINK_MACOS_SIGNING=full|none
-//   SPECLINK_WINDOWS_SIGNING=signpath|certificate|none
+//   SPECLINK_WINDOWS_SIGNING=certificate|none
 import { appendFileSync } from 'node:fs';
 
 // macOS 的憑證半組與公證半組合為一組：只簽章不公證的產物照樣被 Gatekeeper 攔。
@@ -23,16 +23,6 @@ const MACOS_GROUP = {
     'APPLE_ID',
     'APPLE_PASSWORD',
     'APPLE_TEAM_ID',
-  ],
-};
-
-const SIGNPATH_GROUP = {
-  label: 'Windows SignPath 簽章',
-  names: [
-    'SIGNPATH_API_TOKEN',
-    'SIGNPATH_ORGANIZATION_ID',
-    'SIGNPATH_PROJECT_SLUG',
-    'SIGNPATH_POLICY_SLUG',
   ],
 };
 
@@ -50,7 +40,7 @@ function classify(group) {
   return { state: 'partial', missing };
 }
 
-const groups = [MACOS_GROUP, SIGNPATH_GROUP, WINDOWS_CERT_GROUP].map((group) => ({
+const groups = [MACOS_GROUP, WINDOWS_CERT_GROUP].map((group) => ({
   group,
   result: classify(group),
 }));
@@ -68,13 +58,8 @@ if (partial.length > 0) {
 
 const state = Object.fromEntries(groups.map(({ group, result }) => [group.label, result.state]));
 const macos = state[MACOS_GROUP.label] === 'full' ? 'full' : 'none';
-// SignPath 優先於本機憑證：兩者皆備時走服務簽章，本機憑證維持後備路徑。
-const windows =
-  state[SIGNPATH_GROUP.label] === 'full'
-    ? 'signpath'
-    : state[WINDOWS_CERT_GROUP.label] === 'full'
-      ? 'certificate'
-      : 'none';
+// Windows 僅本機憑證路徑（SignPath 裁定不採用，design D2）。
+const windows = state[WINDOWS_CERT_GROUP.label] === 'full' ? 'certificate' : 'none';
 
 console.log(`macOS 簽章：${macos}／Windows 簽章：${windows}`);
 
