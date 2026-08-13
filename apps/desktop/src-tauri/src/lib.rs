@@ -53,6 +53,13 @@ async fn cli_deploy(plan: cli_install::CliDeployPlan) -> Result<(), String> {
         .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn cli_zprofile_append(line: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || cli_install::zprofile_append(&line))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 // 讀取型 command 一律回 Result：worker 失敗（JoinError——閉包 panic 或
 // 關閉期取消）轉為 invoke 錯誤回報。留 .expect 會在 tokio task 內 panic 被
 // 吞掉，前端 promise 永不 settle；成功路徑的回傳形狀不變。
@@ -1591,6 +1598,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             cli_install_probe,
             cli_deploy,
+            cli_zprofile_append,
             list_changes,
             list_specs,
             status,

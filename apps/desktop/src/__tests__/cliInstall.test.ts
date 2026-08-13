@@ -10,6 +10,7 @@ import {
   isDirOnPath,
   needsRedeploy,
   parseCliVersion,
+  zprofilePlan,
 } from "../core/cliInstall";
 import type { CliInstallAdapter, CliInstallProbe } from "../adapter/cliInstall";
 import { createAppStore } from "../store";
@@ -80,7 +81,7 @@ describe("佈署計畫平台分流", () => {
   });
 });
 
-describe("AppImage 啟動自我修復判定", () => {
+describe("啟動自動佈署判定（macOS 全自動、AppImage 版本不符自我修復）", () => {
   it("AppImage 且版本不符→需重佈署", () => {
     expect(needsRedeploy("linux-appimage", { kind: "version-mismatch", version: "0.1.0" })).toBe(
       true,
@@ -95,8 +96,45 @@ describe("AppImage 啟動自我修復判定", () => {
     expect(needsRedeploy("linux-appimage", { kind: "not-installed" })).toBe(false);
   });
 
-  it("非 AppImage 平台不自我修復（macOS symlink 更新後自動指向新版）", () => {
-    expect(needsRedeploy("macos", { kind: "version-mismatch", version: "0.1.0" })).toBe(false);
+  it("macOS 未安裝→啟動自動佈署（spec 修訂：毋須使用者操作）", () => {
+    expect(needsRedeploy("macos", { kind: "not-installed" })).toBe(true);
+  });
+
+  it("macOS 版本不符→自動重佈署", () => {
+    expect(needsRedeploy("macos", { kind: "version-mismatch", version: "0.1.0" })).toBe(true);
+  });
+
+  it("macOS 已安裝同版→不重佈署", () => {
+    expect(needsRedeploy("macos", { kind: "installed", version: "0.2.0" })).toBe(false);
+  });
+
+  it("Windows 與 deb 不自我修復（安裝器／包管理器職責）", () => {
+    expect(needsRedeploy("windows", { kind: "not-installed" })).toBe(false);
+    expect(needsRedeploy("linux-deb", { kind: "version-mismatch", version: "0.1.0" })).toBe(false);
+  });
+});
+
+describe("zprofile PATH 追加決策（macOS，冪等）", () => {
+  it("不在 PATH 且無識別行→輸出帶識別註解的追加行", () => {
+    const plan = zprofilePlan(false, "");
+    expect(plan.action).toBe("append");
+    if (plan.action === "append") {
+      expect(plan.line).toContain('export PATH="$HOME/.local/bin:$PATH"');
+      expect(plan.line).toContain("# speclink cli");
+    }
+  });
+
+  it("已在 PATH→不寫入", () => {
+    expect(zprofilePlan(true, "")).toEqual({ action: "none" });
+  });
+
+  it("zprofile 已有識別行→不重複追加（冪等）", () => {
+    const existing = 'export PATH="$HOME/.local/bin:$PATH" # speclink cli\n';
+    expect(zprofilePlan(false, existing)).toEqual({ action: "none" });
+  });
+
+  it("zprofile 讀不到（null）視為空檔可追加", () => {
+    expect(zprofilePlan(false, null).action).toBe("append");
   });
 });
 
@@ -125,6 +163,7 @@ function macProbe(over: Partial<CliInstallProbe> = {}): CliInstallProbe {
     bundledCliPath: "/Applications/Speclink.app/Contents/MacOS/speclink",
     appVersion: "0.2.0",
     deployedVersionOutput: null,
+    zprofile: null,
     ...over,
   };
 }
@@ -132,6 +171,7 @@ function macProbe(over: Partial<CliInstallProbe> = {}): CliInstallProbe {
 /** probe 依呼叫次序回傳 results（超出即重複末項）；deploy 可注入斷言。 */
 function storeWith(results: CliInstallProbe[], deploy = vi.fn().mockResolvedValue(undefined)) {
   let calls = 0;
+  const appendZprofile = vi.fn().mockResolvedValue(undefined);
   const adapter: CliInstallAdapter = {
     probe: vi.fn().mockImplementation(() => {
       const probe = results[Math.min(calls, results.length - 1)];
@@ -139,8 +179,13 @@ function storeWith(results: CliInstallProbe[], deploy = vi.fn().mockResolvedValu
       return Promise.resolve(probe);
     }),
     deploy,
+    appendZprofile,
   };
-  return { store: createAppStore({ createSession: vi.fn() as never, cliInstall: adapter }), deploy };
+  return {
+    store: createAppStore({ createSession: vi.fn() as never, cliInstall: adapter }),
+    deploy,
+    appendZprofile,
+  };
 }
 
 describe("CLI 佈署 store 接線", () => {
@@ -214,16 +259,78 @@ describe("CLI 佈署 store 接線", () => {
     });
   });
 
-  it("macOS 版本不符不自動重佈署（symlink 更新後自動指向新版，異常留給顯式動作）", async () => {
+  it("macOS 版本不符：refreshCliInstall 自動重佈署（spec 修訂：啟動自我修復）", async () => {
     const { store, deploy } = storeWith([
       macProbe({ deployedVersionOutput: "speclink 0.1.0 (arm64)\n" }),
+      macProbe({ deployedVersionOutput: "speclink 0.2.0 (arm64)\n" }),
     ]);
     await store.getState().refreshCliInstall();
 
-    expect(deploy).not.toHaveBeenCalled();
-    expect(store.getState().cliInstall).toMatchObject({
-      status: { kind: "version-mismatch", version: "0.1.0" },
+    expect(deploy).toHaveBeenCalledWith({
+      action: "symlink",
+      linkPath: "/Users/u/.local/bin/speclink",
+      targetPath: "/Applications/Speclink.app/Contents/MacOS/speclink",
     });
+    expect(store.getState().cliInstall).toMatchObject({
+      status: { kind: "installed", version: "0.2.0" },
+    });
+  });
+
+  it("macOS 未安裝：啟動即自動佈署（spec 修訂：毋須使用者操作）", async () => {
+    const { store, deploy } = storeWith([
+      macProbe(),
+      macProbe({ deployedVersionOutput: "speclink 0.2.0 (arm64)\n" }),
+    ]);
+    await store.getState().refreshCliInstall();
+
+    expect(deploy).toHaveBeenCalledTimes(1);
+    expect(store.getState().cliInstall).toMatchObject({
+      status: { kind: "installed", version: "0.2.0" },
+    });
+  });
+
+  it("macOS 啟動自動佈署失敗：不阻斷、卡片浮出錯誤", async () => {
+    const deploy = vi.fn().mockRejectedValue(new Error("permission denied"));
+    const { store } = storeWith([macProbe()], deploy);
+    await store.getState().refreshCliInstall();
+
+    expect(store.getState().cliInstall).toMatchObject({
+      status: { kind: "not-installed" },
+      error: "permission denied",
+      busy: false,
+    });
+  });
+
+  it("macOS 佈署完成且 ~/.local/bin 不在 PATH：自動追加 zprofile 一行", async () => {
+    const { store, appendZprofile } = storeWith([
+      macProbe({
+        pathEnv: "/usr/bin",
+        zprofile: "",
+        deployedVersionOutput: "speclink 0.2.0 (arm64)\n",
+      }),
+    ]);
+    await store.getState().refreshCliInstall();
+
+    expect(appendZprofile).toHaveBeenCalledTimes(1);
+    expect(appendZprofile.mock.calls[0][0]).toContain("# speclink cli");
+  });
+
+  it("zprofile 已有識別行或已在 PATH：不重複追加（冪等）", async () => {
+    const marked = storeWith([
+      macProbe({
+        pathEnv: "/usr/bin",
+        zprofile: 'export PATH="$HOME/.local/bin:$PATH" # speclink cli\n',
+        deployedVersionOutput: "speclink 0.2.0 (arm64)\n",
+      }),
+    ]);
+    await marked.store.getState().refreshCliInstall();
+    expect(marked.appendZprofile).not.toHaveBeenCalled();
+
+    const onPath = storeWith([
+      macProbe({ deployedVersionOutput: "speclink 0.2.0 (arm64)\n" }),
+    ]);
+    await onPath.store.getState().refreshCliInstall();
+    expect(onPath.appendZprofile).not.toHaveBeenCalled();
   });
 
   it("Windows：僅回報狀態、不可佈署", async () => {

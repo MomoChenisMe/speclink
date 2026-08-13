@@ -122,6 +122,25 @@
       "files": [
         "crates/speclink-server/Dockerfile"
       ]
+    },
+    {
+      "task_id": "33",
+      "task_desc": "11.1 NSIS 安裝器繁中化與 Speclink 圖示，落實 spec「Release 產出三平台桌面安裝檔」（修訂後——安裝器語系與圖示）與設計「D11：NSIS 安裝器語系跟隨系統、圖示用現有 logo」：apps/desktop/src-tauri/tauri.conf.json 的 bundle.windows.nsis 補 languages 為 TradChinese 與 English 兩項（NSIS 於系統語言在清單內時直接採用、否則落回英文）與 installerIcon 指向 icons/icon.ico；scripts/delivery-gate.test.mjs 補契約斷言：nsis.languages 含 TradChinese 與 English、installerIcon 指向 icon.ico。驗證：新斷言對修改前的設定為紅；node --test scripts/delivery-gate.test.mjs 全綠；tauri 設定 JSON 可解析",
+      "files": [
+        "apps/desktop/src-tauri/tauri.conf.json"
+      ]
+    },
+    {
+      "task_id": "34",
+      "task_desc": "11.2 macOS CLI 啟動自動佈署與 PATH 冪等追加，落實 spec「安裝 CLI 指令到 PATH」（修訂後）與設計「D12：macOS CLI 啟動自動佈署，PATH 以 ~/.zprofile 冪等追加」：apps/desktop/src/core/cliInstall.ts 的 needsRedeploy 擴為 macOS（未安裝與版本不符皆自動佈署、AppImage 維持版本不符）並新增 zprofile 追加決策純函式（輸入 PATH 涵蓋狀態與 ~/.zprofile 內容，輸出 append 行或 none；識別註解冪等）；adapter 與 app 啟動流程接上自動佈署與 zprofile 寫入（佈署失敗不阻斷啟動）；apps/desktop/src/__tests__/cliInstall.test.ts 先補紅測試：macOS 未安裝→自動佈署決策、版本不符→重佈署、zprofile 已有識別行→不重複追加、已在 PATH→不寫入。驗證：新測試對修改前為紅；npm test -w apps/desktop 全綠",
+      "files": [
+        "apps/desktop/src-tauri/src/cli_install.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/__tests__/cliInstall.test.ts",
+        "apps/desktop/src/adapter/cliInstall.ts",
+        "apps/desktop/src/core/cliInstall.ts",
+        "apps/desktop/src/store.ts"
+      ]
     }
   ],
   "entries": [
@@ -297,6 +316,33 @@
         "crates/speclink-server/Dockerfile"
       ],
       "recordedAt": "2026-08-13T05:18:59Z"
+    },
+    {
+      "taskId": "tsk_01M03W1A2B3C4D5E6F7G8H9JKM",
+      "taskDesc": "11.1 NSIS 安裝器繁中化與 Speclink 圖示，落實 spec「Release 產出三平台桌面安裝檔」（修訂後——安裝器語系與圖示）與設計「D11：NSIS 安裝器語系跟隨系統、圖示用現有 logo」：apps/desktop/src-tauri/tauri.conf.json 的 bundle.windows.nsis 補 languages 為 TradChinese 與 English 兩項（NSIS 於系統語言在清單內時直接採用、否則落回英文）與 installerIcon 指向 icons/icon.ico；scripts/delivery-gate.test.mjs 補契約斷言：nsis.languages 含 TradChinese 與 English、installerIcon 指向 icon.ico。驗證：新斷言對修改前的設定為紅；node --test scripts/delivery-gate.test.mjs 全綠；tauri 設定 JSON 可解析",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "fd3dfd7d52d594eab0f7d180d8d7b29b44b86557",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/tauri.conf.json"
+      ],
+      "recordedAt": "2026-08-13T07:13:35Z"
+    },
+    {
+      "taskId": "tsk_01M03W1A2B3C4D5E6F7G8H9JKN",
+      "taskDesc": "11.2 macOS CLI 啟動自動佈署與 PATH 冪等追加，落實 spec「安裝 CLI 指令到 PATH」（修訂後）與設計「D12：macOS CLI 啟動自動佈署，PATH 以 ~/.zprofile 冪等追加」：apps/desktop/src/core/cliInstall.ts 的 needsRedeploy 擴為 macOS（未安裝與版本不符皆自動佈署、AppImage 維持版本不符）並新增 zprofile 追加決策純函式（輸入 PATH 涵蓋狀態與 ~/.zprofile 內容，輸出 append 行或 none；識別註解冪等）；adapter 與 app 啟動流程接上自動佈署與 zprofile 寫入（佈署失敗不阻斷啟動）；apps/desktop/src/__tests__/cliInstall.test.ts 先補紅測試：macOS 未安裝→自動佈署決策、版本不符→重佈署、zprofile 已有識別行→不重複追加、已在 PATH→不寫入。驗證：新測試對修改前為紅；npm test -w apps/desktop 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "fd3dfd7d52d594eab0f7d180d8d7b29b44b86557",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/cli_install.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/__tests__/cliInstall.test.ts",
+        "apps/desktop/src/adapter/cliInstall.ts",
+        "apps/desktop/src/core/cliInstall.ts",
+        "apps/desktop/src/store.ts"
+      ],
+      "recordedAt": "2026-08-13T07:27:15Z"
     }
   ]
 }

@@ -56,10 +56,26 @@ export function cliDeployPlan(
   }
 }
 
-/** AppImage 啟動自我修復（spec「AppImage 版本不符自我修復」）：僅版本不符時
- * 重佈署；未安裝不主動裝——安裝是使用者的顯式動作。 */
+/** 啟動自動佈署判定（spec 修訂「macOS 啟動自動佈署與自我修復」＋「AppImage
+ * 版本不符自我修復」，design D12）：macOS 未安裝或版本不符皆自動佈署（symlink
+ * 冪等無副作用）；AppImage 僅版本不符時修復——未安裝仍是使用者的顯式動作
+ * （複製佈署較重）；Windows／deb 歸安裝器與包管理器。 */
 export function needsRedeploy(platform: CliPlatform, status: CliInstallStatus): boolean {
+  if (platform === "macos") return status.kind !== "installed";
   return platform === "linux-appimage" && status.kind === "version-mismatch";
+}
+
+/** ~/.zprofile 的識別註解：追加行帶著它，冪等判定靠它。 */
+export const ZPROFILE_MARKER = "# speclink cli";
+
+export type ZprofilePlan = { action: "append"; line: string } | { action: "none" };
+
+/** macOS PATH 追加決策（design D12）：已在 PATH 或 zprofile 已有識別行→不寫；
+ * 否則輸出帶識別註解的一行（zprofile 讀不到視為空檔）。寫檔歸 adapter。 */
+export function zprofilePlan(onPath: boolean, zprofile: string | null): ZprofilePlan {
+  if (onPath) return { action: "none" };
+  if ((zprofile ?? "").includes(ZPROFILE_MARKER)) return { action: "none" };
+  return { action: "append", line: `export PATH="$HOME/.local/bin:$PATH" ${ZPROFILE_MARKER}` };
 }
 
 /** 佈署目錄是否已在 PATH 上；否則介面提示加入方式。 */

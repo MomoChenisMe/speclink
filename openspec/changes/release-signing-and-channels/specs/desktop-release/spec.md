@@ -18,7 +18,7 @@ release job SHALL 以腳本產生下載指南並置於 GitHub Release 說明開�
 
 ### Requirement: Release 產出三平台桌面安裝檔
 
-push 符合 v* 的 tag 後，release 管線 SHALL 產出桌面安裝檔並附於同一個 GitHub Release：macOS dmg（aarch64 與 x86_64 各一）、Windows NSIS 安裝器（x86_64）、Linux AppImage 與 deb（x86_64 與 aarch64）。SHA256SUMS.txt SHALL 收錄全部新增檔案。既有 CLI 壓縮檔與 Docker 映像的命名與內容 SHALL 維持不變；server 壓縮檔 SHALL NOT 出現在 Release assets（server 發布通路見 server-release）。桌面安裝檔 SHALL 內含同版 speclink CLI binary。
+push 符合 v* 的 tag 後，release 管線 SHALL 產出桌面安裝檔並附於同一個 GitHub Release：macOS dmg（aarch64 與 x86_64 各一）、Windows NSIS 安裝器（x86_64）、Linux AppImage 與 deb（x86_64 與 aarch64）。SHA256SUMS.txt SHALL 收錄全部新增檔案。既有 CLI 壓縮檔與 Docker 映像的命名與內容 SHALL 維持不變；server 壓縮檔 SHALL NOT 出現在 Release assets（server 發布通路見 server-release）。桌面安裝檔 SHALL 內含同版 speclink CLI binary。Windows NSIS 安裝器 SHALL 內建繁體中文與英文語系並跟隨系統顯示語言（繁中系統顯示繁中、其餘落回英文），安裝器圖示 SHALL 為 Speclink 產品圖示。
 
 #### Scenario: tag 發布產出完整安裝檔集
 
@@ -29,6 +29,11 @@ push 符合 v* 的 tag 後，release 管線 SHALL 產出桌面安裝檔並附於
 
 - **WHEN** 桌面安裝檔任一 target 建置失敗
 - **THEN** GitHub Release SHALL NOT 建立（與既有 Docker gating 同一 needs 閘門），不產生缺形態的 Release
+
+#### Scenario: 繁中系統的安裝精靈顯示繁中
+
+- **WHEN** 在顯示語言為繁體中文的 Windows 上執行 NSIS 安裝器
+- **THEN** 安裝精靈以繁體中文顯示，安裝檔圖示為 Speclink 產品圖示；非內建語系的系統落回英文
 
 ### Requirement: OS 程式碼簽章為可插鑰匙開關
 
