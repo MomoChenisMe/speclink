@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -163,6 +163,23 @@ intTest('快速啟動：組態 YAML 落地資料目錄並以 --config 傳入', (
   const yaml = readFileSync(path.join(dataDir, 'config.yaml'), 'utf8');
   assert.match(yaml, /driver: "sqlite"/);
   assert.match(yaml, /public_url: "http:\/\/localhost:8321"/);
+});
+
+intTest('經 npm bin shim 的 symlink 呼叫時 main 仍執行（argv[1] 是 symlink、import.meta.url 是實體路徑）', () => {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), 'speclink-npm-'));
+  plantFakePackage(tmp, { exitCode: 7 });
+  const out = path.join(tmp, 'args.txt');
+  // npm 在 node_modules/.bin 放的是指向 bin 檔的 symlink——node 預設解析主模組
+  // 的 realpath，於是 import.meta.url 與 argv[1] 不同字面；入口判斷若比對原始
+  // argv[1]，main() 靜默不執行、exit 0。
+  const shim = path.join(tmp, 'speclink-server-shim');
+  symlinkSync(launcherPath, shim);
+  const result = spawnSync(process.execPath, [shim, '--config', 'x.yaml'], {
+    encoding: 'utf8',
+    env: { ...process.env, NODE_PATH: path.join(tmp, 'node_modules'), SPECLINK_FAKE_OUT: out },
+  });
+  assert.equal(result.status, 7, `main 未執行（status=${result.status}）：${result.stderr}`);
+  assert.deepEqual(readFileSync(out, 'utf8').trim().split('\n'), ['--config', 'x.yaml']);
 });
 
 intTest('平台子套件缺席時以可讀錯誤點名', () => {
