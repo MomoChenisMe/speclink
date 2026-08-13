@@ -5,7 +5,7 @@
 // binary。帶參數或 SPECLINK_CONFIG 時純透傳，行為與直接執行 binary 一致。
 
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import process from 'node:process';
@@ -146,6 +146,17 @@ function main() {
 }
 
 // 測試直接 import 本檔取用上面的純函式；只有作為執行入口時才 spawn。
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// npm 的 bin shim 是 symlink：argv[1] 是 symlink 路徑、import.meta.url 是 node
+// 解析後的實體路徑，必須先 realpath 再比對——比對原始 argv[1] 會讓 npx 呼叫
+// 靜默不執行 main()。
+const invokedAs = (() => {
+  if (!process.argv[1]) return null;
+  try {
+    return pathToFileURL(realpathSync(process.argv[1])).href;
+  } catch {
+    return null;
+  }
+})();
+if (invokedAs === import.meta.url) {
   main();
 }
