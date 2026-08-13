@@ -369,6 +369,17 @@ test('release.yml 的 docker 建置逐架構原生分開建、合併 job 打 tag
   );
 });
 
+test('tauri.conf.json 的 NSIS 安裝器內建繁中英文語系並用 Speclink 圖示', () => {
+  const conf = JSON.parse(read('apps/desktop/src-tauri/tauri.conf.json'));
+  const nsis = conf.bundle?.windows?.nsis ?? {};
+  // 語系跟隨系統（desktop-release spec 修訂後；設計 D11）：繁中系統顯示繁中、
+  // 其餘落回英文——兩者都要在清單內。
+  assert.ok(Array.isArray(nsis.languages), 'nsis.languages 必須宣告');
+  assert.ok(nsis.languages.includes('TradChinese'), 'nsis.languages 缺 TradChinese');
+  assert.ok(nsis.languages.includes('English'), 'nsis.languages 缺 English');
+  assert.match(nsis.installerIcon ?? '', /icon\.ico$/, 'nsis.installerIcon 必須指向 icon.ico');
+});
+
 // --- Dockerfile（server-release「Docker multi-stage 不攜帶 Node runtime」） ---
 
 test('Dockerfile 以 Node stage 產 dist、Rust stage 內嵌，最終 runtime 僅 server binary＋non-root、無 Node runtime', () => {

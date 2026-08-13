@@ -16,6 +16,9 @@ pub struct CliInstallProbe {
     pub bundled_cli_path: Option<String>,
     pub app_version: String,
     pub deployed_version_output: Option<String>,
+    /// ~/.zprofile 現有內容（macOS；讀不到或非 macOS 為 None）——前端 core 的
+    /// PATH 冪等追加判定輸入（design D12）。
+    pub zprofile: Option<String>,
 }
 
 fn platform_key() -> String {
@@ -77,6 +80,10 @@ pub fn probe(app_version: String) -> CliInstallProbe {
         .ok()
         .or_else(|| std::env::var("USERPROFILE").ok());
     let deployed_version_output = deployed_version_output(&platform, home.as_deref());
+    let zprofile = (platform == "macos")
+        .then(|| home.as_deref().map(|h| PathBuf::from(h).join(".zprofile")))
+        .flatten()
+        .map(|p| std::fs::read_to_string(p).unwrap_or_default());
     CliInstallProbe {
         platform,
         path_env: user_shell_path(),
@@ -84,8 +91,23 @@ pub fn probe(app_version: String) -> CliInstallProbe {
         bundled_cli_path: bundled_cli_path().map(|p| p.to_string_lossy().into_owned()),
         app_version,
         deployed_version_output,
+        zprofile,
         home,
     }
+}
+
+/// 追加一行至 ~/.zprofile（macOS PATH 自動設定；冪等判定歸前端 core，此處只
+/// 負責安全地寫：保留既有內容、必要時補結尾換行）。
+pub fn zprofile_append(line: &str) -> Result<(), String> {
+    let home = std::env::var("HOME").map_err(|_| "找不到 HOME 目錄".to_string())?;
+    let path = PathBuf::from(home).join(".zprofile");
+    let mut content = std::fs::read_to_string(&path).unwrap_or_default();
+    if !content.is_empty() && !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push_str(line);
+    content.push('\n');
+    std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
 /// 前端 core 產出的佈署計畫（「none」不會被送來——前端已擋）。

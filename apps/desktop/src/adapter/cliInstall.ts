@@ -14,16 +14,22 @@ export interface CliInstallProbe {
   appVersion: string;
   /** 已佈署 CLI 的 --version 原始輸出；null＝未偵測到。 */
   deployedVersionOutput: string | null;
+  /** ~/.zprofile 現有內容（macOS；讀不到或非 macOS 為 null）——PATH 冪等追加
+   * 的判定輸入（design D12）。 */
+  zprofile: string | null;
 }
 
 export interface CliInstallAdapter {
   probe: () => Promise<CliInstallProbe>;
   deploy: (plan: Exclude<CliDeployPlan, { action: "none" }>) => Promise<void>;
+  /** 追加一行至 ~/.zprofile（macOS PATH 自動設定；冪等判定歸 core）。 */
+  appendZprofile: (line: string) => Promise<void>;
 }
 
 export function tauriCliInstallAdapter(): CliInstallAdapter {
   return {
     probe: () => invoke<CliInstallProbe>("cli_install_probe"),
     deploy: (plan) => invoke("cli_deploy", { plan }),
+    appendZprofile: (line) => invoke("cli_zprofile_append", { line }),
   };
 }

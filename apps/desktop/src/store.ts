@@ -55,6 +55,7 @@ import {
   isDirOnPath,
   needsRedeploy,
   parseCliVersion,
+  zprofilePlan,
   type CliInstallStatus,
   type CliPlatform,
 } from "./core/cliInstall";
@@ -1586,20 +1587,44 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       try {
         let probe = await cliInstallAdapter.probe();
         let status = statusFromProbe(probe);
-        // AppImage 版本不符的啟動自我修復（spec：自動重新佈署，無需使用者操作）。
+        // 啟動自動佈署（spec 修訂：macOS 未安裝／版本不符皆自動、AppImage 版本
+        // 不符自我修復）；失敗不阻斷啟動，錯誤浮到卡片。
+        let startupError: string | null = null;
         if (needsRedeploy(probe.platform, status) && probe.home && probe.bundledCliPath) {
           const plan = cliDeployPlan(probe.platform, {
             home: probe.home,
             bundledCliPath: probe.bundledCliPath,
           });
           if (plan.action !== "none") {
-            await cliInstallAdapter.deploy(plan);
-            probe = await cliInstallAdapter.probe();
-            status = statusFromProbe(probe);
+            try {
+              await cliInstallAdapter.deploy(plan);
+              probe = await cliInstallAdapter.probe();
+              status = statusFromProbe(probe);
+            } catch (error) {
+              startupError = error instanceof Error ? error.message : String(error);
+            }
+          }
+        }
+        // macOS PATH 冪等追加（design D12）：佈署完成而 ~/.local/bin 不在 PATH
+        // 且 zprofile 無識別行才寫；最佳努力，失敗不擋。
+        if (probe.platform === "macos" && status.kind !== "not-installed" && probe.home) {
+          const onPath = isDirOnPath(
+            `${probe.home}/.local/bin`,
+            probe.pathEnv,
+            probe.pathDelimiter,
+          );
+          const plan = zprofilePlan(onPath, probe.zprofile);
+          if (plan.action === "append") {
+            try {
+              await cliInstallAdapter.appendZprofile(plan.line);
+            } catch {
+              // 寫 zprofile 失敗：介面仍有 pathHint 供手動加入。
+            }
           }
         }
         lastCliProbe = probe;
-        set({ cliInstall: cliViewFrom(probe, status) });
+        const view = cliViewFrom(probe, status);
+        set({ cliInstall: startupError ? { ...view, error: startupError } : view });
       } catch {
         // 探測失敗（殼層異常）：不顯示卡——探測是最佳努力，不擋其他設定。
       }

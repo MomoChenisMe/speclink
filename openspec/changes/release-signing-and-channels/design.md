@@ -87,6 +87,14 @@ release 成功後的 tap-publish job（needs: release）於 `TAP_PUSH_TOKEN` 存
 
 QEMU 模擬下的 Rust 編譯讓 docker job 單跑 35 分鐘以上（v0.1.2 實測），且 QEMU 正是 SIGILL flaky 的根源——web 階段釘 $BUILDPLATFORM（任務 2.7）只救了 Node 半邊，Rust 編譯仍在模擬器裡。GitHub 公開 repo 的 arm64 runner 免費、本 repo 的 build matrix 已在用（ubuntu-24.04-arm）：docker 建置拆成 per-arch 兩個 job——ubuntu-latest 原生建 linux/amd64、ubuntu-24.04-arm 原生建 linux/arm64，平行執行、push by digest——再由合併 job 以 docker buildx imagetools create 把兩個 digest 併成版本 tag 與 latest。映像內容與單 job 多平台建置等價（同 Dockerfile、同 source revision）；發布原子性由合併 job 承擔：兩個 digest 都成功才打 tag，等價於現行全有全無語意。捨棄的替代：Dockerfile 內交叉編譯（musl 交叉工具鏈維護面大、單機序跑仍慢）；layer cache（lockfile 一動即失效、Rust 要配 cargo-chef 才有感，效益不穩）。
 
+### D11：NSIS 安裝器語系跟隨系統、圖示用現有 logo
+
+tauri.conf.json 的 `bundle.windows.nsis` 補 `languages: ["TradChinese", "English"]`——NSIS 的多語系機制在清單內含系統語言時直接採用（繁中 Windows 顯示繁中、其他語系落回英文），毋須語言選擇器；`installerIcon` 指向現有 `apps/desktop/src-tauri/icons/icon.ico`，安裝檔的執行檔圖示與精靈視窗圖示即 Speclink logo。精靈側邊欄／頁首大圖（BMP 特定尺寸）需要設計素材，本次不做——用現有 logo 硬縮放的觀感風險大於收益。macOS dmg 無安裝精靈、無語系面；Linux 兩形態無安裝 UI。
+
+### D12：macOS CLI 啟動自動佈署，PATH 以 ~/.zprofile 冪等追加
+
+macOS 的 CLI 佈署從「使用者顯式動作」改為啟動自動化：app 啟動偵測未安裝即自動建 symlink（~/.local/bin/speclink → app bundle 內 CLI）、版本不符即自動重佈署——自我修復語意從 AppImage 擴大到 macOS，symlink 本身冪等且無副作用。PATH 設定：~/.local/bin 不在 PATH 時自動追加一行 `export PATH="$HOME/.local/bin:$PATH"` 至 ~/.zprofile（macOS 預設 shell 為 zsh、zprofile 為登入 shell 標準掛點；帶 marker 註解冪等、僅缺席時寫一次），介面卡片轉為狀態呈現。捨棄的替代：symlink 到 /usr/local/bin（要 admin 提權、UX 更差）；Linux 也自動改 PATH（shell 生態分歧——bash／zsh／fish 各有掛點，維持提示）。
+
 ## Implementation Contract
 
 **Behavior（發版後可觀察）：**
