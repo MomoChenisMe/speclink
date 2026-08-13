@@ -89,6 +89,32 @@
       "files": [
         "scripts/remote-docs.test.mjs"
       ]
+    },
+    {
+      "task_id": "20",
+      "task_desc": "8.1 先寫 scripts/release-notes.test.mjs 再實作 scripts/release-notes.mjs，落實 spec「Release 說明含下載指南」與設計「D7：Release 下載指南由腳本產生前置於說明，v0.1.0 就地修正不重發 tag」：輸入 --tag（vX.Y.Z 格式，不符即非零退出且 stdout 無輸出），stdout 輸出下載指南 markdown——三平台安裝檔對照表（Speclink_X.Y.Z_aarch64.dmg／Speclink_X.Y.Z_x64.dmg、Speclink_X.Y.Z_x64-setup.exe、Speclink_X.Y.Z_amd64.AppImage／Speclink_X.Y.Z_aarch64.AppImage、Speclink_X.Y.Z_amd64.deb／Speclink_X.Y.Z_arm64.deb，檔名與 release 管線資產命名一致）、CLI 安裝腳本一行指令與 brew install 指令、註明 .app.tar.gz 與全部 .sig 為自動更新機制使用毋須手動下載。測試覆蓋：檔名對齊版號、.sig 註記存在、tag 格式 fail-closed。驗證：node --test scripts/release-notes.test.mjs 全綠",
+      "files": [
+        "scripts/release-notes.mjs",
+        "scripts/release-notes.test.mjs"
+      ]
+    },
+    {
+      "task_id": "22",
+      "task_desc": "8.3 部署文件對齊 server 通路收斂，落實 spec「release 產物含 server 與部署文件」的文件半部：docs/server-deployment.zh-TW.md 開頭形態總覽改為官方形態（Docker 直跑、SQLite compose、PostgreSQL compose；任務 10.4 再補 npx 成四種）＋從原始碼建置的替代路徑；native binary 節改教 npm ci → npm run build -w apps/server-web → cargo build --release -p speclink-server 的建置順序；回退章節的 binary 路徑改為重建上一版 tag 或改用上一版 Docker image tag；全文移除 Release 的 server 壓縮檔下載指示。驗證：全文搜尋無 speclink-server- 開頭的資產下載指示；node --test scripts/delivery-gate.test.mjs 綠（文件建置順序斷言仍過）",
+      "files": [
+        "docs/server-deployment.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "27",
+      "task_desc": "10.2 先寫測試再實作 npm launcher 與套件物化腳本，落實 spec「npm 套件一行啟動 server」與設計「D9：server 的 npm 通路——esbuild 式平台套件，launcher 插值組態、Rust 不動」：先寫 scripts/npm-server-launcher.test.mjs（os/cpu → 平台子套件名對映矩陣、零參數時依 SPECLINK_STORE／SPECLINK_DATA_DIR／SPECLINK_PUBLIC_URL／SPECLINK_PORT 產生的組態 YAML 內容正確且寫入資料目錄、sqlite 為預設 driver、SPECLINK_STORE=postgres 缺 SPECLINK_POSTGRES_URL 時非零退出點名缺項、帶 --config／SPECLINK_CONFIG／子命令時純透傳不產組態、以假 binary 驗證參數與 exit code 透傳、平台無對應子套件時可讀錯誤點名平台）與 scripts/npm-server-package.test.mjs（給定 --version 與 binary fixture，物化出主套件與五平台子套件，各 package.json 的 name／version／os／cpu／optionalDependencies／bin 欄位正確、--scope 覆寫生效），再實作 packages/server-npm（主套件 package.json 與 bin/speclink-server.mjs launcher）與 scripts/npm-server-package.mjs。驗證：node --test 兩個測試檔全綠",
+      "files": [
+        "packages/server-npm/bin/speclink-server.mjs",
+        "packages/server-npm/package.json",
+        "scripts/npm-server-launcher.test.mjs",
+        "scripts/npm-server-package.mjs",
+        "scripts/npm-server-package.test.mjs"
+      ]
     }
   ],
   "entries": [
@@ -215,6 +241,44 @@
         "scripts/remote-docs.test.mjs"
       ],
       "recordedAt": "2026-08-12T15:22:04Z"
+    },
+    {
+      "taskId": "tsk_01M03CD1JD1JMWJK1G50MJVBEK",
+      "taskDesc": "8.1 先寫 scripts/release-notes.test.mjs 再實作 scripts/release-notes.mjs，落實 spec「Release 說明含下載指南」與設計「D7：Release 下載指南由腳本產生前置於說明，v0.1.0 就地修正不重發 tag」：輸入 --tag（vX.Y.Z 格式，不符即非零退出且 stdout 無輸出），stdout 輸出下載指南 markdown——三平台安裝檔對照表（Speclink_X.Y.Z_aarch64.dmg／Speclink_X.Y.Z_x64.dmg、Speclink_X.Y.Z_x64-setup.exe、Speclink_X.Y.Z_amd64.AppImage／Speclink_X.Y.Z_aarch64.AppImage、Speclink_X.Y.Z_amd64.deb／Speclink_X.Y.Z_arm64.deb，檔名與 release 管線資產命名一致）、CLI 安裝腳本一行指令與 brew install 指令、註明 .app.tar.gz 與全部 .sig 為自動更新機制使用毋須手動下載。測試覆蓋：檔名對齊版號、.sig 註記存在、tag 格式 fail-closed。驗證：node --test scripts/release-notes.test.mjs 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c35165eff07166686cafdb338c5dfe860a44466e",
+      "touchedFiles": [
+        "scripts/release-notes.mjs",
+        "scripts/release-notes.test.mjs"
+      ],
+      "recordedAt": "2026-08-13T01:56:24Z"
+    },
+    {
+      "taskId": "tsk_01M03CD1JDMHYD1M2Y66KE2NGX",
+      "taskDesc": "8.3 部署文件對齊 server 通路收斂，落實 spec「release 產物含 server 與部署文件」的文件半部：docs/server-deployment.zh-TW.md 開頭形態總覽改為官方形態（Docker 直跑、SQLite compose、PostgreSQL compose；任務 10.4 再補 npx 成四種）＋從原始碼建置的替代路徑；native binary 節改教 npm ci → npm run build -w apps/server-web → cargo build --release -p speclink-server 的建置順序；回退章節的 binary 路徑改為重建上一版 tag 或改用上一版 Docker image tag；全文移除 Release 的 server 壓縮檔下載指示。驗證：全文搜尋無 speclink-server- 開頭的資產下載指示；node --test scripts/delivery-gate.test.mjs 綠（文件建置順序斷言仍過）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c35165eff07166686cafdb338c5dfe860a44466e",
+      "touchedFiles": [
+        "docs/server-deployment.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-13T01:59:21Z"
+    },
+    {
+      "taskId": "tsk_01M03D001A2N0MHYW0BR4KE97W",
+      "taskDesc": "10.2 先寫測試再實作 npm launcher 與套件物化腳本，落實 spec「npm 套件一行啟動 server」與設計「D9：server 的 npm 通路——esbuild 式平台套件，launcher 插值組態、Rust 不動」：先寫 scripts/npm-server-launcher.test.mjs（os/cpu → 平台子套件名對映矩陣、零參數時依 SPECLINK_STORE／SPECLINK_DATA_DIR／SPECLINK_PUBLIC_URL／SPECLINK_PORT 產生的組態 YAML 內容正確且寫入資料目錄、sqlite 為預設 driver、SPECLINK_STORE=postgres 缺 SPECLINK_POSTGRES_URL 時非零退出點名缺項、帶 --config／SPECLINK_CONFIG／子命令時純透傳不產組態、以假 binary 驗證參數與 exit code 透傳、平台無對應子套件時可讀錯誤點名平台）與 scripts/npm-server-package.test.mjs（給定 --version 與 binary fixture，物化出主套件與五平台子套件，各 package.json 的 name／version／os／cpu／optionalDependencies／bin 欄位正確、--scope 覆寫生效），再實作 packages/server-npm（主套件 package.json 與 bin/speclink-server.mjs launcher）與 scripts/npm-server-package.mjs。驗證：node --test 兩個測試檔全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c35165eff07166686cafdb338c5dfe860a44466e",
+      "touchedFiles": [
+        "packages/server-npm/bin/speclink-server.mjs",
+        "packages/server-npm/package.json",
+        "scripts/npm-server-launcher.test.mjs",
+        "scripts/npm-server-package.mjs",
+        "scripts/npm-server-package.test.mjs"
+      ],
+      "recordedAt": "2026-08-13T02:06:55Z"
     }
   ]
 }

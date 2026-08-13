@@ -1,6 +1,6 @@
 ## Purpose
 
-CLI 的安裝通路契約：安裝腳本（sh 與 PowerShell）如何把 GitHub Release 的 CLI 壓縮檔安全地裝進使用者機器（平台偵測、checksum 驗證、安裝位置與可測性），以及 Homebrew formula 產生器的輸出契約。邊界：只涵蓋 CLI 散佈；桌面安裝檔與更新屬 desktop-release，安裝文件的呈現屬 user-documentation。
+CLI 的安裝通路契約：安裝腳本（sh 與 PowerShell）如何把 GitHub Release 的 CLI 壓縮檔安全地裝進使用者機器（平台偵測、checksum 驗證、安裝位置與可測性）、Homebrew formula 產生器的輸出契約，以及 release 後 formula 自動推送 tap 的管線契約。邊界：只涵蓋 CLI 散佈；桌面安裝檔與更新屬 desktop-release，安裝文件的呈現屬 user-documentation。
 
 ## ADDED Requirements
 
@@ -36,3 +36,22 @@ CLI 的安裝通路契約：安裝腳本（sh 與 PowerShell）如何把 GitHub 
 
 - **WHEN** SHA256SUMS.txt 缺少 macOS arm64 條目時執行產生器
 - **THEN** 產生器以非零結束，錯誤訊息指出缺少該平台條目，stdout 無 formula 輸出
+
+### Requirement: Formula 隨發版自動推送 tap
+
+release 管線 SHALL 於 GitHub Release 建立成功後，在跨 repo 憑證 secret（TAP_PUSH_TOKEN）存在時，以 formula 產生器對該版 SHA256SUMS.txt 的輸出更新 tap repo 的 Formula/speclink.rb（commit 訊息含該版 tag）；secret 缺席時 SHALL 跳過推送且不影響 Release 結果；secret 存在而推送失敗時該 job SHALL 以非零結束。推送 SHALL 發生於 Release 建立之後，SHALL NOT 作為 Release 發布的前置條件。憑證 SHALL 為僅授權 tap repo 內容寫入的 fine-grained token，SHALL NOT 使用授權範圍涵蓋其他 repo 的 token。
+
+#### Scenario: 發版後 formula 自動更新
+
+- **WHEN** TAP_PUSH_TOKEN 存在且 push tag 的 Release 建立成功
+- **THEN** tap repo 的 Formula/speclink.rb 更新為該版產生器輸出（四組 url 與 sha256 指向該 tag），commit 訊息含該 tag
+
+#### Scenario: 憑證缺席跳過不紅燈
+
+- **WHEN** TAP_PUSH_TOKEN 未設定且 push tag
+- **THEN** tap 推送 job 跳過，Release 照常發布，workflow 整體綠
+
+#### Scenario: 推送失敗不回溯撤銷 Release
+
+- **WHEN** TAP_PUSH_TOKEN 存在但對 tap repo 的更新請求失敗
+- **THEN** tap 推送 job 以非零結束供單獨重跑，既已建立的 Release 與其 assets 不受影響

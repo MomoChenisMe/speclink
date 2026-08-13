@@ -136,6 +136,8 @@ speclink list
 - **Local Repo：**Embedded Rust Runtime → FsStore → `openspec/` → Git；適合單一 repo、本機與離線協作。
 - **Remote Store：**CLI／Desktop／其他 Client → Speclink Host → 同一 Rust Runtime → TeamStore；適合共享規格正典、集中認證、revision、交易與事件。
 
+想立刻試一個本機 server：`npx @speclink/server` 一行啟動（預設 SQLite、資料落在 `./speclink-data`、印出 `/setup` 連結）。
+
 Remote Store 不會同步成第二份可寫的本地真相；有 checkout 的 Agent 使用唯讀 `.speclink/context/`，遠端寫入仍走
 Host command。目標邊界以[平台架構藍圖](docs/platform-architecture.zh-TW.md)為準，現行 Server 操作見
 [Remote 入門教學](docs/remote-getting-started.zh-TW.md)、[部署](docs/server-deployment.zh-TW.md)、
@@ -153,7 +155,7 @@ Host command。目標邊界以[平台架構藍圖](docs/platform-architecture.zh
 | [Node SDK](docs/sdk-node.zh-TW.md) | `@speclink/engine` 安裝、Store bridge 與 dispatch surface |
 | [平台架構藍圖](docs/platform-architecture.zh-TW.md) | 唯一目標架構：Engine、Host、Store、Protocol、Server、Desktop 與 Agent |
 | [實作重構路線圖](docs/implementation-refactor-roadmap.zh-TW.md) | 目標架構下的交付順序、Phase 與 Gate |
-| [Server 部署](docs/server-deployment.zh-TW.md) | native／Docker／Compose 與升級操作 |
+| [Server 部署](docs/server-deployment.zh-TW.md) | npx／Docker／Compose 與升級操作 |
 | [Server Store drivers](docs/server-store-drivers.zh-TW.md) | SQLite／Server FS／PostgreSQL 選型與前提 |
 | [Server 備份與還原](docs/server-backup.zh-TW.md) | backup／verify-backup／restore |
 | [品牌資產](docs/assets/brand/README.md) | Logo、配色與使用方式 |

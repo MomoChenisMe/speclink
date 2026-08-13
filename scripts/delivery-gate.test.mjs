@@ -241,6 +241,94 @@ test('release.yml 每個 server artifact 先建 apps/server-web 再 cargo build�
   assert.match(release, /404/, 'release.yml 缺少 JSON-404 斷言');
 });
 
+test('release.yml 的 Package 步驟只打包 CLI，server binary 不進 Release assets', () => {
+  const release = read('.github/workflows/release.yml');
+  const packageStart = requireIndex(release, '- name: Package', 'release.yml');
+  const tail = release.slice(packageStart);
+  const nextStep = tail.slice(1).search(/\n\s*- (?:name:|uses:)/);
+  const packageStep = nextStep >= 0 ? tail.slice(0, nextStep + 1) : tail;
+
+  // server 通路收斂為 Docker＋npm（server-release spec 修改後；設計 D6）：
+  // Package 步驟打包上 Release 的只有 CLI。
+  assert.ok(
+    !packageStep.includes('speclink-server'),
+    'release.yml：Package 步驟不得打包 speclink-server（server 不隨 Release 發布）',
+  );
+  assert.match(packageStep, /speclink/, 'release.yml：Package 步驟缺 CLI 打包');
+});
+
+test('release.yml 的 release job 以 body_path 前置下載指南，changelog 接續其後', () => {
+  const release = read('.github/workflows/release.yml');
+
+  // 下載指南由產生器落檔（設計 D7），body_path 指向同一個檔。
+  const generate = /node scripts\/release-notes\.mjs --tag [^>\n]+> *(\S+)/.exec(release);
+  assert.ok(generate, 'release.yml：缺 release-notes.mjs 產生下載指南的步驟');
+  const bodyPath = /body_path:\s*(\S+)/.exec(release);
+  assert.ok(bodyPath, 'release.yml：action-gh-release 缺 body_path');
+  assert.equal(
+    bodyPath[1],
+    generate[1],
+    'release.yml：body_path 必須指向 release-notes 產生器的輸出檔',
+  );
+  // 自動 changelog 保留，接續在指南之後。
+  assert.match(release, /generate_release_notes:\s*true/, 'release.yml：generate_release_notes 不得移除');
+});
+
+test('release.yml 的 tap-publish job 於 Release 後以 TAP_PUSH_TOKEN 為開關更新 tap formula', () => {
+  const release = read('.github/workflows/release.yml');
+  const jobStart = requireIndex(release, 'tap-publish:', 'release.yml');
+  const tail = release.slice(jobStart);
+  const nextJob = tail.slice(1).search(/\n  [a-z][\w-]*:\s*\n/);
+  const job = nextJob >= 0 ? tail.slice(0, nextJob + 1) : tail;
+
+  // 通路推送排在 Release 之後，不是發布的前置條件（cli-distribution spec
+  // 「Formula 隨發版自動推送 tap」；設計 D8）。
+  assert.match(job, /needs:\s*\[?release\]?/, 'tap-publish 必須 needs: release');
+  assert.match(job, /TAP_PUSH_TOKEN/, 'tap-publish 必須以 TAP_PUSH_TOKEN 為開關');
+  assert.match(job, /scripts\/homebrew-formula\.mjs/, 'tap-publish 必須用 formula 產生器產出內容');
+  assert.match(job, /Formula\/speclink\.rb/, 'tap-publish 必須更新 tap repo 的 Formula/speclink.rb');
+});
+
+test('release.yml 的 npm-publish job 於 NPM_TOKEN 存在時物化並發布 server 套件', () => {
+  const release = read('.github/workflows/release.yml');
+
+  // build job 把 server binary 以獨立 artifact 上傳供發布 job 使用（任務 10.3 的
+  // 命名契約，與 npm-server-package.mjs 的 --binaries 佈局對齊）。
+  assert.match(
+    release,
+    /name:\s*server-\$\{\{ matrix\.target \}\}/,
+    'release.yml：build job 缺 server-<target> artifact 上傳',
+  );
+
+  const jobStart = requireIndex(release, 'npm-publish:', 'release.yml');
+  const tail = release.slice(jobStart);
+  const nextJob = tail.slice(1).search(/\n  [a-z][\w-]*:\s*\n/);
+  const job = nextJob >= 0 ? tail.slice(0, nextJob + 1) : tail;
+  assert.match(job, /needs:\s*\[?release\]?/, 'npm-publish 必須 needs: release');
+  assert.match(job, /NPM_TOKEN/, 'npm-publish 必須以 NPM_TOKEN 為開關');
+  assert.match(job, /scripts\/npm-server-package\.mjs/, 'npm-publish 必須以物化腳本產出套件');
+  assert.match(job, /npm publish --access public/, 'npm-publish 必須公開發布');
+});
+
+test('release.yml 的 Release 資產收集逐一圈定 artifact 種類，server-* 不落入 dist', () => {
+  const release = read('.github/workflows/release.yml');
+  // 每個把 artifact 下載進 dist 的步驟都必須帶 pattern（明示圈定），且不得圈到
+  // server-*——server binary 只給 npm-publish job，不進 Release assets。
+  const blocks = release.split(/- uses: actions\/download-artifact@v4/).slice(1);
+  const distBlocks = blocks
+    .map((block) => block.split(/\n\s*- (?:name:|uses:)/)[0])
+    .filter((block) => /path:\s*dist\b/.test(block));
+  assert.ok(distBlocks.length > 0, 'release.yml：找不到下載進 dist 的步驟');
+  for (const block of distBlocks) {
+    const pattern = /pattern:\s*(\S+)/.exec(block);
+    assert.ok(pattern, 'release.yml：下載進 dist 的步驟必須帶 pattern 圈定 artifact');
+    assert.ok(
+      !pattern[1].startsWith('server-'),
+      'release.yml：dist 收集不得圈到 server-* artifact',
+    );
+  }
+});
+
 // --- Dockerfile（server-release「Docker multi-stage 不攜帶 Node runtime」） ---
 
 test('Dockerfile 以 Node stage 產 dist、Rust stage 內嵌，最終 runtime 僅 server binary＋non-root、無 Node runtime', () => {
