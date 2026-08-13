@@ -329,6 +329,46 @@ test('release.yml 的 Release 資產收集逐一圈定 artifact 種類，server-
   }
 });
 
+test('release.yml 的 docker 建置逐架構原生分開建、合併 job 打 tag（禁 QEMU 編譯路徑）', () => {
+  const release = read('.github/workflows/release.yml');
+
+  // 單一 job 的 platforms 同時宣告雙架構＝其中一個在 QEMU 模擬下編譯（設計 D10
+  // 要根絕的路徑）；per-arch 各綁原生 runner。
+  for (const m of release.matchAll(/platforms:\s*(\S+)/g)) {
+    assert.ok(
+      !(m[1].includes('amd64') && m[1].includes('arm64')),
+      `release.yml：platforms「${m[1]}」同時宣告雙架構（QEMU 編譯路徑）`,
+    );
+  }
+  assert.ok(!release.includes('setup-qemu'), 'release.yml：不應再安裝 QEMU');
+  assert.match(
+    release,
+    /os:\s*ubuntu-latest\n\s*platform:\s*linux\/amd64/,
+    'release.yml：缺 amd64 的原生建置 matrix 項',
+  );
+  assert.match(
+    release,
+    /os:\s*ubuntu-24\.04-arm\n\s*platform:\s*linux\/arm64/,
+    'release.yml：缺 arm64 的原生建置 matrix 項',
+  );
+
+  // per-arch 以 digest 推、合併 job 以 imagetools 打 tag，發布原子性由合併承擔。
+  assert.match(release, /push-by-digest=true/, 'release.yml：per-arch 建置必須 push by digest');
+  const manifestStart = requireIndex(release, 'docker-manifest:', 'release.yml');
+  const tail = release.slice(manifestStart);
+  const nextJob = tail.slice(1).search(/\n  [a-z][\w-]*:\s*\n/);
+  const manifest = nextJob >= 0 ? tail.slice(0, nextJob + 1) : tail;
+  assert.match(manifest, /needs:\s*\[?docker\]?/, 'docker-manifest 必須 needs: docker');
+  assert.match(manifest, /imagetools create/, 'docker-manifest 必須以 imagetools create 合併 digest');
+
+  // 全有全無閘門改指向合併 job——兩架構 digest 都成功打上 tag 才發布。
+  assert.match(
+    release,
+    /needs:\s*\[build, desktop, docker-manifest\]/,
+    'release.yml：release job 的 needs 閘門必須指向 docker-manifest',
+  );
+});
+
 // --- Dockerfile（server-release「Docker multi-stage 不攜帶 Node runtime」） ---
 
 test('Dockerfile 以 Node stage 產 dist、Rust stage 內嵌，最終 runtime 僅 server binary＋non-root、無 Node runtime', () => {

@@ -41,6 +41,16 @@ irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install
 brew install MomoChenisMe/tap/speclink
 \`\`\`
 
+**Server 一行啟動**（本機試用 npx、部署用 Docker）：
+
+\`\`\`sh
+# 有 Node.js 18+ 就能起本機 server（預設 SQLite、資料在 ./speclink-data、印出 /setup 連結）
+npx @speclink/server
+
+# 部署走 Docker（SQLite／PostgreSQL compose 見部署文件）
+docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/momochenisme/speclink-server:${version}
+\`\`\`
+
 > 其餘檔案毋須手動下載：\`.app.tar.gz\` 與所有 \`.sig\`、\`latest.json\` 是桌面 App 自動更新機制用的；\`speclink-v${version}-*.tar.gz\`／\`.zip\` 是上面安裝腳本抓的 CLI 壓縮檔；\`SHA256SUMS.txt\` 是全部檔案的校驗碼。
 
 ---

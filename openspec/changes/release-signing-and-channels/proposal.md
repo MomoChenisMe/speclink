@@ -13,6 +13,7 @@
 - product-status 查核日與相關列刷新
 - 主 CI 納入 `scripts` 測試面：本 change 新增的閘門、安裝腳本與 formula 產生器測試原本只在本機 `test:all` 跑得到，CI 三平台皆未涵蓋，等於這批設定契約無人看守
 - 首發實跑暴露並修掉兩個潛在缺陷：未知 API 路徑回裸 404 而非正典要求的 JSON 404（四個 smoke target 同時紅燈，既有測試漏驗 JSON 那一半）、Linux arm64 桌面建置缺 AppImage 所需的 xdg-utils
+- 發版實跑暴露的 docker 管線問題兩項：QEMU 下跑 Node/V8 的 SIGILL flaky（web 階段釘建置機原生架構根治）；arm64 的 Rust 編譯在 QEMU 模擬下讓 docker job 單跑逾 35 分鐘（改為原生 arm64 runner 分開建＋manifest 合併）
 - server 壓縮檔退出 Release assets：release 管線仍建置各平台 server 並跑無 dist 冒煙（品質閘門保留），但不再打包上傳；server 的官方發布通路收斂為 Docker image，部署文件的 native binary 形態改教從原始碼建置
 - Release 說明自動產生下載指南：v0.1.0 首發後確認 assets 清單對一般使用者過於龐雜（安裝檔、CLI 壓縮檔、更新包與簽章檔混列），release job 改以腳本產生「各平台該下載哪個檔案」對照表前置於 Release 說明，自動 changelog 接續其後；已發布的 v0.1.0 就地修正（移除 server 資產、SHA256SUMS.txt 同步、補掛下載指南），不重發 tag
 - Homebrew tap 自動推送：release 完成後由管線以 formula 產生器輸出自動更新 tap repo 的 Formula/speclink.rb（跨 repo 憑證 TAP_PUSH_TOKEN 存在才啟用、缺席跳過）；tap repo 建立與 fine-grained PAT 設定以逐步教學的手動任務落地
@@ -37,6 +38,6 @@
 - Affected specs: `cli-distribution`（新增）、`desktop-release`、`user-documentation`、`delivery-baseline`、`server-release`
 - Affected code:
   - New: `scripts/signing-gate.mjs`、`scripts/signing-gate.test.mjs`、`scripts/install.sh`、`scripts/install.ps1`、`scripts/install.test.mjs`、`scripts/homebrew-formula.mjs`、`scripts/homebrew-formula.test.mjs`、`scripts/signpath-sign.ps1`、`scripts/signpath-sign.test.mjs`、`scripts/release-notes.mjs`、`scripts/release-notes.test.mjs`、`packages/server-npm/package.json`、`packages/server-npm/bin/speclink-server.mjs`、`scripts/npm-server-package.mjs`、`scripts/npm-server-package.test.mjs`、`scripts/npm-server-launcher.test.mjs`
-  - Modified: `.github/workflows/release.yml`、`.github/workflows/ci.yml`、`scripts/delivery-gate.test.mjs`、`crates/speclink-server/src/assets.rs`、`crates/speclink-server/tests/it/web_assets.rs`、`README.md`、`README.en.md`、`docs/getting-started.zh-TW.md`、`docs/getting-started.md`、`docs/sdk-node.zh-TW.md`、`docs/sdk-node.md`、`docs/product-status.zh-TW.md`、`docs/server-deployment.zh-TW.md`
+  - Modified: `.github/workflows/release.yml`、`.github/workflows/ci.yml`、`scripts/delivery-gate.test.mjs`、`crates/speclink-server/src/assets.rs`、`crates/speclink-server/tests/it/web_assets.rs`、`crates/speclink-server/Dockerfile`、`README.md`、`README.en.md`、`docs/getting-started.zh-TW.md`、`docs/getting-started.md`、`docs/sdk-node.zh-TW.md`、`docs/sdk-node.md`、`docs/product-status.zh-TW.md`、`docs/server-deployment.zh-TW.md`
   - Removed: 無
 - repo 之外（不產生本 repo 檔案）：新建 GitHub tap repo（homebrew-tap，含 formula）；GitHub Actions secrets 新增 Apple 公證三項、SignPath 四項、TAP_PUSH_TOKEN（tap 推送 PAT）與 NPM_TOKEN（npm 發布）；npm 帳號與 scope（偏好 @speclink，占用時採替代並記錄）——皆以手動教學任務執行

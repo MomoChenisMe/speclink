@@ -83,6 +83,10 @@ release 成功後的 tap-publish job（needs: release）於 `TAP_PUSH_TOKEN` 存
 
 **發布**：npm-publish job（needs: release）於 `NPM_TOKEN` 存在時執行，下載五平台 server binary artifacts、物化套件、`npm publish --access public`，版本＝tag；secret 缺席跳過。捨棄的替代：教 server binary 直接讀環境變數（動 Rust、破壞 fail-closed 的單一組態來源）；只發主套件內含五平台 binary（安裝體積五倍）。
 
+### D10：docker 多架構改原生 runner 分開建＋manifest 合併
+
+QEMU 模擬下的 Rust 編譯讓 docker job 單跑 35 分鐘以上（v0.1.2 實測），且 QEMU 正是 SIGILL flaky 的根源——web 階段釘 $BUILDPLATFORM（任務 2.7）只救了 Node 半邊，Rust 編譯仍在模擬器裡。GitHub 公開 repo 的 arm64 runner 免費、本 repo 的 build matrix 已在用（ubuntu-24.04-arm）：docker 建置拆成 per-arch 兩個 job——ubuntu-latest 原生建 linux/amd64、ubuntu-24.04-arm 原生建 linux/arm64，平行執行、push by digest——再由合併 job 以 docker buildx imagetools create 把兩個 digest 併成版本 tag 與 latest。映像內容與單 job 多平台建置等價（同 Dockerfile、同 source revision）；發布原子性由合併 job 承擔：兩個 digest 都成功才打 tag，等價於現行全有全無語意。捨棄的替代：Dockerfile 內交叉編譯（musl 交叉工具鏈維護面大、單機序跑仍慢）；layer cache（lockfile 一動即失效、Rust 要配 cargo-chef 才有感，效益不穩）。
+
 ## Implementation Contract
 
 **Behavior（發版後可觀察）：**

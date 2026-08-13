@@ -57,6 +57,12 @@ test('CLI 安裝指令與 README 教的同一套', () => {
   assert.ok(stdout.includes('brew install MomoChenisMe/tap/speclink'), '缺 brew 指令');
 });
 
+test('server 一行啟動節：npx 與 Docker image 指令（寫法比照 CLI 節）', () => {
+  const { stdout } = run(['--tag', 'v0.1.0']);
+  assert.ok(stdout.includes('npx @speclink/server'), '缺 npx 一行啟動指令');
+  assert.ok(stdout.includes('ghcr.io/momochenisme/speclink-server'), '缺 Docker image 一行');
+});
+
 test('更新機制檔案標註毋須手動下載', () => {
   const { stdout } = run(['--tag', 'v0.1.0']);
   assert.ok(stdout.includes('.sig'), '缺 .sig 註記');
