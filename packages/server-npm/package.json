@@ -1,0 +1,19 @@
+{
+  "name": "@speclink/server",
+  "version": "0.0.0-dev",
+  "description": "Speclink server — one-line start via npx; platform binaries ship as optionalDependencies",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MomoChenisMe/speclink.git",
+    "directory": "packages/server-npm"
+  },
+  "bin": {
+    "speclink-server": "bin/speclink-server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true,
+  "//": "private 擋誤發布；發布用的副本由 scripts/npm-server-package.mjs 物化（去掉 private、蓋版本、補 optionalDependencies）"
+}

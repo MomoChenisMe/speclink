@@ -63,6 +63,26 @@ release 管線（`.github/workflows/release.yml`）已於 push v* tag 時產出�
 
 README（中英）安裝區塊：桌面三平台下載表（連到 Releases 頁與 latest.json 說明）、CLI 一行安裝（腳本與 brew tap 指令）、從原始碼建置降為開發者段落；getting-started（中英）安裝節同步。sdk-node（中英）把 npm install 段改為「尚未發布至 npm」並改教 repo 內建置載入路徑。product-status 查核日刷新。中英兩語結構與事實對等（user-documentation 既有 requirement 的延伸）。
 
+### D6：server 發布通路收斂為 Docker，release 保留 server 建置與冒煙作品質閘門
+
+v0.1.0 首發後裁定 server 壓縮檔退出 Release assets：server 的使用情境是部署（Docker 直跑或 compose），不是桌面使用者手動下載 binary，五個 server 壓縮檔只是加深 assets 清單的混亂。release 管線的 build job 仍建置各平台 speclink-server 並執行無 dist 冒煙（/login 回 HTML、未知 browser API 回 JSON 404）——這個閘門在首發實跑抓到 JSON 404 規格違反，證明其價值，與是否上傳無關；Package 步驟改為只打包 speclink CLI。捨棄的替代：連建置都拿掉（省 CI 時間但失去五 target 的 release-profile 驗證面，docker job 只涵蓋 linux x86_64）。
+
+### D7：Release 下載指南由腳本產生前置於說明，v0.1.0 就地修正不重發 tag
+
+`scripts/release-notes.mjs` 讀 tag、輸出下載指南 markdown 至 stdout：三平台安裝檔對照表（檔名含版號、與資產命名一致）、CLI 一行安裝與 Homebrew 指令、註明 `.app.tar.gz` 與 `.sig` 為自動更新機制使用毋須手動下載。release job 產出 notes 檔後以 body_path 傳入 action-gh-release，`generate_release_notes` 保留使自動 changelog 接續其後。已發布的 v0.1.0 屬資產層修正（刪 server 資產、SHA256SUMS.txt 過濾重傳、說明補掛指南），tag 與 commit 皆不動——重發 tag 會重跑全部建置且對使用者無感，唯一代價是舊 SHA256SUMS.txt 曾短暫含 server 條目，可接受。
+
+### D8：Homebrew tap 由 release 管線自動推送，單一 secret 為開關
+
+release 成功後的 tap-publish job（needs: release）於 `TAP_PUSH_TOKEN` 存在時執行：從 dist 取 SHA256SUMS.txt、以 formula 產生器輸出內容、經 GitHub Contents API 直接更新 tap repo 的 `Formula/speclink.rb`（單檔 PUT，毋須 clone；commit 訊息含版號）。secret 缺席時整個 job 跳過且不影響 Release 結果；存在而推送失敗時 job 紅燈（存在即必須成功，與簽章開關同語意）。憑證用 fine-grained PAT：只授權 homebrew-tap 一個 repo 的 Contents 讀寫，洩漏面最小。channel job 放在 Release 建立之後：Release 是產物的真相源，通路推送失敗可單獨重跑，不反過來擋發布。這推翻 D4 的「tap 手動維護」Non-Goal——首發已完成，跨 repo 憑證的顧慮以最小權限 PAT 解決；formula 首版仍由手動任務貼入（tap repo 建立時 v0.1.0 已發布，管線只在下一個 tag 才跑）。
+
+### D9：server 的 npm 通路——esbuild 式平台套件，launcher 插值組態、Rust 不動
+
+**套件形狀**：主套件（偏好 `@speclink/server`，scope 占用時採替代並記錄）帶 bin launcher 與五個平台子套件的 optionalDependencies；每個子套件以 `os`／`cpu` 欄位圈平台、內容物只有對應平台的 speclink-server binary——npm 安裝時只會下載符合平台的那個（esbuild／turbo 的成熟模式）。平台子套件由 `scripts/npm-server-package.mjs` 於發布時從 build artifacts 物化產生，repo 內只維護主套件與產生器。
+
+**啟動語意（核心決策）**：server binary 只吃單一 YAML 且 fail-closed（reference-server 契約），compose 已示範正確外掛法——外層把環境變數插值成 YAML。launcher 照抄：零參數（或僅環境變數）啟動時，依 `SPECLINK_STORE`（sqlite 預設／serverfs／postgres）、`SPECLINK_DATA_DIR`（預設 ./speclink-data）、`SPECLINK_PUBLIC_URL`／`SPECLINK_PORT`（連動預設同 compose：public_url 預設 http://localhost:PORT）產生組態 YAML 寫入資料目錄，再帶 --config spawn binary；postgres 時 `SPECLINK_POSTGRES_URL` 必填、缺席即非零退出點名缺項（密碼可拆 `SPECLINK_POSTGRES_PASSWORD`，binary 原生支援）。使用者自帶 --config、設 `SPECLINK_CONFIG` 或使用子命令（invite、backup 等）時 launcher 純透傳，不產生任何組態。Rust 端零改動，fail-closed 契約原封不動——組態永遠是一份落地可檢視的檔案，不是散在環境裡的隱形狀態。
+
+**發布**：npm-publish job（needs: release）於 `NPM_TOKEN` 存在時執行，下載五平台 server binary artifacts、物化套件、`npm publish --access public`，版本＝tag；secret 缺席跳過。捨棄的替代：教 server binary 直接讀環境變數（動 Rust、破壞 fail-closed 的單一組態來源）；只發主套件內含五平台 binary（安裝體積五倍）。
+
 ## Implementation Contract
 
 **Behavior（發版後可觀察）：**
@@ -73,16 +93,23 @@ README（中英）安裝區塊：桌面三平台下載表（連到 Releases 頁�
 - curl 安裝腳本一行完成後，speclink --version 輸出該 Release 版號；checksum 不符時腳本非零退出且安裝目錄無殘留
 - brew install 自有 tap 的 speclink 後，speclink --version 同上
 - README 首屏可見安裝區塊；sdk-node 文件不再指示 npm install @speclink/engine
+- Release assets 不含任何 speclink-server-* 壓縮檔；SHA256SUMS.txt 無 server 條目；Release 說明開頭為下載指南對照表，自動 changelog 接續其後
+- release 管線的 build job 仍對五 target 建置 server 並通過無 dist 冒煙，失敗即整體不發布（全有全無閘門不變）
+- TAP_PUSH_TOKEN 存在時，發版後 tap repo 的 Formula/speclink.rb 自動更新為該版（brew 使用者直接拿到新版）；缺席時發版不受影響
+- NPM_TOKEN 存在時，發版後 npx @speclink/server（或替代 scope）以 sqlite 預設一行啟動：資料目錄與組態 YAML 落地、setup token 印出；SPECLINK_STORE=postgres 而缺 SPECLINK_POSTGRES_URL 時非零退出點名缺項；自帶 --config 或子命令時行為與直接執行 binary 一致
 
 **Interface：**
 
 - scripts/install.sh 與 scripts/install.ps1：支援 --dry-run；環境變數 SPECLINK_INSTALL_VERSION、SPECLINK_INSTALL_DIR、SPECLINK_INSTALL_REPO（測試用 repo 覆寫）
 - scripts/homebrew-formula.mjs：參數 --tag 與 --sums（SHA256SUMS.txt 路徑），formula 輸出至 stdout
-- release.yml 新增 secrets 契約：APPLE_ID、APPLE_PASSWORD、APPLE_TEAM_ID（公證）；SIGNPATH_API_TOKEN、SIGNPATH_ORGANIZATION_ID、SIGNPATH_PROJECT_SLUG、SIGNPATH_POLICY_SLUG（Windows 簽章）
+- scripts/release-notes.mjs：參數 --tag（vX.Y.Z 格式，不符即非零退出），下載指南 markdown 輸出至 stdout；release job 落檔後以 body_path 傳入 action-gh-release
+- scripts/npm-server-package.mjs：參數 --version、--binaries（五平台 binary 目錄）、--scope（預設 @speclink）、--out；物化主套件與五平台子套件目錄（name／version／os／cpu／optionalDependencies／bin 欄位齊備）
+- packages/server-npm/bin/speclink-server.mjs（launcher）：環境變數 SPECLINK_STORE、SPECLINK_DATA_DIR、SPECLINK_PUBLIC_URL、SPECLINK_PORT、SPECLINK_POSTGRES_URL、SPECLINK_CONFIG；參數與 exit code 對 binary 透傳
+- release.yml 新增 secrets 契約：APPLE_ID、APPLE_PASSWORD、APPLE_TEAM_ID（公證）；SIGNPATH_API_TOKEN、SIGNPATH_ORGANIZATION_ID、SIGNPATH_PROJECT_SLUG、SIGNPATH_POLICY_SLUG（Windows 簽章）；TAP_PUSH_TOKEN（tap 推送）；NPM_TOKEN（npm 發布）
 
 **Verification：**
 
-- scripts 測試：node --test 跑 install.test.mjs 與 homebrew-formula.test.mjs（dry-run 平台矩陣、URL 組裝、checksum 失敗路徑、formula 四組對應）
+- scripts 測試：node --test 跑 install.test.mjs 與 homebrew-formula.test.mjs（dry-run 平台矩陣、URL 組裝、checksum 失敗路徑、formula 四組對應）；release-notes.test.mjs（檔名對齊版號、.sig 註記、tag 格式 fail-closed）；npm-server-launcher.test.mjs（平台對映、組態插值、透傳、postgres 缺 URL fail-closed）；npm-server-package.test.mjs（套件欄位物化）；delivery-gate.test.mjs 契約斷言 release.yml 的 Package 步驟不含 server、release job 帶 body_path、tap-publish 與 npm-publish job 各自 gated 於對應 secret 且 Release assets 排除 server artifacts
 - 管線與簽章：首發 v0.1.0 的真實 workflow 執行即端到端驗證（手動任務含產物驗證步驟：macOS 以 spctl 與 stapler 驗證、Windows 檢查簽章有效性、Linux AppImage 可執行）
 - 文件：中英對等以 user-documentation 既有查核清單覆蓋
 

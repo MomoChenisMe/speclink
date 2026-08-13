@@ -120,25 +120,33 @@ jobs:
           echo "$miss_ctype" | grep -qi 'application/json' \
             || { echo "::error::/api 404 非 JSON（$miss_ctype）"; exit 1; }
 
+      # server 不隨 Release 發布（通路為 Docker＋npm；設計 D6）——上面仍建置並冒煙
+      # 作品質閘門，但只有 CLI 進 Release assets。
       - name: Package
         shell: bash
         run: |
           mkdir -p dist
-          for BIN in speclink speclink-server; do
-            NAME="${BIN}-${GITHUB_REF_NAME}-${{ matrix.target }}"
-            if [[ "${{ matrix.target }}" == *windows* ]]; then
-              cp "target/${{ matrix.target }}/release/${BIN}.exe" dist/
-              (cd dist && 7z a "${NAME}.zip" "${BIN}.exe" > /dev/null && rm "${BIN}.exe")
-            else
-              cp "target/${{ matrix.target }}/release/${BIN}" dist/
-              (cd dist && tar czf "${NAME}.tar.gz" "${BIN}" && rm "${BIN}")
-            fi
-          done
+          NAME="speclink-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            cp "target/${{ matrix.target }}/release/speclink.exe" dist/
+            (cd dist && 7z a "${NAME}.zip" "speclink.exe" > /dev/null && rm "speclink.exe")
+          else
+            cp "target/${{ matrix.target }}/release/speclink" dist/
+            (cd dist && tar czf "${NAME}.tar.gz" "speclink" && rm "speclink")
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
+          name: cli-${{ matrix.target }}
           path: dist/*
+          if-no-files-found: error
+
+      # server binary 以獨立 artifact 供 npm-publish job 物化套件，不進 Release
+      # assets（release job 的 dist 收集以 pattern 圈定，撈不到 server-*）。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/speclink-server${{ contains(matrix.target, 'windows') && '.exe' || '' }}
           if-no-files-found: error
 
   # 桌面安裝檔（desktop-release spec；design D1：沿用自組 matrix，不用 tauri-action）：
@@ -371,7 +379,8 @@ jobs:
 
   # 部署文件對使用者承諾「每個 release tag 同時產出全部形態」，所以任一形態
   # 失敗時不該還發出一個缺形態的 Release——needs 納入 desktop 與 docker，讓
-  # 五形態（CLI／server 壓縮檔、Docker、桌面安裝檔）的產出是全有全無。
+  # 產物（CLI 壓縮檔、Docker、桌面安裝檔與更新描述檔）的產出是全有全無。
+  # server 壓縮檔不在其列——server 不隨 Release 發布（設計 D6）。
   release:
     needs: [build, desktop, docker]
     runs-on: ubuntu-latest
@@ -379,10 +388,22 @@ jobs:
       # 組裝腳本（scripts/release-latest-json.mjs）需要 repo 內容。
       - uses: actions/checkout@v5
 
-      # 攤平合併：CLI／server 壓縮檔、桌面安裝檔與更新包＋簽章全部進 dist——
+      # 攤平合併：CLI 壓縮檔、桌面安裝檔與更新包＋簽章進 dist——逐一以 pattern
+      # 圈定種類（server-* 只給 npm-publish、dockerbuild 紀錄檔等雜項也不落入）；
       # updater-* 與 desktop-* 的重複檔案同名同內容，覆蓋無害。
       - uses: actions/download-artifact@v4
         with:
+          pattern: cli-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: updater-*
           path: dist
           merge-multiple: true
 
@@ -407,7 +428,93 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      # 下載指南前置於 Release 說明（desktop-release spec「Release 說明含下載指南」；
+      # 設計 D7）；generate_release_notes 的自動 changelog 接續其後。notes.md 落在
+      # workspace 根而非 dist/，不會被當成資產上傳。
+      - name: Download guide (release notes header)
+        run: node scripts/release-notes.mjs --tag "$GITHUB_REF_NAME" > notes.md
+
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: notes.md
           files: dist/*
           generate_release_notes: true
+
+  # Formula 隨發版自動推送 tap（cli-distribution spec；設計 D8）。排在 Release
+  # 之後：通路推送不是發布的前置條件，失敗可單獨重跑、不回溯撤銷 Release。
+  # secrets 不能出現在 job 層級的 if，故以首步輸出當閘門——secret 缺席時後續
+  # 步驟全部跳過、job 綠。
+  tap-publish:
+    needs: [release]
+    runs-on: ubuntu-latest
+    env:
+      TAP_PUSH_TOKEN: ${{ secrets.TAP_PUSH_TOKEN }}
+    steps:
+      - name: Tap credential gate
+        id: gate
+        shell: bash
+        run: echo "enabled=$([ -n "$TAP_PUSH_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.enabled == 'true'
+
+      - name: Generate formula from released checksums
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS.txt -O SHA256SUMS.txt
+          node scripts/homebrew-formula.mjs --tag "$GITHUB_REF_NAME" --sums SHA256SUMS.txt > speclink.rb
+
+      - name: Push formula to tap
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.TAP_PUSH_TOKEN }}
+        run: |
+          TAP="${{ github.repository_owner }}/homebrew-tap"
+          # 更新既有檔要附現存 sha；首版（檔案不存在）則不帶。
+          SHA=$(gh api "/repos/$TAP/contents/Formula/speclink.rb" --jq .sha 2>/dev/null || true)
+          gh api -X PUT "/repos/$TAP/contents/Formula/speclink.rb" \
+            -f message="speclink ${GITHUB_REF_NAME}" \
+            -f "content=$(base64 -w0 speclink.rb)" \
+            ${SHA:+-f "sha=$SHA"}
+
+  # server 的 npm 通路（server-release spec「npm 套件一行啟動 server」；設計 D9）。
+  # 與 tap-publish 同語意：排在 Release 之後、NPM_TOKEN 缺席時各步跳過 job 綠，
+  # 存在而發布失敗時紅燈可單獨重跑。
+  npm-publish:
+    needs: [release]
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: npm credential gate
+        id: gate
+        shell: bash
+        run: echo "enabled=$([ -n "$NPM_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.enabled == 'true'
+
+      - uses: actions/setup-node@v5
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/download-artifact@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          pattern: server-*
+          path: binaries
+
+      - name: Materialize and publish packages
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/npm-server-package.mjs --version "$VERSION" --binaries binaries --out npm-out
+          # 平台子套件先發、主套件最後，optionalDependencies 解析得到同版。
+          for pkg in npm-out/server-*/; do (cd "$pkg" && npm publish --access public); done
+          (cd npm-out/server && npm publish --access public)

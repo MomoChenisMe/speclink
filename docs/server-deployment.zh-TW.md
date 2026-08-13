@@ -1,6 +1,6 @@
 # Server 部署
 
-官方 `speclink-server` 有四種發布形態（架構 §13.1）：native binary、Docker image、SQLite 單容器 compose、PostgreSQL compose profile。每個 release tag 同時產出全部四種：GitHub Release 附各平台 binary 壓縮檔與 `SHA256SUMS.txt`，Docker image 發布於 `ghcr.io/momochenisme/speclink-server`（tag 對齊版本，另附 `latest`）。
+官方 `speclink-server` 的發布形態（架構 §13.1）有四種：npx 一行啟動（npm 套件）、Docker image 直跑、SQLite 單容器 compose、PostgreSQL compose profile——容器三種共用同一個映像，發布於 `ghcr.io/momochenisme/speclink-server`（tag 對齊 release 版本，另附 `latest`）。native binary 不隨 GitHub Release 發布，需要時走[從原始碼建置](#替代路徑從原始碼建置native-binary)的替代路徑。
 
 若目標是從全新資料完成 `/setup`、membership、Desktop 與 Remote CLI，而不是部署正式服務，請先依
 [Remote Server、Desktop 與 CLI 入門教學](remote-getting-started.zh-TW.md)操作。
@@ -21,15 +21,26 @@
 
 SQLite 與 serverfs profile **只允許一個 server instance**（架構 §13.1）：不得 `--scale`、不得多個 replica 指向同一個資料目錄或 volume。SQLite 的單寫者檔案鎖會讓第二個 instance 顯性報錯而非靜默共用。需要多 instance 前先換 PostgreSQL driver——即便如此，目前的官方形態仍以單 instance 為設計定位。
 
-## 形態一：native binary
+## 形態一：npx 一行啟動
 
-從 GitHub Release 下載對應平台的 `speclink-server-<版本>-<target>.tar.gz`（Windows 為 `.zip`），驗過 checksums 後解出單一 binary。準備組態檔後啟動：
+有 Node.js（18+）就能起一個本機 server，毋須 Docker：
 
 ```bash
-speclink-server --config /etc/speclink/server.yaml --addr 0.0.0.0:8080
+npx @speclink/server
 ```
 
-`--addr` 預設 `127.0.0.1:8080`（僅本機）；要對外服務必須明示綁定位址。搭配 systemd 等程序管理器時，`Restart=on-failure` 即可承接 fail closed 的退出。
+首次執行會下載對應平台的 server 套件、在 `./speclink-data` 產生組態與資料檔（預設 SQLite），啟動後 stdout 印出 `/setup` 的一次性連結。基礎參數用環境變數調：
+
+| 變數 | 預設 | 說明 |
+| --- | --- | --- |
+| `SPECLINK_STORE` | `sqlite` | 資料放哪種後端：`sqlite`（單檔資料庫）、`serverfs`（純目錄）、`postgres`（連現成的 PostgreSQL）。 |
+| `SPECLINK_DATA_DIR` | `./speclink-data` | 資料目錄（組態、store 與 identity 檔都在這裡）。 |
+| `SPECLINK_PUBLIC_URL` | `http://localhost:<埠>` | 對外網址；setup 連結與同源檢查以此為準。 |
+| `SPECLINK_PORT` | `8080` | 綁定埠（僅本機 127.0.0.1）。 |
+| `SPECLINK_POSTGRES_URL` | （`postgres` 時必填） | PostgreSQL 連線 URL；密碼可拆到 `SPECLINK_POSTGRES_PASSWORD`。 |
+| `SPECLINK_CONFIG` | （無） | 直接指定既有組態 YAML，跳過上面全部插值。 |
+
+launcher 做的事只有一件：把環境變數寫成一份組態 YAML（落在資料目錄、可打開檢視）再啟動 server binary——server 的單一組態來源與 fail closed 契約不變。帶 `--config` 或子命令（`invite`、`backup` 等）時純透傳，行為與直接執行 binary 完全相同。正式對外部署仍建議下面的 Docker／compose 形態。
 
 ## 形態二：docker run
 
@@ -78,6 +89,24 @@ cp .env.example .env         # 填入 SPECLINK_POSTGRES_PASSWORD；.env 不入�
 docker compose -f docker-compose.postgres.yml pull
 docker compose -f docker-compose.postgres.yml up -d
 ```
+
+## 替代路徑：從原始碼建置（native binary）
+
+在 repo checkout 依上述建置順序自行建出單一 binary（產物在 `target/release/speclink-server`）：
+
+```bash
+npm ci
+npm run build -w apps/server-web
+cargo build --release -p speclink-server
+```
+
+準備組態檔後啟動：
+
+```bash
+speclink-server --config /etc/speclink/server.yaml --addr 0.0.0.0:8080
+```
+
+`--addr` 預設 `127.0.0.1:8080`（僅本機）；要對外服務必須明示綁定位址。搭配 systemd 等程序管理器時，`Restart=on-failure` 即可承接 fail closed 的退出。
 
 ## 環境變數清單
 
@@ -143,7 +172,7 @@ docker compose exec server speclink-server invite \
 
 - 沒有 identity schema、TeamStore 或設定 migration；資料與 session schema 跨版本相容，回退不需要動資料。
 - 新 SPA release 若出現資產或呈現問題，直接以上一版 binary／image 重啟即可回退；切換前的 git revision 就是短期 rollback surface。
-- native binary 換回上一版壓縮檔內的 binary；Docker 形態把 `docker compose` 指回上一版 image tag 後 `up -d` 重建容器（volume 不動）。
+- Docker 形態把 `docker compose` 指回上一版 image tag 後 `up -d` 重建容器（volume 不動）；自建 binary 則 checkout 上一版 tag 重新建置（或乾脆改用上一版 image）。
 
 ## 相關文件
 

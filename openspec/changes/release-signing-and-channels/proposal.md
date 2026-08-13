@@ -13,25 +13,30 @@
 - product-status 查核日與相關列刷新
 - 主 CI 納入 `scripts` 測試面：本 change 新增的閘門、安裝腳本與 formula 產生器測試原本只在本機 `test:all` 跑得到，CI 三平台皆未涵蓋，等於這批設定契約無人看守
 - 首發實跑暴露並修掉兩個潛在缺陷：未知 API 路徑回裸 404 而非正典要求的 JSON 404（四個 smoke target 同時紅燈，既有測試漏驗 JSON 那一半）、Linux arm64 桌面建置缺 AppImage 所需的 xdg-utils
+- server 壓縮檔退出 Release assets：release 管線仍建置各平台 server 並跑無 dist 冒煙（品質閘門保留），但不再打包上傳；server 的官方發布通路收斂為 Docker image，部署文件的 native binary 形態改教從原始碼建置
+- Release 說明自動產生下載指南：v0.1.0 首發後確認 assets 清單對一般使用者過於龐雜（安裝檔、CLI 壓縮檔、更新包與簽章檔混列），release job 改以腳本產生「各平台該下載哪個檔案」對照表前置於 Release 說明，自動 changelog 接續其後；已發布的 v0.1.0 就地修正（移除 server 資產、SHA256SUMS.txt 同步、補掛下載指南），不重發 tag
+- Homebrew tap 自動推送：release 完成後由管線以 formula 產生器輸出自動更新 tap repo 的 Formula/speclink.rb（跨 repo 憑證 TAP_PUSH_TOKEN 存在才啟用、缺席跳過）；tap repo 建立與 fine-grained PAT 設定以逐步教學的手動任務落地
+- server 新增 npm 通路（npx 一行啟動）：esbuild 式主套件＋五平台子套件（os/cpu 對應、optionalDependencies 只裝對應平台），launcher 零參數啟動時仿 compose 模式把環境變數（store 選 sqlite／serverfs／postgres、資料目錄、public_url／port）插值成組態 YAML 落地後帶 --config 起 server——Rust 端不改、fail-closed 契約不動；發布由 release 管線於 NPM_TOKEN 存在時執行，npm 帳號／scope／token 為手動教學任務
 - 首發演練：確認版號同版、推 v0.1.0 tag、驗證 Release 產物（含簽章與公證結果）與各平台安裝實測
 
 ## Capabilities
 
 ### New Capabilities
 
-- `cli-distribution`: CLI 的安裝通路——安裝腳本（sh／PowerShell）的平台偵測、checksum 驗證與安裝行為，以及 Homebrew formula 產生器的輸出契約
+- `cli-distribution`: CLI 的安裝通路——安裝腳本（sh／PowerShell）的平台偵測、checksum 驗證與安裝行為、Homebrew formula 產生器的輸出契約，以及 release 後 formula 自動推送 tap 的管線契約
 
 ### Modified Capabilities
 
-- `desktop-release`: 「OS 程式碼簽章為可插鑰匙開關」requirement 擴充——macOS 簽章 secrets 存在時同時執行公證；Windows 新增 SignPath signCommand 路徑；開關語意與 updater 簽章正交性維持不變
+- `desktop-release`: 「OS 程式碼簽章為可插鑰匙開關」requirement 擴充——macOS 簽章 secrets 存在時同時執行公證；Windows 新增 SignPath signCommand 路徑；開關語意與 updater 簽章正交性維持不變。「Release 產出三平台桌面安裝檔」requirement 修改——assets 不再含 server 壓縮檔；新增「Release 說明含下載指南」requirement——release job 產生各平台下載對照表前置於 Release 說明
+- `server-release`: 「release 產物含 server 與部署文件」requirement 修改——server binary 仍建置與冒煙但不打包上 Release，官方發布通路為 Docker image 與 npm 套件；新增「npm 套件一行啟動 server」requirement——平台子套件解析、環境變數插值組態的快速啟動契約；部署文件的 native binary 形態改教從原始碼建置
 - `user-documentation`: 新增安裝通路文件 requirement——README 安裝區塊（中英對等）、sdk-node 發布狀態誠實化
 - `delivery-baseline`: 「CI 執行完整測試」requirement 擴充——測試面納入 `scripts`，並要求其執行方式相容於 workflow 釘選的 Node 版本與三平台預設 shell
 
 ## Impact
 
-- Affected specs: `cli-distribution`（新增）、`desktop-release`、`user-documentation`、`delivery-baseline`
+- Affected specs: `cli-distribution`（新增）、`desktop-release`、`user-documentation`、`delivery-baseline`、`server-release`
 - Affected code:
-  - New: `scripts/signing-gate.mjs`、`scripts/signing-gate.test.mjs`、`scripts/install.sh`、`scripts/install.ps1`、`scripts/install.test.mjs`、`scripts/homebrew-formula.mjs`、`scripts/homebrew-formula.test.mjs`、`scripts/signpath-sign.ps1`、`scripts/signpath-sign.test.mjs`
-  - Modified: `.github/workflows/release.yml`、`.github/workflows/ci.yml`、`scripts/delivery-gate.test.mjs`、`crates/speclink-server/src/assets.rs`、`crates/speclink-server/tests/it/web_assets.rs`、`README.md`、`README.en.md`、`docs/getting-started.zh-TW.md`、`docs/getting-started.md`、`docs/sdk-node.zh-TW.md`、`docs/sdk-node.md`、`docs/product-status.zh-TW.md`
+  - New: `scripts/signing-gate.mjs`、`scripts/signing-gate.test.mjs`、`scripts/install.sh`、`scripts/install.ps1`、`scripts/install.test.mjs`、`scripts/homebrew-formula.mjs`、`scripts/homebrew-formula.test.mjs`、`scripts/signpath-sign.ps1`、`scripts/signpath-sign.test.mjs`、`scripts/release-notes.mjs`、`scripts/release-notes.test.mjs`、`packages/server-npm/package.json`、`packages/server-npm/bin/speclink-server.mjs`、`scripts/npm-server-package.mjs`、`scripts/npm-server-package.test.mjs`、`scripts/npm-server-launcher.test.mjs`
+  - Modified: `.github/workflows/release.yml`、`.github/workflows/ci.yml`、`scripts/delivery-gate.test.mjs`、`crates/speclink-server/src/assets.rs`、`crates/speclink-server/tests/it/web_assets.rs`、`README.md`、`README.en.md`、`docs/getting-started.zh-TW.md`、`docs/getting-started.md`、`docs/sdk-node.zh-TW.md`、`docs/sdk-node.md`、`docs/product-status.zh-TW.md`、`docs/server-deployment.zh-TW.md`
   - Removed: 無
-- repo 之外（不產生本 repo 檔案）：新建 GitHub tap repo（homebrew-tap，含 formula）；GitHub Actions secrets 新增 Apple 公證三項與 SignPath 四項——皆以手動教學任務執行
+- repo 之外（不產生本 repo 檔案）：新建 GitHub tap repo（homebrew-tap，含 formula）；GitHub Actions secrets 新增 Apple 公證三項、SignPath 四項、TAP_PUSH_TOKEN（tap 推送 PAT）與 NPM_TOKEN（npm 發布）；npm 帳號與 scope（偏好 @speclink，占用時採替代並記錄）——皆以手動教學任務執行

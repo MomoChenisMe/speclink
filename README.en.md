@@ -148,6 +148,8 @@ by the schema DAG. Follow [Local Repo Getting Started](docs/getting-started.md) 
 - **Local repository:** Embedded Rust Runtime → FsStore → `openspec/` → Git; suited to repository-local, offline collaboration.
 - **Remote store:** CLI/Desktop/other Client → Speclink Host → the same Rust Runtime → TeamStore; suited to shared canon, centralized identity, revisions, transactions, and events.
 
+To try a local server right away: `npx @speclink/server` starts one in a single line (SQLite by default, data under `./speclink-data`, prints the `/setup` link).
+
 A Remote Store does not synchronize into a second writable local truth. Agents with a checkout consume read-only `.speclink/context/`
 and send writes through Host commands. The [platform architecture blueprint](docs/platform-architecture.zh-TW.md) defines the target
 boundary. Follow [Remote Server, Desktop, and CLI Getting Started](docs/remote-getting-started.md) for the complete first-run path.
@@ -166,7 +168,7 @@ Current Server operations are documented in [deployment](docs/server-deployment.
 | [Node SDK](docs/sdk-node.md) | `@speclink/engine` installation, Store bridge, and dispatch surface |
 | [Platform architecture blueprint](docs/platform-architecture.zh-TW.md) | Sole target architecture for Engine, Host, Store, Protocol, Server, Desktop, and Agents (Traditional Chinese) |
 | [Implementation refactoring roadmap](docs/implementation-refactor-roadmap.zh-TW.md) | Delivery order, phases, and gates beneath the target architecture (Traditional Chinese) |
-| [Server deployment](docs/server-deployment.zh-TW.md) | Native/Docker/Compose deployment and upgrades (Traditional Chinese) |
+| [Server deployment](docs/server-deployment.zh-TW.md) | npx/Docker/Compose deployment and upgrades (Traditional Chinese) |
 | [Server Store drivers](docs/server-store-drivers.zh-TW.md) | SQLite/Server FS/PostgreSQL selection and prerequisites (Traditional Chinese) |
 | [Server backup and restore](docs/server-backup.zh-TW.md) | Backup/verify-backup/restore (Traditional Chinese) |
 | [Brand assets](docs/assets/brand/README.md) | Logo, color, and usage guidance |
