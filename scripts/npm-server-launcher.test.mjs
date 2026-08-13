@@ -32,14 +32,18 @@ test('os/cpu 對映到五個平台子套件，之外的平台回 null', () => {
 
 // --- 快速啟動的組態插值（設計 D9：仿 compose，環境變數 → YAML 落地） ---
 
+// 路徑在 YAML 裡是雙引號 scalar（JSON 跳脫——Windows 反斜線成 \\），斷言要比對
+// 跳脫後的字面，拿原始路徑 includes() 在 Windows 必然對不上。
+const asYamlScalar = (p) => JSON.stringify(p);
+
 test('零環境變數時走 sqlite 預設、資料目錄 ./speclink-data、public_url 連動預設埠', () => {
   const plan = buildQuickstart({});
   assert.equal(plan.error, undefined);
   assert.equal(plan.dataDir, path.resolve('./speclink-data'));
   assert.equal(plan.addr, '127.0.0.1:8080');
   assert.match(plan.configYaml, /driver: "sqlite"/);
-  assert.ok(plan.configYaml.includes(path.join(plan.dataDir, 'store.db')));
-  assert.ok(plan.configYaml.includes(path.join(plan.dataDir, 'identity.db')));
+  assert.ok(plan.configYaml.includes(asYamlScalar(path.join(plan.dataDir, 'store.db'))));
+  assert.ok(plan.configYaml.includes(asYamlScalar(path.join(plan.dataDir, 'identity.db'))));
   assert.match(plan.configYaml, /public_url: "http:\/\/localhost:8080"/);
 });
 
@@ -55,7 +59,7 @@ test('SPECLINK_PORT 連動 addr 與 public_url，SPECLINK_PUBLIC_URL 設定時�
 test('SPECLINK_STORE=serverfs 產出 serverfs 目錄宣告', () => {
   const plan = buildQuickstart({ SPECLINK_STORE: 'serverfs', SPECLINK_DATA_DIR: '/tmp/x' });
   assert.match(plan.configYaml, /driver: "serverfs"/);
-  assert.ok(plan.configYaml.includes(path.join(path.resolve('/tmp/x'), 'store')));
+  assert.ok(plan.configYaml.includes(asYamlScalar(path.join(path.resolve('/tmp/x'), 'store'))));
 });
 
 test('SPECLINK_STORE=postgres 帶 URL 產出 url 欄位、缺 URL 即錯誤點名', () => {
