@@ -115,6 +115,13 @@
         "scripts/npm-server-package.mjs",
         "scripts/npm-server-package.test.mjs"
       ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "2.7 根治 docker 多架構建置的 QEMU SIGILL flaky（v0.1.1 與 v0.1.2 的首跑連兩次紅在 linux/arm64 的 web 階段，重跑才過）：Node/V8 的 JIT 在 QEMU 使用者態模擬下會偶發非法指令（exit 132），而 web 階段的 Vite 產出是架構無關的靜態 dist，根本不需要在目標架構下執行；crates/speclink-server/Dockerfile 的 web 階段改為 FROM --platform=$BUILDPLATFORM（buildx 內建變數，釘在建置機原生架構跑），Rust 編譯階段維持目標架構不動；scripts/delivery-gate.test.mjs 的 Dockerfile 斷言同步改為要求 web 階段帶 --platform=$BUILDPLATFORM。驗證：新斷言對修正前的 Dockerfile 為紅；node --test scripts/delivery-gate.test.mjs 全綠",
+      "files": [
+        "crates/speclink-server/Dockerfile"
+      ]
     }
   ],
   "entries": [
@@ -279,6 +286,17 @@
         "scripts/npm-server-package.test.mjs"
       ],
       "recordedAt": "2026-08-13T02:06:55Z"
+    },
+    {
+      "taskId": "tsk_01M03QF7Y2ABCDEFGHJKMNPQRS",
+      "taskDesc": "2.7 根治 docker 多架構建置的 QEMU SIGILL flaky（v0.1.1 與 v0.1.2 的首跑連兩次紅在 linux/arm64 的 web 階段，重跑才過）：Node/V8 的 JIT 在 QEMU 使用者態模擬下會偶發非法指令（exit 132），而 web 階段的 Vite 產出是架構無關的靜態 dist，根本不需要在目標架構下執行；crates/speclink-server/Dockerfile 的 web 階段改為 FROM --platform=$BUILDPLATFORM（buildx 內建變數，釘在建置機原生架構跑），Rust 編譯階段維持目標架構不動；scripts/delivery-gate.test.mjs 的 Dockerfile 斷言同步改為要求 web 階段帶 --platform=$BUILDPLATFORM。驗證：新斷言對修正前的 Dockerfile 為紅；node --test scripts/delivery-gate.test.mjs 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "65e8e327515943208b8fbfbf843a15e1e7ed056d",
+      "touchedFiles": [
+        "crates/speclink-server/Dockerfile"
+      ],
+      "recordedAt": "2026-08-13T05:18:59Z"
     }
   ]
 }

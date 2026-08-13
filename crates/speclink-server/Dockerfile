@@ -15,7 +15,10 @@
 # - alpine 保留 shell，容器內執行 backup/restore 等子命令與除錯都更直接。
 
 # --- Stage 1：Node — 以 lockfile 安裝並產出 apps/server-web 的 production dist。 ---
-FROM node:20-alpine AS web
+# 釘在建置機原生架構（$BUILDPLATFORM 是 buildx 內建變數）：Vite 產出的 dist 與
+# 架構無關，而 Node/V8 的 JIT 在 QEMU 模擬 arm64 下會偶發 SIGILL（exit 132），
+# v0.1.1 與 v0.1.2 的首跑都因此紅在這一階段（任務 2.7）。
+FROM --platform=$BUILDPLATFORM node:20-alpine AS web
 WORKDIR /src
 COPY . .
 # npm ci 依 package-lock.json 做乾淨安裝（.dockerignore 已排除 host node_modules），

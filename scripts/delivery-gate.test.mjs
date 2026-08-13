@@ -342,7 +342,14 @@ test('Dockerfile 以 Node stage 產 dist、Rust stage 內嵌，最終 runtime �
   );
 
   // Node stage：以 lockfile 安裝並執行 server-web production build。
-  assert.match(dockerfile, /FROM node:/, 'Dockerfile 缺少 Node build stage');
+  // web 階段必須釘在建置機原生架構（--platform=$BUILDPLATFORM）：Vite 產出的
+  // dist 架構無關，而 Node/V8 的 JIT 在 QEMU 模擬 arm64 下會偶發 SIGILL
+  // （v0.1.1／v0.1.2 首跑連兩次 exit 132，任務 2.7）。
+  assert.match(
+    dockerfile,
+    /FROM --platform=\$BUILDPLATFORM node:/,
+    'Dockerfile 的 Node build stage 必須帶 --platform=$BUILDPLATFORM（避免 QEMU 下跑 V8）',
+  );
   assert.match(dockerfile, /npm ci/, 'Node stage 必須以 lockfile 安裝（npm ci）');
   assert.match(
     dockerfile,
