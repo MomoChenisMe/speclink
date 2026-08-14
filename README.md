@@ -10,87 +10,64 @@
   <b>繁體中文</b> · <a href="README.en.md">English</a>
 </p>
 
-Speclink 是以 Rust 實作的 Spec-Driven Development（SDD）引擎與工具平台。它讓 PM、PO、RD 與 AI Agent
-使用同一套 change、artifact、task、verify 與 archive 語意，同時保留兩種部署路徑：
+Speclink 是以 Rust 實作的 Spec-Driven Development（SDD）引擎與工具平台。PM、PO、RD 與 AI Agent 在這裡
+使用同一套語意：change、artifact、task、verify、archive。它同時保留兩種部署路徑：
 
 - **Local Repo**：規格位於 repo 的 `openspec/`，由 Git 協作，不需要 server。
-- **Remote Store**：規格位於共享 Store，由 Speclink Host 統一處理認證、revision、交易、事件與流程裁決。
+- **Remote Store**：規格位於共享 Store，由 Speclink Host 統一處理認證、revision、交易、事件與流程裁決。Host 與 Protocol 都是公開契約，所以 server 端可以用官方那一份，也可以自己寫。
 
-Local CLI 設計之初以 [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) 所附 CLI 為行為參考；
-人眼輸出、`--json` shape 與核心工作流由 golden 與 CLI 整合測試保護；Speclink 在此基礎上加入 discussion、Desktop、
-Store abstraction、Node SDK 與 Remote Platform 等延伸。
+**Local 模式**的產物刻意貼合 OpenSpec 的目錄結構：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/`
+與 `config.yaml`。內容全是純 Markdown 與 YAML，沒有資料庫，也沒有專屬格式。不裝 Speclink 一樣讀得懂、
+改得動，每次規格變動都看得出 Git diff。Speclink 只在這個結構上多放兩樣東西：`discussions/`（討論記錄），
+以及每個變更的 `.openspec.yaml`（生命週期 metadata）。
 
-> **目前狀態（2026-07-17）：**Local Repo、CLI、Local Desktop、Node N-API SDK、TeamStore contract 與三個官方
-> Store drivers、`speclink-server`、Server setup/admin/auth/backup，以及 Remote CLI／Context Projection 已有可運作實作。
-> Desktop Server Connections 已可用，但完整 Desktop Remote Workspace 與 verify/evidence 仍為部分可用；MCP／Copilot
-> Tools、SSO、runtime plugins 與 cluster mode 尚在規劃中。舊 remote REST v1 已棄用，不再是目標架構。
+Local CLI 設計之初以 [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) 所附 CLI 為行為參考。
+golden 與 CLI 整合測試守住人眼輸出、`--json` shape 與核心工作流。Speclink 在這個基礎上加入 discussion、
+Desktop、Store abstraction、Node SDK 與 Remote Platform。
 
-目前能力的逐項證據、限制與最後查核日期見[產品能力狀態](docs/product-status.zh-TW.md)；程式碼與目標架構的差距、
-交付順序及各 Phase 驗收 gate 見[現況對齊與重構路線圖](docs/implementation-refactor-roadmap.zh-TW.md)。
+規格不是寫完就擱著的文件——桌面 app 把每個變更放上看板，你看得到它站在哪一站、任務推到哪裡、規格改了什麼：
+
+![Speclink 桌面 app 的變更看板與變更詳情面板](docs/assets/screenshots/desktop-board.png)
 
 ## Current capabilities / 目前能力
 
-- **可用：**Local Repo CLI、Local Desktop、Node N-API SDK、Command Runtime／Host／Protocol、SQLite／Server FS／PostgreSQL TeamStore、單節點 Server、Admin/Auth、Remote CLI 與 Server 營運。
-- **部分可用：**生成 Agent skills、Desktop Remote Workspace、verify／task evidence；可用子集與缺口以 product-status 為準。
-- **規劃中：**MCP／Copilot in-process tools、SSO、runtime plugins、cluster mode 與獨立 verb-contract 使用者指南。
-- **已棄用：**legacy remote REST v1 prototype；新工作使用目前 Client Protocol／Host 路徑。
+- **可用**：Local Repo CLI、Local Desktop、生成的 Agent 技能（Claude 與 Codex 全站別）、Command Runtime／Host／Protocol、SQLite／Server FS／PostgreSQL TeamStore、單節點 Server 與 Admin／Auth、Remote CLI 與 Context Projection、Server 營運（部署、備份還原）、桌面與 CLI 的安裝通路。
+- **部分可用**：Node SDK（綁定可用，但尚未發布至 npm）、Desktop Remote Workspace、遠端的 task evidence。
+- **規劃中**：MCP／Copilot in-process tools、SSO、runtime plugins 與 cluster mode。
+- **已棄用**：legacy remote REST v1 prototype；新工作使用目前 Client Protocol／Host 路徑。
 
-完整矩陣不在 README 重複維護，請直接查[產品能力狀態](docs/product-status.zh-TW.md)。
+逐項證據、限制與最後查核日期不在 README 重複維護，一律以[專案能力狀態](docs/product-status.zh-TW.md)為準；之後會往哪走見[專案路線圖](docs/roadmap.zh-TW.md)。
 
 ## SDD workflow / SDD 工作流
 
 ```text
 onboard? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
-                                 ↑
-                         resume after pause: drift first
+                                            ↑
+                                    閒置後續作：先 drift
 
-utilities: validate / analyze / audit / commit / evidence
+worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
+
+工具：validate / analyze / audit / commit / config
 ```
 
-`discuss` 只在需求需要收斂時使用；需求明確可直接 `propose`。實作途中需求改變走 `ingest`，閒置後續作先跑
-`drift`。討論結論後的完整提案、快速轉為變更、併入既有 change 與決定不做等分流，見[完整 SDD 工作流](docs/workflow.zh-TW.md)。
+從哪一站進來，看你手上的情況：
 
-### improve / 改進討論
+- 需求已經明確 → 直接 `propose`
+- 需求還要收斂 → `discuss`（你帶題目）或 `improve`（要模型幫你找題目）
+- 實作途中需求改變 → `ingest`
+- 變更閒置一陣子才續作 → 先跑 `drift`
 
-`/speclink-improve` 是 `discuss` 的鏡像入口——**你帶題目走 `discuss`，要模型幫你找題目走 `improve`**。它掃描
-codebase、提出結構改進的 candidates，寫進同一套討論記錄（以 `--kind improve` 標記，看板卡片與討論抽屜顯示
-小章）；之後的輪、結論、轉為變更、封存流程與 `discuss` 完全相同。
+封存前有兩道可選的品質關卡：`review` 看工藝，`verify` 看合規。依風險自由組合。低風險變更兩道都跳過也是正當選擇。
 
-什麼時候用：想改善 codebase 但講不出具體要改哪裡的時候。掃描前先收斂範圍（你點名方向優先，否則以 git log
-熱點推斷）；開場會讀已封存討論的 Ruled out 與 in-flight 變更，避免重提已否決或正在做的事。每個 candidate 附
-Files／Problem／Solution／Wins／建議強度，由你挑一個深入盤問。
+手上有多個互不衝突的變更要一起推時走 worktree 流程：每個變更在自己的 git worktree 裡實作、互不干擾，完成後 `worktree-merge` 併回主分支再封存。
 
-兩條限制：它只由你發起，模型不會自己跑；它只產討論記錄，不寫程式碼——改進要落地一樣走 `propose` → `apply`。
-候選全數不採納時也會寫結論並封存（否決理由本身就是下次掃描的防重提依據）。
-
-### Quality stations / 品質站
-
-`apply` 完成後、`archive` 之前有兩個可選品質站。兩站並行、互不依賴，依風險自由組合——低風險變更兩站都跳過也是正當選擇：
-
-| | `review` 審查 | `verify` 驗證 |
-| --- | --- | --- |
-| 回答的問題 | 程式碼寫得好不好（工藝） | 交付是否符合規格（合規） |
-| 判準 | repo 慣例文件＋Fowler smells 基線（repo 文件優先）＋bug 獵捕 | change 的 specs 逐條三維度 |
-| artifacts 的角色 | 判準脈絡，不產合規裁決 | 檢查的中心 |
-| 執行前提 | 全任務完成 | 檢查隨時可跑（中途執行＝進度盤點）；收尾落工單要求全任務完成 |
-| 產出 | `review.md` 工單多輪，零 CRITICAL 後蓋章 | `verify.md` 工單多輪，零必修後蓋章 |
-| 兩站都跑 | 同走 `/speclink-quality`（時序見下段），蓋章順序在前 | 同左，蓋章順序在後 |
-
-兩站都跑時走 `/speclink-quality`：兩站檢查都先不蓋章 → 每輪停下待你裁示（全修／挑著修／不修就停）→ 裁示的修正統一落地、兩站複驗、再停 → 你說可以了，兩章才接連蓋。乾淨輪也停，不會自己蓋章或封存。
-站章凍結的是範圍內檔案的內容指紋，先蓋的章會被另一站的修正打成「其後有變動」——先修完再一起蓋就沒這個問題。
-只跑一站不經這個技能，直接呼叫 `/speclink-review` 或 `/speclink-verify`，維持該站修完即蓋的預設。
-
-`/speclink-review` 適合改動大、跨子系統、或會被長期維護的程式碼：findings 分級 CRITICAL／WARNING／SUGGESTION
-記入工單，修正後重審至空輪蓋章。蓋章後範圍內檔案再被修改，卡片標示降級為「已審查·其後有變動」；封存時偵測到
-未結工單會被攔下（回去蓋章／放棄審查／照樣帶走）。
-
-`/speclink-verify` 的收尾同構：任務全完成後第一輪是唯一一次完整 discovery（讀全部 artifacts，程式碼證據限定在
-凍結的變更 patch）；之後每一輪只驗收上輪未解的 findings 與修正 patch 直接造成的回歸，不重掃未修改的區域。
-必修集合每輪必須嚴格變少才允許再修一次——第一次沒進展就以「未通過」停下，保留工單、不蓋章。卡片與系統匣面板
-的驗證章與審查章並排（審查在前、驗證在後），封存時偵測到未結驗證工單同樣被攔下（回去蓋章／放棄驗證／照樣帶走）；
-兩張工單並存時要對兩站分別處置才封存得掉。
+每一站的用途、對應的 `/speclink-*` 技能、完成判準與下一站，以及討論結論的分流與恢復路徑，見[完整 SDD 工作流](docs/workflow.zh-TW.md)。
 
 ## Install / 安裝
+
+桌面 app 與 CLI 是**同一套引擎的兩種用法，擇一即可**。想看看板、規格與討論，就裝桌面 app。不需要圖形介面，或要把 Speclink 放進腳本與 CI，就只裝 CLI——功能不打折。
+
+Server 是第三個東西，**只有團隊要共用同一份規格正典時才需要**。一個人在自己 repo 裡用，完全不必碰它。
 
 **桌面 app**——到 [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) 下載對應平台的安裝檔：
 
@@ -101,6 +78,20 @@ Files／Problem／Solution／Wins／建議強度，由你挑一個深入盤問�
 | Linux | `.AppImage`（免安裝）或 `.deb`，各有 x86_64 與 aarch64 |
 
 桌面安裝檔內含同版 CLI，可於 app 設定中一鍵安裝到 PATH。
+
+**已經裝過 CLI 的人請注意：先裝 CLI、後裝桌面 app，你的 `speclink` 會被換成桌面 app 那一版。**
+
+原因是兩者都用 `~/.local/bin/speclink` 這個位置。逐平台的行為不同：
+
+| 平台 | 桌面 app 對 `~/.local/bin/speclink` 做的事 |
+| --- | --- |
+| macOS | 每次啟動都刪掉原檔，換成指向內建 CLI 的 symlink |
+| Linux AppImage | 只在版本不符時覆蓋 |
+| Windows | 不動這個位置；PATH 由安裝器管理 |
+| Linux `.deb` | 不動這個位置；套件管理器佈署到 `/usr/bin` |
+
+`SPECLINK_INSTALL_VERSION` 釘選的版本也會一起失效。要保留自己那份 CLI，安裝時用 `SPECLINK_INSTALL_DIR`
+指到別的目錄，再把該目錄排在 PATH 中 `~/.local/bin` 的前面。
 
 **CLI**——擇一：
 
@@ -115,9 +106,21 @@ irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install
 brew install MomoChenisMe/tap/speclink
 ```
 
-安裝腳本會偵測平台、驗證 SHA-256 後把 `speclink` 放進 `~/.local/bin`（Windows 為使用者層級目錄）；以 `SPECLINK_INSTALL_DIR` 可改安裝位置、`SPECLINK_INSTALL_VERSION` 可釘選版本。
+安裝腳本會偵測平台、核對 SHA-256，再把 `speclink` 放進 `~/.local/bin`（Windows 為使用者層級目錄）。`SPECLINK_INSTALL_DIR` 可改安裝位置，`SPECLINK_INSTALL_VERSION` 可釘選版本。
 
 Windows 的安裝檔目前未經程式碼簽章，首次執行時 SmartScreen 會出現警告——點「其他資訊」→「仍要執行」即可。
+
+**Server**（只有要團隊共用時才需要）——`speclink-server` 是官方的**參考實作**，給你開箱即用、或拿來試遠端功能。三種形態擇一，都會在啟動後印出一次性的 `/setup` 連結：
+
+| 形態 | 指令 |
+| --- | --- |
+| npx（有 Node 就能跑） | `npx @speclink/server` |
+| Docker | `docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/momochenisme/speclink-server:latest` |
+| Compose | `cd deploy && docker compose up -d` |
+
+預設使用 SQLite、資料落在 `./speclink-data`（容器內為 `/data`）。環境變數、PostgreSQL profile 與升級回退見[Server 部署](docs/server-deployment.zh-TW.md)。
+
+**遠端模式不綁這一份 server。** 規格正典放在哪、由誰守，是 Host 與 Protocol 兩份公開契約定義的；官方 server 只是照這兩份契約做出來的一個實作。要接自家的認證、資料庫或權限模型，就拿 Speclink 引擎自己寫一個 server 端，CLI 與桌面 app 照樣接得上。契約見 `openspec/specs/` 的 `client-protocol` 與 `host-runtime`，載入引擎的方式見 [Node SDK](docs/sdk-node.zh-TW.md)。
 
 ## Local Repo quick start / Local Repo 快速開始
 
@@ -133,35 +136,50 @@ speclink list
 
 ## Deployment paths / 部署路徑
 
-- **Local Repo：**Embedded Rust Runtime → FsStore → `openspec/` → Git；適合單一 repo、本機與離線協作。
-- **Remote Store：**CLI／Desktop／其他 Client → Speclink Host → 同一 Rust Runtime → TeamStore；適合共享規格正典、集中認證、revision、交易與事件。
+- **Local Repo**：Embedded Rust Runtime → FsStore → `openspec/` → Git；適合單一 repo、本機與離線協作。
+- **Remote Store**：CLI／Desktop／其他 Client → Speclink Host → 同一 Rust Runtime → TeamStore；適合共享規格正典、集中認證、revision、交易與事件。中間那個 Host 可以是官方的 `speclink-server`，也可以是你自己照 Protocol 做的實作。
 
-想立刻試一個本機 server：`npx @speclink/server` 一行啟動（預設 SQLite、資料落在 `./speclink-data`、印出 `/setup` 連結）。
-
-Remote Store 不會同步成第二份可寫的本地真相；有 checkout 的 Agent 使用唯讀 `.speclink/context/`，遠端寫入仍走
-Host command。目標邊界以[平台架構藍圖](docs/platform-architecture.zh-TW.md)為準，現行 Server 操作見
-[Remote 入門教學](docs/remote-getting-started.zh-TW.md)、[部署](docs/server-deployment.zh-TW.md)、
-[Store drivers](docs/server-store-drivers.zh-TW.md)與[備份／還原](docs/server-backup.zh-TW.md)。
+Remote Store 不會同步成第二份可寫的本地真相。有 checkout 的 Agent 只讀 `.speclink/context/`，遠端寫入仍走
+Host command。這些邊界的正典是 `openspec/specs/` 底下的規格，例如 `host-runtime`、`client-protocol`、
+`teamstore-contract` 與 `context-projection`。從 setup 到登入的完整操作見
+[Remote 入門教學](docs/remote-getting-started.zh-TW.md)。
 
 ## Documentation map / 文件地圖
+
+**一個人用，先讀這三份就夠**
 
 | 文件 | 用途 |
 | --- | --- |
 | [Local Repo 入門教學](docs/getting-started.zh-TW.md) | 目前可複製的第一輪 Local Repo 流程 |
+| [完整 SDD 工作流](docs/workflow.zh-TW.md) | 每一站的用途、對應技能、完成判準與下一站 |
+| [專案能力狀態](docs/product-status.zh-TW.md) | 可用／部分可用／規劃中／已棄用，附證據與限制 |
+
+**要團隊共用一份規格正典才需要**
+
+| 文件 | 用途 |
+| --- | --- |
 | [Remote Server、Desktop 與 CLI 入門教學](docs/remote-getting-started.zh-TW.md) | 從 `/setup`、membership、登入到 Desktop／CLI 與失聯恢復的完整流程 |
-| [完整 SDD 工作流](docs/workflow.zh-TW.md) | 每個階段的用途、使用時機、分支、完成判準與恢復方式 |
-| [產品能力狀態](docs/product-status.zh-TW.md) | Available／Partial／Planned／Deprecated、證據與限制 |
-| [設定說明](docs/configuration.zh-TW.md) | Local／Remote 設定歸屬與目前欄位 |
-| [Node SDK](docs/sdk-node.zh-TW.md) | `@speclink/engine` 安裝、Store bridge 與 dispatch surface |
-| [平台架構藍圖](docs/platform-architecture.zh-TW.md) | 唯一目標架構：Engine、Host、Store、Protocol、Server、Desktop 與 Agent |
-| [實作重構路線圖](docs/implementation-refactor-roadmap.zh-TW.md) | 目標架構下的交付順序、Phase 與 Gate |
 | [Server 部署](docs/server-deployment.zh-TW.md) | npx／Docker／Compose 與升級操作 |
 | [Server Store drivers](docs/server-store-drivers.zh-TW.md) | SQLite／Server FS／PostgreSQL 選型與前提 |
 | [Server 備份與還原](docs/server-backup.zh-TW.md) | backup／verify-backup／restore |
+
+**遇到問題或想調整時再查**
+
+| 文件 | 用途 |
+| --- | --- |
+| [設定說明](docs/configuration.zh-TW.md) | Local／Remote 設定歸屬與目前欄位 |
+| [開發環境入口](docs/development.zh-TW.md) | 一鍵開發環境、checkout 內 CLI 與測試指令 |
+| [專案路線圖](docs/roadmap.zh-TW.md) | 之後會往哪走：SDK、以引擎自建客戶端、遠端協作、Agent 工具整合、系統整合 |
 | [品牌資產](docs/assets/brand/README.md) | Logo、配色與使用方式 |
 
-`openspec/changes/archive/` 與 `openspec/discussions/archive/` 是歷史稽核資料，不是目前操作手冊。進階
-`docs/verb-contract.md` 使用者指南尚未建立；目前契約以 canonical specs 為準，缺口記錄於 product-status。
+**要把 Speclink 接進自己的程式，或自建客戶端才需要**——只用桌面 app 或 CLI 的話這兩份可以完全跳過。
+
+| 文件 | 用途 |
+| --- | --- |
+| [Node SDK](docs/sdk-node.zh-TW.md) | `@speclink/engine` 的載入方式、Store bridge 與 dispatch surface |
+| [動詞與旗標契約](docs/verb-contract.zh-TW.md) | 動詞的模式歸屬、兩模式輸出同形與端點的 payload／錯誤形狀 |
+
+`openspec/changes/archive/` 與 `openspec/discussions/archive/` 是歷史稽核資料，不是目前操作手冊。
 
 ## Development / 開發
 
@@ -172,17 +190,7 @@ cargo install --path crates/speclink-cli
 speclink --version
 ```
 
-開發環境的一鍵入口（整套 `npm run dev`、只跑 server、只跑 desktop、checkout 內 CLI）與下載安裝檔的未簽章放行步驟，見[開發環境入口](docs/development.zh-TW.md)。
-
-```bash
-cargo test --workspace
-npm --workspace @speclink/desktop test
-npm --workspace @speclink/desktop run build
-npm --workspace @speclink/engine test
-```
-
-CLI 可觀察輸出由 golden 與 CLI 整合測試保護；Server／Store／Desktop 的特定測試前提與目前限制請查 product-status
-及責任文件。
+[開發環境入口](docs/development.zh-TW.md)收了三類東西：一鍵開發環境的四個入口（整套 `npm run dev`、只跑 server、只跑 desktop、checkout 內 CLI）、完整測試指令，以及下載安裝檔的未簽章放行步驟。
 
 ## License / 授權
 

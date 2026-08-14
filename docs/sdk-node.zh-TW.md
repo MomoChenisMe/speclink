@@ -1,14 +1,16 @@
 # Node SDK（@speclink/engine）
 
-> **文件狀態：**本文描述目前已實作的 Node SDK surface。Typed Command Runtime、TeamStore 契約、Host 邊界與 Copilot Tool 封裝的目標設計，以[平台架構藍圖](platform-architecture.zh-TW.md)為準。
+> **文件狀態**：本文描述目前已實作的 Node SDK surface。Typed Command Runtime、TeamStore 契約與 Host 邊界的正典是 `openspec/specs/` 底下的 `command-runtime`、`teamstore-contract`、`host-runtime` 與 `node-sdk`；Copilot Tool 封裝尚未實作，方向見[專案路線圖](roadmap.zh-TW.md)。
 
 `@speclink/engine` 讓你把 Speclink 引擎內嵌進 Node.js 行程：伺服器（或 AI agent 宿主）在行程內 dispatch speclink 動詞、以自家資料庫透過 `Store` 物件儲存規格文件，並為任何 harness 渲染流程知識（skills、instructions 區塊）。
 
-它就是 CLI 隨附的那顆 Rust 引擎——以 [napi-rs](https://napi.rs) 綁定，而非重新實作——所以動詞行為、`--json` payload 形狀、渲染內容從結構上就保證一致。（Rust SDK 即 `speclink-core` crate 本身。）
+它就是 CLI 隨附的那顆 Rust 引擎，以 [napi-rs](https://napi.rs) 綁定，不是重新實作一份。所以動詞行為、`--json` payload 形狀與渲染內容，從結構上就保證一致。Rust SDK 則是 `speclink-core` crate 本身。
+
+這個 SDK 有兩種用法。一是把 Speclink 接進既有流程，例如寫腳本或做內部工具。二是拿它當**自建 server 端的引擎**——官方的 `speclink-server` 只是 Host 契約的參考實作，你可以照 `openspec/specs/` 的 `host-runtime` 與 `client-protocol` 做自己那一份，配上自家的認證、資料庫與權限模型，CLI 與桌面 app 照樣接得上。
 
 ## 取得方式與平台注意事項
 
-> **尚未發布至 npm。**`@speclink/engine` 目前只能從本 repo 建置取得，npm registry 上沒有這個套件。發布時程與其他方向一併記錄在[產品能力狀態](product-status.zh-TW.md)。
+> **尚未發布至 npm。**`@speclink/engine` 目前只能從本 repo 建置取得，npm registry 上沒有這個套件。目前狀態見[專案能力狀態](product-status.zh-TW.md)的 Node SDK 一列；npm 通路要解決什麼、目前到哪、可觀察的下一步見[專案路線圖](roadmap.zh-TW.md)。
 
 從 repo 建置並載入：
 
@@ -25,9 +27,9 @@ npm run build          # napi 建置出本機平台的 .node
 const { createEngine } = require('/path/to/speclink/crates/speclink-node')
 ```
 
-- 這是一個 **native module**：引擎是編譯後的 Rust，以 Node addon 載入。上述 `npm run build` 會產出**當前平台**的二進位，因此要在部署目標平台上（或針對該平台交叉建置）執行。
+- 這是一個 **native module**。引擎是編譯後的 Rust，以 Node addon 載入。上述 `npm run build` 只產出**當前平台**的二進位，所以要在部署目標平台上執行，或針對該平台交叉建置。
 - 建置需要 Rust 工具鏈（`rustup`）。
-- 引擎本身支援的平台為：Windows x64、macOS x64 與 arm64、Linux x64 與 arm64（皆為 glibc）。發布至 npm 後這些平台會以預編譯子套件提供，屆時不再需要工具鏈。
+- 引擎支援五個平台：Windows x64、macOS x64 與 arm64，以及 Linux x64 與 arm64（皆為 glibc）。發布至 npm 之後，這些平台會以預編譯子套件提供，屆時不再需要工具鏈。
 
 ## createEngine——兩種儲存形式
 
@@ -48,13 +50,15 @@ const engine = createEngine({ store: { type: 'fs', root: '/path/to/project' } })
 const engine = createEngine({ store: myStore })
 ```
 
-每個 `Store` 方法可以回傳值**或 Promise**——橋接層兩者都接受。物件缺少必要方法時，`createEngine` 會同步拋錯並列出所有缺少的方法名（fail fast；不會產生引擎實例）。
+每個 `Store` 方法可以回傳值**或 Promise**，橋接層兩者都接受。物件缺少必要方法時，`createEngine` 會同步拋錯並列出所有缺少的方法名。這是 fail fast，不會產生引擎實例。
 
 > **警告——絕不要在 Store 方法內同步回呼引擎。** `dispatch` 在背景工作執行緒上等待你的 store 方法解決。若某個 store 方法同步阻塞等待同一顆引擎的另一個 `engine.dispatch(...)`，會形成互等循環。在 store 方法回傳*之後*（或無關的程式碼中）發起新的 dispatch 沒有問題——並發 dispatch 是支援且被測試覆蓋的。
 
 ## Store 介面——實作指南
 
-介面與引擎核心的儲存縫線（`speclink-core` 的 `Store` trait）一對一，採 camelCase。引擎只講領域詞彙——change、artifact、delta／canonical spec、討論、workflow config——實體佈局由你的實作決定。完整簽名見 [`index.d.ts`](../crates/speclink-node/index.d.ts)；`path`／`dir` 回傳值是**顯示位置**（呈現在 payload 裡的字串），不是引擎會去開的檔案路徑。
+這個介面與引擎核心的儲存縫線一對一，也就是 `speclink-core` 的 `Store` trait，命名採 camelCase。引擎只講領域詞彙：change、artifact、delta 與 canonical spec、討論、workflow config。實體佈局由你的實作決定。
+
+完整簽名見 [`index.d.ts`](../crates/speclink-node/index.d.ts)。`path` 與 `dir` 的回傳值是**呈現在 payload 裡的字串**，不是引擎會去開的檔案路徑。
 
 | 分組 | 方法 | 說明 |
 |---|---|---|
@@ -107,11 +111,15 @@ const store = {
 }
 ```
 
-store 方法拋錯或 reject 時，進行中的 `dispatch` 會以 `Error` 拒絕——message 帶 store 方法名前綴（`readArtifact: connection refused`），`code` 承載 JS 錯誤的 `code`（沒有則為 `store_error`）。
+store 方法拋錯或 reject 時，進行中的 `dispatch` 會以 `Error` 拒絕。message 帶 store 方法名前綴，例如 `readArtifact: connection refused`。`code` 承載 JS 錯誤自己的 `code`，沒有的話就是 `store_error`。
 
 ### `claim`（選配）
 
-所有權是團隊系統的概念，引擎不做裁決。若你的 store 實作了 `claim(name)`，`dispatch(['claim', '<name>'])` 會路由過去：成功時 resolve 你的 payload（例如 `{ claimed: true, claimedBy: 'you' }`）；衝突時 reject 一個 `Error`——`code` 用動詞契約的 409 reason（`ownership_lost`、`change_busy`、`gate_pending`），message 說明誰持有該 change、該怎麼做——SDK 會把兩者原樣傳給呼叫端。沒有 `claim` 方法時，該動詞如同 fs store 一樣直接失敗。
+所有權是團隊系統的概念，引擎不做裁決。若你的 store 實作了 `claim(name)`，`dispatch(['claim', '<name>'])` 會路由過去。
+
+成功時它 resolve 你的 payload，例如 `{ claimed: true, claimedBy: 'you' }`。衝突時它 reject 一個 `Error`：`code` 用動詞契約的 409 reason（`ownership_lost`、`change_busy`、`gate_pending`），message 說明誰持有該 change、該怎麼做。SDK 把兩者原樣傳給呼叫端。
+
+沒有 `claim` 方法時，該動詞就像在 fs store 上一樣直接失敗。
 
 ## dispatch——統一入口
 
@@ -124,7 +132,7 @@ await engine.dispatch(
 )
 ```
 
-- **輸入**：字串陣列，與 CLI 動詞詞彙一對一（等同 shell argv 去掉程式名）。不支援互動式輸入——CLI 中讀 stdin 的動詞改由第二參數傳內容（`{ stdin }`）。
+- **輸入**：字串陣列，與 CLI 動詞詞彙一對一，等同 shell argv 去掉程式名。它不支援互動式輸入。CLI 中讀 stdin 的動詞，改由第二參數傳內容：`{ stdin }`。
 - **輸出**：Promise，解析為與 CLI `--json` 完全一致的結構化物件（camelCase 欄位名）。沒有 `--json` 形式的動詞解析為 `{ output: string }`。目前 TypeScript shape 以 [`index.d.ts`](../crates/speclink-node/index.d.ts) 為準；未來遠端 Command/Query payload 由平台藍圖與版本化 Protocol 工作定義。
 - **錯誤**：Promise 以 `Error` 拒絕——`message` 是 CLI 的語義化訊息（可直接回給 agent），`code` 分類失敗：`invalid_argv`（argv 有誤）、`not_found`（change／討論查找）、`error`（引擎失敗，即 CLI 的 exit-1 類別）、宿主 store 的 409 reason 原樣傳遞（`ownership_lost`……）、`store_error`（無 code 的 store 失敗）、`panic`。
 - **絕不阻塞事件迴圈**：每次 dispatch 都在背景工作執行緒上執行；支援並發 dispatch。
@@ -216,5 +224,4 @@ const client = new CopilotClient({
 
 ## 延伸閱讀
 
-- [平台架構藍圖](platform-architecture.zh-TW.md)——Typed Runtime、TeamStore、Host、Protocol、Server 與 Tool 的目標設計。
 - [`index.d.ts`](../crates/speclink-node/index.d.ts)——目前發布的 Node API 與 payload types。

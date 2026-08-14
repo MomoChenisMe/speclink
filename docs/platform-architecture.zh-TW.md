@@ -1,13 +1,17 @@
 # Speclink 可組合平台架構藍圖
 
-> 本文件描述 Speclink 從本地 SDD 工具擴展為可組合平台的完整目標架構，並作為後續設計的整合基準。
-> 本文是唯一目標架構基準；舊 architecture、team-mode 與 verb-contract 文件已移除。
-> 本文不表示所有目標元件皆已完成。
+> 狀態：**2026-07-27 當時的架構構想，不是現行行為的正典**
 >
-> 目前可用、部分可用、規劃中與已棄用的能力，請以最後查核於 **2026-07-17** 的
-> [`product-status.zh-TW.md`](product-status.zh-TW.md) 為準；實際使用時請從
-> [`workflow.zh-TW.md`](workflow.zh-TW.md) 選擇流程入口。本文件中的元件與呼叫鏈描述的是目標，
-> 不應單獨當成已交付證據；其下的交付順序見
+> 這份文件描述 Speclink 從本地 SDD 工具擴展為可組合平台的目標架構，是當時做整體設計時的整合基準。
+> 之後的實作與規劃已經有所偏離，本文沒有隨之更新——**不要以本文判斷現在的行為、邊界或介面**。
+>
+> 現行的行為正典是 `openspec/specs/` 底下的規格（`host-runtime`、`command-runtime`、`teamstore-contract`、
+> `client-protocol`、`verb-contract`、`server-*` 等）；能力現況查
+> [`product-status.zh-TW.md`](product-status.zh-TW.md)；流程入口見
+> [`workflow.zh-TW.md`](workflow.zh-TW.md)；之後的方向見 [`roadmap.zh-TW.md`](roadmap.zh-TW.md)。
+>
+> 保留本文的理由是它把「為什麼要拆成 Engine／Host／Store／Protocol」這層設計意圖寫得比任何單份規格完整。
+> 讀它請當成設計背景，不是介面文件。同期的交付規劃是
 > [`implementation-refactor-roadmap.zh-TW.md`](implementation-refactor-roadmap.zh-TW.md)。
 
 ## 1. 核心結論

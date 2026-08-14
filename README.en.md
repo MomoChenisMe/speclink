@@ -3,106 +3,77 @@
 </p>
 
 <p align="center">
-  <b>One SDD engine for local repositories and remote stores</b>
+  <b>One SDD Engine, for both Local Repo and Remote Store</b>
 </p>
 
 <p align="center">
   <a href="README.md">繁體中文</a> · <b>English</b>
 </p>
 
-Speclink is a Spec-Driven Development (SDD) engine and tool platform implemented in Rust. PMs, POs, developers, and AI
-agents share the same change, artifact, task, verification, and archive semantics across two deployment paths:
+Speclink is a Spec-Driven Development (SDD) engine and tooling platform written in Rust. PMs, POs, engineers,
+and AI Agents all use one vocabulary here: change, artifact, task, verify, archive. It also keeps two deployment
+paths open:
 
-- **Local repository:** specs live in the repository's `openspec/` directory and collaboration uses Git. No server is required.
-- **Remote store:** specs live in a shared Store and a Speclink Host governs identity, revisions, transactions, events, and workflow rules.
+- **Local Repo**: specs live in the repo's `openspec/`, collaborate through Git, no server required.
+- **Remote Store**: specs live in a shared Store, with Speclink Host handling authentication, revisions, transactions, events, and workflow adjudication. Host and Protocol are both public contracts, so you can run the official server or write your own.
 
-The local CLI was originally designed with the CLI shipped with [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) as its
-behavioral reference. Golden and CLI integration tests protect human output, `--json` shapes, and core workflow behavior; Speclink extends
-that foundation with discussions, Desktop, storage abstraction, the Node SDK, and the Remote Platform.
+**Local mode** keeps the OpenSpec directory structure on purpose: `specs/<capability>/spec.md`, `changes/<name>/`,
+`changes/archive/`, and `config.yaml`. Every file is plain Markdown or YAML. There is no database and no proprietary
+format. You can read and edit the files without Speclink, and Git shows a diff for every spec change. Speclink adds
+only two things to this structure: `discussions/` for discussion records, and an `.openspec.yaml` per change for
+lifecycle metadata.
 
-> **Current status (2026-07-17):** Local Repo, CLI, local Desktop, the Node N-API SDK, the TeamStore contract and all three official
-> Store drivers, `speclink-server`, Server setup/admin/auth/backup, and Remote CLI/Context Projection have working implementations.
-> Desktop Server Connections are available, while complete Desktop Remote Workspace and verify/evidence remain partial. MCP/Copilot
-> Tools, SSO, runtime plugins, and cluster mode are planned. Legacy remote REST v1 is deprecated and is no longer the target architecture.
+The Local CLI took the CLI bundled with [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) as its
+behavioral reference. Golden and CLI integration tests hold the human-readable output, the `--json` shapes, and
+the core workflow. On that base Speclink adds discussions, Desktop, Store abstraction, a Node SDK, and the
+Remote Platform.
 
-See [Product Capability Status](docs/product-status.md) for evidence, limits, and the last verification date. See the
-[implementation alignment and refactoring roadmap](docs/implementation-refactor-roadmap.zh-TW.md) for the remaining gap, delivery order,
-and acceptance gates for each phase.
+Specs are not documents you write once and abandon. The desktop app puts every change on a board, so you can see
+which station it stands at, how far its tasks moved, and what its specs changed:
+
+![The Speclink desktop change board with the change detail drawer](docs/assets/screenshots/desktop-board.png)
+
+(Screenshots are captured with the interface in Traditional Chinese; the interface language is switchable in settings.)
 
 ## Current capabilities / 目前能力
 
-- **Available:** Local Repo CLI, local Desktop, Node N-API SDK, Command Runtime/Host/Protocol, SQLite/Server FS/PostgreSQL TeamStore, single-node Server, Admin/Auth, Remote CLI, and Server operations.
-- **Partial:** generated Agent skills, Desktop Remote Workspace, and verify/task evidence; use product-status for the precise usable subset and gap.
-- **Planned:** MCP/Copilot in-process tools, SSO, runtime plugins, cluster mode, and a standalone verb-contract user guide.
-- **Deprecated:** the legacy remote REST v1 prototype; new work uses the current Client Protocol/Host path.
+- **Available:** Local Repo CLI, Local Desktop, generated Agent skills (every station, for both Claude and Codex), Command Runtime/Host/Protocol, SQLite/Server FS/PostgreSQL TeamStore, single-node Server with Admin and Auth, Remote CLI and Context Projection, Server operations (deployment, backup and restore), and the desktop and CLI install channels.
+- **Partial:** the Node SDK (the binding works but is not published to npm), Desktop Remote Workspace, and remote task evidence.
+- **Planned:** MCP and Copilot in-process tools, SSO, runtime plugins, and cluster mode.
+- **Deprecated:** the legacy remote REST v1 prototype; new work uses the current Client Protocol and Host path.
 
-The complete matrix is maintained only in [Product Capability Status](docs/product-status.md), not duplicated in the README.
+Per-item evidence, limits, and the last audit date are not duplicated here — [Project Capability Status](docs/product-status.md) is the canon. For where things are heading, see the [Project Roadmap](docs/roadmap.md).
 
 ## SDD workflow / SDD 工作流
 
 ```text
 onboard? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
-                                 ↑
-                         resume after pause: drift first
+                                            ↑
+                                  resuming after a pause: drift first
 
-utilities: validate / analyze / audit / commit / evidence
+worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
+
+utilities: validate / analyze / audit / commit / config
 ```
 
-Use `discuss` only when requirements need convergence; clear requirements can go directly to `propose`. Requirement changes during
-implementation route to `ingest`, and resumed idle work starts with `drift`. See the [complete SDD workflow](docs/workflow.md) for
-complete-proposal, fast-scaffold, existing-change, and “do not implement” discussion outcomes.
+Where you enter depends on what you have:
 
-### improve / 改進討論
+- The requirement is already clear → go straight to `propose`
+- The requirement still needs convergence → `discuss` (you bring the topic) or `improve` (you ask the model to find topics)
+- Requirements shift mid-implementation → `ingest`
+- The change sat idle and you resume it → run `drift` first
 
-`/speclink-improve` is the mirror image of `discuss` — **bring your own topic to `discuss`; ask `improve` when you want the model to
-find the topics**. It scans the codebase, proposes structural-improvement candidates, and writes them into the same discussion record
-(marked with `--kind improve`; the board card and the discussion drawer show a badge). Rounds, conclusion, promotion into a change,
-and archiving are then exactly as in `discuss`.
+Two optional quality stations sit before archiving: `review` for craft and `verify` for compliance. Combine them as the risk warrants. To skip both on a low-risk change is a legitimate choice.
 
-When to use it: you want the codebase improved but cannot name what to change. The scope is converged before scanning (a direction you
-name wins; otherwise git-log hotspots are inferred), and the opening pass reads archived discussions' `Ruled out` lines and the
-in-flight changes so nothing already rejected or already under way is re-proposed. Each candidate carries Files / Problem / Solution /
-Wins / recommendation strength, and you pick the one to grill.
+When several non-conflicting changes should move at once, take the worktree flow. You implement each change in its own git worktree, without interference. `worktree-merge` then lands the branch on the main branch before you archive.
 
-Two limits: it is user-initiated only — the model never starts it by itself — and it only produces a discussion record, never code.
-Landing an improvement still goes through `propose` → `apply`. When every candidate is rejected, the record is still concluded and
-archived: those rejections are what stops the next scan from proposing the same thing.
-
-### Quality stations / 品質站
-
-Two optional quality stations sit between `apply` and `archive`. They run in parallel and are independent of each other —
-combine them by risk; skipping both is a legitimate choice for low-risk changes:
-
-| | `review` | `verify` |
-| --- | --- | --- |
-| Question answered | Is the code well-crafted? (craft) | Does the delivery match the specs? (compliance) |
-| Criteria | Repo convention docs + Fowler smells baseline (repo docs override) + bug hunt | The change's specs, clause by clause, three dimensions |
-| Role of artifacts | Context for judgement — no compliance verdicts | The center of the check |
-| Precondition | All tasks complete | The check runs anytime (mid-work run = progress inventory); landing a ticket requires all tasks complete |
-| Output | Multi-round `review.md` ticket, stamped at zero CRITICAL | Multi-round `verify.md` ticket, stamped at zero must-fix |
-| Running both | Via `/speclink-quality` (order below), stamped first | Same, stamped second |
-
-Running both stations goes through `/speclink-quality`: leave each station's check unstamped, then stop after every round for your
-call (fix everything / fix a selection / fix nothing and stop). The fixes you picked land together, both stations re-validate, and
-it stops again — the two badges are stamped back to back only once you say so. A clean round pauses the same way: nothing is
-stamped or archived on the skill's own initiative. A station badge freezes the content fingerprints of its scope
-files, so the badge stamped first would otherwise be knocked to “changed since” by the other station's fixes. Running a single
-station skips this skill — call `/speclink-review` or `/speclink-verify` directly and keep its stamp-when-done default.
-
-`/speclink-review` suits large diffs, cross-subsystem work, or code that will be maintained long-term: findings are graded
-CRITICAL/WARNING/SUGGESTION into the ticket, then fixed and re-reviewed until an empty round stamps the change. Modifying an
-in-scope file after stamping downgrades the card badge to “reviewed · changed since”; archiving with an open ticket is
-intercepted (go stamp / discard the review / carry it anyway).
-
-`/speclink-verify` closes the same way: once every task is done, round 1 is the one and only discovery (it reads every
-artifact, with the frozen change patch as the code evidence); every round after that only judges the previous round's
-unresolved findings and the regressions the remediation patch directly introduces — it never re-scans unchanged areas. The
-must-fix set has to shrink strictly each round to earn another fix pass; the first round with no progress ends as “failed”,
-keeping the ticket and leaving it unstamped. Cards and the macOS tray panel show the verify badge next to the review one
-(review first, verify second), and archiving with an open verify ticket is intercepted the same way (go stamp / discard the
-verification / carry it anyway); with both tickets open you settle each station before the change archives.
+For each station's purpose, its `/speclink-*` skill, completion criteria, and next station — plus discussion outcome routing and recovery paths — see the [Complete SDD Workflow](docs/workflow.md).
 
 ## Install / 安裝
+
+The desktop app and the CLI are **two ways to use the same engine — pick one**. Install the desktop app if you want the board, specs, and discussions on screen. Install only the CLI if you do not want a graphical interface, or if you want Speclink in scripts and CI. You lose no capability either way.
+
+The Server is a third piece. You **need it only when a team shares one spec canon**. Alone in your own repo you never need it.
 
 **Desktop app** — download the installer for your platform from [Releases](https://github.com/MomoChenisMe/speclink/releases/latest):
 
@@ -110,9 +81,24 @@ verification / carry it anyway); with both tickets open you settle each station 
 | --- | --- |
 | macOS | `Speclink_<version>_aarch64.dmg` (Apple Silicon), `Speclink_<version>_x64.dmg` (Intel) |
 | Windows | `Speclink_<version>_x64-setup.exe` |
-| Linux | `.AppImage` (no install required) or `.deb`, each for x86_64 and aarch64 |
+| Linux | `.AppImage` (portable) or `.deb`, each for x86_64 and aarch64 |
 
-Every desktop installer bundles the matching CLI, installable to PATH from the app settings.
+The desktop installer bundles a matching CLI, installable to your PATH from the app's settings.
+
+**Read this if you already installed the CLI. Install the CLI first and the desktop app second, and your
+`speclink` becomes the desktop app's version.**
+
+Both use the path `~/.local/bin/speclink`. The behavior differs per platform:
+
+| Platform | What the desktop app does to `~/.local/bin/speclink` |
+| --- | --- |
+| macOS | Deletes the existing file at every start and writes a symlink to its bundled CLI |
+| Linux AppImage | Replaces it only on a version mismatch |
+| Windows | Leaves this path alone; the installer manages the PATH |
+| Linux `.deb` | Leaves this path alone; the package deploys to `/usr/bin` |
+
+A version pinned with `SPECLINK_INSTALL_VERSION` goes away too. To keep your own CLI, install it to a different
+directory with `SPECLINK_INSTALL_DIR`. Then put that directory before `~/.local/bin` in your PATH.
 
 **CLI** — pick one:
 
@@ -127,75 +113,94 @@ irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install
 brew install MomoChenisMe/tap/speclink
 ```
 
-The install script detects your platform, verifies the SHA-256 checksum, and places `speclink` in `~/.local/bin` (a user-level directory on Windows). Set `SPECLINK_INSTALL_DIR` to change the location or `SPECLINK_INSTALL_VERSION` to pin a version.
+The install script detects your platform, checks the SHA-256, and places `speclink` in `~/.local/bin` (a user-level directory on Windows). `SPECLINK_INSTALL_DIR` changes the location. `SPECLINK_INSTALL_VERSION` pins a version.
 
-Windows installers are not code-signed yet, so SmartScreen warns on first run — choose "More info" → "Run anyway".
+Windows installers are not code-signed yet, so SmartScreen warns on first run — choose "More info" then "Run anyway".
+
+**Server** (only needed when a team shares one canon) — `speclink-server` is the official **reference implementation**. Use it out of the box, or to try the remote features. Pick one of three shapes; each prints a one-time `/setup` link on startup:
+
+| Shape | Command |
+| --- | --- |
+| npx (anywhere Node runs) | `npx @speclink/server` |
+| Docker | `docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/momochenisme/speclink-server:latest` |
+| Compose | `cd deploy && docker compose up -d` |
+
+The default is SQLite with data under `./speclink-data` (`/data` inside a container). Environment variables, the PostgreSQL profile, and upgrade and rollback steps are in [Server Deployment](docs/server-deployment.zh-TW.md) (Traditional Chinese only).
+
+**Remote mode does not bind you to this server.** Two public contracts, Host and Protocol, define where the spec canon lives and who guards it. The official server is one implementation of those contracts. To plug in your own authentication, database, or permission model, build your own server on the Speclink engine — the CLI and the desktop app still connect to it. The contracts are `client-protocol` and `host-runtime` under `openspec/specs/`, and the [Node SDK](docs/sdk-node.md) shows how to load the engine.
 
 ## Local Repo quick start / Local Repo 快速開始
 
-Inside the repository adopting Speclink:
+In the repo you want to adopt Speclink in:
 
 ```bash
 speclink init --tools claude,codex
 speclink list
 ```
 
-Then invoke `/speclink-propose <change>` in Claude or `$speclink-propose <change>` in Codex. The Agent creates the artifacts required
-by the schema DAG. Follow [Local Repo Getting Started](docs/getting-started.md) for a copyable first loop and direct CLI equivalents.
+Then call `/speclink-propose <change>` in Claude, or `$speclink-propose <change>` in Codex; the Agent creates the
+required artifacts from the schema DAG. For a copyable first loop with the direct CLI equivalents, see
+[Getting Started](docs/getting-started.md).
 
 ## Deployment paths / 部署路徑
 
-- **Local repository:** Embedded Rust Runtime → FsStore → `openspec/` → Git; suited to repository-local, offline collaboration.
-- **Remote store:** CLI/Desktop/other Client → Speclink Host → the same Rust Runtime → TeamStore; suited to shared canon, centralized identity, revisions, transactions, and events.
+- **Local Repo:** Embedded Rust Runtime → FsStore → `openspec/` → Git. Suited to a single repo and local or offline collaboration.
+- **Remote Store:** CLI/Desktop/other clients → Speclink Host → the same Rust Runtime → TeamStore. Suited to a shared spec canon with centralized authentication, revisions, transactions, and events. That Host can be the official `speclink-server`, or your own implementation of the Protocol.
 
-To try a local server right away: `npx @speclink/server` starts one in a single line (SQLite by default, data under `./speclink-data`, prints the `/setup` link).
-
-A Remote Store does not synchronize into a second writable local truth. Agents with a checkout consume read-only `.speclink/context/`
-and send writes through Host commands. The [platform architecture blueprint](docs/platform-architecture.zh-TW.md) defines the target
-boundary. Follow [Remote Server, Desktop, and CLI Getting Started](docs/remote-getting-started.md) for the complete first-run path.
-Current Server operations are documented in [deployment](docs/server-deployment.zh-TW.md),
-[Store drivers](docs/server-store-drivers.zh-TW.md), and [backup/restore](docs/server-backup.zh-TW.md) (Traditional Chinese).
+A Remote Store never syncs into a second writable local truth. An Agent with a checkout only reads
+`.speclink/context/`, and remote writes still go through Host commands. The specs under `openspec/specs/` define
+these boundaries: `host-runtime`, `client-protocol`, `teamstore-contract`, `context-projection`, and others. For
+the full path from setup to sign-in, see [Remote Getting Started](docs/remote-getting-started.md).
 
 ## Documentation map / 文件地圖
 
+**Working alone? These three are enough to start.**
+
 | Document | Purpose |
 | --- | --- |
-| [Local Repo Getting Started](docs/getting-started.md) | Copyable first Local Repo loop using current entry points |
-| [Remote Server, Desktop, and CLI Getting Started](docs/remote-getting-started.md) | Complete setup, membership, sign-in, Desktop/CLI, and recovery path |
-| [Complete SDD Workflow](docs/workflow.md) | Purpose, timing, branches, completion criteria, and recovery for every stage |
-| [Product Capability Status](docs/product-status.md) | Available/Partial/Planned/Deprecated with evidence and limits |
-| [Configuration](docs/configuration.md) | Local/Remote ownership and current fields |
-| [Node SDK](docs/sdk-node.md) | `@speclink/engine` installation, Store bridge, and dispatch surface |
-| [Platform architecture blueprint](docs/platform-architecture.zh-TW.md) | Sole target architecture for Engine, Host, Store, Protocol, Server, Desktop, and Agents (Traditional Chinese) |
-| [Implementation refactoring roadmap](docs/implementation-refactor-roadmap.zh-TW.md) | Delivery order, phases, and gates beneath the target architecture (Traditional Chinese) |
-| [Server deployment](docs/server-deployment.zh-TW.md) | npx/Docker/Compose deployment and upgrades (Traditional Chinese) |
-| [Server Store drivers](docs/server-store-drivers.zh-TW.md) | SQLite/Server FS/PostgreSQL selection and prerequisites (Traditional Chinese) |
-| [Server backup and restore](docs/server-backup.zh-TW.md) | Backup/verify-backup/restore (Traditional Chinese) |
-| [Brand assets](docs/assets/brand/README.md) | Logo, color, and usage guidance |
+| [Getting Started](docs/getting-started.md) | The copyable first Local Repo loop |
+| [Complete SDD Workflow](docs/workflow.md) | Every station's purpose, skill, completion criteria, and next station |
+| [Project Capability Status](docs/product-status.md) | Available/Partial/Planned/Deprecated, with evidence and limits |
 
-`openspec/changes/archive/` and `openspec/discussions/archive/` are historical audit records, not current operating guides. The
-advanced `docs/verb-contract.md` user guide does not exist yet; canonical specs remain the contract and product-status records the gap.
+**Only needed when a team shares one spec canon**
+
+| Document | Purpose |
+| --- | --- |
+| [Remote Server, Desktop, and CLI Getting Started](docs/remote-getting-started.md) | The full path from `/setup` and membership through sign-in, Desktop/CLI, and recovery |
+| [Server Deployment](docs/server-deployment.zh-TW.md) | npx/Docker/Compose and upgrades (Traditional Chinese only) |
+| [Server Store Drivers](docs/server-store-drivers.zh-TW.md) | Choosing between SQLite/Server FS/PostgreSQL (Traditional Chinese only) |
+| [Server Backup and Restore](docs/server-backup.zh-TW.md) | backup/verify-backup/restore (Traditional Chinese only) |
+
+**Look these up when something needs adjusting**
+
+| Document | Purpose |
+| --- | --- |
+| [Configuration](docs/configuration.md) | Where Local and Remote settings live, and the current fields |
+| [Development Entries](docs/development.md) | One-command dev environments, the checkout CLI, and test commands |
+| [Project Roadmap](docs/roadmap.md) | Where things are heading: the SDK, building your own client, remote collaboration, Agent tools, system integration |
+| [Brand Assets](docs/assets/brand/README.md) | Logo, palette, and usage |
+
+**Needed only to drive Speclink from your own program, or to build your own client.** Just use the desktop app or the CLI? Skip both.
+
+| Document | Purpose |
+| --- | --- |
+| [Node SDK](docs/sdk-node.md) | How to load `@speclink/engine`, the Store bridge, and the dispatch surface |
+| [Verb and Flag Contract](docs/verb-contract.md) | Verb mode assignment, cross-mode output parity, and endpoint payload and error shapes |
+
+`openspec/changes/archive/` and `openspec/discussions/archive/` are historical audit data, not a current manual.
 
 ## Development / 開發
 
-Building the CLI from source (a stable Rust toolchain is required):
+Build the CLI from source (a stable Rust toolchain is required):
 
 ```bash
 cargo install --path crates/speclink-cli
 speclink --version
 ```
 
-For the one-command dev entry points (full `npm run dev`, server only, desktop only, the checkout CLI) and the unsigned-installer bypass steps, see [Development Entry Points](docs/development.md).
-
-```bash
-cargo test --workspace
-npm --workspace @speclink/desktop test
-npm --workspace @speclink/desktop run build
-npm --workspace @speclink/engine test
-```
-
-Golden and CLI integration tests protect observable CLI output. See product-status and the responsibility documents for Server, Store, and
-Desktop test prerequisites and current limitations.
+[Development Entries](docs/development.md) holds three things: the four one-command dev entries (full
+`npm run dev`, server only, desktop only, the checkout CLI), the complete test commands, and the bypass steps for
+unsigned installers.
 
 ## License / 授權
 
