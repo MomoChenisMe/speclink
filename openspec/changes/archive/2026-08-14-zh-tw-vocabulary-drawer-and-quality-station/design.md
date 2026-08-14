@@ -79,6 +79,10 @@
 
 **守門範圍**（使用者可見文案面）：兩個 i18n 訊息檔、`crates/speclink-core/assets/skills/` 全部 `.md`、`docs/` 全部 `.md`、`README.md` 與 `README.en.md`。
 
+**守什麼詞**：守門詞由 `openspec/LANGUAGE.md` 動態解析而來——取各詞條 `avoid` 欄中含中日韓文字的條目，不寫死本次的兩個詞。帶括號語境限定者依限定分流（驗證站 Round 1 WARNING 後收斂）：限定為「使用者可見文案中」者（`覆審（使用者可見文案中）` 等），限定範圍正是守門面本身，剝掉限定後納入守門；其他語境限定（`背景（此概念上）`、`分頁（pagination 語意上）`、`規則（單獨使用時）` 等）綁在比守門面更窄的語境，機械掃描必然誤命中，依既有 `docs-parity.test.mjs` 的作法排除在外。動態解析讓未來新增的詞條自動生效，這正是 D4 要的「擋住新的越界」；寫死兩個詞會讓守門在下一次詞彙裁定時失效。
+
+**連帶修正兩處既有違規**（2026-08-14 使用者裁定）：全量守門實測揭露文案面上還有兩處違反其他詞條的存量——`apps/server-web/src/i18n/messages.ts` 的 `tour.navOverview.hint` 用「待處理」（「待收尾」的 avoid，且與畫面實際標籤 `overview.todos`「需要處理」不一致）、`docs/sdk-node.zh-TW.md` 用「回合」（「輪」的 avoid）。兩處共 2 個詞，隨本變更一併收斂——它們就在本 capability 主張的文案面內，留著會讓守門無法轉綠，而為此把守門降級成兩個寫死的詞，代價遠大於改 2 個詞。
+
 **為何不會誤傷識別符**。守門比對的是 CJK 字串「抽屜」「品質站」；`RichDetailDrawer`、`SpecDrawer`、`archivedDrawerBase` 是純 ASCII，永遠不匹配。這是設計上的保證，不是巧合——本變更不改任何識別符（見 Non-Goals），所以守門不需要任何識別符白名單。
 
 **為何 `openspec/LANGUAGE.md` 必須排除在守門範圍外**。詞條的 `avoid` 行**依設計就要寫出舊詞**（`avoid: 抽屜`），把 LANGUAGE.md 納入守門會讓正典自己違規。排除是正確解，不是漏網。
@@ -149,7 +153,7 @@
 
 **Scope boundaries**：
 
-- **In scope**：`openspec/LANGUAGE.md`；`apps/desktop/src/i18n/messages.ts` 與 `apps/server-web/src/i18n/messages.ts` 的 zh-TW 區塊；`crates/speclink-core/assets/skills/apply-worktree-post.md` 與 `worktree-merge.md`；`crates/speclink-core/src/init.rs` 的 `MARKER_VERSION`；golden 快照與 `assets.lock`；`speclink update` 再生的 `.claude/skills/`、`.agents/skills/`；新守門測試；`worktree-apply-skill` 與 `worktree-merge-skill` 兩份 delta spec。
+- **In scope**：`openspec/LANGUAGE.md`；`apps/desktop/src/i18n/messages.ts` 與 `apps/server-web/src/i18n/messages.ts` 的 zh-TW 區塊（含 D4 連帶修正的 `tour.navOverview.hint`）；`docs/sdk-node.zh-TW.md` 的「回合」→「輪」（D4 連帶修正）；`crates/speclink-core/assets/skills/apply-worktree-post.md` 與 `worktree-merge.md`；`crates/speclink-core/src/init.rs` 的 `MARKER_VERSION`；golden 快照與 `assets.lock`；`speclink update` 再生的 `.claude/skills/`、`.agents/skills/` 與 `AGENTS.md`、`CLAUDE.md`（後兩者只有版號行隨之變動）；新守門測試；`worktree-apply-skill` 與 `worktree-merge-skill` 兩份 delta spec。
 - **Out of scope**：`openspec/specs/**` 其餘散文；全部程式碼註解與測試名；`openspec/changes/archive/`；英文文案；任何識別符、CSS 類名與 `--json` 欄位；任何行為變更。
 
 ## Risks / Trade-offs

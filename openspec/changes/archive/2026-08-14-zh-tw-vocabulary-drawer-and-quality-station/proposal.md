@@ -13,7 +13,8 @@
 - **改掉全部使用者可見的兩個舊詞**（共 9 處）：desktop 的品質關卡工單提示、server-web 的兩則導覽提示、以及 worktree 兩支技能資產對使用者說的交棒文字。
 - **把兩個詞立為 `openspec/LANGUAGE.md` 正典詞條**，各帶 definition／avoid／why 與裁定日期，舊詞進 `avoid`——這是防漂回的正典錨點。
 - **更新 LANGUAGE.md 兩條既有明文例外的字面用詞**（討論 slug 例外、worktree 例外）：只換用詞，裁定內容、適用範圍與四筆範圍擴充紀錄一字不動。
-- **新增詞彙守門測試** `scripts/vocabulary-guard.test.mjs`，掛進既有的 `node --test "scripts/**/*.test.mjs"` 套件，掃描使用者可見文案面確認舊詞歸零。
+- **新增詞彙守門測試** `scripts/vocabulary-guard.test.mjs`，掛進既有的 `node --test "scripts/**/*.test.mjs"` 套件，掃描使用者可見文案面確認 LANGUAGE.md 各詞條的 avoid 詞歸零。
+- **連帶修正兩處既有違規**（全量守門實測揭露、經使用者裁定納入）：server-web 導覽提示的「待處理」改「需要處理」（對齊畫面實際標籤）、`docs/sdk-node.zh-TW.md` 的「回合」改「輪」。
 - **BREAKING（產物層）**：技能資產內文改動觸發既有的三連動——`MARKER_VERSION` 自 `v1.19.12` 進版、golden 快照重生、`assets.lock` 重生。既有工作區跑 `speclink update` 會整套再生受管檔。
 
 ### 相容性影響
@@ -59,6 +60,7 @@
     - openspec/LANGUAGE.md
     - apps/desktop/src/i18n/messages.ts
     - apps/server-web/src/i18n/messages.ts
+    - docs/sdk-node.zh-TW.md
     - crates/speclink-core/assets/skills/apply-worktree-post.md
     - crates/speclink-core/assets/skills/worktree-merge.md
     - crates/speclink-core/src/init.rs

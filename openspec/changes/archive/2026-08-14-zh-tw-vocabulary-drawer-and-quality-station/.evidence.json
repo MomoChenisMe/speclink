@@ -1,0 +1,136 @@
+{
+  "version": 2,
+  "change": "zh-tw-vocabulary-drawer-and-quality-station",
+  "touched": [
+    {
+      "task_id": "4",
+      "task_desc": "2.1 新增 `scripts/vocabulary-guard.test.mjs` 實作規格需求「詞彙守門測試釘死使用者可見文案面」，落實 D4：以守門測試釘死使用者可見文案面——掃描兩個 i18n 訊息檔、`crates/speclink-core/assets/skills/` 全部 `.md`、`docs/` 全部 `.md`、`README.md` 與 `README.en.md`，命中 avoid 詞時以非零 exit code 失敗且訊息含檔案路徑、行號與命中詞。此時因文案尚未收斂，測試 SHALL 失敗（TDD 紅燈）。驗證：`node --test scripts/vocabulary-guard.test.mjs` 失敗且訊息點名 `apps/desktop/src/i18n/messages.ts` 與 `apps/server-web/src/i18n/messages.ts`。",
+      "files": [
+        "scripts/vocabulary-guard.test.mjs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 將 `apps/desktop/src/i18n/messages.ts` 的 `zh-TW` 區塊中 `store.reviewActionUnsupported` 文案由「此工作區不支援品質站工單處置」改為「此工作區不支援品質關卡工單處置」；訊息鍵名與 `en` 區塊字面維持不變。驗證：`npm test -w apps/desktop` 通過。",
+      "files": [
+        "apps/desktop/src/i18n/messages.ts"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 將 `apps/server-web/src/i18n/messages.ts` 的 `zh-TW` 區塊中 `tour.navUsers.hint` 與 `tour.listPrimary.hint` 兩則導覽提示的「抽屜」改為「詳情面板」；訊息鍵名與 `en` 區塊字面維持不變。驗證：`npm test -w apps/server-web` 通過。",
+      "files": [
+        "apps/server-web/src/i18n/messages.ts"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "3.5 依 D4 的連帶修正（2026-08-14 使用者裁定）收斂文案面上兩處違反其他詞條的存量：`apps/server-web/src/i18n/messages.ts` 的 `tour.navOverview.hint` 由「待處理事項」改為「需要處理事項」（對齊畫面實際標籤 `overview.todos`「需要處理」，並解除「待收尾」詞條的 avoid 命中）、`docs/sdk-node.zh-TW.md` 的「解析（回合、結論）」改為「解析（輪、結論）」（解除「輪」詞條的 avoid 命中）。驗證：守門測試對這兩檔零命中，且 `npm test -w apps/server-web` 通過。",
+      "files": [
+        "crates/speclink-core/assets/skills/apply-worktree-post.md",
+        "crates/speclink-core/assets/skills/worktree-merge.md",
+        "docs/sdk-node.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.3 將 `crates/speclink-core/assets/skills/apply-worktree-post.md` 交棒段對使用者說的「品質站」改為「品質關卡」，使再生後的技能內文符合 delta 規格需求「apply-with-worktree 技能的收尾指示」。驗證：`cargo test -p speclink-core --test it` 通過（golden 於任務 4.1 同批重生）。",
+      "files": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "4.2 執行 `./target/debug/speclink update` 再生 `.claude/skills/` 與 `.agents/skills/` 的受管技能檔，確認兩支 worktree 技能的 SKILL.md 交棒段已為「品質關卡」。驗證：搜尋兩個 skills 目錄確認「品質站」歸零，並以 `git status` 盤點再生產物無遺漏。",
+      "files": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZYZ21NP66HMZ0NHCXR8F4TM",
+      "taskDesc": "2.1 新增 `scripts/vocabulary-guard.test.mjs` 實作規格需求「詞彙守門測試釘死使用者可見文案面」，落實 D4：以守門測試釘死使用者可見文案面——掃描兩個 i18n 訊息檔、`crates/speclink-core/assets/skills/` 全部 `.md`、`docs/` 全部 `.md`、`README.md` 與 `README.en.md`，命中 avoid 詞時以非零 exit code 失敗且訊息含檔案路徑、行號與命中詞。此時因文案尚未收斂，測試 SHALL 失敗（TDD 紅燈）。驗證：`node --test scripts/vocabulary-guard.test.mjs` 失敗且訊息點名 `apps/desktop/src/i18n/messages.ts` 與 `apps/server-web/src/i18n/messages.ts`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1b031a9849c4be0f27fed6163cc63835f0aaa634",
+      "touchedFiles": [
+        "scripts/vocabulary-guard.test.mjs"
+      ],
+      "recordedAt": "2026-08-14T07:07:34Z"
+    },
+    {
+      "taskId": "tsk_01KZYZ21NPDSXBV6DETNXRNYEK",
+      "taskDesc": "3.1 將 `apps/desktop/src/i18n/messages.ts` 的 `zh-TW` 區塊中 `store.reviewActionUnsupported` 文案由「此工作區不支援品質站工單處置」改為「此工作區不支援品質關卡工單處置」；訊息鍵名與 `en` 區塊字面維持不變。驗證：`npm test -w apps/desktop` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1b031a9849c4be0f27fed6163cc63835f0aaa634",
+      "touchedFiles": [
+        "apps/desktop/src/i18n/messages.ts"
+      ],
+      "recordedAt": "2026-08-14T07:08:36Z"
+    },
+    {
+      "taskId": "tsk_01KZYZ21NPVYQKA9J55SP2FJ3H",
+      "taskDesc": "3.2 將 `apps/server-web/src/i18n/messages.ts` 的 `zh-TW` 區塊中 `tour.navUsers.hint` 與 `tour.listPrimary.hint` 兩則導覽提示的「抽屜」改為「詳情面板」；訊息鍵名與 `en` 區塊字面維持不變。驗證：`npm test -w apps/server-web` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1b031a9849c4be0f27fed6163cc63835f0aaa634",
+      "touchedFiles": [
+        "apps/server-web/src/i18n/messages.ts"
+      ],
+      "recordedAt": "2026-08-14T07:09:03Z"
+    },
+    {
+      "taskId": "tsk_01KZZHPE2T69SJXD13FQGDV7K9",
+      "taskDesc": "3.5 依 D4 的連帶修正（2026-08-14 使用者裁定）收斂文案面上兩處違反其他詞條的存量：`apps/server-web/src/i18n/messages.ts` 的 `tour.navOverview.hint` 由「待處理事項」改為「需要處理事項」（對齊畫面實際標籤 `overview.todos`「需要處理」，並解除「待收尾」詞條的 avoid 命中）、`docs/sdk-node.zh-TW.md` 的「解析（回合、結論）」改為「解析（輪、結論）」（解除「輪」詞條的 avoid 命中）。驗證：守門測試對這兩檔零命中，且 `npm test -w apps/server-web` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1b031a9849c4be0f27fed6163cc63835f0aaa634",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/apply-worktree-post.md",
+        "crates/speclink-core/assets/skills/worktree-merge.md",
+        "docs/sdk-node.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-14T07:10:01Z"
+    },
+    {
+      "taskId": "tsk_01KZYZ21NPC0AN3HK82M18GGMN",
+      "taskDesc": "3.3 將 `crates/speclink-core/assets/skills/apply-worktree-post.md` 交棒段對使用者說的「品質站」改為「品質關卡」，使再生後的技能內文符合 delta 規格需求「apply-with-worktree 技能的收尾指示」。驗證：`cargo test -p speclink-core --test it` 通過（golden 於任務 4.1 同批重生）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1b031a9849c4be0f27fed6163cc63835f0aaa634",
+      "touchedFiles": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ],
+      "recordedAt": "2026-08-14T07:11:40Z"
+    },
+    {
+      "taskId": "tsk_01KZYZ21NP469TBB7Z9Y79H030",
+      "taskDesc": "4.2 執行 `./target/debug/speclink update` 再生 `.claude/skills/` 與 `.agents/skills/` 的受管技能檔，確認兩支 worktree 技能的 SKILL.md 交棒段已為「品質關卡」。驗證：搜尋兩個 skills 目錄確認「品質站」歸零，並以 `git status` 盤點再生產物無遺漏。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1b031a9849c4be0f27fed6163cc63835f0aaa634",
+      "touchedFiles": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ],
+      "recordedAt": "2026-08-14T07:14:11Z"
+    }
+  ]
+}
