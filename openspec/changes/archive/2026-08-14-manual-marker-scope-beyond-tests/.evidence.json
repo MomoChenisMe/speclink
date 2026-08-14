@@ -1,0 +1,144 @@
+{
+  "version": 2,
+  "change": "manual-marker-scope-beyond-tests",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 更新兩份 UI 測試的期望字串——taskList 測試期望徽章文字 tw「手動」／en「Manual」，awaitingManualBadge 測試期望章文字 tw「待手動」／tooltip「待手動·剩 N 項」／en「Awaiting manual」「Awaiting manual · N left」；跑 npm test -w packages/ui 確認先紅（紅在字串期望，不紅在其他處）；此字面即規格「任務列的手動任務徽章」與「看板卡片的待手動標示」釘住的文案",
+      "files": [
+        "packages/ui/src/__tests__/awaitingManualBadge.test.tsx",
+        "packages/ui/src/__tests__/taskList.test.tsx"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 改 packages/ui/src/i18n.tsx 六個詞條值：zh-TW 的 tasks.manual＝「手動」、card.awaitingManual＝「待手動」、card.awaitingManualTitle＝「待手動·剩 {n} 項」；en 的 tasks.manual＝「Manual」、card.awaitingManual＝「Awaiting manual」、card.awaitingManualTitle＝「Awaiting manual · {n} left」；鍵名一律不動；npm test -w packages/ui 全綠",
+      "files": [
+        "packages/ui/src/i18n.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 scripts/vocabulary-guard.test.mjs 的 SURFACE_FILES 加入 packages/ui/src/i18n.tsx；跑 node --test \"scripts/**/*.test.mjs\"——若揭露該檔存量 avoid 詞違規，逐條修正繁中字面（不動鍵名與結構、不動英文），全套守門測試綠燈收尾；落實規格「使用者可見文案面的範圍與詞彙約束」的守門面擴充（design「D4：守門面擴充」）",
+      "files": [
+        "scripts/vocabulary-guard.test.mjs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 六份技能資產放寬 [M] 敘述（crates/speclink-core/assets/skills/）：apply.md 的 [M] 段改為 manual task 語意（不限測試）並補明文「寫碼任務依賴未勾的 [M] 任務時，停下請使用者先完成，不代勾、不繞過」；ingest.md 與 propose.md 的定義句放寬為「agent 無法代行、使用者必須親手做的事（操作產品驗收、建立外部服務帳號、放置金鑰等）」；propose.md 排除句改為「agent 做得到的任務（寫碼與自動化測試）都不帶標記」方向；review.md、verify.md、quality.md 對 [M] 的稱呼自 manual-verification 改為 manual 語意、行為敘述（時序、點名義務）不變；驗證：六份 diff 人工檢視，對照 delta 條文「apply 技能的手動任務處理」（design「D5：前置手動任務的 apply 指示」——被擋即停）、「ingest 技能的起草標記指引」與「手動任務的起草標記」逐項核對",
+      "files": [
+        "crates/speclink-core/assets/skills/apply.md",
+        "crates/speclink-core/assets/skills/ingest.md",
+        "crates/speclink-core/assets/skills/propose.md",
+        "crates/speclink-core/assets/skills/quality.md",
+        "crates/speclink-core/assets/skills/review.md",
+        "crates/speclink-core/assets/skills/verify.md"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 crates/speclink-core/src/init.rs 的 MARKER_VERSION 自 v1.19.13 進版至 v1.19.14；重生產物：先 UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden:: 重生 golden，再於乾淨樹 UPDATE_ASSETS_LOCK=1 同指令重生 assets.lock；驗證：不帶開關重跑 cargo test -p speclink-core --test it 全綠",
+      "files": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.3 用新建置 CLI 再生本 repo 受管技能檔：cargo build -p speclink-cli 後執行 ./target/debug/speclink update，.claude/skills/ 與 .agents/skills/ 兩工具產出隨資產更新；驗證：抽查 claude 與 codex 的 apply 技能檔含「被 [M] 擋住即停」明文與放寬後語意，git status 盤點再生檔全數屬預期路徑",
+      "files": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZZQKQ76NZ6WYYP3WG5ZFBQD",
+      "taskDesc": "1.1 更新兩份 UI 測試的期望字串——taskList 測試期望徽章文字 tw「手動」／en「Manual」，awaitingManualBadge 測試期望章文字 tw「待手動」／tooltip「待手動·剩 N 項」／en「Awaiting manual」「Awaiting manual · N left」；跑 npm test -w packages/ui 確認先紅（紅在字串期望，不紅在其他處）；此字面即規格「任務列的手動任務徽章」與「看板卡片的待手動標示」釘住的文案",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "92b2963adb84206ad8e6e14f861cf34231766283",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/awaitingManualBadge.test.tsx",
+        "packages/ui/src/__tests__/taskList.test.tsx"
+      ],
+      "recordedAt": "2026-08-14T09:00:46Z"
+    },
+    {
+      "taskId": "tsk_01KZZQKQ76Z2YTN5M9J9XJ4TRG",
+      "taskDesc": "1.2 改 packages/ui/src/i18n.tsx 六個詞條值：zh-TW 的 tasks.manual＝「手動」、card.awaitingManual＝「待手動」、card.awaitingManualTitle＝「待手動·剩 {n} 項」；en 的 tasks.manual＝「Manual」、card.awaitingManual＝「Awaiting manual」、card.awaitingManualTitle＝「Awaiting manual · {n} left」；鍵名一律不動；npm test -w packages/ui 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "92b2963adb84206ad8e6e14f861cf34231766283",
+      "touchedFiles": [
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-08-14T09:01:09Z"
+    },
+    {
+      "taskId": "tsk_01KZZQKQ76R1BRMV7XSK7E51QW",
+      "taskDesc": "2.2 scripts/vocabulary-guard.test.mjs 的 SURFACE_FILES 加入 packages/ui/src/i18n.tsx；跑 node --test \"scripts/**/*.test.mjs\"——若揭露該檔存量 avoid 詞違規，逐條修正繁中字面（不動鍵名與結構、不動英文），全套守門測試綠燈收尾；落實規格「使用者可見文案面的範圍與詞彙約束」的守門面擴充（design「D4：守門面擴充」）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "92b2963adb84206ad8e6e14f861cf34231766283",
+      "touchedFiles": [
+        "scripts/vocabulary-guard.test.mjs"
+      ],
+      "recordedAt": "2026-08-14T09:02:01Z"
+    },
+    {
+      "taskId": "tsk_01KZZQKQ76ETJ7VNKKQRGVY2NG",
+      "taskDesc": "3.1 六份技能資產放寬 [M] 敘述（crates/speclink-core/assets/skills/）：apply.md 的 [M] 段改為 manual task 語意（不限測試）並補明文「寫碼任務依賴未勾的 [M] 任務時，停下請使用者先完成，不代勾、不繞過」；ingest.md 與 propose.md 的定義句放寬為「agent 無法代行、使用者必須親手做的事（操作產品驗收、建立外部服務帳號、放置金鑰等）」；propose.md 排除句改為「agent 做得到的任務（寫碼與自動化測試）都不帶標記」方向；review.md、verify.md、quality.md 對 [M] 的稱呼自 manual-verification 改為 manual 語意、行為敘述（時序、點名義務）不變；驗證：六份 diff 人工檢視，對照 delta 條文「apply 技能的手動任務處理」（design「D5：前置手動任務的 apply 指示」——被擋即停）、「ingest 技能的起草標記指引」與「手動任務的起草標記」逐項核對",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "92b2963adb84206ad8e6e14f861cf34231766283",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/apply.md",
+        "crates/speclink-core/assets/skills/ingest.md",
+        "crates/speclink-core/assets/skills/propose.md",
+        "crates/speclink-core/assets/skills/quality.md",
+        "crates/speclink-core/assets/skills/review.md",
+        "crates/speclink-core/assets/skills/verify.md"
+      ],
+      "recordedAt": "2026-08-14T09:02:56Z"
+    },
+    {
+      "taskId": "tsk_01KZZQKQ76EY6X2BCH3R4ASG11",
+      "taskDesc": "3.2 crates/speclink-core/src/init.rs 的 MARKER_VERSION 自 v1.19.13 進版至 v1.19.14；重生產物：先 UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden:: 重生 golden，再於乾淨樹 UPDATE_ASSETS_LOCK=1 同指令重生 assets.lock；驗證：不帶開關重跑 cargo test -p speclink-core --test it 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "92b2963adb84206ad8e6e14f861cf34231766283",
+      "touchedFiles": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ],
+      "recordedAt": "2026-08-14T09:03:47Z"
+    },
+    {
+      "taskId": "tsk_01KZZQKQ76Q273K5XQS7PFB90E",
+      "taskDesc": "3.3 用新建置 CLI 再生本 repo 受管技能檔：cargo build -p speclink-cli 後執行 ./target/debug/speclink update，.claude/skills/ 與 .agents/skills/ 兩工具產出隨資產更新；驗證：抽查 claude 與 codex 的 apply 技能檔含「被 [M] 擋住即停」明文與放寬後語意，git status 盤點再生檔全數屬預期路徑",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "92b2963adb84206ad8e6e14f861cf34231766283",
+      "touchedFiles": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ],
+      "recordedAt": "2026-08-14T09:05:16Z"
+    }
+  ]
+}

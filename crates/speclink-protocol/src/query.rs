@@ -280,7 +280,7 @@ pub struct Progress {
     pub total: usize,
     pub complete: usize,
     pub remaining: usize,
-    /// Code tasks alone (`[M]` manual-verification tasks excluded) — what the
+    /// Code tasks alone (`[M]` manual tasks excluded) — what the
     /// station gates judge against. Deliberately NOT `serde(default)`: a
     /// defaulted 0/0/0 from an old server would read as "code work finished"
     /// and let the gates pass — fail closed on version skew instead.

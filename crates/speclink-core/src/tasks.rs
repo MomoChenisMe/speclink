@@ -154,7 +154,7 @@ pub enum MisplacedMarker {
     PrefixSlotMissed,
 }
 
-/// The manual-verification marker literal. The prefix-slot stripping, the
+/// The manual-task marker literal. The prefix-slot stripping, the
 /// misplacement detection, and validate's repair examples all build on this one
 /// string — the slot syntax has no second definition site.
 pub const MANUAL_MARKER: &str = "[M]";
@@ -333,7 +333,7 @@ fn flip_task(
                 let rest = &body[4..];
                 already = if to_done { is_done } else { is_open };
                 // 顯示描述剝除全部前綴標記——與 parse() 共用 strip_markers,
-                // 剝離規則只有一份真相(spec「任務行的手動測試標記與解析」)。
+                // 剝離規則只有一份真相(spec「任務行的手動任務標記與解析」)。
                 let (_, clean) = strip_markers(rest);
                 let (display, stable) = split_stable_id(clean);
                 desc = display.trim().to_string();
@@ -1148,7 +1148,7 @@ mod tests {
         assert!(empty[0].stable_id.is_none(), "empty marker id must not count as identity");
     }
 
-    // --- spec「任務行的手動測試標記與解析」---
+    // --- spec「任務行的手動任務標記與解析」---
 
     #[test]
     fn parse_reads_manual_marker_and_strips_it_from_description() {
@@ -1173,8 +1173,10 @@ mod tests {
         // spec Example「前綴解析」表逐列：任務行 → (manual, 描述)。
         // 案例表與 packages/ui/src/tasks.ts 的 stripMarkers 測試對齊——UI 解析
         // 與引擎同構,動標記規則兩處要一起改。
-        let rows: [(&str, bool, &str); 6] = [
+        let rows: [(&str, bool, &str); 7] = [
             ("- [ ] [M] 手測匯入\n", true, "手測匯入"),
+            // 非測試類的手動任務同樣解析——標記語意不判讀描述內容。
+            ("- [ ] [M] 至外部服務放置金鑰\n", true, "至外部服務放置金鑰"),
             ("- [x] [P] 舊任務\n", false, "舊任務"),
             ("- [x] [P] [M] 混用\n", true, "混用"),
             ("- [ ] 寫解析器\n", false, "寫解析器"),
@@ -1198,7 +1200,7 @@ mod tests {
 
     #[test]
     fn flip_task_reports_marker_free_description() {
-        // spec「任務行的手動測試標記與解析」:顯示描述 SHALL 剝除全部前綴標記——
+        // spec「任務行的手動任務標記與解析」:顯示描述 SHALL 剝除全部前綴標記——
         // 勾選回報的 desc 與 parse() 的乾淨描述必須同一份真相。
         let rows: [(&str, &str); 3] = [
             ("- [ ] [M] 手測匯入\n", "手測匯入"),

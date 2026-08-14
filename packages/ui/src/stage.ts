@@ -49,10 +49,10 @@ export function changeStage(c: ChangeItem): Stage {
 }
 
 /**
- * 待手測判定的單一入口（spec desktop-app「看板卡片的待手測標示」）：寫碼任務
+ * 待手動判定的單一入口（spec desktop-app「看板卡片的待手動標示」）：寫碼任務
  * 全完成、僅餘未勾 `[M]` 時回傳剩餘手測項數，其餘回 0——含兩個不浮現的邊界：
  * remote 摘要缺寫碼進度欄位（undefined 不猜、不以全量計數代打），以及
- * codeTotal 為 0 的全手測變更（「寫碼全完成」的空真值不視為待手測）。
+ * codeTotal 為 0 的全手動變更（「寫碼全完成」的空真值不視為待手動）。
  */
 export function awaitingManualCount(c: ChangeItem): number {
   const remaining = c.totalTasks - c.completedTasks;

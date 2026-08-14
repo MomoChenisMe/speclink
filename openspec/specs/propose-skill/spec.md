@@ -2,7 +2,7 @@
 
 ## Purpose
 
-/speclink-propose 技能的輸入來源處理：--from-discussion 時跟隨討論的 Source doc 引用與疊加語意、--from-doc 以文件為直接輸入的入口，以及起草任務時替需人工執行的驗證標上手動測試標記。本 capability 保證提案能完整承接討論或文件裡已經談定的內容，不必使用者重述一遍。
+/speclink-propose 技能的輸入來源處理：--from-discussion 時跟隨討論的 Source doc 引用與疊加語意、--from-doc 以文件為直接輸入的入口，以及起草任務時替需使用者親手操作的項目標上手動任務標記。本 capability 保證提案能完整承接討論或文件裡已經談定的內容，不必使用者重述一遍。
 
 ## Requirements
 
@@ -75,14 +75,14 @@ code:
 -->
 
 ---
-### Requirement: 手動測試任務的起草標記
+### Requirement: 手動任務的起草標記
 
-propose 技能文字 SHALL 指示 tasks 起草時對人工驗收/手動測試類任務(agent 無法自動執行、需使用者實際操作驗證的任務)加 `[M]` 前綴標記,使寫碼與人工驗收的完成度得以分開判讀;自動化測試與寫碼任務 SHALL NOT 加此標記。指引 SHALL 以正誤例並列(對比對)呈現:正例(`[M]` 緊接 checkbox、編號在後)與誤例(編號在前)並列,附後果說明(引擎不認、任務被算成寫碼任務而卡住完成度)與「checkbox 後恰一個空格」規則,SHALL NOT 僅給正例。技能模板 SHALL 於 claude 與 codex 兩工具正典化生成,golden 對照涵蓋。
+propose 技能文字 SHALL 指示 tasks 起草時對手動任務(agent 無法代行、需使用者親手操作的任務——人工驗收、建立外部服務帳號、放置金鑰等,不限於測試)加 `[M]` 前綴標記,使寫碼與人工操作的完成度得以分開判讀;agent 做得到的任務(寫碼與自動化測試)SHALL NOT 加此標記。指引 SHALL 以正誤例並列(對比對)呈現:正例(`[M]` 緊接 checkbox、編號在後)與誤例(編號在前)並列,附後果說明(引擎不認、任務被算成寫碼任務而卡住完成度)與「checkbox 後恰一個空格」規則,SHALL NOT 僅給正例。技能模板 SHALL 於 claude 與 codex 兩工具正典化生成,golden 對照涵蓋。
 
-#### Scenario: 起草含人工驗收的 tasks
+#### Scenario: 起草含人工操作的 tasks
 
-- **WHEN** 提案含「開啟文件實際操作確認」類的人工驗收項,propose 流程產出 tasks.md
-- **THEN** 該任務行帶 `[M]` 前綴且緊接 checkbox(編號在標記之後),自動化測試與寫碼任務行不帶
+- **WHEN** 提案含「開啟文件實際操作確認」類的人工驗收項與「至外部服務建立帳號」類的人工前置項,propose 流程產出 tasks.md
+- **THEN** 該等任務行皆帶 `[M]` 前綴且緊接 checkbox(編號在標記之後),agent 可自行執行的寫碼與自動化測試行不帶
 
 #### Scenario: 對比對指引呈現
 
@@ -94,8 +94,9 @@ propose 技能文字 SHALL 指示 tasks 起草時對人工驗收/手動測試類
 - **WHEN** 執行 speclink update
 - **THEN** claude 與 codex 的 propose 技能檔含 `[M]` 對比對起草指引,與 golden 對照一致
 
-
 <!-- @trace
-source: manual-marker-placement-lint
-updated: 2026-08-12
+source: manual-marker-scope-beyond-tests
+updated: 2026-08-14
 -->
+
+---

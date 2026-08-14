@@ -95,7 +95,7 @@ export function ChangeCard({
             </Tooltip>
           );
         })()}
-        {/* 待手測章（spec「看板卡片的待手測標示」；design D5）：寫碼任務全完成、
+        {/* 待手動章（spec「看板卡片的待手動標示」；design D5）：寫碼任務全完成、
             尚有未勾 `[M]` 時浮現——判定歸 stage.ts 的 awaitingManualCount 單一
             入口（含 remote 缺欄位與 codeTotal=0 空真值兩個不浮現邊界），元件
             只讀結果。沿審查章的行內小章家族，不增加文字列。 */}

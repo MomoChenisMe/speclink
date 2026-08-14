@@ -425,7 +425,7 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
     if !counts.code_done() {
         bail!(crate::command::Refusal(format!(
             "change '{change}' has {}/{} code tasks complete — {} stamp \
-             requires every code task done ([M] manual-verification tasks excluded)",
+             requires every code task done ([M] manual tasks excluded)",
             counts.code_complete, counts.code_total, st.noun
         )));
     }
