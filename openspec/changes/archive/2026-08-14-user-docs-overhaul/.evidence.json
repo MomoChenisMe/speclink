@@ -1,0 +1,372 @@
+{
+  "version": 2,
+  "change": "user-docs-overhaul",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫 scripts/docs-screenshots.test.mjs 再實作 scripts/docs-screenshots.mjs，落實設計「D1：截圖以「腳本備份還原＋人工擷取」分工」與 spec「使用者文件以截圖呈現實際介面」的腳本條款：以 --dry-run 驗證備份路徑推導、示範 workspace 的產出清單、以及兩條分支判斷（狀態目錄原本不存在時還原階段應刪除而非搬回；偵測到 app 執行中應以非零結束且不搬移任何目錄）；測試不得實際搬移使用者目錄，一律以注入的假路徑與假偵測結果驗證。驗證：node --test scripts/docs-screenshots.test.mjs 全綠",
+      "files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+        "scripts/delivery-gate.test.mjs",
+        "scripts/docs-screenshots.mjs",
+        "scripts/docs-screenshots.test.mjs",
+        "scripts/signing-gate.mjs",
+        "scripts/signing-gate.test.mjs"
+      ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "7.1 落實 spec「文件內部連結全部可解析」：新增一道可重複執行的檢查，掃出全部使用者文件的 markdown 相對連結與圖片路徑並逐一確認檔案存在，任一斷鏈即以非零結束；納入 scripts 測試面。驗證：檢查對現況全綠；刻意改壞一個連結後確實以非零結束並指出該路徑",
+      "files": [
+        "scripts/docs-links.mjs",
+        "scripts/docs-links.test.mjs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 擷取六張 desktop 截圖，落實設計「D2：截圖清單固定為九張，中英共用」的 desktop 六張：先關閉 desktop app，執行截圖腳本的 setup，依提示把示範 workspace 加入 app，逐張擷取並存入 docs/assets/screenshots/——desktop-board.png（看板三欄與卡片）、desktop-change-drawer.png（變更詳情抽屜含任務與 artifacts）、desktop-spec.png（規格檢視）、desktop-discussion.png（討論記錄檢視）、desktop-archived.png（已封存檢視）、desktop-settings.png（設定含 Server 連線）；擷取時避開載入骨架與動畫中間態。完成後執行腳本的 restore。完成判準：六個檔案存在，且畫面內不含使用者任何真實 workspace 名稱、變更名稱或連線位址",
+      "files": [
+        "docs/assets/desktop-archived.png",
+        "docs/assets/desktop-board.png",
+        "docs/assets/desktop-change-drawer.png",
+        "docs/assets/desktop-discussion.png",
+        "docs/assets/desktop-settings.png",
+        "docs/assets/desktop-spec.png"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 擷取三張 server 後台截圖，補齊設計 D2 清單的 server 三張：依開發環境入口文件啟動 server，逐張擷取並存入 docs/assets/screenshots/——server-setup.png（首次 setup 畫面）、server-overview.png（後台總覽）、server-members.png（成員與 PAT 管理）；擷取時避開含真實 token 值的畫面（token 以遮蔽或示範值呈現）。完成判準：三個檔案存在，且畫面內不含可用的真實憑證",
+      "files": [
+        "docs/assets/server-members.png",
+        "docs/assets/server-overview.png",
+        "docs/assets/server-setup.png"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.1 重寫 workflow 中英兩份，落實 spec「工作流正典逐站列出技能與完成判準」：以單一結構列出 onboard、discuss、improve、propose、apply、ingest、quality、review、verify、archive 與 worktree 全部站別，每站含用途、對應 /speclink-* 技能名稱、完成判準與下一站；保留既有的討論結論分流、恢復路徑與呼叫層級章節；內嵌 desktop-board.png 與 desktop-change-drawer.png 說明看板與抽屜對應的流程位置。驗證：逐站檢查四項資訊皆在本文件內可找到，且技能名稱與 .claude/skills/ 下實際存在的目錄逐一對得上",
+      "files": [
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md",
+        "docs/assets/screenshots/desktop-archived.png",
+        "docs/assets/screenshots/desktop-board.png",
+        "docs/assets/screenshots/desktop-change-drawer.png",
+        "docs/assets/screenshots/desktop-discussion.png",
+        "docs/assets/screenshots/desktop-settings.png",
+        "docs/assets/screenshots/desktop-spec.png",
+        "docs/assets/screenshots/server-members.png",
+        "docs/assets/screenshots/server-overview.png",
+        "docs/assets/screenshots/server-setup.png"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "6.1 新增 docs/roadmap.zh-TW.md 與 docs/roadmap.md，落實 spec「使用者面路線圖與內部交付順序分列」與設計「D4：使用者面路線圖只寫方向、不寫日期」：涵蓋 Node SDK 發布、agent 工具整合（Copilot、MCP 等）、系統整合能力三條線，每條寫要解決什麼、目前到哪、可觀察的下一步；與實作重構路線圖互相連結並說明受眾差異；全文不得出現版本號或日期承諾。驗證：全文搜尋無版本號與日期形式的承諾字樣；兩版章節結構一致",
+      "files": [
+        "docs/implementation-refactor-roadmap.zh-TW.md",
+        "docs/roadmap.md",
+        "docs/roadmap.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 重寫 README 中英兩份，落實設計「D3：文件分層與各自的單一責任」的入口層與 spec「使用者文件以截圖呈現實際介面」。**保留**（正典必留）：品牌圖片、標語、語言切換、Rust SDD 引擎與工具平台定位、共用 change／artifact／task／verify／archive 語意、Local Repo 與 Remote Store 雙路徑、Spectra App 2.3.1 起源、單一份目前狀態摘要、最短流程心智模型、快速開始入口、安裝章節（桌面三平台下載入口與 CLI 一行安裝——受 `release-signing-and-channels` 的 spec「安裝通路文件與發布狀態誠實化」約束，SHALL NOT 刪除或降級為連結）、文件地圖（含新增的路線圖）；並於定位段落後內嵌至少一張 desktop 截圖。**新增**：安裝章節補上與桌面對等的 server 一行啟動表（npx／Docker／Compose 三種形態各一行指令，細節連往 Server 部署），使讀者在 README 就看得出三條路都存在。**移出**（違反正典「各文件以連結導向下一層細節」而被 README 複製的下層細節，改為一行摘要＋連結，內容併入工作流正典）：`improve` 小節整段的操作細節（掃描前收斂範圍、開場讀已封存討論的 Ruled out 等）、品質站小節的六列比較表與四段蓋章時序／內容指紋凍結／複驗必修集合遞減規則、開發章節的逐條測試指令（併入開發環境入口文件）。**消重**：目前狀態的引言區塊與「目前能力」章節兩處重疊敘述合併為一份摘要，逐項證據一律連往產品能力狀態文件。**校正**：文件地圖結尾「進階 verb-contract 使用者指南尚未建立」的陳述已不成立（該文件存在），改為指向它。**修正既有漂移**：中英兩版目前行數不等（189 對 202），改寫後兩版 H2 章節集合與順序、截圖引用集合須一致。驗證：並列比對兩版的 H2 標題序列與截圖引用逐項相同；全文搜尋確認移出的三類細節不再出現於 README，且工作流正典中可找到對應內容",
+      "files": [
+        "README.en.md",
+        "README.md",
+        "docs/development.md",
+        "docs/development.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.1 重寫 product-status 中英兩份，落實 spec「本地與遠端能力對照集中呈現」：加入本地與遠端逐項能力對照表、刷新查核日期、移除已不成立的 verb-contract 文件缺口記載、依實際交付狀態更新各能力列。驗證：對照表每一列的狀態主張都能指到版本庫中的證據（測試、入口或規格），且全文搜尋無「docs/verb-contract.md 不存在」類的陳述",
+      "files": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.2 重寫 getting-started 中英兩份：只承載本地第一輪可完成的流程（init、提案、實作、檢查、封存），每步標明預期輸出，遇選用分支連到工作流文件；不重複 README 的定位內容。驗證：照文件逐步實跑一輪，每步的預期輸出與實際相符",
+      "files": [
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.3 重寫 remote-getting-started 中英兩份：從 server setup、membership、登入到 Desktop 與 CLI 連線與失聯恢復，內嵌 server-setup.png；只寫已驗證可走的入口。驗證：照文件逐步實跑，每步入口確實存在",
+      "files": [
+        "docs/remote-getting-started.md",
+        "docs/remote-getting-started.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.2 重寫 configuration 與 verb-contract 中英四份：configuration 只回答設定欄位歸屬與意義（Local 與 Remote 分列），verb-contract 只回答動詞與旗標契約；兩者皆移除與其他文件重複的流程敘述，改以連結導向。驗證：逐份確認無與 workflow 或 getting-started 重複的流程段落",
+      "files": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.3 重寫 sdk-node 與 development 中英四份：sdk-node 只回答 Node SDK 介面並維持發布狀態的誠實陳述，development 只回答開發環境與本機建置入口。驗證：sdk-node 全文與 docs/product-status 的 Node SDK 列陳述一致；development 所列指令實跑可用",
+      "files": [
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.4 重寫 server-deployment、server-store-drivers、server-backup 三份（維持僅中文）：分別只回答部署與升級、driver 選型前提、備份還原操作；內嵌 server-overview.png 與 server-members.png 於部署文件的驗收段落。驗證：三份文件的職責無互相重疊，所列指令與 speclink-server --help 的實際入口相符",
+      "files": [
+        "docs/server-deployment.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "7.2 中英對等驗收，落實 spec「中英文文件保持結構與事實對等」與設計「D5：中英對等以「同結構、同事實」定義」：逐組成對文件（README、getting-started、workflow、product-status、roadmap）比對 H2 章節標題序列與截圖引用集合，確認數量與順序一致、事實主張無互相矛盾；並確認繁體中文散文使用正典詞彙（轉為變更、已轉出變更、封存），引擎動詞只出現在 code span。驗證：逐組列出比對結果全部一致；以 speclink language show 的避免詞清單掃過繁中文件，命中者皆位於 code span 內",
+      "files": [
+        "scripts/docs-parity.test.mjs"
+      ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "8.1 落實 spec「使用者文件載明本地產物的 OpenSpec 結構相容性」：README 中英兩份與入門教學中英兩份補上本地產物沿用 OpenSpec 目錄結構的說明，載明純 Markdown／YAML、可不經 Speclink 讀寫、Git diff 看得見，並列出 Speclink 的兩項擴充。驗證：四份文件皆可搜到目錄結構說明，且入門教學含目錄樹範例",
+      "files": [
+        "docs/platform-architecture.zh-TW.md",
+        "scripts/docs-ste.mjs",
+        "scripts/docs-ste.test.mjs"
+      ]
+    },
+    {
+      "task_id": "23",
+      "task_desc": "8.6 落實 spec「使用者文件採簡化技術英文的寫作紀律」：逐份通讀全部使用者文件（中英兩版與 zh-TW 專屬的 server 三份），依 STE 紀律調整散文——拆長句、改主動語態、固定動詞、把並列項改成清單、段落先講結果。不以腳本代行。驗證：逐份記錄通讀後的調整重點，並確認程式碼區塊、路徑與識別符未被改動",
+      "files": [
+        "docs/server-backup.zh-TW.md",
+        "docs/server-store-drivers.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZTJHVY56Y5VKTE6C2Q9AJKT",
+      "taskDesc": "1.1 先寫 scripts/docs-screenshots.test.mjs 再實作 scripts/docs-screenshots.mjs，落實設計「D1：截圖以「腳本備份還原＋人工擷取」分工」與 spec「使用者文件以截圖呈現實際介面」的腳本條款：以 --dry-run 驗證備份路徑推導、示範 workspace 的產出清單、以及兩條分支判斷（狀態目錄原本不存在時還原階段應刪除而非搬回；偵測到 app 執行中應以非零結束且不搬移任何目錄）；測試不得實際搬移使用者目錄，一律以注入的假路徑與假偵測結果驗證。驗證：node --test scripts/docs-screenshots.test.mjs 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "touchedFiles": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+        "scripts/delivery-gate.test.mjs",
+        "scripts/docs-screenshots.mjs",
+        "scripts/docs-screenshots.test.mjs",
+        "scripts/signing-gate.mjs",
+        "scripts/signing-gate.test.mjs"
+      ],
+      "recordedAt": "2026-08-12T11:54:05Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY55RCCDXSV8VV2BR78",
+      "taskDesc": "7.1 落實 spec「文件內部連結全部可解析」：新增一道可重複執行的檢查，掃出全部使用者文件的 markdown 相對連結與圖片路徑並逐一確認檔案存在，任一斷鏈即以非零結束；納入 scripts 測試面。驗證：檢查對現況全綠；刻意改壞一個連結後確實以非零結束並指出該路徑",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "touchedFiles": [
+        "scripts/docs-links.mjs",
+        "scripts/docs-links.test.mjs"
+      ],
+      "recordedAt": "2026-08-12T11:59:54Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY5FVFXB35P81CTE8TC",
+      "taskDesc": "2.1 擷取六張 desktop 截圖，落實設計「D2：截圖清單固定為九張，中英共用」的 desktop 六張：先關閉 desktop app，執行截圖腳本的 setup，依提示把示範 workspace 加入 app，逐張擷取並存入 docs/assets/screenshots/——desktop-board.png（看板三欄與卡片）、desktop-change-drawer.png（變更詳情抽屜含任務與 artifacts）、desktop-spec.png（規格檢視）、desktop-discussion.png（討論記錄檢視）、desktop-archived.png（已封存檢視）、desktop-settings.png（設定含 Server 連線）；擷取時避開載入骨架與動畫中間態。完成後執行腳本的 restore。完成判準：六個檔案存在，且畫面內不含使用者任何真實 workspace 名稱、變更名稱或連線位址",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "touchedFiles": [
+        "docs/assets/desktop-archived.png",
+        "docs/assets/desktop-board.png",
+        "docs/assets/desktop-change-drawer.png",
+        "docs/assets/desktop-discussion.png",
+        "docs/assets/desktop-settings.png",
+        "docs/assets/desktop-spec.png"
+      ],
+      "recordedAt": "2026-08-12T14:07:19Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY51MN5X2888KMBRWW6",
+      "taskDesc": "2.2 擷取三張 server 後台截圖，補齊設計 D2 清單的 server 三張：依開發環境入口文件啟動 server，逐張擷取並存入 docs/assets/screenshots/——server-setup.png（首次 setup 畫面）、server-overview.png（後台總覽）、server-members.png（成員與 PAT 管理）；擷取時避開含真實 token 值的畫面（token 以遮蔽或示範值呈現）。完成判準：三個檔案存在，且畫面內不含可用的真實憑證",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "touchedFiles": [
+        "docs/assets/server-members.png",
+        "docs/assets/server-overview.png",
+        "docs/assets/server-setup.png"
+      ],
+      "recordedAt": "2026-08-12T14:20:44Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY50VKES9ANNA4G57KE",
+      "taskDesc": "4.1 重寫 workflow 中英兩份，落實 spec「工作流正典逐站列出技能與完成判準」：以單一結構列出 onboard、discuss、improve、propose、apply、ingest、quality、review、verify、archive 與 worktree 全部站別，每站含用途、對應 /speclink-* 技能名稱、完成判準與下一站；保留既有的討論結論分流、恢復路徑與呼叫層級章節；內嵌 desktop-board.png 與 desktop-change-drawer.png 說明看板與抽屜對應的流程位置。驗證：逐站檢查四項資訊皆在本文件內可找到，且技能名稱與 .claude/skills/ 下實際存在的目錄逐一對得上",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md",
+        "docs/assets/screenshots/desktop-archived.png",
+        "docs/assets/screenshots/desktop-board.png",
+        "docs/assets/screenshots/desktop-change-drawer.png",
+        "docs/assets/screenshots/desktop-discussion.png",
+        "docs/assets/screenshots/desktop-settings.png",
+        "docs/assets/screenshots/desktop-spec.png",
+        "docs/assets/screenshots/server-members.png",
+        "docs/assets/screenshots/server-overview.png",
+        "docs/assets/screenshots/server-setup.png"
+      ],
+      "recordedAt": "2026-08-13T08:18:35Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY536P8CTXAX48A3ZJH",
+      "taskDesc": "6.1 新增 docs/roadmap.zh-TW.md 與 docs/roadmap.md，落實 spec「使用者面路線圖與內部交付順序分列」與設計「D4：使用者面路線圖只寫方向、不寫日期」：涵蓋 Node SDK 發布、agent 工具整合（Copilot、MCP 等）、系統整合能力三條線，每條寫要解決什麼、目前到哪、可觀察的下一步；與實作重構路線圖互相連結並說明受眾差異；全文不得出現版本號或日期承諾。驗證：全文搜尋無版本號與日期形式的承諾字樣；兩版章節結構一致",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "docs/implementation-refactor-roadmap.zh-TW.md",
+        "docs/roadmap.md",
+        "docs/roadmap.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-13T08:21:17Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY5RC44DHJGECSMPC44",
+      "taskDesc": "3.1 重寫 README 中英兩份，落實設計「D3：文件分層與各自的單一責任」的入口層與 spec「使用者文件以截圖呈現實際介面」。**保留**（正典必留）：品牌圖片、標語、語言切換、Rust SDD 引擎與工具平台定位、共用 change／artifact／task／verify／archive 語意、Local Repo 與 Remote Store 雙路徑、Spectra App 2.3.1 起源、單一份目前狀態摘要、最短流程心智模型、快速開始入口、安裝章節（桌面三平台下載入口與 CLI 一行安裝——受 `release-signing-and-channels` 的 spec「安裝通路文件與發布狀態誠實化」約束，SHALL NOT 刪除或降級為連結）、文件地圖（含新增的路線圖）；並於定位段落後內嵌至少一張 desktop 截圖。**新增**：安裝章節補上與桌面對等的 server 一行啟動表（npx／Docker／Compose 三種形態各一行指令，細節連往 Server 部署），使讀者在 README 就看得出三條路都存在。**移出**（違反正典「各文件以連結導向下一層細節」而被 README 複製的下層細節，改為一行摘要＋連結，內容併入工作流正典）：`improve` 小節整段的操作細節（掃描前收斂範圍、開場讀已封存討論的 Ruled out 等）、品質站小節的六列比較表與四段蓋章時序／內容指紋凍結／複驗必修集合遞減規則、開發章節的逐條測試指令（併入開發環境入口文件）。**消重**：目前狀態的引言區塊與「目前能力」章節兩處重疊敘述合併為一份摘要，逐項證據一律連往產品能力狀態文件。**校正**：文件地圖結尾「進階 verb-contract 使用者指南尚未建立」的陳述已不成立（該文件存在），改為指向它。**修正既有漂移**：中英兩版目前行數不等（189 對 202），改寫後兩版 H2 章節集合與順序、截圖引用集合須一致。驗證：並列比對兩版的 H2 標題序列與截圖引用逐項相同；全文搜尋確認移出的三類細節不再出現於 README，且工作流正典中可找到對應內容",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "README.en.md",
+        "README.md",
+        "docs/development.md",
+        "docs/development.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-13T08:25:06Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY5Z800SMR0JVG25MRY",
+      "taskDesc": "5.1 重寫 product-status 中英兩份，落實 spec「本地與遠端能力對照集中呈現」：加入本地與遠端逐項能力對照表、刷新查核日期、移除已不成立的 verb-contract 文件缺口記載、依實際交付狀態更新各能力列。驗證：對照表每一列的狀態主張都能指到版本庫中的證據（測試、入口或規格），且全文搜尋無「docs/verb-contract.md 不存在」類的陳述",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-13T08:29:27Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY5VBWSCM201X8ZSQ25",
+      "taskDesc": "3.2 重寫 getting-started 中英兩份：只承載本地第一輪可完成的流程（init、提案、實作、檢查、封存），每步標明預期輸出，遇選用分支連到工作流文件；不重複 README 的定位內容。驗證：照文件逐步實跑一輪，每步的預期輸出與實際相符",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-13T08:37:02Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY5HB4405BQ9VK1CZCE",
+      "taskDesc": "3.3 重寫 remote-getting-started 中英兩份：從 server setup、membership、登入到 Desktop 與 CLI 連線與失聯恢復，內嵌 server-setup.png；只寫已驗證可走的入口。驗證：照文件逐步實跑，每步入口確實存在",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "docs/remote-getting-started.md",
+        "docs/remote-getting-started.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-13T08:40:31Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY5HNVFA2D77J55QYQX",
+      "taskDesc": "5.2 重寫 configuration 與 verb-contract 中英四份：configuration 只回答設定欄位歸屬與意義（Local 與 Remote 分列），verb-contract 只回答動詞與旗標契約；兩者皆移除與其他文件重複的流程敘述，改以連結導向。驗證：逐份確認無與 workflow 或 getting-started 重複的流程段落",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-13T08:43:28Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY5BR80FWXBGXCFS446",
+      "taskDesc": "5.3 重寫 sdk-node 與 development 中英四份：sdk-node 只回答 Node SDK 介面並維持發布狀態的誠實陳述，development 只回答開發環境與本機建置入口。驗證：sdk-node 全文與 docs/product-status 的 Node SDK 列陳述一致；development 所列指令實跑可用",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-13T08:48:08Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY52J9TBBBVMG4Z18C9",
+      "taskDesc": "5.4 重寫 server-deployment、server-store-drivers、server-backup 三份（維持僅中文）：分別只回答部署與升級、driver 選型前提、備份還原操作；內嵌 server-overview.png 與 server-members.png 於部署文件的驗收段落。驗證：三份文件的職責無互相重疊，所列指令與 speclink-server --help 的實際入口相符",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "docs/server-deployment.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-13T08:48:54Z"
+    },
+    {
+      "taskId": "tsk_01KZTJHVY5NNE5HBM6QYA7T8G2",
+      "taskDesc": "7.2 中英對等驗收，落實 spec「中英文文件保持結構與事實對等」與設計「D5：中英對等以「同結構、同事實」定義」：逐組成對文件（README、getting-started、workflow、product-status、roadmap）比對 H2 章節標題序列與截圖引用集合，確認數量與順序一致、事實主張無互相矛盾；並確認繁體中文散文使用正典詞彙（轉為變更、已轉出變更、封存），引擎動詞只出現在 code span。驗證：逐組列出比對結果全部一致；以 speclink language show 的避免詞清單掃過繁中文件，命中者皆位於 code span 內",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "scripts/docs-parity.test.mjs"
+      ],
+      "recordedAt": "2026-08-13T08:51:46Z"
+    },
+    {
+      "taskId": "tsk_01KZYXC18E11QCYMBW161KVYVV",
+      "taskDesc": "8.1 落實 spec「使用者文件載明本地產物的 OpenSpec 結構相容性」：README 中英兩份與入門教學中英兩份補上本地產物沿用 OpenSpec 目錄結構的說明，載明純 Markdown／YAML、可不經 Speclink 讀寫、Git diff 看得見，並列出 Speclink 的兩項擴充。驗證：四份文件皆可搜到目錄結構說明，且入門教學含目錄樹範例",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "docs/platform-architecture.zh-TW.md",
+        "scripts/docs-ste.mjs",
+        "scripts/docs-ste.test.mjs"
+      ],
+      "recordedAt": "2026-08-14T01:14:49Z"
+    },
+    {
+      "taskId": "tsk_01KZYXC1FTJVGN50HYWBANVQFG",
+      "taskDesc": "8.6 落實 spec「使用者文件採簡化技術英文的寫作紀律」：逐份通讀全部使用者文件（中英兩版與 zh-TW 專屬的 server 三份），依 STE 紀律調整散文——拆長句、改主動語態、固定動詞、把並列項改成清單、段落先講結果。不以腳本代行。驗證：逐份記錄通讀後的調整重點，並確認程式碼區塊、路徑與識別符未被改動",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b6f28b0ffc413b9c25018f3c914ebdeb91fe5b1c",
+      "touchedFiles": [
+        "docs/server-backup.zh-TW.md",
+        "docs/server-store-drivers.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-14T01:47:49Z"
+    }
+  ]
+}

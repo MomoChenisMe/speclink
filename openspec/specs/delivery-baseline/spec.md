@@ -147,120 +147,27 @@ code:
 ---
 ### Requirement: CI 執行完整測試
 
-主 CI SHALL 在三個作業系統（Windows、macOS、Linux）上執行 `packages/ui`、`apps/desktop`、`apps/server-web` 測試、Server Web production build 與 `cargo test --workspace`，而非僅 build 與 smoke；測試與 Web build 步驟 SHALL NOT 設定 `continue-on-error`。Rust 測試 SHALL 在 Web production build 後執行；既有 Node SDK 與其他 delivery gate SHALL 保持啟用。
+主 CI SHALL 在三個作業系統（Windows、macOS、Linux）上執行 `scripts` 測試面、`packages/ui`、`apps/desktop`、`apps/server-web` 測試、Server Web production build 與 `cargo test --workspace`，而非僅 build 與 smoke；測試與 Web build 步驟 SHALL NOT 設定 `continue-on-error`。`scripts` 測試面守的是設定檔本身的契約（workflow 步驟順序、release 產物組裝、簽章閘門），SHALL 排在其他測試面之前，且其執行方式 SHALL 相容於本 workflow 釘選的 Node 版本與三平台的預設 shell——glob 於傳入 Node 之前完成展開。Rust 測試 SHALL 在 Web production build 後執行；既有 Node SDK 與其他 delivery gate SHALL 保持啟用。
 
 #### Scenario: 測試失敗使 CI 紅燈
 
-- **WHEN** 任一平台上任一 React workspace 測試、Web production build 或 Rust 測試失敗
+- **WHEN** 任一平台上任一 `scripts` 測試、React workspace 測試、Web production build 或 Rust 測試失敗
 - **THEN** 該 CI workflow 以失敗狀態結束，不得標記為允許失敗
 
 #### Scenario: push 觸發完整測試
 
 - **WHEN** push 或 pull request 觸發主 CI
-- **THEN** workflow 依序完成三個 React workspace 測試、Server Web production build與 Rust workspace 測試，全數通過才回報成功
+- **THEN** workflow 依序完成 `scripts` 測試面、三個 React workspace 測試、Server Web production build 與 Rust workspace 測試，全數通過才回報成功
+
+#### Scenario: scripts 測試面在釘選 Node 版本上實際執行
+
+- **WHEN** 於本 workflow 釘選的 Node 版本與三平台預設環境執行 `scripts` 測試步驟
+- **THEN** 該步驟實際載入並執行全部 `scripts` 測試檔，不因 glob 未展開而以「找不到檔案」結束
 
 
 <!-- @trace
-source: web-service-navigation-redesign
-updated: 2026-07-25
-code:
-  - .dockerignore
-  - .github/workflows/ci.yml
-  - .github/workflows/release.yml
-  - Cargo.lock
-  - apps/desktop/src/index.css
-  - apps/server-web/index.html
-  - apps/server-web/package.json
-  - apps/server-web/src/App.tsx
-  - apps/server-web/src/__tests__/a11y.test.tsx
-  - apps/server-web/src/__tests__/account.test.tsx
-  - apps/server-web/src/__tests__/activate.test.tsx
-  - apps/server-web/src/__tests__/admin.test.tsx
-  - apps/server-web/src/__tests__/app.test.tsx
-  - apps/server-web/src/__tests__/build.test.ts
-  - apps/server-web/src/__tests__/invite.test.tsx
-  - apps/server-web/src/__tests__/setup.test.tsx
-  - apps/server-web/src/api/client.ts
-  - apps/server-web/src/app/context.tsx
-  - apps/server-web/src/assets/logo-mark.png
-  - apps/server-web/src/assets/speclink-wordmark.png
-  - apps/server-web/src/components/AdminNav.tsx
-  - apps/server-web/src/components/Field.tsx
-  - apps/server-web/src/components/LogoutButton.tsx
-  - apps/server-web/src/components/RouteErrorBoundary.tsx
-  - apps/server-web/src/components/SkipLink.tsx
-  - apps/server-web/src/components/Wordmark.tsx
-  - apps/server-web/src/index.css
-  - apps/server-web/src/layouts/AccountLayout.tsx
-  - apps/server-web/src/layouts/AdminLayout.tsx
-  - apps/server-web/src/layouts/FocusLayout.tsx
-  - apps/server-web/src/lib/formError.ts
-  - apps/server-web/src/lib/returnTo.ts
-  - apps/server-web/src/lib/useAsync.ts
-  - apps/server-web/src/lib/useFocusMain.ts
-  - apps/server-web/src/lib/useMediaQuery.ts
-  - apps/server-web/src/main.tsx
-  - apps/server-web/src/pages/AccountPage.tsx
-  - apps/server-web/src/pages/ActivatePage.tsx
-  - apps/server-web/src/pages/InvitePage.tsx
-  - apps/server-web/src/pages/LoginPage.tsx
-  - apps/server-web/src/pages/SetupPage.tsx
-  - apps/server-web/src/pages/admin/AdminSection.tsx
-  - apps/server-web/src/pages/admin/AuditPage.tsx
-  - apps/server-web/src/pages/admin/CredentialsPage.tsx
-  - apps/server-web/src/pages/admin/DataPage.tsx
-  - apps/server-web/src/pages/admin/OverviewPage.tsx
-  - apps/server-web/src/pages/admin/RegistryPage.tsx
-  - apps/server-web/src/pages/admin/SystemPage.tsx
-  - apps/server-web/src/pages/admin/UsersPage.tsx
-  - apps/server-web/src/pages/admin/states.tsx
-  - apps/server-web/src/pages/admin/stubs.tsx
-  - apps/server-web/src/routes/AppRoutes.tsx
-  - apps/server-web/src/vite-env.d.ts
-  - apps/server-web/tsconfig.json
-  - apps/server-web/vite.config.ts
-  - apps/server-web/vitest.config.ts
-  - apps/server-web/vitest.setup.ts
-  - crates/speclink-server/Cargo.toml
-  - crates/speclink-server/Dockerfile
-  - crates/speclink-server/src/admin.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/assets.rs
-  - crates/speclink-server/src/lib.rs
-  - crates/speclink-server/src/setup.rs
-  - crates/speclink-server/src/web.rs
-  - crates/speclink-server/tests/admin_api.rs
-  - crates/speclink-server/tests/admin_data.rs
-  - crates/speclink-server/tests/admin_e2e.rs
-  - crates/speclink-server/tests/admin_pages.rs
-  - crates/speclink-server/tests/admin_system.rs
-  - crates/speclink-server/tests/admin_three_entry.rs
-  - crates/speclink-server/tests/admin_web_api.rs
-  - crates/speclink-server/tests/backup_e2e.rs
-  - crates/speclink-server/tests/device_e2e.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/phase2_chain.rs
-  - crates/speclink-server/tests/setup_flow.rs
-  - crates/speclink-server/tests/web_account.rs
-  - crates/speclink-server/tests/web_activate.rs
-  - crates/speclink-server/tests/web_assets.rs
-  - crates/speclink-server/tests/web_device_sessions.rs
-  - crates/speclink-server/tests/web_invite.rs
-  - crates/speclink-server/tests/web_session.rs
-  - crates/speclink-server/tests/web_setup.rs
-  - docs/remote-getting-started.md
-  - docs/remote-getting-started.zh-TW.md
-  - docs/server-deployment.zh-TW.md
-  - package-lock.json
-  - package.json
-  - packages/ui/src/__tests__/table.test.tsx
-  - packages/ui/src/__tests__/theme.test.ts
-  - packages/ui/src/components/ui/label.tsx
-  - packages/ui/src/components/ui/table.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/theme.css
-  - scripts/delivery-gate.test.mjs
-  - scripts/remote-docs.test.mjs
+source: release-signing-and-channels
+updated: 2026-08-14
 -->
 
 ---
