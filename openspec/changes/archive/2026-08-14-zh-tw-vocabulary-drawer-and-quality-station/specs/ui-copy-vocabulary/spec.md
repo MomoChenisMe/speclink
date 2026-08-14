@@ -10,6 +10,8 @@
 
 此面內的繁體中文文案 SHALL NOT 出現 `openspec/LANGUAGE.md` 各詞條 `avoid` 欄列出的詞。約束標的 SHALL 限於中日韓文字構成的詞彙字串；ASCII 識別符（型別名、函式名、變數名、CSS 類名、i18n 訊息鍵名）SHALL NOT 因此受限，亦 SHALL NOT 因本約束而更名。
 
+`avoid` 欄帶括號語境限定的條目 SHALL 依限定語境分流：限定為「使用者可見文案中」者，其限定範圍即守門面本身，SHALL 剝掉限定後納入約束；其他語境限定（如「此概念上」「分頁名中」「pagination 語意上」「中文散文中」）綁在比守門面更窄的語境，機械比對必然誤命中，SHALL NOT 納入機械守門——該類條目仍為正典的一部分，由撰稿時人工判斷。
+
 英文文案 SHALL NOT 受此約束——`openspec/LANGUAGE.md` 的適用範圍本即排除英文 CLI 輸出與英文介面字串。
 
 #### Scenario: 繁中文案使用正典詞
@@ -35,6 +37,11 @@
 | `"this workspace cannot settle quality-station tickets"` | 否 | 英文文案不在適用範圍 |
 | `RichDetailDrawer` | 否 | ASCII 識別符，非繁中詞彙 |
 | `"tour.navUsers.hint"` | 否 | i18n 鍵名為 ASCII 識別符 |
+
+#### Scenario: 語境限定的 avoid 條目依限定分流
+
+- **WHEN** 解析 `openspec/LANGUAGE.md` 各詞條 `avoid` 欄組成守門詞集
+- **THEN** 限定為「使用者可見文案中」的條目（如「覆審（使用者可見文案中）」）剝掉限定後入集，其他語境限定的條目（如「背景（此概念上）」「分頁（pagination 語意上）」）不入集
 
 ### Requirement: 詞彙守門測試釘死使用者可見文案面
 
