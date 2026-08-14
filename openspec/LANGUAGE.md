@@ -9,8 +9,8 @@
 - 一個概念一個詞：同義詞在 avoid 列出，舊文案陸續汰換；歷史 artifacts（已封存的討論／變更）不回改。
 - 工程詞（meta 欄位名、kebab-case、slug 等）不出現在使用者可見文案，只出現在給 agent 的文件。
   - **明文例外**：設定檔檔名（config.yaml、.speclink.yaml）得直出作為設定頁的頁簽標籤——與本原則刻意抵觸，經使用者裁定：開發者工具中檔案即最直觀的心智模型，人話標籤（如「專案設定／整合」）反而多一層對應。僅限頁簽標籤；其他使用者可見文案仍禁工程詞（desktop-window-and-settings-polish，2026-07-08）。
-  - **明文例外**：討論（discuss）的識別錨點得以 slug（kebab-case 檔名）直出——與本原則刻意抵觸，經使用者裁定：slug 是執行 CLI 動詞（如 `--from-discussion <slug>`）的把手，開發者工具中檔名即最直觀且可複製的識別，與 change 卡以名稱為題對稱；topic 一律降為描述／副標。僅限討論識別錨點（討論全卡標題、已轉出細列首行、討論抽屜標題、系統匣討論項父標籤、變更詳情抽屜與已封存抽屜的來源討論籤及其溢出浮層）與其複製鈕／複製動作（含系統匣的「複製 slug」）；其他使用者可見文案仍禁工程詞（desktop-card-identity，2026-07-09；範圍擴充：desktop-ux-polish，2026-07-11；範圍擴充：tray-copy-and-panel-mode，2026-07-16；範圍擴充：change-drawer-header-redesign，2026-08-04）。
-  - **明文例外**：「worktree」得直出於 worktree 流程的使用者可見文案——與本原則刻意抵觸，經使用者裁定：worktree 是 git 的原生概念，本專案的使用者就是 git 使用者，直出即最短且無歧義的心智模型；任何中譯（「工作樹」「副本工作區」）都要多一層對應，且與使用者實際輸入的 `git worktree` 指令對不上。先例為 config.yaml 頁簽與討論 slug（同一條「開發者工具中原生詞即最直觀」的裁定線）。適用範圍：worktree 流程的使用者可見文案，含 `speclink list` 的 `[worktree]` 標示、兩個 worktree 技能的說明與輸出，以及後續 desktop 的卡片 worktree 標示與抽屜分支資訊；其他使用者可見文案仍禁工程詞（討論 worktree-parallel-apply，2026-08-04）。
+  - **明文例外**：討論（discuss）的識別錨點得以 slug（kebab-case 檔名）直出——與本原則刻意抵觸，經使用者裁定：slug 是執行 CLI 動詞（如 `--from-discussion <slug>`）的把手，開發者工具中檔名即最直觀且可複製的識別，與 change 卡以名稱為題對稱；topic 一律降為描述／副標。僅限討論識別錨點（討論全卡標題、已轉出細列首行、討論詳情面板標題、系統匣討論項父標籤、變更詳情面板與已封存詳情面板的來源討論籤及其溢出浮層）與其複製鈕／複製動作（含系統匣的「複製 slug」）；其他使用者可見文案仍禁工程詞（desktop-card-identity，2026-07-09；範圍擴充：desktop-ux-polish，2026-07-11；範圍擴充：tray-copy-and-panel-mode，2026-07-16；範圍擴充：change-drawer-header-redesign，2026-08-04）。
+  - **明文例外**：「worktree」得直出於 worktree 流程的使用者可見文案——與本原則刻意抵觸，經使用者裁定：worktree 是 git 的原生概念，本專案的使用者就是 git 使用者，直出即最短且無歧義的心智模型；任何中譯（「工作樹」「副本工作區」）都要多一層對應，且與使用者實際輸入的 `git worktree` 指令對不上。先例為 config.yaml 頁簽與討論 slug（同一條「開發者工具中原生詞即最直觀」的裁定線）。適用範圍：worktree 流程的使用者可見文案，含 `speclink list` 的 `[worktree]` 標示、兩個 worktree 技能的說明與輸出，以及後續 desktop 的卡片 worktree 標示與詳情面板分支資訊；其他使用者可見文案仍禁工程詞（討論 worktree-parallel-apply，2026-08-04）。
 
 ## 詞彙
 
@@ -46,7 +46,7 @@
 
 ### 衍生變更
 
-- **definition**: 一份討論轉出的變更清單（討論抽屜的分頁名；引擎欄位 `promoted_to`）。
+- **definition**: 一份討論轉出的變更清單（討論詳情面板的分頁名；引擎欄位 `promoted_to`）。
 - **avoid**: 促轉分頁、子 change（使用者可見文案中）
 - **why**: 分頁內容是「生出來的變更們」，不是動作本身。
 
@@ -58,7 +58,7 @@
 
 ### 背景
 
-- **definition**: 討論記錄的 Context 區段（討論抽屜分頁名）。
+- **definition**: 討論記錄的 Context 區段（討論詳情面板分頁名）。
 - **avoid**: 脈絡（分頁名中）
 - **why**: 較常用的日常詞。
 
@@ -84,7 +84,7 @@
 
 - **definition**: 清單分批瀏覽（pagination）。artifacts 散文稱「換頁」；UI 文案不出現「換頁／分頁」名詞，僅用「上一頁」「下一頁」「第 N／M 頁」。
 - **avoid**: 分頁（pagination 語意上）
-- **why**: 「分頁」已被抽屜 tabs 語意佔用（提案／設計／任務／規格分頁），同詞兩義會使規格與討論記錄歧義。2026-07-11 討論「specs-archive-pagination」定案。
+- **why**: 「分頁」已被詳情面板 tabs 語意佔用（提案／設計／任務／規格分頁），同詞兩義會使規格與討論記錄歧義。2026-07-11 討論「specs-archive-pagination」定案。
 
 ### 專案代號
 
@@ -136,19 +136,19 @@
 
 ### 審查
 
-- **definition**: 對 change 實作的 code review——工藝品質檢查（repo 慣例＋code smells＋bug 獵捕），與「驗證」並行的可選品質站。對應 skill `/speclink-review` 與引擎動詞 `review`。狀態詞：審查中（工單未結）、已審查（蓋章）、已審查·其後有變動（失效降級）、曾審查未通過（封存時工單無章）。
+- **definition**: 對 change 實作的 code review——工藝品質檢查（repo 慣例＋code smells＋bug 獵捕），與「驗證」並行的可選品質關卡。對應 skill `/speclink-review` 與引擎動詞 `review`。狀態詞：審查中（工單未結）、已審查（蓋章）、已審查·其後有變動（失效降級）、曾審查未通過（封存時工單無章）。
 - **avoid**: code review、代碼審查、覆審（使用者可見文案中）
-- **why**: 「審查」單詞直說動作，與「驗證」形成對仗的兩個品質站——一管工藝、一管合規。2026-07-31 討論「code-review-stage」定案。
+- **why**: 「審查」單詞直說動作，與「驗證」形成對仗的兩個品質關卡——一管工藝、一管合規。2026-07-31 討論「code-review-stage」定案。
 
 ### 驗證
 
-- **definition**: 對 change 實作的 spec 合規檢查（verify 三維度：完整、正確、一致），與「審查」並行的可選品質站。對應 skill `/speclink-verify`。狀態詞同構：驗證中、已驗證、已驗證·其後有變動、曾驗證未通過。
+- **definition**: 對 change 實作的 spec 合規檢查（verify 三維度：完整、正確、一致），與「審查」並行的可選品質關卡。對應 skill `/speclink-verify`。狀態詞同構：驗證中、已驗證、已驗證·其後有變動、曾驗證未通過。
 - **avoid**: verify（中文散文中）、校驗
 - **why**: 與「審查」對仗；兩站在看板上的章與狀態詞必須同構，使用者才能以同一心智模型讀懂兩種標示。2026-07-31 討論「code-review-stage」定案。
 
 ### 手動測試
 
-- **definition**: agent 無法代行、由使用者實際操作驗證的任務——tasks.md 以 `[M]` 前綴標記,任務列以「手動測試」徽章呈現。品質站與失效判定的寫碼任務計數把這類任務排除在外。
+- **definition**: agent 無法代行、由使用者實際操作驗證的任務——tasks.md 以 `[M]` 前綴標記,任務列以「手動測試」徽章呈現。品質關卡與失效判定的寫碼任務計數把這類任務排除在外。
 - **avoid**: 人工測試、手工測試、手動驗證(標記語境中)、manual test(中文散文中)
 - **why**: 「手動」點出誰動手(使用者不是 agent),「測試」點出做什麼;任務列的徽章與看板的「待手測」章共用同一個詞根,兩處標示才讀得成同一件事。2026-08-11 討論「task-marker-ui-and-parallel-removal」定案。
 
@@ -160,6 +160,18 @@
 
 ### 改進討論
 
-- **definition**: kind 為 improve 的討論——由 `/speclink-improve` 掃描 codebase 主動提出 candidates 的討論記錄。與一般討論的差別只在誰帶題目：一般討論由使用者帶題，改進討論由模型提案；下游的輪、結論、轉出、封存完全相同。看板卡片與討論抽屜以小章標示。
+- **definition**: kind 為 improve 的討論——由 `/speclink-improve` 掃描 codebase 主動提出 candidates 的討論記錄。與一般討論的差別只在誰帶題目：一般討論由使用者帶題，改進討論由模型提案；下游的輪、結論、轉出、封存完全相同。看板卡片與討論詳情面板以小章標示。
 - **avoid**: improve 討論、架構討論
-- **why**: 名詞直說內容——「改進」點出討論在談什麼，「討論」點出它是哪種記錄；與卡片 tooltip 及抽屜標示文案一致。2026-08-01 討論「architecture-improve-flow」定案。
+- **why**: 名詞直說內容——「改進」點出討論在談什麼，「討論」點出它是哪種記錄；與卡片 tooltip 及詳情面板標示文案一致。2026-08-01 討論「architecture-improve-flow」定案。
+
+### 詳情面板
+
+- **definition**: 自畫面右側滑出、承載單一項目完整內容的面板——變更詳情面板（提案／設計／任務／規格分頁）、討論詳情面板、已封存詳情面板皆屬之。
+- **avoid**: 抽屜
+- **why**: 「抽屜」是元件模式的內部代稱，不是台灣使用者對這種面板的說法；「詳情面板」直說裝什麼（單一項目的詳情）與是什麼（面板）。程式碼識別符（`RichDetailDrawer`、`SpecDrawer` 等）與 CSS 類名不在本表範圍，不隨之更名。2026-08-14 變更「zh-tw-vocabulary-drawer-and-quality-station」定案。
+
+### 品質關卡
+
+- **definition**: 封存前的兩道可選實作品質檢查——「審查」（工藝品質）與「驗證」（spec 合規），兩者並行、由使用者判斷是否執行。對應 skill `/speclink-review`、`/speclink-verify` 與兩站合跑的 `/speclink-quality`。
+- **avoid**: 品質站
+- **why**: 「站」在繁中讀起來像停靠的地點，「關卡」才有「要過得了才放行」的語感，與這兩道檢查擋在封存之前的實際作用相符。2026-08-14 變更「zh-tw-vocabulary-drawer-and-quality-station」定案。

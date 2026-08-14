@@ -93,9 +93,9 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "tour.done": "完成",
     "tour.restart": "重看導覽",
     "tour.navOverview.title": "總覽",
-    "tour.navOverview.hint": "待處理事項、系統健康與最近活動集中在這一頁，數字都可以點進對應的目的地。",
+    "tour.navOverview.hint": "需要處理事項、系統健康與最近活動集中在這一頁，數字都可以點進對應的目的地。",
     "tour.navUsers.title": "使用者",
-    "tour.navUsers.hint": "列表是主體：邀請與編輯都在右側抽屜完成，列上不放任何輸入控制項。",
+    "tour.navUsers.hint": "列表是主體：邀請與編輯都在右側詳情面板完成，列上不放任何輸入控制項。",
     "tour.navRegistry.title": "專案與儲存庫",
     "tour.navRegistry.hint": "代號建立後不可變更；名稱預設唯讀，按「更名」才進入編輯。",
     "tour.navCredentials.title": "憑證",
@@ -105,7 +105,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "tour.navAudit.title": "稽核紀錄",
     "tour.navAudit.hint": "篩選與分頁由伺服器計算，事件累積再多也不會拖慢頁面。",
     "tour.listPrimary.title": "建立與編輯",
-    "tour.listPrimary.hint": "每個列表頁只有一個主要動作，按下去會從右側滑出抽屜，不會離開這一頁。",
+    "tour.listPrimary.hint": "每個列表頁只有一個主要動作，按下去會從右側滑出詳情面板，不會離開這一頁。",
 
     // 總覽
     "overview.title": "總覽",

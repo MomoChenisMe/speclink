@@ -179,7 +179,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "store.archiveAfterDiscardVerifyFailed": "驗證已放棄，但封存失敗",
     "store.archiveAfterDiscardBothFailed": "審查與驗證已放棄，但封存失敗",
     "store.discardVerifyFailed": "放棄驗證失敗",
-    "store.reviewActionUnsupported": "此工作區不支援品質站工單處置",
+    "store.reviewActionUnsupported": "此工作區不支援品質關卡工單處置",
     "store.revertFailed": "退回提案中失敗",
     "store.discussionArchiveFailed": "討論封存失敗",
     "store.reorderFailed": "排序寫回失敗",
