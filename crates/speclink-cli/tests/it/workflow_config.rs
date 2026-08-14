@@ -550,6 +550,133 @@ fn rules_dry_run_prints_a_unified_diff_and_writes_nothing() {
     assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
 }
 
+// --- help parity ---
+
+/// The comma-separated list a "…: a, b, c" sentence ends with. Both the help
+/// text and the unknown-key error are parsed through this ONE reader, so the
+/// test never writes down its own copy of the policy keys — a third list would
+/// just move the drift here.
+fn keys_after_colon(text: &str) -> Vec<String> {
+    let (_, list) = text.rsplit_once(": ").unwrap_or_else(|| {
+        panic!("expected a '…: key, key' sentence: {text}");
+    });
+    list.trim().trim_end_matches('.').split(',').map(|k| k.trim().to_string()).collect()
+}
+
+/// The description clap renders above `Usage:` — everything before the first
+/// blank line, whitespace collapsed so the assertion never depends on layout.
+fn help_about(text: &str) -> String {
+    let head: Vec<&str> = text.lines().take_while(|l| !l.trim().is_empty()).collect();
+    head.join(" ").split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// One entry of a clap table (`Commands:` or `Arguments:`): the matching row
+/// plus any wrapped continuation lines (clap indents those deeper than the
+/// entry column), whitespace collapsed. Wrap-safe so a longer key list can
+/// never fail these tests over layout alone.
+fn table_row(text: &str, name: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let idx = lines
+        .iter()
+        .position(|l| l.trim_start().starts_with(&format!("{name} ")) || l.trim_start() == name)
+        .unwrap_or_else(|| panic!("no '{name}' row in the table: {text}"));
+    let indent = lines[idx].len() - lines[idx].trim_start().len();
+    let mut row = lines[idx].trim_start().to_string();
+    for line in &lines[idx + 1..] {
+        if line.trim().is_empty() || line.len() - line.trim_start().len() <= indent {
+            break;
+        }
+        row.push(' ');
+        row.push_str(line.trim_start());
+    }
+    row.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The rejection stderr of `set` with an unknown key — asserted to BE the
+/// unknown-key error before anything parses it, so an unrelated failure
+/// (fail-closed config, workspace discovery) can never masquerade as the
+/// accepted-keys sentence.
+fn unknown_key_stderr(p: &TempProject) -> String {
+    let rejected = p.run(&["workflow-config", "set", "theme", "dark"]);
+    assert!(!rejected.status.success(), "unknown key must exit non-zero");
+    let err = stderr_of(&rejected).trim().to_string();
+    assert!(err.contains("Unknown key"), "the rejection is the unknown-key error: {err}");
+    err
+}
+
+#[test]
+fn set_help_lists_exactly_the_accepted_policy_keys() {
+    // Spec scenario set --help 列出全部政策鍵.
+    let p = TempProject::new("set-help-keys", WF_YAML);
+    let help = p.run(&["workflow-config", "set", "--help"]);
+    assert!(help.status.success(), "help exits zero: {}", stderr_of(&help));
+
+    let error_text = unknown_key_stderr(&p);
+    let accepted = keys_after_colon(&error_text);
+    let advertised = keys_after_colon(&help_about(&stdout_of(&help)));
+    assert_eq!(
+        advertised,
+        accepted,
+        "set --help must advertise exactly the keys the verb accepts\nhelp:  {}\nerror: {}",
+        stdout_of(&help),
+        error_text
+    );
+
+    // Help and the error sentence share one generator, so their equality alone
+    // cannot catch an advertised key the verb no longer recognizes. Probe each
+    // advertised key end-to-end: a junk value may be refused for its VALUE, but
+    // never as an unknown KEY. (The reverse hole — a hidden key accepted but
+    // advertised nowhere — has no list to probe from and stays out of scope.)
+    for key in &advertised {
+        let out = p.run(&["workflow-config", "set", key, "zzz", "--dry-run"]);
+        let err = stderr_of(&out);
+        assert!(
+            !err.contains("Unknown key"),
+            "advertised key '{key}' must be recognized by set: {err}"
+        );
+    }
+}
+
+#[test]
+fn set_help_value_argument_names_every_boolean_key() {
+    // Spec scenario set --help 標明布林鍵的合法值.
+    let p = TempProject::new("set-help-value", WF_YAML);
+    let out = p.run(&["workflow-config", "set", "--help"]);
+    assert!(out.status.success(), "help exits zero: {}", stderr_of(&out));
+    let text = stdout_of(&out);
+    // The `Usage:` line carries `<VALUE>` too — table_row only matches the
+    // Arguments row (and absorbs a wrapped or next-line description).
+    let row = table_row(&text, "<VALUE>");
+    for key in ["tdd", "audit", "worktree"] {
+        assert!(row.contains(key), "<VALUE> description names the boolean key {key}: {row}");
+    }
+    assert!(
+        row.contains("true") && row.contains("false"),
+        "<VALUE> description states the accepted values: {row}"
+    );
+}
+
+#[test]
+fn parent_help_and_set_help_share_one_set_description() {
+    // Spec scenario 父層 help 的 set 說明同源.
+    let p = TempProject::new("set-help-parent", WF_YAML);
+    let parent = p.run(&["workflow-config", "--help"]);
+    assert!(parent.status.success(), "help exits zero: {}", stderr_of(&parent));
+    let child = p.run(&["workflow-config", "set", "--help"]);
+    assert!(child.status.success(), "help exits zero: {}", stderr_of(&child));
+
+    let row = table_row(&stdout_of(&parent), "set");
+    let from_parent = row.split_once(' ').unwrap().1.to_string();
+    let from_child = help_about(&stdout_of(&child));
+    assert_eq!(from_parent, from_child, "both help surfaces read from one description");
+
+    assert_eq!(
+        keys_after_colon(&from_parent),
+        keys_after_colon(&unknown_key_stderr(&p)),
+        "the command list advertises every accepted key: {from_parent}"
+    );
+}
+
 // --- remote mode ---
 
 #[derive(Clone, Debug)]

@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "change": "workflow-config-set-help-parity",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 在 crates/speclink-cli/tests/it/workflow_config.rs 新增 help 與接受鍵集合的對照測試（依 design 決策 D4: 紅燈測試落在既有的 workflow_config.rs，不引入第三份清單）：測試從同一支 binary 取 speclink workflow-config set --help 的 stdout 與 speclink workflow-config set theme dark 的 stderr，抽出兩邊所列的政策鍵，斷言集合逐字相同。驗證：cargo test -p speclink-cli --test it workflow_config 跑出紅燈，且失敗訊息指出 help 缺 worktree。",
+      "files": [
+        "crates/speclink-cli/tests/it/workflow_config.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 在同一測試檔新增布林鍵說明測試：斷言 set --help 的 <value> 參數說明同時含 tdd、audit、worktree 三個鍵名。驗證：cargo test -p speclink-cli --test it workflow_config 跑出紅燈（現行字面只有 tdd 與 audit）。",
+      "files": [
+        "crates/speclink-cli/src/verbs/config.rs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "4.1 為正典需求 init 範本的政策寫入位置 補上目前缺席的測試載體：在 crates/speclink-cli/tests/it/init_tools.rs 新增一條測試，於隔離 temp 環境執行 speclink init 後，斷言生成的 openspec/config.yaml 註解區含 locale、spec_locale、tdd、audit、worktree 五個鍵名與 SPECLINK_LOCALE、SPECLINK_SPEC_LOCALE、SPECLINK_TDD、SPECLINK_AUDIT、SPECLINK_WORKTREE 五個覆寫名，且 .speclink.yaml 不含任何政策鍵；只斷言這些名稱出現，不比對排版、縮排與說明措辭。交付行為：init 範本的內容從此有測試守門，改壞會變紅。驗證：cargo test -p speclink-cli --test it init_tools 全綠。",
+      "files": [
+        "crates/speclink-cli/tests/it/init_tools.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01KZZ55VTW2NS41XNXJ77ZFMPD",
+      "taskDesc": "1.1 在 crates/speclink-cli/tests/it/workflow_config.rs 新增 help 與接受鍵集合的對照測試（依 design 決策 D4: 紅燈測試落在既有的 workflow_config.rs，不引入第三份清單）：測試從同一支 binary 取 speclink workflow-config set --help 的 stdout 與 speclink workflow-config set theme dark 的 stderr，抽出兩邊所列的政策鍵，斷言集合逐字相同。驗證：cargo test -p speclink-cli --test it workflow_config 跑出紅燈，且失敗訊息指出 help 缺 worktree。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0e0b1a728b0e2dfd97c34eedee2e68999552fb1b",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/workflow_config.rs"
+      ],
+      "recordedAt": "2026-08-14T05:26:08Z"
+    },
+    {
+      "taskId": "tsk_01KZZ55VTWF1KM19P6AZQ55BGD",
+      "taskDesc": "1.2 在同一測試檔新增布林鍵說明測試：斷言 set --help 的 <value> 參數說明同時含 tdd、audit、worktree 三個鍵名。驗證：cargo test -p speclink-cli --test it workflow_config 跑出紅燈（現行字面只有 tdd 與 audit）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0e0b1a728b0e2dfd97c34eedee2e68999552fb1b",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/config.rs"
+      ],
+      "recordedAt": "2026-08-14T05:29:25Z"
+    },
+    {
+      "taskId": "tsk_01KZZCCBE013X00Q34BQ9G2WRF",
+      "taskDesc": "4.1 為正典需求 init 範本的政策寫入位置 補上目前缺席的測試載體：在 crates/speclink-cli/tests/it/init_tools.rs 新增一條測試，於隔離 temp 環境執行 speclink init 後，斷言生成的 openspec/config.yaml 註解區含 locale、spec_locale、tdd、audit、worktree 五個鍵名與 SPECLINK_LOCALE、SPECLINK_SPEC_LOCALE、SPECLINK_TDD、SPECLINK_AUDIT、SPECLINK_WORKTREE 五個覆寫名，且 .speclink.yaml 不含任何政策鍵；只斷言這些名稱出現，不比對排版、縮排與說明措辭。交付行為：init 範本的內容從此有測試守門，改壞會變紅。驗證：cargo test -p speclink-cli --test it init_tools 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0e0b1a728b0e2dfd97c34eedee2e68999552fb1b",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/init_tools.rs"
+      ],
+      "recordedAt": "2026-08-14T05:37:08Z"
+    }
+  ]
+}

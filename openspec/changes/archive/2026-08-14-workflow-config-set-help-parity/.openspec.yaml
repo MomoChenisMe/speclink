@@ -1,0 +1,30 @@
+schema: spec-driven
+created: 2026-08-14
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+started_at: 2026-08-14
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-14
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 17
+reviewed_scope:
+  - path: crates/speclink-cli/src/verbs/config.rs
+    hash: 053ab4623ccc732cf81d886796144f35a8e3f818322b3cda1cdb0c5d764bcf72
+  - path: crates/speclink-cli/tests/it/init_tools.rs
+    hash: 05e97fd5f7d562062055074ed8d2dba29258bb813ff7476eacde25f4c1badf9a
+  - path: crates/speclink-cli/tests/it/workflow_config.rs
+    hash: 11a30048a381a8e6ecdacd05b6699ad9d2fd07d8708632e79de1dfa3ad490180
+verified_at: 2026-08-14
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 17
+verified_scope:
+  - path: crates/speclink-cli/src/verbs/config.rs
+    hash: 053ab4623ccc732cf81d886796144f35a8e3f818322b3cda1cdb0c5d764bcf72
+  - path: crates/speclink-cli/tests/it/init_tools.rs
+    hash: 05e97fd5f7d562062055074ed8d2dba29258bb813ff7476eacde25f4c1badf9a
+  - path: crates/speclink-cli/tests/it/workflow_config.rs
+    hash: 11a30048a381a8e6ecdacd05b6699ad9d2fd07d8708632e79de1dfa3ad490180
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-14

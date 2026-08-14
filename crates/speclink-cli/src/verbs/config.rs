@@ -78,11 +78,13 @@ enum WorkflowConfigCommands {
         #[arg(long)]
         json: bool,
     },
-    /// Set a policy field: locale, spec_locale, tdd, audit
+    #[command(about = SET_ABOUT.as_str())]
     Set {
         /// Policy key
         key: String,
-        /// Policy value (tdd/audit take true or false)
+        // 布林鍵子集刻意維持字面（design D1：程式裡沒有這個子集的常數，單一消費者
+        // 不值得再立一個真相來源）；由 set_help_value_argument_names_every_boolean_key 釘住。
+        /// Policy value (tdd/audit/worktree take true or false)
         value: String,
         /// Print the unified diff instead of writing
         #[arg(long = "dry-run")]
@@ -210,6 +212,12 @@ fn save_global_map(path: &std::path::Path, map: &serde_yaml::Mapping) -> Result<
 }
 /// The policy keys `workflow-config set` accepts, in canonical order.
 const POLICY_KEYS: [&str; 5] = ["locale", "spec_locale", "tdd", "audit", "worktree"];
+/// `set`'s clap description, grown from `POLICY_KEYS` so help can never advertise
+/// a different key set than the verb accepts. A doc comment is a compile-time
+/// literal and cannot interpolate; the derive attribute takes any expression, the
+/// same way `main.rs` builds `version` from a `LazyLock<String>`.
+static SET_ABOUT: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| format!("Set a policy field: {}", POLICY_KEYS.join(", ")));
 /// `workflow-config show --json` payload. camelCase field names are the contract;
 /// the values are CANONICAL (what the document says), never the four-layer
 /// resolution — effective policy is the instructions payload's job.

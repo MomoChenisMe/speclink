@@ -39,6 +39,7 @@ impl TempEnv {
             .env_remove("SPECLINK_SPEC_LOCALE")
             .env_remove("SPECLINK_TDD")
             .env_remove("SPECLINK_AUDIT")
+            .env_remove("SPECLINK_WORKTREE")
             .env_remove("SPECLINK_STORE_URL")
             .env_remove("SPECLINK_TOKEN")
             .env_remove("CLICOLOR_FORCE")
@@ -177,6 +178,55 @@ fn remote_init_explicit_both_tools_writes_section_without_a_spec_tree() {
     assert!(env.exists(".claude/skills/speclink-propose/SKILL.md"));
     assert!(env.exists(".agents/skills/speclink-propose/SKILL.md"));
     assert!(!env.exists("openspec"), "remote 模式不建立本機規格樹");
+}
+
+// --- 範本的政策示例（spec Scenario「新專案初始化的範本內容」） ---
+
+/// 與 crates/speclink-cli/src/verbs/config.rs 的同名常數刻意重複（design D6：
+/// 釘樁測試自帶清單才釘得住，且整合測試本就 import 不到 bin target 的私有項）。
+/// 增刪政策鍵時兩處同步。
+const POLICY_KEYS: [&str; 5] = ["locale", "spec_locale", "tdd", "audit", "worktree"];
+
+const POLICY_ENV: [&str; 5] = [
+    "SPECLINK_LOCALE",
+    "SPECLINK_SPEC_LOCALE",
+    "SPECLINK_TDD",
+    "SPECLINK_AUDIT",
+    "SPECLINK_WORKTREE",
+];
+
+/// 範本是否把 `key` 示範成一個鍵（`# key: …`）。以行為單位比對，`locale` 才不會
+/// 被 `spec_locale` 這種較長的鍵名蒙混過關；縮排、註解符號與說明措辭都不參與。
+fn documents_key(text: &str, key: &str) -> bool {
+    text.lines().any(|line| {
+        line.trim_start()
+            .trim_start_matches('#')
+            .trim_start()
+            .starts_with(&format!("{key}:"))
+    })
+}
+
+#[test]
+fn init_workflow_config_template_documents_every_policy_key() {
+    let env = TempEnv::new("template-policy");
+    let out = env.run(&["init", "--tools", "claude"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+
+    let workflow = std::fs::read_to_string(env.dir.join("openspec").join("config.yaml"))
+        .expect("openspec/config.yaml exists");
+    for key in POLICY_KEYS {
+        assert!(documents_key(&workflow, key), "範本示範政策鍵 {key}:\n{workflow}");
+    }
+    for name in POLICY_ENV {
+        assert!(workflow.contains(name), "範本的覆寫提示列出 {name}:\n{workflow}");
+    }
+
+    // 政策的正典歸屬只有 openspec/config.yaml 一處：.speclink.yaml 不得把任何
+    // 政策鍵寫成鍵（含註解示例）。與上方同一把行首比對，措辭撞字不誤紅。
+    let app = std::fs::read_to_string(env.dir.join(".speclink.yaml")).expect(".speclink.yaml exists");
+    for key in POLICY_KEYS {
+        assert!(!documents_key(&app, key), ".speclink.yaml 不得帶政策鍵 {key}:\n{app}");
+    }
 }
 
 // --- 非互動缺少 --tools（spec Scenario「非互動 init 缺少 tools 零寫入失敗」） ---
