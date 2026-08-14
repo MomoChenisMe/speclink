@@ -1,15 +1,34 @@
 # Server 部署
 
-官方 `speclink-server` 的發布形態（架構 §13.1）有四種：npx 一行啟動（npm 套件）、Docker image 直跑、SQLite 單容器 compose、PostgreSQL compose profile——容器三種共用同一個映像，發布於 `ghcr.io/momochenisme/speclink-server`（tag 對齊 release 版本，另附 `latest`）。native binary 不隨 GitHub Release 發布，需要時走[從原始碼建置](#替代路徑從原始碼建置native-binary)的替代路徑。
+`speclink-server` 是 Speclink Host 的**官方參考實作**——它是 wire contract 的活基準，也是給你開箱即用與測試遠端功能的那一份。遠端模式不限定用它：Host 與 Protocol 是公開契約（見 `openspec/specs/` 的 `host-runtime` 與 `client-protocol`），你可以照契約做自己的 server 端。本文只講官方這一份怎麼部署。
+
+它有四種發布形態：
+
+1. npx 一行啟動（npm 套件）
+2. Docker image 直跑
+3. SQLite 單容器 compose
+4. PostgreSQL compose profile
+
+後三種共用同一個映像，發布於 `ghcr.io/momochenisme/speclink-server`；tag 對齊 release 版本，另附 `latest`。native binary 不隨 GitHub Release 發布，需要時走[從原始碼建置](#替代路徑從原始碼建置native-binary)的替代路徑。
 
 若目標是從全新資料完成 `/setup`、membership、Desktop 與 Remote CLI，而不是部署正式服務，請先依
 [Remote Server、Desktop 與 CLI 入門教學](remote-getting-started.zh-TW.md)操作。
 
 ## 交付物：內嵌 SPA 的單一 binary／image
 
-瀏覽器主控台（`apps/server-web` 的 React SPA）於**編譯期內嵌**進 `speclink-server`：`index.html`、manifest、hashed JS／CSS、字型與圖示都與 API 打包在同一支 binary／image，永遠 same-origin、同版本。**runtime 不需要 Node、外部 `dist` volume、CDN 或第二個靜態檔服務**——把單一 binary（或 image）放進空環境即可載入完整 UI。
+瀏覽器主控台是 `apps/server-web` 的 React SPA，它在**編譯期內嵌**進 `speclink-server`。`index.html`、manifest、hashed JS 與 CSS、字型與圖示，全部與 API 打包在同一支 binary 或 image 裡，永遠 same-origin、永遠同版本。
 
-需編譯的三種形態（native binary、Docker image、本機 production build）遵循同一建置順序：`npm ci`（依 lockfile 安裝依賴）→ `npm run build -w apps/server-web`（Vite production build 產出 `dist`）→ `cargo build --release -p speclink-server`（於編譯期內嵌 `dist`）。缺少 `index.html` 或 manifest 時 server release build 會 **fail closed**：以非零 exit code 結束並提示「先建置 `apps/server-web`」，不會產出只有 API、沒有 UI 的 artifact。Docker image 由 multi-stage 達成同一保證——Node stage 產 `dist`、Rust stage 內嵌、最終 runtime 只有 non-root server binary，映像內不帶 Node runtime。
+**runtime 不需要 Node、外部 `dist` volume、CDN，也不需要第二個靜態檔服務。** 把單一 binary 或 image 放進空環境，就載入得出完整 UI。
+
+需要編譯的三種形態——native binary、Docker image、本機 production build——都走同一個建置順序：
+
+1. `npm ci`：依 lockfile 安裝依賴。
+2. `npm run build -w apps/server-web`：Vite production build 產出 `dist`。
+3. `cargo build --release -p speclink-server`：於編譯期內嵌 `dist`。
+
+缺少 `index.html` 或 manifest 時，server 的 release build **fail closed**：以非零 exit code 結束，並提示「先建置 `apps/server-web`」。它不會產出只有 API、沒有 UI 的 artifact。
+
+Docker image 以 multi-stage 達成同一個保證：Node stage 產 `dist`，Rust stage 內嵌，最終 runtime 只有 non-root server binary。映像內不帶 Node runtime。
 
 不論哪種形態，啟動後的行為一致：
 
@@ -19,7 +38,9 @@
 
 ## 單一 instance 限制
 
-SQLite 與 serverfs profile **只允許一個 server instance**（架構 §13.1）：不得 `--scale`、不得多個 replica 指向同一個資料目錄或 volume。SQLite 的單寫者檔案鎖會讓第二個 instance 顯性報錯而非靜默共用。需要多 instance 前先換 PostgreSQL driver——即便如此，目前的官方形態仍以單 instance 為設計定位。
+SQLite 與 serverfs profile **只允許一個 server instance**。不要 `--scale`，也不要讓多個 replica 指向同一個資料目錄或 volume。SQLite 的單寫者檔案鎖會讓第二個 instance 顯性報錯，而不是靜默共用。
+
+需要多 instance 之前，先換 PostgreSQL driver。即便如此，目前的官方形態仍以單 instance 為設計定位。
 
 ## 形態一：npx 一行啟動
 
@@ -29,7 +50,7 @@ SQLite 與 serverfs profile **只允許一個 server instance**（架構 §13.1�
 npx @speclink/server
 ```
 
-首次執行會下載對應平台的 server 套件、在 `./speclink-data` 產生組態與資料檔（預設 SQLite），啟動後 stdout 印出 `/setup` 的一次性連結。基礎參數用環境變數調：
+首次執行會下載對應平台的 server 套件，並在 `./speclink-data` 產生組態與資料檔，預設走 SQLite。啟動後 stdout 印出 `/setup` 的一次性連結。基礎參數用環境變數調：
 
 | 變數 | 預設 | 說明 |
 | --- | --- | --- |
@@ -40,11 +61,13 @@ npx @speclink/server
 | `SPECLINK_POSTGRES_URL` | （`postgres` 時必填） | PostgreSQL 連線 URL；密碼可拆到 `SPECLINK_POSTGRES_PASSWORD`。 |
 | `SPECLINK_CONFIG` | （無） | 直接指定既有組態 YAML，跳過上面全部插值。 |
 
-launcher 做的事只有一件：把環境變數寫成一份組態 YAML（落在資料目錄、可打開檢視）再啟動 server binary——server 的單一組態來源與 fail closed 契約不變。帶 `--config` 或子命令（`invite`、`backup` 等）時純透傳，行為與直接執行 binary 完全相同。正式對外部署仍建議下面的 Docker／compose 形態。
+launcher 做的事只有一件：把環境變數寫成一份組態 YAML，再啟動 server binary。那份 YAML 落在資料目錄，你可以打開檢視。server 的單一組態來源與 fail closed 契約都不變。
+
+帶 `--config` 或子命令（`invite`、`backup` 等）時，launcher 純透傳，行為與直接執行 binary 完全相同。正式對外部署仍建議下面的 Docker 或 compose 形態。
 
 ## 形態二：docker run
 
-映像的 ENTRYPOINT 是 server binary，內建預設組態（store 與 identity 兩個 SQLite 檔都在 `/data`）、非 root 使用者（uid 10001）執行、HEALTHCHECK 打 `/healthz`：
+映像的 ENTRYPOINT 是 server binary。它內建預設組態，store 與 identity 兩個 SQLite 檔都落在 `/data`。它以非 root 使用者（uid 10001）執行，HEALTHCHECK 打 `/healthz`：
 
 ```bash
 docker run -d --name speclink \
@@ -75,7 +98,7 @@ docker compose up -d
 docker compose logs server   # 取 setup token，開瀏覽器完成 /setup
 ```
 
-compose 同時寫了 `image:` 與 `build:`：本機沒有映像時 `up` 會就地從原始碼建置（需要完整的 repo，Rust 編譯數分鐘），因此**首次正式發版前也能起**。要用官方映像就先 `docker compose pull`。
+compose 同時寫了 `image:` 與 `build:`。本機沒有映像時，`up` 會就地從原始碼建置——需要完整的 repo，Rust 編譯要數分鐘。所以**首次正式發版前也能起**。要用官方映像，就先跑 `docker compose pull`。
 
 容器重啟後資料存留於 volume，setup token 不會重印、`/setup` 維持關閉。
 
@@ -89,6 +112,34 @@ cp .env.example .env         # 填入 SPECLINK_POSTGRES_PASSWORD；.env 不入�
 docker compose -f docker-compose.postgres.yml pull
 docker compose -f docker-compose.postgres.yml up -d
 ```
+
+## 驗收：部署完成後該看到什麼
+
+四種形態任一條走完、`/setup` 也完成之後，用下面兩個畫面確認這台 server 真的可用。
+
+先看總覽。它把連線所需的三項資訊擺在最上面：服務網址、專案代號、儲存庫代號。這三項組成使用者 `speclink link` 要用的 project-scoped URL。再下面是使用者、專案與憑證的計數，以及系統健康：
+
+![Server 後台總覽，顯示服務網址、專案與儲存庫代號、計數與系統健康](assets/screenshots/server-overview.png)
+
+驗收判準：
+
+- 服務網址要與你實際對外的位址一致，不該是 `localhost`——除非你就是要本機用。不一致就改 `SPECLINK_PUBLIC_URL`，或組態裡的 `public_url`。setup 連結與同源檢查都以它為準。
+- 系統健康顯示「正常」，資料結構版本有值。
+- 「需要處理」區塊如果說「尚無有效憑證——遠端工作流程無法連線」，那是預期的。憑證要由使用者自己在 `/account` 建立，或由你發邀請。
+
+再看使用者頁，確認成員資格這一層。帳號能登入不等於看得到專案——角色與成員資格是分開的兩欄：
+
+![Server 後台的使用者頁與成員詳情，顯示角色與成員資格欄](assets/screenshots/server-members.png)
+
+驗收判準：至少有一位管理員，且每位要用遠端的成員在「成員資格」欄看得到目標專案。發邀請與角色指派的操作見[Remote 入門教學](remote-getting-started.zh-TW.md)。
+
+最後用 CLI 從外面打一次，確認不是只有瀏覽器連得到：
+
+```bash
+curl -o /dev/null -w "%{http_code}\n" https://<你的網址>/healthz
+```
+
+回 `200` 才算通過。
 
 ## 替代路徑：從原始碼建置（native binary）
 
@@ -178,4 +229,4 @@ docker compose exec server speclink-server invite \
 
 - [Server 備份、還原與驗證](server-backup.zh-TW.md)——backup/verify-backup/restore 的完整語意與排程範例
 - [Server Store Driver 選型](server-store-drivers.zh-TW.md)——sqlite/serverfs/postgres 的組態欄位、前提與 fail closed 條件
-- [平台架構](platform-architecture.zh-TW.md) §13——發布形態、secret 紀律與開箱流程的正典定義
+- 發布形態、secret 紀律與開箱流程的正典是 `openspec/specs/` 的 `server-release`、`server-setup` 與 `reference-server`

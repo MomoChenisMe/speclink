@@ -2,7 +2,7 @@
 
 [繁體中文](development.zh-TW.md) · **English**
 
-This document is for developers who clone the source tree and users who want to self-host the backend. It covers the five one-command entry points at the repo root: the full dev environment, server only, desktop only, resetting local state, and running the CLI from this same checkout. It ends with the bypass steps for unsigned installers downloaded from Releases.
+This document is for developers who clone the source tree, and for users who self-host the backend. It covers five one-command entry points at the repo root. They are: the full dev environment, server only, desktop only, a local-state reset, and the CLI from this checkout. It ends with the bypass steps for unsigned installers from Releases.
 
 ## Prerequisites / 前置需求
 
@@ -17,9 +17,9 @@ npm install
 
 ## `npm run dev` — full dev environment / 整套開發環境
 
-- **Purpose**: start the complete dev environment in one command — build the CLI from the current checkout, build the desktop frontend assets, then start `speclink-server` and the desktop tauri dev together.
+- **Purpose**: start the complete dev environment in one command. It builds the CLI from the current checkout, builds the desktop frontend assets, then starts `speclink-server` and the desktop tauri dev together.
 - **Prerequisites**: everything listed above. Configuration comes from `.env` at the repo root (see `.env.example`; without `.env` all defaults apply: sqlite, `.dev/store.db`, `127.0.0.1:8080`).
-- **Expected observable results**: the terminal first shows `speclink dev: 建置當前 checkout 的 speclink-cli…` and `speclink dev: 建置當前前端資產…`; on first startup the server prints a line containing a `/setup?token=` link (shown only once — open it to complete initial setup); the desktop window opens. Ctrl+C shuts down both server and desktop with no leftover processes. State persists in the gitignored `.dev/`.
+- **Expected observable results**: the terminal first shows `speclink dev: 建置當前 checkout 的 speclink-cli…` and `speclink dev: 建置當前前端資產…`. On the first startup the server prints one line with a `/setup?token=` link. It prints that link only once, so open it to complete the initial setup. The desktop window then opens. Ctrl+C stops both the server and the desktop with no leftover processes. State persists in the gitignored `.dev/`.
 
 ## `npm run dev:server` — server only / 只跑後端
 
@@ -31,7 +31,7 @@ npm install
 
 - **Purpose**: build the desktop frontend first (vite emits `dist/`), then start tauri dev — for desktop development and local-mode trials. Does not start a server and requires no remote configuration.
 - **Prerequisites**: all prerequisites (including Tauri system dependencies). Configuration validation is shared with `npm run dev` — an invalid `.env` (e.g. postgres without `SPECLINK_POSTGRES_URL`) refuses to start with a non-zero exit code here too.
-- **Expected observable results**: the terminal first shows `speclink dev: 建置當前前端資產…` and the vite build output; the desktop window opens only after the build finishes and shows the UI built from the current sources (tauri dev loads the static `dist/`, so every start rebuilds it to avoid a stale UI). If the frontend build fails, the command exits non-zero and no window opens. The window runs in local mode and can browse this repo's `openspec/` board — it works even when no server is running on the machine.
+- **Expected observable results**: the terminal first shows `speclink dev: 建置當前前端資產…` and the vite build output. The desktop window opens only after the build finishes, and it shows the UI built from the current sources. Tauri dev loads the static `dist/`, so every start rebuilds it and you never see a stale UI. If the frontend build fails, the command exits non-zero and no window opens. The window runs in local mode and browses this repo's `openspec/` board. It works even when no server runs on the machine.
 
 ## `npm run dev:reset` — reset local dev state / 重置本機開發狀態
 
@@ -41,8 +41,8 @@ npm install
 
 ## `npm run cli -- <args>` — CLI from this checkout / checkout 內 CLI
 
-- **Purpose**: always run `target/debug/speclink` from this same checkout, so "start the environment" and "verify with the same-version CLI" operate on one source tree; the `speclink` installed on PATH is never used.
-- **Prerequisites**: Rust toolchain. When the binary has not been built yet, the wrapper first runs `cargo build -p speclink-cli` at the checkout root automatically, then executes the result (a failed build exits non-zero without running any CLI).
+- **Purpose**: always run `target/debug/speclink` from this same checkout. "Start the environment" and "check with the same-version CLI" then operate on one source tree. The wrapper never uses the `speclink` on your PATH.
+- **Prerequisites**: Rust toolchain. When the binary does not exist yet, the wrapper runs `cargo build -p speclink-cli` at the checkout root, then runs the result. A failed build exits non-zero and runs no CLI.
 - **Expected observable results**:
 
 ```bash
@@ -57,16 +57,36 @@ npm run --silent cli -- list --json
 
 stdout contains only the CLI's JSON payload (camelCase fields); build progress never mixes in. The CLI's exit code, stdin/stdout/stderr, and working directory (`INIT_CWD`) are all forwarded transparently.
 
+## Tests / 測試
+
+Run the whole test surface at once (Rust workspace, the three frontend packages, scripts, and the Node SDK build and tests):
+
+```bash
+npm run test:all
+```
+
+To run one area at a time:
+
+```bash
+cargo test --workspace                      # Rust: engine, CLI, Host, Store drivers, Server
+npm test -w apps/desktop                    # Desktop frontend
+npm test -w packages/ui                     # Shared UI
+npm test -w apps/server-web                 # Server console frontend
+node --test "scripts/**/*.test.mjs"         # Repo scripts
+npm --prefix crates/speclink-node test      # Node SDK (build first: npm --prefix crates/speclink-node run build)
+```
+
+The Node SDK is not an npm workspace member, so it needs `--prefix` with a path; `--workspace @speclink/engine` finds nothing. Desktop tests need the sidecar and the server console `dist/` in place, and `npm run test:all` already covers both steps.
+
+Golden and CLI integration tests protect the CLI's human-readable output and `--json` shape. Per-area test prerequisites and current limits for Server, Store, and Desktop are in [Project Capability Status](product-status.md).
+
 ## Unsigned installer bypass / 下載安裝檔的未簽章放行
 
-The desktop installers are delivered by the desktop-installer-and-updater change and **do not appear on existing GitHub Releases yet**. Once delivered, the asset forms per the desktop-release spec are: macOS dmg (one each for aarch64 and x86_64), a Windows NSIS installer (x86_64), and Linux AppImage and deb (x86_64 and aarch64), all listed in `SHA256SUMS.txt`. Until the project configures OS code-signing keys, these installers are unsigned and need a one-time manual bypass on first launch:
+The desktop installers are on [Releases](https://github.com/MomoChenisMe/speclink/releases/latest). They are: macOS dmg for aarch64 and x86_64, a Windows NSIS installer for x86_64, and Linux AppImage and deb for x86_64 and aarch64. `SHA256SUMS.txt` lists them all. Signing status differs per platform, and only Windows needs a manual bypass:
 
 ### macOS
 
-1. Open the dmg and drag **Speclink** into Applications.
-2. The first launch is blocked ("cannot be opened because Apple cannot check it…").
-3. Go to System Settings > Privacy & Security, find the message about Speclink being blocked in the Security section, click "Open Anyway", then confirm with "Open".
-4. This bypass is needed only once; afterwards the app opens normally.
+Code-signed and notarized, so opening the dmg and dragging Speclink into Applications is all it takes — no bypass step. The bypass (System Settings > Privacy & Security > "Open Anyway") is only needed for an unsigned bundle you built locally yourself.
 
 ### Windows
 

@@ -1,6 +1,6 @@
 # Node SDK (@speclink/engine)
 
-> **Status:** This document describes the currently implemented Node SDK surface. The target typed Command Runtime, TeamStore contract, Host boundary, and Copilot Tool packaging are defined by [the platform architecture blueprint](platform-architecture.zh-TW.md).
+> **Status:** This document describes the currently implemented Node SDK surface. The typed Command Runtime, the TeamStore contract, and the Host boundary are canonically defined by `command-runtime`, `teamstore-contract`, `host-runtime`, and `node-sdk` under `openspec/specs/`; Copilot Tool packaging is not implemented yet — see the [Project Roadmap](roadmap.md) for that direction.
 
 `@speclink/engine` embeds the Speclink engine in a Node.js process: your
 server (or AI-agent host) dispatches speclink verbs in-process, stores spec
@@ -12,12 +12,21 @@ not re-implemented — so verb behavior, `--json` payload shapes, and rendered
 content are identical by construction. (The Rust SDK is simply the
 `speclink-core` crate.)
 
+This SDK has two uses. First, wire Speclink into an existing flow: a script, or
+an internal tool. Second, use it as **the engine of your own server**. The
+official `speclink-server` is only a reference implementation of the Host
+contract. You can build your own against `host-runtime` and `client-protocol`
+under `openspec/specs/`, with your own authentication, database, and permission
+model. The CLI and the desktop app still connect to it.
+
 ## Obtaining the package and platform notes
 
 > **Not published to npm yet.** `@speclink/engine` is currently available only
 > by building it from this repository; the package does not exist on the npm
-> registry. Publication is tracked alongside the other directions in
-> [Product Capability Status](product-status.md).
+> registry. For today's status see the Node SDK row in
+> [Project Capability Status](product-status.md); for what the npm channel has to
+> solve, where it stands, and the observable next step, see the
+> [Project Roadmap](roadmap.md).
 
 Build from the repository and load it:
 
@@ -83,8 +92,8 @@ The interface is one-to-one with the engine core's storage seam
 terms — changes, artifacts, delta/canonical specs, discussions, workflow
 config — and your implementation owns the physical layout. Full signatures
 live in [`index.d.ts`](../crates/speclink-node/index.d.ts); `path`/`dir`
-return values are **display locations** (strings shown in payloads), not
-filesystem paths the engine will open.
+return values are **labels shown in payloads**, not filesystem paths that the
+engine opens.
 
 | Group | Methods | Notes |
 |---|---|---|
@@ -282,7 +291,5 @@ no CLI, no child processes, no local `openspec/` tree.
 
 ## See also
 
-- [Platform architecture blueprint](platform-architecture.zh-TW.md) — the
-  target typed Runtime, TeamStore, Host, Protocol, Server, and Tool design.
 - [`index.d.ts`](../crates/speclink-node/index.d.ts) — the currently shipped
   Node API and payload types.

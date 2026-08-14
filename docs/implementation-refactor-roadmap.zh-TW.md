@@ -1,13 +1,18 @@
 # Speclink 現況對齊與重構路線圖
 
-> 狀態：Implementation companion
+> 狀態：**2026-07-27 當時的重構規劃，已不是現行計畫**
 >
-> 目標架構唯一正典為 [`platform-architecture.zh-TW.md`](platform-architecture.zh-TW.md)。本文件只記錄目前程式碼與目標架構的差距、重構邊界及交付順序；若兩份文件衝突，以平台架構為準。
+> 這份文件是 2026 年 7 月做的一次現況盤點與重構排序。之後的實際交付已經偏離它——例如本文的現況表把
+> `speclink-server` 記為「尚無存在」、把 production server 列為 Phase 1 之後才可動工，但 server 已經交付並發布；
+> §8 的驗證基線也停在當時。**不要以本文判斷任何能力是否已交付，也不要以本文的順序推論之後會做什麼。**
 >
-> 能力是否已可使用，請以最後查核於 **2026-07-17** 的
-> [`product-status.zh-TW.md`](product-status.zh-TW.md) 為準；如何選擇與執行 SDD 流程，請見
-> [`workflow.zh-TW.md`](workflow.zh-TW.md)。本文保留的「現況」段落是制定各 Phase／Gate 時的差距背景，
-> 不是持續更新的產品狀態表；即使後續能力已交付，本文仍只作為唯一目標架構之下的執行伴隨文件。
+> 現在的判準只有兩個：能力現況查 [`product-status.zh-TW.md`](product-status.zh-TW.md)，行為與邊界的正典是
+> `openspec/specs/` 底下的規格（含 `host-runtime`、`command-runtime`、`teamstore-contract`、`client-protocol`
+> 與各 `phase*-acceptance`）。方向見面向使用者的 [`roadmap.zh-TW.md`](roadmap.zh-TW.md)（[English](roadmap.md)）。
+>
+> 保留本文的理由是它記錄了當時為什麼這樣切、哪些舊路徑被判定為不延伸——這段判斷背景在正典規格裡讀不到。
+> 讀它請當成歷史紀錄，不是計畫書。架構構想的同期文件是
+> [`platform-architecture.zh-TW.md`](platform-architecture.zh-TW.md)。
 
 ## 1. 結論
 
@@ -235,7 +240,7 @@ flowchart LR
     G0 --> P1A --> P1B --> P1C --> P1D --> P1E --> P2 --> P3 --> P4
 ```
 
-`G0` 是可靠交付的先行 gate，不是產品架構 Phase。它可與 Phase 1A 的純 Rust 段並行，但必須在 Node 遷移與全量回歸（`engine-typed-core` 第 5、6 節）前完成。Phase 1A 與 1D 各含兩把刀，上圖標註即 §4.2 的七把 Phase 1 刀；正式產品能力仍以平台架構的 Phase 1 到 Phase 4 為準。
+`G0` 是可靠交付的先行 gate，不是產品架構 Phase。它可與 Phase 1A 的純 Rust 段並行，但必須在 Node 遷移與全量回歸（`engine-typed-core` 第 5、6 節）前完成。Phase 1A 與 1D 各含兩把刀，上圖標註即 §4.2 的七把 Phase 1 刀；正式能力仍以平台架構的 Phase 1 到 Phase 4 為準。
 
 ### 4.2 刀組與優先級
 

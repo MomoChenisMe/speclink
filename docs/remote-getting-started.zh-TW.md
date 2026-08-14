@@ -1,224 +1,177 @@
-# Remote Server、Desktop 與 CLI 入門教學
+# Speclink Remote Server、Desktop 與 CLI 入門
 
 **繁體中文** · [English](remote-getting-started.md)
 
-本教學使用 repo root 的本地開發編排，從全新資料開始建立一個可由 Desktop 與 CLI 共用的 Remote Workspace。部署到正式環境前，另請閱讀 [Server 部署](server-deployment.zh-TW.md)、[Store drivers](server-store-drivers.zh-TW.md)與[備份／還原](server-backup.zh-TW.md)。
+這份文件從零帶到一個可用的 Remote Store：起 server → 完成首次設定 → 授予成員資格 → 建立憑證 → 接上 Desktop 與 CLI → 失聯後怎麼回來。
 
-目前支援的是單節點 Server、Remote Desktop Workspace 與 Remote CLI。MCP、Copilot Tools、SSO 與 Cluster mode 不在本教學範圍；最新交付狀態以[產品能力狀態](product-status.zh-TW.md)為準。
+本文只寫今天確認可走的入口。哪些能力真的可用，以[專案能力狀態](product-status.zh-TW.md)為準。本地不需要 server 的那條路徑，見[Local Repo 入門](getting-started.zh-TW.md)。
+
+這裡用的 `speclink-server` 是官方的**參考實作**，目的是讓你開箱即用、或直接試遠端功能。遠端模式本身不綁它：Host 與 Protocol 是公開契約，你也可以拿 Speclink 引擎自己寫一個 server 端，接自家的認證、資料庫與權限模型。下面的操作步驟屬於官方那一份；接上之後的 CLI 與桌面行為則由契約決定，換 server 也一樣。
 
 ## 1. Before you begin / 開始前
 
 你需要：
 
-- stable Rust toolchain、Node.js 與 npm。
-- macOS、Windows 或 Linux 上可執行 Tauri Desktop 的開發環境。
-- 兩個終端：一個長時間執行 Server＋Desktop，另一個測 CLI。
+- 一台可執行 server 的機器——Node.js 或 Docker 擇一即可，不必 clone 這個 repo。
+- 一份 `speclink` CLI（安裝方式見 [README](../README.md#install--安裝)）。
+- 想用圖形介面的話，再加一份 Desktop app。
 
-以下範例固定使用：
+先確定 Local 與 Remote 的分工：Remote Store **不會**同步成第二份可寫的本地真相。有 checkout 的 Agent 讀的是唯讀的 `.speclink/context/`，寫入一律走 Host command。
 
-| 名稱 | 範例值 | 用途 |
-| --- | --- | --- |
-| Server base URL | `http://localhost:8080` | 瀏覽器登入、帳號與管理頁 |
-| Project key | `demo` | Server registry 中的 Project |
-| Repo key | `backend` | `demo` 下的 Repo |
-| project-scoped URL | `http://localhost:8080/api/speclink/v1/projects/demo` | CLI／Client Protocol 連線 |
+## 2. Start a server / 啟動 Server
 
-這三種 URL 不可混用。`/account`、`/admin` 等瀏覽器頁面接在 Server base URL；project-scoped URL 專供 Remote CLI／Desktop client 綁定 Project。
-
-若目前 repo 有未提交工作，請保留它；Remote CLI smoke test 要在另一個測試資料夾執行，不要在產品 repo 根目錄執行 `speclink link`。
-
-## 2. Start a clean development server / 啟動全新開發 Server
-
-在 Speclink repo root 清除既有本地開發資料：
+最短路徑是 npx，有 Node 就能跑：
 
 ```bash
-npm run dev:reset
+npx @speclink/server
 ```
 
-這只刪除 `.dev/`，不會刪除 `.env`。若要驗證完全預設的 SQLite 設定，請先確認 `.env` 沒有覆寫 `SPECLINK_*` 值。
-
-接著啟動：
-
-```bash
-npm run dev
-```
-
-此命令會產生 `.dev/config.yaml`、建置目前 checkout 的 `speclink-cli` 與 Desktop 前端，成功後才同時啟動 `speclink-server` 與 Tauri Desktop。CLI 建置失敗時它會以非零狀態結束，且不會留下任何長時間執行的 process——這保證第 7 節用來驗證的 CLI 與 Server／Desktop 來自同一份原始碼。終端會印出只供首次設定使用的網址：
+**預期輸出**：一行首次啟動訊息，帶著只顯示一次的 setup 連結——
 
 ```text
-http://localhost:8080/setup?token=...
+Speclink 首次啟動：開啟 http://localhost:8080/setup?token=spk_setup_… 完成初始設定（此連結 24 小時內有效，且僅顯示這一次）。
 ```
 
-保持此終端執行。任一 child process 結束時，編排器會收束另一個 process；正常停止可按 `Ctrl+C`。
+同時在當前目錄產生 `speclink-data/`，裡面有三個檔案：`config.yaml`、`store.db` 與 `identity.db`。`config.yaml` 是 launcher 由環境變數產生的單一組態來源。要換埠或換後端，用環境變數：
+
+```bash
+SPECLINK_PORT=8099 SPECLINK_STORE=serverfs npx @speclink/server
+```
+
+確認活著：
+
+```bash
+curl -o /dev/null -w "%{http_code}\n" http://localhost:8080/healthz
+```
+
+**預期輸出**：`200`。
+
+另外還有兩條路徑。正式對外部署走 Docker 或 compose，見[Server 部署](server-deployment.zh-TW.md)。在這個 repo 的 checkout 內開發則走 `npm run dev`，只要後端就用 `npm run dev:server`，見[開發環境入口](development.zh-TW.md)。
+
+走 checkout 這條時，`npm run dev` 會**先建置當前 checkout 的 `speclink-cli`**，成功之後才啟動 server 與 Desktop。建置失敗就以非零結束，不留下任何長時間執行的 process。這個順序是刻意的：它保證第 7 節用來核對的 CLI 與這台 server 來自同一份原始碼。
+
+直接執行 `speclink-server` binary 時**必須**帶 `--config <yaml>`，它不會自己從環境變數組出組態——那是 launcher 的工作。
+
+保持這個終端執行，`Ctrl+C` 正常停止。
 
 ## 3. Complete first-run setup / 完成首次設定
 
-在瀏覽器開啟終端印出的 `/setup?token=...`，依畫面建立：
+在瀏覽器開啟終端印出的 `/setup?token=…`：
 
-1. 第一位 Admin：email、顯示名稱與密碼。
+![Speclink server 的首次設定畫面](assets/screenshots/server-setup.png)
+
+依畫面建立三樣東西：
+
+1. 第一位管理員：email、顯示名稱與密碼。
 2. 第一個 Project：本教學使用 key `demo`。
 3. 第一個 Repo：本教學使用 key `backend`。
 
-完成頁會顯示 public URL、Project key 與 Repo key。依範例組成的 project-scoped URL 是：
+完成頁會顯示服務網址、專案代號與儲存庫代號。依這組範例，project-scoped URL（第 7 節 `link` 要用的連線網址）是：
 
 ```text
 http://localhost:8080/api/speclink/v1/projects/demo
 ```
 
-一般重啟後 `/setup` 會關閉，setup token 不會重印；這代表 identity 與 Store 已持久化，不是啟動失敗。
+之後重啟 server，`/setup` 會關閉且 setup token 不再重印——**這代表身分與 Store 已經持久化，不是啟動失敗**。
 
 ## 4. Grant Project membership / 授予 Project membership
 
-建立 Project／Repo registry 不等於授予帳號存取權。Server Admin 是 installation 管理權；Project membership 是 Project 資料權限。即使是第一位 Admin，也不會繞過 membership 檢查。
+帳號能登入不等於看得到專案，成員資格是另一層。有兩種做法：
 
-1. 開啟 [http://localhost:8080/admin/users](http://localhost:8080/admin/users)。
-2. 若被導向登入頁，使用 `/setup` 建立的 Admin email 與密碼登入。
-3. 找到 Desktop 實際要登入的帳號。
-4. 在 membership 表單選 `demo`。
-5. 選擇角色：
-   - `editor`：可讀寫，適合本教學 smoke test。
-   - `reader`：可讀，寫入操作會停用或被 Server 拒絕。
-6. 按「加入／更新」。
+**從後台**——以管理員登入後開 `/admin/users`，把對象加入 `demo` 專案並指定角色。沒有 membership 的人即使登入成功，讀取該專案的資源也只會拿到 `404`。這是刻意的，不讓未授權者從錯誤碼推斷專案是否存在。
 
-若要測一般使用者，請由 `/admin/users` 建立 invitation，指派 Project membership，讓受邀者開啟一次性邀請連結並設定密碼。不要共用 Admin 的 PAT 或密碼。
+**從命令列**（headless，適合腳本化）——邀請一位新成員並直接帶上專案：
+
+```bash
+speclink-server invite --config ./speclink-data/config.yaml \
+  --email teammate@example.com --display "Teammate" --project demo
+```
+
+**預期輸出**：一次性的接受邀請網址，把它交給對方完成註冊。
+
+其餘管理動作同樣有 headless 入口：`speclink-server user suspend|reactivate`、`speclink-server token revoke`、`speclink-server project create` 與 `speclink-server repo create`。全部都需要 `--config` 指向資料目錄裡的組態檔。
 
 ## 5. Create a PAT safely / 安全建立 PAT
 
-PAT（Personal Access Token，個人存取權杖）是 CLI 與 Desktop fallback 的憑證。先開啟：
+日常登入用不到 PAT，CLI 預設走 device authorization。PAT 是給 CI 或無瀏覽器環境用的。
 
-[http://localhost:8080/account](http://localhost:8080/account)
+在 `/account` 頁面建立 PAT。按下建立時，該頁送出一個同源的瀏覽器 API 請求：POST `/api/speclink/v1/web/account/tokens`。這個端點只接受 POST，不是可以直接開的網頁，所以不要用瀏覽器 GET 它。
 
-登入後，在 Personal Access Tokens 表單填名稱（例如 `local-cli`），到期日可留空，再按「建立 PAT」。PAT 明文只顯示一次，請立即複製到安全位置。
-
-`/account` 是單頁應用（SPA）頁面：在其 Personal Access Tokens 表單建立 PAT，SPA 會提交至 browser API **POST `/api/speclink/v1/web/account/tokens`**，明文只顯示一次。`/account/tokens` 本身不是可瀏覽頁面——若直接以 GET 開啟會得到 JSON 404。
-
-不要把 PAT 放進：
-
-- URL 或 shell argument。
-- `.speclink.yaml`、repo、文件或 log。
-- Desktop localStorage。
-
-CLI 可用互動式 `speclink auth login` 從 stdin 讀取；Desktop 會把 credential 放在 OS Keychain。
-
-## 6. Open a Remote Desktop Workspace / 開啟 Remote Desktop Workspace
-
-在 Desktop：
-
-1. 選「新增 Workspace」。
-2. 選「Speclink Server」。
-3. 輸入 Server base URL：`http://localhost:8080`，不要輸入 project-scoped URL。
-4. 優先選 Device Login：
-   - Desktop 會開啟瀏覽器 `/activate`。
-   - 若尚未登入，先登入帳號。
-   - 確認畫面中的 user code 與 Desktop 顯示一致，再核准。
-5. 若 Device Login 無法使用，可選 PAT fallback 並貼上 `/account` 剛建立的 PAT。
-6. 選擇 `demo`／`backend`。
-
-若清單顯示「此帳號目前沒有任何 Project／Repo membership」，表示目前登入帳號沒有 `demo` membership；回到 `/admin/users` 補上 `reader` 或 `editor`，再回 Desktop 關閉並重新開啟 chooser，或回上一步重新載入。
-
-接著選 workspace 類型：
-
-- **spec-only**：略過 checkout，直接使用 Server 上的規格；適合 PM／PO。
-- **remote + checkout**：選本機 Git repo。無 `.speclink.yaml` remote marker 時 Desktop 會驗證後寫入；既有 marker 必須和所選 Server origin／Repo 一致。
-
-handshake 成功後才會建立 remote 分頁。分頁重啟恢復、角色能力與離線狀態都綁定該 Remote Workspace，不會靜默退回 local mode。
-
-## 7. Connect and smoke-test the Remote CLI / 連接並測試 Remote CLI
-
-第 2 節的 `npm run dev` 已經建置好目前 checkout 的 CLI。用 `npm run cli` 執行它，就不必先安裝 CLI，也不會誤用 PATH 上另一版：
-
-- 在 Speclink repo root：`npm run cli -- <args>`。
-- 在其他資料夾（本節的測試資料夾就是）：`npm --prefix /path/to/speclink run cli -- <args>`。`--prefix` 只決定用哪個 checkout 的 CLI，CLI 仍作用於你目前所在的資料夾。
-- 需要直接解析 `--json` 輸出時加 `--silent`：`npm run --silent cli -- <args>`，避免 npm 的 lifecycle 訊息混進 stdout。
-- `--` 之後的參數原樣傳給 CLI；漏掉 `--` 會被 npm 自己吃掉。
-
-在另一個測試資料夾執行以下命令；不要在 Speclink 產品 repo 根目錄執行：
+建立時記住三件事：只給需要的專案範圍、設定到期日，而且**全文只顯示一次**。離開頁面後就拿不回來，只能撤銷重發：
 
 ```bash
-mkdir -p /tmp/speclink-remote-smoke
-cd /tmp/speclink-remote-smoke
-npm --prefix /path/to/speclink run cli -- link \
-  http://localhost:8080/api/speclink/v1/projects/demo \
-  --repo backend
-npm --prefix /path/to/speclink run cli -- auth login
+speclink-server token revoke --config ./speclink-data/config.yaml <token-id>
 ```
 
-將 `/path/to/speclink` 換成實際 repo 絕對路徑。`auth login` 提示後再貼 PAT，避免把 token 寫進 shell history。登入後先測讀取：
+不要把 PAT 放進 repo、shell 歷史或截圖裡。
+
+## 6. Connect the Desktop app / 連接 Desktop app
+
+在 Desktop 的「設定 → 伺服器」新增一個連線，填入服務網址，然後登入。預設走 device 流程，瀏覽器開一次授權即可；無瀏覽器時可改貼 PAT。憑證存在 OS 的 Keychain，不落在專案檔案裡。
+
+連線清單、device 登入、PAT 後備與登出都已可用。**但完整的 Remote Workspace 尚未閉合**：登入之後還不能像本地 workspace 那樣直接開出一個遠端看板。
+
+三種工作階段都還在後續變更裡：
+
+- spec-only：只讀遠端規格，本機沒有 checkout
+- remote＋checkout：遠端規格搭配本機原始碼
+- offline 與衝突處理
+
+目前的完成度與缺口，逐項見[專案能力狀態](product-status.zh-TW.md)的 Desktop Remote Workspace 一列。請以那裡為準，不要從這份教學推論。
+
+## 7. Connect the CLI / 連接 CLI
+
+在要接上遠端的 repo 目錄：
 
 ```bash
-npm --prefix /path/to/speclink run cli -- auth status
-npm --prefix /path/to/speclink run cli -- list
-npm --prefix /path/to/speclink run --silent cli -- list --json
+speclink link http://localhost:8080/api/speclink/v1/projects/demo --repo backend
+speclink auth login
+speclink auth status
 ```
 
-再以 `editor` 身分測最小寫入與結構檢查：
+`link` 記錄連線與這個 repo 在遠端的註冊名稱。`auth login` 預設走 device authorization，終端會給一組代碼與網址。`auth status` 回報目前身分與 repo 的核對結果。
+
+接上之後，日常動詞照舊。`list`、`show`、`status`、`instructions`、`new`、`task`、`in-progress`、`discuss`、`review`、`verify` 與 `archive` 都有遠端臂，會作用在遠端 Store 而不是本地。
+
+有兩個例外：`demo` 只在本地可用，`claim` 只在遠端可用。兩者在錯誤的模式下都會明確拒絕，不會靜默改道。動詞的模式歸屬見[動詞與旗標契約](verb-contract.zh-TW.md)。
+
+有 checkout 時，Agent 讀的是唯讀的 `.speclink/context/` 投影。**不要直接編輯它**——那不算遠端寫入，下一個命令會判定投影已被改動而拒絕。要刷新就重新取得 instructions。
+
+**在這個 repo 的 checkout 內核對時，一律用 wrapper 而不是 PATH 上的 `speclink`**：
 
 ```bash
-npm --prefix /path/to/speclink run cli -- new change remote-smoke-test
-npm --prefix /path/to/speclink run cli -- status --change remote-smoke-test
-npm --prefix /path/to/speclink run cli -- validate remote-smoke-test
-npm --prefix /path/to/speclink run cli -- analyze remote-smoke-test
+npm run cli -- auth status
+npm run --silent cli -- list --json
 ```
 
-回 Desktop，確認 `remote-smoke-test` 出現在同一個 `demo`／`backend` 看板。Remote CLI 會在測試資料夾寫入 remote binding 與唯讀 Context Projection；規格寫入仍由 Server Host 處理。
+`npm run cli -- <args>` 固定執行這個 checkout 的 CLI，binary 不存在時會先自動建置，絕不 fallback 到 PATH。需要純機器可讀的 stdout 時加 `--silent`。Node SDK 不是 npm workspace 成員，要測它得用 `npm --prefix crates/speclink-node test`。
 
-## 8. Verify persistence and recovery / 驗證持久化與恢復
+## 8. Recover from a lost connection / 失聯恢復
 
-### 一般重啟
+| 症狀 | 怎麼回來 |
+| --- | --- |
+| 憑證過期或被撤銷 | 重跑 `speclink auth login`；device 流程會重新授權。 |
+| `auth status` 說 repo 核對失敗 | 遠端的 repo 註冊名稱與 `link --repo` 對不上，重跑 `speclink link` 並帶正確名稱。 |
+| 投影標記為 STALE 或被改動 | 不要手動修，重新執行 `speclink instructions ... --json` 讓它重新物化。 |
+| server 換了網址 | `speclink unlink` 之後以新網址重新 `link`。 |
+| 想徹底登出這台裝置 | `speclink auth logout`——撤銷這台裝置的憑證族並清除本地憑證。 |
+| server 起不來、`/healthz` 不回 200 | 看 server 終端的錯誤；組態不合法時它會以非零結束而不是帶病啟動。 |
 
-在執行 `npm run dev` 的終端按 `Ctrl+C`，再執行：
+## 9. Reset and clean up / 重置與清除
+
+npx 路徑的所有狀態都在 `speclink-data/`，刪掉它就回到全新的 `/setup`：
 
 ```bash
-npm run dev
+rm -rf ./speclink-data
 ```
 
-預期：
-
-- 不再印 setup token。
-- Project、Repo、membership、帳號與 change 保留。
-- Desktop 儲存的 remote tab 可恢復。
-
-### offline／stale
-
-保持 remote 分頁開啟，停止 Server。預期：
-
-- remote 分頁保留最後 snapshot，呈現 offline／stale。
-- snapshot 只能讀；寫入立即被拒絕，不建立隱性 local write queue。
-- local 分頁不受影響。
-
-重新執行 `npm run dev`。預期 Desktop 以 Query＋ETag 收斂並重新訂閱 SSE，資料更新後清除 stale 狀態。
-
-### credential 失效
-
-若 Server 回 401 或 credential family 被撤銷，Desktop 會顯示需要重新認證；從 Server 設定重新登入後，原 remote 分頁應原地恢復，不得改成本地 workspace。
-
-## 9. Reset the development environment / 重置開發環境
-
-完全重置前先停止 `npm run dev`，再執行：
-
-```bash
-npm run dev:reset
-npm run dev
-```
-
-預期重新出現全新的 `/setup?token=...`。這會刪除 `.dev/` 內的預設 SQLite Store 與 identity，因此舊帳號、PAT、membership、Project／Repo 與 changes 都無法繼續使用。
-
-若 `.env` 使用 PostgreSQL，`npm run dev:reset` 不會刪除外部資料庫；必須自行 drop／recreate 指定 database 才是完全重置。
+repo 內開發用的 `npm run dev`，對應的重置指令是 `npm run dev:reset`，它只清 `.dev/`、不動 `.env`。要保留資料的搬遷與定期備份，見[Server 備份與還原](server-backup.zh-TW.md)。
 
 ## 10. Troubleshooting / 故障排除
 
-| 症狀 | 原因 | 處理方式 |
-| --- | --- | --- |
-| 直接開啟 `/account/tokens` 得到 404 | 它是 browser-API 端點，不是頁面 | 開啟 `/account`，由 Personal Access Tokens 表單建立 PAT |
-| Desktop 顯示沒有任何 Project／Repo membership | registry 已有資源，但目前帳號沒有 Project membership；Admin 也不會 bypass | 到 `/admin/users` 對實際登入帳號授予 `reader` 或 `editor`，再重新開啟 chooser |
-| Desktop Project／Repo 清單仍是空的 | 授權加在另一個帳號，或 chooser 尚未重新載入 | 核對 `/account` 的 email，補正 membership，關閉並重新開啟 chooser；必要時登出再登入 |
-| 401／需要重新認證 | PAT、access token 或 device credential family 已失效／撤銷 | 從 Desktop Server 設定重新登入，或由 `/account` 建新 PAT |
-| Server offline，分頁顯示 stale | SSE／HTTP 暫時不可達 | 保留唯讀 snapshot，不嘗試離線寫入；重啟 Server 等待 Query＋ETag 自動收斂 |
-| checkout marker 衝突 | `.speclink.yaml` 指向不同 Server origin 或 Repo | 不要手改掩蓋；選正確 checkout，或依 Desktop 衝突對話選擇本地、以 Server 為準或遷移 |
-| CLI 顯示 not logged in | 已 link，但該 Server origin 尚無 credential | 在同一測試資料夾執行 `npm --prefix /path/to/speclink run cli -- auth login` |
-| CLI 行為與 Server／Desktop 對不上 | PATH 上的 `speclink` 是另一版或另一個 checkout 建的 | 改用 `npm run cli`（或 `npm --prefix <checkout> run cli`）執行目前 checkout 的 binary，不必動 PATH |
-| `npm run cli` 說無法執行 checkout CLI | 目前 checkout 尚未建置 debug binary | 執行 `npm run dev` 或 `cargo build -p speclink-cli`；訊息會同時列出 binary 路徑與 cwd 供比對 |
-| 重啟後沒有 setup token | setup 已完成且資料仍存在 | 直接登入 `/account`／`/admin`；只有完全 `npm run dev:reset` 才會重新 setup |
-| reset 後舊 Desktop connection 失效 | identity、Project 與 credential 已被刪除 | 完成新 setup、重授 membership，再新增或重新登入 connection |
-
-完成以上流程後，你已驗證同一個 Remote Project／Repo 可由 Server、Desktop 與 CLI 共用。若要驗證完整角色、事件恢復與多分頁情境，再依 [Phase 3 acceptance spec](../openspec/specs/phase3-acceptance/spec.md) 執行專案測試。
+- **`/setup` 打不開、token 不再出現**：那是正常的——設定已完成一次，token 只顯示一次。要重來就清掉資料目錄。
+- **直接跑 `speclink-server` 說 `missing required argument --config`**：binary 不讀環境變數，改用 `npx @speclink/server`，或自己帶 `--config`。
+- **成員登入得了卻看不到專案**：那是成員資格沒給，回第 4 節。
+- **PAT 弄丟了**：拿不回來，撤銷後重發。
+- **CLI 行為和文件對不上**：多半是 PATH 上有一顆過期的 `speclink`，來自另一個 checkout 或沒跟上的安裝版。在這個 repo 內改用 `npm run cli -- <args>`，它只跑當前 checkout 的 CLI。要確認你手上那顆是哪一版，跑 `speclink --version` 與 `npm run --silent cli -- --version` 比對引擎版號。
+- **不確定某項遠端能力到底有沒有**：查[專案能力狀態](product-status.zh-TW.md)的本地與遠端對照表，一列就看得到兩邊狀態。
