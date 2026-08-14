@@ -35,13 +35,15 @@ describe("parseTaskDoc", () => {
   // `[M]` 落 manual 旗標、歷史遺留的 `[P]` 只剝不承載。
   it("strips leading markers and flags only [M] as manual", () => {
     const items = parseTaskDoc(
-      "- [ ] [M] 手動驗證匯入結果\n- [x] [P] 舊任務\n- [x] [P] [M] 混用\n- [ ] 無標記\n",
+      "- [ ] [M] 手動驗證匯入結果\n- [ ] [M] 至外部服務放置金鑰\n- [x] [P] 舊任務\n- [x] [P] [M] 混用\n- [ ] 無標記\n",
     );
     expect(items).toEqual([
       { kind: "task", ordinal: 1, done: false, text: "手動驗證匯入結果", manual: true },
-      { kind: "task", ordinal: 2, done: true, text: "舊任務" },
-      { kind: "task", ordinal: 3, done: true, text: "混用", manual: true },
-      { kind: "task", ordinal: 4, done: false, text: "無標記" },
+      // 非測試類的手動任務同樣解析——標記語意不判讀描述內容。
+      { kind: "task", ordinal: 2, done: false, text: "至外部服務放置金鑰", manual: true },
+      { kind: "task", ordinal: 3, done: true, text: "舊任務" },
+      { kind: "task", ordinal: 4, done: true, text: "混用", manual: true },
+      { kind: "task", ordinal: 5, done: false, text: "無標記" },
     ]);
   });
 
@@ -133,16 +135,17 @@ describe("TaskList", () => {
     expect(heading.textContent).toBe("1. Group A");
   });
 
-  // spec desktop-app「任務列的手動測試徽章」
-  describe("手動測試徽章", () => {
+  // spec desktop-app「任務列的手動任務徽章」
+  describe("手動任務徽章", () => {
     const MARKED = "- [ ] [M] 3.2 手動驗證匯入結果\n- [x] 3.1 跑全套測試\n";
 
     it("`[M]` 列於描述上方獨立一行顯示徽章、左緣與描述切齊", () => {
       // Scenario「手動任務列的徽章呈現」。
       render(<TaskList markdown={MARKED} />);
-      const badge = screen.getByLabelText("手動測試");
-      expect(badge.textContent).toContain("手動測試");
-      expect(screen.getAllByLabelText("手動測試")).toHaveLength(1);
+      const badge = screen.getByLabelText("手動");
+      // 精確比對：文案退回「手動測試」等任何形變都會被抓到，不需模糊反向網。
+      expect(badge.textContent).toBe("手動");
+      expect(screen.getAllByLabelText("手動")).toHaveLength(1);
       const marked = screen.getByText("3.2 手動驗證匯入結果");
       const plain = screen.getByText("3.1 跑全套測試");
       // 徽章與描述同屬一個直列容器，且徽章是首子元素＝描述正上方那一行；
@@ -163,7 +166,7 @@ describe("TaskList", () => {
     it("徽章配色取語意色票，不是 muted 灰階", () => {
       // 實測回饋：灰底灰字在滿頁灰階任務文字裡讀不出來。
       render(<TaskList markdown={MARKED} />);
-      const badge = screen.getByLabelText("手動測試");
+      const badge = screen.getByLabelText("手動");
       expect(badge.className).not.toContain("bg-muted");
       expect(badge.className).not.toContain("text-muted-foreground");
       expect(badge.className).toContain("sky");
@@ -174,7 +177,7 @@ describe("TaskList", () => {
       // 都不影響徽章所在的行——jsdom 量不到實際換行，以結構為準。
       const long = `- [ ] [M] ${"很長的描述".repeat(40)}\n`;
       render(<TaskList markdown={long} />);
-      const badge = screen.getByLabelText("手動測試");
+      const badge = screen.getByLabelText("手動");
       const col = badge.parentElement as HTMLElement;
       expect(col.className).toContain("flex-col");
       expect(col.firstElementChild).toBe(badge);
@@ -186,7 +189,7 @@ describe("TaskList", () => {
       // Scenario「勾完徽章保留」。
       render(<TaskList markdown={"- [x] [M] 3.2 手動驗證匯入結果\n"} />);
       expect(screen.getByText("3.2 手動驗證匯入結果").className).toContain("line-through");
-      const badge = screen.getByLabelText("手動測試");
+      const badge = screen.getByLabelText("手動");
       expect(badge.className).not.toContain("line-through");
     });
 
@@ -194,14 +197,27 @@ describe("TaskList", () => {
       // Scenario「舊 [P] 行無徽章」。
       render(<TaskList markdown={"- [x] [P] 舊任務\n"} />);
       const text = screen.getByText("舊任務");
-      expect(screen.queryByLabelText("手動測試")).toBeNull();
+      expect(screen.queryByLabelText("手動")).toBeNull();
       // 描述欄容器只有描述一個子元素——沒有徽章預留的空槽。
       expect((text.parentElement as HTMLElement).children).toHaveLength(1);
     });
 
     it("無 `[M]` 任務的清單不長徽章", () => {
       render(<TaskList markdown={MD} />);
-      expect(screen.queryByLabelText("手動測試")).toBeNull();
+      expect(screen.queryByLabelText("手動")).toBeNull();
+    });
+
+    it("en 徽章文案為 Manual（放寬後不提 test）", () => {
+      // 語意自「手動測試」放寬為「需使用者親手操作的任務」——兩語系的文案
+      // 都不得再把標記說成只限測試。
+      rtlRender(
+        <I18nProvider locale="en">
+          <TaskList markdown={MARKED} />
+        </I18nProvider>,
+      );
+      const badge = screen.getByLabelText("Manual");
+      // 精確比對：退回 "Manual test"／"Manual Test" 任何大小寫形變都會被抓到。
+      expect(badge.textContent).toBe("Manual");
     });
   });
 

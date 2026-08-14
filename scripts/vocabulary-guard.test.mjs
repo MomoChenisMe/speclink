@@ -14,6 +14,7 @@ const read = (relative) => readFileSync(path.join(ROOT, relative), 'utf8');
 const SURFACE_FILES = [
   'apps/desktop/src/i18n/messages.ts',
   'apps/server-web/src/i18n/messages.ts',
+  'packages/ui/src/i18n.tsx',
   'README.md',
   'README.en.md',
 ];
@@ -86,6 +87,25 @@ test('詞彙守門：使用者可見文案面不出現 LANGUAGE.md 的 avoid 詞
 test('守門詞取自 LANGUAGE.md 的 avoid 欄，含本次收斂的兩個舊詞', () => {
   assert.ok(TERMS.includes('抽屜'), '「詳情面板」詞條的 avoid 未被解析出來');
   assert.ok(TERMS.includes('品質站'), '「品質關卡」詞條的 avoid 未被解析出來');
+});
+
+// spec ui-copy-vocabulary「手動任務與待手動以 LANGUAGE.md 詞條承載」＋「使用者可見
+// 文案面的範圍與詞彙約束」：面含共用看板元件的 i18n 檔、守門詞含「待手測」——
+// 兩者少一個，待手動的防漂回就整個失效，所以各釘一條。
+test('守門面含 packages/ui/src/i18n.tsx（待手動文案的所在檔）', () => {
+  assert.ok(surface().includes('packages/ui/src/i18n.tsx'), '共用看板元件的 i18n 檔不在守門面內');
+});
+
+test('「待手測」不帶語境限定，入機械守門集', () => {
+  assert.ok(TERMS.includes('待手測'), '「待手動」詞條的 avoid「待手測」未被解析出來');
+  assert.ok(!TERMS.includes('手動測試'), '「手動測試」帶「此概念上」限定，不該進機械守門集');
+});
+
+test('於 packages/ui/src/i18n.tsx 植入「待手測」時命中並指出行號', () => {
+  const planted = ['const zh = {', '  "card.awaitingManual": "待手測",', '};'].join('\n');
+  assert.deepEqual(scanText('packages/ui/src/i18n.tsx', planted, TERMS), [
+    'packages/ui/src/i18n.tsx:2 「待手測」',
+  ]);
 });
 
 test('帶括號限定的 avoid 詞不入守門集（綁語境，機械掃描必誤命中）', () => {

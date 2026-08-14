@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.13"
+  version: "v1.19.15"
   generatedBy: "Speclink"
 ---
 
@@ -135,7 +135,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    - Add new tasks from plan stages or conversation, **preserve completed `[x]` items**
    - Do NOT remove existing content
 
-   **Mark manual-verification tasks with `[M]`**: a task the agent cannot run itself — the user has to operate the product and confirm the result by hand — carries an `[M]` marker, so the quality stations can judge "the code is finished" separately from "a human accepted it". Code tasks and automated tests never carry it.
+   **Mark manual tasks with `[M]`**: a task the agent cannot do itself — the user has to do it by hand, whether that is operating the product and accepting the result, creating an account on an external service, or placing a key — carries an `[M]` marker, so the quality stations can judge "the code is finished" separately from "a human did their part". Anything the agent can do itself, including code and automated tests, never carries it.
 
    **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, never before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
 

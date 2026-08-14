@@ -16,7 +16,7 @@ A station's stamp freezes the content fingerprint of the files in its scope. Eve
 
 Which findings are worth fixing, and whether the change is ready to stamp, are the user's calls — not this skill's. So every round ends the same way: report both stations, then stop and ask. Never fix a finding, stamp a station or recommend your way past a decision on your own initiative. A clean round is not an exception: "both stations green" is something to report and wait on, like everything else.
 
-**Entry condition**: the change's code tasks are all complete (`codeRemaining` is 0 in the apply payload; `[M]` manual-verification tasks are excluded and may still be open — say so in the report when they are). That is the stations' own precondition — when it is not met, each station shows its own behavior (review refuses and stops; verify reports a mid-flight check-in instead of landing a ticket): relay that outcome verbatim. This skill adds no gate of its own, never pre-checks on the stations' behalf, and never swallows a station's error.
+**Entry condition**: the change's code tasks are all complete (`codeRemaining` is 0 in the apply payload; `[M]` manual tasks are excluded and may still be open — say so in the report when they are). That is the stations' own precondition — when it is not met, each station shows its own behavior (review refuses and stops; verify reports a mid-flight check-in instead of landing a ticket): relay that outcome verbatim. This skill adds no gate of its own, never pre-checks on the stations' behalf, and never swallows a station's error.
 
 **Steps**
 
@@ -57,7 +57,7 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 7. **Archive — a recommendation**
 
-   Both stamps are green: recommend `/speclink:archive` and leave the run to the user. When the change still carries unchecked `[M]` manual-verification tasks, the recommendation MUST say so: the manual runs have to be completed and their tasks checked off before archive will let the change through.
+   Both stamps are green: recommend `/speclink:archive` and leave the run to the user. When the change still carries unchecked `[M]` manual tasks, the recommendation MUST say so: the manual work has to be completed and those tasks checked off before archive will let the change through.
 
 **Edge cases**
 

@@ -1,4 +1,4 @@
-// 待手測章（spec desktop-app「看板卡片的待手測標示」；design D5）：寫碼任務全
+// 待手動章（spec desktop-app「看板卡片的待手動標示」；design D5）：寫碼任務全
 // 完成、僅餘未勾 `[M]` 時卡片浮現行內小章，tooltip 載明剩餘項數。
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent, cleanup, act } from "@testing-library/react";
@@ -35,9 +35,9 @@ function card(remaining: number, codeRemaining: number): ChangeItem {
   };
 }
 
-describe("ChangeCard 待手測章", () => {
+describe("ChangeCard 待手動章", () => {
   it("浮現判定逐列成立（spec Example 表）", () => {
-    // | codeRemaining | remaining | 待手測章 |
+    // | codeRemaining | remaining | 待手動章 |
     const rows: [number, number, boolean][] = [
       [0, 1, true],
       [0, 3, true],
@@ -46,14 +46,14 @@ describe("ChangeCard 待手測章", () => {
     ];
     for (const [codeRemaining, remaining, shown] of rows) {
       render(<ChangeCard change={card(remaining, codeRemaining)} />);
-      const badge = screen.queryByLabelText("待手測");
+      const badge = screen.queryByLabelText("待手動");
       expect(Boolean(badge), `codeRemaining=${codeRemaining} remaining=${remaining}`).toBe(shown);
       cleanup();
     }
   });
 
-  it("codeTotal=0 的全手測變更不浮現章（spec Example 表末列：空真值）", () => {
-    // 尚無任何寫碼任務時「寫碼全完成」是空真值——沒開工的卡不該宣告待手測。
+  it("codeTotal=0 的全手動變更不浮現章（spec Example 表末列：空真值）", () => {
+    // 尚無任何寫碼任務時「寫碼全完成」是空真值——沒開工的卡不該宣告待手動。
     render(
       <ChangeCard
         change={{
@@ -67,20 +67,38 @@ describe("ChangeCard 待手測章", () => {
         }}
       />,
     );
-    expect(screen.queryByLabelText("待手測")).toBeNull();
+    expect(screen.queryByLabelText("待手動")).toBeNull();
   });
 
   it("tooltip 載明剩餘項數（沿審查標示家族：無原生 title）", () => {
-    // Scenario「待手測卡片浮現章」：codeTotal=9、codeComplete=9、total=10、complete=9。
+    // Scenario「待手動卡片浮現章」：codeTotal=9、codeComplete=9、total=10、complete=9。
     vi.useFakeTimers();
     render(<ChangeCard change={card(1, 0)} />);
-    const badge = screen.getByLabelText("待手測");
+    const badge = screen.getByLabelText("待手動");
     expect(badge.getAttribute("title")).toBeNull();
     fireEvent.pointerMove(badge, { pointerType: "mouse" });
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(document.querySelector("[data-side]")?.textContent).toContain("待手測·剩 1 項");
+    expect(document.querySelector("[data-side]")?.textContent).toContain("待手動·剩 1 項");
+  });
+
+  it("en 章文案為 Awaiting manual（放寬後不提 test）", () => {
+    // 語意放寬後兩語系的章文案都不得再把 `[M]` 說成只限測試。
+    vi.useFakeTimers();
+    rtlRender(
+      <I18nProvider locale="en">
+        <ChangeCard change={card(1, 0)} />
+      </I18nProvider>,
+    );
+    const badge = screen.getByLabelText("Awaiting manual");
+    // 與 zh 版同構：無原生 title、tooltip 精確比對（退回 "manual test" 即紅燈）。
+    expect(badge.getAttribute("title")).toBeNull();
+    fireEvent.pointerMove(badge, { pointerType: "mouse" });
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(document.querySelector("[data-side]")?.textContent).toContain("Awaiting manual · 1 left");
   });
 
   it("remote 摘要缺寫碼進度欄位時章缺席", () => {
@@ -88,6 +106,6 @@ describe("ChangeCard 待手測章", () => {
     render(
       <ChangeCard change={{ name: "c", status: "in-progress", totalTasks: 10, completedTasks: 9 }} />,
     );
-    expect(screen.queryByLabelText("待手測")).toBeNull();
+    expect(screen.queryByLabelText("待手動")).toBeNull();
   });
 });

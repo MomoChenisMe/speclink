@@ -44,8 +44,8 @@ describe("STAGE_BAR / STAGE_ICON（單一 teal 深淺階梯）", () => {
   });
 });
 
-// spec desktop-app「看板卡片的待手測標示」:判定收斂於階段派生模組單一入口。
-describe("awaitingManualCount(待手測判定)", () => {
+// spec desktop-app「看板卡片的待手動標示」:判定收斂於階段派生模組單一入口。
+describe("awaitingManualCount(待手動判定)", () => {
   const c = (codeTotal: number | undefined, codeRemaining: number | undefined, remaining: number): ChangeItem => ({
     name: "c",
     status: "in-progress",
@@ -55,7 +55,7 @@ describe("awaitingManualCount(待手測判定)", () => {
   });
 
   it("spec Example「浮現判定」表逐列", () => {
-    // | codeTotal | codeRemaining | remaining | 待手測章 |
+    // | codeTotal | codeRemaining | remaining | 待手動章 |
     const rows: [number, number, number, number][] = [
       [9, 0, 1, 1],
       [7, 0, 3, 3],
