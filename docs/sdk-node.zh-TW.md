@@ -67,7 +67,7 @@ const engine = createEngine({ store: myStore })
 | Delta specs | `deltaCapabilities`、`hasCapabilityDirs` | change 內含 delta spec 的 capability 名稱，排序後回傳。 |
 | Canonical specs | `listCanonicalCapabilities`、`canonicalSpecExists`、`readCanonicalSpec`、`writeCanonicalSpec`、`canonicalSpecPath` | 專案層級的正典規格，archive 時 delta 併入之處。 |
 | Archive | `archivedChangeExists`、`archiveChange`、`readArchivedMeta`、`writeArchivedMeta` | `archiveChange(name, datedName)` 把使用中的 change 移到含日期的封存名下（`YYYY-MM-DD-<name>`）。 |
-| Discussions | `liveDiscussionExists`、`archivedDiscussionExists`、`liveDiscussionPath`、`readLiveDiscussion`、`writeLiveDiscussion`、`deleteLiveDiscussion`、`readDiscussion`、`listLiveDiscussions`、`listArchivedDiscussions`、`archiveDiscussion` | 文件以原始文字儲存；解析（回合、結論）是引擎邏輯。`readDiscussion` 先找 live，再找最新的封存候選。 |
+| Discussions | `liveDiscussionExists`、`archivedDiscussionExists`、`liveDiscussionPath`、`readLiveDiscussion`、`writeLiveDiscussion`、`deleteLiveDiscussion`、`readDiscussion`、`listLiveDiscussions`、`listArchivedDiscussions`、`archiveDiscussion` | 文件以原始文字儲存；解析（輪、結論）是引擎邏輯。`readDiscussion` 先找 live，再找最新的封存候選。 |
 | Config／詞彙 | `readWorkflowConfig`、`readLanguage` | `config.yaml` 原文（或 null）與 LANGUAGE 文件（或 null——沒有共用詞彙是正常狀態）。 |
 | 選配 | `claim` | 團隊系統的所有權裁決——見下文。 |
 

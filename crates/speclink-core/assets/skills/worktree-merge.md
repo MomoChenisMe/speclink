@@ -107,9 +107,9 @@ This is the wrap-up half of `/speclink:apply-with-worktree`. That skill stops ri
 
    Tell the user the wrap-up is done: the branch is merged, the worktree is removed, and the branch is deleted. Then point at what comes next in canonical order — the quality stations belong inside the worktree, so by this point they are either done or deliberately skipped, and the next step is archiving from the main checkout:
 
-   > 這個 change 已合併回主分支。品質站建議在 worktree 內就跑完；跑過或使用者決定略過的話，下一步是在主 checkout `/speclink:archive` 封存。
+   > 這個 change 已合併回主分支。品質關卡建議在 worktree 內就跑完；跑過或使用者決定略過的話，下一步是在主 checkout `/speclink:archive` 封存。
    >
-   > 還沒跑品質站的話，仍可在主 checkout 補跑 `/speclink:review`、`/speclink:verify` —— 但那是降級路徑：主 checkout 沒有 Apply baseline，審查凍結面會退回較粗的判定。
+   > 還沒跑品質關卡的話，仍可在主 checkout 補跑 `/speclink:review`、`/speclink:verify` —— 但那是降級路徑：主 checkout 沒有 Apply baseline，審查凍結面會退回較粗的判定。
 
 **Output On Success**
 
@@ -122,7 +122,7 @@ This is the wrap-up half of `/speclink:apply-with-worktree`. That skill stops ri
 **Worktree:** <path> (removed)
 **Branch deleted:** ✓
 
-接下來：主 checkout 封存 /speclink:archive（品質站建議已在 worktree 內完成；未跑則主 checkout 補跑屬降級路徑）
+接下來：主 checkout 封存 /speclink:archive（品質關卡建議已在 worktree 內完成；未跑則主 checkout 補跑屬降級路徑）
 ```
 
 **Output On Stop**
