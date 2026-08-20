@@ -185,30 +185,79 @@ pub(crate) fn cmd_feedback(a: FeedbackArgs) -> Result<()> {
     println!("Message: {}", a.message);
     Ok(())
 }
+/// One resolution location, rendered for display: the built-in has no path on disk.
+fn describe_source(s: &core::schema::SchemaSource) -> (String, &'static str) {
+    match &s.path {
+        Some(p) => (p.to_string_lossy().to_string(), s.source),
+        None => ("(embedded in binary)".to_string(), s.source),
+    }
+}
+
+
+/// Resolution locations in order; the first one wins, the rest are shadowed.
+fn print_sources(sources: &[core::schema::SchemaSource]) {
+    for (i, s) in sources.iter().enumerate() {
+        let (p, src) = describe_source(s);
+        let arrow = if i == 0 { "→" } else { " " };
+        println!("  {arrow} {p} ({src})");
+    }
+}
+
 pub(crate) fn cmd_schema(a: SchemaArgs) -> Result<()> {
     let ws = core::workspace::Workspace::discover_cwd()?;
+    let user_dir = speclink_host::context::global_config_dir();
     match a.command {
-        SchemaCommands::Which { name, all: _, json } => {
+        SchemaCommands::Which { name, all, json } => {
+            // Local output assembly shared by both json exits of this arm.
+            let source_item = |s: &core::schema::SchemaSource| {
+                let (p, src) = describe_source(s);
+                serde_json::json!({ "path": p, "source": src })
+            };
+            if all {
+                // list_all is one row per LOCATION; a shadowed name repeats. Dedupe to
+                // one row per name — its sources already carry every location in order.
+                let mut names: Vec<String> = Vec::new();
+                for s in core::schema::list_all(ws.as_ref(), Some(&user_dir)) {
+                    if !names.contains(&s.name) {
+                        names.push(s.name);
+                    }
+                }
+                let rows: Vec<_> = names
+                    .into_iter()
+                    .map(|n| {
+                        let sources = core::schema::sources(ws.as_ref(), Some(&user_dir), &n);
+                        (n, sources)
+                    })
+                    .collect();
+                if json {
+                    let items: Vec<_> = rows
+                        .iter()
+                        .map(|(name, sources)| {
+                            serde_json::json!({
+                                "name": name,
+                                "resolved": sources.first().map(|s| s.source),
+                                "sources": sources.iter().map(source_item).collect::<Vec<_>>(),
+                            })
+                        })
+                        .collect();
+                    return print_json(&items);
+                }
+                for (name, sources) in &rows {
+                    println!("Schema: {name}");
+                    print_sources(sources);
+                }
+                return Ok(());
+            }
             let n = name.unwrap_or_else(|| "spec-driven".to_string());
-            let sources = core::schema::sources(ws.as_ref(), Some(&speclink_host::context::global_config_dir()), &n);
+            let sources = core::schema::sources(ws.as_ref(), Some(&user_dir), &n);
             if sources.is_empty() {
                 // Unknown schema is informational, not an error (exit 0).
                 println!("Schema: {n}");
                 println!("Not found.");
                 return Ok(());
             }
-            let display = |s: &core::schema::SchemaSource| match &s.path {
-                Some(p) => (p.to_string_lossy().to_string(), s.source),
-                None => ("(embedded in binary)".to_string(), s.source),
-            };
             if json {
-                let items: Vec<_> = sources
-                    .iter()
-                    .map(|s| {
-                        let (p, src) = display(s);
-                        serde_json::json!({ "path": p, "source": src })
-                    })
-                    .collect();
+                let items: Vec<_> = sources.iter().map(source_item).collect();
                 return print_json(&serde_json::json!({
                     "name": n,
                     "resolved": sources[0].source,
@@ -216,20 +265,40 @@ pub(crate) fn cmd_schema(a: SchemaArgs) -> Result<()> {
                 }));
             }
             println!("Schema: {n}");
-            for (i, s) in sources.iter().enumerate() {
-                let (p, src) = display(s);
-                if i == 0 {
-                    println!("  → {p} ({src})");
-                } else {
-                    println!("    {p} ({src})");
-                }
-            }
+            print_sources(&sources);
         }
-        SchemaCommands::Validate { name, verbose: _, json } => {
+        SchemaCommands::Validate { name, verbose, json } => {
             let n = name.unwrap_or_else(|| "spec-driven".to_string());
-            match core::schema::resolve_with(ws.as_ref(), Some(&speclink_host::context::global_config_dir()), &n) {
+            // 統一的失敗出口：人眼一行 + 非 0 exit code。
+            let invalid = |detail: String| -> anyhow::Error {
+                println!("Schema '{n}' is invalid: {detail}");
+                anyhow::anyhow!("Schema validation failed: {detail}")
+            };
+            match core::schema::resolve_with(ws.as_ref(), Some(&user_dir), &n) {
                 Some(Ok(s)) => {
                     let count = s.artifacts.len();
+                    // Loading already enforced parse, ids, references and cycles; the
+                    // template-file check lives in core beside them.
+                    let missing = core::schema::missing_templates(&s);
+                    if verbose && !json {
+                        for step in ["parse", "artifact ids", "dependency references", "cycles"] {
+                            println!("  {} {step}", color::green("✓"));
+                        }
+                        let sym = if missing.is_empty() { color::green("✓") } else { color::red("✗") };
+                        println!("  {sym} templates");
+                    }
+                    if let Some(first) = missing.first() {
+                        let detail = format!("template file missing or unreadable: {first}");
+                        if json {
+                            return print_json(&serde_json::json!({
+                                "artifactCount": count,
+                                "error": detail,
+                                "name": s.name,
+                                "valid": false,
+                            }));
+                        }
+                        return Err(invalid(detail));
+                    }
                     if json {
                         return print_json(&serde_json::json!({
                             "artifactCount": count,
@@ -239,15 +308,8 @@ pub(crate) fn cmd_schema(a: SchemaArgs) -> Result<()> {
                     }
                     println!("{} Schema '{}' is valid ({count} artifacts)", color::green("✓"), s.name);
                 }
-                Some(Err(detail)) => {
-                    println!("Schema '{n}' is invalid: {detail}");
-                    bail!("Schema validation failed: {detail}");
-                }
-                None => {
-                    let detail = core::schema::not_found_msg(&n);
-                    println!("Schema '{n}' is invalid: {detail}");
-                    bail!("Schema validation failed: {detail}");
-                }
+                Some(Err(detail)) => return Err(invalid(detail)),
+                None => return Err(invalid(core::schema::not_found_msg(&n))),
             }
         }
         SchemaCommands::Fork { source, name, force, json: _ } => {
@@ -256,7 +318,7 @@ pub(crate) fn cmd_schema(a: SchemaArgs) -> Result<()> {
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             println!("{} Forked '{source}' → '{new_name}'", color::green("✓"));
         }
-        SchemaCommands::Init { name, description, artifacts, default: _, force } => {
+        SchemaCommands::Init { name, description, artifacts, default, force } => {
             let ws = require_workspace()?;
             let dir = core::schema::init_schema(
                 &ws,
@@ -267,6 +329,28 @@ pub(crate) fn cmd_schema(a: SchemaArgs) -> Result<()> {
             )
             .map_err(|e| anyhow::anyhow!("{e}"))?;
             println!("{} Created schema '{name}' at {}", color::green("✓"), dir.display());
+            if default {
+                // The skeleton is already on disk; a config the engine cannot READ or
+                // cannot PARSE refuses the write rather than overwriting the user's
+                // content — only a genuinely absent file starts a fresh document.
+                let path = ws.spec_dir().join("config.yaml");
+                let original = match std::fs::read_to_string(&path) {
+                    Ok(text) => Some(text),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(e) => anyhow::bail!(
+                        "cannot read {}: {e} — schema '{name}' was created; the project default is unchanged",
+                        path.display()
+                    ),
+                };
+                let updated = core::config::set_workflow_schema_text(original.as_deref(), &name)
+                    .map_err(|e| {
+                        anyhow::anyhow!(
+                            "{e} — schema '{name}' was created; the project default is unchanged"
+                        )
+                    })?;
+                core::util::write_file(&path, &updated)?;
+                println!("{} Set project default schema to '{name}'", color::green("✓"));
+            }
         }
     }
     Ok(())

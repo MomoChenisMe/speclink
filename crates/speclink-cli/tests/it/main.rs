@@ -26,6 +26,7 @@ mod remote_section;
 mod remote_verb_parity;
 mod remote_write_path;
 mod review_verbs;
+mod schema_commands;
 mod task_done_stamps;
 mod task_stable_id;
 mod task_undone;

@@ -598,6 +598,52 @@ pub fn update_workflow_config_text(
     Ok(output)
 }
 
+/// Set the `schema` key in a workflow config document, preserving every other byte.
+/// `None` (the file does not exist yet) yields a document carrying only that key.
+///
+/// Like [`update_workflow_config_text`], this is line-level surgery guarded by a re-parse:
+/// an unparseable input is a loud error rather than a silent overwrite of user content.
+pub fn set_workflow_schema_text(original: Option<&str>, name: &str) -> anyhow::Result<String> {
+    // An absent file and a pure-syntax empty document are the same case: no user
+    // content to preserve, the result is a document carrying only the schema key.
+    let base = match original.map(str::trim) {
+        None | Some("" | "{}" | "null" | "~") => return Ok(format!("schema: {name}\n")),
+        Some(_) => original.unwrap(),
+    };
+    let mut target = parse_yaml_mapping(base, "openspec/config.yaml")?;
+    target.insert("schema".into(), name.into());
+
+    let lines: Vec<&str> = base.split_inclusive('\n').collect();
+    let blocks = scan_top_level_blocks(&lines);
+    let eol = if base.contains("\r\n") { "\r\n" } else { "\n" };
+
+    let mut out = String::with_capacity(base.len() + 32);
+    match blocks.iter().find(|b| b.key == "schema") {
+        Some(block) => {
+            for (i, line) in lines.iter().enumerate() {
+                if i == block.start {
+                    out.push_str(&format!("schema: {name}{}", line_terminator(line)));
+                } else if !(block.start..block.end).contains(&i) {
+                    out.push_str(line);
+                }
+            }
+        }
+        None => {
+            // Canonical layout puts `schema` first, then one blank line before the rest.
+            out.push_str(&format!("schema: {name}{eol}"));
+            if lines.first().is_some_and(|l| !is_blank_line(l)) {
+                out.push_str(eol);
+            }
+            for line in &lines {
+                out.push_str(line);
+            }
+        }
+    }
+
+    verify_rewritten_config(&out, &target)?;
+    Ok(out)
+}
+
 /// Fail-closed guard on the surgical output: re-parse through the same path and
 /// compare against the intended state key by key. Any mismatch — including output
 /// that no longer parses — refuses the write with a single-line error, so a
@@ -900,6 +946,18 @@ fn set_or_remove(doc: &mut serde_yaml::Mapping, key: &str, value: Option<serde_y
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn set_schema_overwrites_the_existing_key_and_preserves_every_other_byte() {
+        let doc = "# lead comment\nschema: spec-driven\n\nlocale: tw\ncontext: |\n  line one\n";
+        let out = super::set_workflow_schema_text(Some(doc), "my-flow").expect("rewrites");
+        assert_eq!(out, "# lead comment\nschema: my-flow\n\nlocale: tw\ncontext: |\n  line one\n");
+    }
+
+    #[test]
+    fn set_schema_refuses_an_unparseable_document() {
+        assert!(super::set_workflow_schema_text(Some(": not yaml : [\n"), "my-flow").is_err());
+    }
     use super::*;
 
     fn app(yaml: &str) -> AppConfig {

@@ -1,0 +1,43 @@
+schema: spec-driven
+created: 2026-08-19
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: schema-engine-openspec-parity
+started_at: 2026-08-19
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-20
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 13
+reviewed_scope:
+  - path: crates/speclink-cli/src/verbs/toolchain.rs
+    hash: c1402b6d9f46bb60036a11730dfb9ff8a9c09307e0ccdb0eb5ea6ceabc3943e8
+  - path: crates/speclink-cli/tests/it/main.rs
+    hash: d05b55015e7e3cab7da5345f275ba62a1dece589f39ab19eb0c97d79ae5f2ab3
+  - path: crates/speclink-cli/tests/it/schema_commands.rs
+    hash: 2bebc046b1cb00ea3fb2656019d48c34a038435c3a0efe068290df66864d718d
+  - path: crates/speclink-core/assets/schema/spec-driven/fork.schema.yaml
+    hash: f5c1100e29d417d92071e424a46e642cfd9a244c17f0a404302ce11776e7e495
+  - path: crates/speclink-core/src/config.rs
+    hash: 4218f427fa619af27aefe2e5f4be9e7119d0ad018b9018d8504d98326287e078
+  - path: crates/speclink-core/src/schema.rs
+    hash: 74a73f6fbc4678b1cf1b1ec5ad7a206d6e9b0c1e5665319c3b51237605d0844c
+verified_at: 2026-08-20
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 13
+verified_scope:
+  - path: crates/speclink-cli/src/verbs/toolchain.rs
+    hash: c1402b6d9f46bb60036a11730dfb9ff8a9c09307e0ccdb0eb5ea6ceabc3943e8
+  - path: crates/speclink-cli/tests/it/main.rs
+    hash: d05b55015e7e3cab7da5345f275ba62a1dece589f39ab19eb0c97d79ae5f2ab3
+  - path: crates/speclink-cli/tests/it/schema_commands.rs
+    hash: 2bebc046b1cb00ea3fb2656019d48c34a038435c3a0efe068290df66864d718d
+  - path: crates/speclink-core/assets/schema/spec-driven/fork.schema.yaml
+    hash: f5c1100e29d417d92071e424a46e642cfd9a244c17f0a404302ce11776e7e495
+  - path: crates/speclink-core/src/config.rs
+    hash: 4218f427fa619af27aefe2e5f4be9e7119d0ad018b9018d8504d98326287e078
+  - path: crates/speclink-core/src/schema.rs
+    hash: 74a73f6fbc4678b1cf1b1ec5ad7a206d6e9b0c1e5665319c3b51237605d0844c
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-20
