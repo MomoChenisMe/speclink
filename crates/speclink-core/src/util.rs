@@ -8,6 +8,11 @@ pub fn read_opt(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
 
+/// Read a file to bytes, returning None if it does not exist / cannot be read.
+pub fn read_bytes_opt(path: &Path) -> Option<Vec<u8>> {
+    std::fs::read(path).ok()
+}
+
 /// 看板排序鍵（board_rank）的合法值：非空、僅小寫 ASCII 英文字母。
 /// 邊界驗證擋掉會破壞 meta/frontmatter 解析的值（換行注入、YAML 指示字元）。
 pub(crate) fn is_valid_board_rank(s: &str) -> bool {

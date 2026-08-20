@@ -14,8 +14,8 @@ use crate::store::Store;
 use anyhow::Result;
 
 pub use crate::station::{
-    content_fingerprint, fingerprint_scope, scope_union, Finding, Freshness, NotFound, Round,
-    RoundPhase, Severity, Ticket,
+    content_fingerprint, content_fingerprint_bytes, fingerprint_scope, scope_union, Finding,
+    Freshness, NotFound, Round, RoundPhase, ScopeReadFn, Severity, Ticket,
 };
 
 /// 審查站工單文件（change 目錄下的相對路徑）。
@@ -74,7 +74,7 @@ pub fn stamp(
     accept: bool,
     actor: Option<&str>,
     tool: Option<&str>,
-    read_file: &dyn Fn(&str) -> Option<String>,
+    read_file: &ScopeReadFn<'_>,
     file_exists: &dyn Fn(&str) -> bool,
 ) -> Result<()> {
     station::stamp(&STATION, store, change, accept, actor, tool, read_file, file_exists)
@@ -84,7 +84,7 @@ pub fn stamp(
 pub fn freshness(
     meta: &ChangeMeta,
     counts: &crate::tasks::Counts,
-    read_file: &dyn Fn(&str) -> Option<String>,
+    read_file: &ScopeReadFn<'_>,
 ) -> Freshness {
     station::freshness(
         StampAnchors {
@@ -274,13 +274,26 @@ mod tests {
     const FILE_A: &str = "fn a() {}\n";
     const FILE_B: &str = "fn b() {}\n";
 
-    /// repo 檔案讀取替身：固定 (path, content) 表。
-    fn files<'a>(map: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
-        move |p: &str| map.iter().find(|(k, _)| *k == p).map(|(_, v)| v.to_string())
+    /// repo 檔案讀取替身：固定 (path, content) 表（讀檔閉包吃位元組）。
+    fn files<'a>(map: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<Vec<u8>> + 'a {
+        move |p: &str| map.iter().find(|(k, _)| *k == p).map(|(_, v)| v.as_bytes().to_vec())
     }
 
     /// repo 檔案存在替身：與 `files` 共用同一張表。
     fn present<'a>(map: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> bool + 'a {
+        move |p: &str| map.iter().any(|(k, _)| *k == p)
+    }
+
+    /// 非 UTF-8 位元組替身（PNG 式檔頭；0x89 開頭即非法 UTF-8）。
+    const BIN_A: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0xFF, 0x00];
+
+    /// repo 位元組讀取替身：binary scope 案例用（文字案例走 `files`）。
+    fn byte_files<'a>(map: &'a [(&'a str, &'a [u8])]) -> impl Fn(&str) -> Option<Vec<u8>> + 'a {
+        move |p: &str| map.iter().find(|(k, _)| *k == p).map(|(_, v)| v.to_vec())
+    }
+
+    /// repo 檔案存在替身：與 `byte_files` 共用同一張表。
+    fn byte_present<'a>(map: &'a [(&'a str, &'a [u8])]) -> impl Fn(&str) -> bool + 'a {
         move |p: &str| map.iter().any(|(k, _)| *k == p)
     }
 
@@ -657,8 +670,8 @@ mod tests {
 
     #[test]
     fn stamp_reports_unreadable_scope_files_without_claiming_they_are_missing() {
-        // read_file 回 None 也可能是「讀得到但不是 UTF-8」——說成「不存在」會把
-        // 人送去找一個明明還在的檔。
+        // read_file 回 None 是 I/O 失敗（如 EACCES；非 UTF-8 不是讀取失敗，走位
+        // 元組指紋）——說成「不存在」會把人送去找一個明明還在的檔。
         let store = store_with_change();
         store.put_artifact("demo", "tasks.md", TASKS_5_DONE);
         add_round(&store, "demo", "**Scope**: assets/logo.png\n").expect("round");
@@ -670,6 +683,27 @@ mod tests {
             !msg.contains("does not exist"),
             "must not assert absence it cannot know: {msg}"
         );
+    }
+
+    #[test]
+    fn stamp_records_byte_hash_for_non_utf8_scope_and_freshness_tracks_bytes() {
+        // spec Scenario「非 UTF-8 scope 檔可蓋章」＋「蓋章後 binary 內容變動失效」：
+        // reviewed_scope 記原始位元組 SHA-256；失效判定共用同一分流。
+        let store = store_with_change();
+        store.put_artifact("demo", "tasks.md", TASKS_5_DONE);
+        add_round(&store, "demo", "**Scope**: assets/logo.png\n").expect("round");
+        let repo: &[(&str, &[u8])] = &[("assets/logo.png", BIN_A)];
+        stamp(&store, "demo", false, None, None, &byte_files(repo), &byte_present(repo))
+            .expect("a present non-UTF-8 scope file must stamp");
+        let meta = ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta parses");
+        // 位元組規則本身由 content_fingerprint_bytes 的 golden 測試釘住；這裡釘
+        // 站別 wiring：章欄位記的就是分流入口算出的值。
+        assert_eq!(meta.reviewed_scope[0].hash, content_fingerprint_bytes(BIN_A));
+        let counts = code_counts(5, 5);
+        assert_eq!(freshness(&meta, &counts, &byte_files(repo)), Freshness::Fresh);
+        const BIN_A_FLIPPED: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0xFF, 0x01];
+        let changed: &[(&str, &[u8])] = &[("assets/logo.png", BIN_A_FLIPPED)];
+        assert_eq!(freshness(&meta, &counts, &byte_files(changed)), Freshness::Stale);
     }
 
     #[test]
@@ -862,6 +896,43 @@ mod tests {
         let hex = content_fingerprint("");
         assert_eq!(hex.len(), 64, "sha-256 hex digest");
         assert!(hex.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn content_fingerprint_bytes_branches_on_utf8_readability() {
+        // spec Example「指紋分流表」三列：UTF-8(LF)＝既有文字規則、UTF-8(CRLF)
+        // 與同內容 LF 版雜湊相同、非 UTF-8 位元組＝原始位元組 SHA-256。
+        assert_eq!(content_fingerprint_bytes(FILE_A.as_bytes()), content_fingerprint(FILE_A));
+        assert_eq!(content_fingerprint_bytes(b"a\r\nb\r\n"), content_fingerprint("a\nb\n"));
+        let png: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0xFF, 0x00];
+        let raw_sha = {
+            use sha2::{Digest, Sha256};
+            format!("{:x}", Sha256::digest(png))
+        };
+        assert_eq!(content_fingerprint_bytes(png), raw_sha, "no line-ending normalization");
+    }
+
+    #[test]
+    fn content_fingerprint_bytes_boundaries_bom_empty_and_type_flip() {
+        // 分流邊界：BOM 與空位元組都是合法 UTF-8（走文字規則）；蓋章後檔案在
+        // 文字↔binary 間轉換，指紋必變 → 失效判定 stale（兩個方向各釘一次）。
+        assert_eq!(content_fingerprint_bytes(b"\xEF\xBB\xBFa\r\n"), content_fingerprint("\u{feff}a\n"));
+        assert_eq!(content_fingerprint_bytes(b""), content_fingerprint(""));
+        let path = "crates/a/src/lib.rs";
+        let counts = code_counts(5, 5);
+        let text_stamped = stamped_meta(5, &[(path, &content_fingerprint(FILE_A))]);
+        let now_binary: &[(&str, &[u8])] = &[(path, BIN_A)];
+        assert_eq!(
+            freshness(&text_stamped, &counts, &byte_files(now_binary)),
+            Freshness::Stale,
+            "text stamp, file turned binary"
+        );
+        let bin_stamped = stamped_meta(5, &[(path, &content_fingerprint_bytes(BIN_A))]);
+        assert_eq!(
+            freshness(&bin_stamped, &counts, &files(&[(path, FILE_A)])),
+            Freshness::Stale,
+            "binary stamp, file turned text"
+        );
     }
 
     /// 帶完整章的 meta：tasks_total 任務錨＋entries 內容錨。

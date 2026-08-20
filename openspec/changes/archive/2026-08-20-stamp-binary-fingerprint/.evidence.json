@@ -1,0 +1,102 @@
+{
+  "version": 2,
+  "change": "stamp-binary-fingerprint",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫紅測（內容指紋錨與失效判定的分流規則）：bytes 入口對 UTF-8 內容（LF 與 CRLF 兩形）回傳與既有文字規則相同的雜湊；對非 UTF-8 位元組回傳原始位元組 SHA-256——spec 指紋分流表三列各一案例。驗證：cargo test -p speclink-core 出現預期紅燈",
+      "files": [
+        "crates/speclink-core/src/review.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 實作 D1 指紋分流入口：station 模組新增 content_fingerprint_bytes（UTF-8 可解→轉呼既有文字規則；否則位元組 SHA-256）；content_fingerprint 原名原簽名保留。驗證：1.1 轉綠",
+      "files": [
+        "crates/speclink-core/src/station.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 先寫紅測（含 binary 的蓋章與失效）：工單 Scope 含存在的非 UTF-8 檔時 stamp 成功且 reviewed_scope 記位元組雜湊；落章後該檔位元組變動 → freshness 判 stale；聯集全消失拒章與 I/O 錯誤拒章的既有語意維持——review 與 verify 兩站各覆蓋（驗證指紋錨與失效判定同構）。驗證：cargo test -p speclink-core 出現預期紅燈",
+      "files": [
+        "crates/speclink-core/src/verify.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 實作 D2 讀檔閉包換位元組：fingerprint_scope 與 freshness 的閉包簽名改回傳位元組，None 維持缺檔／I/O 失敗語意；core 的 review 與 verify 兩模組的閉包跟上。驗證：1.3 轉綠且 cargo test -p speclink-core 全綠（既有文字指紋測試值不變）",
+      "files": [
+        "crates/speclink-core/src/archive.rs",
+        "crates/speclink-core/src/util.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.1 CLI remote 章路徑與 desktop core 重算的讀檔閉包改位元組（D2 讀檔閉包換位元組的其餘兩個消費端），行為不變、僅簽名跟上。驗證：cargo test -p speclink-cli --test it 與 cargo test -p speclink-desktop-core 全綠",
+      "files": [
+        "apps/desktop/core/src/query.rs",
+        "crates/speclink-cli/src/verbs/station.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M0EW8QK6TW5DKQQTBDZ5HSD9",
+      "taskDesc": "1.1 先寫紅測（內容指紋錨與失效判定的分流規則）：bytes 入口對 UTF-8 內容（LF 與 CRLF 兩形）回傳與既有文字規則相同的雜湊；對非 UTF-8 位元組回傳原始位元組 SHA-256——spec 指紋分流表三列各一案例。驗證：cargo test -p speclink-core 出現預期紅燈",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3340818fb79c1caef09414de0e649174f3f5f55c",
+      "touchedFiles": [
+        "crates/speclink-core/src/review.rs"
+      ],
+      "recordedAt": "2026-08-20T07:03:12Z"
+    },
+    {
+      "taskId": "tsk_01M0EW8QK7CYSGD61HER3E80T5",
+      "taskDesc": "1.2 實作 D1 指紋分流入口：station 模組新增 content_fingerprint_bytes（UTF-8 可解→轉呼既有文字規則；否則位元組 SHA-256）；content_fingerprint 原名原簽名保留。驗證：1.1 轉綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3340818fb79c1caef09414de0e649174f3f5f55c",
+      "touchedFiles": [
+        "crates/speclink-core/src/station.rs"
+      ],
+      "recordedAt": "2026-08-20T07:04:19Z"
+    },
+    {
+      "taskId": "tsk_01M0EW8QK7XKWMXM1RQKHKYHA0",
+      "taskDesc": "1.3 先寫紅測（含 binary 的蓋章與失效）：工單 Scope 含存在的非 UTF-8 檔時 stamp 成功且 reviewed_scope 記位元組雜湊；落章後該檔位元組變動 → freshness 判 stale；聯集全消失拒章與 I/O 錯誤拒章的既有語意維持——review 與 verify 兩站各覆蓋（驗證指紋錨與失效判定同構）。驗證：cargo test -p speclink-core 出現預期紅燈",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3340818fb79c1caef09414de0e649174f3f5f55c",
+      "touchedFiles": [
+        "crates/speclink-core/src/verify.rs"
+      ],
+      "recordedAt": "2026-08-20T07:07:14Z"
+    },
+    {
+      "taskId": "tsk_01M0EW8QK7DHF5NFWYDGM9KHPA",
+      "taskDesc": "1.4 實作 D2 讀檔閉包換位元組：fingerprint_scope 與 freshness 的閉包簽名改回傳位元組，None 維持缺檔／I/O 失敗語意；core 的 review 與 verify 兩模組的閉包跟上。驗證：1.3 轉綠且 cargo test -p speclink-core 全綠（既有文字指紋測試值不變）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3340818fb79c1caef09414de0e649174f3f5f55c",
+      "touchedFiles": [
+        "crates/speclink-core/src/archive.rs",
+        "crates/speclink-core/src/util.rs"
+      ],
+      "recordedAt": "2026-08-20T07:11:24Z"
+    },
+    {
+      "taskId": "tsk_01M0EW8QK7NCQ06QM28KWV3E95",
+      "taskDesc": "2.1 CLI remote 章路徑與 desktop core 重算的讀檔閉包改位元組（D2 讀檔閉包換位元組的其餘兩個消費端），行為不變、僅簽名跟上。驗證：cargo test -p speclink-cli --test it 與 cargo test -p speclink-desktop-core 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3340818fb79c1caef09414de0e649174f3f5f55c",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs",
+        "crates/speclink-cli/src/verbs/station.rs"
+      ],
+      "recordedAt": "2026-08-20T07:15:46Z"
+    }
+  ]
+}

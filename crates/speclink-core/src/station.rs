@@ -139,9 +139,14 @@ pub enum Freshness {
     Unknown,
 }
 
-/// 內容錨的讀取器：repo-root 相對路徑 → 檔案內容。None 代表沒有工作樹可讀
-/// （remote 封存通道），內容錨因此不判定。
-pub type ScopeReader<'a> = Option<&'a dyn Fn(&str) -> Option<String>>;
+/// 讀檔閉包本體：repo-root 相對路徑 → 檔案原始位元組；回 None＝缺檔或 I/O
+/// 失敗（UTF-8 分流收在指紋入口，讀取器不預判文字性）。指紋與失效判定的
+/// 全部簽名共用這一個別名——下次再換讀取形不必改遍每個簽名。
+pub type ScopeReadFn<'a> = dyn Fn(&str) -> Option<Vec<u8>> + 'a;
+
+/// 內容錨的讀取器：None 代表沒有工作樹可讀（remote 封存通道），內容錨因此
+/// 不判定。
+pub type ScopeReader<'a> = Option<&'a ScopeReadFn<'a>>;
 
 /// 章失效的原因——封存守門的拒絕訊息素材（design D5）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -346,7 +351,7 @@ pub fn stamp(
     accept: bool,
     actor: Option<&str>,
     tool: Option<&str>,
-    read_file: &dyn Fn(&str) -> Option<String>,
+    read_file: &ScopeReadFn<'_>,
     file_exists: &dyn Fn(&str) -> bool,
 ) -> Result<()> {
     let gate = stamp_gate(st, store, change, accept)?;
@@ -384,16 +389,17 @@ pub fn scope_union<'a>(scopes: impl IntoIterator<Item = &'a str>) -> Vec<String>
 /// remote 模式的清單來自 server 回應，是外部輸入。
 pub fn fingerprint_scope(
     paths: &[String],
-    read_file: &dyn Fn(&str) -> Option<String>,
+    read_file: &ScopeReadFn<'_>,
 ) -> Result<Vec<(String, String)>> {
     let mut entries = Vec::with_capacity(paths.len());
     for path in paths {
         ensure_repo_relative(path)?;
         let Some(content) = read_file(path) else {
-            // 讀不到可能是缺檔，也可能是讀得到但非 UTF-8——只說事實。
-            bail!("cannot read scope file '{path}' as text — it must be present and UTF-8");
+            // 讀不到可能是缺檔，也可能是 I/O 失敗（非 UTF-8 不是讀取失敗，
+            // 走位元組指紋）——只說事實。
+            bail!("cannot read scope file '{path}' — it must be present and readable");
         };
-        entries.push((path.clone(), content_fingerprint(&content)));
+        entries.push((path.clone(), content_fingerprint_bytes(&content)));
     }
     Ok(entries)
 }
@@ -496,13 +502,29 @@ fn write_stamp(
     Ok(())
 }
 
-/// 內容指紋：CRLF→LF 正規化後的 SHA-256 十六進位（spec「內容指紋錨與失效判定」）。
-/// 兩站共用同一實作——指紋規則位元級同構是 design D2 的硬性要求。
+/// 文字指紋規則：CRLF→LF 正規化後的 SHA-256（spec「內容指紋錨與失效判定」）。
+/// 這是 [`content_fingerprint_bytes`] 分流後的文字分支——新呼叫端一律走那個
+/// 唯一入口，不直接呼叫這裡（原名原簽名保留是 design D1：既有測試與消費端
+/// 都在用）。兩站共用同一實作——指紋規則位元級同構是 design D2 的硬性要求。
 pub fn content_fingerprint(text: &str) -> String {
+    hex_sha256(text.replace("\r\n", "\n").as_bytes())
+}
+
+/// 指紋計算的唯一入口——呼叫端一律用這個，UTF-8 判定不在各呼叫端重複
+/// （spec「指紋分流表」）：可 UTF-8 解讀 → 轉呼文字規則（既有已落的章逐位元組
+/// 相容）；不可解讀 → 原始位元組 SHA-256（不做行尾正規化——binary 沒有
+/// 「行」，正規化會讓不同位元組算出同一指紋）。
+pub fn content_fingerprint_bytes(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => content_fingerprint(text),
+        Err(_) => hex_sha256(bytes),
+    }
+}
+
+/// SHA-256 十六進位——兩條指紋規則共用的輸出形。
+fn hex_sha256(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(text.replace("\r\n", "\n").as_bytes());
-    format!("{:x}", hasher.finalize())
+    format!("{:x}", Sha256::digest(bytes))
 }
 
 /// 失效判定純函式（design D3、D4）：任務錨＝當前全任務總數仍等於蓋章時總數，
@@ -512,7 +534,7 @@ pub fn content_fingerprint(text: &str) -> String {
 pub fn freshness(
     anchors: StampAnchors<'_>,
     counts: &crate::tasks::Counts,
-    read_file: &dyn Fn(&str) -> Option<String>,
+    read_file: &ScopeReadFn<'_>,
 ) -> Freshness {
     if !is_stamped(anchors) {
         return Freshness::Unknown;
@@ -547,7 +569,7 @@ pub fn stale_reason(
     }
     let read_file = read_file?;
     anchors.scope.iter().find_map(|entry| match read_file(&entry.path) {
-        Some(content) if content_fingerprint(&content) == entry.hash => None,
+        Some(content) if content_fingerprint_bytes(&content) == entry.hash => None,
         _ => Some(StaleReason::ContentAnchor { path: entry.path.clone() }),
     })
 }
@@ -794,7 +816,8 @@ mod tests {
     }
 
     fn stamp_demo(store: &TestStore, accept: bool) -> Result<()> {
-        let files = |p: &str| REPO.iter().find(|(k, _)| *k == p).map(|(_, v)| v.to_string());
+        let files =
+            |p: &str| REPO.iter().find(|(k, _)| *k == p).map(|(_, v)| v.as_bytes().to_vec());
         let present = |p: &str| REPO.iter().any(|(k, _)| *k == p);
         stamp(&STATION, store, "demo", accept, None, None, &files, &present)
     }
