@@ -83,7 +83,7 @@ pub(crate) fn guard_stale_stamps(ws: &Workspace, store: &dyn Store, change: &Cha
     let counts = crate::tasks::counts_for(store, &change.name);
     // 內容錨讀的是 repo 程式檔（host 側檔案，非 spec 文件）——沿 guard_linked_worktree
     // 的作法走 util 的通用檔案 helper，引擎流程模組本身不直接呼叫檔案 API。
-    let read_file = |p: &str| util::read_opt(&ws.root.join(p));
+    let read_file = |p: &str| util::read_bytes_opt(&ws.root.join(p));
     let read_file: crate::station::ScopeReader<'_> =
         if ws.root.as_os_str().is_empty() { None } else { Some(&read_file) };
 

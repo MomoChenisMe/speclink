@@ -12,8 +12,8 @@ use crate::store::Store;
 use anyhow::Result;
 
 pub use crate::station::{
-    content_fingerprint, fingerprint_scope, scope_union, Finding, Freshness, NotFound, Round,
-    RoundPhase, Severity, Ticket,
+    content_fingerprint, content_fingerprint_bytes, fingerprint_scope, scope_union, Finding,
+    Freshness, NotFound, Round, RoundPhase, ScopeReadFn, Severity, Ticket,
 };
 
 /// 驗證站工單文件（change 目錄下的相對路徑）。
@@ -60,7 +60,7 @@ pub fn stamp(
     accept: bool,
     actor: Option<&str>,
     tool: Option<&str>,
-    read_file: &dyn Fn(&str) -> Option<String>,
+    read_file: &ScopeReadFn<'_>,
     file_exists: &dyn Fn(&str) -> bool,
 ) -> Result<()> {
     station::stamp(&STATION, store, change, accept, actor, tool, read_file, file_exists)
@@ -85,7 +85,7 @@ pub fn stamp_with_scope(
 pub fn freshness(
     meta: &ChangeMeta,
     counts: &crate::tasks::Counts,
-    read_file: &dyn Fn(&str) -> Option<String>,
+    read_file: &ScopeReadFn<'_>,
 ) -> Freshness {
     station::freshness(
         StampAnchors {
@@ -426,13 +426,26 @@ mod tests {
     const REPO: &[(&str, &str)] =
         &[("crates/a/src/lib.rs", FILE_A), ("crates/b/src/util.rs", FILE_B)];
 
-    /// repo 檔案讀取替身：固定 (path, content) 表。
-    fn files<'a>(map: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
-        move |p: &str| map.iter().find(|(k, _)| *k == p).map(|(_, v)| v.to_string())
+    /// repo 檔案讀取替身：固定 (path, content) 表（讀檔閉包吃位元組）。
+    fn files<'a>(map: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<Vec<u8>> + 'a {
+        move |p: &str| map.iter().find(|(k, _)| *k == p).map(|(_, v)| v.as_bytes().to_vec())
     }
 
     /// repo 檔案存在替身：與 `files` 共用同一張表。
     fn present<'a>(map: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> bool + 'a {
+        move |p: &str| map.iter().any(|(k, _)| *k == p)
+    }
+
+    /// 非 UTF-8 位元組替身（PNG 式檔頭；0x89 開頭即非法 UTF-8）。
+    const BIN_A: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0xFF, 0x00];
+
+    /// repo 位元組讀取替身：binary scope 案例用（文字案例走 `files`）。
+    fn byte_files<'a>(map: &'a [(&'a str, &'a [u8])]) -> impl Fn(&str) -> Option<Vec<u8>> + 'a {
+        move |p: &str| map.iter().find(|(k, _)| *k == p).map(|(_, v)| v.to_vec())
+    }
+
+    /// repo 檔案存在替身：與 `byte_files` 共用同一張表。
+    fn byte_present<'a>(map: &'a [(&'a str, &'a [u8])]) -> impl Fn(&str) -> bool + 'a {
         move |p: &str| map.iter().any(|(k, _)| *k == p)
     }
 
@@ -644,6 +657,46 @@ mod tests {
     }
 
     #[test]
+    fn stamp_records_byte_hash_for_non_utf8_scope_and_freshness_tracks_bytes() {
+        // spec Scenario「非 UTF-8 scope 檔可蓋章」：兩站算出的指紋完全一樣——共用
+        // station 同一份實作（規格稱「位元級同構」）；位元組變動 → stale、未變 →
+        // fresh。
+        let store = finished_change();
+        add_round(&store, "demo", "**Scope**: assets/logo.png\n").expect("round");
+        let repo: &[(&str, &[u8])] = &[("assets/logo.png", BIN_A)];
+        stamp(&store, "demo", false, None, None, &byte_files(repo), &byte_present(repo))
+            .expect("a present non-UTF-8 scope file must stamp");
+        let meta = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).expect("parses");
+        // 位元組規則本身由 review 側的 golden 測試釘住；這裡釘站別 wiring：
+        // 章欄位記的就是分流入口算出的值。
+        assert_eq!(meta.verified_scope[0].hash, content_fingerprint_bytes(BIN_A));
+        let counts = code_counts(5, 5);
+        assert_eq!(freshness(&meta, &counts, &byte_files(repo)), Freshness::Fresh);
+        const BIN_A_FLIPPED: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0xFF, 0x01];
+        let changed: &[(&str, &[u8])] = &[("assets/logo.png", BIN_A_FLIPPED)];
+        assert_eq!(freshness(&meta, &counts, &byte_files(changed)), Freshness::Stale);
+    }
+
+    #[test]
+    fn stamp_still_refuses_unreadable_and_all_gone_scope() {
+        // 既有語意維持：讀不到就拒絕蓋章，這條沒有因為指紋分流而放寬。兩條
+        // 拒章路由訊息不同，分別比對區別性措辭——只查路徑會讓路由接錯仍綠燈。
+        let store = finished_change();
+        add_round(&store, "demo", CLEAN_ROUND).expect("round");
+        let err = stamp(&store, "demo", false, None, None, &|_: &str| None, &|_: &str| true)
+            .expect_err("present but unreadable must refuse");
+        let msg = err.to_string();
+        assert!(msg.contains("crates/a/src/lib.rs"), "names the file: {msg}");
+        assert!(msg.contains("must be present and readable"), "I/O route wording: {msg}");
+        let err = stamp(&store, "demo", false, None, None, &|_: &str| None, &|_: &str| false)
+            .expect_err("all-gone union must refuse");
+        let msg = err.to_string();
+        assert!(msg.contains("crates/a/src/lib.rs"), "names the file: {msg}");
+        assert!(msg.contains("gone from the work tree"), "all-gone route wording: {msg}");
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
     fn stamp_refuses_on_corrupt_meta_and_without_a_ticket() {
         // 沿 set_board_rank 的 fail-closed gate：壞 metadata 不得被疊寫；無工單
         // 不可蓋章。
@@ -727,6 +780,34 @@ mod tests {
         let checked = "- [x] a\n- [x] b\n- [x] c\n- [x] d\n- [x] [M] 手測\n";
         assert_eq!(freshness(&meta, &counts(open), &files(REPO)), Freshness::Fresh, "手測未勾");
         assert_eq!(freshness(&meta, &counts(checked), &files(REPO)), Freshness::Fresh, "手測補勾");
+
+        // binary 分支的兩站同構直接釘在同一張表：位元組章在兩站以同一分流
+        // 實作判定——未變 fresh、變動 stale，判定逐一相同。
+        const BIN_FLIPPED: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0xFF, 0x01];
+        let bin_cases: &[(&str, &[(&str, &[u8])], Freshness)] = &[
+            ("binary unchanged", &[(path, BIN_A)], Freshness::Fresh),
+            ("binary bytes flipped", &[(path, BIN_FLIPPED)], Freshness::Stale),
+        ];
+        let h_bin = content_fingerprint_bytes(BIN_A);
+        for (label, now, want) in bin_cases {
+            let verified = stamped_meta(5, &[(path, h_bin.as_str())]);
+            assert_eq!(
+                freshness(&verified, &code_counts(5, 5), &byte_files(now)),
+                *want,
+                "verify station, case: {label}"
+            );
+            let reviewed = crate::model::ChangeMeta {
+                reviewed_at: verified.verified_at.clone(),
+                reviewed_tasks_total: verified.verified_tasks_total,
+                reviewed_scope: verified.verified_scope.clone(),
+                ..Default::default()
+            };
+            assert_eq!(
+                crate::review::freshness(&reviewed, &code_counts(5, 5), &byte_files(now)),
+                *want,
+                "review station must agree, case: {label}"
+            );
+        }
     }
 
     #[test]

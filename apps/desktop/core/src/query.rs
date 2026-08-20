@@ -55,7 +55,17 @@ pub fn list_changes_at(root: &Path) -> Value {
             // 存在性回退（worktree_root_for），與 overlay 的 of() 同步。
             let scope_root = crate::worktree_root_for(&ctx, &facts, &c.name)
                 .unwrap_or(ctx.workspace.root.as_path());
-            let read_file = |p: &str| std::fs::read_to_string(scope_root.join(p)).ok();
+            // 兩站的失效判定共用這一個閉包，同一 scope 檔會被問兩次——快取
+            // 單次讀取，避免大型 binary 資產在列表這條熱路徑被重複整檔讀入。
+            let read_cache =
+                std::cell::RefCell::new(std::collections::HashMap::<String, Option<Vec<u8>>>::new());
+            let read_file = |p: &str| {
+                read_cache
+                    .borrow_mut()
+                    .entry(p.to_string())
+                    .or_insert_with(|| speclink_core::util::read_bytes_opt(&scope_root.join(p)))
+                    .clone()
+            };
             // 失效判定吃兩組計數（寫碼任務錨）——`[M]` 手測任務的勾選不打黃卡片。
             let counts = speclink_core::tasks::counts_for(store, &c.name);
             // 寫碼進度三欄（spec client-protocol「變更清單的寫碼進度欄位」）：
@@ -813,6 +823,27 @@ mod tests {
         for key in ["name", "status", "totalTasks", "completedTasks", "summary"] {
             assert!(stamped.get(key).is_some(), "existing key {key} intact");
         }
+    }
+
+    #[test]
+    fn review_freshness_handles_non_utf8_scope_bytes() {
+        // design 契約「desktop 的 reviewStatus 重算同語意」：非 UTF-8 scope 檔
+        // 位元組未變 → reviewed、變動 → reviewedStale。改動前這類檔讀不成文字、
+        // 章恆判 stale——指紋分流後行為翻轉，這裡把翻轉後的語意釘住。
+        let fx = FixtureRoot::new("q-review-binary");
+        let bin: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0xFF, 0x00];
+        std::fs::write(fx.root().join("logo.png"), bin).unwrap();
+        let hash = speclink_core::review::content_fingerprint_bytes(bin);
+        fx.add_change("bin-scope", &reviewed_meta("logo.png", &hash));
+        fx.write("openspec/changes/bin-scope/tasks.md", TASKS_ALL_DONE);
+
+        let v = list_changes_at(fx.root());
+        assert_eq!(v["changes"][0]["reviewStatus"], "reviewed", "位元組未變 → reviewed: {v}");
+
+        std::fs::write(fx.root().join("logo.png"), [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0xFF, 0x01])
+            .unwrap();
+        let v = list_changes_at(fx.root());
+        assert_eq!(v["changes"][0]["reviewStatus"], "reviewedStale", "位元組變動 → stale: {v}");
     }
 
     /// 帶完整驗證章的 meta（任務錨 2、內容錨 scope_path＋hash）。

@@ -262,7 +262,7 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
         }
         StationVerb::Stamp { change, accept, agent } => {
             let actor = speclink_host::context::git_identity(&ws.root);
-            let read_file = |p: &str| std::fs::read_to_string(ws.root.join(p)).ok();
+            let read_file = |p: &str| core::util::read_bytes_opt(&ws.root.join(p));
             let file_exists = |p: &str| ws.root.join(p).is_file();
             core::station::stamp(
                 st,
@@ -695,7 +695,7 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
             // missing 明示宣告——server 無工作樹，分割由這裡的存在性判定。
             let (present, missing): (Vec<String>, Vec<String>) =
                 paths.into_iter().partition(|p| ws.root.join(p).is_file());
-            let read_file = |p: &str| std::fs::read_to_string(ws.root.join(p)).ok();
+            let read_file = |p: &str| core::util::read_bytes_opt(&ws.root.join(p));
             let scope: Vec<_> = core::station::fingerprint_scope(&present, &read_file)?
                 .into_iter()
                 .map(|(path, hash)| speclink_protocol::command::ReviewScopeEntryDto { path, hash })
