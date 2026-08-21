@@ -1,0 +1,78 @@
+{
+  "version": 2,
+  "change": "discuss-grounding-and-flow",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 落實「事實與決策分診及逐節點查證」的漏斗偵察：先 speclink list --specs --json（候選 ≤5、讀 Purpose ≤3、直接目標 capability 才讀全文、零命中靜默略過），以命中 capability 名與正典詞彙轉譯搜尋詞後再掃原始碼（至多 5 檔）；主題含具體檔名或符號時程式碼軌直接開跑。刪除「not docs, not tests」的規格排除字句。完成判準：段落含上述全部上界與順序，且 Context 模板「related changes/specs」有對應產出步驟",
+      "files": [
+        "crates/speclink-core/assets/skills/discuss.md"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "2.2 bump MARKER_VERSION（crates/speclink-core/src/init.rs），確認渲染 frontmatter 的 version 隨之更新",
+      "files": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "3.1 跑 speclink update 再生工具技能目錄的全部 SKILL.md（版號 bump 波及約 32 份），以 git status 盤點衍生物全數帶進收尾 commit（衍生物不進 evidence）",
+      "files": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M0F0NYPTEFK9Z892WYWMAA3B",
+      "taskDesc": "1.1 落實「事實與決策分診及逐節點查證」的漏斗偵察：先 speclink list --specs --json（候選 ≤5、讀 Purpose ≤3、直接目標 capability 才讀全文、零命中靜默略過），以命中 capability 名與正典詞彙轉譯搜尋詞後再掃原始碼（至多 5 檔）；主題含具體檔名或符號時程式碼軌直接開跑。刪除「not docs, not tests」的規格排除字句。完成判準：段落含上述全部上界與順序，且 Context 模板「related changes/specs」有對應產出步驟",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "df41cb7f39eeb7152787203b99f29a467ac14681",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/discuss.md"
+      ],
+      "recordedAt": "2026-08-21T01:32:01Z"
+    },
+    {
+      "taskId": "tsk_01M0F0NYPT6PSVQGYPN6S2VZSN",
+      "taskDesc": "2.2 bump MARKER_VERSION（crates/speclink-core/src/init.rs），確認渲染 frontmatter 的 version 隨之更新",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "df41cb7f39eeb7152787203b99f29a467ac14681",
+      "touchedFiles": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ],
+      "recordedAt": "2026-08-21T01:37:21Z"
+    },
+    {
+      "taskId": "tsk_01M0F0NYPTKFJJCS6XZ40MB1G0",
+      "taskDesc": "3.1 跑 speclink update 再生工具技能目錄的全部 SKILL.md（版號 bump 波及約 32 份），以 git status 盤點衍生物全數帶進收尾 commit（衍生物不進 evidence）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "df41cb7f39eeb7152787203b99f29a467ac14681",
+      "touchedFiles": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ],
+      "recordedAt": "2026-08-21T01:39:14Z"
+    }
+  ]
+}

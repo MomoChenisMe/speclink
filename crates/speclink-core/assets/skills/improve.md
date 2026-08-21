@@ -111,7 +111,7 @@ The three recommendation strengths are not decoration — they tell the user whe
 
 ### Step 5: Grill the chosen candidate to a conclusion
 
-Once the user picks, this becomes an ordinary speclink discussion, run with interview discipline:
+Once the user picks, this becomes an ordinary speclink discussion, run with the discuss skill's question discipline:
 
 - **One question per exchange.** Never a barrage. Resolve upstream questions first — the shape of the downstream ones depends on the answers.
 - **Every question carries your proposed answer, and the proposal cites evidence** — file paths, symbols, probe results. The user agrees or corrects; they never get a bare open question that a Grep could have grounded.
