@@ -58,6 +58,9 @@ struct NewArtifactArgs {
     /// Overwrite existing artifact
     #[arg(long)]
     force: bool,
+    /// Declare a new capability (required when the spec capability is not in the canonical specs)
+    #[arg(long)]
+    new: bool,
     /// Output as JSON
     #[arg(long)]
     json: bool,
@@ -132,6 +135,7 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
             change: a.change.clone(),
             content,
             force: a.force,
+            new_capability: a.new,
         },
     )?;
     let core::command::CommandOutcome::NewArtifact(o) = outcome else {

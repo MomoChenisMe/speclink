@@ -265,14 +265,16 @@ pub enum Command {
         agent: Option<String>,
         from_discussion: Option<String>,
     },
-    /// `new artifact <type> [capability] [--change <name>] [--force]`;
-    /// `content` is the CLI's `--stdin` payload.
+    /// `new artifact <type> [capability] [--change <name>] [--force] [--new]`;
+    /// `content` is the CLI's `--stdin` payload, `new_capability` the `--new`
+    /// confirmation for a canonically-unlisted spec capability.
     NewArtifact {
         kind: String,
         capability: Option<String>,
         change: Option<String>,
         content: Option<String>,
         force: bool,
+        new_capability: bool,
     },
     /// `task done <task_id> [--change <name>]` (`task_id` stays the raw argv
     /// token — validation and its frozen messages live in the runtime).
@@ -659,8 +661,8 @@ pub fn execute(
         Command::NewChange { name, description, schema, agent, from_discussion } => {
             run_new_change(store, ctx.actor.as_deref(), name, description, schema, agent, from_discussion)
         }
-        Command::NewArtifact { kind, capability, change, content, force } => {
-            run_new_artifact(store, ws, ctx.user_config_dir.as_deref(), &kind, capability.as_deref(), change.as_deref(), content.as_deref(), force)
+        Command::NewArtifact { kind, capability, change, content, force, new_capability } => {
+            run_new_artifact(store, ws, ctx.user_config_dir.as_deref(), &kind, capability.as_deref(), change.as_deref(), content.as_deref(), force, new_capability)
         }
         Command::TaskDone { task_id, change } => {
             run_task_flip(store, ws, ctx, &task_id, change.as_deref(), TaskFlip::Done)
@@ -1327,6 +1329,7 @@ fn run_new_artifact(
     change: Option<&str>,
     content: Option<&str>,
     force: bool,
+    new_capability: bool,
 ) -> Result<CommandOutcome, CommandError> {
     let type_ok = ["proposal", "design", "tasks", "spec"].contains(&kind);
     let type_err = || {
@@ -1372,7 +1375,7 @@ fn run_new_artifact(
     };
     let had_content = content.is_some();
     let (artifact_id, path) =
-        crate::newcmd::new_artifact(store, &change, &schema, kind, capability, content, force)
+        crate::newcmd::new_artifact(store, &change, &schema, kind, capability, content, force, new_capability)
             .map_err(classify)?;
     Ok(CommandOutcome::NewArtifact(NewArtifactOutcome {
         artifact: artifact_id,
@@ -1965,6 +1968,7 @@ mod tests {
                 change: Some("demo".to_string()),
                 content: None,
                 force: false,
+                new_capability: false,
             },
         )
         .expect_err("new artifact on corrupt meta must refuse");
@@ -1975,6 +1979,28 @@ mod tests {
         );
         assert!(store.artifacts.borrow().is_empty(), "no artifact created via default schema");
         assert_eq!(*store.artifact_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn newcmd_gate_keeps_the_change_not_found_error() {
+        // spec Scenario「change 不存在時維持既有錯誤」：主閘不得改變
+        // 找不到 change 的錯誤碼與訊息。
+        let store = TestStore::with_meta("demo", META);
+        let err = execute(
+            &store,
+            &ExecutionContext::default(),
+            Command::NewArtifact {
+                kind: "spec".to_string(),
+                capability: Some("brand-new-cap".to_string()),
+                change: Some("no-such-change".to_string()),
+                content: Some("## ADDED Requirements\n\n### Requirement: R1\n\nOk.\n".to_string()),
+                force: false,
+                new_capability: false,
+            },
+        )
+        .expect_err("missing change must fail");
+        assert_eq!(err.code, ErrorCode::NotFound);
+        assert_eq!(err.message, "Change 'no-such-change' not found", "frozen CLI text");
     }
 
     // --- 不存在的主體：not_found，訊息沿用現行 CLI 文字 ---
@@ -2136,6 +2162,7 @@ mod tests {
                 change: Some("demo".to_string()),
                 content: Some("## Why\n\nDemo.\n".to_string()),
                 force: false,
+                new_capability: false,
             },
         );
         assert_eq!(kinds(&events), ["artifact-created"]);
@@ -2220,6 +2247,7 @@ mod tests {
                         .to_string(),
                 ),
                 force: false,
+                new_capability: false,
             },
         );
         let written = store.read_artifact("demo", "tasks.md").unwrap();
@@ -3016,7 +3044,7 @@ mod tests {
                 agent: _,
                 from_discussion: _,
             } => {}
-            Command::NewArtifact { kind: _, capability: _, change: _, content: _, force: _ } => {}
+            Command::NewArtifact { kind: _, capability: _, change: _, content: _, force: _, new_capability: _ } => {}
             Command::TaskDone { task_id: _, change: _ } => {}
             Command::TaskUndone { task_id: _, change: _ } => {}
             Command::TaskMove { change: _, from: _, to: _, before: _ } => {}

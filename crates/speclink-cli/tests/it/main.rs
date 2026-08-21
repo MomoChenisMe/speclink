@@ -16,6 +16,7 @@ mod instructions_policy;
 mod manual_task_gates;
 mod meta_fail_closed;
 mod mode_dispatch;
+mod new_artifact;
 mod no_raw_wire_json;
 mod reconclude_restale;
 mod remote_connect;

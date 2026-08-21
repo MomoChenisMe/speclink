@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.15"
+  version: "v1.19.16"
   generatedBy: "Speclink"
 ---
 
@@ -102,10 +102,11 @@ If no argument is provided, the workflow will extract requirements from conversa
    2. Compare against the user's description to identify related specs (max 5 candidates)
    3. For each candidate (max 3), run `speclink show <spec-id>` and read the Purpose section at the top of the output
    4. If related specs are found, display them as an informational summary
+   5. Leave a trace of the scan result in the proposal: name the related specs you found (or state that none matched) — the "why no existing spec covers this" sentence required for each New Capability in step 5 builds on this trace
 
    **IMPORTANT**:
    - If related specs are found, display them but do NOT stop or ask for confirmation — continue to the next step
-   - If no related specs are found, silently proceed without mentioning the scan
+   - If no related specs are found, proceed without pausing — the scan outcome still gets its trace in the proposal
 
 4. **Create the change directory**
 
@@ -166,7 +167,7 @@ If no argument is provided, the workflow will extract requirements from conversa
 
    ### New Capabilities
 
-   - `<capability-name>`: <brief description>
+   - `<capability-name>`: <brief description>. <one sentence on why no existing spec covers this — name the nearest specs the step-3 scan surfaced and where they fall short>
 
    ### Modified Capabilities
 
@@ -305,6 +306,8 @@ If no argument is provided, the workflow will extract requirements from conversa
      ```
 
      If the command fails with a validation error, fix the content and retry.
+
+     **The `--new` flag declares a new capability.** A capability the canonical specs do not carry yet is refused by default, and the error lists up to three similar existing names with their Purpose lines. Always run the command WITHOUT `--new` first; only when it refuses AND you have confirmed the suggestion list holds no synonym of your capability, re-run the same command with `--new` appended to declare it as genuinely new. If a suggested name IS the same capability, reuse that exact name instead of declaring a new one.
 
    - Show brief progress: "✓ Created <artifact-id>"
 

@@ -145,6 +145,23 @@ reads `{marker}` as description text and counts the task as code work that never
     msg
 }
 
+/// 新開 capability 撞近似既有名的 warning 文字（design D5）：近似名各附來源
+/// 標注與 Purpose 首行，指引兩條路——同一 capability 就改用既有名、確為新
+/// capability 可忽略本警告。
+fn naming_warning(cap: &str, suggestions: &[crate::capname::KnownName]) -> String {
+    let mut msg = format!(
+        "specs/{cap}/spec.md: new capability '{cap}' is close to existing names:\n"
+    );
+    for s in suggestions {
+        msg.push_str(&format!("      - {}\n", crate::capname::suggestion_line(s)));
+    }
+    msg.push_str(
+        "    If this is the same capability, rename the delta directory to the existing name; \
+if it really is new, ignore this warning.",
+    );
+    msg
+}
+
 /// Validate a change's artifacts structurally.
 pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, strict: bool) -> ValidationResult {
     let mut errors = Vec::new();
@@ -156,6 +173,16 @@ pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, str
     // informational "No delta specs found" warning fires only when there is not even a capability
     // directory under specs/.
     let caps = store.delta_capabilities(&change.name);
+    // 正典收錄與否以清單逐字比對（同建立點主閘）——canonical_spec_exists 走
+    // 檔案系統，大小寫不敏感的 fs 會把 `Auth` 當 `auth` 而讓兩張網同時靜默。
+    let canon = store.list_canonical_capabilities();
+    // 近似名建議池與 cap 無關，整個 change 建一次；只有存在新開 capability
+    // 時才需要（池會讀全部正典規格取 Purpose 首行，白讀太貴）。
+    let pool = if caps.iter().any(|cap| !canon.contains(cap)) {
+        crate::capname::suggestion_pool(store)
+    } else {
+        Vec::new()
+    };
     for cap in &caps {
         let spec_path = change.dir.join("specs").join(cap).join("spec.md");
         let text = store
@@ -172,9 +199,25 @@ pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, str
         // 新開 capability（正典尚無同名規格）的 Purpose 早期檢查（design D2）：
         // 不合格即 error，訊息自帶修復指引。既有 capability 的 delta Purpose 屬
         // 忽略語意，這裡零報——向後相容。既有錯誤先列，這條後補，凍結項的順序不動。
-        if !store.canonical_spec_exists(cap) {
+        if !canon.contains(cap) {
             if let Some(defect) = model::purpose_defect(&text) {
                 errors.push(purpose_guidance(cap, &defect));
+            }
+            // 近似名第二網（design D5）：與建立點主閘同一建議池與排序。有建議
+            // 即 warning——不改變 valid，涵蓋 ingest 或手寫檔案繞過 CLI 的入口。
+            // 池含本 change 的其他 delta（同 change 內兩個近似新名也要互相看見），
+            // 濾掉的只有受檢 capability 自身。
+            let known: Vec<crate::capname::KnownName> = pool
+                .iter()
+                .filter(|k| {
+                    !(k.name == *cap
+                        && k.source == crate::capname::Source::InFlight(change.name.clone()))
+                })
+                .cloned()
+                .collect();
+            let suggestions = crate::capname::suggest(cap, &known);
+            if !suggestions.is_empty() {
+                warnings.push(naming_warning(cap, &suggestions));
             }
         }
         // Duplicate requirement names are hard errors: the same
@@ -334,6 +377,105 @@ mod tests {
         let r = result_for(&[("auth", &delta(None, MODIFIED))], &[("auth", CANON)]);
         assert!(r.valid, "既有 capability 不得因 Purpose 報 error: {:?}", r.errors);
         assert!(r.warnings.is_empty(), "也不得報 warning: {:?}", r.warnings);
+    }
+
+    // --- 新開 capability 的近似名 warning（design D5；spec spec-validation
+    //     「新開 capability 的近似名 warning」）---
+
+    #[test]
+    fn a_near_named_new_capability_warns_but_still_passes() {
+        // spec Scenario「近似新名報 warning 且驗證仍通過」。
+        let r = result_for(
+            &[("authentication", &delta(Some(GOOD_PURPOSE), ADDED))],
+            &[("auth", CANON)],
+        );
+        assert!(r.valid, "warning 不改變驗證結果: {:?}", r.errors);
+        assert_eq!(r.warnings.len(), 1, "一筆近似名 warning: {:?}", r.warnings);
+        let w = &r.warnings[0];
+        assert!(w.contains("authentication"), "點名新目錄: {w}");
+        assert!(w.contains("auth"), "含近似名: {w}");
+        assert!(w.contains("existing name"), "指引一：沿用既有名: {w}");
+        assert!(w.contains("ignore"), "指引二：確為新 capability 可忽略: {w}");
+    }
+
+    #[test]
+    fn the_warning_pool_includes_in_flight_deltas_of_other_changes() {
+        // spec：建議池＝正典＋其他未封存 change 的 delta，與主閘同一份。
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        store.metas.borrow_mut().insert(
+            "add-sso".to_string(),
+            "schema: spec-driven\ncreated: 2026-07-01\n".to_string(),
+        );
+        store.put_artifact(
+            "add-sso",
+            &crate::model::delta_spec_artifact("user-auth"),
+            &delta(Some(GOOD_PURPOSE), ADDED),
+        );
+        store.put_artifact(
+            "demo",
+            &crate::model::delta_spec_artifact("user-authentication"),
+            &delta(Some(GOOD_PURPOSE), ADDED),
+        );
+        let change = crate::model::find_change(&store, "demo").expect("change resolves");
+        let r = validate_change(&store, &change, &crate::schema::spec_driven(), false);
+        assert!(r.valid, "warning 不改變驗證結果: {:?}", r.errors);
+        let joined = r.warnings.join("\n");
+        assert!(joined.contains("user-auth"), "in-flight delta 進建議: {joined}");
+        assert!(joined.contains("add-sso"), "標注來源 change: {joined}");
+    }
+
+    #[test]
+    fn sibling_new_capabilities_in_the_same_change_warn_each_other() {
+        // 池含本 change 的其他 delta：同一個 change 內同時新開兩個近似名，
+        // 兩筆 warning 互相點名——濾掉的只有受檢 capability 自身。
+        let r = result_for(
+            &[
+                ("user-auth", &delta(Some(GOOD_PURPOSE), ADDED)),
+                ("user-authentication", &delta(Some(GOOD_PURPOSE), ADDED)),
+            ],
+            &[],
+        );
+        assert!(r.valid, "warning 不改變驗證結果: {:?}", r.errors);
+        assert_eq!(r.warnings.len(), 2, "兩個新名各得一筆: {:?}", r.warnings);
+        let joined = r.warnings.join("\n");
+        assert!(
+            joined.contains("user-authentication (in-flight: demo)")
+                && joined.contains("user-auth (in-flight: demo)"),
+            "互相出現在對方的建議裡: {joined}"
+        );
+    }
+
+    #[test]
+    fn a_case_variant_delta_counts_as_new_and_warns() {
+        // 正典收錄與否是清單逐字比對——`Auth` 是新 capability：Purpose 早
+        // 檢查照跑（合格即過），naming warning 折疊大小寫後點名 `auth`。
+        let r = result_for(&[("Auth", &delta(Some(GOOD_PURPOSE), ADDED))], &[("auth", CANON)]);
+        assert!(r.valid, "合格 Purpose 不報 error: {:?}", r.errors);
+        assert_eq!(r.warnings.len(), 1, "近似名 warning 一筆: {:?}", r.warnings);
+        assert!(r.warnings[0].contains("auth (canonical)"), "折疊後建議 auth: {:?}", r.warnings);
+    }
+
+    #[test]
+    fn a_same_named_delta_does_not_trigger_the_naming_warning() {
+        // spec Scenario「既有 capability 的 delta 不觸發」。
+        let r = result_for(&[("auth", &delta(None, MODIFIED))], &[("auth", CANON)]);
+        assert!(r.valid, "同名 delta 照常通過: {:?}", r.errors);
+        assert!(r.warnings.is_empty(), "同名不報近似 warning: {:?}", r.warnings);
+    }
+
+    #[test]
+    fn a_new_capability_without_near_names_stays_silent() {
+        // spec Scenario「無近似名的新 capability 不報」：建議池空即不報，
+        // 既有的 Purpose 早檢查照常執行。
+        let clean = result_for(
+            &[("zzz-unrelated", &delta(Some(GOOD_PURPOSE), ADDED))],
+            &[("auth", CANON)],
+        );
+        assert!(clean.valid, "毫無交集不報: {:?}", clean.errors);
+        assert!(clean.warnings.is_empty(), "無近似零 warning: {:?}", clean.warnings);
+
+        let broken = result_for(&[("zzz-unrelated", &delta(None, ADDED))], &[("auth", CANON)]);
+        assert!(!broken.valid, "Purpose 早檢查照常: {:?}", broken.errors);
     }
 
     // --- validate --specs 的正典規格驗證（design D4；spec spec-validation
