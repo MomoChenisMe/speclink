@@ -1429,6 +1429,10 @@ fn artifact_write_command(
         change: Some(change),
         content: Some(content),
         force: true,
+        // The raw artifact PUT is a direct write, not the CLI's creation
+        // verb — the naming gate's second net (the validate warning) covers
+        // this entrance, so the write itself stays ungated.
+        new_capability: true,
     })
 }
 

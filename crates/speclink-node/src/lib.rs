@@ -337,6 +337,7 @@ fn verb_new_artifact(backend: &Backend, args: &[String], stdin: Option<&str>) ->
             change: a.options.get("change").map(|s| s.to_string()),
             content,
             force: a.flags.contains("force"),
+            new_capability: a.flags.contains("new"),
         },
     )?;
     let core::command::CommandOutcome::NewArtifact(o) = outcome else {

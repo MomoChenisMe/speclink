@@ -124,6 +124,8 @@ Update an existing Speclink change — from a plan file or conversation context.
    - Add new tasks from plan stages or conversation, **preserve completed `[x]` items**
    - Do NOT remove existing content
 
+   **Before adding a new delta capability**, compare its name against the existing ones — the canonical specs (`speclink list --specs --json`) and the delta capabilities of other in-flight changes. If an existing name means the same capability, reuse that exact name instead of opening a near-duplicate; `speclink validate` warns on near-named new capabilities.
+
    **Mark manual tasks with `[M]`**: a task the agent cannot do itself — the user has to do it by hand, whether that is operating the product and accepting the result, creating an account on an external service, or placing a key — carries an `[M]` marker, so the quality stations can judge "the code is finished" separately from "a human did their part". Anything the agent can do itself, including code and automated tests, never carries it.
 
    **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, never before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
