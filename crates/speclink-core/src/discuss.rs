@@ -218,7 +218,7 @@ pub fn new_discussion(
          \n\
          ## Context\n\
          \n\
-         <!-- What prompted this discussion, the mode chosen (assumptions | interview) and why,\n\
+         <!-- What prompted this discussion, whether a grill stage was needed and why,\n\
          and the related changes/specs. Set once via `speclink discuss context <slug> --stdin`. -->\n\
          \n\
          ## Rounds\n\
