@@ -99,6 +99,7 @@ const B_ONBOARD: &str = include_str!("../assets/skills/onboard.md");
 const B_PROPOSE: &str = include_str!("../assets/skills/propose.md");
 const B_QUALITY: &str = include_str!("../assets/skills/quality.md");
 const B_REVIEW: &str = include_str!("../assets/skills/review.md");
+const B_TRACE: &str = include_str!("../assets/skills/trace.md");
 const B_VERIFY: &str = include_str!("../assets/skills/verify.md");
 const B_SYNC: &str = include_str!("../assets/skills/sync.md");
 const B_CLARIFY: &str = include_str!("../assets/skills/clarify.md");
@@ -137,6 +138,9 @@ pub fn registry() -> Vec<Skill> {
         // Not a fork skill（design D7 替代案否決 fork）：主線 orchestrator 要
         // fan-out 兩個平行 sub-agent 並互動詢問三選項；修正回主線，故 Edit 不禁。
         Skill { name: "review", description: "Review a change's implementation for craft quality — parallel standards and correctness axes, recorded to a review ticket", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_REVIEW },
+        // 唯讀問答（比照 drift 的 fork 形狀）：走 speclink verbs 與 git 組敘事
+        // 答案，永不改檔，Edit/Write 禁用。
+        Skill { name: "trace", description: "Answer how a capability came to be by walking its provenance chain — archived changes, source discussions, evidence, live code", fork: true, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_TRACE },
         // Not a fork skill any more（design D6）：主線要取得 frozen scope、落
         // structured 工單、互動詢問三選項並在本地依 TDD 修正；檢查段本身仍以
         // 單一唯讀 sub-agent 隔離。codex 變體以純文字詢問，兩工具同步生成。
@@ -165,6 +169,7 @@ pub fn skill_body(name: &str) -> Option<&'static str> {
         "propose" => B_PROPOSE,
         "quality" => B_QUALITY,
         "review" => B_REVIEW,
+        "trace" => B_TRACE,
         "verify" => B_VERIFY,
         "sync" => B_SYNC,
         "clarify" => B_CLARIFY,
