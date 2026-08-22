@@ -129,6 +129,33 @@ describe("createLocalSession（spec「每個 session 自帶 dataSource 且 Rust 
     expect(missingRoot).toEqual([]);
   });
 
+  it("產出流程五方法各自呼叫對應 command（desktop-schema-panel D2/D5/D6）", async () => {
+    const { calls, invoke } = fakeInvoke();
+    const settings = createLocalSession(ROOT, { invoke }).settings;
+    await settings.readSchemas();
+    await settings.writeWorkflowSchema("my-flow");
+    await settings.forkSchema("spec-driven");
+    await settings.createSchema("my-flow");
+    await settings.revealSchema("/proj/a/openspec/schemas/my-flow");
+    await settings.deleteSchema("my-flow");
+    expect(calls.map((c) => c.cmd)).toEqual([
+      "read_schemas",
+      "write_workflow_schema",
+      "fork_schema",
+      "init_schema",
+      "reveal_in_folder",
+      "delete_schema",
+    ]);
+    expect(calls[0]?.args).toEqual({ root: ROOT });
+    expect(calls[1]?.args).toEqual({ root: ROOT, name: "my-flow" });
+    expect(calls[2]?.args).toEqual({ root: ROOT, source: "spec-driven" });
+    expect(calls[3]?.args).toEqual({ root: ROOT, name: "my-flow" });
+    // reveal 以快照給的絕對路徑為準，不帶 root、不自行拼路徑（D6）。
+    expect(calls[4]?.args).toEqual({ path: "/proj/a/openspec/schemas/my-flow" });
+    // 刪除收名稱、目標由 core 固定解析為專案層目錄（D7）。
+    expect(calls[5]?.args).toEqual({ root: ROOT, name: "my-flow" });
+  });
+
   it("events source only fires when the payload root equals its own root", async () => {
     const { invoke } = fakeInvoke();
     let handler: ((e: { payload: unknown }) => void) | undefined;

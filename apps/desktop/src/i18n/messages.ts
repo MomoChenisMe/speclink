@@ -171,6 +171,30 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.rulesLabel": "產出規則",
     "settings.rulesHelp":
       "依 artifact 分節，一行一條規則（頭尾空白不保留）、行序即指令注入順序；儲存會重寫 config.yaml，檔內註解不會保留。",
+    "settings.schemaCard": "產出流程",
+    // 頁籤標籤直出 Schema（LANGUAGE.md 明文例外：頁籤列全是技術 token，
+    // 與 config.yaml／.speclink.yaml 同列的原生詞一致性；desktop-schema-panel）。
+    "settings.schemaTab": "Schema",
+    "settings.schemaCardHelp": "此專案的變更會產出哪些文件、什麼順序；切換立即寫入 config.yaml。",
+    "settings.schemaActiveLabel": "使用中的產出流程",
+    "settings.schemaSourceBuiltin": "內建",
+    "settings.schemaSourceProject": "專案",
+    "settings.schemaSourceUser": "使用者",
+    "settings.schemaShowDetail": "檢視內容",
+    "settings.schemaHideDetail": "收合",
+    "settings.schemaFork": "複製為專案版",
+    "settings.schemaReveal": "開啟所在資料夾",
+    "settings.schemaDelete": "刪除",
+    "settings.schemaDeleteTitle": "刪除產出流程？",
+    "settings.schemaDeleteDesc": "將永久移除此專案層產出流程的整個目錄，無法復原：",
+    "settings.schemaUnknownNote":
+      "遠端自訂尚不支援——此專案使用的產出流程不是內建項，桌面端無法呈現內容。",
+    "settings.schemaCreateLabel": "建立新的產出流程",
+    "settings.schemaCreate": "建立",
+    "settings.schemaCreateHelp":
+      "輸入小寫連字號名稱（如 my-flow），以預設骨架建立到專案層；內容之後用編輯器修改。",
+    "settings.schemaArtifactInstruction": "指引",
+    "settings.schemaArtifactTemplate": "範本",
     "store.tabInvalid": "已不是 speclink 專案",
     "store.deleteFailed": "刪除失敗",
     "store.archiveFailed": "封存失敗",
@@ -469,6 +493,33 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.rulesLabel": "Output rules",
     "settings.rulesHelp":
       "One rule per line per artifact key (leading/trailing whitespace is trimmed); line order is the instruction injection order. Saving rewrites config.yaml — file comments are not preserved.",
+    // en 語系裡 "schema" 是這個概念的原生詞（與頁籤標籤同一條裁定線），保留；
+    // 但格式術語與檔案路徑（kebab-case、openspec/schemas/）仍不進使用者可見
+    // 文案——與 zh 版的人話寫法對齊（review R1）。
+    "settings.schemaCard": "Workflow schema",
+    "settings.schemaTab": "Schema",
+    "settings.schemaCardHelp":
+      "Which documents a change produces and in what order; switching writes config.yaml immediately.",
+    "settings.schemaActiveLabel": "Active schema",
+    "settings.schemaSourceBuiltin": "built-in",
+    "settings.schemaSourceProject": "project",
+    "settings.schemaSourceUser": "user",
+    "settings.schemaShowDetail": "View contents",
+    "settings.schemaHideDetail": "Collapse",
+    "settings.schemaFork": "Copy into project",
+    "settings.schemaReveal": "Show in folder",
+    "settings.schemaDelete": "Delete",
+    "settings.schemaDeleteTitle": "Delete this schema?",
+    "settings.schemaDeleteDesc":
+      "The project-layer schema's entire directory will be removed permanently. This cannot be undone:",
+    "settings.schemaUnknownNote":
+      "Remote custom schemas are not supported yet — this project's schema is not a built-in, so its contents cannot be shown here.",
+    "settings.schemaCreateLabel": "Create a new schema",
+    "settings.schemaCreate": "Create",
+    "settings.schemaCreateHelp":
+      "Enter a lowercase hyphenated name (e.g. my-flow); a default skeleton is created in the project layer — edit its contents in your editor afterwards.",
+    "settings.schemaArtifactInstruction": "Instruction",
+    "settings.schemaArtifactTemplate": "Template",
     "store.tabInvalid": "no longer a speclink project",
     "store.deleteFailed": "delete failed",
     "store.archiveFailed": "archive failed",

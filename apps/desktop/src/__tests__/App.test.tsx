@@ -89,6 +89,8 @@ function fakeSettings() {
         context: null,
         rules: {},
         schemaArtifacts: ["proposal", "design", "specs", "tasks"],
+        schemaName: "spec-driven",
+        schemaKnown: true,
         parseError: null,
       },
     }),
@@ -96,6 +98,12 @@ function fakeSettings() {
     writeWorkflowConfig: vi.fn().mockResolvedValue(undefined),
     writeWorkflowContext: vi.fn(),
     writeWorkflowRules: vi.fn(),
+    readSchemas: vi.fn().mockResolvedValue([]),
+    writeWorkflowSchema: vi.fn().mockResolvedValue(undefined),
+    forkSchema: vi.fn().mockResolvedValue("spec-driven-custom"),
+    createSchema: vi.fn().mockResolvedValue(undefined),
+    revealSchema: vi.fn().mockResolvedValue(undefined),
+    deleteSchema: vi.fn().mockResolvedValue(undefined),
   };
 }
 

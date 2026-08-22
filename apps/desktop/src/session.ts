@@ -11,6 +11,7 @@ import { createTauriDataSource } from "./adapter/tauriDataSource";
 import {
   createRemoteSettings,
   createWorkspaceSettings,
+  type SchemaEntry,
   type SettingsSnapshot,
   type WorkflowFields,
 } from "./adapter/workspace";
@@ -53,6 +54,19 @@ export interface WorkspaceSettingsProvider {
   writeWorkflowConfig(fields: WorkflowFields): Promise<number | void>;
   writeWorkflowContext(context: string): Promise<number | void>;
   writeWorkflowRules(rules: Array<[string, string[]]>): Promise<number | void>;
+  /** 產出流程清單（desktop-schema-panel D2）：local 三層、remote 僅內嵌內建。 */
+  readSchemas(): Promise<SchemaEntry[]>;
+  /** 切換專案 schema；remote 成功回新 revision、local 維持 void。 */
+  writeWorkflowSchema(name: string): Promise<number | void>;
+  /** fork 到專案層（複本名固定為引擎預設 <source>-custom），回新 schema 名稱；
+   * remote 不支援（rejected Promise）。 */
+  forkSchema(source: string): Promise<string>;
+  /** 建立自訂 schema 骨架（D5；引擎預設佈局）；remote 不支援（rejected Promise）。 */
+  createSchema(name: string): Promise<void>;
+  /** 在檔案管理器顯示 schema 目錄（D6；path 來自快照）；remote 不支援。 */
+  revealSchema(path: string): Promise<void>;
+  /** 刪除專案層自訂 schema（D7；使用中拒刪）；remote 不支援。 */
+  deleteSchema(name: string): Promise<void>;
 }
 
 /** 事件面（design 決策 5）：workspace-changed 以自身 locator 過濾後才觸發。 */

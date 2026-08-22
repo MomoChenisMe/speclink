@@ -525,6 +525,66 @@ async fn write_workflow_config(
     .map_err(|e| format!("write_workflow_config worker failed: {e}"))?
 }
 
+/// 產出流程快照（desktop-schema-panel design D2）：root 有值＝local 三層組裝；
+/// 缺席＝remote 模式，desktop core 以內嵌內建組裝（不打 server、不讀本機層）。
+#[tauri::command]
+async fn read_schemas(root: Option<PathBuf>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let snapshot = match root {
+            Some(root) => speclink_desktop_core::settings::read_schemas_at(&root)?,
+            None => speclink_desktop_core::settings::builtin_schemas(),
+        };
+        serde_json::to_value(&snapshot).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("read_schemas worker failed: {e}"))?
+}
+
+#[tauri::command]
+async fn write_workflow_schema(root: PathBuf, name: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::settings::write_workflow_schema_at(&root, &name)
+    })
+    .await
+    .map_err(|e| format!("write_workflow_schema worker failed: {e}"))?
+}
+
+#[tauri::command]
+async fn fork_schema(root: PathBuf, source: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::settings::fork_schema_at(&root, &source)
+    })
+    .await
+    .map_err(|e| format!("fork_schema worker failed: {e}"))?
+}
+
+/// 建立自訂 schema 骨架（design D5）：佈局用引擎預設，名稱驗證在引擎。
+#[tauri::command]
+async fn init_schema(root: PathBuf, name: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::settings::init_schema_at(&root, &name)
+    })
+    .await
+    .map_err(|e| format!("init_schema worker failed: {e}"))?
+}
+
+/// 刪除專案層自訂 schema（design D7）：使用中拒刪、目標由 core 固定解析。
+#[tauri::command]
+async fn delete_schema(root: PathBuf, name: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::settings::delete_schema_at(&root, &name)
+    })
+    .await
+    .map_err(|e| format!("delete_schema worker failed: {e}"))?
+}
+
+/// 在系統檔案管理器顯示路徑（design D6 編輯入口）：path 來自 read_schemas 快照。
+#[tauri::command]
+async fn reveal_in_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().reveal_item_in_dir(&path).map_err(|e| e.to_string())
+}
+
 /// 寫入 config.yaml 的「專案說明」與「產出規則」。`context: None`＝不動、
 /// `Some(文字)`＝設值（空白即移除鍵，core 落實）；`rules: None`＝不動、
 /// `Some(節序清單)`＝整份代換。政策欄位不受本 command 波及。
@@ -988,6 +1048,21 @@ async fn remote_write_workflow_content(
             rules.as_deref(),
             expected_revision,
         )
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remote_write_workflow_schema(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    name: String,
+    expected_revision: u64,
+) -> Result<u64, remote::RemoteSettingsError> {
+    with_remote_settings(app, connection_id, project, repo, move |ws, credentials| {
+        ws.write_workflow_schema(credentials, &name, expected_revision)
     })
     .await
 }
@@ -1638,6 +1713,12 @@ pub fn run() {
             write_app_tools,
             write_workflow_config,
             write_workflow_content,
+            read_schemas,
+            write_workflow_schema,
+            fork_schema,
+            init_schema,
+            reveal_in_folder,
+            delete_schema,
             connection_list,
             connection_add,
             inspect_checkout,
@@ -1652,6 +1733,7 @@ pub fn run() {
             remote_read_settings,
             remote_write_workflow_config,
             remote_write_workflow_content,
+            remote_write_workflow_schema,
             remote_scopes,
             migrate_workspace,
             adopt_remote_workspace,

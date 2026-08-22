@@ -9,7 +9,7 @@ import { I18nProvider } from "@speclink/ui";
 
 import { ProjectSettingsView } from "../views/ProjectSettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
-import type { SettingsSnapshot } from "../adapter/workspace";
+import type { SchemaEntry, SettingsSnapshot } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
@@ -33,6 +33,8 @@ function snapshot(over: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
       context: null,
       rules: {},
       schemaArtifacts: ["proposal", "design", "specs", "tasks"],
+      schemaName: "spec-driven",
+      schemaKnown: true,
       parseError: null,
       ...(over.workflow ?? {}),
     },
@@ -49,6 +51,12 @@ function fakeSettings(snap: SettingsSnapshot): WorkspaceSettingsProvider {
     writeWorkflowConfig: vi.fn().mockResolvedValue(undefined),
     writeWorkflowContext: vi.fn().mockResolvedValue(undefined),
     writeWorkflowRules: vi.fn().mockResolvedValue(undefined),
+    readSchemas: vi.fn().mockResolvedValue([]),
+    writeWorkflowSchema: vi.fn().mockResolvedValue(undefined),
+    forkSchema: vi.fn().mockResolvedValue("spec-driven-custom"),
+    createSchema: vi.fn().mockResolvedValue(undefined),
+    revealSchema: vi.fn().mockResolvedValue(undefined),
+    deleteSchema: vi.fn().mockResolvedValue(undefined),
   } as unknown as WorkspaceSettingsProvider;
 }
 
@@ -237,6 +245,12 @@ describe("ProjectSettingsView 寫入", () => {
       writeWorkflowConfig: vi.fn().mockRejectedValueOnce(new Error("server unreachable")),
       writeWorkflowContext: vi.fn().mockResolvedValue(undefined),
       writeWorkflowRules: vi.fn().mockResolvedValue(undefined),
+      readSchemas: vi.fn().mockResolvedValue([]),
+      writeWorkflowSchema: vi.fn().mockResolvedValue(undefined),
+      forkSchema: vi.fn().mockRejectedValue(new Error("遠端工作區尚不支援 fork 產出流程")),
+      createSchema: vi.fn().mockRejectedValue(new Error("遠端工作區尚不支援建立產出流程")),
+      revealSchema: vi.fn().mockRejectedValue(new Error("遠端工作區沒有本機檔案可顯示")),
+      deleteSchema: vi.fn().mockRejectedValue(new Error("遠端工作區尚不支援刪除產出流程")),
     } as unknown as WorkspaceSettingsProvider;
     render(<ProjectSettingsView settings={ws} />);
 
@@ -282,7 +296,8 @@ describe("專案設定頁兩頁簽組織（spec Scenario「兩頁分工與預設
     renderView(projectSnap());
     await screen.findByTestId("context-card");
     const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-    expect(tabs).toEqual(["config.yaml", ".speclink.yaml"]);
+    // desktop-schema-panel D4 改版：產出流程為第二簽（spec「產出流程自成頁籤」）。
+    expect(tabs).toEqual(["config.yaml", "Schema", ".speclink.yaml"]);
     expect(screen.getByRole("tab", { name: "config.yaml" }).getAttribute("aria-selected")).toBe("true");
     // config.yaml 簽卡片歸屬：專案說明、產出規則、產出政策。
     expect(screen.getByTestId("context-card")).toBeTruthy();
@@ -621,6 +636,12 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
       writeWorkflowConfig: vi.fn().mockResolvedValue(nextRevision),
       writeWorkflowContext: vi.fn().mockResolvedValue(nextRevision),
       writeWorkflowRules: vi.fn().mockResolvedValue(nextRevision),
+      readSchemas: vi.fn().mockResolvedValue([]),
+      writeWorkflowSchema: vi.fn().mockResolvedValue(nextRevision),
+      forkSchema: vi.fn().mockRejectedValue(new Error("遠端工作區尚不支援 fork 產出流程")),
+      createSchema: vi.fn().mockRejectedValue(new Error("遠端工作區尚不支援建立產出流程")),
+      revealSchema: vi.fn().mockRejectedValue(new Error("遠端工作區沒有本機檔案可顯示")),
+      deleteSchema: vi.fn().mockRejectedValue(new Error("遠端工作區尚不支援刪除產出流程")),
     } as unknown as WorkspaceSettingsProvider;
   }
 
@@ -630,7 +651,11 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     render(<ProjectSettingsView settings={ws} />);
 
     const tab = await screen.findByRole("tab", { name: "Workflow" });
-    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    // remote 兩簽：Workflow＋產出流程（D4 改版）；.speclink.yaml 仍不出現。
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Workflow",
+      "Schema",
+    ]);
     expect(tab.getAttribute("aria-selected")).toBe("true");
     expect(screen.queryByRole("tab", { name: ".speclink.yaml" })).toBeNull();
     const revision = screen.getByTestId("policy-revision");
@@ -798,5 +823,488 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
       expect(call[0]).toMatchObject({ locale: "en" });
     }
     expect(screen.queryByText(/強制覆寫/)).toBeNull();
+  });
+});
+
+// ---- 產出流程頁籤（desktop-schema-panel design D4 改版＋D5）----
+
+describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () => {
+  const BUILTIN_ENTRY: SchemaEntry = {
+    name: "spec-driven",
+    source: "package",
+    artifactIds: ["proposal", "design", "specs", "tasks"],
+    artifacts: [
+      { id: "proposal", description: "提案文件", instruction: "寫提案", template: "# Proposal template" },
+      { id: "design", description: "設計文件", instruction: "寫設計", template: "# Design template" },
+      { id: "specs", description: "規格文件", instruction: "寫規格", template: "# Spec template" },
+      { id: "tasks", description: "任務清單", instruction: "寫任務", template: "# Tasks template" },
+    ],
+    path: null,
+    error: null,
+  };
+  const CUSTOM_ENTRY: SchemaEntry = {
+    name: "my-flow",
+    source: "project",
+    artifactIds: ["plan"],
+    artifacts: [
+      { id: "plan", description: "計畫文件", instruction: "先寫計畫", template: "# 計畫模板" },
+    ],
+    path: "/proj/openspec/schemas/my-flow",
+    error: null,
+  };
+
+  function schemaSettings(
+    snap: SettingsSnapshot,
+    schemas: SchemaEntry[] = [BUILTIN_ENTRY, CUSTOM_ENTRY],
+    over: Record<string, unknown> = {},
+  ): WorkspaceSettingsProvider {
+    return {
+      kind: "local",
+      policyWrite: true,
+      readSettings: vi.fn().mockResolvedValue(snap),
+      writeAppTools: vi.fn().mockResolvedValue(undefined),
+      writeWorkflowConfig: vi.fn().mockResolvedValue(undefined),
+      writeWorkflowContext: vi.fn().mockResolvedValue(undefined),
+      writeWorkflowRules: vi.fn().mockResolvedValue(undefined),
+      readSchemas: vi.fn().mockResolvedValue(schemas),
+      writeWorkflowSchema: vi.fn().mockResolvedValue(undefined),
+      forkSchema: vi.fn().mockResolvedValue("spec-driven-custom"),
+      createSchema: vi.fn().mockResolvedValue(undefined),
+      revealSchema: vi.fn().mockResolvedValue(undefined),
+      deleteSchema: vi.fn().mockResolvedValue(undefined),
+      ...over,
+    } as unknown as WorkspaceSettingsProvider;
+  }
+
+  /** 切到產出流程頁籤（D4 改版：獨立頁籤，內容不再掛在 config.yaml 簽）。 */
+  async function openSchemasTab() {
+    await screen.findByRole("tab", { name: "Schema" });
+    switchToTab("Schema");
+  }
+
+  it("local 頁簽依序 config.yaml／產出流程／.speclink.yaml，且 config.yaml 簽內無此節", async () => {
+    // spec Scenario「產出流程自成頁籤」。
+    const ws = schemaSettings(projectSnap());
+    render(<ProjectSettingsView settings={ws} />);
+    await screen.findByTestId("context-card");
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "config.yaml",
+      "Schema",
+      ".speclink.yaml",
+    ]);
+    // 預設簽（config.yaml）內不得再有產出流程內容。
+    expect(screen.queryByTestId("schema-card")).toBeNull();
+    switchToTab("Schema");
+    expect(await screen.findByTestId("schema-card")).toBeTruthy();
+  });
+
+  it("清單列出可解析項（名稱、來源層級、artifact 圖），點入唯讀詳情含全文且無編輯入口", async () => {
+    // spec Scenario「清單列出可解析的 schema」＋「詳情唯讀呈現內容」＋
+    // Example「清單一列的形狀」。
+    const ws = schemaSettings(projectSnap());
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    const card = await screen.findByTestId("schema-card");
+    expect(card.textContent).toContain("產出流程");
+    const item = await screen.findByTestId("schema-item-spec-driven");
+    expect(item.textContent).toContain("spec-driven");
+    expect(item.textContent).toContain("內建");
+    // spec Example「清單一列的形狀」：artifact 圖整串釘死（引擎顯示序）。
+    expect(item.textContent).toContain("proposal → design → specs → tasks");
+    const custom = screen.getByTestId("schema-item-my-flow");
+    expect(custom.textContent).toContain("專案");
+    expect(custom.textContent).toContain("plan");
+
+    fireEvent.click(screen.getByTestId("schema-toggle-spec-driven"));
+    const detail = await screen.findByTestId("schema-detail-spec-driven");
+    for (const text of ["提案文件", "寫提案", "# Proposal template", "任務清單", "# Tasks template"]) {
+      expect(detail.textContent).toContain(text);
+    }
+    expect(within(detail).queryByRole("textbox")).toBeNull();
+  });
+
+  it("下拉切換觸發寫入，成功後重讀快照且產出規則分節固定鍵更新", async () => {
+    // spec Scenario「切換寫入且其餘內容保留」的前端面。
+    const first = projectSnap();
+    const after = projectSnap({ schemaName: "my-flow", schemaArtifacts: ["plan"], rules: {} });
+    const ws = schemaSettings(first);
+    (ws.readSettings as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(first)
+      .mockResolvedValue(after);
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const select = await screen.findByLabelText("使用中的產出流程");
+    expect(select.textContent).toContain("spec-driven");
+    await user.click(select);
+    await user.click(await screen.findByRole("option", { name: /my-flow/ }));
+    await waitFor(() => expect(ws.writeWorkflowSchema).toHaveBeenCalledWith("my-flow"));
+    // 固定鍵隨新 schema 更新：切回 config.yaml 簽，產出規則編輯分節只剩 plan。
+    await waitFor(() => expect(screen.getByLabelText("使用中的產出流程").textContent).toContain("my-flow"));
+    switchToTab("config.yaml");
+    fireEvent.click(await screen.findByTestId("rules-edit"));
+    await waitFor(() => expect(screen.getByTestId("rules-input-plan")).toBeTruthy());
+    expect(screen.queryByTestId("rules-input-proposal")).toBeNull();
+  });
+
+  it("切換寫入失敗：錯誤浮出於表單，不靜默", async () => {
+    const ws = schemaSettings(projectSnap());
+    (ws.writeWorkflowSchema as ReturnType<typeof vi.fn>).mockRejectedValue(
+      "openspec/config.yaml: write failed: denied",
+    );
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByLabelText("使用中的產出流程"));
+    await user.click(await screen.findByRole("option", { name: /my-flow/ }));
+    expect(await screen.findByText(/write failed/)).toBeTruthy();
+  });
+
+  it("fork 僅 local 渲染，按下後清單反映新專案層項目", async () => {
+    // spec Scenario「fork 產出專案層複本」的前端面。
+    const forked: SchemaEntry = { ...BUILTIN_ENTRY, name: "spec-driven-custom", source: "project" };
+    const ws = schemaSettings(projectSnap());
+    (ws.readSchemas as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([BUILTIN_ENTRY, CUSTOM_ENTRY])
+      .mockResolvedValue([BUILTIN_ENTRY, forked, CUSTOM_ENTRY]);
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    await screen.findByTestId("schema-item-spec-driven");
+    fireEvent.click(screen.getByTestId("schema-fork-spec-driven"));
+    await waitFor(() => expect(ws.forkSchema).toHaveBeenCalledWith("spec-driven"));
+    await screen.findByTestId("schema-item-spec-driven-custom");
+  });
+
+  it("存產出規則保留非固定鍵的既有分節（review R3：切換後舊 schema 分節不被靜默刪除）", async () => {
+    const snap = projectSnap({
+      schemaName: "my-flow",
+      schemaArtifacts: ["plan"],
+      rules: { plan: ["p1"], proposal: ["舊 schema 的規則"] },
+    });
+    const ws = schemaSettings(snap);
+    render(<ProjectSettingsView settings={ws} />);
+    fireEvent.click(await screen.findByTestId("rules-edit"));
+    await screen.findByTestId("rules-input-plan");
+    fireEvent.click(screen.getByTestId("rules-save"));
+    await waitFor(() =>
+      expect(ws.writeWorkflowRules).toHaveBeenCalledWith([
+        ["plan", ["p1"]],
+        ["proposal", ["舊 schema 的規則"]],
+      ]),
+    );
+  });
+
+  it("切換 schema 不重設另一卡的編輯態與草稿（review R4）", async () => {
+    const first = projectSnap();
+    const after = projectSnap({ schemaName: "my-flow", schemaArtifacts: ["plan"], rules: {} });
+    const ws = schemaSettings(first);
+    (ws.readSettings as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(first)
+      .mockResolvedValue(after);
+    render(<ProjectSettingsView settings={ws} />);
+    // config.yaml 簽：開專案說明編輯並輸入未存草稿。
+    fireEvent.click(await screen.findByTestId("context-edit"));
+    fireEvent.change(screen.getByTestId("context-input"), {
+      target: { value: "還沒存的草稿" },
+    });
+    // 切到 Schema 簽做切換。
+    switchToTab("Schema");
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByLabelText("使用中的產出流程"));
+    await user.click(await screen.findByRole("option", { name: /my-flow/ }));
+    await waitFor(() => expect(ws.writeWorkflowSchema).toHaveBeenCalledWith("my-flow"));
+    // 切回 config.yaml 簽：編輯態仍開、草稿仍在。
+    switchToTab("config.yaml");
+    const input = (await screen.findByTestId("context-input")) as HTMLTextAreaElement;
+    expect(input.value).toBe("還沒存的草稿");
+  });
+
+  it("remote 切換撞 revision_conflict → 開對照對話框（review R5）", async () => {
+    const initial = projectSnap({ revision: 41 } as Partial<SettingsSnapshot["workflow"]>);
+    const latest = projectSnap({ revision: 42 } as Partial<SettingsSnapshot["workflow"]>);
+    const ws = schemaSettings(initial, [BUILTIN_ENTRY, CUSTOM_ENTRY], { kind: "remote" });
+    (ws.readSettings as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValue(latest);
+    (ws.writeWorkflowSchema as ReturnType<typeof vi.fn>).mockRejectedValue({
+      reason: "revision_conflict",
+      message: "policy revision conflict",
+    });
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByLabelText("使用中的產出流程"));
+    await user.click(await screen.findByRole("option", { name: /my-flow/ }));
+    expect(await screen.findByTestId("policy-conflict-panel")).toBeTruthy();
+    expect(screen.getByTestId("conflict-revision").textContent).toContain("42");
+  });
+
+  it("下拉現值不在選項集時仍顯示名稱（review R6：remote 非內建）", async () => {
+    const snap = projectSnap({
+      revision: 7,
+      schemaName: "their-flow",
+      schemaKnown: false,
+      schemaArtifacts: [],
+      rules: {},
+    } as Partial<SettingsSnapshot["workflow"]>);
+    const ws = schemaSettings(snap, [BUILTIN_ENTRY], { kind: "remote" });
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    const trigger = await screen.findByLabelText("使用中的產出流程");
+    expect(trigger.textContent).toContain("their-flow");
+  });
+
+  it("readSchemas 失敗：錯誤浮出而非靜默空白（review R7）", async () => {
+    const ws = schemaSettings(projectSnap());
+    (ws.readSchemas as ReturnType<typeof vi.fn>).mockRejectedValue(
+      "not a speclink project: /gone",
+    );
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    expect(await screen.findByText(/not a speclink project/)).toBeTruthy();
+  });
+
+  it("同名跨層項目只有解析命中的那層有 fork 按鈕（review R8）", async () => {
+    // 引擎 fork 以 project→user 第一命中解析：被 shadow 的 user 層項若給 fork，
+    // 複製到的會是專案層同名內容——不給入口。
+    const dupProject: SchemaEntry = { ...CUSTOM_ENTRY, name: "dup", path: "/proj/openspec/schemas/dup" };
+    const dupUser: SchemaEntry = {
+      ...CUSTOM_ENTRY,
+      name: "dup",
+      source: "user",
+      path: "/home/userdir/schemas/dup",
+    };
+    const ws = schemaSettings(projectSnap(), [BUILTIN_ENTRY, dupProject, dupUser]);
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    await waitFor(() => expect(screen.getAllByTestId("schema-item-dup")).toHaveLength(2));
+    expect(screen.getAllByTestId("schema-fork-dup")).toHaveLength(1);
+  });
+
+  it("建立表單僅 local 渲染：輸入名稱送出後 createSchema 被呼叫且清單反映新項", async () => {
+    // spec Scenario「建立產出專案層骨架」＋ Example「建立輸入與結果」row 1。
+    const created: SchemaEntry = {
+      name: "my-new-flow",
+      source: "project",
+      artifactIds: ["plan", "tasks"],
+      artifacts: [],
+      path: "/proj/openspec/schemas/my-new-flow",
+      error: null,
+    };
+    const ws = schemaSettings(projectSnap());
+    (ws.readSchemas as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([BUILTIN_ENTRY, CUSTOM_ENTRY])
+      .mockResolvedValue([BUILTIN_ENTRY, CUSTOM_ENTRY, created]);
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    await screen.findByTestId("schema-item-spec-driven");
+    fireEvent.change(screen.getByTestId("schema-create-name"), {
+      target: { value: "my-new-flow" },
+    });
+    fireEvent.click(screen.getByTestId("schema-create"));
+    await waitFor(() => expect(ws.createSchema).toHaveBeenCalledWith("my-new-flow"));
+    await screen.findByTestId("schema-item-my-new-flow");
+  });
+
+  it("有磁碟路徑的項目帶開啟所在資料夾按鈕，內建項無（產出流程的編輯入口）", async () => {
+    // spec Scenario「專案層項目開啟所在資料夾」＋「內建項無編輯入口」。
+    const ws = schemaSettings(projectSnap());
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    await screen.findByTestId("schema-item-my-flow");
+    expect(screen.queryByTestId("schema-reveal-spec-driven")).toBeNull();
+    fireEvent.click(screen.getByTestId("schema-reveal-my-flow"));
+    await waitFor(() =>
+      expect(ws.revealSchema).toHaveBeenCalledWith("/proj/openspec/schemas/my-flow"),
+    );
+  });
+
+  it("專案層項目帶刪除按鈕：確認後呼叫且清單反映，內建項無此按鈕", async () => {
+    // spec Scenario「刪除經確認後移除專案層目錄」。
+    const ws = schemaSettings(projectSnap());
+    (ws.readSchemas as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([BUILTIN_ENTRY, CUSTOM_ENTRY])
+      .mockResolvedValue([BUILTIN_ENTRY]);
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    await screen.findByTestId("schema-item-my-flow");
+    expect(screen.queryByTestId("schema-delete-spec-driven")).toBeNull();
+    fireEvent.click(screen.getByTestId("schema-delete-my-flow"));
+    fireEvent.click(await screen.findByTestId("schema-delete-confirm"));
+    await waitFor(() => expect(ws.deleteSchema).toHaveBeenCalledWith("my-flow"));
+    await waitFor(() => expect(screen.queryByTestId("schema-item-my-flow")).toBeNull());
+  });
+
+  it("刪除確認對話框取消：零呼叫零變動", async () => {
+    // spec Scenario「取消確認零變動」。
+    const ws = schemaSettings(projectSnap());
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    await screen.findByTestId("schema-item-my-flow");
+    fireEvent.click(screen.getByTestId("schema-delete-my-flow"));
+    fireEvent.click(await screen.findByTestId("schema-delete-cancel"));
+    expect(ws.deleteSchema).not.toHaveBeenCalled();
+    expect(screen.getByTestId("schema-item-my-flow")).toBeTruthy();
+  });
+
+  it("刪除失敗（使用中的 schema 拒刪）：錯誤浮出於表單", async () => {
+    const ws = schemaSettings(projectSnap());
+    (ws.deleteSchema as ReturnType<typeof vi.fn>).mockRejectedValue(
+      "'my-flow' 是使用中的產出流程（config.yaml 的 schema 鍵正指著它）——請先切換到其他項目再刪除",
+    );
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    await screen.findByTestId("schema-item-my-flow");
+    fireEvent.click(screen.getByTestId("schema-delete-my-flow"));
+    fireEvent.click(await screen.findByTestId("schema-delete-confirm"));
+    expect(await screen.findByText(/使用中的產出流程/)).toBeTruthy();
+    expect(screen.getByTestId("schema-item-my-flow")).toBeTruthy();
+  });
+
+  it("fork／建立／刪除不重設產出規則的編輯態與草稿（review N1）", async () => {
+    const ws = schemaSettings(projectSnap());
+    render(<ProjectSettingsView settings={ws} />);
+    // config.yaml 簽：開產出規則編輯並輸入未存草稿。
+    fireEvent.click(await screen.findByTestId("rules-edit"));
+    fireEvent.change(screen.getByTestId("rules-input-proposal"), {
+      target: { value: "還沒存的規則草稿" },
+    });
+    // Schema 簽做 fork。
+    switchToTab("Schema");
+    await screen.findByTestId("schema-item-spec-driven");
+    fireEvent.click(screen.getByTestId("schema-fork-spec-driven"));
+    await waitFor(() => expect(ws.forkSchema).toHaveBeenCalled());
+    // 切回：編輯態仍開、草稿仍在。
+    switchToTab("config.yaml");
+    const input = (await screen.findByTestId("rules-input-proposal")) as HTMLTextAreaElement;
+    expect(input.value).toBe("還沒存的規則草稿");
+  });
+
+  it("編輯中換固定鍵集：編輯面凍結在開編輯當下的分節，儲存不清掉新 schema 的既有規則（review N4）", async () => {
+    const first = projectSnap(); // 固定鍵 proposal/design/specs/tasks
+    const after = projectSnap({
+      schemaName: "my-flow",
+      schemaArtifacts: ["plan"],
+      rules: { plan: ["新 schema 的既有規則"], proposal: ["提案必須列出影響的 crates"] },
+    });
+    const ws = schemaSettings(first);
+    (ws.readSettings as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(first)
+      .mockResolvedValue(after);
+    render(<ProjectSettingsView settings={ws} />);
+    // 開產出規則編輯並改草稿。
+    fireEvent.click(await screen.findByTestId("rules-edit"));
+    fireEvent.change(screen.getByTestId("rules-input-proposal"), {
+      target: { value: "編輯中的提案規則" },
+    });
+    // Schema 簽 fork → refreshSchemaFacts 換集（schemaArtifacts 變 ["plan"]）。
+    switchToTab("Schema");
+    await screen.findByTestId("schema-item-spec-driven");
+    fireEvent.click(screen.getByTestId("schema-fork-spec-driven"));
+    await waitFor(() => expect(ws.forkSchema).toHaveBeenCalled());
+    // 切回：編輯面仍是開編輯當下的分節與草稿（不是新鍵的空白 textarea）。
+    switchToTab("config.yaml");
+    const input = (await screen.findByTestId("rules-input-proposal")) as HTMLTextAreaElement;
+    expect(input.value).toBe("編輯中的提案規則");
+    expect(screen.queryByTestId("rules-input-plan")).toBeNull();
+    // 儲存：payload 以凍結鍵集送出草稿，新固定鍵 plan 的既有規則以兜底原樣保留。
+    fireEvent.click(screen.getByTestId("rules-save"));
+    await waitFor(() => expect(ws.writeWorkflowRules).toHaveBeenCalled());
+    const payload = (ws.writeWorkflowRules as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Array<[string, string[]]>;
+    expect(payload).toContainEqual(["proposal", ["編輯中的提案規則"]]);
+    expect(payload).toContainEqual(["plan", ["新 schema 的既有規則"]]);
+  });
+
+  it("切換失敗後下拉退回現值，不謊報活躍 schema（review N2）", async () => {
+    const ws = schemaSettings(projectSnap());
+    (ws.writeWorkflowSchema as ReturnType<typeof vi.fn>).mockRejectedValue(
+      "openspec/config.yaml: write failed: denied",
+    );
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByLabelText("使用中的產出流程"));
+    await user.click(await screen.findByRole("option", { name: /my-flow/ }));
+    await screen.findByText(/write failed/);
+    expect(screen.getByLabelText("使用中的產出流程").textContent).toContain("spec-driven");
+  });
+
+  it("被壞檔前層 shadow 的項也不給 fork 入口（review R8 殘留）", async () => {
+    // 引擎 sources 只看 schema.yaml 檔案存在——前層壞檔仍是解析命中層。
+    const brokenProject: SchemaEntry = {
+      name: "dup",
+      source: "project",
+      artifactIds: [],
+      artifacts: [],
+      path: "/proj/openspec/schemas/dup",
+      error: "Schema parse error: bad yaml",
+    };
+    const dupUser: SchemaEntry = {
+      ...CUSTOM_ENTRY,
+      name: "dup",
+      source: "user",
+      path: "/home/userdir/schemas/dup",
+    };
+    const ws = schemaSettings(projectSnap(), [BUILTIN_ENTRY, brokenProject, dupUser]);
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    await waitFor(() => expect(screen.getAllByTestId("schema-item-dup")).toHaveLength(2));
+    expect(screen.queryAllByTestId("schema-fork-dup")).toHaveLength(0);
+  });
+
+  it("建立失敗（不合法名稱／已存在）：引擎錯誤浮出於表單", async () => {
+    // spec Scenario「不合法名稱顯性失敗」＋ Example「建立輸入與結果」row 2/3。
+    const ws = schemaSettings(projectSnap());
+    (ws.createSchema as ReturnType<typeof vi.fn>).mockRejectedValue(
+      "Invalid schema name 'My Flow': must be lowercase kebab-case (e.g. my-flow)",
+    );
+    render(<ProjectSettingsView settings={ws} />);
+    await openSchemasTab();
+    fireEvent.change(await screen.findByTestId("schema-create-name"), {
+      target: { value: "My Flow" },
+    });
+    fireEvent.click(screen.getByTestId("schema-create"));
+    expect(await screen.findByText(/kebab-case/)).toBeTruthy();
+  });
+
+  it("remote：頁簽序 Workflow／產出流程、無 fork 與建立入口、下拉僅內建、非內建顯示遠端自訂尚不支援且不猜固定鍵", async () => {
+    // spec Scenario「remote 模式無 fork 入口」「remote 模式無建立入口」「remote
+    // 下拉僅內建」「remote 快照不讀本機 user 層」的前端面。
+    const snap = projectSnap({
+      revision: 7,
+      schemaName: "their-flow",
+      schemaKnown: false,
+      schemaArtifacts: [],
+      rules: {},
+    } as Partial<SettingsSnapshot["workflow"]>);
+    const ws = schemaSettings(snap, [BUILTIN_ENTRY], { kind: "remote" });
+    render(<ProjectSettingsView settings={ws} />);
+    await screen.findByTestId("context-card");
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Workflow",
+      "Schema",
+    ]);
+    // 不猜固定鍵：Workflow 簽的產出規則卡無任何分節內容。
+    expect(screen.queryByTestId("rules-readonly-proposal")).toBeNull();
+
+    switchToTab("Schema");
+    await screen.findByTestId("schema-card");
+    expect(screen.queryByTestId("schema-fork-spec-driven")).toBeNull();
+    expect(screen.queryByTestId("schema-create")).toBeNull();
+    expect(screen.queryByTestId("schema-reveal-spec-driven")).toBeNull();
+    expect(screen.queryByTestId("schema-delete-spec-driven")).toBeNull();
+    expect(screen.getByTestId("schema-unknown-note").textContent).toContain("遠端自訂尚不支援");
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(screen.getByLabelText("使用中的產出流程"));
+    const options = await screen.findAllByRole("option");
+    // 沿 locale 未知值模式：現值以停用項顯示（不可選），可選的切換目標僅內建。
+    expect(
+      options.map((o) => [o.textContent, o.getAttribute("aria-disabled") === "true"]),
+    ).toEqual([
+      ["their-flow", true],
+      ["spec-driven", false],
+    ]);
   });
 });

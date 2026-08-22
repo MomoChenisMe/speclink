@@ -20,6 +20,30 @@ export type ProjectProbe =
   | { status: "uninitialized"; dir: string }
   | { status: "unadopted"; root: string };
 
+/** schema 的來源層級（引擎的 resolution 層命名：內建／專案層／user 層）。 */
+export type SchemaSource = "package" | "project" | "user";
+
+/** 產出流程清單一項（read_schemas 的 payload；desktop-schema-panel D1/D2）：
+ * error 有值＝該 schema 解析失敗，內容欄位一律空。 */
+export interface SchemaEntry {
+  name: string;
+  source: SchemaSource;
+  /** artifact 圖（引擎顯示序，與產出規則分節固定鍵同源）。 */
+  artifactIds: string[];
+  artifacts: SchemaArtifactDetail[];
+  /** schema 目錄絕對路徑（開啟所在資料夾的把手）；內建為 null。 */
+  path: string | null;
+  error: string | null;
+}
+
+/** 一個 artifact 的唯讀詳情全文。 */
+export interface SchemaArtifactDetail {
+  id: string;
+  description: string;
+  instruction: string | null;
+  template: string | null;
+}
+
 /** read_settings 的快照 payload（欄位值＋各檔可選的 parseError）。 */
 export interface SettingsSnapshot {
   app: { tools: string[]; customTools: string[]; parseError: string | null };
@@ -36,6 +60,10 @@ export interface SettingsSnapshot {
     rules: Record<string, string[]>;
     /** 活躍 schema 的 artifact id（引擎顯示序）——產出規則分節的固定鍵。 */
     schemaArtifacts: string[];
+    /** 活躍 schema 名稱（config 的 schema 鍵；缺席預設 spec-driven、壞檔空字串）。 */
+    schemaName: string;
+    /** false＝remote 快照遇非內建 schema 名稱（遠端自訂尚不支援）；其餘恆 true。 */
+    schemaKnown: boolean;
     parseError: string | null;
     /** remote policy 的 scope revision；local 快照不帶此欄。 */
     revision?: number;
@@ -128,6 +156,13 @@ export function createWorkspaceSettings(
     writeWorkflowContext: (context) =>
       invoke("write_workflow_content", { root, context, rules: null }),
     writeWorkflowRules: (rules) => invoke("write_workflow_content", { root, context: null, rules }),
+    readSchemas: () => invoke("read_schemas", { root }),
+    writeWorkflowSchema: (name) => invoke("write_workflow_schema", { root, name }),
+    forkSchema: (source) => invoke("fork_schema", { root, source }),
+    createSchema: (name) => invoke("init_schema", { root, name }),
+    // reveal 以快照給的絕對路徑為準（user 層路徑前端拼不出來；design D6）。
+    revealSchema: (path) => invoke("reveal_in_folder", { path }),
+    deleteSchema: (name) => invoke("delete_schema", { root, name }),
   };
 }
 
@@ -162,6 +197,9 @@ export function createRemoteSettings(
       revision = snapshot.workflow.revision ?? null;
       return snapshot;
     },
+    // fork／建立／reveal／刪除在 remote 一律拒絕：能力邊界的顯性表達——UI 依
+    // kind 不渲染入口，拒絕是第二道防線，非 Refused Bequest（介面成員對 remote
+    // 語意上就是「尚不支援」，與 writeAppTools 同款）。
     writeAppTools: () => Promise.reject(new Error("remote Workflow 無 .speclink.yaml 工具設定")),
     writeWorkflowConfig: (fields) =>
       adoptRevision(
@@ -192,5 +230,19 @@ export function createRemoteSettings(
           expectedRevision: expectedRevision(),
         }),
       ),
+    // remote 產出流程清單：desktop core 以內嵌內建組裝（不打 server、不帶 root）。
+    readSchemas: () => invoke("read_schemas", {}),
+    writeWorkflowSchema: (name) =>
+      adoptRevision(
+        invoke<number>("remote_write_workflow_schema", {
+          ...scope,
+          name,
+          expectedRevision: expectedRevision(),
+        }),
+      ),
+    forkSchema: () => Promise.reject(new Error("遠端工作區尚不支援 fork 產出流程")),
+    createSchema: () => Promise.reject(new Error("遠端工作區尚不支援建立產出流程")),
+    revealSchema: () => Promise.reject(new Error("遠端工作區沒有本機檔案可顯示")),
+    deleteSchema: () => Promise.reject(new Error("遠端工作區尚不支援刪除產出流程")),
   };
 }
