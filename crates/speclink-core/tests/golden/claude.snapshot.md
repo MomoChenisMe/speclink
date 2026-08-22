@@ -1,5 +1,5 @@
 === CLAUDE.md ===
-<!-- SPECLINK:START v1.19.17 -->
+<!-- SPECLINK:START v1.19.18 -->
 
 # Speclink Instructions
 
@@ -40,7 +40,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -128,7 +128,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -262,13 +262,13 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
 5. **Check project preferences**
 
-   Read `.speclink.yaml` in the project root.
-   If `tdd: true` is set, apply TDD discipline throughout implementation:
+   The apply instructions payload carries the effective policy toggles as the `tdd` and `audit` boolean fields — read them from the payload; do not read any config file for these.
+   If `tdd` is true, apply TDD discipline throughout implementation:
    - For each task, write a failing test FIRST, then implement to make it pass
    - Fetch TDD instructions by running `speclink instructions --skill tdd`, then follow the Red-Green-Refactor cycle
    - For bug fixes, reproduce the bug with a failing test before fixing
 
-   If `audit: true` is set, apply sharp-edges discipline throughout implementation:
+   If `audit` is true, apply sharp-edges discipline throughout implementation:
    - When designing APIs or interfaces, evaluate through 3 adversary lenses (Scoundrel, Lazy Developer, Confused Developer)
    - When adding configuration options, verify defaults are secure and zero/empty values are safe
    - When accepting parameters, check for type confusion and silent failures
@@ -456,7 +456,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -733,7 +733,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -969,7 +969,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -1241,7 +1241,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -1387,7 +1387,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -1856,7 +1856,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -1987,7 +1987,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -2162,7 +2162,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -2265,7 +2265,7 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    Use the `template` from instructions as the output structure. Apply `context` and `rules` as constraints but do NOT copy them into the file.
 
-   The instructions JSON includes `locale` — the language to write artifacts in. If present, you MUST write the artifact content in that language. Spec files (specs/\*/\*.md) default to English instead — unless the project sets `spec_locale` in `.speclink.yaml` or `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+   The instructions JSON includes `locale` — the language to write artifacts in. If present, you MUST write the artifact content in that language. Spec files (specs/\*/\*.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
 
    **Plan-to-Artifact Mapping** (when using a plan file):
 
@@ -2444,7 +2444,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -2465,7 +2465,7 @@ speclink list --specs
 - **No specs yet** → full onboarding; continue below.
 - **Some specs exist** → gap-filling mode: inventory what is NOT yet covered and scope the rest of this flow to those areas. Never rewrite an existing spec here — propose a change instead.
 
-Read `openspec/config.yaml` (project context) and `.speclink.yaml` (`spec_locale` — write spec prose in the configured language; structural markers and SHALL/MUST keywords stay in English).
+Read `openspec/config.yaml` (project context, and `spec_locale` — write spec prose in the configured language; structural markers and SHALL/MUST keywords stay in English).
 
 ## Step 2: Inventory the codebase
 
@@ -2538,7 +2538,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -2805,7 +2805,7 @@ If no argument is provided, the workflow will extract requirements from conversa
      - `instruction`: Schema-specific guidance
      - `outputPath`: Where to write the artifact
      - `dependencies`: Completed artifacts to read for context
-     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `.speclink.yaml` or `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
    - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` (never open artifact files by path — the documents may live in a remote store)
    - Generate the artifact content using `template` as the structure
    - **Mark manual tasks with `[M]`** (tasks artifact only): a task the agent cannot do itself — the user has to do it by hand, whether that is operating the product and accepting the result, creating an account on an external service, or placing a key — carries an `[M]` marker. Anything the agent can do itself, including code and automated tests, never carries it. The marker is what lets the quality stations judge "the code is finished" separately from "a human did their part": they run once every non-`[M]` task is checked, while archive still waits for all of them.
@@ -2972,7 +2972,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -3059,7 +3059,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -3247,7 +3247,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 

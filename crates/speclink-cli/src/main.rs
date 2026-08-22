@@ -6,7 +6,7 @@ mod color;
 mod common;
 mod remote_base;
 mod verbs;
-use common::{warn_deprecated_policy_keys, warn_leftover_remote_file};
+use common::warn_leftover_remote_file;
 use remote_base::{remote_ctx, RemoteCtx};
 use std::process::ExitCode;
 use verbs::checks::{
@@ -162,7 +162,6 @@ fn main() -> ExitCode {
 }
 
 fn dispatch(cli: Cli) -> Result<()> {
-    warn_deprecated_policy_keys();
     warn_leftover_remote_file();
     // 31 個頂層動詞的模式形狀宣告（design D5 分類表）：ModeFree 直呼、Dual
     // 兩臂必填、FsOnly／RemoteOnly 明寫拒絕。分岔決策只活在這一層。

@@ -310,7 +310,7 @@ const LIST_BODY: &str = r#"{"changes":[{"name":"demo","summary":"Demo change sum
 
 const STATUS_BODY: &str = r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":true,"applyRequires":["tasks"],"artifacts":[{"id":"proposal","outputPath":"proposal.md","status":"done","version":3},{"id":"design","outputPath":"design.md","status":"done","version":1},{"id":"specs","outputPath":"specs/**/*.md","status":"done","version":2},{"id":"tasks","outputPath":"tasks.md","status":"done","version":5}],"repo":"backend","lifecycle":"applying","statusVersion":4,"claimedBy":"me"}"#;
 
-const APPLY_BODY: &str = r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"design":"design.md","proposal":"proposal.md","specs":"specs/**/*.md","tasks":"tasks.md"},"progress":{"total":2,"complete":2,"remaining":0,"codeTotal":2,"codeComplete":2,"codeRemaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"manual":false},{"id":"2","description":"1.2 Second","done":true,"manual":false}],"state":"all_done","locale":"English","instruction":"Work through the tasks.\n"}"#;
+const APPLY_BODY: &str = r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"design":"design.md","proposal":"proposal.md","specs":"specs/**/*.md","tasks":"tasks.md"},"progress":{"total":2,"complete":2,"remaining":0,"codeTotal":2,"codeComplete":2,"codeRemaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"manual":false},{"id":"2","description":"1.2 Second","done":true,"manual":false}],"state":"all_done","locale":"English","tdd":false,"audit":false,"instruction":"Work through the tasks.\n"}"#;
 
 const PROPOSAL_INSTR_BODY: &str = r###"{"changeName":"demo","artifactId":"proposal","schemaName":"spec-driven","changeDir":"changes/demo","outputPath":"proposal.md","description":"Initial proposal document outlining the change","instruction":"Create the proposal.\n","locale":"English","template":"## Why\n","dependencies":[],"unlocks":["design"]}"###;
 
@@ -371,6 +371,26 @@ fn instructions_apply_json_field_names_match_fs_mode() {
     let mut fs_keys = keys_of(&stdout_json(&f));
     fs_keys.retain(|k| !k.starts_with("/preflight"));
     assert_eq!(keys_of(&stdout_json(&r)), fs_keys, "instructions apply --json field names");
+}
+
+#[test]
+fn instructions_apply_from_an_old_server_without_policy_fields_fails_closed() {
+    // Spec scenario 舊 server 缺欄位 fail closed: a payload without tdd/audit is
+    // version skew — defaulting the toggles off would silently drop the TDD
+    // discipline, so the command must refuse the response instead.
+    let old_body = APPLY_BODY.replace(r#""tdd":false,"audit":false,"#, "");
+    assert_ne!(old_body, APPLY_BODY, "the fixture must actually lose the fields");
+    let mock = mock_server(vec![("GET", "/changes/demo/instructions/apply", old_body)]);
+    let remote = TempProject::remote("apply-instr-skew", &mock.base, Some("backend"));
+
+    let r = remote.run(&["instructions", "apply", "--change", "demo", "--json"], Some("tok"));
+    assert!(!r.status.success(), "a skewed payload must fail the command");
+    let err = String::from_utf8_lossy(&r.stderr);
+    assert!(
+        err.contains("did not return valid JSON") || err.to_lowercase().contains("parse"),
+        "stderr must say the response is unparseable: {err}"
+    );
+    assert!(r.stdout.is_empty(), "no payload on stdout for a refused response");
 }
 
 // --- remote instructions 指向投影（context-projection）：以 Context API 為來源 ---

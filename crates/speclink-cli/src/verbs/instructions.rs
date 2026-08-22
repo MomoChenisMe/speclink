@@ -167,6 +167,8 @@ fn to_apply_instructions(
         state: p.state,
         missing_artifacts: p.missing_artifacts,
         locale: p.locale,
+        tdd: p.tdd,
+        audit: p.audit,
         instruction: p.instruction,
         // Deliberately fs-only (local file checks) — the wire contract
         // omits it, so the remote payload never renders one.
