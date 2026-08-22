@@ -1,13 +1,13 @@
 //! EffectiveWorkflowPolicy — the Host-resolved workflow policy.
 //!
-//! Wraps the Engine's four-layer ResolvedPolicy together with a digest of
+//! Wraps the Engine's three-layer ResolvedPolicy together with a digest of
 //! the policy document content (the local stand-in for policyRevision; it
 //! enters no existing output). The env layer of policy resolution happens
 //! at the Host boundary — the Engine only ever receives injected lookups.
 
 use sha2::{Digest, Sha256};
 use speclink_core::config::{
-    resolve_policy, AppConfig, ConfigError, EnvOverrides, ResolvedPolicy, WorkflowConfig,
+    resolve_policy, ConfigError, EnvOverrides, ResolvedPolicy, WorkflowConfig,
 };
 
 /// The effective workflow policy an execution runs under: the resolved
@@ -41,16 +41,15 @@ impl EffectiveWorkflowPolicy {
 }
 
 /// Resolve the effective workflow policy through an injected env lookup —
-/// the Engine's four-layer resolution with the env layer supplied by the
+/// the Engine's three-layer resolution with the env layer supplied by the
 /// Host. A workflow document that exists but cannot parse fails closed.
 pub fn resolve_effective_policy(
     env_lookup: impl Fn(&str) -> Option<String>,
-    app: &AppConfig,
     workflow_document: Option<&str>,
 ) -> Result<EffectiveWorkflowPolicy, ConfigError> {
     let wf = WorkflowConfig::from_text(workflow_document)?;
     let env = EnvOverrides::from_lookup(env_lookup);
-    let resolved = resolve_policy(&env, app, &wf);
+    let resolved = resolve_policy(&env, &wf);
     Ok(EffectiveWorkflowPolicy::new(
         resolved,
         workflow_document.unwrap_or(""),
@@ -67,7 +66,6 @@ pub fn process_env_overrides() -> EnvOverrides {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use speclink_core::config::AppConfig;
 
     // --- Engine 規格面不讀 process env：政策 env 層由 host 注入 ---
 
@@ -77,7 +75,7 @@ mod tests {
         std::env::set_var("SPECLINK_TDD", "false");
         let injected = |key: &str| (key == "SPECLINK_TDD").then(|| "true".to_string());
         let policy =
-            resolve_effective_policy(injected, &AppConfig::default(), Some("audit: true\n"))
+            resolve_effective_policy(injected, Some("audit: true\n"))
                 .expect("workflow document parses");
         std::env::remove_var("SPECLINK_TDD");
         assert!(
@@ -90,7 +88,7 @@ mod tests {
     #[test]
     fn absent_injected_keys_fall_to_document_layers() {
         std::env::set_var("SPECLINK_TDD", "true");
-        let policy = resolve_effective_policy(|_| None, &AppConfig::default(), Some("tdd: false\n"))
+        let policy = resolve_effective_policy(|_| None, Some("tdd: false\n"))
             .expect("workflow document parses");
         std::env::remove_var("SPECLINK_TDD");
         assert!(
@@ -101,9 +99,9 @@ mod tests {
 
     #[test]
     fn effective_policy_digests_the_workflow_document() {
-        let a = resolve_effective_policy(|_| None, &AppConfig::default(), Some("tdd: true\n"))
+        let a = resolve_effective_policy(|_| None, Some("tdd: true\n"))
             .expect("parses");
-        let b = resolve_effective_policy(|_| None, &AppConfig::default(), Some("tdd: false\n"))
+        let b = resolve_effective_policy(|_| None, Some("tdd: false\n"))
             .expect("parses");
         assert!(a.digest().starts_with("sha256:"));
         assert_ne!(a.digest(), b.digest(), "digest follows the policy document content");
@@ -112,7 +110,7 @@ mod tests {
     #[test]
     fn broken_workflow_document_fails_closed() {
         // 政策解析沿用既有 fail-closed：壞文件是錯誤，不是預設值。
-        let err = resolve_effective_policy(|_| None, &AppConfig::default(), Some("rules: ["));
+        let err = resolve_effective_policy(|_| None, Some("rules: ["));
         assert!(err.is_err(), "a broken policy document must not resolve to defaults");
     }
 }

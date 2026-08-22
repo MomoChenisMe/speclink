@@ -362,9 +362,8 @@ pub struct ResolvedPolicy {
 
 /// Three-layer policy resolution — the single entry point for effective policy values.
 /// `.speclink.yaml` never participates: its policy keys parse (unknown keys are
-/// ignored) but stay inert, warning-free — the `AppConfig` parameter exists so
-/// callers keep one uniform signature and tests can assert that inertness.
-pub fn resolve_policy(env: &EnvOverrides, _app: &AppConfig, wf: &WorkflowConfig) -> ResolvedPolicy {
+/// ignored) but stay inert and warning-free, so the resolution takes no `AppConfig`.
+pub fn resolve_policy(env: &EnvOverrides, wf: &WorkflowConfig) -> ResolvedPolicy {
     ResolvedPolicy {
         locale: locale_display(locale_code(env, wf)),
         spec_locale: spec_locale_code(env, wf),
@@ -402,7 +401,7 @@ fn spec_locale_code(env: &EnvOverrides, wf: &WorkflowConfig) -> Option<String> {
 
 /// Resolve the locale display name from the canonical `openspec/config.yaml` alone.
 /// Env-blind view — callers that honor `SPECLINK_*` use `resolve_policy` instead.
-pub fn resolve_locale(_app: &AppConfig, wf: &WorkflowConfig) -> String {
+pub fn resolve_locale(wf: &WorkflowConfig) -> String {
     locale_display(locale_code(&EnvOverrides::default(), wf))
 }
 
@@ -410,7 +409,7 @@ pub fn resolve_locale(_app: &AppConfig, wf: &WorkflowConfig) -> String {
 /// Unset / empty / "en" / "english" → `None` (specs default to English); `"auto"` follows the
 /// project locale (again `None` when that resolves to English). Env-blind view —
 /// callers that honor `SPECLINK_*` use `resolve_policy` instead.
-pub fn resolve_spec_locale(_app: &AppConfig, wf: &WorkflowConfig) -> Option<String> {
+pub fn resolve_spec_locale(wf: &WorkflowConfig) -> Option<String> {
     spec_locale_code(&EnvOverrides::default(), wf)
 }
 
@@ -956,36 +955,19 @@ mod tests {
 
     #[test]
     fn locale_env_var_wins_over_all_layers() {
-        let p = resolve_policy(
-            &env_of(&[("SPECLINK_LOCALE", "ja")]),
-            &app("locale: tw"),
-            &wf("locale: en"),
-        );
-        assert_eq!(p.locale, "Japanese (日本語)");
-    }
-
-    #[test]
-    fn app_policy_keys_are_inert() {
-        // Spec scenario .speclink.yaml 政策鍵一律不生效: keys in .speclink.yaml
-        // parse (unknown keys are ignored) but never take effect — with
-        // config.yaml unset, the built-in defaults win.
-        let p = resolve_policy(&env_of(NO_ENV), &app("locale: tw\ntdd: true"), &wf("{}"));
-        assert_eq!(p.locale, "English");
-        assert!(!p.tdd);
-        // ...and an app key cannot shadow a canonical value either.
-        let p = resolve_policy(&env_of(NO_ENV), &app("locale: tw"), &wf("locale: ja"));
+        let p = resolve_policy(&env_of(&[("SPECLINK_LOCALE", "ja")]), &wf("locale: en"));
         assert_eq!(p.locale, "Japanese (日本語)");
     }
 
     #[test]
     fn locale_canonical_value_applies_without_upper_layers() {
-        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("locale: ja"));
+        let p = resolve_policy(&env_of(NO_ENV), &wf("locale: ja"));
         assert_eq!(p.locale, "Japanese (日本語)");
     }
 
     #[test]
     fn locale_defaults_to_english() {
-        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("{}"));
+        let p = resolve_policy(&env_of(NO_ENV), &wf("{}"));
         assert_eq!(p.locale, "English");
     }
 
@@ -993,33 +975,19 @@ mod tests {
 
     #[test]
     fn spec_locale_env_var_wins_over_all_layers() {
-        let p = resolve_policy(
-            &env_of(&[("SPECLINK_SPEC_LOCALE", "ja")]),
-            &app("spec_locale: tw"),
-            &wf("spec_locale: en"),
-        );
-        assert_eq!(p.spec_locale.as_deref(), Some("ja"));
-    }
-
-    #[test]
-    fn spec_locale_app_key_is_inert() {
-        let p = resolve_policy(
-            &env_of(NO_ENV),
-            &app("spec_locale: tw"),
-            &wf("spec_locale: ja"),
-        );
+        let p = resolve_policy(&env_of(&[("SPECLINK_SPEC_LOCALE", "ja")]), &wf("spec_locale: en"));
         assert_eq!(p.spec_locale.as_deref(), Some("ja"));
     }
 
     #[test]
     fn spec_locale_canonical_value_applies_without_upper_layers() {
-        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("spec_locale: ja"));
+        let p = resolve_policy(&env_of(NO_ENV), &wf("spec_locale: ja"));
         assert_eq!(p.spec_locale.as_deref(), Some("ja"));
     }
 
     #[test]
     fn spec_locale_defaults_to_none() {
-        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("{}"));
+        let p = resolve_policy(&env_of(NO_ENV), &wf("{}"));
         assert_eq!(p.spec_locale, None);
     }
 
@@ -1027,11 +995,10 @@ mod tests {
     fn spec_locale_auto_follows_resolved_locale() {
         // Existing "auto" semantics survive the extra env layer: auto follows the
         // locale resolved through the same four layers.
-        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("locale: ja\nspec_locale: auto"));
+        let p = resolve_policy(&env_of(NO_ENV), &wf("locale: ja\nspec_locale: auto"));
         assert_eq!(p.spec_locale.as_deref(), Some("ja"));
         let p = resolve_policy(
             &env_of(&[("SPECLINK_LOCALE", "tw")]),
-            &app("{}"),
             &wf("locale: ja\nspec_locale: auto"),
         );
         assert_eq!(p.spec_locale.as_deref(), Some("tw"));
@@ -1042,33 +1009,20 @@ mod tests {
     #[test]
     fn tdd_env_var_wins_over_all_layers() {
         // Spec scenario 環境變數覆寫正典值: SPECLINK_TDD=false beats both files' true.
-        let p = resolve_policy(
-            &env_of(&[("SPECLINK_TDD", "false")]),
-            &app("tdd: true"),
-            &wf("tdd: true"),
-        );
-        assert!(!p.tdd);
-    }
-
-    #[test]
-    fn tdd_app_key_is_inert() {
-        // An explicit `tdd: false` in .speclink.yaml must not shadow config.yaml.
-        let p = resolve_policy(&env_of(NO_ENV), &app("tdd: false"), &wf("tdd: true"));
-        assert!(p.tdd);
-        let p = resolve_policy(&env_of(NO_ENV), &app("tdd: true"), &wf("tdd: false"));
+        let p = resolve_policy(&env_of(&[("SPECLINK_TDD", "false")]), &wf("tdd: true"));
         assert!(!p.tdd);
     }
 
     #[test]
     fn tdd_canonical_value_applies_without_upper_layers() {
         // Spec scenario 正典值生效: only config.yaml sets tdd: true.
-        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("tdd: true"));
+        let p = resolve_policy(&env_of(NO_ENV), &wf("tdd: true"));
         assert!(p.tdd);
     }
 
     #[test]
     fn tdd_defaults_to_false() {
-        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("{}"));
+        let p = resolve_policy(&env_of(NO_ENV), &wf("{}"));
         assert!(!p.tdd);
     }
 
@@ -1076,29 +1030,19 @@ mod tests {
 
     #[test]
     fn audit_env_var_wins_over_all_layers() {
-        let p = resolve_policy(
-            &env_of(&[("SPECLINK_AUDIT", "false")]),
-            &app("audit: true"),
-            &wf("audit: true"),
-        );
+        let p = resolve_policy(&env_of(&[("SPECLINK_AUDIT", "false")]), &wf("audit: true"));
         assert!(!p.audit);
     }
 
     #[test]
-    fn audit_app_key_is_inert() {
-        let p = resolve_policy(&env_of(NO_ENV), &app("audit: false"), &wf("audit: true"));
-        assert!(p.audit);
-    }
-
-    #[test]
     fn audit_canonical_value_applies_without_upper_layers() {
-        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("audit: true"));
+        let p = resolve_policy(&env_of(NO_ENV), &wf("audit: true"));
         assert!(p.audit);
     }
 
     #[test]
     fn audit_defaults_to_false() {
-        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("{}"));
+        let p = resolve_policy(&env_of(NO_ENV), &wf("{}"));
         assert!(!p.audit);
     }
 
@@ -1107,7 +1051,7 @@ mod tests {
     #[test]
     fn worktree_canonical_value_applies_without_upper_layers() {
         // Spec scenario worktree 欄位寫入與呈現 (read side): config.yaml alone turns it on.
-        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("worktree: true"));
+        let p = resolve_policy(&env_of(NO_ENV), &wf("worktree: true"));
         assert!(p.worktree);
     }
 
@@ -1116,13 +1060,11 @@ mod tests {
         // Spec scenario SPECLINK_WORKTREE 覆寫檔案值.
         let p = resolve_policy(
             &env_of(&[("SPECLINK_WORKTREE", "true")]),
-            &app("{}"),
             &wf("worktree: false"),
         );
         assert!(p.worktree);
         let p = resolve_policy(
             &env_of(&[("SPECLINK_WORKTREE", "false")]),
-            &app("{}"),
             &wf("worktree: true"),
         );
         assert!(!p.worktree);
@@ -1132,25 +1074,14 @@ mod tests {
     fn worktree_invalid_env_var_falls_to_next_layer() {
         let p = resolve_policy(
             &env_of(&[("SPECLINK_WORKTREE", "yes")]),
-            &app("{}"),
             &wf("worktree: true"),
         );
         assert!(p.worktree);
     }
 
     #[test]
-    fn worktree_app_key_is_inert() {
-        // Spec scenario .speclink.yaml 政策鍵一律不生效 (worktree leg of 五鍵一致).
-        let p = resolve_policy(&env_of(NO_ENV), &app("worktree: true"), &wf("{}"));
-        assert!(!p.worktree, "the .speclink.yaml worktree key must not take effect");
-        // An app-level key still cannot shadow a canonical `false`.
-        let p = resolve_policy(&env_of(NO_ENV), &app("worktree: true"), &wf("worktree: false"));
-        assert!(!p.worktree);
-    }
-
-    #[test]
     fn worktree_defaults_to_false() {
-        let p = resolve_policy(&env_of(NO_ENV), &app("{}"), &wf("{}"));
+        let p = resolve_policy(&env_of(NO_ENV), &wf("{}"));
         assert!(!p.worktree);
     }
 
@@ -1161,21 +1092,18 @@ mod tests {
         // Spec scenario 非法布林環境變數落到下一層: SPECLINK_AUDIT=yes is ignored.
         let p = resolve_policy(
             &env_of(&[("SPECLINK_AUDIT", "yes")]),
-            &app("{}"),
             &wf("audit: true"),
         );
         assert!(p.audit);
         // Numeric truthiness is NOT a boolean here — "1"/"0" are unset too.
         let p = resolve_policy(
             &env_of(&[("SPECLINK_TDD", "1")]),
-            &app("{}"),
             &wf("tdd: false"),
         );
         assert!(!p.tdd);
         // An invalid env value falls to the canonical layer — the app key stays inert.
         let p = resolve_policy(
             &env_of(&[("SPECLINK_TDD", "yes")]),
-            &app("tdd: false"),
             &wf("tdd: true"),
         );
         assert!(p.tdd);
@@ -1188,7 +1116,6 @@ mod tests {
         // normalized before matching.
         let p = resolve_policy(
             &env_of(&[("SPECLINK_TDD", " TRUE ")]),
-            &app("{}"),
             &wf("tdd: false"),
         );
         assert!(p.tdd);
@@ -1203,7 +1130,6 @@ mod tests {
                 ("SPECLINK_SPEC_LOCALE", "  "),
                 ("SPECLINK_TDD", ""),
             ]),
-            &app("{}"),
             &wf("locale: tw\nspec_locale: tw\ntdd: true"),
         );
         assert_eq!(p.locale, "Traditional Chinese (繁體中文)");
@@ -1502,21 +1428,21 @@ mod tests {
     #[test]
     fn resolve_locale_reads_the_canonical_config_only() {
         assert_eq!(
-            resolve_locale(&app("locale: tw"), &wf("locale: ja")),
+            resolve_locale(&wf("locale: ja")),
             "Japanese (日本語)"
         );
-        assert_eq!(resolve_locale(&app("{}"), &wf("locale: ja")), "Japanese (日本語)");
-        assert_eq!(resolve_locale(&app("{}"), &wf("{}")), "English");
+        assert_eq!(resolve_locale(&wf("locale: ja")), "Japanese (日本語)");
+        assert_eq!(resolve_locale(&wf("{}")), "English");
     }
 
     #[test]
     fn resolve_spec_locale_keeps_auto_and_english_normalization() {
         assert_eq!(
-            resolve_spec_locale(&app("{}"), &wf("spec_locale: auto\nlocale: tw")).as_deref(),
+            resolve_spec_locale(&wf("spec_locale: auto\nlocale: tw")).as_deref(),
             Some("tw")
         );
-        assert_eq!(resolve_spec_locale(&app("{}"), &wf("spec_locale: en")), None);
-        assert_eq!(resolve_spec_locale(&app("{}"), &wf("{}")), None);
+        assert_eq!(resolve_spec_locale(&wf("spec_locale: en")), None);
+        assert_eq!(resolve_spec_locale(&wf("{}")), None);
     }
 
     // --- update_workflow_config_text: settings-page rewrite (text→text) ---
