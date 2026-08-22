@@ -1134,8 +1134,8 @@ fn run_instructions(
     let default_artifact = crate::status::first_incomplete_artifact(store, &change, &schema)
         .unwrap_or_else(|| "apply".to_string());
     let artifact = artifact.unwrap_or(&default_artifact);
-    let host = host_workspace(ws);
     if artifact == "apply" {
+        let host = host_workspace(ws);
         let payload = crate::instructions::build_apply(&host, store, env, &change, &schema)?;
         return Ok(CommandOutcome::Instructions(InstructionsOutcome::Apply(payload)));
     }

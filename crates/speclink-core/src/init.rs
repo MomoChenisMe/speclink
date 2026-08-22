@@ -594,7 +594,7 @@ fn save_custom_state(root: &Path, customs: &[CustomTool]) -> Result<()> {
 /// Whether worktree-gated skills belong in the generation set.
 ///
 /// Reads `openspec/config.yaml`'s `worktree` key DIRECTLY rather than through the
-/// four-layer policy resolution: injection is the project's persistent state, while
+/// three-layer policy resolution: injection is the project's persistent state, while
 /// `SPECLINK_WORKTREE` is a per-run escape hatch for the skill's own runtime check.
 ///
 /// A config that exists but cannot be parsed keeps the skills. Pruning is the

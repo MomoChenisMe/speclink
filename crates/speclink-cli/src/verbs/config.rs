@@ -219,7 +219,7 @@ const POLICY_KEYS: [&str; 5] = ["locale", "spec_locale", "tdd", "audit", "worktr
 static SET_ABOUT: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| format!("Set a policy field: {}", POLICY_KEYS.join(", ")));
 /// `workflow-config show --json` payload. camelCase field names are the contract;
-/// the values are CANONICAL (what the document says), never the four-layer
+/// the values are CANONICAL (what the document says), never the three-layer
 /// resolution — effective policy is the instructions payload's job.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]

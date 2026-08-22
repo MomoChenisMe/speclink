@@ -191,7 +191,16 @@ fn update_with_legacy_policy_keys_touches_no_config_and_stays_silent() {
     let wf_before = std::fs::read_to_string(p.dir.join("openspec").join("config.yaml")).unwrap();
 
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_speclink"));
-    cmd.env_remove("SPECLINK_STORE_URL").env_remove("SPECLINK_TOKEN");
+    for key in [
+        "SPECLINK_LOCALE",
+        "SPECLINK_SPEC_LOCALE",
+        "SPECLINK_TDD",
+        "SPECLINK_AUDIT",
+        "SPECLINK_STORE_URL",
+        "SPECLINK_TOKEN",
+    ] {
+        cmd.env_remove(key);
+    }
     let out = cmd.arg("update").current_dir(&p.dir).output().expect("run speclink update");
     assert!(out.status.success(), "update failed: {}", String::from_utf8_lossy(&out.stderr));
 
