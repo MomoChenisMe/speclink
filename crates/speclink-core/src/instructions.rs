@@ -64,9 +64,9 @@ pub fn build_artifact(
     };
     let app = AppConfig::load(&ws.app_config())?;
     let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref())?;
-    // Policy values come from the four-layer resolution (env > legacy app key >
-    // config.yaml > default) — never from one config file alone. The env layer
-    // arrives injected from the Host boundary.
+    // Policy values come from the three-layer resolution (env > config.yaml >
+    // default) — never from one config file alone. The env layer arrives
+    // injected from the Host boundary.
     let policy = crate::config::resolve_policy(env, &app, &wf);
 
     let dependencies = artifact
@@ -251,6 +251,11 @@ pub struct ApplyInstructions {
     #[serde(rename = "missingArtifacts", skip_serializing_if = "Option::is_none")]
     pub missing_artifacts: Option<Vec<String>>,
     pub locale: String,
+    /// Effective policy toggles from the three-layer resolution — the apply skill
+    /// reads its TDD/audit discipline switches from the payload, never from a
+    /// config file of its own.
+    pub tdd: bool,
+    pub audit: bool,
     /// Omitted when the (custom) schema defines no apply instruction (frozen output shape).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instruction: Option<String>,
@@ -372,6 +377,8 @@ pub fn build_apply(
         state,
         missing_artifacts,
         locale: policy.locale,
+        tdd: policy.tdd,
+        audit: policy.audit,
         instruction: schema.apply_instruction.clone(),
         preflight,
     })

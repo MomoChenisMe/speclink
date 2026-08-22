@@ -37,45 +37,15 @@ Speclink 的設定分散在兩個檔案與一個目錄，各自有明確的歸�
 
 ## 解析順序
 
-有效政策值經四層解析，先命中者勝：
+有效政策值經三層解析，先命中者勝：
 
 | 優先序 | 層 | 說明 |
 |---|---|---|
 | 1（最高） | `SPECLINK_LOCALE`／`SPECLINK_SPEC_LOCALE`／`SPECLINK_TDD`／`SPECLINK_AUDIT`／`SPECLINK_WORKTREE` | 布林變數僅接受 `true`／`false`（不分大小寫）；其他值——`yes`、`1`、空字串——視為**未設定**，落到下一層。 |
-| 2 | `.speclink.yaml` 的舊政策鍵 | Deprecated 相容層（見下節）。鍵「存在」即勝出，即使值是 `false`。 |
-| 3 | `openspec/config.yaml` | 正典歸屬。 |
-| 4（最低） | 內建預設 | `locale` 未設定＝English、`tdd`＝false、`audit`＝false、`worktree`＝false。 |
+| 2 | `openspec/config.yaml` | 正典歸屬。 |
+| 3（最低） | 內建預設 | `locale` 未設定＝English、`tdd`＝false、`audit`＝false、`worktree`＝false。 |
 
-## Deprecated：`.speclink.yaml` 中的政策鍵
-
-較舊的專案會在 `.speclink.yaml` 留有 `locale`、`spec_locale`、`tdd`、`audit` 四個鍵。`worktree` 沒有歷史舊鍵，寫在 `.speclink.yaml` 裡不生效，也不會產生警告。
-
-這四個舊鍵仍然有效，值依舊勝過 `openspec/config.yaml`，不會靜默改變行為。但每次執行指令都會向 stderr 輸出一行：
-
-```
-speclink: warning: deprecated policy keys in .speclink.yaml: tdd, audit (move them to openspec/config.yaml)
-```
-
-這一行有固定前綴 `speclink: warning:`，每次執行恰出現一次，而且不影響 stdout。`--json` 輸出完全不變。
-
-### 自舊佈局遷移
-
-1. 把用到的政策鍵從 `.speclink.yaml` 搬到 `openspec/config.yaml`，值保持不變。
-2. 從 `.speclink.yaml` 刪除它們，只留 `tools` 與（若有自訂的）`spec_dir`。
-3. 執行任一指令——警告消失，有效值不變（正典層接手了原本相容層提供的值）。
-
-遷移前 → 後：
-
-```yaml
-# .speclink.yaml（前）             # .speclink.yaml（後）
-locale: tw                         tools:
-tdd: true                            - claude
-tools:
-  - claude                         # openspec/config.yaml（後）
-                                   schema: spec-driven
-# openspec/config.yaml（前）       locale: tw
-schema: spec-driven                tdd: true
-```
+政策鍵（`locale`、`spec_locale`、`tdd`、`audit`、`worktree`）寫在 `.speclink.yaml` 裡一律不生效、也不產生警告——檔案照常解析，這些鍵單純被忽略。若你的檔案帶有這些鍵，把它們以相同的值搬進 `openspec/config.yaml` 即可。
 
 ## 用 `workflow-config` 動詞管理 `openspec/config.yaml`
 
@@ -83,7 +53,7 @@ schema: spec-driven                tdd: true
 
 | 子指令 | 作用 |
 |---|---|
-| `show [--json]` | 顯示政策五欄、`context`（行數）與 `rules`（各節條數）。顯示**正典值**——不套用環境變數或舊鍵覆寫（有效值的四層解析屬 `speclink instructions` 的職責）。`--json` payload 欄位為 camelCase：`locale`、`specLocale`、`tdd`、`audit`、`worktree`、`context`、`rules`；未設定的欄位為 `null`，未設定的布林為 `false`。 |
+| `show [--json]` | 顯示政策五欄、`context`（行數）與 `rules`（各節條數）。顯示**正典值**——不套用環境變數覆寫（有效值的三層解析屬 `speclink instructions` 的職責）。`--json` payload 欄位為 camelCase：`locale`、`specLocale`、`tdd`、`audit`、`worktree`、`context`、`rules`；未設定的欄位為 `null`，未設定的布林為 `false`。 |
 | `set <key> <value>` | 寫入 `locale`、`spec_locale`、`tdd`、`audit`、`worktree` 之一。其他鍵以非 0 exit code 拒絕；`tdd`／`audit`／`worktree` 僅接受 `true`／`false`；`locale` 僅接受代碼 `tw`／`ja`／`en`、`spec_locale` 僅接受 `tw`／`ja`／`en`／`auto`（大小寫敏感）——顯示名稱（如「繁體中文」）會被拒絕並列出合法代碼。設為 `false`（或 locale 設為空字串）＝**移除該鍵**，維持「未設定＝預設」語意。 |
 | `context --stdin` | 以 stdin 全文設定 `context`；內容僅空白時移除該鍵。 |
 | `rules <artifact> --stdin` | 整節代換該 artifact 的規則（一行一條、空行忽略）；stdin 為空時移除該節。`artifact` 限目前 schema 的 artifact id，未知 id 以非 0 exit code 拒絕。 |
@@ -163,8 +133,7 @@ tools:
 |---|---|---|
 | `spec_dir` | `openspec` | spec store 目錄（專案根相對路徑） |
 | `tools` | — | 要生成指令檔的 AI harness（內建名或描述子） |
-| `locale`／`spec_locale`／`tdd`／`audit` | — | **Deprecated**——仍有效，但每次指令都會警告 |
-| `worktree` | — | 無此舊鍵；寫在這裡不生效且不警告，政策一律讀 `openspec/config.yaml` |
+| `locale`／`spec_locale`／`tdd`／`audit`／`worktree` | — | 不生效且不警告——政策一律讀 `openspec/config.yaml` |
 
 ### 環境變數
 

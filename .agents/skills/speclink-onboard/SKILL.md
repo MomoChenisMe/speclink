@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.19.17"
+  version: "v1.19.18"
   generatedBy: "Speclink"
 ---
 
@@ -26,7 +26,7 @@ speclink list --specs
 - **No specs yet** → full onboarding; continue below.
 - **Some specs exist** → gap-filling mode: inventory what is NOT yet covered and scope the rest of this flow to those areas. Never rewrite an existing spec here — propose a change instead.
 
-Read `openspec/config.yaml` (project context) and `.speclink.yaml` (`spec_locale` — write spec prose in the configured language; structural markers and SHALL/MUST keywords stay in English).
+Read `openspec/config.yaml` (project context, and `spec_locale` — write spec prose in the configured language; structural markers and SHALL/MUST keywords stay in English).
 
 ## Step 2: Inventory the codebase
 

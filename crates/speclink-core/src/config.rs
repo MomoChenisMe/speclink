@@ -60,17 +60,6 @@ fn parse_config<T: Default + serde::de::DeserializeOwned>(
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct AppConfig {
     pub spec_dir: Option<String>,
-    pub locale: Option<String>,
-    /// Language for spec files (specs/*/spec.md). Unset → English; "auto" → follow `locale`;
-    /// any locale code → that language. Consumed by the skills (like `tdd`/`audit`).
-    #[serde(default)]
-    pub spec_locale: Option<String>,
-    /// Deprecated policy keys (canonical home: `openspec/config.yaml`). `Option` so the
-    /// compat layer can tell "key present" (old key wins) from "key absent" (fall through).
-    #[serde(default)]
-    pub tdd: Option<bool>,
-    #[serde(default)]
-    pub audit: Option<bool>,
     #[serde(default)]
     pub tools: Vec<ToolEntry>,
     /// Remote connection settings. Presence of the section (even empty) is the
@@ -247,30 +236,6 @@ impl AppConfig {
         }
     }
 
-    /// Human-readable locale name for instruction injection.
-    pub fn locale_display(&self) -> String {
-        locale_display(self.locale.as_deref())
-    }
-
-    /// Names of deprecated policy keys present in this `.speclink.yaml`, in canonical
-    /// order. Non-empty → the CLI surfaces a single deprecation warning pointing at
-    /// the keys' canonical home, `openspec/config.yaml`.
-    pub fn deprecated_policy_keys(&self) -> Vec<&'static str> {
-        let mut keys = Vec::new();
-        if self.locale.is_some() {
-            keys.push("locale");
-        }
-        if self.spec_locale.is_some() {
-            keys.push("spec_locale");
-        }
-        if self.tdd.is_some() {
-            keys.push("tdd");
-        }
-        if self.audit.is_some() {
-            keys.push("audit");
-        }
-        keys
-    }
 }
 
 /// Map a locale code to its human-readable name (frozen mapping).
@@ -326,17 +291,15 @@ pub struct WorkflowConfig {
     pub tdd: Option<bool>,
     #[serde(default)]
     pub audit: Option<bool>,
-    /// Parallel-apply worktree flow. Unlike the other toggles this key has no
-    /// `.speclink.yaml` compat layer — it is new, so there are no historical files
-    /// to be compatible with.
+    /// Parallel-apply worktree flow (nullable: absent falls to defaults).
     #[serde(default)]
     pub worktree: Option<bool>,
     #[serde(default)]
     pub rules: BTreeMap<String, Vec<String>>,
 }
 
-/// `SPECLINK_*` environment overrides — the top layer of the four-layer policy resolution
-/// (personal/CI overrides beat both config files).
+/// `SPECLINK_*` environment overrides — the top layer of the three-layer policy resolution
+/// (personal/CI overrides beat the canonical config).
 #[derive(Debug, Clone, Default)]
 pub struct EnvOverrides {
     pub locale: Option<String>,
@@ -384,8 +347,8 @@ fn parse_env_bool(v: &str) -> Option<bool> {
     }
 }
 
-/// Effective workflow policy after the four-layer resolution:
-/// env var > deprecated `.speclink.yaml` key > `openspec/config.yaml` > built-in default.
+/// Effective workflow policy after the three-layer resolution:
+/// env var > `openspec/config.yaml` > built-in default.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedPolicy {
     /// Human-readable locale display name (e.g. "English"), see `locale_display`.
@@ -397,39 +360,37 @@ pub struct ResolvedPolicy {
     pub worktree: bool,
 }
 
-/// Four-layer policy resolution — the single entry point for effective policy values.
-pub fn resolve_policy(env: &EnvOverrides, app: &AppConfig, wf: &WorkflowConfig) -> ResolvedPolicy {
+/// Three-layer policy resolution — the single entry point for effective policy values.
+/// `.speclink.yaml` never participates: its policy keys parse (unknown keys are
+/// ignored) but stay inert, warning-free — the `AppConfig` parameter exists so
+/// callers keep one uniform signature and tests can assert that inertness.
+pub fn resolve_policy(env: &EnvOverrides, _app: &AppConfig, wf: &WorkflowConfig) -> ResolvedPolicy {
     ResolvedPolicy {
-        locale: locale_display(locale_code(env, app, wf)),
-        spec_locale: spec_locale_code(env, app, wf),
-        tdd: env.tdd.or(app.tdd).or(wf.tdd).unwrap_or(false),
-        audit: env.audit.or(app.audit).or(wf.audit).unwrap_or(false),
-        // Three layers, not four: `.speclink.yaml` is skipped on purpose (no compat layer).
+        locale: locale_display(locale_code(env, wf)),
+        spec_locale: spec_locale_code(env, wf),
+        tdd: env.tdd.or(wf.tdd).unwrap_or(false),
+        audit: env.audit.or(wf.audit).unwrap_or(false),
         worktree: env.worktree.or(wf.worktree).unwrap_or(false),
     }
 }
 
-/// Layered locale code: first layer where the key is present wins (an app-level key present
-/// but empty still wins; values pass through verbatim, see `locale_display`).
-fn locale_code<'a>(env: &'a EnvOverrides, app: &'a AppConfig, wf: &'a WorkflowConfig) -> Option<&'a str> {
-    env.locale
-        .as_deref()
-        .or(app.locale.as_deref())
-        .or(wf.locale.as_deref())
+/// Layered locale code: first layer where the key is present wins (values pass
+/// through verbatim, see `locale_display`).
+fn locale_code<'a>(env: &'a EnvOverrides, wf: &'a WorkflowConfig) -> Option<&'a str> {
+    env.locale.as_deref().or(wf.locale.as_deref())
 }
 
 /// Layered spec-file language: unset / empty / "en" / "english" → `None` (specs default to
 /// English); `"auto"` follows the locale resolved through the same layers.
-fn spec_locale_code(env: &EnvOverrides, app: &AppConfig, wf: &WorkflowConfig) -> Option<String> {
+fn spec_locale_code(env: &EnvOverrides, wf: &WorkflowConfig) -> Option<String> {
     let code = env
         .spec_locale
         .as_deref()
-        .or(app.spec_locale.as_deref())
         .or(wf.spec_locale.as_deref())?
         .trim()
         .to_string();
     let code = if code.eq_ignore_ascii_case("auto") {
-        locale_code(env, app, wf)?.trim().to_string()
+        locale_code(env, wf)?.trim().to_string()
     } else {
         code
     };
@@ -439,19 +400,18 @@ fn spec_locale_code(env: &EnvOverrides, app: &AppConfig, wf: &WorkflowConfig) ->
     Some(code)
 }
 
-/// Resolve the effective locale display name: the app-level `.speclink.yaml` locale wins, with the
-/// `openspec/config.yaml` locale as a fallback. Env-blind two-layer view —
-/// callers that honor `SPECLINK_*` use `resolve_policy` instead.
-pub fn resolve_locale(app: &AppConfig, wf: &WorkflowConfig) -> String {
-    locale_display(locale_code(&EnvOverrides::default(), app, wf))
+/// Resolve the locale display name from the canonical `openspec/config.yaml` alone.
+/// Env-blind view — callers that honor `SPECLINK_*` use `resolve_policy` instead.
+pub fn resolve_locale(_app: &AppConfig, wf: &WorkflowConfig) -> String {
+    locale_display(locale_code(&EnvOverrides::default(), wf))
 }
 
-/// Resolve the effective spec-file language: `.speclink.yaml` wins over `openspec/config.yaml`.
+/// Resolve the spec-file language from the canonical `openspec/config.yaml` alone.
 /// Unset / empty / "en" / "english" → `None` (specs default to English); `"auto"` follows the
-/// project locale (again `None` when that resolves to English). Env-blind two-layer view —
+/// project locale (again `None` when that resolves to English). Env-blind view —
 /// callers that honor `SPECLINK_*` use `resolve_policy` instead.
-pub fn resolve_spec_locale(app: &AppConfig, wf: &WorkflowConfig) -> Option<String> {
-    spec_locale_code(&EnvOverrides::default(), app, wf)
+pub fn resolve_spec_locale(_app: &AppConfig, wf: &WorkflowConfig) -> Option<String> {
+    spec_locale_code(&EnvOverrides::default(), wf)
 }
 
 impl WorkflowConfig {
@@ -992,7 +952,7 @@ mod tests {
         );
     }
 
-    // --- locale: env > old app key > config.yaml > default ---
+    // --- locale: env > config.yaml > default ---
 
     #[test]
     fn locale_env_var_wins_over_all_layers() {
@@ -1005,10 +965,16 @@ mod tests {
     }
 
     #[test]
-    fn locale_old_app_key_wins_over_canonical() {
-        // Spec scenario 舊鍵相容層勝過正典值: app tw + wf ja → Traditional Chinese.
+    fn app_policy_keys_are_inert() {
+        // Spec scenario .speclink.yaml 政策鍵一律不生效: keys in .speclink.yaml
+        // parse (unknown keys are ignored) but never take effect — with
+        // config.yaml unset, the built-in defaults win.
+        let p = resolve_policy(&env_of(NO_ENV), &app("locale: tw\ntdd: true"), &wf("{}"));
+        assert_eq!(p.locale, "English");
+        assert!(!p.tdd);
+        // ...and an app key cannot shadow a canonical value either.
         let p = resolve_policy(&env_of(NO_ENV), &app("locale: tw"), &wf("locale: ja"));
-        assert_eq!(p.locale, "Traditional Chinese (繁體中文)");
+        assert_eq!(p.locale, "Japanese (日本語)");
     }
 
     #[test]
@@ -1023,7 +989,7 @@ mod tests {
         assert_eq!(p.locale, "English");
     }
 
-    // --- spec_locale: env > old app key > config.yaml > default ---
+    // --- spec_locale: env > config.yaml > default ---
 
     #[test]
     fn spec_locale_env_var_wins_over_all_layers() {
@@ -1036,13 +1002,13 @@ mod tests {
     }
 
     #[test]
-    fn spec_locale_old_app_key_wins_over_canonical() {
+    fn spec_locale_app_key_is_inert() {
         let p = resolve_policy(
             &env_of(NO_ENV),
             &app("spec_locale: tw"),
             &wf("spec_locale: ja"),
         );
-        assert_eq!(p.spec_locale.as_deref(), Some("tw"));
+        assert_eq!(p.spec_locale.as_deref(), Some("ja"));
     }
 
     #[test]
@@ -1071,11 +1037,11 @@ mod tests {
         assert_eq!(p.spec_locale.as_deref(), Some("tw"));
     }
 
-    // --- tdd: env > old app key > config.yaml > default ---
+    // --- tdd: env > config.yaml > default ---
 
     #[test]
     fn tdd_env_var_wins_over_all_layers() {
-        // Spec scenario 環境變數覆寫一切: SPECLINK_TDD=false beats both files' true.
+        // Spec scenario 環境變數覆寫正典值: SPECLINK_TDD=false beats both files' true.
         let p = resolve_policy(
             &env_of(&[("SPECLINK_TDD", "false")]),
             &app("tdd: true"),
@@ -1085,13 +1051,12 @@ mod tests {
     }
 
     #[test]
-    fn tdd_old_app_key_wins_over_canonical() {
-        // Presence wins, not truthiness: an explicit `tdd: false` in .speclink.yaml
-        // must beat config.yaml's `tdd: true` (existing "app wins" semantics kept).
+    fn tdd_app_key_is_inert() {
+        // An explicit `tdd: false` in .speclink.yaml must not shadow config.yaml.
         let p = resolve_policy(&env_of(NO_ENV), &app("tdd: false"), &wf("tdd: true"));
-        assert!(!p.tdd);
-        let p = resolve_policy(&env_of(NO_ENV), &app("tdd: true"), &wf("tdd: false"));
         assert!(p.tdd);
+        let p = resolve_policy(&env_of(NO_ENV), &app("tdd: true"), &wf("tdd: false"));
+        assert!(!p.tdd);
     }
 
     #[test]
@@ -1107,7 +1072,7 @@ mod tests {
         assert!(!p.tdd);
     }
 
-    // --- audit: env > old app key > config.yaml > default ---
+    // --- audit: env > config.yaml > default ---
 
     #[test]
     fn audit_env_var_wins_over_all_layers() {
@@ -1120,9 +1085,9 @@ mod tests {
     }
 
     #[test]
-    fn audit_old_app_key_wins_over_canonical() {
+    fn audit_app_key_is_inert() {
         let p = resolve_policy(&env_of(NO_ENV), &app("audit: false"), &wf("audit: true"));
-        assert!(!p.audit);
+        assert!(p.audit);
     }
 
     #[test]
@@ -1137,7 +1102,7 @@ mod tests {
         assert!(!p.audit);
     }
 
-    // --- worktree: env > config.yaml > default (NO `.speclink.yaml` compat layer) ---
+    // --- worktree: env > config.yaml > default ---
 
     #[test]
     fn worktree_canonical_value_applies_without_upper_layers() {
@@ -1175,15 +1140,9 @@ mod tests {
 
     #[test]
     fn worktree_app_key_is_inert() {
-        // Spec scenario .speclink.yaml 的 worktree 鍵不生效: the new field has no
-        // historical files to be compatible with, so it never joins the compat layer.
+        // Spec scenario .speclink.yaml 政策鍵一律不生效 (worktree leg of 五鍵一致).
         let p = resolve_policy(&env_of(NO_ENV), &app("worktree: true"), &wf("{}"));
         assert!(!p.worktree, "the .speclink.yaml worktree key must not take effect");
-        // ...and it must not raise a deprecation warning either.
-        assert!(
-            !app("worktree: true").deprecated_policy_keys().contains(&"worktree"),
-            "worktree is not a deprecated key — no warning"
-        );
         // An app-level key still cannot shadow a canonical `false`.
         let p = resolve_policy(&env_of(NO_ENV), &app("worktree: true"), &wf("worktree: false"));
         assert!(!p.worktree);
@@ -1213,13 +1172,13 @@ mod tests {
             &wf("tdd: false"),
         );
         assert!(!p.tdd);
-        // An invalid env value falls PAST the env layer only — the old app key still wins.
+        // An invalid env value falls to the canonical layer — the app key stays inert.
         let p = resolve_policy(
             &env_of(&[("SPECLINK_TDD", "yes")]),
             &app("tdd: false"),
             &wf("tdd: true"),
         );
-        assert!(!p.tdd);
+        assert!(p.tdd);
     }
 
     #[test]
@@ -1229,8 +1188,8 @@ mod tests {
         // normalized before matching.
         let p = resolve_policy(
             &env_of(&[("SPECLINK_TDD", " TRUE ")]),
-            &app("tdd: false"),
-            &wf("{}"),
+            &app("{}"),
+            &wf("tdd: false"),
         );
         assert!(p.tdd);
     }
@@ -1244,8 +1203,8 @@ mod tests {
                 ("SPECLINK_SPEC_LOCALE", "  "),
                 ("SPECLINK_TDD", ""),
             ]),
-            &app("locale: tw\nspec_locale: tw\ntdd: true"),
-            &wf("{}"),
+            &app("{}"),
+            &wf("locale: tw\nspec_locale: tw\ntdd: true"),
         );
         assert_eq!(p.locale, "Traditional Chinese (繁體中文)");
         assert_eq!(p.spec_locale.as_deref(), Some("tw"));
@@ -1274,16 +1233,6 @@ mod tests {
     fn workflow_config_parses_worktree() {
         assert_eq!(wf("worktree: true").worktree, Some(true));
         assert_eq!(wf("worktree: false").worktree, Some(false));
-    }
-
-    #[test]
-    fn app_config_distinguishes_absent_from_false_policy_keys() {
-        let a = app("tools:\n  - claude");
-        assert_eq!(a.tdd, None);
-        assert_eq!(a.audit, None);
-        let a = app("tdd: false\naudit: true");
-        assert_eq!(a.tdd, Some(false));
-        assert_eq!(a.audit, Some(true));
     }
 
     // --- fail-closed loading: a present file must parse; only a MISSING file yields defaults ---
@@ -1551,10 +1500,10 @@ mod tests {
     // --- existing two-layer resolvers keep their observable behavior ---
 
     #[test]
-    fn resolve_locale_app_wins_then_workflow_fallback() {
+    fn resolve_locale_reads_the_canonical_config_only() {
         assert_eq!(
             resolve_locale(&app("locale: tw"), &wf("locale: ja")),
-            "Traditional Chinese (繁體中文)"
+            "Japanese (日本語)"
         );
         assert_eq!(resolve_locale(&app("{}"), &wf("locale: ja")), "Japanese (日本語)");
         assert_eq!(resolve_locale(&app("{}"), &wf("{}")), "English");
@@ -1563,10 +1512,10 @@ mod tests {
     #[test]
     fn resolve_spec_locale_keeps_auto_and_english_normalization() {
         assert_eq!(
-            resolve_spec_locale(&app("spec_locale: auto\nlocale: tw"), &wf("{}")).as_deref(),
+            resolve_spec_locale(&app("{}"), &wf("spec_locale: auto\nlocale: tw")).as_deref(),
             Some("tw")
         );
-        assert_eq!(resolve_spec_locale(&app("spec_locale: en"), &wf("{}")), None);
+        assert_eq!(resolve_spec_locale(&app("{}"), &wf("spec_locale: en")), None);
         assert_eq!(resolve_spec_locale(&app("{}"), &wf("{}")), None);
     }
 
