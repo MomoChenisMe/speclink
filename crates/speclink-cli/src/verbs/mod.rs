@@ -21,3 +21,4 @@ pub(crate) mod progress;
 pub(crate) mod query;
 pub(crate) mod station;
 pub(crate) mod toolchain;
+pub(crate) mod trace;

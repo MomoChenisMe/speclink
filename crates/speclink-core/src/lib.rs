@@ -25,6 +25,7 @@ pub mod station;
 pub mod status;
 pub mod store;
 pub mod tasks;
+pub mod trace;
 #[cfg(test)]
 pub(crate) mod teststore;
 pub mod util;

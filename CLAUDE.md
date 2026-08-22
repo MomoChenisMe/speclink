@@ -1,4 +1,4 @@
-<!-- SPECLINK:START v1.19.17 -->
+<!-- SPECLINK:START v1.20.0 -->
 
 # Speclink Instructions
 
@@ -14,6 +14,7 @@ This project uses Speclink for Spec-Driven Development(SDD). Specs live in `open
 - Implementing several independent changes at once → `/speclink-apply-with-worktree` (one git worktree per change)
 - A worktree change is committed and ready to land → `/speclink-worktree-merge` (merge back, then clean up)
 - Resuming a change that sat idle → run `/speclink-drift` first
+- User asks how a feature came to be or why it works this way → `/speclink-trace` (sourced narrative along specs → changes → discussions → code)
 - Requirements change mid-work → `/speclink-ingest`
 - Implementation is done, before archiving → optional quality stations `/speclink-review` (craft quality) ∥ `/speclink-verify` (spec compliance; user's call), then `/speclink-archive`
 - Both quality stations over one change → `/speclink-quality` (both checks first without stamping, then it stops after every round for your call on what to fix and when to stamp); only one station → call `/speclink-review` or `/speclink-verify` directly

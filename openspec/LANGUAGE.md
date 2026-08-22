@@ -182,3 +182,9 @@
 - **definition**: 封存前的兩道可選實作品質檢查——「審查」（工藝品質）與「驗證」（spec 合規），兩者並行、由使用者判斷是否執行。對應 skill `/speclink-review`、`/speclink-verify` 與兩站合跑的 `/speclink-quality`。
 - **avoid**: 品質站
 - **why**: 「站」在繁中讀起來像停靠的地點，「關卡」才有「要過得了才放行」的語感，與這兩道檢查擋在封存之前的實際作用相符。2026-08-14 變更「zh-tw-vocabulary-drawer-and-quality-station」定案。
+
+### 溯源
+
+- **definition**: 沿「規格 → 變更 → 討論 → 程式碼」的鏈回答某功能怎麼來的、為什麼這樣設計——列出動過該 capability 的封存變更、來源討論與其扇出、逐任務觸及檔案，最後以現行程式碼確認現況。對應引擎動詞 `trace` 與 skill `/speclink-trace`。
+- **avoid**: 追溯、trace（中文散文中）
+- **why**: 「追溯」偏司法與稽核語感且不成對；「溯源」直說結果——找到源頭，與動詞名 trace、技能名 speclink-trace 對齊，使用者在指令與答案裡看到的是同一個詞。2026-08-22 變更「feature-provenance-skill」定案。

@@ -40,6 +40,7 @@ use verbs::toolchain::{
     cmd_completion, cmd_demo, cmd_feedback, cmd_schema, cmd_schemas, cmd_templates, CompletionArgs,
     FeedbackArgs, JsonFlag, SchemaArgs, TemplatesArgs,
 };
+use verbs::trace::{cmd_trace, TraceArgs};
 
 /// The frozen architecture suffix, absent on architectures we do not ship.
 const ARCH: Option<&str> = {
@@ -97,6 +98,8 @@ enum Commands {
     Analyze(ChangeArg),
     /// Detect drift between a change and the current codebase state
     Drift(ChangeArg),
+    /// Trace a capability's provenance chain (archived changes, discussions, evidence)
+    Trace(TraceArgs),
     /// Archive a completed change
     Archive(ArchiveArgs),
     /// Discard a change (delete it; --force required once work has started)
@@ -210,6 +213,7 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Verify(a) => cmd_verify(a), // Dual（宣告於 station_dual）
         // --- FsOnly：只解析模式、不握手，remote 明寫拒絕 ---
         Commands::Demo => fs_only(DEMO_REMOTE_REFUSAL, cmd_demo),
+        Commands::Trace(a) => fs_only(TRACE_REMOTE_REFUSAL, || cmd_trace(a)),
         // --- RemoteOnly：fs 明寫拒絕 ---
         Commands::Claim(a) => remote_only(a, CLAIM_FS_REFUSAL, |ctx, a| remote_claim(ctx, &a.name)),
     }
@@ -273,3 +277,8 @@ const CLAIM_FS_REFUSAL: &str =
 // 由 dispatch 的 fs_only 形狀執行——只判斷連線設定、不走 handshake。
 const DEMO_REMOTE_REFUSAL: &str =
     "demo is not available in remote mode — it seeds a demo change into a local openspec/ tree";
+
+// trace 讀本機封存目錄、討論檔與 evidence 組裝溯源鏈；remote 端點屬本
+// change 的 Non-Goal（v1 僅本地 CLI），比照 demo 的 FsOnly 形狀明寫拒絕。
+const TRACE_REMOTE_REFUSAL: &str =
+    "trace is not available in remote mode — it assembles the provenance chain from the local openspec/ tree";

@@ -225,6 +225,23 @@ impl Store for TestStore {
     fn read_archived_meta(&self, dated_name: &str) -> Option<String> {
         self.archived_metas.borrow().get(dated_name).cloned()
     }
+    fn archived_delta_capabilities(&self, dated_name: &str) -> Vec<String> {
+        // 與 FsStore 同規則：恰為 specs/<cap>/spec.md 一層才算。
+        let mut caps: Vec<String> = self
+            .archived_artifacts
+            .borrow()
+            .keys()
+            .filter(|(d, _)| d == dated_name)
+            .filter_map(|(_, a)| {
+                a.strip_prefix("specs/")
+                    .and_then(|rest| rest.strip_suffix("/spec.md"))
+                    .filter(|cap| !cap.contains('/'))
+                    .map(str::to_string)
+            })
+            .collect();
+        caps.sort();
+        caps
+    }
     fn write_archived_meta(&self, dated_name: &str, content: &str) -> Result<()> {
         self.archived_metas
             .borrow_mut()

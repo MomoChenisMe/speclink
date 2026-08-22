@@ -245,6 +245,8 @@ pub enum Command {
     },
     /// `analyze [change]`
     Analyze { change: Option<String> },
+    /// `trace <capability>`
+    Trace { capability: String },
     /// `artifact cat <artifact> [--change <name>]`
     ArtifactCat {
         artifact: String,
@@ -561,6 +563,7 @@ pub enum CommandOutcome {
     Instructions(InstructionsOutcome),
     Validate(ValidateOutcome),
     Analyze(crate::analyzer::AnalyzeReport),
+    Trace(crate::trace::TraceReport),
     /// Raw artifact content (`artifact cat`).
     ArtifactCat(String),
     /// Raw LANGUAGE document content (`language show`).
@@ -648,6 +651,7 @@ pub fn execute(
             run_validate(store, item.as_deref(), all, changes, specs, strict)
         }
         Command::Analyze { change } => run_analyze(store, change.as_deref()),
+        Command::Trace { capability } => run_trace(store, &capability),
         Command::ArtifactCat { artifact, change } => {
             run_artifact_cat(store, &artifact, change.as_deref())
         }
@@ -811,6 +815,7 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         | CommandOutcome::Instructions(_)
         | CommandOutcome::Validate(_)
         | CommandOutcome::Analyze(_)
+        | CommandOutcome::Trace(_)
         | CommandOutcome::ArtifactCat(_)
         | CommandOutcome::Language(_)
         | CommandOutcome::DiscussList(_)
@@ -1205,6 +1210,12 @@ fn run_analyze(store: &dyn Store, change: Option<&str>) -> Result<CommandOutcome
     Ok(CommandOutcome::Analyze(crate::analyzer::analyze(
         store, &change, &schema,
     )))
+}
+
+fn run_trace(store: &dyn Store, capability: &str) -> Result<CommandOutcome, CommandError> {
+    Ok(CommandOutcome::Trace(
+        crate::trace::run(store, capability).map_err(classify)?,
+    ))
 }
 
 /// Resolve and meta-guard a change for the drift verb, which the CLI now
@@ -3033,6 +3044,7 @@ mod tests {
             Command::Instructions { artifact: _, change: _, schema: _ } => {}
             Command::Validate { item: _, all: _, changes: _, specs: _, strict: _ } => {}
             Command::Analyze { change: _ } => {}
+            Command::Trace { capability: _ } => {}
             Command::ArtifactCat { artifact: _, change: _ } => {}
             Command::LanguageShow => {}
             Command::DiscussList { archived: _ } => {}

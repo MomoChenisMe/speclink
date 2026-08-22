@@ -32,6 +32,7 @@ mod task_done_stamps;
 mod task_stable_id;
 mod task_undone;
 mod tools_descriptor;
+mod trace;
 mod update_downgrade_guard;
 mod validate_specs;
 mod verify_verbs;
