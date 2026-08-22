@@ -66,7 +66,7 @@ speclink trace 動詞的行為契約：以封存目錄與既有 metadata 組裝�
 
 ### Requirement: 單環髒資料的寬容組裝
 
-鏈中單一 change 的欄位缺漏或指涉失效 SHALL NOT 使整體輸出失敗：@trace 歸屬指向的 change 找不到對應封存目錄時，該歸屬 SHALL 照列於 requirements、changes 清單缺其明細；.openspec.yaml 缺 from_discussion 或討論檔不存在時，對應欄位 SHALL 為 null 且其餘鏈環照常輸出。
+鏈中單一 change 的欄位缺漏或指涉失效 SHALL NOT 使整體輸出失敗：@trace 歸屬指向的 change 找不到對應封存目錄時，該歸屬 SHALL 照列於 requirements、changes 清單缺其明細；.openspec.yaml 缺 from_discussion 時該 change 的來源討論欄位 SHALL 為 null；from_discussion 指向的討論檔不存在時，該討論 SHALL NOT 出現於 discussions 清單、change 的來源討論欄位仍照列其 slug，其餘鏈環照常輸出。
 
 #### Scenario: 歸屬指向不存在的封存目錄
 

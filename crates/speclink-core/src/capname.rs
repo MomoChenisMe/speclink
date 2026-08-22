@@ -89,6 +89,16 @@ pub(crate) fn suggestion_pool(store: &dyn Store) -> Vec<KnownName> {
 
 /// 一筆建議的顯示行（不含縮排與列點符號）：`name (來源標注): Purpose 首行`，
 /// 無 Purpose 時略去冒號後段。
+/// 建議清單的共用外框：`Similar existing names:` 標頭加逐筆縮排列點，每行
+/// 帶結尾換行。呼叫端（newcmd 主閘、trace 的 not-found）共用同一份措辭。
+pub(crate) fn suggestion_block(suggestions: &[KnownName]) -> String {
+    let mut out = String::from("Similar existing names:\n");
+    for s in suggestions {
+        out.push_str(&format!("  - {}\n", suggestion_line(s)));
+    }
+    out
+}
+
 pub(crate) fn suggestion_line(k: &KnownName) -> String {
     let source = match &k.source {
         Source::Canonical => "canonical".to_string(),

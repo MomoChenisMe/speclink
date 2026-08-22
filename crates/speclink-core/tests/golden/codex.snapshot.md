@@ -1,5 +1,5 @@
 === AGENTS.md ===
-<!-- SPECLINK:START v1.20.0 -->
+<!-- SPECLINK:START v1.20.1 -->
 
 # Speclink Instructions
 
@@ -38,7 +38,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -366,7 +366,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -642,7 +642,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -878,7 +878,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -1149,7 +1149,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -1294,7 +1294,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -1760,7 +1760,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -1882,7 +1882,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -2057,7 +2057,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -2339,7 +2339,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -2433,7 +2433,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -2867,7 +2867,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -2954,7 +2954,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -3142,7 +3142,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 
@@ -3156,7 +3156,7 @@ Answer "how did this come to be / why is it designed this way" for a feature: ma
 
 1. **Canon pass — map the question to a capability**
 
-   Run `speclink list --specs --json` and match the question against the canonical capability names; when a name alone is not conclusive, check its scope with `speclink show spec <name>`.
+   Run `speclink list --specs --json` and match the question against the canonical capability names; when a name alone is not conclusive, check its scope with `speclink show <name> --item-type spec`.
 
    - One capability clearly matches → continue with step 2.
    - No capability plausibly covers the question → skip to step 6 and answer from the codebase. Do NOT reply "no spec found" and stop.
@@ -3226,7 +3226,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.0"
+  version: "v1.20.1"
   generatedBy: "Speclink"
 ---
 

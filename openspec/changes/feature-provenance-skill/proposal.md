@@ -33,5 +33,5 @@
 - Affected specs: trace-verb（新）、trace-skill（新）
 - Affected code:
   - New: crates/speclink-core/src/trace.rs、crates/speclink-cli/src/verbs/trace.rs、crates/speclink-core/assets/skills/trace.md、crates/speclink-cli/tests/it/trace.rs
-  - Modified: crates/speclink-core/src/command/mod.rs、crates/speclink-core/src/lib.rs、crates/speclink-core/src/skills.rs、crates/speclink-core/src/store.rs、crates/speclink-fs/src/layout.rs、crates/speclink-cli/src/verbs/mod.rs、crates/speclink-cli/tests/it/main.rs、crates/speclink-core/tests/golden/assets.lock、openspec/LANGUAGE.md
+  - Modified: crates/speclink-core/src/command/mod.rs、crates/speclink-core/src/lib.rs、crates/speclink-core/src/skills.rs、crates/speclink-core/src/init.rs（MARKER_VERSION 與 marker 路由）、crates/speclink-core/src/util.rs（共用日期前綴剝除）、crates/speclink-core/src/capname.rs（共用建議清單外框）、crates/speclink-core/src/newcmd.rs、crates/speclink-core/src/discuss.rs、crates/speclink-core/src/teststore.rs、crates/speclink-cli/src/main.rs、crates/speclink-cli/src/verbs/mod.rs、crates/speclink-cli/tests/it/main.rs、crates/speclink-core/tests/it/render_golden.rs、crates/speclink-core/tests/golden/（assets.lock 與六份快照）、AGENTS.md／CLAUDE.md（marker 再生）、openspec/LANGUAGE.md（Store trait 與 fs adapter 把手盤點後皆已存在，未動 store.rs／layout.rs）
   - Removed: (none)
