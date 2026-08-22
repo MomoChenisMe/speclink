@@ -17,4 +17,4 @@
 
 - [x] 4.1 openspec/LANGUAGE.md 新增「溯源」詞條：definition（沿規格→變更→討論→程式碼的鏈回答功能怎麼來的；對應引擎動詞 trace）、avoid（追溯、trace（中文散文中））、why（動詞直說結果、與技能／動詞名對齊）。驗證：內容審閱——詞條三欄齊備且不與既有詞條衝突。 <!-- speclink-task:tsk_01M0MM9ADGZVXYVTGVPD7B4GG1 -->
 - [x] 4.2 收尾回歸：跨面改動後逐 crate 跑受影響面測試——cargo test -p speclink-core、cargo test -p speclink-core --test it render_golden、cargo test -p speclink-cli --test it trace、cargo test -p speclink-store-fs。驗證：全數綠燈。 <!-- speclink-task:tsk_01M0MM9ADGK8M9DT5YDVGB91RK -->
-- [ ] [M] 4.3 真實驗收：對本 repo 一個有封存演進的 capability（如 discussion-docs）跑一次 /speclink-trace 的完整問答，確認敘事答案含決策、被否方案、關聯規格與來源路徑，且無內部處置字眼。驗證：使用者認可答案品質。 <!-- speclink-task:tsk_01M0MM9ADG339VP9E0MHFCET15 -->
+- [x] [M] 4.3 真實驗收：對本 repo 一個有封存演進的 capability（如 discussion-docs）跑一次 /speclink-trace 的完整問答，確認敘事答案含決策、被否方案、關聯規格與來源路徑，且無內部處置字眼。驗證：使用者認可答案品質。 <!-- speclink-task:tsk_01M0MM9ADG339VP9E0MHFCET15 -->
