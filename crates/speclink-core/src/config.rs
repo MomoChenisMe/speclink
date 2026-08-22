@@ -235,7 +235,6 @@ impl AppConfig {
             None => Ok(AppConfig::default()),
         }
     }
-
 }
 
 /// Map a locale code to its human-readable name (frozen mapping).
@@ -994,7 +993,7 @@ mod tests {
     #[test]
     fn spec_locale_auto_follows_resolved_locale() {
         // Existing "auto" semantics survive the extra env layer: auto follows the
-        // locale resolved through the same four layers.
+        // locale resolved through the same three layers.
         let p = resolve_policy(&env_of(NO_ENV), &wf("locale: ja\nspec_locale: auto"));
         assert_eq!(p.spec_locale.as_deref(), Some("ja"));
         let p = resolve_policy(
@@ -1427,10 +1426,6 @@ mod tests {
 
     #[test]
     fn resolve_locale_reads_the_canonical_config_only() {
-        assert_eq!(
-            resolve_locale(&wf("locale: ja")),
-            "Japanese (日本語)"
-        );
         assert_eq!(resolve_locale(&wf("locale: ja")), "Japanese (日本語)");
         assert_eq!(resolve_locale(&wf("{}")), "English");
     }

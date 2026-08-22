@@ -152,7 +152,7 @@ Engine 接收 Host 已解析好的 `EffectiveWorkflowPolicy` 與明確 actor，�
 - Remote Store 的 repo-scoped `config.yaml` 是唯一 authoritative policy。
 - Server 在固定 `policyRevision` 下產生 instructions、template 與 Context Manifest。
 - `.speclink.yaml` 只保存 endpoint、binding 與本機 preference。
-- Remote policy 不接受 client env 或 deprecated local keys 靜默覆寫。
+- Remote policy 不接受 client env 或本機 `.speclink.yaml` 鍵靜默覆寫。
 - Client 不自行用本機 schema 猜測 Server artifact template。
 
 ### 3.5 Task identity、evidence 與 lifecycle gate 未完成

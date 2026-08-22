@@ -438,7 +438,7 @@ interface SpeclinkExecutionContext {
 `EffectiveWorkflowPolicy`；`policyRevision` 與 digest 必須進入 instructions、Context Snapshot、apply 與 verify bundle。
 
 遠端模式的 `.speclink.yaml` 只負責 endpoint、Project/Repo binding 與本機 client preferences，不鏡射 workflow
-policy，也不得用本機環境變數或 deprecated policy keys 靜默覆寫團隊規則。Context Projection 可以包含遠端
+policy，也不得用本機環境變數或 `.speclink.yaml` 政策鍵靜默覆寫團隊規則。Context Projection 可以包含遠端
 `config.yaml` 的唯讀副本供 Agent 閱讀，但該副本不是第二個正典，修改它不會更新 policy。
 
 ## 5. 本地 Repo 模式
