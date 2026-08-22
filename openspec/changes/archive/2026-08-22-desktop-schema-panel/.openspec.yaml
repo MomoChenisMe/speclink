@@ -1,0 +1,75 @@
+schema: spec-driven
+created: 2026-08-20
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: schema-engine-openspec-parity
+started_at: 2026-08-21
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-22
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 27
+reviewed_scope:
+  - path: apps/desktop/core/src/settings.rs
+    hash: c80a4a4cd63fdbafd97abfaf5473081017a9fd78078d2a881a108dabe0f194ab
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: d5fd7537fa489a6b1fd254a388f954e5f4512e4b63b0eb47ff9775d8c4a5fc52
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 89272033277b8a58e73b446fc7a7bf1eb28f78ff4c7f8467acb47a7aa6cc3829
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: a43924c7dde6df6015c5654a94407517b3025bda13c88d7cfc77fdb0c7a34781
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: f48b43fbf21e33e27667c9063af9b011a2d065a2a9740593fdff67dfd7ab44da
+  - path: apps/desktop/src/__tests__/messages.test.ts
+    hash: f515eb85ea157af8ba8b6b255f81fe6d0f1819789225f1a4159747ab5322e7bb
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: 8d3c70ebaf620c38d9433deba3917de9314afe1634b7ff855e6fa7d54b097f8c
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: e37d77cc3000a690fd4679fe26345b8ddcf8fe38997d1513b70975e2f8330d1c
+  - path: apps/desktop/src/__tests__/session.test.ts
+    hash: 74e01221633b1a954f7354d26cede51380a4c483f5c44b2349002aed38f989ba
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: b8b348b30570daad9b9f5da092fe643d7921baa4c88d05f067b8562b3f85133a
+  - path: apps/desktop/src/adapter/workspace.ts
+    hash: 6c3f0cd3e04374f17ca3ae9e7f19345e0190c77233542e9ae7a1af349c54a0c3
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: daeab06c58906eefc53b6b9a5118081ef7d9a26e3c2d7cccefc1dc7a80891057
+  - path: apps/desktop/src/session.ts
+    hash: 60235ba39d780007bb3998c6930bad81dd9e4c018f0b05d788d52b7c83f984ea
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 8ef6db1709f6063c9cdd0509a137c38faf1157bdd1f15bc50ebc5de6d64d9516
+verified_at: 2026-08-22
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 27
+verified_scope:
+  - path: apps/desktop/core/src/settings.rs
+    hash: c80a4a4cd63fdbafd97abfaf5473081017a9fd78078d2a881a108dabe0f194ab
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: d5fd7537fa489a6b1fd254a388f954e5f4512e4b63b0eb47ff9775d8c4a5fc52
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 89272033277b8a58e73b446fc7a7bf1eb28f78ff4c7f8467acb47a7aa6cc3829
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: a43924c7dde6df6015c5654a94407517b3025bda13c88d7cfc77fdb0c7a34781
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: f48b43fbf21e33e27667c9063af9b011a2d065a2a9740593fdff67dfd7ab44da
+  - path: apps/desktop/src/__tests__/messages.test.ts
+    hash: f515eb85ea157af8ba8b6b255f81fe6d0f1819789225f1a4159747ab5322e7bb
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: 8d3c70ebaf620c38d9433deba3917de9314afe1634b7ff855e6fa7d54b097f8c
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: e37d77cc3000a690fd4679fe26345b8ddcf8fe38997d1513b70975e2f8330d1c
+  - path: apps/desktop/src/__tests__/session.test.ts
+    hash: 74e01221633b1a954f7354d26cede51380a4c483f5c44b2349002aed38f989ba
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: b8b348b30570daad9b9f5da092fe643d7921baa4c88d05f067b8562b3f85133a
+  - path: apps/desktop/src/adapter/workspace.ts
+    hash: 6c3f0cd3e04374f17ca3ae9e7f19345e0190c77233542e9ae7a1af349c54a0c3
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: daeab06c58906eefc53b6b9a5118081ef7d9a26e3c2d7cccefc1dc7a80891057
+  - path: apps/desktop/src/session.ts
+    hash: 60235ba39d780007bb3998c6930bad81dd9e4c018f0b05d788d52b7c83f984ea
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 8ef6db1709f6063c9cdd0509a137c38faf1157bdd1f15bc50ebc5de6d64d9516
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-22

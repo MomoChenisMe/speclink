@@ -1319,6 +1319,31 @@ impl RemoteWorkspace {
         .map_err(RemoteSettingsError::from)
     }
 
+    /// schema 鍵 targeted rewrite（desktop-schema-panel design D2）：GET 全文 →
+    /// 引擎 byte-preserving setter → PUT 全文＋expected revision。與政策欄位
+    /// 寫入同一條 revision 守門通道，壞檔在 setter 即拒。
+    pub fn write_workflow_schema(
+        &self,
+        credentials: &dyn CredentialStore,
+        name: &str,
+        expected_revision: u64,
+    ) -> Result<u64, RemoteSettingsError> {
+        self.manager
+            .ensure_write_allowed()
+            .map_err(RemoteSettingsError::from)?;
+        let config = self
+            .run(credentials, |client| client.config())
+            .map_err(RemoteSettingsError::from)?;
+        let rewritten =
+            speclink_core::config::set_workflow_schema_text(config.content.as_deref(), name)
+                .map_err(|e| RemoteSettingsError::local(e.to_string()))?;
+        self.run_write(credentials, |client| {
+            client.put_config(&rewritten, expected_revision)
+        })
+        .map(|response| response.revision)
+        .map_err(RemoteSettingsError::from)
+    }
+
     /// context/rules targeted rewrite；None 表示不觸及該鍵，Some 空值沿用 seam
     /// 的移除語意。沒有任何省略 expected revision 的寫入路徑。
     pub fn write_workflow_content(

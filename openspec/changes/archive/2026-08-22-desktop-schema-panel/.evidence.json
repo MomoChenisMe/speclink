@@ -1,0 +1,100 @@
+{
+  "version": 2,
+  "change": "desktop-schema-panel",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫紅測（設定頁的產出流程節的資料來源）：快照組裝以引擎 list_all／resolve_with 組出清單——名稱、來源層級、artifact 圖與各 artifact 的 description／instruction／template 全文；解析失敗的 schema 逐項標記錯誤而不拖垮整份快照。驗證：cargo test -p speclink-desktop-core 出現預期紅燈",
+      "files": [
+        "apps/desktop/core/src/settings.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.1 先寫紅測：adapter 新增 readSchemas、writeWorkflowSchema、forkSchema 三方法，各自呼叫對應 invoke 並回傳快照／結果型別——這是產出流程的切換寫入與產出流程的客製 fork 的前端通道。驗證：npm test -w apps/desktop 出現預期紅燈",
+      "files": [
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "apps/desktop/src/__tests__/session.test.ts"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.2 實作 D2 IPC 面：一查一寫——tauri 端 read_schemas、write_workflow_schema、fork_schema 三指令（local 寫入走引擎 set_workflow_schema_text，壞檔拒寫錯誤上拋；fork 包引擎既有函式）；remote 切換沿既有 revision 守門的 config 寫入通道在 adapter 組合。驗證：2.1 轉綠且 cargo build -p speclink-desktop 綠",
+      "files": [
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src/__tests__/helpers/remoteFixtures.ts",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/workspace.test.ts",
+        "apps/desktop/src/adapter/workspace.ts",
+        "apps/desktop/src/session.ts"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.2 實作 D4 UI 節與詞彙：ProjectSettingsView 的 config.yaml 頁簽新增產出流程節（清單、收合式唯讀詳情、切換下拉、local 限定 fork 按鈕、remote 狀態文案）；openspec/LANGUAGE.md 新增詞條「產出流程」（avoid 列 schema 於使用者可見文案，記使用者裁定與 change 名）。驗證：3.1 轉綠且 ui-copy-vocabulary 守門測試綠",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/messages.test.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/views/ProjectSettingsView.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M0EVYG8WE02D57XYPFHMNDEH",
+      "taskDesc": "1.1 先寫紅測（設定頁的產出流程節的資料來源）：快照組裝以引擎 list_all／resolve_with 組出清單——名稱、來源層級、artifact 圖與各 artifact 的 description／instruction／template 全文；解析失敗的 schema 逐項標記錯誤而不拖垮整份快照。驗證：cargo test -p speclink-desktop-core 出現預期紅燈",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "96394581b6099b544c629648e0e884dfcf0618bf",
+      "touchedFiles": [
+        "apps/desktop/core/src/settings.rs"
+      ],
+      "recordedAt": "2026-08-21T08:13:47Z"
+    },
+    {
+      "taskId": "tsk_01M0EVYG8X613N5NFASD7898HV",
+      "taskDesc": "2.1 先寫紅測：adapter 新增 readSchemas、writeWorkflowSchema、forkSchema 三方法，各自呼叫對應 invoke 並回傳快照／結果型別——這是產出流程的切換寫入與產出流程的客製 fork 的前端通道。驗證：npm test -w apps/desktop 出現預期紅燈",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "96394581b6099b544c629648e0e884dfcf0618bf",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "apps/desktop/src/__tests__/session.test.ts"
+      ],
+      "recordedAt": "2026-08-21T08:21:29Z"
+    },
+    {
+      "taskId": "tsk_01M0EVYG8XQ2BZPMP1144KXEZ3",
+      "taskDesc": "2.2 實作 D2 IPC 面：一查一寫——tauri 端 read_schemas、write_workflow_schema、fork_schema 三指令（local 寫入走引擎 set_workflow_schema_text，壞檔拒寫錯誤上拋；fork 包引擎既有函式）；remote 切換沿既有 revision 守門的 config 寫入通道在 adapter 組合。驗證：2.1 轉綠且 cargo build -p speclink-desktop 綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "96394581b6099b544c629648e0e884dfcf0618bf",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src/__tests__/helpers/remoteFixtures.ts",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/workspace.test.ts",
+        "apps/desktop/src/adapter/workspace.ts",
+        "apps/desktop/src/session.ts"
+      ],
+      "recordedAt": "2026-08-21T08:29:33Z"
+    },
+    {
+      "taskId": "tsk_01M0EVYG8X8HPH70R7ADVXK5AX",
+      "taskDesc": "3.2 實作 D4 UI 節與詞彙：ProjectSettingsView 的 config.yaml 頁簽新增產出流程節（清單、收合式唯讀詳情、切換下拉、local 限定 fork 按鈕、remote 狀態文案）；openspec/LANGUAGE.md 新增詞條「產出流程」（avoid 列 schema 於使用者可見文案，記使用者裁定與 change 名）。驗證：3.1 轉綠且 ui-copy-vocabulary 守門測試綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "96394581b6099b544c629648e0e884dfcf0618bf",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/messages.test.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/views/ProjectSettingsView.tsx"
+      ],
+      "recordedAt": "2026-08-21T08:36:52Z"
+    }
+  ]
+}

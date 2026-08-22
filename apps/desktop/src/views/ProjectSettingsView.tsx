@@ -6,12 +6,21 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   Checkbox,
+  Input,
   Markdown,
   Select,
   SelectContent,
@@ -29,7 +38,7 @@ import {
   useI18n,
 } from "@speclink/ui";
 
-import type { SettingsSnapshot, WorkflowFields } from "../adapter/workspace";
+import type { SchemaEntry, SettingsSnapshot, WorkflowFields } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
 
 /** locale／spec_locale 的「未設定」在 config 裡是空字串，Radix Select 的 item 不接受空字串。 */
@@ -42,7 +51,8 @@ const SPEC_LOCALE_OPTIONS: readonly string[] = ["auto", "tw", "ja", "en"];
 type PendingRemoteWrite =
   | { kind: "policy"; fields: WorkflowFields }
   | { kind: "context"; context: string }
-  | { kind: "rules"; rules: Array<[string, string[]]> };
+  | { kind: "rules"; rules: Array<[string, string[]]> }
+  | { kind: "schema"; name: string };
 
 interface ConflictRow {
   key: string;
@@ -216,11 +226,23 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
   const [ctxMsg, setCtxMsg] = useState<string | null>(null);
   const [rulesEditing, setRulesEditing] = useState(false);
   const [draftRules, setDraftRules] = useState<Record<string, string>>({});
+  /** 編輯面凍結鍵集（review N4）：開編輯當下的 schemaArtifacts 快照——編輯中
+   * 固定鍵換集（切換 schema、fork／建立／刪除改變活躍解析）不換編輯面，儲存
+   * 也以此鍵集送草稿，新固定鍵的既有規則走非凍結鍵兜底原樣保留。 */
+  const [editingRuleKeys, setEditingRuleKeys] = useState<string[]>([]);
   const [rulesMsg, setRulesMsg] = useState<string | null>(null);
   const [contextExpanded, setContextExpanded] = useState(false);
   const [appMsg, setAppMsg] = useState<string | null>(null);
   const [wfMsg, setWfMsg] = useState<string | null>(null);
   const [conflict, setConflict] = useState<PolicyConflict | null>(null);
+  // 產出流程頁籤（desktop-schema-panel design D4/D5）：清單快照、展開中的項、
+  // 建立表單草稿與表單訊息。
+  const [schemas, setSchemas] = useState<SchemaEntry[]>([]);
+  const [expandedSchema, setExpandedSchema] = useState<string | null>(null);
+  const [schemaMsg, setSchemaMsg] = useState<string | null>(null);
+  const [createName, setCreateName] = useState("");
+  /** 待確認刪除的專案層 schema 名稱（AlertDialog 開關；D7 確認後才執行）。 */
+  const [pendingDeleteSchema, setPendingDeleteSchema] = useState<string | null>(null);
 
   const hydrate = (next: SettingsSnapshot) => {
     setSnap(next);
@@ -250,7 +272,23 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
   };
 
   useEffect(() => {
-    void settings.readSettings().then(hydrate);
+    // stale-guard＋錯誤浮出（review R7）：session 快速切換時舊回應不得覆寫
+    // 新清單；讀取失敗以表單訊息浮出而非 unhandled rejection 靜默空白。
+    let cancelled = false;
+    void settings.readSettings().then((next) => {
+      if (!cancelled) hydrate(next);
+    });
+    void settings.readSchemas().then(
+      (list) => {
+        if (!cancelled) setSchemas(list);
+      },
+      (e) => {
+        if (!cancelled) setSchemaMsg(errorMessage(e));
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
   }, [settings]);
 
   if (!snap) return null;
@@ -300,12 +338,24 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
           };
     const mineContext =
       pending.kind === "context" ? pending.context : ctxEditing ? draftContext : contextText;
+    const mineSchema = pending.kind === "schema" ? pending.name : snap.workflow.schemaName;
+    // 編輯中以凍結鍵集入表（review S-a）：payload 鍵集由 editingRuleKeys 決定，
+    // 對照表列的行必須跟 payload 同源，凍結鍵才不會從對照中消失。
     const artifactIds = Array.from(
-      new Set([...snap.workflow.schemaArtifacts, ...latest.workflow.schemaArtifacts]),
+      new Set([
+        ...(rulesEditing ? editingRuleKeys : snap.workflow.schemaArtifacts),
+        ...latest.workflow.schemaArtifacts,
+      ]),
     );
     const pendingRules = pending.kind === "rules" ? Object.fromEntries(pending.rules) : null;
     const show = (value: string | null | undefined) => value || "—";
     const rows: ConflictRow[] = [
+      {
+        key: "schema",
+        label: "schema",
+        server: show(latest.workflow.schemaName),
+        mine: show(mineSchema),
+      },
       {
         key: "context",
         label: t("settings.contextLabel"),
@@ -338,8 +388,12 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
       },
     ];
     for (const id of artifactIds) {
+      // 編輯中：凍結鍵顯示草稿；非凍結鍵（編輯期間換入的新固定鍵）顯示將被
+      // 兜底原樣保留的現值，而非誤導的空白（review S-a）。
       const mine = rulesEditing
-        ? draftRules[id] ?? ""
+        ? editingRuleKeys.includes(id)
+          ? draftRules[id] ?? ""
+          : entriesToText(snap.workflow.rules[id] ?? [])
         : entriesToText(pendingRules?.[id] ?? rules[id] ?? []);
       rows.push({
         key: `rules-${id}`,
@@ -363,6 +417,7 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
       const message = errorMessage(readError);
       if (pending.kind === "policy") setWfMsg(message);
       else if (pending.kind === "context") setCtxMsg(message);
+      else if (pending.kind === "schema") setSchemaMsg(message);
       else setRulesMsg(message);
     }
     return true;
@@ -427,6 +482,8 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
   };
 
   const beginRulesEdit = () => {
+    // 凍結編輯面鍵集（review N4）：編輯期間固定鍵換集不影響編輯中的分節。
+    setEditingRuleKeys(snap.workflow.schemaArtifacts);
     setDraftRules(
       Object.fromEntries(
         snap.workflow.schemaArtifacts.map((id) => [id, entriesToText(rules[id] ?? [])]),
@@ -439,10 +496,17 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
   const saveRules = async () => {
     // 整份代換 payload：全部固定鍵依 schemaArtifacts 順序送出（空節＝移除鍵、全空＝移除 rules 鍵）；
     // 僅寫 rules 鍵，context 逐字元不變（不經寫入路徑）。
-    const nextRules: Array<[string, string[]]> = snap.workflow.schemaArtifacts.map((id) => [
+    // 以凍結鍵集送出草稿（review N4）：編輯中固定鍵換集時，草稿仍對應開編輯
+    // 當下的分節，不對新鍵送空值。
+    const nextRules: Array<[string, string[]]> = editingRuleKeys.map((id) => [
       id,
       textToEntries(draftRules[id] ?? ""),
     ]);
+    // 非凍結鍵的既有分節原樣附上（review R3／N4）：整份代換不得靜默刪掉其他
+    // schema 的分節——含編輯期間換入的新固定鍵既有規則。
+    for (const [key, entries] of Object.entries(snap.workflow.rules)) {
+      if (!editingRuleKeys.includes(key)) nextRules.push([key, entries]);
+    }
     try {
       const next = await settings.writeWorkflowRules(nextRules);
       adoptRevision(next);
@@ -453,6 +517,102 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
       if (await handleWriteError(e, { kind: "rules", rules: nextRules })) setRulesMsg(null);
       else setRulesMsg(errorMessage(e));
     }
+  };
+
+  /** 產出流程來源層級的顯示詞（package／project／user → 內建／專案／使用者）。 */
+  const SCHEMA_SOURCE_LABEL_KEY = {
+    package: "settings.schemaSourceBuiltin",
+    project: "settings.schemaSourceProject",
+    user: "settings.schemaSourceUser",
+  } as const;
+  const schemaSourceLabel = (source: keyof typeof SCHEMA_SOURCE_LABEL_KEY) =>
+    t(SCHEMA_SOURCE_LABEL_KEY[source]);
+
+  /** 引擎 fork 以 project→user→built-in 第一命中解析來源；被同名前層 shadow 的
+   * 項不給 fork 入口——按下去複製到的會是前層內容（review R8）。引擎的層命中
+   * 只看 schema.yaml 檔案存在，前層壞檔也算 shadow（不看 error）。 */
+  const SCHEMA_RESOLUTION_ORDER = { project: 0, user: 1, package: 2 } as const;
+  const isResolutionHit = (entry: SchemaEntry) =>
+    !schemas.some(
+      (s) =>
+        s.name === entry.name &&
+        SCHEMA_RESOLUTION_ORDER[s.source] < SCHEMA_RESOLUTION_ORDER[entry.source],
+    );
+
+  /** 切換／fork／建立／刪除成功後的快照局部採納（review R4／N1／N4）：只更新
+   * schema 面與 rules 固定鍵——不走 hydrate，任一卡的編輯態與草稿不得被重設。
+   * 產出規則編輯中時只更新 snap，唯讀顯示值與草稿不動——編輯面凍結在
+   * editingRuleKeys（開編輯當下的鍵集），儲存時換入的新固定鍵規則由非凍結鍵
+   * 兜底保留。重讀失敗不改報成錯誤：寫入已成功，快照留舊值待下次載入補上。 */
+  const refreshSchemaFacts = async () => {
+    try {
+      const fresh = await settings.readSettings();
+      setSnap(fresh);
+      if (!rulesEditing) {
+        setRules(
+          Object.fromEntries(
+            fresh.workflow.schemaArtifacts.map((id) => [id, fresh.workflow.rules[id] ?? []]),
+          ),
+        );
+        setDraftRules(
+          Object.fromEntries(
+            fresh.workflow.schemaArtifacts.map((id) => [
+              id,
+              entriesToText(fresh.workflow.rules[id] ?? []),
+            ]),
+          ),
+        );
+      }
+    } catch {
+      /* 寫入已成功；重讀失敗容忍。 */
+    }
+  };
+
+  const switchSchema = async (name: string) => {
+    if (name === snap.workflow.schemaName) return;
+    try {
+      const next = await settings.writeWorkflowSchema(name);
+      adoptRevision(next);
+      setSchemaMsg(t("settings.saved"));
+      await refreshSchemaFacts();
+    } catch (e) {
+      // remote revision 落後走衝突對照（review R5）；其餘失敗單行浮出、下拉維持原值。
+      if (await handleWriteError(e, { kind: "schema", name })) setSchemaMsg(null);
+      else setSchemaMsg(errorMessage(e));
+    }
+  };
+
+  /** schema 動作共用骨架（review S3）：執行 → 重拉清單＋局部採納快照（fork／
+   * 建立／刪除都可能改變同名 shadow 下的活躍解析，固定鍵一併跟上）→ 已儲存；
+   * 失敗單行浮出。 */
+  const runSchemaAction = async (action: () => Promise<unknown>) => {
+    try {
+      await action();
+      setSchemas(await settings.readSchemas());
+      await refreshSchemaFacts();
+      setSchemaMsg(t("settings.saved"));
+    } catch (e) {
+      setSchemaMsg(errorMessage(e));
+    }
+  };
+
+  const forkSchemaAction = (source: string) => runSchemaAction(() => settings.forkSchema(source));
+
+  const confirmDeleteSchema = () => {
+    const name = pendingDeleteSchema;
+    setPendingDeleteSchema(null);
+    if (name === null) return Promise.resolve();
+    return runSchemaAction(() => settings.deleteSchema(name));
+  };
+
+  const createSchemaAction = () => {
+    // 名稱驗證在引擎（D5）：kebab-case 規則與已存在檢查不在前端重複，錯誤原樣浮出。
+    const name = createName.trim();
+    if (name === "") return Promise.resolve();
+    return runSchemaAction(async () => {
+      await settings.createSchema(name);
+      setCreateName("");
+    });
   };
 
   const reloadServerVersion = () => {
@@ -478,6 +638,13 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
         setContextExpanded(false);
         setCtxEditing(false);
         setCtxMsg(t("settings.saved"));
+      } else if (pending.kind === "schema") {
+        next = await settings.writeWorkflowSchema(pending.name);
+        setSchemaMsg(t("settings.saved"));
+        adoptRevision(next);
+        setConflict(null);
+        await refreshSchemaFacts();
+        return;
       } else {
         next = await settings.writeWorkflowRules(pending.rules);
         setRules(Object.fromEntries(pending.rules));
@@ -491,6 +658,7 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
         const message = errorMessage(error);
         if (pending.kind === "policy") setWfMsg(message);
         else if (pending.kind === "context") setCtxMsg(message);
+        else if (pending.kind === "schema") setSchemaMsg(message);
         else setRulesMsg(message);
       }
     }
@@ -498,9 +666,76 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
 
   const contextCollapsed = !ctxEditing && !contextExpanded && isLongContext(contextText);
   const populatedRuleKeys = snap.workflow.schemaArtifacts.filter((id) => (rules[id] ?? []).length > 0);
+  // 下拉選項：壞項不可選；同名跨層去重（解析語意本就取第一命中）。
+  const selectableSchemaNames = Array.from(
+    new Set(schemas.filter((s) => s.error === null).map((s) => s.name)),
+  );
 
   return (
     <div className="max-w-2xl mx-auto w-full">
+      {/* remote 409 對照面板：置於頁簽之外——政策與 schema 兩簽的寫入都可能
+          撞衝突，面板必須在任一簽都可見（review R5）。 */}
+      {conflict !== null && (
+        <Card
+          data-testid="policy-conflict-panel"
+          className={cn(SEMANTIC_SURFACE.warning, "bg-muted/20", "mb-4")}
+        >
+          <CardHeader className="gap-1">
+            <CardTitle className="text-base">{t("remote.conflictTitle")}</CardTitle>
+            <p className="m-0 text-xs text-muted-foreground">{t("remote.conflictHint")}</p>
+            <span
+              data-testid="conflict-revision"
+              className="font-mono text-xs tracking-wide text-muted-foreground"
+            >
+              {t("remote.conflictRevision")} {conflict.latest.workflow.revision ?? "—"}
+            </span>
+          </CardHeader>
+          <CardContent className="gap-3">
+            <div className="overflow-hidden rounded-md border border-border">
+              <div className="grid grid-cols-[minmax(96px,0.7fr)_1fr_1fr] gap-px bg-border text-xs">
+                <span className="bg-muted px-2 py-1.5 font-medium" />
+                <span className="bg-muted px-2 py-1.5 font-medium">
+                  {t("remote.serverValue")}
+                </span>
+                <span className="bg-muted px-2 py-1.5 font-medium">
+                  {t("remote.myInput")}
+                </span>
+                {conflict.rows.map((row) => (
+                  <div
+                    key={row.key}
+                    data-testid={`conflict-row-${row.key}`}
+                    className="col-span-3 grid grid-cols-subgrid gap-px"
+                  >
+                    <span className="bg-card px-2 py-1.5 font-mono text-muted-foreground">
+                      {row.label}
+                    </span>
+                    <span
+                      data-testid="conflict-server"
+                      className="whitespace-pre-wrap break-words bg-card px-2 py-1.5 font-mono"
+                    >
+                      {row.server}
+                    </span>
+                    <span
+                      data-testid="conflict-mine"
+                      className="whitespace-pre-wrap break-words bg-card px-2 py-1.5 font-mono"
+                    >
+                      {row.mine}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={reloadServerVersion}>
+                {t("remote.reloadServer")}
+              </Button>
+              <Button type="button" size="sm" onClick={() => void retryConflict()}>
+                {t("remote.resubmitLatest")}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {/* 兩頁簽：標籤檔名直出為字面常數（LANGUAGE.md 明文例外）。 */}
       <Tabs defaultValue="config">
         <TabsList>
@@ -508,6 +743,9 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
             {isRemote ? t("remote.workflowTab") : "config.yaml"}
             {wfDisabled && <TabWarningDot />}
           </TabsTrigger>
+          {/* 產出流程為獨立頁籤（D4 改版）。標籤直出 Schema（D8；LANGUAGE.md
+              明文例外——頁籤列全是技術 token，籤內文案仍用「產出流程」）。 */}
+          <TabsTrigger value="schemas">{t("settings.schemaTab")}</TabsTrigger>
           {!isRemote && (
             <TabsTrigger value="speclink">
               .speclink.yaml
@@ -541,67 +779,6 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
             </span>
           )}
           {snap.workflow.parseError !== null && <ParseErrorBanner message={snap.workflow.parseError} />}
-          {conflict !== null && (
-            <Card
-              data-testid="policy-conflict-panel"
-              className={cn(SEMANTIC_SURFACE.warning, "bg-muted/20")}
-            >
-              <CardHeader className="gap-1">
-                <CardTitle className="text-base">{t("remote.conflictTitle")}</CardTitle>
-                <p className="m-0 text-xs text-muted-foreground">{t("remote.conflictHint")}</p>
-                <span
-                  data-testid="conflict-revision"
-                  className="font-mono text-xs tracking-wide text-muted-foreground"
-                >
-                  {t("remote.conflictRevision")} {conflict.latest.workflow.revision ?? "—"}
-                </span>
-              </CardHeader>
-              <CardContent className="gap-3">
-                <div className="overflow-hidden rounded-md border border-border">
-                  <div className="grid grid-cols-[minmax(96px,0.7fr)_1fr_1fr] gap-px bg-border text-xs">
-                    <span className="bg-muted px-2 py-1.5 font-medium" />
-                    <span className="bg-muted px-2 py-1.5 font-medium">
-                      {t("remote.serverValue")}
-                    </span>
-                    <span className="bg-muted px-2 py-1.5 font-medium">
-                      {t("remote.myInput")}
-                    </span>
-                    {conflict.rows.map((row) => (
-                      <div
-                        key={row.key}
-                        data-testid={`conflict-row-${row.key}`}
-                        className="col-span-3 grid grid-cols-subgrid gap-px"
-                      >
-                        <span className="bg-card px-2 py-1.5 font-mono text-muted-foreground">
-                          {row.label}
-                        </span>
-                        <span
-                          data-testid="conflict-server"
-                          className="whitespace-pre-wrap break-words bg-card px-2 py-1.5 font-mono"
-                        >
-                          {row.server}
-                        </span>
-                        <span
-                          data-testid="conflict-mine"
-                          className="whitespace-pre-wrap break-words bg-card px-2 py-1.5 font-mono"
-                        >
-                          {row.mine}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" size="sm" variant="outline" onClick={reloadServerVersion}>
-                    {t("remote.reloadServer")}
-                  </Button>
-                  <Button type="button" size="sm" onClick={() => void retryConflict()}>
-                    {t("remote.resubmitLatest")}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           {/* 專案說明卡（獨立編輯態） */}
           <Card data-testid="context-card">
@@ -668,7 +845,8 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
             <CardContent className="gap-2.5">
               {rulesEditing ? (
                 <div className="flex flex-col gap-3">
-                  {snap.workflow.schemaArtifacts.map((id) => (
+                  {/* 編輯面以凍結鍵集渲染（review N4），不跟 snap 的固定鍵換集。 */}
+                  {editingRuleKeys.map((id) => (
                     <div key={id} className="flex flex-col gap-1">
                       <label htmlFor={`rules-input-${id}`} className="text-sm font-medium font-mono">
                         {id}
@@ -836,6 +1014,245 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* 產出流程頁籤（desktop-schema-panel design D4 改版＋D5）：清單→收合
+            唯讀詳情、下拉切換即寫入、local 限定 fork 與建立、remote 狀態文案 */}
+        <TabsContent value="schemas" className="pt-3 flex flex-col gap-4">
+          <Card data-testid="schema-card">
+            <CardHeader className="gap-1">
+              <CardTitle className="text-base">{t("settings.schemaCard")}</CardTitle>
+              <FieldHelp>{t("settings.schemaCardHelp")}</FieldHelp>
+            </CardHeader>
+            <CardContent className="gap-2.5">
+              {!snap.workflow.schemaKnown && (
+                <p
+                  data-testid="schema-unknown-note"
+                  className={`flex items-start gap-1.5 text-xs m-0 ${SEMANTIC_TONE.warning}`}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  {t("settings.schemaUnknownNote")}
+                </p>
+              )}
+              <div className="flex flex-col gap-1">
+                <label htmlFor="cfg-schema" className="text-sm font-medium">
+                  {t("settings.schemaActiveLabel")}
+                </label>
+                <Select
+                  // 恆受控（review N2）：value 一律等於快照現值，寫入失敗後
+                  // 觸發器退回現值、不停在剛點選的名稱。壞檔空字串傳 undefined
+                  // 讓 placeholder 顯示「—」。
+                  value={snap.workflow.schemaName || undefined}
+                  disabled={wfDisabled}
+                  onValueChange={(v) => void switchSchema(v)}
+                >
+                  <SelectTrigger id="cfg-schema" className="w-64">
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* 現值不在選項集（remote 非內建、活躍項解析失敗）→ 沿 locale
+                        未知值模式以停用項顯示原始值（review R6／N2）。 */}
+                    {snap.workflow.schemaName !== "" &&
+                      !selectableSchemaNames.includes(snap.workflow.schemaName) && (
+                        <SelectItem
+                          value={snap.workflow.schemaName}
+                          disabled
+                          className="text-muted-foreground"
+                        >
+                          {snap.workflow.schemaName}
+                        </SelectItem>
+                      )}
+                    {selectableSchemaNames.map((name) => (
+                      <SelectItem key={name} value={name}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {schemaMsg && <span className="text-xs text-muted-foreground">{schemaMsg}</span>}
+              </div>
+              <div className="flex flex-col gap-2">
+                {schemas.map((entry) => {
+                  const key = `${entry.source}-${entry.name}`;
+                  const expanded = expandedSchema === key;
+                  return (
+                    <div
+                      key={key}
+                      data-testid={`schema-item-${entry.name}`}
+                      className="flex flex-col gap-1.5 rounded-md border border-border px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium font-mono">{entry.name}</span>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                          {schemaSourceLabel(entry.source)}
+                        </span>
+                        <span className="ml-auto flex items-center gap-2">
+                          {entry.error === null && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              data-testid={`schema-toggle-${entry.name}`}
+                              className="text-sm font-normal text-muted-foreground hover:text-foreground"
+                              onClick={() => setExpandedSchema(expanded ? null : key)}
+                            >
+                              {expanded
+                                ? t("settings.schemaHideDetail")
+                                : t("settings.schemaShowDetail")}
+                            </Button>
+                          )}
+                          {!isRemote && entry.error === null && isResolutionHit(entry) && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              data-testid={`schema-fork-${entry.name}`}
+                              className="text-sm font-normal text-muted-foreground hover:text-foreground"
+                              onClick={() => void forkSchemaAction(entry.name)}
+                            >
+                              {t("settings.schemaFork")}
+                            </Button>
+                          )}
+                          {/* 刪除（D7）：僅專案層——內建無檔案、user 層跨專案共用。
+                              按下先開確認對話框，確認後才執行。 */}
+                          {!isRemote && entry.source === "project" && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              data-testid={`schema-delete-${entry.name}`}
+                              className={`text-sm font-normal ${SEMANTIC_TONE.danger}`}
+                              onClick={() => setPendingDeleteSchema(entry.name)}
+                            >
+                              {t("settings.schemaDelete")}
+                            </Button>
+                          )}
+                          {/* 編輯入口（D6）：有磁碟路徑才有資料夾可顯示——內建在
+                              binary 內、remote 無本機檔案，均不渲染。 */}
+                          {!isRemote && entry.path !== null && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              data-testid={`schema-reveal-${entry.name}`}
+                              className="text-sm font-normal text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                void settings.revealSchema(entry.path as string).catch((e) => {
+                                  setSchemaMsg(errorMessage(e));
+                                });
+                              }}
+                            >
+                              {t("settings.schemaReveal")}
+                            </Button>
+                          )}
+                        </span>
+                      </div>
+                      {entry.error !== null ? (
+                        <p className={`text-xs m-0 ${SEMANTIC_TONE.danger}`}>{entry.error}</p>
+                      ) : (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {entry.artifactIds.join(" → ")}
+                        </span>
+                      )}
+                      {expanded && (
+                        <div
+                          data-testid={`schema-detail-${entry.name}`}
+                          className="flex max-h-96 flex-col gap-3 overflow-y-auto border-t border-border pt-2"
+                        >
+                          {entry.artifacts.map((a) => (
+                            <div key={a.id} className="flex flex-col gap-1">
+                              <span className="text-sm font-medium font-mono">{a.id}</span>
+                              <p className="m-0 text-sm text-muted-foreground">{a.description}</p>
+                              {a.instruction !== null && (
+                                <>
+                                  <span className="text-xs font-medium">
+                                    {t("settings.schemaArtifactInstruction")}
+                                  </span>
+                                  <pre className="m-0 whitespace-pre-wrap rounded-md bg-muted/40 p-2 text-xs">
+                                    {a.instruction}
+                                  </pre>
+                                </>
+                              )}
+                              {a.template !== null && (
+                                <>
+                                  <span className="text-xs font-medium">
+                                    {t("settings.schemaArtifactTemplate")}
+                                  </span>
+                                  <pre className="m-0 whitespace-pre-wrap rounded-md bg-muted/40 p-2 text-xs">
+                                    {a.template}
+                                  </pre>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* 建立表單（D5；僅 local）：單一名稱輸入，佈局用引擎預設骨架，
+                  kebab-case 與已存在檢查在引擎、錯誤原樣浮出。 */}
+              {!isRemote && (
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="schema-create-name" className="text-sm font-medium">
+                    {t("settings.schemaCreateLabel")}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="schema-create-name"
+                      data-testid="schema-create-name"
+                      value={createName}
+                      placeholder="my-flow"
+                      className="w-64 font-mono"
+                      onChange={(e) => setCreateName(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      data-testid="schema-create"
+                      className="text-sm"
+                      onClick={() => void createSchemaAction()}
+                    >
+                      {t("settings.schemaCreate")}
+                    </Button>
+                  </div>
+                  <FieldHelp>{t("settings.schemaCreateHelp")}</FieldHelp>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 刪除確認（D7；沿變更刪除的 AlertDialog 模式） */}
+          <AlertDialog
+            open={pendingDeleteSchema !== null}
+            onOpenChange={(o) => !o && setPendingDeleteSchema(null)}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t("settings.schemaDeleteTitle")}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("settings.schemaDeleteDesc")}{" "}
+                  <span className="font-mono font-medium">{pendingDeleteSchema}</span>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel
+                  data-testid="schema-delete-cancel"
+                  onClick={() => setPendingDeleteSchema(null)}
+                >
+                  {t("app.cancel")}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  data-testid="schema-delete-confirm"
+                  className="bg-destructive hover:bg-destructive/90"
+                  onClick={() => void confirmDeleteSchema()}
+                >
+                  {t("settings.schemaDelete")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </TabsContent>
 
         {/* .speclink.yaml 簽：AI 工具 */}

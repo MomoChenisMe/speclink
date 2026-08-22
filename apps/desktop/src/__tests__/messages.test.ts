@@ -18,4 +18,12 @@ describe("APP_MESSAGES", () => {
       .map(([key]) => key);
     expect(offenders).toEqual([]);
   });
+
+  it("zh-TW 文案不得含工程詞 schema——LANGUAGE.md 正典詞是「產出流程」（頁籤標籤 settings.schemaTab 為明文例外）", () => {
+    const offenders = Object.entries(APP_MESSAGES["zh-TW"])
+      .filter(([key]) => key !== "settings.schemaTab")
+      .filter(([, value]) => /\bschemas?\b/i.test(value))
+      .map(([key]) => key);
+    expect(offenders).toEqual([]);
+  });
 });

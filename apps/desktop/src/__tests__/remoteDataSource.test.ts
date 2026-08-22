@@ -75,6 +75,17 @@ function fakeInvoke() {
     },
     remote_write_workflow_config: 8,
     remote_write_workflow_content: 8,
+    remote_write_workflow_schema: 8,
+    read_schemas: [
+      {
+        name: "spec-driven",
+        source: "package",
+        artifactIds: ["proposal", "design", "specs", "tasks"],
+        artifacts: [],
+        path: null,
+        error: null,
+      },
+    ],
     remote_validate: { change: "chg", valid: true, errors: [], warnings: [] },
     remote_analyze: {
       change_id: "chg",
@@ -400,6 +411,36 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
       rules: [["tasks", ["test first"]]],
       expectedRevision: 8,
     });
+  });
+
+  it("remote 產出流程面：讀走本地內建組裝、切換帶 expectedRevision、fork 拒絕（desktop-schema-panel D2/D3）", async () => {
+    const { calls, invoke } = fakeInvoke();
+    const session = createRemoteSession(CONN, openInfo(), undefined, { invoke });
+    await session.settings.readSettings(); // 取得 revision 7
+
+    await session.settings.readSchemas();
+    // 不打 server：由 desktop core 以內嵌內建組裝，也不帶任何本機 root。
+    expect(calls.find((c) => c.cmd === "read_schemas")?.args).toEqual({});
+
+    await expect(session.settings.writeWorkflowSchema("spec-driven")).resolves.toBe(8);
+    expect(calls.find((c) => c.cmd === "remote_write_workflow_schema")?.args).toMatchObject({
+      connectionId: CONN,
+      project: PROJECT,
+      repo: REPO,
+      name: "spec-driven",
+      expectedRevision: 7,
+    });
+
+    // remote 不支援 fork 與建立（spec「remote 模式無 fork 入口」「remote 模式無
+    // 建立入口」的通道面防線）：rejected Promise 且不發任何 invoke。
+    await expect(session.settings.forkSchema("spec-driven")).rejects.toThrow();
+    expect(calls.some((c) => c.cmd === "fork_schema")).toBe(false);
+    await expect(session.settings.createSchema("my-flow")).rejects.toThrow();
+    expect(calls.some((c) => c.cmd === "init_schema")).toBe(false);
+    await expect(session.settings.revealSchema("/anywhere")).rejects.toThrow();
+    expect(calls.some((c) => c.cmd === "reveal_in_folder")).toBe(false);
+    await expect(session.settings.deleteSchema("my-flow")).rejects.toThrow();
+    expect(calls.some((c) => c.cmd === "delete_schema")).toBe(false);
   });
 
   it("events subscribe watches the stream, filters by locator key, and unwatches on teardown", async () => {

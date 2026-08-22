@@ -74,6 +74,13 @@
 - **avoid**: rules（使用者可見文案中）、規則（單獨使用時）
 - **why**: 「產出」點明規則作用於 artifacts 的產出過程；對齊 Spectra 用詞。2026-07-07 討論「config-context-與-rules-gui-編輯」定案。
 
+### 產出流程
+
+- **definition**: `openspec/config.yaml` 的 `schema` 鍵概念——一個變更會產出哪些文件、什麼順序的定義（設定頁的檢視／切換／複製為專案版區段名）。
+- **avoid**: schema（使用者可見文案中）
+- **why**: 與「產出規則」「產出政策」同族，字面可推出「這個變更會產出哪些文件、什麼順序」；schema 僅留於技術 token（鍵名、CLI 指令、識別符如 spec-driven）。經使用者裁定用譯詞（desktop-schema-panel，2026-08-20）。
+- **明文例外**：設定頁的產出流程頁籤標籤得直出「Schema」——與本詞條刻意抵觸，經使用者裁定：頁籤列全是技術 token（config.yaml、.speclink.yaml、Workflow），唯一的中文標籤在列上反而突兀，沿「開發者工具中原生詞即最直觀」的既有裁定線（檔名頁籤、討論 slug、worktree 同線）。僅限此頁籤標籤；籤內與其他使用者可見文案仍用「產出流程」（desktop-schema-panel，2026-08-22）。
+
 ### 待收尾
 
 - **definition**: 等使用者執行動詞的卡片——已就緒（任務全數完成、等待封存）的變更＋已結論未轉出（等待轉為變更或封存）的討論。專案分頁徽章顯示的即為待收尾數。
