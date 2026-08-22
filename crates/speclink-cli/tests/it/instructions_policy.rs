@@ -1,6 +1,6 @@
 //! Integration tests: the instructions payload takes its policy values (locale, tdd,
-//! audit) from the FOUR-LAYER resolution (env > legacy `.speclink.yaml` key >
-//! `openspec/config.yaml` > default) — no new `--json` fields; the toggles surface
+//! audit) from the THREE-LAYER resolution (env > `openspec/config.yaml` > default) —
+//! `.speclink.yaml` policy keys are inert and warning-free. The toggles surface
 //! inside the existing `instruction` text, locale in the existing `locale` field.
 
 use std::path::PathBuf;
@@ -66,7 +66,7 @@ fn instruction_text(payload: &serde_json::Value) -> String {
 
 #[test]
 fn canonical_config_yaml_toggles_reach_the_tasks_instruction() {
-    // Spec scenario 正典值生效: policy only in openspec/config.yaml, no legacy keys.
+    // Spec scenario 正典值生效: policy only in openspec/config.yaml.
     let p = TempProject::new(
         "canonical",
         "tools:\n  - claude\n",
@@ -80,7 +80,7 @@ fn canonical_config_yaml_toggles_reach_the_tasks_instruction() {
     assert_eq!(
         String::from_utf8_lossy(&out.stderr).trim(),
         "",
-        "no deprecation warning without legacy keys"
+        "no warning on the policy path"
     );
 }
 
@@ -94,27 +94,31 @@ fn toggles_off_leave_the_instruction_untouched() {
 }
 
 #[test]
-fn legacy_app_key_beats_canonical_locale_and_warns() {
-    // Spec scenario 舊鍵相容層勝過正典值: app locale tw vs config.yaml locale ja.
+fn app_policy_keys_are_inert_and_warning_free() {
+    // Spec scenario .speclink.yaml 政策鍵一律不生效: app locale tw + tdd true vs
+    // config.yaml locale ja (tdd unset) → canonical/default values, silent stderr.
     let p = TempProject::new(
-        "legacy-wins",
-        "locale: tw\ntools:\n  - claude\n",
+        "app-inert",
+        "locale: tw\ntdd: true\ntools:\n  - claude\n",
         "locale: ja\n",
     );
     let out = p.instructions("proposal", &[]);
     let payload = json_payload(&out);
-    assert_eq!(payload["locale"].as_str().unwrap(), "Traditional Chinese (繁體中文)");
-    let err = String::from_utf8_lossy(&out.stderr).to_string();
+    assert_eq!(payload["locale"].as_str().unwrap(), "Japanese (日本語)");
     assert_eq!(
-        err.lines().filter(|l| !l.trim().is_empty()).count(),
-        1,
-        "exactly one deprecation line: {err:?}"
+        String::from_utf8_lossy(&out.stderr).trim(),
+        "",
+        "an app policy key must not warn"
     );
+    let out = p.instructions("tasks", &[]);
+    let instr = instruction_text(&json_payload(&out));
+    assert!(!instr.contains("TDD"), "app tdd key must stay inert: {instr}");
+    assert_eq!(String::from_utf8_lossy(&out.stderr).trim(), "");
 }
 
 #[test]
 fn env_var_overrides_both_files() {
-    // Spec scenario 環境變數覆寫一切: SPECLINK_TDD=false beats tdd: true in both files.
+    // Spec scenario 環境變數覆寫正典值: SPECLINK_TDD=false beats tdd: true in config.yaml.
     let p = TempProject::new(
         "env-wins",
         "tdd: true\ntools:\n  - claude\n",
@@ -124,7 +128,7 @@ fn env_var_overrides_both_files() {
     let instr = instruction_text(&payload);
     assert!(!instr.contains("TDD"), "env override must switch TDD off: {instr}");
 
-    // And the locale env var beats the legacy app key.
+    // And the locale env var beats the canonical value (the app key stays inert).
     let p = TempProject::new(
         "env-locale",
         "locale: tw\ntools:\n  - claude\n",
@@ -143,5 +147,67 @@ fn invalid_bool_env_var_falls_through_to_canonical_value() {
     assert!(
         instruction_text(&payload).contains("audit"),
         "invalid env value must fall through to config.yaml's audit: true"
+    );
+}
+
+#[test]
+fn apply_payload_carries_effective_policy_values() {
+    // Spec scenario fs 模式 payload 帶有效值 + Example table tdd 有效值進 payload:
+    // (SPECLINK_TDD, config.yaml tdd) → payload tdd, audit riding along.
+    let rows: &[(Option<&str>, &str, bool)] = &[
+        (None, "tdd: true\n", true),
+        (None, "", false),
+        (Some("false"), "tdd: true\n", false),
+        (Some("true"), "", true),
+    ];
+    for (i, (env_tdd, wf_yaml, want_tdd)) in rows.iter().enumerate() {
+        let p = TempProject::new(&format!("apply-policy-{i}"), "tools:\n  - claude\n", wf_yaml);
+        let envs: Vec<(&str, &str)> = env_tdd.iter().map(|v| ("SPECLINK_TDD", *v)).collect();
+        let payload = json_payload(&p.instructions("apply", &envs));
+        assert_eq!(
+            payload["tdd"].as_bool(),
+            Some(*want_tdd),
+            "row {i}: SPECLINK_TDD={env_tdd:?}, config.yaml={wf_yaml:?}"
+        );
+        assert_eq!(payload["audit"].as_bool(), Some(false), "row {i}: audit defaults to false");
+    }
+    // audit follows the same resolution entry point.
+    let p = TempProject::new("apply-policy-audit", "tools:\n  - claude\n", "audit: true\n");
+    let payload = json_payload(&p.instructions("apply", &[]));
+    assert_eq!(payload["audit"].as_bool(), Some(true));
+}
+
+#[test]
+fn update_with_legacy_policy_keys_touches_no_config_and_stays_silent() {
+    // Spec scenario 既有專案不受範本變更影響: update on a project whose
+    // .speclink.yaml still carries old policy keys rewrites neither config file
+    // and prints no deprecation warning (the warning mechanism is gone).
+    let p = TempProject::new(
+        "update-legacy",
+        "locale: tw\ntdd: true\ntools:\n  - claude\n",
+        "locale: ja\n",
+    );
+    let app_before = std::fs::read_to_string(p.dir.join(".speclink.yaml")).unwrap();
+    let wf_before = std::fs::read_to_string(p.dir.join("openspec").join("config.yaml")).unwrap();
+
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_speclink"));
+    cmd.env_remove("SPECLINK_STORE_URL").env_remove("SPECLINK_TOKEN");
+    let out = cmd.arg("update").current_dir(&p.dir).output().expect("run speclink update");
+    assert!(out.status.success(), "update failed: {}", String::from_utf8_lossy(&out.stderr));
+
+    assert_eq!(
+        std::fs::read_to_string(p.dir.join(".speclink.yaml")).unwrap(),
+        app_before,
+        "update must not rewrite .speclink.yaml"
+    );
+    assert_eq!(
+        std::fs::read_to_string(p.dir.join("openspec").join("config.yaml")).unwrap(),
+        wf_before,
+        "update must not rewrite openspec/config.yaml"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr).trim(),
+        "",
+        "no deprecation warning on stderr"
     );
 }

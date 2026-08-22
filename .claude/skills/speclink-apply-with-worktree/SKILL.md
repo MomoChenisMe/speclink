@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.1"
+  version: "v1.20.2"
   generatedBy: "Speclink"
 ---
 
@@ -284,13 +284,13 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
 5. **Check project preferences**
 
-   Read `.speclink.yaml` in the project root.
-   If `tdd: true` is set, apply TDD discipline throughout implementation:
+   The apply instructions payload carries the effective policy toggles as the `tdd` and `audit` boolean fields — read them from the payload; do not read any config file for these.
+   If `tdd` is true, apply TDD discipline throughout implementation:
    - For each task, write a failing test FIRST, then implement to make it pass
    - Fetch TDD instructions by running `speclink instructions --skill tdd`, then follow the Red-Green-Refactor cycle
    - For bug fixes, reproduce the bug with a failing test before fixing
 
-   If `audit: true` is set, apply sharp-edges discipline throughout implementation:
+   If `audit` is true, apply sharp-edges discipline throughout implementation:
    - When designing APIs or interfaces, evaluate through 3 adversary lenses (Scoundrel, Lazy Developer, Confused Developer)
    - When adding configuration options, verify defaults are secure and zero/empty values are safe
    - When accepting parameters, check for type confusion and silent failures

@@ -1139,7 +1139,7 @@ fn run_instructions(
         let payload = crate::instructions::build_apply(&host, store, env, &change, &schema)?;
         return Ok(CommandOutcome::Instructions(InstructionsOutcome::Apply(payload)));
     }
-    let payload = crate::instructions::build_artifact(&host, store, env, &change, &schema, artifact)?
+    let payload = crate::instructions::build_artifact(store, env, &change, &schema, artifact)?
         .ok_or_else(|| {
             CommandError::new(
                 ErrorCode::NotFound,

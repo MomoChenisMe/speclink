@@ -1835,6 +1835,8 @@ fn apply_instructions(apply: engine::ApplyInstructions) -> ApplyInstructions {
         state: apply.state,
         missing_artifacts: apply.missing_artifacts,
         locale: apply.locale,
+        tdd: apply.tdd,
+        audit: apply.audit,
         instruction: apply.instruction,
     }
 }

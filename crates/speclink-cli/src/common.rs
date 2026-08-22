@@ -1,6 +1,6 @@
 //! Cross-family plumbing: the pieces two or more verb families share, plus
-//! the dispatch-level preambles main.rs runs before any family is entered
-//! (the warn_* pair).
+//! the dispatch-level preamble main.rs runs before any family is entered
+//! (warn_leftover_remote_file).
 //!
 //! Admission rule (design D3): a symbol lands here when two or more families
 //! use it, or when dispatch itself does. Single-family helpers stay private
@@ -12,28 +12,6 @@ use std::io::{IsTerminal, Read};
 
 use core::store::Store;
 use core::workspace::Workspace;
-
-/// Deprecation signal for the legacy policy keys: exactly one fixed-prefix stderr line per
-/// invocation when `.speclink.yaml` still carries keys whose canonical home is
-/// `openspec/config.yaml`. stdout (including `--json`) stays untouched; no keys → no output.
-pub(crate) fn warn_deprecated_policy_keys() {
-    // Warning helpers stay silent on discovery/parse errors — the command's own
-    // path surfaces the fail-closed config error with the proper exit code.
-    let Ok(Some(ws)) = Workspace::discover_cwd() else {
-        return;
-    };
-    let Ok(app) = core::config::AppConfig::load(&ws.app_config()) else {
-        return;
-    };
-    let keys = app.deprecated_policy_keys();
-    if keys.is_empty() {
-        return;
-    }
-    eprintln!(
-        "speclink: warning: deprecated policy keys in .speclink.yaml: {} (move them to openspec/config.yaml)",
-        keys.join(", ")
-    );
-}
 
 /// Migration signal for the abolished connection file: exactly one fixed-prefix stderr
 /// line per invocation while `.speclink.remote.yaml` lingers in the project root. The

@@ -33,43 +33,15 @@ How to establish the connection, sign in, and recover from a lost connection is 
 
 ## Resolution order
 
-Effective policy values are resolved through four layers; the first layer where a key is present wins:
+Effective policy values are resolved through three layers; the first layer where a key is present wins:
 
 | Priority | Layer | Notes |
 |---|---|---|
 | 1 (highest) | `SPECLINK_LOCALE` / `SPECLINK_SPEC_LOCALE` / `SPECLINK_TDD` / `SPECLINK_AUDIT` / `SPECLINK_WORKTREE` | Boolean variables accept only `true` / `false` (case-insensitive). Any other value — `yes`, `1`, empty — is treated as **unset** and falls through to the next layer. |
-| 2 | Legacy keys in `.speclink.yaml` | Deprecated compatibility layer (see below). A key that is *present* wins, even with value `false`. |
-| 3 | `openspec/config.yaml` | The canonical home. |
-| 4 (lowest) | Built-in defaults | `locale` unset = English, `tdd` = false, `audit` = false. |
+| 2 | `openspec/config.yaml` | The canonical home. |
+| 3 (lowest) | Built-in defaults | `locale` unset = English, `tdd` = false, `audit` = false. |
 
-## Deprecated: policy keys in `.speclink.yaml`
-
-Older projects carry `locale`, `spec_locale`, `tdd`, or `audit` in `.speclink.yaml`. `worktree` has no legacy key: writing it there has no effect and prints no warning. The four legacy keys still work — their values keep winning over `openspec/config.yaml`, so nothing changes silently — but every command prints one line to stderr:
-
-```
-speclink: warning: deprecated policy keys in .speclink.yaml: tdd, audit (move them to openspec/config.yaml)
-```
-
-The line has a fixed prefix (`speclink: warning:`), appears exactly once per invocation, and never touches stdout — `--json` output is unaffected.
-
-### Migrating from the old layout
-
-1. Move the four policy keys (whichever you use) from `.speclink.yaml` into `openspec/config.yaml`, keeping the same values.
-2. Delete them from `.speclink.yaml`, leaving only `tools` and (if customized) `spec_dir`.
-3. Run any command — the warning is gone, and effective values are unchanged (the canonical layer now supplies what the legacy layer did).
-
-Before → after:
-
-```yaml
-# .speclink.yaml (before)          # .speclink.yaml (after)
-locale: tw                         tools:
-tdd: true                            - claude
-tools:
-  - claude                         # openspec/config.yaml (after)
-                                   schema: spec-driven
-# openspec/config.yaml (before)    locale: tw
-schema: spec-driven                tdd: true
-```
+Policy keys (`locale`, `spec_locale`, `tdd`, `audit`, `worktree`) written into `.speclink.yaml` have no effect and print no warning — the file still parses, the keys are simply ignored. If you carry such keys, move them into `openspec/config.yaml` with the same values.
 
 ## Managing `openspec/config.yaml` with the `workflow-config` verb
 
@@ -77,7 +49,7 @@ schema: spec-driven                tdd: true
 
 | Subcommand | What it does |
 |---|---|
-| `show [--json]` | Prints the five policy fields, `context` (line count) and `rules` (entries per section). Shows the **canonical values** — environment variables and deprecated keys are NOT applied (resolving effective values is `speclink instructions`' job). The `--json` payload is camelCase: `locale`, `specLocale`, `tdd`, `audit`, `worktree`, `context`, `rules`; unset fields are `null`, unset toggles are `false`. |
+| `show [--json]` | Prints the five policy fields, `context` (line count) and `rules` (entries per section). Shows the **canonical values** — environment variables are NOT applied (resolving effective values is `speclink instructions`' job). The `--json` payload is camelCase: `locale`, `specLocale`, `tdd`, `audit`, `worktree`, `context`, `rules`; unset fields are `null`, unset toggles are `false`. |
 | `set <key> <value>` | Writes one of `locale`, `spec_locale`, `tdd`, `audit`, `worktree`. Any other key exits non-zero; `tdd`, `audit`, and `worktree` accept only `true`/`false`. `locale` accepts only the codes `tw`/`ja`/`en` and `spec_locale` only `tw`/`ja`/`en`/`auto` (case-sensitive) — display names such as 「繁體中文」 are rejected with the accepted codes listed. Setting `false` (or a locale to an empty string) **removes the key**, keeping unset-means-default intact. |
 | `context --stdin` | Sets `context` to the full stdin text; whitespace-only input removes the key. |
 | `rules <artifact> --stdin` | Replaces that artifact's rule section wholesale (one entry per line, blank lines ignored); empty stdin removes the section. `artifact` must be an artifact id of the active schema — an unknown id exits non-zero. |
@@ -153,8 +125,7 @@ Descriptor-generated content uses the **neutral rendering**: no `/speclink-` sla
 |---|---|---|
 | `spec_dir` | `openspec` | Spec-store directory, relative to project root |
 | `tools` | — | AI harnesses to generate instruction files for (names or descriptors) |
-| `locale` / `spec_locale` / `tdd` / `audit` | — | **Deprecated** — still honored, warns on every command |
-| `worktree` | — | No legacy key here; it has no effect and prints no warning. Policy always reads `openspec/config.yaml` |
+| `locale` / `spec_locale` / `tdd` / `audit` / `worktree` | — | No effect and no warning — policy always reads `openspec/config.yaml` |
 
 ### Environment variables
 

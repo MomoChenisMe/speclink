@@ -2,21 +2,9 @@ Follow Test-Driven Development discipline for implementation.
 
 **This skill enforces TDD rigor.** Every change starts with a test. No exceptions. No rationalizations.
 
-**Input**: The argument after `/speclink:tdd` describes what to implement or fix. Can be invoked standalone or auto-triggered by `/speclink:apply` when TDD is enabled in project config.
+**Input**: The task scope comes from the calling workflow — the engine embeds this discipline via `speclink instructions --skill tdd` wherever the effective `tdd` toggle is on (the apply instructions payload carries it as the `tdd` field), and the workflow applies it to each task.
 
 **Prerequisites**: Before starting TDD, verify the project has a working test framework. If no test framework is configured, identify the appropriate one for the project type (check existing config files like `package.json`, `Cargo.toml`, `Gemfile`), set it up, and confirm at least one trivial test passes before beginning the TDD cycle.
-
----
-
-## Usage Modes
-
-This skill works in two ways:
-
-1. **Standalone** (`/speclink:tdd <description>`): You drive the full TDD cycle for a specific task. You decide scope, write tests, implement, and refactor.
-
-2. **Auto-triggered by apply**: When `tdd: true` is set in `.speclink.yaml`, the apply workflow fetches these instructions and applies TDD discipline to each task. In this mode, the task scope is already defined by the apply workflow — focus your TDD cycle on that specific task only.
-
-In both modes, the Red-Green-Refactor discipline below applies equally.
 
 ---
 
