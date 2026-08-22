@@ -64,11 +64,8 @@ pub fn observed_facts(
     if !ws.root.join(".git").is_dir() {
         return WorktreeFacts::new();
     }
-    let Ok(app) = speclink_core::config::AppConfig::load(&ws.app_config()) else {
-        return WorktreeFacts::new();
-    };
     let policy =
-        crate::policy::resolve_effective_policy(get_env, &app, store.read_workflow_config().as_deref());
+        crate::policy::resolve_effective_policy(get_env, store.read_workflow_config().as_deref());
     match policy {
         Ok(p) if p.resolved().worktree => discover(ws, store),
         _ => WorktreeFacts::new(),

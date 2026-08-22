@@ -269,6 +269,12 @@ pub struct ApplyInstructions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub missing_artifacts: Option<Vec<String>>,
     pub locale: String,
+    /// Effective TDD/audit policy toggles. Deliberately NOT `serde(default)`:
+    /// a defaulted `false` from an old server would silently switch the apply
+    /// discipline off — fail closed on version skew instead (same rationale as
+    /// [`Progress`]'s code counters).
+    pub tdd: bool,
+    pub audit: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instruction: Option<String>,
 }
@@ -657,7 +663,7 @@ mod tests {
     #[test]
     fn apply_instructions_round_trip_without_a_preflight_field() {
         let apply: ApplyInstructions = serde_json::from_str(
-            r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"design":"design.md","proposal":"proposal.md","specs":"specs/**/*.md","tasks":"tasks.md"},"progress":{"total":3,"complete":3,"remaining":0,"codeTotal":2,"codeComplete":2,"codeRemaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"manual":false},{"id":"3","description":"1.3 Hand check","done":true,"manual":true}],"state":"all_done","locale":"English","instruction":"Work through the tasks.\n"}"#,
+            r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"design":"design.md","proposal":"proposal.md","specs":"specs/**/*.md","tasks":"tasks.md"},"progress":{"total":3,"complete":3,"remaining":0,"codeTotal":2,"codeComplete":2,"codeRemaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"manual":false},{"id":"3","description":"1.3 Hand check","done":true,"manual":true}],"state":"all_done","locale":"English","tdd":true,"audit":false,"instruction":"Work through the tasks.\n"}"#,
         )
         .unwrap();
         assert_eq!(apply.change_name, "demo");
@@ -667,11 +673,24 @@ mod tests {
         assert!(!apply.tasks[0].manual);
         assert!(apply.tasks[1].manual, "[M] task rides the wire as manual");
         assert_eq!(apply.state, "all_done");
+        assert!(apply.tdd, "tdd toggle rides the wire");
+        assert!(!apply.audit);
 
         let json = serde_json::to_value(&apply).unwrap();
         assert_eq!(json["contextFiles"]["design"], "design.md");
         assert_eq!(json["progress"]["codeRemaining"], 0, "camelCase on the new counters");
         assert_eq!(json["tasks"][1]["manual"], true);
+        assert_eq!(json["tdd"], true, "camelCase policy toggles on the wire");
+        assert_eq!(json["audit"], false);
+
+        // Version-skew fail closed: an old server's payload without the policy
+        // toggles must be rejected, never defaulted to "discipline off".
+        let mut skewed = json.clone();
+        skewed.as_object_mut().unwrap().remove("tdd");
+        assert!(
+            serde_json::from_value::<ApplyInstructions>(skewed).is_err(),
+            "a payload missing tdd must fail to deserialize"
+        );
         assert!(
             json.get("preflight").is_none(),
             "preflight is deliberately fs-only — the wire contract omits it"
