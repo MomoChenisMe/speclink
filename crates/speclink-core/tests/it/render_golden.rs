@@ -222,6 +222,53 @@ fn archive_skill_describes_two_field_trace_and_the_zero_evidence_note() {
     }
 }
 
+/// Spec trace-skill「問題對應與敘事答案」＋「evidence 缺失的靜默補查」: the
+/// generated skill walks canon pass → trace --json → discussions/proposals →
+/// evidence files → live code, and the git fallback is a best-effort lead that
+/// never stops the answer.
+#[test]
+fn trace_skill_walks_the_chain_and_treats_git_lookup_as_best_effort() {
+    for (rel, content) in skill_for_both_tools("trace-chain", "trace") {
+        for needle in [
+            // canon pass → 鏈 → 討論／提案 → evidence → live code 的順序骨架
+            "Run `speclink list --specs --json`",
+            "`speclink show <name> --item-type spec`",
+            "Run `speclink trace <capability> --json`",
+            "`speclink discuss show <slug>`",
+            // evidence null 的 git 反查＝盡力線索、永不中止
+            "best-effort leads, not guarantees",
+            "never stop, and never ask the user to supply a missing record",
+            // live code 收尾
+            "must come from the current code",
+        ] {
+            assert!(
+                content.contains(needle),
+                "{rel}: missing chain-walk phrase {needle:?}"
+            );
+        }
+    }
+}
+
+/// Spec trace-skill「查無規格的考古降級」＋「降級不可見原則」: no-spec
+/// questions go to codebase archaeology in the same answer format, and internal
+/// pipeline words never reach the answer copy.
+#[test]
+fn trace_skill_keeps_degradations_invisible_and_archaeology_in_format() {
+    for (rel, content) in skill_for_both_tools("trace-degrade", "trace") {
+        for needle in [
+            "Do NOT reply \"no spec found\"",
+            "`git log -S` and `git blame`",
+            "NEVER contains internal pipeline words",
+            "identical whether it was assembled from the chain, from git history, or from code archaeology",
+        ] {
+            assert!(
+                content.contains(needle),
+                "{rel}: missing degradation phrase {needle:?}"
+            );
+        }
+    }
+}
+
 /// Spec verify-evidence「task done 寫入逐任務 evidence」的技能面: the commit
 /// skill's file attribution reads the change directory's record, falls back to
 /// the pre-move path, and treats the record itself as part of the commit.

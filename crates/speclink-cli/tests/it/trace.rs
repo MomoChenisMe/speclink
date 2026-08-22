@@ -142,6 +142,8 @@ fn json_payload_keeps_the_frozen_camel_case_shape() {
     let p = TempProject::new("json");
     let out = p.trace(&["checkout", "--json"]);
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    // beta 無 .evidence.json 的靜默路徑：spec 要求 exit 0 且 stderr 無警告。
+    assert!(out.stderr.is_empty(), "成功路徑 stderr 必須為空: {}", String::from_utf8_lossy(&out.stderr));
     let stdout = stdout_of(&out);
     // payload 外無雜訊：整個 stdout 就是單一 JSON 物件。
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is a single JSON object");

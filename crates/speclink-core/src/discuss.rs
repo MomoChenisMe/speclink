@@ -509,15 +509,7 @@ pub struct PromoteOutcome {
 /// archived names are historical references, not active names to reuse. Kept
 /// only when something remains after the prefix.
 fn strip_date_prefix(name: &str) -> &str {
-    let b = name.as_bytes();
-    let dated = b.len() > 11
-        && b[..4].iter().all(u8::is_ascii_digit)
-        && b[4] == b'-'
-        && b[5..7].iter().all(u8::is_ascii_digit)
-        && b[7] == b'-'
-        && b[8..10].iter().all(u8::is_ascii_digit)
-        && b[10] == b'-';
-    if dated { &name[11..] } else { name }
+    crate::util::strip_date_prefix(name)
 }
 
 /// Promote a discussion into a new change (the whole flow, shared by CLI and

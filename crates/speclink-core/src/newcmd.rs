@@ -170,10 +170,7 @@ keeps this exact name; re-run with --new to add this change's delta for it.\n"
         }
     }
     if !similar.is_empty() {
-        msg.push_str("Similar existing names:\n");
-        for s in &similar {
-            msg.push_str(&format!("  - {}\n", capname::suggestion_line(s)));
-        }
+        msg.push_str(&capname::suggestion_block(&similar));
     }
     msg.push_str(
         "To modify an existing capability, reuse its exact name.\n\

@@ -191,6 +191,24 @@ pub fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
+/// 剝除 `YYYY-MM-DD-` 日期前綴（封存 change 目錄名、封存後的討論儲存名）；
+/// 不合格式原樣回傳（寬容）。共用於 discuss 的 promote 還原與 trace 的
+/// 鏈組裝。
+pub(crate) fn strip_date_prefix(name: &str) -> &str {
+    let b = name.as_bytes();
+    let dated = b.len() > 11
+        && b[10] == b'-'
+        && b[..10]
+            .iter()
+            .enumerate()
+            .all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() });
+    if dated {
+        &name[11..]
+    } else {
+        name
+    }
+}
+
 /// Render a string as a YAML scalar safe to append to a metadata document.
 ///
 /// A newline inside an identity/agent/path string would inject arbitrary YAML

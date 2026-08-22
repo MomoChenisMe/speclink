@@ -48,6 +48,10 @@ fn render_trace(r: &TraceReport) {
             None => println!("    {} {}", color::dim("discussion:"), color::dim("(none)")),
         }
         match &c.evidence {
+            // 記錄存在但零筆 task：與「無記錄」區隔，標示為空。
+            Some(tasks) if tasks.is_empty() => {
+                println!("    {} {}", color::dim("evidence:"), color::dim("(empty)"))
+            }
             Some(tasks) => {
                 println!("    {}", color::dim("evidence:"));
                 for t in tasks {

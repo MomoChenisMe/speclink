@@ -8,7 +8,8 @@
 
 use crate::model::ChangeMeta;
 use crate::store::Store;
-use anyhow::{bail, Result};
+use crate::util::strip_date_prefix;
+use anyhow::Result;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -64,16 +65,19 @@ pub struct PromotedChange {
 /// 見 `not_found_message`）；鏈內單環缺漏一律寬容輸出。
 pub fn run(store: &dyn Store, capability: &str) -> Result<TraceReport> {
     let Some(spec_text) = store.read_canonical_spec(capability) else {
-        bail!(not_found_message(store, capability));
+        return Err(crate::station::NotFound(not_found_message(store, capability)).into());
     };
     let requirements = requirement_sources(&spec_text);
 
+    // 封存目錄名清單只列舉一次，鏈過濾與兄弟變更查找共用。
+    let archived = store.list_archived_changes();
+
     // D1：封存目錄含該 capability 的 delta 子目錄即入鏈；`YYYY-MM-DD-` 前綴
     // 的字典序即時序，遞增排序＝由舊至新。
-    let mut dated: Vec<String> = store
-        .list_archived_changes()
-        .into_iter()
+    let mut dated: Vec<String> = archived
+        .iter()
         .filter(|d| store.archived_delta_capabilities(d).iter().any(|c| c == capability))
+        .cloned()
         .collect();
     dated.sort();
 
@@ -106,7 +110,7 @@ pub fn run(store: &dyn Store, capability: &str) -> Result<TraceReport> {
         let promoted_to = crate::discuss::promoted_to(store, &slug)
             .into_iter()
             .map(|change| {
-                let capabilities = sibling_capabilities(store, &change);
+                let capabilities = sibling_capabilities(store, &archived, &change);
                 PromotedChange { change, capabilities }
             })
             .collect();
@@ -121,31 +125,31 @@ pub fn run(store: &dyn Store, capability: &str) -> Result<TraceReport> {
     })
 }
 
-/// D6：不存在的 capability 依 naming guard 慣例給至多三筆近似名。
+/// D6：不存在的 capability 依 naming guard 慣例給至多三筆近似名。trace 只
+/// 接受有正典規格者，故建議池濾掉 in-flight delta——列出它們等於指路再撞
+/// 同一個錯誤。
 fn not_found_message(store: &dyn Store, cap: &str) -> String {
-    let suggestions = crate::capname::suggest(cap, &crate::capname::suggestion_pool(store));
+    let pool: Vec<_> = crate::capname::suggestion_pool(store)
+        .into_iter()
+        .filter(|k| matches!(k.source, crate::capname::Source::Canonical))
+        .collect();
+    let suggestions = crate::capname::suggest(cap, &pool);
     let mut msg = format!("Capability '{cap}' is not in the canonical specs.\n");
     if suggestions.is_empty() {
         msg.push_str("No similar capability names found.");
     } else {
-        msg.push_str("Similar existing names:\n");
-        for s in &suggestions {
-            msg.push_str(&format!("  - {}\n", crate::capname::suggestion_line(s)));
-        }
+        msg.push_str(&crate::capname::suggestion_block(&suggestions));
         msg.push_str("Re-run with one of these exact names.");
     }
     msg
 }
 
-/// 兄弟變更觸及的 capability：優先取其最新封存目錄的 delta 集合，未封存
-/// 時退回進行中 delta；兩者皆無為空集合（寬容）。
-fn sibling_capabilities(store: &dyn Store, change: &str) -> Vec<String> {
-    if let Some(dated) = store
-        .list_archived_changes()
-        .into_iter()
-        .find(|d| strip_date_prefix(d) == change)
-    {
-        return store.archived_delta_capabilities(&dated);
+/// 兄弟變更觸及的 capability：優先取其最新封存目錄的 delta 集合（`archived`
+/// 為降序清單，首個命中即最新），未封存時退回進行中 delta；兩者皆無為空
+/// 集合（寬容）。
+fn sibling_capabilities(store: &dyn Store, archived: &[String], change: &str) -> Vec<String> {
+    if let Some(dated) = archived.iter().find(|d| strip_date_prefix(d) == change) {
+        return store.archived_delta_capabilities(dated);
     }
     store.delta_capabilities(change)
 }
@@ -164,8 +168,13 @@ fn trace_source(block: &str) -> Option<String> {
     let mut in_trace = false;
     for line in block.lines() {
         let t = line.trim();
-        if t.starts_with("<!-- @trace") {
-            in_trace = true;
+        if let Some(rest) = t.strip_prefix("<!-- @trace") {
+            // 單行變體 `<!-- @trace source: x ... -->`：source 值取至下一個
+            // 空白（change 名為 kebab token，不含空白）。
+            if let Some(inline) = rest.find("source:").map(|i| &rest[i + "source:".len()..]) {
+                return inline.split_whitespace().next().map(str::to_string);
+            }
+            in_trace = !t.ends_with("-->");
             continue;
         }
         if in_trace {
@@ -181,38 +190,33 @@ fn trace_source(block: &str) -> Option<String> {
     None
 }
 
-/// v2 的 entries 優先，退回 v1 的 touched；不可解析視同無記錄（單環寬容）。
+/// `.evidence.json` 的寬容讀取：v2 的 entries 優先、退回 v1 的 touched；
+/// 逐筆抽 (taskId, files)，缺欄的單筆略過而非整份作廢；整檔不可解析視同
+/// 無記錄（單環寬容）。
 fn parse_evidence(text: &str) -> Option<Vec<EvidenceTask>> {
-    let record: crate::tasks::TouchedRecord = serde_json::from_str(text).ok()?;
-    let tasks = if record.entries.is_empty() {
-        record
-            .touched
-            .into_iter()
-            .map(|t| EvidenceTask { task_id: t.task_id, files: t.files })
-            .collect()
-    } else {
-        record
-            .entries
-            .into_iter()
-            .map(|e| EvidenceTask { task_id: e.task_id, files: e.touched_files })
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let channel = |key: &str, id_key: &str, files_key: &str| -> Vec<EvidenceTask> {
+        let Some(arr) = v.get(key).and_then(|a| a.as_array()) else {
+            return Vec::new();
+        };
+        arr.iter()
+            .filter_map(|e| {
+                let task_id = e.get(id_key)?.as_str()?.to_string();
+                let files = e
+                    .get(files_key)?
+                    .as_array()?
+                    .iter()
+                    .filter_map(|f| f.as_str().map(str::to_string))
+                    .collect();
+                Some(EvidenceTask { task_id, files })
+            })
             .collect()
     };
-    Some(tasks)
-}
-
-/// 封存目錄名 `YYYY-MM-DD-<name>` 剝日期前綴；不合格式原樣回傳（寬容）。
-fn strip_date_prefix(name: &str) -> &str {
-    let b = name.as_bytes();
-    let dated = b.len() > 11
-        && b[10] == b'-'
-        && b[..10]
-            .iter()
-            .enumerate()
-            .all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() });
-    if dated {
-        &name[11..]
+    let entries = channel("entries", "taskId", "touchedFiles");
+    if entries.is_empty() {
+        Some(channel("touched", "task_id", "files"))
     } else {
-        name
+        Some(entries)
     }
 }
 
@@ -457,6 +461,63 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("not in the canonical specs"), "{msg}");
         assert!(!msg.contains("  - "), "無近似時不列建議: {msg}");
+    }
+
+    #[test]
+    fn an_in_flight_delta_capability_never_enters_the_suggestions() {
+        // trace 只接受有正典規格者：建議若列出 in-flight 名，照做會再撞同一錯。
+        let store = TestStore::default();
+        store
+            .canonical
+            .borrow_mut()
+            .insert("auth-session".to_string(), "# a\n\n## Purpose\n\nAuth sessions.\n".to_string());
+        store.metas.borrow_mut().insert("wip".to_string(), META_PLAIN.to_string());
+        store.put_artifact("wip", "specs/auth-flow/spec.md", "delta");
+
+        let err = run(&store, "auth").expect_err("must fail");
+        let msg = err.to_string();
+        assert!(msg.contains("auth-session"), "正典近似名照列: {msg}");
+        assert!(!msg.contains("auth-flow"), "in-flight delta 不入建議: {msg}");
+    }
+
+    #[test]
+    fn a_missing_capability_classifies_as_not_found() {
+        let store = TestStore::default();
+        let err = run(&store, "nope").expect_err("must fail");
+        assert!(
+            err.downcast_ref::<crate::station::NotFound>().is_some(),
+            "capability 不存在應可分類為 not_found"
+        );
+    }
+
+    #[test]
+    fn a_partially_malformed_evidence_entry_is_skipped_not_nuking_the_record() {
+        let store = store_with_canon();
+        put_archived(&store, "2026-07-10-alpha", META_PLAIN, &["x"]);
+        // 第一筆 entry 缺 taskId：只略過該筆，其餘保留（單環寬容）。
+        store.archived_artifacts.borrow_mut().insert(
+            ("2026-07-10-alpha".to_string(), ".evidence.json".to_string()),
+            r#"{"entries":[{"touchedFiles":["lost.rs"]},{"taskId":"tsk_2","touchedFiles":["kept.rs"]}]}"#
+                .to_string(),
+        );
+
+        let report = run(&store, "x").expect("assembles");
+        let tasks = report.changes[0].evidence.as_ref().expect("缺欄不整份退為 null");
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].task_id, "tsk_2");
+        assert_eq!(tasks[0].files, ["kept.rs"]);
+    }
+
+    #[test]
+    fn a_single_line_trace_comment_still_yields_its_source() {
+        let store = TestStore::default();
+        store.canonical.borrow_mut().insert(
+            "x".to_string(),
+            "## Requirements\n\n### Requirement: R1\n\nBody.\n\n<!-- @trace source: gamma updated: 2026-08-01 -->\n"
+                .to_string(),
+        );
+        let report = run(&store, "x").expect("assembles");
+        assert_eq!(report.requirements[0].source, "gamma", "單行 @trace 變體不得靜默失去歸屬");
     }
 
     // --- 日期前綴 ---
