@@ -176,3 +176,38 @@ fn apply_payload_carries_effective_policy_values() {
     let payload = json_payload(&p.instructions("apply", &[]));
     assert_eq!(payload["audit"].as_bool(), Some(true));
 }
+
+#[test]
+fn update_with_legacy_policy_keys_touches_no_config_and_stays_silent() {
+    // Spec scenario 既有專案不受範本變更影響: update on a project whose
+    // .speclink.yaml still carries old policy keys rewrites neither config file
+    // and prints no deprecation warning (the warning mechanism is gone).
+    let p = TempProject::new(
+        "update-legacy",
+        "locale: tw\ntdd: true\ntools:\n  - claude\n",
+        "locale: ja\n",
+    );
+    let app_before = std::fs::read_to_string(p.dir.join(".speclink.yaml")).unwrap();
+    let wf_before = std::fs::read_to_string(p.dir.join("openspec").join("config.yaml")).unwrap();
+
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_speclink"));
+    cmd.env_remove("SPECLINK_STORE_URL").env_remove("SPECLINK_TOKEN");
+    let out = cmd.arg("update").current_dir(&p.dir).output().expect("run speclink update");
+    assert!(out.status.success(), "update failed: {}", String::from_utf8_lossy(&out.stderr));
+
+    assert_eq!(
+        std::fs::read_to_string(p.dir.join(".speclink.yaml")).unwrap(),
+        app_before,
+        "update must not rewrite .speclink.yaml"
+    );
+    assert_eq!(
+        std::fs::read_to_string(p.dir.join("openspec").join("config.yaml")).unwrap(),
+        wf_before,
+        "update must not rewrite openspec/config.yaml"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr).trim(),
+        "",
+        "no deprecation warning on stderr"
+    );
+}

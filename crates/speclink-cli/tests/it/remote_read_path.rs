@@ -387,7 +387,7 @@ fn instructions_apply_from_an_old_server_without_policy_fields_fails_closed() {
     assert!(!r.status.success(), "a skewed payload must fail the command");
     let err = String::from_utf8_lossy(&r.stderr);
     assert!(
-        err.contains("did not return valid JSON") || err.to_lowercase().contains("parse"),
+        err.contains("did not return valid JSON"),
         "stderr must say the response is unparseable: {err}"
     );
     assert!(r.stdout.is_empty(), "no payload on stdout for a refused response");

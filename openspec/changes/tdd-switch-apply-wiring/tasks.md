@@ -26,4 +26,4 @@
 
 ## 5. 收尾驗證
 
-- [x] 5.1 逐 crate 全量驗證並盤點提交面：cargo test -p speclink-core、cargo test -p speclink-protocol、cargo test -p speclink-server、cargo test -p speclink-cli --test it、desktop crate cargo test 全綠；跑 speclink validate tdd-switch-apply-wiring 確認 delta 依 design D6: workflow-config spec 的 delta 形狀（REMOVED＋ADDED 成對宣告）可乾淨套用；git status 盤點——golden 四快照、assets.lock、speclink update 再生的全部渲染 SKILL.md 均納入提交清單，工作樹無未認領檔案 <!-- speclink-task:tsk_01M0KYNVCWA8D82X7ZH8PP05E5 -->
+- [x] 5.1 逐 crate 全量驗證並盤點提交面：cargo test -p speclink-core、cargo test -p speclink-protocol、cargo test -p speclink-remote、cargo test -p speclink-server、cargo test -p speclink-cli --test it、desktop crate cargo test 全綠；跑 speclink validate tdd-switch-apply-wiring 確認 delta 依 design D6: workflow-config spec 的 delta 形狀（REMOVED＋ADDED 成對宣告）可乾淨套用；git status 盤點——golden 四快照、assets.lock、speclink update 再生的全部渲染 SKILL.md 均納入提交清單，工作樹無未認領檔案 <!-- speclink-task:tsk_01M0KYNVCWA8D82X7ZH8PP05E5 -->
