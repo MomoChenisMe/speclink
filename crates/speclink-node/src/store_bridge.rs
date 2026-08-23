@@ -394,6 +394,20 @@ impl Store for JsStoreBridge {
             .unwrap_or(false)
     }
 
+    // OPTIONAL host method (not in REQUIRED_METHODS — existing JS stores keep
+    // validating): only the review/verify stations delete a document, so a
+    // store without it stays usable everywhere else and refuses loudly here.
+    fn delete_artifact(&self, change: &str, artifact: &str) -> anyhow::Result<()> {
+        match self.call("deleteArtifact", serde_json::json!([change, artifact])) {
+            Ok(_) => Ok(()),
+            Err(f) if f.code.as_deref() == Some("__missing__") => anyhow::bail!(
+                "this store does not implement deleteArtifact — \
+                 review and verify stamping delete the ticket"
+            ),
+            Err(f) => Err(anyhow::Error::new(f)),
+        }
+    }
+
     // --- delta specs ---
 
     fn delta_capabilities(&self, change: &str) -> Vec<String> {

@@ -28,3 +28,32 @@ createEngine SHALL 接受選填 actor 欄位（"Name <email>" 格式字串），
 
 - **WHEN** 檢視 dispatch 的輸入契約並嘗試以任意 argv 影響蓋章身分
 - **THEN** dispatch 不存在 actor 參數，蓋章內容只隨建構期 actor（或其回退）改變
+
+### Requirement: dispatch 的蓋章動詞
+
+dispatch SHALL 認得 `review add-round`、`review stamp`、`verify add-round`、`verify stamp` 四個動詞，argv 沿用 CLI 詞彙（`--accept`、`--agent <tool>`、`--stdin`）。add-round 的輪次內容 SHALL 由 dispatch 的 stdin 參數帶入；stamp 的 scope 指紋與 missing 清單 argv 承載不了，SHALL 由 stdin 參數以 JSON 帶入（`{ "scope": [{ "path", "hash" }], "missing": [] }`，兩欄缺席讀作空清單）。蓋章落下的 `reviewed_by`／`verified_by` SHALL 為該 engine 建構期綁定的 actor（未給時依儲存形式回退，與 created_by 同一條解析）。引擎既有的守門（任務未全完成、末輪未解必修 findings、scope ∪ missing 與工單聯集的分割）SHALL 原封傳遞，拒絕時以語義化例外呈現。蓋章會刪除工單文件，宿主 Store 因此 SHALL 可提供選填的 `deleteArtifact(change, artifact)`；未實作者只在蓋章路徑以語義化訊息拒絕，其餘動詞不受影響。
+
+#### Scenario: review 蓋章鏈落 actor
+
+- **WHEN** 以 actor: 'Rev <rev@example.com>' 建構引擎，對一個任務全完成的 change 依序 dispatch(['review', 'add-round', 'beta', '--stdin'], { stdin: 只含 SUGGESTION 的輪次內容 }) 與 dispatch(['review', 'stamp', 'beta', '--stdin'], { stdin: JSON.stringify({ missing: [輪次 Scope 的檔路徑] }) })
+- **THEN** add-round 解析為 { change: 'beta', round: 1 }；stamp 解析為 { change: 'beta' }，且 change 的 metadata 落下 reviewed_by: Rev <rev@example.com>
+
+#### Scenario: verify 蓋章鏈落 actor
+
+- **WHEN** 同引擎（同一 actor）對同一 change 走 verify add-round 與 verify stamp
+- **THEN** metadata 落下 verified_by 為同一個 actor 值
+
+#### Scenario: 蓋章守門的拒絕原封傳遞
+
+- **WHEN** 對末輪帶 CRITICAL finding 的工單 dispatch(['review', 'stamp', ...]) 而不帶 --accept
+- **THEN** dispatch 以 Error 拒絕，message 為引擎的語義化守門訊息，未落任何 reviewed_* 欄位
+
+#### Scenario: 宿主 Store 未實作 deleteArtifact 時蓋章失敗
+
+- **WHEN** 以未實作 deleteArtifact 的 JS Store 建構引擎，走完 add-round 後 dispatch(['review', 'stamp', ...])
+- **THEN** 以 Error 拒絕，訊息指名 deleteArtifact 是蓋章所需的方法；同一個 store 的 list／status／new 動詞不受影響
+
+#### Scenario: 未支援的子動詞明確拒絕
+
+- **WHEN** dispatch(['review', 'show', 'beta'])
+- **THEN** 以 code 為 invalid_argv 的 Error 拒絕，訊息指出 review 只支援 add-round 與 stamp
