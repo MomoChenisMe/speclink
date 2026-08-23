@@ -31,7 +31,7 @@ createEngine SHALL 接受選填 actor 欄位（"Name <email>" 格式字串），
 
 ### Requirement: dispatch 的蓋章動詞
 
-dispatch SHALL 認得 `review add-round`、`review stamp`、`verify add-round`、`verify stamp` 四個動詞，argv 沿用 CLI 詞彙（`--accept`、`--agent <tool>`、`--stdin`）。add-round 的輪次內容 SHALL 由 dispatch 的 stdin 參數帶入；stamp 的 scope 指紋與 missing 清單 argv 承載不了，SHALL 由 stdin 參數以 JSON 帶入（`{ "scope": [{ "path", "hash" }], "missing": [] }`，兩欄缺席讀作空清單）。蓋章落下的 `reviewed_by`／`verified_by` SHALL 為該 engine 建構期綁定的 actor（未給時依儲存形式回退，與 created_by 同一條解析）。引擎既有的守門（任務未全完成、末輪未解必修 findings、scope ∪ missing 與工單聯集的分割）SHALL 原封傳遞，拒絕時以語義化例外呈現。蓋章會刪除工單文件，宿主 Store 因此 SHALL 可提供選填的 `deleteArtifact(change, artifact)`；未實作者只在蓋章路徑以語義化訊息拒絕，其餘動詞不受影響。
+dispatch SHALL 認得 `review add-round`、`review stamp`、`verify add-round`、`verify stamp` 四個動詞，argv 沿用 CLI 詞彙（`--accept`、`--agent <tool>`、`--stdin`）。add-round 的輪次內容 SHALL 由 dispatch 的 stdin 參數帶入；stamp 的 scope 指紋與 missing 清單 argv 承載不了，SHALL 由 stdin 參數以 JSON 帶入（`{ "scope": [{ "path", "hash" }], "missing": [] }`，兩欄缺席讀作空清單）。蓋章落下的 `reviewed_by`／`verified_by` SHALL 為該 engine 建構期綁定的 actor（未給時依儲存形式回退，與 created_by 同一條解析）。引擎既有的守門（任務未全完成、末輪未解必修 findings、scope ∪ missing 與工單聯集的分割）SHALL 原封傳遞，拒絕時以語義化例外呈現。蓋章會刪除工單文件並改寫 change 的 metadata 原文，宿主 Store 因此 SHALL 可提供三個選填的前置方法：`deleteArtifact(change, artifact)`、`readChangeMeta(name)`、`writeChangeMeta(name, content)`；缺任何一個時蓋章 SHALL 在動手前以語義化訊息拒絕（工單與 metadata 皆不動），其餘動詞不受影響。
 
 #### Scenario: review 蓋章鏈落 actor
 

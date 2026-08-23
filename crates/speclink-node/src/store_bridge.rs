@@ -104,6 +104,23 @@ struct SettleError {
     code: Option<String>,
 }
 
+/// The optional store methods the review/verify stamp verbs depend on. The
+/// stamp deletes the ticket and rewrites the change metadata, so a store
+/// missing any of these must be refused before the first destructive step —
+/// the dispatcher captures this list at construction.
+pub fn missing_stamp_methods(store: &JsObject) -> Vec<&'static str> {
+    ["deleteArtifact", "readChangeMeta", "writeChangeMeta"]
+        .into_iter()
+        .filter(|name| {
+            !store
+                .get_named_property_unchecked::<JsUnknown>(name)
+                .and_then(|v| v.get_type())
+                .map(|t| t == ValueType::Function)
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
 /// Fail `createEngine` when the store object is missing interface methods,
 /// listing every missing name (fail fast, before any engine exists).
 pub fn validate_store_methods(store: &JsObject) -> Result<()> {
@@ -363,8 +380,16 @@ impl Store for JsStoreBridge {
     }
 
     fn write_change_meta(&self, name: &str, content: &str) -> anyhow::Result<()> {
-        self.call_result("writeChangeMeta", serde_json::json!([name, content]))?;
-        Ok(())
+        // Belt to the stamp verbs' up-front check: a missing implementation
+        // still gets a semantic message, never the raw `__missing__` marker.
+        match self.call("writeChangeMeta", serde_json::json!([name, content])) {
+            Ok(_) => Ok(()),
+            Err(f) if f.code.as_deref() == Some("__missing__") => anyhow::bail!(
+                "this store does not implement writeChangeMeta — \
+                 stamping rewrites the change metadata"
+            ),
+            Err(f) => Err(anyhow::Error::new(f)),
+        }
     }
 
     // Like the change-meta raw pair, `deleteChange` is an OPTIONAL host method
