@@ -14,6 +14,15 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/node-sdk.yml'
+  # 同檔雙角色（設計 D1）：push／PR 是 CI 驗證（無 version，佔位版號打包），
+  # release.yml 以 workflow_call 帶 tag 版重用同一份 build/pack，蓋章後的
+  # npm-tarballs artifact 因屬同一 workflow run 而能被 caller 的後續 job 下載。
+  workflow_call:
+    inputs:
+      version:
+        description: '發布版號（X.Y.Z，不帶 v 前綴）；留空則以 repo 內佔位版號打包'
+        required: false
+        type: string
 
 defaults:
   run:
@@ -110,6 +119,14 @@ jobs:
 
       - name: Distribute binaries into sub-packages
         run: npx napi artifacts
+
+      # 版號蓋章（設計 D2）：只在 workflow_call 帶 version 時執行，把 tag 版寫進主
+      # 套件與全部平台子套件並物化 optionalDependencies。push／PR 無此輸入即跳過，
+      # 打包行為與導入 workflow_call 前完全一致。
+      - name: Stamp the release version onto the package family
+        if: inputs.version != ''
+        working-directory: .
+        run: node scripts/npm-engine-package.mjs --version "${{ inputs.version }}" --dir crates/speclink-node
 
       - name: Pack the main package and every platform sub-package
         run: |

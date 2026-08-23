@@ -38,7 +38,7 @@ which station it stands at, how far its tasks moved, and what its specs changed:
 ## Current capabilities / 目前能力
 
 - **Available:** Local Repo CLI, Local Desktop, generated Agent skills (every station, for both Claude and Codex), Command Runtime/Host/Protocol, SQLite/Server FS/PostgreSQL TeamStore, single-node Server with Admin and Auth, Remote CLI and Context Projection, Server operations (deployment, backup and restore), and the desktop and CLI install channels.
-- **Partial:** the Node SDK (the binding works but is not published to npm), Desktop Remote Workspace, and remote task evidence.
+- **Partial:** the Node SDK (the binding works and the npm publishing pipeline is wired; it reaches npm with the first release that carries the engine), Desktop Remote Workspace, and remote task evidence.
 - **Planned:** MCP and Copilot in-process tools, SSO, runtime plugins, and cluster mode.
 - **Deprecated:** the legacy remote REST v1 prototype; new work uses the current Client Protocol and Host path.
 

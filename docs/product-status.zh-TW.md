@@ -43,7 +43,7 @@
 | Generated Agent Skills | Available（可用） | Claude `/speclink-*`、Codex `$speclink-*`（也可從 `/skills` 清單挑選） | [生成的 apply skill](../.agents/skills/speclink-apply/SKILL.md)<br>[生成的 verify skill](../.agents/skills/speclink-verify/SKILL.md) | 生成面已涵蓋 onboard／discuss／improve／propose／apply／worktree／ingest／drift／quality／review／verify／archive 與 audit／commit／config；唯一不對稱是 `analyze` 只有 Claude 側，Codex 直接用 CLI。生成數量取決於 `worktree` 政策：關閉時 Claude 15 個、Codex 14 個，開啟時各多兩個 worktree 技能（本 repo 已開啟，因此是 17 與 16）。 | 2026-08-13 |
 | Local Desktop | Available（可用） | Tauri/React change 看板、spec、discussion、archive、tasks、設定與 tray | [Desktop scripts](../apps/desktop/package.json)<br>[Desktop UI tests](../apps/desktop/src/__tests__/App.test.tsx) | Local workspace 可用；Remote Workspace 的完成度另見本表。 | 2026-08-13 |
 | Quality stations（review／verify） | Available（可用） | `/speclink-review`、`/speclink-verify`、`/speclink-quality`；CLI 為 `speclink review`／`speclink verify` | [review 站實作](../crates/speclink-core/src/review.rs)<br>[蓋章與工單語意](../crates/speclink-core/src/station.rs) | 兩道關卡都落工單、多輪，必修集合為空才蓋章（SUGGESTION 不擋章）；蓋章後範圍內檔案再被改會降級為「其後有變動」。 | 2026-08-13 |
-| Node N-API SDK | Partial（部分可用） | 自本 repo 建置 `crates/speclink-node` 後以路徑載入 | [Node 套件入口](../crates/speclink-node/package.json)<br>[dispatch contract tests](../crates/speclink-node/__test__/dispatch-contract.spec.ts) | **尚未發布至 npm**：`npm install @speclink/engine` 取不到套件，目前只能自 repo 建置（需 Rust 工具鏈）。Engine／Store bridge 本身可用；完整 Node Host 與 Copilot Tool 套件尚未交付。 | 2026-08-13 |
+| Node N-API SDK | Partial（部分可用） | `npm install @speclink/engine`（自首個帶 engine 的 release 起）；在那之前自本 repo 建置 `crates/speclink-node` 後以路徑載入 | [Node 套件入口](../crates/speclink-node/package.json)<br>[dispatch contract tests](../crates/speclink-node/__test__/dispatch-contract.spec.ts)<br>[npm 發布 job](../.github/workflows/release.yml)<br>[版號蓋章測試](../scripts/npm-engine-package.test.mjs) | **發布管線已接、registry 上還沒有套件**：每推一個 release tag 就以該 tag 版號發布主套件與五個平台子套件，實際能 `npm install` 到以首個帶 engine 的 release 為準；在那之前只能自 repo 建置（需 Rust 工具鏈）。Engine／Store bridge 本身可用；完整 Node Host 與 Copilot Tool 套件尚未交付。 | 2026-08-23 |
 | Install channels / 安裝通路 | Available（可用） | 桌面安裝檔（macOS dmg、Windows NSIS、Linux AppImage 與 deb）、CLI 安裝腳本與 Homebrew tap、server 的 npx 與 Docker | [安裝腳本測試](../scripts/install.test.mjs)<br>[Homebrew formula 產生器](../scripts/homebrew-formula.mjs) | 桌面與 CLI 三平台皆有通路；Windows 安裝檔目前未經程式碼簽章，首次執行需放行 SmartScreen。 | 2026-08-13 |
 | Command Runtime, Host and Protocol | Available（可用） | Rust crates 供 CLI、Server 與 Node adapter 共用 | [Host 雙路徑測試](../crates/speclink-host/tests/bridge_dual_path.rs)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | 基礎 typed command/query/context 路徑已存在；Agent 生態包裝與部分進階 gate 仍分列為 Partial／Planned。 | 2026-08-13 |
 | SQLite TeamStore | Available（可用） | `speclink-server` 的預設 `sqlite` driver | [SQLite conformance tests](../crates/speclink-store-sqlite/tests/conformance.rs)<br>[driver 選型文件](server-store-drivers.zh-TW.md) | 單一 instance 定位；cluster 不在目前能力內。 | 2026-08-13 |
@@ -73,7 +73,7 @@
 
 ## Known documentation gap / 已知文件缺口
 
-`@speclink/engine` 尚未發布至 npm。文件示範的是自 repo 建置的載入路徑，見 [Node SDK](sdk-node.zh-TW.md)。npm 通路的方向與可觀察下一步見[專案路線圖](roadmap.zh-TW.md)。
+`@speclink/engine` 的發布管線已接上，但 registry 上還沒有套件——實際可 `npm install` 以首個帶 engine 的 release 為準。在那之前 [Node SDK](sdk-node.zh-TW.md) 的自 repo 建置段仍是唯一可行路徑。npm 通路的方向與可觀察下一步見[專案路線圖](roadmap.zh-TW.md)。
 
 ## Target references / 目標參考
 

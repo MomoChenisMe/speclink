@@ -22,11 +22,11 @@
 
 **目前到哪**
 
-N-API 綁定本身可用：Engine 與 Store bridge 已經接通，dispatch 契約也有測試守著。缺的是通路。`@speclink/engine` 尚未發布到 npm，所以[Node SDK 文件](sdk-node.zh-TW.md)示範的是自 repo 建置的載入路徑，而不是 `npm install`。Rust 使用者則已經可以直接依賴 `speclink-core` crate。
+N-API 綁定本身可用：Engine 與 Store bridge 已經接通，dispatch 契約也有測試守著。通路也接上了——release 管線每推一個 tag 就建置五平台、以該 tag 版號蓋章，並把 `@speclink/engine` 與五個平台子套件發布到 npm。差的只剩「跑過一次」：registry 上還沒有套件，所以 [Node SDK 文件](sdk-node.zh-TW.md)仍保留自 repo 建置作為替代路徑。Rust 使用者則已經可以直接依賴 `speclink-core` crate。
 
 **可觀察的下一步**
 
-在一個全新的資料夾裡 `npm install @speclink/engine` 裝得起來，而且不需要本機有 Rust 工具鏈。屆時 Node SDK 文件的載入示範會從「自 repo 建置」換成套件匯入，專案能力狀態的 Node SDK 一列也會改判。
+首個帶 engine 的 release tag 推出之後，在一個全新的資料夾裡 `npm install @speclink/engine` 裝得起來，而且不需要本機有 Rust 工具鏈。屆時專案能力狀態的 Node SDK 一列也會改判。
 
 ## Build your own client / 以引擎自建客戶端
 

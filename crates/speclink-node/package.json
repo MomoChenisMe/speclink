@@ -1,6 +1,7 @@
 {
   "name": "@speclink/engine",
   "version": "0.1.0",
+  "//": "version 為佔位符，不隨 workspace 版本 bump；發布產物的版號一律由 release tag 於打包前蓋章決定（scripts/npm-engine-package.mjs，經 .github/workflows/node-sdk.yml 的 version 輸入觸發）",
   "description": "Speclink spec-driven development engine — Node.js bindings (napi-rs)",
   "main": "index.js",
   "types": "index.d.ts",

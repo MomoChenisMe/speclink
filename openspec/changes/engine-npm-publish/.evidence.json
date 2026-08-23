@@ -1,0 +1,178 @@
+{
+  "version": 2,
+  "change": "engine-npm-publish",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 新增 scripts/npm-engine-package.test.mjs：以 fixture 套件樹（主套件＋數個平台子套件目錄）斷言蓋章後主套件與每個子套件 version 皆為指定版、主套件 optionalDependencies 恰為子套件名各釘同版；另斷言子套件清單來自目錄列舉（fixture 增減目錄時結果跟著變）與缺 --version 參數時以非零結束。測試慣例與 scripts/npm-server-package.test.mjs 同款，先寫並確認紅燈",
+      "files": [
+        "scripts/npm-engine-package.test.mjs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 實作 scripts/npm-engine-package.mjs（介面 --version X.Y.Z --dir <套件根>）：寫入主套件與 npm/ 底下各平台子套件的 version、物化主套件 optionalDependencies（自目錄列舉子套件名，不硬編碼 triple 清單），跑 1.1 測試至綠燈。此組落實 spec 需求「engine npm 套件家族與版號蓋章」與 design D2（版號蓋章＝pack 前跑 scripts/npm-engine-package.mjs，只動 CI checkout）",
+      "files": [
+        "scripts/npm-engine-package.mjs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 .github/workflows/node-sdk.yml 的 on: 增加 workflow_call（選填字串輸入 version），既有 push／pull_request 觸發與全部 job 內容保留不變——落實 spec 需求「build/pack workflow 可被 release 管線重用」與 design D1（同檔雙角色）",
+      "files": [
+        ".github/workflows/node-sdk.yml"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 .github/workflows/release.yml 新增 engine-npm-build job：以 uses 呼叫 ./.github/workflows/node-sdk.yml 並傳 version（自 tag 名去除 v 前綴），使蓋章 tarball 以 npm-tarballs artifact 存在於同一 workflow run",
+      "files": [
+        ".github/workflows/release.yml"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.1 crates/speclink-node/package.json 以 \"//\" 註解欄記載：版號為佔位符，發布產物版號一律由 release tag 蓋章決定（scripts/npm-engine-package.mjs），不隨 workspace 版本 bump",
+      "files": [
+        "crates/speclink-node/package.json"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "5.1 docs/sdk-node.zh-TW.md 與 docs/sdk-node.md 的「取得方式」段改寫：npm install @speclink/engine 為主路徑（附「以首個帶 engine 的 release 為準」的生效說明）、自 repo 建置降為替代路徑",
+      "files": [
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "5.2 docs/product-status.zh-TW.md 與 docs/product-status.md 的 Node N-API SDK 列與底部註記：依實作完成當下事實改寫（發布管線已接、自下個 release tag 起上 npm），刷新查核日期",
+      "files": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "5.3 docs/roadmap.zh-TW.md 與 docs/roadmap.md 的「SDK / SDK 發布」線：目前到哪與可觀察下一步改寫為管線已接、等首個帶 engine 的 release",
+      "files": [
+        "docs/roadmap.md",
+        "docs/roadmap.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.4 README.md 與 README.en.md 的能力狀態行：Node SDK 的「尚未發布至 npm」措辭改為管線已接語意——本組四項皆遵循 design D4（文件翻面的表述基準）",
+      "files": [
+        "README.en.md",
+        "README.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M0PAACE9SVVNA7YDJWYBCZ87",
+      "taskDesc": "1.1 新增 scripts/npm-engine-package.test.mjs：以 fixture 套件樹（主套件＋數個平台子套件目錄）斷言蓋章後主套件與每個子套件 version 皆為指定版、主套件 optionalDependencies 恰為子套件名各釘同版；另斷言子套件清單來自目錄列舉（fixture 增減目錄時結果跟著變）與缺 --version 參數時以非零結束。測試慣例與 scripts/npm-server-package.test.mjs 同款，先寫並確認紅燈",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "79069ab763a451e55229d4eff88a27e2617e27b3",
+      "touchedFiles": [
+        "scripts/npm-engine-package.test.mjs"
+      ],
+      "recordedAt": "2026-08-23T14:22:51Z"
+    },
+    {
+      "taskId": "tsk_01M0PAACE9RGDMY9FENTFDRTQ7",
+      "taskDesc": "1.2 實作 scripts/npm-engine-package.mjs（介面 --version X.Y.Z --dir <套件根>）：寫入主套件與 npm/ 底下各平台子套件的 version、物化主套件 optionalDependencies（自目錄列舉子套件名，不硬編碼 triple 清單），跑 1.1 測試至綠燈。此組落實 spec 需求「engine npm 套件家族與版號蓋章」與 design D2（版號蓋章＝pack 前跑 scripts/npm-engine-package.mjs，只動 CI checkout）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "79069ab763a451e55229d4eff88a27e2617e27b3",
+      "touchedFiles": [
+        "scripts/npm-engine-package.mjs"
+      ],
+      "recordedAt": "2026-08-23T14:23:17Z"
+    },
+    {
+      "taskId": "tsk_01M0PAACE91M3449G8X8JJ1CW8",
+      "taskDesc": "2.1 .github/workflows/node-sdk.yml 的 on: 增加 workflow_call（選填字串輸入 version），既有 push／pull_request 觸發與全部 job 內容保留不變——落實 spec 需求「build/pack workflow 可被 release 管線重用」與 design D1（同檔雙角色）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "79069ab763a451e55229d4eff88a27e2617e27b3",
+      "touchedFiles": [
+        ".github/workflows/node-sdk.yml"
+      ],
+      "recordedAt": "2026-08-23T14:23:46Z"
+    },
+    {
+      "taskId": "tsk_01M0PAACE9JRFH1V02E8Z1FE57",
+      "taskDesc": "3.1 .github/workflows/release.yml 新增 engine-npm-build job：以 uses 呼叫 ./.github/workflows/node-sdk.yml 並傳 version（自 tag 名去除 v 前綴），使蓋章 tarball 以 npm-tarballs artifact 存在於同一 workflow run",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "79069ab763a451e55229d4eff88a27e2617e27b3",
+      "touchedFiles": [
+        ".github/workflows/release.yml"
+      ],
+      "recordedAt": "2026-08-23T14:25:27Z"
+    },
+    {
+      "taskId": "tsk_01M0PAACE9RP4M2YH0K909QJC1",
+      "taskDesc": "4.1 crates/speclink-node/package.json 以 \"//\" 註解欄記載：版號為佔位符，發布產物版號一律由 release tag 蓋章決定（scripts/npm-engine-package.mjs），不隨 workspace 版本 bump",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "79069ab763a451e55229d4eff88a27e2617e27b3",
+      "touchedFiles": [
+        "crates/speclink-node/package.json"
+      ],
+      "recordedAt": "2026-08-23T14:25:40Z"
+    },
+    {
+      "taskId": "tsk_01M0PAACE9T9ATYH0Q5R0CSC7Y",
+      "taskDesc": "5.1 docs/sdk-node.zh-TW.md 與 docs/sdk-node.md 的「取得方式」段改寫：npm install @speclink/engine 為主路徑（附「以首個帶 engine 的 release 為準」的生效說明）、自 repo 建置降為替代路徑",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "79069ab763a451e55229d4eff88a27e2617e27b3",
+      "touchedFiles": [
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-23T14:27:22Z"
+    },
+    {
+      "taskId": "tsk_01M0PAACE9WQK6P2HFBPK4M71Y",
+      "taskDesc": "5.2 docs/product-status.zh-TW.md 與 docs/product-status.md 的 Node N-API SDK 列與底部註記：依實作完成當下事實改寫（發布管線已接、自下個 release tag 起上 npm），刷新查核日期",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "79069ab763a451e55229d4eff88a27e2617e27b3",
+      "touchedFiles": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-23T14:28:29Z"
+    },
+    {
+      "taskId": "tsk_01M0PAACE99GX6EAVAQHX1PSEF",
+      "taskDesc": "5.3 docs/roadmap.zh-TW.md 與 docs/roadmap.md 的「SDK / SDK 發布」線：目前到哪與可觀察下一步改寫為管線已接、等首個帶 engine 的 release",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "79069ab763a451e55229d4eff88a27e2617e27b3",
+      "touchedFiles": [
+        "docs/roadmap.md",
+        "docs/roadmap.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-23T14:29:19Z"
+    },
+    {
+      "taskId": "tsk_01M0PAACE9T371SCFC1TT4KFXP",
+      "taskDesc": "5.4 README.md 與 README.en.md 的能力狀態行：Node SDK 的「尚未發布至 npm」措辭改為管線已接語意——本組四項皆遵循 design D4（文件翻面的表述基準）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "79069ab763a451e55229d4eff88a27e2617e27b3",
+      "touchedFiles": [
+        "README.en.md",
+        "README.md"
+      ],
+      "recordedAt": "2026-08-23T14:29:43Z"
+    }
+  ]
+}

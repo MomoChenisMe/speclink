@@ -21,14 +21,28 @@ model. The CLI and the desktop app still connect to it.
 
 ## Obtaining the package and platform notes
 
-> **Not published to npm yet.** `@speclink/engine` is currently available only
-> by building it from this repository; the package does not exist on the npm
-> registry. For today's status see the Node SDK row in
-> [Project Capability Status](product-status.md); for what the npm channel has to
-> solve, where it stands, and the observable next step, see the
-> [Project Roadmap](roadmap.md).
+```bash
+npm install @speclink/engine
+```
 
-Build from the repository and load it:
+```js
+const { createEngine } = require('@speclink/engine')
+```
+
+All five platforms — Windows x64, macOS x64 and arm64, Linux x64 and arm64
+(glibc) — ship as prebuilt sub-packages alongside the main package. Only the one
+matching your platform is downloaded, and **no Rust toolchain is required**.
+
+> **When this takes effect.** The publishing pipeline is wired: every release tag
+> publishes the engine to npm under that version. Whether `npm install` actually
+> resolves depends on the **first release that carries the engine** — before that
+> the package is not on the registry yet, so use the repository build below. For
+> today's status see the Node SDK row in
+> [Project Capability Status](product-status.md).
+
+### Alternative: build from the repository
+
+When no installable version exists yet, or you are changing the engine itself:
 
 ```bash
 git clone https://github.com/MomoChenisMe/speclink.git
@@ -46,10 +60,7 @@ const { createEngine } = require('/path/to/speclink/crates/speclink-node')
 - This is a **native module**: the engine is compiled Rust, loaded as a Node
   addon. The `npm run build` above produces a binary for the **current
   platform**, so run it on (or cross-build it for) your deploy target.
-- Building requires a Rust toolchain (`rustup`).
-- The engine itself supports Windows x64, macOS x64 and arm64, and Linux x64
-  and arm64 (glibc). Once published to npm these ship as prebuilt
-  sub-packages and the toolchain is no longer required.
+- Building requires a Rust toolchain (`rustup`); installing from npm does not.
 
 ## createEngine — two storage forms
 

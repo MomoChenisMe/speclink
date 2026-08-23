@@ -588,3 +588,62 @@ jobs:
           # 平台子套件先發、主套件最後，optionalDependencies 解析得到同版。
           for pkg in npm-out/server-*/; do (cd "$pkg" && npm publish --access public); done
           (cd npm-out/server && npm publish --access public)
+
+  # tag 名去 v 前綴的版號：reusable workflow 的 with: 只吃表達式，而 Actions 表達式
+  # 沒有字串裁切函式（無 replace／substring），只能由 shell 算成 job output 再傳入。
+  engine-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.strip.outputs.version }}
+    steps:
+      - name: Strip the v prefix from the tag
+        id: strip
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+  # engine 的五平台建置與打包（node-sdk-release spec「build/pack workflow 可被 release
+  # 管線重用」；設計 D1／D3）：以 workflow_call 重用 node-sdk.yml，不複製 build matrix。
+  # 屬同一個 workflow run，故蓋章後的 npm-tarballs artifact 下方 job 直接下載得到。
+  engine-npm-build:
+    needs: [engine-version]
+    uses: ./.github/workflows/node-sdk.yml
+    with:
+      version: ${{ needs.engine-version.outputs.version }}
+
+  # engine 的 npm 通路（node-sdk-release spec「npm 發布閘門與發布順序」；設計 D3）。
+  # 與 server 的 npm-publish 同語意：排在 Release 之後、NPM_TOKEN 缺席時各步跳過
+  # job 綠，存在而發布失敗時紅燈可單獨重跑。發布單位是上游打包好的 tarball，不重 pack。
+  engine-npm-publish:
+    needs: [engine-npm-build, release]
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: npm credential gate
+        id: gate
+        shell: bash
+        run: echo "enabled=$([ -n "$NPM_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v5
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/download-artifact@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          name: npm-tarballs
+          path: tarballs
+
+      - name: Publish the platform sub-packages, then the main package
+        if: steps.gate.outputs.enabled == 'true'
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # artifact 保留 crates/speclink-node 底下的相對結構：主套件 tarball 在根、
+          # 平台子套件在 npm/<平台>/。子套件先發、主套件最後，optionalDependencies
+          # 於主套件上架時皆已可解析到同版。
+          for tgz in tarballs/npm/*/*.tgz; do npm publish "$tgz" --access public; done
+          npm publish tarballs/*.tgz --access public
