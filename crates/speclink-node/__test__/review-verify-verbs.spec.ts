@@ -1,6 +1,6 @@
 // dispatch 的蓋章動詞（spec：dispatch 的蓋章動詞）。宿主 Store 形式沒有工作樹，
-// 指紋是宿主自己的真相——scope／missing 走 stdin 的 JSON，與 server 的 stamp
-// request body 同形狀。
+// 指紋是宿主自己的真相——scope／missing 走 stdin 的 JSON（server stamp request
+// body 的 scope／missing 子集；accept／agent 走 argv 旗標）。
 import { describe, expect, it } from 'vitest'
 
 import { createEngine } from '../index.js'
@@ -37,7 +37,11 @@ describe('review 蓋章鏈', () => {
       stdin: STAMP_PAYLOAD,
     })
     expect(stamped).toEqual({ change: CHANGE })
-    expect(await metaOf(store)).toContain(`reviewed_by: ${ACTOR}\n`)
+    const meta = await metaOf(store)
+    expect(meta).toContain(`reviewed_by: ${ACTOR}\n`)
+    // 蓋章是 read-modify-write：既有欄位必須原樣保留，不得整份洗掉。
+    expect(meta).toContain('schema: spec-driven\n')
+    expect(meta).toContain('created_by: tester\n')
     // 蓋章效果的另一半：工單刪除。
     expect(await store.readArtifact(CHANGE, 'review.md')).toBeNull()
   })
@@ -93,16 +97,60 @@ describe('蓋章守門與 argv 契約', () => {
     expect(meta).not.toContain('reviewed_by:')
   })
 
-  it('宿主 Store 未實作 deleteArtifact 時只有蓋章路徑失敗', async () => {
+  it('宿主 Store 未實作 deleteArtifact 時蓋章在動手前拒絕、工單不動', async () => {
     const store = memoryStore(fixtureProject())
-    // deleteArtifact 是選配方法——拿掉它，其餘動詞照走。
+    // deleteArtifact 是蓋章前置的選配方法——拿掉它，其餘動詞照走。
     delete (store as Partial<typeof store>).deleteArtifact
     const engine = createEngine({ store, actor: ACTOR })
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
     await expect(
       engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD }),
     ).rejects.toThrow(/deleteArtifact/)
+    // 前置檢查擋在任何寫入之前：工單還在、章沒落。
+    expect(await store.readArtifact(CHANGE, 'review.md')).toContain('## Round 1')
+    expect(await metaOf(store)).not.toContain('reviewed_by:')
     await expect(engine.dispatch(['list', '--json'])).resolves.toBeTruthy()
+  })
+
+  it('宿主 Store 未實作 writeChangeMeta 時蓋章在刪工單前拒絕', async () => {
+    const store = memoryStore(fixtureProject())
+    // 蓋章順序是先刪工單再寫 meta——缺 writeChangeMeta 若不擋在前面，
+    // 工單會先被刪掉、章卻落不下來（全部輪次永久遺失）。
+    delete (store as Partial<typeof store>).writeChangeMeta
+    const engine = createEngine({ store, actor: ACTOR })
+    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
+    await expect(
+      engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD }),
+    ).rejects.toThrow(/writeChangeMeta/)
+    expect(await store.readArtifact(CHANGE, 'review.md')).toContain('## Round 1')
+  })
+
+  it('宿主 Store 未實作 readChangeMeta 時蓋章拒絕，不得靜默洗掉既有 meta', async () => {
+    const store = memoryStore(fixtureProject())
+    // 缺 readChangeMeta 時橋接層讀作「無 metadata」，蓋章寫回會把
+    // schema／created_by 整份丟掉——必須拒絕，不能靜默資料流失。
+    delete (store as Partial<typeof store>).readChangeMeta
+    const engine = createEngine({ store, actor: ACTOR })
+    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
+    await expect(
+      engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD }),
+    ).rejects.toThrow(/readChangeMeta/)
+    expect(await metaOf(store)).toContain('created_by: tester\n')
+  })
+
+  it('同一 engine 的 review 與 verify 並發蓋章不互吃', async () => {
+    const { store, engine } = engineWithActor(ACTOR)
+    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
+    await engine.dispatch(['verify', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
+    // stamp 是整份 meta 的 read-modify-write：同實例內序列化，後蓋的章
+    // 必須疊在前一個章之上，不得以舊快照覆蓋。
+    await Promise.all([
+      engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD }),
+      engine.dispatch(['verify', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD }),
+    ])
+    const meta = await metaOf(store)
+    expect(meta).toContain(`reviewed_by: ${ACTOR}\n`)
+    expect(meta).toContain(`verified_by: ${ACTOR}\n`)
   })
 
   it('未支援的子動詞以 invalid_argv 拒絕', async () => {

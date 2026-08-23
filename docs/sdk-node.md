@@ -121,6 +121,7 @@ engine opens.
 |---|---|---|
 | Changes | `listChanges`, `findChange`, `changeExists`, `createChange`, `updatedAtSecs` | `listChanges` returns `{name, dir?, meta?}` sorted by name; `meta` mirrors `.openspec.yaml` (`schema`, `created`, `createdBy`, `createdWith`, `fromDiscussion`). `updatedAtSecs` is the "most recently updated" sort key (whole seconds; missing change → 0). |
 | Artifacts | `readArtifact`, `writeArtifact`, `artifactExists`, `deleteArtifact` (optional) | Artifact ids are schema output paths relative to the change: `proposal.md`, `design.md`, `tasks.md`, `specs/<capability>/spec.md`. An empty document counts as existing. `deleteArtifact` is only reached by review/verify stamping (which deletes the ticket); without it only that path fails. |
+| Change metadata (optional) | `readChangeMeta`, `writeChangeMeta` | The raw metadata document of a change (the `.openspec.yaml` text). Stamping is a read-modify-write of this document, so the stamp verbs treat this pair plus `deleteArtifact` as prerequisites: missing any of the three, the stamp refuses before touching anything (ticket intact). No other verb calls them. |
 | Delta specs | `deltaCapabilities`, `hasCapabilityDirs` | Capability names that have a delta spec inside a change, sorted. |
 | Canonical specs | `listCanonicalCapabilities`, `canonicalSpecExists`, `readCanonicalSpec`, `writeCanonicalSpec`, `canonicalSpecPath` | The project-level truth that archiving merges deltas into. |
 | Archive | `archivedChangeExists`, `archiveChange`, `readArchivedMeta`, `writeArchivedMeta` | `archiveChange(name, datedName)` moves an active change under its dated archive name (`YYYY-MM-DD-<name>`). |
@@ -238,6 +239,9 @@ await engine.dispatch(['review', 'stamp', 'add-auth', '--accept', '--agent', 'cl
 // → { change: 'add-auth' }
 ```
 
+- The stdin JSON is the **`scope`/`missing` SUBSET** of the server's stamp
+  request body — `accept`/`agent` are argv flags here, and unknown fields
+  are rejected (`invalid_argv`), not ignored.
 - `scope` holds **fingerprints you computed** — a host has no work tree and
   the engine never re-hashes; `missing` declares which paths of the ticket's
   scope are gone. The engine checks that `scope ∪ missing` equals the
@@ -250,8 +254,13 @@ await engine.dispatch(['review', 'stamp', 'add-auth', '--accept', '--agent', 'cl
   CRITICAL/WARNING findings in the last round (`--accept` waives the
   must-fix condition; SUGGESTION never blocks) reject with the engine's
   semantic message.
-- A successful stamp **deletes the ticket**, so a host Store needs the
-  optional `deleteArtifact`.
+- Stamping has three prerequisite store methods: `deleteArtifact` (removes
+  the ticket) plus `readChangeMeta` / `writeChangeMeta` (the metadata
+  read-modify-write). Missing any of them, the stamp refuses up front —
+  ticket and metadata untouched.
+- **Concurrency**: stamps within one engine instance serialize automatically
+  (two stamps never clobber each other); coordinating stamps on the same
+  change across instances or processes is your store's job.
 
 ## Render API
 

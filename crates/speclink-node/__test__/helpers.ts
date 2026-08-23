@@ -85,6 +85,9 @@ export function fixtureProject(): MemoryProject {
       alpha: {
         meta: { schema: 'spec-driven', created: '2026-07-01', createdBy: 'tester' },
         artifacts: {
+          // raw metadata 文件與 meta 物件同步——蓋章走 readChangeMeta 讀原文，
+          // 缺了它就測不出「既有欄位被整份洗掉」。
+          '.openspec.yaml': 'schema: spec-driven\ncreated: "2026-07-01"\ncreated_by: tester\n',
           'proposal.md': PROPOSAL_ALPHA,
           'tasks.md': TASKS_ALPHA,
           'specs/api-quota/spec.md': DELTA_ALPHA,
@@ -93,7 +96,11 @@ export function fixtureProject(): MemoryProject {
       },
       beta: {
         meta: { schema: 'spec-driven', created: '2026-07-02', createdBy: 'tester' },
-        artifacts: { 'proposal.md': PROPOSAL_BETA, 'tasks.md': TASKS_BETA },
+        artifacts: {
+          '.openspec.yaml': 'schema: spec-driven\ncreated: "2026-07-02"\ncreated_by: tester\n',
+          'proposal.md': PROPOSAL_BETA,
+          'tasks.md': TASKS_BETA,
+        },
         updatedAtSecs: 200,
       },
     },

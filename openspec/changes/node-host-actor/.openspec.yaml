@@ -5,3 +5,49 @@ created_with: claude
 from_discussion: node-sdk-completion-and-doc-alignment
 started_at: 2026-08-23
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-23
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 8
+reviewed_scope:
+  - path: crates/speclink-node/__test__/actor.spec.ts
+    hash: a94d4d4054717bb980d353d8c61009bda075e801656495bc90d84470e146ba2a
+  - path: crates/speclink-node/__test__/helpers.ts
+    hash: 62471e8836fe2674d22e5f7de0148eb63d393fa573a65804628de1ec45f1764d
+  - path: crates/speclink-node/__test__/review-verify-verbs.spec.ts
+    hash: ebff4bfdedc041748e37528a0ba16d3a1c9da550905e5f918246302921a5312d
+  - path: crates/speclink-node/index.d.ts
+    hash: d7fc3968c7880be10315c9bb93e84c6d2f202e6ac109ec8b347406b05a260bd5
+  - path: crates/speclink-node/index.js
+    hash: 3ebc72f17c572733ff5b708c48300089abcc4ad676dd77f124bb128da45e0f11
+  - path: crates/speclink-node/src/lib.rs
+    hash: e8fac338c1cc1ae53737d1b44fe309ae977449f7f82d79fe65e938f8d075d7ab
+  - path: crates/speclink-node/src/store_bridge.rs
+    hash: bae571f754b5c1abb84fae871526cd4bfda7731ba4f9ed83d3bbd3a6793ca6a5
+  - path: docs/sdk-node.md
+    hash: f0610bfb5b69e2053fe014510af450784be08808b8ff3b2246873f873fe2b399
+  - path: docs/sdk-node.zh-TW.md
+    hash: 0de3478c0a4d0731a09f6aea68c61253cbe53cc8ba6972e5de7a0fb715f38a26
+verified_at: 2026-08-23
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 8
+verified_scope:
+  - path: crates/speclink-node/__test__/actor.spec.ts
+    hash: a94d4d4054717bb980d353d8c61009bda075e801656495bc90d84470e146ba2a
+  - path: crates/speclink-node/__test__/helpers.ts
+    hash: 62471e8836fe2674d22e5f7de0148eb63d393fa573a65804628de1ec45f1764d
+  - path: crates/speclink-node/__test__/review-verify-verbs.spec.ts
+    hash: ebff4bfdedc041748e37528a0ba16d3a1c9da550905e5f918246302921a5312d
+  - path: crates/speclink-node/index.d.ts
+    hash: d7fc3968c7880be10315c9bb93e84c6d2f202e6ac109ec8b347406b05a260bd5
+  - path: crates/speclink-node/index.js
+    hash: 3ebc72f17c572733ff5b708c48300089abcc4ad676dd77f124bb128da45e0f11
+  - path: crates/speclink-node/src/lib.rs
+    hash: e8fac338c1cc1ae53737d1b44fe309ae977449f7f82d79fe65e938f8d075d7ab
+  - path: crates/speclink-node/src/store_bridge.rs
+    hash: bae571f754b5c1abb84fae871526cd4bfda7731ba4f9ed83d3bbd3a6793ca6a5
+  - path: docs/sdk-node.md
+    hash: f0610bfb5b69e2053fe014510af450784be08808b8ff3b2246873f873fe2b399
+  - path: docs/sdk-node.zh-TW.md
+    hash: 0de3478c0a4d0731a09f6aea68c61253cbe53cc8ba6972e5de7a0fb715f38a26

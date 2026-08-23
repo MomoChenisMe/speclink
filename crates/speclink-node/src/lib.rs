@@ -110,14 +110,19 @@ enum Backend {
     /// Built-in filesystem store over a project root (zero bridging cost).
     Fs { root: PathBuf, spec_dir: String },
     /// Host-implemented Store object, bridged from JavaScript.
-    Js(JsStoreBridge),
+    /// `missing_stamp_methods` lists the optional store methods stamping
+    /// needs (deleteArtifact / readChangeMeta / writeChangeMeta) that the
+    /// store did not implement — captured at construction so the stamp verbs
+    /// can refuse BEFORE any destructive step (the engine deletes the ticket
+    /// before it rewrites the metadata).
+    Js { bridge: JsStoreBridge, missing_stamp_methods: Vec<&'static str> },
 }
 
 impl Backend {
     fn store(&self) -> Box<dyn Store> {
         match self {
             Backend::Fs { root, spec_dir } => Box::new(speclink_fs::FsStore::new(root, spec_dir)),
-            Backend::Js(bridge) => Box::new(bridge.clone()),
+            Backend::Js { bridge, .. } => Box::new(bridge.clone()),
         }
     }
 
@@ -130,7 +135,7 @@ impl Backend {
                 root: root.clone(),
                 spec_dir_name: spec_dir.clone(),
             }),
-            Backend::Js(_) => None,
+            Backend::Js { .. } => None,
         }
     }
 }
@@ -143,6 +148,11 @@ pub struct Engine {
     /// request (or per identity); dispatch carries no identity parameter, so
     /// call-time forgery has no surface.
     actor: Option<Arc<str>>,
+    /// Stamping rewrites the whole change metadata (read-modify-write) with
+    /// no CAS in the Store contract — concurrent stamps on one instance would
+    /// clobber each other's stamp, so they serialize here. Coordination
+    /// ACROSS engine instances (or processes) belongs to the host store.
+    stamp_lock: Arc<std::sync::Mutex<()>>,
 }
 
 /// Construction-time normalization: a blank actor reads as "not given".
@@ -164,10 +174,11 @@ impl Engine {
     pub fn dispatch(&self, env: Env, argv: Vec<String>, stdin: Option<String>) -> Result<JsObject> {
         let backend = self.backend.clone();
         let actor = self.actor.clone();
+        let stamp_lock = self.stamp_lock.clone();
         let (deferred, promise) = env.create_deferred()?;
         std::thread::spawn(move || {
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_dispatch(&backend, actor.as_deref(), &argv, stdin.as_deref())
+                run_dispatch(&backend, actor.as_deref(), &stamp_lock, &argv, stdin.as_deref())
             }));
             let envelope = match outcome {
                 Ok(Ok(value)) => serde_json::json!({ "ok": true, "value": value }),
@@ -223,6 +234,7 @@ pub fn engine_from_fs(
             spec_dir: spec_dir.unwrap_or_else(|| "openspec".to_string()),
         }),
         actor: normalize_actor(actor),
+        stamp_lock: Arc::new(std::sync::Mutex::new(())),
     })
 }
 
@@ -237,10 +249,12 @@ pub fn engine_from_store(
     actor: Option<String>,
 ) -> Result<Engine> {
     store_bridge::validate_store_methods(&store)?;
+    let missing_stamp_methods = store_bridge::missing_stamp_methods(&store);
     let bridge = store_bridge::create_bridge(env, invoker)?;
     Ok(Engine {
-        backend: Arc::new(Backend::Js(bridge)),
+        backend: Arc::new(Backend::Js { bridge, missing_stamp_methods }),
         actor: normalize_actor(actor),
+        stamp_lock: Arc::new(std::sync::Mutex::new(())),
     })
 }
 
@@ -290,6 +304,7 @@ fn parse_argv<'a>(
 fn run_dispatch(
     backend: &Backend,
     actor: Option<&str>,
+    stamp_lock: &std::sync::Mutex<()>,
     argv: &[String],
     stdin: Option<&str>,
 ) -> DispatchResult {
@@ -305,8 +320,8 @@ fn run_dispatch(
         "status" => verb_status(backend, actor, rest),
         "new" => verb_new(backend, actor, rest, stdin),
         "claim" => verb_claim(backend, actor, rest),
-        "review" => verb_station(backend, actor, StationKind::Review, rest, stdin),
-        "verify" => verb_station(backend, actor, StationKind::Verify, rest, stdin),
+        "review" => verb_station(backend, actor, stamp_lock, StationKind::Review, rest, stdin),
+        "verify" => verb_station(backend, actor, stamp_lock, StationKind::Verify, rest, stdin),
         _ => Err(DispatchError::new(
             "invalid_argv",
             format!("Unknown or unsupported verb '{verb}'"),
@@ -463,7 +478,7 @@ fn verb_claim(backend: &Backend, actor: Option<&str>, args: &[String]) -> Dispat
         }
         // Ownership adjudication is a host-store capability — the optional
         // `claim` bridge method stays at the envelope layer (決策三).
-        Backend::Js(bridge) => match bridge.claim(name) {
+        Backend::Js { bridge, .. } => match bridge.claim(name) {
             Ok(v) => Ok(v),
             Err(f) if f.code.as_deref() == Some("__missing__") => Err(DispatchError::new(
                 "error",
@@ -522,10 +537,12 @@ impl StationKind {
 }
 
 /// `review stamp` / `verify stamp` payload, carried by dispatch's stdin
-/// parameter because argv cannot hold a fingerprint list. Same shape as the
-/// server's stamp request body: the work-tree holder pre-computes
-/// `(path, hash)` and declares which union paths are gone. Both fields
-/// default to empty, so a host with an empty ticket scope can omit stdin.
+/// parameter because argv cannot hold a fingerprint list. The scope/missing
+/// SUBSET of the server's stamp request body — accept and agent stay argv
+/// flags here, and unknown fields are rejected rather than ignored. The
+/// work-tree holder pre-computes `(path, hash)` and declares which union
+/// paths are gone. Both fields default to empty, so a host with an empty
+/// ticket scope can omit stdin.
 #[derive(serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StampPayload {
@@ -548,6 +565,7 @@ struct StampScopeEntry {
 fn verb_station(
     backend: &Backend,
     actor: Option<&str>,
+    stamp_lock: &std::sync::Mutex<()>,
     station: StationKind,
     args: &[String],
     stdin: Option<&str>,
@@ -555,7 +573,7 @@ fn verb_station(
     let noun = station.noun();
     match args.first().map(|s| s.as_str()) {
         Some("add-round") => verb_station_add_round(backend, actor, station, &args[1..], stdin),
-        Some("stamp") => verb_station_stamp(backend, actor, station, &args[1..], stdin),
+        Some("stamp") => verb_station_stamp(backend, actor, stamp_lock, station, &args[1..], stdin),
         _ => Err(DispatchError::new(
             "invalid_argv",
             format!("{noun} requires a subcommand: 'add-round' or 'stamp'"),
@@ -602,11 +620,27 @@ fn verb_station_add_round(
 fn verb_station_stamp(
     backend: &Backend,
     actor: Option<&str>,
+    stamp_lock: &std::sync::Mutex<()>,
     station: StationKind,
     args: &[String],
     stdin: Option<&str>,
 ) -> DispatchResult {
     let noun = station.noun();
+    // Fail BEFORE anything destructive: the engine deletes the ticket before
+    // it rewrites the metadata, so a store that cannot finish the stamp must
+    // be refused up front — never mid-way with the ticket already gone.
+    if let Backend::Js { missing_stamp_methods, .. } = backend {
+        if !missing_stamp_methods.is_empty() {
+            return Err(DispatchError::new(
+                "error",
+                format!(
+                    "{noun} stamp requires store methods this store does not implement: {} — \
+                     stamping rewrites the change metadata and deletes the ticket",
+                    missing_stamp_methods.join(", ")
+                ),
+            ));
+        }
+    }
     let a = parse_argv(args, &["agent"])?;
     let Some(change) = a.positionals.first().copied() else {
         return Err(DispatchError::new(
@@ -643,6 +677,10 @@ fn verb_station_stamp(
             core::command::Command::VerifyStamp { change, accept, tool, scope, missing }
         }
     };
+    // Serialize stamps within this instance — the metadata write has no CAS.
+    // A poisoned lock only means another stamp panicked; the metadata itself
+    // is no more suspect than after any failed dispatch, so proceed.
+    let _stamp_guard = stamp_lock.lock().unwrap_or_else(|e| e.into_inner());
     let outcome = run_engine(backend, actor, cmd)?;
     let (core::command::CommandOutcome::ReviewStamp(o)
     | core::command::CommandOutcome::VerifyStamp(o)) = outcome

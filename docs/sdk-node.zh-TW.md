@@ -76,6 +76,7 @@ const engine = createEngine({ store: myStore, actor: 'Alice <alice@example.com>'
 |---|---|---|
 | Changes | `listChanges`、`findChange`、`changeExists`、`createChange`、`updatedAtSecs` | `listChanges` 回傳 `{name, dir?, meta?}` 且按名稱排序；`meta` 對應 `.openspec.yaml`（`schema`、`created`、`createdBy`、`createdWith`、`fromDiscussion`）。`updatedAtSecs` 是「最近更新」排序鍵（整數秒；change 不存在 → 0）。 |
 | Artifacts | `readArtifact`、`writeArtifact`、`artifactExists`、`deleteArtifact`（選配） | artifact 識別碼是 schema 定義、相對於 change 的輸出路徑：`proposal.md`、`design.md`、`tasks.md`、`specs/<capability>/spec.md`。空文件也算存在。`deleteArtifact` 只有 review／verify 蓋章會用到（蓋章會刪掉工單），沒實作就只有蓋章路徑失敗。 |
+| Change metadata（選配） | `readChangeMeta`、`writeChangeMeta` | change 的 metadata 原文（`.openspec.yaml` 內容）。蓋章是這份文件的 read-modify-write，所以 stamp 動詞把這對方法與 `deleteArtifact` 一起當前置：缺任何一個，蓋章在動手前就整個拒絕（工單不動）；其餘動詞從不呼叫它們。 |
 | Delta specs | `deltaCapabilities`、`hasCapabilityDirs` | change 內含 delta spec 的 capability 名稱，排序後回傳。 |
 | Canonical specs | `listCanonicalCapabilities`、`canonicalSpecExists`、`readCanonicalSpec`、`writeCanonicalSpec`、`canonicalSpecPath` | 專案層級的正典規格，archive 時 delta 併入之處。 |
 | Archive | `archivedChangeExists`、`archiveChange`、`readArchivedMeta`、`writeArchivedMeta` | `archiveChange(name, datedName)` 把使用中的 change 移到含日期的封存名下（`YYYY-MM-DD-<name>`）。 |
@@ -170,10 +171,12 @@ await engine.dispatch(['review', 'stamp', 'add-auth', '--accept', '--agent', 'cl
 // → { change: 'add-auth' }
 ```
 
+- stdin 的 JSON 是 server stamp request body 的 **`scope`／`missing` 子集**——`accept`／`agent` 在這裡走 argv 旗標，多出來的欄位會被拒絕（`invalid_argv`），不是被忽略。
 - `scope` 是**你算好的指紋**——宿主沒有工作樹，引擎不會替你重算；`missing` 是工單範圍裡已經不存在的檔。引擎驗「scope ∪ missing ＝工單聯集且不相交」，不合就拒。兩個欄位都可省略（讀作空清單），不帶 `--stdin` 等同兩者皆空。
 - 落下的 `reviewed_by`／`verified_by` 就是建構期的 `actor`（見上面 createEngine 段）；`--agent` 落 `reviewed_with`／`verified_with`。
 - **守門原封傳遞**：任務沒做完、末輪還有未解的 CRITICAL／WARNING（`--accept` 可豁免必修條件、SUGGESTION 本來就不擋章），都會以引擎的語義化訊息 reject。
-- 蓋章成功會**刪掉工單**，所以宿主 Store 需要實作選配的 `deleteArtifact`。
+- 蓋章的前置方法有三個：`deleteArtifact`（刪工單）＋`readChangeMeta`／`writeChangeMeta`（metadata 的 read-modify-write）。缺任何一個，stamp 在動手前就拒絕——工單與 metadata 都不動。
+- **並發**：同一顆 engine 實例內的 stamp 會自動序列化（兩個章不會互吃）；跨實例、跨程序對同一 change 蓋章的協調，屬於你的 store 的職責。
 
 ## 渲染 API
 
