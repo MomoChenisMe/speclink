@@ -475,3 +475,107 @@ test('server-deployment 文件涵蓋內嵌交付、npm→web→rust 建置順序
     'server-deployment 文件應呈現 npm ci → web build → speclink-server 的建置順序',
   );
 });
+
+// --- engine 的 npm 發布通路（node-sdk-release spec；設計 D1／D2／D3） ---
+
+/// 從 workflow 全文切出一個 job 的區塊（沿用本檔既有的「下一個 job 開頭」切法）。
+function jobBlock(workflow, jobName, label) {
+  const start = requireIndex(workflow, `\n  ${jobName}:\n`, label);
+  const tail = workflow.slice(start + 1);
+  const next = tail.slice(1).search(/\n  [a-z][\w-]*:\s*\n/);
+  return next >= 0 ? tail.slice(0, next + 1) : tail;
+}
+
+/// 把 job 區塊切成一個個 step（步驟起首為 6 空格的 `- name:`／`- uses:`）。
+/// 斷言錨定到單一步驟，否則「整個 job 內出現過這串字」會被註解或別的步驟滿足。
+function jobSteps(jobText) {
+  return jobText.split(/\n {6}- (?=name:|uses:)/).slice(1);
+}
+
+/// 找出符合全部條件的唯一步驟，找不到即以帶標籤的訊息 fail。
+function requireStep(jobText, predicates, label) {
+  const found = jobSteps(jobText).filter((step) => predicates.every((p) => p.test(step)));
+  assert.equal(found.length, 1, `${label}: 應恰有一個步驟符合 ${predicates.join('、')}，實際 ${found.length} 個`);
+  return found[0];
+}
+
+test('node-sdk.yml 可被 release 管線重用，且版號蓋章不經字串內插', () => {
+  const nodeSdk = read('.github/workflows/node-sdk.yml');
+
+  // 同檔雙角色（設計 D1）：push／PR 保留，另開 workflow_call 的選填 version 輸入。
+  assert.match(nodeSdk, /^on:/m, 'node-sdk.yml 缺 on: 區塊');
+  assert.match(nodeSdk, /\n  push:/, 'node-sdk.yml：push 觸發不得移除');
+  assert.match(nodeSdk, /\n  pull_request:/, 'node-sdk.yml：pull_request 觸發不得移除');
+  assert.match(nodeSdk, /\n  workflow_call:\n\s+inputs:\n\s+version:/, 'node-sdk.yml 缺 workflow_call 的 version 輸入');
+
+  const pack = jobBlock(nodeSdk, 'package', 'node-sdk.yml');
+
+  // 蓋章排在 napi artifacts 之後、npm pack 之前（設計 D2）。
+  const iArtifacts = requireIndex(pack, 'npx napi artifacts', 'node-sdk.yml package job');
+  const iStamp = requireIndex(pack, 'npm-engine-package.mjs', 'node-sdk.yml package job');
+  // 以步驟名錨定，否則會命中註解裡提到的 npm pack。
+  const iPack = requireIndex(pack, 'Pack the main package', 'node-sdk.yml package job');
+  assert.ok(iArtifacts < iStamp && iStamp < iPack, 'node-sdk.yml：蓋章須落在 napi artifacts 與 npm pack 之間');
+
+  // 版號經 env 傳入，不得把 ${{ inputs.version }} 直接內插進 run:——tag 名可含
+  // 引號與分號，內插等於把 tag 名當 shell 原始碼執行。
+  assert.ok(
+    !/run:[^\n]*\$\{\{\s*inputs\.version\s*\}\}/.test(pack),
+    'node-sdk.yml：version 不得內插進 run:，須以 env: 傳入',
+  );
+  assert.match(pack, /env:\s*\n\s+VERSION:\s*\$\{\{ inputs\.version \}\}/, 'node-sdk.yml：蓋章步驟須以 env VERSION 傳入版號');
+
+  // 平台二進位的下載面須圈定——被 release 重用後與 caller 同一個 run，不圈定
+  // 會把 server-*／desktop-* 一起灌進 napi 的掃描目錄。
+  const binaryDownload = requireStep(
+    pack,
+    [/actions\/download-artifact@v4/, /path:\s*crates\/speclink-node\/artifacts/],
+    'node-sdk.yml package job：平台二進位下載步驟',
+  );
+  assert.match(binaryDownload, /pattern:\s*bindings-\*/, 'node-sdk.yml：平台二進位下載須以 pattern: bindings-* 圈定');
+
+  // binding.js 由 napi build 產生且被 gitignore，主套件的 files 列了它——
+  // build 要帶一份出去、pack 要取回，否則 npm pack 靜默略過，發出去的套件 require 就炸。
+  requireStep(
+    jobBlock(nodeSdk, 'build', 'node-sdk.yml'),
+    [/actions\/upload-artifact@v4/, /name:\s*binding-js/],
+    'node-sdk.yml build job：JS loader 上傳步驟',
+  );
+  requireStep(
+    pack,
+    [/actions\/download-artifact@v4/, /name:\s*binding-js/],
+    'node-sdk.yml package job：JS loader 還原步驟',
+  );
+  assert.match(pack, /tar -tzf[\s\S]{0,200}binding\.js/, 'node-sdk.yml：打包後須斷言主套件 tarball 含 binding.js');
+});
+
+test('release.yml 的 engine 三 job：版號前置把關、重用建置、發布冪等且子套件先發', () => {
+  const release = read('.github/workflows/release.yml');
+
+  // 版號與可發布性在單一 job 算好（Actions 表達式沒有字串裁切函式，with: 內
+  // 展不開 ${GITHUB_REF_NAME#v}）；非 X.Y.Z 的 tag 不進入五平台建置。
+  const version = jobBlock(release, 'engine-version', 'release.yml');
+  assert.match(version, /outputs:\s*\n\s+version:/, 'engine-version 須輸出 version');
+  assert.match(version, /publishable:/, 'engine-version 須輸出 publishable 作為前置把關');
+  assert.match(version, /GITHUB_REF_NAME#v/, 'engine-version 須自 tag 名去掉 v 前綴');
+
+  const build = jobBlock(release, 'engine-npm-build', 'release.yml');
+  assert.match(build, /uses:\s*\.\/\.github\/workflows\/node-sdk\.yml/, 'engine-npm-build 須重用 node-sdk.yml，不得複製 build matrix');
+  assert.match(build, /version:\s*\$\{\{ needs\.engine-version\.outputs\.version \}\}/, 'engine-npm-build 須傳入 engine-version 算出的版號');
+  assert.match(build, /if:\s*needs\.engine-version\.outputs\.publishable == 'true'/, 'engine-npm-build 須以 publishable 前置把關');
+
+  const publish = jobBlock(release, 'engine-npm-publish', 'release.yml');
+  assert.match(publish, /needs:\s*\[engine-npm-build, release\]/, 'engine-npm-publish 必須 needs: [engine-npm-build, release]');
+  assert.match(publish, /NPM_TOKEN/, 'engine-npm-publish 必須以 NPM_TOKEN 為開關');
+  assert.match(publish, /name:\s*npm-tarballs/, 'engine-npm-publish 須下載 npm-tarballs artifact');
+  assert.match(publish, /npm publish "\$tgz" --access public/, 'engine-npm-publish 必須公開發布 tarball');
+
+  // 冪等：部分失敗後重跑不得因「同版已存在」永遠紅燈。
+  assert.match(publish, /npm view/, 'engine-npm-publish 須先查 registry 以支援重跑（同版已存在即跳過）');
+
+  // 子套件先發、主套件最後，optionalDependencies 於主套件上架時皆可解析。
+  const iSub = requireIndex(publish, 'tarballs/npm/', 'release.yml engine-npm-publish');
+  const iMain = publish.lastIndexOf('tarballs/*.tgz');
+  assert.notEqual(iMain, -1, 'release.yml：engine-npm-publish 缺主套件 tarball 發布');
+  assert.ok(iSub < iMain, 'engine-npm-publish：平台子套件須排在主套件之前發布');
+});

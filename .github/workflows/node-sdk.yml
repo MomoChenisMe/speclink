@@ -95,6 +95,17 @@ jobs:
           path: crates/speclink-node/*.node
           if-no-files-found: error
 
+      # binding.js 是 napi build 產生的 loader，被 .gitignore 忽略，但主套件的
+      # files 列了它——pack job 不重新建置，所以這裡帶一份出去。它只依 platform／
+      # arch 分派、與 target 無關，因此固定從一個 target 上傳一份即可。
+      - name: Upload the generated JS loader
+        if: matrix.settings.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: binding-js
+          path: crates/speclink-node/binding.js
+          if-no-files-found: error
+
   package:
     name: package npm tarballs
     needs: build
@@ -112,21 +123,36 @@ jobs:
       - name: Create platform sub-package directories
         run: npx napi create-npm-dir -t .
 
+      # pattern 圈定：被 release.yml 以 workflow_call 重用時，本 job 與 caller 屬
+      # 同一個 run，不圈定會把 server-*／desktop-* 等 artifact 一起灌進 napi 的
+      # 掃描目錄。
       - name: Download all platform binaries
         uses: actions/download-artifact@v4
         with:
+          pattern: bindings-*
           path: crates/speclink-node/artifacts
 
       - name: Distribute binaries into sub-packages
         run: npx napi artifacts
 
+      # binding.js 只由 napi build 產生、不在 repo 內，而主套件的 files 列了它：
+      # 少了它 npm pack 會靜默略過，發出去的套件一 require 就 MODULE_NOT_FOUND。
+      - name: Restore the generated JS loader
+        uses: actions/download-artifact@v4
+        with:
+          name: binding-js
+          path: crates/speclink-node
+
       # 版號蓋章（設計 D2）：只在 workflow_call 帶 version 時執行，把 tag 版寫進主
       # 套件與全部平台子套件並物化 optionalDependencies。push／PR 無此輸入即跳過，
-      # 打包行為與導入 workflow_call 前完全一致。
+      # 打包行為與導入 workflow_call 前完全一致。版號經 env 傳入而非內插進 run:
+      # ——tag 名可含引號與分號，內插等於把 tag 名當 shell 原始碼跑。
       - name: Stamp the release version onto the package family
         if: inputs.version != ''
         working-directory: .
-        run: node scripts/npm-engine-package.mjs --version "${{ inputs.version }}" --dir crates/speclink-node
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/npm-engine-package.mjs --version "$VERSION" --dir crates/speclink-node
 
       - name: Pack the main package and every platform sub-package
         run: |
@@ -135,6 +161,10 @@ jobs:
             (cd "$dir" && npm pack)
           done
           ls -l ./*.tgz npm/*/*.tgz
+          # fail closed：主套件少了 binding.js 照樣打包成功，但裝起來是壞的。
+          main_tgz="$(ls ./*.tgz)"
+          tar -tzf "$main_tgz" | grep -qx 'package/binding.js' \
+            || { echo "::error::主套件 tarball 缺 binding.js（loader 未取回）"; exit 1; }
 
       - name: Upload npm tarballs
         uses: actions/upload-artifact@v4
