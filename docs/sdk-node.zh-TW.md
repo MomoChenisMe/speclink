@@ -10,9 +10,21 @@
 
 ## 取得方式與平台注意事項
 
-> **尚未發布至 npm。**`@speclink/engine` 目前只能從本 repo 建置取得，npm registry 上沒有這個套件。目前狀態見[專案能力狀態](product-status.zh-TW.md)的 Node SDK 一列；npm 通路要解決什麼、目前到哪、可觀察的下一步見[專案路線圖](roadmap.zh-TW.md)。
+```bash
+npm install @speclink/engine
+```
 
-從 repo 建置並載入：
+```js
+const { createEngine } = require('@speclink/engine')
+```
+
+五個平台（Windows x64、macOS x64 與 arm64、Linux x64 與 arm64 glibc）以預編譯子套件隨主套件發布，安裝時只下載符合你平台的那一份，**不需要 Rust 工具鏈**。
+
+> **生效時點。**發布管線已經接上：每推一個 release tag，engine 就以該版號發布至 npm。實際能 `npm install` 到，以**首個帶 engine 的 release** 為準——在那之前 registry 上還沒有這個套件，請走下方的自 repo 建置。目前狀態見[專案能力狀態](product-status.zh-TW.md)的 Node SDK 一列。
+
+### 替代路徑：自 repo 建置
+
+尚未有可安裝的版本、或你要改引擎本身時：
 
 ```bash
 git clone https://github.com/MomoChenisMe/speclink.git
@@ -28,8 +40,7 @@ const { createEngine } = require('/path/to/speclink/crates/speclink-node')
 ```
 
 - 這是一個 **native module**。引擎是編譯後的 Rust，以 Node addon 載入。上述 `npm run build` 只產出**當前平台**的二進位，所以要在部署目標平台上執行，或針對該平台交叉建置。
-- 建置需要 Rust 工具鏈（`rustup`）。
-- 引擎支援五個平台：Windows x64、macOS x64 與 arm64，以及 Linux x64 與 arm64（皆為 glibc）。發布至 npm 之後，這些平台會以預編譯子套件提供，屆時不再需要工具鏈。
+- 建置需要 Rust 工具鏈（`rustup`）；走 npm 安裝則不需要。
 
 ## createEngine——兩種儲存形式
 

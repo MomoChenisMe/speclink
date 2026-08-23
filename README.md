@@ -32,7 +32,7 @@ Desktop、Store abstraction、Node SDK 與 Remote Platform。
 ## Current capabilities / 目前能力
 
 - **可用**：Local Repo CLI、Local Desktop、生成的 Agent 技能（Claude 與 Codex 全站別）、Command Runtime／Host／Protocol、SQLite／Server FS／PostgreSQL TeamStore、單節點 Server 與 Admin／Auth、Remote CLI 與 Context Projection、Server 營運（部署、備份還原）、桌面與 CLI 的安裝通路。
-- **部分可用**：Node SDK（綁定可用，但尚未發布至 npm）、Desktop Remote Workspace、遠端的 task evidence。
+- **部分可用**：Node SDK（綁定可用，npm 發布管線已接、自首個帶 engine 的 release 起上 npm）、Desktop Remote Workspace、遠端的 task evidence。
 - **規劃中**：MCP／Copilot in-process tools、SSO、runtime plugins 與 cluster mode。
 - **已棄用**：legacy remote REST v1 prototype；新工作使用目前 Client Protocol／Host 路徑。
 

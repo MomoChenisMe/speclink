@@ -22,11 +22,11 @@ Driving the Speclink engine from your own program currently means installing a R
 
 **Where it stands**
 
-The N-API binding itself works: the Engine and Store bridge are connected and the dispatch contract is covered by tests. What is missing is distribution — `@speclink/engine` is not published to npm, so the [Node SDK documentation](sdk-node.md) demonstrates loading a repo-built artifact rather than an `npm install`. Rust users can already depend on the `speclink-core` crate directly.
+The N-API binding itself works: the Engine and Store bridge are connected and the dispatch contract is covered by tests. Distribution is now wired too — every release tag builds all five platforms, stamps that tag's version, and publishes `@speclink/engine` with its five platform sub-packages to npm. What is left is running it once: nothing is on the registry yet, so the [Node SDK documentation](sdk-node.md) keeps the repo build as an alternative path. Rust users can already depend on the `speclink-core` crate directly.
 
 **The observable next step**
 
-`npm install @speclink/engine` succeeds in an empty folder, with no Rust toolchain on the machine. The Node SDK documentation then switches its loading example from a repo build to a package import. The Node SDK row in the project capability status also changes.
+Once the first release that carries the engine ships, `npm install @speclink/engine` succeeds in an empty folder, with no Rust toolchain on the machine. The Node SDK row in the project capability status changes then too.
 
 ## Build your own client / 以引擎自建客戶端
 
