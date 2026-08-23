@@ -1,6 +1,6 @@
 ---
 name: speclink-trace
-description: "Answer how a capability came to be by walking its provenance chain — archived changes, source discussions, evidence, live code"
+description: "Use when someone asks how a capability came to be or why it works this way — walks its provenance chain across archived changes, source discussions, evidence and live code."
 context: fork
 agent: Explore
 disallowedTools: [Edit, Write]
@@ -8,7 +8,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 

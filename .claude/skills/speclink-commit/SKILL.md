@@ -1,11 +1,11 @@
 ---
 name: speclink-commit
-description: "Commit files related to a specific Speclink change"
+description: "Use when only the files belonging to one specific change should be committed — selects that change's files and writes the commit."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 

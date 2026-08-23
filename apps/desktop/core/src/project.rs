@@ -138,25 +138,27 @@ pub fn adopt_project_at(path: &Path, tools: &[String]) -> Result<ProjectProbe, S
     open_project_at(path)
 }
 
-/// 唯讀的指令檔過期探測（desktop-instruction-staleness-prompt 決策 4）：單行委派
-/// `speclink_core::init::probe_instructions`，回報序列化為 camelCase JSON 供前端
+/// 唯讀的技能檔過期探測（desktop-instruction-staleness-prompt 決策 4）：單行委派
+/// `speclink_core::init::probe_assets`，回報序列化為 camelCase JSON 供前端
 /// 裁決是否顯示提示。零寫入、無 Err——探測失敗以 status=unknown 表達，開專案
 /// 不得被探測擋下。
-pub fn probe_instructions_at(path: &Path) -> serde_json::Value {
-    let probe = speclink_core::init::probe_instructions(path);
+pub fn probe_assets_at(path: &Path) -> serde_json::Value {
+    let probe = speclink_core::init::probe_assets(path);
     serde_json::to_value(probe).expect("probe payload serializes")
 }
 
-/// 指令檔整套再生（決策 5）：委派引擎既有的 `update()`——與 CLI 同一入口、冪等，
-/// 依 `.speclink.yaml` 記錄的 store mode 維持 marker 措辭。引擎在寫入前重探測方向，
-/// 工作區領先時拒絕（desktop 無越過入口——降級只走 CLI 的 --allow-downgrade）。
-/// 回報沿用 UpdateOutcome 形狀；失敗為單行 Err，由前端於提示原位呈現並可重試。
-pub fn update_instructions_at(path: &Path) -> Result<serde_json::Value, String> {
+/// 技能檔整套再生（決策 5）：委派引擎既有的 `update()`——與 CLI 同一入口、冪等。
+/// 引擎在寫入前重探測方向，工作區領先時拒絕（desktop 無越過入口——降級只走 CLI 的
+/// --allow-downgrade）；同一次呼叫也會剝除舊版引擎留下的指令檔區塊。回報沿用
+/// UpdateOutcome 形狀；失敗為單行 Err，由前端於提示原位呈現並可重試。
+pub fn update_assets_at(path: &Path) -> Result<serde_json::Value, String> {
     let outcome =
         speclink_core::init::update(path, false).map_err(|e| single_line(&e.to_string()))?;
     Ok(serde_json::json!({
         "updated": outcome.updated,
         "pruned": outcome.pruned,
+        "stripped": outcome.stripped,
+        "deprecations": outcome.deprecations,
         "notes": outcome.notes,
     }))
 }
@@ -172,7 +174,7 @@ mod tests {
     use crate::testfixture::FixtureRoot;
     use std::path::{Path, PathBuf};
 
-    // --- 指令檔探測與更新包裝（desktop-instruction-staleness-prompt 決策 4、5） ---
+    // --- 技能檔探測與更新包裝（desktop-instruction-staleness-prompt 決策 4、5） ---
 
     /// 以引擎 init 生成一個現版工作區（claude 單工具）。
     fn init_workspace(fx: &FixtureRoot, tools: &[&str]) {
@@ -181,33 +183,41 @@ mod tests {
         speclink_core::init::init(fx.root(), &selected, true, "openspec").unwrap();
     }
 
-    /// 比現版領先一個主版號的標記版號（模擬工作區由更新的引擎生成）。
+    /// 比現版領先一個主版號的版號（模擬工作區由更新的引擎生成）。
     fn ahead_of_current() -> String {
-        let major: u64 = speclink_core::init::MARKER_VERSION
+        let major: u64 = speclink_core::init::ASSET_VERSION
             .trim_start_matches('v')
             .split('.')
             .next()
             .and_then(|s| s.parse().ok())
-            .expect("MARKER_VERSION 主版號可解析");
+            .expect("ASSET_VERSION 主版號可解析");
         format!("v{}.0.0", major + 1)
     }
 
+    /// 把工作區每份 claude 技能檔的 frontmatter 版號改成指定值。
+    fn set_skill_version(fx: &FixtureRoot, version: &str) {
+        speclink_core::testkit::set_skill_version(&fx.root().join(".claude").join("skills"), version);
+    }
+
+    fn propose_skill(fx: &FixtureRoot) -> PathBuf {
+        fx.root()
+            .join(".claude")
+            .join("skills")
+            .join("speclink-propose")
+            .join("SKILL.md")
+    }
+
     #[test]
-    fn probe_instructions_serializes_camel_case_fields() {
+    fn probe_assets_serializes_camel_case_fields() {
         // 前端消費的欄位名（決策 3 回報形狀）：currentVersion／stale／missing／
         // differingFiles／workspaceVersion 皆為 camelCase。
         let fx = FixtureRoot::new("probe-camel");
         init_workspace(&fx, &["claude"]);
-        let marker = std::fs::read_to_string(fx.root().join("CLAUDE.md")).unwrap();
-        std::fs::write(
-            fx.root().join("CLAUDE.md"),
-            marker.replace(speclink_core::init::MARKER_VERSION, "v0.9.0"),
-        )
-        .unwrap();
+        set_skill_version(&fx, "v0.9.0");
 
-        let value = probe_instructions_at(fx.root());
+        let value = probe_assets_at(fx.root());
         assert_eq!(value["status"], "stale", "{value}");
-        assert_eq!(value["currentVersion"], speclink_core::init::MARKER_VERSION);
+        assert_eq!(value["currentVersion"], speclink_core::init::ASSET_VERSION);
         let tool = &value["tools"][0];
         assert_eq!(tool["tool"], "claude");
         assert_eq!(tool["workspaceVersion"], "v0.9.0");
@@ -219,26 +229,21 @@ mod tests {
                 .as_array()
                 .expect("differingFiles 為陣列")
                 .iter()
-                .any(|f| f == "CLAUDE.md"),
+                .any(|f| f == ".claude/skills/speclink-propose/SKILL.md"),
             "{value}"
         );
     }
 
     #[test]
-    fn probe_instructions_reports_newer_when_the_workspace_leads_the_engine() {
+    fn probe_assets_reports_newer_when_the_workspace_leads_the_engine() {
         // 較新態（app 本體是舊版）：status 值與 per-tool 的 newer 布林都是前端契約
         // ——前端不重算方向，橫幅據此拿掉所有改寫動作。
         let fx = FixtureRoot::new("probe-camel-newer");
         init_workspace(&fx, &["claude"]);
         let ahead = ahead_of_current();
-        let marker = std::fs::read_to_string(fx.root().join("CLAUDE.md")).unwrap();
-        std::fs::write(
-            fx.root().join("CLAUDE.md"),
-            marker.replace(speclink_core::init::MARKER_VERSION, &ahead),
-        )
-        .unwrap();
+        set_skill_version(&fx, &ahead);
 
-        let value = probe_instructions_at(fx.root());
+        let value = probe_assets_at(fx.root());
         assert_eq!(value["status"], "newer", "{value}");
         let tool = &value["tools"][0];
         assert_eq!(tool["newer"], true);
@@ -247,13 +252,13 @@ mod tests {
     }
 
     #[test]
-    fn probe_instructions_reports_missing_for_an_uninstalled_tool() {
+    fn probe_assets_reports_missing_for_an_uninstalled_tool() {
         // 缺失態（從未安裝）也走同一形狀，前端據此改用安裝文案。
         let fx = FixtureRoot::new("probe-camel-missing");
         init_workspace(&fx, &["claude", "codex"]);
-        std::fs::remove_file(fx.root().join("AGENTS.md")).unwrap();
+        std::fs::remove_dir_all(fx.root().join(".agents").join("skills")).unwrap();
 
-        let value = probe_instructions_at(fx.root());
+        let value = probe_assets_at(fx.root());
         assert_eq!(value["status"], "missing", "{value}");
         let codex = value["tools"]
             .as_array()
@@ -266,47 +271,46 @@ mod tests {
     }
 
     #[test]
-    fn update_instructions_refuses_a_newer_workspace_with_zero_writes() {
+    fn update_assets_refuses_a_newer_workspace_with_zero_writes() {
         // 引擎端守門（不是 UI 狀態）：橫幅算出 stale 後檔案才變新（git pull）、
         // 使用者再按「更新」的 TOCTOU 視窗，也會在寫入前被引擎重探測擋下。
         let fx = FixtureRoot::new("update-refuses-newer");
         init_workspace(&fx, &["claude"]);
         let ahead = ahead_of_current();
-        let marker = std::fs::read_to_string(fx.root().join("CLAUDE.md")).unwrap();
-        let leading = marker.replace(speclink_core::init::MARKER_VERSION, &ahead);
-        std::fs::write(fx.root().join("CLAUDE.md"), &leading).unwrap();
+        set_skill_version(&fx, &ahead);
+        let leading = std::fs::read_to_string(propose_skill(&fx)).unwrap();
 
-        let err = update_instructions_at(fx.root()).expect_err("領先的工作區必須被拒");
+        let err = update_assets_at(fx.root()).expect_err("領先的工作區必須被拒");
         assert!(!err.contains('\n'), "單行錯誤：{err}");
-        assert!(err.contains(&ahead) && err.contains(speclink_core::init::MARKER_VERSION), "{err}");
+        assert!(err.contains(&ahead) && err.contains(speclink_core::init::ASSET_VERSION), "{err}");
         assert_eq!(
-            std::fs::read_to_string(fx.root().join("CLAUDE.md")).unwrap(),
+            std::fs::read_to_string(propose_skill(&fx)).unwrap(),
             leading,
             "拒絕＝零寫入"
         );
     }
 
     #[test]
-    fn update_instructions_regenerates_and_reports_updated_tools() {
+    fn update_assets_regenerates_and_reports_updated_tools() {
         // 決策 5：更新委派既有 update() 整套再生；回報沿用 UpdateOutcome 形狀。
         let fx = FixtureRoot::new("update-instructions");
         init_workspace(&fx, &["claude"]);
-        std::fs::remove_file(fx.root().join("CLAUDE.md")).unwrap();
+        std::fs::remove_dir_all(propose_skill(&fx).parent().unwrap()).unwrap();
 
-        let outcome = update_instructions_at(fx.root()).expect("update ok");
+        let outcome = update_assets_at(fx.root()).expect("update ok");
         assert_eq!(outcome["updated"][0], "claude", "{outcome}");
         assert!(outcome["pruned"].as_array().unwrap().is_empty(), "{outcome}");
         // 再生後探測回到現版。
-        assert_eq!(probe_instructions_at(fx.root())["status"], "current");
+        assert_eq!(probe_assets_at(fx.root())["status"], "current");
     }
 
     #[test]
-    fn update_instructions_on_a_broken_config_is_a_single_line_error() {
+    fn update_assets_on_a_broken_config_is_a_single_line_error() {
         let fx = FixtureRoot::new("update-instructions-bad");
         init_workspace(&fx, &["claude"]);
         std::fs::write(fx.root().join(".speclink.yaml"), "tools: [\n").unwrap();
 
-        let err = update_instructions_at(fx.root()).expect_err("must fail");
+        let err = update_assets_at(fx.root()).expect_err("must fail");
         assert!(!err.contains('\n'), "single line: {err:?}");
     }
 
@@ -537,7 +541,8 @@ mod tests {
         assert!(p.join("openspec").join("config.yaml").is_file());
         let app = read(&p.join(".speclink.yaml"));
         assert!(app.contains("claude"), "tools must record claude: {app}");
-        assert!(read(&p.join("CLAUDE.md")).contains("<!-- SPECLINK:START"));
+        // spec Scenario「確認後初始化並切入新專案」：不產生 CLAUDE.md。
+        assert!(!p.join("CLAUDE.md").exists(), "指令檔不得生成");
         let skills = p.join(".claude").join("skills");
         assert!(skills.is_dir());
         assert!(std::fs::read_dir(&skills).unwrap().next().is_some(), "skills dir must not be empty");
@@ -552,7 +557,8 @@ mod tests {
         let plain = PlainDir::new("init-codex");
         init_project_at(plain.path(), &["claude".into(), "codex".into()]).expect("init ok");
         let p = plain.path();
-        assert!(read(&p.join("AGENTS.md")).contains("<!-- SPECLINK:START"));
+        // spec Scenario「勾選 codex 時生成對應工具檔」：技能檔生成、AGENTS.md 不生成。
+        assert!(!p.join("AGENTS.md").exists(), "指令檔不得生成");
         assert!(p.join(".agents").join("skills").is_dir());
         let app = read(&p.join(".speclink.yaml"));
         assert!(app.contains("claude") && app.contains("codex"), "tools must record both: {app}");
@@ -688,7 +694,7 @@ mod tests {
         }
         let p = fx.root();
         assert!(read(&p.join(".speclink.yaml")).contains("claude"));
-        assert!(read(&p.join("CLAUDE.md")).contains("<!-- SPECLINK:START"));
+        assert!(!p.join("CLAUDE.md").exists(), "工作區補齊不得產生指令檔");
         assert!(p.join(".claude").join("skills").is_dir());
         assert_eq!(
             read(&p.join("openspec").join("specs").join("auth").join("spec.md")),

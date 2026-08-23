@@ -248,13 +248,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    - Artifacts created/updated
    - Validation result
 
-   Use **AskUserQuestion tool** to confirm the workflow is complete. This ensures the workflow stops even when auto-accept is enabled. Provide exactly these options:
-   - **First option (will be auto-selected)**: "Done" — End the ingest workflow. Inform the user they can run `/speclink:apply <change-name>` when ready.
-   - **Second option**: "Apply" — Invoke `/speclink:apply <change-name>` to start implementation.
-
-   If **AskUserQuestion tool** is not available, display the summary and inform the user to run `/speclink:apply <change-name>` when ready. Then STOP — do not continue.
-
-   **After the user responds**, if they chose "Done", the workflow is OVER. If they chose "Apply", invoke `/speclink:apply <change-name>` to begin implementation.
+   Then state the suggestion from **Next steps** and STOP. Never invoke `/speclink:apply` yourself — starting implementation is the user's call, and this workflow is over once the summary is out.
 
 **Guardrails**
 
@@ -268,3 +262,9 @@ Update an existing Speclink change — from a plan file or conversation context.
 - **NEVER** skip the artifact workflow to write code directly
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
+## Next steps
+
+{{NEXT_STEPS_LEAD}}
+
+- The artifacts are updated and validated → `/speclink:apply <change-name>` to resume implementation
+- A linked discussion fed this change → `speclink discuss seal <slug>` first (step 9), then the same suggestion applies

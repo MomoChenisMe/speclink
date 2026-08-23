@@ -42,7 +42,7 @@ pub(crate) struct UpdateArgs {
     /// Overwrite existing files
     #[arg(long)]
     force: bool,
-    /// Rewrite instruction files even when the workspace is newer than this engine
+    /// Rewrite managed skill files even when the workspace is newer than this engine
     #[arg(long)]
     allow_downgrade: bool,
 }
@@ -167,11 +167,15 @@ pub(crate) fn cmd_update(a: UpdateArgs) -> Result<()> {
     for note in &outcome.notes {
         println!("! {note}");
     }
-    if outcome.updated.is_empty() && outcome.pruned.is_empty() {
+    // 棄用提示走 stderr：不是錯誤、不影響 exit code，也不該混進 stdout 的機器面。
+    for note in &outcome.deprecations {
+        eprintln!("! {note}");
+    }
+    if outcome.updated.is_empty() && outcome.pruned.is_empty() && outcome.stripped.is_empty() {
         println!("! No AI tool configurations found. Use 'speclink init --tools' to set up.");
     } else {
         if !outcome.updated.is_empty() {
-            println!("{} Updated instruction files for: {}", color::green("✓"), outcome.updated.join(", "));
+            println!("{} Updated skill files for: {}", color::green("✓"), outcome.updated.join(", "));
         }
         if !outcome.pruned.is_empty() {
             println!(
@@ -179,6 +183,14 @@ pub(crate) fn cmd_update(a: UpdateArgs) -> Result<()> {
                 outcome.pruned.join(", ")
             );
         }
+    }
+    // 遺留剝除的摘要（design D2）：舊版引擎注入的區塊被移除時明說改了哪些檔案，
+    // 使用者才知道 diff 裡多出的變動從何而來。
+    if !outcome.stripped.is_empty() {
+        println!(
+            "! Stripped legacy Speclink blocks from: {}",
+            outcome.stripped.join(", ")
+        );
     }
     Ok(())
 }

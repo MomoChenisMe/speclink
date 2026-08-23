@@ -54,7 +54,7 @@ speclink init --tools claude,codex
 Generated files for: claude, codex
 ```
 
-This creates `openspec/` and `.speclink.yaml`, generates the skill and instruction files for the Hosts you selected (`.claude/`, `.agents/`, `CLAUDE.md`, `AGENTS.md`), and adds `.speclink/` to `.gitignore`. It does not create `.speclink/` itself; that directory appears later, when there is local working data to store.
+This creates `openspec/` and `.speclink.yaml`, generates the skill files for the Hosts you selected (`.claude/skills/`, `.agents/skills/`), and adds `.speclink/` to `.gitignore`. No instruction file is written — `CLAUDE.md` and `AGENTS.md` are yours, and workflow routing rides the skills' own descriptions. It does not create `.speclink/` itself; that directory appears later, when there is local working data to store.
 
 **This is what Local mode produces.** The `openspec/` structure follows the OpenSpec conventions on purpose. You can read and edit it directly, and you can move an existing OpenSpec tree in:
 

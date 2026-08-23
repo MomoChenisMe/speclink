@@ -1,12 +1,12 @@
 ---
 name: speclink-improve
-description: "Scan the codebase for architectural improvements and record the candidates as a discussion — user-initiated only, never triggered by the model on its own"
+description: "Use when improvements are asked for without naming a topic — user-initiated only, never on the model's own initiative; scans the codebase and records the candidates as a discussion."
 disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -172,3 +172,9 @@ speclink discuss archive improve-<scope>
 - **At most 2 Explore subagents** — inline is the default
 - **Check the archive first** — a settled rejection is not a candidate
 - **Conclude and archive, never discard** — even when the answer is "do nothing"
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The candidates are recorded as a discussion → the discussion's own exits apply: promote it into a change, link it into an existing one, or archive it when the answer is "do nothing"

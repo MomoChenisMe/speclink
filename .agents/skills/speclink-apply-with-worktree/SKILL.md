@@ -1,11 +1,11 @@
 ---
 name: speclink-apply-with-worktree
-description: "Implement tasks from a Speclink change inside an isolated git worktree, for parallel work"
+description: "Use when several independent changes are being implemented at once — runs apply inside an isolated git worktree per change so parallel work never collides."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -470,12 +470,21 @@ This skill supports the "actions on a change" model:
 - **Can be invoked anytime**: Before all artifacts are done (if tasks exist), after partial implementation, interleaved with other actions
 - **Allows artifact updates**: If implementation reveals design issues, suggest updating artifacts - not phase-locked, work fluidly
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `$speclink-review` (craft quality) ∥ `$speclink-verify` (spec compliance), or `$speclink-quality` to run both in order; then `$speclink-archive <change-name>`
+- Only `[M]` tasks remain → the quality stations can still run now, but archiving waits until the user has done the manual work by hand
+- Requirements changed mid-work → `$speclink-ingest <change-name>`, then come back to apply
 
 ---
 
 ## Worktree wrap-up
 
 Once the apply flow above has finished (all tasks complete, or the user stopped you at a good point), do these — still **inside the worktree**.
+
+The apply body's own **Next steps** section does not apply here — this worktree flow replaces it with the edges in **Next steps** at the end of this document.
 
 ### W1. Commit the change in the worktree
 
@@ -504,3 +513,11 @@ Tell the user, plainly:
 > 品質關卡跑完（或決定略過）後執行 `$speclink-worktree-merge <change-name>` 收尾——它會檢查主樹是否乾淨、把分支合併回去，成功後移除 worktree 並刪掉分支。
 
 Report alongside it: the worktree path, the branch name, and the tasks completed this session.
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The change is committed inside the worktree → the quality stations belong **here**, while the Apply baseline still exists: `$speclink-review` ∥ `$speclink-verify`, or `$speclink-quality` for both
+- The stations are done or the user chose to skip them → `$speclink-worktree-merge <change-name>`
+- Requirements changed mid-work → `$speclink-ingest <change-name>` inside this worktree, then resume apply here

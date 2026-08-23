@@ -72,3 +72,11 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 - Fix only what the user picked; the findings they passed on stay in their tickets, unfixed and unargued
 - No edits between the two stamps, and none between them and archive
 - A station's refusal or error stops this flow and is reported as-is — do not work around it
+
+## Next steps
+
+{{NEXT_STEPS_LEAD}}
+
+- Both stamps landed and the work is in the main checkout → `/speclink:archive <change-name>`
+- Both stamps landed inside a worktree → `/speclink:worktree-merge <change-name>` first; archive runs only from the main checkout
+- The round ended without stamping → nothing downstream is suggested; the round's pause is where this skill stops

@@ -321,7 +321,7 @@ Agent Host 與 Skill delivery 的建議映射：
 | Agent Host | Skill/instruction delivery | Speclink access |
 |---|---|---|
 | Claude Code | `.claude/skills/` 與 project instructions | CLI 或 MCP |
-| Codex App / Codex CLI | `.agents/skills/` 與 `AGENTS.md` | CLI 或 MCP |
+| Codex App / Codex CLI | `.agents/skills/` | CLI 或 MCP |
 | Cursor | tool-specific rules/skills renderer | terminal CLI 或 MCP |
 | GitHub Copilot Chat | repository instructions/prompts renderer | terminal CLI 或 MCP |
 | GitHub Copilot SDK / 自訂 Agent | rendered skill bundle | `@speclink/copilot-tools` / In-process Tool |

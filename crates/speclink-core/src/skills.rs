@@ -1,7 +1,7 @@
 //! Skill registry, embedded bodies, and rendering (frontmatter + placeholder substitution).
 
 use crate::config::{CustomTool, Invocation};
-use crate::init::MARKER_VERSION;
+use crate::init::ASSET_VERSION;
 
 /// The three render targets: built-in claude, built-in codex, or a custom descriptor.
 /// Descriptors render the NEUTRAL body: no tool-specific slash prefix, no plan-mode
@@ -108,46 +108,46 @@ const B_TDD: &str = include_str!("../assets/skills/tdd.md");
 /// The skills that generate SKILL.md files.
 pub fn registry() -> Vec<Skill> {
     vec![
-        Skill { name: "analyze", description: "Analyze artifact consistency for a change", fork: true, disallow_edit: true, for_codex: false, worktree_gated: false, body: B_ANALYZE },
-        Skill { name: "apply", description: "Implement or resume tasks from a Speclink change", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_APPLY },
+        Skill { name: "analyze", description: "Use when a change's artifacts should be cross-checked before implementing — coverage, consistency, ambiguity and gaps across proposal, design, specs and tasks; reports findings without editing anything.", fork: true, disallow_edit: true, for_codex: false, worktree_gated: false, body: B_ANALYZE },
+        Skill { name: "apply", description: "Use when a change's tasks are ready to implement, or when resuming one left half-done — works through the task list, marking each checkbox as it lands.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_APPLY },
         // Same permissions as `apply` — it IS apply, wrapped in worktree setup
         // and hand-off; the extra steps are git commands, not a narrower role.
-        Skill { name: "apply-with-worktree", description: "Implement tasks from a Speclink change inside an isolated git worktree, for parallel work", fork: false, disallow_edit: false, for_codex: true, worktree_gated: true, body: B_APPLY_WITH_WORKTREE },
-        Skill { name: "archive", description: "Archive a completed change", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ARCHIVE },
+        Skill { name: "apply-with-worktree", description: "Use when several independent changes are being implemented at once — runs apply inside an isolated git worktree per change so parallel work never collides.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: true, body: B_APPLY_WITH_WORKTREE },
+        Skill { name: "archive", description: "Use when a change is finished and its quality stations are settled — folds the deltas into the specs and moves the change into the archive.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ARCHIVE },
         // Not a fork skill: the rewritten standalone mode fans out three
         // parallel audit agents, which the fork's Explore agent cannot spawn.
-        Skill { name: "audit", description: "Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_AUDIT },
-        Skill { name: "commit", description: "Commit files related to a specific Speclink change", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_COMMIT },
+        Skill { name: "audit", description: "Use when changed code needs a security pass — hunts dangerous defaults, type confusion and silent failures, and reports the sharp edges it finds.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_AUDIT },
+        Skill { name: "commit", description: "Use when only the files belonging to one specific change should be committed — selects that change's files and writes the commit.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_COMMIT },
         // Writes only through `speclink workflow-config` (never a direct file
         // edit), so Edit/Write stay disallowed; not a fork skill because the
         // policy fields must be asked for interactively.
-        Skill { name: "config", description: "Compose the workflow config's context and rules from the codebase, landed through an approved diff", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_CONFIG },
-        Skill { name: "discuss", description: "Have a focused discussion that is recorded to a discussion document", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_DISCUSS },
-        Skill { name: "drift", description: "Detect drift between a Speclink change and the current codebase state", fork: true, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_DRIFT },
+        Skill { name: "config", description: "Use when the workflow config's project context or per-artifact rules need composing or refreshing from the codebase — lands them through an approved diff.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_CONFIG },
+        Skill { name: "discuss", description: "Use when requirements are fuzzy, contested, or worth debating before any change exists — records the exchange as a discussion document that can later be promoted into a change.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_DISCUSS },
+        Skill { name: "drift", description: "Use when picking a change back up after it sat idle, before touching its tasks — reports how far the codebase has moved from the delta's assumptions.", fork: true, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_DRIFT },
         // discuss 的鏡像入口（模型帶 candidates），權限比照 discuss：記錄一律
         // 經 CLI 寫入，技能本身不得實作程式碼，故 Edit/Write 禁用；要互動挑
         // candidate 並逐輪 grill，不是 fork。
-        Skill { name: "improve", description: "Scan the codebase for architectural improvements and record the candidates as a discussion — user-initiated only, never triggered by the model on its own", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_IMPROVE },
-        Skill { name: "ingest", description: "Update an existing Speclink change from external context", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_INGEST },
-        Skill { name: "onboard", description: "Adopt Speclink on an existing codebase by generating initial specs from current behavior", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ONBOARD },
-        Skill { name: "propose", description: "Create a change proposal with all required artifacts", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_PROPOSE },
+        Skill { name: "improve", description: "Use when improvements are asked for without naming a topic — user-initiated only, never on the model's own initiative; scans the codebase and records the candidates as a discussion.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_IMPROVE },
+        Skill { name: "ingest", description: "Use when requirements change mid-work, including after a separate planning session — folds the new context into an existing change's artifacts so apply can resume.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_INGEST },
+        Skill { name: "onboard", description: "Use when adopting Speclink on a codebase that already has behavior but no specs — generates the initial specs from what the code does today.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ONBOARD },
+        Skill { name: "propose", description: "Use when a change needs planning, proposing or designing — creates the change with every required artifact; seed it from a concluded discussion with --from-discussion.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_PROPOSE },
         // Pure ordering over the two stations plus the per-round pause（design
         // D1）：不是 fork——它要在主線依序呼叫兩站技能、停下問使用者，且步驟 4
         // 的修正就在主線改檔，故 Edit 不禁。
-        Skill { name: "quality", description: "Run both quality stations over one change, pausing after every round for the user's call: both checks first without stamping, then both stations' findings are reported together and the skill stops — nothing is fixed, stamped or archived without the user's answer", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_QUALITY },
+        Skill { name: "quality", description: "Use when both quality stations should run over one change, pausing after every round for the user's call: both check without stamping, their findings are reported together and the skill stops — for only one station, call review or verify directly.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_QUALITY },
         // Not a fork skill（design D7 替代案否決 fork）：主線 orchestrator 要
         // fan-out 兩個平行 sub-agent 並互動詢問三選項；修正回主線，故 Edit 不禁。
-        Skill { name: "review", description: "Review a change's implementation for craft quality — parallel standards and correctness axes, recorded to a review ticket", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_REVIEW },
+        Skill { name: "review", description: "Use when an implementation should be checked for craft quality before archiving — parallel standards and correctness axes, recorded to a review ticket.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_REVIEW },
         // 唯讀問答（比照 drift 的 fork 形狀）：走 speclink verbs 與 git 組敘事
         // 答案，永不改檔，Edit/Write 禁用。
-        Skill { name: "trace", description: "Answer how a capability came to be by walking its provenance chain — archived changes, source discussions, evidence, live code", fork: true, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_TRACE },
+        Skill { name: "trace", description: "Use when someone asks how a capability came to be or why it works this way — walks its provenance chain across archived changes, source discussions, evidence and live code.", fork: true, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_TRACE },
         // Not a fork skill any more（design D6）：主線要取得 frozen scope、落
         // structured 工單、互動詢問三選項並在本地依 TDD 修正；檢查段本身仍以
         // 單一唯讀 sub-agent 隔離。codex 變體以純文字詢問，兩工具同步生成。
-        Skill { name: "verify", description: "Verify implementation matches artifacts", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_VERIFY },
+        Skill { name: "verify", description: "Use when an implementation should be checked against its artifacts before archiving — confirms the specs and tasks are actually satisfied, recorded to a verify ticket.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_VERIFY },
         // Runs git commands only — a conflict stops the flow for the user to
         // resolve, so the agent never edits a file: Edit/Write stay disallowed.
-        Skill { name: "worktree-merge", description: "Merge a finished Speclink worktree branch back into the main branch, then clean up", fork: false, disallow_edit: true, for_codex: true, worktree_gated: true, body: B_WORKTREE_MERGE },
+        Skill { name: "worktree-merge", description: "Use when a worktree change is committed and ready to land — merges the branch back into the main branch, then cleans the worktree up.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: true, body: B_WORKTREE_MERGE },
     ]
 }
 
@@ -178,6 +178,12 @@ pub fn skill_body(name: &str) -> Option<&'static str> {
     })
 }
 
+/// The lead sentence every "Next steps" hand-off section opens with (spec
+/// skill-routing「出口交棒由技能結尾承載」的 guidance-only 條款). Injected at
+/// render time via `{{NEXT_STEPS_LEAD}}` so the eleven-plus assets that carry a
+/// hand-off section cannot drift apart one wording tweak at a time.
+const NEXT_STEPS_LEAD: &str = "Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.";
+
 /// Substitute placeholders in a skill body for a given tool and spec dir.
 pub fn substitute(body: &str, tool: Tool, spec_dir: &str) -> String {
     let spec_dir_slash = if spec_dir.ends_with('/') {
@@ -188,6 +194,7 @@ pub fn substitute(body: &str, tool: Tool, spec_dir: &str) -> String {
     body.replace("{{SPEC_DIR}}", &spec_dir_slash)
         .replace("{{PLAN_DIR}}", tool.plan_dir())
         .replace("{{TOOL}}", tool.name())
+        .replace("{{NEXT_STEPS_LEAD}}", NEXT_STEPS_LEAD)
         .replace("/speclink:", tool.slash_replacement())
 }
 
@@ -243,6 +250,7 @@ pub fn substitute_neutral(body: &str, tool: &CustomTool, spec_dir: &str) -> Stri
         .replace("{{SPEC_DIR}}", &spec_dir_slash)
         .replace("{{PLAN_DIR}}", "")
         .replace("{{TOOL}}", &tool.name)
+        .replace("{{NEXT_STEPS_LEAD}}", NEXT_STEPS_LEAD)
         .replace("/speclink:", "speclink ")
         // Some bodies carry literal claude-style skill references; neutrally they are
         // plain skill names (`speclink-ingest`), never slash commands.
@@ -276,7 +284,7 @@ pub fn render_skill_file_custom(skill: &Skill, tool: &CustomTool, spec_dir: &str
     fm.push_str("compatibility: Requires speclink CLI.\n");
     fm.push_str("metadata:\n");
     fm.push_str("  author: speclink\n");
-    fm.push_str(&format!("  version: \"{MARKER_VERSION}\"\n"));
+    fm.push_str(&format!("  version: \"{ASSET_VERSION}\"\n"));
     fm.push_str("  generatedBy: \"Speclink\"\n");
     fm.push_str("---\n\n");
     fm.push_str(invocation_note(tool.invocation));
@@ -310,7 +318,7 @@ pub fn render_skill_file(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
     fm.push_str("compatibility: Requires speclink CLI.\n");
     fm.push_str("metadata:\n");
     fm.push_str("  author: speclink\n");
-    fm.push_str(&format!("  version: \"{MARKER_VERSION}\"\n"));
+    fm.push_str(&format!("  version: \"{ASSET_VERSION}\"\n"));
     fm.push_str("  generatedBy: \"Speclink\"\n");
     fm.push_str("---\n\n");
     if tool == Tool::Claude && skill.fork {
@@ -330,7 +338,7 @@ pub fn render_skill_file(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
 mod tests {
     use super::*;
     use crate::config::Invocation;
-    use crate::init::MARKER_VERSION;
+    use crate::init::ASSET_VERSION;
 
     fn version_line(rendered: &str) -> &str {
         rendered
@@ -343,16 +351,16 @@ mod tests {
         CustomTool {
             name: "my-harness".to_string(),
             skills_dir: ".my-harness/skills".to_string(),
-            instructions_file: "HARNESS.md".to_string(),
+            instructions_file: None,
             invocation: Invocation::Cli,
         }
     }
 
     /// Spec requirement: 產物層版本戳同源 — the skill frontmatter version is the
-    /// MARKER_VERSION string, never a hardcoded "1.0", across all three render targets.
+    /// ASSET_VERSION string, never a hardcoded "1.0", across all three render targets.
     #[test]
-    fn skill_frontmatter_version_is_marker_version() {
-        let expected = format!("  version: \"{MARKER_VERSION}\"");
+    fn skill_frontmatter_version_is_asset_version() {
+        let expected = format!("  version: \"{ASSET_VERSION}\"");
         let custom = custom_target();
         for skill in registry() {
             for rendered in [
@@ -363,7 +371,7 @@ mod tests {
                 assert_eq!(
                     version_line(&rendered),
                     expected,
-                    "skill '{}' frontmatter version must equal MARKER_VERSION",
+                    "skill '{}' frontmatter version must equal ASSET_VERSION",
                     skill.name
                 );
             }

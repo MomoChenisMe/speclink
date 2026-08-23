@@ -1,7 +1,8 @@
 ---
 topic: init 注入 CLAUDE.md/AGENTS.md 指示塊是否改走 OpenSpec 1.0 的無注入＋技能路由作法
 slug: init-marker-openspec-alignment
-status: concluded
+status: promoted
+promoted_to: remove-marker-injection
 created: 2026-08-20
 created_by: MomoChen <momochenisme@gmail.com>
 ---

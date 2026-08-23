@@ -1,11 +1,11 @@
 ---
 name: speclink-config
-description: "Compose the workflow config's context and rules from the codebase, landed through an approved diff"
+description: "Use when the workflow config's project context or per-artifact rules need composing or refreshing from the codebase — lands them through an approved diff."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 

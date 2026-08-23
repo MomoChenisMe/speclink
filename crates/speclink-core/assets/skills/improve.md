@@ -160,3 +160,9 @@ speclink discuss archive improve-<scope>
 - **At most 2 Explore subagents** — inline is the default
 - **Check the archive first** — a settled rejection is not a candidate
 - **Conclude and archive, never discard** — even when the answer is "do nothing"
+
+## Next steps
+
+{{NEXT_STEPS_LEAD}}
+
+- The candidates are recorded as a discussion → the discussion's own exits apply: promote it into a change, link it into an existing one, or archive it when the answer is "do nothing"

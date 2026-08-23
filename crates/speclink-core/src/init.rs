@@ -6,10 +6,10 @@ use crate::util;
 use anyhow::{bail, Result};
 use std::path::{Path, PathBuf};
 
-/// 產物層的唯一版號：指令檔 SPECLINK 標記與技能檔 frontmatter 的 version 同源於此。
-/// 僅在內嵌資產（assets/skills）或 marker 模板的 render 內容變動時遞增——與 app／CLI
-/// 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const MARKER_VERSION: &str = "v1.20.2";
+/// 產物層的唯一版號：技能檔 frontmatter 的 version 同源於此，也是過期探測與
+/// 降級守門的比對基準。僅在內嵌資產（assets/skills）的 render 內容變動時遞增——
+/// 與 app／CLI 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
+pub const ASSET_VERSION: &str = "v1.21.0";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -61,177 +61,6 @@ const WORKFLOW_CONFIG_TEMPLATE: &str = "schema: spec-driven
 
 const GITIGNORE_BLOCK: &str = "# Speclink app data\n.speclink/\n";
 
-/// Where the spec documents live — the second axis of the marker rendering
-/// matrix (tool target) × (fs | remote).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StoreKind {
-    Fs,
-    Remote,
-}
-
-/// The marker's opening paragraph: fs mode names the local paths; remote mode
-/// must not (they don't exist) — documents are reached through speclink verbs.
-fn store_paragraph(spec_dir: &str, store: StoreKind) -> String {
-    match store {
-        StoreKind::Fs => format!(
-            "This project uses Speclink for Spec-Driven Development(SDD). Specs live in `{spec_dir}/specs/`, change proposals in `{spec_dir}/changes/`, discussion records in `{spec_dir}/discussions/`."
-        ),
-        StoreKind::Remote => "This project uses Speclink for Spec-Driven Development(SDD). Specs, change proposals, and discussion records live in the team system's spec store — always access them through `speclink` verbs; never read or write spec documents as local files.".to_string(),
-    }
-}
-
-/// The SPECLINK marker block for a built-in tool — pub so the SDK's
-/// `instructions.render` shares this exact generation path with `init`/`update`.
-///
-/// `worktree` mirrors the generation gate: the two worktree skill lines appear only
-/// when the policy is on, because a marker that points at a skill the policy just
-/// pruned tells the agent to invoke something that no longer exists.
-pub fn instructions_body(spec_dir: &str, tool: Tool, store: StoreKind, worktree: bool) -> String {
-    // Codex differs: `$speclink-` prefix and no plan mode.
-    let (p, plan_line) = match tool {
-        Tool::Codex => ("$speclink-", "- Requirements change mid-work? `ingest` → resume `apply`"),
-        _ => ("/speclink-", "- Requirements change mid-work? Plan mode → `ingest` → resume `apply`"),
-    };
-    // 並行品質站（spec review-skill「審查技能的生成與正典化」、verify-skill「驗證
-    // 技能的工單落地」）：實作完成、封存之前，由使用者決定跑哪站或都不跑。verify
-    // 對所有工具生成（skills.rs for_codex=true），路由行不分工具、只差前綴。
-    let done_line = format!(
-        "- Implementation is done, before archiving → optional quality stations `{p}review` (craft quality) ∥ `{p}verify` (spec compliance; user's call), then `{p}archive`"
-    );
-    // 兩站都跑時的時序編排入口（spec quality-skill「品質關卡技能的生成與正典化」）：
-    // 只跑一站不經它，直接呼叫該站技能——條目本身要載明這個分岔。
-    let quality_line = format!(
-        "- Both quality stations over one change → `{p}quality` (both checks first without stamping, then it stops after every round for your call on what to fix and when to stamp); only one station → call `{p}review` or `{p}verify` directly"
-    );
-    // discuss 與 improve 同層（change add-improve-flow）：兩個入口都可選、都收斂到
-    // 同一份討論記錄，差別只在誰帶題目——流程線並列才看得出這個對稱。
-    let workflow =
-        "discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive";
-    // 品質站段與主流程行同步（spec workspace-tools「marker 技能指引跟隨 worktree
-    // 政策」）：quality 不受 worktree 閘（worktree_gated: false），worktree 專案
-    // 同樣生成該技能，流程行不同步即指引缺口。
-    let worktree_workflow =
-        "worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive (main checkout)";
-    // 兩行 worktree 指引隨政策進出；其餘內容不受影響。
-    let worktree_lines = if worktree {
-        format!(
-            "- Implementing several independent changes at once → `{p}apply-with-worktree` (one git worktree per change)\n\
-- A worktree change is committed and ready to land → `{p}worktree-merge` (merge back, then clean up)\n"
-        )
-    } else {
-        String::new()
-    };
-    // 同一政策閘的另外兩項（spec workspace-tools「marker 技能指引跟隨 worktree
-    // 政策」）：主流程線之下的 worktree 流程線，與載明正典順序的品質站 bullet。
-    // 政策關閉時兩者皆為空字串——輸出與導入前逐位元一致。
-    let (worktree_flow, worktree_bullet) = if worktree {
-        (
-            format!("\n\n{worktree_workflow}"),
-            "- Quality stations belong inside the worktree (the Apply baseline lives there); archive runs only from the main checkout — archiving inside a linked worktree is refused by the engine\n",
-        )
-    } else {
-        (String::new(), "")
-    };
-    format!(
-        "<!-- SPECLINK:START {ver} -->\n\n\
-# Speclink Instructions\n\n\
-{store_paragraph}\n\n\
-## Use `{p}*` skills when:\n\n\
-- Requirements are fuzzy or worth debating → `{p}discuss` (recorded as a document; promote turns it into a change)\n\
-- User asks for improvements without naming a topic → `{p}improve` (user-initiated only; scans the codebase and records the candidates as a discussion)\n\
-- User wants to plan, propose, or design a change → `{p}propose` (`--from-discussion <slug>` seeds it from a concluded discussion)\n\
-- Adopting Speclink on an existing codebase → `{p}onboard`\n\
-- Tasks are ready to implement → `{p}apply`\n\
-{worktree_lines}\
-- Resuming a change that sat idle → run `{p}drift` first\n\
-- User asks how a feature came to be or why it works this way → `{p}trace` (sourced narrative along specs → changes → discussions → code)\n\
-- Requirements change mid-work → `{p}ingest`\n\
-{done_line}\n\
-{quality_line}\n\
-- Commit only files related to a specific change → `{p}commit`\n\n\
-## Workflow\n\n\
-{workflow}{worktree_flow}\n\n\
-- `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is \"don't do it\"\n\
-- A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)\n\
-- Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`\n\
-{worktree_bullet}\
-{plan_line}\n\n\
-<!-- SPECLINK:END -->\n",
-        ver = MARKER_VERSION,
-        store_paragraph = store_paragraph(spec_dir, store),
-        p = p,
-        worktree_lines = worktree_lines,
-        done_line = done_line,
-        quality_line = quality_line,
-        workflow = workflow,
-        worktree_flow = worktree_flow,
-        worktree_bullet = worktree_bullet,
-        plan_line = plan_line,
-    )
-}
-
-/// Instructions body for a custom tool's marker block — the neutral wording: skills are
-/// referenced by their generated names (`speclink-<verb>`, no slash prefix), there is no
-/// plan-mode line, and an invocation sentence states how verbs are executed.
-pub fn custom_instructions_body(spec_dir: &str, tool: &CustomTool, store: StoreKind) -> String {
-    let invocation_line = match tool.invocation {
-        crate::config::Invocation::Cli => {
-            "Speclink verbs are shell commands: run `speclink <verb> [arguments]`."
-        }
-        crate::config::Invocation::ToolCall => {
-            "Speclink verbs are executed by calling the speclink tool with an argv array \
-(e.g. [\"apply\", \"add-auth\"])."
-        }
-    };
-    format!(
-        "<!-- SPECLINK:START {ver} -->\n\n\
-# Speclink Instructions\n\n\
-{store_paragraph}\n\n\
-{invocation_line}\n\n\
-## Use the `speclink-*` skills when:\n\n\
-- Requirements are fuzzy or worth debating → `speclink-discuss` (recorded as a document; promote turns it into a change)\n\
-- User asks for improvements without naming a topic → `speclink-improve` (user-initiated only; scans the codebase and records the candidates as a discussion)\n\
-- User wants to plan, propose, or design a change → `speclink-propose` (`--from-discussion <slug>` seeds it from a concluded discussion)\n\
-- Adopting Speclink on an existing codebase → `speclink-onboard`\n\
-- Tasks are ready to implement → `speclink-apply`\n\
-- Resuming a change that sat idle → run `speclink-drift` first\n\
-- User asks how a feature came to be or why it works this way → `speclink-trace` (sourced narrative along specs → changes → discussions → code)\n\
-- Requirements change mid-work → `speclink-ingest`\n\
-- Implementation is done, before archiving → optional quality stations `speclink-review` (craft quality) ∥ `speclink-verify` (spec compliance; user's call), then `speclink-archive`\n\
-- Both quality stations over one change → `speclink-quality` (both checks first without stamping, then it stops after every round for your call on what to fix and when to stamp); only one station → call `speclink-review` or `speclink-verify` directly\n\
-- Commit only files related to a specific change → `speclink-commit`\n\n\
-## Workflow\n\n\
-discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive\n\n\
-- `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is \"don't do it\"\n\
-- A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)\n\
-- Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`\n\
-- Requirements change mid-work? `ingest` → resume `apply`\n\n\
-<!-- SPECLINK:END -->\n",
-        ver = MARKER_VERSION,
-        store_paragraph = store_paragraph(spec_dir, store),
-        invocation_line = invocation_line,
-    )
-}
-
-/// Insert or replace the SPECLINK:START..END block in an existing document. When the document
-/// has no marker yet, the block is PREPENDED above the user's content (frozen behavior).
-fn upsert_marker(existing: Option<String>, block: &str) -> String {
-    let start = "<!-- SPECLINK:START";
-    let end = "<!-- SPECLINK:END -->";
-    match existing {
-        Some(text) if text.contains(start) => {
-            let before = &text[..text.find(start).unwrap()];
-            let after_idx = text.find(end).map(|i| i + end.len()).unwrap_or(text.len());
-            let after = &text[after_idx..];
-            format!("{before}{}{after}", block.trim_end())
-        }
-        Some(text) if !text.trim().is_empty() => {
-            format!("{}\n{}", block.trim_end(), text)
-        }
-        _ => block.to_string(),
-    }
-}
-
 pub struct InitOutcome {
     pub spec_dir_abs: PathBuf,
 }
@@ -245,10 +74,10 @@ pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<
     if !force && (spec_root.exists() || root.join(".speclink.yaml").is_file()) {
         bail!("Already initialized. Use --force to reinitialize.");
     }
-    refuse_downgrade(&instruction_targets(root, tools))?;
+    refuse_downgrade(&skill_targets(root, tools))?;
 
     store_init(&spec_root, force)?;
-    workspace_init(root, tools, force, spec_dir, StoreKind::Fs)?;
+    workspace_init(root, tools, force, spec_dir)?;
 
     Ok(InitOutcome {
         spec_dir_abs: spec_root,
@@ -269,8 +98,8 @@ pub fn init_remote(
     if !force && root.join(".speclink.yaml").is_file() {
         bail!("Already initialized. Use --force to reinitialize.");
     }
-    refuse_downgrade(&instruction_targets(root, tools))?;
-    workspace_init(root, tools, force, "openspec", StoreKind::Remote)?;
+    refuse_downgrade(&skill_targets(root, tools))?;
+    workspace_init(root, tools, force, "openspec")?;
     write_remote_section(root, url, repo)
 }
 
@@ -331,8 +160,10 @@ fn store_init(spec_root: &Path, force: bool) -> Result<()> {
 }
 
 /// Workspace init: host-side files that stay local no matter where spec documents live —
-/// `.speclink.yaml`, instruction-file markers, skills, settings, `.gitignore`.
-fn workspace_init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str, store: StoreKind) -> Result<()> {
+/// `.speclink.yaml`, skills and the `.gitignore` entry. Instruction files
+/// (`CLAUDE.md`, `AGENTS.md`) are NOT part of the managed set (change:
+/// remove-marker-injection); routing lives in the skills themselves.
+fn workspace_init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<()> {
     // .speclink.yaml — the template plus the actual tool selection, so `update` can sync
     // (regenerate + prune) against the recorded list later. A non-default --dir is
     // persisted as an active spec_dir line so later commands find it.
@@ -353,9 +184,11 @@ fn workspace_init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str, stor
     // .gitignore (append block if missing)
     ensure_gitignore(&root.join(".gitignore"))?;
 
-    // Per-tool artifacts
+    // Per-tool artifacts, plus the legacy strip a re-init over an old workspace needs
+    // (design D2) — a fresh project has no instruction file, so this is a no-op there.
     for tool in tools {
-        generate_tool(root, *tool, spec_dir, force, store)?;
+        strip_legacy_marker(&root.join(instructions_path(*tool)))?;
+        generate_tool(root, *tool, spec_dir, force)?;
     }
     Ok(())
 }
@@ -364,38 +197,46 @@ fn workspace_init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str, stor
 pub struct UpdateOutcome {
     pub updated: Vec<String>,
     pub pruned: Vec<String>,
+    /// 專案根相對路徑：這次同步剝除掉遺留 SPECLINK 區塊的指令檔（design D2）。
+    pub stripped: Vec<String>,
+    /// 棄用提示（design D3）：非錯誤、不影響 exit code，CLI 走 stderr。
+    pub deprecations: Vec<String>,
     pub notes: Vec<String>,
 }
 
-/// Refresh generated instruction files.
+/// Refresh generated skill files and strip legacy instruction-file markers.
 ///
 /// When `.speclink.yaml` records a `tools:` list, this is a full sync: every listed tool
-/// (built-in name or custom descriptor) is regenerated and generated files for tools NOT on
-/// the list are pruned (speclink-* skill dirs removed, the SPECLINK marker block stripped
-/// from the instruction file). Unknown built-in names produce a warning note; an invalid
-/// descriptor is an error. Without a recorded list, built-ins fall back to legacy
-/// behavior: regenerate the tools whose dot-directories exist (codex excluded).
+/// (built-in name or custom descriptor) has its skills regenerated and generated files for
+/// tools NOT on the list are pruned (speclink-* skill dirs removed). Unknown built-in names
+/// produce a warning note; an invalid descriptor is an error. Without a recorded list,
+/// built-ins fall back to legacy behavior: regenerate the tools whose dot-directories exist
+/// (codex excluded).
 ///
-/// Downgrade guard (change instruction-downgrade-guard): before any write, every
-/// instruction file this call is ABOUT to regenerate is checked for direction — a
-/// marker version leading this engine means regenerating would silently rewrite the
-/// file back to older content, the 2026-08-05 incident. The check is sourced from the
-/// write set itself (tools list, legacy directory detection, custom descriptors), not
-/// from the builtin-only probe, so no regeneration corner escapes it. Every
-/// regeneration path (CLI update, workflow-config sync on both CLI and desktop, the
-/// desktop update entry, tool reconciliation) funnels through here, so the guard lives
-/// here and nowhere else; `allow_downgrade` is the single explicit override.
+/// Legacy stripping (change remove-marker-injection, design D2): instruction files are no
+/// longer part of the managed set, so every sync strips the `SPECLINK:START..END` block an
+/// older engine injected — user content outside the block survives, a file left empty is
+/// deleted, a file without a block is not touched at all.
+///
+/// Downgrade guard (change instruction-downgrade-guard): before any write, the skill files
+/// this call is ABOUT to regenerate are checked for direction — a frontmatter version
+/// leading this engine means regenerating would silently rewrite them back to older content,
+/// the 2026-08-05 incident. The check is sourced from the write set itself (tools list,
+/// legacy directory detection, custom descriptors), not from the builtin-only probe, so no
+/// regeneration corner escapes it. Every regeneration path (CLI update, workflow-config sync
+/// on both CLI and desktop, the desktop update entry, tool reconciliation) funnels through
+/// here, so the guard lives here and nowhere else; `allow_downgrade` is the single explicit
+/// override.
 pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
     let app = crate::config::AppConfig::load(&root.join(".speclink.yaml"))?;
     let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
-    // The remote section's presence is the mode signal — regenerated markers
-    // keep the wording of the mode the workspace is actually in.
-    let store = if app.remote.is_some() {
-        StoreKind::Remote
-    } else {
-        StoreKind::Fs
+    let mut out = UpdateOutcome {
+        updated: Vec::new(),
+        pruned: Vec::new(),
+        stripped: Vec::new(),
+        deprecations: Vec::new(),
+        notes: Vec::new(),
     };
-    let mut out = UpdateOutcome { updated: Vec::new(), pruned: Vec::new(), notes: Vec::new() };
 
     // Sort entries: built-in name strings vs custom descriptors. Descriptors validate
     // up front — nothing is generated or pruned when any descriptor is invalid.
@@ -423,24 +264,46 @@ pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
         }
     }
 
-    // 降級守門：對即將再生的每個指令檔逐檔判方向，任何寫入之前拒絕。
+    // 降級守門：對即將再生的每個 skills 目錄逐一判方向，任何寫入之前拒絕。
     if !allow_downgrade {
         let mut targets: Vec<PathBuf> = Vec::new();
         if app.tools.is_empty() {
             if root.join(".claude").is_dir() {
-                targets.push(root.join(instructions_path(Tool::Claude)));
+                targets.push(root.join(Tool::Claude.skills_dir()));
             }
         } else {
             for tool in [Tool::Claude, Tool::Codex] {
                 if selected.contains(&tool) {
-                    targets.push(root.join(instructions_path(tool)));
+                    targets.push(root.join(tool.skills_dir()));
                 }
             }
         }
         for custom in &customs {
-            targets.push(root.join(&custom.instructions_file));
+            targets.push(root.join(&custom.skills_dir));
         }
         refuse_downgrade(&targets)?;
+    }
+
+    // 遺留剝除（design D2）：兩個內建指令檔一律在這裡檢查，與選取與否無關——
+    // 這是內建工具唯一的剝除點（prune_tool 只清技能足跡，不再碰指令檔）。
+    for tool in [Tool::Claude, Tool::Codex] {
+        let rel = instructions_path(tool);
+        if strip_legacy_marker(&root.join(rel))? {
+            out.stripped.push(rel.to_string());
+        }
+    }
+    for custom in &customs {
+        let Some(file) = custom.instructions_file.as_deref() else {
+            continue;
+        };
+        // 欄位還在＝舊設定檔：剝除它指到的遺留區塊，並提醒該欄位已不生效。
+        out.deprecations.push(format!(
+            "tool descriptor '{}': instructions_file is deprecated and no longer generates anything — remove it from .speclink.yaml",
+            custom.name
+        ));
+        if strip_legacy_marker(&root.join(file))? {
+            out.stripped.push(file.to_string());
+        }
     }
 
     if app.tools.is_empty() {
@@ -448,13 +311,13 @@ pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
         // built-in prune. Custom footprints recorded by an earlier update are still
         // synced below — an emptied tools list must not strand them.
         if root.join(".claude").is_dir() {
-            generate_tool(root, Tool::Claude, &spec_dir, true, store)?;
+            generate_tool(root, Tool::Claude, &spec_dir, true)?;
             out.updated.push(Tool::Claude.name().to_string());
         }
     } else {
         for tool in [Tool::Claude, Tool::Codex] {
             if selected.contains(&tool) {
-                generate_tool(root, tool, &spec_dir, true, store)?;
+                generate_tool(root, tool, &spec_dir, true)?;
                 out.updated.push(tool.name().to_string());
             } else if prune_tool(root, tool)? {
                 out.pruned.push(tool.name().to_string());
@@ -467,17 +330,18 @@ pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
     // current ones and record them for the next sync.
     let previous = load_custom_state(root);
     for old in &previous {
-        let still_current = customs.iter().any(|c| {
-            c.name == old.name
-                && c.skills_dir == old.skills_dir
-                && c.instructions_file == old.instructions_file
-        });
+        // 判定只看 name 與 skills_dir——instructions_file 已棄用，使用者照提示把它
+        // 從描述子移除不得被誤判「已下架」而整組 prune 重建（棄用提示自己教出來
+        // 的操作不能觸發破壞）。欄位變動只更新足跡記錄（save_custom_state）。
+        let still_current = customs
+            .iter()
+            .any(|c| c.name == old.name && c.skills_dir == old.skills_dir);
         if !still_current && prune_custom(root, old, &mut out.notes)? {
             out.pruned.push(old.name.clone());
         }
     }
     for custom in &customs {
-        generate_custom(root, custom, &spec_dir, store)?;
+        generate_custom(root, custom, &spec_dir)?;
         out.updated.push(custom.name.clone());
     }
     save_custom_state(root, &customs)?;
@@ -490,9 +354,8 @@ pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
 ///
 /// Two steps, both existing behavior: `.speclink.yaml`'s claude/codex entries are
 /// rewritten to match the selection (custom descriptors, remote, spec_dir and unknown
-/// keys carry over untouched), then [`update`] generates the selected tools' skills and
-/// marker blocks and prunes the deselected ones. Marker wording follows the store mode
-/// recorded in the config, so a remote checkout is never given a local spec tree.
+/// keys carry over untouched), then [`update`] generates the selected tools' skills,
+/// prunes the deselected ones and strips any legacy instruction-file marker.
 ///
 /// Empty selections and malformed configs fail before anything is written. Beyond that
 /// there is no rollback: every managed write is idempotent, so the same selection can be
@@ -506,14 +369,14 @@ pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutc
     let rewritten = crate::config::update_app_config_tools_text(&original, tools)?;
     // 降級守門提前到 config 寫入之前：拒絕＝整體零寫入，不留「config 已改、
     // 受管檔未同步」的半狀態。檢查目標與其後 update 的寫入集同源（新選集的
-    // builtin 指令檔＋原 config 延續的描述子），故 update 內的守門不會在
+    // builtin skills 目錄＋原 config 延續的描述子），故 update 內的守門不會在
     // config 寫入後才第一次拒絕。
-    let mut guard_targets = instruction_targets(root, tools);
+    let mut guard_targets = skill_targets(root, tools);
     if let Ok(app) = crate::config::AppConfig::load(&path) {
         for entry in &app.tools {
             if let ToolEntry::Descriptor(d) = entry {
                 if let Ok(custom) = d.validate() {
-                    guard_targets.push(root.join(&custom.instructions_file));
+                    guard_targets.push(root.join(&custom.skills_dir));
                 }
             }
         }
@@ -528,7 +391,7 @@ pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutc
 /// 決策 2). Composes [`store_init`]'s idempotent skeleton fill (directories via
 /// create_dir_all; the workflow-config template only when config.yaml is absent — an
 /// existing file with user policy is never touched) with [`reconcile_builtin_tools`]
-/// (tools recorded in `.speclink.yaml`, managed skills and marker blocks regenerated).
+/// (tools recorded in `.speclink.yaml`, managed skills regenerated).
 /// Deliberately NOT behind `init`'s "Already initialized" guard; spec_dir is fixed to
 /// `openspec` — without a `.speclink.yaml`, discovery's fallback is exactly that.
 /// An empty selection is rejected before anything is written.
@@ -551,7 +414,10 @@ pub fn adopt(root: &Path, tools: &[Tool]) -> Result<UpdateOutcome> {
 struct CustomFootprint {
     name: String,
     skills_dir: String,
-    instructions_file: String,
+    /// Deprecated and optional — kept so a descriptor that still names one keeps a
+    /// prune/strip target after it falls off the tools list.
+    #[serde(default)]
+    instructions_file: Option<String>,
 }
 
 /// Host-side record of generated custom-tool footprints (`.speclink/` is gitignored work
@@ -623,11 +489,9 @@ fn skip_gated_skill(skill: &skills::Skill, worktree_on: bool, dir: &Path) -> Res
 }
 
 /// Generate a custom tool's artifacts: skills under `<skills_dir>/speclink-*/SKILL.md`
-/// (the non-Claude command subset) and the SPECLINK marker block in its instructions file.
-fn generate_custom(root: &Path, tool: &CustomTool, spec_dir: &str, store: StoreKind) -> Result<()> {
-    let md = root.join(&tool.instructions_file);
-    let merged = upsert_marker(util::read_opt(&md), &custom_instructions_body(spec_dir, tool, store));
-    util::write_file(&md, &merged)?;
+/// (the non-Claude command subset). The descriptor's `instructions_file` is NOT generated
+/// (change: remove-marker-injection) — it only survives as a strip target for legacy markers.
+fn generate_custom(root: &Path, tool: &CustomTool, spec_dir: &str) -> Result<()> {
     let worktree_on = worktree_skills_enabled(root, spec_dir);
     for skill in skills::registry() {
         if !skill.for_codex {
@@ -647,7 +511,10 @@ fn generate_custom(root: &Path, tool: &CustomTool, spec_dir: &str, store: StoreK
 /// any removal — a tampered state file must not be able to delete outside the project.
 fn prune_custom(root: &Path, fp: &CustomFootprint, notes: &mut Vec<String>) -> Result<bool> {
     if !crate::config::is_project_relative(&fp.skills_dir)
-        || !crate::config::is_project_relative(&fp.instructions_file)
+        || fp
+            .instructions_file
+            .as_deref()
+            .is_some_and(|f| !crate::config::is_project_relative(f))
     {
         notes.push(format!(
             "skipped pruning tool '{}': recorded paths escape the project root",
@@ -655,19 +522,22 @@ fn prune_custom(root: &Path, fp: &CustomFootprint, notes: &mut Vec<String>) -> R
         ));
         return Ok(false);
     }
-    prune_footprint(&root.join(&fp.skills_dir), &root.join(&fp.instructions_file))
+    prune_footprint(
+        &root.join(&fp.skills_dir),
+        fp.instructions_file.as_ref().map(|f| root.join(f)).as_deref(),
+    )
 }
 
 /// Remove the generated artifacts of a deselected built-in tool.
 fn prune_tool(root: &Path, tool: Tool) -> Result<bool> {
-    let md = root.join(instructions_path(tool));
-    prune_footprint(&root.join(tool.skills_dir()), &md)
+    // 指令檔的遺留剝除已由 update() 對兩個內建工具無條件跑過（選取與否都剝），
+    // 這裡只清技能足跡——同一檔案不需要第二個剝除點。
+    prune_footprint(&root.join(tool.skills_dir()), None)
 }
 
-/// Remove a generated footprint: speclink-* skill directories and the SPECLINK marker
-/// block in the instruction file (user content outside the block survives; a file left
-/// empty is deleted). Returns whether anything was removed.
-fn prune_footprint(skills_root: &Path, md: &Path) -> Result<bool> {
+/// Remove a generated footprint: speclink-* skill directories and any legacy SPECLINK
+/// marker block left in the instruction file. Returns whether anything was removed.
+fn prune_footprint(skills_root: &Path, md: Option<&Path>) -> Result<bool> {
     let mut removed = false;
     if let Ok(entries) = std::fs::read_dir(skills_root) {
         for entry in entries.flatten() {
@@ -684,31 +554,55 @@ fn prune_footprint(skills_root: &Path, md: &Path) -> Result<bool> {
     if let Some(parent) = skills_root.parent() {
         let _ = std::fs::remove_dir(parent);
     }
-    if let Some(text) = util::read_opt(md) {
-        if text.contains("<!-- SPECLINK:START") {
-            let stripped = strip_marker(&text);
-            if stripped.trim().is_empty() {
-                std::fs::remove_file(md)?;
-            } else {
-                util::write_file(md, &stripped)?;
-            }
+    if let Some(md) = md {
+        if strip_legacy_marker(md)? {
             removed = true;
         }
     }
     Ok(removed)
 }
 
-/// Remove the SPECLINK:START..END block (plus the blank line it was separated by).
+/// Strip a legacy `SPECLINK:START..END` block from an instruction file (design D2):
+/// only the block and its separating blank line go, user content outside it survives,
+/// a file left empty is deleted, and a file WITHOUT a block is not written at all
+/// (byte-identical). Returns whether anything was stripped.
+fn strip_legacy_marker(md: &Path) -> Result<bool> {
+    let Some(text) = util::read_opt(md) else {
+        return Ok(false);
+    };
+    if !text.contains("<!-- SPECLINK:START") {
+        return Ok(false);
+    }
+    let stripped = strip_marker(&text);
+    if stripped == text {
+        // 不成對的 START：strip_marker 原樣退回，不動檔案也不列入剝除摘要。
+        return Ok(false);
+    }
+    if stripped.trim().is_empty() {
+        std::fs::remove_file(md)?;
+    } else {
+        util::write_file(md, &stripped)?;
+    }
+    Ok(true)
+}
+
+/// Remove every paired SPECLINK:START..END block (plus the blank line each was
+/// separated by). An unpaired START — the END line hand-deleted or mangled by a
+/// merge — returns the text unchanged: eating everything after START would be
+/// silent data loss, and a stray block of dead text is the safer failure.
 fn strip_marker(text: &str) -> String {
     let start = "<!-- SPECLINK:START";
     let end = "<!-- SPECLINK:END -->";
-    let Some(s) = text.find(start) else {
-        return text.to_string();
-    };
-    let e = text.find(end).map(|i| i + end.len()).unwrap_or(text.len());
-    let before = &text[..s];
-    let after = text[e..].trim_start_matches('\n');
-    format!("{before}{after}")
+    let mut out = text.to_string();
+    while let Some(s) = out.find(start) {
+        let Some(e) = out[s..].find(end).map(|i| s + i + end.len()) else {
+            // 不成對：整段放棄，已剝掉的前段（若有）保留——每一段都是獨立成對判定。
+            break;
+        };
+        let after = out[e..].trim_start_matches(|c| c == '\n' || c == '\r');
+        out = format!("{}{}", &out[..s], after);
+    }
+    out
 }
 
 /// Detect installed AI tools by their footprints, WITHOUT any fallback — an empty result
@@ -735,17 +629,12 @@ pub fn detect_tools(root: &Path) -> Vec<Tool> {
     out
 }
 
-fn generate_tool(root: &Path, tool: Tool, spec_dir: &str, force: bool, store: StoreKind) -> Result<()> {
-    // Root instruction file (marker upsert). No other tool-level files: the tool's own
-    // user settings (e.g. .claude/settings.json) are the user's data, never generated
+fn generate_tool(root: &Path, tool: Tool, spec_dir: &str, force: bool) -> Result<()> {
+    // Skills are the ONLY tool-level artifacts. The root instruction file (CLAUDE.md /
+    // AGENTS.md) left the managed set with change remove-marker-injection, and the tool's
+    // own user settings (e.g. .claude/settings.json) are the user's data, never generated
     // (spec: 工具檔生成不寫入 AI 工具的使用者設定檔).
     let worktree_on = worktree_skills_enabled(root, spec_dir);
-    let md = root.join(instructions_path(tool));
-    let merged = upsert_marker(
-        util::read_opt(&md),
-        &instructions_body(spec_dir, tool, store, worktree_on),
-    );
-    util::write_file(&md, &merged)?;
     // Skills: Claude gets the full registry; codex gets the command subset.
     for skill in skills::registry() {
         if tool != Tool::Claude && !skill.for_codex {
@@ -793,30 +682,31 @@ pub fn ensure_gitignore(path: &Path) -> Result<bool> {
     }
 }
 
-/// 指令檔過期探測的整體判定（規格「指令檔過期探測」五態）。聚合優先序
+/// 技能檔過期探測的整體判定（規格「技能檔過期探測」五態）。聚合優先序
 /// 較新 > 缺失 > 過期 > 現版：較新排最前，只要有任何檔案領先引擎，就不提供
 /// 任何會改寫它的動作；缺失優先於過期，因為「從未安裝」與「裝了但舊了」是不同
 /// 的使用者情境，提示文案據此分流。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum InstructionStatus {
-    /// tools 清單宣告的指令檔不存在＝從未安裝（如 clone 後指令檔未進版控）。
+pub enum AssetStatus {
+    /// tools 清單宣告的工具其 skills 目錄下無任何 speclink- 技能檔＝從未安裝
+    /// 或整組移除（如 clone 後技能未進版控）。
     Missing,
-    /// 任一工具的標記版號與現版不等且不領先現版。
+    /// 任一工具的技能版號與現版不等且不領先現版。
     Stale,
-    /// 任一工具的標記版號數值新於現版＝工作區檔案領先引擎（本體是舊版）。
+    /// 任一工具的技能版號數值新於現版＝工作區檔案領先引擎（本體是舊版）。
     Newer,
     Current,
-    /// 設定解析失敗或指令檔存在但讀取錯誤——不得與現版混同。
+    /// 設定解析失敗或技能檔存在但讀取錯誤——不得與現版混同。
     Unknown,
 }
 
-/// 單一內建工具的探測結果。`workspaceVersion` 為 None 代表檔案不存在或標記已被
-/// 移除；兩者由 `missing` 區分（決策 2：退出受管與從未安裝意圖完全不同）。
-/// `stale` 與 `newer` 互斥：方向由引擎判定，消費端不重算。
+/// 單一內建工具的探測結果。`workspaceVersion` 為 None 代表技能整組不在（`missing`
+/// 為真），或技能檔在但 frontmatter 讀不到版本行。`stale` 與 `newer` 互斥：方向
+/// 由引擎判定，消費端不重算。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ToolInstructionState {
+pub struct ToolAssetState {
     pub tool: String,
     pub workspace_version: Option<String>,
     pub stale: bool,
@@ -829,20 +719,88 @@ pub struct ToolInstructionState {
 /// 「使用者自訂」——系統無歷史 render，無從分辨。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct InstructionProbe {
-    pub status: InstructionStatus,
+pub struct AssetProbe {
+    pub status: AssetStatus,
     pub current_version: String,
-    pub tools: Vec<ToolInstructionState>,
+    pub tools: Vec<ToolAssetState>,
     pub differing_files: Vec<String>,
 }
 
-/// 讀取指令檔的 SPECLINK 標記版號；無標記回 None（＝使用者已退出受管）。
-fn marker_version_of(text: &str) -> Option<&str> {
-    let start = text.find("<!-- SPECLINK:START")? + "<!-- SPECLINK:START".len();
-    let rest = &text[start..];
-    let end = rest.find("-->")?;
-    let version = rest[..end].trim();
-    (!version.is_empty()).then_some(version)
+/// 讀取技能檔 frontmatter 的版本欄位（`  version: "v1.2.3"`）；讀不到回 None。
+/// 搜尋範圍限定 frontmatter 本體：第一行的 `---` 到下一個 `---` 之間，body 裡
+/// 恰好叫 version: 的內文行不會被誤認。
+fn skill_version_of(text: &str) -> Option<&str> {
+    let mut lines = text.lines();
+    if lines.next()?.trim() != "---" {
+        return None;
+    }
+    let line = lines
+        .take_while(|l| l.trim() != "---")
+        .find(|l| l.trim_start().starts_with("version:"))?;
+    let value = line.split_once("version:")?.1.trim().trim_matches('"');
+    (!value.is_empty()).then_some(value)
+}
+
+/// 一個工具的 skills 目錄探測結果——三態，因為「整組不在」「檔在讀不出」
+/// 「讀到了」對應到三種不同的回報狀態，混同任兩者都會誤導提示層。
+enum SkillsProbe {
+    /// 目錄下無任何 speclink- 技能檔（目錄不存在也算：從未安裝或整組移除）。
+    Absent,
+    /// 找到技能檔且讀得到 frontmatter 版號。
+    Found(String),
+    /// 技能檔存在但讀不出版號（IO 失敗、目錄不可列舉、frontmatter 版本行遺失）
+    /// ——「無法判定」，不得與現版或缺失混同。
+    Unreadable,
+}
+
+/// 取一個 skills 目錄的產物層版號。同一次生成的所有技能檔帶相同版號（規格
+///「產物層版本戳同源」），但工作區可能是半手動狀態，所以整個目錄逐份掃描而不
+/// 抽樣一份：守門的契約是「即將被改寫的技能檔中任一檔領先即拒絕」，抽樣會漏。
+/// 回傳最能代表方向的版號——任一檔領先引擎即回該檔（領先優先），否則回第一個
+/// 與現版不等的版號，全部現版時回現版。目錄項目排序後掃描，結果與檔案系統的
+/// 列舉順序無關。
+fn probe_skills_dir(skills_root: &Path) -> SkillsProbe {
+    let entries = match std::fs::read_dir(skills_root) {
+        Ok(entries) => entries,
+        // 目錄不存在＝從未安裝；其他失敗（權限、路徑是檔案）＝無法判定。
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return SkillsProbe::Absent,
+        Err(_) => return SkillsProbe::Unreadable,
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.starts_with("speclink-"))
+        .collect();
+    names.sort();
+    let mut found_any = false;
+    let mut differing: Option<String> = None;
+    let mut current: Option<String> = None;
+    for name in names {
+        let file = skills_root.join(&name).join("SKILL.md");
+        if !file.is_file() {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&file) else {
+            return SkillsProbe::Unreadable;
+        };
+        // 檔在但版本行讀不到＝壞 frontmatter：回報成現版會讓它永遠不被修復。
+        let Some(v) = skill_version_of(&text).map(str::to_string) else {
+            return SkillsProbe::Unreadable;
+        };
+        found_any = true;
+        if workspace_is_newer(&v, ASSET_VERSION) {
+            return SkillsProbe::Found(v);
+        }
+        if v != ASSET_VERSION {
+            differing.get_or_insert(v);
+        } else {
+            current.get_or_insert(v);
+        }
+    }
+    if !found_any {
+        return SkillsProbe::Absent;
+    }
+    SkillsProbe::Found(differing.or(current).expect("found_any implies a version"))
 }
 
 /// 比對前正規化換行：Windows checkout（core.autocrlf）的 CRLF 檔案不得因換行
@@ -862,9 +820,9 @@ fn version_parts(version: &str) -> Option<Vec<u64>> {
         .collect()
 }
 
-/// 工作區標記版號是否數值領先引擎版號（決策 3）：段數不足補零後逐段比較。
-/// 任一邊無法完整解析為數字段時回 false——手改壞的標記寧可誤報過期（改寫即恢復
-/// 受管狀態），不可誤報較新（那會封鎖 update）。
+/// 工作區版號是否數值領先引擎版號（決策 3）：段數不足補零後逐段比較。
+/// 任一邊無法完整解析為數字段時回 false——手改壞的 frontmatter 寧可誤報過期
+///（改寫即恢復受管狀態），不可誤報較新（那會封鎖 update）。
 fn workspace_is_newer(workspace: &str, engine: &str) -> bool {
     let (Some(a), Some(b)) = (version_parts(workspace), version_parts(engine)) else {
         return false;
@@ -878,21 +836,20 @@ fn workspace_is_newer(workspace: &str, engine: &str) -> bool {
     false
 }
 
-/// 一組內建工具的指令檔絕對路徑（守門的檢查目標）。
-fn instruction_targets(root: &Path, tools: &[Tool]) -> Vec<PathBuf> {
-    tools.iter().map(|t| root.join(instructions_path(*t))).collect()
+/// 一組內建工具的 skills 目錄絕對路徑（守門的檢查目標）。
+fn skill_targets(root: &Path, tools: &[Tool]) -> Vec<PathBuf> {
+    tools.iter().map(|t| root.join(t.skills_dir())).collect()
 }
 
-/// 降級守門的拒絕判定：`files` 中任一指令檔的標記版號數值領先引擎時，以單行
-/// 英文錯誤拒絕（含兩邊版號）。讀不到的檔案與無標記的檔案不擋——守門只在
+/// 降級守門的拒絕判定：`dirs` 中任一 skills 目錄的技能版號數值領先引擎時，以單行
+/// 英文錯誤拒絕（含兩邊版號）。技能不在、或版號讀不出來的目錄不擋——守門只在
 /// 「可證明較新」時觸發（決策 3 的安全預設）。
-fn refuse_downgrade(files: &[PathBuf]) -> Result<()> {
-    for md in files {
-        let Some(text) = util::read_opt(md) else { continue };
-        if let Some(v) = marker_version_of(&text) {
-            if workspace_is_newer(v, MARKER_VERSION) {
+fn refuse_downgrade(dirs: &[PathBuf]) -> Result<()> {
+    for dir in dirs {
+        if let SkillsProbe::Found(v) = probe_skills_dir(dir) {
+            if workspace_is_newer(&v, ASSET_VERSION) {
                 bail!(
-                    "Workspace instruction files ({v}) are newer than this engine ({MARKER_VERSION}). \
+                    "Workspace skill files ({v}) are newer than this engine ({ASSET_VERSION}). \
                      Update Speclink first, or run `speclink update --allow-downgrade` to rewrite them anyway."
                 );
             }
@@ -901,17 +858,18 @@ fn refuse_downgrade(files: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
-/// 唯讀的指令檔過期探測（決策 2、3）：依 `.speclink.yaml` 的 tools 清單（與
-/// [`update`] 同一資料源）讀各內建工具的指令檔，以標記版號對 [`MARKER_VERSION`]
-/// 判方向——數值領先現版為較新，其餘退回字串相等判定（不等即過期）。方向是唯一
-/// 判準來源：desktop 與 CLI 共用同一裁決，領先時兩個出口都不提供改寫動作。
+/// 唯讀的技能檔過期探測（規格「技能檔過期探測」）：依 `.speclink.yaml` 的 tools
+/// 清單（與 [`update`] 同一資料源）讀各內建工具 skills 目錄下技能檔 frontmatter 的
+/// 版本欄位，對 [`ASSET_VERSION`] 判方向——數值領先現版為較新，其餘退回字串相等
+/// 判定（不等即過期）。方向是唯一判準來源：desktop 與 CLI 共用同一裁決，領先時
+/// 兩個出口都不提供改寫動作。
 ///
 /// 零寫入：desktop 開專案時搭載，探測失敗不得阻斷開啟。自訂描述子第一版不涵蓋
 /// （回報結構已預留 tool 名欄位，納入時不需改形狀）。
-pub fn probe_instructions(root: &Path) -> InstructionProbe {
-    let unknown = || InstructionProbe {
-        status: InstructionStatus::Unknown,
-        current_version: MARKER_VERSION.to_string(),
+pub fn probe_assets(root: &Path) -> AssetProbe {
+    let unknown = || AssetProbe {
+        status: AssetStatus::Unknown,
+        current_version: ASSET_VERSION.to_string(),
         tools: Vec::new(),
         differing_files: Vec::new(),
     };
@@ -919,11 +877,6 @@ pub fn probe_instructions(root: &Path) -> InstructionProbe {
         return unknown();
     };
     let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
-    let store = if app.remote.is_some() {
-        StoreKind::Remote
-    } else {
-        StoreKind::Fs
-    };
 
     let mut selected: Vec<Tool> = Vec::new();
     for entry in &app.tools {
@@ -939,68 +892,61 @@ pub fn probe_instructions(root: &Path) -> InstructionProbe {
 
     let mut tools = Vec::new();
     for tool in &selected {
-        let md = root.join(instructions_path(*tool));
-        if !md.is_file() {
-            tools.push(ToolInstructionState {
-                tool: tool.name().to_string(),
-                workspace_version: None,
-                stale: false,
-                newer: false,
-                missing: true,
-            });
-            continue;
-        }
-        // 檔案在但讀不出來＝無法判定（權限、編碼）；與「不存在」是不同的狀態。
-        let Ok(text) = std::fs::read_to_string(&md) else {
-            return unknown();
+        let version = match probe_skills_dir(&root.join(tool.skills_dir())) {
+            SkillsProbe::Absent => {
+                tools.push(ToolAssetState {
+                    tool: tool.name().to_string(),
+                    workspace_version: None,
+                    stale: false,
+                    newer: false,
+                    missing: true,
+                });
+                continue;
+            }
+            // 技能檔在但讀不出版號（IO、壞 frontmatter）＝無法判定；
+            // 與「不存在」是不同的狀態。
+            SkillsProbe::Unreadable => return unknown(),
+            SkillsProbe::Found(version) => version,
         };
-        let version = marker_version_of(&text).map(str::to_string);
-        // 方向優先於相等判定：領先現版的標記是「較新」，不得再算成過期。
-        let newer = version
-            .as_deref()
-            .is_some_and(|v| workspace_is_newer(v, MARKER_VERSION));
-        tools.push(ToolInstructionState {
+        // 方向優先於相等判定：領先現版的版號是「較新」，不得再算成過期。
+        let newer = workspace_is_newer(&version, ASSET_VERSION);
+        tools.push(ToolAssetState {
             tool: tool.name().to_string(),
-            stale: !newer && version.as_deref().is_some_and(|v| v != MARKER_VERSION),
+            stale: !newer && version != ASSET_VERSION,
             newer,
             missing: false,
-            workspace_version: version,
+            workspace_version: Some(version),
         });
     }
 
     let status = if tools.iter().any(|t| t.newer) {
-        InstructionStatus::Newer
+        AssetStatus::Newer
     } else if tools.iter().any(|t| t.missing) {
-        InstructionStatus::Missing
+        AssetStatus::Missing
     } else if tools.iter().any(|t| t.stale) {
-        InstructionStatus::Stale
+        AssetStatus::Stale
     } else {
-        InstructionStatus::Current
+        AssetStatus::Current
     };
     let differing_files = match status {
-        InstructionStatus::Missing | InstructionStatus::Stale | InstructionStatus::Newer => {
-            differing_managed_files(root, &selected, &spec_dir, store)
+        AssetStatus::Missing | AssetStatus::Stale | AssetStatus::Newer => {
+            differing_managed_files(root, &selected, &spec_dir)
         }
         _ => Vec::new(),
     };
 
-    InstructionProbe {
+    AssetProbe {
         status,
-        current_version: MARKER_VERSION.to_string(),
+        current_version: ASSET_VERSION.to_string(),
         tools,
         differing_files,
     }
 }
 
-/// 更新將新建或改寫、且內容與現版 render 不同的受管檔（專案根相對路徑）。
-/// 指令檔的期望內容走與 [`generate_tool`] 相同的 marker upsert——使用者寫在標記
-/// 之外的內容原樣保留，不得因此被誤列為差異。不存在的檔案內容視為空、必列入。
-fn differing_managed_files(
-    root: &Path,
-    tools: &[Tool],
-    spec_dir: &str,
-    store: StoreKind,
-) -> Vec<String> {
+/// 更新將新建或改寫、且內容與現版 render 不同的受管檔（專案根相對路徑）。受管集合
+/// 只剩技能檔——指令檔已退出受管（change: remove-marker-injection）。不存在的檔案
+/// 內容視為空、必列入。
+fn differing_managed_files(root: &Path, tools: &[Tool], spec_dir: &str) -> Vec<String> {
     let mut differing = Vec::new();
     let mut compare = |rel: String, expected: &str| {
         let actual = std::fs::read_to_string(root.join(rel.split('/').collect::<PathBuf>()))
@@ -1010,16 +956,9 @@ fn differing_managed_files(
         }
     };
     // 被政策排除的技能不屬於預期生成集合——否則政策關閉的專案會永遠被報成
-    // 「檔案缺失」而過期；marker 的兩行 worktree 指引同理。
+    // 「檔案缺失」而過期。
     let worktree_on = worktree_skills_enabled(root, spec_dir);
     for tool in tools {
-        let rel = instructions_path(*tool);
-        let existing = util::read_opt(&root.join(rel));
-        let expected = upsert_marker(
-            existing,
-            &instructions_body(spec_dir, *tool, store, worktree_on),
-        );
-        compare(rel.to_string(), &expected);
         for skill in skills::registry() {
             if *tool != Tool::Claude && !skill.for_codex {
                 continue;
@@ -1166,54 +1105,6 @@ mod tests {
         }
     }
 
-    // verify 站對所有工具生成（skills.rs for_codex=true）後，每個工具的 marker
-    // 都必須路由它——生成了技能檔卻不在 marker 提及，等於指引不可達。
-
-    #[test]
-    fn codex_marker_routes_verify_alongside_review() {
-        let body = instructions_body("openspec", Tool::Codex, StoreKind::Fs, true);
-        assert!(
-            body.contains("`$speclink-verify` (spec compliance; user's call)"),
-            "codex done-line must route verify:\n{body}"
-        );
-        assert!(
-            body.contains("(quality? | review? ∥ verify?) → archive"),
-            "codex workflow line must carry quality and verify:\n{body}"
-        );
-        assert!(
-            body.contains("(quality? | review? ∥ verify?) → worktree-merge"),
-            "codex worktree workflow line must carry quality and verify:\n{body}"
-        );
-        assert!(
-            body.contains("`$speclink-quality`"),
-            "codex skill list must route the two-station orchestration:\n{body}"
-        );
-    }
-
-    #[test]
-    fn custom_marker_routes_verify_alongside_review() {
-        let tool = CustomTool {
-            name: "wad".into(),
-            skills_dir: ".wad/skills".into(),
-            instructions_file: "WAD.md".into(),
-            invocation: crate::config::Invocation::Cli,
-        };
-        let body = custom_instructions_body("openspec", &tool, StoreKind::Fs);
-        assert!(
-            body.contains("`speclink-verify` (spec compliance; user's call)"),
-            "custom done-line must route verify:\n{body}"
-        );
-        assert!(
-            body.contains("(quality? | review? ∥ verify?) → archive"),
-            "custom workflow line must carry quality and verify:\n{body}"
-        );
-        // 生成了 speclink-quality 技能檔卻不在 marker 提及，等於指引不可達。
-        assert!(
-            body.contains("`speclink-quality`"),
-            "custom skill list must route the two-station orchestration:\n{body}"
-        );
-    }
-
     // --- 共用 built-in tools reconciliation ---
     // Spec requirement: 「built-in tools 權威收斂」＋ design「Core 單一 Workspace 工具同步入口」
     // ／「Built-in 選擇收斂且保留自訂描述子」與 Implementation Contract 的
@@ -1240,7 +1131,7 @@ mod tests {
     }
 
     /// Remote 模式 workspace，其 `.speclink.yaml` 除 built-in 選集外還帶 custom
-    /// descriptor、remote section 與未知頂層鍵；兩份指令檔在 marker 之外先有使用者文字。
+    /// descriptor、remote section 與未知頂層鍵；兩份指令檔先有使用者自有文字。
     fn seed_remote_workspace(root: &TempRoot, builtins: &[Tool]) {
         root.write("CLAUDE.md", &format!("{CLAUDE_USER_TEXT}\n"));
         root.write("AGENTS.md", &format!("{CODEX_USER_TEXT}\n"));
@@ -1305,6 +1196,17 @@ mod tests {
         for (i, (from, to)) in rows.iter().enumerate() {
             let root = TempRoot::new(&format!("reconcile-row-{i}"));
             seed_remote_workspace(&root, from);
+            // Spec Scenario 的 GIVEN：指令檔「同時含遺留 Speclink 區塊和使用者文字」
+            // ——seed 的 update 已把區塊剝掉，reconcile 前重新注入，讓收斂路徑自己剝。
+            for tool in [Tool::Claude, Tool::Codex] {
+                root.write(
+                    instructions_file(tool),
+                    &format!(
+                        "<!-- SPECLINK:START v1.0.0 -->\n舊路由表\n<!-- SPECLINK:END -->\n{}\n",
+                        user_text(tool)
+                    ),
+                );
+            }
 
             reconcile_builtin_tools(&root.dir, to).expect("reconcile succeeds");
 
@@ -1328,13 +1230,13 @@ mod tests {
                 let text = root.read(md);
                 let skill = propose_skill(tool);
                 if to.contains(&tool) {
-                    assert_eq!(marker_count(&text), 1, "row {i}: {md} 應恰有一個 marker:\n{text}");
                     assert!(root.exists(&skill), "row {i}: {skill} 應被補齊");
                 } else {
-                    assert_eq!(marker_count(&text), 0, "row {i}: {md} 的 marker 應被移除:\n{text}");
                     assert!(!root.exists(&skill), "row {i}: {skill} 應被清理");
                 }
-                assert!(text.contains(user_text(tool)), "row {i}: {md} 的使用者文字須保留:\n{text}");
+                // 指令檔已退出受管：不論選取與否都只剩使用者自己的內容。
+                assert_eq!(marker_count(&text), 0, "row {i}: {md} 不得帶受管區塊:\n{text}");
+                assert_eq!(text, format!("{}\n", user_text(tool)), "row {i}: {md} 須位元級不變");
             }
             assert!(!root.exists("openspec"), "row {i}: remote 模式不得建立 openspec/");
         }
@@ -1352,8 +1254,7 @@ mod tests {
         reconcile_builtin_tools(&root.dir, &[Tool::Codex]).expect("reconcile succeeds");
 
         let text = root.read("AGENTS.md");
-        assert_eq!(marker_count(&text), 1, "缺席的 marker 應補齊:\n{text}");
-        assert!(text.contains(CODEX_USER_TEXT), "使用者文字須保留:\n{text}");
+        assert_eq!(text, format!("{CODEX_USER_TEXT}\n"), "指令檔須位元級不變:\n{text}");
         assert!(root.exists(".agents/skills/speclink-propose/SKILL.md"), "缺席的 Skill 應補齊");
         assert_eq!(root.read("docs/notes.md"), "使用者檔案\n");
     }
@@ -1388,18 +1289,18 @@ mod tests {
         assert_eq!(snapshot(&root), before, "失敗不得留下任何寫入");
     }
 
-    /// Remote 模式沿用 remote 指令措辭，且不建立本機規格樹。
+    /// Remote 模式不生成任何指令檔內容，也不建立本機規格樹。
     #[test]
-    fn reconcile_in_remote_mode_keeps_remote_wording_and_creates_no_spec_tree() {
+    fn reconcile_in_remote_mode_writes_no_instruction_file_and_no_spec_tree() {
         let root = TempRoot::new("reconcile-remote-wording");
         seed_remote_workspace(&root, &[Tool::Claude]);
 
         reconcile_builtin_tools(&root.dir, &[Tool::Claude, Tool::Codex]).expect("reconcile succeeds");
 
-        for md in ["CLAUDE.md", "AGENTS.md"] {
+        for tool in [Tool::Claude, Tool::Codex] {
+            let md = instructions_file(tool);
             let text = root.read(md);
-            assert!(text.contains("team system's spec store"), "{md} 須用 remote 措辭:\n{text}");
-            assert!(!text.contains("openspec/specs/"), "{md} 不得出現本機規格路徑:\n{text}");
+            assert_eq!(text, format!("{}\n", user_text(tool)), "{md} 須位元級不變:\n{text}");
         }
         assert!(!root.exists("openspec"), "remote 模式不得建立 openspec/");
     }
@@ -1432,7 +1333,7 @@ mod tests {
 
         let app = root.read(".speclink.yaml");
         assert!(app.contains("claude"), "tools 須記錄 claude：{app}");
-        assert!(root.read("CLAUDE.md").contains("<!-- SPECLINK:START"));
+        assert!(!root.exists("CLAUDE.md"), "工作區補齊不得產生指令檔");
         assert!(root.exists(".claude/skills/speclink-propose/SKILL.md"));
 
         let after = snapshot(&root);
@@ -1576,62 +1477,369 @@ mod tests {
         reconcile_builtin_tools(&converged.dir, &both).expect("reconcile succeeds");
 
         for tool in both {
-            let md = instructions_file(tool);
-            assert_eq!(converged.read(md), fresh.read(md), "{md} 受管內容須與 init 相同");
             let skill = propose_skill(tool);
             assert_eq!(converged.read(&skill), fresh.read(&skill), "{skill} 須與 init 相同");
         }
         assert!(converged.exists("openspec/specs"), "既有 filesystem 規格樹須保留");
     }
 
-    // --- 指令檔過期探測（規格「指令檔過期探測」；決策 2、3） ---
+    // --- 遺留 marker 剝除（design D2；規格「built-in tools 權威收斂」
+    // 「描述子的同步與清理生命週期」） ---
 
-    /// 把工作區的 marker 版號改成指定值（模擬以別版引擎生成的工作區——舊值模擬
-    /// 落後、新值模擬領先）。
-    fn set_marker(root: &TempRoot, tool: Tool, version: &str) {
-        let file = instructions_file(tool);
-        let text = root.read(file).replace(MARKER_VERSION, version);
-        root.write(file, &text);
+    /// 舊版引擎注入過的指令檔：marker 區塊在上，使用者段落在下。
+    fn legacy_marker_file(user_text: &str) -> String {
+        format!(
+            "<!-- SPECLINK:START v1.0.0 -->\n\n# Speclink Instructions\n\n舊版注入的路由表。\n\n<!-- SPECLINK:END -->\n{user_text}"
+        )
     }
 
-    /// 比現版領先一個主版號的標記版號：工作區檔案由更新的引擎生成的情境。
+    #[test]
+    fn update_strips_a_legacy_marker_and_keeps_user_content() {
+        // Scenario「更新時剝除內建工具的遺留 marker」：區塊消失、使用者段落原樣
+        // 保留，摘要列出被剝除的檔案，技能檔照常再生。
+        let root = TempRoot::new("strip-keeps-user");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write("CLAUDE.md", &legacy_marker_file(CLAUDE_USER_TEXT));
+
+        let out = update(&root.dir, false).expect("update succeeds");
+
+        let text = root.read("CLAUDE.md");
+        assert!(!text.contains("<!-- SPECLINK:START"), "區塊須被剝除:\n{text}");
+        assert_eq!(text, CLAUDE_USER_TEXT, "使用者段落須原樣保留:\n{text}");
+        assert_eq!(out.stripped, vec!["CLAUDE.md".to_string()], "摘要須列出剝除的檔案");
+        assert!(root.exists(&propose_skill(Tool::Claude)), "技能檔照常再生");
+    }
+
+    #[test]
+    fn update_deletes_an_instruction_file_that_was_only_a_marker() {
+        // 剝除後全空的檔案整份刪除——不留一個空殼在專案根。
+        let root = TempRoot::new("strip-deletes-empty");
+        init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
+        root.write("CLAUDE.md", &legacy_marker_file(""));
+        root.write("AGENTS.md", &legacy_marker_file(""));
+
+        let out = update(&root.dir, false).expect("update succeeds");
+
+        assert!(!root.exists("CLAUDE.md"), "純 marker 檔須刪除");
+        assert!(!root.exists("AGENTS.md"), "純 marker 檔須刪除");
+        assert_eq!(out.stripped, vec!["CLAUDE.md".to_string(), "AGENTS.md".to_string()]);
+    }
+
+    #[test]
+    fn update_leaves_an_instruction_file_without_a_marker_byte_identical() {
+        // 無區塊＝零觸碰：使用者自己寫的 CLAUDE.md 不得被 update 改動一個位元組。
+        let root = TempRoot::new("strip-untouched");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        let user_only = "# 我自己的 CLAUDE.md\n\n沒有任何受管區塊。\n";
+        root.write("CLAUDE.md", user_only);
+
+        let out = update(&root.dir, false).expect("update succeeds");
+
+        assert_eq!(root.read("CLAUDE.md"), user_only, "無區塊的檔案須位元級不變");
+        assert!(out.stripped.is_empty(), "沒剝除任何東西時摘要須為空：{:?}", out.stripped);
+    }
+
+    #[test]
+    fn update_strips_a_descriptors_legacy_marker() {
+        // Scenario「更新時剝除描述子的遺留 marker」：仍帶 instructions_file 欄位的
+        // 描述子，其指令檔同受剝除語意。
+        let root = TempRoot::new("strip-descriptor");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(".speclink.yaml", &format!("tools:\n{CUSTOM_DESCRIPTOR}"));
+        root.write("WAD.md", &legacy_marker_file("使用者寫在 WAD.md 的段落\n"));
+
+        let out = update(&root.dir, false).expect("update succeeds");
+
+        let text = root.read("WAD.md");
+        assert!(!text.contains("<!-- SPECLINK:START"), "描述子的區塊須被剝除:\n{text}");
+        assert_eq!(text, "使用者寫在 WAD.md 的段落\n", "使用者段落須原樣保留:\n{text}");
+        assert_eq!(out.stripped, vec!["WAD.md".to_string()]);
+        assert!(root.exists(".wad/skills/speclink-apply/SKILL.md"), "描述子技能檔照常生成");
+    }
+
+    #[test]
+    fn init_force_over_a_legacy_workspace_strips_the_marker() {
+        // design D2：對既有 marker 的專案 re-init（--force）同樣走剝除。
+        let root = TempRoot::new("strip-init-force");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write("CLAUDE.md", &legacy_marker_file(CLAUDE_USER_TEXT));
+
+        init(&root.dir, &[Tool::Claude], true, "openspec").expect("re-init succeeds");
+
+        assert_eq!(root.read("CLAUDE.md"), CLAUDE_USER_TEXT, "區塊須被剝除、使用者段落保留");
+    }
+
+    #[test]
+    fn init_on_a_fresh_project_writes_no_instruction_file() {
+        // Scenario「指令檔零受管區塊」：全新目錄以兩個工具 init 後，專案根不存在
+        // 任何指令檔，技能檔照常生成。
+        let root = TempRoot::new("fresh-no-instructions");
+        init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
+
+        assert!(!root.exists("CLAUDE.md"), "不得生成 CLAUDE.md");
+        assert!(!root.exists("AGENTS.md"), "不得生成 AGENTS.md");
+        for tool in [Tool::Claude, Tool::Codex] {
+            assert!(root.exists(&propose_skill(tool)), "{} 技能檔照常生成", tool.name());
+        }
+    }
+
+    #[test]
+    fn strip_leaves_a_file_with_an_unpaired_start_untouched() {
+        // R1：END 行被手動刪掉或 merge conflict 弄壞時，剝除不得把 START 之後的
+        // 內容吞掉——不成對就整檔不動（位元級不變），寧可留一塊死文字。
+        let root = TempRoot::new("strip-unpaired");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        let broken = "<!-- SPECLINK:START v1.0.0 -->\n\n舊路由表。\n\n使用者的重要內容\n";
+        root.write("CLAUDE.md", broken);
+
+        let out = update(&root.dir, false).expect("update succeeds");
+
+        assert_eq!(root.read("CLAUDE.md"), broken, "不成對的檔案必須位元級不變");
+        assert!(out.stripped.is_empty(), "不成對不算剝除：{:?}", out.stripped);
+    }
+
+    #[test]
+    fn strip_removes_every_legacy_block_in_one_run() {
+        // R2：多個遺留區塊（壞 merge 疊出來的）一次 update 全剝乾淨，不用跑第二次。
+        let root = TempRoot::new("strip-multi");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(
+            "CLAUDE.md",
+            "<!-- SPECLINK:START v1.0.0 -->\nA\n<!-- SPECLINK:END -->\n中間的使用者文字\n<!-- SPECLINK:START v1.1.0 -->\nB\n<!-- SPECLINK:END -->\n結尾文字\n",
+        );
+
+        let out = update(&root.dir, false).expect("update succeeds");
+
+        let text = root.read("CLAUDE.md");
+        assert!(!text.contains("SPECLINK:START"), "兩個區塊都要剝掉:\n{text}");
+        assert!(text.contains("中間的使用者文字") && text.contains("結尾文字"), "{text}");
+        assert_eq!(out.stripped, vec!["CLAUDE.md".to_string()]);
+    }
+
+    #[test]
+    fn strip_handles_crlf_files_without_leaving_blank_lines() {
+        // R3：Windows checkout（CRLF）剝除後不得留下前導空行。
+        let root = TempRoot::new("strip-crlf");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(
+            "CLAUDE.md",
+            "<!-- SPECLINK:START v1.0.0 -->\r\n\r\n舊路由表。\r\n\r\n<!-- SPECLINK:END -->\r\n使用者段落\r\n",
+        );
+
+        update(&root.dir, false).expect("update succeeds");
+
+        assert_eq!(root.read("CLAUDE.md"), "使用者段落\r\n", "CRLF 分隔空行須一併消失");
+    }
+
+    // --- 技能檔過期探測（規格「技能檔過期探測」；design D6） ---
+
+    /// 比現版領先一個主版號的版號：工作區檔案由更新的引擎生成的情境。
     fn ahead_of_current() -> String {
-        let major: u64 = MARKER_VERSION
+        let major: u64 = ASSET_VERSION
             .trim_start_matches('v')
             .split('.')
             .next()
             .and_then(|s| s.parse().ok())
-            .expect("MARKER_VERSION 主版號可解析");
+            .expect("ASSET_VERSION 主版號可解析");
         format!("v{}.0.0", major + 1)
     }
 
-    #[test]
-    fn probe_reports_stale_and_lists_differing_files() {
-        // Scenario「舊版工作區判過期並列差異檔」：標記版號不等即過期，並列出
-        // 內容與現版 render 不同的受管檔（指令檔與技能檔皆可能在列）。
-        let root = TempRoot::new("probe-stale");
-        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
-        set_marker(&root, Tool::Claude, "v0.9.0");
+    /// 把某工具 skills 目錄下每份技能檔的 frontmatter 版號改成指定值
+    ///（模擬以別版引擎生成的工作區——舊值模擬落後、新值模擬領先）。
+    fn set_skill_version(root: &TempRoot, tool: Tool, version: &str) {
+        crate::testkit::set_skill_version(&root.at(tool.skills_dir()), version);
+    }
 
-        let probe = probe_instructions(&root.dir);
-        assert_eq!(probe.status, InstructionStatus::Stale, "{probe:?}");
-        assert_eq!(probe.current_version, MARKER_VERSION);
+    #[test]
+    fn skill_probe_reports_stale_and_lists_differing_files() {
+        // Scenario「舊版工作區判過期並列差異檔」：技能版號舊於現版即過期。
+        let root = TempRoot::new("skill-probe-stale");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        set_skill_version(&root, Tool::Claude, "v0.9.0");
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Stale, "{probe:?}");
+        assert_eq!(probe.current_version, ASSET_VERSION);
         assert_eq!(probe.tools.len(), 1);
         assert_eq!(probe.tools[0].tool, "claude");
         assert_eq!(probe.tools[0].workspace_version.as_deref(), Some("v0.9.0"));
-        assert!(probe.tools[0].stale && !probe.tools[0].missing);
+        assert!(probe.tools[0].stale && !probe.tools[0].missing && !probe.tools[0].newer);
         assert!(
-            probe.differing_files.contains(&"CLAUDE.md".to_string()),
-            "改動過的指令檔須列入差異清單：{:?}",
+            probe.differing_files.contains(&propose_skill(Tool::Claude)),
+            "改動過的技能檔須列入差異清單：{:?}",
             probe.differing_files
         );
-        assert!(!probe.tools[0].newer, "落後的工作區不得判較新");
+    }
+
+    #[test]
+    fn skill_probe_reports_newer_when_the_workspace_leads_the_engine() {
+        // Scenario「工作區檔案領先引擎判較新」。
+        let root = TempRoot::new("skill-probe-newer");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        let ahead = ahead_of_current();
+        set_skill_version(&root, Tool::Claude, &ahead);
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Newer, "{probe:?}");
+        assert_eq!(probe.tools[0].workspace_version.as_deref(), Some(ahead.as_str()));
+        assert!(probe.tools[0].newer && !probe.tools[0].stale && !probe.tools[0].missing);
+        assert!(!probe.differing_files.is_empty(), "較新時仍須回報差異檔清單");
+    }
+
+    #[test]
+    fn skill_probe_reports_missing_when_the_skills_dir_has_no_speclink_skill() {
+        // Scenario「技能目錄缺少判缺失」：整組技能不在（clone 後技能未進版控），
+        // 且缺失勝過另一支的過期。
+        let root = TempRoot::new("skill-probe-missing");
+        init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
+        std::fs::remove_dir_all(root.at(Tool::Codex.skills_dir())).unwrap();
+        set_skill_version(&root, Tool::Claude, "v0.9.0");
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Missing, "{probe:?}");
+        let codex = probe.tools.iter().find(|t| t.tool == "codex").expect("codex 在列");
+        assert!(codex.missing && !codex.stale, "{codex:?}");
+        assert_eq!(codex.workspace_version, None);
+        assert!(
+            probe.differing_files.contains(&propose_skill(Tool::Codex)),
+            "不存在的受管檔須列入（內容視為空）：{:?}",
+            probe.differing_files
+        );
+    }
+
+    #[test]
+    fn skill_probe_prefers_newer_over_missing_and_stale() {
+        // Scenario「較新優先於缺失與過期」。
+        let root = TempRoot::new("skill-probe-newer-wins");
+        init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
+        set_skill_version(&root, Tool::Claude, &ahead_of_current());
+        std::fs::remove_dir_all(root.at(Tool::Codex.skills_dir())).unwrap();
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Newer, "{probe:?}");
+        let codex = probe.tools.iter().find(|t| t.tool == "codex").expect("codex 在列");
+        assert!(codex.missing && !codex.newer, "缺失的工具不得被標成較新：{codex:?}");
+    }
+
+    #[test]
+    fn skill_probe_falls_back_to_equality_for_an_unparsable_version() {
+        // Scenario「無法解析的版號退回相等判定」。
+        let root = TempRoot::new("skill-probe-unparsable");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        set_skill_version(&root, Tool::Claude, "v-not-a-version");
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Stale, "{probe:?}");
+        assert!(probe.tools[0].stale && !probe.tools[0].newer, "{:?}", probe.tools[0]);
+    }
+
+    #[test]
+    fn dropping_the_deprecated_instructions_file_field_does_not_prune_the_descriptor() {
+        // R6：使用者照棄用提示把 instructions_file 從描述子移除——同一工具不得被
+        // 誤判「已下架」而整組刪掉重建（pruned 與 updated 同列一個工具的自相矛盾）。
+        let root = TempRoot::new("descriptor-drop-deprecated-field");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(".speclink.yaml", &format!("tools:\n{CUSTOM_DESCRIPTOR}"));
+        update(&root.dir, false).expect("先以帶欄位的描述子生成足跡");
+
+        // 移除 instructions_file 欄位（skills_dir 不變）。
+        root.write(
+            ".speclink.yaml",
+            "tools:\n  - name: wad-harness\n    skills_dir: .wad/skills\n",
+        );
+        // 在技能目錄放一個使用者自己的檔案：整組 prune 重建會讓它消失。
+        root.write(".wad/skills/my-note.md", "使用者自己的檔案\n");
+
+        let out = update(&root.dir, false).expect("update succeeds");
+
+        assert!(
+            !out.pruned.contains(&"wad-harness".to_string()),
+            "移除棄用欄位不得觸發 prune：{:?}",
+            out.pruned
+        );
+        assert!(out.updated.contains(&"wad-harness".to_string()));
+        assert_eq!(root.read(".wad/skills/my-note.md"), "使用者自己的檔案\n");
+    }
+
+    #[test]
+    fn skill_version_parsing_stays_inside_the_frontmatter() {
+        // skill_version_of 只認 frontmatter：body 裡恰好叫 version: 的內文行不算，
+        // body 的 ---- 分隔線也不會提前截斷 frontmatter 搜尋。
+        assert_eq!(
+            skill_version_of("---\nname: x\nmetadata:\n  version: \"v9.9.9\"\n---\n\nbody version: \"v0.0.1\"\n"),
+            Some("v9.9.9")
+        );
+        assert_eq!(
+            skill_version_of("---\nname: x\n---\n\n----\n\nversion: \"v0.0.1\"\n"),
+            None,
+            "frontmatter 沒有版本行時，body 的 version 行不得被撿走"
+        );
+        assert_eq!(skill_version_of("no frontmatter\nversion: \"v1\"\n"), None);
+    }
+
+    #[test]
+    fn skill_probe_reports_unknown_when_the_version_line_is_gone() {
+        // R4：SKILL.md 在但 frontmatter 版本行遺失（手改壞）＝「技能檔存在但讀取
+        // 錯誤」→ 無法判定，絕不可回報現版——那會讓壞檔永遠不被提示修復。
+        let root = TempRoot::new("skill-probe-no-version");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        for entry in std::fs::read_dir(root.at(Tool::Claude.skills_dir())).unwrap().flatten() {
+            let file = entry.path().join("SKILL.md");
+            if file.is_file() {
+                let text: String = std::fs::read_to_string(&file)
+                    .unwrap()
+                    .lines()
+                    .filter(|l| !l.trim_start().starts_with("version:"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                std::fs::write(&file, text).unwrap();
+            }
+        }
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Unknown, "{probe:?}");
+    }
+
+    #[test]
+    fn skill_probe_reports_unknown_when_the_skills_dir_is_unreadable() {
+        // R5：read_dir 失敗（路徑是檔案、權限）不得與「從未安裝」混同——回無法
+        // 判定，否則 desktop 會給一個按下去必然失敗的「安裝」動作。
+        let root = TempRoot::new("skill-probe-dir-is-file");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        std::fs::remove_dir_all(root.at(".claude/skills")).unwrap();
+        root.write(".claude/skills", "這是一個檔案不是目錄");
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Unknown, "{probe:?}");
+    }
+
+    #[test]
+    fn skill_update_refuses_a_workspace_whose_skills_lead_the_engine() {
+        // 降級守門的版本來源同步改基準：領先的技能檔不得被任何再生路徑改寫。
+        let root = TempRoot::new("skill-guard-refuse");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        let ahead = ahead_of_current();
+        set_skill_version(&root, Tool::Claude, &ahead);
+        let before = snapshot(&root);
+
+        let err = update(&root.dir, false).expect_err("領先的工作區必須被拒");
+        let msg = err.to_string();
+        assert!(msg.contains(&ahead) && msg.contains(ASSET_VERSION), "訊息須含兩版號：{msg}");
+        assert_eq!(msg.lines().count(), 1, "單行錯誤：{msg}");
+        assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
+
+        update(&root.dir, true).expect("明示越過後照常再生");
+        assert!(
+            root.read(&propose_skill(Tool::Claude)).contains(ASSET_VERSION),
+            "受管檔須再生為引擎現版"
+        );
     }
 
     #[test]
     fn workspace_version_direction_only_orders_parsable_versions() {
-        // 決策 3：去 v 前綴、以點拆段、逐段數值比較、段數不足補零；任一邊無法
-        // 完整解析為數字段時不排序方向——寧可誤報過期，不可誤報較新（會封鎖 update）。
+        // 規格「技能檔過期探測」的數值比較規則：去 v 前綴、以點拆段、逐段數值比較、
+        // 段數不足補零；任一邊無法完整解析為數字段時不排序方向——寧可誤報過期，
+        // 不可誤報較新（會封鎖 update）。
         // spec Example「引擎 v1.11.0 探測 v1.14.0 工作區」的字面值：
         assert!(workspace_is_newer("v1.14.0", "v1.11.0"), "工作區領先引擎");
         assert!(!workspace_is_newer("v1.11.0", "v1.14.0"), "工作區落後引擎");
@@ -1648,102 +1856,21 @@ mod tests {
     }
 
     #[test]
-    fn probe_reports_newer_when_the_workspace_leads_the_engine() {
-        // Scenario「工作區檔案領先引擎判較新」＋ Example「引擎 v1.11.0 探測 v1.14.0
-        // 工作區」：2026-08-05 事故情境——舊判準回報「過期」，按「更新」即降級。
-        let root = TempRoot::new("probe-newer");
-        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
-        let ahead = ahead_of_current();
-        set_marker(&root, Tool::Claude, &ahead);
-
-        let probe = probe_instructions(&root.dir);
-        assert_eq!(probe.status, InstructionStatus::Newer, "{probe:?}");
-        assert_eq!(probe.current_version, MARKER_VERSION);
-        assert_eq!(probe.tools[0].workspace_version.as_deref(), Some(ahead.as_str()));
-        assert!(probe.tools[0].newer && !probe.tools[0].stale && !probe.tools[0].missing);
-        assert!(
-            probe.differing_files.contains(&"CLAUDE.md".to_string()),
-            "較新時仍須回報差異檔清單：{:?}",
-            probe.differing_files
-        );
-    }
-
-    #[test]
-    fn probe_prefers_newer_over_missing_and_stale() {
-        // Scenario「較新優先於缺失與過期」：任一工具領先即整體較新——任何會改寫
-        // 領先檔案的動作都不該被提供。
-        let root = TempRoot::new("probe-newer-wins");
-        init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
-        set_marker(&root, Tool::Claude, &ahead_of_current());
-        std::fs::remove_file(root.at("AGENTS.md")).unwrap();
-
-        let probe = probe_instructions(&root.dir);
-        assert_eq!(probe.status, InstructionStatus::Newer, "{probe:?}");
-        let codex = probe.tools.iter().find(|t| t.tool == "codex").expect("codex 在列");
-        assert!(codex.missing && !codex.newer, "缺失的工具不得被標成較新：{codex:?}");
-    }
-
-    #[test]
-    fn probe_falls_back_to_equality_for_an_unparsable_marker_version() {
-        // Scenario「無法解析的版號退回相等判定」：手改壞的標記判過期（改寫即恢復
-        // 受管狀態），絕不判較新（那會封鎖 update）。
-        let root = TempRoot::new("probe-unparsable");
-        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
-        set_marker(&root, Tool::Claude, "v-not-a-version");
-
-        let probe = probe_instructions(&root.dir);
-        assert_eq!(probe.status, InstructionStatus::Stale, "{probe:?}");
-        assert!(probe.tools[0].stale && !probe.tools[0].newer, "{:?}", probe.tools[0]);
-    }
-
-    #[test]
     fn init_force_refuses_a_workspace_that_leads_the_engine() {
-        // `--force` 的語意是「覆蓋既有檔案」，不是「同意降級」（決策 5 拒絕共用
-        // --force 的同一條理由）——重新初始化同樣不得把領先的指令檔改寫回舊內容。
+        // `--force` 的語意是「覆蓋既有檔案」，不是「同意降級」——重新初始化同樣
+        // 不得把領先的技能檔改寫回舊內容。
         let root = TempRoot::new("init-force-guard");
         init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
         let ahead = ahead_of_current();
-        set_marker(&root, Tool::Claude, &ahead);
+        set_skill_version(&root, Tool::Claude, &ahead);
         let before = snapshot(&root);
 
         let Err(err) = init(&root.dir, &[Tool::Claude], true, "openspec") else {
             panic!("領先的工作區不得被 --force 重建改寫");
         };
         let msg = err.to_string();
-        assert!(msg.contains(&ahead) && msg.contains(MARKER_VERSION), "訊息須含兩版號：{msg}");
+        assert!(msg.contains(&ahead) && msg.contains(ASSET_VERSION), "訊息須含兩版號：{msg}");
         assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
-    }
-
-    #[test]
-    fn update_refuses_a_workspace_that_leads_the_engine_with_zero_writes() {
-        // 降級守門落在引擎的受管檔再生入口：cmd_update、workflow-config 的技能
-        // 同步（CLI 與 desktop 設定頁）、desktop 更新入口、reconcile 與 init 的
-        // 重建全都經過守門，領先的指令檔不會被任何一條路徑靜默改寫。
-        let root = TempRoot::new("update-guard-refuse");
-        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
-        let ahead = ahead_of_current();
-        set_marker(&root, Tool::Claude, &ahead);
-        let before = snapshot(&root);
-
-        let err = update(&root.dir, false).expect_err("領先的工作區必須被拒");
-        let msg = err.to_string();
-        assert!(msg.contains(&ahead) && msg.contains(MARKER_VERSION), "訊息須含兩版號：{msg}");
-        assert_eq!(msg.lines().count(), 1, "單行錯誤：{msg}");
-        assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
-    }
-
-    #[test]
-    fn update_with_allow_downgrade_regenerates_at_the_engine_version() {
-        // 唯一的越過入口：明示同意降級後照常再生為引擎現版。
-        let root = TempRoot::new("update-guard-allow");
-        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
-        set_marker(&root, Tool::Claude, &ahead_of_current());
-
-        update(&root.dir, true).expect("明示越過後照常再生");
-        assert!(
-            root.read("CLAUDE.md").contains(MARKER_VERSION),
-            "受管檔須再生為引擎現版"
-        );
     }
 
     #[test]
@@ -1755,32 +1882,33 @@ mod tests {
         // 模擬 legacy 工作區：config 沒有 tools 清單，但 .claude/ 目錄在。
         root.write(".speclink.yaml", "# Speclink application config\n");
         let ahead = ahead_of_current();
-        set_marker(&root, Tool::Claude, &ahead);
+        set_skill_version(&root, Tool::Claude, &ahead);
         let before = snapshot(&root);
 
         let err = update(&root.dir, false).expect_err("legacy fallback 同樣必須被拒");
         let msg = err.to_string();
-        assert!(msg.contains(&ahead) && msg.contains(MARKER_VERSION), "{msg}");
+        assert!(msg.contains(&ahead) && msg.contains(ASSET_VERSION), "{msg}");
         assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
 
         update(&root.dir, true).expect("明示越過照常再生");
-        assert!(root.read("CLAUDE.md").contains(MARKER_VERSION));
+        assert!(root.read(&propose_skill(Tool::Claude)).contains(ASSET_VERSION));
     }
 
     #[test]
-    fn the_guard_covers_custom_descriptor_instruction_files() {
-        // 描述子的指令檔同樣帶標記、同樣由 update 再生——守門一體適用，
-        // 只用描述子的工作區不得因探測面只收 builtin 而被降級。
+    fn the_guard_covers_custom_descriptor_skill_files() {
+        // Scenario「自訂描述子的技能檔同受守門」：只用描述子的工作區不得因判定面
+        // 只收 builtin 而被降級。
         let root = TempRoot::new("guard-descriptor");
         init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
         root.write(".speclink.yaml", &format!("tools:\n{CUSTOM_DESCRIPTOR}"));
         update(&root.dir, false).expect("先生成描述子受管檔");
         let ahead = ahead_of_current();
-        let text = root.read("WAD.md").replace(MARKER_VERSION, &ahead);
-        root.write("WAD.md", &text);
+        let skill = root.at(".wad/skills/speclink-propose/SKILL.md");
+        let text = std::fs::read_to_string(&skill).unwrap().replace(ASSET_VERSION, &ahead);
+        std::fs::write(&skill, text).unwrap();
         let before = snapshot(&root);
 
-        let err = update(&root.dir, false).expect_err("領先的描述子指令檔必須被拒");
+        let err = update(&root.dir, false).expect_err("領先的描述子技能檔必須被拒");
         assert!(err.to_string().contains(&ahead), "{err}");
         assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
     }
@@ -1791,12 +1919,12 @@ mod tests {
         // 「config 已改、受管檔未同步」的半狀態。
         let root = TempRoot::new("reconcile-guard");
         init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
-        set_marker(&root, Tool::Claude, &ahead_of_current());
+        set_skill_version(&root, Tool::Claude, &ahead_of_current());
         let before = snapshot(&root);
 
         let err = reconcile_builtin_tools(&root.dir, &[Tool::Claude, Tool::Codex])
             .expect_err("領先的工作區必須在寫入 config 前被拒");
-        assert!(err.to_string().contains(MARKER_VERSION), "{err}");
+        assert!(err.to_string().contains(ASSET_VERSION), "{err}");
         assert_eq!(snapshot(&root), before, "拒絕＝零寫入（含 .speclink.yaml）");
     }
 
@@ -1806,47 +1934,10 @@ mod tests {
         let root = TempRoot::new("probe-current");
         init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
 
-        let probe = probe_instructions(&root.dir);
-        assert_eq!(probe.status, InstructionStatus::Current, "{probe:?}");
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Current, "{probe:?}");
         assert!(probe.differing_files.is_empty(), "{:?}", probe.differing_files);
         assert!(probe.tools.iter().all(|t| !t.stale && !t.missing));
-    }
-
-    #[test]
-    fn probe_treats_a_removed_marker_as_opted_out() {
-        // Scenario「標記移除視為退出受管」：檔案在但整塊標記被移除＝表達過移除
-        // 意圖，回報現版、不列差異檔——提示層不得引導使用者重新植入。
-        let root = TempRoot::new("probe-optout");
-        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
-        root.write("CLAUDE.md", "只剩使用者自己的內容。\n");
-
-        let probe = probe_instructions(&root.dir);
-        assert_eq!(probe.status, InstructionStatus::Current, "{probe:?}");
-        assert!(probe.differing_files.is_empty(), "{:?}", probe.differing_files);
-        assert!(!probe.tools[0].stale && !probe.tools[0].missing);
-        assert_eq!(probe.tools[0].workspace_version, None);
-    }
-
-    #[test]
-    fn probe_reports_missing_when_an_instruction_file_does_not_exist() {
-        // Scenario「指令檔不存在判缺失」：一工具現版、另一工具檔案不存在
-        //（clone 後指令檔未進版控）→ 缺失優先於過期，且不與退出受管或無法判定混同。
-        let root = TempRoot::new("probe-missing");
-        init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
-        std::fs::remove_file(root.at("AGENTS.md")).unwrap();
-        // 另一支同時過期：缺失仍須勝出。
-        set_marker(&root, Tool::Claude, "v0.9.0");
-
-        let probe = probe_instructions(&root.dir);
-        assert_eq!(probe.status, InstructionStatus::Missing, "{probe:?}");
-        let codex = probe.tools.iter().find(|t| t.tool == "codex").expect("codex 在列");
-        assert!(codex.missing && !codex.stale, "{codex:?}");
-        assert_eq!(codex.workspace_version, None);
-        assert!(
-            probe.differing_files.contains(&"AGENTS.md".to_string()),
-            "不存在的受管檔須列入（內容視為空）：{:?}",
-            probe.differing_files
-        );
     }
 
     #[test]
@@ -1856,8 +1947,8 @@ mod tests {
         init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
         root.write(".speclink.yaml", "tools: [\n");
 
-        let probe = probe_instructions(&root.dir);
-        assert_eq!(probe.status, InstructionStatus::Unknown, "{probe:?}");
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Unknown, "{probe:?}");
         assert!(probe.tools.is_empty(), "{:?}", probe.tools);
         assert!(probe.differing_files.is_empty(), "{:?}", probe.differing_files);
     }
@@ -1868,13 +1959,15 @@ mod tests {
         // 形式不同的檔案不得列入差異清單。
         let root = TempRoot::new("probe-crlf");
         init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        // 只讓一份技能檔落後（探測依此判過期），另一份維持現版內容但改成 CRLF。
+        let stale = ".claude/skills/speclink-analyze/SKILL.md";
+        root.write(stale, &root.read(stale).replace(ASSET_VERSION, "v0.9.0"));
         let skill = propose_skill(Tool::Claude);
         let crlf = root.read(&skill).replace('\n', "\r\n");
         root.write(&skill, &crlf);
-        set_marker(&root, Tool::Claude, "v0.9.0");
 
-        let probe = probe_instructions(&root.dir);
-        assert_eq!(probe.status, InstructionStatus::Stale, "{probe:?}");
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Stale, "{probe:?}");
         assert!(
             !probe.differing_files.contains(&skill),
             "僅換行形式不同的檔案不得列入：{:?}",
@@ -1889,8 +1982,8 @@ mod tests {
         init(&root.dir, &[], false, "openspec").unwrap();
         let before = snapshot(&root);
 
-        let probe = probe_instructions(&root.dir);
-        assert_eq!(probe.status, InstructionStatus::Current, "{probe:?}");
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Current, "{probe:?}");
         assert!(probe.tools.is_empty());
         assert_eq!(snapshot(&root), before, "探測不得寫入任何檔案");
     }
@@ -1976,45 +2069,6 @@ mod tests {
             assert!(root.exists(&dir), "政策開啟時 codex 須生成 {dir}");
         }
         assert!(root.exists(".wad/skills/speclink-apply-with-worktree/SKILL.md"));
-    }
-
-    #[test]
-    fn the_marker_lists_worktree_skills_only_when_the_policy_is_on() {
-        // Spec requirement「marker 技能指引跟隨 worktree 政策」：技能檔被政策清掉而
-        // marker 仍指路，等於叫代理呼叫不存在的技能。政策閘涵蓋三項——兩行技能
-        // 指引、Workflow 段的 worktree 流程線、品質站指引 bullet。
-        let root = TempRoot::new("marker-gate");
-        init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
-        let off = root.read("CLAUDE.md");
-        assert!(!off.contains("apply-with-worktree"), "政策關閉時 marker 不得提 apply-with-worktree:\n{off}");
-        assert!(!off.contains("worktree-merge"), "政策關閉時 marker 不得提 worktree-merge:\n{off}");
-        assert!(!off.contains("Quality stations"), "政策關閉時不得有品質站指引 bullet:\n{off}");
-        assert!(off.contains("/speclink-apply`"), "其餘技能指引須照舊:\n{off}");
-
-        set_worktree_policy(&root, true);
-        update(&root.dir, false).unwrap();
-        let on = root.read("CLAUDE.md");
-
-        let added: Vec<&str> = on.lines().filter(|l| !off.lines().any(|o| o == *l)).collect();
-        assert_eq!(added.len(), 4, "兩版 marker 應僅差四行 worktree 指引，實得：{added:?}");
-        assert!(added.iter().any(|l| l.contains("apply-with-worktree` (one git worktree per change)")));
-        assert!(added.iter().any(|l| l.contains("worktree-merge` (merge back, then clean up)")));
-        // 流程線依序含四個階段；bullet 敘明主 checkout 限定與引擎拒絕。
-        let flow = added
-            .iter()
-            .find(|l| l.starts_with("worktree: "))
-            .unwrap_or_else(|| panic!("Workflow 段須有 worktree 流程線：{added:?}"));
-        assert_eq!(
-            *flow,
-            "worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive (main checkout)",
-            "流程線須依序載明四個階段"
-        );
-        let bullet = added
-            .iter()
-            .find(|l| l.starts_with("- Quality stations"))
-            .unwrap_or_else(|| panic!("Workflow 段須有品質站指引 bullet：{added:?}"));
-        assert!(bullet.contains("main checkout"), "bullet 須敘明封存僅在主 checkout：{bullet}");
-        assert!(bullet.contains("refused by the engine"), "bullet 須敘明引擎拒絕：{bullet}");
     }
 
     #[test]

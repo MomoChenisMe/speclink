@@ -108,3 +108,9 @@ When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` dat
 - Do NOT auto-invoke any follow-up command — recommendations are user-confirmed
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
+## Next steps
+
+{{NEXT_STEPS_LEAD}}
+
+- The delta's assumptions are stale → `/speclink:ingest <change-name>` to refresh the artifacts before any code is written
+- No meaningful drift → `/speclink:apply <change-name>` to pick the tasks back up

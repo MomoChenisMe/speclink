@@ -1,11 +1,11 @@
 ---
 name: speclink-propose
-description: "Create a change proposal with all required artifacts"
+description: "Use when a change needs planning, proposing or designing — creates the change with every required artifact; seed it from a concluded discussion with --from-discussion."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -430,3 +430,11 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** reinterpret requirements by ignoring the proposal file
 - **NEVER** invoke `/speclink-apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- Artifacts are complete → `/speclink-apply <change-name>` when the user is ready to implement
+- Several independent changes will be implemented at once, and the project's worktree policy is on → `/speclink-apply-with-worktree <change-name>` (one git worktree per change)
+- The requirements turned out to be fuzzier than they looked → `/speclink-discuss` before implementing

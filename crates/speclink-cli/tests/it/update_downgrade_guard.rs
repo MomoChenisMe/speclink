@@ -7,7 +7,7 @@
 //! Credential isolation: 每次執行都把 USERPROFILE/HOME/XDG_CONFIG_HOME 指到
 //! 拋棄式 "home"，測試絕不碰到真實使用者的憑證檔。
 
-use speclink_core::init::MARKER_VERSION;
+use speclink_core::init::ASSET_VERSION;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -50,19 +50,21 @@ impl TempEnv {
             .expect("run speclink binary")
     }
 
-    /// 把工作區的標記版號改成指定值（模擬由別版引擎生成的工作區）。
-    fn set_marker(&self, version: &str) {
-        let md = self.dir.join("CLAUDE.md");
-        let text = std::fs::read_to_string(&md).expect("CLAUDE.md exists");
-        std::fs::write(&md, text.replace(MARKER_VERSION, version)).unwrap();
+    /// 把工作區每份技能檔的 frontmatter 版號改成指定值（模擬由別版引擎生成的工作區）。
+    fn set_skill_version(&self, version: &str) {
+        speclink_core::testkit::set_skill_version(&self.dir.join(".claude").join("skills"), version);
     }
 
-    fn marker_version(&self) -> String {
-        let text = std::fs::read_to_string(self.dir.join("CLAUDE.md")).expect("CLAUDE.md exists");
-        let start = text.find("<!-- SPECLINK:START").expect("marker present")
-            + "<!-- SPECLINK:START".len();
-        let rest = &text[start..];
-        rest[..rest.find("-->").expect("marker closes")].trim().to_string()
+    fn skill_path(&self) -> PathBuf {
+        self.dir
+            .join(".claude")
+            .join("skills")
+            .join("speclink-propose")
+            .join("SKILL.md")
+    }
+
+    fn skill_version(&self) -> String {
+        speclink_core::testkit::skill_frontmatter_version(&self.skill_path())
     }
 
     /// 目錄的完整內容快照（相對路徑與檔案位元組），供「零寫入」斷言比對。
@@ -97,14 +99,14 @@ fn stderr_of(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).to_string()
 }
 
-/// 比現版領先一個主版號的標記版號。
+/// 比現版領先一個主版號的版號。
 fn ahead_of_current() -> String {
-    let major: u64 = MARKER_VERSION
+    let major: u64 = ASSET_VERSION
         .trim_start_matches('v')
         .split('.')
         .next()
         .and_then(|s| s.parse().ok())
-        .expect("MARKER_VERSION 主版號可解析");
+        .expect("ASSET_VERSION 主版號可解析");
     format!("v{}.0.0", major + 1)
 }
 
@@ -113,7 +115,7 @@ fn ahead_of_current() -> String {
 fn a_newer_workspace_is_refused_with_zero_writes() {
     let env = TempEnv::new("refused");
     let ahead = ahead_of_current();
-    env.set_marker(&ahead);
+    env.set_skill_version(&ahead);
     let before = env.snapshot();
 
     let out = env.run(&["update"]);
@@ -127,7 +129,7 @@ fn a_newer_workspace_is_refused_with_zero_writes() {
     );
     assert!(stderr.contains(&ahead), "stderr must name the workspace version: {stderr}");
     assert!(
-        stderr.contains(MARKER_VERSION),
+        stderr.contains(ASSET_VERSION),
         "stderr must name the engine version: {stderr}"
     );
     assert_eq!(env.snapshot(), before, "no file may be created or modified");
@@ -137,12 +139,12 @@ fn a_newer_workspace_is_refused_with_zero_writes() {
 #[test]
 fn allow_downgrade_regenerates_at_the_engine_version() {
     let env = TempEnv::new("allowed");
-    env.set_marker(&ahead_of_current());
+    env.set_skill_version(&ahead_of_current());
 
     let out = env.run(&["update", "--allow-downgrade"]);
 
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
-    assert_eq!(env.marker_version(), MARKER_VERSION, "受管檔須再生為引擎現版");
+    assert_eq!(env.skill_version(), ASSET_VERSION, "受管檔須再生為引擎現版");
 }
 
 /// 守門對所有再生路徑一體適用：workflow-config 寫入後的技能同步同樣經過引擎
@@ -152,19 +154,19 @@ fn allow_downgrade_regenerates_at_the_engine_version() {
 fn workflow_config_worktree_sync_refuses_a_newer_workspace() {
     let env = TempEnv::new("wfconfig");
     let ahead = ahead_of_current();
-    env.set_marker(&ahead);
-    let before = std::fs::read_to_string(env.dir.join("CLAUDE.md")).unwrap();
+    env.set_skill_version(&ahead);
+    let before = std::fs::read_to_string(env.skill_path()).unwrap();
 
     let out = env.run(&["workflow-config", "set", "worktree", "true"]);
 
     assert!(!out.status.success(), "sync 必須被拒，exit 非零");
     let stderr = stderr_of(&out);
     assert!(
-        stderr.contains(&ahead) && stderr.contains(MARKER_VERSION),
+        stderr.contains(&ahead) && stderr.contains(ASSET_VERSION),
         "stderr 須含兩版號：{stderr}"
     );
     assert_eq!(
-        std::fs::read_to_string(env.dir.join("CLAUDE.md")).unwrap(),
+        std::fs::read_to_string(env.skill_path()).unwrap(),
         before,
         "領先的受管檔不得被改寫"
     );
@@ -178,10 +180,10 @@ fn workflow_config_worktree_sync_refuses_a_newer_workspace() {
 #[test]
 fn a_stale_workspace_still_updates_without_the_flag() {
     let env = TempEnv::new("stale");
-    env.set_marker("v0.9.0");
+    env.set_skill_version("v0.9.0");
 
     let out = env.run(&["update"]);
 
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
-    assert_eq!(env.marker_version(), MARKER_VERSION, "受管檔須再生為引擎現版");
+    assert_eq!(env.skill_version(), ASSET_VERSION, "受管檔須再生為引擎現版");
 }

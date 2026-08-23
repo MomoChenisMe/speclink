@@ -1,11 +1,11 @@
 ---
 name: speclink-audit
-description: "Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures"
+description: "Use when changed code needs a security pass — hunts dangerous defaults, type confusion and silent failures, and reports the sharp edges it finds."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 

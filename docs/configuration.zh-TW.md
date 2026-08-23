@@ -91,7 +91,6 @@ tools:
   - claude
   - name: wad-harness
     skills_dir: .wad/skills
-    instructions_file: WAD.md
     invocation: tool-call
 ```
 
@@ -99,16 +98,16 @@ tools:
 |---|---|---|
 | `name` | 是 | kebab-case，2–50 字元、限 `[a-z0-9-]`；不得與內建工具名衝突 |
 | `skills_dir` | 是 | 專案根相對路徑；不得逸出專案根 |
-| `instructions_file` | 是 | 專案根相對路徑；不得逸出專案根 |
+| `instructions_file` | 否 | **已棄用**——引擎不再往它生成任何東西。保留只為兩件事：舊設定檔仍能解析，以及 `speclink update` 知道去哪裡剝除遺留的 `SPECLINK` 區塊。欄位存在時仍會驗證（專案根相對、不得逸出）；留著它會在 stderr 得到一行棄用提示 |
 | `invocation` | 否 | `cli`（預設）或 `tool-call`——決定生成文字如何指示 harness 執行 speclink 動詞：「執行 `speclink <動詞>`」vs「呼叫 speclink 工具（參數為 argv 陣列）」 |
 
 四種情況會讓指令以非 0 exit code 結束：名稱衝突、大小寫違規、路徑逸出、`invocation` 值非法。每一種都輸出指明欄位的單行錯誤訊息。
 
 描述子與內建工具共享完整生命週期：
 
-- **生成**——`speclink init`／`speclink update` 在 `skills_dir` 下寫入 `speclink-*/SKILL.md` 技能檔，並在 `instructions_file` upsert `SPECLINK` marker 區塊。
+- **生成**——`speclink init`／`speclink update` 在 `skills_dir` 下寫入 `speclink-*/SKILL.md` 技能檔。就這樣：指令檔已退出受管集合。
 - **同步**——`speclink update` 對仍在清單上的描述子全部重新生成。
-- **清理**——把描述子從 `tools` 移除。下一次 `speclink update` 會刪除它的 `speclink-*` 技能目錄，並一併移除因此變空的目錄。它也會從 `instructions_file` 剝除 marker 區塊；剝除後檔案全空的話，整檔刪除。
+- **清理**——把描述子從 `tools` 移除。下一次 `speclink update` 會刪除它的 `speclink-*` 技能目錄，並一併移除因此變空的目錄。描述子若仍寫著 `instructions_file`，該檔的遺留 `SPECLINK` 區塊也會被剝除；剝除後全空的話整檔刪除。先拿掉 `instructions_file` 才移除描述子的話，引擎就不知道那個檔案在哪——請自行手動刪除。
 
 描述子生成的內容採用**中性渲染**：沒有 `/speclink-` slash 前綴，沒有 plan mode 參照，動詞措辭由 `invocation` 決定。內建 claude 與 codex 的輸出完全不受影響。
 
@@ -132,7 +131,7 @@ tools:
 | 鍵 | 預設 | 意義 |
 |---|---|---|
 | `spec_dir` | `openspec` | spec store 目錄（專案根相對路徑） |
-| `tools` | — | 要生成指令檔的 AI harness（內建名或描述子） |
+| `tools` | — | 要生成技能檔的 AI harness（內建名或描述子） |
 | `locale`／`spec_locale`／`tdd`／`audit`／`worktree` | — | 不生效且不警告——政策一律讀 `openspec/config.yaml` |
 
 ### 環境變數

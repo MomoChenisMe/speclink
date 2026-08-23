@@ -109,7 +109,7 @@ fn init_store_remote_writes_the_remote_section() {
     let remote = remote_of(&yaml);
     assert_eq!(str_of(remote, "url"), URL);
     assert_eq!(str_of(remote, "repo"), "backend");
-    assert!(env.dir.join("CLAUDE.md").is_file(), "marker file generated");
+    assert!(!env.dir.join("CLAUDE.md").exists(), "remote init 不生成指令檔");
     assert!(!env.dir.join("openspec").exists(), "no local spec tree in remote mode");
     assert!(
         !env.dir.join(".speclink.remote.yaml").exists(),

@@ -39,7 +39,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "app.initConfirm": "建立工作區",
     "app.adoptTitle": "啟用 speclink？",
     "app.adoptDesc":
-      "{name} 已有規格資料，但尚未啟用 speclink。確認後會為所選 AI 工具安裝技能與指令檔，既有規格內容不會被更動。",
+      "{name} 已有規格資料，但尚未啟用 speclink。確認後會為所選 AI 工具安裝技能檔，既有規格內容不會被更動。",
     "app.adoptConfirm": "啟用",
     "app.emptyTitle": "開啟一個專案開始",
     "app.emptyDesc":
@@ -109,7 +109,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.policyCard": "產出政策",
     "settings.toolsLabel": "AI 工具",
     "settings.toolsHelp":
-      "為勾選的工具生成技能檔與指令 marker；儲存後自動同步（新選生成、取消清理殘留）。",
+      "為勾選的工具生成技能檔；儲存後自動同步（新選生成、取消清理殘留）。",
     "settings.customToolsLabel": "自訂工具（唯讀，原樣保留）",
     "settings.localeHelp": "AI 產出 artifacts（proposal／design 等）的語言；未設定＝English。",
     "settings.specLocaleHelp": "spec 檔散文的語言；auto＝跟隨 locale，未設定＝English。",
@@ -139,18 +139,18 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "updater.errorPrefix": "更新失敗：",
     "updater.close": "關閉",
     "updater.help": "啟動時會自動在背景檢查；下載與套用一律先徵得你的同意。",
-    "instructions.staleTitle": "這個專案的 Speclink 技能與指令檔是舊版",
-    "instructions.staleDesc":
+    "assets.staleTitle": "這個專案的 Speclink 技能檔是舊版",
+    "assets.staleDesc":
       "更新會新建或覆蓋 {count} 個檔案；若你曾手動調整過這些檔案，調整會被覆蓋。",
-    "instructions.missingTitle": "這個專案還沒安裝 Speclink 的技能與指令檔",
-    "instructions.missingDesc": "安裝會新建或覆蓋 {count} 個檔案。",
-    "instructions.newerTitle": "這個專案的技能與指令檔比你的 Speclink 新",
-    "instructions.newerDesc":
+    "assets.missingTitle": "這個專案還沒安裝 Speclink 的技能檔",
+    "assets.missingDesc": "安裝會新建或覆蓋 {count} 個檔案。",
+    "assets.newerTitle": "這個專案的技能檔比你的 Speclink 新",
+    "assets.newerDesc":
       "先更新 Speclink 再回來——現在改寫會把 {count} 個檔案換回舊內容。",
-    "instructions.update": "更新",
-    "instructions.install": "安裝",
-    "instructions.keep": "保留現狀",
-    "instructions.errorPrefix": "無法完成：",
+    "assets.update": "更新",
+    "assets.install": "安裝",
+    "assets.keep": "保留現狀",
+    "assets.errorPrefix": "無法完成：",
     "cliInstall.cardTitle": "CLI 指令",
     "cliInstall.install": "安裝 CLI 指令",
     "cliInstall.reinstall": "重新安裝",
@@ -361,7 +361,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "app.initConfirm": "Create workspace",
     "app.adoptTitle": "Enable speclink?",
     "app.adoptDesc":
-      "{name} already has spec data but speclink is not enabled yet. Confirming installs skills and instruction files for the selected AI tools; existing spec content is left untouched.",
+      "{name} already has spec data but speclink is not enabled yet. Confirming installs skill files for the selected AI tools; existing spec content is left untouched.",
     "app.adoptConfirm": "Enable",
     "app.emptyTitle": "Open a project to get started",
     "app.emptyDesc":
@@ -392,7 +392,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "chooser.connectCheckout": "Choose local folder",
     "chooser.connectCheckoutDesc": "The folder needs a matching remote marker or must be an unbound Git repository.",
     "chooser.checkoutTools": "AI tools to generate for this checkout",
-    "chooser.checkoutToolsHelp": "Selected tools sync Speclink skills and instruction blocks; pick at least one to open.",
+    "chooser.checkoutToolsHelp": "Selected tools sync Speclink skill files; pick at least one to open.",
     "chooser.back": "Back",
     "chooser.next": "Next",
     "chooser.open": "Open Workspace",
@@ -431,7 +431,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.policyCard": "Output policy",
     "settings.toolsLabel": "AI tools",
     "settings.toolsHelp":
-      "Generates skill files and instruction markers for the checked tools; saving syncs automatically (generate on select, prune on deselect).",
+      "Generates skill files for the checked tools; saving syncs automatically (generate on select, prune on deselect).",
     "settings.customToolsLabel": "Custom tools (read-only, preserved as-is)",
     "settings.localeHelp": "Language of AI-generated artifacts (proposal/design etc.); unset = English.",
     "settings.specLocaleHelp": "Language of spec prose; auto = follow locale, unset = English.",
@@ -461,18 +461,18 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "updater.errorPrefix": "Update failed: ",
     "updater.close": "Close",
     "updater.help": "Checked automatically in the background on launch; downloading and applying always ask for your consent first.",
-    "instructions.staleTitle": "This project's Speclink skills and instruction files are outdated",
-    "instructions.staleDesc":
+    "assets.staleTitle": "This project's Speclink skill files are outdated",
+    "assets.staleDesc":
       "Updating creates or overwrites {count} files; any manual edits to them will be overwritten.",
-    "instructions.missingTitle": "This project has no Speclink skills or instruction files yet",
-    "instructions.missingDesc": "Installing creates or overwrites {count} files.",
-    "instructions.newerTitle": "This project's Speclink skills and instruction files are newer than your Speclink",
-    "instructions.newerDesc":
+    "assets.missingTitle": "This project has no Speclink skill files yet",
+    "assets.missingDesc": "Installing creates or overwrites {count} files.",
+    "assets.newerTitle": "This project's Speclink skill files are newer than your Speclink",
+    "assets.newerDesc":
       "Update Speclink first — rewriting now would put {count} files back to older content.",
-    "instructions.update": "Update",
-    "instructions.install": "Install",
-    "instructions.keep": "Keep as is",
-    "instructions.errorPrefix": "Could not complete: ",
+    "assets.update": "Update",
+    "assets.install": "Install",
+    "assets.keep": "Keep as is",
+    "assets.errorPrefix": "Could not complete: ",
     "cliInstall.cardTitle": "CLI Command",
     "cliInstall.install": "Install CLI Command",
     "cliInstall.reinstall": "Reinstall",

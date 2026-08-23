@@ -8,24 +8,24 @@
 
 ### Requirement: remote 初始化與連接指令
 
-`speclink init --store remote --url <url> [--repo <name>]` SHALL 在寫入前取得至少一個明示的 Claude／Codex 選集：顯式 `--tools` SHALL 直接採用；互動終端缺少 `--tools` SHALL 於 stderr 詢問；非互動終端缺少 `--tools` SHALL 在零寫入狀態以非零 exit code 失敗並指引顯式值。選集有效時，Remote init SHALL 執行 Workspace init（`.speclink.yaml` tools、指令檔 Speclink marker、Skills、settings、`.gitignore`）並將 URL 與 repo 寫入 `.speclink.yaml` 的 remote section（檔案不存在時建立、既有欄位保留），且 SHALL NOT 建立 `openspec/` 目錄樹或獨立連接檔。
+`speclink init --store remote --url <url> [--repo <name>]` SHALL 在寫入前取得至少一個明示的 Claude／Codex 選集：顯式 `--tools` SHALL 直接採用；互動終端缺少 `--tools` SHALL 於 stderr 詢問；非互動終端缺少 `--tools` SHALL 在零寫入狀態以非零 exit code 失敗並指引顯式值。選集有效時，Remote init SHALL 執行 Workspace init（`.speclink.yaml` tools、Skills、`.gitignore`）並將 URL 與 repo 寫入 `.speclink.yaml` 的 remote section（檔案不存在時建立、既有欄位保留），且 SHALL NOT 建立 `openspec/` 目錄樹、獨立連接檔或任何指令檔。
 
 `speclink link <url> [--repo <name>]` SHALL 維持既有行為，只寫入或更新 remote section並保留 tools 及其他欄位；`speclink unlink` SHALL 移除 remote section並保留檔內其他欄位。init 或 link 當下若已有可用憑證，CLI SHALL 立即向 Server 查驗 repo 是否屬於專案並回報結果；無憑證時 SHALL 提示執行 auth login。此變更 SHALL NOT 為 init／link 新增 stdin payload 或 `--json` 介面；顯式 `--tools` 的既有成功 stdout、stderr、exit code 與 `--no-color` 行為 SHALL 維持基線。
 
 #### Scenario: Remote init 顯式選擇 Claude
 
 - **WHEN** 於空目錄執行 Remote Store init，提供有效 project URL、repo 與 `--tools claude`
-- **THEN** 生成 `CLAUDE.md` Speclink marker、Claude Skills、settings、`.gitignore` 與含 `tools: [claude]`、remote URL／repo 的 `.speclink.yaml`，不存在 `openspec/` 與獨立連接檔，exit code 為 0
+- **THEN** 生成 Claude Skills、`.gitignore` 與含 `tools: [claude]`、remote URL／repo 的 `.speclink.yaml`，不存在 `openspec/`、獨立連接檔與 `CLAUDE.md`，exit code 為 0
 
 #### Scenario: Remote init 互動選擇 Codex
 
 - **WHEN** stdin 為互動終端，執行 Remote Store init 且未提供 `--tools`，使用者選取 Codex並不選 Claude
-- **THEN** prompt 寫入 stderr，生成 Codex Skills 與 `AGENTS.md` Remote Speclink marker，`.speclink.yaml` built-in tools 僅含 `codex`，成功摘要寫入 stdout且 exit code 為 0
+- **THEN** prompt 寫入 stderr，生成 Codex Skills 而無 `AGENTS.md`，`.speclink.yaml` built-in tools 僅含 `codex`，成功摘要寫入 stdout且 exit code 為 0
 
 #### Scenario: Remote init 非互動缺少 tools 被拒
 
 - **WHEN** stdin 非互動，執行 Remote Store init 且未提供 `--tools`
-- **THEN** exit code 非 0、stdout 為空、stderr 指引 `--tools claude`／`codex`／`claude,codex`，且 `.speclink.yaml`、`.gitignore`、Skills、指令檔與 `openspec/` 均未建立
+- **THEN** exit code 非 0、stdout 為空、stderr 指引 `--tools claude`／`codex`／`claude,codex`，且 `.speclink.yaml`、`.gitignore`、Skills 與 `openspec/` 均未建立
 
 #### Scenario: link 保留既有 tools 與其他欄位
 
@@ -44,30 +44,8 @@
 
 
 <!-- @trace
-source: unify-agent-tool-bootstrap
-updated: 2026-07-24
-code:
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/core/src/settings.rs
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/remoteOpen.test.ts
-  - apps/desktop/src/__tests__/remoteResilience.test.tsx
-  - apps/desktop/src/__tests__/serversPanel.test.tsx
-  - apps/desktop/src/__tests__/workspaceChooser.test.tsx
-  - apps/desktop/src/adapter/connections.ts
-  - apps/desktop/src/components/WorkspaceChooser.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/init_tools.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-cli/tests/remote_section.rs
-  - crates/speclink-core/src/config.rs
-  - crates/speclink-core/src/init.rs
+source: remove-marker-injection
+updated: 2026-08-23
 -->
 
 ---
@@ -137,65 +115,6 @@ code:
   - crates/speclink-remote/tests/client_errors.rs
   - docs/team-mode.md
   - docs/team-mode.zh-TW.md
--->
-
----
-### Requirement: 指令區塊的 remote 變體
-remote 模式下 init 生成的 CLAUDE.md／AGENTS.md marker 區塊 SHALL 使用 remote 措辭：指明規格與 change 存於團隊系統、一律使用 speclink 動詞、SHALL NOT 指示本地讀寫規格檔；fs 模式的 marker 內容維持路徑措辭。
-
-#### Scenario: remote marker 不含本地路徑句
-- **WHEN** 執行 speclink init --store remote --url 某專案 url 後檢視 CLAUDE.md 的 SPECLINK marker 區塊
-- **THEN** 區塊內容不含 openspec/specs 或 openspec/changes 路徑字樣，並含「使用 speclink 動詞存取」的指引
-
-<!-- @trace
-source: verb-contract-and-remote-client
-updated: 2026-07-05
-code:
-  - .speclink.yaml
-  - Cargo.lock
-  - Cargo.toml
-  - README.md
-  - crates/speclink-cli/Cargo.toml
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/doc_verbs.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-cli/tests/remote_read_path.rs
-  - crates/speclink-cli/tests/remote_write_path.rs
-  - crates/speclink-core/Cargo.toml
-  - crates/speclink-core/assets/skills/archive.md
-  - crates/speclink-core/assets/skills/commit.md
-  - crates/speclink-core/assets/skills/discuss.md
-  - crates/speclink-core/assets/skills/propose.md
-  - crates/speclink-core/assets/skills/sync.md
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/instructions.rs
-  - crates/speclink-core/src/preflight.rs
-  - crates/speclink-core/src/status.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/workspace.rs
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/mode_resolution.rs
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-core/tests/skill_verbization.rs
-  - crates/speclink-fs/src/layout.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/auth.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/tests/auth_store.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - docs/team-mode.md
-  - docs/team-mode.zh-TW.md
-  - docs/verb-contract.md
-  - docs/verb-contract.zh-TW.md
 -->
 
 ---

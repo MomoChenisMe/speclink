@@ -1,11 +1,11 @@
 ---
 name: speclink-quality
-description: "Run both quality stations over one change, pausing after every round for the user's call: both checks first without stamping, then both stations' findings are reported together and the skill stops — nothing is fixed, stamped or archived without the user's answer"
+description: "Use when both quality stations should run over one change, pausing after every round for the user's call: both check without stamping, their findings are reported together and the skill stops — for only one station, call review or verify directly."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -83,3 +83,11 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 - Fix only what the user picked; the findings they passed on stay in their tickets, unfixed and unargued
 - No edits between the two stamps, and none between them and archive
 - A station's refusal or error stops this flow and is reported as-is — do not work around it
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- Both stamps landed and the work is in the main checkout → `$speclink-archive <change-name>`
+- Both stamps landed inside a worktree → `$speclink-worktree-merge <change-name>` first; archive runs only from the main checkout
+- The round ended without stamping → nothing downstream is suggested; the round's pause is where this skill stops

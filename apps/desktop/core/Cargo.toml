@@ -14,3 +14,7 @@ serde_yaml = { workspace = true }
 chrono = { workspace = true }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 regex = { workspace = true }
+
+[dev-dependencies]
+# 測試借 core 的 testkit（技能檔版號讀寫 helper）；feature 只在 dev 構建生效。
+speclink-core = { path = "../../../crates/speclink-core", features = ["testkit"] }

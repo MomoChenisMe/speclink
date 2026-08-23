@@ -49,7 +49,7 @@ import { RemoteConflictDialog } from "./components/RemoteConflictDialog";
 import { RemoteWorkspaceRecovery } from "./components/RemoteWorkspaceRecovery";
 import { AppSettingsView } from "./views/AppSettingsView";
 import { UpdateBanner } from "./components/UpdateBanner";
-import { InstructionUpdatePrompt } from "./components/InstructionUpdatePrompt";
+import { AssetUpdatePrompt } from "./components/AssetUpdatePrompt";
 import { appVersion, type UpdaterAdapter } from "./adapter/updater";
 import type { CliInstallAdapter } from "./adapter/cliInstall";
 import { ProjectSettingsView } from "./views/ProjectSettingsView";
@@ -368,7 +368,7 @@ function AppInner({
         }
         void useStore.getState().refresh();
         // 外部 speclink update 也要讓提示自然消失（決策 4：workspace-changed 重查）。
-        void useStore.getState().refreshInstructionPrompt();
+        void useStore.getState().refreshAssetPrompt();
       },
       (event) => {
         const store = useStore.getState();
@@ -384,7 +384,7 @@ function AppInner({
   // 指令檔過期探測（desktop-instruction-staleness-prompt 決策 4）：本地專案分頁
   // 成為活躍時查一次；remote 分頁由 store 自行略過。
   useEffect(() => {
-    if (workspace) void useStore.getState().refreshInstructionPrompt();
+    if (workspace) void useStore.getState().refreshAssetPrompt();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useStore, workspace, s.activeKey, s.sessionEpoch]);
 
@@ -619,12 +619,12 @@ function AppInner({
           {/* 指令檔提示（決策 7）：per 專案、分頁內容頂部、非阻斷；應用程式設定
               頁不屬專案語境故不掛。 */}
           {s.boardView !== "settings" && (
-            <InstructionUpdatePrompt
-              prompt={s.instructionPrompt}
-              error={s.instructionUpdateError}
-              busy={s.instructionUpdating}
-              onApply={() => void s.applyInstructionUpdate()}
-              onDismiss={s.dismissInstructionPrompt}
+            <AssetUpdatePrompt
+              prompt={s.assetPrompt}
+              error={s.assetUpdateError}
+              busy={s.assetUpdating}
+              onApply={() => void s.applyAssetUpdate()}
+              onDismiss={s.dismissAssetPrompt}
             />
           )}
           {s.boardView === "settings" ? (

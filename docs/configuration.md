@@ -83,7 +83,6 @@ tools:
   - claude
   - name: wad-harness
     skills_dir: .wad/skills
-    instructions_file: WAD.md
     invocation: tool-call
 ```
 
@@ -91,16 +90,16 @@ tools:
 |---|---|---|
 | `name` | yes | kebab-case, 2–50 chars of `[a-z0-9-]`; must not collide with a built-in tool name |
 | `skills_dir` | yes | project-root-relative path; must not escape the project root |
-| `instructions_file` | yes | project-root-relative path; must not escape the project root |
+| `instructions_file` | no | **Deprecated** — nothing is generated into it. Kept only so an old config still parses and so `speclink update` knows where to strip a legacy `SPECLINK` block. Still validated when present (project-root-relative, must not escape the root); leaving it in earns a one-line deprecation notice on stderr |
 | `invocation` | no | `cli` (default) or `tool-call` — decides how generated text tells the harness to run speclink verbs: "run `speclink <verb>`" vs "call the speclink tool with an argv array" |
 
 A validation failure (name conflict, bad casing, path escape, unknown invocation) makes the command exit non-zero with a single-line error naming the field.
 
 Descriptors share the full lifecycle of built-in tools:
 
-- **Generate** — `speclink init` / `speclink update` writes `speclink-*/SKILL.md` skills under `skills_dir` and upserts the `SPECLINK` marker block into `instructions_file`.
+- **Generate** — `speclink init` / `speclink update` writes `speclink-*/SKILL.md` skills under `skills_dir`. Nothing else is generated: instruction files left the managed set.
 - **Sync** — `speclink update` regenerates everything for descriptors still on the list.
-- **Clean up** — remove the descriptor from `tools`. The next `speclink update` then deletes its `speclink-*` skill directories and drops any directory left empty. It also strips the marker block from `instructions_file`, and deletes that file if nothing else remains in it.
+- **Clean up** — remove the descriptor from `tools`. The next `speclink update` then deletes its `speclink-*` skill directories and drops any directory left empty. If the descriptor still names an `instructions_file`, any legacy `SPECLINK` block there is stripped too, and the file is deleted if nothing else remains in it. Drop `instructions_file` before the descriptor and the engine no longer knows where that file was — delete it by hand.
 
 Descriptor-generated content uses the **neutral rendering**: no `/speclink-` slash prefixes, no plan-mode references, and verb wording chosen by `invocation`. Built-in claude and codex output is unaffected.
 
@@ -124,7 +123,7 @@ Descriptor-generated content uses the **neutral rendering**: no `/speclink-` sla
 | Key | Default | Meaning |
 |---|---|---|
 | `spec_dir` | `openspec` | Spec-store directory, relative to project root |
-| `tools` | — | AI harnesses to generate instruction files for (names or descriptors) |
+| `tools` | — | AI harnesses to generate skill files for (names or descriptors) |
 | `locale` / `spec_locale` / `tdd` / `audit` / `worktree` | — | No effect and no warning — policy always reads `openspec/config.yaml` |
 
 ### Environment variables

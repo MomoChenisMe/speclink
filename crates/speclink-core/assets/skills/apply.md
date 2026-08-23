@@ -314,3 +314,10 @@ This skill supports the "actions on a change" model:
 - **Can be invoked anytime**: Before all artifacts are done (if tasks exist), after partial implementation, interleaved with other actions
 - **Allows artifact updates**: If implementation reveals design issues, suggest updating artifacts - not phase-locked, work fluidly
 
+## Next steps
+
+{{NEXT_STEPS_LEAD}}
+
+- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `/speclink:review` (craft quality) ∥ `/speclink:verify` (spec compliance), or `/speclink:quality` to run both in order; then `/speclink:archive <change-name>`
+- Only `[M]` tasks remain → the quality stations can still run now, but archiving waits until the user has done the manual work by hand
+- Requirements changed mid-work → `/speclink:ingest <change-name>`, then come back to apply

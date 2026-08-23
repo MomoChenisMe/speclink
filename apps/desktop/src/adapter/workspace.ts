@@ -80,9 +80,9 @@ export interface WorkflowFields {
   worktree: boolean;
 }
 
-/** probe_instructions 的回報（引擎 InstructionProbe 的 camelCase 序列化）：
+/** probe_assets 的回報（引擎 AssetProbe 的 camelCase 序列化）：
  * 五態判定、目前產物層版號、逐工具狀態與將被新建或改寫的受管檔清單。 */
-export interface InstructionProbeResult {
+export interface AssetProbeResult {
   status: "missing" | "stale" | "newer" | "current" | "unknown";
   currentVersion: string;
   tools: Array<{
@@ -106,10 +106,10 @@ export interface WorkspaceAdapter {
   /** 啟動語境的預設目錄（首啟無持久化分頁時據此顯式開啟）；純讀。 */
   startupDir(): Promise<string>;
   projectStats(path: string): Promise<{ pendingWrapUp: number }>;
-  /** 指令檔過期探測（唯讀）；探測失敗以 status=unknown 表達，不 reject。 */
-  probeInstructions(path: string): Promise<InstructionProbeResult>;
-  /** 指令檔整套再生（委派引擎 update()）；失敗為單行錯誤訊息。 */
-  updateInstructions(path: string): Promise<void>;
+  /** 技能檔過期探測（唯讀）；探測失敗以 status=unknown 表達，不 reject。 */
+  probeAssets(path: string): Promise<AssetProbeResult>;
+  /** 技能檔整套再生（委派引擎 update()）；失敗為單行錯誤訊息。 */
+  updateAssets(path: string): Promise<void>;
   /** 監看重掛（workspace-session 決策 5）：顯式跟隨活躍 session。 */
   watchWorkspace(root: string): Promise<void>;
   /** 原生資料夾選擇器；取消回 null。 */
@@ -123,8 +123,8 @@ export function createWorkspaceAdapter(): WorkspaceAdapter {
     adoptProject: (path, tools) => tauriInvoke("adopt_project", { path, tools }),
     startupDir: () => tauriInvoke("startup_dir"),
     projectStats: (path) => tauriInvoke("project_stats", { path }),
-    probeInstructions: (path) => tauriInvoke("probe_instructions", { path }),
-    updateInstructions: (path) => tauriInvoke("update_instructions", { path }),
+    probeAssets: (path) => tauriInvoke("probe_assets", { path }),
+    updateAssets: (path) => tauriInvoke("update_assets", { path }),
     watchWorkspace: (root) => tauriInvoke("watch_workspace", { root }),
     pickFolder: async () => {
       const picked = await open({ directory: true, multiple: false });
