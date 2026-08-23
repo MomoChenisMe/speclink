@@ -61,9 +61,13 @@ pub fn event_record_of(event: &DomainEvent, actor: &Actor) -> EventRecord {
         DomainEvent::ArtifactCreated { change, artifact, occurred_at } => {
             (json!({ "change": change, "artifact": artifact }), *occurred_at)
         }
-        DomainEvent::TaskCompleted { change, task_id, occurred_at } => {
-            (json!({ "change": change, "taskId": task_id }), *occurred_at)
-        }
+        DomainEvent::TaskCompleted { change, task_id, touched_files, occurred_at } => (
+            // Additive: consumers that never read touchedFiles keep working,
+            // and an empty list is the honest answer when nothing was
+            // attributable — never a guess.
+            json!({ "change": change, "taskId": task_id, "touchedFiles": touched_files }),
+            *occurred_at,
+        ),
         DomainEvent::TaskUncompleted { change, task_id, occurred_at } => {
             (json!({ "change": change, "taskId": task_id }), *occurred_at)
         }

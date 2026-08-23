@@ -37,7 +37,8 @@ use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::events::InvalidationEvent;
 use speclink_protocol::query::{
     AnalyzeDimension, AnalyzeFinding, AnalyzeMsg, AnalyzeReportResponse, ApplyInstructions,
-    ArtifactContent, ArtifactInstructions, ArtifactStatus, BoardOrderResponse, ChangeStatus,
+    ArtifactContent, ArtifactInstructions, ArtifactStatus, BoardOrderResponse,
+    ChangeEvidenceResponse, ChangeStatus,
     ChangeSummary, ConfigResponse, DependencyEntry, DiscussionInfo, ImportBundle, ImportDocumentId,
     ImportDocumentOutcome, ImportReportResponse, ImportedDocument, LanguageResponse,
     ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, Progress,
@@ -654,6 +655,48 @@ pub async fn board_order(
     Ok(ok(dto, &etag))
 }
 
+/// `GET /changes/{name}/evidence` — the change's recorded completion evidence,
+/// read from one store snapshot. Absence is a normal state: a change that never
+/// recorded any answers with an empty set, so a reader never has to tell
+/// "no evidence" apart from "no change" by error code.
+pub async fn change_evidence(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let store = state.store.clone();
+    let scope = verb::scope_of(&binding);
+    let (dto, etag) = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
+        let revision = snapshot.revision().0;
+        let text = snapshot
+            .read(&DocumentId::ChangeEvidence { change: name })
+            .map_err(ApiError::from)?
+            .map(|doc| doc.content);
+        // The store keeps the record opaque; the shape is the engine's, and a
+        // record this server cannot parse is corruption, not an empty set.
+        let entries = match text {
+            Some(text) => serde_json::from_str::<StoredEvidence>(&text)
+                .map_err(|e| ApiError::internal(format!("evidence record is unreadable: {e}")))?
+                .entries,
+            None => Vec::new(),
+        };
+        Ok((ChangeEvidenceResponse { entries }, format!("\"{revision}\"")))
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
+    Ok(ok(dto, &etag))
+}
+
+/// The stored evidence record, as far as this endpoint reads it: the v2 entry
+/// list. Other fields of the record (the v1 file-list channel, the version
+/// marker) are not part of this response.
+#[derive(serde::Deserialize)]
+struct StoredEvidence {
+    #[serde(default)]
+    entries: Vec<speclink_protocol::query::EvidenceEntry>,
+}
+
 /// `PUT /board-order` — full-replacement CAS write of the opaque board
 /// resource, along the put_config shape: role check, `If-Match` against the
 /// scope revision, then store CAS. The content is a presentation resource the
@@ -845,6 +888,7 @@ fn import_document_id(document: ImportDocumentId) -> DocumentId {
         ImportDocumentId::ChangeArtifact { change, artifact } => {
             DocumentId::ChangeArtifact { change, artifact }
         }
+        ImportDocumentId::ChangeEvidence { change } => DocumentId::ChangeEvidence { change },
         ImportDocumentId::CanonicalSpec { capability } => DocumentId::CanonicalSpec { capability },
         ImportDocumentId::Discussion { slug, archived } => {
             DocumentId::Discussion { slug, archived }
@@ -864,6 +908,7 @@ fn store_document_id(document: DocumentId) -> ImportDocumentId {
         DocumentId::ChangeArtifact { change, artifact } => {
             ImportDocumentId::ChangeArtifact { change, artifact }
         }
+        DocumentId::ChangeEvidence { change } => ImportDocumentId::ChangeEvidence { change },
         DocumentId::CanonicalSpec { capability } => ImportDocumentId::CanonicalSpec { capability },
         DocumentId::Discussion { slug, archived } => {
             ImportDocumentId::Discussion { slug, archived }
@@ -1251,14 +1296,19 @@ pub async fn task_done(
     State(state): State<AppState>,
     binding: Binding,
     Path((_key, name, task_id)): Path<(String, String, String)>,
-    Json(_req): Json<TaskDoneRequest>,
+    Json(req): Json<TaskDoneRequest>,
 ) -> Result<Response, ApiError> {
+    // The Host resolved the candidates at its own boundary — here, the wire
+    // request. An absent list is "nothing to attribute", the same normal state
+    // a clean local checkout reports; it is never an error and never a reason
+    // to go probing this machine's own working tree.
     let result = verb::run(
         &state,
         &binding,
         Command::TaskDone {
             task_id,
             change: Some(name),
+            touched_files: Some(req.touched_files),
         },
     )
     .await?;

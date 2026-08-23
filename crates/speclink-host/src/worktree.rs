@@ -240,6 +240,14 @@ impl Store for WorktreeOverlay<'_> {
         self.of(change).artifact_exists(change, artifact)
     }
 
+    fn read_evidence(&self, change: &str) -> Option<String> {
+        self.of(change).read_evidence(change)
+    }
+
+    fn write_evidence(&self, change: &str, content: &str) -> anyhow::Result<()> {
+        self.of(change).write_evidence(change, content)
+    }
+
     fn delta_capabilities(&self, change: &str) -> Vec<String> {
         self.of(change).delta_capabilities(change)
     }

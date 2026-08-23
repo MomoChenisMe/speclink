@@ -433,6 +433,26 @@ impl Store for JsStoreBridge {
         }
     }
 
+    // --- completion evidence ---
+
+    // Like the change-meta raw pair, the evidence pair is OPTIONAL (not in
+    // REQUIRED_METHODS — existing JS stores keep validating): a store without
+    // `readEvidence` reads as "no record", which is a normal state anyway, and
+    // one without `writeEvidence` fails the call only when a completion
+    // actually has files to record — loudly, never by dropping the evidence.
+    fn read_evidence(&self, change: &str) -> Option<String> {
+        match self.call("readEvidence", serde_json::json!([change])) {
+            Ok(v) => opt_string(v),
+            Err(f) if f.code.as_deref() == Some("__missing__") => None,
+            Err(f) => std::panic::panic_any(f),
+        }
+    }
+
+    fn write_evidence(&self, change: &str, content: &str) -> anyhow::Result<()> {
+        self.call_result("writeEvidence", serde_json::json!([change, content]))?;
+        Ok(())
+    }
+
     // --- delta specs ---
 
     fn delta_capabilities(&self, change: &str) -> Vec<String> {

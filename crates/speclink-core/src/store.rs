@@ -85,6 +85,18 @@ pub trait Store {
         anyhow::bail!("this store backend does not support deleting change documents")
     }
 
+    // --- completion evidence ---
+
+    /// The change's completion-evidence record text (the serialized
+    /// [`crate::tasks::TouchedRecord`]), or None when the change carries no
+    /// record. Absence is a normal state: a change whose tasks claimed no new
+    /// file has nothing to record.
+    fn read_evidence(&self, change: &str) -> Option<String>;
+    /// Write (create or overwrite) the change's evidence record text. Every
+    /// backend implements this: a store that silently dropped the write would
+    /// lose the only durable answer to "which files did this task touch".
+    fn write_evidence(&self, change: &str, content: &str) -> Result<()>;
+
     // --- delta specs ---
 
     /// Capability names that have a delta spec document in the change, sorted.

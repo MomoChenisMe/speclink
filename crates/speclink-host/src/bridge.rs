@@ -310,6 +310,7 @@ impl Store for BridgeStore {
             .filter(|id| match id {
                 DocumentId::ChangeMeta { change } => change == name,
                 DocumentId::ChangeArtifact { change, .. } => change == name,
+                DocumentId::ChangeEvidence { change } => change == name,
                 _ => false,
             })
             .cloned()
@@ -358,6 +359,20 @@ impl Store for BridgeStore {
     }
 
     // --- delta specs ---
+
+    // --- completion evidence ---
+
+    fn read_evidence(&self, change: &str) -> Option<String> {
+        self.read_doc(&DocumentId::ChangeEvidence { change: change.to_string() })
+    }
+
+    fn write_evidence(&self, change: &str, content: &str) -> anyhow::Result<()> {
+        // Staged like every other write: the record commits in the same unit of
+        // work as the tasks.md checkbox and the task-completed event, so a
+        // completion can never land with its evidence missing.
+        self.put(DocumentId::ChangeEvidence { change: change.to_string() }, content.to_string());
+        Ok(())
+    }
 
     fn delta_capabilities(&self, change: &str) -> Vec<String> {
         self.delta_caps_of(change)
@@ -451,6 +466,16 @@ impl Store for BridgeStore {
                     DocumentId::ArchivedChange {
                         change: dated_name.to_string(),
                         doc: artifact.clone(),
+                    },
+                    content.clone(),
+                )),
+                // The evidence record travels under its fs-mode relative name,
+                // so an archived change reads the same in both modes.
+                DocumentId::ChangeEvidence { change } if change == name => Some((
+                    id.clone(),
+                    DocumentId::ArchivedChange {
+                        change: dated_name.to_string(),
+                        doc: ".evidence.json".to_string(),
                     },
                     content.clone(),
                 )),
@@ -619,6 +644,72 @@ mod tests {
     use speclink_core::store::Store;
     use speclink_store::memory::MemoryStore;
     use speclink_store::{CommandContext, DocumentId, Scope, TeamStore};
+
+    /// Seed one scope with the given documents in a single commit.
+    fn seeded(store: &MemoryStore, scope: &Scope, docs: &[(DocumentId, &str)]) {
+        let mut uow = store
+            .begin_unit_of_work(
+                scope,
+                CommandContext { command: "seed".to_string(), actor: "test".to_string() },
+            )
+            .expect("begin seed unit of work");
+        for (doc, content) in docs {
+            uow.create(doc.clone(), *content);
+        }
+        store.commit(uow, Vec::new()).expect("commit seed data");
+    }
+
+    const EVIDENCE: &str =
+        r#"{"version":2,"change":"demo","entries":[{"taskId":"tsk_1","taskDesc":"1.1 a","touchedFiles":["src/a.rs"],"recordedAt":"2026-08-23T00:00:00Z"}]}"#;
+
+    #[test]
+    fn evidence_travels_into_the_archive_with_the_change() {
+        // spec verify-evidence「store 模式封存攜帶 evidence」：封存文件集含
+        // `.evidence.json`，內容與封存前一致。
+        let store = MemoryStore::new();
+        let binding = local_default_binding();
+        let scope = Scope::new(binding.project, binding.repo);
+        seeded(
+            &store,
+            &scope,
+            &[
+                (DocumentId::ChangeMeta { change: "demo".to_string() }, "schema: spec-driven\n"),
+                (DocumentId::ChangeEvidence { change: "demo".to_string() }, EVIDENCE),
+            ],
+        );
+
+        let bridge = BridgeStore::materialize(&store, &scope).expect("materialize bridge");
+        bridge.archive_change("demo", "2026-08-23-demo").expect("archive change");
+
+        assert_eq!(
+            bridge.read_archived_artifact("2026-08-23-demo", ".evidence.json").as_deref(),
+            Some(EVIDENCE),
+            "the archived document set carries the evidence byte-for-byte"
+        );
+        assert_eq!(bridge.read_evidence("demo"), None, "the active record moved, not copied");
+    }
+
+    #[test]
+    fn discard_takes_the_evidence_with_the_change() {
+        // 對照組：discard 後 evidence 隨 change 文件一併消失——留下來的話，同名
+        // 新 change 的第一次讀取會把死帳讀成活帳。
+        let store = MemoryStore::new();
+        let binding = local_default_binding();
+        let scope = Scope::new(binding.project, binding.repo);
+        seeded(
+            &store,
+            &scope,
+            &[
+                (DocumentId::ChangeMeta { change: "demo".to_string() }, "schema: spec-driven\n"),
+                (DocumentId::ChangeEvidence { change: "demo".to_string() }, EVIDENCE),
+            ],
+        );
+
+        let bridge = BridgeStore::materialize(&store, &scope).expect("materialize bridge");
+        bridge.delete_change("demo").expect("discard change");
+
+        assert_eq!(bridge.read_evidence("demo"), None, "no evidence outlives its change");
+    }
 
     #[test]
     fn archived_changes_match_point_reads_and_are_sorted_descending() {

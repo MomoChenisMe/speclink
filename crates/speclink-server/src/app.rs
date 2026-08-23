@@ -56,6 +56,7 @@ pub fn router(state: AppState) -> Router {
             "/changes/{name}/artifacts/{*artifact}",
             get(routes::get_artifact).put(routes::put_artifact),
         )
+        .route("/changes/{name}/evidence", get(routes::change_evidence))
         .route(
             "/changes/{name}/tasks/{task_id}/done",
             post(routes::task_done),

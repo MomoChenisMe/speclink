@@ -50,6 +50,7 @@ pub struct ImportBundleDocument {
 pub enum ImportDocumentId {
     ChangeMeta { change: String },
     ChangeArtifact { change: String, artifact: String },
+    ChangeEvidence { change: String },
     CanonicalSpec { capability: String },
     Discussion { slug: String, archived: bool },
     WorkflowConfig,
@@ -90,6 +91,37 @@ pub enum ImportDocumentOutcome {
 pub struct BoardOrderResponse {
     pub content: Option<String>,
     pub revision: u64,
+}
+
+/// `GET /changes/{name}/evidence` response: the change's completion-evidence
+/// entries, oldest first. A change that has never recorded evidence answers
+/// with an empty set — absence is a normal state, not a not-found.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeEvidenceResponse {
+    pub entries: Vec<EvidenceEntry>,
+}
+
+/// One task completion's recorded evidence: who completed which task, on which
+/// commit, over which files. Every field is a historical fact — what the
+/// recorder could not attribute is absent, never defaulted.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EvidenceEntry {
+    pub task_id: String,
+    #[serde(default)]
+    pub task_desc: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_commit: Option<String>,
+    #[serde(default)]
+    pub touched_files: Vec<String>,
+    /// UTC RFC3339 timestamp of the recording.
+    #[serde(default)]
+    pub recorded_at: String,
 }
 
 /// `PUT /board-order` request: the full replacement text. The server stores
@@ -834,6 +866,44 @@ mod tests {
     }
 
     #[test]
+    fn change_evidence_travels_camel_case_and_omits_what_it_cannot_attribute() {
+        let entry = EvidenceEntry {
+            task_id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV".into(),
+            task_desc: "1.1 First".into(),
+            actor: Some("Tester <t@example.com>".into()),
+            repo: Some("backend".into()),
+            head_commit: None,
+            touched_files: vec!["src/app.rs".into()],
+            recorded_at: "2026-08-23T00:00:00Z".into(),
+        };
+        let json = serde_json::to_value(ChangeEvidenceResponse { entries: vec![entry.clone()] })
+            .unwrap();
+        let wire = &json["entries"][0];
+        assert_eq!(wire["taskId"], "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV");
+        assert_eq!(wire["taskDesc"], "1.1 First");
+        assert_eq!(wire["actor"], "Tester <t@example.com>");
+        assert_eq!(wire["repo"], "backend");
+        assert_eq!(wire["touchedFiles"], serde_json::json!(["src/app.rs"]));
+        assert_eq!(wire["recordedAt"], "2026-08-23T00:00:00Z");
+        assert!(
+            wire.get("headCommit").is_none(),
+            "an unattributable field is absent, never defaulted: {wire}"
+        );
+
+        let back: ChangeEvidenceResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(back.entries, vec![entry]);
+    }
+
+    #[test]
+    fn an_empty_evidence_set_is_a_representable_response() {
+        // 缺席是正常狀態：空集合必須是能表達的成功回應，讀取端不必看錯誤碼。
+        let json = serde_json::to_value(ChangeEvidenceResponse { entries: Vec::new() }).unwrap();
+        assert_eq!(json["entries"], serde_json::json!([]));
+        let back: ChangeEvidenceResponse = serde_json::from_value(json).unwrap();
+        assert!(back.entries.is_empty());
+    }
+
+    #[test]
     fn query_dtos_export_json_schema() {
         for (name, schema) in [
             (
@@ -841,6 +911,10 @@ mod tests {
                 schemars::schema_for!(ListChangesResponse),
             ),
             ("ChangeStatus", schemars::schema_for!(ChangeStatus)),
+            (
+                "ChangeEvidenceResponse",
+                schemars::schema_for!(ChangeEvidenceResponse),
+            ),
             (
                 "ApplyInstructions",
                 schemars::schema_for!(ApplyInstructions),

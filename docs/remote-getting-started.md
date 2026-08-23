@@ -111,7 +111,14 @@ Never put a PAT in a repo, in shell history, or in a screenshot.
 
 In Desktop, open Settings → Servers, add a connection with the service URL, and sign in. The default is the device flow, which needs one browser authorization; where no browser is available you can paste a PAT instead. Credentials live in the OS keychain, never in project files.
 
-The connection list, device login, PAT fallback, and logout all work. **The full Remote Workspace is not closed yet**, though: signing in does not yet open a remote board the way a local workspace does. All three session shapes — spec-only (remote specs with no local checkout), remote-plus-checkout (remote specs alongside local source), and offline/conflict handling — are still in later changes. The Desktop Remote Workspace row of [Project Capability Status](product-status.md) itemizes the current completeness and the remaining gaps. Trust that row rather than this guide.
+Once signed in, pick the connection in the workspace chooser, choose a Project and Repo, and then decide whether to attach a local folder. That step offers two modes:
+
+- **Skip (spec mode)**: a spec-only session — open the remote specs without connecting a local working tree, the choice for reading specs without touching code.
+- **Choose local folder**: bind the remote workspace to a local Git checkout. The folder needs a matching remote marker or must be an unbound Git repository; the managed artifacts you selected (the skill files and their kin) are synced into it before the workspace opens, and if any step fails you stay on that step to retry rather than getting a half-opened tab.
+
+Once open, the remote board browses changes, checks tasks, and reads and writes artifacts the way a local board does.
+
+What is not closed yet: capability lists and change metadata are unsupported remotely, a discussion's `promotedTo` is filled with an empty list, and offline conflict handling is unfinished. The Desktop Remote Workspace row of [Project Capability Status](product-status.md) itemizes the current state — trust that row rather than this guide.
 
 ## 7. Connect the CLI / 連接 CLI
 

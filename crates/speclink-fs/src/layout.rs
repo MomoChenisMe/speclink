@@ -59,6 +59,19 @@ impl Layout {
     pub fn discussions_archive_dir(&self) -> PathBuf {
         self.discussions_dir().join("archive")
     }
+    /// A change's completion-evidence record: a machine-written dot file inside
+    /// the change directory, so the record rides the change's own lifecycle
+    /// (committed, archived, discarded with it).
+    pub fn change_evidence(&self, change: &str) -> PathBuf {
+        self.change_dir(change).join(".evidence.json")
+    }
+    /// The pre-move evidence location under the host's gitignored work dir.
+    /// Read-only compatibility: consulted when the change directory carries no
+    /// record, removed once the record lands in its new home, never a write
+    /// target.
+    pub fn legacy_change_evidence(&self, change: &str) -> PathBuf {
+        self.root.join(".speclink").join("touched").join(format!("{change}.json"))
+    }
     /// An artifact's location inside a change. `artifact` is the schema output
     /// path (e.g. `specs/<cap>/spec.md`); joined component-by-component so the
     /// native separator is used throughout.

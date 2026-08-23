@@ -86,6 +86,20 @@ export interface Store {
   /** OPTIONAL: overwrite the raw metadata document — see `readChangeMeta`. */
   writeChangeMeta?(name: string, content: string): MaybePromise<void>
 
+  // --- completion evidence ---
+  /**
+   * The change's completion-evidence record text, or null when it has none —
+   * absence is a normal state. Optional: a store without it reads as "no
+   * record".
+   */
+  readEvidence?(change: string): MaybePromise<string | null>
+  /**
+   * Write the change's evidence record text. Optional, but a store that omits
+   * it fails the call the moment a completion has files to record, rather than
+   * dropping the evidence silently.
+   */
+  writeEvidence?(change: string, content: string): MaybePromise<void>
+
   // --- delta specs ---
   /** Capability names that have a delta spec document in the change, sorted. */
   deltaCapabilities(change: string): MaybePromise<string[]>

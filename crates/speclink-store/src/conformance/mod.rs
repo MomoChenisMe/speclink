@@ -116,6 +116,10 @@ pub fn run(harness: &mut dyn StoreHarness) -> ConformanceReport {
         "gate:board-order-roundtrip",
         gate_board_order_roundtrip(harness),
     ));
+    gates.push((
+        "gate:change-evidence-roundtrip",
+        gate_change_evidence_roundtrip(harness),
+    ));
     if has(Capability::Snapshot) {
         gates.push(("gate:mixed-snapshot", gate_mixed_snapshot(harness)));
     }
@@ -320,6 +324,53 @@ fn gate_board_order_roundtrip(harness: &mut dyn StoreHarness) -> Result<(), Stri
         return Err("export bundle omits the board order document".into());
     }
     Ok(())
+}
+
+/// A change's evidence document is a first-class kind: a UoW write survives
+/// a restart byte-for-byte, the generic export enumeration includes it, and
+/// its locator carries the repo scope (a driver that drops the scope leaks
+/// another tenant's evidence).
+fn gate_change_evidence_roundtrip(harness: &mut dyn StoreHarness) -> Result<(), String> {
+    harness.reset();
+    let repo_a = scope("main");
+    let repo_b = scope("other-repo");
+    let evidence = DocumentId::ChangeEvidence {
+        change: "add-auth".into(),
+    };
+    // Opaque serialized text by contract — the store must not care what
+    // shape the evidence record takes.
+    let content = "{\"version\":2,\"entries\":[{\"taskId\":\"1.1\",\"touchedFiles\":[\"src/auth.rs\"]}]}";
+    create(
+        harness.store(),
+        &repo_a,
+        &[(evidence.clone(), content)],
+        vec![],
+    )?;
+
+    harness.restart();
+    let store = harness.store();
+    match read_content(store, &repo_a, &evidence)? {
+        Some(read) if read == content => {}
+        other => return Err(format!("change evidence did not round-trip: {other:?}")),
+    }
+
+    let bundle = store
+        .export(&repo_a)
+        .map_err(|e| format!("export failed: {e}"))?;
+    if !bundle
+        .documents
+        .iter()
+        .any(|doc| doc.doc == evidence && doc.content == content)
+    {
+        return Err("export bundle omits the change evidence document".into());
+    }
+
+    match read_content(store, &repo_b, &evidence) {
+        Ok(None) | Err(_) => Ok(()),
+        Ok(Some(leaked)) => Err(format!(
+            "another repo's scope read this repo's change evidence: {leaked:?}"
+        )),
+    }
 }
 
 /// A snapshot is a fixed-point view: a concurrent commit must not bleed in,

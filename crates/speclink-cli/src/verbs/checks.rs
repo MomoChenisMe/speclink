@@ -167,7 +167,7 @@ pub(crate) fn cmd_drift(a: ChangeArg) -> Result<()> {
     let change = core::command::resolve_guarded_change(store, a.change.as_deref())
         .map_err(anyhow::Error::new)?;
     let binding = speclink_host::binding::local_default_binding();
-    let bundle = speclink_host::drift::produce_drift_bundle(store, &ws, &change, &binding);
+    let bundle = speclink_host::drift::produce_drift_bundle(store, &change, &binding);
     let facts = speclink_host::drift::collect_workspace_facts(&ws, store, &change);
     let spec = core::drift::compute_spec_drift(store, &change);
     let workspace = core::drift::compute_workspace_drift(store, &change, Some(&facts));

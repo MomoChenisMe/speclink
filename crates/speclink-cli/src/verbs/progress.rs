@@ -69,7 +69,7 @@ pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
             let outcome = run_command(
                 store,
                 Some(&ws),
-                core::command::Command::TaskDone { task_id: task_id.clone(), change },
+                core::command::Command::TaskDone { task_id: task_id.clone(), change, touched_files: None },
             )?;
             let core::command::CommandOutcome::TaskDone(o) = outcome else {
                 unreachable!("task done yields a task-flip outcome");

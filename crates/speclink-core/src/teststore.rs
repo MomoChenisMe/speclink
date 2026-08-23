@@ -23,6 +23,8 @@ pub(crate) struct TestStore {
     /// (archived dated name, artifact rel path) → content — populated by
     /// `archive_change` (faithful directory move: every document travels).
     pub archived_artifacts: RefCell<HashMap<(String, String), String>>,
+    /// Change name → evidence record text (the seam's storage side).
+    pub evidence: RefCell<HashMap<String, String>>,
     /// Capability → canonical spec content.
     pub canonical: RefCell<HashMap<String, String>>,
     /// Number of `write_change_meta` calls (idempotence assertions).
@@ -51,6 +53,10 @@ impl TestStore {
 
     pub fn meta(&self, name: &str) -> String {
         self.metas.borrow().get(name).cloned().unwrap_or_default()
+    }
+
+    pub fn put_evidence(&self, change: &str, content: &str) {
+        self.evidence.borrow_mut().insert(change.to_string(), content.to_string());
     }
 
     pub fn put_artifact(&self, change: &str, artifact: &str, content: &str) {
@@ -151,6 +157,14 @@ impl Store for TestStore {
             .remove(&(change.to_string(), artifact.to_string()));
         Ok(())
     }
+    fn read_evidence(&self, change: &str) -> Option<String> {
+        self.evidence.borrow().get(change).cloned()
+    }
+    fn write_evidence(&self, change: &str, content: &str) -> Result<()> {
+        self.evidence.borrow_mut().insert(change.to_string(), content.to_string());
+        Ok(())
+    }
+
     fn delta_capabilities(&self, change: &str) -> Vec<String> {
         let mut caps: Vec<String> = self
             .artifacts

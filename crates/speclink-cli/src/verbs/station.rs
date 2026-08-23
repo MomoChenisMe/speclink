@@ -232,7 +232,7 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
                 });
             let names = store.list_changes().into_iter().map(|c| c.name).collect();
             let req = build_scope_request(
-                &ws,
+                store,
                 change,
                 names,
                 ticket,
@@ -403,7 +403,7 @@ fn patch_hash_chain<'a>(
 /// host-local 事實，只有 change 清單與工單由各自的 store 提供。
 #[allow(clippy::too_many_arguments)]
 fn build_scope_request(
-    ws: &core::workspace::Workspace,
+    store: &dyn Store,
     change: String,
     other_change_names: Vec<String>,
     ticket: Option<speclink_host::change_diff::TicketBinding>,
@@ -412,13 +412,13 @@ fn build_scope_request(
     include_hunks: Vec<String>,
     station: speclink_host::change_diff::StationNs,
 ) -> speclink_host::change_diff::ScopeRequest {
-    let touched_paths = core::tasks::TouchedRecord::load(ws, &change).all_files();
+    let touched_paths = core::tasks::TouchedRecord::load(store, &change).all_files();
     // 其他 active change 的 host-local touched 認領（overlap 守門）。
     let other_claims = other_change_names
         .into_iter()
         .filter(|name| *name != change)
         .filter_map(|name| {
-            let paths = core::tasks::TouchedRecord::load(ws, &name).all_files();
+            let paths = core::tasks::TouchedRecord::load(store, &name).all_files();
             (!paths.is_empty())
                 .then_some(speclink_host::change_diff::ActiveClaim { change: name, paths })
         })
@@ -645,8 +645,12 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
                 }
             });
             let names = changes.into_iter().map(|c| c.name).collect();
+            // touched 認領同樣來自本地 checkout：remote 模式下 change 文件在
+            // server，但 scope 解析讀的是這台機器上的 evidence 記錄——沒有就是
+            // 空認領，與這條路徑一直以來的行為相同。
+            let local = speclink_fs::FsStore::new(&ws.root, &ws.spec_dir_name);
             let req = build_scope_request(
-                &ws,
+                &local,
                 change,
                 names,
                 ticket,

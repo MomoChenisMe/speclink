@@ -473,3 +473,70 @@ fn discussion_archive_naming_resolution_and_delete() {
     assert!(!store.live_discussion_exists("topic-a"));
     assert!(store.archived_discussion_exists("topic-a"));
 }
+
+// --- completion evidence: the record's on-disk home and the legacy fallback ---
+
+#[test]
+fn evidence_lands_in_the_change_directory_not_the_legacy_path() {
+    // spec verify-evidence「完成任務後證據齊全」：記錄的家是 change 目錄的
+    // `.evidence.json`——路徑逐字寫死，才是真正把位置釘住。
+    let t = TempRoot::new("evidence-home");
+    let store = t.store();
+    store.write_evidence("demo", r#"{"version":2,"change":"demo","entries":[]}"#).unwrap();
+
+    let home = t.dir.join("openspec/changes/demo/.evidence.json");
+    assert_eq!(
+        std::fs::read_to_string(&home).unwrap(),
+        r#"{"version":2,"change":"demo","entries":[]}"#,
+        "the record lands in the change directory byte-for-byte"
+    );
+    assert!(
+        !t.dir.join(".speclink/touched/demo.json").exists(),
+        "the legacy path must never be a write target again"
+    );
+}
+
+#[test]
+fn a_legacy_record_is_read_back_through_the_fallback_then_swept_on_write() {
+    // spec verify-evidence「舊格式記錄可讀」：change 目錄缺席時回退舊路徑（v1 與
+    // v2 皆然）；一旦記錄落到新家，舊檔隨即移除——留著的話，這個名字日後重建
+    // change 時，第一次讀取會把死帳讀成活帳。
+    let t = TempRoot::new("evidence-legacy");
+    let store = t.store();
+    let v1 = r#"{"change":"demo","touched":[{"task_id":"1","task_desc":"1.1 legacy","files":["src/legacy.rs"]}]}"#;
+    let legacy = t.write(".speclink/touched/demo.json", v1);
+
+    assert_eq!(
+        store.read_evidence("demo").as_deref(),
+        Some(v1),
+        "an absent change-directory record falls back to the legacy path"
+    );
+
+    store.write_evidence("demo", r#"{"version":2,"change":"demo","entries":[]}"#).unwrap();
+    assert!(!legacy.exists(), "the legacy bridge file goes once the record lands in its new home");
+    assert_eq!(
+        store.read_evidence("demo").as_deref(),
+        Some(r#"{"version":2,"change":"demo","entries":[]}"#),
+        "the change directory is now the read source"
+    );
+}
+
+#[test]
+fn the_change_directory_record_wins_over_a_legacy_leftover() {
+    // 回退是「缺席才讀」，不是合併：兩處都在時新家為準。
+    let t = TempRoot::new("evidence-precedence");
+    let store = t.store();
+    t.write(".speclink/touched/demo.json", r#"{"change":"demo","touched":[]}"#);
+    t.write("openspec/changes/demo/.evidence.json", r#"{"version":2,"change":"demo","entries":[]}"#);
+
+    assert_eq!(
+        store.read_evidence("demo").as_deref(),
+        Some(r#"{"version":2,"change":"demo","entries":[]}"#)
+    );
+}
+
+#[test]
+fn an_absent_evidence_record_reads_as_none() {
+    let t = TempRoot::new("evidence-absent");
+    assert_eq!(t.store().read_evidence("demo"), None, "absence is a normal state");
+}

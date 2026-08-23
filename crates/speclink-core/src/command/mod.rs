@@ -140,7 +140,14 @@ pub enum DomainEvent {
     ArtifactCreated { change: String, artifact: String, occurred_at: chrono::DateTime<chrono::Utc> },
     /// `task_id` is the task's stable ID; undone on an unstamped task falls
     /// back to the ordinal string (undone never stamps).
-    TaskCompleted { change: String, task_id: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    TaskCompleted {
+        change: String,
+        task_id: String,
+        /// The files this completion recorded as its evidence. Empty when
+        /// nothing was attributable — never a guess.
+        touched_files: Vec<String>,
+        occurred_at: chrono::DateTime<chrono::Utc>,
+    },
     TaskUncompleted { change: String, task_id: String, occurred_at: chrono::DateTime<chrono::Utc> },
     TaskMoved { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     /// No fs-store success path today — the mapping is contract for the remote store.
@@ -280,9 +287,14 @@ pub enum Command {
     },
     /// `task done <task_id> [--change <name>]` (`task_id` stays the raw argv
     /// token — validation and its frozen messages live in the runtime).
+    /// `touched_files` is the Host-resolved touched-file candidate list, not an
+    /// argv surface: `Some` means the Host already resolved it at its boundary
+    /// (the server route's wire request), `None` means fall back to probing the
+    /// local workspace (design 決策一).
     TaskDone {
         task_id: String,
         change: Option<String>,
+        touched_files: Option<Vec<String>>,
     },
     /// `task undone <task_id> [--change <name>]`
     TaskUndone {
@@ -459,6 +471,9 @@ pub struct TaskFlipOutcome {
     pub description: String,
     pub already: bool,
     pub stable_id: Option<String>,
+    /// Files this completion recorded as evidence (empty for undone and for a
+    /// completion with nothing new to attribute).
+    pub touched_files: Vec<String>,
 }
 
 /// `task move` outcome: the subject change and the moved task's cleaned
@@ -668,8 +683,15 @@ pub fn execute(
         Command::NewArtifact { kind, capability, change, content, force, new_capability } => {
             run_new_artifact(store, ws, ctx.user_config_dir.as_deref(), &kind, capability.as_deref(), change.as_deref(), content.as_deref(), force, new_capability)
         }
-        Command::TaskDone { task_id, change } => {
-            run_task_flip(store, ws, ctx, &task_id, change.as_deref(), TaskFlip::Done)
+        Command::TaskDone { task_id, change, touched_files } => {
+            run_task_flip(
+                store,
+                ws,
+                ctx,
+                &task_id,
+                change.as_deref(),
+                TaskFlip::Done { touched_files },
+            )
         }
         Command::TaskUndone { task_id, change } => {
             run_task_flip(store, ws, ctx, &task_id, change.as_deref(), TaskFlip::Undone)
@@ -689,7 +711,7 @@ pub fn execute(
             ))
         }
         Command::InProgressAdd { name } => run_in_progress_add(store, ctx.actor.as_deref(), &name),
-        Command::InProgressRemove { name } => run_in_progress_remove(store, ws, &name),
+        Command::InProgressRemove { name } => run_in_progress_remove(store, &name),
         Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify } => run_archive(
             store,
             ws,
@@ -833,6 +855,7 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         CommandOutcome::TaskDone(o) => vec![DomainEvent::TaskCompleted {
             change: o.change.clone(),
             task_id: o.stable_id.clone().unwrap_or_else(|| o.task_id.to_string()),
+            touched_files: o.touched_files.clone(),
             occurred_at: at,
         }],
         CommandOutcome::TaskUndone(o) if o.already => Vec::new(),
@@ -1398,7 +1421,9 @@ fn run_new_artifact(
 
 /// Which way a task checkbox flips.
 enum TaskFlip {
-    Done,
+    /// Completion, carrying the Host-resolved touched-file candidates (`None`
+    /// = probe the local workspace instead).
+    Done { touched_files: Option<Vec<String>> },
     Undone,
 }
 
@@ -1440,11 +1465,15 @@ fn run_task_flip(
         crate::tasks::TaskAddr::Ordinal(id)
     };
     let host = host_workspace(ws);
-    let (description, already, ordinal, stable_id) = match flip {
-        TaskFlip::Done => {
+    let done = matches!(flip, TaskFlip::Done { .. });
+    let (description, already, ordinal, stable_id, touched_files) = match flip {
+        TaskFlip::Done { touched_files } => {
+            let candidates = match &touched_files {
+                Some(files) => crate::tasks::TouchedCandidates::Injected(files),
+                None => crate::tasks::TouchedCandidates::ProbeWorkspace(&host),
+            };
             let o = crate::tasks::complete(
                 store,
-                &host,
                 &change_name,
                 &addr,
                 &crate::tasks::CompleteAttribution {
@@ -1452,13 +1481,14 @@ fn run_task_flip(
                     agent: None,
                     repo: ctx.repo.as_deref(),
                 },
+                candidates,
             )
             .map_err(classify)?;
-            (o.description, o.already, o.ordinal, o.stable_id)
+            (o.description, o.already, o.ordinal, o.stable_id, o.touched_files)
         }
         TaskFlip::Undone => {
             let o = crate::tasks::uncomplete(store, &change_name, &addr).map_err(classify)?;
-            (o.description, o.already, o.ordinal, o.stable_id)
+            (o.description, o.already, o.ordinal, o.stable_id, Vec::new())
         }
     };
     let outcome = TaskFlipOutcome {
@@ -1468,10 +1498,12 @@ fn run_task_flip(
         description,
         already,
         stable_id,
+        touched_files,
     };
-    Ok(match flip {
-        TaskFlip::Done => CommandOutcome::TaskDone(outcome),
-        TaskFlip::Undone => CommandOutcome::TaskUndone(outcome),
+    Ok(if done {
+        CommandOutcome::TaskDone(outcome)
+    } else {
+        CommandOutcome::TaskUndone(outcome)
     })
 }
 
@@ -1510,7 +1542,6 @@ fn run_in_progress_add(
 
 fn run_in_progress_remove(
     store: &dyn Store,
-    ws: Option<&Workspace>,
     name: &str,
 ) -> Result<CommandOutcome, CommandError> {
     // Loud not-found before the flow (the engine errors too — this classifies
@@ -1521,8 +1552,7 @@ fn run_in_progress_remove(
             format!("Change '{name}' not found."),
         ));
     }
-    let host = host_workspace(ws);
-    let removed = crate::inprogress::remove(store, &host, name).map_err(classify)?;
+    let removed = crate::inprogress::remove(store, name).map_err(classify)?;
     Ok(CommandOutcome::InProgressRemove(InProgressRemoveOutcome {
         name: name.to_string(),
         removed,
@@ -1857,7 +1887,7 @@ mod tests {
         let err = execute(
             &store,
             &ExecutionContext::default(),
-            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()) },
+            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()), touched_files: None },
         )
         .expect_err("task done on corrupt meta must refuse");
         assert!(
@@ -2195,6 +2225,7 @@ mod tests {
             Command::TaskDone {
                 task_id: "1".to_string(),
                 change: Some("demo".to_string()),
+                touched_files: None,
             },
         );
         assert_eq!(kinds(&events), ["task-completed"]);
@@ -2218,6 +2249,7 @@ mod tests {
             Command::TaskDone {
                 task_id: "1".to_string(),
                 change: Some("demo".to_string()),
+                touched_files: None,
             },
         );
         assert!(events.is_empty(), "no event when nothing changed");
@@ -2279,7 +2311,7 @@ mod tests {
         const TASKS: &str = "## 1. Group\n\n- [ ] 1.1 first\n- [ ] 1.2 second\n- [ ] 1.3 third\n";
         let store = TestStore::with_meta("demo", META);
         store.put_artifact("demo", "tasks.md", TASKS);
-        ok(&store, Command::TaskDone { task_id: "3".to_string(), change: Some("demo".to_string()) });
+        ok(&store, Command::TaskDone { task_id: "3".to_string(), change: Some("demo".to_string()), touched_files: None });
         let written = store.read_artifact("demo", "tasks.md").unwrap();
         let orig: Vec<&str> = TASKS.lines().collect();
         let new: Vec<&str> = written.lines().collect();
@@ -2327,7 +2359,7 @@ mod tests {
         );
         let (outcome, _) = ok(
             &store,
-            Command::TaskDone { task_id: TID_B.to_string(), change: Some("demo".to_string()) },
+            Command::TaskDone { task_id: TID_B.to_string(), change: Some("demo".to_string()), touched_files: None },
         );
         match outcome {
             CommandOutcome::TaskDone(o) => {
@@ -2338,7 +2370,7 @@ mod tests {
         }
         let (outcome, _) = ok(
             &store,
-            Command::TaskDone { task_id: "2".to_string(), change: Some("demo".to_string()) },
+            Command::TaskDone { task_id: "2".to_string(), change: Some("demo".to_string()), touched_files: None },
         );
         match outcome {
             CommandOutcome::TaskDone(o) => {
@@ -2356,7 +2388,7 @@ mod tests {
         let ordinal_err = execute(
             &store,
             &ctx,
-            Command::TaskDone { task_id: "9".to_string(), change: Some("demo".to_string()) },
+            Command::TaskDone { task_id: "9".to_string(), change: Some("demo".to_string()), touched_files: None },
         )
         .expect_err("out-of-range ordinal must fail");
         assert_eq!(ordinal_err.message, "Task 9 not found (total: 2)");
@@ -2366,6 +2398,7 @@ mod tests {
             Command::TaskDone {
                 task_id: "tsk_01NOPE0000000000000000000ial".to_string(),
                 change: Some("demo".to_string()),
+                touched_files: None,
             },
         )
         .expect_err("unknown stable id must fail");
@@ -2399,7 +2432,7 @@ mod tests {
         let done_err = execute(
             &store,
             &ctx,
-            Command::TaskDone { task_id: TID_A.to_string(), change: Some("demo".to_string()) },
+            Command::TaskDone { task_id: TID_A.to_string(), change: Some("demo".to_string()), touched_files: None },
         )
         .expect_err("duplicate ids must refuse task done");
         assert!(
@@ -2428,7 +2461,7 @@ mod tests {
         store.put_artifact("demo", "tasks.md", &format!("- [ ] 1.1 a <!-- speclink-task:{TID_A} -->\n"));
         let (_, events) = ok(
             &store,
-            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()) },
+            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()), touched_files: None },
         );
         match &events[0] {
             DomainEvent::TaskCompleted { task_id, .. } => assert_eq!(task_id, TID_A),
@@ -2437,12 +2470,60 @@ mod tests {
     }
 
     #[test]
+    fn task_done_carries_host_injected_touched_files_into_the_event() {
+        // spec verify-evidence「遠端 task done 攜檔案後 evidence 可查」的事件面：
+        // Host 在邊界解析好的候選一路走到 task-completed payload，且同一份清單
+        // 落進 evidence 記錄——事件是流、記錄是狀態，兩條都得有。
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", &format!("- [ ] 1.1 a <!-- speclink-task:{TID_A} -->\n"));
+        let (_, events) = ok(
+            &store,
+            Command::TaskDone {
+                task_id: "1".to_string(),
+                change: Some("demo".to_string()),
+                touched_files: Some(vec!["src/wire.rs".to_string()]),
+            },
+        );
+        match &events[0] {
+            DomainEvent::TaskCompleted { touched_files, .. } => {
+                assert_eq!(touched_files, &vec!["src/wire.rs".to_string()]);
+            }
+            other => panic!("expected task-completed, got {other:?}"),
+        }
+        let rec = crate::tasks::TouchedRecord::load(&store, "demo");
+        assert_eq!(rec.all_files(), vec!["src/wire.rs".to_string()]);
+    }
+
+    #[test]
+    fn task_done_without_injected_files_carries_no_touched_files() {
+        // 無候選不偽造：payload 未攜帶時事件的 touchedFiles 為空，而非補一份
+        // 猜來的清單。
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", &format!("- [ ] 1.1 a <!-- speclink-task:{TID_A} -->\n"));
+        let (_, events) = ok(
+            &store,
+            Command::TaskDone {
+                task_id: "1".to_string(),
+                change: Some("demo".to_string()),
+                touched_files: None,
+            },
+        );
+        match &events[0] {
+            DomainEvent::TaskCompleted { touched_files, .. } => {
+                assert!(touched_files.is_empty(), "nothing to attribute, nothing recorded");
+            }
+            other => panic!("expected task-completed, got {other:?}"),
+        }
+        assert_eq!(store.read_evidence("demo"), None);
+    }
+
+    #[test]
     fn task_completed_event_on_unstamped_task_carries_the_fresh_id() {
         let store = TestStore::with_meta("demo", META);
         store.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n");
         let (_, events) = ok(
             &store,
-            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()) },
+            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()), touched_files: None },
         );
         let written = store.read_artifact("demo", "tasks.md").unwrap();
         let fresh = crate::tasks::parse(&written)[0]
@@ -2962,7 +3043,12 @@ mod tests {
                 "artifact-created",
             ),
             (
-                DomainEvent::TaskCompleted { change: s("c"), task_id: s("tsk_1"), occurred_at: at },
+                DomainEvent::TaskCompleted {
+                    change: s("c"),
+                    task_id: s("tsk_1"),
+                    touched_files: Vec::new(),
+                    occurred_at: at,
+                },
                 "task-completed",
             ),
             (
@@ -3057,7 +3143,7 @@ mod tests {
                 from_discussion: _,
             } => {}
             Command::NewArtifact { kind: _, capability: _, change: _, content: _, force: _, new_capability: _ } => {}
-            Command::TaskDone { task_id: _, change: _ } => {}
+            Command::TaskDone { task_id: _, change: _, touched_files: _ } => {}
             Command::TaskUndone { task_id: _, change: _ } => {}
             Command::TaskMove { change: _, from: _, to: _, before: _ } => {}
             Command::Claim { name: _ } => {}

@@ -171,6 +171,7 @@ struct BundleDocDto {
 enum DocIdDto {
     ChangeMeta { change: String },
     ChangeArtifact { change: String, artifact: String },
+    ChangeEvidence { change: String },
     CanonicalSpec { capability: String },
     Discussion { slug: String, archived: bool },
     WorkflowConfig,
@@ -188,6 +189,9 @@ impl From<&DocumentId> for DocIdDto {
             DocumentId::ChangeArtifact { change, artifact } => DocIdDto::ChangeArtifact {
                 change: change.clone(),
                 artifact: artifact.clone(),
+            },
+            DocumentId::ChangeEvidence { change } => DocIdDto::ChangeEvidence {
+                change: change.clone(),
             },
             DocumentId::CanonicalSpec { capability } => DocIdDto::CanonicalSpec {
                 capability: capability.clone(),
@@ -211,6 +215,7 @@ impl From<DocIdDto> for DocumentId {
     fn from(dto: DocIdDto) -> Self {
         match dto {
             DocIdDto::ChangeMeta { change } => DocumentId::ChangeMeta { change },
+            DocIdDto::ChangeEvidence { change } => DocumentId::ChangeEvidence { change },
             DocIdDto::ChangeArtifact { change, artifact } => {
                 DocumentId::ChangeArtifact { change, artifact }
             }
