@@ -619,7 +619,7 @@ pub fn archive(
     // Evidence is reported, never judged (discussion evidence-gate-false-blocks):
     // read once here so the outcome carries the fact even though the change
     // directory moves out from under this path below.
-    let evidence_recorded = !crate::tasks::TouchedRecord::load(ws, &change.name).entries.is_empty();
+    let evidence_recorded = !crate::tasks::TouchedRecord::load(store, &change.name).entries.is_empty();
 
     // --- Plan phase: read every capability, validate all of them, compute the merged
     // text. Nothing is written here, so a violation ends the archive with zero file
@@ -1529,7 +1529,7 @@ mod tests {
 
         /// Record one v2 evidence entry for "demo" — the record's mere presence
         /// is all archive reads now.
-        fn record_evidence(&self) {
+        fn record_evidence(&self, store: &TestStore) {
             let record = TouchedRecord {
                 version: Some(2),
                 change: "demo".to_string(),
@@ -1544,7 +1544,7 @@ mod tests {
                     recorded_at: "2026-07-13T00:00:00Z".to_string(),
                 }],
             };
-            record.save(&self.ws).unwrap();
+            record.save(store).unwrap();
         }
     }
 
@@ -1559,7 +1559,7 @@ mod tests {
         // spec Scenario「trace 兩欄一律注入」：ADDED 物化到新正典，trace 僅兩欄、無 code 清單。
         let t = TraceWs::new("fresh");
         let store = trace_store();
-        t.record_evidence();
+        t.record_evidence(&store);
         let change = crate::model::find_change(&store, "demo").unwrap();
         let outcome = archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
 
@@ -1586,7 +1586,7 @@ mod tests {
             "## MODIFIED Requirements\n\n### Requirement: R1\n\nIt SHALL work harder.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
         );
         store.canonical.borrow_mut().insert("auth".to_string(), CANON_R1.to_string());
-        t.record_evidence();
+        t.record_evidence(&store);
         let change = crate::model::find_change(&store, "demo").unwrap();
         archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
 
@@ -1621,11 +1621,10 @@ mod tests {
         let t = TraceWs::new("stale-shaped");
         let store = trace_store();
         // 前一版格式：帶 basisDigests 且必然對不上當前基準。
-        util::write_file(
-            &t.ws.change_evidence_file("demo"),
+        store.put_evidence(
+            "demo",
             r#"{"version":2,"change":"demo","entries":[{"taskId":"tsk_LEGACY","taskDesc":"1.1 done","touchedFiles":["src/a.rs"],"basisDigests":{"spec":"sha256:0","tasks":"sha256:0","policy":"sha256:0"},"recordedAt":"2026-07-13T00:00:00Z"}]}"#,
-        )
-        .unwrap();
+        );
         let change = crate::model::find_change(&store, "demo").unwrap();
         let outcome = archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
 
@@ -1637,7 +1636,8 @@ mod tests {
     fn archive_sweeps_the_legacy_touched_record_with_the_change() {
         // 舊路徑殘檔不得比 change 活得久：留著的話，同名新 change 的第一次 load
         // 會把死帳讀成活帳（seen 汙染、零證據提示被吞）。封存比照 `.started`
-        // 標記順手帶走；事實（evidence_recorded）在清除前讀取，不受影響。
+        // 標記順手帶走。（舊路徑的內容仍算這個 change 的事實——那是檔案系統
+        // supplier 的回退讀取，釘在 speclink-fs。）
         let t = TraceWs::new("legacy-sweep");
         let store = trace_store();
         let legacy = t.ws.legacy_touched_file("demo");
@@ -1647,9 +1647,8 @@ mod tests {
         )
         .unwrap();
         let change = crate::model::find_change(&store, "demo").unwrap();
-        let outcome = archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
+        archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
 
-        assert!(outcome.evidence_recorded, "the legacy record still counts as this change's fact");
         assert!(!legacy.exists(), "the legacy touched record dies with the change");
     }
 

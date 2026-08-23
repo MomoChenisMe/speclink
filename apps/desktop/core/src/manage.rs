@@ -85,7 +85,7 @@ pub fn revert_change_to_proposed_at(root: &Path, change: &str) -> Result<(), Str
     // 守門（含 git spawn）在取寫回鎖之前完成，同 delete_change_at。
     crate::query::refuse_if_worktree_is_open(&ctx, change)?;
     let _guard = write_guard();
-    speclink_core::inprogress::remove(&ctx.store, &ctx.workspace, change)
+    speclink_core::inprogress::remove(&ctx.store, change)
         .map(|_| ())
         .map_err(|e| match e.downcast_ref::<speclink_core::inprogress::RevertBlocked>() {
             Some(b) => revert_blocked_error(b.checked_tasks, &b.touched_files),
@@ -137,7 +137,6 @@ pub fn set_task_done_at(root: &Path, change: &str, task: &str, done: bool) -> Re
         let identity = cached_git_identity(root);
         speclink_core::tasks::complete(
             &ctx.store,
-            &ctx.workspace,
             change,
             &addr,
             &speclink_core::tasks::CompleteAttribution {
@@ -145,6 +144,7 @@ pub fn set_task_done_at(root: &Path, change: &str, task: &str, done: bool) -> Re
                 agent: None,
                 repo: None,
             },
+            speclink_core::tasks::TouchedCandidates::ProbeWorkspace(&ctx.workspace),
         )
         .map(|_| ()) // already → 冪等成功（引擎保證零檔案效果）
         .map_err(|e| e.to_string())
@@ -213,7 +213,7 @@ pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), Str
     if done {
         // 側效沿單發完成語意（tasks::complete 同款）：未認領 dirty 檔記一筆
         // touched（歸於本次首個翻轉任務），首次完成蓋開工章（inprogress::add 冪等）。
-        let mut record = speclink_core::tasks::TouchedRecord::load(&ctx.workspace, change);
+        let mut record = speclink_core::tasks::TouchedRecord::load(&ctx.store, change);
         record.change = change.to_string();
         let seen = record.all_files();
         let files: Vec<String> = speclink_core::tasks::git_changed_files(&ctx.workspace)
@@ -226,7 +226,7 @@ pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), Str
                 task_desc: first_desc,
                 files,
             });
-            record.save(&ctx.workspace).map_err(|e| e.to_string())?;
+            record.save(&ctx.store).map_err(|e| e.to_string())?;
         }
         // identity 鍵同 set_task_done_at：用呼叫端專案根，與預熱同鍵。
         let identity = cached_git_identity(root);

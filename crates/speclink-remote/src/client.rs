@@ -26,7 +26,8 @@ use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::query::{
     AnalyzeReportResponse, ApplyInstructions, ArchivedListResponse, ArtifactContent,
-    ArtifactInstructions, BoardOrderResponse, ChangeStatus, ConfigResponse, ImportBundle,
+    ArtifactInstructions, BoardOrderResponse, ChangeEvidenceResponse, ChangeStatus,
+    ConfigResponse, ImportBundle,
     ImportReportResponse, LanguageResponse, ListChangesResponse, ListDiscussionsResponse,
     ListSpecsResponse, PutBoardOrderRequest, PutBoardOrderResponse, PutConfigRequest,
     PutConfigResponse, ScopesResponse, SearchResponse, ShowDiscussionResponse,
@@ -281,6 +282,12 @@ impl Client {
     /// absent document is a normal state (`content` null).
     pub fn board_order(&self) -> Result<BoardOrderResponse, RemoteError> {
         self.get("/board-order")
+    }
+
+    /// `GET /changes/{name}/evidence` — the change's recorded completion
+    /// evidence. A change that never recorded any answers with an empty set.
+    pub fn change_evidence(&self, name: &str) -> Result<ChangeEvidenceResponse, RemoteError> {
+        self.get(&format!("/changes/{name}/evidence"))
     }
 
     /// `GET /whoami`

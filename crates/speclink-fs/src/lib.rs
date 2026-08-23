@@ -205,6 +205,23 @@ impl Store for FsStore {
         self.layout.artifact_path(change, artifact).is_file()
     }
 
+    // --- completion evidence ---
+
+    fn read_evidence(&self, change: &str) -> Option<String> {
+        util::read_opt(&self.layout.change_evidence(change))
+            .or_else(|| util::read_opt(&self.layout.legacy_change_evidence(change)))
+    }
+
+    fn write_evidence(&self, change: &str, content: &str) -> Result<()> {
+        util::write_file(&self.layout.change_evidence(change), content)?;
+        // The legacy bridge file goes once the record lands in its new home:
+        // its content was already carried forward by the fallback read, and a
+        // leftover would be read back as evidence for a future change reusing
+        // this name.
+        let _ = util::remove_file(&self.layout.legacy_change_evidence(change));
+        Ok(())
+    }
+
     // --- delta specs ---
 
     fn delta_capabilities(&self, change: &str) -> Vec<String> {

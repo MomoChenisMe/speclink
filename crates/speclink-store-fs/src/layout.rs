@@ -115,6 +115,7 @@ pub fn doc_key(doc: &DocumentId) -> String {
         DocumentId::ChangeArtifact { change, artifact } => {
             format!("ca.{}.{}", escape(change), escape(artifact))
         }
+        DocumentId::ChangeEvidence { change } => format!("ce.{}", escape(change)),
         DocumentId::CanonicalSpec { capability } => format!("cs.{}", escape(capability)),
         DocumentId::Discussion { slug, archived } => {
             format!("di.{}.{}", u8::from(*archived), escape(slug))
@@ -140,6 +141,9 @@ pub fn decode_doc_key(key: &str) -> Result<DocumentId, StoreError> {
         ["lg"] => Ok(DocumentId::Language),
         ["bo"] => Ok(DocumentId::BoardOrder),
         ["cm", change] => Ok(DocumentId::ChangeMeta {
+            change: unescape(change)?,
+        }),
+        ["ce", change] => Ok(DocumentId::ChangeEvidence {
             change: unescape(change)?,
         }),
         ["cs", capability] => Ok(DocumentId::CanonicalSpec {
@@ -259,6 +263,9 @@ mod tests {
             DocumentId::ChangeArtifact {
                 change: "add-auth".into(),
                 artifact: "specs/auth/spec.md".into(),
+            },
+            DocumentId::ChangeEvidence {
+                change: "add-auth".into(),
             },
             DocumentId::CanonicalSpec {
                 capability: "auth".into(),

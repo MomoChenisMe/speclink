@@ -109,15 +109,14 @@ speclink-server token revoke --config ./speclink-data/config.yaml <token-id>
 
 在 Desktop 的「設定 → 伺服器」新增一個連線，填入服務網址，然後登入。預設走 device 流程，瀏覽器開一次授權即可；無瀏覽器時可改貼 PAT。憑證存在 OS 的 Keychain，不落在專案檔案裡。
 
-連線清單、device 登入、PAT 後備與登出都已可用。**但完整的 Remote Workspace 尚未閉合**：登入之後還不能像本地 workspace 那樣直接開出一個遠端看板。
+登入之後，在 workspace chooser 選這個連線，挑 Project 與 Repo，接著決定要不要接一個本機資料夾。這一步有兩種模式：
 
-三種工作階段都還在後續變更裡：
+- **略過（規格模式，spec-only）**：直接開遠端規格，不連本機 working tree。適合只看規格、不動程式碼的人。
+- **選擇本機資料夾**：把遠端 workspace 綁到一個本機 Git checkout。這個資料夾必須帶對應的 remote 標記，或者是一個尚未綁定的 Git repo；開啟前會先把選定的受管產物（技能檔那類）同步進去，任一步失敗就停在原步驟讓你重試，不會開出半套分頁。
 
-- spec-only：只讀遠端規格，本機沒有 checkout
-- remote＋checkout：遠端規格搭配本機原始碼
-- offline 與衝突處理
+開起來之後，遠端看板和本地看板一樣可以瀏覽 change、勾任務、讀寫 artifact。
 
-目前的完成度與缺口，逐項見[專案能力狀態](product-status.zh-TW.md)的 Desktop Remote Workspace 一列。請以那裡為準，不要從這份教學推論。
+還沒閉合的小縫：遠端不支援 capability 清單與 change 詮釋資料、討論的 promotedTo 以空清單補齊、離線（offline）衝突處理尚未完成。逐項現況見[專案能力狀態](product-status.zh-TW.md)的 Desktop Remote Workspace 一列——請以那裡為準，不要從這份教學推論。
 
 ## 7. Connect the CLI / 連接 CLI
 

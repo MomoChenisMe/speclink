@@ -50,17 +50,19 @@ Building a minimal client — list changes, read a spec, check off a task — fr
 
 **The problem**
 
-Using Speclink alone in your own repo is already complete; sharing one spec canon across several people is not. Remotely, the command line connects and specs can be read — but the board that makes Speclink pleasant to use cannot yet point at a remote.
+Using Speclink alone in your own repo is already complete; sharing one spec canon across several people is not. Both the command line and the desktop board can now point at a remote — what is left is the stretches of that road still unpaved.
 
 **Where it stands**
 
 The remote command-line path works. Tests cover `link`, `auth`, and the read-only Context Projection. Nearly every verb has a remote arm; the [Verb and Flag Contract](verb-contract.md) records the mode assignment. Server-side installation, accounts, membership, and backup and restore all work too.
 
-Two gaps remain. First, a desktop sign-in does not yet open a full remote workspace. None of the three session shapes are closed: spec-only, remote-plus-local-checkout, and offline or conflict handling. Second, a remote task check-off makes the server discard the touched files, so you cannot query remote evidence.
+The desktop board points at remotes now: after signing in, the chooser picks a Project and Repo and offers either specs-only or a bound local checkout, and the board that opens browses changes, checks tasks, and reads and writes artifacts the way a local one does. The touched files a remote task check-off reports are stored too, and read back from the evidence endpoint.
+
+Still unpaved: capability lists and change metadata are unsupported remotely, a discussion's `promotedTo` is filled with an empty list, offline and conflict handling are unfinished, and checking a task from the desktop remote board does not itself report touched files (only the CLI does), so that path still records no evidence.
 
 **The observable next step**
 
-Sign in to a remote server from the desktop. Then open that store's board and work with its changes directly, on the same screens and with the same actions as a local workspace. Then check off a task remotely and see which files it touched.
+Check off a task on the desktop remote board and see which files it touched — the way checking one from the CLI already does. And: work done while disconnected has a clear destination, with conflicts you can choose between on reconnect.
 
 ## Agent tool integration / Agent 工具整合
 

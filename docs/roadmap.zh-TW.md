@@ -52,17 +52,19 @@ Speclink 的桌面 app 只是**引擎的其中一個前端**，不是引擎本�
 
 **要解決什麼**
 
-一個人在自己 repo 裡用 Speclink 已經完整。多人共用一份規格正典則還沒走完。目前遠端能做的是「命令列接得上、規格讀得到」，但桌面上那個讓 Speclink 好用的看板，還沒能指向遠端。
+一個人在自己 repo 裡用 Speclink 已經完整。多人共用一份規格正典則還沒走完。命令列與桌面看板現在都指得到遠端，剩下的是這條路上還沒鋪平的幾段。
 
 **目前到哪**
 
 遠端的命令列路徑可用。`link`、`auth` 與唯讀的 Context Projection 都有測試守著，絕大多數動詞也都有遠端臂；模式歸屬見[動詞與旗標契約](verb-contract.zh-TW.md)。Server 端的安裝、帳號、成員資格與備份還原也都可用。
 
-剩兩個明確缺口。第一，桌面登入之後還開不出完整的遠端 workspace，三種工作階段都還沒閉合：spec-only、遠端＋本機 checkout，以及離線與衝突處理。第二，遠端勾任務時 server 目前會丟棄 touched files，所以遠端沒有 evidence 可查。
+桌面看板已能指向遠端：登入後在 chooser 選 Project 與 Repo，可選擇只讀規格或綁一個本機 checkout，開出來的看板和本地一樣能瀏覽 change、勾任務、讀寫 artifact。遠端勾任務回報的 touched files 也已存進 Store，可經證據端點查回。
+
+還沒鋪平的：遠端不支援 capability 清單與 change 詮釋資料、討論的 promotedTo 以空清單補齊、離線與衝突處理尚未完成；桌面遠端勾任務本身還不會回報 touched files（只有 CLI 會），所以那條路徑上仍沒有 evidence。
 
 **可觀察的下一步**
 
-在桌面登入一台遠端 server 之後，直接開出那個 store 的看板並操作變更，畫面與動作都和本地 workspace 相同。還有：在遠端勾掉一個任務之後，查得到它動了哪些檔案。
+在桌面遠端看板勾掉一個任務之後，查得到它動了哪些檔案——就像在 CLI 上勾一樣。還有：斷線期間的操作有明確去向，重新連上時衝突有得選。
 
 ## Agent tool integration / Agent 工具整合
 

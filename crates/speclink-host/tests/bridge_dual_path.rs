@@ -174,6 +174,7 @@ fn mutating_verb_yields_the_same_outcome_and_event_kind_on_both_paths() {
     let done_cmd = || Command::TaskDone {
         task_id: "1".to_string(),
         change: Some(CHANGE.to_string()),
+        touched_files: None,
     };
     let (fs_out, fs_events) =
         engine_execute(&fs, &fs_engine_ctx(), done_cmd()).expect("fs task done");
@@ -213,6 +214,7 @@ fn bridged_task_done_lands_document_revision_and_event_in_one_commit() {
         Command::TaskDone {
             task_id: "1".to_string(),
             change: Some(CHANGE.to_string()),
+            touched_files: None,
         },
     )
     .expect("bridged task done");

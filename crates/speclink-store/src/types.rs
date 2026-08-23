@@ -66,6 +66,10 @@ pub enum DocumentId {
     /// An artifact of an active change, by its schema-defined relative name
     /// (e.g. `proposal.md`, `specs/auth/spec.md`).
     ChangeArtifact { change: String, artifact: String },
+    /// The touched-file evidence record of an active change: one per change,
+    /// holding the serialized record text the store never interprets. Absent
+    /// is a normal state (no task has claimed a file yet).
+    ChangeEvidence { change: String },
     /// The canonical spec of a capability.
     CanonicalSpec { capability: String },
     /// A discussion document, live or archived, by slug.
@@ -312,7 +316,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn document_id_covers_eight_logical_kinds() {
+    fn document_id_covers_nine_logical_kinds() {
         let kinds = [
             DocumentId::ChangeMeta {
                 change: "add-auth".into(),
@@ -320,6 +324,9 @@ mod tests {
             DocumentId::ChangeArtifact {
                 change: "add-auth".into(),
                 artifact: "specs/auth/spec.md".into(),
+            },
+            DocumentId::ChangeEvidence {
+                change: "add-auth".into(),
             },
             DocumentId::CanonicalSpec {
                 capability: "auth".into(),
@@ -336,13 +343,14 @@ mod tests {
             DocumentId::Language,
             DocumentId::BoardOrder,
         ];
-        assert_eq!(kinds.len(), 8);
+        assert_eq!(kinds.len(), 9);
         // Closed enum: exhaustive match without a wildcard arm — a new kind
         // breaks compilation here instead of silently passing drivers by.
         for kind in &kinds {
             match kind {
                 DocumentId::ChangeMeta { .. } => {}
                 DocumentId::ChangeArtifact { .. } => {}
+                DocumentId::ChangeEvidence { .. } => {}
                 DocumentId::CanonicalSpec { .. } => {}
                 DocumentId::Discussion { .. } => {}
                 DocumentId::WorkflowConfig => {}

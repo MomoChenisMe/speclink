@@ -1,7 +1,7 @@
 // WorkspaceSession 模型（workspace-session design 決策 1/3；架構 §10.4）：
 // 分頁身分＝WorkspaceLocator、locatorKey 為去重／持久化 activeKey／tray 識別
-// 的唯一身分函式。remote 變體本刀僅型別宣告、無任何建構路徑（後續刀），
-// 先釘死完整型別使持久化 schema 與 key 規則跨後續刀穩定。
+// 的唯一身分函式。remote 變體的建構路徑是 WorkspaceChooser 的遠端開啟
+// （skip 或 folder 模式）→ remote_open handshake → createRemoteSession。
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import type { SpeclinkDataSource } from "@speclink/ui";

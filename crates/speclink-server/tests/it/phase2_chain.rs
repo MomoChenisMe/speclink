@@ -832,16 +832,12 @@ fn phase2_chain_walks_all_stages_with_reset_recovery() {
     run_chain(Recovery::Reset);
 }
 
-// --- 劇本揭露的縫隙缺陷（步驟 5b 證據面）——紅色斷言，不留假綠 ---
+// --- 遠端 task done 的證據三連（事件面＋文件面）---
 
-/// remote task done 的 touchedFiles 在 server 路由被丟棄（routes::task_done 的
-/// `Json(_req)`），engine 在無 workspace 的 server 上也不落任何 evidence 記錄，
-/// server 端因此沒有「taskId/actor/touchedFiles 可查」的 evidence 面（架構藍圖
-/// §9.4：Remote Store 保存 task completion 回報的 touched-file evidence）。
-/// 依本刀紀律（proposal Impact / tasks 4.2）不順手修產品程式碼——待開 change
-/// 'remote-task-evidence' 落地後移除 #[ignore]，並把斷言指向新的 evidence 查詢面。
+/// remote task done 的 touchedFiles 一路走到 store：outbox 的 task-completed
+/// payload 帶著同一份清單（事件面），evidence 端點讀得回這筆 entry（文件面）。
+/// 架構藍圖 §9.4：Remote Store 保存 task completion 回報的 touched-file evidence。
 #[test]
-#[ignore = "劇本揭露缺陷：server 丟棄 task done 的 touchedFiles，無 evidence 可查 — 待開 change 'remote-task-evidence'"]
 fn task_done_with_touched_files_leaves_queryable_evidence_on_the_server() {
     let _gate = crate::common::acquire_process_gate();
     use speclink_store::{CommandContext, DocumentId, OutboxCursor, TeamStore};
@@ -868,17 +864,57 @@ fn task_done_with_touched_files_leaves_queryable_evidence_on_the_server() {
         .task_done("demo", "1", &["src/app.rs".to_string()])
         .expect("task done with touched files");
 
-    // 今日最近似的 server 端查詢面是 outbox 的 task-completed 記錄：actor 已可查，
-    // touchedFiles 應同樣可查（evidence 三連的第三面）。
+    // 事件面：outbox 的 task-completed 記錄帶 actor 與 touchedFiles。
     let entries = store.read_outbox(&scope(), OutboxCursor(0)).expect("read outbox");
     let done = entries
         .iter()
         .find(|e| e.record.name == "task-completed")
         .expect("task-completed lands in the outbox");
     assert!(!done.record.actor.is_empty(), "the actor face already works");
-    assert!(
-        done.record.payload.get("touchedFiles").is_some(),
-        "the server keeps the reported touchedFiles queryable — today they are dropped: {}",
+    assert_eq!(
+        done.record.payload["touchedFiles"],
+        serde_json::json!(["src/app.rs"]),
+        "the reported touchedFiles stay queryable on the event face: {}",
         done.record.payload,
     );
+
+    // 文件面：evidence 端點讀得回這筆 entry，欄位為 camelCase。
+    let evidence = client.change_evidence("demo").expect("read evidence");
+    assert_eq!(evidence.entries.len(), 1, "one completion, one entry: {evidence:?}");
+    let entry = &evidence.entries[0];
+    assert_eq!(entry.touched_files, vec!["src/app.rs".to_string()]);
+    assert_eq!(entry.task_desc, "1.1 First");
+    assert!(!entry.task_id.is_empty(), "the entry names the task it belongs to");
+    assert!(entry.actor.is_some(), "the acting identity travels with the record");
+    assert!(!entry.recorded_at.is_empty());
+
+    let raw = serde_json::to_value(entry).expect("entry serializes");
+    for field in ["taskId", "taskDesc", "touchedFiles", "recordedAt"] {
+        assert!(raw.get(field).is_some(), "wire fields are camelCase, missing {field}: {raw}");
+    }
+}
+
+/// 缺席是正常狀態：從未落過 evidence 的 change 回成功的空集合，而非 not_found
+/// ——讀取端不必以錯誤碼區分「change 不存在」與「還沒有證據」。
+#[test]
+fn a_change_without_evidence_reads_back_an_empty_set() {
+    let _gate = crate::common::acquire_process_gate();
+    use speclink_store::{CommandContext, DocumentId, TeamStore};
+    let store = std::sync::Arc::new(speclink_store::memory::MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
+    store.commit(uow, Vec::new()).expect("seed commit");
+
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+
+    let client = Client::new(&format!("{base}/api/speclink/v1/projects/demo"), &pat, Some("backend"));
+    let evidence = client.change_evidence("demo").expect("absence is not an error");
+    assert!(evidence.entries.is_empty(), "no evidence yet reads as an empty set: {evidence:?}");
 }

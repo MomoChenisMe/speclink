@@ -895,7 +895,7 @@ pub fn analyze(ws: &Workspace, store: &dyn Store, change: &Change) -> DriftRepor
     // touch files this change cares about (touched record ∪ task references).
     let commits_since = commit_files.len() as i64;
     let mut relevant: std::collections::BTreeSet<String> =
-        crate::tasks::TouchedRecord::load(ws, &change.name)
+        crate::tasks::TouchedRecord::load(store, &change.name)
             .all_files()
             .into_iter()
             .collect();

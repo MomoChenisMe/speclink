@@ -376,6 +376,9 @@ pub struct CompleteOutcome {
     pub already: bool,
     pub ordinal: usize,
     pub stable_id: Option<String>,
+    /// The files this completion recorded as evidence — empty when nothing new
+    /// was attributable (no record was written either).
+    pub touched_files: Vec<String>,
 }
 
 /// Host-injected attribution for completion evidence: display identity, agent
@@ -386,6 +389,40 @@ pub struct CompleteAttribution<'a> {
     pub identity: Option<&'a str>,
     pub agent: Option<&'a str>,
     pub repo: Option<&'a str>,
+}
+
+/// Where a completion's touched-file candidates come from (design 決策一).
+/// A closed choice with no default: the Host either resolved the candidates at
+/// its own boundary (server mode — the wire request's `touchedFiles`) or hands
+/// over the workspace to probe. A caller cannot lose evidence by forgetting to
+/// say which.
+#[derive(Debug, Clone, Copy)]
+pub enum TouchedCandidates<'a> {
+    /// The Host already resolved the candidates; the workspace is never probed.
+    Injected(&'a [String]),
+    /// Probe the local host workspace for git-dirty files.
+    ProbeWorkspace(&'a Workspace),
+}
+
+impl TouchedCandidates<'_> {
+    /// The candidate paths before attribution filtering.
+    fn resolve(&self) -> Vec<String> {
+        match self {
+            TouchedCandidates::Injected(files) => files.to_vec(),
+            TouchedCandidates::ProbeWorkspace(ws) => git_changed_files(ws),
+        }
+    }
+
+    /// The workspace to read HEAD from, when there is one. Injected candidates
+    /// come from a Host that already knows its own commit, so the entry's
+    /// `headCommit` stays absent rather than being filled from an unrelated
+    /// checkout.
+    fn workspace(&self) -> Option<&Workspace> {
+        match self {
+            TouchedCandidates::Injected(_) => None,
+            TouchedCandidates::ProbeWorkspace(ws) => Some(ws),
+        }
+    }
 }
 
 /// Complete a task — the single collaboration point shared by every tool path
@@ -399,10 +436,10 @@ pub struct CompleteAttribution<'a> {
 /// caller.
 pub fn complete(
     store: &dyn Store,
-    ws: &Workspace,
     change: &str,
     addr: &TaskAddr,
     attr: &CompleteAttribution,
+    candidates: TouchedCandidates,
 ) -> Result<CompleteOutcome> {
     // Fail-closed gate before any write: a checked task implies the
     // work-started stamp, which must not land on a corrupt metadata document.
@@ -414,7 +451,13 @@ pub fn complete(
     let (new_content, desc, already, stable_id) = mark_done(&text, ordinal)
         .ok_or_else(|| anyhow::anyhow!("Task {addr} not found (total: {total})"))?;
     if already {
-        return Ok(CompleteOutcome { description: desc, already: true, ordinal, stable_id });
+        return Ok(CompleteOutcome {
+            description: desc,
+            already: true,
+            ordinal,
+            stable_id,
+            touched_files: Vec::new(),
+        });
     }
     store.write_artifact(change, "tasks.md", &new_content)?;
 
@@ -422,10 +465,11 @@ pub fn complete(
     // when nothing new is dirty, no entry is appended at all (frozen behavior).
     // The v1 `touched` entry stays alongside the v2 evidence entry — the commit
     // skill's documented file-list channel keeps its exact shape.
-    let mut record = TouchedRecord::load(ws, change);
+    let mut record = TouchedRecord::load(store, change);
     record.change = change.to_string();
     let seen = record.all_files();
-    let files: Vec<String> = git_changed_files(ws)
+    let files: Vec<String> = candidates
+        .resolve()
         .into_iter()
         .filter(|f| !seen.contains(f))
         .collect();
@@ -440,16 +484,22 @@ pub fn complete(
             task_desc: desc.clone(),
             actor: attr.identity.map(str::to_string),
             repo: attr.repo.map(str::to_string),
-            head_commit: head_commit(&ws.root),
-            touched_files: files,
+            head_commit: candidates.workspace().and_then(|ws| head_commit(&ws.root)),
+            touched_files: files.clone(),
             recorded_at: chrono::Utc::now()
                 .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         });
-        record.save(ws)?;
+        record.save(store)?;
     }
 
     crate::inprogress::add(store, change, attr.identity, attr.agent)?;
-    Ok(CompleteOutcome { description: desc, already: false, ordinal, stable_id })
+    Ok(CompleteOutcome {
+        description: desc,
+        already: false,
+        ordinal,
+        stable_id,
+        touched_files: files,
+    })
 }
 
 /// Outcome of [`uncomplete`]: the task's cleaned description, whether it was
@@ -674,38 +724,30 @@ pub struct TouchedRecord {
 }
 
 impl TouchedRecord {
-    /// Read the change's record: the change directory's `.evidence.json` is
-    /// the home, and only when it is absent does the pre-move
-    /// `.speclink/touched/<change>.json` get consulted (read-only bridge for
-    /// records written before the move). Absent everywhere = empty record.
-    pub fn load(ws: &Workspace, change: &str) -> TouchedRecord {
-        let text = util::read_opt(&ws.change_evidence_file(change))
-            .or_else(|| util::read_opt(&ws.legacy_touched_file(change)));
-        match text {
-            Some(s) => serde_json::from_str(&s).unwrap_or(TouchedRecord {
-                change: change.to_string(),
-                ..Default::default()
-            }),
-            None => TouchedRecord {
-                change: change.to_string(),
-                ..Default::default()
-            },
+    /// Read the change's record through the storage seam. Where the record
+    /// physically lives — the change directory's `.evidence.json` for the
+    /// filesystem supplier, a change-scoped document for a TeamStore — is the
+    /// supplier's business. Absent = empty record; a record that does not
+    /// parse is treated the same way, so a corrupt file never blocks a
+    /// completion.
+    pub fn load(store: &dyn Store, change: &str) -> TouchedRecord {
+        let empty = || TouchedRecord {
+            change: change.to_string(),
+            ..Default::default()
+        };
+        match store.read_evidence(change) {
+            Some(s) => serde_json::from_str(&s).unwrap_or_else(|_| empty()),
+            None => empty(),
         }
     }
 
-    /// Writes always land in the change directory. The legacy bridge file is
-    /// removed once the new home is written: its content was already carried
-    /// forward by the fallback read, and a leftover would be read back as
-    /// evidence for a future change reusing this name.
-    pub fn save(&self, ws: &Workspace) -> std::io::Result<()> {
-        let p = ws.change_evidence_file(&self.change);
-        // Writes are always v2, whatever version was read.
+    /// Write the record back through the storage seam. Writes are always v2,
+    /// whatever version was read.
+    pub fn save(&self, store: &dyn Store) -> anyhow::Result<()> {
         let mut rec = self.clone();
         rec.version = Some(2);
         let json = serde_json::to_string_pretty(&rec).unwrap_or_default();
-        util::write_file(&p, &json)?;
-        let _ = util::remove_file(&ws.legacy_touched_file(&self.change));
-        Ok(())
+        store.write_evidence(&self.change, &json)
     }
 
     /// Union of all files across v1 and v2 entries (for @trace), in
@@ -928,34 +970,6 @@ mod tests {
             t
         }
 
-        /// The evidence record's home: the change directory's `.evidence.json`,
-        /// spelled out literally so the test pins the on-disk location rather
-        /// than trusting the path helper it verifies.
-        fn evidence_json(&self, change: &str) -> Option<String> {
-            util::read_opt(
-                &self
-                    .ws
-                    .root
-                    .join("openspec")
-                    .join("changes")
-                    .join(change)
-                    .join(".evidence.json"),
-            )
-        }
-
-        /// The legacy `.speclink/touched/<change>.json` location — read-only
-        /// compatibility, never a write target.
-        fn legacy_json(&self, change: &str) -> Option<String> {
-            util::read_opt(&self.ws.touched_dir().join(format!("{change}.json")))
-        }
-
-        /// Seed a record at the legacy location (the pre-move on-disk shape).
-        fn seed_legacy(&self, change: &str, json: &str) -> PathBuf {
-            let p = self.ws.touched_dir().join(format!("{change}.json"));
-            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-            std::fs::write(&p, json).unwrap();
-            p
-        }
     }
 
     impl Drop for TempWs {
@@ -975,7 +989,7 @@ mod tests {
         let t = TempWs::with_dirty_file("first", "src/app.rs");
         let store = store_with(META_UNSTARTED, TASKS_TWO_OPEN);
 
-        let out = complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution { identity: Some("Tester <t@example.com>"), ..Default::default() }).unwrap();
+        let out = complete(&store, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution { identity: Some("Tester <t@example.com>"), ..Default::default() }, TouchedCandidates::ProbeWorkspace(&t.ws)).unwrap();
 
         assert!(!out.already);
         assert_eq!(out.description, "1.1 first task");
@@ -983,7 +997,7 @@ mod tests {
         assert!(tasks.contains("- [x] 1.1 first task"), "task 1 must be checked: {tasks}");
         assert!(tasks.contains("- [ ] 1.2 second task"), "task 2 must stay open: {tasks}");
         // Touched record gains this task's entry with the unclaimed dirty file.
-        let json = t.evidence_json("demo").expect("touched record written");
+        let json = store.read_evidence("demo").expect("touched record written");
         let rec: TouchedRecord = serde_json::from_str(&json).unwrap();
         assert_eq!(rec.change, "demo");
         assert_eq!(rec.touched.len(), 1);
@@ -1007,9 +1021,9 @@ mod tests {
         // no record file created (matches the CLI's current semantics).
         let t = TempWs::new("nodirty");
         let store = store_with(META_UNSTARTED, TASKS_TWO_OPEN);
-        let out = complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution::default()).unwrap();
+        let out = complete(&store, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution::default(), TouchedCandidates::ProbeWorkspace(&t.ws)).unwrap();
         assert!(!out.already);
-        assert_eq!(t.evidence_json("demo"), None, "no unclaimed dirty files must append nothing");
+        assert_eq!(store.read_evidence("demo"), None, "no unclaimed dirty files must append nothing");
     }
 
     #[test]
@@ -1019,7 +1033,7 @@ mod tests {
         );
         let t = TempWs::new("started");
         let store = store_with(&started, TASKS_TWO_OPEN);
-        complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(2), &CompleteAttribution { identity: Some("Second <second@example.com>"), agent: Some("codex"), repo: None })
+        complete(&store, "demo", &TaskAddr::Ordinal(2), &CompleteAttribution { identity: Some("Second <second@example.com>"), agent: Some("codex"), repo: None }, TouchedCandidates::ProbeWorkspace(&t.ws))
             .unwrap();
         assert_eq!(store.meta("demo"), started, "first stamp must be kept verbatim");
         assert_eq!(*store.meta_writes.borrow(), 0, "already-started change must not write meta");
@@ -1030,13 +1044,13 @@ mod tests {
         let t = TempWs::with_dirty_file("already", "src/lib.rs");
         let tasks_md = "- [x] 1.1 finished\n- [ ] 1.2 open\n";
         let store = store_with(META_UNSTARTED, tasks_md);
-        let out = complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution { identity: Some("Tester <t@example.com>"), ..Default::default() }).unwrap();
+        let out = complete(&store, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution { identity: Some("Tester <t@example.com>"), ..Default::default() }, TouchedCandidates::ProbeWorkspace(&t.ws)).unwrap();
         assert!(out.already);
         assert_eq!(out.description, "1.1 finished");
         assert_eq!(store.read_artifact("demo", "tasks.md").unwrap(), tasks_md);
         assert_eq!(*store.artifact_writes.borrow(), 0, "already-done must not rewrite tasks.md");
         assert_eq!(*store.meta_writes.borrow(), 0, "already-done must not stamp meta");
-        assert_eq!(t.evidence_json("demo"), None, "already-done must not record touched files");
+        assert_eq!(store.read_evidence("demo"), None, "already-done must not record touched files");
     }
 
     #[test]
@@ -1045,7 +1059,7 @@ mod tests {
         // is absent, not defaulted.
         let t = TempWs::new("absent");
         let store = store_with(META_UNSTARTED, TASKS_TWO_OPEN);
-        complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution::default()).unwrap();
+        complete(&store, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution::default(), TouchedCandidates::ProbeWorkspace(&t.ws)).unwrap();
         let meta = store.meta("demo");
         assert!(meta.contains("started_at: "));
         assert!(!meta.contains("started_by"));
@@ -1056,7 +1070,7 @@ mod tests {
     fn complete_out_of_range_task_id_errors_without_writes() {
         let t = TempWs::new("range");
         let store = store_with(META_UNSTARTED, TASKS_TWO_OPEN);
-        let err = complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(5), &CompleteAttribution::default()).unwrap_err();
+        let err = complete(&store, "demo", &TaskAddr::Ordinal(5), &CompleteAttribution::default(), TouchedCandidates::ProbeWorkspace(&t.ws)).unwrap_err();
         assert_eq!(err.to_string(), "Task 5 not found (total: 2)");
         assert_eq!(*store.artifact_writes.borrow(), 0);
         assert_eq!(*store.meta_writes.borrow(), 0);
@@ -1538,9 +1552,9 @@ mod tests {
             agent: None,
             repo: Some("main"),
         };
-        complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &attr).unwrap();
+        complete(&store, "demo", &TaskAddr::Ordinal(1), &attr, TouchedCandidates::ProbeWorkspace(&t.ws)).unwrap();
 
-        let json = t.evidence_json("demo").expect("evidence record written");
+        let json = store.read_evidence("demo").expect("evidence record written");
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["version"], 2, "writes are always v2: {json}");
         assert_eq!(v["change"], "demo");
@@ -1560,132 +1574,132 @@ mod tests {
     }
 
     #[test]
-    fn v1_record_reads_with_unchanged_file_list_semantics() {
-        // spec Scenario「舊格式記錄可讀」：change 目錄缺席時回退舊路徑，v1 語意不變。
-        let t = TempWs::new("v1compat");
-        t.seed_legacy(
-            "demo",
-            "{\n  \"change\": \"demo\",\n  \"touched\": [\n    {\n      \"task_id\": \"1\",\n      \"task_desc\": \"1.1 legacy\",\n      \"files\": [\"src/a.rs\", \"src/b.rs\"]\n    }\n  ]\n}",
-        );
-        let rec = TouchedRecord::load(&t.ws, "demo");
-        assert_eq!(
-            rec.all_files(),
-            vec!["src/a.rs".to_string(), "src/b.rs".to_string()],
-            "v1 file-list semantics unchanged"
-        );
-    }
-
-    #[test]
     fn a_record_carrying_basis_digests_still_reads_and_new_writes_omit_them() {
         // spec Scenario「舊格式記錄可讀」：前一版寫入的 basisDigests 是未知欄位——
         // 讀取端忽略它、all_files 不變；本次寫入的 entry 不再帶該欄位。
         let t = TempWs::with_commit_and_dirty("basis-compat", "src/app.rs");
-        util::write_file(
-            &t.ws.change_evidence_file("demo"),
+        let store = store_with(META_UNSTARTED, "- [ ] 1.1 new\n");
+        store.put_evidence(
+            "demo",
             r#"{"version":2,"change":"demo","entries":[{"taskId":"tsk_OLD","taskDesc":"1.1 old","touchedFiles":["src/old.rs"],"basisDigests":{"spec":"sha256:0","tasks":"sha256:0","policy":"sha256:0"},"recordedAt":"2026-07-13T00:00:00Z"}]}"#,
-        )
-        .unwrap();
+        );
 
-        let rec = TouchedRecord::load(&t.ws, "demo");
+        let rec = TouchedRecord::load(&store, "demo");
         assert_eq!(rec.entries.len(), 1, "the legacy-shaped entry survives the read");
         assert_eq!(rec.entries[0].task_id, "tsk_OLD");
         assert_eq!(rec.all_files(), vec!["src/old.rs".to_string()], "all_files unchanged");
 
-        let store = store_with(META_UNSTARTED, "- [ ] 1.1 new\n");
-        complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution::default())
-            .unwrap();
-        let json = t.evidence_json("demo").expect("record rewritten");
+        complete(
+            &store,
+            "demo",
+            &TaskAddr::Ordinal(1),
+            &CompleteAttribution::default(),
+            TouchedCandidates::ProbeWorkspace(&t.ws),
+        )
+        .unwrap();
+        let json = store.read_evidence("demo").expect("record rewritten");
         assert!(
             !json.contains("basisDigests"),
             "writes no longer record a verification basis: {json}"
         );
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["version"], 2, "writes are always v2, whatever version was read");
         assert_eq!(v["entries"].as_array().unwrap().len(), 2, "the old entry is carried forward");
     }
 
+    // --- Host 注入候選（spec verify-evidence: store 模式的 evidence 記錄與查詢）---
+
     #[test]
-    fn v2_record_at_the_legacy_path_reads_back_through_the_fallback() {
-        // spec Scenario「舊格式記錄可讀」：v1 與 v2 皆可自舊路徑讀回。
-        let t = TempWs::new("v2compat");
-        t.seed_legacy(
+    fn injected_candidates_replace_the_workspace_probe() {
+        // 注入即以之為準：server 模式沒有本機 workspace，wire 上送到的清單就是
+        // 候選來源。此時髒檔探測必須完全不發生——否則跑在有 checkout 的機器上的
+        // server 會把自己的髒檔記成使用者的實作證據。
+        let t = TempWs::with_commit_and_dirty("injected", "src/local-only.rs");
+        let store = store_with(META_UNSTARTED, TASKS_TWO_OPEN);
+
+        complete(
+            &store,
             "demo",
-            r#"{"version":2,"change":"demo","entries":[{"taskId":"tsk_LEGACY","taskDesc":"1.1 legacy","touchedFiles":["src/legacy.rs"],"basisDigests":{"spec":"sha256:aa","tasks":"sha256:bb","policy":"sha256:cc"},"recordedAt":"2026-07-01T00:00:00Z"}]}"#,
-        );
-        let rec = TouchedRecord::load(&t.ws, "demo");
-        assert_eq!(rec.version, Some(2));
-        assert_eq!(rec.entries.len(), 1, "v2 entries must survive the fallback read");
-        assert_eq!(rec.entries[0].task_id, "tsk_LEGACY");
-        assert_eq!(rec.all_files(), vec!["src/legacy.rs".to_string()]);
-    }
+            &TaskAddr::Ordinal(1),
+            &CompleteAttribution::default(),
+            TouchedCandidates::Injected(&["remote/wire.rs".to_string()]),
+        )
+        .unwrap();
 
-    #[test]
-    fn evidence_lands_in_the_change_directory_not_the_legacy_path() {
-        // spec Scenario「完成任務後證據齊全」：記錄的家是 change 目錄的 `.evidence.json`。
-        let t = TempWs::with_commit_and_dirty("home", "src/app.rs");
-        let store = store_with(
-            META_UNSTARTED,
-            "- [ ] 1.1 first <!-- speclink-task:tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV -->\n",
-        );
-        complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution::default())
-            .unwrap();
-
-        let json = t.evidence_json("demo").expect("evidence written to the change directory");
-        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(v["version"], 2);
-        assert_eq!(v["change"], "demo");
-        assert_eq!(v["entries"][0]["taskId"], "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV");
+        let rec = TouchedRecord::load(&store, "demo");
         assert_eq!(
-            t.legacy_json("demo"),
-            None,
-            "the legacy path must never be a write target again"
-        );
-    }
-
-    #[test]
-    fn a_legacy_record_is_read_back_then_rewritten_to_the_change_directory() {
-        // spec Scenario「舊格式記錄可讀」的後半：下一次 task done 寫入後，新位置成為讀取來源。
-        // 舊檔隨之移除——留著的話，這個名字日後重建 change 時，第一次 load 會把
-        // 死帳讀成活帳（seen 汙染、零證據提示被吞）。
-        let t = TempWs::with_commit_and_dirty("migrate", "src/app.rs");
-        let seeded = "{\"change\":\"demo\",\"touched\":[{\"task_id\":\"1\",\"task_desc\":\"1.1 legacy\",\"files\":[\"src/legacy.rs\"]}]}";
-        let legacy = t.seed_legacy("demo", seeded);
-        let store = store_with(META_UNSTARTED, "- [ ] 1.1 first\n- [ ] 1.2 second\n");
-
-        complete(&store, &t.ws, "demo", &TaskAddr::Ordinal(1), &CompleteAttribution::default())
-            .unwrap();
-
-        let rec: TouchedRecord =
-            serde_json::from_str(&t.evidence_json("demo").expect("new home written")).unwrap();
-        assert!(
-            rec.all_files().contains(&"src/legacy.rs".to_string()),
-            "the legacy record must be carried forward, not dropped: {:?}",
+            rec.all_files(),
+            vec!["remote/wire.rs".to_string()],
+            "only the injected candidates may be recorded: {:?}",
             rec.all_files()
         );
-        assert!(rec.all_files().contains(&"src/app.rs".to_string()));
-        assert!(
-            !legacy.exists(),
-            "the legacy bridge file is removed once the record lands in the change directory"
-        );
+        drop(t);
+    }
+
+    #[test]
+    fn injected_candidates_are_filtered_by_earlier_claims() {
+        // 歸屬過濾是單點實作：注入與探測兩來源同一套——已被先前任務認領的檔案
+        // 不會第二次入帳。
+        let store = store_with(META_UNSTARTED, TASKS_TWO_OPEN);
+        complete(
+            &store,
+            "demo",
+            &TaskAddr::Ordinal(1),
+            &CompleteAttribution::default(),
+            TouchedCandidates::Injected(&["src/a.rs".to_string()]),
+        )
+        .unwrap();
+
+        complete(
+            &store,
+            "demo",
+            &TaskAddr::Ordinal(2),
+            &CompleteAttribution::default(),
+            TouchedCandidates::Injected(&["src/a.rs".to_string(), "src/b.rs".to_string()]),
+        )
+        .unwrap();
+
+        let rec = TouchedRecord::load(&store, "demo");
+        assert_eq!(rec.entries.len(), 2);
         assert_eq!(
-            TouchedRecord::load(&t.ws, "demo").all_files(),
-            rec.all_files(),
-            "the change directory is now the read source"
+            rec.entries[1].touched_files,
+            vec!["src/b.rs".to_string()],
+            "an already-claimed file must not be recorded twice: {:?}",
+            rec.entries[1].touched_files
         );
+    }
+
+    #[test]
+    fn an_empty_injected_list_appends_no_entry_and_never_falls_back_to_probing() {
+        // 「未攜帶 touchedFiles」是正常狀態，不是錯誤，也不是「改去探本機」：
+        // 沿無新髒檔語意不新增任何記錄。
+        let t = TempWs::with_commit_and_dirty("injected-empty", "src/local-only.rs");
+        let store = store_with(META_UNSTARTED, TASKS_TWO_OPEN);
+
+        complete(
+            &store,
+            "demo",
+            &TaskAddr::Ordinal(1),
+            &CompleteAttribution::default(),
+            TouchedCandidates::Injected(&[]),
+        )
+        .unwrap();
+
+        assert_eq!(store.read_evidence("demo"), None, "no candidates means no record at all");
+        drop(t);
     }
 
     #[test]
     fn uncomplete_never_writes_or_alters_evidence() {
-        let t = TempWs::new("undone-evidence");
         let seeded = "{\"change\":\"demo\",\"touched\":[{\"task_id\":\"1\",\"task_desc\":\"1.1 a\",\"files\":[\"src/a.rs\"]}]}";
-        let p = t.seed_legacy("demo", seeded);
         let store = store_with(META_UNSTARTED, "- [x] 1.1 a\n");
+        store.put_evidence("demo", seeded);
         uncomplete(&store, "demo", &TaskAddr::Ordinal(1)).unwrap();
         assert_eq!(
-            std::fs::read_to_string(&p).unwrap(),
-            seeded,
+            store.read_evidence("demo").as_deref(),
+            Some(seeded),
             "undone must not write or alter any evidence record"
         );
-        assert_eq!(t.evidence_json("demo"), None, "undone must not create the new-home record");
     }
 
     // --- 任務搬移＋重編號（自 desktop core 遷入；spec「任務搬移端點與重編號效果」）---

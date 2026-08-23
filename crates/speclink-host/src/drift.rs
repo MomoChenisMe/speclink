@@ -145,7 +145,7 @@ pub fn collect_workspace_facts(
         }
     }
 
-    let touched_files = tasks::TouchedRecord::load(ws, &change.name).all_files();
+    let touched_files = tasks::TouchedRecord::load(store, &change.name).all_files();
 
     WorkspaceFacts {
         commit_window,
@@ -161,7 +161,6 @@ pub fn collect_workspace_facts(
 /// so a bundle produced and consumed back-to-back never falsely reads stale.
 pub fn produce_drift_bundle(
     store: &dyn Store,
-    ws: &Workspace,
     change: &Change,
     binding: &ResolvedBinding,
 ) -> DriftBundle {
@@ -173,7 +172,7 @@ pub fn produce_drift_bundle(
         created: change.meta.created.clone(),
         design: store.read_artifact(&change.name, "design.md").unwrap_or_default(),
         tasks: store.read_artifact(&change.name, "tasks.md").unwrap_or_default(),
-        evidence_summary: tasks::TouchedRecord::load(ws, &change.name).all_files(),
+        evidence_summary: tasks::TouchedRecord::load(store, &change.name).all_files(),
         produced_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     }
 }
@@ -322,6 +321,17 @@ impl Store for RemoteDriftStore {
     ) -> anyhow::Result<std::path::PathBuf> {
         unreachable!("remote drift is diagnostic — it writes nothing")
     }
+    fn read_evidence(&self, _change: &str) -> Option<String> {
+        // Evidence lives in the store, and the Server does not ship it into
+        // this workspace-side view: absent, which the Environment dimension
+        // already treats as "no recorded files" — the same answer remote drift
+        // has always given.
+        None
+    }
+    fn write_evidence(&self, _change: &str, _content: &str) -> anyhow::Result<()> {
+        unreachable!("remote drift is diagnostic — it writes nothing")
+    }
+
     fn delta_capabilities(&self, _change: &str) -> Vec<String> {
         unreachable!("the spec side is computed on the Server; this store serves the workspace side")
     }
@@ -633,8 +643,8 @@ mod tests {
         let change = store.find_change("demo").unwrap();
         let binding = local_default_binding();
 
-        let a = produce_drift_bundle(&store, &p.ws(), &change, &binding);
-        let b = produce_drift_bundle(&store, &p.ws(), &change, &binding);
+        let a = produce_drift_bundle(&store, &change, &binding);
+        let b = produce_drift_bundle(&store, &change, &binding);
 
         // 同一狀態重複產生 → basis digests 逐項相同。
         assert_eq!(a.basis_digests, b.basis_digests, "basis digests reproducible");
@@ -805,7 +815,7 @@ mod tests {
 
         let before = walk(&p.root);
         let _facts = collect_workspace_facts(&p.ws(), &store, &change);
-        let _bundle = produce_drift_bundle(&store, &p.ws(), &change, &binding);
+        let _bundle = produce_drift_bundle(&store, &change, &binding);
         let after = walk(&p.root);
 
         assert_eq!(before, after, "drift collection + bundle production write no files");

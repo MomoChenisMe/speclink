@@ -58,6 +58,7 @@ fn encode_doc(doc: &DocumentId) -> String {
         DocumentId::ChangeArtifact { change, artifact } => {
             format!("ca{SEP}{change}{SEP}{artifact}")
         }
+        DocumentId::ChangeEvidence { change } => format!("ce{SEP}{change}"),
         DocumentId::CanonicalSpec { capability } => format!("cs{SEP}{capability}"),
         DocumentId::Discussion { slug, archived } => {
             format!("di{SEP}{}{SEP}{slug}", if *archived { 1 } else { 0 })
@@ -81,6 +82,9 @@ fn decode_doc(key: &str) -> Result<DocumentId, StoreError> {
         ["lg"] => Ok(DocumentId::Language),
         ["bo"] => Ok(DocumentId::BoardOrder),
         ["cm", change] => Ok(DocumentId::ChangeMeta {
+            change: (*change).to_string(),
+        }),
+        ["ce", change] => Ok(DocumentId::ChangeEvidence {
             change: (*change).to_string(),
         }),
         ["cs", capability] => Ok(DocumentId::CanonicalSpec {
