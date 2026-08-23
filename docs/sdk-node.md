@@ -78,6 +78,28 @@ both. If the object is missing required methods, `createEngine` throws
 synchronously and lists every missing method name (fail fast; no engine
 instance is created).
 
+**`actor` (optional) — this engine's operator identity.** Both storage forms
+accept it, in `"Name <email>"` form:
+
+```js
+const engine = createEngine({ store: myStore, actor: 'Alice <alice@example.com>' })
+```
+
+It decides who every stamp this engine writes is attributed to: `created_by`
+(`new change`) and `reviewed_by` / `verified_by` (`review stamp` /
+`verify stamp`).
+
+- **One instance, one identity.** The identity is bound at construction and
+  `dispatch` deliberately takes none — a caller cannot claim someone else's.
+  A multi-tenant host builds one engine per request (or per identity); an
+  engine is just an object, not a connection pool.
+- **When omitted**: the fs form falls back to the workspace's git identity
+  (byte-for-byte what the CLI stamps); the host-store form has no local
+  workspace and stamps no identity at all. A blank string (after trimming)
+  reads as omitted.
+- **Who may claim which identity is yours to decide.** Authentication and
+  authorization belong to the host; the SDK only takes the result.
+
 > **Warning — never call the engine synchronously from inside a Store
 > method.** `dispatch` runs on a background worker that waits for your store
 > methods to settle. A store method that synchronously blocks on another
@@ -98,7 +120,7 @@ engine opens.
 | Group | Methods | Notes |
 |---|---|---|
 | Changes | `listChanges`, `findChange`, `changeExists`, `createChange`, `updatedAtSecs` | `listChanges` returns `{name, dir?, meta?}` sorted by name; `meta` mirrors `.openspec.yaml` (`schema`, `created`, `createdBy`, `createdWith`, `fromDiscussion`). `updatedAtSecs` is the "most recently updated" sort key (whole seconds; missing change → 0). |
-| Artifacts | `readArtifact`, `writeArtifact`, `artifactExists` | Artifact ids are schema output paths relative to the change: `proposal.md`, `design.md`, `tasks.md`, `specs/<capability>/spec.md`. An empty document counts as existing. |
+| Artifacts | `readArtifact`, `writeArtifact`, `artifactExists`, `deleteArtifact` (optional) | Artifact ids are schema output paths relative to the change: `proposal.md`, `design.md`, `tasks.md`, `specs/<capability>/spec.md`. An empty document counts as existing. `deleteArtifact` is only reached by review/verify stamping (which deletes the ticket); without it only that path fails. |
 | Delta specs | `deltaCapabilities`, `hasCapabilityDirs` | Capability names that have a delta spec inside a change, sorted. |
 | Canonical specs | `listCanonicalCapabilities`, `canonicalSpecExists`, `readCanonicalSpec`, `writeCanonicalSpec`, `canonicalSpecPath` | The project-level truth that archiving merges deltas into. |
 | Archive | `archivedChangeExists`, `archiveChange`, `readArchivedMeta`, `writeArchivedMeta` | `archiveChange(name, datedName)` moves an active change under its dated archive name (`YYYY-MM-DD-<name>`). |
@@ -192,8 +214,44 @@ await engine.dispatch(
   worker thread; concurrent dispatches are supported.
 
 Currently routed verbs: `list`, `status`, `new change`, `new artifact`,
-`claim`. The vocabulary grows toward full CLI parity; an unroutable verb
-rejects with `invalid_argv`.
+`claim`, `review add-round`, `review stamp`, `verify add-round`,
+`verify stamp`. The vocabulary grows toward full CLI parity; an unroutable
+verb rejects with `invalid_argv`.
+
+### Stamping verbs — `review` and `verify`
+
+Each quality station routes two verbs, with the CLI's argv vocabulary:
+
+```js
+// Open a round: the content rides the stdin parameter (same mechanism as
+// `new artifact --stdin`).
+await engine.dispatch(['review', 'add-round', 'add-auth', '--stdin'], { stdin: round })
+// → { change: 'add-auth', round: 1 }
+
+// Stamp: fingerprints do not fit in argv, so they ride stdin as JSON.
+await engine.dispatch(['review', 'stamp', 'add-auth', '--accept', '--agent', 'claude', '--stdin'], {
+  stdin: JSON.stringify({
+    scope: [{ path: 'src/auth.ts', hash: '0f9c' }],
+    missing: [],
+  }),
+})
+// → { change: 'add-auth' }
+```
+
+- `scope` holds **fingerprints you computed** — a host has no work tree and
+  the engine never re-hashes; `missing` declares which paths of the ticket's
+  scope are gone. The engine checks that `scope ∪ missing` equals the
+  ticket's union and that the two are disjoint, and refuses otherwise. Both
+  fields default to empty, and omitting `--stdin` is the same as both empty.
+- The stamped `reviewed_by` / `verified_by` is the construction-time `actor`
+  (see createEngine above); `--agent` stamps `reviewed_with` /
+  `verified_with`.
+- **The gates pass through untouched**: unfinished tasks, or unresolved
+  CRITICAL/WARNING findings in the last round (`--accept` waives the
+  must-fix condition; SUGGESTION never blocks) reject with the engine's
+  semantic message.
+- A successful stamp **deletes the ticket**, so a host Store needs the
+  optional `deleteArtifact`.
 
 ## Render API
 

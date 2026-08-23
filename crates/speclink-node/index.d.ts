@@ -69,6 +69,12 @@ export interface Store {
   writeArtifact(change: string, artifact: string, content: string): MaybePromise<string>
   /** Whether an artifact exists (an empty document counts). */
   artifactExists(change: string, artifact: string): MaybePromise<boolean>
+  /**
+   * OPTIONAL: delete a document inside an active change. Only the review and
+   * verify stations delete anything (stamping removes the ticket), so a store
+   * without it works everywhere else and fails loud there.
+   */
+  deleteArtifact?(change: string, artifact: string): MaybePromise<void>
 
   // --- delta specs ---
   /** Capability names that have a delta spec document in the change, sorted. */
@@ -136,6 +142,20 @@ export interface FsStoreOptions {
 
 export interface CreateEngineOptions {
   store: FsStoreOptions | Store
+  /**
+   * The operator identity every stamp this engine writes is attributed to
+   * (`created_by`, `reviewed_by`, `verified_by`), in `"Name <email>"` form.
+   *
+   * Bound once at construction — one engine instance, one identity. A
+   * multi-tenant host builds one engine per request (or per identity); there
+   * is deliberately no way to pass an identity at dispatch time, so a caller
+   * cannot claim someone else's. Who may claim which identity is the host's
+   * call: the SDK only takes the result.
+   *
+   * Omitted (or blank after trimming): the fs form falls back to the
+   * workspace's git identity, a host store stamps no identity at all.
+   */
+  actor?: string
 }
 
 export interface DispatchOptions {

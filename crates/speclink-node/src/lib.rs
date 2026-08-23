@@ -76,17 +76,23 @@ type DispatchResult = std::result::Result<serde_json::Value, DispatchError>;
 /// frozen; they will ride the outbox once event persistence lands.
 fn run_engine(
     backend: &Backend,
+    actor: Option<&str>,
     cmd: core::command::Command,
 ) -> std::result::Result<core::command::CommandOutcome, DispatchError> {
     let store = backend.store();
     // Host boundary: identity and the SPECLINK_* env layer are resolved here
-    // and injected — the engine runtime only ever consumes the context. A
-    // host-store backend has no local workspace, hence no git identity.
+    // and injected — the engine runtime only ever consumes the context. The
+    // JS host is that Host: an actor bound at construction wins outright.
+    // Without one, a filesystem backend falls back to the workspace's git
+    // identity; a host-store backend has no local workspace, hence no
+    // identity at all (anonymous, as before).
     let workspace = backend.workspace();
     let ctx = core::command::ExecutionContext {
-        actor: workspace
-            .as_ref()
-            .and_then(|ws| speclink_host::context::git_identity(&ws.root)),
+        actor: actor.map(str::to_string).or_else(|| {
+            workspace
+                .as_ref()
+                .and_then(|ws| speclink_host::context::git_identity(&ws.root))
+        }),
         // Node dispatch carries no task verbs (list/status/new/claim), so no
         // completion evidence is recorded through this path.
         repo: None,
@@ -132,6 +138,22 @@ impl Backend {
 #[napi]
 pub struct Engine {
     backend: Arc<Backend>,
+    /// The Host-resolved operator identity, bound once at construction —
+    /// one instance, one identity. A multi-tenant host builds one engine per
+    /// request (or per identity); dispatch carries no identity parameter, so
+    /// call-time forgery has no surface.
+    actor: Option<Arc<str>>,
+}
+
+/// Construction-time normalization: a blank actor reads as "not given".
+fn normalize_actor(actor: Option<String>) -> Option<Arc<str>> {
+    let a = actor?;
+    let t = a.trim();
+    if t.is_empty() {
+        None
+    } else {
+        Some(Arc::from(t))
+    }
 }
 
 #[napi]
@@ -141,10 +163,11 @@ impl Engine {
     #[napi(ts_return_type = "Promise<unknown>")]
     pub fn dispatch(&self, env: Env, argv: Vec<String>, stdin: Option<String>) -> Result<JsObject> {
         let backend = self.backend.clone();
+        let actor = self.actor.clone();
         let (deferred, promise) = env.create_deferred()?;
         std::thread::spawn(move || {
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_dispatch(&backend, &argv, stdin.as_deref())
+                run_dispatch(&backend, actor.as_deref(), &argv, stdin.as_deref())
             }));
             let envelope = match outcome {
                 Ok(Ok(value)) => serde_json::json!({ "ok": true, "value": value }),
@@ -184,7 +207,11 @@ fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
 
 /// Build an engine over the built-in filesystem store.
 #[napi(js_name = "engineFromFs")]
-pub fn engine_from_fs(root: String, spec_dir: Option<String>) -> Result<Engine> {
+pub fn engine_from_fs(
+    root: String,
+    spec_dir: Option<String>,
+    actor: Option<String>,
+) -> Result<Engine> {
     if root.trim().is_empty() {
         return Err(Error::from_reason(
             "createEngine: store.root must be a non-empty path",
@@ -195,6 +222,7 @@ pub fn engine_from_fs(root: String, spec_dir: Option<String>) -> Result<Engine> 
             root: PathBuf::from(root),
             spec_dir: spec_dir.unwrap_or_else(|| "openspec".to_string()),
         }),
+        actor: normalize_actor(actor),
     })
 }
 
@@ -202,11 +230,17 @@ pub fn engine_from_fs(root: String, spec_dir: Option<String>) -> Result<Engine> 
 /// closure `(method, args, settle) => void` created by index.js with the store
 /// bound; the store object itself is passed for construction-time validation.
 #[napi(js_name = "engineFromStore")]
-pub fn engine_from_store(env: Env, store: JsObject, invoker: JsFunction) -> Result<Engine> {
+pub fn engine_from_store(
+    env: Env,
+    store: JsObject,
+    invoker: JsFunction,
+    actor: Option<String>,
+) -> Result<Engine> {
     store_bridge::validate_store_methods(&store)?;
     let bridge = store_bridge::create_bridge(env, invoker)?;
     Ok(Engine {
         backend: Arc::new(Backend::Js(bridge)),
+        actor: normalize_actor(actor),
     })
 }
 
@@ -253,7 +287,12 @@ fn parse_argv<'a>(
     Ok(out)
 }
 
-fn run_dispatch(backend: &Backend, argv: &[String], stdin: Option<&str>) -> DispatchResult {
+fn run_dispatch(
+    backend: &Backend,
+    actor: Option<&str>,
+    argv: &[String],
+    stdin: Option<&str>,
+) -> DispatchResult {
     let Some(verb) = argv.first().map(|s| s.as_str()) else {
         return Err(DispatchError::new(
             "invalid_argv",
@@ -262,10 +301,12 @@ fn run_dispatch(backend: &Backend, argv: &[String], stdin: Option<&str>) -> Disp
     };
     let rest = &argv[1..];
     match verb {
-        "list" => verb_list(backend, rest),
-        "status" => verb_status(backend, rest),
-        "new" => verb_new(backend, rest, stdin),
-        "claim" => verb_claim(backend, rest),
+        "list" => verb_list(backend, actor, rest),
+        "status" => verb_status(backend, actor, rest),
+        "new" => verb_new(backend, actor, rest, stdin),
+        "claim" => verb_claim(backend, actor, rest),
+        "review" => verb_station(backend, actor, StationKind::Review, rest, stdin),
+        "verify" => verb_station(backend, actor, StationKind::Verify, rest, stdin),
         _ => Err(DispatchError::new(
             "invalid_argv",
             format!("Unknown or unsupported verb '{verb}'"),
@@ -274,10 +315,11 @@ fn run_dispatch(backend: &Backend, argv: &[String], stdin: Option<&str>) -> Disp
 }
 
 /// `list [--specs] [--changes] [--sort <key>]` — always the `--json` shape.
-fn verb_list(backend: &Backend, args: &[String]) -> DispatchResult {
+fn verb_list(backend: &Backend, actor: Option<&str>, args: &[String]) -> DispatchResult {
     let a = parse_argv(args, &["sort"])?;
     let outcome = run_engine(
         backend,
+        actor,
         core::command::Command::List {
             sort: a.options.get("sort").copied().unwrap_or("modified").to_string(),
             specs: a.flags.contains("specs"),
@@ -304,10 +346,15 @@ fn verb_list(backend: &Backend, args: &[String]) -> DispatchResult {
 
 /// `new change <name> …` / `new artifact <type> [capability] …` — stdin comes
 /// from dispatch's second parameter (the CLI's `--stdin` content).
-fn verb_new(backend: &Backend, args: &[String], stdin: Option<&str>) -> DispatchResult {
+fn verb_new(
+    backend: &Backend,
+    actor: Option<&str>,
+    args: &[String],
+    stdin: Option<&str>,
+) -> DispatchResult {
     match args.first().map(|s| s.as_str()) {
-        Some("artifact") => verb_new_artifact(backend, &args[1..], stdin),
-        Some("change") => verb_new_change(backend, &args[1..]),
+        Some("artifact") => verb_new_artifact(backend, actor, &args[1..], stdin),
+        Some("change") => verb_new_change(backend, actor, &args[1..]),
         _ => Err(DispatchError::new(
             "invalid_argv",
             "new requires a subcommand: 'change' or 'artifact'",
@@ -315,7 +362,12 @@ fn verb_new(backend: &Backend, args: &[String], stdin: Option<&str>) -> Dispatch
     }
 }
 
-fn verb_new_artifact(backend: &Backend, args: &[String], stdin: Option<&str>) -> DispatchResult {
+fn verb_new_artifact(
+    backend: &Backend,
+    actor: Option<&str>,
+    args: &[String],
+    stdin: Option<&str>,
+) -> DispatchResult {
     let a = parse_argv(args, &["change"])?;
     let Some(kind) = a.positionals.first().copied() else {
         return Err(DispatchError::new(
@@ -331,6 +383,7 @@ fn verb_new_artifact(backend: &Backend, args: &[String], stdin: Option<&str>) ->
     };
     let outcome = run_engine(
         backend,
+        actor,
         core::command::Command::NewArtifact {
             kind: kind.to_string(),
             capability: a.positionals.get(1).map(|s| s.to_string()),
@@ -353,7 +406,7 @@ fn verb_new_artifact(backend: &Backend, args: &[String], stdin: Option<&str>) ->
     }))
 }
 
-fn verb_new_change(backend: &Backend, args: &[String]) -> DispatchResult {
+fn verb_new_change(backend: &Backend, actor: Option<&str>, args: &[String]) -> DispatchResult {
     let a = parse_argv(args, &["description", "schema", "agent", "from-discussion"])?;
     let Some(name) = a.positionals.first().copied() else {
         return Err(DispatchError::new(
@@ -365,6 +418,7 @@ fn verb_new_change(backend: &Backend, args: &[String]) -> DispatchResult {
     // live in the runtime — this layer only shapes the envelope.
     let outcome = run_engine(
         backend,
+        actor,
         core::command::Command::NewChange {
             name: name.to_string(),
             description: a.options.get("description").map(|s| s.to_string()),
@@ -392,7 +446,7 @@ fn verb_new_change(backend: &Backend, args: &[String]) -> DispatchResult {
 /// `claim <name>` — ownership is a team-system concept: the fs store fails
 /// loud like the CLI; a host store may implement the optional `claim` method
 /// and adjudicate (conflicts reject with their semantic message and code).
-fn verb_claim(backend: &Backend, args: &[String]) -> DispatchResult {
+fn verb_claim(backend: &Backend, actor: Option<&str>, args: &[String]) -> DispatchResult {
     let a = parse_argv(args, &[])?;
     let Some(name) = a.positionals.first().copied() else {
         return Err(DispatchError::new(
@@ -404,7 +458,7 @@ fn verb_claim(backend: &Backend, args: &[String]) -> DispatchResult {
         // The plain-store refusal comes from the runtime's Claim branch (the
         // frozen text shared with the CLI).
         Backend::Fs { .. } => {
-            run_engine(backend, core::command::Command::Claim { name: name.to_string() })?;
+            run_engine(backend, actor, core::command::Command::Claim { name: name.to_string() })?;
             unreachable!("claim on a plain store always refuses");
         }
         // Ownership adjudication is a host-store capability — the optional
@@ -421,7 +475,7 @@ fn verb_claim(backend: &Backend, args: &[String]) -> DispatchResult {
 }
 
 /// `status [--change <name>] [--schema <name>]` — the `--json` report.
-fn verb_status(backend: &Backend, args: &[String]) -> DispatchResult {
+fn verb_status(backend: &Backend, actor: Option<&str>, args: &[String]) -> DispatchResult {
     let a = parse_argv(args, &["change", "schema"])?;
     // CLI parity: with no name and no changes at all, status is informational,
     // not an error (envelope-level presentation, same as the CLI's exit-0 line).
@@ -435,6 +489,7 @@ fn verb_status(backend: &Backend, args: &[String]) -> DispatchResult {
     }
     let outcome = run_engine(
         backend,
+        actor,
         core::command::Command::Status {
             change: a.options.get("change").map(|s| s.to_string()),
             schema: a.options.get("schema").map(|s| s.to_string()),
@@ -444,4 +499,155 @@ fn verb_status(backend: &Backend, args: &[String]) -> DispatchResult {
         unreachable!("status command yields a status outcome");
     };
     serde_json::to_value(&report).map_err(|e| DispatchError::new("error", format!("{e}")))
+}
+
+// --- quality stations ---
+
+/// Which stamping station a `review …` / `verify …` argv addresses. The two
+/// stations share one argv grammar and one payload shape; only the Command
+/// variants differ.
+#[derive(Clone, Copy)]
+enum StationKind {
+    Review,
+    Verify,
+}
+
+impl StationKind {
+    fn noun(self) -> &'static str {
+        match self {
+            StationKind::Review => "review",
+            StationKind::Verify => "verify",
+        }
+    }
+}
+
+/// `review stamp` / `verify stamp` payload, carried by dispatch's stdin
+/// parameter because argv cannot hold a fingerprint list. Same shape as the
+/// server's stamp request body: the work-tree holder pre-computes
+/// `(path, hash)` and declares which union paths are gone. Both fields
+/// default to empty, so a host with an empty ticket scope can omit stdin.
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StampPayload {
+    #[serde(default)]
+    scope: Vec<StampScopeEntry>,
+    #[serde(default)]
+    missing: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct StampScopeEntry {
+    path: String,
+    hash: String,
+}
+
+/// `<station> add-round <change> --stdin` and
+/// `<station> stamp <change> [--accept] [--agent <tool>] [--stdin]`.
+/// These are the identity-bearing verbs: the `_by` field of the stamp is the
+/// engine's construction-time actor, resolved the same way `created_by` is.
+fn verb_station(
+    backend: &Backend,
+    actor: Option<&str>,
+    station: StationKind,
+    args: &[String],
+    stdin: Option<&str>,
+) -> DispatchResult {
+    let noun = station.noun();
+    match args.first().map(|s| s.as_str()) {
+        Some("add-round") => verb_station_add_round(backend, actor, station, &args[1..], stdin),
+        Some("stamp") => verb_station_stamp(backend, actor, station, &args[1..], stdin),
+        _ => Err(DispatchError::new(
+            "invalid_argv",
+            format!("{noun} requires a subcommand: 'add-round' or 'stamp'"),
+        )),
+    }
+}
+
+fn verb_station_add_round(
+    backend: &Backend,
+    actor: Option<&str>,
+    station: StationKind,
+    args: &[String],
+    stdin: Option<&str>,
+) -> DispatchResult {
+    let noun = station.noun();
+    let a = parse_argv(args, &[])?;
+    let Some(change) = a.positionals.first().copied() else {
+        return Err(DispatchError::new(
+            "invalid_argv",
+            format!("{noun} add-round requires a change name"),
+        ));
+    };
+    if !a.flags.contains("stdin") {
+        return Err(DispatchError::new(
+            "invalid_argv",
+            format!("{noun} add-round requires --stdin — the round content comes from stdin"),
+        ));
+    }
+    let content = stdin.unwrap_or_default().to_string();
+    let change = change.to_string();
+    let cmd = match station {
+        StationKind::Review => core::command::Command::ReviewAddRound { change, content },
+        StationKind::Verify => core::command::Command::VerifyAddRound { change, content },
+    };
+    let outcome = run_engine(backend, actor, cmd)?;
+    let (core::command::CommandOutcome::ReviewAddRound(o)
+    | core::command::CommandOutcome::VerifyAddRound(o)) = outcome
+    else {
+        unreachable!("add-round yields a round outcome");
+    };
+    Ok(serde_json::json!({ "change": o.change, "round": o.round }))
+}
+
+fn verb_station_stamp(
+    backend: &Backend,
+    actor: Option<&str>,
+    station: StationKind,
+    args: &[String],
+    stdin: Option<&str>,
+) -> DispatchResult {
+    let noun = station.noun();
+    let a = parse_argv(args, &["agent"])?;
+    let Some(change) = a.positionals.first().copied() else {
+        return Err(DispatchError::new(
+            "invalid_argv",
+            format!("{noun} stamp requires a change name"),
+        ));
+    };
+    let payload: StampPayload = if a.flags.contains("stdin") {
+        serde_json::from_str(stdin.unwrap_or_default()).map_err(|e| {
+            DispatchError::new(
+                "invalid_argv",
+                format!(
+                    "{noun} stamp --stdin expects {{\"scope\": [{{\"path\", \"hash\"}}], \"missing\": []}}: {e}"
+                ),
+            )
+        })?
+    } else {
+        StampPayload::default()
+    };
+    let scope = payload
+        .scope
+        .into_iter()
+        .map(|e| core::model::ReviewedScopeEntry { path: e.path, hash: e.hash })
+        .collect();
+    let change = change.to_string();
+    let accept = a.flags.contains("accept");
+    let tool = a.options.get("agent").map(|s| s.to_string());
+    let missing = payload.missing;
+    let cmd = match station {
+        StationKind::Review => {
+            core::command::Command::ReviewStamp { change, accept, tool, scope, missing }
+        }
+        StationKind::Verify => {
+            core::command::Command::VerifyStamp { change, accept, tool, scope, missing }
+        }
+    };
+    let outcome = run_engine(backend, actor, cmd)?;
+    let (core::command::CommandOutcome::ReviewStamp(o)
+    | core::command::CommandOutcome::VerifyStamp(o)) = outcome
+    else {
+        unreachable!("stamp yields a subject outcome");
+    };
+    Ok(serde_json::json!({ "change": o.change }))
 }

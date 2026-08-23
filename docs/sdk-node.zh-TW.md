@@ -52,6 +52,18 @@ const engine = createEngine({ store: myStore })
 
 每個 `Store` 方法可以回傳值**或 Promise**，橋接層兩者都接受。物件缺少必要方法時，`createEngine` 會同步拋錯並列出所有缺少的方法名。這是 fail fast，不會產生引擎實例。
 
+**`actor`（選填）——這顆引擎的操作者身分。** 兩種儲存形式都收，格式是 `"Name <email>"`：
+
+```js
+const engine = createEngine({ store: myStore, actor: 'Alice <alice@example.com>' })
+```
+
+它決定引擎蓋下的每個章歸誰：`created_by`（`new change`）、`reviewed_by`／`verified_by`（`review stamp`／`verify stamp`）。
+
+- **一個實例一個身分。** 身分在建構時綁定，`dispatch` 刻意沒有身分參數——呼叫端無從冒用別人。多人系統的用法是每個請求（或每個身分）開一顆 engine 實例；建構成本只是一個物件，不是連線池。
+- **沒給的時候**：fs 形式回退到該 workspace 的 git identity（與 CLI 蓋章逐位元一致）；宿主 Store 形式沒有本地 workspace，就不蓋身分（維持匿名）。trim 後為空字串視同沒給。
+- **誰可以宣稱哪個身分，是你的事。** 認證與權限判定屬於宿主，SDK 只收結果。
+
 > **警告——絕不要在 Store 方法內同步回呼引擎。** `dispatch` 在背景工作執行緒上等待你的 store 方法解決。若某個 store 方法同步阻塞等待同一顆引擎的另一個 `engine.dispatch(...)`，會形成互等循環。在 store 方法回傳*之後*（或無關的程式碼中）發起新的 dispatch 沒有問題——並發 dispatch 是支援且被測試覆蓋的。
 
 ## Store 介面——實作指南
@@ -63,7 +75,7 @@ const engine = createEngine({ store: myStore })
 | 分組 | 方法 | 說明 |
 |---|---|---|
 | Changes | `listChanges`、`findChange`、`changeExists`、`createChange`、`updatedAtSecs` | `listChanges` 回傳 `{name, dir?, meta?}` 且按名稱排序；`meta` 對應 `.openspec.yaml`（`schema`、`created`、`createdBy`、`createdWith`、`fromDiscussion`）。`updatedAtSecs` 是「最近更新」排序鍵（整數秒；change 不存在 → 0）。 |
-| Artifacts | `readArtifact`、`writeArtifact`、`artifactExists` | artifact 識別碼是 schema 定義、相對於 change 的輸出路徑：`proposal.md`、`design.md`、`tasks.md`、`specs/<capability>/spec.md`。空文件也算存在。 |
+| Artifacts | `readArtifact`、`writeArtifact`、`artifactExists`、`deleteArtifact`（選配） | artifact 識別碼是 schema 定義、相對於 change 的輸出路徑：`proposal.md`、`design.md`、`tasks.md`、`specs/<capability>/spec.md`。空文件也算存在。`deleteArtifact` 只有 review／verify 蓋章會用到（蓋章會刪掉工單），沒實作就只有蓋章路徑失敗。 |
 | Delta specs | `deltaCapabilities`、`hasCapabilityDirs` | change 內含 delta spec 的 capability 名稱，排序後回傳。 |
 | Canonical specs | `listCanonicalCapabilities`、`canonicalSpecExists`、`readCanonicalSpec`、`writeCanonicalSpec`、`canonicalSpecPath` | 專案層級的正典規格，archive 時 delta 併入之處。 |
 | Archive | `archivedChangeExists`、`archiveChange`、`readArchivedMeta`、`writeArchivedMeta` | `archiveChange(name, datedName)` 把使用中的 change 移到含日期的封存名下（`YYYY-MM-DD-<name>`）。 |
@@ -137,7 +149,31 @@ await engine.dispatch(
 - **錯誤**：Promise 以 `Error` 拒絕——`message` 是 CLI 的語義化訊息（可直接回給 agent），`code` 分類失敗：`invalid_argv`（argv 有誤）、`not_found`（change／討論查找）、`error`（引擎失敗，即 CLI 的 exit-1 類別）、宿主 store 的 409 reason 原樣傳遞（`ownership_lost`……）、`store_error`（無 code 的 store 失敗）、`panic`。
 - **絕不阻塞事件迴圈**：每次 dispatch 都在背景工作執行緒上執行；支援並發 dispatch。
 
-目前已路由的動詞：`list`、`status`、`new change`、`new artifact`、`claim`。詞彙會朝完整 CLI 對等擴充；未支援的動詞以 `invalid_argv` 拒絕。
+目前已路由的動詞：`list`、`status`、`new change`、`new artifact`、`claim`、`review add-round`、`review stamp`、`verify add-round`、`verify stamp`。詞彙會朝完整 CLI 對等擴充；未支援的動詞以 `invalid_argv` 拒絕。
+
+### 蓋章動詞——`review` 與 `verify`
+
+兩個品質關卡各有兩個動詞，argv 沿用 CLI 詞彙：
+
+```js
+// 開一輪：內容走 stdin 參數（與 new artifact --stdin 同一個機制）
+await engine.dispatch(['review', 'add-round', 'add-auth', '--stdin'], { stdin: round })
+// → { change: 'add-auth', round: 1 }
+
+// 落章：scope 指紋 argv 塞不下，走 stdin 的 JSON
+await engine.dispatch(['review', 'stamp', 'add-auth', '--accept', '--agent', 'claude', '--stdin'], {
+  stdin: JSON.stringify({
+    scope: [{ path: 'src/auth.ts', hash: '0f9c' }],
+    missing: [],
+  }),
+})
+// → { change: 'add-auth' }
+```
+
+- `scope` 是**你算好的指紋**——宿主沒有工作樹，引擎不會替你重算；`missing` 是工單範圍裡已經不存在的檔。引擎驗「scope ∪ missing ＝工單聯集且不相交」，不合就拒。兩個欄位都可省略（讀作空清單），不帶 `--stdin` 等同兩者皆空。
+- 落下的 `reviewed_by`／`verified_by` 就是建構期的 `actor`（見上面 createEngine 段）；`--agent` 落 `reviewed_with`／`verified_with`。
+- **守門原封傳遞**：任務沒做完、末輪還有未解的 CRITICAL／WARNING（`--accept` 可豁免必修條件、SUGGESTION 本來就不擋章），都會以引擎的語義化訊息 reject。
+- 蓋章成功會**刪掉工單**，所以宿主 Store 需要實作選配的 `deleteArtifact`。
 
 ## 渲染 API
 

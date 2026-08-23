@@ -144,6 +144,14 @@ export function memoryStore(project: MemoryProject) {
     async updatedAtSecs(name: string) {
       return changes[name]?.updatedAtSecs ?? 0
     },
+    // 原始 metadata 文件（選填的宿主方法）——蓋章動詞經這一對讀寫 .openspec.yaml。
+    async readChangeMeta(name: string) {
+      return changes[name]?.artifacts['.openspec.yaml'] ?? null
+    },
+    async writeChangeMeta(name: string, content: string) {
+      if (!changes[name]) throw new Error(`change '${name}' not found`)
+      changes[name].artifacts['.openspec.yaml'] = content
+    },
     // --- artifacts ---
     async readArtifact(change: string, artifact: string) {
       return changes[change]?.artifacts[artifact] ?? null
@@ -155,6 +163,9 @@ export function memoryStore(project: MemoryProject) {
     },
     async artifactExists(change: string, artifact: string) {
       return changes[change]?.artifacts[artifact] !== undefined
+    },
+    async deleteArtifact(change: string, artifact: string) {
+      delete changes[change]?.artifacts[artifact]
     },
     // --- delta specs ---
     async deltaCapabilities(change: string) {

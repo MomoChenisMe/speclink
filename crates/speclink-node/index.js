@@ -35,6 +35,10 @@ class Engine {
  * Build an engine over one of the two storage forms:
  * - `{ store: { type: 'fs', root, specDir? } }` — built-in filesystem store
  * - `{ store: <object implementing the Store interface> }` — host storage
+ *
+ * `options.actor` ("Name <email>") is the operator every stamp this engine
+ * writes is attributed to. Both forms accept it; without it the fs form falls
+ * back to the workspace's git identity and a host store stamps nothing.
  */
 /**
  * The generic store invoker the native bridge calls through one
@@ -71,13 +75,18 @@ function createEngine(options) {
   if (!store || typeof store !== 'object') {
     throw new TypeError("createEngine: options.store is required — pass { type: 'fs', root } or a Store object")
   }
+  // The operator identity is bound here, once — dispatch never takes one.
+  const actor = options?.actor
+  if (actor !== undefined && typeof actor !== 'string') {
+    throw new TypeError("createEngine: options.actor must be a string (\"Name <email>\")")
+  }
   if (store.type === 'fs') {
     if (typeof store.root !== 'string') {
       throw new TypeError("createEngine: fs store requires a string 'root'")
     }
-    return new Engine(binding.engineFromFs(store.root, store.specDir))
+    return new Engine(binding.engineFromFs(store.root, store.specDir, actor))
   }
-  return new Engine(binding.engineFromStore(store, makeInvoker(store)))
+  return new Engine(binding.engineFromStore(store, makeInvoker(store), actor))
 }
 
 /** Skill knowledge: list the registry, render one SKILL.md for a matrix point. */
