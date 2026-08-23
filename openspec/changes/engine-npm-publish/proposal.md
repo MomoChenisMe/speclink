@@ -26,12 +26,12 @@
 
 ### Modified Capabilities
 
-(none)
+- `user-documentation`: 「安裝通路文件與發布狀態誠實化」原本明訂 sdk-node 文件（中英）須寫「尚未發布至 npm」並以 repo 建置示範。發布管線接上後這條成了過期正典，改為「管線已接＋生效時點」的表述：sdk-node 以 `npm install` 為主路徑，同段明示以首個帶 engine 的 release 為準，repo 建置保留為替代路徑。誠實化的意圖不變，變的是「誠實」現在指什麼。
 
 ## Impact
 
-- Affected specs: `node-sdk-release`（新）
+- Affected specs: `node-sdk-release`（新）、`user-documentation`（修改）
 - Affected code:
   - New: scripts/npm-engine-package.mjs、scripts/npm-engine-package.test.mjs
-  - Modified: .github/workflows/node-sdk.yml、.github/workflows/release.yml、crates/speclink-node/package.json、docs/sdk-node.zh-TW.md、docs/sdk-node.md、docs/product-status.zh-TW.md、docs/product-status.md、docs/roadmap.zh-TW.md、docs/roadmap.md、README.md、README.en.md
+  - Modified: .github/workflows/node-sdk.yml、.github/workflows/release.yml、scripts/delivery-gate.test.mjs、crates/speclink-node/package.json、docs/sdk-node.zh-TW.md、docs/sdk-node.md、docs/product-status.zh-TW.md、docs/product-status.md、docs/roadmap.zh-TW.md、docs/roadmap.md、README.md、README.en.md
   - Removed: （無）

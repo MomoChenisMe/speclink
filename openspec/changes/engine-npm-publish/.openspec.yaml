@@ -5,3 +5,69 @@ created_with: claude
 from_discussion: node-sdk-completion-and-doc-alignment
 started_at: 2026-08-23
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-23
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 13
+reviewed_scope:
+  - path: .github/workflows/node-sdk.yml
+    hash: e6ca16d812e4a21575844197e8f1542fbcd2053593e53c0b3a58e4ab46ede8f7
+  - path: .github/workflows/release.yml
+    hash: 4f20db1b5e07ab4f438b2ac7bc90f2e16fd38e0f91c21534a26dd441d126aee5
+  - path: README.en.md
+    hash: 9daf4ed3c3ec91e5c93f4aa62b2d90a20cdf6bdf03d0db97a64684ee533a9aeb
+  - path: README.md
+    hash: 194b4c93435f13768bdde70f81bbd7ca671c95305b76b18e765097acb44b7822
+  - path: crates/speclink-node/package.json
+    hash: 7d4fdc77b5d590a899bef0e1d6a72bd0c027414177fe5ce1275d0fa4755d45c8
+  - path: docs/product-status.md
+    hash: 1933e6e0a0d3f31a1c0c779001e210ccee4e403bbe14479126607c2f783261d4
+  - path: docs/product-status.zh-TW.md
+    hash: 5fa9f74c24b1f6b73294fccdedb878b950da628b7d9a44a90d6050d649607cab
+  - path: docs/roadmap.md
+    hash: bb5f70fc845ab678a7c60ab5a0609cde1093f4b0f058eb02498e8d806dc2e867
+  - path: docs/roadmap.zh-TW.md
+    hash: 56b9fc7de19c503341aebe601fe16c273ba51fc891ea27596c635fbae110f377
+  - path: docs/sdk-node.md
+    hash: 2c714ae3c146beeab2fe82a69b9d421b3dedfd87d17739da249f44fb9446f09a
+  - path: docs/sdk-node.zh-TW.md
+    hash: da4f07279ab4ba601b2bc430f1cb804bd2e85516dcd5e2d0baa2c9ffe736f3eb
+  - path: scripts/delivery-gate.test.mjs
+    hash: b6a136264f2aec54085c100f2df655e47e28676fe4e3c8649a8f73e37cc7cab2
+  - path: scripts/npm-engine-package.mjs
+    hash: 40a1ce70030d9613a230d1e9cdcfd6dabd4abf94543bc5b0be118eba31cfca2f
+  - path: scripts/npm-engine-package.test.mjs
+    hash: 5df3b003d58e593be78c76c56845180355f5800ae5084837fe303af7b5bc1448
+verified_at: 2026-08-23
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 13
+verified_scope:
+  - path: .github/workflows/node-sdk.yml
+    hash: e6ca16d812e4a21575844197e8f1542fbcd2053593e53c0b3a58e4ab46ede8f7
+  - path: .github/workflows/release.yml
+    hash: 4f20db1b5e07ab4f438b2ac7bc90f2e16fd38e0f91c21534a26dd441d126aee5
+  - path: README.en.md
+    hash: 9daf4ed3c3ec91e5c93f4aa62b2d90a20cdf6bdf03d0db97a64684ee533a9aeb
+  - path: README.md
+    hash: 194b4c93435f13768bdde70f81bbd7ca671c95305b76b18e765097acb44b7822
+  - path: crates/speclink-node/package.json
+    hash: 7d4fdc77b5d590a899bef0e1d6a72bd0c027414177fe5ce1275d0fa4755d45c8
+  - path: docs/product-status.md
+    hash: 1933e6e0a0d3f31a1c0c779001e210ccee4e403bbe14479126607c2f783261d4
+  - path: docs/product-status.zh-TW.md
+    hash: 5fa9f74c24b1f6b73294fccdedb878b950da628b7d9a44a90d6050d649607cab
+  - path: docs/roadmap.md
+    hash: bb5f70fc845ab678a7c60ab5a0609cde1093f4b0f058eb02498e8d806dc2e867
+  - path: docs/roadmap.zh-TW.md
+    hash: 56b9fc7de19c503341aebe601fe16c273ba51fc891ea27596c635fbae110f377
+  - path: docs/sdk-node.md
+    hash: 2c714ae3c146beeab2fe82a69b9d421b3dedfd87d17739da249f44fb9446f09a
+  - path: docs/sdk-node.zh-TW.md
+    hash: da4f07279ab4ba601b2bc430f1cb804bd2e85516dcd5e2d0baa2c9ffe736f3eb
+  - path: scripts/delivery-gate.test.mjs
+    hash: b6a136264f2aec54085c100f2df655e47e28676fe4e3c8649a8f73e37cc7cab2
+  - path: scripts/npm-engine-package.mjs
+    hash: 40a1ce70030d9613a230d1e9cdcfd6dabd4abf94543bc5b0be118eba31cfca2f
+  - path: scripts/npm-engine-package.test.mjs
+    hash: 5df3b003d58e593be78c76c56845180355f5800ae5084837fe303af7b5bc1448

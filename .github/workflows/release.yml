@@ -591,21 +591,33 @@ jobs:
 
   # tag 名去 v 前綴的版號：reusable workflow 的 with: 只吃表達式，而 Actions 表達式
   # 沒有字串裁切函式（無 replace／substring），只能由 shell 算成 job output 再傳入。
+  # 同時前置把關版號格式：蓋章腳本只收 X.Y.Z，若留到 pack job 才擋，prerelease
+  # tag 會白跑完五平台 matrix 才紅燈——而那種 tag 在 engine 上通路前是全綠的。
   engine-version:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.strip.outputs.version }}
+      publishable: ${{ steps.strip.outputs.publishable }}
     steps:
-      - name: Strip the v prefix from the tag
+      - name: Strip the v prefix and decide publishability
         id: strip
         shell: bash
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "publishable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publishable=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::tag $GITHUB_REF_NAME 非 X.Y.Z，略過 engine 的 npm 建置與發布"
+          fi
 
   # engine 的五平台建置與打包（node-sdk-release spec「build/pack workflow 可被 release
   # 管線重用」；設計 D1／D3）：以 workflow_call 重用 node-sdk.yml，不複製 build matrix。
   # 屬同一個 workflow run，故蓋章後的 npm-tarballs artifact 下方 job 直接下載得到。
   engine-npm-build:
     needs: [engine-version]
+    if: needs.engine-version.outputs.publishable == 'true'
     uses: ./.github/workflows/node-sdk.yml
     with:
       version: ${{ needs.engine-version.outputs.version }}
@@ -645,5 +657,19 @@ jobs:
           # artifact 保留 crates/speclink-node 底下的相對結構：主套件 tarball 在根、
           # 平台子套件在 npm/<平台>/。子套件先發、主套件最後，optionalDependencies
           # 於主套件上架時皆已可解析到同版。
-          for tgz in tarballs/npm/*/*.tgz; do npm publish "$tgz" --access public; done
-          npm publish tarballs/*.tgz --access public
+          #
+          # 冪等：發到一半失敗時前幾個已上架，重跑對既有版號會拿 403 而永遠轉不綠。
+          # 因此每份先查 registry，同版已存在就跳過——重跑能把剩下的補完。
+          publish_one() {
+            local tgz="$1" meta name version
+            meta="$(tar -xzOf "$tgz" package/package.json)"
+            name="$(node -p 'JSON.parse(process.argv[1]).name' "$meta")"
+            version="$(node -p 'JSON.parse(process.argv[1]).version' "$meta")"
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version 已在 registry，跳過"
+            else
+              npm publish "$tgz" --access public
+            fi
+          }
+          for tgz in tarballs/npm/*/*.tgz; do publish_one "$tgz"; done
+          for tgz in tarballs/*.tgz; do publish_one "$tgz"; done
