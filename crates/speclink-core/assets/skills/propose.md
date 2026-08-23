@@ -420,3 +420,10 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** invoke `/speclink:apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
+## Next steps
+
+{{NEXT_STEPS_LEAD}}
+
+- Artifacts are complete → `/speclink:apply <change-name>` when the user is ready to implement
+- Several independent changes will be implemented at once, and the project's worktree policy is on → `/speclink:apply-with-worktree <change-name>` (one git worktree per change)
+- The requirements turned out to be fuzzier than they looked → `/speclink:discuss` before implementing

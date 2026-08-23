@@ -203,18 +203,15 @@ fn init_store_remote_scaffolds_workspace_without_spec_tree() {
         !env.dir.join(".speclink.remote.yaml").exists(),
         "the legacy connection file is never created"
     );
-    assert!(env.dir.join("CLAUDE.md").is_file(), "marker file generated");
-    assert!(
-        std::fs::read_to_string(env.dir.join("CLAUDE.md")).unwrap().contains("SPECLINK:START"),
-        "CLAUDE.md carries the SPECLINK marker block"
-    );
+    // spec Scenario「Remote init 顯式選擇 Claude」：受管集合只剩 Skills。
+    assert!(!env.dir.join("CLAUDE.md").exists(), "remote init 不生成指令檔");
     assert!(env.dir.join(".claude").join("skills").is_dir(), "skills installed");
     assert!(!env.dir.join("openspec").exists(), "no local spec tree in remote mode");
 }
 
 /// spec「Remote Workspace bootstrap 跨入口一致性」的 CLI 端：Codex Remote init
-/// 產生 Remote 措辭的 `AGENTS.md` 區塊、Codex Skills、`tools: [codex]` 與 remote
-/// section，且不建 `openspec/`——與 Desktop bind 走同一份 Core 正典來源。
+/// 產生 Codex Skills、`tools: [codex]` 與 remote section，不建 `openspec/`、也不建
+/// 任何指令檔——與 Desktop bind 走同一份 Core 正典來源。
 #[test]
 fn init_store_remote_codex_bootstrap_is_canonical() {
     let env = TempEnv::new("init-remote-codex");
@@ -234,20 +231,20 @@ fn init_store_remote_codex_bootstrap_is_canonical() {
     );
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
 
-    let agents = std::fs::read_to_string(env.dir.join("AGENTS.md")).expect("AGENTS.md written");
-    assert!(agents.contains("<!-- SPECLINK:START"), "AGENTS.md carries the marker block");
-    assert!(
-        agents.contains("team system's spec store"),
-        "AGENTS.md uses the remote wording, not local paths:\n{agents}"
-    );
-    assert!(!agents.contains("openspec/specs/"), "no local spec paths in remote mode");
+    assert!(!env.dir.join("AGENTS.md").exists(), "remote init 不生成指令檔");
     let conn = std::fs::read_to_string(env.dir.join(".speclink.yaml")).expect("app config");
     assert!(conn.contains("codex"), "tools records codex: {conn}");
     assert!(!env.dir.join("CLAUDE.md").exists(), "codex-only: no CLAUDE.md");
-    assert!(
-        env.dir.join(".agents").join("skills").join("speclink-propose").join("SKILL.md").is_file(),
-        "Codex skills installed"
-    );
+    let propose = env
+        .dir
+        .join(".agents")
+        .join("skills")
+        .join("speclink-propose")
+        .join("SKILL.md");
+    assert!(propose.is_file(), "Codex skills installed");
+    // remote 語意由技能本文與 instructions payload 承載，技能檔不得烙本機規格路徑。
+    let body = std::fs::read_to_string(&propose).unwrap();
+    assert!(!body.contains("<!-- SPECLINK:START"), "技能檔不得帶受管區塊");
     assert!(!env.dir.join("openspec").exists(), "no local spec tree in remote mode");
 }
 

@@ -173,3 +173,10 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 - Accepted findings are carried, never re-reported: sub-agents get the no-re-report list, the round record keeps the items
 - Thin artifacts: judge from code and tests, never invent requirements
 - Stop on errors and report — don't guess past a failing verb
+
+## Next steps
+
+{{NEXT_STEPS_LEAD}}
+
+- The review stamp landed → the other station if the user wants it (`/speclink:verify <change-name>`), otherwise `/speclink:archive <change-name>`
+- Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream

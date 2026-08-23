@@ -452,3 +452,11 @@ When the discussion converges on building something:
 - **Do explore the codebase** — Ground discussions in reality.
 - **Do be opinionated** — Have a recommendation. The user can disagree.
 
+## Next steps
+
+{{NEXT_STEPS_LEAD}}
+
+- The conclusion warrants its own change → `speclink discuss promote <slug>` (or `/speclink:propose --from-discussion <slug>`), then `/speclink:propose` for the remaining artifacts
+- It belongs in a change that already exists → `speclink discuss link <slug> <change>`, then `/speclink:ingest <change>` to fold it in and seal
+- The conclusion is "don't do it" → conclude anyway, then `speclink discuss archive <slug>`
+- Nothing of substance was recorded → `speclink discuss discard <slug>`

@@ -94,17 +94,17 @@ code:
 ---
 ### Requirement: 未初始化目錄經確認後自動初始化
 
-所選目錄向上探索未命中任何 speclink 專案時，app SHALL NOT 逕行寫入，而 SHALL 顯示初始化確認對話框（含 AI 工具多選 claude／codex，預設勾選 claude）。使用者確認後 app SHALL 執行與 speclink init 等效的初始化（openspec/ 骨架含 specs/、changes/archive/ 與 config.yaml、專案根的 .speclink.yaml 記錄所選 tools、為每個所選工具生成指令檔 marker 區塊與 skills 檔），隨即切換至該專案；使用者取消時 app SHALL 維持原專案，且目標目錄 SHALL NOT 產生任何寫入。初始化失敗時 app SHALL 顯示單行錯誤訊息且 SHALL NOT 切換 root。
+所選目錄向上探索未命中任何 speclink 專案時，app SHALL NOT 逕行寫入，而 SHALL 顯示初始化確認對話框（含 AI 工具多選 claude／codex，預設勾選 claude）。使用者確認後 app SHALL 執行與 speclink init 等效的初始化（openspec/ 骨架含 specs/、changes/archive/ 與 config.yaml、專案根的 .speclink.yaml 記錄所選 tools、為每個所選工具生成 skills 檔），隨即切換至該專案；使用者取消時 app SHALL 維持原專案，且目標目錄 SHALL NOT 產生任何寫入。初始化失敗時 app SHALL 顯示單行錯誤訊息且 SHALL NOT 切換 root。
 
 #### Scenario: 確認後初始化並切入新專案
 
 - **WHEN** 使用者選定不含任何 speclink 標記的空目錄，於確認對話框保持預設（claude）並確認
-- **THEN** 該目錄產生 openspec/（含 specs/、changes/archive/、config.yaml）、.speclink.yaml（tools 含 claude）、CLAUDE.md 的 SPECLINK marker 區塊與 .claude/skills/ 技能檔，且 app 切換至該專案並於看板顯示空清單
+- **THEN** 該目錄產生 openspec/（含 specs/、changes/archive/、config.yaml）、.speclink.yaml（tools 含 claude）與 .claude/skills/ 技能檔，不產生 CLAUDE.md，且 app 切換至該專案並於看板顯示空清單
 
 #### Scenario: 勾選 codex 時生成對應工具檔
 
 - **WHEN** 使用者於確認對話框加勾 codex 後確認
-- **THEN** 目標目錄除 claude 對應檔案外，另產生 AGENTS.md 的 SPECLINK marker 區塊與 .agents/skills/ 技能檔，.speclink.yaml 的 tools 同時記錄 claude 與 codex
+- **THEN** 目標目錄除 claude 對應檔案外，另產生 .agents/skills/ 技能檔而無 AGENTS.md，.speclink.yaml 的 tools 同時記錄 claude 與 codex
 
 #### Scenario: 取消初始化則零寫入
 
@@ -113,68 +113,8 @@ code:
 
 
 <!-- @trace
-source: desktop-config-multiproject
-updated: 2026-07-07
-code:
-  - CLAUDE.md
-  - Cargo.lock
-  - apps/desktop/core/Cargo.toml
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/core/src/settings.rs
-  - apps/desktop/package.json
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/locale.test.ts
-  - apps/desktop/src/__tests__/messages.test.ts
-  - apps/desktop/src/__tests__/projectTabs.test.tsx
-  - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/i18n/locale.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/i18n/runtime.ts
-  - apps/desktop/src/main.tsx
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/tabs.ts
-  - apps/desktop/src/views/SettingsView.tsx
-  - crates/speclink-core/src/config.rs
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/changeListItem.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/discussionColumn.test.tsx
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/i18n.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/__tests__/ui.test.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeBoard.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/ChangeListItem.tsx
-  - packages/ui/src/components/DetailDrawer.tsx
-  - packages/ui/src/components/DiscussionColumn.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/DocumentViewer.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/components/ui/checkbox.tsx
-  - packages/ui/src/components/ui/select.tsx
-  - packages/ui/src/components/ui/tooltip.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/stage.ts
+source: remove-marker-injection
+updated: 2026-08-23
 -->
 
 ---
@@ -286,7 +226,7 @@ config.yaml 與 .speclink.yaml 簽首 SHALL 以等寬字註記對應檔案路徑
 #### Scenario: tools 變更後技能同步
 
 - **WHEN** .speclink.yaml 原 tools 僅 claude，使用者加選 codex 並儲存
-- **THEN** .speclink.yaml 的 tools 記錄 claude 與 codex，且專案根新增 AGENTS.md marker 區塊與 .agents/skills/ 技能檔
+- **THEN** .speclink.yaml 的 tools 記錄 claude 與 codex，且專案根新增 .agents/skills/ 技能檔而無 AGENTS.md
 
 #### Scenario: 自訂工具描述子原樣保留
 
@@ -300,41 +240,8 @@ config.yaml 與 .speclink.yaml 簽首 SHALL 以等寬字註記對應檔案路徑
 
 
 <!-- @trace
-source: remote-workflow-policy
-updated: 2026-07-20
-code:
-  - apps/desktop/core/src/settings.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/appSettingsView.test.tsx
-  - apps/desktop/src/__tests__/projectSettingsView.test.tsx
-  - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/session.ts
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/views/AppSettingsView.tsx
-  - apps/desktop/src/views/ProjectSettingsView.tsx
-  - apps/desktop/src/views/SettingsView.tsx
-  - crates/speclink-protocol/src/binding.rs
-  - crates/speclink-protocol/src/query.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/read_api.rs
-  - crates/speclink-server/src/admin.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/auth.rs
-  - crates/speclink-server/src/identity.rs
-  - crates/speclink-server/src/identity_sqlite.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/admin_pages.rs
-  - crates/speclink-server/tests/admin_system.rs
-  - crates/speclink-server/tests/audit.rs
-  - crates/speclink-server/tests/identity.rs
-  - crates/speclink-server/tests/policy_write.rs
+source: remove-marker-injection
+updated: 2026-08-23
 -->
 
 ---

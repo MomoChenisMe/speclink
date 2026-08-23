@@ -60,11 +60,11 @@ const ARCH: Option<&str> = {
 
 /// Version string with the architecture suffix and the engine (artifact layer)
 /// version, e.g. "2.3.1 (arm64, engine v1.14.0)". Built at runtime because
-/// `MARKER_VERSION` lives in another crate and cannot be `concat!`ed here — it
+/// `ASSET_VERSION` lives in another crate and cannot be `concat!`ed here — it
 /// is what makes "which engine is this binary" a one-command question.
 static VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
     let pkg = env!("CARGO_PKG_VERSION");
-    let engine = core::init::MARKER_VERSION;
+    let engine = core::init::ASSET_VERSION;
     match ARCH {
         Some(arch) => format!("{pkg} ({arch}, engine {engine})"),
         None => format!("{pkg} (engine {engine})"),

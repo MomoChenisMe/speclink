@@ -68,9 +68,7 @@ Rules:
 speclink validate --specs --all --strict
 ```
 
-Fix structural findings, then report: capabilities created (with requirement/scenario counts), behaviors flagged as unverified, and areas deliberately left out. Suggest the natural next step:
-
-> Specs now describe the current system. Future work goes through changes: `/speclink:propose <idea>`.
+Fix structural findings, then report: capabilities created (with requirement/scenario counts), behaviors flagged as unverified, and areas deliberately left out. Then state that specs now describe the current system and that future work goes through changes — the exits are in **Next steps** below.
 
 ## Guardrails
 
@@ -79,3 +77,10 @@ Fix structural findings, then report: capabilities created (with requirement/sce
 - **Don't rewrite existing specs** — gap-fill only; modifications go through a change.
 - **Do confirm the capability map before writing** — boundaries are the expensive decision.
 - **Do keep specs small** — a capability that needs 15 requirements is probably two capabilities.
+
+## Next steps
+
+{{NEXT_STEPS_LEAD}}
+
+- The requirements for the next piece of work are clear → `/speclink:propose <idea>`
+- They are still fuzzy or worth debating → `/speclink:discuss <topic>`

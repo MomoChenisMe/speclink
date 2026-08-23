@@ -418,26 +418,26 @@ async fn project_stats(path: String) -> Result<Value, String> {
     .map_err(|e| format!("project_stats worker failed: {e}"))?
 }
 
-/// 指令檔過期探測（desktop-instruction-staleness-prompt 決策 4）：獨立唯讀
+/// 技能檔過期探測（desktop-instruction-staleness-prompt 決策 4）：獨立唯讀
 /// command，不掛進 open_project——後者是純探測 probe，不承擔第二職責。
 #[tauri::command]
-async fn probe_instructions(path: String) -> Result<Value, String> {
+async fn probe_assets(path: String) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        speclink_desktop_core::project::probe_instructions_at(std::path::Path::new(&path))
+        speclink_desktop_core::project::probe_assets_at(std::path::Path::new(&path))
     })
     .await
-    .map_err(|e| format!("probe_instructions worker failed: {e}"))
+    .map_err(|e| format!("probe_assets worker failed: {e}"))
 }
 
-/// 指令檔整套再生（決策 5）：委派引擎既有 update()。寫入型 command 一律
+/// 技能檔整套再生（決策 5）：委派引擎既有 update()。寫入型 command 一律
 /// async＋spawn_blocking（design D2）——再生十餘個檔案，不得凍結主執行緒。
 #[tauri::command]
-async fn update_instructions(path: String) -> Result<Value, String> {
+async fn update_assets(path: String) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        speclink_desktop_core::project::update_instructions_at(std::path::Path::new(&path))
+        speclink_desktop_core::project::update_assets_at(std::path::Path::new(&path))
     })
     .await
-    .map_err(|e| format!("instruction update worker failed: {e}"))?
+    .map_err(|e| format!("asset update worker failed: {e}"))?
 }
 
 /// 監看重掛（決策 5）：顯式跟隨活躍 session。前端於每次 workspace-changed
@@ -1706,8 +1706,8 @@ pub fn run() {
             adopt_project,
             startup_dir,
             project_stats,
-            probe_instructions,
-            update_instructions,
+            probe_assets,
+            update_assets,
             watch_workspace,
             read_settings,
             write_app_tools,

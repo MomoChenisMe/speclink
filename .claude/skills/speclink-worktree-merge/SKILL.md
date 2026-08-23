@@ -1,12 +1,12 @@
 ---
 name: speclink-worktree-merge
-description: "Merge a finished Speclink worktree branch back into the main branch, then clean up"
+description: "Use when a worktree change is committed and ready to land — merges the branch back into the main branch, then cleans the worktree up."
 disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -159,3 +159,10 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 - Never leave a half-finished merge state behind
 - Never force-remove a worktree that still has uncommitted work
 - Never merge a change whose worktree you did not verify is fully committed
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The branch is merged, the worktree is removed and the branch is deleted → `/speclink-archive <change-name>` **from the main checkout** — archiving inside a linked worktree is refused by the engine
+- The quality stations were never run → they need the worktree's Apply baseline, which is gone after the merge; say so plainly instead of suggesting them here

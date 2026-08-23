@@ -2,7 +2,7 @@
 
 > **文件狀態**：本文描述目前已實作的 Node SDK surface。Typed Command Runtime、TeamStore 契約與 Host 邊界的正典是 `openspec/specs/` 底下的 `command-runtime`、`teamstore-contract`、`host-runtime` 與 `node-sdk`；Copilot Tool 封裝尚未實作，方向見[專案路線圖](roadmap.zh-TW.md)。
 
-`@speclink/engine` 讓你把 Speclink 引擎內嵌進 Node.js 行程：伺服器（或 AI agent 宿主）在行程內 dispatch speclink 動詞、以自家資料庫透過 `Store` 物件儲存規格文件，並為任何 harness 渲染流程知識（skills、instructions 區塊）。
+`@speclink/engine` 讓你把 Speclink 引擎內嵌進 Node.js 行程：伺服器（或 AI agent 宿主）在行程內 dispatch speclink 動詞、以自家資料庫透過 `Store` 物件儲存規格文件，並為任何 harness 渲染流程知識（技能檔）。
 
 它就是 CLI 隨附的那顆 Rust 引擎，以 [napi-rs](https://napi.rs) 綁定，不是重新實作一份。所以動詞行為、`--json` payload 形狀與渲染內容，從結構上就保證一致。Rust SDK 則是 `speclink-core` crate 本身。
 
@@ -144,30 +144,27 @@ await engine.dispatch(
 為你的 harness 取得流程知識——與 `speclink init`／`update` 共用同一份生成程式碼，內容不會與 CLI 漂移：
 
 ```js
-const { skills, instructions } = require('@speclink/engine')
+const { skills } = require('@speclink/engine')
 
 skills.list() // [{ name: 'propose', description: '…' }, …]
 
-// 渲染矩陣：target（claude|codex|neutral）× invocation（cli|tool-call）× store（fs|remote）
+// 渲染矩陣：target（claude|codex|neutral）× invocation（cli|tool-call）
 const skillMd = skills.render('propose', {
   target: 'neutral',
   invocation: 'tool-call',
-  store: 'remote',
 })
-const block = instructions.render({ target: 'neutral', invocation: 'tool-call', store: 'remote' })
 ```
 
 - `target: 'neutral'` 為自訂 harness 渲染：沒有 `/speclink-` 斜線前綴、沒有 plan-mode 措辭；`toolName`（預設 `"speclink"`）代入 `{{TOOL}}`。
 - `invocation: 'tool-call'` 把動詞表述為「以 argv 陣列呼叫 speclink 工具」——對應以 `dispatch` 為後端的 tool；`'cli'` 則表述為 shell 指令。
-- `store: 'remote'` 讓 instructions 區塊不含本地規格路徑（文件一律經動詞存取）。
-- 把 `instructions.render(...)` 注入 system prompt；把 `skills.render(...)` 的檔案餵給 agent（例如寫到一個目錄後以 `skillDirectories` 傳入）。
+- 把 `skills.render(...)` 的檔案餵給 agent（例如寫到一個目錄後以 `skillDirectories` 傳入）。路由就在這些檔案裡：每個技能的 `description` 說明何時該用它，結尾的 **Next steps** 段說明跑完之後建議做什麼——不需要、也不再生成任何獨立的 instructions 區塊。
 
 ## 完整整合範例——Copilot SDK
 
 一個名為 `speclink`、參數是 argv 陣列的 tool，加上落地的 skills：
 
 ```js
-const { createEngine, skills, instructions } = require('@speclink/engine')
+const { createEngine, skills } = require('@speclink/engine')
 const { defineTool, CopilotClient } = require('@github/copilot-sdk') // 示意 import
 const { mkdirSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
@@ -204,23 +201,21 @@ for (const { name } of skills.list()) {
   mkdirSync(dir, { recursive: true })
   writeFileSync(
     join(dir, 'SKILL.md'),
-    skills.render(name, { target: 'neutral', invocation: 'tool-call', store: 'remote' }),
+    skills.render(name, { target: 'neutral', invocation: 'tool-call' }),
   )
 }
 
-// 3. 接進 agent session，instructions 區塊放進 system prompt。
+// 3. 接進 agent session。路由不需要額外的 system prompt：每個技能的
+//    description 就寫著什麼情境該用它。
 const client = new CopilotClient({
   tools: [speclinkTool],
   skillDirectories: [skillsRoot],
-  systemPrompt: instructions.render({
-    target: 'neutral',
-    invocation: 'tool-call',
-    store: 'remote',
-  }),
 })
 ```
 
 生成的 skills 以 speclink tool 呼叫表述動詞，tool 把它們路由進行程內的引擎，引擎再透過你的 store 持久化——沒有 CLI、沒有子行程、沒有本地 `openspec/` 樹。
+
+前提是你的 harness 會載入這些技能的 description；不載入的 harness 等於沒有流程路由。
 
 ## 延伸閱讀
 

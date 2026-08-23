@@ -86,9 +86,4 @@ const skills = {
   render: (name, options) => binding.skillsRender(name, options),
 }
 
-/** Render the SPECLINK instructions marker block for a matrix point. */
-const instructions = {
-  render: (options) => binding.instructionsRender(options),
-}
-
-module.exports = { createEngine, skills, instructions }
+module.exports = { createEngine, skills }

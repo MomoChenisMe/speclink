@@ -5,6 +5,8 @@
 
 Once the apply flow above has finished (all tasks complete, or the user stopped you at a good point), do these — still **inside the worktree**.
 
+The apply body's own **Next steps** section does not apply here — this worktree flow replaces it with the edges in **Next steps** at the end of this document.
+
 ### W1. Commit the change in the worktree
 
 Follow the `/speclink:commit` skill's attribution convention: stage only the files belonging to this change (its artifacts under `{{SPEC_DIR}}changes/<change-name>/` plus the source files recorded in the change's evidence record), leave unrelated dirty files alone, and write the commit message in the project's language.
@@ -32,3 +34,11 @@ Tell the user, plainly:
 > 品質關卡跑完（或決定略過）後執行 `/speclink:worktree-merge <change-name>` 收尾——它會檢查主樹是否乾淨、把分支合併回去，成功後移除 worktree 並刪掉分支。
 
 Report alongside it: the worktree path, the branch name, and the tasks completed this session.
+
+## Next steps
+
+{{NEXT_STEPS_LEAD}}
+
+- The change is committed inside the worktree → the quality stations belong **here**, while the Apply baseline still exists: `/speclink:review` ∥ `/speclink:verify`, or `/speclink:quality` for both
+- The stations are done or the user chose to skip them → `/speclink:worktree-merge <change-name>`
+- Requirements changed mid-work → `/speclink:ingest <change-name>` inside this worktree, then resume apply here

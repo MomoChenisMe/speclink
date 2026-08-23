@@ -261,7 +261,7 @@ pub fn bind_checkout(
     }
     let root_str = validate_checkout(root, selected_origin, selected_repo)?;
 
-    // 無 marker 時先寫入同構 remote section，讓後續 reconciliation 沿用 remote 措辭。
+    // 無 marker 時先寫入同構 remote section，讓後續 reconciliation 認得 remote 模式。
     if speclink_core::config::AppConfig::load(&root.join(".speclink.yaml"))
         .map_err(|e| e.to_string())?
         .remote
@@ -737,13 +737,10 @@ mod checkout_tests {
             ("CLAUDE.md", ".claude/skills/speclink-propose/SKILL.md"),
             ("AGENTS.md", ".agents/skills/speclink-propose/SKILL.md"),
         ] {
-            assert!(read(dir.path(), md).contains("<!-- SPECLINK:START"), "{md} marker");
+            // 指令檔已退出受管（change: remove-marker-injection）：只生成技能檔。
+            assert!(!exists(dir.path(), md), "{md} 不得生成");
             assert!(exists(dir.path(), skill), "{skill} 應生成");
         }
-        assert!(
-            read(dir.path(), "AGENTS.md").contains("team system's spec store"),
-            "Remote checkout 須用 remote 措辭"
-        );
         assert!(!exists(dir.path(), "openspec"), "Remote checkout 不建本機規格樹");
         assert_eq!(inspect(dir.path()).expect("re-inspect").tools, vec!["claude", "codex"]);
     }
@@ -757,8 +754,7 @@ mod checkout_tests {
         bind(dir.path(), &["codex"]).expect("既有相符 marker 仍須同步");
 
         let agents = read(dir.path(), "AGENTS.md");
-        assert!(agents.contains("<!-- SPECLINK:START"), "缺席的區塊須補齊:\n{agents}");
-        assert!(agents.contains("只剩使用者文字"), "使用者文字須保留:\n{agents}");
+        assert_eq!(agents, "只剩使用者文字\n", "指令檔須位元級不變:\n{agents}");
         assert!(exists(dir.path(), ".agents/skills/speclink-propose/SKILL.md"));
         let config = read(dir.path(), ".speclink.yaml");
         assert!(config.contains(&format!("projects/{PROJECT}")), "remote 值不變:\n{config}");
@@ -812,7 +808,7 @@ mod checkout_tests {
         assert_eq!(snapshot(dir.path()), before, "拒絕時磁碟不變");
     }
 
-    /// Confused／Scoundrel：重複工具名去重，不寫出重複的 tools 條目或重複 marker。
+    /// Confused／Scoundrel：重複工具名去重，不寫出重複的 tools 條目。
     #[test]
     fn bind_duplicate_tool_names_do_not_duplicate_markers_or_entries() {
         let dir = git_checkout();
@@ -820,12 +816,7 @@ mod checkout_tests {
         bind(dir.path(), &["codex", "codex", "codex"]).expect("重複名須被吸收");
 
         assert_eq!(inspect(dir.path()).expect("re-inspect").tools, vec!["codex"]);
-        let agents = read(dir.path(), "AGENTS.md");
-        assert_eq!(
-            agents.matches("<!-- SPECLINK:START").count(),
-            1,
-            "marker 不得重複:\n{agents}"
-        );
+        assert!(!exists(dir.path(), "AGENTS.md"), "指令檔不得生成");
         let config = read(dir.path(), ".speclink.yaml");
         assert_eq!(config.matches("- codex").count(), 1, "tools 條目不得重複:\n{config}");
     }
@@ -882,8 +873,8 @@ mod checkout_tests {
 
     /// Desktop bind 與 CLI Remote init（`speclink_core::init::init_remote`——CLI
     /// `cmd_init_remote` 呼叫的正是它）對等價的新 Git checkout 選取相同 Codex，
-    /// SHALL 產生同構的 built-in tools、Remote marker、Skills 與 `AGENTS.md` Remote
-    /// Speclink 區塊，且兩者皆不建 `openspec/`。此測試把「一致性」釘在共用 Core 上。
+    /// SHALL 產生同構的 built-in tools、Remote marker 與 Skills，兩者皆不建 `openspec/`
+    /// 也不建任何指令檔。此測試把「一致性」釘在共用 Core 上。
     #[test]
     fn desktop_bind_and_cli_remote_init_produce_isomorphic_artifacts() {
         use speclink_core::skills::Tool;
@@ -898,16 +889,9 @@ mod checkout_tests {
         speclink_core::init::init_remote(cli.path(), &[Tool::Codex], false, &project_url, Some(REPO))
             .expect("CLI Remote init");
 
-        // AGENTS.md（含 Remote Speclink 區塊）逐位元組同構。
-        assert_eq!(
-            read(desktop.path(), "AGENTS.md"),
-            read(cli.path(), "AGENTS.md"),
-            "AGENTS.md Remote 區塊須同構"
-        );
-        assert!(
-            read(desktop.path(), "AGENTS.md").contains("team system's spec store"),
-            "須為 Remote 措辭"
-        );
+        // 兩入口都不生成指令檔。
+        assert!(!exists(desktop.path(), "AGENTS.md"), "Desktop bind 不得生成指令檔");
+        assert!(!exists(cli.path(), "AGENTS.md"), "CLI Remote init 不得生成指令檔");
         // Skills 正典逐位元組同構。
         for skill in ["speclink-apply", "speclink-archive", "speclink-propose"] {
             let rel = format!(".agents/skills/{skill}/SKILL.md");

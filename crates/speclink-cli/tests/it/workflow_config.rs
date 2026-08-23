@@ -975,10 +975,9 @@ fn update_generates_worktree_skills_only_while_the_policy_is_on() {
     for rel in GATED_SKILLS {
         assert!(!dir_exists(&p, rel), "政策關閉後須清理 {rel}");
     }
-    // 其餘技能與 marker 區塊不受影響。
+    // 其餘技能不受影響；指令檔一律不生成。
     assert!(dir_exists(&p, ".claude/skills/speclink-apply"), "非閘控技能須保留");
-    let md = std::fs::read_to_string(p.dir.join("CLAUDE.md")).expect("CLAUDE.md");
-    assert!(md.contains("<!-- SPECLINK:START"), "marker 區塊須保留: {md}");
+    assert!(!p.dir.join("CLAUDE.md").exists(), "指令檔不得生成");
 }
 
 #[test]

@@ -1,11 +1,11 @@
 ---
 name: speclink-archive
-description: "Archive a completed change"
+description: "Use when a change is finished and its quality stations are settled — folds the deltas into the specs and moves the change into the archive."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 

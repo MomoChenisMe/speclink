@@ -1311,8 +1311,8 @@ function fakeInstructionWorkspace(over: Partial<WorkspaceAdapter> = {}) {
     adoptProject: vi.fn(),
     startupDir: vi.fn().mockRejectedValue("none"),
     projectStats: vi.fn().mockResolvedValue({ pendingWrapUp: 0 }),
-    probeInstructions: vi.fn().mockResolvedValue(STALE_PROBE),
-    updateInstructions: vi.fn().mockResolvedValue(undefined),
+    probeAssets: vi.fn().mockResolvedValue(STALE_PROBE),
+    updateAssets: vi.fn().mockResolvedValue(undefined),
     watchWorkspace: vi.fn().mockResolvedValue(undefined),
     pickFolder: vi.fn().mockResolvedValue(null),
     ...over,
@@ -1320,7 +1320,7 @@ function fakeInstructionWorkspace(over: Partial<WorkspaceAdapter> = {}) {
 }
 
 /** 以單一 local session 預置 store 並注入 workspace 探測面。 */
-function storeWithInstructionProbe(ws: WorkspaceAdapter, ds = fakeDataSource()) {
+function storeWithAssetProbe(ws: WorkspaceAdapter, ds = fakeDataSource()) {
   const store = trackedAppStore({
     createSession: (root, name) => fakeSession(ds, root, name),
     workspace: ws,
@@ -1339,7 +1339,7 @@ describe("監看重掛（rearmWatch）", () => {
   // workspace-changed 後由前端順手重掛，Rust 端目標集合不變時沿用原監看。
   it("活躍 local session → 對其 root 重掛監看", async () => {
     const ws = fakeInstructionWorkspace();
-    const store = storeWithInstructionProbe(ws);
+    const store = storeWithAssetProbe(ws);
     await store.getState().rearmWatch();
     expect(ws.watchWorkspace).toHaveBeenCalledWith("A");
   });
@@ -1356,7 +1356,7 @@ describe("監看重掛（rearmWatch）", () => {
 
   it("活躍 session 非 local → 不動", async () => {
     const ws = fakeInstructionWorkspace();
-    const store = storeWithInstructionProbe(ws);
+    const store = storeWithAssetProbe(ws);
     const remote = {
       ...fakeSession(fakeDataSource(), "R", "r"),
       id: "remote:R",
@@ -1370,13 +1370,13 @@ describe("監看重掛（rearmWatch）", () => {
 
 describe("指令檔過期提示的顯示裁決", () => {
   beforeEach(() => {
-    localStorage.removeItem("speclink.instructionSkips");
+    localStorage.removeItem("speclink.assetSkips");
   });
 
   it("過期且未略過：以更新語意提示並帶差異檔數", async () => {
-    const store = storeWithInstructionProbe(fakeInstructionWorkspace());
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt).toEqual({
+    const store = storeWithAssetProbe(fakeInstructionWorkspace());
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt).toEqual({
       kind: "stale",
       fileCount: 2,
       version: "v1.3.0",
@@ -1384,31 +1384,31 @@ describe("指令檔過期提示的顯示裁決", () => {
   });
 
   it("缺失且未略過：以安裝語意提示", async () => {
-    const store = storeWithInstructionProbe(
-      fakeInstructionWorkspace({ probeInstructions: vi.fn().mockResolvedValue(MISSING_PROBE) }),
+    const store = storeWithAssetProbe(
+      fakeInstructionWorkspace({ probeAssets: vi.fn().mockResolvedValue(MISSING_PROBE) }),
     );
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt?.kind).toBe("missing");
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt?.kind).toBe("missing");
   });
 
   it("保留現狀後同版不再提示，且不寫入專案內任何檔案", async () => {
     const ws = fakeInstructionWorkspace();
-    const store = storeWithInstructionProbe(ws);
-    await store.getState().refreshInstructionPrompt();
-    store.getState().dismissInstructionPrompt();
-    expect(store.getState().instructionPrompt).toBeNull();
+    const store = storeWithAssetProbe(ws);
+    await store.getState().refreshAssetPrompt();
+    store.getState().dismissAssetPrompt();
+    expect(store.getState().assetPrompt).toBeNull();
 
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt).toBeNull();
-    expect(ws.updateInstructions).not.toHaveBeenCalled();
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt).toBeNull();
+    expect(ws.updateAssets).not.toHaveBeenCalled();
   });
 
   it("領先引擎且未略過：以較新語意提示並帶差異檔數", async () => {
-    const store = storeWithInstructionProbe(
-      fakeInstructionWorkspace({ probeInstructions: vi.fn().mockResolvedValue(NEWER_PROBE) }),
+    const store = storeWithAssetProbe(
+      fakeInstructionWorkspace({ probeAssets: vi.fn().mockResolvedValue(NEWER_PROBE) }),
     );
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt).toEqual({
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt).toEqual({
       kind: "newer",
       fileCount: 2,
       version: "v1.3.0",
@@ -1416,34 +1416,34 @@ describe("指令檔過期提示的顯示裁決", () => {
   });
 
   it("較新態的保留現狀與過期共用同一略過記憶", async () => {
-    const store = storeWithInstructionProbe(
-      fakeInstructionWorkspace({ probeInstructions: vi.fn().mockResolvedValue(NEWER_PROBE) }),
+    const store = storeWithAssetProbe(
+      fakeInstructionWorkspace({ probeAssets: vi.fn().mockResolvedValue(NEWER_PROBE) }),
     );
-    await store.getState().refreshInstructionPrompt();
-    store.getState().dismissInstructionPrompt();
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt).toBeNull();
+    await store.getState().refreshAssetPrompt();
+    store.getState().dismissAssetPrompt();
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt).toBeNull();
   });
 
   it("缺失態的保留現狀與過期共用同一略過記憶", async () => {
-    const store = storeWithInstructionProbe(
-      fakeInstructionWorkspace({ probeInstructions: vi.fn().mockResolvedValue(MISSING_PROBE) }),
+    const store = storeWithAssetProbe(
+      fakeInstructionWorkspace({ probeAssets: vi.fn().mockResolvedValue(MISSING_PROBE) }),
     );
-    await store.getState().refreshInstructionPrompt();
-    store.getState().dismissInstructionPrompt();
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt).toBeNull();
+    await store.getState().refreshAssetPrompt();
+    store.getState().dismissAssetPrompt();
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt).toBeNull();
   });
 
   it("已略過舊版、產物層版號變動後重新提示", async () => {
     const probe = vi.fn().mockResolvedValue(STALE_PROBE);
-    const store = storeWithInstructionProbe(fakeInstructionWorkspace({ probeInstructions: probe }));
-    await store.getState().refreshInstructionPrompt();
-    store.getState().dismissInstructionPrompt();
+    const store = storeWithAssetProbe(fakeInstructionWorkspace({ probeAssets: probe }));
+    await store.getState().refreshAssetPrompt();
+    store.getState().dismissAssetPrompt();
 
     probe.mockResolvedValue({ ...STALE_PROBE, currentVersion: "v1.4.0" });
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt?.version).toBe("v1.4.0");
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt?.version).toBe("v1.4.0");
   });
 
   it("無法判定：不提示且不記入略過（後續判過期仍提示）", async () => {
@@ -1453,20 +1453,20 @@ describe("指令檔過期提示的顯示裁決", () => {
       tools: [],
       differingFiles: [],
     });
-    const store = storeWithInstructionProbe(fakeInstructionWorkspace({ probeInstructions: probe }));
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt).toBeNull();
-    expect(localStorage.getItem("speclink.instructionSkips")).toBeNull();
+    const store = storeWithAssetProbe(fakeInstructionWorkspace({ probeAssets: probe }));
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt).toBeNull();
+    expect(localStorage.getItem("speclink.assetSkips")).toBeNull();
 
     probe.mockResolvedValue(STALE_PROBE);
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt?.kind).toBe("stale");
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt?.kind).toBe("stale");
   });
 
   it("現版：不提示", async () => {
-    const store = storeWithInstructionProbe(
+    const store = storeWithAssetProbe(
       fakeInstructionWorkspace({
-        probeInstructions: vi.fn().mockResolvedValue({
+        probeAssets: vi.fn().mockResolvedValue({
           status: "current",
           currentVersion: "v1.3.0",
           tools: [],
@@ -1474,8 +1474,8 @@ describe("指令檔過期提示的顯示裁決", () => {
         }),
       }),
     );
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt).toBeNull();
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt).toBeNull();
   });
 
   it("remote 分頁不執行探測", async () => {
@@ -1494,16 +1494,16 @@ describe("指令檔過期提示的顯示裁決", () => {
       activeKey: remote.id,
     });
 
-    await store.getState().refreshInstructionPrompt();
-    expect(ws.probeInstructions).not.toHaveBeenCalled();
-    expect(store.getState().instructionPrompt).toBeNull();
+    await store.getState().refreshAssetPrompt();
+    expect(ws.probeAssets).not.toHaveBeenCalled();
+    expect(store.getState().assetPrompt).toBeNull();
   });
 
   it("更新成功：整套再生後重查，提示消失", async () => {
     const probe = vi.fn().mockResolvedValue(STALE_PROBE);
-    const ws = fakeInstructionWorkspace({ probeInstructions: probe });
-    const store = storeWithInstructionProbe(ws);
-    await store.getState().refreshInstructionPrompt();
+    const ws = fakeInstructionWorkspace({ probeAssets: probe });
+    const store = storeWithAssetProbe(ws);
+    await store.getState().refreshAssetPrompt();
 
     probe.mockResolvedValue({
       status: "current",
@@ -1511,30 +1511,30 @@ describe("指令檔過期提示的顯示裁決", () => {
       tools: [],
       differingFiles: [],
     });
-    await store.getState().applyInstructionUpdate();
+    await store.getState().applyAssetUpdate();
 
-    expect(ws.updateInstructions).toHaveBeenCalledWith("A");
-    expect(store.getState().instructionPrompt).toBeNull();
-    expect(store.getState().instructionUpdateError).toBeNull();
+    expect(ws.updateAssets).toHaveBeenCalledWith("A");
+    expect(store.getState().assetPrompt).toBeNull();
+    expect(store.getState().assetUpdateError).toBeNull();
   });
 
   it("更新失敗：錯誤留在提示原位、提示保持可重試", async () => {
     const ws = fakeInstructionWorkspace({
-      updateInstructions: vi.fn().mockRejectedValue("CLAUDE.md: permission denied"),
+      updateAssets: vi.fn().mockRejectedValue("CLAUDE.md: permission denied"),
     });
-    const store = storeWithInstructionProbe(ws);
-    await store.getState().refreshInstructionPrompt();
-    await store.getState().applyInstructionUpdate();
+    const store = storeWithAssetProbe(ws);
+    await store.getState().refreshAssetPrompt();
+    await store.getState().applyAssetUpdate();
 
-    expect(store.getState().instructionUpdateError).toContain("permission denied");
-    expect(store.getState().instructionPrompt).not.toBeNull();
+    expect(store.getState().assetUpdateError).toContain("permission denied");
+    expect(store.getState().assetPrompt).not.toBeNull();
   });
 
   it("外部 speclink update 後（workspace-changed 重查）提示自然消失", async () => {
     const probe = vi.fn().mockResolvedValue(STALE_PROBE);
-    const store = storeWithInstructionProbe(fakeInstructionWorkspace({ probeInstructions: probe }));
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt).not.toBeNull();
+    const store = storeWithAssetProbe(fakeInstructionWorkspace({ probeAssets: probe }));
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt).not.toBeNull();
 
     // 使用者於終端跑 speclink update：受管檔成為現版，重查即收合。
     probe.mockResolvedValue({
@@ -1543,8 +1543,8 @@ describe("指令檔過期提示的顯示裁決", () => {
       tools: [],
       differingFiles: [],
     });
-    await store.getState().refreshInstructionPrompt();
-    expect(store.getState().instructionPrompt).toBeNull();
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt).toBeNull();
   });
 });
 
@@ -1575,7 +1575,7 @@ describe("切換中分頁（pendingTabKey）", () => {
   }
 
   it("初值為 null", () => {
-    const store = storeWithInstructionProbe(fakeInstructionWorkspace());
+    const store = storeWithAssetProbe(fakeInstructionWorkspace());
     expect(store.getState().pendingTabKey).toBeNull();
   });
 

@@ -1,6 +1,6 @@
 ---
 name: speclink-drift
-description: "Detect drift between a Speclink change and the current codebase state"
+description: "Use when picking a change back up after it sat idle, before touching its tasks — reports how far the codebase has moved from the delta's assumptions."
 context: fork
 agent: Explore
 disallowedTools: [Edit, Write]
@@ -8,7 +8,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -129,3 +129,10 @@ When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` dat
 - If `speclink drift` returns a non-zero exit code (e.g., older binary without the drift subcommand), report the error and stop
 - Do NOT auto-invoke any follow-up command — recommendations are user-confirmed
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The delta's assumptions are stale → `/speclink-ingest <change-name>` to refresh the artifacts before any code is written
+- No meaningful drift → `/speclink-apply <change-name>` to pick the tasks back up

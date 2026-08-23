@@ -37,11 +37,11 @@ import {
   type ProjectTab,
 } from "./tabs";
 import {
-  instructionPrompt,
-  readInstructionSkips,
-  writeInstructionSkip,
-  type InstructionPromptState,
-} from "./instructionPrompt";
+  assetPrompt,
+  readAssetSkips,
+  writeAssetSkip,
+  type AssetPromptState,
+} from "./assetPrompt";
 import { detectMacOS, type TrayStyle } from "./tray";
 import {
   initialUpdaterState,
@@ -320,19 +320,19 @@ export interface AppState {
   /** Ctrl+1..9：直達第 N 個分頁（1-based；超界不動作）。 */
   gotoTab: (n: number) => Promise<void>;
 
-  // --- 指令檔過期提示（desktop-instruction-staleness-prompt；決策 4/6/7） ---
+  // --- 技能檔過期提示（desktop-instruction-staleness-prompt；決策 4/6/7） ---
   /** 活躍本地分頁的提示現值（null＝不提示：現版、無法判定或已略過同版）。 */
-  instructionPrompt: InstructionPromptState | null;
+  assetPrompt: AssetPromptState | null;
   /** 更新失敗的單行訊息（呈現於提示原位、可重試）；成功或重查即清空。 */
-  instructionUpdateError: string | null;
+  assetUpdateError: string | null;
   /** 更新進行中（動作停用、避免重複觸發）。 */
-  instructionUpdating: boolean;
+  assetUpdating: boolean;
   /** 對活躍本地分頁重跑探測並裁決是否提示；remote 分頁與無 adapter 時無動作。 */
-  refreshInstructionPrompt: () => Promise<void>;
+  refreshAssetPrompt: () => Promise<void>;
   /** 主動作（更新／安裝）：經引擎既有再生入口整套再生，成功後重查。 */
-  applyInstructionUpdate: () => Promise<void>;
+  applyAssetUpdate: () => Promise<void>;
   /** 保留現狀：記下此專案已略過當前產物層版號並收合提示，不寫入專案任何檔案。 */
-  dismissInstructionPrompt: () => void;
+  dismissAssetPrompt: () => void;
 
   // --- 自動更新（desktop-app「桌面自動更新」；design D6） ---
   /** 更新狀態機現值（core/updater reducer 驅動；執行期狀態、不持久化）。 */
@@ -535,7 +535,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       };
     }
 
-    /** 活躍分頁的本地專案根；remote 分頁與零分頁回 null（指令檔探測只對本地
+    /** 活躍分頁的本地專案根；remote 分頁與零分頁回 null（技能檔探測只對本地
      * checkout 有意義——決策 4）。 */
     function activeLocalRoot(): string | null {
       const key = get().activeKey;
@@ -2053,54 +2053,54 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       await get().activateTab(locatorKey(target.locator));
     },
 
-    instructionPrompt: null,
-    instructionUpdateError: null,
-    instructionUpdating: false,
+    assetPrompt: null,
+    assetUpdateError: null,
+    assetUpdating: false,
 
-    async refreshInstructionPrompt() {
+    async refreshAssetPrompt() {
       const root = activeLocalRoot();
-      // remote 分頁無本地受管指令檔可查（決策 4）；無 adapter 時 UI 不啟用。
+      // remote 分頁無本地受管技能檔可查（決策 4）；無 adapter 時 UI 不啟用。
       if (!workspace || !root) {
-        set({ instructionPrompt: null, instructionUpdateError: null });
+        set({ assetPrompt: null, assetUpdateError: null });
         return;
       }
       let probe;
       try {
-        probe = await workspace.probeInstructions(root);
+        probe = await workspace.probeAssets(root);
       } catch {
         // 探測不可用等同無法判定：靜默不提示，開專案不受影響（既有降級語意）。
-        set({ instructionPrompt: null });
+        set({ assetPrompt: null });
         return;
       }
       // 分頁在探測期間被切走：結果屬於前一個 root，不得落地。
       if (activeLocalRoot() !== root) return;
       set({
-        instructionPrompt: instructionPrompt(probe, root, readInstructionSkips()),
-        instructionUpdateError: null,
+        assetPrompt: assetPrompt(probe, root, readAssetSkips()),
+        assetUpdateError: null,
       });
     },
 
-    async applyInstructionUpdate() {
+    async applyAssetUpdate() {
       const root = activeLocalRoot();
-      if (!workspace || !root || get().instructionUpdating) return;
-      set({ instructionUpdating: true, instructionUpdateError: null });
+      if (!workspace || !root || get().assetUpdating) return;
+      set({ assetUpdating: true, assetUpdateError: null });
       try {
-        await workspace.updateInstructions(root);
+        await workspace.updateAssets(root);
       } catch (error) {
         // 失敗留在原位可重試——update() 冪等，重試即收斂（決策 5）。
-        set({ instructionUpdateError: String(error), instructionUpdating: false });
+        set({ assetUpdateError: String(error), assetUpdating: false });
         return;
       }
-      set({ instructionUpdating: false });
-      await get().refreshInstructionPrompt();
+      set({ assetUpdating: false });
+      await get().refreshAssetPrompt();
     },
 
-    dismissInstructionPrompt() {
+    dismissAssetPrompt() {
       const root = activeLocalRoot();
-      const prompt = get().instructionPrompt;
+      const prompt = get().assetPrompt;
       if (!root || !prompt) return;
-      writeInstructionSkip(root, prompt.version);
-      set({ instructionPrompt: null, instructionUpdateError: null });
+      writeAssetSkip(root, prompt.version);
+      set({ assetPrompt: null, assetUpdateError: null });
     },
 
     async restoreTabs() {

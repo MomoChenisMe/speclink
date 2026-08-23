@@ -1,11 +1,11 @@
 ---
 name: speclink-review
-description: "Review a change's implementation for craft quality — parallel standards and correctness axes, recorded to a review ticket"
+description: "Use when an implementation should be checked for craft quality before archiving — parallel standards and correctness axes, recorded to a review ticket."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -184,3 +184,10 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 - Accepted findings are carried, never re-reported: sub-agents get the no-re-report list, the round record keeps the items
 - Thin artifacts: judge from code and tests, never invent requirements
 - Stop on errors and report — don't guess past a failing verb
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The review stamp landed → the other station if the user wants it (`$speclink-verify <change-name>`), otherwise `$speclink-archive <change-name>`
+- Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream

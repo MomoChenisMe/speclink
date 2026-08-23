@@ -913,16 +913,36 @@ mod tests {
 
     #[test]
     fn write_tools_syncs_skills_for_newly_selected_codex() {
-        // spec Scenario「tools 變更後技能同步」：加選 codex 生成 AGENTS.md marker
-        // 與 .agents/skills/。從 init 過的 claude 專案出發。
+        // spec Scenario「tools 變更後技能同步」：加選 codex 生成 .agents/skills/
+        // 而無 AGENTS.md。從 init 過的 claude 專案出發。
         let fx = FixtureRoot::new("tools-write-add");
         std::fs::remove_dir_all(fx.root().join("openspec")).unwrap();
         crate::project::init_project_at(fx.root(), &["claude".into()]).expect("init ok");
         write_tools_at(fx.root(), &["claude".into(), "codex".into()]).expect("write ok");
         let app = read(&fx.root().join(".speclink.yaml"));
         assert!(app.contains("claude") && app.contains("codex"), "tools recorded: {app}");
-        assert!(read(&fx.root().join("AGENTS.md")).contains("<!-- SPECLINK:START"));
+        assert!(!fx.root().join("AGENTS.md").exists(), "指令檔不得生成");
         assert!(fx.root().join(".agents").join("skills").is_dir());
+    }
+
+    #[test]
+    fn write_tools_strips_a_legacy_instruction_marker() {
+        // spec Scenario「tools 變更後技能同步」的遺留面（design D2）：同步時把舊版
+        // 引擎注入的區塊剝掉，使用者自己的段落原樣保留。
+        let fx = FixtureRoot::new("tools-write-strip");
+        std::fs::remove_dir_all(fx.root().join("openspec")).unwrap();
+        crate::project::init_project_at(fx.root(), &["claude".into()]).expect("init ok");
+        std::fs::write(
+            fx.root().join("CLAUDE.md"),
+            "<!-- SPECLINK:START v1.0.0 -->\n\n舊路由表。\n\n<!-- SPECLINK:END -->\n我自己的段落\n",
+        )
+        .unwrap();
+
+        write_tools_at(fx.root(), &["claude".into(), "codex".into()]).expect("write ok");
+
+        let md = read(&fx.root().join("CLAUDE.md"));
+        assert!(!md.contains("<!-- SPECLINK:START"), "遺留區塊須被剝除：{md}");
+        assert_eq!(md, "我自己的段落\n", "使用者段落須原樣保留");
     }
 
     #[test]
@@ -935,7 +955,7 @@ mod tests {
         write_tools_at(fx.root(), &["claude".into()]).expect("write ok");
         let app = read(&fx.root().join(".speclink.yaml"));
         assert!(app.contains("claude") && !app.contains("codex"), "tools recorded: {app}");
-        // prune：speclink-* 技能目錄移除、marker 區塊自 AGENTS.md 剝除。
+        // prune：speclink-* 技能目錄移除、遺留 marker 區塊自 AGENTS.md 剝除。
         let agents_skills = fx.root().join(".agents").join("skills");
         if agents_skills.is_dir() {
             let leftover: Vec<_> = std::fs::read_dir(&agents_skills)

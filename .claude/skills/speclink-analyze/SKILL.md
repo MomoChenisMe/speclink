@@ -1,6 +1,6 @@
 ---
 name: speclink-analyze
-description: "Analyze artifact consistency for a change"
+description: "Use when a change's artifacts should be cross-checked before implementing — coverage, consistency, ambiguity and gaps across proposal, design, specs and tasks; reports findings without editing anything."
 context: fork
 agent: Explore
 disallowedTools: [Edit, Write]
@@ -8,7 +8,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 

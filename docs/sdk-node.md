@@ -5,7 +5,7 @@
 `@speclink/engine` embeds the Speclink engine in a Node.js process: your
 server (or AI-agent host) dispatches speclink verbs in-process, stores spec
 documents in its own database through a `Store` object, and renders the
-workflow knowledge (skills, instruction blocks) for whatever harness it runs.
+workflow knowledge (skill files) for whatever harness it runs.
 
 It is the same Rust engine the CLI ships — bound with [napi-rs](https://napi.rs),
 not re-implemented — so verb behavior, `--json` payload shapes, and rendered
@@ -201,17 +201,15 @@ Workflow knowledge for your harness — the same generation code `speclink
 init`/`update` uses, so content cannot drift from the CLI:
 
 ```js
-const { skills, instructions } = require('@speclink/engine')
+const { skills } = require('@speclink/engine')
 
 skills.list() // [{ name: 'propose', description: '…' }, …]
 
-// The render matrix: target (claude|codex|neutral) × invocation (cli|tool-call) × store (fs|remote)
+// The render matrix: target (claude|codex|neutral) × invocation (cli|tool-call)
 const skillMd = skills.render('propose', {
   target: 'neutral',
   invocation: 'tool-call',
-  store: 'remote',
 })
-const block = instructions.render({ target: 'neutral', invocation: 'tool-call', store: 'remote' })
 ```
 
 - `target: 'neutral'` renders for a custom harness: no `/speclink-` slash
@@ -220,11 +218,11 @@ const block = instructions.render({ target: 'neutral', invocation: 'tool-call', 
 - `invocation: 'tool-call'` words verb references as "call the speclink tool
   with an argv array" — matching a `dispatch`-backed tool; `'cli'` words them
   as shell commands.
-- `store: 'remote'` keeps the instructions block free of local spec paths
-  (documents are reached through verbs).
-- Inject `instructions.render(...)` into your system prompt, and feed
-  `skills.render(...)` files to your agent (e.g. write them under a directory
-  you pass as `skillDirectories`).
+- Feed `skills.render(...)` files to your agent (e.g. write them under a
+  directory you pass as `skillDirectories`). Routing rides those files: each
+  skill's `description` states when to use it, and its closing **Next steps**
+  section states what to suggest afterwards — there is no separate instructions
+  block to inject, and none is generated any more.
 
 ## Complete integration example — Copilot SDK
 
@@ -232,7 +230,7 @@ One tool named `speclink` whose parameter is the argv array, plus generated
 skills on disk:
 
 ```js
-const { createEngine, skills, instructions } = require('@speclink/engine')
+const { createEngine, skills } = require('@speclink/engine')
 const { defineTool, CopilotClient } = require('@github/copilot-sdk') // illustrative imports
 const { mkdirSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
@@ -269,25 +267,24 @@ for (const { name } of skills.list()) {
   mkdirSync(dir, { recursive: true })
   writeFileSync(
     join(dir, 'SKILL.md'),
-    skills.render(name, { target: 'neutral', invocation: 'tool-call', store: 'remote' }),
+    skills.render(name, { target: 'neutral', invocation: 'tool-call' }),
   )
 }
 
-// 3. Wire both into the agent session, with the instructions block in the system prompt.
+// 3. Wire both into the agent session. Routing needs no system prompt of its
+//    own: each skill's description says when to use it.
 const client = new CopilotClient({
   tools: [speclinkTool],
   skillDirectories: [skillsRoot],
-  systemPrompt: instructions.render({
-    target: 'neutral',
-    invocation: 'tool-call',
-    store: 'remote',
-  }),
 })
 ```
 
 The generated skills reference verbs as speclink tool calls, the tool routes
 them into the in-process engine, and the engine persists through your store —
 no CLI, no child processes, no local `openspec/` tree.
+
+Your harness has to load those skill descriptions for routing to work; a
+harness that ignores them has no workflow routing at all.
 
 ## See also
 

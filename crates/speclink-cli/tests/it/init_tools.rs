@@ -127,7 +127,7 @@ fn assert_rejected_with_zero_writes(env: &TempEnv, out: &Output, before: &[(Stri
 
 #[test]
 fn fs_init_explicit_tools_generate_exactly_the_selection() {
-    // 三種顯式選法逐一：只有被選取的工具留下 Skills 與指令區塊。
+    // 三種顯式選法逐一：只有被選取的工具留下 Skills；指令檔一律不生成。
     let cases: [(&str, &[&str]); 3] = [
         ("claude", &["claude"]),
         ("codex", &["codex"]),
@@ -144,14 +144,15 @@ fn fs_init_explicit_tools_generate_exactly_the_selection() {
         assert_eq!(env.builtins(), want, "--tools {spec}: recorded selection");
 
         let claude = want.contains(&"claude");
-        assert_eq!(env.exists("CLAUDE.md"), claude, "--tools {spec}: CLAUDE.md");
         assert_eq!(
             env.exists(".claude/skills/speclink-propose/SKILL.md"),
             claude,
             "--tools {spec}: Claude skills"
         );
         let codex = want.contains(&"codex");
-        assert_eq!(env.exists("AGENTS.md"), codex, "--tools {spec}: AGENTS.md");
+        // spec Scenario「指令檔零受管區塊」：受管集合只剩技能檔。
+        assert!(!env.exists("CLAUDE.md"), "--tools {spec}: CLAUDE.md 不得生成");
+        assert!(!env.exists("AGENTS.md"), "--tools {spec}: AGENTS.md 不得生成");
         assert_eq!(
             env.exists(".agents/skills/speclink-propose/SKILL.md"),
             codex,

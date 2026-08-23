@@ -171,13 +171,11 @@ export interface Engine {
  */
 export function createEngine(options: CreateEngineOptions): Engine
 
-/** The render matrix: target × invocation × store. */
+/** The render matrix: target × invocation. */
 export interface RenderOptions {
   target: 'claude' | 'codex' | 'neutral'
   /** How the harness executes speclink verbs. Default: `'cli'`. */
   invocation?: 'cli' | 'tool-call'
-  /** Where spec documents live (shapes the instructions block). Default: `'fs'`. */
-  store?: 'fs' | 'remote'
   /** Spec directory name substituted into rendered content. Default: `"openspec"`. */
   specDir?: string
   /** Neutral target only: the harness name (`{{TOOL}}` substitution). Default: `"speclink"`. */
@@ -197,13 +195,4 @@ export const skills: {
    * what `speclink init` generates for equivalent parameters.
    */
   render(name: string, options: RenderOptions): string
-}
-
-export const instructions: {
-  /**
-   * Render the SPECLINK instructions marker block for a matrix point —
-   * identical to the block `speclink init` writes into CLAUDE.md/AGENTS.md
-   * or a custom descriptor's instructions file.
-   */
-  render(options: RenderOptions): string
 }

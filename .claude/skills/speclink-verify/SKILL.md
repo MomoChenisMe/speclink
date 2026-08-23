@@ -1,11 +1,11 @@
 ---
 name: speclink-verify
-description: "Verify implementation matches artifacts"
+description: "Use when an implementation should be checked against its artifacts before archiving — confirms the specs and tasks are actually satisfied, recorded to a verify ticket."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -274,3 +274,10 @@ Use clear markdown with:
 - Accepted findings are carried, never re-reported
 - Thin artifacts: verify what exists, never invent requirements
 - Stop on errors and report — don't guess past a failing verb
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The verify stamp landed → the other station if the user wants it (`/speclink-review <change-name>`), otherwise `/speclink-archive <change-name>`
+- Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream

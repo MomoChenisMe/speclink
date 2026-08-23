@@ -1,11 +1,11 @@
 ---
 name: speclink-discuss
-description: "Have a focused discussion that is recorded to a discussion document"
+description: "Use when requirements are fuzzy, contested, or worth debating before any change exists — records the exchange as a discussion document that can later be promoted into a change."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -462,3 +462,12 @@ When the discussion converges on building something:
 - **Do visualize** — A good diagram is worth many paragraphs.
 - **Do explore the codebase** — Ground discussions in reality.
 - **Do be opinionated** — Have a recommendation. The user can disagree.
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The conclusion warrants its own change → `speclink discuss promote <slug>` (or `$speclink-propose --from-discussion <slug>`), then `$speclink-propose` for the remaining artifacts
+- It belongs in a change that already exists → `speclink discuss link <slug> <change>`, then `$speclink-ingest <change>` to fold it in and seal
+- The conclusion is "don't do it" → conclude anyway, then `speclink discuss archive <slug>`
+- Nothing of substance was recorded → `speclink discuss discard <slug>`

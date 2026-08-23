@@ -1,44 +1,7 @@
-=== CLAUDE.md ===
-<!-- SPECLINK:START v1.20.2 -->
-
-# Speclink Instructions
-
-This project uses Speclink for Spec-Driven Development(SDD). Specs live in `openspec/specs/`, change proposals in `openspec/changes/`, discussion records in `openspec/discussions/`.
-
-## Use `/speclink-*` skills when:
-
-- Requirements are fuzzy or worth debating → `/speclink-discuss` (recorded as a document; promote turns it into a change)
-- User asks for improvements without naming a topic → `/speclink-improve` (user-initiated only; scans the codebase and records the candidates as a discussion)
-- User wants to plan, propose, or design a change → `/speclink-propose` (`--from-discussion <slug>` seeds it from a concluded discussion)
-- Adopting Speclink on an existing codebase → `/speclink-onboard`
-- Tasks are ready to implement → `/speclink-apply`
-- Implementing several independent changes at once → `/speclink-apply-with-worktree` (one git worktree per change)
-- A worktree change is committed and ready to land → `/speclink-worktree-merge` (merge back, then clean up)
-- Resuming a change that sat idle → run `/speclink-drift` first
-- User asks how a feature came to be or why it works this way → `/speclink-trace` (sourced narrative along specs → changes → discussions → code)
-- Requirements change mid-work → `/speclink-ingest`
-- Implementation is done, before archiving → optional quality stations `/speclink-review` (craft quality) ∥ `/speclink-verify` (spec compliance; user's call), then `/speclink-archive`
-- Both quality stations over one change → `/speclink-quality` (both checks first without stamping, then it stops after every round for your call on what to fix and when to stamp); only one station → call `/speclink-review` or `/speclink-verify` directly
-- Commit only files related to a specific change → `/speclink-commit`
-
-## Workflow
-
-discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
-
-worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive (main checkout)
-
-- `discuss` is optional — skip if requirements are clear; conclude and archive it even when the outcome is "don't do it"
-- A promoted discussion is archived automatically with its last remaining change (one discussion can fan out into several changes)
-- Resuming after a pause? Run `drift` first — stale delta assumptions route to `ingest`
-- Quality stations belong inside the worktree (the Apply baseline lives there); archive runs only from the main checkout — archiving inside a linked worktree is refused by the engine
-- Requirements change mid-work? Plan mode → `ingest` → resume `apply`
-
-<!-- SPECLINK:END -->
-
 === .claude/skills/speclink-analyze/SKILL.md ===
 ---
 name: speclink-analyze
-description: "Analyze artifact consistency for a change"
+description: "Use when a change's artifacts should be cross-checked before implementing — coverage, consistency, ambiguity and gaps across proposal, design, specs and tasks; reports findings without editing anything."
 context: fork
 agent: Explore
 disallowedTools: [Edit, Write]
@@ -46,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -129,12 +92,12 @@ When `speclink status --change "<name>" --json` shows `isComplete: true`, run th
 === .claude/skills/speclink-apply/SKILL.md ===
 ---
 name: speclink-apply
-description: "Implement or resume tasks from a Speclink change"
+description: "Use when a change's tasks are ready to implement, or when resuming one left half-done — works through the task list, marking each checkbox as it lands."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -454,15 +417,23 @@ This skill supports the "actions on a change" model:
 - **Can be invoked anytime**: Before all artifacts are done (if tasks exist), after partial implementation, interleaved with other actions
 - **Allows artifact updates**: If implementation reveals design issues, suggest updating artifacts - not phase-locked, work fluidly
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `/speclink-review` (craft quality) ∥ `/speclink-verify` (spec compliance), or `/speclink-quality` to run both in order; then `/speclink-archive <change-name>`
+- Only `[M]` tasks remain → the quality stations can still run now, but archiving waits until the user has done the manual work by hand
+- Requirements changed mid-work → `/speclink-ingest <change-name>`, then come back to apply
+
 === .claude/skills/speclink-apply-with-worktree/SKILL.md ===
 ---
 name: speclink-apply-with-worktree
-description: "Implement tasks from a Speclink change inside an isolated git worktree, for parallel work"
+description: "Use when several independent changes are being implemented at once — runs apply inside an isolated git worktree per change so parallel work never collides."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -927,12 +898,21 @@ This skill supports the "actions on a change" model:
 - **Can be invoked anytime**: Before all artifacts are done (if tasks exist), after partial implementation, interleaved with other actions
 - **Allows artifact updates**: If implementation reveals design issues, suggest updating artifacts - not phase-locked, work fluidly
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `/speclink-review` (craft quality) ∥ `/speclink-verify` (spec compliance), or `/speclink-quality` to run both in order; then `/speclink-archive <change-name>`
+- Only `[M]` tasks remain → the quality stations can still run now, but archiving waits until the user has done the manual work by hand
+- Requirements changed mid-work → `/speclink-ingest <change-name>`, then come back to apply
 
 ---
 
 ## Worktree wrap-up
 
 Once the apply flow above has finished (all tasks complete, or the user stopped you at a good point), do these — still **inside the worktree**.
+
+The apply body's own **Next steps** section does not apply here — this worktree flow replaces it with the edges in **Next steps** at the end of this document.
 
 ### W1. Commit the change in the worktree
 
@@ -962,15 +942,23 @@ Tell the user, plainly:
 
 Report alongside it: the worktree path, the branch name, and the tasks completed this session.
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The change is committed inside the worktree → the quality stations belong **here**, while the Apply baseline still exists: `/speclink-review` ∥ `/speclink-verify`, or `/speclink-quality` for both
+- The stations are done or the user chose to skip them → `/speclink-worktree-merge <change-name>`
+- Requirements changed mid-work → `/speclink-ingest <change-name>` inside this worktree, then resume apply here
+
 === .claude/skills/speclink-archive/SKILL.md ===
 ---
 name: speclink-archive
-description: "Archive a completed change"
+description: "Use when a change is finished and its quality stations are settled — folds the deltas into the specs and moves the change into the archive."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -1241,13 +1229,13 @@ up, nothing to delete.
 === .claude/skills/speclink-audit/SKILL.md ===
 ---
 name: speclink-audit
-description: "Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures"
+description: "Use when changed code needs a security pass — hunts dangerous defaults, type confusion and silent failures, and reports the sharp edges it finds."
 disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -1478,12 +1466,12 @@ permissions = Set[Permission::READ, Permission::WRITE]
 === .claude/skills/speclink-commit/SKILL.md ===
 ---
 name: speclink-commit
-description: "Commit files related to a specific Speclink change"
+description: "Use when only the files belonging to one specific change should be committed — selects that change's files and writes the commit."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -1749,13 +1737,13 @@ No dirty files found for this change (no modified artifacts, no tracked source f
 === .claude/skills/speclink-config/SKILL.md ===
 ---
 name: speclink-config
-description: "Compose the workflow config's context and rules from the codebase, landed through an approved diff"
+description: "Use when the workflow config's project context or per-artifact rules need composing or refreshing from the codebase — lands them through an approved diff."
 disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -1895,13 +1883,13 @@ Report at the end: which of the five sources were read, what was added, what was
 === .claude/skills/speclink-discuss/SKILL.md ===
 ---
 name: speclink-discuss
-description: "Have a focused discussion that is recorded to a discussion document"
+description: "Use when requirements are fuzzy, contested, or worth debating before any change exists — records the exchange as a discussion document that can later be promoted into a change."
 disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -2359,10 +2347,19 @@ When the discussion converges on building something:
 - **Do explore the codebase** — Ground discussions in reality.
 - **Do be opinionated** — Have a recommendation. The user can disagree.
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The conclusion warrants its own change → `speclink discuss promote <slug>` (or `/speclink-propose --from-discussion <slug>`), then `/speclink-propose` for the remaining artifacts
+- It belongs in a change that already exists → `speclink discuss link <slug> <change>`, then `/speclink-ingest <change>` to fold it in and seal
+- The conclusion is "don't do it" → conclude anyway, then `speclink discuss archive <slug>`
+- Nothing of substance was recorded → `speclink discuss discard <slug>`
+
 === .claude/skills/speclink-drift/SKILL.md ===
 ---
 name: speclink-drift
-description: "Detect drift between a Speclink change and the current codebase state"
+description: "Use when picking a change back up after it sat idle, before touching its tasks — reports how far the codebase has moved from the delta's assumptions."
 context: fork
 agent: Explore
 disallowedTools: [Edit, Write]
@@ -2370,7 +2367,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -2492,16 +2489,23 @@ When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` dat
 - Do NOT auto-invoke any follow-up command — recommendations are user-confirmed
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The delta's assumptions are stale → `/speclink-ingest <change-name>` to refresh the artifacts before any code is written
+- No meaningful drift → `/speclink-apply <change-name>` to pick the tasks back up
+
 === .claude/skills/speclink-improve/SKILL.md ===
 ---
 name: speclink-improve
-description: "Scan the codebase for architectural improvements and record the candidates as a discussion — user-initiated only, never triggered by the model on its own"
+description: "Use when improvements are asked for without naming a topic — user-initiated only, never on the model's own initiative; scans the codebase and records the candidates as a discussion."
 disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -2668,15 +2672,21 @@ speclink discuss archive improve-<scope>
 - **Check the archive first** — a settled rejection is not a candidate
 - **Conclude and archive, never discard** — even when the answer is "do nothing"
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The candidates are recorded as a discussion → the discussion's own exits apply: promote it into a change, link it into an existing one, or archive it when the answer is "do nothing"
+
 === .claude/skills/speclink-ingest/SKILL.md ===
 ---
 name: speclink-ingest
-description: "Update an existing Speclink change from external context"
+description: "Use when requirements change mid-work, including after a separate planning session — folds the new context into an existing change's artifacts so apply can resume."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -2930,13 +2940,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    - Artifacts created/updated
    - Validation result
 
-   Use **AskUserQuestion tool** to confirm the workflow is complete. This ensures the workflow stops even when auto-accept is enabled. Provide exactly these options:
-   - **First option (will be auto-selected)**: "Done" — End the ingest workflow. Inform the user they can run `/speclink-apply <change-name>` when ready.
-   - **Second option**: "Apply" — Invoke `/speclink-apply <change-name>` to start implementation.
-
-   If **AskUserQuestion tool** is not available, display the summary and inform the user to run `/speclink-apply <change-name>` when ready. Then STOP — do not continue.
-
-   **After the user responds**, if they chose "Done", the workflow is OVER. If they chose "Apply", invoke `/speclink-apply <change-name>` to begin implementation.
+   Then state the suggestion from **Next steps** and STOP. Never invoke `/speclink-apply` yourself — starting implementation is the user's call, and this workflow is over once the summary is out.
 
 **Guardrails**
 
@@ -2950,15 +2954,22 @@ Update an existing Speclink change — from a plan file or conversation context.
 - **NEVER** skip the artifact workflow to write code directly
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The artifacts are updated and validated → `/speclink-apply <change-name>` to resume implementation
+- A linked discussion fed this change → `speclink discuss seal <slug>` first (step 9), then the same suggestion applies
+
 === .claude/skills/speclink-onboard/SKILL.md ===
 ---
 name: speclink-onboard
-description: "Adopt Speclink on an existing codebase by generating initial specs from current behavior"
+description: "Use when adopting Speclink on a codebase that already has behavior but no specs — generates the initial specs from what the code does today."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -3032,9 +3043,7 @@ Rules:
 speclink validate --specs --all --strict
 ```
 
-Fix structural findings, then report: capabilities created (with requirement/scenario counts), behaviors flagged as unverified, and areas deliberately left out. Suggest the natural next step:
-
-> Specs now describe the current system. Future work goes through changes: `/speclink-propose <idea>`.
+Fix structural findings, then report: capabilities created (with requirement/scenario counts), behaviors flagged as unverified, and areas deliberately left out. Then state that specs now describe the current system and that future work goes through changes — the exits are in **Next steps** below.
 
 ## Guardrails
 
@@ -3044,15 +3053,22 @@ Fix structural findings, then report: capabilities created (with requirement/sce
 - **Do confirm the capability map before writing** — boundaries are the expensive decision.
 - **Do keep specs small** — a capability that needs 15 requirements is probably two capabilities.
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The requirements for the next piece of work are clear → `/speclink-propose <idea>`
+- They are still fuzzy or worth debating → `/speclink-discuss <topic>`
+
 === .claude/skills/speclink-propose/SKILL.md ===
 ---
 name: speclink-propose
-description: "Create a change proposal with all required artifacts"
+description: "Use when a change needs planning, proposing or designing — creates the change with every required artifact; seed it from a concluded discussion with --from-discussion."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -3478,15 +3494,23 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** invoke `/speclink-apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- Artifacts are complete → `/speclink-apply <change-name>` when the user is ready to implement
+- Several independent changes will be implemented at once, and the project's worktree policy is on → `/speclink-apply-with-worktree <change-name>` (one git worktree per change)
+- The requirements turned out to be fuzzier than they looked → `/speclink-discuss` before implementing
+
 === .claude/skills/speclink-quality/SKILL.md ===
 ---
 name: speclink-quality
-description: "Run both quality stations over one change, pausing after every round for the user's call: both checks first without stamping, then both stations' findings are reported together and the skill stops — nothing is fixed, stamped or archived without the user's answer"
+description: "Use when both quality stations should run over one change, pausing after every round for the user's call: both check without stamping, their findings are reported together and the skill stops — for only one station, call review or verify directly."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -3565,15 +3589,23 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 - No edits between the two stamps, and none between them and archive
 - A station's refusal or error stops this flow and is reported as-is — do not work around it
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- Both stamps landed and the work is in the main checkout → `/speclink-archive <change-name>`
+- Both stamps landed inside a worktree → `/speclink-worktree-merge <change-name>` first; archive runs only from the main checkout
+- The round ended without stamping → nothing downstream is suggested; the round's pause is where this skill stops
+
 === .claude/skills/speclink-review/SKILL.md ===
 ---
 name: speclink-review
-description: "Review a change's implementation for craft quality — parallel standards and correctness axes, recorded to a review ticket"
+description: "Use when an implementation should be checked for craft quality before archiving — parallel standards and correctness axes, recorded to a review ticket."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -3753,10 +3785,17 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 - Thin artifacts: judge from code and tests, never invent requirements
 - Stop on errors and report — don't guess past a failing verb
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The review stamp landed → the other station if the user wants it (`/speclink-verify <change-name>`), otherwise `/speclink-archive <change-name>`
+- Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream
+
 === .claude/skills/speclink-trace/SKILL.md ===
 ---
 name: speclink-trace
-description: "Answer how a capability came to be by walking its provenance chain — archived changes, source discussions, evidence, live code"
+description: "Use when someone asks how a capability came to be or why it works this way — walks its provenance chain across archived changes, source discussions, evidence and live code."
 context: fork
 agent: Explore
 disallowedTools: [Edit, Write]
@@ -3764,7 +3803,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -3843,12 +3882,12 @@ Answer "how did this come to be / why is it designed this way" for a feature: ma
 === .claude/skills/speclink-verify/SKILL.md ===
 ---
 name: speclink-verify
-description: "Verify implementation matches artifacts"
+description: "Use when an implementation should be checked against its artifacts before archiving — confirms the specs and tasks are actually satisfied, recorded to a verify ticket."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -4118,16 +4157,23 @@ Use clear markdown with:
 - Thin artifacts: verify what exists, never invent requirements
 - Stop on errors and report — don't guess past a failing verb
 
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The verify stamp landed → the other station if the user wants it (`/speclink-review <change-name>`), otherwise `/speclink-archive <change-name>`
+- Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream
+
 === .claude/skills/speclink-worktree-merge/SKILL.md ===
 ---
 name: speclink-worktree-merge
-description: "Merge a finished Speclink worktree branch back into the main branch, then clean up"
+description: "Use when a worktree change is committed and ready to land — merges the branch back into the main branch, then cleans the worktree up."
 disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -4280,3 +4326,10 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 - Never leave a half-finished merge state behind
 - Never force-remove a worktree that still has uncommitted work
 - Never merge a change whose worktree you did not verify is fully committed
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The branch is merged, the worktree is removed and the branch is deleted → `/speclink-archive <change-name>` **from the main checkout** — archiving inside a linked worktree is refused by the engine
+- The quality stations were never run → they need the worktree's Apply baseline, which is gone after the merge; say so plainly instead of suggesting them here

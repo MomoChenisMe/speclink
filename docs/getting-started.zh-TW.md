@@ -54,7 +54,7 @@ speclink init --tools claude,codex
 Generated files for: claude, codex
 ```
 
-這會建立 `openspec/` 與 `.speclink.yaml`，為選定的 Host 產生技能檔與指令檔（`.claude/`、`.agents/`、`CLAUDE.md`、`AGENTS.md`），並把 `.speclink/` 加進 `.gitignore`。`.speclink/` 本身不在這一步建立，之後有本機工作資料要落時才會出現。
+這會建立 `openspec/` 與 `.speclink.yaml`，為選定的 Host 產生技能檔（`.claude/skills/`、`.agents/skills/`），並把 `.speclink/` 加進 `.gitignore`。不會寫任何指令檔——`CLAUDE.md`、`AGENTS.md` 是你自己的檔案，流程路由由技能自身的 description 承載。`.speclink/` 本身不在這一步建立，之後有本機工作資料要落時才會出現。
 
 **這是 Local 模式的產物。** `openspec/` 的結構刻意貼合 OpenSpec 慣例，方便你直接讀、直接改，也方便從 OpenSpec 搬過來：
 

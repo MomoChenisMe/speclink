@@ -1,0 +1,190 @@
+{
+  "version": 2,
+  "change": "remove-marker-injection",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 依 design D1: 注入拆除面，實作規格需求「init 內建 Agent 工具選擇」「工作區補齊入口」「工具檔生成不寫入 AI 工具的使用者設定檔」與 remote-connection「remote 初始化與連接指令」的無 marker 生成物集合，並落地 REMOVED 需求「marker 技能指引跟隨 worktree 政策」「指令區塊的 remote 變體」：crates/speclink-core/src/init.rs 移除 instructions_body、custom_instructions_body、upsert_marker 及 fs init、remote init、update、tools 收斂、adopt 各路徑的 marker 寫入；受管生成物縮為技能檔、.speclink.yaml、.gitignore 條目。同批移除 Node SDK 的 instructions.render 公開面（crates/speclink-node/src/render.rs 的 instructions_render 匯出、index.js／index.d.ts 條目、__test__/render.spec.ts 對應測項）——兩支 body 函式的唯一外部消費者。驗證：cargo test -p speclink-core 中原斷言「marker 生成」的單元測試改斷言「指令檔不存在或位元級不變」後全綠。",
+      "files": [
+        "apps/desktop/core/src/project.rs",
+        "crates/speclink-cli/src/main.rs",
+        "crates/speclink-cli/src/verbs/init.rs",
+        "crates/speclink-cli/tests/it/engine_version.rs",
+        "crates/speclink-cli/tests/it/init_tools.rs",
+        "crates/speclink-cli/tests/it/remote_connect.rs",
+        "crates/speclink-cli/tests/it/remote_section.rs",
+        "crates/speclink-cli/tests/it/tools_descriptor.rs",
+        "crates/speclink-cli/tests/it/update_downgrade_guard.rs",
+        "crates/speclink-cli/tests/it/workflow_config.rs",
+        "crates/speclink-core/src/config.rs",
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/src/skills.rs",
+        "crates/speclink-core/tests/it/render_golden.rs",
+        "crates/speclink-node/__test__/render.spec.ts",
+        "crates/speclink-node/index.d.ts",
+        "crates/speclink-node/index.js",
+        "crates/speclink-node/src/render.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.2 依 design D5: 出口路由——交棒句邊集，實作 skill-routing 規格需求「出口交棒由技能結尾承載」「去中心化路由不留集中總表」「內部技能不參與路由」：於 crates/speclink-core/assets/skills/ 的流程鏈技能資產（propose、apply、apply-worktree-post、worktree-merge、drift、ingest、review、verify、quality、onboard、discuss、improve）補齊或統一結尾的下一步建議段，明文僅建議不代跑；工具技能與 archive 不加固定出邊；onboard 出口僅兩條邊、不帶命令總表。驗證：逐檔審閱對照 design D5 表，邊集完整且無技能自動呼叫字句。",
+      "files": [
+        "crates/speclink-core/assets/skills/apply-worktree-post.md",
+        "crates/speclink-core/assets/skills/apply.md",
+        "crates/speclink-core/assets/skills/discuss.md",
+        "crates/speclink-core/assets/skills/drift.md",
+        "crates/speclink-core/assets/skills/improve.md",
+        "crates/speclink-core/assets/skills/ingest.md",
+        "crates/speclink-core/assets/skills/onboard.md",
+        "crates/speclink-core/assets/skills/propose.md",
+        "crates/speclink-core/assets/skills/quality.md",
+        "crates/speclink-core/assets/skills/review.md",
+        "crates/speclink-core/assets/skills/verify.md",
+        "crates/speclink-core/assets/skills/worktree-merge.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 依 design D7: golden 面重整落地三連動並覆蓋規格需求「中性渲染目標」「worktree 技能的政策條件式生成」的新基線：ASSET_VERSION bump（minor 位）；刪除 crates/speclink-core/tests/golden/remote-claude.marker.md 並移除 crates/speclink-core/tests/it/render_golden.rs 的 marker 專屬測項；以刻意更新流程再生 claude.snapshot.md、claude-worktree.snapshot.md、codex.snapshot.md、neutral-cli.snapshot.md、neutral-tool-call.snapshot.md（再生後不含任何指令檔段）與 assets.lock。驗證：cargo test -p speclink-core 全綠，含 render_golden 與資產鎖定測試。",
+      "files": [
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.1 更新 docs/getting-started.md、docs/getting-started.zh-TW.md、docs/configuration.md、docs/configuration.zh-TW.md、docs/verb-contract.md、docs/verb-contract.zh-TW.md、docs/platform-architecture.zh-TW.md、docs/server-store-drivers.zh-TW.md、docs/implementation-refactor-roadmap.zh-TW.md、docs/sdk-node.md、docs/sdk-node.zh-TW.md：marker 注入敘述改為技能路由敘述（init／update 產物清單、instructions_file 棄用說明、update 自動剝除遺留區塊的行為）；sdk-node 兩份的 Render API 段與 Copilot 整合範例移除 instructions.render，改述自建 harness 由技能檔 description 承載路由。驗證：grep 上列檔案無「SPECLINK:START」與「marker 區塊會生成」類殘句（歷史段落與 roadmap 回顧除外，逐檔人工確認語境）。",
+      "files": [
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/instructionPrompt.ts",
+        "apps/desktop/src/store.ts",
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/platform-architecture.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "6.1 逐 crate 全量驗證與提交面盤點：cargo test -p speclink-core、cargo test -p speclink-cli --test it、desktop 相關 crate 測試全綠；speclink validate remove-marker-injection 通過（delta 依 design D8: delta 宣告紀律可乾淨套用，REMOVED 與 REMOVED-SCENARIO 宣告齊備）；git status 盤點——golden 快照、assets.lock、speclink update 再生的全部渲染 SKILL.md、本 repo 的 CLAUDE.md／AGENTS.md 剝除結果均納入提交清單，工作樹無未認領檔案。驗證：上列測試面全綠且盤點清單與 proposal Impact 一致。",
+      "files": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M0P57HK2XHNG02RJ6AB1NFRJ",
+      "taskDesc": "1.1 依 design D1: 注入拆除面，實作規格需求「init 內建 Agent 工具選擇」「工作區補齊入口」「工具檔生成不寫入 AI 工具的使用者設定檔」與 remote-connection「remote 初始化與連接指令」的無 marker 生成物集合，並落地 REMOVED 需求「marker 技能指引跟隨 worktree 政策」「指令區塊的 remote 變體」：crates/speclink-core/src/init.rs 移除 instructions_body、custom_instructions_body、upsert_marker 及 fs init、remote init、update、tools 收斂、adopt 各路徑的 marker 寫入；受管生成物縮為技能檔、.speclink.yaml、.gitignore 條目。同批移除 Node SDK 的 instructions.render 公開面（crates/speclink-node/src/render.rs 的 instructions_render 匯出、index.js／index.d.ts 條目、__test__/render.spec.ts 對應測項）——兩支 body 函式的唯一外部消費者。驗證：cargo test -p speclink-core 中原斷言「marker 生成」的單元測試改斷言「指令檔不存在或位元級不變」後全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bafa21598a985a80801c9dd85e6356d3060b58ab",
+      "touchedFiles": [
+        "apps/desktop/core/src/project.rs",
+        "crates/speclink-cli/src/main.rs",
+        "crates/speclink-cli/src/verbs/init.rs",
+        "crates/speclink-cli/tests/it/engine_version.rs",
+        "crates/speclink-cli/tests/it/init_tools.rs",
+        "crates/speclink-cli/tests/it/remote_connect.rs",
+        "crates/speclink-cli/tests/it/remote_section.rs",
+        "crates/speclink-cli/tests/it/tools_descriptor.rs",
+        "crates/speclink-cli/tests/it/update_downgrade_guard.rs",
+        "crates/speclink-cli/tests/it/workflow_config.rs",
+        "crates/speclink-core/src/config.rs",
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/src/skills.rs",
+        "crates/speclink-core/tests/it/render_golden.rs",
+        "crates/speclink-node/__test__/render.spec.ts",
+        "crates/speclink-node/index.d.ts",
+        "crates/speclink-node/index.js",
+        "crates/speclink-node/src/render.rs"
+      ],
+      "recordedAt": "2026-08-23T03:04:12Z"
+    },
+    {
+      "taskId": "tsk_01M0P57HK2RCX5X76HA46VNMET",
+      "taskDesc": "2.2 依 design D5: 出口路由——交棒句邊集，實作 skill-routing 規格需求「出口交棒由技能結尾承載」「去中心化路由不留集中總表」「內部技能不參與路由」：於 crates/speclink-core/assets/skills/ 的流程鏈技能資產（propose、apply、apply-worktree-post、worktree-merge、drift、ingest、review、verify、quality、onboard、discuss、improve）補齊或統一結尾的下一步建議段，明文僅建議不代跑；工具技能與 archive 不加固定出邊；onboard 出口僅兩條邊、不帶命令總表。驗證：逐檔審閱對照 design D5 表，邊集完整且無技能自動呼叫字句。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bafa21598a985a80801c9dd85e6356d3060b58ab",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/apply-worktree-post.md",
+        "crates/speclink-core/assets/skills/apply.md",
+        "crates/speclink-core/assets/skills/discuss.md",
+        "crates/speclink-core/assets/skills/drift.md",
+        "crates/speclink-core/assets/skills/improve.md",
+        "crates/speclink-core/assets/skills/ingest.md",
+        "crates/speclink-core/assets/skills/onboard.md",
+        "crates/speclink-core/assets/skills/propose.md",
+        "crates/speclink-core/assets/skills/quality.md",
+        "crates/speclink-core/assets/skills/review.md",
+        "crates/speclink-core/assets/skills/verify.md",
+        "crates/speclink-core/assets/skills/worktree-merge.md"
+      ],
+      "recordedAt": "2026-08-23T03:09:09Z"
+    },
+    {
+      "taskId": "tsk_01M0P57HK26ZBGFMHMKFY5Q2P4",
+      "taskDesc": "3.1 依 design D7: golden 面重整落地三連動並覆蓋規格需求「中性渲染目標」「worktree 技能的政策條件式生成」的新基線：ASSET_VERSION bump（minor 位）；刪除 crates/speclink-core/tests/golden/remote-claude.marker.md 並移除 crates/speclink-core/tests/it/render_golden.rs 的 marker 專屬測項；以刻意更新流程再生 claude.snapshot.md、claude-worktree.snapshot.md、codex.snapshot.md、neutral-cli.snapshot.md、neutral-tool-call.snapshot.md（再生後不含任何指令檔段）與 assets.lock。驗證：cargo test -p speclink-core 全綠，含 render_golden 與資產鎖定測試。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bafa21598a985a80801c9dd85e6356d3060b58ab",
+      "touchedFiles": [
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/speclink-core/tests/golden/remote-claude.marker.md"
+      ],
+      "recordedAt": "2026-08-23T03:14:20Z"
+    },
+    {
+      "taskId": "tsk_01M0P57HK2SKRQ44G6WJ6ACSRX",
+      "taskDesc": "5.1 更新 docs/getting-started.md、docs/getting-started.zh-TW.md、docs/configuration.md、docs/configuration.zh-TW.md、docs/verb-contract.md、docs/verb-contract.zh-TW.md、docs/platform-architecture.zh-TW.md、docs/server-store-drivers.zh-TW.md、docs/implementation-refactor-roadmap.zh-TW.md、docs/sdk-node.md、docs/sdk-node.zh-TW.md：marker 注入敘述改為技能路由敘述（init／update 產物清單、instructions_file 棄用說明、update 自動剝除遺留區塊的行為）；sdk-node 兩份的 Render API 段與 Copilot 整合範例移除 instructions.render，改述自建 harness 由技能檔 description 承載路由。驗證：grep 上列檔案無「SPECLINK:START」與「marker 區塊會生成」類殘句（歷史段落與 roadmap 回顧除外，逐檔人工確認語境）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bafa21598a985a80801c9dd85e6356d3060b58ab",
+      "touchedFiles": [
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/instructionPrompt.ts",
+        "apps/desktop/src/store.ts",
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/platform-architecture.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-23T03:30:29Z"
+    },
+    {
+      "taskId": "tsk_01M0P57HK22V6YQRB3D6S9GEP4",
+      "taskDesc": "6.1 逐 crate 全量驗證與提交面盤點：cargo test -p speclink-core、cargo test -p speclink-cli --test it、desktop 相關 crate 測試全綠；speclink validate remove-marker-injection 通過（delta 依 design D8: delta 宣告紀律可乾淨套用，REMOVED 與 REMOVED-SCENARIO 宣告齊備）；git status 盤點——golden 快照、assets.lock、speclink update 再生的全部渲染 SKILL.md、本 repo 的 CLAUDE.md／AGENTS.md 剝除結果均納入提交清單，工作樹無未認領檔案。驗證：上列測試面全綠且盤點清單與 proposal Impact 一致。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bafa21598a985a80801c9dd85e6356d3060b58ab",
+      "touchedFiles": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ],
+      "recordedAt": "2026-08-23T03:46:38Z"
+    }
+  ]
+}

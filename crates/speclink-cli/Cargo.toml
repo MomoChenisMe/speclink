@@ -22,5 +22,7 @@ clap.workspace = true
 clap_complete = "4"
 
 [dev-dependencies]
+# 測試借 core 的 testkit（技能檔版號讀寫 helper）；feature 只在 dev 構建生效。
+speclink-core = { path = "../speclink-core", features = ["testkit"] }
 tiny_http = "0.12"
 chrono.workspace = true

@@ -147,3 +147,10 @@ This is the wrap-up half of `/speclink:apply-with-worktree`. That skill stops ri
 - Never leave a half-finished merge state behind
 - Never force-remove a worktree that still has uncommitted work
 - Never merge a change whose worktree you did not verify is fully committed
+
+## Next steps
+
+{{NEXT_STEPS_LEAD}}
+
+- The branch is merged, the worktree is removed and the branch is deleted → `/speclink:archive <change-name>` **from the main checkout** — archiving inside a linked worktree is refused by the engine
+- The quality stations were never run → they need the worktree's Apply baseline, which is gone after the merge; say so plainly instead of suggesting them here

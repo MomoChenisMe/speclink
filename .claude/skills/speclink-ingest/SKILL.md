@@ -1,11 +1,11 @@
 ---
 name: speclink-ingest
-description: "Update an existing Speclink change from external context"
+description: "Use when requirements change mid-work, including after a separate planning session — folds the new context into an existing change's artifacts so apply can resume."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.20.2"
+  version: "v1.21.0"
   generatedBy: "Speclink"
 ---
 
@@ -259,13 +259,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    - Artifacts created/updated
    - Validation result
 
-   Use **AskUserQuestion tool** to confirm the workflow is complete. This ensures the workflow stops even when auto-accept is enabled. Provide exactly these options:
-   - **First option (will be auto-selected)**: "Done" — End the ingest workflow. Inform the user they can run `/speclink-apply <change-name>` when ready.
-   - **Second option**: "Apply" — Invoke `/speclink-apply <change-name>` to start implementation.
-
-   If **AskUserQuestion tool** is not available, display the summary and inform the user to run `/speclink-apply <change-name>` when ready. Then STOP — do not continue.
-
-   **After the user responds**, if they chose "Done", the workflow is OVER. If they chose "Apply", invoke `/speclink-apply <change-name>` to begin implementation.
+   Then state the suggestion from **Next steps** and STOP. Never invoke `/speclink-apply` yourself — starting implementation is the user's call, and this workflow is over once the summary is out.
 
 **Guardrails**
 
@@ -278,3 +272,10 @@ Update an existing Speclink change — from a plan file or conversation context.
 - Verify each artifact file exists after writing before proceeding to next
 - **NEVER** skip the artifact workflow to write code directly
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The artifacts are updated and validated → `/speclink-apply <change-name>` to resume implementation
+- A linked discussion fed this change → `speclink discuss seal <slug>` first (step 9), then the same suggestion applies

@@ -108,6 +108,9 @@ pub struct ToolDescriptor {
     pub name: Option<String>,
     #[serde(default)]
     pub skills_dir: Option<String>,
+    /// Deprecated (change: remove-marker-injection). Nothing is generated into this file
+    /// any more; it survives as the strip target for a legacy SPECLINK block and so old
+    /// `.speclink.yaml` files keep parsing.
     #[serde(default)]
     pub instructions_file: Option<String>,
     /// Raw invocation value; `validate` restricts it to cli | tool-call (default cli).
@@ -131,7 +134,8 @@ pub enum Invocation {
 pub struct CustomTool {
     pub name: String,
     pub skills_dir: String,
-    pub instructions_file: String,
+    /// Deprecated and optional: no longer drives generation, only legacy stripping.
+    pub instructions_file: Option<String>,
     pub invocation: Invocation,
 }
 
@@ -154,8 +158,15 @@ impl ToolDescriptor {
         }
         let skills_dir = require_field(self.skills_dir.as_deref(), "skills_dir")?;
         check_project_relative(name, "skills_dir", skills_dir)?;
-        let instructions_file = require_field(self.instructions_file.as_deref(), "instructions_file")?;
-        check_project_relative(name, "instructions_file", instructions_file)?;
+        // instructions_file 已棄用（change: remove-marker-injection）：缺席合法，
+        // 存在時仍驗證專案根相對與不逸出——剝除要照它去定位檔案。
+        let instructions_file = match self.instructions_file.as_deref().map(str::trim) {
+            None | Some("") => None,
+            Some(file) => {
+                check_project_relative(name, "instructions_file", file)?;
+                Some(file.to_string())
+            }
+        };
         let invocation = match self.invocation.as_deref() {
             None => Invocation::Cli,
             Some("cli") => Invocation::Cli,
@@ -169,7 +180,7 @@ impl ToolDescriptor {
         Ok(CustomTool {
             name: name.to_string(),
             skills_dir: skills_dir.to_string(),
-            instructions_file: instructions_file.to_string(),
+            instructions_file,
             invocation,
         })
     }
