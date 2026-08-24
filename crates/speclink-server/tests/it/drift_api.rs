@@ -24,6 +24,7 @@ const META: &str = "schema: spec-driven\ncreated: 2026-07-13\n";
 const CONFIG: &str = "schema: spec-driven\n";
 const DESIGN: &str = "## Context\n\nUses `Widget_kind` and `src/app.rs`.\n";
 const TASKS: &str = "- [ ] 1.1 wire `src/app.rs`\n";
+const EVIDENCE: &str = r#"{"version":2,"change":"demo","entries":[{"taskId":"tsk_1","taskDesc":"1.1 a","touchedFiles":["src/app.rs"],"recordedAt":"2026-08-23T00:00:00Z"}]}"#;
 
 /// `demo`'s delta touches two capabilities. `payment` MODIFIES a requirement
 /// the canonical spec still has (assumption holds); `auth` MODIFIES one the
@@ -64,6 +65,10 @@ fn seed(store: &MemoryStore) {
     );
     uow.create(DocumentId::CanonicalSpec { capability: "payment".into() }, SPEC_PAYMENT);
     uow.create(DocumentId::CanonicalSpec { capability: "auth".into() }, SPEC_AUTH);
+    uow.create(
+        DocumentId::ChangeEvidence { change: "demo".into() },
+        EVIDENCE,
+    );
     uow.create(DocumentId::WorkflowConfig, CONFIG);
     store.commit(uow, Vec::new()).expect("seed commit");
 }
@@ -144,6 +149,13 @@ fn a_change_with_delta_specs_gets_its_spec_dimension_and_basis() {
     assert_eq!(response.change.created.as_deref(), Some("2026-07-13"));
     assert_eq!(response.change.design.as_deref(), Some(DESIGN));
     assert_eq!(response.change.tasks.as_deref(), Some(TASKS));
+    // spec verify-evidence（design 決策三）：store 記錄的 evidence 隨 drift 回應
+    // 送到 checkout 側，remote 模式的 Environment 維度才有 touched 事實可讀。
+    assert_eq!(
+        response.change.evidence.as_deref(),
+        Some(EVIDENCE),
+        "the store-held evidence record ships with the drift response"
+    );
 }
 
 /// Absence must survive the trip: an empty string would tell the client's
@@ -220,8 +232,8 @@ fn the_response_carries_no_workspace_or_git_field() {
         json["change"].as_object().expect("an object").keys().map(String::as_str).collect();
     assert_eq!(
         inputs,
-        vec!["created", "design", "tasks"],
-        "the store-side inputs are the three the workspace-side computation reads"
+        vec!["created", "design", "evidence", "tasks"],
+        "the store-side inputs are exactly what the workspace-side computation reads"
     );
 }
 

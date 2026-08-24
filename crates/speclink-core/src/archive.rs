@@ -1636,19 +1636,20 @@ mod tests {
     fn archive_sweeps_the_legacy_touched_record_with_the_change() {
         // 舊路徑殘檔不得比 change 活得久：留著的話，同名新 change 的第一次 load
         // 會把死帳讀成活帳（seen 汙染、零證據提示被吞）。封存比照 `.started`
-        // 標記順手帶走。（舊路徑的內容仍算這個 change 的事實——那是檔案系統
-        // supplier 的回退讀取，釘在 speclink-fs。）
+        // 標記順手帶走。evidence_recorded 的事實經 Store seam 讀取（舊路徑內容
+        // 「仍算這個 change 的事實」由 speclink-fs 的回退讀取測試釘住）。
         let t = TraceWs::new("legacy-sweep");
         let store = trace_store();
-        let legacy = t.ws.legacy_touched_file("demo");
-        util::write_file(
-            &legacy,
+        store.put_evidence(
+            "demo",
             r#"{"version":2,"change":"demo","entries":[{"taskId":"tsk_LEGACY","taskDesc":"1.1 done","touchedFiles":["src/a.rs"],"recordedAt":"2026-07-13T00:00:00Z"}]}"#,
-        )
-        .unwrap();
+        );
+        let legacy = t.ws.legacy_touched_file("demo");
+        util::write_file(&legacy, "{\"change\":\"demo\",\"touched\":[]}").unwrap();
         let change = crate::model::find_change(&store, "demo").unwrap();
-        archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
+        let outcome = archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
 
+        assert!(outcome.evidence_recorded, "the seam-read record still counts as this change's fact");
         assert!(!legacy.exists(), "the legacy touched record dies with the change");
     }
 

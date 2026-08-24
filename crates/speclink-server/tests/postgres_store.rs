@@ -108,7 +108,7 @@ fn drive(store: SharedStore) -> Outcome {
 
     let status = client.get_change("demo").expect("change status");
     assert_eq!(status.change_name, "demo");
-    let done = client.task_done("demo", "1", &[]).expect("task done");
+    let done = client.task_done("demo", "1", &[], None).expect("task done");
 
     Outcome {
         schema: created.schema,

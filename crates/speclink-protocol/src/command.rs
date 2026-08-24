@@ -59,6 +59,10 @@ pub struct PutArtifactResponse {
 pub struct TaskDoneRequest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub touched_files: Vec<String>,
+    /// The commit the sender observed its touched files on. Absent when the
+    /// sender has no checkout (or no commit yet) — never fabricated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_commit: Option<String>,
 }
 
 /// `POST /changes/{name}/tasks/{taskId}/done` response.
@@ -497,15 +501,19 @@ mod tests {
 
     #[test]
     fn task_done_request_omits_empty_touched_files() {
-        let empty = TaskDoneRequest { touched_files: vec![] };
+        let empty = TaskDoneRequest { touched_files: vec![], head_commit: None };
         assert_eq!(
             serde_json::to_string(&empty).unwrap(),
             "{}",
             "empty attribution serializes as the bare object, matching the current body"
         );
-        let some = TaskDoneRequest { touched_files: vec!["src/lib.rs".into()] };
+        let some = TaskDoneRequest {
+            touched_files: vec!["src/lib.rs".into()],
+            head_commit: Some("0123456789012345678901234567890123456789".into()),
+        };
         let json = serde_json::to_value(&some).unwrap();
         assert_eq!(json["touchedFiles"][0], "src/lib.rs");
+        assert_eq!(json["headCommit"], "0123456789012345678901234567890123456789");
         let back: TaskDoneRequest = serde_json::from_value(json).unwrap();
         assert_eq!(back, some);
     }

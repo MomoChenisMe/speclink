@@ -674,7 +674,10 @@ pub async fn change_evidence(
             .map_err(ApiError::from)?
             .map(|doc| doc.content);
         // The store keeps the record opaque; the shape is the engine's, and a
-        // record this server cannot parse is corruption, not an empty set.
+        // record this server cannot parse is corruption, not an empty set —
+        // deliberately louder than the engine's own lenient read (which treats
+        // a corrupt record as empty so a completion is never blocked): a query
+        // face answering "no evidence" over a corrupt record would be a lie.
         let entries = match text {
             Some(text) => serde_json::from_str::<StoredEvidence>(&text)
                 .map_err(|e| ApiError::internal(format!("evidence record is unreadable: {e}")))?
@@ -689,8 +692,13 @@ pub async fn change_evidence(
 }
 
 /// The stored evidence record, as far as this endpoint reads it: the v2 entry
-/// list. Other fields of the record (the v1 file-list channel, the version
-/// marker) are not part of this response.
+/// list. The v1 file-list channel and the version marker are deliberately not
+/// part of this response — v1 entries carry no actor/recordedAt and this
+/// endpoint never fabricates them; a v1-only record (a migration import can
+/// carry one) reads as an empty set here while the engine's own consumers
+/// (`all_files`, the in-progress-remove gate) still see its files.
+/// The field shape mirrors `speclink_core::tasks::EvidenceEntry`; the sync is
+/// pinned by `evidence_wire_shape_matches_the_engine_record` below.
 #[derive(serde::Deserialize)]
 struct StoredEvidence {
     #[serde(default)]
@@ -1309,6 +1317,7 @@ pub async fn task_done(
             task_id,
             change: Some(name),
             touched_files: Some(req.touched_files),
+            head_commit: req.head_commit,
         },
     )
     .await?;
@@ -1938,5 +1947,53 @@ fn artifact_rel_path(artifact: &str) -> Option<String> {
             .strip_prefix("specs/")
             .filter(|cap| !cap.is_empty() && !cap.contains('/'))
             .map(|cap| format!("specs/{cap}/spec.md")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StoredEvidence;
+
+    /// 記錄形狀的三份宣告（core 的 EvidenceEntry、protocol 的 wire DTO、此處的
+    /// StoredEvidence 讀取面）以這條測試釘住同步：core 寫出的 entry 必須被 wire
+    /// 面逐欄讀回。core 加欄位而 wire 沒跟上時，這裡最先紅。
+    #[test]
+    fn evidence_wire_shape_matches_the_engine_record() {
+        let record = speclink_core::tasks::TouchedRecord {
+            version: Some(2),
+            change: "demo".to_string(),
+            touched: Vec::new(),
+            entries: vec![speclink_core::tasks::EvidenceEntry {
+                task_id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_string(),
+                task_desc: "1.1 First".to_string(),
+                actor: Some("Tester <t@example.com>".to_string()),
+                repo: Some("backend".to_string()),
+                head_commit: Some("0123456789012345678901234567890123456789".to_string()),
+                touched_files: vec!["src/app.rs".to_string()],
+                recorded_at: "2026-08-23T00:00:00Z".to_string(),
+            }],
+        };
+        let text = serde_json::to_string(&record).expect("engine record serializes");
+
+        let parsed: StoredEvidence = serde_json::from_str(&text).expect("wire face reads it");
+        assert_eq!(parsed.entries.len(), 1);
+        let e = &parsed.entries[0];
+        assert_eq!(e.task_id, "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV");
+        assert_eq!(e.task_desc, "1.1 First");
+        assert_eq!(e.actor.as_deref(), Some("Tester <t@example.com>"));
+        assert_eq!(e.repo.as_deref(), Some("backend"));
+        assert_eq!(e.head_commit.as_deref(), Some("0123456789012345678901234567890123456789"));
+        assert_eq!(e.touched_files, vec!["src/app.rs".to_string()]);
+        assert_eq!(e.recorded_at, "2026-08-23T00:00:00Z");
+    }
+
+    /// v1-only 記錄（無 entries 欄）讀成空集合，不偽造 actor 或 recordedAt。
+    #[test]
+    fn a_v1_only_record_reads_as_an_empty_entry_set() {
+        let parsed: StoredEvidence = serde_json::from_str(
+            r#"{"change":"demo","touched":[{"task_id":"1","task_desc":"1.1 a","files":["src/a.rs"]}]}"#,
+        )
+        .expect("v1 shape still parses");
+        assert!(parsed.entries.is_empty());
     }
 }

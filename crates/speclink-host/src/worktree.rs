@@ -244,10 +244,6 @@ impl Store for WorktreeOverlay<'_> {
         self.of(change).read_evidence(change)
     }
 
-    fn write_evidence(&self, change: &str, content: &str) -> anyhow::Result<()> {
-        self.of(change).write_evidence(change, content)
-    }
-
     fn delta_capabilities(&self, change: &str) -> Vec<String> {
         self.of(change).delta_capabilities(change)
     }
@@ -266,6 +262,10 @@ impl Store for WorktreeOverlay<'_> {
 
     fn write_change_meta(&self, name: &str, content: &str) -> anyhow::Result<()> {
         self.inner.write_change_meta(name, content)
+    }
+
+    fn write_evidence(&self, change: &str, content: &str) -> anyhow::Result<()> {
+        self.inner.write_evidence(change, content)
     }
 
     fn delete_change(&self, name: &str) -> anyhow::Result<()> {
@@ -522,6 +522,36 @@ mod tests {
             ov.read_artifact("other", "tasks.md").as_deref(),
             Some("- [ ] main only\n"),
             "an unmapped change never sees the worktree"
+        );
+    }
+
+    #[test]
+    fn evidence_reads_redirect_and_evidence_writes_land_in_the_main_copy() {
+        // 讀走 worktree 副本（與 artifact 讀同一組重導向）；寫直通主 store——
+        // 型別契約「every write passes straight through to the main store」對
+        // evidence 也成立，否則勾選落主樹、證據落 worktree，讀寫拆成兩份副本。
+        let p = Pair::new("evidence");
+        p.put("main", "add-dark-mode", ".evidence.json", "{\"change\":\"add-dark-mode\",\"main\":true}");
+        p.put("wt", "add-dark-mode", ".evidence.json", "{\"change\":\"add-dark-mode\",\"wt\":true}");
+        let main = FsStore::new(&p.main_root(), "openspec");
+        let ov = overlay(&main, &p.wt_root(), "add-dark-mode");
+
+        assert_eq!(
+            ov.read_evidence("add-dark-mode").as_deref(),
+            Some("{\"change\":\"add-dark-mode\",\"wt\":true}"),
+            "the worktree copy answers the evidence read"
+        );
+
+        ov.write_evidence("add-dark-mode", "{\"written\":true}").expect("write ok");
+        assert_eq!(
+            p.read("main", "add-dark-mode", ".evidence.json").as_deref(),
+            Some("{\"written\":true}"),
+            "the main copy receives the evidence write"
+        );
+        assert_eq!(
+            p.read("wt", "add-dark-mode", ".evidence.json").as_deref(),
+            Some("{\"change\":\"add-dark-mode\",\"wt\":true}"),
+            "the worktree copy is never written through the overlay"
         );
     }
 

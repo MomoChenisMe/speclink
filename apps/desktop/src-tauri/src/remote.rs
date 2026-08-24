@@ -1446,7 +1446,7 @@ impl RemoteWorkspace {
     ) -> Result<(), RemoteError> {
         self.run_write(credentials, |client| {
             if done {
-                client.task_done(change, task, &[]).map(|_| ())
+                client.task_done(change, task, &[], None).map(|_| ())
             } else {
                 client.task_undone(change, task).map(|_| ())
             }

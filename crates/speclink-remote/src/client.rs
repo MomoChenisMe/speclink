@@ -413,11 +413,13 @@ impl Client {
         name: &str,
         task_id: &str,
         touched_files: &[String],
+        head_commit: Option<&str>,
     ) -> Result<TaskDoneResponse, RemoteError> {
         self.post(
             &format!("/changes/{name}/tasks/{task_id}/done"),
             &TaskDoneRequest {
                 touched_files: touched_files.to_vec(),
+                head_commit: head_commit.map(str::to_string),
             },
         )
     }

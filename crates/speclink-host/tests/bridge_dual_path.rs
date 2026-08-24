@@ -175,6 +175,7 @@ fn mutating_verb_yields_the_same_outcome_and_event_kind_on_both_paths() {
         task_id: "1".to_string(),
         change: Some(CHANGE.to_string()),
         touched_files: None,
+        head_commit: None,
     };
     let (fs_out, fs_events) =
         engine_execute(&fs, &fs_engine_ctx(), done_cmd()).expect("fs task done");
@@ -214,7 +215,8 @@ fn bridged_task_done_lands_document_revision_and_event_in_one_commit() {
         Command::TaskDone {
             task_id: "1".to_string(),
             change: Some(CHANGE.to_string()),
-            touched_files: None,
+            touched_files: Some(vec!["src/app.rs".to_string()]),
+            head_commit: None,
         },
     )
     .expect("bridged task done");
@@ -236,6 +238,20 @@ fn bridged_task_done_lands_document_revision_and_event_in_one_commit() {
         doc.content
     );
     assert_eq!(doc.revision, new_rev, "the document rides the same commit revision");
+
+    // spec verify-evidence「同一 Unit of Work 原子 commit」: the evidence
+    // document lands at the very same revision as the checkbox and the event —
+    // a completion can never be visible without its evidence.
+    let evidence = snapshot
+        .read(&DocumentId::ChangeEvidence { change: CHANGE.to_string() })
+        .expect("read evidence")
+        .expect("evidence document is visible");
+    assert_eq!(evidence.revision, new_rev, "the evidence rides the same commit revision");
+    assert!(
+        evidence.content.contains("src/app.rs"),
+        "the injected candidates are what got recorded: {}",
+        evidence.content
+    );
 
     let entries = mem.read_outbox(&scope, OutboxCursor(0)).expect("read outbox");
     let completed: Vec<_> = entries

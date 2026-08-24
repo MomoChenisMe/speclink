@@ -75,14 +75,9 @@ impl Workspace {
     pub fn work_dir(&self) -> PathBuf {
         self.root.join(".speclink")
     }
-    /// A change's evidence record — a machine-written dot file inside the
-    /// change directory, alongside `.openspec.yaml`, so the record rides the
-    /// change's own lifecycle (committed, archived, discarded with it).
-    pub fn change_evidence_file(&self, change: &str) -> PathBuf {
-        self.spec_dir().join("changes").join(change).join(".evidence.json")
-    }
-    /// The pre-move evidence location, gitignored. Read-only compatibility:
-    /// consulted when the change directory carries no record, never written.
+    /// The pre-move evidence location, gitignored. Read-only compatibility on
+    /// the storage side (`speclink-fs` reads it as a fallback); the host keeps
+    /// this path only to sweep the file when its change archives or discards.
     pub fn legacy_touched_file(&self, change: &str) -> PathBuf {
         self.touched_dir().join(format!("{change}.json"))
     }

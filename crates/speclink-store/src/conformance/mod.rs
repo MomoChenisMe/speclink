@@ -365,11 +365,19 @@ fn gate_change_evidence_roundtrip(harness: &mut dyn StoreHarness) -> Result<(), 
         return Err("export bundle omits the change evidence document".into());
     }
 
-    match read_content(store, &repo_b, &evidence) {
-        Ok(None) | Err(_) => Ok(()),
+    // Same classes gate_tenant_scope admits: absence or an explicit isolation
+    // refusal. Any other failure is a driver defect, not isolation.
+    let snap_b = store
+        .snapshot(&repo_b)
+        .map_err(|e| format!("snapshot failed: {e}"))?;
+    match snap_b.read(&evidence) {
+        Ok(None) => Ok(()),
+        Err(StoreError::PermissionDenied) | Err(StoreError::NotFound) => Ok(()),
         Ok(Some(leaked)) => Err(format!(
-            "another repo's scope read this repo's change evidence: {leaked:?}"
+            "another repo's scope read this repo's change evidence: {:?}",
+            leaked.content
         )),
+        Err(other) => Err(format!("expected isolation, got failure: {other}")),
     }
 }
 

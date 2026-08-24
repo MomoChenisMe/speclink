@@ -193,6 +193,10 @@ pub struct SpecDriftView {
     pub design: Option<String>,
     /// tasks.md's content, or `None` when the change has no tasks.md.
     pub tasks: Option<String>,
+    /// The change's completion-evidence record text (opaque, as the store
+    /// holds it), or `None` when none was recorded — what the client's
+    /// workspace-side computation feeds its touched-file facts from.
+    pub evidence: Option<String>,
 }
 
 /// Compute a change's spec-side drift over one TeamStore scope, together with
@@ -220,6 +224,7 @@ pub fn spec_drift(
         created: found.meta.created.clone(),
         design: view.read_artifact(&found.name, "design.md"),
         tasks: view.read_artifact(&found.name, "tasks.md"),
+        evidence: view.read_evidence(&found.name),
     })
 }
 
@@ -237,6 +242,7 @@ pub struct RemoteDriftStore {
     created: Option<String>,
     design: Option<String>,
     tasks: Option<String>,
+    evidence: Option<String>,
 }
 
 impl RemoteDriftStore {
@@ -246,8 +252,9 @@ impl RemoteDriftStore {
         created: Option<String>,
         design: Option<String>,
         tasks: Option<String>,
+        evidence: Option<String>,
     ) -> RemoteDriftStore {
-        RemoteDriftStore { change: change.to_string(), created, design, tasks }
+        RemoteDriftStore { change: change.to_string(), created, design, tasks, evidence }
     }
 
     /// The change as the Engine sees it. `dir` is the display location the
@@ -321,12 +328,11 @@ impl Store for RemoteDriftStore {
     ) -> anyhow::Result<std::path::PathBuf> {
         unreachable!("remote drift is diagnostic — it writes nothing")
     }
-    fn read_evidence(&self, _change: &str) -> Option<String> {
-        // Evidence lives in the store, and the Server does not ship it into
-        // this workspace-side view: absent, which the Environment dimension
-        // already treats as "no recorded files" — the same answer remote drift
-        // has always given.
-        None
+    fn read_evidence(&self, change: &str) -> Option<String> {
+        // The store-recorded evidence, shipped in the Server's drift response —
+        // remote drift's Environment dimension reads the same record fs mode
+        // does, so its touched-file facts stop being empty (design 決策三).
+        (change == self.change).then(|| self.evidence.clone()).flatten()
     }
     fn write_evidence(&self, _change: &str, _content: &str) -> anyhow::Result<()> {
         unreachable!("remote drift is diagnostic — it writes nothing")
@@ -428,6 +434,7 @@ pub fn spec_drift_view_to_wire(view: &SpecDriftView) -> wire::SpecDriftResponse 
             created: view.created.clone(),
             design: view.design.clone(),
             tasks: view.tasks.clone(),
+            evidence: view.evidence.clone(),
         },
     }
 }
@@ -732,6 +739,7 @@ mod tests {
             Some("2026-07-13".to_string()),
             Some("## Context\n\nUses `Widget_kind`.\n".to_string()),
             Some("- [ ] 1.1 wire `src/app.rs`\n".to_string()),
+            None,
         );
 
         let change = store.find_change("demo").expect("the change is found by name");
@@ -755,12 +763,12 @@ mod tests {
     /// 分支，把 None 攤成 "" 會讓報告說謊。
     #[test]
     fn remote_drift_store_keeps_absence_distinct_from_emptiness() {
-        let absent = RemoteDriftStore::new("demo", None, None, None);
+        let absent = RemoteDriftStore::new("demo", None, None, None, None);
         assert!(!absent.artifact_exists("demo", "design.md"), "缺席的 design 不存在");
         assert_eq!(absent.read_artifact("demo", "design.md"), None);
         assert_eq!(absent.change().meta.created, None);
 
-        let empty = RemoteDriftStore::new("demo", None, Some(String::new()), None);
+        let empty = RemoteDriftStore::new("demo", None, Some(String::new()), None, None);
         assert!(empty.artifact_exists("demo", "design.md"), "空的 design 仍然存在");
         assert_eq!(empty.read_artifact("demo", "design.md"), Some(String::new()));
     }
@@ -773,6 +781,7 @@ mod tests {
             Some("2026-07-13".to_string()),
             Some("Uses `Missing_sym` and `src/app.rs`.".to_string()),
             Some("- [ ] 1.1 wire `src/app.rs`\n".to_string()),
+            None,
         );
         let change = store.change();
 

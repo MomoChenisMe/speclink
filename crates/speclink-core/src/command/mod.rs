@@ -290,11 +290,13 @@ pub enum Command {
     /// `touched_files` is the Host-resolved touched-file candidate list, not an
     /// argv surface: `Some` means the Host already resolved it at its boundary
     /// (the server route's wire request), `None` means fall back to probing the
-    /// local workspace (design 決策一).
+    /// local workspace (design 決策一). `head_commit` rides along the same way:
+    /// the commit the sender observed its candidates on, absent when unreported.
     TaskDone {
         task_id: String,
         change: Option<String>,
         touched_files: Option<Vec<String>>,
+        head_commit: Option<String>,
     },
     /// `task undone <task_id> [--change <name>]`
     TaskUndone {
@@ -683,14 +685,14 @@ pub fn execute(
         Command::NewArtifact { kind, capability, change, content, force, new_capability } => {
             run_new_artifact(store, ws, ctx.user_config_dir.as_deref(), &kind, capability.as_deref(), change.as_deref(), content.as_deref(), force, new_capability)
         }
-        Command::TaskDone { task_id, change, touched_files } => {
+        Command::TaskDone { task_id, change, touched_files, head_commit } => {
             run_task_flip(
                 store,
                 ws,
                 ctx,
                 &task_id,
                 change.as_deref(),
-                TaskFlip::Done { touched_files },
+                TaskFlip::Done { touched_files, head_commit },
             )
         }
         Command::TaskUndone { task_id, change } => {
@@ -1422,8 +1424,12 @@ fn run_new_artifact(
 /// Which way a task checkbox flips.
 enum TaskFlip {
     /// Completion, carrying the Host-resolved touched-file candidates (`None`
-    /// = probe the local workspace instead).
-    Done { touched_files: Option<Vec<String>> },
+    /// = probe the local workspace instead) and the commit they were observed
+    /// on (absent when the sender did not report one).
+    Done {
+        touched_files: Option<Vec<String>>,
+        head_commit: Option<String>,
+    },
     Undone,
 }
 
@@ -1465,11 +1471,22 @@ fn run_task_flip(
         crate::tasks::TaskAddr::Ordinal(id)
     };
     let host = host_workspace(ws);
-    let done = matches!(flip, TaskFlip::Done { .. });
-    let (description, already, ordinal, stable_id, touched_files) = match flip {
-        TaskFlip::Done { touched_files } => {
+    let outcome_of = |description, already, ordinal, stable_id, touched_files| TaskFlipOutcome {
+        change: change_name.clone(),
+        task_id: ordinal,
+        task_id_arg: task_id.to_string(),
+        description,
+        already,
+        stable_id,
+        touched_files,
+    };
+    Ok(match flip {
+        TaskFlip::Done { touched_files, head_commit } => {
             let candidates = match &touched_files {
-                Some(files) => crate::tasks::TouchedCandidates::Injected(files),
+                Some(files) => crate::tasks::TouchedCandidates::Injected {
+                    files,
+                    head_commit: head_commit.as_deref(),
+                },
                 None => crate::tasks::TouchedCandidates::ProbeWorkspace(&host),
             };
             let o = crate::tasks::complete(
@@ -1484,26 +1501,24 @@ fn run_task_flip(
                 candidates,
             )
             .map_err(classify)?;
-            (o.description, o.already, o.ordinal, o.stable_id, o.touched_files)
+            CommandOutcome::TaskDone(outcome_of(
+                o.description,
+                o.already,
+                o.ordinal,
+                o.stable_id,
+                o.touched_files,
+            ))
         }
         TaskFlip::Undone => {
             let o = crate::tasks::uncomplete(store, &change_name, &addr).map_err(classify)?;
-            (o.description, o.already, o.ordinal, o.stable_id, Vec::new())
+            CommandOutcome::TaskUndone(outcome_of(
+                o.description,
+                o.already,
+                o.ordinal,
+                o.stable_id,
+                Vec::new(),
+            ))
         }
-    };
-    let outcome = TaskFlipOutcome {
-        change: change_name,
-        task_id: ordinal,
-        task_id_arg: task_id.to_string(),
-        description,
-        already,
-        stable_id,
-        touched_files,
-    };
-    Ok(if done {
-        CommandOutcome::TaskDone(outcome)
-    } else {
-        CommandOutcome::TaskUndone(outcome)
     })
 }
 
@@ -1887,7 +1902,7 @@ mod tests {
         let err = execute(
             &store,
             &ExecutionContext::default(),
-            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()), touched_files: None },
+            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()), touched_files: None, head_commit: None },
         )
         .expect_err("task done on corrupt meta must refuse");
         assert!(
@@ -2226,6 +2241,7 @@ mod tests {
                 task_id: "1".to_string(),
                 change: Some("demo".to_string()),
                 touched_files: None,
+                head_commit: None,
             },
         );
         assert_eq!(kinds(&events), ["task-completed"]);
@@ -2250,6 +2266,7 @@ mod tests {
                 task_id: "1".to_string(),
                 change: Some("demo".to_string()),
                 touched_files: None,
+                head_commit: None,
             },
         );
         assert!(events.is_empty(), "no event when nothing changed");
@@ -2311,7 +2328,7 @@ mod tests {
         const TASKS: &str = "## 1. Group\n\n- [ ] 1.1 first\n- [ ] 1.2 second\n- [ ] 1.3 third\n";
         let store = TestStore::with_meta("demo", META);
         store.put_artifact("demo", "tasks.md", TASKS);
-        ok(&store, Command::TaskDone { task_id: "3".to_string(), change: Some("demo".to_string()), touched_files: None });
+        ok(&store, Command::TaskDone { task_id: "3".to_string(), change: Some("demo".to_string()), touched_files: None, head_commit: None });
         let written = store.read_artifact("demo", "tasks.md").unwrap();
         let orig: Vec<&str> = TASKS.lines().collect();
         let new: Vec<&str> = written.lines().collect();
@@ -2359,7 +2376,7 @@ mod tests {
         );
         let (outcome, _) = ok(
             &store,
-            Command::TaskDone { task_id: TID_B.to_string(), change: Some("demo".to_string()), touched_files: None },
+            Command::TaskDone { task_id: TID_B.to_string(), change: Some("demo".to_string()), touched_files: None, head_commit: None },
         );
         match outcome {
             CommandOutcome::TaskDone(o) => {
@@ -2370,7 +2387,7 @@ mod tests {
         }
         let (outcome, _) = ok(
             &store,
-            Command::TaskDone { task_id: "2".to_string(), change: Some("demo".to_string()), touched_files: None },
+            Command::TaskDone { task_id: "2".to_string(), change: Some("demo".to_string()), touched_files: None, head_commit: None },
         );
         match outcome {
             CommandOutcome::TaskDone(o) => {
@@ -2388,7 +2405,7 @@ mod tests {
         let ordinal_err = execute(
             &store,
             &ctx,
-            Command::TaskDone { task_id: "9".to_string(), change: Some("demo".to_string()), touched_files: None },
+            Command::TaskDone { task_id: "9".to_string(), change: Some("demo".to_string()), touched_files: None, head_commit: None },
         )
         .expect_err("out-of-range ordinal must fail");
         assert_eq!(ordinal_err.message, "Task 9 not found (total: 2)");
@@ -2399,6 +2416,7 @@ mod tests {
                 task_id: "tsk_01NOPE0000000000000000000ial".to_string(),
                 change: Some("demo".to_string()),
                 touched_files: None,
+                head_commit: None,
             },
         )
         .expect_err("unknown stable id must fail");
@@ -2432,7 +2450,7 @@ mod tests {
         let done_err = execute(
             &store,
             &ctx,
-            Command::TaskDone { task_id: TID_A.to_string(), change: Some("demo".to_string()), touched_files: None },
+            Command::TaskDone { task_id: TID_A.to_string(), change: Some("demo".to_string()), touched_files: None, head_commit: None },
         )
         .expect_err("duplicate ids must refuse task done");
         assert!(
@@ -2461,7 +2479,7 @@ mod tests {
         store.put_artifact("demo", "tasks.md", &format!("- [ ] 1.1 a <!-- speclink-task:{TID_A} -->\n"));
         let (_, events) = ok(
             &store,
-            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()), touched_files: None },
+            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()), touched_files: None, head_commit: None },
         );
         match &events[0] {
             DomainEvent::TaskCompleted { task_id, .. } => assert_eq!(task_id, TID_A),
@@ -2482,6 +2500,7 @@ mod tests {
                 task_id: "1".to_string(),
                 change: Some("demo".to_string()),
                 touched_files: Some(vec!["src/wire.rs".to_string()]),
+                head_commit: None,
             },
         );
         match &events[0] {
@@ -2506,6 +2525,7 @@ mod tests {
                 task_id: "1".to_string(),
                 change: Some("demo".to_string()),
                 touched_files: None,
+                head_commit: None,
             },
         );
         match &events[0] {
@@ -2523,7 +2543,7 @@ mod tests {
         store.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n");
         let (_, events) = ok(
             &store,
-            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()), touched_files: None },
+            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()), touched_files: None, head_commit: None },
         );
         let written = store.read_artifact("demo", "tasks.md").unwrap();
         let fresh = crate::tasks::parse(&written)[0]
@@ -3143,7 +3163,7 @@ mod tests {
                 from_discussion: _,
             } => {}
             Command::NewArtifact { kind: _, capability: _, change: _, content: _, force: _, new_capability: _ } => {}
-            Command::TaskDone { task_id: _, change: _, touched_files: _ } => {}
+            Command::TaskDone { task_id: _, change: _, touched_files: _, head_commit: _ } => {}
             Command::TaskUndone { task_id: _, change: _ } => {}
             Command::TaskMove { change: _, from: _, to: _, before: _ } => {}
             Command::Claim { name: _ } => {}

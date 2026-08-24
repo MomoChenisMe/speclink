@@ -39,6 +39,11 @@ pub struct DriftChangeInputs {
     /// tasks.md's content — the task path references. `None` = no tasks.md.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tasks: Option<String>,
+    /// The change's completion-evidence record text (the same opaque serialized
+    /// form the store holds), or absent when the change has none — what lets a
+    /// checkout-side drift computation see the store-recorded touched files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
 }
 
 /// The spec side of a drift report: the Specs dimension and the stale
@@ -118,6 +123,7 @@ mod tests {
                 created: Some("2026-07-13".to_string()),
                 design: Some("## Context\n\nUses `Widget_kind`.\n".to_string()),
                 tasks: Some("- [ ] 1.1 wire `src/app.rs`\n".to_string()),
+                evidence: None,
             },
         }
     }
@@ -148,7 +154,8 @@ mod tests {
     #[test]
     fn absent_change_inputs_stay_absent_and_do_not_become_empty_strings() {
         let mut response = sample();
-        response.change = DriftChangeInputs { created: None, design: None, tasks: None };
+        response.change =
+            DriftChangeInputs { created: None, design: None, tasks: None, evidence: None };
         let json = serde_json::to_value(&response).unwrap();
 
         let inputs = json["change"].as_object().expect("change is an object");

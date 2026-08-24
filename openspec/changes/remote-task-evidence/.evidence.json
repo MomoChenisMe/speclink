@@ -118,6 +118,25 @@
       "files": [
         "crates/speclink-node/index.d.ts"
       ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "7.2 品質站補救落地：drift 回應增列 evidence 欄位（server-drift-api delta「store 保存的 evidence 隨回應下行」）、TaskDoneRequest 增選填 headCommit（verify-evidence「headCommit 由 wire 攜入」）、worktree overlay 的 evidence 寫入直通主 store、Injected 候選的 wire 輸入過濾；驗證：cargo test --workspace 全綠（含 drift_api 與 phase2_chain 的新斷言）",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/event_manager.rs",
+        "crates/speclink-core/src/workspace.rs",
+        "crates/speclink-protocol/src/command.rs",
+        "crates/speclink-protocol/src/drift.rs",
+        "crates/speclink-remote/tests/it/events_sse.rs",
+        "crates/speclink-remote/tests/it/typed_client.rs",
+        "crates/speclink-server/tests/it/command_routes.rs",
+        "crates/speclink-server/tests/it/drift_api.rs",
+        "crates/speclink-server/tests/it/serverfs_store.rs",
+        "crates/speclink-server/tests/it/sse_events.rs",
+        "crates/speclink-server/tests/it/sync_state.rs",
+        "crates/speclink-server/tests/postgres_store.rs"
+      ]
     }
   ],
   "entries": [
@@ -289,6 +308,29 @@
         "crates/speclink-node/index.d.ts"
       ],
       "recordedAt": "2026-08-23T15:21:27Z"
+    },
+    {
+      "taskId": "tsk_01M0T2B66JYS3VDSN0Q5QA6FN7",
+      "taskDesc": "7.2 品質站補救落地：drift 回應增列 evidence 欄位（server-drift-api delta「store 保存的 evidence 隨回應下行」）、TaskDoneRequest 增選填 headCommit（verify-evidence「headCommit 由 wire 攜入」）、worktree overlay 的 evidence 寫入直通主 store、Injected 候選的 wire 輸入過濾；驗證：cargo test --workspace 全綠（含 drift_api 與 phase2_chain 的新斷言）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b894b262f0c90043e10b746ad2052a238231557a",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/event_manager.rs",
+        "crates/speclink-core/src/workspace.rs",
+        "crates/speclink-protocol/src/command.rs",
+        "crates/speclink-protocol/src/drift.rs",
+        "crates/speclink-remote/tests/it/events_sse.rs",
+        "crates/speclink-remote/tests/it/typed_client.rs",
+        "crates/speclink-server/tests/it/command_routes.rs",
+        "crates/speclink-server/tests/it/drift_api.rs",
+        "crates/speclink-server/tests/it/serverfs_store.rs",
+        "crates/speclink-server/tests/it/sse_events.rs",
+        "crates/speclink-server/tests/it/sync_state.rs",
+        "crates/speclink-server/tests/postgres_store.rs"
+      ],
+      "recordedAt": "2026-08-24T14:21:14Z"
     }
   ]
 }
