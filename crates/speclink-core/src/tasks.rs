@@ -393,34 +393,58 @@ pub struct CompleteAttribution<'a> {
 
 /// Where a completion's touched-file candidates come from (design 決策一).
 /// A closed choice with no default: the Host either resolved the candidates at
-/// its own boundary (server mode — the wire request's `touchedFiles`) or hands
-/// over the workspace to probe. A caller cannot lose evidence by forgetting to
-/// say which.
-#[derive(Debug, Clone, Copy)]
+/// its own boundary (server mode — the wire request's `touchedFiles` and
+/// `headCommit`) or hands over the workspace to probe. A caller cannot lose
+/// evidence by forgetting to say which.
 pub enum TouchedCandidates<'a> {
-    /// The Host already resolved the candidates; the workspace is never probed.
-    Injected(&'a [String]),
+    /// The Host already resolved the candidates (and, when the sender reported
+    /// one, the commit they were observed on); the workspace is never probed.
+    Injected {
+        files: &'a [String],
+        head_commit: Option<&'a str>,
+    },
     /// Probe the local host workspace for git-dirty files.
     ProbeWorkspace(&'a Workspace),
 }
 
 impl TouchedCandidates<'_> {
-    /// The candidate paths before attribution filtering.
+    /// The candidate paths before attribution filtering. Injected paths are
+    /// wire input from another machine: separators normalize to the logical
+    /// forward-slash canon, duplicates collapse, and paths that cannot name a
+    /// file inside the repo (absolute, drive-lettered, `..`-escaping) or that
+    /// the probe path always excludes (tool scaffolding) are dropped. The one
+    /// probe exclusion that cannot be applied here is the sender's spec-dir
+    /// prefix — its name is the sender's workspace knowledge, and the sending
+    /// CLI already filters it before the wire.
     fn resolve(&self) -> Vec<String> {
         match self {
-            TouchedCandidates::Injected(files) => files.to_vec(),
+            TouchedCandidates::Injected { files, .. } => {
+                let mut out: Vec<String> = Vec::new();
+                for f in files.iter() {
+                    let f = f.replace('\\', "/");
+                    if f.is_empty() || !is_repo_relative(&f) || is_scaffolding_path(&f) {
+                        continue;
+                    }
+                    if !out.contains(&f) {
+                        out.push(f);
+                    }
+                }
+                out
+            }
             TouchedCandidates::ProbeWorkspace(ws) => git_changed_files(ws),
         }
     }
 
-    /// The workspace to read HEAD from, when there is one. Injected candidates
-    /// come from a Host that already knows its own commit, so the entry's
-    /// `headCommit` stays absent rather than being filled from an unrelated
+    /// The commit the candidates were observed on: wire-supplied for injected
+    /// candidates, read from the workspace HEAD for probed ones. What the
+    /// sender did not report stays absent — never filled from an unrelated
     /// checkout.
-    fn workspace(&self) -> Option<&Workspace> {
+    fn resolved_head_commit(&self) -> Option<String> {
         match self {
-            TouchedCandidates::Injected(_) => None,
-            TouchedCandidates::ProbeWorkspace(ws) => Some(ws),
+            TouchedCandidates::Injected { head_commit, .. } => {
+                head_commit.map(str::to_string)
+            }
+            TouchedCandidates::ProbeWorkspace(ws) => head_commit(&ws.root),
         }
     }
 }
@@ -484,7 +508,7 @@ pub fn complete(
             task_desc: desc.clone(),
             actor: attr.identity.map(str::to_string),
             repo: attr.repo.map(str::to_string),
-            head_commit: candidates.workspace().and_then(|ws| head_commit(&ws.root)),
+            head_commit: candidates.resolved_head_commit(),
             touched_files: files.clone(),
             recorded_at: chrono::Utc::now()
                 .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
@@ -746,7 +770,10 @@ impl TouchedRecord {
     pub fn save(&self, store: &dyn Store) -> anyhow::Result<()> {
         let mut rec = self.clone();
         rec.version = Some(2);
-        let json = serde_json::to_string_pretty(&rec).unwrap_or_default();
+        // A serialization failure is loud: writing a defaulted empty string
+        // would commit an empty record over real evidence (and sweep the
+        // legacy file with it).
+        let json = serde_json::to_string_pretty(&rec)?;
         store.write_evidence(&self.change, &json)
     }
 
@@ -806,10 +833,11 @@ fn spec_basis_digest(store: &dyn Store, change: &str) -> String {
     format!("sha256:{:x}", hasher.finalize())
 }
 
-/// Current HEAD commit of the workspace root's own repo, None when absent.
+/// Full HEAD sha of the repo at `root`, or None when there is none to read.
 /// Guarded on `.git` like [`git_changed_files`]: a project nested inside an
-/// ancestor repo must not record the ancestor's HEAD.
-fn head_commit(root: &Path) -> Option<String> {
+/// ancestor repo must not record the ancestor's HEAD. The probe path records
+/// this locally; the remote CLI reads it here to report it over the wire.
+pub fn head_commit(root: &Path) -> Option<String> {
     if !root.join(".git").exists() {
         return None;
     }
@@ -861,6 +889,28 @@ fn unquote_porcelain_path(raw: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// True when a logical path can name a file inside the repo: relative, no
+/// drive letter, and no `..` segment that could climb out.
+fn is_repo_relative(path: &str) -> bool {
+    if path.starts_with('/') || path.contains(':') {
+        return false;
+    }
+    path.split('/').all(|seg| seg != "..")
+}
+
+/// The fixed set of work files and tool-scaffolding locations that never enter
+/// a code trace, whatever the candidate source (.claude/.agents/.cursor/.gemini
+/// and .gitignore are not code; .speclink/ and .git/ are machinery).
+fn is_scaffolding_path(path: &str) -> bool {
+    path.starts_with(".speclink/")
+        || path.starts_with(".git/")
+        || path.starts_with(".claude/")
+        || path.starts_with(".agents/")
+        || path.starts_with(".cursor/")
+        || path.starts_with(".gemini/")
+        || path == ".gitignore"
+}
+
 /// Files changed in the git work tree, relative to the workspace root,
 /// forward-slashed.
 ///
@@ -903,17 +953,9 @@ pub fn git_changed_files(ws: &Workspace) -> Vec<String> {
         if path.is_empty() || path.ends_with('/') {
             continue; // skip directory entries
         }
-        // Exclude spec artifacts, work files, and tool-scaffolding dirs from the code trace
-        // (CLAUDE.md / config are recorded, .claude/.agents/.cursor/.gemini and .gitignore are not).
-        if path.starts_with(&spec_prefix)
-            || path.starts_with(".speclink/")
-            || path.starts_with(".git/")
-            || path.starts_with(".claude/")
-            || path.starts_with(".agents/")
-            || path.starts_with(".cursor/")
-            || path.starts_with(".gemini/")
-            || path == ".gitignore"
-        {
+        // Exclude spec artifacts and the fixed scaffolding set from the code
+        // trace (CLAUDE.md / config are recorded).
+        if path.starts_with(&spec_prefix) || is_scaffolding_path(&path) {
             continue;
         }
         files.push(path);
@@ -927,7 +969,6 @@ mod tests {
     use crate::store::Store;
     use crate::teststore::TestStore;
     use crate::workspace::Workspace;
-    use std::path::PathBuf;
 
     const META_UNSTARTED: &str = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: Base Line <base@example.com>\ncreated_with: claude\n";
     const TASKS_TWO_OPEN: &str = "## 1. Group\n\n- [ ] 1.1 first task\n- [ ] 1.2 second task\n";
@@ -1622,7 +1663,10 @@ mod tests {
             "demo",
             &TaskAddr::Ordinal(1),
             &CompleteAttribution::default(),
-            TouchedCandidates::Injected(&["remote/wire.rs".to_string()]),
+            TouchedCandidates::Injected {
+                files: &["remote/wire.rs".to_string()],
+                head_commit: None,
+            },
         )
         .unwrap();
 
@@ -1637,6 +1681,78 @@ mod tests {
     }
 
     #[test]
+    fn injected_head_commit_lands_in_the_entry_and_absent_stays_absent() {
+        // spec verify-evidence「遠端 task done 攜檔案後 evidence 可查」的 THEN 把
+        // headCommit 列為 entry 欄位（design contract：由 wire 攜入或 host 解析）
+        // ——wire 報了就入帳；沒報就缺席，絕不從無關 checkout 補一個。
+        let store = store_with(META_UNSTARTED, TASKS_TWO_OPEN);
+        complete(
+            &store,
+            "demo",
+            &TaskAddr::Ordinal(1),
+            &CompleteAttribution::default(),
+            TouchedCandidates::Injected {
+                files: &["src/a.rs".to_string()],
+                head_commit: Some("0123456789012345678901234567890123456789"),
+            },
+        )
+        .unwrap();
+        complete(
+            &store,
+            "demo",
+            &TaskAddr::Ordinal(2),
+            &CompleteAttribution::default(),
+            TouchedCandidates::Injected { files: &["src/b.rs".to_string()], head_commit: None },
+        )
+        .unwrap();
+
+        let rec = TouchedRecord::load(&store, "demo");
+        assert_eq!(
+            rec.entries[0].head_commit.as_deref(),
+            Some("0123456789012345678901234567890123456789"),
+            "the wire-reported commit travels into the entry"
+        );
+        assert_eq!(rec.entries[1].head_commit, None, "unreported stays absent, never guessed");
+    }
+
+    #[test]
+    fn injected_paths_normalize_separators_and_collapse_duplicates() {
+        // 注入清單是另一台機器的 wire 輸入：Windows 反斜線正規化為邏輯正斜線
+        // 正典、重複項收斂，逐字入帳的原始形狀不落進 evidence。
+        let store = store_with(META_UNSTARTED, TASKS_TWO_OPEN);
+        complete(
+            &store,
+            "demo",
+            &TaskAddr::Ordinal(1),
+            &CompleteAttribution::default(),
+            TouchedCandidates::Injected {
+                files: &[
+                    "src\\win.rs".to_string(),
+                    "src/win.rs".to_string(),
+                    "src/a.rs".to_string(),
+                    "src/a.rs".to_string(),
+                    String::new(),
+                    "/etc/passwd".to_string(),
+                    "../outside.rs".to_string(),
+                    "src/../../up.rs".to_string(),
+                    "C:\\evil.rs".to_string(),
+                    ".git/hooks/pre-commit".to_string(),
+                    ".speclink/touched/x.json".to_string(),
+                ],
+                head_commit: None,
+            },
+        )
+        .unwrap();
+
+        let rec = TouchedRecord::load(&store, "demo");
+        assert_eq!(
+            rec.entries[0].touched_files,
+            vec!["src/win.rs".to_string(), "src/a.rs".to_string()],
+            "separators normalized; duplicates, empties, absolute/escaping and scaffolding paths dropped"
+        );
+    }
+
+    #[test]
     fn injected_candidates_are_filtered_by_earlier_claims() {
         // 歸屬過濾是單點實作：注入與探測兩來源同一套——已被先前任務認領的檔案
         // 不會第二次入帳。
@@ -1646,7 +1762,7 @@ mod tests {
             "demo",
             &TaskAddr::Ordinal(1),
             &CompleteAttribution::default(),
-            TouchedCandidates::Injected(&["src/a.rs".to_string()]),
+            TouchedCandidates::Injected { files: &["src/a.rs".to_string()], head_commit: None },
         )
         .unwrap();
 
@@ -1655,7 +1771,10 @@ mod tests {
             "demo",
             &TaskAddr::Ordinal(2),
             &CompleteAttribution::default(),
-            TouchedCandidates::Injected(&["src/a.rs".to_string(), "src/b.rs".to_string()]),
+            TouchedCandidates::Injected {
+                files: &["src/a.rs".to_string(), "src/b.rs".to_string()],
+                head_commit: None,
+            },
         )
         .unwrap();
 
@@ -1681,7 +1800,7 @@ mod tests {
             "demo",
             &TaskAddr::Ordinal(1),
             &CompleteAttribution::default(),
-            TouchedCandidates::Injected(&[]),
+            TouchedCandidates::Injected { files: &[], head_commit: None },
         )
         .unwrap();
 

@@ -192,7 +192,7 @@ fn a_completed_task_lands_a_task_completed_event_in_the_outbox() {
     let base = common::start(state);
     let client = client(&base, &pat);
 
-    let done = client.task_done("demo", "1", &[]).expect("task done");
+    let done = client.task_done("demo", "1", &[], None).expect("task done");
     assert!(!done.already_done, "the task flipped for the first time");
 
     let entries = store.read_outbox(&scope(), OutboxCursor(0)).expect("read outbox");

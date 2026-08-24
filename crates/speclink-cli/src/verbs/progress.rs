@@ -69,7 +69,7 @@ pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
             let outcome = run_command(
                 store,
                 Some(&ws),
-                core::command::Command::TaskDone { task_id: task_id.clone(), change, touched_files: None },
+                core::command::Command::TaskDone { task_id: task_id.clone(), change, touched_files: None, head_commit: None },
             )?;
             let core::command::CommandOutcome::TaskDone(o) = outcome else {
                 unreachable!("task done yields a task-flip outcome");
@@ -201,14 +201,16 @@ fn remote_task_done(
             None => return Ok(()),
         },
     };
-    // Attribution: same git-derived touched-file set the fs path records.
-    // Best-effort — remote mode already resolved, so a config error here is
-    // unreachable; an empty set is the existing no-workspace behavior.
+    // Attribution: same git-derived touched-file set the fs path records,
+    // plus the HEAD they were observed on (the entry's headCommit — spec
+    // verify-evidence). Best-effort — remote mode already resolved, so a
+    // config error here is unreachable; an empty set / absent commit is the
+    // existing no-workspace behavior.
     let ws = core::workspace::Workspace::discover_cwd().ok().flatten();
-    let touched: Vec<String> = ws
-        .map(|w| core::tasks::git_changed_files(&w))
+    let (touched, head): (Vec<String>, Option<String>) = ws
+        .map(|w| (core::tasks::git_changed_files(&w), core::tasks::head_commit(&w.root)))
         .unwrap_or_default();
-    let resp = ctx.client.task_done(&change, task_id, &touched)?;
+    let resp = ctx.client.task_done(&change, task_id, &touched, head.as_deref())?;
     // remote 只有 argv 一種識別，拒絕訊息與 stdout 兩處都餵它。
     render_task_flip(
         TaskFlip::Done,

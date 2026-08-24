@@ -200,7 +200,7 @@ fn a_write_pushes_an_invalidation_hint_carrying_no_document_content() {
 
     let sub = Sub::open(&base, &pat, None).expect("subscribe");
     std::thread::sleep(Duration::from_millis(80));
-    client(&base, &pat).task_done("demo", "1", &[]).expect("task done");
+    client(&base, &pat).task_done("demo", "1", &[], None).expect("task done");
 
     let (id, event, data) = parts(sub.next_event(Duration::from_secs(3)).expect("an invalidation arrives"));
     let id = id.expect("the SSE id is the outbox sequence");
@@ -226,7 +226,7 @@ fn every_subscriber_receives_the_write_exactly_once() {
     let a = Sub::open(&base, &pat, None).expect("subscribe a");
     let b = Sub::open(&base, &pat, None).expect("subscribe b");
     std::thread::sleep(Duration::from_millis(80));
-    client(&base, &pat).task_done("demo", "1", &[]).expect("task done");
+    client(&base, &pat).task_done("demo", "1", &[], None).expect("task done");
 
     let (id_a, _, _) = parts(a.next_event(Duration::from_secs(3)).expect("a receives the write"));
     let (id_b, _, _) = parts(b.next_event(Duration::from_secs(3)).expect("b receives the write"));
@@ -245,16 +245,16 @@ fn a_reconnect_with_last_event_id_backfills_the_gap_without_loss_or_repeat() {
 
     let sub = Sub::open(&base, &pat, None).expect("subscribe");
     std::thread::sleep(Duration::from_millis(80));
-    writer.task_done("demo", "1", &[]).expect("task 1");
+    writer.task_done("demo", "1", &[], None).expect("task 1");
     let first_id = parts(sub.next_event(Duration::from_secs(3)).expect("first event"))
         .0
         .expect("the first event carries an id");
     drop(sub); // disconnect
 
     // Three writes happen while disconnected.
-    writer.task_done("demo", "2", &[]).expect("task 2");
-    writer.task_done("demo", "3", &[]).expect("task 3");
-    writer.task_done("demo", "4", &[]).expect("task 4");
+    writer.task_done("demo", "2", &[], None).expect("task 2");
+    writer.task_done("demo", "3", &[], None).expect("task 3");
+    writer.task_done("demo", "4", &[], None).expect("task 4");
 
     // Reconnect from the last seen id: the three missed events arrive in order.
     let resumed = Sub::open(&base, &pat, Some(&first_id)).expect("resubscribe");
@@ -278,7 +278,7 @@ fn an_illegal_last_event_id_is_treated_as_absent() {
     let writer = client(&base, &pat);
 
     // Produce history first so a genuine resume would replay something.
-    writer.task_done("demo", "1", &[]).expect("task 1");
+    writer.task_done("demo", "1", &[], None).expect("task 1");
 
     let sub = Sub::open(&base, &pat, Some("not-a-number")).expect("subscribe");
     std::thread::sleep(Duration::from_millis(120));
@@ -286,7 +286,7 @@ fn an_illegal_last_event_id_is_treated_as_absent() {
     assert!(sub.next_event(Duration::from_millis(300)).is_none(), "no history is replayed");
 
     // A new write still arrives.
-    writer.task_done("demo", "2", &[]).expect("task 2");
+    writer.task_done("demo", "2", &[], None).expect("task 2");
     let (_, event, _) = parts(sub.next_event(Duration::from_secs(3)).expect("a new write arrives"));
     assert_eq!(event.as_deref(), Some("invalidate"));
 }
@@ -304,7 +304,7 @@ fn a_reconnect_below_the_cleaned_floor_gets_a_reset_first() {
     let sub = Sub::open(&base, &pat, None).expect("subscribe");
     std::thread::sleep(Duration::from_millis(80));
     for t in ["1", "2", "3", "4"] {
-        writer.task_done("demo", t, &[]).expect("task done");
+        writer.task_done("demo", t, &[], None).expect("task done");
     }
     for _ in 0..4 {
         sub.next_event(Duration::from_secs(3)).expect("live event");
@@ -316,7 +316,7 @@ fn a_reconnect_below_the_cleaned_floor_gets_a_reset_first() {
     assert_eq!(event.as_deref(), Some("reset"), "a cleaned cursor gets a reset signal first");
 
     // After reset, a new write is pushed as usual.
-    writer.task_done("demo", "4", &[]).expect("task 4 idempotent flip is fine as a new write");
+    writer.task_done("demo", "4", &[], None).expect("task 4 idempotent flip is fine as a new write");
 }
 
 #[test]
@@ -358,7 +358,7 @@ fn dropped_events_converge_via_reset_and_full_reread_on_a_sqlite_server() {
     let sub = Sub::open(&base, &pat, None).expect("subscribe");
     std::thread::sleep(Duration::from_millis(80));
     for task in ["1", "2", "3", "4"] {
-        writer.task_done("demo", task, &[]).expect("task done");
+        writer.task_done("demo", task, &[], None).expect("task done");
     }
     for _ in 0..4 {
         sub.next_event(Duration::from_secs(3)).expect("live event");

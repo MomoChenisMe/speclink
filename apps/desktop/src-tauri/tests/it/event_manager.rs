@@ -381,7 +381,7 @@ fn an_invalidate_dispatches_the_locator_key_to_the_frontend() {
     std::thread::sleep(Duration::from_millis(150));
 
     writer(&h.origin, &pat)
-        .task_done("demo", "1", &[])
+        .task_done("demo", "1", &[], None)
         .expect("task done");
     expect_notified(&rx, "invalidate 到達即發前端事件");
 }
@@ -407,7 +407,7 @@ fn two_sessions_on_one_connection_share_a_single_subscription() {
     );
 
     let w = writer(&h.origin, &pat);
-    w.task_done("demo", "1", &[]).expect("task done");
+    w.task_done("demo", "1", &[], None).expect("task done");
     expect_notified(&rx, "共用訂閱仍分發");
     assert!(
         rx.recv_timeout(Duration::from_millis(350)).is_err(),
@@ -417,14 +417,14 @@ fn two_sessions_on_one_connection_share_a_single_subscription() {
     // 退掉一個 session：流仍在。
     manager.unregister(KEY);
     drain(&rx);
-    w.task_done("demo", "2", &[]).expect("task done");
+    w.task_done("demo", "2", &[], None).expect("task done");
     expect_notified(&rx, "仍有 session 註冊時流不得中止");
 
     // 退掉最後一個 session：流收束、不再通知也不再重連。
     manager.unregister(KEY);
     std::thread::sleep(Duration::from_millis(300));
     drain(&rx);
-    w.task_done("demo", "3", &[]).expect("task done");
+    w.task_done("demo", "3", &[], None).expect("task done");
     assert!(
         rx.recv_timeout(Duration::from_millis(400)).is_err(),
         "最後一個 session 退出後訂閱收束"
@@ -447,13 +447,13 @@ fn a_severed_stream_converges_via_etag_and_resumes_live() {
     std::thread::sleep(Duration::from_millis(150));
 
     let w = writer(&h.origin, &pat);
-    w.task_done("demo", "1", &[]).expect("task done");
+    w.task_done("demo", "1", &[], None).expect("task done");
     expect_notified(&rx, "斷流前的基線事件");
     drain(&rx);
 
     // 強制斷流；斷線期間 server 側發生變更。
     proxy.sever();
-    w.task_done("demo", "2", &[])
+    w.task_done("demo", "2", &[], None)
         .expect("task done while severed");
     // 收斂：sync-state ETag 相異即發重載通知（Query 為重讀正典），並以注入
     // 退避序列重連、Last-Event-ID 續傳——錯過的變更不得遺漏。
@@ -461,7 +461,7 @@ fn a_severed_stream_converges_via_etag_and_resumes_live() {
 
     // 重連後的新事件走正常推播。
     drain(&rx);
-    w.task_done("demo", "3", &[])
+    w.task_done("demo", "3", &[], None)
         .expect("task done after recovery");
     expect_notified(&rx, "續訂後新事件照常分發");
     assert!(
@@ -498,7 +498,7 @@ fn a_reset_triggers_a_full_reload_notification_and_a_stable_fresh_subscription()
     std::thread::sleep(Duration::from_millis(150));
 
     let w = writer(&h.origin, &pat);
-    w.task_done("demo", "1", &[]).expect("task done");
+    w.task_done("demo", "1", &[], None).expect("task done");
     expect_notified(&rx, "基線事件（manager 持有續傳位點）");
     drain(&rx);
 
@@ -509,7 +509,7 @@ fn a_reset_triggers_a_full_reload_notification_and_a_stable_fresh_subscription()
         if task == "1" {
             w.task_undone("demo", task).expect("undone");
         } else {
-            w.task_done("demo", task, &[])
+            w.task_done("demo", task, &[], None)
                 .expect("task done while severed");
         }
     }
@@ -520,7 +520,7 @@ fn a_reset_triggers_a_full_reload_notification_and_a_stable_fresh_subscription()
 
     // 自新位點續訂：新事件照常分發，且流保持穩定（不重連震盪）。
     drain(&rx);
-    w.task_done("demo", "1", &[]).expect("a fresh write");
+    w.task_done("demo", "1", &[], None).expect("a fresh write");
     expect_notified(&rx, "reset 後自新位點續訂");
     let settled = connects.load(Ordering::SeqCst);
     drain(&rx);

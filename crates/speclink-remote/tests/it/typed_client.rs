@@ -331,7 +331,7 @@ fn stale_write_surfaces_revision_conflict_with_the_existing_wording() {
 fn task_verbs_post_typed_bodies() {
     let mock = serve(200, r#"{"taskDesc":"1.1 First","alreadyDone":false}"#);
     let done = client(&mock)
-        .task_done("demo", "3", &["src/lib.rs".to_string()])
+        .task_done("demo", "3", &["src/lib.rs".to_string()], Some("abc123"))
         .expect("done ok");
     assert_eq!(done.task_desc, "1.1 First");
     assert!(!done.already_done);
@@ -339,11 +339,14 @@ fn task_verbs_post_typed_bodies() {
     assert_call(&cap, "POST", "/changes/demo/tasks/3/done");
     assert_eq!(
         cap.body,
-        serde_json::to_string(&TaskDoneRequest { touched_files: vec!["src/lib.rs".into()] })
-            .unwrap()
+        serde_json::to_string(&TaskDoneRequest {
+            touched_files: vec!["src/lib.rs".into()],
+            head_commit: Some("abc123".into()),
+        })
+        .unwrap()
     );
 
-    let empty = client(&mock).task_done("demo", "4", &[]).expect("done ok");
+    let empty = client(&mock).task_done("demo", "4", &[], None).expect("done ok");
     assert!(!empty.already_done);
     assert_eq!(mock.last().body, "{}", "empty attribution stays the bare object");
 

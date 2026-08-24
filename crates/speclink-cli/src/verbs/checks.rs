@@ -315,6 +315,7 @@ pub(crate) fn remote_drift(ctx: &RemoteCtx, a: &ChangeArg) -> Result<()> {
         response.change.created,
         response.change.design,
         response.change.tasks,
+        response.change.evidence,
     );
     let change = docs.change();
     let spec = speclink_host::drift::spec_drift_from_wire(&response.spec_drift);

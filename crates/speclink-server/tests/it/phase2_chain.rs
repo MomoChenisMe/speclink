@@ -857,11 +857,17 @@ fn task_done_with_touched_files_leaves_queryable_evidence_on_the_server() {
 
     let state = common::state_with(store.clone());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let store_state_identity = state.identity.clone();
     let base = common::start(state);
 
     let client = Client::new(&format!("{base}/api/speclink/v1/projects/demo"), &pat, Some("backend"));
     client
-        .task_done("demo", "1", &["src/app.rs".to_string()])
+        .task_done(
+            "demo",
+            "1",
+            &["src/app.rs".to_string()],
+            Some("0123456789012345678901234567890123456789"),
+        )
         .expect("task done with touched files");
 
     // 事件面：outbox 的 task-completed 記錄帶 actor 與 touchedFiles。
@@ -878,14 +884,40 @@ fn task_done_with_touched_files_leaves_queryable_evidence_on_the_server() {
         done.record.payload,
     );
 
-    // 文件面：evidence 端點讀得回這筆 entry，欄位為 camelCase。
-    let evidence = client.change_evidence("demo").expect("read evidence");
+    // 文件面：evidence 端點讀得回這筆 entry，欄位為 camelCase。以 Reader 角色
+    // 讀取——spec server-verb-api「viewer 以上角色可讀」的角色分工實測。
+    let (reader_pat, reader_id) = common::seed_named_pat(
+        &store_state_identity,
+        "reader@example.com",
+        "Reader",
+        &["demo"],
+    );
+    store_state_identity
+        .admin_set_membership(
+            &speclink_server::audit::AuditActor::system_cli(),
+            &reader_id,
+            "demo",
+            speclink_server::identity::MembershipRole::Reader,
+            true,
+        )
+        .expect("set reader role");
+    let reader = Client::new(
+        &format!("{base}/api/speclink/v1/projects/demo"),
+        &reader_pat,
+        Some("backend"),
+    );
+    let evidence = reader.change_evidence("demo").expect("read evidence");
     assert_eq!(evidence.entries.len(), 1, "one completion, one entry: {evidence:?}");
     let entry = &evidence.entries[0];
     assert_eq!(entry.touched_files, vec!["src/app.rs".to_string()]);
     assert_eq!(entry.task_desc, "1.1 First");
     assert!(!entry.task_id.is_empty(), "the entry names the task it belongs to");
     assert!(entry.actor.is_some(), "the acting identity travels with the record");
+    assert_eq!(
+        entry.head_commit.as_deref(),
+        Some("0123456789012345678901234567890123456789"),
+        "the wire-reported commit travels into the entry"
+    );
     assert!(!entry.recorded_at.is_empty());
 
     let raw = serde_json::to_value(entry).expect("entry serializes");

@@ -358,8 +358,6 @@ impl Store for BridgeStore {
         Ok(())
     }
 
-    // --- delta specs ---
-
     // --- completion evidence ---
 
     fn read_evidence(&self, change: &str) -> Option<String> {
@@ -373,6 +371,8 @@ impl Store for BridgeStore {
         self.put(DocumentId::ChangeEvidence { change: change.to_string() }, content.to_string());
         Ok(())
     }
+
+    // --- delta specs ---
 
     fn delta_capabilities(&self, change: &str) -> Vec<String> {
         self.delta_caps_of(change)

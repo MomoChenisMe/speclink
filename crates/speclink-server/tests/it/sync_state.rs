@@ -95,7 +95,7 @@ fn polling_detects_a_change_across_a_commit() {
     assert_eq!(status, 304, "re-polling before any write is not modified");
 
     // Another writer completes a commit.
-    client(&base, &pat).task_done("demo", "1", &[]).expect("task done");
+    client(&base, &pat).task_done("demo", "1", &[], None).expect("task done");
 
     let (status, e1) = poll(&url, &pat, Some(&e0));
     assert_eq!(status, 200, "re-polling after the write returns 200");

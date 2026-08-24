@@ -199,7 +199,7 @@ fn a_subscription_yields_typed_invalidations_carrying_the_outbox_sequence() {
 
     let sub = subscribe(&base, &pat, None);
     std::thread::sleep(Duration::from_millis(80));
-    writer.task_done("demo", "1", &[]).expect("task 1");
+    writer.task_done("demo", "1", &[], None).expect("task 1");
 
     let first = sub.expect_invalidate("a write pushes a typed invalidation");
     assert_eq!(first.scope, InvalidationScope::Change, "a task completion invalidates the change");
@@ -208,7 +208,7 @@ fn a_subscription_yields_typed_invalidations_carrying_the_outbox_sequence() {
     let first_seq: u64 =
         first.event_id.parse().expect("the event id is the numeric outbox sequence");
 
-    writer.task_done("demo", "2", &[]).expect("task 2");
+    writer.task_done("demo", "2", &[], None).expect("task 2");
     let second = sub.expect_invalidate("the next write pushes the next hint");
     assert_eq!(
         second.event_id.parse::<u64>().expect("numeric id"),
@@ -226,15 +226,15 @@ fn a_resume_with_last_event_id_backfills_missed_events_in_order() {
 
     let sub = subscribe(&base, &pat, None);
     std::thread::sleep(Duration::from_millis(80));
-    writer.task_done("demo", "1", &[]).expect("task 1");
+    writer.task_done("demo", "1", &[], None).expect("task 1");
     let first = sub.expect_invalidate("the pre-disconnect event arrives");
     let first_seq: u64 = first.event_id.parse().expect("numeric id");
     sub.abort_and_join("disconnect before the missed writes");
 
     // Three writes happen while disconnected.
-    writer.task_done("demo", "2", &[]).expect("task 2");
-    writer.task_done("demo", "3", &[]).expect("task 3");
-    writer.task_done("demo", "4", &[]).expect("task 4");
+    writer.task_done("demo", "2", &[], None).expect("task 2");
+    writer.task_done("demo", "3", &[], None).expect("task 3");
+    writer.task_done("demo", "4", &[], None).expect("task 4");
 
     // Resume from the last seen id: exactly the three missed hints, in order.
     let resumed = subscribe(&base, &pat, Some(first_seq));
@@ -262,7 +262,7 @@ fn a_resume_below_the_server_retention_yields_a_reset_signal_first() {
     let sub = subscribe(&base, &pat, None);
     std::thread::sleep(Duration::from_millis(80));
     for task in ["1", "2", "3", "4"] {
-        writer.task_done("demo", task, &[]).expect("task done");
+        writer.task_done("demo", task, &[], None).expect("task done");
     }
     for _ in 0..4 {
         sub.expect_invalidate("a live event arrives");

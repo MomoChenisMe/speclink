@@ -33,3 +33,4 @@
 ## 7. 收尾
 
 - [x] 7.1 橫跨多面收尾：補跑 npm run test:all 一次全綠；git status 盤點差異僅含本 change Impact 所列檔案、docs 中英六檔皆動過、無孤兒殘留 <!-- speclink-task:tsk_01M0PBMRMGFYDD31KT0SCTB21D -->
+- [x] 7.2 品質站補救落地：drift 回應增列 evidence 欄位（server-drift-api「規格面 drift 端點且工作區面不進 wire」的 store 面輸入集，delta scenario「store 保存的 evidence 隨回應下行」）、TaskDoneRequest 增選填 headCommit（verify-evidence「headCommit 由 wire 攜入」）、worktree overlay 的 evidence 寫入直通主 store、Injected 候選的 wire 輸入過濾；驗證：cargo test --workspace 全綠（含 drift_api 與 phase2_chain 的新斷言） <!-- speclink-task:tsk_01M0T2B66JYS3VDSN0Q5QA6FN7 -->
