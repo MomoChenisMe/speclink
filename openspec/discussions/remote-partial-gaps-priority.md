@@ -1,7 +1,8 @@
 ---
 topic: Desktop 遠端工作區與遠端 task evidence 兩個 Partial 缺口的優先序
 slug: remote-partial-gaps-priority
-status: open
+status: promoted
+promoted_to: remote-task-evidence
 created: 2026-08-23
 created_by: MomoChen <momochenisme@gmail.com>
 ---
@@ -49,7 +50,17 @@ Day 12 遠端能力盤點（docs/product-status.zh-TW.md、remote-getting-starte
 **Ruled out**: 「Desktop 遠端工作區＝至少三刀新功能」的估算——依據的 product-status（2026-08-13 查核）「remote locator 沒有建構路徑」與 remote-getting-started §6「登入後開不出看板」為陳舊記載，與 session.ts 頂部過期註解（本刀僅型別宣告）同源
 **Open**: 缺口 B 真正剩什麼（changeCapabilities／changeMeta 不支援、討論 promotedTo 以空清單補、offline 衝突處理完成度、desktop 端 claim／開工歸屬）；文件漂移（product-status 三處）是否立 change 修正；優先序是否因此改判
 
+### Round 3 — interview (2026-08-23)
+
+**Focus**: 改判後的優先序是否成立
+**Position**: 使用者確認採用「A（remote-task-evidence）→ 文件漂移修正 → B 剩餘小縫盤點」的順序；文件修正可與 A 併刀處理。
+**Open**: 無——進入結論
+
 ## Conclusion
 
-<!-- Written by `speclink discuss conclude`:
-**Decision** / **Rationale** / **Rejected alternatives** / **Deferred** / **Capture to** / **Next** -->
+**Decision**: 優先序定為三步：(1) 開 change `remote-task-evidence`——server 端 routes::task_done 收下 wire 上已送達的 touchedFiles、落 TeamStore（三 driver）並提供查詢面，轉綠 phase2_chain.rs 的 #[ignore] 紅測試；(2) 修正文件漂移——product-status 的 Desktop Remote Workspace 列、remote-getting-started §6、roadmap 遠端協作線的「開不出看板」敘述，與 session.ts:3 過期註解，可與 (1) 併刀；(3) Desktop 遠端工作區不立「三刀新功能」案，改為剩餘小縫盤點（changeCapabilities／changeMeta 不支援、討論 promotedTo 空清單、offline 衝突處理完成度、desktop 端 claim／開工歸屬面），盤點後再決定是否立案。
+**Rationale**: evidence 缺口是「進行中的資料遺失」——CLI 與 Desktop 遠端看板（remote_set_task_done）兩個入口都在觸發 server 丟棄 touchedFiles，晚做一天丟一天、事後補不回；而 Desktop 遠端工作區的主體（chooser 建構路徑、spec-only 與 remote+checkout 兩模式、離線狀態機與復原頁）已於 2026-07 落地並有 42 綠前端測試，文件誤載導致其被高估為大缺口。
+**Rejected alternatives**: 先做 Desktop 遠端工作區——其「沒有建構路徑」的依據是陳舊文件，實查後不成立；只修文件不做 evidence——不停止資料遺失。
+**Deferred**: B 剩餘縫隙的完整清單與逐項是否立案（待步驟 3 盤點）；offline 衝突處理的實際完成度確認。
+**Capture to**: proposal
+**Next**: /speclink-propose --from-discussion remote-partial-gaps-priority
