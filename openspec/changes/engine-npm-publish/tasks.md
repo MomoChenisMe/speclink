@@ -27,4 +27,4 @@
 ## 6. 收尾驗證
 
 - [x] 6.1 兩個 workflow 檔通過 YAML 語法檢查與 GitHub Actions 結構自檢（workflow_call 輸入引用、job needs 圖、artifact 名一致），scripts 測試全綠；speclink validate engine-npm-publish 通過 <!-- speclink-task:tsk_01M0PAACE9813KR45NPJRETF8E -->
-- [ ] [M] 6.2 在 npmjs.com 確認 @speclink org 的 NPM_TOKEN（repo secrets）為可發布新套件名的 automation token——首次發布 @speclink/engine 與五個平台子套件需要此權限；不足則調整 token 或 org 設定 <!-- speclink-task:tsk_01M0PAACE9124NQY69F4J3JJGZ -->
+- [x] [M] 6.2 在 npmjs.com 確認 @speclink org 的 NPM_TOKEN（repo secrets）為可發布新套件名的 automation token——首次發布 @speclink/engine 與五個平台子套件需要此權限；不足則調整 token 或 org 設定 <!-- speclink-task:tsk_01M0PAACE9124NQY69F4J3JJGZ -->
