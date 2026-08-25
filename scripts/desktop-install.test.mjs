@@ -12,7 +12,7 @@ import {
   engineVersionOf,
   missingSigningEnv,
   preflight,
-  sourceMarkerVersion,
+  sourceAssetVersion,
 } from './desktop-install.mjs';
 
 const SIGNED = {
@@ -22,15 +22,15 @@ const SIGNED = {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-test('源碼版號取自 speclink-core 的 MARKER_VERSION 常數', () => {
+test('源碼版號取自 speclink-core 的 ASSET_VERSION 常數', () => {
   const text = readFileSync(path.join(root, 'crates/speclink-core/src/init.rs'), 'utf8');
-  const version = sourceMarkerVersion(text);
+  const version = sourceAssetVersion(text);
   assert.match(version, /^v\d+\.\d+\.\d+$/);
   assert.ok(text.includes(`"${version}"`), '讀出的版號須確實出現在源碼中');
 });
 
-test('讀不到 MARKER_VERSION 常數時明確失敗，不回空字串', () => {
-  assert.throws(() => sourceMarkerVersion('沒有常數的檔案\n'), /MARKER_VERSION/);
+test('讀不到 ASSET_VERSION 常數時明確失敗，不回空字串', () => {
+  assert.throws(() => sourceAssetVersion('沒有常數的檔案\n'), /ASSET_VERSION/);
 });
 
 test('--version 輸出的引擎版號可解析', () => {

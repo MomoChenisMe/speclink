@@ -18,10 +18,10 @@ const BUNDLE_APP = path.join(ROOT, 'target/release/bundle/macos/Speclink.app');
 /// bundle 內的 sidecar CLI（Tauri externalBin 在 macOS 落到 Contents/MacOS/）。
 const SIDECAR_IN_APP = 'Contents/MacOS/speclink';
 
-/// 源碼的產物層版號：speclink-core 的 MARKER_VERSION 常數是唯一真相。
-export function sourceMarkerVersion(initRs) {
-  const version = initRs.match(/MARKER_VERSION:\s*&str\s*=\s*"([^"]+)"/)?.[1];
-  if (!version) throw new Error('crates/speclink-core/src/init.rs 讀不到 MARKER_VERSION 常數');
+/// 源碼的產物層版號：speclink-core 的 ASSET_VERSION 常數是唯一真相。
+export function sourceAssetVersion(initRs) {
+  const version = initRs.match(/ASSET_VERSION:\s*&str\s*=\s*"([^"]+)"/)?.[1];
+  if (!version) throw new Error('crates/speclink-core/src/init.rs 讀不到 ASSET_VERSION 常數');
   return version;
 }
 
@@ -100,7 +100,7 @@ function main(argv) {
   const head = capture('git', ['rev-parse', '--short', 'HEAD']).trim();
   const branch = capture('git', ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
   const dirty = capture('git', ['status', '--porcelain']).trim() !== '';
-  const expected = sourceMarkerVersion(
+  const expected = sourceAssetVersion(
     readFileSync(path.join(ROOT, 'crates/speclink-core/src/init.rs'), 'utf8'),
   );
   console.log(`來源：${branch} @ ${head}${dirty ? '（工作樹有未提交變更）' : '（工作樹乾淨）'}`);
