@@ -658,6 +658,10 @@ jobs:
           # 平台子套件在 npm/<平台>/。子套件先發、主套件最後，optionalDependencies
           # 於主套件上架時皆已可解析到同版。
           #
+          # npm 發布不可回頭（逾 24 小時不能 unpublish），所以兩端都 fail closed。
+          EXPECTED="${GITHUB_REF_NAME#v}"
+          main_name=""
+
           # 冪等：發到一半失敗時前幾個已上架，重跑對既有版號會拿 403 而永遠轉不綠。
           # 因此每份先查 registry，同版已存在就跳過——重跑能把剩下的補完。
           publish_one() {
@@ -665,6 +669,12 @@ jobs:
             meta="$(tar -xzOf "$tgz" package/package.json)"
             name="$(node -p 'JSON.parse(process.argv[1]).name' "$meta")"
             version="$(node -p 'JSON.parse(process.argv[1]).version' "$meta")"
+            # 蓋章是條件步驟，沒跑也不報錯——不擋的話佔位版會被永久發上 npm，
+            # 而且之後真正的同版 tag 會被上面的冪等判成「已存在」而全部略過。
+            if [ "$version" != "$EXPECTED" ]; then
+              echo "::error::$name 的 tarball 版號為 $version，與 tag 版 $EXPECTED 不符（版號蓋章沒跑？）"
+              exit 1
+            fi
             if npm view "$name@$version" version >/dev/null 2>&1; then
               echo "$name@$version 已在 registry，跳過"
             else
@@ -672,4 +682,13 @@ jobs:
             fi
           }
           for tgz in tarballs/npm/*/*.tgz; do publish_one "$tgz"; done
-          for tgz in tarballs/*.tgz; do publish_one "$tgz"; done
+          for tgz in tarballs/*.tgz; do
+            publish_one "$tgz"
+            main_name="$(node -p 'JSON.parse(process.argv[1]).name' "$(tar -xzOf "$tgz" package/package.json)")"
+          done
+
+          # 收尾：「每份都跳過」與「每份都發出去」在 job 結果上同樣是綠，所以明確
+          # 確認主套件真的在 registry 上——否則這個 job 綠得毫無意義。
+          [ -n "$main_name" ] || { echo "::error::npm-tarballs 內沒有主套件 tarball"; exit 1; }
+          npm view "$main_name@$EXPECTED" version >/dev/null \
+            || { echo "::error::$main_name@$EXPECTED 未出現在 registry"; exit 1; }

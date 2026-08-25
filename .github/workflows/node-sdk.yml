@@ -165,6 +165,12 @@ jobs:
           main_tgz="$(ls ./*.tgz)"
           tar -tzf "$main_tgz" | grep -qx 'package/binding.js' \
             || { echo "::error::主套件 tarball 缺 binding.js（loader 未取回）"; exit 1; }
+          # 同一道保險要對稱：napi artifacts 找不到相符檔名時是靜默 return，
+          # 少了這裡就會打包出「只有 package.json」的子套件，全綠發上 npm。
+          for tgz in npm/*/*.tgz; do
+            tar -tzf "$tgz" | grep -q '\.node$' \
+              || { echo "::error::子套件 tarball $tgz 缺 .node（napi artifacts 沒分配到二進位）"; exit 1; }
+          done
 
       - name: Upload npm tarballs
         uses: actions/upload-artifact@v4

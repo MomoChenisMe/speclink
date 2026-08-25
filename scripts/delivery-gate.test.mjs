@@ -546,7 +546,11 @@ test('node-sdk.yml 可被 release 管線重用，且版號蓋章不經字串內�
     [/actions\/download-artifact@v4/, /name:\s*binding-js/],
     'node-sdk.yml package job：JS loader 還原步驟',
   );
-  assert.match(pack, /tar -tzf[\s\S]{0,200}binding\.js/, 'node-sdk.yml：打包後須斷言主套件 tarball 含 binding.js');
+  // 打包後的 fail-closed 要對稱：主套件驗 binding.js，子套件驗 .node。napi artifacts
+  // 對「找不到相符檔名」是靜默 return，少了這道就會發出只有 package.json 的子套件。
+  const packStep = requireStep(pack, [/name: Pack the main package/], 'node-sdk.yml package job：打包步驟');
+  assert.match(packStep, /tar -tzf[\s\S]{0,200}binding\.js/, 'node-sdk.yml：打包後須斷言主套件 tarball 含 binding.js');
+  assert.match(packStep, /npm\/\*\/\*\.tgz[\s\S]{0,300}\\\.node/, 'node-sdk.yml：打包後須逐一斷言子套件 tarball 含 .node');
 });
 
 test('release.yml 的 engine 三 job：版號前置把關、重用建置、發布冪等且子套件先發', () => {
@@ -572,6 +576,13 @@ test('release.yml 的 engine 三 job：版號前置把關、重用建置、發�
 
   // 冪等：部分失敗後重跑不得因「同版已存在」永遠紅燈。
   assert.match(publish, /npm view/, 'engine-npm-publish 須先查 registry 以支援重跑（同版已存在即跳過）');
+
+  // npm 發布不可回頭（逾 24h 不能 unpublish），所以兩端都要 fail closed：
+  // 發之前擋住版號不符（蓋章沒跑就會把佔位版永久發上去，job 還是綠的），
+  // 發之後確認主套件真的上架（「全部略過」與「全部發完」在 job 結果上同樣是綠）。
+  assert.match(publish, /EXPECTED="\$\{GITHUB_REF_NAME#v\}"/, 'engine-npm-publish 須自 tag 名算出預期版號');
+  assert.match(publish, /"\$version" != "\$EXPECTED"/, 'engine-npm-publish 發布前須斷言 tarball 版號等於 tag 版');
+  assert.match(publish, /npm view "\$main_name@\$EXPECTED"/, 'engine-npm-publish 須以收尾查詢確認主套件確實上架');
 
   // 子套件先發、主套件最後，optionalDependencies 於主套件上架時皆可解析。
   const iSub = requireIndex(publish, 'tarballs/npm/', 'release.yml engine-npm-publish');
