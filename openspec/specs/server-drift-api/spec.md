@@ -8,9 +8,9 @@ remote 模式下 drift 的取得方式：server 只提供規格面 drift 端點�
 
 ### Requirement: 規格面 drift 端點且工作區面不進 wire
 
-server SHALL 提供 change-scoped 的 drift 端點：對單一 store snapshot 回報 (a) 以引擎規格面計算的 spec drift（規格面維度與規格假設）、(b) 該 snapshot 的 basis digests、(c) 該 change 的 store 面輸入（created metadata 與 design/tasks 內容）——client 的工作區面計算讀這些，缺席與空內容 SHALL 可區別。以上三者 SHALL 出自同一個 snapshot。回應 SHALL 為 protocol 的 drift DTO（camelCase、可匯出 JSON Schema）。
+server SHALL 提供 change-scoped 的 drift 端點：對單一 store snapshot 回報 (a) 以引擎規格面計算的 spec drift（規格面維度與規格假設）、(b) 該 snapshot 的 basis digests、(c) 該 change 的 store 面輸入（created metadata、design/tasks 內容，及該 change 的 evidence 記錄文字——有記錄才出現，缺席即缺席）——client 的工作區面計算讀這些，缺席與空內容 SHALL 可區別。以上三者 SHALL 出自同一個 snapshot。回應 SHALL 為 protocol 的 drift DTO（camelCase、可匯出 JSON Schema）。
 
-wire DTO SHALL NOT 含任何工作區面（code/git）欄位——broken anchors、工作區維度與 git 事實皆屬 client 本機，server SHALL NOT 執行任何 git 操作。（(c) 是 store 事實而非工作區事實：server 由 snapshot 即知，下行供 client 自算其半，不構成工作區面上行。）
+wire DTO SHALL NOT 含任何工作區面（code/git）欄位——broken anchors、工作區維度與 git 事實皆屬 client 本機，server SHALL NOT 執行任何 git 操作。（(c) 是 store 事實而非工作區事實：server 由 snapshot 即知，下行供 client 自算其半，不構成工作區面上行；evidence 記錄亦然——它是 store 保存的歷史事實，client 的 Environment 維度據此取得該 change 的 touched 檔案清單。）
 
 端點沿用 bearer 前置與 binding 裁決；未知 change SHALL 回 404 not_found；計算 SHALL 為唯讀，SHALL NOT 產生事件或取寫入鎖。
 
@@ -29,24 +29,15 @@ wire DTO SHALL NOT 含任何工作區面（code/git）欄位——broken anchors
 - **WHEN** 以不存在的 change 名請求 drift 端點
 - **THEN** 回 404 且 reason 為 not_found
 
----
+#### Scenario: store 保存的 evidence 隨回應下行
+
+- **WHEN** 對曾以 task done 落過 evidence 的 change 請求 drift 端點
+- **THEN** 回應的 store 面輸入含該 change 的 evidence 記錄文字，與 store 保存的內容一致；對照組：從未落過 evidence 的 change，該欄位缺席而非空字串
+
 
 <!-- @trace
-source: server-drift-api
-updated: 2026-07-16
-code:
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/remote_drift.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/drift.rs
-  - crates/speclink-protocol/src/drift.rs
-  - crates/speclink-protocol/src/lib.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/drift_api.rs
+source: remote-task-evidence
+updated: 2026-08-25
 -->
 
 ---
