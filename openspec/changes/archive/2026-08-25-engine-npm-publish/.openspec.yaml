@@ -5,15 +5,15 @@ created_with: claude
 from_discussion: node-sdk-completion-and-doc-alignment
 started_at: 2026-08-23
 started_by: MomoChen <momochenisme@gmail.com>
-reviewed_at: 2026-08-23
+reviewed_at: 2026-08-25
 reviewed_by: MomoChen <momochenisme@gmail.com>
 reviewed_with: claude
 reviewed_tasks_total: 13
 reviewed_scope:
   - path: .github/workflows/node-sdk.yml
-    hash: e6ca16d812e4a21575844197e8f1542fbcd2053593e53c0b3a58e4ab46ede8f7
+    hash: 8ccc4cae1307b91e3af6b256150aeacc19800de41a0b5abbb13304f7bd6f418c
   - path: .github/workflows/release.yml
-    hash: 4f20db1b5e07ab4f438b2ac7bc90f2e16fd38e0f91c21534a26dd441d126aee5
+    hash: ab20c37346898de8b98dfab23c64facf8ebe5bc74406d71d457a1e570f64a875
   - path: README.en.md
     hash: 9daf4ed3c3ec91e5c93f4aa62b2d90a20cdf6bdf03d0db97a64684ee533a9aeb
   - path: README.md
@@ -21,32 +21,32 @@ reviewed_scope:
   - path: crates/speclink-node/package.json
     hash: 7d4fdc77b5d590a899bef0e1d6a72bd0c027414177fe5ce1275d0fa4755d45c8
   - path: docs/product-status.md
-    hash: 1933e6e0a0d3f31a1c0c779001e210ccee4e403bbe14479126607c2f783261d4
+    hash: 56cfd0e05581e35fcea5b83e4e4f6ed0b46908e2ebea093ad73a18820021119b
   - path: docs/product-status.zh-TW.md
-    hash: 5fa9f74c24b1f6b73294fccdedb878b950da628b7d9a44a90d6050d649607cab
+    hash: 18d091df85663b430e7f02309fe979ac0f4693212b81a068e5476aa8fb0cf0cb
   - path: docs/roadmap.md
-    hash: bb5f70fc845ab678a7c60ab5a0609cde1093f4b0f058eb02498e8d806dc2e867
+    hash: e3bda23c088b8eb5f86240ab212f4cd5194f0b0a507726800de3d78c8904fbb3
   - path: docs/roadmap.zh-TW.md
-    hash: 56b9fc7de19c503341aebe601fe16c273ba51fc891ea27596c635fbae110f377
+    hash: 9230ff2a5872f2eff2438a67e4891a1819d49265403bcd46d43ef98c64665637
   - path: docs/sdk-node.md
-    hash: 2c714ae3c146beeab2fe82a69b9d421b3dedfd87d17739da249f44fb9446f09a
+    hash: ec644612fdbc7427edd7968b0a1492a2992d6baea8dc7658b2069f5ba5521c82
   - path: docs/sdk-node.zh-TW.md
-    hash: da4f07279ab4ba601b2bc430f1cb804bd2e85516dcd5e2d0baa2c9ffe736f3eb
+    hash: 2bf04cfafd9ae7b27a8d5706333b6fa7791057c3f2900691e58a1a739c62cf54
   - path: scripts/delivery-gate.test.mjs
-    hash: b6a136264f2aec54085c100f2df655e47e28676fe4e3c8649a8f73e37cc7cab2
+    hash: 64329d51c5547b35a27c4105f0221234fb0cdf38c52aac8c9c13dd9602c359ba
   - path: scripts/npm-engine-package.mjs
     hash: 40a1ce70030d9613a230d1e9cdcfd6dabd4abf94543bc5b0be118eba31cfca2f
   - path: scripts/npm-engine-package.test.mjs
     hash: 5df3b003d58e593be78c76c56845180355f5800ae5084837fe303af7b5bc1448
-verified_at: 2026-08-23
+verified_at: 2026-08-25
 verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
 verified_tasks_total: 13
 verified_scope:
   - path: .github/workflows/node-sdk.yml
-    hash: e6ca16d812e4a21575844197e8f1542fbcd2053593e53c0b3a58e4ab46ede8f7
+    hash: 8ccc4cae1307b91e3af6b256150aeacc19800de41a0b5abbb13304f7bd6f418c
   - path: .github/workflows/release.yml
-    hash: 4f20db1b5e07ab4f438b2ac7bc90f2e16fd38e0f91c21534a26dd441d126aee5
+    hash: ab20c37346898de8b98dfab23c64facf8ebe5bc74406d71d457a1e570f64a875
   - path: README.en.md
     hash: 9daf4ed3c3ec91e5c93f4aa62b2d90a20cdf6bdf03d0db97a64684ee533a9aeb
   - path: README.md
@@ -54,20 +54,20 @@ verified_scope:
   - path: crates/speclink-node/package.json
     hash: 7d4fdc77b5d590a899bef0e1d6a72bd0c027414177fe5ce1275d0fa4755d45c8
   - path: docs/product-status.md
-    hash: 1933e6e0a0d3f31a1c0c779001e210ccee4e403bbe14479126607c2f783261d4
+    hash: 56cfd0e05581e35fcea5b83e4e4f6ed0b46908e2ebea093ad73a18820021119b
   - path: docs/product-status.zh-TW.md
-    hash: 5fa9f74c24b1f6b73294fccdedb878b950da628b7d9a44a90d6050d649607cab
+    hash: 18d091df85663b430e7f02309fe979ac0f4693212b81a068e5476aa8fb0cf0cb
   - path: docs/roadmap.md
-    hash: bb5f70fc845ab678a7c60ab5a0609cde1093f4b0f058eb02498e8d806dc2e867
+    hash: e3bda23c088b8eb5f86240ab212f4cd5194f0b0a507726800de3d78c8904fbb3
   - path: docs/roadmap.zh-TW.md
-    hash: 56b9fc7de19c503341aebe601fe16c273ba51fc891ea27596c635fbae110f377
+    hash: 9230ff2a5872f2eff2438a67e4891a1819d49265403bcd46d43ef98c64665637
   - path: docs/sdk-node.md
-    hash: 2c714ae3c146beeab2fe82a69b9d421b3dedfd87d17739da249f44fb9446f09a
+    hash: ec644612fdbc7427edd7968b0a1492a2992d6baea8dc7658b2069f5ba5521c82
   - path: docs/sdk-node.zh-TW.md
-    hash: da4f07279ab4ba601b2bc430f1cb804bd2e85516dcd5e2d0baa2c9ffe736f3eb
-  - path: scripts/delivery-gate.test.mjs
-    hash: b6a136264f2aec54085c100f2df655e47e28676fe4e3c8649a8f73e37cc7cab2
+    hash: 2bf04cfafd9ae7b27a8d5706333b6fa7791057c3f2900691e58a1a739c62cf54
   - path: scripts/npm-engine-package.mjs
     hash: 40a1ce70030d9613a230d1e9cdcfd6dabd4abf94543bc5b0be118eba31cfca2f
   - path: scripts/npm-engine-package.test.mjs
     hash: 5df3b003d58e593be78c76c56845180355f5800ae5084837fe303af7b5bc1448
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-25

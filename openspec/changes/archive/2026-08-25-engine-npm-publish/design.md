@@ -20,7 +20,7 @@
 
 ### D1：node-sdk.yml 加 `workflow_call` 觸發，同檔雙角色
 
-`on:` 增加 `workflow_call`，帶一個選填字串輸入 `version`；既有 `push`／`pull_request` 觸發保留。同一份 build/pack 定義服務兩種角色：CI 驗證（無 version，佔位版號）與 release 建置（tag 版蓋章）。**否決**：在 release.yml 內複製五平台 matrix（重複程式碼、兩份漂移）；`workflow_dispatch` 手動觸發（跨 run 拿不到 artifact，且失去 tag 原子性）。reusable workflow 與 caller 屬同一個 workflow run，`npm-tarballs` artifact 可被 caller 的後續 job 直接下載——這是選 `workflow_call` 的決定性理由。
+`on:` 增加 `workflow_call`，帶一個選填字串輸入 `version`；既有 `push`／`pull_request` 觸發保留。同一份 build/pack 定義服務兩種角色：CI 驗證（無 version，佔位版號）與 release 建置（tag 版蓋章）。**兩種角色共用的不只版號路徑**：`binding.js` 載入器的取回、平台二進位下載面的 `pattern` 圈定，以及打包後「主套件含 loader、子套件含 `.node`」的 fail-closed 斷言，對所有觸發一律生效。不變的是版號行為，不是「job 內容一字不動」——那些檔案由建置產生、不在 repo 內，缺漏時 `npm pack` 仍會成功，斷言是唯一的攔截點，放過 PR 觸發等於讓 CI 對「打包出空殼」保持沉默。**否決**：在 release.yml 內複製五平台 matrix（重複程式碼、兩份漂移）；`workflow_dispatch` 手動觸發（跨 run 拿不到 artifact，且失去 tag 原子性）。reusable workflow 與 caller 屬同一個 workflow run，`npm-tarballs` artifact 可被 caller 的後續 job 直接下載——這是選 `workflow_call` 的決定性理由。
 
 ### D2：版號蓋章＝pack 前跑 `scripts/npm-engine-package.mjs`，只動 CI checkout
 
@@ -28,7 +28,7 @@ pack job 在 `napi artifacts` 之後、`npm pack` 之前，於 `version` 輸入�
 
 ### D3：release.yml 的接線＝一個 reusable-workflow job ＋一個 publish job
 
-release.yml 新增 `engine-npm-build`（以 `uses: ./.github/workflows/node-sdk.yml` 呼叫並傳去掉 `v` 前綴的 tag 版）與 `engine-npm-publish` 兩個主 job，外加一個一步的 `engine-version` job 把版號算成 job output——reusable workflow 的 `with:` 只吃表達式，而 GitHub Actions 表達式沒有字串裁切函式（無 `replace`／`substring`），`${GITHUB_REF_NAME#v}` 這類 shell 展開在 `with:` 內不成立，只能由 shell 產出後以 `needs.engine-version.outputs.version` 傳入；`engine-npm-publish` needs `[engine-npm-build, release]`，形狀照抄 server 的 npm-publish job——npm credential gate、下載 `npm-tarballs` artifact、平台子套件 tarball 逐一 `npm publish --access public` 後主套件最後發（optionalDependencies 解析得到同版）。發布單位是 tarball 檔（`npm publish <tgz>`），不再重新 pack。**否決**：把 publish 步驟塞進 reusable workflow 內（push/PR 角色不得帶 secrets 與發布行為，職責混淆）。
+release.yml 新增 `engine-npm-build`（以 `uses: ./.github/workflows/node-sdk.yml` 呼叫並傳去掉 `v` 前綴的 tag 版）與 `engine-npm-publish` 兩個主 job，外加一個一步的 `engine-version` job 把版號算成 job output（並順帶輸出 `publishable`——蓋章腳本只收 `X.Y.Z`，prerelease tag 若留到 pack job 才擋，等於白跑一輪五平台建置；因此非 `X.Y.Z` 的 tag 在 `engine-npm-build` 的 `if:` 就整條略過，Release 其餘產物不受影響）——reusable workflow 的 `with:` 只吃表達式，而 GitHub Actions 表達式沒有字串裁切函式（無 `replace`／`substring`），`${GITHUB_REF_NAME#v}` 這類 shell 展開在 `with:` 內不成立，只能由 shell 產出後以 `needs.engine-version.outputs.version` 傳入；`engine-npm-publish` needs `[engine-npm-build, release]`，形狀照抄 server 的 npm-publish job——npm credential gate、下載 `npm-tarballs` artifact、平台子套件 tarball 逐一 `npm publish --access public` 後主套件最後發（optionalDependencies 解析得到同版）。發布單位是 tarball 檔（`npm publish <tgz>`），不再重新 pack。**否決**：把 publish 步驟塞進 reusable workflow 內（push/PR 角色不得帶 secrets 與發布行為，職責混淆）。
 
 ### D4：文件翻面的表述基準
 

@@ -5,7 +5,7 @@
 
 ## 2. build/pack workflow 的 workflow_call 化——落實 spec「build/pack workflow 可被 release 管線重用」與 design D1
 
-- [x] 2.1 .github/workflows/node-sdk.yml 的 on: 增加 workflow_call（選填字串輸入 version），既有 push／pull_request 觸發與全部 job 內容保留不變——落實 spec 需求「build/pack workflow 可被 release 管線重用」與 design D1（同檔雙角色） <!-- speclink-task:tsk_01M0PAACE91M3449G8X8JJ1CW8 -->
+- [x] 2.1 .github/workflows/node-sdk.yml 的 on: 增加 workflow_call（選填字串輸入 version），既有 push／pull_request 觸發保留，無 version 輸入時的版號行為不變（產物完整性斷言對所有觸發一律生效）——落實 spec 需求「build/pack workflow 可被 release 管線重用」與 design D1（同檔雙角色） <!-- speclink-task:tsk_01M0PAACE91M3449G8X8JJ1CW8 -->
 - [x] 2.2 pack job 在 napi artifacts 之後、npm pack 之前，新增條件步驟：version 輸入非空時執行 node scripts/npm-engine-package.mjs --version <輸入值> --dir crates/speclink-node；無輸入時該步跳過，佔位版號打包行為與現行完全一致 <!-- speclink-task:tsk_01M0PAACE9X1XDXC0GXXSMMCQB -->
 
 ## 3. release 管線接線——落實 spec「npm 發布閘門與發布順序」與 design D3
