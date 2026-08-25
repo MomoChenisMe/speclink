@@ -449,8 +449,17 @@ impl Store for JsStoreBridge {
     }
 
     fn write_evidence(&self, change: &str, content: &str) -> anyhow::Result<()> {
-        self.call_result("writeEvidence", serde_json::json!([change, content]))?;
-        Ok(())
+        // Same convention as the other optional writes: a missing
+        // implementation gets a semantic message, never the raw `__missing__`
+        // marker.
+        match self.call("writeEvidence", serde_json::json!([change, content])) {
+            Ok(_) => Ok(()),
+            Err(f) if f.code.as_deref() == Some("__missing__") => anyhow::bail!(
+                "this store does not implement writeEvidence — \
+                 a completion with touched files records its evidence"
+            ),
+            Err(f) => Err(anyhow::Error::new(f)),
+        }
     }
 
     // --- delta specs ---

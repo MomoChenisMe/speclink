@@ -186,8 +186,15 @@ fn a_change_without_a_design_reports_it_absent_not_empty() {
     let response = parse(&body);
     assert_eq!(response.change.design, None, "a missing design is absent, not Some(\"\")");
     assert_eq!(response.change.tasks.as_deref(), Some(TASKS), "the present artifact still arrives");
+    // spec server-drift-api「對照組」: a change that never recorded evidence
+    // answers with the field absent, not an empty string.
+    assert_eq!(response.change.evidence, None, "unrecorded evidence is absent, not Some(\"\")");
 
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(
+        json["change"].get("evidence").is_none(),
+        "the evidence key is omitted entirely when no record exists: {json}"
+    );
     assert!(
         json["change"].get("design").is_none(),
         "an absent input serializes to no key at all: {body}"

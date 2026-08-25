@@ -62,6 +62,21 @@ export interface Store {
   createChange(name: string, metaText: string): MaybePromise<string>
   /** Last-modified time in whole seconds since the Unix epoch (sort key). Missing change → 0. */
   updatedAtSecs(name: string): MaybePromise<number>
+  /**
+   * OPTIONAL: the raw metadata document of an active change (the
+   * `.openspec.yaml` text). Stamping is a read-modify-write of this document,
+   * so the review/verify stamp verbs require BOTH methods together with
+   * `deleteArtifact` — a store missing any of the three is refused before the
+   * stamp touches anything. All other verbs never call them.
+   */
+  readChangeMeta?(name: string): MaybePromise<string | null>
+  /** OPTIONAL: overwrite the raw metadata document — see `readChangeMeta`. */
+  writeChangeMeta?(name: string, content: string): MaybePromise<void>
+  /**
+   * OPTIONAL: delete an active change outright (the storage side of discard).
+   * A store without it fails loudly only when a discard actually reaches it.
+   */
+  deleteChange?(name: string): MaybePromise<void>
 
   // --- artifacts ---
   readArtifact(change: string, artifact: string): MaybePromise<string | null>
@@ -75,16 +90,6 @@ export interface Store {
    * without it works everywhere else and fails loud there.
    */
   deleteArtifact?(change: string, artifact: string): MaybePromise<void>
-  /**
-   * OPTIONAL: the raw metadata document of an active change (the
-   * `.openspec.yaml` text). Stamping is a read-modify-write of this document,
-   * so the review/verify stamp verbs require BOTH methods together with
-   * `deleteArtifact` — a store missing any of the three is refused before the
-   * stamp touches anything. All other verbs never call them.
-   */
-  readChangeMeta?(name: string): MaybePromise<string | null>
-  /** OPTIONAL: overwrite the raw metadata document — see `readChangeMeta`. */
-  writeChangeMeta?(name: string, content: string): MaybePromise<void>
 
   // --- completion evidence ---
   /**

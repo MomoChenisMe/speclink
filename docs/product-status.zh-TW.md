@@ -2,7 +2,7 @@
 
 **繁體中文** · [English](product-status.md)
 
-最後查核日期：**2026-08-23**。本文是「目前能不能用」的正典。行為與邊界的正典則是 `openspec/specs/` 底下的規格，[專案路線圖](roadmap.zh-TW.md)則描述對使用者有意義的方向。
+最後查核日期：**2026-08-25**。本文是「目前能不能用」的正典。行為與邊界的正典則是 `openspec/specs/` 底下的規格，[專案路線圖](roadmap.zh-TW.md)則描述對使用者有意義的方向。
 
 檔案、crate 或正典 spec 單獨存在，不代表交付路徑已完整。
 
@@ -29,8 +29,8 @@
 | 認領變更（`claim`） | 不適用 | Available（可用） | RemoteOnly——本地模式以非零 exit code 明確拒絕。 |
 | 示範資料（`demo`） | Available（可用） | 不適用 | FsOnly——遠端模式明確拒絕，且不發出任何 server 請求。 |
 | Agent 讀取脈絡 | Available（可用） | Available（可用） | 本地直接讀 repo；遠端讀唯讀的 `.speclink/context/`，寫入仍走 Host command。 |
-| Desktop 看板與詳情面板 | Available（可用） | Partial（部分可用） | 連線、登入與 Server 清單可用；完整 Remote Workspace 的建構路徑尚未閉合。 |
-| task 的 touched-file evidence | Available（可用） | Partial（部分可用） | 本地落在變更目錄的 `.evidence.json`；server 目前丟棄 remote task 的 touched files。 |
+| Desktop 看板與詳情面板 | Available（可用） | Partial（部分可用） | 連線、登入與 chooser 開遠端看板皆可用；剩餘小縫（capability 清單、change 詮釋資料、離線衝突）見能力表。 |
+| task 的 touched-file evidence | Available（可用） | Available（可用） | 本地落在變更目錄的 `.evidence.json`；遠端把回報的 touched files 存進 Store，`GET /changes/{name}/evidence` 讀得回。 |
 | 帳號、PAT 與 membership | 不適用 | Available（可用） | 本地路徑不需要帳號；遠端有 `/setup`、invite、PAT 與 device login。 |
 | 備份還原 | 由 Git 承擔 | Available（可用） | 遠端有 `backup`／`verify-backup`／`restore`，目前需要維護窗口。 |
 | 離線工作 | Available（可用） | 需連線 | 本地完全不需要 server；遠端寫入需要可連得上 Host。 |
@@ -49,7 +49,7 @@
 | SQLite TeamStore | Available（可用） | `speclink-server` 的預設 `sqlite` driver | [SQLite conformance tests](../crates/speclink-store-sqlite/tests/conformance.rs)<br>[driver 選型文件](server-store-drivers.zh-TW.md) | 單一 instance 定位；cluster 不在目前能力內。 | 2026-08-13 |
 | Server FS TeamStore | Available（可用） | server config 的 `serverfs` driver | [Server FS conformance tests](../crates/speclink-store-fs/tests/it/conformance.rs)<br>[atomic publish tests](../crates/speclink-store-fs/tests/it/atomic_publish.rs) | 需要可靠的 OS advisory lock／flock 語意，單一資料目錄只允許一個 server。 | 2026-08-13 |
 | PostgreSQL TeamStore | Available（可用） | server config 的 `postgres` driver | [PostgreSQL conformance tests](../crates/speclink-store-postgres/tests/it/conformance.rs)<br>[resilience tests](../crates/speclink-store-postgres/tests/it/resilience.rs) | 完整測試需要 PostgreSQL 與 `SPECLINK_TEST_POSTGRES_URL`；目前 server 仍以單一 instance 為定位。 | 2026-08-13 |
-| `speclink-server` | Available（可用） | native binary／Docker／npx，HTTP Command／Query／Context／Event API | [Server binary](../crates/speclink-server/src/main.rs)<br>[CLI-to-server E2E](../crates/speclink-server/tests/it/e2e_cli.rs) | 單節點 server 已可運作；遠端 task touched-file evidence 尚未完整落庫，見下一列。 | 2026-08-13 |
+| `speclink-server` | Available（可用） | native binary／Docker／npx，HTTP Command／Query／Context／Event API | [Server binary](../crates/speclink-server/src/main.rs)<br>[CLI-to-server E2E](../crates/speclink-server/tests/it/e2e_cli.rs) | 單節點 server 已可運作；遠端 task done 回報的 touched-file evidence 已落庫可查，見 Remote task evidence 一列。 | 2026-08-25 |
 | Server Admin, setup and identity | Available（可用） | `/setup`、`/admin`、`/account`、PAT／device flow／invite 與 headless admin commands | [Admin E2E tests](../crates/speclink-server/tests/it/admin_e2e.rs)<br>[Device-flow E2E tests](../crates/speclink-server/tests/it/device_e2e.rs) | 目前涵蓋單節點安裝與帳號管理；SSO 與 cluster 管理仍是規劃能力。 | 2026-08-13 |
 | Desktop Server Connections | Available（可用） | Desktop 設定中的 Server 清單、device login、PAT fallback、logout 與 OS Keychain | [Tauri connection orchestration](../apps/desktop/src-tauri/src/connections.rs)<br>[Servers panel tests](../apps/desktop/src/__tests__/serversPanel.test.tsx) | 可管理連線與身分；登入後即可在 chooser 開遠端 workspace，剩餘小縫見下一列。 | 2026-08-23 |
 | Desktop Remote Workspace | Partial（部分可用） | Workspace chooser 的遠端開啟：skip（免 checkout）與 folder（綁本機 checkout）兩模式 | [Workspace chooser](../apps/desktop/src/components/WorkspaceChooser.tsx)<br>[Remote session 工廠](../apps/desktop/src/session.ts)<br>[遠端開啟測試](../apps/desktop/src/__tests__/remoteOpen.test.ts) | 遠端看板可開、可勾任務、可讀寫 artifact。剩餘小縫：capability 清單與 change 詮釋資料在遠端不支援、討論的 promotedTo 以空清單補齊、離線衝突處理尚未完成。 | 2026-08-23 |
