@@ -1,7 +1,7 @@
 ## 1. TeamStore contract：change evidence 文件種類
 
 - [x] 1.1 先寫紅測試：conformance suite 增 change evidence 案例——任一官方 driver 的 UoW 寫入後 round-trip 逐位元組一致、tenant scope 隔離、export bundle 自動包含（crates/speclink-store/src/conformance/mod.rs）；此時 in-memory reference 未實作、案例應紅 <!-- speclink-task:tsk_01M0PBMRMGXVCJF5AGQ03ECEKD -->
-- [x] 1.2 crates/speclink-store/src/types.rs 增 DocumentId::ChangeEvidence { change }（封閉集合第九種，落實 teamstore-contract 的「文件定址採 Project 與 Repo scope 的邏輯 locator」），crates/speclink-store/src/memory.rs 與 crates/speclink-store/src/uow.rs 落實編碼／解碼與列舉；驗證：cargo test -p speclink-store 全綠（含 1.1 案例轉綠） <!-- speclink-task:tsk_01M0PBMRMGCK83BHW34ZDRES40 -->
+- [x] 1.2 crates/speclink-store/src/types.rs 增 DocumentId::ChangeEvidence { change }（封閉集合第九種，落實 teamstore-contract 的「文件定址採 Project 與 Repo scope 的邏輯 locator」），crates/speclink-store/src/memory.rs 與 crates/speclink-store/src/uow.rs 經確認以 DocumentId 為鍵、泛用列舉而無需改動；驗證：cargo test -p speclink-store 全綠（含 1.1 案例轉綠） <!-- speclink-task:tsk_01M0PBMRMGCK83BHW34ZDRES40 -->
 
 ## 2. 三個官方 driver 映射
 

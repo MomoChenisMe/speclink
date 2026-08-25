@@ -438,12 +438,17 @@ impl TouchedCandidates<'_> {
     /// The commit the candidates were observed on: wire-supplied for injected
     /// candidates, read from the workspace HEAD for probed ones. What the
     /// sender did not report stays absent — never filled from an unrelated
-    /// checkout.
+    /// checkout. An injected value that is not a full commit sha (the same
+    /// shape the probe records) is junk wire input and stays absent too,
+    /// mirroring the path filtering above.
     fn resolved_head_commit(&self) -> Option<String> {
         match self {
-            TouchedCandidates::Injected { head_commit, .. } => {
-                head_commit.map(str::to_string)
-            }
+            TouchedCandidates::Injected { head_commit, .. } => head_commit
+                .filter(|h| {
+                    (h.len() == 40 || h.len() == 64)
+                        && h.bytes().all(|b| b.is_ascii_hexdigit())
+                })
+                .map(str::to_string),
             TouchedCandidates::ProbeWorkspace(ws) => head_commit(&ws.root),
         }
     }
@@ -1713,6 +1718,22 @@ mod tests {
             "the wire-reported commit travels into the entry"
         );
         assert_eq!(rec.entries[1].head_commit, None, "unreported stays absent, never guessed");
+
+        // 非完整 sha 形狀的 wire 值是垃圾輸入：與路徑過濾同一取向，缺席而非逐字入帳。
+        let store2 = store_with(META_UNSTARTED, TASKS_TWO_OPEN);
+        complete(
+            &store2,
+            "demo",
+            &TaskAddr::Ordinal(1),
+            &CompleteAttribution::default(),
+            TouchedCandidates::Injected {
+                files: &["src/a.rs".to_string()],
+                head_commit: Some("not-a-sha; rm -rf /"),
+            },
+        )
+        .unwrap();
+        let rec2 = TouchedRecord::load(&store2, "demo");
+        assert_eq!(rec2.entries[0].head_commit, None, "junk wire input stays absent");
     }
 
     #[test]

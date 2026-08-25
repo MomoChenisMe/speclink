@@ -53,6 +53,21 @@ describe('createEngine (host Store object)', () => {
     expect(message).toContain('archiveChange')
   })
 
+  it('the completion-evidence pair is not required at construction', async () => {
+    // readEvidence/writeEvidence are NOT in REQUIRED_METHODS: the fixture
+    // store predates them and defines neither, yet createEngine validates and
+    // dispatch works. No dispatch verb reaches the pair today, so the
+    // construction-time surface is what the JS side can pin; the read/write
+    // semantics ("missing read → no record", "missing write → loud failure")
+    // are pinned Rust-side in the bridge.
+    const store = memoryStore(fixtureProject()) as Record<string, unknown>
+    expect('readEvidence' in store).toBe(false)
+    expect('writeEvidence' in store).toBe(false)
+    const engine = createEngine({ store })
+    const sdk = (await engine.dispatch(['list', '--json'])) as { changes: unknown[] }
+    expect(sdk.changes.length).toBeGreaterThan(0)
+  })
+
   it('a rejecting store method rejects dispatch with the method name prefixed', async () => {
     const store = memoryStore(fixtureProject())
     store.readArtifact = async () => {

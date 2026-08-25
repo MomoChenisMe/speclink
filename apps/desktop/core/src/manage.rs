@@ -212,7 +212,11 @@ pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), Str
         .map_err(|e| e.to_string())?;
     if done {
         // 側效沿單發完成語意（tasks::complete 同款）：未認領 dirty 檔記一筆
-        // touched（歸於本次首個翻轉任務），首次完成蓋開工章（inprogress::add 冪等）。
+        // 雙通道記錄——v1 touched（commit 技能的檔案清單通道）＋ v2 EvidenceEntry
+        // （evidence 查詢面讀的是這條），皆歸於本次首個翻轉任務；首次完成蓋
+        // 開工章（inprogress::add 冪等）。
+        // identity 鍵同 set_task_done_at：用呼叫端專案根，與預熱同鍵。
+        let identity = cached_git_identity(root);
         let mut record = speclink_core::tasks::TouchedRecord::load(&ctx.store, change);
         record.change = change.to_string();
         let seen = record.all_files();
@@ -223,13 +227,21 @@ pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), Str
         if !files.is_empty() {
             record.touched.push(speclink_core::tasks::TouchedEntry {
                 task_id: first_id.to_string(),
+                task_desc: first_desc.clone(),
+                files: files.clone(),
+            });
+            record.entries.push(speclink_core::tasks::EvidenceEntry {
+                task_id: first_id.to_string(),
                 task_desc: first_desc,
-                files,
+                actor: identity.clone(),
+                repo: None,
+                head_commit: speclink_core::tasks::head_commit(&ctx.workspace.root),
+                touched_files: files,
+                recorded_at: chrono::Utc::now()
+                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
             });
             record.save(&ctx.store).map_err(|e| e.to_string())?;
         }
-        // identity 鍵同 set_task_done_at：用呼叫端專案根，與預熱同鍵。
-        let identity = cached_git_identity(root);
         speclink_core::inprogress::add(&ctx.store, change, identity.as_deref(), None)
             .map_err(|e| e.to_string())?;
     }
@@ -704,6 +716,44 @@ mod tests {
         let after_move = fs::read_to_string(&wt_tasks).unwrap();
         assert!(after_move.contains("- [x] 1.1 second"), "拖排須落在副本: {after_move}");
         assert_eq!(fs::read_to_string(&main_tasks).unwrap(), main_before, "主 checkout 仍不動");
+    }
+
+    #[test]
+    fn bulk_check_records_v2_evidence_like_a_single_completion() {
+        // 批次勾選沿單發完成語意：除了 v1 touched 通道，也要落 v2 EvidenceEntry
+        // ——只寫 v1 的記錄在新的 evidence 查詢面（server 端點、封存 trace）會被
+        // 讀成空集合。
+        let fx = crate::testfixture::FixtureRoot::new("m-bulk-evidence");
+        fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
+        fx.write(
+            "openspec/changes/add-auth/tasks.md",
+            "## 1. Group\n\n- [ ] 1.1 first\n- [ ] 1.2 second\n",
+        );
+        git_with_identity(fx.root(), "Bulk Tester", "bulk@example.test");
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git")
+                .args(args)
+                .current_dir(fx.root())
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            assert!(ok, "git {args:?} failed");
+        };
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "seed"]);
+        fx.write("src/app.rs", "fn main() {}\n");
+
+        set_all_tasks_at(fx.root(), "add-auth", true).expect("全勾成功");
+
+        let store = speclink_fs::FsStore::new(fx.root(), "openspec");
+        let rec = speclink_core::tasks::TouchedRecord::load(&store, "add-auth");
+        assert_eq!(rec.touched.len(), 1, "v1 file-list channel keeps its entry");
+        assert_eq!(rec.entries.len(), 1, "the v2 evidence entry lands too: {rec:?}");
+        let e = &rec.entries[0];
+        assert!(e.touched_files.contains(&"src/app.rs".to_string()), "{e:?}");
+        assert_eq!(e.actor.as_deref(), Some("Bulk Tester <bulk@example.test>"));
+        assert!(e.head_commit.is_some(), "a committed checkout records its HEAD");
+        assert!(!e.recorded_at.is_empty());
     }
 
     #[test]

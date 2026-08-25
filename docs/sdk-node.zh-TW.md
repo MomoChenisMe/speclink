@@ -77,6 +77,7 @@ const engine = createEngine({ store: myStore, actor: 'Alice <alice@example.com>'
 | Changes | `listChanges`、`findChange`、`changeExists`、`createChange`、`updatedAtSecs` | `listChanges` 回傳 `{name, dir?, meta?}` 且按名稱排序；`meta` 對應 `.openspec.yaml`（`schema`、`created`、`createdBy`、`createdWith`、`fromDiscussion`）。`updatedAtSecs` 是「最近更新」排序鍵（整數秒；change 不存在 → 0）。 |
 | Artifacts | `readArtifact`、`writeArtifact`、`artifactExists`、`deleteArtifact`（選配） | artifact 識別碼是 schema 定義、相對於 change 的輸出路徑：`proposal.md`、`design.md`、`tasks.md`、`specs/<capability>/spec.md`。空文件也算存在。`deleteArtifact` 只有 review／verify 蓋章會用到（蓋章會刪掉工單），沒實作就只有蓋章路徑失敗。 |
 | Change metadata（選配） | `readChangeMeta`、`writeChangeMeta` | change 的 metadata 原文（`.openspec.yaml` 內容）。蓋章是這份文件的 read-modify-write，所以 stamp 動詞把這對方法與 `deleteArtifact` 一起當前置：缺任何一個，蓋章在動手前就整個拒絕（工單不動）；其餘動詞從不呼叫它們。 |
+| Completion evidence（選配） | `readEvidence`、`writeEvidence` | change 的完成證據記錄原文（`.evidence.json` 內容，store 不解讀）。缺 `readEvidence` 讀成「沒有記錄」（本來就是正常狀態）；缺 `writeEvidence` 則在某次完成真的有檔案要記時大聲失敗，不會靜默丟證據。 |
 | Delta specs | `deltaCapabilities`、`hasCapabilityDirs` | change 內含 delta spec 的 capability 名稱，排序後回傳。 |
 | Canonical specs | `listCanonicalCapabilities`、`canonicalSpecExists`、`readCanonicalSpec`、`writeCanonicalSpec`、`canonicalSpecPath` | 專案層級的正典規格，archive 時 delta 併入之處。 |
 | Archive | `archivedChangeExists`、`archiveChange`、`readArchivedMeta`、`writeArchivedMeta` | `archiveChange(name, datedName)` 把使用中的 change 移到含日期的封存名下（`YYYY-MM-DD-<name>`）。 |
