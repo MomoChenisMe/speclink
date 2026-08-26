@@ -89,6 +89,9 @@ fn change_stage_matrix_follows_the_lifecycle_markers() {
             lifecycle: None,
             claimed_by: None,
             started_at: started_at.map(str::to_string),
+            created_by: None,
+            created: None,
+            from_discussions: Vec::new(),
         }
     }
     let cases: [(Option<&str>, usize, usize, u8); 7] = [
@@ -203,17 +206,12 @@ fn open_handshakes_and_returns_identity_and_capability_description() {
         ("moveTask", caps.move_task),
         // remote-board-order：看板拖排直達 board resource，editor 為真。
         ("reorderCard", caps.reorder_card),
-    ] {
-        assert!(on, "{name} 是直達／組合類，capability 應為真");
-    }
-    for (name, on) in [
+        // remote-read-parity：change 詮釋資料與 capability 清單以 status
+        // payload 既有欄位映射——資料已在 wire 上，capability 為真。
         ("changeMeta", caps.change_meta),
         ("changeCapabilities", caps.change_capabilities),
     ] {
-        assert!(
-            !on,
-            "{name} 無 server 端點，capability 應為假（不偽造缺口）"
-        );
+        assert!(on, "{name} 是直達／組合／payload 映射類，capability 應為真");
     }
     assert!(
         caps.live_updates,

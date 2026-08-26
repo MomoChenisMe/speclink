@@ -1,0 +1,96 @@
+{
+  "version": 2,
+  "change": "remote-read-parity",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫紅測試：crates/speclink-protocol 單元測試斷言（a）ChangeSummary 的 createdBy/created/fromDiscussions、（b）ChangeStatus 的 createdBy/createdWith/startedAt/startedBy、（c）DiscussionInfo 的 promotedTo——三組欄位各驗序列化含鍵、缺席／空清單省略鍵、反序列化無鍵舊 payload 不失敗且得預設值",
+      "files": [
+        "crates/speclink-protocol/src/query.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 先寫紅測試：server 整合測試斷言（a）GET /changes/{name} 對 meta 含 created_by/created_with/started_at/started_by 的 change 回四鍵、四欄皆缺回無鍵，（b）GET /changes 清單項對有無 meta 欄位的兩個 change 各回三鍵／無鍵，（c）GET /discussions 對已轉出討論回 promotedTo 且順序沿 frontmatter 累加、未轉出討論無鍵，（d）本地 CLI discuss list --json 輸出與改動前逐位元相同",
+      "files": [
+        "crates/speclink-server/tests/it/discussion_routes.rs",
+        "crates/speclink-server/tests/it/query_routes.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 實作：單 change 讀取路由自既有 parsed meta 補四欄位（落實「單 change 讀取回應攜帶 show 組合欄位」的擴充）；清單路由沿 startedAt 的逐筆 meta 組裝路徑補三欄位（metaError 容錯路徑欄位缺席、清單不失敗，落實「變更清單回應攜帶建立者與來源討論欄位」）；討論列表路由以引擎 promoted_to 查詢函式邊緣組裝（單筆查詢失敗欄位缺席、列表不失敗，落實「討論列表回應攜帶 promotedTo」），2.1 測試轉綠",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "crates/speclink-host/src/bridge.rs",
+        "crates/speclink-server/src/routes.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 先寫紅測試：apps/desktop/src-tauri/tests/it/remote_data.rs 斷言 handshake 後 RemoteCapabilities 的 change_capabilities 與 change_meta 為 true",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/helpers/remoteFixtures.ts",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "apps/desktop/src/adapter/remoteDataSource.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M0WN7417DFEWHX0ZKW4TRHYQ",
+      "taskDesc": "1.1 先寫紅測試：crates/speclink-protocol 單元測試斷言（a）ChangeSummary 的 createdBy/created/fromDiscussions、（b）ChangeStatus 的 createdBy/createdWith/startedAt/startedBy、（c）DiscussionInfo 的 promotedTo——三組欄位各驗序列化含鍵、缺席／空清單省略鍵、反序列化無鍵舊 payload 不失敗且得預設值",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd346870871f7a6e7e75b9b2d8659cd5b372444",
+      "touchedFiles": [
+        "crates/speclink-protocol/src/query.rs"
+      ],
+      "recordedAt": "2026-08-26T01:44:20Z"
+    },
+    {
+      "taskId": "tsk_01M0WN7417ESTDS4PHC7NMQ0T1",
+      "taskDesc": "2.1 先寫紅測試：server 整合測試斷言（a）GET /changes/{name} 對 meta 含 created_by/created_with/started_at/started_by 的 change 回四鍵、四欄皆缺回無鍵，（b）GET /changes 清單項對有無 meta 欄位的兩個 change 各回三鍵／無鍵，（c）GET /discussions 對已轉出討論回 promotedTo 且順序沿 frontmatter 累加、未轉出討論無鍵，（d）本地 CLI discuss list --json 輸出與改動前逐位元相同",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd346870871f7a6e7e75b9b2d8659cd5b372444",
+      "touchedFiles": [
+        "crates/speclink-server/tests/it/discussion_routes.rs",
+        "crates/speclink-server/tests/it/query_routes.rs"
+      ],
+      "recordedAt": "2026-08-26T01:52:54Z"
+    },
+    {
+      "taskId": "tsk_01M0WN7417JC0BFGQA9SGECF5E",
+      "taskDesc": "2.2 實作：單 change 讀取路由自既有 parsed meta 補四欄位（落實「單 change 讀取回應攜帶 show 組合欄位」的擴充）；清單路由沿 startedAt 的逐筆 meta 組裝路徑補三欄位（metaError 容錯路徑欄位缺席、清單不失敗，落實「變更清單回應攜帶建立者與來源討論欄位」）；討論列表路由以引擎 promoted_to 查詢函式邊緣組裝（單筆查詢失敗欄位缺席、列表不失敗，落實「討論列表回應攜帶 promotedTo」），2.1 測試轉綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd346870871f7a6e7e75b9b2d8659cd5b372444",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "crates/speclink-host/src/bridge.rs",
+        "crates/speclink-server/src/routes.rs"
+      ],
+      "recordedAt": "2026-08-26T01:56:49Z"
+    },
+    {
+      "taskId": "tsk_01M0WN7417X7QX30XK7GRRNCTW",
+      "taskDesc": "3.1 先寫紅測試：apps/desktop/src-tauri/tests/it/remote_data.rs 斷言 handshake 後 RemoteCapabilities 的 change_capabilities 與 change_meta 為 true",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd346870871f7a6e7e75b9b2d8659cd5b372444",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/helpers/remoteFixtures.ts",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "apps/desktop/src/adapter/remoteDataSource.ts"
+      ],
+      "recordedAt": "2026-08-26T02:04:55Z"
+    }
+  ]
+}

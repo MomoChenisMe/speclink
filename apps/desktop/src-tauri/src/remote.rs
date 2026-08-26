@@ -1002,9 +1002,10 @@ pub struct RemoteCapabilities {
     // 看板拖排直達 board resource（remote-board-order 決策 7）：依 role 翻真
     //（editor 真、reader 假——server 的 PUT /board-order 以同一 role bit 強制）。
     pub reorder_card: bool,
-    // (c) 不支援（server 無端點；changeMeta/changeCapabilities 依實際 payload
-    // 定奪為無來源——ChangeStatus/ChangeSummary 皆不帶 metadata 與 capability
-    // 名清單）
+    // change 詮釋資料與 capability 清單（remote-read-parity）：ChangeStatus
+    // 已攜歸屬四欄與 deltaCapabilities，TS 端以既有 remote_status payload
+    // 映射實作——資料在 wire 上，capability 為真；舊 server 不送的欄位以
+    // 缺席呈現（誠實降級，缺的是欄位而非能力）。
     pub change_meta: bool,
     pub change_capabilities: bool,
     /// 此 membership 是否可寫 workflow policy；server 仍是最終權限防線。
@@ -1044,8 +1045,8 @@ impl RemoteCapabilities {
             delete_change: binding.capabilities.delete_change,
             move_task: binding.capabilities.move_task,
             reorder_card: binding.capabilities.policy_write,
-            change_meta: false,
-            change_capabilities: false,
+            change_meta: true,
+            change_capabilities: true,
             policy_write: binding.capabilities.policy_write,
             live_updates,
         }
@@ -1738,6 +1739,9 @@ mod board_order_tests {
             lifecycle: None,
             claimed_by: None,
             started_at: None,
+            created_by: None,
+            created: None,
+            from_discussions: Vec::new(),
         }
     }
 
@@ -1750,6 +1754,7 @@ mod board_order_tests {
             created: "2026-01-02".into(),
             created_by: None,
             kind: None,
+            promoted_to: Vec::new(),
             path: format!("openspec/discussions/{slug}.md"),
             archived: false,
         }

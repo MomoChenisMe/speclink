@@ -44,6 +44,13 @@ function fakeInvoke() {
       isComplete: false,
       applyRequires: ["tasks"],
       artifacts: [],
+      created: "2026-07-29",
+      createdBy: "Demo <d@e.com>",
+      createdWith: "claude-code",
+      startedAt: "2026-08-25T00:00:00Z",
+      startedBy: "Demo <d@e.com>",
+      fromDiscussions: ["auth-scope"],
+      deltaCapabilities: ["auth", "user-profile"],
     },
     remote_document: "content",
     remote_spec_document: "# auth Specification",
@@ -54,7 +61,17 @@ function fakeInvoke() {
     remote_archived_document: "archived content",
     remote_archived_capabilities: ["auth"],
     remote_list_discussions: {
-      active: [{ slug: "s1", topic: "T", status: "open", rounds: 1, created: "2026-01-01" }],
+      active: [
+        { slug: "s1", topic: "T", status: "open", rounds: 1, created: "2026-01-01" },
+        {
+          slug: "s2",
+          topic: "Promoted",
+          status: "promoted",
+          rounds: 2,
+          created: "2026-01-02",
+          promotedTo: ["cut-a", "cut-b"],
+        },
+      ],
       archived: [],
     },
     remote_discussion_document: "discussion text",
@@ -117,8 +134,8 @@ function openInfo(): RemoteOpenInfo {
     getDocument: true,
     getSpecDocument: true,
     searchWorkspace: true,
-    changeCapabilities: false,
-    changeMeta: false,
+    changeCapabilities: true,
+    changeMeta: true,
     deleteChange: true,
     setTaskDone: true,
     setAllTasks: true,
@@ -293,8 +310,10 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     ).resolves.toBe("archived content");
     await expect(ds.archivedCapabilities("2026-01-01-old")).resolves.toEqual(["auth"]);
     const discussions = await ds.listDiscussions();
-    // server 不外露 promotedTo——以空清單補齊 UI 必填欄位（資料缺口，非偽造 affordance）。
+    // promotedTo 映射 wire 欄位（remote-read-parity）：缺席以空清單容錯、
+    // 非空如實攜帶，不再以 client 端固定值補齊。
     expect(discussions.active[0]).toMatchObject({ slug: "s1", promotedTo: [] });
+    expect(discussions.active[1]).toMatchObject({ slug: "s2", promotedTo: ["cut-a", "cut-b"] });
   });
 
   it("wire 的 startedAt 進入 ChangeItem，changeStage 對開工零進度卡判進行中", async () => {
@@ -328,17 +347,67 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     expect(changeStage(changes[1])).toBe("proposed");
   });
 
-  it("unsupported methods reject without ever invoking", async () => {
+  it("changeCapabilities 以既有 remote_status 路徑映射 deltaCapabilities", async () => {
+    // remote-read-parity design D2：不開新 Tauri command、不另發 HTTP 請求，
+    // 自 status payload 抽取既有欄位。
     const { calls, invoke } = fakeInvoke();
     const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
-    const rejections: Array<Promise<unknown>> = [
-      ds.changeCapabilities("chg"),
-      ds.changeMeta("chg"),
-    ];
-    for (const p of rejections) {
-      await expect(p).rejects.toThrow(/尚未提供/);
-    }
-    expect(calls).toHaveLength(0);
+    await expect(ds.changeCapabilities("chg")).resolves.toEqual(["auth", "user-profile"]);
+    expect(calls.map((c) => c.cmd)).toEqual(["remote_status"]);
+    expect(calls[0].args).toMatchObject({
+      connectionId: CONN,
+      project: PROJECT,
+      repo: REPO,
+      change: "chg",
+    });
+  });
+
+  it("changeMeta 以 status payload 組出 ChangeMetaInfo、缺席欄位誠實降級", async () => {
+    const { calls, invoke } = fakeInvoke();
+    const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
+    await expect(ds.changeMeta("chg")).resolves.toEqual({
+      schema: "spec-driven",
+      created: "2026-07-29",
+      createdBy: "Demo <d@e.com>",
+      createdWith: "claude-code",
+      fromDiscussions: ["auth-scope"],
+      startedAt: "2026-08-25T00:00:00Z",
+      startedBy: "Demo <d@e.com>",
+    });
+    expect(calls.map((c) => c.cmd)).toEqual(["remote_status"]);
+
+    // 舊 server（無新欄位）：對應欄位為 null／缺席，不偽造預設值、不失敗。
+    const legacyInvoke = async <T,>(): Promise<T> =>
+      ({
+        changeName: "chg",
+        schemaName: "spec-driven",
+        isComplete: false,
+        applyRequires: ["tasks"],
+        artifacts: [],
+      }) as T;
+    const legacy = createRemoteDataSource(CONN, PROJECT, REPO, legacyInvoke);
+    const meta = await legacy.changeMeta("chg");
+    expect(meta).toMatchObject({ schema: "spec-driven" });
+    expect(meta?.createdBy ?? null).toBeNull();
+    expect(meta?.createdWith ?? null).toBeNull();
+    expect(meta?.startedAt ?? null).toBeNull();
+    expect(meta?.startedBy ?? null).toBeNull();
+    expect(meta?.created ?? null).toBeNull();
+    expect(meta?.fromDiscussions ?? []).toEqual([]);
+  });
+
+  it("changeCapabilities 與 changeMeta 併發載入共用單次 remote_status 請求", async () => {
+    // spec remote-workspace-data「以單 change 讀取回應既有 payload 映射實作、
+    // 不另開請求」：抽屜同時載入 capability 清單與詮釋資料時只打一次端點；
+    // 落定後的新一輪載入仍重新取值，不留 stale 快取。
+    const { calls, invoke } = fakeInvoke();
+    const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
+    const [caps, meta] = await Promise.all([ds.changeCapabilities("chg"), ds.changeMeta("chg")]);
+    expect(caps).toEqual(["auth", "user-profile"]);
+    expect(meta?.createdBy).toBe("Demo <d@e.com>");
+    expect(calls.filter((c) => c.cmd === "remote_status")).toHaveLength(1);
+    await ds.changeMeta("chg");
+    expect(calls.filter((c) => c.cmd === "remote_status")).toHaveLength(2);
   });
 });
 

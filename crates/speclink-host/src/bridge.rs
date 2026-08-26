@@ -88,6 +88,24 @@ pub fn execute(
     Ok(BridgeExecution { outcome, events, revision: Some(revision) })
 }
 
+/// The change names each discussion has fanned out into, over one scope
+/// snapshot — the Host's composition point for the Server's discussion-list
+/// `promotedTo` assembly (remote-read-parity design D1: the engine keeps
+/// `promoted_to` out of `DiscussionInfo`, so the route edge composes it).
+/// Read-only: the bridged view is materialized, queried per slug, and dropped;
+/// nothing is staged or committed. Results ride in `slugs` order.
+pub fn discussions_promoted_to(
+    store: &dyn TeamStore,
+    scope: &Scope,
+    slugs: &[String],
+) -> Result<Vec<Vec<String>>, BridgeError> {
+    let view = BridgeStore::materialize(store, scope).map_err(BridgeError::Store)?;
+    Ok(slugs
+        .iter()
+        .map(|slug| speclink_core::discuss::promoted_to(&view, slug))
+        .collect())
+}
+
 /// A short, stable command label for the unit-of-work's audit record. Derived
 /// from the outcome so it names the verb that produced the writes.
 fn command_label(outcome: &CommandOutcome) -> String {

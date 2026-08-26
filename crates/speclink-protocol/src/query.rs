@@ -241,14 +241,21 @@ pub struct ChangeSummary {
     pub claimed_by: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub started_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub from_discussions: Vec<String>,
 }
 
 /// `GET /changes/{name}` response — the fs `StatusReport` shape plus the
-/// server's own fields. The trailing meta trio (`created`, `fromDiscussions`,
-/// `deltaCapabilities`) feeds the CLI's remote `show` composition (design D4
-/// 實作期修正): `created` appears only when the meta carries the
-/// schema+created pair (the engine ShowChange unit rule), the lists are
-/// omitted when empty, and an older server simply never sends them.
+/// server's own fields. The trailing meta fields (`created`, `fromDiscussions`,
+/// `deltaCapabilities`, plus the attribution quartet `createdBy`/`createdWith`/
+/// `startedAt`/`startedBy`) feed the client's show/detail composition:
+/// `created` appears only when the meta carries the schema+created pair (the
+/// engine ShowChange unit rule), lists are omitted when empty, options when
+/// absent, and an older server simply never sends them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangeStatus {
@@ -271,6 +278,14 @@ pub struct ChangeStatus {
     pub from_discussions: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub delta_capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_with: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_by: Option<String>,
 }
 
 /// One artifact's status inside [`ChangeStatus`].
@@ -555,6 +570,10 @@ pub struct DiscussionInfo {
     /// 討論型別（目前唯一合法值 `improve`）；一般討論缺席時省略。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    /// 已轉出／併入的 change 名清單，順序沿 frontmatter promoted_to 累加；
+    /// 由 server 於 route 邊緣組裝（引擎 DiscussionInfo 不帶此欄），空清單省略。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub promoted_to: Vec<String>,
     pub path: String,
     pub archived: bool,
 }
@@ -673,6 +692,36 @@ mod tests {
     }
 
     #[test]
+    fn change_summary_creator_fields_are_optional_and_camel_case() {
+        // remote-read-parity：清單項的建立者與來源討論欄位，有值上鍵、缺席省略。
+        let full: ChangeSummary = serde_json::from_str(
+            r#"{"name":"demo","createdBy":"Demo <d@e.com>","created":"2026-07-29","fromDiscussions":["auth-scope"]}"#,
+        )
+        .unwrap();
+        assert_eq!(full.created_by.as_deref(), Some("Demo <d@e.com>"));
+        assert_eq!(full.created.as_deref(), Some("2026-07-29"));
+        assert_eq!(full.from_discussions, ["auth-scope"]);
+        let json = serde_json::to_value(&full).unwrap();
+        assert_eq!(json["createdBy"], "Demo <d@e.com>");
+        assert_eq!(json["created"], "2026-07-29");
+        assert_eq!(json["fromDiscussions"], serde_json::json!(["auth-scope"]));
+        let back: ChangeSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(back, full);
+
+        let legacy: ChangeSummary = serde_json::from_str(r#"{"name":"demo"}"#).unwrap();
+        assert_eq!(legacy.created_by, None, "舊 payload 無鍵仍可解析且得預設值");
+        assert_eq!(legacy.created, None);
+        assert!(legacy.from_discussions.is_empty());
+        let legacy_json = serde_json::to_value(&legacy).unwrap();
+        assert!(
+            legacy_json.get("createdBy").is_none()
+                && legacy_json.get("created").is_none()
+                && legacy_json.get("fromDiscussions").is_none(),
+            "absent creator fields are omitted: {legacy_json}"
+        );
+    }
+
+    #[test]
     fn change_status_mirrors_the_fs_status_report_shape() {
         let status: ChangeStatus = serde_json::from_str(
             r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":true,"applyRequires":["tasks"],"artifacts":[{"id":"proposal","outputPath":"proposal.md","status":"done","version":3}],"repo":"backend","lifecycle":"applying","statusVersion":4,"claimedBy":"me"}"#,
@@ -690,6 +739,43 @@ mod tests {
         assert_eq!(json["artifacts"][0]["outputPath"], "proposal.md");
         let back: ChangeStatus = serde_json::from_value(json).unwrap();
         assert_eq!(back, status);
+    }
+
+    #[test]
+    fn change_status_attribution_fields_are_optional_and_camel_case() {
+        // remote-read-parity：單 change 讀取回應的四個 meta 歸屬欄位，
+        // 有值上鍵、缺席省略、舊 payload 無鍵不失敗。
+        let full: ChangeStatus = serde_json::from_str(
+            r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":false,"applyRequires":["tasks"],"artifacts":[],"createdBy":"Demo <d@e.com>","createdWith":"claude-code","startedAt":"2026-08-25T00:00:00Z","startedBy":"Demo <d@e.com>"}"#,
+        )
+        .unwrap();
+        assert_eq!(full.created_by.as_deref(), Some("Demo <d@e.com>"));
+        assert_eq!(full.created_with.as_deref(), Some("claude-code"));
+        assert_eq!(full.started_at.as_deref(), Some("2026-08-25T00:00:00Z"));
+        assert_eq!(full.started_by.as_deref(), Some("Demo <d@e.com>"));
+        let json = serde_json::to_value(&full).unwrap();
+        assert_eq!(json["createdBy"], "Demo <d@e.com>");
+        assert_eq!(json["createdWith"], "claude-code");
+        assert_eq!(json["startedAt"], "2026-08-25T00:00:00Z");
+        assert_eq!(json["startedBy"], "Demo <d@e.com>");
+        let back: ChangeStatus = serde_json::from_value(json).unwrap();
+        assert_eq!(back, full);
+
+        let legacy: ChangeStatus = serde_json::from_str(
+            r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":false,"applyRequires":[],"artifacts":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy.created_by, None, "舊 payload 無鍵仍可解析且得預設值");
+        assert_eq!(legacy.created_with, None);
+        assert_eq!(legacy.started_at, None);
+        assert_eq!(legacy.started_by, None);
+        let legacy_json = serde_json::to_value(&legacy).unwrap();
+        for key in ["createdBy", "createdWith", "startedAt", "startedBy"] {
+            assert!(
+                legacy_json.get(key).is_none(),
+                "absent {key} is omitted: {legacy_json}"
+            );
+        }
     }
 
     #[test]
@@ -862,6 +948,36 @@ mod tests {
                 "archived": false,
             }),
             "既有形狀不因新欄位改變"
+        );
+    }
+
+    #[test]
+    fn discussion_promoted_to_is_optional_and_preserves_order() {
+        // remote-read-parity：promotedTo 非空上鍵且順序沿 frontmatter 累加、
+        // 空清單省略鍵、舊 payload 無鍵不失敗且得空清單。
+        let promoted: ListDiscussionsResponse = serde_json::from_str(
+            r#"{"discussions":[{"slug":"auth-scope","topic":"Auth scope","status":"concluded","rounds":2,"created":"2026-07-01","promotedTo":["add-auth","auth-refresh"],"path":"discussions/auth-scope.md","archived":false}]}"#,
+        )
+        .unwrap();
+        let info = &promoted.discussions[0];
+        assert_eq!(info.promoted_to, ["add-auth", "auth-refresh"]);
+        let json = serde_json::to_value(info).unwrap();
+        assert_eq!(
+            json["promotedTo"],
+            serde_json::json!(["add-auth", "auth-refresh"]),
+            "promotedTo serializes camelCase and preserves order: {json}"
+        );
+
+        let plain: ListDiscussionsResponse = serde_json::from_str(
+            r#"{"discussions":[{"slug":"demo-topic","topic":"Demo topic","status":"open","rounds":0,"created":"2026-07-01","path":"discussions/demo-topic.md","archived":false}]}"#,
+        )
+        .unwrap();
+        let info = &plain.discussions[0];
+        assert!(info.promoted_to.is_empty(), "舊 payload 無鍵仍可解析且得空清單");
+        let json = serde_json::to_value(info).unwrap();
+        assert!(
+            json.get("promotedTo").is_none(),
+            "empty promotedTo is omitted: {json}"
         );
     }
 

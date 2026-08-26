@@ -90,14 +90,15 @@ pub async fn list_changes(
         CommandOutcome::List(list) => list.changes.unwrap_or_default(),
         _ => return Err(wrong_outcome("list")),
     };
-    // started 站（change-lifecycle spec）：引擎的 list item 凍結不帶
-    // started_*（fs `list --json` parity pin），wire 的 startedAt 由這裡
-    // 讀各 change meta 組裝（design D6）。壞 meta 已由 metaError 診斷，
-    // 這裡對解析失敗維持缺席。
+    // started 站（change-lifecycle spec）與建立者／來源討論欄位
+    // （remote-read-parity design D4）：引擎的 list item 凍結不帶這些 meta
+    // 欄位（fs `list --json` parity pin），wire 的 startedAt／createdBy／
+    // created／fromDiscussions 由這裡讀各 change meta 沿同一條路徑組裝。
+    // 壞 meta 已由 metaError 診斷，這裡對解析失敗維持缺席、清單不失敗。
     let store = state.store.clone();
     let scope = verb::scope_of(&binding);
     let names: Vec<String> = changes.iter().map(|c| c.name.clone()).collect();
-    let started: std::collections::HashMap<String, String> =
+    let metas: std::collections::HashMap<String, speclink_core::model::ChangeMeta> =
         tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
             let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
             let mut map = std::collections::HashMap::new();
@@ -111,9 +112,7 @@ pub async fn list_changes(
                 if let Ok(meta) =
                     speclink_core::model::ChangeMeta::from_text(Some(&doc.content))
                 {
-                    if let Some(at) = meta.started_at {
-                        map.insert(name, at);
-                    }
+                    map.insert(name, meta);
                 }
             }
             Ok(map)
@@ -124,8 +123,8 @@ pub async fn list_changes(
         changes: changes
             .into_iter()
             .map(|c| {
-                let started_at = started.get(&c.name).cloned();
-                change_summary(c, started_at)
+                let meta = metas.get(&c.name);
+                change_summary(c, meta)
             })
             .collect(),
     };
@@ -189,10 +188,12 @@ pub async fn get_change(
     };
     // show 組合的 meta 欄位（design D4 實作期修正）：created 沿 ShowChange 的
     // schema+created 成對規則、fromDiscussions 自 meta、deltaCapabilities 自
-    // scope 文件列舉（export 與每個 verb 的 bridge 物化同成本級）。
+    // scope 文件列舉（export 與每個 verb 的 bridge 物化同成本級）；歸屬四欄
+    // createdBy/createdWith/startedAt/startedBy 亦自同一份 parsed meta 補上
+    // （remote-read-parity「單 change 讀取回應攜帶 show 組合欄位」擴充）。
     let store = state.store.clone();
     let scope = verb::scope_of(&binding);
-    let (created, from_discussions, delta_capabilities) =
+    let (meta, delta_capabilities) =
         tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
             let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
             let meta = snapshot
@@ -203,15 +204,6 @@ pub async fn get_change(
                 .and_then(|doc| {
                     speclink_core::model::ChangeMeta::from_text(Some(&doc.content)).ok()
                 });
-            let (created, from_discussions) = match meta {
-                Some(meta) => {
-                    let chain = meta.from_discussions();
-                    // 成對規則：schema 與 created 同時存在才回報 created。
-                    let created = meta.schema.is_some().then_some(meta.created).flatten();
-                    (created, chain)
-                }
-                None => (None, Vec::new()),
-            };
             let prefix = "specs/";
             let mut caps: Vec<String> = store
                 .export(&scope)
@@ -228,13 +220,20 @@ pub async fn get_change(
                 })
                 .collect();
             caps.sort();
-            Ok((created, from_discussions, caps))
+            Ok((meta, caps))
         })
         .await
         .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
     let mut dto = change_status(report);
-    dto.created = created;
-    dto.from_discussions = from_discussions;
+    if let Some(meta) = meta {
+        // 成對規則：schema 與 created 同時存在才回報 created。
+        dto.created = meta.schema.is_some().then_some(meta.created.clone()).flatten();
+        dto.from_discussions = meta.from_discussions();
+        dto.created_by = meta.created_by;
+        dto.created_with = meta.created_with;
+        dto.started_at = meta.started_at;
+        dto.started_by = meta.started_by;
+    }
     dto.delta_capabilities = delta_capabilities;
     Ok(ok(dto, &result.etag))
 }
@@ -1522,8 +1521,29 @@ pub async fn list_discussions(
         CommandOutcome::DiscussList(list) => list,
         _ => return Err(wrong_outcome("discuss-list")),
     };
+    // promotedTo 於 route 邊緣以引擎查詢函式組裝（remote-read-parity design
+    // D1）：引擎 DiscussionInfo 不帶此欄以保 CLI JSON 逐位元不變。查詢失敗
+    // 以欄位缺席容錯（全空清單）、列表不失敗。
+    let store = state.store.clone();
+    let scope = verb::scope_of(&binding);
+    let slugs: Vec<String> = discussions.iter().map(|d| d.slug.clone()).collect();
+    let count = slugs.len();
+    let promoted = tokio::task::spawn_blocking(move || {
+        speclink_host::bridge::discussions_promoted_to(store.as_ref(), &scope, &slugs)
+            .unwrap_or_else(|_| vec![Vec::new(); count])
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
     let dto = ListDiscussionsResponse {
-        discussions: discussions.into_iter().map(discussion_info).collect(),
+        discussions: discussions
+            .into_iter()
+            .zip(promoted)
+            .map(|(info, promoted_to)| {
+                let mut dto = discussion_info(info);
+                dto.promoted_to = promoted_to;
+                dto
+            })
+            .collect(),
     };
     Ok(ok(dto, &result.etag))
 }
@@ -1826,6 +1846,7 @@ fn discussion_info(info: EngineDiscussionInfo) -> DiscussionInfo {
         created: info.created,
         created_by: info.created_by,
         kind: info.kind,
+        promoted_to: Vec::new(),
         path: info.path,
         archived: info.archived,
     }
@@ -1833,7 +1854,10 @@ fn discussion_info(info: EngineDiscussionInfo) -> DiscussionInfo {
 
 // --- Engine outcome → protocol DTO (typed field mapping, no raw JSON) ---
 
-fn change_summary(change: ListChangeJson, started_at: Option<String>) -> ChangeSummary {
+fn change_summary(
+    change: ListChangeJson,
+    meta: Option<&speclink_core::model::ChangeMeta>,
+) -> ChangeSummary {
     ChangeSummary {
         name: change.name,
         summary: change.summary,
@@ -1845,7 +1869,10 @@ fn change_summary(change: ListChangeJson, started_at: Option<String>) -> ChangeS
         repo: None,
         lifecycle: None,
         claimed_by: None,
-        started_at,
+        started_at: meta.and_then(|m| m.started_at.clone()),
+        created_by: meta.and_then(|m| m.created_by.clone()),
+        created: meta.and_then(|m| m.created.clone()),
+        from_discussions: meta.map(|m| m.from_discussions()).unwrap_or_default(),
     }
 }
 
@@ -1873,6 +1900,10 @@ fn change_status(report: StatusReport) -> ChangeStatus {
         created: None,
         from_discussions: Vec::new(),
         delta_capabilities: Vec::new(),
+        created_by: None,
+        created_with: None,
+        started_at: None,
+        started_by: None,
     }
 }
 

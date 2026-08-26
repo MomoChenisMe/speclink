@@ -146,6 +146,44 @@ describe("remote 分頁的 capability 停用", () => {
     expect(archive.disabled).toBe(false);
   });
 
+  it("詳情抽屜的詮釋資料與 capability 清單直達、不再呈現停用說明", async () => {
+    // remote-read-parity「詮釋資料與 capability 清單直達且誠實降級」：兩讀取
+    // 走 dataSource 方法（status payload 映射），建立者列與本地同形呈現。
+    const ds = fakeRemoteDs();
+    renderRemoteApp(ds);
+    await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
+    fireEvent.click(screen.getByText("remote-change"));
+    await waitFor(() => expect(ds.changeMeta).toHaveBeenCalledWith("remote-change"));
+    expect(ds.changeCapabilities).toHaveBeenCalledWith("remote-change");
+    await waitFor(() => expect(screen.getByText("Remote Creator")).toBeTruthy());
+    expect(screen.queryByText(/尚未提供「capability 清單」/)).toBeNull();
+    expect(screen.queryByText(/尚未提供「change 詮釋資料」/)).toBeNull();
+  });
+
+  it("舊 server 缺歸屬欄位時對應列缺席且無錯誤", async () => {
+    // 誠實降級：舊 server 的 status payload 無新欄位——changeMeta 組出的欄位
+    // 為 null／缺席，UI 對應列不顯示、抽屜照常呈現，不偽造任何值。
+    const ds = fakeRemoteDs({
+      changeMeta: vi.fn().mockResolvedValue({
+        schema: "spec-driven",
+        created: null,
+        createdBy: null,
+        createdWith: null,
+        fromDiscussions: [],
+        startedAt: null,
+        startedBy: null,
+      }),
+      changeCapabilities: vi.fn().mockResolvedValue([]),
+    });
+    renderRemoteApp(ds);
+    await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
+    fireEvent.click(screen.getByText("remote-change"));
+    await waitFor(() => expect(ds.changeMeta).toHaveBeenCalledWith("remote-change"));
+    // 抽屜正常開啟（封存鈕在）且建立者列缺席。
+    await screen.findByRole("button", { name: "封存" });
+    expect(screen.queryByText("Remote Creator")).toBeNull();
+  });
+
   it("remote 封存沿用確認路徑、描述指出 Project/Repo scope，取消不寫入而確認會寫 server", async () => {
     const ds = fakeRemoteDs();
     renderRemoteApp(ds);
