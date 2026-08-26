@@ -235,6 +235,136 @@ fn change_status_carries_the_show_composition_meta_fields() {
 }
 
 #[test]
+fn change_status_carries_the_attribution_meta_fields() {
+    // remote-read-parity「單 change 讀取回應攜帶 show 組合欄位」擴充：meta 的
+    // created_by/created_with/started_at/started_by 上 wire，四欄皆缺即無鍵。
+    let store = MemoryStore::new();
+    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope,
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    // Example「欄位組裝」第 2 列：show 組合三欄「再加」歸屬四欄——同一
+    // change 七鍵同時上 wire，故 meta 帶鏈、附一份 delta spec。
+    uow.create(
+        DocumentId::ChangeMeta { change: "attributed".into() },
+        "schema: spec-driven\ncreated: 2026-07-29\ncreated_by: Demo <d@e.com>\ncreated_with: claude-code\nstarted_at: 2026-08-25T00:00:00Z\nstarted_by: Demo <d@e.com>\nfrom_discussion: auth-scope\n",
+    );
+    uow.create(
+        DocumentId::ChangeArtifact {
+            change: "attributed".into(),
+            artifact: "specs/auth/spec.md".into(),
+        },
+        "## ADDED Requirements\n",
+    );
+    uow.create(DocumentId::ChangeMeta { change: "bare".into() }, "schema: spec-driven\n");
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = AppState {
+        events: common::detached_events(),
+        store: Arc::new(store),
+        identity: common::empty_identity(),
+        config: Arc::new(common::demo_config()),
+    };
+    common::seed_demo_registry(&*state.identity);
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+
+    let get = |name: &str| -> serde_json::Value {
+        ureq::get(&format!("{base}/api/speclink/v1/projects/demo/changes/{name}"))
+            .set("Authorization", &format!("Bearer {pat}"))
+            .set("X-Speclink-Api-Version", speclink_protocol::API_VERSION)
+            .set("X-Speclink-Repo", "backend")
+            .call()
+            .expect("GET change")
+            .into_json()
+            .expect("JSON body")
+    };
+
+    let full = get("attributed");
+    assert_eq!(full["created"], "2026-07-29", "show composition trio rides along");
+    assert_eq!(full["fromDiscussions"], serde_json::json!(["auth-scope"]));
+    assert_eq!(full["deltaCapabilities"], serde_json::json!(["auth"]));
+    assert_eq!(full["createdBy"], "Demo <d@e.com>");
+    assert_eq!(full["createdWith"], "claude-code");
+    assert_eq!(full["startedAt"], "2026-08-25T00:00:00Z");
+    assert_eq!(full["startedBy"], "Demo <d@e.com>");
+
+    let bare = get("bare");
+    for key in ["createdBy", "createdWith", "startedAt", "startedBy"] {
+        assert!(
+            bare.get(key).is_none(),
+            "absent {key} is omitted: {bare}"
+        );
+    }
+}
+
+#[test]
+fn list_carries_the_creator_and_discussion_fields() {
+    // remote-read-parity「變更清單回應攜帶建立者與來源討論欄位」：沿 startedAt
+    // 的逐筆 meta 組裝路徑補 createdBy/created/fromDiscussions，缺席即無鍵。
+    let store = MemoryStore::new();
+    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope,
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::ChangeMeta { change: "attributed".into() },
+        "schema: spec-driven\ncreated: 2026-07-29\ncreated_by: Demo <d@e.com>\nfrom_discussion: auth-scope\n",
+    );
+    uow.create(DocumentId::ChangeMeta { change: "bare".into() }, "schema: spec-driven\n");
+    // meta 解析失敗的 change：metaError 容錯路徑三欄缺席、清單不失敗。
+    uow.create(
+        DocumentId::ChangeMeta { change: "corrupt".into() },
+        "schema: [unterminated\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = AppState {
+        events: common::detached_events(),
+        store: Arc::new(store),
+        identity: common::empty_identity(),
+        config: Arc::new(common::demo_config()),
+    };
+    common::seed_demo_registry(&*state.identity);
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+
+    let body: serde_json::Value =
+        ureq::get(&format!("{base}/api/speclink/v1/projects/demo/changes"))
+            .set("Authorization", &format!("Bearer {pat}"))
+            .set("X-Speclink-Api-Version", speclink_protocol::API_VERSION)
+            .set("X-Speclink-Repo", "backend")
+            .call()
+            .expect("GET /changes")
+            .into_json()
+            .expect("JSON body");
+    let items = body["changes"].as_array().expect("changes array");
+    let attributed = items.iter().find(|c| c["name"] == "attributed").expect("attributed item");
+    assert_eq!(attributed["createdBy"], "Demo <d@e.com>");
+    assert_eq!(attributed["created"], "2026-07-29");
+    assert_eq!(attributed["fromDiscussions"], serde_json::json!(["auth-scope"]));
+    let bare = items.iter().find(|c| c["name"] == "bare").expect("bare item");
+    for key in ["createdBy", "created", "fromDiscussions"] {
+        assert!(
+            bare.get(key).is_none(),
+            "absent {key} is omitted: {bare}"
+        );
+    }
+    let corrupt = items.iter().find(|c| c["name"] == "corrupt").expect("corrupt item");
+    assert!(corrupt.get("metaError").is_some(), "engine diagnoses the bad meta: {corrupt}");
+    for key in ["createdBy", "created", "fromDiscussions"] {
+        assert!(
+            corrupt.get(key).is_none(),
+            "bad meta keeps {key} absent without failing the list: {corrupt}"
+        );
+    }
+}
+
+#[test]
 fn a_missing_change_is_the_404_not_found_triple() {
     let (base, pat, _user) = seeded_base();
     let client = client(&base, &pat);

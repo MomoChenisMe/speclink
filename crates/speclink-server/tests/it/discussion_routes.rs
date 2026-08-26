@@ -74,6 +74,62 @@ fn improve_discussion_is_created_and_read_back_with_its_kind() {
 }
 
 #[test]
+fn list_discussions_carries_promoted_to_for_promoted_ones() {
+    // remote-read-parity「討論列表回應攜帶 promotedTo」：server 於 route 邊緣
+    // 以引擎 promoted_to 查詢函式組裝，順序沿 frontmatter 累加、未轉出無鍵。
+    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::Discussion { slug: "gamma-promoted".into(), archived: false },
+        "---\ntopic: Gamma promoted\nslug: gamma-promoted\nstatus: promoted\npromoted_to: cut-a, cut-b\ncreated: 2026-07-01\n---\n\n## Conclusion\n\n**Decision**: split\n",
+    );
+    uow.create(
+        DocumentId::Discussion { slug: "plain-topic".into(), archived: false },
+        "---\ntopic: Plain topic\nslug: plain-topic\nstatus: open\ncreated: 2026-07-02\n---\n\n## Context\n\nseed\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = common::state_with(store);
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+
+    let listed = client(&base, &pat).list_discussions(false).expect("list discussions");
+    let promoted = listed
+        .discussions
+        .iter()
+        .find(|d| d.slug == "gamma-promoted")
+        .expect("promoted discussion listed");
+    assert_eq!(
+        promoted.promoted_to,
+        ["cut-a", "cut-b"],
+        "promotedTo preserves the frontmatter accumulation order"
+    );
+
+    // camelCase 與缺席即省略走 raw wire 斷言。
+    let body: Value = ureq::get(&format!("{base}/api/speclink/v1/projects/demo/discussions"))
+        .set("Authorization", &format!("Bearer {pat}"))
+        .set("X-Speclink-Api-Version", speclink_protocol::API_VERSION)
+        .set("X-Speclink-Repo", "backend")
+        .call()
+        .expect("GET /discussions")
+        .into_json()
+        .expect("JSON body");
+    let items = body["discussions"].as_array().expect("discussions array");
+    let promoted_item =
+        items.iter().find(|d| d["slug"] == "gamma-promoted").expect("promoted item");
+    assert_eq!(promoted_item["promotedTo"], json!(["cut-a", "cut-b"]));
+    let plain_item = items.iter().find(|d| d["slug"] == "plain-topic").expect("plain item");
+    assert!(
+        plain_item.get("promotedTo").is_none(),
+        "an unpromoted discussion carries no promotedTo: {plain_item}"
+    );
+}
+
+#[test]
 fn promote_returns_the_change_and_lands_both_events() {
     let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
     let state = common::state_with(store.clone());

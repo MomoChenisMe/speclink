@@ -718,8 +718,9 @@ function AppInner({
         change={s.detailChange}
         refreshGen={s.refreshGen}
         loadDocument={(change, artifact) => dataSource?.getDocument(change, artifact) ?? Promise.resolve(null)}
-        // capability 缺口的讀取（changeCapabilities/changeMeta 無 server 來源）
-        // 以空集呈現——資料缺口不偽造、也不讓抽屜載入失敗。
+        // changeCapabilities/changeMeta 於 remote 亦直達（status payload 映射，
+        // remote-read-parity）；capability 為假時仍以空集呈現——同一條停用法則，
+        // 不偽造、也不讓抽屜載入失敗。
         loadCapabilities={(change) =>
           caps && !caps.changeCapabilities
             ? Promise.resolve([])

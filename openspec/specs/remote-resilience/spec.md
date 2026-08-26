@@ -161,34 +161,17 @@ code:
 ---
 ### Requirement: remote 破壞性操作確認一致
 
-remote 分頁的 archive 確認對話 SHALL 沿用與本地相同的確認路徑，描述 SHALL 指出將寫入 server 上的 scope（Project/Repo 名）；deleteChange 於 remote SHALL 維持停用；offline 期間 archive SHALL 隨寫入遮罩停用。
+remote 分頁的 archive 確認對話 SHALL 沿用與本地相同的確認路徑，描述 SHALL 指出將寫入 server 上的 scope（Project/Repo 名）；deleteChange 於 remote SHALL 走與本地 discard 對齊的守門語意（未開工即刪；帶開工痕跡由 server 拒絕，沿既有刪除失敗呈現路徑回報）；offline 期間 archive SHALL 隨寫入遮罩停用。
 
 #### Scenario: remote archive 確認指出 scope
 
 - **WHEN** 於 remote 分頁對就緒的 change 觸發 archive
 - **THEN** 確認對話呈現且描述含該 Project/Repo 名；確認後寫入 server，取消則無任何變更
 
+
 <!-- @trace
-source: offline-stale-reauth
-updated: 2026-07-21
-code:
-  - apps/desktop/src-tauri/src/event_manager.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/common/mod.rs
-  - apps/desktop/src-tauri/tests/event_manager.rs
-  - apps/desktop/src-tauri/tests/remote_runtime.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
-  - apps/desktop/src/__tests__/remoteCapabilities.test.tsx
-  - apps/desktop/src/__tests__/remoteResilience.test.tsx
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/components/ServersPanel.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/session.ts
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/views/AppSettingsView.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
+source: remote-read-parity
+updated: 2026-08-26
 -->
 
 ---

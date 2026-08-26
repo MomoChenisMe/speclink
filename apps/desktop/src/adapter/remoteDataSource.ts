@@ -17,14 +17,9 @@ import type { InvokeFn } from "../session";
 
 // remote adapter（remote-data-source 決策 7）：SpeclinkDataSource 對 remote_*
 // command 的薄 invoke 包裝——每擊帶 locator 識別（connectionId＋project＋repo），
-// 所有 HTTP、token、重試邏輯在 Rust。server 純讀取面直達；其餘不支援方法
-// （決策 1 (c)：server 無端點）回拒絕錯誤、不打任何 invoke——server 缺什麼
-// 就停用什麼，不在 client 偽造。
-
-/** (c) 類操作的拒絕（與 Rust remote::unsupported 同語意、同繁中措辭）。 */
-function unsupported(operation: string): Promise<never> {
-  return Promise.reject(new Error(`此 server 尚未提供「${operation}」——功能已停用`));
-}
+// 所有 HTTP、token、重試邏輯在 Rust。全讀取面直達 server：change 詮釋資料與
+// capability 清單以既有 remote_status payload 映射（remote-read-parity design
+// D2，不開新 command、不另發請求），舊 server 不送的欄位以缺席呈現、不偽造。
 
 /** server 的討論 payload：欄位鏡射 protocol DiscussionInfo（camelCase）。 */
 interface RemoteDiscussionInfo {
@@ -36,11 +31,24 @@ interface RemoteDiscussionInfo {
   createdBy?: string | null;
   /** 討論型別（目前唯一值 "improve"）——一般討論缺席。 */
   kind?: string | null;
+  /** 已轉出變更名清單（wire promotedTo）——空清單時 server 省略鍵。 */
+  promotedTo?: string[];
 }
 
-/** server 不外露 promotedTo——以空清單補齊 UI 必填欄位（資料缺口，非偽造 affordance）。 */
 function toDiscussionItem(info: RemoteDiscussionInfo): DiscussionItem {
-  return { ...info, promotedTo: [] };
+  return { ...info, promotedTo: info.promotedTo ?? [] };
+}
+
+/** remote_status 的整包 payload：StatusReport 疊加 show 組合欄位（wire
+ * ChangeStatus 的選填 meta 欄位，舊 server 缺席）。 */
+interface RemoteStatusPayload extends StatusReport {
+  created?: string | null;
+  createdBy?: string | null;
+  createdWith?: string | null;
+  startedAt?: string | null;
+  startedBy?: string | null;
+  fromDiscussions?: string[];
+  deltaCapabilities?: string[];
 }
 
 export function createRemoteDataSource(
@@ -50,6 +58,18 @@ export function createRemoteDataSource(
   invoke: InvokeFn = tauriInvoke as InvokeFn,
 ): SpeclinkDataSource {
   const locator = { connectionId, project, repo };
+  // changeCapabilities 與 changeMeta 映射同一份 status payload（spec：不另開
+  // 請求）——併發載入共用同一個 in-flight 請求，落定即清、不留 stale 快取。
+  const statusInFlight = new Map<string, Promise<RemoteStatusPayload>>();
+  function fetchStatus(change: string): Promise<RemoteStatusPayload> {
+    const pending = statusInFlight.get(change);
+    if (pending) return pending;
+    const p = invoke<RemoteStatusPayload>("remote_status", { ...locator, change }).finally(() => {
+      statusInFlight.delete(change);
+    });
+    statusInFlight.set(change, p);
+    return p;
+  }
   return {
     async listChanges(): Promise<ChangeItem[]> {
       const r = await invoke<{ changes: ChangeItem[] }>("remote_list_changes", { ...locator });
@@ -84,11 +104,21 @@ export function createRemoteDataSource(
       });
       return r.hits;
     },
-    changeCapabilities(): Promise<string[]> {
-      return unsupported("capability 清單");
+    async changeCapabilities(change: string): Promise<string[]> {
+      const s = await fetchStatus(change);
+      return s.deltaCapabilities ?? [];
     },
-    changeMeta(): Promise<import("@speclink/ui").ChangeMetaInfo | null> {
-      return unsupported("change 詮釋資料");
+    async changeMeta(change: string): Promise<import("@speclink/ui").ChangeMetaInfo | null> {
+      const s = await fetchStatus(change);
+      return {
+        schema: s.schemaName,
+        created: s.created ?? null,
+        createdBy: s.createdBy ?? null,
+        createdWith: s.createdWith ?? null,
+        fromDiscussions: s.fromDiscussions ?? [],
+        startedAt: s.startedAt ?? null,
+        startedBy: s.startedBy ?? null,
+      };
     },
     async deleteChange(change: string): Promise<void> {
       // archive-readiness-gating D2 翻案：force=false 與本地 discard 守門語意對齊

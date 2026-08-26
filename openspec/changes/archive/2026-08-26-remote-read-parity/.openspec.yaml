@@ -1,0 +1,67 @@
+schema: spec-driven
+created: 2026-08-25
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: remote-remaining-gaps
+started_at: 2026-08-26
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-26
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 10
+reviewed_scope:
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 219504909b7e69361acfc4cad6ba7853e9f8b54129ed1e07ae2dbbef4c425e72
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: d6ebff67c4e77f2a50a4dd0bc12b21103b7f3d1004481f2f1e322f91f7e991c9
+  - path: apps/desktop/src/App.tsx
+    hash: c6701f8fcc5f6e22c0be1e037e1319af3b2eecb01c4637be24ace6f0c556e294
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: 203dd4268402efe536d3ed34916aa1ca521394d8f83cd42f6d239e6160aa9949
+  - path: apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    hash: ada91f06c5f788c6fd8c4e3c937dfdc3f675d3d45021b9196fdc74836ea5166b
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: 9cfe2b878086f7391dcdd870c6b552e7540944855649b62e9192eec5d5bce4fd
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 8a0afb51b0d20bef059a5e8cf8d6cb2a0e6b73c343d565e3dce7545af92ee679
+  - path: crates/speclink-host/src/bridge.rs
+    hash: 5bd1ad4952dd9a64ea72786b16424bd37def66ec111083572bd121784fe89682
+  - path: crates/speclink-protocol/src/query.rs
+    hash: f9242636921166a865728977d89fbbdc880c10a057b061e6b7df05c5c9eab107
+  - path: crates/speclink-server/src/routes.rs
+    hash: 7168aac92309c91636d78f79af9bf05a32cebb5a420d848f359693afd102cdfd
+  - path: crates/speclink-server/tests/it/discussion_routes.rs
+    hash: 05bcd812fc999667ec297b50c1301aa64566ff9550daa557154c915fde337a5d
+  - path: crates/speclink-server/tests/it/query_routes.rs
+    hash: 0eedf11fefcea07a6608dd8b3f631c9dd9257310f81b12ad986fdb5ea70bc0ed
+verified_at: 2026-08-26
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 10
+verified_scope:
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 219504909b7e69361acfc4cad6ba7853e9f8b54129ed1e07ae2dbbef4c425e72
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: d6ebff67c4e77f2a50a4dd0bc12b21103b7f3d1004481f2f1e322f91f7e991c9
+  - path: apps/desktop/src/App.tsx
+    hash: c6701f8fcc5f6e22c0be1e037e1319af3b2eecb01c4637be24ace6f0c556e294
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: 203dd4268402efe536d3ed34916aa1ca521394d8f83cd42f6d239e6160aa9949
+  - path: apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    hash: ada91f06c5f788c6fd8c4e3c937dfdc3f675d3d45021b9196fdc74836ea5166b
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: 9cfe2b878086f7391dcdd870c6b552e7540944855649b62e9192eec5d5bce4fd
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 8a0afb51b0d20bef059a5e8cf8d6cb2a0e6b73c343d565e3dce7545af92ee679
+  - path: crates/speclink-host/src/bridge.rs
+    hash: 5bd1ad4952dd9a64ea72786b16424bd37def66ec111083572bd121784fe89682
+  - path: crates/speclink-protocol/src/query.rs
+    hash: f9242636921166a865728977d89fbbdc880c10a057b061e6b7df05c5c9eab107
+  - path: crates/speclink-server/src/routes.rs
+    hash: 7168aac92309c91636d78f79af9bf05a32cebb5a420d848f359693afd102cdfd
+  - path: crates/speclink-server/tests/it/discussion_routes.rs
+    hash: 05bcd812fc999667ec297b50c1301aa64566ff9550daa557154c915fde337a5d
+  - path: crates/speclink-server/tests/it/query_routes.rs
+    hash: 0eedf11fefcea07a6608dd8b3f631c9dd9257310f81b12ad986fdb5ea70bc0ed
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-26
