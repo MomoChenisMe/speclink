@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "change": "fix-discuss-section-anchor",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 在 crates/speclink-core/src/discuss.rs 的 `#[cfg(test)]` 模組新增三個回歸測試：(a) Round 1 內文含「## 背景」行時 add_round 追加第二輪，斷言文件順序為 Round 1 標題→Round 1 完整內文→Round 2 標題→Round 2 內文→結構 Conclusion；(b) 某輪內文含整行「## Conclusion」時執行 conclude，斷言結論寫入結構 Conclusion 區段、該內容行以反斜線跳脫形式留在輪內、既有輪內文不被改寫；(c) 輪內文含「### Round 」前綴行時，斷言 count_rounds 不膨脹、下一輪編號連續。以 `cargo test -p speclink-core discuss` 確認三個新測試如預期失敗（紅燈基準）",
+      "files": [
+        "crates/speclink-core/src/discuss.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 packages/ui/src/__tests__/discussionDrawer.test.tsx 新增失敗測試：輪內文含「## 」開頭行時，splitDiscussionSections 的 rounds 區段完整涵蓋至結構 Conclusion、該輪內文不遺失；以 `npm test -w packages/ui` 確認新測試失敗",
+      "files": [
+        "packages/ui/src/__tests__/discussionDrawer.test.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 packages/ui/src/components/DiscussionDrawer.tsx：splitDiscussionSections 改為與引擎同一結構標題白名單。驗證：`npm test -w packages/ui` 全綠",
+      "files": [
+        "packages/ui/src/components/DiscussionDrawer.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M111DM6V6BB500AYGXJFVH04",
+      "taskDesc": "1.1 在 crates/speclink-core/src/discuss.rs 的 `#[cfg(test)]` 模組新增三個回歸測試：(a) Round 1 內文含「## 背景」行時 add_round 追加第二輪，斷言文件順序為 Round 1 標題→Round 1 完整內文→Round 2 標題→Round 2 內文→結構 Conclusion；(b) 某輪內文含整行「## Conclusion」時執行 conclude，斷言結論寫入結構 Conclusion 區段、該內容行以反斜線跳脫形式留在輪內、既有輪內文不被改寫；(c) 輪內文含「### Round 」前綴行時，斷言 count_rounds 不膨脹、下一輪編號連續。以 `cargo test -p speclink-core discuss` 確認三個新測試如預期失敗（紅燈基準）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "919113b482e36e6a7827392ee4d54edf4af20e83",
+      "touchedFiles": [
+        "crates/speclink-core/src/discuss.rs"
+      ],
+      "recordedAt": "2026-08-27T07:47:51Z"
+    },
+    {
+      "taskId": "tsk_01M111DM6VHXQDPQKWVD2Q8P76",
+      "taskDesc": "3.1 packages/ui/src/__tests__/discussionDrawer.test.tsx 新增失敗測試：輪內文含「## 」開頭行時，splitDiscussionSections 的 rounds 區段完整涵蓋至結構 Conclusion、該輪內文不遺失；以 `npm test -w packages/ui` 確認新測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "919113b482e36e6a7827392ee4d54edf4af20e83",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/discussionDrawer.test.tsx"
+      ],
+      "recordedAt": "2026-08-27T07:50:17Z"
+    },
+    {
+      "taskId": "tsk_01M111DM6VQM2NAH7V517977Y1",
+      "taskDesc": "3.2 packages/ui/src/components/DiscussionDrawer.tsx：splitDiscussionSections 改為與引擎同一結構標題白名單。驗證：`npm test -w packages/ui` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "919113b482e36e6a7827392ee4d54edf4af20e83",
+      "touchedFiles": [
+        "packages/ui/src/components/DiscussionDrawer.tsx"
+      ],
+      "recordedAt": "2026-08-27T07:50:44Z"
+    }
+  ]
+}

@@ -52,15 +52,30 @@ fn frontmatter_value(text: &str, key: &str) -> Option<String> {
     None
 }
 
+/// 合法輪標題形狀（scaffold 版面）：`### Round <編號> — …`。
+/// 跳脫後的內文行（行首帶反斜線）與無編號的撞名行都不是輪。
+fn is_scaffold_round_heading(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix("### Round ") else {
+        return false;
+    };
+    let digits = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+    digits > 0 && rest[digits..].starts_with(" — ")
+}
+
 fn count_rounds(text: &str) -> usize {
-    // `### Round ` is the scaffolded layout; `## Round ` tolerates pre-scaffold documents.
+    // `## Round ` tolerates pre-scaffold documents.
     text.lines()
-        .filter(|l| l.starts_with("### Round ") || l.starts_with("## Round "))
+        .filter(|l| is_scaffold_round_heading(l) || l.starts_with("## Round "))
         .count()
 }
 
-/// Byte range of a level-2 section's body: after the `## <name>` line, up to the next `## `
-/// line or EOF. `None` when the header is absent.
+/// 結構標題白名單——只有這三個整行標題是討論文件的區段邊界；
+/// 輪內文的其他「## 」行不是結構、不得截斷區段。
+const STRUCTURAL_HEADERS: [&str; 3] = ["## Context", "## Rounds", "## Conclusion"];
+
+/// Byte range of a structural section's body: after the `## <name>` line, up to the next
+/// structural header ([`STRUCTURAL_HEADERS`]) or EOF. Content lines that merely start
+/// with `## ` do not terminate the section. `None` when the header is absent.
 fn section_body_range(text: &str, name: &str) -> Option<(usize, usize)> {
     let header = format!("## {name}");
     let mut offset = 0;
@@ -68,7 +83,7 @@ fn section_body_range(text: &str, name: &str) -> Option<(usize, usize)> {
     for line in text.split_inclusive('\n') {
         let trimmed = line.trim_end();
         if let Some(s) = start {
-            if trimmed.starts_with("## ") && !trimmed.starts_with("###") {
+            if STRUCTURAL_HEADERS.contains(&trimmed) {
                 return Some((s, offset));
             }
         } else if trimmed == header {
@@ -77,6 +92,27 @@ fn section_body_range(text: &str, name: &str) -> Option<(usize, usize)> {
         offset += line.len();
     }
     start.map(|s| (s, text.len()))
+}
+
+/// 討論內容寫入動詞共用的落盤前跳脫：撞名內容行（整行為結構標題，或行首為
+/// 輪標題前綴）加 markdown 反斜線，使內容不可能被解讀為文件結構。
+/// 其他「# 」開頭行維持原樣（最小改動，非全面跳脫）。
+fn escape_colliding_lines(content: &str) -> String {
+    content
+        .split('\n')
+        .map(|l| {
+            let t = l.trim_end();
+            if STRUCTURAL_HEADERS.contains(&t)
+                || t.starts_with("### Round ")
+                || t.starts_with("## Round ")
+            {
+                format!("\\{l}")
+            } else {
+                l.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Replace a level-2 section's body, keeping its header. `None` when the section is absent.
@@ -287,8 +323,9 @@ fn ensure_content(content: &str) -> Result<()> {
 /// Set (or replace) the `## Context` section — the one-time framing written after mode pick.
 pub fn set_context(store: &dyn Store, slug: &str, content: &str) -> Result<()> {
     ensure_content(content)?;
+    let content = escape_colliding_lines(content);
     let text = load_live(store, slug)?;
-    match replace_section(&text, "Context", content) {
+    match replace_section(&text, "Context", &content) {
         Some(t) => {
             store.write_live_discussion(slug, &t)?;
             Ok(())
@@ -302,6 +339,7 @@ pub fn set_context(store: &dyn Store, slug: &str, content: &str) -> Result<()> {
 /// Append a discussion round. Content is supplied verbatim (from the skill via stdin).
 pub fn add_round(store: &dyn Store, slug: &str, mode: &str, content: &str) -> Result<usize> {
     ensure_content(content)?;
+    let content = escape_colliding_lines(content);
     let mut text = load_live(store, slug)?;
     let round_no = count_rounds(&text) + 1;
     let date = util::today();
@@ -747,11 +785,12 @@ pub fn discard_discussion(store: &dyn Store, slug: &str, force: bool) -> Result<
 /// discussion concluded.
 pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<Vec<String>> {
     ensure_content(content)?;
+    let content = escape_colliding_lines(content);
     let mut text = load_live(store, slug)?;
     // Flip status: open -> concluded in frontmatter. A promoted discussion (status:
     // promoted) has no "status: open" to match, so a re-conclude preserves promoted.
     text = text.replacen("status: open", "status: concluded", 1);
-    text = match replace_section(&text, "Conclusion", content) {
+    text = match replace_section(&text, "Conclusion", &content) {
         Some(t) => t,
         None => {
             // Pre-scaffold document: append the section.
@@ -1780,5 +1819,78 @@ mod tests {
         // info 與 list 共用 info_from_doc；list 面的曝露由 CLI 整合測試把關
         // （TestStore 不供列表）。
         assert_eq!(super::info(&store, "beta").unwrap().kind.as_deref(), Some("improve"));
+    }
+
+    // --- 結構錨定與撞名內容跳脫（fix-discuss-section-anchor） ---
+
+    #[test]
+    fn add_round_appends_after_prior_round_with_level2_content_line() {
+        // spec Example「兩輪順序與內文歸屬」：Round 1 內文含「## 背景」行，
+        // add_round 追加 Round 2 仍落在 Round 1 完整內文之後、結構 Conclusion 之前；
+        // 「## 背景」不撞結構、維持原樣。
+        let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
+        super::add_round(&store, "alpha", "explore", "## 背景\n首輪本文").unwrap();
+        super::add_round(&store, "alpha", "explore", "次輪本文").unwrap();
+        let text = store.discussion("alpha");
+        let pos = |needle: &str| {
+            text.find(needle).unwrap_or_else(|| panic!("missing {needle:?} in: {text}"))
+        };
+        let round1 = pos("### Round 1");
+        let bg = pos("## 背景");
+        let first = pos("首輪本文");
+        let round2 = pos("### Round 2");
+        let second = pos("次輪本文");
+        let conclusion = pos("## Conclusion");
+        assert!(
+            round1 < bg && bg < first && first < round2 && round2 < second && second < conclusion,
+            "文件順序須為 Round 1 標題→Round 1 完整內文→Round 2 標題→Round 2 內文→結構 Conclusion: {text}"
+        );
+    }
+
+    #[test]
+    fn conclude_lands_in_structural_conclusion_when_round_content_collides() {
+        // spec「結論寫入不落入輪內」：輪內文原始輸入含整行「## Conclusion」→
+        // 落盤即跳脫；conclude 後結論寫入結構 Conclusion 區段、既有輪內文不被改寫。
+        let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
+        super::add_round(&store, "alpha", "explore", "偽結論引子\n## Conclusion\n偽結論本文")
+            .unwrap();
+        assert!(
+            store.discussion("alpha").contains("\\## Conclusion"),
+            "add_round 落盤前須跳脫撞名行: {}",
+            store.discussion("alpha")
+        );
+        super::conclude(&store, "alpha", "**Decision**: real").unwrap();
+        let text = store.discussion("alpha");
+        assert!(
+            text.contains("偽結論引子\n\\## Conclusion\n偽結論本文"),
+            "既有輪內文（含跳脫行）不得被 conclude 改寫: {text}"
+        );
+        let header = text.find("\n## Conclusion\n").expect("structural header");
+        let fake_body = text.find("偽結論本文").unwrap();
+        let decision = text.find("**Decision**: real").expect("conclusion written");
+        assert!(
+            fake_body < header && header < decision,
+            "結論須寫入結構 Conclusion 區段（於輪內文之後）: {text}"
+        );
+        assert_eq!(
+            super::conclusion_text(&store, "alpha").as_deref(),
+            Some("**Decision**: real"),
+            "conclusion_text 須讀到結構區段的結論"
+        );
+    }
+
+    #[test]
+    fn count_rounds_ignores_colliding_content_and_numbering_stays_consecutive() {
+        // spec「撞名輪標題行不膨脹輪計數」：內文行首「### Round 」跳脫落盤，
+        // 計數不膨脹、下一輪編號連續。
+        let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
+        super::add_round(&store, "alpha", "explore", "### Round 99 — fake (2026-01-01)\n本文")
+            .unwrap();
+        assert_eq!(super::count_rounds(&store.discussion("alpha")), 1, "撞名行不得計數");
+        let no = super::add_round(&store, "alpha", "explore", "次輪").unwrap();
+        assert_eq!(no, 2, "編號須連續、無跳號");
+        // 手改記錄的非法輪標題形狀（無編號）不計數；pre-scaffold「## Round 」照舊容忍。
+        let legacy = "## Rounds\n\n### Round 備註不是輪\n\n## Round 1 — old (2026-01-01)\n";
+        assert_eq!(super::count_rounds(legacy), 1);
     }
 }

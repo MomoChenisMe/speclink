@@ -21,6 +21,10 @@ export interface DiscussionSections {
   conclusion: string;
 }
 
+/** 結構標題白名單——與引擎（speclink-core discuss）同一條規則：
+ * 只有這三個整行標題是區段邊界，輪內文的其他「## 」行不得截斷區段。 */
+const STRUCTURAL_HEADERS = ["## Context", "## Rounds", "## Conclusion"] as const;
+
 /**
  * 把討論記錄全文按 `## Context`／`## Rounds`／`## Conclusion` 切分（design D5）。
  * 任一區段缺失（手寫、pre-scaffold 格式）回 `null`——呼叫端整篇以單一檢視退回。
@@ -32,7 +36,7 @@ export function splitDiscussionSections(text: string): DiscussionSections | null
     if (start < 0) return null;
     let end = lines.length;
     for (let i = start + 1; i < lines.length; i++) {
-      if (lines[i].startsWith("## ") && !lines[i].startsWith("###")) {
+      if ((STRUCTURAL_HEADERS as readonly string[]).includes(lines[i].trimEnd())) {
         end = i;
         break;
       }

@@ -90,6 +90,19 @@ describe("splitDiscussionSections（區段切分）", () => {
     expect(splitDiscussionSections("手寫的自由格式記錄，沒有標準區段。")).toBeNull();
     expect(splitDiscussionSections("## Context\n\n只有脈絡。\n")).toBeNull();
   });
+
+  it("輪內文含「## 」開頭行時 rounds 區段完整涵蓋至結構 Conclusion、內文不遺失", () => {
+    // spec「區段切分不被輪內文截斷」：與引擎同一結構標題白名單。
+    const doc = DOC.replace(
+      "**Focus**: 範圍界定",
+      "**Focus**: 範圍界定\n\n## 背景\n首輪本文",
+    );
+    const s = splitDiscussionSections(doc);
+    expect(s).not.toBeNull();
+    expect(s!.rounds).toContain("## 背景");
+    expect(s!.rounds).toContain("首輪本文");
+    expect(s!.conclusion).toContain("建置 alpha 搜尋");
+  });
 });
 
 // spec 需求「討論輪以卡片呈現」的輪切分（design D1/D2）。
