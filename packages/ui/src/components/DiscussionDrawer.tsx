@@ -23,7 +23,30 @@ export interface DiscussionSections {
 
 /** 結構標題白名單——與引擎（speclink-core discuss）同一條規則：
  * 只有這三個整行標題是區段邊界，輪內文的其他「## 」行不得截斷區段。 */
-const STRUCTURAL_HEADERS = ["## Context", "## Rounds", "## Conclusion"] as const;
+const STRUCTURAL_HEADERS: readonly string[] = ["## Context", "## Rounds", "## Conclusion"];
+
+/** Fenced code block 圍欄行（``` 或 ~~~ 開頭；容忍前導空白）——圍欄內的行不是結構。 */
+function isFenceLine(line: string): boolean {
+  const t = line.trimStart();
+  return t.startsWith("```") || t.startsWith("~~~");
+}
+
+/** 逐行標記是否位於 fenced code block（圍欄行自身視為圍欄內）。 */
+function fenceFlags(lines: string[]): boolean[] {
+  let fence = false;
+  return lines.map((l) => {
+    if (isFenceLine(l)) {
+      fence = !fence;
+      return true;
+    }
+    return fence;
+  });
+}
+
+/** 區段邊界：結構標題白名單＋pre-scaffold「## Round 」前綴容忍（與引擎同一條規則）。 */
+function isSectionBoundary(line: string): boolean {
+  return STRUCTURAL_HEADERS.includes(line) || line.startsWith("## Round ");
+}
 
 /**
  * 把討論記錄全文按 `## Context`／`## Rounds`／`## Conclusion` 切分（design D5）。
@@ -31,12 +54,13 @@ const STRUCTURAL_HEADERS = ["## Context", "## Rounds", "## Conclusion"] as const
  */
 export function splitDiscussionSections(text: string): DiscussionSections | null {
   const lines = text.split(/\r?\n/);
+  const inFence = fenceFlags(lines);
   const body = (name: string): string | null => {
-    const start = lines.findIndex((l) => l.trimEnd() === `## ${name}`);
+    const start = lines.findIndex((l, i) => !inFence[i] && l.trimEnd() === `## ${name}`);
     if (start < 0) return null;
     let end = lines.length;
     for (let i = start + 1; i < lines.length; i++) {
-      if ((STRUCTURAL_HEADERS as readonly string[]).includes(lines[i].trimEnd())) {
+      if (!inFence[i] && isSectionBoundary(lines[i].trimEnd())) {
         end = i;
         break;
       }
@@ -112,8 +136,11 @@ export function splitRounds(text: string): DiscussionRound[] | null {
   const rounds: { round: number; mode: string; date: string; body: string[] }[] = [];
   let current: { body: string[] } | null = null;
 
-  for (const line of text.split(/\r?\n/)) {
-    if (line.startsWith("### ")) {
+  const lines = text.split(/\r?\n/);
+  const inFence = fenceFlags(lines);
+  for (const [i, line] of lines.entries()) {
+    // 圍欄內的行不是輪標題——歸當前輪內文（首輪前出現則按既有規則整篇退回）。
+    if (!inFence[i] && line.startsWith("### ")) {
       const m = heading.exec(line);
       if (!m) return null;
       current = { body: [] };

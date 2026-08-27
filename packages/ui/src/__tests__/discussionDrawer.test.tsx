@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -103,6 +105,68 @@ describe("splitDiscussionSections（區段切分）", () => {
     expect(s!.rounds).toContain("首輪本文");
     expect(s!.conclusion).toContain("建置 alpha 搜尋");
   });
+
+  it("圍欄內的結構標題行不切斷區段、不誤當區段起點", () => {
+    // 與引擎同規則：fenced code block 內的行不是結構。
+    const doc = DOC.replace(
+      "**Focus**: 範圍界定",
+      "**Focus**: 範圍界定\n\n```\n## Conclusion\n```",
+    );
+    const s = splitDiscussionSections(doc);
+    expect(s).not.toBeNull();
+    expect(s!.rounds).toContain("```\n## Conclusion\n```");
+    expect(s!.conclusion).toContain("建置 alpha 搜尋");
+    expect(s!.conclusion).not.toContain("```");
+  });
+
+  it("結論區段不吞其後的 pre-scaffold「## Round 」區段", () => {
+    // 與引擎同規則：未跳脫的「## Round 」前綴行是區段邊界（pre-scaffold 容忍）。
+    const doc = `${DOC}\n## Round 2 — explore (2026-07-02)\n\n次輪本文\n`;
+    const s = splitDiscussionSections(doc);
+    expect(s).not.toBeNull();
+    expect(s!.conclusion).toContain("建置 alpha 搜尋");
+    expect(s!.conclusion).not.toContain("次輪本文");
+  });
+});
+
+describe("結構標題白名單跨語言對齊（引擎 ↔ UI）", () => {
+  it("Rust 與 TS 的 STRUCTURAL_HEADERS 逐值一致", () => {
+    // 兩份白名單只靠註解互指不夠——讀原始檔逐值比對（同 tooltipDelay.test.tsx
+    // 的檔案系統斷言慣例；repo root 由測試檔路徑推出）。
+    const REPO_ROOT = resolve(dirname(expect.getState().testPath ?? ""), "../../../..");
+    const extract = (source: string): string[] => {
+      const m = /const STRUCTURAL_HEADERS[^=]*=[^[]*\[([^\]]+)\]/.exec(source);
+      expect(m).not.toBeNull();
+      return [...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+    };
+    const rust = extract(
+      readFileSync(resolve(REPO_ROOT, "crates/speclink-core/src/discuss.rs"), "utf8"),
+    );
+    const ts = extract(
+      readFileSync(resolve(REPO_ROOT, "packages/ui/src/components/DiscussionDrawer.tsx"), "utf8"),
+    );
+    expect(ts).toEqual(rust);
+    expect(rust).toEqual(["## Context", "## Rounds", "## Conclusion"]);
+  });
+
+  it("圍欄、輪標題與 pre-scaffold 邊界的字面規則兩邊同在", () => {
+    // 絆線測試：三條跨語言規則（圍欄定界符、輪標題前綴與 em-dash 分隔、
+    // pre-scaffold 邊界前綴）的字面值必須同時存在於兩份原始檔——
+    // 任一側改了定界符或前綴，這裡就斷。
+    const REPO_ROOT = resolve(dirname(expect.getState().testPath ?? ""), "../../../..");
+    const rustSrc = readFileSync(
+      resolve(REPO_ROOT, "crates/speclink-core/src/discuss.rs"),
+      "utf8",
+    );
+    const tsSrc = readFileSync(
+      resolve(REPO_ROOT, "packages/ui/src/components/DiscussionDrawer.tsx"),
+      "utf8",
+    );
+    for (const literal of ["## Round ", "### Round ", "```", "~~~", " — "]) {
+      expect(rustSrc, `Rust 缺 ${JSON.stringify(literal)}`).toContain(literal);
+      expect(tsSrc, `TS 缺 ${JSON.stringify(literal)}`).toContain(literal);
+    }
+  });
 });
 
 // spec 需求「討論輪以卡片呈現」的輪切分（design D1/D2）。
@@ -158,6 +222,18 @@ describe("splitRounds（輪切分，design D1 行掃描解析 scaffold）", () =
     const rounds = splitRounds(ROUNDS_TEXT)!;
     expect(Object.keys(rounds[1].fields)).not.toContain("Note");
     expect(rounds[1].fields.Position).toContain("**Note**: 這行不是欄位");
+  });
+
+  it("圍欄內的 ### 行不觸發輪切分或整篇退回", () => {
+    // 與引擎同規則：fenced code block 內的行歸當前輪內文，不是輪標題。
+    const text =
+      "\n### Round 1 — assumptions (2026-07-08)\n\n**Focus**: 焦點\n\n```\n### 附註\n### Round 9 — fake (2026-01-01)\n```\n";
+    const rounds = splitRounds(text);
+    expect(rounds).not.toBeNull();
+    expect(rounds!.length).toBe(1);
+    expect(rounds![0].fields.Focus).toContain(
+      "```\n### 附註\n### Round 9 — fake (2026-01-01)\n```",
+    );
   });
 
   it("任一輪標題不符 scaffold 格式時回 null（整篇退回）", () => {
