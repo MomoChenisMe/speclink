@@ -885,6 +885,47 @@ describe("面板變更列的品質站章", () => {
     expect(verify.className).toContain(VERIFY_TONE.verifiedStale);
     expect(VERIFY_TONE.verifiedStale).toBe(REVIEW_TONE.reviewedStale);
   });
+
+  it("worktree 掛著時渲染 worktree 標記，樣式與詞條與看板卡片同源", () => {
+    // worktree 掛著＝工作正於副本進行中，與站章同屬影響收尾動作的狀態；
+    // 色調與 tooltip 沿看板卡片（SEMANTIC_TONE.inProgress＋card.worktree 詞條）。
+    renderPanel({
+      snapshot: snapshot({
+        changes: [
+          change({
+            name: "inprog",
+            totalTasks: 12,
+            completedTasks: 3,
+            reviewStatus: "reviewed",
+            verifyStatus: "verified",
+            worktree: { branch: "speclink/inprog", path: "/w/inprog" },
+          }),
+        ],
+      }),
+    });
+    const row = rowOf("inprog");
+    const badge = within(row).getByLabelText("worktree");
+    expect(badge.getAttribute("title")).toBe("在 worktree speclink/inprog 中進行");
+    expect(badge.className).toContain(SEMANTIC_TONE.inProgress);
+    // hover 反白時隨列改前景色，與站章同規則。
+    expect(badge.className).toContain("group-hover:text-primary-foreground");
+    // 位置固定：站章之後、任務數之前。
+    const verify = within(row).getByLabelText("已驗證");
+    const count = within(row).getByText("3/12");
+    expect(verify.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(badge.compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("無 worktree 時不渲染 worktree 標記", () => {
+    renderPanel({
+      snapshot: snapshot({
+        changes: [
+          change({ name: "inprog", totalTasks: 12, completedTasks: 3, worktree: null }),
+        ],
+      }),
+    });
+    expect(within(rowOf("inprog")).queryByLabelText("worktree")).toBeNull();
+  });
 });
 
 // spec「面板分頁切換中回饋」「面板分區首訪 skeleton」（design D5）：
