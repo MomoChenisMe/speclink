@@ -33,6 +33,7 @@ import {
   CloudOff,
   Copy,
   Folder,
+  GitBranch,
   Hammer,
   Lightbulb,
   LoaderCircle,
@@ -877,6 +878,7 @@ function ChangeRow({
   onCopy: (text: string) => void;
   copyLabel: string;
 }) {
+  const { t } = useI18n();
   const pct = c.totalTasks > 0 ? Math.round((c.completedTasks / c.totalTasks) * 100) : 0;
   return (
     <div data-testid={`panel-change-${c.name}`} onClick={() => onOpen(c.name)} className={rowClass}>
@@ -884,6 +886,18 @@ function ChangeRow({
         <div className="flex items-baseline gap-2">
           <span className="truncate">{c.name}</span>
           <StationBadges c={c} />
+          {/* worktree 標記：掛著＝工作正於副本進行中，與站章同屬影響收尾動作
+              的狀態（merge 前不能封存），故進 tray；色調與 tooltip 詞條沿看板
+              卡片同款（SEMANTIC_TONE.inProgress＋card.worktree），不另建對照。 */}
+          {c.worktree && (
+            <span
+              aria-label={t("card.worktree")}
+              title={t("card.worktreeTitle").replace("{branch}", c.worktree.branch)}
+              className={cn("shrink-0", SEMANTIC_TONE.inProgress, STAMP_HOVER)}
+            >
+              <GitBranch className="h-3.5 w-3.5" />
+            </span>
+          )}
           {c.totalTasks > 0 && (
             <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground group-hover:text-primary-foreground/80">
               {`${c.completedTasks}/${c.totalTasks}`}
