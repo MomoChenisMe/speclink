@@ -178,5 +178,6 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
 {{NEXT_STEPS_LEAD}}
 
-- The review stamp landed → the other station if the user wants it (`/speclink:verify <change-name>`), otherwise `/speclink:archive <change-name>`
+- The review stamp landed in the main checkout → `/speclink:archive <change-name>`
+- The review stamp landed inside a worktree → commit the stamp's meta changes first, then `/speclink:worktree-merge <change-name>` (archive runs only from the main checkout)
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream

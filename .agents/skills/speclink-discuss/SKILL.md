@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -120,18 +120,11 @@ CONCLUSION_EOF
 
 This flips the record's `status` to `concluded`. The step logic below (vocabulary load, the scout, the requirement-clarity judgement, interface depth check, convergence, conclusion capture) is unchanged — recording sits alongside it.
 
-**Fast path**: when the user wants to go straight from the conclusion to a change without a full propose round, offer:
-
-```bash
-speclink discuss promote <slug>            # change name defaults to the slug
-speclink discuss promote <slug> --name <change-name>
-```
-
-This scaffolds the change, prefills the proposal's Why from the conclusion, and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — promote (or `$speclink-propose --from-discussion`) again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived. The remaining artifacts are still created via `$speclink-propose`.
+**A concluded discussion hands off through propose**: `$speclink-propose --from-discussion <slug>` seeds the proposal from the recorded Decision and rounds and builds every artifact in one pass — the single next step once the conclusion is written.
 
 **Mid-discussion spin-out** — in a multi-requirement discussion, one item can be filed the moment it is settled; don't hold it hostage to the rest:
 
-1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` — the fast path above applies as-is; with no conclusion yet, the engine prefills the proposal's Why from the topic instead.
+1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived. The remaining artifacts are still created via `$speclink-propose`.
 2. **Keep discussing**: `add-round` continues as normal for the remaining items; promotion does not close the record.
 3. **Conclude as usual at the end**: the record keeps its `promoted` status, the conclusion is written in, and the engine flags the already-promoted changes as needing the conclusion re-reflected. When the conclusion is unrelated to a spun-out change, that flag needs a single confirmation — no rework.
 
@@ -467,7 +460,7 @@ When the discussion converges on building something:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The conclusion warrants its own change → `speclink discuss promote <slug>` (or `$speclink-propose --from-discussion <slug>`), then `$speclink-propose` for the remaining artifacts
+- The conclusion warrants its own change → `$speclink-propose --from-discussion <slug>` — one pass from the recorded conclusion to a full artifact set
 - It belongs in a change that already exists → `speclink discuss link <slug> <change>`, then `$speclink-ingest <change>` to fold it in and seal
 - The conclusion is "don't do it" → conclude anyway, then `speclink discuss archive <slug>`
 - Nothing of substance was recorded → `speclink discuss discard <slug>`

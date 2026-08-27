@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -279,5 +279,6 @@ Use clear markdown with:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The verify stamp landed → the other station if the user wants it (`/speclink-review <change-name>`), otherwise `/speclink-archive <change-name>`
+- The verify stamp landed in the main checkout → `/speclink-archive <change-name>`
+- The verify stamp landed inside a worktree → commit the stamp's meta changes first, then `/speclink-worktree-merge <change-name>` (archive runs only from the main checkout)
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream
