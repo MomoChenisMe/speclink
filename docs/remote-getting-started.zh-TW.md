@@ -76,9 +76,11 @@ http://localhost:8080/api/speclink/v1/projects/demo
 
 ## 4. Grant Project membership / 授予 Project membership
 
-帳號能登入不等於看得到專案，成員資格是另一層。有兩種做法：
+帳號能登入不等於看得到專案，成員資格是另一層，Server Admin 身分也不會繞過它。
 
-**從後台**——以管理員登入後開 `/admin/users`，把對象加入 `demo` 專案並指定角色。沒有 membership 的人即使登入成功，讀取該專案的資源也只會拿到 `404`。這是刻意的，不讓未授權者從錯誤碼推斷專案是否存在。
+**先給你自己——這一步是必經的。**`/setup` 建立了你的 Admin 帳號與 `demo` 專案，但沒有授予任何 membership；在你補上之前，`speclink auth status` 會回 access denied、Desktop 的 scope 清單也是空的。以管理員登入後開 `/admin/users`，把你自己的帳號加入 `demo` 並給 `editor` 角色；若 Desktop 的 scope 清單已經開著，之後重新載入一次。接著再用同樣的兩種做法授予其他人：
+
+**從後台**——開 `/admin/users`，把對象加入 `demo` 專案並指定角色。沒有 membership 的人即使登入成功，讀取該專案的資源也只會拿到 `404`。這是刻意的，不讓未授權者從錯誤碼推斷專案是否存在。
 
 **從命令列**（headless，適合腳本化）——邀請一位新成員並直接帶上專案：
 
@@ -116,7 +118,7 @@ speclink-server token revoke --config ./speclink-data/config.yaml <token-id>
 
 開起來之後，遠端看板和本地看板一樣可以瀏覽 change、勾任務、讀寫 artifact。
 
-還沒閉合的小縫：遠端不支援 capability 清單與 change 詮釋資料、討論的 promotedTo 以空清單補齊、離線（offline）衝突處理尚未完成。逐項現況見[專案能力狀態](product-status.zh-TW.md)的 Desktop Remote Workspace 一列——請以那裡為準，不要從這份教學推論。
+還沒閉合的小縫：在這個遠端看板勾任務不會回報 touched files（CLI 路徑會），認領也還沒有釋放或搶佔的動詞。逐項現況見[專案能力狀態](product-status.zh-TW.md)的 Desktop Remote Workspace 一列——請以那裡為準，不要從這份教學推論。
 
 ## 7. Connect the CLI / 連接 CLI
 
@@ -147,6 +149,10 @@ npm run --silent cli -- list --json
 
 ## 8. Recover from a lost connection / 失聯恢復
 
+值得刻意觀察一次：開著遠端分頁時把 server 停掉，讓分頁進入離線（offline）狀態。看板會把最後載入的內容保留成唯讀 snapshot，可讀、標示 stale，所有寫入操作（勾任務、存 artifact 或設定）都被停用——不會排隊等重送。把 server 重新啟動，分頁會自己收斂：以 ETag 輪詢、回到 online、清掉 stale 標示，全程不需要手動重整；失聯期間別人做的變更會在重查後出現。
+
+若沒有自動恢復，再對照症狀表：
+
 | 症狀 | 怎麼回來 |
 | --- | --- |
 | 憑證過期或被撤銷 | 重跑 `speclink auth login`；device 流程會重新授權。 |
@@ -170,7 +176,7 @@ repo 內開發用的 `npm run dev`，對應的重置指令是 `npm run dev:reset
 
 - **`/setup` 打不開、token 不再出現**：那是正常的——設定已完成一次，token 只顯示一次。要重來就清掉資料目錄。
 - **直接跑 `speclink-server` 說 `missing required argument --config`**：binary 不讀環境變數，改用 `npx @speclink/server`，或自己帶 `--config`。
-- **成員登入得了卻看不到專案**：那是成員資格沒給，回第 4 節。
+- **登入得了卻看不到專案（`auth status` 回 access denied，或 Desktop 的 scope 清單是空的）**：那是成員資格沒給——第一位管理員也一樣，Admin 身分不會繞過 membership；回第 4 節。
 - **PAT 弄丟了**：拿不回來，撤銷後重發。
 - **CLI 行為和文件對不上**：多半是 PATH 上有一顆過期的 `speclink`，來自另一個 checkout 或沒跟上的安裝版。在這個 repo 內改用 `npm run cli -- <args>`，它只跑當前 checkout 的 CLI。要確認你手上那顆是哪一版，跑 `speclink --version` 與 `npm run --silent cli -- --version` 比對引擎版號。
 - **不確定某項遠端能力到底有沒有**：查[專案能力狀態](product-status.zh-TW.md)的本地與遠端對照表，一列就看得到兩邊狀態。

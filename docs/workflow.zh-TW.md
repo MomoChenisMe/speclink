@@ -367,7 +367,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 ## Current limitations / 目前限制
 
 - `validate` 與 `analyze` 只檢查 artifacts，不等同於 code tests，也不等同於完整的實作符合度。實作面由品質關卡處理。
-- Desktop Server Connections 已可用。完整的 Desktop Remote Workspace 仍是部分可用，遠端的 evidence 有已知缺口。
+- Desktop Server Connections 已可用。完整的 Desktop Remote Workspace 仍是部分可用：在桌面遠端看板勾任務不會回報 touched files（CLI 路徑會存）。
 - Legacy remote REST v1 已棄用。新工作以目前的 Client Protocol／Host 路徑為準。
 - 逐項證據與最後查核日期以[專案能力狀態](product-status.zh-TW.md)為準，本文不重複維護狀態矩陣。
 

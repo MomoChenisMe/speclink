@@ -78,9 +78,11 @@ After a restart, `/setup` closes and the setup token is not reprinted — **that
 
 ## 4. Grant Project membership / 授予 Project membership
 
-Being able to sign in is not the same as seeing a project; membership is a separate layer. Two ways:
+Being able to sign in is not the same as seeing a project; membership is a separate layer, and the Server Admin flag does not bypass it.
 
-**From the console** — sign in as the administrator and open `/admin/users`, then add the person to the `demo` project and pick their role. Without membership, a user who signs in still gets a `404` when reading that project's resources. This is deliberate. An unauthorized caller cannot infer from the status code whether the project exists.
+**Start with yourself — this step is mandatory.** `/setup` created your Admin account and the `demo` project but granted no membership, so until you grant it, `speclink auth status` reports access denied and the Desktop scope list comes back empty. Sign in, open `/admin/users`, and add your own account to `demo` with the `editor` role; if a Desktop scope list was already open, reload it afterwards. Then grant others the same way, by either path:
+
+**From the console** — open `/admin/users`, then add the person to the `demo` project and pick their role. Without membership, a user who signs in still gets a `404` when reading that project's resources. This is deliberate. An unauthorized caller cannot infer from the status code whether the project exists.
 
 **From the command line** (headless, scriptable) — invite a new member with the project attached:
 
@@ -118,7 +120,7 @@ Once signed in, pick the connection in the workspace chooser, choose a Project a
 
 Once open, the remote board browses changes, checks tasks, and reads and writes artifacts the way a local board does.
 
-What is not closed yet: capability lists and change metadata are unsupported remotely, a discussion's `promotedTo` is filled with an empty list, and offline conflict handling is unfinished. The Desktop Remote Workspace row of [Project Capability Status](product-status.md) itemizes the current state — trust that row rather than this guide.
+What is not closed yet: checking a task from this remote board does not report touched files (the CLI path does), and a claim has no release or takeover verb. The Desktop Remote Workspace row of [Project Capability Status](product-status.md) itemizes the current state — trust that row rather than this guide.
 
 ## 7. Connect the CLI / 連接 CLI
 
@@ -147,6 +149,10 @@ npm run --silent cli -- list --json
 
 ## 8. Recover from a lost connection / 失聯恢復
 
+Worth observing once on purpose: stop the server while a remote tab is open, so the tab goes offline. The board keeps the last loaded content as a read-only snapshot, readable and marked stale, and every write action (checking a task, saving an artifact or settings) is disabled — nothing queues for later. Start the server again and the tab converges on its own: it polls with ETags, returns online, and clears the stale marker without a manual reload, and changes other people made during the outage appear after the re-query.
+
+If recovery does not happen by itself, find the symptom:
+
 | Symptom | How to get back |
 | --- | --- |
 | Credentials expired or were revoked | Re-run `speclink auth login`; the device flow re-authorizes. |
@@ -170,7 +176,7 @@ For in-repo development with `npm run dev`, the equivalent is `npm run dev:reset
 
 - **`/setup` will not open and the token is gone**: that is expected — setup completed once, and the token is shown only once. Clear the data directory to start over.
 - **Running `speclink-server` directly says `missing required argument --config`**: the binary does not read environment variables. Use `npx @speclink/server`, or pass `--config` yourself.
-- **A member can sign in but sees no project**: membership was not granted; return to section 4.
+- **A sign-in works but no project shows (`auth status` reports access denied, or the Desktop scope list is empty)**: membership was not granted — this includes the first administrator, whose Admin flag does not bypass membership; return to section 4.
 - **A PAT was lost**: it cannot be retrieved. Revoke and reissue.
 - **CLI behavior does not match the documentation**: usually a stale `speclink` on your PATH (installed from another checkout, or an installed build that fell behind). Inside this repo use `npm run cli -- <args>`, which only ever runs the current checkout's CLI; to see which one you have, compare the engine versions from `speclink --version` and `npm run --silent cli -- --version`.
 - **Unsure whether a remote capability exists**: check the Local and Remote table in [Project Capability Status](product-status.md), where one row shows both sides.

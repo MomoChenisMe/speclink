@@ -31,8 +31,8 @@ Desktop、Store abstraction、Node SDK 與 Remote Platform。
 
 ## Current capabilities / 目前能力
 
-- **可用**：Local Repo CLI、Local Desktop、生成的 Agent 技能（Claude 與 Codex 全站別）、Command Runtime／Host／Protocol、SQLite／Server FS／PostgreSQL TeamStore、單節點 Server 與 Admin／Auth、Remote CLI 與 Context Projection、Server 營運（部署、備份還原）、桌面與 CLI 的安裝通路。
-- **部分可用**：Node SDK（綁定可用，npm 發布管線已接、自首個帶 engine 的 release 起上 npm）、Desktop Remote Workspace、遠端的 task evidence。
+- **可用**：Local Repo CLI、Local Desktop、生成的 Agent 技能（Claude 與 Codex 全站別）、Command Runtime／Host／Protocol、SQLite／Server FS／PostgreSQL TeamStore、單節點 Server 與 Admin／Auth、Remote CLI 與 Context Projection、遠端的 task evidence、Server 營運（部署、備份還原）、桌面與 CLI 的安裝通路。
+- **部分可用**：Node SDK（綁定可用，npm 發布管線已接、自首個帶 engine 的 release 起上 npm）、Desktop Remote Workspace。
 - **規劃中**：MCP／Copilot in-process tools、SSO、runtime plugins 與 cluster mode。
 - **已棄用**：legacy remote REST v1 prototype；新工作使用目前 Client Protocol／Host 路徑。
 
@@ -110,7 +110,7 @@ brew install MomoChenisMe/tap/speclink
 
 Windows 的安裝檔目前未經程式碼簽章，首次執行時 SmartScreen 會出現警告——點「其他資訊」→「仍要執行」即可。
 
-**Server**（只有要團隊共用時才需要）——`speclink-server` 是官方的**參考實作**，給你開箱即用、或拿來試遠端功能。三種形態擇一，都會在啟動後印出一次性的 `/setup` 連結：
+**Server**（只有要團隊共用時才需要）——`speclink-server` 是官方的**參考實作**，給你開箱即用、或拿來試遠端功能。三種形態擇一，都會在首次啟動時印出一次性的 `/setup` 連結（一般重啟不重印）：
 
 | 形態 | 指令 |
 | --- | --- |
@@ -158,7 +158,7 @@ Host command。這些邊界的正典是 `openspec/specs/` 底下的規格，例�
 
 | 文件 | 用途 |
 | --- | --- |
-| [Remote Server、Desktop 與 CLI 入門教學](docs/remote-getting-started.zh-TW.md) | 從 `/setup`、membership、登入到 Desktop／CLI 與失聯恢復的完整流程 |
+| [Remote Server、Desktop 與 CLI 入門教學](docs/remote-getting-started.zh-TW.md) | 從 `npx @speclink/server` 一行啟動、`/setup`、membership（含第一位 Admin 自授）、登入到 Desktop／CLI 與失聯恢復的完整流程 |
 | [Server 部署](docs/server-deployment.zh-TW.md) | npx／Docker／Compose 與升級操作 |
 | [Server Store drivers](docs/server-store-drivers.zh-TW.md) | SQLite／Server FS／PostgreSQL 選型與前提 |
 | [Server 備份與還原](docs/server-backup.zh-TW.md) | backup／verify-backup／restore |

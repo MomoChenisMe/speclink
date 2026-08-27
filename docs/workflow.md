@@ -359,7 +359,7 @@ Do not treat a skill as a runtime, and do not assume every Host uses the same in
 ## Current limitations / 目前限制
 
 - `validate` and `analyze` check artifacts. Neither equals code tests nor full implementation conformance; the quality stations cover the implementation side.
-- Desktop Server Connections work. The full Desktop Remote Workspace is still partial, and remote evidence carries known gaps.
+- Desktop Server Connections work. The full Desktop Remote Workspace is still partial: checking a task from the desktop remote board reports no touched files (the CLI path stores them).
 - The legacy remote REST v1 prototype is deprecated; new work follows the current Client Protocol and Host path.
 - Per-item evidence and the last audit date live in [Project Capability Status](product-status.md); this document does not maintain a second status matrix.
 
