@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "change": "remote-evidence-scope-wiring",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 crates/speclink-cli/tests/it/remote_verb_parity.rs：mock server 補 change evidence 端點回應；新增「remote task done 後 scope 自動解析」測試——mock evidence 帶 touched files，review scope 不帶任何手動旗標，斷言回 resolved payload、touched 認領等於 evidence 檔案集合、無 needsInput。以 `cargo test -p speclink-cli --test it` 確認新測試失敗（紅燈基準）",
+      "files": [
+        "crates/speclink-cli/tests/it/remote_verb_parity.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 crates/speclink-cli/src/verbs/station.rs：remote 分支組 scope 請求前，以 typed client 的 change_evidence 讀本 change 的 evidence，touched 取全部 entries 聯集餵進 scope 請求；other claims 逐一讀其他 active change 的 evidence，無記錄視為零認領；任何 evidence 讀取失敗即非零結束、不寫 baseline 與 snapshot（design D1、D2、D4、D6）。驗證：1.1 至 1.3 全部測試轉綠",
+      "files": [
+        "crates/speclink-cli/src/verbs/station.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M111M4S2KQHSDAZ9AEGVX5V0",
+      "taskDesc": "1.1 crates/speclink-cli/tests/it/remote_verb_parity.rs：mock server 補 change evidence 端點回應；新增「remote task done 後 scope 自動解析」測試——mock evidence 帶 touched files，review scope 不帶任何手動旗標，斷言回 resolved payload、touched 認領等於 evidence 檔案集合、無 needsInput。以 `cargo test -p speclink-cli --test it` 確認新測試失敗（紅燈基準）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "919113b482e36e6a7827392ee4d54edf4af20e83",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/remote_verb_parity.rs"
+      ],
+      "recordedAt": "2026-08-27T07:48:05Z"
+    },
+    {
+      "taskId": "tsk_01M111M4S2YSBNKJ4DD8MKF207",
+      "taskDesc": "2.1 crates/speclink-cli/src/verbs/station.rs：remote 分支組 scope 請求前，以 typed client 的 change_evidence 讀本 change 的 evidence，touched 取全部 entries 聯集餵進 scope 請求；other claims 逐一讀其他 active change 的 evidence，無記錄視為零認領；任何 evidence 讀取失敗即非零結束、不寫 baseline 與 snapshot（design D1、D2、D4、D6）。驗證：1.1 至 1.3 全部測試轉綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "919113b482e36e6a7827392ee4d54edf4af20e83",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/station.rs"
+      ],
+      "recordedAt": "2026-08-27T07:51:33Z"
+    }
+  ]
+}

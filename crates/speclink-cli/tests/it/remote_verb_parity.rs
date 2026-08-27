@@ -1184,6 +1184,20 @@ fn write_touched(p: &TempProject, change: &str, files: &[&str]) {
     );
 }
 
+/// server change evidence 端點的單筆 entry（camelCase wire 形狀）。
+fn evidence_entry(task_id: &str, actor: &str, files: &[&str]) -> String {
+    let files: Vec<String> = files.iter().map(|f| format!("\"{f}\"")).collect();
+    format!(
+        "{{\"taskId\":\"{task_id}\",\"taskDesc\":\"t\",\"actor\":\"{actor}\",\"touchedFiles\":[{}],\"recordedAt\":\"2026-01-02T03:04:05Z\"}}",
+        files.join(",")
+    )
+}
+
+/// evidence 端點回應體：entries 陣列（空集合＝從未記錄，仍是 200）。
+fn evidence_response(entries: &[String]) -> String {
+    format!("{{\"entries\":[{}]}}", entries.join(","))
+}
+
 /// listing 的 `status` 只由任務完成度推導（未全完成即 `in-progress`），沒有
 /// `proposed` 這個值；`startedAt` 才是「已開工」的事實來源。這裡刻意用未開工
 /// 但任務未完成的真實形狀。
@@ -1261,14 +1275,21 @@ fn remote_review_prepare_reads_started_from_started_at_not_task_progress() {
 #[test]
 fn remote_review_scope_uses_local_git_and_uploads_nothing() {
     // spec Scenario「remote scope 仍使用 local checkout」：resolved payload 用
-    // local Git 產生、server 不收到 patch 或 snapshot。
-    let mock = mock_server(review_scope_routes());
+    // local Git 產生、server 不收到 patch 或 snapshot；touched 認領來自 server
+    // 的 change evidence，不再手塞本地檔。
+    let mut routes = review_scope_routes();
+    routes.push((
+        "GET",
+        "/changes/demo/evidence",
+        200,
+        evidence_response(&[evidence_entry("1", "alice", &["src/lib.rs"])]),
+    ));
+    let mock = mock_server(routes);
     let p = TempProject::remote("review-scope", &mock.base, "backend");
     seed_git_src(&p);
     let prepared = p.run(&["review", "prepare", "demo"]);
     assert!(prepared.status.success(), "stderr: {}", stderr_of(&prepared));
     p.write("src/lib.rs", "fn demo() { changed(); }\n");
-    write_touched(&p, "demo", &["src/lib.rs"]);
     let out = p.run(&["review", "scope", "demo", "--json"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
@@ -1309,13 +1330,19 @@ fn remote_review_scope_json_matches_fs_mode_field_for_field() {
     let fs_out = fs.run(&["review", "scope", "demo", "--json"]);
     assert!(fs_out.status.success(), "fs scope: {}", stderr_of(&fs_out));
 
-    let mock = mock_server(review_scope_routes());
+    let mut routes = review_scope_routes();
+    routes.push((
+        "GET",
+        "/changes/demo/evidence",
+        200,
+        evidence_response(&[evidence_entry("1", "alice", &["src/lib.rs"])]),
+    ));
+    let mock = mock_server(routes);
     let p = TempProject::remote("review-scope-parity", &mock.base, "backend");
     seed_git_src(&p);
     let prepared = p.run(&["review", "prepare", "demo"]);
     assert!(prepared.status.success(), "remote prepare: {}", stderr_of(&prepared));
     p.write("src/lib.rs", "fn demo() { changed(); }\n");
-    write_touched(&p, "demo", &["src/lib.rs"]);
     let remote_out = p.run(&["review", "scope", "demo", "--json"]);
     assert!(remote_out.status.success(), "remote scope: {}", stderr_of(&remote_out));
 
@@ -1362,13 +1389,19 @@ fn remote_verify_scope_json_matches_fs_mode_field_for_field() {
     let fs_out = fs.run(&["verify", "scope", "demo", "--json"]);
     assert!(fs_out.status.success(), "fs scope: {}", stderr_of(&fs_out));
 
-    let mock = mock_server(verify_scope_routes());
+    let mut routes = verify_scope_routes();
+    routes.push((
+        "GET",
+        "/changes/demo/evidence",
+        200,
+        evidence_response(&[evidence_entry("1", "alice", &["src/lib.rs"])]),
+    ));
+    let mock = mock_server(routes);
     let p = TempProject::remote("verify-scope-parity", &mock.base, "backend");
     seed_git_src(&p);
     let prepared = p.run(&["review", "prepare", "demo"]);
     assert!(prepared.status.success(), "remote prepare: {}", stderr_of(&prepared));
     p.write("src/lib.rs", "fn demo() { changed(); }\n");
-    write_touched(&p, "demo", &["src/lib.rs"]);
     let remote_out = p.run(&["verify", "scope", "demo", "--json"]);
     assert!(remote_out.status.success(), "remote scope: {}", stderr_of(&remote_out));
 
@@ -1419,7 +1452,6 @@ fn remote_review_scope_offline_leaves_zero_sidecar_effects() {
     let url = format!("http://127.0.0.1:{port}/api/speclink/v1/projects/demo");
     let p = TempProject::remote("review-offline", &url, "backend");
     seed_git_src(&p);
-    write_touched(&p, "demo", &["src/lib.rs"]);
     let out = p.run(&["review", "scope", "demo", "--json"]);
     assert!(!out.status.success(), "offline must be non-zero");
     assert!(
@@ -1431,6 +1463,139 @@ fn remote_review_scope_offline_leaves_zero_sidecar_effects() {
     assert!(
         !p.dir.join(".speclink").join("review-scopes").exists(),
         "prepare writes nothing when the remote read fails"
+    );
+}
+
+#[test]
+fn remote_review_scope_auto_resolves_from_server_evidence() {
+    // spec Scenario「remote task done 後 scope 自動解析」：touched 認領來自
+    // server 的 change evidence，scope 不帶任何手動旗標即回 resolved payload。
+    let mut routes = review_scope_routes();
+    routes.push((
+        "GET",
+        "/changes/demo/evidence",
+        200,
+        evidence_response(&[evidence_entry("1", "alice", &["src/lib.rs"])]),
+    ));
+    let mock = mock_server(routes);
+    let p = TempProject::remote("review-scope-evidence", &mock.base, "backend");
+    seed_git_src(&p);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "stderr: {}", stderr_of(&prepared));
+    p.write("src/lib.rs", "fn demo() { changed(); }\n");
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    assert_eq!(v["state"], "resolved", "server evidence supplies touched — no needsInput");
+    assert_eq!(
+        v["paths"],
+        serde_json::json!(["src/lib.rs"]),
+        "touched claim equals the evidence file set"
+    );
+    mock.find("GET", "/changes/demo/evidence");
+}
+
+#[test]
+fn remote_review_scope_absent_evidence_keeps_the_empty_touched_fail_closed() {
+    // spec Scenario「remote evidence 缺席維持 fail-closed」：server 回空 entries
+    //（從未記錄＝正常狀態、200），scope 維持 EmptyTouched 的 needsInput 手動路徑。
+    let mut routes = review_scope_routes();
+    routes.push(("GET", "/changes/demo/evidence", 200, evidence_response(&[])));
+    let mock = mock_server(routes);
+    let p = TempProject::remote("review-scope-no-evidence", &mock.base, "backend");
+    seed_git_src(&p);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "stderr: {}", stderr_of(&prepared));
+    p.write("src/lib.rs", "fn demo() { changed(); }\n");
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(!out.status.success(), "empty touched must stay fail-closed");
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    assert_eq!(v["state"], "needsInput");
+    assert!(
+        stderr_of(&out).contains("no touched files recorded"),
+        "EmptyTouched reason is reported: {}",
+        stderr_of(&out)
+    );
+    assert!(
+        stderr_of(&out).contains("--base") && stderr_of(&out).contains("--include-hunk"),
+        "the manual escape hatches stay documented: {}",
+        stderr_of(&out)
+    );
+}
+
+#[test]
+fn remote_review_scope_unions_touched_across_multi_actor_evidence_entries() {
+    // spec Scenario「多 actor evidence 取聯集」：兩位 actor 的 entries 各認領
+    // 不同檔案集合，scope 的 touched 認領為聯集（與 fs 模式 all_files 同語意）。
+    let mut routes = review_scope_routes();
+    routes.push((
+        "GET",
+        "/changes/demo/evidence",
+        200,
+        evidence_response(&[
+            evidence_entry("1", "alice", &["src/lib.rs"]),
+            evidence_entry("2", "bob", &["src/other.rs"]),
+        ]),
+    ));
+    let mock = mock_server(routes);
+    let p = TempProject::remote("review-scope-union", &mock.base, "backend");
+    seed_git_src(&p);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "stderr: {}", stderr_of(&prepared));
+    p.write("src/lib.rs", "fn demo() { changed(); }\n");
+    p.write("src/other.rs", "fn other() {}\n");
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    assert_eq!(v["state"], "resolved");
+    let paths: Vec<&str> =
+        v["paths"].as_array().unwrap().iter().map(|p| p.as_str().unwrap()).collect();
+    assert_eq!(paths.len(), 2, "the union of both actors' claims: {paths:?}");
+    assert!(paths.contains(&"src/lib.rs") && paths.contains(&"src/other.rs"), "{paths:?}");
+}
+
+#[test]
+fn remote_review_scope_overlapping_server_evidence_triggers_the_other_claims_guard() {
+    // spec Scenario「併行認領守門於 remote 生效」：另一 active change 的 server
+    // evidence 認領重疊檔案 → 守門結果與 fs 模式同形，不被靜默忽略。
+    let mut routes = vec![
+        (
+            "GET",
+            "/changes",
+            200,
+            r#"{"changes":[{"name":"demo","status":"in-progress","completedTasks":0,"totalTasks":2},{"name":"other","status":"in-progress","completedTasks":0,"totalTasks":1}]}"#.to_string(),
+        ),
+        (
+            "GET",
+            "/changes/demo/review",
+            404,
+            r#"{"status":404,"reason":"not_found","message":"no review ticket for change 'demo'"}"#.to_string(),
+        ),
+    ];
+    routes.push((
+        "GET",
+        "/changes/demo/evidence",
+        200,
+        evidence_response(&[evidence_entry("1", "alice", &["src/lib.rs"])]),
+    ));
+    routes.push((
+        "GET",
+        "/changes/other/evidence",
+        200,
+        evidence_response(&[evidence_entry("1", "bob", &["src/lib.rs"])]),
+    ));
+    let mock = mock_server(routes);
+    let p = TempProject::remote("review-scope-overlap", &mock.base, "backend");
+    seed_git_src(&p);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "stderr: {}", stderr_of(&prepared));
+    p.write("src/lib.rs", "fn demo() { changed(); }\n");
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(!out.status.success(), "an overlapping claim must not resolve silently");
+    assert!(
+        stderr_of(&out).contains("active change 'other' also claims: src/lib.rs"),
+        "the other-claims guard fires with the fs-mode wording: {}",
+        stderr_of(&out)
     );
 }
 
