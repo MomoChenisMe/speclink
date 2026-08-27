@@ -231,17 +231,17 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
                         .collect(),
                 });
             let names = store.list_changes().into_iter().map(|c| c.name).collect();
-            let (touched_paths, other_claims) = fs_touched_claims(store, &change, names);
-            let req = build_scope_request(
+            let claims = fs_touched_claims(store, &change, names);
+            let req = speclink_host::change_diff::ScopeRequest {
                 change,
-                touched_paths,
-                other_claims,
+                touched_paths: claims.touched_paths,
+                other_claims: claims.other_claims,
                 ticket,
-                base,
+                base_override: base,
                 candidate_hash,
-                include_hunk,
-                cli.ns,
-            );
+                include_hunks: include_hunk,
+                station: cli.ns,
+            };
             run_station_scope(&ws, st, &req, json)?;
         }
         StationVerb::AddRound { change, stdin } => {
@@ -400,29 +400,12 @@ fn patch_hash_chain<'a>(
         _ => Vec::new(),
     }
 }
-/// `review scope` 的請求組裝（local／remote 共用）：touched 認領與重疊認領由
-/// 兩臂各自的 evidence 來源算好帶進來，其餘欄位同形。
-#[allow(clippy::too_many_arguments)]
-fn build_scope_request(
-    change: String,
+/// 一輪 scope 請求的認領輸入：本 change 的 touched 與其他 active change 的
+/// 重疊認領，由兩臂各自的 evidence 來源算好帶進來。
+#[derive(Default)]
+struct ScopeClaims {
     touched_paths: Vec<String>,
     other_claims: Vec<speclink_host::change_diff::ActiveClaim>,
-    ticket: Option<speclink_host::change_diff::TicketBinding>,
-    base: Option<String>,
-    candidate_hash: Option<String>,
-    include_hunks: Vec<String>,
-    station: speclink_host::change_diff::StationNs,
-) -> speclink_host::change_diff::ScopeRequest {
-    speclink_host::change_diff::ScopeRequest {
-        change,
-        touched_paths,
-        other_claims,
-        ticket,
-        base_override: base,
-        candidate_hash,
-        include_hunks,
-        station,
-    }
 }
 /// fs 模式的認領來源：本 change 與其他 active change 的 touched 都讀 host-local
 /// 的 evidence 記錄；記錄缺席＝零認領。
@@ -430,7 +413,7 @@ fn fs_touched_claims(
     store: &dyn Store,
     change: &str,
     other_change_names: Vec<String>,
-) -> (Vec<String>, Vec<speclink_host::change_diff::ActiveClaim>) {
+) -> ScopeClaims {
     let touched_paths = core::tasks::TouchedRecord::load(store, change).all_files();
     let other_claims = other_change_names
         .into_iter()
@@ -441,7 +424,7 @@ fn fs_touched_claims(
                 .then_some(speclink_host::change_diff::ActiveClaim { change: name, paths })
         })
         .collect();
-    (touched_paths, other_claims)
+    ScopeClaims { touched_paths, other_claims }
 }
 /// remote 模式的認領來源（design D1、D4）：本 change 與其他 active change 的
 /// touched 都經 typed client 讀 server 的 change evidence——remote 下本地沒有
@@ -451,28 +434,54 @@ fn remote_touched_claims(
     ctx: &RemoteCtx,
     change: &str,
     other_change_names: &[String],
-) -> Result<(Vec<String>, Vec<speclink_host::change_diff::ActiveClaim>)> {
-    let touched_paths = evidence_touched_union(ctx.client.change_evidence(change)?);
+) -> Result<ScopeClaims> {
+    let touched_paths = remote_evidence_files(ctx, change)?;
+    // server 是外部邊界：本 change 的認領會進 git pathspec，magic 前綴（:）
+    // 會靜默縮小審查面、不能靠 git 喊停，越界（..）與絕對路徑一併在這裡
+    // 指名拒絕。other claims 只做重疊比對、不進 git，不設限。
+    if let Some(bad) = touched_paths.iter().find(|p| hostile_pathspec(p)) {
+        bail!(
+            "evidence for change '{change}' claims a path that cannot enter the review scope: {bad}"
+        );
+    }
     let mut other_claims = Vec::new();
     for name in other_change_names.iter().filter(|name| *name != change) {
-        let paths = evidence_touched_union(ctx.client.change_evidence(name)?);
+        let paths = remote_evidence_files(ctx, name)?;
         if !paths.is_empty() {
             other_claims
                 .push(speclink_host::change_diff::ActiveClaim { change: name.clone(), paths });
         }
     }
-    Ok((touched_paths, other_claims))
+    Ok(ScopeClaims { touched_paths, other_claims })
 }
-/// evidence entries 的 touched 聯集（design D2）：first-seen 順序去重，與 fs
-/// 模式 TouchedRecord::all_files 同語意；head commit 僅存證、不參與（design D3）。
-fn evidence_touched_union(resp: speclink_protocol::query::ChangeEvidenceResponse) -> Vec<String> {
-    let mut files = Vec::new();
-    for f in resp.entries.into_iter().flat_map(|e| e.touched_files) {
-        if !files.contains(&f) {
-            files.push(f);
-        }
-    }
-    files
+/// 一個 change 的 server evidence → touched 聯集。錯誤指名是哪個 change 的
+/// evidence 讀不到（RemoteError 只有通用訊息，多 change 讀取下不指名就無從
+/// 排查）。聯集語意直接複用引擎的 all_files（design D2；head commit 僅存證，
+/// all_files 不消費它——design D3）：wire entry 與引擎 entry 是鏡射形狀
+///（server 端 pinned），逐欄搬運、不解讀。
+fn remote_evidence_files(ctx: &RemoteCtx, change: &str) -> Result<Vec<String>> {
+    let resp = ctx
+        .client
+        .change_evidence(change)
+        .map_err(|e| anyhow::anyhow!("could not read change evidence for '{change}': {e}"))?;
+    let entries = resp
+        .entries
+        .into_iter()
+        .map(|e| core::tasks::EvidenceEntry {
+            task_id: e.task_id,
+            task_desc: e.task_desc,
+            actor: e.actor,
+            repo: e.repo,
+            head_commit: e.head_commit,
+            touched_files: e.touched_files,
+            recorded_at: e.recorded_at,
+        })
+        .collect();
+    Ok(core::tasks::TouchedRecord { entries, ..Default::default() }.all_files())
+}
+/// 進 git pathspec 前的邊界檢查：magic 前綴、絕對路徑與 `..` 越界。
+fn hostile_pathspec(p: &str) -> bool {
+    p.starts_with(':') || p.starts_with('/') || p.split(['/', '\\']).any(|seg| seg == "..")
 }
 /// scope 的解析與呈現（local／remote／兩站共用——resolved payload 逐位元同形的
 /// 唯一保證）。needsInput 印 JSON（--json 時）後以非零收場。
@@ -685,17 +694,22 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
                 }
             });
             let names: Vec<String> = changes.into_iter().map(|c| c.name).collect();
-            let (touched_paths, other_claims) = remote_touched_claims(ctx, &change, &names)?;
-            let req = build_scope_request(
+            // validation 輪（ticket 已存在）由凍結快照鏈解析、不消費認領——
+            // 不為它讀 evidence，evidence 的失敗面就不會進必然成功的路徑。
+            let claims = match &ticket {
+                Some(_) => ScopeClaims::default(),
+                None => remote_touched_claims(ctx, &change, &names)?,
+            };
+            let req = speclink_host::change_diff::ScopeRequest {
                 change,
-                touched_paths,
-                other_claims,
+                touched_paths: claims.touched_paths,
+                other_claims: claims.other_claims,
                 ticket,
-                base,
+                base_override: base,
                 candidate_hash,
-                include_hunk,
-                cli.ns,
-            );
+                include_hunks: include_hunk,
+                station: cli.ns,
+            };
             run_station_scope(&ws, st, &req, json)
         }
         StationVerb::AddRound { change, stdin } => {

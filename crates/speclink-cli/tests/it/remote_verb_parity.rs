@@ -1198,6 +1198,21 @@ fn evidence_response(entries: &[String]) -> String {
     format!("{{\"entries\":[{}]}}", entries.join(","))
 }
 
+/// 帶 headCommit 的 entry（D3：head commit 僅存證，scope 解析不消費）。
+fn evidence_entry_with_head(task_id: &str, actor: &str, files: &[&str], head: &str) -> String {
+    let entry = evidence_entry(task_id, actor, files);
+    entry.replacen('{', &format!("{{\"headCommit\":\"{head}\","), 1)
+}
+
+/// review scope 基本路由＋demo 的 evidence 端點（entries 由呼叫端給）。
+fn review_scope_routes_with_evidence(
+    entries: &[String],
+) -> Vec<(&'static str, &'static str, u16, String)> {
+    let mut routes = review_scope_routes();
+    routes.push(("GET", "/changes/demo/evidence", 200, evidence_response(entries)));
+    routes
+}
+
 /// listing 的 `status` 只由任務完成度推導（未全完成即 `in-progress`），沒有
 /// `proposed` 這個值；`startedAt` 才是「已開工」的事實來源。這裡刻意用未開工
 /// 但任務未完成的真實形狀。
@@ -1277,14 +1292,11 @@ fn remote_review_scope_uses_local_git_and_uploads_nothing() {
     // spec Scenario「remote scope 仍使用 local checkout」：resolved payload 用
     // local Git 產生、server 不收到 patch 或 snapshot；touched 認領來自 server
     // 的 change evidence，不再手塞本地檔。
-    let mut routes = review_scope_routes();
-    routes.push((
-        "GET",
-        "/changes/demo/evidence",
-        200,
-        evidence_response(&[evidence_entry("1", "alice", &["src/lib.rs"])]),
-    ));
-    let mock = mock_server(routes);
+    let mock = mock_server(review_scope_routes_with_evidence(&[evidence_entry(
+        "1",
+        "alice",
+        &["src/lib.rs"],
+    )]));
     let p = TempProject::remote("review-scope", &mock.base, "backend");
     seed_git_src(&p);
     let prepared = p.run(&["review", "prepare", "demo"]);
@@ -1330,14 +1342,11 @@ fn remote_review_scope_json_matches_fs_mode_field_for_field() {
     let fs_out = fs.run(&["review", "scope", "demo", "--json"]);
     assert!(fs_out.status.success(), "fs scope: {}", stderr_of(&fs_out));
 
-    let mut routes = review_scope_routes();
-    routes.push((
-        "GET",
-        "/changes/demo/evidence",
-        200,
-        evidence_response(&[evidence_entry("1", "alice", &["src/lib.rs"])]),
-    ));
-    let mock = mock_server(routes);
+    let mock = mock_server(review_scope_routes_with_evidence(&[evidence_entry(
+        "1",
+        "alice",
+        &["src/lib.rs"],
+    )]));
     let p = TempProject::remote("review-scope-parity", &mock.base, "backend");
     seed_git_src(&p);
     let prepared = p.run(&["review", "prepare", "demo"]);
@@ -1470,14 +1479,11 @@ fn remote_review_scope_offline_leaves_zero_sidecar_effects() {
 fn remote_review_scope_auto_resolves_from_server_evidence() {
     // spec Scenario「remote task done 後 scope 自動解析」：touched 認領來自
     // server 的 change evidence，scope 不帶任何手動旗標即回 resolved payload。
-    let mut routes = review_scope_routes();
-    routes.push((
-        "GET",
-        "/changes/demo/evidence",
-        200,
-        evidence_response(&[evidence_entry("1", "alice", &["src/lib.rs"])]),
-    ));
-    let mock = mock_server(routes);
+    let mock = mock_server(review_scope_routes_with_evidence(&[evidence_entry(
+        "1",
+        "alice",
+        &["src/lib.rs"],
+    )]));
     let p = TempProject::remote("review-scope-evidence", &mock.base, "backend");
     seed_git_src(&p);
     let prepared = p.run(&["review", "prepare", "demo"]);
@@ -1499,9 +1505,7 @@ fn remote_review_scope_auto_resolves_from_server_evidence() {
 fn remote_review_scope_absent_evidence_keeps_the_empty_touched_fail_closed() {
     // spec Scenario「remote evidence 缺席維持 fail-closed」：server 回空 entries
     //（從未記錄＝正常狀態、200），scope 維持 EmptyTouched 的 needsInput 手動路徑。
-    let mut routes = review_scope_routes();
-    routes.push(("GET", "/changes/demo/evidence", 200, evidence_response(&[])));
-    let mock = mock_server(routes);
+    let mock = mock_server(review_scope_routes_with_evidence(&[]));
     let p = TempProject::remote("review-scope-no-evidence", &mock.base, "backend");
     seed_git_src(&p);
     let prepared = p.run(&["review", "prepare", "demo"]);
@@ -1521,23 +1525,39 @@ fn remote_review_scope_absent_evidence_keeps_the_empty_touched_fail_closed() {
         "the manual escape hatches stay documented: {}",
         stderr_of(&out)
     );
+    // 手動跳脫閥實跑：以 needsInput 提供的 candidateHash 與 hunk id 續行，
+    // 證明手動路徑不只被提及、而是真的可用。
+    let ch = v["candidateHash"].as_str().expect("needsInput carries the candidate anchor");
+    let hunk = v["files"][0]["hunks"][0]["id"].as_str().expect("selectable hunk id");
+    let out = p.run(&[
+        "review",
+        "scope",
+        "demo",
+        "--json",
+        "--candidate-hash",
+        ch,
+        "--include-hunk",
+        hunk,
+    ]);
+    assert!(out.status.success(), "escape hatch stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    assert_eq!(v["state"], "resolved", "the hash-pinned selection resolves the scope");
 }
 
 #[test]
 fn remote_review_scope_unions_touched_across_multi_actor_evidence_entries() {
     // spec Scenario「多 actor evidence 取聯集」：兩位 actor 的 entries 各認領
-    // 不同檔案集合，scope 的 touched 認領為聯集（與 fs 模式 all_files 同語意）。
-    let mut routes = review_scope_routes();
-    routes.push((
-        "GET",
-        "/changes/demo/evidence",
-        200,
-        evidence_response(&[
-            evidence_entry("1", "alice", &["src/lib.rs"]),
-            evidence_entry("2", "bob", &["src/other.rs"]),
-        ]),
-    ));
-    let mock = mock_server(routes);
+    // 不同檔案集合，scope 的 touched 認領為聯集（與 fs 模式 all_files 同語意）；
+    // 其中一筆帶 headCommit，釘住 D3——head commit 僅存證，不參與 scope 解析。
+    let mock = mock_server(review_scope_routes_with_evidence(&[
+        evidence_entry_with_head(
+            "1",
+            "alice",
+            &["src/lib.rs"],
+            "1111111111111111111111111111111111111111",
+        ),
+        evidence_entry("2", "bob", &["src/other.rs"]),
+    ]));
     let p = TempProject::remote("review-scope-union", &mock.base, "backend");
     seed_git_src(&p);
     let prepared = p.run(&["review", "prepare", "demo"]);
@@ -1552,6 +1572,17 @@ fn remote_review_scope_unions_touched_across_multi_actor_evidence_entries() {
         v["paths"].as_array().unwrap().iter().map(|p| p.as_str().unwrap()).collect();
     assert_eq!(paths.len(), 2, "the union of both actors' claims: {paths:?}");
     assert!(paths.contains(&"src/lib.rs") && paths.contains(&"src/other.rs"), "{paths:?}");
+    let head = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&p.dir)
+        .output()
+        .expect("git rev-parse");
+    let head = String::from_utf8_lossy(&head.stdout).trim().to_string();
+    assert_eq!(
+        v["baseCommit"].as_str(),
+        Some(head.as_str()),
+        "the evidence headCommit must not leak into scope resolution"
+    );
 }
 
 #[test]
@@ -1597,6 +1628,118 @@ fn remote_review_scope_overlapping_server_evidence_triggers_the_other_claims_gua
         "the other-claims guard fires with the fs-mode wording: {}",
         stderr_of(&out)
     );
+}
+
+#[test]
+fn remote_validation_scope_reads_no_evidence() {
+    // validation 輪（ticket 已存在）由凍結快照鏈解析、不消費 touched 認領：
+    // remote 臂不得為它讀 evidence——白發請求，且把不需要的失敗面帶進
+    // 必然成功的路徑。
+    // 第一階段：discovery（mock A 供應 evidence）→ 落 baseline 與 snapshot。
+    let mock_a = mock_server(review_scope_routes_with_evidence(&[evidence_entry(
+        "1",
+        "alice",
+        &["src/lib.rs"],
+    )]));
+    let p = TempProject::remote("validation-skip", &mock_a.base, "backend");
+    seed_git_src(&p);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "stderr: {}", stderr_of(&prepared));
+    p.write("src/lib.rs", "fn demo() { changed(); }\n");
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(out.status.success(), "discovery stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    let patch_hash = v["patchHash"].as_str().expect("frozen patch hash").to_string();
+    // 第二階段：mock B 帶 round 1 的工單、完全沒有 evidence 路由——scope 走
+    // validation 時不得碰它。
+    let round = serde_json::json!({
+        "index": 1, "phase": "discovery", "patchHash": patch_hash,
+        "scope": ["src/lib.rs"], "findings": [],
+    });
+    let ticket = serde_json::json!({ "change": "demo", "rounds": [round], "lastRound": round })
+        .to_string();
+    // listing 沿用既有 builder；此測試的差異只在 review 端點回 round 1 的工單。
+    let mut routes_b = review_scope_routes();
+    routes_b.retain(|(_, suffix, _, _)| *suffix != "/changes/demo/review");
+    routes_b.push(("GET", "/changes/demo/review", 200, ticket));
+    let mock_b = mock_server(routes_b);
+    p.write(".speclink.yaml", &format!("remote:\n  url: {}\n  repo: backend\n", mock_b.base));
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(out.status.success(), "validation stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    assert_eq!(v["state"], "resolved");
+    assert_eq!(v["phase"], "validation");
+    let caps = mock_b.captured.lock().unwrap();
+    assert!(
+        caps.iter().all(|c| !c.path.ends_with("/evidence")),
+        "a validation scope must not read evidence: {caps:?}"
+    );
+}
+
+#[test]
+fn remote_review_scope_evidence_read_failure_is_loud_and_leaves_zero_sidecar() {
+    // spec：remote read 錯誤（含 evidence 讀取失敗）→ 非零、不寫 baseline／
+    // snapshot，不得靜默降級成空認領；錯誤要指名是哪個 change 的 evidence。
+    let mut routes = review_scope_routes();
+    routes.push((
+        "GET",
+        "/changes/demo/evidence",
+        500,
+        r#"{"status":500,"reason":"internal","message":"evidence record is unreadable"}"#
+            .to_string(),
+    ));
+    let mock = mock_server(routes);
+    let p = TempProject::remote("review-scope-evidence-500", &mock.base, "backend");
+    seed_git_src(&p);
+    let prepared = p.run(&["review", "prepare", "demo"]);
+    assert!(prepared.status.success(), "stderr: {}", stderr_of(&prepared));
+    let baseline_path =
+        p.dir.join(".speclink").join("review-scopes").join("demo").join("baseline.json");
+    let baseline_before = std::fs::read_to_string(&baseline_path).expect("baseline exists");
+    p.write("src/lib.rs", "fn demo() { changed(); }\n");
+    let out = p.run(&["review", "scope", "demo", "--json"]);
+    assert!(!out.status.success(), "an evidence read failure must be non-zero");
+    assert!(
+        stderr_of(&out).contains("evidence") && stderr_of(&out).contains("'demo'"),
+        "the error names the change whose evidence read failed: {}",
+        stderr_of(&out)
+    );
+    assert!(
+        !p.dir.join(".speclink").join("review-scopes").join("demo").join("snapshots").exists(),
+        "no snapshot lands on the failure path"
+    );
+    let baseline_after = std::fs::read_to_string(&baseline_path).expect("baseline still there");
+    assert_eq!(baseline_before, baseline_after, "the baseline stays untouched");
+}
+
+#[test]
+fn remote_review_scope_rejects_hostile_evidence_paths() {
+    // server 是外部邊界：evidence 認領的路徑要在進 git pathspec 前把關。
+    // `..` 越界由 git 喊停（loud），但 `:(exclude)` 這類 magic 前綴會靜默
+    // 縮小審查面——兩類都必須被指名拒絕，不得原樣送進 git。
+    for (tag, hostile) in [("dotdot", "../outside.rs"), ("magic", ":(exclude)src/lib.rs")] {
+        let mock = mock_server(review_scope_routes_with_evidence(&[evidence_entry(
+            "1",
+            "alice",
+            &[hostile],
+        )]));
+        let p = TempProject::remote(&format!("review-scope-hostile-{tag}"), &mock.base, "backend");
+        seed_git_src(&p);
+        let prepared = p.run(&["review", "prepare", "demo"]);
+        assert!(prepared.status.success(), "stderr: {}", stderr_of(&prepared));
+        p.write("src/lib.rs", "fn demo() { changed(); }\n");
+        let out = p.run(&["review", "scope", "demo", "--json"]);
+        assert!(!out.status.success(), "'{hostile}' must be refused");
+        assert!(
+            stderr_of(&out).contains(hostile) && stderr_of(&out).contains("'demo'"),
+            "the error names the offending path and change: {}",
+            stderr_of(&out)
+        );
+        assert!(
+            !p.dir.join(".speclink").join("review-scopes").join("demo").join("snapshots").exists(),
+            "no snapshot lands on the refusal path"
+        );
+    }
 }
 
 #[test]
