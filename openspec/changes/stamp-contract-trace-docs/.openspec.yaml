@@ -5,3 +5,49 @@ created_with: claude
 from_discussion: remote-fix-plan-gaps
 started_at: 2026-08-27
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-27
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 7
+reviewed_scope:
+  - path: crates/speclink-cli/src/main.rs
+    hash: 250428e96ec60718cd6122f1c6a8949c4442282f1a30ed670ad58da108a8228e
+  - path: crates/speclink-cli/tests/it/mode_dispatch.rs
+    hash: 77722d7050952f183da1d2d0641d8dad9a735aff56feb14395fd6f77287fb8f5
+  - path: docs/remote-getting-started.md
+    hash: e5af77858f97940b905ef278fa98051eb183a8476e13e815d75c4ad28a673777
+  - path: docs/remote-getting-started.zh-TW.md
+    hash: 239f3f1deea97b6454b9fbed3ad563ce8fc160ae52ce5e1836d6e41812c94d1b
+  - path: docs/verb-contract.md
+    hash: 159b9954ed697d4f984c4a785d815a3b1124e39c183ceade0fef80cbaec6b99d
+  - path: docs/verb-contract.zh-TW.md
+    hash: eb1aafab4827e182c9cedf6d606ba4b9f1dfc22f617a2726eebc79146b9a1c7c
+  - path: docs/workflow.md
+    hash: cd1a50f7fae49d684e79a139a67da899d6a51a7cdf4df67c210c91adc051452e
+  - path: docs/workflow.zh-TW.md
+    hash: faa3eeadcb481937b3f6405601c185f93a46b9fb2ab5cd4293869690f45d57d8
+  - path: scripts/remote-docs.test.mjs
+    hash: 41a447a525022b9aa4d8cf35284823423b5c9e4d80a143403e58a529d8ebf55f
+verified_at: 2026-08-27
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 7
+verified_scope:
+  - path: crates/speclink-cli/src/main.rs
+    hash: 250428e96ec60718cd6122f1c6a8949c4442282f1a30ed670ad58da108a8228e
+  - path: crates/speclink-cli/tests/it/mode_dispatch.rs
+    hash: 77722d7050952f183da1d2d0641d8dad9a735aff56feb14395fd6f77287fb8f5
+  - path: docs/remote-getting-started.md
+    hash: e5af77858f97940b905ef278fa98051eb183a8476e13e815d75c4ad28a673777
+  - path: docs/remote-getting-started.zh-TW.md
+    hash: 239f3f1deea97b6454b9fbed3ad563ce8fc160ae52ce5e1836d6e41812c94d1b
+  - path: docs/verb-contract.md
+    hash: 159b9954ed697d4f984c4a785d815a3b1124e39c183ceade0fef80cbaec6b99d
+  - path: docs/verb-contract.zh-TW.md
+    hash: eb1aafab4827e182c9cedf6d606ba4b9f1dfc22f617a2726eebc79146b9a1c7c
+  - path: docs/workflow.md
+    hash: cd1a50f7fae49d684e79a139a67da899d6a51a7cdf4df67c210c91adc051452e
+  - path: docs/workflow.zh-TW.md
+    hash: faa3eeadcb481937b3f6405601c185f93a46b9fb2ab5cd4293869690f45d57d8
+  - path: scripts/remote-docs.test.mjs
+    hash: 41a447a525022b9aa4d8cf35284823423b5c9e4d80a143403e58a529d8ebf55f
