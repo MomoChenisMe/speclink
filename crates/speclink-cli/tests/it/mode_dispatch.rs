@@ -4,8 +4,9 @@
 //!
 //! - ModeFree: verbs that read no project config (completion, config) run
 //!   untouched under a broken .speclink.yaml.
-//! - FsOnly: demo under a remote-mode project is refused at mode resolution —
-//!   no server request leaves the process, so offline refuses identically.
+//! - FsOnly: demo and trace under a remote-mode project are refused at mode
+//!   resolution — no server request leaves the process, so offline refuses
+//!   identically.
 //! - RemoteOnly: claim under an fs project is refused with the frozen message.
 
 use std::path::PathBuf;
@@ -96,7 +97,7 @@ fn mode_free_config_list_runs_under_broken_app_yaml() {
     );
 }
 
-// --- FsOnly: demo refuses remote mode at mode resolution — zero server requests ---
+// --- FsOnly: demo and trace refuse remote mode at mode resolution — zero server requests ---
 
 #[test]
 fn fs_only_demo_rejects_remote_mode_without_any_server_request() {
@@ -151,6 +152,38 @@ fn fs_only_demo_rejects_remote_mode_when_no_server_listens() {
         ),
         "frozen refusal text: {err}"
     );
+}
+
+#[test]
+fn fs_only_trace_rejects_remote_mode_without_any_server_request() {
+    // Spec scenario trace 於 remote 明確拒絕. Same shape as the demo pin: the
+    // listener is live but never speaks HTTP — had trace attempted any
+    // request, the connection would sit in the backlog and accept() below
+    // would yield it.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let p = TempProject::new(
+        "fsonly-trace",
+        &format!("remote:\n  url: http://127.0.0.1:{port}/api/speclink/v1/projects/demo\n"),
+    );
+    let out = p.run(&["trace", "some-capability"]);
+    assert!(!out.status.success(), "trace must refuse remote mode");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains(
+            "trace is not available in remote mode — it assembles the provenance chain from the local openspec/ tree"
+        ),
+        "frozen refusal text: {err}"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).trim().is_empty(),
+        "refusal writes nothing to stdout"
+    );
+    listener.set_nonblocking(true).unwrap();
+    match listener.accept() {
+        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+        other => panic!("no server request may be emitted, got {other:?}"),
+    }
 }
 
 // --- RemoteOnly: claim refuses fs mode with the frozen message ---

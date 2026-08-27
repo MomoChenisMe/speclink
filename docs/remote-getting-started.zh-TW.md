@@ -80,7 +80,7 @@ http://localhost:8080/api/speclink/v1/projects/demo
 
 **先給你自己——這一步是必經的。**`/setup` 建立了你的 Admin 帳號與 `demo` 專案，但沒有授予任何 membership；在你補上之前，`speclink auth status` 會回 access denied、Desktop 的 scope 清單也是空的。以管理員登入後開 `/admin/users`，把你自己的帳號加入 `demo` 並給 `editor` 角色；若 Desktop 的 scope 清單已經開著，之後重新載入一次。接著再用同樣的兩種做法授予其他人：
 
-**從後台**——開 `/admin/users`，把對象加入 `demo` 專案並指定角色。沒有 membership 的人即使登入成功，讀取該專案的資源也只會拿到 `404`。這是刻意的，不讓未授權者從錯誤碼推斷專案是否存在。
+**從後台**——開 `/admin/users`，把對象加入 `demo` 專案並指定角色。沒有 membership 的人即使登入成功，讀取該專案的資源也只會拿到 `403`（`permission_denied`）。
 
 **從命令列**（headless，適合腳本化）——邀請一位新成員並直接帶上專案：
 

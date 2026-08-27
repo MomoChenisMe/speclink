@@ -82,7 +82,7 @@ Being able to sign in is not the same as seeing a project; membership is a separ
 
 **Start with yourself — this step is mandatory.** `/setup` created your Admin account and the `demo` project but granted no membership, so until you grant it, `speclink auth status` reports access denied and the Desktop scope list comes back empty. Sign in, open `/admin/users`, and add your own account to `demo` with the `editor` role; if a Desktop scope list was already open, reload it afterwards. Then grant others the same way, by either path:
 
-**From the console** — open `/admin/users`, then add the person to the `demo` project and pick their role. Without membership, a user who signs in still gets a `404` when reading that project's resources. This is deliberate. An unauthorized caller cannot infer from the status code whether the project exists.
+**From the console** — open `/admin/users`, then add the person to the `demo` project and pick their role. Without membership, a user who signs in still gets a `403` (`permission_denied`) when reading that project's resources.
 
 **From the command line** (headless, scriptable) — invite a new member with the project attached:
 

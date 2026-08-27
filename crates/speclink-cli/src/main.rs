@@ -166,7 +166,7 @@ fn main() -> ExitCode {
 
 fn dispatch(cli: Cli) -> Result<()> {
     warn_leftover_remote_file();
-    // 31 個頂層動詞的模式形狀宣告（design D5 分類表）：ModeFree 直呼、Dual
+    // 全部頂層動詞的模式形狀宣告（design D5 分類表）：ModeFree 直呼、Dual
     // 兩臂必填、FsOnly／RemoteOnly 明寫拒絕。分岔決策只活在這一層。
     match cli.command {
         // --- ModeFree：dispatch 不做模式判定；link／unlink／auth 是連線管理，

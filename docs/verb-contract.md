@@ -20,7 +20,7 @@ Every top-level verb belongs to one of four mode shapes, declared in one place i
 | --- | --- | --- |
 | **ModeFree** | `init`, `update`, `link`, `unlink`, `auth`, `schemas`, `templates`, `feedback`, `schema`, `config`, `completion` | Never triggers store mode resolution. Verbs that do not read project settings (`completion`, `config`) are unaffected by a broken `.speclink.yaml`. |
 | **Dual** | `list`, `show`, `validate`, `analyze`, `drift`, `archive`, `discard`, `artifact`, `language`, `status`, `instructions`, `new`, `workflow-config`, `task`, `in-progress`, `discuss`, `review`, `verify` | Local mode acts on the local store and remote mode acts on the remote store; it **never** silently falls back to the local store in remote mode. A missing arm is a build failure, not a runtime fallback. |
-| **FsOnly** | `demo` | Remote mode refuses with a non-zero exit code and issues no server request at all — it refuses offline too. |
+| **FsOnly** | `demo`, `trace` | Remote mode refuses with a non-zero exit code and issues no server request at all — it refuses offline too. |
 | **RemoteOnly** | `claim` | Local mode refuses with a non-zero exit code and explains on stderr that a remote store is required. |
 
 Mode resolution is lazy. The CLI resolves the mode only when the declared shape needs it. It opens a connection only when the remote arm is about to run.

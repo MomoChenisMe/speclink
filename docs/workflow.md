@@ -204,6 +204,8 @@ Running both is a four-beat sequence. Neither station stamps at first. Every rou
 
 The sequence exists because **a stamp freezes a content fingerprint of the files in scope**. The other station's fixes knock an earlier stamp down to "modified since". Finish the fixes before you stamp and that cannot happen.
 
+**A stamp consumes the ticket.** The stamp fields land and the ticket (`review.md` / `verify.md`) is deleted in the same atomic write — no state exists where the stamp is written and the ticket still remains. An archived stamped change therefore contains no `review.md` or `verify.md`; only an open ticket travels with the archive, via `--carry-review` or `--carry-verify`. In fs mode the deleted ticket's text survives only in git history; in remote mode the store keeps no deleted-document content, so after stamping the ticket text cannot be read back.
+
 ### review
 
 - **Purpose / 目的:** Review the implementation against craft standards, recording graded findings in a ticket.
@@ -214,7 +216,7 @@ The sequence exists because **a stamp freezes a content fingerprint of the files
 - **Claude:** `/speclink-review <change>`.
 - **Codex:** `$speclink-review <change>`.
 - **CLI/Host:** `speclink review prepare/scope/add-round/show/stamp/discard`.
-- **Done / 完成:** Every task complete and the last round's must-fix set empty — **SUGGESTION never blocks the stamp**.
+- **Done / 完成:** Every task complete and the last round's must-fix set empty — **SUGGESTION never blocks the stamp**. Stamping writes the reviewed fields and deletes `review.md` in one atomic write; in fs mode the ticket text survives only in git history, and in remote mode it cannot be read back after stamping.
 - **Next / 下一步:** `verify` if you are running it, otherwise `archive`.
 - **Recover / 恢復:** Editing a file in scope after stamping downgrades the card to "reviewed · modified since". Archiving detects an open ticket and stops (go stamp it, abandon the review, or take it anyway). Finding paths in the ticket must carry no line numbers and must match files in the frozen snapshot verbatim.
 
@@ -228,7 +230,7 @@ The sequence exists because **a stamp freezes a content fingerprint of the files
 - **Claude:** `/speclink-verify <change>`.
 - **Codex:** `$speclink-verify <change>`.
 - **CLI/Host:** `speclink verify scope/add-round/show/stamp/discard`.
-- **Done / 完成:** Every task complete and the last round's must-fix set empty; **SUGGESTION does not block here either**.
+- **Done / 完成:** Every task complete and the last round's must-fix set empty; **SUGGESTION does not block here either**. Stamping writes the verified fields and deletes `verify.md` in one atomic write; in fs mode the ticket text survives only in git history, and in remote mode it cannot be read back after stamping.
 - **Next / 下一步:** `archive`.
 - **Recover / 恢復:** After every task is complete, the first round is the only full discovery pass. It reads all artifacts and confines code evidence to the frozen change patch. Every later round checks only two things: the previous round's unresolved findings, and regressions the fixes caused directly. It does not re-sweep unmodified areas. **The must-fix set must shrink strictly every round** to earn another attempt. The first round without progress stops as "not passed". It keeps the ticket and withholds the stamp.
 
@@ -240,7 +242,7 @@ Cards and the tray panel show the verify and review stamps side by side (review 
 - **Use / 使用:** Every task complete, artifacts valid, assumptions current, and any quality station you ran closed out.
 - **Skip / 跳過:** Unfinished tasks, a stale delta, failed verification, or requirements still in motion.
 - **Input / 輸入:** A ready change, complete final-state deltas, and completion evidence.
-- **Outputs / 產物:** Updated canonical specs and a record under `openspec/changes/archive/`. Archiving the last surviving change also archives its linked discussion.
+- **Outputs / 產物:** Updated canonical specs and a record under `openspec/changes/archive/`. Archiving the last surviving change also archives its linked discussion. A stamped change archives without its ticket files; only an open ticket moves along, via `--carry-review` / `--carry-verify`.
 - **Claude:** `/speclink-archive <change>`.
 - **Codex:** `$speclink-archive <change>`.
 - **CLI/Host:** `speclink archive <change>`. Do not reach for `--no-validate` or `--mark-tasks-complete` to route around unfinished work.
