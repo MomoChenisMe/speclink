@@ -23,3 +23,5 @@ verified_scope:
     hash: a09134c0a8991c9bcf12fc2f5f591582adac71d27c73284a1000962f831fc0d2
   - path: crates/speclink-cli/tests/it/remote_verb_parity.rs
     hash: da1accfbf56bad8402f0d18ebe794dd2c0687896018c29abe4db4d18a3f8ee90
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-27
