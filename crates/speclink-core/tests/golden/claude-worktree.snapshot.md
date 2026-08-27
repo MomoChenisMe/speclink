@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -97,7 +97,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -279,7 +279,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
    - Mark task complete by running: `speclink task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
-   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`/speclink-review`, `/speclink-verify`) can run now while archive waits for the manual runs.
+   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`/speclink-review`, `/speclink-verify`, or `/speclink-quality` for both) can run now while archive waits for the manual runs.
    - **A code task blocked by an open `[M]` task stops you.** Some manual tasks come first, not last — the external account has to exist before the code that calls it can be written. When implementing a code task requires an unchecked `[M]` task to be done, stop and ask the user to complete that manual task. Never check it off on their behalf, and never work around it.
    - If a task was checked by mistake or its implementation is rolled back, run: `speclink task undone --change "<name>" <task-id>`
      Do NOT edit tasks.md directly to uncheck a task.
@@ -437,7 +437,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -764,7 +764,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
    - Mark task complete by running: `speclink task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
-   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`/speclink-review`, `/speclink-verify`) can run now while archive waits for the manual runs.
+   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`/speclink-review`, `/speclink-verify`, or `/speclink-quality` for both) can run now while archive waits for the manual runs.
    - **A code task blocked by an open `[M]` task stops you.** Some manual tasks come first, not last — the external account has to exist before the code that calls it can be written. When implementing a code task requires an unchecked `[M]` task to be done, stop and ask the user to complete that manual task. Never check it off on their behalf, and never work around it.
    - If a task was checked by mistake or its implementation is rolled back, run: `speclink task undone --change "<name>" <task-id>`
      Do NOT edit tasks.md directly to uncheck a task.
@@ -944,7 +944,7 @@ Tell the user, plainly:
 
 > 這個 change 已在 worktree 內完成並提交，尚未合併回主分支。
 >
-> 建議先在這個 worktree 內跑品質關卡——`/speclink-review`（工藝品質）∥ `/speclink-verify`（規格符合度），是否要跑由你決定。品質關卡的 Apply baseline 就在這個 worktree 裡，離開就沒有了。蓋章會寫進 change 的 meta，記得補一次提交。
+> 建議先在這個 worktree 內跑品質關卡——`/speclink-review`（工藝品質）∥ `/speclink-verify`（規格符合度），或 `/speclink-quality`（兩站合跑），是否要跑由你決定。品質關卡的 Apply baseline 就在這個 worktree 裡，離開就沒有了。蓋章會寫進 change 的 meta，記得補一次提交。
 >
 > 品質關卡跑完（或決定略過）後執行 `/speclink-worktree-merge <change-name>` 收尾——它會檢查主樹是否乾淨、把分支合併回去，成功後移除 worktree 並刪掉分支。
 
@@ -966,7 +966,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -1253,7 +1253,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -1489,7 +1489,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -1761,7 +1761,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -1907,7 +1907,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -2378,7 +2378,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -2516,7 +2516,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -2697,7 +2697,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -2980,7 +2980,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -3079,7 +3079,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -3537,7 +3537,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -3632,7 +3632,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -3831,7 +3831,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -3915,7 +3915,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -4202,7 +4202,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -4317,7 +4317,7 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
    > 這個 change 已合併回主分支。品質關卡建議在 worktree 內就跑完；跑過或使用者決定略過的話，下一步是在主 checkout `/speclink-archive` 封存。
    >
-   > 還沒跑品質關卡的話，仍可在主 checkout 補跑 `/speclink-review`、`/speclink-verify` —— 但那是降級路徑：主 checkout 沒有 Apply baseline，審查凍結面會退回較粗的判定。
+   > 還沒跑品質關卡的話，仍可在主 checkout 補跑 `/speclink-review`、`/speclink-verify`，或 `/speclink-quality`（兩站合跑）—— 但那是降級路徑：主 checkout 沒有 Apply baseline，審查凍結面會退回較粗的判定。
 
 **Output On Success**
 
