@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -194,7 +194,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
    - Mark task complete by running: `speclink task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
-   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`speclink review`, `speclink verify`) can run now while archive waits for the manual runs.
+   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`speclink review`, `speclink verify`, or `speclink quality` for both) can run now while archive waits for the manual runs.
    - **A code task blocked by an open `[M]` task stops you.** Some manual tasks come first, not last — the external account has to exist before the code that calls it can be written. When implementing a code task requires an unchecked `[M]` task to be done, stop and ask the user to complete that manual task. Never check it off on their behalf, and never work around it.
    - If a task was checked by mistake or its implementation is rolled back, run: `speclink task undone --change "<name>" <task-id>`
      Do NOT edit tasks.md directly to uncheck a task.
@@ -352,7 +352,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -644,7 +644,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -886,7 +886,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -1163,7 +1163,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -1314,7 +1314,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -1788,7 +1788,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -1923,7 +1923,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -2110,7 +2110,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -2398,7 +2398,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -2503,7 +2503,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -2965,7 +2965,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -3066,7 +3066,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -3268,7 +3268,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 
@@ -3358,7 +3358,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.22.0"
+  version: "v1.23.0"
   generatedBy: "Speclink"
 ---
 

@@ -109,7 +109,7 @@ This is the wrap-up half of `/speclink:apply-with-worktree`. That skill stops ri
 
    > 這個 change 已合併回主分支。品質關卡建議在 worktree 內就跑完；跑過或使用者決定略過的話，下一步是在主 checkout `/speclink:archive` 封存。
    >
-   > 還沒跑品質關卡的話，仍可在主 checkout 補跑 `/speclink:review`、`/speclink:verify` —— 但那是降級路徑：主 checkout 沒有 Apply baseline，審查凍結面會退回較粗的判定。
+   > 還沒跑品質關卡的話，仍可在主 checkout 補跑 `/speclink:review`、`/speclink:verify`，或 `/speclink:quality`（兩站合跑）—— 但那是降級路徑：主 checkout 沒有 Apply baseline，審查凍結面會退回較粗的判定。
 
 **Output On Success**
 
