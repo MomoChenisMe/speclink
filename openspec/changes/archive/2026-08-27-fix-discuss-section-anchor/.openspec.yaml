@@ -27,3 +27,5 @@ verified_scope:
     hash: b8297eb380199e3f94ef8d3bef2bc317ae604f6298c811a47179f60bc1b3d691
   - path: packages/ui/src/components/DiscussionDrawer.tsx
     hash: b3668db608ca187c6677352de18e5a5210f119e76433a77285e285b01a5d71ba
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-27
