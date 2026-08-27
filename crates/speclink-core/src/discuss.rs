@@ -52,42 +52,105 @@ fn frontmatter_value(text: &str, key: &str) -> Option<String> {
     None
 }
 
-/// 合法輪標題形狀（scaffold 版面）：`### Round <編號> — …`。
-/// 跳脫後的內文行（行首帶反斜線）與無編號的撞名行都不是輪。
+/// 輪標題前綴：scaffold 版面（level-3）與 pre-scaffold 容忍（level-2）。
+/// 辨識端（計數、跳脫、區段邊界、discard 保護）與產生端（add_round）共用。
+const SCAFFOLD_ROUND_PREFIX: &str = "### Round ";
+const PRE_SCAFFOLD_ROUND_PREFIX: &str = "## Round ";
+
+/// Fenced code block 圍欄行（``` 或 ~~~ 開頭；容忍前導空白）。圍欄內的行不是
+/// 結構——跳脫、計數與區段解析一致跳過。簡化：不比對圍欄長度與縮排細則，
+/// 討論記錄引用版面的用途以此為足。
+fn is_fence_line(line: &str) -> bool {
+    let t = line.trim_start();
+    t.starts_with("```") || t.starts_with("~~~")
+}
+
+/// 合法輪標題形狀（scaffold 版面）：`### Round <編號> — <mode> (<日期>)`，
+/// 與 UI splitRounds 的判準同形。跳脫後的內文行（行首帶反斜線）與
+/// 缺編號、缺 mode、缺日期括號的撞名行都不是輪。
 fn is_scaffold_round_heading(line: &str) -> bool {
-    let Some(rest) = line.strip_prefix("### Round ") else {
+    let Some(rest) = line.strip_prefix(SCAFFOLD_ROUND_PREFIX) else {
         return false;
     };
     let digits = rest.chars().take_while(|c| c.is_ascii_digit()).count();
-    digits > 0 && rest[digits..].starts_with(" — ")
+    if digits == 0 {
+        return false;
+    }
+    let Some(tail) = rest[digits..].strip_prefix(" — ") else {
+        return false;
+    };
+    // `<mode> (<date>)`：mode 與日期都非空。
+    let t = tail.trim_end();
+    match t.rfind(" (") {
+        Some(i) => i > 0 && t.ends_with(')') && i + 2 < t.len() - 1,
+        None => false,
+    }
 }
 
 fn count_rounds(text: &str) -> usize {
     // `## Round ` tolerates pre-scaffold documents.
+    let mut in_fence = false;
     text.lines()
-        .filter(|l| is_scaffold_round_heading(l) || l.starts_with("## Round "))
+        .filter(|l| {
+            if is_fence_line(l) {
+                in_fence = !in_fence;
+                return false;
+            }
+            !in_fence
+                && (is_scaffold_round_heading(l) || l.starts_with(PRE_SCAFFOLD_ROUND_PREFIX))
+        })
+        .count()
+}
+
+/// discard 的保護偵測：對形狀寬鬆（任何輪標題前綴都算，含手改壞形狀），
+/// 與 [`count_rounds`] 的嚴格計數刻意分離——保護面誤拒比誤刪安全。
+/// 圍欄內的引用不算：寫入端保證圍欄成對，圍欄內容確定不是輪。
+fn round_traces(text: &str) -> usize {
+    let mut in_fence = false;
+    text.lines()
+        .filter(|l| {
+            if is_fence_line(l) {
+                in_fence = !in_fence;
+                return false;
+            }
+            !in_fence
+                && (l.starts_with(SCAFFOLD_ROUND_PREFIX)
+                    || l.starts_with(PRE_SCAFFOLD_ROUND_PREFIX))
+        })
         .count()
 }
 
 /// 結構標題白名單——只有這三個整行標題是討論文件的區段邊界；
 /// 輪內文的其他「## 」行不是結構、不得截斷區段。
-const STRUCTURAL_HEADERS: [&str; 3] = ["## Context", "## Rounds", "## Conclusion"];
+const STRUCTURAL_HEADERS: &[&str] = &["## Context", "## Rounds", "## Conclusion"];
+
+/// 區段邊界：結構標題白名單，加 pre-scaffold 輪標題（`## Round ` 前綴）的容忍——
+/// 內文的同形行經寫入端跳脫必帶反斜線，故未跳脫者必為結構。
+fn is_section_boundary(line: &str) -> bool {
+    STRUCTURAL_HEADERS.contains(&line) || line.starts_with(PRE_SCAFFOLD_ROUND_PREFIX)
+}
 
 /// Byte range of a structural section's body: after the `## <name>` line, up to the next
-/// structural header ([`STRUCTURAL_HEADERS`]) or EOF. Content lines that merely start
-/// with `## ` do not terminate the section. `None` when the header is absent.
+/// section boundary ([`is_section_boundary`]) or EOF. Content lines that merely start
+/// with `## `, and any line inside a fenced code block, do not terminate the section.
+/// `None` when the header is absent.
 fn section_body_range(text: &str, name: &str) -> Option<(usize, usize)> {
     let header = format!("## {name}");
     let mut offset = 0;
     let mut start: Option<usize> = None;
+    let mut in_fence = false;
     for line in text.split_inclusive('\n') {
         let trimmed = line.trim_end();
-        if let Some(s) = start {
-            if STRUCTURAL_HEADERS.contains(&trimmed) {
-                return Some((s, offset));
+        if is_fence_line(trimmed) {
+            in_fence = !in_fence;
+        } else if !in_fence {
+            if let Some(s) = start {
+                if is_section_boundary(trimmed) {
+                    return Some((s, offset));
+                }
+            } else if trimmed == header {
+                start = Some(offset + line.len());
             }
-        } else if trimmed == header {
-            start = Some(offset + line.len());
         }
         offset += line.len();
     }
@@ -96,15 +159,35 @@ fn section_body_range(text: &str, name: &str) -> Option<(usize, usize)> {
 
 /// 討論內容寫入動詞共用的落盤前跳脫：撞名內容行（整行為結構標題，或行首為
 /// 輪標題前綴）加 markdown 反斜線，使內容不可能被解讀為文件結構。
+/// 成對 fenced code block 內的行照原樣保留（markdown 在圍欄內不解跳脫）；
+/// 圍欄行為奇數時，最後一個落單的圍欄行一併跳脫——落盤內容因此永遠成對，
+/// 全文件的圍欄解析（section_body_range／count_rounds）得以保持健全。
 /// 其他「# 」開頭行維持原樣（最小改動，非全面跳脫）。
 fn escape_colliding_lines(content: &str) -> String {
+    let fence_lines: Vec<usize> = content
+        .split('\n')
+        .enumerate()
+        .filter(|(_, l)| is_fence_line(l.trim_end()))
+        .map(|(i, _)| i)
+        .collect();
+    let dangling = (fence_lines.len() % 2 == 1).then(|| *fence_lines.last().unwrap());
+    let mut in_fence = false;
     content
         .split('\n')
-        .map(|l| {
+        .enumerate()
+        .map(|(i, l)| {
             let t = l.trim_end();
-            if STRUCTURAL_HEADERS.contains(&t)
-                || t.starts_with("### Round ")
-                || t.starts_with("## Round ")
+            if is_fence_line(t) {
+                if Some(i) == dangling {
+                    return format!("\\{l}");
+                }
+                in_fence = !in_fence;
+                return l.to_string();
+            }
+            if !in_fence
+                && (STRUCTURAL_HEADERS.contains(&t)
+                    || t.starts_with(SCAFFOLD_ROUND_PREFIX)
+                    || t.starts_with(PRE_SCAFFOLD_ROUND_PREFIX))
             {
                 format!("\\{l}")
             } else {
@@ -347,7 +430,7 @@ pub fn add_round(store: &dyn Store, slug: &str, mode: &str, content: &str) -> Re
     // documents fall back to appending a level-2 round at the end.
     if let Some((_, e)) = section_body_range(&text, "Rounds") {
         let entry = format!(
-            "### Round {round_no} — {mode} ({date})\n\n{}\n\n",
+            "{SCAFFOLD_ROUND_PREFIX}{round_no} — {mode} ({date})\n\n{}\n\n",
             content.trim_end()
         );
         text.insert_str(e, &entry);
@@ -356,7 +439,7 @@ pub fn add_round(store: &dyn Store, slug: &str, mode: &str, content: &str) -> Re
             text.push('\n');
         }
         text.push_str(&format!(
-            "\n## Round {round_no} — {mode} ({date})\n\n{}\n",
+            "\n{PRE_SCAFFOLD_ROUND_PREFIX}{round_no} — {mode} ({date})\n\n{}\n",
             content.trim_end()
         ));
     }
@@ -768,7 +851,7 @@ pub fn discard_discussion(store: &dyn Store, slug: &str, force: bool) -> Result<
         }
         bail!("discussion '{slug}' not found");
     };
-    let rounds = count_rounds(&text);
+    let rounds = round_traces(&text);
     if rounds > 0 && !force {
         // Typed refusal: same frozen text, classified `refused` by the command layer.
         return Err(crate::command::Refusal(format!(
@@ -1889,8 +1972,156 @@ mod tests {
         assert_eq!(super::count_rounds(&store.discussion("alpha")), 1, "撞名行不得計數");
         let no = super::add_round(&store, "alpha", "explore", "次輪").unwrap();
         assert_eq!(no, 2, "編號須連續、無跳號");
+        // list/info 的 rounds 欄位走同一 count_rounds 鏈路。
+        assert_eq!(super::info(&store, "alpha").unwrap().rounds, 2, "discuss list 輪數同合法計數");
         // 手改記錄的非法輪標題形狀（無編號）不計數；pre-scaffold「## Round 」照舊容忍。
         let legacy = "## Rounds\n\n### Round 備註不是輪\n\n## Round 1 — old (2026-01-01)\n";
         assert_eq!(super::count_rounds(legacy), 1);
+    }
+
+    #[test]
+    fn set_context_preserves_pre_scaffold_rounds() {
+        // pre-scaffold 版面（有 ## Context、無 ## Rounds/## Conclusion）上
+        // set_context 只得替換脈絡本文，其後的 level-2 輪區段不得被覆寫。
+        let doc = "---\ntopic: Legacy\nslug: legacy\nstatus: open\ncreated: 2026-01-02\n---\n\n\
+                   # Discussion: Legacy\n\n\
+                   ## Context\n\n舊脈絡。\n\n\
+                   ## Round 1 — assumptions (2026-01-02)\n\n首輪本文\n";
+        let store = TestStore::with_live_discussion("legacy", doc);
+        super::set_context(&store, "legacy", "新脈絡").unwrap();
+        let text = store.discussion("legacy");
+        assert!(text.contains("新脈絡"), "text: {text}");
+        assert!(
+            text.contains("## Round 1 — assumptions (2026-01-02)\n\n首輪本文"),
+            "pre-scaffold 輪不得被覆寫: {text}"
+        );
+    }
+
+    #[test]
+    fn conclusion_boundary_stops_at_pre_scaffold_round() {
+        // pre-scaffold 上 conclude 之後追加的 ## Round 區段——結論讀取不吞、
+        // re-conclude 不刪。
+        let doc = "---\ntopic: Legacy\nslug: legacy\nstatus: concluded\ncreated: 2026-01-02\n---\n\n\
+                   # Discussion: Legacy\n\n\
+                   ## Context\n\n脈絡。\n\n\
+                   ## Conclusion\n\n**Decision**: done\n\n\
+                   ## Round 2 — explore (2026-01-03)\n\n次輪本文\n";
+        let store = TestStore::with_live_discussion("legacy", doc);
+        assert_eq!(
+            super::conclusion_text(&store, "legacy").as_deref(),
+            Some("**Decision**: done"),
+            "結論讀取不得吞掉其後的輪區段"
+        );
+        super::conclude(&store, "legacy", "**Decision**: revised").unwrap();
+        let text = store.discussion("legacy");
+        assert!(
+            text.contains("## Round 2 — explore (2026-01-03)\n\n次輪本文"),
+            "re-conclude 不得刪除其後的輪區段: {text}"
+        );
+        assert_eq!(
+            super::conclusion_text(&store, "legacy").as_deref(),
+            Some("**Decision**: revised")
+        );
+    }
+
+    #[test]
+    fn discard_refuses_on_malformed_round_heading() {
+        // 手改壞形狀（ASCII 連字號）仍是「有輪」的證據——保護面寬鬆偵測，
+        // 不因計數收緊而放行無 --force 的刪除。
+        let doc = open_doc("alpha", "Alpha").replacen(
+            "## Rounds\n",
+            "## Rounds\n\n### Round 1 - broken (2026-01-02)\n\n首輪本文\n",
+            1,
+        );
+        let store = TestStore::with_live_discussion("alpha", &doc);
+        assert!(super::discard_discussion(&store, "alpha", false).is_err(), "壞形狀輪仍須擋刪");
+        assert_eq!(store.discussion("alpha"), doc, "拒絕時不得刪檔");
+    }
+
+    #[test]
+    fn fenced_layout_quotes_are_not_escaped_and_not_structure() {
+        // ``` 圍欄內引用文件版面——不跳脫、不計數、不作區段邊界。
+        let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
+        let quoted = "示範版面：\n```\n## Conclusion\n### Round 9 — fake (2026-01-01)\n```\n收尾";
+        super::add_round(&store, "alpha", "explore", quoted).unwrap();
+        let text = store.discussion("alpha");
+        assert!(
+            text.contains("```\n## Conclusion\n### Round 9 — fake (2026-01-01)\n```"),
+            "圍欄內不得跳脫: {text}"
+        );
+        assert_eq!(super::count_rounds(&text), 1, "圍欄內輪標題不計數");
+        super::conclude(&store, "alpha", "**Decision**: real").unwrap();
+        let text = store.discussion("alpha");
+        assert!(text.contains("```\n## Conclusion\n"), "圍欄內容不被 conclude 改寫: {text}");
+        assert_eq!(
+            super::conclusion_text(&store, "alpha").as_deref(),
+            Some("**Decision**: real"),
+            "結論讀取須錨定結構區段"
+        );
+    }
+
+    #[test]
+    fn scaffold_round_heading_shape_matches_ui_parser() {
+        // 引擎輪標題判準與 UI splitRounds 同形——`<mode> (<date>)` 缺一不可。
+        assert!(super::is_scaffold_round_heading("### Round 1 — assumptions (2026-01-02)"));
+        assert!(super::is_scaffold_round_heading("### Round 12 — grill (2026-12-31)"));
+        for bad in [
+            "### Round 1 — mode",              // 缺日期括號
+            "### Round 1 — (2026-01-02)",      // 缺 mode
+            "### Round — mode (2026-01-02)",   // 缺編號
+            "### Round 1 - mode (2026-01-02)", // ASCII 連字號
+        ] {
+            assert!(!super::is_scaffold_round_heading(bad), "{bad:?} 不是合法輪標題");
+        }
+    }
+
+    #[test]
+    fn unbalanced_fence_is_escaped_at_write_so_structure_stays_sound() {
+        // 寫入邊界強制圍欄成對：落單的圍欄行跳脫，其後全文的結構解析不受污染。
+        let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
+        super::add_round(&store, "alpha", "explore", "前文\n```\n沒有關閉的引用").unwrap();
+        let text = store.discussion("alpha");
+        assert!(text.contains("前文\n\\```\n沒有關閉的引用"), "落單圍欄行須跳脫: {text}");
+        let no = super::add_round(&store, "alpha", "explore", "次輪本文").unwrap();
+        assert_eq!(no, 2, "圍欄狀態不得外溢到計數");
+        let text = store.discussion("alpha");
+        let r2 = text.find("### Round 2").unwrap();
+        let conc = text.find("\n## Conclusion\n").unwrap();
+        assert!(r2 < conc, "新輪仍須落在結構 Conclusion 之前: {text}");
+        super::conclude(&store, "alpha", "**Decision**: real").unwrap();
+        let text = store.discussion("alpha");
+        assert_eq!(
+            super::conclusion_text(&store, "alpha").as_deref(),
+            Some("**Decision**: real"),
+            "conclude 不得誤走 pre-scaffold 後備: {text}"
+        );
+        assert_eq!(text.matches("## Conclusion").count(), 1, "不得追加第二個 Conclusion: {text}");
+    }
+
+    #[test]
+    fn discard_ignores_fenced_round_quotes() {
+        // 零輪討論的 Context 圍欄引用輪標題——不得擋下 discard。
+        let doc = open_doc("alpha", "Alpha").replacen(
+            "## Context\n\nFixture context.\n",
+            "## Context\n\n```\n### Round 1 — quoted (2026-01-02)\n```\n",
+            1,
+        );
+        let store = TestStore::with_live_discussion("alpha", &doc);
+        super::discard_discussion(&store, "alpha", false).unwrap();
+        assert!(store.read_live_discussion("alpha").is_none(), "零輪記錄應可直接刪除");
+    }
+
+    #[test]
+    fn set_context_escapes_colliding_lines() {
+        // 三個寫入動詞的跳脫——set_context 面的直接測試。
+        let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
+        super::set_context(&store, "alpha", "引子\n## Rounds\n### Round 3 — fake (2026-01-01)")
+            .unwrap();
+        let text = store.discussion("alpha");
+        assert!(
+            text.contains("引子\n\\## Rounds\n\\### Round 3 — fake (2026-01-01)"),
+            "text: {text}"
+        );
+        assert_eq!(super::count_rounds(&text), 0);
     }
 }
