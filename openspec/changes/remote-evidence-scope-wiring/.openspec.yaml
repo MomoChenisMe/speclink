@@ -5,3 +5,21 @@ created_with: claude
 from_discussion: remote-fix-plan-gaps
 started_at: 2026-08-27
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-27
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 7
+reviewed_scope:
+  - path: crates/speclink-cli/src/verbs/station.rs
+    hash: a09134c0a8991c9bcf12fc2f5f591582adac71d27c73284a1000962f831fc0d2
+  - path: crates/speclink-cli/tests/it/remote_verb_parity.rs
+    hash: da1accfbf56bad8402f0d18ebe794dd2c0687896018c29abe4db4d18a3f8ee90
+verified_at: 2026-08-27
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 7
+verified_scope:
+  - path: crates/speclink-cli/src/verbs/station.rs
+    hash: a09134c0a8991c9bcf12fc2f5f591582adac71d27c73284a1000962f831fc0d2
+  - path: crates/speclink-cli/tests/it/remote_verb_parity.rs
+    hash: da1accfbf56bad8402f0d18ebe794dd2c0687896018c29abe4db4d18a3f8ee90
