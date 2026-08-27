@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | **ModeFree** | `init`、`update`、`link`、`unlink`、`auth`、`schemas`、`templates`、`feedback`、`schema`、`config`、`completion` | 不觸發 store 模式解析。不讀專案設定的動詞（`completion`、`config`）不受壞掉的 `.speclink.yaml` 影響。 |
 | **Dual** | `list`、`show`、`validate`、`analyze`、`drift`、`archive`、`discard`、`artifact`、`language`、`status`、`instructions`、`new`、`workflow-config`、`task`、`in-progress`、`discuss`、`review`、`verify` | 本機模式作用於本機 store，remote 模式作用於 remote store，**不會**在 remote 模式靜默改作用於本機。缺任一臂構成建置失敗，而非執行期靜默回退。 |
-| **FsOnly** | `demo` | remote 模式以非零 exit code 明確拒絕，且不發出任何 server 請求——離線環境同樣拒絕。 |
+| **FsOnly** | `demo`、`trace` | remote 模式以非零 exit code 明確拒絕，且不發出任何 server 請求——離線環境同樣拒絕。 |
 | **RemoteOnly** | `claim` | 本機模式以非零 exit code 明確拒絕，並於 stderr 說明需要 remote store。 |
 
 模式判定是惰性的：只有宣告形狀需要時才解析模式，只有 remote 臂將執行時才建立連線。

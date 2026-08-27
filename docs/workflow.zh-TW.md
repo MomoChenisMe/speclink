@@ -210,6 +210,8 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 之所以要這樣排，是因為**站章凍結的是範圍內檔案的內容指紋**：先蓋的章會被另一站的修正打成「其後有變動」。先修完再一起蓋就沒這個問題。
 
+**蓋章會消耗工單。**章欄位寫入與工單（`review.md`／`verify.md`）刪除發生在同一個原子寫入內，不存在「章已寫入而工單仍在」的狀態。因此封存的已蓋章變更不含 `review.md` 與 `verify.md`；只有未結工單會經 `--carry-review` 或 `--carry-verify` 隨封存移動。fs 模式下被刪工單的文字僅存於 git 歷史；remote 模式的 store 不保留已刪文件內容，蓋章後工單文字不可回讀。
+
 ### review
 
 - **Purpose / 目的**：以工藝標準審查實作，findings 分級記入工單。
@@ -220,7 +222,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **Claude**：`/speclink-review <change>`。
 - **Codex**：`$speclink-review <change>`。
 - **CLI/Host**：`speclink review prepare/scope/add-round/show/stamp/discard`。
-- **Done / 完成**：全任務完成且最後一輪的必修集合為空即可蓋章——**SUGGESTION 不擋章**。
+- **Done / 完成**：全任務完成且最後一輪的必修集合為空即可蓋章——**SUGGESTION 不擋章**。蓋章會在同一個原子寫入內寫入 reviewed 欄位並刪除 `review.md`；fs 模式下工單文字僅存於 git 歷史，remote 模式蓋章後不可回讀。
 - **Next / 下一步**：`verify`（若也要跑）或 `archive`。
 - **Recover / 恢復**：蓋章後範圍內檔案再被修改時，卡片標示降級為「已審查·其後有變動」。封存時偵測到未結工單會被攔下，此時有三個選擇：回去蓋章、放棄審查，或照樣帶走。另外，工單裡的 finding 路徑不得帶行號，且必須逐字落在凍結快照的檔案集內。
 
@@ -234,7 +236,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **Claude**：`/speclink-verify <change>`。
 - **Codex**：`$speclink-verify <change>`。
 - **CLI/Host**：`speclink verify scope/add-round/show/stamp/discard`。
-- **Done / 完成**：全任務完成且最後一輪必修集合為空；**SUGGESTION 同樣不擋章**。
+- **Done / 完成**：全任務完成且最後一輪必修集合為空；**SUGGESTION 同樣不擋章**。蓋章會在同一個原子寫入內寫入 verified 欄位並刪除 `verify.md`；fs 模式下工單文字僅存於 git 歷史，remote 模式蓋章後不可回讀。
 - **Next / 下一步**：`archive`。
 - **Recover / 恢復**：任務全完成後，第一輪是唯一一次完整盤查——讀全部 artifacts，程式碼證據限定在凍結的變更 patch。之後每一輪只看兩樣東西：上輪未解的 findings，以及修正 patch 直接造成的回歸；不重掃未修改的區域。**必修集合每輪必須嚴格變少**才允許再修一次。第一次沒進展就以「未通過」停下，保留工單、不蓋章。
 
@@ -246,7 +248,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **Use / 使用**：任務全部完成、artifacts valid、假設未過時，且你選擇要跑的品質關卡已結案。
 - **Skip / 跳過**：有未完成任務、stale delta、`validate` 未過，或需求還在變。
 - **Input / 輸入**：ready 的變更、完整 final-state deltas 與完成證據。
-- **Outputs / 產物**：更新後的正典 specs、`openspec/changes/archive/` 記錄；最後一個存活變更封存時，關聯討論一併封存。
+- **Outputs / 產物**：更新後的正典 specs、`openspec/changes/archive/` 記錄；最後一個存活變更封存時，關聯討論一併封存。已蓋章的變更封存時不含工單檔；只有未結工單會經 `--carry-review`／`--carry-verify` 隨封存移動。
 - **Claude**：`/speclink-archive <change>`。
 - **Codex**：`$speclink-archive <change>`。
 - **CLI/Host**：`speclink archive <change>`；不要用 `--no-validate` 或 `--mark-tasks-complete` 規避未完成工作。
