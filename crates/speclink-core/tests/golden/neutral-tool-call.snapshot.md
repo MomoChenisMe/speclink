@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -289,7 +289,10 @@ Working on task 4/7: <task description>
 - [x] Task 2
 ...
 
-All tasks complete! You can archive this change with `speclink archive`.
+All tasks complete! Quality stations are optional: `speclink review` ∥ `speclink verify`, or `speclink quality`.
+Skipping them is fine — archive directly with `speclink archive`, or do archive + commit
+in one step via `speclink commit` ("Archive first, then commit together").
+(Inside a linked worktree: do not archive — commit there and hand off to `speclink worktree-merge`.)
 ```
 
 **Output On Pause (Issue Encountered)**
@@ -336,7 +339,8 @@ This skill supports the "actions on a change" model:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `speclink review` (craft quality) ∥ `speclink verify` (spec compliance), or `speclink quality` to run both in order; then `speclink archive <change-name>`
+- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `speclink review` (craft quality) ∥ `speclink verify` (spec compliance), or `speclink quality` to run both in order; each station hands off to archive when its stamp lands
+- Skipping the quality stations is equally valid → go straight to `speclink archive <change-name>`, or take the one-step path: `speclink commit <change-name>` and pick its "Archive first, then commit together" option
 - Only `[M]` tasks remain → the quality stations can still run now, but archiving waits until the user has done the manual work by hand
 - Requirements changed mid-work → `speclink ingest <change-name>`, then come back to apply
 
@@ -348,7 +352,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -622,6 +626,16 @@ Each archived change still gets the full single-archive treatment: delta applica
 alongside. The evidence record rides along inside the change directory — nothing to clean
 up, nothing to delete.
 
+## After the archive
+
+Every archive — whichever path led here: straight from apply, after a review or verify
+stamp, after `speclink quality`, or following `speclink worktree-merge` — leaves
+uncommitted working-tree changes: the deltas merged into the canonical specs and the
+change directory moved into the archive. Close by reminding the user to commit them
+with a plain git commit — the change-scoped `speclink commit` flow does not apply
+after the archive (its file selection reads the change directory that has just moved).
+This is a reminder only — never run the commit yourself.
+
 === .wad/skills/speclink-audit/SKILL.md ===
 ---
 name: speclink-audit
@@ -630,7 +644,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -872,7 +886,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -1149,7 +1163,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -1300,7 +1314,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -1421,18 +1435,11 @@ CONCLUSION_EOF
 
 This flips the record's `status` to `concluded`. The step logic below (vocabulary load, the scout, the requirement-clarity judgement, interface depth check, convergence, conclusion capture) is unchanged — recording sits alongside it.
 
-**Fast path**: when the user wants to go straight from the conclusion to a change without a full propose round, offer:
-
-```bash
-speclink discuss promote <slug>            # change name defaults to the slug
-speclink discuss promote <slug> --name <change-name>
-```
-
-This scaffolds the change, prefills the proposal's Why from the conclusion, and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — promote (or `speclink propose --from-discussion`) again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived. The remaining artifacts are still created via `speclink propose`.
+**A concluded discussion hands off through propose**: `speclink propose --from-discussion <slug>` seeds the proposal from the recorded Decision and rounds and builds every artifact in one pass — the single next step once the conclusion is written.
 
 **Mid-discussion spin-out** — in a multi-requirement discussion, one item can be filed the moment it is settled; don't hold it hostage to the rest:
 
-1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` — the fast path above applies as-is; with no conclusion yet, the engine prefills the proposal's Why from the topic instead.
+1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived. The remaining artifacts are still created via `speclink propose`.
 2. **Keep discussing**: `add-round` continues as normal for the remaining items; promotion does not close the record.
 3. **Conclude as usual at the end**: the record keeps its `promoted` status, the conclusion is written in, and the engine flags the already-promoted changes as needing the conclusion re-reflected. When the conclusion is unrelated to a spun-out change, that flag needs a single confirmation — no rework.
 
@@ -1768,7 +1775,7 @@ When the discussion converges on building something:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The conclusion warrants its own change → `speclink discuss promote <slug>` (or `speclink propose --from-discussion <slug>`), then `speclink propose` for the remaining artifacts
+- The conclusion warrants its own change → `speclink propose --from-discussion <slug>` — one pass from the recorded conclusion to a full artifact set
 - It belongs in a change that already exists → `speclink discuss link <slug> <change>`, then `speclink ingest <change>` to fold it in and seal
 - The conclusion is "don't do it" → conclude anyway, then `speclink discuss archive <slug>`
 - Nothing of substance was recorded → `speclink discuss discard <slug>`
@@ -1781,7 +1788,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -1916,7 +1923,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -2103,7 +2110,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -2391,7 +2398,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -2496,7 +2503,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -2904,6 +2911,8 @@ If no argument is provided, the workflow will extract requirements from conversa
 
     The propose workflow ENDS here. Do NOT invoke `speclink apply`. Do NOT call **AskUserQuestion** to ask whether to apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode.
 
+    After the summary, run the **Pending-change landscape check** below before presenting Next steps.
+
 **Artifact Creation Guidelines**
 
 - Follow the `instruction` field from `speclink instructions` for each artifact type
@@ -2926,11 +2935,25 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** invoke `speclink apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
+## Pending-change landscape check
+
+Run this check after the summary, right before presenting the Next steps below.
+
+1. Run `speclink list --json` for the change names, then judge the stage from each change's own metadata: a change whose `openspec/changes/<name>/.openspec.yaml` carries none of the `started_*` lines (`started_at:` / `started_by:` / `started_with:`) is still at the proposal stage. The `list` payload alone cannot tell a started change from an unstarted one — do not judge from its `status` or task counts. The change just created counts.
+2. **Only one proposal-stage change** (the one just created) → skip the rest of this check; the Next steps edges below already cover it.
+3. **Two or more** → work out an execution order before any apply suggestion:
+   - **Hard signal — delta capability overlap**: two changes that both carry a delta for the same capability (the same directory name under `openspec/changes/<name>/specs/`) must run sequentially — their deltas rewrite the same canonical spec, and archiving them out of order can trip the merge gate.
+   - **Soft signal — likely code overlap or dependency**: read each proposal's Impact and tasks; changes that touch the same code areas, or where one builds on another's outcome, are safer run in sequence.
+4. Present the result according to the project's effective worktree policy (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins):
+   - **Policy on** → two groups: "parallel-safe — run each change in its own session via `speclink apply-with-worktree` (the multi-session recipe)" and "sequential — run in this order, one at a time".
+   - **Policy off** → one recommended order covering all of them.
+5. The check is suggestions only — report the grouping or order and stop; never invoke any skill automatically.
+
 ## Next steps
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- Artifacts are complete → `speclink apply <change-name>` when the user is ready to implement
+- Artifacts are complete → `speclink apply <change-name>` when the user is ready to implement (with two or more proposal-stage changes pending, the landscape check above sets the order first)
 - Several independent changes will be implemented at once, and the project's worktree policy is on → `speclink apply-with-worktree <change-name>` (one git worktree per change)
 - The requirements turned out to be fuzzier than they looked → `speclink discuss` before implementing
 
@@ -2942,7 +2965,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -3043,7 +3066,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -3233,7 +3256,8 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The review stamp landed → the other station if the user wants it (`speclink verify <change-name>`), otherwise `speclink archive <change-name>`
+- The review stamp landed in the main checkout → `speclink archive <change-name>`
+- The review stamp landed inside a worktree → commit the stamp's meta changes first, then `speclink worktree-merge <change-name>` (archive runs only from the main checkout)
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream
 
 === .wad/skills/speclink-trace/SKILL.md ===
@@ -3244,7 +3268,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -3334,7 +3358,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -3614,5 +3638,6 @@ Use clear markdown with:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The verify stamp landed → the other station if the user wants it (`speclink review <change-name>`), otherwise `speclink archive <change-name>`
+- The verify stamp landed in the main checkout → `speclink archive <change-name>`
+- The verify stamp landed inside a worktree → commit the stamp's meta changes first, then `speclink worktree-merge <change-name>` (archive runs only from the main checkout)
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream

@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -272,3 +272,13 @@ Each archived change still gets the full single-archive treatment: delta applica
 @trace, snapshot for unarchive, `.started` cleanup, and its linked discussion archived
 alongside. The evidence record rides along inside the change directory — nothing to clean
 up, nothing to delete.
+
+## After the archive
+
+Every archive — whichever path led here: straight from apply, after a review or verify
+stamp, after `/speclink-quality`, or following `/speclink-worktree-merge` — leaves
+uncommitted working-tree changes: the deltas merged into the canonical specs and the
+change directory moved into the archive. Close by reminding the user to commit them
+with a plain git commit — the change-scoped `/speclink-commit` flow does not apply
+after the archive (its file selection reads the change directory that has just moved).
+This is a reminder only — never run the commit yourself.

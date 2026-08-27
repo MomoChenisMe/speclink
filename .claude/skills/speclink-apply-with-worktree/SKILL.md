@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -427,7 +427,10 @@ Working on task 4/7: <task description>
 - [x] Task 2
 ...
 
-All tasks complete! You can archive this change with `/speclink-archive`.
+All tasks complete! Quality stations are optional: `/speclink-review` ∥ `/speclink-verify`, or `/speclink-quality`.
+Skipping them is fine — archive directly with `/speclink-archive`, or do archive + commit
+in one step via `/speclink-commit` ("Archive first, then commit together").
+(Inside a linked worktree: do not archive — commit there and hand off to `/speclink-worktree-merge`.)
 ```
 
 **Output On Pause (Issue Encountered)**
@@ -474,7 +477,8 @@ This skill supports the "actions on a change" model:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `/speclink-review` (craft quality) ∥ `/speclink-verify` (spec compliance), or `/speclink-quality` to run both in order; then `/speclink-archive <change-name>`
+- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `/speclink-review` (craft quality) ∥ `/speclink-verify` (spec compliance), or `/speclink-quality` to run both in order; each station hands off to archive when its stamp lands
+- Skipping the quality stations is equally valid → go straight to `/speclink-archive <change-name>`, or take the one-step path: `/speclink-commit <change-name>` and pick its "Archive first, then commit together" option
 - Only `[M]` tasks remain → the quality stations can still run now, but archiving waits until the user has done the manual work by hand
 - Requirements changed mid-work → `/speclink-ingest <change-name>`, then come back to apply
 

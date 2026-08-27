@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.21.0"
+  version: "v1.22.0"
   generatedBy: "Speclink"
 ---
 
@@ -409,6 +409,8 @@ If no argument is provided, the workflow will extract requirements from conversa
 
     The propose workflow ENDS here. Do NOT invoke `/speclink-apply`. Do NOT call **AskUserQuestion** to ask whether to apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode.
 
+    After the summary, run the **Pending-change landscape check** below before presenting Next steps.
+
 **Artifact Creation Guidelines**
 
 - Follow the `instruction` field from `speclink instructions` for each artifact type
@@ -431,10 +433,24 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** invoke `/speclink-apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
+## Pending-change landscape check
+
+Run this check after the summary, right before presenting the Next steps below.
+
+1. Run `speclink list --json` for the change names, then judge the stage from each change's own metadata: a change whose `openspec/changes/<name>/.openspec.yaml` carries none of the `started_*` lines (`started_at:` / `started_by:` / `started_with:`) is still at the proposal stage. The `list` payload alone cannot tell a started change from an unstarted one — do not judge from its `status` or task counts. The change just created counts.
+2. **Only one proposal-stage change** (the one just created) → skip the rest of this check; the Next steps edges below already cover it.
+3. **Two or more** → work out an execution order before any apply suggestion:
+   - **Hard signal — delta capability overlap**: two changes that both carry a delta for the same capability (the same directory name under `openspec/changes/<name>/specs/`) must run sequentially — their deltas rewrite the same canonical spec, and archiving them out of order can trip the merge gate.
+   - **Soft signal — likely code overlap or dependency**: read each proposal's Impact and tasks; changes that touch the same code areas, or where one builds on another's outcome, are safer run in sequence.
+4. Present the result according to the project's effective worktree policy (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins):
+   - **Policy on** → two groups: "parallel-safe — run each change in its own session via `/speclink-apply-with-worktree` (the multi-session recipe)" and "sequential — run in this order, one at a time".
+   - **Policy off** → one recommended order covering all of them.
+5. The check is suggestions only — report the grouping or order and stop; never invoke any skill automatically.
+
 ## Next steps
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- Artifacts are complete → `/speclink-apply <change-name>` when the user is ready to implement
+- Artifacts are complete → `/speclink-apply <change-name>` when the user is ready to implement (with two or more proposal-stage changes pending, the landscape check above sets the order first)
 - Several independent changes will be implemented at once, and the project's worktree policy is on → `/speclink-apply-with-worktree <change-name>` (one git worktree per change)
 - The requirements turned out to be fuzzier than they looked → `/speclink-discuss` before implementing

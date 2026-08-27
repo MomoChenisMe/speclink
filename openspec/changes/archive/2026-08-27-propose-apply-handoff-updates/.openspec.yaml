@@ -1,0 +1,71 @@
+schema: spec-driven
+created: 2026-08-27
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: propose-apply-handoff-updates
+started_at: 2026-08-27
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-27
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 10
+reviewed_scope:
+  - path: crates/speclink-core/assets/skills/apply.md
+    hash: 58aabe87fa57adf5ef884244024d9eb46fcfc5d613822b4e4f00d9bb80b8b3ca
+  - path: crates/speclink-core/assets/skills/archive.md
+    hash: e93b6c7cc0ca7f654f088274c693bb630b378de9bfa7c324c4bd432257a853bc
+  - path: crates/speclink-core/assets/skills/discuss.md
+    hash: c3b6aa65feee0810098994bc03fb8df0d2a358db25f344027899151e371f9844
+  - path: crates/speclink-core/assets/skills/propose.md
+    hash: 539df3feb3a956082fa5d35dbcea3bfcdfef8d662ae7597cb6028bbeac57e013
+  - path: crates/speclink-core/assets/skills/review.md
+    hash: e21fbfc6fd3a44af9119fab7812806ac8db4ad59f5d6f27652b9a4058286169d
+  - path: crates/speclink-core/assets/skills/verify.md
+    hash: cc0518f7d9df41c59acbdd924f70314be909f5ea131e78a540c59b542ceab1a2
+  - path: crates/speclink-core/src/init.rs
+    hash: c5e2a6ac063087e477f12d3d5a7c4586c4cacd0981a5fe9e652faf09e091bc68
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 71951563f0059dfe9f66c5a21f4ea062439381d278d918edffb261f4d1f7f8cb
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 84c701fd340cb8024e66f1c5a6023b85cb6fd9733407c1de4f3f40feb4831abd
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 52d1f7f84f4c155c2ae6f265e7f10e991d0caa355b531bae520f6b2e90962f1f
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: 680b2c630d2a7cfc597c6f7d205c6b862e2b9510ea6805416240bcb99019477d
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 60cc761f6fef2e34d0429c18b45f9b7db11cd4920af731bf48e4e71b07d75ebc
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 27aacbd8cad0e0534fbe6854b2ddae9781d111f613d70dbd6683a2a4ceda54b0
+verified_at: 2026-08-27
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 10
+verified_scope:
+  - path: crates/speclink-core/assets/skills/apply.md
+    hash: 58aabe87fa57adf5ef884244024d9eb46fcfc5d613822b4e4f00d9bb80b8b3ca
+  - path: crates/speclink-core/assets/skills/archive.md
+    hash: e93b6c7cc0ca7f654f088274c693bb630b378de9bfa7c324c4bd432257a853bc
+  - path: crates/speclink-core/assets/skills/discuss.md
+    hash: c3b6aa65feee0810098994bc03fb8df0d2a358db25f344027899151e371f9844
+  - path: crates/speclink-core/assets/skills/propose.md
+    hash: 539df3feb3a956082fa5d35dbcea3bfcdfef8d662ae7597cb6028bbeac57e013
+  - path: crates/speclink-core/assets/skills/review.md
+    hash: e21fbfc6fd3a44af9119fab7812806ac8db4ad59f5d6f27652b9a4058286169d
+  - path: crates/speclink-core/assets/skills/verify.md
+    hash: cc0518f7d9df41c59acbdd924f70314be909f5ea131e78a540c59b542ceab1a2
+  - path: crates/speclink-core/src/init.rs
+    hash: c5e2a6ac063087e477f12d3d5a7c4586c4cacd0981a5fe9e652faf09e091bc68
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 71951563f0059dfe9f66c5a21f4ea062439381d278d918edffb261f4d1f7f8cb
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 84c701fd340cb8024e66f1c5a6023b85cb6fd9733407c1de4f3f40feb4831abd
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 52d1f7f84f4c155c2ae6f265e7f10e991d0caa355b531bae520f6b2e90962f1f
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: 680b2c630d2a7cfc597c6f7d205c6b862e2b9510ea6805416240bcb99019477d
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 60cc761f6fef2e34d0429c18b45f9b7db11cd4920af731bf48e4e71b07d75ebc
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 27aacbd8cad0e0534fbe6854b2ddae9781d111f613d70dbd6683a2a4ceda54b0
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-27
