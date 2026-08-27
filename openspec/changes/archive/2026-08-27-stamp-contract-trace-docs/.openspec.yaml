@@ -51,3 +51,5 @@ verified_scope:
     hash: faa3eeadcb481937b3f6405601c185f93a46b9fb2ab5cd4293869690f45d57d8
   - path: scripts/remote-docs.test.mjs
     hash: 41a447a525022b9aa4d8cf35284823423b5c9e4d80a143403e58a529d8ebf55f
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-08-27
