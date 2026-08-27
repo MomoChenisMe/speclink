@@ -130,7 +130,7 @@ engine opens.
 
 | Group | Methods | Notes |
 |---|---|---|
-| Changes | `listChanges`, `findChange`, `changeExists`, `createChange`, `updatedAtSecs` | `listChanges` returns `{name, dir?, meta?}` sorted by name; `meta` mirrors `.openspec.yaml` (`schema`, `created`, `createdBy`, `createdWith`, `fromDiscussion`). `updatedAtSecs` is the "most recently updated" sort key (whole seconds; missing change → 0). |
+| Changes | `listChanges`, `findChange`, `changeExists`, `createChange`, `updatedAtSecs` | `listChanges` returns `{name, dir?, meta?}` sorted by name; `meta` carries the `.openspec.yaml` keys the bridge consumes: `schema`, `created`, `createdBy`, `createdWith`, `fromDiscussion`, `restaleFrom`, `startedAt`, `startedBy`, `startedWith`, `boardRank`. The claim fields (`claimedBy`/`claimedAt`) and the review/verify stamp fields do not travel through this bridge. `updatedAtSecs` is the "most recently updated" sort key (whole seconds; missing change → 0). |
 | Artifacts | `readArtifact`, `writeArtifact`, `artifactExists`, `deleteArtifact` (optional) | Artifact ids are schema output paths relative to the change: `proposal.md`, `design.md`, `tasks.md`, `specs/<capability>/spec.md`. An empty document counts as existing. `deleteArtifact` is only reached by review/verify stamping (which deletes the ticket); without it only that path fails. |
 | Change metadata (optional) | `readChangeMeta`, `writeChangeMeta` | The raw metadata document of a change (the `.openspec.yaml` text). Stamping is a read-modify-write of this document, so the stamp verbs treat this pair plus `deleteArtifact` as prerequisites: missing any of the three, the stamp refuses before touching anything (ticket intact). No other verb calls them. |
 | Completion evidence (optional) | `readEvidence`, `writeEvidence` | The change's completion-evidence record text (the `.evidence.json` content; the store never interprets it). Without `readEvidence` the engine reads "no record" — a normal state anyway; without `writeEvidence` the call fails loudly the moment a completion actually has files to record, never dropping evidence silently. |
@@ -188,13 +188,17 @@ an `Error` whose message is prefixed with the store method name
 
 ### `claim` (optional)
 
-Ownership is a team-system concept; the engine does not adjudicate it. If
-your store implements `claim(name)`, `dispatch(['claim', '<name>'])` routes
-to it: resolve with your payload (e.g. `{ claimed: true, claimedBy: 'you' }`)
-or reject with an `Error` whose `code` is the verb contract's 409 reason
-(`ownership_lost`, `change_busy`, `gate_pending`) and whose message states
-who holds the change and what to do — the SDK passes both through to the
-caller. Without `claim`, the verb fails loud (as it does on the fs store).
+Ownership is a team-system concept, and on this bridge the engine leaves
+adjudication to your store (on the official server, by contrast, the engine
+adjudicates: the claim lands in the change meta, and a conflict answers with
+HTTP 409, the registry reason `refused`, and a message naming the holder).
+If your store implements `claim(name)`, `dispatch(['claim', '<name>'])`
+routes to it: resolve with your payload (e.g. `{ claimed: true, claimedBy:
+'you' }`) or reject with an `Error` whose `code` is a code your store
+chooses (e.g. `ownership_lost`) and whose message states who holds the
+change and what to do — the SDK passes both through to the caller
+unchanged. Without `claim`, the verb fails loud (as it does on the fs
+store).
 
 ## dispatch — the single entry point
 
@@ -214,15 +218,18 @@ await engine.dispatch(
 - **Output**: a Promise resolving to the same structured object the CLI
   prints with `--json` (camelCase field names). Verbs without a `--json` form
   resolve to `{ output: string }`. The current TypeScript shapes live in
-  [`index.d.ts`](../crates/speclink-node/index.d.ts); the future remote
-  Command/Query payloads are governed by the platform blueprint and its
-  versioned Protocol work.
+  [`index.d.ts`](../crates/speclink-node/index.d.ts); the remote
+  Command/Query payloads are governed by the shipped Protocol crate
+  (`crates/speclink-protocol`), whose Rust types are the wire canon.
 - **Errors**: the Promise rejects with an `Error` — `message` is the CLI's
   semantic message (safe to hand straight back to an agent), `code`
   classifies it: `invalid_argv` (bad argv), `not_found` (change/discussion
-  lookup), `error` (engine failure, the CLI's exit-1 category), a host
-  store's 409 reason passed through (`ownership_lost`, …), `store_error`
-  (store failure without a code), or `panic`.
+  lookup), `invalid_config` (a bad workflow config is rejected, never
+  silently replaced with defaults), `refused` (a precondition refusal —
+  `claim` on the fs store lands here), `error` (engine failure, the CLI's
+  exit-1 category), a host store's own code passed through unchanged
+  (e.g. `ownership_lost`), `store_error` (store failure without a code), or
+  `panic`.
 - **Never blocks the event loop**: every dispatch runs on a background
   worker thread; concurrent dispatches are supported.
 

@@ -37,8 +37,8 @@ which station it stands at, how far its tasks moved, and what its specs changed:
 
 ## Current capabilities / 目前能力
 
-- **Available:** Local Repo CLI, Local Desktop, generated Agent skills (every station, for both Claude and Codex), Command Runtime/Host/Protocol, SQLite/Server FS/PostgreSQL TeamStore, single-node Server with Admin and Auth, Remote CLI and Context Projection, Server operations (deployment, backup and restore), and the desktop and CLI install channels.
-- **Partial:** the Node SDK (the binding works and the npm publishing pipeline is wired; it reaches npm with the first release that carries the engine), Desktop Remote Workspace, and remote task evidence.
+- **Available:** Local Repo CLI, Local Desktop, generated Agent skills (every station, for both Claude and Codex), Command Runtime/Host/Protocol, SQLite/Server FS/PostgreSQL TeamStore, single-node Server with Admin and Auth, Remote CLI and Context Projection, remote task evidence, Server operations (deployment, backup and restore), and the desktop and CLI install channels.
+- **Partial:** the Node SDK (the binding works and the npm publishing pipeline is wired; it reaches npm with the first release that carries the engine) and the Desktop Remote Workspace.
 - **Planned:** MCP and Copilot in-process tools, SSO, runtime plugins, and cluster mode.
 - **Deprecated:** the legacy remote REST v1 prototype; new work uses the current Client Protocol and Host path.
 
@@ -117,7 +117,7 @@ The install script detects your platform, checks the SHA-256, and places `specli
 
 Windows installers are not code-signed yet, so SmartScreen warns on first run — choose "More info" then "Run anyway".
 
-**Server** (only needed when a team shares one canon) — `speclink-server` is the official **reference implementation**. Use it out of the box, or to try the remote features. Pick one of three shapes; each prints a one-time `/setup` link on startup:
+**Server** (only needed when a team shares one canon) — `speclink-server` is the official **reference implementation**. Use it out of the box, or to try the remote features. Pick one of three shapes; each prints a one-time `/setup` link on first start (a normal restart does not reprint it):
 
 | Shape | Command |
 | --- | --- |
@@ -166,7 +166,7 @@ the full path from setup to sign-in, see [Remote Getting Started](docs/remote-ge
 
 | Document | Purpose |
 | --- | --- |
-| [Remote Server, Desktop, and CLI Getting Started](docs/remote-getting-started.md) | The full path from `/setup` and membership through sign-in, Desktop/CLI, and recovery |
+| [Remote Server, Desktop, and CLI Getting Started](docs/remote-getting-started.md) | The full path from a one-line `npx @speclink/server` start through `/setup`, membership (including the first Admin's self-grant), sign-in, Desktop/CLI, and recovery |
 | [Server Deployment](docs/server-deployment.zh-TW.md) | npx/Docker/Compose and upgrades (Traditional Chinese only) |
 | [Server Store Drivers](docs/server-store-drivers.zh-TW.md) | Choosing between SQLite/Server FS/PostgreSQL (Traditional Chinese only) |
 | [Server Backup and Restore](docs/server-backup.zh-TW.md) | backup/verify-backup/restore (Traditional Chinese only) |

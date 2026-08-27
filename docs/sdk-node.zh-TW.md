@@ -85,7 +85,7 @@ const engine = createEngine({ store: myStore, actor: 'Alice <alice@example.com>'
 
 | 分組 | 方法 | 說明 |
 |---|---|---|
-| Changes | `listChanges`、`findChange`、`changeExists`、`createChange`、`updatedAtSecs` | `listChanges` 回傳 `{name, dir?, meta?}` 且按名稱排序；`meta` 對應 `.openspec.yaml`（`schema`、`created`、`createdBy`、`createdWith`、`fromDiscussion`）。`updatedAtSecs` 是「最近更新」排序鍵（整數秒；change 不存在 → 0）。 |
+| Changes | `listChanges`、`findChange`、`changeExists`、`createChange`、`updatedAtSecs` | `listChanges` 回傳 `{name, dir?, meta?}` 且按名稱排序；`meta` 帶的是 bridge 會消費的 `.openspec.yaml` 鍵：`schema`、`created`、`createdBy`、`createdWith`、`fromDiscussion`、`restaleFrom`、`startedAt`、`startedBy`、`startedWith`、`boardRank`。認領欄位（`claimedBy`／`claimedAt`）與 review／verify 蓋章欄位不經過這座 bridge。`updatedAtSecs` 是「最近更新」排序鍵（整數秒；change 不存在 → 0）。 |
 | Artifacts | `readArtifact`、`writeArtifact`、`artifactExists`、`deleteArtifact`（選配） | artifact 識別碼是 schema 定義、相對於 change 的輸出路徑：`proposal.md`、`design.md`、`tasks.md`、`specs/<capability>/spec.md`。空文件也算存在。`deleteArtifact` 只有 review／verify 蓋章會用到（蓋章會刪掉工單），沒實作就只有蓋章路徑失敗。 |
 | Change metadata（選配） | `readChangeMeta`、`writeChangeMeta` | change 的 metadata 原文（`.openspec.yaml` 內容）。蓋章是這份文件的 read-modify-write，所以 stamp 動詞把這對方法與 `deleteArtifact` 一起當前置：缺任何一個，蓋章在動手前就整個拒絕（工單不動）；其餘動詞從不呼叫它們。 |
 | Completion evidence（選配） | `readEvidence`、`writeEvidence` | change 的完成證據記錄原文（`.evidence.json` 內容，store 不解讀）。缺 `readEvidence` 讀成「沒有記錄」（本來就是正常狀態）；缺 `writeEvidence` 則在某次完成真的有檔案要記時大聲失敗，不會靜默丟證據。 |
@@ -140,9 +140,9 @@ store 方法拋錯或 reject 時，進行中的 `dispatch` 會以 `Error` 拒絕
 
 ### `claim`（選配）
 
-所有權是團隊系統的概念，引擎不做裁決。若你的 store 實作了 `claim(name)`，`dispatch(['claim', '<name>'])` 會路由過去。
+所有權是團隊系統的概念，在這座 bridge 上引擎把裁決留給你的 store（對照：在官方 server 上引擎會自己裁決——認領寫進 change meta，衝突回 HTTP 409、registry 的 `refused`、message 寫明持有人）。若你的 store 實作了 `claim(name)`，`dispatch(['claim', '<name>'])` 會路由過去。
 
-成功時它 resolve 你的 payload，例如 `{ claimed: true, claimedBy: 'you' }`。衝突時它 reject 一個 `Error`：`code` 用動詞契約的 409 reason（`ownership_lost`、`change_busy`、`gate_pending`），message 說明誰持有該 change、該怎麼做。SDK 把兩者原樣傳給呼叫端。
+成功時它 resolve 你的 payload，例如 `{ claimed: true, claimedBy: 'you' }`。衝突時它 reject 一個 `Error`：`code` 是你的 store 自選的碼（例如 `ownership_lost`），message 說明誰持有該 change、該怎麼做。SDK 把兩者原樣傳給呼叫端。
 
 沒有 `claim` 方法時，該動詞就像在 fs store 上一樣直接失敗。
 
@@ -158,8 +158,8 @@ await engine.dispatch(
 ```
 
 - **輸入**：字串陣列，與 CLI 動詞詞彙一對一，等同 shell argv 去掉程式名。它不支援互動式輸入。CLI 中讀 stdin 的動詞，改由第二參數傳內容：`{ stdin }`。
-- **輸出**：Promise，解析為與 CLI `--json` 完全一致的結構化物件（camelCase 欄位名）。沒有 `--json` 形式的動詞解析為 `{ output: string }`。目前 TypeScript shape 以 [`index.d.ts`](../crates/speclink-node/index.d.ts) 為準；未來遠端 Command/Query payload 由平台藍圖與版本化 Protocol 工作定義。
-- **錯誤**：Promise 以 `Error` 拒絕——`message` 是 CLI 的語義化訊息（可直接回給 agent），`code` 分類失敗：`invalid_argv`（argv 有誤）、`not_found`（change／討論查找）、`error`（引擎失敗，即 CLI 的 exit-1 類別）、宿主 store 的 409 reason 原樣傳遞（`ownership_lost`……）、`store_error`（無 code 的 store 失敗）、`panic`。
+- **輸出**：Promise，解析為與 CLI `--json` 完全一致的結構化物件（camelCase 欄位名）。沒有 `--json` 形式的動詞解析為 `{ output: string }`。目前 TypeScript shape 以 [`index.d.ts`](../crates/speclink-node/index.d.ts) 為準；遠端 Command/Query payload 由已交付的 Protocol crate（`crates/speclink-protocol`）定義，其 Rust 型別就是 wire 正典。
+- **錯誤**：Promise 以 `Error` 拒絕——`message` 是 CLI 的語義化訊息（可直接回給 agent），`code` 分類失敗：`invalid_argv`（argv 有誤）、`not_found`（change／討論查找）、`invalid_config`（壞的工作流設定一律拒絕，不會靜默改用預設值）、`refused`（前置拒絕——fs store 上的 `claim` 就落在這裡）、`error`（引擎失敗，即 CLI 的 exit-1 類別）、宿主 store 自選的碼原樣傳遞（例如 `ownership_lost`）、`store_error`（無 code 的 store 失敗）、`panic`。
 - **絕不阻塞事件迴圈**：每次 dispatch 都在背景工作執行緒上執行；支援並發 dispatch。
 
 目前已路由的動詞：`list`、`status`、`new change`、`new artifact`、`claim`、`review add-round`、`review stamp`、`verify add-round`、`verify stamp`。詞彙會朝完整 CLI 對等擴充；未支援的動詞以 `invalid_argv` 拒絕。

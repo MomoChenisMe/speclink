@@ -17,21 +17,21 @@ npm install
 
 ## `npm run dev` — full dev environment / 整套開發環境
 
-- **Purpose**: start the complete dev environment in one command. It builds the CLI from the current checkout, builds the desktop frontend assets, then starts `speclink-server` and the desktop tauri dev together.
+- **Purpose**: start the complete dev environment in one command. It builds the CLI from the current checkout, then starts `speclink-server` and the desktop tauri dev together; the desktop frontend comes from the Vite dev server that tauri dev starts, so frontend edits show up without a rebuild.
 - **Prerequisites**: everything listed above. Configuration comes from `.env` at the repo root (see `.env.example`; without `.env` all defaults apply: sqlite, `.dev/store.db`, `127.0.0.1:8080`).
-- **Expected observable results**: the terminal first shows `speclink dev: 建置當前 checkout 的 speclink-cli…` and `speclink dev: 建置當前前端資產…`. On the first startup the server prints one line with a `/setup?token=` link. It prints that link only once, so open it to complete the initial setup. The desktop window then opens. Ctrl+C stops both the server and the desktop with no leftover processes. State persists in the gitignored `.dev/`.
+- **Expected observable results**: the terminal first shows `speclink dev: 建置當前 checkout 的 speclink-cli…`. On the first startup the server prints one line with a `/setup?token=` link. It prints that link only once, so open it to complete the initial setup. The desktop window then opens. Ctrl+C stops both the server and the desktop with no leftover processes. State persists in the gitignored `.dev/`.
 
 ## `npm run dev:server` — server only / 只跑後端
 
-- **Purpose**: validate the dev configuration and start `speclink-server` only — for self-hosting trials and pure backend development. No CLI build, no frontend build, no desktop window.
+- **Purpose**: validate the dev configuration and start `speclink-server` only — for pure backend development in this checkout (for self-hosting outside it, `npx @speclink/server` is the shortest path; see [Remote Getting Started](remote-getting-started.md)). No CLI build, no frontend build, no desktop window.
 - **Prerequisites**: Rust toolchain and `npm install`. Starts with zero configuration (sqlite by default); invalid configuration (e.g. `SPECLINK_STORE_DRIVER=postgres` without `SPECLINK_POSTGRES_URL`) refuses to start with a non-zero exit code and the same error message as `npm run dev`.
 - **Expected observable results**: in a fresh environment the terminal prints a link containing `/setup?token=`; no build steps run and no desktop window appears. After Ctrl+C no processes remain; `.dev/` persistence behaves exactly like `npm run dev`.
 
 ## `npm run dev:desktop` — desktop only / 只跑桌面
 
-- **Purpose**: build the desktop frontend first (vite emits `dist/`), then start tauri dev — for desktop development and local-mode trials. Does not start a server and requires no remote configuration.
+- **Purpose**: start tauri dev directly — for desktop development and local-mode trials. The frontend comes from the Vite dev server, so source edits show up live. Does not start a server and requires no remote configuration.
 - **Prerequisites**: all prerequisites (including Tauri system dependencies). Configuration validation is shared with `npm run dev` — an invalid `.env` (e.g. postgres without `SPECLINK_POSTGRES_URL`) refuses to start with a non-zero exit code here too.
-- **Expected observable results**: the terminal first shows `speclink dev: 建置當前前端資產…` and the vite build output. The desktop window opens only after the build finishes, and it shows the UI built from the current sources. Tauri dev loads the static `dist/`, so every start rebuilds it and you never see a stale UI. If the frontend build fails, the command exits non-zero and no window opens. The window runs in local mode and browses this repo's `openspec/` board. It works even when no server runs on the machine.
+- **Expected observable results**: no build step runs first — tauri dev starts the Vite dev server, then the desktop window opens with the UI served from the current sources, and frontend edits reload in place, so you never see a stale UI. If the frontend dev server fails to start, the command exits non-zero and no window opens. The window runs in local mode and browses this repo's `openspec/` board. It works even when no server runs on the machine.
 
 ## `npm run dev:reset` — reset local dev state / 重置本機開發狀態
 

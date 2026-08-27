@@ -5,7 +5,7 @@
 
 This document answers the verb-level contract. It covers how the CLI assigns verbs across local and remote modes, and what their output guarantees are. It also covers the endpoints, payloads, and error shapes that the canonical `verb-contract` spec designates.
 
-The endpoint half currently covers the verb-parity endpoints: validate, analyze, delete change, task move, discussion create-with-slug, discussion discard, discussion link, discussion seal, and change in-progress. For every other verb the canonical specs remain the contract:
+The endpoint half currently covers the verb-parity endpoints: validate, analyze, delete change, task move, discussion create-with-slug, discussion discard, discussion link, discussion seal, change in-progress, and change claim. For every other verb the canonical specs remain the contract:
 
 - [Canonical verb contract](../openspec/specs/verb-contract/spec.md)
 - [Client Protocol spec](../openspec/specs/client-protocol/spec.md)
@@ -184,12 +184,22 @@ Silent lifecycle stamp through the Command gateway. The first call on an existin
 {}
 ```
 
-## Change-list `startedAt` field
+## POST /changes/{name}/claim
 
-`GET /changes` list items carry an optional `startedAt` (camelCase) sourced from the change meta's `started_at`; an unstarted change omits the field. Consumers use it for stage derivation ("started ⇒ in-progress", with the completed-tasks fallback retained for tool-bypassing writes):
+Durable claim through the Command gateway. On a change nobody holds, the call writes `claimed_by` and `claimed_at` into the change meta with the caller's authenticated identity — the write commits with the unit of work, publishes `change-claimed`, and advances the scope revision, so the claim survives server restarts and shows on every device. A repeat call by the same identity is an idempotent success with zero writes. The response carries the holder:
 
 ```json
-{ "name": "demo", "status": "in-progress", "completedTasks": 0, "totalTasks": 15, "startedAt": "2026-07-30" }
+{ "claimedBy": "Demo <d@e.com>" }
+```
+
+A change someone else holds returns `409 refused` — the message names the current holder and the suggested action, and the meta stays untouched. There is no dedicated ownership reason on the wire; the conflict travels as `refused` inside the eight-value registry. The endpoint is editor-gated like the other write verbs: a reader gets `403` with no scope change, and an unknown change returns `404 not_found`. Local fs mode refuses the verb outright (remote-only), so this endpoint is the verb's only home.
+
+## Change-list meta fields
+
+`GET /changes` list items carry optional camelCase fields sourced from the change meta: `startedAt` (from `started_at`; an unstarted change omits it), `createdBy` and `created` (creation attribution), `fromDiscussions` (the source-discussion chain, omitted when empty), and `claimedBy` (from `claimed_by`, omitted while unclaimed). Consumers use `startedAt` for stage derivation ("started ⇒ in-progress", with the completed-tasks fallback retained for tool-bypassing writes):
+
+```json
+{ "name": "demo", "status": "in-progress", "completedTasks": 0, "totalTasks": 15, "startedAt": "2026-07-30", "createdBy": "Demo <d@e.com>", "created": "2026-07-29", "fromDiscussions": ["auth-scope"], "claimedBy": "Demo <d@e.com>" }
 ```
 
 ## `speclink list --json` — local-only `worktree` field
@@ -207,11 +217,15 @@ Silent lifecycle stamp through the Command gateway. The first call on an existin
 
 ## GET /changes/{name} — show-composition meta fields
 
-The single-change read also carries three optional fields that feed the CLI's remote `show` composition. `created` appears only when the meta holds the schema and created pair, which is the engine's report-as-one-unit rule. `fromDiscussions` and `deltaCapabilities` are both omitted when empty. An older server never sends them, and old clients ignore them.
+The single-change read also carries seven optional fields that feed the CLI's remote `show` composition and the desktop detail drawer. `created` appears only when the meta holds the schema and created pair, which is the engine's report-as-one-unit rule. `fromDiscussions` and `deltaCapabilities` are both omitted when empty. The attribution quartet `createdBy`, `createdWith`, `startedAt`, and `startedBy` mirrors the meta and is omitted field by field when the meta lacks it. `claimedBy` joins them, assembled from the meta's `claimed_by` and omitted while unclaimed. An older server never sends them, old clients ignore them, and a client never fabricates a default for an absent field.
 
 ```json
-{ "changeName": "demo", "schemaName": "spec-driven", "…": "…", "created": "2026-07-29", "fromDiscussions": ["auth-scope"], "deltaCapabilities": ["auth"] }
+{ "changeName": "demo", "schemaName": "spec-driven", "…": "…", "created": "2026-07-29", "fromDiscussions": ["auth-scope"], "deltaCapabilities": ["auth"], "createdBy": "Demo <d@e.com>", "createdWith": "claude-code", "startedAt": "2026-08-25T00:00:00Z", "startedBy": "Demo <d@e.com>", "claimedBy": "Demo <d@e.com>" }
 ```
+
+## GET /discussions — `promotedTo` field
+
+Discussion list items carry an optional `promotedTo` — the changes this discussion was promoted into, in frontmatter accumulation order. The server assembles it at the route edge from the engine's promoted-to query; the engine's discussion-list structure and the local `discuss list --json` output stay byte-identical. An empty list is omitted, and a lookup failure for a single discussion degrades to the field's absence rather than failing the listing.
 
 ## Capability declaration
 

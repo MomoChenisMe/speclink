@@ -56,13 +56,15 @@ Using Speclink alone in your own repo is already complete; sharing one spec cano
 
 The remote command-line path works. Tests cover `link`, `auth`, and the read-only Context Projection. Nearly every verb has a remote arm; the [Verb and Flag Contract](verb-contract.md) records the mode assignment. Server-side installation, accounts, membership, and backup and restore all work too.
 
-The desktop board points at remotes now: after signing in, the chooser picks a Project and Repo and offers either specs-only or a bound local checkout, and the board that opens browses changes, checks tasks, and reads and writes artifacts the way a local one does. The touched files a remote task check-off reports are stored too, and read back from the evidence endpoint.
+The desktop board points at remotes now: after signing in, the chooser picks a Project and Repo and offers either specs-only or a bound local checkout, and the board that opens browses changes, checks tasks, and reads and writes artifacts the way a local one does. It also shows change metadata (creator and start attribution) and capability lists straight from the server, and a discussion that was promoted into a change carries where it went. The touched files a remote task check-off reports are stored too, and read back from the evidence endpoint.
 
-Still unpaved: capability lists and change metadata are unsupported remotely, a discussion's `promotedTo` is filled with an empty list, offline and conflict handling are unfinished, and checking a task from the desktop remote board does not itself report touched files (only the CLI does), so that path still records no evidence.
+Claiming a change holds up now. `speclink claim` on a shared Store writes the claimant into the change's meta, so the claim survives restarts and shows up for every teammate; claiming a change someone else holds is refused with a 409 that names the holder. The desktop board shows who claimed each card, and the detail drawer offers the claim action itself (editor role and up).
+
+Still unpaved: checking a task from the desktop remote board does not itself report touched files (only the CLI does) — a deliberate stance for now, keeping the "no new dirty file, no record" semantics rather than faking evidence — and a claim has no release or takeover verb yet, so hitting someone else's claim always ends at the 409. Offline and conflict handling has left this list: disconnection gives a read-only snapshot that refuses writes until reconnect, the board already walks through version conflicts on settings, proposal reverts, deletes, and board order, and what remains (a task check or move hitting a stale version falls back to a plain error message) is small enough that no work is scheduled on it.
 
 **The observable next step**
 
-Check off a task on the desktop remote board and see which files it touched — the way checking one from the CLI already does. And: work done while disconnected has a clear destination, with conflicts you can choose between on reconnect.
+Check off a task on the desktop remote board and see which files it touched — the way checking one from the CLI already does. Further out: a way to release or take over a claim whose holder has moved on.
 
 ## Agent tool integration / Agent 工具整合
 

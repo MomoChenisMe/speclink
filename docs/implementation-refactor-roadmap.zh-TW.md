@@ -4,7 +4,10 @@
 >
 > 這份文件是 2026 年 7 月做的一次現況盤點與重構排序。之後的實際交付已經偏離它——例如本文的現況表把
 > `speclink-server` 記為「尚無存在」、把 production server 列為 Phase 1 之後才可動工，但 server 已經交付並發布；
-> §8 的驗證基線也停在當時。**不要以本文判斷任何能力是否已交付，也不要以本文的順序推論之後會做什麼。**
+> §8 的驗證基線也停在當時。又如本文把 `speclink-remote` 記為舊 REST v1 prototype——它已是正式的 typed protocol client；
+> §3 列為縫的命令旁路、remote policy 歸屬與遠端文件 materialize，以及 §5–7 待排的 drift 拆分、remote dev harness
+> 與 desktop workspace session，都已交付——桌面遠端已能真實寫入，含認領（claim）操作與認領人呈現。
+> **不要以本文判斷任何能力是否已交付，也不要以本文的順序推論之後會做什麼。**
 >
 > 現在的判準只有兩個：能力現況查 [`product-status.zh-TW.md`](product-status.zh-TW.md)，行為與邊界的正典是
 > `openspec/specs/` 底下的規格（含 `host-runtime`、`command-runtime`、`teamstore-contract`、`client-protocol`

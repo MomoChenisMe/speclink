@@ -4,6 +4,10 @@
 >
 > 這份文件描述 Speclink 從本地 SDD 工具擴展為可組合平台的目標架構，是當時做整體設計時的整合基準。
 > 之後的實作與規劃已經有所偏離，本文沒有隨之更新——**不要以本文判斷現在的行為、邊界或介面**。
+> 偏離的例子：官方發布形態現以 `npx @speclink/server`、Docker 與 Compose 為主、不發 native binary，
+> 開箱最短路徑與「第一位 Admin 自授 membership」見 Remote 入門教學（§13.1、§13.4 已過期）；
+> store driver 鍵是 `sqlite`／`serverfs`／`postgres`，Server FS 靠 flock、沒有啟動時能力探測（§4.3 與現況不符）；
+> §15.2 列為缺口的 capability 揭露與 §15.4 的認領（claim）都已交付——認領已持久化並有桌面遠端呈現。
 >
 > 現行的行為正典是 `openspec/specs/` 底下的規格（`host-runtime`、`command-runtime`、`teamstore-contract`、
 > `client-protocol`、`verb-contract`、`server-*` 等）；能力現況查

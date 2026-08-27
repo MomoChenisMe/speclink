@@ -17,21 +17,21 @@ npm install
 
 ## `npm run dev` — full dev environment / 整套開發環境
 
-- **用途**：一次啟動完整開發環境。它依序建置當前 checkout 的 CLI、建置 desktop 前端資產，然後同時啟動 `speclink-server` 與 desktop 的 tauri dev。
+- **用途**：一次啟動完整開發環境。它先建置當前 checkout 的 CLI，然後同時啟動 `speclink-server` 與 desktop 的 tauri dev；desktop 前端由 tauri dev 啟動的 Vite dev server 供應，改前端不需要重建。
 - **前置條件**：上述全部前置需求。設定來源是 repo root 的 `.env`，可對照 `.env.example`。沒有 `.env` 時全用預設值：sqlite、`.dev/store.db`、`127.0.0.1:8080`。
-- **預期可觀察結果**：終端先出現 `speclink dev: 建置當前 checkout 的 speclink-cli…` 與 `speclink dev: 建置當前前端資產…`。首次啟動時 server 印出一行含 `/setup?token=` 的連結，只顯示一次，開啟它完成初始設定。接著 desktop 視窗開啟。Ctrl+C 同時收束 server 與 desktop，無殘留 process。狀態持久化於 gitignored 的 `.dev/`。
+- **預期可觀察結果**：終端先出現 `speclink dev: 建置當前 checkout 的 speclink-cli…`。首次啟動時 server 印出一行含 `/setup?token=` 的連結，只顯示一次，開啟它完成初始設定。接著 desktop 視窗開啟。Ctrl+C 同時收束 server 與 desktop，無殘留 process。狀態持久化於 gitignored 的 `.dev/`。
 
 ## `npm run dev:server` — server only / 只跑後端
 
-- **用途**：只檢查 dev 設定並啟動 `speclink-server`，適合自架試用與純後端開發。它不建置 CLI、不建置前端，也不開 desktop 視窗。
+- **用途**：只檢查 dev 設定並啟動 `speclink-server`，適合在這個 checkout 內做純後端開發（checkout 之外要自架，最短路徑是 `npx @speclink/server`，見 [Remote 入門教學](remote-getting-started.zh-TW.md)）。它不建置 CLI、不建置前端，也不開 desktop 視窗。
 - **前置條件**：Rust toolchain 與 `npm install`。零設定即可啟動，預設走 sqlite。設定不合法時它以非零 exit code 拒絕啟動，錯誤訊息與 `npm run dev` 相同——例如 `SPECLINK_STORE_DRIVER=postgres` 但缺 `SPECLINK_POSTGRES_URL`。
 - **預期可觀察結果**：全新環境下，終端印出含 `/setup?token=` 的連結。過程中沒有任何建置步驟，也沒有 desktop 視窗。Ctrl+C 後無殘留 process，`.dev/` 的持久化行為與 `npm run dev` 一致。
 
 ## `npm run dev:desktop` — desktop only / 只跑桌面
 
-- **用途**：先建置 desktop 前端，由 vite 產出 `dist/`，再啟動 tauri dev。適合桌面開發與本地模式試用。它不啟動 server，也不要求任何 remote 設定。
+- **用途**：直接啟動 tauri dev。適合桌面開發與本地模式試用。前端由 Vite dev server 供應，改原始碼即時反映。它不啟動 server，也不要求任何 remote 設定。
 - **前置條件**：前置需求全項，含 Tauri 系統依賴。設定檢查與 `npm run dev` 共用。`.env` 不合法時，例如 postgres 缺 `SPECLINK_POSTGRES_URL`，它同樣以非零 exit code 拒絕啟動。
-- **預期可觀察結果**：終端先出現 `speclink dev: 建置當前前端資產…` 與 vite 建置輸出，完成後才開啟 desktop 視窗。視窗呈現的是本次原始碼建置出的畫面。tauri dev 載入靜態 `dist/`，所以每次啟動都重建，你不會看到過期畫面。前端建置失敗時，指令以非零 exit code 結束且不開視窗。視窗以本地模式運作，可直接瀏覽本 repo 的 `openspec/` 看板，機器上沒有 server 也能用。
+- **預期可觀察結果**：沒有前置建置步驟——tauri dev 啟動 Vite dev server 後開啟 desktop 視窗，畫面來自當前原始碼，改前端會就地重載，你不會看到過期畫面。前端 dev server 起不來時，指令以非零 exit code 結束且不開視窗。視窗以本地模式運作，可直接瀏覽本 repo 的 `openspec/` 看板，機器上沒有 server 也能用。
 
 ## `npm run dev:reset` — reset local dev state / 重置本機開發狀態
 

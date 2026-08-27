@@ -5,7 +5,7 @@
 
 本文件回答動詞層的契約。它涵蓋兩塊：CLI 動詞在本機與 remote 兩模式的歸屬與輸出規則，以及正典 `verb-contract` spec 指定的端點、payload 與錯誤形狀。
 
-端點那一塊目前涵蓋動詞補全（verb-parity）端點：validate、analyze、刪除變更、任務搬移、討論建立帶 slug、討論 discard、討論 link、討論 seal，以及變更開工標記。其餘動詞的契約仍以 canonical specs 為準：
+端點那一塊目前涵蓋動詞補全（verb-parity）端點：validate、analyze、刪除變更、任務搬移、討論建立帶 slug、討論 discard、討論 link、討論 seal、變更開工標記，以及變更認領。其餘動詞的契約仍以 canonical specs 為準：
 
 - [正典動詞契約](../openspec/specs/verb-contract/spec.md)
 - [Client Protocol spec](../openspec/specs/client-protocol/spec.md)
@@ -188,12 +188,22 @@ commit 發布 `discussion-linked`。錯誤：討論或 change 不存在時 `404 
 {}
 ```
 
-## 變更清單的 `startedAt` 欄位
+## POST /changes/{name}/claim
 
-`GET /changes` 清單項攜帶選填 `startedAt`（camelCase），值來自 change meta 的 `started_at`；未開工的 change 省略該欄位。消費端以其做欄位推導（「已開工即進行中」，完成數 fallback 保留以涵蓋繞過工具的寫入路徑）：
+經 Command gateway 的持久化認領。對沒有人持有的 change 呼叫時，它以呼叫者的認證身分把 `claimed_by` 與 `claimed_at` 寫進 change meta——寫入隨 unit of work 落盤、發布 `change-claimed`、scope revision 前進，所以認領跨 server 重啟仍在、每台裝置都看得到。同一身分重複呼叫是零寫入的冪等成功。回應攜帶持有人：
 
 ```json
-{ "name": "demo", "status": "in-progress", "completedTasks": 0, "totalTasks": 15, "startedAt": "2026-07-30" }
+{ "claimedBy": "Demo <d@e.com>" }
+```
+
+已被他人持有的 change 回 `409 refused`——message 寫明目前持有人與建議動作，meta 零改動。wire 上沒有專屬的 ownership reason；衝突以八值 registry 內既有的 `refused` 傳遞。本端點比照其他寫入動詞為 editor 限定：reader 收 `403` 且 scope 零改動，未知 change 回 `404 not_found`。本機 fs 模式對這個動詞直接拒絕（RemoteOnly），所以這個端點是它唯一的家。
+
+## 變更清單的 meta 欄位
+
+`GET /changes` 清單項攜帶多個選填的 camelCase 欄位，值來自 change meta：`startedAt`（來自 `started_at`；未開工省略）、`createdBy` 與 `created`（建立歸屬）、`fromDiscussions`（來源討論鏈，空清單省略）、`claimedBy`（來自 `claimed_by`，未認領省略）。消費端以 `startedAt` 做欄位推導（「已開工即進行中」，完成數 fallback 保留以涵蓋繞過工具的寫入路徑）：
+
+```json
+{ "name": "demo", "status": "in-progress", "completedTasks": 0, "totalTasks": 15, "startedAt": "2026-07-30", "createdBy": "Demo <d@e.com>", "created": "2026-07-29", "fromDiscussions": ["auth-scope"], "claimedBy": "Demo <d@e.com>" }
 ```
 
 ## `speclink list --json`——僅本機的 `worktree` 欄位
@@ -211,11 +221,15 @@ commit 發布 `discussion-linked`。錯誤：討論或 change 不存在時 `404 
 
 ## GET /changes/{name}——show 組合的 meta 欄位
 
-單 change 讀取另攜帶三個選填欄位，餵 CLI remote `show` 的讀取組合：`created`（僅 meta 的 schema+created 成對時出現——引擎的成對回報規則）、`fromDiscussions`、`deltaCapabilities`（空清單即省略）。舊 server 不送、舊 client 忽略。
+單 change 讀取另攜帶七個選填欄位，餵 CLI remote `show` 的讀取組合與桌面詳情抽屜：`created`（僅 meta 的 schema+created 成對時出現——引擎的成對回報規則）、`fromDiscussions`、`deltaCapabilities`（空清單即省略），以及歸屬四欄 `createdBy`、`createdWith`、`startedAt`、`startedBy`（逐欄映射 meta、缺席即省略）。`claimedBy` 也在其列，自 meta 的 `claimed_by` 組裝、未認領即省略。舊 server 不送、舊 client 忽略，client 對缺席欄位不偽造預設值。
 
 ```json
-{ "changeName": "demo", "schemaName": "spec-driven", "…": "…", "created": "2026-07-29", "fromDiscussions": ["auth-scope"], "deltaCapabilities": ["auth"] }
+{ "changeName": "demo", "schemaName": "spec-driven", "…": "…", "created": "2026-07-29", "fromDiscussions": ["auth-scope"], "deltaCapabilities": ["auth"], "createdBy": "Demo <d@e.com>", "createdWith": "claude-code", "startedAt": "2026-08-25T00:00:00Z", "startedBy": "Demo <d@e.com>", "claimedBy": "Demo <d@e.com>" }
 ```
+
+## GET /discussions——`promotedTo` 欄位
+
+討論列表的每筆項目可帶選填的 `promotedTo`——這則討論轉出成了哪些 change，順序沿 frontmatter 累加順序。它由 server 在 route 邊緣以引擎的 promoted-to 查詢函式組裝；引擎的討論列表結構與本機 `discuss list --json` 輸出維持逐位元不變。空清單即省略；單筆討論查詢失敗時以欄位缺席容錯，列表不失敗。
 
 ## capability 宣告
 
