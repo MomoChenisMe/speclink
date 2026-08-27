@@ -162,4 +162,9 @@ describe("createTauriDataSource", () => {
       nextId: "next-s",
     });
   });
+
+  it("本地後端不提供 claim（RemoteOnly 動詞不在本地偽造入口）", () => {
+    const ds = createTauriDataSource("/r");
+    expect(ds.claim).toBeUndefined();
+  });
 });

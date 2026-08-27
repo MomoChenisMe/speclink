@@ -16,7 +16,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::{Arc, Mutex, MutexGuard, Once};
 
-pub const DISPLAY: &str = "Dev <dev@example.com>";
+/// harness 使用者的顯示名。server 依 `Actor` 契約把它與 email 組成引擎面的
+/// 身分字串，蓋章比對看的是 [`ACTOR_IDENTITY`] 而不是這一個。
+pub const DISPLAY: &str = "Dev";
+
+/// harness 使用者在引擎面的身分字串：「顯示名 <email>」。created_by、
+/// started_by、claimed_by 等蓋章都寫這個值。
+pub const ACTOR_IDENTITY: &str = "Dev <dev@example.com>";
 
 /// 同一 test binary 內的 harness 互斥。多個 in-process loopback server 併行
 /// 且 CPU 吃緊時，macOS 核心偶發把回應中的連線整條重置——客端讀到一半收

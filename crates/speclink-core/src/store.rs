@@ -68,6 +68,14 @@ pub trait Store {
     /// existence before calling, so this is never a "not found" path.
     fn delete_change(&self, name: &str) -> Result<()>;
 
+    /// Whether this backend adjudicates ownership — the `claim` verb's
+    /// precondition. Ownership is a team-system concept: a single-writer
+    /// local checkout has nobody to coordinate with, so the plain fs store
+    /// keeps the default `false` and `claim` refuses there as it always has.
+    fn supports_ownership(&self) -> bool {
+        false
+    }
+
     // --- artifacts ---
 
     /// Artifact content, or None when it does not exist.

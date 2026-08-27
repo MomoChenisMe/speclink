@@ -120,6 +120,11 @@ export function createRemoteDataSource(
         startedBy: s.startedBy ?? null,
       };
     },
+    async claim(change: string): Promise<void> {
+      // 已被他人持有時 Rust 側原樣帶回 server 的 409 訊息（含持有人與建議
+      // 動作）——沿既有失敗 toast 呈現，這裡不加工。
+      await invoke("remote_claim", { ...locator, change });
+    },
     async deleteChange(change: string): Promise<void> {
       // archive-readiness-gating D2 翻案：force=false 與本地 discard 守門語意對齊
       // ——已開工 change 由 server 拒絕（需要強制），拒絕錯誤沿既有 deleteFailed

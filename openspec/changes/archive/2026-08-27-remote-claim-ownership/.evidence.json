@@ -1,0 +1,190 @@
+{
+  "version": 2,
+  "change": "remote-claim-ownership",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫紅測試：引擎單元測試斷言「認領標記欄位」requirement——（a）團隊模式 store 首次 Claim 寫 claimed_by／claimed_at、既有 meta 欄位逐字元保留、發布 change-claimed 且 revision 前進，（b）同人重複 Claim 冪等成功且零寫入零事件，（c）他人 Claim 被 ownership 衝突拒絕且 message 含持有人、meta 零改動，（d）fs store 拒絕文案與既有測試一致，（e）壞 meta fail-closed 拒絕且零寫入",
+      "files": [
+        "crates/speclink-core/src/command/mod.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 實作：change meta model 增 claimed_by／claimed_at 選填欄位（缺席即未認領、序列化不破壞既有欄位順序語意）；Command::Claim 依 store 能力分流——fs 維持既有拒絕、團隊模式執行 D3 的寫章／冪等／衝突語意，1.1 測試轉綠",
+      "files": [
+        "crates/speclink-core/src/model.rs",
+        "crates/speclink-core/src/store.rs",
+        "crates/speclink-core/src/teststore.rs",
+        "crates/speclink-host/src/bridge.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 先寫紅測試：server 整合測試斷言「claim 端點持久化與 ownership 衝突語意」requirement——（a）editor 認領成功後 GET /changes 與 GET /changes/{name} 的 claimedBy 皆為認領者且 server 重啟後仍在，（b）他人認領收 409、reason refused、message 含持有人與建議動作，（c）同人重複認領成功且零寫入，（d）reader 收 403、scope 零改動，（e）不存在的 change 回 404",
+      "files": [
+        "crates/speclink-server/tests/it/verb_api.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 實作：claim 路由移除回聲 stub、比照 in-progress 端點經 Command gateway 直通引擎；引擎 ownership 衝突以既有 Refused 碼經 error 映射層對應 409 refused（reason registry 零擴充）；清單與單 change 讀取組裝自 meta 填 claimedBy（未認領省略），2.1 測試轉綠",
+      "files": [
+        "crates/speclink-server/src/routes.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 補整合測試釘住 verb-contract 既有承諾「認領被搶佔」scenario：speclink claim 撞 409 refused 時 exit code 非 0、stderr 含目前持有人與建議動作（此路徑因 server 過去從不回 409 而測不到，本刀首次可驗證）",
+      "files": [
+        "crates/speclink-cli/tests/it/remote_write_path.rs",
+        "crates/speclink-server/tests/it/e2e_cli.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "4.1 先寫紅測試：src-tauri 整合測試斷言 handshake 後 RemoteCapabilities 的 claim 位依 role——editor true、reader false；前端測試斷言「認領操作與認領人呈現」requirement——remoteDataSource 的 claim 方法打 remote command、ChangeItem 攜帶 claimedBy、詳情抽屜對未認領 change 呈現認領操作（reader 停用附繁中說明）、看板卡片與抽屜呈現認領人、409 refused 呈現持有人與建議動作、本地分頁無認領面",
+      "files": [
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/__tests__/richDrawer.test.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.2 實作 Rust 側：Tauri command 曝露既有 RemoteWorkspace::claim、RemoteCapabilities 增 claim 位依 role 決定，4.1 的 src-tauri 測試轉綠",
+      "files": [
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.3 實作 TS／UI 側：adapter 介面與 remoteDataSource 增 claim 方法與 ChangeItem.claimedBy 映射；詳情抽屜認領按鈕與認領人列、看板卡片認領人標記（沿建立者頭像呈現慣例）；409 沿既有錯誤呈現路徑顯示持有人；本地 dataSource 不提供認領面，4.1 前端測試轉綠",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/helpers/remoteFixtures.ts",
+        "apps/desktop/src/__tests__/tauriDataSource.test.ts",
+        "apps/desktop/src/adapter/remoteDataSource.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/session.ts",
+        "apps/desktop/src/store.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/i18n.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M0XTKF6S24E4ZDKNPNW9HYRX",
+      "taskDesc": "1.1 先寫紅測試：引擎單元測試斷言「認領標記欄位」requirement——（a）團隊模式 store 首次 Claim 寫 claimed_by／claimed_at、既有 meta 欄位逐字元保留、發布 change-claimed 且 revision 前進，（b）同人重複 Claim 冪等成功且零寫入零事件，（c）他人 Claim 被 ownership 衝突拒絕且 message 含持有人、meta 零改動，（d）fs store 拒絕文案與既有測試一致，（e）壞 meta fail-closed 拒絕且零寫入",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4ed63dbcd75e71e58c94ae73abe6939d6585856a",
+      "touchedFiles": [
+        "crates/speclink-core/src/command/mod.rs"
+      ],
+      "recordedAt": "2026-08-26T07:03:45Z"
+    },
+    {
+      "taskId": "tsk_01M0XTKF6S9WGK781H2RDYVRF4",
+      "taskDesc": "1.2 實作：change meta model 增 claimed_by／claimed_at 選填欄位（缺席即未認領、序列化不破壞既有欄位順序語意）；Command::Claim 依 store 能力分流——fs 維持既有拒絕、團隊模式執行 D3 的寫章／冪等／衝突語意，1.1 測試轉綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4ed63dbcd75e71e58c94ae73abe6939d6585856a",
+      "touchedFiles": [
+        "crates/speclink-core/src/model.rs",
+        "crates/speclink-core/src/store.rs",
+        "crates/speclink-core/src/teststore.rs",
+        "crates/speclink-host/src/bridge.rs"
+      ],
+      "recordedAt": "2026-08-26T07:21:14Z"
+    },
+    {
+      "taskId": "tsk_01M0XTKF6S3SEKG992FJMW7K2X",
+      "taskDesc": "2.1 先寫紅測試：server 整合測試斷言「claim 端點持久化與 ownership 衝突語意」requirement——（a）editor 認領成功後 GET /changes 與 GET /changes/{name} 的 claimedBy 皆為認領者且 server 重啟後仍在，（b）他人認領收 409、reason refused、message 含持有人與建議動作，（c）同人重複認領成功且零寫入，（d）reader 收 403、scope 零改動，（e）不存在的 change 回 404",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4ed63dbcd75e71e58c94ae73abe6939d6585856a",
+      "touchedFiles": [
+        "crates/speclink-server/tests/it/verb_api.rs"
+      ],
+      "recordedAt": "2026-08-26T07:22:54Z"
+    },
+    {
+      "taskId": "tsk_01M0XTKF6SBEMMN9GW23N92ZFV",
+      "taskDesc": "2.2 實作：claim 路由移除回聲 stub、比照 in-progress 端點經 Command gateway 直通引擎；引擎 ownership 衝突以既有 Refused 碼經 error 映射層對應 409 refused（reason registry 零擴充）；清單與單 change 讀取組裝自 meta 填 claimedBy（未認領省略），2.1 測試轉綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4ed63dbcd75e71e58c94ae73abe6939d6585856a",
+      "touchedFiles": [
+        "crates/speclink-server/src/routes.rs"
+      ],
+      "recordedAt": "2026-08-26T07:32:11Z"
+    },
+    {
+      "taskId": "tsk_01M0XTKF6SM2HN3RFAJ6X0X5E6",
+      "taskDesc": "3.1 補整合測試釘住 verb-contract 既有承諾「認領被搶佔」scenario：speclink claim 撞 409 refused 時 exit code 非 0、stderr 含目前持有人與建議動作（此路徑因 server 過去從不回 409 而測不到，本刀首次可驗證）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4ed63dbcd75e71e58c94ae73abe6939d6585856a",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/remote_write_path.rs",
+        "crates/speclink-server/tests/it/e2e_cli.rs"
+      ],
+      "recordedAt": "2026-08-26T07:50:46Z"
+    },
+    {
+      "taskId": "tsk_01M0XTKF6S9WT673QXTPR5TCXN",
+      "taskDesc": "4.1 先寫紅測試：src-tauri 整合測試斷言 handshake 後 RemoteCapabilities 的 claim 位依 role——editor true、reader false；前端測試斷言「認領操作與認領人呈現」requirement——remoteDataSource 的 claim 方法打 remote command、ChangeItem 攜帶 claimedBy、詳情抽屜對未認領 change 呈現認領操作（reader 停用附繁中說明）、看板卡片與抽屜呈現認領人、409 refused 呈現持有人與建議動作、本地分頁無認領面",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4ed63dbcd75e71e58c94ae73abe6939d6585856a",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/__tests__/richDrawer.test.tsx"
+      ],
+      "recordedAt": "2026-08-26T07:56:58Z"
+    },
+    {
+      "taskId": "tsk_01M0XTKF6SNZ1BMJ8Y6GSJBKP5",
+      "taskDesc": "4.2 實作 Rust 側：Tauri command 曝露既有 RemoteWorkspace::claim、RemoteCapabilities 增 claim 位依 role 決定，4.1 的 src-tauri 測試轉綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4ed63dbcd75e71e58c94ae73abe6939d6585856a",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs"
+      ],
+      "recordedAt": "2026-08-26T07:59:09Z"
+    },
+    {
+      "taskId": "tsk_01M0XTKF6S4RJ9VADRM6G406MK",
+      "taskDesc": "4.3 實作 TS／UI 側：adapter 介面與 remoteDataSource 增 claim 方法與 ChangeItem.claimedBy 映射；詳情抽屜認領按鈕與認領人列、看板卡片認領人標記（沿建立者頭像呈現慣例）；409 沿既有錯誤呈現路徑顯示持有人；本地 dataSource 不提供認領面，4.1 前端測試轉綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4ed63dbcd75e71e58c94ae73abe6939d6585856a",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/helpers/remoteFixtures.ts",
+        "apps/desktop/src/__tests__/tauriDataSource.test.ts",
+        "apps/desktop/src/adapter/remoteDataSource.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/session.ts",
+        "apps/desktop/src/store.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-08-26T08:03:04Z"
+    }
+  ]
+}

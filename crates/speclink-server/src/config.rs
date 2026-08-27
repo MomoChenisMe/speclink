@@ -62,12 +62,14 @@ pub enum IdentityConfig {
     Memory,
 }
 
-/// The actor a request authenticates as: a stable id and the display identity
-/// recorded in history and events. Sourced from the PAT's owning user.
+/// The actor a request authenticates as: a stable id, the display name, and
+/// the account email the identity store keys on. Sourced from the PAT's owning
+/// user; the engine-facing identity string is composed from the last two.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActorConfig {
     pub id: String,
     pub display: String,
+    pub email: String,
 }
 
 /// Why loading the configuration failed. Every variant names the file so the

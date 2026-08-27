@@ -31,6 +31,12 @@ pub struct ChangeMeta {
     pub started_by: Option<String>,
     #[serde(default)]
     pub started_with: Option<String>,
+    /// 認領標記（`claim` 於團隊模式 store 蓋章；remote-claim-ownership D1）。
+    /// 與 started_* 同居 change meta：缺席即未認領，舊版讀者忽略。
+    #[serde(default)]
+    pub claimed_by: Option<String>,
+    #[serde(default)]
+    pub claimed_at: Option<String>,
     /// 看板欄內排序鍵（speclink 桌面延伸；desktop-card-reorder）。缺席＝未排序，
     /// 卡片置欄頂、回退現行排序。ChangeMeta 僅 Deserialize，CLI 輸出不受影響。
     #[serde(default)]

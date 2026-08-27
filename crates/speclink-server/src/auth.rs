@@ -58,7 +58,12 @@ impl Binding {
     pub fn execution_context(&self) -> SpeclinkExecutionContext {
         SpeclinkExecutionContext {
             actor: Actor::Identified {
-                display: self.actor.display.clone(),
+                // The Actor contract is git-config's identity shape,
+                // "Name <email>". A bare display name is not unique — the
+                // identity store keys on email — so stamping it alone would
+                // read two namesakes as the same person wherever a stamp is
+                // compared back, change ownership included.
+                display: format!("{} <{}>", self.actor.display, self.actor.email),
                 source: ActorSource::Explicit,
             },
             project: ProjectId::new(self.project.key.clone()),
@@ -192,6 +197,7 @@ impl FromRequestParts<AppState> for Binding {
         let actor = ActorConfig {
             id: user.id,
             display: user.display,
+            email: user.email,
         };
         let editor = role == MembershipRole::Editor;
         Ok(Binding {

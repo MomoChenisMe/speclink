@@ -233,6 +233,7 @@ pub async fn get_change(
         dto.created_with = meta.created_with;
         dto.started_at = meta.started_at;
         dto.started_by = meta.started_by;
+        dto.claimed_by = meta.claimed_by;
     }
     dto.delta_capabilities = delta_capabilities;
     Ok(ok(dto, &result.etag))
@@ -1357,30 +1358,28 @@ pub async fn task_undone(
     Ok(ok(dto, &result.etag))
 }
 
-/// `POST /changes/{name}/claim` — a minimal team-mode acknowledgment; durable
-/// ownership arrives with the auth/admin knife. Refuses on a missing change.
+/// `POST /changes/{name}/claim` — Command::Claim 直通（比照 in-progress）：首次
+/// 認領以呼叫者認證身分寫 claimed_at/claimed_by，同人重複認領為零寫入的冪等
+/// 成功，已被他人持有時引擎的 Refused 落成 409 refused 且訊息含持有人。寫入
+/// 動詞，editor 限定。
 pub async fn claim(
     State(state): State<AppState>,
     binding: Binding,
     Path((_key, name)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let meta = verb::read_doc(
-        &state,
-        &binding,
-        DocumentId::ChangeMeta {
-            change: name.clone(),
-        },
-    )
-    .await?;
-    if meta.is_none() {
-        return Err(ApiError::not_found(format!("Change '{name}' not found.")));
+    if !binding.editor {
+        return Err(ApiError::forbidden("reader memberships cannot claim changes"));
     }
-    let etag = verb::scope_etag(&state, &binding).await?;
+    let result = verb::run(&state, &binding, Command::Claim { name }).await?;
+    let outcome = match result.execution.outcome {
+        CommandOutcome::Claim(o) => o,
+        _ => return Err(wrong_outcome("claim")),
+    };
     let dto = ClaimResponse {
         lifecycle: None,
-        claimed_by: Some(binding.actor.display.clone()),
+        claimed_by: outcome.claimed_by,
     };
-    Ok(ok(dto, &etag))
+    Ok(ok(dto, &result.etag))
 }
 
 /// `POST /changes/{name}/archive[?carryReview=true]` 的查詢參數——旗標比照
@@ -1868,7 +1867,7 @@ fn change_summary(
         meta_error: change.meta_error,
         repo: None,
         lifecycle: None,
-        claimed_by: None,
+        claimed_by: meta.and_then(|m| m.claimed_by.clone()),
         started_at: meta.and_then(|m| m.started_at.clone()),
         created_by: meta.and_then(|m| m.created_by.clone()),
         created: meta.and_then(|m| m.created.clone()),

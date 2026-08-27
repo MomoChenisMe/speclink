@@ -33,6 +33,7 @@ export const REMOTE_CAPS: WorkspaceCapabilities = {
   promoteDiscussion: true,
   archiveDiscussion: true,
   reorderCard: false,
+  claim: true,
   policyWrite: true,
   liveUpdates: true,
 };
@@ -93,6 +94,7 @@ export function fakeRemoteDs(over: Partial<SpeclinkDataSource> = {}): SpeclinkDa
     promoteDiscussion: vi.fn().mockResolvedValue({ change: "chg" }),
     archiveDiscussion: vi.fn().mockResolvedValue(undefined),
     reorderCard: vi.fn(refuse),
+    claim: vi.fn().mockResolvedValue(undefined),
     ...over,
   } as unknown as SpeclinkDataSource;
 }

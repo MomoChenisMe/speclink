@@ -63,6 +63,7 @@ import type { CliInstallAdapter } from "./adapter/cliInstall";
 
 const FAILURE_TOAST_ID = "desktop-operation-failure";
 type FailureMessageKey =
+  | "store.claimFailed"
   | "store.deleteFailed"
   | "store.archiveFailed"
   | "store.archiveAfterDiscardFailed"
@@ -235,6 +236,8 @@ export interface AppState {
   requestDelete: (name: string) => void;
   confirmDelete: () => Promise<void>;
   cancelDelete: () => void;
+  /** 認領一個 change（RemoteOnly）；失敗以 toast 呈現 server 訊息。 */
+  claimChange: (name: string) => Promise<void>;
   requestRevert: (name: string) => void;
   confirmRevert: () => Promise<void>;
   cancelRevert: () => void;
@@ -1245,6 +1248,18 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       } finally {
         ticketSettling = false;
       }
+    },
+
+    async claimChange(name) {
+      const dataSource = activeDataSource();
+      if (!dataSource?.claim) return;
+      try {
+        await dataSource.claim(name);
+      } catch (e) {
+        // 已被他人持有時 server 的訊息帶持有人與建議動作——原樣入 toast 尾綴。
+        showFailureToast(name, "store.claimFailed", e);
+      }
+      await get().refresh();
     },
 
     requestDelete(name) {

@@ -110,6 +110,8 @@ export interface WorkspaceCapabilities {
   promoteDiscussion: boolean;
   archiveDiscussion: boolean;
   reorderCard: boolean;
+  /** 認領（RemoteOnly）：remote 依 membership role；local 固定為 false。 */
+  claim: boolean;
   /** remote membership 是否可寫 policy；local 固定為 true。 */
   policyWrite: boolean;
   /** server 是否宣告事件能力（SSE／polling）；缺席時退化為手動重整。 */
@@ -141,6 +143,8 @@ export const LOCAL_CAPABILITIES: WorkspaceCapabilities = {
   promoteDiscussion: true,
   archiveDiscussion: true,
   reorderCard: true,
+  // claim 是 RemoteOnly 動詞——本地沒有共用者可撞工，連停用的入口都不長。
+  claim: false,
   policyWrite: true,
   liveUpdates: true,
 };
@@ -335,6 +339,7 @@ const REMOTE_WRITE_CAPABILITIES: ReadonlyArray<keyof WorkspaceCapabilities> = [
   "promoteDiscussion",
   "archiveDiscussion",
   "reorderCard",
+  "claim",
   "policyWrite",
 ];
 
