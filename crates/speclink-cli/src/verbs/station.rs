@@ -231,10 +231,11 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
                         .collect(),
                 });
             let names = store.list_changes().into_iter().map(|c| c.name).collect();
+            let (touched_paths, other_claims) = fs_touched_claims(store, &change, names);
             let req = build_scope_request(
-                store,
                 change,
-                names,
+                touched_paths,
+                other_claims,
                 ticket,
                 base,
                 candidate_hash,
@@ -399,30 +400,19 @@ fn patch_hash_chain<'a>(
         _ => Vec::new(),
     }
 }
-/// `review scope` 的請求組裝（local／remote 共用）：touched 記錄與重疊認領都是
-/// host-local 事實，只有 change 清單與工單由各自的 store 提供。
+/// `review scope` 的請求組裝（local／remote 共用）：touched 認領與重疊認領由
+/// 兩臂各自的 evidence 來源算好帶進來，其餘欄位同形。
 #[allow(clippy::too_many_arguments)]
 fn build_scope_request(
-    store: &dyn Store,
     change: String,
-    other_change_names: Vec<String>,
+    touched_paths: Vec<String>,
+    other_claims: Vec<speclink_host::change_diff::ActiveClaim>,
     ticket: Option<speclink_host::change_diff::TicketBinding>,
     base: Option<String>,
     candidate_hash: Option<String>,
     include_hunks: Vec<String>,
     station: speclink_host::change_diff::StationNs,
 ) -> speclink_host::change_diff::ScopeRequest {
-    let touched_paths = core::tasks::TouchedRecord::load(store, &change).all_files();
-    // 其他 active change 的 host-local touched 認領（overlap 守門）。
-    let other_claims = other_change_names
-        .into_iter()
-        .filter(|name| *name != change)
-        .filter_map(|name| {
-            let paths = core::tasks::TouchedRecord::load(store, &name).all_files();
-            (!paths.is_empty())
-                .then_some(speclink_host::change_diff::ActiveClaim { change: name, paths })
-        })
-        .collect();
     speclink_host::change_diff::ScopeRequest {
         change,
         touched_paths,
@@ -433,6 +423,56 @@ fn build_scope_request(
         include_hunks,
         station,
     }
+}
+/// fs 模式的認領來源：本 change 與其他 active change 的 touched 都讀 host-local
+/// 的 evidence 記錄；記錄缺席＝零認領。
+fn fs_touched_claims(
+    store: &dyn Store,
+    change: &str,
+    other_change_names: Vec<String>,
+) -> (Vec<String>, Vec<speclink_host::change_diff::ActiveClaim>) {
+    let touched_paths = core::tasks::TouchedRecord::load(store, change).all_files();
+    let other_claims = other_change_names
+        .into_iter()
+        .filter(|name| name != change)
+        .filter_map(|name| {
+            let paths = core::tasks::TouchedRecord::load(store, &name).all_files();
+            (!paths.is_empty())
+                .then_some(speclink_host::change_diff::ActiveClaim { change: name, paths })
+        })
+        .collect();
+    (touched_paths, other_claims)
+}
+/// remote 模式的認領來源（design D1、D4）：本 change 與其他 active change 的
+/// touched 都經 typed client 讀 server 的 change evidence——remote 下本地沒有
+/// evidence 檔。任一讀取失敗即中止（design D6）：靜默降級成空認領會把連線
+/// 問題偽裝成 needsInput。空 entries 是正常狀態（從未記錄）＝零認領。
+fn remote_touched_claims(
+    ctx: &RemoteCtx,
+    change: &str,
+    other_change_names: &[String],
+) -> Result<(Vec<String>, Vec<speclink_host::change_diff::ActiveClaim>)> {
+    let touched_paths = evidence_touched_union(ctx.client.change_evidence(change)?);
+    let mut other_claims = Vec::new();
+    for name in other_change_names.iter().filter(|name| *name != change) {
+        let paths = evidence_touched_union(ctx.client.change_evidence(name)?);
+        if !paths.is_empty() {
+            other_claims
+                .push(speclink_host::change_diff::ActiveClaim { change: name.clone(), paths });
+        }
+    }
+    Ok((touched_paths, other_claims))
+}
+/// evidence entries 的 touched 聯集（design D2）：first-seen 順序去重，與 fs
+/// 模式 TouchedRecord::all_files 同語意；head commit 僅存證、不參與（design D3）。
+fn evidence_touched_union(resp: speclink_protocol::query::ChangeEvidenceResponse) -> Vec<String> {
+    let mut files = Vec::new();
+    for f in resp.entries.into_iter().flat_map(|e| e.touched_files) {
+        if !files.contains(&f) {
+            files.push(f);
+        }
+    }
+    files
 }
 /// scope 的解析與呈現（local／remote／兩站共用——resolved payload 逐位元同形的
 /// 唯一保證）。needsInput 印 JSON（--json 時）後以非零收場。
@@ -624,8 +664,8 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
     let noun = st.noun;
     match verb {
         StationVerb::Scope { change, json, base, candidate_hash, include_hunk } => {
-            // 同一 Host resolver：remote 只提供 active changes 與 ticket 事實，
-            // Git、baseline、touched、snapshot 全在本地 checkout。
+            // 同一 Host resolver：remote 提供 active changes、ticket 與 evidence
+            // 事實，Git、baseline、snapshot 全在本地 checkout。
             let changes = ctx.client.list_changes()?.changes;
             if !changes.iter().any(|c| c.name == change) {
                 anyhow::bail!("change not found: {change}");
@@ -644,15 +684,12 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
                         .collect(),
                 }
             });
-            let names = changes.into_iter().map(|c| c.name).collect();
-            // touched 認領同樣來自本地 checkout：remote 模式下 change 文件在
-            // server，但 scope 解析讀的是這台機器上的 evidence 記錄——沒有就是
-            // 空認領，與這條路徑一直以來的行為相同。
-            let local = speclink_fs::FsStore::new(&ws.root, &ws.spec_dir_name);
+            let names: Vec<String> = changes.into_iter().map(|c| c.name).collect();
+            let (touched_paths, other_claims) = remote_touched_claims(ctx, &change, &names)?;
             let req = build_scope_request(
-                &local,
                 change,
-                names,
+                touched_paths,
+                other_claims,
                 ticket,
                 base,
                 candidate_hash,
