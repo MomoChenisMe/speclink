@@ -498,6 +498,45 @@ describe("RichDetailDrawer", () => {
     expect(document.querySelector("[data-radix-popper-content-wrapper]")?.textContent).toContain("刪除變更");
   });
 
+  it("未認領的 change 呈現認領操作，點擊回呼帶 change 名（remote-claim-ownership D4）", async () => {
+    const props = makeProps({ onClaim: vi.fn() });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    fireEvent.click(screen.getByRole("button", { name: /認領/ }));
+    expect(props.onClaim).toHaveBeenCalledWith("desktop-shell-and-browser");
+  });
+
+  it("已認領的 change 呈現認領人、不再提供認領操作", async () => {
+    const props = makeProps({
+      change: { ...change, claimedBy: "Alice <a@example.com>" },
+      onClaim: vi.fn(),
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    expect(screen.getByText(/Alice/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /認領/ })).toBeNull();
+  });
+
+  it("onClaim 缺席時不渲染認領操作（本地分頁無認領面）", async () => {
+    render(<RichDetailDrawer {...(makeProps() as never)} />);
+    await screen.findByText("MomoChen");
+    expect(screen.queryByRole("button", { name: /認領/ })).toBeNull();
+  });
+
+  it("claim unavailable 停用認領鈕並附繁中說明（reader）", async () => {
+    const props = makeProps({
+      onClaim: vi.fn(),
+      unavailable: { claim: "此帳號為唯讀成員，無法認領變更" },
+    });
+    render(<RichDetailDrawer {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    const claim = screen.getByRole("button", { name: /認領/ }) as HTMLButtonElement;
+    expect(claim.disabled).toBe(true);
+    expect(claim.title).toContain("唯讀成員");
+    fireEvent.click(claim);
+    expect(props.onClaim).not.toHaveBeenCalled();
+  });
+
   it("onMoveTask 缺席時 TaskList 收到 onReorder undefined（把手整段停用）", async () => {
     taskListProps.length = 0;
     const props = makeProps({ onToggleTask: vi.fn(), onSetAllTasks: vi.fn() });

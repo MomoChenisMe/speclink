@@ -1397,6 +1397,22 @@ async fn remote_revert_change_to_proposed(
     .await
 }
 
+/// 認領一個 change（RemoteOnly）。已被他人持有時 server 回 409 refused，訊息
+/// 帶持有人與建議動作——原樣交前端，沿既有失敗呈現路徑。
+#[tauri::command]
+async fn remote_claim(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+) -> Result<(), String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        ws.claim(credentials, &change).map(|_| ()).map_err(|e| e.message)
+    })
+    .await
+}
+
 #[tauri::command]
 async fn remote_delete_change(
     app: tauri::AppHandle,
@@ -1751,6 +1767,7 @@ pub fn run() {
             remote_archive,
             remote_validate,
             remote_analyze,
+            remote_claim,
             remote_delete_change,
             remote_revert_change_to_proposed,
             remote_move_task,

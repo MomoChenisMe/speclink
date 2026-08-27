@@ -150,7 +150,8 @@ pub enum DomainEvent {
     },
     TaskUncompleted { change: String, task_id: String, occurred_at: chrono::DateTime<chrono::Utc> },
     TaskMoved { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
-    /// No fs-store success path today — the mapping is contract for the remote store.
+    /// Only stores that adjudicate ownership reach this — the fs store's
+    /// `claim` still refuses, so a local checkout never produces it.
     ChangeClaimed { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeMarkedInProgress { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeInProgressRemoved { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -486,6 +487,15 @@ pub struct TaskMoveOutcome {
     pub description: String,
 }
 
+/// `claim` outcome: the change and its owner after the call, plus whether THIS
+/// call stamped it (false for the same-actor idempotent pass — no event then).
+#[derive(Debug)]
+pub struct ClaimOutcome {
+    pub name: String,
+    pub claimed_by: Option<String>,
+    pub claimed: bool,
+}
+
 /// `in-progress add` outcome: whether this call stamped the marker (false for
 /// the idempotent/unknown-name silent successes — no event then).
 #[derive(Debug)]
@@ -592,6 +602,7 @@ pub enum CommandOutcome {
     TaskDone(TaskFlipOutcome),
     TaskUndone(TaskFlipOutcome),
     TaskMove(TaskMoveOutcome),
+    Claim(ClaimOutcome),
     InProgressAdd(InProgressOutcome),
     InProgressRemove(InProgressRemoveOutcome),
     Archive(crate::archive::ArchiveOutcome),
@@ -701,17 +712,7 @@ pub fn execute(
         Command::TaskMove { change, from, to, before } => {
             run_task_move(store, &change, from, to, before)
         }
-        Command::Claim { name } => {
-            // Fail-closed gate first: claiming a change whose metadata is
-            // corrupt must name the broken file, not the missing remote store.
-            if let Some(change) = crate::model::find_change(store, &name) {
-                guard_meta(&change)?;
-            }
-            Err(CommandError::new(
-                ErrorCode::Error,
-                "claim requires a remote store — this project uses the local fs store",
-            ))
-        }
+        Command::Claim { name } => run_claim(store, ctx.actor.as_deref(), &name),
         Command::InProgressAdd { name } => run_in_progress_add(store, ctx.actor.as_deref(), &name),
         Command::InProgressRemove { name } => run_in_progress_remove(store, &name),
         Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify } => run_archive(
@@ -868,6 +869,11 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         }],
         CommandOutcome::TaskMove(o) => vec![DomainEvent::TaskMoved {
             change: o.change.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::Claim(o) if !o.claimed => Vec::new(),
+        CommandOutcome::Claim(o) => vec![DomainEvent::ChangeClaimed {
+            change: o.name.clone(),
             occurred_at: at,
         }],
         CommandOutcome::InProgressAdd(o) if !o.stamped => Vec::new(),
@@ -1540,6 +1546,86 @@ fn run_task_move(
     Ok(CommandOutcome::TaskMove(TaskMoveOutcome {
         change: change.to_string(),
         description: o.description,
+    }))
+}
+
+/// `claim` — ownership adjudication, split on what the backend can do (design
+/// D2). A plain fs store has nobody to coordinate with and refuses with the
+/// frozen text; a team-mode store stamps `claimed_at` / `claimed_by` into the
+/// change metadata the same read-append-write way the started stamp does.
+fn run_claim(
+    store: &dyn Store,
+    actor: Option<&str>,
+    name: &str,
+) -> Result<CommandOutcome, CommandError> {
+    // Fail-closed gate first: claiming a change whose metadata is corrupt must
+    // name the broken file, not the missing remote store.
+    if let Some(change) = crate::model::find_change(store, name) {
+        guard_meta(&change)?;
+    }
+    if !store.supports_ownership() {
+        return Err(CommandError::new(
+            ErrorCode::Error,
+            "claim requires a remote store — this project uses the local fs store",
+        ));
+    }
+    let Some(mut meta) = store.read_change_meta(name) else {
+        return Err(CommandError::new(
+            ErrorCode::NotFound,
+            format!("Change '{name}' not found."),
+        ));
+    };
+    // An owner is the whole point of the verb: with nobody to record, a stamp
+    // would make the change unclaimable while naming no one to coordinate with.
+    let Some(actor) = actor else {
+        return Err(CommandError::new(
+            ErrorCode::Refused,
+            format!("cannot claim '{name}': no identity to record as its owner"),
+        ));
+    };
+    let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
+        classify(crate::model::MetaError { change: name.to_string(), reason }.into())
+    })?;
+    // The stamp is a pair: both fields are written together, so both are judged
+    // together. A meta carrying `claimed_at` alone is inconsistent — appending
+    // the pair again would leave a duplicate key and make the change
+    // permanently unparseable, so the half stamp refuses instead.
+    match (parsed.claimed_by, parsed.claimed_at) {
+        (Some(holder), _) if holder == actor => {
+            return Ok(CommandOutcome::Claim(ClaimOutcome {
+                name: name.to_string(),
+                claimed_by: Some(holder),
+                claimed: false,
+            }));
+        }
+        (Some(holder), _) => {
+            return Err(CommandError::new(
+                ErrorCode::Refused,
+                format!(
+                    "change '{name}' is already claimed by {holder} — coordinate with them, or ask them to release it"
+                ),
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(CommandError::new(
+                ErrorCode::Refused,
+                format!(
+                    "cannot claim '{name}': its metadata carries claimed_at with no claimed_by — restore or remove that line in openspec/changes/{name}/.openspec.yaml"
+                ),
+            ));
+        }
+        (None, None) => {}
+    }
+    if !meta.ends_with('\n') && !meta.is_empty() {
+        meta.push('\n');
+    }
+    meta.push_str(&format!("claimed_at: {}\n", crate::util::today()));
+    meta.push_str(&format!("claimed_by: {}\n", crate::util::yaml_scalar(actor)));
+    store.write_change_meta(name, &meta).map_err(classify)?;
+    Ok(CommandOutcome::Claim(ClaimOutcome {
+        name: name.to_string(),
+        claimed_by: Some(actor.to_string()),
+        claimed: true,
     }))
 }
 
@@ -2602,6 +2688,148 @@ mod tests {
             err.message,
             "claim requires a remote store — this project uses the local fs store"
         );
+    }
+
+    // --- claim:團隊模式 store 的認領語意(change-lifecycle「認領標記欄位」)---
+
+    /// 認領測試共用的既有 meta:含建立欄位與 board_rank,用來釘「既有欄位
+    /// 逐字元保留」。
+    const CLAIM_META: &str =
+        "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: Base Line <base@example.com>\nboard_rank: n\n";
+
+    fn claim_ctx(actor: &str) -> ExecutionContext {
+        ExecutionContext {
+            actor: Some(actor.to_string()),
+            workspace: Some(ghost_ws()),
+            ..Default::default()
+        }
+    }
+
+    fn claim(store: &TestStore, actor: &str) -> Result<(CommandOutcome, Vec<DomainEvent>), CommandError> {
+        execute(store, &claim_ctx(actor), Command::Claim { name: "demo".to_string() })
+    }
+
+    #[test]
+    fn first_claim_on_a_team_store_stamps_the_owner_and_reports_change_claimed() {
+        let store = TestStore::team_with_meta("demo", CLAIM_META);
+        let (outcome, events) = claim(&store, "Alice <a@example.com>").expect("first claim succeeds");
+
+        match &outcome {
+            CommandOutcome::Claim(o) => {
+                assert_eq!(o.name, "demo");
+                assert_eq!(o.claimed_by.as_deref(), Some("Alice <a@example.com>"));
+                assert!(o.claimed, "the first claim is the one that stamps");
+            }
+            other => panic!("expected a claim outcome, got {other:?}"),
+        }
+        assert_eq!(kinds(&events), ["change-claimed"]);
+
+        let meta = store.meta("demo");
+        assert!(
+            meta.starts_with(CLAIM_META),
+            "existing meta fields survive byte-for-byte: {meta}"
+        );
+        let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).expect("stamped meta parses");
+        assert_eq!(parsed.claimed_by.as_deref(), Some("Alice <a@example.com>"));
+        assert_eq!(parsed.claimed_at.as_deref(), Some(crate::util::today().as_str()));
+        assert_eq!(*store.meta_writes.borrow(), 1, "exactly one meta write");
+    }
+
+    #[test]
+    fn repeat_claim_by_the_same_actor_is_idempotent_with_no_write_and_no_event() {
+        let store = TestStore::team_with_meta("demo", CLAIM_META);
+        claim(&store, "Alice <a@example.com>").expect("first claim succeeds");
+        let first_stamp = store.meta("demo");
+
+        let (outcome, events) = claim(&store, "Alice <a@example.com>").expect("repeat claim succeeds");
+        match &outcome {
+            CommandOutcome::Claim(o) => {
+                assert_eq!(o.claimed_by.as_deref(), Some("Alice <a@example.com>"));
+                assert!(!o.claimed, "the repeat claim reports no new stamp");
+            }
+            other => panic!("expected a claim outcome, got {other:?}"),
+        }
+        assert!(events.is_empty(), "an idempotent pass states no mutation");
+        assert_eq!(store.meta("demo"), first_stamp, "the first stamp survives verbatim");
+        assert_eq!(*store.meta_writes.borrow(), 1, "no second meta write");
+    }
+
+    #[test]
+    fn claim_by_another_actor_is_refused_naming_the_holder_and_writes_nothing() {
+        let store = TestStore::team_with_meta("demo", CLAIM_META);
+        claim(&store, "Alice <a@example.com>").expect("first claim succeeds");
+        let held = store.meta("demo");
+
+        let err = claim(&store, "Bob <b@example.com>").expect_err("a held change refuses another claimant");
+        assert_eq!(err.code, ErrorCode::Refused);
+        assert!(
+            err.message.contains("Alice <a@example.com>"),
+            "the refusal must name the current holder: {}",
+            err.message
+        );
+        assert_eq!(store.meta("demo"), held, "the holder's stamp is untouched");
+        assert_eq!(*store.meta_writes.borrow(), 1, "the refused claim writes nothing");
+    }
+
+    /// 只剩 claimed_at 的 meta:目前沒有 release 動詞,人工「釋出」最直覺
+    /// 就是手刪 claimed_by 那一行。
+    const HALF_CLAIMED_META: &str =
+        "schema: spec-driven\ncreated: 2026-07-01\nclaimed_at: 2026-07-02\n";
+
+    #[test]
+    fn claim_on_a_half_stamped_meta_is_refused_instead_of_duplicating_the_key() {
+        // 認領章的兩個欄位一起寫,也必須一起判。半章 meta 若再追加一次,
+        // claimed_at 會成為重複鍵而讓這個 change 永久無法解析——寧可拒絕。
+        let store = TestStore::team_with_meta("demo", HALF_CLAIMED_META);
+        let err = claim(&store, "Alice <a@example.com>").expect_err("a half stamp refuses");
+        assert_eq!(err.code, ErrorCode::Refused);
+        assert_eq!(store.meta("demo"), HALF_CLAIMED_META, "meta byte-identical");
+        assert_eq!(*store.meta_writes.borrow(), 0, "no write on a refusal");
+        crate::model::ChangeMeta::from_text(Some(&store.meta("demo")))
+            .expect("the refused meta stays parseable");
+    }
+
+    #[test]
+    fn claim_on_a_team_store_with_corrupt_meta_fails_closed_without_writing() {
+        let store = TestStore::team_with_meta("demo", BAD_META);
+        let err = claim(&store, "Alice <a@example.com>").expect_err("corrupt meta refuses");
+        assert_eq!(err.code, ErrorCode::InvalidConfig);
+        assert!(
+            err.message.contains("openspec/changes/demo/.openspec.yaml"),
+            "the error must name the metadata file: {}",
+            err.message
+        );
+        assert_eq!(store.meta("demo"), BAD_META, "meta byte-identical");
+        assert_eq!(*store.meta_writes.borrow(), 0, "no write on a fail-closed refusal");
+    }
+
+    #[test]
+    fn claim_of_an_unknown_change_on_a_team_store_is_not_found() {
+        let store = TestStore::team_with_meta("demo", CLAIM_META);
+        let err = execute(
+            &store,
+            &claim_ctx("Alice <a@example.com>"),
+            Command::Claim { name: "ghost".to_string() },
+        )
+        .expect_err("an unknown change cannot be claimed");
+        assert_eq!(err.code, ErrorCode::NotFound);
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn claim_without_an_actor_is_refused_rather_than_stamping_an_anonymous_owner() {
+        // 認領是「誰在做」的宣告——無身分可歸屬時寧可拒絕,也不留一筆
+        // 沒有持有人的認領章(那會讓別人永遠撞衝突卻不知該找誰)。
+        let store = TestStore::team_with_meta("demo", CLAIM_META);
+        let err = execute(
+            &store,
+            &ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() },
+            Command::Claim { name: "demo".to_string() },
+        )
+        .expect_err("an anonymous caller cannot claim");
+        assert_eq!(err.code, ErrorCode::Refused);
+        assert_eq!(store.meta("demo"), CLAIM_META);
+        assert_eq!(*store.meta_writes.borrow(), 0);
     }
 
     #[test]

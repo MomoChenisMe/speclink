@@ -63,6 +63,23 @@ export function ChangeCard({
             <TooltipContent>{change.createdBy}</TooltipContent>
           </Tooltip>
         )}
+        {/* 認領人（remote-claim-ownership D4）：沿建立者頭像的同款圓標，位置
+            固定在其後——掃視看板時「誰在做」與「誰開的」讀成同一行。 */}
+        {change.claimedBy && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                aria-label={t("card.claimedBy").replace("{name}", change.claimedBy)}
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[9px] font-bold text-primary"
+              >
+                {change.claimedBy.charAt(0).toUpperCase()}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t("card.claimedBy").replace("{name}", change.claimedBy)}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {/* 審查章（spec「看板卡片的審查標示」）：行內小章＋tooltip 狀態詞，
             不加文字列維持卡片極簡；none 無任何審查元素。 */}
         {change.reviewStatus && change.reviewStatus !== "none" && (() => {

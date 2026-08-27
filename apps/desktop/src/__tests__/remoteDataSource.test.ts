@@ -22,7 +22,7 @@ const REPO = "backend";
 function fakeInvoke() {
   const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
   const results: Record<string, unknown> = {
-    remote_list_changes: { changes: [{ name: "chg", status: "in-progress", completedTasks: 1, totalTasks: 2, summary: "s" }] },
+    remote_list_changes: { changes: [{ name: "chg", status: "in-progress", completedTasks: 1, totalTasks: 2, summary: "s", claimedBy: "Alice <a@example.com>" }] },
     remote_list_specs: { specs: [{ id: "auth", path: "specs/auth/spec.md" }] },
     remote_list_archived: {
       archived: [
@@ -115,6 +115,7 @@ function fakeInvoke() {
     remote_move_task: null,
     remote_reorder_card: null,
     remote_revert_change_to_proposed: null,
+    remote_claim: { claimedBy: "Tester <t@example.com>" },
   };
   const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
     calls.push({ cmd, args });
@@ -151,6 +152,7 @@ function openInfo(): RemoteOpenInfo {
     archiveDiscussion: true,
     reorderCard: true,
     policyWrite: true,
+    claim: true,
     liveUpdates: true,
   };
   return {
@@ -173,6 +175,7 @@ function readerInfo(): RemoteOpenInfo {
       moveTask: false,
       reorderCard: false,
       policyWrite: false,
+      claim: false,
     },
   };
 }
@@ -288,6 +291,26 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
       prevId: "prev-card",
       nextId: "next-card",
     });
+  });
+
+  it("claim maps to remote_claim carrying the locator（remote-claim-ownership）", async () => {
+    const { calls, invoke } = fakeInvoke();
+    const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
+    await ds.claim!("chg");
+    const call = calls.find((c) => c.cmd === "remote_claim");
+    expect(call?.args).toMatchObject({
+      connectionId: CONN,
+      project: PROJECT,
+      repo: REPO,
+      change: "chg",
+    });
+  });
+
+  it("listChanges 帶出 claimedBy（認領人呈現的資料源）", async () => {
+    const { invoke } = fakeInvoke();
+    const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
+    const [first] = await ds.listChanges();
+    expect(first.claimedBy).toBe("Alice <a@example.com>");
   });
 
   it("returns server payloads in the UI shapes", async () => {
@@ -546,10 +569,12 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
     expect(fired).toBe(1);
   });
 
-  it("local sessions carry an all-true capability description（決策 2：同一 UI 路徑）", () => {
+  it("local sessions 除 RemoteOnly 的 claim 外全真（決策 2：同一 UI 路徑）", () => {
     const { invoke } = fakeInvoke();
     const session = createLocalSession("/proj/a", { invoke });
-    const caps = session.capabilities;
-    expect(Object.values(caps).every((on) => on === true)).toBe(true);
+    const { claim, ...rest } = session.capabilities;
+    expect(Object.values(rest).every((on) => on === true)).toBe(true);
+    // claim 是 RemoteOnly 動詞：本地沒有共用者可撞工，能力為假而非偽造為真。
+    expect(claim).toBe(false);
   });
 });

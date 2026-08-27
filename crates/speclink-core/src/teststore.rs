@@ -42,6 +42,10 @@ pub(crate) struct TestStore {
     /// lets archive tests probe the commit-phase write order (every snapshot
     /// must already be on disk when the first canonical write happens).
     pub fail_canonical_write: RefCell<Option<String>>,
+    /// Whether this double declares ownership adjudication (a team-mode
+    /// backend). Default `false` keeps every existing test on the fs-parity
+    /// path; `claim` tests flip it via [`TestStore::team_with_meta`].
+    pub ownership: bool,
 }
 
 impl TestStore {
@@ -49,6 +53,15 @@ impl TestStore {
         let store = TestStore::default();
         store.metas.borrow_mut().insert(name.to_string(), meta.to_string());
         store
+    }
+
+    /// A store that declares ownership adjudication — the `claim` verb's
+    /// team-mode path.
+    pub fn team_with_meta(name: &str, meta: &str) -> TestStore {
+        TestStore {
+            ownership: true,
+            ..TestStore::with_meta(name, meta)
+        }
     }
 
     pub fn meta(&self, name: &str) -> String {
@@ -92,6 +105,9 @@ fn change_from_meta(name: &str, meta_text: &str) -> Change {
 }
 
 impl Store for TestStore {
+    fn supports_ownership(&self) -> bool {
+        self.ownership
+    }
     fn list_changes(&self) -> Vec<Change> {
         let mut out: Vec<Change> = self
             .metas

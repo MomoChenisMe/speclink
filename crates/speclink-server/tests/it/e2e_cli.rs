@@ -195,13 +195,19 @@ fn agent() -> ureq::Agent {
     ureq::builder().redirects(0).build()
 }
 
-/// Run the `invite` subcommand against `config` and return the one-time token
-/// parsed from the printed URL.
+/// Run the `invite` subcommand against `config` for the default member and
+/// return the one-time token parsed from the printed URL.
 fn invite(config: &Path) -> String {
+    invite_as(config, EMAIL, DISPLAY)
+}
+
+/// [`invite`] for an arbitrary member — a second identity is what makes an
+/// ownership conflict reachable end to end.
+fn invite_as(config: &Path, email: &str, display: &str) -> String {
     let out = Command::new(server_bin())
         .arg("invite")
         .args(["--config", config.to_str().unwrap()])
-        .args(["--email", EMAIL, "--display", DISPLAY, "--project", "demo"])
+        .args(["--email", email, "--display", display, "--project", "demo"])
         .output()
         .expect("run invite subcommand");
     assert!(out.status.success(), "invite failed: {}", String::from_utf8_lossy(&out.stderr));
@@ -218,6 +224,11 @@ fn invite(config: &Path) -> String {
 /// Walk the web forms: accept the invitation, log in, create a PAT. Returns the
 /// PAT plaintext and the session cookie value (for the later revoke).
 fn create_pat_via_web(base: &str, token: &str) -> (String, String) {
+    create_pat_via_web_as(base, token, EMAIL)
+}
+
+/// [`create_pat_via_web`] for an arbitrary invitee email.
+fn create_pat_via_web_as(base: &str, token: &str, email: &str) -> (String, String) {
     let http = agent();
 
     // Accept the invitation (set the password) — creates the active user.
@@ -230,7 +241,7 @@ fn create_pat_via_web(base: &str, token: &str) -> (String, String) {
     // Log in.
     let login = http
         .post(&format!("{base}/api/speclink/v1/web/login"))
-        .send_json(serde_json::json!({ "email": EMAIL, "password": PASSWORD }))
+        .send_json(serde_json::json!({ "email": email, "password": PASSWORD }))
         .expect("login");
     assert_eq!(login.status(), 200, "login succeeds");
     let session = login
@@ -519,6 +530,25 @@ fn setup_flow_onboards_a_team_and_a_restart_closes_it() {
         "show reports the missing ticket: {}",
         String::from_utf8_lossy(&gone.stderr)
     );
+
+    // claim end to end (verb-contract「認領被搶佔」): the first claimant takes
+    // `demo`, a second member's CLI hits the engine's real ownership refusal —
+    // the path that was unreachable while the endpoint was an echo stub.
+    let claimed = run_cli(&remote, &["claim", "demo"], Some(&pat));
+    assert!(
+        claimed.status.success(),
+        "the first claim succeeds: {}",
+        String::from_utf8_lossy(&claimed.stderr)
+    );
+    let second_token = invite_as(&config, "second@example.com", "Second <second@example.com>");
+    let (second_pat, _) =
+        create_pat_via_web_as(&server.base(), &second_token, "second@example.com");
+    let preempted = run_cli(&remote, &["claim", "demo"], Some(&second_pat));
+    assert!(!preempted.status.success(), "a held change refuses the second claimant");
+    let stderr = String::from_utf8_lossy(&preempted.stderr);
+    assert!(stderr.contains(DISPLAY), "the refusal names the current holder: {stderr}");
+    assert!(stderr.contains("coordinate"), "the refusal states the next move: {stderr}");
+    assert!(!stderr.contains("409"), "no bare status code reaches the user: {stderr}");
 
     // Restart over the same database: /setup stays closed (no token printed, 404)
     // and the seeded data persists — the member's PAT still lists the change

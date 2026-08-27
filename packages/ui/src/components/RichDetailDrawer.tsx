@@ -6,6 +6,7 @@ import {
   Copy,
   FileText,
   GitBranch,
+  Hand,
   ListChecks,
   Maximize2,
   Minimize2,
@@ -52,6 +53,8 @@ export interface RichDetailDrawerProps {
   /** 收合分析結果（design D2：分析鈕再點、面板關閉鈕共用此路徑）。 */
   onClearVerb?: () => void;
   onDelete?: (change: string) => void;
+  /** 認領請求（RemoteOnly——本地後端不提供，未提供時不渲染認領面）。 */
+  onClaim?: (change: string) => void;
   /** 退回提案中請求（僅派生進行中呈現;app 端接確認流程;未提供時不渲染）。 */
   onRevert?: (change: string) => void;
   /** 勾選/取消任務並回寫 tasks.md；task 為 tsk_ stable ID（帶 ID 任務）或
@@ -80,6 +83,8 @@ export interface RichDetailDrawerProps {
     delete?: string;
     /** 任務勾選、批次與拖排。 */
     tasks?: string;
+    /** 認領變更。 */
+    claim?: string;
   };
 }
 
@@ -161,6 +166,7 @@ export function RichDetailDrawer({
   drawerVerb,
   onClearVerb,
   onDelete,
+  onClaim,
   onRevert,
   onToggleTask,
   onMoveTask,
@@ -454,6 +460,17 @@ export function RichDetailDrawer({
                     ⚒ {t("rdrawer.started").replace("{date}", meta.startedAt)}
                   </span>
                 ))}
+              {change.claimedBy && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex shrink-0 items-center gap-1">
+                      <Hand className="h-3 w-3" />
+                      {t("rdrawer.claimed").replace("{name}", displayName(change.claimedBy))}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{change.claimedBy}</TooltipContent>
+                </Tooltip>
+              )}
               {change.worktree && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -503,6 +520,23 @@ export function RichDetailDrawer({
               <div className="flex-1" />
               {/* 退回提案中（僅派生進行中;樣式沿動作列 outline 鈕）：點擊交宿主
                   先確認,UI 不預判守門。 */}
+              {/* 認領（remote-claim-ownership D4）：僅未認領的 change 提供入口
+                  ——已有持有人時出身列已寫明是誰，再擺一顆按鈕只會誘人去撞
+                  引擎的衝突拒絕。onClaim 缺席＝本地分頁，整段不渲染。 */}
+              {onClaim && !change.claimedBy && (
+                <UnavailableAction reason={unavailable?.claim}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={unavailable?.claim !== undefined}
+                    title={unavailable?.claim}
+                    className="h-7 gap-1"
+                    onClick={() => onClaim(change.name)}
+                  >
+                    <Hand className="h-3.5 w-3.5" /> {t("rdrawer.claim")}
+                  </Button>
+                </UnavailableAction>
+              )}
               {stage === "in-progress" && onRevert && (
                 <Button
                   variant="outline"

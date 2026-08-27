@@ -210,6 +210,8 @@ fn open_handshakes_and_returns_identity_and_capability_description() {
         // payload 既有欄位映射——資料已在 wire 上，capability 為真。
         ("changeMeta", caps.change_meta),
         ("changeCapabilities", caps.change_capabilities),
+        // remote-claim-ownership：editor handshake 的認領面為真。
+        ("claim", caps.claim),
     ] {
         assert!(on, "{name} 是直達／組合／payload 映射類，capability 應為真");
     }
@@ -541,7 +543,7 @@ fn task_flips_claim_and_archive_write_through() {
     let claim = ws.claim(&credentials, "demo").expect("claim");
     assert_eq!(
         claim.claimed_by.as_deref(),
-        Some(common::DISPLAY),
+        Some(common::ACTOR_IDENTITY),
         "claim 回實際 actor"
     );
 
@@ -721,4 +723,51 @@ fn unsupported_operations_are_refused_with_a_zh_tw_message() {
         "繁中說明缺口來自 server：{}",
         err.message
     );
+}
+
+// --- 認領：capability 位依 role（remote-workspace-data「認領操作與認領人呈現」）---
+
+#[test]
+fn claim_capability_follows_the_membership_role() {
+    let h = common::harness();
+    common::seed_change(h.store.as_ref(), FOUR_TASKS);
+
+    let (credentials, manager) = runtime(&h);
+    let (_, editor) =
+        remote::open_workspace(&h.origin, "demo", &manager, &credentials).expect("editor opens");
+    assert!(editor.capabilities.claim, "editor 可認領");
+
+    let invite = h
+        .identity
+        .create_invitation(NewInvitation {
+            email: "reader@example.com".to_string(),
+            display: "Reader".to_string(),
+            memberships: vec!["demo".to_string()],
+            admin: false,
+            expires_at: Utc::now() + Duration::days(1),
+        })
+        .expect("invite reader");
+    let reader_id = h
+        .identity
+        .accept_invitation(&invite, "pw-reader")
+        .expect("accept");
+    h.identity
+        .admin_set_membership(
+            &speclink_server::audit::AuditActor::system_cli(),
+            &reader_id,
+            "demo",
+            speclink_server::identity::MembershipRole::Reader,
+            true,
+        )
+        .expect("demote to reader");
+    let (_, reader_pat) = h.identity.create_pat(&reader_id, "test", None).expect("pat");
+    let reader_credentials = MemoryCredentialStore::new();
+    reader_credentials
+        .set(&h.origin, CredentialKind::Pat, &reader_pat)
+        .expect("set reader pat");
+    let reader_manager = Arc::new(TokenManager::new(&h.origin));
+    let (_, reader) =
+        remote::open_workspace(&h.origin, "demo", &reader_manager, &reader_credentials)
+            .expect("reader opens");
+    assert!(!reader.capabilities.claim, "reader 的認領面停用");
 }

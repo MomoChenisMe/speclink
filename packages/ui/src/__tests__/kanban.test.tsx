@@ -234,6 +234,19 @@ describe("KanbanBoard", () => {
     expect(within(anonCard).queryByLabelText(/@/)).toBeNull();
   });
 
+  it("已認領的變更卡顯示認領人標記，未認領的卡片不顯示（remote-claim-ownership D4）", () => {
+    const claimed: ChangeItem[] = [
+      { name: "held-a", status: "in-progress", totalTasks: 4, completedTasks: 1, claimedBy: "Alice <a@example.com>" },
+      { name: "free-b", status: "in-progress", totalTasks: 4, completedTasks: 1 },
+    ];
+    render(<KanbanBoard changes={claimed} />);
+    const heldCard = screen.getByText("held-a").closest("[data-change]") as HTMLElement;
+    const badge = within(heldCard).getByLabelText("已由 Alice <a@example.com> 認領");
+    expect(badge.textContent).toContain("A");
+    const freeCard = screen.getByText("free-b").closest("[data-change]") as HTMLElement;
+    expect(within(freeCard).queryByLabelText(/認領/)).toBeNull();
+  });
+
   it("關係指示（來自討論／待重新反映）改用主題化提示，不再帶原生 title（D3）", () => {
     const rel: ChangeItem[] = [
       { name: "rel-a", status: "in-progress", totalTasks: 4, completedTasks: 1, fromDiscussions: ["alpha"], restaleFrom: ["beta"] },

@@ -114,6 +114,7 @@ fn command_label(outcome: &CommandOutcome) -> String {
         CommandOutcome::NewArtifact(_) => "new-artifact",
         CommandOutcome::TaskDone(_) => "task-done",
         CommandOutcome::TaskUndone(_) => "task-undone",
+        CommandOutcome::Claim(_) => "claim",
         CommandOutcome::InProgressAdd(_) => "in-progress-add",
         CommandOutcome::InProgressRemove(_) => "in-progress-remove",
         CommandOutcome::Archive(_) => "archive",
@@ -272,6 +273,12 @@ fn spec_capability(artifact: &str) -> Option<String> {
 
 impl Store for BridgeStore {
     // --- changes ---
+
+    /// A TeamStore backs a shared project — ownership is exactly the concept
+    /// `claim` adjudicates, so the verb takes its team-mode path here.
+    fn supports_ownership(&self) -> bool {
+        true
+    }
 
     fn list_changes(&self) -> Vec<Change> {
         let mut out: Vec<Change> = self

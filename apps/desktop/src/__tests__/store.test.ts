@@ -2037,3 +2037,29 @@ describe("翻頁與載入中標記同批", () => {
     expect(store.getState().changes.map((c) => c.name)).toEqual(["landed-during-mount"]);
   });
 });
+
+describe("認領撞 ownership 衝突的呈現", () => {
+  // server 的 409 訊息本身就寫了「誰持有、該去找誰協調」——桌面端必須原樣
+  // 轉印。退化成單純「認領失敗」,等於把撞工當下唯一有用的資訊丟掉。
+  const HELD =
+    "change 'demo' is already claimed by Alice Chen <alice@example.com> — coordinate with them, or ask them to release it";
+
+  it("提示原樣帶出目前持有人與建議動作", async () => {
+    const claim = vi.fn().mockRejectedValue(new Error(HELD));
+    const store = storeWith(fakeDataSource({ claim }));
+    await store.getState().claimChange("desktop-shell-and-browser");
+
+    expect(claim).toHaveBeenCalledWith("desktop-shell-and-browser");
+    const [message] = toastError.mock.calls[0] as [string];
+    expect(message).toContain("Alice Chen <alice@example.com>");
+    expect(message).toContain("coordinate with them");
+  });
+
+  it("認領成功不出提示,且重新載入清單", async () => {
+    const ds = fakeDataSource({ claim: vi.fn().mockResolvedValue(undefined) });
+    const store = storeWith(ds);
+    await store.getState().claimChange("desktop-shell-and-browser");
+    expect(toastError).not.toHaveBeenCalled();
+    expect(ds.listChanges).toHaveBeenCalled();
+  });
+});

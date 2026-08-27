@@ -41,7 +41,10 @@ function fakeWorkspace() {
 }
 
 /** 以持久化 remote 分頁啟動 App：restoreTabs → activateTab → openRemote 重驗。 */
-function renderRemoteApp(ds: SpeclinkDataSource) {
+function renderRemoteApp(
+  ds: SpeclinkDataSource,
+  capsOver: Partial<import("../session").WorkspaceCapabilities> = {},
+) {
   localStorage.setItem(
     "speclink.projectTabs",
     JSON.stringify({
@@ -55,7 +58,10 @@ function renderRemoteApp(ds: SpeclinkDataSource) {
       activeKey: REMOTE_KEY,
     }),
   );
-  const openRemote = vi.fn(async (): Promise<WorkspaceSession> => fakeRemoteSession(ds));
+  const openRemote = vi.fn(async (): Promise<WorkspaceSession> => {
+    const session = fakeRemoteSession(ds);
+    return { ...session, capabilities: { ...session.capabilities, ...capsOver } };
+  });
   render(
     <App
       createSession={() => {
@@ -217,6 +223,34 @@ describe("remote 分頁的 capability 停用", () => {
   });
 });
 
+describe("認領面依 capability 與模式呈現（remote-claim-ownership）", () => {
+  it("editor 的 remote 抽屜提供可點的認領操作", async () => {
+    const claim = vi.fn().mockResolvedValue(undefined);
+    renderRemoteApp(fakeRemoteDs({ claim } as never));
+    await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
+    fireEvent.click(screen.getByText("remote-change"));
+    const button = (await screen.findByRole("button", { name: /認領/ })) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(claim).toHaveBeenCalledWith("remote-change"));
+  });
+
+  it("reader 的認領操作停用並附繁中角色說明", async () => {
+    const claim = vi.fn();
+    renderRemoteApp(
+      fakeRemoteDs({ claim } as never),
+      { claim: false },
+    );
+    await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
+    fireEvent.click(screen.getByText("remote-change"));
+    const button = (await screen.findByRole("button", { name: /認領/ })) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toMatch(/唯讀/);
+    fireEvent.click(button);
+    expect(claim).not.toHaveBeenCalled();
+  });
+});
+
 describe("本地分頁不受影響（迴歸）", () => {
   it("搜尋照常可用、分析與刪除照常可點", async () => {
     const ds = fakeRemoteDs({
@@ -227,7 +261,9 @@ describe("本地分頁不受影響（迴歸）", () => {
       listArchived: vi.fn().mockResolvedValue([]),
       changeCapabilities: vi.fn().mockResolvedValue([]),
       changeMeta: vi.fn().mockResolvedValue(null),
-    });
+      // 本地後端沒有 claim（RemoteOnly）——鏡射真實 tauriDataSource 的形狀。
+      claim: undefined,
+    } as never);
     renderLocalApp(ds);
     await waitFor(() => expect(screen.getByText("local-change")).toBeTruthy());
     const input = screen.getByPlaceholderText("搜尋看板卡片…") as HTMLInputElement;
@@ -238,6 +274,8 @@ describe("本地分頁不受影響（迴歸）", () => {
     expect(analyze.disabled).toBe(false);
     const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
     expect(del.disabled).toBe(false);
+    // claim 是 RemoteOnly 動詞——本地分頁連停用的入口都不長出來。
+    expect(screen.queryByRole("button", { name: /認領/ })).toBeNull();
     // 本地照常打 listArchived（capability 全真）。
     expect(ds.listArchived).toHaveBeenCalled();
   });

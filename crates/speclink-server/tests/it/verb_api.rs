@@ -26,6 +26,8 @@ const TASKS_TWO_GROUPS: &str =
 struct Fixture {
     base: String,
     store: Arc<MemoryStore>,
+    /// Kept live so a test can seed a third identity after the server started.
+    identity: speclink_server::state::SharedIdentity,
     editor_pat: String,
     reader_pat: String,
 }
@@ -68,7 +70,8 @@ fn fixture(tasks: Option<&str>) -> Fixture {
             true,
         )
         .expect("set reader role");
-    Fixture { base: common::start(state), store, editor_pat, reader_pat }
+    let identity = state.identity.clone();
+    Fixture { base: common::start(state), store, identity, editor_pat, reader_pat }
 }
 
 fn client(f: &Fixture, pat: &str) -> Client {
@@ -355,7 +358,7 @@ fn in_progress_first_stamp_writes_identity_publishes_event_and_advances_revision
     );
     assert!(meta.contains("started_at: "), "started_at stamped: {meta}");
     assert!(
-        meta.contains("started_by: Editor\n"),
+        meta.contains("started_by: Editor <editor@example.com>\n"),
         "started_by is the caller's authenticated identity: {meta}"
     );
     assert!(revision(&f) > before, "the stamp commit advances the scope revision");
@@ -518,4 +521,118 @@ fn handshake_capabilities_follow_the_membership_role() {
     assert_eq!(reader["capabilities"]["analyze"], true);
     assert_eq!(reader["capabilities"]["deleteChange"], false, "reader write verbs stay disabled");
     assert_eq!(reader["capabilities"]["moveTask"], false);
+}
+
+// --- 規格「claim 端點持久化與 ownership 衝突語意」---
+
+/// editor fixture 的引擎身分字串:server 依 Actor 契約以「顯示名 <email>」
+/// 組成,email 是 identity 唯一鍵,同名帳號因此不會被讀成同一人。
+const EDITOR_IDENTITY: &str = "Editor <editor@example.com>";
+
+/// 一台「重開機」的 server：同一個 store、全新的 AppState 與 identity。認領若
+/// 只活在程序記憶體，這裡就讀不回來。
+fn restart_over(f: &Fixture) -> (String, String) {
+    let state = common::state_with(f.store.clone() as Arc<dyn TeamStore + Send + Sync>);
+    let (pat, _) =
+        common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
+    (common::start(state), pat)
+}
+
+#[test]
+fn claim_persists_the_owner_into_both_read_paths_and_survives_a_restart() {
+    let f = fixture(None);
+    let editor = client(&f, &f.editor_pat);
+
+    let claimed = editor.claim("demo").expect("editor claims an unclaimed change");
+    assert_eq!(claimed.claimed_by.as_deref(), Some(EDITOR_IDENTITY));
+
+    let listed = editor.list_changes().expect("list changes");
+    let demo = listed.changes.iter().find(|c| c.name == "demo").expect("demo listed");
+    assert_eq!(
+        demo.claimed_by.as_deref(),
+        Some(EDITOR_IDENTITY),
+        "the list reads the owner from meta"
+    );
+    let status = editor.get_change("demo").expect("single change read");
+    assert_eq!(status.claimed_by.as_deref(), Some(EDITOR_IDENTITY));
+
+    let (base, pat) = restart_over(&f);
+    let after = Client::new(&format!("{base}/api/speclink/v1/projects/demo"), &pat, Some("backend"));
+    let listed = after.list_changes().expect("list after restart");
+    let demo = listed.changes.iter().find(|c| c.name == "demo").expect("demo listed");
+    assert_eq!(demo.claimed_by.as_deref(), Some(EDITOR_IDENTITY), "the claim outlives the process");
+}
+
+#[test]
+fn an_unclaimed_change_reports_no_owner() {
+    let f = fixture(None);
+    let editor = client(&f, &f.editor_pat);
+    let listed = editor.list_changes().expect("list changes");
+    let demo = listed.changes.iter().find(|c| c.name == "demo").expect("demo listed");
+    assert_eq!(demo.claimed_by, None, "an unclaimed change omits the field");
+    assert_eq!(editor.get_change("demo").expect("status").claimed_by, None);
+}
+
+#[test]
+fn a_second_claimant_is_refused_with_the_holder_named_and_nothing_written() {
+    let f = fixture(None);
+    client(&f, &f.editor_pat).claim("demo").expect("first claim");
+    let after_first = revision(&f);
+
+    let (other_pat, _) =
+        common::seed_named_pat(&f.identity, "other@example.com", "Other", &["demo"]);
+    let error = client(&f, &other_pat)
+        .claim("demo")
+        .expect_err("a held change refuses the second claimant");
+    assert_eq!(error.status, Some(409));
+    assert_eq!(error.reason.as_deref(), Some("refused"), "reason stays inside the closed registry");
+    assert!(error.message.contains("Editor"), "the refusal names the holder: {}", error.message);
+    assert_eq!(revision(&f), after_first, "a refused claim writes nothing");
+}
+
+#[test]
+fn a_namesake_with_a_different_account_is_refused_rather_than_read_as_the_holder() {
+    let f = fixture(None);
+    client(&f, &f.editor_pat).claim("demo").expect("first claim");
+    let after_first = revision(&f);
+
+    // display 不唯一——identity 只對 email 做 UNIQUE。同名的另一個帳號若被
+    // 讀成「同一人重複認領」,這個動詞要防的撞工正好從這裡漏過去。
+    let (namesake_pat, _) =
+        common::seed_named_pat(&f.identity, "editor2@example.com", "Editor", &["demo"]);
+    let error = client(&f, &namesake_pat)
+        .claim("demo")
+        .expect_err("a namesake is a different person, not the holder");
+    assert_eq!(error.status, Some(409));
+    assert_eq!(revision(&f), after_first, "the namesake's refused claim writes nothing");
+}
+
+#[test]
+fn repeat_claim_by_the_same_actor_succeeds_without_writing() {
+    let f = fixture(None);
+    let editor = client(&f, &f.editor_pat);
+    editor.claim("demo").expect("first claim");
+    let after_first = revision(&f);
+
+    let again = editor.claim("demo").expect("the same actor may re-claim");
+    assert_eq!(again.claimed_by.as_deref(), Some(EDITOR_IDENTITY));
+    assert_eq!(revision(&f), after_first, "an idempotent pass writes nothing");
+}
+
+#[test]
+fn reader_cannot_claim_and_an_unknown_change_is_not_found() {
+    let f = fixture(None);
+    let before = revision(&f);
+
+    let (status, error) =
+        protocol_error(request("POST", &f, &f.reader_pat, "changes/demo/claim").call());
+    assert_eq!(status, 403);
+    assert_eq!(error.reason, ErrorReason::PermissionDenied);
+
+    let (status, error) =
+        protocol_error(request("POST", &f, &f.editor_pat, "changes/ghost/claim").call());
+    assert_eq!(status, 404);
+    assert_eq!(error.reason, ErrorReason::NotFound);
+
+    assert_eq!(revision(&f), before, "neither refusal writes");
 }

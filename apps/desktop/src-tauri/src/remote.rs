@@ -1008,6 +1008,11 @@ pub struct RemoteCapabilities {
     // 缺席呈現（誠實降級，缺的是欄位而非能力）。
     pub change_meta: bool,
     pub change_capabilities: bool,
+    /// 認領（remote-claim-ownership D4）：RemoteOnly 動詞，依 handshake role
+    /// 呈現。wire 的 capability 宣告沒有專屬的 claim 位，而 editor 限定的寫入
+    /// 動詞共用同一道 role 閘門——沿 reorderCard 借 policyWrite 的既有作法，
+    /// 由 deleteChange 這個「本 membership 可寫 change」的宣告代讀角色。
+    pub claim: bool,
     /// 此 membership 是否可寫 workflow policy；server 仍是最終權限防線。
     pub policy_write: bool,
     /// handshake 宣告了事件能力（SSE transport 或 polling）——缺席時 UI 退化
@@ -1047,6 +1052,7 @@ impl RemoteCapabilities {
             reorder_card: binding.capabilities.policy_write,
             change_meta: true,
             change_capabilities: true,
+            claim: binding.capabilities.delete_change,
             policy_write: binding.capabilities.policy_write,
             live_updates,
         }

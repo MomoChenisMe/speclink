@@ -20,6 +20,8 @@ export interface ChangeItem {
   startedAt?: string | null;
   startedBy?: string | null;
   startedWith?: string | null;
+  /** 認領人（"Name <email>"）——RemoteOnly 的認領標記；null/缺席＝未認領。 */
+  claimedBy?: string | null;
   /** 建立者（"Name <email>"）——卡片首字母圓標頭像的資料源；缺席時省略。 */
   createdBy?: string | null;
   /** 建立日期（.openspec.yaml 的 created，YYYY-MM-DD）——建立時間篩選的資料源；缺席時省略。 */
@@ -270,6 +272,9 @@ export interface SpeclinkDataSource {
   changeCapabilities(change: string): Promise<string[]>;
   /** 取得 change 的 metadata（createdBy/createdWith/created）。無此 change 回 null。 */
   changeMeta(change: string): Promise<ChangeMetaInfo | null>;
+  /** 認領一個 change 防止撞工（RemoteOnly——本地後端不提供此方法，UI 因此
+   * 不長出認領面）。已被他人持有時 reject 附持有人與建議動作的單行訊息。 */
+  claim?(change: string): Promise<void>;
   /** 刪除一個 active change（破壞性；UI 需先確認）。 */
   deleteChange(change: string): Promise<void>;
   /** 把誤開工的變更退回提案中(移除 in-progress 標記;僅零工作痕跡可行;

@@ -735,6 +735,9 @@ function AppInner({
         drawerVerb={s.drawerVerb}
         onClearVerb={s.clearDrawerVerb}
         onDelete={s.requestDelete}
+        // 認領是 RemoteOnly：後端沒有這個方法（本地）就整段不接線，抽屜因此
+        // 連停用的入口都不長出來。
+        onClaim={dataSource?.claim ? s.claimChange : undefined}
         onRevert={s.requestRevert}
         unavailable={
           caps && {
@@ -744,6 +747,7 @@ function AppInner({
             delete: caps.deleteChange ? undefined : t("remote.deleteUnavailable"),
             tasks:
               caps.setTaskDone && caps.setAllTasks ? undefined : t("remote.writeUnavailable"),
+            claim: caps.claim ? undefined : t("remote.claimUnavailable"),
           }
         }
         onToggleTask={
