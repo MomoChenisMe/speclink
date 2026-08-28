@@ -12,4 +12,4 @@
 ## 3. 收尾
 
 - [x] 3.1 scripts 測試面全綠且改動面乾淨:node --test scripts/ 全數通過;git status 只含本變更預期的 5 個檔案(docs 4 檔 + scripts/docs-screenshots.mjs)與 change 目錄自身。 <!-- speclink-task:tsk_01M12Z7Z1XZP09H9ZF3F9VNXY2 -->
-- [ ] [M] 3.2 推送後在 GitHub Actions 確認 CI 的 build-and-smoke 三平台(ubuntu、windows、macos)全綠;macOS 若再因 index.crates.io DNS 解析失敗而紅,屬 runner 基建飄移,重跑該 job 即可,不回頭改碼。 <!-- speclink-task:tsk_01M12Z7Z1XM7480RFC40D5RXVY -->
+- [x] [M] 3.2 推送後在 GitHub Actions 確認 CI 的 build-and-smoke 三平台(ubuntu、windows、macos)全綠;macOS 若再因 index.crates.io DNS 解析失敗而紅,屬 runner 基建飄移,重跑該 job 即可,不回頭改碼。 <!-- speclink-task:tsk_01M12Z7Z1XM7480RFC40D5RXVY -->
