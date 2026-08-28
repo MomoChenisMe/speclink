@@ -1,0 +1,36 @@
+schema: spec-driven
+created: 2026-08-28
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+started_at: 2026-08-28
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-08-28
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 7
+reviewed_scope:
+  - path: docs/product-status.zh-TW.md
+    hash: fb23902c35a8648854f37e363cf8968d7dbf389ecb7a3868d9a68a13135bfa34
+  - path: docs/roadmap.zh-TW.md
+    hash: aa53f521fa7d61549cf9488be4e497c544c5b97d11a83b08b60aaac7b50eff6d
+  - path: docs/verb-contract.zh-TW.md
+    hash: 7a35ab00d641c0303f7678ac5d674e46926f7f1a45c51df5ac2720b2e9b20a6d
+  - path: docs/workflow.zh-TW.md
+    hash: 7562eb4fe8d9c55f2a65b0015ab225234b914356e2405ea16a7c9eddfc37ad77
+  - path: scripts/docs-screenshots.mjs
+    hash: 739c994def34a8e184663050403b7223c25eb7b2f09740efbd89824ff35e1f5a
+verified_at: 2026-08-28
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 7
+verified_scope:
+  - path: docs/product-status.zh-TW.md
+    hash: fb23902c35a8648854f37e363cf8968d7dbf389ecb7a3868d9a68a13135bfa34
+  - path: docs/roadmap.zh-TW.md
+    hash: aa53f521fa7d61549cf9488be4e497c544c5b97d11a83b08b60aaac7b50eff6d
+  - path: docs/verb-contract.zh-TW.md
+    hash: 7a35ab00d641c0303f7678ac5d674e46926f7f1a45c51df5ac2720b2e9b20a6d
+  - path: docs/workflow.zh-TW.md
+    hash: 7562eb4fe8d9c55f2a65b0015ab225234b914356e2405ea16a7c9eddfc37ad77
+  - path: scripts/docs-screenshots.mjs
+    hash: 739c994def34a8e184663050403b7223c25eb7b2f09740efbd89824ff35e1f5a

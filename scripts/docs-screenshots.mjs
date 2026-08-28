@@ -38,12 +38,12 @@ export function stateDirsFor({ home, platform }) {
     {
       key: 'app-config',
       label: '設定目錄（Server 連線清單）',
-      path: path.join(home, 'Library', 'Application Support', APP_IDENTIFIER),
+      path: path.posix.join(home, 'Library', 'Application Support', APP_IDENTIFIER),
     },
     {
       key: 'webview-data',
       label: 'WebView 資料目錄（workspace 分頁、介面偏好）',
-      path: path.join(home, 'Library', 'WebKit', APP_IDENTIFIER),
+      path: path.posix.join(home, 'Library', 'WebKit', APP_IDENTIFIER),
     },
   ];
 }
@@ -52,14 +52,14 @@ export function stateDirsFor({ home, platform }) {
 /// 或在重開機後消失，而備份沒還原就等於使用者的分頁與連線設定消失。
 export function pathsFor({ home, tmpdir }) {
   return {
-    backupRoot: path.join(home, '.speclink-docs-screenshots-backup'),
-    workspace: path.join(tmpdir, 'speclink-docs-screenshots-workspace'),
+    backupRoot: path.posix.join(home, '.speclink-docs-screenshots-backup'),
+    workspace: path.posix.join(tmpdir, 'speclink-docs-screenshots-workspace'),
   };
 }
 
 /// 備份清單的落點（--restore 靠它知道哪些目錄「原本就不存在」）。
 export function manifestPathIn(backupRoot) {
-  return path.join(backupRoot, 'manifest.json');
+  return path.posix.join(backupRoot, 'manifest.json');
 }
 
 /// 每個狀態目錄對應一個以 key 命名的備份落點——兩處的目錄名相同，用 basename
@@ -69,7 +69,7 @@ export function backupPlanFor({ stateDirs, backupRoot, exists }) {
     key: dir.key,
     label: dir.label,
     source: dir.path,
-    backup: path.join(backupRoot, dir.key),
+    backup: path.posix.join(backupRoot, dir.key),
     existed: exists(dir.path),
   }));
 }
