@@ -23,9 +23,9 @@ impl TempProject {
             .join(format!("speclink-cli-new-artifact-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        // macOS 的 temp dir 是 /var → /private/var 的 symlink——引擎輸出的是
-        // 正規化路徑，位元級比對前先對齊。
-        let dir = dir.canonicalize().unwrap();
+        // macOS 的 temp dir 是 /var → /private/var 的 symlink；Windows 的
+        // canonicalize 會加 \\?\ 前綴，跳過。
+        let dir = if cfg!(windows) { dir } else { dir.canonicalize().unwrap() };
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
         let change = dir.join("openspec").join("changes").join("demo");
         std::fs::create_dir_all(&change).unwrap();
