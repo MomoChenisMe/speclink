@@ -1,0 +1,66 @@
+{
+  "version": 2,
+  "change": "docs-vocab-and-posix-paths",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 把「抽屜」改為「詳情面板」共 5 處:docs/product-status.zh-TW.md(第 32、55 行附近各 1 處)、docs/roadmap.zh-TW.md(第 61、63 行附近各 1 處)、docs/verb-contract.zh-TW.md(第 224 行附近 1 處)。改詞後句子保持通順、語意不變,不重寫段落。驗證:對這 3 個檔案 grep「抽屜」零命中。",
+      "files": [
+        "docs/product-status.zh-TW.md",
+        "docs/roadmap.zh-TW.md",
+        "docs/verb-contract.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 把「追溯」改為「溯源」共 2 處:docs/workflow.zh-TW.md(第 70、76 行附近)。改詞後句子保持通順、語意不變。驗證:對 docs/workflow.zh-TW.md grep「追溯」零命中。",
+      "files": [
+        "docs/workflow.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 scripts/docs-screenshots.mjs 的純路徑推導函式 stateDirsFor、pathsFor、manifestPathIn、backupPlanFor 改用 path.posix.join 組路徑,推導結果在任何平台都是正斜線;不動真實搬移邏輯、demo workspace 建置與 CLI 呼叫。驗證:grep 確認這 4 個函式內不再有裸 path.join,且 node --test scripts/docs-screenshots.test.mjs 在本機(macOS)全綠。",
+      "files": [
+        "scripts/docs-screenshots.mjs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M12Z7Z1X3HH3BM68290HCB0F",
+      "taskDesc": "1.1 把「抽屜」改為「詳情面板」共 5 處:docs/product-status.zh-TW.md(第 32、55 行附近各 1 處)、docs/roadmap.zh-TW.md(第 61、63 行附近各 1 處)、docs/verb-contract.zh-TW.md(第 224 行附近 1 處)。改詞後句子保持通順、語意不變,不重寫段落。驗證:對這 3 個檔案 grep「抽屜」零命中。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f7fc5dab841ef95fcd253ad291712f6fc166392d",
+      "touchedFiles": [
+        "docs/product-status.zh-TW.md",
+        "docs/roadmap.zh-TW.md",
+        "docs/verb-contract.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-28T01:24:07Z"
+    },
+    {
+      "taskId": "tsk_01M12Z7Z1XYG1M93KS34PM0GZX",
+      "taskDesc": "1.2 把「追溯」改為「溯源」共 2 處:docs/workflow.zh-TW.md(第 70、76 行附近)。改詞後句子保持通順、語意不變。驗證:對 docs/workflow.zh-TW.md grep「追溯」零命中。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f7fc5dab841ef95fcd253ad291712f6fc166392d",
+      "touchedFiles": [
+        "docs/workflow.zh-TW.md"
+      ],
+      "recordedAt": "2026-08-28T01:24:22Z"
+    },
+    {
+      "taskId": "tsk_01M12Z7Z1XT8VQB3X6ZDBBTS20",
+      "taskDesc": "2.1 scripts/docs-screenshots.mjs 的純路徑推導函式 stateDirsFor、pathsFor、manifestPathIn、backupPlanFor 改用 path.posix.join 組路徑,推導結果在任何平台都是正斜線;不動真實搬移邏輯、demo workspace 建置與 CLI 呼叫。驗證:grep 確認這 4 個函式內不再有裸 path.join,且 node --test scripts/docs-screenshots.test.mjs 在本機(macOS)全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f7fc5dab841ef95fcd253ad291712f6fc166392d",
+      "touchedFiles": [
+        "scripts/docs-screenshots.mjs"
+      ],
+      "recordedAt": "2026-08-28T01:24:58Z"
+    }
+  ]
+}

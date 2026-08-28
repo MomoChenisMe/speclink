@@ -67,13 +67,13 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **Claude**：`/speclink-onboard [scope]`。
 - **Codex**：`$speclink-onboard [scope]`。
 - **CLI/Host**：沒有 `speclink onboard` 子指令。Agent 盤點後寫正典 specs，再以 `speclink validate --specs --all --strict` 檢查。
-- **Done / 完成**：能力邊界已由使用者確認，specs 有可追溯行為證據且 strict validation 通過。
+- **Done / 完成**：能力邊界已由使用者確認，specs 有可溯源的行為證據且 strict validation 通過。
 - **Next / 下一步**：新需求走 `propose`；模糊的新需求先 `discuss`。
 - **Recover / 恢復**：發現既有 spec 需修改時，不在 onboard 重寫，另開變更。
 
 ### discuss
 
-- **Purpose / 目的**：把需要取捨的問題逐輪收斂，保存可追溯結論。
+- **Purpose / 目的**：把需要取捨的問題逐輪收斂，保存可溯源的結論。
 - **Use / 使用**：需求模糊、設計有多個合理方向、需形成決策。
 - **Skip / 跳過**：只是理解問題且沒有裁決，或需求已明確可直接提案。
 - **Input / 輸入**：一個聚焦主題、目前 code／spec 背景與需要決定的問題。主題也可以是文件路徑（自寫計劃、plan mode 產出或任何可讀文件）——其主張會逐條對 codebase 分診。

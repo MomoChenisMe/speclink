@@ -221,7 +221,7 @@ commit 發布 `discussion-linked`。錯誤：討論或 change 不存在時 `404 
 
 ## GET /changes/{name}——show 組合的 meta 欄位
 
-單 change 讀取另攜帶七個選填欄位，餵 CLI remote `show` 的讀取組合與桌面詳情抽屜：`created`（僅 meta 的 schema+created 成對時出現——引擎的成對回報規則）、`fromDiscussions`、`deltaCapabilities`（空清單即省略），以及歸屬四欄 `createdBy`、`createdWith`、`startedAt`、`startedBy`（逐欄映射 meta、缺席即省略）。`claimedBy` 也在其列，自 meta 的 `claimed_by` 組裝、未認領即省略。舊 server 不送、舊 client 忽略，client 對缺席欄位不偽造預設值。
+單 change 讀取另攜帶七個選填欄位，餵 CLI remote `show` 的讀取組合與桌面詳情面板：`created`（僅 meta 的 schema+created 成對時出現——引擎的成對回報規則）、`fromDiscussions`、`deltaCapabilities`（空清單即省略），以及歸屬四欄 `createdBy`、`createdWith`、`startedAt`、`startedBy`（逐欄映射 meta、缺席即省略）。`claimedBy` 也在其列，自 meta 的 `claimed_by` 組裝、未認領即省略。舊 server 不送、舊 client 忽略，client 對缺席欄位不偽造預設值。
 
 ```json
 { "changeName": "demo", "schemaName": "spec-driven", "…": "…", "created": "2026-07-29", "fromDiscussions": ["auth-scope"], "deltaCapabilities": ["auth"], "createdBy": "Demo <d@e.com>", "createdWith": "claude-code", "startedAt": "2026-08-25T00:00:00Z", "startedBy": "Demo <d@e.com>", "claimedBy": "Demo <d@e.com>" }
