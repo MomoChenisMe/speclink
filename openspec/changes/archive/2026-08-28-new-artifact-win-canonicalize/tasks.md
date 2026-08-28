@@ -5,4 +5,4 @@
 
 ## 2. CI 確認
 
-- [ ] [M] 2.1 推送後在 GitHub Actions 確認 build-and-smoke (windows-latest) 的 Test (Rust workspace) 步驟綠、`new_artifact::a_canonical_capability_keeps_the_exact_success_output` 通過,且三平台 job 全綠。 <!-- speclink-task:tsk_01M132C0H2C53X86EH5Q4EX3TH -->
+- [x] [M] 2.1 推送後在 GitHub Actions 確認 build-and-smoke (windows-latest) 的 Test (Rust workspace) 步驟綠、`new_artifact::a_canonical_capability_keeps_the_exact_success_output` 通過,且三平台 job 全綠。 <!-- speclink-task:tsk_01M132C0H2C53X86EH5Q4EX3TH -->
