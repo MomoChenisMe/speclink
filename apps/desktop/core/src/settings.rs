@@ -1109,13 +1109,13 @@ mod tests {
         let project = snap.iter().find(|s| s.name == "my-flow").expect("project entry");
         assert_eq!(
             project.path.as_deref(),
-            fx.root().join("openspec/schemas/my-flow").to_str(),
+            fx.root().join("openspec").join("schemas").join("my-flow").to_str(),
             "專案層帶目錄絕對路徑"
         );
         let user = snap.iter().find(|s| s.name == "their-flow").expect("user entry");
         assert_eq!(
             user.path.as_deref(),
-            user_dir.join("schemas/their-flow").to_str(),
+            user_dir.join("schemas").join("their-flow").to_str(),
             "user 層路徑由快照組裝端解析"
         );
         // camelCase serialize（橋接 payload 慣例）。

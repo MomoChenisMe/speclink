@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "change": "schemas-snapshot-win-path",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 apps/desktop/core/src/settings.rs 的 `schemas_snapshot_carries_the_disk_path_for_file_backed_layers` 兩處期望值改逐段 join(`.join(\"openspec\").join(\"schemas\").join(\"my-flow\")` 與 `.join(\"schemas\").join(\"their-flow\")`),使期望值與 `schemas_snapshot` 的原生路徑輸出同底、兩平台可逐位元比對。驗證:grep 確認該測試內不再有嵌正斜線的多段 join,且 macOS 本機 `cargo test -p speclink-desktop-core settings::` 全綠。",
+      "files": [
+        "apps/desktop/core/src/settings.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M134W35199VHFG2DZFJ8MXKC",
+      "taskDesc": "1.1 apps/desktop/core/src/settings.rs 的 `schemas_snapshot_carries_the_disk_path_for_file_backed_layers` 兩處期望值改逐段 join(`.join(\"openspec\").join(\"schemas\").join(\"my-flow\")` 與 `.join(\"schemas\").join(\"their-flow\")`),使期望值與 `schemas_snapshot` 的原生路徑輸出同底、兩平台可逐位元比對。驗證:grep 確認該測試內不再有嵌正斜線的多段 join,且 macOS 本機 `cargo test -p speclink-desktop-core settings::` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "24655cc58ccf1edeea80dbd09be30daddb8dc62a",
+      "touchedFiles": [
+        "apps/desktop/core/src/settings.rs"
+      ],
+      "recordedAt": "2026-08-28T02:59:42Z"
+    }
+  ]
+}
