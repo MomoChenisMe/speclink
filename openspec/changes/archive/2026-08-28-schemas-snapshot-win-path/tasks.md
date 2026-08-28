@@ -5,4 +5,4 @@
 
 ## 2. CI 確認
 
-- [ ] [M] 2.1 推送後在 GitHub Actions 確認 build-and-smoke (windows-latest) 的 Test (Rust workspace) 步驟走完後段全部 binary 且綠、三平台 job 全綠。 <!-- speclink-task:tsk_01M134W351Y8HDSTE0EK09BRKC -->
+- [x] [M] 2.1 推送後在 GitHub Actions 確認 build-and-smoke (windows-latest) 的 Test (Rust workspace) 步驟走完後段全部 binary 且綠、三平台 job 全綠。 <!-- speclink-task:tsk_01M134W351Y8HDSTE0EK09BRKC -->
