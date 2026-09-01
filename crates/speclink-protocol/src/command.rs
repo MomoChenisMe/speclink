@@ -294,12 +294,16 @@ pub struct ConcludeDiscussionRequest {
 /// `POST /discussions/{slug}/conclude` response. A re-conclude flags the
 /// discussion's already-reflected changes as stale; the empty list is the
 /// ordinary case and reads the same as an old server's silence, so no
-/// sentinel is needed.
+/// sentinel is needed. `autoArchived` appears only when the closing step
+/// archived the record (its spun-out changes were all archived); its absence
+/// reads the same as an old server's silence.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConcludeDiscussionResponse {
     #[serde(default)]
     pub restale_flagged: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub auto_archived: bool,
 }
 
 /// `POST /discussions/{slug}/archive` response.

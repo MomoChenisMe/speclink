@@ -15,6 +15,7 @@ import type { ArchivedItem, ChangeItem, DiscussionItem, SearchHit } from "../ada
 import { cardDndId } from "../boardDnd";
 import { useI18n } from "../i18n";
 import { changeStage, STAGE_BADGE } from "../stage";
+import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import { Button } from "./ui/button";
 import { ColumnLoadFailed, ColumnSkeleton } from "./skeletons";
 import { Card, CardContent, CardHeader } from "./ui/card";
@@ -85,7 +86,24 @@ export interface DiscussionColumnProps {
 const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
   open: { labelKey: "discussion.statusOpen", cls: "bg-primary/8 text-primary/70" },
   concluded: { labelKey: "discussion.statusConcluded", cls: "bg-primary/12 text-primary" },
+  // 上區只會出現「已轉出但尚無結論」的 promoted 卡（已有結論者收進欄底收合列），
+  // 故 promoted 態的全卡標示即「已轉出・尚無結論」；warning 語意色沿 tone.ts 單一來源。
+  promoted: {
+    labelKey: "discussion.statusPromotedUnconcluded",
+    cls: `${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}`,
+  },
 };
+
+/**
+ * 收合列判準（conclusion-gated-discussion-archive）：討論的生命由結論決定——
+ * promoted 且 concluded 為 true 才收進欄底「已轉出」收合列；concluded 為 false
+ * 留上區全卡。concluded 缺席（舊 server）退回既有「promoted 一律收合」，
+ * 避免把已有結論的討論誤標成尚無結論。KanbanBoard 的拖排落點清單共用此判準——
+ * 上區卡集與可拖集必須恆等，否則落點解析吞手勢。
+ */
+export function isCollapsedPromoted(d: DiscussionItem): boolean {
+  return d.status === "promoted" && d.concluded !== false;
+}
 
 export function DiscussionCard({
   d,
@@ -292,8 +310,8 @@ export function DiscussionColumn({
   loadFailed,
 }: DiscussionColumnProps) {
   const { t } = useI18n();
-  const full = discussions.filter((d) => d.status !== "promoted");
-  const promoted = discussions.filter((d) => d.status === "promoted");
+  const full = discussions.filter((d) => !isCollapsedPromoted(d));
+  const promoted = discussions.filter(isCollapsedPromoted);
   // D3：欄底收合列的展開狀態——元件 local、預設收合、不跨啟動持久化。
   const [promotedOpen, setPromotedOpen] = useState(false);
   const hitBySlug = new Map(

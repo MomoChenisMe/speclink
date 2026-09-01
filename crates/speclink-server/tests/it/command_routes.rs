@@ -147,6 +147,45 @@ fn conclude_reports_the_restale_flagged_changes_over_the_wire() {
         ["add-auth"],
         "the re-conclude names the in-flight derived change"
     );
+    assert!(!resp.auto_archived, "an in-flight derived change blocks the closing step");
+}
+
+#[test]
+fn conclude_backfills_auto_archived_over_the_wire() {
+    // spec server-verb-api「討論結論端點回填順手封存事實」：promoted_to 非空且
+    // 無在途變更引用 → 回應含 autoArchived: true，討論自 live 清單消失。
+    let store = Arc::new(MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed-auto-archive".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::Discussion { slug: "done-talk".into(), archived: false },
+        "---\ntopic: Done talk\nslug: done-talk\nstatus: promoted\npromoted_to: shipped-change\ncreated: 2026-07-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
+
+    let resp = client
+        .discussion_conclude("done-talk", "**Decision**: done\n")
+        .expect("conclude over the wire");
+    assert!(resp.auto_archived, "the closing step is reported over the wire");
+
+    let listed = client.list_discussions(false).expect("list live discussions");
+    assert!(
+        listed.discussions.iter().all(|d| d.slug != "done-talk"),
+        "the record left the live list"
+    );
+    let archived = client.list_discussions(true).expect("list archived discussions");
+    assert!(
+        archived.discussions.iter().any(|d| d.slug == "done-talk"),
+        "the record landed in the archived list"
+    );
 }
 
 #[test]

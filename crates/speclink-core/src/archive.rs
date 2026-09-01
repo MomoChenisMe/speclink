@@ -730,8 +730,10 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     }
 
     // A change promoted from (or linked to) a discussion carries its record along into the
-    // archive — but only the last change to reference it: a discussion can fan out into
-    // several changes, and siblings still in flight need the record to stay live. Each source
+    // archive — but only the last change to reference it, and only once the discussion has a
+    // written conclusion: a discussion can fan out into several changes (siblings still in
+    // flight need the record to stay live), and a record still being discussed must not be
+    // swept — its life ends with its conclusion, not with the spin-out. Each source
     // discussion is judged independently (`from_discussion` is a comma accumulator). (This
     // change was already moved above, so it no longer shows up in list_changes.)
     let archived_discussions: Vec<(String, String)> = change
@@ -742,7 +744,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
             let still_referenced = model::list_changes(store)
                 .iter()
                 .any(|c| c.meta.from_discussions().iter().any(|s| *s == slug));
-            if still_referenced {
+            if still_referenced || !crate::discuss::discussion_concluded(store, &slug) {
                 return None;
             }
             crate::discuss::archive_discussion(store, &slug)
@@ -1237,6 +1239,30 @@ mod tests {
         assert!(store.archived_discussion_exists("d1"));
         assert!(!store.archived_discussion_exists("d2"), "d2 stays live — still referenced");
         assert!(store.live_discussion_exists("d2"));
+    }
+
+    #[test]
+    fn archive_leaves_unconcluded_discussion_live() {
+        // 未結論（Conclusion 仍為佔位註解）的來源討論不隨變更封存，維持在途。
+        let store = TestStore::with_meta(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: pending\n",
+        );
+        store.put_artifact("cut", "tasks.md", "- [x] 1.1 done\n");
+        store.discussions.borrow_mut().insert(
+            "pending".into(),
+            "---\ntopic: pending\nslug: pending\nstatus: promoted\npromoted_to: cut\ncreated: 2026-07-01\n---\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n".into(),
+        );
+        let change = crate::model::find_change(&store, "cut").unwrap();
+
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
+
+        assert!(
+            outcome.archived_discussions.is_empty(),
+            "unconcluded discussion must not co-archive"
+        );
+        assert!(store.live_discussion_exists("pending"), "record stays live");
+        assert!(!store.archived_discussion_exists("pending"));
     }
 
     #[test]

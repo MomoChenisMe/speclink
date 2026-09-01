@@ -130,6 +130,52 @@ fn list_discussions_carries_promoted_to_for_promoted_ones() {
 }
 
 #[test]
+fn list_discussions_carries_concluded_for_every_record() {
+    // conclusion-gated-discussion-archive「討論列表回應攜帶 concluded」：route
+    // 邊緣以引擎結論查詢恆填 true／false（佔位註解不算內文）。
+    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::Discussion { slug: "settled".into(), archived: false },
+        "---\ntopic: Settled\nslug: settled\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\n---\n\n## Conclusion\n\n**Decision**: ship\n",
+    );
+    uow.create(
+        DocumentId::Discussion { slug: "still-open".into(), archived: false },
+        "---\ntopic: Still open\nslug: still-open\nstatus: promoted\npromoted_to: cut-b\ncreated: 2026-07-02\n---\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = common::state_with(store);
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+
+    let listed = client(&base, &pat).list_discussions(false).expect("list discussions");
+    let settled = listed.discussions.iter().find(|d| d.slug == "settled").expect("settled listed");
+    assert_eq!(settled.concluded, Some(true));
+    let open = listed.discussions.iter().find(|d| d.slug == "still-open").expect("open listed");
+    assert_eq!(open.concluded, Some(false), "a placeholder conclusion reads as not concluded");
+
+    // camelCase 走 raw wire 斷言：兩筆皆恆填。
+    let body: Value = ureq::get(&format!("{base}/api/speclink/v1/projects/demo/discussions"))
+        .set("Authorization", &format!("Bearer {pat}"))
+        .set("X-Speclink-Api-Version", speclink_protocol::API_VERSION)
+        .set("X-Speclink-Repo", "backend")
+        .call()
+        .expect("GET /discussions")
+        .into_json()
+        .expect("JSON body");
+    let items = body["discussions"].as_array().expect("discussions array");
+    let settled_item = items.iter().find(|d| d["slug"] == "settled").expect("settled item");
+    assert_eq!(settled_item["concluded"], json!(true));
+    let open_item = items.iter().find(|d| d["slug"] == "still-open").expect("open item");
+    assert_eq!(open_item["concluded"], json!(false));
+}
+
+#[test]
 fn promote_returns_the_change_and_lands_both_events() {
     let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
     let state = common::state_with(store.clone());

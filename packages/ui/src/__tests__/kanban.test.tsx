@@ -532,6 +532,32 @@ describe("封存落點浮層（design D8 + archive-readiness-gating D3）", () =
     expect(document.querySelector('[data-column="archived"]')).toBeTruthy();
   });
 
+  it("未結論的 promoted 討論卡在上區可拖排（落點清單與欄分區同判準）", () => {
+    // conclusion-gated-discussion-archive R1：concluded === false 的 promoted 卡
+    // 進上區全卡與 SortableContext，落點解析的欄清單必須用同一分區判準——
+    // 否則拖它或落在它上面的手勢整次被吞（resolveCardDrop 回 null、零寫入）。
+    const onReorder = vi.fn();
+    const dnd: DiscussionLists = {
+      active: [
+        { slug: "aa-open", topic: "開放", status: "open", rounds: 1, created: "2026-07-01", promotedTo: [] },
+        {
+          slug: "mid-flight",
+          topic: "未結論轉出",
+          status: "promoted",
+          rounds: 2,
+          created: "2026-07-02",
+          promotedTo: ["cut-a"],
+          concluded: false,
+        },
+      ],
+      archived: [],
+    };
+    render(<KanbanBoard changes={changes} discussions={dnd} onReorder={onReorder} />);
+    startDrag(cardDndId("discussion", "mid-flight"));
+    endDrag(cardDndId("discussion", "mid-flight"), cardDndId("discussion", "aa-open"));
+    expect(onReorder).toHaveBeenCalledWith("discussion", "mid-flight", null, "aa-open");
+  });
+
   it("dragEnd 於 over=archived 且卡非就緒時不觸發 onArchive；就緒卡照常", () => {
     const onArchive = vi.fn();
     render(<KanbanBoard changes={changes} onArchive={onArchive} />);

@@ -88,21 +88,28 @@ pub fn execute(
     Ok(BridgeExecution { outcome, events, revision: Some(revision) })
 }
 
-/// The change names each discussion has fanned out into, over one scope
-/// snapshot — the Host's composition point for the Server's discussion-list
-/// `promotedTo` assembly (remote-read-parity design D1: the engine keeps
-/// `promoted_to` out of `DiscussionInfo`, so the route edge composes it).
-/// Read-only: the bridged view is materialized, queried per slug, and dropped;
-/// nothing is staged or committed. Results ride in `slugs` order.
-pub fn discussions_promoted_to(
+/// The list-assembly extras for each discussion, over one scope snapshot: the
+/// change names it fanned out into, and whether its Conclusion section holds
+/// real content (the scaffold placeholder does not count). The Host's
+/// composition point for the Server's discussion-list `promotedTo` /
+/// `concluded` assembly (remote-read-parity design D1: the engine keeps both
+/// out of `DiscussionInfo`, so the route edge composes them). Read-only: the
+/// bridged view is materialized, queried per slug, and dropped; nothing is
+/// staged or committed. Results ride in `slugs` order.
+pub fn discussions_list_extras(
     store: &dyn TeamStore,
     scope: &Scope,
     slugs: &[String],
-) -> Result<Vec<Vec<String>>, BridgeError> {
+) -> Result<Vec<(Vec<String>, bool)>, BridgeError> {
     let view = BridgeStore::materialize(store, scope).map_err(BridgeError::Store)?;
     Ok(slugs
         .iter()
-        .map(|slug| speclink_core::discuss::promoted_to(&view, slug))
+        .map(|slug| {
+            (
+                speclink_core::discuss::promoted_to(&view, slug),
+                speclink_core::discuss::discussion_concluded(&view, slug),
+            )
+        })
         .collect())
 }
 

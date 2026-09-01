@@ -450,10 +450,23 @@ pub fn add_round(store: &dyn Store, slug: &str, mode: &str, content: &str) -> Re
 /// The text of the `## Conclusion` section, if the discussion has one (the scaffold's
 /// placeholder comment does not count as content).
 pub fn conclusion_text(store: &dyn Store, slug: &str) -> Option<String> {
-    let text = store.read_discussion(slug)?.text;
-    let (s, e) = section_body_range(&text, "Conclusion")?;
+    conclusion_body(&store.read_discussion(slug)?.text)
+}
+
+fn conclusion_body(text: &str) -> Option<String> {
+    let (s, e) = section_body_range(text, "Conclusion")?;
     let body = strip_html_comments(&text[s..e]).trim().to_string();
     (!body.is_empty()).then_some(body)
+}
+
+/// Whether a discussion's Conclusion section holds real content (the scaffold's
+/// placeholder comment does not count) — the single contract point (design D3) shared
+/// by the archive co-archival guard, the conclude closing step, and every listing edge
+/// (server route, host bridge, desktop-core). Reads live-first with archived fallback;
+/// a missing or unreadable record counts as not concluded, so the guard leaves doubtful
+/// records live instead of sweeping them into the archive.
+pub fn discussion_concluded(store: &dyn Store, slug: &str) -> bool {
+    conclusion_text(store, slug).is_some()
 }
 
 /// Mark a discussion as promoted to a change (the discussion side of the bidirectional link).
@@ -863,10 +876,22 @@ pub fn discard_discussion(store: &dyn Store, slug: &str, force: bool) -> Result<
     Ok(())
 }
 
+/// Outcome of [`conclude`]: the restale-flagged change names, whether the closing
+/// step auto-archived the record (its spun-out changes had all left the in-flight set),
+/// and — when the closing archive step failed — the reason. The failure rides in the
+/// outcome instead of an `Err` so the conclusion and restale writes stay committed on
+/// every store (a remote Unit of Work would discard them on `Err`); the caller turns
+/// `closing_error` into its own non-zero exit.
+pub struct ConcludeOutcome {
+    pub restale_flagged: Vec<String>,
+    pub auto_archived: bool,
+    pub closing_error: Option<String>,
+}
+
 /// Write the conclusion into the `## Conclusion` section (replacing the placeholder — or a
 /// previous conclusion, so a revised conclusion stays a single section) and mark the
 /// discussion concluded.
-pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<Vec<String>> {
+pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<ConcludeOutcome> {
     ensure_content(content)?;
     let content = escape_colliding_lines(content);
     let mut text = load_live(store, slug)?;
@@ -887,7 +912,30 @@ pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<Vec<Stri
     // Re-concluding an already-reflected discussion (promoted_to non-empty) flags each
     // of its active changes as stale against the new conclusion. Returns the flagged
     // change names for the CLI to report; empty when nothing was reflected yet.
-    stamp_restale(store, slug, &text)
+    let restale_flagged = stamp_restale(store, slug, &text)?;
+    // Closing step: a spun-out discussion whose changes have all left the in-flight set
+    // has no future change archive left to co-archive it, so conclude closes the record
+    // itself. Corrupt change metadata fails closed (the same discipline as `link`): a
+    // change whose references cannot be read counts as still referencing, so a doubtful
+    // record stays live rather than being mis-archived. A failed archive step rides in
+    // `closing_error` (see [`ConcludeOutcome`]) — the caller recovers with a plain
+    // `discuss archive`.
+    let still_referenced = crate::model::list_changes(store).iter().any(|c| {
+        c.meta_error.is_some() || c.meta.from_discussions().iter().any(|s| s == slug)
+    });
+    let mut closing_error = None;
+    let auto_archived = if !still_referenced && !promoted_to(store, slug).is_empty() {
+        match archive_discussion(store, slug) {
+            Ok(moved) => moved.is_some(),
+            Err(e) => {
+                closing_error = Some(e.to_string());
+                false
+            }
+        }
+    } else {
+        false
+    };
+    Ok(ConcludeOutcome { restale_flagged, auto_archived, closing_error })
 }
 
 #[cfg(test)]
@@ -915,6 +963,111 @@ mod tests {
              ## Rounds\n\n\
              ## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n"
         )
+    }
+
+    /// A promoted discussion (spin-out already recorded) whose conclusion is still the
+    /// placeholder comment — the mid-discussion spin-out state.
+    fn promoted_unconcluded_doc(slug: &str, promoted_to: &str) -> String {
+        format!(
+            "---\ntopic: {slug}\nslug: {slug}\nstatus: promoted\npromoted_to: {promoted_to}\ncreated: 2026-01-02\n---\n\n\
+             # Discussion: {slug}\n\n\
+             ## Context\n\nFixture context.\n\n\
+             ## Rounds\n\n\
+             ## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n"
+        )
+    }
+
+    // --- conclude 閉環（conclusion-gated-discussion-archive）---
+
+    #[test]
+    fn conclude_auto_archives_when_all_promoted_changes_are_archived() {
+        // promoted_to 非空、無在途變更引用 → conclude 順手封存，結論隨記錄進封存區。
+        let store = TestStore::with_live_discussion("alpha", &promoted_unconcluded_doc("alpha", "cut"));
+
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done").unwrap();
+
+        assert!(outcome.auto_archived, "outcome carries the auto-archive fact");
+        assert!(!store.live_discussion_exists("alpha"), "record leaves the live set");
+        assert!(store.archived_discussion_exists("alpha"));
+        let archived = store.archived_discussions.borrow().get("alpha").cloned().unwrap();
+        assert!(archived.contains("**Decision**: done"), "conclusion travels into the archive");
+        assert!(archived.contains("status: promoted"), "promoted status is preserved");
+    }
+
+    #[test]
+    fn conclude_leaves_record_live_while_promoted_change_in_flight() {
+        // 仍有在途變更引用 → 只寫結論，不封存。
+        let store = TestStore::with_meta(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-01-02\nfrom_discussion: alpha\n",
+        );
+        store
+            .discussions
+            .borrow_mut()
+            .insert("alpha".into(), promoted_unconcluded_doc("alpha", "cut"));
+
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done").unwrap();
+
+        assert!(!outcome.auto_archived);
+        assert!(store.live_discussion_exists("alpha"), "record stays live");
+        assert!(!store.archived_discussion_exists("alpha"));
+        assert!(store.discussion("alpha").contains("**Decision**: done"));
+    }
+
+    #[test]
+    fn conclude_without_promotion_keeps_existing_behavior() {
+        // promoted_to 缺席 → 行為不變：status 轉 concluded、記錄留在途。
+        let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
+
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done").unwrap();
+
+        assert!(!outcome.auto_archived);
+        assert!(store.live_discussion_exists("alpha"));
+        assert!(!store.archived_discussion_exists("alpha"));
+        assert!(store.discussion("alpha").contains("status: concluded"));
+    }
+
+    #[test]
+    fn conclude_archive_step_failure_keeps_conclusion_and_outcome() {
+        // 閉環封存步失敗 → 結論與 restale 結果照常回傳（Ok），失敗原因入
+        // closing_error 由呼叫端呈現；結論寫入不回滾（已結論、仍在途）。
+        // 命令層回 Ok 也讓 remote 的 Unit of Work 照常 commit——「不回滾」
+        // 在本機與 remote 同語意。
+        let store = TestStore::with_live_discussion("alpha", &promoted_unconcluded_doc("alpha", "cut"));
+        *store.fail_archive_discussion.borrow_mut() = true;
+
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done").unwrap();
+
+        assert!(!outcome.auto_archived);
+        assert!(
+            outcome.closing_error.as_deref().unwrap_or("").contains("simulated"),
+            "closing failure reason travels in the outcome: {:?}",
+            outcome.closing_error
+        );
+        assert!(store.live_discussion_exists("alpha"), "record stays live");
+        assert!(
+            store.discussion("alpha").contains("**Decision**: done"),
+            "conclusion is not rolled back"
+        );
+    }
+
+    #[test]
+    fn conclude_closing_step_fails_closed_on_corrupt_change_meta() {
+        // 壞 meta fail-closed（與 link 的紀律一致）：在途變更的 .openspec.yaml
+        // 解析失敗時，讀不出它引用誰——視同仍引用，不誤封存討論。
+        const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
+        let store = TestStore::with_meta("broken-cut", BAD);
+        store
+            .discussions
+            .borrow_mut()
+            .insert("alpha".into(), promoted_unconcluded_doc("alpha", "broken-cut"));
+
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done").unwrap();
+
+        assert!(!outcome.auto_archived, "corrupt in-flight meta blocks the closing step");
+        assert!(outcome.closing_error.is_none());
+        assert!(store.live_discussion_exists("alpha"), "record stays live");
+        assert!(!store.archived_discussion_exists("alpha"));
     }
 
     // --- 空內容 guard（discuss-content-guard；拒絕靜默寫入空區段） ---
@@ -1715,7 +1868,8 @@ mod tests {
             "cut-a".to_string(),
             "schema: spec-driven\nfrom_discussion: alpha\n".to_string(),
         );
-        let flagged = super::conclude(&store, "alpha", "**Decision**: new direction").unwrap();
+        let flagged =
+            super::conclude(&store, "alpha", "**Decision**: new direction").unwrap().restale_flagged;
         assert_eq!(flagged, vec!["cut-a".to_string()]);
         assert!(store.meta("cut-a").contains("restale_from: alpha"), "meta: {}", store.meta("cut-a"));
         // 討論維持 promoted、promoted_to 不變，僅 Conclusion 改寫。
@@ -1738,7 +1892,7 @@ mod tests {
             .archived_metas
             .borrow_mut()
             .insert("arch-b".to_string(), "schema: spec-driven\n".to_string());
-        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap();
+        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap().restale_flagged;
         assert_eq!(flagged, vec!["cut-a".to_string()], "only active flagged");
         assert!(store.meta("cut-a").contains("restale_from: alpha"));
         assert!(!store.change_exists("arch-b"), "archived never active");
@@ -1761,7 +1915,7 @@ mod tests {
         );
         store.metas.borrow_mut().insert("cut-a".to_string(), "schema: spec-driven\n".to_string());
         store.metas.borrow_mut().insert("broken-b".to_string(), BAD.to_string());
-        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap();
+        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap().restale_flagged;
         assert_eq!(flagged, vec!["cut-a".to_string()], "corrupt change is not flagged");
         assert!(store.meta("cut-a").contains("restale_from: alpha"));
         assert_eq!(store.meta("broken-b"), BAD, "corrupt meta must not be appended to");
@@ -1773,7 +1927,7 @@ mod tests {
         let store =
             TestStore::with_live_discussion("alpha", &concluded_doc("alpha", "Alpha", "old"));
         store.metas.borrow_mut().insert("cut-a".to_string(), "schema: spec-driven\n".to_string());
-        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap();
+        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap().restale_flagged;
         assert!(flagged.is_empty());
         assert_eq!(*store.meta_writes.borrow(), 0, "no change meta written");
         assert_eq!(store.meta("cut-a"), "schema: spec-driven\n", "change meta untouched");
@@ -1788,7 +1942,8 @@ mod tests {
             "schema: spec-driven\nrestale_from: alpha\n".to_string(),
         );
         let before = store.meta("cut-a");
-        let flagged = super::conclude(&store, "alpha", "**Decision**: newer").unwrap();
+        let flagged =
+            super::conclude(&store, "alpha", "**Decision**: newer").unwrap().restale_flagged;
         assert_eq!(flagged, vec!["cut-a".to_string()], "still reported stale");
         assert_eq!(store.meta("cut-a"), before, "no duplicate accumulation");
         assert_eq!(*store.meta_writes.borrow(), 0, "idempotent — no change meta write");

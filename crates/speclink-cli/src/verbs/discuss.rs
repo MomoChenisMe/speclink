@@ -159,7 +159,12 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let core::command::CommandOutcome::DiscussConclude(o) = outcome else {
                 unreachable!("discuss conclude yields a conclude outcome");
             };
-            render_discuss_conclude(&o.slug, &o.restale_flagged, json)?;
+            render_discuss_conclude(&o.slug, &o.restale_flagged, o.auto_archived, json)?;
+            // 閉環封存步失敗：結論與 restale 已落盤（上面照常呈現），這裡以非零
+            // exit code 收場、stderr 說明原因；重跑 discuss archive 即可收尾。
+            if let Some(reason) = &o.closing_error {
+                anyhow::bail!("conclude closing step failed to archive the record: {reason}");
+            }
         }
         DiscussCommands::Archive { slug, json } => {
             let outcome =
@@ -296,19 +301,31 @@ fn render_discuss_add_round(slug: &str, round: usize, mode: &str, json: bool) ->
     println!("{} Recorded round {round} ({mode}) to discussion '{slug}'", color::green("✓"));
     Ok(())
 }
-fn render_discuss_conclude(slug: &str, flagged: &[String], json: bool) -> Result<()> {
+fn render_discuss_conclude(
+    slug: &str,
+    flagged: &[String],
+    auto_archived: bool,
+    json: bool,
+) -> Result<()> {
     if json {
         // Byte-identical to before when nothing was flagged (promoted_to empty);
-        // the array appears only when a re-conclude actually staled changes.
+        // the array appears only when a re-conclude actually staled changes, and
+        // autoArchived only when the closing step archived the record.
         let mut payload = serde_json::json!({ "slug": slug, "status": "concluded" });
         if !flagged.is_empty() {
             payload["restaleFlagged"] = serde_json::json!(flagged);
+        }
+        if auto_archived {
+            payload["autoArchived"] = serde_json::json!(true);
         }
         return print_json(&payload);
     }
     println!("{} Concluded discussion '{slug}'", color::green("✓"));
     if !flagged.is_empty() {
         println!("  Flagged {} change(s) for re-ingest: {}", flagged.len(), flagged.join(", "));
+    }
+    if auto_archived {
+        println!("  Auto-archived the record (all promoted changes are archived)");
     }
     Ok(())
 }
@@ -424,8 +441,8 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
         }
         DiscussCommands::Conclude { slug, stdin, json } => {
             let content = read_stdin_content(stdin);
-            let flagged = ctx.client.discussion_conclude(&slug, &content)?.restale_flagged;
-            render_discuss_conclude(&slug, &flagged, json)
+            let resp = ctx.client.discussion_conclude(&slug, &content)?;
+            render_discuss_conclude(&slug, &resp.restale_flagged, resp.auto_archived, json)
         }
         DiscussCommands::Archive { slug, json } => {
             let archived_to = ctx.client.discussion_archive(&slug)?.archived_to;

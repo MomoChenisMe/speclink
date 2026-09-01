@@ -353,6 +353,56 @@ describe("DiscussionColumn 計數只算 active 與空狀態（design D3）", () 
   });
 });
 
+describe("DiscussionColumn 結論分區三態（conclusion-gated-discussion-archive）", () => {
+  const promotedUnconcluded: DiscussionItem = {
+    slug: "mid-flight",
+    topic: "Mid flight",
+    status: "promoted",
+    rounds: 2,
+    created: "2026-07-04",
+    promotedTo: ["cut-a"],
+    concluded: false,
+  };
+  const promotedConcluded: DiscussionItem = { ...promotedD, concluded: true };
+
+  it("concluded === false 的 promoted 留上區全卡：帶「已轉出・尚無結論」標、無動詞按鈕、計入欄徽章", () => {
+    render(
+      <DiscussionColumn
+        discussions={[promotedUnconcluded, promotedConcluded]}
+        changes={chipChanges}
+        archived={chipArchived}
+      />,
+    );
+    const col = column("discussions")!;
+    // 收合列預設收合 → 可見的 mid-flight 即上區全卡。
+    const card = col.querySelector('[data-discussion="mid-flight"]') as HTMLElement;
+    expect(card).not.toBeNull();
+    expect(within(card).getByText("已轉出・尚無結論")).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: "封存" })).toBeNull();
+    // 欄徽章計上區卡數（含未結論 promoted）；收合列只計已有結論的 promoted。
+    expect(screen.getByTestId("column-count").textContent).toBe("1");
+    expect(screen.getByText("已轉出 1")).toBeTruthy();
+  });
+
+  it("concluded === true 的 promoted 收進欄底收合列，不出上區", () => {
+    render(
+      <DiscussionColumn discussions={[promotedConcluded]} changes={chipChanges} archived={chipArchived} />,
+    );
+    const col = column("discussions")!;
+    expect(col.querySelector('[data-discussion="fanout"]')).toBeNull();
+    expect(screen.getByText("已轉出 1")).toBeTruthy();
+    expect(screen.getByTestId("column-count").textContent).toBe("0");
+  });
+
+  it("concluded 缺席（舊 server）退回現行：promoted 一律收合、無尚無結論標", () => {
+    render(<DiscussionColumn discussions={[promotedD]} changes={chipChanges} archived={chipArchived} />);
+    const col = column("discussions")!;
+    expect(col.querySelector('[data-discussion="fanout"]')).toBeNull();
+    expect(screen.queryByText("已轉出・尚無結論")).toBeNull();
+    expect(screen.getByText("已轉出 1")).toBeTruthy();
+  });
+});
+
 describe("DiscussionColumn promoted chip 階段配色（design D2）", () => {
   it("chip 沿看板 STAGE_STYLE 配色：提案中/進行中/已就緒 teal 濃度、已封存中性、已刪除 destructive 加刪除線", () => {
     // 五態各一子變更：提案中/進行中/已就緒（active 清單）、已封存、已刪除。

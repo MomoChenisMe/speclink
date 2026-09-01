@@ -1520,29 +1520,31 @@ pub async fn list_discussions(
         CommandOutcome::DiscussList(list) => list,
         _ => return Err(wrong_outcome("discuss-list")),
     };
-    // promotedTo 於 route 邊緣以引擎查詢函式組裝（remote-read-parity design
-    // D1）：引擎 DiscussionInfo 不帶此欄以保 CLI JSON 逐位元不變。查詢失敗
-    // 以欄位缺席容錯（全空清單）、列表不失敗。
+    // promotedTo 與 concluded 於 route 邊緣以引擎查詢函式組裝（remote-read-parity
+    // design D1）：引擎 DiscussionInfo 不帶這兩欄以保 CLI JSON 逐位元不變。查詢
+    // 失敗以欄位缺席容錯（promotedTo 空清單、concluded 無鍵）、列表不失敗。
     let store = state.store.clone();
     let scope = verb::scope_of(&binding);
     let slugs: Vec<String> = discussions.iter().map(|d| d.slug.clone()).collect();
-    let count = slugs.len();
-    let promoted = tokio::task::spawn_blocking(move || {
-        speclink_host::bridge::discussions_promoted_to(store.as_ref(), &scope, &slugs)
-            .unwrap_or_else(|_| vec![Vec::new(); count])
+    let extras = tokio::task::spawn_blocking(move || {
+        speclink_host::bridge::discussions_list_extras(store.as_ref(), &scope, &slugs).ok()
     })
     .await
     .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
     let dto = ListDiscussionsResponse {
-        discussions: discussions
-            .into_iter()
-            .zip(promoted)
-            .map(|(info, promoted_to)| {
-                let mut dto = discussion_info(info);
-                dto.promoted_to = promoted_to;
-                dto
-            })
-            .collect(),
+        discussions: match extras {
+            Some(extras) => discussions
+                .into_iter()
+                .zip(extras)
+                .map(|(info, (promoted_to, concluded))| {
+                    let mut dto = discussion_info(info);
+                    dto.promoted_to = promoted_to;
+                    dto.concluded = Some(concluded);
+                    dto
+                })
+                .collect(),
+            None => discussions.into_iter().map(discussion_info).collect(),
+        },
     };
     Ok(ok(dto, &result.etag))
 }
@@ -1787,11 +1789,18 @@ pub async fn conclude_discussion(
         },
     )
     .await?;
-    let restale_flagged = match result.execution.outcome {
-        CommandOutcome::DiscussConclude(o) => o.restale_flagged,
+    let (restale_flagged, auto_archived, closing_error) = match result.execution.outcome {
+        CommandOutcome::DiscussConclude(o) => (o.restale_flagged, o.auto_archived, o.closing_error),
         _ => return Err(wrong_outcome("discuss-conclude")),
     };
-    Ok(ok(ConcludeDiscussionResponse { restale_flagged }, &result.etag))
+    // 閉環封存步失敗：結論與 restale 已隨 Unit of Work 落盤，回錯誤讓遠端呼叫端
+    // 與本機 CLI 同語意（非零收場、原因可讀、記錄仍在 live 區待 discuss archive）。
+    if let Some(reason) = closing_error {
+        return Err(ApiError::internal(format!(
+            "conclude closing step failed to archive the record: {reason}"
+        )));
+    }
+    Ok(ok(ConcludeDiscussionResponse { restale_flagged, auto_archived }, &result.etag))
 }
 
 /// `POST /discussions/{slug}/archive`
@@ -1846,6 +1855,7 @@ fn discussion_info(info: EngineDiscussionInfo) -> DiscussionInfo {
         created_by: info.created_by,
         kind: info.kind,
         promoted_to: Vec::new(),
+        concluded: None,
         path: info.path,
         archived: info.archived,
     }

@@ -972,6 +972,31 @@ describe("initTray 接線（選單）", () => {
 
 // spec「面板分頁切換中回饋」「面板分區首訪 skeleton」（design D5）：面板是薄渲染層，
 // 兩個載入態欄位自主視窗 store 導出，面板不自建狀態。
+describe("TraySnapshot 的討論分區判準（conclusion-gated-discussion-archive）", () => {
+  it("promoted 且 concluded 非 false 才歸「已轉出」；未結論轉出留「討論」分區；缺席退回現行", () => {
+    const bag = makeStore();
+    bag.emit({
+      discussions: {
+        active: [
+          { slug: "mid", topic: "未結論轉出", promotedTo: ["cut-a"], concluded: false },
+          { slug: "done", topic: "已結論轉出", promotedTo: ["cut-b"], concluded: true },
+          { slug: "legacy", topic: "舊 server 無欄位", promotedTo: ["cut-c"] },
+          { slug: "plain", topic: "未轉出", promotedTo: [], concluded: false },
+        ],
+      },
+    });
+
+    const snap = buildTraySnapshot(bag.store.getState());
+    const bySlug = Object.fromEntries(snap.discussions.map((d) => [d.slug, d.promoted]));
+    expect(bySlug).toEqual({
+      mid: false, // 已轉出但尚無結論 → 「討論」分區
+      done: true, // 已轉出且已有結論 → 「已轉出」分區
+      legacy: true, // concluded 缺席（舊 server）→ 退回現行判準
+      plain: false,
+    });
+  });
+});
+
 describe("TraySnapshot 的載入態導出", () => {
   it("切換中 → pendingTabKey 帶出目標分頁 key", () => {
     const bag = makeStore();
