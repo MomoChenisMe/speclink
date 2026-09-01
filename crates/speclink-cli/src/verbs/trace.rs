@@ -3,10 +3,9 @@
 //! 解析與雙輸出渲染。local-only：remote 拒絕宣告在 dispatch 的 fs_only。
 
 use crate::color;
-use crate::common::{open_project, print_json, run_command};
+use crate::common::{open_project, print_json, run};
 use anyhow::Result;
 use clap::Args;
-use core::store::Store;
 use core::trace::TraceReport;
 use speclink_core as core;
 
@@ -21,11 +20,8 @@ pub(crate) struct TraceArgs {
 
 pub(crate) fn cmd_trace(a: TraceArgs) -> Result<()> {
     let (_ws, store) = open_project()?;
-    let store: &dyn Store = &store;
-    let outcome = run_command(store, None, core::command::Command::Trace { capability: a.capability })?;
-    let core::command::CommandOutcome::Trace(report) = outcome else {
-        unreachable!("trace yields a trace outcome");
-    };
+    let report: TraceReport =
+        run(&store, None, core::command::Command::Trace { capability: a.capability })?;
     if a.json {
         return print_json(&report);
     }

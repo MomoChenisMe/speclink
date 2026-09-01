@@ -10,9 +10,8 @@ use speclink_core as core;
 use speclink_protocol::query as protocol_query;
 
 use crate::color;
-use crate::common::{open_project, print_json, read_stdin_content, run_command};
+use crate::common::{open_project, print_json, read_stdin_content, run};
 use crate::remote_base::RemoteCtx;
-use core::store::Store;
 
 #[derive(Args)]
 pub(crate) struct DiscussArgs {
@@ -89,17 +88,13 @@ enum DiscussCommands {
 }
 pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
     match a.command {
         DiscussCommands::New { topic, slug, kind, json } => {
-            let outcome = run_command(
-                store,
+            let info: core::discuss::DiscussionInfo = run(
+                &store,
                 Some(&ws),
                 core::command::Command::DiscussNew { topic, slug, kind },
             )?;
-            let core::command::CommandOutcome::DiscussNew(info) = outcome else {
-                unreachable!("discuss new yields a discussion info");
-            };
             if json {
                 return print_json(&info);
             }
@@ -110,55 +105,40 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             });
         }
         DiscussCommands::List { archived, json } => {
-            let outcome =
-                run_command(store, Some(&ws), core::command::Command::DiscussList { archived })?;
-            let core::command::CommandOutcome::DiscussList(items) = outcome else {
-                unreachable!("discuss list yields a discussion list");
-            };
+            let items: Vec<core::discuss::DiscussionInfo> =
+                run(&store, Some(&ws), core::command::Command::DiscussList { archived })?;
             render_discuss_list(&items, archived, json)?;
         }
         DiscussCommands::Show { slug, json } => {
-            let outcome =
-                run_command(store, Some(&ws), core::command::Command::DiscussShow { slug })?;
-            let core::command::CommandOutcome::DiscussShow(show) = outcome else {
-                unreachable!("discuss show yields a discussion document");
-            };
+            let show: core::command::DiscussShowOutcome =
+                run(&store, Some(&ws), core::command::Command::DiscussShow { slug })?;
             render_discuss_show(&show, json)?;
         }
         DiscussCommands::Context { slug, stdin, json } => {
             let content = read_stdin_content(stdin);
-            let outcome = run_command(
-                store,
+            let o: core::command::DiscussSubjectOutcome = run(
+                &store,
                 Some(&ws),
                 core::command::Command::DiscussContext { slug, content },
             )?;
-            let core::command::CommandOutcome::DiscussContext(o) = outcome else {
-                unreachable!("discuss context yields a subject outcome");
-            };
             render_discuss_context(&o.slug, json)?;
         }
         DiscussCommands::AddRound { slug, mode, stdin, json } => {
             let content = read_stdin_content(stdin);
-            let outcome = run_command(
-                store,
+            let o: core::command::DiscussRoundOutcome = run(
+                &store,
                 Some(&ws),
                 core::command::Command::DiscussAddRound { slug, mode, content },
             )?;
-            let core::command::CommandOutcome::DiscussAddRound(o) = outcome else {
-                unreachable!("discuss add-round yields a round outcome");
-            };
             render_discuss_add_round(&o.slug, o.round, &o.mode, json)?;
         }
         DiscussCommands::Conclude { slug, stdin, json } => {
             let content = read_stdin_content(stdin);
-            let outcome = run_command(
-                store,
+            let o: core::command::DiscussConcludeOutcome = run(
+                &store,
                 Some(&ws),
                 core::command::Command::DiscussConclude { slug, content },
             )?;
-            let core::command::CommandOutcome::DiscussConclude(o) = outcome else {
-                unreachable!("discuss conclude yields a conclude outcome");
-            };
             render_discuss_conclude(&o.slug, &o.restale_flagged, o.auto_archived, json)?;
             // 閉環封存步失敗：結論與 restale 已落盤（上面照常呈現），這裡以非零
             // exit code 收場、stderr 說明原因；重跑 discuss archive 即可收尾。
@@ -167,11 +147,8 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             }
         }
         DiscussCommands::Archive { slug, json } => {
-            let outcome =
-                run_command(store, Some(&ws), core::command::Command::DiscussArchive { slug })?;
-            let core::command::CommandOutcome::DiscussArchive(o) = outcome else {
-                unreachable!("discuss archive yields an archive outcome");
-            };
+            let o: core::command::DiscussArchiveOutcome =
+                run(&store, Some(&ws), core::command::Command::DiscussArchive { slug })?;
             render_discuss_archive(
                 &o.slug,
                 &format!("discussions/archive/{}", o.archived_file),
@@ -179,25 +156,19 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             )?;
         }
         DiscussCommands::Discard { slug, force, json } => {
-            let outcome = run_command(
-                store,
+            let o: core::command::DiscussSubjectOutcome = run(
+                &store,
                 Some(&ws),
                 core::command::Command::DiscussDiscard { slug, force },
             )?;
-            let core::command::CommandOutcome::DiscussDiscard(o) = outcome else {
-                unreachable!("discuss discard yields a subject outcome");
-            };
             render_discuss_discard(&o.slug, json)?;
         }
         DiscussCommands::Promote { slug, name, json } => {
-            let outcome = run_command(
-                store,
+            let o: core::command::DiscussPromoteOutcome = run(
+                &store,
                 Some(&ws),
                 core::command::Command::DiscussPromote { slug, name },
             )?;
-            let core::command::CommandOutcome::DiscussPromote(o) = outcome else {
-                unreachable!("discuss promote yields a promote outcome");
-            };
             let shown = o.path.to_string_lossy();
             let wire = core::util::to_slash(&o.path);
             render_discuss_promote(
@@ -208,25 +179,19 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             )?;
         }
         DiscussCommands::Link { slug, change, json } => {
-            let outcome = run_command(
-                store,
+            let o: core::command::DiscussBindOutcome = run(
+                &store,
                 Some(&ws),
                 core::command::Command::DiscussLink { slug, change },
             )?;
-            let core::command::CommandOutcome::DiscussLink(o) = outcome else {
-                unreachable!("discuss link yields a bind outcome");
-            };
             render_discuss_bind(&o.slug, &o.change, DiscussBind::Link, json)?;
         }
         DiscussCommands::Seal { slug, change, json } => {
-            let outcome = run_command(
-                store,
+            let o: core::command::DiscussBindOutcome = run(
+                &store,
                 Some(&ws),
                 core::command::Command::DiscussSeal { slug, change },
             )?;
-            let core::command::CommandOutcome::DiscussSeal(o) = outcome else {
-                unreachable!("discuss seal yields a bind outcome");
-            };
             render_discuss_bind(&o.slug, &o.change, DiscussBind::Seal, json)?;
         }
     }

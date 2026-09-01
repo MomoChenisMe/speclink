@@ -9,9 +9,8 @@ use clap::Args;
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{info_if_no_changes, open_project, print_json, run_command};
+use crate::common::{info_if_no_changes, open_project, print_json, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
-use core::store::Store;
 
 #[derive(Args)]
 pub(crate) struct ValidateArgs {
@@ -43,9 +42,8 @@ pub(crate) struct ChangeArg {
 }
 pub(crate) fn cmd_validate(a: ValidateArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
-    let outcome = run_command(
-        store,
+    let v: core::command::ValidateOutcome = run(
+        &store,
         Some(&ws),
         core::command::Command::Validate {
             item: a.item.clone(),
@@ -55,9 +53,6 @@ pub(crate) fn cmd_validate(a: ValidateArgs) -> Result<()> {
             strict: a.strict,
         },
     )?;
-    let core::command::CommandOutcome::Validate(v) = outcome else {
-        unreachable!("validate command yields a validate outcome");
-    };
     render_validate_results(&v.results, a.json)
 }
 /// fs 與 remote 共用的 validate 渲染：--json 印完整結果陣列、人眼逐 change
@@ -91,18 +86,14 @@ fn render_validate_results(results: &[core::validate::ValidationResult], json: b
 }
 pub(crate) fn cmd_analyze(a: ChangeArg) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
-    if info_if_no_changes(store, a.change.as_deref()) {
+    if info_if_no_changes(&store, a.change.as_deref()) {
         return Ok(());
     }
-    let outcome = run_command(
-        store,
+    let report: core::analyzer::AnalyzeReport = run(
+        &store,
         Some(&ws),
         core::command::Command::Analyze { change: a.change.clone() },
     )?;
-    let core::command::CommandOutcome::Analyze(report) = outcome else {
-        unreachable!("analyze command yields an analyze outcome");
-    };
     if a.json {
         return print_json(&report);
     }
@@ -157,23 +148,22 @@ fn render_analyze(report: &core::analyzer::AnalyzeReport) {
 }
 pub(crate) fn cmd_drift(a: ChangeArg) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
-    if info_if_no_changes(store, a.change.as_deref()) {
+    if info_if_no_changes(&store, a.change.as_deref()) {
         return Ok(());
     }
     // Client/server drift split, orchestrated locally: the Host collects the
     // workspace facts and fixes the basis; the Engine computes the spec side and
     // the workspace side; the single merger assembles the frozen report shape.
-    let change = core::command::resolve_guarded_change(store, a.change.as_deref())
+    let change = core::command::resolve_guarded_change(&store, a.change.as_deref())
         .map_err(anyhow::Error::new)?;
     let binding = speclink_host::binding::local_default_binding();
-    let bundle = speclink_host::drift::produce_drift_bundle(store, &change, &binding);
-    let facts = speclink_host::drift::collect_workspace_facts(&ws, store, &change);
-    let spec = core::drift::compute_spec_drift(store, &change);
-    let workspace = core::drift::compute_workspace_drift(store, &change, Some(&facts));
+    let bundle = speclink_host::drift::produce_drift_bundle(&store, &change, &binding);
+    let facts = speclink_host::drift::collect_workspace_facts(&ws, &store, &change);
+    let spec = core::drift::compute_spec_drift(&store, &change);
+    let workspace = core::drift::compute_workspace_drift(&store, &change, Some(&facts));
     let basis = core::drift::DriftBasis {
         expected: bundle.basis_digests.clone(),
-        current: core::tasks::current_basis_digests(store, &change.name),
+        current: core::tasks::current_basis_digests(&store, &change.name),
     };
     let report = core::drift::merge_drift_reports(&change, spec, workspace, Some(&basis));
     if a.json {

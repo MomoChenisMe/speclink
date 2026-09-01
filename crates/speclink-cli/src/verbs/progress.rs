@@ -8,9 +8,8 @@ use clap::{Args, Subcommand};
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{open_project, run_command};
+use crate::common::{open_project, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
-use core::store::Store;
 
 #[derive(Args)]
 pub(crate) struct TaskArgs {
@@ -65,15 +64,11 @@ pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
     match a.command {
         TaskCommands::Done { task_id, change, json } => {
             let (ws, store) = open_project()?;
-            let store: &dyn Store = &store;
-            let outcome = run_command(
-                store,
+            let o: core::command::TaskFlipOutcome = run(
+                &store,
                 Some(&ws),
                 core::command::Command::TaskDone { task_id: task_id.clone(), change, touched_files: None, head_commit: None },
             )?;
-            let core::command::CommandOutcome::TaskDone(o) = outcome else {
-                unreachable!("task done yields a task-flip outcome");
-            };
             render_task_flip(
                 TaskFlip::Done,
                 &o.change,
@@ -85,15 +80,11 @@ pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
         }
         TaskCommands::Undone { task_id, change, json } => {
             let (ws, store) = open_project()?;
-            let store: &dyn Store = &store;
-            let outcome = run_command(
-                store,
+            let o: core::command::TaskFlipOutcome = run(
+                &store,
                 Some(&ws),
                 core::command::Command::TaskUndone { task_id: task_id.clone(), change },
             )?;
-            let core::command::CommandOutcome::TaskUndone(o) = outcome else {
-                unreachable!("task undone yields a task-flip outcome");
-            };
             render_task_flip(
                 TaskFlip::Undone,
                 &o.change,
@@ -172,17 +163,13 @@ pub(crate) fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
     match a.command {
         InProgressCommands::Add { name } => {
             let (ws, store) = open_project()?;
-            let store: &dyn Store = &store;
-            run_command(store, Some(&ws), core::command::Command::InProgressAdd { name })?;
+            let _: core::command::InProgressOutcome =
+                run(&store, Some(&ws), core::command::Command::InProgressAdd { name })?;
         }
         InProgressCommands::Remove { name } => {
             let (ws, store) = open_project()?;
-            let store: &dyn Store = &store;
-            let outcome =
-                run_command(store, Some(&ws), core::command::Command::InProgressRemove { name })?;
-            let core::command::CommandOutcome::InProgressRemove(o) = outcome else {
-                unreachable!("in-progress remove yields an in-progress-remove outcome");
-            };
+            let o: core::command::InProgressRemoveOutcome =
+                run(&store, Some(&ws), core::command::Command::InProgressRemove { name })?;
             render_in_progress_remove(&o.name, o.removed);
         }
     }
