@@ -1761,6 +1761,7 @@ mod board_order_tests {
             created_by: None,
             kind: None,
             promoted_to: Vec::new(),
+            concluded: None,
             path: format!("openspec/discussions/{slug}.md"),
             archived: false,
         }

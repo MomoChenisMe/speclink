@@ -21,6 +21,9 @@ fn entry(store: &dyn Store, info: &DiscussionInfo) -> Value {
         "rounds": info.rounds,
         "created": info.created,
         "promotedTo": discuss::promoted_to(store, &info.slug),
+        // 結論已寫入與否（佔位註解不算內文）——與 server route 邊緣同一 core 查詢
+        // （design D3 的唯一契約落點），本地與 remote 同形恆填。
+        "concluded": discuss::discussion_concluded(store, &info.slug),
     });
     // 建立者（createdBy，camelCase）——缺席時省略該鍵（比照 change 的 fromDiscussions 樣式）。
     if let Some(cb) = &info.created_by {
@@ -179,6 +182,20 @@ mod tests {
         assert_eq!(archived[0]["slug"], "old-topic");
         assert_eq!(archived[0]["topic"], "Old topic");
         assert_eq!(archived[0]["promotedTo"], serde_json::json!(["first-cut"]));
+    }
+
+    #[test]
+    fn list_discussions_carries_concluded_for_every_record() {
+        // conclusion-gated-discussion-archive：每筆恆填 concluded（佔位註解不算
+        // 內文），本地與 remote 同形——同一 core 結論查詢。
+        let fx = fx_with_discussions("d-concluded");
+        let v = super::list_discussions_at(fx.root());
+        let active = v["active"].as_array().expect("active array");
+        assert_eq!(active[0]["concluded"], serde_json::json!(true), "alpha-search 已結論");
+        assert_eq!(active[1]["concluded"], serde_json::json!(false), "佔位註解不算結論");
+        assert_eq!(active[2]["concluded"], serde_json::json!(true), "gamma-promoted 已結論");
+        let archived = v["archived"].as_array().expect("archived array");
+        assert_eq!(archived[0]["concluded"], serde_json::json!(true), "封存節照帶");
     }
 
     #[test]

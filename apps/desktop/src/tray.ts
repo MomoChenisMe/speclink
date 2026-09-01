@@ -59,7 +59,8 @@ export interface TraySnapshot {
   tabs: TrayTabSnapshot[];
   activeKey: string | null;
   changes: ChangeItem[];
-  /** 進看板的 active 討論（slug 供點擊開啟；promoted＝已轉出變更，分流至「已轉出」分區）。 */
+  /** 進看板的 active 討論（slug 供點擊開啟；promoted＝已轉出且已有結論，分流至
+   * 「已轉出」分區——已轉出但尚無結論者留「討論」分區，討論的生命由結論決定）。 */
   discussions: Array<{ slug: string; topic: string; promoted: boolean }>;
   /** 探測進行中的目標分頁 key（null＝無切換）：面板據此在該分頁出 spinner。 */
   pendingTabKey: string | null;
@@ -311,7 +312,9 @@ export interface TrayStoreApi {
     /** 活躍 workspace 最近一次整批載入以失敗收場。 */
     loadFailed: boolean;
     changes: ChangeItem[];
-    discussions: { active: Array<{ slug: string; topic: string; promotedTo: string[] }> };
+    discussions: {
+      active: Array<{ slug: string; topic: string; promotedTo: string[]; concluded?: boolean }>;
+    };
     sessions: Record<string, WorkspaceSession>;
     remoteRecovery: Record<string, RemoteWorkspaceRecoveryState>;
     connections: ConnectionView[];
@@ -396,7 +399,9 @@ export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>): 
     discussions: state.discussions.active.map((d) => ({
       slug: d.slug,
       topic: d.topic,
-      promoted: d.promotedTo.length > 0,
+      // 已轉出且已有結論才歸「已轉出」分區；concluded 缺席（舊 server）退回
+      // 「轉出即已轉出」的既有判準，不把缺席當成尚無結論。
+      promoted: d.promotedTo.length > 0 && d.concluded !== false,
     })),
     pendingTabKey: state.pendingTabKey,
     // 骨架條件在此收斂成一欄（design D3）——面板與主視窗不會各自算出不同答案。

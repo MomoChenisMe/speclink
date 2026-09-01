@@ -33,6 +33,8 @@ interface RemoteDiscussionInfo {
   kind?: string | null;
   /** 已轉出變更名清單（wire promotedTo）——空清單時 server 省略鍵。 */
   promotedTo?: string[];
+  /** 結論已寫入與否（wire concluded）——舊 server 不送時缺席＝未知，不補值。 */
+  concluded?: boolean;
 }
 
 function toDiscussionItem(info: RemoteDiscussionInfo): DiscussionItem {

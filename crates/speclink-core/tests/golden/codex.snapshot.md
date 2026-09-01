@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -346,7 +346,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -632,7 +632,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -868,7 +868,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -1139,7 +1139,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -1284,7 +1284,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -1403,7 +1403,7 @@ This flips the record's `status` to `concluded`. The step logic below (vocabular
 
 **Mid-discussion spin-out** — in a multi-requirement discussion, one item can be filed the moment it is settled; don't hold it hostage to the rest:
 
-1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived. The remaining artifacts are still created via `$speclink-propose`.
+1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived and its conclusion is written — an unconcluded record stays live for more rounds (a later `conclude` closes it once every spun-out change is archived). The remaining artifacts are still created via `$speclink-propose`.
 2. **Keep discussing**: `add-round` continues as normal for the remaining items; promotion does not close the record.
 3. **Conclude as usual at the end**: the record keeps its `promoted` status, the conclusion is written in, and the engine flags the already-promoted changes as needing the conclusion re-reflected. When the conclusion is unrelated to a spun-out change, that flag needs a single confirmation — no rework.
 
@@ -1415,7 +1415,7 @@ Never require a conclusion before a mid-discussion promote, and never conclude t
 speclink discuss link <slug> <existing-change>
 ```
 
-`link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived. Unlike promote, `link` does NOT mark the discussion 已轉出 (`promoted`): that reflection is sealed by `$speclink-ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `$speclink-ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
+`link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived and its conclusion is written. Unlike promote, `link` does NOT mark the discussion 已轉出 (`promoted`): that reflection is sealed by `$speclink-ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `$speclink-ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
 
 **Lifecycle**: a discussion that concluded without spawning a change (an explicit "don't do this" is a valid outcome) should be closed out with:
 
@@ -1752,7 +1752,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -1881,7 +1881,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -2019,7 +2019,7 @@ speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
 CONCLUSION_EOF
 ```
 
-Then fan out: `speclink discuss promote <slug>` (or `$speclink-propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived.
+Then fan out: `speclink discuss promote <slug>` (or `$speclink-propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived and its conclusion is written.
 
 **When the user rejects every candidate, the scan still concluded something.** Write the conclusion — that nothing here is worth doing, and why each candidate lost — and archive the record:
 
@@ -2062,7 +2062,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -2345,7 +2345,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -2444,7 +2444,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -2902,7 +2902,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -2997,7 +2997,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -3193,7 +3193,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 
@@ -3277,7 +3277,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.23.0"
+  version: "v1.24.0"
   generatedBy: "Speclink"
 ---
 

@@ -526,11 +526,16 @@ pub struct DiscussRoundOutcome {
     pub round: usize,
 }
 
-/// `discuss conclude` outcome: changes flagged stale by a re-conclude.
+/// `discuss conclude` outcome: changes flagged stale by a re-conclude, whether the
+/// closing step auto-archived the record (its spun-out changes were all archived),
+/// and the closing step's failure reason when it could not archive — the conclusion
+/// itself is committed either way.
 #[derive(Debug)]
 pub struct DiscussConcludeOutcome {
     pub slug: String,
     pub restale_flagged: Vec<String>,
+    pub auto_archived: bool,
+    pub closing_error: Option<String>,
 }
 
 /// `discuss promote` outcome.
@@ -735,8 +740,13 @@ pub fn execute(
             Ok(CommandOutcome::DiscussAddRound(DiscussRoundOutcome { slug, mode, round }))
         }
         Command::DiscussConclude { slug, content } => {
-            let restale_flagged = crate::discuss::conclude(store, &slug, &content).map_err(classify)?;
-            Ok(CommandOutcome::DiscussConclude(DiscussConcludeOutcome { slug, restale_flagged }))
+            let outcome = crate::discuss::conclude(store, &slug, &content).map_err(classify)?;
+            Ok(CommandOutcome::DiscussConclude(DiscussConcludeOutcome {
+                slug,
+                restale_flagged: outcome.restale_flagged,
+                auto_archived: outcome.auto_archived,
+                closing_error: outcome.closing_error,
+            }))
         }
         Command::DiscussPromote { slug, name } => {
             let o = crate::discuss::promote(store, &slug, name.as_deref(), ctx.actor.as_deref())

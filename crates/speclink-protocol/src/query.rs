@@ -574,6 +574,10 @@ pub struct DiscussionInfo {
     /// 由 server 於 route 邊緣組裝（引擎 DiscussionInfo 不帶此欄），空清單省略。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub promoted_to: Vec<String>,
+    /// Conclusion 段是否已寫入內文（佔位註解不算）；由 server 於 route 邊緣組裝，
+    /// 恆填 true／false。缺席＝未知（舊 server），client 不得當成 false。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concluded: Option<bool>,
     pub path: String,
     pub archived: bool,
 }
@@ -949,6 +953,35 @@ mod tests {
             }),
             "既有形狀不因新欄位改變"
         );
+    }
+
+    #[test]
+    fn discussion_concluded_is_optional_tristate() {
+        // conclusion-gated-discussion-archive：邊緣組裝恆填 true／false；
+        // 舊 payload 無鍵 → 未知（None），再序列化不出鍵——缺席不得當成 false。
+        let with_true: DiscussionInfo = serde_json::from_str(
+            r#"{"slug":"a","topic":"A","status":"promoted","rounds":1,"created":"2026-07-01","concluded":true,"path":"discussions/a.md","archived":false}"#,
+        )
+        .unwrap();
+        assert_eq!(with_true.concluded, Some(true));
+        let json = serde_json::to_value(&with_true).unwrap();
+        assert_eq!(json["concluded"], serde_json::json!(true));
+
+        let with_false: DiscussionInfo = serde_json::from_str(
+            r#"{"slug":"b","topic":"B","status":"promoted","rounds":1,"created":"2026-07-01","concluded":false,"path":"discussions/b.md","archived":false}"#,
+        )
+        .unwrap();
+        assert_eq!(with_false.concluded, Some(false));
+        let json = serde_json::to_value(&with_false).unwrap();
+        assert_eq!(json["concluded"], serde_json::json!(false), "false 也上鍵，缺席才是未知");
+
+        let legacy: DiscussionInfo = serde_json::from_str(
+            r#"{"slug":"c","topic":"C","status":"open","rounds":0,"created":"2026-07-01","path":"discussions/c.md","archived":false}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy.concluded, None, "舊 payload 無鍵不失敗且為未知");
+        let json = serde_json::to_value(&legacy).unwrap();
+        assert!(json.get("concluded").is_none(), "None 省略鍵: {json}");
     }
 
     #[test]

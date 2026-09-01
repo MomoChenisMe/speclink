@@ -124,6 +124,11 @@ export interface DiscussionItem {
   kind?: string | null;
   /** 轉出（扇出）的 change 名累積清單；未轉出為空陣列。 */
   promotedTo: string[];
+  /**
+   * Conclusion 段是否已寫入內文（佔位註解不算）。缺席＝未知（舊 server），
+   * 分區判準退回「promoted 一律收合」的既有行為，不得補成 false。
+   */
+  concluded?: boolean;
 }
 
 /** 討論清單兩節：看板討論欄（active）與已封存頁討論節（archived）。 */

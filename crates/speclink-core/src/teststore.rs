@@ -38,6 +38,9 @@ pub(crate) struct TestStore {
     /// When set, `delete_change` fails — lets discard tests exercise the
     /// "directory removal failed, unlinks not rolled back" path.
     pub fail_delete_change: RefCell<bool>,
+    /// When set, `archive_discussion` fails — lets conclude tests exercise the
+    /// "conclusion written, closing archive step failed" path.
+    pub fail_archive_discussion: RefCell<bool>,
     /// When set to a capability name, `write_canonical_spec` fails for it —
     /// lets archive tests probe the commit-phase write order (every snapshot
     /// must already be on disk when the first canonical write happens).
@@ -326,6 +329,9 @@ impl Store for TestStore {
         Vec::new()
     }
     fn archive_discussion(&self, slug: &str, created: &str) -> Result<Option<String>> {
+        if *self.fail_archive_discussion.borrow() {
+            anyhow::bail!("simulated discussion archive failure");
+        }
         // Faithful move: a live record is relocated into the archived map and its
         // dated filename returned; an absent slug yields None (matches the fs store).
         let Some(text) = self.discussions.borrow_mut().remove(slug) else {

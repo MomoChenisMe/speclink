@@ -70,6 +70,16 @@ function fakeInvoke() {
           rounds: 2,
           created: "2026-01-02",
           promotedTo: ["cut-a", "cut-b"],
+          concluded: true,
+        },
+        {
+          slug: "s3",
+          topic: "Promoted unconcluded",
+          status: "promoted",
+          rounds: 1,
+          created: "2026-01-03",
+          promotedTo: ["cut-c"],
+          concluded: false,
         },
       ],
       archived: [],
@@ -337,6 +347,11 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     // 非空如實攜帶，不再以 client 端固定值補齊。
     expect(discussions.active[0]).toMatchObject({ slug: "s1", promotedTo: [] });
     expect(discussions.active[1]).toMatchObject({ slug: "s2", promotedTo: ["cut-a", "cut-b"] });
+    // concluded 同律（conclusion-gated-discussion-archive）：映射 wire 值，
+    // 缺席（舊 server）維持未知、不補成 false。
+    expect(discussions.active[0].concluded).toBeUndefined();
+    expect(discussions.active[1].concluded).toBe(true);
+    expect(discussions.active[2]).toMatchObject({ slug: "s3", concluded: false });
   });
 
   it("wire 的 startedAt 進入 ChangeItem，changeStage 對開工零進度卡判進行中", async () => {

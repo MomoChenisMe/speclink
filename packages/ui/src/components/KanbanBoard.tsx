@@ -33,7 +33,7 @@ import { changeStage, STAGE_BADGE, STAGE_BAR, STAGE_ICON, STAGES, type Stage } f
 import { BoardSearchBar } from "./BoardSearchBar";
 import { ChangeCard } from "./ChangeCard";
 import { ColumnLoadFailed, ColumnSkeleton } from "./skeletons";
-import { DiscussionCard, DiscussionColumn } from "./DiscussionColumn";
+import { DiscussionCard, DiscussionColumn, isCollapsedPromoted } from "./DiscussionColumn";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
@@ -302,7 +302,12 @@ export function KanbanBoard({
   //（spec：新鍵介於可見前後鄰居之間）。討論欄只有全卡參與（promoted 收合列不拖）。
   const columns: ColumnCards[] = [
     ...(visibleDiscussions
-      ? [{ kind: "discussion" as const, ids: visibleDiscussions.filter((d) => d.status !== "promoted").map((d) => d.slug) }]
+      ? [
+          {
+            kind: "discussion" as const,
+            ids: visibleDiscussions.filter((d) => !isCollapsedPromoted(d)).map((d) => d.slug),
+          },
+        ]
       : []),
     ...STAGES.map((stage) => ({ kind: "change" as const, ids: byStage[stage].map((c) => c.name) })),
   ];
