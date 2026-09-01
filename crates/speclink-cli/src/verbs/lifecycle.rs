@@ -8,7 +8,7 @@ use clap::Args;
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{open_project, print_json, run_command};
+use crate::common::{open_project, print_json, run};
 use crate::remote_base::RemoteCtx;
 use core::store::Store;
 use core::workspace::Workspace;
@@ -60,13 +60,12 @@ pub(crate) struct ClaimArgs {
 }
 pub(crate) fn cmd_archive(a: ArchiveArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
     if a.all || a.changes.len() > 1 {
-        return cmd_archive_bulk(&ws, store, &a);
+        return cmd_archive_bulk(&ws, &store, &a);
     }
     // mark-tasks-complete 與封存語意（含 in-progress 標記不動）單點在 runtime。
-    let outcome = run_command(
-        store,
+    let outcome: core::archive::ArchiveOutcome = run(
+        &store,
         Some(&ws),
         core::command::Command::Archive {
             change: a.changes.first().cloned(),
@@ -77,9 +76,6 @@ pub(crate) fn cmd_archive(a: ArchiveArgs) -> Result<()> {
             carry_verify: a.carry_verify,
         },
     )?;
-    let core::command::CommandOutcome::Archive(outcome) = outcome else {
-        unreachable!("archive yields an archive outcome");
-    };
     print_archive_outcome(&outcome);
     Ok(())
 }
@@ -195,12 +191,11 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
             carry_review: a.carry_review,
             carry_verify: a.carry_verify,
         };
-        match run_command(store, Some(ws), archive_cmd) {
-            Ok(core::command::CommandOutcome::Archive(outcome)) => {
+        match run::<core::archive::ArchiveOutcome>(store, Some(ws), archive_cmd) {
+            Ok(outcome) => {
                 print_archive_outcome(&outcome);
                 archived.push(outcome.change_name);
             }
-            Ok(_) => unreachable!("archive yields an archive outcome"),
             Err(e) => {
                 // Fail-fast: earlier archives are already applied and cannot be rolled back.
                 println!();
@@ -231,15 +226,11 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
 }
 pub(crate) fn cmd_discard(a: DiscardArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
-    let cmd_outcome = run_command(
-        store,
+    let outcome: core::discard::DiscardOutcome = run(
+        &store,
         Some(&ws),
         core::command::Command::Discard { change: a.change.clone(), force: a.force },
     )?;
-    let core::command::CommandOutcome::Discard(outcome) = cmd_outcome else {
-        unreachable!("discard yields a discard outcome");
-    };
     render_discard(&outcome.change_name, &outcome.unlinked_discussions, a.json)
 }
 /// fs 與 remote 共用的 discard 渲染：--json 為 change＋unlinkedDiscussions、

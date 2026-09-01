@@ -196,7 +196,6 @@ fn station_dual(cli: &StationCli, verb: StationVerb) -> Result<()> {
 /// `review prepare` 的本機臂（驗證站無此動詞：Apply baseline 兩站共用）。
 fn review_prepare_fs(change: String) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
     if !store.change_exists(&change) {
         bail!("change not found: {change}");
     }
@@ -208,7 +207,6 @@ fn review_prepare_fs(change: String) -> Result<()> {
 }
 fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
     let st = cli.station;
     match verb {
         StationVerb::Scope { change, json, base, candidate_hash, include_hunk } => {
@@ -217,7 +215,7 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
             }
             let ticket = store
                 .artifact_exists(&change, st.doc)
-                .then(|| core::station::show(st, store, &change))
+                .then(|| core::station::show(st, &store, &change))
                 .transpose()?
                 .map(|t| speclink_host::change_diff::TicketBinding {
                     patch_hash_chain: patch_hash_chain(
@@ -231,7 +229,7 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
                         .collect(),
                 });
             let names = store.list_changes().into_iter().map(|c| c.name).collect();
-            let claims = fs_touched_claims(store, &change, names);
+            let claims = fs_touched_claims(&store, &change, names);
             let req = speclink_host::change_diff::ScopeRequest {
                 change,
                 touched_paths: claims.touched_paths,
@@ -246,18 +244,18 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
         }
         StationVerb::AddRound { change, stdin } => {
             let content = read_stdin_content(stdin);
-            let round = core::station::add_round(st, store, &change, &content)?;
+            let round = core::station::add_round(st, &store, &change, &content)?;
             render_station_action(st, StationAction::AddRound(round), &change);
         }
         StationVerb::Show { change, json } => {
             // `--json` 只要解析後的工單，不碰原文——與導入共用渲染前的行為一致
             // （多讀一次是多一個失敗面）。
             if json {
-                let ticket = core::station::show(st, store, &change)?;
+                let ticket = core::station::show(st, &store, &change)?;
                 return render_station_show(st, &change, &ticket, None, true);
             }
             // 人眼路徑印工單原文（show 已驗證存在與格式）。
-            let (ticket, doc) = core::station::show_with_content(st, store, &change)?;
+            let (ticket, doc) = core::station::show_with_content(st, &store, &change)?;
             let doc = doc.expect("show verified the ticket exists");
             return render_station_show(st, &change, &ticket, Some(&doc), false);
         }
@@ -267,7 +265,7 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
             let file_exists = |p: &str| ws.root.join(p).is_file();
             core::station::stamp(
                 st,
-                store,
+                &store,
                 &change,
                 accept,
                 actor.as_deref(),
@@ -279,7 +277,7 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
             clear_snapshots_warning(&ws, st, cli.ns, &change);
         }
         StationVerb::Discard { change } => {
-            core::station::discard(st, store, &change)?;
+            core::station::discard(st, &store, &change)?;
             render_station_action(st, StationAction::Discard, &change);
             clear_snapshots_warning(&ws, st, cli.ns, &change);
         }

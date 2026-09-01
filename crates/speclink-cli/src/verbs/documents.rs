@@ -7,9 +7,8 @@ use anyhow::{bail, Result};
 use clap::{Args, Subcommand};
 use speclink_core as core;
 
-use crate::common::{open_project, run_command};
+use crate::common::{open_project, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
-use core::store::Store;
 
 #[derive(Args)]
 pub(crate) struct ArtifactArgs {
@@ -58,15 +57,11 @@ pub(crate) fn cmd_artifact(a: ArtifactArgs) -> Result<()> {
     match a.command {
         ArtifactCommands::Cat { artifact, change } => {
             let (ws, store) = open_project()?;
-            let store: &dyn Store = &store;
-            let outcome = run_command(
-                store,
+            let content: String = run(
+                &store,
                 Some(&ws),
                 core::command::Command::ArtifactCat { artifact, change },
             )?;
-            let core::command::CommandOutcome::ArtifactCat(content) = outcome else {
-                unreachable!("artifact cat yields raw content");
-            };
             print!("{content}");
             Ok(())
         }
@@ -76,11 +71,7 @@ pub(crate) fn cmd_language(a: LanguageArgs) -> Result<()> {
     match a.command {
         LanguageCommands::Show => {
             let (ws, store) = open_project()?;
-            let store: &dyn Store = &store;
-            let outcome = run_command(store, Some(&ws), core::command::Command::LanguageShow)?;
-            let core::command::CommandOutcome::Language(content) = outcome else {
-                unreachable!("language show yields raw content");
-            };
+            let content: String = run(&store, Some(&ws), core::command::Command::LanguageShow)?;
             print!("{content}");
             Ok(())
         }

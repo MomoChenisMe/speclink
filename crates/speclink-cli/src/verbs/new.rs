@@ -9,9 +9,8 @@ use speclink_core as core;
 use speclink_protocol::command::CreateChangeRequest;
 
 use crate::color;
-use crate::common::{open_project, read_stdin, run_command};
+use crate::common::{open_project, read_stdin, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
-use core::store::Store;
 
 #[derive(Args)]
 pub(crate) struct NewArgs {
@@ -73,9 +72,8 @@ pub(crate) fn cmd_new(a: NewArgs) -> Result<()> {
 }
 fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
-    let outcome = run_command(
-        store,
+    let o: core::command::NewChangeOutcome = run(
+        &store,
         Some(&ws),
         core::command::Command::NewChange {
             name: a.name.clone(),
@@ -85,9 +83,6 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
             from_discussion: a.from_discussion.clone(),
         },
     )?;
-    let core::command::CommandOutcome::NewChange(o) = outcome else {
-        unreachable!("new change yields a new-change outcome");
-    };
     render_new_change(
         &o.name,
         NewChangeLines {
@@ -120,14 +115,13 @@ fn render_new_change(name: &str, lines: NewChangeLines<'_>) {
 }
 fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
     let content = if a.stdin {
         Some(read_stdin())
     } else {
         None
     };
-    let outcome = run_command(
-        store,
+    let o: core::command::NewArtifactOutcome = run(
+        &store,
         Some(&ws),
         core::command::Command::NewArtifact {
             kind: a.artifact_type.clone(),
@@ -138,9 +132,6 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
             new_capability: a.new,
         },
     )?;
-    let core::command::CommandOutcome::NewArtifact(o) = outcome else {
-        unreachable!("new artifact yields a new-artifact outcome");
-    };
     if a.json {
         // Compact single-line JSON, frozen shape ("artifact" echoes the
         // input token, not the schema artifact id).

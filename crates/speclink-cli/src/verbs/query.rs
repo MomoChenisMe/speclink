@@ -10,7 +10,7 @@ use speclink_core as core;
 use speclink_protocol::query as protocol_query;
 
 use crate::color;
-use crate::common::{info_if_no_changes, open_project, print_json, run_command};
+use crate::common::{info_if_no_changes, open_project, print_json, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use core::listing::ListChangeJson;
 use core::store::Store;
@@ -76,9 +76,8 @@ pub(crate) fn cmd_list(a: ListArgs) -> Result<()> {
             })
             .collect(),
     );
-    let store: &dyn Store = if facts.is_empty() { &fs_store } else { &overlaid };
-    let outcome = run_command(
-        store,
+    let list: core::command::ListOutcome = run(
+        if facts.is_empty() { &fs_store } else { &overlaid },
         Some(&ws),
         core::command::Command::List {
             sort: a.sort.clone(),
@@ -87,9 +86,6 @@ pub(crate) fn cmd_list(a: ListArgs) -> Result<()> {
             worktrees: speclink_host::worktree::payload_objects(&facts),
         },
     )?;
-    let core::command::CommandOutcome::List(list) = outcome else {
-        unreachable!("list command yields a list outcome");
-    };
     render_list(&list, a.json)
 }
 /// fs 與 remote 共用的 list 渲染：兩模式各自組出同一個 ListOutcome，輸出逐位元
@@ -182,18 +178,14 @@ fn render_specs_section(specs: &serde_json::Value, json: bool) -> Result<()> {
 }
 pub(crate) fn cmd_show(a: ShowArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
-    let outcome = run_command(
-        store,
+    let show: core::command::ShowOutcome = run(
+        &store,
         Some(&ws),
         core::command::Command::Show {
             item: a.item.clone(),
             item_type: a.item_type.clone(),
         },
     )?;
-    let core::command::CommandOutcome::Show(show) = outcome else {
-        unreachable!("show command yields a show outcome");
-    };
     render_show(show, a.json)
 }
 /// fs 與 remote 共用的 show 渲染：兩模式餵進同一個 ShowOutcome，輸出逐位元一致。
@@ -270,21 +262,17 @@ fn render_show(show: core::command::ShowOutcome, json: bool) -> Result<()> {
 }
 pub(crate) fn cmd_status(a: StatusArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
-    if info_if_no_changes(store, a.change.as_deref()) {
+    if info_if_no_changes(&store, a.change.as_deref()) {
         return Ok(());
     }
-    let outcome = run_command(
-        store,
+    let report: core::status::StatusReport = run(
+        &store,
         Some(&ws),
         core::command::Command::Status {
             change: a.change.clone(),
             schema: a.schema.clone(),
         },
     )?;
-    let core::command::CommandOutcome::Status(report) = outcome else {
-        unreachable!("status command yields a status outcome");
-    };
     if a.json {
         return print_json(&report);
     }

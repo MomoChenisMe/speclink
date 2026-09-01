@@ -9,6 +9,9 @@
 //! tools, completion, templates, feedback, demo) and remote connection
 //! management (link, unlink, auth) intentionally do NOT appear in [`Command`].
 
+mod typed;
+pub use typed::WrongOutcome;
+
 use crate::config::ConfigError;
 use crate::model::Change;
 use crate::schema::Schema;

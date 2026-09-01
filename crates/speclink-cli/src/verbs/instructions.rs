@@ -10,9 +10,8 @@ use speclink_protocol::query as protocol_query;
 use speclink_remote::client::ContextSnapshotOutcome;
 
 use crate::color;
-use crate::common::{info_if_no_changes, open_project, print_json, run_command};
+use crate::common::{info_if_no_changes, open_project, print_json, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
-use core::store::Store;
 
 #[derive(Args)]
 pub(crate) struct InstructionsArgs {
@@ -40,12 +39,11 @@ pub(crate) fn cmd_instructions_skill(skill: &str) -> Result<()> {
 }
 pub(crate) fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let store: &dyn Store = &store;
-    if info_if_no_changes(store, a.change.as_deref()) {
+    if info_if_no_changes(&store, a.change.as_deref()) {
         return Ok(());
     }
-    let outcome = run_command(
-        store,
+    let instr: core::command::InstructionsOutcome = run(
+        &store,
         Some(&ws),
         core::command::Command::Instructions {
             artifact: a.artifact.clone(),
@@ -53,9 +51,6 @@ pub(crate) fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
             schema: a.schema.clone(),
         },
     )?;
-    let core::command::CommandOutcome::Instructions(instr) = outcome else {
-        unreachable!("instructions command yields an instructions outcome");
-    };
     match instr {
         core::command::InstructionsOutcome::Apply(payload) => {
             if a.json {

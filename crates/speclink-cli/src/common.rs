@@ -29,14 +29,20 @@ pub(crate) fn warn_leftover_remote_file() {
     );
 }
 
-/// Route a command through the engine runtime. The typed error converts into
-/// the anyhow error main() prints — `Error: {message}`, text frozen by the
-/// regression baseline. Events are not consumed by the CLI (yet).
-pub(crate) fn run_command(
+/// Route a command through the engine runtime and convert the outcome into
+/// the payload type the caller binds — the engine owns the Command→outcome
+/// invariant, so a WrongOutcome is unreachable in practice and surfaces as a
+/// plain anyhow error. The typed CommandError converts into the anyhow error
+/// main() prints — `Error: {message}`, text frozen by the regression
+/// baseline. Events are not consumed by the CLI (yet).
+pub(crate) fn run<T>(
     store: &dyn Store,
     ws: Option<&core::workspace::Workspace>,
     cmd: core::command::Command,
-) -> Result<core::command::CommandOutcome> {
+) -> Result<T>
+where
+    T: TryFrom<core::command::CommandOutcome, Error = core::command::WrongOutcome>,
+{
     // Host boundary: identity and the SPECLINK_* env layer are resolved here
     // and injected — the engine runtime only ever consumes the context.
     let ctx = core::command::ExecutionContext {
@@ -47,7 +53,7 @@ pub(crate) fn run_command(
         user_config_dir: Some(speclink_host::context::global_config_dir()),
     };
     let (outcome, _events) = core::command::execute(store, &ctx, cmd).map_err(anyhow::Error::new)?;
-    Ok(outcome)
+    Ok(T::try_from(outcome)?)
 }
 
 /// For read/analysis commands: when no change name is given and no changes exist, print the
