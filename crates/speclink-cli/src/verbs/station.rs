@@ -9,7 +9,7 @@ use clap::{Args, Subcommand};
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{open_project, print_json, read_stdin_content, require_workspace};
+use crate::common::{open_project, print_json, read_stdin_content};
 use crate::dual;
 use crate::remote_base::RemoteCtx;
 use core::store::Store;
@@ -660,8 +660,7 @@ fn remote_review_prepare(ctx: &RemoteCtx, change: String) -> Result<()> {
         .into_iter()
         .find(|c| c.name == change)
         .ok_or_else(|| anyhow::anyhow!("change not found: {change}"))?;
-    let ws = require_workspace()?;
-    run_review_prepare(&ws, &change, summary.started_at.is_some())
+    run_review_prepare(&ctx.ws, &change, summary.started_at.is_some())
 }
 /// 兩個品質站的 remote 動詞（唯一實作落點）：工單經 typed client 的站別端點
 /// 讀寫，scope 仍由本地 checkout 的 Host resolver 解析——server 不收 patch、
@@ -677,7 +676,6 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
             if !changes.iter().any(|c| c.name == change) {
                 anyhow::bail!("change not found: {change}");
             }
-            let ws = require_workspace()?;
             let ticket = ctx.client.station_ticket_if_any(noun, &change)?.map(|t| {
                 speclink_host::change_diff::TicketBinding {
                     patch_hash_chain: patch_hash_chain(
@@ -708,7 +706,7 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
                 include_hunks: include_hunk,
                 station: cli.ns,
             };
-            run_station_scope(&ws, st, &req, json)
+            run_station_scope(&ctx.ws, st, &req, json)
         }
         StationVerb::AddRound { change, stdin } => {
             let content = read_stdin_content(stdin);
@@ -736,19 +734,14 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
             // 聯集（鏡射引擎的正規化：`\`→`/`、去重、排序），逐檔讀 checkout
             // 內容算雜湊，隨請求上 wire；server 驗集合相等、不重算。
             let ticket = ctx.client.station_ticket(noun, &change)?;
-            let Some(ws) = core::workspace::Workspace::discover_cwd()? else {
-                anyhow::bail!(
-                    "{noun} stamp needs a workspace checkout to fingerprint scope files"
-                );
-            };
             let paths = core::station::scope_union(
                 ticket.rounds.iter().flat_map(|r| r.scope.iter().map(String::as_str)),
             );
             // 修正可能刪除／改名早輪檢查過的檔：仍存在者算雜湊，已消失者以
             // missing 明示宣告——server 無工作樹，分割由這裡的存在性判定。
             let (present, missing): (Vec<String>, Vec<String>) =
-                paths.into_iter().partition(|p| ws.root.join(p).is_file());
-            let read_file = |p: &str| core::util::read_bytes_opt(&ws.root.join(p));
+                paths.into_iter().partition(|p| ctx.ws.root.join(p).is_file());
+            let read_file = |p: &str| core::util::read_bytes_opt(&ctx.ws.root.join(p));
             let scope: Vec<_> = core::station::fingerprint_scope(&present, &read_file)?
                 .into_iter()
                 .map(|(path, hash)| speclink_protocol::command::ReviewScopeEntryDto { path, hash })

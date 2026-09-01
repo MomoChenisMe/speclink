@@ -181,22 +181,15 @@ fn remote_task_done(
     change: Option<&str>,
     json: bool,
 ) -> Result<()> {
-    let change = match change {
-        Some(n) => n.to_string(),
-        None => match remote_resolve_change(ctx, None, "Use --change to specify one:")? {
-            Some(n) => n,
-            None => return Ok(()),
-        },
+    let Some(change) = remote_resolve_change(ctx, change, "Use --change to specify one:")? else {
+        return Ok(());
     };
     // Attribution: same git-derived touched-file set the fs path records,
     // plus the HEAD they were observed on (the entry's headCommit — spec
-    // verify-evidence). Best-effort — remote mode already resolved, so a
-    // config error here is unreachable; an empty set / absent commit is the
-    // existing no-workspace behavior.
-    let ws = core::workspace::Workspace::discover_cwd().ok().flatten();
-    let (touched, head): (Vec<String>, Option<String>) = ws
-        .map(|w| (core::tasks::git_changed_files(&w), core::tasks::head_commit(&w.root)))
-        .unwrap_or_default();
+    // verify-evidence). An empty set / absent commit is what git yielding
+    // nothing looks like.
+    let touched = core::tasks::git_changed_files(&ctx.ws);
+    let head = core::tasks::head_commit(&ctx.ws.root);
     let resp = ctx.client.task_done(&change, task_id, &touched, head.as_deref())?;
     // remote 只有 argv 一種識別，拒絕訊息與 stdout 兩處都餵它。
     render_task_flip(
@@ -214,12 +207,8 @@ fn remote_task_undone(
     change: Option<&str>,
     json: bool,
 ) -> Result<()> {
-    let change = match change {
-        Some(n) => n.to_string(),
-        None => match remote_resolve_change(ctx, None, "Use --change to specify one:")? {
-            Some(n) => n,
-            None => return Ok(()),
-        },
+    let Some(change) = remote_resolve_change(ctx, change, "Use --change to specify one:")? else {
+        return Ok(());
     };
     let resp = ctx.client.task_undone(&change, task_id)?;
     render_task_flip(

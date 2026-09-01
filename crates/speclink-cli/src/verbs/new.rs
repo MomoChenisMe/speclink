@@ -210,12 +210,10 @@ fn remote_new_artifact(ctx: &RemoteCtx, a: &NewArtifactArgs) -> Result<()> {
             _ => String::new(),
         }
     };
-    let change = match a.change.as_deref() {
-        Some(n) => n.to_string(),
-        None => match remote_resolve_change(ctx, None, "Use --change to specify one:")? {
-            Some(n) => n,
-            None => return Ok(()),
-        },
+    let Some(change) =
+        remote_resolve_change(ctx, a.change.as_deref(), "Use --change to specify one:")?
+    else {
+        return Ok(());
     };
     // --force overwrites: re-read the current version so the write still
     // asserts what it replaces; plain create asserts absence (If-Match: 0).
