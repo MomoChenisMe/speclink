@@ -41,7 +41,7 @@ Desktop、Store abstraction、Node SDK 與 Remote Platform。
 ## SDD workflow / SDD 工作流
 
 ```text
-onboard? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
+baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
                                             ↑
                                     閒置後續作：先 drift
 

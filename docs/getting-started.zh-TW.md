@@ -80,7 +80,7 @@ speclink validate --specs --all --strict
 
 **預期輸出**：`list` 印出 `No active changes.`；`validate` 在還沒有任何正典規格時**不印任何東西**且以 0 結束——沒有輸出就是通過。
 
-如果 repo 已經有大量程式但沒有正典規格，先用 `/speclink-onboard`（Codex 為 `$speclink-onboard`）依目前行為建規格，再開新變更。
+如果 repo 已經有大量程式但沒有正典規格，先用 `/speclink-baseline`（Codex 為 `$speclink-baseline`）依目前行為建規格，再開新變更。
 
 ## 3. Propose / 提案
 

@@ -1,0 +1,74 @@
+{
+  "version": 2,
+  "change": "rename-onboard-to-baseline",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 registry 改名：crates/speclink-core/src/skills.rs 的技能 id 由 onboard 改為 baseline，asset 常數改指 crates/speclink-core/assets/skills/baseline.md；description 改寫為 baseline 觸發情境句（先陳述「既有專案有行為但無 specs」情境、再說產出），維持「入口路由由技能描述承載」的入口聯集完整。驗證：cargo test -p speclink-core --test it 於 1.4 golden 再生後全綠。",
+      "files": [
+        "crates/speclink-core/assets/skills/baseline.md",
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/src/skills.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 重建 CLI 後於 repo 根執行 speclink update：.claude/skills/ 與 .agents/skills/ 的 speclink-onboard 目錄消失、speclink-baseline 目錄生成、全部 speclink-* SKILL.md 的 frontmatter 版本戳為 v1.25.0。驗證：git status 盤點生成物異動全數入列，rg 確認兩個 skills 目錄無 onboard 殘留。",
+      "files": [
+        "README.en.md",
+        "README.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M1E3Z5QW13RQ9VGWYF9FA04B",
+      "taskDesc": "1.1 registry 改名：crates/speclink-core/src/skills.rs 的技能 id 由 onboard 改為 baseline，asset 常數改指 crates/speclink-core/assets/skills/baseline.md；description 改寫為 baseline 觸發情境句（先陳述「既有專案有行為但無 specs」情境、再說產出），維持「入口路由由技能描述承載」的入口聯集完整。驗證：cargo test -p speclink-core --test it 於 1.4 golden 再生後全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0b219bd611d37524b29cca98856cb12d9c4480c2",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/baseline.md",
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/src/skills.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-09-01T09:40:01Z"
+    },
+    {
+      "taskId": "tsk_01M1E3Z5QWS1XMTJN1AZ6THQRA",
+      "taskDesc": "3.1 重建 CLI 後於 repo 根執行 speclink update：.claude/skills/ 與 .agents/skills/ 的 speclink-onboard 目錄消失、speclink-baseline 目錄生成、全部 speclink-* SKILL.md 的 frontmatter 版本戳為 v1.25.0。驗證：git status 盤點生成物異動全數入列，rg 確認兩個 skills 目錄無 onboard 殘留。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0b219bd611d37524b29cca98856cb12d9c4480c2",
+      "touchedFiles": [
+        "README.en.md",
+        "README.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ],
+      "recordedAt": "2026-09-01T09:43:54Z"
+    }
+  ]
+}

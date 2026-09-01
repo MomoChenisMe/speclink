@@ -7,7 +7,7 @@ This is the user-facing workflow canon. For every station it answers: what it do
 ## Mental model / 心智模型
 
 ```text
-onboard? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
+baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
                                             ↑
                                   resuming after a pause: drift first
 
@@ -16,7 +16,7 @@ worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 utilities: validate / analyze / audit / commit / config
 ```
 
-- `onboard` creates current-behavior canonical specs once for an existing codebase.
+- `baseline` creates current-behavior canonical specs once for an existing codebase.
 - `discuss` and `improve` are both optional convergence entries; the difference is who brings the topic. **You bring the topic to `discuss`; you ask the model to find topics with `improve`.**
 - `propose → apply ⇄ ingest → archive` is the main change lifecycle.
 - The two quality stations (`review`, `verify`) run in parallel and depend on neither the other nor a fixed order. Skipping both on a low-risk change is a legitimate choice.
@@ -36,19 +36,19 @@ Ask six questions in order. The first match is the recommended entry:
 | --- | --- | --- |
 | Do you only want to understand something, with nothing to decide? | Yes | Just ask. Do not open a discussion. |
 | Does a related change already exist? | Yes | To keep implementing, use `apply`. If new context changes artifacts, use `ingest`. |
-| Has the change been idle, or might its baseline have moved? | Yes | Run `drift` first, then return to `apply` or `ingest` as directed. |
+| Has the change been idle, or has the codebase moved past the assumptions it was planned against? | Yes | Run `drift` first, then return to `apply` or `ingest` as directed. |
 | Have requirements or outside context shifted mid-implementation? | Yes | `ingest`, update artifacts, then return to `apply`. |
 | Do you want to improve the codebase but cannot name what to change? | Yes | `improve` — let the model scan and propose candidates. |
 | Is the new requirement already clear? | Yes/No | Clear means `propose`; still weighing trade-offs means `discuss`. |
 
-If an existing codebase has no canonical specs yet, run `onboard` once before any of the above. It creates no change and describes no future ideal.
+If an existing codebase has no canonical specs yet, run `baseline` once before any of the above. It creates no change and describes no future ideal.
 
 ## Lifecycle and utilities / 生命週期與工具
 
 | Kind / 類型 | Stages / 階段 | Meaning / 意義 |
 | --- | --- | --- |
 | Main lifecycle / 主生命週期 | `propose`, `apply`, `ingest`, `archive` | A change from planning through implementation and requirement updates to merging into canon. |
-| Conditional / 條件式 | `onboard`, `discuss`, `improve`, `drift`, the worktree flow | Only for first-time spec creation, requirement convergence, resumed work, or pushing several changes in parallel. |
+| Conditional / 條件式 | `baseline`, `discuss`, `improve`, `drift`, the worktree flow | Only for first-time spec creation, requirement convergence, resumed work, or pushing several changes in parallel. |
 | Quality stations / 品質關卡 | `review`, `verify`, `quality` | Two optional gates before archiving — craft and compliance — each with its own ticket and stamp. |
 | Utilities / 工具 | `validate`, `analyze`, `audit`, `commit`, `config` | Structure checks, artifact consistency, security sharp edges, change-scoped commits, and workflow configuration. |
 
@@ -56,19 +56,19 @@ If an existing codebase has no canonical specs yet, run `onboard` once before an
 
 Every station uses the same shape. It gives the purpose, when to use it, and when to skip it. It then gives the input, the outputs, and how each surface invokes it. It ends with the completion criteria, the next station, and the recovery route.
 
-### onboard
+### baseline
 
-- **Purpose / 目的:** Derive current-behavior canonical specs from existing code and tests.
+- **Purpose / 目的:** Derive current-behavior canonical specs from existing code and tests — the spec baseline later changes build on（舊稱 onboard）.
 - **Use / 使用:** An adopted codebase has no specs, or uncovered capabilities need gap-filling.
 - **Skip / 跳過:** Canonical coverage is adequate, or the request describes new behavior.
 - **Input / 輸入:** README, entry points, source, tests, configuration, and a user-confirmed capability map.
 - **Outputs / 產物:** `openspec/specs/<capability>/spec.md` directly; no change is created.
-- **Claude:** `/speclink-onboard [scope]`.
-- **Codex:** `$speclink-onboard [scope]`.
-- **CLI/Host:** There is no `speclink onboard` subcommand. The Agent writes canonical specs after investigation, then runs `speclink validate --specs --all --strict`.
+- **Claude:** `/speclink-baseline [scope]`.
+- **Codex:** `$speclink-baseline [scope]`.
+- **CLI/Host:** There is no `speclink baseline` subcommand. The Agent writes canonical specs after investigation, then runs `speclink validate --specs --all --strict`.
 - **Done / 完成:** The user confirms capability boundaries, specs cite observable evidence, and strict validation passes.
 - **Next / 下一步:** Use `propose` for new behavior, or `discuss` first when it is fuzzy.
-- **Recover / 恢復:** If an existing spec must change, open a change instead of rewriting it in onboard.
+- **Recover / 恢復:** If an existing spec must change, open a change instead of rewriting it in baseline.
 
 ### discuss
 
@@ -163,9 +163,9 @@ The change drawer is the main view during apply. Its proposal, design, tasks, an
 
 ### drift
 
-- **Purpose / 目的:** Judge whether an idle change drifted from the current codebase, design anchors, touched files, and baseline.
+- **Purpose / 目的:** Judge whether an idle change drifted from the current codebase, design anchors, touched files, and the assumptions it was planned against.
 - **Use / 使用:** You resume a paused change, or you suspect outside commits reached the same scope.
-- **Skip / 跳過:** Short continuous apply sessions with an unchanged baseline.
+- **Skip / 跳過:** Short continuous apply sessions where nothing moved underneath the change.
 - **Input / 輸入:** Change artifacts, git history, current code, and evidence.
 - **Outputs / 產物:** A Light, Moderate, or Heavy drift report with one recommended next step.
 - **Claude:** `/speclink-drift <change>`.

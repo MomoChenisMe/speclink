@@ -1,0 +1,87 @@
+schema: spec-driven
+created: 2026-09-01
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: rename-onboard-to-baseline
+started_at: 2026-09-01
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-01
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 13
+reviewed_scope:
+  - path: README.en.md
+    hash: c1a4e139e41856227009b88a3192a814c9c4943d1cdd02c157cd1140247032a0
+  - path: README.md
+    hash: 6a911cde797ce95ec72babdc279c7be5057831856716c9f797b833aa16eb5df8
+  - path: crates/speclink-core/assets/skills/baseline.md
+    hash: 212e49e5a85a784aabc667bab176e3e74cca99c825c1c4bba16eeba0047333cd
+  - path: crates/speclink-core/src/init.rs
+    hash: 87fa2578124771e89093da3c4ac55de68c9fdeab1837e3eb1e819a53f630358f
+  - path: crates/speclink-core/src/skills.rs
+    hash: dfe19580c51e15549d2aa8e9686e583d7e500b4fb8a3e04e76239981f3bdd526
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 995f34e5d63df4680d2e8ae245fec1e687025eceb8e434bff9dbcf58df7d3972
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 3bf8ddaa3de82986411a58fc10afe7fd24d9d0ec54f762506bb9e0f06a433d63
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 59cd573e9b5740d3fe13702b9b50538e98b03b0f65f03b0f4a551e36e648d7e3
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: abec103f5a0aae770d2694261b855d194657f00ebb3689d68659f00b6037104a
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: ee8f4b4632bc3b0e3239cbafef60a3ea2276d53df3cbe02012fad5da9e2a8f3c
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 039bda13a3f4ae5997399344e277b2c706de0753b1e82b1d56c6648e061b9333
+  - path: docs/getting-started.md
+    hash: 46ab02c69126cb0463297c72a3ce19057b5e35676e2a4fda9b6b241da1dca934
+  - path: docs/getting-started.zh-TW.md
+    hash: 1043674fb62c81add6cfa6aa384cb8cd2da8da9a689a79e2979978cdac3a06bc
+  - path: docs/product-status.md
+    hash: 177b9ac613429d108d07ba0aea7d969719d871a176f75508f3208ca1c5746a50
+  - path: docs/product-status.zh-TW.md
+    hash: eef56edb69c3b66517a2c7b303cae5c54205297855d4f37832c2ca8716f0c104
+  - path: docs/workflow.md
+    hash: f51ddfee34f5750ead258d64bb68a560ababf0daf9b0d95aa4f89ac8540485f3
+  - path: docs/workflow.zh-TW.md
+    hash: 118fcd60af8678282ee0d4b49c8b8080799e2a367acf4d7c6934bef1c646fad8
+verified_at: 2026-09-01
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 13
+verified_scope:
+  - path: README.en.md
+    hash: c1a4e139e41856227009b88a3192a814c9c4943d1cdd02c157cd1140247032a0
+  - path: README.md
+    hash: 6a911cde797ce95ec72babdc279c7be5057831856716c9f797b833aa16eb5df8
+  - path: crates/speclink-core/assets/skills/baseline.md
+    hash: 212e49e5a85a784aabc667bab176e3e74cca99c825c1c4bba16eeba0047333cd
+  - path: crates/speclink-core/src/init.rs
+    hash: 87fa2578124771e89093da3c4ac55de68c9fdeab1837e3eb1e819a53f630358f
+  - path: crates/speclink-core/src/skills.rs
+    hash: dfe19580c51e15549d2aa8e9686e583d7e500b4fb8a3e04e76239981f3bdd526
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 995f34e5d63df4680d2e8ae245fec1e687025eceb8e434bff9dbcf58df7d3972
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 3bf8ddaa3de82986411a58fc10afe7fd24d9d0ec54f762506bb9e0f06a433d63
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 59cd573e9b5740d3fe13702b9b50538e98b03b0f65f03b0f4a551e36e648d7e3
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: abec103f5a0aae770d2694261b855d194657f00ebb3689d68659f00b6037104a
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: ee8f4b4632bc3b0e3239cbafef60a3ea2276d53df3cbe02012fad5da9e2a8f3c
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 039bda13a3f4ae5997399344e277b2c706de0753b1e82b1d56c6648e061b9333
+  - path: docs/getting-started.md
+    hash: 46ab02c69126cb0463297c72a3ce19057b5e35676e2a4fda9b6b241da1dca934
+  - path: docs/getting-started.zh-TW.md
+    hash: 1043674fb62c81add6cfa6aa384cb8cd2da8da9a689a79e2979978cdac3a06bc
+  - path: docs/product-status.md
+    hash: 177b9ac613429d108d07ba0aea7d969719d871a176f75508f3208ca1c5746a50
+  - path: docs/product-status.zh-TW.md
+    hash: eef56edb69c3b66517a2c7b303cae5c54205297855d4f37832c2ca8716f0c104
+  - path: docs/workflow.md
+    hash: f51ddfee34f5750ead258d64bb68a560ababf0daf9b0d95aa4f89ac8540485f3
+  - path: docs/workflow.zh-TW.md
+    hash: 118fcd60af8678282ee0d4b49c8b8080799e2a367acf4d7c6934bef1c646fad8
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-01

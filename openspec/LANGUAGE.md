@@ -188,3 +188,8 @@
 - **definition**: 沿「規格 → 變更 → 討論 → 程式碼」的鏈回答某功能怎麼來的、為什麼這樣設計——列出動過該 capability 的封存變更、來源討論與其扇出、逐任務觸及檔案，最後以現行程式碼確認現況。對應引擎動詞 `trace` 與 skill `/speclink-trace`。
 - **avoid**: 追溯、trace（中文散文中）
 - **why**: 「追溯」偏司法與稽核語感且不成對；「溯源」直說結果——找到源頭，與動詞名 trace、技能名 speclink-trace 對齊，使用者在指令與答案裡看到的是同一個詞。2026-08-22 變更「feature-provenance-skill」定案。
+
+### 規格基準
+
+- **definition**: baseline 技能（`/speclink-baseline`）的產出——依既有 code 與 tests 的目前行為建立的第一批正式 specs，作為後續變更比較與疊加的基準。與「Apply baseline」（品質關卡的凍結點：開工前記錄的 HEAD 與初始 dirty 檔）是兩個概念，各自帶修飾詞並存、互不取代。
+- **why**: baseline 一詞在專案內已有多個帶修飾詞的複合用法（Apply baseline、smell baseline、交付基線）；技能 id 直用 baseline（舊稱 onboard），其產出以「規格基準」稱呼並與 Apply baseline 明文分立，避免同詞兩義。2026-09-01 變更「rename-onboard-to-baseline」定案。

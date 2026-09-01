@@ -9,7 +9,7 @@
 ## Mental model / 心智模型
 
 ```text
-onboard? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
+baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
                                             ↑
                                     閒置後續作：先 drift
 
@@ -18,7 +18,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 工具：validate / analyze / audit / commit / config
 ```
 
-- `onboard` 只用於既有程式首次建立「目前行為」正典 specs。
+- `baseline` 只用於既有程式首次建立「目前行為」正典 specs。
 - `discuss` 與 `improve` 都是選用的收斂入口，差別在題目誰帶：**你帶題目走 `discuss`，要模型幫你找題目走 `improve`**。
 - `propose → apply ⇄ ingest → archive` 是變更的主生命週期。
 - 兩道品質關卡（`review`、`verify`）互不依賴，依風險自由組合。低風險變更兩道都跳過也是正當選擇。
@@ -37,19 +37,19 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 | --- | --- | --- |
 | 只求理解，沒有待決事項嗎？ | 是 | 直接問答；不要建立討論。 |
 | 已有相關變更嗎？ | 是 | 若只是繼續實作走 `apply`；若新背景會改 artifacts，走 `ingest`。 |
-| 變更曾閒置或基準可能改變嗎？ | 是 | 先 `drift`，再依結果回 `apply` 或 `ingest`。 |
+| 變更曾閒置或規劃時的假設可能已過時嗎？ | 是 | 先 `drift`，再依結果回 `apply` 或 `ingest`。 |
 | 實作中需求或外部背景改變嗎？ | 是 | `ingest`，更新 artifacts 後再回 `apply`。 |
 | 想改善程式碼但講不出要改哪裡嗎？ | 是 | `improve`，讓模型掃描並提出候選。 |
 | 新需求已明確嗎？ | 是／否 | 明確就 `propose`；仍需取捨就 `discuss`。 |
 
-既有 codebase 尚無正典 specs 時，在上述流程前先做一次 `onboard`；它不會建立變更，也不描述未來理想。
+既有 codebase 尚無正典 specs 時，在上述流程前先做一次 `baseline`；它不會建立變更，也不描述未來理想。
 
 ## Lifecycle and utilities / 生命週期與工具
 
 | Kind / 類型 | Stages / 階段 | Meaning / 意義 |
 | --- | --- | --- |
 | Main lifecycle / 主生命週期 | `propose`、`apply`、`ingest`、`archive` | 變更從規劃、實作、需求更新到合併正典。 |
-| Conditional / 條件式 | `onboard`、`discuss`、`improve`、`drift`、worktree 流程 | 只有既有程式初始建規格、需求需收斂、閒置續作，或要平行推多個變更時使用。 |
+| Conditional / 條件式 | `baseline`、`discuss`、`improve`、`drift`、worktree 流程 | 只有既有程式初始建規格、需求需收斂、閒置續作，或要平行推多個變更時使用。 |
 | Quality stations / 品質關卡 | `review`、`verify`、`quality` | 封存前的兩道選用關卡：工藝與合規，各自落工單並蓋章。 |
 | Utilities / 工具 | `validate`、`analyze`、`audit`、`commit`、`config` | 檢查結構、artifact 一致性、安全 sharp edges、變更範圍提交與工作流設定。 |
 
@@ -57,19 +57,19 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 每一站的格式一致：用途、使用時機、跳過條件、輸入、產物、各介面的呼叫方式、完成判準、下一站與恢復路徑。
 
-### onboard
+### baseline
 
-- **Purpose / 目的**：從現有 code 與 tests 建立當前行為的正典 specs。
+- **Purpose / 目的**：從現有 code 與 tests 建立當前行為的正典 specs，作為後續變更的規格基準（舊稱 onboard）。
 - **Use / 使用**：採用 Speclink 的既有 codebase 尚無 specs，或只需補未覆蓋能力。
 - **Skip / 跳過**：已有足夠正典 specs，或要描述的是新需求而非現況。
 - **Input / 輸入**：README、entry points、source、tests、設定與使用者確認的 capability map。
 - **Outputs / 產物**：直接寫入 `openspec/specs/<capability>/spec.md`；不建立變更。
-- **Claude**：`/speclink-onboard [scope]`。
-- **Codex**：`$speclink-onboard [scope]`。
-- **CLI/Host**：沒有 `speclink onboard` 子指令。Agent 盤點後寫正典 specs，再以 `speclink validate --specs --all --strict` 檢查。
+- **Claude**：`/speclink-baseline [scope]`。
+- **Codex**：`$speclink-baseline [scope]`。
+- **CLI/Host**：沒有 `speclink baseline` 子指令。Agent 盤點後寫正典 specs，再以 `speclink validate --specs --all --strict` 檢查。
 - **Done / 完成**：能力邊界已由使用者確認，specs 有可溯源的行為證據且 strict validation 通過。
 - **Next / 下一步**：新需求走 `propose`；模糊的新需求先 `discuss`。
-- **Recover / 恢復**：發現既有 spec 需修改時，不在 onboard 重寫，另開變更。
+- **Recover / 恢復**：發現既有 spec 需修改時，不在 baseline 重寫，另開變更。
 
 ### discuss
 
@@ -164,7 +164,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 ### drift
 
-- **Purpose / 目的**：判斷閒置變更與目前 codebase、design anchors、touched files 及基準是否漂移。
+- **Purpose / 目的**：判斷閒置變更與目前 codebase、design anchors、touched files 及規劃時假設是否漂移。
 - **Use / 使用**：變更暫停後恢復，或懷疑外部 commits 已碰到同一範圍。
 - **Skip / 跳過**：連續工作的短期 apply 且基準未變。
 - **Input / 輸入**：變更 artifacts、Git 歷史、目前 code 與 evidence。

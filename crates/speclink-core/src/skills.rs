@@ -95,7 +95,7 @@ const B_DISCUSS: &str = include_str!("../assets/skills/discuss.md");
 const B_DRIFT: &str = include_str!("../assets/skills/drift.md");
 const B_IMPROVE: &str = include_str!("../assets/skills/improve.md");
 const B_INGEST: &str = include_str!("../assets/skills/ingest.md");
-const B_ONBOARD: &str = include_str!("../assets/skills/onboard.md");
+const B_BASELINE: &str = include_str!("../assets/skills/baseline.md");
 const B_PROPOSE: &str = include_str!("../assets/skills/propose.md");
 const B_QUALITY: &str = include_str!("../assets/skills/quality.md");
 const B_REVIEW: &str = include_str!("../assets/skills/review.md");
@@ -117,6 +117,7 @@ pub fn registry() -> Vec<Skill> {
         // Not a fork skill: the rewritten standalone mode fans out three
         // parallel audit agents, which the fork's Explore agent cannot spawn.
         Skill { name: "audit", description: "Use when changed code needs a security pass — hunts dangerous defaults, type confusion and silent failures, and reports the sharp edges it finds.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_AUDIT },
+        Skill { name: "baseline", description: "Use when adopting Speclink on a codebase that already has behavior but no specs — establishes the baseline by generating the initial specs from what the code does today.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_BASELINE },
         Skill { name: "commit", description: "Use when only the files belonging to one specific change should be committed — selects that change's files and writes the commit.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_COMMIT },
         // Writes only through `speclink workflow-config` (never a direct file
         // edit), so Edit/Write stay disallowed; not a fork skill because the
@@ -129,7 +130,6 @@ pub fn registry() -> Vec<Skill> {
         // candidate 並逐輪 grill，不是 fork。
         Skill { name: "improve", description: "Use when improvements are asked for without naming a topic — user-initiated only, never on the model's own initiative; scans the codebase and records the candidates as a discussion.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_IMPROVE },
         Skill { name: "ingest", description: "Use when requirements change mid-work, including after a separate planning session — folds the new context into an existing change's artifacts so apply can resume.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_INGEST },
-        Skill { name: "onboard", description: "Use when adopting Speclink on a codebase that already has behavior but no specs — generates the initial specs from what the code does today.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ONBOARD },
         Skill { name: "propose", description: "Use when a change needs planning, proposing or designing — creates the change with every required artifact; seed it from a concluded discussion with --from-discussion.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_PROPOSE },
         // Pure ordering over the two stations plus the per-round pause（design
         // D1）：不是 fork——它要在主線依序呼叫兩站技能、停下問使用者，且步驟 4

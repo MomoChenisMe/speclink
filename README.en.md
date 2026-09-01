@@ -47,7 +47,7 @@ Per-item evidence, limits, and the last audit date are not duplicated here — [
 ## SDD workflow / SDD 工作流
 
 ```text
-onboard? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
+baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
                                             ↑
                                   resuming after a pause: drift first
 

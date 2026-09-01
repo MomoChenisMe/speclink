@@ -80,7 +80,7 @@ code:
 ---
 ### Requirement: 完整工作流指南說明用途與使用時機
 
-中英文 workflow SHALL 涵蓋 onboard、discuss、propose、apply、ingest、drift、analyze、validate、audit、commit、archive，以及目前可觀察的 verify／evidence 能力；每個階段 SHALL 說明目的、使用與跳過時機、輸入、產物、Agent skill 與底層 CLI／Host 的呼叫層級、完成判準、下一步與常見恢復方式。workflow SHALL 明確區分必經生命週期階段、條件式階段與 utility skill，並 SHALL 說明 skill 是工作流知識、CLI／Host 是執行引擎。
+中英文 workflow SHALL 涵蓋 baseline、discuss、propose、apply、ingest、drift、analyze、validate、audit、commit、archive，以及目前可觀察的 verify／evidence 能力；每個階段 SHALL 說明目的、使用與跳過時機、輸入、產物、Agent skill 與底層 CLI／Host 的呼叫層級、完成判準、下一步與常見恢復方式。workflow SHALL 明確區分必經生命週期階段、條件式階段與 utility skill，並 SHALL 說明 skill 是工作流知識、CLI／Host 是執行引擎。
 
 #### Scenario: 需求明確與需求模糊採不同入口
 
@@ -99,20 +99,8 @@ code:
 
 
 <!-- @trace
-source: unify-user-documentation
-updated: 2026-07-17
-code:
-  - README.en.md
-  - README.md
-  - docs/getting-started.md
-  - docs/getting-started.zh-TW.md
-  - docs/implementation-refactor-roadmap.zh-TW.md
-  - docs/platform-architecture.zh-TW.md
-  - docs/product-status.md
-  - docs/product-status.zh-TW.md
-  - docs/workflow.md
-  - docs/workflow.zh-TW.md
-  - packages/ui/src/__tests__/sonner.test.tsx
+source: rename-onboard-to-baseline
+updated: 2026-09-01
 -->
 
 ---
@@ -506,16 +494,22 @@ updated: 2026-08-14
 ---
 ### Requirement: 工作流正典逐站列出技能與完成判準
 
-`docs/workflow.zh-TW.md` 與 `docs/workflow.md` SHALL 以單一結構列出 SDD 全部站別——onboard、discuss、improve、propose、apply、ingest、quality、review、verify、archive 與 worktree 流程——每站 SHALL 載明用途、對應的 `/speclink-*` 技能名稱、完成判準與下一站。讀者 SHALL NOT 需要跨文件拼湊任一站的上述四項資訊。
+`docs/workflow.zh-TW.md` 與 `docs/workflow.md` SHALL 以單一結構列出 SDD 全部站別——baseline、discuss、improve、propose、apply、ingest、quality、review、verify、archive 與 worktree 流程——每站 SHALL 載明用途、對應的 `/speclink-*` 技能名稱、完成判準與下一站。讀者 SHALL NOT 需要跨文件拼湊任一站的上述四項資訊。baseline 站 SHALL 於兩語言載明舊稱 onboard，使循舊名而來的讀者可對上新站名。
 
 #### Scenario: 逐站資訊完整
 
 - **WHEN** 讀者在任一語言的工作流文件查找任一站
 - **THEN** 該站的用途、對應技能名稱、完成判準與下一站四項均可在該文件內找到
 
+#### Scenario: 循舊名可找到 baseline 站
+
+- **WHEN** 讀者以舊稱 onboard 在任一語言的工作流文件搜尋
+- **THEN** baseline 站的段落含「舊稱 onboard」字樣，讀者由此對上新站名
+
+
 <!-- @trace
-source: user-docs-overhaul
-updated: 2026-08-14
+source: rename-onboard-to-baseline
+updated: 2026-09-01
 -->
 
 ---

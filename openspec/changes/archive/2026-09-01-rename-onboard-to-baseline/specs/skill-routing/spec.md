@@ -1,12 +1,7 @@
-# skill-routing Specification
-
-## Purpose
-
-Speclink 工作流程的去中心化路由契約：入口由各技能 description 的觸發情境句承載、出口由各技能結尾的交棒句承載、狀態內由 CLI 的 status／instructions 承載，全程不存在任何集中式流程總表或指令檔受管區塊。本 capability 管跨技能的路由職責分配與邊集，不管單一技能的內文行為（那屬各 per-skill capability）。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: 入口路由由技能描述承載
+<!-- BEFORE: 入口情境聯集中「既有專案採用」對應的技能名為 onboard -->
 
 每個生成為 SKILL.md 的對外技能，其 registry description SHALL 為觸發情境句：先陳述「使用者處於什麼情境時用此技能」，再以一句話說明產出。全體對外技能 description 的觸發情境聯集 SHALL 涵蓋工作流程的所有入口情境：需求模糊要辯論（discuss）、未指定題目的改進掃描（improve）、規劃與提案（propose）、既有專案採用（baseline）、任務實作與恢復（apply）、平行實作（apply-with-worktree）、worktree 合回（worktree-merge）、閒置變更恢復前的漂移檢查（drift）、需求中途變更（ingest）、工藝品質檢查（review）、規格符合檢查（verify)、兩站合跑（quality）、封存（archive）、變更範圍提交（commit）、artifact 一致性檢查（analyze）、安全稽核（audit）、workflow 設定組建（config）、功能溯源（trace）。host 載入的技能清單即為唯一入口路由表，引擎 SHALL NOT 於其他載體重複維護入口路由。
 
@@ -20,14 +15,8 @@ Speclink 工作流程的去中心化路由契約：入口由各技能 descriptio
 - **WHEN** 逐一檢視全部對外技能的 description
 - **THEN** 上列每個入口情境至少被一個技能的 description 涵蓋，無入口情境只存在於技能清單以外的載體
 
-
-<!-- @trace
-source: rename-onboard-to-baseline
-updated: 2026-09-01
--->
-
----
 ### Requirement: 出口交棒由技能結尾承載
+<!-- BEFORE: 流程鏈技能清單與交棒句邊集表中的站名為 onboard -->
 
 流程鏈技能（propose、apply、apply-with-worktree、worktree-merge、drift、ingest、review、verify、quality、baseline、discuss、improve）的資產 SHALL 以下一步建議段收尾：依該次執行的結束狀態列出建議的後續技能，且 SHALL 明文為僅建議——SHALL NOT 自動呼叫任何後續技能。archive 為流程終點，其資產 SHALL 於結尾帶一條收尾提交提醒（建議提交封存產生的異動，僅提醒、SHALL NOT 代跑）；工具技能（commit、analyze、audit、config、trace）隨叫隨用，SHALL NOT 被要求帶固定出邊。
 
@@ -63,14 +52,9 @@ updated: 2026-09-01
 | archive | 封存完成 | 提醒提交封存異動（僅提醒） |
 | discuss | 已寫結論且值得開變更 | propose 的 --from-discussion 入口（promote 留給中途轉出） |
 
-
-<!-- @trace
-source: rename-onboard-to-baseline
-updated: 2026-09-01
--->
-
----
 ### Requirement: 去中心化路由不留集中總表
+<!-- BEFORE: 條文與 Scenario 中的站名為 onboard；Scenario 舊名「onboard 出口不帶命令總表」 -->
+<!-- REMOVED-SCENARIO: onboard 出口不帶命令總表 -->
 
 引擎 SHALL NOT 生成任何跨技能的集中式流程總表：指令檔（CLAUDE.md、AGENTS.md、自訂描述子的 instructions_file）SHALL NOT 帶受管區塊，CLI SHALL NOT 提供全流程總表輸出，baseline 技能 SHALL NOT 內含命令總表。原集中路由層的政策指引 SHALL 由既有機制承載：閒置變更恢復前的漂移警告由 apply 的 instructions preflight 承載、封存僅限主 checkout 由引擎拒絕行為與 worktree 技能的交棒句承載、規格文件路徑由技能本文的路徑代換承載。
 
@@ -83,24 +67,3 @@ updated: 2026-09-01
 
 - **WHEN** 檢視 baseline 技能資產的結尾段
 - **THEN** 只有兩條出邊建議（需求清楚走 propose、模糊走 discuss），無列舉全部技能的總表
-
-
-<!-- @trace
-source: rename-onboard-to-baseline
-updated: 2026-09-01
--->
-
----
-### Requirement: 內部技能不參與路由
-
-內部技能（tdd、clarify、sync）SHALL 僅經 speclink instructions --skill 由其他技能取用：SHALL NOT 生成 SKILL.md、SHALL NOT 出現在任何技能的交棒句建議中。
-
-#### Scenario: 內部技能無獨立入口
-
-- **WHEN** 執行 speclink update 後檢視各工具 skills 目錄
-- **THEN** 不存在 speclink-tdd、speclink-clarify、speclink-sync 技能目錄，而 apply 技能本文仍以 speclink instructions --skill tdd 取用 TDD 紀律
-
-<!-- @trace
-source: remove-marker-injection
-updated: 2026-08-23
--->
