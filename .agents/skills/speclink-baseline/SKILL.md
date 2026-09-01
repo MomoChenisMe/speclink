@@ -1,19 +1,19 @@
 ---
-name: speclink-onboard
-description: "Use when adopting Speclink on a codebase that already has behavior but no specs — generates the initial specs from what the code does today."
+name: speclink-baseline
+description: "Use when adopting Speclink on a codebase that already has behavior but no specs — establishes the baseline by generating the initial specs from what the code does today."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.24.0"
+  version: "v1.25.0"
   generatedBy: "Speclink"
 ---
 
-Adopt Speclink on an existing codebase by generating the initial canonical specs from current behavior.
+Establish the baseline for an existing codebase: generate the initial canonical specs from current behavior, so later changes have a spec baseline to build on.
 
-**IMPORTANT: Onboarding documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`$speclink-propose`) AFTER onboarding. Because nothing is changing, onboard writes directly to `openspec/specs/` — no change folder is involved.
+**IMPORTANT: The baseline documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`$speclink-propose`) AFTER the baseline is written. Because nothing is changing, baseline writes directly to `openspec/specs/` — no change folder is involved.
 
-**Input**: Optionally a scope hint after `$speclink-onboard` (e.g., "auth and billing only"). If omitted, onboard the whole codebase.
+**Input**: Optionally a scope hint after `$speclink-baseline` (e.g., "auth and billing only"). If omitted, baseline the whole codebase.
 
 ---
 
@@ -23,7 +23,7 @@ Adopt Speclink on an existing codebase by generating the initial canonical specs
 speclink list --specs
 ```
 
-- **No specs yet** → full onboarding; continue below.
+- **No specs yet** → full baseline pass; continue below.
 - **Some specs exist** → gap-filling mode: inventory what is NOT yet covered and scope the rest of this flow to those areas. Never rewrite an existing spec here — propose a change instead.
 
 Read `openspec/config.yaml` (project context, and `spec_locale` — write spec prose in the configured language; structural markers and SHALL/MUST keywords stay in English).
@@ -84,7 +84,7 @@ Fix structural findings, then report: capabilities created (with requirement/sce
 ## Guardrails
 
 - **Don't invent behavior** — evidence-based only; unverified inferences are flagged or omitted.
-- **Don't refactor while onboarding** — no code changes at all.
+- **Don't refactor while writing the baseline** — no code changes at all.
 - **Don't rewrite existing specs** — gap-fill only; modifications go through a change.
 - **Do confirm the capability map before writing** — boundaries are the expensive decision.
 - **Do keep specs small** — a capability that needs 15 requirements is probably two capabilities.

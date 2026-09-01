@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：技能檔 frontmatter 的 version 同源於此，也是過期探測與
 /// 降級守門的比對基準。僅在內嵌資產（assets/skills）的 render 內容變動時遞增——
 /// 與 app／CLI 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const ASSET_VERSION: &str = "v1.24.0";
+pub const ASSET_VERSION: &str = "v1.25.0";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -312,12 +312,20 @@ pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
         // synced below — an emptied tools list must not strand them.
         if root.join(".claude").is_dir() {
             generate_tool(root, Tool::Claude, &spec_dir, true)?;
+            prune_orphan_skills(
+                &root.join(Tool::Claude.skills_dir()),
+                &expected_skill_dirs(root, &spec_dir, false),
+            )?;
             out.updated.push(Tool::Claude.name().to_string());
         }
     } else {
         for tool in [Tool::Claude, Tool::Codex] {
             if selected.contains(&tool) {
                 generate_tool(root, tool, &spec_dir, true)?;
+                prune_orphan_skills(
+                    &root.join(tool.skills_dir()),
+                    &expected_skill_dirs(root, &spec_dir, tool != Tool::Claude),
+                )?;
                 out.updated.push(tool.name().to_string());
             } else if prune_tool(root, tool)? {
                 out.pruned.push(tool.name().to_string());
@@ -342,6 +350,10 @@ pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
     }
     for custom in &customs {
         generate_custom(root, custom, &spec_dir)?;
+        prune_orphan_skills(
+            &root.join(&custom.skills_dir),
+            &expected_skill_dirs(root, &spec_dir, true),
+        )?;
         out.updated.push(custom.name.clone());
     }
     save_custom_state(root, &customs)?;
@@ -526,6 +538,38 @@ fn prune_custom(root: &Path, fp: &CustomFootprint, notes: &mut Vec<String>) -> R
         &root.join(&fp.skills_dir),
         fp.instructions_file.as_ref().map(|f| root.join(f)).as_deref(),
     )
+}
+
+/// The `speclink-*` directory names `update` leaves under one target's skills root:
+/// the registry filtered exactly the way generation filters it (codex subset for
+/// non-Claude targets, worktree-gated skills only under an on policy).
+fn expected_skill_dirs(root: &Path, spec_dir: &str, codex_subset: bool) -> Vec<String> {
+    let worktree_on = worktree_skills_enabled(root, spec_dir);
+    skills::registry()
+        .into_iter()
+        .filter(|s| !codex_subset || s.for_codex)
+        .filter(|s| !s.worktree_gated || worktree_on)
+        .map(|s| format!("speclink-{}", s.name))
+        .collect()
+}
+
+/// update 的孤兒清理（spec: update 清除孤兒技能目錄）：清掉 skills 目錄下
+/// speclink- 前綴、不在本次應生成集合的目錄——改名或下架的技能不留舊目錄。
+/// 前綴即所有權，與 prune_footprint 同一判準；非前綴的使用者目錄不動。
+/// 只掛 update：init 對既有工作區維持保守，不清理。
+fn prune_orphan_skills(skills_root: &Path, expected: &[String]) -> Result<()> {
+    if let Ok(entries) = std::fs::read_dir(skills_root) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("speclink-")
+                && !expected.iter().any(|e| e == &name)
+                && entry.path().is_dir()
+            {
+                std::fs::remove_dir_all(entry.path())?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Remove the generated artifacts of a deselected built-in tool.
@@ -2086,5 +2130,47 @@ mod tests {
         for dir in worktree_skill_dirs(Tool::Claude) {
             assert!(root.exists(&dir), "政策文件壞掉時不得清掉 {dir}");
         }
+    }
+
+    // --- update 清除孤兒技能目錄 ---
+    // Spec requirement: workspace-tools「update 清除孤兒技能目錄」——speclink- 前綴
+    // 且不在本次應生成集合的目錄於 update 時清除；非前綴目錄不動。
+
+    #[test]
+    fn update_prunes_renamed_skill_directory() {
+        let root = TempRoot::new("prune-renamed");
+        init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
+        // 舊版生成的目錄：registry 已無此技能名（onboard → baseline 改名遷移）。
+        root.write(".claude/skills/speclink-onboard/SKILL.md", "old\n");
+        root.write(".agents/skills/speclink-onboard/SKILL.md", "old\n");
+        update(&root.dir, false).unwrap();
+        assert!(!root.exists(".claude/skills/speclink-onboard"), "舊目錄須被清除");
+        assert!(!root.exists(".agents/skills/speclink-onboard"), "舊目錄須被清除");
+        assert!(root.exists(".claude/skills/speclink-baseline/SKILL.md"));
+        assert!(root.exists(".agents/skills/speclink-baseline/SKILL.md"));
+    }
+
+    #[test]
+    fn update_keeps_user_skill_directories_without_prefix() {
+        let root = TempRoot::new("prune-user-dir");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        let content = "user skill\n";
+        root.write(".claude/skills/conventional-commit/SKILL.md", content);
+        update(&root.dir, false).unwrap();
+        assert_eq!(
+            root.read(".claude/skills/conventional-commit/SKILL.md"),
+            content,
+            "非 speclink- 前綴的使用者技能不受清理影響"
+        );
+    }
+
+    #[test]
+    fn update_prunes_prefixed_directories_not_in_registry() {
+        let root = TempRoot::new("prune-prefixed");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(".claude/skills/speclink-myown/SKILL.md", "mine\n");
+        update(&root.dir, false).unwrap();
+        // speclink- 前綴保留給生成物：非 registry 的前綴目錄一律清除。
+        assert!(!root.exists(".claude/skills/speclink-myown"));
     }
 }

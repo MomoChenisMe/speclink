@@ -8,7 +8,7 @@ Speclink 工作流程的去中心化路由契約：入口由各技能 descriptio
 
 ### Requirement: 入口路由由技能描述承載
 
-每個生成為 SKILL.md 的對外技能，其 registry description SHALL 為觸發情境句：先陳述「使用者處於什麼情境時用此技能」，再以一句話說明產出。全體對外技能 description 的觸發情境聯集 SHALL 涵蓋工作流程的所有入口情境：需求模糊要辯論（discuss）、未指定題目的改進掃描（improve）、規劃與提案（propose）、既有專案採用（onboard）、任務實作與恢復（apply）、平行實作（apply-with-worktree）、worktree 合回（worktree-merge）、閒置變更恢復前的漂移檢查（drift）、需求中途變更（ingest）、工藝品質檢查（review）、規格符合檢查（verify)、兩站合跑（quality）、封存（archive）、變更範圍提交（commit）、artifact 一致性檢查（analyze）、安全稽核（audit）、workflow 設定組建（config）、功能溯源（trace）。host 載入的技能清單即為唯一入口路由表，引擎 SHALL NOT 於其他載體重複維護入口路由。
+每個生成為 SKILL.md 的對外技能，其 registry description SHALL 為觸發情境句：先陳述「使用者處於什麼情境時用此技能」，再以一句話說明產出。全體對外技能 description 的觸發情境聯集 SHALL 涵蓋工作流程的所有入口情境：需求模糊要辯論（discuss）、未指定題目的改進掃描（improve）、規劃與提案（propose）、既有專案採用（baseline）、任務實作與恢復（apply）、平行實作（apply-with-worktree）、worktree 合回（worktree-merge）、閒置變更恢復前的漂移檢查（drift）、需求中途變更（ingest）、工藝品質檢查（review）、規格符合檢查（verify)、兩站合跑（quality）、封存（archive）、變更範圍提交（commit）、artifact 一致性檢查（analyze）、安全稽核（audit）、workflow 設定組建（config）、功能溯源（trace）。host 載入的技能清單即為唯一入口路由表，引擎 SHALL NOT 於其他載體重複維護入口路由。
 
 #### Scenario: 對外技能描述以觸發情境開場
 
@@ -22,14 +22,14 @@ Speclink 工作流程的去中心化路由契約：入口由各技能 descriptio
 
 
 <!-- @trace
-source: remove-marker-injection
-updated: 2026-08-23
+source: rename-onboard-to-baseline
+updated: 2026-09-01
 -->
 
 ---
 ### Requirement: 出口交棒由技能結尾承載
 
-流程鏈技能（propose、apply、apply-with-worktree、worktree-merge、drift、ingest、review、verify、quality、onboard、discuss、improve）的資產 SHALL 以下一步建議段收尾：依該次執行的結束狀態列出建議的後續技能，且 SHALL 明文為僅建議——SHALL NOT 自動呼叫任何後續技能。archive 為流程終點，其資產 SHALL 於結尾帶一條收尾提交提醒（建議提交封存產生的異動，僅提醒、SHALL NOT 代跑）；工具技能（commit、analyze、audit、config、trace）隨叫隨用，SHALL NOT 被要求帶固定出邊。
+流程鏈技能（propose、apply、apply-with-worktree、worktree-merge、drift、ingest、review、verify、quality、baseline、discuss、improve）的資產 SHALL 以下一步建議段收尾：依該次執行的結束狀態列出建議的後續技能，且 SHALL 明文為僅建議——SHALL NOT 自動呼叫任何後續技能。archive 為流程終點，其資產 SHALL 於結尾帶一條收尾提交提醒（建議提交封存產生的異動，僅提醒、SHALL NOT 代跑）；工具技能（commit、analyze、audit、config、trace）隨叫隨用，SHALL NOT 被要求帶固定出邊。
 
 #### Scenario: apply 完成時的交棒句
 
@@ -50,7 +50,7 @@ updated: 2026-08-23
 
 | 技能 | 結束狀態 | 建議下一步 |
 | --- | --- | --- |
-| onboard | 初始規格生成完 | 需求清楚→propose；還模糊→discuss |
+| baseline | 初始規格生成完 | 需求清楚→propose；還模糊→discuss |
 | propose | artifacts 齊備 | apply；提案中變更 ≥2 時先盤點執行順序（worktree 政策開啟→分可平行／須依序，平行者各開 session 走 apply-with-worktree） |
 | apply | 全部勾完 | 品質站或 archive（commit 的先封存再一起提交可一步到位） |
 | apply | 需求中途變更 | ingest |
@@ -65,29 +65,29 @@ updated: 2026-08-23
 
 
 <!-- @trace
-source: propose-apply-handoff-updates
-updated: 2026-08-27
+source: rename-onboard-to-baseline
+updated: 2026-09-01
 -->
 
 ---
 ### Requirement: 去中心化路由不留集中總表
 
-引擎 SHALL NOT 生成任何跨技能的集中式流程總表：指令檔（CLAUDE.md、AGENTS.md、自訂描述子的 instructions_file）SHALL NOT 帶受管區塊，CLI SHALL NOT 提供全流程總表輸出，onboard 技能 SHALL NOT 內含命令總表。原集中路由層的政策指引 SHALL 由既有機制承載：閒置變更恢復前的漂移警告由 apply 的 instructions preflight 承載、封存僅限主 checkout 由引擎拒絕行為與 worktree 技能的交棒句承載、規格文件路徑由技能本文的路徑代換承載。
+引擎 SHALL NOT 生成任何跨技能的集中式流程總表：指令檔（CLAUDE.md、AGENTS.md、自訂描述子的 instructions_file）SHALL NOT 帶受管區塊，CLI SHALL NOT 提供全流程總表輸出，baseline 技能 SHALL NOT 內含命令總表。原集中路由層的政策指引 SHALL 由既有機制承載：閒置變更恢復前的漂移警告由 apply 的 instructions preflight 承載、封存僅限主 checkout 由引擎拒絕行為與 worktree 技能的交棒句承載、規格文件路徑由技能本文的路徑代換承載。
 
 #### Scenario: 指令檔零受管區塊
 
 - **WHEN** 於全新目錄以 tools=[claude,codex] 執行 speclink init 後檢視專案根
 - **THEN** 不存在 CLAUDE.md 與 AGENTS.md（或既有者位元級不變），技能檔照常生成
 
-#### Scenario: onboard 出口不帶命令總表
+#### Scenario: baseline 出口不帶命令總表
 
-- **WHEN** 檢視 onboard 技能資產的結尾段
+- **WHEN** 檢視 baseline 技能資產的結尾段
 - **THEN** 只有兩條出邊建議（需求清楚走 propose、模糊走 discuss），無列舉全部技能的總表
 
 
 <!-- @trace
-source: remove-marker-injection
-updated: 2026-08-23
+source: rename-onboard-to-baseline
+updated: 2026-09-01
 -->
 
 ---

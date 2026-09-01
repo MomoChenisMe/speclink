@@ -80,7 +80,7 @@ speclink validate --specs --all --strict
 
 **Expected output**: `list` prints `No active changes.`, and with no canonical specs yet `validate` prints **nothing at all** and exits 0 — no output is the pass.
 
-If the repo already has substantial code but no canonical specs, run `/speclink-onboard` (`$speclink-onboard` in Codex) to derive specs from current behavior before opening a new change.
+If the repo already has substantial code but no canonical specs, run `/speclink-baseline` (`$speclink-baseline` in Codex) to derive specs from current behavior before opening a new change.
 
 ## 3. Propose / 提案
 
