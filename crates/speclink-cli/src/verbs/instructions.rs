@@ -225,20 +225,17 @@ fn point_context_files_at_projection(
     name: &str,
     context_files: &mut std::collections::BTreeMap<String, String>,
 ) {
-    let Some(ws) = core::workspace::Workspace::discover_cwd().ok().flatten() else {
-        return;
-    };
     let request = speclink_protocol::context::ContextSnapshotRequest {
         change: Some(name.to_string()),
         flow: Some("apply".to_string()),
     };
-    let known = speclink_host::projection::current_snapshot_id(&ws);
+    let known = speclink_host::projection::current_snapshot_id(&ctx.ws);
     match ctx.client.context_snapshot(&request, known.as_deref()) {
         // Unchanged since the projection's snapshot id: leave it untouched.
         Ok(ContextSnapshotOutcome::Unchanged) => {}
         Ok(ContextSnapshotOutcome::Fresh(snapshot)) => {
             let provider = VerbContextProvider { snapshot };
-            match speclink_host::projection::materialize(&ws, &provider, &request) {
+            match speclink_host::projection::materialize(&ctx.ws, &provider, &request) {
                 Ok(out) => {
                     for w in &out.warnings {
                         eprintln!("speclink: warning: {w}");
@@ -251,12 +248,12 @@ fn point_context_files_at_projection(
             eprintln!("speclink: warning: context projection not refreshed: {e}");
             // Keep the existing projection but flag it stale. No projection yet
             // is a no-op (mark_stale bails, which we ignore).
-            let _ = speclink_host::projection::mark_stale(&ws);
+            let _ = speclink_host::projection::mark_stale(&ctx.ws);
         }
     }
     core::instructions::project_context_files(
         context_files,
-        &speclink_host::projection::projection_dir(&ws).join("openspec"),
+        &speclink_host::projection::projection_dir(&ctx.ws).join("openspec"),
         name,
     );
 }

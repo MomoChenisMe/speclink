@@ -14,6 +14,10 @@ use speclink_protocol::query as protocol_query;
 
 pub(crate) struct RemoteCtx {
     pub(crate) client: RemoteClient,
+    /// The workspace the store mode was resolved from. Remote mode implies it
+    /// exists (discovery failure resolves to fs mode), so arms read it here
+    /// instead of re-discovering.
+    pub(crate) ws: core::workspace::Workspace,
 }
 
 /// Resolve remote mode for the current workspace. `Ok(None)` = fs mode
@@ -56,7 +60,7 @@ pub(crate) fn remote_ctx() -> Result<Option<RemoteCtx>> {
     } else {
         conn.repo.as_deref()
     };
-    Ok(Some(RemoteCtx { client: RemoteClient::new(&conn.url, &token, repo) }))
+    Ok(Some(RemoteCtx { client: RemoteClient::new(&conn.url, &token, repo), ws }))
 }
 
 /// Explicit name passes through; otherwise a single active change

@@ -98,12 +98,8 @@ pub(crate) fn remote_language(ctx: &RemoteCtx, a: LanguageArgs) -> Result<()> {
 fn remote_artifact_cat(ctx: &RemoteCtx, artifact: &str, change: Option<&str>) -> Result<()> {
     // Validate the id shape locally so both modes reject the same inputs.
     let _ = artifact_rel_path(artifact)?;
-    let change = match change {
-        Some(n) => n.to_string(),
-        None => match remote_resolve_change(ctx, None, "Use --change to specify one:")? {
-            Some(n) => n,
-            None => return Ok(()),
-        },
+    let Some(change) = remote_resolve_change(ctx, change, "Use --change to specify one:")? else {
+        return Ok(());
     };
     print!("{}", ctx.client.get_artifact(&change, artifact)?.content);
     Ok(())

@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "change": "remote-ctx-workspace",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 在 crates/speclink-cli/src/remote_base.rs 為 RemoteCtx 加 pub(crate) ws: Workspace 欄位，remote_ctx() 把探索到的 Workspace 區域變數移入回傳值（design D1）；cargo build -p speclink-cli 編譯通過",
+      "files": [
+        "crates/speclink-cli/src/remote_base.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 遷移 crates/speclink-cli/src/verbs/station.rs 三處（review prepare、station scope、station stamp 指令）：require_workspace 與 discover 加自訂 bail 改為讀 ctx.ws，stamp 的缺席 bail 整段刪除（design D2）；station.rs 孤兒化的 require_workspace import 清除",
+      "files": [
+        "crates/speclink-cli/src/verbs/station.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 遷移 crates/speclink-cli/src/verbs/checks.rs（drift 指令：探索改 Some(&ctx.ws)，git_available 過濾保留）、crates/speclink-cli/src/verbs/instructions.rs（instructions 指令的 context 投影：靜默略過分支刪除）、crates/speclink-cli/src/verbs/progress.rs（task done 指令：touched 與 head 直接自 ctx.ws 計算，空集合語意不變）（design D2）",
+      "files": [
+        "crates/speclink-cli/src/verbs/checks.rs",
+        "crates/speclink-cli/src/verbs/instructions.rs",
+        "crates/speclink-cli/src/verbs/progress.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 把 crates/speclink-cli/src/verbs/new.rs（new artifact）、crates/speclink-cli/src/verbs/progress.rs（task done、task undone）、crates/speclink-cli/src/verbs/documents.rs（artifact cat）四處 remote 臂的外層 match 改為 let-else 一行形（design D3），各臂提示字串逐字保留",
+      "files": [
+        "crates/speclink-cli/src/verbs/documents.rs",
+        "crates/speclink-cli/src/verbs/new.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M1DZ3RS07VN6HG05K415ZGXJ",
+      "taskDesc": "1.1 在 crates/speclink-cli/src/remote_base.rs 為 RemoteCtx 加 pub(crate) ws: Workspace 欄位，remote_ctx() 把探索到的 Workspace 區域變數移入回傳值（design D1）；cargo build -p speclink-cli 編譯通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf05738ef93c589df16a276de7a79129e5477906",
+      "touchedFiles": [
+        "crates/speclink-cli/src/remote_base.rs"
+      ],
+      "recordedAt": "2026-09-01T09:01:31Z"
+    },
+    {
+      "taskId": "tsk_01M1DZ3RS0EC9FCSE0KKJP5HQR",
+      "taskDesc": "1.2 遷移 crates/speclink-cli/src/verbs/station.rs 三處（review prepare、station scope、station stamp 指令）：require_workspace 與 discover 加自訂 bail 改為讀 ctx.ws，stamp 的缺席 bail 整段刪除（design D2）；station.rs 孤兒化的 require_workspace import 清除",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf05738ef93c589df16a276de7a79129e5477906",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/station.rs"
+      ],
+      "recordedAt": "2026-09-01T09:03:51Z"
+    },
+    {
+      "taskId": "tsk_01M1DZ3RS0PY1VY9S4F5Q607TZ",
+      "taskDesc": "1.3 遷移 crates/speclink-cli/src/verbs/checks.rs（drift 指令：探索改 Some(&ctx.ws)，git_available 過濾保留）、crates/speclink-cli/src/verbs/instructions.rs（instructions 指令的 context 投影：靜默略過分支刪除）、crates/speclink-cli/src/verbs/progress.rs（task done 指令：touched 與 head 直接自 ctx.ws 計算，空集合語意不變）（design D2）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf05738ef93c589df16a276de7a79129e5477906",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/checks.rs",
+        "crates/speclink-cli/src/verbs/instructions.rs",
+        "crates/speclink-cli/src/verbs/progress.rs"
+      ],
+      "recordedAt": "2026-09-01T09:05:03Z"
+    },
+    {
+      "taskId": "tsk_01M1DZ3RS03PMW5B2VKMF20FQM",
+      "taskDesc": "2.1 把 crates/speclink-cli/src/verbs/new.rs（new artifact）、crates/speclink-cli/src/verbs/progress.rs（task done、task undone）、crates/speclink-cli/src/verbs/documents.rs（artifact cat）四處 remote 臂的外層 match 改為 let-else 一行形（design D3），各臂提示字串逐字保留",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf05738ef93c589df16a276de7a79129e5477906",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/documents.rs",
+        "crates/speclink-cli/src/verbs/new.rs"
+      ],
+      "recordedAt": "2026-09-01T09:05:55Z"
+    }
+  ]
+}

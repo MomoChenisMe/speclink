@@ -1,0 +1,47 @@
+schema: spec-driven
+created: 2026-09-01
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: improve-cli-verb-layer
+started_at: 2026-09-01
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-01
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 6
+reviewed_scope:
+  - path: crates/speclink-cli/src/remote_base.rs
+    hash: a0f3f26e20167181898811d8289da2d7906305e75555c2e53c09d8302093a684
+  - path: crates/speclink-cli/src/verbs/checks.rs
+    hash: 494ffb672b334abd99b54d6e1ac1907238b124f23795e2d37927c1caf07a5acb
+  - path: crates/speclink-cli/src/verbs/documents.rs
+    hash: f6e93ef602b1302e521219d5452153bbe868180dd5b7fd22f5db013758f12744
+  - path: crates/speclink-cli/src/verbs/instructions.rs
+    hash: ffe18a5ce3469c838aa2a6e11a64ea6baa6f135a63077562498e3d739cf96321
+  - path: crates/speclink-cli/src/verbs/new.rs
+    hash: 80706449b1657c64416622e12b983c7c930441ca0c499a94c525ccb179bb1463
+  - path: crates/speclink-cli/src/verbs/progress.rs
+    hash: e4326e5ec36b24e9c9de13edbeab08bd9c8b7060f4169d94b5c57611b06fc632
+  - path: crates/speclink-cli/src/verbs/station.rs
+    hash: ee8b435c574fc4ae733dc3b0290431e0dd38758417dc3f2f15582bff012d2753
+verified_at: 2026-09-01
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 6
+verified_scope:
+  - path: crates/speclink-cli/src/remote_base.rs
+    hash: a0f3f26e20167181898811d8289da2d7906305e75555c2e53c09d8302093a684
+  - path: crates/speclink-cli/src/verbs/checks.rs
+    hash: 494ffb672b334abd99b54d6e1ac1907238b124f23795e2d37927c1caf07a5acb
+  - path: crates/speclink-cli/src/verbs/documents.rs
+    hash: f6e93ef602b1302e521219d5452153bbe868180dd5b7fd22f5db013758f12744
+  - path: crates/speclink-cli/src/verbs/instructions.rs
+    hash: ffe18a5ce3469c838aa2a6e11a64ea6baa6f135a63077562498e3d739cf96321
+  - path: crates/speclink-cli/src/verbs/new.rs
+    hash: 80706449b1657c64416622e12b983c7c930441ca0c499a94c525ccb179bb1463
+  - path: crates/speclink-cli/src/verbs/progress.rs
+    hash: e4326e5ec36b24e9c9de13edbeab08bd9c8b7060f4169d94b5c57611b06fc632
+  - path: crates/speclink-cli/src/verbs/station.rs
+    hash: ee8b435c574fc4ae733dc3b0290431e0dd38758417dc3f2f15582bff012d2753
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-01

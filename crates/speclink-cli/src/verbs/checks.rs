@@ -317,11 +317,8 @@ pub(crate) fn remote_drift(ctx: &RemoteCtx, a: &ChangeArg) -> Result<()> {
     // unavailable. Collecting anyway would stat the anchors against a
     // codeless directory and report every one of them broken: an absent
     // checkout would read as deleted code.
-    let ws = core::workspace::Workspace::discover_cwd()?
-        .filter(|w| core::util::git_available(&w.root));
-    let facts = ws
-        .as_ref()
-        .map(|w| speclink_host::drift::collect_workspace_facts(w, &docs, &change));
+    let facts = core::util::git_available(&ctx.ws.root)
+        .then(|| speclink_host::drift::collect_workspace_facts(&ctx.ws, &docs, &change));
     let workspace = core::drift::compute_workspace_drift(&docs, &change, facts.as_ref());
 
     // The spec side and its basis come from one server snapshot, so expected
