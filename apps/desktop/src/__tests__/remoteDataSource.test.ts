@@ -593,3 +593,19 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
     expect(claim).toBe(false);
   });
 });
+
+describe("手冊在 remote 尚不支援（desktop-manual-page spec「無手冊與 remote 模式的空狀態」）", () => {
+  it("listManualPages 回 present false／reason remote 的空索引、getManualPage 回 null，且不發任何請求", async () => {
+    const { calls, invoke } = fakeInvoke();
+    const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
+    expect(await ds.listManualPages()).toEqual({
+      present: false,
+      reason: "remote",
+      pages: [],
+      uncoveredNew: [],
+      malformed: [],
+    });
+    expect(await ds.getManualPage("index")).toBeNull();
+    expect(calls).toEqual([]);
+  });
+});

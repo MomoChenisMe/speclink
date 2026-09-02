@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Archive,
+  BookOpen,
   CloudOff,
   GitBranch,
   FileText,
@@ -15,6 +16,7 @@ import {
   ArchivedDrawer,
   SpecList,
   SpecDrawer,
+  ManualPage,
   RichDetailDrawer,
   DiscussionDrawer,
   RevertBlockedDialog,
@@ -584,6 +586,14 @@ function AppInner({
             active={s.boardView === "specs"}
             onClick={() => s.setBoardView("specs")}
           />
+          {/* 手冊頁入口（desktop-manual-page）：切頁語意同規格頁；無障礙標籤「手冊」。 */}
+          <NavItem
+            icon={<BookOpen className="h-4 w-4" />}
+            label={t("app.navManual")}
+            ariaLabel={t("app.navManual")}
+            active={s.boardView === "manual"}
+            onClick={() => s.setBoardView("manual")}
+          />
           {/* 已封存入口（獨立頁）：切頁語意，返回看板改點「變更」。 */}
           <NavItem
             icon={<Archive className="h-4 w-4" />}
@@ -662,8 +672,16 @@ function AppInner({
             />
           ) : s.boardView === "project-settings" && activeSession !== undefined ? (
             <ProjectSettingsView settings={activeSession.settings} />
+          ) : s.boardView === "manual" ? (
+            <ManualPage
+              index={s.manual}
+              loadPage={(slug) => dataSource?.getManualPage(slug) ?? Promise.resolve(null)}
+              onOpenSpec={s.jumpToSpec}
+              capabilities={s.specs.map((spec) => spec.id)}
+              refreshGen={s.refreshGen}
+            />
           ) : s.boardView === "specs" ? (
-            <SpecList specs={s.specs} onOpen={s.openSpec} />
+            <SpecList specs={s.specs} onOpen={s.openSpec} focus={s.detailSpec} />
           ) : s.boardView === "board" ? (
             <KanbanBoard
               changes={s.changes}

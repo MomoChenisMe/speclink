@@ -65,6 +65,8 @@ export type {
   ArchivedItem,
   DiscussionItem,
   DiscussionLists,
+  ManualIndex,
+  ManualPageItem,
   SearchHit,
   Verb,
   AnalyzeFinding,
@@ -150,3 +152,6 @@ export { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE, type VerifyBadgeStatus } fr
 // 規格頁
 export { SpecList, type SpecListProps } from "./components/SpecList";
 export { SpecDrawer, type SpecDrawerProps } from "./components/SpecDrawer";
+
+// 手冊頁（desktop-manual-page）
+export { ManualPage, type ManualPageProps } from "./components/ManualPage";

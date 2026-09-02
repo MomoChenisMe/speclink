@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, FileText, History } from "lucide-react";
 
 import type { SpecItem } from "../adapter";
@@ -99,6 +99,9 @@ export interface SpecListProps {
   specs: SpecItem[];
   /** 點卡片開唯讀規格抽屜（capability 定址）。 */
   onOpen: (capability: string) => void;
+  /** 外部指定聚焦的 capability（手冊出處跳規格）：翻到該卡所在頁並捲至該卡；
+   * 搜尋字串遮住它時清空搜尋。 */
+  focus?: string | null;
 }
 
 /** 規格頁（design D1）：正典 spec 卡片清單＋名稱搜尋（design D3：大小寫不敏感
@@ -107,7 +110,7 @@ export interface SpecListProps {
  *（spec「清單最新在前與換頁瀏覽」）——排序與換頁純屬呈現層。
  * 版面填滿視窗高度：搜尋框與標題列固定頂部、卡片清單於內部容器捲動、
  * 換頁控制列沉底常駐（不捲動即可換頁）。 */
-export function SpecList({ specs, onOpen }: SpecListProps) {
+export function SpecList({ specs, onOpen, focus }: SpecListProps) {
   const { t } = useI18n();
   // 搜尋字串留元件內——規格頁無跨視圖保留需求（比對規則共用 matchesQuery）。
   const [query, setQuery] = useState("");
@@ -131,6 +134,21 @@ export function SpecList({ specs, onOpen }: SpecListProps) {
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const page = Math.min(rawPage, pageCount);
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  useEffect(() => {
+    if (!focus) return;
+    const visible = filtered.some((s) => s.id === focus);
+    const at = (visible ? filtered : sorted).findIndex((s) => s.id === focus);
+    if (at < 0) return;
+    if (!visible) setQuery("");
+    setRawPage(Math.floor(at / PAGE_SIZE) + 1);
+    // 換頁後卡片才在 DOM：下一幀再捲至該卡。
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.querySelector(`[data-spec="${focus}"]`)?.scrollIntoView?.({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
 
   const goPage = (next: number) => {
     setRawPage(next);
