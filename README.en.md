@@ -53,7 +53,7 @@ baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? |
 
 worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
 
-utilities: validate / analyze / audit / commit / config
+utilities: validate / analyze / audit / commit / config / manual
 ```
 
 Where you enter depends on what you have:

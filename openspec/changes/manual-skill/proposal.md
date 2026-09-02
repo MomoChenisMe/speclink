@@ -38,7 +38,7 @@
 - Affected code:
   - New:
     - crates/speclink-core/assets/skills/manual.md（技能資產，事實來源）
-    - crates/speclink-cli/tests/it/manual_dir_ignored.rs（釘住 list／validate 對 openspec/manual/ 無感；並於 crates/speclink-cli/tests/it/main.rs 登錄 mod）
+    - crates/speclink-cli/tests/it/manual_pages_dir_ignored.rs（釘住 list／validate 對 openspec/manual/ 無感；並於 crates/speclink-cli/tests/it/main.rs 登錄 mod）
   - Modified:
     - crates/speclink-core/src/skills.rs（技能註冊表新增 manual 一筆：名稱、觸發情境描述、渲染目標）
     - crates/speclink-core/assets/skills/archive.md（結尾提醒句）

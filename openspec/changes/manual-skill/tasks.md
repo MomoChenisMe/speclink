@@ -1,6 +1,6 @@
 ## 1. 契約釘住（測試先行）
 
-- [x] 1.1 新增 CLI 整合測試 `crates/speclink-cli/tests/it/manual_dir_ignored.rs`（並於 `crates/speclink-cli/tests/it/main.rs` 加 mod）：於 tempdir 以 speclink init 建工作區後，先記錄 `speclink list --json` 與 `speclink validate --specs` 的 stdout 與 exit code，再建立含合規 frontmatter 六欄的 `openspec/manual/index.md` 後重跑，兩指令的 stdout 逐位元一致且 exit code 為 0——釘住 design「手冊落點 openspec/manual/ 且 list 與 validate 無感」與「手冊頁的落點與檔名」。驗證：`cargo test -p speclink-cli --test it manual_dir_ignored` 綠。 <!-- speclink-task:tsk_01M1FTM01XQHZH4R9JBRTGSZFE -->
+- [x] 1.1 新增 CLI 整合測試 `crates/speclink-cli/tests/it/manual_pages_dir_ignored.rs`（並於 `crates/speclink-cli/tests/it/main.rs` 加 mod）：於 tempdir 以 speclink init 建工作區後，先記錄 `speclink list --json` 與 `speclink validate --specs` 的 stdout 與 exit code，再建立含合規 frontmatter 六欄的 `openspec/manual/index.md` 後重跑，兩指令的 stdout 逐位元一致且 exit code 為 0——釘住 design「手冊落點 openspec/manual/ 且 list 與 validate 無感」與「手冊頁的落點與檔名」。驗證：`cargo test -p speclink-cli --test it manual_pages_dir_ignored` 綠。 <!-- speclink-task:tsk_01M1FTM01XQHZH4R9JBRTGSZFE -->
 
 ## 2. 技能資產與註冊表
 

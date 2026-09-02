@@ -156,27 +156,15 @@ pub fn registry() -> Vec<Skill> {
     ]
 }
 
-/// Lookup any embedded skill body (including internal ones) by name.
+/// Lookup any embedded skill body (including internal ones) by name: the registry
+/// is the single table for every rendered skill; only the three internal skills
+/// (taken via `speclink instructions --skill`, never rendered — spec skill-routing
+/// 「內部技能不參與路由」) live outside it.
 pub fn skill_body(name: &str) -> Option<&'static str> {
+    if let Some(skill) = registry().into_iter().find(|s| s.name == name) {
+        return Some(skill.body);
+    }
     Some(match name {
-        "analyze" => B_ANALYZE,
-        "apply" => B_APPLY,
-        "apply-with-worktree" => B_APPLY_WITH_WORKTREE,
-        "worktree-merge" => B_WORKTREE_MERGE,
-        "archive" => B_ARCHIVE,
-        "audit" => B_AUDIT,
-        "commit" => B_COMMIT,
-        "config" => B_CONFIG,
-        "discuss" => B_DISCUSS,
-        "drift" => B_DRIFT,
-        "improve" => B_IMPROVE,
-        "ingest" => B_INGEST,
-        "manual" => B_MANUAL,
-        "propose" => B_PROPOSE,
-        "quality" => B_QUALITY,
-        "review" => B_REVIEW,
-        "trace" => B_TRACE,
-        "verify" => B_VERIFY,
         "sync" => B_SYNC,
         "clarify" => B_CLARIFY,
         "tdd" => B_TDD,
@@ -400,6 +388,24 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// `skill_body` 是 registry 的查表加三個內部技能（tdd、clarify、sync）：每個對外
+    /// 技能都解析到 registry 同一份 body，內部技能可取、未知名稱回 None。
+    #[test]
+    fn skill_body_resolves_every_registered_skill_and_the_internal_ones() {
+        for skill in registry() {
+            assert_eq!(
+                skill_body(skill.name),
+                Some(skill.body),
+                "skill '{}' must resolve to its registry body",
+                skill.name
+            );
+        }
+        for internal in ["tdd", "clarify", "sync"] {
+            assert!(skill_body(internal).is_some(), "internal skill '{internal}' must resolve");
+        }
+        assert_eq!(skill_body("no-such-skill"), None);
     }
 
     /// spec manual-skill「技能檔的渲染」＋ skill-routing「入口路由由技能描述承載」：

@@ -327,17 +327,17 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 ### manual
 
-- **Purpose / 目的**：從正式規格生成 `openspec/manual/` 的 wiki 式操作手冊，或在對話中導覽系統怎麼操作。
-- **Use / 使用**：需要一份給人讀的操作手冊，或新人想被帶著走一遍系統時；封存後想確認手冊是否過期時也用它。
+- **Purpose / 目的**：從正典規格生成 `openspec/manual/` 的 wiki 式操作手冊，或在對話中導覽系統怎麼操作。
+- **Use / 使用**：需要一份給人讀的操作手冊，或新人想被帶著走一遍系統時；封存後想確認手冊是否可能過期時也用它。
 - **Skip / 跳過**：專案尚無使用者面向的規格，或沒有人要讀手冊。
 - **Input / 輸入**：正典規格（`openspec/specs/`）與既有手冊頁的 frontmatter；不讀 README、docs 或程式碼。
-- **Outputs / 產物**：生成模式寫出 `openspec/manual/*.md`（含首頁與來源頁），並回報過期頁與未入冊能力；導覽模式零寫檔。
+- **Outputs / 產物**：生成模式寫出 `openspec/manual/*.md`（含首頁與來源頁），並回報可能過期的頁與未入冊能力；導覽模式零寫檔。
 - **Claude**：`/speclink-manual`（生成）、`/speclink-manual 導覽`（導覽）。
 - **Codex**：`$speclink-manual`。
 - **CLI/Host**：沒有 `speclink manual` 子指令；技能以 `speclink list --specs` 與 `speclink show` 讀規格。
-- **Done / 完成**：摘要列出新增、重生、未動的頁數與過期頁／未入冊能力清單；無異動時明示手冊已是最新。
+- **Done / 完成**：摘要列出新增、重生、未動的頁數與可能過期頁／未入冊能力清單；無異動時明示手冊已是最新。
 - **Next / 下一步**：以一般提交收尾手冊異動（僅建議）。remote 綁定的專案生成模式尚不支援，導覽照常。
-- **Recover / 恢復**：手冊頁是普通檔案，刪掉或還原即可；重生只碰過期頁，既有順序不變。
+- **Recover / 恢復**：手冊頁是普通檔案，刪掉或還原即可；重生只碰可能過期的頁，既有順序不變。
 
 ## Discussion outcomes / 討論結論分流
 
