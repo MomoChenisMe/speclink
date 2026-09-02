@@ -15,7 +15,7 @@ baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? |
 
 worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
 
-工具：validate / analyze / audit / commit / config
+工具：validate / analyze / audit / commit / config / manual
 ```
 
 - `baseline` 只用於既有程式首次建立「目前行為」正典 specs。
@@ -23,7 +23,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - `propose → apply ⇄ ingest → archive` 是變更的主生命週期。
 - 兩道品質關卡（`review`、`verify`）互不依賴，依風險自由組合。低風險變更兩道都跳過也是正當選擇。
 - `drift` 是閒置後續作的條件式前置。
-- `validate`、`analyze`、`audit`、`commit`、`config` 是工具或守門，不是每個變更都會依序經過的狀態。
+- `validate`、`analyze`、`audit`、`commit`、`config`、`manual` 是工具或守門，不是每個變更都會依序經過的狀態。
 
 看板把這條路線畫成三欄——提案中、進行中、已封存——每張卡片就是一個變更目前站在哪裡：
 
@@ -51,7 +51,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 | Main lifecycle / 主生命週期 | `propose`、`apply`、`ingest`、`archive` | 變更從規劃、實作、需求更新到合併正典。 |
 | Conditional / 條件式 | `baseline`、`discuss`、`improve`、`drift`、worktree 流程 | 只有既有程式初始建規格、需求需收斂、閒置續作，或要平行推多個變更時使用。 |
 | Quality stations / 品質關卡 | `review`、`verify`、`quality` | 封存前的兩道選用關卡：工藝與合規，各自落工單並蓋章。 |
-| Utilities / 工具 | `validate`、`analyze`、`audit`、`commit`、`config` | 檢查結構、artifact 一致性、安全 sharp edges、變更範圍提交與工作流設定。 |
+| Utilities / 工具 | `validate`、`analyze`、`audit`、`commit`、`config`、`manual` | 檢查結構、artifact 一致性、安全 sharp edges、變更範圍提交、工作流設定與從規格生成的手冊。 |
 
 ## Stage reference / 階段參考
 
@@ -324,6 +324,20 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **Done / 完成**：diff 已核可並套用。
 - **Next / 下一步**：回到任一站；設定影響之後所有 artifact 產出。
 - **Recover / 恢復**：設定寫錯只要再跑一次改回來，不影響既有變更。
+
+### manual
+
+- **Purpose / 目的**：從正式規格生成 `openspec/manual/` 的 wiki 式操作手冊，或在對話中導覽系統怎麼操作。
+- **Use / 使用**：需要一份給人讀的操作手冊，或新人想被帶著走一遍系統時；封存後想確認手冊是否過期時也用它。
+- **Skip / 跳過**：專案尚無使用者面向的規格，或沒有人要讀手冊。
+- **Input / 輸入**：正典規格（`openspec/specs/`）與既有手冊頁的 frontmatter；不讀 README、docs 或程式碼。
+- **Outputs / 產物**：生成模式寫出 `openspec/manual/*.md`（含首頁與來源頁），並回報過期頁與未入冊能力；導覽模式零寫檔。
+- **Claude**：`/speclink-manual`（生成）、`/speclink-manual 導覽`（導覽）。
+- **Codex**：`$speclink-manual`。
+- **CLI/Host**：沒有 `speclink manual` 子指令；技能以 `speclink list --specs` 與 `speclink show` 讀規格。
+- **Done / 完成**：摘要列出新增、重生、未動的頁數與過期頁／未入冊能力清單；無異動時明示手冊已是最新。
+- **Next / 下一步**：以一般提交收尾手冊異動（僅建議）。remote 綁定的專案生成模式尚不支援，導覽照常。
+- **Recover / 恢復**：手冊頁是普通檔案，刪掉或還原即可；重生只碰過期頁，既有順序不變。
 
 ## Discussion outcomes / 討論結論分流
 
