@@ -2,7 +2,7 @@
 title: 工作流總覽：站別與交棒
 section: 開始使用
 order: 50
-keywords: [工作流, 技能, 交棒, 下一步, SDD, 站別]
+keywords: [工作流, 技能, 交棒, 下一步, SDD, 站別, baseline, 手冊]
 sources: [skill-routing, user-documentation]
 generated: 2026-09-02
 ---
@@ -40,24 +40,26 @@ Speclink 的工作流由一組 AI 技能串起來。每個技能就是一站：�
 | 安全稽核 | `/speclink-audit` |
 | 組建工作流設定 | `/speclink-config` |
 | 功能溯源 | `/speclink-trace` |
+| 需要一份人類操作手冊、或想被導覽怎麼操作系統 | `/speclink-manual` |
 
 這些站分三類：
 
 - 必經的生命週期階段：propose → apply → archive。
 - 條件式階段：discuss、improve、baseline、drift、ingest、review、verify、quality、worktree 流程。看情況才走。
-- 工具技能：commit、analyze、audit、config、trace。隨叫隨用，沒有固定的下一站。audit 是安全檢查，commit 是限定某個變更檔案的 Git 工具；兩者都不是每個變更必經的步驟。
+- 工具技能：commit、analyze、audit、config、trace、manual。隨叫隨用，沒有固定的下一站。audit 是安全檢查，commit 是限定某個變更檔案的 Git 工具；兩者都不是每個變更必經的步驟。
 
 > [!NOTE]
-> baseline、apply、drift、ingest、analyze、audit 這六個技能的內文行為沒有各自的規格，本手冊只寫路由層面的資訊。其他技能各有一頁。
+> apply、drift、ingest、analyze、audit 這五個技能的內文行為沒有各自的規格，本手冊只寫路由層面的資訊。其他技能各有一頁。
 
 ## 從哪裡開始
 
 - 需求已經明確：直接 `/speclink-propose`。
 - 需求還要取捨：先 `/speclink-discuss`。
 - 只是想理解問題、沒有待決事項：直接問答就好，不用建立討論記錄。
-- 既有專案、還沒有規格：先 `/speclink-baseline` 建立規格基準。
+- 既有專案、還沒有規格：先 `/speclink-baseline` 建立規格基準，見[基準盤點：既有專案採用 Speclink](baseline.md)。
 - 要恢復一個閒置的變更：先 `/speclink-drift`，再回 apply。
 - 實作途中收到會改產物的新需求：走 `/speclink-ingest`。
+- 想先讀一份操作手冊、或被導覽一遍：`/speclink-manual`，見[操作手冊：生成與導覽](manual.md)。
 
 ## 交棒邊表
 
@@ -77,7 +79,7 @@ Speclink 的工作流由一組 AI 技能串起來。每個技能就是一站：�
 | ingest | 產物更新完 | 回 apply |
 | review、verify | 落章 | archive。在 worktree 內則先提交蓋章寫入的異動，再 worktree-merge |
 | quality | 兩站落章 | archive。在 worktree 內則 worktree-merge |
-| archive | 封存完成 | 提醒你提交封存產生的異動。只提醒，不代跑 |
+| archive | 封存完成 | 提醒你提交封存產生的異動；工作區有 `openspec/manual/` 時另提醒可跑 manual 檢查手冊是否過期。都只提醒，不代跑 |
 
 apply 完成時如果還剩手動任務，建議會說品質關卡可以先跑，封存要等手動任務完成。
 
@@ -97,15 +99,18 @@ review 與 verify 蓋章時，會在同一個寫入裡寫下章欄位並刪除�
 
 ## 各站的頁面
 
-1. [討論：需求還模糊時](discuss.md)
-2. [提案：建立變更與產物](propose.md)
-3. [實作：完成任務](apply.md)
-4. [續作與需求變更：drift 與 ingest](drift-ingest.md)
-5. [品質關卡總覽](quality-stations.md)、[審查站](review.md)、[驗證站](verify.md)
-6. [封存](archive.md)
-7. [提交單一變更的檔案](commit.md)
-8. [平行實作與合回：worktree](worktree.md)
-9. [溯源：一個功能怎麼來的](trace.md)
-10. [工作流政策與設定](policy-config.md)
+1. [基準盤點：既有專案採用 Speclink](baseline.md)
+2. [討論：需求還模糊時](discuss.md)
+3. [提案：建立變更與產物](propose.md)
+4. [實作：完成任務](apply.md)
+5. [續作與需求變更：drift 與 ingest](drift-ingest.md)
+6. [品質關卡總覽](quality-stations.md)、[審查站](review.md)、[驗證站](verify.md)
+7. [封存](archive.md)
+8. [提交單一變更的檔案](commit.md)
+9. [平行實作與合回：worktree](worktree.md)
+10. [溯源：一個功能怎麼來的](trace.md)
+11. [工作流政策與設定](policy-config.md)
+12. [產出流程 schema 管理](schemas.md)
+13. [操作手冊：生成與導覽](manual.md)
 
 **出處**：`skill-routing`、`user-documentation`

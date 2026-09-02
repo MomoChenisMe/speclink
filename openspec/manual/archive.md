@@ -2,7 +2,7 @@
 title: 封存
 section: SDD 工作流
 order: 170
-keywords: [封存, archive, 正典規格, 守門, Purpose, 證據]
+keywords: [封存, archive, 正典規格, 守門, Purpose, 證據, 手冊]
 sources: [archive-skill, archive-merge, change-lifecycle, verify-evidence, spec-validation]
 generated: 2026-09-02
 ---
@@ -111,6 +111,9 @@ delta 新開一個正典還沒有的 capability 時，delta 檔頂部要有一�
 
 ## 封存之後
 
-封存完成後，技能提醒你用一般的 git 提交收尾這次封存產生的異動：delta 併入正典規格、變更目錄搬進封存區。這只是提醒，技能不會代跑提交。commit 技能的「挑選變更檔案」流程不適用於封存之後。
+封存完成後，技能提醒你兩件事。兩件都只是提醒，技能不會代跑。
+
+- **提交收尾**：用一般的 git 提交收尾這次封存產生的異動：delta 併入正典規格、變更目錄搬進封存區。commit 技能的「挑選變更檔案」流程不適用於封存之後。
+- **檢查手冊是否過期**：工作區有 `openspec/manual/` 時，技能提醒你可以跑 `/speclink-manual` 檢查手冊有沒有因這次封存而過期。條件只看目錄存不存在，不看這次封存動到哪些規格。見[操作手冊：生成與導覽](manual.md)。
 
 **出處**：`archive-skill`、`archive-merge`、`change-lifecycle`、`verify-evidence`、`spec-validation`
