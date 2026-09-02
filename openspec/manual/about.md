@@ -13,7 +13,7 @@ generated: 2026-09-02
 
 本手冊全部內容只取材自 `openspec/specs/` 底下的正典規格。README、`docs/` 與原始碼都不是來源。規格沒寫的，手冊就不寫，或在該處標明「規格未載」。每一頁的最後一行列出它取材的能力名稱。
 
-正典共 77 個能力。其中 52 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 25 個是引擎內部（儲存、wire 契約、host 執行期、測試骨架、建置與發布管線），不入冊：
+正典共 81 個能力。其中 56 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 25 個是引擎內部（儲存、wire 契約、host 執行期、測試骨架、建置與發布管線），不入冊：
 
 `client-protocol`、`command-runtime`、`delivery-baseline`、`desktop-release`、`dev-harness`、`host-runtime`、`node-sdk`、`node-sdk-release`、`phase2-acceptance`、`phase3-acceptance`、`postgres-team-store`、`reference-server`、`remote-board-order`、`remote-workspace-data`、`server-context-api`、`server-drift-api`、`server-event-stream`、`server-read-api`、`server-verb-api`、`serverfs-team-store`、`sqlite-team-store`、`store-abstraction`、`teamstore-contract`、`ui-copy-vocabulary`、`workspace-session`。
 
@@ -24,7 +24,7 @@ generated: 2026-09-02
 - `phase2-acceptance`：setup 開箱 → 邀請與存取金鑰 → 提案 → 政策 → 完成任務 → 規格投影 → 漂移 → 封存。
 - `phase3-acceptance`：PM 無 checkout → RD 有 checkout → 多 server → 多分頁 → 失聯與恢復。
 
-劇本沒有涵蓋的站（討論、審查、驗證、品質關卡合跑、提交、worktree），順序依 `skill-routing` 的交棒邊表補齊。「開始使用」與「桌面 app」兩章依功能領域排列，沒有對應的劇本。
+劇本沒有涵蓋的站（基準盤點、討論、審查、驗證、品質關卡合跑、提交、worktree、操作手冊），順序依 `skill-routing` 的入口情境與交棒邊表補齊：基準盤點放在 SDD 工作流最前，操作手冊放在工具技能之末。「開始使用」與「桌面 app」兩章依功能領域排列，沒有對應的劇本。
 
 ## 規格內的矛盾
 
@@ -55,8 +55,8 @@ generated: 2026-09-02
 ## 已知限制
 
 - 沒有截圖。畫面文字與按鈕名稱逐字取自規格，實際畫面若不同，以執行中的產品為準。
-- baseline、apply、ingest、drift、analyze、audit 六個技能沒有各自的規格，手冊只寫 `skill-routing` 與 `user-documentation` 載明的入口情境與交棒關係。
-- `/speclink-manual` 技能本身沒有正典規格，工作流總覽不列它。
+- apply、ingest、drift、analyze、audit 五個技能沒有各自的規格，手冊只寫 `skill-routing` 與 `user-documentation` 載明的入口情境與交棒關係。
+- 過期判定只比到日。與規格同一天生成的頁，在桌面 app 的手冊頁與下一次生成時都會被標為「可能過期」，即使內容已是最新；這是 `manual-pages` 刻意的保守設計，不是錯誤。
 - 規格裡的內部識別符（欄位名、型別名、旗標）不進手冊，改以白話描述效果。
 
 ## 編纂日期
