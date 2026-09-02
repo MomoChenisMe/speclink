@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "change": "baseline-apply-spec-rules",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 依「測試落點 render_golden」在 crates/speclink-core/tests/it/render_golden.rs 新增測試 baseline_skill_loads_workflow_config_and_applies_specs_rules：以 skill_for_both_tools(\"baseline-rules\", \"baseline\") 讀 claude 與 codex 兩側生成檔，斷言 design Implementation Contract 的七個正向 needle（speclink workflow-config show --json、rules.specs、MUST honour every entry、none (no rules.specs configured)、Specs rules applied this run、checks structure only、never fall back to reading）存在、負向 needle（Read `openspec/config.yaml`）不存在；對應「盤點前取得 workflow config 並套用 specs 產出規則」的技能檔載明入口、規則屬 Agent 指令兩個 scenario。驗證：cargo test -p speclink-core --test it baseline_skill_ 此時失敗（Red），失敗訊息指出 needle 缺席。",
+      "files": [
+        "crates/speclink-core/assets/skills/baseline.md",
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/it/render_golden.rs",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 再生五份 golden（crates/speclink-core/tests/golden/claude.snapshot.md、crates/speclink-core/tests/golden/codex.snapshot.md、crates/speclink-core/tests/golden/neutral-cli.snapshot.md、crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md、crates/speclink-core/tests/golden/claude-worktree.snapshot.md）與 crates/speclink-core/tests/golden/assets.lock：先以 git status 確認樹上只有本 change 的異動，執行 UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::，再執行 UPDATE_ASSETS_LOCK=1 同指令；對應「內嵌 speclink-baseline 技能的渲染與保護」的 golden 保護與其他技能只變版本戳兩個 scenario。驗證：git diff 五份 golden 只含 baseline 段落與版本戳；不帶環境變數重跑 cargo test -p speclink-core --test it 全綠。",
+      "files": [
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M1GK3ZKECZZ6JCWP9PZ6766H",
+      "taskDesc": "1.1 依「測試落點 render_golden」在 crates/speclink-core/tests/it/render_golden.rs 新增測試 baseline_skill_loads_workflow_config_and_applies_specs_rules：以 skill_for_both_tools(\"baseline-rules\", \"baseline\") 讀 claude 與 codex 兩側生成檔，斷言 design Implementation Contract 的七個正向 needle（speclink workflow-config show --json、rules.specs、MUST honour every entry、none (no rules.specs configured)、Specs rules applied this run、checks structure only、never fall back to reading）存在、負向 needle（Read `openspec/config.yaml`）不存在；對應「盤點前取得 workflow config 並套用 specs 產出規則」的技能檔載明入口、規則屬 Agent 指令兩個 scenario。驗證：cargo test -p speclink-core --test it baseline_skill_ 此時失敗（Red），失敗訊息指出 needle 缺席。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6c0d7fa449457198781ab1cdee3d9069ce293c8c",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/baseline.md",
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/it/render_golden.rs",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ],
+      "recordedAt": "2026-09-02T08:23:01Z"
+    },
+    {
+      "taskId": "tsk_01M1GK3ZKE35YESQAW5K2ZGMP7",
+      "taskDesc": "3.2 再生五份 golden（crates/speclink-core/tests/golden/claude.snapshot.md、crates/speclink-core/tests/golden/codex.snapshot.md、crates/speclink-core/tests/golden/neutral-cli.snapshot.md、crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md、crates/speclink-core/tests/golden/claude-worktree.snapshot.md）與 crates/speclink-core/tests/golden/assets.lock：先以 git status 確認樹上只有本 change 的異動，執行 UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::，再執行 UPDATE_ASSETS_LOCK=1 同指令；對應「內嵌 speclink-baseline 技能的渲染與保護」的 golden 保護與其他技能只變版本戳兩個 scenario。驗證：git diff 五份 golden 只含 baseline 段落與版本戳；不帶環境變數重跑 cargo test -p speclink-core --test it 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6c0d7fa449457198781ab1cdee3d9069ce293c8c",
+      "touchedFiles": [
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-09-02T08:29:59Z"
+    }
+  ]
+}

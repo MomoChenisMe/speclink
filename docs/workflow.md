@@ -61,7 +61,7 @@ Every station uses the same shape. It gives the purpose, when to use it, and whe
 - **Purpose / 目的:** Derive current-behavior canonical specs from existing code and tests — the spec baseline later changes build on（舊稱 onboard）.
 - **Use / 使用:** An adopted codebase has no specs, or uncovered capabilities need gap-filling.
 - **Skip / 跳過:** Canonical coverage is adequate, or the request describes new behavior.
-- **Input / 輸入:** README, entry points, source, tests, configuration, and a user-confirmed capability map.
+- **Input / 輸入:** README, entry points, source, tests, the workflow config from `speclink workflow-config show --json` (`context`, `specLocale`, `rules.specs`), and a user-confirmed capability map.
 - **Outputs / 產物:** `openspec/specs/<capability>/spec.md` directly; no change is created.
 - **Claude:** `/speclink-baseline [scope]`.
 - **Codex:** `$speclink-baseline [scope]`.

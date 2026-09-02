@@ -62,7 +62,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **Purpose / 目的**：從現有 code 與 tests 建立當前行為的正典 specs，作為後續變更的規格基準（舊稱 onboard）。
 - **Use / 使用**：採用 Speclink 的既有 codebase 尚無 specs，或只需補未覆蓋能力。
 - **Skip / 跳過**：已有足夠正典 specs，或要描述的是新需求而非現況。
-- **Input / 輸入**：README、entry points、source、tests、設定與使用者確認的 capability map。
+- **Input / 輸入**：README、entry points、source、tests、以 `speclink workflow-config show --json` 取得的 workflow config（專案說明 `context`、`specLocale` 與 specs 產出規則 `rules.specs`）與使用者確認的 capability map。
 - **Outputs / 產物**：直接寫入 `openspec/specs/<capability>/spec.md`；不建立變更。
 - **Claude**：`/speclink-baseline [scope]`。
 - **Codex**：`$speclink-baseline [scope]`。

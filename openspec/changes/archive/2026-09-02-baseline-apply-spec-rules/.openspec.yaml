@@ -1,0 +1,63 @@
+schema: spec-driven
+created: 2026-09-02
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: baseline-apply-spec-rules
+started_at: 2026-09-02
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-02
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 11
+reviewed_scope:
+  - path: crates/speclink-core/assets/skills/baseline.md
+    hash: d469247cfd103d210b863bba5efa0b7c2f25b5e2631bbf5df4be0910004c60d6
+  - path: crates/speclink-core/src/init.rs
+    hash: c41a0a13afa4dabd66debaa38a10e40db9f3ad2d4d0ba011307382e16274c35c
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 285f7e76d97b052a2ae1fe6f40d4a255f8414477cae8859a684f99ae7cd6c587
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: a36ec94deb861589d0469fbae1030029c0485d782a22374613d94b7f8ae26930
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: ca59e11c412dfd301753b803bb77779ca042df7f459cf4c4b2d28dd64fc558e5
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: 736c144b2633e1afff655d547e66bafab83f324f449f5378f6a0f40b8a00f4e9
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: ab12ccb825fbf1fc5438470dd6229dae9b88a52ef1280ad5c62de2eaf7480ec4
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 5b0c1b3d5910d21159aa7d66bf37dec6a070afc6eeaf65b3ac83a05fa01fc850
+  - path: crates/speclink-core/tests/it/render_golden.rs
+    hash: 0f09fa2ee89ecb8d5333450923895ce6ea9b05238d91c3fe385b1bf59bdeeed4
+  - path: docs/workflow.md
+    hash: 1edb7f50c41f58a66e7b928ef1189b4d84bf0e11e4ba270fa3ebb46b90e6a585
+  - path: docs/workflow.zh-TW.md
+    hash: 9ac3cf0c01587b5482811deefefa84f1e097cf8304a3812128790c43bd565e0a
+verified_at: 2026-09-02
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 11
+verified_scope:
+  - path: crates/speclink-core/assets/skills/baseline.md
+    hash: d469247cfd103d210b863bba5efa0b7c2f25b5e2631bbf5df4be0910004c60d6
+  - path: crates/speclink-core/src/init.rs
+    hash: c41a0a13afa4dabd66debaa38a10e40db9f3ad2d4d0ba011307382e16274c35c
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 285f7e76d97b052a2ae1fe6f40d4a255f8414477cae8859a684f99ae7cd6c587
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: a36ec94deb861589d0469fbae1030029c0485d782a22374613d94b7f8ae26930
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: ca59e11c412dfd301753b803bb77779ca042df7f459cf4c4b2d28dd64fc558e5
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: 736c144b2633e1afff655d547e66bafab83f324f449f5378f6a0f40b8a00f4e9
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: ab12ccb825fbf1fc5438470dd6229dae9b88a52ef1280ad5c62de2eaf7480ec4
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 5b0c1b3d5910d21159aa7d66bf37dec6a070afc6eeaf65b3ac83a05fa01fc850
+  - path: crates/speclink-core/tests/it/render_golden.rs
+    hash: 0f09fa2ee89ecb8d5333450923895ce6ea9b05238d91c3fe385b1bf59bdeeed4
+  - path: docs/workflow.md
+    hash: 1edb7f50c41f58a66e7b928ef1189b4d84bf0e11e4ba270fa3ebb46b90e6a585
+  - path: docs/workflow.zh-TW.md
+    hash: 9ac3cf0c01587b5482811deefefa84f1e097cf8304a3812128790c43bd565e0a
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-02
