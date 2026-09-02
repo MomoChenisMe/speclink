@@ -54,7 +54,7 @@
 
 ### Requirement: 必產的首頁與來源頁
 
-每份手冊 SHALL 含 `index.md`（`title` 為手冊名、`section` 為第一個分區、`order` 為全手冊最小值；內容為系統一句話定位、三個以內的核心概念、依角色分流的入口連結）與 `about.md`（`title`「本手冊的來源」、`order` 為全手冊最大值；內容 SHALL 載明取材範圍為 `openspec/specs/`、規格內部新舊描述矛盾的清單（無矛盾時明寫「未發現」）、已知侷限（無截圖、以實機為準）與編成日期）。
+每份手冊 SHALL 含 `index.md`（`title` 為手冊名、`section` 為第一個分區、`order` 為全手冊最小值；內容為系統一句話定位、三個以內的核心概念、依角色分流的入口連結）與 `about.md`（`title`「本手冊的來源」、`order` 為全手冊最大值；內容 SHALL 載明取材範圍為 `openspec/specs/`、規格內部新舊描述矛盾的清單（無矛盾時明寫「未發現」）、已知侷限（無截圖、以實機為準）與編成日期）。兩頁為衍生頁：任一其他頁新增或重生時 SHALL 隨之重生（`section` 與 `order` 保留），且 SHALL NOT 被判為過期、未入冊或來源消失。
 
 #### Scenario: 生成後兩頁存在
 
@@ -68,7 +68,7 @@
 
 ### Requirement: 過期判定基準
 
-一頁 SHALL 視為過期，若其 `sources` 中任一 capability 的正典規格內最新的 `@trace updated` 日期晚於該頁的 `generated`。一個 capability SHALL 視為未入冊，若它被生成端分流為使用者面向、且不出現在任何頁的 `sources`。生成端與讀取端 SHALL 採同一基準；`sources` 為空的頁 SHALL NOT 判為過期。
+一頁 SHALL 視為過期，若其 `sources` 中任一 capability 的正典規格內最新的 `@trace updated` 日期不早於（晚於或同日）該頁的 `generated`——兩個日期都只到日，生成當天的封存不得漏判。一個 capability SHALL 視為未入冊，若它被生成端分流為使用者面向、且不出現在任何頁的 `sources`。生成端與讀取端 SHALL 採同一基準；`sources` 為空的頁 SHALL NOT 判為過期。
 
 #### Scenario: 過期與未入冊的判定
 
@@ -81,11 +81,12 @@
 | ------------ | -------------------------- | ---- |
 | 2026-09-01   | 2026-09-05                 | 過期 |
 | 2026-09-01   | 2026-08-20                 | 未過期 |
+| 2026-09-01   | 2026-09-01                 | 過期（同日） |
 | 2026-09-01   | （sources 為空）           | 未過期 |
 
 ### Requirement: 重生時保留既有順序
 
-生成端重生手冊時 SHALL 先讀取既有各頁的 frontmatter；檔名已存在的頁，其 `section` 與 `order` SHALL 逐字保留（除非使用者明示要求重排）；新頁的 `order` SHALL 取相鄰頁之間的整數（例：20 與 30 之間填 25）而 SHALL NOT 重排既有頁；未被重生的頁 SHALL 逐位元不變；`sources` 所列規格全部不復存在的頁 SHALL 列入報告而 SHALL NOT 自動刪除。
+生成端重生手冊時 SHALL 先讀取既有各頁的 frontmatter；檔名已存在的頁，其 `section` 與 `order` SHALL 逐字保留（除非使用者明示要求重排）；新頁的 `order` SHALL 取相鄰頁之間的整數（例：20 與 30 之間填 25）而 SHALL NOT 重排既有頁；相鄰序號之間無整數可用（含新頁須排在 `about.md` 之後）時，生成端 SHALL NOT 自行重排，SHALL 將該頁留待下一輪並列入報告，待使用者明示要求重排後再入冊；未被重生的頁 SHALL 逐位元不變；`sources` 非空且所列規格全部不復存在的頁 SHALL 列入報告而 SHALL NOT 自動刪除。
 
 #### Scenario: 只重生過期頁
 

@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -97,7 +97,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -437,7 +437,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -731,7 +731,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -967,7 +967,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -1066,7 +1066,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -1338,7 +1338,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -1484,7 +1484,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -1955,7 +1955,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -2093,7 +2093,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -2274,7 +2274,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -2557,7 +2557,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -2581,7 +2581,7 @@ Generate a human-readable operating manual from the canonical specs, or walk the
 
 ### Step 0: Refuse on a remote-bound project
 
-Read `.speclink.yaml`. If it contains a `remote` section, the project is bound to a remote store and generation is not supported yet: the pages would land in this local checkout only and never reach the store. Print
+Read `.speclink.yaml` at the workspace root. No file, or a file without a `remote` section, means a local project — continue with Step 1. A `remote` section means the project is bound to a remote store and generation is not supported yet: the pages would land in this local checkout only and never reach the store. Print
 
 ```
 remote 模式尚不支援手冊生成（導覽模式不受此限：/speclink-manual 導覽）
@@ -2604,9 +2604,9 @@ No manual yet → every page is new; the report says so.
    - **user-facing** — something a person operates or observes: screens, panels, commands they type, skills they call, outputs they read, files they open;
    - **engine-internal** — storage, protocol and wire contracts, host runtime, test harness, build and release plumbing, per-skill content contracts.
    Only user-facing capabilities enter the manual.
-3. Purpose empty or a `TBD` placeholder → judge from the Requirement headings instead (`speclink show <capability> --item-type spec --requirements`).
+3. Purpose empty or a `TBD` placeholder → judge from the `### Requirement:` headings in the same `speclink show` output instead (there is no heading-only view; read its `## Requirements` section).
 
-When a manual already exists, read only the specs behind stale pages and unlisted capabilities (Step 3). Do not re-read the whole spec tree on a second run.
+When a manual already exists, the cheap parts are still read for every capability — the Purpose (to sort it) and the `@trace updated` dates (to judge staleness) — but the Requirement bodies are read only for the specs behind stale pages and unlisted capabilities (Step 3). Do not re-read every spec body on a second run.
 
 ### Step 3: Staleness report
 
@@ -2614,17 +2614,17 @@ Compute, from the Step 1 index and the specs:
 
 | Term | Definition |
 | --- | --- |
-| **stale page** | any capability in the page's `sources` has a latest `@trace updated` date later than the page's `generated` |
+| **stale page** | any capability in the page's `sources` has a latest `@trace updated` date on or after the page's `generated` — a same-day tie counts: the dates carry no time of day, and an archive on the day of generation must not slip through |
 | **unlisted capability** | a user-facing capability that appears in no page's `sources` |
-| **orphan page** | a page whose `sources` capabilities have all disappeared from `openspec/specs/` — reported, NEVER deleted |
+| **orphan page** | a page with a non-empty `sources` whose capabilities have all disappeared from `openspec/specs/` — reported, NEVER deleted |
 
-A page with an empty `sources` is never stale. The `@trace updated` date is read from the `<!-- @trace … updated: YYYY-MM-DD -->` blocks inside the canonical spec file; take the latest one in that file.
+`index.md` and `about.md` (empty `sources`) are derived pages: never stale, never orphan, never "unlisted" — they are rewritten whenever any other page is added or regenerated (Step 5), keeping their `section` and `order`. The `@trace updated` date is read from the `<!-- @trace … updated: YYYY-MM-DD -->` blocks inside the canonical spec file; take the latest one in that file.
 
 Then decide what to write:
 
 - **No manual yet** → write everything (Steps 4–5).
-- **Manual exists** → by default regenerate only the stale pages and add a page for each unlisted capability. Untouched pages stay byte-identical. Regenerate everything only when the user explicitly asks for it (e.g. "全部重生"); even then, existing `section` and `order` are preserved.
-- **Manual exists, nothing stale, nothing unlisted, no scope hint** → write nothing. Report that the manual is up to date and stop.
+- **Manual exists** → by default regenerate only the stale pages, add a page for each unlisted capability, and rewrite `index.md` and `about.md` so the entry links, the contradiction list and the compilation date reflect the new set. A page whose regenerated content would be byte-identical to the file on disk counts as untouched, not regenerated — do not rewrite it. Untouched pages stay byte-identical. Regenerate everything only when the user explicitly asks for it (e.g. "全部重生"); even then, existing `section` and `order` are preserved.
+- **Manual exists, nothing stale, nothing unlisted** → write nothing, `index.md` and `about.md` included. Report that the manual is up to date and stop. A scope hint is the user's explicit request for that scope and overrides this: regenerate what the hint names.
 
 ### Step 4: Choose the journey backbone
 
@@ -2687,7 +2687,7 @@ When no capability is user-facing, still write both pages: `about.md` says `尚�
 **Order preservation on regeneration**:
 
 - A page whose filename already exists keeps its `section` and `order` verbatim (unless the user explicitly asked to reorder).
-- A new page takes an integer between its neighbours (between 20 and 30 → 25); existing pages are never renumbered.
+- A new page takes an integer between its neighbours (between 20 and 30 → 25); existing pages are never renumbered. When no integer fits — neighbours 20 and 21, or a page that must land after the last page while `about.md` has to stay the maximum — do NOT renumber on your own: leave that page out of this run, list it in the report, and ask the user for a reorder; their explicit request is what allows renumbering.
 - Pages that are not being regenerated are not touched at all — byte-identical.
 - Orphan pages (Step 3) stay on disk and appear in the report.
 
@@ -2701,7 +2701,7 @@ End with a summary in the conversation:
 - 新增：N 頁（<filenames>）
 - 重生：N 頁（<filenames>）
 - 未動：N 頁
-- 過期頁：<list, or 無>
+- 可能過期：<list, or 無>
 - 未入冊能力：<list, or 無>
 - about 頁記錄的矛盾：N 條
 - 跳過（frontmatter 無法解析）／來源已消失：<list, or 無>
@@ -2732,7 +2732,7 @@ When the tour ends you may suggest running generation mode (`/speclink-manual`) 
 
 - Specs are the only content source. README, docs and code are off-limits for manual content — in both modes.
 - Generation writes only under `openspec/manual/`; tour writes nothing; a remote-bound project gets no generation at all.
-- Never delete a page. Never renumber an existing page. Never overwrite a page whose frontmatter you could not parse.
+- Never delete a page. Never renumber an existing page unless the user explicitly asks for a reorder. Never overwrite a page whose frontmatter you could not parse.
 - Frontmatter has exactly the six fields above. The about page's title and the `**出處**：` line are contract literals.
 - Contradictions inside the specs are recorded on the about page, never silently resolved.
 - Tool skill: no fixed next step. The commit line in the summary and the tour's closing suggestion are suggestions — this skill never runs a commit or another skill.
@@ -2745,7 +2745,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -3203,7 +3203,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -3298,7 +3298,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -3497,7 +3497,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 
@@ -3581,7 +3581,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.26.0"
+  version: "v1.26.1"
   generatedBy: "Speclink"
 ---
 

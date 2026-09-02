@@ -47,7 +47,7 @@ baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? |
 
 worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
 
-工具：validate / analyze / audit / commit / config
+工具：validate / analyze / audit / commit / config / manual
 ```
 
 從哪一站進來，看你手上的情況：

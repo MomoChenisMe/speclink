@@ -208,6 +208,6 @@
 
 ### 可能過期
 
-- **definition**: 手冊頁的來源規格更新日（規格內最新的 @trace updated）晚於該頁生成日（frontmatter 的 generated）的狀態。生成模式只重生這種頁；desktop 手冊頁以同一基準標示。
+- **definition**: 手冊頁的來源規格更新日（規格內最新的 @trace updated）不早於（晚於或同日）該頁生成日（frontmatter 的 generated）的狀態。生成模式只重生這種頁；desktop 手冊頁以同一基準標示。
 - **avoid**: 過時、stale（中文散文中）
 - **why**: 與規格的「過期」章語意平行——都是「源頭比衍生物新」；加「可能」是因為日期比對只證明來源動過，不證明內容真的變了。2026-09-02 變更「manual-skill」定案。

@@ -68,7 +68,7 @@ archive 技能是純文字資產，判斷不了「本次封存是否動到使用
 
 **驗收**：
 - `cargo test -p speclink-core --test it render_golden::` 綠（快照已更新）。
-- 新測試 `crates/speclink-cli/tests/it/manual_dir_ignored.rs`：有 `openspec/manual/` 時 list／validate 輸出與無此目錄時逐位元一致。
+- 新測試 `crates/speclink-cli/tests/it/manual_pages_dir_ignored.rs`：有 `openspec/manual/` 時 list／validate 輸出與無此目錄時逐位元一致。
 - 手動：於 speclink 專案跑 `/speclink-manual`，檢查 `openspec/manual/` 兩必產頁與 frontmatter 六欄；再跑一次確認未動頁逐位元不變；跑 `/speclink-manual 導覽` 確認零寫檔。
 
 **範圍邊界**：in scope＝技能資產、註冊表、archive 提醒句、golden 與版號、`manual-pages` 契約、LANGUAGE.md 三詞、docs/workflow 工具技能段。out of scope＝desktop 手冊頁、引擎動詞、lint、remote 投影、HTML 產出。

@@ -34,7 +34,7 @@
 
 ### Requirement: 生成模式的讀取策略
 
-生成模式 SHALL 只以正式規格為內容來源：先以 speclink list --specs --json 取得全部 capability，再以 speclink show 讀各 capability 的 Purpose，將其分流為使用者面向與引擎內部；Purpose 為空或為 TBD 佔位時 SHALL 改以該 capability 的 Requirement 標題判斷。旅程骨幹 SHALL 依序優先取自劇本型規格（驗收劇本）、路由交棒型規格（技能交棒表）、使用者文件型規格；三者皆無時 SHALL 按功能域從使用者面向的能力規格重建旅程，並在 about 頁載明屬重建。技能 SHALL NOT 以 README、docs 目錄或程式碼作為手冊內容來源。已有手冊時 SHALL 只讀過期頁與未入冊能力所涉的規格。
+生成模式 SHALL 只以正式規格為內容來源：先以 speclink list --specs --json 取得全部 capability，再以 speclink show 讀各 capability 的 Purpose，將其分流為使用者面向與引擎內部；Purpose 為空或為 TBD 佔位時 SHALL 改以該 capability 的 Requirement 標題判斷。旅程骨幹 SHALL 依序優先取自劇本型規格（驗收劇本）、路由交棒型規格（技能交棒表）、使用者文件型規格；三者皆無時 SHALL 按功能域從使用者面向的能力規格重建旅程，並在 about 頁載明屬重建。技能 SHALL NOT 以 README、docs 目錄或程式碼作為手冊內容來源。已有手冊時，每個 capability 的 Purpose 與最新 @trace updated 日期仍 SHALL 讀取（分流與過期判定所需），Requirement 內文 SHALL 只讀過期頁與未入冊能力所涉的規格。
 
 #### Scenario: 有劇本型規格的專案
 
@@ -53,7 +53,7 @@
 
 ### Requirement: 生成模式的輸出與報告
 
-生成模式 SHALL 依 manual-pages 契約寫頁；已有手冊時預設 SHALL 只重生過期頁並為未入冊能力新增頁，使用者明示要求時方全量重生。結束時 SHALL 於對話輸出摘要：新增、重生、未動的頁數；過期頁清單；未入冊能力清單；about 頁記錄的矛盾數。無過期頁且無未入冊能力時 SHALL 零檔案寫入並如實回報。摘要末尾 SHALL 建議以一般提交收尾手冊異動——僅建議、SHALL NOT 代跑。
+生成模式 SHALL 依 manual-pages 契約寫頁；已有手冊時預設 SHALL 只重生過期頁並為未入冊能力新增頁，使用者明示要求時方全量重生。結束時 SHALL 於對話輸出摘要：新增、重生、未動的頁數；可能過期的頁清單；未入冊能力清單；about 頁記錄的矛盾數。無過期頁且無未入冊能力時 SHALL 零檔案寫入並如實回報。摘要末尾 SHALL 建議以一般提交收尾手冊異動——僅建議、SHALL NOT 代跑。
 
 #### Scenario: 首次全量生成
 
@@ -63,7 +63,7 @@
 #### Scenario: 二次只重生過期頁
 
 - **WHEN** 手冊已存在且兩頁過期、一個能力未入冊
-- **THEN** 僅該兩頁被重寫、新增一頁，其餘頁逐位元不變，摘要列出過期頁與新入冊能力
+- **THEN** 僅該兩頁被重寫、新增一頁，其餘頁逐位元不變，摘要列出可能過期的頁與新入冊能力
 
 #### Scenario: 無異動時零寫入
 
