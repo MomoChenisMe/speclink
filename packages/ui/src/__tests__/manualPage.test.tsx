@@ -383,7 +383,7 @@ describe("ManualPage 內頁渲染與出處", () => {
     expect(onOpenSpec).toHaveBeenCalledTimes(1);
   });
 
-  it("內文沒有出處行時，頁尾出處列退回 frontmatter 的 sources", async () => {
+  it("出處列以索引 sources 為準：內文沒有出處行時照樣列出", async () => {
     const { onOpenSpec } = renderManual({}, loader({ editor: async () => "# 認識畫面\n\n沒有出處行。" }));
     await screen.findByText("歡迎。");
     fireEvent.click(row("editor"));
@@ -400,6 +400,75 @@ describe("ManualPage 內頁渲染與出處", () => {
     await screen.findByText("提示內容");
     expect(content().querySelector(".markdown-alert-note")).toBeTruthy();
     expect(content().querySelector(".max-w-\\[96ch\\]")).toBeTruthy();
+  });
+
+  it("頁首標題與頁尾出處／上下頁固定在內文捲動區外；內文不重複 H1、無 H1 時退回索引 title", async () => {
+    renderManual();
+    await screen.findByText("歡迎。");
+    const header = content().querySelector("[data-manual-header]") as HTMLElement;
+    const body = content().querySelector("[data-manual-body]") as HTMLElement;
+    const footer = content().querySelector("[data-manual-footer]") as HTMLElement;
+    expect(within(header).getByRole("heading", { level: 1 }).textContent).toBe("手冊");
+    expect(body.querySelector("h1")).toBeNull();
+    expect(body.contains(header)).toBe(false);
+    expect(body.contains(footer)).toBe(false);
+    expect(footer.contains(nextButton()!)).toBe(true);
+    fireEvent.click(row("first-login"));
+    await screen.findByText("用 GitHub 登入。");
+    expect(footer.contains(document.querySelector("[data-manual-sources]")!)).toBe(true);
+    fireEvent.click(row("orphan"));
+    await screen.findByText("沒有欄位的頁");
+    expect(within(header).getByRole("heading", { level: 1 }).textContent).toBe("orphan");
+  });
+
+  it("右側錨點列列出內文 h2／h3、首項為目前段；點擊捲至該標題；無標題時錨點列缺席", async () => {
+    // spyOn＋finally 還原：全域 prototype 覆寫不得外溢到同檔後續測試。
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    try {
+      renderManual(
+        {},
+        loader({
+          editor: async () => "# 認識畫面\n\n## 看板\n\n段一。\n\n### 卡片\n\n段二。\n\n## 抽屜\n\n段三。",
+        }),
+      );
+      await screen.findByText("歡迎。");
+      expect(document.querySelector("[data-manual-toc]")).toBeNull();
+      fireEvent.click(row("editor"));
+      await screen.findByText("段一。");
+      const toc = await waitFor(() => {
+        const el = document.querySelector("[data-manual-toc]") as HTMLElement;
+        expect(el).toBeTruthy();
+        return el;
+      });
+      const anchors = Array.from(toc.querySelectorAll("[data-manual-anchor]"));
+      expect(anchors.map((a) => a.textContent)).toEqual(["看板", "卡片", "抽屜"]);
+      expect(anchors[0].getAttribute("aria-current")).toBe("location");
+      expect(anchors[2].getAttribute("aria-current")).toBeNull();
+      fireEvent.click(anchors[2]);
+      expect(scrollSpy).toHaveBeenCalledTimes(1);
+      expect((scrollSpy.mock.contexts[0] as HTMLElement).textContent).toBe("抽屜");
+      // 切到無 h2／h3 的頁：錨點列消失。
+      fireEvent.click(row("about"));
+      await screen.findByText("取材範圍。");
+      await waitFor(() => expect(document.querySelector("[data-manual-toc]")).toBeNull());
+    } finally {
+      scrollSpy.mockRestore();
+    }
+  });
+
+  it("內文的相對檔名連結在手冊內切頁；連到不存在的頁只擋下導航", async () => {
+    // manual-pages 契約「內文慣例」跨頁連結為相對檔名；WebView 直接導航會整頁離開 app。
+    renderManual({}, loader({ index: async () => "# 手冊\n\n看[認識畫面](editor.md)與[失聯](nope.md)。" }));
+    const good = await screen.findByRole("link", { name: "認識畫面" });
+    // fireEvent 回傳 false＝preventDefault 已呼叫（導航被擋下）。
+    expect(fireEvent.click(good)).toBe(false);
+    await screen.findByText("提示內容");
+    expect(row("editor").getAttribute("aria-current")).toBe("page");
+    fireEvent.click(row("index"));
+    const bad = await screen.findByRole("link", { name: "失聯" });
+    expect(fireEvent.click(bad)).toBe(false);
+    expect(row("index").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "認識畫面" })).toBeTruthy();
   });
 
   it("內文載入失敗顯示失敗文案，側欄照常、其他頁仍可開", async () => {
@@ -446,13 +515,13 @@ describe("ManualPage 內頁渲染與出處", () => {
 });
 
 describe("ManualPage React key", () => {
-  it("明寫 section「其他」與缺 section 的組不相鄰、出處行重複列名時，不產生 React key 警告", async () => {
-    // review R4：分區以位置為 key、出處名去重。
+  it("明寫 section「其他」與缺 section 的組不相鄰、索引 sources 重複列名時，不產生 React key 警告", async () => {
+    // review R4：分區以位置為 key、出處名去重（出處列以索引 sources 為單一真相）。
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const index: ManualIndex = {
       ...INDEX,
       pages: [
-        page({ slug: "misc", title: "雜項", section: "其他", order: 10 }),
+        page({ slug: "misc", title: "雜項", section: "其他", order: 10, sources: ["github-oauth", "github-oauth"] }),
         page({ slug: "index", title: "手冊", section: "開始使用", order: 20 }),
         page({ slug: "orphan" }),
       ],
@@ -478,13 +547,13 @@ describe("ManualPage 空狀態", () => {
     expect(document.querySelector("[data-manual-tree]")).toBeNull();
   });
 
-  it("present false 顯示尚無手冊的空狀態（可用 manual 技能生成）", () => {
+  it("present false 顯示尚無手冊的空狀態（可用手冊技能生成）", () => {
     // spec Scenario「無手冊目錄」。
     const { loadPage } = renderManual({
       index: { present: false, reason: null, pages: [], uncoveredNew: [], malformed: [] },
     });
     expect(screen.getByText("尚無手冊")).toBeTruthy();
-    expect(screen.getByText(/manual 技能/)).toBeTruthy();
+    expect(screen.getByText(/手冊技能/)).toBeTruthy();
     expect(document.querySelector("[data-manual-empty]")?.getAttribute("data-manual-empty")).toBe("none");
     expect(document.querySelector("[data-manual-tree]")).toBeNull();
     expect(loadPage).not.toHaveBeenCalled();

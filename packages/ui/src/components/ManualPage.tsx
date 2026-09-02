@@ -1,61 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { BookOpen, ChevronLeft, ChevronRight, CloudOff } from "lucide-react";
 
-import type { ManualIndex, ManualPageItem } from "../adapter";
+import type { ManualIndex } from "../adapter";
 import { useI18n } from "../i18n";
-import { matchesQuery } from "../search";
-import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
+import { manualLinkSlug, splitLeadingHeading, stripSourcesLine } from "../manualDoc";
+import { ManualToc } from "./ManualToc";
+import { ManualTree } from "./ManualTree";
 import { Markdown, READING_COLUMN_CLS } from "./Markdown";
 import { DocSkeleton, RowSkeleton } from "./skeletons";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 
 export interface ManualPageProps {
   /** 手冊索引（已依閱讀序排好）；null＝載入中（骨架）。 */
   index: ManualIndex | null;
   /** 讀取一頁去 frontmatter 的內文；不存在回 null、讀取失敗 reject。 */
   loadPage: (slug: string) => Promise<string | null>;
-  /** 點頁尾出處的 capability：切至規格頁並展開該規格卡（App 接線）。 */
+  /** 點頁尾出處的 capability：在手冊頁上開該規格的抽屜、不切頁（App 接線：store.openSpec）。 */
   onOpenSpec: (capability: string) => void;
   /** 正典 capability 清單——出處只對存在者可點，不存在者為純文字。 */
   capabilities: string[];
   /** 刷新世代——變動時重載目前頁內文（外部寫入後的 workspace-changed）。 */
   refreshGen?: number;
-}
-
-interface Section {
-  label: string;
-  pages: ManualPageItem[];
-}
-
-/** 以 section 對閱讀序中連續的頁分組（core 已把同分區的頁排在一起）；缺 section
- * 的頁歸「其他」。 */
-function groupSections(pages: ManualPageItem[], otherLabel: string): Section[] {
-  const sections: Section[] = [];
-  for (const page of pages) {
-    const label = page.section ?? otherLabel;
-    const last = sections[sections.length - 1];
-    if (last && last.label === label) last.pages.push(page);
-    else sections.push({ label, pages: [page] });
-  }
-  return sections;
-}
-
-// 頁尾出處行（manual-pages 契約）：最後一個非空段落以 `**出處**：` 開頭、反引號列
-// capability 名。抽成可點的出處列，內文不重複呈現。
-const SOURCES_LINE_RE = /^\*\*出處\*\*[：:]\s*(.*)$/;
-
-/** 從內文尾端抽出出處行：回傳（去掉該行的內文、名稱清單）；無出處行時名稱為 null。 */
-function splitSourcesLine(body: string): { body: string; names: string[] | null } {
-  const lines = body.split("\n");
-  let last = lines.length - 1;
-  while (last >= 0 && lines[last].trim() === "") last--;
-  const match = last >= 0 ? SOURCES_LINE_RE.exec(lines[last].trim()) : null;
-  if (!match) return { body, names: null };
-  return {
-    body: lines.slice(0, last).join("\n"),
-    names: Array.from(match[1].matchAll(/`([^`]+)`/g), (m) => m[1]),
-  };
 }
 
 /** 已載入的頁內文；body 為 null＝載入失敗或頁不存在。 */
@@ -65,9 +30,9 @@ interface LoadedDoc {
 }
 
 /** 手冊頁（desktop-manual-page design「側欄樹、搜尋與上下頁在前端由索引推導」）：
- * 左側依分區的頁面樹＋搜尋列（大小寫不敏感比對 title 與 keywords）、右側以共用
- * Markdown 與閱讀欄渲染選定頁、頁尾上一頁／下一頁與出處列；stale 頁列帶「可能
- * 過期」、索引底部提示未入冊規格數。唯讀、無任何寫入操作。 */
+ * 左欄 ManualTree、右側 ManualToc，中間以共用 Markdown 與閱讀欄渲染選定頁——頁首
+ * 標題與頁尾上一頁／下一頁＋出處列固定不隨內文捲動。本元件只管選頁、內文載入
+ * （latest-wins）與三段切分；唯讀、無任何寫入操作。 */
 export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshGen }: ManualPageProps) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
@@ -103,15 +68,26 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
     );
   }, [currentSlug, refreshGen]);
 
+  const loaded = doc && current && doc.slug === current.slug ? doc : null;
+  // 內文拆三段：尾端出處行剝掉（出處列改讀索引 sources）、開頭 H1 → 固定頁首、其餘 → 捲動區。
+  const parsed = loaded?.body != null ? splitLeadingHeading(stripSourcesLine(loaded.body)) : null;
+  const markdownBody = parsed?.body ?? null;
+
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  // 換頁回頂；外部改內文的重載（refreshGen）不動捲動位置。
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.scrollTop = 0;
+  }, [currentSlug]);
+
   if (index === null) {
     return (
       <div className="flex h-full min-h-0">
-        <aside className="flex w-60 shrink-0 flex-col gap-1 border-r border-border pr-3">
+        <aside className="flex w-64 shrink-0 flex-col gap-1 border-r border-border py-5 pl-5 pr-3">
           <RowSkeleton />
           <RowSkeleton />
           <RowSkeleton />
         </aside>
-        <div className="flex-1 pl-5">
+        <div className="flex-1 p-5">
           <DocSkeleton />
         </div>
       </div>
@@ -123,7 +99,7 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
     return (
       <div
         data-manual-empty={remote ? "remote" : "none"}
-        className="flex h-full flex-col items-center justify-center gap-3 text-center"
+        className="flex h-full flex-col items-center justify-center gap-3 p-5 text-center"
       >
         <BookOpen className="h-10 w-10 text-muted-foreground/40" />
         <h2 className="text-lg font-semibold">{remote ? t("manual.remoteTitle") : t("manual.emptyTitle")}</h2>
@@ -134,158 +110,124 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
     );
   }
 
-  const visibleSections = groupSections(
-    pages.filter((p) => matchesQuery(query, p.title, ...p.keywords)),
-    t("manual.sectionOther"),
-  );
   const position = pages.indexOf(current);
   const prev = position > 0 ? pages[position - 1] : null;
   const next = position < pages.length - 1 ? pages[position + 1] : null;
-
-  const loaded = doc && doc.slug === current.slug ? doc : null;
-  const split = loaded?.body != null ? splitSourcesLine(loaded.body) : null;
-  // 出處名去重（出處行重複列名時不撞 React key）。
-  const sourceNames = Array.from(new Set(split?.names ?? current.sources));
+  // 出處名以索引 sources 為單一真相；去重防撞 React key。
+  const sourceNames = Array.from(new Set(current.sources));
   const canonical = new Set(capabilities);
+  const heading = parsed?.heading ?? current.title;
+
+  // 內文的跨頁連結（契約：相對檔名 `layout.md`）在手冊內切頁——放給 WebView 直接導航
+  // 會整頁離開 app；連到不存在的頁只擋下導航、停在原頁。其他 href 不攔。
+  const onBodyClick = (e: MouseEvent<HTMLDivElement>) => {
+    const anchor = (e.target as HTMLElement).closest("a");
+    const slug = anchor ? manualLinkSlug(anchor.getAttribute("href") ?? "") : null;
+    if (!slug) return;
+    e.preventDefault();
+    if (pages.some((p) => p.slug === slug)) setSelected(slug);
+  };
 
   return (
     <div className="flex h-full min-h-0">
-      <aside className="flex w-60 shrink-0 flex-col gap-2 border-r border-border pr-3">
-        <Input
-          placeholder={t("manual.searchPlaceholder")}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <nav data-manual-tree className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-          {visibleSections.length === 0 ? (
-            <div data-manual-no-results className="py-4 text-center text-sm text-muted-foreground">
-              {t("manual.noResults")}
-            </div>
-          ) : (
-            visibleSections.map((section, i) => (
-              // 以位置為 key：明寫 section「其他」的組與缺 section 歸「其他」的組可能不相鄰。
-              <section key={i} data-manual-section={section.label}>
-                <h3 className="px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {section.label}
-                </h3>
-                <ul className="mt-1 flex flex-col">
-                  {section.pages.map((p) => {
-                    const active = p.slug === current.slug;
-                    return (
-                      <li key={p.slug}>
-                        <button
-                          type="button"
-                          data-manual-page={p.slug}
-                          aria-current={active ? "page" : undefined}
-                          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
-                            active
-                              ? "bg-primary font-medium text-primary-foreground"
-                              : "text-foreground hover:bg-muted"
-                          }`}
-                          onClick={() => setSelected(p.slug)}
-                        >
-                          <span className="min-w-0 flex-1 truncate">{p.title}</span>
-                          {p.stale && (
-                            <span
-                              data-manual-stale
-                              className={`shrink-0 text-[10px] font-medium ${active ? "" : SEMANTIC_TONE.warning}`}
-                            >
-                              {t("manual.stale")}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            ))
-          )}
-        </nav>
-        {index.uncoveredNew.length > 0 && (
-          <div
-            data-manual-uncovered
-            className={`mt-auto rounded-md border px-2 py-1.5 text-xs ${SEMANTIC_SURFACE.warning}`}
-          >
-            {t("manual.uncoveredNew").replace("{n}", String(index.uncoveredNew.length))}
-          </div>
-        )}
-      </aside>
+      <ManualTree
+        pages={pages}
+        currentSlug={current.slug}
+        query={query}
+        onQuery={setQuery}
+        onSelect={setSelected}
+        uncoveredCount={index.uncoveredNew.length}
+      />
 
-      <div data-manual-content className="flex min-h-0 flex-1 flex-col overflow-y-auto pl-5">
-        <div className={READING_COLUMN_CLS}>
-          {!loaded ? (
-            <DocSkeleton />
-          ) : loaded.body === null ? (
-            <div
-              data-manual-load-failed
-              className="flex items-center gap-2 py-6 text-sm text-muted-foreground"
-            >
-              <CloudOff className="h-4 w-4 shrink-0" />
-              <span>{t("manual.loadFailed")}</span>
+      <div data-manual-content className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <header data-manual-header className="shrink-0 border-b border-border px-5 pt-5 pb-3">
+            <h1 className={`${READING_COLUMN_CLS} text-xl font-bold tracking-tight`}>{heading}</h1>
+          </header>
+          <div
+            ref={bodyRef}
+            data-manual-body
+            className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+            onClick={onBodyClick}
+          >
+            <div className={READING_COLUMN_CLS}>
+              {!loaded ? (
+                <DocSkeleton />
+              ) : loaded.body === null ? (
+                <div
+                  data-manual-load-failed
+                  className="flex items-center gap-2 py-6 text-sm text-muted-foreground"
+                >
+                  <CloudOff className="h-4 w-4 shrink-0" />
+                  <span>{t("manual.loadFailed")}</span>
+                </div>
+              ) : (
+                <Markdown content={markdownBody} />
+              )}
             </div>
-          ) : (
-            <Markdown content={split ? split.body : loaded.body} />
-          )}
-          <footer className="mt-8 flex flex-col gap-3 border-t border-border pt-4">
-            {sourceNames.length > 0 && (
-              <div
-                data-manual-sources
-                className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
-              >
-                <span>{t("manual.sources")}</span>
-                {sourceNames.map((name) =>
-                  canonical.has(name) ? (
-                    <button
-                      key={name}
-                      type="button"
-                      className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-primary hover:bg-accent"
-                      onClick={() => onOpenSpec(name)}
-                    >
-                      {name}
-                    </button>
-                  ) : (
-                    <span key={name} className="rounded border border-border px-1.5 py-0.5 font-mono text-[11px]">
-                      {name}
-                    </span>
-                  ),
+          </div>
+          <footer data-manual-footer className="shrink-0 border-t border-border px-5 pt-3 pb-5">
+            <div className={`${READING_COLUMN_CLS} flex flex-col gap-3`}>
+              {sourceNames.length > 0 && (
+                <div
+                  data-manual-sources
+                  className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+                >
+                  <span>{t("manual.sources")}</span>
+                  {sourceNames.map((name) =>
+                    canonical.has(name) ? (
+                      <button
+                        key={name}
+                        type="button"
+                        className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-primary hover:bg-accent"
+                        onClick={() => onOpenSpec(name)}
+                      >
+                        {name}
+                      </button>
+                    ) : (
+                      <span key={name} className="rounded border border-border px-1.5 py-0.5 font-mono text-[11px]">
+                        {name}
+                      </span>
+                    ),
+                  )}
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                {prev ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label={t("pager.prev")}
+                    data-manual-prev={prev.slug}
+                    className="gap-1"
+                    onClick={() => setSelected(prev.slug)}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="max-w-48 truncate">{prev.title}</span>
+                  </Button>
+                ) : (
+                  <span />
+                )}
+                {next ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label={t("pager.next")}
+                    data-manual-next={next.slug}
+                    className="gap-1"
+                    onClick={() => setSelected(next.slug)}
+                  >
+                    <span className="max-w-48 truncate">{next.title}</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <span />
                 )}
               </div>
-            )}
-            <div className="flex items-center justify-between gap-2">
-              {prev ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label={t("pager.prev")}
-                  data-manual-prev={prev.slug}
-                  className="gap-1"
-                  onClick={() => setSelected(prev.slug)}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span className="max-w-48 truncate">{prev.title}</span>
-                </Button>
-              ) : (
-                <span />
-              )}
-              {next ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label={t("pager.next")}
-                  data-manual-next={next.slug}
-                  className="gap-1"
-                  onClick={() => setSelected(next.slug)}
-                >
-                  <span className="max-w-48 truncate">{next.title}</span>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              ) : (
-                <span />
-              )}
             </div>
           </footer>
         </div>
+        <ManualToc bodyRef={bodyRef} markdownBody={markdownBody} />
       </div>
     </div>
   );

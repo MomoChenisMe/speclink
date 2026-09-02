@@ -5,6 +5,10 @@
    深色跟隨系統偏好（prefers-color-scheme）；若某宿主要手動切換主題，另加
    class 層即可，勿在此更動預設值以免 Desktop 觀察 token 漂移。 */
 
+/* 進出動畫 utility（animate-in／animate-out、fade-*、slide-*）：ui/sheet、popover、
+   tooltip 的 data-[state] class 依賴它；Tailwind v4 不再內建，缺了就是「抽屜無動畫」。 */
+@import "tw-animate-css";
+
 /* shadcn/ui 設計 token（Tailwind v4）。淺色為預設，深色跟隨系統偏好。 */
 :root {
   --radius: 0.625rem;

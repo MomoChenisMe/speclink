@@ -20,6 +20,7 @@ import type { ChangeItem, ChangeMetaInfo, Verb, VerbDrawerResult } from "../adap
 import { specDeltaCounts, sumDeltaCounts } from "../delta";
 import { changeStage } from "../stage";
 import { useI18n } from "../i18n";
+import { useLingering } from "../lib/useLingering";
 import { relativeDays } from "../time";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -157,7 +158,7 @@ function StationStamp({
 export function RichDetailDrawer({
   open,
   onOpenChange,
-  change,
+  change: changeProp,
   refreshGen,
   loadDocument,
   loadCapabilities,
@@ -177,6 +178,7 @@ export function RichDetailDrawer({
   onOpenSibling,
   unavailable,
 }: RichDetailDrawerProps) {
+  const change = useLingering(changeProp);
   const { t } = useI18n();
   const [meta, setMeta] = useState<ChangeMetaInfo | null>(null);
   const [proposal, setProposal] = useState<Doc>();

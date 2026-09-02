@@ -48,12 +48,22 @@ desktop「手冊」頁的行為：讀取 `openspec/manual/` 的手冊頁（格�
 
 ### Requirement: 內頁渲染與出處跳規格
 
-選定頁的內文 SHALL 以共用 Markdown 元件渲染（去除 frontmatter），沿用共用閱讀欄與行寬上限、16px 基準字級、淺色與深色主題。頁尾出處行中的 capability 名 SHALL 可點：點擊 SHALL 切至規格頁並展開該 capability 的規格卡；該 capability 在正典中不存在時 SHALL 呈現為不可點文字。內文載入中 SHALL 以 skeleton 佔位，載入失敗 SHALL 於內容區顯示失敗文案且側欄照常。
+選定頁的內文 SHALL 以共用 Markdown 元件渲染（去除 frontmatter），沿用共用閱讀欄與行寬上限、16px 基準字級、淺色與深色主題。內容區 SHALL 分三段：頁首固定顯示頁標題——內文第一個非空行為 `# 標題` 時取該行且內文 SHALL NOT 重複呈現該 H1，否則取索引的 `title`；中段為內文捲動區；頁尾固定顯示出處列與上一頁／下一頁。頁首與頁尾 SHALL NOT 隨內文捲動。內文含 h2／h3 標題時，內容區右側 SHALL 顯示錨點列依序列出各標題（h3 縮排一級）：點擊 SHALL 捲至該標題，捲動時 SHALL 高亮目前段；內文無 h2／h3 時錨點列 SHALL 缺席。換頁 SHALL 回到內文頂端；外部改內文觸發的重載 SHALL 維持捲動位置。頁尾出處行中的 capability 名 SHALL 可點：點擊 SHALL 於手冊頁上開啟該 capability 的唯讀規格抽屜（與規格頁共用同一抽屜），SHALL NOT 切離手冊頁；該 capability 在正典中不存在時 SHALL 呈現為不可點文字。內文載入中 SHALL 以 skeleton 佔位，載入失敗 SHALL 於內容區顯示失敗文案且側欄照常。
 
-#### Scenario: 點出處跳規格頁展開
+#### Scenario: 頁首與頁尾固定
+
+- **WHEN** 開啟一頁內文長於可視區、開頭為 `# Speclink 操作手冊` 的頁，並捲至內文底部
+- **THEN** 頁標題「Speclink 操作手冊」仍固定於頂部可見，出處列與上一頁／下一頁仍固定於底部可見，內文捲動區內沒有重複的 H1
+
+#### Scenario: 右側錨點列
+
+- **WHEN** 開啟內文依序含 `## 看板`、`### 卡片`、`## 抽屜` 的頁
+- **THEN** 內容區右側錨點列依序列出「看板」「卡片」「抽屜」，「卡片」縮排一級，「看板」為目前段；點擊「抽屜」內文捲至該標題；切到無 h2／h3 的頁後錨點列消失
+
+#### Scenario: 點出處開啟規格抽屜
 
 - **WHEN** 頁尾出處行列有 `github-oauth`，使用者點擊它
-- **THEN** 側欄切至規格頁高亮，規格頁滾至並展開 `github-oauth` 的規格卡
+- **THEN** 側欄手冊項維持高亮、手冊內文仍在畫面，`github-oauth` 的規格抽屜於手冊頁上滑入並顯示其規格內文
 
 #### Scenario: 不存在的出處不可點
 
@@ -67,7 +77,7 @@ desktop「手冊」頁的行為：讀取 `openspec/manual/` 的手冊頁（格�
 
 ### Requirement: 可能過期與未入冊的標示
 
-手冊頁 SHALL 依 manual-pages 契約計算過期：頁的 `sources` 中任一 capability 正典規格內 `@trace updated` 的最大日期晚於該頁 `generated` 時，側欄該頁列 SHALL 帶「可能過期」標記；`sources` 為空、`generated` 缺席或規格不存在時 SHALL NOT 標記。側欄底部 SHALL 在存在「手冊生成後新增且未入冊」的正典規格——其 `@trace updated` 的最小日期晚於全手冊最大 `generated`、且不在任何頁的 `sources`——時顯示計數提示；不存在時該提示 SHALL 缺席。兩種標示 SHALL 僅呈現，SHALL NOT 觸發生成。
+手冊頁 SHALL 依 manual-pages 契約「過期判定基準」計算過期：頁的 `sources` 中任一 capability 正典規格內 `@trace updated` 的最大日期不早於（晚於或同日）該頁 `generated` 時，側欄該頁列 SHALL 帶「可能過期」標記——兩個日期都只到日，生成當天的封存不得漏判；`sources` 為空、`generated` 缺席或非 `YYYY-MM-DD`、規格不存在時 SHALL NOT 標記。側欄底部 SHALL 在存在「手冊生成後新增且未入冊」的正典規格——其 `@trace updated` 的最小日期不早於全手冊最大 `generated`（同日同樣算生成之後）、且不在任何頁的 `sources`——時顯示計數提示；不存在時該提示 SHALL 缺席。兩種標示 SHALL 僅呈現，SHALL NOT 觸發生成。
 
 #### Scenario: 來源更新後標示可能過期
 
@@ -85,12 +95,13 @@ desktop「手冊」頁的行為：讀取 `openspec/manual/` 的手冊頁（格�
 | --- | --- | --- |
 | 2026-09-01 | 2026-09-05 | 可能過期 |
 | 2026-09-01 | 2026-08-20 | 無 |
+| 2026-09-01 | 2026-09-01 | 可能過期（同日） |
 | 2026-09-01 | （sources 為空） | 無 |
 | （缺席） | 2026-09-05 | 無 |
 
 ### Requirement: 無手冊與 remote 模式的空狀態
 
-`openspec/manual/` 不存在或其中無任何 `.md` 時，手冊頁 SHALL 顯示空狀態文案：說明尚無手冊、可用 manual 技能從規格生成；目錄不可讀時亦呈此空狀態且錯誤只記錄於日誌。分頁為 remote 資料源時，手冊頁 SHALL 顯示「remote 模式尚不支援手冊」的空狀態，SHALL NOT 嘗試讀取遠端。零分頁時點擊側欄「手冊」SHALL 呈現與變更頁相同的空狀態引導頁。
+`openspec/manual/` 不存在或其中無任何 `.md` 時，手冊頁 SHALL 顯示空狀態文案：說明尚無手冊、可用手冊技能從規格生成；目錄不可讀時亦呈此空狀態且錯誤只記錄於日誌。分頁為 remote 資料源時，手冊頁 SHALL 顯示「remote 模式尚不支援手冊」的空狀態，SHALL NOT 嘗試讀取遠端。零分頁時點擊側欄「手冊」SHALL 呈現與變更頁相同的空狀態引導頁。
 
 #### Scenario: 無手冊目錄
 
@@ -104,11 +115,11 @@ desktop「手冊」頁的行為：讀取 `openspec/manual/` 的手冊頁（格�
 
 ### Requirement: 手冊頁隨外部變更即時更新
 
-手冊視圖活躍時，app 之外的寫者（manual 技能、手動編輯器）新增、修改或刪除 `openspec/manual/` 下的頁後，側欄索引與已開啟頁的內文 SHALL 於秒級自動重載至磁碟現況，SHALL NOT 要求重啟或重新進入頁面；重載回應交錯時 SHALL 以最新一次為準。監看不可用時手冊頁 SHALL 照常可讀，僅失去自動刷新。
+手冊視圖活躍時，app 之外的寫者（手冊技能、手動編輯器）新增、修改或刪除 `openspec/manual/` 下的頁後，側欄索引與已開啟頁的內文 SHALL 於秒級自動重載至磁碟現況，SHALL NOT 要求重啟或重新進入頁面；重載回應交錯時 SHALL 以最新一次為準。監看不可用時手冊頁 SHALL 照常可讀，僅失去自動刷新。
 
 #### Scenario: 外部重生一頁後內容更新
 
-- **WHEN** 使用者正在閱讀某頁，外部以 manual 技能重生該頁
+- **WHEN** 使用者正在閱讀某頁，外部以手冊技能重生該頁
 - **THEN** 數秒內內容區顯示新內文，側欄該頁的過期標記依新 `generated` 重算
 
 #### Scenario: 外部新增頁後側欄出現

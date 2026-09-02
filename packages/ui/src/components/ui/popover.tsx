@@ -25,7 +25,7 @@ const PopoverContent = React.forwardRef<
           // 浮層底色用 bg-card：這份 theme 沒有 --popover，上游 shadcn 的 bg-popover
           // 會產出解析不到值的宣告，浮層直接變透明。Select 與 Sheet 也是 bg-card。
           "z-50 rounded-md border border-border bg-card p-1 text-card-foreground shadow-md outline-none",
-          "animate-in fade-in-0 zoom-in-95",
+          "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 motion-reduce:animate-none",
           className,
         )}
         {...props}

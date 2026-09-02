@@ -194,4 +194,39 @@ describe("規格抽屜文件三態", () => {
     await waitFor(() => expect(screen.getByText("（無內容）")).toBeTruthy());
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
+
+  it("關閉時 capability 同步變 null：面板留在 DOM 跑滑出動畫，animationend 後才卸載", async () => {
+    // desktop-app「抽屜與浮層的開關動畫」：宿主關抽屜時 detailSpec 同步歸 null，元件不得
+    // 因此整棵卸載。jsdom 無動畫，以 getComputedStyle 假回 closed 態的 animationName
+    // 讓 Radix Presence 走 ANIMATION_OUT 分支。
+    const styleSpy = vi.spyOn(window, "getComputedStyle").mockImplementation(
+      (el) =>
+        ({
+          get animationName() {
+            return (el as HTMLElement).getAttribute("data-state") === "closed" ? "exit" : "none";
+          },
+          display: "block",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    try {
+      const load = vi.fn(async () => SPEC_MD);
+      const { rerender } = render(
+        <SpecDrawer open capability="desktop-app" loadDocument={load} onOpenChange={() => {}} />,
+      );
+      await screen.findByText("清單內文。");
+      rerender(<SpecDrawer open={false} capability={null} loadDocument={load} onOpenChange={() => {}} />);
+      const content = document.querySelector('[role="dialog"]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.getAttribute("data-state")).toBe("closed");
+      expect(screen.getByText("清單內文。")).toBeTruthy();
+      // jsdom 無 AnimationEvent，fireEvent 的 init 不會落到 event.animationName；Presence
+      // 以它比對目前動畫名，故手刻事件並明給。
+      const end = new Event("animationend", { bubbles: true });
+      Object.defineProperty(end, "animationName", { value: "exit" });
+      content.dispatchEvent(end);
+      await waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
+    } finally {
+      styleSpy.mockRestore();
+    }
+  });
 });

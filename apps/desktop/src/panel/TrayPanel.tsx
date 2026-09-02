@@ -211,9 +211,8 @@ const SCROLL_IDLE_MS = 800;
 
 /**
  * 中段捲動指示條（spec「面板樣式（macOS）」：捲動時浮現、停止後自動隱去、
- * 不佔版面寬度）。自繪而非用原生捲軸——index.css 的全域 `::-webkit-scrollbar`
- * 會把 WebKit 切成自訂 legacy 捲軸（常駐且佔寬），系統「總是顯示捲軸」偏好
- * 亦然；兩者皆使原生捲軸不可能淡出。內容未溢出時不渲染。
+ * 不佔版面寬度）。自繪而非用原生捲軸——系統「總是顯示捲軸」偏好會讓原生捲軸
+ * 常駐且佔寬、無法淡出，而 spec 要求此行為不依賴系統偏好。內容未溢出時不渲染。
  */
 function ScrollIndicator({ targetRef }: { targetRef: RefObject<HTMLDivElement | null> }) {
   const [thumb, setThumb] = useState<{ top: number; height: number } | null>(null);

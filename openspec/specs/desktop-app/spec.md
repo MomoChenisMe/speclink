@@ -911,14 +911,14 @@ code:
 ---
 ### Requirement: 側欄導覽結構
 
-桌面 app 側欄 SHALL 呈現五個導覽項：變更、規格、已封存、專案設定 SHALL 由上而下依序位於側欄頂部；設定 SHALL 固定於側欄底部，與頂部群組之間為彈性空間。側欄 SHALL NOT 含備忘項（其 i18n 鍵自兩語系字典移除，zh-TW 與 en 鍵集合維持相等）。側欄 SHALL NOT 呈現常駐 app 版號文字；app 版號的呈現位置 SHALL 為應用程式設定頁的軟體更新卡。已封存導覽項 SHALL 帶封存變更數量徽章，數字 SHALL 隨封存清單變動即時更新；其無障礙標籤 SHALL 為「已封存」。導覽項點擊 SHALL 為單純切頁——切至對應頁並以視覺高亮標示現行項，SHALL NOT 具再次點擊返回看板的 toggle 行為；設定項沉底 SHALL NOT 改變其高亮與切頁語意。頂欄 SHALL NOT 含已封存入口。
+桌面 app 側欄 SHALL 呈現六個導覽項，分兩個群組：頂部群組由上而下依序為變更、已封存、規格、手冊；底部群組 SHALL 固定於側欄底部、由上而下依序為專案設定、設定，兩群組之間為彈性空間。側欄 SHALL NOT 含備忘項（其 i18n 鍵自兩語系字典移除，zh-TW 與 en 鍵集合維持相等）。側欄 SHALL NOT 呈現常駐 app 版號文字；app 版號的呈現位置 SHALL 為應用程式設定頁的軟體更新卡。已封存導覽項 SHALL 帶封存變更數量徽章，數字 SHALL 隨封存清單變動即時更新；其無障礙標籤 SHALL 為「已封存」。手冊導覽項的無障礙標籤 SHALL 為「手冊」，點擊進入手冊頁（行為見 desktop-manual-page）。導覽項點擊 SHALL 為單純切頁——切至對應頁並以視覺高亮標示現行項，SHALL NOT 具再次點擊返回看板的 toggle 行為；底部群組沉底 SHALL NOT 改變其高亮與切頁語意。頂欄 SHALL NOT 含已封存入口。
 
-設定項 SHALL 開啟應用程式設定頁且 SHALL NOT 依賴任何已開啟的專案分頁——零分頁時點擊 SHALL 照常進入且頁內功能可操作。專案設定項 SHALL 開啟專案設定頁；零分頁時點擊 SHALL 呈現空狀態引導頁（與變更、規格、已封存的零分頁行為同型）。五個導覽項 SHALL 恆常渲染，SHALL NOT 依分頁狀態顯隱。
+設定項 SHALL 開啟應用程式設定頁且 SHALL NOT 依賴任何已開啟的專案分頁——零分頁時點擊 SHALL 照常進入且頁內功能可操作。專案設定項 SHALL 開啟專案設定頁；零分頁時點擊 SHALL 呈現空狀態引導頁（與變更、規格、手冊、已封存的零分頁行為同型）。六個導覽項 SHALL 恆常渲染，SHALL NOT 依分頁狀態顯隱。
 
 #### Scenario: 側欄順序與設定沉底
 
 - **WHEN** 開啟任一專案進入桌面 app
-- **THEN** 側欄頂部由上而下依序為變更、規格、已封存、專案設定，設定獨立位於側欄底部（兩者之間為空白彈性區），不存在備忘項，頂欄不存在已封存鈕
+- **THEN** 側欄頂部由上而下依序為變更、已封存、規格、手冊；側欄底部由上而下為專案設定、設定（兩群組之間為空白彈性區），不存在備忘項，頂欄不存在已封存鈕
 
 #### Scenario: 側欄無常駐版號
 
@@ -945,70 +945,15 @@ code:
 - **WHEN** 使用者位於已封存頁並再次點擊已封存導覽項
 - **THEN** 畫面停留在已封存頁；隨後點擊變更導覽項才返回看板，且變更項高亮、已封存項恢復未選取樣式
 
+#### Scenario: 手冊導覽項切頁與零分頁空狀態
+
+- **WHEN** 使用者點擊側欄「手冊」項；另於零分頁狀態點擊同一項
+- **THEN** 前者切至手冊頁且該項高亮、其他項恢復未選取樣式；後者主內容呈現與零分頁點擊變更相同的空狀態引導頁，手冊項高亮
+
 
 <!-- @trace
-source: desktop-instruction-staleness-prompt
-updated: 2026-07-31
-code:
-  - .agents/skills/speclink-apply/SKILL.md
-  - .agents/skills/speclink-archive/SKILL.md
-  - .agents/skills/speclink-audit/SKILL.md
-  - .agents/skills/speclink-commit/SKILL.md
-  - .agents/skills/speclink-config/SKILL.md
-  - .agents/skills/speclink-discuss/SKILL.md
-  - .agents/skills/speclink-drift/SKILL.md
-  - .agents/skills/speclink-ingest/SKILL.md
-  - .agents/skills/speclink-onboard/SKILL.md
-  - .agents/skills/speclink-propose/SKILL.md
-  - .claude/skills/speclink-analyze/SKILL.md
-  - .claude/skills/speclink-apply/SKILL.md
-  - .claude/skills/speclink-archive/SKILL.md
-  - .claude/skills/speclink-audit/SKILL.md
-  - .claude/skills/speclink-commit/SKILL.md
-  - .claude/skills/speclink-config/SKILL.md
-  - .claude/skills/speclink-discuss/SKILL.md
-  - .claude/skills/speclink-drift/SKILL.md
-  - .claude/skills/speclink-ingest/SKILL.md
-  - .claude/skills/speclink-onboard/SKILL.md
-  - .claude/skills/speclink-propose/SKILL.md
-  - .claude/skills/speclink-verify/SKILL.md
-  - AGENTS.md
-  - CLAUDE.md
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
-  - apps/desktop/src/__tests__/instructionUpdatePrompt.test.tsx
-  - apps/desktop/src/__tests__/remoteDataSource.test.ts
-  - apps/desktop/src/__tests__/remoteResilience.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/adapter/remoteDataSource.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/components/InstructionUpdatePrompt.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/instructionPrompt.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/tests/archive_readiness_gate.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/render_golden.rs
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/boardDnd.ts
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/i18n.tsx
+source: desktop-manual-page
+updated: 2026-09-02
 -->
 
 ---
@@ -3269,4 +3214,24 @@ change 卡片 SHALL 於「寫碼任務全完成且尚有未勾 `[M]` 任務」(c
 <!-- @trace
 source: manual-marker-scope-beyond-tests
 updated: 2026-08-14
+-->
+
+---
+### Requirement: 抽屜與浮層的開關動畫
+
+桌面 app 的抽屜（變更詳情、規格、已封存、討論）開啟時 SHALL 自右側滑入、遮罩淡入；關閉時 SHALL 反向滑出、遮罩淡出，動畫結束後才移除節點。浮層（popover、tooltip）SHALL 沿用同一套進出動畫工具。使用者系統偏好 prefers-reduced-motion 時，上述動畫 SHALL 停用，抽屜與浮層立即出現與消失。動畫 SHALL NOT 改變抽屜的焦點、關閉與內容行為。
+
+#### Scenario: 抽屜滑入與滑出
+
+- **WHEN** 使用者在任一頁開啟變更詳情、規格、已封存或討論抽屜，再關閉它
+- **THEN** 抽屜自右側滑入、遮罩淡入；關閉時滑出、遮罩淡出，動畫結束後節點移除
+
+#### Scenario: 減少動態偏好下無動畫
+
+- **WHEN** 系統設定 prefers-reduced-motion 後開啟任一抽屜
+- **THEN** 抽屜立即出現、無滑入動畫；關閉亦立即消失
+
+<!-- @trace
+source: desktop-manual-page
+updated: 2026-09-02
 -->

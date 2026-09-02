@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Maximize2, Minimize2 } from "lucide-react";
 
 import { useI18n } from "../i18n";
+import { useLingering } from "../lib/useLingering";
 import { parseTraceSources } from "../trace";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
@@ -24,7 +25,14 @@ type Doc = string | null | undefined;
 /** 唯讀規格抽屜（spec-archive-drawer design D1）：正典 spec.md 全文＋溯源 footer。
  * 寬度與全螢幕切換與變更詳情抽屜同款；開啟／換目標清空全量載入、世代重載不清空
  * 且 latest-wins 防交錯（design D3，與 RichDetailDrawer 的 loadAll 模式同款）。 */
-export function SpecDrawer({ open, onOpenChange, capability, refreshGen, loadDocument }: SpecDrawerProps) {
+export function SpecDrawer({
+  open,
+  onOpenChange,
+  capability: capabilityProp,
+  refreshGen,
+  loadDocument,
+}: SpecDrawerProps) {
+  const capability = useLingering(capabilityProp);
   const { t } = useI18n();
   const [doc, setDoc] = useState<Doc>();
   const [full, setFull] = useState(false);

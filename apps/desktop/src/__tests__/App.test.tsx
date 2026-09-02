@@ -631,7 +631,7 @@ describe("board search wiring（看板搜尋接線）", () => {
 });
 
 describe("sidebar navigation structure（側欄導覽結構）", () => {
-  it("側欄頂部依序為變更/規格/手冊/已封存/專案設定，設定沉底，無備忘項且頂欄無已封存鈕", async () => {
+  it("側欄頂部依序為變更/已封存/規格/手冊，底部為專案設定/設定，無備忘項且頂欄無已封存鈕", async () => {
     renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
@@ -639,26 +639,30 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     const labels = within(aside)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
-    expect(labels).toEqual(["變更", "規格", "手冊", "已封存", "專案設定", "設定"]);
+    expect(labels).toEqual(["變更", "已封存", "規格", "手冊", "專案設定", "設定"]);
     expect(screen.queryByText("備忘")).toBeNull();
     const header = document.querySelector("header") as HTMLElement;
     expect(within(header).queryByLabelText("已封存")).toBeNull();
     expect(within(header).queryByText("已封存")).toBeNull();
   });
 
-  it("設定導覽項沉底：為側欄最末子元素、以自動上邊距與頂部五項彈性區隔，切頁與高亮語意不變", async () => {
+  it("底部群組沉底：專案設定帶自動上邊距、設定為側欄最末子元素，與頂部四項彈性區隔，切頁與高亮語意不變", async () => {
     renderApp();
     await screen.findByText("desktop-shell-and-browser");
     const aside = document.querySelector("aside") as HTMLElement;
     const settingsNav = within(aside).getByRole("button", { name: "設定" });
-    // 頂部五項維持依序；設定為側欄最末子元素。
+    const projectSettingsNav = within(aside).getByRole("button", { name: "專案設定" });
+    // 頂部四項維持依序；底部群組專案設定在上、設定為側欄最末子元素。
     const labels = within(aside)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
-    expect(labels.slice(0, 5)).toEqual(["變更", "規格", "手冊", "已封存", "專案設定"]);
+    expect(labels.slice(0, 4)).toEqual(["變更", "已封存", "規格", "手冊"]);
+    expect(labels.slice(4)).toEqual(["專案設定", "設定"]);
     expect(aside.lastElementChild).toBe(settingsNav);
-    // 彈性區隔：jsdom 無版面計算，以等效自動上邊距 class 斷言（design D5）。
-    expect(settingsNav.className).toContain("mt-auto");
+    // 彈性區隔：jsdom 無版面計算，以等效自動上邊距 class 斷言（design D5）——
+    // 上邊距落在底部群組的第一項（專案設定），設定緊隨其後不再另帶。
+    expect(projectSettingsNav.className).toContain("mt-auto");
+    expect(settingsNav.className).not.toContain("mt-auto");
     // 切頁與高亮語意不變：點設定離開看板並高亮設定項。
     const changesNav = within(aside).getByRole("button", { name: "變更" });
     fireEvent.click(settingsNav);
@@ -1052,8 +1056,8 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     expect(ds.listManualPages).not.toHaveBeenCalled();
   });
 
-  it("點出處 capability 切至規格頁：規格項高亮、該規格卡展開（抽屜載入正典全文）", async () => {
-    // spec Scenario「點出處跳規格頁展開」：以既有規格卡的展開路徑（SpecDrawer）展開。
+  it("點手冊出處在手冊頁上開規格抽屜、不切頁", async () => {
+    // spec Scenario「點出處開啟規格抽屜」：共用規格頁的唯讀抽屜（SpecDrawer），側欄不切頁。
     const ds = fakeDataSource({
       listManualPages: vi.fn().mockResolvedValue(MANUAL_INDEX),
       getManualPage: vi
@@ -1068,17 +1072,24 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     const specsNav = within(aside).getByRole("button", { name: "規格" });
     fireEvent.click(manualNav);
     await screen.findByText("看板說明。");
-    const sources = document.querySelector("[data-manual-sources]") as HTMLElement;
-    // 正典不存在者為純文字。
+    // 出處列以索引的 sources 為準：首頁 sources 為空，切到帶 sources 的「看板」頁。
+    fireEvent.click(document.querySelector('[data-manual-page="boards"]') as HTMLElement);
+    const sources = await waitFor(() => {
+      const el = document.querySelector("[data-manual-sources]") as HTMLElement;
+      expect(el).toBeTruthy();
+      return el;
+    });
+    // 不在索引 sources 的名稱不進出處列（內文出處行只剝掉、不重解）。
     expect(within(sources).queryByRole("button", { name: "ghost-cap" })).toBeNull();
+    expect(within(sources).queryByText("ghost-cap")).toBeNull();
     fireEvent.click(within(sources).getByRole("button", { name: "desktop-app" }));
     await waitFor(() => expect(screen.getByText("正典內文段落。")).toBeTruthy());
-    expect(specsNav.className).toContain("bg-primary");
-    expect(manualNav.className).not.toContain("bg-primary");
+    // 不切頁：手冊項仍高亮、規格項未高亮，手冊內文仍在畫面，規格抽屜疊在其上。
+    expect(manualNav.className).toContain("bg-primary");
+    expect(specsNav.className).not.toContain("bg-primary");
+    expect(screen.getByText("看板說明。")).toBeTruthy();
     expect(document.querySelector("[data-spec-drawer]")).toBeTruthy();
     expect(ds.getSpecDocument).toHaveBeenCalledWith("desktop-app");
-    // 規格頁清單就緒且該卡在列（滾至該卡）。
-    expect(document.querySelector('[data-spec="desktop-app"]')).toBeTruthy();
   });
 
   it("手冊頁開著時 workspace-changed 觸發索引重取與目前頁內文重載", async () => {

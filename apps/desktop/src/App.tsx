@@ -579,6 +579,19 @@ function AppInner({
             active={s.boardView === "board"}
             onClick={() => s.setBoardView("board")}
           />
+          {/* 已封存入口（獨立頁）：切頁語意，返回看板改點「變更」。 */}
+          <NavItem
+            icon={<Archive className="h-4 w-4" />}
+            label={t("app.archived")}
+            ariaLabel={t("app.archived")}
+            active={s.boardView === "archived"}
+            onClick={() => s.setBoardView("archived")}
+            trailing={
+              <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-muted text-muted-foreground text-[10px] tabular-nums">
+                {s.archived.length}
+              </span>
+            }
+          />
           {/* 規格頁入口：切頁語意（與已封存頁同型），返回看板改點「變更」。 */}
           <NavItem
             icon={<FileText className="h-4 w-4" />}
@@ -594,48 +607,39 @@ function AppInner({
             active={s.boardView === "manual"}
             onClick={() => s.setBoardView("manual")}
           />
-          {/* 已封存入口（獨立頁）：切頁語意，返回看板改點「變更」。 */}
-          <NavItem
-            icon={<Archive className="h-4 w-4" />}
-            label={t("app.archived")}
-            ariaLabel={t("app.archived")}
-            active={s.boardView === "archived"}
-            onClick={() => s.setBoardView("archived")}
-            trailing={
-              <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-muted text-muted-foreground text-[10px] tabular-nums">
-                {s.archived.length}
-              </span>
-            }
-          />
+          {/* 底部群組沉底：專案設定帶自動上邊距推至側欄底部、設定緊隨其後（design D5），
+              切頁與高亮語意不變。 */}
           <NavItem
             icon={<SlidersHorizontal className="h-4 w-4" />}
             label={t("app.navProjectSettings")}
             active={s.boardView === "project-settings"}
             onClick={() => s.setBoardView("project-settings")}
+            className="mt-auto"
           />
-          {/* 設定沉底：自動上邊距推至側欄底部（design D5），切頁與高亮語意不變。 */}
           <NavItem
             icon={<Settings className="h-4 w-4" />}
             label={t("app.navSettings")}
             active={s.boardView === "settings"}
             onClick={() => s.setBoardView("settings")}
-            className="mt-auto"
           />
         </aside>
 
         {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
-            制列沉底常駐）；設定頁維持整頁縱向捲動 */}
-        <main className={`flex-1 p-5 ${s.boardView === "settings" || s.boardView === "project-settings" ? "overflow-y-auto" : "overflow-hidden"}`}>
+            制列沉底常駐）；設定頁維持整頁縱向捲動；手冊頁的三欄分隔線要貫穿
+            主內容全高，padding 由 ManualPage 各欄自管 */}
+        <main className={`flex-1 ${s.boardView === "manual" ? "p-0" : "p-5"} ${s.boardView === "settings" || s.boardView === "project-settings" ? "overflow-y-auto" : "overflow-hidden"}`}>
           {/* 指令檔提示（決策 7）：per 專案、分頁內容頂部、非阻斷；應用程式設定
-              頁不屬專案語境故不掛。 */}
+              頁不屬專案語境故不掛。手冊視圖的 main 無 padding，提示存在時自補。 */}
           {s.boardView !== "settings" && (
-            <AssetUpdatePrompt
-              prompt={s.assetPrompt}
-              error={s.assetUpdateError}
-              busy={s.assetUpdating}
-              onApply={() => void s.applyAssetUpdate()}
-              onDismiss={s.dismissAssetPrompt}
-            />
+            <div className={s.boardView === "manual" && s.assetPrompt ? "px-5 pt-5" : undefined}>
+              <AssetUpdatePrompt
+                prompt={s.assetPrompt}
+                error={s.assetUpdateError}
+                busy={s.assetUpdating}
+                onApply={() => void s.applyAssetUpdate()}
+                onDismiss={s.dismissAssetPrompt}
+              />
+            </div>
           )}
           {s.boardView === "settings" ? (
             <AppSettingsView
@@ -676,7 +680,7 @@ function AppInner({
             <ManualPage
               index={s.manual}
               loadPage={(slug) => dataSource?.getManualPage(slug) ?? Promise.resolve(null)}
-              onOpenSpec={s.jumpToSpec}
+              onOpenSpec={s.openSpec}
               capabilities={s.specs.map((spec) => spec.id)}
               refreshGen={s.refreshGen}
             />

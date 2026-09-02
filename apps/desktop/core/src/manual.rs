@@ -27,17 +27,17 @@ struct Page {
     order: Option<i64>,
     keywords: Vec<String>,
     sources: Vec<String>,
-    /// frontmatter 原字串（輸出用）。
-    generated: Option<String>,
-    /// 可解析為日期的 generated（過期比對用）。
-    generated_date: Option<NaiveDate>,
+    /// 生成日（只到日）；缺席或非 `YYYY-MM-DD` 皆為 `None`——視為未生成，不判過期。
+    generated: Option<NaiveDate>,
     malformed: bool,
 }
 
-fn empty_index(reason: Value) -> Value {
+/// 沒有手冊可列時的索引；`reason` 恆為 null——「remote」那個值由前端 remote 資料源
+/// 自己填，Rust 端沒有第二種理由。
+fn empty_index() -> Value {
     json!({
         "present": false,
-        "reason": reason,
+        "reason": Value::Null,
         "pages": [],
         "uncoveredNew": [],
         "malformed": []
@@ -55,7 +55,7 @@ static TRACE_UPDATED_RE: LazyLock<Regex> =
 /// `present` 為 false（錯誤只記日誌）。
 pub fn list_manual_pages_at(root: &Path) -> Value {
     let Some(ctx) = init_core_context(root) else {
-        return empty_index(Value::Null);
+        return empty_index();
     };
     // `openspec/manual/` 跟 spec 目錄名走（`.speclink.yaml` 的 spec_dir）。
     let dir = ctx.workspace.spec_dir().join("manual");
@@ -65,7 +65,7 @@ pub fn list_manual_pages_at(root: &Path) -> Value {
             if e.kind() != std::io::ErrorKind::NotFound {
                 eprintln!("manual: cannot read {}: {e}", dir.display());
             }
-            return empty_index(Value::Null);
+            return empty_index();
         }
     };
     let mut pages: Vec<Page> = entries
@@ -85,7 +85,7 @@ pub fn list_manual_pages_at(root: &Path) -> Value {
         })
         .collect();
     if pages.is_empty() {
-        return empty_index(Value::Null);
+        return empty_index();
     }
     sort_reading_order(&mut pages);
 
@@ -101,10 +101,12 @@ pub fn list_manual_pages_at(root: &Path) -> Value {
     let items: Vec<Value> = pages
         .iter()
         .map(|p| {
-            let stale = p.generated_date.is_some_and(|gen| {
+            // manual-pages 契約「過期判定基準」：最新 updated 不早於（晚於或同日）
+            // generated 即過期——兩個日期都只到日，生成當天的封存不得漏判。
+            let stale = p.generated.is_some_and(|gen| {
                 p.sources
                     .iter()
-                    .any(|cap| range_of(cap).is_some_and(|(_, max)| max > gen))
+                    .any(|cap| range_of(cap).is_some_and(|(_, max)| max >= gen))
             });
             json!({
                 "slug": p.slug,
@@ -113,21 +115,22 @@ pub fn list_manual_pages_at(root: &Path) -> Value {
                 "order": p.order,
                 "keywords": p.keywords,
                 "sources": p.sources,
-                "generated": p.generated,
+                "generated": p.generated.map(|d| d.format("%Y-%m-%d").to_string()),
                 "stale": stale,
             })
         })
         .collect();
 
-    // 未入冊：正典 capability 的最小 updated 晚於全手冊最大 generated，且不在任何頁的 sources。
-    let max_generated = pages.iter().filter_map(|p| p.generated_date).max();
+    // 未入冊：正典 capability 的最小 updated 不早於全手冊最大 generated（同日同樣
+    // 算生成之後），且不在任何頁的 sources。
+    let max_generated = pages.iter().filter_map(|p| p.generated).max();
     let mut uncovered: Vec<String> = match max_generated {
         None => Vec::new(),
         Some(max_gen) => store
             .list_canonical_capabilities()
             .into_iter()
             .filter(|cap| !pages.iter().any(|p| p.sources.iter().any(|s| s == cap)))
-            .filter(|cap| range_of(cap).is_some_and(|(min, _)| min > max_gen))
+            .filter(|cap| range_of(cap).is_some_and(|(min, _)| min >= max_gen))
             .collect(),
     };
     uncovered.sort_unstable();
@@ -178,12 +181,14 @@ fn split_frontmatter(text: &str) -> Option<(&str, &str)> {
     None
 }
 
-/// frontmatter YAML → 映射（空 frontmatter 視為空映射）；解析失敗或非映射回 `None`。
+/// frontmatter YAML → 映射（全空白的 frontmatter 視為空映射）；解析失敗或非映射回
+/// `None`。只含 `#` 註解行的 YAML 也解成 Null，但那多半是「首行水平線＋標題」的
+/// 內文而非 frontmatter——不當空映射剝掉，讓它走 malformed 路徑保留全文。
 fn parse_frontmatter_yaml(yaml: &str) -> Option<serde_yaml::Mapping> {
     let cleaned = yaml.replace('\r', "");
     match serde_yaml::from_str::<serde_yaml::Value>(&cleaned).ok()? {
         serde_yaml::Value::Mapping(map) => Some(map),
-        serde_yaml::Value::Null => Some(serde_yaml::Mapping::new()),
+        serde_yaml::Value::Null if cleaned.trim().is_empty() => Some(serde_yaml::Mapping::new()),
         _ => None,
     }
 }
@@ -197,7 +202,6 @@ fn malformed_page(slug: String) -> Page {
         keywords: Vec::new(),
         sources: Vec::new(),
         generated: None,
-        generated_date: None,
         malformed: true,
     }
 }
@@ -213,19 +217,21 @@ fn parse_page(slug: String, text: &str) -> Page {
             .map(|seq| seq.iter().filter_map(scalar_to_string).collect())
             .unwrap_or_default()
     };
-    let generated = string_field("generated");
-    let generated_date = generated
-        .as_deref()
-        .and_then(|s| NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d").ok());
+    // sources 之後會拼成 `specs/{cap}/spec.md` 去讀正典：只收單一路徑段的名稱，
+    // 帶分隔符或 `..` 的值丟棄（與 manual_page_at 的 slug 守門同一條線）。
+    let sources = list_field("sources")
+        .into_iter()
+        .filter(|s| is_safe_path_param(s) && !s.contains(['/', '\\']))
+        .collect();
     Page {
         title: string_field("title").unwrap_or_else(|| slug.clone()),
         slug,
         section: string_field("section"),
         order: map.get("order").and_then(|v| v.as_i64()),
         keywords: list_field("keywords"),
-        sources: list_field("sources"),
-        generated,
-        generated_date,
+        sources,
+        generated: string_field("generated")
+            .and_then(|s| NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d").ok()),
         malformed: false,
     }
 }
@@ -413,6 +419,12 @@ mod tests {
             Some("---\ntitle: [unclosed\norder: 5\n---\n\n內文。\n")
         );
         assert_eq!(manual_page_at(fx.root(), "plain").as_deref(), Some("# 沒有 frontmatter\n\n內文。\n"));
+        // 首行水平線、到下一條水平線之間只有標題行：YAML 解成 Null，不是 frontmatter——
+        // 走 malformed、全文保留，內容不得無聲消失。
+        fx.write("openspec/manual/ruled.md", "---\n# 標題\n---\n\n內文。\n");
+        let v = list_manual_pages_at(fx.root());
+        assert!(v["malformed"].as_array().unwrap().contains(&serde_json::json!("ruled")));
+        assert_eq!(manual_page_at(fx.root(), "ruled").as_deref(), Some("---\n# 標題\n---\n\n內文。\n"));
     }
 
     #[test]
@@ -435,7 +447,19 @@ mod tests {
         assert_eq!(page_of(&v, "p-empty")["stale"], false);
         assert_eq!(page_of(&v, "p-nogen")["stale"], false);
         assert_eq!(page_of(&v, "p-missing-spec")["stale"], false);
-        assert_eq!(page_of(&v, "p-same-day")["stale"], false, "同日不算晚於");
+        assert_eq!(page_of(&v, "p-same-day")["stale"], true, "同日算過期：生成當天的封存不得漏判");
+    }
+
+    #[test]
+    fn unparseable_generated_is_null_and_never_stale() {
+        // 非 YYYY-MM-DD 的 generated 視同缺席：輸出 null、不判過期。
+        let fx = FixtureRoot::new("manual-badgen");
+        spec_with_trace(&fx, "x", &["2026-09-05"]);
+        page(&fx, "index", "order: 10\nsources: [x]\ngenerated: 2026/09/01", "");
+        let v = list_manual_pages_at(fx.root());
+        assert_eq!(page_of(&v, "index")["generated"], Value::Null);
+        assert_eq!(page_of(&v, "index")["stale"], false);
+        assert_eq!(v["uncoveredNew"], serde_json::json!([]));
     }
 
     #[test]
@@ -454,6 +478,17 @@ mod tests {
         page(&fx, "pz", "order: 30\nsources: [z]\ngenerated: 2026-09-01", "");
         let v = list_manual_pages_at(fx.root());
         assert_eq!(v["uncoveredNew"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn uncovered_new_counts_a_spec_first_traced_on_the_generation_day() {
+        // 生成當天封存的新規格同樣算「生成後新增」（與過期判定同一基準）。
+        let fx = FixtureRoot::new("manual-uncovered-sameday");
+        spec_with_trace(&fx, "s", &["2026-09-01"]);
+        spec_with_trace(&fx, "old", &["2026-08-31"]);
+        page(&fx, "index", "order: 10\nsources: []\ngenerated: 2026-09-01", "");
+        let v = list_manual_pages_at(fx.root());
+        assert_eq!(v["uncoveredNew"], serde_json::json!(["s"]));
     }
 
     #[test]
@@ -532,5 +567,23 @@ mod tests {
         let p = page_of(&v, "index");
         assert_eq!(p["keywords"], serde_json::json!(["登入", "42", "true"]));
         assert_eq!(p["sources"], serde_json::json!([]), "非陣列的 sources 視為缺席");
+    }
+
+    #[test]
+    fn sources_drop_values_that_are_not_a_single_path_segment() {
+        // sources 會拼成正典路徑去讀：`..`、分隔符、絕對路徑一律丟棄，不去讀 specs 外的檔。
+        let fx = FixtureRoot::new("manual-sources-guard");
+        fx.write("openspec/secret/spec.md", "<!-- @trace\nsource: s\nupdated: 2026-09-09\n-->\n");
+        spec_with_trace(&fx, "ok-cap", &["2026-08-01"]);
+        page(
+            &fx,
+            "index",
+            "order: 10\nsources: [../secret, ok-cap, sub/ok-cap, /abs, 'c:x']\ngenerated: 2026-09-01",
+            "",
+        );
+        let v = list_manual_pages_at(fx.root());
+        let p = page_of(&v, "index");
+        assert_eq!(p["sources"], serde_json::json!(["ok-cap"]));
+        assert_eq!(p["stale"], false, "被丟棄的來源不參與過期判定");
     }
 }

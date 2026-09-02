@@ -216,8 +216,6 @@ export interface AppState {
   /** 重取手冊索引：切到手冊視圖時、以及手冊視圖活躍下的每次整批 refresh
    * （workspace-changed 沿用同一條路，不新增監看目標）；交錯回應以最新為準。 */
   refreshManual: () => Promise<void>;
-  /** 手冊出處跳規格：切至規格頁並以既有規格卡的展開路徑開該 capability 的抽屜。 */
-  jumpToSpec: (capability: string) => void;
   setBoardView: (v: BoardView) => void;
   setView: (v: ListView) => void;
   setQuery: (q: string) => void;
@@ -1100,11 +1098,6 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       // 交錯回應以最新為準；分頁已切走的結果丟棄（索引屬於當時的 workspace）。
       if (generation !== manualGeneration || get().activeKey !== key) return;
       set({ manual: index });
-    },
-
-    jumpToSpec(capability) {
-      get().setBoardView("specs");
-      get().openSpec(capability);
     },
 
     setBoardView(boardView) {

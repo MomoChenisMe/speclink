@@ -58,6 +58,25 @@
         "apps/desktop/src/store.ts",
         "packages/ui/src/components/SpecList.tsx"
       ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.1 於本 repo 以 manual 技能生成手冊（或手放含兩個分區、一頁 stale 的 fixture）後啟動 desktop：確認側欄六項順序、手冊頁分區樹與上一頁／下一頁、搜尋過濾、可能過期標記、點出處在手冊頁上開規格抽屜（滑入動畫、側欄不切頁）、`> [!NOTE]` 呈現為提示框。",
+      "files": [
+        "apps/desktop/src/index.css",
+        "apps/desktop/src/panel/TrayPanel.tsx",
+        "package-lock.json",
+        "packages/ui/package.json",
+        "packages/ui/src/__tests__/specDrawer.test.tsx",
+        "packages/ui/src/components/ArchivedDrawer.tsx",
+        "packages/ui/src/components/DiscussionDrawer.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/components/SpecDrawer.tsx",
+        "packages/ui/src/components/ui/sheet.tsx",
+        "packages/ui/src/theme.css",
+        "packages/ui/vitest.setup.ts",
+        "packages/ui/src/lib/useLingering.ts"
+      ]
     }
   ],
   "entries": [
@@ -141,6 +160,28 @@
         "packages/ui/src/components/SpecList.tsx"
       ],
       "recordedAt": "2026-09-02T02:24:07Z"
+    },
+    {
+      "taskId": "tsk_01M1FV0A28THN7TWPY14MR6XEV",
+      "taskDesc": "5.1 於本 repo 以 manual 技能生成手冊（或手放含兩個分區、一頁 stale 的 fixture）後啟動 desktop：確認側欄六項順序、手冊頁分區樹與上一頁／下一頁、搜尋過濾、可能過期標記、點出處在手冊頁上開規格抽屜（滑入動畫、側欄不切頁）、`> [!NOTE]` 呈現為提示框。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "headCommit": "0abe289320393a40ac76f7c8ed79727fb84360c7",
+      "touchedFiles": [
+        "apps/desktop/src/index.css",
+        "apps/desktop/src/panel/TrayPanel.tsx",
+        "package-lock.json",
+        "packages/ui/package.json",
+        "packages/ui/src/__tests__/specDrawer.test.tsx",
+        "packages/ui/src/components/ArchivedDrawer.tsx",
+        "packages/ui/src/components/DiscussionDrawer.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/components/SpecDrawer.tsx",
+        "packages/ui/src/components/ui/sheet.tsx",
+        "packages/ui/src/theme.css",
+        "packages/ui/vitest.setup.ts",
+        "packages/ui/src/lib/useLingering.ts"
+      ],
+      "recordedAt": "2026-09-02T06:34:15Z"
     }
   ]
 }

@@ -224,11 +224,12 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "manual.stale": "可能過期",
     "manual.uncoveredNew": "手冊生成後新增且未入冊的規格 {n} 份",
     "manual.emptyTitle": "尚無手冊",
-    "manual.emptyDesc": "用 manual 技能從規格生成手冊後，這裡就會顯示。",
+    "manual.emptyDesc": "用手冊技能從規格生成手冊後，這裡就會顯示。",
     "manual.remoteTitle": "remote 模式尚不支援手冊",
     "manual.remoteDesc": "手冊目前只從本機 checkout 讀取。",
     "manual.loadFailed": "內文載入失敗",
     "manual.sources": "出處",
+    "manual.toc": "本頁目錄",
   },
   en: {
     "common.archive": "Archive",
@@ -446,6 +447,7 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "manual.remoteDesc": "The manual is read from a local checkout only.",
     "manual.loadFailed": "Couldn't load this page",
     "manual.sources": "Sources",
+    "manual.toc": "On this page",
   },
 };
 
