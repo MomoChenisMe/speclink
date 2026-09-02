@@ -5,7 +5,7 @@
 > 這份文件描述 Speclink 從本地 SDD 工具擴展為可組合平台的目標架構，是當時做整體設計時的整合基準。
 > 之後的實作與規劃已經有所偏離，本文沒有隨之更新——**不要以本文判斷現在的行為、邊界或介面**。
 > 偏離的例子：官方發布形態現以 `npx @speclink/server`、Docker 與 Compose 為主、不發 native binary，
-> 開箱最短路徑與「第一位 Admin 自授 membership」見 Remote 入門教學（§13.1、§13.4 已過期）；
+> 開箱最短路徑與「第一位 Admin 自授 membership」見 Remote 入門（§13.1、§13.4 已過期）；
 > store driver 鍵是 `sqlite`／`serverfs`／`postgres`，Server FS 靠 flock、沒有啟動時能力探測（§4.3 與現況不符）；
 > §15.2 列為缺口的 capability 揭露與 §15.4 的認領（claim）都已交付——認領已持久化並有桌面遠端呈現。
 >
@@ -896,7 +896,7 @@ speclink_context    Context snapshot/search
 ```
 
 參考：[GitHub Copilot SDK 自訂 Tool 範例](https://github.com/github/copilot-sdk/blob/main/nodejs/examples/basic-example.ts)、
-[多租戶部署指南](https://github.com/github/copilot-sdk/blob/main/docs/setup/multi-tenancy.md)。
+[多租戶部署文件](https://github.com/github/copilot-sdk/blob/main/docs/setup/multi-tenancy.md)。
 
 ## 9. Event 與即時更新
 
@@ -1321,7 +1321,7 @@ Store Contract 屬於 Phase 1，因為 archive 原子性、domain event 與遠�
 
 ### Phase 4：Agent 與生態整合
 
-1. 發布 Node N-API Engine binary、In-process/Copilot Tool Adapter、MCP Adapter 與多租戶整合指南。
+1. 發布 Node N-API Engine binary、In-process/Copilot Tool Adapter、MCP Adapter 與多租戶整合文件。
 2. 穩定 UI integration contract，讓自訂 Desktop、Web 與 Agent UI 共用。
 3. 視需求再加入 WebSocket、OIDC/SSO、runtime Store plugin protocol 與 Cluster mode。
 
@@ -1424,7 +1424,7 @@ drafting
 
 保留的操作文件只描述目前已實作 surface，並已明確標示範圍：
 
-- [本地入門教學](getting-started.zh-TW.md)：目前 local repo 工作流。
+- [本地入門](getting-started.zh-TW.md)：目前 local repo 工作流。
 - [設定說明](configuration.zh-TW.md)：目前 local workspace config 與遷移方式。
 - [Node SDK](sdk-node.zh-TW.md)：目前 `@speclink/engine`、Store bridge 與 `dispatch` surface。
 

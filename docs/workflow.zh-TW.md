@@ -4,7 +4,7 @@
 
 本文是 Speclink 使用流程的使用者正典。它逐站回答五件事：做什麼、對應哪個技能、何時跳過、完成判準是什麼、完成後去哪裡。
 
-第一次只想完成 Local Repo 一輪，先讀[入門教學](getting-started.zh-TW.md)。要判斷某項能力是否已可用，查[專案能力狀態](product-status.zh-TW.md)。
+第一次只想完成 Local Repo 一輪，先讀[入門](getting-started.zh-TW.md)。要判斷某項能力是否已可用，查[專案能力狀態](product-status.zh-TW.md)。
 
 ## Mental model / 心智模型
 
@@ -37,7 +37,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 | --- | --- | --- |
 | 只求理解，沒有待決事項嗎？ | 是 | 直接問答；不要建立討論。 |
 | 已有相關變更嗎？ | 是 | 若只是繼續實作走 `apply`；若新背景會改 artifacts，走 `ingest`。 |
-| 變更曾閒置或規劃時的假設可能已過時嗎？ | 是 | 先 `drift`，再依結果回 `apply` 或 `ingest`。 |
+| 變更曾閒置或規劃時的假設可能已過期嗎？ | 是 | 先 `drift`，再依結果回 `apply` 或 `ingest`。 |
 | 實作中需求或外部背景改變嗎？ | 是 | `ingest`，更新 artifacts 後再回 `apply`。 |
 | 想改善程式碼但講不出要改哪裡嗎？ | 是 | `improve`，讓模型掃描並提出候選。 |
 | 新需求已明確嗎？ | 是／否 | 明確就 `propose`；仍需取捨就 `discuss`。 |
@@ -173,7 +173,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **Codex**：`$speclink-drift <change>`。
 - **CLI/Host**：`speclink drift <change> --json`。
 - **Done / 完成**：報告已指出時間、broken anchors、任務衝突與建議路徑。
-- **Next / 下一步**：Light 通常回 `apply`；需求／delta 假設過時走 `ingest`；Heavy 先更新 artifacts。
+- **Next / 下一步**：Light 通常回 `apply`；需求／delta 假設過期走 `ingest`；Heavy 先更新 artifacts。
 - **Recover / 恢復**：無法判斷的外部修改先保留，不以重置或覆寫使用者 worktree 解決。
 
 ### quality（兩道一起跑）
@@ -245,7 +245,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 ### archive
 
 - **Purpose / 目的**：將 delta specs 合併到正典 specs，封存完成的變更與關聯討論。
-- **Use / 使用**：任務全部完成、artifacts valid、假設未過時，且你選擇要跑的品質關卡已結案。
+- **Use / 使用**：任務全部完成、artifacts valid、假設未過期，且你選擇要跑的品質關卡已結案。
 - **Skip / 跳過**：有未完成任務、stale delta、`validate` 未過，或需求還在變。
 - **Input / 輸入**：ready 的變更、完整 final-state deltas 與完成證據。
 - **Outputs / 產物**：更新後的正典 specs、`openspec/changes/archive/` 記錄；最後一個存活變更封存時，關聯討論一併封存。已蓋章的變更封存時不含工單檔；只有未結工單會經 `--carry-review`／`--carry-verify` 隨封存移動。
@@ -254,7 +254,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **CLI/Host**：`speclink archive <change>`；不要用 `--no-validate` 或 `--mark-tasks-complete` 規避未完成工作。
 - **Done / 完成**：CLI 成功、正典 spec delta 統計正確、變更已移入 archive。
 - **Next / 下一步**：需要時以變更範圍的提交把封存結果留下來。
-- **Recover / 恢復**：delta 不完整時先正規化。假設過時就回 `drift` 或 `ingest`，不要強制封存。還有一個常見地雷：MODIFIED 區塊是整塊取代，所以改了 scenario 名稱等於未宣告的刪除。validate 與 analyze 都抓不到，要到封存才炸——補一則 `REMOVED-SCENARIO` 註解明示。
+- **Recover / 恢復**：delta 不完整時先正規化。假設過期就回 `drift` 或 `ingest`，不要強制封存。還有一個常見地雷：MODIFIED 區塊是整塊取代，所以改了 scenario 名稱等於未宣告的刪除。validate 與 analyze 都抓不到，要到封存才炸——補一則 `REMOVED-SCENARIO` 註解明示。
 
 ### validate
 
@@ -358,7 +358,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 | --- | --- |
 | 轉為變更後只有 proposal 骨架 | 對同一變更執行 propose；不要直接 apply。 |
 | 討論結論要進既有變更 | `link → ingest → seal`；缺一不可。 |
-| 變更暫停一段時間 | 先 drift；Light 回 apply，假設過時回 ingest。 |
+| 變更暫停一段時間 | 先 drift；Light 回 apply，假設過期回 ingest。 |
 | 實作中需求改變 | ingest 更新 artifacts，重新 analyze／validate，再回 apply。 |
 | apply 顯示缺 artifact | 回 propose 完成 `applyRequires` 鏈。 |
 | 任務被誤勾或實作回滾 | `speclink task undone --change <name> <id>`。 |
@@ -389,8 +389,8 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 ## Related documents / 相關文件
 
-- [Local Repo 入門教學](getting-started.zh-TW.md)
-- [Remote Server、Desktop 與 CLI 入門教學](remote-getting-started.zh-TW.md)
+- [Local Repo 入門](getting-started.zh-TW.md)
+- [Remote Server、Desktop 與 CLI 入門](remote-getting-started.zh-TW.md)
 - [專案能力狀態](product-status.zh-TW.md)
 - [動詞與旗標契約](verb-contract.zh-TW.md)
 - [專案路線圖](roadmap.zh-TW.md)

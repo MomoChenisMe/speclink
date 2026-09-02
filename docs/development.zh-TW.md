@@ -23,7 +23,7 @@ npm install
 
 ## `npm run dev:server` — server only / 只跑後端
 
-- **用途**：只檢查 dev 設定並啟動 `speclink-server`，適合在這個 checkout 內做純後端開發（checkout 之外要自架，最短路徑是 `npx @speclink/server`，見 [Remote 入門教學](remote-getting-started.zh-TW.md)）。它不建置 CLI、不建置前端，也不開 desktop 視窗。
+- **用途**：只檢查 dev 設定並啟動 `speclink-server`，適合在這個 checkout 內做純後端開發（checkout 之外要自架，最短路徑是 `npx @speclink/server`，見 [Remote 入門](remote-getting-started.zh-TW.md)）。它不建置 CLI、不建置前端，也不開 desktop 視窗。
 - **前置條件**：Rust toolchain 與 `npm install`。零設定即可啟動，預設走 sqlite。設定不合法時它以非零 exit code 拒絕啟動，錯誤訊息與 `npm run dev` 相同——例如 `SPECLINK_STORE_DRIVER=postgres` 但缺 `SPECLINK_POSTGRES_URL`。
 - **預期可觀察結果**：全新環境下，終端印出含 `/setup?token=` 的連結。過程中沒有任何建置步驟，也沒有 desktop 視窗。Ctrl+C 後無殘留 process，`.dev/` 的持久化行為與 `npm run dev` 一致。
 

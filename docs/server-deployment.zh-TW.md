@@ -12,7 +12,7 @@
 後三種共用同一個映像，發布於 `ghcr.io/momochenisme/speclink-server`；tag 對齊 release 版本，另附 `latest`。native binary 不隨 GitHub Release 發布，需要時走[從原始碼建置](#替代路徑從原始碼建置native-binary)的替代路徑。
 
 若目標是從全新資料完成 `/setup`、membership、Desktop 與 Remote CLI，而不是部署正式服務，請先依
-[Remote Server、Desktop 與 CLI 入門教學](remote-getting-started.zh-TW.md)操作。
+[Remote Server、Desktop 與 CLI 入門](remote-getting-started.zh-TW.md)操作。
 
 ## 交付物：內嵌 SPA 的單一 binary／image
 
@@ -131,7 +131,7 @@ docker compose -f docker-compose.postgres.yml up -d
 
 ![Server 後台的使用者頁與成員詳情，顯示角色與成員資格欄](assets/screenshots/server-members.png)
 
-驗收判準：至少有一位管理員，且每位要用遠端的成員在「成員資格」欄看得到目標專案。發邀請與角色指派的操作見[Remote 入門教學](remote-getting-started.zh-TW.md)。
+驗收判準：至少有一位管理員，且每位要用遠端的成員在「成員資格」欄看得到目標專案。發邀請與角色指派的操作見[Remote 入門](remote-getting-started.zh-TW.md)。
 
 最後用 CLI 從外面打一次，確認不是只有瀏覽器連得到：
 

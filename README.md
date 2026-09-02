@@ -132,7 +132,7 @@ speclink list
 ```
 
 接著在 Claude 呼叫 `/speclink-propose <change>`，或在 Codex 呼叫 `$speclink-propose <change>`；Agent 會依 schema DAG
-建立必要 artifacts。可複製的第一輪與直接 CLI 對照見[Local Repo 入門教學](docs/getting-started.zh-TW.md)。
+建立必要 artifacts。可複製的第一輪與直接 CLI 對照見[Local Repo 入門](docs/getting-started.zh-TW.md)。
 
 ## Deployment paths / 部署路徑
 
@@ -142,7 +142,7 @@ speclink list
 Remote Store 不會同步成第二份可寫的本地真相。有 checkout 的 Agent 只讀 `.speclink/context/`，遠端寫入仍走
 Host command。這些邊界的正典是 `openspec/specs/` 底下的規格，例如 `host-runtime`、`client-protocol`、
 `teamstore-contract` 與 `context-projection`。從 setup 到登入的完整操作見
-[Remote 入門教學](docs/remote-getting-started.zh-TW.md)。
+[Remote 入門](docs/remote-getting-started.zh-TW.md)。
 
 ## Documentation map / 文件地圖
 
@@ -150,7 +150,7 @@ Host command。這些邊界的正典是 `openspec/specs/` 底下的規格，例�
 
 | 文件 | 用途 |
 | --- | --- |
-| [Local Repo 入門教學](docs/getting-started.zh-TW.md) | 目前可複製的第一輪 Local Repo 流程 |
+| [Local Repo 入門](docs/getting-started.zh-TW.md) | 目前可複製的第一輪 Local Repo 流程 |
 | [完整 SDD 工作流](docs/workflow.zh-TW.md) | 每一站的用途、對應技能、完成判準與下一站 |
 | [專案能力狀態](docs/product-status.zh-TW.md) | 可用／部分可用／規劃中／已棄用，附證據與限制 |
 
@@ -158,7 +158,7 @@ Host command。這些邊界的正典是 `openspec/specs/` 底下的規格，例�
 
 | 文件 | 用途 |
 | --- | --- |
-| [Remote Server、Desktop 與 CLI 入門教學](docs/remote-getting-started.zh-TW.md) | 從 `npx @speclink/server` 一行啟動、`/setup`、membership（含第一位 Admin 自授）、登入到 Desktop／CLI 與失聯恢復的完整流程 |
+| [Remote Server、Desktop 與 CLI 入門](docs/remote-getting-started.zh-TW.md) | 從 `npx @speclink/server` 一行啟動、`/setup`、membership（含第一位 Admin 自授）、登入到 Desktop／CLI 與失聯恢復的完整流程 |
 | [Server 部署](docs/server-deployment.zh-TW.md) | npx／Docker／Compose 與升級操作 |
 | [Server Store drivers](docs/server-store-drivers.zh-TW.md) | SQLite／Server FS／PostgreSQL 選型與前提 |
 | [Server 備份與還原](docs/server-backup.zh-TW.md) | backup／verify-backup／restore |

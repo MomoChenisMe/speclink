@@ -7,7 +7,7 @@
 檔案、crate 或正典 spec 單獨存在，不代表交付路徑已完整。
 
 要從全新本地資料實際操作 Remote Server、Desktop 與 CLI，請依
-[Remote 入門教學](remote-getting-started.zh-TW.md)完成 setup、membership、登入、workspace 與恢復測試。
+[Remote 入門](remote-getting-started.zh-TW.md)完成 setup、membership、登入、workspace 與恢復測試。
 
 ## Status model / 狀態模型
 
@@ -58,8 +58,8 @@
 | Server operations | Available（可用） | native／Docker／Compose、health/readiness、backup／verify-backup／restore | [部署文件](server-deployment.zh-TW.md)<br>[Backup E2E tests](../crates/speclink-server/tests/it/backup_e2e.rs) | 備份目前要求維護窗口；沒有滾動升級或 cluster 操作。 | 2026-08-13 |
 | MCP and Copilot in-process tools | Planned（規劃中） | 尚無可安裝的 Copilot tools 套件或 MCP adapter | [目前 workspace package inventory](../package.json)<br>[方向與可觀察下一步](roadmap.zh-TW.md) | 不得把架構示意當成目前套件；後續需完成 tool adapter、身分收口與端到端測試。 | 2026-08-13 |
 | SSO, runtime plugins and cluster mode | Planned（規劃中） | 尚無可用入口 | [方向與可觀察下一步](roadmap.zh-TW.md) | 屬後續平台／生態能力，尚未排定先後；目前 Server 與 drivers 的正式定位仍是單一 instance。 | 2026-08-13 |
-| Legacy remote REST v1 | Deprecated（已棄用） | 歷史 remote client prototype | [歷史 prototype crate](../crates/speclink-remote/src/lib.rs)<br>[現行 Client Protocol 正典](../openspec/specs/client-protocol/spec.md) | 不作為新 Client Protocol 的相容負擔或正式 Server contract；新文件只說明遷移方向，不教學此路徑。 | 2026-08-13 |
-| Advanced verb-contract user guide | Available（可用） | [動詞契約指南](verb-contract.zh-TW.md)（中英兩版） | [Canonical verb contract](../openspec/specs/verb-contract/spec.md)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | 指南已建立，涵蓋動詞的模式歸屬、兩模式輸出同形與端點契約；正典仍以 specs 為準，指南隨其更新。 | 2026-08-13 |
+| Legacy remote REST v1 | Deprecated（已棄用） | 歷史 remote client prototype | [歷史 prototype crate](../crates/speclink-remote/src/lib.rs)<br>[現行 Client Protocol 正典](../openspec/specs/client-protocol/spec.md) | 不作為新 Client Protocol 的相容負擔或正式 Server contract；新文件只說明遷移方向，不引導讀者走此路徑。 | 2026-08-13 |
+| Advanced verb-contract user guide | Available（可用） | [動詞與旗標契約](verb-contract.zh-TW.md)（中英兩版） | [Canonical verb contract](../openspec/specs/verb-contract/spec.md)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | 文件已建立，涵蓋動詞的模式歸屬、兩模式輸出同形與端點契約；正典仍以 specs 為準，文件隨其更新。 | 2026-08-13 |
 
 ## Verification baseline / 查核基線
 
