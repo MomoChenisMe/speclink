@@ -2,7 +2,6 @@
 
 ## 專案慣例
 
-- **開發一律走 TDD**：新功能、修 bug、重構都用 `tdd-workflow` 技能（先測試 → 實作 → 重構），覆蓋率目標 80% 以上（unit / integration / E2E）。這是硬規定，不是選項。
 - **Commit 用 `conventional-commit` 技能**：description 與 body 寫繁體中文。例：`feat(auth): 新增 GitHub OAuth 登入`、`fix(collab): 修正 Y.js 同步衝突`。
 - **查資料順序**：專案內既有規格與程式碼（搭配對應 Skills）→ `context7` 等已接的 MCP → 最後才網路搜尋。不要憑印象猜 API 簽名。
 
