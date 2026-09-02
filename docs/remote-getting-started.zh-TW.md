@@ -63,8 +63,8 @@ curl -o /dev/null -w "%{http_code}\n" http://localhost:8080/healthz
 依畫面建立三樣東西：
 
 1. 第一位管理員：email、顯示名稱與密碼。
-2. 第一個 Project：本教學使用 key `demo`。
-3. 第一個 Repo：本教學使用 key `backend`。
+2. 第一個 Project：本文件使用 key `demo`。
+3. 第一個 Repo：本文件使用 key `backend`。
 
 完成頁會顯示服務網址、專案代號與儲存庫代號。依這組範例，project-scoped URL（第 7 節 `link` 要用的連線網址）是：
 
@@ -118,7 +118,7 @@ speclink-server token revoke --config ./speclink-data/config.yaml <token-id>
 
 開起來之後，遠端看板和本地看板一樣可以瀏覽 change、勾任務、讀寫 artifact。
 
-還沒閉合的小縫：在這個遠端看板勾任務不會回報 touched files（CLI 路徑會），認領也還沒有釋放或搶佔的動詞。逐項現況見[專案能力狀態](product-status.zh-TW.md)的 Desktop Remote Workspace 一列——請以那裡為準，不要從這份教學推論。
+還沒閉合的小縫：在這個遠端看板勾任務不會回報 touched files（CLI 路徑會），認領也還沒有釋放或搶佔的動詞。逐項現況見[專案能力狀態](product-status.zh-TW.md)的 Desktop Remote Workspace 一列——請以那裡為準，不要從這份文件推論。
 
 ## 7. Connect the CLI / 連接 CLI
 

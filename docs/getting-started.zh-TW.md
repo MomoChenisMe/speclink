@@ -274,5 +274,5 @@ Snapshot created for unarchive support.
 - 實作中需求改變：`/speclink-ingest <change>`。
 - 變更暫停後續作：先跑 `/speclink-drift <change>`。
 - 要平行推多個變更：`/speclink-apply-with-worktree`，收尾 `/speclink-worktree-merge`。
-- 要用共享的 Remote Store 而不是本地 repo：見[Remote 入門教學](remote-getting-started.zh-TW.md)。
+- 要用共享的 Remote Store 而不是本地 repo：見[Remote 入門](remote-getting-started.zh-TW.md)。
 - 要判斷某項能力今天能不能用：查[專案能力狀態](product-status.zh-TW.md)，不要從架構藍圖推論已交付。

@@ -33,7 +33,7 @@ Speclink 的設定分散在兩個檔案與一個目錄，各自有明確的歸�
 
 第二，`remote:` 區段存在但缺 `url` 時，不會靜默退回本地模式，而是在下游明確失敗。
 
-怎麼建立連線、怎麼登入、失聯怎麼回來，都不在本文。見[Remote 入門教學](remote-getting-started.zh-TW.md)。
+怎麼建立連線、怎麼登入、失聯怎麼回來，都不在本文。見[Remote 入門](remote-getting-started.zh-TW.md)。
 
 ## 解析順序
 

@@ -77,7 +77,7 @@ const engine = createEngine({ store: myStore, actor: 'Alice <alice@example.com>'
 
 > **警告——絕不要在 Store 方法內同步回呼引擎。** `dispatch` 在背景工作執行緒上等待你的 store 方法解決。若某個 store 方法同步阻塞等待同一顆引擎的另一個 `engine.dispatch(...)`，會形成互等循環。在 store 方法回傳*之後*（或無關的程式碼中）發起新的 dispatch 沒有問題——並發 dispatch 是支援且被測試覆蓋的。
 
-## Store 介面——實作指南
+## Store 介面——實作說明
 
 這個介面與引擎核心的儲存縫線一對一，也就是 `speclink-core` 的 `Store` trait，命名採 camelCase。引擎只講領域詞彙：change、artifact、delta 與 canonical spec、討論、workflow config。實體佈局由你的實作決定。
 
