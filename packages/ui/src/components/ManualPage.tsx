@@ -58,10 +58,10 @@ function splitSourcesLine(body: string): { body: string; names: string[] | null 
   };
 }
 
+/** 已載入的頁內文；body 為 null＝載入失敗或頁不存在。 */
 interface LoadedDoc {
   slug: string;
   body: string | null;
-  failed: boolean;
 }
 
 /** 手冊頁（desktop-manual-page design「側欄樹、搜尋與上下頁在前端由索引推導」）：
@@ -84,14 +84,21 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
   const currentSlug = current?.slug ?? null;
 
   useEffect(() => {
-    if (!currentSlug) return;
+    if (!currentSlug) {
+      // 索引清空（切換 workspace）：丟棄舊內文與選頁，並作廢在途的載入——新 workspace
+      // 的首頁 slug 多半同名（契約規定叫 index），舊內文不得當成新頁顯示或事後寫回。
+      seq.current++;
+      setDoc(null);
+      setSelected(null);
+      return;
+    }
     const mine = ++seq.current;
     loadPageRef.current(currentSlug).then(
       (body) => {
-        if (seq.current === mine) setDoc({ slug: currentSlug, body, failed: body === null });
+        if (seq.current === mine) setDoc({ slug: currentSlug, body });
       },
       () => {
-        if (seq.current === mine) setDoc({ slug: currentSlug, body: null, failed: true });
+        if (seq.current === mine) setDoc({ slug: currentSlug, body: null });
       },
     );
   }, [currentSlug, refreshGen]);
@@ -137,7 +144,8 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
 
   const loaded = doc && doc.slug === current.slug ? doc : null;
   const split = loaded?.body != null ? splitSourcesLine(loaded.body) : null;
-  const sourceNames = split?.names ?? current.sources;
+  // 出處名去重（出處行重複列名時不撞 React key）。
+  const sourceNames = Array.from(new Set(split?.names ?? current.sources));
   const canonical = new Set(capabilities);
 
   return (
@@ -154,8 +162,9 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
               {t("manual.noResults")}
             </div>
           ) : (
-            visibleSections.map((section) => (
-              <section key={section.label} data-manual-section={section.label}>
+            visibleSections.map((section, i) => (
+              // 以位置為 key：明寫 section「其他」的組與缺 section 歸「其他」的組可能不相鄰。
+              <section key={i} data-manual-section={section.label}>
                 <h3 className="px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {section.label}
                 </h3>
@@ -207,7 +216,7 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
         <div className={READING_COLUMN_CLS}>
           {!loaded ? (
             <DocSkeleton />
-          ) : loaded.failed ? (
+          ) : loaded.body === null ? (
             <div
               data-manual-load-failed
               className="flex items-center gap-2 py-6 text-sm text-muted-foreground"
@@ -216,7 +225,7 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
               <span>{t("manual.loadFailed")}</span>
             </div>
           ) : (
-            <Markdown content={split?.body ?? loaded.body} />
+            <Markdown content={split ? split.body : loaded.body} />
           )}
           <footer className="mt-8 flex flex-col gap-3 border-t border-border pt-4">
             {sourceNames.length > 0 && (
@@ -249,7 +258,7 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
                   variant="outline"
                   size="sm"
                   aria-label={t("pager.prev")}
-                  data-manual-prev
+                  data-manual-prev={prev.slug}
                   className="gap-1"
                   onClick={() => setSelected(prev.slug)}
                 >
@@ -264,7 +273,7 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
                   variant="outline"
                   size="sm"
                   aria-label={t("pager.next")}
-                  data-manual-next
+                  data-manual-next={next.slug}
                   className="gap-1"
                   onClick={() => setSelected(next.slug)}
                 >

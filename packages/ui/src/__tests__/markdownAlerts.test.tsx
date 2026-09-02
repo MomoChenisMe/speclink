@@ -57,6 +57,23 @@ describe("Markdown GitHub Alert 提示框", () => {
     );
   });
 
+  it("小寫標記同樣轉換（GitHub 也接受）", () => {
+    const { container } = renderMd("> [!note]\n> 小寫內容");
+    const box = alertBox(container, "note")!;
+    expect(box.querySelector(".markdown-alert-title")!.textContent).toBe("注意");
+    expect(box.textContent).toContain("小寫內容");
+    expect(container.textContent).not.toContain("[!note]");
+  });
+
+  it("標記行以硬換行結尾（行尾兩空格）時，提示框內文不以 <br> 起頭", () => {
+    const { container } = renderMd("> [!TIP]  \n> 第一行\n> 第二行");
+    const box = alertBox(container, "tip")!;
+    const first = box.querySelector("p") as HTMLElement;
+    expect(first.innerHTML.startsWith("<br")).toBe(false);
+    expect(first.textContent).toContain("第一行");
+    expect(first.textContent).toContain("第二行");
+  });
+
   it("標記之後的多段內容全部保留在提示框內", () => {
     const { container } = renderMd("> [!TIP]\n> 第一段\n>\n> 第二段\n>\n> - 清單項");
     const box = alertBox(container, "tip")!;

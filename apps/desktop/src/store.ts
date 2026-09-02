@@ -16,7 +16,7 @@ import type {
   AnalyzeReport,
   VerbDrawerResult,
 } from "@speclink/ui";
-import { RevertBlockedError, type RevertBlockedInfo } from "@speclink/ui";
+import { RevertBlockedError, emptyManualIndex, type RevertBlockedInfo } from "@speclink/ui";
 
 import { appT } from "./i18n/runtime";
 import type { ConnectionsAdapter, ConnectionView } from "./adapter/connections";
@@ -1095,7 +1095,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       } catch {
         // 讀不到不等於「確認是空的」：有舊索引沿用；首訪才落成尚無手冊的空索引。
         if (get().manual) return;
-        index = { present: false, reason: null, pages: [], uncoveredNew: [], malformed: [] };
+        index = emptyManualIndex(null);
       }
       // 交錯回應以最新為準；分頁已切走的結果丟棄（索引屬於當時的 workspace）。
       if (generation !== manualGeneration || get().activeKey !== key) return;

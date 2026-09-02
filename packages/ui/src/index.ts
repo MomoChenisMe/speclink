@@ -75,7 +75,7 @@ export type {
   VerbDrawerResult,
   RevertBlockedEvidence,
 } from "./adapter";
-export { RevertBlockedError, toRevertError } from "./adapter";
+export { RevertBlockedError, toRevertError, emptyManualIndex } from "./adapter";
 export {
   RevertBlockedDialog,
   type RevertBlockedInfo,

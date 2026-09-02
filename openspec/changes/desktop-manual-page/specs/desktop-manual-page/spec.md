@@ -6,7 +6,7 @@ desktop「手冊」頁的行為：讀取 `openspec/manual/` 的手冊頁（格�
 
 ### Requirement: 手冊頁的側欄樹與閱讀序
 
-手冊頁 SHALL 讀取專案 `openspec/manual/` 下全部 `.md` 頁的 frontmatter，以 `order` 升冪決定閱讀序（同值以檔名決斷），以 `section` 對閱讀序中連續的頁分組為側欄分區，分區順序為分區內最小 `order`。側欄每列 SHALL 顯示該頁 `title`；缺 `title` 時顯示檔名（去副檔名）、缺 `section` 歸入「其他」分區、缺或非整數 `order` 置於所屬分區末。frontmatter 無法解析的頁 SHALL 仍列於側欄（以檔名為標題）且可開啟，SHALL NOT 使頁面報錯。上一頁／下一頁 SHALL 為閱讀序中的相鄰頁，首頁無上一頁、末頁無下一頁。手冊頁 SHALL 為唯讀，SHALL NOT 提供任何寫入操作。
+手冊頁 SHALL 讀取專案 `openspec/manual/` 下全部 `.md` 頁的 frontmatter，以兩層排序決定閱讀序：分區依分區內最小 `order` 排列，分區內的頁依 `order` 升冪（同值以檔名決斷）；側欄分區即閱讀序中連續同 `section` 的頁，同一分區的頁恆相鄰。側欄每列 SHALL 顯示該頁 `title`；缺 `title` 時顯示檔名（去副檔名）、缺 `section` 歸入「其他」分區、缺或非整數 `order` 置於所屬分區末。frontmatter 無法解析的頁 SHALL 仍列於側欄（以檔名為標題）且可開啟，SHALL NOT 使頁面報錯。上一頁／下一頁 SHALL 為閱讀序中的相鄰頁，首頁無上一頁、末頁無下一頁。手冊頁 SHALL 為唯讀，SHALL NOT 提供任何寫入操作。
 
 #### Scenario: 依 order 排序並依 section 分組
 
@@ -118,7 +118,7 @@ desktop「手冊」頁的行為：讀取 `openspec/manual/` 的手冊頁（格�
 
 ### Requirement: Markdown 的 GitHub Alert 提示框
 
-共用 Markdown 元件 SHALL 將首段以 `[!NOTE]`、`[!TIP]`、`[!WARNING]`、`[!CAUTION]` 之一開頭的 blockquote 呈現為對應類型的提示框：移除標記文字、顯示類型標籤、配色取自介面狀態語意色（資訊、成功、警告、危險）且不佔主色，其餘內容照常渲染；不符此形式的 blockquote SHALL 維持既有渲染逐位元不變。此呈現 SHALL 於淺色與深色主題一致生效，並適用於所有使用共用 Markdown 元件的檢視。
+共用 Markdown 元件 SHALL 將首段以 `[!NOTE]`、`[!TIP]`、`[!WARNING]`、`[!CAUTION]` 之一（大小寫不拘）開頭的 blockquote 呈現為對應類型的提示框：移除標記文字、顯示類型標籤、配色取自介面狀態語意色（資訊、成功、警告、危險）且不佔主色，其餘內容照常渲染；不符此形式的 blockquote SHALL 維持既有渲染逐位元不變。此呈現 SHALL 於淺色與深色主題一致生效，並適用於所有使用共用 Markdown 元件的檢視。
 
 #### Scenario: 四型提示框
 

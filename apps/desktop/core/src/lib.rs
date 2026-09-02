@@ -113,12 +113,6 @@ mod tests {
             .join("..")
     }
 
-    fn fresh_non_project_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("speclink-desktop-test-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&dir);
-        dir
-    }
-
     #[test]
     fn init_core_context_on_project_root_discovers_workspace() {
         let ctx = init_core_context(&repo_root()).expect("should discover the speclink project");
@@ -133,7 +127,7 @@ mod tests {
     #[test]
     fn init_core_context_on_non_project_returns_none() {
         assert!(
-            init_core_context(&fresh_non_project_dir()).is_none(),
+            init_core_context(&crate::testfixture::fresh_non_project_dir("lib")).is_none(),
             "a non-speclink directory should yield no project context"
         );
     }

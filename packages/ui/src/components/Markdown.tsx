@@ -27,8 +27,8 @@ const ALERT_STYLE: Record<AlertType, { tone: SemanticTone; labelKey: string }> =
   warning: { tone: "warning", labelKey: "markdown.alertWarning" },
   caution: { tone: "danger", labelKey: "markdown.alertCaution" },
 };
-// 標記須獨占首段第一行（與 GitHub 同：`[!NOTE]` 後只能接換行或段落結束）。
-const ALERT_MARKER_RE = /^\[!(NOTE|TIP|WARNING|CAUTION)\][ \t]*(?:\r?\n|$)/;
+// 標記須獨占首段第一行（與 GitHub 同：`[!NOTE]` 後只能接換行或段落結束；大小寫不拘）。
+const ALERT_MARKER_RE = /^\[!(NOTE|TIP|WARNING|CAUTION)\][ \t]*(?:\r?\n|$)/i;
 
 /** 最小 mdast 節點視圖——只用到 type／value／children 與 hast 覆寫資料，不引入
  * 型別套件相依。 */
@@ -52,7 +52,11 @@ function remarkGithubAlerts(labels: Record<AlertType, string>) {
     const type = match[1].toLowerCase() as AlertType;
     const { tone } = ALERT_STYLE[type];
     text.value = text.value.slice(match[0].length);
-    if (!text.value) first.children!.shift();
+    if (!text.value) {
+      first.children!.shift();
+      // 標記行以硬換行結尾（行尾兩空格）時，剩下的 break 節點也一併拿掉。
+      if (first.children![0]?.type === "break") first.children!.shift();
+    }
     if (first.children!.length === 0) quote.children!.shift();
     quote.data = {
       hName: "div",

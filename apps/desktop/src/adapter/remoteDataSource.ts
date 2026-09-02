@@ -1,5 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { toRevertError } from "@speclink/ui";
+import { emptyManualIndex, toRevertError } from "@speclink/ui";
 import type {
   SpeclinkDataSource,
   CardKind,
@@ -103,7 +103,7 @@ export function createRemoteDataSource(
     async listManualPages(): Promise<ManualIndex> {
       // 手冊在 remote 尚不支援（desktop-manual-page Non-Goals：投影列於討論 Deferred）
       // ——回報空索引、不發任何請求；手冊頁據 reason 顯示 remote 空狀態。
-      return { present: false, reason: "remote", pages: [], uncoveredNew: [], malformed: [] };
+      return emptyManualIndex("remote");
     },
     async getManualPage(): Promise<string | null> {
       return null;

@@ -104,6 +104,9 @@ const row = (slug: string) => tree().querySelector(`[data-manual-page="${slug}"]
 const content = () => document.querySelector("[data-manual-content]") as HTMLElement;
 const prevButton = () => screen.queryByRole("button", { name: "上一頁" });
 const nextButton = () => screen.queryByRole("button", { name: "下一頁" });
+/** 上一頁／下一頁按鈕標的 slug（data hook）；缺席＝無該方向的頁。 */
+const prevTarget = () => document.querySelector("[data-manual-prev]")?.getAttribute("data-manual-prev") ?? null;
+const nextTarget = () => document.querySelector("[data-manual-next]")?.getAttribute("data-manual-next") ?? null;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -149,6 +152,129 @@ describe("ManualPage 側欄樹與閱讀序", () => {
     await screen.findByText("壞頁全文");
     expect(nextButton()).toBeNull();
     expect(prevButton()).toBeTruthy();
+  });
+
+  it("spec Example「排序與分組」四頁逐列：側欄位置、上一頁、下一頁", async () => {
+    // spec Scenario「依 order 排序並依 section 分組」Example 表，逐列以同值斷言。
+    const example: ManualIndex = {
+      ...INDEX,
+      pages: [
+        page({ slug: "index", title: "手冊", section: "開始使用", order: 10 }),
+        page({ slug: "first-login", title: "第一次登入", section: "開始使用", order: 20 }),
+        page({ slug: "editor", title: "編輯器", section: "文件協作", order: 30 }),
+        page({ slug: "about", title: "本手冊的來源", section: "附錄", order: 40 }),
+      ],
+      malformed: [],
+    };
+    const table: Array<[string, string, number, string | null, string | null]> = [
+      ["index", "開始使用", 0, null, "first-login"],
+      ["first-login", "開始使用", 1, "index", "editor"],
+      ["editor", "文件協作", 0, "first-login", "about"],
+      ["about", "附錄", 0, "editor", null],
+    ];
+    renderManual({ index: example }, loader({}));
+    await waitFor(() => expect(row("index").getAttribute("aria-current")).toBe("page"));
+    expect(sections()).toEqual(["開始使用", "文件協作", "附錄"]);
+    for (const [slug, section, at, prev, next] of table) {
+      fireEvent.click(row(slug));
+      expect(row(slug).getAttribute("aria-current")).toBe("page");
+      const rowsInSection = Array.from(
+        tree().querySelectorAll(`[data-manual-section="${section}"] [data-manual-page]`),
+      ).map((r) => r.getAttribute("data-manual-page"));
+      expect(rowsInSection[at]).toBe(slug);
+      expect(prevTarget()).toBe(prev);
+      expect(nextTarget()).toBe(next);
+      if (prev) expect(prevButton()!.textContent).toContain(example.pages.find((p) => p.slug === prev)!.title);
+      else expect(prevButton()).toBeNull();
+      if (next) expect(nextButton()!.textContent).toContain(example.pages.find((p) => p.slug === next)!.title);
+      else expect(nextButton()).toBeNull();
+    }
+    // 沿下一頁逐頁走完整個閱讀序。
+    fireEvent.click(row("index"));
+    for (const expected of ["first-login", "editor", "about"]) {
+      fireEvent.click(nextButton()!);
+      expect(row(expected).getAttribute("aria-current")).toBe("page");
+    }
+    expect(nextButton()).toBeNull();
+  });
+
+  it("外部新增一頁（order 落於既有兩頁之間）後側欄於對應位置出現，其餘順序不變", async () => {
+    // spec Scenario「外部新增頁後側欄出現」：索引換新（已由 core 依 order 排好）→ 側欄跟著變。
+    const { rerender, loadPage } = renderManual();
+    await screen.findByText("歡迎。");
+    const inserted: ManualIndex = {
+      ...INDEX,
+      pages: [
+        ...INDEX.pages.slice(0, 2),
+        page({ slug: "shortcuts", title: "快捷鍵", section: "開始使用", order: 25 }),
+        ...INDEX.pages.slice(2),
+      ],
+    };
+    rerender(
+      <ManualPage index={inserted} loadPage={loadPage} onOpenSpec={vi.fn()} capabilities={[]} />,
+    );
+    expect(rows()).toEqual(["index", "first-login", "shortcuts", "editor", "about", "orphan", "broken"]);
+    expect(row("index").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByText("歡迎。")).toBeTruthy();
+  });
+
+  it("索引清空（切換 workspace）時丟棄舊內文與選頁，新索引到達前只顯示骨架", async () => {
+    // review R1：手冊頁開著時切換分頁，index 先變 null；新 workspace 的首頁 slug 同名
+    // （契約規定都叫 index）時，不得把舊 workspace 的內文當成新頁顯示。
+    const gate = deferred<string | null>();
+    const calls: string[] = [];
+    const loadPage = vi.fn(async (slug: string) => {
+      calls.push(slug);
+      return calls.length <= 2 ? BODIES[slug] : gate.promise;
+    });
+    const { rerender } = renderManual({}, loadPage);
+    await screen.findByText("歡迎。");
+    fireEvent.click(row("editor"));
+    await screen.findByText("提示內容");
+    rerender(<ManualPage index={null} loadPage={loadPage} onOpenSpec={vi.fn()} capabilities={[]} />);
+    expect(screen.queryByText("提示內容")).toBeNull();
+    const other: ManualIndex = {
+      ...INDEX,
+      pages: [
+        page({ slug: "index", title: "另一份手冊", section: "開始使用", order: 10 }),
+        page({ slug: "editor", title: "另一個編輯器", section: "文件協作", order: 20 }),
+      ],
+      malformed: [],
+    };
+    rerender(<ManualPage index={other} loadPage={loadPage} onOpenSpec={vi.fn()} capabilities={[]} />);
+    // 新 workspace 從首頁開始（不沿用舊選頁），且舊內文不得出現。
+    expect(row("index").getAttribute("aria-current")).toBe("page");
+    expect(calls[calls.length - 1]).toBe("index");
+    expect(screen.queryByText("提示內容")).toBeNull();
+    expect(screen.queryByText("歡迎。")).toBeNull();
+    expect(content().querySelector('[aria-busy="true"]')).toBeTruthy();
+    gate.resolve("# 另一份手冊\n\n新 workspace 內文。");
+    await screen.findByText("新 workspace 內文。");
+  });
+
+  it("索引清空時，在途的舊載入回應不得寫回（切分頁瞬間的競態）", async () => {
+    // review R1 第 2 輪殘留：切分頁當下若 loadPage 在途，回應落地時索引已是 null 或
+    // 已換成新 workspace（首頁同名 index），舊內文不得寫回。
+    const old = deferred<string | null>();
+    const fresh = deferred<string | null>();
+    const loadPage = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise);
+    const { rerender } = renderManual({}, loadPage);
+    expect(loadPage).toHaveBeenCalledTimes(1);
+    rerender(<ManualPage index={null} loadPage={loadPage} onOpenSpec={vi.fn()} capabilities={[]} />);
+    // 舊回應落在索引為 null 的窗口內。
+    old.resolve("# 舊 workspace\n\n舊 workspace 內文。");
+    await new Promise((r) => setTimeout(r, 0));
+    const other: ManualIndex = {
+      ...INDEX,
+      pages: [page({ slug: "index", title: "另一份手冊", section: "開始使用", order: 10 })],
+      malformed: [],
+    };
+    rerender(<ManualPage index={other} loadPage={loadPage} onOpenSpec={vi.fn()} capabilities={[]} />);
+    expect(loadPage).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("舊 workspace 內文。")).toBeNull();
+    expect(content().querySelector('[aria-busy="true"]')).toBeTruthy();
+    fresh.resolve("# 另一份手冊\n\n新 workspace 內文。");
+    await screen.findByText("新 workspace 內文。");
   });
 
   it("壞頁與缺欄頁點擊可開，畫面無錯誤提示", async () => {
@@ -215,8 +341,9 @@ describe("ManualPage 過期與未入冊標示", () => {
     // spec Scenario「來源更新後標示可能過期」。
     renderManual();
     await screen.findByText("歡迎。");
-    expect(within(row("first-login")).getByText("可能過期")).toBeTruthy();
-    expect(within(row("index")).queryByText("可能過期")).toBeNull();
+    const marker = row("first-login").querySelector("[data-manual-stale]");
+    expect(marker?.textContent).toBe("可能過期");
+    expect(row("index").querySelector("[data-manual-stale]")).toBeNull();
   });
 
   it("uncoveredNew 非空時側欄底部顯示計數提示；空時提示缺席", async () => {
@@ -281,6 +408,7 @@ describe("ManualPage 內頁渲染與出處", () => {
     await screen.findByText("歡迎。");
     fireEvent.click(row("editor"));
     await screen.findByText("內文載入失敗");
+    expect(content().querySelector("[data-manual-load-failed]")).toBeTruthy();
     expect(rows().length).toBe(6);
     fireEvent.click(row("about"));
     await screen.findByText("取材範圍。");
@@ -314,6 +442,32 @@ describe("ManualPage 內頁渲染與出處", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByText("過時內文")).toBeNull();
     expect(screen.getByText("最新內文")).toBeTruthy();
+  });
+});
+
+describe("ManualPage React key", () => {
+  it("明寫 section「其他」與缺 section 的組不相鄰、出處行重複列名時，不產生 React key 警告", async () => {
+    // review R4：分區以位置為 key、出處名去重。
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const index: ManualIndex = {
+      ...INDEX,
+      pages: [
+        page({ slug: "misc", title: "雜項", section: "其他", order: 10 }),
+        page({ slug: "index", title: "手冊", section: "開始使用", order: 20 }),
+        page({ slug: "orphan" }),
+      ],
+      malformed: [],
+    };
+    renderManual(
+      { index },
+      loader({ misc: async () => "# 雜項\n\n內文。\n\n**出處**：`github-oauth`、`github-oauth`" }),
+    );
+    await screen.findByText("內文。");
+    expect(sections()).toEqual(["其他", "開始使用", "其他"]);
+    const sources = document.querySelector("[data-manual-sources]") as HTMLElement;
+    expect(within(sources).getAllByRole("button", { name: "github-oauth" })).toHaveLength(1);
+    expect(errors.mock.calls.filter((c) => String(c[0]).includes("key"))).toEqual([]);
+    errors.mockRestore();
   });
 });
 

@@ -100,6 +100,13 @@ impl FixtureRoot {
     }
 }
 
+/// 非 speclink 專案的空暫存目錄（向上探索找不到 openspec/ 的情境）。
+pub(crate) fn fresh_non_project_dir(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("speclink-dtcore-nonproject-{tag}-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
 impl Drop for FixtureRoot {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
