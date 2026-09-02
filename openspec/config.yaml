@@ -78,4 +78,5 @@ rules:
   - 每個 task 必須標註受影響的 repo-root 相對路徑（包含 crates/、apps/、packages/、scripts/ 等實際範圍）；檔名遵循 design 命名慣例，涉及 CLI 時才點名對應指令
   - 動到既有輸出的 task，驗證步驟須確認 golden 與 CLI 測試仍通過，或已在同批刻意更新 golden
   - 涉及 `--json` 的 task，須斷言 payload 結構（欄位存在、camelCase 命名與型別）
-  - task 的驗證步驟只跑受影響面的測試：Rust Cargo package（無論位於 crates/ 或 apps/desktop）用 `cargo test -p <package>`，有 integration test target 時才加 `--test <target>`；前端用 manifest 宣告的 `npm test -w <workspace>`；crates/speclink-node 先用 `npm --prefix crates/speclink-node run build` 建置 napi binding，再用 `npm --prefix crates/speclink-node test`；scripts/ 用 `node --test <受影響測試檔>`；全量 `npm run test:all` 只由 CI（.github/workflows/ci.yml）守門，不寫進 task 驗證步驟
+  - task 的驗證步驟只跑受影響面的測試：Rust Cargo package（無論位於 crates/ 或 apps/desktop）用 `cargo test -p <package>`，有 integration test target 時才加 `--test <target>`；前端用 manifest 宣告的 `npm test -w <workspace>`；crates/speclink-node 先用 `npm --prefix crates/speclink-node run build` 建置 napi binding，再用 `npm --prefix crates/speclink-node test`；scripts/ 一律跑全組 `node --test scripts/*.test.mjs`（不到一秒，不分受影響檔）；全量 `npm run test:all` 只由 CI（.github/workflows/ci.yml）守門，不寫進 task 驗證步驟
+  - 不論觸碰面，tasks.md 最後一個 task 的驗證步驟必含 `node --test scripts/*.test.mjs`：scripts/ 內的詞彙守門、中英對照與連結檢查掃的是整個 README 與 docs 面，只改 openspec/、docs/ 或 LANGUAGE.md 的變更也會讓它們紅；它們紅時 CI 會把 UI、Desktop、Server Web 與 Rust 四組測試整批跳過
