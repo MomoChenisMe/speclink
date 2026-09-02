@@ -144,7 +144,7 @@ export function SpecList({ specs, onOpen, focus }: SpecListProps) {
     setRawPage(Math.floor(at / PAGE_SIZE) + 1);
     // 換頁後卡片才在 DOM：下一幀再捲至該卡。
     const frame = requestAnimationFrame(() => {
-      scrollRef.current?.querySelector(`[data-spec="${focus}"]`)?.scrollIntoView?.({ block: "nearest" });
+      scrollRef.current?.querySelector(`[data-spec="${focus}"]`)?.scrollIntoView({ block: "nearest" });
     });
     return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps

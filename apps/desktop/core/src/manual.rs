@@ -8,7 +8,8 @@
 //! 不報錯、不改檔。
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::sync::LazyLock;
 
 use chrono::NaiveDate;
 use regex::Regex;
@@ -43,19 +44,21 @@ fn empty_index(reason: Value) -> Value {
     })
 }
 
-/// `openspec/manual/` 的所在：跟 spec 目錄名走（`.speclink.yaml` 的 spec_dir）。
-fn manual_dir(root: &Path) -> Option<(PathBuf, crate::ProjectContext)> {
-    let ctx = init_core_context(root)?;
-    Some((ctx.workspace.spec_dir().join("manual"), ctx))
-}
+// 正典 spec 的 `@trace` 註解區塊與其中的 `updated:` 行（與前端 trace.ts 同一種讀法）。
+static TRACE_BLOCK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?s)<!--\s*@trace\b(.*?)-->").expect("static regex"));
+static TRACE_UPDATED_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*updated:\s*(\d{4}-\d{2}-\d{2})\s*$").expect("static regex"));
 
 /// 對應 Tauri command `list_manual_pages`：`{ present, reason, pages, uncoveredNew,
 /// malformed }`（欄位 camelCase）。目錄不存在、無 `.md`、不可讀或非專案時
 /// `present` 為 false（錯誤只記日誌）。
 pub fn list_manual_pages_at(root: &Path) -> Value {
-    let Some((dir, ctx)) = manual_dir(root) else {
+    let Some(ctx) = init_core_context(root) else {
         return empty_index(Value::Null);
     };
+    // `openspec/manual/` 跟 spec 目錄名走（`.speclink.yaml` 的 spec_dir）。
+    let dir = ctx.workspace.spec_dir().join("manual");
     let entries = match std::fs::read_dir(&dir) {
         Ok(entries) => entries,
         Err(e) => {
@@ -146,8 +149,9 @@ pub fn manual_page_at(root: &Path, slug: &str) -> Option<String> {
     if !is_safe_path_param(slug) || slug.contains(['/', '\\']) {
         return None;
     }
-    let (dir, _ctx) = manual_dir(root)?;
-    let text = std::fs::read_to_string(dir.join(format!("{slug}.md"))).ok()?;
+    let ctx = init_core_context(root)?;
+    let path = ctx.workspace.spec_dir().join("manual").join(format!("{slug}.md"));
+    let text = std::fs::read_to_string(path).ok()?;
     Some(match split_frontmatter(&text) {
         Some((yaml, body)) if parse_frontmatter_yaml(yaml).is_some() => body.to_string(),
         _ => text,
@@ -256,13 +260,11 @@ fn sort_reading_order(pages: &mut [Page]) {
 }
 
 /// 正典 spec 全文 `@trace` 註解區塊內 `updated:` 日期的（最小、最大）；沒有可解析
-/// 的日期時 `None`。讀法沿用規格頁 footer 對 @trace 區塊的認定。
+/// 的日期時 `None`。
 fn trace_updated_range(doc: &str) -> Option<(NaiveDate, NaiveDate)> {
-    let block_re = Regex::new(r"(?s)<!--\s*@trace\b(.*?)-->").expect("static regex");
-    let updated_re = Regex::new(r"(?m)^\s*updated:\s*(\d{4}-\d{2}-\d{2})\s*$").expect("static regex");
     let mut range: Option<(NaiveDate, NaiveDate)> = None;
-    for block in block_re.captures_iter(doc) {
-        for cap in updated_re.captures_iter(&block[1]) {
+    for block in TRACE_BLOCK_RE.captures_iter(doc) {
+        for cap in TRACE_UPDATED_RE.captures_iter(&block[1]) {
             let Ok(date) = NaiveDate::parse_from_str(&cap[1], "%Y-%m-%d") else { continue };
             range = Some(match range {
                 None => (date, date),
@@ -484,8 +486,7 @@ mod tests {
         assert_eq!(v["pages"], serde_json::json!([]));
         assert_eq!(manual_page_at(fx.root(), "index"), None);
 
-        let non_project = std::env::temp_dir().join(format!("speclink-manual-nonproject-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&non_project);
+        let non_project = crate::testfixture::fresh_non_project_dir("manual");
         assert_eq!(list_manual_pages_at(&non_project)["present"], false);
         assert_eq!(manual_page_at(&non_project, "index"), None);
     }

@@ -396,12 +396,6 @@ mod tests {
     const OLD_META: &str = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: momo\ncreated_with: claude\n";
     const STARTED_META: &str = "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: momo\ncreated_with: claude\nstarted_at: 2026-07-06\nstarted_by: Worker <w@example.com>\nstarted_with: claude\n";
 
-    fn fresh_non_project_dir() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("speclink-query-test-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&dir);
-        dir
-    }
-
     #[test]
     fn list_changes_shape_matches_cli_and_includes_active_change() {
         let fx = FixtureRoot::new("q-list");
@@ -525,7 +519,7 @@ mod tests {
 
     #[test]
     fn watch_targets_are_empty_outside_a_project() {
-        assert!(watch_targets_at(&fresh_non_project_dir()).is_empty());
+        assert!(watch_targets_at(&crate::testfixture::fresh_non_project_dir("query-watch")).is_empty());
     }
 
     #[test]
@@ -1339,7 +1333,7 @@ mod tests {
 
     #[test]
     fn non_project_yields_empty_state_not_panic() {
-        let root = fresh_non_project_dir();
+        let root = crate::testfixture::fresh_non_project_dir("query");
         assert_eq!(list_changes_at(&root), json!({ "changes": [] }));
         assert_eq!(list_specs_at(&root), json!({ "specs": [] }));
         assert!(status_at(&root, "anything").is_err());

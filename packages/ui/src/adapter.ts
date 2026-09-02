@@ -161,14 +161,19 @@ export interface ManualPageItem {
 export interface ManualIndex {
   /** `openspec/manual/` 存在且至少一個 .md。false 時 pages 為空、畫面呈空狀態。 */
   present: boolean;
-  /** present 為 false 的原因：remote 資料源回 "remote"（尚不支援），本地缺目錄為 null／缺席。 */
-  reason?: "remote" | null;
+  /** present 為 false 的原因：remote 資料源回 "remote"（尚不支援），本地缺目錄為 null。 */
+  reason: "remote" | null;
   pages: ManualPageItem[];
   /** 手冊生成後新增且未入冊的正典 capability 名（最小 @trace updated 晚於全手冊最大
    * generated、且不在任何頁的 sources）。 */
   uncoveredNew: string[];
   /** frontmatter 無法解析的頁 slug（仍列於 pages、以檔名為標題）。 */
   malformed: string[];
+}
+
+/** 空索引（無手冊／remote 尚不支援）：store 的讀取失敗回退與 remote 資料源共用同一形狀。 */
+export function emptyManualIndex(reason: "remote" | null): ManualIndex {
+  return { present: false, reason, pages: [], uncoveredNew: [], malformed: [] };
 }
 
 /** 可對選定 change 執行的動詞。park/unpark 已從 speclink 移除，不在此列。 */

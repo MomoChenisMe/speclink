@@ -30,7 +30,7 @@
 
 ### 索引 JSON 的形狀與推導規則
 
-`pages` 每項：`slug`、`title`、`section`、`order`、`keywords`（陣列）、`sources`（陣列）、`generated`、`stale`（布林）。排序：依 `order` 升冪；分區順序為分區內最小 `order`；同 `order` 以 `slug` 決斷。缺 `title` 用 slug、缺 `section` 歸「其他」、缺或非整數 `order` 置該分區末（以 `i64::MAX` 排序、`order` 輸出 null）、缺 `generated` 視為未過期。frontmatter 無法解析（不以 `---` 開頭或 YAML 錯誤）的檔案列入 `pages` 時 `title` 為 slug、其餘缺席，並於索引的 `malformed` 陣列列出 slug——寬容降級，SHALL NOT 拋錯。`present` 為 `openspec/manual/` 目錄存在且至少一個 `.md`。
+`pages` 每項：`slug`、`title`、`section`、`order`、`keywords`（陣列）、`sources`（陣列）、`generated`、`stale`（布林）。排序：分區依分區內最小 `order`、分區內依 `order` 升冪，同 `order` 以 `slug` 決斷（同分區的頁恆相鄰）。缺 `title` 用 slug、缺 `section` 輸出 null（前端以 i18n 標為「其他」分區）、缺或非整數 `order` 置該分區末（以 `i64::MAX` 排序、`order` 輸出 null）、缺 `generated` 視為未過期。frontmatter 無法解析（不以 `---` 開頭或 YAML 錯誤）的檔案列入 `pages` 時 `title` 為 slug、其餘缺席，並於索引的 `malformed` 陣列列出 slug——寬容降級，SHALL NOT 拋錯。`present` 為 `openspec/manual/` 目錄存在且至少一個 `.md`。
 
 ### 過期與未入冊的計算依 manual-pages 契約
 
@@ -42,7 +42,7 @@
 
 ### GitHub Alert 以共用 Markdown 元件的內建轉換呈現
 
-在 `packages/ui/src/components/Markdown.tsx` 加一個小型 remark 轉換（不新增依賴）：blockquote 首段以 `[!NOTE]`／`[!TIP]`／`[!WARNING]`／`[!CAUTION]` 開頭者，轉為帶類型 class 的提示框並移除標記文字；四型配色取自介面狀態語意色（資訊、成功、警告、危險），不佔主色。對所有 Markdown 檢視恆開：既有內容無此語法者輸出不變。替代方案「引入第三方 remark 外掛」被排除：三十行內可完成，且不增加相依審核面。
+在 `packages/ui/src/components/Markdown.tsx` 加一個小型 remark 轉換（不新增依賴）：blockquote 首段以 `[!NOTE]`／`[!TIP]`／`[!WARNING]`／`[!CAUTION]` 開頭者（大小寫不拘），轉為帶類型 class 的提示框並移除標記文字；四型配色取自介面狀態語意色（資訊、成功、警告、危險），不佔主色。對所有 Markdown 檢視恆開：既有內容無此語法者輸出不變。替代方案「引入第三方 remark 外掛」被排除：三十行內可完成，且不增加相依審核面。
 
 ### 手冊頁的外部變更重載沿用既有 watcher 事件
 
@@ -86,7 +86,7 @@
 ## Risks / Trade-offs
 
 - [側欄六項改動 desktop 快照與 App 測試] → 同批更新 `apps/desktop/src/__tests__/App.test.tsx` 的側欄斷言；規格頁、已封存頁行為不變。
-- [Markdown 提示框轉換誤觸既有文件] → 只在 blockquote 首段精確以四種標記開頭時轉換；vitest 以無標記 blockquote 斷言輸出不變。
+- [Markdown 提示框轉換誤觸既有文件] → 只在 blockquote 首段精確以四種標記（大小寫不拘）開頭時轉換；vitest 以無標記 blockquote 斷言輸出不變。
 - [跨平台：Windows 路徑與 CRLF] → frontmatter 解析以行為單位、剝除 `\r`；slug 取自檔名不含分隔符；core 測試以 tempdir 建目錄。
 - [大型手冊每次事件全量重取索引] → 索引只讀 frontmatter 與規格的 `@trace` 行，不讀內文；v1 接受。
 - [speclink-desktop（Tauri 殼）測試需 sidecar 與 server-web dist] → 本變更不動 protocol；殼層驗證以 `cargo check -p speclink-desktop` 為主，行為測試落在 core 與前端。
